@@ -94,6 +94,7 @@ function preferenceWithLegacyOrder(
 const api = vi.hoisted(() => ({
   listNotaryMatters: vi.fn(),
   getNotaryMatter: vi.fn(),
+  decideNotaryIssuance: vi.fn(),
 }));
 const batchApi = vi.hoisted(() => ({ archive: vi.fn() }));
 const workflow = vi.hoisted(() => ({ notify: vi.fn() }));
@@ -103,6 +104,7 @@ vi.mock('../../api/notary', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/notary')>()),
   listNotaryMatters: api.listNotaryMatters,
   getNotaryMatter: api.getNotaryMatter,
+  decideNotaryIssuance: api.decideNotaryIssuance,
 }));
 vi.mock('../../api/notary-return-archive-batch', () => ({
   archiveNotaryReturnBatch: batchApi.archive,
@@ -178,7 +180,16 @@ async function mountPage(path: string) {
   await router.push(path);
   await router.isReady();
   const wrapper = mount(NotaryMatterListPage, {
-    global: { plugins: [router] },
+    global: {
+      plugins: [router],
+      stubs: {
+        ElDrawer: {
+          props: ['modelValue'],
+          template:
+            '<section v-if="modelValue"><slot/><slot name="footer"/></section>',
+        },
+      },
+    },
   });
   await flushPromises();
   return { wrapper, router, auth };
@@ -187,6 +198,62 @@ async function mountPage(path: string) {
 afterEach(() => vi.resetAllMocks());
 
 describe('NotaryMatterListPage', () => {
+  it('clicks a real list action, chooses a destination and refreshes the same page/query once', async () => {
+    const item = {
+      ...result.items[0],
+      stage: 'ISSUANCE_DECISION',
+      capabilities: { ...sourceProjection.capabilities, decideIssuance: true },
+    };
+    api.listNotaryMatters.mockResolvedValue({
+      ...result,
+      items: [item],
+      total: 23,
+      page: 2,
+    });
+    api.getNotaryMatter.mockResolvedValue({
+      ...item,
+      version: 5,
+      certificateFiles: [],
+      evidence: null,
+      opening: null,
+      reviewDecision: null,
+      issuanceDecision: null,
+      returnArchive: null,
+      selectedProducts: [],
+      selectedMaterials: [],
+    });
+    api.decideNotaryIssuance.mockResolvedValue({});
+    const { wrapper, router } = await mountPage(
+      '/notary-matters?stage=ISSUANCE_DECISION&page=2',
+    );
+    await wrapper.get('[data-test="matter-action"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/notary-matters');
+    expect(api.getNotaryMatter).toHaveBeenCalledWith(
+      'matter-1',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(
+      wrapper.findAll('input[name="issuance-decision"]:checked'),
+    ).toHaveLength(0);
+    await wrapper.get('[data-test="issuance-decision-no-issue"]').setValue();
+    await wrapper
+      .get('[data-test="issuance-decision-section"] form')
+      .trigger('submit');
+    await flushPromises();
+    expect(api.decideNotaryIssuance).toHaveBeenCalledWith(
+      'matter-1',
+      { decision: 'NO_ISSUE', expectedVersion: 5 },
+      expect.any(String),
+    );
+    expect(api.listNotaryMatters).toHaveBeenCalledTimes(2);
+    expect(api.listNotaryMatters.mock.calls[1]?.[0]).toBe(2);
+    expect(router.currentRoute.value.query).toEqual({
+      stage: 'ISSUANCE_DECISION',
+      page: '2',
+    });
+    wrapper.unmount();
+  });
   it('aborts old list and preference reads after an authorization revision change', async () => {
     let resolveList: ((value: unknown) => void) | undefined;
     let resolvePreference: ((value: unknown) => void) | undefined;
@@ -370,12 +437,12 @@ describe('NotaryMatterListPage', () => {
   it.each([
     ['recordEvidence', 'evidence-form', '登记取证'],
     ['recordOpening', 'opening-form', '登记开箱'],
-    ['reviewOpening', 'review-form', '审核'],
-    ['decideIssuance', 'issuance-form', '确认'],
-    ['archiveReturn', 'return-archive-form', '处理退货'],
+    ['reviewOpening', 'review-form', '审核开箱'],
+    ['decideIssuance', 'issuance-form', '决定是否出证'],
+    ['archiveReturn', 'return-archive-form', '办理退货归档'],
   ])(
-    'navigates the server-authorized %s capability to its existing form',
-    async (capability, anchor, label) => {
+    'names the server-authorized %s next step as an in-place button',
+    async (capability, _anchor, label) => {
       const capabilities = {
         recordEvidence: false,
         recordOpening: false,
@@ -392,7 +459,7 @@ describe('NotaryMatterListPage', () => {
       expect(wrapper.findAll('[data-test="matter-action"]')).toHaveLength(1);
       expect(
         wrapper.get('[data-test="matter-action"]').attributes('href'),
-      ).toBe(`/notary-matters/matter-1#${anchor}`);
+      ).toBeUndefined();
       expect(wrapper.get('[data-test="matter-action"]').text()).toBe(label);
     },
   );

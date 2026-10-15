@@ -1,6 +1,18 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { RouterLink, useRoute, useRouter } from 'vue-router';
+import {
+  RouterLink,
+  useRoute,
+  useRouter,
+  onBeforeRouteLeave,
+  onBeforeRouteUpdate,
+} from 'vue-router';
+import ListWorkflowDrawer from '../../app/ListWorkflowDrawer.vue';
+import type {
+  ListWorkflowContext,
+  ListWorkflowLoad,
+} from '../../app/list-workflow-context';
+import NotaryMatterWorkflowPanel from './NotaryMatterWorkflowPanel.vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   exportNotaryList,
@@ -10,6 +22,7 @@ import {
 import type { ArchiveNotaryReturnBatchInput } from '../../api/notary-return-archive-batch';
 import {
   listNotaryMatters,
+  getNotaryMatter,
   notaryListStages,
   type NotaryListStage,
   type NotaryMatterListItem,
@@ -43,6 +56,81 @@ const identity = computed(
     `${auth.session?.user.id ?? ''}:${auth.session?.principalType ?? ''}:${auth.session?.department?.id ?? ''}:${auth.session?.authorizationRevision ?? ''}`,
 );
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
+const workflowOpen = ref(false);
+const workflowContext = ref<ListWorkflowContext | null>(null);
+const workflowDrawer = ref<{ canLeave: () => boolean }>();
+function loadWorkflowDetail({ context, signal }: ListWorkflowLoad) {
+  return getNotaryMatter(context.recordId, { signal });
+}
+function openWorkflow(
+  matter: NotaryMatterListItem,
+  action: { label: string; anchor: string },
+) {
+  if (workflowDrawer.value && !workflowDrawer.value.canLeave()) return;
+  workflowContext.value = {
+    recordId: matter.id,
+    actorKey: identity.value,
+    actionKey: action.anchor,
+    title: `${action.label} · ${matter.businessNo}`,
+  };
+  workflowOpen.value = true;
+}
+
+function pendingRequests(): ListWorkflowContext[] {
+  const requests: ListWorkflowContext[] = [];
+  try {
+    for (let index = 0; index < globalThis.sessionStorage.length; index += 1) {
+      const key = globalThis.sessionStorage.key(index);
+      if (!key?.startsWith('notary-list-request:')) continue;
+      const parts: unknown = JSON.parse(
+        key.slice('notary-list-request:'.length),
+      );
+      if (
+        !Array.isArray(parts) ||
+        parts.length !== 3 ||
+        parts[0] !== identity.value ||
+        typeof parts[1] !== 'string' ||
+        typeof parts[2] !== 'string' ||
+        ![
+          'evidence-form',
+          'opening-form',
+          'review-form',
+          'issuance-form',
+          'return-archive-form',
+        ].includes(parts[2])
+      )
+        continue;
+      requests.push({
+        actorKey: identity.value,
+        recordId: parts[1],
+        actionKey: parts[2],
+        title: '核对未确认的公证请求',
+      });
+    }
+  } catch {
+    return requests;
+  }
+  return requests;
+}
+function resumeWorkflow(context: ListWorkflowContext) {
+  if (workflowDrawer.value && !workflowDrawer.value.canLeave()) return;
+  workflowContext.value = context;
+  workflowOpen.value = true;
+}
+
+function canLeaveWorkflow() {
+  return workflowDrawer.value?.canLeave() ?? true;
+}
+onBeforeRouteLeave(canLeaveWorkflow);
+onBeforeRouteUpdate(canLeaveWorkflow);
+watch(
+  [identity, () => route.fullPath],
+  () => {
+    workflowOpen.value = false;
+    workflowContext.value = null;
+  },
+  { flush: 'sync' },
+);
 const items = ref<NotaryMatterListItem[]>([]);
 const total = ref(0);
 const currentPage = ref(1);
@@ -259,21 +347,34 @@ function matterActions(
     },
     {
       enabled: matter.capabilities.reviewOpening,
-      label: '审核',
+      label: '审核开箱',
       anchor: 'review-form',
     },
     {
       enabled: matter.capabilities.decideIssuance,
-      label: '确认',
+      label: '决定是否出证',
       anchor: 'issuance-form',
     },
     {
       enabled: matter.capabilities.archiveReturn,
-      label: '处理退货',
+      label: '办理退货归档',
       anchor: 'return-archive-form',
     },
   ];
-  return actions.filter((action) => action.enabled);
+  const saved = actions.find((action) => {
+    try {
+      return (
+        globalThis.sessionStorage.getItem(
+          `notary-list-request:${JSON.stringify([identity.value, matter.id, action.anchor])}`,
+        ) !== null
+      );
+    } catch {
+      return false;
+    }
+  });
+  return saved
+    ? [{ ...saved, label: `恢复${saved.label}请求` }]
+    : actions.filter((action) => action.enabled).slice(0, 1);
 }
 const exportScopeKey = computed(() =>
   JSON.stringify({
@@ -672,6 +773,13 @@ async function load(): Promise<void> {
       return;
     items.value = result.items;
     total.value = result.total;
+    const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
+    if (result.items.length === 0 && requestedPage.value > lastPage) {
+      await router.replace({
+        query: { ...route.query, page: String(lastPage) },
+      });
+      return;
+    }
     currentPage.value = result.page;
     pageSize.value = result.pageSize;
     state.value = 'ready';
@@ -1064,12 +1172,13 @@ onBeforeUnmount(() => {
                 </td>
                 <td class="business-list-cell--nowrap notary-actions">
                   <div>
-                    <RouterLink
+                    <ElButton
                       v-for="action in matterActions(matter)"
                       :key="action.anchor"
                       data-test="matter-action"
-                      :to="`/notary-matters/${matter.id}#${action.anchor}`"
-                      >{{ action.label }}</RouterLink
+                      type="primary"
+                      @click="openWorkflow(matter, action)"
+                      >{{ action.label }}</ElButton
                     >
                     <RouterLink
                       data-test="matter-link"
@@ -1170,6 +1279,27 @@ onBeforeUnmount(() => {
           >
         </nav>
       </section>
+      <section v-if="pendingRequests().length" aria-label="未确认的公证请求">
+        <p>尚有请求结果未确认，事项可能已经离开当前筛选。请核对原请求。</p>
+        <ElButton
+          v-for="pending in pendingRequests()"
+          :key="pending.recordId + pending.actionKey"
+          data-test="notary-resume-request"
+          @click="resumeWorkflow(pending)"
+          >核对未确认的公证请求</ElButton
+        >
+      </section>
+      <ListWorkflowDrawer
+        ref="workflowDrawer"
+        v-model="workflowOpen"
+        :context="workflowContext"
+        :load-detail="loadWorkflowDetail"
+        @success="load"
+      >
+        <template #default="{ detail, session }"
+          ><NotaryMatterWorkflowPanel :detail="detail" :session="session"
+        /></template>
+      </ListWorkflowDrawer>
     </main>
   </div>
 </template>

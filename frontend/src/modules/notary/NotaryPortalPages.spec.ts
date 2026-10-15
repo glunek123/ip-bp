@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createPinia } from 'pinia';
 import NotaryPortalListPage from './NotaryPortalListPage.vue';
 import NotaryPortalDetailPage from './NotaryPortalDetailPage.vue';
 
@@ -26,6 +27,7 @@ vi.mock('../../api/materials', () => ({
 }));
 
 beforeEach(() => {
+  globalThis.sessionStorage.clear();
   vi.resetAllMocks();
   api.listNotaryPortalMatters.mockResolvedValue({
     items: [
@@ -82,7 +84,9 @@ async function mountRoute(
   });
   await router.push(path);
   await router.isReady();
-  const wrapper = mount(component, { global: { plugins: [router] } });
+  const wrapper = mount(component, {
+    global: { plugins: [router, createPinia()] },
+  });
   await flushPromises();
   return wrapper;
 }

@@ -3,122 +3,39 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
-import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
-import { notifyWorkflowChanged } from '../../app/workflow-events';
 import { labelLeadPlatform } from './lead-options';
 import type { CaseStage } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
-import {
-  deleteMaterial,
-  downloadMaterialVersion,
-  listOwnerMaterials,
-  uploadMaterialFile,
-  type OwnerMaterial,
-} from '../../api/materials';
+import { downloadMaterialVersion } from '../../api/materials';
 import {
   getNotaryMatter,
-  recordNotaryEvidence,
-  recordNotaryOpening,
-  reviewNotaryOpening,
-  decideNotaryIssuance,
-  archiveNotaryReturn,
   type NotaryMatterDetail,
-  type NotaryReturnAmountInput,
-  type NotaryReturnAmountSummary,
   type NotaryReturnChoice,
-  type RecordNotaryEvidenceInput,
-  type RecordNotaryOpeningInput,
+  type NotaryReturnAmountSummary,
 } from '../../api/notary';
-
+import { createListWorkflowContext } from '../../app/list-workflow-context';
+import NotaryMatterWorkflowPanel from './NotaryMatterWorkflowPanel.vue';
 const route = useRoute();
 const auth = useAuthStore();
+const actorKey = computed(() =>
+  [
+    auth.session?.user.id ?? '',
+    auth.session?.principalType ?? '',
+    auth.session?.department?.id ?? '',
+    auth.session?.authorizationRevision ?? '',
+  ].join(':'),
+);
 const requestScopeKey = computed(
-  () =>
-    `${String(route.params.id)}:${auth.session?.user.id ?? ''}:${auth.session?.principalType ?? ''}:${auth.session?.department?.id ?? ''}:${auth.session?.authorizationRevision ?? ''}`,
+  () => String(route.params.id) + ':' + actorKey.value,
 );
 let contextGeneration = 0;
+let request: AbortController | undefined;
 const downloadRequests = new Set<AbortController>();
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 type DetailElement = InstanceType<typeof globalThis.HTMLElement>;
 const detailRoot = ref<DetailElement>();
 const matter = ref<NotaryMatterDetail>();
 const downloadError = ref('');
-const evidenceDate = ref('');
-const sampleFeeState = ref('');
-const sampleFeeAmount = ref('');
-const logisticsRows = ref([
-  { companyState: '', companyValue: '', trackingState: '', trackingValue: '' },
-]);
-const evidenceErrors = ref<string[]>([]);
-const evidenceError = ref('');
-const evidenceSuccess = ref('');
-const submittingEvidence = ref(false);
-const openingSenderName = ref('');
-const openingSenderPhone = ref('');
-const openingSenderAddress = ref('');
-type OpeningPhotoDraft = {
-  localId: number;
-  materialId?: string;
-  contentVersionId?: string;
-  originalFilename: string;
-  mimeType: string;
-  version: number | null;
-  selected: boolean;
-  file?: InstanceType<typeof globalThis.File>;
-  uploading: boolean;
-  error?: string;
-};
-const openingPhotos = ref<OpeningPhotoDraft[]>([]);
-const openingUploadError = ref('');
-const openingMaterialsError = ref('');
-const openingError = ref('');
-const openingSuccess = ref('');
-const uploadingOpeningPhotos = ref(false);
-const submittingOpening = ref(false);
-const reviewResult = ref<'' | 'INFRINGEMENT' | 'NO_INFRINGEMENT'>('');
-const reviewReason = ref('');
-const reviewError = ref('');
-const reviewSuccess = ref('');
-const submittingReview = ref(false);
-const reviewRetryLocked = ref(false);
-const reviewRetryAvailable = ref(false);
-const issuanceChoice = ref<'' | 'ISSUE' | 'NO_ISSUE'>('');
-const issuanceError = ref('');
-const issuanceSuccess = ref('');
-const submittingIssuance = ref(false);
-const issuanceRetryLocked = ref(false);
-const issuanceRetryAvailable = ref(false);
-const returnChoice = ref<'' | NotaryReturnChoice>('');
-const returnReason = ref('');
-const refundState = ref<'' | 'KNOWN' | 'PENDING'>('');
-const refundAmount = ref('');
-const refundPartyKind = ref('');
-const refundPartyName = ref('');
-const freightState = ref<'' | 'KNOWN' | 'PENDING'>('');
-const freightAmount = ref('');
-const freightPartyKind = ref('');
-const freightPartyName = ref('');
-const returnArchiveError = ref('');
-const returnArchiveSuccess = ref('');
-const submittingReturnArchive = ref(false);
-const returnArchiveRetryLocked = ref(false);
-const returnArchiveRetryAvailable = ref(false);
-const deletingOpeningMaterialId = ref<string | null>(null);
-const refreshingOpeningPhotos = ref(false);
-let evidenceIdempotencyKey = '';
-let evidenceSubmissionFingerprint = '';
-let openingIdempotencyKey = '';
-let openingSubmissionFingerprint = '';
-let reviewIdempotencyKey = '';
-let reviewSubmissionFingerprint = '';
-let issuanceIdempotencyKey = '';
-let issuanceSubmissionFingerprint = '';
-let returnArchiveIdempotencyKey = '';
-let returnArchiveSubmissionFingerprint = '';
-let request: AbortController | undefined;
-let openingMaterialsRequest: AbortController | undefined;
-let nextOpeningPhotoLocalId = 1;
-
 const caseStageLabels: Record<CaseStage, string> = {
   PENDING_MATCH: '待匹配',
   WAITING_COMPLAINT: '待写诉状',
@@ -211,380 +128,6 @@ function formatTime(value: string): string {
   });
 }
 
-function hasSavedEvidence(value: NotaryMatterDetail | undefined): boolean {
-  return value?.stage === 'WAITING_UNBOX' && value.evidence !== null;
-}
-
-function hasSavedOpening(value: NotaryMatterDetail | undefined): boolean {
-  return value?.stage === 'UNBOX_REVIEW' && value.opening !== null;
-}
-
-function isReviewed(value: NotaryMatterDetail | undefined): boolean {
-  return (
-    (value?.stage === 'ISSUANCE_DECISION' ||
-      value?.stage === 'WAITING_CERTIFICATE' ||
-      value?.stage === 'WAITING_RETURN' ||
-      value?.stage === 'ARCHIVED') &&
-    value.reviewDecision !== null
-  );
-}
-
-async function load(): Promise<boolean> {
-  const generation = contextGeneration;
-  evidenceIdempotencyKey = '';
-  evidenceSubmissionFingerprint = '';
-  request?.abort();
-  const controller = new AbortController();
-  request = controller;
-  state.value = 'loading';
-  matter.value = undefined;
-  if (!auth.session || auth.session.principalType !== 'INTERNAL') {
-    state.value = 'missing';
-    return false;
-  }
-  try {
-    const current = await getNotaryMatter(String(route.params.id), {
-      signal: controller.signal,
-    });
-    if (controller.signal.aborted || generation !== contextGeneration)
-      return false;
-    matter.value = current;
-    state.value = 'ready';
-    if (
-      current.stage === 'WAITING_UNBOX' &&
-      current.capabilities.recordOpening
-    ) {
-      await refreshOpeningPhotos(current.id);
-    } else {
-      openingPhotos.value = [];
-      openingMaterialsError.value = '';
-    }
-    return generation === contextGeneration && !controller.signal.aborted;
-  } catch (error) {
-    if (controller.signal.aborted || generation !== contextGeneration)
-      return false;
-    state.value =
-      error instanceof ApiError && error.code === 'RESOURCE_NOT_FOUND'
-        ? 'missing'
-        : 'failed';
-    return false;
-  }
-}
-
-const allowedOpeningPhotoTypes = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-]);
-const maxOpeningPhotoSize = 20 * 1024 * 1024;
-
-function openingPhotoDraftsFromMaterials(
-  items: OwnerMaterial[],
-  selectedContentVersionIds: ReadonlySet<string>,
-): OpeningPhotoDraft[] {
-  return items.flatMap((material) => {
-    if (
-      material.ownerType !== 'NOTARY_MATTER' ||
-      material.ownerId !== matter.value?.id ||
-      material.category !== 'NOTARY_OPENING_PHOTO' ||
-      material.purpose !== 'NOTARY_OPENING_PHOTO' ||
-      material.status !== 'ACTIVE' ||
-      material.currentVersionId === null
-    ) {
-      return [];
-    }
-    const content = material.contentVersions.find(
-      (version) => version.id === material.currentVersionId,
-    );
-    if (!content) return [];
-    return [
-      {
-        localId: nextOpeningPhotoLocalId++,
-        materialId: material.id,
-        contentVersionId: content.id,
-        originalFilename: content.originalFilename,
-        mimeType: content.mimeType,
-        version: material.version,
-        selected: selectedContentVersionIds.has(content.id),
-        uploading: false,
-      },
-    ];
-  });
-}
-
-async function refreshOpeningPhotos(matterId: string): Promise<void> {
-  const generation = contextGeneration;
-  if (refreshingOpeningPhotos.value) return;
-  const controller = new AbortController();
-  openingMaterialsRequest = controller;
-  refreshingOpeningPhotos.value = true;
-  openingMaterialsError.value = '';
-  const selectedIds = new Set(
-    openingPhotos.value
-      .filter((photo) => photo.selected && photo.contentVersionId)
-      .map((photo) => photo.contentVersionId as string),
-  );
-  try {
-    const result = await listOwnerMaterials('NOTARY_MATTER', matterId, {
-      signal: controller.signal,
-    });
-    if (controller.signal.aborted || generation !== contextGeneration) return;
-    const serverPhotos = openingPhotoDraftsFromMaterials(
-      result.items,
-      selectedIds,
-    );
-    const localPhotos = openingPhotos.value.filter(
-      (photo) => !photo.materialId,
-    );
-    openingPhotos.value = [...serverPhotos, ...localPhotos];
-  } catch {
-    if (generation !== contextGeneration) return;
-    openingMaterialsError.value = '开箱照片列表读取失败，请刷新重试';
-  } finally {
-    if (generation === contextGeneration) refreshingOpeningPhotos.value = false;
-  }
-}
-
-async function uploadOpeningFiles(
-  event: InstanceType<typeof globalThis.Event>,
-): Promise<void> {
-  const generation = contextGeneration;
-  if (
-    uploadingOpeningPhotos.value ||
-    deletingOpeningMaterialId.value !== null ||
-    refreshingOpeningPhotos.value
-  ) {
-    return;
-  }
-  const input = event.target;
-  if (!(input instanceof globalThis.HTMLInputElement)) return;
-  const files = Array.from(input.files ?? []);
-  input.value = '';
-  openingUploadError.value = '';
-  if (openingPhotos.value.length + files.length > 50) {
-    openingUploadError.value = '开箱照片最多上传 50 张';
-    return;
-  }
-  const accepted: OpeningPhotoDraft[] = [];
-  for (const file of files) {
-    if (!allowedOpeningPhotoTypes.has(file.type)) {
-      openingUploadError.value = '仅支持 JPEG、PNG 或 WEBP 格式的开箱照片';
-      continue;
-    }
-    if (file.size > maxOpeningPhotoSize) {
-      openingUploadError.value = '单张开箱照片不能超过 20 MB';
-      continue;
-    }
-    accepted.push({
-      localId: nextOpeningPhotoLocalId++,
-      originalFilename: file.name,
-      mimeType: file.type,
-      version: null,
-      selected: false,
-      file,
-      uploading: false,
-    });
-  }
-  openingPhotos.value.push(...accepted);
-  if (accepted.length === 0) return;
-  uploadingOpeningPhotos.value = true;
-  try {
-    for (const photo of accepted) {
-      if (generation !== contextGeneration) return;
-      await uploadOpeningPhoto(photo);
-    }
-  } finally {
-    if (generation === contextGeneration) uploadingOpeningPhotos.value = false;
-  }
-}
-
-async function uploadOpeningPhoto(photo: OpeningPhotoDraft): Promise<void> {
-  const generation = contextGeneration;
-  if (!photo.file) return;
-  photo.error = undefined;
-  photo.uploading = true;
-  try {
-    const uploaded = await uploadMaterialFile({
-      ownerType: 'NOTARY_MATTER',
-      ownerId: matter.value?.id ?? String(route.params.id),
-      category: 'NOTARY_OPENING_PHOTO',
-      purpose: 'NOTARY_OPENING_PHOTO',
-      file: photo.file,
-    });
-    if (generation !== contextGeneration) return;
-    photo.materialId = uploaded.materialId;
-    photo.contentVersionId = uploaded.contentVersionId;
-    photo.originalFilename = uploaded.originalFilename;
-    photo.mimeType = uploaded.mimeType;
-    photo.selected = true;
-    await refreshOpeningPhotos(matter.value?.id ?? String(route.params.id));
-  } catch {
-    if (generation !== contextGeneration) return;
-    photo.error = '上传失败，可移除后重试';
-  } finally {
-    if (generation === contextGeneration) photo.uploading = false;
-  }
-}
-
-async function retryOpeningPhoto(photo: OpeningPhotoDraft): Promise<void> {
-  const generation = contextGeneration;
-  if (!photo.file) return;
-  uploadingOpeningPhotos.value = true;
-  try {
-    await uploadOpeningPhoto(photo);
-  } finally {
-    if (generation === contextGeneration) uploadingOpeningPhotos.value = false;
-  }
-}
-
-function removeLocalOpeningPhoto(localId: number): void {
-  if (
-    uploadingOpeningPhotos.value ||
-    deletingOpeningMaterialId.value !== null ||
-    refreshingOpeningPhotos.value
-  ) {
-    return;
-  }
-  openingPhotos.value = openingPhotos.value.filter(
-    (photo) => photo.localId !== localId,
-  );
-}
-
-async function deleteOpeningPhoto(photo: OpeningPhotoDraft): Promise<void> {
-  const generation = contextGeneration;
-  if (
-    !photo.materialId ||
-    photo.version === null ||
-    uploadingOpeningPhotos.value ||
-    deletingOpeningMaterialId.value !== null ||
-    refreshingOpeningPhotos.value ||
-    matter.value?.stage !== 'WAITING_UNBOX' ||
-    !matter.value.capabilities.recordOpening
-  ) {
-    return;
-  }
-  deletingOpeningMaterialId.value = photo.materialId;
-  photo.error = undefined;
-  try {
-    await deleteMaterial(photo.materialId, photo.version);
-    if (generation !== contextGeneration) return;
-    openingPhotos.value = openingPhotos.value.filter(
-      (candidate) => candidate.materialId !== photo.materialId,
-    );
-  } catch {
-    if (generation !== contextGeneration) return;
-    photo.error = '删除失败，材料仍保留在待提交列表中';
-  } finally {
-    if (generation === contextGeneration)
-      deletingOpeningMaterialId.value = null;
-  }
-}
-
-async function submitOpening(): Promise<void> {
-  const generation = contextGeneration;
-  openingError.value = '';
-  openingSuccess.value = '';
-  openingUploadError.value = '';
-  const current = matter.value;
-  if (
-    !current?.capabilities.recordOpening ||
-    current.stage !== 'WAITING_UNBOX' ||
-    !openingPhotos.value.some((photo) => photo.selected) ||
-    openingPhotos.value.some(
-      (photo) => photo.selected && (photo.uploading || !photo.contentVersionId),
-    ) ||
-    uploadingOpeningPhotos.value ||
-    deletingOpeningMaterialId.value !== null ||
-    submittingOpening.value
-  ) {
-    if (!openingPhotos.value.some((photo) => photo.selected))
-      openingUploadError.value = '至少上传一张开箱照片';
-    else if (
-      openingPhotos.value.some(
-        (photo) => photo.selected && !photo.contentVersionId,
-      )
-    )
-      openingUploadError.value = '请先完成所选照片上传';
-    return;
-  }
-  const input: RecordNotaryOpeningInput = {
-    expectedVersion: current.version,
-    contentVersionIds: openingPhotos.value
-      .filter((photo) => photo.selected && photo.contentVersionId)
-      .map((photo) => photo.contentVersionId as string),
-    ...(openingSenderName.value.trim()
-      ? { senderName: openingSenderName.value.trim() }
-      : {}),
-    ...(openingSenderPhone.value.trim()
-      ? { senderPhone: openingSenderPhone.value.trim() }
-      : {}),
-    ...(openingSenderAddress.value.trim()
-      ? { senderAddress: openingSenderAddress.value.trim() }
-      : {}),
-  };
-  const fingerprint = JSON.stringify(input);
-  if (fingerprint !== openingSubmissionFingerprint) {
-    openingIdempotencyKey = globalThis.crypto.randomUUID();
-    openingSubmissionFingerprint = fingerprint;
-  }
-  submittingOpening.value = true;
-  try {
-    await recordNotaryOpening(current.id, input, openingIdempotencyKey);
-    if (generation !== contextGeneration) return;
-    notifyWorkflowChanged();
-    await load();
-    if (generation !== contextGeneration) return;
-    if (hasSavedOpening(matter.value)) {
-      openingPhotos.value = [];
-      openingIdempotencyKey = '';
-      openingSubmissionFingerprint = '';
-      openingSuccess.value = '开箱记录已保存，事项已进入开箱审核。';
-    } else {
-      openingError.value = '提交已受理，但暂时无法读取保存结果，请刷新确认。';
-    }
-  } catch (error) {
-    if (generation !== contextGeneration) return;
-    openingError.value =
-      error instanceof ApiError &&
-      ['VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'INVALID_STATE'].includes(
-        error.code,
-      )
-        ? '事项状态或提交内容已变化，请刷新后再试。'
-        : '开箱记录提交失败，请检查网络后重试。';
-  } finally {
-    if (generation === contextGeneration) submittingOpening.value = false;
-  }
-}
-
-async function downloadMaterial(
-  materialId: string,
-  contentVersionId: string,
-): Promise<void> {
-  const generation = contextGeneration;
-  const controller = new AbortController();
-  downloadRequests.add(controller);
-  downloadError.value = '';
-  try {
-    await downloadMaterialVersion(
-      materialId,
-      contentVersionId,
-      controller.signal,
-    );
-  } catch {
-    if (controller.signal.aborted || generation !== contextGeneration) return;
-    downloadError.value = '附件下载失败，请稍后重试';
-  } finally {
-    downloadRequests.delete(controller);
-  }
-}
-
-function makeReviewKey(): string {
-  return (
-    globalThis.crypto?.randomUUID?.() ??
-    `notary-review-${Date.now()}-${Math.random().toString(16).slice(2)}`
-  );
-}
-
 function returnChoiceLabel(choice: NotaryReturnChoice): string {
   return choice === 'RETURN'
     ? '退货并退款'
@@ -617,505 +160,114 @@ function returnAmountLabel(
   return `${label}：${amount.amount} 元${party}`;
 }
 
-function readReturnAmount(
-  label: string,
-  state: '' | 'KNOWN' | 'PENDING',
-  amount: string,
-  partyKind: string,
-  partyName: string,
-): NotaryReturnAmountInput | null {
-  if (!state) {
-    returnArchiveError.value = `请选择${label}状态`;
-    return null;
-  }
-  if (state === 'PENDING') return { state: 'PENDING' };
-  if (!/^(0|[1-9]\d{0,15})\.\d{2}$/u.test(amount)) {
-    returnArchiveError.value = `${label}金额请输入非负且保留两位小数的金额`;
-    return null;
-  }
-  if (Number(amount) > 0) {
-    if (!partyKind) {
-      returnArchiveError.value = `请选择${label}${label === '退款' ? '收款方' : '承担方'}`;
-      return null;
-    }
-    if (partyKind === 'OTHER' && !partyName.trim()) {
-      returnArchiveError.value = `请填写${label}${label === '退款' ? '收款方' : '承担方'}名称`;
-      return null;
-    }
-    return {
-      state: 'KNOWN',
-      amount,
-      partyKind: partyKind as 'CUSTOMER' | 'FIRM' | 'MERCHANT' | 'OTHER',
-      ...(partyKind === 'OTHER' ? { partyName: partyName.trim() } : {}),
-    };
-  }
-  return { state: 'KNOWN', amount };
-}
-
-async function submitReturnArchive(): Promise<void> {
+async function downloadMaterial(
+  materialId: string,
+  contentVersionId: string,
+): Promise<void> {
   const generation = contextGeneration;
-  returnArchiveError.value = '';
-  returnArchiveSuccess.value = '';
-  const current = matter.value;
-  if (
-    !current?.capabilities.archiveReturn ||
-    current.stage !== 'WAITING_RETURN' ||
-    submittingReturnArchive.value
-  )
-    return;
-  if (!returnChoice.value) {
-    returnArchiveError.value = '请选择办理方式';
-    return;
-  }
-  const normalizedReason = returnReason.value.trim();
-  if (!normalizedReason) {
-    returnArchiveError.value = '请填写归档原因';
-    return;
-  }
-  if ([...normalizedReason].length > 5000) {
-    returnArchiveError.value = '归档原因不能超过 5000 字';
-    return;
-  }
-  let refund: NotaryReturnAmountInput | undefined;
-  let freight: NotaryReturnAmountInput | undefined;
-  if (returnChoice.value === 'RETURN' || returnChoice.value === 'REFUND_ONLY') {
-    const parsed = readReturnAmount(
-      '退款',
-      refundState.value,
-      refundAmount.value,
-      refundPartyKind.value,
-      refundPartyName.value,
+  const controller = new AbortController();
+  downloadRequests.add(controller);
+  downloadError.value = '';
+  try {
+    await downloadMaterialVersion(
+      materialId,
+      contentVersionId,
+      controller.signal,
     );
-    if (!parsed) return;
-    refund = parsed;
+  } catch {
+    if (controller.signal.aborted || generation !== contextGeneration) return;
+    downloadError.value = '附件下载失败，请稍后重试';
+  } finally {
+    downloadRequests.delete(controller);
   }
-  if (returnChoice.value === 'RETURN') {
-    const parsed = readReturnAmount(
-      '退货运费',
-      freightState.value,
-      freightAmount.value,
-      freightPartyKind.value,
-      freightPartyName.value,
+}
+async function load(): Promise<boolean> {
+  const generation = contextGeneration;
+  request?.abort();
+  const controller = new AbortController();
+  request = controller;
+  state.value = 'loading';
+  matter.value = undefined;
+  if (!auth.session || auth.session.principalType !== 'INTERNAL') {
+    state.value = 'missing';
+    return false;
+  }
+  try {
+    const current = await getNotaryMatter(String(route.params.id), {
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted || generation !== contextGeneration)
+      return false;
+    matter.value = current;
+    state.value = 'ready';
+    return generation === contextGeneration && !controller.signal.aborted;
+  } catch (error) {
+    if (controller.signal.aborted || generation !== contextGeneration)
+      return false;
+    state.value =
+      error instanceof ApiError && error.code === 'RESOURCE_NOT_FOUND'
+        ? 'missing'
+        : 'failed';
+    return false;
+  }
+}
+
+const workflow = createListWorkflowContext<NotaryMatterDetail>(
+  async () => {
+    if (!matter.value) throw new Error('Missing matter');
+    return matter.value;
+  },
+  { success: () => void load() },
+);
+const workflowState = workflow.state;
+watch(
+  matter,
+  (current) => {
+    if (!current) {
+      void workflow.sync(null);
+      return;
+    }
+    const actions = [
+      'evidence-form',
+      'opening-form',
+      'review-form',
+      'issuance-form',
+      'return-archive-form',
+    ];
+    let saved: string | undefined;
+    try {
+      saved = actions.find((action) =>
+        globalThis.sessionStorage.getItem(
+          'notary-list-request:' +
+            JSON.stringify([actorKey.value, current.id, action]),
+        ),
+      );
+    } catch {
+      /* The panel blocks dispatch when storage is unavailable. */
+    }
+    const actionKey = saved ?? workflowGuidance.value.anchor;
+    void workflow.sync(
+      actionKey
+        ? {
+            recordId: current.id,
+            actorKey: actorKey.value,
+            actionKey,
+            title: workflowGuidance.value.action ?? '',
+          }
+        : null,
     );
-    if (!parsed) return;
-    freight = parsed;
-  }
-  const input = {
-    returnChoice: returnChoice.value,
-    ...(refund ? { refund } : {}),
-    ...(freight ? { freight } : {}),
-    archiveReason: normalizedReason,
-    expectedVersion: current.version,
-  } as const;
-  const fingerprint = JSON.stringify(input);
-  if (fingerprint !== returnArchiveSubmissionFingerprint) {
-    returnArchiveSubmissionFingerprint = fingerprint;
-    returnArchiveIdempotencyKey = makeReviewKey();
-  }
-  returnArchiveRetryAvailable.value = false;
-  submittingReturnArchive.value = true;
-  try {
-    await archiveNotaryReturn(current.id, input, returnArchiveIdempotencyKey);
-    if (generation !== contextGeneration) return;
-    notifyWorkflowChanged();
-    const loaded = await load();
-    if (generation !== contextGeneration) return;
-    if (
-      loaded &&
-      matter.value?.returnArchive?.returnChoice === input.returnChoice
-    ) {
-      returnArchiveSuccess.value = '退货归档已保存。';
-      returnArchiveIdempotencyKey = '';
-      returnArchiveSubmissionFingerprint = '';
-      returnArchiveRetryLocked.value = false;
-      returnArchiveRetryAvailable.value = false;
-    } else {
-      returnArchiveRetryLocked.value = true;
-      returnArchiveRetryAvailable.value = true;
-      returnArchiveError.value =
-        '归档已提交，但暂时无法读取保存结果；可使用相同请求键重试或刷新确认。';
-    }
-  } catch (error) {
-    if (generation !== contextGeneration) return;
-    const code = error instanceof ApiError ? error.code : '';
-    if (code === 'VERSION_CONFLICT' || code === 'INVALID_STATE') {
-      returnArchiveIdempotencyKey = '';
-      returnArchiveSubmissionFingerprint = '';
-      returnArchiveRetryLocked.value = false;
-      returnArchiveRetryAvailable.value = false;
-      returnArchiveError.value = '事项状态或版本已变化，请刷新查看最新阶段。';
-    } else if (code === 'IDEMPOTENCY_CONFLICT') {
-      returnArchiveIdempotencyKey = '';
-      returnArchiveSubmissionFingerprint = '';
-      returnArchiveRetryLocked.value = false;
-      returnArchiveRetryAvailable.value = false;
-      returnArchiveError.value = '本次请求与已提交内容冲突，请刷新后重新填写。';
-    } else if (code === 'ACTION_FORBIDDEN' || code === 'FORBIDDEN') {
-      returnArchiveRetryLocked.value = true;
-      returnArchiveError.value = '当前账号无权办理退货归档，请刷新权限后重试。';
-    } else if (code === 'RESOURCE_NOT_FOUND' || code === 'NOT_FOUND') {
-      returnArchiveRetryLocked.value = true;
-      returnArchiveError.value = '事项不存在或当前不可访问，请刷新列表。';
-    } else {
-      returnArchiveRetryLocked.value = true;
-      returnArchiveRetryAvailable.value = true;
-      returnArchiveError.value =
-        '退货归档失败；可使用相同请求键重试或刷新查看结果。';
-    }
-  } finally {
-    if (generation === contextGeneration) submittingReturnArchive.value = false;
-  }
-}
-
-async function submitIssuanceDecision(): Promise<void> {
-  const generation = contextGeneration;
-  issuanceError.value = '';
-  issuanceSuccess.value = '';
-  const current = matter.value;
-  if (
-    !current?.capabilities.decideIssuance ||
-    current.stage !== 'ISSUANCE_DECISION' ||
-    submittingIssuance.value
-  )
-    return;
-  if (!issuanceChoice.value) {
-    issuanceError.value = '请选择是否出证';
-    return;
-  }
-  const input = {
-    decision: issuanceChoice.value,
-    expectedVersion: current.version,
-  } as const;
-  const fingerprint = JSON.stringify(input);
-  if (fingerprint !== issuanceSubmissionFingerprint) {
-    issuanceSubmissionFingerprint = fingerprint;
-    issuanceIdempotencyKey = makeReviewKey();
-  }
-  issuanceRetryAvailable.value = false;
-  submittingIssuance.value = true;
-  try {
-    await decideNotaryIssuance(current.id, input, issuanceIdempotencyKey);
-    if (generation !== contextGeneration) return;
-    notifyWorkflowChanged();
-    const loaded = await load();
-    if (generation !== contextGeneration) return;
-    const decision = matter.value?.issuanceDecision;
-    if (loaded && decision?.decision === input.decision) {
-      issuanceSuccess.value = `决定已保存：${input.decision === 'ISSUE' ? '待出证' : '待退货'}。`;
-      issuanceIdempotencyKey = '';
-      issuanceSubmissionFingerprint = '';
-      issuanceRetryLocked.value = false;
-      issuanceRetryAvailable.value = false;
-    } else {
-      issuanceRetryLocked.value = true;
-      issuanceRetryAvailable.value = true;
-      issuanceError.value =
-        '决定已提交，但暂时无法读取保存结果；可使用相同请求键安全重试或刷新确认。';
-    }
-  } catch (error) {
-    if (generation !== contextGeneration) return;
-    const code = error instanceof ApiError ? error.code : '';
-    if (code === 'VERSION_CONFLICT' || code === 'INVALID_STATE') {
-      issuanceIdempotencyKey = '';
-      issuanceSubmissionFingerprint = '';
-      issuanceRetryLocked.value = false;
-      issuanceRetryAvailable.value = false;
-      issuanceError.value = '事项状态或版本已变化，请刷新查看最新阶段。';
-    } else if (code === 'IDEMPOTENCY_CONFLICT') {
-      issuanceIdempotencyKey = '';
-      issuanceSubmissionFingerprint = '';
-      issuanceRetryLocked.value = false;
-      issuanceError.value = '本次请求与已提交内容冲突，请刷新后重新选择。';
-    } else if (code === 'ACTION_FORBIDDEN' || code === 'FORBIDDEN') {
-      issuanceRetryLocked.value = true;
-      issuanceError.value = '当前账号无权决定是否出证，请刷新权限后重试。';
-    } else if (code === 'RESOURCE_NOT_FOUND' || code === 'NOT_FOUND') {
-      issuanceRetryLocked.value = true;
-      issuanceError.value = '事项不存在或当前不可访问，请刷新列表。';
-    } else if (code === 'NETWORK_ERROR' || code === 'TIMEOUT') {
-      issuanceRetryLocked.value = true;
-      issuanceRetryAvailable.value = true;
-      issuanceError.value =
-        '提交结果暂时未知；决定和请求键已锁定，可安全重试或刷新查看结果。';
-    } else {
-      issuanceRetryLocked.value = true;
-      issuanceRetryAvailable.value = true;
-      issuanceError.value =
-        '出证决定失败；可使用相同请求键重试或刷新查看结果。';
-    }
-  } finally {
-    if (generation === contextGeneration) submittingIssuance.value = false;
-  }
-}
-
-async function submitOpeningReview(): Promise<void> {
-  const generation = contextGeneration;
-  reviewError.value = '';
-  reviewSuccess.value = '';
-  const current = matter.value;
-  const reason = reviewReason.value.trim();
-  if (
-    !current?.capabilities.reviewOpening ||
-    current.stage !== 'UNBOX_REVIEW' ||
-    submittingReview.value
-  )
-    return;
-  if (!reviewResult.value) {
-    reviewError.value = '请选择审核结论';
-    return;
-  }
-  if (reviewResult.value === 'NO_INFRINGEMENT' && !reason) {
-    reviewError.value = '请填写不侵权原因';
-    return;
-  }
-  if ((reviewResult.value === 'NO_INFRINGEMENT' ? reason : '').length > 2000) {
-    reviewError.value = '不侵权原因不能超过 2000 字';
-    return;
-  }
-  const input = {
-    result: reviewResult.value,
-    ...(reviewResult.value === 'NO_INFRINGEMENT' ? { reason } : {}),
-    expectedVersion: current.version,
-  } as const;
-  const fingerprint = JSON.stringify(input);
-  if (fingerprint !== reviewSubmissionFingerprint) {
-    reviewSubmissionFingerprint = fingerprint;
-    reviewIdempotencyKey = makeReviewKey();
-  }
-  reviewRetryAvailable.value = false;
-  submittingReview.value = true;
-  try {
-    await reviewNotaryOpening(current.id, input, reviewIdempotencyKey);
-    if (generation !== contextGeneration) return;
-    notifyWorkflowChanged();
-    const loaded = await load();
-    if (generation !== contextGeneration) return;
-    if (
-      loaded &&
-      isReviewed(matter.value) &&
-      matter.value?.reviewDecision?.result === input.result
-    ) {
-      reviewSuccess.value = '审核结论已保存。';
-      reviewIdempotencyKey = '';
-      reviewSubmissionFingerprint = '';
-      reviewRetryLocked.value = false;
-      reviewRetryAvailable.value = false;
-    } else {
-      reviewRetryLocked.value = true;
-      reviewError.value = '审核已提交，但暂时无法读取保存结果，请刷新确认。';
-    }
-  } catch (error) {
-    if (generation !== contextGeneration) return;
-    const code = error instanceof ApiError ? error.code : '';
-    if (code === 'VERSION_CONFLICT' || code === 'INVALID_STATE') {
-      reviewIdempotencyKey = '';
-      reviewSubmissionFingerprint = '';
-      reviewRetryLocked.value = false;
-      reviewRetryAvailable.value = false;
-      reviewError.value = '事项状态或版本已变化，请刷新查看最新结论。';
-    } else if (code === 'IDEMPOTENCY_CONFLICT') {
-      reviewIdempotencyKey = '';
-      reviewSubmissionFingerprint = '';
-      reviewRetryLocked.value = false;
-      reviewError.value = '本次审核请求与已提交内容冲突，请刷新后重新审核。';
-    } else if (code === 'ACTION_FORBIDDEN' || code === 'FORBIDDEN') {
-      reviewRetryLocked.value = true;
-      reviewError.value = '当前账号无权审核此事项，请刷新权限后重试。';
-    } else if (code === 'RESOURCE_NOT_FOUND' || code === 'NOT_FOUND') {
-      reviewRetryLocked.value = true;
-      reviewError.value = '事项不存在或当前不可访问，请刷新列表。';
-    } else if (code === 'NETWORK_ERROR' || code === 'TIMEOUT') {
-      reviewRetryLocked.value = true;
-      reviewRetryAvailable.value = true;
-      reviewError.value =
-        '提交结果暂时未知；选择、原因和请求键已锁定，可安全重试或刷新查看结果。';
-    } else {
-      reviewRetryLocked.value = true;
-      reviewError.value = '开箱审核失败，请稍后重试或刷新查看结果。';
-    }
-  } finally {
-    if (generation === contextGeneration) submittingReview.value = false;
-  }
-}
-
-function addLogisticsRow(): void {
-  logisticsRows.value.push({
-    companyState: '',
-    companyValue: '',
-    trackingState: '',
-    trackingValue: '',
-  });
-}
-
-function removeLogisticsRow(index: number): void {
-  if (logisticsRows.value.length > 1) logisticsRows.value.splice(index, 1);
-}
-
-async function submitEvidence(): Promise<void> {
-  const generation = contextGeneration;
-  evidenceErrors.value = [];
-  evidenceError.value = '';
-  evidenceSuccess.value = '';
-  const errors: string[] = [];
-  if (!evidenceDate.value) errors.push('请选择取证日期');
-  if (!sampleFeeState.value) errors.push('请选择样品费用状态');
-  if (
-    sampleFeeState.value === 'KNOWN' &&
-    !/^(0|[1-9]\d{0,15})\.\d{2}$/u.test(sampleFeeAmount.value)
-  )
-    errors.push('已知样品费用请输入非负且保留两位小数的金额');
-  if (logisticsRows.value.length < 1) errors.push('至少登记一条物流信息');
-  logisticsRows.value.forEach((row, index) => {
-    if (!row.companyState) errors.push(`第${index + 1}条请选择快递公司状态`);
-    else if (row.companyState === 'PRESENT' && !row.companyValue.trim())
-      errors.push(`第${index + 1}条请填写快递公司`);
-    if (!row.trackingState) errors.push(`第${index + 1}条请选择快递单号状态`);
-    else if (row.trackingState === 'PRESENT' && !row.trackingValue.trim())
-      errors.push(`第${index + 1}条请填写快递单号`);
-  });
-  evidenceErrors.value = errors;
-  if (
-    errors.length ||
-    !matter.value?.capabilities.recordEvidence ||
-    matter.value.stage !== 'PENDING_EVIDENCE'
-  )
-    return;
-
-  const current = matter.value;
-  const feeInput =
-    sampleFeeState.value === 'KNOWN'
-      ? {
-          sampleFeeState: 'KNOWN' as const,
-          sampleFeeAmount: sampleFeeAmount.value,
-        }
-      : { sampleFeeState: 'PENDING' as const };
-  const input: RecordNotaryEvidenceInput = {
-    evidenceAt: evidenceDate.value,
-    ...feeInput,
-    logistics: logisticsRows.value.map((row) => ({
-      companyState: row.companyState as 'PRESENT' | 'NONE',
-      companyValue:
-        row.companyState === 'PRESENT' ? row.companyValue.trim() : null,
-      trackingState: row.trackingState as 'PRESENT' | 'NONE',
-      trackingValue:
-        row.trackingState === 'PRESENT' ? row.trackingValue.trim() : null,
-    })),
-    expectedVersion: current.version,
-  };
-  submittingEvidence.value = true;
-  const fingerprint = JSON.stringify(input);
-  if (fingerprint !== evidenceSubmissionFingerprint) {
-    evidenceIdempotencyKey = globalThis.crypto.randomUUID();
-    evidenceSubmissionFingerprint = fingerprint;
-  }
-  try {
-    await recordNotaryEvidence(current.id, input, evidenceIdempotencyKey);
-    if (generation !== contextGeneration) return;
-    notifyWorkflowChanged();
-    evidenceIdempotencyKey = '';
-    evidenceSubmissionFingerprint = '';
-    const loaded = await load();
-    if (generation !== contextGeneration) return;
-    if (loaded && hasSavedEvidence(matter.value)) {
-      evidenceSuccess.value = '取证物流已登记，事项已进入待开箱。';
-    } else {
-      evidenceError.value = '取证已提交，但暂时无法读取保存结果，请刷新确认。';
-    }
-  } catch (error) {
-    if (generation !== contextGeneration) return;
-    evidenceError.value =
-      error instanceof ApiError &&
-      ['VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'INVALID_STATE'].includes(
-        error.code,
-      )
-        ? '事项状态或提交内容已变化，请刷新后再试。'
-        : '取证物流登记失败，请检查网络或刷新后重试。';
-  } finally {
-    if (generation === contextGeneration) submittingEvidence.value = false;
-  }
-}
-
-function clearContext(): void {
+  },
+  { flush: 'sync' },
+);
+function clearContext() {
   contextGeneration += 1;
   request?.abort();
-  openingMaterialsRequest?.abort();
   for (const controller of downloadRequests) controller.abort();
   downloadRequests.clear();
   matter.value = undefined;
-  for (const field of [
-    downloadError,
-    evidenceDate,
-    sampleFeeState,
-    sampleFeeAmount,
-    evidenceError,
-    evidenceSuccess,
-    openingSenderName,
-    openingSenderPhone,
-    openingSenderAddress,
-    openingUploadError,
-    openingMaterialsError,
-    openingError,
-    openingSuccess,
-    reviewResult,
-    reviewReason,
-    reviewError,
-    reviewSuccess,
-    issuanceChoice,
-    issuanceError,
-    issuanceSuccess,
-    returnChoice,
-    returnReason,
-    refundState,
-    refundAmount,
-    refundPartyKind,
-    refundPartyName,
-    freightState,
-    freightAmount,
-    freightPartyKind,
-    freightPartyName,
-    returnArchiveError,
-    returnArchiveSuccess,
-  ])
-    field.value = '';
-  for (const flag of [
-    submittingEvidence,
-    uploadingOpeningPhotos,
-    submittingOpening,
-    submittingReview,
-    reviewRetryLocked,
-    reviewRetryAvailable,
-    submittingIssuance,
-    issuanceRetryLocked,
-    issuanceRetryAvailable,
-    submittingReturnArchive,
-    returnArchiveRetryLocked,
-    returnArchiveRetryAvailable,
-    refreshingOpeningPhotos,
-  ])
-    flag.value = false;
-  openingPhotos.value = [];
-  evidenceErrors.value = [];
-  deletingOpeningMaterialId.value = null;
-  logisticsRows.value = [
-    {
-      companyState: '',
-      companyValue: '',
-      trackingState: '',
-      trackingValue: '',
-    },
-  ];
-  evidenceIdempotencyKey = '';
-  evidenceSubmissionFingerprint = '';
-  openingIdempotencyKey = '';
-  openingSubmissionFingerprint = '';
-  reviewIdempotencyKey = '';
-  reviewSubmissionFingerprint = '';
-  issuanceIdempotencyKey = '';
-  issuanceSubmissionFingerprint = '';
-  returnArchiveIdempotencyKey = '';
-  returnArchiveSubmissionFingerprint = '';
+  downloadError.value = '';
+  workflow.dispose();
 }
-
 watch(
   requestScopeKey,
   () => {
@@ -1149,7 +301,6 @@ watch(
   { flush: 'post' },
 );
 </script>
-
 <template>
   <div ref="detailRoot" class="page-view page-view--narrow">
     <main>
@@ -1173,6 +324,9 @@ watch(
         <ElButton data-test="refresh-matter" @click="load">重新加载</ElButton>
       </section>
       <template v-else-if="matter">
+        <p v-if="workflowState.status === 'denied'" role="alert">
+          当前账号无权审核此事项，或事项不存在或当前不可访问，请返回列表核对。
+        </p>
         <div class="page-head">
           <div>
             <span class="pill">{{
@@ -1195,9 +349,7 @@ watch(
           <ElButton
             data-test="refresh-matter"
             text
-            :disabled="
-              deletingOpeningMaterialId !== null || refreshingOpeningPhotos
-            "
+            :disabled="workflowState.requestState !== 'idle'"
             @click="load"
             >刷新</ElButton
           >
@@ -1394,168 +546,17 @@ watch(
             {{ downloadError }}
           </p>
         </section>
-        <section
-          id="opening-form"
-          tabindex="-1"
-          v-if="
-            matter.stage === 'WAITING_UNBOX' &&
-            matter.capabilities.recordOpening
-          "
-          class="demo-card demo-card--pad"
-          data-test="opening-form"
-        >
-          <h2 class="form-section-title">登记开箱材料</h2>
-          <p>提交后事项将进入开箱审核。</p>
-          <form data-test="record-opening" @submit.prevent="submitOpening">
-            <label v-if="matter.capabilities.recordOpening"
-              >开箱照片（JPEG、PNG、WEBP；单张不超过 20 MB，最多 50
-              张）<RequiredFieldMark />
-              <input
-                v-if="matter.capabilities.recordOpening"
-                data-test="opening-photo-files"
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                multiple
-                :disabled="
-                  uploadingOpeningPhotos ||
-                  deletingOpeningMaterialId !== null ||
-                  refreshingOpeningPhotos
-                "
-                @change="uploadOpeningFiles"
-              />
-            </label>
-            <p v-if="matter.capabilities.recordOpening" class="muted-copy">
-              删除会释放材料配额，并从本次待提交选择中移除。
-            </p>
-            <p v-if="openingMaterialsError" class="field-error" role="alert">
-              {{ openingMaterialsError }}
-            </p>
-            <div data-test="opening-staged-materials">
-              <p v-if="openingPhotos.length === 0">暂无待提交开箱照片。</p>
-              <ul v-else>
-                <li
-                  v-for="photo in openingPhotos"
-                  :key="photo.contentVersionId || `local-${photo.localId}`"
-                  :data-test="
-                    photo.contentVersionId
-                      ? `opening-staged-row-${photo.contentVersionId}`
-                      : undefined
-                  "
-                >
-                  <label v-if="photo.contentVersionId">
-                    <input
-                      v-if="matter.capabilities.recordOpening"
-                      v-model="photo.selected"
-                      type="checkbox"
-                      :data-test="`select-opening-photo-${photo.contentVersionId}`"
-                      :disabled="
-                        uploadingOpeningPhotos ||
-                        deletingOpeningMaterialId !== null ||
-                        refreshingOpeningPhotos
-                      "
-                    />
-                    {{ photo.originalFilename }}（{{ photo.mimeType }}）
-                  </label>
-                  <span v-else>
-                    {{ photo.originalFilename }} —
-                    {{ photo.uploading ? '正在上传' : photo.error || '待上传' }}
-                  </span>
-                  <ElButton
-                    v-if="
-                      photo.materialId &&
-                      photo.version !== null &&
-                      matter.capabilities.recordOpening
-                    "
-                    text
-                    :data-test="`delete-opening-photo-${photo.materialId}`"
-                    :disabled="
-                      deletingOpeningMaterialId !== null ||
-                      uploadingOpeningPhotos ||
-                      refreshingOpeningPhotos
-                    "
-                    @click="deleteOpeningPhoto(photo)"
-                    >删除并释放配额</ElButton
-                  >
-                  <p
-                    v-if="photo.error && photo.materialId"
-                    :data-test="`opening-delete-error-${photo.materialId}`"
-                    class="field-error"
-                    role="alert"
-                  >
-                    {{ photo.error }}
-                  </p>
-                  <button
-                    v-if="photo.error && !photo.materialId && photo.file"
-                    type="button"
-                    :disabled="
-                      uploadingOpeningPhotos ||
-                      deletingOpeningMaterialId !== null ||
-                      refreshingOpeningPhotos
-                    "
-                    @click="retryOpeningPhoto(photo)"
-                  >
-                    重试上传
-                  </button>
-                  <button
-                    v-if="!photo.materialId && !photo.uploading"
-                    type="button"
-                    :disabled="
-                      uploadingOpeningPhotos ||
-                      deletingOpeningMaterialId !== null ||
-                      refreshingOpeningPhotos
-                    "
-                    :data-test="`remove-local-opening-photo-${photo.localId}`"
-                    @click="removeLocalOpeningPhoto(photo.localId)"
-                  >
-                    移除此照片
-                  </button>
-                </li>
-              </ul>
-            </div>
-            <label v-if="matter.capabilities.recordOpening"
-              >寄件人姓名<input
-                v-model="openingSenderName"
-                data-test="opening-sender-name"
-                maxlength="120"
-            /></label>
-            <label v-if="matter.capabilities.recordOpening"
-              >寄件人电话<input
-                v-model="openingSenderPhone"
-                data-test="opening-sender-phone"
-                maxlength="50"
-            /></label>
-            <label v-if="matter.capabilities.recordOpening"
-              >寄件人地址<input
-                v-model="openingSenderAddress"
-                data-test="opening-sender-address"
-                maxlength="500"
-            /></label>
-            <p v-if="openingUploadError" class="field-error" role="alert">
-              {{ openingUploadError }}
-            </p>
-            <p v-if="openingError" class="field-error" role="alert">
-              {{ openingError }}
-            </p>
-            <p v-if="openingSuccess" role="status">{{ openingSuccess }}</p>
-            <ElButton
-              v-if="matter.capabilities.recordOpening"
-              data-test="record-opening-submit"
-              native-type="submit"
-              :loading="submittingOpening"
-              :disabled="
-                submittingOpening ||
-                uploadingOpeningPhotos ||
-                deletingOpeningMaterialId !== null ||
-                refreshingOpeningPhotos
-              "
-              >登记开箱并进入审核</ElButton
-            >
-          </form>
-        </section>
+
+        <NotaryMatterWorkflowPanel
+          v-if="workflowState.session && workflowState.status === 'ready'"
+          :key="workflowState.session.contextKey"
+          :detail="matter"
+          :session="workflowState.session"
+        />
         <section
           id="saved-opening"
           tabindex="-1"
-          v-else-if="matter.opening"
+          v-if="matter.opening"
           class="demo-card demo-card--pad"
           data-test="saved-opening"
         >
@@ -1584,79 +585,9 @@ watch(
             {{ downloadError }}
           </p>
         </section>
+
         <section
-          v-if="
-            matter.capabilities.reviewOpening && matter.stage === 'UNBOX_REVIEW'
-          "
-          class="demo-card demo-card--pad"
-          data-test="opening-review-section"
-          id="review-form"
-          tabindex="-1"
-        >
-          <h2 class="form-section-title">开箱审核</h2>
-          <p>请选择本批次的审核结论。</p>
-          <form
-            data-test="opening-review-form"
-            @submit.prevent="submitOpeningReview"
-          >
-            <p>确认侵权后进入开箱待确认，由运营决定是否出证。</p>
-            <p>不侵权将立即归档，普通入口不能撤回。</p>
-            <label>
-              <input
-                v-model="reviewResult"
-                data-test="opening-review-result"
-                type="radio"
-                name="opening-review-result"
-                value="INFRINGEMENT"
-                :disabled="submittingReview || reviewRetryLocked"
-              />
-              确认侵权
-            </label>
-            <label>
-              <input
-                v-model="reviewResult"
-                data-test="opening-review-result-no-infringement"
-                type="radio"
-                name="opening-review-result"
-                value="NO_INFRINGEMENT"
-                :disabled="submittingReview || reviewRetryLocked"
-              />
-              判定不侵权
-            </label>
-            <label v-if="reviewResult === 'NO_INFRINGEMENT'">
-              不侵权原因<RequiredFieldMark />
-              <textarea
-                v-model="reviewReason"
-                data-test="opening-review-reason"
-                maxlength="2000"
-                required
-                :disabled="submittingReview || reviewRetryLocked"
-              />
-            </label>
-            <p
-              v-if="reviewError"
-              class="field-error"
-              role="alert"
-              data-test="opening-review-reason-error"
-            >
-              {{ reviewError }}
-            </p>
-            <p v-if="reviewSuccess" role="status">{{ reviewSuccess }}</p>
-            <ElButton
-              data-test="opening-review-submit"
-              native-type="submit"
-              :loading="submittingReview"
-              :disabled="
-                submittingReview || (reviewRetryLocked && !reviewRetryAvailable)
-              "
-              >{{
-                reviewRetryAvailable ? '使用相同请求键重试' : '提交审核结论'
-              }}</ElButton
-            >
-          </form>
-        </section>
-        <section
-          v-if="isReviewed(matter) && matter.reviewDecision"
+          v-if="matter.reviewDecision"
           class="demo-card demo-card--pad"
           data-test="opening-review-record"
         >
@@ -1680,57 +611,7 @@ watch(
             该事项已归档，普通入口不能撤回。
           </p>
         </section>
-        <section
-          v-if="
-            matter.capabilities.decideIssuance &&
-            matter.stage === 'ISSUANCE_DECISION'
-          "
-          class="demo-card demo-card--pad"
-          data-test="issuance-decision-section"
-          id="issuance-form"
-          tabindex="-1"
-        >
-          <h2 class="form-section-title">是否出证</h2>
-          <p>选择 ISSUE → 待出证，或 NO_ISSUE → 待退货。决定保存后不可修改。</p>
-          <form @submit.prevent="submitIssuanceDecision">
-            <label
-              ><input
-                v-model="issuanceChoice"
-                data-test="issuance-decision-issue"
-                type="radio"
-                name="issuance-decision"
-                value="ISSUE"
-                :disabled="submittingIssuance || issuanceRetryLocked"
-              />ISSUE → 待出证</label
-            >
-            <label
-              ><input
-                v-model="issuanceChoice"
-                data-test="issuance-decision-no-issue"
-                type="radio"
-                name="issuance-decision"
-                value="NO_ISSUE"
-                :disabled="submittingIssuance || issuanceRetryLocked"
-              />NO_ISSUE → 待退货</label
-            >
-            <p v-if="issuanceError" class="field-error" role="alert">
-              {{ issuanceError }}
-            </p>
-            <p v-if="issuanceSuccess" role="status">{{ issuanceSuccess }}</p>
-            <ElButton
-              data-test="issuance-decision-submit"
-              native-type="submit"
-              :loading="submittingIssuance"
-              :disabled="
-                submittingIssuance ||
-                (issuanceRetryLocked && !issuanceRetryAvailable)
-              "
-              >{{
-                issuanceRetryAvailable ? '使用相同请求键重试' : '确认决定'
-              }}</ElButton
-            >
-          </form>
-        </section>
+
         <section
           v-if="matter.issuanceDecision"
           class="demo-card demo-card--pad"
@@ -1746,232 +627,7 @@ watch(
           <p>决定人：{{ matter.issuanceDecision.actorDisplayName }}</p>
           <p>决定时间：{{ formatTime(matter.issuanceDecision.decidedAt) }}</p>
         </section>
-        <section
-          v-if="
-            matter.capabilities.archiveReturn &&
-            matter.stage === 'WAITING_RETURN'
-          "
-          class="demo-card demo-card--pad"
-          data-test="return-archive-form"
-          id="return-archive-form"
-          tabindex="-1"
-        >
-          <h2 class="form-section-title">办理退货归档</h2>
-          <p>提交后事项将不可逆地归档；本操作不会发起付款。</p>
-          <form @submit.prevent="submitReturnArchive">
-            <fieldset>
-              <legend>选择办理方式<RequiredFieldMark /></legend>
-              <label>
-                <input
-                  v-model="returnChoice"
-                  data-test="return-archive-return"
-                  type="radio"
-                  name="return-choice"
-                  value="RETURN"
-                  :disabled="
-                    submittingReturnArchive || returnArchiveRetryLocked
-                  "
-                />
-                收到货后办理退货和退款
-              </label>
-              <label>
-                <input
-                  v-model="returnChoice"
-                  data-test="return-archive-keep"
-                  type="radio"
-                  name="return-choice"
-                  value="KEEP"
-                  :disabled="
-                    submittingReturnArchive || returnArchiveRetryLocked
-                  "
-                />
-                收到货后保留商品，不退款
-              </label>
-              <label>
-                <input
-                  v-model="returnChoice"
-                  data-test="return-archive-refund-only"
-                  type="radio"
-                  name="return-choice"
-                  value="REFUND_ONLY"
-                  :disabled="
-                    submittingReturnArchive || returnArchiveRetryLocked
-                  "
-                />
-                不寄回商品，只办理退款
-              </label>
-            </fieldset>
-            <template
-              v-if="returnChoice === 'RETURN' || returnChoice === 'REFUND_ONLY'"
-            >
-              <fieldset data-test="return-refund-fields">
-                <legend>退款金额<RequiredFieldMark /></legend>
-                <label
-                  >退款状态<RequiredFieldMark />
-                  <select
-                    v-model="refundState"
-                    data-test="return-refund-state"
-                    required
-                    :disabled="
-                      submittingReturnArchive || returnArchiveRetryLocked
-                    "
-                  >
-                    <option value="">请选择</option>
-                    <option value="KNOWN">已知</option>
-                    <option value="PENDING">待定</option>
-                  </select>
-                </label>
-                <label v-if="refundState === 'KNOWN'"
-                  >退款金额（元）<RequiredFieldMark />
-                  <input
-                    v-model="refundAmount"
-                    data-test="return-refund-amount"
-                    inputmode="decimal"
-                    placeholder="0.00"
-                    required
-                    :disabled="
-                      submittingReturnArchive || returnArchiveRetryLocked
-                    "
-                  />
-                </label>
-                <p>金额为 0.00 时无需选择收款方；待定不会记为 0 元。</p>
-                <template
-                  v-if="refundState === 'KNOWN' && Number(refundAmount) > 0"
-                >
-                  <label
-                    >退款收款方<RequiredFieldMark />
-                    <select
-                      v-model="refundPartyKind"
-                      data-test="return-refund-party"
-                      required
-                      :disabled="
-                        submittingReturnArchive || returnArchiveRetryLocked
-                      "
-                    >
-                      <option value="">请选择</option>
-                      <option value="CUSTOMER">客户企业</option>
-                      <option value="FIRM">我方</option>
-                      <option value="MERCHANT">商家／平台</option>
-                      <option value="OTHER">其他</option>
-                    </select>
-                  </label>
-                  <label v-if="refundPartyKind === 'OTHER'"
-                    >收款方名称<RequiredFieldMark />
-                    <input
-                      v-model="refundPartyName"
-                      data-test="return-refund-party-name"
-                      required
-                      :disabled="
-                        submittingReturnArchive || returnArchiveRetryLocked
-                      "
-                    />
-                  </label>
-                </template>
-              </fieldset>
-            </template>
-            <fieldset
-              v-if="returnChoice === 'RETURN'"
-              data-test="return-freight-fields"
-            >
-              <legend>退货运费<RequiredFieldMark /></legend>
-              <label
-                >运费状态<RequiredFieldMark />
-                <select
-                  v-model="freightState"
-                  data-test="return-freight-state"
-                  required
-                  :disabled="
-                    submittingReturnArchive || returnArchiveRetryLocked
-                  "
-                >
-                  <option value="">请选择</option>
-                  <option value="KNOWN">已知</option>
-                  <option value="PENDING">待定</option>
-                </select>
-              </label>
-              <label v-if="freightState === 'KNOWN'"
-                >运费金额（元）<RequiredFieldMark />
-                <input
-                  v-model="freightAmount"
-                  data-test="return-freight-amount"
-                  inputmode="decimal"
-                  placeholder="0.00"
-                  required
-                  :disabled="
-                    submittingReturnArchive || returnArchiveRetryLocked
-                  "
-                />
-              </label>
-              <p>金额为 0.00 时无需选择承担方；待定不会记为 0 元。</p>
-              <template
-                v-if="freightState === 'KNOWN' && Number(freightAmount) > 0"
-              >
-                <label
-                  >运费承担方<RequiredFieldMark />
-                  <select
-                    v-model="freightPartyKind"
-                    data-test="return-freight-party"
-                    required
-                    :disabled="
-                      submittingReturnArchive || returnArchiveRetryLocked
-                    "
-                  >
-                    <option value="">请选择</option>
-                    <option value="CUSTOMER">客户企业</option>
-                    <option value="FIRM">我方</option>
-                    <option value="MERCHANT">商家／平台</option>
-                    <option value="OTHER">其他</option>
-                  </select>
-                </label>
-                <label v-if="freightPartyKind === 'OTHER'"
-                  >承担方名称<RequiredFieldMark />
-                  <input
-                    v-model="freightPartyName"
-                    data-test="return-freight-party-name"
-                    required
-                    :disabled="
-                      submittingReturnArchive || returnArchiveRetryLocked
-                    "
-                  />
-                </label>
-              </template>
-            </fieldset>
-            <label
-              >归档原因<RequiredFieldMark />
-              <textarea
-                v-model="returnReason"
-                data-test="return-archive-reason"
-                required
-                :disabled="submittingReturnArchive || returnArchiveRetryLocked"
-              />
-            </label>
-            <p
-              v-if="returnArchiveError"
-              class="field-error"
-              role="alert"
-              data-test="return-archive-error"
-            >
-              {{ returnArchiveError }}
-            </p>
-            <p v-if="returnArchiveSuccess" role="status">
-              {{ returnArchiveSuccess }}
-            </p>
-            <ElButton
-              data-test="return-archive-submit"
-              native-type="submit"
-              :loading="submittingReturnArchive"
-              :disabled="
-                submittingReturnArchive ||
-                (returnArchiveRetryLocked && !returnArchiveRetryAvailable)
-              "
-              >{{
-                returnArchiveRetryAvailable
-                  ? '使用相同请求键重试'
-                  : '确认并归档'
-              }}</ElButton
-            >
-          </form>
-        </section>
+
         <section
           v-if="matter.returnArchive"
           class="demo-card demo-card--pad"
@@ -1989,117 +645,9 @@ watch(
             {{ returnAmountLabel('退货运费', matter.returnArchive.freight) }}
           </p>
         </section>
+
         <section
-          v-if="
-            matter.stage === 'PENDING_EVIDENCE' &&
-            matter.capabilities.recordEvidence
-          "
-          class="demo-card demo-card--pad"
-          data-test="evidence-form"
-          id="evidence-form"
-          tabindex="-1"
-        >
-          <h2 class="form-section-title">登记取证物流</h2>
-          <p>提交后事项将进入待开箱。</p>
-          <form data-test="record-evidence" @submit.prevent="submitEvidence">
-            <label
-              >取证日期<RequiredFieldMark />
-              <input
-                v-model="evidenceDate"
-                data-test="evidence-date"
-                type="date"
-                required
-            /></label>
-            <label
-              >样品费用状态<RequiredFieldMark />
-              <select
-                v-model="sampleFeeState"
-                data-test="sample-fee-state"
-                required
-              >
-                <option value="">请选择</option>
-                <option value="KNOWN">已知</option>
-                <option value="PENDING">待定</option>
-              </select>
-            </label>
-            <label v-if="sampleFeeState === 'KNOWN'"
-              >样品费用（元）<RequiredFieldMark />
-              <input
-                v-model="sampleFeeAmount"
-                data-test="sample-fee-amount"
-                inputmode="decimal"
-                placeholder="0.00"
-                required
-            /></label>
-            <fieldset v-for="(row, index) in logisticsRows" :key="index">
-              <legend>物流 {{ index + 1 }}</legend>
-              <label
-                >快递公司状态<RequiredFieldMark />
-                <select
-                  v-model="row.companyState"
-                  :data-test="`logistics-company-state-${index}`"
-                  required
-                >
-                  <option value="">请选择</option>
-                  <option value="PRESENT">有</option>
-                  <option value="NONE">无</option>
-                </select>
-              </label>
-              <label v-if="row.companyState === 'PRESENT'"
-                >快递公司<RequiredFieldMark />
-                <input
-                  v-model="row.companyValue"
-                  :data-test="`logistics-company-value-${index}`"
-                  required
-              /></label>
-              <p v-else-if="row.companyState === 'NONE'">未登记快递公司</p>
-              <label
-                >快递单号状态<RequiredFieldMark />
-                <select
-                  v-model="row.trackingState"
-                  :data-test="`logistics-tracking-state-${index}`"
-                  required
-                >
-                  <option value="">请选择</option>
-                  <option value="PRESENT">有</option>
-                  <option value="NONE">无</option>
-                </select>
-              </label>
-              <label v-if="row.trackingState === 'PRESENT'"
-                >快递单号<RequiredFieldMark />
-                <input
-                  v-model="row.trackingValue"
-                  :data-test="`logistics-tracking-value-${index}`"
-                  required
-              /></label>
-              <p v-else-if="row.trackingState === 'NONE'">未登记快递单号</p>
-              <button
-                v-if="logisticsRows.length > 1"
-                type="button"
-                @click="removeLogisticsRow(index)"
-              >
-                删除此条
-              </button>
-            </fieldset>
-            <button type="button" @click="addLogisticsRow">添加物流</button>
-            <ul v-if="evidenceErrors.length" class="field-error" role="alert">
-              <li v-for="error in evidenceErrors" :key="error">{{ error }}</li>
-            </ul>
-            <p v-if="evidenceError" class="field-error" role="alert">
-              {{ evidenceError }}
-            </p>
-            <p v-if="evidenceSuccess" role="status">{{ evidenceSuccess }}</p>
-            <ElButton
-              data-test="record-evidence-submit"
-              native-type="submit"
-              :loading="submittingEvidence"
-              :disabled="submittingEvidence"
-              >登记并进入待开箱</ElButton
-            >
-          </form>
-        </section>
-        <section
-          v-else-if="matter.evidence"
+          v-if="matter.evidence"
           class="demo-card demo-card--pad"
           data-test="saved-evidence"
         >
@@ -2122,7 +670,6 @@ watch(
             </li>
           </ul>
           <p>登记时间：{{ formatTime(matter.evidence.recordedAt) }}</p>
-          <p v-if="evidenceSuccess" role="status">{{ evidenceSuccess }}</p>
         </section>
         <section class="demo-card" data-test="notary-matter-products">
           <h2 class="card-section-title">本批次商品</h2>

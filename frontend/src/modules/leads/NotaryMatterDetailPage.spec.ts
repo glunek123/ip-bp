@@ -293,6 +293,7 @@ async function mountPage() {
 }
 
 beforeEach(() => {
+  globalThis.sessionStorage.clear();
   vi.resetAllMocks();
   api.getNotaryMatter.mockResolvedValue(matter);
   api.recordNotaryEvidence.mockResolvedValue({});
@@ -317,6 +318,45 @@ beforeEach(() => {
 });
 
 describe('NotaryMatterDetailPage', () => {
+  it('keeps the saved frozen opening and its download visible while reviewing', async () => {
+    api.getNotaryMatter.mockResolvedValue({
+      ...matter,
+      stage: 'UNBOX_REVIEW',
+      capabilities: { reviewOpening: true },
+      opening: {
+        senderName: '寄件人甲',
+        senderPhone: null,
+        senderAddress: null,
+        recordedAt: '2026-10-15T00:00:00Z',
+        recordedByUserId: 'user-1',
+        photos: [
+          {
+            materialId: 'photo-1',
+            contentVersionId: 'photo-v1',
+            originalFilename: '审核照片.jpg',
+            mimeType: 'image/jpeg',
+          },
+        ],
+      },
+    });
+    const wrapper = await mountPage();
+    expect(wrapper.find('[data-test="opening-review-form"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.get('[data-test="saved-opening"]').text()).toContain(
+      '审核照片.jpg',
+    );
+    await wrapper
+      .get('[data-test="download-opening-photo-photo-v1"]')
+      .trigger('click');
+    await flushPromises();
+    expect(materials.downloadMaterialVersion).toHaveBeenCalledWith(
+      'photo-1',
+      'photo-v1',
+      expect.any(AbortSignal),
+    );
+    wrapper.unmount();
+  });
   it('scrolls and focuses a real form anchor without reloading the same matter', async () => {
     const wrapper = await mountPage();
     const target = wrapper.get('#evidence-form').element;
@@ -756,9 +796,7 @@ describe('NotaryMatterDetailPage', () => {
       .trigger('submit');
     await flushPromises();
     expect(wrapper.text()).toContain('使用相同请求键重试');
-    await wrapper
-      .get('[data-test="return-archive-form"] form')
-      .trigger('submit');
+    await wrapper.get('[data-test="notary-workflow-retry"]').trigger('click');
     await flushPromises();
     expect(api.archiveNotaryReturn).toHaveBeenCalledWith(
       'matter-1',
@@ -921,10 +959,10 @@ describe('NotaryMatterDetailPage', () => {
     const wrapper = await mountPage();
     expect(
       wrapper.get('[data-test="issuance-decision-section"]').text(),
-    ).toContain('ISSUE → 待出证');
+    ).toContain('出证 → 待出证');
     expect(
       wrapper.get('[data-test="issuance-decision-section"]').text(),
-    ).toContain('NO_ISSUE → 待退货');
+    ).toContain('不出证 → 待退货');
     await wrapper.get('[data-test="issuance-decision-issue"]').setValue();
     await wrapper
       .get('[data-test="issuance-decision-section"] form')
@@ -1178,15 +1216,15 @@ describe('NotaryMatterDetailPage', () => {
       wrapper.get('[data-test="opening-review-result"]').attributes('disabled'),
     ).toBeDefined();
     expect(
-      wrapper.get('[data-test="opening-review-submit"]').attributes('disabled'),
+      wrapper.get('[data-test="notary-workflow-retry"]').attributes('disabled'),
     ).toBeUndefined();
-    expect(wrapper.get('[data-test="opening-review-submit"]').text()).toContain(
+    expect(wrapper.get('[data-test="notary-workflow-retry"]').text()).toContain(
       '使用相同请求键重试',
     );
     expect(
       wrapper.findAll('[data-test^="opening-review-result"]:checked'),
     ).toHaveLength(1);
-    await wrapper.get('[data-test="opening-review-form"]').trigger('submit');
+    await wrapper.get('[data-test="notary-workflow-retry"]').trigger('click');
     await flushPromises();
     expect(api.reviewNotaryOpening.mock.calls[1]?.[2]).toBe(
       api.reviewNotaryOpening.mock.calls[0]?.[2],
@@ -1234,7 +1272,19 @@ describe('NotaryMatterDetailPage', () => {
         reviewDecision: null,
       };
       api.getNotaryMatter.mockResolvedValue(pending);
-      api.reviewNotaryOpening.mockRejectedValue(new ApiError('raw', 409, code));
+      api.reviewNotaryOpening.mockRejectedValue(
+        new ApiError(
+          'raw',
+          code === 'TIMEOUT'
+            ? 0
+            : code === 'ACTION_FORBIDDEN'
+              ? 403
+              : code === 'RESOURCE_NOT_FOUND'
+                ? 404
+                : 409,
+          code,
+        ),
+      );
       const wrapper = await mountPage();
       await wrapper.get('[data-test="opening-review-result"]').setValue(true);
       await wrapper.get('[data-test="opening-review-form"]').trigger('submit');
@@ -1366,7 +1416,7 @@ describe('NotaryMatterDetailPage', () => {
     expect(wrapper.text()).toContain('请选择快递单号状态');
   });
 
-  it('reuses a key only while the submitted evidence payload stays unchanged', async () => {
+  it('locks unknown evidence and retries only its original key and payload', async () => {
     const wrapper = await mountPage();
     await wrapper.get('[data-test="evidence-date"]').setValue('2026-09-24');
     await wrapper.get('[data-test="sample-fee-state"]').setValue('PENDING');
@@ -1404,14 +1454,14 @@ describe('NotaryMatterDetailPage', () => {
     await wrapper.get('[data-test="record-evidence"]').trigger('submit');
     await flushPromises();
     await wrapper.get('[data-test="record-evidence"]').trigger('submit');
-    await flushPromises();
+    expect(api.recordNotaryEvidence).toHaveBeenCalledTimes(1);
     await wrapper.get('[data-test="evidence-date"]').setValue('2026-09-25');
-    await wrapper.get('[data-test="record-evidence"]').trigger('submit');
+    await wrapper.get('[data-test="notary-workflow-retry"]').trigger('click');
     await flushPromises();
-
-    const keys = api.recordNotaryEvidence.mock.calls.map((call) => call[2]);
-    expect(keys[0]).toBe(keys[1]);
-    expect(keys[2]).not.toBe(keys[1]);
+    const calls = api.recordNotaryEvidence.mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toEqual(calls[0]);
+    expect(calls[1]?.[1].evidenceAt).toBe('2026-09-24');
   });
 
   it('uploads real opening photos, submits stable content ids and reloads persisted downloads', async () => {
@@ -1813,7 +1863,7 @@ describe('NotaryMatterDetailPage', () => {
       .trigger('submit');
     await submit;
     await flushPromises();
-    await wrapper.get('[data-test="record-opening"]').trigger('submit');
+    await wrapper.get('[data-test="notary-workflow-retry"]').trigger('click');
     await flushPromises();
     const calls = api.recordNotaryOpening.mock.calls;
     expect(calls[0]?.[1].contentVersionIds).toEqual(['photo-v1']);
