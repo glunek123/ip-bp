@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+## 旧结案工作流测试入口修复源准备（2026-10-15）
+
+原UI固定0fe49ae6a9a29924ab8afc7b5a690ddabb7d152a/treeab5869ab8684bc7b531a82946c63cd3c8a4404b8，仅CaseClosureDetailIntegration.spec.ts +13/-3，SHA256d2b7bd0487446fc78bd7721e5071ad3bdffb2e550a2888fdffdef9f13bae13f1。旧fixture不带recordEdits，分栏资料编辑准确禁用；该用例实际验证旧correctCaseClosure/Case.version20到21，现明确点击真实closure-correct工作流入口，不修改fixture或产品。原零金额、精确files、finish/closure双锚、原因空白和两版history断言保留，补原主动作与显式GET刷新加1。作者保留RED14/15后GREEN15/15；相邻CaseWorkspaceIntegration、case-workspace-actions、CaseClosurePanel合计121/121，前端类型/单文件Lint/格式通过。原独立Reviewer按固定SHA与六日志hash逐项核对，Spec/Quality C/I/M0，I-CLOSURE-VERIFY01关闭。根接入为fb57a2fe0be68da348300626ac4f7d85c31bf48e，hash一致。
+
+这只关闭已定位的过期测试导航问题；下面ebba整次正常verify仍保留FAIL。新候选正常完整verify/后端及NT006/双构建、owned-schema单项均待实际运行，不以15或121项代替；public155、Grant hold及未授权16 UI/真实升级边界保持。
+
 ## ebba正常完整门禁失败并安全停止（2026-10-15）
 
 固定clean ebba08631e3065a214a9f16a4221525d51f2fc11/tree1e4060cb9558330dd18007fbf6ec64fcff0f51c2，于17:06:34至17:09:42 UTC只执行一次正常pnpm verify，exit1。工具11文件94/94通过；前端124文件123过1失败、2207项2206过1失败；唯一失败CaseClosureDetailIntegration.spec.ts:469，uses exact closure material versions, real zero and internal complete correction anchor，点击closure-info分栏编辑后取不到旧closure-amount。该测试继续期望旧correctCaseClosure/Case.version推进契约，原UI需诊断准确既有workflow入口与新record编辑语义，尚未判定为纯断言或产品缺陷，禁止通过删除零金额/双锚/附件/历史断言掩盖。

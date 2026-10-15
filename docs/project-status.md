@@ -1,5 +1,7 @@
 # 当前开发状态
 
+结案兼容测试修复候选（2026-10-15）：原UI单文件0fe49ae6a9a29924ab8afc7b5a690ddabb7d152a已接为fb57a2fe0be68da348300626ac4f7d85c31bf48e，仅旧workflow CORRECT测试由分栏入口改点真实closure-correct，原零金额、精确材料、双锚、原因空白、Case.version20到21与两版历史断言保留；追加主动作/新分栏禁用/手动刷新GET加1。RED14/15到GREEN15/15及相邻121/121、前端类型/Lint/格式通过，独立固定输入补审C/I/M0关闭I-CLOSURE-VERIFY01；无产品、权限、迁移变化。保留ebba实际FAIL，下一固定clean候选由唯一runner正常完整verify重跑，成功才继续原DB-only单项owned-schema风险专项；public须保持155，16项UI与public升级另行准入，新增Grant仍hold。尚无新完整门禁或迁移PASS。
+
 独立组合门禁实际阻塞（2026-10-15，17:09 UTC）：固定clean ebba08631e3065a214a9f16a4221525d51f2fc11/tree1e4060cb9558330dd18007fbf6ec64fcff0f51c2正常完整pnpm verify一次exit1。工具94/94；前端124套中123过1失败、2207项中2206过1失败，CaseClosureDetailIntegration.spec.ts:469点击分栏后未找到旧closure-amount。源Prisma生成、两端/根类型、Lint、格式通过；后端被递归流程终止、无完成计数，NT006未证实执行，双构建未到达。阶段2发现与owned-schema专项均未运行。前后public155/137表4336行/安全摘要/指纹保持，schema均仅public，端口与锁已释放。主控核28份证据hash，失败原样保留。原UI已由父级有效通道恢复，仅该兼容spec诊断旧workflow入口与新record编辑语义；保留根App恢复消息AbsolutePathBuf拒绝未送的历史，不改运行树、不自行放宽断言。新增Grant继续hold，预览不变。
 
 最新准备收口（2026-10-15，16:49 UTC）：R2仍为155；只读pg_dump归档及pg_restore --list通过，主控核20份原证据哈希，137表4336行及原安全基线摘要前后一致。归档/私密TOC已移至工作区外的用户Temp独占目录，主控再次核两文件大小与哈希不变、旧位置不存在；仅证明备份生成和目录可读，未实际还原，也不含库外blob。S迁移风险四文件修复I-S-MIG01后累计源审C/I/M0、18项纯测试及静态通过，原任务固定e9ccaddd615d948ef508967ff2772d37627bc30f，接入后续组合841956f97c6cb081b1b6a36229897f10d2b9bc9f；正式157 raw字节218b230...2296的只读157源计划通过，未capture/连接DB。四文件owned-schema重放尚未运行，不等同Prisma部署。UI正在准备五类编辑/五类上传；第六类开庭及旧外部CORRECT所需单一新合成角色case.external-entry.create授权被自动审批拒绝，等待用户明确确认，未写Grant；旧受理/联系方式兼容另有缺口。未执行156/157、未更新持久预览，也未把准备结果称作最终浏览器或迁移验收。
