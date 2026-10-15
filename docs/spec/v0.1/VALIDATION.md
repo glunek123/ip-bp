@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+## 2a99完整门禁与owned-schema风险专项通过（2026-10-15）
+
+固定clean2a99bba578a0a98743302478c8312d4a36a9bf8c/tree3f594e58ebe0eda47accad405725e280da090692，19:06:53至19:10:41 UTC正常完整pnpm verify实际exit0：工具11套94项、前端124文件2207项、后端120套1850项、全部严格context/Spec/架构/Prisma生成/类型/Lint/格式和本树双构建通过。NT006实际标准锁PID20976/token9b75e2dc-7a7a-4cb2-9205-1835d7c6a407于19:09:22.802观察并释放；source及737构建产物manifest留证，不复用旧候选充作本次执行。私密archive/TOC仅size/hash/metadata复核，未还原或读取内容。
+
+同树protected --list实际恰1文件1项、exit0，随后唯一DB-only spec真实1/1 expected、unexpected/skipped/flaky/retry均0，正式5.1秒、exit0。真实sanitized attachment source157，六checks精确通过：empty-original-chain157、156-controlled-failure-and-original-retry、four-functions-exact-literal-date-replacements、157-controlled-failure-and-original-retry、old155-projected-data-acl-file-metadata-preserved、owned-foreign-keys。156原前缀与事务两次query发送，受控失败后精确残留mailing/filing/finish三个新Action enum再原字节重试；157失败后labels=[]再原字节重试。内存文件64字节、SHA256b8749b4769c204cad585d91b3930f9014569e95d002cd6d24fb787cfe592428b；fixture明确仅ACL+DRAFT客户+文件metadata/内存bytes，排除真实Case历史和存储blob。
+
+helper三次public摘要一致，自有empty/upgrade schema均按受审保护清理，cleanedSchemas2、无手工cleanup或残留，最终仅public。外围前/门禁后/最终public155全部名称/checksum/finished/noRollback、137表4336行、结构/事实/全部安全摘要/sequence及标准指纹保持。发现实时ownerPID40108与正式PID29388独立记录，结束释放；未启动业务服务或页面，按原retain-on-failure策略PASS不生成trace，不伪称已有成功trace。原28/36/39/53份旧失败证据hash全部匹配、无覆盖。
+
+最终证据section-record-edit-frontend-integration/.local/ui003-evidence/migration-2a99bba-20261015/含50份manifest，主控与原Reviewer逐项核hash/bytes；manifest SHA2569d116cca20ba32f7d1eb9f1b27f89685141ebf9cd6ddfb33b56d1f1ce38cde19，acceptance-summary SHA256806ec217cccb143d63ad929c57714662985a384ba5d9faf83ba085db9d27fdd5。阶段Spec/Quality ACCEPTED C0/I0/M0，只关闭该完整门禁及owned风险验收；不扩大为正式Prisma public deploy、真实旧Case/blob保持或16UI通过。正式Prisma发送边界仍由后续实际CLI独立证明，不因两query replay推断已过或反向定性为bug。
+
+按父级明确的隔离R2开发授权，根已给只读历史保留前检单（.local/ui003-evidence/runner-2a99bba-history-preflight-admission.md），原Reviewer受限审C/I/M0：同固定树/身份、单标准锁、137表原列与Case/回执/全安全及baseline66摘要、全CV状态/指定四R2根内真实byte保留版本hash/size、PURGED不恢复、缺失/冲突精确清单，Temp备份仅hashmetadata；不copy/move/deploy/login/Grant。根续办通知被AbsolutePathBuf路由错误拒绝、未送达，所以该只读单尚未运行；这不是待用户重复批准正常步骤。取得实际物理位置/缺失copy清单后再给精确missing-only copy及正常pnpm db:test:migrate:deploy边界和旧列/新增null/旧ledger+新2行的比对，之后独立五kind UI16。external-entry新Grant仍待用户，不能换actor绕过；预览/生产不属于本授权。
+
 ## 524完整门禁通过、157真实回放失败（2026-10-15）
 
 固定clean524dc060bb34f2f1ecce991246caeecbc4d32d7e/tree9a0178f264f0b92ba6d23150a264f2b03ac3b4a7于18:47:38至18:51:28 UTC实际一次正常pnpm verify，exit0，未复用48d：工具94、前端124套2207、后端120套1850及严格context/Spec/架构/Prisma生成/全部类型Lint格式和双构建通过。NT006实际标准锁owner PID16080/token70d436c4-c437-4dde-8847-e9ad679a0cce于18:50:13.939被观察并释放；当前源码及737构建产物manifest留证，未借用其他树dist。私密归档/TOC仅size/hash/metadata复核通过，不等于还原或库外文件备份。
