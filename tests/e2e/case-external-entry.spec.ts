@@ -817,6 +817,16 @@ test('registers direct external acceptance through the browser with its real cou
     Buffer.from('%PDF-1.7\nCA018 browser acceptance notice\n%%EOF\n'),
   );
   await login(page, `/cases/${root.id}`);
+  const acceptanceAction = page.getByRole('button', {
+    name: '正式立案／受理材料',
+    exact: true,
+  });
+  await expect(acceptanceAction).toHaveCount(1);
+  await expect(acceptanceAction).toBeVisible();
+  await acceptanceAction.click();
+  await expect(
+    page.locator('[data-test="case-acceptance-panel"]'),
+  ).toBeVisible();
   await page
     .locator('[data-test="acceptance-court-id"]')
     .selectOption(court.id);
@@ -863,6 +873,18 @@ test('submits and confirms a real direct execution material bundle in the browse
     '%PDF-1.7\nCA018 browser execution schedule\n%%EOF\n',
   );
   await login(page, `/cases/${root.id}`);
+  const moreActions = page.locator('[data-test="workspace-more-actions"]');
+  await expect(moreActions).toBeVisible();
+  await moreActions.locator(':scope > summary').click();
+  const submitAction = moreActions.locator(
+    'button[data-command="execution-submission"]',
+  );
+  await expect(submitAction).toHaveCount(1);
+  await expect(submitAction).toBeVisible();
+  await submitAction.click();
+  await expect(
+    page.locator('[data-test="execution-submission-panel"]'),
+  ).toBeVisible();
   const uploadFromBrowser = async (name: string, fileBytes: Buffer) => {
     const uploadedResponse = page.waitForResponse(
       (response) =>
@@ -922,12 +944,18 @@ test('submits and confirms a real direct execution material bundle in the browse
   expect(submitted.expectedSubmissionId).toBeNull();
   expect(submitted.executionApplicationContentVersionIds).toHaveLength(2);
   await expect(
-    page.locator('[data-test="execution-confirmation-panel"]'),
+    page.locator('[data-test="execution-submission-panel"]'),
   ).toBeVisible();
   await page.reload();
+  const confirmationAction = page.getByTestId('workspace-primary-action');
+  await expect(confirmationAction).toHaveCount(1);
+  await expect(confirmationAction).toBeVisible();
+  await expect(confirmationAction).toHaveText('确认执行材料');
+  await confirmationAction.click();
   const confirmation = page.locator(
     '[data-test="execution-confirmation-panel"]',
   );
+  await expect(confirmation).toHaveCount(1);
   await expect(confirmation).toBeVisible();
   const confirmRequest = page.waitForRequest(
     (req) =>
@@ -982,6 +1010,14 @@ for (const amountState of ['KNOWN', 'PENDING'] as const) {
       }),
     );
     await login(page, `/cases/${root.id}`);
+    const secondInstanceAction = page.getByTestId('workspace-primary-action');
+    await expect(secondInstanceAction).toHaveCount(1);
+    await expect(secondInstanceAction).toBeVisible();
+    await expect(secondInstanceAction).toHaveText('登记二审结果／进度');
+    await secondInstanceAction.click();
+    await expect(
+      page.locator('[data-test="second-instance-panel"]'),
+    ).toBeVisible();
     await page
       .locator('input[name="second-instance-result"][value="AFFIRM"]')
       .check();
@@ -1019,6 +1055,9 @@ for (const amountState of ['KNOWN', 'PENDING'] as const) {
         req.url().includes(`/cases/${root.id}/second-instance-result`),
     );
     await page.locator('[data-test="second-instance-result-submit"]').click();
+    await expect(
+      page.locator('[data-test="second-instance-confirmation"]'),
+    ).toBeVisible();
     await page.locator('[data-test="second-instance-confirm-result"]').click();
     const payload = (await resultRequest).postDataJSON() as {
       choiceId: string | null;
@@ -1083,7 +1122,13 @@ test('creates all sixteen stages as explicit external roots without invented pri
     }
     if (stage === 'WAITING_HEARING') {
       expect(current.acceptance).toBeNull();
-      expect(current.hearing).toBeNull();
+      expect(current.hearing).toEqual({
+        advances: [],
+        arrangements: [],
+        corrections: [],
+        currentAdvance: null,
+        currentArrangement: null,
+      });
       expect(current.currentTrialRoundId).toEqual(expect.any(String));
     }
   }
