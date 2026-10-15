@@ -1,13 +1,13 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { createMemoryHistory, createRouter } from 'vue-router';
+import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useAuthStore } from '../../stores/auth';
-import type { Lead, LeadPushResult } from '../../api/leads';
+import type { Lead, LeadPushResult, LeadDetail } from '../../api/leads';
+import { defineComponent, h, type PropType } from 'vue';
+import { readPendingLeadCommands } from './LeadListWorkflowPanel.vue';
 import { ApiError } from '../../api/http';
-import LeadQuickActionsPanel, {
-  type FrozenLeadPush,
-} from './LeadQuickActionsPanel.vue';
+import LeadQuickActionsPanel from './LeadQuickActionsPanel.vue';
 import LeadListPage from './LeadListPage.vue';
 
 const api = vi.hoisted(() => ({
@@ -79,6 +79,25 @@ const summary = {
   updatedAt: '2026-09-21T04:00:00Z',
 } satisfies Lead;
 
+function detail(overrides: Partial<LeadDetail> = {}): LeadDetail {
+  return {
+    ...summary,
+    capabilities: {
+      edit: true,
+      push: true,
+      withdrawApply: false,
+      evidenceDecide: false,
+      transferToNotary: false,
+      createEvidenceBatch: false,
+    },
+    evidenceDecision: null,
+    pendingWithdrawalApplication: null,
+    history: [],
+    notaryMatters: [],
+    ...overrides,
+  };
+}
+
 function pushResult(leadId: string, expectedVersion: number): LeadPushResult {
   return {
     id: `push-${leadId}`,
@@ -91,6 +110,31 @@ function pushResult(leadId: string, expectedVersion: number): LeadPushResult {
   };
 }
 
+const DrawerStub = defineComponent({
+  props: {
+    modelValue: Boolean,
+    beforeClose: Function as PropType<(done: () => void) => void>,
+  },
+  setup(props, { slots }) {
+    return () =>
+      props.modelValue
+        ? h('section', { role: 'dialog' }, [
+            h(
+              'button',
+              {
+                'data-test': 'close-drawer',
+                onClick: () => props.beforeClose?.(() => {}),
+              },
+              '关闭',
+            ),
+            slots.default?.(),
+            slots.footer?.(),
+          ])
+        : null;
+  },
+});
+
+const cleanups: Array<() => void> = [];
 async function mountWithRoute(path: string) {
   const pinia = createPinia();
   setActivePinia(pinia);
@@ -118,449 +162,272 @@ async function mountWithRoute(path: string) {
   });
   await router.push(path);
   await router.isReady();
-  const wrapper = mount(LeadListPage, { global: { plugins: [pinia, router] } });
+  const wrapper = mount(
+    { components: { RouterView }, template: '<RouterView />' },
+    { global: { plugins: [pinia, router], stubs: { ElDrawer: DrawerStub } } },
+  );
+  cleanups.push(() => wrapper.unmount());
   await flushPromises();
   return { router, wrapper, auth };
 }
 
 afterEach(() => {
+  for (const cleanup of cleanups.splice(0)) cleanup();
   vi.resetAllMocks();
+  sessionStorage.removeItem('dev-cor:lead-workflow:pending');
   sessionStorage.removeItem('dev-cor:lead-quick-actions:pending-push');
 });
 
 describe('LeadListPage', () => {
-  it('restores an unresolved push after refresh even when its filtered row disappeared', async () => {
-    api.listLeads.mockResolvedValue({ ...result, items: [summary], total: 1 });
-    api.getLead.mockResolvedValue({
-      ...summary,
-      capabilities: {
-        edit: true,
-        push: true,
-        withdrawApply: false,
-        evidenceDecide: false,
-        transferToNotary: false,
-        createEvidenceBatch: false,
-      },
-      evidenceDecision: null,
-      pendingWithdrawalApplication: null,
-      history: [],
-      notaryMatters: [],
-    });
-    api.pushLead
-      .mockRejectedValueOnce(new ApiError('network', 0, 'NETWORK_ERROR'))
-      .mockResolvedValue({ id: 'push-1' });
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const first = await mountWithRoute('/leads');
-    await first.wrapper.get('[data-test="lead-quick-action"]').trigger('click');
-    await flushPromises();
-    await first.wrapper.get('[data-test="quick-push-lead"]').trigger('click');
-    await flushPromises();
-    const storedMap = JSON.parse(
-      sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push') ??
-        'null',
-    ) as Record<
-      string,
-      {
-        leadId: string;
-        expectedVersion: number;
-        idempotencyKey: string;
-        identity: string;
-        status: string;
-      }
-    >;
-    const stored = Object.values(storedMap).find(
-      (attempt) => attempt.status === 'PENDING',
-    );
-    expect(stored).toBeDefined();
-    if (!stored) throw new Error('Expected the frozen attempt to be stored');
-    expect(stored).toMatchObject({
-      leadId: summary.id,
-      expectedVersion: summary.version,
-    });
-    expect(stored.idempotencyKey).toEqual(expect.any(String));
-    expect(
-      first.wrapper
-        .get('[data-test="lead-quick-action"]')
-        .attributes('disabled'),
-    ).toBeDefined();
-    first.wrapper.unmount();
-
-    const readCount = api.getLead.mock.calls.length;
-    api.listLeads.mockResolvedValue({ ...result, items: [], total: 0 });
-    const reopened = await mountWithRoute('/leads');
-    expect(api.getLead).toHaveBeenCalledTimes(readCount);
-    expect(
-      reopened.wrapper.findAll('[data-test="lead-quick-actions-panel"]'),
-    ).toHaveLength(1);
-    expect(
-      reopened.wrapper.findAll('[data-test="retry-unknown-push"]'),
-    ).toHaveLength(1);
-    expect(
-      reopened.wrapper.findAll('[data-test="lead-quick-action"]'),
-    ).toHaveLength(0);
-    reopened.wrapper.unmount();
-  });
-
-  it('isolates pending pushes by identity and replays only that identity’s frozen request', async () => {
-    let activeUserId = 'operator-1';
-    const summaryB: Lead = {
-      ...summary,
-      id: 'lead-b',
-      businessNo: 'LD-B',
-      departmentId: 'department-2',
-      responsibleUserId: 'operator-2',
-      displayNames: {
-        customerName: '客户B',
-        rightsHolderName: '权利主体B',
-        responsibleUserName: '经办人B',
-      },
-    };
-    api.listLeads.mockImplementation(async () => ({
-      ...result,
-      items: [activeUserId === 'operator-1' ? summary : summaryB],
-      total: 1,
-    }));
-    api.getLead.mockImplementation(async (id: string) => ({
-      ...summary,
-      id,
-      businessNo: id === 'lead-b' ? 'LD-B' : summary.businessNo,
-      version: id === 'lead-b' ? 9 : summary.version,
-      capabilities: {
-        edit: true,
-        push: true,
-        withdrawApply: false,
-        evidenceDecide: false,
-        transferToNotary: false,
-        createEvidenceBatch: false,
-      },
-      evidenceDecision: null,
-      pendingWithdrawalApplication: null,
-      history: [],
-      notaryMatters: [],
-    }));
-    api.pushLead
-      .mockRejectedValueOnce(
-        new ApiError('lost A response', 0, 'NETWORK_ERROR'),
-      )
-      .mockRejectedValueOnce(
-        new ApiError('lost B response', 0, 'NETWORK_ERROR'),
-      )
-      .mockImplementation(async (id: string, expectedVersion: number) =>
-        pushResult(id, expectedVersion),
-      );
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-
-    const { auth, wrapper } = await mountWithRoute('/leads');
-    const identityA = auth.session!;
-    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
-    await flushPromises();
-    await wrapper.get('[data-test="quick-push-lead"]').trigger('click');
-    await flushPromises();
-    const requestA = api.pushLead.mock.calls[0] as [string, number, string];
-    expect(requestA[0]).toBe(summary.id);
-
-    activeUserId = 'operator-2';
-    auth.session = {
-      ...identityA,
-      user: { ...identityA.user, id: 'operator-2', displayName: '经办人B' },
-      department: { id: 'department-2', name: '部门B' },
-      departments: [{ id: 'department-2', name: '部门B' }],
-      authorizationRevision: 2,
-    };
-    await flushPromises();
-    expect(
-      wrapper.findAll('[data-test="lead-quick-actions-panel"]'),
-    ).toHaveLength(0);
-    expect(wrapper.text()).not.toContain(summary.businessNo);
-    expect(
-      wrapper.get('[data-test="lead-quick-action"]').attributes('disabled'),
-    ).toBeUndefined();
-    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
-    await flushPromises();
-    expect(wrapper.text()).toContain('LD-B');
-    await wrapper.get('[data-test="quick-push-lead"]').trigger('click');
-    await flushPromises();
-    const requestB = api.pushLead.mock.calls[1] as [string, number, string];
-    expect(requestB[0]).toBe('lead-b');
-    expect(requestB[1]).toBe(9);
-    const storedAfterB = JSON.parse(
-      sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push') ??
-        'null',
-    ) as Record<string, { idempotencyKey: string; status: string }>;
-    expect(
-      Object.values(storedAfterB).filter(
-        (attempt) => attempt.status === 'PENDING',
-      ),
-    ).toHaveLength(2);
-
-    activeUserId = 'operator-1';
-    auth.session = identityA;
-    await flushPromises();
-    expect(wrapper.findAll('[data-test="retry-unknown-push"]')).toHaveLength(1);
-    await wrapper.get('[data-test="retry-unknown-push"]').trigger('click');
-    await flushPromises();
-    expect(api.pushLead.mock.calls[2]).toEqual(requestA);
-    await expect(api.pushLead.mock.results[2]?.value).resolves.toMatchObject({
-      version: requestA[1] + 1,
-    });
-    const afterLateASettlement = JSON.parse(
-      sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push') ??
-        'null',
-    ) as Record<string, { leadId: string; status: string }>;
-    expect(
-      Object.values(afterLateASettlement).some(
-        (attempt) => attempt.leadId === requestA[0],
-      ),
-    ).toBe(false);
-    expect(
-      Object.values(afterLateASettlement).find(
-        (attempt) => attempt.leadId === requestB[0],
-      )?.status,
-    ).toBe('PENDING');
-    expect(
-      Object.values(afterLateASettlement).filter(
-        (attempt) => attempt.status === 'PENDING',
-      ),
-    ).toHaveLength(1);
-    wrapper.unmount();
-  });
-
-  it('settles a late response only for its original identity', async () => {
-    let activeUserId = 'operator-1';
-    let resolveA!: (value: LeadPushResult) => void;
-    const summaryB: Lead = {
-      ...summary,
-      id: 'lead-b',
-      businessNo: 'LD-B',
-      departmentId: 'department-2',
-      responsibleUserId: 'operator-2',
-    };
-    api.listLeads.mockImplementation(async () => ({
-      ...result,
-      items: [activeUserId === 'operator-1' ? summary : summaryB],
-      total: 1,
-    }));
-    api.getLead.mockImplementation(async (id: string) => ({
-      ...summary,
-      id,
-      businessNo: id === 'lead-b' ? 'LD-B' : summary.businessNo,
-      version: id === 'lead-b' ? 9 : summary.version,
-      capabilities: {
-        edit: true,
-        push: true,
-        withdrawApply: false,
-        evidenceDecide: false,
-        transferToNotary: false,
-        createEvidenceBatch: false,
-      },
-      evidenceDecision: null,
-      pendingWithdrawalApplication: null,
-      history: [],
-      notaryMatters: [],
-    }));
-    api.pushLead
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            resolveA = resolve;
-          }),
-      )
-      .mockRejectedValueOnce(
-        new ApiError('lost B response', 0, 'NETWORK_ERROR'),
-      );
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-
-    const { auth, wrapper } = await mountWithRoute('/leads');
-    const identityA = auth.session!;
-    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
-    await flushPromises();
-    await wrapper.get('[data-test="quick-push-lead"]').trigger('click');
-    await flushPromises();
-    expect(api.pushLead.mock.calls[0]?.[0]).toBe(summary.id);
-
-    activeUserId = 'operator-2';
-    auth.session = {
-      ...identityA,
-      user: { ...identityA.user, id: 'operator-2', displayName: '经办人B' },
-      department: { id: 'department-2', name: '部门B' },
-      departments: [{ id: 'department-2', name: '部门B' }],
-      authorizationRevision: 2,
-    };
-    await flushPromises();
-    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
-    await flushPromises();
-    await wrapper.get('[data-test="quick-push-lead"]').trigger('click');
-    await flushPromises();
-    const requestB = api.pushLead.mock.calls[1] as [string, number, string];
-    expect(requestB[0]).toBe('lead-b');
-
-    const requestA = api.pushLead.mock.calls[0] as [string, number, string];
-    const resultA = pushResult(requestA[0], requestA[1]);
-    resolveA(resultA);
-    await flushPromises();
-    expect(resultA.version).toBe(requestA[1] + 1);
-    expect(wrapper.findAll('[data-test="retry-unknown-push"]')).toHaveLength(1);
-    const stored = JSON.parse(
-      sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push') ??
-        'null',
-    ) as Record<
-      string,
-      { leadId: string; idempotencyKey: string; status: string }
-    >;
-    expect(
-      stored[identityA.user.id + ':INTERNAL:department-1:1'],
-    ).toBeUndefined();
-    expect(Object.values(stored)).toContainEqual({
-      leadId: requestB[0],
-      expectedVersion: requestB[1],
-      idempotencyKey: requestB[2],
-      identity: 'operator-2:INTERNAL:department-2:2',
-      status: 'PENDING',
-    });
-    wrapper.unmount();
-  });
-
-  it('does not clear or close a newer same-identity attempt on stale settlement events', async () => {
-    api.listLeads.mockResolvedValue({ ...result, items: [summary], total: 1 });
-    api.getLead.mockResolvedValue({
-      ...summary,
-      capabilities: {
-        edit: true,
-        push: true,
-        withdrawApply: false,
-        evidenceDecide: false,
-        transferToNotary: false,
-        createEvidenceBatch: false,
-      },
-      evidenceDecision: null,
-      pendingWithdrawalApplication: null,
-      history: [],
-      notaryMatters: [],
-    });
-    api.pushLead
-      .mockRejectedValueOnce(
-        new ApiError('lost old response', 0, 'NETWORK_ERROR'),
-      )
-      .mockRejectedValueOnce(
-        new ApiError('lost new response', 0, 'NETWORK_ERROR'),
-      );
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-
-    const { wrapper } = await mountWithRoute('/leads');
-    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
-    await flushPromises();
-    await wrapper.get('[data-test="quick-push-lead"]').trigger('click');
-    await flushPromises();
+  it('reopens the original pending request after a failed fresh read and user close', async () => {
     const identity = 'operator-1:INTERNAL:department-1:1';
-    const attempts = JSON.parse(
-      sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push') ??
-        'null',
-    ) as Record<string, FrozenLeadPush & { status: 'PENDING' | 'SETTLED' }>;
-    const oldAttempt = attempts[identity];
-    if (!oldAttempt) throw new Error('Expected the first attempt to be stored');
-    const newerAttempt: FrozenLeadPush = {
-      leadId: oldAttempt.leadId,
-      expectedVersion: oldAttempt.expectedVersion,
-      idempotencyKey: 'newer-idempotency-key',
-      identity,
-    };
     sessionStorage.setItem(
-      'dev-cor:lead-quick-actions:pending-push',
-      JSON.stringify({ [identity]: { ...newerAttempt, status: 'PENDING' } }),
+      'dev-cor:lead-workflow:pending',
+      JSON.stringify({
+        [identity]: {
+          identity,
+          leadId: summary.id,
+          expectedVersion: 1,
+          idempotencyKey: 'original-read-recovery',
+          action: 'push',
+          body: { expectedVersion: 1 },
+        },
+      }),
     );
-    const panel = wrapper.findComponent(LeadQuickActionsPanel);
-    panel.vm.$emit('pending', identity, newerAttempt);
+    api.listLeads.mockResolvedValue({ ...result, items: [], total: 0 });
+    api.getLead
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue(detail({ status: 'WAITING_REVIEW', version: 2 }));
+    api.pushLead.mockResolvedValue(pushResult(summary.id, 1));
+    const { wrapper } = await mountWithRoute('/leads?status=WAITING_PUSH');
+    expect(wrapper.text()).toContain('资料加载失败');
+    await wrapper.get('[data-test="close-drawer"]').trigger('click');
     await flushPromises();
-    panel.vm.$emit('pending', identity, null, oldAttempt);
-    panel.vm.$emit('succeeded', oldAttempt);
+    expect(api.pushLead).not.toHaveBeenCalled();
+    await wrapper.get('[data-test="reopen-pending-lead"]').trigger('click');
     await flushPromises();
-
-    expect(
-      wrapper.findAll('[data-test="lead-quick-actions-panel"]'),
-    ).toHaveLength(1);
-    expect(
-      JSON.parse(
-        sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push') ??
-          'null',
-      ),
-    ).toEqual({
-      [identity]: { ...newerAttempt, status: 'PENDING' },
-    });
-    await wrapper.get('[data-test="retry-unknown-push"]').trigger('click');
+    await wrapper.get('[data-test="retry-unknown-lead"]').trigger('click');
     await flushPromises();
-    expect(api.pushLead.mock.calls[1]).toEqual([
-      newerAttempt.leadId,
-      newerAttempt.expectedVersion,
-      newerAttempt.idempotencyKey,
-    ]);
-    wrapper.unmount();
+    expect(api.pushLead).toHaveBeenCalledExactlyOnceWith(
+      summary.id,
+      1,
+      'original-read-recovery',
+    );
+    expect(readPendingLeadCommands()).toEqual({});
   });
-
-  it('opens one-row actions from a fresh detail and keeps page/status after push', async () => {
-    api.listLeads.mockResolvedValue({
-      ...result,
-      items: [summary],
-      page: 2,
-      total: 21,
-    });
-    api.getLead.mockResolvedValue({
-      ...summary,
-      capabilities: {
-        edit: true,
-        push: true,
-        withdrawApply: false,
-        evidenceDecide: false,
-        transferToNotary: false,
-        createEvidenceBatch: false,
-      },
-      evidenceDecision: null,
-      pendingWithdrawalApplication: null,
-      history: [],
-      notaryMatters: [],
-    });
-    api.pushLead.mockResolvedValue({
-      id: 'push-1',
-      businessNo: summary.businessNo,
-      status: 'WAITING_REVIEW',
-      version: 2,
-      pushedAt: '2026-10-15T00:00:00.000Z',
-      pushedByUserId: 'operator-1',
-      pushedByDisplayName: '运营人',
-    });
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const { router, wrapper } = await mountWithRoute(
-      '/leads?page=2&status=WAITING_PUSH',
+  it('uses an explicit next-node title, opens fresh detail, and never advances just by opening', async () => {
+    api.listLeads.mockResolvedValue({ ...result, items: [summary], total: 1 });
+    api.getLead.mockResolvedValue(detail());
+    const { wrapper, router } = await mountWithRoute('/leads');
+    expect(wrapper.get('[data-test="lead-quick-action"]').text()).toBe(
+      '推送给客户审核',
     );
     await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
     await flushPromises();
-    expect(api.getLead).toHaveBeenCalledWith(
-      'lead-1',
+    expect(api.getLead).toHaveBeenCalledExactlyOnceWith(
+      summary.id,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    const editUrl = new URL(
-      wrapper.get('[data-test="quick-edit-lead"]').attributes('href')!,
-      'https://internal.invalid',
+    expect(wrapper.find('[data-test="submit-lead-workflow"]').exists()).toBe(
+      true,
     );
-    expect(editUrl.searchParams.get('returnTo')).toBe(
+    expect(api.pushLead).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.path).toBe('/leads');
+    await wrapper.get('[data-test="close-drawer"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="lead-workflow-form"]').exists()).toBe(
+      false,
+    );
+  });
+  it('refreshes once after confirmed push and preserves page/filter while the row leaves the filter', async () => {
+    let settled = false;
+    api.listLeads.mockImplementation(async (page: number) => ({
+      ...result,
+      page,
+      items: settled ? [] : [summary],
+      total: 41,
+    }));
+    api.getLead.mockResolvedValue(detail());
+    api.pushLead.mockImplementation(async (id: string, version: number) => {
+      settled = true;
+      return pushResult(id, version);
+    });
+    const { wrapper, router } = await mountWithRoute(
       '/leads?page=2&status=WAITING_PUSH',
     );
-    await wrapper.get('[data-test="quick-push-lead"]').trigger('click');
+    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
+    await flushPromises();
+    const button = wrapper.get('[data-test="submit-lead-workflow"]');
+    await Promise.all([button.trigger('click'), button.trigger('click')]);
     await flushPromises();
     expect(api.pushLead).toHaveBeenCalledOnce();
-    expect(
-      sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push'),
-    ).toBeNull();
-    expect(router.currentRoute.value.fullPath).toBe(
-      '/leads?page=2&status=WAITING_PUSH',
-    );
+    expect(api.listLeads).toHaveBeenCalledTimes(2);
     expect(api.listLeads).toHaveBeenLastCalledWith(
       2,
       20,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      expect.any(Object),
       'WAITING_PUSH',
       'LIBRARY',
     );
-    wrapper.unmount();
+    expect(router.currentRoute.value.query).toEqual({
+      page: '2',
+      status: 'WAITING_PUSH',
+    });
+    expect(wrapper.find('[data-test="lead-row"]').exists()).toBe(false);
+  });
+  it('corrects an empty last page to the new last page while preserving the filter', async () => {
+    let settled = false;
+    api.listLeads.mockImplementation(async (page: number) => ({
+      ...result,
+      page,
+      items: settled ? [] : [summary],
+      total: settled ? 40 : 41,
+    }));
+    api.getLead.mockResolvedValue(detail());
+    api.pushLead.mockImplementation(async () => {
+      settled = true;
+      return pushResult(summary.id, 1);
+    });
+    const { wrapper, router } = await mountWithRoute(
+      '/leads?page=3&status=WAITING_PUSH',
+    );
+    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({
+      page: '2',
+      status: 'WAITING_PUSH',
+    });
+    expect(api.listLeads).toHaveBeenLastCalledWith(
+      2,
+      20,
+      expect.any(Object),
+      'WAITING_PUSH',
+      'LIBRARY',
+    );
+  });
+  it('restores unknown original request after refresh even if its row has left the filter', async () => {
+    api.listLeads.mockResolvedValue({ ...result, items: [summary], total: 1 });
+    api.getLead.mockResolvedValue(detail());
+    api.pushLead
+      .mockRejectedValueOnce(new ApiError('lost', 0, 'NETWORK_ERROR'))
+      .mockResolvedValueOnce(pushResult(summary.id, 1));
+    const first = await mountWithRoute('/leads?status=WAITING_PUSH');
+    await first.wrapper.get('[data-test="lead-quick-action"]').trigger('click');
+    await flushPromises();
+    await first.wrapper
+      .get('[data-test="submit-lead-workflow"]')
+      .trigger('click');
+    await flushPromises();
+    const frozen = readPendingLeadCommands();
+    expect(Object.values(frozen ?? {})).toHaveLength(1);
+    first.wrapper.unmount();
+    cleanups.pop();
+    api.listLeads.mockResolvedValue({ ...result, items: [], total: 0 });
+    api.getLead.mockResolvedValue(
+      detail({
+        status: 'WAITING_REVIEW',
+        version: 2,
+        capabilities: { ...detail().capabilities, push: false },
+      }),
+    );
+    const reopened = await mountWithRoute('/leads?status=WAITING_PUSH');
+    expect(
+      reopened.wrapper.find('[data-test="retry-unknown-lead"]').exists(),
+    ).toBe(true);
+    await reopened.wrapper
+      .get('[data-test="retry-unknown-lead"]')
+      .trigger('click');
+    await flushPromises();
+    expect(api.pushLead.mock.calls[1]).toEqual(api.pushLead.mock.calls[0]);
+    expect(readPendingLeadCommands()).toEqual({});
+  });
+  it('settles a late response only for its original identity without refreshing the new actor list', async () => {
+    let resolveA!: (value: LeadPushResult) => void;
+    api.listLeads.mockResolvedValue({ ...result, items: [summary], total: 1 });
+    api.getLead.mockResolvedValue(detail());
+    api.pushLead.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveA = resolve;
+        }),
+    );
+    const { wrapper, auth } = await mountWithRoute('/leads');
+    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
+    await flushPromises();
+    api.listLeads.mockResolvedValue({
+      ...result,
+      items: [{ ...summary, id: 'lead-B', businessNo: 'LD-B' }],
+      total: 1,
+    });
+    auth.session = {
+      ...auth.session!,
+      user: { ...auth.session!.user, id: 'operator-B' },
+      authorizationRevision: 2,
+    };
+    await flushPromises();
+    const readCount = api.listLeads.mock.calls.length;
+    expect(wrapper.text()).toContain('LD-B');
+    resolveA(pushResult(summary.id, 1));
+    await flushPromises();
+    expect(api.listLeads).toHaveBeenCalledTimes(readCount);
+    expect(wrapper.text()).toContain('LD-B');
+    expect(readPendingLeadCommands()).toEqual({});
+  });
+  it('rejects stale success when a newer stored command belongs to the same identity/target', async () => {
+    api.listLeads.mockResolvedValue({ ...result, items: [summary], total: 1 });
+    api.getLead.mockResolvedValue(detail());
+    api.pushLead.mockRejectedValueOnce(
+      new ApiError('lost', 0, 'NETWORK_ERROR'),
+    );
+    const { wrapper } = await mountWithRoute('/leads');
+    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
+    await flushPromises();
+    const original = Object.values(readPendingLeadCommands()!)[0]!;
+    sessionStorage.setItem(
+      'dev-cor:lead-workflow:pending',
+      JSON.stringify({
+        [original.identity]: { ...original, idempotencyKey: 'newer-key' },
+      }),
+    );
+    wrapper
+      .findComponent(LeadQuickActionsPanel)
+      .vm.$emit('succeeded', original);
+    await flushPromises();
+    expect(api.listLeads).toHaveBeenCalledOnce();
+    expect(wrapper.find('[data-test="retry-unknown-lead"]').exists()).toBe(
+      true,
+    );
+  });
+  it('keeps independent edit route and exact return query without a workflow command', async () => {
+    api.listLeads.mockResolvedValue({
+      ...result,
+      items: [summary],
+      total: 41,
+      page: 2,
+    });
+    api.getLead.mockResolvedValue(detail());
+    const { wrapper, router } = await mountWithRoute(
+      '/leads?page=2&status=WAITING_PUSH',
+    );
+    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
+    await flushPromises();
+    const edit = wrapper.get('[data-test="quick-edit-lead"]');
+    expect(
+      new URL(
+        edit.attributes('href')!,
+        'https://internal.invalid',
+      ).searchParams.get('returnTo'),
+    ).toBe('/leads?page=2&status=WAITING_PUSH');
+    await edit.trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/leads/lead-1/edit');
+    expect(api.pushLead).not.toHaveBeenCalled();
   });
 
   it.each(['user', 'department', 'revision'] as const)(

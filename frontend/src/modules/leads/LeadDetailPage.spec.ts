@@ -1,8 +1,9 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { createMemoryHistory, createRouter } from 'vue-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useAuthStore } from '../../stores/auth';
+import { defineComponent, h, type PropType } from 'vue';
 import { ApiError } from '../../api/http';
 import type { LeadDetail } from '../../api/leads';
 import LeadDetailPage from './LeadDetailPage.vue';
@@ -89,6 +90,31 @@ const lead = {
   externalSourceRef: null,
 } satisfies LeadDetail;
 
+const DrawerStub = defineComponent({
+  props: {
+    modelValue: Boolean,
+    beforeClose: Function as PropType<(done: () => void) => void>,
+  },
+  setup(props, { slots }) {
+    return () =>
+      props.modelValue
+        ? h('section', { role: 'dialog' }, [
+            h(
+              'button',
+              {
+                'data-test': 'close-drawer',
+                onClick: () => props.beforeClose?.(() => {}),
+              },
+              '关闭',
+            ),
+            slots.default?.(),
+            slots.footer?.(),
+          ])
+        : null;
+  },
+});
+
+const cleanups: Array<() => void> = [];
 async function mountPage() {
   const pinia = createPinia();
   setActivePinia(pinia);
@@ -113,15 +139,20 @@ async function mountPage() {
   });
   await router.push('/leads/lead-1');
   await router.isReady();
-  const wrapper = mount(LeadDetailPage, {
-    global: { plugins: [pinia, router] },
-  });
+  const wrapper = mount(
+    { components: { RouterView }, template: '<RouterView />' },
+    {
+      global: { plugins: [pinia, router], stubs: { ElDrawer: DrawerStub } },
+    },
+  );
+  cleanups.push(() => wrapper.unmount());
   await flushPromises();
   return wrapper;
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
+  sessionStorage.clear();
   leadApi.getLead.mockResolvedValue(lead);
   notaryApi.listNotaryOffices.mockResolvedValue({
     items: [{ id: 'office-1', name: '广州市南方公证处', status: 'ACTIVE' }],
@@ -174,7 +205,76 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  for (const cleanup of cleanups.splice(0)) cleanup();
+  vi.restoreAllMocks();
+  sessionStorage.clear();
+});
+const waiting: LeadDetail = {
+  ...lead,
+  status: 'WAITING_EVIDENCE_DECISION',
+  version: 3,
+  capabilities: {
+    ...lead.capabilities,
+    edit: false,
+    push: false,
+    evidenceDecide: true,
+    transferToNotary: true,
+  },
+};
+async function openTransfer(wrapper: Awaited<ReturnType<typeof mountPage>>) {
+  await wrapper.get('[data-test="open-lead-workflow"]').trigger('click');
+  await flushPromises();
+  await wrapper.get('[data-test="choose-transfer"]').setValue();
+  await wrapper.get('[data-test="select-product-p"]').setValue(true);
+  await wrapper.get('[data-test="select-evidence-version-1"]').setValue(true);
+  await wrapper.get('[data-test="notary-office"]').setValue('office-1');
+  await wrapper.get('[data-test="batch-purpose"]').setValue('首批线上取证');
+}
 describe('LeadDetailPage', () => {
+  it('reopens a pending push after the server advanced and the drawer fresh read failed', async () => {
+    const identity = 'operator-1:INTERNAL:department-1:1';
+    sessionStorage.setItem(
+      'dev-cor:lead-workflow:pending',
+      JSON.stringify({
+        [identity]: {
+          identity,
+          leadId: lead.id,
+          expectedVersion: 1,
+          idempotencyKey: 'detail-original-recovery',
+          action: 'push',
+          body: { expectedVersion: 1 },
+        },
+      }),
+    );
+    const current: LeadDetail = {
+      ...lead,
+      status: 'WAITING_REVIEW',
+      version: 2,
+      capabilities: { ...lead.capabilities, push: false, edit: false },
+    };
+    leadApi.getLead
+      .mockResolvedValueOnce(current)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue(current);
+    const wrapper = await mountPage();
+    expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('资料加载失败');
+    await wrapper.get('[data-test="close-drawer"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="reopen-pending-lead"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="retry-unknown-lead"]').trigger('click');
+    await flushPromises();
+    expect(leadApi.pushLead).toHaveBeenCalledExactlyOnceWith(
+      lead.id,
+      1,
+      'detail-original-recovery',
+    );
+    expect(wrapper.find('[data-test="reopen-pending-lead"]').exists()).toBe(
+      false,
+    );
+  });
   it.each(['user', 'department', 'revision'] as const)(
     'clears sensitive detail and ignores late reads after %s changes',
     async (change) => {
@@ -217,45 +317,6 @@ describe('LeadDetailPage', () => {
     },
   );
 
-  it('aborts downloads and hides a late command success after identity change', async () => {
-    let resolvePush!: () => void;
-    let rejectDownload!: (error: Error) => void;
-    leadApi.pushLead.mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          resolvePush = resolve;
-        }),
-    );
-    materialApi.downloadMaterialVersion.mockImplementationOnce(
-      () =>
-        new Promise<void>((_resolve, reject) => {
-          rejectDownload = reject;
-        }),
-    );
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const wrapper = await mountPage();
-    await wrapper
-      .get('[data-test="download-screenshot-version-1"]')
-      .trigger('click');
-    const downloadSignal = materialApi.downloadMaterialVersion.mock
-      .calls[0]![2] as AbortSignal;
-    await wrapper.get('[data-test="push-lead"]').trigger('click');
-    leadApi.getLead.mockRejectedValueOnce(
-      new ApiError('forbidden', 403, 'ACTION_FORBIDDEN'),
-    );
-    const auth = useAuthStore();
-    auth.session = { ...auth.session!, authorizationRevision: 2 };
-    await flushPromises();
-    expect(downloadSignal.aborted).toBe(true);
-    resolvePush();
-    rejectDownload(new Error('late error'));
-    await flushPromises();
-    expect(wrapper.text()).not.toContain('已推送给客户审核');
-    expect(wrapper.text()).not.toContain('截图下载失败');
-    expect(leadApi.getLead).toHaveBeenCalledTimes(2);
-    wrapper.unmount();
-  });
-
   it('reloads a reused detail route without keeping the prior source', async () => {
     const wrapper = await mountPage();
     leadApi.getLead.mockResolvedValueOnce({
@@ -273,136 +334,6 @@ describe('LeadDetailPage', () => {
     expect(wrapper.text()).not.toContain('测试店铺');
     wrapper.unmount();
   });
-  it.each([403, 404])(
-    'creates the exact first matter, keeps its receipt through read failures, and clears it on %s',
-    async (lostAccessStatus) => {
-      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-      leadApi.getLead.mockResolvedValue({
-        ...lead,
-        status: 'WAITING_EVIDENCE_DECISION',
-        version: 3,
-        capabilities: {
-          ...lead.capabilities,
-          edit: false,
-          push: false,
-          evidenceDecide: true,
-          transferToNotary: true,
-        },
-        reviewDecision: {
-          result: 'INFRINGEMENT',
-          reviewerDisplayName: '企业审核员',
-          decidedAt: '2026-09-22T03:00:00Z',
-        },
-      });
-      const transferred = {
-        ...lead,
-        status: 'TRANSFERRED_TO_NOTARY',
-        version: 4,
-        capabilities: { ...lead.capabilities, transferToNotary: false },
-        notaryMatters: [
-          {
-            id: 'matter-1',
-            businessNo: 'NT-20260924-001',
-            stage: 'PENDING_EVIDENCE',
-            notaryOfficeName: '广州市南方公证处',
-            batchPurpose: '首批线上取证',
-            createdAt: '2026-09-24T01:00:00.000Z',
-          },
-          {
-            id: 'different-matter',
-            businessNo: 'NT-OTHER',
-            stage: 'PENDING_EVIDENCE',
-            notaryOfficeName: '另一公证处',
-            batchPurpose: '另一批次',
-            createdAt: '2026-09-24T02:00:00.000Z',
-          },
-        ],
-      };
-      leadApi.getLead
-        .mockReset()
-        .mockResolvedValueOnce({
-          ...lead,
-          status: 'WAITING_EVIDENCE_DECISION',
-          version: 3,
-          capabilities: {
-            ...lead.capabilities,
-            edit: false,
-            push: false,
-            evidenceDecide: true,
-            transferToNotary: true,
-          },
-          reviewDecision: {
-            result: 'INFRINGEMENT',
-            reviewerDisplayName: '企业审核员',
-            decidedAt: '2026-09-22T03:00:00Z',
-          },
-        })
-        .mockResolvedValueOnce(transferred);
-      const wrapper = await mountPage();
-      expect(wrapper.text()).toContain(
-        '确认侵权后，选择本次交给公证处的商品和截图',
-      );
-      await wrapper.get('[data-test="select-product-p"]').setValue(true);
-      await wrapper
-        .get('[data-test="select-evidence-version-1"]')
-        .setValue(true);
-      await wrapper.get('[data-test="notary-office"]').setValue('office-1');
-      await wrapper.get('[data-test="batch-purpose"]').setValue('首批线上取证');
-      await wrapper.get('[data-test="transfer-to-notary"]').trigger('click');
-      await flushPromises();
-      expect(confirm).toHaveBeenCalled();
-      expect(notaryApi.createNotaryMatter).toHaveBeenCalledWith(
-        'lead-1',
-        {
-          selectedProductIds: ['p'],
-          selectedContentVersionIds: ['version-1'],
-          notaryOfficeId: 'office-1',
-          evidenceMode: 'ONLINE_PURCHASE',
-          batchPurpose: '首批线上取证',
-          expectedVersion: 3,
-        },
-        expect.any(String),
-      );
-      expect(wrapper.text()).toContain('已移交公证');
-      expect(
-        wrapper.get('[data-test="handoff-matter-link"]').attributes('href'),
-      ).toBe('/notary-matters/matter-1');
-      expect(wrapper.get('[data-test="handoff-matter-link"]').text()).toContain(
-        'NT-20260924-001',
-      );
-      expect(
-        wrapper.get('[data-test="matter-link-matter-1"]').attributes('href'),
-      ).toBe('/notary-matters/matter-1');
-      leadApi.getLead.mockResolvedValue({ ...transferred, notaryMatters: [] });
-      await wrapper.get('[data-test="refresh"]').trigger('click');
-      await flushPromises();
-      expect(wrapper.find('[data-test="handoff-matter-link"]').exists()).toBe(
-        true,
-      );
-      leadApi.getLead.mockRejectedValue(
-        new ApiError('暂时不可用', 503, 'INTERNAL_ERROR'),
-      );
-      await wrapper.get('[data-test="refresh"]').trigger('click');
-      await flushPromises();
-      expect(
-        wrapper.get('[data-test="handoff-matter-link"]').attributes('href'),
-      ).toBe('/notary-matters/matter-1');
-      expect(wrapper.text()).toContain('线索详情暂时无法加载');
-      leadApi.getLead.mockRejectedValue(
-        new ApiError(
-          'unavailable',
-          lostAccessStatus,
-          lostAccessStatus === 404 ? 'RESOURCE_NOT_FOUND' : 'ACTION_FORBIDDEN',
-        ),
-      );
-      await wrapper.get('[data-test="refresh"]').trigger('click');
-      await flushPromises();
-      expect(wrapper.find('[data-test="handoff-matter-link"]').exists()).toBe(
-        false,
-      );
-      confirm.mockRestore();
-    },
-  );
 
   it('assigns waiting review to the client without an internal confirmation action', async () => {
     leadApi.getLead.mockResolvedValue({
@@ -421,342 +352,6 @@ describe('LeadDetailPage', () => {
       false,
     );
     expect(notaryApi.createNotaryMatter).not.toHaveBeenCalled();
-  });
-
-  it('lets a department office manager add and select a notary office in the workflow', async () => {
-    leadApi.getLead.mockResolvedValue({
-      ...lead,
-      status: 'WAITING_EVIDENCE_DECISION',
-      capabilities: {
-        ...lead.capabilities,
-        edit: false,
-        push: false,
-        evidenceDecide: true,
-        transferToNotary: true,
-      },
-      reviewDecision: {
-        result: 'INFRINGEMENT',
-        reviewerDisplayName: '企业审核员',
-        decidedAt: '2026-09-22T03:00:00Z',
-      },
-    });
-    notaryApi.listNotaryOffices.mockResolvedValue({
-      items: [],
-      capabilities: { create: true },
-    });
-    notaryApi.createNotaryOffice.mockResolvedValue({
-      id: 'office-new',
-      name: '新公证处',
-      status: 'ACTIVE',
-    });
-    const wrapper = await mountPage();
-    await wrapper
-      .get('[data-test="new-notary-office-name"]')
-      .setValue(' 新公证处 ');
-    await wrapper.get('[data-test="create-notary-office"]').trigger('click');
-    await flushPromises();
-    expect(notaryApi.createNotaryOffice).toHaveBeenCalledWith('新公证处');
-    expect(
-      (wrapper.get('[data-test="notary-office"]').element as HTMLSelectElement)
-        .value,
-    ).toBe('office-new');
-  });
-
-  it('freezes the full request and idempotency key after an uncertain failure', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const eligible = {
-      ...lead,
-      status: 'WAITING_EVIDENCE_DECISION',
-      version: 3,
-      capabilities: {
-        ...lead.capabilities,
-        edit: false,
-        push: false,
-        evidenceDecide: true,
-        transferToNotary: true,
-      },
-      reviewDecision: {
-        result: 'INFRINGEMENT',
-        reviewerDisplayName: '企业审核员',
-        decidedAt: '2026-09-22T03:00:00Z',
-      },
-    };
-    leadApi.getLead.mockResolvedValue(eligible);
-    notaryApi.createNotaryMatter
-      .mockRejectedValueOnce(
-        new ApiError('server error', 500, 'INTERNAL_SERVER_ERROR'),
-      )
-      .mockResolvedValueOnce({ id: 'matter-1' });
-    const wrapper = await mountPage();
-    await wrapper.get('[data-test="select-product-p"]').setValue(true);
-    await wrapper.get('[data-test="notary-office"]').setValue('office-1');
-    await wrapper.get('[data-test="batch-purpose"]').setValue('首批线上取证');
-    await wrapper.get('[data-test="transfer-to-notary"]').trigger('click');
-    await flushPromises();
-    expect(wrapper.text()).toContain('选择和请求键已锁定');
-    expect(
-      wrapper.get('[data-test="batch-purpose"]').attributes('disabled'),
-    ).toBeDefined();
-    await wrapper.get('[data-test="transfer-to-notary"]').trigger('click');
-    await flushPromises();
-    expect(notaryApi.createNotaryMatter).toHaveBeenCalledTimes(2);
-    const first = notaryApi.createNotaryMatter.mock.calls[0];
-    const second = notaryApi.createNotaryMatter.mock.calls[1];
-    expect(second).toEqual(first);
-  });
-
-  it('archives a waiting evidence decision with a required reason and shows its immutable record', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const waiting = {
-      ...lead,
-      status: 'WAITING_EVIDENCE_DECISION',
-      version: 3,
-      capabilities: {
-        edit: false,
-        push: false,
-        withdrawApply: false,
-        evidenceDecide: true,
-      },
-      evidenceDecision: null,
-      reviewDecision: {
-        result: 'INFRINGEMENT',
-        reviewerDisplayName: '企业审核员',
-        decidedAt: '2026-09-22T03:00:00Z',
-      },
-    };
-    const archived = {
-      ...waiting,
-      status: 'ARCHIVED',
-      version: 4,
-      capabilities: { ...waiting.capabilities, evidenceDecide: false },
-      evidenceDecision: {
-        result: 'NO_EVIDENCE',
-        reason: '现阶段不取证',
-        decidedAt: '2026-09-22T04:00:00Z',
-        decidedByDisplayName: '运营甲',
-        archiveType: 'NO_EVIDENCE',
-        archivedAt: '2026-09-22T04:00:00Z',
-      },
-    };
-    leadApi.getLead
-      .mockReset()
-      .mockResolvedValueOnce(waiting)
-      .mockResolvedValueOnce(archived);
-    leadApi.decideLeadNoEvidence.mockResolvedValue({ status: 'ARCHIVED' });
-    const wrapper = await mountPage();
-    expect(wrapper.text()).toContain('提交后线索将立即归档');
-    expect(
-      wrapper
-        .get('[data-test="archive-no-evidence"]')
-        .attributes('aria-disabled'),
-    ).toBe('true');
-    await wrapper
-      .get('[data-test="no-evidence-reason"]')
-      .setValue('  现阶段不取证  ');
-    await wrapper.get('[data-test="archive-no-evidence"]').trigger('click');
-    await flushPromises();
-    expect(confirm).toHaveBeenCalled();
-    expect(leadApi.decideLeadNoEvidence).toHaveBeenCalledWith(
-      'lead-1',
-      '现阶段不取证',
-      3,
-      expect.any(String),
-    );
-    expect(
-      wrapper.get('[data-test="evidence-decision-record"]').text(),
-    ).toContain('运营甲');
-    expect(
-      wrapper.get('[data-test="evidence-decision-record"]').text(),
-    ).toContain('现阶段不取证');
-    expect(wrapper.text()).toContain('已判定不取证，线索已归档');
-    confirm.mockRestore();
-  });
-
-  it('keeps the entered reason after a version conflict', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    leadApi.getLead.mockResolvedValue({
-      ...lead,
-      status: 'WAITING_EVIDENCE_DECISION',
-      version: 3,
-      evidenceDecision: null,
-      reviewDecision: {
-        result: 'INFRINGEMENT',
-        reviewerDisplayName: '企业审核员',
-        decidedAt: '2026-09-22T03:00:00Z',
-      },
-      capabilities: {
-        edit: false,
-        push: false,
-        withdrawApply: false,
-        evidenceDecide: true,
-      },
-    });
-    leadApi.decideLeadNoEvidence.mockRejectedValue(
-      new ApiError('conflict', 409, 'VERSION_CONFLICT'),
-    );
-    const wrapper = await mountPage();
-    const reason = '版本变化时仍保留这段原因';
-    await wrapper.get('[data-test="no-evidence-reason"]').setValue(reason);
-    await wrapper.get('[data-test="archive-no-evidence"]').trigger('click');
-    await flushPromises();
-    expect(wrapper.text()).toContain('线索状态已变化，请刷新查看最新结果');
-    expect(
-      (
-        wrapper.get('[data-test="no-evidence-reason"]')
-          .element as HTMLTextAreaElement
-      ).value,
-    ).toBe(reason);
-    expect(
-      wrapper
-        .get('[data-test="archive-no-evidence"]')
-        .attributes('aria-disabled'),
-    ).toBe('false');
-    confirm.mockRestore();
-  });
-  it('shows a required withdrawal reason only when allowed and explains confirmation', async () => {
-    leadApi.getLead.mockResolvedValueOnce({
-      ...lead,
-      status: 'ARCHIVED',
-      version: 4,
-      reviewDecision: {
-        result: 'NO_INFRINGEMENT',
-        reason: '旧结论',
-        reviewerDisplayName: '客户审核员',
-        decidedAt: '2026-09-22T03:00:00.000Z',
-        archiveType: 'NO_INFRINGEMENT',
-        archivedAt: '2026-09-22T03:00:00.000Z',
-      },
-      capabilities: { edit: false, push: false, withdrawApply: true },
-      pendingWithdrawalApplication: null,
-      history: [],
-    });
-    const wrapper = await mountPage();
-    expect(wrapper.text()).toContain('申请撤回归档');
-    expect(wrapper.text()).toContain('仍保持归档');
-    expect(wrapper.text()).toContain('原客户企业确认');
-    expect(wrapper.text()).toContain('必填');
-    expect(wrapper.find('[data-test="apply-withdrawal"]').exists()).toBe(true);
-  });
-
-  it('submits a withdrawal application then reloads the retained history', async () => {
-    const archived = {
-      ...lead,
-      status: 'ARCHIVED',
-      version: 4,
-      reviewDecision: {
-        result: 'NO_INFRINGEMENT',
-        reason: '旧结论',
-        reviewerDisplayName: '客户审核员',
-        decidedAt: '2026-09-22T03:00:00.000Z',
-        archiveType: 'NO_INFRINGEMENT',
-        archivedAt: '2026-09-22T03:00:00.000Z',
-      },
-      capabilities: { edit: false, push: false, withdrawApply: true },
-      pendingWithdrawalApplication: null,
-      history: [],
-    };
-    const pending = {
-      ...archived,
-      version: 5,
-      capabilities: { ...archived.capabilities, withdrawApply: false },
-      pendingWithdrawalApplication: {
-        id: 'application-1',
-        reason: '补充证据',
-        applicantDisplayName: '运营甲',
-        appliedAt: '2026-09-23T01:00:00.000Z',
-      },
-      history: [
-        {
-          kind: 'WITHDRAWAL_APPLICATION',
-          id: 'application-1',
-          fromVersion: 4,
-          toVersion: 5,
-          occurredAt: '2026-09-23T01:00:00.000Z',
-          reason: '补充证据',
-          applicantDisplayName: '运营甲',
-        },
-      ],
-    };
-    leadApi.getLead
-      .mockReset()
-      .mockResolvedValueOnce(archived)
-      .mockResolvedValueOnce(pending);
-    leadApi.applyLeadWithdrawal.mockResolvedValue({ version: 5 });
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const wrapper = await mountPage();
-    await wrapper.get('[data-test="withdrawal-reason"]').setValue('补充证据');
-    await wrapper.get('[data-test="apply-withdrawal"]').trigger('click');
-    await flushPromises();
-    expect(leadApi.applyLeadWithdrawal).toHaveBeenCalledWith(
-      'lead-1',
-      '补充证据',
-      4,
-      expect.any(String),
-    );
-    expect(wrapper.get('[data-test="withdrawal-history"]').text()).toContain(
-      '运营甲',
-    );
-    expect(wrapper.get('[data-test="withdrawal-history"]').text()).toContain(
-      '补充证据',
-    );
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('仍保持归档'));
-    confirm.mockRestore();
-  });
-
-  it('retries an unknown application with the same frozen reason and key', async () => {
-    const archived = {
-      ...lead,
-      status: 'ARCHIVED',
-      version: 4,
-      reviewDecision: {
-        result: 'NO_INFRINGEMENT',
-        reason: '旧结论',
-        reviewerDisplayName: '客户审核员',
-        decidedAt: '2026-09-22T03:00:00.000Z',
-        archiveType: 'NO_INFRINGEMENT',
-        archivedAt: '2026-09-22T03:00:00.000Z',
-      },
-      capabilities: { edit: false, push: false, withdrawApply: true },
-      pendingWithdrawalApplication: null,
-      history: [],
-    };
-    leadApi.getLead
-      .mockReset()
-      .mockResolvedValueOnce(archived)
-      .mockResolvedValue({ ...archived, version: 5 });
-    leadApi.applyLeadWithdrawal
-      .mockRejectedValueOnce(new ApiError('unknown', 0, 'NETWORK_ERROR'))
-      .mockRejectedValueOnce(new ApiError('unknown', 0, 'NETWORK_ERROR'));
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const wrapper = await mountPage();
-    const reason = wrapper.get('[data-test="withdrawal-reason"]');
-    await reason.setValue('原因甲');
-    await wrapper.get('[data-test="apply-withdrawal"]').trigger('click');
-    await flushPromises();
-    const first = leadApi.applyLeadWithdrawal.mock.calls[0];
-    await wrapper.get('[data-test="refresh"]').trigger('click');
-    await flushPromises();
-    await reason.setValue('修改原因');
-    await wrapper.get('[data-test="apply-withdrawal"]').trigger('click');
-    await flushPromises();
-    expect(leadApi.applyLeadWithdrawal.mock.calls[1]?.slice(1)).toEqual(
-      first?.slice(1),
-    );
-    expect(wrapper.text()).toContain('结果暂时未知');
-    confirm.mockRestore();
-  });
-
-  it('requires confirmation before pushing and does nothing when cancelled', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    const wrapper = await mountPage();
-
-    await wrapper.get('[data-test="push-lead"]').trigger('click');
-
-    expect(confirm).toHaveBeenCalledWith(
-      expect.stringContaining('状态将变为“线索待审核”'),
-    );
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('客户甲'));
-    expect(leadApi.pushLead).not.toHaveBeenCalled();
   });
 
   it('uses the Demo detail grid, product table and attachment section', async () => {
@@ -885,7 +480,7 @@ describe('LeadDetailPage', () => {
     const wrapper = await mountPage();
     expect(wrapper.find('[data-test="edit-lead"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
-    expect(wrapper.find('[data-test="transfer-to-notary"]').exists()).toBe(
+    expect(wrapper.find('[data-test="open-lead-workflow"]').exists()).toBe(
       true,
     );
     const table = wrapper.get('[data-test="lead-products-table"]');
@@ -928,36 +523,6 @@ describe('LeadDetailPage', () => {
     await flushPromises();
     expect(materialApi.listOwnerMaterials).not.toHaveBeenCalled();
     expect(notaryApi.listNotaryOffices).not.toHaveBeenCalled();
-  });
-
-  it('pushes once with the current version, shows success and reloads', async () => {
-    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'push-uuid') });
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const wrapper = await mountPage();
-    await wrapper.get('[data-test="push-lead"]').trigger('click');
-    await flushPromises();
-
-    expect(leadApi.pushLead).toHaveBeenCalledWith('lead-1', 1, 'push-uuid');
-    expect(leadApi.getLead).toHaveBeenCalledTimes(2);
-    expect(wrapper.get('[data-test="push-success"]').text()).toContain(
-      '已推送给客户审核',
-    );
-  });
-
-  it('maps a stable push failure without hiding the loaded detail', async () => {
-    const { ApiError } = await import('../../api/http');
-    leadApi.pushLead.mockRejectedValue(
-      new ApiError('客户账号不可用', 409, 'CLIENT_ACCOUNT_UNAVAILABLE'),
-    );
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const wrapper = await mountPage();
-    await wrapper.get('[data-test="push-lead"]').trigger('click');
-    await flushPromises();
-
-    expect(wrapper.get('[data-test="push-error"]').text()).toContain(
-      '客户账号不可用',
-    );
-    expect(wrapper.text()).toContain('测试店铺');
   });
 
   it('shows a human operator name in the push record', async () => {
@@ -1083,5 +648,240 @@ describe('LeadDetailPage', () => {
     expect(
       wrapper.find('[data-test="download-screenshot-version-b"]').exists(),
     ).toBe(true);
+  });
+  it('reuses the exact transfer form and shows only its verified receipt, clearing a stale direct link on refresh', async () => {
+    leadApi.getLead.mockResolvedValue(waiting);
+    const transferred: LeadDetail = {
+      ...waiting,
+      status: 'TRANSFERRED_TO_NOTARY',
+      version: 4,
+      capabilities: {
+        ...waiting.capabilities,
+        transferToNotary: false,
+        evidenceDecide: false,
+      },
+      notaryMatters: [
+        {
+          id: 'matter-1',
+          businessNo: 'NT-20260924-001',
+          stage: 'PENDING_EVIDENCE',
+          notaryOfficeName: '公证处',
+          batchPurpose: '首批线上取证',
+          createdAt: '2026-10-15T00:00:00Z',
+        },
+      ],
+    };
+    notaryApi.createNotaryMatter.mockImplementationOnce(async () => {
+      leadApi.getLead.mockResolvedValue(transferred);
+      return { id: 'matter-1', businessNo: 'NT-20260924-001' };
+    });
+    const wrapper = await mountPage();
+    await openTransfer(wrapper);
+    await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
+    await flushPromises();
+    expect(notaryApi.createNotaryMatter).toHaveBeenCalledExactlyOnceWith(
+      lead.id,
+      {
+        selectedProductIds: ['p'],
+        selectedContentVersionIds: ['version-1'],
+        notaryOfficeId: 'office-1',
+        evidenceMode: 'ONLINE_PURCHASE',
+        batchPurpose: '首批线上取证',
+        expectedVersion: 3,
+      },
+      expect.any(String),
+    );
+    expect(
+      wrapper.get('[data-test="handoff-matter-link"]').attributes('href'),
+    ).toBe('/notary-matters/matter-1');
+    leadApi.getLead.mockResolvedValue({ ...transferred, notaryMatters: [] });
+    await wrapper.get('[data-test="refresh"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="handoff-matter-link"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="matter-link-matter-1"]').exists()).toBe(
+      false,
+    );
+  });
+  it.each([503, 403, 404])(
+    'does not retain a receipt link when formal read returns %s',
+    async (status) => {
+      leadApi.getLead.mockResolvedValue(waiting);
+      notaryApi.createNotaryMatter.mockImplementationOnce(async () => {
+        leadApi.getLead.mockRejectedValue(
+          new ApiError(
+            'unavailable',
+            status,
+            status === 404 ? 'RESOURCE_NOT_FOUND' : 'ACTION_FORBIDDEN',
+          ),
+        );
+        return { id: 'matter-1', businessNo: 'NT-1' };
+      });
+      const wrapper = await mountPage();
+      await openTransfer(wrapper);
+      await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[data-test="handoff-matter-link"]').exists()).toBe(
+        false,
+      );
+      expect(wrapper.find('[data-test="lead-workflow-form"]').exists()).toBe(
+        false,
+      );
+    },
+  );
+  it('reuses no-evidence form and reloads the real immutable decision instead of guessing the new stage', async () => {
+    leadApi.getLead.mockResolvedValue(waiting);
+    leadApi.decideLeadNoEvidence.mockImplementationOnce(async () => {
+      leadApi.getLead.mockResolvedValue({
+        ...waiting,
+        status: 'ARCHIVED',
+        version: 4,
+        capabilities: {
+          ...waiting.capabilities,
+          evidenceDecide: false,
+          transferToNotary: false,
+        },
+        evidenceDecision: {
+          result: 'NO_EVIDENCE',
+          reason: '现阶段不取证',
+          decidedAt: '2026-10-15T00:00:00Z',
+          decidedByDisplayName: '运营甲',
+          archiveType: 'NO_EVIDENCE',
+          archivedAt: '2026-10-15T00:00:00Z',
+        },
+      });
+      return { status: 'ARCHIVED' };
+    });
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="open-lead-workflow"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="choose-no-evidence"]').setValue();
+    await wrapper
+      .get('[data-test="no-evidence-reason"]')
+      .setValue('  现阶段不取证  ');
+    await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
+    await flushPromises();
+    expect(leadApi.decideLeadNoEvidence).toHaveBeenCalledExactlyOnceWith(
+      lead.id,
+      '现阶段不取证',
+      3,
+      expect.any(String),
+    );
+    const record = wrapper.get('[data-test="evidence-decision-record"]');
+    expect(record.text()).toContain('现阶段不取证');
+    expect(record.text()).toContain('运营甲');
+    expect(wrapper.find('[data-test="lead-workflow-form"]').exists()).toBe(
+      false,
+    );
+  });
+  it('reuses withdrawal form and retains archived status plus the returned pending application', async () => {
+    const archived: LeadDetail = {
+      ...lead,
+      status: 'ARCHIVED',
+      capabilities: {
+        ...lead.capabilities,
+        edit: false,
+        push: false,
+        withdrawApply: true,
+      },
+    };
+    leadApi.getLead.mockResolvedValue(archived);
+    leadApi.applyLeadWithdrawal.mockImplementationOnce(async () => {
+      leadApi.getLead.mockResolvedValue({
+        ...archived,
+        version: 2,
+        capabilities: { ...archived.capabilities, withdrawApply: false },
+        pendingWithdrawalApplication: {
+          id: 'application-1',
+          reason: '客户结论误录',
+          appliedAt: '2026-10-15T00:00:00Z',
+          applicantDisplayName: '运营甲',
+        },
+      });
+      return { status: 'ARCHIVED' };
+    });
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="open-lead-workflow"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('只有原客户企业确认后才回到待审核');
+    await wrapper
+      .get('[data-test="withdrawal-reason"]')
+      .setValue('客户结论误录');
+    await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
+    await flushPromises();
+    expect(leadApi.applyLeadWithdrawal).toHaveBeenCalledExactlyOnceWith(
+      lead.id,
+      '客户结论误录',
+      1,
+      expect.any(String),
+    );
+    expect(wrapper.get('[data-test="withdrawal-pending"]').text()).toContain(
+      '线索仍保持归档',
+    );
+  });
+  it('cancels a push drawer without a command and uses the shared form for a confirmed push', async () => {
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="push-lead"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="close-drawer"]').trigger('click');
+    await flushPromises();
+    expect(leadApi.pushLead).not.toHaveBeenCalled();
+    await wrapper.get('[data-test="push-lead"]').trigger('click');
+    await flushPromises();
+    leadApi.pushLead.mockImplementationOnce(async () => {
+      leadApi.getLead.mockResolvedValue({
+        ...lead,
+        version: 2,
+        status: 'WAITING_REVIEW',
+        capabilities: { ...lead.capabilities, push: false, edit: false },
+      });
+      return { id: 'receipt' };
+    });
+    await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
+    await flushPromises();
+    expect(leadApi.pushLead).toHaveBeenCalledExactlyOnceWith(
+      lead.id,
+      1,
+      expect.any(String),
+    );
+    expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
+  });
+  it('aborts downloads and hides late shared-form success after identity change', async () => {
+    let resolvePush!: () => void, rejectDownload!: (error: Error) => void;
+    leadApi.pushLead.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePush = resolve;
+        }),
+    );
+    materialApi.downloadMaterialVersion.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectDownload = reject;
+        }),
+    );
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="download-screenshot-version-1"]')
+      .trigger('click');
+    const signal = materialApi.downloadMaterialVersion.mock
+      .calls[0]![2] as AbortSignal;
+    await wrapper.get('[data-test="push-lead"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
+    await flushPromises();
+    leadApi.getLead.mockRejectedValue(
+      new ApiError('denied', 403, 'ACTION_FORBIDDEN'),
+    );
+    const auth = useAuthStore();
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    resolvePush();
+    rejectDownload(new Error('late'));
+    await flushPromises();
+    expect(signal.aborted).toBe(true);
+    expect(wrapper.text()).not.toContain('截图下载失败');
+    expect(wrapper.find('[data-test="handoff-success"]').exists()).toBe(false);
   });
 });

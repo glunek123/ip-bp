@@ -11,6 +11,10 @@ import {
 import { summarizeLeadProducts } from './lead-display';
 import { useAuthStore } from '../../stores/auth';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
+import {
+  readPendingLeadCommands,
+  sameLeadAttempt,
+} from './LeadListWorkflowPanel.vue';
 import LeadQuickActionsPanel, {
   type FrozenLeadPush,
 } from './LeadQuickActionsPanel.vue';
@@ -36,97 +40,57 @@ const currentPage = ref(1);
 const pageSize = ref(20);
 const canCreate = ref(false);
 let request: AbortController | undefined;
-const pendingStorageKey = 'dev-cor:lead-quick-actions:pending-push';
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-function readPendingPushes(): Record<string, FrozenLeadPush> | null {
-  try {
-    const raw = globalThis.sessionStorage?.getItem(pendingStorageKey);
-    if (!raw) return {};
-    const value: unknown = JSON.parse(raw);
-    if (!isRecord(value)) return null;
-    const pending: Record<string, FrozenLeadPush> = {};
-    for (const [identityKey, candidate] of Object.entries(value)) {
-      if (
-        !isRecord(candidate) ||
-        candidate.identity !== identityKey ||
-        typeof candidate.leadId !== 'string' ||
-        typeof candidate.expectedVersion !== 'number' ||
-        !Number.isInteger(candidate.expectedVersion) ||
-        typeof candidate.idempotencyKey !== 'string' ||
-        (candidate.status !== 'PENDING' && candidate.status !== 'SETTLED')
-      )
-        return null;
-      if (candidate.status === 'PENDING') {
-        pending[identityKey] = {
-          leadId: candidate.leadId,
-          expectedVersion: candidate.expectedVersion,
-          idempotencyKey: candidate.idempotencyKey,
-          identity: identityKey,
-        };
-      }
-    }
-    return pending;
-  } catch {
-    return null;
-  }
-}
-const initialPendingPushes = readPendingPushes();
-const pendingStorageUnavailable = ref(initialPendingPushes === null);
-const pendingPushes = ref<Record<string, FrozenLeadPush>>(
-  initialPendingPushes ?? {},
+const pendingPushes = ref(readPendingLeadCommands());
+const pendingStorageUnavailable = computed(() => pendingPushes.value === null);
+const pendingPush = computed(
+  () => pendingPushes.value?.[identity.value] ?? null,
 );
-const pendingPush = computed(() => pendingPushes.value[identity.value] ?? null);
 const activeLeadId = ref<string | null>(pendingPush.value?.leadId ?? null);
-function savePendingPush(
-  identityKey: string,
-  value: FrozenLeadPush | null,
-  settledAttempt?: FrozenLeadPush,
-): void {
-  const next = { ...pendingPushes.value };
-  if (value) {
-    if (value.identity !== identityKey) return;
-    next[identityKey] = value;
-  } else {
-    const current = next[identityKey];
-    if (
-      !settledAttempt ||
-      settledAttempt.identity !== identityKey ||
-      !current ||
-      !sameFrozenAttempt(current, settledAttempt)
-    )
-      return;
-    delete next[identityKey];
+const activeTitle = ref('线索下一步');
+function actionTitle(status: LeadStatus): string | null {
+  switch (status) {
+    case 'WAITING_PUSH':
+      return '推送给客户审核';
+    case 'WAITING_EVIDENCE_DECISION':
+      return '确认取证安排';
+    case 'ARCHIVED':
+      return '申请撤回归档';
+    default:
+      return null;
   }
-  pendingPushes.value = next;
 }
-
-function sameFrozenAttempt(
-  left: FrozenLeadPush,
-  right: FrozenLeadPush,
-): boolean {
-  return (
-    left.identity === right.identity &&
-    left.leadId === right.leadId &&
-    left.expectedVersion === right.expectedVersion &&
-    left.idempotencyKey === right.idempotencyKey
-  );
+function openWorkflow(lead: Lead) {
+  if (
+    pendingPush.value ||
+    pendingStorageUnavailable.value ||
+    activeLeadId.value
+  )
+    return;
+  activeTitle.value = actionTitle(lead.status) ?? '线索下一步';
+  activeLeadId.value = lead.id;
 }
-
+function savePendingPush(): void {
+  pendingPushes.value = readPendingLeadCommands();
+}
+function reopenPendingWorkflow(): void {
+  savePendingPush();
+  if (!pendingPush.value || activeLeadId.value) return;
+  activeTitle.value = '核对未确认的线索请求';
+  activeLeadId.value = pendingPush.value.leadId;
+}
 function handlePushSucceeded(attempt: FrozenLeadPush): void {
   if (
     identity.value !== attempt.identity ||
     activeLeadId.value !== attempt.leadId
   )
     return;
-  const current = pendingPushes.value[attempt.identity];
-  if (current && !sameFrozenAttempt(current, attempt)) return;
+  const pending = readPendingLeadCommands()?.[attempt.identity];
+  if (pending && !sameLeadAttempt(pending, attempt)) return;
   notifyWorkflowChanged();
   activeLeadId.value = null;
+  savePendingPush();
   void load();
 }
-
 const selectedStatus = computed<LeadStatus | undefined>(() => {
   const value = route.query.status;
   return typeof value === 'string' &&
@@ -170,6 +134,13 @@ async function load(): Promise<void> {
       request !== controller
     )
       return;
+    const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
+    if (page > lastPage) {
+      await router.replace({
+        query: { ...route.query, page: String(lastPage) },
+      });
+      return;
+    }
     items.value = result.items;
     total.value = result.total;
     currentPage.value = result.page;
@@ -209,20 +180,21 @@ watch(
   () => void load(),
   { immediate: true, flush: 'sync' },
 );
-watch(identity, (value) => {
-  const stored = readPendingPushes();
-  if (stored) {
-    pendingPushes.value = stored;
-    pendingStorageUnavailable.value = false;
-  } else {
-    pendingPushes.value = {};
-    pendingStorageUnavailable.value = true;
-  }
-  activeLeadId.value = pendingPushes.value[value]?.leadId ?? null;
-});
-watch(pendingPush, (value) => {
-  if (value) activeLeadId.value = value.leadId;
-});
+watch(
+  identity,
+  (value) => {
+    savePendingPush();
+    activeLeadId.value = pendingPushes.value?.[value]?.leadId ?? null;
+  },
+  { flush: 'sync' },
+);
+watch(
+  () => route.fullPath,
+  () => {
+    activeLeadId.value = pendingPush.value?.leadId ?? null;
+  },
+  { flush: 'sync' },
+);
 onBeforeUnmount(() => request?.abort());
 </script>
 
@@ -305,10 +277,12 @@ onBeforeUnmount(() => request?.abort());
               >
                 <td class="business-list-cell--nowrap">
                   <ElButton
+                    v-if="actionTitle(lead.status)"
+                    type="primary"
                     data-test="lead-quick-action"
                     :disabled="!!pendingPush || pendingStorageUnavailable"
-                    @click="activeLeadId = lead.id"
-                    >办理</ElButton
+                    @click="openWorkflow(lead)"
+                    >{{ actionTitle(lead.status) }}</ElButton
                   >
                   <RouterLink
                     :to="`/leads/${lead.id}`"
@@ -411,13 +385,20 @@ onBeforeUnmount(() => request?.abort());
         </nav>
       </section>
       <p v-if="pendingStorageUnavailable" role="alert">
-        无法读取未决推送记录，快捷办理暂不可用。
+        无法读取未决请求记录，流程办理暂不可用。
+      </p>
+      <p v-if="pendingPush && !activeLeadId" role="alert">
+        有一项线索请求尚未确认，请先核对原请求。
+        <ElButton data-test="reopen-pending-lead" @click="reopenPendingWorkflow"
+          >核对未确认请求</ElButton
+        >
       </p>
     </main>
     <LeadQuickActionsPanel
       v-if="activeLeadId"
       :lead-id="activeLeadId"
       :identity="identity"
+      :title="activeTitle"
       :pending-push="pendingPush"
       @close="activeLeadId = null"
       @pending="savePendingPush"
