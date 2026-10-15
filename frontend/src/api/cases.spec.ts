@@ -518,6 +518,275 @@ function mockJson(payload: unknown, status = 200) {
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }
+
+const sectionId = 'a0000000-0000-4000-8000-000000000001';
+const sectionOtherId = 'a0000000-0000-4000-8000-000000000002';
+const sectionRoundId = 'a0000000-0000-4000-8000-000000000003';
+const sectionCommands = [
+  {
+    name: 'mailing',
+    route: 'execution-mailing-correction',
+    target: 'mailingId',
+    revision: 'mailingRevision',
+    date: 'mailedAt',
+    input: {
+      mailingId: sectionId,
+      expectedMailingRevision: 2,
+      idempotencyKey: 'mailing-record-key',
+      reason: '  更正原文  ',
+      mailedAt: '2026-10-01',
+      mailReceiptContentVersionIds: [sectionOtherId, sectionId],
+    },
+    send: (input: unknown) =>
+      casesApi.correctCaseExecutionMailingRecord(
+        archiveCaseId,
+        input as casesApi.CorrectExecutionMailingRecordInput,
+      ),
+  },
+  {
+    name: 'filing',
+    route: 'execution-filing-correction',
+    target: 'filingId',
+    revision: 'filingRevision',
+    date: 'submittedAt',
+    input: {
+      filingId: sectionId,
+      expectedFilingRevision: 0,
+      idempotencyKey: 'filing-record-key',
+      reason: '  更正原文  ',
+      submittedAt: '2026-10-01',
+      executionFilingProofContentVersionIds: [sectionOtherId, sectionId],
+    },
+    send: (input: unknown) =>
+      casesApi.correctCaseExecutionFilingRecord(
+        archiveCaseId,
+        input as casesApi.CorrectExecutionFilingRecordInput,
+      ),
+  },
+  {
+    name: 'finish',
+    route: 'execution-finish-correction',
+    target: 'finishId',
+    revision: 'finishRevision',
+    date: 'finishedAt',
+    input: {
+      finishId: sectionId,
+      expectedFinishRevision: 4,
+      idempotencyKey: 'finish-record-key',
+      correctionReason: '  更正原因  ',
+      finishedAt: '2026-10-01',
+      reason: '  业务结束原因  ',
+      basisNote: '  依据  ',
+      basisContentVersionIds: [],
+    },
+    send: (input: unknown) =>
+      casesApi.correctCaseExecutionFinishRecord(
+        archiveCaseId,
+        input as casesApi.CorrectExecutionFinishRecordInput,
+      ),
+  },
+  {
+    name: 'hearing',
+    route: 'hearing-record-correction',
+    target: 'arrangementId',
+    revision: 'hearingRevision',
+    date: 'hearingAt',
+    input: {
+      arrangementId: sectionId,
+      trialRoundId: sectionRoundId,
+      expectedHearingRevision: 0,
+      idempotencyKey: 'hearing-record-key',
+      reason: '  更正原文  ',
+      hearingAt: null,
+    },
+    send: (input: unknown) =>
+      casesApi.correctCaseHearingRecord(
+        archiveCaseId,
+        input as casesApi.CorrectHearingRecordInput,
+      ),
+  },
+  {
+    name: 'judgment',
+    route: 'judgment-record-correction',
+    target: 'judgmentId',
+    revision: 'judgmentRevision',
+    date: 'judgmentReceivedAt',
+    input: {
+      judgmentId: sectionId,
+      trialRoundId: sectionRoundId,
+      expectedJudgmentRevision: 1,
+      idempotencyKey: 'judgment-record-key',
+      reason: '  更正原文  ',
+      judgmentReceivedAt: '2026-10-01',
+      judgmentAmountState: 'KNOWN',
+      judgmentAmount: '0',
+      paidLitigationFeeState: 'PENDING',
+      paidLitigationFee: null,
+      judgmentContentVersionIds: [sectionOtherId, sectionId],
+    },
+    send: (input: unknown) =>
+      casesApi.correctCaseJudgmentRecord(
+        archiveCaseId,
+        input as casesApi.CorrectJudgmentRecordInput,
+      ),
+  },
+  {
+    name: 'closure',
+    route: 'closure-record-correction',
+    target: 'closureId',
+    revision: 'closureRevision',
+    date: 'closeAt',
+    input: {
+      closureId: sectionId,
+      expectedClosureVersionId: sectionOtherId,
+      expectedClosureRevision: 0,
+      idempotencyKey: 'closure-record-key',
+      correctionReason: '  更正原因  ',
+      closeAt: null,
+      closeAmountState: 'KNOWN',
+      closeAmt: '0.00',
+      note: null,
+      closeContentVersionIds: [],
+    },
+    send: (input: unknown) =>
+      casesApi.correctCaseClosureRecord(
+        archiveCaseId,
+        input as casesApi.CorrectClosureRecordInput,
+      ),
+  },
+];
+describe('six independent section record commands', () => {
+  for (const command of sectionCommands) {
+    const expectedRevision = `expected${command.revision[0]!.toUpperCase()}${command.revision.slice(1)}`;
+    const input = command.input;
+    const inputFields: Record<string, unknown> = input;
+    const result = {
+      caseId: archiveCaseId,
+      correctionId: sectionOtherId,
+      recordedAt: '2026-10-15T01:00:00.000Z',
+      [command.target]: sectionId,
+      [command.revision]: Number(inputFields[expectedRevision]) + 1,
+      [command.date]: inputFields[command.date],
+      ...('trialRoundId' in input ? { trialRoundId: sectionRoundId } : {}),
+    };
+    it(`${command.name} posts exact independent body/key and accepts only its precise receipt`, async () => {
+      const fetch = mockJson(result, 201);
+      await expect(command.send(input)).resolves.toEqual(result);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch.mock.calls[0]?.[0]).toBe(
+        `/api/v1/cases/${archiveCaseId}/${command.route}`,
+      );
+      expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
+      expect(
+        new Headers(fetch.mock.calls[0]?.[1]?.headers).get('Idempotency-Key'),
+      ).toBe(input.idempotencyKey);
+      for (const change of [
+        { caseId: sectionId },
+        { [command.target]: sectionOtherId },
+        { [command.revision]: 0 },
+        { [command.revision]: Number.MAX_SAFE_INTEGER + 1 },
+        { [command.date]: '2026-02-30' },
+        { recordedAt: '2026-02-30T00:00:00Z' },
+        { correctionId: 'invalid' },
+        { version: 99 },
+        { stage: 'ARCHIVED' },
+        ...('trialRoundId' in input ? [{ trialRoundId: sectionOtherId }] : []),
+      ]) {
+        mockJson({ ...result, ...change });
+        await expect(command.send(input)).rejects.toMatchObject({
+          code: 'INVALID_RESPONSE',
+        });
+      }
+    });
+    it(`${command.name} rejects bad anchors, revisions and extra workflow fields before HTTP`, async () => {
+      const fetch = vi.fn();
+      vi.stubGlobal('fetch', fetch);
+      for (const change of [
+        { [command.target]: null },
+        { [command.target]: 'wrong-target' },
+        { [expectedRevision]: -1 },
+        { [expectedRevision]: 0.5 },
+        { [expectedRevision]: Number.MAX_SAFE_INTEGER },
+        { [expectedRevision]: undefined },
+        { idempotencyKey: ' key ' },
+        { expectedVersion: 1 },
+        { unknown: true },
+        {
+          [command.name === 'finish' || command.name === 'closure'
+            ? 'correctionReason'
+            : 'reason']: ' ',
+        },
+        ...('trialRoundId' in input ? [{ trialRoundId: null }] : []),
+        ...(command.name === 'closure'
+          ? [
+              { expectedClosureVersionId: null },
+              { expectedClosureVersionId: undefined },
+              { expectedClosureVersionId: 'wrong' },
+            ]
+          : []),
+      ]) {
+        await expect(
+          command.send({ ...input, ...change }),
+        ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+      }
+      expect(fetch).not.toHaveBeenCalled();
+    });
+    it(`${command.name} leaves unknown results for exact original-body replay without an automatic retry`, async () => {
+      const fetch = mockJson(
+        { code: 'INTERNAL_ERROR', message: 'unknown', requestId: 'unknown' },
+        500,
+      );
+      await expect(command.send(input)).rejects.toMatchObject({ status: 500 });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      const replay = mockJson(result, 201);
+      await command.send(input);
+      expect(replay.mock.calls[0]?.[1]?.body).toBe(
+        fetch.mock.calls[0]?.[1]?.body,
+      );
+      expect(
+        new Headers(replay.mock.calls[0]?.[1]?.headers).get('Idempotency-Key'),
+      ).toBe(input.idempotencyKey);
+    });
+  }
+  it('keeps the nullable/future hearing date contract and rejects invalid business values or duplicate file IDs', async () => {
+    const hearing = sectionCommands[3]!;
+    mockJson({
+      caseId: archiveCaseId,
+      correctionId: sectionOtherId,
+      recordedAt: '2026-10-15T01:00:00Z',
+      arrangementId: sectionId,
+      trialRoundId: sectionRoundId,
+      hearingRevision: 1,
+      hearingAt: '2099-10-01',
+    });
+    await expect(
+      hearing.send({ ...hearing.input, hearingAt: '2099-10-01' }),
+    ).resolves.toMatchObject({ hearingAt: '2099-10-01' });
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    for (const [index, change] of [
+      [0, { mailedAt: '2026-02-30' }],
+      [0, { mailReceiptContentVersionIds: [] }],
+      [
+        0,
+        { mailReceiptContentVersionIds: [sectionId, sectionId.toUpperCase()] },
+      ],
+      [1, { submittedAt: '2099-01-01' }],
+      [2, { basisNote: null }],
+      [3, { hearingAt: '2026-02-30' }],
+      [4, { judgmentAmountState: 'PENDING' }],
+      [4, { paidLitigationFeeState: 'KNOWN' }],
+      [5, { closeAmt: '0.001' }],
+      [5, { note: '' }],
+    ] as const) {
+      const command = sectionCommands[index]!;
+      await expect(
+        command.send({ ...command.input, ...change }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
 function directSecondDetail(roundId: string) {
   return {
     ...detail,
@@ -5441,6 +5710,341 @@ function closureDetailPayload() {
     },
   };
 }
+
+function sectionDetailPayload(corrected = false) {
+  const base = closureDetailPayload();
+  const file = base.executionMailing.files[0]!;
+  const recordedAt = '2026-10-15T01:00:00.000Z';
+  const hearing = {
+    id: sectionId,
+    trialRoundId: sectionRoundId,
+    hearingAt: null,
+    source: 'SCHEDULE',
+    recordedAt,
+    recordedByUserId: sectionOtherId,
+  };
+  const judgment = {
+    id: sectionOtherId,
+    trialRoundId: sectionRoundId,
+    kind: 'REGISTER',
+    priorFactId: null,
+    judgmentReceivedAt: '2026-10-01',
+    judgmentAmountState: 'PENDING',
+    judgmentAmount: null,
+    paidLitigationFeeState: 'KNOWN',
+    paidLitigationFee: '0.00',
+    fromVersion: 10,
+    toVersion: 11,
+    recordedAt,
+    files: [file],
+  };
+  function edit<T extends object>(original: T, effective: T, index: number) {
+    const values = corrected ? effective : original;
+    return {
+      canEdit: true,
+      original,
+      effective: values,
+      history: corrected
+        ? [
+            {
+              ...values,
+              id: `b0000000-0000-4000-8000-00000000000${index}`,
+              priorCorrectionId: null as string | null,
+              fromRevision: 0,
+              toRevision: 1,
+              correctionReason: '核实更正',
+              recordedAt,
+              recordedByUserId: sectionOtherId,
+            },
+          ]
+        : [],
+    };
+  }
+  const mailing = {
+    mailedAt: base.executionMailing.mailedAt,
+    mailReceiptContentVersionIds: [file.contentVersionId],
+    files: [file],
+  };
+  const filing = {
+    submittedAt: base.executionFiling.submittedAt,
+    executionFilingProofContentVersionIds: [file.contentVersionId],
+    files: [file],
+  };
+  const finish = {
+    finishedAt: base.executionFinish.finishedAt,
+    reason: base.executionFinish.reason,
+    basisNote: base.executionFinish.basisNote,
+    basisContentVersionIds: [] as string[],
+    files: [] as casesApi.CaseFile[],
+  };
+  const judgmentValues: casesApi.JudgmentRecordValues = {
+    judgmentReceivedAt: judgment.judgmentReceivedAt,
+    judgmentAmountState: 'PENDING',
+    judgmentAmount: null,
+    paidLitigationFeeState: 'KNOWN',
+    paidLitigationFee: '0.00',
+    judgmentContentVersionIds: [file.contentVersionId],
+    files: [file],
+  };
+  const closureValues: casesApi.ClosureRecordValues = {
+    closeAt: null,
+    closeAmountState: 'PENDING',
+    closeAmt: null,
+    note: null,
+    closeContentVersionIds: [],
+    files: [],
+  };
+  const executionMailings = [
+    {
+      mailingId: base.executionMailing.id,
+      mailingRevision: corrected ? 1 : 0,
+      ...edit(mailing, { ...mailing, mailedAt: '2026-10-02' }, 1),
+    },
+  ];
+  const executionFilings = [
+    {
+      filingId: base.executionFiling.id,
+      filingRevision: corrected ? 1 : 0,
+      ...edit(filing, { ...filing, submittedAt: '2026-10-03' }, 2),
+    },
+  ];
+  const executionFinishes = [
+    {
+      finishId: base.executionFinish.id,
+      finishRevision: corrected ? 1 : 0,
+      ...edit(
+        finish,
+        { ...finish, finishedAt: '2026-10-04', reason: '核实结束原因' },
+        3,
+      ),
+    },
+  ];
+  const hearings = [
+    {
+      arrangementId: hearing.id,
+      trialRoundId: sectionRoundId,
+      hearingRevision: corrected ? 1 : 0,
+      ...edit<casesApi.HearingRecordValues>(
+        { hearingAt: null },
+        { hearingAt: '2099-10-01' },
+        4,
+      ),
+    },
+  ];
+  const judgments = [
+    {
+      judgmentId: judgment.id,
+      trialRoundId: sectionRoundId,
+      judgmentRevision: corrected ? 1 : 0,
+      ...edit<casesApi.JudgmentRecordValues>(
+        judgmentValues,
+        {
+          ...judgmentValues,
+          judgmentAmountState: 'KNOWN',
+          judgmentAmount: '0.00',
+        },
+        5,
+      ),
+    },
+  ];
+  const closures = [
+    {
+      closureId: base.closure.id,
+      closureRevision: corrected ? 1 : 0,
+      ...edit<casesApi.ClosureRecordValues>(
+        closureValues,
+        {
+          ...closureValues,
+          closeAmountState: 'KNOWN',
+          closeAmt: '0.00',
+          note: '结案实收更正',
+        },
+        6,
+      ),
+    },
+  ];
+  return {
+    ...base,
+    id: archiveCaseId,
+    defendants: [],
+    executionMailing: {
+      ...base.executionMailing,
+      mailedAt: executionMailings[0]!.effective.mailedAt,
+    },
+    executionFiling: {
+      ...base.executionFiling,
+      submittedAt: executionFilings[0]!.effective.submittedAt,
+    },
+    executionFinish: {
+      ...base.executionFinish,
+      ...executionFinishes[0]!.effective,
+      basisContentVersionIds: undefined,
+    },
+    hearing: {
+      ...base.hearing,
+      currentArrangement: { ...hearing, ...hearings[0]!.effective },
+      arrangements: [hearing],
+    },
+    judgment: {
+      ...base.judgment,
+      current: {
+        ...judgment,
+        judgmentAmountState: judgments[0]!.effective.judgmentAmountState,
+        judgmentAmount: judgments[0]!.effective.judgmentAmount,
+      },
+      history: [judgment],
+    },
+    closure: {
+      ...base.closure,
+      current: {
+        ...base.closure.current,
+        closeAt: closures[0]!.effective.closeAt,
+        closeAmountState: closures[0]!.effective.closeAmountState,
+        closeAmt: closures[0]!.effective.closeAmt,
+        note: closures[0]!.effective.note,
+      },
+    },
+    recordEdits: {
+      canUpdateDefendantContact: false,
+      canCorrectAcceptance: false,
+      defendantContacts: [],
+      acceptanceCorrections: [],
+      executionMailings,
+      executionFilings,
+      executionFinishes,
+      hearings,
+      judgments,
+      closures,
+    },
+  };
+}
+
+describe('six section record read projections', () => {
+  it.each([false, true])(
+    'accepts all six exact targets with corrected=%s and preserves frozen history',
+    async (corrected) => {
+      const payload = sectionDetailPayload(corrected);
+      mockJson(payload);
+      await expect(getCase(archiveCaseId)).resolves.toMatchObject({
+        recordEdits: payload.recordEdits,
+        closure: payload.closure,
+        hearing: payload.hearing,
+      });
+      expect(payload.closure.history[0]!.closeAmt).toBeNull();
+      expect(payload.judgment.history[0]!.judgmentAmount).toBeNull();
+      expect(payload.hearing.arrangements[0]!.hearingAt).toBeNull();
+    },
+  );
+  it('accepts empty target arrays and retains old recordEdits with no six-array fields', async () => {
+    const recordEdits = {
+      canUpdateDefendantContact: false,
+      canCorrectAcceptance: false,
+      defendantContacts: [],
+      acceptanceCorrections: [],
+    };
+    for (const edits of [
+      recordEdits,
+      {
+        ...recordEdits,
+        executionMailings: [],
+        executionFilings: [],
+        executionFinishes: [],
+        hearings: [],
+        judgments: [],
+        closures: [],
+      },
+    ]) {
+      mockJson({ ...detail, defendants: [], recordEdits: edits });
+      await expect(getCase('case-1')).resolves.toMatchObject({
+        recordEdits: edits,
+      });
+    }
+  });
+  const mutations: Array<
+    (payload: ReturnType<typeof sectionDetailPayload>) => void
+  > = [
+    (p) => {
+      p.recordEdits.executionMailings[0]!.mailingRevision = 2;
+    },
+    (p) => {
+      p.recordEdits.executionMailings.push(p.recordEdits.executionMailings[0]!);
+    },
+    (p) => {
+      p.recordEdits.executionFilings[0]!.filingId = sectionOtherId;
+    },
+    (p) => {
+      p.recordEdits.executionFinishes[0]!.effective.reason = '不匹配';
+    },
+    (p) => {
+      p.recordEdits.hearings[0]!.trialRoundId = sectionOtherId;
+    },
+    (p) => {
+      p.recordEdits.judgments[0]!.history[0]!.priorCorrectionId = sectionId;
+    },
+    (p) => {
+      p.recordEdits.judgments[0]!.history[0]!.fromRevision = 1;
+    },
+    (p) => {
+      p.recordEdits.judgments[0]!.history[0]!.recordedAt =
+        '2026-02-30T01:00:00Z';
+    },
+    (p) => {
+      p.recordEdits.closures[0]!.original.closeAmt = '0.00';
+    },
+    (p) => {
+      p.closure.current.note = '不是有效值';
+    },
+    (p) => {
+      p.closure.current.id = sectionId;
+    },
+    (p) => {
+      p.recordEdits.executionMailings[0]!.effective.files[0]!.contentVersionId =
+        sectionId;
+    },
+  ];
+  it.each(mutations.map((mutate, index) => ({ mutate, index })))(
+    'rejects broken section projection $index',
+    async ({ mutate }) => {
+      const payload = sectionDetailPayload(true);
+      mutate(payload);
+      mockJson(payload);
+      await expect(getCase(archiveCaseId)).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    },
+  );
+  it('rejects partial sections, unknown fields and non-boolean canEdit', async () => {
+    const payload = sectionDetailPayload(true);
+    for (const recordEdits of [
+      { ...payload.recordEdits, closures: undefined },
+      {
+        ...payload.recordEdits,
+        hearings: [{ ...payload.recordEdits.hearings[0], canEdit: 1 }],
+      },
+      {
+        ...payload.recordEdits,
+        judgments: [{ ...payload.recordEdits.judgments[0], stage: 'ARCHIVED' }],
+      },
+      {
+        ...payload.recordEdits,
+        executionFilings: [
+          {
+            ...payload.recordEdits.executionFilings[0],
+            effective: {
+              ...payload.recordEdits.executionFilings[0]!.effective,
+              unknown: true,
+            },
+          },
+        ],
+      },
+    ]) {
+      mockJson({ ...payload, recordEdits });
+      await expect(getCase(archiveCaseId)).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+});
 describe('CA-016 closure and list display contract', () => {
   it.each(['internal', 'lawyer'] as const)(
     'posts nullable, attachment-free registration through %s with exact original input',
@@ -5635,8 +6239,29 @@ describe('CA-016 closure and list display contract', () => {
     await expect(casesApi.getLawyerCase('case-1')).resolves.toMatchObject({
       closure: { current },
     });
+    const effective = {
+      ...current,
+      closeAmountState: 'KNOWN',
+      closeAmt: '0.00',
+      note: '更正后的结案资料',
+    };
+    mockJson({
+      ...payload,
+      closure: { ...payload.closure, current: effective },
+    });
+    await expect(casesApi.getLawyerCase('case-1')).resolves.toMatchObject({
+      closure: { current: effective, history: [current] },
+    });
     for (const invalid of [
       { ...payload, displaySummary },
+      { ...payload, recordEdits: sectionDetailPayload(true).recordEdits },
+      {
+        ...payload,
+        closure: {
+          ...payload.closure,
+          current: { ...effective, id: sectionId },
+        },
+      },
       { ...payload, canCorrectClosure: true },
       { ...payload, closure: base.closure },
       {
@@ -5680,6 +6305,57 @@ describe('CA-016 closure and list display contract', () => {
     await expect(listCases()).resolves.toMatchObject({
       items: [{ displaySummary }],
     });
+    for (const [field, sourceType] of [
+      ['judgmentAmount', 'FIRST_INSTANCE_JUDGMENT_RECORD_CORRECTION'],
+      ['closureAmount', 'CASE_CLOSURE_RECORD_CORRECTION'],
+    ] as const) {
+      for (const amount of [
+        { state: 'KNOWN', amount: '0.00' },
+        { state: 'PENDING', amount: null },
+      ]) {
+        const value = { ...amount, sourceType, sourceId: sectionOtherId };
+        mockJson({
+          ...body,
+          items: [
+            {
+              ...summary,
+              displaySummary: { ...displaySummary, [field]: value },
+            },
+          ],
+        });
+        await expect(listCases()).resolves.toMatchObject({
+          items: [{ displaySummary: { [field]: value } }],
+        });
+        for (const change of [
+          { sourceId: null },
+          { sourceId: 'not-correction-id' },
+          { state: 'UNRECORDED' },
+          { amount: '0' },
+          {
+            sourceType:
+              field === 'judgmentAmount'
+                ? 'CASE_CLOSURE_RECORD_CORRECTION'
+                : 'FIRST_INSTANCE_JUDGMENT_RECORD_CORRECTION',
+          },
+        ]) {
+          mockJson({
+            ...body,
+            items: [
+              {
+                ...summary,
+                displaySummary: {
+                  ...displaySummary,
+                  [field]: { ...value, ...change },
+                },
+              },
+            ],
+          });
+          await expect(listCases()).rejects.toMatchObject({
+            code: 'INVALID_RESPONSE',
+          });
+        }
+      }
+    }
     const sourced = {
       state: 'KNOWN',
       amount: '0.00',
