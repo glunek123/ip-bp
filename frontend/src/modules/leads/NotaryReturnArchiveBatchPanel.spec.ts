@@ -87,6 +87,81 @@ describe('NotaryReturnArchiveBatchPanel', () => {
     ).toBeDefined();
   });
 
+  it('fills only blank reasons and leaves every copied reason editable', async () => {
+    const { wrapper } = await mountPanel();
+    const shared = wrapper.get('[data-test="shared-reason"]');
+    await shared.setValue('  共用退货原因  ');
+    await wrapper
+      .get('[data-test="reason-matter-1"]')
+      .setValue('已有的逐项原因');
+    await wrapper.get('[data-test="fill-blank-reasons"]').trigger('click');
+    expect(
+      (
+        wrapper.get('[data-test="reason-matter-1"]')
+          .element as HTMLTextAreaElement
+      ).value,
+    ).toBe('已有的逐项原因');
+    expect(
+      (
+        wrapper.get('[data-test="reason-matter-2"]')
+          .element as HTMLTextAreaElement
+      ).value,
+    ).toBe('共用退货原因');
+    expect(
+      wrapper.get('[data-test="shared-reason-filled-count"]').text(),
+    ).toContain('已填入 1 项');
+
+    await shared.setValue('');
+    expect(
+      (
+        wrapper.get('[data-test="reason-matter-2"]')
+          .element as HTMLTextAreaElement
+      ).value,
+    ).toBe('共用退货原因');
+    await shared.setValue('共用退货原因');
+    await wrapper.get('[data-test="reason-matter-2"]').setValue('之后逐项编辑');
+    await wrapper.get('[data-test="reason-matter-1"]').setValue('');
+    await wrapper.get('[data-test="fill-blank-reasons"]').trigger('click');
+    expect(
+      (
+        wrapper.get('[data-test="reason-matter-1"]')
+          .element as HTMLTextAreaElement
+      ).value,
+    ).toBe('共用退货原因');
+    expect(
+      (
+        wrapper.get('[data-test="reason-matter-2"]')
+          .element as HTMLTextAreaElement
+      ).value,
+    ).toBe('之后逐项编辑');
+    expect(
+      wrapper.get('[data-test="shared-reason-filled-count"]').text(),
+    ).toContain('已填入 1 项');
+  });
+
+  it('requires a nonblank shared reason and enforces the Unicode codepoint limit', async () => {
+    const { wrapper } = await mountPanel(['matter-1']);
+    expect(wrapper.get('[data-test="shared-reason-error"]').text()).toContain(
+      '非空白',
+    );
+    expect(
+      wrapper.get('[data-test="fill-blank-reasons"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('[data-test="shared-reason"]').setValue('   ');
+    expect(wrapper.get('[data-test="shared-reason-error"]').text()).toContain(
+      '非空白',
+    );
+    await wrapper
+      .get('[data-test="shared-reason"]')
+      .setValue('😀'.repeat(5001));
+    expect(wrapper.get('[data-test="shared-reason-error"]').text()).toContain(
+      '5000 个 Unicode 码点',
+    );
+    expect(
+      wrapper.get('[data-test="fill-blank-reasons"]').attributes('disabled'),
+    ).toBeDefined();
+  });
+
   it('freezes and explicitly retries an unknown result with the same body and key', async () => {
     api.archive
       .mockRejectedValueOnce(new TypeError('network disconnected'))
@@ -106,6 +181,13 @@ describe('NotaryReturnArchiveBatchPanel', () => {
         .element.closest('fieldset')
         ?.hasAttribute('disabled'),
     ).toBe(true);
+    expect(
+      wrapper.get('[data-test="fill-blank-reasons"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper
+      .get('[data-test="shared-reason"]')
+      .setValue('不应改动冻结内容');
+    await wrapper.get('[data-test="fill-blank-reasons"]').trigger('click');
     const [firstItems, firstKey] = api.archive.mock.calls[0] as [
       unknown,
       string,

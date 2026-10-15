@@ -59,6 +59,9 @@ const message = ref(
 );
 const readBusy = ref(false);
 const submitBusy = ref(false);
+const sharedReason = ref('');
+const filledReasonCount = ref<number | null>(null);
+const loadedScopeKey = ref('');
 const frozenItems = ref<ArchiveNotaryReturnBatchInput[] | null>(
   props.pendingRequest?.items ?? null,
 );
@@ -71,6 +74,22 @@ let disposed = false;
 const locked = computed(() => frozenItems.value !== null);
 const retryAllowed = computed(
   () => locked.value && frozenScope.value === props.scopeKey,
+);
+const sharedReasonError = computed(() => {
+  const normalized = sharedReason.value.trim();
+  if (!normalized) return '请填写非空白的共用归档原因。';
+  if ([...normalized].length > 5000)
+    return '共用归档原因不能超过 5000 个 Unicode 码点。';
+  return '';
+});
+const canFillSharedReason = computed(
+  () =>
+    state.value === 'ready' &&
+    !readBusy.value &&
+    !submitBusy.value &&
+    !locked.value &&
+    loadedScopeKey.value === props.scopeKey &&
+    !sharedReasonError.value,
 );
 const rowErrors = computed(() => drafts.value.map(validateDraft));
 const canSubmit = computed(
@@ -147,6 +166,18 @@ function buildItem(draft: MatterDraft): ArchiveNotaryReturnBatchInput {
   };
 }
 
+function fillBlankReasons(): void {
+  if (!canFillSharedReason.value) return;
+  const reason = sharedReason.value.trim();
+  let filled = 0;
+  drafts.value = drafts.value.map((draft) => {
+    if (draft.reason.trim()) return draft;
+    filled += 1;
+    return { ...draft, reason };
+  });
+  filledReasonCount.value = filled;
+}
+
 async function loadDetails(): Promise<void> {
   if (locked.value) return;
   readController?.abort();
@@ -161,6 +192,7 @@ async function loadDetails(): Promise<void> {
     return;
   }
   readBusy.value = true;
+  loadedScopeKey.value = '';
   state.value = 'loading';
   message.value = '正在读取已选择事项及当前归档能力。';
   drafts.value = [];
@@ -198,6 +230,7 @@ async function loadDetails(): Promise<void> {
       refund: emptyAmount(),
       freight: emptyAmount(),
     }));
+    loadedScopeKey.value = props.scopeKey;
     state.value = 'ready';
     message.value = '请逐项确认处理方式、适用金额、收付方及归档原因。';
   } catch (error) {
@@ -274,6 +307,8 @@ watch(
   () => {
     readController?.abort();
     readGeneration += 1;
+    sharedReason.value = '';
+    filledReasonCount.value = null;
     if (locked.value) {
       if (frozenScope.value !== props.scopeKey)
         message.value =
@@ -332,6 +367,48 @@ onBeforeUnmount(() => {
       class="batch-matter-list"
       @submit.prevent="freezeRequest"
     >
+      <section class="shared-reason" aria-label="共用归档原因">
+        <label>
+          共用归档原因
+          <textarea
+            v-model="sharedReason"
+            data-test="shared-reason"
+            :disabled="
+              locked ||
+              submitBusy ||
+              readBusy ||
+              loadedScopeKey !== props.scopeKey
+            "
+            aria-describedby="shared-reason-help shared-reason-error"
+          />
+        </label>
+        <p id="shared-reason-help">
+          填入只会补到当前原因空白的事项；填入后仍是逐项可编辑草稿。请逐项核对归档资格、处理方式、金额和收付方，共用原因不会代替逐项确认。
+        </p>
+        <p
+          v-if="sharedReasonError"
+          id="shared-reason-error"
+          role="alert"
+          data-test="shared-reason-error"
+        >
+          {{ sharedReasonError }}
+        </p>
+        <button
+          type="button"
+          data-test="fill-blank-reasons"
+          :disabled="!canFillSharedReason"
+          @click="fillBlankReasons"
+        >
+          填入空白原因
+        </button>
+        <p
+          v-if="filledReasonCount !== null"
+          role="status"
+          data-test="shared-reason-filled-count"
+        >
+          已填入 {{ filledReasonCount }} 项；各项原因仍可单独编辑。
+        </p>
+      </section>
       <fieldset
         v-for="(draft, index) in drafts"
         :key="draft.id"
