@@ -887,17 +887,23 @@ function admittedCustomer(id, departmentId, userId, teamId, name, identity) {
 }
 
 export async function resetCoreLeadE2eData() {
-  const resolvedOperatorPasswordHash = await operatorPasswordHash;
-  const resolvedSelfPasswordHash = await selfPasswordHash;
   await clearDatabase();
   await clearPrivateBytes();
+  await seedCoreLeadE2eData();
+}
+
+export async function seedCoreLeadE2eData({ reuseExisting = false } = {}) {
+  const resolvedOperatorPasswordHash = await operatorPasswordHash;
+  const resolvedSelfPasswordHash = await selfPasswordHash;
   await database.department.createMany({
+    skipDuplicates: reuseExisting,
     data: [
       { id: coreLeadFixtures.departmentA, name: 'CORE 知产部' },
       { id: coreLeadFixtures.departmentB, name: 'CORE 外部门' },
     ],
   });
   await database.userAccount.createMany({
+    skipDuplicates: reuseExisting,
     data: [
       {
         id: coreLeadFixtures.userA,
@@ -916,21 +922,26 @@ export async function resetCoreLeadE2eData() {
       },
     ],
   });
-  await database.localCredential.create({
-    data: {
+  await database.localCredential.upsert({
+    where: { userId: coreLeadFixtures.userA },
+    update: {},
+    create: {
       userId: coreLeadFixtures.userA,
       username: coreLeadFixtures.operatorUsername,
       passwordHash: resolvedOperatorPasswordHash,
     },
   });
-  await database.localCredential.create({
-    data: {
+  await database.localCredential.upsert({
+    where: { userId: coreLeadFixtures.userSelf },
+    update: {},
+    create: {
       userId: coreLeadFixtures.userSelf,
       username: coreLeadFixtures.selfUsername,
       passwordHash: resolvedSelfPasswordHash,
     },
   });
   await database.team.createMany({
+    skipDuplicates: reuseExisting,
     data: [
       {
         id: coreLeadFixtures.teamA,
@@ -945,6 +956,7 @@ export async function resetCoreLeadE2eData() {
     ],
   });
   await database.departmentMembership.createMany({
+    skipDuplicates: reuseExisting,
     data: [
       {
         userId: coreLeadFixtures.userA,
@@ -963,6 +975,7 @@ export async function resetCoreLeadE2eData() {
     ],
   });
   await database.roleTemplate.createMany({
+    skipDuplicates: reuseExisting,
     data: [
       {
         id: coreLeadFixtures.roleA,
@@ -982,6 +995,7 @@ export async function resetCoreLeadE2eData() {
     ],
   });
   await database.roleGrant.createMany({
+    skipDuplicates: reuseExisting,
     data: [
       ...allActions
         .filter((action) => action !== 'NOTARY_OFFICE_MANAGE')
@@ -1029,29 +1043,38 @@ export async function resetCoreLeadE2eData() {
         })),
     ],
   });
-  await database.roleAssignment.createMany({
-    data: [
-      {
-        userId: coreLeadFixtures.userA,
-        departmentId: coreLeadFixtures.departmentA,
-        roleTemplateId: coreLeadFixtures.roleA,
-        teamId: coreLeadFixtures.teamA,
-      },
-      {
-        userId: coreLeadFixtures.userB,
-        departmentId: coreLeadFixtures.departmentB,
-        roleTemplateId: coreLeadFixtures.roleB,
-      },
-      {
-        userId: coreLeadFixtures.userSelf,
-        departmentId: coreLeadFixtures.departmentA,
-        roleTemplateId: coreLeadFixtures.roleSelf,
-        teamId: coreLeadFixtures.teamSelf,
-      },
-    ],
-  });
+  for (const assignment of [
+    {
+      userId: coreLeadFixtures.userA,
+      departmentId: coreLeadFixtures.departmentA,
+      roleTemplateId: coreLeadFixtures.roleA,
+      teamId: coreLeadFixtures.teamA,
+    },
+    {
+      userId: coreLeadFixtures.userB,
+      departmentId: coreLeadFixtures.departmentB,
+      roleTemplateId: coreLeadFixtures.roleB,
+    },
+    {
+      userId: coreLeadFixtures.userSelf,
+      departmentId: coreLeadFixtures.departmentA,
+      roleTemplateId: coreLeadFixtures.roleSelf,
+      teamId: coreLeadFixtures.teamSelf,
+    },
+  ]) {
+    if (
+      reuseExisting &&
+      (await database.roleAssignment.findFirst({
+        where: { ...assignment, teamId: assignment.teamId ?? null },
+        select: { id: true },
+      }))
+    )
+      continue;
+    await database.roleAssignment.create({ data: assignment });
+  }
   await database.$transaction(async (transaction) => {
     await transaction.customer.createMany({
+      skipDuplicates: reuseExisting,
       data: [
         {
           id: coreLeadFixtures.draftCustomer,
@@ -1095,6 +1118,7 @@ export async function resetCoreLeadE2eData() {
       const customer = await transaction.customer.findUniqueOrThrow({
         where: { id: customerId },
       });
+      if (reuseExisting && customer.compatibilityContactId !== null) continue;
       const contact = await transaction.customerContact.create({
         data: {
           customerId,
@@ -1132,6 +1156,7 @@ export async function resetCoreLeadE2eData() {
     }
   });
   await database.rightsHolder.createMany({
+    skipDuplicates: reuseExisting,
     data: [
       {
         id: coreLeadFixtures.holder,
@@ -1156,6 +1181,7 @@ export async function resetCoreLeadE2eData() {
     ],
   });
   await database.customerRightsHolderLink.createMany({
+    skipDuplicates: reuseExisting,
     data: [
       {
         customerId: coreLeadFixtures.draftCustomer,
@@ -1184,9 +1210,18 @@ export async function resetCoreLeadE2eData() {
     'WAITING_EVIDENCE_DECISION',
     'ARCHIVED',
   ].entries()) {
+    const seedLeadId = `70000000-0000-4000-8000-00000000000${index + 1}`;
+    if (
+      reuseExisting &&
+      (await database.lead.findUnique({
+        where: { id: seedLeadId },
+        select: { id: true },
+      }))
+    )
+      continue;
     await database.lead.create({
       data: {
-        id: `70000000-0000-4000-8000-00000000000${index + 1}`,
+        id: seedLeadId,
         departmentId: coreLeadFixtures.departmentA,
         businessNo: `CORE-SEED-${index + 1}`,
         customerId: coreLeadFixtures.admittedCustomer,
