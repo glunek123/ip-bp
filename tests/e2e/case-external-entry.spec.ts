@@ -11,6 +11,13 @@ import {
   setRoleGrant,
 } from '../support/core-lead-database.mjs';
 import {
+  createClosedCaseArchiveSourceThroughApi,
+  setCaseArchiveFixtureGrant,
+} from '../support/case-archive-database.mjs';
+import { prepareCaseAcceptanceFixture } from '../support/case-acceptance-database.mjs';
+import { prepareCaseFilingFixture } from '../support/case-filing-database.mjs';
+import { allowOtherEnterpriseAccountSetup } from '../support/case-complaint-mailing-database.mjs';
+import {
   assertCaseExternalEntrySqlGuards,
   caseExternalEntrySnapshot,
   clearCaseExternalEntryFixture,
@@ -83,18 +90,20 @@ type CaseView = {
   sourceLead: unknown;
   sourceNotaryMatter: unknown;
   certificate: unknown;
-  origin: {
-    kind: 'EXTERNAL_ENTRY';
-    entryId: string;
-    entryKind: EntryInput['entryKind'];
-    initialStage: Stage;
-    stageReachedOn: string;
-    source: string;
-    reason?: string;
-    recordedAt: string;
-    recordedByUserId?: string;
-    known: EntryInput['known'];
-  };
+  origin:
+    | {
+        kind: 'EXTERNAL_ENTRY';
+        entryId: string;
+        entryKind: EntryInput['entryKind'];
+        initialStage: Stage;
+        stageReachedOn: string;
+        source: string;
+        reason?: string;
+        recordedAt: string;
+        recordedByUserId?: string;
+        known: EntryInput['known'];
+      }
+    | { kind: 'NOTARY' };
   defendants: unknown[];
   currentTrialRoundId?: string | null;
   acceptance?: unknown;
@@ -1021,6 +1030,89 @@ test('creates all sixteen stages as explicit external roots without invented pri
       expect(current.currentTrialRoundId).toEqual(expect.any(String));
     }
   }
+});
+
+test('keeps a normally sourced notary case and its archive intact under CA018', async ({
+  request,
+}) => {
+  test.setTimeout(90_000);
+  await prepareCaseFilingFixture();
+  await prepareCaseAcceptanceFixture();
+  await allowOtherEnterpriseAccountSetup();
+  await setCaseArchiveFixtureGrant(
+    coreLeadFixtures.roleA,
+    'case.archive',
+    'TEAM',
+  );
+
+  const closureBytes = Buffer.from(
+    '%PDF-1.7\nCA018 normal NOTARY closure document\n%%EOF\n',
+  );
+  const source = await createClosedCaseArchiveSourceThroughApi(request, {
+    bytes: closureBytes,
+  });
+  const closureFile = source.file;
+  if (closureFile === null) throw new Error('Expected real closure document');
+  const before = await readCase(request, source.caseId);
+  expect(before.stage).toBe('WAITING_ARCHIVE');
+  expect(before.origin).toMatchObject({ kind: 'NOTARY' });
+  expect(before.sourceLead).not.toBeNull();
+  expect(before.sourceNotaryMatter).not.toBeNull();
+  expect(before.certificate).not.toBeNull();
+  expect(closureFile).toMatchObject({
+    materialId: expect.any(String),
+    contentVersionId: expect.any(String),
+  });
+
+  const emptyExternal = await caseExternalEntrySnapshot(source.caseId);
+  expect(emptyExternal.entries).toEqual([]);
+  expect(emptyExternal.receipts).toEqual([]);
+  const endpoint = `/api/v1/cases/${source.caseId}/archive`;
+  const archiveInput = {
+    expectedVersion: source.closureResult.version,
+    idempotencyKey: randomUUID(),
+    expectedClosureVersionId: source.closureResult.closureVersionId,
+    archiveAt: shanghaiToday(),
+    archiveType: 'EXECUTION_COLLECTED',
+    archiveReason: 'CA018 normal NOTARY source archived after real closure',
+  };
+  const missingClosure = await request.post(endpoint, {
+    headers: operator,
+    data: { ...archiveInput, expectedClosureVersionId: null },
+  });
+  expect(missingClosure.status(), await missingClosure.text()).toBe(400);
+  expect(await caseExternalEntrySnapshot(source.caseId)).toEqual(emptyExternal);
+
+  const archived = await body<{
+    archiveId: string;
+    stage: string;
+    version: number;
+  }>(
+    await request.post(endpoint, { headers: operator, data: archiveInput }),
+    201,
+  );
+  expect(archived).toMatchObject({
+    archiveId: expect.any(String),
+    stage: 'ARCHIVED',
+    version: source.closureResult.version + 1,
+  });
+  const after = await readCase(request, source.caseId);
+  expect(after.origin).toMatchObject({ kind: 'NOTARY' });
+  expect(after.sourceLead).not.toBeNull();
+  expect(after.sourceNotaryMatter).not.toBeNull();
+  expect(after.certificate).not.toBeNull();
+  const snapshot = await caseExternalEntrySnapshot(source.caseId);
+  expect(snapshot.entries).toEqual([]);
+  expect(snapshot.receipts).toEqual([]);
+  expect(snapshot.archiveFacts).toHaveLength(1);
+  expect(snapshot.closureDocuments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        content_version_id: closureFile.contentVersionId,
+      }),
+    ]),
+  );
+  await expectExactDownload(request, closureFile, closureBytes);
 });
 
 test('continues a PENDING_MATCH entry through real matching and actual complaint submission', async ({
