@@ -111,7 +111,9 @@ export async function snapshotOldCaseRows(
   priorColumns,
 ) {
   const tables = priorColumns
-    ? Object.keys(priorColumns)
+    ? Object.keys(priorColumns).filter(
+        (table) => !['audit_events', 'material_references'].includes(table),
+      )
     : (
         await client.query(
           `SELECT DISTINCT table_name FROM information_schema.columns
