@@ -16,6 +16,7 @@ import {
   externalEntryFoundationMigration,
   externalEntryNormalGuardMigration,
   externalEntryReferenceMigration,
+  externalEntryRemandChildMigration,
   newCaseExternalEntrySchema,
   oldCaseMigrations,
   replayOldCaseMigrations,
@@ -132,6 +133,10 @@ test('CA018 upgrades an actual 150-migration case and guards normal fact sources
         client,
         externalEntryReferenceMigration,
       );
+      await applyCaseExternalEntryMigration(
+        client,
+        externalEntryRemandChildMigration,
+      );
       expect(await externalEntryActionGrantRows(client, empty)).toEqual([]);
 
       await createCaseExternalEntrySchema(client, upgrade);
@@ -188,6 +193,32 @@ test('CA018 upgrades an actual 150-migration case and guards normal fact sources
         ),
       ).toEqual(before);
       expect(await externalEntryActionGrantRows(client, upgrade)).toEqual([]);
+      await applyCaseExternalEntryMigration(
+        client,
+        externalEntryReferenceMigration,
+      );
+      const failedUpgradeRemandChildMigration =
+        await failCaseExternalEntryMigrationAtomically(
+          client,
+          upgrade,
+          externalEntryRemandChildMigration,
+        );
+      expect(failedUpgradeRemandChildMigration.errorCode).toBe('22012');
+      expect(failedUpgradeRemandChildMigration.after).toEqual(
+        failedUpgradeRemandChildMigration.before,
+      );
+      await applyCaseExternalEntryMigration(
+        client,
+        externalEntryRemandChildMigration,
+      );
+      expect(
+        await snapshotOldCaseRows(
+          client,
+          upgrade,
+          prior.caseId,
+          before.columnManifest,
+        ),
+      ).toEqual(before);
 
       await createCaseExternalEntrySchema(client, retry);
       await replayOldCaseMigrations(client);
@@ -298,6 +329,20 @@ test('CA018 upgrades an actual 150-migration case and guards normal fact sources
       await applyCaseExternalEntryMigration(
         client,
         externalEntryReferenceMigration,
+      );
+      const failedRetryRemandChildMigration =
+        await failCaseExternalEntryMigrationAtomically(
+          client,
+          retry,
+          externalEntryRemandChildMigration,
+        );
+      expect(failedRetryRemandChildMigration.errorCode).toBe('22012');
+      expect(failedRetryRemandChildMigration.after).toEqual(
+        failedRetryRemandChildMigration.before,
+      );
+      await applyCaseExternalEntryMigration(
+        client,
+        externalEntryRemandChildMigration,
       );
       expect(
         await snapshotOldCaseRows(

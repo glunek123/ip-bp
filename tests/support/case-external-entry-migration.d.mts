@@ -2,6 +2,7 @@ export const externalEntryActionMigration: string;
 export const externalEntryFoundationMigration: string;
 export const externalEntryNormalGuardMigration: string;
 export const externalEntryReferenceMigration: string;
+export const externalEntryRemandChildMigration: string;
 export const oldCaseMigrations: string[];
 export interface MigrationClient {
   query(

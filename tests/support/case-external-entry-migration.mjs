@@ -25,9 +25,12 @@ export const externalEntryNormalGuardMigration =
   '20261015114500_guard_normal_case_fact_source';
 export const externalEntryReferenceMigration =
   '20261015123000_disambiguate_execution_reference_locals';
+export const externalEntryRemandChildMigration =
+  '20261015130000_guard_direct_second_remand_child';
 const atomicExternalEntryMigrations = new Set([
   externalEntryNormalGuardMigration,
   externalEntryReferenceMigration,
+  externalEntryRemandChildMigration,
 ]);
 const quote = (value) => `"${value.replaceAll('"', '""')}"`;
 
@@ -279,17 +282,28 @@ export async function failCaseExternalEntryMigrationAtomically(
     'migration.sql',
   );
   const sql = readFileSync(migrationPath, 'utf8');
-  const functionNames = [
-    ...sql.matchAll(
-      /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\s+(?:"?[a-z_][a-z0-9_]*"?\s*\.\s*)?"?([a-z_][a-z0-9_]*)"?\s*\(\s*\)/giu,
-    ),
-  ].map((match) => match[1]);
+  const parameterizedRemandChild =
+    migrationName === externalEntryRemandChildMigration;
+  const functionNames = parameterizedRemandChild
+    ? [
+        ...sql.matchAll(
+          /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\s+"?([a-z_][a-z0-9_]*)"?\s*\(\s*target_case\s+uuid\s*,\s*target_department\s+uuid\s*\)/giu,
+        ),
+      ].map((match) => match[1])
+    : [
+        ...sql.matchAll(
+          /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\s+(?:"?[a-z_][a-z0-9_]*"?\s*\.\s*)?"?([a-z_][a-z0-9_]*)"?\s*\(\s*\)/giu,
+        ),
+      ].map((match) => match[1]);
   if (
     functionNames.length === 0 ||
-    new Set(functionNames).size !== functionNames.length
+    new Set(functionNames).size !== functionNames.length ||
+    (parameterizedRemandChild &&
+      (functionNames.length !== 1 ||
+        functionNames[0] !== 'ca018_h_direct_second_chain'))
   )
     throw new Error(
-      `${migrationName} must define unique zero-argument functions`,
+      `${migrationName} must define only the expected unique functions`,
     );
   const commits = sql.match(/\bCOMMIT\s*;/giu) ?? [];
   const terminalCommit = /\bCOMMIT\s*;\s*$/iu;
@@ -313,9 +327,9 @@ export async function failCaseExternalEntryMigrationAtomically(
       const definition = (
         await client.query(
           `SELECT pg_get_functiondef(
-             to_regprocedure(format('%I.%I()', $1::text, $2::text))
+             to_regprocedure(format('%I.%I(%s)', $1::text, $2::text, $3::text))
            ) AS definition`,
-          [schema, functionName],
+          [schema, functionName, parameterizedRemandChild ? 'uuid,uuid' : ''],
         )
       ).rows[0]?.definition;
       if (typeof definition !== 'string')
