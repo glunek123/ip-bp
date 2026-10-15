@@ -19,4 +19,16 @@ export function caseExternalEntrySnapshot(caseId: string): Promise<{
   archiveFacts: Record<string, unknown>[];
   archiveVersions: Record<string, unknown>[];
   archiveReceipts: Record<string, unknown>[];
+  secondAcceptanceChanges: Record<string, unknown>[];
+  executionSubmissions: Record<string, unknown>[];
+  submissionVersions: Record<string, unknown>[];
+  confirmations: Record<string, unknown>[];
+  confirmationVersions: Record<string, unknown>[];
+  executionSubmissionReceipts: Record<string, unknown>[];
+  executionConfirmationReceipts: Record<string, unknown>[];
+  recordEditReceipts: Record<string, unknown>[];
 }>;
+export function assertCaseExternalEntrySqlGuards(
+  caseId: string,
+  otherEntryId: string,
+): Promise<void>;

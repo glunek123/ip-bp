@@ -2021,6 +2021,9 @@ test('records and revises direct second-instance acceptance against its real ent
     request,
     input('SECOND_INSTANCE', {
       stageReachedOn: acceptedOn,
+      defendants: [
+        { kind: 'ORGANIZATION', name: 'CA018 direct second-instance party' },
+      ],
       known: {
         courtId: null,
         courtCaseNo: null,
@@ -2083,6 +2086,7 @@ test('records and revises direct second-instance acceptance against its real ent
   const replay = await body(await saveAcceptance(firstInput), 201);
   expect(replay).toEqual(first);
 
+  const beforeStale = await caseExternalEntrySnapshot(created.id);
   const stale = await saveAcceptance({
     expectedAcceptanceRevision: 0,
     acceptedAt: null,
@@ -2090,6 +2094,7 @@ test('records and revises direct second-instance acceptance against its real ent
     reason: 'stale acceptance revision',
   });
   expect(stale.status(), await stale.text()).toBe(409);
+  expect(await caseExternalEntrySnapshot(created.id)).toEqual(beforeStale);
   const beforeCorrection = await readCase(request, created.id);
   expect(beforeCorrection.recordEdits?.secondInstanceAcceptances).toEqual([
     expect.objectContaining({
@@ -2254,6 +2259,9 @@ test('keeps direct second-instance execution resubmission and frozen confirmatio
     request,
     input('SECOND_INSTANCE', {
       stageReachedOn: acceptedOn,
+      defendants: [
+        { kind: 'ORGANIZATION', name: 'CA018 direct execution party' },
+      ],
       known: {
         courtId: null,
         courtCaseNo: null,
@@ -2402,6 +2410,18 @@ test('keeps direct second-instance execution resubmission and frozen confirmatio
   const facts = await caseExternalEntrySnapshot(created.id);
   expect(facts.executionSubmissions).toHaveLength(2);
   expect(facts.submissionVersions).toHaveLength(2);
+  expect(facts.submissionVersions).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        submission_id: first.submissionId,
+        content_version_id: firstFile.contentVersionId,
+      }),
+      expect.objectContaining({
+        submission_id: corrected.submissionId,
+        content_version_id: correctedFile.contentVersionId,
+      }),
+    ]),
+  );
   expect(facts.confirmations).toHaveLength(1);
   expect(facts.confirmations[0]).toMatchObject({
     submission_id: corrected.submissionId,

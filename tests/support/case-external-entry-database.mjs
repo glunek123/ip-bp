@@ -259,6 +259,14 @@ export async function caseExternalEntrySnapshot(caseId) {
       ['archiveFacts', 'case_archives'],
       ['archiveVersions', 'case_archive_versions'],
       ['archiveReceipts', 'case_archive_receipts'],
+      ['secondAcceptanceChanges', 'case_second_instance_acceptance_changes'],
+      ['executionSubmissions', 'case_execution_submissions'],
+      ['submissionVersions', 'case_execution_submission_versions'],
+      ['confirmations', 'case_execution_confirmations'],
+      ['confirmationVersions', 'case_execution_confirmation_versions'],
+      ['executionSubmissionReceipts', 'case_execution_submission_receipts'],
+      ['executionConfirmationReceipts', 'case_execution_confirmation_receipts'],
+      ['recordEditReceipts', 'case_record_edit_receipts'],
     ]) {
       result[name] = (
         await client.query(
@@ -268,5 +276,97 @@ export async function caseExternalEntrySnapshot(caseId) {
       ).rows.map((row) => row.row);
     }
     return result;
+  });
+}
+
+export async function assertCaseExternalEntrySqlGuards(caseId, otherEntryId) {
+  return withDatabase(async (client) => {
+    const target = (
+      await client.query(
+        `SELECT c.id,c.department_id,c.current_trial_round_id,
+                e.id AS entry_id,e.audit_event_id,e.recorded_by_user_id
+         FROM cases c JOIN case_external_entries e ON e.case_id=c.id
+           AND e.department_id=c.department_id
+         WHERE c.id=$1 AND c.department_id=ANY($2::uuid[])`,
+        [caseId, departments],
+      )
+    ).rows[0];
+    const other = (
+      await client.query(
+        `SELECT id,department_id FROM case_external_entries WHERE id=$1`,
+        [otherEntryId],
+      )
+    ).rows[0];
+    if (
+      !target ||
+      !other ||
+      !departments.includes(target.department_id) ||
+      target.department_id !== other.department_id ||
+      target.entry_id === otherEntryId
+    )
+      throw new Error('SQL guard probes require two fixed synthetic entries');
+
+    async function rejected(sql, values) {
+      await client.query('BEGIN');
+      let failure;
+      try {
+        await client.query(sql, values);
+        await client.query('SET CONSTRAINTS ALL IMMEDIATE');
+      } catch (error) {
+        failure = error;
+      } finally {
+        await client.query('ROLLBACK');
+      }
+      if (!failure)
+        throw new Error(
+          'Expected the external-entry SQL guard to reject write',
+        );
+    }
+
+    await rejected(
+      `UPDATE case_external_entries SET initial_stage='WAITING_HEARING'
+       WHERE id=$1`,
+      [target.entry_id],
+    );
+    await rejected(`UPDATE cases SET stage='WAITING_ARCHIVE' WHERE id=$1`, [
+      caseId,
+    ]);
+    await rejected(
+      `UPDATE case_second_instance_acceptance_changes SET external_entry_id=$2
+       WHERE case_id=$1`,
+      [caseId, otherEntryId],
+    );
+    await rejected(
+      `UPDATE case_second_instance_acceptance_changes SET department_id=$2
+       WHERE case_id=$1`,
+      [caseId, departments.find((id) => id !== target.department_id)],
+    );
+    await rejected(
+      `UPDATE case_second_instance_acceptance_changes SET choice_id=gen_random_uuid()
+       WHERE case_id=$1 AND choice_id IS NULL`,
+      [caseId],
+    );
+    await rejected(
+      `DELETE FROM case_external_entry_receipts WHERE case_id=$1`,
+      [caseId],
+    );
+    await rejected(`DELETE FROM audit_events WHERE id=$1`, [
+      target.audit_event_id,
+    ]);
+    await rejected(
+      `INSERT INTO case_second_instance_acceptance_changes
+         (id,case_id,department_id,trial_round_id,choice_id,external_entry_id,
+          prior_change_id,from_revision,to_revision,accepted_at,court_case_no,
+          reason,recorded_at,recorded_by_user_id,audit_event_id)
+       VALUES (gen_random_uuid(),$1,$2,$3,NULL,$4,NULL,90,91,NULL,
+          'CA018 SQL probe','missing audit must rollback',now(),$5,gen_random_uuid())`,
+      [
+        caseId,
+        target.department_id,
+        target.current_trial_round_id,
+        target.entry_id,
+        target.recorded_by_user_id,
+      ],
+    );
   });
 }
