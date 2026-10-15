@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## 155开庭严格冲突恢复专项通过（2026-10-15）
+
+独立clean候选c4c06820355b6ff7b2bbde34e8c6a6e3912814fd/treea0850faff5a568988f53884eb584a601720965ce，在16:20:51.006至16:21:19.949 UTC正常本树Prisma generate/backend build:prepared exit0后，仅protected hearing-correction-chain.spec.ts及DB-only配置实际1/1 expected、unexpected/skipped/flaky/retry均0，pnpm exit0，未启后台scheduler。schedule-first走STRICT_SAFE_ABORT，实际完成的expect步骤绑定first取得锁→second尝试→first释放屏障→second拒绝；冻结helper精确验证唯一second P2010/40001/TransactionWriteConflict、初扫0 advanced/1 failed、新独立null重扫0/0及head/history不变。另advance-first、judgment-before-correction、correction-before-judgment三组均实际second取得锁，人工命令未放宽。
+
+证据hearing-correction-chain/.local/ui003-evidence/hearing-c4c-155-r2-20261015/含acceptance-summary.json、Playwright JSON/log/trace、16断言步骤、source-assertion-context.json与构建manifest。spec没有输出完整return；summary如实区分“实际执行断言与冻结源码hash证明的值”和单独raw返回对象，不伪称后者已存。主控核37份manifest文件哈希/字节数，原Reviewer独立核证据Spec/Quality C/I/M0。facts-before与after.oldFacts逐字段相同，旧8合成案保留，新9案追加（8→17）；R2精确身份、155完整名称/checksum/finished/no-rollback及指纹87ddb629496fbfadd83a201c2518d2ed3406badfff2fd3843d2804f93e18cd42前后相同，标准锁释放。回执.local/ui003-evidence/hearing-c4c-155-receipt.json。
+
+原155实际运行阻塞在此限定专项关闭，不覆盖156/157、六栏浏览器或后续270完整门禁，也不表示c4产品已交付main。a539/d4b/9ba原失败及合成事实均保留。仅ignored汇总脚本曾误用不存在的旧runner导出，修正为读取本轮真实lockpath后汇总，post-processing-issue.json保留，没有重跑测试或放宽断言。后续source270阶段静态与156/157运行结果必须另记。
+
 ## 155交付及后续测试准入关闭（2026-10-15）
 
 155正式候选19a及本节下述全门禁/9项证据经独立终核Spec/Quality C/I/M0；仅三份权威文档和标准snapshot收口为b39b90e89b3c1fd2cdc8258162e28553b613a07f/tree480840a0be82f6f3c5dd61ad9c9fa790245cdf53，已正常原子快进远端main和codex/ui003-quick-actions-integration，双ref与主仓main均只读核实同SHA。主仓.pnpm-store保留，预览未操作；交付回执主控.local/ui003-evidence/delivery-b39b90e.json。未声称b39重跑完整门禁，不扩六栏/156/157结论。
