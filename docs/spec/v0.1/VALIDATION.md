@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## UI003 B第二次失败与等待修复／S首合同冻结（2026-10-15）
+
+fa16b9d2aab2f4cb98bd86cf7506dd4143a9d758／tree a56a62978404d435e9edfe0605dbad47acf7f7a0于09:22:22.7405667～09:23:13.3149041 UTC正常B-only真实浏览器exit1，expected0／unexpected1／skipped0／flaky0。快捷编辑精确URL、取消/保存返回原page2/status筛选及真实API字段/version已过；第518行在retry控件可见但仍disabled时commands数组仍0，upstream随后HTTP201，响应丢失route故意abort为-1。刷新/原body版本key重放及最终单一事实审计回执均未验，不把部分通过写为整项通过。原容器/指纹保持，155历史逐项相同，不重部署/清库；四日志与trace SHA已由I全核匹配，trace5c2fc0f2607d679891e927cf9ecfbe88cf76acf104e7d0754fce17e395cd9ac4。证据.local/ui003-evidence/acceptance-fa16b9d-b-only-20261015及integration-readback.json。da37 A／94工具／NT0062项未重跑，既有证据保持。
+
+原测试Owner依据同trace/timeline修复4207f44861408c48ed81603865808e5518f922bd，I接15c993a17f491210927730ee10405b77ae479e70；单文件只加四行toBeEnabled与有界commands.length poll，覆盖首发与重放，不加sleep、不删/改原body/key/最终事实断言，A/公共helper不改。作者根TS/该文件Lint/格式/diff通过，未DB/浏览器。I核精确增量后接SD-58纯文档0c202fa为7d18ecf；产品代码与工具/迁移/依赖不变，下一冻结仅重验B，不重复94/2/A/完整verify/双构建，最终SHA/tree见冻结回执。
+
+S首合同正式代提交8b18c85e66cd6ba59d4e6f93de99dfc205ca07d4／tree3f1adbc0bb123a2db7dca138c97832dc6780a05f；精确10文件，提交前逐项SHA256等同作者handoff，schema+共享DTO/spec+六ACL+12模型owner登记。S新增expectedClosureVersionId必填UUID及32/32直接DTO正反例；独立Reviewer仅在DTO/合同源层关闭I-S01，锁内真实版本/CAS/指纹/旧回执条件已明确，H服务/DB尚未实现验收。六ACL源审C/I/M0，无默认真实Grant，模型登记无逻辑放宽。此前Prisma同schema validate/generate0直接复用。证据S目录.local/s1-baseline-coordination/result.json、i-s01-fix-evidence.json。读取/日历/摘要/新迁移WIP全部保留未入该提交，不接本次B树；可供父级独立派E/H，不称后台功能交付。共享列表W为01a13ee0-f72c-71a1-b033-bf5ca55d4012，四文件实现/类型自报进行中，未接本运行树。
+
 ## SD-58列表表单批准与S合同复验（2026-10-15，非产品验收）
 
 用户已明确同意三模块列表原位真实表单、表单内选择合法分支、方向未定先保存已有资料及独立编辑不推进阶段。仅同步Decision／共享和模块Spec／拆分brief／状态路线图。B验收目录固定fa16b9d2aab2f4cb98bd86cf7506dd4143a9d758、tree a56a62978404d435e9edfe0605dbad47acf7f7a0，文档在独立ui003-list-workflow-docs目录；未新增实现或运行数据库／浏览器。新四Owner仍待父级创建，A已过/B待重验边界保持，不能写为新列表已交付。两张Library已prepare/read元数据但尚无实际可查看像素，不以caption/OCR称已看截图。

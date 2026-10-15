@@ -2,13 +2,13 @@
 
 更新日期：2026-10-15。本文件只保留恢复当前工作的最小事实；历史状态见[历史状态](project-status-history-through-2026-09-18.md)，候选证据与集成事实见[验证记录](spec/v0.1/VALIDATION.md)。
 
-本次仅文档分支codex/ui003-list-workflow-docs，从B验收冻结fa16b9d2aab2f4cb98bd86cf7506dd4143a9d758另建独立目录，保持ca015-integration原tree a56a62978404d435e9edfe0605dbad47acf7f7a0不变。用户已批准SD-58；Spec／拆分brief／真实点击验收目标已同步，四新Owner待父级创建，不冒称已开工。文档分支不推送、不接入正在验收的B目录。
+SD-58纯文档先在独立ui003-list-workflow-docs形成0c202fa，B的fa16验收结束后接入为7d18ecf，不在运行中改树。共享列表Owner W已由父级创建01a13ee0-f72c-71a1-b033-bf5ca55d4012，独占四新app文件并先交微合同；三个模块Owner仍待共享合同及D/C/分栏文件交接。W自报实现/类型测试进行中，未接运行树、不称完成。独立S首合同8b18c85已冻结，见下；新列表及后台产品不混本次B-only运行树。
 
 ## 当前阶段
 
 唯一Current为CORE-UI-003两项前端闭环；CA018已原子交付，最后实核远端main／任务分支和本地主main为1f375ea。人工预览source81ebfed／150测试窗口保持，CA019占位未冻结。
 
-最近冻结da37f8873a10c8dea12e3b383f47a2cee256d91f／treebf9704618a9ef47d818c61fd097c7c45f7079ef1已实际通过正常工具94/94、真实NT0062/2及A浏览器共用原因/归档刷新重登；B在编辑URL编码正则处失败，后续取消/保存/未知推送重放未执行，整批未验收。I核10日志及A/B两trace哈希全部匹配，同容器/指纹/155历史，未完整verify新树。原测试Owner只改B断言c25987d，I接d4be97ac5d07b927aa54d535c316c5da0eab21c5：标准URL严格核origin、精确对象路径、唯一returnTo及解码值，A/公共seed/B后续全部不改。文档检查后再冻结，仅让runner重验B，不重复A/工具/NT006或双构建，不称新树全量通过。
+da37f88实际通过工具94/94、真实NT0062/2及A浏览器共用原因/归档刷新重登，B旧URL正则失败保留。断言c25987d接d4be97a后，fa16b9d2aab2f4cb98bd86cf7506dd4143a9d758／tree a56a62978404d435e9edfe0605dbad47acf7f7a0于09:22:22～09:23:13 UTC真实仅B重验仍exit1：快捷编辑、取消/保存返回第2页筛选和后端字段/版本已过，第518行在重试入口可见但仍disabled时commands0；同一upstream随后201。刷新/原body/key重放/单一事实审计回执未验，整项未过。I核4日志/1trace哈希匹配，指纹与155历史保持，无reset。原测试Owner只加四行启用态/命令完成poll，4207f44861408c48ed81603865808e5518f922bd接15c993a17f491210927730ee10405b77ae479e70，A/公共seed/原断言不改。下一冻结仍仅跑B，原94/2/A及历史同输入单元/双构建限定复用，不宣称新树完整verify。
 
 最近正式全门禁实际在eb367f05806a6394e3415b65b107c2e694f63cbb／tree1e360de44d2c8557d2aef9362382083273c9ddbf通过：新15437空库155/155、失败聚焦20/20，正常pnpm verify工具92／前端1887／后端1532及双构建exit0。浏览器收集因case-judgment support仍默认15433失败，A/B执行0、trace0，不能称产品验收。运行任务01a13e67-4068-778b-a1e9-9d808ecb50e8已停，容器dbb1cbd29c6d65b5aa4fd85317c96167fbd94310c34946edc033fc4f2f9d3695保留；I核14日志哈希全部一致。旧fc4两轮失败保留于VALIDATION，不替换为通过。
 
@@ -20,7 +20,7 @@ C“补齐案件列表办理入口”01a13e59-3cad-70a0-806c-aaede131b0cb在uxq0
 
 分栏候选e6c4260a6fb15431ac360b2645a3ad910ee5e35d相对b402精确23文件，clean，源无后台/schema/文档/依赖越界；原Reviewer完整复审新增产品源Spec/Quality C/I/M0，315组合及末尾Closure51只按作者输入限定记录，未真正逐栏PG/浏览器。五个专项仍走旧TRUNCATE/reset/replica清理，C-SECTION-E2E01阻断运行，原C“只读”误导未关闭，不接当前A/B树。I审批开发期check:fast虽曾exit0但期间源变化，不能冒充e6最终门禁。
 
-S共享后端任务01a13eba-6a0b-74af-9ef0-852b446e40c0在独立section-record-edit-shared、base da37f88实施；I已代建目录。v1合同/DTO/schema未接根，首次实际Prisma validate P1012六条自关联失败后，S改next数组，09:05:30～09:05:35 UTC I正式代跑validate/generate均exit0、三文件hash稳定且无DB，原Reviewer关闭C-S00。I-S01缺expectedClosureVersionId仍阻断合同冻结，尚无E/H固定SHA。Reviewer撤回hearingAt缺失可通过的错误判断；执行日期严格校验及timestamp反例明确交新服务。materials/material.service.ts及直接测试的新增文书冻结/下载最小接线独占归S，E/H不得争写；S新摘要sourceType需前端decoder唯一Owner同步，不能称跨端已兼容。仅修复后复核/代提交三合同文件，不混catalog/迁移或亲写实现。
+S共享后端任务01a13eba-6a0b-74af-9ef0-852b446e40c0的首合同已独立冻结8b18c85e66cd6ba59d4e6f93de99dfc205ca07d4／tree3f1adbc0bb123a2db7dca138c97832dc6780a05f，可供父级创建E/H独立目录。精确10文件为schema、共享DTO/spec、六ACL及模型归属registry；实际Prisma validate/generate0关闭C-S00，S补必填expectedClosureVersionId/32项DTO测试及精确锁内比较/幂等合同后，原Reviewer关闭I-S01，六ACL源审C/I/M0、registry仅12模型归cases。S自报后端类型/相关Lint格式通过；真实H命令与DB未实现验收。读取/日历/摘要/新迁移WIP原样保留未入首提交，不接B树；materials/material.service.ts及直接测试独占S。新增两摘要sourceType仍需前端API decoder唯一Owner同步，不称跨端已兼容。
 
 用户最新列表验收要求覆盖线索/公证/案件：操作列用明确下一节点主按钮，在列表内填表提交，成功刷新原行并保持筛选分页；同一步多分支在表单明确选择，无默认/万能stage切换，资料编辑独立。判决可先保存而暂不决定后续，不强造二审受理。当前B仅待推送快捷、C跳详情、D交接导航不等于该新范围已实现；接续独立列表任务及共享弹层Owner由父级创建，当前原功能验收不打断。
 
