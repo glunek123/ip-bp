@@ -654,7 +654,7 @@ CREATE CONSTRAINT TRIGGER execution_finish_record_date_guard AFTER INSERT ON cas
 
 -- H handoff only. S owns final migration. Not executed against any database.
 -- Install after all six correction models exist. No stage-order or finish>=filing rule.
-CREATE FUNCTION case_section_trial_date_valid(cid uuid, did uuid, rid uuid, kind text, proposed date, advanced boolean)
+CREATE FUNCTION case_section_trial_date_valid(cid uuid, did uuid, rid uuid, p_kind text, proposed date, advanced boolean)
 RETURNS boolean LANGUAGE sql STABLE AS $$
 WITH RECURSIVE rounds AS (
   SELECT id FROM case_trial_rounds WHERE id=rid AND case_id=cid AND department_id=did
@@ -681,7 +681,7 @@ WITH RECURSIVE rounds AS (
     ON a.id=advance.arrangement_id AND a.case_id=advance.case_id AND a.department_id=advance.department_id
   LEFT JOIN LATERAL (SELECT id,hearing_at FROM case_hearing_record_corrections e
     WHERE e.arrangement_id=a.id AND e.case_id=cid AND e.department_id=did ORDER BY to_revision DESC LIMIT 1) edit ON true
-  WHERE kind='JUDGMENT' AND advance.trial_round_id=rid AND advance.case_id=cid AND advance.department_id=did
+  WHERE p_kind='JUDGMENT' AND advance.trial_round_id=rid AND advance.case_id=cid AND advance.department_id=did
   UNION ALL
   SELECT entry.stage_reached_on FROM case_trial_rounds round JOIN case_external_entries entry
     ON entry.id=round.external_entry_id AND entry.case_id=round.case_id AND entry.department_id=round.department_id
@@ -695,7 +695,7 @@ WITH RECURSIVE rounds AS (
   SELECT CASE WHEN edit.id IS NULL THEN j.judgment_received_at ELSE edit.judgment_received_at END AS value
   FROM case_judgment_facts j LEFT JOIN LATERAL (SELECT id,judgment_received_at FROM case_judgment_record_corrections e
     WHERE e.judgment_id=j.id AND e.case_id=cid AND e.department_id=did ORDER BY to_revision DESC LIMIT 1) edit ON true
-  WHERE kind='HEARING' AND j.case_id=cid AND j.department_id=did AND j.trial_round_id IN (SELECT id FROM rounds)
+  WHERE p_kind='HEARING' AND j.case_id=cid AND j.department_id=did AND j.trial_round_id IN (SELECT id FROM rounds)
   UNION ALL
   SELECT hearing_at FROM case_second_instance_progresses WHERE case_id=cid AND department_id=did AND trial_round_id IN (SELECT id FROM rounds)
   UNION ALL

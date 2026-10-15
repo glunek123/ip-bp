@@ -26,6 +26,41 @@ import {
 } from './case-section-record-migration.mjs';
 
 const uploadMigration = '20261015170000_case_section_record_uploads';
+const recordMigration = '20261015150000_case_section_record_edits';
+const oldRecordHash =
+  '87e2a8ee00ac8341419a07192a43227101fc60d182bd5f1006acc1cfe315001b';
+const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
+
+function assertTrialDateParameterBindings(sql) {
+  const declaration = sql.match(
+    /CREATE FUNCTION case_section_trial_date_valid\([\s\S]*?\n\$\$;/u,
+  )?.[0];
+  assert.ok(declaration, 'Exact trial-date function must exist');
+  assert.match(
+    declaration,
+    /rid uuid, p_kind text, proposed date, advanced boolean\)/u,
+  );
+  assert.match(
+    declaration,
+    /WHERE p_kind='JUDGMENT' AND advance\.trial_round_id=rid/u,
+  );
+  assert.match(declaration, /WHERE p_kind='HEARING' AND j\.case_id=cid/u);
+  assert.doesNotMatch(
+    declaration,
+    /\bkind\b/u,
+    'Unqualified kind can bind case_judgment_facts.kind instead of the function argument',
+  );
+}
+
+function predecessor156Bytes(sql) {
+  return sql
+    .replace(
+      'rid uuid, p_kind text, proposed date',
+      'rid uuid, kind text, proposed date',
+    )
+    .replace("WHERE p_kind='JUDGMENT'", "WHERE kind='JUDGMENT'")
+    .replace("WHERE p_kind='HEARING'", "WHERE kind='HEARING'");
+}
 async function withMigrationFixture(operation) {
   const temporaryRoot = resolve(tmpdir());
   const directory = await mkdtemp(
@@ -276,5 +311,61 @@ test('reject changed LF157 SQL even when names/count and isolation screen remain
         error.code === 'ERR_ASSERTION' &&
         error.expected?.[1] ===
           '218b2309215b418c0e6ec3a5c072cb3f16034946002dbf69a6dad07f11f02296',
+    );
+  }));
+
+test('trial-date dispatch references its text argument in both branches, never the judgment-kind column', async () => {
+  const sql = await readFile(
+    resolve('backend/prisma/migrations', recordMigration, 'migration.sql'),
+    'utf8',
+  );
+  assertTrialDateParameterBindings(sql);
+  const old = predecessor156Bytes(sql);
+  assert.equal(
+    sha256(old),
+    oldRecordHash,
+    'Only the parameter and its two references may change',
+  );
+  assert.throws(() => assertTrialDateParameterBindings(old));
+  assert.throws(() =>
+    assertTrialDateParameterBindings(
+      sql.replace("WHERE p_kind='HEARING'", "WHERE kind='HEARING'"),
+    ),
+  );
+  const enumSql = await readFile(
+    resolve(
+      'backend/prisma/migrations/20261008020000_add_case_judgment_enums/migration.sql',
+    ),
+    'utf8',
+  );
+  assert.match(
+    enumSql,
+    /CREATE TYPE "case_judgment_kind" AS ENUM \('REGISTER', 'CORRECT'\)/u,
+  );
+});
+
+test('reject original156 bytes after the unpublished parameter-binding fix', async () =>
+  withMigrationFixture(async (directory) => {
+    const path = join(directory, recordMigration, 'migration.sql');
+    const original = predecessor156Bytes(await readFile(path, 'utf8'));
+    assert.equal(sha256(original), oldRecordHash);
+    await writeFile(path, original);
+    await assert.rejects(
+      sectionMigrationPlan(directory),
+      (error) =>
+        error.code === 'ERR_ASSERTION' && error.actual?.[0] === oldRecordHash,
+    );
+  }));
+
+test('reject altered156 bytes even after the correct parameter binding is present', async () =>
+  withMigrationFixture(async (directory) => {
+    const path = join(directory, recordMigration, 'migration.sql');
+    await writeFile(
+      path,
+      Buffer.concat([await readFile(path), Buffer.from('\nSELECT 1;\n')]),
+    );
+    await assert.rejects(
+      sectionMigrationPlan(directory),
+      (error) => error.code === 'ERR_ASSERTION',
     );
   }));

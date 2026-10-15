@@ -15,7 +15,7 @@ const suffix = [
   '20261015170000_case_section_record_uploads',
 ];
 const hashes = [
-  '87e2a8ee00ac8341419a07192a43227101fc60d182bd5f1006acc1cfe315001b',
+  '10760cf6e9969822a6b6a631760645625d227c4541a018560473e34c164953c7',
   // Candidate270 Git blob ac41a6f and runtime bytes are identical LF text.
   // Hash raw bytes; never normalize a runtime migration to make it pass.
   '218b2309215b418c0e6ec3a5c072cb3f16034946002dbf69a6dad07f11f02296',
