@@ -129,6 +129,47 @@ function deferred<T>() {
 }
 
 describe('CaseArchivePanel', () => {
+  it('opens a section correction with existing archive fields and cancels without a write', async () => {
+    const source = archived();
+    const wrapper = panel({ item: source, editOnly: true, editRequest: 1 });
+    expect(control(wrapper, 'date').element).toHaveProperty(
+      'value',
+      version.archiveAt,
+    );
+    expect(control(wrapper, 'type').element).toHaveProperty(
+      'value',
+      version.archiveType,
+    );
+    expect(control(wrapper, 'reason').element).toHaveProperty(
+      'value',
+      version.archiveReason,
+    );
+    await control(wrapper, 'reason').setValue('取消的草稿');
+    await control(wrapper, 'edit-cancel').trigger('click');
+    expect(wrapper.emitted('cancel')).toHaveLength(1);
+    expect(api.correctArchive).not.toHaveBeenCalled();
+    await wrapper.setProps({ editRequest: 2 });
+    expect(control(wrapper, 'reason').element).toHaveProperty(
+      'value',
+      version.archiveReason,
+    );
+    await control(wrapper, 'reason').setValue('核对后的原因');
+    await control(wrapper, 'correction-reason').setValue('核对原登记');
+    await submit(wrapper);
+    expect(api.archiveCase).not.toHaveBeenCalled();
+    expect(api.correctArchive).toHaveBeenCalledWith(
+      source.id,
+      expect.objectContaining({
+        expectedVersion: source.version,
+        expectedArchiveVersionId: version.id,
+        archiveAt: version.archiveAt,
+        archiveType: version.archiveType,
+        archiveReason: '核对后的原因',
+      }),
+    );
+    expect(source.stage).toBe('ARCHIVED');
+    wrapper.unmount();
+  });
   it('starts with no default date/type, a single archive action and no finance/files controls', async () => {
     const wrapper = panel();
     expect(control(wrapper, 'date').element).toHaveProperty('value', '');

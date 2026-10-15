@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CaseDetail } from '../../api/cases';
+import { resolveCaseSectionEdits } from './case-workspace-section-edits';
 import {
   parseCaseActionIntent,
   primaryCaseAction,
@@ -114,6 +115,52 @@ function withJudgment(): CaseDetail {
   };
   return item;
 }
+
+describe('registered section edit mapping', () => {
+  it('selects judgment correction but never the next-step command or first registration', () => {
+    const item = withJudgment();
+    item.canCorrectJudgment = item.canChooseJudgmentNextStep = true;
+    expect(
+      resolveCaseSectionEdits(item).map((action) => action.intent),
+    ).toEqual(['correct-judgment']);
+    item.canCorrectJudgment = false;
+    expect(resolveCaseSectionEdits(item)).toEqual([]);
+    item.judgment.current = null;
+    item.canRegisterJudgment = true;
+    expect(resolveCaseSectionEdits(item)).toEqual([]);
+  });
+
+  it('does not expose first-time second acceptance registration or execution progression as edits', () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'EXECUTING';
+    item.canFinishExecution = true;
+    item.recordEdits = {
+      canUpdateDefendantContact: false,
+      canCorrectAcceptance: false,
+      defendantContacts: [],
+      acceptanceCorrections: [],
+      canSaveSecondInstanceAcceptance: true,
+      secondInstanceAcceptances: [
+        {
+          choiceId: 'choice-1',
+          trialRoundId: 'round-1',
+          acceptanceRevision: 0,
+          acceptedAt: null,
+          courtCaseNo: null,
+          canEdit: true,
+          history: [],
+        },
+      ],
+    };
+    expect(resolveCaseSectionEdits(item)).toEqual([]);
+    item.recordEdits.secondInstanceAcceptances![0]!.acceptanceRevision = 1;
+    expect(
+      resolveCaseSectionEdits(item).map((action) => action.intent),
+    ).toEqual(['second-instance-acceptance']);
+    item.recordEdits.canSaveSecondInstanceAcceptance = false;
+    expect(resolveCaseSectionEdits(item)).toEqual([]);
+  });
+});
 function external(stage: CaseDetail['stage']): CaseDetail {
   return {
     ...structuredClone(baseItem),

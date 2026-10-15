@@ -234,6 +234,7 @@ export async function setCaseExternalEntryWorkflowGrant(
     'case.archive',
     'case.hearing.schedule',
     'case.judgment.register',
+    'case.judgment.correct',
     'case.judgment.next_step',
     'case.second_instance.save',
     'case.second_instance.result',

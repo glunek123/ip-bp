@@ -49,8 +49,10 @@ const props = defineProps<{
   item: PanelItem;
   contextKey: string;
   lawyer?: boolean;
+  editOnly?: boolean;
+  editRequest?: number;
 }>();
-const emit = defineEmits<{ changed: []; refresh: [] }>();
+const emit = defineEmits<{ changed: []; refresh: []; cancel: [] }>();
 
 const judgmentReceivedAt = ref('');
 const judgmentAmountState = ref<AmountState>('');
@@ -90,6 +92,7 @@ function allAvailableFiles(): CaseFile[] {
   const unique = new Map<string, CaseFile>();
   for (const file of [
     ...props.item.judgment.availableFiles,
+    ...(props.item.judgment.current?.files ?? []),
     ...uploadedFiles.value,
   ]) {
     if (supportedMaterial(file)) unique.set(file.contentVersionId, file);
@@ -119,6 +122,12 @@ function resetContext(
   success.value = preserveSuccess ? acceptedFeedback : '';
   unknownRequest.value = preservePendingState ? pendingCommand : null;
   selectedFiles.value = new Set();
+  if (props.editOnly && current) {
+    selectedFiles.value = new Set(
+      current.files.map((file) => file.contentVersionId),
+    );
+    return;
+  }
   const available = allAvailableFiles();
   if (available.length === 1)
     selectedFiles.value = new Set([available[0]!.contentVersionId]);
@@ -142,6 +151,23 @@ watch(
   },
   { flush: 'sync' },
 );
+watch(
+  () => props.editRequest,
+  (request) => {
+    if (
+      request &&
+      !unknownRequest.value &&
+      !submitting.value &&
+      !uploading.value
+    )
+      resetContext();
+  },
+);
+function cancelEdit(): void {
+  if (unknownRequest.value || submitting.value || uploading.value) return;
+  resetContext();
+  emit('cancel');
+}
 onDeactivated(() => {
   active = false;
   revision += 1;
@@ -160,6 +186,7 @@ onBeforeUnmount(() => {
 
 const canRegister = computed(
   () =>
+    !props.editOnly &&
     props.item.stage === 'WAITING_JUDGMENT' &&
     props.item.canRegisterJudgment &&
     props.item.judgment.current === null,
@@ -659,6 +686,13 @@ function historyLabel(fact: CaseJudgmentFact): string {
         :loading="submitting"
         @click="submit"
         >登记一审判决</ElButton
+      >
+      <ElButton
+        v-if="editOnly"
+        data-test="judgment-edit-cancel"
+        :disabled="unknownRequest !== null || submitting || uploading"
+        @click="cancelEdit"
+        >取消</ElButton
       >
     </form>
     <p v-else-if="item.judgment.current" class="field-help">

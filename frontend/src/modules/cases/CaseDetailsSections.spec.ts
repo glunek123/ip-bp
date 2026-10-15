@@ -163,7 +163,7 @@ function actions(): Record<SectionKey, SectionAction> {
     judgment: readonly,
     execution: readonly,
     'closure-info': readonly,
-    timeline: readonly,
+    timeline: { ...readonly, label: '只读' },
   };
 }
 const wrappers: VueWrapper[] = [];
@@ -298,7 +298,7 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
         .get('[data-section="closure-info"]')
         .find('.case-workspace-section__edit')
         .exists(),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('emits controlled edit without expanding the section and suppresses disabled commands', async () => {
@@ -405,9 +405,7 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
   it('names timeline actions accurately and emits viewing without opening or generating a write', async () => {
     const wrapper = mountSections();
     const timeline = wrapper.get('[data-section="timeline"]');
-    expect(timeline.get('.case-workspace-section__edit').text()).toBe(
-      '登记／更正',
-    );
+    expect(timeline.get('.case-workspace-section__edit').text()).toBe('只读');
     expect(
       timeline.get('.case-workspace-section__edit').attributes('disabled'),
     ).toBeDefined();

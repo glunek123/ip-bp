@@ -54,6 +54,8 @@ type ClosureVersion = {
   files: CaseFile[];
 };
 const props = defineProps<{
+  editOnly?: boolean;
+  editRequest?: number;
   readRevision?: number;
   item: {
     id: string;
@@ -93,6 +95,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   changed: [result: ClosureResult];
   refresh: [];
+  cancel: [];
   'pending-change': [request: PendingRequest | null];
 }>();
 const closeAt = ref('');
@@ -165,6 +168,7 @@ function clearDraft() {
 }
 const canRecord = computed(
   () =>
+    !props.editOnly &&
     !projectionBlocked.value &&
     props.item.stage === 'WAITING_ARCHIVE' &&
     props.item.canRecordClosure &&
@@ -179,7 +183,9 @@ const canCorrect = computed(
     props.item.stage === 'WAITING_ARCHIVE' &&
     !props.lawyer &&
     props.item.canCorrectClosure &&
-    !!props.item.executionFinish &&
+    (!!props.item.executionFinish ||
+      (props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
+        props.item.origin.initialStage === 'WAITING_ARCHIVE')) &&
     !!props.item.closure,
 );
 const editable = computed(
@@ -359,6 +365,28 @@ watch(
   },
   { flush: 'sync' },
 );
+watch(
+  () => props.editRequest,
+  (request) => {
+    if (
+      !request ||
+      pending.value ||
+      submitting.value ||
+      uploading.value ||
+      denied.value ||
+      conflict.value
+    )
+      return;
+    success.value = false;
+    startCorrection();
+  },
+  { immediate: true },
+);
+function cancelEdit(): void {
+  if (pending.value || submitting.value || uploading.value) return;
+  clearDraft();
+  emit('cancel');
+}
 onDeactivated(() => {
   active = false;
   revision += 1;
@@ -749,7 +777,7 @@ function recordedTime(value: string) {
         >{{ correcting ? '保存更正' : '保存结案资料' }}</ElButton
       >
       <ElButton
-        v-if="correcting"
+        v-if="correcting && !editOnly"
         data-test="closure-cancel"
         :disabled="uploading"
         @click="clearDraft"
@@ -765,6 +793,13 @@ function recordedTime(value: string) {
       data-test="closure-refresh"
       @click="emit('refresh')"
       >刷新核对记录</ElButton
+    >
+    <ElButton
+      v-if="editOnly"
+      data-test="closure-edit-cancel"
+      :disabled="!!pending || submitting || uploading"
+      @click="cancelEdit"
+      >取消</ElButton
     >
   </details>
 </template>

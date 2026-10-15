@@ -462,7 +462,15 @@ describe('real CA-016 closure detail integration', () => {
     // Remount clears only the form's success lock; the current full version is read from the server.
     wrapper.unmount();
     const next = await open('internal');
-    await next.wrapper.get('[data-test="closure-correct"]').trigger('click');
+    await next.wrapper
+      .get('[data-section="closure-info"] .case-workspace-section__edit')
+      .trigger('click');
+    expect(
+      next.wrapper.get('[data-test="closure-amount"]').element,
+    ).toHaveProperty('value', '0.00');
+    await next.wrapper
+      .get('[data-test="closure-note"]')
+      .setValue('更正后的结案说明');
     await next.wrapper
       .get('[data-test="closure-reason"]')
       .setValue('  实际内部原因  ');
@@ -471,7 +479,9 @@ describe('real CA-016 closure detail integration', () => {
       closureVersionId: '80000000-0000-4000-8000-000000000204',
       version: 21,
     });
-    api.getCase.mockResolvedValue(registered(input, true));
+    const fresh = registered(input, true);
+    fresh.closure!.current.note = '更正后的结案说明';
+    api.getCase.mockResolvedValue(fresh);
     await next.wrapper.get('[data-test="closure-submit"]').trigger('click');
     await flushPromises();
     expect(api.correctCaseClosure).toHaveBeenCalledWith(
@@ -483,11 +493,17 @@ describe('real CA-016 closure detail integration', () => {
         closeAt: null,
         closeAmountState: 'KNOWN',
         closeAmt: '0.00',
-        note: null,
+        note: '更正后的结案说明',
         correctionReason: '  实际内部原因  ',
         closeContentVersionIds: [file.contentVersionId],
       }),
     );
+    await next.wrapper.get('[data-test="case-refresh"]').trigger('click');
+    await flushPromises();
+    expect(next.wrapper.getComponent(CaseClosurePanel).props('item')).toEqual(
+      fresh,
+    );
+    expect(fresh.stage).toBe('WAITING_ARCHIVE');
     expect(
       next.wrapper.findAll('[data-test="closure-history-version"]'),
     ).toHaveLength(2);

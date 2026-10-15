@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { closeCaseWorkspaceDrawer } from '../support/case-workspace-browser.js';
 import {
   expect,
   test,
@@ -1187,19 +1188,20 @@ test('browser cancels and saves distinct second-instance values; lawyer sees eff
   await expect(page.locator('[data-section="first-instance"]')).toContainText(
     'CE002原一审案号',
   );
-  await page
-    .locator('[data-section="second-instance"] .case-workspace-section__edit')
-    .click();
+  await expect(
+    page.locator(
+      '[data-section="second-instance"] .case-workspace-section__edit',
+    ),
+  ).toBeDisabled();
+  await page.locator('[data-test="workspace-primary-action"]').click();
   await page
     .locator('.case-workspace-editors [data-test="workspace-command"]')
     .selectOption('second-instance');
   await expect(
     page.locator('[data-test="second-instance-panel"]'),
   ).toContainText('一审');
-  // Switch within the already open drawer; its modal blocks the page behind it.
-  await page
-    .locator('.case-workspace-editors [data-test="workspace-command"]')
-    .selectOption('second-instance-acceptance');
+  await closeCaseWorkspaceDrawer(page);
+  await openAcceptancePanel(page);
   const panel = page.locator('[data-test="second-instance-acceptance-panel"]');
   await expect(panel).toBeVisible();
   await panel
@@ -1257,6 +1259,60 @@ test('browser cancels and saves distinct second-instance values; lawyer sees eff
   await expect(secondSection).toContainText('CE002浏览器二审案号');
   await expect(page.locator('[data-section="first-instance"]')).toContainText(
     'CE002原一审案号',
+  );
+  const beforeCorrectionCancel = await secondInstanceAcceptanceSnapshot(
+    source.caseId,
+  );
+  await openAcceptancePanel(page);
+  await expect(
+    panel.locator('[data-test="second-instance-acceptance-case-no"]'),
+  ).toHaveValue('CE002浏览器二审案号');
+  await expect(
+    panel.locator('[data-test="second-instance-acceptance-date"]'),
+  ).toHaveValue('');
+  await panel
+    .locator('[data-test="second-instance-acceptance-date"]')
+    .fill(source.businessDate);
+  await panel
+    .locator('[data-test="second-instance-acceptance-cancel"]')
+    .click();
+  expect(await secondInstanceAcceptanceSnapshot(source.caseId)).toEqual(
+    beforeCorrectionCancel,
+  );
+  await openAcceptancePanel(page);
+  await expect(
+    panel.locator('[data-test="second-instance-acceptance-date"]'),
+  ).toHaveValue('');
+  await panel
+    .locator('[data-test="second-instance-acceptance-date"]')
+    .fill(source.businessDate);
+  await panel
+    .locator('[data-test="second-instance-acceptance-reason"]')
+    .fill('核对二审受理日期');
+  const correctedResponse = page.waitForResponse(
+    (r) =>
+      r.request().method() === 'POST' &&
+      new URL(r.url()).pathname ===
+        `${source.root}/second-instance-acceptance-save`,
+  );
+  await panel.locator('[data-test="second-instance-acceptance-save"]').click();
+  const corrected = await body<Save>(await correctedResponse, 201);
+  expect(corrected).toMatchObject({
+    acceptanceRevision: 2,
+    acceptedAt: source.businessDate,
+    courtCaseNo: 'CE002浏览器二审案号',
+  });
+  await page.reload();
+  const afterCorrection = await read(request, source.caseId);
+  expect(afterCorrection.stage).toBe(detail.stage);
+  expect(afterCorrection.version).toBe(detail.version);
+  expect(afterCorrection.acceptance).toEqual(detail.acceptance);
+  expect(afterCorrection.courtCaseNo).toBe(detail.courtCaseNo);
+  expect(afterCorrection.secondInstance.acceptances).toContainEqual(
+    expect.objectContaining({
+      acceptedAt: source.businessDate,
+      courtCaseNo: 'CE002浏览器二审案号',
+    }),
   );
   const logout = page.waitForResponse(
     (r) =>
@@ -1388,8 +1444,9 @@ async function openAcceptancePanel(page: Page) {
   const edit = page.locator(
     '[data-section="second-instance"] .case-workspace-section__edit',
   );
-  await expect(edit).toBeEnabled();
-  await edit.click();
+  if (await edit.isEnabled()) await edit.click();
+  else
+    await page.locator('[data-test="workspace-record-registration"]').click();
   const drawer = page.locator('.case-workspace-editors[role="dialog"]');
   const command = drawer.locator('[data-test="workspace-command"]');
   await expect(

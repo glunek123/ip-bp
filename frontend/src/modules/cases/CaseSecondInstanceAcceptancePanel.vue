@@ -10,15 +10,21 @@ import {
 import { ApiError } from '../../api/http';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
-const props = defineProps<{ item: CaseDetail; contextKey: string }>();
+const props = defineProps<{
+  item: CaseDetail;
+  contextKey: string;
+  registeredOnly?: boolean;
+}>();
 const emit = defineEmits<{
   changed: [];
   refresh: [];
   'access-lost': [];
   cancel: [];
 }>();
-const entries = computed(
-  () => props.item.recordEdits?.secondInstanceAcceptances ?? [],
+const entries = computed(() =>
+  (props.item.recordEdits?.secondInstanceAcceptances ?? []).filter(
+    (entry) => !props.registeredOnly || entry.acceptanceRevision > 0,
+  ),
 );
 const currentChoiceId = computed(() => {
   const choice = props.item.judgmentNextStep.current;
@@ -157,6 +163,14 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 watch(selectedChoiceId, setSelectedValues, { flush: 'sync' });
+watch(
+  () => props.registeredOnly,
+  () => {
+    if (unknownRequest.value || submitting.value) return;
+    if (!selected.value) selectedChoiceId.value = defaultChoiceId();
+    setSelectedValues();
+  },
+);
 watch(
   [
     () => selected.value?.acceptanceRevision,

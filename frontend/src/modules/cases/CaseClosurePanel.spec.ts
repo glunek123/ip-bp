@@ -150,6 +150,67 @@ async function upload(wrapper: Panel) {
   await flushPromises();
 }
 describe('injected closure panel', () => {
+  it('opens correction for a real closure following an external WAITING_ARCHIVE root without inventing a finish', async () => {
+    const source = structuredClone(closed());
+    source.origin = { kind: 'EXTERNAL_ENTRY', initialStage: 'WAITING_ARCHIVE' };
+    source.executionFinish = null;
+    source.closure!.finishId = null;
+    source.closure!.current.finishId = null;
+    const wrapper = panel({ item: source, editOnly: true, editRequest: 1 });
+    await control(wrapper, 'reason').setValue('核对外部接办后的真实结案资料');
+    await control(wrapper, 'note').setValue('真实更正');
+    await submit(wrapper);
+    expect(api.correctClosure).toHaveBeenCalledWith(
+      source.id,
+      expect.objectContaining({
+        expectedFinishId: null,
+        expectedClosureVersionId: version.id,
+        note: '真实更正',
+      }),
+    );
+    expect(api.recordClosure).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+  it('opens a section edit with saved values, cancels without a write, and only calls correction on save', async () => {
+    const source = closed();
+    const wrapper = panel({ item: source, editOnly: true, editRequest: 1 });
+    await flushPromises();
+    expect(control(wrapper, 'note').element).toHaveProperty(
+      'value',
+      version.note,
+    );
+    expect(control(wrapper, 'amount').element).toHaveProperty(
+      'value',
+      version.closeAmt,
+    );
+    await control(wrapper, 'note').setValue('取消的草稿');
+    await control(wrapper, 'edit-cancel').trigger('click');
+    expect(wrapper.emitted('cancel')).toHaveLength(1);
+    expect(api.correctClosure).not.toHaveBeenCalled();
+    await wrapper.setProps({ editRequest: 2 });
+    expect(control(wrapper, 'note').element).toHaveProperty(
+      'value',
+      version.note,
+    );
+    await control(wrapper, 'note').setValue('核对后的说明');
+    await control(wrapper, 'reason').setValue('核对原登记资料');
+    await submit(wrapper);
+    expect(api.recordClosure).not.toHaveBeenCalled();
+    expect(api.correctClosure).toHaveBeenCalledWith(
+      source.id,
+      expect.objectContaining({
+        expectedVersion: source.version,
+        expectedClosureVersionId: version.id,
+        closeAt: version.closeAt,
+        closeAmountState: version.closeAmountState,
+        closeAmt: version.closeAmt,
+        note: '核对后的说明',
+        closeContentVersionIds: [file.contentVersionId],
+      }),
+    );
+    expect(source.stage).toBe('WAITING_ARCHIVE');
+    wrapper.unmount();
+  });
   it('keeps exact closure history and files readable after archive with no editing', async () => {
     const wrapper = panel({
       item: { ...closed(), stage: 'ARCHIVED', canCorrectClosure: false },

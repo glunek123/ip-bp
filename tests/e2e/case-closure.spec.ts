@@ -233,11 +233,21 @@ test('operator records unknown closure date and pending amount, appends a reason
   expect(detail.executionFiling).toEqual(before.executionFiling);
   expect(detail.executionSubmission).toEqual(before.executionSubmission);
   await page.reload();
-  await openCaseWorkspaceCommand(
-    page,
-    'closure',
-    '[data-test="closure-panel"]',
+  const sectionEdit = page.locator(
+    '[data-section="closure-info"] .case-workspace-section__edit',
   );
+  await expect(sectionEdit).toBeEnabled();
+  await sectionEdit.click();
+  await expect(panel.locator('[data-test="closure-date"]')).toHaveValue('');
+  await expect(panel.locator('[data-test="closure-amount-state"]')).toHaveValue(
+    'PENDING',
+  );
+  const beforeCancel = await read(request, source.caseId);
+  await panel.locator('[data-test="closure-note"]').fill('取消的结案说明');
+  await panel.locator('[data-test="closure-edit-cancel"]').click();
+  expect(await read(request, source.caseId)).toEqual(beforeCancel);
+  await sectionEdit.click();
+  await expect(panel.locator('[data-test="closure-note"]')).toHaveValue('');
 
   await expect(panel.locator('[data-test="closure-current"]')).toContainText(
     '未知',
@@ -248,7 +258,6 @@ test('operator records unknown closure date and pending amount, appends a reason
   await expect(panel).toContainText('案件实收：未登记');
   await expect(panel).not.toContainText('已结清');
   await expect(panel).not.toContainText('未结清');
-  await panel.locator('[data-test="closure-correct"]').click();
   await panel
     .locator('[data-test="closure-amount-state"]')
     .selectOption('KNOWN');

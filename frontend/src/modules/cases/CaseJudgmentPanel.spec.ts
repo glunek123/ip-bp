@@ -196,6 +196,62 @@ function mountPanel(
 }
 
 describe('case judgment panel', () => {
+  it('prefills a section correction with its exact frozen files and cancels without a command', async () => {
+    const source = {
+      ...baseItem,
+      canRegisterJudgment: false,
+      canCorrectJudgment: true,
+      judgment: { current: fact, history: [fact], availableFiles: [] },
+    };
+    const wrapper = mount(CaseJudgmentPanel, {
+      props: {
+        item: source,
+        contextKey: 'actor',
+        editOnly: true,
+        editRequest: 1,
+      },
+    });
+    expect(wrapper.get('[data-test="judgment-date"]').element).toHaveProperty(
+      'value',
+      fact.judgmentReceivedAt,
+    );
+    expect(wrapper.get('[data-test="judgment-amount"]').element).toHaveProperty(
+      'value',
+      fact.judgmentAmount,
+    );
+    expect(
+      wrapper.get(`[data-test="judgment-file-${file.contentVersionId}"]`)
+        .element,
+    ).toHaveProperty('checked', true);
+    await wrapper.get('[data-test="judgment-amount"]').setValue('12.30');
+    await wrapper.get('[data-test="judgment-edit-cancel"]').trigger('click');
+    expect(wrapper.emitted('cancel')).toHaveLength(1);
+    expect(api.correctCaseJudgment).not.toHaveBeenCalled();
+    await wrapper.setProps({ editRequest: 2 });
+    expect(wrapper.get('[data-test="judgment-amount"]').element).toHaveProperty(
+      'value',
+      fact.judgmentAmount,
+    );
+    await wrapper.get('[data-test="judgment-amount"]').setValue('12.30');
+    await wrapper
+      .get('[data-test="judgment-correction-reason"]')
+      .setValue('核对判决书');
+    await wrapper.get('[data-test="judgment-correct"]').trigger('click');
+    await flushPromises();
+    expect(api.correctCaseJudgment).toHaveBeenCalledWith(
+      source.id,
+      expect.objectContaining({
+        judgmentReceivedAt: fact.judgmentReceivedAt,
+        judgmentAmount: '12.30',
+        paidLitigationFee: fact.paidLitigationFee,
+        judgmentContentVersionIds: [file.contentVersionId],
+        reason: '核对判决书',
+      }),
+    );
+    expect(api.registerCaseJudgment).not.toHaveBeenCalled();
+    expect(source.stage).toBe('WAITING_JUDGMENT');
+    wrapper.unmount();
+  });
   it('uses the external reached-on and known acceptance dates as the date floor', () => {
     const directItem: CaseDetail = {
       ...baseItem,

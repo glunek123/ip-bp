@@ -28,6 +28,9 @@ const api = vi.hoisted(() => ({
   registerCaseAcceptance: vi.fn(),
   uploadMaterialFile: vi.fn(),
   listFilingCourts: vi.fn(),
+  updateCaseDefendantContact: vi.fn(),
+  correctCaseAcceptance: vi.fn(),
+  saveSecondInstanceAcceptance: vi.fn(),
 }));
 vi.mock('../../api/cases', async (original) => ({
   ...(await original<typeof import('../../api/cases')>()),
@@ -38,6 +41,9 @@ vi.mock('../../api/cases', async (original) => ({
   scheduleCaseHearing: api.scheduleCaseHearing,
   registerCaseAcceptance: api.registerCaseAcceptance,
   listFilingCourts: api.listFilingCourts,
+  updateCaseDefendantContact: api.updateCaseDefendantContact,
+  correctCaseAcceptance: api.correctCaseAcceptance,
+  saveSecondInstanceAcceptance: api.saveSecondInstanceAcceptance,
 }));
 vi.mock('../../api/leads', () => ({ getLead: api.getLead }));
 vi.mock('../../api/materials', async (original) => ({
@@ -576,6 +582,274 @@ afterEach(() => {
 });
 
 describe('UI002 real case workspace host', () => {
+  it('opens only registered contact fields from case edit while keeping matching separate', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'PENDING_MATCH';
+    item.canMatch = true;
+    item.defendants = [
+      {
+        id: 'defendant-1',
+        kind: 'PERSON',
+        name: '被告',
+        idNo: null,
+        phone: '100',
+        address: '原地址',
+      },
+    ];
+    item.recordEdits = {
+      canUpdateDefendantContact: true,
+      canCorrectAcceptance: false,
+      defendantContacts: [
+        { defendantId: 'defendant-1', contactRevision: 0, history: [] },
+      ],
+      acceptanceCorrections: [],
+    };
+    const { wrapper } = await render(item);
+    await wrapper
+      .get('[data-section="case-info"] .case-workspace-section__edit')
+      .trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="defendant-contact-phone"]').element,
+    ).toHaveProperty('value', '100');
+    expect(
+      wrapper
+        .get('[data-test="workspace-command"]')
+        .findAll('option')
+        .map((option) => option.attributes('value')),
+    ).toEqual(['defendant-contact-update']);
+    expect(wrapper.find('[data-test="case-match-form"]').exists()).toBe(false);
+    await wrapper
+      .get('[data-test="defendant-contact-address"]')
+      .setValue('取消的地址');
+    await wrapper
+      .get('[data-test="defendant-contact-cancel"]')
+      .trigger('click');
+    expect(api.updateCaseDefendantContact).not.toHaveBeenCalled();
+    await wrapper
+      .get('[data-section="case-info"] .case-workspace-section__edit')
+      .trigger('click');
+    expect(
+      wrapper.get('[data-test="defendant-contact-address"]').element,
+    ).toHaveProperty('value', '原地址');
+    const fresh = structuredClone(item);
+    fresh.defendants[0]!.phone = '200';
+    fresh.recordEdits!.defendantContacts[0]!.contactRevision = 1;
+    api.updateCaseDefendantContact.mockImplementationOnce(async () => {
+      api.getCase.mockResolvedValue(fresh);
+    });
+    await wrapper.get('[data-test="defendant-contact-phone"]').setValue('200');
+    await wrapper.get('[data-test="defendant-contact-save"]').trigger('click');
+    await flushPromises();
+    expect(api.updateCaseDefendantContact).toHaveBeenCalledWith(
+      item.id,
+      {
+        defendantId: 'defendant-1',
+        expectedContactRevision: 0,
+        idempotencyKey: expect.any(String),
+        phone: '200',
+        address: '原地址',
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    await wrapper.get('[data-test="case-refresh"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.getComponent(CaseDetailsSections).props('item')).toEqual(
+      fresh,
+    );
+    expect(fresh.stage).toBe(item.stage);
+    expect(fresh.version).toBe(item.version);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    expect(wrapper.get('[data-test="case-match-form"]').isVisible()).toBe(true);
+    expect(api.matchCase).not.toHaveBeenCalled();
+  });
+
+  it('does not substitute first registration, execution processing or audit commands for field editing', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'WAITING_FORMAL_ACCEPTANCE';
+    item.canRegisterAcceptance = true;
+    item.canMailExecution = true;
+    const { wrapper } = await render(item);
+    for (const section of [
+      'case-info',
+      'first-instance',
+      'second-instance',
+      'judgment',
+      'execution',
+      'closure-info',
+      'timeline',
+    ]) {
+      expect(
+        wrapper
+          .get(`[data-section="${section}"] .case-workspace-section__edit`)
+          .attributes('disabled'),
+      ).toBeDefined();
+    }
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    expect(wrapper.get('[data-test="case-acceptance-panel"]').isVisible()).toBe(
+      true,
+    );
+    expect(api.registerCaseAcceptance).not.toHaveBeenCalled();
+  });
+  it('keeps initial second acceptance registration in a separate action and edits only registered roots', async () => {
+    const item = structuredClone(baseItem);
+    item.recordEdits = {
+      canUpdateDefendantContact: false,
+      canCorrectAcceptance: false,
+      defendantContacts: [],
+      acceptanceCorrections: [],
+      canSaveSecondInstanceAcceptance: true,
+      secondInstanceAcceptances: [
+        {
+          choiceId: 'choice-1',
+          trialRoundId: 'round-1',
+          acceptanceRevision: 0,
+          acceptedAt: null,
+          courtCaseNo: null,
+          canEdit: true,
+          history: [],
+        },
+      ],
+    };
+    const { wrapper } = await render(item);
+    expect(
+      wrapper
+        .get('[data-section="second-instance"] .case-workspace-section__edit')
+        .attributes('disabled'),
+    ).toBeDefined();
+    await wrapper
+      .get('[data-test="workspace-record-registration"]')
+      .trigger('click');
+    expect(
+      wrapper.get('[data-test="second-instance-acceptance-case-no"]').element,
+    ).toHaveProperty('value', '');
+    await wrapper
+      .get('[data-test="second-instance-acceptance-cancel"]')
+      .trigger('click');
+    expect(api.saveSecondInstanceAcceptance).not.toHaveBeenCalled();
+    const fresh = structuredClone(item);
+    fresh.recordEdits!.secondInstanceAcceptances![0] = {
+      ...fresh.recordEdits!.secondInstanceAcceptances![0]!,
+      acceptanceRevision: 1,
+      courtCaseNo: '二审原案号',
+    };
+    api.getCase.mockResolvedValue(fresh);
+    await wrapper.get('[data-test="case-refresh"]').trigger('click');
+    await flushPromises();
+    await wrapper
+      .get('[data-section="second-instance"] .case-workspace-section__edit')
+      .trigger('click');
+    expect(
+      wrapper.get('[data-test="second-instance-acceptance-case-no"]').element,
+    ).toHaveProperty('value', '二审原案号');
+    expect(
+      wrapper
+        .get('[data-test="workspace-command"]')
+        .findAll('option')
+        .map((option) => option.attributes('value')),
+    ).toEqual(['second-instance-acceptance']);
+  });
+  it('edits existing acceptance values, cancels without a call and refreshes only the changed case number', async () => {
+    const item = structuredClone(baseItem);
+    item.canScheduleHearing = true;
+    item.stage = 'WAITING_HEARING';
+    item.acceptance = {
+      id: 'acceptance-1',
+      trialRoundId: 'round-1',
+      acceptedAt: '2026-10-01',
+      courtCaseNo: '原一审案号',
+      court: null,
+      files: [],
+      recordedAt: '2026-10-01T00:00:00Z',
+      recordedByUserId: 'operator-1',
+    };
+    item.acceptances = [item.acceptance];
+    item.recordEdits = {
+      canUpdateDefendantContact: false,
+      canCorrectAcceptance: true,
+      defendantContacts: [],
+      acceptanceCorrections: [
+        {
+          acceptanceId: 'acceptance-1',
+          trialRoundId: 'round-1',
+          acceptanceRevision: 0,
+          originalAcceptedAt: '2026-10-01',
+          originalCourtCaseNo: '原一审案号',
+          history: [],
+        },
+      ],
+    };
+    const { wrapper } = await render(item);
+    const edit = wrapper.get(
+      '[data-section="first-instance"] .case-workspace-section__edit',
+    );
+    await edit.trigger('click');
+    expect(
+      wrapper
+        .get('[data-test="workspace-command"]')
+        .findAll('option')
+        .map((option) => option.attributes('value')),
+    ).toEqual(['acceptance-correction']);
+    expect(
+      wrapper.get('[data-test="acceptance-correction-date"]').element,
+    ).toHaveProperty('value', item.acceptance.acceptedAt);
+    expect(
+      wrapper.get('[data-test="acceptance-correction-court-case-no"]').element,
+    ).toHaveProperty('value', '原一审案号');
+    await wrapper
+      .get('[data-test="acceptance-correction-court-case-no"]')
+      .setValue('取消的案号');
+    await wrapper
+      .get('[data-test="acceptance-correction-cancel"]')
+      .trigger('click');
+    expect(api.correctCaseAcceptance).not.toHaveBeenCalled();
+    await edit.trigger('click');
+    expect(
+      wrapper.get('[data-test="acceptance-correction-court-case-no"]').element,
+    ).toHaveProperty('value', '原一审案号');
+    const fresh = structuredClone(item);
+    fresh.acceptance!.courtCaseNo =
+      fresh.acceptances[0]!.courtCaseNo =
+      fresh.courtCaseNo =
+        '更正一审案号';
+    fresh.recordEdits!.acceptanceCorrections[0]!.acceptanceRevision = 1;
+    api.correctCaseAcceptance.mockImplementationOnce(async () => {
+      api.getCase.mockResolvedValue(fresh);
+    });
+    await wrapper
+      .get('[data-test="acceptance-correction-court-case-no"]')
+      .setValue('更正一审案号');
+    await wrapper
+      .get('[data-test="acceptance-correction-reason"]')
+      .setValue('核对受理通知');
+    await wrapper
+      .get('[data-test="acceptance-correction-save"]')
+      .trigger('click');
+    await flushPromises();
+    expect(api.correctCaseAcceptance).toHaveBeenCalledWith(
+      item.id,
+      expect.objectContaining({
+        acceptanceId: 'acceptance-1',
+        expectedAcceptanceRevision: 0,
+        acceptedAt: '2026-10-01',
+        courtCaseNo: '更正一审案号',
+        reason: '核对受理通知',
+      }),
+      expect.any(Object),
+    );
+    await wrapper.get('[data-test="case-refresh"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.getComponent(CaseDetailsSections).props('item')).toEqual(
+      fresh,
+    );
+    expect(fresh.stage).toBe(item.stage);
+    expect(fresh.version).toBe(item.version);
+    expect(api.scheduleCaseHearing).not.toHaveBeenCalled();
+  });
   it('opens upload-only mode for a direct execution-confirmation entry', async () => {
     api.uploadMaterialFile.mockResolvedValue({});
     const item: CaseDetail & { canUploadDirectExecutionMaterials: boolean } = {
@@ -1281,7 +1555,7 @@ describe('UI002 real case workspace host', () => {
       wrapper
         .get('[data-section="second-instance"] .case-workspace-section__edit')
         .attributes('disabled'),
-    ).toBeUndefined();
+    ).toBeDefined();
     await wrapper.get('[data-command="second-instance"]').trigger('click');
     await flushPromises();
     expect(wrapper.get('[data-test="second-instance-panel"]').text()).toContain(
@@ -1327,7 +1601,7 @@ describe('UI002 real case workspace host', () => {
     );
     const { wrapper } = await render(item);
     await wrapper
-      .get('[data-section="first-instance"] .case-workspace-section__edit')
+      .get('[data-test="workspace-primary-action"]')
       .trigger('click');
     await flushPromises();
     expect(
@@ -1669,7 +1943,7 @@ describe('UI002 real case workspace host', () => {
       '不能修改或删除审计',
     );
     expect(wrapper.get('[role="dialog"]').text()).toContain(
-      '手工时间轴保存和完整案件收付尚未提供',
+      '不能修改或删除审计',
     );
   });
   it('places the density class on the actual teleported drawer root', async () => {

@@ -9,6 +9,7 @@ import {
   primaryCaseAction,
   resolveCaseDetailActions,
 } from './case-workspace-actions';
+import { resolveCaseSectionEdits } from './case-workspace-section-edits';
 
 import {
   computed,
@@ -154,6 +155,8 @@ const actionNotice = ref('');
 const editorVisible = ref(true);
 const editorSection = ref<SectionKey>('case-info');
 const selectedCommand = ref('');
+const sectionEditing = ref(false);
+const editRequest = ref(0);
 const timelineView = ref(false);
 // Each command has one instance. Hiding the drawer or switching its view never resets it.
 const openedCommands = ref(new Set<string>());
@@ -236,16 +239,38 @@ const businessCommands = computed(() =>
       entry.id !== 'second-instance-acceptance',
   ),
 );
+const sectionEditCommands = computed(() =>
+  item.value
+    ? resolveCaseSectionEdits(item.value).filter(
+        (command) =>
+          !(command.id === 'closure' && closurePending.value) &&
+          !(command.id === 'archive' && archivePending.value),
+      )
+    : [],
+);
+const recordRegistrationCommands = computed(() =>
+  commands.value.filter(
+    (command) =>
+      command.id === 'second-instance-acceptance' &&
+      item.value?.recordEdits?.secondInstanceAcceptances?.some(
+        (entry) => entry.canEdit && entry.acceptanceRevision === 0,
+      ),
+  ),
+);
 const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
   const action = (section: SectionKey): SectionAction => ({
-    enabled: commands.value.some((command) => command.section === section),
-    label: section === 'timeline' ? '登记／更正' : '编辑',
-    hint: commands.value.some((command) => command.section === section)
-      ? '使用已有业务命令；字段只读。'
-      : '当前无可办命令；字段只读。',
+    enabled: sectionEditCommands.value.some(
+      (command) => command.section === section,
+    ),
+    label: '编辑',
+    hint: sectionEditCommands.value.some(
+      (command) => command.section === section,
+    )
+      ? '更正本栏已登记信息，保存不推进阶段。'
+      : '没有已登记且当前允许更正的信息；流程办理请使用独立入口。',
   });
   const hasCommand = (section: SectionKey) =>
-    commands.value.some((command) => command.section === section);
+    sectionEditCommands.value.some((command) => command.section === section);
   const current = item.value;
   const caseEditHint = !current?.recordEdits
     ? '\u5f53\u524d\u63a5\u53e3\u672a\u63d0\u4f9b\u8054\u7cfb\u65b9\u5f0f\u7248\u672c\u4e0e\u64cd\u4f5c\u6743\u9650\uff0c\u8054\u7cfb\u65b9\u5f0f\u7f16\u8f91\u6682\u4e0d\u53ef\u7528\u3002'
@@ -271,7 +296,9 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
     'case-info': {
       enabled: hasCommand('case-info'),
       label: '编辑',
-      hint: caseEditHint,
+      hint: hasCommand('case-info')
+        ? '更新已登记被告的电话／地址，保存不推进阶段。'
+        : caseEditHint,
     },
     'lead-info': {
       enabled:
@@ -287,24 +314,37 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
     'first-instance': {
       enabled: hasCommand('first-instance'),
       label: '编辑',
-      hint: acceptanceEditHint,
+      hint: hasCommand('first-instance')
+        ? '更正已登记的一审受理日期／法院案号，保存不推进阶段。'
+        : acceptanceEditHint,
     },
     'second-instance': action('second-instance'),
     judgment: action('judgment'),
-    execution: action('execution'),
-    'closure-info': {
+    execution: {
+      enabled: false,
+      label: '编辑',
+      hint: '执行信息的独立更正接口尚未提供；流程办理请使用独立入口。',
+    },
+    'closure-info':
+      closurePending.value || archivePending.value
+        ? {
+            enabled: false,
+            label: '编辑',
+            hint: '请先从原办理入口核对待确认请求，再更正已登记资料。',
+          }
+        : action('closure-info'),
+    timeline: {
       enabled: false,
       label: '只读',
-      hint: '结案与归档记录；不表示财务结清。',
-    },
-    timeline: {
-      enabled: commands.value.length > 0,
-      label: '登记／更正',
-      hint: '使用已有命令；审计记录只读。',
+      hint: '流程时间轴保留真实审计，不允许直接改写；可查看记录。',
     },
   };
 });
 const editorCommands = computed(() => {
+  if (sectionEditing.value)
+    return sectionEditCommands.value.filter(
+      (entry) => entry.section === editorSection.value,
+    );
   const entries = [...commands.value];
   for (const previous of openedCommandEntries.value.values())
     if (!entries.some((entry) => entry.id === previous.id))
@@ -324,8 +364,10 @@ const moreCommands = computed(() =>
 const timelineEvents = computed(() =>
   item.value ? buildCaseWorkspaceEvents(item.value) : [],
 );
-function openCommand(command: WorkspaceCommand): void {
+function openCommand(command: WorkspaceCommand, editing = false): void {
   if (!commands.value.some((entry) => entry.id === command.id)) return;
+  sectionEditing.value = editing;
+  if (editing) editRequest.value += 1;
   timelineView.value = false;
   editorSection.value = command.section;
   selectedCommand.value = command.id;
@@ -335,6 +377,7 @@ function openCommand(command: WorkspaceCommand): void {
 }
 function reopenPriorEditor(previous: WorkspaceCommand): void {
   if (!priorEditors.value.some((entry) => entry.id === previous.id)) return;
+  sectionEditing.value = false;
   timelineView.value = false;
   editorSection.value = previous.section;
   selectedCommand.value = previous.id;
@@ -351,14 +394,15 @@ function editSection(section: SectionKey): void {
       void router.push(`/leads/${encodeURIComponent(lead.value.id)}/edit`);
     return;
   }
-  const choices = commands.value.filter(
-    (entry) => section === 'timeline' || entry.section === section,
+  const choices = sectionEditCommands.value.filter(
+    (entry) => entry.section === section,
   );
   if (choices.length === 0) return;
   timelineView.value = false;
   editorSection.value = section;
+  sectionEditing.value = true;
   if (choices.length === 1) {
-    openCommand(choices[0]);
+    openCommand(choices[0], true);
     return;
   }
   selectedCommand.value = '';
@@ -367,11 +411,13 @@ function editSection(section: SectionKey): void {
 function chooseCommand(commandId: string): void {
   const command = editorCommands.value.find((entry) => entry.id === commandId);
   if (!command) return;
+  if (sectionEditing.value) editRequest.value += 1;
   selectedCommand.value = command.id;
   openedCommands.value.add(command.id);
   openedCommandEntries.value.set(command.id, command);
 }
 function viewTimeline(): void {
+  sectionEditing.value = false;
   timelineView.value = true;
   drawerOpen.value = true;
 }
@@ -1764,6 +1810,14 @@ onBeforeUnmount(() => {
             >
           </details>
           <ElButton
+            v-for="command in recordRegistrationCommands"
+            :key="command.id"
+            plain
+            data-test="workspace-record-registration"
+            @click="openCommand(command)"
+            >登记二审受理信息</ElButton
+          >
+          <ElButton
             plain
             data-test="case-refresh"
             :loading="refreshing"
@@ -1830,13 +1884,23 @@ onBeforeUnmount(() => {
             editorVisible ? undefined : 'case-workspace-editors--inactive'
           "
           class="case-workspace-editors"
-          :title="timelineView ? '流程时间轴记录' : '登记／更正案件资料'"
+          :title="
+            timelineView
+              ? '流程时间轴记录'
+              : sectionEditing
+                ? '更正本栏已登记信息'
+                : '案件流程办理'
+          "
           size="min(720px, 100vw)"
           append-to-body
           :destroy-on-close="false"
         >
           <p class="field-help">
-            通用字段编辑、手工时间轴保存和完整案件收付尚未提供。仅使用下方真实业务命令；关闭抽屉不提交、不清除待核对请求。
+            {{
+              sectionEditing
+                ? '本次只更正该栏已登记信息，保存不推进阶段。未提供独立更正接口的字段保持只读。'
+                : '流程办理使用下方业务命令；关闭抽屉不提交、不清除待核对请求。'
+            }}
           </p>
           <div v-show="timelineView" class="case-workspace-timeline">
             <p>仅展示本案已返回的真实记录，不能修改或删除审计。</p>
@@ -1855,7 +1919,7 @@ onBeforeUnmount(() => {
             </ol>
           </div>
           <label v-show="!timelineView"
-            >业务命令
+            >{{ sectionEditing ? '本栏资料' : '业务命令' }}
             <select
               class="text-input"
               :value="selectedCommand"
@@ -1981,6 +2045,13 @@ onBeforeUnmount(() => {
             <CaseJudgmentPanel
               :item="item"
               :context-key="identity"
+              :edit-only="sectionEditing"
+              :edit-request="
+                sectionEditing && selectedCommand === 'judgment'
+                  ? editRequest
+                  : 0
+              "
+              @cancel="closeRecordEdit"
               @changed="load"
               @refresh="load"
             />
@@ -2017,6 +2088,7 @@ onBeforeUnmount(() => {
             <CaseSecondInstanceAcceptancePanel
               :item="item"
               :context-key="workspaceContext"
+              :registered-only="sectionEditing"
               @changed="load"
               @refresh="load"
               @access-lost="recordEditAccessLost"
@@ -2087,6 +2159,13 @@ onBeforeUnmount(() => {
             <CaseArchivePanel
               :item="item"
               :context-key="identity"
+              :edit-only="sectionEditing"
+              :edit-request="
+                sectionEditing && selectedCommand === 'archive'
+                  ? editRequest
+                  : 0
+              "
+              @cancel="closeRecordEdit"
               :pending-request="archivePending"
               :archive-case="archiveCallbacks.archive"
               :correct-archive="archiveCallbacks.correct"
@@ -2101,6 +2180,13 @@ onBeforeUnmount(() => {
           >
             <CaseClosurePanel
               :item="item"
+              :edit-only="sectionEditing"
+              :edit-request="
+                sectionEditing && selectedCommand === 'closure'
+                  ? editRequest
+                  : 0
+              "
+              @cancel="closeRecordEdit"
               :read-revision="activationRevision"
               :context-key="identity"
               :pending-request="closurePending"

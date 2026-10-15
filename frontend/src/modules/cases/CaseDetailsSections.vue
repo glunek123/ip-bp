@@ -59,7 +59,9 @@ function edit(key: SectionKey): void {
       :title="section.title"
       :context-key="contextKey"
       :action="actions[section.key]"
-      :action-label="section.key === 'timeline' ? '登记／更正' : '编辑'"
+      :action-label="
+        section.key === 'timeline' ? actions[section.key].label : '编辑'
+      "
       @edit="edit"
     >
       <template v-if="section.key === 'timeline'" #tools>

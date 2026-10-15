@@ -538,11 +538,22 @@ describe('actual CA017 archive detail integration', () => {
       version: 22,
     };
     api.correctCaseArchive.mockResolvedValue(corrected);
-    await wrapper.get('[data-test="archive-correct"]').trigger('click');
+    await wrapper
+      .get('[data-section="closure-info"] .case-workspace-section__edit')
+      .trigger('click');
+    expect(wrapper.get('[data-test="archive-reason"]').element).toHaveProperty(
+      'value',
+      ' 原文归档原因 ',
+    );
+    await wrapper
+      .get('[data-test="archive-reason"]')
+      .setValue('更正后的归档原因');
     await wrapper
       .get('[data-test="archive-correction-reason"]')
       .setValue(' 核实原因 ');
-    api.getCase.mockResolvedValue(archived(true));
+    const fresh = archived(true);
+    fresh.archive!.current.archiveReason = '更正后的归档原因';
+    api.getCase.mockResolvedValue(fresh);
     await wrapper.get('[data-test="archive-form"]').trigger('submit');
     await flushPromises();
     expect(api.correctCaseArchive).toHaveBeenCalledWith(
@@ -552,12 +563,17 @@ describe('actual CA017 archive detail integration', () => {
         expectedClosureVersionId: versionId,
         expectedArchiveVersionId: archiveReceipt.archiveVersionId,
         correctionReason: ' 核实原因 ',
+        archiveReason: '更正后的归档原因',
       }),
     );
     expect(wrapper.find('[data-test="archive-history"]').text()).toContain(
       '核实原因',
     );
     expect(api.archiveCase).not.toHaveBeenCalled();
+    await wrapper.get('[data-test="case-refresh"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.getComponent(CaseArchivePanel).props('item')).toEqual(fresh);
+    expect(fresh.stage).toBe('ARCHIVED');
   });
   it('shows lawyer archive history without any correction action or internal audit fields', async () => {
     api.getLawyerCase.mockResolvedValue(lawyerReady(archived(true)));

@@ -469,18 +469,32 @@ test('normal operator archives pending amount and unknown closure date, appends 
   await expect(page.locator('[data-section="closure-info"]')).toContainText(
     '待确认',
   );
-  await openCaseWorkspaceCommand(
-    page,
-    'archive',
-    '[data-test="archive-panel"]',
+  const sectionEdit = page.locator(
+    '[data-section="closure-info"] .case-workspace-section__edit',
   );
-
+  await expect(sectionEdit).toBeEnabled();
+  await sectionEdit.click();
+  await expect(panel.locator('[data-test="archive-date"]')).toHaveValue(
+    detail.archive!.current.archiveAt,
+  );
+  await expect(panel.locator('[data-test="archive-type"]')).toHaveValue(
+    detail.archive!.current.archiveType,
+  );
+  await expect(panel.locator('[data-test="archive-reason"]')).toHaveValue(
+    detail.archive!.current.archiveReason,
+  );
+  const beforeCancel = await read(request, source.caseId);
+  await panel.locator('[data-test="archive-reason"]').fill('取消的归档原因');
+  await panel.locator('[data-test="archive-edit-cancel"]').click();
+  expect(await read(request, source.caseId)).toEqual(beforeCancel);
+  await sectionEdit.click();
+  await expect(panel.locator('[data-test="archive-reason"]')).toHaveValue(
+    detail.archive!.current.archiveReason,
+  );
   await expect(panel.locator('[data-test="archive-current"]')).toContainText(
     '执行到款',
   );
   await expect(page.locator('[data-test="closure-correct"]')).toHaveCount(0);
-  await panel.locator('summary').first().click();
-  await panel.locator('[data-test="archive-correct"]').click();
   await panel
     .locator('[data-test="archive-type"]')
     .selectOption('EXECUTION_CLOSED');
@@ -588,7 +602,7 @@ test('normal operator archives pending amount and unknown closure date, appends 
   );
   await expect(
     page.locator('[data-section="closure-info"] .case-workspace-section__edit'),
-  ).toHaveCount(0);
+  ).toBeEnabled();
   const lifecycleDirectory = resolve('.local/ui002-evidence/browser-artifacts');
   mkdirSync(lifecycleDirectory, { recursive: true });
   await page.screenshot({

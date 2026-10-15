@@ -1163,6 +1163,7 @@ async function openRecordEditPanel(
   const select = drawer.locator('[data-test="workspace-command"]');
   await expect(select).toBeVisible();
   await expect(select.locator(`option[value="${command}"]`)).toHaveCount(1);
+  await expect(select.locator('option')).toHaveCount(1);
   if ((await select.inputValue()) !== command)
     await select.selectOption(command);
   await expect(panel).toBeVisible();
@@ -1196,12 +1197,20 @@ test('browser saves and cancels contact, corrects acceptance with a reason, and 
   const contactPanel = page.locator(
     '[data-test="case-defendant-contact-panel"]',
   );
+  await expect(
+    contactPanel.locator('[data-test="defendant-contact-phone"]'),
+  ).toHaveValue(detail.defendants[0].phone ?? '');
+  await expect(
+    contactPanel.locator('[data-test="defendant-contact-address"]'),
+  ).toHaveValue(detail.defendants[0].address ?? '');
+  const beforeCancel = await recordEditSnapshot(caseId);
   await contactPanel
     .locator('[data-test="defendant-contact-phone"]')
     .fill('取消的号码');
   await contactPanel.locator('[data-test="defendant-contact-cancel"]').click();
   await expect(contactPanel).not.toBeVisible();
   expect((await recordEditSnapshot(caseId)).contactChanges).toHaveLength(0);
+  expect(await recordEditSnapshot(caseId)).toEqual(beforeCancel);
   await openRecordEditPanel(
     page,
     'defendant-contact-update',
@@ -1236,6 +1245,16 @@ test('browser saves and cancels contact, corrects acceptance with a reason, and 
     address: '北京市测试街道',
   });
   expect(contact.contactRevision).toBe(1);
+  await page.reload();
+  const afterContact = await read(request, caseId);
+  expect(afterContact.stage).toBe(detail.stage);
+  expect(afterContact.version).toBe(detail.version);
+  expect(afterContact.acceptance).toEqual(detail.acceptance);
+  expect(afterContact.defendants[0]).toMatchObject({
+    id: detail.defendants[0].id,
+    phone: '010-88886666',
+    address: '北京市测试街道',
+  });
   await openRecordEditPanel(
     page,
     'acceptance-correction',
@@ -1247,6 +1266,24 @@ test('browser saves and cancels contact, corrects acceptance with a reason, and 
   await expect(
     correctionPanel.locator('[data-test="acceptance-correction-date"]'),
   ).toHaveValue(detail.acceptance!.acceptedAt);
+  const beforeAcceptanceCancel = await recordEditSnapshot(caseId);
+  await correctionPanel
+    .locator('[data-test="acceptance-correction-court-case-no"]')
+    .fill('取消的一审案号');
+  await correctionPanel
+    .locator('[data-test="acceptance-correction-cancel"]')
+    .click();
+  expect(await recordEditSnapshot(caseId)).toEqual(beforeAcceptanceCancel);
+  await openRecordEditPanel(
+    page,
+    'acceptance-correction',
+    '[data-test="case-acceptance-correction-panel"]',
+  );
+  await expect(
+    correctionPanel.locator(
+      '[data-test="acceptance-correction-court-case-no"]',
+    ),
+  ).toHaveValue(detail.acceptance!.courtCaseNo);
   await correctionPanel
     .locator('[data-test="acceptance-correction-court-case-no"]')
     .fill('CE001 浏览器更正案号');
@@ -1347,6 +1384,83 @@ test('browser keeps the original body and key after a committed response is lost
   expect(sent[1]).toEqual(sent[0]);
   expect((await recordEditSnapshot(caseId)).contactChanges).toHaveLength(1);
   expect((await recordEditSnapshot(caseId)).recordEditReceipts).toHaveLength(1);
+});
+
+test('section edit rejects a stale contact revision and refreshes the winner without writing the draft', async ({
+  page,
+  request,
+}) => {
+  const { caseId, detail } = await acceptedCase(request);
+  await setRecordEditGrant(
+    coreLeadFixtures.roleA,
+    'case.defendant-contact.update',
+    'TEAM',
+    true,
+  );
+  await signIn(page, `/cases/${caseId}`);
+  await openRecordEditPanel(
+    page,
+    'defendant-contact-update',
+    '[data-test="case-defendant-contact-panel"]',
+  );
+  const phone = page.locator('[data-test="defendant-contact-phone"]');
+  await phone.fill('不应保存的过期草稿');
+  await body<ContactResult>(
+    await request.post(`/api/v1/cases/${caseId}/defendant-contact-update`, {
+      headers: operator,
+      data: {
+        ...contactInput(detail.defendants[0].id, 0),
+        phone: 'CAS胜出的号码',
+        address: detail.defendants[0].address,
+      },
+    }),
+    201,
+  );
+  const winner = await recordEditSnapshot(caseId);
+  const response = page.waitForResponse(
+    (r) =>
+      r.request().method() === 'POST' &&
+      new URL(r.url()).pathname ===
+        `/api/v1/cases/${caseId}/defendant-contact-update`,
+  );
+  await page.locator('[data-test="defendant-contact-save"]').click();
+  expect((await response).status()).toBe(409);
+  await expect(page.locator('[data-test="record-edit-unknown"]')).toContainText(
+    '版本',
+  );
+  expect(await recordEditSnapshot(caseId)).toEqual(winner);
+  await page.reload();
+  await openRecordEditPanel(
+    page,
+    'defendant-contact-update',
+    '[data-test="case-defendant-contact-panel"]',
+  );
+  await expect(phone).toHaveValue('CAS胜出的号码');
+  const latest = await read(request, caseId);
+  expect(latest.stage).toBe(detail.stage);
+  expect(latest.version).toBe(detail.version);
+});
+
+test('section edit remains explicit and disabled without the separate correction permission', async ({
+  page,
+  request,
+}) => {
+  const { caseId, detail } = await acceptedCase(request);
+  await signIn(page, `/cases/${caseId}`);
+  const before = await recordEditSnapshot(caseId);
+  for (const section of ['case-info', 'first-instance']) {
+    const row = page.locator(`[data-section="${section}"]`);
+    await expect(row.locator('.case-workspace-section__edit')).toBeDisabled();
+    await expect(row).toContainText('没有');
+  }
+  await expect(page.locator('[data-section="execution"]')).toContainText(
+    '独立更正接口尚未提供',
+  );
+  await expect(
+    page.locator('[data-section="timeline"] .case-workspace-section__edit'),
+  ).toBeDisabled();
+  expect(await recordEditSnapshot(caseId)).toEqual(before);
+  expect((await read(request, caseId)).stage).toBe(detail.stage);
 });
 
 async function signIn(page: Page, path: string) {
