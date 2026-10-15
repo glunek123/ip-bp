@@ -1507,3 +1507,9 @@ SD-57／cases合同区分正常公证三来源与不可变外部entry，真实16
 持久预览当前仍source81ebfed／150；CE002新编辑Action已按用户明确授权开通，独立132项保持和来源不合格两案边界见前节。CA018无真实Grant、未升级预览；用户人工测试窗口内禁止重启／迁移／替换5186／3206／15436，代码隔离开发、验收及正常推送不受影响。未来升级必须以人工测试结束后的新备份／数据基线保全，不把当前人工写入误算漂移或回退。生产、资金、批量导入、重开和未批准财务仍不在本片。
 
 首完整verify绑定fb6b7a384d7feca57e7ffb384bfcdee90b641540／tree0b6c2fe8f647f97c05885245b20c1ad6edb1b7bf：严格上下文、Spec、架构、Prisma生成、前后端及根类型、Lint通过，格式检查报告12个后端文件，exit1；工具／前后端单元与双构建尚未执行。6a7ab02仅对明确报告的12文件应用Prettier，SQL及业务条件不变。新增并发／故障测试首审接受后复核撤回为I2：编号日不得误用录入阶段日，entry触发条件需精确部门／记录人；66052d3＋c991b94修复全部计数器稳定快照及精确合成条件后独立增量ACCEPTED C/I/M0；6a7ab02纯格式独立接受，fb6产品结论保持，不掩盖首审撤回。首轮正式原始日志及前后候选记录为ignored ca018-evidence/fullverify-fb6-*。
+
+**完整门禁实跑及限定修复。** 干净0783ed9c644add413aa7492a0f0f800e7a726143／treec969970c8c0c85c1223b822974d4e7f7cfdfe781实跑verify，严格上下文、Spec（57REQ／67AC／11BQ／57SD）、架构（14模块／136模型）、Prisma、全部类型、Lint及全格式通过，工具80/80、前端115文件1852/1852通过。后端115组为112组过／3组败、1442过／86败／1528总，02:54:23 UTC exit1；不改写为完整verify成功。失败仅两OpenAPI测试module未注册新service及确认测试两个normal/direct材料断言反置。随后同候选prepared双构建实际exit0；build-078前后同树干净，完整源码／构建输入后续不变。原fullverify-078与build-078日志、前后JSON均保留。
+
+三spec修复未改产品：4b5fb31补mock及新增请求／响应契约断言，93ef251正确断言普通available与direct完整池／冻结且互斥、CAS及审计；正常配置聚焦105项实际104过／1败，剩controller旧未知字段用例使用了新合法附件字段。746cee1保留附件并增加真正未知arbitrary字段及400／service未调用断言，f36cd97正常controller14/14实际通过；真实service已在事务前拒绝normal附加数组且现有单元负例保持。独立逐项接受C/I/M0。三spec唯一105闭合；078未改112组为1424条（1442总通过中含这三组18条，不能重复计数），推导最终覆盖1529条，仅为分段组合，不称最终HEAD全量Jest或单次verify exit0。证据three-specs、controller-final前后JSON及log。
+
+**首PG前置失败与修复。** 078真实PG／Chromium实配22项，22项均在clean的通用setRoleGrant遇未登记case.complaint.mail而失败，未触达业务断言；pg-first日志、JSON和全部trace保留，环境前后同HMAC、152账本及无遗留fault对象。f36cd97仅将CA018独占三测试文件改用固定合成roles／19项精确动作／TEAM、参数化permission_action及15433/test/public保护的专用helper；不改共享core helper、产品或真实Grant，独立增量接受。该六测试文件相对078差异已逐项核对；工具／前端／112组后端及产品双构建输入完全不变，受影响静态与正式首browser／22项业务验收仍待实际结果。
