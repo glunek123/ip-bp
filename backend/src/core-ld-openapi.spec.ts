@@ -3,6 +3,7 @@ import { CaseClosureService } from './modules/cases/case-closure.service';
 import { CaseExecutionFinishService } from './modules/cases/case-execution-finish.service';
 import { CaseExecutionMailingService } from './modules/cases/case-execution-mailing.service';
 import { CaseExecutionFilingService } from './modules/cases/case-execution-filing.service';
+import { CaseExternalEntryService } from './modules/cases/case-external-entry.service';
 import 'reflect-metadata';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -55,6 +56,62 @@ import { FilingCourtService } from './modules/cases/filing-court.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
   let app: INestApplication;
+  it('documents external case entry with an explicit source and known facts', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    expect(
+      document.paths['/api/v1/cases/external-entry-options']?.get,
+    ).toBeDefined();
+    expect(
+      document.paths['/api/v1/cases/external-entries']?.post?.responses['201'],
+    ).toMatchObject({
+      content: {
+        'application/json': {
+          schema: {
+            $ref: '#/components/schemas/CreateCaseExternalEntryResultDto',
+          },
+        },
+      },
+    });
+    expect(
+      document.components?.schemas?.CreateCaseExternalEntryDto,
+    ).toMatchObject({
+      required: expect.arrayContaining([
+        'idempotencyKey',
+        'entryKind',
+        'initialStage',
+        'stageReachedOn',
+        'source',
+        'reason',
+        'customerId',
+        'rightsHolderId',
+        'defendants',
+        'lawyerAccountId',
+        'lawyerProfileId',
+        'known',
+      ]),
+    });
+    expect(document.components?.schemas?.CaseExternalKnownDto).toMatchObject({
+      required: expect.arrayContaining([
+        'courtId',
+        'courtCaseNo',
+        'acceptedOn',
+        'secondInstanceAcceptedOn',
+        'platform',
+        'shopName',
+        'shopExternalId',
+        'caseType',
+        'infringementTypes',
+      ]),
+      properties: expect.objectContaining({
+        courtId: expect.objectContaining({ nullable: true }),
+        acceptedOn: expect.objectContaining({ nullable: true }),
+        secondInstanceAcceptedOn: expect.objectContaining({ nullable: true }),
+      }),
+    });
+  });
   it('declares explicit closure commands and keeps displaySummary in the internal list schema only', () => {
     const document = SwaggerModule.createDocument(
       app,
@@ -187,6 +244,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: NotaryListExportService, useValue: {} },
         { provide: NotaryReturnArchiveBatchService, useValue: {} },
         { provide: CaseReadService, useValue: {} },
+        { provide: CaseExternalEntryService, useValue: {} },
         { provide: CaseMatchService, useValue: {} },
         { provide: CaseComplaintService, useValue: {} },
         { provide: CaseComplaintConfirmationService, useValue: {} },

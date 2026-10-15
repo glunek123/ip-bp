@@ -17,6 +17,7 @@ import { CaseReadController } from './case-read.controller';
 import { LawyerCaseController } from './lawyer-case.controller';
 import { CasePageQueryDto } from './case-read.dto';
 import { CaseReadService } from './case-read.service';
+import { CaseExternalEntryService } from './case-external-entry.service';
 import { CaseMatchService } from './case-match.service';
 import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
@@ -258,6 +259,7 @@ describe('case read OpenAPI contract', () => {
           useValue: { submit: jest.fn() },
         },
         { provide: CaseReadService, useValue: reads },
+        { provide: CaseExternalEntryService, useValue: {} },
         { provide: CaseMatchService, useValue: {} },
         { provide: CaseComplaintService, useValue: {} },
         { provide: CaseComplaintConfirmationService, useValue: {} },
