@@ -205,9 +205,7 @@ export async function failCaseExternalEntryMigrationAtomically(
     commits.length !== 1 ||
     !terminalCommit.test(sql)
   )
-    throw new Error(
-      `${migrationName} must have one BEGIN and terminal COMMIT`,
-    );
+    throw new Error(`${migrationName} must have one BEGIN and terminal COMMIT`);
   const forcedFailure = sql.replace(terminalCommit, 'SELECT 1 / 0;\nCOMMIT;');
   if (forcedFailure === sql)
     throw new Error(
@@ -228,9 +226,7 @@ export async function failCaseExternalEntryMigrationAtomically(
         )
       ).rows[0]?.definition;
       if (typeof definition !== 'string')
-        throw new Error(
-          `${migrationName} function ${functionName} is missing`,
-        );
+        throw new Error(`${migrationName} function ${functionName} is missing`);
       definitions[functionName] = definition;
     }
     return definitions;
