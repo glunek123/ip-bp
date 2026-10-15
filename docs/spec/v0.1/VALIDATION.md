@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+## H同源准备两文件纯修复（2026-10-15）
+
+原H Owner在clean f83fc130基线仅修改case-historical-record-edit.spec.ts及其r2-binding.test.mjs。专项origin与baseURL共用3101，局部sourceBuilderRequest对内部及client/notary/lawyer登录/写入同步Origin，浅拷贝headers且保留原body/key/CSRF、内部actor映射和四个独立cookie context；不改共享helper/产品Origin守卫/Grant或原业务断言。旧5174配置在直接VM回归中RED两失败，新47/47纯测及root类型、两文件Lint/格式、diff通过。无真实HTTP/capture/DB/服务/浏览器或补权，已有实库actor保留。
+
+两文件SHA依次46d4d15b777a58a812e79f75c77eda846a96bec7199d3f5c0bbde682610dc816、74500d1fcf13cbd660fd7828347d875091639e8597d9b2def7ecb0ea751841b2；补丁/日志在用户Temp/h-origin-f83fc130，patch SHA8b2662144d23b6adcc74804366c5e52182a8839219375df0a83cd270d2ab8b7d。普通Git因index.lock权限拒绝后未绕过，主控正常require_escalated精确提交a6d3d59b91f437eee8badc6557a184c508d03970/treeaf22772ebaa7181ce4a6318ff72999b1433dd074，原树clean，原Reviewer窄审Spec/Quality C/I/M0。该结论只关闭已定位测试准备源码问题，原57份Origin403失败保持，H业务及缺三Action仍Pending，不再实跑准备链。独立closeout接此小提交为af749d38，运行2a99不动；本地未发布，新组合不冒旧完整verify或UI通过。
+
 ## H首项实际Origin阻断与本轮独立收口（2026-10-15）
 
 原runner仅在新ignored配置修正cwd及锁proof取证顺序后继续同clean2a99。protected发现精确H首项1/1，正式仅一次、0retry，首次POST /api/v1/auth/login到3101、Origin5174即403 ORIGIN_FORBIDDEN，requestId50be9c6d-245b-4a1f-905d-592647c13a96；未到业务权限或资料API，不能称缺Action403。冻结factory仅留下新合成user/credential/membership/role/assignment各1及35条本轮role_grants，无hold external-entry.create，Case/Lead0。旧全149表原行、157链、结构/sequence及22source/target文件保持，H只读closure6/6，正常服务/端口/标准锁收尾。E65秒已证结果复用、未重跑；另两项H和UI未执行。
