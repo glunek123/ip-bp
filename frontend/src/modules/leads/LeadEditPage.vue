@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
@@ -12,9 +12,55 @@ import {
   type LeadFormContext,
 } from '../../api/leads';
 import LeadForm, { type LeadFormSubmission } from './LeadForm.vue';
+import { leadStatusCards } from './lead-options';
 
 const route = useRoute();
 const router = useRouter();
+const allowedStatuses = new Set<string>(
+  leadStatusCards.map((card) => card.status),
+);
+const returnsToList = computed(
+  () => returnTo.value === '/leads' || returnTo.value.startsWith('/leads?'),
+);
+const returnTo = computed(() => {
+  const raw = route.query.returnTo;
+  if (
+    typeof raw !== 'string' ||
+    (raw !== '/leads' && !raw.startsWith('/leads?'))
+  ) {
+    return `/leads/${String(route.params.id)}`;
+  }
+  try {
+    const url = new globalThis.URL(raw, 'https://internal.invalid');
+    if (
+      url.origin !== 'https://internal.invalid' ||
+      url.pathname !== '/leads' ||
+      url.hash ||
+      raw.includes('\\')
+    )
+      return `/leads/${String(route.params.id)}`;
+    const keys = [...url.searchParams.keys()];
+    if (
+      keys.some((key) => key !== 'page' && key !== 'status') ||
+      new Set(keys).size !== keys.length
+    )
+      return `/leads/${String(route.params.id)}`;
+    const page = url.searchParams.get('page');
+    const status = url.searchParams.get('status');
+    if (
+      page !== null &&
+      (!/^[1-9]\d*$/u.test(page) || !Number.isSafeInteger(Number(page)))
+    ) {
+      return `/leads/${String(route.params.id)}`;
+    }
+    if (status !== null && !allowedStatuses.has(status)) {
+      return `/leads/${String(route.params.id)}`;
+    }
+    return `/leads${url.search}`;
+  } catch {
+    return `/leads/${String(route.params.id)}`;
+  }
+});
 const state = ref<'loading' | 'ready' | 'missing' | 'denied' | 'failed'>(
   'loading',
 );
@@ -81,7 +127,7 @@ async function submit(value: LeadFormSubmission): Promise<void> {
       ],
     });
     isDirty.value = false;
-    await router.push(`/leads/${lead.value.id}`);
+    await router.push(returnTo.value);
   } catch (error) {
     submitError.value =
       error instanceof ApiError && error.code === 'VERSION_CONFLICT'
@@ -103,9 +149,9 @@ onBeforeUnmount(() => request?.abort());
           <span class="pill">待推送</span>
           <h1>编辑线索</h1>
         </div>
-        <RouterLink class="back-link" :to="`/leads/${String(route.params.id)}`"
-          >返回线索详情</RouterLink
-        >
+        <RouterLink class="back-link" :to="returnTo" data-test="edit-return">{{
+          returnsToList ? '返回线索列表' : '返回线索详情'
+        }}</RouterLink>
       </div>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h1>正在读取线索</h1>
@@ -135,7 +181,9 @@ onBeforeUnmount(() => request?.abort());
           @dirty="isDirty = true"
           @submit="submit"
           ><template #cancel
-            ><RouterLink :to="`/leads/${lead.id}`">取消</RouterLink></template
+            ><RouterLink :to="returnTo" data-test="edit-cancel"
+              >取消</RouterLink
+            ></template
           ></LeadForm
         ></template
       >

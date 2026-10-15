@@ -53,7 +53,7 @@ const lead = {
   capabilities: { edit: true, push: false },
 };
 
-async function mountPage() {
+async function mountPage(path = '/leads/l/edit') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -62,7 +62,7 @@ async function mountPage() {
       { path: '/leads', component: { template: '<div />' } },
     ],
   });
-  await router.push('/leads/l/edit');
+  await router.push(path);
   await router.isReady();
   const wrapper = mount(RouterView, { global: { plugins: [router] } });
   await flushPromises();
@@ -102,7 +102,7 @@ describe('LeadEditPage', () => {
   });
 
   it('submits only editable fields with current version and existing screenshots', async () => {
-    const { wrapper } = await mountPage();
+    const { wrapper, router } = await mountPage();
     expect(api.getLeadEditContext).toHaveBeenCalledWith(
       'l',
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -122,5 +122,56 @@ describe('LeadEditPage', () => {
     );
     expect(api.updateLead.mock.calls[0]?.[1]).not.toHaveProperty('customerId');
     expect(api.updateLead.mock.calls[0]?.[1]).not.toHaveProperty('status');
+    expect(router.currentRoute.value.fullPath).toBe('/leads/l');
   });
+
+  it('returns to the validated list page and filter on cancel and after save', async () => {
+    const returnPath = '/leads?page=4&status=WAITING_PUSH';
+    const { wrapper, router } = await mountPage(
+      `/leads/l/edit?returnTo=${encodeURIComponent(returnPath)}`,
+    );
+    expect(wrapper.get('[data-test="edit-return"]').attributes('href')).toBe(
+      returnPath,
+    );
+    expect(wrapper.get('[data-test="edit-return"]').text()).toBe(
+      '返回线索列表',
+    );
+    await wrapper.get('[data-test="edit-cancel"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.fullPath).toBe(returnPath);
+
+    const second = await mountPage(
+      `/leads/l/edit?returnTo=${encodeURIComponent(returnPath)}`,
+    );
+    await second.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(second.router.currentRoute.value.fullPath).toBe(returnPath);
+  });
+
+  it.each([
+    'https://evil.example/leads?page=2',
+    '//evil.example/leads?page=2',
+    '/leads/another-case',
+    '/leads?page=0',
+    '/leads?page=2&page=3',
+    '/leads?status=NOT_A_STATUS',
+    '/leads?status=TRANSFERRED_TO_NOTARY',
+    '/leads?next=https%3A%2F%2Fevil.example',
+  ])(
+    'falls back to the existing detail route for an unsafe return target: %s',
+    async (target) => {
+      const { wrapper, router } = await mountPage(
+        `/leads/l/edit?returnTo=${encodeURIComponent(target)}`,
+      );
+      expect(wrapper.get('[data-test="edit-return"]').attributes('href')).toBe(
+        '/leads/l',
+      );
+      expect(wrapper.get('[data-test="edit-return"]').text()).toBe(
+        '返回线索详情',
+      );
+      await wrapper.get('[data-test="edit-cancel"]').trigger('click');
+      await flushPromises();
+      expect(router.currentRoute.value.fullPath).toBe('/leads/l');
+    },
+  );
 });

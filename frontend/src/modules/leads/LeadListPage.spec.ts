@@ -4,9 +4,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useAuthStore } from '../../stores/auth';
 import type { Lead } from '../../api/leads';
+import { ApiError } from '../../api/http';
 import LeadListPage from './LeadListPage.vue';
 
-const api = vi.hoisted(() => ({ listLeads: vi.fn() }));
+const api = vi.hoisted(() => ({
+  listLeads: vi.fn(),
+  getLead: vi.fn(),
+  pushLead: vi.fn(),
+}));
 vi.mock('../../api/leads', () => api);
 
 const result = {
@@ -92,6 +97,7 @@ async function mountWithRoute(path: string) {
       { path: '/leads', component: LeadListPage },
       { path: '/leads/new', component: { template: '<div />' } },
       { path: '/leads/:id', component: { template: '<div />' } },
+      { path: '/leads/:id/edit', component: { template: '<div />' } },
       { path: '/customers', component: { template: '<div />' } },
     ],
   });
@@ -102,9 +108,142 @@ async function mountWithRoute(path: string) {
   return { router, wrapper, auth };
 }
 
-afterEach(() => vi.resetAllMocks());
+afterEach(() => {
+  vi.resetAllMocks();
+  sessionStorage.removeItem('dev-cor:lead-quick-actions:pending-push');
+});
 
 describe('LeadListPage', () => {
+  it('restores an unresolved push after refresh even when its filtered row disappeared', async () => {
+    api.listLeads.mockResolvedValue({ ...result, items: [summary], total: 1 });
+    api.getLead.mockResolvedValue({
+      ...summary,
+      capabilities: {
+        edit: true,
+        push: true,
+        withdrawApply: false,
+        evidenceDecide: false,
+        transferToNotary: false,
+        createEvidenceBatch: false,
+      },
+      evidenceDecision: null,
+      pendingWithdrawalApplication: null,
+      history: [],
+      notaryMatters: [],
+    });
+    api.pushLead
+      .mockRejectedValueOnce(new ApiError('network', 0, 'NETWORK_ERROR'))
+      .mockResolvedValue({ id: 'push-1' });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const first = await mountWithRoute('/leads');
+    await first.wrapper.get('[data-test="lead-quick-action"]').trigger('click');
+    await flushPromises();
+    await first.wrapper.get('[data-test="quick-push-lead"]').trigger('click');
+    await flushPromises();
+    const stored = JSON.parse(
+      sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push') ??
+        'null',
+    ) as {
+      leadId: string;
+      expectedVersion: number;
+      idempotencyKey: string;
+      identity: string;
+    };
+    expect(stored).toMatchObject({
+      leadId: summary.id,
+      expectedVersion: summary.version,
+    });
+    expect(stored.idempotencyKey).toEqual(expect.any(String));
+    expect(
+      first.wrapper
+        .get('[data-test="lead-quick-action"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    first.wrapper.unmount();
+
+    const readCount = api.getLead.mock.calls.length;
+    api.listLeads.mockResolvedValue({ ...result, items: [], total: 0 });
+    const reopened = await mountWithRoute('/leads');
+    expect(api.getLead).toHaveBeenCalledTimes(readCount);
+    expect(
+      reopened.wrapper.findAll('[data-test="lead-quick-actions-panel"]'),
+    ).toHaveLength(1);
+    expect(
+      reopened.wrapper.findAll('[data-test="retry-unknown-push"]'),
+    ).toHaveLength(1);
+    expect(
+      reopened.wrapper.findAll('[data-test="lead-quick-action"]'),
+    ).toHaveLength(0);
+    reopened.wrapper.unmount();
+  });
+
+  it('opens one-row actions from a fresh detail and keeps page/status after push', async () => {
+    api.listLeads.mockResolvedValue({
+      ...result,
+      items: [summary],
+      page: 2,
+      total: 21,
+    });
+    api.getLead.mockResolvedValue({
+      ...summary,
+      capabilities: {
+        edit: true,
+        push: true,
+        withdrawApply: false,
+        evidenceDecide: false,
+        transferToNotary: false,
+        createEvidenceBatch: false,
+      },
+      evidenceDecision: null,
+      pendingWithdrawalApplication: null,
+      history: [],
+      notaryMatters: [],
+    });
+    api.pushLead.mockResolvedValue({
+      id: 'push-1',
+      businessNo: summary.businessNo,
+      status: 'WAITING_REVIEW',
+      version: 2,
+      pushedAt: '2026-10-15T00:00:00.000Z',
+      pushedByUserId: 'operator-1',
+      pushedByDisplayName: '运营人',
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { router, wrapper } = await mountWithRoute(
+      '/leads?page=2&status=WAITING_PUSH',
+    );
+    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
+    await flushPromises();
+    expect(api.getLead).toHaveBeenCalledWith(
+      'lead-1',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    const editUrl = new URL(
+      wrapper.get('[data-test="quick-edit-lead"]').attributes('href')!,
+      'https://internal.invalid',
+    );
+    expect(editUrl.searchParams.get('returnTo')).toBe(
+      '/leads?page=2&status=WAITING_PUSH',
+    );
+    await wrapper.get('[data-test="quick-push-lead"]').trigger('click');
+    await flushPromises();
+    expect(api.pushLead).toHaveBeenCalledOnce();
+    expect(
+      sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push'),
+    ).toBeNull();
+    expect(router.currentRoute.value.fullPath).toBe(
+      '/leads?page=2&status=WAITING_PUSH',
+    );
+    expect(api.listLeads).toHaveBeenLastCalledWith(
+      2,
+      20,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      'WAITING_PUSH',
+      'LIBRARY',
+    );
+    wrapper.unmount();
+  });
+
   it.each(['user', 'department', 'revision'] as const)(
     'clears old projections and rejects late responses after %s changes',
     async (change) => {

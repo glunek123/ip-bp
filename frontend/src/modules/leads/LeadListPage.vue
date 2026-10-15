@@ -10,6 +10,10 @@ import {
 } from './lead-options';
 import { summarizeLeadProducts } from './lead-display';
 import { useAuthStore } from '../../stores/auth';
+import { notifyWorkflowChanged } from '../../app/workflow-events';
+import LeadQuickActionsPanel, {
+  type FrozenLeadPush,
+} from './LeadQuickActionsPanel.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -32,6 +36,64 @@ const currentPage = ref(1);
 const pageSize = ref(20);
 const canCreate = ref(false);
 let request: AbortController | undefined;
+const pendingStorageKey = 'dev-cor:lead-quick-actions:pending-push';
+function readPendingPush(): FrozenLeadPush | null {
+  try {
+    const raw = globalThis.sessionStorage?.getItem(pendingStorageKey);
+    if (!raw) return null;
+    const value: unknown = JSON.parse(raw);
+    if (
+      typeof value === 'object' &&
+      value !== null &&
+      'status' in value &&
+      value.status === 'SETTLED'
+    ) {
+      globalThis.sessionStorage?.removeItem(pendingStorageKey);
+      return null;
+    }
+    if (
+      typeof value !== 'object' ||
+      value === null ||
+      !('leadId' in value) ||
+      typeof value.leadId !== 'string' ||
+      !('expectedVersion' in value) ||
+      typeof value.expectedVersion !== 'number' ||
+      !Number.isInteger(value.expectedVersion) ||
+      !('idempotencyKey' in value) ||
+      typeof value.idempotencyKey !== 'string' ||
+      !('identity' in value) ||
+      typeof value.identity !== 'string'
+    )
+      return null;
+    return {
+      leadId: value.leadId,
+      expectedVersion: value.expectedVersion,
+      idempotencyKey: value.idempotencyKey,
+      identity: value.identity,
+    };
+  } catch {
+    return null;
+  }
+}
+const pendingPush = ref<FrozenLeadPush | null>(readPendingPush());
+const activeLeadId = ref<string | null>(
+  pendingPush.value?.identity === identity.value
+    ? pendingPush.value.leadId
+    : null,
+);
+function savePendingPush(value: FrozenLeadPush | null): void {
+  pendingPush.value = value;
+  try {
+    if (value)
+      globalThis.sessionStorage?.setItem(
+        pendingStorageKey,
+        JSON.stringify(value),
+      );
+    else globalThis.sessionStorage?.removeItem(pendingStorageKey);
+  } catch {
+    // Keep the active lock in memory if browser storage is unavailable.
+  }
+}
 
 const selectedStatus = computed<LeadStatus | undefined>(() => {
   const value = route.query.status;
@@ -115,12 +177,19 @@ watch(
   () => void load(),
   { immediate: true, flush: 'sync' },
 );
+watch(identity, (value) => {
+  activeLeadId.value =
+    pendingPush.value?.identity === value ? pendingPush.value.leadId : null;
+});
+watch(pendingPush, (value) => {
+  if (value?.identity === identity.value) activeLeadId.value = value.leadId;
+});
 onBeforeUnmount(() => request?.abort());
 </script>
 
 <template>
   <div class="page-view business-list-page">
-    <main>
+    <main :inert="!!activeLeadId">
       <div class="page-head business-list-toolbar">
         <div>
           <h1>线索库</h1>
@@ -196,6 +265,12 @@ onBeforeUnmount(() => request?.abort());
                 data-test="lead-row"
               >
                 <td class="business-list-cell--nowrap">
+                  <ElButton
+                    data-test="lead-quick-action"
+                    :disabled="!!pendingPush"
+                    @click="activeLeadId = lead.id"
+                    >办理</ElButton
+                  >
                   <RouterLink
                     :to="`/leads/${lead.id}`"
                     :aria-label="`查看线索 ${lead.businessNo} 详情`"
@@ -297,6 +372,21 @@ onBeforeUnmount(() => request?.abort());
         </nav>
       </section>
     </main>
+    <LeadQuickActionsPanel
+      v-if="activeLeadId"
+      :lead-id="activeLeadId"
+      :identity="identity"
+      :pending-push="pendingPush"
+      @close="activeLeadId = null"
+      @pending="savePendingPush"
+      @succeeded="
+        () => {
+          notifyWorkflowChanged();
+          activeLeadId = null;
+          void load();
+        }
+      "
+    />
   </div>
 </template>
 
