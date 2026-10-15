@@ -59,8 +59,7 @@ beforeEach(() => {
   });
 });
 function mountPanel(
-  value: InstanceType<typeof CaseExecutionFilingPanel>['$props']['item'] =
-    item,
+  value: InstanceType<typeof CaseExecutionFilingPanel>['$props']['item'] = item,
   extra: Record<string, unknown> = {},
 ) {
   return mount(CaseExecutionFilingPanel, {
