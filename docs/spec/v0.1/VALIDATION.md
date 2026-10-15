@@ -1,5 +1,19 @@
 # SPEC-001 文档验证
 
+## 2a99历史只读预检与后续准入边界（2026-10-15）
+
+19:28:00.769至19:28:04.190 UTC，同clean2a99bba578a0a98743302478c8312d4a36a9bf8c/tree3f594e58ebe0eda47accad405725e280da090692，唯一runner完成只读历史预检exit0，结论READY_FOR_EXACT_COPY_REVIEW。标准锁实际PID42748/token d84824d5-9b80-43a3-8c20-735f7b76b850，结束释放，3101/5174前后空闲。PG快照为REPEATABLE READ READ ONLY，137表4336行按全部原列/类型/PK逐行hash、完整结构/enum/ACL/sequence/155账本前后相同；包含67Case头、65round、全部原typed/receipt/audit/material/reference和9完整安全表，另列baseline3用户/3角色/66Grant，不仅保护baseline。closure/archive等实际零行表明确记覆盖限制，不虚构这些历史事实。既有Temp dump/TOC字节与canonical备份摘要相容，未restore、不含库外blob。
+
+全部CV实测22，AVAILABLE22、DELETED/PURGED均0；批准四根内22/22真实stream SHA/size匹配，父链lstat/realpath无reparse逃逸、无缺失或冲突，无metadata-only无法验证项。来源ui003-list-module-baseline16、公证列表4、hearing2；当前验收树私密根0/22。封存proposed-missing-only-copy.json精确22唯一CV/目标，共3886bytes，raw SHA256815c23e94766a800623d1765655316a0cfd68b80412445949397ec6857fc00e7。只形成复制建议，未copy/move/delete或改DB指针。后续须复制前重验、拒覆盖、复制后原/目标字节复核；官方pnpm db:test:migrate:deploy及原137旧列/新增null列/旧155账本加两成功行的实际证明仍待独立执行，owned回放不替代该边界。
+
+真实只读调度盘点：Shanghai日期2026-10-16，WAITING_HEARING7、过期且满足固定服务源/当前安排/轮次/版本条件1，case d16c2ee8-9a31-456f-9836-79e1908636f9，v5，hearing2026-10-10，当前advance为空。onModuleInit立即scan，故后续UI服务可能合法推进该旧案；须先明确记录该变化，不能误算为迁移改写，当前未调scan/启动服务/改日期。
+
+证据section-record-edit-frontend-integration/.local/ui003-evidence/history-preflight-2a99bba-20261015/共18份，manifest SHA2569aecbc6973950aab276b606dd0d49cff170f02b82a505e5c76d369d941b343f5，summary SHA256645985bde89648b8280152f65ff82966491271c343f96368e063fee46dc4f058；主控及原Reviewer逐项bytes/hash核对，并重核原50份不变，回执.local/ui003-evidence/history-preflight-2a99bba-root-receipt.json。原Reviewer最终Spec/Quality ACCEPTED C/I/M0。没有重复verify/owned、public升级、seed/Grant、备份移动/恢复或UI。
+
+父级本轮已批准精确missing-only复制与无服务R2正式前向升级，主控固定执行单.local/ui003-evidence/runner-2a99bba-copy-public-upgrade-admission.md SHA256887ad05332330a834bcdf8a1f7b3d80dc4cb882e265a0193da7da8181816aeca，原Reviewer准入C/I/M0；A复制锁释放后B官方入口自己取锁，失败不resolve/retry/reset，C逐列旧行/全安全/sequence/真实bytes保持及新null/新表空/账本两成功行实证。发原runner被AbsolutePathBuf路由错误拒绝、未确认送达，不重试；当前仍无copy/public部署。父级另明确后续服务启动时应单列上述真实due案的合法推进，记录精确头/安排/advance/audit并证明只预期案变化且无重复推进，不改日期/删案或禁用生产规则；这不属于当前无服务迁移单，也不是业务推进已发生的证明。
+
+I-SECTION-UI-GRANT01为新增Important测试准入阻断：case-section-record-ui-database.mjs的actor factory调用S createSectionUploadActor，后者写入仍hold的case.external-entry.create新Grant；spec external()及两层own校验均依赖历史转入来源。因此原五kind UI16不能称为不依赖该Grant，当前禁止执行。原UI应在既有已批准权限下用真实正常来源/流程API准备新对象，保留本run actor/源链归属、CAS/文件/回执断言；无法合法构造者保持Pending，不换角色绕过、不直接伪造Case/stage、不改baseline安全行。该问题不追改既有产品源码质量结论，也不阻只读历史及独立迁移。根向原UI发送续办消息被自动审批以当前发送授权证据不足拒绝，未送达/未重试；准备说明.local/ui003-evidence/ui-grant01-owner-relay.md及非运行升级草案r2-public-upgrade-next-draft.md已落盘，待明确发送授权，不能代发绕过拒绝。
+
 ## 2a99完整门禁与owned-schema风险专项通过（2026-10-15）
 
 固定clean2a99bba578a0a98743302478c8312d4a36a9bf8c/tree3f594e58ebe0eda47accad405725e280da090692，19:06:53至19:10:41 UTC正常完整pnpm verify实际exit0：工具11套94项、前端124文件2207项、后端120套1850项、全部严格context/Spec/架构/Prisma生成/类型/Lint/格式和本树双构建通过。NT006实际标准锁PID20976/token9b75e2dc-7a7a-4cb2-9205-1835d7c6a407于19:09:22.802观察并释放；source及737构建产物manifest留证，不复用旧候选充作本次执行。私密archive/TOC仅size/hash/metadata复核，未还原或读取内容。
