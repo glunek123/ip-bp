@@ -746,4 +746,54 @@ BEGIN
   RETURN NEW;
 END; $function$;
 
+-- Evaluate material-reference fields only for material-reference trigger rows.
+CREATE OR REPLACE FUNCTION "check_case_external_confirmation_bundle"() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE target_case uuid; target_department uuid; q record; a record; selected jsonb; selected_count integer;
+BEGIN
+  IF TG_TABLE_NAME='case_execution_confirmations' THEN target_case:=NEW."case_id"; target_department:=NEW."department_id";
+  ELSIF TG_TABLE_NAME='case_execution_confirmation_versions' THEN target_case:=NEW."case_id"; target_department:=NEW."department_id";
+  ELSE target_case:=NEW."resource_id"; target_department:=NEW."department_id"; END IF;
+  SELECT * INTO q FROM "case_execution_confirmations" WHERE "case_id"=target_case AND "department_id"=target_department;
+  IF q."id" IS NULL THEN RETURN NEW; END IF;
+  IF TG_TABLE_NAME='material_references' THEN
+    IF NEW."action_event_id" IS DISTINCT FROM q."audit_event_id" THEN RETURN NEW; END IF;
+  END IF;
+  SELECT * INTO a FROM "audit_events" WHERE "id"=q."audit_event_id";
+  selected:=a."details"->'executionApplicationContentVersionIds';
+  SELECT count(*) INTO selected_count FROM "case_execution_confirmation_versions" v WHERE v."confirmation_id"=q."id";
+  IF q."submission_id" IS NOT NULL THEN
+    IF selected_count<>0 THEN RAISE EXCEPTION 'submission-backed confirmation owns direct bundle' USING ERRCODE='23514'; END IF;
+    RETURN NEW;
+  END IF;
+  IF q."external_entry_id" IS NULL OR a."id" IS NULL OR a."action" IS DISTINCT FROM 'case.execution.confirmed' OR
+    a."resource_type" IS DISTINCT FROM 'CASE' OR a."resource_id" IS DISTINCT FROM target_case OR
+    a."department_id" IS DISTINCT FROM target_department OR a."actor_user_id" IS DISTINCT FROM q."confirmed_by_user_id" OR
+    jsonb_typeof(selected) IS DISTINCT FROM 'array' OR jsonb_array_length(selected) NOT BETWEEN 1 AND 10 OR
+    selected_count<>jsonb_array_length(selected) OR
+    EXISTS (SELECT 1 FROM "case_execution_confirmation_versions" v WHERE v."confirmation_id"=q."id" AND NOT selected ? v."content_version_id"::text) OR
+    EXISTS (SELECT 1 FROM jsonb_array_elements_text(selected) requested WHERE NOT EXISTS
+      (SELECT 1 FROM "case_execution_confirmation_versions" v WHERE v."confirmation_id"=q."id" AND v."content_version_id"::text=requested.value)) OR
+    -- The first confirmation must freeze the entire current available bundle,
+    -- not just a self-consistent subset selected by its caller. This deferred
+    -- check fires only for that confirmation transaction; future material
+    -- changes do not rewrite its historical snapshot.
+    (SELECT count(*) FROM "materials" m JOIN "content_versions" cv
+       ON cv."id"=m."current_version_id" AND cv."material_id"=m."id"
+      WHERE m."department_id"=target_department AND m."owner_type"='CASE' AND m."owner_id"=target_case
+        AND m."category"='EXECUTION_APPLICATION' AND m."purpose"='EXECUTION_APPLICATION'
+        AND m."status"='ACTIVE' AND cv."status"='AVAILABLE')<>selected_count OR
+    EXISTS (SELECT 1 FROM "materials" m JOIN "content_versions" cv
+       ON cv."id"=m."current_version_id" AND cv."material_id"=m."id"
+      WHERE m."department_id"=target_department AND m."owner_type"='CASE' AND m."owner_id"=target_case
+        AND m."category"='EXECUTION_APPLICATION' AND m."purpose"='EXECUTION_APPLICATION'
+        AND m."status"='ACTIVE' AND cv."status"='AVAILABLE'
+        AND NOT EXISTS (SELECT 1 FROM "case_execution_confirmation_versions" v
+          WHERE v."confirmation_id"=q."id" AND v."material_id"=m."id" AND v."content_version_id"=cv."id")) OR
+    (SELECT count(*) FROM "material_references" r WHERE r."action_event_id"=q."audit_event_id" AND r."resource_type"='case' AND r."resource_id"=target_case AND r."department_id"=target_department AND r."purpose"='EXECUTION_APPLICATION')<>selected_count OR
+    EXISTS (SELECT 1 FROM "case_execution_confirmation_versions" v WHERE v."confirmation_id"=q."id" AND NOT EXISTS
+      (SELECT 1 FROM "material_references" r WHERE r."action_event_id"=q."audit_event_id" AND r."resource_type"='case' AND r."resource_id"=target_case AND r."department_id"=target_department AND r."purpose"='EXECUTION_APPLICATION' AND r."material_id"=v."material_id" AND r."content_version_id"=v."content_version_id"))
+  THEN RAISE EXCEPTION 'external execution confirmation bundle mismatch' USING ERRCODE='23514'; END IF;
+  RETURN NEW;
+END; $$;
+
 COMMIT;
