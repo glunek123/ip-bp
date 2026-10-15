@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { captureTestEnvironment } from '../../../../scripts/test-environment.mjs';
+import { acquireE2eResourceLock } from '../../../../scripts/run-e2e.mjs';
 
 const root = resolve(import.meta.dirname, '../../../..');
 const requireBackend = createRequire(resolve(root, 'backend/package.json'));
@@ -128,8 +129,9 @@ async function seedMatter(client, label, { evidence = true } = {}) {
 const client = new Client({
   connectionString: environment.childEnvironment.DATABASE_URL,
 });
-await client.connect();
+const resourceLock = acquireE2eResourceLock();
 try {
+  await client.connect();
   assert.equal(
     (await client.query('SELECT current_database() AS name')).rows[0].name,
     'dev_cor_test',
@@ -613,5 +615,9 @@ try {
     }
   }
 } finally {
-  await client.end();
+  try {
+    await client.end();
+  } finally {
+    resourceLock.release();
+  }
 }

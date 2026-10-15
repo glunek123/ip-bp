@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { acquireLocalLock } from './local-lock.mjs';
@@ -23,9 +23,21 @@ function currentPnpmVersion() {
   return match[1];
 }
 
+export function e2eResourceLockRoot() {
+  // On the managed Windows host this is the original user Temp directory.
+  // Runner-local TMP/TEMP overrides must not create a second resource lock.
+  const temporaryRoot =
+    process.platform === 'win32'
+      ? join(
+          process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'),
+          'Temp',
+        )
+      : tmpdir();
+  return join(temporaryRoot, 'dev-cor-shared-e2e-locks');
+}
+
 export function acquireE2eResourceLock(options = {}) {
-  const lockRoot =
-    options.lockRoot ?? join(tmpdir(), 'dev-cor-shared-e2e-locks');
+  const lockRoot = options.lockRoot ?? e2eResourceLockRoot();
   const resourceHash = createHash('sha256')
     .update(e2eResourceIdentity)
     .digest('hex')

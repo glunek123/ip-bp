@@ -1,15 +1,18 @@
 import { validateEnvironment } from './environment';
 import { resolve } from 'node:path';
-import { tmpdir } from 'node:os';
+
+const repositoryRoot = resolve(__dirname, '../../..');
 
 const valid = {
   NODE_ENV: 'test',
   PORT: '3101',
   DATABASE_URL: 'postgresql://test:test@127.0.0.1:55433/dev_cor_test',
   AUTH_THROTTLE_SECRET: 'a'.repeat(64),
-  PRIVATE_FILE_ROOT: resolve(tmpdir(), 'dev-cor-private-test'),
+  PRIVATE_FILE_ROOT: resolve(
+    repositoryRoot,
+    '.local/private-files/environment-spec',
+  ),
 };
-const repositoryRoot = resolve(process.cwd(), '..');
 
 describe('environment validation', () => {
   it('parses a valid explicit configuration', () => {
@@ -65,6 +68,7 @@ describe('environment validation', () => {
     [resolve(repositoryRoot, 'frontend', 'private-files')],
     [resolve(repositoryRoot, 'backend', 'src', 'private-files')],
     [resolve(repositoryRoot, 'backend')],
+    [resolve(repositoryRoot, '.local/runner-temp/dev-cor-private-test')],
   ])('rejects unsafe private file root %s', (PRIVATE_FILE_ROOT) => {
     expect(() => validateEnvironment({ ...valid, PRIVATE_FILE_ROOT })).toThrow(
       'PRIVATE_FILE_ROOT',
