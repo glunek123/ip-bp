@@ -1539,3 +1539,7 @@ SD-57／cases合同区分正常公证三来源与不可变外部entry，真实16
 同候选第十九轮完整22前两browser通过，第三direct上传入口缺失超时、19未跑，pg-nineteenth保留；真实快照确认文件tab已激活且没有上传按钮。CaseReadService的canSubmitExecution包含真实提交资格，精确direct WAITING_EXECUTION_CONFIRMATION且无submission为false；F原组件夹具假设true，故新UI虽有精确分支仍未真实可用。后端MaterialService已沿case.read／case.execution.submit及当前律师允许正式上传；现在新增可选只读canUploadDirectExecutionMaterials精确映射该来源及现有材料写权限，缺失false、非bool拒绝，客户不扩；禁止把canSubmit改true或借canConfirm授权。cases读取合同已补，Sol后台／严格API与前端组件分别实现，须独立源审及真实浏览器闭环。
 
 此新读取产品使旧backend112suite／构建限定复用失效，稳定候选将实际重跑完整verify及22项；不能将前述f1门禁冒充新cap候选。migration-tenth的旧150 runtime、150→154 SQL、专项test/helper与旧配置均未改变，后续只在逐字核同这些明确输入后限定复用，不声称新候选实际重跑。持久预览、真实账号权限及UXQ规划均未操作。
+
+**独立上传能力源审闭合，待根完整验收。** E4ec2af1实现六文件后，独立审查I-NEWCAP01指出list／detail只给部门的授权facts遗漏真实负责人／团队，SELF／TEAM可能错误关闭上传，原固定true mock未覆盖；该hash当时REJECTED I1、未进入根门禁。5711036补本案responsibleUserId及可选teamId，部门由同部门查询约束保持一致，增加SELF／TEAM各正负事实断言及真实list／detail覆盖。E组合独立累计ACCEPTED C/I/M0、该finding关闭；作者CaseRead＋Controller48/48、API169/169、类型／Lint／格式通过，仅属其源候选。
+
+F2eff7b4及da7caa3把内部动作／文件页／上传面板与律师宿主的精确direct分支改用newcap===true，缺失／false关闭、canSubmit=false仍可仅上传，正常提交保持旧能力；作者组件63/63、律师页24/24及静态通过，独立接受。T6ff4baf与e935519在原22项内增加正式GET的false-submit／true-upload、每次上传控件visible/enabled，末项用真实新律师账号/profile及正常cookie登录，已指派读取最小四字段origin／未指派404／有效CSRF内部create403，原撤权和快照保持，独立源审接受。根已集成上述固定提交，补快照后将实际跑完整verify与全部22项，不以前轮分段或作者mock通过代替。
