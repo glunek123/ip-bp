@@ -55,10 +55,11 @@ function detail(overrides: Record<string, unknown> = {}) {
     ...overrides,
   } as unknown as CaseDetail;
 }
-function mountPanel(item = detail()) {
+function mountPanel(item = detail(), lawyer = false) {
   return mount(CaseExecutionConfirmationPanel, {
     props: {
       item,
+      lawyer,
       contextKey: 'user-1:revision-1',
       actorKey: 'INTERNAL:user-1:department-1',
     },
@@ -141,7 +142,6 @@ describe('CaseExecutionConfirmationPanel', () => {
           id: 'confirmation-1',
           submissionId: submission.id,
           confirmedAt: '2026-10-12T02:00:00.000Z',
-          confirmedByUserId: 'operator-1',
           files: [file],
         },
       }),
@@ -201,6 +201,30 @@ describe('CaseExecutionConfirmationPanel', () => {
       }),
       'internal',
     );
+  });
+
+  it('renders a lawyer confirmation projection without an internal actor identifier', () => {
+    const wrapper = mountPanel(
+      detail({
+        stage: 'WAITING_EXECUTION_STAMP',
+        canConfirmExecution: false,
+        canSubmitExecution: false,
+        executionConfirmation: {
+          id: 'confirmation-1',
+          submissionId: submission.id,
+          confirmedAt: '2026-10-12T02:00:00.000Z',
+          files: [file],
+        },
+      }),
+      true,
+    );
+    expect(
+      wrapper
+        .get('[data-test="execution-confirmed-at"]')
+        .attributes('datetime'),
+    ).toBe('2026-10-12T02:00:00.000Z');
+    expect(wrapper.text()).toContain(file.originalFilename);
+    wrapper.unmount();
   });
 
   it('retries an unknown result with the original body and offers a status refresh', async () => {

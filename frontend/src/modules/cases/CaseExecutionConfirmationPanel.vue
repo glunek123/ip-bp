@@ -33,13 +33,20 @@ const error = ref('');
 const downloadError = ref('');
 const unknownCommand = ref<ConfirmExecutionInput | null>(null);
 const downloads = new Set<AbortController>();
+type ExecutionConfirmationView = Pick<
+  NonNullable<CaseDetail['executionConfirmation']>,
+  'id' | 'submissionId' | 'confirmedAt' | 'files'
+>;
 let mounted = true;
 let revision = 0;
 let fingerprint = '';
 
-const confirmed = computed(() =>
-  accessDenied.value ? null : props.item.executionConfirmation,
-);
+const confirmed = computed<ExecutionConfirmationView | null>(() => {
+  if (accessDenied.value || !props.item.executionConfirmation) return null;
+  const { id, submissionId, confirmedAt, files } =
+    props.item.executionConfirmation;
+  return { id, submissionId, confirmedAt, files };
+});
 const submission = computed(() =>
   accessDenied.value ? null : props.item.executionSubmission.current,
 );
