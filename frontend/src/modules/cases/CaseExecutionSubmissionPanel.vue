@@ -100,7 +100,8 @@ const mayUploadOnly = computed(
     props.item.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
     props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
     props.item.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
-    props.item.canSubmitExecution &&
+    'canUploadDirectExecutionMaterials' in props.item &&
+    props.item.canUploadDirectExecutionMaterials === true &&
     props.item.executionSubmission.current === null &&
     !props.item.executionConfirmation &&
     !accessDenied.value,
@@ -177,7 +178,12 @@ function resetContext(): void {
     !!marker || hasUnclearedExecutionUpload(recoveryIdentity());
   keyFingerprint = '';
   idempotencyKey = '';
-  if (props.item.canSubmitExecution) void loadFiles();
+  if (
+    props.item.canSubmitExecution ||
+    ('canUploadDirectExecutionMaterials' in props.item &&
+      props.item.canUploadDirectExecutionMaterials === true)
+  )
+    void loadFiles();
 }
 
 function clearSensitive(): void {
@@ -615,6 +621,8 @@ watch(
     props.actorKey,
     props.contextKey,
     props.item.canSubmitExecution,
+    'canUploadDirectExecutionMaterials' in props.item &&
+      props.item.canUploadDirectExecutionMaterials === true,
     props.item.executionSubmission.availableFiles.length,
   ],
   resetContext,

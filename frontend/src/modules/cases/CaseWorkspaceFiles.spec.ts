@@ -545,14 +545,19 @@ describe('CaseWorkspaceFiles', () => {
 
   it('offers material upload for a direct execution-confirmation entry only with capability', async () => {
     const { wrapper } = render();
-    const directItem = (canSubmitExecution: boolean): CaseDetail => ({
+    const directItem = (
+      canUploadDirectExecutionMaterials: boolean | undefined,
+    ): CaseDetail & { canUploadDirectExecutionMaterials?: boolean } => ({
       ...baseItem,
       stage: 'WAITING_EXECUTION_CONFIRMATION',
       sourceLead: null,
       sourceNotaryMatter: null,
       certificate: null,
       fees: [],
-      canSubmitExecution,
+      canSubmitExecution: false,
+      ...(canUploadDirectExecutionMaterials === undefined
+        ? {}
+        : { canUploadDirectExecutionMaterials }),
       origin: {
         kind: 'EXTERNAL_ENTRY',
         entryId: 'entry-1',
@@ -584,6 +589,8 @@ describe('CaseWorkspaceFiles', () => {
     expect(wrapper.emitted('open-upload')).toEqual([[]]);
 
     await wrapper.setProps({ item: directItem(false) });
+    expect(wrapper.find('[data-test="open-upload"]').exists()).toBe(false);
+    await wrapper.setProps({ item: directItem(undefined) });
     expect(wrapper.find('[data-test="open-upload"]').exists()).toBe(false);
   });
 });

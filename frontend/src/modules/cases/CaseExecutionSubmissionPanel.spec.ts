@@ -498,6 +498,8 @@ describe('CaseExecutionSubmissionPanel', () => {
       props: {
         item: item({
           stage: 'WAITING_EXECUTION_CONFIRMATION',
+          canSubmitExecution: false,
+          canUploadDirectExecutionMaterials: true,
           origin: {
             kind: 'EXTERNAL_ENTRY',
             initialStage: 'WAITING_EXECUTION_CONFIRMATION',
@@ -565,12 +567,40 @@ describe('CaseExecutionSubmissionPanel', () => {
     expect(api.submitExecution).not.toHaveBeenCalled();
   });
 
+  it('does not treat canSubmitExecution as a direct upload capability', async () => {
+    const wrapper = mount(CaseExecutionSubmissionPanel, {
+      props: {
+        item: item({
+          stage: 'WAITING_EXECUTION_CONFIRMATION',
+          canSubmitExecution: true,
+          canUploadDirectExecutionMaterials: false,
+          origin: {
+            kind: 'EXTERNAL_ENTRY',
+            initialStage: 'WAITING_EXECUTION_CONFIRMATION',
+          },
+          judgmentNextStep: { current: null, history: [], revocations: [] },
+        }),
+        contextKey: 'identity-a',
+        actorKey: 'user-a:rev-1',
+        uploadOnly: true,
+      },
+    });
+    await flushPromises();
+
+    expect(
+      wrapper.find('[data-test="execution-material-upload-only"]').exists(),
+    ).toBe(false);
+    expect(api.uploadMaterialFile).not.toHaveBeenCalled();
+  });
+
   it('keeps upload-only controls in recovery mode without exposing submit', async () => {
     api.uploadMaterialFile.mockRejectedValueOnce(new TypeError('network lost'));
     const wrapper = mount(CaseExecutionSubmissionPanel, {
       props: {
         item: item({
           stage: 'WAITING_EXECUTION_CONFIRMATION',
+          canSubmitExecution: false,
+          canUploadDirectExecutionMaterials: true,
           origin: {
             kind: 'EXTERNAL_ENTRY',
             initialStage: 'WAITING_EXECUTION_CONFIRMATION',

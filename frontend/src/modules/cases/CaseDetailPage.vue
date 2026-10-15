@@ -298,7 +298,8 @@ const commands = computed<WorkspaceCommand[]>(() => {
     stage === 'WAITING_EXECUTION_CONFIRMATION' &&
       current.origin?.kind === 'EXTERNAL_ENTRY' &&
       current.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
-      current.canSubmitExecution &&
+      'canUploadDirectExecutionMaterials' in current &&
+      current.canUploadDirectExecutionMaterials === true &&
       current.executionSubmission.current === null &&
       !current.executionConfirmation,
     'execution-upload',

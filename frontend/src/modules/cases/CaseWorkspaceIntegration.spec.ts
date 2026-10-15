@@ -410,14 +410,15 @@ afterEach(() => {
 describe('UI002 real case workspace host', () => {
   it('opens upload-only mode for a direct execution-confirmation entry', async () => {
     api.uploadMaterialFile.mockResolvedValue({});
-    const item: CaseDetail = {
+    const item: CaseDetail & { canUploadDirectExecutionMaterials: boolean } = {
       ...structuredClone(baseItem),
       stage: 'WAITING_EXECUTION_CONFIRMATION',
       sourceLead: null,
       sourceNotaryMatter: null,
       certificate: null,
       fees: [],
-      canSubmitExecution: true,
+      canSubmitExecution: false,
+      canUploadDirectExecutionMaterials: true,
       canConfirmExecution: true,
       origin: {
         kind: 'EXTERNAL_ENTRY',

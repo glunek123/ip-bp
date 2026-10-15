@@ -157,8 +157,15 @@ const canOpenUpload = computed(() => {
             !item.secondInstance.currentResult))
       );
     case 'WAITING_EXECUTION_DOCUMENTS':
-    case 'WAITING_EXECUTION_CONFIRMATION':
       return item.canSubmitExecution && !item.executionConfirmation;
+    case 'WAITING_EXECUTION_CONFIRMATION':
+      return item.origin?.kind === 'EXTERNAL_ENTRY' &&
+        item.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
+        item.executionSubmission.current === null
+        ? 'canUploadDirectExecutionMaterials' in item &&
+            item.canUploadDirectExecutionMaterials === true &&
+            !item.executionConfirmation
+        : item.canSubmitExecution && !item.executionConfirmation;
     case 'WAITING_EXECUTION_STAMP':
       return (
         item.canMailExecution &&
