@@ -72,6 +72,40 @@ export type UploadedMaterial = {
   sha256: string;
 };
 
+export type CaseSectionRecordUploadTarget =
+  | {
+      kind: 'EXECUTION_MAILING' | 'EXECUTION_FILING' | 'EXECUTION_FINISH';
+      targetId: string;
+      expectedRevision: number;
+    }
+  | {
+      kind: 'JUDGMENT';
+      targetId: string;
+      expectedRevision: number;
+      trialRoundId: string;
+    }
+  | {
+      kind: 'CLOSURE';
+      targetId: string;
+      expectedRevision: number;
+      expectedClosureVersionId: string;
+    };
+type CaseSectionRecordMaterialPurpose = Extract<
+  MaterialPurpose,
+  | 'MAIL_RECEIPT'
+  | 'EXECUTION_FILING_PROOF'
+  | 'EXECUTION_FINISH_BASIS'
+  | 'JUDGMENT'
+  | 'CASE_CLOSURE_DOCUMENT'
+>;
+export type CaseSectionRecordUploadedMaterial = Omit<
+  UploadedMaterial,
+  'reservedOwnerId' | 'purpose'
+> & {
+  purpose: CaseSectionRecordMaterialPurpose;
+  recordCorrection: CaseSectionRecordUploadTarget;
+};
+
 export type MaterialContentVersion = {
   id: string;
   materialId: string;
@@ -519,6 +553,279 @@ export async function uploadMaterialFile(
     throw invalidResponse();
   }
   return uploaded;
+}
+
+function sectionUploadUuid(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      value,
+    )
+  );
+}
+function sectionUploadTarget(
+  value: unknown,
+): value is CaseSectionRecordUploadTarget {
+  if (
+    !isRecord(value) ||
+    !sectionUploadUuid(value.targetId) ||
+    typeof value.expectedRevision !== 'number' ||
+    !Number.isSafeInteger(value.expectedRevision) ||
+    value.expectedRevision < 0
+  )
+    return false;
+  const keys = ['kind', 'targetId', 'expectedRevision'];
+  switch (value.kind) {
+    case 'EXECUTION_MAILING':
+    case 'EXECUTION_FILING':
+    case 'EXECUTION_FINISH':
+      return hasExactKeys(value, keys);
+    case 'JUDGMENT':
+      return (
+        hasExactKeys(value, [...keys, 'trialRoundId']) &&
+        sectionUploadUuid(value.trialRoundId)
+      );
+    case 'CLOSURE':
+      return (
+        hasExactKeys(value, [...keys, 'expectedClosureVersionId']) &&
+        sectionUploadUuid(value.expectedClosureVersionId)
+      );
+    default:
+      return false;
+  }
+}
+function sameSectionUploadTarget(
+  value: unknown,
+  expected: CaseSectionRecordUploadTarget,
+): value is CaseSectionRecordUploadTarget {
+  return (
+    sectionUploadTarget(value) &&
+    value.kind === expected.kind &&
+    value.targetId.toLowerCase() === expected.targetId.toLowerCase() &&
+    value.expectedRevision === expected.expectedRevision &&
+    (value.kind !== 'JUDGMENT' ||
+      (expected.kind === 'JUDGMENT' &&
+        value.trialRoundId.toLowerCase() ===
+          expected.trialRoundId.toLowerCase())) &&
+    (value.kind !== 'CLOSURE' ||
+      (expected.kind === 'CLOSURE' &&
+        value.expectedClosureVersionId.toLowerCase() ===
+          expected.expectedClosureVersionId.toLowerCase()))
+  );
+}
+type SectionUploadAnchors =
+  | { mailingId: string; expectedMailingRevision: number }
+  | { filingId: string; expectedFilingRevision: number }
+  | { finishId: string; expectedFinishRevision: number }
+  | {
+      judgmentId: string;
+      expectedJudgmentRevision: number;
+      trialRoundId: string;
+    }
+  | {
+      closureId: string;
+      expectedClosureRevision: number;
+      expectedClosureVersionId: string;
+    };
+function sectionUploadRequest(target: CaseSectionRecordUploadTarget): {
+  route: string;
+  purpose: CaseSectionRecordMaterialPurpose;
+  anchors: SectionUploadAnchors;
+} {
+  switch (target.kind) {
+    case 'EXECUTION_MAILING':
+      return {
+        route: 'execution-mailing-correction',
+        purpose: 'MAIL_RECEIPT',
+        anchors: {
+          mailingId: target.targetId,
+          expectedMailingRevision: target.expectedRevision,
+        },
+      } as const;
+    case 'EXECUTION_FILING':
+      return {
+        route: 'execution-filing-correction',
+        purpose: 'EXECUTION_FILING_PROOF',
+        anchors: {
+          filingId: target.targetId,
+          expectedFilingRevision: target.expectedRevision,
+        },
+      } as const;
+    case 'EXECUTION_FINISH':
+      return {
+        route: 'execution-finish-correction',
+        purpose: 'EXECUTION_FINISH_BASIS',
+        anchors: {
+          finishId: target.targetId,
+          expectedFinishRevision: target.expectedRevision,
+        },
+      } as const;
+    case 'JUDGMENT':
+      return {
+        route: 'judgment-record-correction',
+        purpose: 'JUDGMENT',
+        anchors: {
+          judgmentId: target.targetId,
+          expectedJudgmentRevision: target.expectedRevision,
+          trialRoundId: target.trialRoundId,
+        },
+      } as const;
+    case 'CLOSURE':
+      return {
+        route: 'closure-record-correction',
+        purpose: 'CASE_CLOSURE_DOCUMENT',
+        anchors: {
+          closureId: target.targetId,
+          expectedClosureRevision: target.expectedRevision,
+          expectedClosureVersionId: target.expectedClosureVersionId,
+        },
+      } as const;
+  }
+}
+function sectionUploadTimestamp(value: unknown): boolean {
+  return (
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/u.test(value) &&
+    !Number.isNaN(Date.parse(value)) &&
+    new Date(value).toISOString().slice(0, 19) === value.slice(0, 19)
+  );
+}
+async function sectionUploadHash(file: File): Promise<string> {
+  const bytes = await new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () =>
+      reader.result instanceof ArrayBuffer
+        ? resolve(reader.result)
+        : reject(new ApiError('无法读取文件', 400, 'VALIDATION_ERROR'));
+    reader.readAsArrayBuffer(file);
+  });
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('');
+}
+
+/** Upload preparation only: abort/unknown results never confirm a version or save a correction. */
+export async function uploadCaseSectionRecordFile(
+  caseId: string,
+  target: CaseSectionRecordUploadTarget,
+  file: File,
+  options: RequestOptions = {},
+): Promise<CaseSectionRecordUploadedMaterial> {
+  if (
+    !sectionUploadUuid(caseId) ||
+    !sectionUploadTarget(target) ||
+    !(file instanceof File)
+  )
+    throw new ApiError('资料更正上传目标无效', 400, 'VALIDATION_ERROR');
+  const originalFilename = file.name.trim();
+  const declaredMimeType = file.type.trim();
+  const types = new Map([
+    ['.pdf', 'application/pdf'],
+    ['.jpg', 'image/jpeg'],
+    ['.jpeg', 'image/jpeg'],
+    ['.png', 'image/png'],
+  ]);
+  const extension = originalFilename.toLowerCase().match(/\.[^.]+$/u)?.[0];
+  if (
+    originalFilename.length < 1 ||
+    originalFilename.length > 200 ||
+    types.get(extension ?? '') !== declaredMimeType ||
+    !Number.isSafeInteger(file.size) ||
+    file.size <= 0 ||
+    file.size > (target.kind === 'EXECUTION_MAILING' ? 20 : 50) * 1024 * 1024
+  )
+    throw new ApiError(
+      '资料更正仅支持限额内的 PDF、JPG 或 PNG 文件',
+      400,
+      'VALIDATION_ERROR',
+    );
+  // Freeze the caller's original anchors before any async work, without inferring a newer head.
+  const frozen = structuredClone(target);
+  const request = sectionUploadRequest(frozen);
+  options.signal?.throwIfAborted();
+  const sha256 = await sectionUploadHash(file);
+  options.signal?.throwIfAborted();
+  const draft = await requestJson(
+    `/cases/${encodeURIComponent(caseId)}/${request.route}/upload-drafts`,
+    {
+      ...options,
+      method: 'POST',
+      retryOnCsrfInvalid: false,
+      body: { ...request.anchors, originalFilename, declaredMimeType },
+    },
+  );
+  options.signal?.throwIfAborted();
+  const draftCorrection = isRecord(draft) ? draft.recordCorrection : undefined;
+  if (
+    !isUploadDraft(draft) ||
+    !isRecord(draft) ||
+    !hasExactKeys(draft, [
+      'id',
+      'ownerType',
+      'ownerId',
+      'category',
+      'purpose',
+      'originalFilename',
+      'declaredMimeType',
+      'expiresAt',
+      'recordCorrection',
+    ]) ||
+    !sectionUploadUuid(draft.id) ||
+    draft.ownerType !== 'CASE' ||
+    !sectionUploadUuid(draft.ownerId) ||
+    draft.ownerId.toLowerCase() !== caseId.toLowerCase() ||
+    draft.category !== request.purpose ||
+    draft.purpose !== request.purpose ||
+    draft.originalFilename !== originalFilename ||
+    draft.declaredMimeType !== declaredMimeType ||
+    !sectionUploadTimestamp(draft.expiresAt) ||
+    !sameSectionUploadTarget(draftCorrection, frozen)
+  )
+    throw invalidResponse();
+  const uploaded = await requestBinary(
+    `/materials/upload-drafts/${encodeURIComponent(draft.id)}/content`,
+    file,
+    { ...options, method: 'PUT', retryOnCsrfInvalid: false },
+  );
+  options.signal?.throwIfAborted();
+  const uploadedCorrection = isRecord(uploaded)
+    ? uploaded.recordCorrection
+    : undefined;
+  if (
+    !isUploadedMaterial(uploaded) ||
+    !isRecord(uploaded) ||
+    !hasExactKeys(uploaded, [
+      'materialId',
+      'contentVersionId',
+      'originalFilename',
+      'purpose',
+      'mimeType',
+      'sizeBytes',
+      'sha256',
+      'recordCorrection',
+    ]) ||
+    !sectionUploadUuid(uploaded.materialId) ||
+    !sectionUploadUuid(uploaded.contentVersionId) ||
+    uploaded.originalFilename !== originalFilename ||
+    uploaded.purpose !== request.purpose ||
+    uploaded.mimeType !== declaredMimeType ||
+    uploaded.sizeBytes !== file.size ||
+    uploaded.sha256 !== sha256 ||
+    !sameSectionUploadTarget(uploadedCorrection, frozen)
+  )
+    throw invalidResponse();
+  return {
+    materialId: uploaded.materialId,
+    contentVersionId: uploaded.contentVersionId,
+    originalFilename: uploaded.originalFilename,
+    purpose: request.purpose,
+    mimeType: uploaded.mimeType,
+    sizeBytes: uploaded.sizeBytes,
+    sha256: uploaded.sha256,
+    recordCorrection: uploadedCorrection,
+  };
 }
 
 export async function listOwnerMaterials(

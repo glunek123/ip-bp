@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createHash, webcrypto } from 'node:crypto';
 import {
   deleteMaterial,
   downloadMaterialVersion,
   listOwnerMaterials,
   restoreMaterial,
   uploadMaterialFile,
+  uploadCaseSectionRecordFile,
+  type CaseSectionRecordUploadTarget,
 } from './materials';
 
 afterEach(() => {
@@ -21,6 +24,440 @@ const uploaded = {
   sizeBytes: 17,
   sha256: 'a'.repeat(64),
 };
+
+const sectionCaseId = 'a1000000-0000-4000-8000-000000000001';
+const sectionTargetId = 'a1000000-0000-4000-8000-000000000002';
+const sectionRoundId = 'a1000000-0000-4000-8000-000000000003';
+const sectionClosureVersionId = 'a1000000-0000-4000-8000-000000000004';
+const sectionDraftId = 'a1000000-0000-4000-8000-000000000005';
+const sectionMaterialId = 'a1000000-0000-4000-8000-000000000006';
+const sectionContentVersionId = 'a1000000-0000-4000-8000-000000000007';
+const sectionBytes = '%PDF-1.4\nsection record source bytes';
+const sectionUploads: Array<{
+  target: CaseSectionRecordUploadTarget;
+  route: string;
+  purpose: string;
+  anchors: object;
+}> = [
+  {
+    target: {
+      kind: 'EXECUTION_MAILING',
+      targetId: sectionTargetId,
+      expectedRevision: 0,
+    },
+    route: 'execution-mailing-correction',
+    purpose: 'MAIL_RECEIPT',
+    anchors: { mailingId: sectionTargetId, expectedMailingRevision: 0 },
+  },
+  {
+    target: {
+      kind: 'EXECUTION_FILING',
+      targetId: sectionTargetId,
+      expectedRevision: 2,
+    },
+    route: 'execution-filing-correction',
+    purpose: 'EXECUTION_FILING_PROOF',
+    anchors: { filingId: sectionTargetId, expectedFilingRevision: 2 },
+  },
+  {
+    target: {
+      kind: 'EXECUTION_FINISH',
+      targetId: sectionTargetId,
+      expectedRevision: 0,
+    },
+    route: 'execution-finish-correction',
+    purpose: 'EXECUTION_FINISH_BASIS',
+    anchors: { finishId: sectionTargetId, expectedFinishRevision: 0 },
+  },
+  {
+    target: {
+      kind: 'JUDGMENT',
+      targetId: sectionTargetId,
+      expectedRevision: 3,
+      trialRoundId: sectionRoundId,
+    },
+    route: 'judgment-record-correction',
+    purpose: 'JUDGMENT',
+    anchors: {
+      judgmentId: sectionTargetId,
+      expectedJudgmentRevision: 3,
+      trialRoundId: sectionRoundId,
+    },
+  },
+  {
+    target: {
+      kind: 'CLOSURE',
+      targetId: sectionTargetId,
+      expectedRevision: 0,
+      expectedClosureVersionId: sectionClosureVersionId,
+    },
+    route: 'closure-record-correction',
+    purpose: 'CASE_CLOSURE_DOCUMENT',
+    anchors: {
+      closureId: sectionTargetId,
+      expectedClosureRevision: 0,
+      expectedClosureVersionId: sectionClosureVersionId,
+    },
+  },
+];
+function sectionUploadFixture(
+  index = 0,
+  filename = '  更正附件.pdf  ',
+  mime = 'application/pdf',
+) {
+  vi.stubGlobal('crypto', webcrypto);
+  const scenario = sectionUploads[index]!;
+  const file = new File([sectionBytes], filename, { type: mime });
+  const draft = {
+    id: sectionDraftId,
+    ownerType: 'CASE',
+    ownerId: sectionCaseId,
+    category: scenario.purpose,
+    purpose: scenario.purpose,
+    originalFilename: file.name.trim(),
+    declaredMimeType: file.type.trim(),
+    expiresAt: '2026-12-01T00:00:00.000Z',
+    recordCorrection: scenario.target,
+  };
+  const result = {
+    materialId: sectionMaterialId,
+    contentVersionId: sectionContentVersionId,
+    originalFilename: draft.originalFilename,
+    purpose: scenario.purpose,
+    mimeType: draft.declaredMimeType,
+    sizeBytes: file.size,
+    sha256: createHash('sha256').update(sectionBytes).digest('hex'),
+    recordCorrection: scenario.target,
+  };
+  return { scenario, file, draft, result };
+}
+function mockSectionUpload(draft: unknown, result: unknown) {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify(draft), { status: 201 }))
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify(result), { status: 201 }),
+    );
+  vi.stubGlobal('fetch', fetch);
+  return fetch;
+}
+describe('precisely bound section record uploads', () => {
+  it.each(sectionUploads.map((scenario, index) => ({ ...scenario, index })))(
+    'prepares and uploads $target.kind using only its exact anchors',
+    async ({ index }) => {
+      const { scenario, file, draft, result } = sectionUploadFixture(index);
+      const fetch = mockSectionUpload(draft, result);
+      await expect(
+        uploadCaseSectionRecordFile(sectionCaseId, scenario.target, file),
+      ).resolves.toEqual(result);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch.mock.calls[0]?.[0]).toBe(
+        `/api/v1/cases/${sectionCaseId}/${scenario.route}/upload-drafts`,
+      );
+      expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+        ...scenario.anchors,
+        originalFilename: file.name.trim(),
+        declaredMimeType: file.type,
+      });
+      expect(fetch.mock.calls[1]?.[0]).toBe(
+        `/api/v1/materials/upload-drafts/${sectionDraftId}/content`,
+      );
+      expect(fetch.mock.calls[1]?.[1]?.method).toBe('PUT');
+      expect(fetch.mock.calls[1]?.[1]?.body).toBe(file);
+      expect(
+        new Headers(fetch.mock.calls[1]?.[1]?.headers).get('Content-Type'),
+      ).toBe('application/octet-stream');
+    },
+  );
+  it.each([
+    ['proof.PDF', 'application/pdf'],
+    ['photo.JPG', 'image/jpeg'],
+    ['photo.jpeg', 'image/jpeg'],
+    ['photo.PNG', 'image/png'],
+  ])('accepts the supported filename/MIME pair %s', async (filename, mime) => {
+    const { scenario, file, draft, result } = sectionUploadFixture(
+      3,
+      filename,
+      mime,
+    );
+    mockSectionUpload(draft, result);
+    await expect(
+      uploadCaseSectionRecordFile(sectionCaseId, scenario.target, file),
+    ).resolves.toEqual(result);
+  });
+  it('rejects invalid targets and free context before HTTP without inferring anchors', async () => {
+    const { file } = sectionUploadFixture();
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const invalidTargets = [
+      null,
+      {},
+      { kind: 'HEARING', targetId: sectionTargetId, expectedRevision: 0 },
+      { ...sectionUploads[0]!.target, expectedRevision: -1 },
+      { ...sectionUploads[0]!.target, expectedRevision: 0.5 },
+      { ...sectionUploads[0]!.target, expectedRevision: '0' },
+      {
+        ...sectionUploads[0]!.target,
+        expectedRevision: Number.MAX_SAFE_INTEGER + 1,
+      },
+      { ...sectionUploads[0]!.target, targetId: 'wrong' },
+      { ...sectionUploads[0]!.target, ownerType: 'CASE' },
+      { ...sectionUploads[0]!.target, category: 'MAIL_RECEIPT' },
+      { ...sectionUploads[0]!.target, trialRoundId: sectionRoundId },
+      { kind: 'JUDGMENT', targetId: sectionTargetId, expectedRevision: 0 },
+      { ...sectionUploads[3]!.target, trialRoundId: null },
+      { kind: 'CLOSURE', targetId: sectionTargetId, expectedRevision: 0 },
+      { ...sectionUploads[4]!.target, expectedClosureVersionId: null },
+      { ...sectionUploads[4]!.target, expectedVersion: 10 },
+    ];
+    for (const target of invalidTargets)
+      await expect(
+        uploadCaseSectionRecordFile(
+          sectionCaseId,
+          target as CaseSectionRecordUploadTarget,
+          file,
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(
+      uploadCaseSectionRecordFile('case-1', sectionUploads[0]!.target, file),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('rejects unsupported, empty, oversized and mismatched files before HTTP', async () => {
+    const { scenario } = sectionUploadFixture();
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    for (const file of [
+      new File(['x'], ' '),
+      new File(['x'], `${'x'.repeat(200)}.pdf`, { type: 'application/pdf' }),
+      new File(['x'], 'proof.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      }),
+      new File(['x'], 'proof.png', { type: 'application/pdf' }),
+      new File([], 'proof.pdf', { type: 'application/pdf' }),
+      new File(['x'], 'proof.pdf'),
+    ]) {
+      await expect(
+        uploadCaseSectionRecordFile(sectionCaseId, scenario.target, file),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    }
+    for (const [index, limit] of [
+      [0, 20],
+      [1, 50],
+      [2, 50],
+      [3, 50],
+      [4, 50],
+    ] as const) {
+      const file = new File(['bytes'], 'oversized.pdf', {
+        type: 'application/pdf',
+      });
+      Object.defineProperty(file, 'size', { value: limit * 1024 * 1024 + 1 });
+      await expect(
+        uploadCaseSectionRecordFile(
+          sectionCaseId,
+          sectionUploads[index]!.target,
+          file,
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  for (const index of [0, 1, 2, 3, 4]) {
+    it(`${sectionUploads[index]!.target.kind} rejects a wrong draft before sending bytes`, async () => {
+      const { scenario, file, draft, result } = sectionUploadFixture(index);
+      const contexts = [
+        { ...scenario.target, targetId: sectionCaseId },
+        { ...scenario.target, expectedRevision: 99 },
+        { ...scenario.target, kind: 'HEARING' },
+        { ...scenario.target, permission: true },
+        ...(scenario.target.kind === 'JUDGMENT'
+          ? [{ ...scenario.target, trialRoundId: sectionCaseId }]
+          : []),
+        ...(scenario.target.kind === 'CLOSURE'
+          ? [{ ...scenario.target, expectedClosureVersionId: sectionCaseId }]
+          : []),
+      ];
+      for (const change of [
+        { id: 'invalid' },
+        { ownerType: 'CUSTOMER' },
+        { ownerId: sectionTargetId },
+        { category: 'COMPLAINT' },
+        { purpose: 'COMPLAINT' },
+        { originalFilename: 'other.pdf' },
+        { declaredMimeType: 'image/png' },
+        { expiresAt: '2026-02-30T00:00:00Z' },
+        { recordCorrection: undefined },
+        { reservedOwnerId: sectionCaseId },
+        ...contexts.map((recordCorrection) => ({ recordCorrection })),
+      ]) {
+        const fetch = mockSectionUpload({ ...draft, ...change }, result);
+        await expect(
+          uploadCaseSectionRecordFile(sectionCaseId, scenario.target, file),
+        ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+        expect(fetch).toHaveBeenCalledTimes(1);
+      }
+    });
+    it(`${sectionUploads[index]!.target.kind} refuses unconfirmed final metadata and context`, async () => {
+      const { scenario, file, draft, result } = sectionUploadFixture(index);
+      for (const change of [
+        { materialId: 'wrong' },
+        { contentVersionId: 'wrong' },
+        { originalFilename: 'other.pdf' },
+        { purpose: 'COMPLAINT' },
+        { mimeType: 'image/png' },
+        { sizeBytes: file.size + 1 },
+        { sizeBytes: String(file.size) },
+        { sha256: 'f'.repeat(64) },
+        { sha256: 'bad' },
+        { reservedOwnerId: sectionCaseId },
+        { recordCorrection: undefined },
+        { recordCorrection: { ...scenario.target, targetId: sectionCaseId } },
+        { recordCorrection: { ...scenario.target, expectedRevision: 100 } },
+        ...(scenario.target.kind === 'JUDGMENT'
+          ? [
+              {
+                recordCorrection: {
+                  ...scenario.target,
+                  trialRoundId: sectionCaseId,
+                },
+              },
+            ]
+          : []),
+        ...(scenario.target.kind === 'CLOSURE'
+          ? [
+              {
+                recordCorrection: {
+                  ...scenario.target,
+                  expectedClosureVersionId: sectionCaseId,
+                },
+              },
+            ]
+          : []),
+      ]) {
+        const fetch = mockSectionUpload(draft, { ...result, ...change });
+        await expect(
+          uploadCaseSectionRecordFile(sectionCaseId, scenario.target, file),
+        ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+        expect(fetch).toHaveBeenCalledTimes(2);
+      }
+    });
+  }
+  it('freezes the original target through async preparation instead of adopting a changed revision', async () => {
+    const { scenario, file, draft, result } = sectionUploadFixture(4);
+    const target = structuredClone(scenario.target);
+    const fetch = mockSectionUpload(draft, result);
+    const pending = uploadCaseSectionRecordFile(sectionCaseId, target, file);
+    target.expectedRevision = 50;
+    if (target.kind === 'CLOSURE')
+      target.expectedClosureVersionId = sectionCaseId;
+    await expect(pending).resolves.toEqual(result);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      ...scenario.anchors,
+      originalFilename: file.name.trim(),
+      declaredMimeType: file.type,
+    });
+  });
+  it.each([0, 1])(
+    'does not retry a CSRF rejection during phase %s even when options request retry',
+    async (phase) => {
+      const { scenario, file, draft } = sectionUploadFixture();
+      const fetch = vi.fn();
+      if (phase === 1)
+        fetch.mockResolvedValueOnce(
+          new Response(JSON.stringify(draft), { status: 201 }),
+        );
+      fetch.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            code: 'CSRF_INVALID',
+            message: 'invalid CSRF',
+            requestId: 'test',
+          }),
+          { status: 403 },
+        ),
+      );
+      vi.stubGlobal('fetch', fetch);
+      await expect(
+        uploadCaseSectionRecordFile(sectionCaseId, scenario.target, file, {
+          retryOnCsrfInvalid: true,
+        }),
+      ).rejects.toMatchObject({ code: 'CSRF_INVALID' });
+      expect(fetch).toHaveBeenCalledTimes(phase + 1);
+    },
+  );
+  it.each([0, 1])(
+    'keeps an unknown outcome in phase %s as an error without retry or business correction',
+    async (phase) => {
+      const { scenario, file, draft } = sectionUploadFixture();
+      const fetch = vi.fn();
+      if (phase === 1)
+        fetch.mockResolvedValueOnce(
+          new Response(JSON.stringify(draft), { status: 201 }),
+        );
+      fetch.mockRejectedValueOnce(new TypeError('connection closed'));
+      vi.stubGlobal('fetch', fetch);
+      await expect(
+        uploadCaseSectionRecordFile(sectionCaseId, scenario.target, file),
+      ).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+      expect(fetch).toHaveBeenCalledTimes(phase + 1);
+    },
+  );
+  it.each([0, 1])(
+    'forwards abort through phase %s without a confirmed version or retry',
+    async (phase) => {
+      const { scenario, file, draft } = sectionUploadFixture();
+      const controller = new AbortController();
+      const fetch = vi.fn();
+      if (phase === 1)
+        fetch.mockResolvedValueOnce(
+          new Response(JSON.stringify(draft), { status: 201 }),
+        );
+      fetch.mockImplementationOnce(
+        (_url: string, options?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            options?.signal?.addEventListener(
+              'abort',
+              () => reject(options.signal?.reason),
+              { once: true },
+            );
+          }),
+      );
+      vi.stubGlobal('fetch', fetch);
+      const pending = uploadCaseSectionRecordFile(
+        sectionCaseId,
+        scenario.target,
+        file,
+        { signal: controller.signal, headers: { 'X-Upload-Test': 'caller' } },
+      );
+      const rejected = expect(pending).rejects.toMatchObject({
+        name: 'AbortError',
+      });
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(phase + 1));
+      expect(
+        new Headers(fetch.mock.calls[phase]?.[1]?.headers).get('X-Upload-Test'),
+      ).toBe('caller');
+      controller.abort();
+      await rejected;
+      expect(fetch.mock.calls[phase]?.[1]?.signal.aborted).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(phase + 1);
+    },
+  );
+  it('does not send bytes when the caller aborts as the draft response arrives', async () => {
+    const { scenario, file, draft } = sectionUploadFixture();
+    const controller = new AbortController();
+    const fetch = vi.fn().mockImplementationOnce(async () => {
+      controller.abort();
+      return new Response(JSON.stringify(draft), { status: 201 });
+    });
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      uploadCaseSectionRecordFile(sectionCaseId, scenario.target, file, {
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('materials API', () => {
   it.each([
