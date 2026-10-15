@@ -75,9 +75,22 @@ let conflictVersion: number | null = null;
 const maySubmit = computed(
   () =>
     props.item.canSubmitExecution &&
+    !(
+      props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
+      props.item.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
+      props.item.executionSubmission.current === null
+    ) &&
     (props.item.stage === 'WAITING_EXECUTION_DOCUMENTS' ||
+      (props.item.stage === 'SECOND_INSTANCE' &&
+        props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
+        props.item.origin.initialStage === 'SECOND_INSTANCE' &&
+        ['AFFIRM', 'CHANGE'].includes(
+          String(props.item.secondInstance.currentResult?.result),
+        )) ||
       props.item.stage === 'WAITING_EXECUTION_CONFIRMATION') &&
     !props.item.executionConfirmation &&
+    (props.item.origin?.kind !== 'EXTERNAL_ENTRY' ||
+      props.item.origin.initialStage !== 'ARCHIVED') &&
     !accessDenied.value,
 );
 const current = computed(() =>
@@ -414,14 +427,34 @@ function buildInput(): SubmitExecutionInput | null {
   const trialRoundId =
     item.secondInstance.currentTrialRoundId ?? next?.trialRoundId;
   const latestResult = item.secondInstance.currentResult;
+  const directExecutionEntry =
+    item.origin?.kind === 'EXTERNAL_ENTRY' &&
+    item.origin.initialStage === 'WAITING_EXECUTION_DOCUMENTS';
+  const directSecondInstanceEntry =
+    item.origin?.kind === 'EXTERNAL_ENTRY' &&
+    item.origin.initialStage === 'SECOND_INSTANCE';
   const secondInstanceResultId =
-    next?.next === 'APPEAL' &&
+    (next?.next === 'APPEAL' || directSecondInstanceEntry) &&
     latestResult &&
     (latestResult.result === 'CHANGE' || latestResult.result === 'AFFIRM')
       ? latestResult.id
       : null;
   const sortedIds = [...selected.value].sort();
-  if (!next || !trialRoundId) return null;
+  const judgmentNextStepId =
+    directExecutionEntry || directSecondInstanceEntry
+      ? null
+      : (next?.id ?? null);
+  if (
+    (!next && !directExecutionEntry && !directSecondInstanceEntry) ||
+    !trialRoundId
+  )
+    return null;
+  if (directSecondInstanceEntry && !secondInstanceResultId) return null;
+  if (
+    directExecutionEntry &&
+    (next !== null || secondInstanceResultId !== null)
+  )
+    return null;
   const reSubmitting = item.executionSubmission.current !== null;
   if (
     !reSubmitting &&
@@ -431,7 +464,7 @@ function buildInput(): SubmitExecutionInput | null {
   const fingerprint = JSON.stringify([
     item.version,
     trialRoundId,
-    next.id,
+    judgmentNextStepId,
     secondInstanceResultId,
     item.executionSubmission.current?.id ?? null,
     reSubmitting ? [] : sortedIds,
@@ -444,7 +477,7 @@ function buildInput(): SubmitExecutionInput | null {
     expectedVersion: item.version,
     idempotencyKey,
     trialRoundId,
-    judgmentNextStepId: next.id,
+    judgmentNextStepId,
     secondInstanceResultId,
     expectedSubmissionId: item.executionSubmission.current?.id ?? null,
     ...(!reSubmitting

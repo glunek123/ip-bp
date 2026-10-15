@@ -196,6 +196,46 @@ function mountPanel(
 }
 
 describe('case judgment panel', () => {
+  it('uses the external reached-on and known acceptance dates as the date floor', () => {
+    const directItem: CaseDetail = {
+      ...baseItem,
+      origin: {
+        kind: 'EXTERNAL_ENTRY',
+        entryId: '70000000-0000-4000-8000-000000000015',
+        entryKind: 'EXTERNAL_TRANSFER',
+        initialStage: 'WAITING_JUDGMENT',
+        stageReachedOn: '2026-10-06',
+        source: '外部真实来源',
+        reason: '历史案件补录',
+        recordedAt: '2026-10-08T01:00:00.000Z',
+        recordedByUserId: '70000000-0000-4000-8000-000000000016',
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: '2026-10-05',
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+      sourceLead: null,
+      sourceNotaryMatter: null,
+      certificate: null,
+      fees: [],
+      acceptance: null,
+      acceptances: [],
+    };
+    const wrapper = mountPanel(directItem);
+    expect(
+      (wrapper.get('[data-test="judgment-date"]').element as HTMLInputElement)
+        .min,
+    ).toBe('2026-10-06');
+    wrapper.unmount();
+  });
+
   it('requires explicit amount states and auto-selects the only available judgment file', async () => {
     const wrapper = mountPanel();
     expect(wrapper.text()).toContain('收到判决日期');

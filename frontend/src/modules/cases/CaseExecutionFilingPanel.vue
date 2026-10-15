@@ -34,7 +34,7 @@ type MailingRecord = {
 };
 type FilingRecord = {
   id: string;
-  mailingId: string;
+  mailingId: string | null;
   submittedAt: string;
   recordedAt: string;
   files: VersionFile[];
@@ -46,6 +46,8 @@ const props = defineProps<{
     stage: string;
     version: number;
     canSubmitExecutionFiling: boolean;
+    origin?:
+      { kind: 'NOTARY' } | { kind: 'EXTERNAL_ENTRY'; initialStage: string };
     executionMailing?: MailingRecord | null;
     executionFiling?: FilingRecord | null;
   };
@@ -93,10 +95,16 @@ const locked = computed(
     props.item.executionFiling != null ||
     success.value,
 );
+const directEntry = computed(
+  () =>
+    props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
+    props.item.origin.initialStage === 'WAITING_EXECUTION_FILING' &&
+    props.item.executionMailing == null,
+);
 const ready = computed(
   () =>
     !locked.value &&
-    props.item.executionMailing != null &&
+    (props.item.executionMailing != null || directEntry.value) &&
     !uploading.value &&
     !submitting.value &&
     unknownRequest.value === null &&
@@ -298,7 +306,7 @@ async function submit() {
     idempotencyKey:
       globalThis.crypto?.randomUUID?.() ||
       `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    expectedMailingId: props.item.executionMailing!.id,
+    expectedMailingId: props.item.executionMailing?.id ?? null,
     submittedAt: submittedAt.value,
     executionFilingProofContentVersionIds: files.value.map(
       (file) => file.contentVersionId,
@@ -402,7 +410,8 @@ async function download(file: VersionFile) {
       <template
         v-if="
           unknownRequest ||
-          (item.canSubmitExecutionFiling && item.executionMailing)
+          (item.canSubmitExecutionFiling &&
+            (item.executionMailing || directEntry))
         "
       >
         <label

@@ -1026,9 +1026,13 @@ onBeforeUnmount(() => {
         />
         <CaseArchivePanel
           v-if="
-            item.stage === 'WAITING_ARCHIVE' ||
-            item.stage === 'ARCHIVED' ||
-            archivePending
+            (item.stage === 'WAITING_ARCHIVE' ||
+              item.stage === 'ARCHIVED' ||
+              archivePending) &&
+            !(
+              item.origin?.kind === 'EXTERNAL_ENTRY' &&
+              item.origin.initialStage === 'ARCHIVED'
+            )
           "
           :item="item"
           :context-key="identity"

@@ -278,6 +278,45 @@ describe('case execution mailing panel', () => {
     );
     expect(wrapper.emitted('changed')).toHaveLength(1);
   });
+  it('records direct-stage mailing with a real null confirmation and actual receipt', async () => {
+    api.mailCaseExecution.mockResolvedValueOnce({
+      id: 'case-1',
+      mailingId: 'mail-direct',
+      confirmationId: null,
+      stage: 'WAITING_EXECUTION_FILING',
+      version: 8,
+      mailedAt: '2026-10-01',
+      recordedAt: '2026-10-03T01:00:00Z',
+    });
+    const wrapper = mountPanel({
+      ...item,
+      executionConfirmation: null,
+      origin: {
+        kind: 'EXTERNAL_ENTRY',
+        initialStage: 'WAITING_EXECUTION_STAMP',
+      },
+    });
+    await flushPromises();
+    await addReceipt(wrapper);
+    await wrapper
+      .get('[data-test="execution-mailed-at"]')
+      .setValue('2026-10-01');
+    await wrapper
+      .get('[data-test="execution-mailing-review"]')
+      .trigger('click');
+    await wrapper
+      .get('[data-test="execution-mailing-submit"]')
+      .trigger('click');
+    await flushPromises();
+    expect(api.mailCaseExecution).toHaveBeenCalledWith(
+      'case-1',
+      expect.objectContaining({
+        expectedConfirmationId: null,
+        mailReceiptContentVersionIds: ['v-receipt.pdf'],
+      }),
+      undefined,
+    );
+  });
   it('retries an unknown result with the exact original request body and key', async () => {
     api.mailCaseExecution
       .mockRejectedValueOnce(new ApiError('timeout', 0, 'TIMEOUT'))

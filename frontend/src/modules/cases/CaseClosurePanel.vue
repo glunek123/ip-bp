@@ -14,7 +14,7 @@ import { ApiError } from '../../api/http';
 type RecordInput = {
   expectedVersion: number;
   idempotencyKey: string;
-  expectedFinishId: string;
+  expectedFinishId: string | null;
   closeAt: string | null;
   closeAmountState: 'KNOWN' | 'PENDING';
   closeAmt: string | null;
@@ -32,7 +32,7 @@ type ClosureResult = {
   id: string;
   closureId: string;
   closureVersionId: string;
-  finishId: string;
+  finishId: string | null;
   stage: 'WAITING_ARCHIVE';
   version: number;
   recordedAt: string;
@@ -41,7 +41,7 @@ type ClosureVersion = {
   id: string;
   kind: 'REGISTER' | 'CORRECT';
   priorVersionId: string | null;
-  finishId: string;
+  finishId: string | null;
   fromVersion: number;
   toVersion: number;
   closeAt: string | null;
@@ -61,10 +61,12 @@ const props = defineProps<{
     version: number;
     canRecordClosure: boolean;
     canCorrectClosure: boolean;
+    origin?:
+      { kind: 'NOTARY' } | { kind: 'EXTERNAL_ENTRY'; initialStage: string };
     executionFinish: { id: string } | null;
     closure: {
       id: string;
-      finishId: string;
+      finishId: string | null;
       current: ClosureVersion;
       history: ClosureVersion[];
     } | null;
@@ -166,7 +168,9 @@ const canRecord = computed(
     !projectionBlocked.value &&
     props.item.stage === 'WAITING_ARCHIVE' &&
     props.item.canRecordClosure &&
-    !!props.item.executionFinish &&
+    (!!props.item.executionFinish ||
+      (props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
+        props.item.origin.initialStage === 'WAITING_ARCHIVE')) &&
     !props.item.closure,
 );
 const canCorrect = computed(
@@ -442,7 +446,7 @@ async function submit() {
     const input: RecordInput = {
       expectedVersion: props.item.version,
       idempotencyKey: globalThis.crypto.randomUUID(),
-      expectedFinishId: props.item.executionFinish!.id,
+      expectedFinishId: props.item.executionFinish?.id ?? null,
       closeAt: closeAt.value === '' ? null : closeAt.value,
       closeAmountState: amountState.value,
       closeAmt: amountState.value === 'PENDING' ? null : amount.value,

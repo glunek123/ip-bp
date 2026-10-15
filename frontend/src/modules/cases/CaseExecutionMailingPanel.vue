@@ -30,7 +30,7 @@ type VersionFile = Pick<
 >;
 type MailingRecord = {
   id: string;
-  confirmationId?: string;
+  confirmationId?: string | null;
   mailedAt: string;
   recordedAt: string;
   files: VersionFile[];
@@ -42,8 +42,14 @@ const props = defineProps<{
     stage: string;
     version: number;
     canMailExecution: boolean;
+    origin?:
+      { kind: 'NOTARY' } | { kind: 'EXTERNAL_ENTRY'; initialStage: string };
     complaintMailing?: { receiptFiles: CaseFile[] } | null;
-    executionConfirmation?: { id: string; confirmedAt: string } | null;
+    executionConfirmation?: {
+      id: string;
+      submissionId?: string | null;
+      confirmedAt: string;
+    } | null;
     executionConfirmationId?: string | null;
     executionMailing?: MailingRecord | null;
     pendingReceiptFiles?: CaseFile[];
@@ -110,6 +116,13 @@ const confirmationId = computed(() =>
     ? (props.item.executionConfirmationId ?? null)
     : (props.item.executionConfirmation?.id ?? null),
 );
+const directEntry = computed(
+  () =>
+    !props.client &&
+    props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
+    props.item.origin.initialStage === 'WAITING_EXECUTION_STAMP' &&
+    props.item.executionConfirmation == null,
+);
 const locked = computed(
   () =>
     props.item.stage !== 'WAITING_EXECUTION_STAMP' ||
@@ -120,7 +133,7 @@ const locked = computed(
 const ready = computed(
   () =>
     !locked.value &&
-    confirmationId.value !== null &&
+    (confirmationId.value !== null || directEntry.value) &&
     !uploading.value &&
     !submitting.value &&
     unknownRequest.value === null &&
@@ -360,7 +373,7 @@ async function submit() {
       idempotencyKey.value ||
       globalThis.crypto?.randomUUID?.() ||
       `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    expectedConfirmationId: confirmationId.value!,
+    expectedConfirmationId: confirmationId.value,
     mailedAt: mailedAt.value,
     mailReceiptContentVersionIds: files.value.map(
       (file) => file.contentVersionId,
@@ -465,7 +478,10 @@ async function download(file: VersionFile) {
         确认执行申请材料已邮寄后，选择实际邮寄日期并上传邮寄凭证。本操作只记录邮寄事实。
       </p>
       <template
-        v-if="unknownRequest || (item.canMailExecution && confirmationId)"
+        v-if="
+          unknownRequest ||
+          (item.canMailExecution && (confirmationId || directEntry))
+        "
       >
         <label
           >实际邮寄日期 <span aria-hidden="true">*</span

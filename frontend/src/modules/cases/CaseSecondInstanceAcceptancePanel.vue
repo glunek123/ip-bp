@@ -24,9 +24,23 @@ const currentChoiceId = computed(() => {
   const choice = props.item.judgmentNextStep.current;
   return choice?.next === 'APPEAL' ? choice.id : null;
 });
+const directExternalRound = computed(
+  () =>
+    props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
+    props.item.origin.initialStage === 'SECOND_INSTANCE' &&
+    props.item.secondInstance.rounds.some(
+      (round) =>
+        round.id === props.item.secondInstance.currentTrialRoundId &&
+        round.sequence === 1 &&
+        round.sourceResultId === null,
+    ),
+);
+function entryKey(entry: SecondInstanceAcceptanceEdit): string {
+  return entry.choiceId ?? `external:${entry.trialRoundId}`;
+}
 const selectedChoiceId = ref('');
 const selected = computed(() =>
-  entries.value.find((entry) => entry.choiceId === selectedChoiceId.value),
+  entries.value.find((entry) => entryKey(entry) === selectedChoiceId.value),
 );
 const acceptedAt = ref('');
 const courtCaseNo = ref('');
@@ -45,17 +59,22 @@ let active = true;
 let requestController: AbortController | null = null;
 
 function defaultChoiceId(): string {
-  return (
-    entries.value.find((entry) => entry.choiceId === currentChoiceId.value)
-      ?.choiceId ??
-    entries.value.find((entry) => entry.canEdit)?.choiceId ??
-    entries.value[0]?.choiceId ??
-    ''
+  const current = entries.value.find(
+    (entry) => entry.choiceId === currentChoiceId.value,
   );
+  const editable = entries.value.find((entry) => entry.canEdit);
+  const first = entries.value[0];
+  return current
+    ? entryKey(current)
+    : editable
+      ? entryKey(editable)
+      : first
+        ? entryKey(first)
+        : '';
 }
 function setSelectedValues(): void {
   const entry = entries.value.find(
-    (value) => value.choiceId === selectedChoiceId.value,
+    (value) => entryKey(value) === selectedChoiceId.value,
   );
   acceptedAt.value = entry?.acceptedAt ?? '';
   courtCaseNo.value = entry?.courtCaseNo ?? '';
@@ -71,7 +90,11 @@ function setSelectedValues(): void {
 const allowed = computed(
   () =>
     props.item.recordEdits?.canSaveSecondInstanceAcceptance === true &&
-    selected.value?.canEdit === true,
+    selected.value?.canEdit === true &&
+    (selected.value.choiceId !== null ||
+      (directExternalRound.value &&
+        selected.value.trialRoundId ===
+          props.item.secondInstance.currentTrialRoundId)),
 );
 const acceptedAtValue = computed(() => acceptedAt.value.trim() || null);
 const courtCaseNoValue = computed(() => courtCaseNo.value.trim() || null);
@@ -126,7 +149,7 @@ watch(
     error.value = '';
     success.value = '';
     if (
-      !entries.value.some((entry) => entry.choiceId === selectedChoiceId.value)
+      !entries.value.some((entry) => entryKey(entry) === selectedChoiceId.value)
     )
       selectedChoiceId.value = defaultChoiceId();
     setSelectedValues();
@@ -264,6 +287,16 @@ function retryOriginal(): void {
     void send(unknownRequest.value);
 }
 function choiceLabel(entry: SecondInstanceAcceptanceEdit): string {
+  if (entry.choiceId === null) {
+    const reachedOn =
+      props.item.origin?.kind === 'EXTERNAL_ENTRY'
+        ? ` · 外部转入 ${props.item.origin.stageReachedOn}`
+        : '';
+    const round = props.item.secondInstance.rounds.find(
+      (value) => value.id === entry.trialRoundId,
+    );
+    return `外部转入二审${round ? ` · 第${round.sequence}轮` : ''}${reachedOn}`;
+  }
   const choice = [
     ...props.item.judgmentNextStep.history,
     ...(props.item.judgmentNextStep.current
@@ -309,8 +342,8 @@ onBeforeUnmount(() => {
         >
           <option
             v-for="entry in entries"
-            :key="entry.choiceId"
-            :value="entry.choiceId"
+            :key="entryKey(entry)"
+            :value="entryKey(entry)"
           >
             {{ choiceLabel(entry) }}
           </option>

@@ -94,6 +94,66 @@ describe('CaseSecondInstanceAcceptancePanel', () => {
     expect(wrapper.emitted('changed')).toHaveLength(1);
   });
 
+  it('saves acceptance for a direct external root round with a real null choice', async () => {
+    api.saveSecondInstanceAcceptance.mockResolvedValueOnce({});
+    const wrapper = mount(CaseSecondInstanceAcceptancePanel, {
+      props: {
+        item: {
+          id: caseId,
+          origin: {
+            kind: 'EXTERNAL_ENTRY',
+            entryKind: 'EXTERNAL_TRANSFER',
+            initialStage: 'SECOND_INSTANCE',
+            stageReachedOn: '2026-10-08',
+          },
+          judgmentNextStep: { current: null, history: [] },
+          secondInstance: {
+            currentTrialRoundId: trialRoundId,
+            rounds: [{ id: trialRoundId, sequence: 1, sourceResultId: null }],
+            acceptances: [],
+          },
+          recordEdits: {
+            canSaveSecondInstanceAcceptance: true,
+            secondInstanceAcceptances: [
+              {
+                choiceId: null,
+                trialRoundId,
+                acceptanceRevision: 0,
+                acceptedAt: null,
+                courtCaseNo: null,
+                canEdit: true,
+                history: [],
+              },
+            ],
+          },
+        } as never,
+        contextKey: 'internal:user-a:department-a',
+      },
+    });
+    await wrapper
+      .get('[data-test="second-instance-acceptance-date"]')
+      .setValue('2026-10-10');
+    await wrapper
+      .get('[data-test="second-instance-acceptance-case-no"]')
+      .setValue('CN-EXTERNAL-SECOND');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+
+    expect(api.saveSecondInstanceAcceptance).toHaveBeenCalledWith(
+      caseId,
+      expect.objectContaining({
+        choiceId: null,
+        trialRoundId,
+        acceptedAt: '2026-10-10',
+        courtCaseNo: 'CN-EXTERNAL-SECOND',
+        reason: null,
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(wrapper.emitted('changed')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
   it('retries an uncertain save with the original request body and idempotency key', async () => {
     api.saveSecondInstanceAcceptance
       .mockRejectedValueOnce(

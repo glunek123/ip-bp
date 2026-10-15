@@ -214,6 +214,26 @@ describe('injected closure panel', () => {
       wrapper.unmount();
     },
   );
+  it('records closure for a direct WAITING_ARCHIVE entry without a fake finish ID', async () => {
+    const wrapper = panel({
+      item: {
+        ...item,
+        executionFinish: null,
+        origin: { kind: 'EXTERNAL_ENTRY', initialStage: 'WAITING_ARCHIVE' },
+      },
+    });
+    await flushPromises();
+    await submit(wrapper);
+    expect(api.recordClosure).toHaveBeenCalledWith(
+      'case-1',
+      expect.objectContaining({
+        expectedFinishId: null,
+        closeAmountState: 'PENDING',
+        closeAmt: null,
+      }),
+    );
+    wrapper.unmount();
+  });
   it('preserves a real zero, business date and raw note without silently trimming', async () => {
     const wrapper = panel();
     await flushPromises();

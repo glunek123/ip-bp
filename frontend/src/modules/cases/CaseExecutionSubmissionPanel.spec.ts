@@ -297,6 +297,79 @@ describe('CaseExecutionSubmissionPanel', () => {
     );
   });
 
+  it('submits a direct WAITING_EXECUTION_DOCUMENTS entry without an invented next-step ID', async () => {
+    api.submitExecution.mockResolvedValue({
+      id: id('20'),
+      submissionId: null,
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      version: 15,
+      submittedAt: file.uploadedAt,
+    });
+    const wrapper = mountPanel(
+      item({
+        origin: {
+          kind: 'EXTERNAL_ENTRY',
+          initialStage: 'WAITING_EXECUTION_DOCUMENTS',
+        },
+        judgmentNextStep: { current: null, history: [], revocations: [] },
+      }),
+    );
+    await flushPromises();
+    await wrapper.get('[data-test="submit-execution"]').trigger('click');
+    await flushPromises();
+
+    expect(api.submitExecution).toHaveBeenCalledWith(
+      id('20'),
+      expect.objectContaining({
+        trialRoundId: id('2'),
+        judgmentNextStepId: null,
+        secondInstanceResultId: null,
+        expectedSubmissionId: null,
+        executionApplicationContentVersionIds: [file.contentVersionId],
+      }),
+      'internal',
+    );
+  });
+
+  it('submits a direct SECOND_INSTANCE result using the true result ID and no fabricated choice', async () => {
+    const resultId = id('36');
+    api.submitExecution.mockResolvedValue({
+      id: id('20'),
+      submissionId: id('37'),
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      version: 15,
+      submittedAt: file.uploadedAt,
+    });
+    const wrapper = mountPanel(
+      item({
+        stage: 'SECOND_INSTANCE',
+        origin: { kind: 'EXTERNAL_ENTRY', initialStage: 'SECOND_INSTANCE' },
+        judgmentNextStep: { current: null, history: [], revocations: [] },
+        secondInstance: {
+          currentTrialRoundId: id('2'),
+          currentResult: { id: resultId, result: 'AFFIRM' },
+          rounds: [{ id: id('2'), sequence: 1, sourceResultId: null }],
+          progresses: [],
+          results: [],
+          revocations: [],
+        },
+      }),
+    );
+    await flushPromises();
+    await wrapper.get('[data-test="submit-execution"]').trigger('click');
+    await flushPromises();
+
+    expect(api.submitExecution).toHaveBeenCalledWith(
+      id('20'),
+      expect.objectContaining({
+        trialRoundId: id('2'),
+        judgmentNextStepId: null,
+        secondInstanceResultId: resultId,
+      }),
+      'internal',
+    );
+  });
+
   it('requires an explicit choice when multiple eligible files exist', async () => {
     api.listOwnerMaterials.mockResolvedValue({
       items: [

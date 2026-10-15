@@ -43,8 +43,19 @@ const confirmed = computed(() =>
 const submission = computed(() =>
   accessDenied.value ? null : props.item.executionSubmission.current,
 );
+const directEntry = computed(
+  () =>
+    props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
+    props.item.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
+    props.item.executionSubmission.current === null,
+);
+const packageFiles = computed(
+  () =>
+    submission.value?.files ??
+    (directEntry.value ? props.item.executionSubmission.availableFiles : []),
+);
 const files = computed<ExecutionSubmissionFile[]>(
-  () => confirmed.value?.files ?? submission.value?.files ?? [],
+  () => confirmed.value?.files ?? packageFiles.value,
 );
 const canConfirm = computed(
   () =>
@@ -55,7 +66,10 @@ const canConfirm = computed(
     !conflict.value &&
     props.item.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
     props.item.canConfirmExecution &&
-    submission.value !== null,
+    (submission.value !== null ||
+      (directEntry.value &&
+        packageFiles.value.length >= 1 &&
+        packageFiles.value.length <= 10)),
 );
 const operationKey = () =>
   `${props.actorKey}:${props.item.id}:${props.contextKey}`;
@@ -104,11 +118,18 @@ async function confirm(command?: ConfirmExecutionInput): Promise<void> {
     return;
   if (!command && !canConfirm.value) return;
   const currentSubmission = submission.value;
-  if (!command && !currentSubmission) return;
+  if (!command && !currentSubmission && !directEntry.value) return;
   const input = command ?? {
     expectedVersion: props.item.version,
     idempotencyKey: makeKey(),
-    expectedSubmissionId: currentSubmission!.id,
+    expectedSubmissionId: currentSubmission?.id ?? null,
+    ...(currentSubmission === null
+      ? {
+          executionApplicationContentVersionIds: packageFiles.value
+            .map((file) => file.contentVersionId)
+            .sort(),
+        }
+      : {}),
   };
   const context = operationContext();
   unknownCommand.value = input;

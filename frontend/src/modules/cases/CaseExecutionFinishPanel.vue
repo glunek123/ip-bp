@@ -14,7 +14,7 @@ import { ApiError } from '../../api/http';
 type FinishInput = {
   expectedVersion: number;
   idempotencyKey: string;
-  expectedFilingId: string;
+  expectedFilingId: string | null;
   finishedAt: string;
   reason: string;
   basisNote: string | null;
@@ -23,7 +23,7 @@ type FinishInput = {
 type FinishResult = {
   id: string;
   finishId: string;
-  filingId: string;
+  filingId: string | null;
   stage: 'WAITING_ARCHIVE';
   version: number;
   finishedAt: string;
@@ -31,7 +31,7 @@ type FinishResult = {
 };
 type FinishRecord = {
   id: string;
-  filingId: string;
+  filingId: string | null;
   finishedAt: string;
   reason: string;
   basisNote: string | null;
@@ -45,6 +45,8 @@ const props = defineProps<{
     stage: string;
     version: number;
     canFinishExecution: boolean;
+    origin?:
+      { kind: 'NOTARY' } | { kind: 'EXTERNAL_ENTRY'; initialStage: string };
     executionFiling?: { id: string } | null;
     executionFinish?: FinishRecord | null;
   };
@@ -131,7 +133,9 @@ const editable = computed(
     !success.value &&
     props.item.canFinishExecution &&
     props.item.stage === 'EXECUTING' &&
-    !!props.item.executionFiling &&
+    (!!props.item.executionFiling ||
+      (props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
+        props.item.origin.initialStage === 'EXECUTING')) &&
     !props.item.executionFinish,
 );
 function validDate(value: string) {
@@ -331,7 +335,7 @@ async function submit() {
   const input = copy(
     pending.value ?? {
       expectedVersion: props.item.version,
-      expectedFilingId: props.item.executionFiling!.id,
+      expectedFilingId: props.item.executionFiling?.id ?? null,
       idempotencyKey: globalThis.crypto.randomUUID(),
       finishedAt: finishedAt.value,
       reason: reason.value,

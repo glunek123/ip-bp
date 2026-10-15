@@ -33,6 +33,7 @@ type PanelItem = Omit<
     | 'stage'
     | 'version'
     | 'acceptance'
+    | 'origin'
     | 'canRegisterJudgment'
     | 'canCorrectJudgment'
     | 'judgmentNextStep'
@@ -188,6 +189,16 @@ const unfrozenFiles = computed(() =>
   ),
 );
 const acceptanceDate = computed(() => props.item.acceptance?.acceptedAt ?? '');
+const judgmentDateMinimum = computed(() => {
+  const origin = props.item.origin;
+  const candidates = [acceptanceDate.value];
+  if (origin?.kind === 'EXTERNAL_ENTRY') {
+    candidates.push(origin.stageReachedOn);
+    if ('known' in origin && origin.known.acceptedOn)
+      candidates.push(origin.known.acceptedOn);
+  }
+  return candidates.filter(Boolean).sort().at(-1) ?? '';
+});
 function validDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -195,7 +206,7 @@ function validDate(value: string): boolean {
     !Number.isNaN(parsed.getTime()) &&
     parsed.toISOString().slice(0, 10) === value &&
     value <= todayShanghai() &&
-    value >= acceptanceDate.value
+    value >= judgmentDateMinimum.value
   );
 }
 function validAmount(state: AmountState, amount: string): boolean {
@@ -457,7 +468,7 @@ function historyLabel(fact: CaseJudgmentFact): string {
           data-test="judgment-date"
           type="date"
           required
-          :min="acceptanceDate"
+          :min="judgmentDateMinimum"
           :max="todayShanghai()"
           :disabled="unknownRequest !== null || submitting"
           @input="

@@ -209,10 +209,14 @@ const commands = computed<WorkspaceCommand[]>(() => {
     '正式立案／受理材料',
   );
   add(
-    !!current.acceptance &&
-      ((stage === 'WAITING_HEARING' && current.canScheduleHearing) ||
-        ((stage === 'WAITING_HEARING' || stage === 'WAITING_JUDGMENT') &&
-          current.canCorrectHearing)),
+    ((!!current.acceptance ||
+      (current.origin?.kind === 'EXTERNAL_ENTRY' &&
+        current.origin.initialStage === 'WAITING_HEARING')) &&
+      stage === 'WAITING_HEARING' &&
+      current.canScheduleHearing) ||
+      (!!current.acceptance &&
+        (stage === 'WAITING_HEARING' || stage === 'WAITING_JUDGMENT') &&
+        current.canCorrectHearing),
     'hearing',
     'first-instance',
     '开庭登记／更正',
@@ -243,9 +247,17 @@ const commands = computed<WorkspaceCommand[]>(() => {
   add(
     (stage === 'SECOND_INSTANCE' &&
       !!current.secondInstance.currentTrialRoundId &&
-      current.judgmentNextStep.current?.next === 'APPEAL' &&
-      current.judgmentNextStep.current.trialRoundId ===
-        current.secondInstance.currentTrialRoundId &&
+      ((current.judgmentNextStep.current?.next === 'APPEAL' &&
+        current.judgmentNextStep.current.trialRoundId ===
+          current.secondInstance.currentTrialRoundId) ||
+        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
+          current.origin.initialStage === 'SECOND_INSTANCE' &&
+          current.secondInstance.rounds.some(
+            (round) =>
+              round.id === current.secondInstance.currentTrialRoundId &&
+              round.sequence === 1 &&
+              round.sourceResultId === null,
+          ))) &&
       (current.canSaveSecondInstance ||
         (current.canRegisterSecondInstanceResult &&
           !current.secondInstance.currentResult))) ||
@@ -260,17 +272,43 @@ const commands = computed<WorkspaceCommand[]>(() => {
   );
   add(
     current.recordEdits?.canSaveSecondInstanceAcceptance === true &&
-      current.recordEdits.secondInstanceAcceptances?.some(
-        (entry) => entry.canEdit,
-      ) === true,
+      (current.recordEdits.secondInstanceAcceptances?.some(
+        (entry) => entry.canEdit && entry.choiceId !== null,
+      ) === true ||
+        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
+          current.origin.initialStage === 'SECOND_INSTANCE' &&
+          current.recordEdits.secondInstanceAcceptances?.some(
+            (entry) =>
+              entry.canEdit &&
+              entry.choiceId === null &&
+              entry.trialRoundId ===
+                current.secondInstance.currentTrialRoundId &&
+              current.secondInstance.rounds.some(
+                (round) =>
+                  round.id === entry.trialRoundId &&
+                  round.sequence === 1 &&
+                  round.sourceResultId === null,
+              ),
+          ) === true)),
     'second-instance-acceptance',
     'second-instance',
     '登记或更正二审受理信息',
   );
   add(
     (stage === 'WAITING_EXECUTION_DOCUMENTS' ||
+      (stage === 'SECOND_INSTANCE' &&
+        current.origin?.kind === 'EXTERNAL_ENTRY' &&
+        current.origin.initialStage === 'SECOND_INSTANCE' &&
+        ['AFFIRM', 'CHANGE'].includes(
+          String(current.secondInstance.currentResult?.result),
+        )) ||
       stage === 'WAITING_EXECUTION_CONFIRMATION') &&
       current.canSubmitExecution &&
+      !(
+        current.origin?.kind === 'EXTERNAL_ENTRY' &&
+        current.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
+        current.executionSubmission.current === null
+      ) &&
       !current.executionConfirmation,
     'execution-submission',
     'execution',
@@ -279,7 +317,9 @@ const commands = computed<WorkspaceCommand[]>(() => {
   add(
     stage === 'WAITING_EXECUTION_CONFIRMATION' &&
       current.canConfirmExecution &&
-      !!current.executionSubmission.current &&
+      (!!current.executionSubmission.current ||
+        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
+          current.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION')) &&
       !current.executionConfirmation,
     'execution-confirmation',
     'execution',
@@ -288,7 +328,9 @@ const commands = computed<WorkspaceCommand[]>(() => {
   add(
     stage === 'WAITING_EXECUTION_STAMP' &&
       current.canMailExecution &&
-      !!current.executionConfirmation &&
+      (!!current.executionConfirmation ||
+        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
+          current.origin.initialStage === 'WAITING_EXECUTION_STAMP')) &&
       !current.executionMailing,
     'execution-mailing',
     'execution',
@@ -297,7 +339,9 @@ const commands = computed<WorkspaceCommand[]>(() => {
   add(
     stage === 'WAITING_EXECUTION_FILING' &&
       current.canSubmitExecutionFiling &&
-      !!current.executionMailing &&
+      (!!current.executionMailing ||
+        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
+          current.origin.initialStage === 'WAITING_EXECUTION_FILING')) &&
       !current.executionFiling,
     'execution-filing',
     'execution',
@@ -306,7 +350,9 @@ const commands = computed<WorkspaceCommand[]>(() => {
   add(
     stage === 'EXECUTING' &&
       current.canFinishExecution &&
-      !!current.executionFiling &&
+      (!!current.executionFiling ||
+        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
+          current.origin.initialStage === 'EXECUTING')) &&
       !current.executionFinish,
     'finish',
     'execution',
@@ -314,7 +360,9 @@ const commands = computed<WorkspaceCommand[]>(() => {
   );
   add(
     stage === 'WAITING_ARCHIVE' &&
-      !!current.executionFinish &&
+      (!!current.executionFinish ||
+        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
+          current.origin.initialStage === 'WAITING_ARCHIVE')) &&
       ((!current.closure && current.canRecordClosure) ||
         (!!current.closure && current.canCorrectClosure)),
     'closure',

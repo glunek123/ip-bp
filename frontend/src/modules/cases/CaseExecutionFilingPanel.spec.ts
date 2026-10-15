@@ -58,7 +58,11 @@ beforeEach(() => {
     recordedAt: '2026-10-03T01:00:00Z',
   });
 });
-function mountPanel(value = item, extra: Record<string, unknown> = {}) {
+function mountPanel(
+  value: InstanceType<typeof CaseExecutionFilingPanel>['$props']['item'] =
+    item,
+  extra: Record<string, unknown> = {},
+) {
   return mount(CaseExecutionFilingPanel, {
     props: { item: value, contextKey: 'INTERNAL:user-1:1', ...extra },
     global: { plugins: [createPinia()] },
@@ -139,6 +143,41 @@ describe('case execution filing panel', () => {
       undefined,
     );
     expect(wrapper.emitted('changed')).toHaveLength(1);
+  });
+  it('records direct-stage filing with a null mailing anchor and actual proof', async () => {
+    api.submitCaseExecutionFiling.mockResolvedValueOnce({
+      id: 'case-1',
+      filingId: 'filing-direct',
+      mailingId: null,
+      stage: 'EXECUTING',
+      version: 9,
+      submittedAt: '2026-10-01',
+      recordedAt: '2026-10-03T01:00:00Z',
+    });
+    const wrapper = mountPanel({
+      ...item,
+      executionMailing: null,
+      origin: {
+        kind: 'EXTERNAL_ENTRY',
+        initialStage: 'WAITING_EXECUTION_FILING',
+      },
+    });
+    await flushPromises();
+    await addProof(wrapper);
+    await wrapper
+      .get('[data-test="execution-filing-submitted-at"]')
+      .setValue('2026-10-01');
+    await wrapper.get('[data-test="execution-filing-review"]').trigger('click');
+    await wrapper.get('[data-test="execution-filing-submit"]').trigger('click');
+    await flushPromises();
+    expect(api.submitCaseExecutionFiling).toHaveBeenCalledWith(
+      'case-1',
+      expect.objectContaining({
+        expectedMailingId: null,
+        executionFilingProofContentVersionIds: ['v-filing.pdf'],
+      }),
+      undefined,
+    );
   });
   it('retries an unknown result with the exact original request body', async () => {
     api.submitCaseExecutionFiling

@@ -211,6 +211,27 @@ describe('execution finish injected panel', () => {
     expect(control(wrapper, 'success').text()).toContain('已登记');
     wrapper.unmount();
   });
+  it('finishes a direct EXECUTING entry with a null filing anchor and real details', async () => {
+    const wrapper = panel({
+      item: {
+        ...item,
+        executionFiling: null,
+        origin: { kind: 'EXTERNAL_ENTRY', initialStage: 'EXECUTING' },
+      },
+    });
+    await fill(wrapper);
+    await submit(wrapper);
+    expect(api.submitFinish).toHaveBeenCalledWith(
+      'case-1',
+      expect.objectContaining({
+        expectedFilingId: null,
+        finishedAt: '2026-10-12',
+        reason: expect.any(String),
+        basisNote: expect.any(String),
+      }),
+    );
+    wrapper.unmount();
+  });
   it('canceling review or editing inputs requires a fresh confirmation', async () => {
     const wrapper = panel();
     await fill(wrapper);

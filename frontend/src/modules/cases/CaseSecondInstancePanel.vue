@@ -130,7 +130,14 @@ const currentChoice = computed(() => {
 const directExternalRound = computed(
   () =>
     props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
-    currentChoice.value === null,
+    props.item.origin.initialStage === 'SECOND_INSTANCE' &&
+    currentChoice.value === null &&
+    second.value.rounds.some(
+      (round) =>
+        round.id === currentRoundId.value &&
+        round.sequence === 1 &&
+        round.sourceResultId === null,
+    ),
 );
 const canSaveCurrent = computed(
   () =>

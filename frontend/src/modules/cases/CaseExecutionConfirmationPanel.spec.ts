@@ -161,6 +161,48 @@ describe('CaseExecutionConfirmationPanel', () => {
     );
   });
 
+  it('confirms a direct source with its full current application package and no fake submission ID', async () => {
+    const secondFile = {
+      ...file,
+      materialId: 'material-2',
+      contentVersionId: 'version-2',
+      originalFilename: '补充执行申请.pdf',
+    };
+    api.confirmCaseExecution.mockResolvedValueOnce({
+      id: 'case-1',
+      confirmationId: 'confirmation-direct',
+      submissionId: null,
+      stage: 'WAITING_EXECUTION_STAMP',
+      version: 16,
+      confirmedAt: '2026-10-12T02:00:00.000Z',
+    });
+    const wrapper = mountPanel(
+      detail({
+        origin: {
+          kind: 'EXTERNAL_ENTRY',
+          initialStage: 'WAITING_EXECUTION_CONFIRMATION',
+        },
+        executionSubmission: {
+          current: null,
+          submissions: [],
+          availableFiles: [secondFile, file],
+        },
+      }),
+    );
+    expect(wrapper.find('[data-test="confirm-execution"]').exists()).toBe(true);
+    await wrapper.get('[data-test="confirm-execution"]').trigger('click');
+    await flushPromises();
+
+    expect(api.confirmCaseExecution).toHaveBeenCalledWith(
+      'case-1',
+      expect.objectContaining({
+        expectedSubmissionId: null,
+        executionApplicationContentVersionIds: ['version-1', 'version-2'],
+      }),
+      'internal',
+    );
+  });
+
   it('retries an unknown result with the original body and offers a status refresh', async () => {
     api.confirmCaseExecution
       .mockRejectedValueOnce(new Error('network unavailable'))
