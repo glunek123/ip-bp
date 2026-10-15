@@ -664,6 +664,12 @@ describe('CaseSecondInstancePanel', () => {
 
   it('saves a direct external current round with explicit null choiceId', async () => {
     api.saveSecondInstance.mockResolvedValueOnce({});
+    api.uploadMaterialFile.mockResolvedValueOnce({
+      materialId: id('44'),
+      contentVersionId: id('45'),
+      originalFilename: '二审裁判文书.pdf',
+      mimeType: 'application/pdf',
+    });
     const direct = {
       ...item(),
       origin: {
@@ -689,7 +695,11 @@ describe('CaseSecondInstancePanel', () => {
         },
       },
       acceptance: null,
-      judgment: { current: null, history: [], availableFiles: [] },
+      judgment: {
+        current: null,
+        history: [],
+        availableFiles: [resultFile],
+      },
       judgmentNextStep: { current: null, history: [], revocations: [] },
       secondInstance: {
         currentTrialRoundId: round2,
@@ -701,6 +711,17 @@ describe('CaseSecondInstancePanel', () => {
         progresses: [],
         results: [],
         revocations: [],
+        acceptances: [
+          {
+            id: id('43'),
+            trialRoundId: round2,
+            choiceId: null,
+            acceptedAt: '2026-10-12',
+            courtCaseNo: '二审案号',
+            recordedAt: '2026-10-12T01:00:00Z',
+            files: [{ ...resultFile, category: 'ACCEPTANCE_NOTICE' }],
+          },
+        ],
       },
     } as unknown as CaseDetail;
     const wrapper = mountPanel({ item: direct });
@@ -720,6 +741,40 @@ describe('CaseSecondInstancePanel', () => {
       }),
       'internal',
     );
+    const receivedAt = wrapper.get(
+      '[data-test="second-instance-received-at"]',
+    );
+    expect(receivedAt.attributes('min')).toBe('2026-10-12');
+    await wrapper
+      .get('[data-test="second-instance-result-option"][value="REMAND"]')
+      .setValue();
+    await wrapper
+      .get('[data-test="second-instance-fee-state"][value="PENDING"]')
+      .setValue();
+    const upload = wrapper.get('[data-test="second-instance-judgment-upload"]');
+    Object.defineProperty(upload.element, 'files', {
+      configurable: true,
+      value: [
+        new File(['judgment'], 'judgment.pdf', { type: 'application/pdf' }),
+      ],
+    });
+    await upload.trigger('change');
+    await flushPromises();
+    await wrapper
+      .get('[data-test="second-instance-result-file-choice"]')
+      .setValue(true);
+    await receivedAt.setValue('2026-10-11');
+    expect(
+      wrapper
+        .get('[data-test="second-instance-result-submit"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    await receivedAt.setValue('2026-10-12');
+    expect(
+      wrapper
+        .get('[data-test="second-instance-result-submit"]')
+        .attributes('disabled'),
+    ).toBeUndefined();
   });
 
   it('registers a REMAND with selected file versions and explicit empty progress', async () => {

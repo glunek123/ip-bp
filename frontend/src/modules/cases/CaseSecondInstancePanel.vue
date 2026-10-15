@@ -168,8 +168,10 @@ const activeResult = computed(() => second.value.currentResult);
 const secondAcceptance = computed(() =>
   second.value.acceptances?.find(
     (value) =>
-      value.choiceId === currentChoice.value?.id &&
-      value.trialRoundId === currentRoundId.value,
+      value.trialRoundId === currentRoundId.value &&
+      (directExternalRound.value
+        ? value.choiceId === null
+        : value.choiceId === currentChoice.value?.id),
   ),
 );
 const minReceivedDate = computed(() => {
