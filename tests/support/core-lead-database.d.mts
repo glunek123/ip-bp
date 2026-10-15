@@ -27,6 +27,9 @@ export const coreLeadFixtures: Readonly<{
 }>;
 
 export function resetCoreLeadE2eData(): Promise<void>;
+export function seedCoreLeadE2eData(options?: {
+  reuseExisting?: boolean;
+}): Promise<void>;
 export function cleanupContactExternalActors(): Promise<void>;
 export function getCustomerLifecycleGuardState(): Promise<
   Record<string, string>
