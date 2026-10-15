@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## UI003 A/B本批验收完成（2026-10-15，待原子交付回执）
+
+稳定运行候选20877386352f700652f08b505ec8d18e432bd2f8／tree004c8acba7c40264979d01bf33c04e901b9a863a于09:46:02.0089424～09:46:51.6839210 UTC B-only正常Playwright1/1 exit0，retry0／skipped0／flaky0；真实编辑取消和保存均回page2/status筛选，API核字段及版本。首推送真实201后模拟丢响应，sessionStorage保存精确leadId/body/expectedVersion/key，刷新后同原请求恢复，阶段仅推进一次，真实审计/回执各1。B trace SHA29b10b199fbb32ff5cda4e74bb95f33b557d1045dd81c6636dbafae9e5a20319，I核4日志/1trace均匹配。容器dbb1cbd29c6d65b5aa4fd85317c96167fbd94310c34946edc033fc4f2f9d3695、155历史及前后HMAC919d10f4338f5f723f68cf337f91934034b22c56050e9d0ab1629ff65a2312d1保持；无reset/迁移重部署/旧15433/预览写入。证据.local/ui003-evidence/acceptance-2087738-b-only-20261015/acceptance-summary.json和integration-readback.json。
+
+独立累计Spec/Quality ACCEPTED，新增C/I/M0。A正文/公共夹具和运行输入未变，限定复用da37实际A通过、工具94及NT0062；I逐Git对象核frontend/backend/包依赖/TS/Lint/runtime等11组输入与eb367相同，限定复用其前端1887/后端1532/双构建。da37→208工具源/配置相同。不是208同树完整verify，不是同次A+B双项浏览器，旧两次B失败和最早收集失败保留，不删除或拼成一次通过。208根TS/单文件Lint格式/严格context/Spec已过，最终收口仅文档；新三列表、C/D/e6/W/S及开庭实现不在本验收树。
+
+推送前09:53:44 UTC远端main仍1f375ea，任务远端分支不存在；GitHub Actions workflows实查0、main protected=false，不能称远端CI通过。已获本批原子推送授权，执行后另填精确两ref SHA；此段不预称推送或部署成功。持久预览保持81ebfed／150和原数据，未升级。
+
 ## UI003 B第二次失败与等待修复／S首合同冻结（2026-10-15）
 
 fa16b9d2aab2f4cb98bd86cf7506dd4143a9d758／tree a56a62978404d435e9edfe0605dbad47acf7f7a0于09:22:22.7405667～09:23:13.3149041 UTC正常B-only真实浏览器exit1，expected0／unexpected1／skipped0／flaky0。快捷编辑精确URL、取消/保存返回原page2/status筛选及真实API字段/version已过；第518行在retry控件可见但仍disabled时commands数组仍0，upstream随后HTTP201，响应丢失route故意abort为-1。刷新/原body版本key重放及最终单一事实审计回执均未验，不把部分通过写为整项通过。原容器/指纹保持，155历史逐项相同，不重部署/清库；四日志与trace SHA已由I全核匹配，trace5c2fc0f2607d679891e927cf9ecfbe88cf76acf104e7d0754fce17e395cd9ac4。证据.local/ui003-evidence/acceptance-fa16b9d-b-only-20261015及integration-readback.json。da37 A／94工具／NT0062项未重跑，既有证据保持。
