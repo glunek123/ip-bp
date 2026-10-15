@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+## 恢复收口的实际边界（2026-10-15）
+
+纯文档0a6af4f于本轮正常原子快进远端main及任务分支，双ref和本地主main已核一致，12文件全在docs，不变产品／DB／预览。证据.local/ui003-evidence/docs-delivery-0a6af4f.json及.log。文档源审I-DOC01／M-DOC02均关闭，Spec／Quality C/I/M0；格式、Spec57REQ／67AC／11BQ／59SD、经核对快照及strict context实际通过。
+
+三列表55cd453产品源码审查接受C/I/M0，I-UXQ-C01／I-UXQ-D01关闭；整体Quality C0/I1/M0，I-LNC-01要求L去旧全局cleanup并补managed精确准入、C2钉本批project／15437目标，原Owner修复发送失败待父级转达。浏览器／DB零执行，旧case-action-entry及分栏五专项的clear/reset/Grant/cleanup阻塞保留，不安排在保留实例运行。
+
+S最终新路由／迁移五文件原hash精确暂存后，cached diff发现九空行尾空格，首次提交停止；S仅修九处空白，新migration SHA25687e2a8ee00ac8341419a07192a43227101fc60d182bd5f1006acc1cfe315001b，重新精确暂存提交d0ff2d6967d60654a94ff83563da57d33abbabb5／treedb4be313f6843495443a1492091a93bf4a136ec1。123HTTP/OpenAPI、类型／build及独立源审为作者证据，同语义空白未重跑；迁移未执行。H专属三文件405c84989d26e6ad1198d97a88bf8f923326abc4已静态及独立补审通过，含正常API真实REMAND来源用例，只有源码未实跑。接入S为f5e5bfac93bc01994077324b5210a32cd2733785。
+
+S终审确认scheduler原hearingAt与新effective SQL不一致，六栏最终验收阻断。新独占bridge a99c93b8e87d1ce5ffd2ccca277b061a3b6f645b／tree80ccaa66a27048208fd2be47b450061bc4dfdcf2仅组合S f5e5bfa与d11／7cb已审原连续纠错，未编译／未验收；原hearing-correction-chain 7cb的155候选和目录未改。Owner消息工具失败，待父级恢复精确修复，前端新decoder及六栏编辑接线也未完成；不将这些候选或离线证据算PG／浏览器通过。
+
 ## 原子交付回执与恢复现场（2026-10-15）
 
 恢复后候选留痕：L源7b5d230389ff8b861c421d1a1f00fd7a33ae0a19（9文件，88限定复用聚焦）、N源2cf6c5c9df8da045918bc9b3439f200629b677c9（14文件，117直接测试）、C2源063603b730ea1d2d08dd5c89bfabdb7fcf0d3e0a（21文件，核交接逐文件SHA256，418直接测试）均经各原独立Reviewer关闭finding后由I正式代提交；普通index.lock拒绝未绕过，原目录干净。类型／静态按作者最终报告通过，不冒称完整verify／DB。三者顺序接入开发目录ui003-list-module-baseline为55cd45357c54ed0bccb6977e232d6eb13a718524，最终组合审查／门禁和真实浏览器待执行，未推送／预览升级。

@@ -8,6 +8,8 @@ SD-58文档0c202fa已接入；W共享壳fc0cbd3已交可编译微合同和25项�
 
 ## 当前阶段
 
+最终恢复断点（12:45 UTC前后）：正式合同／SD-59文档0a6af4f已正常原子推送，远端main与任务分支及本地主main核实相同，产品仍为269c73c内容。三列表55cd453产品源审C/I/M0、I-UXQ-C01和I-UXQ-D01关闭，但整体Quality被I-LNC-01阻断：L新E2E未做UI003精确准入且afterAll走旧全局dropFaults；C2 support未钉本批dev-cor-ui003／15437／dev_cor_test。原L/C2修复发送工具失败，待父级原通道恢复，禁止调度这两新suite或旧破坏性专项。S路由／156迁移d0ff2d6及H专项405c849已冻结并接成S f5e5bfa，未PG；scheduler仍读原hearingAt是另一个组合阻断。为原开庭Owner预备独占hearing-effective-date-bridge／codex同名，HEAD a99c93b8e87d1ce5ffd2ccca277b061a3b6f645b（tree80ccaa66a27048208fd2be47b450061bc4dfdcf2），仅S稳定组合＋已审d11/7cb，尚未编译／验收；原155候选目录保留7cb。父级需沿原通道恢复开庭Owner在新bridge只补effective候选／锁内读取与竞争反例，原纠错／取消／SD-06／回执条件不变。先验155开庭及三列表，再迁156，不重置保留实例。前端严格decoder／六栏接口UI接线仍待独占Owner，不能称分栏完整交付。持久预览81ebfed／150及原数据始终冻结。
+
 最新稳定候选：L7b5d230、N2cf6c5c、C2063603b已代提交且原目录干净，开发组合55cd453仍待最终审查与真实门禁。S有效读cbc2a2e已冻结，E最小日期修正与H稳定六文件已接入S fa55f9d解编译依赖；路由／迁移WIP待S验证。六栏[正式更正合同](superpowers/specs/2026-10-15-case-section-record-edit-contract.md)已回填，E新增三Action不自动Grant、H复用既有三Action及严格内部范围；不改变旧开庭纠错的阶段／判决后阻断。不新增执行／结案／归档互相比较或执行终端日期对审理反向上界。
 
 CORE-UI-003 A/B已验收并原子交付269c73c，远端双ref及本地主main已核实；接续为三列表原位办理及分栏／开庭补缺并行。人工预览source81ebfed／150保持，CA019占位未冻结；新反馈补交CORE-EF-001仅独立最小Spec排队，不混A/B交付。
