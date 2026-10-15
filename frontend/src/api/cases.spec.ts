@@ -750,6 +750,128 @@ describe('CA-018 strict source-aware execution read boundary', () => {
       code: 'INVALID_RESPONSE',
     });
   });
+  it('keeps direct confirmation history readable after the available file pool changes', async () => {
+    const confirmation = {
+      id: id(103),
+      submissionId: null,
+      confirmedAt: '2026-10-10T03:00:00.000Z',
+      confirmedByUserId: id(104),
+      files: [file],
+    };
+    const source = {
+      ...directStageDetail(
+        'WAITING_EXECUTION_CONFIRMATION',
+        'WAITING_EXECUTION_STAMP',
+        2,
+      ),
+      executionConfirmation: confirmation,
+    };
+    for (const availableFiles of [
+      [file, { ...file, materialId: id(111), contentVersionId: id(112) }],
+      [{ ...file, materialId: id(113), contentVersionId: id(114) }],
+      [],
+    ]) {
+      const payload = {
+        ...source,
+        executionSubmission: { current: null, submissions: [], availableFiles },
+      };
+      mockJson(payload);
+      await expect(getCase('case-1')).resolves.toMatchObject({
+        executionConfirmation: { files: [file], submissionId: null },
+      });
+      const {
+        owner: _owner,
+        department: _department,
+        fees: _fees,
+        sourceLead: _lead,
+        sourceNotaryMatter: _matter,
+        ...lawyerFields
+      } = payload;
+      const { confirmedByUserId: _actor, ...lawyerConfirmation } = confirmation;
+      void [_owner, _department, _fees, _lead, _matter, _actor];
+      const lawyerPayload = {
+        ...lawyerFields,
+        canMatch: false,
+        origin: {
+          kind: 'EXTERNAL_ENTRY',
+          entryKind: source.origin.entryKind,
+          initialStage: source.origin.initialStage,
+          stageReachedOn: source.origin.stageReachedOn,
+        },
+        executionConfirmation: lawyerConfirmation,
+      };
+      mockJson(lawyerPayload);
+      await expect(casesApi.getLawyerCase('case-1')).resolves.toMatchObject({
+        executionConfirmation: { files: [file], submissionId: null },
+      });
+      mockJson({
+        ...lawyerPayload,
+        executionConfirmation: { ...lawyerConfirmation, files: [file, file] },
+      });
+      await expect(casesApi.getLawyerCase('case-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+      mockJson({
+        ...lawyerPayload,
+        origin: { kind: 'NOTARY' },
+        certificate: detail.certificate,
+      });
+      await expect(casesApi.getLawyerCase('case-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+    for (const invalidFiles of [
+      [],
+      [file, file],
+      [{ ...file, uploadedAt: 'not-a-date' }],
+      [{ ...file, materialId: '' }],
+      [{ ...file, materialId: 'invented-reference' }],
+    ]) {
+      const invalid = {
+        ...source,
+        executionConfirmation: { ...confirmation, files: invalidFiles },
+      };
+      mockJson(invalid);
+      await expect(getCase('case-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+    const fabricatedSubmission = {
+      id: id(120),
+      trialRoundId: id(81),
+      judgmentNextStepId: id(121),
+      secondInstanceResultId: null,
+      priorSubmissionId: null,
+      changeReason: null,
+      fromVersion: 1,
+      toVersion: 2,
+      submittedAt: '2026-10-10T02:00:00.000Z',
+      files: [file],
+    };
+    mockJson({
+      ...source,
+      executionSubmission: {
+        current: null,
+        submissions: [fabricatedSubmission],
+        availableFiles: [],
+      },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    const normal = {
+      ...source,
+      origin: { kind: 'NOTARY' },
+      sourceLead: detail.sourceLead,
+      sourceNotaryMatter: detail.sourceNotaryMatter,
+      certificate: detail.certificate,
+      fees: detail.fees,
+    };
+    mockJson(normal);
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
   it('accepts a direct SECOND result with no invented first judgment and rejects it for normal origin', async () => {
     const roundId = id(81);
     const result = {
@@ -871,22 +993,20 @@ describe('CA-018 strict source-aware execution read boundary', () => {
         rejected.mock.calls.some((call) => call[1]?.method === 'POST'),
       ).toBe(false);
     }
-    const serverRejected = vi
-      .fn()
-      .mockImplementation(
-        async (_url: string, init?: RequestInit) =>
-          new Response(
-            JSON.stringify(
-              init?.method === 'POST'
-                ? {
-                    code: 'VALIDATION_ERROR',
-                    message: 'Wrong application package',
-                  }
-                : source,
-            ),
-            { status: init?.method === 'POST' ? 400 : 200 },
+    const serverRejected = vi.fn().mockImplementation(
+      async (_url: string, init?: RequestInit) =>
+        new Response(
+          JSON.stringify(
+            init?.method === 'POST'
+              ? {
+                  code: 'VALIDATION_ERROR',
+                  message: 'Wrong application package',
+                }
+              : source,
           ),
-      );
+          { status: init?.method === 'POST' ? 400 : 200 },
+        ),
+    );
     vi.stubGlobal('fetch', serverRejected);
     await expect(
       confirmCaseExecution('case-1', {

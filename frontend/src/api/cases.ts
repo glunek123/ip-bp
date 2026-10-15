@@ -1961,6 +1961,13 @@ function executionConfirmation(
     value.files.length >= 1 &&
     value.files.length <= 10 &&
     value.files.every(executionSubmissionFile) &&
+    (!directStart ||
+      value.files.every(
+        (file) =>
+          record(file) &&
+          uuidV4(file.materialId) &&
+          uuidV4(file.contentVersionId),
+      )) &&
     new Set(
       value.files.map(
         (file) => (file as ExecutionSubmissionFile).contentVersionId,
@@ -1986,12 +1993,15 @@ function executionConfirmationMatchesSubmission(
     (current === null && !directStart)
   )
     return false;
+  // A direct confirmation freezes the selected files. Later uploads may change
+  // the available pool without changing the historical confirmation.
+  if (current === null) return state.submissions.length === 0;
   const confirmedFiles = new Map<string, ExecutionSubmissionFile>(
     confirmation.files.map((file) => [file.contentVersionId, file]),
   );
   return (
-    (current?.files ?? state.availableFiles).length === confirmedFiles.size &&
-    (current?.files ?? state.availableFiles).every((file) => {
+    current.files.length === confirmedFiles.size &&
+    current.files.every((file) => {
       const confirmedFile = confirmedFiles.get(file.contentVersionId);
       return (
         confirmedFile !== undefined &&
