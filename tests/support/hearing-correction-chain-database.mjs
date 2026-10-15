@@ -142,15 +142,21 @@ function scopedDatabase(database, caseId, lockHook) {
                   get(client, operation) {
                     if (operation === '$queryRawUnsafe')
                       return async (sql, ...values) => {
+                        // Start the Prisma query before reporting a lock attempt;
+                        // merely constructing its lazy promise does not execute it.
+                        const pending = client
+                          .$queryRawUnsafe(sql, ...values)
+                          .then(
+                            (value) => ({ status: 'fulfilled', value }),
+                            (reason) => ({ status: 'rejected', reason }),
+                          );
                         if (sql.includes('FOR UPDATE'))
                           await lockHook('attempt');
-                        const result = await client.$queryRawUnsafe(
-                          sql,
-                          ...values,
-                        );
+                        const result = await pending;
+                        if (result.status === 'rejected') throw result.reason;
                         if (sql.includes('FOR UPDATE'))
                           await lockHook('acquired');
-                        return result;
+                        return result.value;
                       };
                     const value = Reflect.get(client, operation);
                     return typeof value === 'function'
@@ -179,47 +185,71 @@ async function orderedRace(database, caseId, first, second) {
   const acquired = deferred(),
     attempted = deferred(),
     release = deferred();
+  const lockEvents = [];
   let held = false;
   const winner = scopedDatabase(database, caseId, async (event) => {
+    lockEvents.push(`first:${event}`);
     if (event === 'acquired' && !held) {
       held = true;
       acquired.resolve();
       await release.promise;
+      lockEvents.push('first:barrier-released');
     }
   });
   const follower = scopedDatabase(database, caseId, async (event) => {
+    lockEvents.push(`second:${event}`);
     if (event === 'attempt') attempted.resolve();
   });
   const firstResult = first(winner);
   // Observe both outcomes immediately, including a failure before the lock.
   const firstSettled = firstResult.then(
-    (value) => {
-      acquired.resolve();
-      return { status: 'fulfilled', value };
-    },
-    (reason) => {
-      acquired.resolve();
-      return { status: 'rejected', reason };
-    },
+    (value) => ({ status: 'fulfilled', value }),
+    (reason) => ({ status: 'rejected', reason }),
   );
-  await acquired.promise;
+  await Promise.race([
+    acquired.promise,
+    firstSettled.then(() => {
+      throw new Error('First command settled without acquiring the case lock');
+    }),
+  ]);
   const secondResult = second(follower);
   const secondSettled = secondResult.then(
-    (value) => {
-      attempted.resolve();
-      return { status: 'fulfilled', value };
-    },
-    (reason) => {
-      attempted.resolve();
-      return { status: 'rejected', reason };
-    },
+    (value) => ({ status: 'fulfilled', value }),
+    (reason) => ({ status: 'rejected', reason }),
   );
+  let barrierError;
   try {
-    await attempted.promise;
+    await Promise.race([
+      attempted.promise,
+      secondSettled.then(() => {
+        throw new Error(
+          'Second command settled without attempting the case lock',
+        );
+      }),
+    ]);
+  } catch (error) {
+    barrierError = error;
   } finally {
     release.resolve();
   }
-  return Promise.all([firstSettled, secondSettled]);
+  const outcomes = await Promise.all([firstSettled, secondSettled]);
+  if (barrierError) throw barrierError;
+  const requiredEvents = [
+    'first:acquired',
+    'second:attempt',
+    'first:barrier-released',
+    'second:acquired',
+  ];
+  let previous = -1;
+  for (const event of requiredEvents) {
+    const index = lockEvents.indexOf(event);
+    assert.ok(
+      index > previous,
+      `Missing or out-of-order case lock event: ${event}`,
+    );
+    previous = index;
+  }
+  return { outcomes, lockEvents };
 }
 
 async function expectCode(operation, expected) {
@@ -550,9 +580,9 @@ export async function verifyHearingCorrectionChain() {
       branches.push(date);
     }
 
-    // Both lock acquisition orders are real concurrent transactions. No sleeps,
-    // fake successful responses, direct stage writes or disabled constraints.
-    const races = [];
+    // These four races require both commands to reach the real case lock.
+    const races = [],
+      lockProofs = [];
     for (const first of ['schedule', 'advance']) {
       const caseId = await createCase(),
         service = hearing(scopedDatabase(database, caseId));
@@ -564,7 +594,7 @@ export async function verifyHearingCorrectionChain() {
       };
       const save = (db) => hearing(db).schedule(actor, caseId, input);
       const advance = (db) => hearing(db).advanceDue(now);
-      const outcomes = await orderedRace(
+      const { outcomes, lockEvents } = await orderedRace(
         database,
         caseId,
         first === 'schedule' ? save : advance,
@@ -582,28 +612,39 @@ export async function verifyHearingCorrectionChain() {
         assert.equal((await head(caseId)).stage, 'WAITING_JUDGMENT');
       }
       races.push(`${first}-first`);
+      lockProofs.push({ race: `${first}-first`, events: lockEvents });
     }
 
+    // WAITING_JUDGMENT is not a scan candidate. These sequential state checks
+    // prove the task remains a no-op around correction, not lock competition.
+    const scanStateChecks = [];
     for (const first of ['correction', 'advance']) {
-      const { caseId } = await dueCase();
+      const { caseId, service } = await dueCase();
       const input = {
         expectedVersion: (await head(caseId)).version,
         idempotencyKey: randomUUID(),
         hearingAt: '2026-10-04',
-        reason: 'Synthetic concurrent correction',
+        reason: 'Synthetic correction around a non-candidate scan',
       };
-      const correction = (db) => hearing(db).correct(actor, caseId, input);
-      const advance = (db) => hearing(db).advanceDue(now);
-      const outcomes = await orderedRace(
-        database,
-        caseId,
-        first === 'correction' ? correction : advance,
-        first === 'correction' ? advance : correction,
+      assert.equal((await head(caseId)).stage, 'WAITING_JUDGMENT');
+      if (first === 'advance') {
+        assert.deepEqual(await service.advanceDue(now), {
+          advanced: 0,
+          failed: 0,
+        });
+      }
+      assert.equal(
+        (await service.correct(actor, caseId, input)).stage,
+        'WAITING_JUDGMENT',
       );
-      assert.equal(outcomes[0].status, 'fulfilled');
-      assert.equal(outcomes[1].status, 'fulfilled');
+      if (first === 'correction') {
+        assert.deepEqual(await service.advanceDue(now), {
+          advanced: 0,
+          failed: 0,
+        });
+      }
       assert.equal((await history(database, caseId)).advances.length, 1);
-      races.push(`correction-task-${first}-first`);
+      scanStateChecks.push(`non-candidate-${first}-first`);
     }
 
     const materials = new MaterialService(
@@ -663,7 +704,7 @@ export async function verifyHearingCorrectionChain() {
         );
       const correction = (db) =>
         hearing(db).correct(actor, caseId, correctionInput);
-      const outcomes = await orderedRace(
+      const { outcomes, lockEvents } = await orderedRace(
         database,
         caseId,
         first === 'judgment' ? register : correction,
@@ -686,9 +727,9 @@ export async function verifyHearingCorrectionChain() {
         assert.equal((await head(caseId)).currentJudgmentId, null);
         assert.equal((await head(caseId)).stage, 'WAITING_HEARING');
       }
-      races.push(
-        `${first}-before-${first === 'judgment' ? 'correction' : 'judgment'}`,
-      );
+      const race = `${first}-before-${first === 'judgment' ? 'correction' : 'judgment'}`;
+      races.push(race);
+      lockProofs.push({ race, events: lockEvents });
     }
 
     // Only this run's unique actor is deactivated, with all hearing facts kept.
@@ -710,6 +751,8 @@ export async function verifyHearingCorrectionChain() {
       migrationCount: 155,
       branches,
       races,
+      lockProofs,
+      scanStateChecks,
       caseIds,
       revokedReplayDenied: true,
     };

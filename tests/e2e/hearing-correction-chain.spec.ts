@@ -9,10 +9,26 @@ test('current 155: repeated hearing corrections preserve exact advance history a
   expect(result.races).toEqual([
     'schedule-first',
     'advance-first',
-    'correction-task-correction-first',
-    'correction-task-advance-first',
     'judgment-before-correction',
     'correction-before-judgment',
+  ]);
+  expect(result.lockProofs.map((proof) => proof.race)).toEqual(result.races);
+  for (const proof of result.lockProofs) {
+    let previous = -1;
+    for (const event of [
+      'first:acquired',
+      'second:attempt',
+      'first:barrier-released',
+      'second:acquired',
+    ]) {
+      const index = proof.events.indexOf(event);
+      expect(index, `${proof.race}: ${event}`).toBeGreaterThan(previous);
+      previous = index;
+    }
+  }
+  expect(result.scanStateChecks).toEqual([
+    'non-candidate-correction-first',
+    'non-candidate-advance-first',
   ]);
   expect(result.caseIds).toHaveLength(9);
   expect(new Set(result.caseIds).size).toBe(9);

@@ -5,6 +5,8 @@ export function verifyHearingCorrectionChain(): Promise<{
   migrationCount: number;
   branches: Array<string | null>;
   races: string[];
+  lockProofs: Array<{ race: string; events: string[] }>;
+  scanStateChecks: string[];
   caseIds: string[];
   revokedReplayDenied: boolean;
 }>;
