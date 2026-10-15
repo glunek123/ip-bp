@@ -29,7 +29,33 @@ const uploadMigration = '20261015170000_case_section_record_uploads';
 const recordMigration = '20261015150000_case_section_record_edits';
 const oldRecordHash =
   '87e2a8ee00ac8341419a07192a43227101fc60d182bd5f1006acc1cfe315001b';
+const oldUploadHash =
+  '218b2309215b418c0e6ec3a5c072cb3f16034946002dbf69a6dad07f11f02296';
+const uploadHash =
+  '883f2f80b615a0f746adb2ebbb6e17cc24d0ac577a61d236f3bb6375fbc0367d';
+const uploadLimitCase =
+  'CASE WHEN d."category"=\'MAIL_RECEIPT\' THEN 20971520 ELSE 52428800 END';
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
+
+function predecessor157Bytes(sql) {
+  return sql.replace(`> (${uploadLimitCase})`, `> ${uploadLimitCase}`);
+}
+
+function assertContentLimitCaseGrouping(sql) {
+  const contentGuard = sql.match(
+    /CREATE FUNCTION "check_section_upload_content"\([\s\S]*?\nEND; \$\$;/u,
+  )?.[0];
+  assert.ok(contentGuard, 'Exact section content guard must exist');
+  assert.ok(
+    contentGuard.includes(
+      `OR NEW."size_bytes" <= 0 OR NEW."size_bytes" > (${uploadLimitCase})`,
+    ),
+    'SQL CASE in the PLpgSQL IF expression needs parentheses around its inner THEN',
+  );
+  // All searched CASE expressions in this source use this one guarded pattern.
+  // Independent PLpgSQL CASE ... END CASE statements are not SQL expressions.
+  assert.equal([...sql.matchAll(/\bCASE\s+WHEN\b/gu)].length, 1);
+}
 
 function assertTrialDateParameterBindings(sql) {
   const declaration = sql.match(
@@ -230,10 +256,7 @@ test('all exact 157 LF candidate sources pass isolation screen; frozen 156 compa
   withMigrationFixture(async (directory) => {
     const plan = await sectionMigrationPlan(directory);
     assert.equal(plan.length, 157);
-    assert.equal(
-      plan[156].sha256,
-      '218b2309215b418c0e6ec3a5c072cb3f16034946002dbf69a6dad07f11f02296',
-    );
+    assert.equal(plan[156].sha256, uploadHash);
     const sql = plan[155].sql;
     const { prelude, transaction } = section156Prelude(sql);
     assert.equal(prelude + transaction, sql);
@@ -278,7 +301,7 @@ test('reject old CRLF157 raw bytes instead of normalizing them into accepted LF'
     const boundary = '\n\nCREATE FUNCTION "guard_section_upload_consumption"';
     assert.ok(canonical.includes(boundary));
     const oldBytes = Buffer.from(
-      canonical.replace(
+      predecessor157Bytes(canonical).replace(
         boundary,
         '\n\r\nCREATE FUNCTION "guard_section_upload_consumption"',
       ),
@@ -291,9 +314,7 @@ test('reject old CRLF157 raw bytes instead of normalizing them into accepted LF'
     await assert.rejects(
       sectionMigrationPlan(directory),
       (error) =>
-        error.code === 'ERR_ASSERTION' &&
-        error.expected?.[1] ===
-          '218b2309215b418c0e6ec3a5c072cb3f16034946002dbf69a6dad07f11f02296',
+        error.code === 'ERR_ASSERTION' && error.expected?.[1] === uploadHash,
     );
   }));
 
@@ -308,9 +329,7 @@ test('reject changed LF157 SQL even when names/count and isolation screen remain
     await assert.rejects(
       sectionMigrationPlan(directory),
       (error) =>
-        error.code === 'ERR_ASSERTION' &&
-        error.expected?.[1] ===
-          '218b2309215b418c0e6ec3a5c072cb3f16034946002dbf69a6dad07f11f02296',
+        error.code === 'ERR_ASSERTION' && error.expected?.[1] === uploadHash,
     );
   }));
 
@@ -367,5 +386,61 @@ test('reject altered156 bytes even after the correct parameter binding is presen
     await assert.rejects(
       sectionMigrationPlan(directory),
       (error) => error.code === 'ERR_ASSERTION',
+    );
+  }));
+
+test('content-limit CASE stays grouped within the PLpgSQL IF and preserves both byte limits', async () => {
+  const sql = await readFile(
+    resolve('backend/prisma/migrations', uploadMigration, 'migration.sql'),
+    'utf8',
+  );
+  assertContentLimitCaseGrouping(sql);
+  const original = predecessor157Bytes(sql);
+  assert.equal(
+    sha256(original),
+    oldUploadHash,
+    'Only the two grouping parentheses may change in the full157 source',
+  );
+  assert.throws(() => assertContentLimitCaseGrouping(original));
+  assert.throws(() =>
+    assertContentLimitCaseGrouping(
+      sql.replace('THEN 20971520 ELSE 52428800', 'THEN 20971521 ELSE 52428800'),
+    ),
+  );
+});
+
+test('reject original LF157 syntax bytes after the unpublished CASE grouping fix', async () =>
+  withMigrationFixture(async (directory) => {
+    const path = join(directory, uploadMigration, 'migration.sql');
+    const original = predecessor157Bytes(await readFile(path, 'utf8'));
+    assert.equal(sha256(original), oldUploadHash);
+    await writeFile(path, original);
+    await assert.rejects(
+      sectionMigrationPlan(directory),
+      (error) =>
+        error.code === 'ERR_ASSERTION' &&
+        error.actual?.[1] === oldUploadHash &&
+        error.expected?.[1] === uploadHash,
+    );
+  }));
+
+test('reject CRLF variant of corrected157 without changing the corrected SQL semantics', async () =>
+  withMigrationFixture(async (directory) => {
+    const path = join(directory, uploadMigration, 'migration.sql');
+    const canonical = await readFile(path, 'utf8');
+    assertContentLimitCaseGrouping(canonical);
+    const boundary = '\n\nCREATE FUNCTION "guard_section_upload_consumption"';
+    assert.ok(canonical.includes(boundary));
+    await writeFile(
+      path,
+      canonical.replace(
+        boundary,
+        '\n\r\nCREATE FUNCTION "guard_section_upload_consumption"',
+      ),
+    );
+    await assert.rejects(
+      sectionMigrationPlan(directory),
+      (error) =>
+        error.code === 'ERR_ASSERTION' && error.expected?.[1] === uploadHash,
     );
   }));

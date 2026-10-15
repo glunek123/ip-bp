@@ -193,7 +193,7 @@ BEGIN
     OR NEW."uploaded_by" IS DISTINCT FROM d."actor_user_id" OR NEW."original_filename" IS DISTINCT FROM d."original_filename"
     OR NEW."derived_from_version_id" IS NOT NULL OR NEW."status" <> 'AVAILABLE'
     OR NEW."mime_type" NOT IN ('application/pdf','image/jpeg','image/png') OR NEW."mime_type" IS DISTINCT FROM d."declared_mime_type"
-    OR NEW."size_bytes" <= 0 OR NEW."size_bytes" > CASE WHEN d."category"='MAIL_RECEIPT' THEN 20971520 ELSE 52428800 END
+    OR NEW."size_bytes" <= 0 OR NEW."size_bytes" > (CASE WHEN d."category"='MAIL_RECEIPT' THEN 20971520 ELSE 52428800 END)
     OR m."department_id" IS DISTINCT FROM d."department_id" OR m."owner_type" <> 'CASE'
     OR m."owner_id" IS DISTINCT FROM d."owner_id" OR m."category" IS DISTINCT FROM d."category"
     OR m."purpose" IS DISTINCT FROM d."purpose" OR m."status" <> 'ACTIVE' OR m."deleted_at" IS NOT NULL THEN

@@ -16,9 +16,9 @@ const suffix = [
 ];
 const hashes = [
   '10760cf6e9969822a6b6a631760645625d227c4541a018560473e34c164953c7',
-  // Candidate270 Git blob ac41a6f and runtime bytes are identical LF text.
-  // Hash raw bytes; never normalize a runtime migration to make it pass.
-  '218b2309215b418c0e6ec3a5c072cb3f16034946002dbf69a6dad07f11f02296',
+  // Unpublished157 groups the SQL CASE inside its PLpgSQL IF condition.
+  // Hash raw LF bytes; never normalize a runtime migration to make it pass.
+  '883f2f80b615a0f746adb2ebbb6e17cc24d0ac577a61d236f3bb6375fbc0367d',
 ];
 const functionNames = [
   'check_case_hearing_fact',
