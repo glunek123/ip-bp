@@ -137,6 +137,8 @@ const canConfirm = computed(
       ? selected.value.length >= 1 && selected.value.length <= 10
       : !!changeReason.value.trim() &&
         changeReason.value.trim().length <= 500 &&
+        selected.value.length >= 1 &&
+        selected.value.length <= 10 &&
         !isSameFileSet.value),
 );
 
@@ -439,7 +441,7 @@ function buildInput(): SubmitExecutionInput | null {
     (latestResult.result === 'CHANGE' || latestResult.result === 'AFFIRM')
       ? latestResult.id
       : null;
-  const sortedIds = [...selected.value].sort();
+  const sortedIds = [...new Set(selected.value)].sort();
   const judgmentNextStepId =
     directExecutionEntry || directSecondInstanceEntry
       ? null
@@ -456,18 +458,15 @@ function buildInput(): SubmitExecutionInput | null {
   )
     return null;
   const reSubmitting = item.executionSubmission.current !== null;
-  if (
-    !reSubmitting &&
-    (selected.value.length < 1 || selected.value.length > 10)
-  )
-    return null;
+  if (sortedIds.length < 1 || sortedIds.length > 10) return null;
   const fingerprint = JSON.stringify([
     item.version,
     trialRoundId,
     judgmentNextStepId,
     secondInstanceResultId,
     item.executionSubmission.current?.id ?? null,
-    reSubmitting ? [] : sortedIds,
+    sortedIds,
+    reSubmitting ? changeReason.value.trim() : null,
   ]);
   if (fingerprint !== keyFingerprint) {
     keyFingerprint = fingerprint;
@@ -480,9 +479,7 @@ function buildInput(): SubmitExecutionInput | null {
     judgmentNextStepId,
     secondInstanceResultId,
     expectedSubmissionId: item.executionSubmission.current?.id ?? null,
-    ...(!reSubmitting
-      ? { executionApplicationContentVersionIds: sortedIds }
-      : {}),
+    executionApplicationContentVersionIds: sortedIds,
     ...(reSubmitting ? { changeReason: changeReason.value.trim() } : {}),
   };
 }
@@ -710,7 +707,6 @@ onBeforeUnmount(() => {
               type="checkbox"
               :value="file.contentVersionId"
               :disabled="
-                !!current ||
                 uploadUnknown ||
                 !!pendingCommand ||
                 (selected.length >= 10 &&

@@ -101,6 +101,20 @@ const ownerMaterials = [
     ],
   },
 ];
+const secondOwnerMaterial = {
+  ...ownerMaterials[0]!,
+  id: secondFile.materialId,
+  currentVersionId: secondFile.contentVersionId,
+  contentVersions: [
+    {
+      ...ownerMaterials[0]!.contentVersions[0]!,
+      id: secondFile.contentVersionId,
+      materialId: secondFile.materialId,
+      originalFilename: secondFile.originalFilename,
+      createdAt: secondFile.uploadedAt,
+    },
+  ],
+};
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -158,13 +172,16 @@ describe('CaseExecutionSubmissionPanel', () => {
       version: 15,
       submittedAt: file.uploadedAt,
     });
+    api.listOwnerMaterials.mockResolvedValueOnce({
+      items: [...ownerMaterials, secondOwnerMaterial],
+    });
     const wrapper = mountPanel(
       item({
         stage: 'WAITING_EXECUTION_CONFIRMATION',
         executionSubmission: {
           current,
           submissions: [current],
-          availableFiles: [file],
+          availableFiles: [file, secondFile],
         },
       }),
     );
@@ -172,7 +189,19 @@ describe('CaseExecutionSubmissionPanel', () => {
 
     expect(wrapper.find('input[type="file"]').exists()).toBe(true);
     expect(wrapper.find('[data-test="submit-execution"]').exists()).toBe(true);
+    const choices = wrapper.findAll('input[type="checkbox"]');
+    expect(choices).toHaveLength(2);
+    const firstChoice = choices[0]!;
+    const secondChoice = choices[1]!;
+    await firstChoice.setValue(true);
+    await secondChoice.setValue(true);
     await wrapper.get('textarea').setValue('更正执行材料');
+    expect(
+      (
+        wrapper.get('[data-test="submit-execution"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
     await wrapper.get('[data-test="submit-execution"]').trigger('click');
     await flushPromises();
     expect(api.submitExecution).toHaveBeenCalledWith(
@@ -181,12 +210,34 @@ describe('CaseExecutionSubmissionPanel', () => {
         expectedVersion: 14,
         expectedSubmissionId: current.id,
         changeReason: '更正执行材料',
+        executionApplicationContentVersionIds: [
+          file.contentVersionId,
+          secondFile.contentVersionId,
+        ].sort(),
       }),
       'internal',
     );
-    expect(api.submitExecution.mock.calls[0]?.[1]).not.toHaveProperty(
-      'executionApplicationContentVersionIds',
+    const firstBody = api.submitExecution.mock.calls[0]![1];
+
+    await wrapper.get('textarea').setValue('补充说明');
+    await wrapper.get('[data-test="submit-execution"]').trigger('click');
+    await flushPromises();
+    const changedReasonBody = api.submitExecution.mock.calls[1]![1];
+    expect(changedReasonBody.idempotencyKey).not.toBe(firstBody.idempotencyKey);
+    expect(changedReasonBody.executionApplicationContentVersionIds).toEqual(
+      [file.contentVersionId, secondFile.contentVersionId].sort(),
     );
+
+    await secondChoice.setValue(false);
+    await wrapper.get('[data-test="submit-execution"]').trigger('click');
+    await flushPromises();
+    const changedFilesBody = api.submitExecution.mock.calls[2]![1];
+    expect(changedFilesBody.idempotencyKey).not.toBe(
+      changedReasonBody.idempotencyKey,
+    );
+    expect(changedFilesBody.executionApplicationContentVersionIds).toEqual([
+      file.contentVersionId,
+    ]);
   });
 
   it('keeps a pending submission read-only when this actor lacks submit capability', async () => {
@@ -503,16 +554,56 @@ describe('CaseExecutionSubmissionPanel', () => {
     expect(wrapper.text()).not.toContain('上传结果未知');
   });
 
-  it('retries an unknown submission with its original body and key', async () => {
+  it('retries an unknown resubmission with its original body and key', async () => {
     api.submitExecution
       .mockRejectedValueOnce(new TypeError('network lost'))
       .mockResolvedValueOnce({});
-    const wrapper = mountPanel();
+    const current = {
+      id: id('30'),
+      trialRoundId: id('2'),
+      judgmentNextStepId: id('1'),
+      secondInstanceResultId: null,
+      priorSubmissionId: null,
+      changeReason: null,
+      fromVersion: 13,
+      toVersion: 14,
+      submittedAt: file.uploadedAt,
+      files: [secondFile],
+    };
+    const wrapper = mountPanel(
+      item({
+        stage: 'WAITING_EXECUTION_CONFIRMATION',
+        executionSubmission: {
+          current,
+          submissions: [current],
+          availableFiles: [file],
+        },
+      }),
+    );
     await flushPromises();
-    await wrapper.get('input[type="checkbox"]').setValue(true);
+    const choice = wrapper.get('input[type="checkbox"]');
+    await choice.setValue(false);
+    await wrapper.get('textarea').setValue('重提原因');
+    expect(
+      (
+        wrapper.get('[data-test="submit-execution"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    await choice.setValue(true);
+    expect(
+      (
+        wrapper.get('[data-test="submit-execution"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
     await wrapper.get('[data-test="submit-execution"]').trigger('click');
     await flushPromises();
     const firstBody = api.submitExecution.mock.calls[0]![1];
+    expect(firstBody.expectedSubmissionId).toBe(current.id);
+    expect(firstBody.executionApplicationContentVersionIds).toEqual([
+      file.contentVersionId,
+    ]);
     await wrapper.get('[data-test="retry-execution"]').trigger('click');
     await flushPromises();
     expect(api.submitExecution.mock.calls[1]![1]).toEqual(firstBody);
