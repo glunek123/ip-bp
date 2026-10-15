@@ -1,5 +1,23 @@
 # SPEC-001 文档验证
 
+## I-S-MIG03括号修复源准备（2026-10-15）
+
+原S从524独占分支codex/section-record-upload-sql-syntax-fix固定f81bcbb68d2f28144f21f872f0e132faf0256684/tree9d41329d0eefae1f49eb24bfd681df236eac569a，仅157 migration.sql、专项support.mjs及pure test三文件，运行目录接为3b0af507a8da7691be17fd1a487b91b8a0878967。唯一SQL变化为:196在大小上限CASE外加两括号，逆两括号整个raw精确恢复旧218b，20/50MiB及NULL/其他守卫不改；全157同型CASE WHEN仅此1处，其余4个statement CASE不改。原独立Reviewer核PostgreSQL REL_17_STABLE的stmt_if/expr_until_then/read_sql_construct，确认括号使内层THEN不在外层IF终止层级，符合524真实错误字符定位；未扩枚举/权限、未改156或旧155。
+
+新157 raw SHA256883f2f80b615a0f746adb2ebbb6e17cc24d0ac577a61d236f3bb6375fbc0367d，support.mjs SHA256cac0e3070441db1ebd8e72a38753cddc7ef09374b3ce999988e01b7f0a8bceb8，pure test SHA256ec96385a3bccf4dcce3e99493b167693c0b2dd46ef4cb48825b90e76fca2c487。strict raw pin只认可新LF，不运行时normalize或接受双hash；原LF218b/旧CRLF05fdbc/新SQL的CRLF/篡改LF均拒。S按明确白名单先把旧05fdbc存ignored副本，再exact正式218b建立修复基线，未改冻结验收树旧文件。作者原source聚焦RED1后GREEN24/24，根类型、定向Lint/格式/语法/diff通过；无参source plan仅只读157通过，不作为DB证据。原Reviewer固定三hash源审Spec/Quality ACCEPTED C/I/M0，仅关闭I-S-MIG03源码finding。
+
+源码及测试输入改变，须冻结新候选后正常完整verify及protected单项owned-schema真实重验，不能套用524旧完整门禁为新treePASS。旧524实际迁移FAIL、53份证据及更早失败原样保留；本节无PG/迁移PASS。public155、Grant hold及后续业务/16UI/预览边界不变，历史保留草案仍非执行授权。
+
+## 524完整门禁通过、157真实回放失败（2026-10-15）
+
+固定clean524dc060bb34f2f1ecce991246caeecbc4d32d7e/tree9a0178f264f0b92ba6d23150a264f2b03ac3b4a7于18:47:38至18:51:28 UTC实际一次正常pnpm verify，exit0，未复用48d：工具94、前端124套2207、后端120套1850及严格context/Spec/架构/Prisma生成/全部类型Lint格式和双构建通过。NT006实际标准锁owner PID16080/token70d436c4-c437-4dde-8847-e9ad679a0cce于18:50:13.939被观察并释放；当前源码及737构建产物manifest留证，未借用其他树dist。私密归档/TOC仅size/hash/metadata复核通过，不等于还原或库外文件备份。
+
+同候选protected --list实际1文件1项、exit0，随后18:51:33至18:51:38 UTC仅执行唯一DB-only专项，exit1、expected0/unexpected1，无skip/flaky/retry。空schema原链已越过修正156，但在20261015170000_case_section_record_uploads失败（helper474/replay508）。只读精确PG日志18:51:37.199/PID49779实际syntax error at end of input at character14066，未输出SQL或参数，未提供数字SQLSTATE，禁止推断。原Reviewer与S分别定位正式157 raw218b的该字符在:196 IF条件内CASE WHEN的THEN；I-S-MIG03 Important开放，由原S最小消除解析歧义，保持20MiB/50MiB/NULL与原守卫语义，并扫描同型，不修改15610760或旧155。新修复尚无固定候选/真实PG结果。
+
+真实sanitized attachment source157，checks=[]、enumStaging=[]、memoryFile未达，upgrade/失败重试/旧数据矩阵未运行，不能扩大为156或157风险验收通过。自有empty schema安全清理1个、无手工cleanup，最终仅public。三次helper public摘要相同；外围public155全名称/checksum/finished/noRollback、137表4336行、结构/事实/原安全cohort及指纹前后相同。发现实时锁PID18544与正式PID5896分开留证，结束均释放；实际失败trace/JSON保留，未启动业务服务/页面。
+
+最终证据section-record-edit-frontend-integration/.local/ui003-evidence/migration-524dc06-20261015/含53份manifest，主控逐一核hash/bytes匹配，manifest SHA256ea0f78d491e938fa21530bf33dffca78e272892b3eedf6390b374182de2c10e1、acceptance-summary SHA256d0f32ffa9f22fa6904412ef91e8739e32266adff4e0f57d9448247b8127cd5df。原28/36/39份历史证据hash不变。原独立Reviewer本轮完整门禁子阶段PASS、迁移REJECTED C0/I1/M0；旧I-S-MIG02源码已关闭，不能据此跳过新157失败继续部署。下一步历史旧列投影与真实blob保留的准入草案已受限审C/I/M0，仍非执行授权；public部署、Grant、业务/16UI、预览及备份恢复均未执行。
+
 ## I-S-MIG02参数消歧修复源准备（2026-10-15）
 
 原S从正式48d新分支codex/section-record-migration-enum-fix固定三文件ab2128d1615a09c2f0629e614741e96359b3a5e5/treef72efe0a02865255807f952d82e351fd9875a2d5，正式运行目录独立接为5f9f8a2f6bda8165749c8b39e581d9cb0f5a15f9。156函数case_section_trial_date_valid仅签名657及谓词684/698的kind改为p_kind；六参数类型/位置、调用、枚举、日期上下界、链/守卫其余字节未改，逆三替换整个raw精确恢复原87e2。新156 raw SHA25610760cf6e9969822a6b6a631760645625d227c4541a018560473e34c164953c7，专项support SHA256e92cc4099ef30385b550d1346f4f1119df0bea1fdc9d44f6b954743c6daa44e4、pure test SHA2565c419fffe20b79d9166af57ff482921be4d9b05b1e31e8f6b3168739e9694f57；strict pin仅更新156，新加旧156/篡改字节拒绝和两分支参数消歧回归，旧157 raw拒绝保持。
