@@ -672,15 +672,16 @@ describe('case read OpenAPI contract', () => {
           '201'
         ],
       ).toBeDefined();
-      const extraConfirmationField = await request(app.getHttpServer())
+      const unknownConfirmationField = await request(app.getHttpServer())
         .post(`/api/v1/cases/${routeCaseId}/execution-confirm`)
         .send({
           expectedVersion: 12,
           idempotencyKey: 'confirm',
           expectedSubmissionId: routeCaseId,
           executionApplicationContentVersionIds: [routeCaseId],
+          arbitrary: true,
         });
-      expect(extraConfirmationField.status).toBe(400);
+      expect(unknownConfirmationField.status).toBe(400);
       expect(executionConfirmation.confirm).not.toHaveBeenCalled();
       expect(
         document.paths['/api/v1/cases/{id}/second-instance-save']?.post
