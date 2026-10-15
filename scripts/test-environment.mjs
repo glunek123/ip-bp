@@ -464,3 +464,18 @@ export function captureTestEnvironment(root, options = {}) {
     },
   };
 }
+
+// Browser support modules inherit the runner environment. Recheck that exact
+// target through the same configuration and actual-container admission path.
+export function validateBrowserTestDatabaseUrl(value, root = process.cwd()) {
+  const database = validateIsolatedTestDatabaseUrl(value, {
+    allowRandomPort: true,
+  });
+  const environment = captureTestEnvironment(root, { pnpmVersion: '11.27.0' });
+  if (database.connectionString !== environment.childEnvironment.DATABASE_URL) {
+    throw new Error(
+      'The browser support database URL conflicts with the validated test environment',
+    );
+  }
+  return database;
+}

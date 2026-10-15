@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { Readable } from 'node:stream';
-import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
+import { validateBrowserTestDatabaseUrl } from '../../scripts/test-environment.mjs';
 
 const root = process.cwd();
 const requireBackend = createRequire(resolve(root, 'backend/package.json'));
@@ -36,7 +36,7 @@ const { CaseHearingSignal } = requireBackend(
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl || process.env.NODE_ENV !== 'test')
   throw new Error('Isolated test database required');
-validateIsolatedTestDatabaseUrl(databaseUrl);
+validateBrowserTestDatabaseUrl(databaseUrl, root);
 const privateRoot = resolve(process.env.PRIVATE_FILE_ROOT ?? '');
 if (privateRoot !== resolve(root, '.local/private-files/test'))
   throw new Error('Isolated test blob root required');

@@ -11,12 +11,18 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { captureTestEnvironment } from './test-environment.mjs';
 import * as testEnvironment from './test-environment.mjs';
 
 vi.mock('node:child_process', async (importOriginal) => {
   const original = await importOriginal();
   return { ...original, execFileSync: vi.fn(original.execFileSync) };
+});
+
+vi.mock('node:module', async (importOriginal) => {
+  const original = await importOriginal();
+  return { ...original, createRequire: vi.fn(original.createRequire) };
 });
 
 const secret = 'a'.repeat(64);
@@ -678,4 +684,141 @@ test('capture validates the explicit instance against Docker metadata before exe
     }),
     /local-test-password|dev-cor-ui003|49123/,
   );
+});
+
+async function browserSupportHarness(t) {
+  const root = repository(t);
+  const { binding, container } = managedTestInstance();
+  mkdirSync(join(root, 'node_modules'), { recursive: true });
+  symlinkSync(
+    resolve('node_modules/@playwright'),
+    join(root, 'node_modules/@playwright'),
+    'junction',
+  );
+  const original = await vi.importActual('node:child_process');
+  vi.mocked(execFileSync).mockImplementation((command, args, options) => {
+    if (command !== 'docker')
+      return original.execFileSync(command, args, options);
+    if (args[0] === 'ps') return `${container.Id}\n`;
+    assert.deepEqual(args, ['inspect', container.Id]);
+    return JSON.stringify([container]);
+  });
+  const override = databaseUrl.replace(':15433/', ':15437/');
+  container.NetworkSettings.Ports['5432/tcp'][0].HostPort = '15437';
+  for (const [key, value] of Object.entries({
+    NODE_ENV: 'test',
+    PORT: '3101',
+    DATABASE_URL: override,
+    AUTH_THROTTLE_SECRET: secret,
+    PRIVATE_FILE_ROOT: join(root, '.local/private-files/test'),
+    TRUST_PROXY_HOPS: '0',
+    API_PROXY_TARGET: 'http://127.0.0.1:3101',
+    E2E_IDENTITY_FIXTURES: undefined,
+    DEV_COR_TEST_DATABASE_URL: override,
+    DEV_COR_TEST_DATABASE_PROJECT: binding.project,
+    DEV_COR_TEST_DATABASE_CONTAINER_ID: binding.containerId,
+  }))
+    vi.stubEnv(key, value);
+  t.onTestFinished(() => {
+    vi.mocked(execFileSync).mockImplementation(original.execFileSync);
+    vi.unstubAllEnvs();
+  });
+  return { root, binding, container, override };
+}
+
+test('collects judgment support on the fully bound 15437 instance without opening a database', async (t) => {
+  const { root } = await browserSupportHarness(t);
+  const original = await vi.importActual('node:module');
+  const backendPath = resolve(root, 'backend/package.json');
+  vi.mocked(createRequire).mockImplementation((path) => {
+    if (path !== backendPath) return original.createRequire(path);
+    return (specifier) => {
+      assert.ok(
+        specifier === 'pg' ||
+          specifier === '@prisma/adapter-pg' ||
+          specifier.startsWith('./dist/'),
+      );
+      return new Proxy(
+        {},
+        {
+          get: () =>
+            class OfflineService {
+              constructor() {
+                throw new Error('Unexpected database or service construction');
+              }
+            },
+        },
+      );
+    };
+  });
+  const cwd = vi.spyOn(process, 'cwd').mockReturnValue(root);
+  t.onTestFinished(() => {
+    cwd.mockRestore();
+    vi.mocked(createRequire).mockImplementation(original.createRequire);
+  });
+  const support = await import('../tests/support/case-judgment-database.mjs');
+  assert.equal(typeof support.clearCoreCaseJudgmentFixture, 'function');
+});
+
+test('browser support admits the default flow and only the completely bound effective URL', async (t) => {
+  const { root, container, override } = await browserSupportHarness(t);
+  const validate = (value = override) =>
+    testEnvironment.validateBrowserTestDatabaseUrl(value, root);
+  assert.equal(validate().port, 15437);
+  assert.throws(() => validate(databaseUrl), /conflict/i);
+  for (const key of [
+    'DEV_COR_TEST_DATABASE_URL',
+    'DEV_COR_TEST_DATABASE_PROJECT',
+    'DEV_COR_TEST_DATABASE_CONTAINER_ID',
+  ]) {
+    const previous = process.env[key];
+    vi.stubEnv(key, undefined);
+    assert.throws(() => validate(), /managed test instance/i);
+    vi.stubEnv(key, previous);
+  }
+  for (const [key, value] of [
+    ['DEV_COR_TEST_DATABASE_PROJECT', 'dev-cor-other'],
+    ['DEV_COR_TEST_DATABASE_CONTAINER_ID', 'd'.repeat(64)],
+  ]) {
+    const previous = process.env[key];
+    vi.stubEnv(key, value);
+    assert.throws(() => validate(), /test container/i);
+    vi.stubEnv(key, previous);
+  }
+  const project = process.env.DEV_COR_TEST_DATABASE_PROJECT;
+  const containerId = process.env.DEV_COR_TEST_DATABASE_CONTAINER_ID;
+  vi.stubEnv('DEV_COR_TEST_DATABASE_PROJECT', undefined);
+  vi.stubEnv('DEV_COR_TEST_DATABASE_CONTAINER_ID', undefined);
+  assert.throws(() => validate(), /managed test instance/i);
+  vi.stubEnv('DEV_COR_TEST_DATABASE_PROJECT', project);
+  vi.stubEnv('DEV_COR_TEST_DATABASE_CONTAINER_ID', containerId);
+  container.NetworkSettings.Ports['5432/tcp'][0].HostPort = '15438';
+  assert.throws(() => validate(), /published port/i);
+  container.NetworkSettings.Ports['5432/tcp'][0].HostPort = '15437';
+  for (const value of [
+    override.replace('127.0.0.1', 'example.com'),
+    override.replace(/dev_cor_test$/u, 'dev_cor'),
+    override.replace('dev_cor_test:', 'dev_cor:'),
+    override.replace(':15437/', ':15436/'),
+    `${override}?host=example.com`,
+  ]) {
+    assert.throws(
+      () => validate(value),
+      /isolated local test database|query parameters/i,
+    );
+  }
+  // Without explicit controls only the actual default test container is valid.
+  for (const key of [
+    'DEV_COR_TEST_DATABASE_URL',
+    'DEV_COR_TEST_DATABASE_PROJECT',
+    'DEV_COR_TEST_DATABASE_CONTAINER_ID',
+  ])
+    vi.stubEnv(key, undefined);
+  vi.stubEnv('DATABASE_URL', databaseUrl);
+  container.Name = '/dev-cor-postgres-test-1';
+  container.Config.Labels['com.docker.compose.project'] = 'dev-cor';
+  container.NetworkSettings.Ports['5432/tcp'][0].HostPort = '15433';
+  assert.equal(validate(databaseUrl).port, 15433);
+  vi.stubEnv('DATABASE_URL', override);
+  assert.throws(() => validate(), /conflict/i);
 });
