@@ -5,6 +5,7 @@ import {
   type APIRequestContext,
   type Page,
 } from '@playwright/test';
+import type { CaseDetail } from '../../frontend/src/api/cases';
 import {
   coreLeadFixtures,
   seedCoreLeadE2eData,
@@ -85,43 +86,6 @@ type Created = {
   entryId: string;
   recordedAt: string;
 };
-type CaseView = {
-  id: string;
-  stage: Stage;
-  version: number;
-  sourceLead: unknown;
-  sourceNotaryMatter: unknown;
-  certificate: unknown;
-  origin:
-    | {
-        kind: 'EXTERNAL_ENTRY';
-        entryId: string;
-        entryKind: EntryInput['entryKind'];
-        initialStage: Stage;
-        stageReachedOn: string;
-        source: string;
-        reason?: string;
-        recordedAt: string;
-        recordedByUserId?: string;
-        known: EntryInput['known'];
-      }
-    | { kind: 'NOTARY' };
-  defendants: unknown[];
-  currentTrialRoundId?: string | null;
-  acceptance?: unknown;
-  hearing?: unknown;
-  recordEdits?: {
-    secondInstanceAcceptances?: Array<{
-      choiceId: string | null;
-      trialRoundId: string;
-      acceptanceRevision: number;
-      acceptedAt: string | null;
-      courtCaseNo: string | null;
-      history: unknown[];
-    }>;
-  };
-};
-
 function shanghaiToday() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
@@ -189,9 +153,16 @@ async function readCase(
   caseId: string,
   headers = operator,
 ) {
-  return body<CaseView>(
+  return body<CaseDetail>(
     await request.get(`/api/v1/cases/${caseId}`, { headers }),
   );
+}
+
+function requiredCurrentTrialRoundId(detail: CaseDetail): string {
+  const id = detail.secondInstance.currentTrialRoundId;
+  if (typeof id !== 'string')
+    throw new Error('Expected a current second-instance trial round');
+  return id;
 }
 
 async function login(page: Page, path: string, self = false) {
@@ -548,7 +519,9 @@ async function submitExecution(
   expectedVersion: number,
 ) {
   const current = await sourceView(request, caseId);
-  expect(current.currentTrialRoundId).toEqual(expect.any(String));
+  expect(current.secondInstance.currentTrialRoundId).toEqual(
+    expect.any(String),
+  );
   const bytes = Buffer.from(
     '%PDF-1.7\nCA018 actual execution application bytes\n%%EOF\n',
   );
@@ -568,7 +541,7 @@ async function submitExecution(
       data: {
         expectedVersion,
         idempotencyKey: randomUUID(),
-        trialRoundId: current.currentTrialRoundId,
+        trialRoundId: requiredCurrentTrialRoundId(current),
         judgmentNextStepId: null,
         secondInstanceResultId: null,
         expectedSubmissionId: null,
@@ -1129,7 +1102,9 @@ test('creates all sixteen stages as explicit external roots without invented pri
         currentAdvance: null,
         currentArrangement: null,
       });
-      expect(current.currentTrialRoundId).toEqual(expect.any(String));
+      expect(current.secondInstance.currentTrialRoundId).toEqual(
+        expect.any(String),
+      );
     }
   }
 });
@@ -2127,7 +2102,9 @@ test('continues a WAITING_HEARING entry with an actual hearing, system advance, 
     })
     .toBe('WAITING_JUDGMENT');
   const afterHearing = await readCase(request, created.id);
-  expect(afterHearing.currentTrialRoundId).toEqual(expect.any(String));
+  expect(afterHearing.secondInstance.currentTrialRoundId).toEqual(
+    expect.any(String),
+  );
   expect(afterHearing.origin).toMatchObject({
     kind: 'EXTERNAL_ENTRY',
     entryId: created.entryId,
@@ -2232,7 +2209,7 @@ test('records and revises direct second-instance acceptance against its real ent
     }),
   );
   const initial = await readCase(request, created.id);
-  const trialRoundId = initial.currentTrialRoundId;
+  const trialRoundId = requiredCurrentTrialRoundId(initial);
   expect(trialRoundId).toEqual(expect.any(String));
 
   const saveAcceptance = (input: {
@@ -2402,7 +2379,7 @@ test('records and revises direct second-instance acceptance against its real ent
       headers: operator,
       data: {
         choiceId: null,
-        trialRoundId: appealSource.currentTrialRoundId,
+        trialRoundId: requiredCurrentTrialRoundId(appealSource),
         expectedAcceptanceRevision: 0,
         idempotencyKey: randomUUID(),
         acceptedAt: shanghaiToday(),
@@ -2425,7 +2402,7 @@ test('records and revises direct second-instance acceptance against its real ent
         headers: operator,
         data: {
           choiceId: appeal.choiceId,
-          trialRoundId: appealSource.currentTrialRoundId,
+          trialRoundId: requiredCurrentTrialRoundId(appealSource),
           expectedAcceptanceRevision: 0,
           idempotencyKey: randomUUID(),
           acceptedAt: shanghaiToday(),
@@ -2470,7 +2447,7 @@ test('keeps direct second-instance execution resubmission and frozen confirmatio
     }),
   );
   const initial = await readCase(request, created.id);
-  const trialRoundId = initial.currentTrialRoundId;
+  const trialRoundId = requiredCurrentTrialRoundId(initial);
   expect(trialRoundId).toEqual(expect.any(String));
   const progress = {
     hearingAt: null,
@@ -2658,7 +2635,7 @@ test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, a
   });
   const created = await createEntry(request, payload);
   const initial = await readCase(request, created.id);
-  const externalRoundId = initial.currentTrialRoundId;
+  const externalRoundId = requiredCurrentTrialRoundId(initial);
   expect(externalRoundId).toEqual(expect.any(String));
 
   const progress = {
@@ -2789,7 +2766,9 @@ test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, a
   });
 
   const final = await readCase(request, created.id);
-  expect(final.currentTrialRoundId).toBe(remanded.currentTrialRoundId);
+  expect(final.secondInstance.currentTrialRoundId).toBe(
+    remanded.currentTrialRoundId,
+  );
   expect(final.origin).toMatchObject({
     kind: 'EXTERNAL_ENTRY',
     entryId: created.entryId,
