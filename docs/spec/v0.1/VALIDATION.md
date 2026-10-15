@@ -1,12 +1,62 @@
 # SPEC-001 文档验证
 
-## I-S-MIG03括号修复源准备（2026-10-15）
+## H首项实际Origin阻断与本轮独立收口（2026-10-15）
 
-原S从524独占分支codex/section-record-upload-sql-syntax-fix固定f81bcbb68d2f28144f21f872f0e132faf0256684/tree9d41329d0eefae1f49eb24bfd681df236eac569a，仅157 migration.sql、专项support.mjs及pure test三文件，运行目录接为3b0af507a8da7691be17fd1a487b91b8a0878967。唯一SQL变化为:196在大小上限CASE外加两括号，逆两括号整个raw精确恢复旧218b，20/50MiB及NULL/其他守卫不改；全157同型CASE WHEN仅此1处，其余4个statement CASE不改。原独立Reviewer核PostgreSQL REL_17_STABLE的stmt_if/expr_until_then/read_sql_construct，确认括号使内层THEN不在外层IF终止层级，符合524真实错误字符定位；未扩枚举/权限、未改156或旧155。
+原runner仅在新ignored配置修正cwd及锁proof取证顺序后继续同clean2a99。protected发现精确H首项1/1，正式仅一次、0retry，首次POST /api/v1/auth/login到3101、Origin5174即403 ORIGIN_FORBIDDEN，requestId50be9c6d-245b-4a1f-905d-592647c13a96；未到业务权限或资料API，不能称缺Action403。冻结factory仅留下新合成user/credential/membership/role/assignment各1及35条本轮role_grants，无hold external-entry.create，Case/Lead0。旧全149表原行、157链、结构/sequence及22source/target文件保持，H只读closure6/6，正常服务/端口/标准锁收尾。E65秒已证结果复用、未重跑；另两项H和UI未执行。
 
-新157 raw SHA256883f2f80b615a0f746adb2ebbb6e17cc24d0ac577a61d236f3bb6375fbc0367d，support.mjs SHA256cac0e3070441db1ebd8e72a38753cddc7ef09374b3ce999988e01b7f0a8bceb8，pure test SHA256ec96385a3bccf4dcce3e99493b167693c0b2dd46ef4cb48825b90e76fca2c487。strict raw pin只认可新LF，不运行时normalize或接受双hash；原LF218b/旧CRLF05fdbc/新SQL的CRLF/篡改LF均拒。S按明确白名单先把旧05fdbc存ignored副本，再exact正式218b建立修复基线，未改冻结验收树旧文件。作者原source聚焦RED1后GREEN24/24，根类型、定向Lint/格式/语法/diff通过；无参source plan仅只读157通过，不作为DB证据。原Reviewer固定三hash源审Spec/Quality ACCEPTED C/I/M0，仅关闭I-S-MIG03源码finding。
+service-h-api-cwd-2a99bba-20261015共57份，manifest SHAa5307e17af39d842c1ed01b59acae261de8eee16a5454685a8d9137978c340af，summary SHAc5f8ba22857b2e9d34fb6f855c94c05ba82c9a89a8a004cc68a897c715807b3b；主控及原Reviewer全部bytes/hash核对，证据边界Spec/Quality C/I/M0，H业务仍BLOCKED。原H Owner仅静态诊断合法同源入口，禁止关闭/绕过产品Origin、防护配置放宽、泄露token或补权；不再实跑已知缺权限准备链，真实业务等用户授权。已审c11/212只作为测试安全修正接入另树独立候选，与必要文档收口；不合入/发布未验收分栏产品，不把新的测试/配置组合冒称实跑2a99旧完整门禁。
 
-源码及测试输入改变，须冻结新候选后正常完整verify及protected单项owned-schema真实重验，不能套用524旧完整门禁为新treePASS。旧524实际迁移FAIL、53份证据及更早失败原样保留；本节无PG/迁移PASS。public155、Grant hold及后续业务/16UI/预览边界不变，历史保留草案仍非执行授权。
+## 2a99 v6真实周期补证与UI启动准入（2026-10-15）
+
+原runner按新单从现存v6继续，20:36:16.890至20:37:31.005 UTC总74115ms，正常后台PID32568从health成功起真实monotonic存活65446.4402ms；原149表全当前行/结构/29Case列/安全/157账本/sequence/22source及target字节不变，精确advance21/audit915不再增加，12新表仍空。四类cleanup安全窗口重查通过，无手动扫描/业务API/时钟修改或禁用任务；自有后台停止、端口与锁释放。E32份证据在service-h-v6-cycle-2a99bba-20261015，E-hash-manifest SHA00be7f70533d494d75e1bb4bb71328805219c1dceec7128ba31fafeb16586c76由主控核全部bytes/hash，不伪称取得raw扫描{0,0}。
+
+同单H前检安全、固定工厂35Action无hold但缺已知三Action，protected发现恰1。正式第一次在启动webServer前因runner ignored配置未设项目cwd而找不到evidence/backend/dist/main.js，未进入测试/API、actor及Grant0；reporter未先保存formal token的证据缺口如实保留，不能称得到403或H业务失败。原runner已成功收到仅ignored配置cwd/reporter取证顺序修正的续办，fresh安全窗口后仍仅原首项，403即停不补Grant，不重E或verify。
+
+UI原Owner固定212b270a4b896d7e5340ae3ec6216afb2b5eee53/tree83caa350b12cf91150b7e01f859f15ba1b6a2f13，父c11；八文件增量只含已授权六入口路径及原support两处勘误。主控/原Sol核8源码+22证据共30份bytes/hash，原spec全文blob56b749c7a329320a1a199fe0fa8ff0cbfadf99af不变，16项/135断言保持。48/48入口纯测、79/79原source纯测及类型静态通过；三种正常离线counter配置均固定Pending、启动0，真实list16/启动0；dummy H无服务框架重放1/1只是配置兼容。原Sol Spec/Quality C/I/M0，可关闭受保护runner及默认root config的webServer-before-spec Important，不宣称覆盖任意外部自定义配置。全部16真实业务与待批权限仍Pending；未合入正在运行的2a99，旧完整门禁不扩大到此新八文件组合。根回执ui-webserver-212-root-receipt.json。
+
+## 2a99正常服务首次推进及未完成周期（2026-10-15）
+
+原唯一runner同clean2a99bba完成四类cleanup只读盘点（当前候选、非时间条件对象均0，deadline null）后启动正常自有后台。20:19:53.060 UTC，旧案d16c2ee8-9a31-456f-9836-79e1908636f9合法WAITING_HEARING/v5→WAITING_JUDGMENT/v6，精确advance5203c56f-f82e-4cda-955d-79615c270920、SYSTEM audit1e801808-a163-4768-bce4-eb0c87d4c1ec各追加1；原安排/轮次/entry/dueAt不变。主控执行单误列cases.updated_at，冻结实际29列没有该列，故原断言BLOCKED/exit1保留，不改schema。原只读收尾4644/4644证明其余旧行/安全/sequence/157账本/22份两端bytes不变，新12表仍空；推进总21、审计915。健康仅约5.2秒，60秒周期NOT_PROVEN，H未运行/Grant0；自有后台已停止，端口和锁释放。
+
+34份证据service-h-2a99bba-20261015的manifest SHA3960f48a7e77e4cf7eb22d0a1077c8226d90928c8615e47fe3cea619a6c74983、summary SHA6d34569689cd036cd47f82627b2d18f5b07dc0703771c0053ab26b250333ab85由主控及原Reviewer核bytes/hash，既有转移与恢复边界源码审C/I/M0，不是完整服务验收。新runner-2a99bba-v6-cycle-continuation.md SHA8b43e415f58d3468836bcb7bfb8fc74c4a202210ca5ce7ca1d94c566c40a2bca已独立窄审：以真实v6及既有advance/audit为基线，fresh cleanup安全窗口后观察health起至少65秒无任何再变；成功再按原范围H首API1项，403即停不补Grant。发送原runner遇AbsolutePathBuf路由错误，未确认接单；旧失败不覆盖，待父级有效通道续办。全部实际UI及待批权限仍hold。
+
+## 2a99正式Prisma部署与真实历史、文件保持（2026-10-15）
+
+固定clean2a99bba578a0a98743302478c8312d4a36a9bf8c/tree3f594e58ebe0eda47accad405725e280da090692，原唯一runner按精确执行单完成A/B/C。A在单标准锁内用COPYFILE_EXCL复制22文件3886bytes（来源列表16/公证4/开庭2），每项copy前后原source与新target stream SHA/size匹配、逐层no-reparse/escape，无覆盖/move/delete，旧137列投影及安全/Case/sequence保持、锁释放。B在A锁释放后一次正常pnpm db:test:migrate:deploy，通过固定pnpm→scripts/run-test-migration.mjs→Prisma7.10.0自行取锁，19:46:11.437至19:46:15.039 UTC实际exit0，原输出明确应用156/157；实际ownerPID21712/token f17c1246-91e8-4abb-a726-1d1bf7437988被观察live并结束释放。没有rawSQL替代、alternateURL、修改SQL、retry/resolve/rollback/reset；正式CLI发送边界由这次实际部署独立证明，不再只依据owned replay推定。
+
+C独立READ ONLY后检确认public账本157完整名/checksum/finished/noRollback、原155全账本整行hash不变，仅新增156/157两成功行；原137表按原列/PK投影4336行逐项保持（账本对原155行单独投影），全部67Case头、旧轮次/来源/事实/回执/audit/材料/ref、9完整安全表及baseline3用户/3角色/66Grant、sequence不变。新增12模型表全0、旧draft5新列及旧CV1新FK共6列均null；四旧函数pg_get_functiondef只精确日期输入literal替换，其余旧函数/索引/触发器/ACL等已核。22原source及runtime target真实bytes全匹配，原due案d16c2ee8仍v5/WAITING_HEARING，无服务调度。closure/archive及DELETED/PURGED等旧零行覆盖限制沿预检据实保留，不虚构这些历史或恢复证明。
+
+原post-result.json必须保留为BLOCKED/exit1（3788/3789）：唯一new-constraints-within-frozen-ddl检查漏计旧表上的合法CREATE CONSTRAINT TRIGGER对应pg_constraint contype=t行，不是产品迁移或旧数据失败。原SHA a65ee1ad99468deeb4f988fe17fedc42ffad6df9bc700c324b8153f767ffeb87未覆盖。仅使用已保存schema-before/after与冻结156/157做离线补证，未再连DB/重迁移：旧1210约束0漂移；新增162中36个t精确对应156静态14、157静态2及动态20consumer，旧表18，逐表/名称/时点/deferrable/函数/动态列参数一致；其余126普通约束为12新表123及旧表明确3项。普通约束中49个63字符名称为PG截断，按DDL类别/定义核对，不以原长字符串直接猜名。addendum SHA47666d04e04f43a0a0354c950adc9a057d85244f550a5171692d82564931dfdd绑定原post SHA，仅处理本批已核字面量不含空白/引号/public限定的deparse呈现，不是通用SQL parser。主控及原Reviewer据原3788项与严格补证综合接受阶段C，不能改写为原3789项同轮全过。
+
+最终证据section-record-edit-frontend-integration/.local/ui003-evidence/public-upgrade-2a99bba-20261015/含52份manifest，主控及原Reviewer逐项bytes/SHA匹配；manifest SHA071d761e2e7d7bbd11cd5cdcfe0c8732922474c67f315d4da835bba0431f2446，summary SHA4b6e9da68582fbe03958b49dd977aa882b4106ed5b4072a72bf4d87f9cf64c3f。阶段Spec/Quality ACCEPTED C/I/M0，根回执.local/ui003-evidence/public-upgrade-2a99bba-root-receipt.json；同1197 tracked输入/737构建hash不变，限定复用2a99完整verify，不重跑。旧28/36/39/53/50/18份证据不变，备份两文件只核byte未移/restore，端口与锁最终空闲，未Grant/新actor/服务/UI/预览操作。
+
+后续边界：服务启动前除hearing due盘点，还须按MaterialCleanupService四类真实where核当前与下一到期时刻并覆盖启动/观察安全窗口，不能只凭当前0推断未来0；不得改日期/禁scheduler或清理旧bytes。父级已允许把旧due案自然推进独立记录，H首条API可按既有冻结factory（无external-entry Action）范围实际验证，失败停、不临时补Grant。E/156bridge/S当前factory显式含hold的case.external-entry.create，暂不可运行。合并权限请求.local/ui003-evidence/section-validation-permission-request.md/.json准确记录基线roleA/B/SELF为23/23/20=66（不是22×3），管理user.manage/lawyer.account.manage已在基线A/B但不可私复制，正常UI另缺5流程Action；前三新执行更正标签无自动Grant。既有UI c11四文件移除S/H外部工厂，79纯回归、类型静态与发现16通过，只关闭测试源码unsafe委托风险。Playwright1.63正常run在load/beforeAll前先启动webServer，故不能声称整个运行在capture/DB前拒；该独立Important开放、c11暂不合入、全部16真实UI继续Pending。日期硬规则和持久预览冻结。
+
+## 2a99历史只读预检与后续准入边界（2026-10-15）
+
+19:28:00.769至19:28:04.190 UTC，同clean2a99bba578a0a98743302478c8312d4a36a9bf8c/tree3f594e58ebe0eda47accad405725e280da090692，唯一runner完成只读历史预检exit0，结论READY_FOR_EXACT_COPY_REVIEW。标准锁实际PID42748/token d84824d5-9b80-43a3-8c20-735f7b76b850，结束释放，3101/5174前后空闲。PG快照为REPEATABLE READ READ ONLY，137表4336行按全部原列/类型/PK逐行hash、完整结构/enum/ACL/sequence/155账本前后相同；包含67Case头、65round、全部原typed/receipt/audit/material/reference和9完整安全表，另列baseline3用户/3角色/66Grant，不仅保护baseline。closure/archive等实际零行表明确记覆盖限制，不虚构这些历史事实。既有Temp dump/TOC字节与canonical备份摘要相容，未restore、不含库外blob。
+
+全部CV实测22，AVAILABLE22、DELETED/PURGED均0；批准四根内22/22真实stream SHA/size匹配，父链lstat/realpath无reparse逃逸、无缺失或冲突，无metadata-only无法验证项。来源ui003-list-module-baseline16、公证列表4、hearing2；当前验收树私密根0/22。封存proposed-missing-only-copy.json精确22唯一CV/目标，共3886bytes，raw SHA256815c23e94766a800623d1765655316a0cfd68b80412445949397ec6857fc00e7。只形成复制建议，未copy/move/delete或改DB指针。后续须复制前重验、拒覆盖、复制后原/目标字节复核；官方pnpm db:test:migrate:deploy及原137旧列/新增null列/旧155账本加两成功行的实际证明仍待独立执行，owned回放不替代该边界。
+
+真实只读调度盘点：Shanghai日期2026-10-16，WAITING_HEARING7、过期且满足固定服务源/当前安排/轮次/版本条件1，case d16c2ee8-9a31-456f-9836-79e1908636f9，v5，hearing2026-10-10，当前advance为空。onModuleInit立即scan，故后续UI服务可能合法推进该旧案；须先明确记录该变化，不能误算为迁移改写，当前未调scan/启动服务/改日期。
+
+证据section-record-edit-frontend-integration/.local/ui003-evidence/history-preflight-2a99bba-20261015/共18份，manifest SHA2569aecbc6973950aab276b606dd0d49cff170f02b82a505e5c76d369d941b343f5，summary SHA256645985bde89648b8280152f65ff82966491271c343f96368e063fee46dc4f058；主控及原Reviewer逐项bytes/hash核对，并重核原50份不变，回执.local/ui003-evidence/history-preflight-2a99bba-root-receipt.json。原Reviewer最终Spec/Quality ACCEPTED C/I/M0。没有重复verify/owned、public升级、seed/Grant、备份移动/恢复或UI。
+
+父级本轮已批准精确missing-only复制与无服务R2正式前向升级，主控固定执行单.local/ui003-evidence/runner-2a99bba-copy-public-upgrade-admission.md SHA256887ad05332330a834bcdf8a1f7b3d80dc4cb882e265a0193da7da8181816aeca，原Reviewer准入C/I/M0；A复制锁释放后B官方入口自己取锁，失败不resolve/retry/reset，C逐列旧行/全安全/sequence/真实bytes保持及新null/新表空/账本两成功行实证。发原runner被AbsolutePathBuf路由错误拒绝、未确认送达，不重试；当前仍无copy/public部署。父级另明确后续服务启动时应单列上述真实due案的合法推进，记录精确头/安排/advance/audit并证明只预期案变化且无重复推进，不改日期/删案或禁用生产规则；这不属于当前无服务迁移单，也不是业务推进已发生的证明。
+
+I-SECTION-UI-GRANT01为新增Important测试准入阻断：case-section-record-ui-database.mjs的actor factory调用S createSectionUploadActor，后者写入仍hold的case.external-entry.create新Grant；spec external()及两层own校验均依赖历史转入来源。因此原五kind UI16不能称为不依赖该Grant，当前禁止执行。原UI应在既有已批准权限下用真实正常来源/流程API准备新对象，保留本run actor/源链归属、CAS/文件/回执断言；无法合法构造者保持Pending，不换角色绕过、不直接伪造Case/stage、不改baseline安全行。该问题不追改既有产品源码质量结论，也不阻只读历史及独立迁移。根向原UI发送续办消息被自动审批以当前发送授权证据不足拒绝，未送达/未重试；准备说明.local/ui003-evidence/ui-grant01-owner-relay.md及非运行升级草案r2-public-upgrade-next-draft.md已落盘，待明确发送授权，不能代发绕过拒绝。
+
+## 2a99完整门禁与owned-schema风险专项通过（2026-10-15）
+
+固定clean2a99bba578a0a98743302478c8312d4a36a9bf8c/tree3f594e58ebe0eda47accad405725e280da090692，19:06:53至19:10:41 UTC正常完整pnpm verify实际exit0：工具11套94项、前端124文件2207项、后端120套1850项、全部严格context/Spec/架构/Prisma生成/类型/Lint/格式和本树双构建通过。NT006实际标准锁PID20976/token9b75e2dc-7a7a-4cb2-9205-1835d7c6a407于19:09:22.802观察并释放；source及737构建产物manifest留证，不复用旧候选充作本次执行。私密archive/TOC仅size/hash/metadata复核，未还原或读取内容。
+
+同树protected --list实际恰1文件1项、exit0，随后唯一DB-only spec真实1/1 expected、unexpected/skipped/flaky/retry均0，正式5.1秒、exit0。真实sanitized attachment source157，六checks精确通过：empty-original-chain157、156-controlled-failure-and-original-retry、four-functions-exact-literal-date-replacements、157-controlled-failure-and-original-retry、old155-projected-data-acl-file-metadata-preserved、owned-foreign-keys。156原前缀与事务两次query发送，受控失败后精确残留mailing/filing/finish三个新Action enum再原字节重试；157失败后labels=[]再原字节重试。内存文件64字节、SHA256b8749b4769c204cad585d91b3930f9014569e95d002cd6d24fb787cfe592428b；fixture明确仅ACL+DRAFT客户+文件metadata/内存bytes，排除真实Case历史和存储blob。
+
+helper三次public摘要一致，自有empty/upgrade schema均按受审保护清理，cleanedSchemas2、无手工cleanup或残留，最终仅public。外围前/门禁后/最终public155全部名称/checksum/finished/noRollback、137表4336行、结构/事实/全部安全摘要/sequence及标准指纹保持。发现实时ownerPID40108与正式PID29388独立记录，结束释放；未启动业务服务或页面，按原retain-on-failure策略PASS不生成trace，不伪称已有成功trace。原28/36/39/53份旧失败证据hash全部匹配、无覆盖。
+
+最终证据section-record-edit-frontend-integration/.local/ui003-evidence/migration-2a99bba-20261015/含50份manifest，主控与原Reviewer逐项核hash/bytes；manifest SHA2569d116cca20ba32f7d1eb9f1b27f89685141ebf9cd6ddfb33b56d1f1ce38cde19，acceptance-summary SHA256806ec217cccb143d63ad929c57714662985a384ba5d9faf83ba085db9d27fdd5。阶段Spec/Quality ACCEPTED C0/I0/M0，只关闭该完整门禁及owned风险验收；不扩大为正式Prisma public deploy、真实旧Case/blob保持或16UI通过。正式Prisma发送边界仍由后续实际CLI独立证明，不因两query replay推断已过或反向定性为bug。
+
+按父级明确的隔离R2开发授权，根已给只读历史保留前检单（.local/ui003-evidence/runner-2a99bba-history-preflight-admission.md），原Reviewer受限审C/I/M0：同固定树/身份、单标准锁、137表原列与Case/回执/全安全及baseline66摘要、全CV状态/指定四R2根内真实byte保留版本hash/size、PURGED不恢复、缺失/冲突精确清单，Temp备份仅hashmetadata；不copy/move/deploy/login/Grant。根续办通知被AbsolutePathBuf路由错误拒绝、未送达，所以该只读单尚未运行；这不是待用户重复批准正常步骤。取得实际物理位置/缺失copy清单后再给精确missing-only copy及正常pnpm db:test:migrate:deploy边界和旧列/新增null/旧ledger+新2行的比对，之后独立五kind UI16。external-entry新Grant仍待用户，不能换actor绕过；预览/生产不属于本授权。
 
 ## 524完整门禁通过、157真实回放失败（2026-10-15）
 
@@ -17,14 +67,6 @@
 真实sanitized attachment source157，checks=[]、enumStaging=[]、memoryFile未达，upgrade/失败重试/旧数据矩阵未运行，不能扩大为156或157风险验收通过。自有empty schema安全清理1个、无手工cleanup，最终仅public。三次helper public摘要相同；外围public155全名称/checksum/finished/noRollback、137表4336行、结构/事实/原安全cohort及指纹前后相同。发现实时锁PID18544与正式PID5896分开留证，结束均释放；实际失败trace/JSON保留，未启动业务服务/页面。
 
 最终证据section-record-edit-frontend-integration/.local/ui003-evidence/migration-524dc06-20261015/含53份manifest，主控逐一核hash/bytes匹配，manifest SHA256ea0f78d491e938fa21530bf33dffca78e272892b3eedf6390b374182de2c10e1、acceptance-summary SHA256d0f32ffa9f22fa6904412ef91e8739e32266adff4e0f57d9448247b8127cd5df。原28/36/39份历史证据hash不变。原独立Reviewer本轮完整门禁子阶段PASS、迁移REJECTED C0/I1/M0；旧I-S-MIG02源码已关闭，不能据此跳过新157失败继续部署。下一步历史旧列投影与真实blob保留的准入草案已受限审C/I/M0，仍非执行授权；public部署、Grant、业务/16UI、预览及备份恢复均未执行。
-
-## I-S-MIG02参数消歧修复源准备（2026-10-15）
-
-原S从正式48d新分支codex/section-record-migration-enum-fix固定三文件ab2128d1615a09c2f0629e614741e96359b3a5e5/treef72efe0a02865255807f952d82e351fd9875a2d5，正式运行目录独立接为5f9f8a2f6bda8165749c8b39e581d9cb0f5a15f9。156函数case_section_trial_date_valid仅签名657及谓词684/698的kind改为p_kind；六参数类型/位置、调用、枚举、日期上下界、链/守卫其余字节未改，逆三替换整个raw精确恢复原87e2。新156 raw SHA25610760cf6e9969822a6b6a631760645625d227c4541a018560473e34c164953c7，专项support SHA256e92cc4099ef30385b550d1346f4f1119df0bea1fdc9d44f6b954743c6daa44e4、pure test SHA2565c419fffe20b79d9166af57ff482921be4d9b05b1e31e8f6b3168739e9694f57；strict pin仅更新156，新加旧156/篡改字节拒绝和两分支参数消歧回归，旧157 raw拒绝保持。
-
-作者原SQL聚焦RED1/1失败，修复后21/21纯测试、根类型、定向Lint/格式/语法/diff检查通过，原独立Reviewer按三文件固定hash核对Spec/Quality ACCEPTED、C0/I0/M0，I-S-MIG02只关闭源码finding。证据原S .local/section-migration-enum-fix/candidate.json与红绿/静态日志。S本地157受Git换行转换仍05fdbc，未修改或提交，默认原始plan应拒绝；其pure test只在自有临时目录构造正式canonical夹具，不当作实库或S默认plan可运行证明。集成仅接三文件，正式157保持218b原字节，旧155不改。
-
-新SQL输入改变，48d通过结果仅作为历史，不覆盖本新tree；固定候选仍须正常完整verify、protected发现恰1项和唯一DB-only owned-schema真实重验。public保持155，禁止新增Grant/真实public部署/16UI/预览。本节没有新的PG、迁移或浏览器PASS。
 
 ## 48d发现入口修正、156真实回放失败（2026-10-15）
 
@@ -43,12 +85,6 @@ sanitized attachment记录source157、checks=[]、enumStaging=[]、memoryFile未
 随后准确protected单迁移spec --list于18:18:14至18:18:16 exit1：Node36504无法以当前加载模式导入scripts/test-environment.mjs，SyntaxError Cannot use import statement outside a module，support case-section-record-migration.mjs:6经spec:2触发，0文件0测试。正式SQL重放未运行，无owned schema/trace；实际reporter onBegin已读取并校验短命discovery活锁PID6184，tests=[]，原summary称未捕获的表述已在上节按sealed回执更正。R2前置、verify后、最终public155完整ledger、137表4336行、public结构/数据与安全cohort摘要相同，标准指纹87ddb629496fbfadd83a201c2518d2ed3406badfff2fd3843d2804f93e18cd42保持，最终无锁且端口空闲；没有public deploy/Grant/新UI/预览或备份还原。
 
 最终证据section-record-edit-frontend-integration/.local/ui003-evidence/migration-48d5bbe-20261015/含36项manifest、verify.log、退出码、发现错误、当前源构建manifest、NT006实际锁与三次capture。主控逐项hash/bytes匹配，manifest SHA256373f1514870c04169929a1d8c58190c530967eb45cc50b91f4428681db432a93；verify.log SHA25610643172082866a4ae48c273a5303c900302d60e15d25f6a3c14ed7b9bedd180。原S只离线诊断配置loader归属，正式源48d当前未改；该完整门禁可按精确不变输入限定复用，发现入口/相关受影响门禁和真实S专项仍待验证、独立审查与新精确指派。不得因单入口问题机械重跑已通过的全仓，也不得跳过模块错误执行未发现的测试。
-
-## 旧结案工作流测试入口修复源准备（2026-10-15）
-
-原UI固定0fe49ae6a9a29924ab8afc7b5a690ddabb7d152a/treeab5869ab8684bc7b531a82946c63cd3c8a4404b8，仅CaseClosureDetailIntegration.spec.ts +13/-3，SHA256d2b7bd0487446fc78bd7721e5071ad3bdffb2e550a2888fdffdef9f13bae13f1。旧fixture不带recordEdits，分栏资料编辑准确禁用；该用例实际验证旧correctCaseClosure/Case.version20到21，现明确点击真实closure-correct工作流入口，不修改fixture或产品。原零金额、精确files、finish/closure双锚、原因空白和两版history断言保留，补原主动作与显式GET刷新加1。作者保留RED14/15后GREEN15/15；相邻CaseWorkspaceIntegration、case-workspace-actions、CaseClosurePanel合计121/121，前端类型/单文件Lint/格式通过。原独立Reviewer按固定SHA与六日志hash逐项核对，Spec/Quality C/I/M0，I-CLOSURE-VERIFY01关闭。根接入为fb57a2fe0be68da348300626ac4f7d85c31bf48e，hash一致。
-
-这只关闭已定位的过期测试导航问题；下面ebba整次正常verify仍保留FAIL。新候选正常完整verify/后端及NT006/双构建、owned-schema单项均待实际运行，不以15或121项代替；public155、Grant hold及未授权16 UI/真实升级边界保持。
 
 ## ebba正常完整门禁失败并安全停止（2026-10-15）
 
