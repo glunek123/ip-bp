@@ -2456,7 +2456,7 @@ test('keeps direct second-instance execution resubmission and frozen confirmatio
     documentContentVersionIds: [],
     serviceContentVersionIds: [],
   };
-  const saved = await body<{ progressId: string; version: number }>(
+  const saved = await body<{ progressId: string | null; version: number }>(
     await request.post(`/api/v1/cases/${created.id}/second-instance-save`, {
       headers: operator,
       data: {
@@ -2646,7 +2646,7 @@ test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, a
     serviceContentVersionIds: [],
   };
   const saved = await body<{
-    progressId: string;
+    progressId: string | null;
     stage: string;
     version: number;
   }>(
@@ -2665,7 +2665,8 @@ test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, a
   );
   expect(saved).toMatchObject({
     stage: 'SECOND_INSTANCE',
-    version: initial.version + 1,
+    progressId: null,
+    version: initial.version,
   });
 
   const remandBytes = Buffer.from(
@@ -2678,7 +2679,7 @@ test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, a
     remandBytes,
   );
   const remanded = await body<{
-    progressId: string;
+    progressId: string | null;
     resultId: string;
     stage: string;
     version: number;
