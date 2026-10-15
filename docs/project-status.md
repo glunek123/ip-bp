@@ -6,6 +6,8 @@
 
 唯一Current为CORE-UI-003两项独立前端小闭环，已按用户要求并行开发；CA018已验收并原子交付，远端main／任务分支和本地主main实核1f375ea。持久预览source81ebfed／150人工测试窗口保持；CA019仍占位未定范围。
 
+恢复检查点（2026-10-15 06:37 UTC）：集成产品HEAD d92dc8879cb9cfda109e5590bffdd50315df8f77，A来源60ff427、B最新来源3a2c3fecf32ec77d82c73e7809184f4fb2f3e48b；根四文件组合54/54真实通过，但check:fast exit2，LeadListPage.spec:164报stored可能undefined，后续根TSC／Lint未执行，不称静态通过。B首轮修复跨身份map及原Panel回执版本后，原Reviewer又报I-UI003-02同身份旧迟到响应清较新attempt、M-UI003-02新增List成功mock缺真实必填；B正在原四文件继续修复，累计未接纳。首轮NT010浏览器在准备阶段23514失败，第二项未运行；不再写旧15433、不禁用不可变约束，新的隔离容器准入由根会话单独派可见任务。本线程继续UI组合、静态和唯一权威文档写入，人工预览／生产不动；准确脚本、纯探针和未决验收见VALIDATION末节。
+
 ## 当前任务
 
 **CORE-UI-003｜线索单条快捷办理与公证共用原因批填：两位Luna已实际开工，候选未接纳。** I复用ca015-integration／codex/ui003-quick-actions-integration，从已交付1f375ea开始；A在ca016-frontend-integration／codex/uxq01-notary-common-reason，只改NotaryReturnArchiveBatchPanel与spec；B在ca016-case-list-display／codex/uxq01-lead-quick-actions，独占List／新QuickPanel／EditPage各自vue和spec。两者基于79a同产品，旧分支保留、无写入者冲突。B现场确认原Edit保存／取消只回详情，I最小扩两文件补内部合法returnTo；禁止任意重定向、改原详情／API／后端。共用原因只填空白、逐项核对；快捷动作先getLead取最新真实能力和版本，未知结果原key恢复，关闭／对象／账号变化和迟到响应不串数据。详见路线图本批所有权表。尚无本批通过结论，待Worker聚焦和I组合检查／独立可用性复审；预览、CA018已交付候选和删除规则不变。
