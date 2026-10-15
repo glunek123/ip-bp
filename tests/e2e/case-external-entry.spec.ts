@@ -19,9 +19,11 @@ import { prepareCaseFilingFixture } from '../support/case-filing-database.mjs';
 import { allowOtherEnterpriseAccountSetup } from '../support/case-complaint-mailing-database.mjs';
 import {
   assertCaseExternalEntrySqlGuards,
+  caseExternalEntryCreateCounts,
   caseExternalEntrySnapshot,
   clearCaseExternalEntryFixture,
   setCaseExternalEntryGrant,
+  withCaseExternalEntryCreateFault,
 } from '../support/case-external-entry-database.mjs';
 
 const operator = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
@@ -2724,6 +2726,130 @@ test('returns a fixed receipt for exact replay and conflicts on a changed body',
   const snapshot = await caseExternalEntrySnapshot(created.id);
   expect(snapshot.entries).toHaveLength(1);
   expect(snapshot.receipts).toHaveLength(1);
+});
+
+test('serializes concurrent create receipts and keeps distinct keys distinct', async ({
+  request,
+}) => {
+  const samePayload = input('WAITING_COMPLAINT');
+  const sameResponses = await Promise.all(
+    Array.from({ length: 4 }, () =>
+      request.post('/api/v1/cases/external-entries', {
+        headers: operator,
+        data: samePayload,
+      }),
+    ),
+  );
+  const sameReceipts = await Promise.all(
+    sameResponses.map((response) => body<Created>(response, 201)),
+  );
+  for (const receipt of sameReceipts) expect(receipt).toEqual(sameReceipts[0]);
+  expect(
+    await caseExternalEntryCreateCounts(
+      samePayload.source,
+      samePayload.idempotencyKey,
+    ),
+  ).toEqual({
+    entries: 1,
+    cases: 1,
+    audits: 1,
+    receipts: 1,
+    defendants: 0,
+    lawyers: 0,
+  });
+
+  const distinctPayloads = Array.from({ length: 3 }, () =>
+    input('WAITING_COMPLAINT'),
+  );
+  const distinctResponses = await Promise.all(
+    distinctPayloads.map((payload) =>
+      request.post('/api/v1/cases/external-entries', {
+        headers: operator,
+        data: payload,
+      }),
+    ),
+  );
+  const distinctReceipts = await Promise.all(
+    distinctResponses.map((response) => body<Created>(response, 201)),
+  );
+  expect(
+    new Set(distinctReceipts.map(({ businessNo }) => businessNo)).size,
+  ).toBe(3);
+  for (const [index, payload] of distinctPayloads.entries()) {
+    expect(
+      await caseExternalEntryCreateCounts(
+        payload.source,
+        payload.idempotencyKey,
+      ),
+    ).toEqual({
+      entries: 1,
+      cases: 1,
+      audits: 1,
+      receipts: 1,
+      defendants: 0,
+      lawyers: 0,
+    });
+    const replay = await createEntry(request, payload);
+    expect(replay).toEqual(distinctReceipts[index]);
+  }
+  expect(
+    await caseExternalEntryCreateCounts(
+      samePayload.source,
+      samePayload.idempotencyKey,
+    ),
+  ).toMatchObject({ entries: 1, cases: 1, audits: 1, receipts: 1 });
+});
+
+test('rolls back every create write when audit, entry, or receipt insertion fails', async ({
+  request,
+}) => {
+  for (const phase of ['audit', 'entry', 'receipt'] as const) {
+    const payload = input('WAITING_COMPLAINT', {
+      defendants: [
+        { kind: 'PERSON', name: `CA018 fault ${phase} defendant one` },
+        { kind: 'ORGANIZATION', name: `CA018 fault ${phase} defendant two` },
+      ],
+    });
+    const injected = await withCaseExternalEntryCreateFault(
+      payload,
+      phase,
+      () =>
+        request.post('/api/v1/cases/external-entries', {
+          headers: operator,
+          data: payload,
+        }),
+    );
+    expect(injected.status, `${phase} insert fault must reach the API`).toBe(
+      500,
+    );
+    expect(
+      injected.faultReached,
+      `${phase} trigger sequence must advance`,
+    ).toBe(true);
+    expect(
+      injected.after,
+      `${phase} failure must roll back the whole write`,
+    ).toBe(injected.before);
+
+    const retried = await createEntry(request, payload);
+    expect(retried).toMatchObject({
+      stage: 'WAITING_COMPLAINT',
+      version: 1,
+    });
+    expect(
+      await caseExternalEntryCreateCounts(
+        payload.source,
+        payload.idempotencyKey,
+      ),
+    ).toEqual({
+      entries: 1,
+      cases: 1,
+      audits: 1,
+      receipts: 1,
+      defendants: 2,
+      lawyers: 0,
+    });
+  }
 });
 
 test('enforces strict body, internal-only scope, and authorization before receipt replay', async ({

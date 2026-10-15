@@ -32,3 +32,30 @@ export function assertCaseExternalEntrySqlGuards(
   caseId: string,
   otherEntryId: string,
 ): Promise<void>;
+export function caseExternalEntryCreateCounts(
+  source: string,
+  idempotencyKey: string,
+): Promise<{
+  entries: number;
+  cases: number;
+  audits: number;
+  receipts: number;
+  defendants: number;
+  lawyers: number;
+}>;
+export function withCaseExternalEntryCreateFault(
+  payload: {
+    idempotencyKey: string;
+    source: string;
+    customerId: string;
+    rightsHolderId: string;
+    stageReachedOn: string;
+  },
+  phase: 'audit' | 'entry' | 'receipt',
+  operation: () => Promise<{ status(): number }>,
+): Promise<{
+  status: number;
+  faultReached: boolean;
+  before: string;
+  after: string;
+}>;

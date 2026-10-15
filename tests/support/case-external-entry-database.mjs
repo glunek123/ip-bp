@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { coreLeadFixtures } from './core-lead-database.mjs';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
@@ -370,4 +371,236 @@ export async function assertCaseExternalEntrySqlGuards(caseId, otherEntryId) {
       ],
     );
   });
+}
+
+export async function caseExternalEntryCreateCounts(source, idempotencyKey) {
+  return withDatabase(async (client) => {
+    const result = await client.query(
+      `SELECT
+         (SELECT count(*) FROM case_external_entries e
+          WHERE e.source=$1) AS entries,
+         (SELECT count(*) FROM case_external_entries e JOIN cases c
+          ON c.id=e.case_id WHERE e.source=$1) AS cases,
+         (SELECT count(*) FROM audit_events a
+          WHERE a.action='case.external-entry.created'
+            AND a.details->>'source'=$1) AS audits,
+         (SELECT count(*) FROM case_external_entry_receipts r
+          WHERE r.department_id=$3 AND r.actor_user_id=$4
+            AND r.idempotency_key=$2) AS receipts,
+         (SELECT count(*) FROM case_defendants d JOIN case_external_entries e
+          ON e.case_id=d.case_id WHERE e.source=$1) AS defendants,
+         (SELECT count(*) FROM case_lawyer_assignments l JOIN case_external_entries e
+          ON e.case_id=l.case_id WHERE e.source=$1) AS lawyers`,
+      [
+        source,
+        idempotencyKey,
+        coreLeadFixtures.departmentA,
+        coreLeadFixtures.userA,
+      ],
+    );
+    return Object.fromEntries(
+      Object.entries(result.rows[0]).map(([key, value]) => [
+        key,
+        Number(value),
+      ]),
+    );
+  });
+}
+
+export async function withCaseExternalEntryCreateFault(
+  payload,
+  phase,
+  operation,
+) {
+  const phases = {
+    audit: {
+      table: 'audit_events',
+      when: (source) =>
+        `NEW.action='case.external-entry.created' AND NEW.details->>'source'=${source} AND NEW.department_id='${coreLeadFixtures.departmentA}'::uuid AND NEW.actor_user_id='${coreLeadFixtures.userA}'::uuid`,
+    },
+    entry: {
+      table: 'case_external_entries',
+      when: (source) => `NEW.source=${source}`,
+    },
+    receipt: {
+      table: 'case_external_entry_receipts',
+      when: (source, key) =>
+        `NEW.idempotency_key=${key} AND NEW.department_id='${coreLeadFixtures.departmentA}'::uuid AND NEW.actor_user_id='${coreLeadFixtures.userA}'::uuid`,
+    },
+  };
+  const selected = phases[phase];
+  if (
+    !selected ||
+    !payload.source?.startsWith('CA018 E2E:') ||
+    !payload.idempotencyKey ||
+    payload.customerId !== coreLeadFixtures.admittedCustomer ||
+    payload.rightsHolderId !== coreLeadFixtures.holder
+  )
+    throw new Error('Fault injection requires a fixed CA018 synthetic payload');
+
+  const token = randomUUID().replaceAll('-', '');
+  const triggerName = `ca018_fault_${token}`;
+  const functionName = `ca018_fault_${token}_fn`;
+  const sequenceName = `ca018_fault_${token}_hit`;
+  const literal = (value) => `'${String(value).replaceAll("'", "''")}'`;
+  return withDatabase(async (client) => {
+    const target = (
+      await client.query(
+        `SELECT u.id,m.department_id
+         FROM user_accounts u JOIN department_memberships m ON m.user_id=u.id
+         WHERE u.id=$1 AND m.department_id=$2 AND u.active AND m.active
+           AND u.account_type='INTERNAL'`,
+        [coreLeadFixtures.userA, coreLeadFixtures.departmentA],
+      )
+    ).rows;
+    if (target.length !== 1)
+      throw new Error('Fixed CA018 synthetic actor membership missing');
+
+    const sourceMatches = (
+      await client.query(
+        'SELECT id FROM case_external_entries WHERE source=$1',
+        [payload.source],
+      )
+    ).rows;
+    const receiptMatches = (
+      await client.query(
+        `SELECT id FROM case_external_entry_receipts
+         WHERE department_id=$1 AND actor_user_id=$2 AND idempotency_key=$3`,
+        [
+          coreLeadFixtures.departmentA,
+          coreLeadFixtures.userA,
+          payload.idempotencyKey,
+        ],
+      )
+    ).rows;
+    const auditMatches = (
+      await client.query(
+        `SELECT id FROM audit_events
+         WHERE action='case.external-entry.created' AND details->>'source'=$1`,
+        [payload.source],
+      )
+    ).rows;
+    if (
+      sourceMatches.length !== 0 ||
+      receiptMatches.length !== 0 ||
+      auditMatches.length !== 0
+    )
+      throw new Error('Fault input must be unused before injection');
+
+    const before = await caseExternalEntryWriteSnapshot(
+      client,
+      payload.source,
+      payload.idempotencyKey,
+      payload.stageReachedOn,
+    );
+    let sequenceCreated = false;
+    try {
+      await client.query(`CREATE SEQUENCE public."${sequenceName}"`);
+      sequenceCreated = true;
+      await client.query(
+        `CREATE FUNCTION public."${functionName}"() RETURNS trigger
+         LANGUAGE plpgsql AS $ca018_fault$
+         BEGIN
+           PERFORM nextval('public.${sequenceName}'::regclass);
+           RAISE EXCEPTION 'CA018 injected create fault' USING ERRCODE='P0001';
+         END
+         $ca018_fault$`,
+      );
+      const when = selected.when(
+        literal(payload.source),
+        literal(payload.idempotencyKey),
+      );
+      await client.query(
+        `CREATE TRIGGER "${triggerName}" BEFORE INSERT ON public."${selected.table}"
+         FOR EACH ROW WHEN (${when})
+         EXECUTE FUNCTION public."${functionName}"()`,
+      );
+
+      const response = await operation();
+      const hit = (
+        await client.query(
+          `SELECT last_value,is_called FROM public."${sequenceName}"`,
+        )
+      ).rows[0];
+      const after = await caseExternalEntryWriteSnapshot(
+        client,
+        payload.source,
+        payload.idempotencyKey,
+        payload.stageReachedOn,
+      );
+      return {
+        status: response.status(),
+        faultReached: hit.is_called && Number(hit.last_value) === 1,
+        before,
+        after,
+      };
+    } finally {
+      await client.query(
+        `DROP TRIGGER IF EXISTS "${triggerName}" ON public."${selected.table}"`,
+      );
+      await client.query(`DROP FUNCTION IF EXISTS public."${functionName}"()`);
+      if (sequenceCreated)
+        await client.query(`DROP SEQUENCE IF EXISTS public."${sequenceName}"`);
+    }
+  });
+}
+
+async function caseExternalEntryWriteSnapshot(
+  client,
+  source,
+  idempotencyKey,
+  businessDate,
+) {
+  const cases = (
+    await client.query(
+      `SELECT to_jsonb(c)::text AS row FROM cases c
+       WHERE c.department_id=$1 AND c.responsible_user_id=$2
+       ORDER BY c.id`,
+      [coreLeadFixtures.departmentA, coreLeadFixtures.userA],
+    )
+  ).rows;
+  const parties = {};
+  for (const [name, table] of [
+    ['defendants', 'case_defendants'],
+    ['lawyers', 'case_lawyer_assignments'],
+  ]) {
+    parties[name] = (
+      await client.query(
+        `SELECT to_jsonb(p)::text AS row FROM "${table}" p
+         JOIN cases c ON c.id=p.case_id AND c.department_id=p.department_id
+         WHERE c.department_id=$1 AND c.responsible_user_id=$2
+         ORDER BY p.case_id,p.id`,
+        [coreLeadFixtures.departmentA, coreLeadFixtures.userA],
+      )
+    ).rows;
+  }
+  const counter = (
+    await client.query(
+      'SELECT to_jsonb(c)::text AS row FROM case_number_counters c WHERE business_date=$1::date',
+      [businessDate],
+    )
+  ).rows;
+  const entries = (
+    await client.query(
+      'SELECT to_jsonb(e)::text AS row FROM case_external_entries e WHERE e.source=$1 ORDER BY e.id',
+      [source],
+    )
+  ).rows;
+  const audits = (
+    await client.query(
+      `SELECT to_jsonb(a)::text AS row FROM audit_events a
+       WHERE a.action='case.external-entry.created'
+         AND a.details->>'source'=$1 ORDER BY a.id`,
+      [source],
+    )
+  ).rows;
+  const receipts = (
+    await client.query(
+      `SELECT to_jsonb(r)::text AS row FROM case_external_entry_receipts r
+       WHERE r.department_id=$1 AND r.actor_user_id=$2 AND r.idempotency_key=$3
+       ORDER BY r.id`,
+      [coreLeadFixtures.departmentA, coreLeadFixtures.userA, idempotencyKey],
+    )
+  ).rows;
+  return JSON.stringify({ cases, parties, counter, entries, audits, receipts });
 }
