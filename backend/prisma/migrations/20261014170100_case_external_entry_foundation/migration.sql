@@ -163,6 +163,8 @@ CREATE FUNCTION "reject_case_external_entry_mutation"() RETURNS trigger LANGUAGE
 BEGIN RAISE EXCEPTION 'external entry is immutable' USING ERRCODE='23514'; END; $$;
 CREATE TRIGGER "case_external_entry_immutable" BEFORE UPDATE OR DELETE ON "case_external_entries"
   FOR EACH ROW EXECUTE FUNCTION "reject_case_external_entry_mutation"();
+CREATE TRIGGER "case_external_entry_receipt_immutable" BEFORE UPDATE OR DELETE ON "case_external_entry_receipts"
+  FOR EACH ROW EXECUTE FUNCTION "reject_case_external_entry_mutation"();
 
 CREATE FUNCTION "check_case_external_entry_payload"() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE k text; v jsonb;
@@ -688,7 +690,7 @@ END; $$;
 -- This artifact is intentionally outside the tracked migration tree.
 
 CREATE OR REPLACE FUNCTION "ca018_h_is_unadvanced_root"(target_case uuid,target_department uuid)
-RETURNS boolean LANGUAGE sql STABLE AS $
+RETURNS boolean LANGUAGE sql STABLE AS $$
   SELECT EXISTS (
     SELECT 1 FROM "cases" c JOIN "case_external_entries" e
       ON e."case_id"=c."id" AND e."department_id"=c."department_id"
@@ -706,12 +708,12 @@ RETURNS boolean LANGUAGE sql STABLE AS $
       AND NOT EXISTS (SELECT 1 FROM "case_second_instance_progresses" x WHERE x."case_id"=c."id")
       AND NOT EXISTS (SELECT 1 FROM "case_second_instance_results" x WHERE x."case_id"=c."id")
   )
-$;
+$$;
 
 -- Downstream entry roots have no first judgment. Their real execution/closure
 -- facts are checked by their own 150/152 guards, never synthesized here.
 CREATE OR REPLACE FUNCTION "ca018_h_downstream_entry_without_judgment"(target_case uuid,target_department uuid)
-RETURNS boolean LANGUAGE sql STABLE AS $
+RETURNS boolean LANGUAGE sql STABLE AS $$
   SELECT EXISTS (
     SELECT 1 FROM "cases" c JOIN "case_external_entries" e
       ON e."case_id"=c."id" AND e."department_id"=c."department_id"
@@ -733,10 +735,10 @@ RETURNS boolean LANGUAGE sql STABLE AS $
         OR EXISTS (SELECT 1 FROM "case_closures" f WHERE f."case_id"=c."id" AND f."external_entry_id"=e."id")
         OR EXISTS (SELECT 1 FROM "case_archives" f WHERE f."case_id"=c."id" AND f."department_id"=c."department_id"))
   )
-$;
+$$;
 
 CREATE OR REPLACE FUNCTION "ca018_h_direct_second_chain"(target_case uuid,target_department uuid)
-RETURNS void LANGUAGE plpgsql AS $
+RETURNS void LANGUAGE plpgsql AS $$
 DECLARE c record; e record; root_round record; result_record record; latest_progress record; latest_revoke record;
 BEGIN
   SELECT * INTO c FROM "cases" WHERE "id"=target_case AND "department_id"=target_department;
@@ -809,11 +811,11 @@ BEGIN
         c."current_second_instance_progress_id" IS DISTINCT FROM result_record."progress_id" THEN
     RAISE EXCEPTION 'direct second result head mismatch' USING ERRCODE='23514';
   END IF;
-END; $;
+END; $$;
 
 
 CREATE OR REPLACE FUNCTION "case_second_child_acceptance_date_valid"(target_round uuid,candidate date)
-RETURNS boolean LANGUAGE sql STABLE AS $
+RETURNS boolean LANGUAGE sql STABLE AS $$
   SELECT coalesce(candidate >= coalesce(case_effective_second_acceptance_date(parent."choice_id"),
     (SELECT x."accepted_at" FROM "case_second_instance_acceptance_changes" x
       WHERE x."case_id"=parent."case_id" AND x."department_id"=parent."department_id"
@@ -823,7 +825,7 @@ RETURNS boolean LANGUAGE sql STABLE AS $
   FROM "case_trial_rounds" child
   LEFT JOIN "case_second_instance_results" parent ON parent."id"=child."source_result_id"
   WHERE child."id"=target_round
-$;
+$$;
 
 CREATE OR REPLACE FUNCTION "check_case_hearing_fact"()
  RETURNS trigger
@@ -2008,7 +2010,6 @@ BEGIN
   RETURN NEW;
 END; $function$;
 
-
 -- CA018 E review fragment for B to merge into the sole 152 migration.
 -- Do not run alone: depends on B schema, entry/fact guards and direct confirmation bundle.
 -- All definitions are unqualified for random-schema validation. The five
@@ -2023,7 +2024,7 @@ END; $function$;
 -- It walks actual later facts and the exact version terminal; it does not
 -- manufacture any predecessor or accept initial_stage as a shortcut.
 CREATE OR REPLACE FUNCTION "ca018_assert_execution_phase_chain"(target_case uuid,target_department uuid)
-RETURNS void LANGUAGE plpgsql AS $
+RETURNS void LANGUAGE plpgsql AS $$
 DECLARE c record; e record; s record; q record; m record; f record; x record; h record; a record;
         source_version integer; terminal integer; phase "case_stage"; predecessor record;
 BEGIN
@@ -2120,9 +2121,9 @@ BEGIN
  END IF;
  IF c."stage" IS DISTINCT FROM phase OR c."version" IS DISTINCT FROM terminal
  THEN RAISE EXCEPTION 'execution external terminal mismatch' USING ERRCODE='23514'; END IF;
-END; $;
+END; $$;
 
-CREATE OR REPLACE FUNCTION "case_closure_source_terminal_version"(target_case uuid,target_department uuid,target_finish uuid,finish_version integer) RETURNS integer LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION "case_closure_source_terminal_version"(target_case uuid,target_department uuid,target_finish uuid,finish_version integer) RETURNS integer LANGUAGE plpgsql AS $$
 DECLARE h record; v record; terminal integer; expected_prior uuid; seen integer:=0; entry_root record;
 BEGIN
  IF target_finish IS NULL THEN
@@ -2162,13 +2163,13 @@ BEGIN
  END LOOP;
  IF seen=0 OR expected_prior IS DISTINCT FROM h."current_version_id" THEN RAISE EXCEPTION 'nonterminal closure head' USING ERRCODE='23514'; END IF;
  RETURN terminal;
-END; $;
+END; $$;
 
 -- The closure source function above is the only change needed in the 143
 -- case_closure_terminal_version wrapper: it already passes target_finish through
 -- and requires a real closure head before an archive terminal can exist.
 
-CREATE OR REPLACE FUNCTION "check_case_closure_receipt"() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION "check_case_closure_receipt"() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE v record;
 BEGIN
  SELECT * INTO v FROM "case_closure_versions" WHERE "id"=(NEW."result_snapshot"->>'closureVersionId')::uuid AND "case_id"=NEW."case_id" AND "department_id"=NEW."department_id" AND "recorded_by_user_id"=NEW."actor_user_id";
@@ -2181,9 +2182,9 @@ BEGIN
   NOT EXISTS (SELECT 1 FROM "cases" c JOIN "case_closures" h ON h."case_id"=c."id" AND h."department_id"=c."department_id" WHERE c."id"=NEW."case_id" AND c."department_id"=NEW."department_id" AND c."stage"='WAITING_ARCHIVE' AND c."version"=v."to_version" AND h."current_version_id"=v."id")
  THEN RAISE EXCEPTION 'closure receipt mismatch' USING ERRCODE='23514'; END IF;
  RETURN NEW;
-END; $;
+END; $$;
 
-CREATE OR REPLACE FUNCTION "check_case_closure_final"() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION "check_case_closure_final"() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE target_case uuid; target_department uuid; c record; f record; h record; v record; a record; selected jsonb; base_version integer; entry_root record;
 BEGIN
  IF TG_TABLE_NAME='cases' THEN target_case:=NEW."id"; target_department:=NEW."department_id";
@@ -2222,17 +2223,17 @@ BEGIN
   THEN RAISE EXCEPTION 'closure audit/reference/receipt mismatch' USING ERRCODE='23514'; END IF;
  END LOOP;
  RETURN NEW;
-END; $;
+END; $$;
 
-CREATE OR REPLACE FUNCTION "check_case_closure_head_mutation"() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION "check_case_closure_head_mutation"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
  IF TG_OP='DELETE' OR NEW."id"<>OLD."id" OR NEW."case_id"<>OLD."case_id" OR NEW."department_id"<>OLD."department_id" OR NEW."finish_id" IS DISTINCT FROM OLD."finish_id" OR NEW."current_version_id" IS NULL OR
   NOT EXISTS (SELECT 1 FROM "case_closure_versions" v WHERE v."id"=NEW."current_version_id" AND v."closure_id"=OLD."id" AND v."case_id"=OLD."case_id" AND v."department_id"=OLD."department_id" AND v."finish_id" IS NOT DISTINCT FROM OLD."finish_id" AND v."prior_version_id" IS NOT DISTINCT FROM OLD."current_version_id")
  THEN RAISE EXCEPTION 'immutable closure identity or invalid head advance' USING ERRCODE='23514'; END IF;
  RETURN NEW;
-END; $;
+END; $$;
 
-CREATE OR REPLACE FUNCTION "check_case_closure_upload_actor"() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION "check_case_closure_upload_actor"() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE c record; f record; is_correction boolean; entry_root record; expected_terminal integer;
 BEGIN
  IF NEW."category"<>'CASE_CLOSURE_DOCUMENT' THEN RETURN NEW; END IF;
@@ -2257,9 +2258,9 @@ BEGIN
   NOT case_closure_actor_authorized(NEW."actor_user_id",c."id",c."department_id",is_correction)
  THEN RAISE EXCEPTION 'closure upload actor or source forbidden' USING ERRCODE='23514'; END IF;
  RETURN NEW;
-END; $;
+END; $$;
 
-CREATE OR REPLACE FUNCTION "check_case_archive_actor"() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION "check_case_archive_actor"() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE c record; h record; closure_head record; f record; terminal integer; entry_root record;
 BEGIN
  SELECT * INTO c FROM "cases" WHERE "id"=NEW."case_id" AND "department_id"=NEW."department_id" FOR UPDATE;
@@ -2289,9 +2290,9 @@ BEGIN
     case_archive_terminal_version(c."id",c."department_id",closure_head."id",h."closure_version_id",terminal)<>NEW."from_version" THEN RAISE EXCEPTION 'invalid archive correction' USING ERRCODE='23514'; END IF;
  END IF;
  RETURN NEW;
-END; $;
+END; $$;
 
-CREATE OR REPLACE FUNCTION "check_case_archive_final"() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION "check_case_archive_final"() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE target_case uuid; target_department uuid; c record; h record; closure_head record; f record; v record; a record; terminal integer; entry_root record;
 BEGIN
  IF TG_TABLE_NAME='cases' THEN target_case:=NEW."id"; target_department:=NEW."department_id";
@@ -2341,19 +2342,18 @@ BEGIN
   THEN RAISE EXCEPTION 'archive audit or receipt mismatch' USING ERRCODE='23514'; END IF;
  END LOOP;
  RETURN NEW;
-END; $;
+END; $$;
 
 -- Receipts must distinguish an explicit JSON null predecessor from an omitted
 -- key. All other 150 receipt predicates remain the same.
-CREATE OR REPLACE FUNCTION "check_case_execution_confirmation_receipt"() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION "check_case_execution_confirmation_receipt"() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE f record; c record;
 BEGIN
   SELECT * INTO f FROM "case_execution_confirmations" WHERE "id" = (NEW."result_snapshot"->>'confirmationId')::uuid
     AND "case_id" = NEW."case_id" AND "department_id" = NEW."department_id"
     AND "confirmed_by_user_id" = NEW."actor_user_id";
   SELECT * INTO c FROM "cases" WHERE "id" = NEW."case_id" AND "department_id" = NEW."department_id";
-  IF f."id" IS NULL OR NEW."request_fingerprint" !~ '^[0-9a-f]{64}
- OR
+  IF f."id" IS NULL OR NEW."request_fingerprint" !~ '^[0-9a-f]{64}$' OR
      NEW."result_snapshot"->>'id' IS DISTINCT FROM NEW."case_id"::text OR
      NOT NEW."result_snapshot" ? 'submissionId' OR
      NEW."result_snapshot"->'submissionId' IS DISTINCT FROM COALESCE(to_jsonb(f."submission_id"),'null'::jsonb) OR
@@ -2365,9 +2365,9 @@ BEGIN
     RAISE EXCEPTION 'execution confirmation receipt mismatch' USING ERRCODE = '23514';
   END IF;
   RETURN NEW;
-END; $;
+END; $$;
 
-CREATE OR REPLACE FUNCTION "check_case_execution_mailing_receipt"() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION "check_case_execution_mailing_receipt"() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE m record;
 BEGIN
   SELECT * INTO m FROM "case_execution_mailings" WHERE "id"=(NEW."result_snapshot"->>'mailingId')::uuid
@@ -2384,9 +2384,9 @@ BEGIN
      (SELECT count(*) FROM "case_execution_mailing_versions" v WHERE v."mailing_id"=m."id") NOT BETWEEN 1 AND 10 THEN
     RAISE EXCEPTION 'execution mailing receipt mismatch' USING ERRCODE='23514'; END IF;
   RETURN NEW;
-END; $;
+END; $$;
 
-CREATE OR REPLACE FUNCTION "check_case_execution_filing_receipt"() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION "check_case_execution_filing_receipt"() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE f record;
 BEGIN
   SELECT * INTO f FROM "case_execution_filings" WHERE "id"=(NEW."result_snapshot"->>'filingId')::uuid
@@ -2407,9 +2407,9 @@ BEGIN
          AND r."material_id"=v."material_id" AND r."content_version_id"=v."content_version_id")) THEN
     RAISE EXCEPTION 'execution filing receipt mismatch' USING ERRCODE='23514'; END IF;
   RETURN NEW;
-END; $;
+END; $$;
 
-CREATE OR REPLACE FUNCTION "check_case_execution_finish_receipt"() RETURNS trigger LANGUAGE plpgsql AS $
+CREATE OR REPLACE FUNCTION "check_case_execution_finish_receipt"() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE f record;
 BEGIN
   SELECT * INTO f FROM "case_execution_finishes" WHERE "id"=(NEW."result_snapshot"->>'finishId')::uuid
@@ -2433,7 +2433,7 @@ BEGIN
          AND r."material_id"=v."material_id" AND r."content_version_id"=v."content_version_id")) THEN
     RAISE EXCEPTION 'execution filing receipt mismatch' USING ERRCODE='23514'; END IF;
   RETURN NEW;
-END; $;
+END; $$;
 
 -- Exact 150 source-neutral guards retained verbatim (unqualified heading).
 CREATE OR REPLACE FUNCTION "check_case_execution_submission_receipt"()
@@ -2445,8 +2445,7 @@ BEGIN
   SELECT s.* INTO fact FROM "case_execution_submissions" s
     WHERE s."id" = (NEW."result_snapshot"->>'submissionId')::uuid AND s."case_id" = NEW."case_id"
       AND s."department_id" = NEW."department_id" AND s."submitted_by_user_id" = NEW."actor_user_id";
-  IF fact."id" IS NULL OR NEW."request_fingerprint" !~ '^[0-9a-f]{64}
- OR
+  IF fact."id" IS NULL OR NEW."request_fingerprint" !~ '^[0-9a-f]{64}$' OR
      NEW."result_snapshot"->>'id' IS DISTINCT FROM NEW."case_id"::text OR
      NEW."result_snapshot"->>'stage' IS DISTINCT FROM 'WAITING_EXECUTION_CONFIRMATION' OR
      NEW."result_snapshot"->>'version' IS DISTINCT FROM fact."to_version"::text OR
