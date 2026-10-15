@@ -724,13 +724,22 @@ test('creates and refreshes an external entry in the browser and hides entry acc
   await expect(
     page.getByRole('heading', { name: /外部转入|转入.*补录/u }),
   ).toBeVisible();
-  await page.getByLabel('录入类型').selectOption('EXTERNAL_TRANSFER');
-  await page.getByLabel('当前阶段').selectOption('PENDING_MATCH');
+  await page
+    .getByRole('combobox', { name: '录入类型', exact: true })
+    .selectOption('EXTERNAL_TRANSFER');
+  await page
+    .getByRole('combobox', { name: '当前阶段', exact: true })
+    .selectOption('PENDING_MATCH');
   await page.getByLabel('当前阶段真实业务日期').fill(shanghaiToday());
-  await page.getByLabel('资料来源').fill(`CA018 browser ${randomUUID()}`);
+  const browserSource = `CA018 E2E:browser ${randomUUID()}`;
+  await page.getByLabel('资料来源').fill(browserSource);
   await page.getByLabel('转入／补录原因').fill('浏览器录入真实当前状态');
-  await page.getByLabel('客户').selectOption(coreLeadFixtures.admittedCustomer);
-  await page.getByLabel('权利主体').selectOption(coreLeadFixtures.holder);
+  await page
+    .getByRole('combobox', { name: '客户', exact: true })
+    .selectOption(coreLeadFixtures.admittedCustomer);
+  await page
+    .getByRole('combobox', { name: '权利主体', exact: true })
+    .selectOption(coreLeadFixtures.holder);
   const createResponse = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
@@ -741,7 +750,7 @@ test('creates and refreshes an external entry in the browser and hides entry acc
   await expect(page).toHaveURL(new RegExp(`/cases/${created.id}$`, 'u'));
   const stored = await readCase(request, created.id);
   expect(stored.origin).toMatchObject({
-    source: expect.stringMatching(/^CA018 browser/u),
+    source: browserSource,
     reason: '浏览器录入真实当前状态',
   });
   await page.reload();
