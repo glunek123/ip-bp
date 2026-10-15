@@ -4,21 +4,47 @@ import { resolve } from 'node:path';
 import {
   captureTestEnvironment,
   validateBrowserTestDatabaseUrl,
+  validateIsolatedTestDatabaseUrl,
 } from '../../scripts/test-environment.mjs';
+
+const approvedContainerId =
+  'dbb1cbd29c6d65b5aa4fd85317c96167fbd94310c34946edc033fc4f2f9d3695';
+
+// Admission is deliberately narrower than the shared random-port validator.
+// This suite may add synthetic actors only to the one approved UI003 instance.
+export function assertCaseListWorkflowTarget(environment) {
+  if (
+    environment.NODE_ENV !== 'test' ||
+    environment.DEV_COR_TEST_DATABASE_PROJECT !== 'dev-cor-ui003' ||
+    environment.DEV_COR_TEST_DATABASE_CONTAINER_ID !== approvedContainerId
+  )
+    throw new Error('Case list workflow requires the approved UI003 instance');
+  const target = validateIsolatedTestDatabaseUrl(
+    environment.DEV_COR_TEST_DATABASE_URL,
+    { allowRandomPort: true },
+  );
+  if (
+    target.hostname !== '127.0.0.1' ||
+    target.port !== 15437 ||
+    target.database !== 'dev_cor_test'
+  )
+    throw new Error('Case list workflow requires the approved UI003 database');
+}
+
+function captureApprovedEnvironment() {
+  assertCaseListWorkflowTarget(process.env);
+  const root = process.cwd();
+  const captured = captureTestEnvironment(root, { pnpmVersion: '11.27.0' });
+  assertCaseListWorkflowTarget(captured.childEnvironment);
+  validateBrowserTestDatabaseUrl(captured.childEnvironment.DATABASE_URL, root);
+  return captured;
+}
 
 // The runner owns the instance lock. This support adds isolated actors only;
 // all customer, material and case facts in the spec use the normal HTTP commands.
 export async function prepareCaseListWorkflowActors() {
-  if (
-    process.env.NODE_ENV !== 'test' ||
-    !process.env.DEV_COR_TEST_DATABASE_URL ||
-    !process.env.DEV_COR_TEST_DATABASE_PROJECT ||
-    !process.env.DEV_COR_TEST_DATABASE_CONTAINER_ID
-  )
-    throw new Error('Case list workflow requires the managed runner instance');
+  const captured = captureApprovedEnvironment();
   const root = process.cwd();
-  const captured = captureTestEnvironment(root, { pnpmVersion: '11.27.0' });
-  validateBrowserTestDatabaseUrl(captured.childEnvironment.DATABASE_URL, root);
   const backendRequire = createRequire(resolve(root, 'backend/package.json'));
   const { PrismaClient } = backendRequire('./dist/generated/prisma/client.js');
   const { PrismaPg } = backendRequire('@prisma/adapter-pg');
@@ -118,6 +144,5 @@ export async function prepareCaseListWorkflowActors() {
 }
 
 export function captureCaseListWorkflowEnvironment() {
-  return captureTestEnvironment(process.cwd(), { pnpmVersion: '11.27.0' })
-    .fingerprint;
+  return captureApprovedEnvironment().fingerprint;
 }
