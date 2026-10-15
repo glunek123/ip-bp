@@ -267,7 +267,10 @@ describe('CaseReadService', () => {
     expect(f.access.canAuthorizeCase).toHaveBeenCalledWith(
       actor,
       'case.execution.submit',
-      { departmentId: actor.departmentId },
+      {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      },
     );
     f.access.canAuthorizeCase.mockImplementation(
       async (_actor, action) => action === 'case.execution.confirm',
@@ -320,6 +323,47 @@ describe('CaseReadService', () => {
         canUploadDirectExecutionMaterials: false,
       });
     }
+  });
+  it('uses the material upload case facts for SELF and TEAM grants in list and detail', async () => {
+    const f = fixture();
+    const source = externalRecord('WAITING_EXECUTION_CONFIRMATION');
+    const read = async (responsibleUserId: string, teamId: string | null) => {
+      const record = {
+        ...source,
+        responsibleUserId,
+        responsibleMembership: { teamId },
+      };
+      f.db.case.findFirst.mockResolvedValue(record);
+      f.db.case.findMany.mockResolvedValue([record]);
+      const detail = await f.service.get(actor, record.id);
+      const item = (await f.service.list(actor, 1, 20)).items[0];
+      expect(f.access.canAuthorizeCase).toHaveBeenCalledWith(
+        actor,
+        'case.execution.submit',
+        {
+          departmentId: actor.departmentId,
+          responsibleUserId,
+          ...(teamId ? { teamId } : {}),
+        },
+      );
+      return [
+        detail.canUploadDirectExecutionMaterials,
+        item.canUploadDirectExecutionMaterials,
+      ];
+    };
+    f.access.canAuthorizeCase.mockImplementation(
+      async (_actor, action, facts) =>
+        action === 'case.execution.submit' &&
+        facts.responsibleUserId === actor.userId,
+    );
+    expect(await read(actor.userId, null)).toEqual([true, true]);
+    expect(await read('other-user', null)).toEqual([false, false]);
+    f.access.canAuthorizeCase.mockImplementation(
+      async (_actor, action, facts) =>
+        action === 'case.execution.submit' && facts.teamId === 'team-1',
+    );
+    expect(await read('other-user', 'team-1')).toEqual([true, true]);
+    expect(await read('other-user', 'team-2')).toEqual([false, false]);
   });
   it('resolves known court names only within authorized case department and without an acceptance fact', async () => {
     const f = fixture();

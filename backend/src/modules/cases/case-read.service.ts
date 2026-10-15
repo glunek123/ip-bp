@@ -668,7 +668,13 @@ export class CaseReadService {
               (await this.access.canAuthorizeCase(
                 actor,
                 'case.execution.submit',
-                { departmentId: actor.departmentId },
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
               ))),
           canConfirmExecution:
             item.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
@@ -2594,6 +2600,10 @@ export class CaseReadService {
         (principal === 'LAWYER' ||
           (await this.access.canAuthorizeCase(actor, 'case.execution.submit', {
             departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
           }))),
       canConfirmExecution:
         record.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
