@@ -2124,7 +2124,7 @@ BEGIN
 END; $$;
 
 CREATE OR REPLACE FUNCTION "case_closure_source_terminal_version"(target_case uuid,target_department uuid,target_finish uuid,finish_version integer) RETURNS integer LANGUAGE plpgsql AS $$
-DECLARE h record; v record; terminal integer; expected_prior uuid; seen integer:=0; entry_root record;
+DECLARE h record; v record; terminal integer; expected_prior uuid; seen integer:=0; entry_root "case_external_entries"%ROWTYPE;
 BEGIN
  IF target_finish IS NULL THEN
   SELECT e.* INTO entry_root FROM "case_external_entries" e JOIN "cases" c
@@ -2185,7 +2185,7 @@ BEGIN
 END; $$;
 
 CREATE OR REPLACE FUNCTION "check_case_closure_final"() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE target_case uuid; target_department uuid; c record; f record; h record; v record; a record; selected jsonb; base_version integer; entry_root record;
+DECLARE target_case uuid; target_department uuid; c record; f record; h record; v record; a record; selected jsonb; base_version integer; entry_root "case_external_entries"%ROWTYPE;
 BEGIN
  IF TG_TABLE_NAME='cases' THEN target_case:=NEW."id"; target_department:=NEW."department_id";
  ELSE target_case:=NEW."case_id"; target_department:=NEW."department_id"; END IF;
@@ -2234,7 +2234,7 @@ BEGIN
 END; $$;
 
 CREATE OR REPLACE FUNCTION "check_case_closure_upload_actor"() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE c record; f record; is_correction boolean; entry_root record; expected_terminal integer;
+DECLARE c record; f record; is_correction boolean; entry_root "case_external_entries"%ROWTYPE; expected_terminal integer;
 BEGIN
  IF NEW."category"<>'CASE_CLOSURE_DOCUMENT' THEN RETURN NEW; END IF;
  -- Preserve existing expiry/private-key housekeeping; this cannot complete an upload.
@@ -2261,7 +2261,7 @@ BEGIN
 END; $$;
 
 CREATE OR REPLACE FUNCTION "check_case_archive_actor"() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE c record; h record; closure_head record; f record; terminal integer; entry_root record;
+DECLARE c record; h record; closure_head record; f record; terminal integer; entry_root "case_external_entries"%ROWTYPE;
 BEGIN
  SELECT * INTO c FROM "cases" WHERE "id"=NEW."case_id" AND "department_id"=NEW."department_id" FOR UPDATE;
  SELECT * INTO h FROM "case_archives" WHERE "id"=NEW."archive_id" AND "case_id"=NEW."case_id" AND "department_id"=NEW."department_id";
@@ -2293,7 +2293,7 @@ BEGIN
 END; $$;
 
 CREATE OR REPLACE FUNCTION "check_case_archive_final"() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE target_case uuid; target_department uuid; c record; h record; closure_head record; f record; v record; a record; terminal integer; entry_root record;
+DECLARE target_case uuid; target_department uuid; c record; h record; closure_head record; f record; v record; a record; terminal integer; entry_root "case_external_entries"%ROWTYPE;
 BEGIN
  IF TG_TABLE_NAME='cases' THEN target_case:=NEW."id"; target_department:=NEW."department_id";
  ELSE target_case:=NEW."case_id"; target_department:=NEW."department_id"; END IF;
@@ -2763,7 +2763,7 @@ CREATE OR REPLACE FUNCTION "check_case_execution_submission_final"()
  LANGUAGE plpgsql
 AS $function$
 DECLARE target_case uuid; target_department uuid; c record; e record; prior record; choice_record record;
-        result_record record; selected jsonb; expected_source_version integer; entry_root record;
+        result_record record; selected jsonb; expected_source_version integer; entry_root "case_external_entries"%ROWTYPE;
 BEGIN
   IF TG_TABLE_NAME = 'cases' THEN target_case := NEW."id"; target_department := NEW."department_id";
   ELSE target_case := NEW."case_id"; target_department := NEW."department_id"; END IF;
@@ -2895,7 +2895,7 @@ CREATE OR REPLACE FUNCTION "check_case_execution_confirmation_final"()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-DECLARE target_case uuid; target_department uuid; c record; f record; s record; a record; entry_root record;
+DECLARE target_case uuid; target_department uuid; c record; f record; s record; a record; entry_root "case_external_entries"%ROWTYPE;
 BEGIN
   IF TG_TABLE_NAME = 'cases' THEN target_case := NEW."id"; target_department := NEW."department_id";
   ELSE target_case := NEW."case_id"; target_department := NEW."department_id"; END IF;
@@ -2953,7 +2953,7 @@ CREATE OR REPLACE FUNCTION "check_case_execution_mailing_final"()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-DECLARE target_case uuid; target_department uuid; c record; m record; conf record; audit record; selected jsonb; entry_root record;
+DECLARE target_case uuid; target_department uuid; c record; m record; conf record; audit record; selected jsonb; entry_root "case_external_entries"%ROWTYPE;
 BEGIN
   IF TG_TABLE_NAME='cases' THEN target_case:=NEW."id"; target_department:=NEW."department_id";
   ELSE target_case:=NEW."case_id"; target_department:=NEW."department_id"; END IF;
@@ -3018,7 +3018,7 @@ CREATE OR REPLACE FUNCTION "check_case_execution_filing_final"()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-DECLARE target_case uuid; target_department uuid; c record; f record; m record; audit record; selected jsonb; entry_root record;
+DECLARE target_case uuid; target_department uuid; c record; f record; m record; audit record; selected jsonb; entry_root "case_external_entries"%ROWTYPE;
 BEGIN
   IF TG_TABLE_NAME='cases' THEN target_case:=NEW."id"; target_department:=NEW."department_id";
   ELSE target_case:=NEW."case_id"; target_department:=NEW."department_id"; END IF;
@@ -3074,7 +3074,7 @@ CREATE OR REPLACE FUNCTION "check_case_execution_finish_final"()
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
-DECLARE target_case uuid; target_department uuid; c record; f record; m record; audit record; selected jsonb; entry_root record;
+DECLARE target_case uuid; target_department uuid; c record; f record; m record; audit record; selected jsonb; entry_root "case_external_entries"%ROWTYPE;
 BEGIN
   IF TG_TABLE_NAME='cases' THEN target_case:=NEW."id"; target_department:=NEW."department_id";
   ELSE target_case:=NEW."case_id"; target_department:=NEW."department_id"; END IF;
