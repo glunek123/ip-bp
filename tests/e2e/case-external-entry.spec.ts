@@ -976,8 +976,17 @@ test('uploads and confirms a complete direct execution material bundle in the br
       req.method() === 'POST' &&
       req.url().includes(`/cases/${root.id}/execution-confirm`),
   );
+  const confirmResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().includes(`/cases/${root.id}/execution-confirm`),
+  );
   await page.locator('[data-test="confirm-execution"]').click();
-  const confirmBody = (await confirmRequest).postDataJSON() as {
+  const [confirmRequestEvent, confirmResponseEvent] = await Promise.all([
+    confirmRequest,
+    confirmResponse,
+  ]);
+  const confirmBody = confirmRequestEvent.postDataJSON() as {
     expectedSubmissionId: string | null;
     executionApplicationContentVersionIds: string[];
   };
@@ -985,6 +994,21 @@ test('uploads and confirms a complete direct execution material bundle in the br
   expect(confirmBody.executionApplicationContentVersionIds).toEqual(
     [uploaded.contentVersionId, uploadedSecond.contentVersionId].sort(),
   );
+  const confirmationResult = await body<{
+    id: string;
+    confirmationId: string;
+    submissionId: string | null;
+    stage: string;
+    version: number;
+    confirmedAt: string;
+  }>(confirmResponseEvent, 201);
+  expect(confirmationResult).toMatchObject({
+    id: root.id,
+    confirmationId: expect.any(String),
+    submissionId: null,
+    stage: 'WAITING_EXECUTION_STAMP',
+    version: root.version + 1,
+  });
   await expect(
     confirmation.locator(
       `[data-test="execution-confirmation-file-${uploaded.contentVersionId}"]`,
