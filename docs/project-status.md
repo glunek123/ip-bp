@@ -4,9 +4,11 @@
 
 ## 当前阶段
 
-唯一Current／Next以路线图为准；CA001～018、UI002、CE001～002已在各自明确范围验收。CA018产品／测试候选7236c8e完整22项与155升级专项通过，已正常原子交付main及任务分支；首次实核交付79a76d5，末次仅回填真实回执和快照。持久预览仍为CE002 source81ebfed／150，人工测试窗口内保持。
+唯一Current为CORE-UI-003两项独立前端小闭环，已按用户要求并行开发；CA018已验收并原子交付，远端main／任务分支和本地主main实核1f375ea。持久预览source81ebfed／150人工测试窗口保持；CA019仍占位未定范围。
 
 ## 当前任务
+
+**CORE-UI-003｜线索单条快捷办理与公证共用原因批填：两位Luna已实际开工，候选未接纳。** I复用ca015-integration／codex/ui003-quick-actions-integration，从已交付1f375ea开始；A在ca016-frontend-integration／codex/uxq01-notary-common-reason，只改NotaryReturnArchiveBatchPanel与spec；B在ca016-case-list-display／codex/uxq01-lead-quick-actions，独占List／新QuickPanel／EditPage各自vue和spec。两者基于79a同产品，旧分支保留、无写入者冲突。B现场确认原Edit保存／取消只回详情，I最小扩两文件补内部合法returnTo；禁止任意重定向、改原详情／API／后端。共用原因只填空白、逐项核对；快捷动作先getLead取最新真实能力和版本，未知结果原key恢复，关闭／对象／账号变化和迟到响应不串数据。详见路线图本批所有权表。尚无本批通过结论，待Worker聚焦和I组合检查／独立可用性复审；预览、CA018已交付候选和删除规则不变。
 
 **CORE-CA-018｜外部转入／历史案件录入：已验收并原子交付main及任务分支。** I独占集成、权威文档和DB操作；最终源码／测试7236c8e968e633613db2abd0d72580bc9fb3d4d0／tree75e7cfba61aafe5ac1b79624bb9aa76130ace23b，同干净候选PG／Chromium22/22及工具80/80实际通过。真实独立来源16阶段、后续合法Command、材料冻结／字节、金额未知、并发／回滚及撤权最小投影已验收。新155前向修复真实REMAND子轮受理后的守卫衔接，150→155空链／旧事实保持／失败原子及重试1/1，官方隔离15433 public155/155；旧142／150～154不改。完整verify实际2fc8ee8通过80工具／1862前端／1531后端及双构建，330后台／256前台／34工具配置逐blob一致限定复用单元／构建，79a严格context／Spec／全类型／Lint／格式实跑通过，不称723或收口HEAD完整verify。独立最终Spec／Quality ACCEPTED，未闭C/I/M0；2026-10-15 05:58 UTC两远端实核79a76d5，最终末次SHA见回执。详细候选、失败及证据只见VALIDATION。5186／3206／15436保持source81ebfed，原进程健康200，未重启／迁移／替换／增CA018真实Grant；历史2案／6凭据不冒充人工测试后的当前数量。OPS-01-A～E按用户要求仅设计入队，INPUT-016／UXQ-01～06仍未实施；CA019仍占位未冻结。
 
