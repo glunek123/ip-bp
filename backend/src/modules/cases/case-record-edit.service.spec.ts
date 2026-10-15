@@ -296,6 +296,64 @@ describe('CaseRecordEditService', () => {
     expect(f.tx.case.updateMany).not.toHaveBeenCalled();
   });
 
+  it('corrects an actual external acceptance without inventing a filing', async () => {
+    const f = fixture();
+    const entryId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    f.record.filingSubmission = null as never;
+    f.record.sourceLeadId = null as never;
+    f.record.sourceNotaryMatterId = null as never;
+    f.record.certificateId = null as never;
+    f.record.externalEntry = {
+      id: entryId,
+      caseId,
+      departmentId: actor.departmentId,
+      initialStage: 'WAITING_FORMAL_ACCEPTANCE',
+      stageReachedOn: new Date('2026-10-01T00:00:00.000Z'),
+      known: {
+        courtId: null,
+        courtCaseNo: null,
+        acceptedOn: '2026-10-02',
+        secondInstanceAcceptedOn: null,
+        platform: null,
+        shopName: null,
+        shopExternalId: null,
+        caseType: null,
+        infringementTypes: null,
+      },
+    } as never;
+    f.tx.caseAcceptance.findFirst.mockResolvedValue({
+      trialRoundId: roundId,
+      externalEntryId: entryId,
+      courtId: choiceId,
+      acceptedAt: new Date('2026-10-02T00:00:00.000Z'),
+      courtCaseNo: '原案号',
+      corrections: [],
+    });
+    f.tx.caseTrialRound.findFirst.mockResolvedValue({
+      origin: 'EXTERNAL_CURRENT',
+      sourceResult: null,
+    });
+    await expect(
+      f.service.correctAcceptance(actor, caseId, {
+        ...acceptanceInput,
+        acceptedAt: '2026-09-30',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    await expect(
+      f.service.correctAcceptance(actor, caseId, acceptanceInput),
+    ).resolves.toMatchObject({ acceptedAt: '2026-10-03' });
+    expect(f.tx.caseAcceptanceCorrection.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a real filing mandatory for normal-source acceptance correction', async () => {
+    const f = fixture();
+    f.record.filingSubmission = null as never;
+    await expect(
+      f.service.correctAcceptance(actor, caseId, acceptanceInput),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    expect(f.tx.caseAcceptanceCorrection.create).not.toHaveBeenCalled();
+  });
+
   it('rejects a correction after an actual hearing date or before filing', async () => {
     const f = fixture();
     f.record.hearingArrangements.push({

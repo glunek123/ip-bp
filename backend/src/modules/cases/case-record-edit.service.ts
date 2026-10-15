@@ -250,6 +250,8 @@ export class CaseRecordEditService {
               },
               select: {
                 trialRoundId: true,
+                externalEntryId: true,
+                courtId: true,
                 acceptedAt: true,
                 courtCaseNo: true,
                 corrections: {
@@ -282,7 +284,7 @@ export class CaseRecordEditService {
               tx,
               actor.departmentId,
               caseId,
-              acceptance.trialRoundId,
+              acceptance,
               value.acceptedAt,
             );
             const parentDate = await tx.$queryRaw<Array<{ valid: boolean }>>`
@@ -696,9 +698,14 @@ export class CaseRecordEditService {
     tx: Prisma.TransactionClient,
     departmentId: string,
     caseId: string,
-    trialRoundId: string,
+    acceptance: {
+      trialRoundId: string;
+      externalEntryId: string | null;
+      courtId: string | null;
+    },
     date: string,
   ) {
+    const trialRoundId = acceptance.trialRoundId;
     const record = await tx.case.findFirst({
       where: { id: caseId, departmentId },
       select: {
@@ -734,10 +741,55 @@ export class CaseRecordEditService {
         },
       },
     });
-    if (
-      !record?.filingSubmission ||
-      date < isoDate(record.filingSubmission.submittedAt)
-    )
+    if (record === null) throw this.conflict('INVALID_STATE');
+    if (record.filingSubmission === null) {
+      const source = await readCaseSourceAnchor(tx, caseId, departmentId);
+      if (
+        source.kind !== 'EXTERNAL_ENTRY' ||
+        acceptance.externalEntryId !== source.entryId ||
+        acceptance.courtId === null
+      )
+        throw this.conflict('INVALID_STATE');
+      const round = await tx.caseTrialRound.findFirst({
+        where: {
+          id: trialRoundId,
+          caseId,
+          departmentId,
+          externalEntryId: source.entryId,
+        },
+        select: {
+          origin: true,
+          sourceResult: {
+            select: {
+              result: true,
+              resultReceivedAt: true,
+              externalEntryId: true,
+              revocation: { select: { id: true } },
+            },
+          },
+        },
+      });
+      const directRoot =
+        source.initialStage === 'WAITING_FORMAL_ACCEPTANCE' &&
+        round?.origin === 'EXTERNAL_CURRENT' &&
+        round.sourceResult === null;
+      const remand =
+        round?.origin === 'NORMAL' &&
+        round.sourceResult?.result === 'REMAND' &&
+        round.sourceResult.externalEntryId === source.entryId &&
+        round.sourceResult.revocation === null;
+      if (!directRoot && !remand) throw this.conflict('INVALID_STATE');
+      const lower = remand
+        ? isoDate(round.sourceResult!.resultReceivedAt)
+        : source.stageReachedOn;
+      if (
+        date < lower ||
+        (directRoot &&
+          source.known.acceptedOn !== null &&
+          date < source.known.acceptedOn)
+      )
+        throw this.validation('受理更正日期不得早于真实来源日期');
+    } else if (date < isoDate(record.filingSubmission.submittedAt))
       throw this.validation('受理日期不得早于真实提交日');
     const upper: Array<Date | null> = [
       ...record.hearingArrangements.map((fact) => fact.hearingAt),
