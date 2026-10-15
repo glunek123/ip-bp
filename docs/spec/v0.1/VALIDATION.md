@@ -1513,3 +1513,9 @@ SD-57／cases合同区分正常公证三来源与不可变外部entry，真实16
 三spec修复未改产品：4b5fb31补mock及新增请求／响应契约断言，93ef251正确断言普通available与direct完整池／冻结且互斥、CAS及审计；正常配置聚焦105项实际104过／1败，剩controller旧未知字段用例使用了新合法附件字段。746cee1保留附件并增加真正未知arbitrary字段及400／service未调用断言，f36cd97正常controller14/14实际通过；真实service已在事务前拒绝normal附加数组且现有单元负例保持。独立逐项接受C/I/M0。三spec唯一105闭合；078未改112组为1424条（1442总通过中含这三组18条，不能重复计数），推导最终覆盖1529条，仅为分段组合，不称最终HEAD全量Jest或单次verify exit0。证据three-specs、controller-final前后JSON及log。
 
 **首PG前置失败与修复。** 078真实PG／Chromium实配22项，22项均在clean的通用setRoleGrant遇未登记case.complaint.mail而失败，未触达业务断言；pg-first日志、JSON和全部trace保留，环境前后同HMAC、152账本及无遗留fault对象。f36cd97仅将CA018独占三测试文件改用固定合成roles／19项精确动作／TEAM、参数化permission_action及15433/test/public保护的专用helper；不改共享core helper、产品或真实Grant，独立增量接受。该六测试文件相对078差异已逐项核对；工具／前端／112组后端及产品双构建输入完全不变，受影响静态与正式首browser／22项业务验收仍待实际结果。
+
+**真实风险通过与后续缺陷，尚未最终验收。** 干净c0de13e固定PG第六轮独立并发／故障组2/2实际通过，同键四并发回执唯一、异键三并发编号唯一，audit／entry／receipt三处P0001命中独立sequence，完整Case／counter／entry／审计／回执／当事人前后回滚及原请求重试均过；前后343c59891dfe4d82e03a5c91faac2e1de7325b9c847f35fbaa3819c72290a627、152成功账本且无fault对象。证据pg-sixth-atomicity-*，仅对应这两项及其固定输入。其余各次首次失败即停的browser／API范围不称通过；第四轮缺工作页抽屉入口，第五轮将标准hearing空集合误断为null，测试已精确修复；第二／三轮定位歧义已唯一定位，浏览器来源遵守原合成清理前缀，不放宽清理边界。
+
+正常NOTARY新链第七轮在complaint-confirm真实500；第八轮窄诊断临时配置cwd未指定、0测试，改临时配置后第九轮确认DriverAdapterError，第十轮仅增加安全cause提取，实际SQLSTATE42703及缺失字段new.origin确证。152通用fact trigger把非round的NEW.origin放在布尔AND中，不能靠短路保护记录字段解析；442cf44新增153用过程IF限制字段读取，独立C/I/M0接受，保留原来源／部门／23514约束与已应用152。153随机schema、官方前向和最终正常链／升级专项仍待实跑；不将此前152旧事实保全1/1升级为153通过。窄诊断仅树外调试文件，不提交原始错误／SQL／请求／凭据；正式验收将回默认入口，不带探针。
+
+独立只读预检另发现真前端重提缺陷：submitExecution误套确认接口的normal禁数组规则，Panel同样省略versions、指纹忽略重提材料与原因。8aa236e＋fa5cb1a统一首提／重提1～10唯一真实版本、排序IDs和trim原因指纹，冻结未知command仍原key重放；正常确认接口规则不变。独立累计接受，作者API168/168、Panel14/14仅为各自输入，根须复验相应单元／前端类型Lint格式及bundle；旧前端构建不复用，未变后端／工具证据保留。
