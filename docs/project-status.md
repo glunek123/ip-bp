@@ -1,5 +1,11 @@
 # 当前开发状态
 
+最新恢复检查点（2026-10-15，155三列表独立候选）：远端main/任务分支最后实核b318411，本地主控已仅快进0de7b8f1865dcddb06ac64195f7cd27419b15526，保留远端历史而未推送本批产品。该155候选后端相对已交付269c73c逐文件零差异，没有156/157或新六栏API；R2 baseline实际追加批准102行通过，随后L+C2在482f真实6/6、N在b388真实3/3，均无跳过/重试，155完整/指纹保持，正常服务和标准锁退出。主控核baseline25份、L/C2 40份、N56份证据哈希；两运行树backend/scripts/config/shared app/API逐文件一致。限定三列表累计Spec/Quality源码审C/I/M0，正固定候选执行verify及三suite组合验收后交付，不把既有9项称合并tree同次实跑。随树C/e6详情编辑依赖不计本批浏览器验收，其辅助破坏性fixture禁止运行、独立验收Pending。
+
+接续六栏/上传源码组合4b81beb99d635ecf39dde4d8394dce70485203bc/treee0e518db11cc89043b7660db4756c9853e9fbbb7，含S9352e5f的17文件、N绑定、C2上传宿主416d622及两套联系人夹具，累计产品静态Spec/Quality C/I/M0。9b两端/根类型通过，C2增量48组件及作者两类型/静态通过，未称4b完整verify。157提交仅CRLF规范为LF，正式SHA218b2309215b418c0e6ec3a5c072cb3f16034946002dbf69a6dad07f11f02296，另16文件与冻结哈希一致；旧155/冻结156不变。E hard15437及H generic准入/向baseline roleA补Grant分别为测试Important阻塞，待原E/H只改专项；H需本轮独立合成actor/role，不改原66 Grant和安全行。156/157尚未执行。
+
+独立开庭d4b重验越过联系人夹具后，锁竞争缺second:acquired并记P2010而FAIL，合成案0→4保留，155/指纹及锁释放保持；实际SQLSTATE尚未知。原Owner只读诊断，优先请求唯一runner读取已有PG stderr，未写新诊断/放宽断言或改隔离/生产即时重试。该树不在155列表候选，不阻已通过列表。旧库与持久预览未操作；父级已恢复runner/C2/N，E/H及PG日志待转达集中在.local/ui003-evidence/eh-r2-test-readiness-relay.md与hearing-d4b-failure-relay.md。下文旧未prepare/未提交/未运行说明为历史，不覆盖本段。
+
 最新恢复检查点（2026-10-15，14:41 UTC后）：上次远端main/任务分支与本地主main实核1dd4034，仍只是文档交付，产品边界269c73c不变。R2首次155独立开庭专项在a539ae4/tree48eae422实际执行exit1；生成及本树构建通过，前后clean、标准指纹及155完整名称/checksum/完成状态不变，实例healthy、标准锁正常释放。失败是seedOwner合成客户缺少联系人兼容投影关联触发既有23514，案件0→0，未到开庭或竞争验证。原开庭Owner已由父级恢复修专属fixture；禁止修改生产约束迁就夹具。原失败及trace保留，未重跑、未执行156/157，旧库及持久预览未操作。
 
 C2原文件更正列表候选35055d37c11cd49586a567f10521432e3266e146/tree274bb276a406cd8ba3de6c902a466d0d9bbbb245已按五文件哈希代提交、clean；作者真实组件128/128、两类型及静态通过，原Reviewer终核C/I/M0。两个registered record浏览器场景尚未运行且只适用156。已审hook d584+740、材料API3db、C2及上传UI c253接源码组合afb0f4b2865f5b78f380ab7352ceb153bb3835c7/treee697bcbda763fe306aa3fbbf4af9ae09195fa7b1，无该组合最终门禁。上传UI两文件增量原Sol补审C/I/M0、作者213项聚焦通过；C2目录已仅接API与Panel为clean5499b44，上传prep宿主仍需独立续接，发送接口AbsolutePathBuf拒绝，未声称已启动。
@@ -48,7 +54,7 @@ S共享后端任务01a13eba-6a0b-74af-9ef0-852b446e40c0的首合同已独立冻�
 
 ## 当前任务
 
-**CORE-UI-003｜线索单条快捷办理与公证共用原因批填：已验收，待本次原子交付回执。** I复用ca015-integration／codex/ui003-quick-actions-integration，从已交付1f375ea开始；A在ca016-frontend-integration／codex/uxq01-notary-common-reason，业务只改NotaryReturnArchiveBatchPanel与spec，现追加独立浏览器专项；B在ca016-case-list-display／codex/uxq01-lead-quick-actions，独占List／新QuickPanel／EditPage各自vue和spec。两者基于79a同产品，旧分支保留、无写入者冲突。B现场确认原Edit保存／取消只回详情，I最小扩两文件补内部合法returnTo；禁止任意重定向、改原详情／API／后端。共用原因只填空白、逐项核对；快捷动作先getLead取最新真实能力和版本，未知结果原key恢复，关闭／对象／账号变化和迟到响应不串数据。详见路线图本批所有权表。本批A/B分别实跑闭环已验收，尚待本次远端交付回执；预览、CA018已交付候选和删除规则不变。
+**CORE-UI-003｜三模块列表原位办理：155真实9项通过，待固定候选正式门禁与交付。** I复用ca015-integration／codex/ui003-quick-actions-integration作为唯一集成与权威文档入口，独立155执行树ui003-list-module-baseline。线索/内部公证/公证处/案件列表复用真实表单及原Command，保留原body/key未知恢复、身份与授权修订隔离、原分页筛选及成功刷新。A/B旧片已交付269c73c；本批不含新六栏API、157上传或开庭竞争修复，它们在4b源码组合接续。后端不变、预览未升级，不改真实Grant或日期规则；实际候选和失败历史见VALIDATION。
 
 **CORE-CA-018｜外部转入／历史案件录入：已验收并原子交付main及任务分支。** I独占集成、权威文档和DB操作；最终源码／测试7236c8e968e633613db2abd0d72580bc9fb3d4d0／tree75e7cfba61aafe5ac1b79624bb9aa76130ace23b，同干净候选PG／Chromium22/22及工具80/80实际通过。真实独立来源16阶段、后续合法Command、材料冻结／字节、金额未知、并发／回滚及撤权最小投影已验收。新155前向修复真实REMAND子轮受理后的守卫衔接，150→155空链／旧事实保持／失败原子及重试1/1，官方隔离15433 public155/155；旧142／150～154不改。完整verify实际2fc8ee8通过80工具／1862前端／1531后端及双构建，330后台／256前台／34工具配置逐blob一致限定复用单元／构建，79a严格context／Spec／全类型／Lint／格式实跑通过，不称723或收口HEAD完整verify。独立最终Spec／Quality ACCEPTED，未闭C/I/M0；2026-10-15 05:58 UTC两远端实核79a76d5，最终末次SHA见回执。详细候选、失败及证据只见VALIDATION。5186／3206／15436保持source81ebfed，原进程健康200，未重启／迁移／替换／增CA018真实Grant；历史2案／6凭据不冒充人工测试后的当前数量。OPS-01-A～E按用户要求仅设计入队，INPUT-016／UXQ-01～06仍未实施；CA019仍占位未冻结。
 

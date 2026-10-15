@@ -1,5 +1,23 @@
 # SPEC-001 文档验证
 
+## 155三列表独立真实验收与接续源码（2026-10-15）
+
+R2 baseline在clean482f56e64f3525c56f936467d468a24d4e837475/treef8e6c803cc1dfde6d83d0bc61f2a0cdb31b2c58c于14:59:29.157至15:00:31.692 UTC实际PASS：本树正常context/Prisma生成/backend构建通过，追加批准102行（含固定66 Grant、2个批准合成credential行），checked全0，不生成环境密钥/DB密码，不改旧业务事实。prepare内部标准锁PID41876实际观察并释放，无外层重入。前后155全部名称/checksum/完成状态及指纹87ddb629496fbfadd83a201c2518d2ed3406badfff2fd3843d2804f93e18cd42保持。主控核25份证据哈希，回执.local/ui003-evidence/r2-baseline-482f-receipt.json；原证据ui003-list-module-baseline/.local/ui003-evidence/baseline-482f-r2-20261015/。
+
+L+C2在同clean482f/treef8e6于15:05:21.625 UTC开始，两个新suite各3项，共6/6、exit0、unexpected/skipped/flaky/retry均0，正常3101/5174服务和标准锁PID40612退出。原本树696个dist逐文件再核相同后限定复用本树generate/build，没有借其它dist。前后155完整/指纹保持，事实只追加、removedIds全空，baseline未重跑、无旧清理。主控核40份证据哈希，含6份trace/facts前后，回执l-c2-482f-r2-receipt.json。FullConfig未暴露webServer，reporter空值不代表服务未启动，已用真实监听PID/退出端口核实。原证据ui003-list-module-baseline/.local/ui003-evidence/l-c2-482f-r2-20261015/。
+
+N在clean b388be290b9690b22f95c379edda39d6521afc41/tree52f3a36a0dd541351c6610f863857cb29cbf92fd实际仅notary-list-workflow.spec.ts：正常安装/context/generate/本树构建通过，发现1文件3项；15:11:04.394 UTC开始ISSUE/NO_ISSUE/NO_INFRINGEMENT共3/3、exit0、unexpected/skipped/flaky/retry均0。前后155全名/checksum/完成状态与指纹保持，双服务退出、锁PID25316释放，无旧seed/disconnect/cleanup。初次只读采集器误假设复合键表有id而SQL42703，正式测试前停止，仅修ignored采集器后继续；初次日志保留，发现和正式E2E各只运行一次。主控核56份证据哈希，含3份trace/facts增量，回执notary-b388-r2-receipt.json；原证据ui003-notary-list-workflow/.local/ui003-evidence/notary-b388-r2-20261015/。
+
+合计9项发生于两个明确候选，不称合并tree同次实跑。主控逐文件核两树backend/scripts/config/shared app/API一致，482f对已交付269c73c的backend零差异；接N绑定并合已交付main历史为独立155候选0de7b8f1865dcddb06ac64195f7cd27419b15526/treee3cb1f59c5178d6b9ff44ebe3afe9302a9a1f960。只本地主控快进，远端仍b318411；文档/快照及独立累计Review后集中执行完整verify和三suite组合验收，再交付，不升级预览。
+
+新六栏/上传另固定4b81beb99d635ecf39dde4d8394dce70485203bc/treee0e518db11cc89043b7660db4756c9853e9fbbb7，S17文件9352e5f、C2上传宿主416d622等累计产品静态Spec/Quality C/I/M0。S357直接例及静态、C2增量48组件及两类型/静态为作者同输入证据；root9b正常generate及两端/根类型exit0。157原始SHA05fdbc...7392提交规范LF后为218b2309215b418c0e6ec3a5c072cb3f16034946002dbf69a6dad07f11f02296，已核仅CRLF→LF，另16文件一致，旧156仍87e2...001b。E hard15437、H generic准入并向baseline roleA补15 Grant为两项测试Important，待原Owner改R2/仅新合成actor后才可运行；不是产品源权限缺陷，不能被产品源0finding隐藏。156/157未执行。
+
+独立开庭d4b于15:01:39.028 UTC重验exit1，expected0/unexpected1、无skip/flaky/retry。联系人通过后orderedRace第256行缺second:acquired（verify第622行），服务同轮P2010，SQLSTATE未暴露，不能断言40001。合成案0→4保留，155/指纹及锁释放保持；不计入列表9项。证据hearing-correction-chain/.local/ui003-evidence/hearing-d4b-r2-20261015/。原Owner只读诊断，先复用PG stderr，未改原竞争断言/隔离/生产即时重试；原a539失败独立保留。
+
+随后唯一runner只读提取同轮原PG stderr，无新DB连接/写入/重跑：15:02:04.078 UTC PID13236唯一ERROR为`could not serialize access due to concurrent update`，SQL模板与advanceDue案锁一致；原stderr295字节SHA256155603167ef506b4fb743b2ebfce3127bede7e155abb838ba70080311f377123。数字SQLSTATE没有出现在日志/trace，不能标已验证40001；case归属为同秒/唯一错误/模板/源码关联，服务端未记录UUID参数。主控核10份诊断证据哈希，路径原d4b证据/read-only-diagnosis-20261015/。原Owner暂缓新诊断源码，待基于既有持续可重入扫描合同提出最小方案，不为测试新增生产即时重试。
+
+独立155候选0de的限定三列表累计Spec/Quality源码及三文档审C/I/M0，可以进入正式门禁。随树C/e6详情编辑代码虽有聚焦证据，但独立case-action-entry、record-edit、closure、archive辅助E2E仍会调用旧clear/reset/TRUNCATE/replica夹具，继续禁止在保留R2执行、保持独立浏览器验收Pending；三列表正式范围只用已安全重绑的新三个suite，不能据9项宣称整个tree的C/e6/六栏验收完成。
+
 ## R2首次155开庭失败与列表源码收口（2026-10-15）
 
 14:38:23.873至14:41:02.614 UTC，原唯一runner在clean a539ae4fbce4c7a25c53af29e35a40795a21f0ae/tree48eae4221fc278239784e3ae7eac19010f5168b3完成正常Prisma生成、本树backend build:prepared（均exit0），再用protected test:e2e及DB-only webServer空配置运行唯一hearing-correction-chain.spec.ts。结果expected0/unexpected1/skipped0/flaky0/retries0、pnpm exit1。seedOwner事务提交触发23514 customer contact projection mismatch：新客户的admissionContactName/Phone缺少customerContact/compatibilityContactId关联，违反既有20261009040000_customer_contacts延迟守卫。合成开庭案件前后0/0、addedCaseIds为空，开庭及锁竞争事件未到达；这是夹具失败，不能报告业务已通过或业务回归失败。
