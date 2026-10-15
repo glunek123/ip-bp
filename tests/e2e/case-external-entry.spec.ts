@@ -8,7 +8,6 @@ import {
 import {
   coreLeadFixtures,
   seedCoreLeadE2eData,
-  setRoleGrant,
 } from '../support/core-lead-database.mjs';
 import {
   createClosedCaseArchiveSourceThroughApi,
@@ -23,6 +22,7 @@ import {
   caseExternalEntrySnapshot,
   clearCaseExternalEntryFixture,
   setCaseExternalEntryGrant,
+  setCaseExternalEntryWorkflowGrant,
   withCaseExternalEntryCreateFault,
 } from '../support/case-external-entry-database.mjs';
 
@@ -268,44 +268,78 @@ async function clean() {
     'DEPARTMENT',
     true,
   );
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.match', 'TEAM');
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.complaint.submit', 'TEAM');
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.complaint.confirm', 'TEAM');
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.complaint.mail', 'TEAM');
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.filing.submit', 'TEAM');
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.execution.finish', 'TEAM');
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.closure.record', 'TEAM');
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.archive', 'TEAM');
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.hearing.schedule', 'TEAM');
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.judgment.register', 'TEAM');
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.judgment.next_step', 'TEAM');
-  await setRoleGrant(
+  await setCaseExternalEntryWorkflowGrant(coreLeadFixtures.roleA, 'case.match');
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.complaint.submit',
+  );
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.complaint.confirm',
+  );
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.complaint.mail',
+  );
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.filing.submit',
+  );
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.execution.finish',
+  );
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.closure.record',
+  );
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.archive',
+  );
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.hearing.schedule',
+  );
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.judgment.register',
+  );
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.judgment.next_step',
+  );
+  await setCaseExternalEntryWorkflowGrant(
     coreLeadFixtures.roleA,
     'case.second_instance.save',
-    'TEAM',
   );
-  await setRoleGrant(
+  await setCaseExternalEntryWorkflowGrant(
     coreLeadFixtures.roleA,
     'case.second_instance.result',
-    'TEAM',
   );
-  await setRoleGrant(
+  await setCaseExternalEntryWorkflowGrant(
     coreLeadFixtures.roleA,
     'case.second-instance-acceptance.update',
-    'TEAM',
   );
-  await setRoleGrant(
+  await setCaseExternalEntryWorkflowGrant(
     coreLeadFixtures.roleA,
     'case.acceptance.register',
-    'TEAM',
   );
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.execution.submit', 'TEAM');
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.execution.confirm', 'TEAM');
-  await setRoleGrant(coreLeadFixtures.roleA, 'case.execution.mail', 'TEAM');
-  await setRoleGrant(
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.execution.submit',
+  );
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.execution.confirm',
+  );
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.execution.mail',
+  );
+  await setCaseExternalEntryWorkflowGrant(
     coreLeadFixtures.roleA,
     'case.execution.filing.submit',
-    'TEAM',
   );
 }
 

@@ -218,6 +218,62 @@ export async function setCaseExternalEntryGrant(
   });
 }
 
+export async function setCaseExternalEntryWorkflowGrant(
+  roleId,
+  action,
+  enabled = true,
+) {
+  const allowed = new Set([
+    'case.match',
+    'case.complaint.submit',
+    'case.complaint.confirm',
+    'case.complaint.mail',
+    'case.filing.submit',
+    'case.execution.finish',
+    'case.closure.record',
+    'case.archive',
+    'case.hearing.schedule',
+    'case.judgment.register',
+    'case.judgment.next_step',
+    'case.second_instance.save',
+    'case.second_instance.result',
+    'case.second-instance-acceptance.update',
+    'case.acceptance.register',
+    'case.execution.submit',
+    'case.execution.confirm',
+    'case.execution.mail',
+    'case.execution.filing.submit',
+  ]);
+  if (!roles.includes(roleId) || !allowed.has(action))
+    throw new Error(
+      'Grant is outside synthetic external-entry workflow fixture',
+    );
+  await withDatabase(async (client) => {
+    const role = (
+      await client.query(
+        'SELECT id FROM role_templates WHERE id=$1 AND department_id=ANY($2::uuid[])',
+        [roleId, departments],
+      )
+    ).rows;
+    if (role.length !== 1) throw new Error('Synthetic role missing');
+    if (enabled) {
+      await client.query(
+        `INSERT INTO role_grants(id,role_template_id,action,scope)
+         VALUES(gen_random_uuid(),$1,$2::permission_action,'TEAM')
+         ON CONFLICT DO NOTHING`,
+        [roleId, action],
+      );
+    } else {
+      await client.query(
+        `DELETE FROM role_grants
+         WHERE role_template_id=$1 AND action=$2::permission_action
+           AND scope='TEAM'`,
+        [roleId, action],
+      );
+    }
+  });
+}
+
 export async function clearCaseExternalEntryFixture() {
   await withDatabase(async (client) => {
     await client.query('BEGIN');

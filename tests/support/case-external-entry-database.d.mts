@@ -4,6 +4,30 @@ export function setCaseExternalEntryGrant(
   scope: 'SELF' | 'TEAM' | 'DEPARTMENT',
   enabled: boolean,
 ): Promise<void>;
+export function setCaseExternalEntryWorkflowGrant(
+  roleId: string,
+  action:
+    | 'case.match'
+    | 'case.complaint.submit'
+    | 'case.complaint.confirm'
+    | 'case.complaint.mail'
+    | 'case.filing.submit'
+    | 'case.execution.finish'
+    | 'case.closure.record'
+    | 'case.archive'
+    | 'case.hearing.schedule'
+    | 'case.judgment.register'
+    | 'case.judgment.next_step'
+    | 'case.second_instance.save'
+    | 'case.second_instance.result'
+    | 'case.second-instance-acceptance.update'
+    | 'case.acceptance.register'
+    | 'case.execution.submit'
+    | 'case.execution.confirm'
+    | 'case.execution.mail'
+    | 'case.execution.filing.submit',
+  enabled?: boolean,
+): Promise<void>;
 export function clearCaseExternalEntryFixture(): Promise<void>;
 export function caseExternalEntrySnapshot(caseId: string): Promise<{
   case: Record<string, unknown>[];
