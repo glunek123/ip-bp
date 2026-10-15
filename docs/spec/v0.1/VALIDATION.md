@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+## 524完整门禁通过、157真实回放失败（2026-10-15）
+
+固定clean524dc060bb34f2f1ecce991246caeecbc4d32d7e/tree9a0178f264f0b92ba6d23150a264f2b03ac3b4a7于18:47:38至18:51:28 UTC实际一次正常pnpm verify，exit0，未复用48d：工具94、前端124套2207、后端120套1850及严格context/Spec/架构/Prisma生成/全部类型Lint格式和双构建通过。NT006实际标准锁owner PID16080/token70d436c4-c437-4dde-8847-e9ad679a0cce于18:50:13.939被观察并释放；当前源码及737构建产物manifest留证，未借用其他树dist。私密归档/TOC仅size/hash/metadata复核通过，不等于还原或库外文件备份。
+
+同候选protected --list实际1文件1项、exit0，随后18:51:33至18:51:38 UTC仅执行唯一DB-only专项，exit1、expected0/unexpected1，无skip/flaky/retry。空schema原链已越过修正156，但在20261015170000_case_section_record_uploads失败（helper474/replay508）。只读精确PG日志18:51:37.199/PID49779实际syntax error at end of input at character14066，未输出SQL或参数，未提供数字SQLSTATE，禁止推断。原Reviewer与S分别定位正式157 raw218b的该字符在:196 IF条件内CASE WHEN的THEN；I-S-MIG03 Important开放，由原S最小消除解析歧义，保持20MiB/50MiB/NULL与原守卫语义，并扫描同型，不修改15610760或旧155。新修复尚无固定候选/真实PG结果。
+
+真实sanitized attachment source157，checks=[]、enumStaging=[]、memoryFile未达，upgrade/失败重试/旧数据矩阵未运行，不能扩大为156或157风险验收通过。自有empty schema安全清理1个、无手工cleanup，最终仅public。三次helper public摘要相同；外围public155全名称/checksum/finished/noRollback、137表4336行、结构/事实/原安全cohort及指纹前后相同。发现实时锁PID18544与正式PID5896分开留证，结束均释放；实际失败trace/JSON保留，未启动业务服务/页面。
+
+最终证据section-record-edit-frontend-integration/.local/ui003-evidence/migration-524dc06-20261015/含53份manifest，主控逐一核hash/bytes匹配，manifest SHA256ea0f78d491e938fa21530bf33dffca78e272892b3eedf6390b374182de2c10e1、acceptance-summary SHA256d0f32ffa9f22fa6904412ef91e8739e32266adff4e0f57d9448247b8127cd5df。原28/36/39份历史证据hash不变。原独立Reviewer本轮完整门禁子阶段PASS、迁移REJECTED C0/I1/M0；旧I-S-MIG02源码已关闭，不能据此跳过新157失败继续部署。下一步历史旧列投影与真实blob保留的准入草案已受限审C/I/M0，仍非执行授权；public部署、Grant、业务/16UI、预览及备份恢复均未执行。
+
 ## 48d发现入口修正、156真实回放失败（2026-10-15）
 
 原S在clean e9cc对相同配置进行真实离线CLI发现：.ts/.mjs均成功；继承root且无custom reporter的A成功，仅增加静态导入run-e2e的空reporter的B复现相同模块错误，删除该导入的C恢复成功。9项关键源输入raw hash与正式48d一致，未连接数据库。由原runner仅在新ignored目录修其reporter，使用内建os/path保持正式Temp锁根、固定resource key及实时owner读取/PID校验；正式源码、共享runner、SQL与测试不改，旧36份失败证据不覆盖。原48d发现阶段的runner-lock-proof.json实际448字节、SHA256dfbe9c1612bc8b49755a8ee4b05dc5521ab6b64deb0e8ccbb50bad508ce6b100，在18:18:16.164记录实时owner PID6184；此前“onBegin前失败且无owner”的summary表述错误，原Reviewer已撤回，保留旧原件并在此更正。
