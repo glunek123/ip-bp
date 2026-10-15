@@ -51,6 +51,7 @@ const props = defineProps<{
   lawyer?: boolean;
   editOnly?: boolean;
   editRequest?: number;
+  submitCommand?: (command: Command) => Promise<void>;
 }>();
 const emit = defineEmits<{ changed: []; refresh: []; cancel: [] }>();
 
@@ -323,7 +324,8 @@ async function send(command: Command): Promise<void> {
   error.value = '';
   success.value = '';
   try {
-    if (command.kind === 'register')
+    if (props.submitCommand) await props.submitCommand(command);
+    else if (command.kind === 'register')
       await registerCaseJudgment(
         context.id,
         command.input,

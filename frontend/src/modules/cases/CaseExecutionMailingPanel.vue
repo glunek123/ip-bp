@@ -36,6 +36,7 @@ type MailingRecord = {
   files: VersionFile[];
 };
 const props = defineProps<{
+  submitCommand?: (input: MailCaseExecutionInput) => Promise<void>;
   readRevision?: number;
   item: {
     id: string;
@@ -384,7 +385,8 @@ async function submit() {
   submitting.value = true;
   error.value = '';
   try {
-    if (props.client) await mailClientCaseExecution(context.caseId, input);
+    if (props.submitCommand) await props.submitCommand(input);
+    else if (props.client) await mailClientCaseExecution(context.caseId, input);
     else
       await mailCaseExecution(
         context.caseId,

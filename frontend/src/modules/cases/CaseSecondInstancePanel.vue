@@ -70,6 +70,7 @@ type PanelFile = {
 };
 
 const props = defineProps<{
+  submitCommand?: (command: PendingCommand) => Promise<void>;
   item: PanelItem;
   contextKey: string;
   actorKey: string;
@@ -528,7 +529,8 @@ async function send(command: PendingCommand): Promise<void> {
   success.value = '';
   confirmation.value = '';
   try {
-    if (command.kind === 'progress')
+    if (props.submitCommand) await props.submitCommand(command);
+    else if (command.kind === 'progress')
       await saveSecondInstance(
         context.id,
         command.input,

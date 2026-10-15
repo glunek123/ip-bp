@@ -40,6 +40,7 @@ type FilingRecord = {
   files: VersionFile[];
 };
 const props = defineProps<{
+  submitCommand?: (input: SubmitCaseExecutionFilingInput) => Promise<void>;
   readRevision?: number;
   item: {
     id: string;
@@ -316,11 +317,13 @@ async function submit() {
   submitting.value = true;
   error.value = '';
   try {
-    await submitCaseExecutionFiling(
-      context.caseId,
-      input,
-      props.lawyer ? 'lawyer' : undefined,
-    );
+    if (props.submitCommand) await props.submitCommand(input);
+    else
+      await submitCaseExecutionFiling(
+        context.caseId,
+        input,
+        props.lawyer ? 'lawyer' : undefined,
+      );
     if (!isCurrent(context)) return;
     success.value = true;
     unknownRequest.value = null;

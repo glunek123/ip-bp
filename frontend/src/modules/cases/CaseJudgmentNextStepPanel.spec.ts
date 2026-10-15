@@ -96,6 +96,37 @@ const revocableItem = {
 };
 
 describe('CaseJudgmentNextStepPanel', () => {
+  it('delegates the original command to the optional list transport and retries its exact body/key', async () => {
+    const submitCommand = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError('unknown', 503, 'NETWORK_ERROR'))
+      .mockResolvedValueOnce(undefined);
+    const wrapper = mountPanel({ submitCommand });
+    await wrapper.get('input[value="EXECUTION"]').setValue();
+    await wrapper.get('input[type="checkbox"]').setValue(true);
+    await wrapper.get('form').trigger('submit');
+    await wrapper.get('[data-confirm-choice]').trigger('click');
+    await flushPromises();
+    const original = structuredClone(submitCommand.mock.calls[0]![0]);
+    expect(original).toEqual({
+      kind: 'choose',
+      input: {
+        expectedVersion: 3,
+        judgmentId,
+        idempotencyKey: expect.any(String),
+        next: 'EXECUTION',
+        executionReadinessConfirmed: true,
+      },
+    });
+    expect(wrapper.emitted('changed')).toBeUndefined();
+    await wrapper.get('[data-retry-choice]').trigger('click');
+    await flushPromises();
+    expect(submitCommand).toHaveBeenCalledTimes(2);
+    expect(submitCommand.mock.calls[1]![0]).toEqual(original);
+    expect(api.chooseCaseJudgmentNextStep).not.toHaveBeenCalled();
+    expect(wrapper.emitted('changed')).toHaveLength(1);
+    wrapper.unmount();
+  });
   it('requires an explicit path and explicit execution readiness confirmation', async () => {
     const wrapper = mountPanel();
     expect(wrapper.findAll('input[type="radio"]')).toHaveLength(2);

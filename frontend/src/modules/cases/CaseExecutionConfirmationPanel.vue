@@ -19,6 +19,7 @@ import { downloadMaterialVersion } from '../../api/materials';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 const props = defineProps<{
+  submitCommand?: (input: ConfirmExecutionInput) => Promise<void>;
   item: CaseDetail | LawyerCaseDetail;
   lawyer?: boolean;
   contextKey: string;
@@ -143,11 +144,13 @@ async function confirm(command?: ConfirmExecutionInput): Promise<void> {
   submitting.value = true;
   error.value = '';
   try {
-    await confirmCaseExecution(
-      props.item.id,
-      input,
-      props.lawyer ? 'lawyer' : 'internal',
-    );
+    if (props.submitCommand) await props.submitCommand(input);
+    else
+      await confirmCaseExecution(
+        props.item.id,
+        input,
+        props.lawyer ? 'lawyer' : 'internal',
+      );
     if (!isCurrent(context)) return;
     unknownCommand.value = null;
     postSucceeded.value = true;

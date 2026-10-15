@@ -39,6 +39,7 @@ const categories: ReadonlyArray<{ value: Category; label: string }> = [
 ];
 const buckets = ['frozen', 'later'] as const;
 const props = defineProps<{
+  submitCommand?: (input: RegisterCaseAcceptanceInput) => Promise<void>;
   item: PanelItem;
   contextKey: string;
   lawyer?: boolean;
@@ -310,11 +311,13 @@ async function register(input: RegisterCaseAcceptanceInput): Promise<void> {
   submitting.value = true;
   error.value = '';
   try {
-    await registerCaseAcceptance(
-      context.caseId,
-      input,
-      props.lawyer ? 'lawyer' : 'internal',
-    );
+    if (props.submitCommand) await props.submitCommand(input);
+    else
+      await registerCaseAcceptance(
+        context.caseId,
+        input,
+        props.lawyer ? 'lawyer' : 'internal',
+      );
     if (!isCurrent(context)) return;
     unknownRequest.value = null;
     success.value = '正式立案登记已完成，登记完成时进入待开庭。';

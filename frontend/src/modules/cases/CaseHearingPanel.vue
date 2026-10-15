@@ -31,6 +31,11 @@ type PanelItem = Pick<
 >;
 
 const props = defineProps<{
+  submitCommand?: (
+    command:
+      | { kind: 'schedule'; input: SaveCaseHearingInput }
+      | { kind: 'correct'; input: CorrectCaseHearingInput },
+  ) => Promise<void>;
   item: PanelItem;
   contextKey: string;
   lawyer?: boolean;
@@ -211,7 +216,11 @@ async function send(
   error.value = '';
   success.value = '';
   try {
-    if (kind === 'schedule')
+    if (props.submitCommand) {
+      if (kind === 'schedule') await props.submitCommand({ kind, input });
+      else if ('reason' in input) await props.submitCommand({ kind, input });
+      else throw new ApiError('缺少更正原因', 400, 'VALIDATION_ERROR');
+    } else if (kind === 'schedule')
       await scheduleCaseHearing(
         context.id,
         input,

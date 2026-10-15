@@ -35,6 +35,7 @@ import {
 } from './case-execution-recovery';
 
 const props = defineProps<{
+  submitCommand?: (input: SubmitExecutionInput) => Promise<void>;
   item: CaseDetail | LawyerCaseDetail;
   lawyer?: boolean;
   contextKey: string;
@@ -532,11 +533,13 @@ async function send(input?: SubmitExecutionInput): Promise<void> {
   error.value = '';
   message.value = '';
   try {
-    await submitExecution(
-      captured.id,
-      begun.input,
-      props.lawyer ? 'lawyer' : 'internal',
-    );
+    if (props.submitCommand) await props.submitCommand(begun.input);
+    else
+      await submitExecution(
+        captured.id,
+        begun.input,
+        props.lawyer ? 'lawyer' : 'internal',
+      );
     settleExecutionCommand(recovery, begun.attempt, 'confirmed');
     clearExecutionCommand(recovery);
     if (!isCurrent(captured)) return;

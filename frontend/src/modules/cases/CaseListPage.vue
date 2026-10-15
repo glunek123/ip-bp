@@ -1,10 +1,24 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { RouterLink, useRoute, useRouter } from 'vue-router';
+import {
+  RouterLink,
+  onBeforeRouteLeave,
+  onBeforeRouteUpdate,
+  useRoute,
+  useRouter,
+} from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
 import { labelLeadPlatform } from '../leads/index';
+import ListWorkflowDrawer from '../../app/ListWorkflowDrawer.vue';
+import type {
+  ListWorkflowContext,
+  ListWorkflowLoad,
+} from '../../app/list-workflow-context';
+import CaseListWorkflowPanel, {
+  decodeCaseListRequest,
+} from './CaseListWorkflowPanel.vue';
 import {
   primaryCaseAction,
   resolveCaseListActions,
@@ -12,6 +26,7 @@ import {
 } from './case-workspace-actions';
 import {
   getExternalEntryOptions,
+  getCase,
   listCases,
   type CaseStageGroup,
   type CaseStageFilter,
@@ -103,25 +118,114 @@ function stageLabel(value: CaseSummary['stage']): string {
   return '待开庭';
 }
 function listActions(item: CaseSummary) {
+  const recovery = pendingActions.value.get(item.id);
+  if (recovery)
+    return [
+      {
+        id: 'recovery',
+        section: 'case-info' as const,
+        intent: recovery,
+        label: '核对原办理请求',
+      },
+    ];
   const actions = resolveCaseListActions(item);
-  const primary = primaryCaseAction(item.stage, actions);
+  const primary =
+    actions.find((action) => action.intent === 'choose-next-step') ??
+    primaryCaseAction(item.stage, actions);
   return primary
     ? [primary, ...actions.filter((action) => action !== primary)]
     : actions;
 }
-const openingAction = ref(false);
-async function enterAction(item: CaseSummary, action: CaseActionIntent) {
-  if (openingAction.value) return;
-  openingAction.value = true;
+const pendingActions = ref(new Map<string, CaseActionIntent>());
+const missingPendingActions = computed(() =>
+  [...pendingActions.value].filter(
+    ([id]) => !items.value.some((item) => item.id === id),
+  ),
+);
+function readPendingActions() {
+  const result = new Map<string, CaseActionIntent>();
+  const prefix = `case-list-workflow:v1:${encodeURIComponent(identity.value)}:`;
   try {
-    await router.push({
-      path: `/cases/${encodeURIComponent(item.id)}`,
-      query: { ...listQuery.value, tab: 'details', action },
-    });
-  } finally {
-    openingAction.value = false;
+    for (let index = 0; index < globalThis.sessionStorage.length; index += 1) {
+      try {
+        const key = globalThis.sessionStorage.key(index);
+        if (!key?.startsWith(prefix)) continue;
+        const raw = globalThis.sessionStorage.getItem(key);
+        if (!raw) continue;
+        const value: unknown = JSON.parse(raw);
+        const pending = decodeCaseListRequest(value);
+        if (
+          pending &&
+          pending.actor === identity.value &&
+          key === `${prefix}${encodeURIComponent(pending.caseId)}`
+        )
+          result.set(pending.caseId, pending.action);
+      } catch {
+        /* Opening a fresh detail still fails closed if storage is inaccessible. */
+      }
+    }
+  } catch {
+    /* Storage restrictions must not prevent reading the case list. */
   }
+  pendingActions.value = result;
 }
+function enterRecovery(id: string, action: CaseActionIntent) {
+  if (!identity.value || openingAction.value) return;
+  selectedAction.value = action;
+  workflowContext.value = {
+    recordId: id,
+    actorKey: identity.value,
+    actionKey: action,
+    title: '核对原案件办理请求',
+  };
+  drawerOpen.value = true;
+}
+const drawer = ref<{
+  canLeave: () => boolean;
+  requestClose: () => boolean;
+} | null>(null);
+const drawerOpen = ref(false);
+const workflowContext = ref<ListWorkflowContext | null>(null);
+const selectedAction = ref<CaseActionIntent | null>(null);
+const openingAction = computed(
+  () => drawer.value !== null && !drawer.value.canLeave(),
+);
+function enterAction(item: CaseSummary, action: CaseActionIntent) {
+  if (
+    !identity.value ||
+    openingAction.value ||
+    (drawerOpen.value &&
+      workflowContext.value?.recordId === item.id &&
+      selectedAction.value === action)
+  )
+    return;
+  const entry = listActions(item).find((entry) => entry.intent === action);
+  if (!entry) return;
+  selectedAction.value = action;
+  workflowContext.value = {
+    recordId: item.id,
+    actorKey: identity.value,
+    actionKey: action,
+    title: `${item.businessNo} · ${entry.label}`,
+  };
+  drawerOpen.value = true;
+}
+function loadWorkflow(request: ListWorkflowLoad) {
+  return getCase(request.context.recordId, { signal: request.signal });
+}
+function closeWorkflow() {
+  drawerOpen.value = false;
+  workflowContext.value = null;
+  selectedAction.value = null;
+}
+function leaveWorkflow() {
+  if (drawer.value && !drawer.value.canLeave()) return false;
+  closeWorkflow();
+  return true;
+}
+onBeforeRouteLeave(leaveWorkflow);
+onBeforeRouteUpdate(leaveWorkflow);
+watch(identity, closeWorkflow, { flush: 'sync' });
 const amountColumns = [
   { key: 'claimAmount', label: '标的额' },
   { key: 'judgmentAmount', label: '判决额' },
@@ -157,6 +261,7 @@ async function load() {
   items.value = [];
   total.value = 0;
   error.value = '';
+  readPendingActions();
   if (invalidFilter.value) {
     error.value = '阶段筛选无效，请清除筛选后重试。';
     state.value = 'failed';
@@ -199,6 +304,7 @@ async function load() {
       return;
     }
     items.value = result.items;
+    readPendingActions();
     total.value = result.total;
     state.value = 'ready';
   } catch (reason) {
@@ -316,6 +422,20 @@ onBeforeUnmount(() => request?.abort());
           >
         </div>
       </div>
+      <section
+        v-if="missingPendingActions.length"
+        class="state-panel"
+        aria-label="未确认的案件办理请求"
+      >
+        <p>原办理请求尚待确认。即使案件已离开当前筛选，仍可核对原请求。</p>
+        <ElButton
+          v-for="[id, action] in missingPendingActions"
+          :key="id"
+          :disabled="openingAction"
+          @click="enterRecovery(id, action)"
+          >核对原办理请求</ElButton
+        >
+      </section>
       <div
         class="segmented-control business-list-toolbar"
         role="group"
@@ -409,9 +529,9 @@ onBeforeUnmount(() => request?.abort());
                   >
                   <div class="case-list-actions">
                     <ElButton
-                      v-for="action in listActions(item)"
+                      v-for="(action, index) in listActions(item)"
                       :key="action.intent"
-                      text
+                      :text="index !== 0"
                       type="primary"
                       :data-case-action="action.intent"
                       :disabled="openingAction"
@@ -422,7 +542,7 @@ onBeforeUnmount(() => request?.abort());
                     <span
                       v-if="listActions(item).length === 0"
                       class="field-help"
-                      >只读</span
+                      >当前无可办操作</span
                     >
                   </div>
                   <details class="case-list-context">
@@ -602,6 +722,23 @@ onBeforeUnmount(() => request?.abort());
         </div>
       </section>
     </main>
+    <ListWorkflowDrawer
+      ref="drawer"
+      v-model="drawerOpen"
+      :context="workflowContext"
+      :load-detail="loadWorkflow"
+      @success="load"
+    >
+      <template #default="{ detail, session, requestState }">
+        <CaseListWorkflowPanel
+          v-if="selectedAction"
+          :item="detail"
+          :action="selectedAction"
+          :session="session"
+          :request-state="requestState"
+        />
+      </template>
+    </ListWorkflowDrawer>
   </div>
 </template>
 

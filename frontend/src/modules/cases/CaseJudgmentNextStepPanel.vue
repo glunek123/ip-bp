@@ -37,6 +37,8 @@ const props = defineProps<{
   item: PanelItem;
   contextKey: string;
   lawyer?: boolean;
+  /** List caller owns transport/session and persists the exact command before POST. */
+  submitCommand?: (command: PendingCommand) => Promise<void>;
 }>();
 const emit = defineEmits<{ changed: []; refresh: [] }>();
 const path = ref<'' | 'APPEAL' | 'EXECUTION'>('');
@@ -229,7 +231,8 @@ async function send(command: PendingCommand): Promise<void> {
   success.value = '';
   confirmation.value = '';
   try {
-    if (command.kind === 'choose')
+    if (props.submitCommand) await props.submitCommand(command);
+    else if (command.kind === 'choose')
       await chooseCaseJudgmentNextStep(
         context.id,
         command.input,

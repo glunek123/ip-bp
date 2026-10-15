@@ -26,6 +26,7 @@ import {
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 const props = defineProps<{
+  submitCommand?: (input: SubmitCaseFilingInput) => Promise<void>;
   readRevision?: number;
   item: CaseWorkflowItem;
   contextKey: string;
@@ -370,7 +371,9 @@ async function submit() {
   submitting.value = true;
   error.value = '';
   try {
-    if (props.lawyer) await submitCaseFiling(context.caseId, input, 'lawyer');
+    if (props.submitCommand) await props.submitCommand(input);
+    else if (props.lawyer)
+      await submitCaseFiling(context.caseId, input, 'lawyer');
     else await submitCaseFiling(context.caseId, input);
     if (!isCurrent(context)) return;
     success.value = true;

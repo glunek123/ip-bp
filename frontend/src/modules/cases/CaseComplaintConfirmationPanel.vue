@@ -25,6 +25,7 @@ import { useAuthStore } from '../../stores/auth';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 const props = defineProps<{
+  submitCommand?: (input: ConfirmCaseComplaintInput) => Promise<void>;
   item: CaseWorkflowItem;
   lawyer?: boolean;
   readRevision?: number;
@@ -373,7 +374,8 @@ async function sendConfirmation(
     props.item.id === caseId &&
     identity.value === currentIdentity;
   try {
-    if (props.lawyer) await confirmCaseComplaint(caseId, body, 'lawyer');
+    if (props.submitCommand) await props.submitCommand(body);
+    else if (props.lawyer) await confirmCaseComplaint(caseId, body, 'lawyer');
     else await confirmCaseComplaint(caseId, body);
     if (!isCurrent()) return;
     unknownRequest.value = null;

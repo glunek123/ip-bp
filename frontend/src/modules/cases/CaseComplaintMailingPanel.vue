@@ -25,6 +25,7 @@ import { useAuthStore } from '../../stores/auth';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 const props = defineProps<{
+  submitCommand?: (input: MailCaseComplaintInput) => Promise<void>;
   readRevision?: number;
   item: {
     id: string;
@@ -301,7 +302,9 @@ async function submit() {
   submitting.value = true;
   error.value = '';
   try {
-    if (props.client) await mailClientCaseComplaint(context.caseId, payload);
+    if (props.submitCommand) await props.submitCommand(payload);
+    else if (props.client)
+      await mailClientCaseComplaint(context.caseId, payload);
     else if (props.lawyer)
       await mailCaseComplaint(context.caseId, payload, 'lawyer');
     else await mailCaseComplaint(context.caseId, payload);

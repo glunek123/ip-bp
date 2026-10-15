@@ -9,6 +9,7 @@ import { useAuthStore } from '../../stores/auth';
 import CaseListPage from './CaseListPage.vue';
 
 const api = vi.hoisted(() => ({
+  getCase: vi.fn(),
   listCases: vi.fn<typeof import('../../api/cases').listCases>(),
   getExternalEntryOptions:
     vi.fn<typeof import('../../api/cases').getExternalEntryOptions>(),
@@ -16,7 +17,15 @@ const api = vi.hoisted(() => ({
 vi.mock('../../api/cases', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/cases')>()),
   listCases: api.listCases,
+  getCase: api.getCase,
   getExternalEntryOptions: api.getExternalEntryOptions,
+}));
+vi.mock('./CaseListWorkflowPanel.vue', () => ({
+  default: {
+    props: ['item', 'action'],
+    template:
+      '<div data-test="workflow-panel">{{ item.id }} {{ action }}</div>',
+  },
 }));
 const sourceIds = {
   confirmation: '91000000-0000-4000-8000-000000000001',
@@ -171,6 +180,7 @@ async function mountList(
 
 beforeEach(() => {
   vi.resetAllMocks();
+  api.getCase.mockResolvedValue({ id: 'case-1' });
   api.listCases.mockResolvedValue(result());
   api.getExternalEntryOptions.mockResolvedValue({
     canCreate: false,
@@ -193,7 +203,7 @@ afterEach(() => {
 });
 
 describe('authorized internal case list display', () => {
-  it('shows explicit judgment actions and carries only a named intent with list context', async () => {
+  it('opens an explicit judgment action in place and preserves list context', async () => {
     const item: CaseSummary = {
       ...summary(),
       stage: 'WAITING_JUDGMENT',
@@ -207,37 +217,41 @@ describe('authorized internal case list display', () => {
     const row = wrapper.get('tbody tr');
     expect(
       row.findAll('[data-case-action]').map((button) => button.text()),
-    ).toEqual(['更正判决', '选择判决后续流程']);
+    ).toEqual(['选择判决后续流程', '更正判决']);
     expect(row.get('a').attributes('href')).toBe(
       '/cases/case-1?view=department&stage=WAITING_JUDGMENT&page=2',
     );
     await row.get('[data-case-action="choose-next-step"]').trigger('click');
     await flushPromises();
-    expect(router.currentRoute.value.path).toBe('/cases/case-1');
+    expect(router.currentRoute.value.path).toBe('/cases');
     expect(router.currentRoute.value.query).toEqual({
       view: 'department',
       stage: 'WAITING_JUDGMENT',
       page: '2',
-      tab: 'details',
-      action: 'choose-next-step',
+      action: 'jump-stage',
     });
+    expect(api.getCase).toHaveBeenCalledWith('case-1', {
+      signal: expect.any(AbortSignal),
+    });
+    expect(document.body.textContent).toContain('选择判决后续流程');
   });
 
-  it('ignores repeated clicks while the selected action navigation is pending', async () => {
+  it('ignores repeated clicks while the selected action detail is loading', async () => {
     api.listCases.mockResolvedValue(
       result([{ ...summary(), canArchive: true }]),
     );
-    const { wrapper, router } = await mountList();
-    let finish!: () => void;
-    const navigation = new Promise<void>((resolve) => {
+    let finish!: (value: { id: string }) => void;
+    const loading = new Promise<{ id: string }>((resolve) => {
       finish = resolve;
     });
-    const push = vi.spyOn(router, 'push').mockReturnValueOnce(navigation);
+    api.getCase.mockReturnValueOnce(loading);
+    const { wrapper, router } = await mountList();
     const action = wrapper.get('[data-case-action="archive"]');
     await action.trigger('click');
     await action.trigger('click');
-    expect(push).toHaveBeenCalledTimes(1);
-    finish();
+    expect(api.getCase).toHaveBeenCalledTimes(1);
+    expect(router.currentRoute.value.path).toBe('/cases');
+    finish({ id: 'case-1' });
     await flushPromises();
   });
 
@@ -412,7 +426,7 @@ describe('authorized internal case list display', () => {
     );
     expect(cells[0]!.text()).toContain('LD-20261013-00005678');
     expect(cells[0]!.text()).toContain('NZ-20261013-00009012');
-    expect(cells[0]!.text()).toContain('只读');
+    expect(cells[0]!.text()).toContain('当前无可办操作');
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
     expect(wrapper.text()).not.toMatch(/批量|已结清|未结清|实收额/);
   });

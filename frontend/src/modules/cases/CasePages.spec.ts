@@ -654,7 +654,9 @@ describe('case pages', () => {
       const rows = wrapper.findAll('tbody tr');
       expect(rows[0]!.findAll('[data-case-action]')).toHaveLength(1);
       expect(rows[0]!.get('[data-case-action]').text()).not.toBe('办理');
-      expect(rows[1]!.findAll('td')[0]!.get('.field-help').text()).toBe('只读');
+      expect(rows[1]!.findAll('td')[0]!.get('.field-help').text()).toBe(
+        '当前无可办操作',
+      );
       expect(rows[1]!.find('[data-case-action]').exists()).toBe(false);
       wrapper.unmount();
     },
@@ -1145,7 +1147,7 @@ describe('case pages', () => {
     expect(
       rows[0]!.get('[data-case-action="execution-submission"]').text(),
     ).toBe('提交执行材料');
-    expect(rows[1]!.text()).toContain('只读');
+    expect(rows[1]!.text()).toContain('当前无可办操作');
   });
 
   it('shows the shared second-instance history on the internal case detail', async () => {
