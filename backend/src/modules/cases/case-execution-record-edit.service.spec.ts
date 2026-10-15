@@ -422,31 +422,6 @@ describe.each(cases)('$method', (definition) => {
     expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
   });
 
-  it('rejects dates before effective acceptance and dates after known archive facts', async () => {
-    const f = fixture();
-    f.tx.caseAcceptance.findMany.mockResolvedValue([
-      {
-        acceptedAt: new Date('2026-08-01'),
-        corrections: [{ acceptedAt: new Date('2026-10-02') }],
-      },
-    ]);
-    await expect(invoke(f)).rejects.toMatchObject({
-      response: { code: 'VALIDATION_ERROR' },
-    });
-    f.tx.caseAcceptance.findMany.mockResolvedValue([]);
-    f.tx.caseClosure.findMany.mockResolvedValue([
-      {
-        currentVersionId: id(15),
-        currentVersion: { closeAt: new Date('2026-09-30') },
-        recordCorrections: [],
-      },
-    ]);
-    await expect(invoke(f)).rejects.toMatchObject({
-      response: { code: 'VALIDATION_ERROR' },
-    });
-    expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
-  });
-
   it('rejects no-op values including the same exact frozen file set', async () => {
     const f = fixture();
     const body = {
@@ -529,35 +504,6 @@ describe.each(cases)('$method', (definition) => {
     });
   });
 
-  it('uses the actual execution round and selected appeal choice for effective acceptance bounds', async () => {
-    const f = fixture();
-    f.record.currentTrialRoundId = id(21);
-    await invoke(f);
-    expect(f.tx.caseAcceptance.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          caseId,
-          departmentId: actor.departmentId,
-          trialRoundId: roundId,
-        },
-      }),
-    );
-    expect(
-      f.tx.caseSecondInstanceAcceptanceChange.findMany,
-    ).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          caseId,
-          departmentId: actor.departmentId,
-          trialRoundId: roundId,
-          choiceId: f.record.currentJudgmentNextStepId,
-        },
-        take: 1,
-        orderBy: { toRevision: 'desc' },
-      }),
-    );
-  });
-
   it('checks the imported entry anchor and real known lower date without inventing predecessor facts', async () => {
     const f = fixture();
     const source = {
@@ -597,32 +543,6 @@ describe.each(cases)('$method', (definition) => {
     expect(f.tx[definition.delegate].create).not.toHaveBeenCalled();
   });
 
-  it('uses closure correction date only for its exact real current closure version', async () => {
-    const f = fixture();
-    f.tx.caseClosure.findMany.mockResolvedValue([
-      {
-        currentVersionId: id(15),
-        currentVersion: { closeAt: new Date('2026-10-10') },
-        recordCorrections: [
-          { sourceClosureVersionId: id(23), closeAt: new Date('2026-09-20') },
-        ],
-      },
-    ]);
-    await expect(invoke(f)).resolves.toBeDefined();
-    f.tx.caseClosure.findMany.mockResolvedValue([
-      {
-        currentVersionId: id(15),
-        currentVersion: { closeAt: new Date('2026-10-10') },
-        recordCorrections: [
-          { sourceClosureVersionId: id(15), closeAt: new Date('2026-09-20') },
-        ],
-      },
-    ]);
-    await expect(
-      invoke(f, { ...input(), idempotencyKey: 'new-key' }),
-    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
-  });
-
   it('rejects internal accounts carrying an external identity hint before reading a receipt', async () => {
     const f = fixture();
     for (const hint of [
@@ -634,5 +554,28 @@ describe.each(cases)('$method', (definition) => {
         invoke(f, input(), { ...actor, ...hint }),
       ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
     expect(f.tx.caseSectionRecordEditReceipt.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('allows a lawful correction after the recorded closure or archive date without adding chronological gates', async () => {
+    const f = fixture();
+    f.tx.caseClosure.findMany.mockResolvedValue([
+      {
+        currentVersionId: id(15),
+        currentVersion: { closeAt: new Date('2026-08-01') },
+        recordCorrections: [],
+      },
+    ]);
+    f.tx.caseArchive.findMany.mockResolvedValue([
+      { currentVersion: { archiveAt: new Date('2026-08-02') } },
+    ]);
+    await expect(invoke(f)).resolves.toMatchObject({
+      [definition.revision]: 1,
+    });
+    expect(f.tx.caseClosure.findMany).not.toHaveBeenCalled();
+    expect(f.tx.caseArchive.findMany).not.toHaveBeenCalled();
+    expect(f.tx.caseAcceptance.findMany).not.toHaveBeenCalled();
+    expect(
+      f.tx.caseSecondInstanceAcceptanceChange.findMany,
+    ).not.toHaveBeenCalled();
   });
 });

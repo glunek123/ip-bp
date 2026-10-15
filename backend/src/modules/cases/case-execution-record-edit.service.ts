@@ -157,12 +157,7 @@ export class CaseExecutionRecordEditService {
       try {
         return await this.database.$transaction(
           async (tx) => {
-            const record = await this.lockAndAuthorize(
-              tx,
-              actor,
-              caseId,
-              definition.action,
-            );
+            await this.lockAndAuthorize(tx, actor, caseId, definition.action);
             const receiptKey = {
               departmentId: actor.departmentId,
               actorUserId: actor.userId,
@@ -239,23 +234,11 @@ export class CaseExecutionRecordEditService {
               (source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null)
             )
               throw this.conflict('INVALID_STATE');
-            await this.validateDate(
-              tx,
-              actor.departmentId,
-              caseId,
-              record.currentExecutionSubmission?.trialRoundId ??
-                record.currentTrialRoundId,
-              record.currentSecondInstanceResult?.choiceId ??
-                record.currentJudgmentNextStepId,
-              value.date,
-              source.kind === 'EXTERNAL_ENTRY'
-                ? [
-                    source.stageReachedOn,
-                    source.known.acceptedOn,
-                    source.known.secondInstanceAcceptedOn,
-                  ]
-                : [],
-            );
+            if (
+              source.kind === 'EXTERNAL_ENTRY' &&
+              value.date < source.stageReachedOn
+            )
+              throw this.invalid('日期不得早于本案明确外部阶段来源日期');
             const beforeFiles = (head?.documents ?? original.versions)
               .map((file) => file.contentVersionId)
               .sort();
@@ -474,84 +457,6 @@ export class CaseExecutionRecordEditService {
       throw cause;
     }
     return record;
-  }
-
-  private async validateDate(
-    tx: Prisma.TransactionClient,
-    departmentId: string,
-    caseId: string,
-    trialRoundId: string | null,
-    choiceId: string | null,
-    date: string,
-    known: Array<string | null>,
-  ) {
-    const acceptances =
-      trialRoundId === null
-        ? []
-        : await tx.caseAcceptance.findMany({
-            where: { caseId, departmentId, trialRoundId },
-            select: {
-              acceptedAt: true,
-              corrections: {
-                orderBy: { toRevision: 'desc' },
-                take: 1,
-                select: { acceptedAt: true },
-              },
-            },
-          });
-    const secondAcceptances =
-      trialRoundId === null
-        ? []
-        : await tx.caseSecondInstanceAcceptanceChange.findMany({
-            where: { caseId, departmentId, trialRoundId, choiceId },
-            orderBy: { toRevision: 'desc' },
-            take: 1,
-            select: { acceptedAt: true },
-          });
-    const lower = [
-      ...known,
-      ...acceptances.map((row) =>
-        day(row.corrections[0]?.acceptedAt ?? row.acceptedAt),
-      ),
-      ...secondAcceptances.map((row) =>
-        row.acceptedAt === null ? null : day(row.acceptedAt),
-      ),
-    ];
-    if (lower.some((bound) => bound !== null && date < bound))
-      throw this.invalid('日期不得早于真实来源或有效受理日期');
-    // No finish-versus-filing bound: that separate business rule is not approved.
-    const [closures, archives] = await Promise.all([
-      tx.caseClosure.findMany({
-        where: { caseId, departmentId },
-        select: {
-          currentVersionId: true,
-          currentVersion: { select: { closeAt: true } },
-          recordCorrections: {
-            orderBy: { toRevision: 'desc' },
-            take: 1,
-            select: { sourceClosureVersionId: true, closeAt: true },
-          },
-        },
-      }),
-      tx.caseArchive.findMany({
-        where: { caseId, departmentId },
-        select: { currentVersion: { select: { archiveAt: true } } },
-      }),
-    ]);
-    const closureDates = closures.map((row) => {
-      const head = row.recordCorrections[0];
-      return head !== undefined &&
-        head.sourceClosureVersionId === row.currentVersionId
-        ? head.closeAt
-        : (row.currentVersion?.closeAt ?? null);
-    });
-    if (
-      [
-        ...closureDates,
-        ...archives.map((row) => row.currentVersion?.archiveAt ?? null),
-      ].some((bound) => bound !== null && date > day(bound))
-    )
-      throw this.invalid('日期不得晚于已知结案或归档日期');
   }
 
   private validate<T extends object>(dto: new () => T, input: T) {
