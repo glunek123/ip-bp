@@ -1493,3 +1493,15 @@ b73b82a506958da535bc16f0cb6f579eb25eb88e固定聚焦三项实际2通过／1失�
 实际预览编译后的AccessControlService和PrismaAccessControlStore对两原案件授权通过、跨部门拒绝；5186／3206健康200。原两案分别处于WAITING_EXECUTION_STAMP与WAITING_EXECUTION_FILING，无真实APPEAL，故canSaveSecondInstanceAcceptance仍为false：Action已开通，业务来源资格未满足，没有伪造上诉或冒称二审表单已打开。五分钟原账号内存会话用于1440／390只读核验，两案0表单打开、0业务POST，01:41:31.756 UTC已撤销，不读密码、不称正常密码登录、不创建长期凭据。
 
 准确证据在P本机runtime/ce002-permission-20261015-{inspected,planned,before,granted,after,access,browser,session-cleanup,final}.json及四张截图；rollback.sql仅准备、未执行。本次独立本地配置授权不改变已验CE002源码／迁移，不覆盖CA018来源分支验收或授予其新Action。此前“待用户确认”均为历史交付时状态，当前授权按本段为准。
+
+## CORE-CA-018外部转入／历史案件录入验收中（2026-10-15）
+
+SD-57／cases合同区分正常公证三来源与不可变外部entry，真实16初始阶段、日期／来源／原因及已知字段，后续首动作只有确实缺失的前序在精确entry分支为null；当前事实、真实材料、金额／日期、CAS、当前范围、审计与原键回执继续生效。正常150来源及既有已执行迁移保持。本节当前只记录已完成的工程及迁移证据，不标本片最终完成、全门禁通过或预览已部署。
+
+**迁移专项实际通过。** 固定候选611347baea8090c568f28ba0dd4be072b7a18504／treebc73ce908c0f135230f31d8e2860e9b5a0104233，于2026-10-15T02:34:57.6768548Z～02:35:19.5097451Z受保护15433的标准PG／Chromium专项1/1 exit0，前后HEAD／tree相同且干净。151新增目录Action，无真实Grant回填；152完整随机schema空链、保全真实150构建经API创建正常归档事实后复制升级、原事实／原审计／材料引用逐旧列深等、第二DDL故意失败完整回滚／enum保留／前向重试、真实存在旧案的三来源非法置空约束拒绝通过。152源码SHA256689A627A292641188D1EAB75FF117E0C0419C3DD15A7B278DF863B6389C829D7；root与作者工作文件存在LF／CRLF差别时使用Git blob和规范化全文核同，不混称字节SHA相同。旧150迁移文件零差异。证据.local/ca018-evidence/migration-seventh-{before,after,report}.json、migration-seventh.log与保全artifacts。随后官方受保护db:test:migrate:deploy仅将隔离15433 public150→152 exit0，记录isolated-public-152-deploy；不reset，不操作持久15436。
+
+**失败与修复保留。** 迁移静态审先关闭SQL拼接破坏dollar quote／regex及新录入receipt缺不可变trigger；首PG轮仍因受理guard少括号42601失败，最小修复后随机schema编译通过。第二轮旧reset试删不可变审计23514；改为案件provenance／FK闭包受保护TRUNCATE及共享原seed-only入口，保留审计、账号、凭据与材料，不禁trigger或删除它们。第三轮快照把额外audit_events／material_references当case_id表查询；只分离两表的正确resource查询，旧列深等保持。第四轮预期DDL失败后缺ROLLBACK导致25P02，补连接事务恢复；第五轮反例误在空retry schema命中0案，明确切upgrade并先断言真实案存在；第六轮真实反例发现正常closure guard引用未赋值entry_root，10处改已建表行类型，来源谓词不变，独立增量接受。SQL反例只认可23xxx约束类错误，语法／运行时异常继续失败；六轮原log／JSON／trace均保全，不能改写为通过。
+
+**工程组合仍待最终验收。** 源审逐项关闭直接来源可办理能力与确认材料读取、真实null前序解码、原键重试被mutable GET阻挡、律师确认人ID投影、二审实际受理日期下界；最终审另发现冻结确认不得永久等同当前可变材料池，API最小修复及168/168聚焦已交复审。共享组织目录已补两新Code及create三scope／直接归档DEPARTMENT精确限制，内部组织35/35和作者前端45/45实际通过。根读取37/37、后续律师读取32/32和后台类型，作者UI279/279及窄组件23/23、9/9仅证明各自候选；不累计成单次最终整组。所有真实16阶段续办、正常NOTARY新链、SQL／并发／故障／回执及浏览器验收，以及完整verify尚待稳定候选源审关闭后集中完成。
+
+持久预览当前仍source81ebfed／150；CE002新编辑Action已按用户明确授权开通，独立132项保持和来源不合格两案边界见前节。CA018无真实Grant、未升级预览；用户人工测试窗口内禁止重启／迁移／替换5186／3206／15436，代码隔离开发、验收及正常推送不受影响。未来升级必须以人工测试结束后的新备份／数据基线保全，不把当前人工写入误算漂移或回退。生产、资金、批量导入、重开和未批准财务仍不在本片。
