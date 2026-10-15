@@ -985,12 +985,23 @@ onBeforeUnmount(() => {
         <CaseExecutionSubmissionPanel
           v-if="
             item.canSubmitExecution ||
+            (item.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
+              item.origin?.kind === 'EXTERNAL_ENTRY' &&
+              item.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
+              item.executionSubmission.current === null &&
+              !item.executionConfirmation &&
+              'canUploadDirectExecutionMaterials' in item &&
+              item.canUploadDirectExecutionMaterials === true) ||
             item.executionSubmission.submissions.length > 0
           "
           :item="item"
           :lawyer="true"
           :context-key="identity"
           :actor-key="secondInstanceActorKey"
+          :upload-only="
+            'canUploadDirectExecutionMaterials' in item &&
+            item.canUploadDirectExecutionMaterials === true
+          "
           @changed="load"
           @refresh="load"
         />

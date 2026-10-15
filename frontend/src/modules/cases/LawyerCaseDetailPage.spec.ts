@@ -137,6 +137,25 @@ function detail(
     archive: null,
   };
 }
+function directExecutionUploadDetail(
+  capability: boolean | undefined,
+): LawyerCaseDetail & { canUploadDirectExecutionMaterials?: boolean } {
+  return {
+    ...detail('case-a', 'CA-A', 'WAITING_EXECUTION_CONFIRMATION'),
+    canSubmitExecution: false,
+    canConfirmExecution: true,
+    executionSubmission: { current: null, submissions: [], availableFiles: [] },
+    origin: {
+      kind: 'EXTERNAL_ENTRY',
+      entryKind: 'EXTERNAL_TRANSFER',
+      initialStage: 'WAITING_EXECUTION_CONFIRMATION',
+      stageReachedOn: '2026-10-01',
+    },
+    ...(capability === undefined
+      ? {}
+      : { canUploadDirectExecutionMaterials: capability }),
+  };
+}
 function materials() {
   return {
     items: [
@@ -215,6 +234,33 @@ beforeEach(() => {
 });
 
 describe('LawyerCaseDetailPage', () => {
+  it('renders direct execution upload-only controls with the dedicated capability', async () => {
+    api.getLawyerCase.mockResolvedValue(directExecutionUploadDetail(true));
+    const { wrapper } = await mountPage();
+
+    expect(
+      wrapper.find('[data-test="execution-material-upload-only"]').exists(),
+    ).toBe(true);
+    expect(wrapper.find('[data-test="submit-execution"]').exists()).toBe(false);
+  });
+
+  it.each([false, undefined])(
+    'does not render the direct execution uploader without capability (%s)',
+    async (capability) => {
+      api.getLawyerCase.mockResolvedValue(
+        directExecutionUploadDetail(capability),
+      );
+      const { wrapper } = await mountPage();
+
+      expect(
+        wrapper.find('[data-test="execution-material-upload-only"]').exists(),
+      ).toBe(false);
+      expect(wrapper.find('[data-test="submit-execution"]').exists()).toBe(
+        false,
+      );
+    },
+  );
+
   it('labels the execution confirmation stage on the lawyer case detail', async () => {
     api.getLawyerCase.mockResolvedValue(
       detail('case-a', 'CA-A', 'WAITING_EXECUTION_CONFIRMATION'),
