@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
+import { coreLeadFixtures } from './core-lead-database.mjs';
 import {
   assertNoOrphanedOldForeignKeys,
   copyOldTables,
@@ -79,6 +80,98 @@ export async function withCaseExternalEntryMigrationDatabase(operation) {
   } finally {
     await client.end();
   }
+}
+
+export async function withOld150CompatibleCoreLeadGrants(operation) {
+  // The preserved 150-migration Prisma client cannot decode the CA018 actions.
+  // This compatibility window is restricted to the fixed synthetic E2E roles.
+  const url = process.env.DATABASE_URL;
+  if (process.env.NODE_ENV !== 'test' || !url)
+    throw new Error('Old150 grant fixture requires isolated test database');
+  if (validateIsolatedTestDatabaseUrl(url).port !== 15433)
+    throw new Error('Old150 grant fixture requires test database port 15433');
+
+  return withCaseExternalEntryMigrationDatabase(async (client) => {
+    const roles = [
+      coreLeadFixtures.roleA,
+      coreLeadFixtures.roleB,
+      coreLeadFixtures.roleSelf,
+    ];
+    const actions = [
+      'case.external-entry.create',
+      'case.external-entry.archive',
+    ];
+    const saved = (
+      await client.query(
+        `DELETE FROM public.role_grants AS g
+         WHERE g.role_template_id = ANY($1::uuid[])
+           AND g.action::text = ANY($2::text[])
+         RETURNING to_jsonb(g) AS row`,
+        [roles, actions],
+      )
+    ).rows.map(({ row }) => row);
+
+    let result;
+    let operationError;
+    let restorationError;
+    try {
+      result = await operation();
+    } catch (error) {
+      operationError = error;
+    } finally {
+      try {
+        await client.query('BEGIN');
+        for (const row of saved)
+          await client.query(
+            `INSERT INTO public.role_grants
+             SELECT * FROM jsonb_populate_record(NULL::public.role_grants, $1::jsonb)`,
+            [JSON.stringify(row)],
+          );
+        const restored = (
+          await client.query(
+            `SELECT to_jsonb(g) AS row FROM public.role_grants AS g
+             WHERE g.id = ANY($1::uuid[]) ORDER BY g.id`,
+            [saved.map(({ id }) => id)],
+          )
+        ).rows.map(({ row }) => row);
+        const byId = (left, right) => left.id.localeCompare(right.id);
+        if (
+          JSON.stringify(restored.sort(byId)) ===
+          JSON.stringify(saved.sort(byId))
+        )
+          await client.query('COMMIT');
+        else {
+          restorationError = new Error(
+            'Old150 grant fixture did not restore exact grant rows',
+          );
+          await client.query('ROLLBACK');
+        }
+      } catch (error) {
+        restorationError = restorationError
+          ? new AggregateError(
+              [restorationError, error],
+              'Old150 grant fixture verification and rollback failed',
+            )
+          : error;
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          restorationError = new AggregateError(
+            [restorationError, rollbackError],
+            'Old150 grant fixture restoration and rollback failed',
+          );
+        }
+      }
+    }
+    if (operationError && restorationError)
+      throw new AggregateError(
+        [operationError, restorationError],
+        'Old150 operation and grant restoration failed',
+      );
+    if (restorationError) throw restorationError;
+    if (operationError) throw operationError;
+    return result;
+  });
 }
 
 export function newCaseExternalEntrySchema(prefix) {

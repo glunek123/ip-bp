@@ -21,6 +21,7 @@ import {
   replayOldCaseMigrations,
   snapshotOldCaseRows,
   withCaseExternalEntryMigrationDatabase,
+  withOld150CompatibleCoreLeadGrants,
   createCaseExternalFactSourceProbe,
   assertCaseExternalFactSourceProbe,
   failCaseExternalEntryMigrationAtomically,
@@ -61,29 +62,32 @@ test('CA018 upgrades an actual 150-migration case and guards normal fact sources
   test.setTimeout(180_000);
   expect(oldCaseMigrations).toHaveLength(150);
 
-  const prior = await createClosedCaseArchiveSourceThroughApi(request);
-  await setCaseArchiveFixtureGrant(
-    coreLeadFixtures.roleA,
-    'case.archive',
-    'TEAM',
-  );
-  const archivedResponse = await request.post(
-    `/api/v1/cases/${prior.caseId}/archive`,
-    {
-      headers: operator,
-      data: {
-        expectedVersion: prior.closureResult.version,
-        idempotencyKey: randomUUID(),
-        expectedClosureVersionId: prior.closureResult.closureVersionId,
-        archiveAt: today(),
-        archiveType: 'MEDIATION',
-        archiveReason: 'CA018 real legacy migration fixture',
+  const prior = await withOld150CompatibleCoreLeadGrants(async () => {
+    const source = await createClosedCaseArchiveSourceThroughApi(request);
+    await setCaseArchiveFixtureGrant(
+      coreLeadFixtures.roleA,
+      'case.archive',
+      'TEAM',
+    );
+    const archivedResponse = await request.post(
+      `/api/v1/cases/${source.caseId}/archive`,
+      {
+        headers: operator,
+        data: {
+          expectedVersion: source.closureResult.version,
+          idempotencyKey: randomUUID(),
+          expectedClosureVersionId: source.closureResult.closureVersionId,
+          archiveAt: today(),
+          archiveType: 'MEDIATION',
+          archiveReason: 'CA018 real legacy migration fixture',
+        },
       },
-    },
-  );
-  expect(archivedResponse.status()).toBe(201);
-  const archived = await archivedResponse.json();
-  expect(archived.stage).toBe('ARCHIVED');
+    );
+    expect(archivedResponse.status()).toBe(201);
+    const archived = await archivedResponse.json();
+    expect(archived.stage).toBe('ARCHIVED');
+    return source;
+  });
 
   await withCaseExternalEntryMigrationDatabase(async (client) => {
     const priorIdentity = (

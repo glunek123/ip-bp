@@ -12,6 +12,9 @@ export interface MigrationClient {
 export function withCaseExternalEntryMigrationDatabase<T>(
   operation: (client: MigrationClient) => Promise<T>,
 ): Promise<T>;
+export function withOld150CompatibleCoreLeadGrants<T>(
+  operation: () => Promise<T>,
+): Promise<T>;
 export function newCaseExternalEntrySchema(prefix: string): string;
 export function createCaseExternalEntrySchema(
   client: MigrationClient,
