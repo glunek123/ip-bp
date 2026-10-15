@@ -613,6 +613,160 @@ describe('CaseHearingService', () => {
     expect(f.tx.auditEvent.create).toHaveBeenCalledTimes(1);
   });
 
+  function effectiveScanFixture(
+    originalDate: string | null,
+    headDate?: string | null,
+  ) {
+    const f = fixture();
+    const date = (value: string | null) =>
+      value === null ? null : new Date(`${value}T00:00:00.000Z`);
+    const record = {
+      stage: 'WAITING_HEARING',
+      version: 8,
+      currentTrialRoundId: trialRoundId,
+      currentHearingArrangementId: arrangementId,
+      currentHearingAdvanceId: null,
+      currentHearingArrangement: {
+        id: arrangementId,
+        hearingAt: date(originalDate),
+        toVersion: 8,
+        trialRoundId,
+        externalEntryId: null,
+        recordCorrections:
+          headDate === undefined ? [] : [{ hearingAt: date(headDate) }],
+      },
+    };
+    f.database.case.findMany.mockResolvedValue([
+      { id: caseId, departmentId: actor.departmentId },
+    ]);
+    f.tx.case.findFirst.mockResolvedValue(record);
+    f.tx.$queryRawUnsafe.mockImplementation((sql: string) =>
+      sql.includes('FOR UPDATE')
+        ? Promise.resolve([{ id: caseId }])
+        : Promise.resolve([{ due_at: new Date('2026-10-07T16:00:00.000Z') }]),
+    );
+    return { ...f, record };
+  }
+
+  it.each(['2026-10-12', null])(
+    'advances original %s using the exact past-date record head',
+    async (originalDate) => {
+      const f = effectiveScanFixture(originalDate, '2026-10-07');
+      expect(
+        await f.service.advanceDue(new Date('2026-10-08T10:00:00.000Z')),
+      ).toEqual({ advanced: 1, failed: 0 });
+      expect(f.database.case.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            currentHearingArrangement: {
+              is: {
+                OR: [
+                  { hearingAt: { lt: new Date('2026-10-08T00:00:00.000Z') } },
+                  {
+                    recordCorrections: {
+                      some: {
+                        hearingAt: { lt: new Date('2026-10-08T00:00:00.000Z') },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+        }),
+      );
+      expect(f.tx.case.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            currentHearingArrangement: {
+              select: expect.objectContaining({
+                recordCorrections: {
+                  orderBy: { toRevision: 'desc' },
+                  take: 1,
+                  select: { hearingAt: true },
+                },
+              }),
+            },
+          }),
+        }),
+      );
+      expect(f.tx.$queryRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('$1::date'),
+        '2026-10-07',
+      );
+      expect(f.tx.caseHearingAdvance.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            arrangementId,
+            dueAt: new Date('2026-10-07T16:00:00.000Z'),
+            fromVersion: 8,
+            toVersion: 9,
+          }),
+        }),
+      );
+    },
+  );
+
+  it.each(['2026-10-12', '2026-10-08', null])(
+    'does not advance a past original date when the latest record head is %s',
+    async (headDate) => {
+      const f = effectiveScanFixture('2026-10-06', headDate);
+      expect(
+        await f.service.advanceDue(new Date('2026-10-08T10:00:00.000Z')),
+      ).toEqual({ advanced: 0, failed: 0 });
+      expect(f.tx.caseHearingAdvance.create).not.toHaveBeenCalled();
+      expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('uses the original date only when the arrangement has no record correction', async () => {
+    const f = effectiveScanFixture('2026-10-07');
+    expect(
+      await f.service.advanceDue(new Date('2026-10-08T10:00:00.000Z')),
+    ).toEqual({ advanced: 1, failed: 0 });
+    expect(f.tx.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('$1::date'),
+      '2026-10-07',
+    );
+  });
+
+  it.each(['2026-10-12', null])(
+    'rereads record correction %s committed before acquiring the case lock',
+    async (headDate) => {
+      const f = effectiveScanFixture('2026-10-06', '2026-10-07');
+      f.tx.$queryRawUnsafe.mockImplementation((sql: string) => {
+        if (sql.includes('FOR UPDATE')) {
+          f.record.currentHearingArrangement.recordCorrections = [
+            {
+              hearingAt:
+                headDate === null
+                  ? null
+                  : new Date(`${headDate}T00:00:00.000Z`),
+            },
+          ];
+          return Promise.resolve([{ id: caseId }]);
+        }
+        return Promise.resolve([
+          { due_at: new Date('2026-10-07T16:00:00.000Z') },
+        ]);
+      });
+      expect(
+        await f.service.advanceDue(new Date('2026-10-08T10:00:00.000Z')),
+      ).toEqual({ advanced: 0, failed: 0 });
+      expect(f.tx.caseHearingAdvance.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not advance a stale candidate after its due arrangement was replaced', async () => {
+    const f = effectiveScanFixture('2026-10-12');
+    f.record.currentHearingArrangementId = 'new-arrangement';
+    f.record.currentHearingArrangement.id = 'new-arrangement';
+    expect(
+      await f.service.advanceDue(new Date('2026-10-08T10:00:00.000Z')),
+    ).toEqual({ advanced: 0, failed: 0 });
+    expect(f.tx.caseHearingAdvance.create).not.toHaveBeenCalled();
+  });
+
   it('records a fresh execution time for each case after acquiring its lock', async () => {
     const f = fixture();
     const secondCaseId = '77777777-7777-4777-8777-777777777777';
@@ -638,6 +792,7 @@ describe('CaseHearingService', () => {
           currentHearingArrangement: {
             id: where.id === caseId ? arrangementId : secondArrangementId,
             hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+            recordCorrections: [],
             toVersion: 8,
             trialRoundId,
           },
@@ -682,6 +837,7 @@ describe('CaseHearingService', () => {
       currentHearingArrangement: {
         id: arrangementId,
         hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+        recordCorrections: [],
         toVersion: 8,
         trialRoundId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       },
@@ -720,6 +876,7 @@ describe('CaseHearingService', () => {
       currentHearingArrangement: {
         id: arrangementId,
         hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+        recordCorrections: [],
         toVersion: 8,
         trialRoundId,
         externalEntryId: entryId,
@@ -769,6 +926,7 @@ describe('CaseHearingService', () => {
           currentHearingArrangement: {
             id: arrangementId,
             hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+            recordCorrections: [],
             toVersion: 8,
             trialRoundId,
           },

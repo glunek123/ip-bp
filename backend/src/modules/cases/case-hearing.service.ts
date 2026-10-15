@@ -484,7 +484,18 @@ export class CaseHearingService {
       where: {
         stage: 'WAITING_HEARING',
         currentHearingArrangement: {
-          is: { hearingAt: { lt: new Date(`${today}T00:00:00.000Z`) } },
+          is: {
+            OR: [
+              { hearingAt: { lt: new Date(`${today}T00:00:00.000Z`) } },
+              {
+                recordCorrections: {
+                  some: {
+                    hearingAt: { lt: new Date(`${today}T00:00:00.000Z`) },
+                  },
+                },
+              },
+            ],
+          },
         },
       },
       select: { id: true, departmentId: true },
@@ -522,6 +533,11 @@ export class CaseHearingService {
                   select: {
                     id: true,
                     hearingAt: true,
+                    recordCorrections: {
+                      orderBy: { toRevision: 'desc' },
+                      take: 1,
+                      select: { hearingAt: true },
+                    },
                     toVersion: true,
                     trialRoundId: true,
                     externalEntryId: true,
@@ -552,26 +568,34 @@ export class CaseHearingService {
               (source.kind === 'EXTERNAL_ENTRY' &&
                 record.currentAcceptanceId === null &&
                 source.initialStage !== 'WAITING_HEARING') ||
-              arrangement?.hearingAt == null ||
+              arrangement?.id !== record.currentHearingArrangementId ||
               arrangement.trialRoundId !== record.currentTrialRoundId ||
               (arrangement.externalEntryId ?? null) !== entryId ||
               record.version !== arrangement.toVersion
             )
               return false;
+            // The candidate query can include an older past-date correction.
+            // Only the exact current arrangement's locked latest head is effective;
+            // a head that explicitly clears the date never falls back to the root.
+            const hearingAt =
+              arrangement.recordCorrections.length > 0
+                ? arrangement.recordCorrections[0]!.hearingAt
+                : arrangement.hearingAt;
+            if (hearingAt === null) return false;
             const prior = await tx.caseHearingAdvance.findUnique({
               where: { arrangementId: arrangement.id },
               select: { id: true },
             });
             if (prior !== null) return false;
             const due = await tx.$queryRawUnsafe<Array<{ due_at: Date }>>(
-              'SELECT (("hearing_at" + 1)::timestamp AT TIME ZONE \'Asia/Shanghai\') AS due_at FROM "case_hearing_arrangements" WHERE "id" = $1::uuid',
-              arrangement.id,
+              "SELECT (($1::date + 1)::timestamp AT TIME ZONE 'Asia/Shanghai') AS due_at",
+              isoDate(hearingAt),
             );
             const executedAt = this.clock.now();
             if (
               due.length !== 1 ||
               due[0].due_at > executedAt ||
-              !hearingIsDue(isoDate(arrangement.hearingAt), executedAt)
+              !hearingIsDue(isoDate(hearingAt), executedAt)
             )
               return false;
             const advanceId = randomUUID();
