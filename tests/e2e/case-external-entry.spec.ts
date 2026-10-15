@@ -896,9 +896,7 @@ test('uploads and confirms a complete direct execution material bundle in the br
   await login(page, `/cases/${root.id}`);
   await page.goto(`/cases/${root.id}?tab=files`);
   await page.locator('[data-test="open-upload"]').click();
-  const uploadPanel = page.locator(
-    '[data-test="execution-submission-panel"]',
-  );
+  const uploadPanel = page.locator('[data-test="execution-submission-panel"]');
   await expect(uploadPanel).toBeVisible();
   const uploadInput = page.locator(
     '[data-test="execution-material-upload-only"]',
@@ -933,9 +931,7 @@ test('uploads and confirms a complete direct execution material bundle in the br
   await expect(
     uploadPanel.locator('[data-test="submit-execution"]'),
   ).toHaveCount(0);
-  const beforeIncompleteConfirmation = await caseExternalEntrySnapshot(
-    root.id,
-  );
+  const beforeIncompleteConfirmation = await caseExternalEntrySnapshot(root.id);
   const incompleteResponse = await request.post(
     `/api/v1/cases/${root.id}/execution-confirm`,
     {
@@ -1023,9 +1019,10 @@ test('uploads and confirms a complete direct execution material bundle in the br
     ]),
   );
   await page.goto(`/cases/${root.id}?tab=files`);
-  await expect(
-    page.locator('[data-workspace-tab="files"]'),
-  ).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('[data-workspace-tab="files"]')).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await expect(
     page
       .locator('[data-test="workspace-file"]')
