@@ -21,6 +21,41 @@ const environment = {
   },
 };
 
+test.each([
+  [],
+  ['tests/e2e/case-section-record-ui.spec.ts'],
+  ['--grep=--list', 'tests/e2e/case-section-record-ui.spec.ts'],
+  ['--unknown', '--list'],
+])(
+  'rejects pending UI %j before runtime, capture, lock or child',
+  (...args) => {
+    const calls = { runtime: 0, capture: 0, lock: 0, spawn: 0 };
+    const dependencies = {
+      get pnpmVersion() {
+        calls.runtime += 1;
+        return '11.27.0';
+      },
+      captureEnvironment() {
+        calls.capture += 1;
+        return environment;
+      },
+      acquireLock() {
+        calls.lock += 1;
+        return { release() {} };
+      },
+      spawn() {
+        calls.spawn += 1;
+        return { status: 0 };
+      },
+    };
+    assert.throws(
+      () => runE2e(process.cwd(), args, dependencies),
+      (error) => error.code === 'NORMAL_SOURCE_PERMISSION_PENDING',
+    );
+    assert.deepEqual(calls, { runtime: 0, capture: 0, lock: 0, spawn: 0 });
+  },
+);
+
 test('uses one environment snapshot and one shared-resource lock', () => {
   let captures = 0;
   let released = 0;
@@ -46,11 +81,40 @@ test('uses one environment snapshot and one shared-resource lock', () => {
   assert.equal(spawned.options.env, environment.childEnvironment);
 });
 
+test.each([
+  ['tests/e2e/hearing-correction-chain.spec.ts'],
+  ['tests/e2e/case-section-record-ui.spec.ts', '--list'],
+])(
+  'preserves the existing runner path for %j using offline dependencies',
+  (...args) => {
+    const events = [];
+    const status = runE2e(process.cwd(), args, {
+      pnpmVersion: '11.27.0',
+      captureEnvironment() {
+        events.push('capture');
+        return environment;
+      },
+      acquireLock() {
+        events.push('lock');
+        return { release: () => events.push('release') };
+      },
+      spawn(command, childArgs) {
+        events.push('spawn');
+        assert.equal(command, process.execPath);
+        assert.deepEqual(childArgs.slice(1), ['test', ...args]);
+        return { status: 0 };
+      },
+    });
+    assert.equal(status, 0);
+    assert.deepEqual(events, ['capture', 'lock', 'spawn', 'release']);
+  },
+);
+
 test('starts no child when environment or lock preconditions fail', () => {
   let spawnCalls = 0;
   assert.throws(
     () =>
-      runE2e('C:/repo', [], {
+      runE2e('C:/repo', ['tests/e2e/auth.spec.ts'], {
         pnpmVersion: '11.27.0',
         captureEnvironment: () => {
           throw new Error('environment rejected');
@@ -63,7 +127,7 @@ test('starts no child when environment or lock preconditions fail', () => {
   );
   assert.throws(
     () =>
-      runE2e('C:/repo', [], {
+      runE2e('C:/repo', ['tests/e2e/auth.spec.ts'], {
         pnpmVersion: '11.27.0',
         captureEnvironment: () => environment,
         acquireLock: () => {

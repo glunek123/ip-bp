@@ -15,8 +15,6 @@ const normalSourcePermissionGaps = Object.freeze([
   'case.acceptance.register',
   'case.hearing.schedule',
   'case.execution.submit',
-  'user.manage',
-  'lawyer.account.manage',
 ]);
 
 export class SectionRecordUiPermissionPending extends Error {
@@ -25,9 +23,9 @@ export class SectionRecordUiPermissionPending extends Error {
   requiredActions = normalSourcePermissionGaps;
   constructor() {
     super(
-      'I-SECTION-UI-GRANT01 / NORMAL_SOURCE_PERMISSION_PENDING: normal lead-to-case preparation is not approved for the required workflow/account Actions: ' +
+      'I-SECTION-UI-GRANT01 / NORMAL_SOURCE_PERMISSION_PENDING: normal lead-to-case preparation is not approved for the required workflow Actions: ' +
         normalSourcePermissionGaps.join(', ') +
-        '. No actor, case, capture, database, or HTTP preparation is allowed. External-entry Grant remains on hold.',
+        '. Existing A/B user.manage and lawyer.account.manage Grants do not authorize copying them to a new role. No actor, case, capture, database, or HTTP preparation is allowed. External-entry Grant remains on hold.',
     );
     this.name = 'SectionRecordUiPermissionPending';
   }

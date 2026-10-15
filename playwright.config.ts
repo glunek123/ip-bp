@@ -1,4 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
+import { assertSectionRecordUiConfigAdmission } from './scripts/case-section-record-ui-admission.mjs';
+
+// Global setup/webServer runs before spec loading, so spec guards are too late.
+assertSectionRecordUiConfigAdmission(__dirname, process.argv.slice(2));
 
 export default defineConfig({
   testDir: './tests/e2e',

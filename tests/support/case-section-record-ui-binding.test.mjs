@@ -25,8 +25,6 @@ const gaps = [
   'case.acceptance.register',
   'case.hearing.schedule',
   'case.execution.submit',
-  'user.manage',
-  'lawyer.account.manage',
 ];
 const both = (value) => ({
   DATABASE_URL: value,
@@ -72,6 +70,11 @@ function pending(error) {
   );
   assert.deepEqual(Array.from(error.requiredActions), gaps);
   for (const gap of gaps) assert.ok(error.message.includes(gap));
+  assert.ok(
+    error.message.includes(
+      'Existing A/B user.manage and lawyer.account.manage Grants do not authorize copying them to a new role.',
+    ),
+  );
   return true;
 }
 
