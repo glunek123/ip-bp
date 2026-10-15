@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## 155交付及后续测试准入关闭（2026-10-15）
+
+155正式候选19a及本节下述全门禁/9项证据经独立终核Spec/Quality C/I/M0；仅三份权威文档和标准snapshot收口为b39b90e89b3c1fd2cdc8258162e28553b613a07f/tree480840a0be82f6f3c5dd61ad9c9fa790245cdf53，已正常原子快进远端main和codex/ui003-quick-actions-integration，双ref与主仓main均只读核实同SHA。主仓.pnpm-store保留，预览未操作；交付回执主控.local/ui003-evidence/delivery-b39b90e.json。未声称b39重跑完整门禁，不扩六栏/156/157结论。
+
+后续E69ac113四文件、Hf83fc13四文件接为1e84c60，原Reviewer受限核八文件差异Spec/Quality C/I/M0，关闭I-E-R2与I-H-R2测试准入问题。E纯40/H纯46、各根类型/Lint/格式为作者实际离线证据；完整R2绑定在capture/连接前拒错目标，正式capture/validator后逐项核本地156或兼容157全量迁移ledger和DB/public/user、finally仅断连。H仅创建本轮UUID合成actor/role/授权，原3用户/3角色/66 Grant及安全行全字段count/hash前后核对；不改旧baseline授权。真实156/157未运行，源码关闭不等于功能验收。
+
+唯一runner在155诊断候选9ba66d376da11b6ed588af2ba7d25d23eb56439e/tree0298f3cfe2a539948b5f7c723da29e77274216ec正常生成/构建后，DB-only protected唯一spec仍exit1，expected0/unexpected1、无skip/flaky/retry。15:52:36.084 UTC开始，首schedule-first竞争直接捕获second的P2010、sqlState40001及TransactionWriteConflict，事件顺序first:attempt/acquired→second:attempt→first:barrier-released→second:rejected，原锁断言未放宽。此数值来自本次白名单nested metadata，不追认为旧d4b日志已含数字。155/指纹前后保持、标准锁释放，4新合成案保留。原证据hearing-correction-chain/.local/ui003-evidence/hearing-9ba-diagnostic-r2-20261015/的safe-query-rejections.json、acceptance-summary.json、原log/trace等32份哈希主控核对通过；这是诊断成功、业务测试失败，不是修复验收。
+
 ## 155三列表同树正式门禁与真实验收（2026-10-15）
 
 固定clean候选19a0df2ba97d9acaa3b55b5d732570dc55351167/treef8d9d6b20437141c5ab9afe3a80421cb7abdb5f2，于15:41:03.721至15:48:04.669 UTC正常完整`pnpm verify`实际exit0：strict context、Spec、架构、Prisma、两端/根类型、全Lint/格式、工具11文件94项、前端123文件2006项、后端115套1532项及双构建全部通过。未过滤或跳过真实NT006迁移探针；nt006-inclusion-proof.json绑定源hash和全量Jest范围，标准资源锁PID40852在15:47:20实际观察并正常释放，无外层重入锁。
