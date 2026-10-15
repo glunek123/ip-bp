@@ -28,6 +28,7 @@ import {
   revokeSecondInstanceResult,
 } from './cases';
 import * as casesApi from './cases';
+import type { RequestOptions } from './http';
 import type {
   CaseJudgmentFact,
   SubmitExecutionInput,
@@ -537,10 +538,11 @@ const sectionCommands = [
       mailedAt: '2026-10-01',
       mailReceiptContentVersionIds: [sectionOtherId, sectionId],
     },
-    send: (input: unknown) =>
+    send: (input: unknown, options?: RequestOptions) =>
       casesApi.correctCaseExecutionMailingRecord(
         archiveCaseId,
         input as casesApi.CorrectExecutionMailingRecordInput,
+        options,
       ),
   },
   {
@@ -557,10 +559,11 @@ const sectionCommands = [
       submittedAt: '2026-10-01',
       executionFilingProofContentVersionIds: [sectionOtherId, sectionId],
     },
-    send: (input: unknown) =>
+    send: (input: unknown, options?: RequestOptions) =>
       casesApi.correctCaseExecutionFilingRecord(
         archiveCaseId,
         input as casesApi.CorrectExecutionFilingRecordInput,
+        options,
       ),
   },
   {
@@ -579,10 +582,11 @@ const sectionCommands = [
       basisNote: '  依据  ',
       basisContentVersionIds: [],
     },
-    send: (input: unknown) =>
+    send: (input: unknown, options?: RequestOptions) =>
       casesApi.correctCaseExecutionFinishRecord(
         archiveCaseId,
         input as casesApi.CorrectExecutionFinishRecordInput,
+        options,
       ),
   },
   {
@@ -599,10 +603,11 @@ const sectionCommands = [
       reason: '  更正原文  ',
       hearingAt: null,
     },
-    send: (input: unknown) =>
+    send: (input: unknown, options?: RequestOptions) =>
       casesApi.correctCaseHearingRecord(
         archiveCaseId,
         input as casesApi.CorrectHearingRecordInput,
+        options,
       ),
   },
   {
@@ -624,10 +629,11 @@ const sectionCommands = [
       paidLitigationFee: null,
       judgmentContentVersionIds: [sectionOtherId, sectionId],
     },
-    send: (input: unknown) =>
+    send: (input: unknown, options?: RequestOptions) =>
       casesApi.correctCaseJudgmentRecord(
         archiveCaseId,
         input as casesApi.CorrectJudgmentRecordInput,
+        options,
       ),
   },
   {
@@ -648,10 +654,11 @@ const sectionCommands = [
       note: null,
       closeContentVersionIds: [],
     },
-    send: (input: unknown) =>
+    send: (input: unknown, options?: RequestOptions) =>
       casesApi.correctCaseClosureRecord(
         archiveCaseId,
         input as casesApi.CorrectClosureRecordInput,
+        options,
       ),
   },
 ];
@@ -697,6 +704,49 @@ describe('six independent section record commands', () => {
           code: 'INVALID_RESPONSE',
         });
       }
+    });
+    it(`${command.name} forwards cancellation and keeps body/key and caller headers intact`, async () => {
+      const controller = new AbortController();
+      const fetch = vi.fn(
+        (_url: string, options?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            const signal = options?.signal;
+            signal?.addEventListener('abort', () => reject(signal.reason), {
+              once: true,
+            });
+          }),
+      );
+      vi.stubGlobal('fetch', fetch);
+      const pending = command.send(input, {
+        signal: controller.signal,
+        headers: {
+          'X-Request-Test': 'caller',
+          'idempotency-key': 'must-not-replace-original',
+        },
+      });
+      const outgoing = fetch.mock.calls[0]?.[1];
+      expect(outgoing?.signal?.aborted).toBe(false);
+      expect(JSON.parse(String(outgoing?.body))).toEqual(input);
+      expect(new Headers(outgoing?.headers).get('Idempotency-Key')).toBe(
+        input.idempotencyKey,
+      );
+      expect(new Headers(outgoing?.headers).get('X-Request-Test')).toBe(
+        'caller',
+      );
+      const rejected = expect(pending).rejects.toMatchObject({
+        name: 'AbortError',
+      });
+      controller.abort();
+      await rejected;
+      expect(outgoing?.signal?.aborted).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      // The server may already have committed; retry the exact original command.
+      const replay = mockJson(result, 201);
+      await expect(command.send(input)).resolves.toEqual(result);
+      expect(replay.mock.calls[0]?.[1]?.body).toBe(outgoing?.body);
+      expect(
+        new Headers(replay.mock.calls[0]?.[1]?.headers).get('Idempotency-Key'),
+      ).toBe(input.idempotencyKey);
     });
     it(`${command.name} rejects bad anchors, revisions and extra workflow fields before HTTP`, async () => {
       const fetch = vi.fn();

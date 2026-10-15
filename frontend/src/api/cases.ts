@@ -3632,6 +3632,7 @@ async function submitSectionRecordCorrection<K extends SectionRecordKind>(
   id: string,
   raw: SectionRecordInputs[K],
   kind: K,
+  options?: RequestOptions,
 ): Promise<SectionRecordResults[K]> {
   const input: unknown = raw;
   const contract = sectionRecordContracts[kind];
@@ -3662,11 +3663,16 @@ async function submitSectionRecordCorrection<K extends SectionRecordKind>(
   const body = structuredClone(raw);
   const submitted: unknown = body;
   if (!record(submitted)) throw invalidResponse();
+  const headers = new Headers(options?.headers);
+  headers.set('Idempotency-Key', body.idempotencyKey);
+  // Aborting transport leaves a sent command's outcome unknown; callers retain
+  // the original actor/target/body/key for recovery. No session is cleared here.
   const response = await requestJson(
     `/cases/${encodeURIComponent(id)}/${contract.route}`,
     {
+      ...options,
       method: 'POST',
-      headers: { 'Idempotency-Key': body.idempotencyKey },
+      headers: Object.fromEntries(headers),
       body,
     },
   );
@@ -3702,38 +3708,44 @@ function sameUuid(left: unknown, right: unknown): boolean {
 export function correctCaseExecutionMailingRecord(
   id: string,
   input: CorrectExecutionMailingRecordInput,
+  options?: RequestOptions,
 ): Promise<ExecutionMailingRecordCorrectionResult> {
-  return submitSectionRecordCorrection(id, input, 'executionMailings');
+  return submitSectionRecordCorrection(id, input, 'executionMailings', options);
 }
 export function correctCaseExecutionFilingRecord(
   id: string,
   input: CorrectExecutionFilingRecordInput,
+  options?: RequestOptions,
 ): Promise<ExecutionFilingRecordCorrectionResult> {
-  return submitSectionRecordCorrection(id, input, 'executionFilings');
+  return submitSectionRecordCorrection(id, input, 'executionFilings', options);
 }
 export function correctCaseExecutionFinishRecord(
   id: string,
   input: CorrectExecutionFinishRecordInput,
+  options?: RequestOptions,
 ): Promise<ExecutionFinishRecordCorrectionResult> {
-  return submitSectionRecordCorrection(id, input, 'executionFinishes');
+  return submitSectionRecordCorrection(id, input, 'executionFinishes', options);
 }
 export function correctCaseHearingRecord(
   id: string,
   input: CorrectHearingRecordInput,
+  options?: RequestOptions,
 ): Promise<HearingRecordCorrectionResult> {
-  return submitSectionRecordCorrection(id, input, 'hearings');
+  return submitSectionRecordCorrection(id, input, 'hearings', options);
 }
 export function correctCaseJudgmentRecord(
   id: string,
   input: CorrectJudgmentRecordInput,
+  options?: RequestOptions,
 ): Promise<JudgmentRecordCorrectionResult> {
-  return submitSectionRecordCorrection(id, input, 'judgments');
+  return submitSectionRecordCorrection(id, input, 'judgments', options);
 }
 export function correctCaseClosureRecord(
   id: string,
   input: CorrectClosureRecordInput,
+  options?: RequestOptions,
 ): Promise<ClosureRecordCorrectionResult> {
-  return submitSectionRecordCorrection(id, input, 'closures');
+  return submitSectionRecordCorrection(id, input, 'closures', options);
 }
 
 function validRecordEdits(
