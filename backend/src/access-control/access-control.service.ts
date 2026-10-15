@@ -64,6 +64,9 @@ export type PermissionAction =
   | 'case.closure.correct'
   | 'case.archive'
   | 'case.archive.correct'
+  | 'case.execution.mailing.correct'
+  | 'case.execution.filing.correct'
+  | 'case.execution.finish.correct'
   | 'case.execution.finish'
   | 'client.case.read'
   | 'client.case.complaint.mail'
@@ -349,6 +352,9 @@ export class AccessControlService {
       | 'case.archive.correct'
       | 'case.external-entry.create'
       | 'case.external-entry.archive'
+      | 'case.execution.mailing.correct'
+      | 'case.execution.filing.correct'
+      | 'case.execution.finish.correct'
       | 'case.execution.finish',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
@@ -395,6 +401,9 @@ export class AccessControlService {
       | 'case.archive.correct'
       | 'case.external-entry.create'
       | 'case.external-entry.archive'
+      | 'case.execution.mailing.correct'
+      | 'case.execution.filing.correct'
+      | 'case.execution.finish.correct'
       | 'case.execution.finish',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,

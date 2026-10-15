@@ -1,4 +1,20 @@
 import { CaseArchiveService } from './case-archive.service';
+import { CaseExecutionRecordEditService } from './case-execution-record-edit.service';
+import { CaseHistoricalRecordEditService } from './case-historical-record-edit.service';
+import {
+  CorrectExecutionMailingRecordDto,
+  CorrectExecutionFilingRecordDto,
+  CorrectExecutionFinishRecordDto,
+  CorrectHearingRecordDto,
+  CorrectJudgmentRecordDto,
+  CorrectClosureRecordDto,
+  ExecutionMailingRecordCorrectionResultDto,
+  ExecutionFilingRecordCorrectionResultDto,
+  ExecutionFinishRecordCorrectionResultDto,
+  HearingRecordCorrectionResultDto,
+  JudgmentRecordCorrectionResultDto,
+  ClosureRecordCorrectionResultDto,
+} from './case-section-record-edit.dto';
 import {
   ArchiveCaseInput,
   CorrectCaseArchiveInput,
@@ -161,7 +177,88 @@ export class CaseReadController {
     private readonly closure: CaseClosureService,
     private readonly archive: CaseArchiveService,
     private readonly courts: FilingCourtService,
+    private readonly executionRecordEdit: CaseExecutionRecordEditService,
+    private readonly historicalRecordEdit: CaseHistoricalRecordEditService,
   ) {}
+
+  private assertInternalRecordEditor(actor: ActorContext) {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    ) {
+      throw new ForbiddenException({
+        code: 'ACTION_FORBIDDEN',
+        message: '无权更正案件资料',
+      });
+    }
+  }
+
+  @Post(':id/execution-mailing-correction')
+  @ApiCreatedResponse({ type: ExecutionMailingRecordCorrectionResultDto })
+  correctExecutionMailingRecord(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: CorrectExecutionMailingRecordDto,
+  ) {
+    this.assertInternalRecordEditor(actor);
+    return this.executionRecordEdit.correctMailing(actor, id, body);
+  }
+
+  @Post(':id/execution-filing-correction')
+  @ApiCreatedResponse({ type: ExecutionFilingRecordCorrectionResultDto })
+  correctExecutionFilingRecord(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: CorrectExecutionFilingRecordDto,
+  ) {
+    this.assertInternalRecordEditor(actor);
+    return this.executionRecordEdit.correctFiling(actor, id, body);
+  }
+
+  @Post(':id/execution-finish-correction')
+  @ApiCreatedResponse({ type: ExecutionFinishRecordCorrectionResultDto })
+  correctExecutionFinishRecord(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: CorrectExecutionFinishRecordDto,
+  ) {
+    this.assertInternalRecordEditor(actor);
+    return this.executionRecordEdit.correctFinish(actor, id, body);
+  }
+
+  @Post(':id/hearing-record-correction')
+  @ApiCreatedResponse({ type: HearingRecordCorrectionResultDto })
+  correctHearingRecord(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: CorrectHearingRecordDto,
+  ) {
+    this.assertInternalRecordEditor(actor);
+    return this.historicalRecordEdit.correctHearing(actor, id, body);
+  }
+
+  @Post(':id/judgment-record-correction')
+  @ApiCreatedResponse({ type: JudgmentRecordCorrectionResultDto })
+  correctJudgmentRecord(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: CorrectJudgmentRecordDto,
+  ) {
+    this.assertInternalRecordEditor(actor);
+    return this.historicalRecordEdit.correctJudgment(actor, id, body);
+  }
+
+  @Post(':id/closure-record-correction')
+  @ApiCreatedResponse({ type: ClosureRecordCorrectionResultDto })
+  correctClosureRecord(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: CorrectClosureRecordDto,
+  ) {
+    this.assertInternalRecordEditor(actor);
+    return this.historicalRecordEdit.correctClosure(actor, id, body);
+  }
 
   @Get('external-entry-options')
   @ApiOkResponse()

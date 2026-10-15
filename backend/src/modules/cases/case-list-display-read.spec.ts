@@ -58,6 +58,88 @@ function fixture(): CaseListDisplayRecord {
   };
 }
 describe('authorized case list display', () => {
+  it('reads effective amounts with exact correction sources while preserving the frozen original', () => {
+    const record = fixture();
+    record.currentJudgment = {
+      id: 'judgment',
+      trialRoundId: 'round',
+      judgmentAmountState: 'KNOWN',
+      judgmentAmount: new Prisma.Decimal('123'),
+      recordCorrections: [
+        {
+          id: 'judgment-edit',
+          judgmentAmountState: 'KNOWN',
+          judgmentAmount: new Prisma.Decimal('100'),
+        },
+      ],
+    };
+    record.closure = {
+      currentVersion: {
+        id: 'closure-version',
+        closeAmountState: 'KNOWN',
+        closeAmt: new Prisma.Decimal('80'),
+      },
+      recordCorrections: [
+        {
+          id: 'closure-edit',
+          sourceClosureVersionId: 'closure-version',
+          closeAmountState: 'PENDING',
+          closeAmt: null,
+        },
+      ],
+    };
+    expect(caseListDisplay(record)).toMatchObject({
+      judgmentAmount: {
+        amount: '100.00',
+        sourceType: 'FIRST_INSTANCE_JUDGMENT_RECORD_CORRECTION',
+        sourceId: 'judgment-edit',
+      },
+      closureAmount: {
+        state: 'PENDING',
+        amount: null,
+        sourceType: 'CASE_CLOSURE_RECORD_CORRECTION',
+        sourceId: 'closure-edit',
+      },
+    });
+    expect(record.currentJudgment.judgmentAmount?.toString()).toBe('123');
+    expect(record.closure.currentVersion?.closeAmt?.toString()).toBe('80');
+    record.currentSecondInstanceResult = {
+      id: 'second',
+      trialRoundId: 'round',
+      choiceId: 'choice',
+      result: 'AFFIRM',
+      judgmentAmountState: 'KNOWN',
+      judgmentAmount: new Prisma.Decimal('123'),
+      revocation: null,
+    };
+    expect(caseListDisplay(record).judgmentAmount).toMatchObject({
+      amount: '100.00',
+      sourceType: 'FIRST_INSTANCE_JUDGMENT_RECORD_CORRECTION',
+      sourceId: 'judgment-edit',
+    });
+    expect(record.currentSecondInstanceResult.judgmentAmount?.toString()).toBe(
+      '123',
+    );
+  });
+  it('rejects a correction attached to a different frozen closure version', () => {
+    const record = fixture();
+    record.closure = {
+      currentVersion: {
+        id: 'current',
+        closeAmountState: 'PENDING',
+        closeAmt: null,
+      },
+      recordCorrections: [
+        {
+          id: 'edit',
+          sourceClosureVersionId: 'other-version',
+          closeAmountState: 'KNOWN',
+          closeAmt: new Prisma.Decimal('0'),
+        },
+      ],
+    };
+    expect(() => caseListDisplay(record)).toThrow('结案资料更正来源不一致');
+  });
   it('preserves plural parties and unknown sources without inventing money or court numbers', () => {
     const result = caseListDisplay(fixture());
     expect(result.defendants).toHaveLength(2);
@@ -82,6 +164,7 @@ describe('authorized case list display', () => {
       amount: null,
     };
     record.closure = {
+      recordCorrections: [],
       currentVersion: {
         id: 'current-closure',
         closeAmountState: 'KNOWN',
@@ -115,6 +198,7 @@ describe('authorized case list display', () => {
   it('selects effective CHANGE, preserves AFFIRM, rejects old-round and revoked results and clears REMAND', () => {
     const record = fixture();
     record.currentJudgment = {
+      recordCorrections: [],
       id: 'first',
       trialRoundId: 'round',
       judgmentAmountState: 'KNOWN',

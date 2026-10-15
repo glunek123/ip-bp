@@ -1,4 +1,6 @@
 import { CaseArchiveService } from './modules/cases/case-archive.service';
+import { CaseExecutionRecordEditService } from './modules/cases/case-execution-record-edit.service';
+import { CaseHistoricalRecordEditService } from './modules/cases/case-historical-record-edit.service';
 import { CaseClosureService } from './modules/cases/case-closure.service';
 import { CaseExecutionFinishService } from './modules/cases/case-execution-finish.service';
 import { CaseExecutionMailingService } from './modules/cases/case-execution-mailing.service';
@@ -56,6 +58,117 @@ import { FilingCourtService } from './modules/cases/filing-court.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
   let app: INestApplication;
+  it.each([
+    [
+      'execution-mailing-correction',
+      'CorrectExecutionMailingRecordDto',
+      'ExecutionMailingRecordCorrectionResultDto',
+      'mailingId',
+      'expectedMailingRevision',
+    ],
+    [
+      'execution-filing-correction',
+      'CorrectExecutionFilingRecordDto',
+      'ExecutionFilingRecordCorrectionResultDto',
+      'filingId',
+      'expectedFilingRevision',
+    ],
+    [
+      'execution-finish-correction',
+      'CorrectExecutionFinishRecordDto',
+      'ExecutionFinishRecordCorrectionResultDto',
+      'finishId',
+      'expectedFinishRevision',
+    ],
+    [
+      'hearing-record-correction',
+      'CorrectHearingRecordDto',
+      'HearingRecordCorrectionResultDto',
+      'arrangementId',
+      'expectedHearingRevision',
+    ],
+    [
+      'judgment-record-correction',
+      'CorrectJudgmentRecordDto',
+      'JudgmentRecordCorrectionResultDto',
+      'judgmentId',
+      'expectedJudgmentRevision',
+    ],
+    [
+      'closure-record-correction',
+      'CorrectClosureRecordDto',
+      'ClosureRecordCorrectionResultDto',
+      'closureId',
+      'expectedClosureRevision',
+    ],
+  ])(
+    'documents the independent %s record correction contract',
+    (route, input, output, target, revision) => {
+      const document = SwaggerModule.createDocument(
+        app,
+        new DocumentBuilder().setTitle('test').setVersion('1').build(),
+      );
+      const operation = document.paths[`/api/v1/cases/{id}/${route}`]?.post;
+      expect(operation?.requestBody).toMatchObject({
+        content: {
+          'application/json': {
+            schema: { $ref: `#/components/schemas/${input}` },
+          },
+        },
+      });
+      expect(operation?.responses['201']).toMatchObject({
+        content: {
+          'application/json': {
+            schema: { $ref: `#/components/schemas/${output}` },
+          },
+        },
+      });
+      const inputSchema = document.components?.schemas?.[input];
+      expect(inputSchema).toMatchObject({
+        required: expect.arrayContaining([target, revision, 'idempotencyKey']),
+      });
+      expect(
+        inputSchema && 'properties' in inputSchema
+          ? inputSchema.properties
+          : null,
+      ).not.toHaveProperty('expectedVersion');
+      if (input === 'CorrectClosureRecordDto')
+        expect(inputSchema).toMatchObject({
+          required: expect.arrayContaining(['expectedClosureVersionId']),
+        });
+      const outputSchema = document.components?.schemas?.[output];
+      expect(outputSchema).toMatchObject({
+        required: expect.arrayContaining([
+          'caseId',
+          'correctionId',
+          'recordedAt',
+          target,
+        ]),
+      });
+      const properties =
+        outputSchema && 'properties' in outputSchema
+          ? outputSchema.properties
+          : null;
+      expect(properties).not.toHaveProperty('stage');
+      expect(properties).not.toHaveProperty('version');
+      expect(
+        document.paths[`/api/v1/lawyer/cases/{id}/${route}`],
+      ).toBeUndefined();
+      expect(
+        document.paths[`/api/v1/client/cases/{id}/${route}`],
+      ).toBeUndefined();
+      expect(document.components?.schemas?.CaseRecordEditsDto).toMatchObject({
+        properties: expect.objectContaining({
+          executionMailings: expect.any(Object),
+          executionFilings: expect.any(Object),
+          executionFinishes: expect.any(Object),
+          hearings: expect.any(Object),
+          judgments: expect.any(Object),
+          closures: expect.any(Object),
+        }),
+      });
+    },
+  );
   it('documents external case entry with an explicit source and known facts', () => {
     const document = SwaggerModule.createDocument(
       app,
@@ -252,6 +365,8 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: CaseFilingService, useValue: {} },
         { provide: CaseAcceptanceService, useValue: {} },
         { provide: CaseRecordEditService, useValue: {} },
+        { provide: CaseExecutionRecordEditService, useValue: {} },
+        { provide: CaseHistoricalRecordEditService, useValue: {} },
         { provide: CaseHearingService, useValue: {} },
         { provide: CaseJudgmentService, useValue: {} },
         { provide: CaseJudgmentNextStepService, useValue: {} },

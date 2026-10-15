@@ -1,4 +1,6 @@
 import { CaseArchiveService } from './case-archive.service';
+import { CaseExecutionRecordEditService } from './case-execution-record-edit.service';
+import { CaseHistoricalRecordEditService } from './case-historical-record-edit.service';
 import { CaseClosureService } from './case-closure.service';
 import { CaseExecutionFinishService } from './case-execution-finish.service';
 import { CaseExecutionMailingService } from './case-execution-mailing.service';
@@ -70,6 +72,8 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseFilingService,
     CaseAcceptanceService,
     CaseRecordEditService,
+    CaseExecutionRecordEditService,
+    CaseHistoricalRecordEditService,
     CaseHearingService,
     CaseJudgmentService,
     CaseJudgmentNextStepService,

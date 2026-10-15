@@ -1,4 +1,6 @@
 import { CaseArchiveService } from './case-archive.service';
+import { CaseExecutionRecordEditService } from './case-execution-record-edit.service';
+import { CaseHistoricalRecordEditService } from './case-historical-record-edit.service';
 import { CaseClosureService } from './case-closure.service';
 import { CaseExecutionFinishService } from './case-execution-finish.service';
 import { CaseExecutionMailingService } from './case-execution-mailing.service';
@@ -40,6 +42,252 @@ const routeMailInput = {
   mailedAt: '2026-10-02',
   mailReceiptContentVersionIds: ['55555555-5555-4555-8555-555555555555'],
 };
+
+describe('exact internal section record correction routes', () => {
+  let app: INestApplication;
+  let identity: object = {};
+  const success = {
+    caseId: routeCaseId,
+    correctionId: routeCaseId,
+    recordedAt: '2026-10-15T00:00:00.000Z',
+  };
+  const execution = {
+    correctMailing: jest.fn().mockResolvedValue(success),
+    correctFiling: jest.fn().mockResolvedValue(success),
+    correctFinish: jest.fn().mockResolvedValue(success),
+  };
+  const historical = {
+    correctHearing: jest.fn().mockResolvedValue(success),
+    correctJudgment: jest.fn().mockResolvedValue(success),
+    correctClosure: jest.fn().mockResolvedValue(success),
+  };
+  const common = { idempotencyKey: 'original-body-key', reason: '更正录入' };
+  const commands = [
+    {
+      route: 'execution-mailing-correction',
+      command: execution.correctMailing,
+      result: {
+        mailingId: routeCaseId,
+        mailingRevision: 1,
+        mailedAt: '2026-10-01',
+      },
+      body: {
+        ...common,
+        mailingId: routeCaseId,
+        expectedMailingRevision: 0,
+        mailedAt: '2026-10-01',
+        mailReceiptContentVersionIds: [routeCaseId],
+      },
+    },
+    {
+      route: 'execution-filing-correction',
+      command: execution.correctFiling,
+      result: {
+        filingId: routeCaseId,
+        filingRevision: 1,
+        submittedAt: '2026-10-01',
+      },
+      body: {
+        ...common,
+        filingId: routeCaseId,
+        expectedFilingRevision: 0,
+        submittedAt: '2026-10-01',
+        executionFilingProofContentVersionIds: [routeCaseId],
+      },
+    },
+    {
+      route: 'execution-finish-correction',
+      command: execution.correctFinish,
+      result: {
+        finishId: routeCaseId,
+        finishRevision: 1,
+        finishedAt: '2026-10-01',
+      },
+      body: {
+        ...common,
+        finishId: routeCaseId,
+        expectedFinishRevision: 0,
+        finishedAt: '2026-10-01',
+        reason: '结束业务原因',
+        correctionReason: '更正资料原因',
+        basisNote: null,
+        basisContentVersionIds: [],
+      },
+    },
+    {
+      route: 'hearing-record-correction',
+      command: historical.correctHearing,
+      result: {
+        arrangementId: routeCaseId,
+        trialRoundId: routeCaseId,
+        hearingRevision: 1,
+        hearingAt: null,
+      },
+      body: {
+        ...common,
+        arrangementId: routeCaseId,
+        trialRoundId: routeCaseId,
+        expectedHearingRevision: 0,
+        hearingAt: null,
+      },
+    },
+    {
+      route: 'judgment-record-correction',
+      command: historical.correctJudgment,
+      result: {
+        judgmentId: routeCaseId,
+        trialRoundId: routeCaseId,
+        judgmentRevision: 1,
+        judgmentReceivedAt: '2026-10-01',
+      },
+      body: {
+        ...common,
+        judgmentId: routeCaseId,
+        trialRoundId: routeCaseId,
+        expectedJudgmentRevision: 0,
+        judgmentReceivedAt: '2026-10-01',
+        judgmentAmountState: 'KNOWN',
+        judgmentAmount: '0.00',
+        paidLitigationFeeState: 'PENDING',
+        paidLitigationFee: null,
+        judgmentContentVersionIds: [routeCaseId],
+      },
+    },
+    {
+      route: 'closure-record-correction',
+      command: historical.correctClosure,
+      result: { closureId: routeCaseId, closureRevision: 1, closeAt: null },
+      body: {
+        idempotencyKey: 'original-body-key',
+        closureId: routeCaseId,
+        expectedClosureVersionId: routeCaseId,
+        expectedClosureRevision: 0,
+        correctionReason: '更正结案资料',
+        closeAt: null,
+        closeAmountState: 'PENDING',
+        closeAmt: null,
+        note: null,
+        closeContentVersionIds: [],
+      },
+    },
+  ];
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
+      controllers: [CaseReadController],
+      providers: [
+        ...[
+          CaseReadService,
+          CaseExternalEntryService,
+          CaseMatchService,
+          CaseComplaintService,
+          CaseComplaintConfirmationService,
+          CaseComplaintMailingService,
+          CaseFilingService,
+          CaseAcceptanceService,
+          CaseRecordEditService,
+          CaseHearingService,
+          CaseJudgmentService,
+          CaseJudgmentNextStepService,
+          CaseSecondInstanceService,
+          CaseExecutionSubmissionService,
+          CaseExecutionConfirmationService,
+          CaseExecutionMailingService,
+          CaseExecutionFilingService,
+          CaseExecutionFinishService,
+          CaseClosureService,
+          CaseArchiveService,
+          FilingCourtService,
+        ].map((provide) => ({ provide, useValue: {} })),
+        { provide: CaseExecutionRecordEditService, useValue: execution },
+        { provide: CaseHistoricalRecordEditService, useValue: historical },
+      ],
+    })
+      .overrideGuard(ActorContextGuard)
+      .useValue({
+        canActivate: (context: ExecutionContext) => {
+          context.switchToHttp().getRequest().actor = {
+            userId: routeCaseId,
+            departmentId: routeCaseId,
+            authorizationRevision: 1,
+            ...identity,
+          };
+          return true;
+        },
+      })
+      .overrideGuard(CsrfGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
+    app = module.createNestApplication();
+    configureApp(app);
+    await app.init();
+  });
+  beforeEach(() => {
+    identity = {};
+    jest.clearAllMocks();
+  });
+  afterAll(async () => app.close());
+  it.each(commands)(
+    'dispatches $route with the original exact body/key and target',
+    async ({ route, command, body, result }) => {
+      const receipt = { ...success, ...result };
+      command.mockResolvedValueOnce(receipt);
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/${route}`)
+        .send(body)
+        .expect(201, receipt);
+      expect(command).toHaveBeenCalledTimes(1);
+      expect(command).toHaveBeenCalledWith(
+        {
+          userId: routeCaseId,
+          departmentId: routeCaseId,
+          authorizationRevision: 1,
+        },
+        routeCaseId,
+        body,
+      );
+    },
+  );
+  it.each(commands)(
+    'rejects workflow version fields and invalid case IDs before $route',
+    async ({ route, command, body }) => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/${route}`)
+        .send({ ...body, expectedVersion: 9 })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/invalid/${route}`)
+        .send(body)
+        .expect(400);
+      expect(command).not.toHaveBeenCalled();
+    },
+  );
+  it.each(commands)(
+    'rejects all external identities before $route reaches its service',
+    async ({ route, command, body }) => {
+      for (const external of [
+        { clientCustomerId: routeCaseId },
+        { notaryOfficeId: routeCaseId },
+        { lawyerAccountId: routeCaseId },
+      ]) {
+        identity = external;
+        await request(app.getHttpServer())
+          .post(`/api/v1/cases/${routeCaseId}/${route}`)
+          .send(body)
+          .expect(403);
+      }
+      expect(command).not.toHaveBeenCalled();
+    },
+  );
+  it('requires the exact closure version anchor even with revision zero', async () => {
+    const body = { ...commands[5]!.body };
+    Reflect.deleteProperty(body, 'expectedClosureVersionId');
+    await request(app.getHttpServer())
+      .post(`/api/v1/cases/${routeCaseId}/closure-record-correction`)
+      .send(body)
+      .expect(400);
+    expect(historical.correctClosure).not.toHaveBeenCalled();
+  });
+});
 
 describe('lawyer execution route identity', () => {
   it.each([
@@ -160,6 +408,8 @@ describe('internal complaint mailing route identity', () => {
       {} as never,
       {} as never,
       {} as FilingCourtService,
+      {} as never,
+      {} as never,
     );
     expect(() =>
       controller.mailComplaint(externalActor, routeCaseId, routeMailInput),
@@ -267,6 +517,8 @@ describe('case read OpenAPI contract', () => {
         { provide: CaseFilingService, useValue: {} },
         { provide: CaseAcceptanceService, useValue: {} },
         { provide: CaseRecordEditService, useValue: recordEdit },
+        { provide: CaseExecutionRecordEditService, useValue: {} },
+        { provide: CaseHistoricalRecordEditService, useValue: {} },
         { provide: CaseHearingService, useValue: {} },
         { provide: CaseJudgmentService, useValue: {} },
         { provide: CaseJudgmentNextStepService, useValue: {} },

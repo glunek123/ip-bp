@@ -29,7 +29,7 @@ const snapshotRecord = {
 
 describe('PrismaAccessControlStore', () => {
   it.each(['SELF', 'TEAM', 'DEPARTMENT'])(
-    'maps both closure actions only from explicit %s grants',
+    'maps each case correction action only from explicit %s grants',
     async (scope) => {
       const store = new PrismaAccessControlStore({
         userAccount: {
@@ -45,6 +45,9 @@ describe('PrismaAccessControlStore', () => {
                     { action: 'CASE_CLOSURE_CORRECT', scope },
                     { action: 'CASE_ARCHIVE', scope },
                     { action: 'CASE_ARCHIVE_CORRECT', scope },
+                    { action: 'CASE_EXECUTION_MAILING_CORRECT', scope },
+                    { action: 'CASE_EXECUTION_FILING_CORRECT', scope },
+                    { action: 'CASE_EXECUTION_FINISH_CORRECT', scope },
                   ],
                 },
               },
@@ -60,6 +63,18 @@ describe('PrismaAccessControlStore', () => {
           { action: 'case.closure.correct', scope: scope.toLowerCase() },
           { action: 'case.archive', scope: scope.toLowerCase() },
           { action: 'case.archive.correct', scope: scope.toLowerCase() },
+          {
+            action: 'case.execution.mailing.correct',
+            scope: scope.toLowerCase(),
+          },
+          {
+            action: 'case.execution.filing.correct',
+            scope: scope.toLowerCase(),
+          },
+          {
+            action: 'case.execution.finish.correct',
+            scope: scope.toLowerCase(),
+          },
         ],
       });
     },

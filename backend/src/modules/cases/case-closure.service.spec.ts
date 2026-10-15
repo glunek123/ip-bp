@@ -95,6 +95,9 @@ function fixture() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     caseClosureVersion: { create: jest.fn().mockResolvedValue({}) },
+    caseClosureRecordCorrection: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     caseClosureReceipt: {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
@@ -284,6 +287,40 @@ describe('closure commands', () => {
         correctionReason: '真实更正',
       }),
     });
+  });
+  it('keeps original receipt replay before the new independent edit barrier', async () => {
+    const f = fixture();
+    const result = await f.service.record(actor, caseId, input);
+    const saved = f.tx.caseClosureReceipt.create.mock.calls[0]![0].data;
+    f.tx.caseClosureReceipt.findUnique.mockResolvedValue(saved);
+    f.tx.caseClosureRecordCorrection.findFirst.mockResolvedValue({
+      id: id('f'),
+    });
+    expect(await f.service.record(actor, caseId, input)).toEqual(result);
+    expect(f.tx.caseClosureRecordCorrection.findFirst).not.toHaveBeenCalled();
+  });
+  it('rejects workflow version replacement after an independent closure edit', async () => {
+    const f = fixture();
+    f.record.version = 26;
+    f.record.closure = {
+      id: id('b'),
+      finishId: id('a'),
+      currentVersionId: id('c'),
+      currentVersion: { id: id('c'), toVersion: 26 },
+    };
+    f.tx.caseClosureRecordCorrection.findFirst.mockResolvedValue({
+      id: id('f'),
+    });
+    await expect(
+      f.service.correct(actor, caseId, {
+        ...input,
+        expectedVersion: 26,
+        expectedClosureVersionId: id('c'),
+        correctionReason: '流程版本替换',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    expect(f.tx.caseClosureVersion.create).not.toHaveBeenCalled();
+    expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
   });
   it('replays the original WAITING_ARCHIVE receipt after final archive only after current authorization', async () => {
     const f = fixture();

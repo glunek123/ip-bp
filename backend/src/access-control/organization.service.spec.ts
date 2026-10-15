@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(69);
+    expect(result.permissionCatalog).toHaveLength(72);
     for (const [action, label] of [
       ['CASE_EXTERNAL_ENTRY_CREATE', '外部案件转入与历史录入'],
       ['CASE_DEFENDANT_CONTACT_UPDATE', '更新被告联系方式'],
@@ -358,6 +358,9 @@ describe('OrganizationService management context', () => {
       ['CASE_EXECUTION_MAIL', '登记执行邮寄'],
       ['CASE_EXECUTION_FILING_SUBMIT', '申请执行'],
       ['CASE_EXECUTION_FINISH', '登记执行结束'],
+      ['CASE_EXECUTION_MAILING_CORRECT', '更正执行邮寄资料'],
+      ['CASE_EXECUTION_FILING_CORRECT', '更正执行申请资料'],
+      ['CASE_EXECUTION_FINISH_CORRECT', '更正执行结束资料'],
       ['CASE_CLOSURE_RECORD', '登记结案资料'],
       ['CASE_CLOSURE_CORRECT', '更正结案资料'],
       ['CASE_ARCHIVE', '最终归档'],

@@ -63,6 +63,11 @@ export const caseListDisplaySelect = {
       trialRoundId: true,
       judgmentAmountState: true,
       judgmentAmount: true,
+      recordCorrections: {
+        orderBy: { toRevision: 'desc' },
+        take: 1,
+        select: { id: true, judgmentAmountState: true, judgmentAmount: true },
+      },
     },
   },
   currentSecondInstanceResult: {
@@ -78,6 +83,16 @@ export const caseListDisplaySelect = {
   },
   closure: {
     select: {
+      recordCorrections: {
+        orderBy: { toRevision: 'desc' },
+        take: 1,
+        select: {
+          id: true,
+          sourceClosureVersionId: true,
+          closeAmountState: true,
+          closeAmt: true,
+        },
+      },
       currentVersion: {
         select: { id: true, closeAmountState: true, closeAmt: true },
       },
@@ -91,8 +106,10 @@ export type CaseAmountSource =
   | 'COMPLAINT_CONFIRMATION'
   | 'COMPLAINT_SUBMISSION'
   | 'FIRST_INSTANCE_JUDGMENT'
+  | 'FIRST_INSTANCE_JUDGMENT_RECORD_CORRECTION'
   | 'SECOND_INSTANCE_RESULT'
-  | 'CASE_CLOSURE_VERSION';
+  | 'CASE_CLOSURE_VERSION'
+  | 'CASE_CLOSURE_RECORD_CORRECTION';
 export interface CaseDisplayAmount {
   state: 'UNRECORDED' | 'PENDING' | 'KNOWN';
   amount: string | null;
@@ -195,14 +212,20 @@ export function caseListDisplay(
         )
       : unrecorded();
   const judgment = record.currentJudgment;
+  const judgmentCorrection = judgment?.recordCorrections?.[0];
   const second = record.currentSecondInstanceResult;
   let judgmentAmount =
     judgment && judgment.trialRoundId === record.currentTrialRoundId
       ? amount(
-          judgment.judgmentAmountState,
-          judgment.judgmentAmount,
-          'FIRST_INSTANCE_JUDGMENT',
-          judgment.id,
+          judgmentCorrection?.judgmentAmountState ??
+            judgment.judgmentAmountState,
+          judgmentCorrection === undefined
+            ? judgment.judgmentAmount
+            : judgmentCorrection.judgmentAmount,
+          judgmentCorrection === undefined
+            ? 'FIRST_INSTANCE_JUDGMENT'
+            : 'FIRST_INSTANCE_JUDGMENT_RECORD_CORRECTION',
+          judgmentCorrection?.id ?? judgment.id,
         )
       : unrecorded();
   if (
@@ -228,6 +251,16 @@ export function caseListDisplay(
     else if (second.result === 'REMAND') judgmentAmount = unrecorded();
   }
   const closure = record.closure?.currentVersion;
+  const closureCorrection = record.closure?.recordCorrections?.[0];
+  if (
+    closureCorrection !== undefined &&
+    closureCorrection.sourceClosureVersionId !== closure?.id
+  ) {
+    throw new InternalServerErrorException({
+      code: 'INVALID_RECORD_SOURCE',
+      message: '结案资料更正来源不一致',
+    });
+  }
   return {
     customerName: customer.name,
     rightsHolderName: rightsHolder.name,
@@ -281,10 +314,14 @@ export function caseListDisplay(
     judgmentAmount,
     closureAmount: closure
       ? amount(
-          closure.closeAmountState,
-          closure.closeAmt,
-          'CASE_CLOSURE_VERSION',
-          closure.id,
+          closureCorrection?.closeAmountState ?? closure.closeAmountState,
+          closureCorrection === undefined
+            ? closure.closeAmt
+            : closureCorrection.closeAmt,
+          closureCorrection === undefined
+            ? 'CASE_CLOSURE_VERSION'
+            : 'CASE_CLOSURE_RECORD_CORRECTION',
+          closureCorrection?.id ?? closure.id,
         )
       : unrecorded(),
   };

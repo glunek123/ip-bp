@@ -61,6 +61,12 @@ describe('CaseJudgmentService', () => {
       caseJudgmentFact: {
         create: jest.fn().mockResolvedValue({ id: priorId }),
       },
+      caseJudgmentRecordCorrection: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      caseHearingRecordCorrection: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       auditEvent: {
         create: jest
           .fn()
@@ -170,6 +176,50 @@ describe('CaseJudgmentService', () => {
       f.service.register(actor, caseId, input),
     ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
     expect(f.tx.caseJudgmentReceipt.findUnique).not.toHaveBeenCalled();
+  });
+  it('rejects a stale workflow correction after a current judgment record edit', async () => {
+    const f = fixture();
+    const record = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...record,
+      currentJudgmentId: priorId,
+    });
+    f.tx.caseJudgmentRecordCorrection.findFirst.mockResolvedValue({
+      id: versionId,
+    });
+    await expect(
+      f.service.correct(actor, caseId, { ...input, reason: '旧表单' }),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    expect(f.tx.caseJudgmentFact.create).not.toHaveBeenCalled();
+    expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+  it('normal judgment registration uses the effective hearing date from its exact advanced arrangement', async () => {
+    const f = fixture();
+    const record = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...record,
+      currentHearingAdvance: {
+        arrangementId: priorId,
+        trialRoundId: record.currentTrialRoundId,
+        externalEntryId: null,
+        arrangement: { hearingAt: new Date('2026-10-02T00:00:00.000Z') },
+      },
+    });
+    f.tx.caseHearingRecordCorrection.findFirst.mockResolvedValue({
+      hearingAt: new Date('2026-10-09T00:00:00.000Z'),
+    });
+    await expect(
+      f.service.register(actor, caseId, input),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.caseHearingRecordCorrection.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          arrangementId: priorId,
+          trialRoundId: record.currentTrialRoundId,
+        }),
+      }),
+    );
+    expect(f.tx.caseJudgmentFact.create).not.toHaveBeenCalled();
   });
 
   it('compares judgment dates with the effective corrected acceptance date', async () => {
