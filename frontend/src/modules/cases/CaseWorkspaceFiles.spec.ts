@@ -542,4 +542,48 @@ describe('CaseWorkspaceFiles', () => {
     });
     expect(wrapper.find('[data-test="open-upload"]').exists()).toBe(false);
   });
+
+  it('offers material upload for a direct execution-confirmation entry only with capability', async () => {
+    const { wrapper } = render();
+    const directItem = (canSubmitExecution: boolean): CaseDetail => ({
+      ...baseItem,
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      sourceLead: null,
+      sourceNotaryMatter: null,
+      certificate: null,
+      fees: [],
+      canSubmitExecution,
+      origin: {
+        kind: 'EXTERNAL_ENTRY',
+        entryId: 'entry-1',
+        entryKind: 'EXTERNAL_TRANSFER',
+        initialStage: 'WAITING_EXECUTION_CONFIRMATION',
+        stageReachedOn: '2026-10-01',
+        source: 'Partner firm',
+        reason: 'Existing enforcement matter',
+        recordedAt: '2026-10-01T00:00:00.000Z',
+        recordedByUserId: 'operator-1',
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+    });
+    await wrapper.setProps({ item: directItem(true) });
+    await flushPromises();
+
+    expect(wrapper.find('[data-test="open-upload"]').exists()).toBe(true);
+    await wrapper.get('[data-test="open-upload"]').trigger('click');
+    expect(wrapper.emitted('open-upload')).toEqual([[]]);
+
+    await wrapper.setProps({ item: directItem(false) });
+    expect(wrapper.find('[data-test="open-upload"]').exists()).toBe(false);
+  });
 });

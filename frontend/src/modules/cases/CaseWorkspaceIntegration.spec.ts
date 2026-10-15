@@ -408,6 +408,68 @@ afterEach(() => {
 });
 
 describe('UI002 real case workspace host', () => {
+  it('opens upload-only mode for a direct execution-confirmation entry', async () => {
+    api.uploadMaterialFile.mockResolvedValue({});
+    const item: CaseDetail = {
+      ...structuredClone(baseItem),
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      sourceLead: null,
+      sourceNotaryMatter: null,
+      certificate: null,
+      fees: [],
+      canSubmitExecution: true,
+      canConfirmExecution: true,
+      origin: {
+        kind: 'EXTERNAL_ENTRY',
+        entryId: 'entry-1',
+        entryKind: 'EXTERNAL_TRANSFER',
+        initialStage: 'WAITING_EXECUTION_CONFIRMATION',
+        stageReachedOn: '2026-10-01',
+        source: 'Partner firm',
+        reason: 'Existing enforcement matter',
+        recordedAt: '2026-10-01T00:00:00.000Z',
+        recordedByUserId: 'operator-1',
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+    };
+    const { wrapper } = await render(item);
+
+    expect(
+      wrapper.find('[data-test="workspace-primary-action"]').exists(),
+    ).toBe(true);
+    await tab(wrapper, 'files');
+    expect(wrapper.find('[data-test="open-upload"]').exists()).toBe(true);
+    await wrapper.get('[data-test="open-upload"]').trigger('click');
+    await flushPromises();
+
+    expect(
+      wrapper.find('[data-test="execution-material-upload-only"]').exists(),
+    ).toBe(true);
+    expect(wrapper.find('[data-test="submit-execution"]').exists()).toBe(false);
+    const readsBeforeUpload = api.getCase.mock.calls.length;
+    const input = wrapper.get('[data-test="execution-material-upload-only"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['pdf'], 'execution.pdf', { type: 'application/pdf' })],
+    });
+    await input.trigger('change');
+    await flushPromises();
+
+    expect(api.uploadMaterialFile).toHaveBeenCalledTimes(1);
+    expect(api.getCase.mock.calls.length).toBeGreaterThan(readsBeforeUpload);
+    expect(wrapper.find('[data-test="submit-execution"]').exists()).toBe(false);
+  });
+
   it('does not offer an empty prior matching editor after a confirmed POST and SPA return', async () => {
     const item = structuredClone(baseItem);
     item.stage = 'PENDING_MATCH';

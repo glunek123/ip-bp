@@ -295,6 +295,17 @@ const commands = computed<WorkspaceCommand[]>(() => {
     '登记或更正二审受理信息',
   );
   add(
+    stage === 'WAITING_EXECUTION_CONFIRMATION' &&
+      current.origin?.kind === 'EXTERNAL_ENTRY' &&
+      current.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
+      current.canSubmitExecution &&
+      current.executionSubmission.current === null &&
+      !current.executionConfirmation,
+    'execution-upload',
+    'execution',
+    '上传执行材料',
+  );
+  add(
     (stage === 'WAITING_EXECUTION_DOCUMENTS' ||
       (stage === 'SECOND_INSTANCE' &&
         current.origin?.kind === 'EXTERNAL_ENTRY' &&
@@ -662,7 +673,12 @@ function openUpload(): void {
     WAITING_JUDGMENT: 'judgment',
     SECOND_INSTANCE: 'second-instance',
     WAITING_EXECUTION_DOCUMENTS: 'execution-submission',
-    WAITING_EXECUTION_CONFIRMATION: 'execution-submission',
+    WAITING_EXECUTION_CONFIRMATION:
+      item.value?.origin?.kind === 'EXTERNAL_ENTRY' &&
+      item.value.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
+      item.value.executionSubmission.current === null
+        ? 'execution-upload'
+        : 'execution-submission',
     WAITING_EXECUTION_STAMP: 'execution-mailing',
     WAITING_EXECUTION_FILING: 'execution-filing',
     EXECUTING: 'finish',
@@ -2229,6 +2245,20 @@ onBeforeUnmount(() => {
               @refresh="load"
               @access-lost="recordEditAccessLost"
               @cancel="closeRecordEdit"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('execution-upload')"
+            v-show="!timelineView && selectedCommand === 'execution-upload'"
+          >
+            <CaseExecutionSubmissionPanel
+              :item="item"
+              :context-key="identity"
+              :actor-key="secondInstanceActorKey"
+              :read-revision="activationRevision"
+              upload-only
+              @changed="load"
+              @refresh="load"
             />
           </div>
           <div

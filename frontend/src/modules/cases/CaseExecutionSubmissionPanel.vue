@@ -40,6 +40,7 @@ const props = defineProps<{
   contextKey: string;
   actorKey: string;
   readRevision?: number;
+  uploadOnly?: boolean;
 }>();
 const files = ref<ExecutionSubmissionFile[]>([]);
 const selected = ref<string[]>([]);
@@ -91,6 +92,17 @@ const maySubmit = computed(
     !props.item.executionConfirmation &&
     (props.item.origin?.kind !== 'EXTERNAL_ENTRY' ||
       props.item.origin.initialStage !== 'ARCHIVED') &&
+    !accessDenied.value,
+);
+const mayUploadOnly = computed(
+  () =>
+    props.uploadOnly === true &&
+    props.item.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
+    props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
+    props.item.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
+    props.item.canSubmitExecution &&
+    props.item.executionSubmission.current === null &&
+    !props.item.executionConfirmation &&
     !accessDenied.value,
 );
 const current = computed(() =>
@@ -645,11 +657,13 @@ onBeforeUnmount(() => {
   >
     <h2 class="form-section-title">
       {{
-        accessDenied
-          ? '执行材料'
-          : maySubmit
-            ? '执行材料提交'
-            : '执行材料提交历史'
+        mayUploadOnly
+          ? '上传执行材料'
+          : accessDenied
+            ? '执行材料'
+            : maySubmit
+              ? '执行材料提交'
+              : '执行材料提交历史'
       }}
     </h2>
     <p v-if="maySubmit" class="field-help">
@@ -681,10 +695,13 @@ onBeforeUnmount(() => {
     >
       我已核对最新案件，重新选择材料
     </button>
-    <template v-if="maySubmit">
+    <template v-if="maySubmit || mayUploadOnly">
       <label>
         执行申请材料 <span aria-hidden="true">*</span>
         <input
+          :data-test="
+            mayUploadOnly ? 'execution-material-upload-only' : undefined
+          "
           type="file"
           class="text-input"
           multiple
@@ -695,62 +712,68 @@ onBeforeUnmount(() => {
           @change="fileInput"
         />
       </label>
-      <p class="field-help">
+      <p v-if="maySubmit" class="field-help">
         PDF、DOC 或 DOCX，单份不超过 50MB；共 1～10
         份。上传完成后仍须明确选择并提交。
       </p>
-      <ul>
-        <li v-for="file in files" :key="file.contentVersionId">
-          <label
-            ><input
-              v-model="selected"
-              type="checkbox"
-              :value="file.contentVersionId"
-              :disabled="
-                uploadUnknown ||
-                !!pendingCommand ||
-                (selected.length >= 10 &&
-                  !selected.includes(file.contentVersionId))
-              "
-            />
-            {{ file.originalFilename }}（{{ file.mimeType }}，上传于
-            {{ timestamp(file.uploadedAt) }}）</label
-          >
-          <button type="button" @click="download(file)">下载</button>
-        </li>
-      </ul>
-      <label v-if="current"
-        >重提原因 <span aria-hidden="true">*</span
-        ><textarea
-          v-model="changeReason"
-          maxlength="500"
-          :disabled="!!pendingCommand"
-        />
-      </label>
-      <p v-if="isSameFileSet" class="field-help">
-        文件集合与当前提交相同，仅调整顺序不能作为重提。
+      <p v-if="mayUploadOnly" class="field-help">
+        上传执行材料后，确认人会直接核验已上传的材料包。
       </p>
-      <button
-        type="button"
-        :disabled="!canConfirm"
-        data-test="submit-execution"
-        @click="send()"
-      >
-        {{ current ? '确认重提' : '确认提交' }}
-      </button>
-      <button
-        v-if="pendingCommand"
-        type="button"
-        :disabled="submitting"
-        data-test="retry-execution"
-        @click="retry"
-      >
-        使用原请求重试
-      </button>
+      <template v-if="maySubmit">
+        <ul>
+          <li v-for="file in files" :key="file.contentVersionId">
+            <label
+              ><input
+                v-model="selected"
+                type="checkbox"
+                :value="file.contentVersionId"
+                :disabled="
+                  uploadUnknown ||
+                  !!pendingCommand ||
+                  (selected.length >= 10 &&
+                    !selected.includes(file.contentVersionId))
+                "
+              />
+              {{ file.originalFilename }}（{{ file.mimeType }}，上传于
+              {{ timestamp(file.uploadedAt) }}）</label
+            >
+            <button type="button" @click="download(file)">下载</button>
+          </li>
+        </ul>
+        <label v-if="current"
+          >重提原因 <span aria-hidden="true">*</span
+          ><textarea
+            v-model="changeReason"
+            maxlength="500"
+            :disabled="!!pendingCommand"
+          />
+        </label>
+        <p v-if="isSameFileSet" class="field-help">
+          文件集合与当前提交相同，仅调整顺序不能作为重提。
+        </p>
+        <button
+          type="button"
+          :disabled="!canConfirm"
+          data-test="submit-execution"
+          @click="send()"
+        >
+          {{ current ? '确认重提' : '确认提交' }}
+        </button>
+        <button
+          v-if="pendingCommand"
+          type="button"
+          :disabled="submitting"
+          data-test="retry-execution"
+          @click="retry"
+        >
+          使用原请求重试
+        </button>
+      </template>
       <div v-if="uploadUnknown && !accessDenied">
         <p>上传结果未知。禁止盲目重传。请刷新候选、下载核对后再认领。</p>
         <button
           type="button"
+          data-test="recover-execution-upload"
           :disabled="recoveryLoading"
           @click="refreshRecovery"
         >
