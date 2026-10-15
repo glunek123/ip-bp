@@ -1,6 +1,6 @@
 # 当前开发状态
 
-独立迁移验证候选准备（2026-10-15）：按原授权先推进不依赖新增Grant的阶段，产品/迁移源保持841956f的已审范围，合入main eb11ab3的权威文档历史；下一步唯一runner在固定clean候选正常完整verify（含NT006），通过后仅运行case-section-record-migration.spec.ts的DB-only受控owned-schema SQL重放。该轮R2 public须始终155，禁止Prisma public deploy、真实升级、重seed或恢复Grant；新UI源码待另案固定，不阻此独立验收。尚无任何本阶段运行PASS，最终候选SHA以ignored执行brief与实测回执为准。
+独立迁移验证候选准备（2026-10-15）：按原授权先推进不依赖新增Grant的阶段，产品/迁移源保持841956f的已审范围，合入main eb11ab3的权威文档历史；下一步唯一runner在固定clean候选正常完整verify（含NT006），通过后仅运行case-section-record-migration.spec.ts的DB-only受控owned-schema SQL重放。该轮R2 public须始终155，禁止Prisma public deploy、真实升级、重seed或恢复Grant；新UI四文件已另案源审C/I/M0接入，16项仅发现、尚未浏览器运行；本轮仍只verify与owned-schema，UI运行需public157后另行准入。尚无任何本阶段运行PASS，最终候选SHA以ignored执行brief与实测回执为准。
 
 最新准备收口（2026-10-15，16:49 UTC）：R2仍为155；只读pg_dump归档及pg_restore --list通过，主控核20份原证据哈希，137表4336行及原安全基线摘要前后一致。归档/私密TOC已移至工作区外的用户Temp独占目录，主控再次核两文件大小与哈希不变、旧位置不存在；仅证明备份生成和目录可读，未实际还原，也不含库外blob。S迁移风险四文件修复I-S-MIG01后累计源审C/I/M0、18项纯测试及静态通过，原任务固定e9ccaddd615d948ef508967ff2772d37627bc30f，接入后续组合841956f97c6cb081b1b6a36229897f10d2b9bc9f；正式157 raw字节218b230...2296的只读157源计划通过，未capture/连接DB。四文件owned-schema重放尚未运行，不等同Prisma部署。UI正在准备五类编辑/五类上传；第六类开庭及旧外部CORRECT所需单一新合成角色case.external-entry.create授权被自动审批拒绝，等待用户明确确认，未写Grant；旧受理/联系方式兼容另有缺口。未执行156/157、未更新持久预览，也未把准备结果称作最终浏览器或迁移验收。
 
