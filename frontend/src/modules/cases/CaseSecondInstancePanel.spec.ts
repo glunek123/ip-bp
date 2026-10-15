@@ -741,9 +741,7 @@ describe('CaseSecondInstancePanel', () => {
       }),
       'internal',
     );
-    const receivedAt = wrapper.get(
-      '[data-test="second-instance-received-at"]',
-    );
+    const receivedAt = wrapper.get('[data-test="second-instance-received-at"]');
     expect(receivedAt.attributes('min')).toBe('2026-10-12');
     await wrapper
       .get('[data-test="second-instance-result-option"][value="REMAND"]')
