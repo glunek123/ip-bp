@@ -1,5 +1,16 @@
 # SPEC-001 文档验证
 
+## R2前的恢复核验与源码边界（2026-10-15）
+
+- 三列表b1f0125cb529952b3b7b33f0fa376ddae79cbc80/tree c49a2e7f33a2cc1d15399799d21b77e63351347f：原累计Reviewer关闭I-LNC-01，Spec/Quality ACCEPTED C/I/M0。L清理链删除和C2写入前/afterAll精确绑定均已接入。这里是源码与离线反例结论，没有DB/浏览器结果；旧C-UXQ-C02/C-SECTION-E2E01破坏式fixture仍禁止运行。
+- 旧完整容器dbb1cbd29c6d65b5aa4fd85317c96167fbd94310c34946edc033fc4f2f9d3695已于11:54:05 UTC停止。runner和主控正式只读inspect均见tmpfs PGDATA、Mounts为空、无有效端口；未start/up/rebuild/delete/DB连接。原155与合成事实不能声明保留。ignored证据为`.local/ui003-evidence/retained-instance-state-20261015.json`及`hearing-7cbdec26-preflight-20261015/container-read.json`。
+- 父级批准R2项目dev-cor-ui003-r2、loopback15438、独立持久卷dev-cor-ui003-r2-pgdata，固定镜像沿原digest。只读预检新资源未存在/端口未占，不等于实例建立；主控app恢复消息被AbsolutePathBuf拒绝，随后父级已通过原有效通道再次started；尚无环境实际创建回执。新完整身份、155新基线、原suite精确重绑及实际运行均待完成，旧证据只保留历史范围。
+- 开庭bridge候选2db96c7471201d11997a2225f86f5ee57a8b9040/tree af910836360cfbd49aed8a32e8a3c57acdc29ed9，主控受限独立源码审Spec/Quality ACCEPTED C0/I0/M1，Minor为旧候选单测未单独隔离ID不匹配。作者RED8失败/48通过至GREEN58/58、完整fast prepared和源码构建为同输入证据；新增6日期路径/4锁竞态未PG。Serializable edit-first风险留真实PG判定，不改隔离或预先放宽断言。已接组合0d44b523f66b3ecf66fd96c7d41b9e16df3ede36/tree7b487a17503d82070573790ab29628f41df8ea71，不能称新组合实跑上述检查。
+- API候选a8bf1550f431d966c8097ad5da49101f835a38b4/tree0105de098aa3875e0a242aa5150764285d9cdbae，仅cases.ts/.spec.ts；作者API211/211、前端/根类型、ESLint/Prettier/diff均0，原Sol最终补审C/I/M0。六栏严格解码/原body-key/closure双锚、律师专用有效业务字段兼容边界已核。律师无更正标记，不能仅凭同形合法字段识别业务值篡改，不虚构保证。证据在API Owner目录`.local/ui003-evidence/api-delivery.json`及`api-review.txt`。未DB/浏览器。
+- I-SECTION-MAT-01仍开放：旧通用上传阶段阻止后续阶段更正时新增附件；S独占新树0d44b52设计精确上传闭环，157尚未实现/迁移。专用版本首次消费须匹配target/revision/closure锚并同事务冻结后才可沿旧同类冻结复用。新UI与材料合同仍WIP，无最终组合verify或真实上传证据。
+
+持久预览5186/3206/15436未操作；本次未探测运行健康，不能用历史健康替代当前核验。
+
 ## 恢复收口的实际边界（2026-10-15）
 
 纯文档0a6af4f于本轮正常原子快进远端main及任务分支，双ref和本地主main已核一致，12文件全在docs，不变产品／DB／预览。证据.local/ui003-evidence/docs-delivery-0a6af4f.json及.log。文档源审I-DOC01／M-DOC02均关闭，Spec／Quality C/I/M0；格式、Spec57REQ／67AC／11BQ／59SD、经核对快照及strict context实际通过。
