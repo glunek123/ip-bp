@@ -255,7 +255,8 @@ export function selectTestDatabaseContainer(
   ) {
     throw new Error('The target must be the isolated local test database');
   }
-  if (managedInstance !== undefined)
+  // Only the default 15433 flow may use the legacy identity alternatives.
+  if (managedInstance !== undefined || target.port !== 15433)
     validateManagedTestInstance(managedInstance);
   const mappingMatches = containers.filter((container) =>
     (container.NetworkSettings?.Ports?.['5432/tcp'] ?? []).some(
@@ -337,7 +338,12 @@ function validateManagedTestInstance(instance) {
 function managedTestInstanceFromEnvironment(environment) {
   const project = environment.DEV_COR_TEST_DATABASE_PROJECT;
   const containerId = environment.DEV_COR_TEST_DATABASE_CONTAINER_ID;
-  if (project === undefined && containerId === undefined) return undefined;
+  if (
+    environment.DEV_COR_TEST_DATABASE_URL === undefined &&
+    project === undefined &&
+    containerId === undefined
+  )
+    return undefined;
   const instance = { project, containerId };
   validateManagedTestInstance(instance);
   if (environment.DEV_COR_TEST_DATABASE_URL === undefined) {
@@ -398,8 +404,6 @@ function actualExternalConditions(root, databaseTarget, managedInstance) {
 
 export function captureTestEnvironment(root, options = {}) {
   const inheritedEnvironment = options.inheritedEnvironment ?? process.env;
-  const managedInstance =
-    managedTestInstanceFromEnvironment(inheritedEnvironment);
   const { bytes, values } = readTestEnvironmentFile(root);
   const { environment: effectiveEnvironment, databaseTarget } =
     validatedApplicationEnvironment(
@@ -407,6 +411,8 @@ export function captureTestEnvironment(root, options = {}) {
       values,
       inheritedEnvironment.DEV_COR_TEST_DATABASE_URL,
     );
+  const managedInstance =
+    managedTestInstanceFromEnvironment(inheritedEnvironment);
   rejectConflicts(inheritedEnvironment, effectiveEnvironment);
   const metadata = {
     node: options.nodeVersion ?? process.version,

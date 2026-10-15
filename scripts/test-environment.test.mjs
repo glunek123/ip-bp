@@ -218,11 +218,16 @@ test('binds actual external test conditions without serializing them', (t) => {
   );
 });
 
-test('accepts an explicit isolated local database override for unavailable fixed ports', (t) => {
+test('accepts a fully bound isolated local database override for unavailable fixed ports', (t) => {
   const root = repository(t);
   const override =
     'postgresql://dev_cor_test:local-test-password@127.0.0.1:49123/dev_cor_test';
-  const result = capture(root, { DEV_COR_TEST_DATABASE_URL: override });
+  const { binding } = managedTestInstance();
+  const result = capture(root, {
+    DEV_COR_TEST_DATABASE_URL: override,
+    DEV_COR_TEST_DATABASE_PROJECT: binding.project,
+    DEV_COR_TEST_DATABASE_CONTAINER_ID: binding.containerId,
+  });
 
   assert.equal(result.childEnvironment.DATABASE_URL, override);
   assert.doesNotMatch(
@@ -282,7 +287,7 @@ test('binds the effective target to one healthy pinned test container', () => {
     'sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0';
   const target = {
     hostname: '127.0.0.1',
-    port: 49123,
+    port: 15433,
     username: 'dev_cor_test',
     database: 'dev_cor_test',
   };
@@ -298,7 +303,7 @@ test('binds the effective target to one healthy pinned test container', () => {
     State: { Running: true, Health: { Status: 'healthy' } },
     NetworkSettings: {
       Ports: {
-        '5432/tcp': [{ HostIp: '127.0.0.1', HostPort: '49123' }],
+        '5432/tcp': [{ HostIp: '127.0.0.1', HostPort: '15433' }],
       },
     },
   };
@@ -311,7 +316,7 @@ test('binds the effective target to one healthy pinned test container', () => {
       imageId,
       imageReference: 'postgres:17.11-bookworm',
       host: '127.0.0.1',
-      port: 49123,
+      port: 15433,
     },
   );
 
@@ -399,7 +404,7 @@ test('admits only the explicitly bound new managed test instance', () => {
   assert.equal(selected.port, target.port);
   assert.throws(
     () => testEnvironment.selectTestDatabaseContainer(target, [container]),
-    /test container/i,
+    /managed test instance/i,
   );
 });
 
@@ -506,17 +511,20 @@ test('rejects mismatched managed instance identity and unsafe database metadata'
 
 test('explicit binding cannot fall back to legacy admission', () => {
   const { binding, target, container } = managedTestInstance();
+  const defaultTarget = { ...target, port: 15433 };
   const legacy = globalThis.structuredClone(container);
+  legacy.NetworkSettings.Ports['5432/tcp'][0].HostPort = '15433';
   legacy.Name = '/dev-cor-postgres-test-1';
   legacy.Config.Labels['com.docker.compose.project'] = 'dev-cor';
   assert.equal(
-    testEnvironment.selectTestDatabaseContainer(target, [legacy]).containerId,
+    testEnvironment.selectTestDatabaseContainer(defaultTarget, [legacy])
+      .containerId,
     legacy.Id,
   );
   assert.throws(
     () =>
       testEnvironment.selectTestDatabaseContainer(
-        target,
+        defaultTarget,
         [legacy],
         container.Image,
         binding,
@@ -525,9 +533,41 @@ test('explicit binding cannot fall back to legacy admission', () => {
   );
   legacy.Name = '/custom-legacy-name';
   assert.equal(
-    testEnvironment.selectTestDatabaseContainer(target, [legacy]).containerName,
+    testEnvironment.selectTestDatabaseContainer(defaultTarget, [legacy])
+      .containerName,
     'custom-legacy-name',
   );
+});
+
+test('requires full binding for every URL override and rejects old identity at a new port', (t) => {
+  const root = repository(t);
+  const { target, container } = managedTestInstance();
+  // Default configuration remains supported without any override controls.
+  assert.equal(capture(root).childEnvironment.DATABASE_URL, databaseUrl);
+  for (const port of [15433, 49123]) {
+    const override = databaseUrl.replace(':15433/', `:${port}/`);
+    for (const partial of [
+      {},
+      { DEV_COR_TEST_DATABASE_PROJECT: 'dev-cor-ui003' },
+      { DEV_COR_TEST_DATABASE_CONTAINER_ID: container.Id },
+    ]) {
+      assert.throws(
+        () =>
+          capture(root, { DEV_COR_TEST_DATABASE_URL: override, ...partial }),
+        /managed test instance/i,
+      );
+    }
+  }
+  // Both legacy alternatives must be unable to admit a non-default port.
+  for (const name of ['/dev-cor-postgres-test-1', '/custom-legacy-name']) {
+    const legacy = globalThis.structuredClone(container);
+    legacy.Name = name;
+    legacy.Config.Labels['com.docker.compose.project'] = 'dev-cor';
+    assert.throws(
+      () => testEnvironment.selectTestDatabaseContainer(target, [legacy]),
+      /managed test instance/i,
+    );
+  }
 });
 
 test('requires complete explicit binding and fingerprints project and container controls', (t) => {
