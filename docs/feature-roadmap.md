@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-10-15。CORE-CA-001～018、N1／N2、CORE-UI-001／002及展示修复、CORE-CE-001／002已交付；CA018最终main实核1f375ea，持久预览仍81ebfed／150。唯一Current为CORE-UI-003，两项UI候选正在修复组合审查finding；真实浏览器验收等待独立测试环境准入。准确证据与交付只见VALIDATION，不扩大为全部Demo或生产完成。
+更新日期：2026-10-15。CORE-CA-001～018、N1／N2、CORE-UI-001／002及展示修复、CORE-CE-001／002已交付；CA018最终main实核1f375ea，持久预览仍81ebfed／150。唯一Current为CORE-UI-003，两项UI候选源码审查、56项组件组合及快速静态通过；真实浏览器验收等待独立测试环境准入。准确证据与交付只见VALIDATION，不扩大为全部Demo或生产完成。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
@@ -164,12 +164,14 @@
 
 ### Current Slice
 
-**CORE-UI-003｜线索单条快捷办理与公证共用原因批填（两项已授权，组合审查修复中，尚未交付）。** 依据INPUT-016／UXQ-01少操作目标，用户2026-10-15明确要求立即并行，复用CA018交付79a76d5产品基线；CA018最终交付1f375ea只补文档回执，产品相同。I复用ca015-integration／codex/ui003-quick-actions-integration，仅接纳本批明确白名单、统筹组合Review／门禁及文档；两Worker不写共享契约／文档、不跑DB、不合并推送或改5186预览。A候选60ff427、B首候选23e7de6，cf8f5d8组合复审有I1／M1，B原Worker修复后由原Reviewer确认。浏览器首轮准备失败，旧15433受保护事实不清理，等待根会话独立可见任务修复新环境准入；不得称UI003已验收。CA019仍占位，OPS-01-A～E和UXQ其他范围未实施。
+**CORE-UI-003｜线索单条快捷办理与公证共用原因批填（源审及静态通过，尚待真实验收，未交付）。** 依据INPUT-016／UXQ-01少操作目标，用户2026-10-15明确要求立即并行，复用CA018交付79a76d5产品基线；CA018最终交付1f375ea只补文档回执，产品相同。I复用ca015-integration／codex/ui003-quick-actions-integration，仅接纳本批明确白名单、统筹组合Review／门禁及文档；两Worker不写共享契约／文档、不跑DB、不合并推送或改5186预览。A来源60ff427、B最新03a6a02，集成9599b2a原Reviewer累计两轴ACCEPTED、C/I/M0，根四文件56/56和check:fast真实通过。浏览器首轮准备失败，旧15433受保护事实不清理，等待独立可见任务修复新环境准入；不得称UI003已验收。CA019仍占位，OPS-01-A～E和UXQ其他范围未实施。
 
 | Task／唯一作者 | 独立目录／分支                                               | 允许文件与验收边界                                                                                                                                                                                                                                                               |
 | -------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | UXQ-01-A，Luna | ca016-frontend-integration／codex/uxq01-notary-common-reason | NotaryReturnArchiveBatchPanel.vue及同名spec：可选共用原因只填空白、不覆盖已有，提示填入数量并保留逐项编辑；混合事项仍逐项核对，冻结／提交／身份或scope变化禁批填。复用NT010原body／key，金额与处理方式不改。                                                                     |
 | UXQ-01-B，Luna | ca016-case-list-display／codex/uxq01-lead-quick-actions      | LeadListPage.vue及spec、新LeadQuickActionsPanel.vue及spec；最小增加LeadEditPage.vue及spec仅处理合法列表返回位置。先getLead取真实最新capabilities／version，复用单条pushLead与编辑路由；保留分页筛选，双击、失权、迟到响应及未知原key恢复、取消／关闭／切对象／身份隔离必须验收。 |
+
+本批辅助任务所有权：根会话已创建独立可见“修复隔离测试环境准入”01a13e4a-4179-735e-923a-8129a0b040e1，基线1f375ea，自建隔离worktree，独占scripts/test-environment.mjs及直接测试；若需Compose新文件须先协调，本I及A／B不实施该修复，等待回执后验收集成。只读流程入口核查01a13e49-2add-7514-9926-430be05b00d1负责当前预览／候选端到端可发现性，无产品写入权；本I停止扩大重复核查，后续真正入口修复由根会话据核查另行排优先级。A原Worker追加独占tests/e2e/ui003-quick-actions.spec.ts及确有必要的同名support helper，只实施新隔离环境验收代码，不改旧reset／清理，不运行DB；覆盖本批A真实归档与B原键未知恢复，不扩业务功能。主控／实施边界统一见[协作路由](ai-coding.md#多-agent-协作路由)。
 
 白名单均位于frontend/src/modules/leads；B原四文件范围经现场核实编辑保存／取消硬回详情，不能满足用户要求的列表上下文返回，I明确最小扩至EditPage及测试。返回地址只允许/leads及实际合法查询参数，无returnTo保持原详情行为，不接受外站／协议／任意内部路径。原LeadDetailPage.vue、API、后端、权限、迁移与共享样式均不改；新便利不提供删除或绕过正式单项资格。未知写入不提供绕过冻结key的新提交，失败不假成功；单层办理面板，不堆嵌套操作。曾客户确认的线索只允许带原因撤销留痕，下游保护保持，不属本片删除实现。
 
