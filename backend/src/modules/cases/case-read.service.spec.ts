@@ -460,6 +460,25 @@ describe('CaseReadService', () => {
       },
       canMailExecution: true,
     });
+    expect(
+      (await f.service.get(actor, record.id)).executionConfirmation,
+    ).toHaveProperty('confirmedByUserId', actor.userId);
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    const lawyer = await f.service.get(
+      { ...actor, lawyerAccountId: actor.userId },
+      record.id,
+    );
+    expect(lawyer.executionConfirmation).toMatchObject({
+      id: 'confirmation-1',
+      submissionId: null,
+      files: [{ contentVersionId: 'version-1' }],
+    });
+    expect(lawyer.executionConfirmation).not.toHaveProperty(
+      'confirmedByUserId',
+    );
   });
   it('authorizes before a repeatable-read detail aggregate for internal and lawyer', async () => {
     const f = fixture();

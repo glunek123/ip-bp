@@ -2988,7 +2988,15 @@ export class CaseReadService {
         judgmentNextStep: detail.judgmentNextStep,
         secondInstance: detail.secondInstance,
         executionSubmission: detail.executionSubmission,
-        executionConfirmation: detail.executionConfirmation,
+        executionConfirmation:
+          detail.executionConfirmation === null
+            ? null
+            : {
+                id: detail.executionConfirmation.id,
+                submissionId: detail.executionConfirmation.submissionId,
+                confirmedAt: detail.executionConfirmation.confirmedAt,
+                files: detail.executionConfirmation.files,
+              },
         executionMailing: detail.executionMailing,
         executionFiling: detail.executionFiling,
         executionFinish: detail.executionFinish,
