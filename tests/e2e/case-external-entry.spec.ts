@@ -109,6 +109,8 @@ type CaseView = {
     | { kind: 'NOTARY' };
   defendants: unknown[];
   secondInstance: { currentTrialRoundId: string | null };
+  canSubmitExecution: boolean;
+  canUploadDirectExecutionMaterials: boolean;
   acceptance: unknown;
   hearing: unknown;
   executionConfirmation: {
@@ -887,6 +889,9 @@ test('uploads and confirms a complete direct execution material bundle in the br
     request,
     input('WAITING_EXECUTION_CONFIRMATION'),
   );
+  const directEntry = await readCase(request, root.id);
+  expect(directEntry.canSubmitExecution).toBe(false);
+  expect(directEntry.canUploadDirectExecutionMaterials).toBe(true);
   const bytes = Buffer.from(
     '%PDF-1.7\nCA018 browser execution application\n%%EOF\n',
   );
@@ -909,6 +914,8 @@ test('uploads and confirms a complete direct execution material bundle in the br
         response.url().includes('/api/v1/materials/upload-drafts/') &&
         response.url().endsWith('/content'),
     );
+    await expect(uploadInput).toBeVisible();
+    await expect(uploadInput).toBeEnabled();
     await uploadInput.setInputFiles({
       name,
       mimeType: 'application/pdf',
