@@ -120,10 +120,47 @@ describe('registered section edit mapping', () => {
   it('selects judgment correction but never the next-step command or first registration', () => {
     const item = withJudgment();
     item.canCorrectJudgment = item.canChooseJudgmentNextStep = true;
-    expect(
-      resolveCaseSectionEdits(item).map((action) => action.intent),
-    ).toEqual(['correct-judgment']);
+    item.recordEdits = {
+      canUpdateDefendantContact: false,
+      canCorrectAcceptance: false,
+      defendantContacts: [],
+      acceptanceCorrections: [],
+      judgments: [
+        {
+          judgmentId: 'judgment-1',
+          trialRoundId: 'round-1',
+          judgmentRevision: 0,
+          canEdit: true,
+          original: {
+            judgmentReceivedAt: '2026-10-01',
+            judgmentAmountState: 'PENDING',
+            judgmentAmount: null,
+            paidLitigationFeeState: 'PENDING',
+            paidLitigationFee: null,
+            judgmentContentVersionIds: [],
+            files: [],
+          },
+          effective: {
+            judgmentReceivedAt: '2026-10-01',
+            judgmentAmountState: 'PENDING',
+            judgmentAmount: null,
+            paidLitigationFeeState: 'PENDING',
+            paidLitigationFee: null,
+            judgmentContentVersionIds: [],
+            files: [],
+          },
+          history: [],
+        },
+      ],
+    };
+    expect(resolveCaseSectionEdits(item).map((action) => action.id)).toEqual([
+      'record-judgment',
+    ]);
     item.canCorrectJudgment = false;
+    expect(resolveCaseSectionEdits(item).map((action) => action.id)).toEqual([
+      'record-judgment',
+    ]);
+    item.recordEdits.judgments![0]!.canEdit = false;
     expect(resolveCaseSectionEdits(item)).toEqual([]);
     item.judgment.current = null;
     item.canRegisterJudgment = true;
@@ -154,9 +191,9 @@ describe('registered section edit mapping', () => {
     };
     expect(resolveCaseSectionEdits(item)).toEqual([]);
     item.recordEdits.secondInstanceAcceptances![0]!.acceptanceRevision = 1;
-    expect(
-      resolveCaseSectionEdits(item).map((action) => action.intent),
-    ).toEqual(['second-instance-acceptance']);
+    expect(resolveCaseSectionEdits(item).map((action) => action.id)).toEqual([
+      'second-instance-acceptance',
+    ]);
     item.recordEdits.canSaveSecondInstanceAcceptance = false;
     expect(resolveCaseSectionEdits(item)).toEqual([]);
   });
@@ -197,6 +234,41 @@ const intents = (item: CaseDetail) =>
   resolveCaseDetailActions(item).map((action) => action.intent);
 
 describe('case workspace action resolution', () => {
+  it('keeps the authorized workflow hearing correction for an external WAITING_HEARING root without local acceptance', () => {
+    const item = external('WAITING_HEARING');
+    item.stage = 'WAITING_JUDGMENT';
+    item.canCorrectHearing = true;
+    const arrangement = {
+      id: 'arrangement-1',
+      trialRoundId: 'round-1',
+      hearingAt: '2026-10-01',
+      source: 'SCHEDULE' as const,
+      recordedAt: '2026-10-01T00:00:00Z',
+    };
+    const advance = {
+      id: 'advance-1',
+      trialRoundId: 'round-1',
+      arrangementId: arrangement.id,
+      dueAt: '2026-10-01T16:00:00Z',
+      executedAt: '2026-10-01T16:00:00Z',
+    };
+    item.hearing = {
+      currentArrangement: arrangement,
+      currentAdvance: advance,
+      arrangements: [arrangement],
+      advances: [advance],
+      corrections: [],
+    };
+    expect(item.acceptance).toBeNull();
+    expect(intents(item)).toEqual(['hearing']);
+    item.canCorrectHearing = false;
+    expect(intents(item)).toEqual([]);
+    item.canCorrectHearing = true;
+    if (item.origin?.kind !== 'EXTERNAL_ENTRY')
+      throw new Error('Expected external fixture');
+    item.origin.initialStage = 'WAITING_FORMAL_ACCEPTANCE';
+    expect(intents(item)).toEqual([]);
+  });
   it.each([
     undefined,
     null,

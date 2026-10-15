@@ -243,8 +243,11 @@ function amountSourceLabel(source: DisplayAmount['sourceType']): string {
   if (source === 'COMPLAINT_CONFIRMATION') return '诉状确认';
   if (source === 'COMPLAINT_SUBMISSION') return '已提交诉状';
   if (source === 'FIRST_INSTANCE_JUDGMENT') return '一审判决';
+  if (source === 'FIRST_INSTANCE_JUDGMENT_RECORD_CORRECTION')
+    return '判决资料更正';
   if (source === 'SECOND_INSTANCE_RESULT') return '二审结果';
   if (source === 'CASE_CLOSURE_VERSION') return '结案登记';
+  if (source === 'CASE_CLOSURE_RECORD_CORRECTION') return '结案资料更正';
   return '未登记';
 }
 const state = ref<'loading' | 'ready' | 'failed'>('loading');

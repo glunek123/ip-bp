@@ -240,7 +240,9 @@ export function resolveCaseDetailActions(
         current.origin.initialStage === 'WAITING_HEARING')) &&
       stage === 'WAITING_HEARING' &&
       current.canScheduleHearing) ||
-      (!!current.acceptance &&
+      ((!!current.acceptance ||
+        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
+          current.origin.initialStage === 'WAITING_HEARING')) &&
         (stage === 'WAITING_HEARING' || stage === 'WAITING_JUDGMENT') &&
         current.canCorrectHearing),
     'hearing',
