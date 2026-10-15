@@ -5,6 +5,10 @@ import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaseDetail, CaseSummary, CaseFile } from '../../api/cases';
 import type * as CaseApi from '../../api/cases';
+import type {
+  CaseSectionRecordUploadTarget,
+  CaseSectionRecordUploadedMaterial,
+} from '../../api/materials';
 import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
 import CaseListPage from './CaseListPage.vue';
@@ -43,6 +47,8 @@ vi.mock('../../api/cases', async (original) => ({
 const materials = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(),
   uploadMaterialFile: vi.fn(),
+  uploadCaseSectionRecordFile:
+    vi.fn<typeof import('../../api/materials').uploadCaseSectionRecordFile>(),
 }));
 vi.mock('../../api/materials', async (original) => ({
   ...(await original<typeof import('../../api/materials')>()),
@@ -398,6 +404,20 @@ function recordFixture(): CaseDetail {
 }
 
 const wrappers: ReturnType<typeof mount>[] = [];
+function workflowCanLeave(wrapper: ReturnType<typeof mount>): boolean {
+  const instance: unknown = wrapper.getComponent({
+    name: 'ListWorkflowDrawer',
+  }).vm;
+  if (typeof instance !== 'object' || instance === null)
+    throw new Error('Workflow exposes canLeave');
+  const canLeave: unknown = Reflect.get(instance, 'canLeave');
+  if (typeof canLeave !== 'function')
+    throw new Error('Workflow exposes canLeave');
+  const result: unknown = canLeave();
+  if (typeof result !== 'boolean')
+    throw new Error('Workflow canLeave returns boolean');
+  return result;
+}
 async function render(recordPanel?: Component) {
   const pinia = createPinia();
   const auth = useAuthStore(pinia);
@@ -416,6 +436,7 @@ async function render(recordPanel?: Component) {
     history: createMemoryHistory(),
     routes: [
       { path: '/cases', component: CaseListPage },
+      { path: '/cases/:id', component: { template: '<p>case detail</p>' } },
       { path: '/other', component: { template: '<p>other</p>' } },
     ],
   });
@@ -895,8 +916,21 @@ const RecordPanelStub = defineComponent({
     contextKey: String,
     initialTargetId: String,
     beforeSubmit: Function as PropType<RecordAdmission>,
+    beforeUpload: Function as PropType<
+      (input: {
+        caseId: string;
+        target: CaseSectionRecordUploadTarget;
+      }) => boolean
+    >,
   },
-  emits: ['changed', 'state-change', 'refresh', 'cancel', 'access-lost'],
+  emits: [
+    'changed',
+    'state-change',
+    'upload-state-change',
+    'refresh',
+    'cancel',
+    'access-lost',
+  ],
   template: '<section data-test="record-panel-contract" />',
 });
 const recordActor = 'INTERNAL:user-1:department-1';
@@ -915,7 +949,10 @@ function recordRequest(
     },
   };
 }
-function retainRecord(request = recordRequest(), actor = recordActor) {
+function retainRecord(
+  request: CaseSectionRecordRequest = recordRequest(),
+  actor = recordActor,
+) {
   const stored = { version: 1, actor, caseId: uid(1), request };
   const key = caseSectionRecordStorageKey(actor, uid(1), request);
   sessionStorage.setItem(key, JSON.stringify(stored));
@@ -1188,6 +1225,70 @@ describe('case list section record host contract', () => {
     expect(sessionStorage.getItem(retained.key)).toBe(retained.raw);
     expect(api.listCases).toHaveBeenCalledTimes(2);
   });
+
+  it('keeps preparation admission separate from business idle and ignores a late duplicate preparation completion', async () => {
+    const { wrapper, router } = await render(RecordPanelStub);
+    await openRecords(wrapper);
+    await wrapper
+      .get('[data-test="case-list-record-kind"]')
+      .setValue('judgment');
+    const child = wrapper.getComponent(RecordPanelStub);
+    const beforeUpload = child.props('beforeUpload')!;
+    expect(
+      beforeUpload({ caseId: uid(99), target: uploadTargets.judgment }),
+    ).toBe(false);
+    expect(
+      beforeUpload({ caseId: uid(1), target: uploadTargets.closure }),
+    ).toBe(false);
+    expect(
+      beforeUpload({ caseId: uid(1), target: uploadTargets.judgment }),
+    ).toBe(true);
+    expect(
+      beforeUpload({ caseId: uid(1), target: uploadTargets.judgment }),
+    ).toBe(false);
+    child.vm.$emit('upload-state-change', 'uploading');
+    child.vm.$emit('state-change', 'idle');
+    expect(workflowCanLeave(wrapper)).toBe(false);
+    child.vm.$emit('changed');
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+    child.vm.$emit('upload-state-change', 'idle');
+    expect(workflowCanLeave(wrapper)).toBe(true);
+    const request: CaseSectionRecordRequest = {
+      kind: 'judgment',
+      input: {
+        judgmentId: uid(6),
+        trialRoundId: uid(9),
+        expectedJudgmentRevision: 0,
+        idempotencyKey: uid(30),
+        judgmentReceivedAt: '2026-10-07',
+        judgmentAmountState: 'PENDING',
+        judgmentAmount: null,
+        paidLitigationFeeState: 'PENDING',
+        paidLitigationFee: null,
+        judgmentContentVersionIds: [file.contentVersionId],
+        reason: '核对判决资料',
+      },
+    };
+    expect(
+      child.props('beforeSubmit')!({
+        caseId: uid(1),
+        request,
+        recovery: false,
+      }),
+    ).toBe(true);
+    child.vm.$emit('upload-state-change', 'idle');
+    expect(workflowCanLeave(wrapper)).toBe(false);
+    const stored = retainRecord(request);
+    child.vm.$emit('state-change', 'unknown');
+    child.vm.$emit('upload-state-change', 'idle');
+    expect(
+      beforeUpload({ caseId: uid(1), target: uploadTargets.judgment }),
+    ).toBe(false);
+    await router.push('/other');
+    expect(router.currentRoute.value.path).toBe('/cases');
+    expect(sessionStorage.getItem(stored.key)).toBe(stored.raw);
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+  });
 });
 
 const recordCommandsUnderTest = [
@@ -1258,6 +1359,81 @@ const recordCommandsUnderTest = [
     },
   },
 ] as const;
+const uploadTargets = {
+  'execution-mailing': {
+    kind: 'EXECUTION_MAILING',
+    targetId: uid(2),
+    expectedRevision: 0,
+  },
+  'execution-filing': {
+    kind: 'EXECUTION_FILING',
+    targetId: uid(3),
+    expectedRevision: 0,
+  },
+  'execution-finish': {
+    kind: 'EXECUTION_FINISH',
+    targetId: uid(4),
+    expectedRevision: 0,
+  },
+  judgment: {
+    kind: 'JUDGMENT',
+    targetId: uid(6),
+    expectedRevision: 0,
+    trialRoundId: uid(9),
+  },
+  closure: {
+    kind: 'CLOSURE',
+    targetId: uid(7),
+    expectedRevision: 0,
+    expectedClosureVersionId: uid(8),
+  },
+} as const satisfies Record<
+  Exclude<CaseSectionRecordKind, 'hearing'>,
+  CaseSectionRecordUploadTarget
+>;
+function preparedRecordFile(
+  target: CaseSectionRecordUploadTarget,
+  n = 200,
+): CaseSectionRecordUploadedMaterial {
+  const purpose = {
+    EXECUTION_MAILING: 'MAIL_RECEIPT',
+    EXECUTION_FILING: 'EXECUTION_FILING_PROOF',
+    EXECUTION_FINISH: 'EXECUTION_FINISH_BASIS',
+    JUDGMENT: 'JUDGMENT',
+    CLOSURE: 'CASE_CLOSURE_DOCUMENT',
+  } as const;
+  return {
+    materialId: uid(n),
+    contentVersionId: uid(n + 1),
+    originalFilename: '列表新增.pdf',
+    mimeType: 'application/pdf',
+    purpose: purpose[target.kind],
+    sizeBytes: 5,
+    sha256: 'a'.repeat(64),
+    recordCorrection: target,
+  };
+}
+async function selectRecordUpload(wrapper: ReturnType<typeof mount>) {
+  const input = wrapper.get<globalThis.HTMLInputElement>(
+    '[data-test="section-record-upload"]',
+  );
+  Object.defineProperty(input.element, 'files', {
+    value: [
+      new globalThis.File(['%PDF-'], '列表新增.pdf', {
+        type: 'application/pdf',
+      }),
+    ],
+    configurable: true,
+  });
+  await input.trigger('change');
+}
+function deferredRecordUpload() {
+  let resolve!: (result: CaseSectionRecordUploadedMaterial) => void;
+  const promise = new Promise<CaseSectionRecordUploadedMaterial>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 async function editRecord(
   wrapper: ReturnType<typeof mount>,
   kind: CaseSectionRecordKind,
@@ -1329,6 +1505,244 @@ describe('case list with the original six record forms and adapters', () => {
         closureRevision: input.expectedClosureRevision + 1,
       }),
     );
+  });
+
+  describe('independent list record upload preparation', () => {
+    it.each(
+      recordCommandsUnderTest.filter((command) => command.kind !== 'hearing'),
+    )(
+      'locks W for $kind preparation before transport, then saves only after separate business admission',
+      async ({ kind, post }) => {
+        const { wrapper, router } = await render();
+        const panel = await editRecord(wrapper, kind);
+        const before = structuredClone(recordFixture());
+        const wait = deferredRecordUpload();
+        const canLeave = () => workflowCanLeave(wrapper);
+        materials.uploadCaseSectionRecordFile.mockImplementationOnce(() => {
+          expect(canLeave()).toBe(false);
+          return wait.promise;
+        });
+        await selectRecordUpload(wrapper);
+        expect(canLeave()).toBe(false);
+        const upload = materials.uploadCaseSectionRecordFile.mock.calls[0]!;
+        expect(upload).toEqual([
+          uid(1),
+          uploadTargets[kind],
+          expect.any(globalThis.File),
+          { signal: expect.any(AbortSignal) },
+        ]);
+        expect(upload[3]!.signal).not.toBe(
+          api.getCase.mock.calls[0]![1].signal,
+        );
+        await selectRecordUpload(wrapper);
+        await panel.get('[data-test="section-record-form"]').trigger('submit');
+        await router.push('/other');
+        expect(router.currentRoute.value.path).toBe('/cases');
+        expect(materials.uploadCaseSectionRecordFile).toHaveBeenCalledTimes(1);
+        expect(post).not.toHaveBeenCalled();
+        expect(materials.uploadMaterialFile).not.toHaveBeenCalled();
+        expect(sessionStorage.length).toBe(0);
+        const uploaded = preparedRecordFile(uploadTargets[kind]);
+        wait.resolve(uploaded);
+        await flushPromises();
+        expect(canLeave()).toBe(true);
+        expect(
+          wrapper.find('[data-test="section-record-panel"]').exists(),
+        ).toBe(true);
+        expect(api.getCase).toHaveBeenCalledTimes(1);
+        expect(api.listCases).toHaveBeenCalledTimes(1);
+        expect(await api.getCase.mock.results[0]!.value).toEqual(before);
+        expect(sessionStorage.length).toBe(0);
+        expect(
+          wrapper.get<HTMLInputElement>(
+            `[data-test="section-record-file-${uploaded.contentVersionId}"]`,
+          ).element.checked,
+        ).toBe(true);
+        expect(post).not.toHaveBeenCalled();
+        await panel.get('[data-test="section-record-form"]').trigger('submit');
+        await flushPromises();
+        expect(post).toHaveBeenCalledTimes(1);
+        expect(JSON.stringify(post.mock.calls[0]![1])).toContain(
+          uploaded.contentVersionId,
+        );
+        expect(api.listCases).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it.each([
+      { status: 400, code: 'INVALID_INPUT' },
+      { status: 0, code: 'NETWORK_ERROR' },
+      { status: 403, code: 'FORBIDDEN' },
+      { status: 409, code: 'VERSION_CONFLICT' },
+    ])(
+      'settles upload failure $status to idle without confirming a file or producing a business command',
+      async ({ status, code }) => {
+        materials.uploadCaseSectionRecordFile.mockRejectedValueOnce(
+          new ApiError('upload failed', status, code),
+        );
+        const { wrapper, router } = await render();
+        await editRecord(wrapper, 'closure');
+        await selectRecordUpload(wrapper);
+        await flushPromises();
+        expect(materials.uploadCaseSectionRecordFile).toHaveBeenCalledTimes(1);
+        expect(workflowCanLeave(wrapper)).toBe(true);
+        expect(
+          wrapper
+            .find(`[data-test="section-record-file-${uid(201)}"]`)
+            .exists(),
+        ).toBe(false);
+        expect(
+          wrapper.find('[data-test="section-record-panel"]').exists(),
+        ).toBe(true);
+        expect(api.correctCaseClosureRecord).not.toHaveBeenCalled();
+        expect(api.getCase).toHaveBeenCalledTimes(1);
+        expect(api.listCases).toHaveBeenCalledTimes(1);
+        expect(sessionStorage.length).toBe(0);
+        await router.push('/other');
+        expect(router.currentRoute.value.path).toBe('/other');
+      },
+    );
+
+    it('does not add an unconfirmed upload to a later independent business request', async () => {
+      materials.uploadCaseSectionRecordFile.mockRejectedValueOnce(
+        new ApiError('upload unknown', 0, 'NETWORK_ERROR'),
+      );
+      const { wrapper } = await render();
+      const panel = await editRecord(wrapper, 'judgment');
+      await selectRecordUpload(wrapper);
+      await flushPromises();
+      expect(wrapper.text()).toContain('上传未确认');
+      expect(sessionStorage.length).toBe(0);
+      await panel.get('[data-test="section-record-form"]').trigger('submit');
+      await flushPromises();
+      expect(
+        api.correctCaseJudgmentRecord.mock.calls[0]![1]
+          .judgmentContentVersionIds,
+      ).toEqual([file.contentVersionId]);
+      expect(materials.uploadCaseSectionRecordFile).toHaveBeenCalledTimes(1);
+      expect(api.listCases).toHaveBeenCalledTimes(2);
+    });
+
+    it('aborts preparation without business pending and keeps a later preparation busy when the old response arrives', async () => {
+      const first = deferredRecordUpload();
+      const second = deferredRecordUpload();
+      materials.uploadCaseSectionRecordFile
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise);
+      const { wrapper } = await render();
+      await editRecord(wrapper, 'closure');
+      await selectRecordUpload(wrapper);
+      const original = materials.uploadCaseSectionRecordFile.mock.calls[0]!;
+      expect(workflowCanLeave(wrapper)).toBe(false);
+      await wrapper
+        .get('[data-test="section-record-upload-cancel"]')
+        .trigger('click');
+      expect(original[3]!.signal!.aborted).toBe(true);
+      expect(workflowCanLeave(wrapper)).toBe(true);
+      expect(sessionStorage.length).toBe(0);
+      await selectRecordUpload(wrapper);
+      expect(workflowCanLeave(wrapper)).toBe(false);
+      first.resolve(preparedRecordFile(uploadTargets.closure));
+      await flushPromises();
+      expect(workflowCanLeave(wrapper)).toBe(false);
+      expect(
+        wrapper.find(`[data-test="section-record-file-${uid(201)}"]`).exists(),
+      ).toBe(false);
+      second.resolve(preparedRecordFile(uploadTargets.closure, 202));
+      await flushPromises();
+      expect(workflowCanLeave(wrapper)).toBe(true);
+      expect(
+        wrapper.get<HTMLInputElement>(
+          `[data-test="section-record-file-${uid(203)}"]`,
+        ).element.checked,
+      ).toBe(true);
+      expect(api.getCase).toHaveBeenCalledTimes(1);
+      expect(api.listCases).toHaveBeenCalledTimes(1);
+      expect(api.correctCaseClosureRecord).not.toHaveBeenCalled();
+      expect(sessionStorage.length).toBe(0);
+    });
+
+    it.each(['authorization', 'identity'] as const)(
+      'invalidates old upload on $0 changes without settling or leaking files into a new busy session',
+      async (boundary) => {
+        const first = deferredRecordUpload();
+        const second = deferredRecordUpload();
+        materials.uploadCaseSectionRecordFile
+          .mockReturnValueOnce(first.promise)
+          .mockReturnValueOnce(second.promise);
+        const { wrapper, auth } = await render();
+        await editRecord(wrapper, 'judgment');
+        await selectRecordUpload(wrapper);
+        const original = materials.uploadCaseSectionRecordFile.mock.calls[0]!;
+        auth.session =
+          boundary === 'authorization'
+            ? { ...auth.session!, authorizationRevision: 2 }
+            : {
+                ...auth.session!,
+                user: { ...auth.session!.user, id: 'user-2' },
+              };
+        await flushPromises();
+        expect(original[3]!.signal!.aborted).toBe(true);
+        expect(
+          wrapper.find('[data-test="section-record-panel"]').exists(),
+        ).toBe(false);
+        await editRecord(wrapper, 'judgment');
+        await selectRecordUpload(wrapper);
+        expect(workflowCanLeave(wrapper)).toBe(false);
+        const reads = api.getCase.mock.calls.length;
+        const lists = api.listCases.mock.calls.length;
+        first.resolve(preparedRecordFile(uploadTargets.judgment));
+        await flushPromises();
+        expect(workflowCanLeave(wrapper)).toBe(false);
+        expect(
+          wrapper
+            .find(`[data-test="section-record-file-${uid(201)}"]`)
+            .exists(),
+        ).toBe(false);
+        expect(api.getCase).toHaveBeenCalledTimes(reads);
+        expect(api.listCases).toHaveBeenCalledTimes(lists);
+        expect(sessionStorage.length).toBe(0);
+        second.resolve(preparedRecordFile(uploadTargets.judgment, 202));
+        await flushPromises();
+        expect(workflowCanLeave(wrapper)).toBe(true);
+        expect(api.correctCaseJudgmentRecord).not.toHaveBeenCalled();
+      },
+    );
+
+    it('preserves a confirmed file in an unknown business request and does not readmit upload preparation', async () => {
+      const uploaded = preparedRecordFile(uploadTargets.judgment);
+      materials.uploadCaseSectionRecordFile.mockResolvedValueOnce(uploaded);
+      api.correctCaseJudgmentRecord.mockRejectedValueOnce(
+        new ApiError('business response lost', 0, 'NETWORK_ERROR'),
+      );
+      const { wrapper } = await render();
+      const panel = await editRecord(wrapper, 'judgment');
+      await selectRecordUpload(wrapper);
+      await flushPromises();
+      await panel.get('[data-test="section-record-form"]').trigger('submit');
+      await flushPromises();
+      const body = api.correctCaseJudgmentRecord.mock.calls[0]![1];
+      expect(body.judgmentContentVersionIds).toEqual([
+        file.contentVersionId,
+        uploaded.contentVersionId,
+      ]);
+      const raw = sessionStorage.getItem(sessionStorage.key(0)!);
+      expect(raw).toContain(uploaded.contentVersionId);
+      expect(
+        wrapper
+          .get('[data-test="section-record-upload"]')
+          .attributes('disabled'),
+      ).toBeDefined();
+      await selectRecordUpload(wrapper);
+      expect(materials.uploadCaseSectionRecordFile).toHaveBeenCalledTimes(1);
+      expect(workflowCanLeave(wrapper)).toBe(false);
+      expect(sessionStorage.getItem(sessionStorage.key(0)!)).toBe(raw);
+      await panel.get('[data-test="section-record-retry"]').trigger('click');
+      await flushPromises();
+      expect(api.correctCaseJudgmentRecord.mock.calls[1]![1]).toEqual(body);
+      expect(sessionStorage.length).toBe(0);
+      expect(api.listCases).toHaveBeenCalledTimes(2);
+    });
   });
 
   it.each(recordCommandsUnderTest)(

@@ -329,6 +329,7 @@ import {
   listOwnerMaterials,
   uploadMaterialFile,
   type MaterialCategory,
+  type CaseSectionRecordUploadTarget,
 } from '../../api/materials';
 import CaseComplaintSubmissionForm from './CaseComplaintSubmissionForm.vue';
 import CaseComplaintConfirmationPanel from './CaseComplaintConfirmationPanel.vue';
@@ -396,6 +397,7 @@ const recordCommands = computed(() => {
   );
 });
 let recordAdmitted = false;
+let ownedPrepSession: ListWorkflowSession | null = null;
 let mounted = true;
 onBeforeUnmount(() => {
   mounted = false;
@@ -472,6 +474,54 @@ function selectRecordRecovery(recovery: CaseListRecordRecovery) {
   if (!current() || storageBlocked.value || busy.value) return;
   recordSelection.value = recovery;
 }
+function beforeRecordUpload(input: {
+  caseId: string;
+  target: CaseSectionRecordUploadTarget;
+}): boolean {
+  const kinds = {
+    EXECUTION_MAILING: 'execution-mailing',
+    EXECUTION_FILING: 'execution-filing',
+    EXECUTION_FINISH: 'execution-finish',
+    JUDGMENT: 'judgment',
+    CLOSURE: 'closure',
+  } as const;
+  if (
+    !current() ||
+    !recordMode ||
+    storageBlocked.value ||
+    pending.value ||
+    recordAdmitted ||
+    ownedPrepSession ||
+    input.caseId !== item.value.id ||
+    kinds[input.target.kind] !== recordSelection.value?.kind ||
+    (recordSelection.value.targetId &&
+      recordSelection.value.targetId !== input.target.targetId)
+  )
+    return false;
+  try {
+    readCaseListRecordRecoveries(props.recordActorKey ?? '');
+    if (
+      readCaseSectionRecordRequests(props.recordActorKey ?? '', item.value.id)
+        .length
+    )
+      return false;
+  } catch {
+    storageBlocked.value = true;
+    error.value = '无法核对资料更正的原请求恢复记录，尚未上传文件。';
+    return false;
+  }
+  const session = props.session;
+  if (!session.beginSubmit({ recovery: false })) return false;
+  ownedPrepSession = session;
+  return true;
+}
+function recordUploadStateChanged(state: 'uploading' | 'idle') {
+  if (state !== 'idle' || !ownedPrepSession) return;
+  const session = ownedPrepSession;
+  ownedPrepSession = null;
+  // Preparation never completes a business command or refreshes the list.
+  session.endSubmit('failed');
+}
 function beforeRecordSubmit(input: {
   caseId: string;
   request: CaseSectionRecordRequest;
@@ -482,6 +532,7 @@ function beforeRecordSubmit(input: {
     storageBlocked.value ||
     pending.value ||
     recordAdmitted ||
+    ownedPrepSession ||
     input.caseId !== item.value.id ||
     input.request.kind !== recordSelection.value?.kind ||
     (!!recordSelection.value.targetId &&
@@ -517,7 +568,7 @@ function beforeRecordSubmit(input: {
   }
 }
 function recordStateChanged(state: ListWorkflowRequestState) {
-  if (!current()) return;
+  if (!current() || ownedPrepSession) return;
   if (state === 'submitting') return;
   try {
     retainedRecords.value = readCaseSectionRecordRequests(
@@ -1216,6 +1267,8 @@ async function complaint() {
         :context-key="session.contextKey"
         :initial-target-id="recordSelection.targetId || undefined"
         :before-submit="beforeRecordSubmit"
+        :before-upload="beforeRecordUpload"
+        @upload-state-change="recordUploadStateChanged"
         @state-change="recordStateChanged"
         @changed="recordChanged"
         @access-lost="recordAccessLost"
