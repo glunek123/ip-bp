@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+## ebba正常完整门禁失败并安全停止（2026-10-15）
+
+固定clean ebba08631e3065a214a9f16a4221525d51f2fc11/tree1e4060cb9558330dd18007fbf6ec64fcff0f51c2，于17:06:34至17:09:42 UTC只执行一次正常pnpm verify，exit1。工具11文件94/94通过；前端124文件123过1失败、2207项2206过1失败；唯一失败CaseClosureDetailIntegration.spec.ts:469，uses exact closure material versions, real zero and internal complete correction anchor，点击closure-info分栏编辑后取不到旧closure-amount。该测试继续期望旧correctCaseClosure/Case.version推进契约，原UI需诊断准确既有workflow入口与新record编辑语义，尚未判定为纯断言或产品缺陷，禁止通过删除零金额/双锚/附件/历史断言掩盖。
+
+Prisma当前源生成、两端与根类型、全Lint/格式通过；后端随递归测试失败终止，无完成计数，NT006虽在120文件库存中但没有实际owner锁观察，不能称运行通过；双构建未到达。按准入阶段2 --list/单项owned-schema均未运行、无trace、无owned schema创建，未升级public或写Grant。前后R2实际身份、155完整ledger、137表4336行及结构/安全摘要/指纹87ddb629496fbfadd83a201c2518d2ed3406badfff2fd3843d2804f93e18cd42相同，schema均仅public，锁不存在且3101/5174空闲。证据section-record-edit-frontend-integration/.local/ui003-evidence/migration-ebba-20261015/含实际退出码、before/after、suite/source inventory、verify.log和28份最终manifest；主控逐项核hash/bytes一致。verify.log SHA25688188c9e58921c5fdf6aea410dcd46cf4df88c805bbb9accfc621cb76fb5fbab。修复必须回原UI、固定新输入并补审后再给runner新准入；此FAIL不改写155已交付候选的历史PASS，也不允许跳过失败门禁继续S。
+
 ## R2只读备份与迁移专项源准备（2026-10-15）
 
 唯一runner在clean c4c06820355b6ff7b2bbde34e8c6a6e3912814fd上完成R2 public155只读备份：pg_dump custom exit0，归档1652292字节、SHA256 0734daa1a325990b238baa5d0ac2b644890e1de184b30ab16557d1eecb7cd270；pg_restore --list exit0、1792项。前后137表4336行、结构/序列、155完整迁移和baseline安全摘要一致，标准锁释放。主控逐一核原manifest20项哈希/字节数，独立Reviewer限定证据C/I/M0。备份及TOC随后用原生文件操作移至工作区外用户Temp的本批独占目录，主控核两文件大小/hash不变且旧源不存在；未改ACL/服务配置、未重dump、未输出私密内容。证据在hearing-correction-chain/.local/ui003-evidence/r2-155-backup-20261015/及r2-155-backup-relocation-20261015/。原manifest作为历史保留，当前位置以relocation-pointer.json/relocation-receipt.json为准。TOC可读不证明成功还原；归档不含库外blob，不作为完整文件存储恢复证明。
