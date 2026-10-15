@@ -6,13 +6,15 @@
 
 唯一Current为CORE-UI-003两项前端闭环；CA018已原子交付，最后实核远端main／任务分支和本地主main为1f375ea。人工预览source81ebfed／150测试窗口保持，CA019占位未冻结。
 
-当前源码／测试候选aa71ce5已接入原环境Owner增量39126f3e3f27863941fd5c1747e6e7fe441208de，仅环境夹具、NT006标准锁与Windows锁根／直接测试；生产environment.ts、NT006真实Jest断言、旧SQL未改。作者离线工具92/92、夹具18/18及四文件静态／隔离审C/I/M0，原累计Reviewer已核Spec／Quality C/I/M0，本次文档检查后再冻结新SHA；未称新候选完整verify或PG通过。UI产品9599和A浏览器2ff未变，原56/56／check:fast及源码接受证据保留。
+当前源码／测试候选06674b99b4f9138605ec11130c94499b942c3bc3接入原环境Owner增量a634a583fa13b0f9f45fe77179b54e514dda437e，仅test-environment／直接测试及case-judgment浏览器support三文件。新增支持入口复用完整capture实际容器准入并精确比较有效URL，不放宽缺绑定／错误项目或ID／禁止端口；原累计Reviewer核Spec／Quality C/I/M0，作者离线工具94/94。所列Lint日志缺失，I已补根三文件Lint／格式、E2E根tsc和diff检查exit0，文档专项后冻结；新候选完整verify及真实A/B浏览器尚未执行。产品9599、A浏览器2ff及全部迁移／构建输入未变。
 
-旧冻结fc4a175／tree7029bbc两轮verify均失败，运行任务01a13e67-4068-778b-a1e9-9d808ecb50e8已idle／明确停止，I核现场后结束旧执行冻结，仅接环境修复与必要文档，C／D仍不合入。首轮Temp EPERM实际0测试；第二轮仅进程TMP/TEMP改ignored目录并恢复，静态／工具86／前端1887过，后端1529过2失败，双构建未执行，新库／155／浏览器未运行。两项根因为TMP依赖的非法私有路径夹具、verify内NT006真实PG探针缺Docker准入及锁准备，准确失败及新顺序见VALIDATION，不拼成门禁通过。
+最近正式全门禁实际在eb367f05806a6394e3415b65b107c2e694f63cbb／tree1e360de44d2c8557d2aef9362382083273c9ddbf通过：新15437空库155/155、失败聚焦20/20，正常pnpm verify工具92／前端1887／后端1532及双构建exit0。浏览器收集因case-judgment support仍默认15433失败，A/B执行0、trace0，不能称产品验收。运行任务01a13e67-4068-778b-a1e9-9d808ecb50e8已停，容器dbb1cbd29c6d65b5aa4fd85317c96167fbd94310c34946edc033fc4f2f9d3695保留；I核14日志哈希全部一致。旧fc4两轮失败保留于VALIDATION，不替换为通过。
 
-Docker访问已由原运行任务经正式require_escalated审批路径只读docker ps exit0排除，未改ACL／用户组／配置／通道，无需用户处理，不再重复排查安装或引擎。原环境Owner 01a13e4a-4179-735e-923a-8129a0b040e1独占环境工具／直接测试及compose.test-instance.yaml，并获夹具、NT006 spec／probe、run-e2e／test范围；修复391只用了其中四文件。原执行Task等待新冻结候选，先新15437标准绑定及锁准备，再原失败范围／正式verify／UI003两项。NT006自行取得非重入锁，外层不得重复持有该锁；不回15433／不改保护／不自动清理。
+Docker正式审批路径和既有测试配置内存注入已实际可用，未改ACL／用户组／配置／通道或生成凭据。原环境Owner 01a13e4a-4179-735e-923a-8129a0b040e1新增上述support三文件所有权；本轮运行只复核保留容器身份／155历史及绑定，正常工具94、NT006失效专项、A/B真实浏览器，不重复重建空库或把eb367f0全量称为新树实跑。原完整输入相同的产品单元／构建结果仅限定复用；C／分栏修复最终组合集中所属门禁。NT006自行取非重入锁，外层不得重复持锁；不回15433／不清事实或约束，预览冻结。
 
 C“补齐案件列表办理入口”01a13e59-3cad-70a0-806c-aaede131b0cb在uxq01-c-case-action-entry／codex/uxq01-c-case-action-entry；D“补齐跨模块流程交接”01a13e59-b7fb-71f0-8f13-a802319830ea在uxq01-d-workflow-handoff／codex/uxq01-d-workflow-handoff，均从1f375ea独立worktree实施。C b40225a只读审查报I-UXQ-C01及C-UXQ-C02（误标只读／旧15433清理夹具），D a1bfc53报I-UXQ-D01（正式GET无关联仍留回执直链），均暂不接纳、交原Task修复；六项／两项浏览器未运行。主控仅指挥、验收、合并及权威文档，实施归子任务，具体所有权见路线图。
+
+用户新增案件分栏编辑错误由独立01a13ea6-b164-746d-9c69-7f99b23de0c1实施；基于C的b40225a，I正式审批路径创建section-record-edit-fix／codex/section-record-edit-fix，原ref lock创建拒绝已解除，无ACL变更或覆盖C。编辑只修改该栏已登记信息且阶段不变，流程另行办理；须逐栏真实点击、修改、保存、刷新核字段／阶段，取消无写入及独立流程按钮，未适用栏解释原因。C与此增量同批验收，D择机组合，当前均未修复验收。原Task报告执行邮寄／立案／结束无独立更正、开庭correct会改阶段、跨后续阶段更正受限，须父级裁定后台Task，不以流程Command冒充编辑。截图Library helper因Windows os.setxattr不可用未产出可读文件，未作截图结论。
 
 ## 当前任务
 

@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-10-15。CORE-CA-001～018、N1／N2、CORE-UI-001／002及展示修复、CORE-CE-001／002已交付；CA018最终main实核1f375ea，持久预览仍81ebfed／150。唯一Current为CORE-UI-003，两项UI候选源码审查、56项组件组合及快速静态通过；真实浏览器验收等待独立测试环境准入。准确证据与交付只见VALIDATION，不扩大为全部Demo或生产完成。
+更新日期：2026-10-15。CORE-CA-001～018、N1／N2、CORE-UI-001／002及展示修复、CORE-CE-001／002已交付；CA018最终main实核1f375ea，持久预览仍81ebfed／150。唯一Current为CORE-UI-003；eb367f0新隔离库155链及完整verify已实过，浏览器收集失败、实际0项。现接环境support增量准备补A/B真实点击；C与新增分栏编辑修复同批验收，D择机组合，均未交付。准确候选和证据边界只见VALIDATION，不扩大为全部Demo或生产完成。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
@@ -164,7 +164,7 @@
 
 ### Current Slice
 
-**CORE-UI-003｜线索单条快捷办理与公证共用原因批填（源审及静态通过，尚待真实验收，未交付）。** 依据INPUT-016／UXQ-01少操作目标，用户2026-10-15明确要求立即并行，复用CA018交付79a76d5产品基线；CA018最终交付1f375ea只补文档回执，产品相同。I复用ca015-integration／codex/ui003-quick-actions-integration，仅接纳本批明确白名单、统筹组合Review／门禁及文档；两Worker不写共享契约／文档、不跑DB、不合并推送或改5186预览。A来源60ff427、B最新03a6a02，集成9599b2a原Reviewer累计两轴ACCEPTED、C/I/M0，根四文件56/56和check:fast真实通过。浏览器首轮准备失败，旧15433受保护事实不清理，等待独立可见任务修复新环境准入；不得称UI003已验收。CA019仍占位，OPS-01-A～E和UXQ其他范围未实施。
+**CORE-UI-003｜线索单条快捷办理与公证共用原因批填（旧树全门禁通过，浏览器待验，未交付）。** 依据INPUT-016／UXQ-01少操作目标，产品基于CA018交付1f375ea。I仅统筹Review、验收、合并及权威文档。A来源60ff427、B最新03a6a02，产品集成9599b2a累计两轴ACCEPTED C/I/M0；真实完整verify在eb367f0通过工具92／前端1887／后端1532及双构建，新15437空链155/155，浏览器因support默认端口收集失败执行0。原环境Owner新a634a58已接06674b9，三文件、离线工具94及累计源审0；新树先补失效工具／NT006及A/B实际浏览器，不冒称已全过。C/D及分栏修复未接入，不写旧15433或持久预览。CA019仍占位，OPS-01-A～E仍仅设计。
 
 | Task／唯一作者 | 独立目录／分支                                               | 允许文件与验收边界                                                                                                                                                                                                                                                               |
 | -------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -391,6 +391,10 @@ CA018已从原暂停队列领取，实际范围只见Current及案件Spec；原S
 用户人工测试及独立只读核查01a13e49-2add-7514-9926-430be05b00d1已确认：案件列表“办理”为文字，预览／最新都没有行内动作；两例案件顶部合法动作及归档公证的案件链接实际存在。优先补核心入口与交接，不以UI003的原因批填／线索便利替代。两个Task均从已交付1f375ea582f899d2033419b75c1f3ad1eba2dbd9独立worktree开始；I已核目标页面、路由及API与f96b08a输入一致，与A／B白名单不重叠。根会话已实际创建并启动下列可见任务，尚无实施交付／验收结论，不重复派发。
 
 唯一Owner：UXQ-01-C“补齐案件列表办理入口”01a13e59-3cad-70a0-806c-aaede131b0cb；UXQ-01-D“补齐跨模块流程交接”01a13e59-b7fb-71f0-8f13-a802319830ea。D实际worktree uxq01-d-workflow-handoff／分支codex/uxq01-d-workflow-handoff已核，基线1f375ea；C实际worktree uxq01-c-case-action-entry／分支codex/uxq01-c-case-action-entry也已核。先聚焦测试／自审及浏览器专项代码，不运行共享DB。
+
+新增分栏编辑修复Owner 01a13ea6-b164-746d-9c69-7f99b23de0c1，基于C的b40225a独立section-record-edit-fix／codex/section-record-edit-fix已由I经正式审批创建，原创建权限阻塞解除；独占CaseDetail分栏映射及直接测试，和C同页改动先协调单文件Owner／增量次序。用户明确编辑只更正该栏已登记信息、阶段不变，办理独立；逐栏真实点击修改／保存／刷新核目标字段及阶段，取消无写入，独立办理按钮实际验证，未适用栏解释，不仅测开窗。执行及开庭等独立更正缺口由Task回报父级派后台实施，主控不补业务代码；与C同批验收，D择机组合。本错误当前未关闭。
+
+准入a634a58只解除A/B顶层导入阻塞；C旧clear／setExternalEntry仍固定15433并清理，D reset仍清旧事实，均须各原Owner改为新隔离库合成记录／reuseExisting及最小授权后才可运行，不通过扩大环境guard放行旧清理。其余五函数入口／六迁移support不在A/B执行链，不因扫描到就扩扫或运行历史全量E2E。
 
 - **UXQ-01-C｜案件行内办理与详情入口，Owner为上述C任务。** 独占frontend/src/modules/cases/CaseListPage.vue、CaseDetailPage.vue，新case-workspace-actions.ts及.spec.ts，直接CasePages.spec.ts／CaseListDisplay.spec.ts／CaseWorkspaceIntegration.spec.ts；浏览器只新增tests/e2e/case-action-entry.spec.ts及确需同名support。提取复用既有动作选择，显式区分列表摘要与详情事实，不构造假detail；行内显示合法明确动作及详情链接，保留分页／筛选。动作URL仅传白名单intent到/cases/:id，详情正式GET重取有效能力／版本／前序事实后才开原表单；不匹配时中性说明并只读，不自动POST／跳阶段／自动改开其他动作。消费intent后去掉该参数，保留批准查询及返回位置，切案／身份／迟到响应和原未知请求不串。无动作不能统一猜为无权限，当前字段无原因证据时只说明暂无可办理动作。验收含原各阶段动作映射、复杂判决／二审／归档／外部来源兼容、意图非法／失权／阶段或版本变化拒开、刷新返回及一次打开；独立环境须实际从行按钮进表单提交并刷新核同一事实，不只验证按钮或GET。
 - **UXQ-01-D｜线索→公证→案件交接，Owner为上述D任务。** 独占frontend/src/modules/leads/LeadDetailPage.vue及.spec.ts、NotaryMatterDetailPage.vue及.spec.ts，frontend/src/modules/notary/NotaryPortalDetailPage.vue及NotaryPortalPages.spec.ts；浏览器只新增tests/e2e/workflow-handoff-navigation.spec.ts及确需同名support。移交／新批次成功用本次精确回执指向事项，保留刷新后的正式关联；不可取数组末项猜目标。按真实阶段说明客户待审核、运营取证与移交、公证处待出证责任和出证后运营接手；NO_ISSUE退货分支不误指向出证。内部有权事项页突出已返回的linkedCase链接；公证处只沿已有最小投影显示结果及责任，不因可读caseId就链接其无权进入的内部/cases，不扩角色／读范围。异步提示按对象／身份隔离，保留冻结请求、正常失权／未知恢复。验收须在独立环境通过真实密码cookie／CSRF切换客户、公证处及运营／律师，从新线索经确认、取证、公证出证实际点至精确案件并完成合法下一步；无关联、未获返回投影、撤权或中间失败不得假成功或错误跳转。
