@@ -313,7 +313,7 @@ export async function failCaseExternalEntryMigrationAtomically(
       const definition = (
         await client.query(
           `SELECT pg_get_functiondef(
-             to_regprocedure(format('%I.%I()', $1, $2))
+             to_regprocedure(format('%I.%I()', $1::text, $2::text))
            ) AS definition`,
           [schema, functionName],
         )
