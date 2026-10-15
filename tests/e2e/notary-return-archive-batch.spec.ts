@@ -274,6 +274,19 @@ test('real operator archives separate facts and customer sees only the allowed r
     .locator(`[data-test="freight-party-name-${firstMatterId}"]`)
     .fill('快递公司');
   await dataTest(page, `reason-${firstMatterId}`).fill('退回样品并据实登记');
+  await dataTest(page, 'shared-reason').fill('共用原因仍需逐项核对');
+  await dataTest(page, 'fill-blank-reasons').click();
+  await expect(dataTest(page, 'shared-reason-filled-count')).toContainText('1');
+  await expect(dataTest(page, `reason-${firstMatterId}`)).toHaveValue(
+    '退回样品并据实登记',
+  );
+  await expect(dataTest(page, `reason-${secondMatterId}`)).toHaveValue(
+    '共用原因仍需逐项核对',
+  );
+  await dataTest(page, 'shared-reason').fill('');
+  await expect(dataTest(page, `reason-${secondMatterId}`)).toHaveValue(
+    '共用原因仍需逐项核对',
+  );
 
   await page
     .locator(`[data-test="choice-${secondMatterId}"]`)
