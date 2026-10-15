@@ -14,12 +14,28 @@ test('current 155: repeated hearing corrections preserve exact advance history a
   ]);
   expect(result.lockProofs.map((proof) => proof.race)).toEqual(result.races);
   for (const proof of result.lockProofs) {
+    if (proof.scanConflict !== null) {
+      expect(['schedule-first']).toContain(proof.race);
+      expect(proof.scanConflict).toEqual({
+        participant: 'second',
+        prismaCode: 'P2010',
+        sqlState: '40001',
+        driverKind: 'TransactionWriteConflict',
+      });
+      expect(proof.events).toEqual([
+        'first:attempt',
+        'first:acquired',
+        'second:attempt',
+        'first:barrier-released',
+        'second:rejected',
+      ]);
+    }
     let previous = -1;
     for (const event of [
       'first:acquired',
       'second:attempt',
       'first:barrier-released',
-      'second:acquired',
+      proof.scanConflict === null ? 'second:acquired' : 'second:rejected',
     ]) {
       const index = proof.events.indexOf(event);
       expect(index, `${proof.race}: ${event}`).toBeGreaterThan(previous);

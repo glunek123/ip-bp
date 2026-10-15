@@ -13,7 +13,16 @@ export function verifyHearingCorrectionChain(): Promise<{
   migrationCount: number;
   branches: Array<string | null>;
   races: string[];
-  lockProofs: Array<{ race: string; events: string[] }>;
+  lockProofs: Array<{
+    race: string;
+    events: string[];
+    scanConflict: {
+      participant: 'second';
+      prismaCode: 'P2010';
+      sqlState: '40001';
+      driverKind: 'TransactionWriteConflict';
+    } | null;
+  }>;
   scanStateChecks: string[];
   caseIds: string[];
   revokedReplayDenied: boolean;

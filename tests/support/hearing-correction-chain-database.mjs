@@ -234,7 +234,14 @@ function deferred() {
   return { promise, resolve: () => resolvePromise() };
 }
 
-async function orderedRace(database, caseId, first, second) {
+async function orderedRace(
+  database,
+  caseId,
+  first,
+  second,
+  secondKind = 'command',
+) {
+  assert.ok(['command', 'scan'].includes(secondKind));
   const acquired = deferred(),
     attempted = deferred(),
     release = deferred();
@@ -290,11 +297,35 @@ async function orderedRace(database, caseId, first, second) {
   }
   const outcomes = await Promise.all([firstSettled, secondSettled]);
   if (barrierError) throw barrierError;
+  let scanConflict = null;
+  if (secondKind === 'scan' && lockEvents.includes('second:rejected')) {
+    const expected = {
+      participant: 'second',
+      prismaCode: 'P2010',
+      sqlState: '40001',
+      driverKind: 'TransactionWriteConflict',
+    };
+    assert.deepEqual(lockErrors, [expected]);
+    assert.deepEqual(lockEvents, [
+      'first:attempt',
+      'first:acquired',
+      'second:attempt',
+      'first:barrier-released',
+      'second:rejected',
+    ]);
+    assert.deepEqual(outcomes[1], {
+      status: 'fulfilled',
+      value: { advanced: 0, failed: 1 },
+    });
+    scanConflict = expected;
+  } else if (secondKind === 'scan') {
+    assert.deepEqual(lockErrors, []);
+  }
   const requiredEvents = [
     'first:acquired',
     'second:attempt',
     'first:barrier-released',
-    'second:acquired',
+    scanConflict === null ? 'second:acquired' : 'second:rejected',
   ];
   let previous = -1;
   for (const event of requiredEvents) {
@@ -305,7 +336,7 @@ async function orderedRace(database, caseId, first, second) {
     );
     previous = index;
   }
-  return { outcomes, lockEvents };
+  return { outcomes, lockEvents, scanConflict };
 }
 
 async function expectCode(operation, expected) {
@@ -651,13 +682,15 @@ export async function verifyHearingCorrectionChain() {
       branches.push(date);
     }
 
-    // These four races require both commands to reach the real case lock.
+    // Both participants contend for the case lock. A second scan may abort with
+    // the exact Serializable conflict; human commands must still acquire it.
     const races = [],
       lockProofs = [];
     for (const first of ['schedule', 'advance']) {
       const caseId = await createCase(),
         service = hearing(scopedDatabase(database, caseId));
       await schedule(service, caseId, '2026-10-03');
+      const beforeRace = await history(database, caseId);
       const input = {
         expectedVersion: (await head(caseId)).version,
         idempotencyKey: randomUUID(),
@@ -665,17 +698,77 @@ export async function verifyHearingCorrectionChain() {
       };
       const save = (db) => hearing(db).schedule(actor, caseId, input);
       const advance = (db) => hearing(db).advanceDue(now);
-      const { outcomes, lockEvents } = await orderedRace(
+      const { outcomes, lockEvents, scanConflict } = await orderedRace(
         database,
         caseId,
         first === 'schedule' ? save : advance,
         first === 'schedule' ? advance : save,
+        first === 'schedule' ? 'scan' : 'command',
       );
       assert.equal(outcomes[0].status, 'fulfilled');
       if (first === 'schedule') {
         assert.equal(outcomes[1].status, 'fulfilled');
-        assert.equal(outcomes[1].value.advanced, 0);
-        assert.equal((await head(caseId)).stage, 'WAITING_HEARING');
+        assert.deepEqual(outcomes[1].value, {
+          advanced: 0,
+          failed: scanConflict === null ? 0 : 1,
+        });
+        const after = await head(caseId);
+        assert.equal(after.stage, 'WAITING_HEARING');
+        assert.equal(after.version, input.expectedVersion + 1);
+        assert.equal(
+          after.currentHearingArrangementId,
+          outcomes[0].value.arrangementId,
+        );
+        assert.equal(after.currentHearingAdvanceId, null);
+        const facts = await history(database, caseId);
+        assert.deepEqual(facts.advances, beforeRace.advances);
+        assert.deepEqual(facts.corrections, beforeRace.corrections);
+        assert.equal(
+          facts.arrangements.length,
+          beforeRace.arrangements.length + 1,
+        );
+        assert.deepEqual(
+          facts.arrangements.slice(0, -1),
+          beforeRace.arrangements,
+        );
+        assert.equal(
+          facts.arrangements.at(-1).id,
+          outcomes[0].value.arrangementId,
+        );
+        assert.equal(facts.arrangements.at(-1).hearingAt, null);
+        assert.equal(facts.receipts.length, beforeRace.receipts.length + 1);
+        assert.deepEqual(
+          facts.receipts.filter(
+            (receipt) => receipt.idempotencyKey !== input.idempotencyKey,
+          ),
+          beforeRace.receipts,
+        );
+        assert.equal(facts.audits.length, beforeRace.audits.length + 1);
+        assert.deepEqual(
+          facts.audits.filter(
+            (audit) =>
+              audit.details.arrangementId !== outcomes[0].value.arrangementId,
+          ),
+          beforeRace.audits,
+        );
+        assert.equal(
+          facts.audits.find(
+            (audit) =>
+              audit.details.arrangementId === outcomes[0].value.arrangementId,
+          ).action,
+          'case.hearing.scheduled',
+        );
+        // A new scan reads the committed null arrangement, rather than retrying
+        // the aborted transaction or advancing the now-invalid old arrangement.
+        assert.deepEqual(
+          await hearing(scopedDatabase(database, caseId)).advanceDue(now),
+          {
+            advanced: 0,
+            failed: 0,
+          },
+        );
+        assert.deepEqual(await head(caseId), after);
+        assert.deepEqual(await history(database, caseId), facts);
       } else {
         assert.equal(outcomes[0].value.advanced, 1);
         assert.equal(outcomes[1].status, 'rejected');
@@ -683,7 +776,11 @@ export async function verifyHearingCorrectionChain() {
         assert.equal((await head(caseId)).stage, 'WAITING_JUDGMENT');
       }
       races.push(`${first}-first`);
-      lockProofs.push({ race: `${first}-first`, events: lockEvents });
+      lockProofs.push({
+        race: `${first}-first`,
+        events: lockEvents,
+        scanConflict,
+      });
     }
 
     // WAITING_JUDGMENT is not a scan candidate. These sequential state checks
@@ -775,7 +872,7 @@ export async function verifyHearingCorrectionChain() {
         );
       const correction = (db) =>
         hearing(db).correct(actor, caseId, correctionInput);
-      const { outcomes, lockEvents } = await orderedRace(
+      const { outcomes, lockEvents, scanConflict } = await orderedRace(
         database,
         caseId,
         first === 'judgment' ? register : correction,
@@ -800,7 +897,7 @@ export async function verifyHearingCorrectionChain() {
       }
       const race = `${first}-before-${first === 'judgment' ? 'correction' : 'judgment'}`;
       races.push(race);
-      lockProofs.push({ race, events: lockEvents });
+      lockProofs.push({ race, events: lockEvents, scanConflict });
     }
 
     // Only this run's unique actor is deactivated, with all hearing facts kept.
