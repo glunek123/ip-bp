@@ -420,7 +420,8 @@ export async function withCaseExternalEntryCreateFault(
     },
     entry: {
       table: 'case_external_entries',
-      when: (source) => `NEW.source=${source}`,
+      when: (source) =>
+        `NEW.source=${source} AND NEW.department_id='${coreLeadFixtures.departmentA}'::uuid AND NEW.recorded_by_user_id='${coreLeadFixtures.userA}'::uuid`,
     },
     receipt: {
       table: 'case_external_entry_receipts',
@@ -491,7 +492,6 @@ export async function withCaseExternalEntryCreateFault(
       client,
       payload.source,
       payload.idempotencyKey,
-      payload.stageReachedOn,
     );
     let sequenceCreated = false;
     try {
@@ -526,7 +526,6 @@ export async function withCaseExternalEntryCreateFault(
         client,
         payload.source,
         payload.idempotencyKey,
-        payload.stageReachedOn,
       );
       return {
         status: response.status(),
@@ -545,12 +544,7 @@ export async function withCaseExternalEntryCreateFault(
   });
 }
 
-async function caseExternalEntryWriteSnapshot(
-  client,
-  source,
-  idempotencyKey,
-  businessDate,
-) {
+async function caseExternalEntryWriteSnapshot(client, source, idempotencyKey) {
   const cases = (
     await client.query(
       `SELECT to_jsonb(c)::text AS row FROM cases c
@@ -576,8 +570,7 @@ async function caseExternalEntryWriteSnapshot(
   }
   const counter = (
     await client.query(
-      'SELECT to_jsonb(c)::text AS row FROM case_number_counters c WHERE business_date=$1::date',
-      [businessDate],
+      'SELECT to_jsonb(c)::text AS row FROM case_number_counters c ORDER BY business_date',
     )
   ).rows;
   const entries = (
