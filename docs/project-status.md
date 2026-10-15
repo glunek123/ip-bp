@@ -1,5 +1,9 @@
 # 当前开发状态
 
+最新恢复检查点（2026-10-15，R2准备）：远端main及任务分支、本地主main已核f3c6d27，最近两次仅文档交付，产品仍为已验收269c73c边界。三列表b1f0125的I-LNC-01已由原累计Reviewer补审关闭（Spec/Quality C/I/M0），但尚无该组合真实DB/浏览器结果。旧dev-cor-ui003容器于11:54 UTC停止，PGDATA为tmpfs且无持久挂载；只读核查不能证明原155迁移和合成事实保留，未start/up/rebuild/delete或连接旧库。父级已批准新批次dev-cor-ui003-r2、loopback15438和独立持久卷dev-cor-ui003-r2-pgdata，沿用固定官方镜像及已批准本地合成配置；这是重新建立证据，不是恢复旧库。原runner为环境与实际执行唯一Owner，app恢复消息被AbsolutePathBuf拒绝后父级已用原有效通道再次started；环境实际创建结果待回执，准确交接正文在ignored `.local/ui003-evidence/r2-environment-owner-relay.md`。新实际完整身份及155新基线未回执前，不运行原固定15437的suite，不迁156/157。
+
+源集成进展：已审开庭有效日期bridge2db96c7接入前端组合为0d44b52（源码接受C0/I0/M1，58项及静态/构建为作者证据，尚未PG）；原155开庭7cb目录保持冻结。API稳定a8bf155仅cases两文件，211项、前端/根类型与Lint/格式实过、原Sol补审C/I/M0；律师无correction标记的信息限制明确保留，未增加外部字段。原UI在section-record-edit-ui-v2独占续办，旧外部来源入口和新六栏Panel仍WIP。材料I-SECTION-MAT-01为明确端到端缺口：后续阶段无法当场新上传，原预上传测试不覆盖；原S已获新独占section-record-edit-material-upload/基线0d44b52，预留157前向迁移。其精确target/revision/closure锚专用上传微合同待审，必须阻止未消费专用版本从current AVAILABLE捷径被其它目标或旧workflow首次消费；通用上传阶段、旧冻结文件复用、Grant、Case.version及日期规则保持。API/UI/材料和R2最终组合均未验收，不更新预览。
+
 11:57 UTC用户“继续”后的权威恢复指针：A/B已原子交付远端main与任务分支269c73c，恢复只读核实一致，本地主main已仅快进同SHA；不重跑已交付A/B。L/N/C2、S、开庭及E/H均在原Task／原独占worktree实际恢复，保留暂停WIP。W共享壳fc0cbd3已交接到共同开发基线779ae56；三模块候选尚未整体验收。S材料稳定9a78e55仅两文件，已接E c7393a6／H1d61e36，S路由编译仍待两域稳定服务提交；S有效读取cbc2a2e已冻结；路由／迁移仍WIP，待最终组合。开庭7cbdec2仅修三测试文件，I-HCHAIN01独立源审已关闭，仍待正式155专项，不称DB通过。SD-59最小[执行后续规格](superpowers/specs/2026-10-15-execution-filing-followup-contract.md)入队CORE-EF-001，等待共享文件交接；不新增执行结束日期比较规则。持久预览81ebfed／150及原数据继续冻结，下文旧“待交付”等为本次回执前历史，不覆盖此指针。
 
 更新日期：2026-10-15。本文件只保留恢复当前工作的最小事实；历史状态见[历史状态](project-status-history-through-2026-09-18.md)，候选证据与集成事实见[验证记录](spec/v0.1/VALIDATION.md)。
