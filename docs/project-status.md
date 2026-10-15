@@ -1,5 +1,7 @@
 # 当前开发状态
 
+最新准备收口（2026-10-15，16:49 UTC）：R2仍为155；只读pg_dump归档及pg_restore --list通过，主控核20份原证据哈希，137表4336行及原安全基线摘要前后一致。归档/私密TOC已移至工作区外的用户Temp独占目录，主控再次核两文件大小与哈希不变、旧位置不存在；仅证明备份生成和目录可读，未实际还原，也不含库外blob。S迁移风险四文件修复I-S-MIG01后累计源审C/I/M0、18项纯测试及静态通过，原任务固定e9ccaddd615d948ef508967ff2772d37627bc30f，接入后续组合841956f97c6cb081b1b6a36229897f10d2b9bc9f；正式157 raw字节218b230...2296的只读157源计划通过，未capture/连接DB。四文件owned-schema重放尚未运行，不等同Prisma部署。UI正在准备五类编辑/五类上传；第六类开庭及旧外部CORRECT所需单一新合成角色case.external-entry.create授权被自动审批拒绝，等待用户明确确认，未写Grant；旧受理/联系方式兼容另有缺口。未执行156/157、未更新持久预览，也未把准备结果称作最终浏览器或迁移验收。
+
 最新接续验收（2026-10-15，16:21 UTC）：独立155开庭候选c4c06820355b6ff7b2bbde34e8c6a6e3912814fd/treea0850faff5a568988f53884eb584a601720965ce正常本树生成/构建通过，protected DB-only唯一专项实际1/1，无skip/flaky/retry，原独立Reviewer核证据Spec/Quality C/I/M0，原155开庭实跑阻塞关闭。schedule-first实际走严格40001安全退出及新独立null重扫，其余三组竞争实际取得锁；这些结果由实际通过的断言和冻结源码hash证明，没有另存完整raw return。旧8案事实逐字段不变，新9案保留，155/R2身份/指纹保持、标准锁释放，主控核37份证据哈希。旧a539/d4b/9ba失败保留；此结果不代表main已含该产品、不覆盖156/157或后续完整门禁。
 
 后续完整源固定270150a5e72334fa7c62f63f62e4cff0462487b0，源/测试增量审查C/I/M0，67a阶段fast prepared及270标准快照strict通过，真实156/157尚未运行。原S已恢复准备四文件迁移风险专项，尚不连接数据库；六栏逐项真实点击/五kind浏览器选文件尚缺独立专项，已为原UI保留c253分支并在原目录建codex/section-record-ui-browser-acceptance（clean270），新四文件brief落.local/ui003-evidence/section-record-ui-browser-acceptance-brief.md。App恢复原UI与runner备份准备的消息报AbsolutePathBuf，未启动这些动作，待父级有效通道转交；现有S继续，不因单项通知失败暂停其他工作。持久预览继续冻结。
