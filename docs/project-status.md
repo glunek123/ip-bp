@@ -1,12 +1,34 @@
 # 当前开发状态
 
+最新恢复检查点（2026-10-15，14:41 UTC后）：上次远端main/任务分支与本地主main实核1dd4034，仍只是文档交付，产品边界269c73c不变。R2首次155独立开庭专项在a539ae4/tree48eae422实际执行exit1；生成及本树构建通过，前后clean、标准指纹及155完整名称/checksum/完成状态不变，实例healthy、标准锁正常释放。失败是seedOwner合成客户缺少联系人兼容投影关联触发既有23514，案件0→0，未到开庭或竞争验证。原开庭Owner已由父级恢复修专属fixture；禁止修改生产约束迁就夹具。原失败及trace保留，未重跑、未执行156/157，旧库及持久预览未操作。
+
+C2原文件更正列表候选35055d37c11cd49586a567f10521432e3266e146/tree274bb276a406cd8ba3de6c902a466d0d9bbbb245已按五文件哈希代提交、clean；作者真实组件128/128、两类型及静态通过，原Reviewer终核C/I/M0。两个registered record浏览器场景尚未运行且只适用156。已审hook d584+740、材料API3db、C2及上传UI c253接源码组合afb0f4b2865f5b78f380ab7352ceb153bb3835c7/treee697bcbda763fe306aa3fbbf4af9ae09195fa7b1，无该组合最终门禁。上传UI两文件增量原Sol补审C/I/M0、作者213项聚焦通过；C2目录已仅接API与Panel为clean5499b44，上传prep宿主仍需独立续接，发送接口AbsolutePathBuf拒绝，未声称已启动。
+
+追加式R2 baseline6825d52三文件已审、7项离线通过，接独立155列表组合482f56e64f3525c56f936467d468a24d4e837475/treef8e6c803cc1dfde6d83d0bc61f2a0cdb31b2c58c。此组合原无node_modules，已正常离线冻结安装自己的依赖exit0；原baseline实施树的三个node_modules是指向主仓的junction，未在其上安装。baseline实际prepare未执行，可与开庭fixture解耦，由唯一runner串行调度；prepare自身持标准锁，外层不得重入。发runner续办也被AbsolutePathBuf拒绝，完整runner/C2/N续办指令已留.local/ui003-evidence/runtime-and-upload-host-relay-20261015.md供父级有效通道转交。N精确R2绑定仍待回执。
+
+S上传157仍WIP、未迁移：三阶段权限与首次消费闭环实施/源码审持续，律师材料list/open及案件JUDGMENT availableFiles旁路已由S独占最小过滤，后者37项读取测试通过。PUT保持原200、新POST201；专用三类待选池精确当前冻结证明排除及外部证明前隐藏边界已写正式上传合同，普通无context路径不变。尚无最终S候选、157 SQL实际验证或真实上传字节证据，I-SECTION-MAT-01不关闭。下文旧“未启动/未构建/未运行”是历史检查点，不能覆盖本段实际回执。
+
+最新恢复检查点（2026-10-15，R2实际155与上传合同冻结）：远端main和任务分支、本地主main已核d72dd4c，最近仅文档检查点交付，产品仍为已验收269c73c边界。R2项目dev-cor-ui003-r2已实际healthy，完整新容器45addc0179e929dd1dcd4f835b6c6c14c36c2ac4aed5e6cd5842648bf5db5236，唯一loopback15438、持久卷dev-cor-ui003-r2-pgdata、无tmpfs；新空库155/155正常部署exit0，完整名称/checksum/完成状态匹配，实际指纹87ddb629496fbfadd83a201c2518d2ed3406badfff2fd3843d2804f93e18cd42前后一致。主控已核runner回执及六日志哈希，未重新运行DB。尚未seed、构建或suite，156/157未执行。旧15437 tmpfs停止且事实不能声明保留，未start/up/rebuild/delete，预览及用户数据未操作。原runner继续唯一环境/实际执行Owner，追加式baseline/纯disconnect新模块分配ui003-r2-baseline独占树；实际启动待父级通道回执，不调用旧dropFaults链。155开庭专项自建随机owner且纯断连，可在R2绑定补审/源码构建后独立先跑，不依赖列表baseline。
+
+源集成进展：三列表I-LNC-01源码finding关闭，L/C2的R2重绑已审并分别代提交562e4c5/d5835ef，接三列表652aaee；N重绑待回执，真实列表验收未跑。开庭有效日期bridge2db96c7源码审C0/I0/M1，155/156 support精确R2重绑及持久纯反例由原开庭Owner续办，不改变产品/旧链。六栏API最终143f744的217项/两类型/Lint/格式与原Sol0已回执，原body/key及POST abort未知恢复保持；连同已审UI及R2准入增量接全源码组合6b73451，尚无组合门禁。原UI候选a46f593九文件350项/类型/Lint/格式/build已回执，累计独立源码审ACCEPTED C0/I0/M0并接组合；新上传/列表入口/真实浏览器未完成，截图未物化。材料上传合同C4647435经原Sol补审关闭I-UMAT01/02，已同步[精确上传正式合同](superpowers/specs/2026-10-15-case-section-record-upload-contract.md)，S可在新树0d44b52实施157及四E/H新service/spec五处target接线，API仅新增materials两文件、UI随后接线；发送失败由父级转达，未声称实施启动或完成。专用版本首次消费必须精确匹配目标/revision/closure锚，全部20消费表闭合current捷径；旧规则、Grant、stage/Case.version不变。真正功能缺口I-SECTION-MAT-01仍待实现/运行验收关闭。
+
+11:57 UTC用户“继续”后的权威恢复指针：A/B已原子交付远端main与任务分支269c73c，恢复只读核实一致，本地主main已仅快进同SHA；不重跑已交付A/B。L/N/C2、S、开庭及E/H均在原Task／原独占worktree实际恢复，保留暂停WIP。W共享壳fc0cbd3已交接到共同开发基线779ae56；三模块候选尚未整体验收。S材料稳定9a78e55仅两文件，已接E c7393a6／H1d61e36，S路由编译仍待两域稳定服务提交；S有效读取cbc2a2e已冻结；路由／迁移仍WIP，待最终组合。开庭7cbdec2仅修三测试文件，I-HCHAIN01独立源审已关闭，仍待正式155专项，不称DB通过。SD-59最小[执行后续规格](superpowers/specs/2026-10-15-execution-filing-followup-contract.md)入队CORE-EF-001，等待共享文件交接；不新增执行结束日期比较规则。持久预览81ebfed／150及原数据继续冻结，下文旧“待交付”等为本次回执前历史，不覆盖此指针。
+
 更新日期：2026-10-15。本文件只保留恢复当前工作的最小事实；历史状态见[历史状态](project-status-history-through-2026-09-18.md)，候选证据与集成事实见[验证记录](spec/v0.1/VALIDATION.md)。
 
-SD-58纯文档先在独立ui003-list-workflow-docs形成0c202fa，B的fa16验收结束后接入为7d18ecf，不在运行中改树。共享列表Owner W已由父级创建01a13ee0-f72c-71a1-b033-bf5ca55d4012，独占四新app文件并先交微合同；三个模块Owner仍待共享合同及D/C/分栏文件交接。W自报实现/类型测试进行中，未接运行树、不称完成。独立S首合同8b18c85已冻结，见下；新列表及后台产品不混本次B-only运行树。
+SD-58文档0c202fa已接入；W共享壳fc0cbd3已交可编译微合同和25项直接测试。L/N/C2从共同开发基线779ae56接手原独占文件与已交接Panel，开发与验收按各候选推进。独立S首合同8b18c85、材料9a78e55已冻结；新列表及后台产品不混已交付A/B验收树。
 
 ## 当前阶段
 
-唯一Current为CORE-UI-003两项前端闭环；CA018已原子交付，最后实核远端main／任务分支和本地主main为1f375ea。人工预览source81ebfed／150测试窗口保持，CA019占位未冻结。
+最终恢复断点（12:45 UTC前后）：正式合同／SD-59文档0a6af4f已正常原子推送，远端main与任务分支及本地主main核实相同，产品仍为269c73c内容。三列表55cd453产品源审C/I/M0、I-UXQ-C01和I-UXQ-D01关闭，但整体Quality被I-LNC-01阻断：L新E2E未做UI003精确准入且afterAll走旧全局dropFaults；C2 support未钉本批dev-cor-ui003／15437／dev_cor_test。原L/C2修复发送工具失败，待父级原通道恢复，禁止调度这两新suite或旧破坏性专项。S路由／156迁移d0ff2d6及H专项405c849已冻结并接成S f5e5bfa，未PG；scheduler仍读原hearingAt是另一个组合阻断。为原开庭Owner预备独占hearing-effective-date-bridge／codex同名，HEAD a99c93b8e87d1ce5ffd2ccca277b061a3b6f645b（tree80ccaa66a27048208fd2be47b450061bc4dfdcf2），仅S稳定组合＋已审d11/7cb，尚未编译／验收；原155候选目录保留7cb。父级需沿原通道恢复开庭Owner在新bridge只补effective候选／锁内读取与竞争反例，原纠错／取消／SD-06／回执条件不变。先验155开庭及三列表，再迁156，不重置保留实例。前端严格decoder／六栏接口UI接线仍待独占Owner，不能称分栏完整交付。持久预览81ebfed／150及原数据始终冻结。
+
+最新稳定候选：L7b5d230、N2cf6c5c、C2063603b已代提交且原目录干净，开发组合55cd453仍待最终审查与真实门禁。S有效读cbc2a2e已冻结，E最小日期修正与H稳定六文件已接入S fa55f9d解编译依赖；路由／迁移WIP待S验证。六栏[正式更正合同](superpowers/specs/2026-10-15-case-section-record-edit-contract.md)已回填，E新增三Action不自动Grant、H复用既有三Action及严格内部范围；不改变旧开庭纠错的阶段／判决后阻断。不新增执行／结案／归档互相比较或执行终端日期对审理反向上界。
+
+CORE-UI-003 A/B已验收并原子交付269c73c，远端双ref及本地主main已核实；接续为三列表原位办理及分栏／开庭补缺并行。人工预览source81ebfed／150保持，CA019占位未冻结；新反馈补交CORE-EF-001仅独立最小Spec排队，不混A/B交付。
+
+实际验收：20877386352f700652f08b505ec8d18e432bd2f8／tree004c8acba7c40264979d01bf33c04e901b9a863a于09:46:02～09:46:51 UTC B-only1/1 exit0、retry/skipped/flaky0；真实POST201丢响应→刷新→原body/version/key恢复，阶段只推进一次、审计/回执各1，保留第2页筛选及编辑取消/保存。A在da37实际通过；A正文/公共seed与运行输入不变，工具94/NT0062及eb367前后端单元/双构建按11组相同输入限定复用，未称同树fullverify或同次A+B双项浏览器。独立累计Spec/Quality ACCEPTED，新增C/I/M0；I核4日志/1trace哈希、完整容器/155历史/前后指纹匹配。收口只文档，预览不部署。GitHub Actions workflow实查0，不宣称远端CI通过。
+
+并行所有权：L01a13ef4-7a94-711b-b872-e704edad900b、N01a13ef4-c67e-70c6-9886-6ab55e035008、C201a13ef5-18fa-74b4-ad9d-59d049a7f011的独立worktree经正式审批代建、准确779ae56且clean，均读回接手；未改ACL/删锁。E01a13ef6-25e5-73c8-a06a-477d92c62035、H01a13ef6-7833-7574-822e-b3d8660d3008已自行正式审批建8b18c85独立目录，S独占共享接线。开庭Task01a13ee7-9270-7502-99e0-c4fab53be006独占旧service/spec及专属support/E2E，d11c26c产品源审通过、测试I-HCHAIN01待原Owner修；均非A/B交付前提，均未接本运行树。
 
 da37f88实际通过工具94/94、真实NT0062/2及A浏览器共用原因/归档刷新重登，B旧URL正则失败保留。断言c25987d接d4be97a后，fa16b9d2aab2f4cb98bd86cf7506dd4143a9d758／tree a56a62978404d435e9edfe0605dbad47acf7f7a0于09:22:22～09:23:13 UTC真实仅B重验仍exit1：快捷编辑、取消/保存返回第2页筛选和后端字段/版本已过，第518行在重试入口可见但仍disabled时commands0；同一upstream随后201。刷新/原body/key重放/单一事实审计回执未验，整项未过。I核4日志/1trace哈希匹配，指纹与155历史保持，无reset。原测试Owner只加四行启用态/命令完成poll，4207f44861408c48ed81603865808e5518f922bd接15c993a17f491210927730ee10405b77ae479e70，A/公共seed/原断言不改。下一冻结仍仅跑B，原94/2/A及历史同输入单元/双构建限定复用，不宣称新树完整verify。
 
@@ -26,7 +48,7 @@ S共享后端任务01a13eba-6a0b-74af-9ef0-852b446e40c0的首合同已独立冻�
 
 ## 当前任务
 
-**CORE-UI-003｜线索单条快捷办理与公证共用原因批填：源码审查及静态通过，候选待真实验收。** I复用ca015-integration／codex/ui003-quick-actions-integration，从已交付1f375ea开始；A在ca016-frontend-integration／codex/uxq01-notary-common-reason，业务只改NotaryReturnArchiveBatchPanel与spec，现追加独立浏览器专项；B在ca016-case-list-display／codex/uxq01-lead-quick-actions，独占List／新QuickPanel／EditPage各自vue和spec。两者基于79a同产品，旧分支保留、无写入者冲突。B现场确认原Edit保存／取消只回详情，I最小扩两文件补内部合法returnTo；禁止任意重定向、改原详情／API／后端。共用原因只填空白、逐项核对；快捷动作先getLead取最新真实能力和版本，未知结果原key恢复，关闭／对象／账号变化和迟到响应不串数据。详见路线图本批所有权表。尚无本批浏览器完整验收或交付结论；预览、CA018已交付候选和删除规则不变。
+**CORE-UI-003｜线索单条快捷办理与公证共用原因批填：已验收，待本次原子交付回执。** I复用ca015-integration／codex/ui003-quick-actions-integration，从已交付1f375ea开始；A在ca016-frontend-integration／codex/uxq01-notary-common-reason，业务只改NotaryReturnArchiveBatchPanel与spec，现追加独立浏览器专项；B在ca016-case-list-display／codex/uxq01-lead-quick-actions，独占List／新QuickPanel／EditPage各自vue和spec。两者基于79a同产品，旧分支保留、无写入者冲突。B现场确认原Edit保存／取消只回详情，I最小扩两文件补内部合法returnTo；禁止任意重定向、改原详情／API／后端。共用原因只填空白、逐项核对；快捷动作先getLead取最新真实能力和版本，未知结果原key恢复，关闭／对象／账号变化和迟到响应不串数据。详见路线图本批所有权表。本批A/B分别实跑闭环已验收，尚待本次远端交付回执；预览、CA018已交付候选和删除规则不变。
 
 **CORE-CA-018｜外部转入／历史案件录入：已验收并原子交付main及任务分支。** I独占集成、权威文档和DB操作；最终源码／测试7236c8e968e633613db2abd0d72580bc9fb3d4d0／tree75e7cfba61aafe5ac1b79624bb9aa76130ace23b，同干净候选PG／Chromium22/22及工具80/80实际通过。真实独立来源16阶段、后续合法Command、材料冻结／字节、金额未知、并发／回滚及撤权最小投影已验收。新155前向修复真实REMAND子轮受理后的守卫衔接，150→155空链／旧事实保持／失败原子及重试1/1，官方隔离15433 public155/155；旧142／150～154不改。完整verify实际2fc8ee8通过80工具／1862前端／1531后端及双构建，330后台／256前台／34工具配置逐blob一致限定复用单元／构建，79a严格context／Spec／全类型／Lint／格式实跑通过，不称723或收口HEAD完整verify。独立最终Spec／Quality ACCEPTED，未闭C/I/M0；2026-10-15 05:58 UTC两远端实核79a76d5，最终末次SHA见回执。详细候选、失败及证据只见VALIDATION。5186／3206／15436保持source81ebfed，原进程健康200，未重启／迁移／替换／增CA018真实Grant；历史2案／6凭据不冒充人工测试后的当前数量。OPS-01-A～E按用户要求仅设计入队，INPUT-016／UXQ-01～06仍未实施；CA019仍占位未冻结。
 

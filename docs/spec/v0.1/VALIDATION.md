@@ -1,5 +1,78 @@
 # SPEC-001 文档验证
 
+## R2首次155开庭失败与列表源码收口（2026-10-15）
+
+14:38:23.873至14:41:02.614 UTC，原唯一runner在clean a539ae4fbce4c7a25c53af29e35a40795a21f0ae/tree48eae4221fc278239784e3ae7eac19010f5168b3完成正常Prisma生成、本树backend build:prepared（均exit0），再用protected test:e2e及DB-only webServer空配置运行唯一hearing-correction-chain.spec.ts。结果expected0/unexpected1/skipped0/flaky0/retries0、pnpm exit1。seedOwner事务提交触发23514 customer contact projection mismatch：新客户的admissionContactName/Phone缺少customerContact/compatibilityContactId关联，违反既有20261009040000_customer_contacts延迟守卫。合成开庭案件前后0/0、addedCaseIds为空，开庭及锁竞争事件未到达；这是夹具失败，不能报告业务已通过或业务回归失败。
+
+标准capture前后指纹87ddb629496fbfadd83a201c2518d2ed3406badfff2fd3843d2804f93e18cd42、155全部名称/checksum/finished/no-rollback及clean HEAD/tree保持，R2 healthy；实际标准锁owner PID25868有proof且结束释放。证据在hearing-correction-chain/.local/ui003-evidence/hearing-a539-r2-20261015/acceptance-summary.json与hash-manifest.json；hearing-e2e.log SHA25654c3b4530721442411d7a33c63ada1f819283f2af591920dcdd137c553f83c3f，trace.zip SHA25629fe8a81685bfe4032a7e7db2056d84860f8f8984a0ad96515116c7a4874454f。原Owner修fixture后需固定新候选再重验；未执行baseline prepare或156/157。
+
+原Owner已分别修155/156同源seedOwner：原事务内创建同客户/部门的ADMISSION_FREEFORM联系人并设置compatibilityContactId，原admission快照/阶段/生产守卫不改。四文件精确哈希经原Sol受限补审C/I/M0，各10/10纯fixture测试及静态通过；主控代提交155 d4b573726fa69b291d1c0b00d365c08446e79030/tree5f221dd5215bcee6b0bed5b18e074e35133416ae、156 5b6b18f8dd0afb3cd48751a15c55f44e5dddb470/tree44d7857444e3eff79c96a26bbf577df69d871393，两树clean。纯测试从真实seedOwner抽取执行但没有PG，不替代a539原失败路径的实库复验；续办消息接口拒绝启动，固定新候选待父级恢复原runner串行执行。
+
+C2六栏列表五文件冻结候选35055d37c11cd49586a567f10521432e3266e146/tree274bb276a406cd8ba3de6c902a466d0d9bbbb245与原作者五SHA逐项相同、代提交后clean。作者5spec128/128（含12真实Panel组件联调）、frontend/root类型、定向Lint/格式/架构/diff通过，原独立Reviewer源码终核C/I/M0。两项registered record E2E只编写、适用156，尚未运行。已审hook d584+740、材料API3db及C2接源码组合85c395eec5aec30291887e2d166241f645503bb2/treeb6803ca712a64ae54f0fefc2ad6ec3622635bf08，尚无该组合最终门禁。
+
+前一组合6b73451的实际阶段集成仅三个前端spec309/309及前端类型exit0。首次普通测试因临时目录EPERM为0tests，正式审批相同检查重试后成功；原失败保留于该组合.local/ui003-evidence/phase-frontend-tests.log，成功为phase-frontend-tests-formal.log、phase-frontend-typecheck.log及phase-frontend-result.json。不得把这些结果称为85c395e或最终完整verify。
+
+随后在clean afb0f4b2865f5b78f380ab7352ceb153bb3835c7/treee697bcbda763fe306aa3fbbf4af9ae09195fa7b1实际执行8个相关前端spec478/478及vue-tsc，均exit0；覆盖cases/materials API、列表Workflow/Display、六栏Panel、详情集成与W Drawer/context。已包含上传UI c253与C2原文件宿主350，尚无C2上传prep接线或S157。证据是该组合.local/ui003-evidence/phase-upload-tests.log和phase-upload-typecheck.log；这不是完整verify、PG或浏览器验收。
+
+材料API3dbd172仅materials.ts/spec，57/57、两类型及静态通过、原SolC/I/M0；上传UI c2535d65fbf6bec29344d0dc2a815ac713da028b仅Panel/spec增量，作者213/213（含API57）、类型/静态/bundle通过，原累计Sol源码审C/I/M0。独立beforeUpload/prep事件与业务保存分离；C2宿主prep与真实157/上传字节/浏览器仍待验证。S上传读取旁路37项直接测试通过、主服务五suite320项作者通过，源仍WIP，不当作最终组合或PG结果。
+
+R2 baseline6825d526c060811712661575c30f896a3e4b5fd3只新增三helper/类型/纯测试，7/7及静态通过、原SolC/I/M0；主控核三哈希后接155列表树482f56e64f3525c56f936467d468a24d4e837475/treef8e6c803cc1dfde6d83d0bc61f2a0cdb31b2c58c。仅批准固定155合成102行追加或逐字段核对、不恢复撤权、不触业务阶段、disconnect只关自身连接；实际写入仍未发生。原实现树依赖junction的安装状态不兼容未被绕过，执行树另正常安装自己的依赖；N R2重绑待回执。普通上传PUT200勘误、专用quota及外部证明前隐藏只见正式上传合同，157尚未执行。
+
+## R2实际155与上传设计审关闭（2026-10-15）
+
+runner在13:38:34至13:39:39 UTC实际建立新项目dev-cor-ui003-r2，完整CID45addc0179e929dd1dcd4f835b6c6c14c36c2ac4aed5e6cd5842648bf5db5236，唯一127.0.0.1:15438，持久卷dev-cor-ui003-r2-pgdata挂PGDATA，无tmpfs，healthy。新空库正常deploy155/155 exit0，逐名称/checksum/完成状态匹配；正式capture指纹87ddb629496fbfadd83a201c2518d2ed3406badfff2fd3843d2804f93e18cd42前后一致。主控已对准备summary和六份日志哈希逐项核对，未重新执行DB。源准备报告在hearing-correction-chain/.local/ui003-evidence/r2-environment-20261015/preparation-summary.json，主控核验回执在.local/ui003-evidence/r2-preparation-receipt.json。未生成新凭据、未seed或跑suite、未升级156/157；旧容器和预览未操作。
+
+L/C2精确R2三常量小修分别代提交562e4c5430a3e2b386d077e1892767de3a8edf38/d5835ef0a1f5f5d9af6a1c397533698b0cba6c16，原静态/纯反例和原Sol无新增finding；接三列表652aaee8e56882499a06feae70fadd62de6a541d/tree4917a97dcf7e01125aa5c1cde9d0cbeb5f030f68。C2 support自身不查迁移表，155完整性由runner准入负责，不能把formal capture或本次纯probe说成helper实查155。N重绑待回执，未运行三列表。
+
+开庭155/156各新增持久纯准入/迁移反例，各34/34、共68；六文件哈希与handoff相同，原累计Sol源码审C0/I0/M0。分别提交a539ae4fbce4c7a25c53af29e35a40795a21f0ae/tree48eae4221fc278239784e3ae7eac19010f5168b3和6a7ca02779d2f8db34a59ce2eefecc0b8a1f1ed2/tree2da9e7908071fe40a7913e086aef89435a9c5acb。除capture/纯guard外的既有函数、产品及E2E未改；原58未重复。作者语法/根类型/Lint/格式通过，纯测试拒绝分支的真实capture/PG调用0。155专项自建随机owner且finally只关闭本连接，可与通用baseline准备解耦；当前仍待本树实际生成/构建/PG运行。
+
+UI a46f593b62ab89d01f2dee0ddb75e18b7a8b5ccc/tree5d3b30d142e4ca51f38bd9aed4583b7c5ef173d3九白名单文件已原累计Sol源码审ACCEPTED C0/I0/M0；作者350/350、前端/根类型、定向Lint/格式/bundle通过，check:fast因Prisma缓存EPERM未全过。API最终143f7443352ad1ede528bc40fa31ec94255fb5be为217项及原Sol0，POST abort不等于未提交。UI/API及两套开庭/L/C2绑定接源码组合6b73451b7ff05e638af4af72b7081cc394207d4a/treec61c20a177861e89c2ccb533abe59135952853d1，干净但尚未运行组合门禁。列表宿主新增精确恢复hint/同步准入接口交原UI与C2，不在此冒称接好。
+
+材料微合同固定SHA256 C4647435DE6D00F5295F3FDF1025D41F0956B867CD7486AA76FD34DDA75EF79A，原Sol设计补审关闭I-UMAT01/02，C0/I0/M0，已同步[正式上传合同](../../superpowers/specs/2026-10-15-case-section-record-upload-contract.md)。它批准结构化target/revision/closure锚、三阶段短case锁及20消费表首次冻结守卫的实施，尚无157 SQL/服务/真实上传证据。I-SECTION-MAT-01功能缺口待实现验收；不能把设计finding关闭等同于功能关闭。
+
+## R2前的恢复核验与源码边界（2026-10-15）
+
+- 三列表b1f0125cb529952b3b7b33f0fa376ddae79cbc80/tree c49a2e7f33a2cc1d15399799d21b77e63351347f：原累计Reviewer关闭I-LNC-01，Spec/Quality ACCEPTED C/I/M0。L清理链删除和C2写入前/afterAll精确绑定均已接入。这里是源码与离线反例结论，没有DB/浏览器结果；旧C-UXQ-C02/C-SECTION-E2E01破坏式fixture仍禁止运行。
+- 旧完整容器dbb1cbd29c6d65b5aa4fd85317c96167fbd94310c34946edc033fc4f2f9d3695已于11:54:05 UTC停止。runner和主控正式只读inspect均见tmpfs PGDATA、Mounts为空、无有效端口；未start/up/rebuild/delete/DB连接。原155与合成事实不能声明保留。ignored证据为`.local/ui003-evidence/retained-instance-state-20261015.json`及`hearing-7cbdec26-preflight-20261015/container-read.json`。
+- 父级批准R2项目dev-cor-ui003-r2、loopback15438、独立持久卷dev-cor-ui003-r2-pgdata，固定镜像沿原digest。只读预检新资源未存在/端口未占，不等于实例建立；主控app恢复消息被AbsolutePathBuf拒绝，随后父级已通过原有效通道再次started；尚无环境实际创建回执。新完整身份、155新基线、原suite精确重绑及实际运行均待完成，旧证据只保留历史范围。
+- 开庭bridge候选2db96c7471201d11997a2225f86f5ee57a8b9040/tree af910836360cfbd49aed8a32e8a3c57acdc29ed9，主控受限独立源码审Spec/Quality ACCEPTED C0/I0/M1，Minor为旧候选单测未单独隔离ID不匹配。作者RED8失败/48通过至GREEN58/58、完整fast prepared和源码构建为同输入证据；新增6日期路径/4锁竞态未PG。Serializable edit-first风险留真实PG判定，不改隔离或预先放宽断言。已接组合0d44b523f66b3ecf66fd96c7d41b9e16df3ede36/tree7b487a17503d82070573790ab29628f41df8ea71，不能称新组合实跑上述检查。
+- API候选a8bf1550f431d966c8097ad5da49101f835a38b4/tree0105de098aa3875e0a242aa5150764285d9cdbae，仅cases.ts/.spec.ts；作者API211/211、前端/根类型、ESLint/Prettier/diff均0，原Sol最终补审C/I/M0。六栏严格解码/原body-key/closure双锚、律师专用有效业务字段兼容边界已核。律师无更正标记，不能仅凭同形合法字段识别业务值篡改，不虚构保证。证据在API Owner目录`.local/ui003-evidence/api-delivery.json`及`api-review.txt`。未DB/浏览器。
+- I-SECTION-MAT-01仍开放：旧通用上传阶段阻止后续阶段更正时新增附件；S独占新树0d44b52设计精确上传闭环，157尚未实现/迁移。专用版本首次消费须匹配target/revision/closure锚并同事务冻结后才可沿旧同类冻结复用。新UI与材料合同仍WIP，无最终组合verify或真实上传证据。
+
+持久预览5186/3206/15436未操作；本次未探测运行健康，不能用历史健康替代当前核验。
+
+## 恢复收口的实际边界（2026-10-15）
+
+纯文档0a6af4f于本轮正常原子快进远端main及任务分支，双ref和本地主main已核一致，12文件全在docs，不变产品／DB／预览。证据.local/ui003-evidence/docs-delivery-0a6af4f.json及.log。文档源审I-DOC01／M-DOC02均关闭，Spec／Quality C/I/M0；格式、Spec57REQ／67AC／11BQ／59SD、经核对快照及strict context实际通过。
+
+三列表55cd453产品源码审查接受C/I/M0，I-UXQ-C01／I-UXQ-D01关闭；整体Quality C0/I1/M0，I-LNC-01要求L去旧全局cleanup并补managed精确准入、C2钉本批project／15437目标，原Owner修复发送失败待父级转达。浏览器／DB零执行，旧case-action-entry及分栏五专项的clear/reset/Grant/cleanup阻塞保留，不安排在保留实例运行。
+
+S最终新路由／迁移五文件原hash精确暂存后，cached diff发现九空行尾空格，首次提交停止；S仅修九处空白，新migration SHA25687e2a8ee00ac8341419a07192a43227101fc60d182bd5f1006acc1cfe315001b，重新精确暂存提交d0ff2d6967d60654a94ff83563da57d33abbabb5／treedb4be313f6843495443a1492091a93bf4a136ec1。123HTTP/OpenAPI、类型／build及独立源审为作者证据，同语义空白未重跑；迁移未执行。H专属三文件405c84989d26e6ad1198d97a88bf8f923326abc4已静态及独立补审通过，含正常API真实REMAND来源用例，只有源码未实跑。接入S为f5e5bfac93bc01994077324b5210a32cd2733785。
+
+S终审确认scheduler原hearingAt与新effective SQL不一致，六栏最终验收阻断。新独占bridge a99c93b8e87d1ce5ffd2ccca277b061a3b6f645b／tree80ccaa66a27048208fd2be47b450061bc4dfdcf2仅组合S f5e5bfa与d11／7cb已审原连续纠错，未编译／未验收；原hearing-correction-chain 7cb的155候选和目录未改。Owner消息工具失败，待父级恢复精确修复，前端新decoder及六栏编辑接线也未完成；不将这些候选或离线证据算PG／浏览器通过。
+
+## 原子交付回执与恢复现场（2026-10-15）
+
+恢复后候选留痕：L源7b5d230389ff8b861c421d1a1f00fd7a33ae0a19（9文件，88限定复用聚焦）、N源2cf6c5c9df8da045918bc9b3439f200629b677c9（14文件，117直接测试）、C2源063603b730ea1d2d08dd5c89bfabdb7fcf0d3e0a（21文件，核交接逐文件SHA256，418直接测试）均经各原独立Reviewer关闭finding后由I正式代提交；普通index.lock拒绝未绕过，原目录干净。类型／静态按作者最终报告通过，不冒称完整verify／DB。三者顺序接入开发目录ui003-list-module-baseline为55cd45357c54ed0bccb6977e232d6eb13a718524，最终组合审查／门禁和真实浏览器待执行，未推送／预览升级。
+
+S开发组合：有效读取cbc2a2e精确10文件已单独提交；E原ffca652必须连同4612d738最小日期修正使用，不能单独最终集成。H原1c2bd081精确6文件已代提交，archive零差异排除。两域已正式接入S当前fa55f9d，路由4文件及迁移仍WIP；作者E最终69／H最新57聚焦及各独立补审只作为源码证据。执行、结案与归档互比及终端日期反向限制审理的无正式依据新门槛已裁定撤回，不改旧155或原动作规则；六栏正式工程合同详列精确锚、原键和E新增／H复用Action边界。
+
+先前“待原子交付”已完成：09:58:44.7531416～09:58:53.1979475 UTC正常原子推送exit0，远端main及codex/ui003-quick-actions-integration均为269c73c008fff829af05d16d6e6027181e05b724。11:57 UTC用户恢复后只读再次核实两ref相同，本地主main从1f375ea仅快进至269c73c，未跟踪.pnpm-store保留。证据为I的.local/ui003-evidence/atomic-delivery-first.json及.log；没有重跑A/B、再次推送或更新预览，原验收的范围和旧失败记录保持。
+
+恢复后只提交S材料两文件为9a78e557d73f885f0cbe8ae2645bb17bcec9ff8e，tree8ba5439e7b64c4e7cd91dd9e39f59d4805ea6368。精确哈希a890d3ac4621ad3a920f8547e432ce087072ea88aa362a27830cde94d805e912／ad839e24b67f2a97b472d273a0e0a4dbbd2ade26028172ccc710e082ae722612与作者134/134直接Jest、类型／Lint证据输入相同；I受限独立源审Spec／Quality ACCEPTED C0/I0/M0，S自身独立审查亦无阻断，均未运行DB。仅两材料文件分别接入E的c7393a6d689f13d9b7ce9b645fcab03c9ec77226、H的1d61e36c872842f0039f36a8f910de9602abf7dd，两个域WIP保留。证据.local/ui003-evidence/material-baseline-eh-integration.json，不称域服务或S整体编译／迁移验收通过。
+
+开庭增量7cbdec26dbad4aa725208125335dfb6f69949f3b／tree09100d08b9522830c6c9febb9601d78bf3e202f9仅改三测试文件，产品service/spec不变。原Reviewer确认两无候选scan降为顺序状态检查，四真实竞争强制锁事件顺序且无锁settle拒绝、失败drain；I-HCHAIN01源码层关闭，Spec／Quality ACCEPTED C0/I0/M0。作者49/49及静态不代替尚未执行的155隔离DB专项。
+
+L/N/C2/S/开庭以及E/H均已由原Task实际回执恢复，开发结果仍逐候选报告。SD-59仅新增最小规格和排队，经独立只读审查未见越权业务规则，不产生产品验证结果。持久预览81ebfed／150、原数据和账号冻结；15437隔离155实例保留，未执行迁移／清理／重置。
+
+## UI003 A/B本批验收完成（2026-10-15，待原子交付回执）
+
+稳定运行候选20877386352f700652f08b505ec8d18e432bd2f8／tree004c8acba7c40264979d01bf33c04e901b9a863a于09:46:02.0089424～09:46:51.6839210 UTC B-only正常Playwright1/1 exit0，retry0／skipped0／flaky0；真实编辑取消和保存均回page2/status筛选，API核字段及版本。首推送真实201后模拟丢响应，sessionStorage保存精确leadId/body/expectedVersion/key，刷新后同原请求恢复，阶段仅推进一次，真实审计/回执各1。B trace SHA29b10b199fbb32ff5cda4e74bb95f33b557d1045dd81c6636dbafae9e5a20319，I核4日志/1trace均匹配。容器dbb1cbd29c6d65b5aa4fd85317c96167fbd94310c34946edc033fc4f2f9d3695、155历史及前后HMAC919d10f4338f5f723f68cf337f91934034b22c56050e9d0ab1629ff65a2312d1保持；无reset/迁移重部署/旧15433/预览写入。证据.local/ui003-evidence/acceptance-2087738-b-only-20261015/acceptance-summary.json和integration-readback.json。
+
+独立累计Spec/Quality ACCEPTED，新增C/I/M0。A正文/公共夹具和运行输入未变，限定复用da37实际A通过、工具94及NT0062；I逐Git对象核frontend/backend/包依赖/TS/Lint/runtime等11组输入与eb367相同，限定复用其前端1887/后端1532/双构建。da37→208工具源/配置相同。不是208同树完整verify，不是同次A+B双项浏览器，旧两次B失败和最早收集失败保留，不删除或拼成一次通过。208根TS/单文件Lint格式/严格context/Spec已过，最终收口仅文档；新三列表、C/D/e6/W/S及开庭实现不在本验收树。
+
+推送前09:53:44 UTC远端main仍1f375ea，任务远端分支不存在；GitHub Actions workflows实查0、main protected=false，不能称远端CI通过。已获本批原子推送授权，执行后另填精确两ref SHA；此段不预称推送或部署成功。持久预览保持81ebfed／150和原数据，未升级。
+
 ## UI003 B第二次失败与等待修复／S首合同冻结（2026-10-15）
 
 fa16b9d2aab2f4cb98bd86cf7506dd4143a9d758／tree a56a62978404d435e9edfe0605dbad47acf7f7a0于09:22:22.7405667～09:23:13.3149041 UTC正常B-only真实浏览器exit1，expected0／unexpected1／skipped0／flaky0。快捷编辑精确URL、取消/保存返回原page2/status筛选及真实API字段/version已过；第518行在retry控件可见但仍disabled时commands数组仍0，upstream随后HTTP201，响应丢失route故意abort为-1。刷新/原body版本key重放及最终单一事实审计回执均未验，不把部分通过写为整项通过。原容器/指纹保持，155历史逐项相同，不重部署/清库；四日志与trace SHA已由I全核匹配，trace5c2fc0f2607d679891e927cf9ecfbe88cf76acf104e7d0754fce17e395cd9ac4。证据.local/ui003-evidence/acceptance-fa16b9d-b-only-20261015及integration-readback.json。da37 A／94工具／NT0062项未重跑，既有证据保持。
