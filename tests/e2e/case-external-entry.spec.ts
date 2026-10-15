@@ -2905,7 +2905,7 @@ test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, a
         expectedProgressId: saved.progressId,
         progress,
         result: 'REMAND',
-        resultReceivedAt: shanghaiToday(),
+        resultReceivedAt: shanghaiDaysAgo(1),
         judgmentContentVersionIds: [remandFile.contentVersionId],
         paidLitigationFee: { state: 'PENDING', amount: null },
       },
