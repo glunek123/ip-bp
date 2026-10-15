@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+## 155三列表同树正式门禁与真实验收（2026-10-15）
+
+固定clean候选19a0df2ba97d9acaa3b55b5d732570dc55351167/treef8d9d6b20437141c5ab9afe3a80421cb7abdb5f2，于15:41:03.721至15:48:04.669 UTC正常完整`pnpm verify`实际exit0：strict context、Spec、架构、Prisma、两端/根类型、全Lint/格式、工具11文件94项、前端123文件2006项、后端115套1532项及双构建全部通过。未过滤或跳过真实NT006迁移探针；nt006-inclusion-proof.json绑定源hash和全量Jest范围，标准资源锁PID40852在15:47:20实际观察并正常释放，无外层重入锁。
+
+同一clean候选随后经正常protected入口发现3文件9项，15:48:12.503 UTC开始真实Chromium验收，duration139018.459ms，expected9、unexpected/skipped/flaky/retry均0、pnpm exit0。范围仅lead-list-workflow、case-list-workflow、notary-list-workflow三个新suite；正常Playwright服务3101/PID38916、5174/PID29384有实际监听证据，结束端口空闲，标准锁PID4436释放。前后R2完整CID45addc0179e929dd1dcd4f835b6c6c14c36c2ac4aed5e6cd5842648bf5db5236、项目dev-cor-ui003-r2/15438、155全量名称/checksum/finished/no-rollback及指纹87ddb629496fbfadd83a201c2518d2ed3406badfff2fd3843d2804f93e18cd42一致。原public合成事实保留，采样removedIds全空；没有重跑baseline/清理public或运行旧破坏性suite。NT006仅清除其自行创建的随机probe schema。
+
+原始证据在ui003-list-module-baseline/.local/ui003-evidence/formal-155-19a-20261015/，含acceptance-summary.json、verify.log、playwright.json、9份trace、前后事实IDs、构建产物manifest及锁/端口证据；主控逐项核对hash-manifest.json的53份文件哈希/字节数，通过回执.local/ui003-evidence/formal-155-19a-receipt.json，未由主控重跑DB。累计限定三列表Spec/Quality源码审C/I/M0；本次收口只改三份权威文档及标准上下文快照，业务、测试、schema/迁移与运行输入保持19a，可限定复用本次结果，不另称文档收口tree实际重跑verify/9项。
+
+该结论不覆盖随树C/e6详情编辑的独立浏览器验收（仍Pending），不允许运行其旧clear/reset/TRUNCATE/replica辅助fixture。六栏/精确上传独立组合6b6a1bb仅源码与分阶段证据，E R2准入修复69ac113的40项纯测试/类型静态及原Sol0不代表实库；H安全fixture修复、开庭9ba诊断及156/157迁移/上传/浏览器仍待验。持久预览81ebfed/150未操作；既有482f/b388分树结果和a539/d4b失败保留如下，不被本次列表通过覆盖。
+
 ## 155三列表独立真实验收与接续源码（2026-10-15）
 
 R2 baseline在clean482f56e64f3525c56f936467d468a24d4e837475/treef8e6c803cc1dfde6d83d0bc61f2a0cdb31b2c58c于14:59:29.157至15:00:31.692 UTC实际PASS：本树正常context/Prisma生成/backend构建通过，追加批准102行（含固定66 Grant、2个批准合成credential行），checked全0，不生成环境密钥/DB密码，不改旧业务事实。prepare内部标准锁PID41876实际观察并释放，无外层重入。前后155全部名称/checksum/完成状态及指纹87ddb629496fbfadd83a201c2518d2ed3406badfff2fd3843d2804f93e18cd42保持。主控核25份证据哈希，回执.local/ui003-evidence/r2-baseline-482f-receipt.json；原证据ui003-list-module-baseline/.local/ui003-evidence/baseline-482f-r2-20261015/。
