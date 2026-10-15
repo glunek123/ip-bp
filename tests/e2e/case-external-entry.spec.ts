@@ -108,7 +108,24 @@ type CaseView = {
       }
     | { kind: 'NOTARY' };
   defendants: unknown[];
-  secondInstance: { currentTrialRoundId: string | null };
+  secondInstance: {
+    currentTrialRoundId: string | null;
+    currentResult: {
+      id: string;
+      trialRoundId: string;
+      choiceId: string | null;
+      result: 'REMAND' | 'CHANGE' | 'AFFIRM';
+      resultReceivedAt: string;
+      judgmentAmountState: 'KNOWN' | 'PENDING' | null;
+      judgmentAmount: string | null;
+      files: Array<{
+        materialId: string;
+        contentVersionId: string;
+        originalFilename: string;
+        mimeType: string;
+      }>;
+    } | null;
+  };
   canSubmitExecution: boolean;
   canUploadDirectExecutionMaterials: boolean;
   acceptance: unknown;
@@ -1110,7 +1127,7 @@ for (const amountState of ['KNOWN', 'PENDING'] as const) {
     );
     await expect(secondInstanceAction).toHaveCount(1);
     await expect(secondInstanceAction).toBeVisible();
-    await expect(secondInstanceAction).toHaveText('登记二审结果／进度');
+    await expect(secondInstanceAction).toHaveText('二审登记／结果／撤销');
     await secondInstanceAction.click();
     await expect(
       page.locator('[data-test="second-instance-panel"]'),
@@ -1151,17 +1168,35 @@ for (const amountState of ['KNOWN', 'PENDING'] as const) {
         req.method() === 'POST' &&
         req.url().includes(`/cases/${root.id}/second-instance-result`),
     );
+    const resultResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url().includes(`/cases/${root.id}/second-instance-result`),
+    );
     await page.locator('[data-test="second-instance-result-submit"]').click();
     await expect(
       page.locator('[data-test="second-instance-confirmation"]'),
     ).toBeVisible();
     await page.locator('[data-test="second-instance-confirm-result"]').click();
-    const payload = (await resultRequest).postDataJSON() as {
+    const [resultRequestEvent, resultResponseEvent] = await Promise.all([
+      resultRequest,
+      resultResponse,
+    ]);
+    const payload = resultRequestEvent.postDataJSON() as {
       choiceId: string | null;
       trialRoundId: string;
       result: string;
       judgmentAmount: { state: string; amount: string | null };
     };
+    const response = await body<{
+      id: string;
+      stage: string;
+      version: number;
+      currentTrialRoundId: string;
+      progressId: string | null;
+      resultId: string;
+      recordedAt: string;
+    }>(resultResponseEvent, 201);
     expect(payload).toMatchObject({
       choiceId: null,
       trialRoundId: expect.any(String),
@@ -1171,7 +1206,42 @@ for (const amountState of ['KNOWN', 'PENDING'] as const) {
           ? { state: 'KNOWN', amount: '321.50' }
           : { state: 'PENDING', amount: null },
     });
-    expect((await readCase(request, root.id)).stage).toBe('SECOND_INSTANCE');
+    expect(response).toMatchObject({
+      id: root.id,
+      stage: 'WAITING_EXECUTION_DOCUMENTS',
+      version: 2,
+      currentTrialRoundId: payload.trialRoundId,
+      progressId: null,
+      resultId: expect.any(String),
+      recordedAt: expect.any(String),
+    });
+    const detail = await readCase(request, root.id);
+    expect(detail).toMatchObject({
+      stage: response.stage,
+      version: response.version,
+      secondInstance: {
+        currentTrialRoundId: response.currentTrialRoundId,
+        currentResult: {
+          id: response.resultId,
+          trialRoundId: payload.trialRoundId,
+          choiceId: null,
+          result: 'AFFIRM',
+          resultReceivedAt: shanghaiToday(),
+          judgmentAmountState: amountState,
+          judgmentAmount: amountState === 'KNOWN' ? '321.50' : null,
+          files: [
+            {
+              originalFilename: `ca018-affirm-${amountState}.pdf`,
+              mimeType: 'application/pdf',
+            },
+          ],
+        },
+      },
+    });
+    const savedResult = detail.secondInstance.currentResult;
+    if (savedResult === null || savedResult.files.length !== 1)
+      throw new Error('Expected the persisted AFFIRM result and its file');
+    await expectExactDownload(request, savedResult.files[0], judgmentBytes);
   });
 }
 
