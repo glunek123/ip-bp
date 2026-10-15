@@ -126,6 +126,22 @@ type CaseView = {
       }>;
     } | null;
   };
+  judgment: {
+    current: {
+      id: string;
+      trialRoundId: string;
+      kind: 'REGISTER' | 'CORRECT';
+      judgmentReceivedAt: string;
+      judgmentAmountState: 'KNOWN' | 'PENDING';
+      judgmentAmount: string | null;
+      files: Array<{
+        materialId: string;
+        contentVersionId: string;
+        originalFilename: string;
+        mimeType: string;
+      }>;
+    } | null;
+  };
   canSubmitExecution: boolean;
   canUploadDirectExecutionMaterials: boolean;
   acceptance: unknown;
@@ -2929,7 +2945,7 @@ test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, a
     created.id,
     acceptancePayload(
       remanded.version,
-      shanghaiToday(),
+      shanghaiDaysAgo(1),
       `CA018-RMD-${randomUUID().slice(0, 8)}`,
       acceptanceFile.contentVersionId,
       remandCourt.id,
@@ -2949,7 +2965,7 @@ test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, a
       data: {
         expectedVersion: accepted.version,
         idempotencyKey: randomUUID(),
-        hearingAt: shanghaiToday(),
+        hearingAt: shanghaiDaysAgo(1),
       },
     }),
     201,
@@ -2960,10 +2976,94 @@ test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, a
     arrangementId: expect.any(String),
   });
 
-  const final = await readCase(request, created.id);
-  expect(final.secondInstance.currentTrialRoundId).toBe(
-    remanded.currentTrialRoundId,
+  await expect
+    .poll(async () => (await readCase(request, created.id)).stage, {
+      timeout: 30_000,
+    })
+    .toBe('WAITING_JUDGMENT');
+  const afterChildAdvance = await readCase(request, created.id);
+  const childHearingFacts = afterChildAdvance.hearing as {
+    currentArrangement: { id: string; hearingAt: string };
+    currentAdvance: { id: string; arrangementId: string };
+  };
+  expect(afterChildAdvance).toMatchObject({
+    stage: 'WAITING_JUDGMENT',
+    version: childHearing.version + 1,
+    secondInstance: { currentTrialRoundId: remanded.currentTrialRoundId },
+    origin: {
+      kind: 'EXTERNAL_ENTRY',
+      entryId: created.entryId,
+      initialStage: 'SECOND_INSTANCE',
+    },
+  });
+  expect(childHearingFacts).toMatchObject({
+    currentArrangement: {
+      id: childHearing.arrangementId,
+      hearingAt: shanghaiDaysAgo(1),
+    },
+    currentAdvance: {
+      id: expect.any(String),
+      arrangementId: childHearing.arrangementId,
+    },
+  });
+
+  const childJudgmentBytes = Buffer.from(
+    '%PDF-1.7\nCA018 real remand child judgment bytes\n%%EOF\n',
   );
+  const childJudgmentFile = await uploadCaseFile(
+    request,
+    created.id,
+    'JUDGMENT',
+    childJudgmentBytes,
+  );
+  const childJudgment = await body<{
+    judgmentId: string;
+    stage: string;
+    version: number;
+  }>(
+    await request.post(`/api/v1/cases/${created.id}/judgment-register`, {
+      headers: operator,
+      data: {
+        expectedVersion: afterChildAdvance.version,
+        idempotencyKey: randomUUID(),
+        judgmentReceivedAt: shanghaiToday(),
+        judgmentAmountState: 'PENDING',
+        judgmentAmount: null,
+        paidLitigationFeeState: 'PENDING',
+        paidLitigationFee: null,
+        judgmentContentVersionIds: [childJudgmentFile.contentVersionId],
+      },
+    }),
+    201,
+  );
+  expect(childJudgment).toMatchObject({
+    id: created.id,
+    stage: 'WAITING_JUDGMENT',
+    version: afterChildAdvance.version + 1,
+    judgmentId: expect.any(String),
+  });
+  const final = await readCase(request, created.id);
+  expect(final).toMatchObject({
+    stage: 'WAITING_JUDGMENT',
+    version: childJudgment.version,
+    secondInstance: { currentTrialRoundId: remanded.currentTrialRoundId },
+    judgment: {
+      current: {
+        id: childJudgment.judgmentId,
+        trialRoundId: remanded.currentTrialRoundId,
+        kind: 'REGISTER',
+        judgmentReceivedAt: shanghaiToday(),
+        judgmentAmountState: 'PENDING',
+        judgmentAmount: null,
+        files: [
+          {
+            originalFilename: 'ca018-JUDGMENT.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
+      },
+    },
+  });
   expect(final.origin).toMatchObject({
     kind: 'EXTERNAL_ENTRY',
     entryId: created.entryId,
@@ -2972,6 +3072,7 @@ test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, a
   for (const [file, expectedBytes] of [
     [remandFile, remandBytes],
     [acceptanceFile, acceptanceBytes],
+    [childJudgmentFile, childJudgmentBytes],
   ] as const) {
     const downloaded = await request.get(
       `/api/v1/materials/${file.materialId}/versions/${file.contentVersionId}/content`,
@@ -3156,14 +3257,28 @@ test('enforces strict body, internal-only scope, and authorization before receip
     data: input('WAITING_COMPLAINT'),
   });
   expect(foreignActor.status(), await foreignActor.text()).toBe(403);
+  const foreignCustomerPayload = input('WAITING_COMPLAINT', {
+    customerId: coreLeadFixtures.foreignCustomer,
+    rightsHolderId: coreLeadFixtures.foreignHolder,
+  });
+  const foreignCustomerBefore = await caseExternalEntryCreateCounts(
+    foreignCustomerPayload.source,
+    foreignCustomerPayload.idempotencyKey,
+  );
   const foreignCustomer = await request.post('/api/v1/cases/external-entries', {
     headers: operator,
-    data: input('WAITING_COMPLAINT', {
-      customerId: coreLeadFixtures.foreignCustomer,
-      rightsHolderId: coreLeadFixtures.foreignHolder,
-    }),
+    data: foreignCustomerPayload,
   });
-  expect(foreignCustomer.status(), await foreignCustomer.text()).toBe(403);
+  expect(foreignCustomer.status(), await foreignCustomer.text()).toBe(404);
+  expect(await foreignCustomer.json()).toMatchObject({
+    code: 'CASE_EXTERNAL_ENTRY_PARTIES_NOT_FOUND',
+  });
+  expect(
+    await caseExternalEntryCreateCounts(
+      foreignCustomerPayload.source,
+      foreignCustomerPayload.idempotencyKey,
+    ),
+  ).toEqual(foreignCustomerBefore);
 
   const strictBody = input('WAITING_COMPLAINT');
   const unknownKey = await request.post('/api/v1/cases/external-entries', {
