@@ -20,7 +20,18 @@ export const externalEntryActionMigration =
   '20261014170000_case_external_entry_actions';
 export const externalEntryFoundationMigration =
   '20261014170100_case_external_entry_foundation';
+export const externalEntryNormalGuardMigration =
+  '20261015114500_guard_normal_case_fact_source';
 const quote = (value) => `"${value.replaceAll('"', '""')}"`;
+
+function assertMigrationSchema(client, schema) {
+  if (!/^ca018_(?:empty|upgrade|retry)_[a-f0-9]{32}$/u.test(schema))
+    throw new Error('Invalid CA018 migration test schema');
+  return client.query('SELECT current_schema() AS schema').then(({ rows }) => {
+    if (rows[0]?.schema !== schema)
+      throw new Error('CA018 migration schema is not the active schema');
+  });
+}
 
 export const oldCaseMigrations = readdirSync(migrationRoot)
   .filter(
@@ -91,6 +102,121 @@ export async function applyCaseExternalEntryMigration(client, name) {
     await client.query('ROLLBACK');
     throw error;
   }
+}
+
+export async function createCaseExternalFactSourceProbe(client, schema) {
+  await assertMigrationSchema(client, schema);
+  const table = `${quote(schema)}."ca018_normal_fact_source_probe"`;
+  await client.query(
+    `CREATE TABLE ${table} (
+       id uuid PRIMARY KEY,
+       case_id uuid NOT NULL,
+       department_id uuid NOT NULL,
+       external_entry_id uuid
+     )`,
+  );
+  await client.query(
+    `CREATE CONSTRAINT TRIGGER "ca018_normal_fact_source_probe_guard"
+     AFTER INSERT OR UPDATE ON ${table}
+     DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+     EXECUTE FUNCTION ${quote(schema)}."check_case_external_fact_source"()`,
+  );
+}
+
+export async function assertCaseExternalFactSourceProbe(
+  client,
+  schema,
+  caseId,
+  departmentId,
+  migrationApplied,
+) {
+  await assertMigrationSchema(client, schema);
+  if (typeof migrationApplied !== 'boolean')
+    throw new Error('Expected explicit CA018 normal-guard migration state');
+  const table = `${quote(schema)}."ca018_normal_fact_source_probe"`;
+  const runInsert = async (externalEntryId) => {
+    await client.query('BEGIN');
+    let errorCode = null;
+    try {
+      await client.query(
+        `INSERT INTO ${table} (id,case_id,department_id,external_entry_id)
+         VALUES ($1,$2,$3,$4)`,
+        [randomUUID(), caseId, departmentId, externalEntryId],
+      );
+      await client.query('SET CONSTRAINTS ALL IMMEDIATE');
+    } catch (error) {
+      errorCode = error.code ?? null;
+    } finally {
+      await client.query('ROLLBACK');
+    }
+    return errorCode;
+  };
+  const normalError = await runInsert(null);
+  const expectedNormalError = migrationApplied ? null : '42703';
+  if (normalError !== expectedNormalError)
+    throw new Error(
+      `Normal fact source probe expected ${expectedNormalError ?? 'success'}, received ${normalError ?? 'success'}`,
+    );
+  if (migrationApplied) {
+    const externalError = await runInsert(randomUUID());
+    if (externalError !== '23514')
+      throw new Error(
+        `External fact source probe expected 23514, received ${externalError ?? 'success'}`,
+      );
+  }
+}
+
+export async function failExternalEntryNormalGuardMigrationAtomically(
+  client,
+  schema,
+) {
+  await assertMigrationSchema(client, schema);
+  const migrationPath = resolve(
+    currentMigrationRoot,
+    externalEntryNormalGuardMigration,
+    'migration.sql',
+  );
+  const sql = readFileSync(migrationPath, 'utf8');
+  const commits = sql.match(/\bCOMMIT\s*;/giu) ?? [];
+  const terminalCommit = /\bCOMMIT\s*;\s*$/iu;
+  if (
+    !/^\s*BEGIN\s*;/iu.test(sql) ||
+    commits.length !== 1 ||
+    !terminalCommit.test(sql)
+  )
+    throw new Error('153 migration must have one BEGIN and terminal COMMIT');
+  const forcedFailure = sql.replace(terminalCommit, 'SELECT 1 / 0;\nCOMMIT;');
+  if (forcedFailure === sql)
+    throw new Error('Unable to place the 153 rollback probe before COMMIT');
+
+  const functionDefinition = async () =>
+    (
+      await client.query(
+        `SELECT pg_get_functiondef(
+           to_regprocedure(format('%I.check_case_external_fact_source()', $1))
+         ) AS definition`,
+        [schema],
+      )
+    ).rows[0]?.definition;
+  const before = await functionDefinition();
+  if (typeof before !== 'string')
+    throw new Error('152 normal-fact source guard function is missing');
+
+  let failure;
+  try {
+    await client.query(forcedFailure);
+  } catch (error) {
+    failure = error;
+  }
+  await client.query('ROLLBACK');
+  if (failure?.code !== '22012')
+    throw new Error(
+      `153 rollback probe expected SQLSTATE 22012, received ${failure?.code ?? 'success'}`,
+    );
+  const after = await functionDefinition();
+  if (after !== before)
+    throw new Error('Failed 153 migration changed the 152 guard function');
+  return { errorCode: failure.code, before, after };
 }
 
 export async function replayOldCaseMigrations(client) {

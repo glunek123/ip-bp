@@ -14,11 +14,15 @@ import {
   externalEntryActionGrantRows,
   externalEntryActionMigration,
   externalEntryFoundationMigration,
+  externalEntryNormalGuardMigration,
   newCaseExternalEntrySchema,
   oldCaseMigrations,
   replayOldCaseMigrations,
   snapshotOldCaseRows,
   withCaseExternalEntryMigrationDatabase,
+  createCaseExternalFactSourceProbe,
+  assertCaseExternalFactSourceProbe,
+  failExternalEntryNormalGuardMigrationAtomically,
 } from '../support/case-external-entry-migration.mjs';
 import { allowOtherEnterpriseAccountSetup } from '../support/case-complaint-mailing-database.mjs';
 import { seedCoreLeadE2eData } from '../support/core-lead-database.mjs';
@@ -50,7 +54,7 @@ test.beforeEach(async () => {
 test.afterEach(clean);
 test.afterAll(disconnectCustomerTestDatabase);
 
-test('CA018 upgrades an actual 150-migration case without changing old facts and retries failed DDL atomically', async ({
+test('CA018 upgrades an actual 150-migration case and guards normal fact sources atomically', async ({
   request,
 }) => {
   test.setTimeout(180_000);
@@ -81,6 +85,14 @@ test('CA018 upgrades an actual 150-migration case without changing old facts and
   expect(archived.stage).toBe('ARCHIVED');
 
   await withCaseExternalEntryMigrationDatabase(async (client) => {
+    const priorIdentity = (
+      await client.query('SELECT department_id FROM public.cases WHERE id=$1', [
+        prior.caseId,
+      ])
+    ).rows[0];
+    const priorDepartmentId = priorIdentity?.department_id;
+    if (typeof priorDepartmentId !== 'string')
+      throw new Error('Legacy case department identity is missing');
     const empty = newCaseExternalEntrySchema('ca018_empty');
     const upgrade = newCaseExternalEntrySchema('ca018_upgrade');
     const retry = newCaseExternalEntrySchema('ca018_retry');
@@ -107,6 +119,10 @@ test('CA018 upgrades an actual 150-migration case without changing old facts and
         client,
         externalEntryFoundationMigration,
       );
+      await applyCaseExternalEntryMigration(
+        client,
+        externalEntryNormalGuardMigration,
+      );
       expect(await externalEntryActionGrantRows(client, empty)).toEqual([]);
 
       await createCaseExternalEntrySchema(client, upgrade);
@@ -125,6 +141,25 @@ test('CA018 upgrades an actual 150-migration case without changing old facts and
         client,
         externalEntryFoundationMigration,
       );
+      await createCaseExternalFactSourceProbe(client, upgrade);
+      await assertCaseExternalFactSourceProbe(
+        client,
+        upgrade,
+        prior.caseId,
+        priorDepartmentId,
+        false,
+      );
+      await applyCaseExternalEntryMigration(
+        client,
+        externalEntryNormalGuardMigration,
+      );
+      await assertCaseExternalFactSourceProbe(
+        client,
+        upgrade,
+        prior.caseId,
+        priorDepartmentId,
+        true,
+      );
       expect(
         await snapshotOldCaseRows(
           client,
@@ -137,6 +172,12 @@ test('CA018 upgrades an actual 150-migration case without changing old facts and
 
       await createCaseExternalEntrySchema(client, retry);
       await replayOldCaseMigrations(client);
+      await copyOldCaseSchema(client, retry);
+      const retryBefore = await snapshotOldCaseRows(
+        client,
+        retry,
+        prior.caseId,
+      );
       await applyCaseExternalEntryMigration(
         client,
         externalEntryActionMigration,
@@ -183,6 +224,52 @@ test('CA018 upgrades an actual 150-migration case without changing old facts and
         client,
         externalEntryFoundationMigration,
       );
+      expect(
+        await snapshotOldCaseRows(
+          client,
+          retry,
+          prior.caseId,
+          retryBefore.columnManifest,
+        ),
+      ).toEqual(retryBefore);
+      await createCaseExternalFactSourceProbe(client, retry);
+      await assertCaseExternalFactSourceProbe(
+        client,
+        retry,
+        prior.caseId,
+        priorDepartmentId,
+        false,
+      );
+      const failedGuardMigration =
+        await failExternalEntryNormalGuardMigrationAtomically(client, retry);
+      expect(failedGuardMigration.errorCode).toBe('22012');
+      expect(failedGuardMigration.after).toBe(failedGuardMigration.before);
+      await assertCaseExternalFactSourceProbe(
+        client,
+        retry,
+        prior.caseId,
+        priorDepartmentId,
+        false,
+      );
+      await applyCaseExternalEntryMigration(
+        client,
+        externalEntryNormalGuardMigration,
+      );
+      await assertCaseExternalFactSourceProbe(
+        client,
+        retry,
+        prior.caseId,
+        priorDepartmentId,
+        true,
+      );
+      expect(
+        await snapshotOldCaseRows(
+          client,
+          retry,
+          prior.caseId,
+          retryBefore.columnManifest,
+        ),
+      ).toEqual(retryBefore);
       expect(
         (
           await client.query(
