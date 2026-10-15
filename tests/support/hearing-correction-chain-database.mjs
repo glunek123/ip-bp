@@ -163,7 +163,50 @@ function scopedDatabase(database, caseId, lockHook) {
                         if (sql.includes('FOR UPDATE'))
                           await lockHook('attempt');
                         const result = await pending;
-                        if (result.status === 'rejected') throw result.reason;
+                        if (result.status === 'rejected') {
+                          if (sql.includes('FOR UPDATE')) {
+                            const error = result.reason;
+                            const layers = [
+                              error,
+                              error?.meta,
+                              error?.meta?.driverAdapterError,
+                              error?.meta?.driverAdapterError?.cause,
+                              error?.cause,
+                              error?.cause?.cause,
+                            ];
+                            const codes = layers.flatMap((layer) => [
+                              layer?.code,
+                              layer?.originalCode,
+                              layer?.sqlState,
+                            ]);
+                            await lockHook('rejected', {
+                              prismaCode:
+                                codes.find(
+                                  (code) =>
+                                    typeof code === 'string' &&
+                                    /^P\d{4}$/u.test(code),
+                                ) ?? 'UNKNOWN',
+                              sqlState:
+                                codes.find(
+                                  (code) =>
+                                    typeof code === 'string' &&
+                                    /^(?!P\d{4}$)[A-Z0-9]{5}$/u.test(code),
+                                ) ?? 'UNKNOWN',
+                              driverKind:
+                                layers
+                                  .map((layer) => layer?.kind)
+                                  .find((kind) =>
+                                    [
+                                      'TransactionWriteConflict',
+                                      'UniqueConstraintViolation',
+                                      'ForeignKeyConstraintViolation',
+                                      'NullConstraintViolation',
+                                    ].includes(kind),
+                                  ) ?? 'UNKNOWN',
+                            });
+                          }
+                          throw result.reason;
+                        }
                         if (sql.includes('FOR UPDATE'))
                           await lockHook('acquired');
                         return result.value;
@@ -195,10 +238,12 @@ async function orderedRace(database, caseId, first, second) {
   const acquired = deferred(),
     attempted = deferred(),
     release = deferred();
-  const lockEvents = [];
+  const lockEvents = [],
+    lockErrors = [];
   let held = false;
-  const winner = scopedDatabase(database, caseId, async (event) => {
+  const winner = scopedDatabase(database, caseId, async (event, summary) => {
     lockEvents.push(`first:${event}`);
+    if (summary) lockErrors.push({ participant: 'first', ...summary });
     if (event === 'acquired' && !held) {
       held = true;
       acquired.resolve();
@@ -206,8 +251,9 @@ async function orderedRace(database, caseId, first, second) {
       lockEvents.push('first:barrier-released');
     }
   });
-  const follower = scopedDatabase(database, caseId, async (event) => {
+  const follower = scopedDatabase(database, caseId, async (event, summary) => {
     lockEvents.push(`second:${event}`);
+    if (summary) lockErrors.push({ participant: 'second', ...summary });
     if (event === 'attempt') attempted.resolve();
   });
   const firstResult = first(winner);
@@ -255,7 +301,7 @@ async function orderedRace(database, caseId, first, second) {
     const index = lockEvents.indexOf(event);
     assert.ok(
       index > previous,
-      `Missing or out-of-order case lock event: ${event}`,
+      `Missing or out-of-order case lock event: ${event}; lockEvents=${JSON.stringify(lockEvents)}; lockErrors=${JSON.stringify(lockErrors)}`,
     );
     previous = index;
   }
