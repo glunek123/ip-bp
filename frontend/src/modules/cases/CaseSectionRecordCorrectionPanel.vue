@@ -517,7 +517,11 @@ import {
 } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { todayShanghai } from '../../api/cases';
-import { downloadMaterialVersion } from '../../api/materials';
+import {
+  downloadMaterialVersion,
+  uploadCaseSectionRecordFile,
+  type CaseSectionRecordUploadTarget,
+} from '../../api/materials';
 
 const props = defineProps<{
   item: CaseDetail;
@@ -531,6 +535,10 @@ const props = defineProps<{
     request: CaseSectionRecordRequest;
     recovery: boolean;
   }) => boolean;
+  beforeUpload?: (input: {
+    caseId: string;
+    target: CaseSectionRecordUploadTarget;
+  }) => boolean;
   submitRequest?: (
     caseId: string,
     request: CaseSectionRecordRequest,
@@ -543,6 +551,7 @@ const emit = defineEmits<{
   'access-lost': [];
   cancel: [];
   'state-change': [state: 'idle' | 'submitting' | 'unknown'];
+  'upload-state-change': [state: 'uploading' | 'idle'];
 }>();
 const selectedId = ref('');
 const options = computed(() =>
@@ -560,6 +569,16 @@ const pending = computed(() =>
   ),
 );
 const submitting = ref(false);
+const uploading = ref(false);
+const preparedFiles = shallowRef<CaseFile[]>([]);
+const uploadNotice = ref('');
+let uploadGateRunning = false;
+let uploadController: AbortController | undefined;
+function stopUpload(): void {
+  uploadController?.abort();
+  uploadController = undefined;
+  uploading.value = false;
+}
 const storageBlocked = ref(false);
 const projectionBlocked = ref(false);
 const denied = ref(false);
@@ -844,9 +863,12 @@ watch(
     changeSession(() => {
       generation += 1;
       requestController?.abort();
+      stopUpload();
       abortDownloads();
       submitting.value = false;
       if (contextChanged) {
+        preparedFiles.value = [];
+        uploadNotice.value = '';
         denied.value = false;
         projectionBlocked.value =
           !!previous &&
@@ -876,6 +898,7 @@ watch(
 watch(
   selectedId,
   () => {
+    stopUpload();
     abortDownloads();
     if (!submitting.value) {
       resetDraft();
@@ -897,6 +920,11 @@ watch(
 watch(
   fingerprint,
   (next, previous) => {
+    if (next !== previous) {
+      stopUpload();
+      preparedFiles.value = [];
+      uploadNotice.value = '';
+    }
     if (!previous || next === previous || pending.value || submitting.value)
       return;
     resetDraft();
@@ -917,6 +945,11 @@ watch(
     immediate: true,
   },
 );
+watch(
+  uploading,
+  (value) => emit('upload-state-change', value ? 'uploading' : 'idle'),
+  { flush: 'sync', immediate: true },
+);
 const availableFiles = computed(() => {
   const target = selected.value;
   if (!target || target.kind === 'hearing') return [];
@@ -927,6 +960,8 @@ const availableFiles = computed(() => {
     target.entry.effective,
   ])
     for (const file of values.files) files.set(file.contentVersionId, file);
+  for (const file of preparedFiles.value)
+    files.set(file.contentVersionId, file);
   return [...files.values()];
 });
 const allowed = computed(
@@ -939,9 +974,188 @@ const editable = computed(
   () =>
     allowed.value &&
     !submitting.value &&
+    !uploading.value &&
     !pending.value &&
     !storageBlocked.value,
 );
+function uploadTarget(): CaseSectionRecordUploadTarget | null {
+  const target = selected.value;
+  if (!target) return null;
+  switch (target.kind) {
+    case 'hearing':
+      return null;
+    case 'execution-mailing':
+      return {
+        kind: 'EXECUTION_MAILING',
+        targetId: target.entry.mailingId,
+        expectedRevision: target.entry.mailingRevision,
+      };
+    case 'execution-filing':
+      return {
+        kind: 'EXECUTION_FILING',
+        targetId: target.entry.filingId,
+        expectedRevision: target.entry.filingRevision,
+      };
+    case 'execution-finish':
+      return {
+        kind: 'EXECUTION_FINISH',
+        targetId: target.entry.finishId,
+        expectedRevision: target.entry.finishRevision,
+      };
+    case 'judgment':
+      return {
+        kind: 'JUDGMENT',
+        targetId: target.entry.judgmentId,
+        expectedRevision: target.entry.judgmentRevision,
+        trialRoundId: target.entry.trialRoundId,
+      };
+    case 'closure':
+      return baseClosureVersionId.value
+        ? {
+            kind: 'CLOSURE',
+            targetId: target.entry.closureId,
+            expectedRevision: target.entry.closureRevision,
+            expectedClosureVersionId: baseClosureVersionId.value,
+          }
+        : null;
+  }
+}
+async function prepareFile(event: globalThis.Event): Promise<void> {
+  const input = event.target as globalThis.HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (
+    !file ||
+    !editable.value ||
+    uploadGateRunning ||
+    draft.fileIds.length >= 10
+  )
+    return;
+  const target = uploadTarget();
+  if (!target || baseFingerprint.value !== fingerprint()) {
+    error.value = '资料版本尚未核对，请刷新后再上传。';
+    return;
+  }
+  const extension = file.name
+    .trim()
+    .toLowerCase()
+    .match(/\.[^.]+$/u)?.[0];
+  const mime =
+    extension === '.pdf'
+      ? 'application/pdf'
+      : extension === '.png'
+        ? 'image/png'
+        : extension === '.jpg' || extension === '.jpeg'
+          ? 'image/jpeg'
+          : undefined;
+  const maximum = (target.kind === 'EXECUTION_MAILING' ? 20 : 50) * 1024 * 1024;
+  if (
+    !mime ||
+    mime !== file.type.trim() ||
+    !file.name.trim() ||
+    file.name.trim().length > 200 ||
+    file.size <= 0 ||
+    file.size > maximum
+  ) {
+    error.value = `仅支持 PDF、JPG、PNG，单文件不超过${target.kind === 'EXECUTION_MAILING' ? 20 : 50}MiB。`;
+    return;
+  }
+  const context = capture();
+  const source = fingerprint();
+  uploadGateRunning = true;
+  try {
+    if (
+      props.beforeUpload &&
+      props.beforeUpload({
+        caseId: context.caseId,
+        target: globalThis.structuredClone(target),
+      }) !== true
+    )
+      return;
+  } catch {
+    error.value = '当前文件准备未获准入，尚未上传。';
+    return;
+  } finally {
+    uploadGateRunning = false;
+  }
+  if (!current(context) || !editable.value || source !== fingerprint()) {
+    emit('upload-state-change', 'idle');
+    return;
+  }
+  const controller = new AbortController();
+  uploadController = controller;
+  uploading.value = true;
+  if (
+    !current(context) ||
+    uploadController !== controller ||
+    controller.signal.aborted ||
+    !allowed.value ||
+    source !== fingerprint()
+  ) {
+    if (uploadController === controller) stopUpload();
+    return;
+  }
+  error.value = uploadNotice.value = '';
+  try {
+    const result = await uploadCaseSectionRecordFile(
+      context.caseId,
+      target,
+      file,
+      { signal: controller.signal },
+    );
+    if (
+      !current(context) ||
+      uploadController !== controller ||
+      controller.signal.aborted ||
+      source !== fingerprint() ||
+      !allowed.value
+    )
+      return;
+    const confirmed: CaseFile = {
+      materialId: result.materialId,
+      contentVersionId: result.contentVersionId,
+      originalFilename: result.originalFilename,
+      mimeType: result.mimeType,
+    };
+    preparedFiles.value = [
+      ...preparedFiles.value.filter(
+        (value) => value.contentVersionId !== confirmed.contentVersionId,
+      ),
+      confirmed,
+    ];
+    draft.fileIds = [...draft.fileIds, confirmed.contentVersionId];
+    uploadNotice.value = '文件上传已确认，尚未保存资料更正。';
+  } catch (failure) {
+    if (
+      !current(context) ||
+      uploadController !== controller ||
+      controller.signal.aborted
+    )
+      return;
+    if (
+      failure instanceof ApiError &&
+      [401, 403, 404].includes(failure.status)
+    ) {
+      denied.value = true;
+      error.value = '上传权限或目标已变化，新文件未确认；请刷新核对。';
+    } else if (failure instanceof ApiError && failure.status === 409) {
+      projectionBlocked.value = true;
+      error.value =
+        '资料版本或结案版本已变化，新文件未确认；请刷新后重新选择上传。';
+    } else
+      error.value =
+        '上传未确认，未添加新附件、未保存资料更正；可重新选择文件，系统不会自动重传。';
+  } finally {
+    if (uploadController === controller) {
+      uploadController = undefined;
+      uploading.value = false;
+    }
+  }
+}
+function cancelUpload(): void {
+  stopUpload();
+  uploadNotice.value = '上传结果未确认，未添加新附件、未保存资料更正。';
+}
 function businessRequest(key: string): CaseSectionRecordRequest | null {
   const target = selected.value;
   if (!target) return null;
@@ -1080,6 +1294,7 @@ async function send(
     !allowed.value ||
     storageBlocked.value ||
     submitting.value ||
+    uploading.value ||
     (!recovery && pending.value)
   )
     return;
@@ -1231,7 +1446,7 @@ function retryOriginal(): void {
   if (pending.value) void send(pending.value.request, true);
 }
 function cancel(): void {
-  if (submitting.value || pending.value) return;
+  if (submitting.value || uploading.value || pending.value) return;
   resetDraft();
   error.value = success.value = '';
   emit('cancel');
@@ -1307,6 +1522,7 @@ onBeforeUnmount(() => {
   active = false;
   generation += 1;
   requestController?.abort();
+  stopUpload();
   abortDownloads();
 });
 </script>
@@ -1326,7 +1542,7 @@ onBeforeUnmount(() => {
         v-model="selectedId"
         class="text-input"
         data-test="section-record-target"
-        :disabled="submitting || !!pending"
+        :disabled="submitting || uploading || !!pending"
       >
         <option value="" disabled>请选择要更正的已登记记录</option>
         <option
@@ -1530,8 +1746,38 @@ onBeforeUnmount(() => {
         </label>
         <fieldset v-if="kind !== 'hearing'" class="form-stack">
           <legend>本条资料的精确文件版本</legend>
-          <p class="field-help" data-test="section-record-upload-unavailable">
-            可复用本条资料已登记的文件版本；新增附件上传尚未开放。
+          <p class="field-help">
+            可复用本条资料的精确文件版本，或选择新附件。上传仅准备文件，保存资料更正后才登记；PDF/JPG/PNG，邮寄每个20MiB，其余50MiB，最多选择10个版本。
+          </p>
+          <label class="field-label"
+            >新增附件<input
+              data-test="section-record-upload"
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              :disabled="
+                !editable || draft.fileIds.length >= 10 || !uploadTarget()
+              "
+              @change="prepareFile"
+          /></label>
+          <ElButton
+            v-if="uploading"
+            data-test="section-record-upload-cancel"
+            @click="cancelUpload"
+            >中止文件上传</ElButton
+          >
+          <p
+            v-if="uploading"
+            role="status"
+            data-test="section-record-upload-progress"
+          >
+            正在准备文件，尚未保存资料更正。
+          </p>
+          <p
+            v-if="uploadNotice"
+            role="status"
+            data-test="section-record-upload-notice"
+          >
+            {{ uploadNotice }}
           </p>
           <label
             v-for="file in availableFiles"
@@ -1575,7 +1821,7 @@ onBeforeUnmount(() => {
             >保存资料更正</ElButton
           ><ElButton
             data-test="section-record-cancel"
-            :disabled="submitting || !!pending"
+            :disabled="submitting || uploading || !!pending"
             @click="cancel"
             >取消</ElButton
           >
@@ -1604,14 +1850,14 @@ onBeforeUnmount(() => {
     <ElButton
       v-if="pending && allowed"
       data-test="section-record-retry"
-      :disabled="submitting || storageBlocked"
+      :disabled="submitting || uploading || storageBlocked"
       @click="retryOriginal"
       >核对并重试原请求</ElButton
     >
     <ElButton
       v-if="error || !allowed"
       data-test="section-record-refresh"
-      :disabled="submitting"
+      :disabled="submitting || uploading"
       @click="emit('refresh')"
       >刷新核对资料</ElButton
     >

@@ -2,6 +2,10 @@ import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaseDetail, CaseFile } from '../../api/cases';
 import { ApiError } from '../../api/http';
+import type {
+  CaseSectionRecordUploadTarget,
+  CaseSectionRecordUploadedMaterial,
+} from '../../api/materials';
 import { reactive } from 'vue';
 import { createListWorkflowContext } from '../../app/list-workflow-context';
 import Panel, {
@@ -20,6 +24,9 @@ const api = vi.hoisted(() => ({
   judgment: vi.fn(),
   closure: vi.fn(),
   download: vi.fn(),
+  upload:
+    vi.fn<typeof import('../../api/materials').uploadCaseSectionRecordFile>(),
+  genericUpload: vi.fn(),
 }));
 vi.mock('../../api/cases', async (original) => ({
   ...(await original<typeof import('../../api/cases')>()),
@@ -33,6 +40,8 @@ vi.mock('../../api/cases', async (original) => ({
 vi.mock('../../api/materials', async (original) => ({
   ...(await original<typeof import('../../api/materials')>()),
   downloadMaterialVersion: api.download,
+  uploadCaseSectionRecordFile: api.upload,
+  uploadMaterialFile: api.genericUpload,
 }));
 const baseItem: CaseDetail = {
   id: 'case-1',
@@ -348,6 +357,8 @@ function render(
       | 'onState-change'
       | 'onChanged'
       | 'contextKey'
+      | 'beforeUpload'
+      | 'onUpload-state-change'
     >
   > = {},
 ) {
@@ -389,6 +400,383 @@ afterEach(() => {
 });
 
 describe('exact section record corrections', () => {
+  const uploadKinds = [
+    'execution-mailing',
+    'execution-filing',
+    'execution-finish',
+    'judgment',
+    'closure',
+  ] as const;
+  const uploadTargets: Record<
+    (typeof uploadKinds)[number],
+    CaseSectionRecordUploadTarget
+  > = {
+    'execution-mailing': {
+      kind: 'EXECUTION_MAILING',
+      targetId: uid(2),
+      expectedRevision: 0,
+    },
+    'execution-filing': {
+      kind: 'EXECUTION_FILING',
+      targetId: uid(3),
+      expectedRevision: 0,
+    },
+    'execution-finish': {
+      kind: 'EXECUTION_FINISH',
+      targetId: uid(4),
+      expectedRevision: 0,
+    },
+    judgment: {
+      kind: 'JUDGMENT',
+      targetId: uid(6),
+      expectedRevision: 0,
+      trialRoundId: uid(9),
+    },
+    closure: {
+      kind: 'CLOSURE',
+      targetId: uid(7),
+      expectedRevision: 0,
+      expectedClosureVersionId: uid(8),
+    },
+  };
+  const purposes = {
+    EXECUTION_MAILING: 'MAIL_RECEIPT',
+    EXECUTION_FILING: 'EXECUTION_FILING_PROOF',
+    EXECUTION_FINISH: 'EXECUTION_FINISH_BASIS',
+    JUDGMENT: 'JUDGMENT',
+    CLOSURE: 'CASE_CLOSURE_DOCUMENT',
+  } as const;
+  const newFile = () =>
+    new File(['%PDF-1.7\n现场材料'], '现场.pdf', { type: 'application/pdf' });
+  function uploaded(
+    target: CaseSectionRecordUploadTarget,
+  ): CaseSectionRecordUploadedMaterial {
+    return {
+      materialId: uid(200),
+      contentVersionId: uid(201),
+      originalFilename: '现场.pdf',
+      mimeType: 'application/pdf',
+      purpose: purposes[target.kind],
+      sizeBytes: newFile().size,
+      sha256: 'a'.repeat(64),
+      recordCorrection: target,
+    };
+  }
+  async function selectUpload(
+    wrapper: VueWrapper,
+    file = newFile(),
+  ): Promise<void> {
+    const input = wrapper.get<HTMLInputElement>(
+      '[data-test="section-record-upload"]',
+    );
+    Object.defineProperty(input.element, 'files', {
+      value: [file],
+      configurable: true,
+    });
+    await input.trigger('change');
+  }
+  function uploadDeferred() {
+    let resolve!: (value: CaseSectionRecordUploadedMaterial) => void;
+    const promise = new Promise<CaseSectionRecordUploadedMaterial>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+  it.each(uploadKinds)(
+    'prepares an ARCHIVED %s attachment through its exact upload target without auto-saving or advancing, then saves only the confirmed version',
+    async (kind) => {
+      const item = fixture();
+      const before = structuredClone(item);
+      const target = uploadTargets[kind];
+      const beforeUpload = vi.fn(() => true);
+      const beforeSubmit = vi.fn(() => true);
+      const phases: string[] = [];
+      const { wrapper, submitRequest } = render(kind, item, undefined, {
+        beforeUpload,
+        beforeSubmit,
+        'onUpload-state-change': (phase) => phases.push(phase),
+      });
+      api.upload.mockResolvedValue(uploaded(target));
+      await selectUpload(wrapper);
+      await flushPromises();
+      expect(beforeUpload).toHaveBeenCalledExactlyOnceWith({
+        caseId: item.id,
+        target,
+      });
+      expect(api.upload).toHaveBeenCalledWith(
+        item.id,
+        target,
+        expect.any(File),
+        { signal: expect.any(AbortSignal) },
+      );
+      expect(api.genericUpload).not.toHaveBeenCalled();
+      expect(beforeSubmit).not.toHaveBeenCalled();
+      expect(submitRequest).not.toHaveBeenCalled();
+      expect(wrapper.emitted('changed')).toBeUndefined();
+      expect(wrapper.emitted('refresh')).toBeUndefined();
+      expect(phases).toEqual(['idle', 'uploading', 'idle']);
+      expect(wrapper.emitted('state-change')).toEqual([['idle']]);
+      expect(sessionStorage.length).toBe(0);
+      expect(item).toEqual(before);
+      expect(
+        wrapper.get<HTMLInputElement>(
+          `[data-test="section-record-file-${uid(201)}"]`,
+        ).element.checked,
+      ).toBe(true);
+      expect(
+        wrapper.get('[data-test="section-record-upload-notice"]').text(),
+      ).toContain('尚未保存');
+      await wrapper
+        .get('[data-test="section-record-reason"]')
+        .setValue('新增现场文件');
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      expect(beforeSubmit).toHaveBeenCalledTimes(1);
+      const request = submitRequest.mock.calls[0]![1];
+      let ids: string[] = [];
+      switch (request.kind) {
+        case 'execution-mailing':
+          ids = request.input.mailReceiptContentVersionIds;
+          break;
+        case 'execution-filing':
+          ids = request.input.executionFilingProofContentVersionIds;
+          break;
+        case 'execution-finish':
+          ids = request.input.basisContentVersionIds;
+          break;
+        case 'judgment':
+          ids = request.input.judgmentContentVersionIds;
+          break;
+        case 'closure':
+          ids = request.input.closeContentVersionIds;
+          break;
+        case 'hearing':
+          throw new Error('no hearing uploads');
+      }
+      expect(ids.at(-1)).toBe(uid(201));
+      expect(ids[0]).toBe(file.contentVersionId);
+      expect(request.input).not.toHaveProperty('expectedVersion');
+      expect(item.stage).toBe('ARCHIVED');
+      expect(item.version).toBe(42);
+    },
+  );
+  it('uses a separate real W preparation admission and settles it to idle without success, refresh or business pending', async () => {
+    const item = fixture();
+    const host = createListWorkflowContext(async () => item);
+    await host.sync({
+      recordId: item.id,
+      actorKey: 'actor-auth-1',
+      actionKey: 'edit-section-records',
+      title: '资料更正',
+    });
+    const session = host.state.value.session!;
+    const wait = uploadDeferred();
+    const phases: string[] = [];
+    const { wrapper, submitRequest } = render('closure', item, undefined, {
+      beforeUpload: () => session.beginSubmit(),
+      'onUpload-state-change': (phase) => {
+        phases.push(phase);
+        if (phase === 'idle') session.endSubmit('failed');
+      },
+    });
+    api.upload.mockImplementation(() => {
+      expect(host.state.value.requestState).toBe('submitting');
+      return wait.promise;
+    });
+    await selectUpload(wrapper);
+    expect(host.canLeave()).toBe(false);
+    expect(
+      wrapper.get('[data-test="section-record-save"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('form').trigger('submit');
+    expect(submitRequest).not.toHaveBeenCalled();
+    wait.resolve(uploaded(uploadTargets.closure));
+    await flushPromises();
+    expect(phases).toEqual(['idle', 'uploading', 'idle']);
+    expect(host.state.value.status).toBe('ready');
+    expect(host.canLeave()).toBe(true);
+    expect(wrapper.emitted('changed')).toBeUndefined();
+    expect(wrapper.emitted('refresh')).toBeUndefined();
+    expect(sessionStorage.length).toBe(0);
+    await wrapper.get('[data-test="section-record-cancel"]').trigger('click');
+    expect(submitRequest).not.toHaveBeenCalled();
+  });
+  it.each([false, true])(
+    'denies a file preparation gate (throws=%s) without upload, confirmed versions or business requests',
+    async (throws) => {
+      const beforeUpload = vi.fn(() => {
+        if (throws) throw new Error('no admission');
+        return false;
+      });
+      const { wrapper, submitRequest } = render(
+        'closure',
+        fixture(),
+        undefined,
+        { beforeUpload },
+      );
+      await selectUpload(wrapper);
+      await flushPromises();
+      expect(beforeUpload).toHaveBeenCalledTimes(1);
+      expect(api.upload).not.toHaveBeenCalled();
+      expect(submitRequest).not.toHaveBeenCalled();
+      expect(wrapper.emitted('upload-state-change')).toEqual([['idle']]);
+      expect(sessionStorage.length).toBe(0);
+      expect(
+        wrapper.find(`[data-test="section-record-file-${uid(201)}"]`).exists(),
+      ).toBe(false);
+    },
+  );
+  it('settles accepted file preparation if a synchronous permission preflight rejects before upload starts', async () => {
+    const item = reactive(fixture());
+    const host = createListWorkflowContext(async () => item);
+    await host.sync({
+      recordId: item.id,
+      actorKey: 'actor-auth-1',
+      actionKey: 'edit-section-records',
+      title: '资料更正',
+    });
+    const session = host.state.value.session!;
+    const phases: string[] = [];
+    const { wrapper } = render('closure', item, undefined, {
+      beforeUpload: () => {
+        const admitted = session.beginSubmit();
+        item.recordEdits!.closures![0]!.canEdit = false;
+        return admitted;
+      },
+      'onUpload-state-change': (phase) => {
+        phases.push(phase);
+        if (phase === 'idle') session.endSubmit('failed');
+      },
+    });
+    await selectUpload(wrapper);
+    expect(api.upload).not.toHaveBeenCalled();
+    expect(phases).toEqual(['idle', 'idle']);
+    expect(host.canLeave()).toBe(true);
+    expect(host.state.value.status).toBe('ready');
+    expect(sessionStorage.length).toBe(0);
+  });
+  it('keeps uploads unavailable while an original business request is unknown', async () => {
+    const { wrapper, submitRequest } = render('closure');
+    submitRequest.mockRejectedValue(
+      new ApiError('unknown', 0, 'NETWORK_ERROR'),
+    );
+    await change(wrapper);
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="section-record-upload"]').attributes('disabled'),
+    ).toBeDefined();
+    await selectUpload(wrapper);
+    expect(api.upload).not.toHaveBeenCalled();
+    expect(
+      readCaseSectionRecordRequests('INTERNAL:actor:department', uid(1)),
+    ).toHaveLength(1);
+  });
+  it('registers the upload controller before synchronous prep observers can unmount the panel, so no upload starts afterward', async () => {
+    const mounted: { wrapper?: VueWrapper } = {};
+    const { wrapper } = render('closure', fixture(), undefined, {
+      'onUpload-state-change': (phase) => {
+        if (phase === 'uploading') mounted.wrapper?.unmount();
+      },
+    });
+    mounted.wrapper = wrapper;
+    await selectUpload(wrapper);
+    await flushPromises();
+    expect(api.upload).not.toHaveBeenCalled();
+    expect(sessionStorage.length).toBe(0);
+    expect(wrapper.emitted('changed')).toBeUndefined();
+  });
+  it.each([0, 500, 409, 403])(
+    'does not confirm an upload result or auto-retry/save after status %s',
+    async (status) => {
+      const { wrapper, submitRequest } = render('closure');
+      api.upload.mockRejectedValue(
+        new ApiError(
+          'upload result',
+          status,
+          status === 0 ? 'NETWORK_ERROR' : 'VERSION_CONFLICT',
+        ),
+      );
+      await selectUpload(wrapper);
+      await flushPromises();
+      expect(api.upload).toHaveBeenCalledTimes(1);
+      expect(submitRequest).not.toHaveBeenCalled();
+      expect(sessionStorage.length).toBe(0);
+      expect(wrapper.emitted('changed')).toBeUndefined();
+      expect(wrapper.emitted('refresh')).toBeUndefined();
+      expect(
+        wrapper.find(`[data-test="section-record-file-${uid(201)}"]`).exists(),
+      ).toBe(false);
+      expect(wrapper.emitted('upload-state-change')).toEqual([
+        ['idle'],
+        ['uploading'],
+        ['idle'],
+      ]);
+    },
+  );
+  it.each([
+    'cancel',
+    'revision',
+    'closure-version',
+    'identity',
+    'unmount',
+  ] as const)(
+    'ignores late upload success after %s and never creates a business pending request',
+    async (boundary) => {
+      const { wrapper, submitRequest } = render('closure');
+      const wait = uploadDeferred();
+      api.upload.mockReturnValue(wait.promise);
+      await selectUpload(wrapper);
+      const signal = api.upload.mock.calls[0]![3]!.signal!;
+      if (boundary === 'cancel')
+        await wrapper
+          .get('[data-test="section-record-upload-cancel"]')
+          .trigger('click');
+      else if (boundary === 'unmount') wrapper.unmount();
+      else if (boundary === 'identity')
+        await wrapper.setProps({
+          actorKey: 'INTERNAL:other:department',
+          contextKey: 'other-auth',
+        });
+      else {
+        const item = fixture();
+        if (boundary === 'revision')
+          item.recordEdits!.closures![0]!.closureRevision = 1;
+        else item.closure!.current.id = uid(88);
+        await wrapper.setProps({ item });
+      }
+      expect(signal.aborted).toBe(true);
+      wait.resolve(uploaded(uploadTargets.closure));
+      await flushPromises();
+      expect(submitRequest).not.toHaveBeenCalled();
+      expect(wrapper.emitted('changed')).toBeUndefined();
+      expect(sessionStorage.length).toBe(0);
+      if (boundary !== 'unmount')
+        expect(
+          wrapper
+            .find(`[data-test="section-record-file-${uid(201)}"]`)
+            .exists(),
+        ).toBe(false);
+    },
+  );
+  it('offers no hearing upload, blocks malformed/oversize files locally, and never invokes a generic owner upload', async () => {
+    const hearing = render('hearing');
+    expect(hearing.wrapper.find('input[type="file"]').exists()).toBe(false);
+    const beforeUpload = vi.fn(() => true);
+    const { wrapper } = render('execution-mailing', fixture(), undefined, {
+      beforeUpload,
+    });
+    await selectUpload(
+      wrapper,
+      new File(['x'], 'malware.exe', { type: 'application/pdf' }),
+    );
+    const tooLarge = newFile();
+    Object.defineProperty(tooLarge, 'size', { value: 20 * 1024 * 1024 + 1 });
+    await selectUpload(wrapper, tooLarge);
+    expect(beforeUpload).not.toHaveBeenCalled();
+    expect(api.upload).not.toHaveBeenCalled();
+    expect(api.genericUpload).not.toHaveBeenCalled();
+  });
   function twoHearings(): CaseDetail {
     const item = fixture();
     const entry = item.recordEdits!.hearings![0]!;
@@ -1368,12 +1756,10 @@ describe('exact section record corrections', () => {
       trialRoundId: uid(99),
     });
   });
-  it('reuses and downloads exact frozen versions, preserving selected order; no new-upload promise is shown', async () => {
+  it('reuses and downloads exact frozen versions and preserves selected request order', async () => {
     const { wrapper, submitRequest } = render('execution-mailing');
-    expect(
-      wrapper.get('[data-test="section-record-upload-unavailable"]').text(),
-    ).toContain('尚未开放');
-    expect(wrapper.find('input[type="file"]').exists()).toBe(false);
+    expect(wrapper.find('input[type="file"]').exists()).toBe(true);
+    expect(api.upload).not.toHaveBeenCalled();
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '下载精确版本')!
