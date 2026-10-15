@@ -757,9 +757,21 @@ test('creates and refreshes an external entry in the browser and hides entry acc
   await page.goto('/cases');
   const row = page.getByRole('row').filter({ hasText: created.businessNo });
   await expect(row).toBeVisible();
-  await row.locator('details summary').click();
-  await expect(row).toContainText('外部转入');
-  await expect(row).toContainText(shanghaiToday());
+  const sourceContext = row
+    .locator('details')
+    .filter({ hasText: '案件来源：' });
+  await expect(sourceContext).toHaveCount(1);
+  const sourceSummary = sourceContext.locator(':scope > summary');
+  await expect(sourceSummary).toHaveCount(1);
+  await sourceSummary.click();
+  const sourceDetails = sourceContext
+    .locator('p')
+    .filter({ hasText: '案件来源：' });
+  await expect(sourceDetails).toHaveCount(1);
+  await expect(sourceDetails).toBeVisible();
+  await expect(sourceDetails).toContainText('案件来源：');
+  await expect(sourceDetails).toContainText('外部转入');
+  await expect(sourceDetails).toContainText(shanghaiToday());
 
   await page.getByRole('button', { name: '退出登录' }).click();
   await login(page, '/cases', true);
