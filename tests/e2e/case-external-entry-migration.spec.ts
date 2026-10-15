@@ -21,23 +21,9 @@ import {
   withCaseExternalEntryMigrationDatabase,
 } from '../support/case-external-entry-migration.mjs';
 import { allowOtherEnterpriseAccountSetup } from '../support/case-complaint-mailing-database.mjs';
-import { clearCaseClosureFixture } from '../support/case-closure-database.mjs';
-import { clearCaseExecutionFinishFixture } from '../support/case-execution-finish-database.mjs';
 import { resetCoreLeadE2eData } from '../support/core-lead-database.mjs';
 import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs';
-import {
-  prepareCaseAcceptanceFixture,
-  clearCaseAcceptanceFixture,
-} from '../support/case-acceptance-database.mjs';
-import {
-  prepareCaseFilingFixture,
-  clearCaseFilingFixture,
-} from '../support/case-filing-database.mjs';
-import {
-  clearCoreCaseHearingAdmin,
-  clearCoreCaseHearingAdminSessions,
-} from '../support/case-hearing-database.mjs';
-import { clearCoreCaseSecondInstanceFixture } from '../support/case-second-instance-database.mjs';
+import { clearCaseExternalEntryFixture } from '../support/case-external-entry-database.mjs';
 
 const operator = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
 const today = () =>
@@ -49,20 +35,12 @@ const today = () =>
   }).format(new Date());
 
 async function clean() {
-  await clearCaseClosureFixture();
-  await clearCaseExecutionFinishFixture();
-  await clearCoreCaseHearingAdminSessions();
-  await clearCoreCaseSecondInstanceFixture();
-  await clearCaseAcceptanceFixture();
-  await clearCaseFilingFixture();
+  await clearCaseExternalEntryFixture();
   await resetCoreLeadE2eData();
-  await clearCoreCaseHearingAdmin();
 }
 
 test.beforeEach(async () => {
   await clean();
-  await prepareCaseFilingFixture();
-  await prepareCaseAcceptanceFixture();
   await allowOtherEnterpriseAccountSetup();
 });
 test.afterEach(clean);

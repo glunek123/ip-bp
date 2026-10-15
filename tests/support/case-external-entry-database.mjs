@@ -58,6 +58,11 @@ async function withDatabase(operation) {
 }
 
 async function assertSyntheticCaseRows(client) {
+  const hasExternalEntries = (
+    await client.query(
+      `SELECT to_regclass('public.case_external_entries') IS NOT NULL AS present`,
+    )
+  ).rows[0].present;
   const cases = (
     await client.query(
       `SELECT c.id,c.department_id,c.customer_id,c.rights_holder_id,
@@ -65,7 +70,8 @@ async function assertSyntheticCaseRows(client) {
               c.certificate_id AS case_certificate_id,
               l.id AS lead_id,m.id AS matter_id,
               cert.id AS linked_certificate_id,
-              e.id AS external_entry_id,e.source
+              ${hasExternalEntries ? 'e.id' : 'NULL'} AS external_entry_id,
+              ${hasExternalEntries ? 'e.source' : 'NULL'} AS source
        FROM cases c
        LEFT JOIN leads l ON l.id=c.source_lead_id
          AND l.department_id=c.department_id
@@ -73,7 +79,7 @@ async function assertSyntheticCaseRows(client) {
          AND m.department_id=c.department_id
        LEFT JOIN notary_certificates cert ON cert.id=c.certificate_id
          AND cert.department_id=c.department_id
-       LEFT JOIN case_external_entries e ON e.case_id=c.id`,
+       ${hasExternalEntries ? 'LEFT JOIN case_external_entries e ON e.case_id=c.id' : ''}`,
     )
   ).rows;
   for (const row of cases) {
@@ -119,14 +125,16 @@ async function assertSyntheticCaseRows(client) {
       );
   }
 
-  const externalEntries = (
-    await client.query(
-      `SELECT e.case_id,e.department_id,e.source,c.id AS linked_case_id,
-              c.department_id AS case_department_id
-       FROM case_external_entries e
-       LEFT JOIN cases c ON c.id=e.case_id`,
-    )
-  ).rows;
+  const externalEntries = hasExternalEntries
+    ? (
+        await client.query(
+          `SELECT e.case_id,e.department_id,e.source,c.id AS linked_case_id,
+                  c.department_id AS case_department_id
+           FROM case_external_entries e
+           LEFT JOIN cases c ON c.id=e.case_id`,
+        )
+      ).rows
+    : [];
   for (const entry of externalEntries) {
     if (
       entry.linked_case_id === null ||
