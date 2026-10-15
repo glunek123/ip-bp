@@ -812,7 +812,10 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     secondInstance: LawyerCaseSecondInstance;
     executionSubmission: ExecutionSubmissionState;
     canConfirmExecution: boolean;
-    executionConfirmation: ExecutionConfirmation | null;
+    executionConfirmation: Omit<
+      ExecutionConfirmation,
+      'confirmedByUserId'
+    > | null;
     executionMailing: ExecutionMailing | null;
     executionFiling: ExecutionFiling | null;
     executionFinish: ExecutionFinish | null;
@@ -1937,22 +1940,23 @@ function executionSubmissionState(
 function executionConfirmation(
   value: unknown,
   directStart = false,
-): value is ExecutionConfirmation {
+  internal = true,
+): value is
+  ExecutionConfirmation | Omit<ExecutionConfirmation, 'confirmedByUserId'> {
   return (
     record(value) &&
-    exact(value, [
-      'id',
-      'submissionId',
-      'confirmedAt',
-      'confirmedByUserId',
-      'files',
-    ]) &&
+    exact(
+      value,
+      internal
+        ? ['id', 'submissionId', 'confirmedAt', 'confirmedByUserId', 'files']
+        : ['id', 'submissionId', 'confirmedAt', 'files'],
+    ) &&
     uuidV4(value.id) &&
     (uuidV4(value.submissionId) ||
       (directStart && value.submissionId === null)) &&
     typeof value.confirmedAt === 'string' &&
     !Number.isNaN(Date.parse(value.confirmedAt)) &&
-    nonempty(value.confirmedByUserId) &&
+    (!internal || nonempty(value.confirmedByUserId)) &&
     Array.isArray(value.files) &&
     value.files.length >= 1 &&
     value.files.length <= 10 &&
@@ -1968,10 +1972,11 @@ function executionConfirmationMatchesSubmission(
   confirmation: unknown,
   state: unknown,
   directStart = false,
+  internal = true,
 ): boolean {
   if (confirmation === null) return true;
   if (
-    !executionConfirmation(confirmation, directStart) ||
+    !executionConfirmation(confirmation, directStart, internal) ||
     !executionSubmissionState(state)
   )
     return false;
@@ -2035,6 +2040,7 @@ function executionSourceMatches(
       value.executionConfirmation,
       value.executionSubmission,
       directConfirmation,
+      internal,
     ) ||
     !executionFactsMatch(
       value.executionMailing,
@@ -4221,23 +4227,17 @@ function validIdempotencyKey(value: unknown): value is string {
     value.length <= 128
   );
 }
-type ReadableCase = CaseDetail | LawyerCaseDetail;
 async function requireDirectSource(
   id: string,
   audience: 'internal' | 'lawyer',
-  version: number,
-  stage: CaseStage,
   initialStages: readonly CaseStage[],
-  matches: (detail: ReadableCase) => boolean,
 ): Promise<void> {
   const detail =
     audience === 'lawyer' ? await getLawyerCase(id) : await getCase(id);
   if (
-    detail.version !== version ||
-    detail.stage !== stage ||
+    detail.id !== id ||
     detail.origin?.kind !== 'EXTERNAL_ENTRY' ||
-    !initialStages.includes(detail.origin.initialStage) ||
-    !matches(detail)
+    !initialStages.includes(detail.origin.initialStage)
   )
     throw new ApiError('当前案件来源或真实前序不匹配', 400, 'VALIDATION_ERROR');
 }
@@ -4366,22 +4366,7 @@ export async function saveSecondInstance(
       'VALIDATION_ERROR',
     );
   if (input.choiceId === null)
-    await requireDirectSource(
-      id,
-      audience,
-      input.expectedVersion,
-      'SECOND_INSTANCE',
-      ['SECOND_INSTANCE'],
-      (detail) =>
-        detail.secondInstance.currentTrialRoundId === input.trialRoundId &&
-        detail.secondInstance.rounds.some(
-          (round) =>
-            round.id === input.trialRoundId &&
-            round.sequence === 1 &&
-            round.sourceResultId === null,
-        ) &&
-        detail.judgmentNextStep.current === null,
-    );
+    await requireDirectSource(id, audience, ['SECOND_INSTANCE']);
   const body = { ...input, progress };
   const response = await requestJson(
     `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/second-instance-save`,
@@ -4448,22 +4433,7 @@ export async function registerSecondInstanceResult(
       'VALIDATION_ERROR',
     );
   if (input.choiceId === null)
-    await requireDirectSource(
-      id,
-      audience,
-      input.expectedVersion,
-      'SECOND_INSTANCE',
-      ['SECOND_INSTANCE'],
-      (detail) =>
-        detail.secondInstance.currentTrialRoundId === input.trialRoundId &&
-        detail.secondInstance.rounds.some(
-          (round) =>
-            round.id === input.trialRoundId &&
-            round.sequence === 1 &&
-            round.sourceResultId === null,
-        ) &&
-        detail.judgmentNextStep.current === null,
-    );
+    await requireDirectSource(id, audience, ['SECOND_INSTANCE']);
   const body = { ...input, progress };
   const response = await requestJson(
     `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/second-instance-result`,
@@ -5066,16 +5036,7 @@ export async function mailCaseExecution(
     throw new ApiError('执行邮寄登记信息无效', 400, 'VALIDATION_ERROR');
 
   if (input.expectedConfirmationId === null && audience !== 'client')
-    await requireDirectSource(
-      id,
-      audience,
-      input.expectedVersion,
-      'WAITING_EXECUTION_STAMP',
-      ['WAITING_EXECUTION_STAMP'],
-      (detail) =>
-        detail.executionConfirmation === null &&
-        detail.executionMailing === null,
-    );
+    await requireDirectSource(id, audience, ['WAITING_EXECUTION_STAMP']);
 
   const path =
     audience === 'client'
@@ -5140,15 +5101,7 @@ export async function submitCaseExecutionFiling(
     throw new ApiError('执行立案登记信息无效', 400, 'VALIDATION_ERROR');
 
   if (input.expectedMailingId === null)
-    await requireDirectSource(
-      id,
-      audience,
-      input.expectedVersion,
-      'WAITING_EXECUTION_FILING',
-      ['WAITING_EXECUTION_FILING'],
-      (detail) =>
-        detail.executionMailing === null && detail.executionFiling === null,
-    );
+    await requireDirectSource(id, audience, ['WAITING_EXECUTION_FILING']);
 
   const response = await requestJson(
     `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/execution-filing-submit`,
@@ -5216,15 +5169,7 @@ export async function finishCaseExecution(
   )
     throw new ApiError('执行结束登记信息无效', 400, 'VALIDATION_ERROR');
   if (input.expectedFilingId === null)
-    await requireDirectSource(
-      id,
-      audience,
-      input.expectedVersion,
-      'EXECUTING',
-      ['EXECUTING'],
-      (detail) =>
-        detail.executionFiling === null && detail.executionFinish === null,
-    );
+    await requireDirectSource(id, audience, ['EXECUTING']);
   const response = await requestJson(
     '/' +
       (audience === 'lawyer' ? 'lawyer/cases' : 'cases') +
@@ -5361,21 +5306,7 @@ async function submitClosure(
   )
     throw new ApiError('结案登记信息无效', 400, 'VALIDATION_ERROR');
   if (input.expectedFinishId === null)
-    await requireDirectSource(
-      id,
-      audience,
-      input.expectedVersion,
-      'WAITING_ARCHIVE',
-      ['WAITING_ARCHIVE'],
-      (detail) =>
-        detail.executionFinish === null &&
-        (command === 'RECORD'
-          ? detail.closure === null
-          : detail.closure?.current.id ===
-            ('expectedClosureVersionId' in input
-              ? input.expectedClosureVersionId
-              : null)),
-    );
+    await requireDirectSource(id, audience, ['WAITING_ARCHIVE']);
   const response = await requestJson(
     `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/${command === 'CORRECT' ? 'closure-correction' : 'closure'}`,
     {
@@ -5898,17 +5829,11 @@ export async function saveSecondInstanceAcceptance(
         round.sequence === 1 &&
         round.sourceResultId === null,
     );
-    const edit = detail.recordEdits?.secondInstanceAcceptances?.find(
-      (entry) =>
-        entry.choiceId === null && entry.trialRoundId === input.trialRoundId,
-    );
     if (
+      detail.id !== id ||
       detail.origin?.kind !== 'EXTERNAL_ENTRY' ||
       detail.origin.initialStage !== 'SECOND_INSTANCE' ||
-      !root ||
-      !edit ||
-      !edit.canEdit ||
-      edit.acceptanceRevision !== input.expectedAcceptanceRevision
+      !root
     )
       throw new ApiError(
         '当前案件来源或二审资料链不匹配',
@@ -6105,27 +6030,10 @@ export async function submitExecution(
     throw new ApiError('执行材料提交信息无效', 400, 'VALIDATION_ERROR');
   }
   if (input.judgmentNextStepId === null)
-    await requireDirectSource(
-      id,
-      audience,
-      input.expectedVersion,
-      input.expectedSubmissionId === null
-        ? 'WAITING_EXECUTION_DOCUMENTS'
-        : 'WAITING_EXECUTION_CONFIRMATION',
-      ['WAITING_EXECUTION_DOCUMENTS', 'SECOND_INSTANCE'],
-      (detail) =>
-        (detail.executionSubmission.current?.id ?? null) ===
-          input.expectedSubmissionId &&
-        detail.judgmentNextStep.current === null &&
-        detail.secondInstance.currentTrialRoundId === input.trialRoundId &&
-        (detail.origin?.kind === 'EXTERNAL_ENTRY' &&
-        detail.origin.initialStage === 'SECOND_INSTANCE'
-          ? detail.secondInstance.currentResult?.id ===
-              input.secondInstanceResultId &&
-            detail.secondInstance.currentResult.choiceId === null
-          : input.secondInstanceResultId === null &&
-            detail.secondInstance.currentResult === null),
-    );
+    await requireDirectSource(id, audience, [
+      'WAITING_EXECUTION_DOCUMENTS',
+      'SECOND_INSTANCE',
+    ]);
   const body: SubmitExecutionInput =
     input.changeReason === undefined
       ? input
@@ -6195,25 +6103,7 @@ export async function confirmCaseExecution(
     );
   }
   if (input.expectedSubmissionId === null)
-    await requireDirectSource(
-      id,
-      audience,
-      input.expectedVersion,
-      'WAITING_EXECUTION_CONFIRMATION',
-      ['WAITING_EXECUTION_CONFIRMATION'],
-      (detail) => {
-        const available = detail.executionSubmission.availableFiles.map(
-          (file) => file.contentVersionId,
-        );
-        return (
-          detail.executionSubmission.current === null &&
-          detail.executionConfirmation === null &&
-          versions !== undefined &&
-          versions.length === available.length &&
-          available.every((version) => versions.includes(version))
-        );
-      },
-    );
+    await requireDirectSource(id, audience, ['WAITING_EXECUTION_CONFIRMATION']);
   const response = await requestJson(
     `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/execution-confirm`,
     {

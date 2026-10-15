@@ -294,6 +294,8 @@ describe('CA-017 fixed archive API', () => {
       correctionReason: _reason,
       ...current
     } = base.archive.current;
+    const { confirmedByUserId: _confirmationActor, ...lawyerConfirmation } =
+      base.executionConfirmation;
     void [
       _owner,
       _department,
@@ -304,11 +306,13 @@ describe('CA-017 fixed archive API', () => {
       _closureReason,
       _actor,
       _reason,
+      _confirmationActor,
     ];
     const payload = {
       ...base,
       canMatch: false,
       canCorrectArchive: false,
+      executionConfirmation: lawyerConfirmation,
       closure: {
         ...base.closure,
         current: closureCurrent,
@@ -834,8 +838,29 @@ describe('CA-018 strict source-aware execution read boundary', () => {
       receipt,
     );
     expect(fetch).toHaveBeenCalledTimes(2);
+    const afterConfirmation = {
+      ...source,
+      stage: 'WAITING_EXECUTION_STAMP',
+      version: 2,
+      canConfirmExecution: false,
+      canMailExecution: true,
+      executionConfirmation: {
+        id: receipt.confirmationId,
+        submissionId: null,
+        confirmedAt: receipt.confirmedAt,
+        confirmedByUserId: id(104),
+        files: [file],
+      },
+    };
+    const replay = mockReadThenReceipt(afterConfirmation, receipt);
+    await expect(confirmCaseExecution('case-1', input)).resolves.toEqual(
+      receipt,
+    );
+    expect(replay.mock.calls.map((call) => call[1]?.method ?? 'GET')).toEqual([
+      'GET',
+      'POST',
+    ]);
     for (const candidate of [
-      { ...input, executionApplicationContentVersionIds: [id(999)] },
       { ...input, executionApplicationContentVersionIds: [] },
     ]) {
       const rejected = mockReadThenReceipt(source, receipt);
@@ -846,6 +871,32 @@ describe('CA-018 strict source-aware execution read boundary', () => {
         rejected.mock.calls.some((call) => call[1]?.method === 'POST'),
       ).toBe(false);
     }
+    const serverRejected = vi
+      .fn()
+      .mockImplementation(
+        async (_url: string, init?: RequestInit) =>
+          new Response(
+            JSON.stringify(
+              init?.method === 'POST'
+                ? {
+                    code: 'VALIDATION_ERROR',
+                    message: 'Wrong application package',
+                  }
+                : source,
+            ),
+            { status: init?.method === 'POST' ? 400 : 200 },
+          ),
+      );
+    vi.stubGlobal('fetch', serverRejected);
+    await expect(
+      confirmCaseExecution('case-1', {
+        ...input,
+        executionApplicationContentVersionIds: [id(999)],
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(
+      serverRejected.mock.calls.some((call) => call[1]?.method === 'POST'),
+    ).toBe(true);
     const normal = {
       ...source,
       origin: { kind: 'NOTARY' },
@@ -930,6 +981,11 @@ describe('CA-018 strict source-aware execution read boundary', () => {
     await expect(getCase('case-1')).resolves.toMatchObject({
       executionSubmission: { current: { judgmentNextStepId: null } },
     });
+    const originalReplay = mockReadThenReceipt(revisionSource, receipt);
+    await expect(casesApi.submitExecution('case-1', input)).resolves.toEqual(
+      receipt,
+    );
+    expect(originalReplay.mock.calls[1]?.[1]?.method).toBe('POST');
     const revision: casesApi.SubmitExecutionInput = {
       expectedVersion: 2,
       idempotencyKey: 'direct-execution-revision',
@@ -1054,6 +1110,77 @@ describe('CA-018 strict source-aware execution read boundary', () => {
       expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual(
         candidate.input,
       );
+      const progressed = {
+        ...candidate.source,
+        stage: candidate.receipt.stage,
+        version: candidate.receipt.version,
+        ...('finishId' in candidate.receipt &&
+        !('closureId' in candidate.receipt)
+          ? {
+              canFinishExecution: false,
+              canRecordClosure: true,
+              executionFinish: {
+                id: candidate.receipt.finishId,
+                filingId: null,
+                finishedAt: candidate.receipt.finishedAt,
+                reason: finishInput.reason,
+                basisNote: finishInput.basisNote,
+                recordedAt: candidate.receipt.recordedAt,
+                files: [],
+              },
+            }
+          : {}),
+        ...('closureId' in candidate.receipt
+          ? {
+              canRecordClosure: false,
+              canArchive: true,
+              closure: {
+                id: candidate.receipt.closureId,
+                finishId: null,
+                current: {
+                  id: candidate.receipt.closureVersionId,
+                  kind: 'REGISTER',
+                  priorVersionId: null,
+                  finishId: null,
+                  fromVersion: 1,
+                  toVersion: 2,
+                  closeAt: null,
+                  closeAmountState: 'PENDING',
+                  closeAmt: null,
+                  note: null,
+                  correctionReason: null,
+                  recordedAt: candidate.receipt.recordedAt,
+                  recordedByUserId: id(110),
+                  files: [],
+                },
+                history: [
+                  {
+                    id: candidate.receipt.closureVersionId,
+                    kind: 'REGISTER',
+                    priorVersionId: null,
+                    finishId: null,
+                    fromVersion: 1,
+                    toVersion: 2,
+                    closeAt: null,
+                    closeAmountState: 'PENDING',
+                    closeAmt: null,
+                    note: null,
+                    correctionReason: null,
+                    recordedAt: candidate.receipt.recordedAt,
+                    recordedByUserId: id(110),
+                    files: [],
+                  },
+                ],
+              },
+            }
+          : {}),
+      };
+      const replay = mockReadThenReceipt(progressed, candidate.receipt);
+      await expect(candidate.send()).resolves.toEqual(candidate.receipt);
+      expect(replay.mock.calls[1]?.[1]?.method).toBe('POST');
+      expect(JSON.parse(String(replay.mock.calls[1]?.[1]?.body))).toEqual(
+        candidate.input,
+      );
     }
   });
   it('decodes and saves second-instance acceptance only for the external root round', async () => {
@@ -1154,6 +1281,11 @@ describe('CA-018 strict source-aware execution read boundary', () => {
     await expect(getCase(caseId)).resolves.toMatchObject({
       secondInstance: { acceptances: [{ choiceId: null }] },
     });
+    const replay = mockReadThenReceipt(updated, receipt);
+    await expect(saveSecondInstanceAcceptance(caseId, input)).resolves.toEqual(
+      receipt,
+    );
+    expect(replay.mock.calls[1]?.[1]?.method).toBe('POST');
     mockJson({
       ...updated,
       origin: {
@@ -1742,6 +1874,13 @@ describe('cases API', () => {
     await expect(getCase('case-1')).resolves.toMatchObject({
       stage: 'WAITING_EXECUTION_STAMP',
       executionConfirmation: { files: [file] },
+    });
+    const { confirmedByUserId, ...minimalConfirmation } =
+      confirmed.executionConfirmation;
+    void confirmedByUserId;
+    mockJson({ ...confirmed, executionConfirmation: minimalConfirmation });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
     });
 
     const mailed = {
@@ -2356,6 +2495,12 @@ describe('cases API', () => {
     expect(fetch.mock.calls[1]?.[1]?.headers).toMatchObject({
       'Idempotency-Key': input.idempotencyKey,
     });
+    const replay = mockReadThenReceipt(
+      { ...directSecondDetail(roundId), version: 4 },
+      receipt,
+    );
+    await expect(saveSecondInstance('case-1', input)).resolves.toEqual(receipt);
+    expect(replay.mock.calls[1]?.[1]?.method).toBe('POST');
   });
 
   it('accepts unchanged existing SAVE only at +0 and new progress only at +1', async () => {
@@ -2440,6 +2585,18 @@ describe('cases API', () => {
       registerSecondInstanceResult('case-1', input),
     ).resolves.toEqual(receipt);
     expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual(input);
+    const replay = mockReadThenReceipt(
+      {
+        ...directSecondDetail(roundId),
+        stage: 'WAITING_EXECUTION_DOCUMENTS',
+        version: 4,
+      },
+      receipt,
+    );
+    await expect(
+      registerSecondInstanceResult('case-1', input),
+    ).resolves.toEqual(receipt);
+    expect(replay.mock.calls[1]?.[1]?.method).toBe('POST');
     await expect(
       registerSecondInstanceResult('case-1', {
         ...input,
@@ -4978,10 +5135,24 @@ describe('CA-015 execution finish contract', () => {
     void department;
     void sourceLead;
     void sourceNotaryMatter;
-    const lawyerPayload = { ...payload, canMatch: false };
+    const { confirmedByUserId, ...lawyerConfirmation } =
+      payload.executionConfirmation;
+    void confirmedByUserId;
+    const lawyerPayload = {
+      ...payload,
+      canMatch: false,
+      executionConfirmation: lawyerConfirmation,
+    };
     mockJson(lawyerPayload);
     await expect(casesApi.getLawyerCase('case-1')).resolves.toMatchObject({
       executionFinish: payload.executionFinish,
+    });
+    mockJson({
+      ...lawyerPayload,
+      executionConfirmation: payload.executionConfirmation,
+    });
+    await expect(casesApi.getLawyerCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
     });
     mockJson({ ...lawyerPayload, fees: [] });
     await expect(casesApi.getLawyerCase('case-1')).rejects.toMatchObject({
@@ -5233,9 +5404,13 @@ describe('CA-016 closure and list display contract', () => {
       base.closure.current;
     void recordedByUserId;
     void correctionReason;
+    const { confirmedByUserId, ...lawyerConfirmation } =
+      base.executionConfirmation;
+    void confirmedByUserId;
     const payload = {
       ...base,
       canMatch: false,
+      executionConfirmation: lawyerConfirmation,
       closure: { ...base.closure, current, history: [current] },
     };
     mockJson(payload);
