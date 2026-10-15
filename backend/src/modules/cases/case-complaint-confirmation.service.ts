@@ -131,9 +131,21 @@ export class CaseComplaintConfirmationService {
             }
             if (record.stage !== 'WAITING_COMPLAINT_CONFIRMATION')
               throw this.invalidState();
-            const source = await readCaseSourceAnchor(tx,caseId,actor.departmentId);
-            const directEntry = isEntryStartingAt(source,'WAITING_COMPLAINT_CONFIRMATION');
-            if (source.kind === 'EXTERNAL_ENTRY' && record.complaintAmountState === null && !directEntry) throw this.invalidState();
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
+            const directEntry = isEntryStartingAt(
+              source,
+              'WAITING_COMPLAINT_CONFIRMATION',
+            );
+            if (
+              source.kind === 'EXTERNAL_ENTRY' &&
+              record.complaintAmountState === null &&
+              !directEntry
+            )
+              throw this.invalidState();
             if (record.version !== normalized.expectedVersion)
               throw this.versionConflict();
             const complaint = await this.materials.assertAvailableVersions(
@@ -218,7 +230,8 @@ export class CaseComplaintConfirmationService {
             );
             await tx.caseComplaintConfirmation.create({
               data: {
-                externalEntryId: source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
+                externalEntryId:
+                  source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 departmentId: actor.departmentId,
                 caseId,
                 confirmedComplaintContentVersionId:

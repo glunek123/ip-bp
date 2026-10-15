@@ -152,15 +152,24 @@ export class CaseFilingService {
                 recordedAt: snapshot.recordedAt,
               };
             }
-            const source = await readCaseSourceAnchor(tx,caseId,actor.departmentId);
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
             if (
               record.stage !== 'WAITING_FILING' ||
-              (record.complaintMailing === null && !isEntryStartingAt(source,'WAITING_FILING'))
+              (record.complaintMailing === null &&
+                !isEntryStartingAt(source, 'WAITING_FILING'))
             )
               throw this.invalidState();
             if (record.version !== value.expectedVersion)
               throw this.versionConflict();
-            if (source.kind === 'EXTERNAL_ENTRY' && value.submittedAt < source.stageReachedOn) throw this.validation();
+            if (
+              source.kind === 'EXTERNAL_ENTRY' &&
+              value.submittedAt < source.stageReachedOn
+            )
+              throw this.validation();
             const court = await tx.filingCourt.findFirst({
               where: { id: value.courtId, departmentId: actor.departmentId },
               select: { id: true, name: true },
@@ -230,7 +239,8 @@ export class CaseFilingService {
             });
             const submission = await tx.caseFilingSubmission.create({
               data: {
-                externalEntryId: source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
+                externalEntryId:
+                  source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 departmentId: actor.departmentId,
                 caseId,
                 courtId: court.id,

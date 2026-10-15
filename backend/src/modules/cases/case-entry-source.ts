@@ -24,16 +24,40 @@ export type CaseSourceAnchor =
       known: CaseExternalKnown;
     }>;
 
-const invalid = () => new ConflictException({ code: 'INVALID_CASE_SOURCE', message: 'Case source is inconsistent' });
+const invalid = () =>
+  new ConflictException({
+    code: 'INVALID_CASE_SOURCE',
+    message: 'Case source is inconsistent',
+  });
 
 function parseKnown(value: Prisma.JsonValue): CaseExternalKnown {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) throw invalid();
-  const keys = ['courtId', 'courtCaseNo', 'acceptedOn', 'secondInstanceAcceptedOn', 'platform', 'shopName', 'shopExternalId', 'caseType', 'infringementTypes'] as const;
-  if (Object.keys(value).length !== keys.length || keys.some((key) => !(key in value))) throw invalid();
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    throw invalid();
+  const keys = [
+    'courtId',
+    'courtCaseNo',
+    'acceptedOn',
+    'secondInstanceAcceptedOn',
+    'platform',
+    'shopName',
+    'shopExternalId',
+    'caseType',
+    'infringementTypes',
+  ] as const;
+  if (
+    Object.keys(value).length !== keys.length ||
+    keys.some((key) => !(key in value))
+  )
+    throw invalid();
   for (const key of keys) {
     const field = value[key];
     if (key === 'infringementTypes') {
-      if (field !== null && (!Array.isArray(field) || field.some((part) => typeof part !== 'string'))) throw invalid();
+      if (
+        field !== null &&
+        (!Array.isArray(field) ||
+          field.some((part) => typeof part !== 'string'))
+      )
+        throw invalid();
     } else if (field !== null && typeof field !== 'string') throw invalid();
   }
   return value as CaseExternalKnown;
@@ -50,14 +74,30 @@ export async function readCaseSourceAnchor(
       sourceLeadId: true,
       sourceNotaryMatterId: true,
       certificateId: true,
-      externalEntry: { select: { id: true, caseId: true, departmentId: true, initialStage: true, stageReachedOn: true, known: true } },
+      externalEntry: {
+        select: {
+          id: true,
+          caseId: true,
+          departmentId: true,
+          initialStage: true,
+          stageReachedOn: true,
+          known: true,
+        },
+      },
     },
   });
   if (row === null) throw invalid();
   const ids = [row.sourceLeadId, row.sourceNotaryMatterId, row.certificateId];
-  if (ids.every((id) => id !== null) && row.externalEntry === null) return { kind: 'NORMAL' };
+  if (ids.every((id) => id !== null) && row.externalEntry === null)
+    return { kind: 'NORMAL' };
   const entry = row.externalEntry;
-  if (!ids.every((id) => id === null) || entry === null || entry.caseId !== caseId || entry.departmentId !== departmentId) throw invalid();
+  if (
+    !ids.every((id) => id === null) ||
+    entry === null ||
+    entry.caseId !== caseId ||
+    entry.departmentId !== departmentId
+  )
+    throw invalid();
   return {
     kind: 'EXTERNAL_ENTRY',
     entryId: entry.id,
@@ -67,10 +107,16 @@ export async function readCaseSourceAnchor(
   };
 }
 
-export function isEntryStartingAt(anchor: CaseSourceAnchor, stage: CaseStage): anchor is Extract<CaseSourceAnchor, { kind: 'EXTERNAL_ENTRY' }> {
+export function isEntryStartingAt(
+  anchor: CaseSourceAnchor,
+  stage: CaseStage,
+): anchor is Extract<CaseSourceAnchor, { kind: 'EXTERNAL_ENTRY' }> {
   return anchor.kind === 'EXTERNAL_ENTRY' && anchor.initialStage === stage;
 }
 
-export function entryDateLowerBound(anchor: CaseSourceAnchor, field: 'acceptedOn' | 'secondInstanceAcceptedOn'): string | null {
+export function entryDateLowerBound(
+  anchor: CaseSourceAnchor,
+  field: 'acceptedOn' | 'secondInstanceAcceptedOn',
+): string | null {
   return anchor.kind === 'EXTERNAL_ENTRY' ? anchor.known[field] : null;
 }

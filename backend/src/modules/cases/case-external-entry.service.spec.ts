@@ -71,45 +71,39 @@ describe('CaseExternalEntryService input boundary', () => {
     const actor = { userId: id, departmentId: id, authorizationRevision: 1 };
     const tx = {
       userAccount: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            id,
-            displayName: 'Internal',
-            active: true,
-            accountType: 'INTERNAL',
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          id,
+          displayName: 'Internal',
+          active: true,
+          accountType: 'INTERNAL',
+        }),
       },
       departmentMembership: {
         findUnique: jest.fn().mockResolvedValue({ active: true, teamId: null }),
       },
       caseExternalEntryReceipt: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            caseId: id,
-            requestFingerprint: fingerprint,
-            resultSnapshot: {
-              id,
-              businessNo: 'CA-1',
-              stage: 'PENDING_MATCH',
-              version: 1,
-              entryId: id,
-              recordedAt: '2026-01-01T00:00:00.000Z',
-            },
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          caseId: id,
+          requestFingerprint: fingerprint,
+          resultSnapshot: {
+            id,
+            businessNo: 'CA-1',
+            stage: 'PENDING_MATCH',
+            version: 1,
+            entryId: id,
+            recordedAt: '2026-01-01T00:00:00.000Z',
+          },
+        }),
       },
       case: {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue({
-            id,
-            customerId: id,
-            rightsHolderId: id,
-            responsibleUserId: id,
-            responsibleMembership: { teamId: null },
-            externalEntry: { id, initialStage: 'PENDING_MATCH' },
-          }),
+        findFirst: jest.fn().mockResolvedValue({
+          id,
+          customerId: id,
+          rightsHolderId: id,
+          responsibleUserId: id,
+          responsibleMembership: { teamId: null },
+          externalEntry: { id, initialStage: 'PENDING_MATCH' },
+        }),
       },
       caseNumberCounter: { upsert: jest.fn() },
     };

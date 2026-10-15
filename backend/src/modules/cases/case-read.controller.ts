@@ -53,7 +53,10 @@ import {
 } from './case-read.dto';
 import { CaseReadService } from './case-read.service';
 import { CaseExternalEntryService } from './case-external-entry.service';
-import { CreateCaseExternalEntryDto, CreateCaseExternalEntryResultDto } from './case-external-entry.dto';
+import {
+  CreateCaseExternalEntryDto,
+  CreateCaseExternalEntryResultDto,
+} from './case-external-entry.dto';
 import { CaseMatchService } from './case-match.service';
 import { MatchCaseDto, MatchCaseResponseDto } from './case-match.dto';
 import { CaseComplaintService } from './case-complaint.service';
@@ -168,7 +171,10 @@ export class CaseReadController {
 
   @Post('external-entries')
   @ApiCreatedResponse({ type: CreateCaseExternalEntryResultDto })
-  createExternalEntry(@CurrentActor() actor: ActorContext, @Body() body: CreateCaseExternalEntryDto) {
+  createExternalEntry(
+    @CurrentActor() actor: ActorContext,
+    @Body() body: CreateCaseExternalEntryDto,
+  ) {
     return this.externalEntries.create(actor, body);
   }
 

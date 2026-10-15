@@ -158,12 +158,22 @@ export class CaseComplaintMailingService {
                 recordedAt: snapshot.recordedAt,
               };
             }
-            const source = await readCaseSourceAnchor(tx,caseId,actor.departmentId);
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
             if (
               record.stage !== 'WAITING_COMPLAINT_STAMP' ||
-              (record.complaintConfirmation === null && !isEntryStartingAt(source,'WAITING_COMPLAINT_STAMP'))
-            ) throw this.invalidState();
-            if (source.kind === 'EXTERNAL_ENTRY' && normalized.mailedAt < source.stageReachedOn) throw this.validation();
+              (record.complaintConfirmation === null &&
+                !isEntryStartingAt(source, 'WAITING_COMPLAINT_STAMP'))
+            )
+              throw this.invalidState();
+            if (
+              source.kind === 'EXTERNAL_ENTRY' &&
+              normalized.mailedAt < source.stageReachedOn
+            )
+              throw this.validation();
             if (record.version !== normalized.expectedVersion)
               throw this.versionConflict();
             const facts = await this.materials.assertAvailableVersions(
@@ -223,7 +233,8 @@ export class CaseComplaintMailingService {
             });
             const mailing = await tx.caseComplaintMailing.create({
               data: {
-                externalEntryId: source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
+                externalEntryId:
+                  source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 departmentId: actor.departmentId,
                 caseId,
                 mailedAt: new Date(`${normalized.mailedAt}T00:00:00.000Z`),

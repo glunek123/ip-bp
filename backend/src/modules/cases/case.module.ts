@@ -44,7 +44,13 @@ import {
 import { LawyerCaseController } from './lawyer-case.controller';
 
 @Module({
-  imports: [AccessControlModule, AuthModule, DatabaseModule, CustomerModule, MaterialModule],
+  imports: [
+    AccessControlModule,
+    AuthModule,
+    DatabaseModule,
+    CustomerModule,
+    MaterialModule,
+  ],
   controllers: [
     CaseReadController,
     ClientCaseController,

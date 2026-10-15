@@ -279,8 +279,16 @@ const catalog: PermissionCatalogItem[] = [
   { action: 'CASE_CLOSURE_CORRECT', label: '更正结案资料', scopes: allScopes },
   { action: 'CASE_ARCHIVE', label: '最终归档', scopes: allScopes },
   { action: 'CASE_ARCHIVE_CORRECT', label: '更正归档资料', scopes: allScopes },
-  { action: 'CASE_EXTERNAL_ENTRY_CREATE', label: '外部案件转入与历史录入', scopes: allScopes },
-  { action: 'CASE_EXTERNAL_ENTRY_ARCHIVE', label: '直接录入已归档历史案件', scopes: ['DEPARTMENT'] },
+  {
+    action: 'CASE_EXTERNAL_ENTRY_CREATE',
+    label: '外部案件转入与历史录入',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_EXTERNAL_ENTRY_ARCHIVE',
+    label: '直接录入已归档历史案件',
+    scopes: ['DEPARTMENT'],
+  },
   { action: 'CASE_EXECUTION_FINISH', label: '登记执行结束', scopes: allScopes },
   {
     action: 'NOTARY_OFFICE_MANAGE',

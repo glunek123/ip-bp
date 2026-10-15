@@ -588,11 +588,24 @@ class CaseListItemDto {
   displaySummary!: CaseDisplaySummaryDto;
   @ApiProperty({ type: CaseOwnerDto }) owner!: CaseOwnerDto;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
-  @ApiProperty({ type: CaseSourceDto, nullable: true }) sourceLead!: CaseSourceDto | null;
-  @ApiProperty({ type: CaseSourceDto, nullable: true }) sourceNotaryMatter!: CaseSourceDto | null;
-  @ApiProperty() origin!: { kind: 'NOTARY' } | {
-    kind: 'EXTERNAL_ENTRY'; entryId: string; entryKind: 'EXTERNAL_TRANSFER' | 'HISTORICAL_BACKFILL'; initialStage: string; stageReachedOn: string; source: string; reason: string; recordedAt: string; recordedByUserId: string; known: unknown;
-  };
+  @ApiProperty({ type: CaseSourceDto, nullable: true })
+  sourceLead!: CaseSourceDto | null;
+  @ApiProperty({ type: CaseSourceDto, nullable: true })
+  sourceNotaryMatter!: CaseSourceDto | null;
+  @ApiProperty() origin!:
+    | { kind: 'NOTARY' }
+    | {
+        kind: 'EXTERNAL_ENTRY';
+        entryId: string;
+        entryKind: 'EXTERNAL_TRANSFER' | 'HISTORICAL_BACKFILL';
+        initialStage: string;
+        stageReachedOn: string;
+        source: string;
+        reason: string;
+        recordedAt: string;
+        recordedByUserId: string;
+        known: unknown;
+      };
 }
 export class CaseListResponseDto {
   @ApiProperty({ type: [CaseListItemDto] }) items!: CaseListItemDto[];
