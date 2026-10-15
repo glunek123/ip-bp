@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-15T02:24:58.678Z",
+  "recordedAt": "2026-10-15T02:27:54.672Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -962,7 +962,7 @@
     "tests/e2e/case-execution-submission-database.spec.ts": "d5b9e54d42a21c2e0d0f50a67a43722b7d15d8352d338cb4f90e5e6b1942699f",
     "tests/e2e/case-execution-submission-migration.spec.ts": "c9fb1cdc87804c33c2b4438c3854ade3f041cbb4a5987c5c566c2eb4b4c7ed84",
     "tests/e2e/case-execution-submission.spec.ts": "17423224a057d81e226f90683be268f5664dfed8c148f0e072b5bf83297c9f61",
-    "tests/e2e/case-external-entry-migration.spec.ts": "ee5a975a28169195fb3ccc5d919b29330b264f24ca004290bfa8e6813942959c",
+    "tests/e2e/case-external-entry-migration.spec.ts": "97e267567e1470b26bb58d5407c831f54e4649aad09b205e2b8f3c74f7dcd68d",
     "tests/e2e/case-external-entry.spec.ts": "15bd3032a9706eae4575b02e1b433e5192c63ed8368b1306ad82506ee980813b",
     "tests/e2e/case-filing-database.spec.ts": "bf0ee84dc65ecd1e249fd4ca08f3eefbe212c6b3d6fedbdb226369b69f3c57ce",
     "tests/e2e/case-filing-migration.spec.ts": "89649264eaf7e5537bceadfadfc0ff97a0d64d7a2b02a33866c5fad90cdf40a5",
@@ -1034,7 +1034,7 @@
     "tests/support/case-execution-submission-database.mjs": "7a8fad25b1df576f1630bed3a4d4ee166287d213af165535b1b625411de2ac04",
     "tests/support/case-execution-submission-migration.mjs": "a411727342843aafc879668296701c4e6744aba97626d0123ee340da1b7b11a5",
     "tests/support/case-external-entry-database.mjs": "c5f56abf03177adc3aa364e9d2c601c7e0d04c16c77af62ca1dbfad975af1908",
-    "tests/support/case-external-entry-migration.mjs": "cef6a22ac105e7c4c0f8a7564ac72902c35d0b2d8a4a63083e7a5ea786d32f5b",
+    "tests/support/case-external-entry-migration.mjs": "7277bf0e2dbe9a2e4095b9633dca4d75b151acbf6786f5127c842700ba6185d8",
     "tests/support/case-filing-database.mjs": "6191f5602b98adefb7800759751eced229354a02928908e25c49ef0f703391f0",
     "tests/support/case-filing-migration.mjs": "8be0675a17989797f303e495ac9518888d9af9170e0fac5e59d47e05a8878d74",
     "tests/support/case-hearing-database.mjs": "bbfb9ae0ed944ddae22ba6804a3434f2db4a69f19dff08e0988b8b2ad608fcda",

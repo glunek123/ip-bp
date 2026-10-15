@@ -206,5 +206,5 @@ export async function assertSqlRejected(client, operation) {
   } finally {
     await client.query('ROLLBACK');
   }
-  if (!rejected) throw new Error('Invalid direct SQL unexpectedly committed');
+  if (!rejected) throw new Error('Invalid direct SQL unexpectedly accepted');
 }

@@ -194,6 +194,11 @@ test('CA018 upgrades an actual 150-migration case without changing old facts and
       ).toBe('1');
       expect(await externalEntryActionGrantRows(client, retry)).toEqual([]);
 
+      await client.query(`SET search_path TO "${upgrade}"`);
+      expect(
+        (await client.query('SELECT id FROM cases WHERE id=$1', [prior.caseId]))
+          .rows,
+      ).toHaveLength(1);
       await assertSqlRejected(client, () =>
         client.query(
           `UPDATE cases SET source_lead_id=NULL,source_notary_matter_id=NULL,
