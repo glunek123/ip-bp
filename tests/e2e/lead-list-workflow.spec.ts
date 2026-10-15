@@ -1,22 +1,134 @@
 import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
 import {
   expect,
   test,
   type APIRequestContext,
   type Page,
 } from '@playwright/test';
-import {
-  coreLeadFixtures,
-  countLeadPushReceipts,
-  countLeadPushAudits,
-  countNotaryHandoffReceipts,
-  countNotaryHandoffAudits,
-  disconnectCoreLeadTestDatabase,
-} from '../support/core-lead-database.mjs';
+// These existing synthetic identities are verified against coreLeadFixtures. Do not
+// import its legacy module: even its disconnect helper performs global fault cleanup.
+const coreLeadFixtures = Object.freeze({
+  departmentA: '10000000-0000-4000-8000-000000000001',
+  admittedCustomer: '50000000-0000-4000-8000-000000000002',
+  holder: '60000000-0000-4000-8000-000000000001',
+  tokenA: 'e2e-department-a',
+  tokenB: 'e2e-department-b',
+  operatorUsername: 'core-lead-operator',
+  operatorPassword: 'correct horse battery staple',
+});
+const approvedContainerId =
+  'dbb1cbd29c6d65b5aa4fd85317c96167fbd94310c34946edc033fc4f2f9d3695';
+type LeadReadClient = {
+  connect(): Promise<void>;
+  query(
+    sql: string,
+    parameters?: unknown[],
+  ): Promise<{ rows: Array<{ count: number; total?: number }> }>;
+  end(): Promise<void>;
+};
+const root = process.cwd();
+const requireProject = createRequire(resolve(root, 'package.json'));
+const requireBackend = createRequire(resolve(root, 'backend/package.json'));
+const testEnvironment = requireProject('./scripts/test-environment.mjs') as {
+  captureTestEnvironment(
+    root: string,
+    options: { pnpmVersion: string },
+  ): {
+    childEnvironment: { DATABASE_URL: string };
+  };
+  validateBrowserTestDatabaseUrl(value: string, root: string): unknown;
+};
 
-// The runner supplies the existing synthetic coreLeadFixtures in its isolated instance.
-// This file only appends UUID-named facts through public APIs. It does not seed, reset,
-// clear, change grants or remove fixtures, and must never target the persistent preview.
+function assertLeadWorkflowTarget(): void {
+  if (
+    process.env.NODE_ENV !== 'test' ||
+    process.env.DEV_COR_TEST_DATABASE_PROJECT !== 'dev-cor-ui003' ||
+    process.env.DEV_COR_TEST_DATABASE_CONTAINER_ID !== approvedContainerId ||
+    !process.env.DEV_COR_TEST_DATABASE_URL
+  )
+    throw new Error('The approved UI003 managed test instance is required');
+  let target: URL;
+  try {
+    target = new URL(process.env.DEV_COR_TEST_DATABASE_URL);
+  } catch {
+    throw new Error('The UI003 test database target is invalid');
+  }
+  if (
+    !['postgresql:', 'postgres:'].includes(target.protocol) ||
+    target.hostname !== '127.0.0.1' ||
+    target.port !== '15437' ||
+    target.username !== 'dev_cor_test' ||
+    target.pathname !== '/dev_cor_test' ||
+    target.search ||
+    target.hash
+  )
+    throw new Error(
+      'Lead workflow tests require the exact UI003 database target',
+    );
+}
+
+async function withLeadReadDatabase<T>(
+  read: (client: LeadReadClient) => Promise<T>,
+): Promise<T> {
+  // Reject any other target before container capture, connection or browser/API writes.
+  assertLeadWorkflowTarget();
+  const environment = testEnvironment.captureTestEnvironment(root, {
+    pnpmVersion: '11.27.0',
+  });
+  const connectionString = environment.childEnvironment.DATABASE_URL;
+  testEnvironment.validateBrowserTestDatabaseUrl(connectionString, root);
+  const PgClient = (
+    requireBackend('pg') as {
+      Client: new (options: { connectionString: string }) => LeadReadClient;
+    }
+  ).Client;
+  const client = new PgClient({ connectionString });
+  try {
+    await client.connect();
+    const migrations = await client.query(
+      `SELECT count(*)::int AS total,
+       count(*) FILTER (WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL)::int AS count
+       FROM public._prisma_migrations
+       WHERE current_database()='dev_cor_test' AND current_schema()='public'`,
+    );
+    if (migrations.rows[0]?.total !== 155 || migrations.rows[0]?.count !== 155)
+      throw new Error(
+        'The approved public 155-migration UI003 baseline is required',
+      );
+    return await read(client);
+  } finally {
+    await client.end();
+  }
+}
+
+async function countLeadWorkflowFacts(
+  id: string,
+  action: 'push' | 'notary_handoff',
+) {
+  return withLeadReadDatabase(async (client) => {
+    const receipts = await client.query(
+      'SELECT count(*)::int AS count FROM public.lead_command_receipts WHERE result_lead_id=$1::uuid AND department_id=$2::uuid AND action=$3',
+      [id, coreLeadFixtures.departmentA, action],
+    );
+    const audits = await client.query(
+      `SELECT count(*)::int AS count FROM public.audit_events
+       WHERE resource_type='lead' AND resource_id=$1::uuid AND department_id=$2::uuid AND action=ANY($3::text[])`,
+      [
+        id,
+        coreLeadFixtures.departmentA,
+        action === 'push'
+          ? ['lead.pushed']
+          : ['lead.transferred_to_notary', 'lead.evidence_batch_created'],
+      ],
+    );
+    return { receipts: receipts.rows[0]?.count, audits: audits.rows[0]?.count };
+  });
+}
+
+// The runner supplies the existing actors; preparation only appends UUID-named
+// synthetic facts through public APIs. SQL here is SELECT-only and never cleans up.
 const headers = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
 const byTest = (page: Page, name: string) =>
   page.locator(`[data-test="${name}"]`);
@@ -180,7 +292,13 @@ async function pageTwo(request: APIRequestContext, status: string) {
 function row(page: Page, businessNo: string) {
   return byTest(page, 'lead-row').filter({ hasText: businessNo });
 }
-test.afterAll(disconnectCoreLeadTestDatabase);
+test.beforeEach(async ({ baseURL }) => {
+  if (baseURL !== 'http://127.0.0.1:5174')
+    throw new Error(
+      'Lead workflow tests require the isolated UI003 browser origin',
+    );
+  await withLeadReadDatabase(async () => undefined);
+});
 
 test('page-two edit does not advance; cancel and history are safe; a lost push response retries the exact original request after refresh', async ({
   page,
@@ -287,8 +405,10 @@ test('page-two edit does not advance; cancel and history are safe; a lost push r
     status: 'WAITING_REVIEW',
     version: pushTarget.version + 1,
   });
-  expect(await countLeadPushReceipts(pushTarget.id)).toBe(1);
-  expect(await countLeadPushAudits(pushTarget.id)).toBe(1);
+  expect(await countLeadWorkflowFacts(pushTarget.id, 'push')).toEqual({
+    receipts: 1,
+    audits: 1,
+  });
   const foreign = await request.get(`/api/v1/leads/${pushTarget.id}`, {
     headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
   });
@@ -386,8 +506,10 @@ test('page-two transfer and no-evidence branches submit real forms, recover exac
       expectedVersion: current.version,
     },
   });
-  expect(await countNotaryHandoffReceipts(transfer.id)).toBe(1);
-  expect(await countNotaryHandoffAudits(transfer.id)).toBe(1);
+  expect(await countLeadWorkflowFacts(transfer.id, 'notary_handoff')).toEqual({
+    receipts: 1,
+    audits: 1,
+  });
   await expect(row(page, transfer.businessNo)).toHaveCount(0);
   await expect(page).toHaveURL(/page=2&status=WAITING_EVIDENCE_DECISION/u);
   await row(page, archive.businessNo)
