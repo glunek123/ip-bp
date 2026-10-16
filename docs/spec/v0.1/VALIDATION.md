@@ -1,16 +1,20 @@
 # SPEC-001 文档验证
 
-### 原案保存已成功，页面只读补测待收口
+### 原案保存及独立只读页面闭环通过
 
 原Runner在clean e9ee2e03/tree8148d8ea、R2/public159完成原dadd原279bytes body/key两次201、完整同回执，仅一条更正/回执使revision0→1，Case保持ARCHIVED/v6；原500已由本次实际成功关闭。fresh GET、刷新、有效值预填及规范化历史通过。脚本在编辑抽屉仍打开时点击退出，被遮罩挡住而超时；不能据此定性产品故障，也不能称重登、四文件精确下载或邮寄按钮下载已通过。149旧表行、70案头、H42、31文件、159账本及两个失败schema保持；正常只新增本次唯一纠错链及登录session。CASE/case采集误断言与原失败结果保留，由精确目标补证说明。
 
-证据`test-runtime-stability/.local/ui003-evidence/dadd159-e9ee2e0-20261016/acceptance-summary.json` SHA256 `e697e5293690d373a697d49e5ecd6ffe7db610bf99d5cc33cddf2e645e0d1b49`。后续只从已成功revision1补正常关闭抽屉、退出重登与原四版本/邮寄按钮下载；禁止再发保存、创建案件或误把旧revision0当新写入，不重复全门禁。
+保存证据`test-runtime-stability/.local/ui003-evidence/dadd159-e9ee2e0-20261016/acceptance-summary.json` SHA256 `e697e5293690d373a697d49e5ecd6ffe7db610bf99d5cc33cddf2e645e0d1b49`，原超时及采集错误保持原记录。
+
+同一e9ee2e03/tree8148d8ea随后独立只读续验实际1/1、exit0，无skip/flaky/retry：正常取消后抽屉及遮罩消失，正常退出、密码重登、有效值预填与规范化历史通过；四个精确CV均HTTP200且size/SHA256相符，真实邮寄下载按钮所得95bytes/SHA256也匹配。没有业务保存、重放、上传或新业务事实；原案仍ARCHIVED/v6、revision1，更正/回执/typedDocument/audit/ref各一份。149表旧PK行、70案头、159账本、H42及31文件和旧22来源字节保持，只新增2条正常登录session并退出其中1条；锁释放、3101/5174空闲。只读证据`test-runtime-stability/.local/ui003-evidence/dadd159-readonly-e9ee2e0-20261016/acceptance-summary.json` SHA256 `32cf2aa01132df972bfb3ea1817ea91fcf9343ad8d55a7514875d18862a918fb`已独立核hash。原500和该案窄UI闭环完成，不据此宣称其余16项、未知结果恢复、EF160或批量161通过。
 
 ### UXQ-03原子批量推送源码候选（2026-10-16）
 
 源码提交f99dc920895a8219b0e19c8440fc619c5ec6adca共19文件，含单Serializable批次Command、独立不可变回执及唯一新161迁移、严格有序API与列表批量面板、未知原请求恢复。必要Spec同步后固定`ui003-lead-list-workflow/codex/uxq03-lead-batch-push` clean ad16e8585c1a98a4d4e75a5bb094f525e89995ea/tree d0a01a781e2769a084e290d4fe2433b4aaabd14f。原Sol累计Spec/Quality ACCEPTED C/I/M0；fresh GET、迟到响应、稳定actor/dept恢复、成功/明确拒绝后清除本地pending等finding已关闭，原单条身份与接口不变。主控核全部19最终hash；两次过期Page哈希未用于提交，最终Page为71057ea4…00f6。新161 SQL工作区原字节与提交blob一致，SHA256 `1e267e104e4a7a1b20f1014dfd10506ce1aa831e32a11175e3a4dde2430c9e87`。
 
 实际直接验证：后端四套192/192；前端修复轮四文件50/50；最后仅Page两文件变更后该Page27/27复验，其余输入未变，不相加冒称同一轮。两端类型、变更Lint/格式、架构均通过；最终候选strict上下文、Spec57/67/11/59及本树`build:prepared`双构建实际exit0，Vite只保留既有大chunk提示。首次聚焦测试被临时目录EPERM拦截后，按正式权限重试同一命令通过，未改ACL/工具。此候选没有运行正常完整verify、NT006、真实PG/HTTP/浏览器或迁移；新161及其EF160前置尚未部署。后续需唯一Runner在明确准入后验证整批原子/失败回滚、并发、撤权原回执及真实页面，不能据源码和组件测试称已交付业务或上线。
+
+同一clean ad16e858/tree d0a01a78随后实际完成新组合非DB切片：backend/frontend/root类型、全量Lint和格式均exit0；工具Vitest13文件139项、前端全量Vitest129文件2392项、后台精确9文件Jest502项均通过。后台只选已逐项核实使用fake DB/transaction或useValue provider的followup service/DTO/controller/read、supplement-upload DTO/controller、material.service、case-read service/controller；未核实的其余后台和真实PG的NT006排除。三组测试首次在收集前遇系统Temp EPERM，原命令正式权限下分别exit0，原失败与approved成功日志/退出码分开保留。证据在`ui003-lead-list-workflow/.local/uxq03-evidence/non-db-ad16-20261016/`；主控回读139/2392/502日志及approved退出码。原192及未变构建/Spec/strict上下文可信结果复用、不重复相加；本切片不等于完整后台或正常完整verify，不改变实库/迁移/HTTP/浏览器未运行状态。
 
 ### 原案严格159候选已备，父级已有效接力
 
