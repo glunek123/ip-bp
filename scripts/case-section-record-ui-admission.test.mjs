@@ -2,6 +2,13 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { test, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import ts from 'typescript';
+import {
+  createManagedTestRuntime,
+  planManagedTestRuntime,
+} from './managed-test-runtime.mjs';
 import * as sourceAdmission from '../tests/support/case-section-record-ui-database.mjs';
 import {
   assertSectionRecordUiAdmission,
@@ -161,5 +168,70 @@ test('complete source evidence cannot unlock an unknown CLI or API selection', (
     assert.deepEqual(ready.mock.calls, [[root]]);
   } finally {
     ready.mockRestore();
+  }
+});
+
+test('the root config directly consumes the same factory fragment it validates after admission', () => {
+  const events = [];
+  let fragment;
+  const modules = {
+    '@playwright/test': {
+      defineConfig(config) {
+        events.push('config');
+        return config;
+      },
+      devices: { 'Desktop Chrome': {} },
+    },
+    './scripts/case-section-record-ui-admission.mjs': {
+      assertSectionRecordUiConfigAdmission(projectRoot) {
+        assert.equal(projectRoot, root);
+        events.push('admit');
+      },
+    },
+    './scripts/managed-test-runtime.mjs': {
+      createManagedTestRuntime(projectRoot, mode) {
+        events.push('factory');
+        fragment = createManagedTestRuntime(projectRoot, mode);
+        return fragment;
+      },
+      planManagedTestRuntime(layout) {
+        events.push('plan');
+        assert.equal(layout, fragment);
+        return planManagedTestRuntime(layout);
+      },
+    },
+  };
+  const exports = {};
+  vm.runInNewContext(
+    ts.transpileModule(
+      readFileSync(resolve(root, 'playwright.config.ts'), 'utf8'),
+      {
+        compilerOptions: {
+          module: ts.ModuleKind.CommonJS,
+          target: ts.ScriptTarget.ES2023,
+        },
+      },
+    ).outputText,
+    {
+      exports,
+      __dirname: root,
+      process: { argv: [process.execPath, 'playwright', 'test'] },
+      require(name) {
+        assert.ok(Object.hasOwn(modules, name));
+        return modules[name];
+      },
+    },
+  );
+  const config = exports.default;
+  assert.deepEqual(events, ['admit', 'factory', 'plan', 'config']);
+  assert.equal(config.webServer, fragment.webServer);
+  assert.equal(config.use.baseURL, fragment.baseURL);
+  assert.equal(fragment.mode, 'ui');
+  assert.equal(fragment.origin, 'http://127.0.0.1:5174');
+  assert.equal(config.webServer.length, 2);
+  for (const server of config.webServer) {
+    assert.equal(server.cwd, root);
+    assert.equal(server.reuseExistingServer, false);
+    assert.equal(server.env, undefined);
   }
 });
