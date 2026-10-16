@@ -28,6 +28,608 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  describe('execution supplement first consumption', () => {
+    const filingId = '40000000-0000-4000-8000-000000000001';
+    const supplementId = '40000000-0000-4000-8000-000000000002';
+    const contentVersionId = '40000000-0000-4000-8000-000000000003';
+    const auditEventId = '40000000-0000-4000-8000-000000000004';
+    const target = { filingId, supplementId, expectedRevision: 0 };
+    function setup() {
+      const f = createFixture();
+      f.transaction.case.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        stage: 'EXECUTING',
+        responsibleUserId: actor.userId,
+        responsibleMembership: { teamId: null },
+      });
+      f.transaction.userAccount.findUnique.mockResolvedValue({
+        active: true,
+        accountType: 'INTERNAL',
+      });
+      f.transaction.uploadDraft.findFirst.mockResolvedValue(null);
+      const draft = {
+        id: 'draft-supplement',
+        status: 'FINALIZED',
+        departmentId: actor.departmentId,
+        ownerType: 'CASE',
+        ownerId: customerId,
+        actorUserId: actor.userId,
+        internalActorUserId: actor.userId,
+        lawyerAccountBindingId: null,
+        customerAccountBindingId: null,
+        notaryOfficeAccountBindingId: null,
+        category: 'EXECUTION_SUPPLEMENT',
+        purpose: 'EXECUTION_SUPPLEMENT',
+        executionSupplementFilingId: filingId,
+        executionSupplementTargetId: supplementId,
+        executionSupplementRevision: 0,
+      };
+      const material = {
+        id: 'material-supplement',
+        departmentId: actor.departmentId,
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'EXECUTION_SUPPLEMENT',
+        purpose: 'EXECUTION_SUPPLEMENT',
+        currentVersionId: contentVersionId,
+        status: 'ACTIVE',
+        contentVersions: [
+          {
+            id: contentVersionId,
+            mimeType: 'application/pdf',
+            sizeBytes: 12n,
+            status: 'AVAILABLE',
+            uploadedBy: actor.userId,
+            executionSupplementUploadDraft: draft,
+          },
+        ],
+      };
+      f.transaction.material.findMany.mockResolvedValue([material]);
+      const state = { consumed: false };
+      f.transaction.$queryRawUnsafe.mockImplementation(
+        async (...args: unknown[]) =>
+          String(args[0]).includes('first_freeze_proof')
+            ? [{ consumed: state.consumed }]
+            : [{ id: customerId }],
+      );
+      const version = {
+        id: supplementId,
+        actorType: 'INTERNAL',
+        internalActorUserId: actor.userId,
+        lawyerAccountBindingId: null,
+        auditEvent: {
+          actorUserId: actor.userId,
+          departmentId: actor.departmentId,
+          internalActorUserId: actor.userId,
+          lawyerAccountBindingId: null,
+          resourceType: 'CASE',
+          resourceId: customerId,
+          action: 'case.execution.supplement.submitted',
+        },
+      };
+      const select = () =>
+        f.service.assertExecutionSupplementVersions(
+          f.transaction as unknown as MaterialTransactionClient,
+          actor,
+          customerId,
+          target,
+          [contentVersionId],
+        );
+      const freeze = (facts: readonly ValidatedMaterialVersionFact[]) => {
+        f.transaction.caseExecutionFilingSupplement.findFirst.mockResolvedValue(
+          version,
+        );
+        return f.service.freezeCaseExecutionSupplementReferences(
+          f.transaction as unknown as MaterialTransactionClient,
+          actor,
+          customerId,
+          { ...target, versionId: supplementId },
+          facts,
+          auditEventId,
+        );
+      };
+      return { ...f, state, draft, material, version, select, freeze };
+    }
+    it('selects against the real submit action and freezes exact typed documents plus references in the same transaction', async () => {
+      const f = setup();
+      const facts = await f.select();
+      expect(f.access.authorizeCase).toHaveBeenCalledWith(
+        actor,
+        'case.execution.supplement.submit',
+        expect.objectContaining({
+          departmentId: actor.departmentId,
+          responsibleUserId: actor.userId,
+        }),
+        f.transaction,
+      );
+      expect(f.access.authorizeDepartmentAction).not.toHaveBeenCalled();
+      await f.freeze(facts);
+      expect(
+        f.transaction.caseExecutionFilingSupplementDocument.create,
+      ).toHaveBeenCalledWith({
+        data: {
+          versionId: supplementId,
+          supplementId,
+          filingId,
+          caseId: customerId,
+          departmentId: actor.departmentId,
+          materialId: 'material-supplement',
+          contentVersionId,
+        },
+      });
+      expect(f.transaction.materialReference.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            departmentId: actor.departmentId,
+            resourceType: 'case',
+            resourceId: customerId,
+            purpose: 'EXECUTION_SUPPLEMENT',
+            materialId: 'material-supplement',
+            contentVersionId,
+            actionEventId: auditEventId,
+          },
+        ],
+        skipDuplicates: true,
+      });
+    });
+    it('rejects unconsumed dedicated content through the ordinary current AVAILABLE shortcut', async () => {
+      const f = setup();
+      await expect(
+        f.service.assertAvailableVersions(
+          f.transaction as unknown as MaterialTransactionClient,
+          actor,
+          {
+            ownerType: 'CASE',
+            ownerId: customerId,
+            category: 'EXECUTION_SUPPLEMENT',
+            contentVersionIds: [contentVersionId],
+          },
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'MATERIAL_VERSION_INVALID' },
+      });
+      expect(f.transaction.material.findMany).not.toHaveBeenCalled();
+    });
+    it.each(['target', 'filing', 'revision', 'actor'] as const)(
+      'rejects unconsumed dedicated content bound to another %s',
+      async (field) => {
+        const f = setup();
+        if (field === 'target')
+          f.draft.executionSupplementTargetId = 'another-target';
+        if (field === 'filing')
+          f.draft.executionSupplementFilingId = 'another-filing';
+        if (field === 'revision') f.draft.executionSupplementRevision = 1;
+        if (field === 'actor') {
+          f.draft.actorUserId = 'another-actor';
+          f.draft.internalActorUserId = 'another-actor';
+          f.material.contentVersions[0]!.uploadedBy = 'another-actor';
+        }
+        await expect(f.select()).rejects.toMatchObject({
+          response: { code: 'MATERIAL_VERSION_INVALID' },
+        });
+      },
+    );
+    it.each(['root', 'version', 'feedback', 'draft'] as const)(
+      'does not interpret a scoped miss as a globally unused UUID (%s collision)',
+      async (kind) => {
+        const f = setup();
+        if (kind === 'root')
+          f.transaction.caseExecutionFilingSupplement.findFirst.mockResolvedValue(
+            {
+              id: 'foreign',
+              caseId: 'foreign-case',
+              filingId: 'foreign-filing',
+              departmentId: 'foreign-dept',
+              toRevision: 1,
+            },
+          );
+        if (kind === 'version')
+          f.transaction.caseExecutionFilingSupplement.findUnique.mockResolvedValue(
+            { id: supplementId },
+          );
+        if (kind === 'feedback')
+          f.transaction.caseExecutionFilingFeedback.findFirst.mockResolvedValue(
+            { id: supplementId },
+          );
+        if (kind === 'draft')
+          f.transaction.uploadDraft.findFirst.mockResolvedValue({
+            id: 'foreign-draft',
+            expiresAt: now,
+          });
+        await expect(f.select()).rejects.toMatchObject({
+          response: { code: 'VERSION_CONFLICT' },
+        });
+        expect(f.transaction.material.findMany).not.toHaveBeenCalled();
+      },
+    );
+    it('permits same-case frozen reuse only after a prior committed first-consumption proof', async () => {
+      const f = setup();
+      f.state.consumed = true;
+      f.material.currentVersionId = 'a-later-current-version';
+      f.draft.executionSupplementTargetId = 'older-target';
+      f.draft.actorUserId = 'older-actor';
+      f.draft.internalActorUserId = 'older-actor';
+      f.material.contentVersions[0]!.uploadedBy = 'older-actor';
+      await expect(f.select()).resolves.toHaveLength(1);
+      expect(f.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('first_freeze_proof'),
+        contentVersionId,
+        true,
+      );
+    });
+    it.each(['ARCHIVED', 'WAITING_ARCHIVE', 'WAITING_EXECUTION_FILING'])(
+      'does not allow new preparation/consumption in %s',
+      async (stage) => {
+        const f = setup();
+        f.transaction.case.findFirst.mockResolvedValue({
+          departmentId: actor.departmentId,
+          stage,
+          responsibleUserId: actor.userId,
+          responsibleMembership: { teamId: null },
+        });
+        await expect(f.select()).rejects.toMatchObject({
+          response: { code: 'VERSION_CONFLICT' },
+        });
+      },
+    );
+    it('rechecks current scope and action before consuming, including after selection', async () => {
+      const f = setup();
+      const facts = await f.select();
+      f.access.authorizeCase.mockRejectedValue(new ForbiddenException());
+      await expect(f.freeze(facts)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(
+        f.transaction.caseExecutionFilingSupplementDocument.create,
+      ).not.toHaveBeenCalled();
+    });
+    it('requires the positive exact revision and correction action for an existing root', async () => {
+      const f = setup();
+      f.transaction.caseExecutionFilingSupplement.findUnique.mockResolvedValue({
+        id: supplementId,
+        supplementId,
+        filingId,
+        caseId: customerId,
+        departmentId: actor.departmentId,
+        fromRevision: 0,
+        toRevision: 1,
+      });
+      f.transaction.caseExecutionFilingSupplement.findFirst.mockResolvedValue({
+        id: supplementId,
+        filingId,
+        caseId: customerId,
+        departmentId: actor.departmentId,
+        toRevision: 2,
+      });
+      f.state.consumed = true;
+      await expect(
+        f.service.assertExecutionSupplementVersions(
+          f.transaction as unknown as MaterialTransactionClient,
+          actor,
+          customerId,
+          { ...target, expectedRevision: 2 },
+          [contentVersionId],
+        ),
+      ).resolves.toHaveLength(1);
+      expect(f.access.authorizeCase).toHaveBeenCalledWith(
+        actor,
+        'case.execution.supplement.correct',
+        expect.any(Object),
+        f.transaction,
+      );
+      await expect(
+        f.service.assertExecutionSupplementVersions(
+          f.transaction as unknown as MaterialTransactionClient,
+          actor,
+          customerId,
+          { ...target, expectedRevision: 1 },
+          [contentVersionId],
+        ),
+      ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    });
+    it.each([
+      'missing',
+      'version-as-root',
+      'wrong-first-revision',
+      'foreign-scope',
+    ] as const)(
+      'requires a real initial root rather than a head-only match (%s)',
+      async (kind) => {
+        const f = setup();
+        f.state.consumed = true;
+        f.transaction.caseExecutionFilingSupplement.findFirst.mockResolvedValue(
+          {
+            id: 'later-version',
+            filingId,
+            caseId: customerId,
+            departmentId: actor.departmentId,
+            toRevision: 2,
+          },
+        );
+        const root = {
+          id: supplementId,
+          supplementId,
+          filingId,
+          caseId: customerId,
+          departmentId: actor.departmentId,
+          fromRevision: 0,
+          toRevision: 1,
+        };
+        if (kind === 'version-as-root') root.supplementId = 'another-real-root';
+        if (kind === 'wrong-first-revision') root.fromRevision = 1;
+        if (kind === 'foreign-scope') root.filingId = 'another-filing';
+        f.transaction.caseExecutionFilingSupplement.findUnique.mockResolvedValue(
+          kind === 'missing' ? null : root,
+        );
+        await expect(
+          f.service.assertExecutionSupplementVersions(
+            f.transaction as unknown as MaterialTransactionClient,
+            actor,
+            customerId,
+            { ...target, expectedRevision: 2 },
+            [contentVersionId],
+          ),
+        ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+        expect(f.transaction.material.findMany).not.toHaveBeenCalled();
+      },
+    );
+    it('uses the same lowercase UUID advisory namespace without rewriting a body/key', async () => {
+      const f = setup();
+      const upperTarget = {
+        ...target,
+        supplementId: 'A0000000-0000-4000-8000-000000000002',
+      };
+      f.draft.executionSupplementTargetId =
+        upperTarget.supplementId.toLowerCase();
+      await f.service.assertExecutionSupplementVersions(
+        f.transaction as unknown as MaterialTransactionClient,
+        actor,
+        customerId,
+        upperTarget,
+        [contentVersionId],
+      );
+      expect(f.transaction.$executeRawUnsafe).toHaveBeenCalledWith(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        'execution-filing-followup-target:a0000000-0000-4000-8000-000000000002',
+      );
+      expect(upperTarget.supplementId).toBe(
+        'A0000000-0000-4000-8000-000000000002',
+      );
+    });
+    it('rejects an initial UUID reserved by a nonzero-revision draft even in otherwise matching scope', async () => {
+      const f = setup();
+      f.transaction.uploadDraft.findFirst.mockResolvedValue({
+        id: 'nonzero-revision-draft',
+        expiresAt: now,
+      });
+      await expect(f.select()).rejects.toMatchObject({
+        response: { code: 'VERSION_CONFLICT' },
+      });
+      expect(f.transaction.uploadDraft.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            executionSupplementTargetId: supplementId,
+            NOT: {
+              ownerId: customerId,
+              departmentId: actor.departmentId,
+              executionSupplementFilingId: filingId,
+              executionSupplementRevision: 0,
+              actorUserId: actor.userId,
+            },
+          },
+        }),
+      );
+    });
+    it('does not allow generic freeze to bypass the exact new version and audit', async () => {
+      const f = setup();
+      const facts = await f.select();
+      await expect(
+        f.service.freezeReferences(
+          f.transaction as unknown as MaterialTransactionClient,
+          {
+            departmentId: actor.departmentId,
+            resourceType: 'case',
+            resourceId: customerId,
+            facts,
+            actionEventId: auditEventId,
+          },
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'MATERIAL_VERSION_INVALID' },
+      });
+      expect(f.transaction.materialReference.createMany).not.toHaveBeenCalled();
+    });
+    it.each(['actor', 'audit', 'binding', 'missing'] as const)(
+      'rejects %s mismatch before creating document or ref',
+      async (kind) => {
+        const f = setup();
+        const facts = await f.select();
+        if (kind === 'actor') f.version.actorType = 'LAWYER';
+        if (kind === 'audit')
+          f.version.auditEvent.action = 'case.execution.filing.submitted';
+        if (kind === 'binding')
+          f.version.auditEvent.internalActorUserId = 'another-actor';
+        f.transaction.caseExecutionFilingSupplement.findFirst.mockResolvedValue(
+          kind === 'missing' ? null : f.version,
+        );
+        await expect(
+          f.service.freezeCaseExecutionSupplementReferences(
+            f.transaction as unknown as MaterialTransactionClient,
+            actor,
+            customerId,
+            { ...target, versionId: supplementId },
+            facts,
+            auditEventId,
+          ),
+        ).rejects.toMatchObject({
+          response: { code: 'MATERIAL_VERSION_INVALID' },
+        });
+        expect(
+          f.transaction.caseExecutionFilingSupplementDocument.create,
+        ).not.toHaveBeenCalled();
+      },
+    );
+    it('allows the current PRIMARY lawyer with exact binding and retains lawyer audit provenance', async () => {
+      const f = setup();
+      const lawyer = { ...actor, lawyerAccountId: actor.userId };
+      const bindingId = 'lawyer-binding';
+      f.transaction.userAccount.findUnique.mockResolvedValue({
+        active: true,
+        accountType: 'LAWYER',
+      });
+      const lawyerDraft = {
+        ...f.draft,
+        internalActorUserId: null,
+        lawyerAccountBindingId: bindingId,
+      };
+      f.transaction.material.findMany.mockResolvedValue([
+        {
+          ...f.material,
+          contentVersions: [
+            {
+              ...f.material.contentVersions[0],
+              executionSupplementUploadDraft: lawyerDraft,
+            },
+          ],
+        },
+      ]);
+      f.transaction.$queryRawUnsafe.mockImplementation(
+        async (...args: unknown[]) =>
+          String(args[0]).includes('first_freeze_proof')
+            ? [{ consumed: false }]
+            : [
+                {
+                  id: String(args[0]).includes('lawyer_account_bindings')
+                    ? bindingId
+                    : customerId,
+                },
+              ],
+      );
+      const facts = await f.service.assertExecutionSupplementVersions(
+        f.transaction as unknown as MaterialTransactionClient,
+        lawyer,
+        customerId,
+        target,
+        [contentVersionId],
+      );
+      f.transaction.caseExecutionFilingSupplement.findFirst.mockResolvedValue({
+        ...f.version,
+        actorType: 'LAWYER',
+        internalActorUserId: null,
+        lawyerAccountBindingId: bindingId,
+        auditEvent: {
+          ...f.version.auditEvent,
+          internalActorUserId: null,
+          lawyerAccountBindingId: bindingId,
+        },
+      });
+      await f.service.freezeCaseExecutionSupplementReferences(
+        f.transaction as unknown as MaterialTransactionClient,
+        lawyer,
+        customerId,
+        { ...target, versionId: supplementId },
+        facts,
+        auditEventId,
+      );
+      expect(f.access.authorizeCase).not.toHaveBeenCalled();
+      expect(f.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('FOR SHARE OF b, u, a'),
+        actor.userId,
+        actor.departmentId,
+        customerId,
+      );
+      expect(
+        f.transaction.caseExecutionFilingSupplementDocument.create,
+      ).toHaveBeenCalledTimes(1);
+    });
+    it('rejects a lawyer whose PRIMARY assignment or binding was withdrawn', async () => {
+      const f = setup();
+      f.transaction.userAccount.findUnique.mockResolvedValue({
+        active: true,
+        accountType: 'LAWYER',
+      });
+      f.transaction.$queryRawUnsafe.mockImplementation(
+        async (...args: unknown[]) =>
+          String(args[0]).includes('lawyer_account_bindings')
+            ? []
+            : [{ id: customerId }],
+      );
+      await expect(
+        f.service.assertExecutionSupplementVersions(
+          f.transaction as unknown as MaterialTransactionClient,
+          { ...actor, lawyerAccountId: actor.userId },
+          customerId,
+          target,
+          [contentVersionId],
+        ),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      expect(f.transaction.material.findMany).not.toHaveBeenCalled();
+    });
+    it.each([
+      { ...actor, clientCustomerId: customerId },
+      { ...actor, notaryOfficeId: 'office' },
+    ])(
+      'rejects nonoperator context before selection',
+      async (externalActor) => {
+        const f = setup();
+        await expect(
+          f.service.assertExecutionSupplementVersions(
+            f.transaction as unknown as MaterialTransactionClient,
+            externalActor,
+            customerId,
+            target,
+            [contentVersionId],
+          ),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+        expect(f.transaction.material.findMany).not.toHaveBeenCalled();
+      },
+    );
+    it('requires a local real filing root, including for an external EXECUTING case', async () => {
+      const f = setup();
+      f.transaction.caseExecutionFiling.findFirst.mockResolvedValue(null);
+      await expect(f.select()).rejects.toMatchObject({
+        response: { code: 'RESOURCE_NOT_FOUND' },
+      });
+      expect(f.transaction.material.findMany).not.toHaveBeenCalled();
+    });
+    it('keeps the branded facts bound to their transaction and immutable target snapshot', async () => {
+      const f = setup();
+      const mutable = { ...target };
+      const facts = await f.service.assertExecutionSupplementVersions(
+        f.transaction as unknown as MaterialTransactionClient,
+        actor,
+        customerId,
+        mutable,
+        [contentVersionId],
+      );
+      mutable.supplementId = 'another-target';
+      f.transaction.caseExecutionFilingSupplement.findFirst.mockResolvedValue(
+        f.version,
+      );
+      await expect(
+        f.service.freezeCaseExecutionSupplementReferences(
+          f.transaction as unknown as MaterialTransactionClient,
+          actor,
+          customerId,
+          { ...mutable, versionId: supplementId },
+          facts,
+          auditEventId,
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'MATERIAL_VERSION_INVALID' },
+      });
+      await expect(
+        f.service.freezeCaseExecutionSupplementReferences(
+          { ...f.transaction } as unknown as MaterialTransactionClient,
+          actor,
+          customerId,
+          { ...target, versionId: supplementId },
+          facts,
+          auditEventId,
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'MATERIAL_VERSION_INVALID' },
+      });
+    });
+  });
   it('never opens execution supplement preparation through generic uploads', async () => {
     const f = createFixture();
     await expect(
@@ -4640,6 +5242,16 @@ function createFixture() {
   const leadFindFirst = jest.fn();
   const notaryMatterFindFirst = jest.fn();
   const transaction = {
+    caseExecutionFilingSupplement: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
+    caseExecutionFilingFeedback: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    caseExecutionFilingSupplementDocument: {
+      create: jest.fn().mockResolvedValue({}),
+    },
     caseExecutionMailing: {
       findFirst: jest.fn().mockResolvedValue({ id: customerId }),
     },
