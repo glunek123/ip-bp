@@ -27,6 +27,8 @@ import {
 
 const uploadMigration = '20261015170000_case_section_record_uploads';
 const recordMigration = '20261015150000_case_section_record_edits';
+const recordHash =
+  '10760cf6e9969822a6b6a631760645625d227c4541a018560473e34c164953c7';
 const oldRecordHash =
   '87e2a8ee00ac8341419a07192a43227101fc60d182bd5f1006acc1cfe315001b';
 const oldUploadHash =
@@ -87,26 +89,34 @@ function predecessor156Bytes(sql) {
     .replace("WHERE p_kind='JUDGMENT'", "WHERE kind='JUDGMENT'")
     .replace("WHERE p_kind='HEARING'", "WHERE kind='HEARING'");
 }
-async function withMigrationFixture(operation) {
+async function withMigrationFixture(
+  operation,
+  source = resolve('backend/prisma/migrations'),
+) {
   const temporaryRoot = resolve(tmpdir());
   const directory = await mkdtemp(
     join(temporaryRoot, 'section-migration-bytes-'),
   );
   try {
-    const source = resolve('backend/prisma/migrations');
-    const names = (await readdir(source)).filter((name) =>
-      /^\d{14}_/u.test(name),
-    );
+    // This pure legacy probe owns only the complete original157 prefix.
+    // Later migration admission/ledger checks remain separate and strict.
+    const names = (await readdir(source))
+      .filter((name) => /^\d{14}_/u.test(name) && name <= uploadMigration)
+      .sort();
+    assert.equal(names.length, 157);
+    assert.deepEqual(names.slice(-3), [
+      '20261015130000_guard_direct_second_remand_child',
+      recordMigration,
+      uploadMigration,
+    ]);
     for (const name of names) {
       const bytes = await readFile(join(source, name, 'migration.sql'));
-      // Only this owned temporary fixture is normalized to the verified Git blob.
-      // Production admission reads/hash-checks raw bytes and rejects CRLF variants.
-      const fixture =
-        name === uploadMigration
-          ? Buffer.from(bytes.toString('utf8').replaceAll('\r\n', '\n'))
-          : bytes;
+      if (name === recordMigration)
+        assert.equal(sha256(bytes), recordHash, 'Frozen156 raw source changed');
+      if (name === uploadMigration)
+        assert.equal(sha256(bytes), uploadHash, 'Frozen157 raw source changed');
       await mkdir(join(directory, name));
-      await writeFile(join(directory, name, 'migration.sql'), fixture);
+      await writeFile(join(directory, name, 'migration.sql'), bytes);
     }
     return await operation(directory);
   } finally {
@@ -251,6 +261,54 @@ test('enum rollback classification permits exactly append-only 156 staging, neve
     ),
   );
 });
+
+test('legacy157 owned fixture excludes appended0900/1000 directories without weakening the production157 plan', async () =>
+  withMigrationFixture(async (directory) => {
+    const original = await sectionMigrationPlan(directory);
+    for (const name of [
+      '20261016090000_case_record_material_guard_repair',
+      '20261016100000_case_execution_filing_followups',
+    ]) {
+      // These extra directories exist only inside this owned source fixture.
+      // No migration is executed; the production157 planner must reject them.
+      await mkdir(join(directory, name));
+      await writeFile(
+        join(directory, name, 'migration.sql'),
+        `-- later source ${name}\n`,
+      );
+    }
+    await assert.rejects(sectionMigrationPlan(directory));
+    await withMigrationFixture(async (copy) => {
+      const prefix = await sectionMigrationPlan(copy);
+      assert.deepEqual(prefix, original);
+      assert.deepEqual(
+        (await readdir(copy)).sort(),
+        original.map((entry) => entry.name),
+      );
+      for (const name of [recordMigration, uploadMigration])
+        assert.deepEqual(
+          await readFile(join(copy, name, 'migration.sql')),
+          await readFile(join(directory, name, 'migration.sql')),
+        );
+    }, directory);
+  }));
+
+for (const name of [recordMigration, uploadMigration])
+  test(`legacy157 owned source refuses changed frozen raw ${name}`, async () =>
+    withMigrationFixture(async (directory) => {
+      const path = join(directory, name, 'migration.sql');
+      await writeFile(
+        path,
+        Buffer.concat([
+          await readFile(path),
+          Buffer.from('\n-- altered source bytes\n'),
+        ]),
+      );
+      await assert.rejects(
+        withMigrationFixture(async () => {}, directory),
+        /Frozen(?:156|157) raw source changed/u,
+      );
+    }));
 
 test('all exact 157 LF candidate sources pass isolation screen; frozen 156 compat changes only date inputs', async () =>
   withMigrationFixture(async (directory) => {
