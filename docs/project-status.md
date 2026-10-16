@@ -1,5 +1,17 @@
 # 当前开发状态
 
+当前阻塞已由b563真实同案续验更新：正常protected发现1项后，原279字节body/key首POST仍500，requestId0e7c8ff2-ac52-4d81-8992-4d705aa3969b（03:55:13 UTC）；PG精确报correction document lacks exact retained material reference，mailing guard第22行RAISE。第二POST与后续UI未执行，回滚后原案仍v6/rev0/更正和回执0。独立窄Owner现沿五类audit→correction→document→reference→receipt完整事务核对；旧非JUDGMENT材料引用唯一索引与skipDuplicates存在高置信冲突，真实已保存行的因果仍按证据分级，不改guard掩盖。新增0930前向修复及真实事务到commit测试另树实施，已部署155~158不改；EF1000未来顺延160，当前EF159测试准入不冒充160通过。EF已审路由/材料410ab1a、旧157夹具4d40d9a、schema/迁移6b7f0bc、API读取72316e4及专项源码57aa8ae均已提交；独立前端ef001-frontend从72316e4开始，不占当前分栏验收目录，DB/Grant未执行。
+
+上一阶段已证：af6ec55/tree dd28af91的真实owned PostgreSQL专项A、正常官方158迁移B和C独立历史保持全部通过；149表旧PK行、68Case头及序列、42权限、26文件与旧22来源字节保持，旧157账本只加158成功行，五函数变量替换之外的OID/签名/owner/ACL/触发器保持。85份证据已封存并由主控逐项核bytes/hash；UI严格158准入5a06fcf随后单一接入并固定b563271，原Sol均C/I/M0，未重备环境或重build；真实业务结果按上段最新失败处理。
+
+## 历史恢复断点
+
+以下保留各旧候选的原始阶段，不覆盖上方最新实际结论。
+
+5ac最新真实结果：同字节TS proof protected发现恰1通过，但原案原body/key首次HTTP重试仍500（requestId beafe9d6-bab1-4678-b098-d83e63fa6d11，03:02:20 UTC）。新PG明确record r无material_id，原S只读确认五个156材料更正guard中receipt复合变量r遮蔽material_references同名别名；与旧原因23514不同，已审trim保留。第二次幂等重放和浏览器读取未执行，runner停止，149全部旧PK行/68案/42权限/157/sequence/26字节保持，仅正常session新增。主控核61+2份bytes/hash，独立窄任务从5ac新增0900前向158仅修五函数receipt变量并编写真正PG路径回归，不改已部署156/157或业务门槛；EF1000独占目录保持、组合顺序相应159。原500/发现失败/本次失败各自保留，未DB修复或再次运行。EF API259及共享read六文件已冻结待窄审，不等待此修复。
+
+原因修复最新断点：隔离两文件2d1ef085已完成三路RED→GREEN78/78、后台类型/Lint/格式，原Sol源码和累计增量C/I/M0；原运行目录另分支固定clean5ac18c148bb60ecb8b3f17a29b4d724ca384498c/tree582ac97ca39a7bd2dd566c13ca4065db2aedd14a，只多已审service/spec与快照。runner仅一次重建后台及同案只读前置通过（当前68案/26文件、原案ARCHIVED/v6、revision0、原key无成功回执），ignored MJS proof发现0项因命名导出加载失败，未POST/应用/UI；已准许只复制同字节.spec.ts及匹配配置续发现/唯一正式项，旧错误保留，不改tracked support或重做准备。父级批准最小同案原body/key API重试+同参回执，再真实浏览器刷新/重登/回填/下载，明确不冒称UI UNKNOWN恢复。terminal撤权须最后，500尚未实际关闭。EF领域be19ee0已审108/108，S接3196cd86，四路由/材料组合初轮347/347、材料新反例218/218；F-API独占树已实施八显式内部/律师入口258/258，静态收尾中，read/158/真实功能未验。
+
 2026-10-16最新实证：同一clean165ee1bd/tree99564dbe已完成当前根22文件3886bytes精确无覆盖复制并复用未变构建，首条execution-mailing真实UI已通过登录、自身来源案准备、预填、取消零写入与重新编辑；保存返回500，数据库23514明确命中case_execution_mailing_record_correctio_correction_reason_check。原S只读已闭合根因：DTO接受非空首尾空格，E原样存储，与既有btrim约束不一致；H已有规范化。已另设隔离窄修复，只改旧E service/spec的原因canonical值，保留客户端原body/key及约束，原E继续EF；修复尚未交付，runner停止无重试。67旧Case头、旧安全/42Grant、157账本及22旧材料保持，新准备案和事实保留；案件计数器正常递增，原取证器分类false另留说明，不列第二产品故障。主控已核67+2份证据bytes/hash，详细见VALIDATION。EF001不等待：S材料v2三文件208/208、原SolC/I/M0已正式提交f9c0d1d，单一接入E树609e6417并保留领域两文件WIP，恢复四方法验证；158/SQLproof/上传与功能仍待验。新feedbackOn/submittedOn仅严格日期或null，不新增today或先后门槛。
 
 2026-10-16首UI最新断点：已审组合165ee1bd/tree99564dbe（test-runtime-stability树、h42-vertical-acceptance分支）通过root类型、128 UI准入/61 H恢复/54入口纯测，原Sol组合C/I/M0。唯一runner已正常install/context/generate/build0，但执行单错误要求复用2a材料根，与现有validator强制当前树测试根冲突，故capture前BLOCKED，DB/服务/discovery/UI均0，非业务失败。21份证据主控hash核准；修正单runner-ui-165ee1b-storage-root-correction-20261016.md（12a5ea...56ed）审C/I/M0：只改当前.env的PRIVATE_FILE_ROOT、只读盘点后22/3886bytes精确missing-only复制、源/旧库/权限不变，从capture续跑，复用已成产物不重装/生成/build。原H503备用不并发。EF首19文件已提交b12b41bc、原SolC/I/M0；S继续158/材料，原E独占ef001-domain树已从b12创建、待父级续办两文件领域服务。原环境Owner另树做现validator与managed helper共享材料根派生，当前165不改源、不等该小修。尚无真实UI结果。
