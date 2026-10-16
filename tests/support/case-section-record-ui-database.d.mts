@@ -12,7 +12,14 @@ export class SectionRecordUiPermissionPending extends Error {
   finding: 'I-SECTION-UI-GRANT01';
   requiredActions: readonly string[];
 }
-export function assertSectionRecordUiSourceReady(): never;
+export function assertSectionRecordUiSourceReady(root?: string): void;
+export function validateSectionRecordUiAdmission(
+  input: unknown,
+  origin: unknown,
+  credentialProof: unknown,
+  candidate: { commit: string; tree: string },
+  receipt: unknown,
+): unknown;
 export function assertSectionRecordUiBinding(
   environment?: NodeJS.ProcessEnv,
 ): string;
@@ -32,13 +39,23 @@ export function assertSectionRecordUiDatabaseProof(
   environment: NodeJS.ProcessEnv,
   proof: SectionRecordUiDatabaseProof,
 ): void;
-export function withSectionRecordUiDatabase(): Promise<never>;
+export function withSectionRecordUiDatabase(
+  operation: (client: unknown) => Promise<unknown>,
+): Promise<unknown>;
 export function assertSectionRecordUiRunner(): Promise<void>;
-export function createSectionRecordUiActor(): Promise<SectionRecordUiActor>;
-export function sectionRecordUiFixture(): never;
+export function createSectionRecordUiActor(
+  scenarioId: string,
+): Promise<SectionRecordUiActor>;
+export function sectionRecordUiFixture(): {
+  customerId: string;
+  rightsHolderId: string;
+  userId: string;
+  sourcePrefix: string;
+};
 export function ownSectionRecordUiCase(
   caseId: string,
   actorUserId: string,
+  source: string,
 ): Promise<void>;
 export function revokeSectionRecordUiActor(userId: string): Promise<void>;
 export function sectionRecordUiBaselineSecurity(): Promise<unknown>;

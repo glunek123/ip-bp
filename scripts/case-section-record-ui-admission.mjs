@@ -1,6 +1,9 @@
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
-import { assertSectionRecordUiSourceReady } from '../tests/support/case-section-record-ui-database.mjs';
+import {
+  assertSectionRecordUiSourceReady,
+  SectionRecordUiPermissionPending,
+} from '../tests/support/case-section-record-ui-database.mjs';
 
 // Playwright transforms config imports to CJS in this CommonJS project; its
 // transformed module has __filename. The native ESM runner runs from project root.
@@ -63,10 +66,10 @@ export function assertSectionRecordUiAdmission(root, args) {
     };
   } catch {
     // An unrecognized selector must not reach capture or webServer setup.
-    assertSectionRecordUiSourceReady();
+    throw new SectionRecordUiPermissionPending();
   }
   if (!selection.list && selection.includesPendingUi) {
-    assertSectionRecordUiSourceReady();
+    assertSectionRecordUiSourceReady(root);
   }
 }
 
@@ -86,6 +89,6 @@ export function assertSectionRecordUiConfigAdmission(root, argv) {
     return;
   // Direct CLI and the protected runner both use `test ...`. API/config imports
   // without that selection cannot prove the pending suite is excluded.
-  if (argv[0] !== 'test') assertSectionRecordUiSourceReady();
+  if (argv[0] !== 'test') throw new SectionRecordUiPermissionPending();
   assertSectionRecordUiAdmission(root, argv.slice(1));
 }

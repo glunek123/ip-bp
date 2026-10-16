@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { test, vi } from 'vitest';
+import * as sourceAdmission from '../tests/support/case-section-record-ui-database.mjs';
 import {
   assertSectionRecordUiAdmission,
   assertSectionRecordUiConfigAdmission,
@@ -139,5 +140,26 @@ test('watch mode with --list is not discovery-only admission', () => {
     );
   } finally {
     vi.unstubAllEnvs();
+  }
+});
+
+test('complete source evidence cannot unlock an unknown CLI or API selection', () => {
+  const ready = vi
+    .spyOn(sourceAdmission, 'assertSectionRecordUiSourceReady')
+    .mockImplementation(() => {});
+  try {
+    assert.throws(
+      () => assertSectionRecordUiAdmission(root, ['--unknown', '--list']),
+      pending,
+    );
+    assert.throws(
+      () => assertSectionRecordUiConfigAdmission(root, []),
+      pending,
+    );
+    assert.equal(ready.mock.calls.length, 0);
+    assert.doesNotThrow(() => assertSectionRecordUiAdmission(root, [ui]));
+    assert.deepEqual(ready.mock.calls, [[root]]);
+  } finally {
+    ready.mockRestore();
   }
 });

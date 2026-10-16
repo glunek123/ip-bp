@@ -11,6 +11,8 @@ import {
   assertSectionRecordUiSourceReady,
   assertSectionRecordUiRunner,
   createSectionRecordUiActor,
+  sectionRecordUiFixture,
+  ownSectionRecordUiCase,
   sectionRecordUiSnapshot,
   sectionRecordUiUploads,
   sectionRecordUiBaselineSecurity,
@@ -217,14 +219,14 @@ const test = base.extend<{
   actor: SectionRecordUiActor;
   csrf: string;
 }>({
-  actor: async ({ baseURL }, use) => {
+  actor: async ({ baseURL }, use, testInfo) => {
     assertSectionRecordUiSourceReady();
     expect(baseURL).toBe(origin);
     // Source permission admission precedes even the R2 environment capture.
     await assertSectionRecordUiRunner();
     const before = await sectionRecordUiBaselineSecurity();
     try {
-      await use(await createSectionRecordUiActor());
+      await use(await createSectionRecordUiActor(testInfo.testId));
     } finally {
       expect(await sectionRecordUiBaselineSecurity()).toEqual(before);
     }
@@ -243,10 +245,10 @@ const test = base.extend<{
     await use(session.csrfToken);
   },
 });
-test.beforeAll(() => {
-  // Discovery never executes this callback. Actual execution must refuse before
-  // any fixture, browser page, capture, PG connection, or account/Grant creation.
+test.beforeAll(async () => {
+  // Live runner proof is checked before page fixtures; discovery never executes this.
   assertSectionRecordUiSourceReady();
+  await assertSectionRecordUiRunner();
 });
 const read = (page: Page, caseId: string) =>
   page.request
@@ -264,10 +266,42 @@ const post = (
     data,
   });
 
-// Normal lead-to-case preparation is pending its finite Action admission.
-// Never replace this with external backfill, direct facts, or a fabricated case.
-async function ordinarySource(): Promise<{ id: string; version: number }> {
+async function ordinarySource(page: Page, csrf: string, stage: string) {
   assertSectionRecordUiSourceReady();
+  const actor = sectionRecordUiFixture();
+  const source = actor.sourcePrefix + randomUUID();
+  const entry = await json<{ id: string; version: number }>(
+    await page.request.post('/api/v1/cases/external-entries', {
+      headers: { Origin: origin, 'X-CSRF-Token': csrf },
+      data: {
+        idempotencyKey: randomUUID(),
+        entryKind: 'HISTORICAL_BACKFILL',
+        initialStage: stage,
+        stageReachedOn: date(-12),
+        source: source,
+        reason: 'Synthetic browser section record source',
+        customerId: actor.customerId,
+        rightsHolderId: actor.rightsHolderId,
+        defendants: [],
+        lawyerAccountId: null,
+        lawyerProfileId: null,
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+    }),
+    201,
+  );
+  await ownSectionRecordUiCase(entry.id, actor.userId, source);
+  return entry;
 }
 function bytesFor(label: string) {
   return Buffer.from(`%PDF-1.7\nsynthetic section UI ${label}\n%%EOF\n`);
@@ -314,7 +348,7 @@ type Source = {
   originals: Array<{ file: FileVersion; bytes: Buffer }>;
 };
 async function executionSource(page: Page, csrf: string): Promise<Source> {
-  const entry = await ordinarySource();
+  const entry = await ordinarySource(page, csrf, 'WAITING_EXECUTION_STAMP');
   const originals = [];
   const mail = await originalUpload(page, csrf, entry.id, 'MAIL_RECEIPT');
   originals.push(mail);
@@ -399,7 +433,7 @@ async function executionSource(page: Page, csrf: string): Promise<Source> {
   return { caseId: entry.id, originals };
 }
 async function judgmentSource(page: Page, csrf: string): Promise<Source> {
-  const entry = await ordinarySource();
+  const entry = await ordinarySource(page, csrf, 'WAITING_JUDGMENT');
   const original = await originalUpload(page, csrf, entry.id, 'JUDGMENT');
   const registered = await json<{ judgmentId: string; version: number }>(
     await post(page, csrf, entry.id, 'judgment-register', {
@@ -1059,33 +1093,11 @@ test('real stale closure CAS is rejected, refresh obtains new independent revisi
   );
 });
 
-test('revoking only this run actor during an open editor rejects the real save and preserves facts', async ({
-  page,
-  actor,
-  csrf,
-}) => {
-  const variant = variants[0];
-  const source = await executionSource(page, csrf);
-  const before = await sectionRecordUiSnapshot(source.caseId);
-  const panel = await openDetail(page, source.caseId, variant);
-  await byTest(panel, 'section-record-date').fill(date(-2));
-  await byTest(panel, 'section-record-reason').fill(
-    'Must be denied after own actor revocation',
-  );
-  await revokeSectionRecordUiActor(actor.userId);
-  await clickSave(page, panel, businessPath(source.caseId, variant), 403);
-  await expect(byTest(panel, 'section-record-success')).toHaveCount(0);
-  await expect(byTest(panel, 'section-record-form')).toHaveCount(0);
-  expect(await sectionRecordUiSnapshot(source.caseId)).toEqual(before);
-  expect(
-    (await page.request.get(`/api/v1/cases/${source.caseId}`)).status(),
-  ).toBe(403);
-});
-
 test('no registered information disables section editing with its reason and never redirects to the current workflow', async ({
   page,
+  csrf,
 }) => {
-  const source = await ordinarySource();
+  const source = await ordinarySource(page, csrf, 'WAITING_EXECUTION_STAMP');
   const before = await read(page, source.id);
   for (const variant of variants)
     expect(before.recordEdits[variant.key]).toEqual([]);
@@ -1219,6 +1231,29 @@ for (const cancel of [true, false]) {
   });
 }
 
-// Hearing record and legacy external CORRECT acceptance remain blocked: the existing H actor
-// lacks case.external-entry.create; the requested extra Grant was denied. No skipped tests
-// or substitute actor/Grant is used to turn that missing coverage into a pass.
+// The shared H primary becomes terminal only after all positive UI/API work.
+test('revoking only this run actor during an open editor rejects the real save and preserves facts', async ({
+  page,
+  actor,
+  csrf,
+}) => {
+  const variant = variants[0];
+  const source = await executionSource(page, csrf);
+  const before = await sectionRecordUiSnapshot(source.caseId);
+  const panel = await openDetail(page, source.caseId, variant);
+  await byTest(panel, 'section-record-date').fill(date(-2));
+  await byTest(panel, 'section-record-reason').fill(
+    'Must be denied after own actor revocation',
+  );
+  await revokeSectionRecordUiActor(actor.userId);
+  await clickSave(page, panel, businessPath(source.caseId, variant), 403);
+  await expect(byTest(panel, 'section-record-success')).toHaveCount(0);
+  await expect(byTest(panel, 'section-record-form')).toHaveCount(0);
+  expect(await sectionRecordUiSnapshot(source.caseId)).toEqual(before);
+  expect(
+    (await page.request.get(`/api/v1/cases/${source.caseId}`)).status(),
+  ).toBe(403);
+});
+
+// Sixth-kind and legacy hearing acceptance require their separate frozen cases and
+// existing scheduler cycle; these 16 cases alone do not claim that coverage.

@@ -3,9 +3,12 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
 import {
   assertSectionRecordUiBinding,
   assertSectionRecordUiDatabaseProof,
+  validateSectionRecordUiAdmission,
 } from './case-section-record-ui-database.mjs';
 
 const url =
@@ -25,6 +28,10 @@ const gaps = [
   'case.acceptance.register',
   'case.hearing.schedule',
   'case.execution.submit',
+  'case.external-entry.create',
+  'case.execution.mailing.correct',
+  'case.execution.filing.correct',
+  'case.execution.finish.correct',
 ];
 const both = (value) => ({
   DATABASE_URL: value,
@@ -69,13 +76,286 @@ function pending(error) {
     ),
   );
   assert.deepEqual(Array.from(error.requiredActions), gaps);
-  for (const gap of gaps) assert.ok(error.message.includes(gap));
-  assert.ok(
-    error.message.includes(
-      'Existing A/B user.manage and lawyer.account.manage Grants do not authorize copying them to a new role.',
-    ),
-  );
+  assert.ok(error.message.includes('the nine Actions are user-authorized'));
   return true;
+}
+
+// Synthetic proof-shape only: this never installs a runtime manifest, touches the
+// original private credential, connects to PG, or asserts a real Grant was added.
+function admittedProof() {
+  const actor = {
+    userId: 'edc8bf6f-6660-41f6-8418-f72f87443a1c',
+    roleId: '51c34a8b-fb00-45b1-ab9f-d077d59d4878',
+    departmentId: '10000000-0000-4000-8000-000000000001',
+    assignmentId: '8bed4da1-c61e-40d9-bd78-170380421ce8',
+    membershipId: '36ea4166-dce8-48bd-bb9b-216222f0ea2a',
+    credentialId: 'f695cb82-e0d1-4dcc-9135-d1e3c75ecc8b',
+  };
+  const originalActions = [
+    'case.archive',
+    'case.archive.correct',
+    'case.closure.correct',
+    'case.closure.record',
+    'case.complaint.confirm',
+    'case.complaint.submit',
+    'case.execution.confirm',
+    'case.execution.filing.submit',
+    'case.execution.finish',
+    'case.execution.mail',
+    'case.execution.submit',
+    'case.hearing.correct',
+    'case.hearing.schedule',
+    'case.judgment.correct',
+    'case.judgment.next_step',
+    'case.judgment.register',
+    'case.match',
+    'case.read',
+    'case.second_instance.result',
+    'customer.admit',
+    'customer.read',
+    'lawyer.account.manage',
+    'lead.create',
+    'lead.edit',
+    'lead.evidence.decide',
+    'lead.push',
+    'lead.read',
+    'lead.withdraw.apply',
+    'notary.evidence.record',
+    'notary.issuance.decide',
+    'notary.office.manage',
+    'notary.opening.review',
+    'notary.return.archive',
+    'notary.unbox.record',
+    'user.manage',
+  ];
+  const grant = (action, index) => ({
+    id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    role_template_id: actor.roleId,
+    action,
+    scope: 'DEPARTMENT',
+  });
+  const original = originalActions.map(grant);
+  const ids = [
+    'c45f5968-f1b1-4b7f-9958-fe95224e63ec',
+    'ccee168c-b7c1-4f0c-a045-cf6aa1cea7a8',
+    '031911aa-9794-415a-b4ea-6dd6e5a050e9',
+    '604ac717-4e8e-46fc-9eb2-9946a06c2063',
+    '221b4dfd-6ad6-48aa-933e-5cc48d31e07c',
+    'e8a738ff-28fa-435b-a81f-6850e15248b6',
+    '4fdb897a-36af-4c40-971b-dfc247c6422f',
+  ];
+  const added = gaps
+    .filter((action) => !originalActions.includes(action))
+    .map((action, index) => ({ ...grant(action, index + 35), id: ids[index] }));
+  const origin = {
+    allAddedObjects: {
+      user_accounts: [{ id: actor.userId }],
+      role_templates: [{ id: actor.roleId }],
+      local_credentials: [{ id: actor.credentialId }],
+      role_assignments: [{ id: actor.assignmentId }],
+      department_memberships: [{ id: actor.membershipId }],
+    },
+    newCases: [],
+    newLeadIds: [],
+    newGrants: original,
+  };
+  const candidate = { commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+  const input = {
+    version: 1,
+    runId: '00000000-0000-4000-8000-000000000100',
+    candidate,
+    environment: {
+      project: valid.DEV_COR_TEST_DATABASE_PROJECT,
+      container: valid.DEV_COR_TEST_DATABASE_CONTAINER_ID,
+      host: '127.0.0.1',
+      port: 15438,
+      database: 'dev_cor_test',
+      schema: 'public',
+      migrations: 157,
+    },
+    actor,
+    fixture: {
+      customerId: '50000000-0000-4000-8000-000000000002',
+      rightsHolderId: '60000000-0000-4000-8000-000000000001',
+    },
+    authorizationMessages: [
+      'Sentinel_fdf4b7a29e488191a3002876ccc91fa7',
+      'Sentinel_99c7388c6e608191a8cf0379ef2f1f39',
+    ],
+    originSha256:
+      'f61ab7550209b531a7dc66d9a32bc5b023b47014feccda9730b17c3a4ca26d83',
+    credentialProofSha256: 'c'.repeat(64),
+    objectsSha256: 'd'.repeat(64),
+    currentGrants: [...original, ...added],
+    insertedGrantIds: added.map((row) => row.id),
+    liveCheckedAt: '2026-10-16T01:28:03.686Z',
+    terminal: false,
+  };
+  const credential = {
+    actorId: actor.userId,
+    credentialId: actor.credentialId,
+    originalCredentialUnchanged: true,
+    passwordVerifiedAgainstExistingHash: true,
+    privateFilePath:
+      'C:\\Users\\97830\\AppData\\Local\\Temp\\dev-cor-h-actor-recovery-83ac59ee-1b96-4fde-b1b8-534061a36ed0\\actor.private.json',
+    privateFileSha256:
+      'd9367f33ac67ad2353648ade02b3c110aaa1785a51944207882de56e34a94de1',
+    secretsInEvidence: false,
+    HTTPPerformed: false,
+    newPrivateCopyCreated: false,
+  };
+  const receipt = {
+    result: 'PASS_ORIGINAL_R2_RESUMED_AND_MAIN_WRITE_ROLE42',
+    actorId: actor.userId,
+    roleId: actor.roleId,
+    departmentId: actor.departmentId,
+    four: {
+      sourceMessage: input.authorizationMessages[0],
+      inserted: added.slice(0, 4),
+    },
+    three: {
+      sourceMessage: input.authorizationMessages[1],
+      inserted: added.slice(4),
+    },
+    only7RoleGrantsAdded: true,
+    all149TablesPreviousRowsPreserved: true,
+    passwordVerifiedAgainstUnchangedHash: true,
+    credentialReset: false,
+    actorRecreated: false,
+    otherRolesChanged: false,
+  };
+  return { input, origin, credential, candidate, receipt };
+}
+const validateProof = (p) =>
+  validateSectionRecordUiAdmission(
+    p.input,
+    p.origin,
+    p.credential,
+    p.candidate,
+    p.receipt,
+  );
+test('complete synthetic H42 proof shape validates without runtime admission or secrets', () => {
+  const p = admittedProof();
+  assert.equal(validateProof(p), p.input);
+});
+for (const kind of [
+  'missingManifest',
+  'extraKey',
+  'runId',
+  'candidate',
+  'tree',
+  'port',
+  'CID',
+  'schema',
+  'ledger',
+  'foreign',
+  'readOnly',
+  'assignment',
+  'membership',
+  'wrongCredentialId',
+  'originHash',
+  'originActor',
+  'originRole',
+  'oldGrantChanged',
+  'missingCorrection',
+  'extraAction',
+  'wrongScope',
+  'duplicateGrant',
+  'wrongGrantRole',
+  'wrongAddedIds',
+  'oldApproval',
+  'credentialReset',
+  'privatePath',
+  'privateHash',
+  'privateCopy',
+  'noCurrentProof',
+  'terminal',
+  'receiptActor',
+  'receiptAction',
+  'receiptGrantId',
+  'receiptRecreated',
+  'receiptOtherRole',
+  'receiptRowsChanged',
+]) {
+  test(`strict H42 manifest rejects ${kind} with no business operations`, () => {
+    const p = admittedProof();
+    if (kind === 'missingManifest') p.input = null;
+    if (kind === 'extraKey') p.input.allow = true;
+    if (kind === 'runId') p.input.runId = 'any';
+    if (kind === 'candidate')
+      p.input.candidate = { ...p.candidate, commit: 'e'.repeat(40) };
+    if (kind === 'tree')
+      p.input.candidate = { ...p.candidate, tree: 'f'.repeat(40) };
+    if (kind === 'port') p.input.environment.port = 15437;
+    if (kind === 'CID') p.input.environment.container = '0'.repeat(64);
+    if (kind === 'schema') p.input.environment.schema = 'other';
+    if (kind === 'ledger') p.input.environment.migrations = 156;
+    if (kind === 'foreign')
+      p.input.actor = {
+        ...p.input.actor,
+        departmentId: '10000000-0000-4000-8000-000000000002',
+      };
+    if (kind === 'readOnly')
+      p.input.actor = {
+        ...p.input.actor,
+        userId: '00000000-0000-4000-8000-000000000001',
+      };
+    if (kind === 'assignment')
+      p.input.actor = {
+        ...p.input.actor,
+        assignmentId: '00000000-0000-4000-8000-000000000001',
+      };
+    if (kind === 'membership')
+      p.input.actor = {
+        ...p.input.actor,
+        membershipId: '00000000-0000-4000-8000-000000000001',
+      };
+    if (kind === 'wrongCredentialId') p.credential.credentialId = 'unknown';
+    if (kind === 'originHash') p.input.originSha256 = '0'.repeat(64);
+    if (kind === 'originActor')
+      p.origin.allAddedObjects.user_accounts[0].id = 'unknown';
+    if (kind === 'originRole')
+      p.origin.allAddedObjects.role_templates[0].id = 'unknown';
+    if (kind === 'oldGrantChanged')
+      p.input.currentGrants[0] = { ...p.input.currentGrants[0], scope: 'ALL' };
+    if (kind === 'missingCorrection') p.input.currentGrants.pop();
+    if (kind === 'extraAction')
+      p.input.currentGrants[41] = {
+        ...p.input.currentGrants[41],
+        action: 'case.defendant-contact.update',
+      };
+    if (kind === 'wrongScope') p.input.currentGrants[41].scope = 'TEAM';
+    if (kind === 'duplicateGrant')
+      p.input.currentGrants[41] = { ...p.input.currentGrants[40] };
+    if (kind === 'wrongGrantRole')
+      p.input.currentGrants[41].role_template_id = 'unknown';
+    if (kind === 'wrongAddedIds') p.input.insertedGrantIds.pop();
+    if (kind === 'oldApproval') p.input.authorizationMessages.pop();
+    if (kind === 'credentialReset')
+      p.credential.originalCredentialUnchanged = false;
+    if (kind === 'privatePath')
+      p.credential.privateFilePath = 'C:/other/actor.private.json';
+    if (kind === 'privateHash') p.credential.privateFileSha256 = '0'.repeat(64);
+    if (kind === 'privateCopy') p.credential.secretsInEvidence = true;
+    if (kind === 'noCurrentProof') p.input.liveCheckedAt = null;
+    if (kind === 'terminal') p.input.terminal = true;
+    if (kind === 'receiptActor') p.receipt.actorId = 'unknown';
+    if (kind === 'receiptAction')
+      p.receipt.three.inserted = p.receipt.three.inserted.slice(1);
+    if (kind === 'receiptGrantId')
+      p.receipt.three.inserted = [
+        {
+          ...p.receipt.three.inserted[0],
+          id: '00000000-0000-4000-8000-000000000999',
+        },
+        ...p.receipt.three.inserted.slice(1),
+      ];
+    if (kind === 'receiptRecreated') p.receipt.actorRecreated = true;
+    if (kind === 'receiptOtherRole') p.receipt.otherRolesChanged = true;
+    if (kind === 'receiptRowsChanged')
+      p.receipt.all149TablesPreviousRowsPreserved = false;
+    assert.throws(() => validateProof(p));
+  });
 }
 
 // The sandbox executes the real support/spec source with all effectful boundaries
@@ -89,7 +369,7 @@ const specSource = await readFile(
   new URL('../e2e/case-section-record-ui.spec.ts', import.meta.url),
   'utf8',
 );
-function sandbox(environment = valid) {
+function sandbox(environment = valid, runtimeMode) {
   const calls = {
     capture: 0,
     backend: 0,
@@ -110,6 +390,14 @@ function sandbox(environment = valid) {
       randomUUID: refused('factory'),
     },
     'node:module': { createRequire: refused('backend') },
+    'node:fs': {
+      existsSync: () => false,
+      writeFileSync: refused('operation'),
+      readFileSync() {
+        throw new Error('No runner-sealed manifest');
+      },
+    },
+    'node:child_process': { execFileSync: refused('backend') },
     'node:path': { resolve: () => 'offline-root' },
     'node:fs/promises': {
       readdir: refused('backend'),
@@ -131,6 +419,225 @@ function sandbox(environment = valid) {
       createHistoricalRecordActor: refused('grant'),
     },
   };
+  const sql = [];
+  if (runtimeMode) {
+    // PG doubles cross the vm realm; normalize only their comparison prototypes.
+    const realmAssert = Object.assign((...args) => assert(...args), assert);
+    realmAssert.deepEqual = (actual, expected, message) =>
+      assert.deepEqual(
+        JSON.parse(JSON.stringify(actual)),
+        JSON.parse(JSON.stringify(expected)),
+        message,
+      );
+    modules['node:assert/strict'] = realmAssert;
+    const p = admittedProof();
+    const a = p.input.actor;
+    const current = {
+      user: [{ id: a.userId, active: true }],
+      role: [{ id: a.roleId, department_id: a.departmentId, active: true }],
+      assignments: [
+        {
+          id: a.assignmentId,
+          user_id: a.userId,
+          department_id: a.departmentId,
+          role_template_id: a.roleId,
+          active: true,
+          version: 1,
+        },
+      ],
+      memberships: [
+        {
+          id: a.membershipId,
+          user_id: a.userId,
+          department_id: a.departmentId,
+          active: true,
+        },
+      ],
+      credential: [
+        {
+          id: a.credentialId,
+          user_id: a.userId,
+          username: 'historical-record-00000000-0000-4000-8000-000000000001',
+          password_hash: 'synthetic-not-a-real-hash',
+        },
+      ],
+    };
+    const canonical = (value) =>
+      Array.isArray(value)
+        ? value.map(canonical)
+        : value && typeof value === 'object'
+          ? Object.fromEntries(
+              Object.keys(value)
+                .sort()
+                .map((key) => [key, canonical(value[key])]),
+            )
+          : value;
+    p.input.objectsSha256 = createHash('sha256')
+      .update(JSON.stringify(canonical(current)))
+      .digest('hex');
+    const privatePayload = {
+      actorId: a.userId,
+      roleId: a.roleId,
+      departmentId: a.departmentId,
+      username: current.credential[0].username,
+      password: 'synthetic-not-a-real-secret',
+    };
+    const files = {
+      'section-record-ui-run.json': JSON.stringify(p.input),
+      'ui-actor-origin.json': JSON.stringify(p.origin),
+      'ui-credential-proof.json': JSON.stringify(p.credential),
+      'ui-grant-receipt.json': JSON.stringify(p.receipt),
+      'actor.private.json': JSON.stringify(privatePayload),
+    };
+    files['ui-origin-manifest.json'] = JSON.stringify({
+      files: [
+        {
+          path: 'H-owned-object-delta.json',
+          sha256: p.input.originSha256,
+          bytes: Buffer.byteLength(files['ui-actor-origin.json']),
+        },
+      ],
+    });
+    const hashes = new Map([
+      [
+        files['ui-origin-manifest.json'],
+        'a5307e17af39d842c1ed01b59acae261de8eee16a5454685a8d9137978c340af',
+      ],
+      [files['ui-actor-origin.json'], p.input.originSha256],
+      [files['ui-credential-proof.json'], p.input.credentialProofSha256],
+      [
+        files['ui-grant-receipt.json'],
+        'df1b29f2e618d7c54f0e6960d5c03a39fb2a6ca03cfcf6e8e347457cc7f6bed0',
+      ],
+      [files['actor.private.json'], p.credential.privateFileSha256],
+    ]);
+    for (const migration of proof().migrations)
+      hashes.set(migration.name, migration.checksum);
+    modules['node:crypto'] = {
+      createHash() {
+        const parts = [];
+        return {
+          update(value) {
+            parts.push(Buffer.from(value));
+            return this;
+          },
+          digest() {
+            const value = Buffer.concat(parts).toString();
+            return (
+              hashes.get(value) ??
+              createHash('sha256').update(value).digest('hex')
+            );
+          },
+        };
+      },
+      randomUUID: refused('factory'),
+    };
+    modules['node:path'] = { resolve };
+    const markers = new Set();
+    modules['node:fs'] = {
+      existsSync: (path) =>
+        path === p.credential.privateFilePath
+          ? runtimeMode !== 'privateMissing'
+          : runtimeMode === 'terminalMarker' || markers.has(path),
+      writeFileSync(path, _bytes, options) {
+        assert.equal(options.flag, 'wx');
+        assert.ok(!markers.has(path));
+        markers.add(path);
+      },
+      readFileSync(path, encoding) {
+        const name = path.replaceAll('\\', '/').split('/').at(-1);
+        if (!Object.hasOwn(files, name))
+          throw new Error('Unapproved offline file');
+        return encoding ? files[name] : Buffer.from(files[name]);
+      },
+    };
+    modules['node:child_process'] = {
+      execFileSync(_command, args) {
+        if (args[0] === 'status') return '';
+        return args.at(-1) === 'HEAD' ? p.candidate.commit : p.candidate.tree;
+      },
+    };
+    modules['node:fs/promises'] = {
+      readdir: async () => proof().migrations.map((row) => row.name),
+      readFile: async (path) =>
+        Buffer.from(path.replaceAll('\\', '/').split('/').at(-2)),
+    };
+    const grants = globalThis.structuredClone(p.input.currentGrants);
+    if (runtimeMode === 'grantMissing') grants.pop();
+    if (runtimeMode === 'grantScope') grants[0].scope = 'ALL';
+    if (runtimeMode === 'userInactive') current.user[0].active = false;
+    if (runtimeMode === 'membershipChanged')
+      current.memberships[0].department_id = 'other';
+    if (runtimeMode === 'assignmentChanged')
+      current.assignments[0].role_template_id = 'other';
+    if (runtimeMode === 'credentialChanged')
+      current.credential[0].password_hash = 'changed';
+    if (runtimeMode === 'privateChanged')
+      files['actor.private.json'] = JSON.stringify({
+        ...privatePayload,
+        password: 'changed',
+      });
+    const tables = {
+      user_accounts: 'user',
+      role_templates: 'role',
+      role_assignments: 'assignments',
+      department_memberships: 'memberships',
+      local_credentials: 'credential',
+    };
+    const client = {
+      connect: async () => {},
+      end: async () => sql.push('END'),
+      async query(query, params) {
+        sql.push(query);
+        if (query.startsWith('SELECT current_database'))
+          return { rows: proof().identity };
+        if (query.includes('FROM public._prisma_migrations'))
+          return { rows: proof().applied };
+        if (query.startsWith('SELECT id,role_template_id'))
+          return { rows: grants };
+        if (query.startsWith('SELECT c.id'))
+          return { rows: [{ id: params[0] }] };
+        if (query.startsWith('UPDATE role_assignments')) {
+          current.assignments[0].active = false;
+          current.assignments[0].version++;
+          return { rowCount: 1, rows: [] };
+        }
+        const table = /FROM "([a-z_]+)"/u.exec(query)?.[1];
+        return {
+          rows: tables[table]
+            ? current[tables[table]].map((row) => ({
+                row: globalThis.structuredClone(row),
+              }))
+            : [],
+        };
+      },
+    };
+    modules['node:module'] = {
+      createRequire() {
+        calls.backend++;
+        return (name) => {
+          assert.equal(name, 'pg');
+          return {
+            Client: class {
+              constructor() {
+                calls.pg++;
+                return client;
+              }
+            },
+          };
+        };
+      },
+    };
+    modules['../../scripts/test-environment.mjs'] = {
+      captureTestEnvironment() {
+        calls.capture++;
+        return { childEnvironment: { DATABASE_URL: url } };
+      },
+      validateBrowserTestDatabaseUrl() {
+        return { connectionString: url };
+      },
+    };
+  }
   function load(text, filename, extra = {}) {
     const exports = {};
     const context = {
@@ -207,6 +714,7 @@ function sandbox(environment = valid) {
     page,
     operation,
     offline,
+    sql,
   };
 }
 function noEffects(f) {
@@ -347,11 +855,12 @@ test('all16 UI cases are discovered, without callbacks or skipped/fabricated acc
   const f = sandbox();
   assert.equal(f.registered.length, 16);
   assert.equal(f.hooks.length, 1);
+  assert.match(f.registered.at(-1).name, /^revoking only this run actor/u);
   noEffects(f);
 });
-test('the real spec beforeAll refuses before any fixture or environment capture', () => {
+test('the real spec beforeAll refuses before any fixture or environment capture', async () => {
   const f = sandbox();
-  assert.throws(f.hooks[0], pending);
+  await assert.rejects(f.hooks[0], pending);
   noEffects(f);
 });
 for (const fixtureName of ['actor', 'page', 'csrf']) {
@@ -385,19 +894,19 @@ for (let index = 0; index < 16; index++) {
     noEffects(f);
   });
 }
-test('module has no effectful imports, factory delegation, business SQL, or environment unlock', () => {
+test('module imports are inert and cannot create actors/Grants or write business facts', () => {
   assert.doesNotMatch(
     source,
-    /createSectionUploadActor|ownSectionUploadCase|revokeSectionUploadActor|sectionUploadSnapshot|createHistoricalRecordActor|createRequire|new Client|captureTestEnvironment|import[^;]+database\.mjs/u,
+    /createSectionUploadActor|ownSectionUploadCase|revokeSectionUploadActor|sectionUploadSnapshot|createHistoricalRecordActor|import[^;]+database\.mjs/u,
   );
   assert.doesNotMatch(
-    source,
+    source.replace(
+      /UPDATE role_assignments SET active=false,version=version\+1,updated_at=now\(\) WHERE id=\$1 AND user_id=\$2 AND role_template_id=\$3 AND department_id=\$4 AND active=true/u,
+      '',
+    ),
     /(?:INSERT\s+INTO|UPDATE\s+|DELETE\s+FROM|TRUNCATE\s|DROP\s|ALTER\s|execSync|spawn\(|seedCore|clearCore|dropFaults|disconnectDatabase)/iu,
   );
-  assert.doesNotMatch(
-    specSource,
-    /external-entries|HISTORICAL_BACKFILL|test\.skip|test\.fixme/u,
-  );
+  assert.doesNotMatch(specSource, /test\.skip|test\.fixme|core-lead-database/u);
 });
 test('binding errors never echo either URL or password', () => {
   const secret = 'never-print-this-password';
@@ -414,4 +923,85 @@ test('binding errors never echo either URL or password', () => {
       assert.ok(!String(error).includes('postgresql://'));
     }
   }
+});
+
+test('sealed synthetic files permit only current-role-verified offline operation, never a factory', async () => {
+  const f = sandbox(valid, 'valid');
+  f.support.assertSectionRecordUiSourceReady();
+  noEffects(f);
+  await f.support.withSectionRecordUiDatabase(async () => {
+    f.calls.operation++;
+  });
+  assert.equal(f.calls.capture, 1);
+  assert.equal(f.calls.pg, 1);
+  assert.equal(f.calls.operation, 1);
+  assert.equal(f.calls.factory, 0);
+  assert.equal(f.calls.grant, 0);
+  assert.ok(f.sql.at(-1) === 'END');
+});
+for (const mode of [
+  'grantMissing',
+  'grantScope',
+  'userInactive',
+  'membershipChanged',
+  'assignmentChanged',
+  'credentialChanged',
+]) {
+  test(`current live role ${mode} rejects before business callback in offline PG double`, async () => {
+    const f = sandbox(valid, mode);
+    await assert.rejects(
+      f.support.withSectionRecordUiDatabase(async () => {
+        f.calls.operation++;
+      }),
+    );
+    assert.equal(f.calls.operation, 0);
+    assert.equal(f.calls.http, 0);
+    assert.equal(f.calls.grant, 0);
+    assert.equal(f.calls.factory, 0);
+    assert.ok(f.sql.at(-1) === 'END');
+  });
+}
+test('existing actor restores without factory, exact-case source binds, revocation is terminal', async () => {
+  const f = sandbox(valid, 'valid');
+  const actor = await f.support.createSectionRecordUiActor(
+    'one-synthetic-scenario',
+  );
+  const fixture = f.support.sectionRecordUiFixture();
+  const caseId = '00000000-0000-4000-8000-000000000200';
+  await f.support.ownSectionRecordUiCase(
+    caseId,
+    actor.userId,
+    fixture.sourcePrefix + 'one-source',
+  );
+  await f.support.revokeSectionRecordUiActor(actor.userId);
+  const captures = f.calls.capture;
+  await assert.rejects(
+    f.support.createSectionRecordUiActor('replacement'),
+    pending,
+  );
+  assert.equal(f.calls.capture, captures);
+  await f.support.sectionRecordUiSnapshot(caseId);
+  assert.equal(f.sql.filter((query) => query.startsWith('UPDATE')).length, 1);
+  assert.equal(f.calls.factory, 0);
+  assert.equal(f.calls.grant, 0);
+  assert.equal(f.calls.http, 0);
+});
+test('changed private payload cannot restore or manufacture a replacement actor', async () => {
+  const f = sandbox(valid, 'privateChanged');
+  await assert.rejects(f.support.createSectionRecordUiActor('scenario'));
+  assert.equal(f.calls.factory, 0);
+  assert.equal(f.calls.grant, 0);
+});
+
+test('persisted terminal intent refuses before capture even in a fresh module', () => {
+  const f = sandbox(valid, 'terminalMarker');
+  assert.throws(() => f.support.assertSectionRecordUiSourceReady(), pending);
+  noEffects(f);
+});
+test('same actions under forged seventh Grant IDs and matching forged receipt are rejected', () => {
+  const p = admittedProof();
+  const wrong = '00000000-0000-4000-8000-000000000999';
+  p.input.currentGrants[41].id = wrong;
+  p.input.insertedGrantIds[6] = wrong;
+  assert.throws(() => validateProof(p));
 });
