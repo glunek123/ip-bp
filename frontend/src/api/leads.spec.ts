@@ -15,6 +15,7 @@ import {
   getLeadFormContext,
   listLeads,
   pushLead,
+  pushLeadsBatch,
   applyLeadWithdrawal,
   decideLeadNoEvidence,
   updateLead,
@@ -627,5 +628,42 @@ describe('Lead API', () => {
     await expect(pushLead(lead.id, 1, 'push-key')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     });
+  });
+
+  it('freezes batch body, preserves order, and disables automatic CSRF retries', async () => {
+    const items = [
+      { leadId: '11111111-1111-4111-8111-111111111111', expectedVersion: 3 },
+    ];
+    http.requestJson.mockResolvedValueOnce({
+      items: [
+        {
+          id: items[0]!.leadId,
+          businessNo: 'LD-1',
+          status: 'WAITING_REVIEW',
+          version: 4,
+          pushedAt: '2026-09-22T02:00:00.000Z',
+          pushedByUserId: 'user-1',
+          pushedByDisplayName: 'Operator',
+        },
+      ],
+    });
+    await expect(
+      pushLeadsBatch(items, 'batch-key', {
+        signal: new AbortController().signal,
+        headers: {
+          'idempotency-key': 'caller-key',
+          'IDEMPOTENCY-KEY': 'another-caller-key',
+        },
+      }),
+    ).resolves.toMatchObject({ items: [{ version: 4 }] });
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/leads/batch-push',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'batch-key' },
+        retryOnCsrfInvalid: false,
+        body: { items },
+      }),
+    );
   });
 });

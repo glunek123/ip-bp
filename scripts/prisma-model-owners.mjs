@@ -42,6 +42,7 @@ export const prismaModelOwners = Object.freeze({
   LeadInfringement: 'leads',
   LeadNumberCounter: 'leads',
   LeadCommandReceipt: 'leads',
+  LeadBatchPushReceipt: 'leads',
   LeadReviewDecision: 'leads',
   LeadEvidenceDecision: 'leads',
   NotaryOffice: 'leads',
