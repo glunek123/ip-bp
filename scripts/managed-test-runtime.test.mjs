@@ -1,8 +1,10 @@
 import { test } from 'vitest';
+import { defineConfig } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import {
   admitStoppedTestContainer,
+  createManagedTestRuntime,
   planManagedTestRuntime,
   planStoppedTestContainerStart,
 } from './managed-test-runtime.mjs';
@@ -10,52 +12,90 @@ import {
 const root = resolve('C:/repo');
 const backend = 'http://127.0.0.1:3101';
 const frontend = 'http://127.0.0.1:5174';
-const webServer = [
-  { cwd: root, url: `${backend}/api/v1/health`, reuseExistingServer: false },
-  { cwd: root, url: frontend, reuseExistingServer: false },
-];
-const ui = {
-  root,
-  cwd: root,
-  mode: 'ui',
-  origin: frontend,
-  baseURL: frontend,
-  apiProxyTarget: backend,
-  webServer,
-};
+const ui = createManagedTestRuntime(root, 'ui');
+const api = createManagedTestRuntime(root, 'api');
 
-test('makes API and UI origins, absolute cwd, and explicit server ownership checkable', () => {
-  assert.deepEqual(planManagedTestRuntime(ui), {
-    cwd: root,
-    mode: 'ui',
-    origin: frontend,
-    baseURL: frontend,
-  });
-  assert.deepEqual(
-    planManagedTestRuntime({
-      root,
+test('generates real Playwright fragments for API and UI modes, then validates the same objects', () => {
+  assert.equal(planManagedTestRuntime(ui), ui);
+  assert.equal(planManagedTestRuntime(api), api);
+  assert.equal(api.baseURL, backend);
+  assert.equal(api.origin, backend);
+  assert.equal(api.webServer.length, 1);
+  assert.equal(ui.baseURL, frontend);
+  assert.equal(ui.origin, frontend);
+  assert.equal(ui.apiProxyTarget, backend);
+  assert.equal(ui.webServer.length, 2);
+  assert.deepEqual(ui.webServer, [
+    {
+      command: 'node backend/dist/main.js',
       cwd: root,
-      mode: 'api',
-      origin: backend,
-      baseURL: backend,
-      webServer: [webServer[0]],
-    }),
-    { cwd: root, mode: 'api', origin: backend, baseURL: backend },
-  );
+      url: `${backend}/api/v1/health`,
+      reuseExistingServer: false,
+      timeout: 30000,
+    },
+    {
+      command:
+        'node frontend/node_modules/vite/bin/vite.js frontend --host 127.0.0.1 --port 5174 --strictPort',
+      cwd: root,
+      url: frontend,
+      reuseExistingServer: false,
+      timeout: 30000,
+    },
+  ]);
+  for (const layout of [api, ui]) {
+    const admitted = planManagedTestRuntime(layout);
+    const config = defineConfig({
+      use: {
+        baseURL: admitted.baseURL,
+        extraHTTPHeaders: { Origin: admitted.origin },
+      },
+      webServer: admitted.webServer,
+    });
+    assert.equal(config.use.baseURL, layout.baseURL);
+    assert.equal(config.use.extraHTTPHeaders.Origin, layout.origin);
+    assert.deepEqual(config.webServer, layout.webServer);
+  }
+});
+
+test('rejects wrong commands, cwd, reuse and mixed API/UI fragments', () => {
   for (const change of [
     { cwd: '.' },
     { origin: backend },
     { baseURL: backend },
     { apiProxyTarget: frontend },
     {
-      webServer: [{ ...webServer[0], reuseExistingServer: true }, webServer[1]],
+      webServer: [
+        { ...ui.webServer[0], command: 'node arbitrary.js' },
+        ui.webServer[1],
+      ],
     },
     {
-      webServer: [webServer[0], { ...webServer[1], cwd: resolve('C:/other') }],
+      webServer: [
+        ui.webServer[0],
+        { ...ui.webServer[1], command: 'node arbitrary.js' },
+      ],
     },
+    {
+      webServer: [
+        { ...ui.webServer[0], reuseExistingServer: true },
+        ui.webServer[1],
+      ],
+    },
+    {
+      webServer: [
+        ui.webServer[0],
+        { ...ui.webServer[1], cwd: resolve('C:/other') },
+      ],
+    },
+    { mode: 'api' },
   ]) {
     assert.throws(() => planManagedTestRuntime({ ...ui, ...change }));
   }
+  assert.throws(() => planManagedTestRuntime({ ...api, mode: 'ui' }));
+  assert.throws(() =>
+    planManagedTestRuntime({ ...api, webServer: ui.webServer }),
+  );
+  assert.throws(() => createManagedTestRuntime('.', 'ui'));
 });
 
 const containerId =

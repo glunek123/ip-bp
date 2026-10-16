@@ -12,18 +12,54 @@ const originalR2 = Object.freeze({
 });
 const backendOrigin = 'http://127.0.0.1:3101';
 const frontendOrigin = 'http://127.0.0.1:5174';
+const backendCommand = 'node backend/dist/main.js';
+const frontendCommand =
+  'node frontend/node_modules/vite/bin/vite.js frontend --host 127.0.0.1 --port 5174 --strictPort';
 
-// A layout describes one browser session. It does not start a server, connect to
-// the database, or claim that authentication and authorization have passed.
-export function planManagedTestRuntime({
-  root,
-  cwd,
-  mode,
-  origin,
-  baseURL,
-  apiProxyTarget,
-  webServer,
-}) {
+// The returned fragment is suitable for Playwright's `use.baseURL` and
+// `webServer` in the root config. It does not start either service.
+export function createManagedTestRuntime(root, mode) {
+  if (!isAbsolute(root)) {
+    throw new Error(
+      'The managed test runtime requires an absolute project root',
+    );
+  }
+  if (mode !== 'api' && mode !== 'ui') {
+    throw new Error('The managed test runtime mode must be api or ui');
+  }
+  const cwd = resolve(root);
+  const origin = mode === 'api' ? backendOrigin : frontendOrigin;
+  const backendServer = {
+    command: backendCommand,
+    cwd,
+    url: `${backendOrigin}/api/v1/health`,
+    reuseExistingServer: false,
+    timeout: 30000,
+  };
+  const frontendServer = {
+    command: frontendCommand,
+    cwd,
+    url: frontendOrigin,
+    reuseExistingServer: false,
+    timeout: 30000,
+  };
+  return {
+    root: cwd,
+    cwd,
+    mode,
+    origin,
+    baseURL: origin,
+    apiProxyTarget: backendOrigin,
+    webServer:
+      mode === 'api' ? [backendServer] : [backendServer, frontendServer],
+  };
+}
+
+// Validate the same fragment that Playwright will consume. In particular,
+// matching health URLs cannot legitimize an arbitrary replacement command.
+export function planManagedTestRuntime(layout) {
+  const { root, cwd, mode, origin, baseURL, apiProxyTarget, webServer } =
+    layout;
   if (!isAbsolute(root) || !isAbsolute(cwd) || resolve(cwd) !== resolve(root)) {
     throw new Error(
       'The managed test runtime requires the absolute project cwd',
@@ -38,16 +74,10 @@ export function planManagedTestRuntime({
       `The ${mode} test must use ${expectedOrigin} for Origin and baseURL`,
     );
   }
-  if (mode === 'ui' && apiProxyTarget !== backendOrigin) {
-    throw new Error('The UI test must proxy /api to the isolated backend');
+  if (apiProxyTarget !== backendOrigin) {
+    throw new Error('The test proxy target must be the isolated backend');
   }
-  const expectedServers =
-    mode === 'api'
-      ? [{ url: `${backendOrigin}/api/v1/health`, cwd: resolve(root) }]
-      : [
-          { url: `${backendOrigin}/api/v1/health`, cwd: resolve(root) },
-          { url: frontendOrigin, cwd: resolve(root) },
-        ];
+  const expectedServers = createManagedTestRuntime(root, mode).webServer;
   if (
     !Array.isArray(webServer) ||
     webServer.length !== expectedServers.length
@@ -60,8 +90,10 @@ export function planManagedTestRuntime({
     const expected = expectedServers[index];
     if (
       server?.url !== expected.url ||
+      server?.command !== expected.command ||
       server?.cwd !== expected.cwd ||
       server?.reuseExistingServer !== false ||
+      server?.timeout !== expected.timeout ||
       !isAbsolute(server.cwd)
     ) {
       throw new Error(
@@ -69,12 +101,7 @@ export function planManagedTestRuntime({
       );
     }
   }
-  return Object.freeze({
-    cwd: resolve(root),
-    mode,
-    origin: expectedOrigin,
-    baseURL: expectedOrigin,
-  });
+  return layout;
 }
 
 // The stopped-container case cannot pass captureTestEnvironment: that function

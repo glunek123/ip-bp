@@ -8,18 +8,22 @@ export interface ManagedTestLayout {
   baseURL: string;
   apiProxyTarget?: string;
   webServer: Array<{
+    command: string;
     cwd: string;
     url: string;
     reuseExistingServer: false;
+    timeout: number;
   }>;
 }
 
-export function planManagedTestRuntime(layout: ManagedTestLayout): Readonly<{
-  cwd: string;
-  mode: ManagedTestMode;
-  origin: string;
-  baseURL: string;
-}>;
+export function createManagedTestRuntime(
+  root: string,
+  mode: ManagedTestMode,
+): Readonly<ManagedTestLayout>;
+
+export function planManagedTestRuntime<T extends ManagedTestLayout>(
+  layout: T,
+): T;
 
 export interface StoppedR2Input {
   target: {
