@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### 后续执行授权更正与独立开发边界
+
+父级更正原Runner11fbbfb隔离→159→HTTP续单的调用实际被自动审批拒绝，未成功派发，不能记录started或经其他路径执行。该拒绝作为历史保留；用户随后对“本批隔离R2执行159修复迁移及测试账号五类更正保存、保留原历史/失败证据、不动人工演示/生产、不新增权限”明确回复“允许”，父级报告已通过有效渠道接力原Runner；本次不包含EF160部署、扩权或预览更新，尚不代表任何新数据库步骤已通过。public仍158；bd344 owned失败因夹具给真实filing_versions虚构fact_id列而触发歧义，新失败schema record_reference_reuse_f9f207208db94274b3fe8f9c53024190与先前148e54cfc73f4ceb9f07b45ccffcae06均保留。原Owner系统检查全部SQL/替换/别名/异常后，fe2171f仅两文件把23表改为固定白名单真实public列/类型WITH NO DATA，四种version各自只含真实键；不复制数据/FK/约束/索引/trigger，批准0930与旧函数正文不变，wrong-document断言收紧为代码加精确原文。6/6与静态通过，原SolC/I/M0；运行目录11fbbfb已冻结，未重跑PG。b9完整139/2207/1864及双构建仍仅按未变产品输入复用。
+
+E严格160准入32557ca保持原14业务场景，仅更新两文件尾链及独立raw pin；207纯测试和真实CLI发现14、类型静态通过，原SolC/I/M0。独立EF组合已固定8373c90/tree3099aaf056d4cc13c96e5f1d793eb64b71f13253，累计源码审接受，frontend原560证据可复用；不访问数据库的strict上下文、Spec、架构、Prisma client生成、类型、全Lint/格式和双构建现已实际exit0，日志位于该EF树.local/ef001-evidence/static-build-8373-20261016；Prisma首次缓存utime EPERM按正式权限重试原命令成功，不改ACL/缓存，Vite只留大chunk警告。没有运行test/NT006/DB/HTTP/browser或完整verify，不将局部门禁说成完整门禁。EF实库／HTTP／页面仍待后续授权与真实验证。UXQ-03两处契约finding均已关闭：失权重放按原请求真实索引，先核不可变原目标当前权限再比指纹；原SolSpec/Quality ACCEPTED C/I/M0，纯模型14/14仅为开发前置。主控必要Spec9ced73e已冻结批准语义与专用不可变批次回执方案，独立目录ui003-lead-list-workflow新分支从EF837+Spec4cf40f96开始实现，不碰当前验收树/数据库，不新增权限或改整批原子语义。源码、PG、页面与发布结果均尚未交付。
+
 ### b9完整门禁通过；owned注入字符串修复待实库续验
 
 原runner在clean b9d1de974970e02fa9cba88c1b1baa20eddb5b00/tree42c1326dabca20511e7739c7052308972ace797f正常完整verify实际exit0：工具139、前端2207、后端1864、NT006真实锁、全部静态与双构建通过。后续protected DB-only唯一owned项在预期deliberate rollback处得到syntax error at or near "$"而失败；未部署159、未HTTP，public158与149旧表/68案/42权限/26文件保持。失败schema record_reference_reuse_148e54cfc73f4ceb9f07b45ccffcae06按规则保留，后续namespace基线须包含它，不能为重跑清除现场。
