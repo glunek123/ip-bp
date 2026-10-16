@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-16T02:43:41.154Z",
+  "recordedAt": "2026-10-16T03:19:29.696Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -175,6 +175,7 @@
     "backend/prisma/migrations/20261015130000_guard_direct_second_remand_child/migration.sql": "a0ac77660a4752c8e36e7ec68bf127bab6caff203d3998f368d38b809fbfed4c",
     "backend/prisma/migrations/20261015150000_case_section_record_edits/migration.sql": "10760cf6e9969822a6b6a631760645625d227c4541a018560473e34c164953c7",
     "backend/prisma/migrations/20261015170000_case_section_record_uploads/migration.sql": "883f2f80b615a0f746adb2ebbb6e17cc24d0ac577a61d236f3bb6375fbc0367d",
+    "backend/prisma/migrations/20261016090000_case_record_material_guard_repair/migration.sql": "dfe31436055f7ab9bf8d0796c48b3a0dd38a16acf4e5b3554e04e3d299b7b869",
     "backend/prisma/schema.prisma": "cc038a415b1282b3e155f944d1c46f08bc3d5bb6b85b332f71bcabab643c1531",
     "backend/src/access-control/access-control.module.ts": "3f4bf7e4b1d47df6a6a6e3a92311abad3769bb036ba5cd04c2bd62a48b401c4b",
     "backend/src/access-control/access-control.service.spec.ts": "fc54af8a7cf13ed4220905b973977072f9a6b946102df7a0d605dac699cd42df",
@@ -1030,6 +1031,7 @@
     "tests/e2e/case-list-workflow.spec.ts": "29ada4d5a6af7e7f006b339e9b995a4ce8109cc65181f6a99b8a2bcc543b4615",
     "tests/e2e/case-record-edit-migration.spec.ts": "90c3daed4403f60b835ed522c43062d751dc668ac90049e8067f588dbfd222b3",
     "tests/e2e/case-record-edit.spec.ts": "898818b91a4f3cd0b30487c675028dcdd7d02c15ede003f15a0c27ce4e181dd4",
+    "tests/e2e/case-record-material-guard-repair.spec.ts": "dfec13959a1b2e0685bf9c417756b8fb1af234321a43cb01421ef2aafdf20597",
     "tests/e2e/case-second-instance-acceptance-migration.spec.ts": "d7a9badbd509708262ec61dbbbc64e721ccee10ab6ec090c588838646f8d2d5b",
     "tests/e2e/case-second-instance-acceptance.spec.ts": "6d9518b7ef57e4d017954cf9503a42e9d793f46e6469cd4713f1086a2678ceb7",
     "tests/e2e/case-second-instance-cleanup-database.spec.ts": "b181b9b8980fbf485a67b6e44b855809b02a8879c30b250f8d874d52b3d7c6dd",
@@ -1109,6 +1111,8 @@
     "tests/support/case-lawyer-migration.mjs": "c596f12f95eea366393955d2541cb39b29300d1c8c562e2ef104f40b9a0bf19f",
     "tests/support/case-list-workflow-database.mjs": "1a4a911df1c59b56506cbfae98129b723bd9c41010b0532f938cb76a0f6ad2fb",
     "tests/support/case-record-edit-database.ts": "8a75e76ba99834b2bd5fe67c51322a2b1fc17b5fffb08c46189bb97b6daf8755",
+    "tests/support/case-record-material-guard-repair.mjs": "e0d9c3a07e16f01962834f96fef8f02dd9ee6bd5871204611c219678d1bef705",
+    "tests/support/case-record-material-guard-repair.test.mjs": "8b544441be8412a35229d111b88b81b16f5c07b121c6911e509964d4787d4de8",
     "tests/support/case-second-instance-acceptance-database.mjs": "88b6e015b96bddba8fbf4616e89d50d2cc32e5fbb2302a75cc19b544a116a8ab",
     "tests/support/case-second-instance-database.mjs": "30ed46e0f026cbab58869ffbc0ebc04179cfcbdcb7cb7ef1df8d94cf54bfb496",
     "tests/support/case-second-instance-migration.mjs": "c7057a8cfc62d3f81ed3a45a817dbd57925bed3419c94f8fcd92239081fef690",
