@@ -797,6 +797,52 @@ describe('MaterialService', () => {
         skipDuplicates: true,
       });
     });
+    it.each([0, 1, 2, 3])(
+      'requires all two exact reference inserts, not a reported count of %s',
+      async (count) => {
+        const f = setup();
+        const secondId = '40000000-0000-4000-8000-000000000005';
+        f.transaction.material.findMany.mockResolvedValue([
+          f.material,
+          {
+            ...f.material,
+            id: 'second-material',
+            currentVersionId: secondId,
+            contentVersions: [
+              {
+                ...f.material.contentVersions[0]!,
+                id: secondId,
+                executionSupplementUploadDraft: {
+                  ...f.draft,
+                  id: 'second-draft',
+                },
+              },
+            ],
+          },
+        ]);
+        const facts = await f.service.assertExecutionSupplementVersions(
+          f.transaction as unknown as MaterialTransactionClient,
+          actor,
+          customerId,
+          target,
+          [contentVersionId, secondId],
+        );
+        f.transaction.materialReference.createMany.mockResolvedValue({ count });
+        const freezing = f.freeze(facts);
+        if (count === facts.length)
+          await expect(freezing).resolves.toBeUndefined();
+        else
+          await expect(freezing).rejects.toMatchObject({
+            response: { code: 'MATERIAL_VERSION_INVALID' },
+          });
+        expect(
+          f.transaction.caseExecutionFilingSupplementDocument.create,
+        ).toHaveBeenCalledTimes(2);
+        expect(
+          f.transaction.materialReference.createMany,
+        ).toHaveBeenCalledTimes(1);
+      },
+    );
     it('rejects unconsumed dedicated content through the ordinary current AVAILABLE shortcut', async () => {
       const f = setup();
       await expect(
@@ -875,7 +921,19 @@ describe('MaterialService', () => {
       f.draft.actorUserId = 'older-actor';
       f.draft.internalActorUserId = 'older-actor';
       f.material.contentVersions[0]!.uploadedBy = 'older-actor';
-      await expect(f.select()).resolves.toHaveLength(1);
+      const facts = await f.select();
+      expect(facts).toHaveLength(1);
+      await expect(f.freeze(facts)).resolves.toBeUndefined();
+      expect(f.transaction.materialReference.createMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [
+            expect.objectContaining({
+              contentVersionId,
+              actionEventId: auditEventId,
+            }),
+          ],
+        }),
+      );
       expect(f.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
         expect.stringContaining('first_freeze_proof'),
         contentVersionId,

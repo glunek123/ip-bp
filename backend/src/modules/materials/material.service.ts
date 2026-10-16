@@ -2105,13 +2105,14 @@ export class MaterialService {
       if (validation !== undefined)
         validation.supplementFreezeEventId = auditEventId;
     }
-    await this.freezeReferences(transaction, {
+    const inserted = await this.freezeReferences(transaction, {
       departmentId: actor.departmentId,
       resourceType: 'case',
       resourceId: caseId,
       facts,
       actionEventId: auditEventId,
     });
+    if (inserted.count !== facts.length) throw this.invalidVersion();
   }
 
   async assertCompleteCurrentCaseExecutionApplicationBundle(

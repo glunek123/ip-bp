@@ -544,6 +544,92 @@ END; $$;
 CREATE CONSTRAINT TRIGGER "ef_document_final" AFTER INSERT ON case_execution_filing_supplement_documents
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION check_execution_supplement_document_final();
 
+-- Extend the verified 159 classifier in place. Its existing BEFORE INSERT
+-- trigger derives the marker before the ordinary partial unique index runs;
+-- a second trigger could reset that marker or check uniqueness too early.
+DO $extend_supplement_reference_proof$
+DECLARE
+  function_oid oid;
+  function_owner oid;
+  function_acl aclitem[];
+  function_config text[];
+  old_body text;
+  new_body text;
+  old_definition text;
+  proof_branch text;
+  proof_needle text := E'  IF event_action IN (\n';
+  fallback_needle text := E'          ''case.closure.record-corrected''\n';
+BEGIN
+  SELECT p.oid,p.proowner,p.proacl,p.proconfig,p.prosrc,pg_get_functiondef(p.oid)
+    INTO function_oid,function_owner,function_acl,function_config,old_body,old_definition
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+    JOIN pg_language l ON l.oid=p.prolang
+  WHERE n.nspname=current_schema() AND p.proname='classify_case_record_material_reference'
+    AND p.pronargs=0 AND p.prorettype='trigger'::regtype
+    AND l.lanname='plpgsql' AND NOT p.prosecdef;
+  IF function_oid IS NULL OR md5(old_body)<>'bf5e9e373c2414498831a34ab5f7f034' OR
+    length(old_body)-length(replace(old_body,proof_needle,''))<>length(proof_needle) OR
+    length(old_body)-length(replace(old_body,fallback_needle,''))<>length(fallback_needle) OR
+    length(old_definition)-length(replace(old_definition,old_body,''))<>length(old_body) THEN
+    RAISE EXCEPTION 'unrecognized 159 material reference classifier' USING ERRCODE='23514';
+  END IF;
+  proof_branch:=$proof$
+  IF event_action IN ('case.execution.supplement.submitted','case.execution.supplement.corrected') THEN
+    SELECT EXISTS (
+      SELECT 1 FROM case_execution_filing_supplements s
+      JOIN case_execution_filing_supplement_documents d ON d.version_id=s.id
+        AND d.supplement_id=s.supplement_id AND d.filing_id=s.filing_id
+        AND d.case_id=s.case_id AND d.department_id=s.department_id
+      JOIN case_execution_filings f ON f.id=s.filing_id AND f.case_id=s.case_id
+        AND f.department_id=s.department_id
+      JOIN case_execution_filing_supplements root ON root.id=s.supplement_id
+        AND root.supplement_id=s.supplement_id AND root.filing_id=s.filing_id
+        AND root.case_id=s.case_id AND root.department_id=s.department_id
+        AND root.from_revision=0 AND root.to_revision=1 AND root.prior_version_id IS NULL
+      LEFT JOIN case_execution_filing_supplements prior ON prior.id=s.prior_version_id
+        AND prior.supplement_id=s.supplement_id AND prior.filing_id=s.filing_id
+        AND prior.case_id=s.case_id AND prior.department_id=s.department_id
+        AND prior.to_revision=s.from_revision
+      JOIN audit_events a ON a.id=s.audit_event_id AND a.department_id=s.department_id
+        AND a.resource_type='CASE' AND a.resource_id=s.case_id AND a.action=event_action
+        AND a.actor_kind='HUMAN' AND a.actor_user_id=s.recorded_by_user_id
+        AND a.internal_actor_user_id IS NOT DISTINCT FROM s.internal_actor_user_id
+        AND a.lawyer_account_binding_id IS NOT DISTINCT FROM s.lawyer_account_binding_id
+        AND a.customer_account_binding_id IS NULL AND a.notary_office_account_binding_id IS NULL
+      JOIN materials m ON m.id=d.material_id AND m.department_id=s.department_id
+        AND m.owner_type='CASE' AND m.owner_id=s.case_id
+        AND m.category='EXECUTION_SUPPLEMENT' AND m.purpose='EXECUTION_SUPPLEMENT'
+      JOIN content_versions v ON v.id=d.content_version_id AND v.material_id=m.id
+      WHERE s.audit_event_id=NEW.action_event_id AND s.case_id=NEW.resource_id
+        AND s.department_id=NEW.department_id AND d.material_id=NEW.material_id
+        AND d.content_version_id=NEW.content_version_id
+        AND NEW.resource_type='case' AND NEW.purpose='EXECUTION_SUPPLEMENT' AND NEW.asset_version_id IS NULL
+        AND s.to_revision::bigint=s.from_revision::bigint+1
+        AND ((event_action='case.execution.supplement.submitted' AND s.from_revision=0
+          AND s.id=s.supplement_id AND s.prior_version_id IS NULL)
+          OR (event_action='case.execution.supplement.corrected' AND s.from_revision>0
+          AND s.id<>s.supplement_id AND prior.id IS NOT NULL))
+        AND s.xmin=pg_current_xact_id()::text::xid AND d.xmin=pg_current_xact_id()::text::xid
+        AND a.xmin=pg_current_xact_id()::text::xid
+    ) INTO exact_document;
+    IF NOT exact_document THEN
+      RAISE EXCEPTION 'execution supplement reference lacks same-transaction exact typed proof'
+        USING ERRCODE='23514';
+    END IF;
+    NEW."is_repeatable_typed_reference" := true;
+  ELSIF event_action IN (
+$proof$;
+  new_body:=replace(old_body,proof_needle,ltrim(proof_branch,E'\n'));
+  new_body:=replace(new_body,fallback_needle,
+    E'          ''case.closure.record-corrected'',\n          ''case.execution.supplement.submitted'',\n          ''case.execution.supplement.corrected''\n');
+  EXECUTE replace(old_definition,old_body,new_body);
+  IF NOT EXISTS (SELECT 1 FROM pg_proc p WHERE p.oid=function_oid
+      AND p.proowner=function_owner AND p.proacl IS NOT DISTINCT FROM function_acl
+      AND p.proconfig IS NOT DISTINCT FROM function_config AND p.prosrc=new_body) THEN
+    RAISE EXCEPTION 'material reference classifier identity or privileges changed' USING ERRCODE='23514';
+  END IF;
+END; $extend_supplement_reference_proof$;
+
 CREATE FUNCTION "guard_execution_followup_audit"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP IN ('UPDATE','DELETE') THEN
