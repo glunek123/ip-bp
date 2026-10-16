@@ -2,9 +2,9 @@
 
 2026-10-16最新断点：原R2持久卷容器已正常启动一次并healthy；用户六项及另三项更正权限均已明确批准，唯一既有H主角色两事务35→39→42，恰追加7条DEPARTMENT Grant。原35/149表旧行/全部旧安全关联/67案/21推进/915审计/157账本/sequence/22两端材料保持，旧凭据私密恢复且hash复核，无重置/新actor/HTTP。主控与原Sol逐55份证据bytes/hash核准，授权与实际范围审C/I/M0；本结论不是业务验收。UI/H已成功收到回执与私密引用metadata，继续严格既有actor恢复/manifest纯实现；固定候选后唯一runner先真实登录和一条纵向，正向完成后最后终结失权场景。E65秒及旧门禁复用，预览/日期规则不动。
 
-H恢复四文件已精确提交9bdb23f（53聚焦/类型/静态通过），原Sol源码审C0/I1/M1：新增七Grant须钉两事务真实记录ID，目前只核动作/范围/数量；负例manifest实际原创建proof须runner另核。不可派实际H或标通过。原Owner修复消息遭AbsolutePathBuf拒绝，父级按ignored h-restore-review-fix-relay-20261016.md恢复同一Task；权限回执本身审核0不受此源码finding影响。
+H恢复四文件9bdb23f的I-H-RESTORE01已由原Owner补丁70ac1d9关闭，真实七Grant记录摘要与两事务独立重算一致、42定向纯测通过。独立closeout已接累计修复并固定503b9806/tree0865c03c，组合root类型/61相关纯测/定向静态/context strict通过，backend/依赖/156157与2a99字节相同；原Sol条件化首条纵向Scope ACCEPTED C/I/M0，不重跑旧verify/E65。唯一runner运行单runner-h-503b980-first-vertical-20261016.md已就绪：先在webServer前核两负例原创建manifest/身份/旧credential，缺则立即BLOCKED不得新造；通过再fresh锁/capture/157/42/22bytes/cleanup15min、正常本树构建/同源3101、protected list1→H首项1/1。真实业务仍未运行，M-H-RESTORE02实际proof不假关。
 
-并行开发：CORE-EF-001“执行申请后续办理”按SD-59已批准范围启动协调，独占ef001-shared-contract树/同名分支从ce3794d创建clean；原S唯一共享Owner派单遭AbsolutePathBuf路由拒绝，实施尚未确认，待父级原有效通道续办。领域E待共享DTO/签名稳定SHA，前端另派，不争当前UI/C2。独立测试环境优化Agent已实际启动test-runtime-stability树，仅新增三份纯helper/类型/测试，统一绝对cwd、同源URL/Origin及精确R2停止态启动意图；现有入口六文件仍UI独占，后续接稳定helper，不另建日常runner、不运行DB/服务。详细执行证据与边界见VALIDATION。
+并行开发：CORE-EF-001“执行申请后续办理”原S已经父级有效通道实际接单，在ef001-shared-contract树从ce3794d实施DTO/schema/158/Action小基线及受控材料合同；四追加模型、反馈/补交各登记与更正、route精确filing根，运营/当前PRIMARY律师，0真实Grant，不含法院账号/API。领域E待稳定签名SHA、前端另派，不争当前UI/C2或当前R2。环境优化三文件已提交c34bf23+0f6b3b7，4纯测及实际defineConfig消费通过，原Sol关闭接口I1（C0/I0/M1）；UI唯一入口Owner已成功收到稳定SHA与直接消费factory、禁止额外server.env覆盖约束，待独立接线，不把纯helper当环境完成。UI原manifest/固定H身份恢复首轮126+49纯测、类型通过，正在冻结十文件；真实16仍Pending。详细证据见VALIDATION。
 
 实际并行已恢复（2026-10-16，六项获批后）：父级通过有效通道启动原runner/UI/H，主控随后追加边界消息均确认送达。runner唯一实际DB写入Owner，先核已有manifest主写角色及六项existing/missing；foreign/只读/撤权负例不补成可写。UI恢复精确准入、H补已有actor严格复用接口可并行纯代码，原Reviewer待固定输入窄审；不把已派方案称正在实跑，不新建Task。新增权限必须仅六项缺失DEPARTMENT且对象/旧安全行差异核准；真实验收统一串行，原同树可信门禁不重做。
 
