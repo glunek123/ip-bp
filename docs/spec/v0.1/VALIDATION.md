@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### exact5补丁已审交运行树；多文件源码独立交付（2026-10-16）
+
+终端补丁当前固定d3d06b95ba9c848c7e256a6a9546c6dd66bd808e/tree486490f89bbed7149d22a82cb6fa81495a90f256，原Runner section-record-edit-ui-v2已仅fast-forward至同HEAD/tree、clean；三文件raw为database ee12fa0f…5d2c、声明2256537d…3b83、binding e0f0b852…260b。历史run raw3f684f40…dd03和直接授权583b2978…6f89独立钉住；新delta/真实执行summary绑定当前候选，五身份hash不含Grant且保持。原Reviewer发现的live4测试提前拒绝假覆盖、撤权marker误记历史候选均已修复；补审累计Spec/Quality ACCEPTED C/I/M0。作者最新228/228纯测试；主控最终修复raw上root tsc、ESLint、Prettier、diff及核明快照strict均exit0。没有本轮DB/Grant/HTTP执行，原5922整仓门禁不冒称d3新tree实跑。
+
+独立多文件产品提交b13a8e6d9d431a7501c44f5dc652a3b4660e5b5a及快照0aeb8e630eef37f9d5ad36c6710cc52272373907/tree df083f2d76c7cb2237bda96487b3634c8aa505ba，仅Panel/spec和核明快照。实际82/82组件测试、Vue类型/Lint/格式过；多选顺序请求、失败停余项、精确冻结锚、回调独立副本、先确认后取消及迟回复隔离、10上限前置拒绝有直接回归。初次系统Temp EPERM和作者一次错误换TEMP运行59/21失败保留，不用作最终证据；最终82在原Temp经正式批准运行。没有DB/真实浏览器或新组合完整门禁，不混入终端候选。
+
 ### 终端准备首403及单项增量准入（2026-10-16）
 
 5922e24实际正常verify工具139/前端2207/后台1864及NT006、双构建通过；原固定terminal五身份关联和四DEPARTMENT Grant已创建。正式单项在首次external-entry因CUSTOMER_ACTION_FORBIDDEN停止，实际案0/文件0，assignment仍active/v1；未到达目标“打开更正后撤权，保存403”，不能记该场景通过。原Runner安全摘要SHA2351ecc05966924131815c21c0e4695ecefb067ff4c275a08351bf182cc316fc，旧行/H42/159/31文件保持。

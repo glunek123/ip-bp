@@ -1,5 +1,7 @@
 # 当前开发状态
 
+最新收口（2026-10-16）：终端exact5补丁已关闭LIVE01/CANDIDATE02，独立Spec/Quality ACCEPTED C/I/M0；228纯测及最终类型/Lint/格式通过。原Runner树已从5922clean快进d3d06b95/tree486490f8，同三source raw，历史terminal run原bytes不变，尚未实际新增customer.read或续验。唯一续单见主控`.local/ui003-evidence/runner-terminal403-exact5-increment-20261016.md`；只原身份单条增量及原定1案1文件，仍public159。多文件产品源码另树固定0aeb8e63（业务提交b13a8e6），82组件测试/前端类型/Lint/格式过，未混入本轮Runner候选。用户09:14已同意结算人工金额账单/律师发票及证物独立编号/入库/库位/历史的最小首版；必要Spec和两个可见实施任务待据Demo真实差异冻结，不扩大自动公式、付款退款或借还销毁范围。
+
 恢复更新（2026-10-16）：5922终端专用身份和原四Grant已实际创建；首次external-entry因缺customer.read返回403，案/文件仍0，尚未达到目标撤权保存403。原Runner已留存用户直接批准，仅原role新增customer.read/DEPARTMENT一条，不新建身份、改其它角色。实际增量尚未执行；exact5准入纯补丁正在独占terminal-five-grant-admission实施，须审定后由原Runner单行补权并续同一单项。原四项proof及首次403原字节保持，public159不升级。并行独立产品切片为已批准REQ-SH-003多文件顺序上传，Luna只改更正Panel及直接spec，已开始源码；结算/实物证物两份调查已完成，只待最小业务范围确认，不计作产品实现。
 
 并行验收准备已固定：EF160在clean1a98fc7/tree dc167da6正常完整verify实际通过（工具139、前2378、后2124及真实NT006/双构建），owned专项1/1通过五checks/五enum，public159和149旧行/70案/H42/dadd唯一rev1/31文件保持。主控执行单误写内存文件64bytes，冻结源码与真实附件均60；独立核证确认纯文案差异，补证接受且原BLOCKED/exit1保留，不重跑。父级已安排先严格159的终端403，再正常部署160/HTTP14。批量8项及161风险四文件已组合固定clean e48760d/tree e557760e，风险纯7/7、离线发现1项及独立源码审0；枚举原字节分段、完整快照、原子清理及三checks证据finding均闭，未实跑或部署161。新UI终端候选5922e24已审0，尚无真实结果。原十五项派发自动审批拒绝及未送达状态保留，父级持直接用户授权独立安排，不阻塞其余开发。
