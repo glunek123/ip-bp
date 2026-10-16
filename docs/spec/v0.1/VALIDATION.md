@@ -1,10 +1,22 @@
 # SPEC-001 文档验证
 
-### 原案严格159候选已备，明确许可后消息路由仍未送达
+### 原案保存已成功，页面只读补测待收口
+
+原Runner在clean e9ee2e03/tree8148d8ea、R2/public159完成原dadd原279bytes body/key两次201、完整同回执，仅一条更正/回执使revision0→1，Case保持ARCHIVED/v6；原500已由本次实际成功关闭。fresh GET、刷新、有效值预填及规范化历史通过。脚本在编辑抽屉仍打开时点击退出，被遮罩挡住而超时；不能据此定性产品故障，也不能称重登、四文件精确下载或邮寄按钮下载已通过。149旧表行、70案头、H42、31文件、159账本及两个失败schema保持；正常只新增本次唯一纠错链及登录session。CASE/case采集误断言与原失败结果保留，由精确目标补证说明。
+
+证据`test-runtime-stability/.local/ui003-evidence/dadd159-e9ee2e0-20261016/acceptance-summary.json` SHA256 `e697e5293690d373a697d49e5ecd6ffe7db610bf99d5cc33cddf2e645e0d1b49`。后续只从已成功revision1补正常关闭抽屉、退出重登与原四版本/邮寄按钮下载；禁止再发保存、创建案件或误把旧revision0当新写入，不重复全门禁。
+
+### UXQ-03原子批量推送源码候选（2026-10-16）
+
+源码提交f99dc920895a8219b0e19c8440fc619c5ec6adca共19文件，含单Serializable批次Command、独立不可变回执及唯一新161迁移、严格有序API与列表批量面板、未知原请求恢复。必要Spec同步后固定`ui003-lead-list-workflow/codex/uxq03-lead-batch-push` clean ad16e8585c1a98a4d4e75a5bb094f525e89995ea/tree d0a01a781e2769a084e290d4fe2433b4aaabd14f。原Sol累计Spec/Quality ACCEPTED C/I/M0；fresh GET、迟到响应、稳定actor/dept恢复、成功/明确拒绝后清除本地pending等finding已关闭，原单条身份与接口不变。主控核全部19最终hash；两次过期Page哈希未用于提交，最终Page为71057ea4…00f6。新161 SQL工作区原字节与提交blob一致，SHA256 `1e267e104e4a7a1b20f1014dfd10506ce1aa831e32a11175e3a4dde2430c9e87`。
+
+实际直接验证：后端四套192/192；前端修复轮四文件50/50；最后仅Page两文件变更后该Page27/27复验，其余输入未变，不相加冒称同一轮。两端类型、变更Lint/格式、架构均通过；最终候选strict上下文、Spec57/67/11/59及本树`build:prepared`双构建实际exit0，Vite只保留既有大chunk提示。首次聚焦测试被临时目录EPERM拦截后，按正式权限重试同一命令通过，未改ACL/工具。此候选没有运行正常完整verify、NT006、真实PG/HTTP/浏览器或迁移；新161及其EF160前置尚未部署。后续需唯一Runner在明确准入后验证整批原子/失败回滚、并发、撤权原回执及真实页面，不能据源码和组件测试称已交付业务或上线。
+
+### 原案严格159候选已备，父级已有效接力
 
 原UI两文件5845cf101886f3ced88bcdc3679c4915a2fc531b只将完整source/applied链升为159并独立钉156–159 SQL原字节；174绑定及35准入纯测试、根类型、Lint/格式通过，原Sol补审C/I/M0。16业务项/135断言、H42/凭据/seal及产品字节不变。运行树接入后只更新context快照，固定clean e9ee2e03f44a6d8069325261d3b5eb6261c02267/tree8148d8ea067fa69984584ba602d15f0d81053e17，context strict通过；作者树缺env的protected发现失败保留，不当发现通过，须由已备运行树真实发现。
 
-主控发送原dadd同请求保存/原键重放/页面验证单时，自动审批认为此前159/五类许可未明确覆盖该单案持久更正，消息被拒且未执行。用户随后对完整说明的原案动作明确回复“允许原案同请求续验”。只据新许可重试原未执行消息一次，审批不再拒绝，但工具返回AbsolutePathBuf路由错误；未再次重试、未转其它Task代执行。向父级报告亦thread not found。当前是消息送达阻塞，不再是等待人类批准；原dadd仍未发HTTP。精确候选及短执行单在主控`.local/ui003-evidence/runner-dadd159-same-request-20261016.md`，旧审批原文与新许可/路由状态在`dadd159-execution-denied-20261016.md`。批量推送开发/审查独立继续，禁止把权限询问或已备源码当业务验收结果。
+主控发送原dadd同请求保存/原键重放/页面验证单时，自动审批认为此前159/五类许可未明确覆盖该单案持久更正，消息被拒且未执行。用户随后对完整说明的原案动作明确回复“允许原案同请求续验”。只据新许可重试原未执行消息一次，审批不再拒绝，但工具返回AbsolutePathBuf路由错误；未再次重试、未转其它Task代执行。向父级报告亦thread not found。当前是消息送达阻塞，不再是等待人类批准；原dadd仍未发HTTP。精确候选及短执行单在主控`.local/ui003-evidence/runner-dadd159-same-request-20261016.md`，旧审批原文与新许可/路由状态在`dadd159-execution-denied-20261016.md`。父级随后已确认通过有效通道送达原Runner同一e9ee2e03固定续单及用户精确许可，现由原Runner继续，主控不重复派发；尚未取得原案新的业务结果。批量推送开发/审查独立继续，禁止把权限询问、消息送达或已备源码当业务验收结果。
 
 ### 159修复实库与五类HTTP通过，原案页面尚待续验
 
