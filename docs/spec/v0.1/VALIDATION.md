@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### 批量161迁移风险源码已审，真实验收待执行（2026-10-16）
+
+原Owner仅新增tests/support/lead-batch-push-migration.mjs/.d.mts/.test.mjs及专属E2E；源码提交dbe912e84c98733b26bacffc90ce08848828722e，加已逐项核对的context快照固定`ui003-lead-list-workflow/codex/uxq03-lead-batch-push` clean `e48760d24ea7d93a54c52f0b98ca739488318dc8` / tree `e557760ed45c3754a4e8eaad55265e7e5cbe2a58`。原产品/8项PG源及161 SQL raw1e267e10…0c9e87不变。实际纯7/7、根类型/Lint/格式/语法及离线发现1项、strict上下文通过；尚未运行正常完整verify/PG/官方161或HTTP8。
+
+独立risk_review_resume累计Spec/Quality ACCEPTED、C/I/M0：156/160真实prefix+transaction各两query且拼回原raw；快照含enum标签排序/sequence/owner/OID/config；全部owned/inbound核验通过后才在单事务清理两schema；spec精确三checks并附真实fingerprint/public三digest。I-161-REPLAY01/PRESERVE02/CLEANUP03/EVIDENCE04均已关闭；失败时未到beforeCleanup不伪报public漂移，原异常仍保留。升级fixture只合法department/user/membership，不手工填Prisma账本或伪造lead/业务receipt；真实回执guard由后续8项验证。短续单为主控`.local/uxq03-evidence/runner-batch161-e48760d-20261016.md`，须前序160及EF14完成后，唯一Runner按完整verify→owned/public160保持→正常官方161→旧行保持→一个新terminal四Grant及H42复用→HTTP8顺序，不与EF并行或借旧树门禁。
+
 ### EF160完整门禁及owned风险通过，执行单60字节勘误（2026-10-16）
 
 原Runner在同一clean1a98fc759e8859315ccf9030a6e3a809144a60b2/tree dc167da6cff82f10bdfebc908e4d96e8ad0a0ee9实际正常完整verify exit0、288284ms：工具139/13文件、前端2378/127文件、后台2124/126套、真实NT006 owner及本树双构建通过。protected发现1文件1项、正式owned1/1 exit0，无skip/flaky/retry；五checks/五enum staging、159 classifier精确变换与身份保持、两owned成功清理/public三时点摘要相同均有真实附件。public保持159/149旧表、70案头/H42/dadd唯一rev1/31原目标文件bytes，两个旧failedschema保留，锁释放/端口空闲。尚未执行public160、EF14或终端403。
