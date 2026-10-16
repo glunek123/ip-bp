@@ -9,10 +9,11 @@ import { coreLeadFixtures } from '../support/core-lead-database.mjs';
 import { createCaseExecutionFilingSourceThroughApi } from '../support/case-execution-filing-database.mjs';
 import { createSubmittedCaseThroughApi } from '../support/case-complaint-confirmation-database.mjs';
 import {
-  createHistoricalRecordActor,
+  restoreHistoricalRecordActor,
   ownHistoricalRecordCase,
   historicalBaselineSecuritySnapshot,
   type HistoricalRecordActor,
+  type HistoricalRecordActorRecoverySource,
   historicalRecordFrozenSnapshot,
   historicalRecordSectionSnapshot,
   historicalRecordMutationProbe,
@@ -28,6 +29,85 @@ let foreignRequest: APIRequestContext;
 let readOnlyRequest: APIRequestContext;
 let builderRequest: APIRequestContext;
 let actor: HistoricalRecordActor;
+function historicalSessionHeaders(
+  session: unknown,
+  identity: HistoricalRecordActor,
+) {
+  if (
+    !session ||
+    typeof session !== 'object' ||
+    !('principalType' in session) ||
+    session.principalType !== 'INTERNAL' ||
+    !('user' in session) ||
+    !session.user ||
+    typeof session.user !== 'object' ||
+    !('id' in session.user) ||
+    session.user.id !== identity.userId ||
+    !('username' in session.user) ||
+    session.user.username !== identity.username ||
+    !('department' in session) ||
+    !session.department ||
+    typeof session.department !== 'object' ||
+    !('id' in session.department) ||
+    session.department.id !== identity.departmentId ||
+    !('csrfToken' in session) ||
+    typeof session.csrfToken !== 'string' ||
+    !session.csrfToken
+  )
+    throw new Error('Historical login identity or CSRF mismatch');
+  return { Origin: origin, 'X-CSRF-Token': session.csrfToken };
+}
+async function recoverHistoricalActors(
+  source: HistoricalRecordActorRecoverySource | undefined,
+) {
+  if (!source || typeof source.load !== 'function')
+    throw new Error(
+      'Runner must supply retained historical actor recovery inputs',
+    );
+  const recovery = await source.load();
+  const primary = recovery?.binding;
+  const negatives = [recovery?.foreign, recovery?.readOnly];
+  const userIds = new Set([primary?.userId]);
+  const roleIds = new Set([primary?.roleId]);
+  for (const [index, entry] of negatives.entries()) {
+    const identity = entry?.actor;
+    if (
+      !entry ||
+      !/^[0-9a-f]{64}$/u.test(entry.manifestSha256) ||
+      entry.manifestSha256 === primary?.manifestSha256 ||
+      !identity ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+        identity.userId,
+      ) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+        identity.roleId,
+      ) ||
+      /^20000000-/u.test(identity.userId) ||
+      /^30000000-/u.test(identity.roleId) ||
+      userIds.has(identity.userId) ||
+      roleIds.has(identity.roleId) ||
+      identity.departmentId !==
+        `10000000-0000-4000-8000-00000000000${index === 0 ? 2 : 1}` ||
+      typeof identity.username !== 'string' ||
+      !identity.username.startsWith('historical-record-') ||
+      typeof identity.password !== 'string' ||
+      !identity.password
+    )
+      throw new Error(
+        'Runner must supply isolated manifested foreign/read-only actors',
+      );
+    userIds.add(identity.userId);
+    roleIds.add(identity.roleId);
+  }
+  return {
+    operator: await restoreHistoricalRecordActor(
+      recovery.binding,
+      recovery.credential,
+    ),
+    foreign: recovery.foreign.actor,
+    readOnly: recovery.readOnly.actor,
+  };
+}
 async function login(
   request: APIRequestContext,
   identity: HistoricalRecordActor,
@@ -38,9 +118,7 @@ async function login(
       data: { username: identity.username, password: identity.password },
     }),
   );
-  if (typeof session.csrfToken !== 'string' || !session.csrfToken)
-    throw new Error('Historical actor login returned no CSRF token');
-  return { Origin: origin, 'X-CSRF-Token': session.csrfToken };
+  return historicalSessionHeaders(session, identity);
 }
 // Confine the legacy builders' fixed internal token/login to this new actor.
 // Client/notary/lawyer portal cookies stay in a separate context, as in their original API flows.
@@ -72,9 +150,7 @@ function sourceBuilderRequest(
         data: { ...data, username: actor.username, password: actor.password },
       });
       const session = await body<{ csrfToken: string }>(response);
-      if (typeof session.csrfToken !== 'string' || !session.csrfToken)
-        throw new Error('Historical source login returned no CSRF token');
-      operator = { Origin: origin, 'X-CSRF-Token': session.csrfToken };
+      operator = historicalSessionHeaders(session, actor);
       return response;
     }
     const fixedInternal =
@@ -103,8 +179,15 @@ function sourceBuilderRequest(
     },
   });
 }
-const test = base.extend<{ hRequest: APIRequestContext }>({
-  hRequest: async ({ playwright }, use, testInfo) => {
+const test = base.extend<
+  { hRequest: APIRequestContext },
+  {
+    hActorRecovery: HistoricalRecordActorRecoverySource | undefined;
+  }
+>({
+  hActorRecovery: [undefined, { option: true, scope: 'worker' }],
+  hRequest: async ({ playwright, hActorRecovery }, use, testInfo) => {
+    const identities = await recoverHistoricalActors(hActorRecovery);
     const before = await historicalBaselineSecuritySnapshot();
     await testInfo.attach('h-baseline-security-before', {
       body: Buffer.from(JSON.stringify(before)),
@@ -120,19 +203,13 @@ const test = base.extend<{ hRequest: APIRequestContext }>({
         contexts.push(value);
         return value;
       };
-      actor = await createHistoricalRecordActor();
+      actor = identities.operator;
       const request = await context();
       operator = await login(request, actor);
       foreignRequest = await context();
-      foreign = await login(
-        foreignRequest,
-        await createHistoricalRecordActor({ foreign: true }),
-      );
+      foreign = await login(foreignRequest, identities.foreign);
       readOnlyRequest = await context();
-      readOnly = await login(
-        readOnlyRequest,
-        await createHistoricalRecordActor({ readOnly: true }),
-      );
+      readOnly = await login(readOnlyRequest, identities.readOnly);
       builderRequest = sourceBuilderRequest(request, await context());
       await use(request);
     } finally {

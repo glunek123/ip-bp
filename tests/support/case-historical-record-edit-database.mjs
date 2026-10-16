@@ -23,6 +23,33 @@ const baselineRoles = [1, 2, 3].map(
 );
 const actors = new Map();
 const ownedCases = new Set();
+const originalActorBinding = Object.freeze({
+  manifestSha256:
+    'a5307e17af39d842c1ed01b59acae261de8eee16a5454685a8d9137978c340af',
+  creationDeltaSha256:
+    'f61ab7550209b531a7dc66d9a32bc5b023b47014feccda9730b17c3a4ca26d83',
+  fourGrantManifestSha256:
+    'e6baa1d3b7e94b59cc2a83e90b43696bc6563046fd927206e8a3306fe02073de',
+  threeCorrectionManifestSha256:
+    '32331cbbc325cd2fb76d1fde7e4e7e0f2d3cee0e6d5ec8688892cee8bbd83021',
+  credentialFileSha256:
+    'd9367f33ac67ad2353648ade02b3c110aaa1785a51944207882de56e34a94de1',
+  userId: 'edc8bf6f-6660-41f6-8418-f72f87443a1c',
+  roleId: '51c34a8b-fb00-45b1-ab9f-d077d59d4878',
+  departmentId: departmentA,
+  assignmentId: '8bed4da1-c61e-40d9-bd78-170380421ce8',
+  membershipId: '36ea4166-dce8-48bd-bb9b-216222f0ea2a',
+  credentialId: 'f695cb82-e0d1-4dcc-9135-d1e3c75ecc8b',
+});
+const approvedMissingActions = Object.freeze([
+  'case.complaint.mail',
+  'case.filing.submit',
+  'case.acceptance.register',
+  'case.external-entry.create',
+  'case.execution.mailing.correct',
+  'case.execution.filing.correct',
+  'case.execution.finish.correct',
+]);
 
 export function assertHistoricalRecordR2Binding(environment = process.env) {
   if (
@@ -158,6 +185,113 @@ export async function withHistoricalRecordDatabase(operation, offline) {
   }
 }
 const withDatabase = withHistoricalRecordDatabase;
+// Only the already-created H operator is admitted here. No identity/Grant writes or fallback.
+export async function restoreHistoricalRecordActor(
+  binding,
+  credential,
+  offline,
+) {
+  if (
+    binding === null ||
+    typeof binding !== 'object' ||
+    Object.entries(originalActorBinding).some(
+      ([key, value]) => binding[key] !== value,
+    )
+  )
+    throw new Error('Historical actor creation binding mismatch');
+  if (
+    !credential ||
+    typeof credential.username !== 'string' ||
+    !/^historical-record-[0-9a-f-]{36}$/iu.test(credential.username) ||
+    typeof credential.password !== 'string' ||
+    !credential.password
+  )
+    throw new Error('Original historical actor credential is required');
+  const { username, password } = credential;
+  const {
+    userId,
+    roleId,
+    departmentId,
+    assignmentId,
+    membershipId,
+    credentialId,
+  } = originalActorBinding;
+  await withDatabase(async (client) => {
+    const ledger = (
+      await client.query(
+        'SELECT count(*)::int AS count FROM public._prisma_migrations',
+      )
+    ).rows;
+    if (ledger.length !== 1 || ledger[0].count !== 157)
+      throw new Error(
+        'Historical actor recovery requires the current 157 ledger',
+      );
+    const rows = (
+      await client.query(
+        `SELECT u.id AS user_id,r.id AS role_id,r.department_id,
+                a.id AS assignment_id,a.team_id,m.id AS membership_id,c.id AS credential_id,c.username
+         FROM user_accounts u
+         JOIN role_assignments a ON a.user_id=u.id AND a.active
+         JOIN role_templates r ON r.id=a.role_template_id AND r.department_id=a.department_id AND r.active
+         JOIN department_memberships m ON m.user_id=u.id AND m.department_id=a.department_id AND m.active
+         JOIN local_credentials c ON c.user_id=u.id
+         WHERE u.id=$1 AND u.active AND u.account_type='INTERNAL'`,
+        [userId],
+      )
+    ).rows;
+    const expected = {
+      user_id: userId,
+      role_id: roleId,
+      department_id: departmentId,
+      assignment_id: assignmentId,
+      team_id: null,
+      membership_id: membershipId,
+      credential_id: credentialId,
+      username,
+    };
+    if (
+      rows.length !== 1 ||
+      Object.entries(expected).some(([key, value]) => rows[0][key] !== value)
+    )
+      throw new Error(
+        'Historical actor active identity does not match creation evidence',
+      );
+    const grants = (
+      await client.query(
+        'SELECT id,action::text AS action,scope::text AS scope FROM role_grants WHERE role_template_id=$1',
+        [roleId],
+      )
+    ).rows;
+    const originalGrants = grants
+      .filter((row) => !approvedMissingActions.includes(row.action))
+      .map(({ id, action, scope }) => ({ id, action, scope }))
+      .sort((a, b) => (a.action < b.action ? -1 : a.action > b.action ? 1 : 0));
+    if (
+      grants.length !== 42 ||
+      new Set(grants.map((row) => row.action)).size !== 42 ||
+      grants.some((row) => row.scope !== 'DEPARTMENT' || !uuid.test(row.id)) ||
+      approvedMissingActions.some(
+        (action) => !grants.some((row) => row.action === action),
+      ) ||
+      createHash('sha256')
+        .update(JSON.stringify(originalGrants))
+        .digest('hex') !==
+        '857df0a89247fb3a630a0cfd8f1bb3048a0aba6a95c59e92a121a64e57158602'
+    )
+      throw new Error(
+        'Historical actor requires preserved original 35 and exactly seven approved grants',
+      );
+  }, offline);
+  const actor = Object.freeze({
+    userId,
+    roleId,
+    departmentId,
+    username,
+    password,
+  });
+  actors.set(userId, actor);
+  return actor;
+}
 async function assertCase(client, caseId) {
   if (!uuid.test(caseId) || !ownedCases.has(caseId))
     throw new Error('Unowned historical synthetic case');

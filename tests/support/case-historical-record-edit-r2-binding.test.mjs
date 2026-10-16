@@ -8,6 +8,7 @@ import {
   withHistoricalRecordDatabase,
   createHistoricalRecordActor,
   historicalBaselineSecuritySnapshot,
+  restoreHistoricalRecordActor,
 } from './case-historical-record-edit-database.mjs';
 
 const url =
@@ -316,13 +317,16 @@ function executeHistoricalSpec(names, globals) {
   );
 }
 
-test('actual H fixture uses one backend origin and separate cookie contexts for all three actors and the portal', async () => {
+test('actual restored H fixture uses one backend origin and separate cookie contexts for all three actors and the portal', async () => {
   const contexts = [];
-  const identities = ['owned', 'foreign', 'read-only'].map((username) => ({
-    username,
-    password: `offline-${username}`,
-  }));
-  const remaining = [...identities];
+  const identities = ['owned', 'foreign', 'read-only'].map(
+    (username, index) => ({
+      userId: `synthetic-user-${index}`,
+      departmentId: `synthetic-department-${index}`,
+      username,
+      password: `offline-${username}`,
+    }),
+  );
   const snapshot = { baseline: 'unchanged' };
   let snapshots = 0;
   const globals = {
@@ -340,15 +344,27 @@ test('actual H fixture uses one backend origin and separate cookie contexts for 
       snapshots++;
       return snapshot;
     },
-    createHistoricalRecordActor: async () => remaining.shift(),
+    recoverHistoricalActors: async () => ({
+      operator: identities[0],
+      foreign: identities[1],
+      readOnly: identities[2],
+    }),
     expect: (actual) => ({
       toEqual: (expected) => assert.equal(actual, expected),
     }),
   };
   const { test: fixture } = executeHistoricalSpec(
-    ['origin', 'login', 'sourceBuilderRequest', 'test'],
+    [
+      'origin',
+      'historicalSessionHeaders',
+      'login',
+      'sourceBuilderRequest',
+      'test',
+    ],
     globals,
   );
+  assert.equal(fixture.hActorRecovery[0], undefined);
+  assert.equal(fixture.hActorRecovery[1].scope, 'worker');
   await fixture.hRequest(
     {
       playwright: {
@@ -361,8 +377,14 @@ test('actual H fixture uses one backend origin and separate cookie contexts for 
               disposed: false,
               async post(url, request) {
                 calls.push({ url, request });
+                const identity = identities[context.id];
                 return {
-                  json: async () => ({ csrfToken: `csrf-${context.id}` }),
+                  json: async () => ({
+                    csrfToken: `csrf-${context.id}`,
+                    principalType: 'INTERNAL',
+                    user: { id: identity.userId, username: identity.username },
+                    department: { id: identity.departmentId },
+                  }),
                 };
               },
               async dispose() {
@@ -415,7 +437,12 @@ test('actual H source adapter uses owned internal login and keeps external porta
   const calls = [];
   const response = {
     async json() {
-      return { csrfToken: 'rotated-owned-csrf' };
+      return {
+        csrfToken: 'rotated-owned-csrf',
+        principalType: 'INTERNAL',
+        user: { id: 'owned-id', username: 'owned-actor' },
+        department: { id: 'owned-department' },
+      };
     },
   };
   const client = (kind) =>
@@ -429,7 +456,12 @@ test('actual H source adapter uses owned internal login and keeps external porta
       ]),
     );
   const globals = {
-    actor: { username: 'owned-actor', password: 'offline-owned-password' },
+    actor: {
+      userId: 'owned-id',
+      departmentId: 'owned-department',
+      username: 'owned-actor',
+      password: 'offline-owned-password',
+    },
     operator: { 'X-CSRF-Token': 'owned-csrf' },
     coreLeadFixtures: {
       tokenA: 'baseline-token',
@@ -438,7 +470,7 @@ test('actual H source adapter uses owned internal login and keeps external porta
     body: async (response) => response.json(),
   };
   const { sourceBuilderRequest: factory } = executeHistoricalSpec(
-    ['origin', 'sourceBuilderRequest'],
+    ['origin', 'historicalSessionHeaders', 'sourceBuilderRequest'],
     globals,
   );
   const request = factory(client('owned'), client('portal'));
@@ -528,3 +560,451 @@ test('actual H source adapter uses owned internal login and keeps external porta
   assert.equal(calls.at(-1).options.data, internalWrite.data);
   assert.equal(internalWrite.headers.Origin, 'http://127.0.0.1:5174');
 });
+
+const retainedBinding = {
+  manifestSha256:
+    'a5307e17af39d842c1ed01b59acae261de8eee16a5454685a8d9137978c340af',
+  creationDeltaSha256:
+    'f61ab7550209b531a7dc66d9a32bc5b023b47014feccda9730b17c3a4ca26d83',
+  fourGrantManifestSha256:
+    'e6baa1d3b7e94b59cc2a83e90b43696bc6563046fd927206e8a3306fe02073de',
+  threeCorrectionManifestSha256:
+    '32331cbbc325cd2fb76d1fde7e4e7e0f2d3cee0e6d5ec8688892cee8bbd83021',
+  credentialFileSha256:
+    'd9367f33ac67ad2353648ade02b3c110aaa1785a51944207882de56e34a94de1',
+  userId: 'edc8bf6f-6660-41f6-8418-f72f87443a1c',
+  roleId: '51c34a8b-fb00-45b1-ab9f-d077d59d4878',
+  departmentId: '10000000-0000-4000-8000-000000000001',
+  assignmentId: '8bed4da1-c61e-40d9-bd78-170380421ce8',
+  membershipId: '36ea4166-dce8-48bd-bb9b-216222f0ea2a',
+  credentialId: 'f695cb82-e0d1-4dcc-9135-d1e3c75ecc8b',
+};
+const retainedCredential = {
+  username: 'historical-record-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  password: 'offline-retained-password',
+};
+// Non-secret synthetic creation IDs and actions from the frozen H object delta.
+const originalGrantPairs = [
+  ['271f1e93-9d0c-44ff-beaa-ce8d2414b017', 'case.archive'],
+  ['e1f96825-40ab-4829-bb44-90356f9676ca', 'case.archive.correct'],
+  ['175bfc39-4b52-464b-aec8-168dc7952719', 'case.closure.correct'],
+  ['37c4a9f4-f4e8-463d-9c12-f24fcd5a4341', 'case.closure.record'],
+  ['c40ca267-df2b-417e-afad-f48643e94c95', 'case.complaint.confirm'],
+  ['0c1c7dda-5dca-46e9-b522-86882beb8052', 'case.complaint.submit'],
+  ['c50f0da5-816b-4f4f-a496-cb8b53bc2b2c', 'case.execution.confirm'],
+  ['386a7042-3aba-43b3-9e08-263e8a841618', 'case.execution.filing.submit'],
+  ['fbadd7a4-1d2a-4515-a9df-5a804b710d5c', 'case.execution.finish'],
+  ['f595dbd3-aa86-4cb7-9b79-be4a1aadbdb5', 'case.execution.mail'],
+  ['b776a5cc-fdc4-4fc7-835c-07f37a3de85f', 'case.execution.submit'],
+  ['f9443003-0eee-450c-9546-3e84b62bbaaa', 'case.hearing.correct'],
+  ['c3a47725-1120-428b-8369-c81bdeb9bc12', 'case.hearing.schedule'],
+  ['f1e39a1d-34ed-4657-862a-6cc912aeb7d2', 'case.judgment.correct'],
+  ['635a1b8a-d050-4674-91e8-fe46433ab800', 'case.judgment.next_step'],
+  ['5f586e49-f882-433b-93f1-99048cca6183', 'case.judgment.register'],
+  ['7578eafa-be66-4e79-bde3-02df2ccb7c8b', 'case.match'],
+  ['b15a2899-2aff-40d0-97e9-e83743d6f38e', 'case.read'],
+  ['84de156b-b7a4-4adb-8d31-76ce9fe86e8e', 'case.second_instance.result'],
+  ['95287db6-32ef-43ae-92c1-b0e40bac7960', 'customer.admit'],
+  ['7f9e8452-c32b-449c-bd08-98e99787d1cb', 'customer.read'],
+  ['0c467442-b353-415d-b310-d8953b8f95d5', 'lawyer.account.manage'],
+  ['f04faccd-e560-45f1-b5ee-37e9d6b5d682', 'lead.create'],
+  ['2f4d9d11-5806-4e2a-b4d5-5fc917fa685b', 'lead.edit'],
+  ['9601fe3b-0a00-4e23-a2eb-2249da72e776', 'lead.evidence.decide'],
+  ['21ffedfa-663c-4ee6-9720-6b2e7dc847ea', 'lead.push'],
+  ['4fab3964-c162-4358-bfec-8d771186f869', 'lead.read'],
+  ['36d13519-e99a-4c52-818c-2e15114d5874', 'lead.withdraw.apply'],
+  ['67760ac2-0a1a-4ebb-82b4-0dfb802e1b68', 'notary.evidence.record'],
+  ['d987b632-aca3-4bb8-b739-7e4502509ece', 'notary.issuance.decide'],
+  ['ae00d94e-a5b6-4a30-bd10-664e70039bd1', 'notary.office.manage'],
+  ['a5193737-de02-4412-8bb0-ed463f7c816d', 'notary.opening.review'],
+  ['c4ae499d-a7fa-42cf-b6e0-df894ebae5fc', 'notary.return.archive'],
+  ['de2fbfe7-86d5-4ada-9597-c5b599d423d6', 'notary.unbox.record'],
+  ['37d64515-e5f4-4599-a07a-0c07f1378a7c', 'user.manage'],
+];
+function restorationOffline(count = 157) {
+  const f = offline(count);
+  f.state.actorRows = [
+    {
+      user_id: retainedBinding.userId,
+      role_id: retainedBinding.roleId,
+      department_id: retainedBinding.departmentId,
+      assignment_id: retainedBinding.assignmentId,
+      team_id: null,
+      membership_id: retainedBinding.membershipId,
+      credential_id: retainedBinding.credentialId,
+      username: retainedCredential.username,
+    },
+  ];
+  f.state.grants = originalGrantPairs.map(([id, action]) => ({
+    id,
+    action,
+    scope: 'DEPARTMENT',
+  }));
+  for (const [index, action] of [
+    'case.complaint.mail',
+    'case.filing.submit',
+    'case.acceptance.register',
+    'case.external-entry.create',
+    'case.execution.mailing.correct',
+    'case.execution.filing.correct',
+    'case.execution.finish.correct',
+  ].entries())
+    f.state.grants.push({
+      id: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, '0')}`,
+      action,
+      scope: 'DEPARTMENT',
+    });
+  const open = f.deps.openClient;
+  f.deps.openClient = () => {
+    const client = open();
+    const query = client.query.bind(client);
+    client.query = async (sql, parameters = []) => {
+      if (
+        sql.startsWith('SELECT count(*)') ||
+        sql.startsWith('SELECT u.id') ||
+        sql.startsWith('SELECT id,action::text')
+      ) {
+        f.state.calls.push({ sql, parameters });
+        return {
+          rows: sql.startsWith('SELECT count(*)')
+            ? [{ count: f.state.applied.length }]
+            : sql.startsWith('SELECT u.id')
+              ? f.state.actorRows
+              : f.state.grants,
+        };
+      }
+      return query(sql, parameters);
+    };
+    return client;
+  };
+  f.deps.hashPassword = () => {
+    throw new Error('Recovery must not create credentials');
+  };
+  return f;
+}
+function assertRecoveryReadOnly(f) {
+  assert.ok(f.state.calls.every((call) => call.sql.startsWith('SELECT')));
+  assert.ok(
+    f.state.calls.every(
+      (call) => !call.parameters.includes(retainedCredential.password),
+    ),
+  );
+}
+test('restore admits only the retained actor with preserved 35 plus exactly seven approved grants', async () => {
+  const f = restorationOffline();
+  const identity = await restoreHistoricalRecordActor(
+    retainedBinding,
+    retainedCredential,
+    f.deps,
+  );
+  assert.equal(identity.userId, retainedBinding.userId);
+  assert.equal(identity.roleId, retainedBinding.roleId);
+  assert.equal(identity.username, retainedCredential.username);
+  assert.equal(identity.password, retainedCredential.password);
+  assert.ok(Object.isFrozen(identity));
+  assert.equal(f.state.ended, 1);
+  assertRecoveryReadOnly(f);
+});
+for (const key of Object.keys(retainedBinding))
+  test(`restore rejects mismatched ${key} before capture`, async () => {
+    const f = restorationOffline();
+    await assert.rejects(
+      restoreHistoricalRecordActor(
+        { ...retainedBinding, [key]: 'mismatched' },
+        retainedCredential,
+        f.deps,
+      ),
+    );
+    assert.equal(f.state.capture, 0);
+    assert.equal(f.state.opened, 0);
+    assertRecoveryReadOnly(f);
+  });
+for (const credential of [
+  undefined,
+  null,
+  {},
+  { ...retainedCredential, username: '' },
+  { ...retainedCredential, password: '' },
+])
+  test(`restore rejects missing original credential ${JSON.stringify(credential && Object.keys(credential))}`, async () => {
+    const f = restorationOffline();
+    await assert.rejects(
+      restoreHistoricalRecordActor(retainedBinding, credential, f.deps),
+      /credential is required/u,
+    );
+    assert.equal(f.state.capture, 0);
+    assert.equal(f.state.opened, 0);
+    assertRecoveryReadOnly(f);
+  });
+for (const key of [
+  'user_id',
+  'role_id',
+  'department_id',
+  'assignment_id',
+  'team_id',
+  'membership_id',
+  'credential_id',
+  'username',
+])
+  test(`restore rejects live ${key} mismatch without writes`, async () => {
+    const f = restorationOffline();
+    f.state.actorRows[0][key] = 'wrong';
+    await assert.rejects(
+      restoreHistoricalRecordActor(retainedBinding, retainedCredential, f.deps),
+      /active identity/u,
+    );
+    assert.equal(f.state.ended, 1);
+    assertRecoveryReadOnly(f);
+  });
+for (const [name, change] of [
+  [
+    'inactive or missing association',
+    (f) => {
+      f.state.actorRows = [];
+    },
+  ],
+  [
+    'multiple associations',
+    (f) => f.state.actorRows.push({ ...f.state.actorRows[0] }),
+  ],
+  ['missing approved grant', (f) => f.state.grants.pop()],
+  [
+    'extra grant',
+    (f) =>
+      f.state.grants.push({
+        id: retainedBinding.userId,
+        action: 'role.manage',
+        scope: 'DEPARTMENT',
+      }),
+  ],
+  [
+    'original grant replacement',
+    (f) => {
+      f.state.grants[0].id = retainedBinding.userId;
+    },
+  ],
+  [
+    'wrong grant scope',
+    (f) => {
+      f.state.grants.at(-1).scope = 'SELF';
+    },
+  ],
+  [
+    'foreign R2 tuple',
+    (f) => {
+      f.deps.environment.DEV_COR_TEST_DATABASE_PROJECT = 'other';
+    },
+  ],
+  [
+    'ledger checksum drift',
+    (f) => {
+      f.state.applied[156].checksum = 'wrong';
+    },
+  ],
+])
+  test(`restore rejects ${name} without identity or grant writes`, async () => {
+    const f = restorationOffline();
+    change(f);
+    await assert.rejects(
+      restoreHistoricalRecordActor(retainedBinding, retainedCredential, f.deps),
+    );
+    assertRecoveryReadOnly(f);
+  });
+test('restore rejects 156 even when that source ledger otherwise passes existing admission', async () => {
+  const f = restorationOffline(156);
+  await assert.rejects(
+    restoreHistoricalRecordActor(retainedBinding, retainedCredential, f.deps),
+    /157 ledger/u,
+  );
+  assertRecoveryReadOnly(f);
+});
+
+function recoveryInputs() {
+  return {
+    binding: { ...retainedBinding },
+    credential: { ...retainedCredential },
+    foreign: {
+      manifestSha256: 'e'.repeat(64),
+      actor: {
+        userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        roleId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        departmentId: '10000000-0000-4000-8000-000000000002',
+        username: 'historical-record-foreign',
+        password: 'offline-foreign',
+      },
+    },
+    readOnly: {
+      manifestSha256: 'e'.repeat(64),
+      actor: {
+        userId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        roleId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        departmentId: retainedBinding.departmentId,
+        username: 'historical-record-readonly',
+        password: 'offline-readonly',
+      },
+    },
+  };
+}
+for (const [name, change] of [
+  [
+    'missing foreign manifest',
+    (r) => {
+      delete r.foreign;
+    },
+  ],
+  [
+    'missing read-only manifest',
+    (r) => {
+      delete r.readOnly;
+    },
+  ],
+  [
+    'unrecorded negative manifest',
+    (r) => {
+      r.foreign.manifestSha256 = '';
+    },
+  ],
+  [
+    'old operator manifest as negative proof',
+    (r) => {
+      r.foreign.manifestSha256 = retainedBinding.manifestSha256;
+    },
+  ],
+  [
+    'operator user as foreign',
+    (r) => {
+      r.foreign.actor.userId = retainedBinding.userId;
+    },
+  ],
+  [
+    'operator role as read-only',
+    (r) => {
+      r.readOnly.actor.roleId = retainedBinding.roleId;
+    },
+  ],
+  [
+    'foreign/read-only swapped',
+    (r) => {
+      [r.foreign, r.readOnly] = [r.readOnly, r.foreign];
+    },
+  ],
+  [
+    'negative actor reused',
+    (r) => {
+      r.readOnly.actor.userId = r.foreign.actor.userId;
+    },
+  ],
+  [
+    'baseline role',
+    (r) => {
+      r.readOnly.actor.roleId = '30000000-0000-4000-8000-000000000001';
+    },
+  ],
+  [
+    'missing negative credential',
+    (r) => {
+      delete r.foreign.actor.password;
+    },
+  ],
+])
+  test(`recovery preflight rejects ${name} before restore/login/factory`, async () => {
+    const recovery = recoveryInputs();
+    change(recovery);
+    let restores = 0;
+    const { recoverHistoricalActors } = executeHistoricalSpec(
+      ['recoverHistoricalActors'],
+      {
+        restoreHistoricalRecordActor: async () => {
+          restores++;
+        },
+        createHistoricalRecordActor: () => {
+          throw new Error('Factory must not run');
+        },
+      },
+    );
+    await assert.rejects(
+      recoverHistoricalActors({ load: async () => recovery }),
+    );
+    assert.equal(restores, 0);
+  });
+test('recovery requires the private loader and has no factory fallback', async () => {
+  const { recoverHistoricalActors } = executeHistoricalSpec(
+    ['recoverHistoricalActors'],
+    {},
+  );
+  await assert.rejects(
+    recoverHistoricalActors(undefined),
+    /Runner must supply/u,
+  );
+});
+test('recovery forwards only the retained main binding and original credential to restore', async () => {
+  const recovery = recoveryInputs();
+  const main = { userId: retainedBinding.userId };
+  const calls = [];
+  const { recoverHistoricalActors } = executeHistoricalSpec(
+    ['recoverHistoricalActors'],
+    {
+      restoreHistoricalRecordActor: async (...args) => {
+        calls.push(args);
+        return main;
+      },
+    },
+  );
+  const result = await recoverHistoricalActors({ load: async () => recovery });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], recovery.binding);
+  assert.equal(calls[0][1], recovery.credential);
+  assert.equal(result.operator, main);
+  assert.equal(result.foreign, recovery.foreign.actor);
+  assert.equal(result.readOnly, recovery.readOnly.actor);
+});
+for (const [name, change] of [
+  [
+    'principal',
+    (s) => {
+      s.principalType = 'CLIENT';
+    },
+  ],
+  [
+    'user',
+    (s) => {
+      s.user.id = 'different-user';
+    },
+  ],
+  [
+    'username',
+    (s) => {
+      s.user.username = 'different-username';
+    },
+  ],
+  [
+    'department',
+    (s) => {
+      s.department.id = 'different-department';
+    },
+  ],
+  [
+    'CSRF',
+    (s) => {
+      s.csrfToken = '';
+    },
+  ],
+])
+  test(`restored session identity rejects wrong ${name}`, () => {
+    const { historicalSessionHeaders } = executeHistoricalSpec(
+      ['origin', 'historicalSessionHeaders'],
+      {},
+    );
+    const identity = { ...retainedBinding, ...retainedCredential };
+    const session = {
+      principalType: 'INTERNAL',
+      user: { id: identity.userId, username: identity.username },
+      department: { id: identity.departmentId },
+      csrfToken: 'offline-csrf',
+    };
+    change(session);
+    assert.throws(
+      () => historicalSessionHeaders(session, identity),
+      /identity or CSRF mismatch/u,
+    );
+  });

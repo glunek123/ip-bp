@@ -6,6 +6,34 @@ export type HistoricalRecordActor = {
   username: string;
   password: string;
 };
+export type HistoricalRecordActorBinding = {
+  manifestSha256: string;
+  creationDeltaSha256: string;
+  fourGrantManifestSha256: string;
+  threeCorrectionManifestSha256: string;
+  credentialFileSha256: string;
+  userId: string;
+  roleId: string;
+  departmentId: string;
+  assignmentId: string;
+  membershipId: string;
+  credentialId: string;
+};
+export type HistoricalRecordActorRecovery = {
+  binding: HistoricalRecordActorBinding;
+  credential: Pick<HistoricalRecordActor, 'username' | 'password'>;
+  // The unique runner must verify these separate creation manifests before supplying them.
+  foreign: { manifestSha256: string; actor: HistoricalRecordActor };
+  readOnly: { manifestSha256: string; actor: HistoricalRecordActor };
+};
+// Runner verifies manifest/private-file bytes before loading. Credentials stay out of config/report data.
+export type HistoricalRecordActorRecoverySource = {
+  load(): Promise<HistoricalRecordActorRecovery>;
+};
+export function restoreHistoricalRecordActor(
+  binding: HistoricalRecordActorBinding,
+  credential: Pick<HistoricalRecordActor, 'username' | 'password'>,
+): Promise<HistoricalRecordActor>;
 export function assertHistoricalRecordR2Binding(
   environment?: Record<string, string | undefined>,
 ): { connectionString: string; port: number };
