@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### EF160完整门禁及owned风险通过，执行单60字节勘误（2026-10-16）
+
+原Runner在同一clean1a98fc759e8859315ccf9030a6e3a809144a60b2/tree dc167da6cff82f10bdfebc908e4d96e8ad0a0ee9实际正常完整verify exit0、288284ms：工具139/13文件、前端2378/127文件、后台2124/126套、真实NT006 owner及本树双构建通过。protected发现1文件1项、正式owned1/1 exit0，无skip/flaky/retry；五checks/五enum staging、159 classifier精确变换与身份保持、两owned成功清理/public三时点摘要相同均有真实附件。public保持159/149旧表、70案头/H42/dadd唯一rev1/31原目标文件bytes，两个旧failedschema保留，锁释放/端口空闲。尚未执行public160、EF14或终端403。
+
+原Runner因执行单要求64bytes而封存acceptance BLOCKED/phase exit1；冻结helper333的ASCII模板28bytes+32hex nonce恒为60，seed及升级前后CV metadata检查和实际memoryFile.size60/hash88fddede299b0bc326179be8699e5db5a67bb04cd508fdeeb0dc2e121df3ac25一致。64是主控执行单笔误，不是上传大小边界或新增覆盖要求；主控与独立risk_review_resume实核同源/附件后澄清接受，不重跑、不改SQL/源码/断言或原结果。证据`ef001-integration/.local/ef001-evidence/migration-1a98fc7-20261016/acceptance-summary.json` SHA256 `3a06ffa0f994d1890411144ff5ccc45e3be886a16861bf0388631ef9368e126c`；勘误补证为主控`.local/ef001-evidence/ef160-memory-size-correction-20261016.md` SHA256 `26323930422e6c42540f93dd8f0d4569da8257c6a30f21fb7fb0f4a65c19b9e0`，原执行单c7dd…及全部原日志保持。内存材料不证明实际stored blob或历史Case恢复；后续先严格159终端单，再160部署/HTTP14，不等待161。以下三候选段落保留源码交付时状态。
+
 ### 三个独立验收源码候选已固定（2026-10-16）
 
 EF160风险四文件105b5870及仅context快照固定为`ef001-integration/codex/ef001-integration` clean `1a98fc759e8859315ccf9030a6e3a809144a60b2` / tree `dc167da6cff82f10bdfebc908e4d96e8ad0a0ee9`。实际纯24/24、root及workspace类型、四文件Lint/格式/语法、strict上下文通过；同一正常本地CLI发现1文件1项/callbacks0，首次系统cache EPERM后正式权限执行相同命令通过，未换cache/ACL。独立risk_review_resume累计Spec/Quality ACCEPTED C/I/M0，M-C-PROBE01同步篡改156–159 source/ledger及public/search_path反例已关闭。父级已启动原Runner的正常完整verify和单owned风险项，尚无实际结果；SQL副本预期仍只最小ACL/DRAFT/file metadata与内存bytes，不覆盖旧Case/blob。前置单在主控`.local/ui003-evidence/runner-ef160-1a98fc7-owned-first-20261016.md`；public160及原14HTTP单独顺序执行，不等161。
