@@ -4143,14 +4143,16 @@ export class MaterialService {
       if (validation?.firstUploadTarget !== undefined)
         validation.sectionFreezeEventId = auditEventId;
     }
-    if (facts.length > 0)
-      await this.freezeReferences(transaction, {
+    if (facts.length > 0) {
+      const inserted = await this.freezeReferences(transaction, {
         departmentId: actor.departmentId,
         resourceType: 'case',
         resourceId: caseId,
         facts,
         actionEventId: auditEventId,
       });
+      if (inserted.count !== facts.length) throw this.invalidVersion();
+    }
   }
 
   private async assertFirstUploadCorrection(

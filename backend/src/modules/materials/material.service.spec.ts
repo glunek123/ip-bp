@@ -1918,6 +1918,35 @@ describe('MaterialService', () => {
       },
     );
     it.each(definitions)(
+      'rejects a skipped %s reference instead of committing a document without its exact event reference',
+      async (kind, category) => {
+        const f = setup(category);
+        f.transaction.materialReference.createMany.mockResolvedValueOnce({
+          count: 0,
+        });
+        const tx = asTransactionClient(f.transaction);
+        const facts = await f.service.assertAvailableVersions(tx, actor, {
+          ownerType: 'CASE',
+          ownerId: customerId,
+          category,
+          contentVersionIds: ['v1'],
+          sectionRecordKind: kind,
+        });
+        await expect(
+          f.service.freezeCaseSectionRecordCorrectionReferences(
+            tx,
+            actor,
+            customerId,
+            { kind, correctionId: 'correction-1' },
+            facts,
+            'audit-1',
+          ),
+        ).rejects.toMatchObject({
+          response: { code: 'MATERIAL_VERSION_INVALID' },
+        });
+      },
+    );
+    it.each(definitions)(
       'allows empty %s only for optional document sections',
       async (kind, category) => {
         const f = setup(category);
@@ -5970,7 +5999,7 @@ function createFixture() {
       count: materialReferenceCount,
       findMany: jest.fn(),
       deleteMany: jest.fn(),
-      createMany: jest.fn(),
+      createMany: jest.fn(async () => ({ count: 1 })),
     },
     auditEvent: { create: jest.fn(async ({ data }) => data) },
   };

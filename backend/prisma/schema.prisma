@@ -1386,6 +1386,7 @@ model ContentVersion {
 
 model MaterialReference {
   id               String         @id @default(uuid()) @db.Uuid
+  isRepeatableTypedReference Boolean @default(false) @map("is_repeatable_typed_reference")
   departmentId     String         @map("department_id") @db.Uuid
   resourceType     String         @map("resource_type") @db.VarChar(100)
   resourceId       String         @map("resource_id") @db.Uuid
