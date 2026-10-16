@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import CaseExecutionMailingPanel from './CaseExecutionMailingPanel.vue';
 import CaseExecutionFilingPanel from './CaseExecutionFilingPanel.vue';
+import CaseExecutionFilingFollowupPanel from './CaseExecutionFilingFollowupPanel.vue';
 import CaseExecutionFinishPanel from './CaseExecutionFinishPanel.vue';
 import CaseClosurePanel from './CaseClosurePanel.vue';
 import CaseArchivePanel from './CaseArchivePanel.vue';
@@ -1916,6 +1917,17 @@ onBeforeUnmount(() => {
           :context-key="workspaceContext"
           @edit="editSection"
           @view-timeline="viewTimeline"
+        />
+        <CaseExecutionFilingFollowupPanel
+          v-if="
+            item.executionFiling ||
+            item.executionFilingFollowups !== undefined ||
+            (item.origin?.kind === 'EXTERNAL_ENTRY' &&
+              item.stage === 'EXECUTING')
+          "
+          :item="item"
+          :actor-key="identity"
+          @refresh="load"
         />
       </template>
       <template #files>
