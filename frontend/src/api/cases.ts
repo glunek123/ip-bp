@@ -452,6 +452,7 @@ type CaseDetailBase = Omit<CaseSummaryBase, 'displaySummary'> & {
   executionConfirmation: ExecutionConfirmation | null;
   executionMailing: ExecutionMailing | null;
   executionFiling: ExecutionFiling | null;
+  executionFilingFollowups?: ExecutionFilingFollowups | null;
   executionFinish: ExecutionFinish | null;
   closure: CaseClosure | null;
   archive: CaseArchive | null;
@@ -994,6 +995,7 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     > | null;
     executionMailing: ExecutionMailing | null;
     executionFiling: ExecutionFiling | null;
+    executionFilingFollowups?: LawyerExecutionFilingFollowups | null;
     executionFinish: ExecutionFinish | null;
     closure: LawyerCaseClosure | null;
     archive: LawyerCaseArchive | null;
@@ -2741,7 +2743,12 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         'closure',
         'archive',
       ],
-      ['recordEdits', 'origin', 'canUploadDirectExecutionMaterials'],
+      [
+        'recordEdits',
+        'origin',
+        'canUploadDirectExecutionMaterials',
+        'executionFilingFollowups',
+      ],
     ) &&
     value.id === id &&
     summaryFields({
@@ -2909,7 +2916,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     typeof value.canCorrectClosure === 'boolean' &&
     archiveCapabilities(value) &&
     archiveMatches(value, true) &&
-    executionSourceMatches(value, true)
+    executionSourceMatches(value, true) &&
+    validExecutionFilingFollowups(value, true)
   );
 }
 function validRoundId(value: unknown): boolean {
@@ -4602,7 +4610,11 @@ export async function getLawyerCase(
         'closure',
         'archive',
       ],
-      ['origin', 'canUploadDirectExecutionMaterials'],
+      [
+        'origin',
+        'canUploadDirectExecutionMaterials',
+        'executionFilingFollowups',
+      ],
     ) ||
     result.id !== id ||
     !validLawyerSummary({
@@ -4693,7 +4705,8 @@ export async function getLawyerCase(
     typeof result.canSubmitExecutionFiling !== 'boolean' ||
     typeof result.canFinishExecution !== 'boolean' ||
     !archiveMatches(result, false) ||
-    !executionSourceMatches(result, false)
+    !executionSourceMatches(result, false) ||
+    !validExecutionFilingFollowups(result, false)
   )
     throw invalidResponse();
   return result as unknown as LawyerCaseDetail;
@@ -7113,6 +7126,267 @@ type ExecutionFilingFeedbackFields = {
   courtCaseNo: string | null;
   content: string;
 };
+type ExecutionFilingFollowupVersion = {
+  id: string;
+  revision: number;
+  recordedAt: string;
+};
+export type ExecutionFilingFeedbackVersion = ExecutionFilingFollowupVersion & {
+  feedbackOn: string | null;
+  courtCaseNo: string | null;
+  content: string;
+};
+export type ExecutionFilingSupplementVersion =
+  ExecutionFilingFollowupVersion & {
+    submittedOn: string | null;
+    note: string | null;
+    files: CaseFile[];
+  };
+export type ExecutionFilingFeedbackFollowup = {
+  feedbackId: string;
+  canCorrect: boolean;
+  current: ExecutionFilingFeedbackVersion;
+  history: Array<
+    ExecutionFilingFeedbackVersion & { correctionReason: string | null }
+  >;
+};
+export type ExecutionFilingSupplementFollowup = {
+  supplementId: string;
+  canCorrect: boolean;
+  current: ExecutionFilingSupplementVersion;
+  history: Array<
+    ExecutionFilingSupplementVersion & { correctionReason: string | null }
+  >;
+};
+export type LawyerExecutionFilingFeedbackFollowup = Omit<
+  ExecutionFilingFeedbackFollowup,
+  'history'
+> & { history: ExecutionFilingFeedbackVersion[] };
+export type LawyerExecutionFilingSupplementFollowup = Omit<
+  ExecutionFilingSupplementFollowup,
+  'history'
+> & { history: ExecutionFilingSupplementVersion[] };
+export type ExecutionFilingFollowups = {
+  filingId: string;
+  canRecordFeedback: boolean;
+  canSubmitSupplement: boolean;
+  feedbacks: ExecutionFilingFeedbackFollowup[];
+  supplements: ExecutionFilingSupplementFollowup[];
+};
+export type LawyerExecutionFilingFollowups = Omit<
+  ExecutionFilingFollowups,
+  'feedbacks' | 'supplements'
+> & {
+  feedbacks: LawyerExecutionFilingFeedbackFollowup[];
+  supplements: LawyerExecutionFilingSupplementFollowup[];
+};
+
+function normalizedFilingFollowupText(
+  value: unknown,
+  maximum: number,
+): value is string {
+  return filingFollowupText(value, maximum) && value.trim() === value;
+}
+function filingFollowupVersionKeys(
+  kind: 'feedbacks' | 'supplements',
+): string[] {
+  return [
+    'id',
+    'revision',
+    'recordedAt',
+    ...(kind === 'feedbacks'
+      ? ['feedbackOn', 'courtCaseNo', 'content']
+      : ['submittedOn', 'note', 'files']),
+  ];
+}
+function validFilingFollowupVersion(
+  value: unknown,
+  kind: 'feedbacks' | 'supplements',
+  internal: boolean,
+  history: boolean,
+  filesByVersion: Map<string, CaseFile>,
+): value is Record<string, unknown> {
+  if (
+    !record(value) ||
+    !exact(value, [
+      ...filingFollowupVersionKeys(kind),
+      ...(internal && history ? ['correctionReason'] : []),
+    ]) ||
+    !uuidV4(value.id) ||
+    !recordRevision(value.revision) ||
+    value.revision < 1 ||
+    !utcTimestamp(value.recordedAt)
+  )
+    return false;
+  if (
+    internal &&
+    history &&
+    (value.revision === 1
+      ? value.correctionReason !== null
+      : !normalizedFilingFollowupText(value.correctionReason, 500))
+  )
+    return false;
+  if (kind === 'feedbacks')
+    return (
+      (value.feedbackOn === null || businessDate(value.feedbackOn)) &&
+      (value.courtCaseNo === null ||
+        normalizedFilingFollowupText(value.courtCaseNo, 100)) &&
+      normalizedFilingFollowupText(value.content, 2000)
+    );
+  if (
+    (value.submittedOn !== null && !businessDate(value.submittedOn)) ||
+    (value.note !== null && !normalizedFilingFollowupText(value.note, 2000)) ||
+    !Array.isArray(value.files) ||
+    value.files.length < 1 ||
+    value.files.length > 10
+  )
+    return false;
+  const versions = new Set<string>();
+  for (const file of value.files) {
+    if (
+      !caseFile(file) ||
+      !uuidV4(file.materialId) ||
+      !uuidV4(file.contentVersionId)
+    )
+      return false;
+    const id = file.contentVersionId.toLowerCase();
+    if (versions.has(id)) return false;
+    versions.add(id);
+    const prior = filesByVersion.get(id);
+    if (
+      prior &&
+      (!sameUuid(prior.materialId, file.materialId) ||
+        prior.originalFilename !== file.originalFilename ||
+        prior.mimeType !== file.mimeType)
+    )
+      return false;
+    filesByVersion.set(id, file);
+  }
+  return true;
+}
+function validFilingFollowupRoots(
+  value: unknown,
+  kind: 'feedbacks' | 'supplements',
+  internal: boolean,
+  editable: boolean,
+  filesByVersion: Map<string, CaseFile>,
+): boolean {
+  if (!Array.isArray(value)) return false;
+  const target = kind === 'feedbacks' ? 'feedbackId' : 'supplementId';
+  const roots = new Set<string>();
+  const versions = new Set<string>();
+  let previous: { time: number; id: string } | undefined;
+  for (const root of value) {
+    if (
+      !record(root) ||
+      !exact(root, [target, 'canCorrect', 'current', 'history']) ||
+      !uuidV4(root[target]) ||
+      typeof root.canCorrect !== 'boolean' ||
+      (!editable && root.canCorrect) ||
+      !Array.isArray(root.history) ||
+      root.history.length === 0 ||
+      !validFilingFollowupVersion(
+        root.current,
+        kind,
+        internal,
+        false,
+        filesByVersion,
+      )
+    )
+      return false;
+    const rootId = root[target];
+    if (!uuidV4(rootId)) return false;
+    const current = root.current;
+    if (!record(current)) return false;
+    const id = rootId.toLowerCase();
+    if (roots.has(id)) return false;
+    roots.add(id);
+    let revision = 0;
+    let last: Record<string, unknown> | undefined;
+    for (const version of root.history) {
+      if (
+        !validFilingFollowupVersion(
+          version,
+          kind,
+          internal,
+          true,
+          filesByVersion,
+        ) ||
+        version.revision !== revision + 1 ||
+        !uuidV4(version.id) ||
+        versions.has(version.id.toLowerCase()) ||
+        (revision === 0 && !sameUuid(version.id, root[target]))
+      )
+        return false;
+      versions.add(version.id.toLowerCase());
+      revision += 1;
+      last = version;
+    }
+    if (!last) return false;
+    const latest = last;
+    if (
+      !filingFollowupVersionKeys(kind).every((field) =>
+        sameSectionValue(current[field], latest[field]),
+      )
+    )
+      return false;
+    const first: unknown = root.history[0];
+    if (!record(first) || typeof first.recordedAt !== 'string') return false;
+    const time = Date.parse(first.recordedAt);
+    if (
+      previous &&
+      (time > previous.time ||
+        (time === previous.time && id.localeCompare(previous.id) < 0))
+    )
+      return false;
+    previous = { time, id };
+  }
+  return true;
+}
+function validExecutionFilingFollowups(
+  detail: Record<string, unknown>,
+  internal: boolean,
+): boolean {
+  if (!('executionFilingFollowups' in detail)) return true;
+  const value = detail.executionFilingFollowups;
+  if (detail.executionFiling === null) return value === null;
+  if (
+    !record(detail.executionFiling) ||
+    !uuidV4(detail.executionFiling.id) ||
+    !record(value) ||
+    !exact(value, [
+      'filingId',
+      'canRecordFeedback',
+      'canSubmitSupplement',
+      'feedbacks',
+      'supplements',
+    ]) ||
+    !sameUuid(value.filingId, detail.executionFiling.id) ||
+    typeof value.canRecordFeedback !== 'boolean' ||
+    typeof value.canSubmitSupplement !== 'boolean'
+  )
+    return false;
+  const editable = detail.stage === 'EXECUTING';
+  if (!editable && (value.canRecordFeedback || value.canSubmitSupplement))
+    return false;
+  const files = new Map<string, CaseFile>();
+  return (
+    validFilingFollowupRoots(
+      value.feedbacks,
+      'feedbacks',
+      internal,
+      editable,
+      files,
+    ) &&
+    validFilingFollowupRoots(
+      value.supplements,
+      'supplements',
+      internal,
+      editable,
+      files,
+    )
+  );
+}
 export type RecordExecutionFilingFeedbackInput =
   ExecutionFilingFeedbackFields & {
     feedbackId: string;

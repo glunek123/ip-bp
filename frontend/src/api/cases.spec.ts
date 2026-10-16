@@ -7040,3 +7040,534 @@ describe('EF001 frozen feedback and supplement command contracts', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+function efReadFollowups(): casesApi.ExecutionFilingFollowups {
+  const feedback = {
+    id: 'c1000000-0000-4000-8000-000000000001',
+    revision: 1,
+    recordedAt: '2026-10-16T01:00:00.000Z',
+    feedbackOn: null,
+    courtCaseNo: null,
+    content: '已登记的真实反馈',
+  };
+  const correctedFeedback = {
+    ...feedback,
+    id: 'c1000000-0000-4000-8000-000000000002',
+    revision: 2,
+    recordedAt: '2026-10-16T09:00:00.000Z',
+    feedbackOn: '2099-01-01',
+    courtCaseNo: '真实执行案号',
+    content: '核实后的反馈内容',
+  };
+  const newerFeedback = {
+    ...feedback,
+    id: 'c1000000-0000-4000-8000-000000000003',
+    recordedAt: '2026-10-16T03:00:00.000Z',
+    content: '随后登记的另一反馈根',
+  };
+  const originalFile = {
+    materialId: 'c1000000-0000-4000-8000-000000000041',
+    contentVersionId: 'c1000000-0000-4000-8000-000000000051',
+    originalFilename: '初次补交.pdf',
+    mimeType: 'application/pdf',
+  };
+  const updatedFiles = [
+    {
+      materialId: 'c1000000-0000-4000-8000-000000000042',
+      contentVersionId: 'c1000000-0000-4000-8000-000000000052',
+      originalFilename: '补交更正.png',
+      mimeType: 'image/png',
+    },
+    {
+      materialId: 'c1000000-0000-4000-8000-000000000043',
+      contentVersionId: 'c1000000-0000-4000-8000-000000000053',
+      originalFilename: '另一补交.jpg',
+      mimeType: 'image/jpeg',
+    },
+  ];
+  const supplement = {
+    id: 'c1000000-0000-4000-8000-000000000011',
+    revision: 1,
+    recordedAt: '2026-10-16T02:00:00.000Z',
+    submittedOn: null,
+    note: null,
+    files: [originalFile],
+  };
+  const correctedSupplement = {
+    ...supplement,
+    id: 'c1000000-0000-4000-8000-000000000012',
+    revision: 2,
+    recordedAt: '2026-10-16T04:00:00.000Z',
+    submittedOn: '2099-02-03',
+    note: '真实补交说明',
+    files: updatedFiles,
+  };
+  return {
+    filingId: finishInput.expectedFilingId,
+    canRecordFeedback: true,
+    canSubmitSupplement: true,
+    feedbacks: [
+      {
+        feedbackId: newerFeedback.id,
+        canCorrect: true,
+        current: newerFeedback,
+        history: [{ ...newerFeedback, correctionReason: null }],
+      },
+      {
+        feedbackId: feedback.id,
+        canCorrect: true,
+        current: correctedFeedback,
+        history: [
+          { ...feedback, correctionReason: null },
+          { ...correctedFeedback, correctionReason: '核实反馈' },
+        ],
+      },
+    ],
+    supplements: [
+      {
+        supplementId: supplement.id,
+        canCorrect: true,
+        current: correctedSupplement,
+        history: [
+          { ...supplement, correctionReason: null },
+          { ...correctedSupplement, correctionReason: '核实补交文件' },
+        ],
+      },
+    ],
+  };
+}
+function efLawyerFollowups(
+  value: casesApi.ExecutionFilingFollowups,
+): casesApi.LawyerExecutionFilingFollowups {
+  function omitReason<T extends { correctionReason: string | null }>(
+    version: T,
+  ) {
+    const { correctionReason, ...business } = version;
+    void correctionReason;
+    return business;
+  }
+  return {
+    ...value,
+    feedbacks: value.feedbacks.map((root) => ({
+      ...root,
+      history: root.history.map(omitReason),
+    })),
+    supplements: value.supplements.map((root) => ({
+      ...root,
+      history: root.history.map(omitReason),
+    })),
+  };
+}
+function efReadPayload(
+  audience: 'internal' | 'lawyer',
+  followups: unknown,
+  mode: 'executing' | 'finished' | 'empty' = 'executing',
+) {
+  const base =
+    mode === 'empty'
+      ? { ...detail, id: efCaseId }
+      : {
+          ...finishDetailPayload(),
+          id: efCaseId,
+          ...(mode === 'executing'
+            ? {
+                stage: 'EXECUTING',
+                version: 18,
+                executionFinish: null,
+                canFinishExecution: true,
+              }
+            : {}),
+        };
+  if (audience === 'internal')
+    return { ...base, executionFilingFollowups: followups };
+  const {
+    owner,
+    department,
+    fees,
+    sourceLead,
+    sourceNotaryMatter,
+    ...minimal
+  } = base;
+  void owner;
+  void department;
+  void fees;
+  void sourceLead;
+  void sourceNotaryMatter;
+  const confirmation =
+    base.executionConfirmation === null
+      ? null
+      : (() => {
+          const { confirmedByUserId, ...publicConfirmation } =
+            base.executionConfirmation;
+          void confirmedByUserId;
+          return publicConfirmation;
+        })();
+  return {
+    ...minimal,
+    canMatch: false,
+    executionConfirmation: confirmation,
+    executionFilingFollowups: followups,
+  };
+}
+
+describe('EF001 exact execution filing followup reads', () => {
+  for (const audience of ['internal', 'lawyer'] as const) {
+    const read = () =>
+      audience === 'internal'
+        ? getCase(efCaseId)
+        : casesApi.getLawyerCase(efCaseId);
+    const projection = (value: casesApi.ExecutionFilingFollowups) =>
+      audience === 'internal' ? value : efLawyerFollowups(value);
+    it(`${audience} reads current and complete immutable history without inventing receipt status or changing filing`, async () => {
+      const followups = projection(efReadFollowups());
+      const payload = efReadPayload(audience, followups);
+      mockJson(payload);
+      const response = await read();
+      expect(response.executionFilingFollowups).toEqual(followups);
+      expect(response.executionFiling).toEqual(payload.executionFiling);
+      expect(
+        response.executionFilingFollowups?.feedbacks[1]?.history[0]?.feedbackOn,
+      ).toBeNull();
+      expect(
+        response.executionFilingFollowups?.feedbacks[1]?.current.feedbackOn,
+      ).toBe('2099-01-01');
+      expect(
+        response.executionFilingFollowups?.supplements[0]?.history[0]?.files[0]
+          ?.originalFilename,
+      ).toBe('初次补交.pdf');
+      expect(
+        response.executionFilingFollowups?.supplements[0]?.current.files[0]
+          ?.originalFilename,
+      ).toBe('补交更正.png');
+    });
+    it(`${audience} distinguishes absent legacy fields, explicit null and real empty filing arrays`, async () => {
+      for (const mode of ['empty', 'executing'] as const) {
+        mockJson(efReadPayload(audience, undefined, mode));
+        expect(await read()).not.toHaveProperty('executionFilingFollowups');
+      }
+      mockJson(efReadPayload(audience, null, 'empty'));
+      await expect(read()).resolves.toMatchObject({
+        executionFiling: null,
+        executionFilingFollowups: null,
+      });
+      const empty = {
+        filingId: finishInput.expectedFilingId,
+        canRecordFeedback: true,
+        canSubmitSupplement: true,
+        feedbacks: [],
+        supplements: [],
+      };
+      mockJson(efReadPayload(audience, empty));
+      await expect(read()).resolves.toMatchObject({
+        executionFilingFollowups: empty,
+      });
+      mockJson(efReadPayload(audience, null));
+      await expect(read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+      mockJson(efReadPayload(audience, empty, 'empty'));
+      await expect(read()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    });
+    it(`${audience} keeps followup history after execution while rejecting stale editable capabilities`, async () => {
+      const followups = projection(efReadFollowups());
+      followups.canRecordFeedback = false;
+      followups.canSubmitSupplement = false;
+      for (const root of [...followups.feedbacks, ...followups.supplements])
+        root.canCorrect = false;
+      mockJson(efReadPayload(audience, followups, 'finished'));
+      await expect(read()).resolves.toMatchObject({
+        executionFilingFollowups: followups,
+      });
+      for (const invalid of [
+        { ...followups, canRecordFeedback: true },
+        { ...followups, canSubmitSupplement: true },
+        {
+          ...followups,
+          feedbacks: [
+            { ...followups.feedbacks[0]!, canCorrect: true },
+            followups.feedbacks[1]!,
+          ],
+        },
+        {
+          ...followups,
+          supplements: [{ ...followups.supplements[0]!, canCorrect: true }],
+        },
+      ]) {
+        mockJson(efReadPayload(audience, invalid, 'finished'));
+        await expect(read()).rejects.toMatchObject({
+          code: 'INVALID_RESPONSE',
+        });
+      }
+    });
+    it(`${audience} respects independent permissions and stable root UUID order when registration times tie`, async () => {
+      const value = efReadFollowups();
+      const earlier = value.feedbacks[1]!;
+      const later = value.feedbacks[0]!;
+      later.current.recordedAt = earlier.history[0]!.recordedAt;
+      later.history[0]!.recordedAt = earlier.history[0]!.recordedAt;
+      value.feedbacks = [earlier, later];
+      value.canRecordFeedback = false;
+      earlier.canCorrect = false;
+      value.supplements[0]!.canCorrect = false;
+      const followups = projection(value);
+      mockJson(efReadPayload(audience, followups));
+      await expect(read()).resolves.toMatchObject({
+        version: 18,
+        executionFilingFollowups: followups,
+      });
+      followups.feedbacks.reverse();
+      mockJson(efReadPayload(audience, followups));
+      await expect(read()).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    });
+    const mutations: Array<(value: casesApi.ExecutionFilingFollowups) => void> =
+      [
+        (v) => {
+          v.filingId = efCaseId;
+        },
+        (v) => {
+          v.feedbacks.push(v.feedbacks[0]!);
+        },
+        (v) => {
+          v.feedbacks.reverse();
+        },
+        (v) => {
+          v.feedbacks[1]!.feedbackId = efCaseId;
+        },
+        (v) => {
+          v.feedbacks[1]!.history.reverse();
+        },
+        (v) => {
+          v.feedbacks[1]!.history[1]!.revision = 3;
+        },
+        (v) => {
+          v.feedbacks[1]!.history[1]!.id = v.feedbacks[0]!.feedbackId;
+        },
+        (v) => {
+          v.feedbacks[1]!.history = [];
+        },
+        (v) => {
+          v.feedbacks[1]!.current = {
+            ...v.feedbacks[1]!.current,
+            content: '当前不匹配历史',
+          };
+        },
+        (v) => {
+          v.feedbacks[1]!.current = {
+            ...v.feedbacks[1]!.current,
+            recordedAt: '2026-10-16T10:00:00Z',
+          };
+        },
+        (v) => {
+          v.feedbacks[1]!.history[0]!.feedbackOn = '2026-02-30';
+        },
+        (v) => {
+          v.feedbacks[1]!.history[0]!.courtCaseNo = '';
+        },
+        (v) => {
+          v.feedbacks[1]!.history[0]!.content = ' 未规范文本 ';
+        },
+        (v) => {
+          v.supplements.push(v.supplements[0]!);
+        },
+        (v) => {
+          v.supplements[0]!.history[1]!.revision = 1;
+        },
+        (v) => {
+          v.supplements[0]!.history[0]!.submittedOn = '2026-02-30';
+        },
+        (v) => {
+          v.supplements[0]!.history[0]!.note = '';
+        },
+        (v) => {
+          v.supplements[0]!.current = {
+            ...v.supplements[0]!.current,
+            files: [...v.supplements[0]!.current.files].reverse(),
+          };
+        },
+        (v) => {
+          v.supplements[0]!.history[0]!.files = [];
+        },
+        (v) => {
+          v.supplements[0]!.history[0]!.files[0]!.contentVersionId = 'invalid';
+        },
+        (v) => {
+          v.supplements[0]!.history[0]!.files[0]!.materialId = 'invalid';
+        },
+        (v) => {
+          const file = v.supplements[0]!.history[0]!.files[0]!;
+          v.supplements[0]!.history[0]!.files = [
+            file,
+            { ...file, contentVersionId: file.contentVersionId.toUpperCase() },
+          ];
+        },
+        (v) => {
+          const reused = {
+            ...v.supplements[0]!.history[0]!.files[0]!,
+            originalFilename: '同版本却另一文件名.pdf',
+          };
+          v.supplements[0]!.current = {
+            ...v.supplements[0]!.current,
+            files: [reused],
+          };
+          v.supplements[0]!.history[1]!.files = [reused];
+        },
+      ];
+    it.each(mutations.map((mutate, index) => ({ mutate, index })))(
+      `${audience} rejects broken filing/root/version/file projection $index`,
+      async ({ mutate }) => {
+        const followups = efReadFollowups();
+        mutate(followups);
+        mockJson(efReadPayload(audience, projection(followups)));
+        await expect(read()).rejects.toMatchObject({
+          code: 'INVALID_RESPONSE',
+        });
+      },
+    );
+    it(`${audience} rejects partial shapes and metadata leaks at every new boundary`, async () => {
+      const value = projection(efReadFollowups());
+      for (const invalid of [
+        { ...value, filingId: undefined },
+        { ...value, feedbacks: undefined },
+        { ...value, supplements: undefined },
+        { ...value, canRecordFeedback: 1 },
+        { ...value, stage: 'EXECUTING' },
+        {
+          ...value,
+          feedbacks: [
+            { ...value.feedbacks[0]!, current: null },
+            value.feedbacks[1]!,
+          ],
+        },
+        {
+          ...value,
+          feedbacks: [
+            {
+              ...value.feedbacks[0]!,
+              current: {
+                ...value.feedbacks[0]!.current,
+                correctionReason: null,
+              },
+            },
+            value.feedbacks[1]!,
+          ],
+        },
+        {
+          ...value,
+          feedbacks: [
+            {
+              ...value.feedbacks[0]!,
+              history: [
+                {
+                  ...value.feedbacks[0]!.history[0]!,
+                  recordedByUserId: efCaseId,
+                },
+              ],
+            },
+            value.feedbacks[1]!,
+          ],
+        },
+        {
+          ...value,
+          supplements: [
+            {
+              ...value.supplements[0]!,
+              history: value.supplements[0]!.history.map((version) => ({
+                ...version,
+                auditEventId: efCaseId,
+              })),
+            },
+          ],
+        },
+        {
+          ...value,
+          supplements: [
+            {
+              ...value.supplements[0]!,
+              current: {
+                ...value.supplements[0]!.current,
+                files: [
+                  {
+                    ...value.supplements[0]!.current.files[0]!,
+                    actorUserId: efCaseId,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ]) {
+        mockJson(efReadPayload(audience, invalid));
+        await expect(read()).rejects.toMatchObject({
+          code: 'INVALID_RESPONSE',
+        });
+      }
+      const payload = efReadPayload(audience, value);
+      for (const executionFiling of [
+        { ...payload.executionFiling, unexpected: true },
+        { ...payload.executionFiling, recordedAt: undefined },
+      ]) {
+        mockJson({ ...payload, executionFiling });
+        await expect(read()).rejects.toMatchObject({
+          code: 'INVALID_RESPONSE',
+        });
+      }
+    });
+  }
+  it('requires initial-null and normalized nonempty correction provenance only in internal history', async () => {
+    const value = efReadFollowups();
+    for (const [index, correctionReason] of [
+      [0, '伪造初次原因'],
+      [0, undefined],
+      [1, undefined],
+      [1, null],
+      [1, ' '],
+      [1, ' 未规范原因 '],
+    ] as const) {
+      const payload = structuredClone(value);
+      const original = payload.feedbacks[1]!.history[index]!;
+      mockJson(
+        efReadPayload('internal', {
+          ...payload,
+          feedbacks: [
+            payload.feedbacks[0]!,
+            {
+              ...payload.feedbacks[1]!,
+              history: payload.feedbacks[1]!.history.map((version) =>
+                version.id === original.id
+                  ? { ...version, correctionReason }
+                  : version,
+              ),
+            },
+          ],
+        }),
+      );
+      await expect(getCase(efCaseId)).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+  it('refuses internal correction reasons on lawyers, including explicit null, rather than silently dropping them', async () => {
+    const value = efLawyerFollowups(efReadFollowups());
+    for (const correctionReason of [null, '内部原因'])
+      for (const kind of ['feedbacks', 'supplements'] as const) {
+        const root = value[kind][0]!;
+        const invalid = {
+          ...value,
+          [kind]: [
+            {
+              ...root,
+              history: root.history.map((version) => ({
+                ...version,
+                correctionReason,
+              })),
+            },
+            ...value[kind].slice(1),
+          ],
+        };
+        mockJson(efReadPayload('lawyer', invalid));
+        await expect(casesApi.getLawyerCase(efCaseId)).rejects.toMatchObject({
+          code: 'INVALID_RESPONSE',
+        });
+      }
+  });
+});
