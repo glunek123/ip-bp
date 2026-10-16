@@ -23,6 +23,10 @@ function createStore(
 
 describe('AccessControlService', () => {
   it.each([
+    'case.execution.feedback.record',
+    'case.execution.feedback.correct',
+    'case.execution.supplement.submit',
+    'case.execution.supplement.correct',
     'case.closure.record',
     'case.closure.correct',
     'case.archive',

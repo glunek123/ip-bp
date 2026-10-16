@@ -28,6 +28,20 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  it('never opens execution supplement preparation through generic uploads', async () => {
+    const f = createFixture();
+    await expect(
+      f.service.createUploadDraft(actor, {
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'EXECUTION_SUPPLEMENT',
+        purpose: 'EXECUTION_SUPPLEMENT',
+        originalFilename: '补交.pdf',
+        declaredMimeType: 'application/pdf',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.db.uploadDraft.create).not.toHaveBeenCalled();
+  });
   describe('dedicated section uploads', () => {
     const targetId = '44444444-4444-4444-8444-444444444444';
     const versionId = '55555555-5555-4555-8555-555555555555';

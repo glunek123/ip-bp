@@ -3,6 +3,130 @@ generator client {
   output       = "../src/generated/prisma"
   moduleFormat = "cjs"
 }
+enum CaseExecutionFilingFollowupCommand {
+  FEEDBACK_RECORD
+  FEEDBACK_CORRECT
+  SUPPLEMENT_SUBMIT
+  SUPPLEMENT_CORRECT
+  @@map("case_execution_filing_followup_command")
+}
+
+model CaseExecutionFilingFeedback {
+  id String @id @db.Uuid
+  feedbackId String @map("feedback_id") @db.Uuid
+  priorVersionId String? @map("prior_version_id") @db.Uuid
+  filingId String @map("filing_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  fromRevision Int @map("from_revision")
+  toRevision Int @map("to_revision")
+  feedbackOn DateTime? @map("feedback_on") @db.Date
+  courtCaseNo String? @map("court_case_no") @db.VarChar(100)
+  content String @db.VarChar(2000)
+  correctionReason String? @map("correction_reason") @db.VarChar(500)
+  actorType UserAccountType @map("actor_type")
+  recordedByUserId String @map("recorded_by_user_id") @db.Uuid
+  internalActorUserId String? @map("internal_actor_user_id") @db.Uuid
+  lawyerAccountBindingId String? @map("lawyer_account_binding_id") @db.Uuid
+  auditEventId String @unique @map("audit_event_id") @db.Uuid
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  filing CaseExecutionFiling @relation(fields: [filingId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  root CaseExecutionFilingFeedback @relation("ExecutionFeedbackRoot", fields: [feedbackId, filingId, caseId, departmentId], references: [id, filingId, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  rootVersions CaseExecutionFilingFeedback[] @relation("ExecutionFeedbackRoot")
+  priorVersion CaseExecutionFilingFeedback? @relation("ExecutionFeedbackPrior", fields: [priorVersionId, feedbackId, filingId, caseId, departmentId], references: [id, feedbackId, filingId, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  nextVersion CaseExecutionFilingFeedback? @relation("ExecutionFeedbackPrior")
+  recordedBy UserAccount @relation("ExecutionFeedbackActor", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  internalActor DepartmentMembership? @relation("ExecutionFeedbackInternalActor", fields: [internalActorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  lawyerActor LawyerAccountBinding? @relation("ExecutionFeedbackLawyerActor", fields: [lawyerAccountBindingId, recordedByUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  receipts CaseExecutionFilingFollowupReceipt[] @relation("ExecutionFeedbackReceipt")
+
+  @@unique([id, filingId, caseId, departmentId])
+  @@unique([id, feedbackId, filingId, caseId, departmentId], map: "ef_feedback_version_scope_key")
+  @@unique([priorVersionId, feedbackId, filingId, caseId, departmentId], map: "ef_feedback_prior_scope_key")
+  @@unique([feedbackId, toRevision])
+  @@index([caseId, departmentId, recordedAt])
+  @@map("case_execution_filing_feedbacks")
+}
+
+
+model CaseExecutionFilingSupplement {
+  id String @id @db.Uuid
+  supplementId String @map("supplement_id") @db.Uuid
+  priorVersionId String? @map("prior_version_id") @db.Uuid
+  filingId String @map("filing_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  fromRevision Int @map("from_revision")
+  toRevision Int @map("to_revision")
+  submittedOn DateTime? @map("submitted_on") @db.Date
+  note String? @db.VarChar(2000)
+  correctionReason String? @map("correction_reason") @db.VarChar(500)
+  actorType UserAccountType @map("actor_type")
+  recordedByUserId String @map("recorded_by_user_id") @db.Uuid
+  internalActorUserId String? @map("internal_actor_user_id") @db.Uuid
+  lawyerAccountBindingId String? @map("lawyer_account_binding_id") @db.Uuid
+  auditEventId String @unique @map("audit_event_id") @db.Uuid
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  filing CaseExecutionFiling @relation(fields: [filingId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  root CaseExecutionFilingSupplement @relation("ExecutionSupplementRoot", fields: [supplementId, filingId, caseId, departmentId], references: [id, filingId, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  rootVersions CaseExecutionFilingSupplement[] @relation("ExecutionSupplementRoot")
+  priorVersion CaseExecutionFilingSupplement? @relation("ExecutionSupplementPrior", fields: [priorVersionId, supplementId, filingId, caseId, departmentId], references: [id, supplementId, filingId, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  nextVersion CaseExecutionFilingSupplement? @relation("ExecutionSupplementPrior")
+  recordedBy UserAccount @relation("ExecutionSupplementActor", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  internalActor DepartmentMembership? @relation("ExecutionSupplementInternalActor", fields: [internalActorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  lawyerActor LawyerAccountBinding? @relation("ExecutionSupplementLawyerActor", fields: [lawyerAccountBindingId, recordedByUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  receipts CaseExecutionFilingFollowupReceipt[] @relation("ExecutionSupplementReceipt")
+  documents CaseExecutionFilingSupplementDocument[]
+  @@unique([id, filingId, caseId, departmentId])
+  @@unique([id, supplementId, filingId, caseId, departmentId], map: "ef_supplement_version_scope_key")
+  @@unique([priorVersionId, supplementId, filingId, caseId, departmentId], map: "ef_supplement_prior_scope_key")
+  @@unique([supplementId, toRevision])
+  @@index([caseId, departmentId, recordedAt])
+  @@map("case_execution_filing_supplements")
+}
+
+
+model CaseExecutionFilingSupplementDocument {
+  versionId String @map("version_id") @db.Uuid
+  supplementId String @map("supplement_id") @db.Uuid
+  filingId String @map("filing_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  materialId String @map("material_id") @db.Uuid
+  contentVersionId String @map("content_version_id") @db.Uuid
+  version CaseExecutionFilingSupplement @relation(fields: [versionId, supplementId, filingId, caseId, departmentId], references: [id, supplementId, filingId, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  material Material @relation(fields: [materialId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  contentVersion ContentVersion @relation(fields: [materialId, contentVersionId], references: [materialId, id], onDelete: Restrict, onUpdate: Restrict)
+  @@id([versionId, contentVersionId])
+  @@unique([versionId, materialId])
+  @@map("case_execution_filing_supplement_documents")
+}
+
+model CaseExecutionFilingFollowupReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  command CaseExecutionFilingFollowupCommand
+  filingId String @map("filing_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  feedbackVersionId String? @map("feedback_version_id") @db.Uuid
+  supplementVersionId String? @map("supplement_version_id") @db.Uuid
+  resultSnapshot Json @map("result_snapshot")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  filing CaseExecutionFiling @relation(fields: [filingId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor UserAccount @relation("ExecutionFollowupReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  feedbackVersion CaseExecutionFilingFeedback? @relation("ExecutionFeedbackReceipt", fields: [feedbackVersionId, filingId, caseId, departmentId], references: [id, filingId, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  supplementVersion CaseExecutionFilingSupplement? @relation("ExecutionSupplementReceipt", fields: [supplementVersionId, filingId, caseId, departmentId], references: [id, filingId, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@map("case_execution_filing_followup_receipts")
+}
 
 datasource db {
   provider = "postgresql"
@@ -64,6 +188,10 @@ enum PermissionAction {
   CASE_EXECUTION_CONFIRM @map("case.execution.confirm")
   CASE_EXECUTION_MAIL @map("case.execution.mail")
   CASE_EXECUTION_FILING_SUBMIT @map("case.execution.filing.submit")
+  CASE_EXECUTION_FEEDBACK_RECORD @map("case.execution.feedback.record")
+  CASE_EXECUTION_FEEDBACK_CORRECT @map("case.execution.feedback.correct")
+  CASE_EXECUTION_SUPPLEMENT_SUBMIT @map("case.execution.supplement.submit")
+  CASE_EXECUTION_SUPPLEMENT_CORRECT @map("case.execution.supplement.correct")
   CASE_EXECUTION_FINISH @map("case.execution.finish")
   CASE_EXECUTION_MAILING_CORRECT @map("case.execution.mailing.correct")
   CASE_EXECUTION_FILING_CORRECT @map("case.execution.filing.correct")
@@ -207,6 +335,7 @@ enum MaterialCategory {
   SECOND_INSTANCE_JUDGMENT
   EXECUTION_APPLICATION
   EXECUTION_FILING_PROOF
+  EXECUTION_SUPPLEMENT
   EXECUTION_FINISH_BASIS
   CASE_CLOSURE_DOCUMENT
 
@@ -525,6 +654,9 @@ model Team {
 }
 
 model UserAccount {
+  executionFeedbackVersions CaseExecutionFilingFeedback[] @relation("ExecutionFeedbackActor")
+  executionSupplementVersions CaseExecutionFilingSupplement[] @relation("ExecutionSupplementActor")
+  executionFollowupReceipts CaseExecutionFilingFollowupReceipt[] @relation("ExecutionFollowupReceiptActor")
   sectionRecordEditReceipts CaseSectionRecordEditReceipt[]
   closureRecordCorrections CaseClosureRecordCorrection[]
   judgmentRecordCorrections CaseJudgmentRecordCorrection[]
@@ -662,6 +794,8 @@ model AuthThrottle {
 }
 
 model DepartmentMembership {
+  executionFeedbackVersions CaseExecutionFilingFeedback[] @relation("ExecutionFeedbackInternalActor")
+  executionSupplementVersions CaseExecutionFilingSupplement[] @relation("ExecutionSupplementInternalActor")
   id                               String                            @id @default(uuid()) @db.Uuid
   userId                           String                            @map("user_id") @db.Uuid
   departmentId                     String                            @map("department_id") @db.Uuid
@@ -961,6 +1095,8 @@ model NotaryOfficeAccountBinding {
 }
 
 model LawyerAccountBinding {
+  executionFeedbackVersions CaseExecutionFilingFeedback[] @relation("ExecutionFeedbackLawyerActor")
+  executionSupplementVersions CaseExecutionFilingSupplement[] @relation("ExecutionSupplementLawyerActor")
   id                    String                 @id @default(uuid()) @db.Uuid
   userId                String                 @map("user_id") @db.Uuid
   departmentId          String                 @map("department_id") @db.Uuid
@@ -1133,6 +1269,11 @@ model RightsHolderCommandReceipt {
 }
 
 model UploadDraft {
+  executionSupplementFilingId String? @map("execution_supplement_filing_id") @db.Uuid
+  executionSupplementTargetId String? @map("execution_supplement_target_id") @db.Uuid
+  executionSupplementRevision Int? @map("execution_supplement_revision")
+  executionSupplementFiling CaseExecutionFiling? @relation("ExecutionSupplementUploadFiling", fields: [executionSupplementFilingId, ownerId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  executionSupplementContentVersion ContentVersion? @relation("ExecutionSupplementUpload")
   caseSectionRecordCommand CaseSectionRecordEditCommand? @map("case_section_record_command")
   caseSectionRecordTargetId String? @map("case_section_record_target_id") @db.Uuid
   caseSectionRecordRevision Int? @map("case_section_record_revision")
@@ -1170,6 +1311,7 @@ model UploadDraft {
 }
 
 model Material {
+  executionSupplementDocuments CaseExecutionFilingSupplementDocument[]
   id               String                 @id @default(uuid()) @db.Uuid
   departmentId     String                 @map("department_id") @db.Uuid
   ownerType        MaterialOwnerType      @map("owner_type")
@@ -1194,6 +1336,9 @@ model Material {
 }
 
 model ContentVersion {
+  executionSupplementUploadDraftId String? @unique @map("execution_supplement_upload_draft_id") @db.Uuid
+  executionSupplementUploadDraft UploadDraft? @relation("ExecutionSupplementUpload", fields: [executionSupplementUploadDraftId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  executionSupplementDocuments CaseExecutionFilingSupplementDocument[]
   caseSectionRecordUploadDraftId String? @unique @map("case_section_record_upload_draft_id") @db.Uuid
   caseSectionRecordUploadDraft UploadDraft? @relation("CaseSectionRecordUpload", fields: [caseSectionRecordUploadDraftId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   closureRecordDocuments CaseClosureRecordCorrectionDocument[]
@@ -1818,6 +1963,9 @@ model NotaryCertificateFee {
 }
 
 model Case {
+  executionFeedbackVersions CaseExecutionFilingFeedback[]
+  executionSupplementVersions CaseExecutionFilingSupplement[]
+  executionFollowupReceipts CaseExecutionFilingFollowupReceipt[]
   sectionRecordEditReceipts CaseSectionRecordEditReceipt[]
   closureRecordCorrections CaseClosureRecordCorrection[]
   judgmentRecordCorrections CaseJudgmentRecordCorrection[]
@@ -3005,6 +3153,10 @@ model CaseExecutionMailingReceipt {
 }
 
 model CaseExecutionFiling {
+  feedbacks CaseExecutionFilingFeedback[]
+  supplements CaseExecutionFilingSupplement[]
+  followupReceipts CaseExecutionFilingFollowupReceipt[]
+  supplementUploadDrafts UploadDraft[] @relation("ExecutionSupplementUploadFiling")
   recordCorrections CaseExecutionFilingRecordCorrection[]
   externalEntryId String? @map("external_entry_id") @db.Uuid
   finish CaseExecutionFinish?
@@ -3407,6 +3559,8 @@ enum AuditActorKind {
 }
 
 model AuditEvent {
+  executionFeedbackVersion CaseExecutionFilingFeedback?
+  executionSupplementVersion CaseExecutionFilingSupplement?
   closureRecordCorrections CaseClosureRecordCorrection[]
   judgmentRecordCorrections CaseJudgmentRecordCorrection[]
   hearingRecordCorrections CaseHearingRecordCorrection[]

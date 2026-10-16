@@ -28,6 +28,48 @@ const snapshotRecord = {
 };
 
 describe('PrismaAccessControlStore', () => {
+  it.each(['SELF', 'TEAM', 'DEPARTMENT'] as const)(
+    'maps EF001 only from explicit %s followup grants',
+    async (scope) => {
+      const actions = [
+        ['CASE_EXECUTION_FEEDBACK_RECORD', 'case.execution.feedback.record'],
+        ['CASE_EXECUTION_FEEDBACK_CORRECT', 'case.execution.feedback.correct'],
+        [
+          'CASE_EXECUTION_SUPPLEMENT_SUBMIT',
+          'case.execution.supplement.submit',
+        ],
+        [
+          'CASE_EXECUTION_SUPPLEMENT_CORRECT',
+          'case.execution.supplement.correct',
+        ],
+      ] as const;
+      const userAccount = {
+        findUnique: jest.fn().mockResolvedValue({
+          ...snapshotRecord,
+          roleAssignments: [
+            {
+              teamId: 'team-a',
+              roleTemplate: {
+                active: true,
+                grants: actions.map(([action]) => ({ action, scope })),
+              },
+            },
+          ],
+        }),
+      };
+      const store = new PrismaAccessControlStore({
+        userAccount,
+      } as unknown as DatabaseService);
+      const snapshot = await store.loadSnapshot('user-a', 'department-a');
+      expect(snapshot?.grants).toEqual(
+        actions.map(([, action]) => ({
+          action,
+          scope: scope.toLowerCase(),
+          teamId: 'team-a',
+        })),
+      );
+    },
+  );
   it.each(['SELF', 'TEAM', 'DEPARTMENT'])(
     'maps each case correction action only from explicit %s grants',
     async (scope) => {

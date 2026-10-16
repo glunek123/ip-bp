@@ -272,6 +272,7 @@ const allowedMimeTypes = {
     'image/jpeg',
     'image/png',
   ]),
+  EXECUTION_SUPPLEMENT: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   EXECUTION_APPLICATION: new Set([
     'application/pdf',
     'application/msword',
@@ -695,6 +696,7 @@ export class MaterialService {
   }
 
   async createUploadDraft(actor: ActorContext, input: CreateUploadDraftDto) {
+    if (input.category === 'EXECUTION_SUPPLEMENT') throw this.validationError();
     this.assertCategoryPurposeMatrix(input);
     const originalFilename = this.normalizeFilename(input.originalFilename);
     const declaredMimeType = normalizeMimeType(input.declaredMimeType);
@@ -5085,6 +5087,7 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'SECOND_INSTANCE_JUDGMENT' ||
     value === 'EXECUTION_APPLICATION' ||
     value === 'EXECUTION_FILING_PROOF' ||
+    value === 'EXECUTION_SUPPLEMENT' ||
     value === 'EXECUTION_FINISH_BASIS' ||
     value === 'CASE_CLOSURE_DOCUMENT'
   ) {
@@ -5118,6 +5121,7 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
               category === 'SECOND_INSTANCE_JUDGMENT' ||
               category === 'EXECUTION_APPLICATION' ||
               category === 'EXECUTION_FILING_PROOF' ||
+              category === 'EXECUTION_SUPPLEMENT' ||
               category === 'EXECUTION_FINISH_BASIS' ||
               category === 'CASE_CLOSURE_DOCUMENT'
             ? 10
@@ -5139,6 +5143,7 @@ function materialFileLimit(category: keyof typeof allowedMimeTypes): number {
     category === 'SECOND_INSTANCE_JUDGMENT' ||
     category === 'EXECUTION_APPLICATION' ||
     category === 'EXECUTION_FILING_PROOF' ||
+    category === 'EXECUTION_SUPPLEMENT' ||
     category === 'EXECUTION_FINISH_BASIS' ||
     category === 'CASE_CLOSURE_DOCUMENT'
     ? 50 * 1024 * 1024
