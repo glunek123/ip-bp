@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### 终端准备首403及单项增量准入（2026-10-16）
+
+5922e24实际正常verify工具139/前端2207/后台1864及NT006、双构建通过；原固定terminal五身份关联和四DEPARTMENT Grant已创建。正式单项在首次external-entry因CUSTOMER_ACTION_FORBIDDEN停止，实际案0/文件0，assignment仍active/v1；未到达目标“打开更正后撤权，保存403”，不能记该场景通过。原Runner安全摘要SHA2351ecc05966924131815c21c0e4695ecefb067ff4c275a08351bf182cc316fc，旧行/H42/159/31文件保持。
+
+主控和独立Worker只读核全准备链：唯一缺customer.read/DEPARTMENT，H42代建不符合terminal本人来源约束。原Runner已收到直接用户批准，授权文件rawSHA583b2978c1f4b3015402a1efaa9bd13d32b3c63d75b5a635c5f8206184a06f89；批准不等于实际执行。新增固定Grant UUID a7f934b8-2c64-4fc1-8d7e-18d8c4132a75，仍原角色5b870b2e-f831-43e6-9ed0-3f2c66ed8412。当前仅纯源码同步exact5，须保原4 proof历史candidate及五身份hash，另链接单行增量执行原bytes，实际4/第6项/错误scope均拒；无新DB/HTTP/Grant执行证据。
+
 ### 批量161迁移风险源码已审，真实验收待执行（2026-10-16）
 
 原Owner仅新增tests/support/lead-batch-push-migration.mjs/.d.mts/.test.mjs及专属E2E；源码提交dbe912e84c98733b26bacffc90ce08848828722e，加已逐项核对的context快照固定`ui003-lead-list-workflow/codex/uxq03-lead-batch-push` clean `e48760d24ea7d93a54c52f0b98ca739488318dc8` / tree `e557760ed45c3754a4e8eaad55265e7e5cbe2a58`。原产品/8项PG源及161 SQL raw1e267e10…0c9e87不变。实际纯7/7、根类型/Lint/格式/语法及离线发现1项、strict上下文通过；尚未运行正常完整verify/PG/官方161或HTTP8。
