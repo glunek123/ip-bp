@@ -38,19 +38,22 @@ const both = (value) => ({
   DEV_COR_TEST_DATABASE_URL: value,
 });
 function proof() {
-  const migrations = Array.from({ length: 157 }, (_, index) => ({
+  const migrations = Array.from({ length: 158 }, (_, index) => ({
     name: `2026010100${String(index).padStart(4, '0')}_synthetic`,
     checksum: index.toString(16).padStart(64, '0'),
   }));
   migrations.splice(
     154,
-    3,
+    4,
     ...[
       '20261015130000_guard_direct_second_remand_child',
       '20261015150000_case_section_record_edits',
       '20261015170000_case_section_record_uploads',
+      '20261016090000_case_record_material_guard_repair',
     ].map((name, index) => ({ ...migrations[154 + index], name })),
   );
+  migrations[157].checksum =
+    'dfe31436055f7ab9bf8d0796c48b3a0dd38a16acf4e5b3554e04e3d299b7b869';
   return {
     capturedDatabaseUrl: url,
     validatedDatabaseUrl: url,
@@ -171,7 +174,7 @@ function admittedProof() {
       port: 15438,
       database: 'dev_cor_test',
       schema: 'public',
-      migrations: 157,
+      migrations: 158,
     },
     actor,
     fixture: {
@@ -248,6 +251,8 @@ for (const kind of [
   'CID',
   'schema',
   'ledger',
+  'ledger157',
+  'ledger159',
   'foreign',
   'readOnly',
   'assignment',
@@ -290,6 +295,8 @@ for (const kind of [
     if (kind === 'CID') p.input.environment.container = '0'.repeat(64);
     if (kind === 'schema') p.input.environment.schema = 'other';
     if (kind === 'ledger') p.input.environment.migrations = 156;
+    if (kind === 'ledger157') p.input.environment.migrations = 157;
+    if (kind === 'ledger159') p.input.environment.migrations = 159;
     if (kind === 'foreign')
       p.input.actor = {
         ...p.input.actor,
@@ -774,7 +781,7 @@ for (const [name, patch] of negatives) {
     assert.throws(() => assertSectionRecordUiBinding({ ...valid, ...patch }));
   });
 }
-test('exact157 evidence validates purely without admitting an operation', () => {
+test('exact158 evidence validates purely without admitting an operation', () => {
   assertSectionRecordUiDatabaseProof(valid, proof());
   const f = sandbox();
   assert.throws(() => f.support.assertSectionRecordUiSourceReady(), pending);
@@ -785,13 +792,25 @@ for (const kind of [
   'validator',
   'source155',
   'source156',
+  'source157',
+  'source159',
+  'complete157',
+  'complete159',
   'tail',
+  'repairSource',
+  'repairBytesAndLedger',
   'duplicate',
   'badChecksum',
   'identity',
   'schema',
   'ledger155',
   'ledger156',
+  'ledger157',
+  'ledger159',
+  'repairLedgerName',
+  'repairLedgerChecksum',
+  'repairUnfinished',
+  'repairRolledBack',
   'ledgerName',
   'ledgerChecksum',
   'unfinished',
@@ -803,13 +822,49 @@ for (const kind of [
     if (kind === 'validator') p.validatedDatabaseUrl += '#bad';
     if (kind === 'source155') p.migrations.length = 155;
     if (kind === 'source156') p.migrations.length = 156;
+    if (kind === 'source157') p.migrations.length = 157;
+    if (kind === 'source159')
+      p.migrations.push({
+        name: '20261016100000_unapproved',
+        checksum: 'f'.repeat(64),
+      });
+    if (kind === 'complete157') {
+      p.migrations.length = 157;
+      p.applied.length = 157;
+    }
+    if (kind === 'complete159') {
+      const extra = {
+        name: '20261016100000_unapproved',
+        checksum: 'f'.repeat(64),
+      };
+      p.migrations.push(extra);
+      p.applied.push({
+        ...p.applied[157],
+        migration_name: extra.name,
+        checksum: extra.checksum,
+      });
+    }
     if (kind === 'tail') p.migrations[156].name = 'unapproved';
+    if (kind === 'repairSource') p.migrations[157].name = 'unapproved';
+    if (kind === 'repairBytesAndLedger') {
+      p.migrations[157].checksum = 'f'.repeat(64);
+      p.applied[157].checksum = p.migrations[157].checksum;
+    }
     if (kind === 'duplicate') p.migrations[0] = p.migrations[1];
     if (kind === 'badChecksum') p.migrations[0].checksum = 'bad';
     if (kind === 'identity') p.identity[0].username = 'other';
     if (kind === 'schema') p.identity[0].schema = 'other';
     if (kind === 'ledger155') p.applied.length = 155;
     if (kind === 'ledger156') p.applied.length = 156;
+    if (kind === 'ledger157') p.applied.length = 157;
+    if (kind === 'ledger159') p.applied.push({ ...p.applied[157] });
+    if (kind === 'repairLedgerName')
+      p.applied[157].migration_name = 'unapproved';
+    if (kind === 'repairLedgerChecksum')
+      p.applied[157].checksum = 'f'.repeat(64);
+    if (kind === 'repairUnfinished') p.applied[157].finished_at = null;
+    if (kind === 'repairRolledBack')
+      p.applied[157].rolled_back_at = 'rolled-back';
     if (kind === 'ledgerName') p.applied[3].migration_name = 'wrong';
     if (kind === 'ledgerChecksum') p.applied[3].checksum = '0'.repeat(64);
     if (kind === 'unfinished') p.applied[3].finished_at = null;

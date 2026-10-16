@@ -14,7 +14,10 @@ const tail = [
   '20261015130000_guard_direct_second_remand_child',
   '20261015150000_case_section_record_edits',
   '20261015170000_case_section_record_uploads',
+  '20261016090000_case_record_material_guard_repair',
 ];
+const repairChecksum =
+  'dfe31436055f7ab9bf8d0796c48b3a0dd38a16acf4e5b3554e04e3d299b7b869';
 const authorizedActions = Object.freeze([
   'case.complaint.mail',
   'case.filing.submit',
@@ -135,7 +138,7 @@ export function validateSectionRecordUiAdmission(
     port: 15438,
     database: 'dev_cor_test',
     schema: 'public',
-    migrations: 157,
+    migrations: 158,
   });
   assert.deepEqual(input.authorizationMessages, approvalMessages);
   assert.equal(input.originSha256, originHash);
@@ -378,7 +381,7 @@ export function assertSectionRecordUiBinding(environment = process.env) {
   return values[0];
 }
 
-// Pure validation of caller-supplied evidence preserves the exact binding/157
+// Pure validation of caller-supplied evidence preserves the exact binding/158
 // checks without opening a client, capturing the environment, or granting admission.
 export function assertSectionRecordUiDatabaseProof(environment, proof) {
   const connectionString = assertSectionRecordUiBinding(environment);
@@ -392,17 +395,22 @@ export function assertSectionRecordUiDatabaseProof(environment, proof) {
   );
   assert.equal(
     proof.migrations.length,
-    157,
-    'UI source is not the complete 157 chain',
+    158,
+    'UI source is not the complete 158 chain',
   );
   assert.deepEqual(
-    proof.migrations.slice(-3).map((m) => m.name),
+    proof.migrations.slice(-4).map((m) => m.name),
     tail,
     'Unexpected UI source migration tail',
   );
-  assert.equal(new Set(proof.migrations.map((m) => m.name)).size, 157);
+  assert.equal(new Set(proof.migrations.map((m) => m.name)).size, 158);
   for (const migration of proof.migrations)
     assert.match(migration.checksum, /^[a-f0-9]{64}$/u);
+  assert.equal(
+    proof.migrations[157].checksum,
+    repairChecksum,
+    'UI material guard repair source bytes changed',
+  );
   assert.deepEqual(
     proof.identity,
     [{ db: 'dev_cor_test', schema: 'public', username: 'dev_cor_test' }],
@@ -410,8 +418,8 @@ export function assertSectionRecordUiDatabaseProof(environment, proof) {
   );
   assert.equal(
     proof.applied.length,
-    157,
-    'UI R2 is not migrated to 157; runner approval is required',
+    158,
+    'UI R2 is not migrated to 158; runner approval is required',
   );
   for (const [index, migration] of proof.migrations.entries()) {
     const applied = proof.applied[index];
