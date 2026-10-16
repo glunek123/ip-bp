@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### 三个独立验收源码候选已固定（2026-10-16）
+
+EF160风险四文件105b5870及仅context快照固定为`ef001-integration/codex/ef001-integration` clean `1a98fc759e8859315ccf9030a6e3a809144a60b2` / tree `dc167da6cff82f10bdfebc908e4d96e8ad0a0ee9`。实际纯24/24、root及workspace类型、四文件Lint/格式/语法、strict上下文通过；同一正常本地CLI发现1文件1项/callbacks0，首次系统cache EPERM后正式权限执行相同命令通过，未换cache/ACL。独立risk_review_resume累计Spec/Quality ACCEPTED C/I/M0，M-C-PROBE01同步篡改156–159 source/ledger及public/search_path反例已关闭。父级已启动原Runner的正常完整verify和单owned风险项，尚无实际结果；SQL副本预期仍只最小ACL/DRAFT/file metadata与内存bytes，不覆盖旧Case/blob。前置单在主控`.local/ui003-evidence/runner-ef160-1a98fc7-owned-first-20261016.md`；public160及原14HTTP单独顺序执行，不等161。
+
+批量8项PG四测试文件5ef8e1ca及仅context快照固定为`ui003-lead-list-workflow/codex/uxq03-lead-batch-push` clean `f2dec65a366e4e689db187e521d3446caabe1be2` / tree `20477be45a8877f5fd3b5e6bf55d341fecbabe6a`。实际helper纯7/7、根类型、定向Lint/格式/语法、strict上下文和离线1文件8项/callbacks0；没有真实DB/HTTP。独立Spec/Quality ACCEPTED C/I/M0：本轮H42新lead的创建前无receipt、创建后真实create receipt与lead.created audit登记、私有故障集合和一次sequence命中均已核；terminal显式身份绕过H42登记但不扩大fault白名单，I-A-FAULT03/REGISTER04关闭。仍只复用H42主账号和一个新terminal role；完整161 source/applied严格门禁保留。独立161 owned风险四文件正由原Owner补齐，未运行或部署161；不得拿8项源码替代迁移风险。
+
+新UI终端403四文件及快照固定为`section-record-edit-ui-v2/codex/section-record-ui-159-readiness` clean `5922e247c54a931b0d40f97551a2997a964a138b` / tree `07430d8ae67165c89773ba85430a1ad2889acaed`。纯204/204与根类型/Lint/格式/strict上下文通过、独立源码审C/I/M0；I-B-TERM02终端snapshot精确材料ref小写case已关闭，原H42路径和135断言不改。离线发现16/1是作者采用进程Temp重定向的非正式发现证据，不能冒受保护运行；原Runner须正常入口/系统cache、必要正式权限。新terminal sourceReady必须在专属配置globalSetup/webServer之前执行，未实跑或造新角色。单项执行单`.local/ui003-evidence/runner-terminal403-5922e24-20261016.md`已交父级，原十五项的两次自动审批拒绝及未送达状态另行保留，未绕过重派。
+
 ### 原案保存及独立只读页面闭环通过
 
 原Runner在clean e9ee2e03/tree8148d8ea、R2/public159完成原dadd原279bytes body/key两次201、完整同回执，仅一条更正/回执使revision0→1，Case保持ARCHIVED/v6；原500已由本次实际成功关闭。fresh GET、刷新、有效值预填及规范化历史通过。脚本在编辑抽屉仍打开时点击退出，被遮罩挡住而超时；不能据此定性产品故障，也不能称重登、四文件精确下载或邮寄按钮下载已通过。149旧表行、70案头、H42、31文件、159账本及两个失败schema保持；正常只新增本次唯一纠错链及登录session。CASE/case采集误断言与原失败结果保留，由精确目标补证说明。
