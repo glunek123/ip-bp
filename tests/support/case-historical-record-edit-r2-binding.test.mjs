@@ -640,17 +640,18 @@ function restorationOffline(count = 157) {
     action,
     scope: 'DEPARTMENT',
   }));
-  for (const [index, action] of [
-    'case.complaint.mail',
-    'case.filing.submit',
-    'case.acceptance.register',
-    'case.external-entry.create',
-    'case.execution.mailing.correct',
-    'case.execution.filing.correct',
-    'case.execution.finish.correct',
-  ].entries())
+  // Exact seven additions from the approved four/three transaction receipts.
+  for (const [id, action] of [
+    ['c45f5968-f1b1-4b7f-9958-fe95224e63ec', 'case.complaint.mail'],
+    ['ccee168c-b7c1-4f0c-a045-cf6aa1cea7a8', 'case.filing.submit'],
+    ['031911aa-9794-415a-b4ea-6dd6e5a050e9', 'case.acceptance.register'],
+    ['604ac717-4e8e-46fc-9eb2-9946a06c2063', 'case.external-entry.create'],
+    ['221b4dfd-6ad6-48aa-933e-5cc48d31e07c', 'case.execution.mailing.correct'],
+    ['e8a738ff-28fa-435b-a81f-6850e15248b6', 'case.execution.filing.correct'],
+    ['4fdb897a-36af-4c40-971b-dfc247c6422f', 'case.execution.finish.correct'],
+  ])
     f.state.grants.push({
-      id: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, '0')}`,
+      id,
       action,
       scope: 'DEPARTMENT',
     });
@@ -816,6 +817,30 @@ test('restore rejects 156 even when that source ledger otherwise passes existing
     restoreHistoricalRecordActor(retainedBinding, retainedCredential, f.deps),
     /157 ledger/u,
   );
+  assertRecoveryReadOnly(f);
+});
+
+for (const index of Array.from({ length: 7 }, (_, i) => i))
+  test(`restore rejects added grant ID replacement ${index} despite unchanged action and scope`, async () => {
+    const f = restorationOffline();
+    f.state.grants[35 + index].id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    await assert.rejects(
+      restoreHistoricalRecordActor(retainedBinding, retainedCredential, f.deps),
+      /exactly seven approved grants/u,
+    );
+    assert.equal(f.state.ended, 1);
+    assertRecoveryReadOnly(f);
+  });
+test('restore rejects all seven recreated grant IDs despite unchanged actions and scopes', async () => {
+  const f = restorationOffline();
+  for (let index = 0; index < 7; index++)
+    f.state.grants[35 + index].id =
+      `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, '0')}`;
+  await assert.rejects(
+    restoreHistoricalRecordActor(retainedBinding, retainedCredential, f.deps),
+    /exactly seven approved grants/u,
+  );
+  assert.equal(f.state.ended, 1);
   assertRecoveryReadOnly(f);
 });
 

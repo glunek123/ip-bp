@@ -266,6 +266,11 @@ export async function restoreHistoricalRecordActor(
       .filter((row) => !approvedMissingActions.includes(row.action))
       .map(({ id, action, scope }) => ({ id, action, scope }))
       .sort((a, b) => (a.action < b.action ? -1 : a.action > b.action ? 1 : 0));
+    // Pin the exact seven rows from the approved four/three transaction receipts.
+    const addedGrants = grants
+      .filter((row) => approvedMissingActions.includes(row.action))
+      .map(({ id, action, scope }) => ({ id, action, scope }))
+      .sort((a, b) => (a.action < b.action ? -1 : a.action > b.action ? 1 : 0));
     if (
       grants.length !== 42 ||
       new Set(grants.map((row) => row.action)).size !== 42 ||
@@ -276,7 +281,9 @@ export async function restoreHistoricalRecordActor(
       createHash('sha256')
         .update(JSON.stringify(originalGrants))
         .digest('hex') !==
-        '857df0a89247fb3a630a0cfd8f1bb3048a0aba6a95c59e92a121a64e57158602'
+        '857df0a89247fb3a630a0cfd8f1bb3048a0aba6a95c59e92a121a64e57158602' ||
+      createHash('sha256').update(JSON.stringify(addedGrants)).digest('hex') !==
+        '016d104b18a9609b1228be6e44046c0742f253f1fdb7d1d003683d38cce76c30'
     )
       throw new Error(
         'Historical actor requires preserved original 35 and exactly seven approved grants',
