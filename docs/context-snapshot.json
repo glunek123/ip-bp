@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-16T02:01:08.933Z",
+  "recordedAt": "2026-10-16T02:43:41.154Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -292,8 +292,8 @@
     "backend/src/modules/cases/case-execution-mailing.dto.ts": "c53f45782d12e538c63f4e9d36ad953977e5e0a2eda7044d8e22fa4dc7552c3e",
     "backend/src/modules/cases/case-execution-mailing.service.spec.ts": "6352da99b9a6c66c0b9d41b9dce03afe7abb424186e57d0e817b4d30eac8505b",
     "backend/src/modules/cases/case-execution-mailing.service.ts": "8861e40d0a8296543e81f86e4b09f02b40685af8ed9286f11fc20c7e68d68b78",
-    "backend/src/modules/cases/case-execution-record-edit.service.spec.ts": "42da8146f4b55353da8a606aa290bd24f14ae65545bd94c47ba554c939cfcbb4",
-    "backend/src/modules/cases/case-execution-record-edit.service.ts": "b40a272ecb16f940d6582cd5fe23ef97adc103cec2c2ee6de30b595037511095",
+    "backend/src/modules/cases/case-execution-record-edit.service.spec.ts": "664b7d59a8c794f3430391316ac28dc3512b6c881d2b33452cca7819b1e86419",
+    "backend/src/modules/cases/case-execution-record-edit.service.ts": "9c7b177736e310ef6fc54164a15249797650c3e403b7443522056b5de2f73612",
     "backend/src/modules/cases/case-execution-source.ts": "9c61ed2989c7e0339fd083c4e2a16a97fa3a642e6010b61eea0ed40f11dc995d",
     "backend/src/modules/cases/case-execution-submission.dto.ts": "78e7875f27fc8b7ab5b68c18166ec64683d49f96b480efa5ce8c7fe5e5e88a2d",
     "backend/src/modules/cases/case-execution-submission.service.spec.ts": "4de49c28f1a10fbfd471d56c23dbefde8d0f725243f06bd9e005279ffc860a5e",
