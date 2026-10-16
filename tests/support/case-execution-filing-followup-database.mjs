@@ -112,10 +112,11 @@ export function assertExecutionFilingFollowupMigrationSource(source) {
     '20261015150000_case_section_record_edits',
     '20261015170000_case_section_record_uploads',
     '20261016090000_case_record_material_guard_repair',
+    '20261016093000_case_record_material_reference_reuse',
     '20261016100000_case_execution_filing_followups',
   ];
   if (
-    source.length !== 159 ||
+    source.length !== 160 ||
     tail.some((name, i) => source[154 + i]?.name !== name) ||
     source.some(
       (row, i) =>
@@ -130,10 +131,12 @@ export function assertExecutionFilingFollowupMigrationSource(source) {
     source[157].checksum !==
       'dfe31436055f7ab9bf8d0796c48b3a0dd38a16acf4e5b3554e04e3d299b7b869' ||
     source[158].checksum !==
-      '0d55420218f7547723b5a7b2a260469b4f3c4b9a84f797effff269175773fc30'
+      '628a0fc0a664942896fdd85e3811bfe977702e4924ef33a58f83399a9bf8280e' ||
+    source[159].checksum !==
+      'e125a3278b0530860b1be49273fc667224451f8a6d35b420bdf14e2b9c684105'
   )
     throw new Error(
-      'EF001 requires the complete source chain through approved 158 and EF159',
+      'EF001 requires the exact frozen 160-source chain including approved 156 through 160',
     );
 }
 

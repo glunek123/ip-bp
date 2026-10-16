@@ -20,8 +20,8 @@ import {
   type ExecutionFilingFollowupSnapshot,
 } from '../support/case-execution-filing-followup-database.mjs';
 
-// Source preparation only. The helper refuses the current 157-source tree.
-// Runner admission additionally requires approved public 158+159 and fresh fixture authorization.
+// Source preparation only. The helper requires the exact frozen 160-source chain.
+// Runner admission separately requires matching public160 and fresh fixture authorization.
 // PRIMARY positive/redaction tests await a lawful fresh identity/binding source; no old credentials are used.
 const origin = 'http://127.0.0.1:3101';
 const pdf = Buffer.from('%PDF-1.7\nEF001 exact synthetic bytes\n%%EOF\n');
