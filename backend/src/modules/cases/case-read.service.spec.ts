@@ -59,6 +59,12 @@ function displaySource(leadId: string, matterId: string) {
 describe('CaseReadService', () => {
   function fixture() {
     const db = {
+      caseExecutionFilingFeedback: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      caseExecutionFilingSupplement: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       userAccount: {
         findUnique: jest
           .fn()
@@ -103,6 +109,8 @@ describe('CaseReadService', () => {
     };
     db.$transaction.mockImplementation(async (operation) =>
       operation({
+        caseExecutionFilingFeedback: db.caseExecutionFilingFeedback,
+        caseExecutionFilingSupplement: db.caseExecutionFilingSupplement,
         case: { findFirst: db.case.findFirst },
         material: db.material,
         $queryRawUnsafe: db.$queryRawUnsafe,
@@ -213,6 +221,248 @@ describe('CaseReadService', () => {
       complaintMailing: null,
     };
   }
+  describe('execution filing followup scoped read', () => {
+    const first = {
+      id: 'feedback-root',
+      feedbackId: 'feedback-root',
+      priorVersionId: null,
+      fromRevision: 0,
+      toRevision: 1,
+      correctionReason: null,
+      recordedAt: new Date('2026-10-16T00:00:00Z'),
+      feedbackOn: null,
+      courtCaseNo: null,
+      content: '真实反馈',
+    };
+    const corrected = {
+      ...first,
+      id: 'feedback-version-2',
+      priorVersionId: first.id,
+      fromRevision: 1,
+      toRevision: 2,
+      correctionReason: '内部原因',
+      content: '更正内容',
+    };
+    function withFiling(stage = 'EXECUTING') {
+      const f = fixture();
+      const record = {
+        ...externalRecord('WAITING_EXECUTION_FILING'),
+        stage,
+        executionFiling: {
+          id: 'local-filing',
+          mailingId: null,
+          submittedAt: new Date('2026-10-15T00:00:00Z'),
+          recordedAt: new Date('2026-10-15T00:00:00Z'),
+          toVersion: 2,
+        },
+      };
+      f.db.case.findFirst.mockResolvedValue(record);
+      f.db.caseExecutionFilingFeedback.findMany.mockResolvedValue([
+        first,
+        corrected,
+      ]);
+      return { ...f, record };
+    }
+    it('queries exact case, department and real filing inside the existing repeatable-read snapshot', async () => {
+      const f = withFiling();
+      const result = await f.service.get(actor, 'case-1');
+      const where = {
+        caseId: 'case-1',
+        departmentId: actor.departmentId,
+        filingId: 'local-filing',
+      };
+      expect(f.db.caseExecutionFilingFeedback.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where }),
+      );
+      expect(f.db.caseExecutionFilingSupplement.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where }),
+      );
+      expect(f.db.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: 'RepeatableRead',
+      });
+      expect(result.executionFilingFollowups).toMatchObject({
+        filingId: 'local-filing',
+        feedbacks: [
+          {
+            current: { id: corrected.id, revision: 2 },
+            history: [
+              { id: first.id, correctionReason: null },
+              { id: corrected.id, correctionReason: '内部原因' },
+            ],
+          },
+        ],
+      });
+      expect(result.executionFiling).toEqual({
+        id: 'local-filing',
+        mailingId: null,
+        submittedAt: '2026-10-15',
+        recordedAt: '2026-10-15T00:00:00.000Z',
+        files: [],
+      });
+    });
+    it('computes each current internal action independently rather than deriving writes from case.read', async () => {
+      const f = withFiling();
+      f.access.canAuthorizeCase.mockImplementation(
+        async (_actor: typeof actor, action: string) =>
+          action === 'case.execution.feedback.record' ||
+          action === 'case.execution.supplement.correct',
+      );
+      f.db.caseExecutionFilingSupplement.findMany.mockResolvedValue([
+        {
+          id: 'supplement-root',
+          supplementId: 'supplement-root',
+          priorVersionId: null,
+          fromRevision: 0,
+          toRevision: 1,
+          correctionReason: null,
+          recordedAt: new Date(),
+          submittedOn: null,
+          note: null,
+          documents: [
+            {
+              materialId: 'supplement-material',
+              contentVersionId: 'supplement-file',
+              contentVersion: {
+                originalFilename: '真实补交.pdf',
+                mimeType: 'application/pdf',
+              },
+            },
+          ],
+        },
+      ]);
+      const result = await f.service.get(actor, 'case-1');
+      expect(result.executionFilingFollowups).toMatchObject({
+        canRecordFeedback: true,
+        canSubmitSupplement: false,
+        feedbacks: [{ canCorrect: false }],
+        supplements: [{ canCorrect: true }],
+      });
+      for (const action of [
+        'case.execution.feedback.record',
+        'case.execution.feedback.correct',
+        'case.execution.supplement.submit',
+        'case.execution.supplement.correct',
+      ])
+        expect(f.access.canAuthorizeCase).toHaveBeenCalledWith(actor, action, {
+          departmentId: actor.departmentId,
+          responsibleUserId: actor.userId,
+        });
+    });
+    it('keeps a true empty filing distinct from an external EXECUTING source without a local filing', async () => {
+      const f = withFiling();
+      f.db.caseExecutionFilingFeedback.findMany.mockResolvedValue([]);
+      expect(
+        (await f.service.get(actor, 'case-1')).executionFilingFollowups,
+      ).toMatchObject({ feedbacks: [], supplements: [] });
+      f.db.case.findFirst.mockResolvedValue(externalRecord('EXECUTING'));
+      f.db.caseExecutionFilingFeedback.findMany.mockClear();
+      f.db.caseExecutionFilingSupplement.findMany.mockClear();
+      expect(
+        (await f.service.get(actor, 'case-1')).executionFilingFollowups,
+      ).toBeNull();
+      expect(f.db.caseExecutionFilingFeedback.findMany).not.toHaveBeenCalled();
+      expect(
+        f.db.caseExecutionFilingSupplement.findMany,
+      ).not.toHaveBeenCalled();
+    });
+    it('retains history after archive with all new write capabilities false', async () => {
+      const f = withFiling('ARCHIVED');
+      const closureVersion = {
+        id: 'closure-version',
+        kind: 'REGISTER',
+        priorVersionId: null,
+        finishId: 'finish',
+        fromVersion: 3,
+        toVersion: 4,
+        closeAt: null,
+        closeAmountState: 'UNKNOWN',
+        closeAmt: null,
+        note: null,
+        correctionReason: null,
+        recordedAt: new Date('2026-10-16T01:00:00Z'),
+        recordedByUserId: actor.userId,
+      };
+      f.db.case.findFirst.mockResolvedValue({
+        ...f.record,
+        version: 5,
+        executionFinish: {
+          id: 'finish',
+          filingId: 'local-filing',
+          finishedAt: new Date('2026-10-16T00:00:00Z'),
+          reason: 'EXECUTION_COLLECTED',
+          basisNote: null,
+          recordedAt: new Date('2026-10-16T00:00:00Z'),
+          toVersion: 3,
+        },
+        closure: {
+          id: 'closure',
+          finishId: 'finish',
+          currentVersionId: closureVersion.id,
+          versions: [closureVersion],
+        },
+        archive: {
+          id: 'archive',
+          closureId: 'closure',
+          closureVersionId: closureVersion.id,
+          currentVersionId: 'archive-version',
+          versions: [
+            {
+              id: 'archive-version',
+              kind: 'ARCHIVE',
+              priorVersionId: null,
+              closureVersionId: closureVersion.id,
+              fromVersion: 4,
+              toVersion: 5,
+              archiveAt: new Date('2026-10-16T00:00:00Z'),
+              archiveType: 'EXECUTION_COLLECTED',
+              archiveReason: '真实归档',
+              correctionReason: null,
+              recordedAt: new Date('2026-10-16T02:00:00Z'),
+              recordedByUserId: actor.userId,
+            },
+          ],
+        },
+      });
+      const result = await f.service.get(actor, 'case-1');
+      expect(result.executionFilingFollowups).toMatchObject({
+        canRecordFeedback: false,
+        canSubmitSupplement: false,
+        feedbacks: [{ canCorrect: false, current: { revision: 2 } }],
+      });
+    });
+    it('retains current PRIMARY scope in the actual lawyer query and strips internal reasons from history', async () => {
+      const f = withFiling();
+      f.db.userAccount.findUnique.mockResolvedValue({
+        accountType: 'LAWYER',
+        active: true,
+      });
+      const result = await f.service.get(
+        { ...actor, lawyerAccountId: actor.userId },
+        'case-1',
+      );
+      expect(f.db.case.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            departmentId: actor.departmentId,
+            lawyers: {
+              some: expect.objectContaining({ role: 'PRIMARY', endedAt: null }),
+            },
+          }),
+        }),
+      );
+      expect(result.executionFilingFollowups).toMatchObject({
+        canRecordFeedback: true,
+        canSubmitSupplement: true,
+        feedbacks: [{ canCorrect: true }],
+      });
+      expect(JSON.stringify(result.executionFilingFollowups)).not.toContain(
+        'correctionReason',
+      );
+      expect(JSON.stringify(result.executionFilingFollowups)).not.toContain(
+        '内部原因',
+      );
+    });
+  });
   it('hides prepared judgment metadata from lawyer details until exact first-consumption proof without changing ordinary files', async () => {
     const f = fixture();
     const record = externalRecord('ARCHIVED');

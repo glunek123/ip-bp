@@ -1,4 +1,5 @@
 import { caseArchiveTypes } from './case-archive.dto';
+import { ExecutionFilingFollowupsDto } from './case-execution-filing-followup-read.dto';
 import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
@@ -832,6 +833,8 @@ export class CaseDetailResponseDto extends OmitType(CaseListItemDto, [
   executionMailing!: CaseExecutionMailingDto | null;
   @ApiProperty({ type: CaseExecutionFilingDto, nullable: true })
   executionFiling!: CaseExecutionFilingDto | null;
+  @ApiProperty({ type: ExecutionFilingFollowupsDto, nullable: true })
+  executionFilingFollowups!: ExecutionFilingFollowupsDto | null;
   @ApiProperty({ type: CaseExecutionFinishDto, nullable: true })
   executionFinish!: CaseExecutionFinishDto | null;
   @ApiProperty({ type: CaseHearingDto }) hearing!: CaseHearingDto;

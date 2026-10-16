@@ -10,6 +10,11 @@ import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
 import {
+  executionFeedbackReadSelect,
+  executionSupplementReadSelect,
+  projectExecutionFilingFollowups,
+} from './case-execution-filing-followup-read';
+import {
   caseKnownCourtId,
   caseListDisplay,
   caseListDisplaySelect,
@@ -1456,11 +1461,46 @@ export class CaseReadService {
                 allowed.has(version.id),
             );
         }
-        return { record, judgmentMaterials, executionMaterials };
+        const followupScope =
+          record?.executionFiling == null
+            ? null
+            : {
+                caseId: id,
+                departmentId: actor.departmentId,
+                filingId: record.executionFiling.id,
+              };
+        const [executionFeedbacks, executionSupplements] =
+          followupScope === null
+            ? [[], []]
+            : await Promise.all([
+                transaction.caseExecutionFilingFeedback.findMany({
+                  where: followupScope,
+                  orderBy: [{ feedbackId: 'asc' }, { toRevision: 'asc' }],
+                  select: executionFeedbackReadSelect,
+                }),
+                transaction.caseExecutionFilingSupplement.findMany({
+                  where: followupScope,
+                  orderBy: [{ supplementId: 'asc' }, { toRevision: 'asc' }],
+                  select: executionSupplementReadSelect,
+                }),
+              ]);
+        return {
+          record,
+          judgmentMaterials,
+          executionMaterials,
+          executionFeedbacks,
+          executionSupplements,
+        };
       },
       { isolationLevel: 'RepeatableRead' },
     );
-    const { record, judgmentMaterials, executionMaterials } = snapshot;
+    const {
+      record,
+      judgmentMaterials,
+      executionMaterials,
+      executionFeedbacks,
+      executionSupplements,
+    } = snapshot;
     if (record === null)
       throw new NotFoundException({
         code: 'RESOURCE_NOT_FOUND',
@@ -2199,7 +2239,44 @@ export class CaseReadService {
     const currentHearingRecord = hearingEdits.find(
       (edit) => edit.arrangementId === record.currentHearingArrangement?.id,
     );
+    const followupActions = [
+      'case.execution.feedback.record',
+      'case.execution.feedback.correct',
+      'case.execution.supplement.submit',
+      'case.execution.supplement.correct',
+    ] as const;
+    const canFollowup = async (
+      action: (typeof followupActions)[number],
+    ): Promise<boolean> =>
+      record.executionFiling == null || record.stage !== 'EXECUTING'
+        ? false
+        : principal === 'LAWYER'
+          ? true
+          : this.access.canAuthorizeCase(actor, action, {
+              departmentId: actor.departmentId,
+              responsibleUserId: record.responsibleUserId,
+              ...(record.responsibleMembership.teamId
+                ? { teamId: record.responsibleMembership.teamId }
+                : {}),
+            });
+    const followupAllowed = await Promise.all([
+      canFollowup(followupActions[0]),
+      canFollowup(followupActions[1]),
+      canFollowup(followupActions[2]),
+      canFollowup(followupActions[3]),
+    ]);
+    const executionFilingFollowups =
+      record.executionFiling == null
+        ? null
+        : projectExecutionFilingFollowups({
+            filingId: record.executionFiling.id,
+            internal: principal === 'INTERNAL',
+            permissions: followupAllowed,
+            feedbacks: executionFeedbacks,
+            supplements: executionSupplements,
+          });
     const detail = {
+      executionFilingFollowups,
       id: record.id,
       businessNo: record.businessNo,
       stage: record.stage,
@@ -3365,6 +3442,7 @@ export class CaseReadService {
               },
         executionMailing: detail.executionMailing,
         executionFiling: detail.executionFiling,
+        executionFilingFollowups: detail.executionFilingFollowups,
         executionFinish: detail.executionFinish,
         complaint:
           detail.complaint === null
