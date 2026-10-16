@@ -6,6 +6,7 @@ import {
   assertApprovedReferenceReuseMigration,
   assertReferenceReuseBinding,
   assertReferenceReuseTransactionBoundary,
+  injectReferenceReuseRollbackProbe,
 } from './case-record-material-reference-reuse.mjs';
 
 const sourceBytes = readFileSync(
@@ -38,6 +39,34 @@ test('0930 raw source is independently pinned and has one complete DDL transacti
   assert.throws(() =>
     assertApprovedReferenceReuseMigration(sourceBytes, forgedLedger),
   );
+});
+
+test('owned rollback probe preserves dollar delimiters and every other migration byte', () => {
+  const needle =
+    'CREATE UNIQUE INDEX "material_references_resource_purpose_version_key"';
+  const deliberate =
+    "DO $$ BEGIN RAISE EXCEPTION 'deliberate migration rollback proof'; END $$;\n";
+  const at = sql.indexOf(needle);
+  assert.ok(
+    at >
+      sql.indexOf(
+        'DROP INDEX "material_references_resource_purpose_version_key"',
+      ),
+  );
+  assert.equal(sql.lastIndexOf(needle), at);
+  const injected = injectReferenceReuseRollbackProbe(sql);
+  assert.equal(
+    createHash('sha256').update(injected).digest('hex'),
+    createHash('sha256')
+      .update(sql.slice(0, at) + deliberate + sql.slice(at))
+      .digest('hex'),
+  );
+  assert.ok(
+    injected.includes(
+      `DROP INDEX "material_references_resource_purpose_version_key";\n${deliberate}${needle}`,
+    ),
+  );
+  assertReferenceReuseTransactionBoundary(injected);
 });
 
 test('reuse is classified by server-side same-transaction correction evidence', () => {

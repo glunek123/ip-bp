@@ -60,6 +60,17 @@ export function assertApprovedReferenceReuseMigration(
   return actual;
 }
 
+export function injectReferenceReuseRollbackProbe(sourceSql) {
+  const needle =
+    'CREATE UNIQUE INDEX "material_references_resource_purpose_version_key"';
+  assert.equal(sourceSql.split(needle).length, 2);
+  return sourceSql.replace(
+    needle,
+    () =>
+      `DO $$ BEGIN RAISE EXCEPTION 'deliberate migration rollback proof'; END $$;\n${needle}`,
+  );
+}
+
 // This pure gate runs before capture, pg import, Docker, or any service request.
 export function assertReferenceReuseBinding(environment = process.env) {
   assert.equal(environment.NODE_ENV, 'test');
@@ -308,13 +319,7 @@ export async function verifyReferenceReusePredeploy() {
       )
     ).rows[0].definition;
     const sourceSql = sourceBytes.toString('utf8');
-    const needle =
-      'CREATE UNIQUE INDEX "material_references_resource_purpose_version_key"';
-    assert.equal(sourceSql.split(needle).length, 2);
-    const injected = sourceSql.replace(
-      needle,
-      `DO $$ BEGIN RAISE EXCEPTION 'deliberate migration rollback proof'; END $$;\n${needle}`,
-    );
+    const injected = injectReferenceReuseRollbackProbe(sourceSql);
     await assert.rejects(
       client.query(injected),
       /deliberate migration rollback proof/u,
