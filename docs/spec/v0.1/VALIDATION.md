@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+## 165首UI组合与材料根前置纠正（2026-10-16）
+
+已审H/工程/UI微增量累计到独立test-runtime-stability树branch codex/section-record-h42-vertical-acceptance，固定clean165ee1bd3bc40d0b35d98ece65d6e5329f527724/tree99564dbe912c857b59334ccf83eb236428aa5bdf；原2a运行树与H503备用均未改。新组合实际rootTS、UI128/128、H61/61、入口54/54、context11精确已审漂移标准record/strict及diff0，原Sol组合Scope C/I/M0；三工具测试首次Temp缓存mkdir EPERM在0tests前阻断，保留后正式权限同切片54通过，无DB。原作者同字节Lint/格式结果复用，不称完整verify或真实UI已过。
+
+唯一runner按首UI单只准备，正常frozen install/context/Prisma generate/backend build均0，1203tracked源/734backend dist已留；但主控要求复用2a PRIVATE_FILE_ROOT与scripts/test-environment.mjs194-200当前root/.local/private-files/test硬约束冲突，官方capture前拒绝。DB连接/写入、服务、discovery、正式项全部0，未造run manifest，非产品断言失败。原目录ui-first-165ee1b-20261016的blocked-handoff SHA4fa0cf28bd417534a60004c32287d1d402499f184dc63b3c6cf94f1502a4bde6，21份hash-manifest SHA68f9a672450bcb801bcb7d2c496804e18f9d75440b04168430f4855814b3f72a，主控逐bytes/hash核21/21；原配置/失败记录保留。
+
+父级明确同意按当前候选独立根正常准备，原Sol修正执行单C/I/M0。主控ignored runner-ui-165ee1b-storage-root-correction-20261016.md SHA12a5ea56663eff3bf45f7bb2e4d1892059d7585b4923d2650eea62d9b96c56ed覆盖前单错误两句：只改.env PRIVATE_FILE_ROOT，其它凭据/URL不变；准入后标准锁内先只读核CV与已封22/3886bytes清单，再source真实bytes核对、target missing-only COPYFILE_EXCL/已存exacthash、不覆盖不移源、不DB/Grant写；复制后fresh capture/metadata/list1/唯一execution-mailing完整正向1次。既有源/产物未变可复用install/generate/build，不重做整个准备。当前复制/capture/UI尚未执行。原环境Owner另独立test-runtime-storage-root从0f6开始仅五文件，将测试根派生抽到既有pure helper并让validator同用；不松guard、不造共享存储根/新runner，当前165源冻结，不等未来工程小修。
+
+并行EF001首稳定19文件已精确提交b12b41bcb7f0296a4cb19df360b34e19a6788dff/treeaf9fa22c348f2f0fce33c9b7e8aa014f1be0d755，manifest SHA1569957ab0b3e58c9245f1f40d6a7f9457f1a002109ba849e824caeadaec6d9e主控/原Sol逐19hash核准，受限Spec/Quality C/I/M0。schema四模型/DTO/四Action及provider/组织decoder、材料类型同步但generic新类别显式拒，后台4suite219、前端组织49、三类型/Lint格式/架构通过，无DB。原S继续158/专用材料/读路由；新ef001-domain独占树从b12创建供原E仅领域service/spec，具体指令已落ignored relay待父级原通道续办。首baseline不是完整功能或158已验。
+
 ## R2既有角色42项实际闭环与并行实施边界（2026-10-16）
 
 用户第二次明确批准三项execution.mailing.correct、execution.filing.correct、execution.finish.correct（消息Sentinel_99c7388c6e608191a8cf0379ef2f1f39；与此前六项授权分开）。唯一runner正常start原持久卷R2一次，现场healthy及原149表闭合后，两事务仅同一user edc8bf6f-6660-41f6-8418-f72f87443a1c、role51c34a8b-fb00-45b1-ab9f-d077d59d4878、部门10000000-0000-4000-8000-000000000001的缺失DEPARTMENT项：35→39补complaint.mail/filing.submit/acceptance.register/external-entry.create，hearing.schedule/execution.submit原已有；再39→42补三项执行更正。没有替换actor、扩foreign/readOnly/baseline或恢复旧撤权。149表所有旧行/全安全关系/67Case/21advance/915audit/157账本/sequence/22两端bytes保持，只有7条新增Grant；端口空闲/标准锁释放，无HTTP或新测试。

@@ -1,5 +1,7 @@
 # 当前开发状态
 
+2026-10-16首UI最新断点：已审组合165ee1bd/tree99564dbe（test-runtime-stability树、h42-vertical-acceptance分支）通过root类型、128 UI准入/61 H恢复/54入口纯测，原Sol组合C/I/M0。唯一runner已正常install/context/generate/build0，但执行单错误要求复用2a材料根，与现有validator强制当前树测试根冲突，故capture前BLOCKED，DB/服务/discovery/UI均0，非业务失败。21份证据主控hash核准；修正单runner-ui-165ee1b-storage-root-correction-20261016.md（12a5ea...56ed）审C/I/M0：只改当前.env的PRIVATE_FILE_ROOT、只读盘点后22/3886bytes精确missing-only复制、源/旧库/权限不变，从capture续跑，复用已成产物不重装/生成/build。原H503备用不并发。EF首19文件已提交b12b41bc、原SolC/I/M0；S继续158/材料，原E独占ef001-domain树已从b12创建、待父级续办两文件领域服务。原环境Owner另树做现validator与managed helper共享材料根派生，当前165不改源、不等该小修。尚无真实UI结果。
+
 2026-10-16最新断点：原R2持久卷容器已正常启动一次并healthy；用户六项及另三项更正权限均已明确批准，唯一既有H主角色两事务35→39→42，恰追加7条DEPARTMENT Grant。原35/149表旧行/全部旧安全关联/67案/21推进/915审计/157账本/sequence/22两端材料保持，旧凭据私密恢复且hash复核，无重置/新actor/HTTP。主控与原Sol逐55份证据bytes/hash核准，授权与实际范围审C/I/M0；本结论不是业务验收。UI/H已成功收到回执与私密引用metadata，继续严格既有actor恢复/manifest纯实现；固定候选后唯一runner先真实登录和一条纵向，正向完成后最后终结失权场景。E65秒及旧门禁复用，预览/日期规则不动。
 
 H恢复四文件9bdb23f的I-H-RESTORE01已由原Owner补丁70ac1d9关闭，真实七Grant记录摘要与两事务独立重算一致、42定向纯测通过。独立closeout已接累计修复并固定503b9806/tree0865c03c，组合root类型/61相关纯测/定向静态/context strict通过，backend/依赖/156157与2a99字节相同；原Sol条件化首条纵向Scope ACCEPTED C/I/M0，不重跑旧verify/E65。唯一runner运行单runner-h-503b980-first-vertical-20261016.md已就绪：先在webServer前核两负例原创建manifest/身份/旧credential，缺则立即BLOCKED不得新造；通过再fresh锁/capture/157/42/22bytes/cleanup15min、正常本树构建/同源3101、protected list1→H首项1/1。真实业务仍未运行，M-H-RESTORE02实际proof不假关。
