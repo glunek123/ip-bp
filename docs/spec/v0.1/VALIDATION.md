@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### 原案严格159候选已备，明确许可后消息路由仍未送达
+
+原UI两文件5845cf101886f3ced88bcdc3679c4915a2fc531b只将完整source/applied链升为159并独立钉156–159 SQL原字节；174绑定及35准入纯测试、根类型、Lint/格式通过，原Sol补审C/I/M0。16业务项/135断言、H42/凭据/seal及产品字节不变。运行树接入后只更新context快照，固定clean e9ee2e03f44a6d8069325261d3b5eb6261c02267/tree8148d8ea067fa69984584ba602d15f0d81053e17，context strict通过；作者树缺env的protected发现失败保留，不当发现通过，须由已备运行树真实发现。
+
+主控发送原dadd同请求保存/原键重放/页面验证单时，自动审批认为此前159/五类许可未明确覆盖该单案持久更正，消息被拒且未执行。用户随后对完整说明的原案动作明确回复“允许原案同请求续验”。只据新许可重试原未执行消息一次，审批不再拒绝，但工具返回AbsolutePathBuf路由错误；未再次重试、未转其它Task代执行。向父级报告亦thread not found。当前是消息送达阻塞，不再是等待人类批准；原dadd仍未发HTTP。精确候选及短执行单在主控`.local/ui003-evidence/runner-dadd159-same-request-20261016.md`，旧审批原文与新许可/路由状态在`dadd159-execution-denied-20261016.md`。批量推送开发/审查独立继续，禁止把权限询问或已备源码当业务验收结果。
+
 ### 159修复实库与五类HTTP通过，原案页面尚待续验
 
 原Runner在clean11fbbfb5979fd5b7ccf555608deb1873ba753862/tree759a22d125354a902b9cd981d67c0d9c9e0a1138实际完成owned PostgreSQL专项1/1、正常官方`pnpm db:test:migrate:deploy`一次（仅0930修复，public158→159）及五类HTTP专项1/1，均exit0、无skip/flaky/retry。实际11条更正与11份typed回执已提交，五组原body/key重放完整解析DTO等价、五类错CV均400、mailing并发201/409；judgment JSON属性顺序不同，未声称响应原字节相同。原149表旧行、68案头、H42与26文件字节保持，正常新增2案/5文件保留，当前70案/31文件。两个旧失败schema原样保留，本轮owned无新增残留。
