@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### 159修复实库与五类HTTP通过，原案页面尚待续验
+
+原Runner在clean11fbbfb5979fd5b7ccf555608deb1873ba753862/tree759a22d125354a902b9cd981d67c0d9c9e0a1138实际完成owned PostgreSQL专项1/1、正常官方`pnpm db:test:migrate:deploy`一次（仅0930修复，public158→159）及五类HTTP专项1/1，均exit0、无skip/flaky/retry。实际11条更正与11份typed回执已提交，五组原body/key重放完整解析DTO等价、五类错CV均400、mailing并发201/409；judgment JSON属性顺序不同，未声称响应原字节相同。原149表旧行、68案头、H42与26文件字节保持，正常新增2案/5文件保留，当前70案/31文件。两个旧失败schema原样保留，本轮owned无新增残留。
+
+证据目录`test-runtime-stability/.local/ui003-evidence/reference-reuse-11fbbfb-20261016/`，acceptance-summary SHA256 `e3fcf34c345a1fb6d56e3a6c514028487d57f049263842423e4c76ab837465b7`；官方迁移、真实提交、重放/冲突、namespace及响应顺序均有独立proof。原Sol受限复核Spec/Quality ACCEPTED，C/I/M0。b9完整verify仅按未变产品输入复用，不说11fbbfb重跑。原dadd仍ARCHIVED/v6、mailing revision0、更正/回执0，本轮未发其POST；必须用原279bytes/key继续同案保存及实际页面刷新、重登、历史、精确文件验证，不能据五类新案HTTP关闭原UI500或宣称未知结果恢复。EF160、权限增量、预览及发布均未执行。
+
 ### 后续执行授权更正与独立开发边界
 
 父级更正原Runner11fbbfb隔离→159→HTTP续单的调用实际被自动审批拒绝，未成功派发，不能记录started或经其他路径执行。该拒绝作为历史保留；用户随后对“本批隔离R2执行159修复迁移及测试账号五类更正保存、保留原历史/失败证据、不动人工演示/生产、不新增权限”明确回复“允许”，父级报告已通过有效渠道接力原Runner；本次不包含EF160部署、扩权或预览更新，尚不代表任何新数据库步骤已通过。public仍158；bd344 owned失败因夹具给真实filing_versions虚构fact_id列而触发歧义，新失败schema record_reference_reuse_f9f207208db94274b3fe8f9c53024190与先前148e54cfc73f4ceb9f07b45ccffcae06均保留。原Owner系统检查全部SQL/替换/别名/异常后，fe2171f仅两文件把23表改为固定白名单真实public列/类型WITH NO DATA，四种version各自只含真实键；不复制数据/FK/约束/索引/trigger，批准0930与旧函数正文不变，wrong-document断言收紧为代码加精确原文。6/6与静态通过，原SolC/I/M0；运行目录11fbbfb已冻结，未重跑PG。b9完整139/2207/1864及双构建仍仅按未变产品输入复用。
