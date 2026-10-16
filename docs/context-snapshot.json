@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-16T03:19:29.696Z",
+  "recordedAt": "2026-10-16T03:44:55.885Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1118,8 +1118,8 @@
     "tests/support/case-second-instance-migration.mjs": "c7057a8cfc62d3f81ed3a45a817dbd57925bed3419c94f8fcd92239081fef690",
     "tests/support/case-section-record-migration.mjs": "cac0e3070441db1ebd8e72a38753cddc7ef09374b3ce999988e01b7f0a8bceb8",
     "tests/support/case-section-record-migration.test.mjs": "ec96385a3bccf4dcce3e99493b167693c0b2dd46ef4cb48825b90e76fca2c487",
-    "tests/support/case-section-record-ui-binding.test.mjs": "c39cc224be2ca13a59f6bff2871ead66b96e41baa20bdada54934d71f7228bd1",
-    "tests/support/case-section-record-ui-database.mjs": "b9012421846f61f4351fb25c9fd7727a8472233bed7fb2b8461e72972d8497a1",
+    "tests/support/case-section-record-ui-binding.test.mjs": "9826e7a07df7a8a0309a45610d99cc845489306d6682b50240133ecddfb01b82",
+    "tests/support/case-section-record-ui-database.mjs": "c371ad4cec4b562b388452a195a2ceba4e389262a2ec5ae272b52808515afff1",
     "tests/support/case-section-record-upload-database.mjs": "4c193627aeaa4a8f9a916b044ee21235c7b709f821e8982852cf47a08d5678c8",
     "tests/support/case-workspace-browser.ts": "a4a57b944c53211a1b7329887991be50238e7faf4d73f538d0c3da89be977d7f",
     "tests/support/core-lead-database.mjs": "9deb7807760d121e11fe4ca581c4b6ab090260b5368cc018d9bda735615044fe",
