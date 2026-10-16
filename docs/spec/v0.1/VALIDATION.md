@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### a1工具超时：局部Git集成测试预算修复，PG未到达
+
+原runner在固定a1bfea4正常完整verify工具阶段得到138/139，scripts/validation-evidence.test.mjs:68超5000ms；未运行owned探针、159部署或HTTP。原失败证据reference-reuse-a1bfea4-20261016保留，public158、149旧行、68案、42权限、26文件、原案零更正/回执与无owned残留保持，锁释放；不能把后续修前定向工具成功改写为原完整verify通过。
+
+原工具Owner在独立同基线目录实际测得：原目标单项1/1通过、测试体1.55秒；修前普通负载全工具139/139通过、总22.63秒。目标单项有30多次同步真实Git调用；每次启动增加200毫秒时，原5秒预算稳定报同一timeout、体约9.88秒。拆成独立仓库用例既重复fixture又失去同一exact key连续生命周期语义，生产capture的重复Git重验不能为测试缓存绕过。最小修复ee0f4d743abec884e0cc3852e98ae0cdd9167444仅该用例局部15秒预算和两行说明，与文件原linked-worktree真实Git用例预算一致；全部原断言/fixture/生产代码/共享配置不变。受控压力修后9.877秒通过，删除instrument后原文件7/7及根类型/Lint/格式通过，原SolSpec/Quality ACCEPTED C/I/M0。当前运行树单一接入823c3bb8，0930八文件/raw628a不变；新候选完整门禁、PG与HTTP仍待执行。
+
+EF前端I-EFUI01原Owner修复并经原Sol累计C/I/M0，七文件提交87ac6ac3702e9a549e12bcf8fa15d941122f671d，接独立EF组合afab652c。反馈表单冻结打开时revision，刷新后旧表单禁提交；补交过期表单禁保存/上传，未知重试原body/key/revision不变。最终28/28、前端类型、7文件Lint/格式及主控补根类型实际通过；未DB/HTTP/browser。EF160证明扩展和严格账本同步未完成，不标功能通过。
+
 ### 0930引用复用修复：源码已审，真实提交尚待验证
 
 固定源码cca4fdadb97cdaca9a7112ab2b1fa0c3a524cc7a/tree79169fc88561e52c2505b82d320228a98c0e8117，八文件；原运行目录test-runtime-stability新分支单一接入e872b1d495bc065f1a711c51b506bef0ceff556f，tree相同。0930 SQL raw SHA628a0fc0a664942896fdd85e3811bfe977702e4924ef33a58f83399a9bf8280e。原Sol累计Spec/Quality ACCEPTED C/I/M0，I-REFREUSE01–06源级关闭；实际数据库与HTTP尚未执行。
