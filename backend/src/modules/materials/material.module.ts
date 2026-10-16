@@ -8,6 +8,7 @@ import { LocalPrivateBlobStorage } from './local-private-blob-storage';
 import { MaterialCleanupService } from './material-cleanup.service';
 import { MaterialController } from './material.controller';
 import { CaseSectionRecordUploadController } from './case-section-record-upload.controller';
+import { ExecutionSupplementUploadController } from './execution-supplement-upload.controller';
 import { MaterialService } from './material.service';
 import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
 import {
@@ -17,7 +18,11 @@ import {
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule],
-  controllers: [MaterialController, CaseSectionRecordUploadController],
+  controllers: [
+    MaterialController,
+    CaseSectionRecordUploadController,
+    ExecutionSupplementUploadController,
+  ],
   providers: [
     {
       provide: PRIVATE_BLOB_STORAGE,

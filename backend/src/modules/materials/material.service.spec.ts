@@ -63,6 +63,12 @@ describe('MaterialService', () => {
         executionSupplementFilingId: filingId,
         executionSupplementTargetId: supplementId,
         executionSupplementRevision: 0,
+        originalFilename: '补交.pdf',
+        declaredMimeType: 'application/pdf',
+        createdAt: now,
+        updatedAt: now,
+        expiresAt: new Date(now.getTime() + 60000),
+        pendingStorageKey: null as string | null,
       };
       const material = {
         id: 'material-supplement',
@@ -85,12 +91,14 @@ describe('MaterialService', () => {
         ],
       };
       f.transaction.material.findMany.mockResolvedValue([material]);
-      const state = { consumed: false };
+      const state = { consumed: false, pendingCount: 0 };
       f.transaction.$queryRawUnsafe.mockImplementation(
         async (...args: unknown[]) =>
-          String(args[0]).includes('first_freeze_proof')
-            ? [{ consumed: state.consumed }]
-            : [{ id: customerId }],
+          String(args[0]).includes('count(*)')
+            ? [{ count: state.pendingCount }]
+            : String(args[0]).includes('first_freeze_proof')
+              ? [{ consumed: state.consumed }]
+              : [{ id: customerId }],
       );
       const version = {
         id: supplementId,
@@ -130,6 +138,623 @@ describe('MaterialService', () => {
       };
       return { ...f, state, draft, material, version, select, freeze };
     }
+    function prepareUpload() {
+      const f = setup();
+      f.draft.status = 'OPEN';
+      f.db.uploadDraft.findUnique.mockResolvedValue({ ...f.draft });
+      f.transaction.uploadDraft.findUnique.mockResolvedValue({ ...f.draft });
+      f.storage.put.mockImplementation(async (key) => {
+        f.transaction.uploadDraft.findUnique.mockResolvedValue({
+          ...f.draft,
+          pendingStorageKey: key,
+        });
+        return {
+          storageKey: key,
+          detectedMimeType: 'application/pdf',
+          sizeBytes: 12,
+          sha256: 'a'.repeat(64),
+        };
+      });
+      return f;
+    }
+    function prepareExternalRead() {
+      const f = setup();
+      const lawyer = { ...actor, lawyerAccountId: actor.userId };
+      const version = {
+        id: contentVersionId,
+        materialId: f.material.id,
+        originalFilename: '内部准备补交.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 12n,
+        sha256: 'a'.repeat(64),
+        storageKey: 'private/supplement-bytes',
+        status: 'AVAILABLE',
+        createdAt: now,
+        executionSupplementUploadDraftId: f.draft.id,
+      };
+      const material = {
+        ...f.material,
+        version: 1,
+        deletedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        currentVersion: { executionSupplementUploadDraftId: f.draft.id },
+        contentVersions: [version],
+      };
+      f.db.caseLawyerAssignment.findFirst.mockResolvedValue({
+        lawyer: { accountBinding: { id: 'lawyer-binding' } },
+      });
+      f.db.case.findFirst.mockResolvedValue({ stage: 'ARCHIVED' });
+      f.db.material.findMany.mockResolvedValue([material]);
+      f.db.material.findFirst.mockResolvedValue(material);
+      f.db.materialReference.findMany.mockResolvedValue([]);
+      f.db.materialReference.findFirst.mockResolvedValue(null);
+      f.db.$queryRawUnsafe.mockImplementation(async () => [
+        { id: customerId, consumed: f.state.consumed },
+      ]);
+      f.storage.open.mockImplementation(async () =>
+        Readable.from('exact frozen bytes'),
+      );
+      return { ...f, lawyer, material, version };
+    }
+    function prepareMutation() {
+      const f = setup();
+      const draft = {
+        ...f.draft,
+        internalActorUserId: actor.userId as string | null,
+        lawyerAccountBindingId: null as string | null,
+      };
+      const material = {
+        ...f.material,
+        status: 'ACTIVE',
+        deletedAt: null as Date | null,
+        version: 1,
+        contentVersions: [
+          {
+            ...f.material.contentVersions[0]!,
+            originalFilename: draft.originalFilename,
+            executionSupplementUploadDraft: draft,
+          },
+        ],
+      };
+      f.transaction.material.findFirst.mockResolvedValue(material);
+      const advanceHead = (revision: number) => {
+        f.transaction.caseExecutionFilingSupplement.findFirst.mockResolvedValue(
+          {
+            id: 'latest-version',
+            filingId,
+            caseId: customerId,
+            departmentId: actor.departmentId,
+            toRevision: revision,
+          },
+        );
+        f.transaction.caseExecutionFilingSupplement.findUnique.mockResolvedValue(
+          {
+            id: supplementId,
+            supplementId,
+            filingId,
+            caseId: customerId,
+            departmentId: actor.departmentId,
+            fromRevision: 0,
+            toRevision: 1,
+          },
+        );
+      };
+      const deleted = () => {
+        material.status = 'DELETED';
+        material.version = 2;
+        material.deletedAt = new Date(now.getTime() - 89 * DAY);
+      };
+      return { ...f, draft, material, advanceHead, deleted };
+    }
+    const DAY = 24 * 60 * 60 * 1000;
+    it('deletes only an own unreferenced supplement preparation after locking its case before the material', async () => {
+      const f = prepareMutation();
+      await expect(
+        f.service.softDelete(actor, f.material.id, 1),
+      ).resolves.toMatchObject({ status: 'DELETED', version: 2 });
+      const calls = f.transaction.$queryRawUnsafe.mock.calls.map((args) =>
+        String(args[0]),
+      );
+      expect(
+        calls.findIndex((sql) => sql.includes('FROM "cases"')),
+      ).toBeLessThan(
+        calls.findIndex((sql) => sql.includes('FOR NO KEY UPDATE OF m, cv')),
+      );
+      expect(f.transaction.material.updateMany).toHaveBeenCalledWith({
+        where: { id: f.material.id, status: 'ACTIVE', version: 1 },
+        data: { status: 'DELETED', deletedAt: now, version: { increment: 1 } },
+      });
+      expect(f.transaction.auditEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ action: 'material.deleted' }),
+      });
+      expect(f.storage.delete).not.toHaveBeenCalled();
+    });
+    it.each([0, 1])(
+      'allows deleting an obsolete revision%s own preparation but rejects restoring it into the later head',
+      async (revision) => {
+        const f = prepareMutation();
+        f.draft.executionSupplementRevision = revision;
+        f.advanceHead(2);
+        await expect(
+          f.service.softDelete(actor, f.material.id, 1),
+        ).resolves.toHaveProperty('status', 'DELETED');
+        expect(f.access.authorizeCase).toHaveBeenCalledWith(
+          actor,
+          revision === 0
+            ? 'case.execution.supplement.submit'
+            : 'case.execution.supplement.correct',
+          expect.objectContaining({ departmentId: actor.departmentId }),
+          f.transaction,
+        );
+        f.deleted();
+        f.transaction.material.updateMany.mockClear();
+        await expect(
+          f.service.restore(actor, f.material.id, 2),
+        ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+        expect(f.transaction.material.updateMany).not.toHaveBeenCalled();
+      },
+    );
+    it.each([
+      'actor',
+      'case',
+      'department',
+      'filing',
+      'target',
+      'claim',
+    ] as const)(
+      'rejects an own-pool mutation when the exact %s anchor differs',
+      async (key) => {
+        const f = prepareMutation();
+        if (key === 'actor') f.draft.actorUserId = 'foreign-actor';
+        if (key === 'case') f.draft.ownerId = 'foreign-case';
+        if (key === 'department') f.draft.departmentId = 'foreign-department';
+        if (key === 'claim') f.draft.pendingStorageKey = 'unfinalized-claim';
+        if (key === 'filing')
+          f.transaction.caseExecutionFiling.findFirst.mockResolvedValue(null);
+        if (key === 'target') {
+          f.advanceHead(2);
+          f.transaction.caseExecutionFilingSupplement.findUnique.mockResolvedValue(
+            {
+              id: supplementId,
+              supplementId,
+              filingId: 'foreign-filing',
+              caseId: customerId,
+              departmentId: actor.departmentId,
+              fromRevision: 0,
+              toRevision: 1,
+            },
+          );
+        }
+        await expect(
+          f.service.softDelete(actor, f.material.id, 1),
+        ).rejects.toThrow();
+        expect(f.transaction.material.updateMany).not.toHaveBeenCalled();
+      },
+    );
+    it('rechecks current action revocation for deleting and restoring prepared files', async () => {
+      const f = prepareMutation();
+      f.access.authorizeCase.mockRejectedValue(new ForbiddenException());
+      await expect(
+        f.service.softDelete(actor, f.material.id, 1),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      f.deleted();
+      await expect(
+        f.service.restore(actor, f.material.id, 2),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(f.transaction.material.updateMany).not.toHaveBeenCalled();
+    });
+    it('keeps preparation cleanup available only to its original current PRIMARY lawyer', async () => {
+      const f = prepareMutation();
+      const lawyer = { ...actor, lawyerAccountId: actor.userId };
+      const binding = 'current-binding';
+      f.draft.internalActorUserId = null;
+      f.draft.lawyerAccountBindingId = binding;
+      f.transaction.userAccount.findUnique.mockResolvedValue({
+        active: true,
+        accountType: 'LAWYER',
+      });
+      let active = true;
+      f.transaction.$queryRawUnsafe.mockImplementation(
+        async (...args: unknown[]) =>
+          String(args[0]).includes('lawyer_account_bindings')
+            ? active
+              ? [{ id: binding }]
+              : []
+            : String(args[0]).includes('first_freeze_proof')
+              ? [{ consumed: false }]
+              : [{ id: customerId }],
+      );
+      await expect(
+        f.service.softDelete(lawyer, f.material.id, 1),
+      ).resolves.toHaveProperty('status', 'DELETED');
+      expect(f.transaction.auditEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ lawyerAccountBindingId: binding }),
+      });
+      active = false;
+      f.transaction.material.updateMany.mockClear();
+      await expect(
+        f.service.softDelete(lawyer, f.material.id, 1),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      expect(f.transaction.material.updateMany).not.toHaveBeenCalled();
+    });
+    it.each(['reference', 'proof'] as const)(
+      'never deletes or restores a frozen supplement with %s even if the other evidence is absent',
+      async (kind) => {
+        const f = prepareMutation();
+        f.state.consumed = kind === 'proof';
+        f.transaction.materialReference.count.mockResolvedValue(
+          kind === 'reference' ? 1 : 0,
+        );
+        await expect(
+          f.service.softDelete(actor, f.material.id, 1),
+        ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+        f.deleted();
+        await expect(
+          f.service.restore(actor, f.material.id, 2),
+        ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+        expect(f.transaction.material.updateMany).not.toHaveBeenCalled();
+      },
+    );
+    it('observes a freeze that completes while waiting for the material lock before deciding whether deletion is allowed', async () => {
+      const f = prepareMutation();
+      f.transaction.$queryRawUnsafe.mockImplementation(
+        async (...args: unknown[]) => {
+          const sql = String(args[0]);
+          if (sql.includes('FOR NO KEY UPDATE OF m, cv'))
+            f.state.consumed = true;
+          return sql.includes('first_freeze_proof')
+            ? [{ consumed: f.state.consumed }]
+            : [{ id: customerId }];
+        },
+      );
+      await expect(
+        f.service.softDelete(actor, f.material.id, 1),
+      ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+      expect(f.transaction.material.updateMany).not.toHaveBeenCalled();
+    });
+    it('restores a current unconsumed file within 90 days against the same pending pool advisory lock and ten-slot quota', async () => {
+      const f = prepareMutation();
+      f.deleted();
+      f.state.pendingCount = 10;
+      await expect(
+        f.service.restore(actor, f.material.id, 2),
+      ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+      expect(f.transaction.material.updateMany).not.toHaveBeenCalled();
+      f.state.pendingCount = 9;
+      await expect(
+        f.service.restore(actor, f.material.id, 2),
+      ).resolves.toHaveProperty('status', 'ACTIVE');
+      expect(f.transaction.$executeRawUnsafe).toHaveBeenCalledWith(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        `${actor.departmentId}:CASE:${customerId}:EXECUTION_SUPPLEMENT`,
+      );
+      expect(f.transaction.material.count).not.toHaveBeenCalled();
+      f.material.deletedAt = new Date(now.getTime() - 90 * DAY);
+      f.transaction.material.updateMany.mockClear();
+      await expect(
+        f.service.restore(actor, f.material.id, 2),
+      ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+      expect(f.transaction.material.updateMany).not.toHaveBeenCalled();
+    });
+    it('hides unconsumed supplement metadata and bytes from a current PRIMARY lawyer even with a forged reference', async () => {
+      const f = prepareExternalRead();
+      f.db.materialReference.findMany.mockResolvedValue([
+        { materialId: f.material.id, contentVersionId },
+      ]);
+      f.db.materialReference.findFirst.mockResolvedValue({ id: 'forged-ref' });
+      await expect(
+        f.service.listOwnerMaterials(f.lawyer, 'CASE', customerId),
+      ).resolves.toEqual({ items: [], total: 0 });
+      await expect(
+        f.service.openVersion(f.lawyer, f.material.id, contentVersionId),
+      ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+      expect(f.storage.open).not.toHaveBeenCalled();
+      expect(f.db.$queryRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'case_execution_supplement_upload_first_freeze_proof',
+        ),
+        contentVersionId,
+        false,
+      );
+    });
+    it('exposes exact frozen supplement business metadata and original bytes only after proof, while preserving current PRIMARY authorization', async () => {
+      const f = prepareExternalRead();
+      f.state.consumed = true;
+      const listed = await f.service.listOwnerMaterials(
+        f.lawyer,
+        'CASE',
+        customerId,
+      );
+      expect(listed.items[0]?.contentVersions).toEqual([
+        expect.objectContaining({
+          id: contentVersionId,
+          originalFilename: '内部准备补交.pdf',
+        }),
+      ]);
+      for (const field of [
+        'executionSupplement',
+        'executionSupplementUploadDraftId',
+        'actorUserId',
+        'correctionReason',
+      ])
+        expect(JSON.stringify(listed)).not.toContain(field);
+      const opened = await f.service.openVersion(
+        f.lawyer,
+        f.material.id,
+        contentVersionId,
+      );
+      const chunks: Buffer[] = [];
+      for await (const chunk of opened.stream) chunks.push(Buffer.from(chunk));
+      expect(Buffer.concat(chunks).toString()).toBe('exact frozen bytes');
+      expect(f.storage.open).toHaveBeenCalledWith(f.version.storageKey);
+      f.db.caseLawyerAssignment.findFirst.mockResolvedValue(null);
+      await expect(
+        f.service.openVersion(f.lawyer, f.material.id, contentVersionId),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      expect(f.storage.open).toHaveBeenCalledTimes(1);
+    });
+    it('keeps a previously frozen supplement version readable when a newer current preparation is still unconsumed', async () => {
+      const f = prepareExternalRead();
+      const oldId = '40000000-0000-4000-8000-000000000005';
+      const oldVersion = {
+        ...f.version,
+        id: oldId,
+        originalFilename: '历史冻结.pdf',
+      };
+      f.material.contentVersions.push(oldVersion);
+      f.db.materialReference.findMany.mockResolvedValue([
+        { materialId: f.material.id, contentVersionId: oldId },
+        { materialId: f.material.id, contentVersionId },
+      ]);
+      f.db.$queryRawUnsafe.mockImplementation(async (...args: unknown[]) => [
+        { id: customerId, consumed: args[1] === oldId },
+      ]);
+      const listed = await f.service.listOwnerMaterials(
+        f.lawyer,
+        'CASE',
+        customerId,
+      );
+      expect(listed.items[0]?.currentVersionId).toBeNull();
+      expect(
+        listed.items[0]?.contentVersions.map((version) => version.id),
+      ).toEqual([oldId]);
+      f.db.material.findFirst.mockResolvedValue({
+        ...f.material,
+        contentVersions: [oldVersion],
+      });
+      f.db.materialReference.findFirst.mockResolvedValue({
+        id: 'retained-proof-ref',
+      });
+      await expect(
+        f.service.openVersion(f.lawyer, f.material.id, oldId),
+      ).resolves.toHaveProperty('mimeType', 'application/pdf');
+    });
+    it('does not turn supplement first-consumption proof into customer access to an otherwise forbidden category', async () => {
+      const f = prepareExternalRead();
+      f.state.consumed = true;
+      const client = { ...actor, clientCustomerId: customerId };
+      f.db.customerAccountBinding.findFirst.mockResolvedValue({
+        id: 'client-binding',
+      });
+      f.db.case.findFirst.mockResolvedValue({
+        stage: 'ARCHIVED',
+        complaintConfirmation: {
+          confirmedComplaintContentVersionId: 'confirmed-complaint',
+        },
+      });
+      await expect(
+        f.service.listOwnerMaterials(client, 'CASE', customerId),
+      ).resolves.toEqual({ items: [], total: 0 });
+      await expect(
+        f.service.openVersion(client, f.material.id, contentVersionId),
+      ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+      expect(f.storage.open).not.toHaveBeenCalled();
+      expect(
+        JSON.stringify(f.db.materialReference.findMany.mock.calls),
+      ).not.toContain('EXECUTION_SUPPLEMENT');
+    });
+    it('creates only a structured same-filing preparation draft and no business fact', async () => {
+      const f = setup();
+      const result = await f.service.createExecutionSupplementUploadDraft(
+        actor,
+        customerId,
+        target,
+        { originalFilename: '补交.pdf', declaredMimeType: 'application/pdf' },
+      );
+      expect(result).toMatchObject({
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'EXECUTION_SUPPLEMENT',
+        purpose: 'EXECUTION_SUPPLEMENT',
+        executionSupplement: target,
+      });
+      expect(f.transaction.uploadDraft.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          executionSupplementFilingId: filingId,
+          executionSupplementTargetId: supplementId,
+          executionSupplementRevision: 0,
+          internalActorUserId: actor.userId,
+          expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+        }),
+      });
+      expect(
+        f.transaction.caseExecutionFilingSupplementDocument.create,
+      ).not.toHaveBeenCalled();
+      expect(f.transaction.materialReference.createMany).not.toHaveBeenCalled();
+    });
+    it('streams outside both short transactions and binds exactly one finalized content version', async () => {
+      const f = prepareUpload();
+      let inTransaction = false;
+      f.db.$transaction.mockImplementation(async (callback) => {
+        inTransaction = true;
+        try {
+          return await callback(f.transaction);
+        } finally {
+          inTransaction = false;
+        }
+      });
+      f.storage.put.mockImplementation(async (key) => {
+        expect(inTransaction).toBe(false);
+        f.transaction.uploadDraft.findUnique.mockResolvedValue({
+          ...f.draft,
+          pendingStorageKey: key,
+        });
+        return {
+          storageKey: key,
+          detectedMimeType: 'application/pdf',
+          sizeBytes: 12,
+          sha256: 'a'.repeat(64),
+        };
+      });
+      const result = await f.service.finalizeUpload(
+        actor,
+        f.draft.id,
+        Readable.from(Buffer.from('file bytes')),
+      );
+      expect(result).toMatchObject({ executionSupplement: target });
+      expect(f.storage.put).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Readable),
+        50 * 1024 * 1024,
+      );
+      expect(f.transaction.contentVersion.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          executionSupplementUploadDraftId: f.draft.id,
+        }),
+      });
+      expect(f.transaction.material.count).not.toHaveBeenCalled();
+      expect(f.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'NOT case_execution_supplement_upload_first_freeze_proof(m.current_version_id,false)',
+        ),
+        actor.departmentId,
+        customerId,
+      );
+      expect(
+        f.transaction.caseExecutionFilingSupplementDocument.create,
+      ).not.toHaveBeenCalled();
+    });
+    it('denies a revoked actor at claim without sending bytes', async () => {
+      const f = prepareUpload();
+      f.access.authorizeCase.mockRejectedValue(new ForbiddenException());
+      await expect(
+        f.service.finalizeUpload(
+          actor,
+          f.draft.id,
+          Readable.from('file bytes'),
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(f.storage.put).not.toHaveBeenCalled();
+      expect(f.transaction.contentVersion.create).not.toHaveBeenCalled();
+    });
+    it.each(['permission', 'target', 'stage'] as const)(
+      'rechecks %s after transport and compensates the blob without finalizing metadata',
+      async (change) => {
+        const f = prepareUpload();
+        f.storage.put.mockImplementation(async (key) => {
+          f.transaction.uploadDraft.findUnique.mockResolvedValue({
+            ...f.draft,
+            pendingStorageKey: key,
+          });
+          if (change === 'permission')
+            f.access.authorizeCase.mockRejectedValue(new ForbiddenException());
+          if (change === 'target')
+            f.transaction.caseExecutionFilingSupplement.findFirst.mockResolvedValue(
+              {
+                id: supplementId,
+                toRevision: 1,
+                filingId,
+                caseId: customerId,
+                departmentId: actor.departmentId,
+              },
+            );
+          if (change === 'stage')
+            f.transaction.case.findFirst.mockResolvedValue({
+              departmentId: actor.departmentId,
+              stage: 'ARCHIVED',
+              responsibleUserId: actor.userId,
+              responsibleMembership: { teamId: null },
+            });
+          return {
+            storageKey: key,
+            detectedMimeType: 'application/pdf',
+            sizeBytes: 12,
+            sha256: 'a'.repeat(64),
+          };
+        });
+        await expect(
+          f.service.finalizeUpload(
+            actor,
+            f.draft.id,
+            Readable.from('file bytes'),
+          ),
+        ).rejects.toThrow();
+        expect(f.storage.delete).toHaveBeenCalledTimes(1);
+        expect(f.transaction.contentVersion.create).not.toHaveBeenCalled();
+        expect(f.db.uploadDraft.updateMany).toHaveBeenCalledWith({
+          where: { id: f.draft.id, pendingStorageKey: expect.any(String) },
+          data: { pendingStorageKey: null },
+        });
+      },
+    );
+    it('retains the durable pending key when blob compensation cannot complete', async () => {
+      const f = prepareUpload();
+      f.storage.put.mockImplementation(async (key) => {
+        f.transaction.uploadDraft.findUnique.mockResolvedValue({
+          ...f.draft,
+          pendingStorageKey: key,
+        });
+        f.access.authorizeCase.mockRejectedValue(new ForbiddenException());
+        return {
+          storageKey: key,
+          detectedMimeType: 'application/pdf',
+          sizeBytes: 12,
+          sha256: 'a'.repeat(64),
+        };
+      });
+      f.storage.delete.mockRejectedValue(new Error('storage unavailable'));
+      await expect(
+        f.service.finalizeUpload(
+          actor,
+          f.draft.id,
+          Readable.from('file bytes'),
+        ),
+      ).rejects.toThrow();
+      expect(f.db.uploadDraft.updateMany).not.toHaveBeenCalled();
+    });
+    it('rejects the eleventh unconsumed item while retaining the existing quota lock', async () => {
+      const f = prepareUpload();
+      f.state.pendingCount = 10;
+      await expect(
+        f.service.finalizeUpload(
+          actor,
+          f.draft.id,
+          Readable.from('file bytes'),
+        ),
+      ).rejects.toThrow();
+      expect(f.transaction.$executeRawUnsafe).toHaveBeenCalledWith(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        `${actor.departmentId}:CASE:${customerId}:EXECUTION_SUPPLEMENT`,
+      );
+      expect(f.transaction.contentVersion.create).not.toHaveBeenCalled();
+      expect(f.storage.delete).toHaveBeenCalledTimes(1);
+    });
+    it.each(['EXPIRED', 'FINALIZED'])(
+      'does not replay PUT or send bytes for terminal draft %s',
+      async (status) => {
+        const f = prepareUpload();
+        f.db.uploadDraft.findUnique.mockResolvedValue({ ...f.draft, status });
+        await expect(
+          f.service.finalizeUpload(
+            actor,
+            f.draft.id,
+            Readable.from('file bytes'),
+          ),
+        ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+        expect(f.storage.put).not.toHaveBeenCalled();
+      },
+    );
     it('selects against the real submit action and freezes exact typed documents plus references in the same transaction', async () => {
       const f = setup();
       const facts = await f.select();
