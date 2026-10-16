@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-16T05:31:53.607Z",
+  "recordedAt": "2026-10-16T07:58:06.451Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1023,6 +1023,7 @@
     "tests/e2e/case-execution-confirmation-database.spec.ts": "f4c4dddff61d9189a3fa3215a8d1f12f9902918c47c2869de46de8e8e3477b27",
     "tests/e2e/case-execution-confirmation-migration.spec.ts": "e631dd15309b44b4dfee1db1c4ad2f836a3f34e0a5fa8ae96b77e83d6d419f93",
     "tests/e2e/case-execution-filing-database.spec.ts": "22165a6d938ec0a0ade8f4310f6b9c69d1bf75abfede4eeb8746b0d56f3135ad",
+    "tests/e2e/case-execution-filing-followup-migration.spec.ts": "4cb5d97dda4994e97bc4cab53bf2a3147cc91ee267188b32b8486904ba548c35",
     "tests/e2e/case-execution-filing-followup.spec.ts": "e2920752812aad31e7495132efe71d1f8001f478ec0d8a82620936a6f562a1da",
     "tests/e2e/case-execution-finish-database.spec.ts": "1e7bb9e0fb72d815e84f55d5e65822cbfa4147db49f8036e501ccf318a1671fc",
     "tests/e2e/case-execution-finish.spec.ts": "4417527487e0d8747bd9a548336aee218d8bf7e4bb6ffaad56bc06600947c643",
@@ -1111,6 +1112,8 @@
     "tests/support/case-complaint-mailing-migration.mjs": "d498c20f1f1980e64480428b137d64833d3c18a8eae68fb485165d4c74c77a70",
     "tests/support/case-execution-filing-database.mjs": "78505cd1c6f8330c75fcc17572f6495e5b050d2c9828ce2c802b7a573d02f596",
     "tests/support/case-execution-filing-followup-database.mjs": "927af1618aeab27bd5675f6fe05df77abd52d3a1fe0dde5152489d60491593c3",
+    "tests/support/case-execution-filing-followup-migration.mjs": "99fc634198e9990c448bb9457a7b2a61708010ebc4501d88241bb390fe6fe2c1",
+    "tests/support/case-execution-filing-followup-migration.test.mjs": "1ace501639cbba625428bca166daa47a4402dbf0fd557cd0212fbe5a0025f05f",
     "tests/support/case-execution-finish-database.mjs": "714fe5f2ea26f37c906b2ca231348158170602865efb5870078870d5e84d46ce",
     "tests/support/case-execution-finish-migration.mjs": "58f0d731cbeeb7cb26445c5e4fefc1e481d080e9db121e9598f0ec2188bd7a75",
     "tests/support/case-execution-mailing-database.mjs": "02dec6d61f3fc0519844f707679f86a0d0809fad3b954ab1ac1e1070d9298958",
