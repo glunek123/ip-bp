@@ -1,6 +1,6 @@
 # 当前开发状态
 
-当前阻塞已由b563真实同案续验更新：正常protected发现1项后，原279字节body/key首POST仍500，requestId0e7c8ff2-ac52-4d81-8992-4d705aa3969b（03:55:13 UTC）；PG精确报correction document lacks exact retained material reference，mailing guard第22行RAISE。第二POST与后续UI未执行，回滚后原案仍v6/rev0/更正和回执0。独立窄Owner现沿五类audit→correction→document→reference→receipt完整事务核对；旧非JUDGMENT材料引用唯一索引与skipDuplicates存在高置信冲突，真实已保存行的因果仍按证据分级，不改guard掩盖。新增0930前向修复及真实事务到commit测试另树实施，已部署155~158不改；EF1000未来顺延160，当前EF159测试准入不冒充160通过。EF已审路由/材料410ab1a、旧157夹具4d40d9a、schema/迁移6b7f0bc、API读取72316e4及专项源码57aa8ae均已提交；独立前端ef001-frontend从72316e4开始，不占当前分栏验收目录，DB/Grant未执行。
+当前关键候选：0930材料引用修复已固定cca4fdad、原Sol累计Spec/Quality ACCEPTED C/I/M0，原运行目录已单一接入e872b1d4/tree79169fc8。新159 SQL raw628a0fc0完整事务内保留最新旧索引六类豁免，并对四个旧引用守卫增加同事务审计/更正/精确文书证明分支；服务拒绝静默少写引用。前置owned项严格public158，部署后五类真实HTTP项严格159，各走标准锁入口；真实门禁/PG/官方159部署/HTTP均尚未执行，b563原500未关闭，原案仍v6/rev0/成功回执0。已部署155~158不改；EF1000未来为160，其原159准入尚须同步。EF材料API5bd51b89已审提交并交独立前端dcf7d934，EF组合ea8a5d19未跑完整门禁/DB，不占当前运行目录。
 
 上一阶段已证：af6ec55/tree dd28af91的真实owned PostgreSQL专项A、正常官方158迁移B和C独立历史保持全部通过；149表旧PK行、68Case头及序列、42权限、26文件与旧22来源字节保持，旧157账本只加158成功行，五函数变量替换之外的OID/签名/owner/ACL/触发器保持。85份证据已封存并由主控逐项核bytes/hash；UI严格158准入5a06fcf随后单一接入并固定b563271，原Sol均C/I/M0，未重备环境或重build；真实业务结果按上段最新失败处理。
 

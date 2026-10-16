@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+### 0930引用复用修复：源码已审，真实提交尚待验证
+
+固定源码cca4fdadb97cdaca9a7112ab2b1fa0c3a524cc7a/tree79169fc88561e52c2505b82d320228a98c0e8117，八文件；原运行目录test-runtime-stability新分支单一接入e872b1d495bc065f1a711c51b506bef0ceff556f，tree相同。0930 SQL raw SHA628a0fc0a664942896fdd85e3811bfe977702e4924ef33a58f83399a9bf8280e。原Sol累计Spec/Quality ACCEPTED C/I/M0，I-REFREUSE01–06源级关闭；实际数据库与HTTP尚未执行。
+
+完整源码核对纠正了初步索引描述：最终旧索引豁免JUDGMENT、三类SECOND_INSTANCE材料、EXECUTION_APPLICATION及EXECUTION_FILING_PROOF，共六类；新索引及普通引用竞争分支保持这些例外。旧filing、finish、judgment、closure的purpose守卫会先拒新更正审计，0930以原函数体MD5保护，仅插入当次audit/correction/typed document精确证明支路，保留旧正常正文/OID；mailing原动作筛选无需替换。服务器派生的重复引用分类字段不是首消费证明，客户端不能自行声明。服务同时检查实际插入数，防skipDuplicates静默漏引用。已部署155–158未改，失败原请求/guard未弱化。
+
+执行者实际离线证据为材料179/179（后续产品服务字节不变）、纯测试4/4、Prisma validate/generate7.10、后端/根类型、聚焦Lint/格式及两个Playwright选择器各发现1项。前项自身只接受public158并验证owned编译/失败原子/六类索引兼容/四守卫分支；后项独立只接受public159及原42权限，使用真实HTTP准备、五类更正和事务COMMIT。前项须标准pnpm锁入口加独立DB-only配置，不能用会启动服务的根默认配置；后项才使用正常managed服务。上述是源及发现证据，不是PG、官方迁移或完整UI通过。
+
+EF专用材料API两文件5bd51b89f433104ca8662c4933b7b80044ba6f05另经原SolC/I/M0，96/96及类型/静态/Spec通过；已接独立前端dcf7d934和EF组合ea8a5d19。未运行真实上传/EF数据库；0930成为159后EF1000为160，旧EF159准入/SQL证明扩展仍待同步，不能沿用旧计数声称可运行。
+
 ### b563同案首POST仍500：完整材料引用事务待修
 
 运行候选b563271c2bf265db6ad0caec9637d4f9bdf4146c/tree895c4fed066dd55e181155854f10dd0e56fbc4a6只接已审UI158两文件及快照，未改应用或重新build。runner额外非protected前置误调assertSectionRecordUiRunner，先因未继承NODE_ENV=test、再因缺真实pnpm上下文停止；均在HTTP/服务前，只读保持，原失败保留。主控批准移除runner后来加到非protected前置的这一冗余调用，真实TS开头的同一guard逐字保留并在正常pnpm test:e2e执行；未改tracked guard、伪造user-agent或清除冲突绑定。
@@ -8,7 +18,7 @@
 
 ui158-b563271-nodeenv-20261016的精简增量40项逐条bytes/hash验证，acceptance-summary SHAad5e1890f2eb41593c229449307c12f6aa4a1c70ad1692bec3885af354698748，incremental-hash-manifest SHAa48cd5cab710466068a5bbf20eb64a12d3b854a4acde32d1c06eb621d62ba0a1；未重包旧85份历史。after formal保持149全部旧PK行/68Case头/42权限身份/158/sequence/26bytes，仅auth_sessions58→59新增正常登录1行；dadd仍ARCHIVED/v6、mailing revision0、更正/receipt/typedDoc0。服务正常退出、3101/5174空闲、标准锁释放。
 
-独立窄修复Owner只读已核五类完整写序列audit→typed correction→typed document→material reference→receipt和字段对应；旧material_references_resource_purpose_version_key对非JUDGMENT按resource/type/purpose/CV唯一，而freezeReferences使用createMany(skipDuplicates)，可使合法复用旧版本时本次audit新引用被静默跳过，再被精确guard拒。该静态因果未冒充原失败事务内行实测，继续优先复用已保存catalog/快照并由唯一runner补必要只读列。修复不得放宽精确来源保护、修改已部署155~158或改客户端原请求；原窄Task从b563独立新分支实施0930前向引用复用修复，保普通动作去重，核五类和EF补交后续复用，并新增真实服务事务到COMMIT的PG测试源码。尚无已审新修复候选或新PG通过，原500未关闭。
+初步只读诊断已核五类完整写序列audit→typed correction→typed document→material reference→receipt和字段对应，唯一索引与createMany(skipDuplicates)可能静默跳过本次审计新引用，再被精确guard拒；此静态因果未冒充原失败事务内行实测。早期“仅JUDGMENT豁免”的描述已由上节完整迁移链核对纠正为六类，并补出四个旧BEFORE守卫阻塞。后续修复及证据以上节固定候选为准，原失败与历史保持结果不改写。
 
 ### 五函数158修复：A真实PG、B官方部署、C历史保持全部通过
 
