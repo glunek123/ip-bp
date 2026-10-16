@@ -115,8 +115,8 @@ model CaseExecutionFilingFollowupReceipt {
   actorUserId String @map("actor_user_id") @db.Uuid
   idempotencyKey String @map("idempotency_key") @db.VarChar(128)
   requestFingerprint String @map("request_fingerprint") @db.Char(64)
-  feedbackVersionId String? @map("feedback_version_id") @db.Uuid
-  supplementVersionId String? @map("supplement_version_id") @db.Uuid
+  feedbackVersionId String? @unique(map: "ef_feedback_receipt_version_key") @map("feedback_version_id") @db.Uuid
+  supplementVersionId String? @unique(map: "ef_supplement_receipt_version_key") @map("supplement_version_id") @db.Uuid
   resultSnapshot Json @map("result_snapshot")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
