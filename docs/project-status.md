@@ -1,5 +1,9 @@
 # 当前开发状态
 
+最新断点（2026-10-16）：原EF候选1a98的正常官方deploy首次失败，unsafe use of new enum EXECUTION_SUPPLEMENT；实际159成功+唯一failed1000（id9f547970-6eaa-4628-a670-f505590482e9、0步/未finished/未rolledback），五enum/新表/新列均未提交，149表71案32CV/旧安全与文件保持。HTTP14未启动。旧owned以prefix/body两query回放曾人为提交，不能作正式入口事务证据。原S已接手1a98独占修复分支，限定七文件，0950独立枚举准备保原1000bytes。用户09:50UTC已具体批准复核零部分提交后，官方resolve将唯一失败行标记rolled-back并保留历史，再正常部署0950及原1000；须源码固定、正式入口风险验证和独立审查成立后交原Runner，当前尚未执行恢复。结算/证物两个可见Task已实际写计算/规则/DTO及测试源码，结算Client生成原EPERM经原审批exit0后继续；仍不碰DB，目录所有权保持。
+
+最新范围变更（2026-10-16）：用户已用“直接按demo的功能完成对齐”覆盖先前结算／证物最小首版。SD-60及完整功能对照已冻结，已创建可见Task：结算01a1440a-beeb-7a90-888c-705ec4df9494（demo-settlement-alignment）与证物01a1440b-a0a8-7111-8993-1baabae691b0（demo-evidence-alignment），均源自clean e48760d2。结算是本轮两模块共享schema／1200和1300迁移／权限目录／公共路由唯一Owner，证物不争写；加入0950后成功链序号为163–164。实际源码进度见上条，不把创建Task记为实现完成；原Demo能力保留，未表达的高风险分歧才问。原Runner终端d3d真实1/1PASS已收到c8100072…a1b12摘要，并入EF前当前保护基线，不等待新模块。
+
 最新收口（2026-10-16）：终端exact5补丁已关闭LIVE01/CANDIDATE02，独立Spec/Quality ACCEPTED C/I/M0；228纯测及最终类型/Lint/格式通过。原Runner树已从5922clean快进d3d06b95/tree486490f8，同三source raw，历史terminal run原bytes不变，尚未实际新增customer.read或续验。唯一续单见主控`.local/ui003-evidence/runner-terminal403-exact5-increment-20261016.md`；只原身份单条增量及原定1案1文件，仍public159。多文件产品源码另树固定0aeb8e63（业务提交b13a8e6），82组件测试/前端类型/Lint/格式过，未混入本轮Runner候选。用户09:14已同意结算人工金额账单/律师发票及证物独立编号/入库/库位/历史的最小首版；必要Spec和两个可见实施任务待据Demo真实差异冻结，不扩大自动公式、付款退款或借还销毁范围。
 
 恢复更新（2026-10-16）：5922终端专用身份和原四Grant已实际创建；首次external-entry因缺customer.read返回403，案/文件仍0，尚未达到目标撤权保存403。原Runner已留存用户直接批准，仅原role新增customer.read/DEPARTMENT一条，不新建身份、改其它角色。实际增量尚未执行；exact5准入纯补丁正在独占terminal-five-grant-admission实施，须审定后由原Runner单行补权并续同一单项。原四项proof及首次403原字节保持，public159不升级。并行独立产品切片为已批准REQ-SH-003多文件顺序上传，Luna只改更正Panel及直接spec，已开始源码；结算/实物证物两份调查已完成，只待最小业务范围确认，不计作产品实现。

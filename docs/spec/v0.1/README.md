@@ -1,5 +1,7 @@
 # 正式系统业务 Spec v0.1
 
+2026-10-16追加SD-60：[结算与证物完整Demo对齐合同](../../superpowers/specs/2026-10-16-demo-settlement-evidence-parity-contract.md)冻结最新完整对齐范围和两个Task唯一所有权，覆盖同日收窄建议；Demo原有能力不删，不以部分首版代替完整目标，实际实现和验证另行交付。
+
 2026-10-15追加SD-59：[执行申请后续最小契约](../../superpowers/specs/2026-10-15-execution-filing-followup-contract.md)仅冻结反馈／补交范围并排队CORE-EF-001；原CA-014提交进EXECUTING不变，不把未登记反馈变为硬门槛。尚未实现／验收。
 
 2026-10-15追加SD-58：用户已批准三模块列表内真实流程表单、同一步表单内选择合法去向、方向未定先保存已有资料及独立编辑不推进阶段。共同合同及真实点击目标见[共享Spec](modules/shared.md#三模块列表流程表单sd-58)；保留原权限、材料、来源和状态机。缺独立保存接口先列具体差距并补受控合同，不自造通用草稿或任意stage切换。实现与证据仍只见路线图／VALIDATION。

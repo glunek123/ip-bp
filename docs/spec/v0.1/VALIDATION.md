@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### EF正式入口首次失败：保留现场，源码修复与恢复分离（2026-10-16）
+
+唯一Runner在clean1a98fc7正常pnpm db:test:migrate:deploy首次exit1，真实PG为unsafe use of new value EXECUTION_SUPPLEMENT of enum material_category；未启动HTTP14、未retry/resolve/rollback。安全摘要rawSHA48626b5d17d546ceb7c9fef08f70e1fb6e15e38bbf961508e34cc7dd04ddb8ae由主控实际核同。现159成功账本+唯一未完成1000 id9f547970-6eaa-4628-a670-f505590482e9，appliedSteps0、finished/rolledback均null；enumLabelsAdded/newTables/newNullableColumns均0，149旧表71Case/32CV/944audit/65session/counter13、全旧安全/文件保持。此前正常verify和owned五checks仍保留为其真实结果，但旧helper prefix/transaction两次query额外形成提交，未覆盖Prisma整文件的真实事务边界，不再扩大为正式部署通过。
+
+原S独占树已核clean并建codex/ef160-official-enum-boundary-fix从精确1a98；主控启动消息遇AbsolutePathBuf技术路由失败且已知未送达，未重试，父级随后沿有效通道交接成功。当前限定七文件源码：0950独立五enum准备且保持原1000原hash，owned按每个完整迁移单次query，新增正式入口回归与精确历史failedrow合同。用户09:50UTC已批准复核无部分提交后官方resolve将唯一失败行标记rolled-back、保留失败历史，再正常部署0950及原1000；源码固定和独立审查前不执行。不得删失败历史、标记applied掩盖失败或改前159成功SQL，若再失败保留现场停止。序号顺延与稳定迁移名称/raw明确分开，不扩大原业务预算；成功161后的HTTP14尚未运行。
+
 ### exact5补丁已审交运行树；多文件源码独立交付（2026-10-16）
 
 终端补丁当前固定d3d06b95ba9c848c7e256a6a9546c6dd66bd808e/tree486490f89bbed7149d22a82cb6fa81495a90f256，原Runner section-record-edit-ui-v2已仅fast-forward至同HEAD/tree、clean；三文件raw为database ee12fa0f…5d2c、声明2256537d…3b83、binding e0f0b852…260b。历史run raw3f684f40…dd03和直接授权583b2978…6f89独立钉住；新delta/真实执行summary绑定当前候选，五身份hash不含Grant且保持。原Reviewer发现的live4测试提前拒绝假覆盖、撤权marker误记历史候选均已修复；补审累计Spec/Quality ACCEPTED C/I/M0。作者最新228/228纯测试；主控最终修复raw上root tsc、ESLint、Prettier、diff及核明快照strict均exit0。没有本轮DB/Grant/HTTP执行，原5922整仓门禁不冒称d3新tree实跑。

@@ -1,5 +1,12 @@
 # ST 结算
 
+当前实施以SD-60及[Demo完整对齐合同](../../../superpowers/specs/2026-10-16-demo-settlement-evidence-parity-contract.md)为准。用户最新指令覆盖同日收窄首版，并解除SD-20中Demo已表达的公式、手调、分次和账单操作暂缓；未表达的外部财务协议仍保留。下文历史待审核记录不用于重复询问已表达且本轮获准的行为。
+
+## REQ-ST-006 Demo功能完整对齐
+
+- 状态：用户2026-10-16最新明确批准，SD-60。按上述合同结算清单完整覆盖客户/律师案内计算编辑、两侧分次发起、明细筛选选择、合并账单、查看撤销和费用页签，不以人工金额简版替代。
+- AC-ST-006：按固定Demo合法输入逐项对照公式、模式、手调、额度、次数、日期、筛选和源行恢复；保留原操作/确认，不加审批。财务未回填保持未知，费用附件不冒称律师账单发票；存在未实现行不得标完整对齐。
+
 案件应结算条件、一次发起、汇总账单、律师费发票和实际收付款分别建模。客户和律师两侧分别表达；SD-20已把公式后置，本阶段只设计数据字段，不能从Demo补造计算规则。
 
 依据：[固定事实](../../../demo-reverse/v158/modules/M06-settlement.md)、[候选](../../../demo-reverse/v158/modules/M06-settlement-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段见[领域模型](../DOMAIN.md)，B/T/E见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。本模块TD-SLICE、API、实现、迁移及正式测试未产生；所有AC为未执行目标场景。

@@ -1,5 +1,12 @@
 # EV 证物与公证书
 
+当前实施以SD-60及[Demo完整对齐合同](../../../superpowers/specs/2026-10-16-demo-settlement-evidence-parity-contract.md)为准。用户最新指令批准Demo已表达的编号、库位、多行/批量编辑及状态联动，不再限于入库最小首版。历史待审核只继续约束Demo未表达的真实不可逆操作等分歧，不重复询问已表达行为。
+
+## REQ-EV-004 Demo功能完整对齐
+
+- 状态：用户2026-10-16最新明确批准，SD-60。包含上述合同证物清单全部功能，不删原Demo能力。内部历史/审计不增加运营步骤。
+- AC-EV-004：对照列表筛选、查看、跨筛选选择、导出、同组多行编辑和状态联动；手动选态优先，不加签收审批。稳定ID明确新增/移除，多本不误改首本，来源集合一致，空台账不重播种；台账状态不当实际物理销毁或引用文件删除证明。
+
 物品保管、纸质公证书和电子材料分别表达。四个证物状态与两个纸质证状态只作为候选，不作为任意互转的授权。
 
 依据：[固定事实](../../../demo-reverse/v158/modules/M05-evidence.md)、[候选](../../../demo-reverse/v158/modules/M05-evidence-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段见[领域模型](../DOMAIN.md)，B/T/E见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。本模块TD-SLICE、API、实现、迁移及正式测试未产生；所有AC为未执行目标场景。
