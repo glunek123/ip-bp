@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-16T06:47:32.017Z",
+  "recordedAt": "2026-10-16T07:58:56.361Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1094,6 +1094,7 @@
     "tests/e2e/health.spec.ts": "e6de0eadada2040386f75830134425231a279f51f17f083975340211d6d0b5da",
     "tests/e2e/hearing-correction-chain.spec.ts": "ff376f463149862b0702cf26a3da4d9e4d9bd11e9c6081c5184e41c9e2c23271",
     "tests/e2e/hearing-effective-date-bridge.spec.ts": "baeef41a4e1316b21e217105f4a09b840ca5508bd47e406eccc373b98197b336",
+    "tests/e2e/lead-batch-push.spec.ts": "48035d6b0927e6e8ebc955bc0d1677d2bd71fdae0f8b6eef8ff1b07690530497",
     "tests/e2e/lead-list-workflow.spec.ts": "df1b65c70a096d3a5126916958b74b0839f58db265685a5624c47e20ffb9e06b",
     "tests/e2e/notary-list-export-migration.spec.ts": "564b0873946c167cea3668cecea4a7e8584694c715e099da5ae2bfd8c0ab5612",
     "tests/e2e/notary-list-export.spec.ts": "81b6230b61b550be7de056bcd4024a6d3daa97ca47cf82daae4914cae64c9a71",
@@ -1177,6 +1178,8 @@
     "tests/support/hearing-effective-date-bridge-fixture.test.mjs": "afbc6dc39b15fb5c215ae0b39ba483633aa8d25028fd9afa5e0456af8b90a499",
     "tests/support/hearing-effective-date-bridge-r2-binding.test.mjs": "26512d453c4b08c3325e6d1743f8c603bc9e0679c3da12adeab261649ff7565e",
     "tests/support/hearing-effective-date-bridge-race-observation.test.mjs": "66c1cba3cfd170994534b9fc23cc6badbb899212d1ad6d4ed5da3c2828384311",
+    "tests/support/lead-batch-push-database.mjs": "48cd4755fa51106bd285de73e19aacf429d5d180c1a0cbafd749408222551900",
+    "tests/support/lead-batch-push-database.test.mjs": "ce8f2b1935b669503b3d2fa455a7405d2f3620329dbeef515b7d9b2c5eaf848e",
     "tests/support/notary-list-export-migration.mjs": "9e5f3ff5bcc8385efee2a852787bfaf1f63d9c837962c7c72c8f037e313eaa26",
     "tests/support/notary-list-preference-migration.mjs": "8aed27b9fbb00a1cf0bd603c07074d3b7a09d6f91931ecda4eb8b0de6b0fc4c2",
     "tests/support/notary-list-workflow-database.mjs": "27212bf6b3f8df3484c6e5849eea15cb419a3777329a3eb7ef5475442a1098e2",
