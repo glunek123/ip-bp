@@ -510,7 +510,7 @@ export class CaseExecutionRecordEditService {
       targetId: targetId.toLowerCase(),
       revision,
       date,
-      correctionReason,
+      correctionReason: correctionReason.trim(),
       idempotencyKey,
       contentVersionIds,
       businessReason,

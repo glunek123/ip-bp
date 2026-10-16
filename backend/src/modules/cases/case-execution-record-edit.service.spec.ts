@@ -205,6 +205,57 @@ describe.each(cases)('$method', (definition) => {
     return f.service.correctFinish(identity, caseId, body as never);
   }
 
+  it('uses one trimmed correction reason for the row, audit, and receipt fingerprint without changing the original request', async () => {
+    const reasonField =
+      definition.kind === 'FINISH' ? 'correctionReason' : 'reason';
+    const body = { ...input(), [reasonField]: '  correction text  ' };
+    const originalBody = structuredClone(body);
+    const f = fixture();
+    const result = await invoke(f, body);
+    expect(body).toEqual(originalBody);
+    expect(f.tx[definition.corrections].create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ correctionReason: 'correction text' }),
+    });
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        details: expect.objectContaining({
+          correctionReason: 'correction text',
+        }),
+      }),
+    });
+    const receipt =
+      f.tx.caseSectionRecordEditReceipt.create.mock.calls[0]![0].data;
+    expect(receipt.idempotencyKey).toBe(body.idempotencyKey);
+
+    const clean = fixture();
+    await invoke(clean, { ...body, [reasonField]: 'correction text' });
+    const cleanReceipt =
+      clean.tx.caseSectionRecordEditReceipt.create.mock.calls[0]![0].data;
+    expect(receipt.requestFingerprint).toBe(cleanReceipt.requestFingerprint);
+
+    f.tx.caseSectionRecordEditReceipt.findUnique.mockResolvedValue(receipt);
+    expect(await invoke(f, body)).toEqual(result);
+    expect(body).toEqual(originalBody);
+    expect(f.tx[definition.corrections].create).toHaveBeenCalledTimes(1);
+    expect(f.tx.auditEvent.create).toHaveBeenCalledTimes(1);
+    expect(f.access.authorizeCase).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['   ', 'x'.repeat(501)])(
+    'keeps invalid correction reasons out of the transaction',
+    async (reason) => {
+      const f = fixture();
+      const reasonField =
+        definition.kind === 'FINISH' ? 'correctionReason' : 'reason';
+      await expect(
+        invoke(f, { ...input(), [reasonField]: reason }),
+      ).rejects.toMatchObject({
+        response: { code: 'VALIDATION_ERROR' },
+      });
+      expect(f.database.$transaction).not.toHaveBeenCalled();
+    },
+  );
+
   it('appends an exact target correction after archive without changing workflow roots or old evidence', async () => {
     const f = fixture();
     const before = structuredClone({ record: f.record, original: f.original });
