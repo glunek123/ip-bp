@@ -1,5 +1,15 @@
 # 当前开发状态
 
+2026-10-16最新断点：原R2持久卷容器已正常启动一次并healthy；用户六项及另三项更正权限均已明确批准，唯一既有H主角色两事务35→39→42，恰追加7条DEPARTMENT Grant。原35/149表旧行/全部旧安全关联/67案/21推进/915审计/157账本/sequence/22两端材料保持，旧凭据私密恢复且hash复核，无重置/新actor/HTTP。主控与原Sol逐55份证据bytes/hash核准，授权与实际范围审C/I/M0；本结论不是业务验收。UI/H已成功收到回执与私密引用metadata，继续严格既有actor恢复/manifest纯实现；固定候选后唯一runner先真实登录和一条纵向，正向完成后最后终结失权场景。E65秒及旧门禁复用，预览/日期规则不动。
+
+H恢复四文件已精确提交9bdb23f（53聚焦/类型/静态通过），原Sol源码审C0/I1/M1：新增七Grant须钉两事务真实记录ID，目前只核动作/范围/数量；负例manifest实际原创建proof须runner另核。不可派实际H或标通过。原Owner修复消息遭AbsolutePathBuf拒绝，父级按ignored h-restore-review-fix-relay-20261016.md恢复同一Task；权限回执本身审核0不受此源码finding影响。
+
+并行开发：CORE-EF-001“执行申请后续办理”按SD-59已批准范围启动协调，独占ef001-shared-contract树/同名分支从ce3794d创建clean；原S唯一共享Owner派单遭AbsolutePathBuf路由拒绝，实施尚未确认，待父级原有效通道续办。领域E待共享DTO/签名稳定SHA，前端另派，不争当前UI/C2。独立测试环境优化Agent已实际启动test-runtime-stability树，仅新增三份纯helper/类型/测试，统一绝对cwd、同源URL/Origin及精确R2停止态启动意图；现有入口六文件仍UI独占，后续接稳定helper，不另建日常runner、不运行DB/服务。详细执行证据与边界见VALIDATION。
+
+实际并行已恢复（2026-10-16，六项获批后）：父级通过有效通道启动原runner/UI/H，主控随后追加边界消息均确认送达。runner唯一实际DB写入Owner，先核已有manifest主写角色及六项existing/missing；foreign/只读/撤权负例不补成可写。UI恢复精确准入、H补已有actor严格复用接口可并行纯代码，原Reviewer待固定输入窄审；不把已派方案称正在实跑，不新建Task。新增权限必须仅六项缺失DEPARTMENT且对象/旧安全行差异核准；真实验收统一串行，原同树可信门禁不重做。
+
+恢复与新授权（2026-10-16，01:02 UTC）：用户在明确六项隔离测试部门权限询问后回复“补齐”（消息Sentinel_fdf4b7a29e488191a3002876ccc91fa7）。只准为本轮manifest中R2隔离角色补实际缺失的case.complaint.mail、case.filing.submit、case.acceptance.register、case.hearing.schedule、case.execution.submit、case.external-entry.create，DEPARTMENT/本轮合成来源，不扩旧角色/正式账号/其他Grant。恢复现场root62e54d6、独立ce3794d/tree08f8c1ce、运行2a99、H a6d3d59、UI212b270均clean且context通过；旧验收结果复用。原runner先只读既有actor/role/缺失清单，原UI/H先恢复精确准入与已有actor复用契约，窄审后唯一runner写缺失项并统一真实验收，未开始写Grant/服务。原三个Task发送均遇AbsolutePathBuf，需父级原有效通道接力，具体单在ignored six-action-original-owner-relay-20261016.md；不新建runner。下文“六项待批”是旧断点，已由此精确授权替代；人工预览及日期硬规则hold未解除。
+
 H纯修复收口：原H基线f83fc130仅两测试文件提交a6d3d59b91f437eee8badc6557a184c508d03970，专项origin/baseURL及局部adapter统一3101，内部actor映射、门户独立context、body/key/CSRF不变。旧配置纯RED两失败→47/47及类型/Lint/格式通过，原Reviewer窄审C/I/M0；仅关闭测试准备Origin错误，未HTTP/DB或业务重跑，缺三Action及全部真实分栏验收仍Pending。已接独立section-record-test-safety-closeout为af749d38，后续仅文档/快照与纯静态收口；冻结运行2a99和已追加actor保持，不推送/发布。
 
 本轮收口断点（2026-10-15，20:53 UTC后）：H修正runner cwd后首项真实登录403 ORIGIN_FORBIDDEN（3101请求/5174 Origin），尚未到业务权限或资料API；57份证据经主控/原Sol核hash C/I/M0。只留下新合成actor/role及35个冻结factory Grant，Case/Lead0，旧149表原行/157链/结构/sequence/22文件保持，端口/锁释放。E65秒已证结果复用。原H Owner仅静态诊断合法同源入口，发送因AbsolutePathBuf失败待父级中转；禁止放宽Origin、补权或再跑已知缺权限准备链。已从2a99另建section-record-test-safety-closeout，接c11/212已审测试安全修正与本轮文档形成独立未发布候选；分栏产品仍未验收，真实UI16/业务权限继续hold。

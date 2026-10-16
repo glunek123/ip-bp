@@ -1,5 +1,21 @@
 # SPEC-001 文档验证
 
+## R2既有角色42项实际闭环与并行实施边界（2026-10-16）
+
+用户第二次明确批准三项execution.mailing.correct、execution.filing.correct、execution.finish.correct（消息Sentinel_99c7388c6e608191a8cf0379ef2f1f39；与此前六项授权分开）。唯一runner正常start原持久卷R2一次，现场healthy及原149表闭合后，两事务仅同一user edc8bf6f-6660-41f6-8418-f72f87443a1c、role51c34a8b-fb00-45b1-ab9f-d077d59d4878、部门10000000-0000-4000-8000-000000000001的缺失DEPARTMENT项：35→39补complaint.mail/filing.submit/acceptance.register/external-entry.create，hearing.schedule/execution.submit原已有；再39→42补三项执行更正。没有替换actor、扩foreign/readOnly/baseline或恢复旧撤权。149表所有旧行/全安全关系/67Case/21advance/915audit/157账本/sequence/22两端bytes保持，只有7条新增Grant；端口空闲/标准锁释放，无HTTP或新测试。
+
+固定运行树仍clean2a99bba/tree3f594e58、1197源及737构建hash保持。运行树证据r2-four-grants-continuation-20261016完整26份manifest SHA e6baa1d3b7e94b59cc2a83e90b43696bc6563046fd927206e8a3306fe02073de，事务SHA8e257ce99283f9e049e62bb422d8eae0317444564a6c94c56fc36a97996e5103；r2-three-correction-increment-20261016完整29份manifest SHA32331cbbc325cd2fb76d1fde7e4e7e0f2d3cee0e6d5ec8688892cee8bbd83021，事务SHA69eb7198813f00a47025d4f944cb8c165527377d5e4d114fb1a05a0465a36e9a；handoff-summary SHA df1b29f2e618d7c54f0e6960d5c03a39fb2a6ca03cfcf6e8e347457cc7f6bed0。主控和原Sol各逐55份bytes/hash核验通过，Spec/Quality ACCEPTED C/I/M0，范围仅授权和实际回执。原credential从原失败trace精确资源内存恢复、原hash复核且未重置；私密文件仍用户Temp，普通proof只存引用/hash，主控/Reviewer未打开私密内容。初次reader不识别_file的BLOCKED证据原样保留，没有重复start。UI/H已获成功送达的非敏感回执，继续纯代码恢复；真实登录、H命令及UI16仍Pending，不能把权限准备当功能完成。
+
+H恢复四文件候选已按冻结hash正式提交9bdb23f454ad00796cf1525f251d814cf54ad6d3/tree54fab09559d307b06acf4f1d9ec505b3bf00f465，原目录clean；53聚焦/root类型/四文件lint格式通过，原补丁SHA717a07574b1620f41b0f00cfa589edfd653aa53cf4633a7b9696250aa3f6fc8e。原Sol窄审Spec/Quality REJECTED，C0/I1/M1：I-H-RESTORE01新增7条只验action/scope/数量而未钉事务实际ID，须原Owner补精确7记录及替换反例；M-H-RESTORE02两负例实际原创建manifest仍由唯一runner在注入前核bytes/hash/身份/credential，不能只凭64hex格式。主控没有合入运行树或派实跑；原Owner修复续办工具被AbsolutePathBuf拒绝，父级原通道待转，未循环重试。此源码finding不推翻上段已核两实际事务与旧行保持结论。
+
+并行包CORE-EF-001按正式SD-59范围选择，ef001-shared-contract独占树从ce3794d创建clean，原S派单工具拒绝AbsolutePathBuf、未确认送达，父级有效通道续办单在主控ignored证据；尚无实现/迁移/测试通过可报。领域E待稳定共享SHA、前端另派，158不触当前157验收库。另新test_runtime_stability实施Agent已启动，仅新managed-test-runtime三文件纯规划helper/类型/测试，现有run-e2e/Playwright/UI admission仍原UI独占；未接线或实库验证前不称工程入口完成。主控本次context:check对三份已知自有文档漂移返回1，随后按已解释文档范围收口检查与轻量快照，不把它当产品门禁；没有重复完整verify。
+
+## 六项隔离测试权限新授权及恢复核对（2026-10-16）
+
+用户01:02 UTC消息Sentinel_fdf4b7a29e488191a3002876ccc91fa7，在明确询问仅为本轮隔离测试角色补齐诉状邮寄/立案提交/受理登记/开庭安排/执行提交/外部转入六项部门权限后回复“补齐”。封闭Action为case.complaint.mail、case.filing.submit、case.acceptance.register、case.hearing.schedule、case.execution.submit、case.external-entry.create；只补manifest内隔离R2角色实际missing的DEPARTMENT项，原角色/正式账号/其他Grant不扩。用户原文与边界保存于主控ignored six-action-user-authorization-20261016.md，SHA871f3692227edcaa6e8a2dac5c4a85edc6981f19346d46aa070be756c7b7b2e5。此为新授权，不将先前“继续”追认为补权批准，也不追认旧未执行/拒绝操作已成功。
+
+恢复现场五树均与固定断点一致且clean：主控62e54d6、独立ce3794d/tree08f8c1ce、运行2a99、H a6d3d59、UI212b270，主控context:check实际exit0；没有重测同树门禁、服务或数据库操作。原Reviewer收到新边界，待原runner只读对象/缺失计划、UI/H准入微合同后窄审；唯一runner实施实际权限差异并保留前后安全行，原Owner不并发写Grant。三个原Task直接消息均遭AbsolutePathBuf路径路由错误、未确认送达，父级有效通道待转；不循环重试或新建替代Task。真实点击/接口结果仍Pending，人工预览和日期硬规则hold保持。
+
 ## H同源准备两文件纯修复（2026-10-15）
 
 原H Owner在clean f83fc130基线仅修改case-historical-record-edit.spec.ts及其r2-binding.test.mjs。专项origin与baseURL共用3101，局部sourceBuilderRequest对内部及client/notary/lawyer登录/写入同步Origin，浅拷贝headers且保留原body/key/CSRF、内部actor映射和四个独立cookie context；不改共享helper/产品Origin守卫/Grant或原业务断言。旧5174配置在直接VM回归中RED两失败，新47/47纯测及root类型、两文件Lint/格式、diff通过。无真实HTTP/capture/DB/服务/浏览器或补权，已有实库actor保留。
