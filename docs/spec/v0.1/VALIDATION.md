@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### b9完整门禁通过；owned注入字符串修复待实库续验
+
+原runner在clean b9d1de974970e02fa9cba88c1b1baa20eddb5b00/tree42c1326dabca20511e7739c7052308972ace797f正常完整verify实际exit0：工具139、前端2207、后端1864、NT006真实锁、全部静态与双构建通过。后续protected DB-only唯一owned项在预期deliberate rollback处得到syntax error at or near "$"而失败；未部署159、未HTTP，public158与149旧表/68案/42权限/26文件保持。失败schema record_reference_reuse_148e54cfc73f4ceb9f07b45ccffcae06按规则保留，后续namespace基线须包含它，不能为重跑清除现场。
+
+原Owner定位JavaScript replace的字符串替换规则把DO $$压成DO $；修复6b68e9d3fda8a52ec6c0886ae86ad8a370b128c3仅helper改callback及直接测试，批准0930产品SQL/raw628a及原deliberate异常断言不变。真实RED4过1失败后GREEN5/5、根类型及两文件Lint/格式通过；原SolSpec/Quality ACCEPTED C/I/M0。纯测试验证精确注入位置、原SQL其余字节与BEGIN/COMMIT边界，不是PG证据。新候选仅失效的owned阶段须重验；产品/依赖/构建输入不变时限于该范围复用b9完整门禁，不重跑generate/build/verify。官方159及五类HTTP完整事务/错CV拒绝仍待唯一runner。
+
+EF独立组合afab652c八个前端spec实际560/560、前端/根类型、13文件Lint/格式、架构/Spec通过，原Sol累计前端源审C/I/M0。初次受限令牌因既有Prisma缓存Temp目录权限在测试收集前失败、测试数0，原日志保留；相同参数经正式审批执行成功，未改ACL/缓存路径/源码。S160增量069b9ba58e343630184b49ffa3cc2eac3f2dc587仅1000分类证明与材料实际引用计数三文件，246/246、类型/静态、补入正式0900后完整160纯源检查通过，原SolC/I/M0。1000新raw e125a3278b0530860b1be49273fc667224451f8a6d35b420bdf14e2b9c684105，尚无PG/部署证据；上述EF结果不扩大为功能验收。
+
 ### a1工具超时：局部Git集成测试预算修复，PG未到达
 
 原runner在固定a1bfea4正常完整verify工具阶段得到138/139，scripts/validation-evidence.test.mjs:68超5000ms；未运行owned探针、159部署或HTTP。原失败证据reference-reuse-a1bfea4-20261016保留，public158、149旧行、68案、42权限、26文件、原案零更正/回执与无owned残留保持，锁释放；不能把后续修前定向工具成功改写为原完整verify通过。
