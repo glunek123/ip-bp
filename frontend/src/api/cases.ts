@@ -7106,3 +7106,299 @@ export function caseArchiveSession(
   archiveSessions.set(owner, state);
   return state;
 }
+
+type ExecutionFilingFeedbackFields = {
+  idempotencyKey: string;
+  feedbackOn: string | null;
+  courtCaseNo: string | null;
+  content: string;
+};
+export type RecordExecutionFilingFeedbackInput =
+  ExecutionFilingFeedbackFields & {
+    feedbackId: string;
+    expectedRevision: 0;
+  };
+export type CorrectExecutionFilingFeedbackInput =
+  ExecutionFilingFeedbackFields & {
+    expectedRevision: number;
+    correctionReason: string;
+  };
+type ExecutionFilingSupplementFields = {
+  idempotencyKey: string;
+  submittedOn: string | null;
+  note: string | null;
+  contentVersionIds: string[];
+};
+export type SubmitExecutionFilingSupplementInput =
+  ExecutionFilingSupplementFields & {
+    supplementId: string;
+    expectedRevision: 0;
+  };
+export type CorrectExecutionFilingSupplementInput =
+  ExecutionFilingSupplementFields & {
+    expectedRevision: number;
+    correctionReason: string;
+  };
+type ExecutionFilingFollowupResult = {
+  id: string;
+  filingId: string;
+  revision: number;
+  recordedAt: string;
+};
+export type ExecutionFilingFeedbackResult = ExecutionFilingFollowupResult & {
+  feedbackId: string;
+};
+export type ExecutionFilingSupplementResult = ExecutionFilingFollowupResult & {
+  supplementId: string;
+};
+type FilingFollowupInputs =
+  | RecordExecutionFilingFeedbackInput
+  | CorrectExecutionFilingFeedbackInput
+  | SubmitExecutionFilingSupplementInput
+  | CorrectExecutionFilingSupplementInput;
+type FilingFollowupResults = {
+  feedbacks: ExecutionFilingFeedbackResult;
+  supplements: ExecutionFilingSupplementResult;
+};
+
+function filingFollowupText(value: unknown, maximum: number): value is string {
+  // Match DTO validation of normalized text while preserving the submitted bytes.
+  if (typeof value !== 'string') return false;
+  const text = value.trim();
+  // class-validator's MinLength/MaxLength discount surrogate pairs and
+  // presentation selectors, rather than counting UTF-16 code units.
+  const length =
+    Array.from(text).length -
+    (text.match(/[^\uFE0F\uFE0E][\uFE0F\uFE0E]/gu)?.length ?? 0);
+  return length >= 1 && length <= maximum;
+}
+function validFilingFollowupInput(
+  value: unknown,
+  kind: keyof FilingFollowupResults,
+  correcting: boolean,
+): value is FilingFollowupInputs {
+  if (!record(value)) return false;
+  const target = kind === 'feedbacks' ? 'feedbackId' : 'supplementId';
+  const fields =
+    kind === 'feedbacks'
+      ? ['feedbackOn', 'courtCaseNo', 'content']
+      : ['submittedOn', 'note', 'contentVersionIds'];
+  if (
+    !exact(value, [
+      'idempotencyKey',
+      'expectedRevision',
+      ...fields,
+      ...(correcting ? ['correctionReason'] : [target]),
+    ]) ||
+    !filingFollowupText(value.idempotencyKey, 128) ||
+    !recordRevision(value.expectedRevision) ||
+    (correcting
+      ? value.expectedRevision < 1 ||
+        !filingFollowupText(value.correctionReason, 500)
+      : value.expectedRevision !== 0 || !uuidV4(value[target]))
+  )
+    return false;
+  if (kind === 'feedbacks')
+    return (
+      (value.feedbackOn === null || businessDate(value.feedbackOn)) &&
+      (value.courtCaseNo === null ||
+        filingFollowupText(value.courtCaseNo, 100)) &&
+      filingFollowupText(value.content, 2000)
+    );
+  return (
+    (value.submittedOn === null || businessDate(value.submittedOn)) &&
+    (value.note === null || filingFollowupText(value.note, 2000)) &&
+    Array.isArray(value.contentVersionIds) &&
+    uniqueVersions(value.contentVersionIds, 1, 10) &&
+    new Set(value.contentVersionIds.map((id: string) => id.toLowerCase()))
+      .size === value.contentVersionIds.length
+  );
+}
+async function sendFilingFollowup<K extends keyof FilingFollowupResults>(
+  prefix: 'cases' | 'lawyer/cases',
+  caseId: string,
+  filingId: string,
+  targetId: string | null,
+  raw: FilingFollowupInputs,
+  kind: K,
+  options?: RequestOptions,
+): Promise<FilingFollowupResults[K]> {
+  const correcting = targetId !== null;
+  if (
+    !uuidV4(caseId) ||
+    !uuidV4(filingId) ||
+    (correcting && !uuidV4(targetId)) ||
+    !validFilingFollowupInput(raw, kind, correcting)
+  )
+    throw new ApiError('执行申请后续资料输入无效', 400, 'VALIDATION_ERROR');
+  const body = structuredClone(raw);
+  const submitted: unknown = body;
+  if (!record(submitted)) throw invalidResponse();
+  const target = kind === 'feedbacks' ? 'feedbackId' : 'supplementId';
+  const expectedTarget = correcting ? targetId : submitted[target];
+  const expectedRevision = body.expectedRevision;
+  const headers = new Headers(options?.headers);
+  try {
+    headers.set('Idempotency-Key', body.idempotencyKey);
+  } catch {
+    throw new ApiError('幂等键无法用于请求头', 400, 'VALIDATION_ERROR');
+  }
+  const path = `/${prefix}/${encodeURIComponent(caseId)}/execution-filings/${encodeURIComponent(filingId)}/${kind}${correcting ? `/${encodeURIComponent(targetId)}/corrections` : ''}`;
+  options?.signal?.throwIfAborted();
+  // A transport abort cannot prove rollback. Recovery belongs to the caller's
+  // original actor, route anchors, complete body and key; no pending is cleared.
+  const response = await requestJson(path, {
+    ...options,
+    method: 'POST',
+    headers: Object.fromEntries(headers),
+    body,
+    retryOnCsrfInvalid: false,
+  });
+  options?.signal?.throwIfAborted();
+  if (
+    !record(response) ||
+    !exact(response, ['id', 'filingId', target, 'revision', 'recordedAt']) ||
+    !uuidV4(response.id) ||
+    !sameUuid(response.filingId, filingId) ||
+    !sameUuid(response[target], expectedTarget) ||
+    !recordRevision(response.revision) ||
+    response.revision < 1 ||
+    response.revision !== expectedRevision + 1 ||
+    !utcTimestamp(response.recordedAt)
+  )
+    throw invalidResponse();
+  return response as FilingFollowupResults[K];
+}
+
+export function recordCaseExecutionFilingFeedback(
+  caseId: string,
+  filingId: string,
+  input: RecordExecutionFilingFeedbackInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingFeedbackResult> {
+  return sendFilingFollowup(
+    'cases',
+    caseId,
+    filingId,
+    null,
+    input,
+    'feedbacks',
+    options,
+  );
+}
+export function correctCaseExecutionFilingFeedback(
+  caseId: string,
+  filingId: string,
+  feedbackId: string,
+  input: CorrectExecutionFilingFeedbackInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingFeedbackResult> {
+  return sendFilingFollowup(
+    'cases',
+    caseId,
+    filingId,
+    feedbackId,
+    input,
+    'feedbacks',
+    options,
+  );
+}
+export function submitCaseExecutionFilingSupplement(
+  caseId: string,
+  filingId: string,
+  input: SubmitExecutionFilingSupplementInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingSupplementResult> {
+  return sendFilingFollowup(
+    'cases',
+    caseId,
+    filingId,
+    null,
+    input,
+    'supplements',
+    options,
+  );
+}
+export function correctCaseExecutionFilingSupplement(
+  caseId: string,
+  filingId: string,
+  supplementId: string,
+  input: CorrectExecutionFilingSupplementInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingSupplementResult> {
+  return sendFilingFollowup(
+    'cases',
+    caseId,
+    filingId,
+    supplementId,
+    input,
+    'supplements',
+    options,
+  );
+}
+export function recordLawyerCaseExecutionFilingFeedback(
+  caseId: string,
+  filingId: string,
+  input: RecordExecutionFilingFeedbackInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingFeedbackResult> {
+  return sendFilingFollowup(
+    'lawyer/cases',
+    caseId,
+    filingId,
+    null,
+    input,
+    'feedbacks',
+    options,
+  );
+}
+export function correctLawyerCaseExecutionFilingFeedback(
+  caseId: string,
+  filingId: string,
+  feedbackId: string,
+  input: CorrectExecutionFilingFeedbackInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingFeedbackResult> {
+  return sendFilingFollowup(
+    'lawyer/cases',
+    caseId,
+    filingId,
+    feedbackId,
+    input,
+    'feedbacks',
+    options,
+  );
+}
+export function submitLawyerCaseExecutionFilingSupplement(
+  caseId: string,
+  filingId: string,
+  input: SubmitExecutionFilingSupplementInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingSupplementResult> {
+  return sendFilingFollowup(
+    'lawyer/cases',
+    caseId,
+    filingId,
+    null,
+    input,
+    'supplements',
+    options,
+  );
+}
+export function correctLawyerCaseExecutionFilingSupplement(
+  caseId: string,
+  filingId: string,
+  supplementId: string,
+  input: CorrectExecutionFilingSupplementInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingSupplementResult> {
+  return sendFilingFollowup(
+    'lawyer/cases',
+    caseId,
+    filingId,
+    supplementId,
+    input,
+    'supplements',
+    options,
+  );
+}

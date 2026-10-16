@@ -6568,3 +6568,475 @@ describe('CA-016 closure and list display contract', () => {
     expect(state.pending('case-1')).toBeNull();
   });
 });
+
+const efCaseId = 'b1000000-0000-4000-8000-000000000001';
+const efFilingId = 'b1000000-0000-4000-8000-000000000002';
+const efRootId = 'b1000000-0000-4000-8000-000000000003';
+const efVersionId = 'b1000000-0000-4000-8000-000000000004';
+const efFiles = [
+  'b1000000-0000-4000-8000-000000000006',
+  'b1000000-0000-4000-8000-000000000005',
+];
+const efFeedback = {
+  idempotencyKey: 'feedback-original-key',
+  feedbackOn: null,
+  courtCaseNo: null,
+  content: '  法院真实反馈原文  ',
+};
+const efSupplement = {
+  idempotencyKey: 'supplement-original-key',
+  submittedOn: null,
+  note: '  补交说明原文  ',
+  contentVersionIds: efFiles,
+};
+const efCommands = [
+  {
+    name: 'feedback record',
+    kind: 'feedbacks',
+    target: 'feedbackId',
+    correcting: false,
+    input: {
+      ...efFeedback,
+      feedbackId: efRootId,
+      expectedRevision: 0 as const,
+    },
+    internal: (
+      caseId: string,
+      filingId: string,
+      _rootId: string,
+      input: unknown,
+      options?: RequestOptions,
+    ) =>
+      casesApi.recordCaseExecutionFilingFeedback(
+        caseId,
+        filingId,
+        input as casesApi.RecordExecutionFilingFeedbackInput,
+        options,
+      ),
+    lawyer: (
+      caseId: string,
+      filingId: string,
+      _rootId: string,
+      input: unknown,
+      options?: RequestOptions,
+    ) =>
+      casesApi.recordLawyerCaseExecutionFilingFeedback(
+        caseId,
+        filingId,
+        input as casesApi.RecordExecutionFilingFeedbackInput,
+        options,
+      ),
+  },
+  {
+    name: 'feedback correction',
+    kind: 'feedbacks',
+    target: 'feedbackId',
+    correcting: true,
+    input: {
+      ...efFeedback,
+      feedbackOn: '2099-10-01',
+      courtCaseNo: '  执行案号原文  ',
+      expectedRevision: 2,
+      correctionReason: '  核实反馈内容  ',
+    },
+    internal: (
+      caseId: string,
+      filingId: string,
+      rootId: string,
+      input: unknown,
+      options?: RequestOptions,
+    ) =>
+      casesApi.correctCaseExecutionFilingFeedback(
+        caseId,
+        filingId,
+        rootId,
+        input as casesApi.CorrectExecutionFilingFeedbackInput,
+        options,
+      ),
+    lawyer: (
+      caseId: string,
+      filingId: string,
+      rootId: string,
+      input: unknown,
+      options?: RequestOptions,
+    ) =>
+      casesApi.correctLawyerCaseExecutionFilingFeedback(
+        caseId,
+        filingId,
+        rootId,
+        input as casesApi.CorrectExecutionFilingFeedbackInput,
+        options,
+      ),
+  },
+  {
+    name: 'supplement submit',
+    kind: 'supplements',
+    target: 'supplementId',
+    correcting: false,
+    input: {
+      ...efSupplement,
+      supplementId: efRootId,
+      expectedRevision: 0 as const,
+    },
+    internal: (
+      caseId: string,
+      filingId: string,
+      _rootId: string,
+      input: unknown,
+      options?: RequestOptions,
+    ) =>
+      casesApi.submitCaseExecutionFilingSupplement(
+        caseId,
+        filingId,
+        input as casesApi.SubmitExecutionFilingSupplementInput,
+        options,
+      ),
+    lawyer: (
+      caseId: string,
+      filingId: string,
+      _rootId: string,
+      input: unknown,
+      options?: RequestOptions,
+    ) =>
+      casesApi.submitLawyerCaseExecutionFilingSupplement(
+        caseId,
+        filingId,
+        input as casesApi.SubmitExecutionFilingSupplementInput,
+        options,
+      ),
+  },
+  {
+    name: 'supplement correction',
+    kind: 'supplements',
+    target: 'supplementId',
+    correcting: true,
+    input: {
+      ...efSupplement,
+      submittedOn: '0001-01-01',
+      note: null,
+      expectedRevision: 5,
+      correctionReason: '  核实补交文件  ',
+    },
+    internal: (
+      caseId: string,
+      filingId: string,
+      rootId: string,
+      input: unknown,
+      options?: RequestOptions,
+    ) =>
+      casesApi.correctCaseExecutionFilingSupplement(
+        caseId,
+        filingId,
+        rootId,
+        input as casesApi.CorrectExecutionFilingSupplementInput,
+        options,
+      ),
+    lawyer: (
+      caseId: string,
+      filingId: string,
+      rootId: string,
+      input: unknown,
+      options?: RequestOptions,
+    ) =>
+      casesApi.correctLawyerCaseExecutionFilingSupplement(
+        caseId,
+        filingId,
+        rootId,
+        input as casesApi.CorrectExecutionFilingSupplementInput,
+        options,
+      ),
+  },
+];
+
+describe('EF001 frozen feedback and supplement command contracts', () => {
+  for (const command of efCommands)
+    for (const audience of ['internal', 'lawyer'] as const) {
+      const send = (
+        input: unknown,
+        options?: RequestOptions,
+        caseId = efCaseId,
+        filingId = efFilingId,
+        rootId = efRootId,
+      ) => command[audience](caseId, filingId, rootId, input, options);
+      const receipt = {
+        id: efVersionId,
+        filingId: efFilingId,
+        [command.target]: efRootId,
+        revision: command.input.expectedRevision + 1,
+        recordedAt: '2026-10-16T01:00:00.000Z',
+      };
+      it(`${audience} ${command.name} posts exact original body/key to its fixed prefix and decodes only its precise receipt`, async () => {
+        const fetch = mockJson(receipt, 201);
+        await expect(
+          send(command.input, {
+            headers: {
+              'idempotency-key': 'wrong-override',
+              'X-Command-Test': 'caller',
+            },
+            timeoutMs: 5000,
+          }),
+        ).resolves.toEqual(receipt);
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(fetch.mock.calls[0]?.[0]).toBe(
+          `/api/v1/${audience === 'internal' ? 'cases' : 'lawyer/cases'}/${efCaseId}/execution-filings/${efFilingId}/${command.kind}${command.correcting ? `/${efRootId}/corrections` : ''}`,
+        );
+        expect(fetch.mock.calls[0]?.[1]?.method).toBe('POST');
+        expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(
+          command.input,
+        );
+        expect(
+          new Headers(fetch.mock.calls[0]?.[1]?.headers).get('Idempotency-Key'),
+        ).toBe(command.input.idempotencyKey);
+        expect(
+          new Headers(fetch.mock.calls[0]?.[1]?.headers).get('X-Command-Test'),
+        ).toBe('caller');
+        for (const change of [
+          { id: 'bad-version' },
+          { filingId: efRootId },
+          { [command.target]: efCaseId },
+          { revision: 0 },
+          { revision: '1' },
+          { revision: receipt.revision + 1 },
+          { revision: 1.5 },
+          { revision: Number.MAX_SAFE_INTEGER + 1 },
+          { recordedAt: '2026-02-30T00:00:00Z' },
+          { recordedAt: null },
+          { stage: 'EXECUTING' },
+          { version: 99 },
+          { caseId: efCaseId },
+          { revision: undefined },
+        ]) {
+          mockJson({ ...receipt, ...change });
+          await expect(send(command.input)).rejects.toMatchObject({
+            code: 'INVALID_RESPONSE',
+          });
+        }
+      });
+      it(`${audience} ${command.name} rejects invalid route anchors, wrong body shape and invalid business fields before HTTP`, async () => {
+        const fetch = vi.fn();
+        vi.stubGlobal('fetch', fetch);
+        const specific =
+          command.kind === 'feedbacks'
+            ? [
+                { feedbackOn: '2026-02-30' },
+                { feedbackOn: '2026-10-01T00:00:00Z' },
+                { feedbackOn: undefined },
+                { courtCaseNo: '' },
+                { courtCaseNo: 'x'.repeat(101) },
+                { courtCaseNo: undefined },
+                { content: ' ' },
+                { content: 'x'.repeat(2001) },
+              ]
+            : [
+                { submittedOn: '2026-02-30' },
+                { submittedOn: '2026-10-01T00:00:00Z' },
+                { submittedOn: undefined },
+                { note: '' },
+                { note: 'x'.repeat(2001) },
+                { note: undefined },
+                { contentVersionIds: [] },
+                { contentVersionIds: Array(11).fill(efFiles[0]) },
+                { contentVersionIds: [efFiles[0], efFiles[0]!.toUpperCase()] },
+                { contentVersionIds: ['bad-version'] },
+                { contentVersionIds: null },
+              ];
+        for (const change of [
+          { idempotencyKey: ' ' },
+          { idempotencyKey: 'x'.repeat(129) },
+          { idempotencyKey: null },
+          { idempotencyKey: 'bad\nkey' },
+          { expectedRevision: -1 },
+          { expectedRevision: 0.5 },
+          { expectedRevision: '0' },
+          { expectedRevision: Number.MAX_SAFE_INTEGER + 1 },
+          { expectedRevision: command.correcting ? 0 : 1 },
+          { caseId: efCaseId },
+          { filingId: efFilingId },
+          { expectedVersion: 9 },
+          { stage: 'EXECUTING' },
+          { unknown: true },
+          ...(command.correcting
+            ? [
+                { [command.target]: efRootId },
+                { correctionReason: ' ' },
+                { correctionReason: 'x'.repeat(501) },
+                { correctionReason: null },
+              ]
+            : [
+                { [command.target]: null },
+                { [command.target]: undefined },
+                { correctionReason: 'not-first-record' },
+              ]),
+          ...specific,
+        ]) {
+          await expect(
+            send({ ...command.input, ...change }),
+          ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        }
+        await expect(
+          send(command.input, undefined, 'invalid'),
+        ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        await expect(
+          send(command.input, undefined, efCaseId, 'invalid'),
+        ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        if (command.correcting)
+          await expect(
+            send(command.input, undefined, efCaseId, efFilingId, 'invalid'),
+          ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+        expect(fetch).not.toHaveBeenCalled();
+      });
+      it(`${audience} ${command.name} surfaces authorization/conflicts/unknown outcomes without retry or guessing saved state`, async () => {
+        for (const [status, code] of [
+          [403, 'ACTION_FORBIDDEN'],
+          [409, 'VERSION_CONFLICT'],
+          [409, 'IDEMPOTENCY_CONFLICT'],
+          [500, 'INTERNAL_ERROR'],
+          [403, 'CSRF_INVALID'],
+        ] as const) {
+          const fetch = mockJson(
+            {
+              code,
+              message: 'command rejected or unknown',
+              requestId: 'ef001',
+            },
+            status,
+          );
+          await expect(
+            send(command.input, { retryOnCsrfInvalid: true }),
+          ).rejects.toMatchObject({ status, code });
+          expect(fetch).toHaveBeenCalledTimes(1);
+        }
+        const failed = vi
+          .fn()
+          .mockRejectedValueOnce(new TypeError('response lost'));
+        vi.stubGlobal('fetch', failed);
+        await expect(send(command.input)).rejects.toMatchObject({
+          code: 'NETWORK_ERROR',
+        });
+        expect(failed).toHaveBeenCalledTimes(1);
+        const replay = mockJson(receipt, 201);
+        await expect(send(command.input)).resolves.toEqual(receipt);
+        expect(replay.mock.calls[0]?.[1]?.body).toBe(
+          failed.mock.calls[0]?.[1]?.body,
+        );
+        expect(
+          new Headers(replay.mock.calls[0]?.[1]?.headers).get(
+            'Idempotency-Key',
+          ),
+        ).toBe(command.input.idempotencyKey);
+      });
+      it(`${audience} ${command.name} forwards abort and allows only an explicit original-body/key replay afterward`, async () => {
+        const controller = new AbortController();
+        const fetch = vi.fn(
+          (_url: string, options?: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => {
+              options?.signal?.addEventListener(
+                'abort',
+                () => reject(options.signal?.reason),
+                { once: true },
+              );
+            }),
+        );
+        vi.stubGlobal('fetch', fetch);
+        const pending = send(command.input, { signal: controller.signal });
+        const rejected = expect(pending).rejects.toMatchObject({
+          name: 'AbortError',
+        });
+        controller.abort();
+        await rejected;
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(fetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+        const replay = mockJson(receipt, 201);
+        await expect(send(command.input)).resolves.toEqual(receipt);
+        expect(replay.mock.calls[0]?.[1]?.body).toBe(
+          fetch.mock.calls[0]?.[1]?.body,
+        );
+      });
+      it(`${audience} ${command.name} validates against the submitted snapshot even if its original draft changes in flight`, async () => {
+        let complete: (response: Response) => void = () => {
+          throw new Error('response resolver not installed');
+        };
+        const fetch = vi.fn<
+          (url: string, options?: RequestInit) => Promise<Response>
+        >(
+          () =>
+            new Promise<Response>((resolve) => {
+              complete = resolve;
+            }),
+        );
+        vi.stubGlobal('fetch', fetch);
+        const input = structuredClone(command.input);
+        const original = structuredClone(input);
+        const pending = send(input);
+        input.expectedRevision = 100;
+        if ('feedbackId' in input) input.feedbackId = efCaseId;
+        if ('supplementId' in input) input.supplementId = efCaseId;
+        if ('contentVersionIds' in input) input.contentVersionIds.reverse();
+        complete(new Response(JSON.stringify(receipt), { status: 201 }));
+        await expect(pending).resolves.toEqual(receipt);
+        expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(
+          original,
+        );
+      });
+    }
+  it('preserves DTO-normalized text in the raw body and lets Headers perform its own transport whitespace normalization', async () => {
+    const input: casesApi.RecordExecutionFilingFeedbackInput = {
+      ...efFeedback,
+      feedbackId: efRootId,
+      expectedRevision: 0,
+      idempotencyKey: '  original-feedback-key  ',
+      courtCaseNo: `  ${'x'.repeat(100)}  `,
+      content: `  ${'x'.repeat(2000)}  `,
+    };
+    const receipt = {
+      id: efVersionId,
+      filingId: efFilingId,
+      feedbackId: efRootId,
+      revision: 1,
+      recordedAt: '2026-10-16T01:00:00Z',
+    };
+    const fetch = mockJson(receipt, 201);
+    await expect(
+      casesApi.recordCaseExecutionFilingFeedback(efCaseId, efFilingId, input),
+    ).resolves.toEqual(receipt);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
+    expect(
+      new Headers(fetch.mock.calls[0]?.[1]?.headers).get('Idempotency-Key'),
+    ).toBe('original-feedback-key');
+  });
+  it('uses the backend DTO Unicode length boundary without rewriting valid content', async () => {
+    const input: casesApi.RecordExecutionFilingFeedbackInput = {
+      ...efFeedback,
+      feedbackId: efRootId,
+      expectedRevision: 0,
+      content: '📝'.repeat(2000),
+      courtCaseNo: '✍️'.repeat(100),
+    };
+    const receipt = {
+      id: efVersionId,
+      filingId: efFilingId,
+      feedbackId: efRootId,
+      revision: 1,
+      recordedAt: '2026-10-16T01:00:00Z',
+    };
+    const fetch = mockJson(receipt, 201);
+    await expect(
+      casesApi.recordCaseExecutionFilingFeedback(efCaseId, efFilingId, input),
+    ).resolves.toEqual(receipt);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
+    fetch.mockClear();
+    await expect(
+      casesApi.recordCaseExecutionFilingFeedback(efCaseId, efFilingId, {
+        ...input,
+        content: `${input.content}📝`,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(
+      casesApi.recordCaseExecutionFilingFeedback(efCaseId, efFilingId, {
+        ...input,
+        courtCaseNo: `${input.courtCaseNo}✍️`,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
