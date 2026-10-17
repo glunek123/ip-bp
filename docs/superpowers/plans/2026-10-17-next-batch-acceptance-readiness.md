@@ -1,73 +1,79 @@
-# 下一批验收前置与一次性确认清单
+# 下一批最小页面闭环与一次性确认清单
 
-状态：待确认的执行申请，不是执行授权。依据既有CORE-EF-001／UXQ-03合同及2026-10-17接续要求；源码准备基线为本地 `0565acbc88a3d01aeb70ba5176df179e0fa6bee1`。该提交尚未推送，远端备份仍为 `0b90e9c3e28f7a1a3cf6cd195728f6a6da43cc52`；新提交的公开上传范围另行确认。下列数量来自源码静态核对，未查询实时数据库，也未运行HTTP或浏览器。
+状态：静态执行方案，尚未批准新增验收。以本页替代7ab3e257中的“EF接口首项＋线索八项、11会话”申请，不先跑API块再追加页面额度。远端代码备份仍为 `0b90e9c3e28f7a1a3cf6cd195728f6a6da43cc52`，后续本地准备提交未上传。旧业务、文件及登录额度均为0。
 
-## 1. 共同前置：先核环境和原证据，不重做成功操作
+## 1. 已核环境及开跑条件
 
-- 唯一拟用数据库仍为本机隔离R2：project `dev-cor-ui003-r2`，完整container ID `45addc0179e929dd1dcd4f835b6c6c14c36c2ac4aed5e6cd5842648bf5db5236`，`127.0.0.1:15438/dev_cor_test`、schema `public`。期望165份成功迁移，加唯一已正式resolved的原EF失败行；不创建新数据库、不部署、不再次resolve或迁移。
-- 当前主控、原EF和旧运行树的 `.env.test` 实际指向15433；它们不能直接执行固定R2 helper。本单没有改配置或执行capture。执行前由唯一Runner正常准备获准R2配置及本树private-file root，检查两URL、真实container／卷／数据库身份；不得仅覆盖进程变量以绕过冲突校验。实时healthy、ledger和现有对象均待核，不把历史记录当现状。
-- EF resolve三件原文件已找到，来源为原 `ef001-integration/.local/ef001-evidence/official-ef001-resolve/`：receipt.json 853bytes／SHA256 `162c5ead547631b44a84913abc8a7068191dc2198fb58a420b3f73fa98b3ed1c`；stdout.log 172bytes／`a51491bda92c3572154b87419a96572b0052ab3a47fe4222a568eca3a3b9ddfe`；stderr.log 961bytes／`211b3323777fed313dce76ef3c4b17609b34e69a87930c44483b90a18e6f256d`。原1832d991候选的普通Resolve-result、实际validator proof及post-deploy摘要相互对应。只核了日志字节hash，没有输出正文；无需重做已成功resolve。当前目录缺的是同一ignored路径接入，未来可按原字节和hash核定接入，不能补造成功回执。
-- 原唯一执行任务为「验收独立环境快捷操作」`01a13e67-4068-778b-a1e9-9d808ecb50e8`；来源Task信息依据主控受信交接，不冒称回执JSON自带该字段。当前无向其发送新运行指令。
-- fresh只读预检应记录所有起点旧PK行、全安全表、账本、Case、序列和真实文件hash，不把历史87案／92CV等数量硬编码为当前数量。盘点到期WAITING_HEARING与认证清理期限；如启动Nest会合法改动旧案或清理旧行，必须先列精确对象另裁，不能伪装成迁移或本批业务变化。未获明确许可不得启动服务。
-- 正常完整verify含NT006真实数据库专项，本申请不默认重跑。产品及构建输入可证明与已有可信候选相同才限定复用；不能证明时先补相应门禁申请，不静默跳过。旧owned161／165专项、本批API以及真实页面是不同证据范围。
+- 本轮仅只读Docker过滤inspect：R2完整CID `45addc0179e929dd1dcd4f835b6c6c14c36c2ac4aed5e6cd5842648bf5db5236` 正在运行、healthy；project `dev-cor-ui003-r2`、service `postgres-test`、`127.0.0.1:15438`、卷 `dev-cor-ui003-r2-pgdata`及固定postgres17.11镜像摘要 `051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0` 匹配。普通令牌访问Docker pipe被拒后，同一过滤inspect经正式审批成功；没有启动容器、服务或读取Config.Env。
+- ca015、原EF、test-runtime-stability及frontend-integration现有 `.env.test` 实际均为15433，本轮未改。未来执行单须明确允许唯一Runner正常配置一个固定运行树的R2 URL及本树private-file root，使用标准capture复核两URL/完整tuple，不借进程覆盖绕冲突校验。原文件只核字节；如本树缺文件，先列准确source/key/size/SHA/target清单，未经核准不复制或覆盖，不搬回私密归档。
+- 尚未连接DB。healthy不是当前ledger/身份/业务资格证明。未来写入前，在标准锁内READ ONLY核完整source/public165及唯一精确resolved历史、全部旧PK行/安全表/Case/序列和真实文件字节，记录真实数量，不硬编码87案/92CV。Nest启动会立即并每60秒推进到期开庭，材料cleanup立即并每15分钟运行；从启动至本轮硬截止（至多15分钟，且不得跨Shanghai业务日）的旧对象推进、过期、pending清理、物理清理候选须全部为0，否则启动前停下另列影响，不自动处理或禁用后台机制。到截止先停止业务、收尾并退出服务，不延长窗口加量。
+- EF resolve原三件已找到，不再resolve：`ef001-integration/.local/ef001-evidence/official-ef001-resolve/receipt.json`（853bytes，SHA256 `162c5ead547631b44a84913abc8a7068191dc2198fb58a420b3f73fa98b3ed1c`）；同目录stdout.log（172bytes，`a51491bda92c3572154b87419a96572b0052ab3a47fe4222a568eca3a3b9ddfe`）、stderr.log（961bytes，`211b3323777fed313dce76ef3c4b17609b34e69a87930c44483b90a18e6f256d`）。接入核原字节及官方proof，不能造替代成功回执。
+- 原唯一Runner「验收独立环境快捷操作」`01a13e67-4068-778b-a1e9-9d808ecb50e8` 串行执行，两块各固定候选/证据目录，workers1/retries0/首个非预定失败停业务。下列额度可分别或一并批准，不相互挪用；仅明确的会话收尾和只读保护可在失败后继续。
 
-## 2. EF最小块：只选原14项中的首项
+## 2. 两个实际页面任务，不运行旧API矩阵
 
-准确场景：`tests/e2e/case-execution-filing-followup.spec.ts` 的 `two internal operators append all four facts, preserve original filing/workflow and recover exact old keys after finish`。只证明内部API／数据库路径，不是写入式真实页面、PRIMARY律师、真实24h过期、流中竞争或完整14项。
+### EF：填写一条法院反馈，再带原因更正
 
-| 类别         | 新申请硬边界                                                                                                                                                                                                                                                                                                                                                                           |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 既有对象     | 复用经现场核准的合成部门、客户及权利主体；既存Case业务写入0，不恢复任何旧inactive角色，不改原权限。                                                                                                                                                                                                                                                                                    |
-| 新身份       | source和operator各1个新UUID账号：用户、凭据、membership、role、assignment各2；新Grant共15，均DEPARTMENT。source为case.read＋EF四动作＋customer.read、case.external-entry.create、case.execution.mail、case.execution.filing.submit、case.execution.finish（10项）；operator仅case.read＋EF四动作（5项）。无新部门、客户、律师或企业绑定。                                              |
-| 新业务对象   | 1个合成HISTORICAL_BACKFILL Case；正常external entry、execution mail、filing submit、finish各1次。原filing同键重放1次，不新增第二事实。Case由WAITING_EXECUTION_STAMP/v1，经正常邮寄/申请，到WAITING_ARCHIVE/v4；不结案、不归档。                                                                                                                                                        |
-| EF事实       | 初次反馈／反馈更正／初次补交／补交更正各1次，共4条追加版本事实、4成功回执、4成功审计；补交2 typed documents＋2精确材料引用。EF本身不改Case版本、stage或原filing。四命令各有完成前原键重放、同键异body拒绝、finish后原键重放、新键拒绝。                                                                                                                                                |
-| 文件         | 4个upload drafts、4个materials、4个CV，4份合成PDF总168bytes（43×3＋39），无大文件。原邮寄/申请各1个typed document及ref，另加上述补交2份，合计typed4／ref4；2次内容GET核原字节。                                                                                                                                                                                                        |
-| HTTP与会话   | 首项显式40次请求：32预期成功、8预期409，含3次正常登录、2详情GET、2下载GET及8次上传阶段请求；新增auth_sessions至多3。任何非预定失败停止，不改key续跑或补额。                                                                                                                                                                                                                            |
-| 数据库伴随写 | 成功路径最多75新增行（当天Case计数器已有则74），明细由上述身份25、session3、Case/工作流及审计回执/计数器至多15、EF16、上传及原typed/ref16构成。还须允许一次当天case_number_counters upsert、Case指针及三次阶段更新、4个draft状态和4个material currentVersion更新、上述3个新session的正常使用时间／授权revision更新；40次HTTP绝不等于40次DB写。若旧节流记录会被成功登录删除，先停另裁。 |
-| 结束状态     | 保留全部新事实／文件／回执。另申请最多2次本批新role停用（active=false、version1→2，assignment保持），以及精确3个本批新session的revoked_at更新；不得按actor清除旧会话。现首项不会登出，末端步骤必须先固定为可审Runner步骤，未补齐不得开始。                                                                                                                                             |
+仅复用原Runner已封存的activeSource：user `03620738-5f11-49f9-9279-95d51306e32e`、role `cfd6fa11-f04d-4e99-ab3c-2fccc8e22161`。原证据记录其active/v1、同部门有效membership/唯一assignment、10个DEPARTMENT Grant及受保护credential引用；没有读取私密载荷。必须live复核其中本片所需7项（case.read、customer.read、case.external-entry.create、case.execution.mail、case.execution.filing.submit、case.execution.feedback.record/correct）及全部原身份/授权行保持。复核失败就停，不恢复旧角色、补权或造新actor。本次新增身份/Grant均0，结束不撤旧source权限。
 
-## 3. 线索块：完整原八项HTTP测试，单独计额
+先由该身份仅用正常HTTP准备一个新HISTORICAL_BACKFILL Case：转入、执行邮寄、执行申请各1次；2个合成PDF各43bytes用于邮寄回执/申请证明，形成真实EXECUTING/v3和本地filing。不能SQL造Case/filing；这3次来源准备不冒称目标页面验收，也不运行原14项接口矩阵。
 
-准确文件为 `tests/e2e/lead-batch-push.spec.ts`。八项涉及整批成功、20项边界、旧版本整批拒绝、同请求并发共回执、丢响应原请求恢复、精确回执故障回滚、terminal撤权重放拒绝和不存在对象的安全错误。没有页面操作或文件上传；不得称真实UI已验。
+目标页面固定：正常登录→侧栏“案件”→按本轮真实案号找到新案→详情“执行立案后续资料”→“登记法院反馈”，日期/法院案号留空、填写合成内容→页面提交→看到本轮feedbackId revision1及确认→“更正这条反馈”，填写不同内容及非空原因→“确认更正”→看到同根revision2、原revision1/原因→点页面“刷新”后保持→正常退出。两次EF写必须由真实表单/按钮及其原transport发出，不能用测试request直调替代；提交后GET必须核真实保存内容，不只看点击或toast。
 
-| 类别       | 新申请硬边界                                                                                                                                                                                                                                                                                                                 |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 既有主身份 | 仅原H42：user `edc8bf6f-6660-41f6-8418-f72f87443a1c`、role `51c34a8b-fb00-45b1-ab9f-d077d59d4878`，原42 Grant及身份关联不改。复用经现场核准的ADMITTED客户、权利主体及active CLIENT binding；缺失就停，不补旧Grant或造替代来源。                                                                                              |
-| 新terminal | 若现场证实所有固定UUID均不存在，且另获本项批准，至多新增user/credential/membership/role/assignment各1，及customer.read、lead.read、lead.create、lead.push四项DEPARTMENT Grant。user `eecec2c7-068c-4515-b737-0846aedc2bb1`、role `4ab4e231-9e37-4f89-a745-66406623f2be`，其余ID由原helper固定。不新建第二terminal或修改H42。 |
-| 业务写入   | 32个新lead，每条1个product，共32product；32个create receipt、32条lead.created audit；5个不同成功batch receipt、28次推送及lead.pushed audit。正常lead_number_counters递增32及updated_at变化单列。结束28条WAITING_REVIEW/v2、4条WAITING_PUSH/v1，所有事实保留。                                                                |
-| 请求与会话 | 32次lead创建POST、8次正常登录、12次batch POST，共52显式HTTP请求。batch状态为201×7、400×1、409×2、预定500×1、撤权后403或409×1。新增session最多8，仅这些新session允许正常同行更新；已有节流行的删除须先单列裁定。                                                                                                              |
-| 故障／文件 | 仅一组本轮新H42两线索、原key，临时sequence/function/trigger各1，精确命中一次，finally只清同三个对象；不允许全局disable trigger或清旧fault。文件0、Case0、迁移0、原EF请求重放0。                                                                                                                                              |
-| 结束状态   | terminal自己的新assignment撤销1次，不恢复；H42不撤权。另申请精确8个本批新session的revoked_at更新，不清旧会话。新账号／Grant／业务行保留，故障对象无残留，服务／端口／标准锁释放。                                                                                                                                            |
+本块新增上界：1 Case/1 trial round/1 external entry，来源3 fact/receipt/audit组（转入Case组三个根按真实schema计）、2 feedback versions/2 EF receipts/2 audit；2 drafts/2 materials/2 CV/2 blobs共86bytes、邮寄/申请各1 typed document/ref；1 session。合计可定位新增关系行28–29：session1＋Case/round/entry/receipt/audit5＋至多新case counter1＋上传6＋邮寄/申请fact/receipt/audit6＋typed/ref4＋EF6。若counter已有则28；Case指针、邮寄/申请阶段/版本、draft/material currentVersion及正常计数器更新另记。EF本身不改Case.stage/version/原filing。无补交、finish、重放、故障或并发，不称这些页面已验。
 
-### terminal回执不能倒填
+### 线索：页面新建两条，一次批量推送
 
-固定 `.local/uxq03-evidence/lead-batch-push-terminal-creation-receipt.json` 在已查目录及workspace精确文件名搜索中未找到；原e48760d运行单只是未来创建计划，没有实际创建证明。原source Task的独立ID／标题尚无可靠资料，不能用原线索列表Task冒名；未来创建职责仍应交唯一Runner。
+仅复用H42 user `edc8bf6f-6660-41f6-8418-f72f87443a1c`、role `51c34a8b-fb00-45b1-ab9f-d077d59d4878`；原42 Grant/credential/membership/assignment保持。live只读核customer.read、lead.read、lead.create、lead.push和既有客户 `50000000-0000-4000-8000-000000000002`、权利主体 `60000000-0000-4000-8000-000000000001`、active CLIENT binding及页面可见资格；缺一即停，不造terminal或补权。
 
-现v1回执模板声明创建时161，并要求candidateCommit等于当前运行HEAD。在当前public165新建身份后填写此模板会伪造创建时事实。技术前置是增加独立v2新建证明：记录真实165／十个pin、实际创建candidate/runId、全目标原不存在的before、精确新增对象及差异hash；保留旧v1不可变证明的原校验，不能改写或追制。如目标旧对象已存在但没有可信原证明，必须BLOCKED，不能补缺后声称全新创建。此改动只是验收代码准备，不创建任何对象或回执。仅做H42两线索最小正向也会被现prepare的terminal门槛阻断，不通过删校验来减额度。
+正常登录→侧栏“线索库”→“新建线索”，每条在真实页面选客户/主体，明确案件类型CIVIL、侵权类型仅TRADEMARK、来源ONLINE、平台TAOBAO（先核真实表单字典确有这些合法选项，否则停）；发现时间用本轮真实合法时间，店铺/商品名称为不同的runId合成标记，商品URL空、销量1、单价1.00、评论数0，明确“是否申请披露店铺经营者信息”选否（needDisclose=false），不上传截图。各提交一次→记住两个真实ID/编号→回列表勾选恰好这两条WAITING_PUSH→“批量推送”，核对话框数量2及客户分组，主体由登录响应/本轮会话证明另核（对话框不显示身份）→只提交一次→面板关闭/列表重载→切“线索待审核”、逐条详情/刷新核WAITING_REVIEW/v2→正常退出。现实现无独立成功toast，以实际页面状态及事实对账判定，不依赖前两行或计数器。
 
-## 4. 一次性确认的完整范围
+本块新增上界：2 lead、2 product、2 infringement、2 create receipt、1 batch receipt、4 audit，共13关系行；另1 session、2次编号分配（若该部门counter尚不存在至多新增1行，否则只更新）。无新账号/Grant/客户/绑定/文件/Case，不撤H42，不跑旧8项、故障DDL或terminal流程。
 
-可分别批准EF块、线索块或两者；实际仍由同一Runner串行。若两块都批准：至多3个新身份集合、19个新Grant、11次登录／11个新session、1新Case、32新lead／32product、4份168bytes文件；EF40＋lead52共92次显式HTTP。另有前后只读保护、两新EF role停用、terminal assignment撤销及11个精确新session撤销。常规认证同行更新、两种编号计数器及限定故障DDL也必须包含，不把“业务写入数量”当全库总更新次数。旧预算不结转，任何额外登录、账号、Grant、文件、重试或新场景均停止另报。
+### 两块一次性总额度
 
-这不是请求批准迁移、旧数据删除、权限恢复、PRIMARY／门户、新客户或任意后续公开上传。真实写入式UI需要另一份含具体页面步骤的新预算；本单两个API块不能代替它。
+| 范围         | 新申请上界                                                                                                                                                                          |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 身份/权限    | 新用户、凭据、role、Grant、assignment、客户、主体均0；两既有身份及全部原权限保持，不恢复任何inactive角色。                                                                          |
+| 业务对象     | 1新Case及其合法来源链；2新线索/2商品/2侵权类型；2条EF版本。各自成功receipt/audit如上保留。两种counter最多各新1行，已有则正常更新，不回退序列。                                      |
+| 文件         | 2份合成PDF/2 drafts/materials/CV/blobs，共86bytes，仅EF来源；原文件不动。                                                                                                           |
+| 页面/请求    | EF来源3次＋反馈2次＋线索创建2次/批次1次，共8次正常业务写；上传POST/PUT共4次；正常登录2次/2新session，页面logout各1次。无额外业务重放或补量。                                        |
+| 伴随写与结束 | 仅上述新session的lastUsedAt/authorizationRevision及最终revoked_at；本轮新行和明确counter/Case/draft/material更新。所有既存安全/业务行保持。无角色末端改动，无迁移/resolve/故障DDL。 |
 
-## 5. 公证UXQ-02的最小待决与归属
+页面GET数量随路由/刷新产生，记录实际清单，不冒称“8次业务POST＝全部DB更新”。每块只登录1次，失败/响应未知不自动再登录。失败可能对本轮USERNAME/SOURCE两个auth_throttle键各插入1次，两块最多4次；保留不删。成功登录会delete匹配USERNAME throttle，失败又可能更新SOURCE旧行，所以各次登录前在私密内存计算准确的两个键并证实旧匹配行均0，否则停下另裁；不输出节流密钥或摘要原值。未知业务结果保留原target/body/key，不换键或造替代；此正向块不预留业务重放，收尾后报告断点。
 
-INPUT-016只确认先带原因更正取证日／物流／寄件、出证后证书更正另片，以及跨事项独立批量开箱方向。现有NT001／002只有一次登记事实和单项Command；未冻结独立更正或跨事项批次的完整提交语义。因此本轮已启动独立范围核查，未派产品实现，避免让实现者自行新增规则。
+## 3. 每个新session的精确收尾
 
-需要最小明确三点：
+旧11会话申请整体撤回。新方案只允许上述2个session，逐块结束并收尾，不把关闭context当服务端撤销。
 
-1. 更正是否首片只给获权内部运营，允许到哪些阶段；后续审核／出证／转案已存在时，是否仅追加资料revision并保留原办理、照片归属、Case和费用锚。证书编号／日期／文件不含本片。
-2. 批量开箱首片是否仅由操作者逐事项明确配图，未知／混包／多匹配不提交，不含ZIP识别或自动单号分派。
-3. 批次采用整批回滚还是逐项独立提交；逐项模式须明确成功／确定失败／未执行／未知并按原body/key恢复，不能把未知当失败换key。NT010整批原子不自动适用于本片。
+1. 登录前保存旧auth_sessions PK/行摘要；登录后PK差集须恰1，并核user/dept/创建时间窗/expires_at。在私密内存计算本context HttpOnly cookie的SHA256，与该行token_digest相等；普通证据只留ID/比较结果/行摘要，不dump cookie/token/口令。无法唯一绑定就停止，不猜ID、不按actor批量撤销。
+2. 正常结束或业务失败后先保留必要pending证据，用真实页面 `[data-test="logout"]` 退出一次（窄屏先开菜单），只读核该新ID的revoked_at。AuthController finally在失败时也清cookie，不能再靠重取cookie重试，不追加登录或getSession证明请求。
+3. 页面logout失败/未发出而唯一新ID已证时，至多一次精确fallback：事务内SELECT FOR UPDATE重核id/token_digest/user/dept/created_at/expires_at与绑定一致；已revoked仅读不更新，否则参数化UPDATE仅同id/token_digest/user/dept且revoked_at IS NULL，设置revoked_at，要求rowCount1。0行/任意不符即停。正常logout与fallback择一最终撤销效果，最多2个本轮ID；不delete、不撤旧session、不延长expires_at。
+4. 业务首失败后只准此收尾/只读对账，不做第二业务请求或下一块。保留全部新事实/材料/receipt；旧行保持，服务/端口/标准锁结束释放。绑定/守卫失败标为未完成，不制造清理PASS。
 
-原公证列表Owner为「实现公证列表流程办理」`01a13ef4-c67e-70c6-9886-6ab55e035008`，范围不含新的资料保存API。原共享抽屉Owner为「实现列表办理共享抽屉」`01a13ee0-f72c-71a1-b033-bf5ca55d4012`，D为「补齐跨模块流程交接」`01a13e59-b7fb-71f0-8f13-a802319830ea`。冻结后主控应重新分配notary API、lead-notary/notary-opening service及DTO、schema／迁移、内部列表／详情／WorkflowPanel、公证门户的唯一作者；V0 read与V1 display既有交付不代表共享文件可抢写。本轮未联系或唤醒这些原Task，也未发生派发拒绝或绕路。
+本节是新执行申请，不是本轮已撤销。现成EF原测试只dispose、lead full8没有该页面logout，均不直接拿来执行本方案。
 
-## 6. 本轮实际启动的独立任务
+## 4. 入口准备及有效证据复用
 
-- `ef165_readiness`：回执追溯与EF记录级预算，已完成，只写ignored报告。
-- `lead165_readiness`：固定回执追溯／八项预算已完成；真实public165新建回执v2的纯代码／反例13/13及独立受限补审C/I/M0已完成，不执行创建。
-- `notary_scope_readiness`：已完成合同与Owner核查；等待上述业务决定，不占产品文件。
-- `readiness165_review`：已独立核静态请求预算并指出v1/161的创建时事实冲突；v2受限补审ACCEPTED、C/I/M0，只是代码准备通过，真实创建／运行仍受前置与授权约束。
+- 最小页面入口须先编写/审查，再发正式GO：EF独立page spec采用现有真实来源HTTP配方，复用上述固定旧source，不调用旧createActor；线索独立strict165/H42 page spec/helper，不调用full8 terminal prepare，也不删/绕其guard。两入口及精确session收尾先过实际函数纯反例、类型/Lint/格式、离线发现恰各1项/callback0、独立审，固定候选后执行。它们目前仅有静态设计，不能声称已实现或已运行；这部分代码准备不需要真实额度。
+- 可复用：2ef6a739原业务候选正常verify139工具/2510前端/2351后端、NT006及双构建；旧EF14分段内部API、旧只读3页面、165 owned/官方部署/历史保持各只证明原范围。不重新resolve、迁移、重做原14或线索full8 API矩阵。构建复用仍逐raw核产品/依赖/生成/构建输入与原manifest，不能只凭路径未改。
+- 165组合必须新验：实际source/applied ledger/tuple/合法对象；新增窄helper/fixture/logout的纯/静态/发现；固定运行tree上的上述2条真实页面、实际POST结果与GET读回/刷新历史、精确session撤销、全部旧行和文件保持。旧完整verify不冒新tree全绿；若需要完整门禁，另明确其中NT006真实DB动作，不静默开跑。
+- 不覆盖：EF补交写入式UI、PRIMARY/门户、真实24h、流中争用；线索20项边界、旧版本整批拒绝、并发、未知恢复、故障回滚、terminal撤权。这些保留待验，既有API证据不替代真实页面，本次页面正向也不代替协议反例。
 
-详细已有证据定位在本机ignored `.local/next-batch-preparation/`，不上传私密回执、credential或原trace。主控只协调、审查、集成与维护本清单；没有执行数据库、HTTP、权限或迁移动作。
+## 5. 公证三项最简推荐：一次决定，未实施
+
+依据INPUT-016、[当前公证Spec](../../spec/v0.1/modules/notary.md)、[NT002单项开箱设计](../specs/2026-09-24-core-nt-002-unboxing-materials-design.md)及Demo逆向M03。字段更正/跨事项开箱方向已批准，以下资格、阶段与批次语义是新增选择。
+
+| 决定                          | 推荐首片                                                                                                                                                                                                                                                                                                                             | 既有依据/准确影响                                                                                                                                                                                                                                                |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 谁更正哪些资料、冻结/归档边界 | 仅获新 `notary.record.correct` Action的内部操作员，按现有DEPARTMENT/TEAM来源范围；公证处/客户首片不开放，不新增职级门槛或自动Grant。取证日/物流在原取证事实存在后的WAITING_UNBOX、UNBOX_REVIEW、ISSUANCE_DECISION、WAITING_CERTIFICATE、WAITING_RETURN可带原因追加revision；寄件须原开箱事实存在，在后四阶段可改；ARCHIVED首片只读。 | 现取证/开箱为不可变原事实，无独立更正API/版本。仅改变“当前资料”投影；原审核/决定/照片归属/冻结CV/Case及费用锚保持，物流改动不改派照片。证书编号/日期/文件另片。资格和允许阶段是本次选择，不从SD-24或普通record Action推定。                                      |
+| 跨事项照片归属、可复用页面    | 内部公证事项列表现有勾选区加独立批量入口，逐事项明确matter ID/version、寄件信息及照片；未知/混包/多匹配保持未提交。首片无ZIP/单号自动分派。                                                                                                                                                                                          | 复用NotaryMatterListPage.vue的selectedIds及NotaryMatterWorkflowPanel.vue单项照片上传/选择；现没有完整跨事项归属面板。每项只WAITING_UNBOX，写时重验notary.unbox.record及来源范围；NOTARY_MATTER owner、1–50张JPG/PNG/WEBP且每张≤20MiB保持，一事项CV不挪另一事项。 |
+| 逐项结果还是整批回滚          | 推荐逐项独立事务，显示成功/确定失败/未执行/未知；成功不重做。确定失败/未执行刷新事实和版本后重提；未知只按原body/key核回唯一结果，不当失败换key重试。                                                                                                                                                                                | 单项opening现有事实/引用/审计/回执的原子性可复用；批次聚合/恢复是新合同。NT010整批原子仅限WAITING_RETURN＋NO_ISSUE归档，不能套本片；Demo的ZIP逐组/队列兜底不构成正式依据。                                                                                       |
+
+可整体采用推荐或逐项改动；冻结前不写新Command/schema/按钮/Grant。冻结后只按backend/schema/API与内部UI唯一作者分工，不建通用审批系统、不重复NT008/009/010，不混证书更正/误建删除/终止。源码及旧Owner定位保留在本机ignored notary-scope.md，不再新增路由台账。
+
+## 6. 收口与真正阻塞
+
+本轮只完成静态页面缩片、2个session的正常/失败收尾设计、R2容器/配置只读核对及公证最简提案，没有写库、登录、改配置或启动服务。readiness165_review独立两轴ACCEPTED、C/I/M0，表单必填与对话框显示精度finding已闭合；此审查只证明计划边界，不当页面PASS。
+
+静态方案可以收口，正式运行不能GO：窄页面入口及固定候选尚须工程准备/审查；现有配置与R2不符；live ledger/现有两身份/客户/后台清理候选尚待只读核实；本页2session/1Case/2线索/2文件/精确session撤销尚无新额度。若现有身份失效，停止并另报，不自动切新账号/Grant。公证产品实施等上表三项决定。旧11会话和两API块撤回，不消耗其任何数据；新本地提交公开上传不在原固定备份中。

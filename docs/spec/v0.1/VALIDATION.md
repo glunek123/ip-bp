@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### 最小真实页面计划与只读R2核对（2026-10-17）
+
+原EF/线索API双块及11session提案撤回；三个独立准备任务按实际页面/认证源码收窄为两条操作员路径，复用旧EF activeSource与H42，拟新增身份/Grant为0、1新案、2新线索、2份86bytes来源PDF及2个新session。真实表单填写/按钮提交/结果读回/刷新和本轮精确session注销纳入同一范围，不把API准备或旧14/8项当页面验收。原source凭据仅核普通proof及受保护引用，没有打开私密payload；live资格未核。认证源码核得logout失败finally也清cookie，故失败收尾只允许登录前后差集/内存cookie摘要唯一绑定的新ID，正常logout后只读确认，必要时一次同ID完整谓词guarded撤销，不按actor撤旧session。具体步骤/新增写入和公证三项待决仅见[一次性清单](../../superpowers/plans/2026-10-17-next-batch-acceptance-readiness.md)。
+
+本轮唯一live动作是过滤 `docker inspect`。普通令牌因配置文件/pipe Access Denied失败；同一只读过滤inspect正式审批后exit0，原完整R2 CID running/healthy、project/service、固定17.11镜像、127.0.0.1:15438和持久卷全匹配。四个运行目录.env.test只读解析为test/15433；未改配置，未输出凭据/Config.Env，未连接DB或执行capture、登录、HTTP、浏览器、服务、迁移/resolve。观测源 `.local/next-batch-preparation/r2-readonly-observation-20261017.json`；它不证明当前ledger/身份/后台清理资格。新增窄页面入口尚待工程准备/审查，正式运行仍需新额度；不重跑完整verify或已耗尽业务。
+
+未参与实施的readiness165_review独立核认证/启动/表单源码及唯一计划和三份状态文档，两轴最终ACCEPTED、C/I/M0；线索caseType/needDisclose必填和对话框不显示身份两项精度finding已补闭。本次自7ab3e257起累计差异仅4份文档及对应快照，无产品/测试/配置/依赖变化，执行文档格式、Spec（59REQ/69AC/11BQ/60SD）、diff与严格context检查；不重复EF33/lead13纯例、类型/构建或全verify，不冒称新HEAD实跑旧门禁。静态方案可收口，实际执行仍BLOCKED于入口代码/审查、配置、live前置及新预算，不现在提交一个可直接启动的运行审批。
+
 ### 下一批回执追溯与创建时事实保护（2026-10-17）
 
 本地0565acbc之后，三个独立子任务只读追溯EF／线索原回执、静态计算新预算并核公证UXQ-02范围。EF三件原文件及官方Resolve-result／实际validator proof在原ef001-integration中存在，原hash、1000原字节与官方命令窗相符；本目录的缺失属于ignored路径未接入，不是原操作未成功，不需要重resolve。线索固定terminal回执在已查workspace中未找到，原e487运行单仅为计划，实际对象是否存在未查，不能补造创建历史。三件文件精确路径、hash及来源任务见[确认清单](../../superpowers/plans/2026-10-17-next-batch-acceptance-readiness.md)。
