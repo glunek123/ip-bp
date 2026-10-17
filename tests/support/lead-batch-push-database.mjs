@@ -3,6 +3,10 @@ import { readFile, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import {
+  assertExecutionFilingFollowupHistoricalFailure,
+  assertExecutionFilingFollowupResolveArtifacts,
+} from './case-execution-filing-followup-database.mjs';
 
 const root = resolve(process.cwd());
 const expectedInstance = Object.freeze({
@@ -12,9 +16,13 @@ const expectedInstance = Object.freeze({
   host: '127.0.0.1',
   port: 15438,
   database: 'dev_cor_test',
+  migrationCount: 165,
+});
+const creationReceiptInstance = Object.freeze({
+  ...expectedInstance,
   migrationCount: 161,
 });
-const migrationPins = Object.freeze({
+const creationReceiptPins = Object.freeze({
   '20261015150000_case_section_record_edits':
     '10760cf6e9969822a6b6a631760645625d227c4541a018560473e34c164953c7',
   '20261015170000_case_section_record_uploads':
@@ -27,6 +35,17 @@ const migrationPins = Object.freeze({
     'e125a3278b0530860b1be49273fc667224451f8a6d35b420bdf14e2b9c684105',
   '20261016110000_lead_batch_push':
     '1e267e104e4a7a1b20f1014dfd10506ce1aa831e32a11175e3a4dde2430c9e87',
+});
+const migrationPins = Object.freeze({
+  ...creationReceiptPins,
+  '20261016095000_execution_supplement_enum_preparation':
+    'f9a18c2d93ac3bb75debac0835eee32dd9896fff267c1fa7275c959bddfeac5f',
+  '20261016115000_fee_proof_category_prepare':
+    'a7b80c1143035aa0526fcb6a90857a737e505b692c2ea95efd7ff3f465e9f4d4',
+  '20261016120000_settlement_demo_alignment':
+    'fbb81d7cb424beb9b1bad103a498c2bee66c1e7c15ef806d47631b5685a810e7',
+  '20261016130000_evidence_demo_alignment':
+    'fd138a179438bac39a7bf30bc31373ac4ca2b9eef454ef8229c78ab0a1135de9',
 });
 const h42 = Object.freeze({
   actorId: 'edc8bf6f-6660-41f6-8418-f72f87443a1c',
@@ -129,11 +148,12 @@ export function validateLeadBatchPushMigrationSource(migrations) {
     !Array.isArray(migrations) ||
     migrations.length !== expectedInstance.migrationCount
   )
-    fail('all 161 migration sources are required');
+    fail('all 165 migration sources are required');
   const ordered = [...migrations].sort((a, b) => a.name.localeCompare(b.name));
   for (const [index, item] of ordered.entries()) {
     if (
       item.name !== migrations[index]?.name ||
+      (index > 0 && item.name <= ordered[index - 1].name) ||
       !/^\d{14}_[a-z0-9_]+$/u.test(item.name) ||
       !/^[0-9a-f]{64}$/u.test(item.checksum)
     )
@@ -145,9 +165,72 @@ export function validateLeadBatchPushMigrationSource(migrations) {
     )
       fail(`migration source pin mismatch: ${name}`);
   }
-  if (ordered.at(-1)?.name !== '20261016110000_lead_batch_push')
-    fail('the complete 156–161 source chain is required');
+  if (ordered.at(-1)?.name !== '20261016130000_evidence_demo_alignment')
+    fail('the complete 156-165 source chain is required');
   return ordered;
+}
+
+export function validateLeadBatchPushMigrationLedger(
+  applied,
+  migrations,
+  evidence,
+) {
+  const source = validateLeadBatchPushMigrationSource(migrations);
+  const historicalId = '9f547970-6eaa-4628-a670-f505590482e9';
+  if (!Array.isArray(applied) || applied.length !== source.length + 1)
+    fail('the complete 165 source/applied migration ledger is required');
+  const historical = applied.filter((row) => row.id === historicalId);
+  if (historical.length !== 1)
+    fail('the one exact EF001 historical failure is required');
+  try {
+    assertExecutionFilingFollowupHistoricalFailure(
+      historical[0],
+      'RESOLVED',
+      evidence?.receipt,
+    );
+    assertExecutionFilingFollowupResolveArtifacts(
+      evidence?.receipt,
+      evidence?.stdout,
+      evidence?.stderr,
+    );
+  } catch {
+    fail(
+      'the exact officially resolved EF001 failure and artifacts are required',
+    );
+  }
+  const successful = applied.filter((row) => row !== historical[0]);
+  if (
+    successful.some(
+      (row, index) =>
+        !uuid.test(row.id ?? '') ||
+        row.migration_name !== source[index].name ||
+        row.checksum !== source[index].checksum ||
+        !row.finished_at ||
+        row.rolled_back_at !== null,
+    ) ||
+    new Set(applied.map((row) => row.id)).size !== applied.length
+  )
+    fail('the complete 165 source/applied migration ledger does not match');
+  return true;
+}
+
+async function readOfficialEfResolveEvidence() {
+  const directory = resolve(
+    root,
+    '.local/ef001-evidence/official-ef001-resolve',
+  );
+  try {
+    const [receiptBytes, stdout, stderr] = await Promise.all([
+      readFile(resolve(directory, 'receipt.json')),
+      readFile(resolve(directory, 'stdout.log')),
+      readFile(resolve(directory, 'stderr.log')),
+    ]);
+    const receipt = JSON.parse(receiptBytes.toString('utf8'));
+    assertExecutionFilingFollowupResolveArtifacts(receipt, stdout, stderr);
+    return { receipt, stdout, stderr };
+  } catch {
+    fail('the exact official EF001 resolve artifacts are unavailable');
+  }
 }
 
 function canonical(value) {
@@ -271,11 +354,13 @@ export function validateLeadBatchPushCreationReceipt(
     cohort: 'uxq03-lead-batch-push-20261016',
     runId,
     candidateCommit,
-    r2: expectedInstance,
-    migrationPins: Object.entries(migrationPins).map(([name, checksum]) => ({
-      name,
-      checksum,
-    })),
+    r2: creationReceiptInstance,
+    migrationPins: Object.entries(creationReceiptPins).map(
+      ([name, checksum]) => ({
+        name,
+        checksum,
+      }),
+    ),
     mainH42Unchanged: {
       ...h42ManifestIdentity(),
       actions: [...h42.actions],
@@ -483,6 +568,7 @@ export function createLeadBatchPushDatabaseSupport(overrides) {
       await dependencies.migrations(),
     );
     await readTerminalCreationReceipt(manifest);
+    const efResolveEvidence = await readOfficialEfResolveEvidence();
     const captured = await dependencies.capture();
     if (
       captured?.childEnvironment?.DATABASE_URL !== environment.DATABASE_URL ||
@@ -507,20 +593,14 @@ export function createLeadBatchPushDatabaseSupport(overrides) {
         fail('connected PostgreSQL identity does not match R2');
       const applied = (
         await client.query(
-          'SELECT migration_name, checksum, finished_at, rolled_back_at FROM public._prisma_migrations ORDER BY migration_name',
+          'SELECT id,migration_name,checksum,started_at::text,finished_at::text,rolled_back_at::text,applied_steps_count,(logs IS NULL) AS logs_is_null FROM public._prisma_migrations ORDER BY migration_name,started_at',
         )
       ).rows;
-      if (
-        applied.length !== migrations.length ||
-        applied.some(
-          (row, index) =>
-            row.migration_name !== migrations[index].name ||
-            row.checksum !== migrations[index].checksum ||
-            !row.finished_at ||
-            row.rolled_back_at !== null,
-        )
-      )
-        fail('the complete 161 source/applied migration chain does not match');
+      validateLeadBatchPushMigrationLedger(
+        applied,
+        migrations,
+        efResolveEvidence,
+      );
 
       const h42Rows = (
         await client.query(

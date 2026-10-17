@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import test from 'node:test';
 import {
   createLeadBatchPushDatabaseSupport,
@@ -10,6 +12,7 @@ import {
   validateLeadBatchPushFaultScope,
   validateLeadBatchPushFixture,
   validateLeadBatchPushManifest,
+  validateLeadBatchPushMigrationLedger,
   validateLeadBatchPushMigrationSource,
 } from './lead-batch-push-database.mjs';
 
@@ -81,6 +84,11 @@ function pinnedMigrations() {
         '628a0fc0a664942896fdd85e3811bfe977702e4924ef33a58f83399a9bf8280e',
     },
     {
+      name: '20261016095000_execution_supplement_enum_preparation',
+      checksum:
+        'f9a18c2d93ac3bb75debac0835eee32dd9896fff267c1fa7275c959bddfeac5f',
+    },
+    {
       name: '20261016100000_case_execution_filing_followups',
       checksum:
         'e125a3278b0530860b1be49273fc667224451f8a6d35b420bdf14e2b9c684105',
@@ -90,12 +98,27 @@ function pinnedMigrations() {
       checksum:
         '1e267e104e4a7a1b20f1014dfd10506ce1aa831e32a11175e3a4dde2430c9e87',
     },
+    {
+      name: '20261016115000_fee_proof_category_prepare',
+      checksum:
+        'a7b80c1143035aa0526fcb6a90857a737e505b692c2ea95efd7ff3f465e9f4d4',
+    },
+    {
+      name: '20261016120000_settlement_demo_alignment',
+      checksum:
+        'fbb81d7cb424beb9b1bad103a498c2bee66c1e7c15ef806d47631b5685a810e7',
+    },
+    {
+      name: '20261016130000_evidence_demo_alignment',
+      checksum:
+        'fd138a179438bac39a7bf30bc31373ac4ca2b9eef454ef8229c78ab0a1135de9',
+    },
   );
   return rows;
 }
 
 test('accepts only the exact protected R2 runner tuple', () => {
-  assert.equal(validateLeadBatchPushBinding(validBinding).migrationCount, 161);
+  assert.equal(validateLeadBatchPushBinding(validBinding).migrationCount, 165);
   for (const patch of [
     { DEV_COR_TEST_DATABASE_PROJECT: 'other' },
     { DEV_COR_TEST_DATABASE_CONTAINER_ID: '45addc01' },
@@ -155,22 +178,255 @@ test('the actual prepare entry point blocks before migrations, capture, or datab
   assert.deepEqual(calls, []);
 });
 
-test('pins the complete 161-source chain and each raw checksum from 156 through 161', () => {
+test('pins the complete 165-source chain and each raw checksum from 156 through 165', () => {
   assert.equal(
     validateLeadBatchPushMigrationSource(pinnedMigrations()).length,
-    161,
+    165,
   );
-  const changed = pinnedMigrations();
-  changed[160] = { ...changed[160], checksum: 'f'.repeat(64) };
+  for (let index = 155; index < 165; index++) {
+    const changed = pinnedMigrations();
+    changed[index] = { ...changed[index], checksum: 'f'.repeat(64) };
+    assert.throws(
+      () => validateLeadBatchPushMigrationSource(changed),
+      /pin mismatch/u,
+    );
+  }
+  for (const count of [161, 162, 164, 166]) {
+    const changed = pinnedMigrations();
+    if (count < 165) changed.length = count;
+    else
+      changed.push({
+        name: '20261016140000_unapproved',
+        checksum: 'a'.repeat(64),
+      });
+    assert.throws(
+      () => validateLeadBatchPushMigrationSource(changed),
+      /165 migration sources/u,
+    );
+  }
+  const unordered = pinnedMigrations();
+  [unordered[160], unordered[161]] = [unordered[161], unordered[160]];
   assert.throws(
-    () => validateLeadBatchPushMigrationSource(changed),
-    /pin mismatch/u,
+    () => validateLeadBatchPushMigrationSource(unordered),
+    /ordered/u,
   );
-  assert.throws(
-    () =>
-      validateLeadBatchPushMigrationSource(pinnedMigrations().slice(0, 160)),
-    /161 migration sources/u,
+});
+
+test('the actual 165 SQL source bytes match the independent pins', async () => {
+  const directory = resolve('backend/prisma/migrations');
+  const names = (await readdir(directory))
+    .filter((name) => /^\d{14}_/u.test(name))
+    .sort();
+  const source = await Promise.all(
+    names.map(async (name) => ({
+      name,
+      checksum: createHash('sha256')
+        .update(await readFile(resolve(directory, name, 'migration.sql')))
+        .digest('hex'),
+    })),
   );
+  assert.equal(validateLeadBatchPushMigrationSource(source).length, 165);
+});
+
+test('the prepare entry point refuses stale or altered source before capture and connect', async () => {
+  const patch = {
+    ...validBinding,
+    UXQ03_BATCH_PUSH_MANIFEST: JSON.stringify(makeManifest()),
+    UXQ03_BATCH_PUSH_CREDENTIALS: JSON.stringify({
+      main: { username: 'opaque', password: 'opaque' },
+      terminal: { username: 'opaque', password: 'opaque' },
+    }),
+  };
+  const previous = Object.fromEntries(
+    Object.keys(patch).map((key) => [key, process.env[key]]),
+  );
+  Object.assign(process.env, patch);
+  try {
+    for (const source of [
+      pinnedMigrations().slice(0, 161),
+      pinnedMigrations().slice(0, 164),
+      pinnedMigrations().map((row, index) =>
+        index === 159 ? { ...row, checksum: 'f'.repeat(64) } : row,
+      ),
+    ]) {
+      const calls = [];
+      const support = createLeadBatchPushDatabaseSupport({
+        migrations: async () => {
+          calls.push('migrations');
+          return source;
+        },
+        capture: async () => {
+          calls.push('capture');
+          return {};
+        },
+        open: () => {
+          calls.push('open');
+          throw new Error('unexpected connect');
+        },
+      });
+      await assert.rejects(support.prepare(), /BLOCKED/u);
+      assert.deepEqual(calls, ['migrations']);
+    }
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+function resolvedEfEvidence() {
+  const stdout = Buffer.from(
+    'Migration 20261016100000_case_execution_filing_followups marked as rolled back',
+  );
+  const stderr = Buffer.alloc(0);
+  const row = {
+    id: '9f547970-6eaa-4628-a670-f505590482e9',
+    migration_name: '20261016100000_case_execution_filing_followups',
+    checksum:
+      'e125a3278b0530860b1be49273fc667224451f8a6d35b420bdf14e2b9c684105',
+    started_at: '2026-10-16 09:36:04.56343+00',
+    finished_at: null,
+    rolled_back_at: '2026-10-16 12:00:00.123+00',
+    applied_steps_count: 0,
+    logs_is_null: true,
+  };
+  return {
+    row,
+    receipt: {
+      protocol: 'EF001_PRISMA_ROLLBACK_V1',
+      failedMigrationId: row.id,
+      migrationName: row.migration_name,
+      checksum: row.checksum,
+      originalStartedAt: row.started_at,
+      rolledBackAt: row.rolled_back_at,
+      command: [
+        'node',
+        'node_modules/prisma/build/index.js',
+        'migrate',
+        'resolve',
+        '--rolled-back',
+        row.migration_name,
+      ],
+      cwd: 'backend',
+      exitCode: 0,
+      commandStartedAt: '2026-10-16T11:59:59.000Z',
+      commandFinishedAt: '2026-10-16T12:00:01.000Z',
+      stdoutSha256: createHash('sha256').update(stdout).digest('hex'),
+      stderrSha256: createHash('sha256').update(stderr).digest('hex'),
+    },
+    stdout,
+    stderr,
+  };
+}
+
+test('165 ledger admits only the exact resolved EF history and rejects synchronized source tampering', () => {
+  const source = pinnedMigrations();
+  const evidence = resolvedEfEvidence();
+  const successful = source.map((item, index) => ({
+    id: `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`,
+    migration_name: item.name,
+    checksum: item.checksum,
+    finished_at: '2026-10-17 00:00:00+00',
+    rolled_back_at: null,
+  }));
+  const ledger = [...successful, evidence.row].sort((a, b) =>
+    a.migration_name.localeCompare(b.migration_name),
+  );
+  assert.equal(
+    validateLeadBatchPushMigrationLedger(ledger, source, evidence),
+    true,
+  );
+  for (let index = 155; index < 165; index++) {
+    const changedSource = clone(source);
+    const changedLedger = clone(ledger);
+    changedSource[index].checksum = 'f'.repeat(64);
+    changedLedger.find(
+      (row) =>
+        row.migration_name === changedSource[index].name &&
+        row.id !== evidence.row.id,
+    ).checksum = 'f'.repeat(64);
+    assert.throws(
+      () =>
+        validateLeadBatchPushMigrationLedger(
+          changedLedger,
+          changedSource,
+          evidence,
+        ),
+      /pin mismatch/u,
+    );
+  }
+  for (const bad of [
+    successful,
+    [...ledger, evidence.row],
+    [
+      ...ledger,
+      { ...evidence.row, id: '00000000-0000-4000-8000-00000000ffff' },
+    ],
+    ledger.map((row) =>
+      row.id === evidence.row.id ? { ...row, rolled_back_at: null } : row,
+    ),
+    ledger.map((row) =>
+      row.id === evidence.row.id
+        ? { ...row, started_at: '2026-10-16 09:36:04.56344+00' }
+        : row,
+    ),
+    ledger.map((row) =>
+      row.id === evidence.row.id ? { ...row, applied_steps_count: 1 } : row,
+    ),
+    ledger.map((row) =>
+      row.id === evidence.row.id ? { ...row, logs_is_null: false } : row,
+    ),
+    ledger.map((row) =>
+      row.id === evidence.row.id
+        ? { ...row, finished_at: '2026-10-16 12:00:00+00' }
+        : row,
+    ),
+    ledger.map((row) =>
+      row.migration_name === source[164].name
+        ? { ...row, finished_at: null }
+        : row,
+    ),
+    ledger.map((row) =>
+      row.migration_name === source[164].name
+        ? { ...row, rolled_back_at: '2026-10-17 00:00:00+00' }
+        : row,
+    ),
+  ])
+    assert.throws(
+      () => validateLeadBatchPushMigrationLedger(bad, source, evidence),
+      /BLOCKED/u,
+    );
+  for (const changed of [
+    { receipt: { ...evidence.receipt, exitCode: 1 } },
+    {
+      receipt: {
+        ...evidence.receipt,
+        command: [
+          'prisma',
+          'migrate',
+          'resolve',
+          '--applied',
+          evidence.row.migration_name,
+        ],
+      },
+    },
+    {
+      receipt: {
+        ...evidence.receipt,
+        rolledBackAt: '2026-10-16 12:00:00.124+00',
+      },
+    },
+    { stdout: Buffer.from('tampered') },
+  ])
+    assert.throws(
+      () =>
+        validateLeadBatchPushMigrationLedger(ledger, source, {
+          ...evidence,
+          ...changed,
+        }),
+      /BLOCKED/u,
+    );
 });
 
 test('pins H42 as main and one terminal actor with the exact four grant IDs', () => {

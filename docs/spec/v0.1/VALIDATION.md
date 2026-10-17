@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+### 公开仓库代码备份与下一批验收准备（2026-10-17）
+
+用户明确替代此前“仓库必须私有”的条件，授权将固定候选 `0b90e9c3e28f7a1a3cf6cd195728f6a6da43cc52` 普通推送到公开仓库 `https://github.com/glunek123/ip-bp` 的现有分支 `codex/ui003-quick-actions-integration`。本次push exit0，随后ls-remote实核目标分支精确该SHA；main仍为 `b14752cad1f60cd98c609d0a2b436d7ec1d72cef`。备份范围166提交、283最终差异文件；没有强推、main合并、部署、迁移、数据库或登录状态上传。新一批本地准备改动不包含在此已完成备份中。
+
+检查读取待推送1594个对象中的661份文本blob（61956181bytes）及288个历史路径，无二进制blob、环境文件、数据库归档、登录状态或运行产物路径，无高置信度私钥／令牌命中。`tests/e2e/lead-list-workflow.spec.ts` 的固定口令已存在于远端基线；完整tracked引用只见测试／fixture文件，fixture生成合成账号密码哈希并受test模式及隔离库绑定限制，当前本地.env.test不含该值。按用户明确的合成测试判断范围接受，不展示口令、不做登录有效性实验。模式检查不承诺排除任意编码内容；不把公开状态解释为凭据有效或账号被入侵。脱敏Git回执见ignored `.local/delivery-backup-20261017.json`。
+
+本轮接续完成两个独立HTTP验收helper的严格165源／applied账本检查与纯回归，旧owned161专项不放宽。EF纯Node33/33、线索纯Node10/10，覆盖实际165源字节、各关键pin同步篡改、缺项／额外项／未完成与异常历史；原actor、Grant、业务限额、产品、SQL及E2E场景不改。根类型、定向Lint／格式、架构（18模块／164模型）、Spec（59REQ／69AC／11BQ／60SD）及diff检查通过；未参与实施的Sol累计只读审查ACCEPTED、C/I/M0。新owned测试fixture仅临时复制历史161前缀，不是当前库的运行结果。
+
+真实执行仍阻断：本目录缺少 `.local/ef001-evidence/official-ef001-resolve/{receipt.json,stdout.log,stderr.log}`，以及 `.local/uxq03-evidence/lead-batch-push-terminal-creation-receipt.json`；没有生成替代回执或读取私密credential。实际数据库／HTTP／浏览器、账号／权限、文件和新业务写入均未执行，旧预算全部封存。下一运行单须分别明确合法对象、登录次数、账号／Grant新增或撤权、线索／事实／回执／审计写入、文件数量／字节、并发和故障注入额度，并先核原证据及当前状态；本次代码准备不授予这些权限。正常完整verify包含NT006真实数据库专项，故本轮未运行，也未把旧业务tree的完整门禁冒称新tree通过；新候选仅有上述离线准备证据。
+
 ### Demo A有限批准序列闭合及原证据边界（2026-10-17）
 
 固定业务候选2ef6a73919dbf7eb739d54a2fe63ddfa735c8727/tree50effa5496ba4b86e7a7d44e0ba8ee9dd85315ac的正常完整verify已实际通过工具139、前端2510、后台2351、NT006及双构建。后续仅ignored执行器定位、等待和采集修正，tracked源码/依赖/环境与产物未变；成功证物、财务前序、上传和导出均不重复。原owned165、161备份/92份无覆盖复制、官方165部署及3role/3assignment20Grant的既有成功独立复用。本批业务是多次停止后按原捕获断点续接的累计覆盖，不写成单次整套浏览器绿色运行。

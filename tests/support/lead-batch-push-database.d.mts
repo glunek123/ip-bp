@@ -42,6 +42,15 @@ export function validateLeadBatchPushBinding(
 export function validateLeadBatchPushMigrationSource(
   migrations: ReadonlyArray<{ name: string; checksum: string }>,
 ): Array<{ name: string; checksum: string }>;
+export function validateLeadBatchPushMigrationLedger(
+  applied: ReadonlyArray<Record<string, unknown>>,
+  migrations: ReadonlyArray<{ name: string; checksum: string }>,
+  evidence: {
+    receipt: Record<string, unknown>;
+    stdout: Buffer;
+    stderr: Buffer;
+  },
+): true;
 export function validateLeadBatchPushManifest(
   manifest: unknown,
 ): LeadBatchPushManifest;

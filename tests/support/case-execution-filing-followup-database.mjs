@@ -107,39 +107,69 @@ export function assertExecutionFilingFollowupR2Binding(environment) {
 }
 
 export function assertExecutionFilingFollowupMigrationSource(source) {
+  // Raw SHA pins and the full-chain manifest freeze candidate 0b90e9c3.
   const tail = [
-    '20261015130000_guard_direct_second_remand_child',
-    '20261015150000_case_section_record_edits',
-    '20261015170000_case_section_record_uploads',
-    '20261016090000_case_record_material_guard_repair',
-    '20261016093000_case_record_material_reference_reuse',
-    '20261016095000_execution_supplement_enum_preparation',
-    '20261016100000_case_execution_filing_followups',
+    [
+      '20261015150000_case_section_record_edits',
+      '10760cf6e9969822a6b6a631760645625d227c4541a018560473e34c164953c7',
+    ],
+    [
+      '20261015170000_case_section_record_uploads',
+      '883f2f80b615a0f746adb2ebbb6e17cc24d0ac577a61d236f3bb6375fbc0367d',
+    ],
+    [
+      '20261016090000_case_record_material_guard_repair',
+      'dfe31436055f7ab9bf8d0796c48b3a0dd38a16acf4e5b3554e04e3d299b7b869',
+    ],
+    [
+      '20261016093000_case_record_material_reference_reuse',
+      '628a0fc0a664942896fdd85e3811bfe977702e4924ef33a58f83399a9bf8280e',
+    ],
+    [
+      '20261016095000_execution_supplement_enum_preparation',
+      'f9a18c2d93ac3bb75debac0835eee32dd9896fff267c1fa7275c959bddfeac5f',
+    ],
+    [
+      '20261016100000_case_execution_filing_followups',
+      'e125a3278b0530860b1be49273fc667224451f8a6d35b420bdf14e2b9c684105',
+    ],
+    [
+      '20261016110000_lead_batch_push',
+      '1e267e104e4a7a1b20f1014dfd10506ce1aa831e32a11175e3a4dde2430c9e87',
+    ],
+    [
+      '20261016115000_fee_proof_category_prepare',
+      'a7b80c1143035aa0526fcb6a90857a737e505b692c2ea95efd7ff3f465e9f4d4',
+    ],
+    [
+      '20261016120000_settlement_demo_alignment',
+      'fbb81d7cb424beb9b1bad103a498c2bee66c1e7c15ef806d47631b5685a810e7',
+    ],
+    [
+      '20261016130000_evidence_demo_alignment',
+      'fd138a179438bac39a7bf30bc31373ac4ca2b9eef454ef8229c78ab0a1135de9',
+    ],
   ];
   if (
-    source.length !== 161 ||
-    tail.some((name, i) => source[154 + i]?.name !== name) ||
+    !Array.isArray(source) ||
+    source.length !== 165 ||
+    tail.some(
+      ([name, checksum], i) =>
+        source[155 + i]?.name !== name ||
+        source[155 + i]?.checksum !== checksum,
+    ) ||
     source.some(
       (row, i) =>
+        !row ||
         !/^\d{14}_/u.test(row.name) ||
         !/^[a-f0-9]{64}$/u.test(row.checksum) ||
         (i > 0 && row.name <= source[i - 1].name),
     ) ||
-    source[155].checksum !==
-      '10760cf6e9969822a6b6a631760645625d227c4541a018560473e34c164953c7' ||
-    source[156].checksum !==
-      '883f2f80b615a0f746adb2ebbb6e17cc24d0ac577a61d236f3bb6375fbc0367d' ||
-    source[157].checksum !==
-      'dfe31436055f7ab9bf8d0796c48b3a0dd38a16acf4e5b3554e04e3d299b7b869' ||
-    source[158].checksum !==
-      '628a0fc0a664942896fdd85e3811bfe977702e4924ef33a58f83399a9bf8280e' ||
-    source[159].checksum !==
-      'f9a18c2d93ac3bb75debac0835eee32dd9896fff267c1fa7275c959bddfeac5f' ||
-    source[160].checksum !==
-      'e125a3278b0530860b1be49273fc667224451f8a6d35b420bdf14e2b9c684105'
+    createHash('sha256').update(JSON.stringify(source)).digest('hex') !==
+      'ceb31cdae35bc1ec10a1f44e08d3d1e74bdd32cd5a453161179d503adb72f2d5'
   )
     throw new Error(
-      'EF001 requires the exact frozen 161-source chain including the separate0950 preparation',
+      'EF001 requires the exact frozen 165-source chain including the separate0950 preparation',
     );
 }
 

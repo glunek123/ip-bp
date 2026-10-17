@@ -74,7 +74,7 @@ test('official EF enum preparation is a separate whole migration before the unch
   const names = (await readdir(directory))
     .filter((name) => /^\d{14}_/u.test(name))
     .sort();
-  assert.deepEqual(names.slice(-3), [source159, preparation, source160]);
+  assert.deepEqual(names.slice(158, 161), [source159, preparation, source160]);
 });
 
 async function withSourceFixture(operation) {
@@ -84,20 +84,40 @@ async function withSourceFixture(operation) {
     const names = (await readdir(directory))
       .filter((name) => /^\d{14}_/u.test(name))
       .sort();
-    assert.equal(names.length, 161);
-    for (const name of names) {
+    assert.equal(names.length, 165);
+    assert.equal(names[160], source160);
+    // The owned migration probe deliberately models the frozen 161-prefix only.
+    for (const name of names.slice(0, 161)) {
       await mkdir(join(fixture, name));
       await writeFile(
         join(fixture, name, 'migration.sql'),
         await readFile(join(directory, name, 'migration.sql')),
       );
     }
-    await operation(fixture);
+    return await operation(fixture);
   } finally {
     assert.equal(dirname(fixture), temporaryRoot);
     assert.ok(basename(fixture).startsWith('ef160-source-'));
     await rm(fixture, { recursive: true });
   }
+}
+
+async function ownedPlan() {
+  return withSourceFixture((fixture) =>
+    executionFilingFollowupMigrationPlan(fixture),
+  );
+}
+
+async function currentPublicSource() {
+  const names = (await readdir(directory))
+    .filter((name) => /^\d{14}_/u.test(name))
+    .sort();
+  return Promise.all(
+    names.map(async (name) => ({
+      name,
+      checksum: sha256(await readFile(join(directory, name, 'migration.sql'))),
+    })),
+  );
 }
 
 test('admission binds the full authorized R2 tuple and protected pnpm entry without side effects', () => {
@@ -142,7 +162,7 @@ for (const bad of [
 }
 
 test('source plan pins all161 raw migrations including separate0950 and unchanged1000', async () => {
-  const plan = await executionFilingFollowupMigrationPlan();
+  const plan = await ownedPlan();
   assert.equal(plan.length, 161);
   assert.equal(plan[159].name, preparation);
   assert.equal(plan[159].sha256, preparationHash);
@@ -322,7 +342,7 @@ const originalFailure = () => ({
 });
 
 test('owned ledger gate requires public159 plus only the exact unresolved original failure', async () => {
-  const plan = await executionFilingFollowupMigrationPlan();
+  const plan = await ownedPlan();
   const identity = [
     { db: 'dev_cor_test', schema: 'public', username: 'dev_cor_test' },
   ];
@@ -394,7 +414,7 @@ test('source plan refuses a CRLF160 variant without SQL meaning changes', async 
   }));
 
 test('source plan and ledger both refuse synchronized raw and ledger checksum edits for 156 through 159', async () => {
-  const plan = await executionFilingFollowupMigrationPlan();
+  const plan = await ownedPlan();
   const applied = [
     ...plan.slice(0, 159).map(({ name, sha256 }) => ({
       migration_name: name,
@@ -457,7 +477,7 @@ test('source plan refuses count159,160 and162 instead of the exact161 chain', as
 });
 
 test('EF query boundary sends preparation and original1000 whole, including the failure probe prefix', async () => {
-  const plan = await executionFilingFollowupMigrationPlan();
+  const plan = await ownedPlan();
   const calls = [];
   const queryBoundary = {
     async query(sql) {
@@ -507,7 +527,7 @@ test('the official deploy entry remains the protected Prisma CLI, not the owned 
 });
 
 test('owned admission rejects any mutation or extra row of the observed unresolved failure', async () => {
-  const plan = await executionFilingFollowupMigrationPlan();
+  const plan = await ownedPlan();
   const identity = [
     { db: 'dev_cor_test', schema: 'public', username: 'dev_cor_test' },
   ];
@@ -599,9 +619,8 @@ function resolvedFixture() {
   return { row, receipt, stdout, stderr };
 }
 
-test('HTTP161 readiness retains exactly one original officially resolved failure and exact CLI artifacts', async () => {
-  const plan = await executionFilingFollowupMigrationPlan();
-  const source = plan.map(({ name, sha256 }) => ({ name, checksum: sha256 }));
+test('HTTP165 readiness retains exactly one original officially resolved failure and exact CLI artifacts', async () => {
+  const source = await currentPublicSource();
   const successful = source.map(({ name, checksum }, i) => ({
     id: `successful-${i}`,
     migration_name: name,
@@ -678,13 +697,13 @@ test('HTTP161 readiness retains exactly one original officially resolved failure
       f.stderr,
     ),
   );
-  for (const count of [159, 160, 162]) {
+  for (const count of [161, 164, 166]) {
     const wrongSource =
-      count < 161
+      count < 165
         ? source.slice(0, count)
         : [
             ...source,
-            { name: '20261016110000_unapproved', checksum: '0'.repeat(64) },
+            { name: '20261016140000_unapproved', checksum: '0'.repeat(64) },
           ];
     assert.throws(() =>
       assertExecutionFilingFollowupMigrationSource(wrongSource),
@@ -698,7 +717,7 @@ test('HTTP161 readiness retains exactly one original officially resolved failure
       ),
     );
   }
-  for (const index of [155, 156, 157, 158, 159, 160]) {
+  for (const index of [155, 156, 157, 158, 159, 160, 161, 162, 163, 164]) {
     const wrongSource = source.map((entry, i) =>
       i === index ? { ...entry, checksum: '0'.repeat(64) } : entry,
     );
