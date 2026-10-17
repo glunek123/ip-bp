@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### 两条最小页面入口代码准备（2026-10-17）
+
+新增共同辅助模块、声明、纯测试及 `playwright.minimal-pages.config.ts`，EF和线索各有独立页面spec及源码/预算纯回归，共8文件；不修改产品、SQL、依赖、环境或Grant。共同模块原三项Important（关键请求体发送前校验、capture前已有指纹密钥、主对象/材料/旧行精确差集）已由未参与实现的原Sol关闭，四文件两轴ACCEPTED C/I/M0；累计八源复审发现登录200后会话绑定失败会阻断正常logout；三文件窄修保证null绑定下只尝试一次原页面logout，成功/失败都以SESSION_UNBOUND退出、保留cause、read0/guardedUPDATE0。原Reviewer确认关闭，八源两轴最终ACCEPTED、C/I/M0。
+
+源码候选`d3158d93c1aff9679adac3b49a198c033fb1b1f0`/tree`8582076b6671d7cddf281c83d6f32fcd4637b8be`已实际执行根TypeScript、架构检查（18模块/164模型）、三份纯测试16/16且无跳过，以及原生Playwright CLI同配置两文件 `--list`：恰好2文件2项、callback0、webServer为空。原生发现不经过会执行capture的protected入口。本轮未运行实际DB/capture/Docker/HTTP/浏览器/服务/登录，未读取私密credential载荷；没有完整verify或NT006新结果。原2ef6a739完整门禁与旧实际业务证据只保留其原输入/原范围，不覆盖本批真实页面。
+
+正式运行仍须另行明确两新session、1新Case、2新线索、2份PDF共86bytes、8次业务POST及4次上传阶段请求；新增账号/Grant0，必要GET和新session自身更新时间另据实际记录。正常注销失败时仅精确已绑定新session可单次guarded撤销；未绑定不得猜ID/按actor批量撤销，也不能标收尾通过。失败trace仅留用户Temp受保护目录，可能含登录态，不上传Git或放普通报告，普通交接只引用路径/hash。配置仍15433与要求R2 15438不符，未经独立运行单不改、不启动；其余准确前置和公证三项推荐统一见[一次性清单](../../superpowers/plans/2026-10-17-next-batch-acceptance-readiness.md)。
+
 ### 最小真实页面计划与只读R2核对（2026-10-17）
 
 原EF/线索API双块及11session提案撤回；三个独立准备任务按实际页面/认证源码收窄为两条操作员路径，复用旧EF activeSource与H42，拟新增身份/Grant为0、1新案、2新线索、2份86bytes来源PDF及2个新session。真实表单填写/按钮提交/结果读回/刷新和本轮精确session注销纳入同一范围，不把API准备或旧14/8项当页面验收。原source凭据仅核普通proof及受保护引用，没有打开私密payload；live资格未核。认证源码核得logout失败finally也清cookie，故失败收尾只允许登录前后差集/内存cookie摘要唯一绑定的新ID，正常logout后只读确认，必要时一次同ID完整谓词guarded撤销，不按actor撤旧session。具体步骤/新增写入和公证三项待决仅见[一次性清单](../../superpowers/plans/2026-10-17-next-batch-acceptance-readiness.md)。

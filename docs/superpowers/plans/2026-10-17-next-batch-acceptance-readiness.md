@@ -1,6 +1,6 @@
 # 下一批最小页面闭环与一次性确认清单
 
-状态：静态执行方案，尚未批准新增验收。以本页替代7ab3e257中的“EF接口首项＋线索八项、11会话”申请，不先跑API块再追加页面额度。远端代码备份仍为 `0b90e9c3e28f7a1a3cf6cd195728f6a6da43cc52`，后续本地准备提交未上传。旧业务、文件及登录额度均为0。
+状态：两条页面入口代码及离线准备已实现，八源累计独立复审两轴ACCEPTED、C/I/M0，尚未批准新增验收。以本页替代7ab3e257中的“EF接口首项＋线索八项、11会话”申请，不先跑API块再追加页面额度。远端代码备份仍为 `0b90e9c3e28f7a1a3cf6cd195728f6a6da43cc52`，后续本地准备提交未上传。旧业务、文件及登录额度均为0。
 
 ## 1. 已核环境及开跑条件
 
@@ -53,12 +53,22 @@
 
 本节是新执行申请，不是本轮已撤销。现成EF原测试只dispose、lead full8没有该页面logout，均不直接拿来执行本方案。
 
-## 4. 入口准备及有效证据复用
+## 4. 已落地入口与验证边界
 
-- 最小页面入口须先编写/审查，再发正式GO：EF独立page spec采用现有真实来源HTTP配方，复用上述固定旧source，不调用旧createActor；线索独立strict165/H42 page spec/helper，不调用full8 terminal prepare，也不删/绕其guard。两入口及精确session收尾先过实际函数纯反例、类型/Lint/格式、离线发现恰各1项/callback0、独立审，固定候选后执行。它们目前仅有静态设计，不能声称已实现或已运行；这部分代码准备不需要真实额度。
-- 可复用：2ef6a739原业务候选正常verify139工具/2510前端/2351后端、NT006及双构建；旧EF14分段内部API、旧只读3页面、165 owned/官方部署/历史保持各只证明原范围。不重新resolve、迁移、重做原14或线索full8 API矩阵。构建复用仍逐raw核产品/依赖/生成/构建输入与原manifest，不能只凭路径未改。
-- 165组合必须新验：实际source/applied ledger/tuple/合法对象；新增窄helper/fixture/logout的纯/静态/发现；固定运行tree上的上述2条真实页面、实际POST结果与GET读回/刷新历史、精确session撤销、全部旧行和文件保持。旧完整verify不冒新tree全绿；若需要完整门禁，另明确其中NT006真实DB动作，不静默开跑。
-- 不覆盖：EF补交写入式UI、PRIMARY/门户、真实24h、流中争用；线索20项边界、旧版本整批拒绝、并发、未知恢复、故障回滚、terminal撤权。这些保留待验，既有API证据不替代真实页面，本次页面正向也不代替协议反例。
+- EF入口：`tests/e2e/execution-feedback-minimal-page.spec.ts`；线索入口：`tests/e2e/lead-batch-push-minimal-page.spec.ts`。两条都由真实页面操作目标业务；EF仅正常HTTP准备已列明来源，不以接口测试替代反馈页面。
+- 共用 `tests/support/minimal-page-acceptance.mjs` / `.d.mts` / `.test.mjs` 与 `playwright.minimal-pages.config.ts`；两份 `*-minimal-page.test.mjs` 纯回归核现有Vue选择器及预算接口。导入/构造不做I/O。正式配置在webServer之前同步完成只读准入，复用原protected入口外层锁，不重入；已有32bytes指纹key缺失直接拒绝，不由预检自动创建。私密credential载荷只在普通执行prepare通过前置后读取，预服务分支不读；DB凭据旧行摘要在SQL内计算，只返回摘要。
+- 预算在发送前检查真实method/path/body、run标记、固定customer/holder、target/revision、2个43bytes PDF及其SHA、两条线索字段和精确batch IDs；不通过就abort并使测试失败，不返回模拟成功。APIRequest来源准备同样在dispatch前传原body/bytes给预算。最终核Case/Lead完整ID差集、相关来源/receipt/audit/材料typed/ref行数量、旧行SHA、精确counter增量及本根blob；EF不能新增线索，线索不能新增案/材料。该相关表保护不冒称全库所有未跟踪表的通用审计，完整旧行及库外文件保护仍由唯一Runner独立前后核验。
+- 已实际完成：两Worker各自根类型、定向Lint/格式、纯3/3且0skip、原生CLI发现各1项；主控组合根类型、架构18模块/164模型、纯回归及两文件同配置发现恰2项。原三项Important和累计未绑定会话收尾finding均由独立原Reviewer关闭，八源两轴ACCEPTED、C/I/M0。没有真正运行这两条页面、数据库或服务，完整verify/NT006本轮未执行。
+- 离线发现只用原生Playwright CLI与本配置 `--list`，此模式webServer为空，不执行preflight/private reads/callback；不能为了发现调用会capture的protected脚本。真实运行的唯一允许入口仍是下列受保护命令（本轮未执行）：
+
+```powershell
+pnpm test:e2e tests/e2e/execution-feedback-minimal-page.spec.ts --config playwright.minimal-pages.config.ts --workers=1 --retries=0
+pnpm test:e2e tests/e2e/lead-batch-push-minimal-page.spec.ts --config playwright.minimal-pages.config.ts --workers=1 --retries=0
+```
+
+- 两块各固定候选、runId、证据目录和新session，不挪用额度。先完成本页前置配置/材料核对、live只读和新增预算批准，再由唯一Runner串行执行；不得直接运行原生CLI省略外层锁。失权/前置不符就停，不造actor/恢复权限。成功路径注销必须实际204、回到可见登录页且精确session已撤销；fallback只保护已绑定新session，不能使页面PASS。登录200后若cookie/绑定失败，仍只尝试一次正常页面logout，然后始终SESSION_UNBOUND失败；不猜session ID，不以actor批量撤销，保留原错误和收尾错误。
+- 失败trace放用户Temp独占目录，可能包含登录态或口令表单值，按私密材料保护；不上传Git、不复制到普通报告，交接只给路径/hash和脱敏业务请求摘要。它不属于公开代码备份。
+- 可复用的原证据仍只覆盖原输入：2ef6a739完整verify139工具/2510前端/2351后端、NT006/双构建、EF14分段API及只读3项、165 owned/官方升级/历史保持。新8测试文件不是新产品完整门禁或真实页面通过；不重复迁移/resolve，不重跑原14或full8 API。PRIMARY/门户、真实24h过期、流中撤权、非current版本、20MiB/50MiB等边界、未知恢复、回滚/terminal等未验项继续保留，不夹入这两条页面。
 
 ## 5. 公证三项最简推荐：一次决定，未实施
 
@@ -72,8 +82,10 @@
 
 可整体采用推荐或逐项改动；冻结前不写新Command/schema/按钮/Grant。冻结后只按backend/schema/API与内部UI唯一作者分工，不建通用审批系统、不重复NT008/009/010，不混证书更正/误建删除/终止。源码及旧Owner定位保留在本机ignored notary-scope.md，不再新增路由台账。
 
-## 6. 收口与真正阻塞
+## 6. 收口与一次性运行申请
 
-本轮只完成静态页面缩片、2个session的正常/失败收尾设计、R2容器/配置只读核对及公证最简提案，没有写库、登录、改配置或启动服务。readiness165_review独立两轴ACCEPTED、C/I/M0，表单必填与对话框显示精度finding已闭合；此审查只证明计划边界，不当页面PASS。
+本轮已完成可执行但未运行的两条真实页面入口、共同准入/预算/会话收尾和纯回归；原生发现恰好两文件两项，callback0。八源累计独立源码复审两轴ACCEPTED、C/I/M0，含未绑定会话失败收尾窄修。原静态计划的ACCEPTED不冒充新增源码或真实UI通过。
 
-静态方案可以收口，正式运行不能GO：窄页面入口及固定候选尚须工程准备/审查；现有配置与R2不符；live ledger/现有两身份/客户/后台清理候选尚待只读核实；本页2session/1Case/2线索/2文件/精确session撤销尚无新额度。若现有身份失效，停止并另报，不自动切新账号/Grant。公证产品实施等上表三项决定。旧11会话和两API块撤回，不消耗其任何数据；新本地提交公开上传不在原固定备份中。
+当前尚未给予正式运行GO。唯一剩余运行申请为本页两个窄场景：0新账号/Grant、1新Case、2新线索、2份PDF共86bytes、2新session、8次业务POST和4次上传阶段请求，必要读取与新session自身更新据实记录；两块各自正常logout一次，失败仅本页明确的精准收尾。旧EF/Demo/API/登录额度全部0，不复用、不挪用。
+
+执行前需明确唯一Runner正常配置固定树的R2 15438与本树private root（当前.env.test仍15433，本轮未改），核材料精确缺失copy清单、165 ledger/原resolved回执、既有身份全部授权/客户资格、旧事实和文件及后台候选；任一不满足就在服务启动前停下。公证三个业务决定仍待用户统一确认，不新建Action/Grant或实现其产品片。新本地代码/文档提交也不自动追加远端push；备份远端保持原固定0b90e9c3。
