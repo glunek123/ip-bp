@@ -33,7 +33,8 @@ export type MaterialCategory =
   | 'EXECUTION_FILING_PROOF'
   | 'EXECUTION_SUPPLEMENT'
   | 'EXECUTION_FINISH_BASIS'
-  | 'CASE_CLOSURE_DOCUMENT';
+  | 'CASE_CLOSURE_DOCUMENT'
+  | 'FEE_PROOF';
 
 export type MaterialPurpose =
   | 'IDENTITY_FULL'
@@ -61,7 +62,8 @@ export type MaterialPurpose =
   | 'EXECUTION_FILING_PROOF'
   | 'EXECUTION_SUPPLEMENT'
   | 'EXECUTION_FINISH_BASIS'
-  | 'CASE_CLOSURE_DOCUMENT';
+  | 'CASE_CLOSURE_DOCUMENT'
+  | 'FEE_PROOF';
 
 export type UploadedMaterial = {
   materialId: string;
@@ -224,7 +226,8 @@ function isCategory(value: unknown): value is MaterialCategory {
     value === 'EXECUTION_FILING_PROOF' ||
     value === 'EXECUTION_SUPPLEMENT' ||
     value === 'EXECUTION_FINISH_BASIS' ||
-    value === 'CASE_CLOSURE_DOCUMENT'
+    value === 'CASE_CLOSURE_DOCUMENT' ||
+    value === 'FEE_PROOF'
   );
 }
 
@@ -255,7 +258,8 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'EXECUTION_FILING_PROOF' ||
     value === 'EXECUTION_SUPPLEMENT' ||
     value === 'EXECUTION_FINISH_BASIS' ||
-    value === 'CASE_CLOSURE_DOCUMENT'
+    value === 'CASE_CLOSURE_DOCUMENT' ||
+    value === 'FEE_PROOF'
   );
 }
 
@@ -445,7 +449,8 @@ export async function uploadMaterialFile(
       input.category === 'SECOND_INSTANCE_SERVICE' ||
       input.category === 'SECOND_INSTANCE_JUDGMENT' ||
       input.category === 'EXECUTION_FINISH_BASIS' ||
-      input.category === 'CASE_CLOSURE_DOCUMENT'
+      input.category === 'CASE_CLOSURE_DOCUMENT' ||
+      input.category === 'FEE_PROOF'
     ) {
       const types = new Map([
         ['.pdf', 'application/pdf'],
@@ -543,6 +548,13 @@ export async function uploadMaterialFile(
       }
     }
   }
+  if (
+    input.category === 'FEE_PROOF' &&
+    (input.ownerType !== 'CASE' ||
+      !input.ownerId ||
+      input.purpose !== 'FEE_PROOF')
+  )
+    throw new ApiError('费用凭证归属或用途无效', 400, 'VALIDATION_ERROR');
   const draft = await requestJson('/materials/upload-drafts', {
     method: 'POST',
     body: {

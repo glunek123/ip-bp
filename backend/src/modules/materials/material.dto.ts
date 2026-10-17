@@ -47,6 +47,7 @@ export const materialCategories = [
   'EXECUTION_SUPPLEMENT',
   'EXECUTION_FINISH_BASIS',
   'CASE_CLOSURE_DOCUMENT',
+  'FEE_PROOF',
 ] as const;
 export type MaterialCategoryValue = (typeof materialCategories)[number];
 export const materialPurposes = [
@@ -76,6 +77,7 @@ export const materialPurposes = [
   'EXECUTION_SUPPLEMENT',
   'EXECUTION_FINISH_BASIS',
   'CASE_CLOSURE_DOCUMENT',
+  'FEE_PROOF',
 ] as const;
 export type MaterialPurposeValue = (typeof materialPurposes)[number];
 

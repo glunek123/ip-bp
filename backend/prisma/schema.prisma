@@ -352,6 +352,7 @@ enum MaterialCategory {
   EXECUTION_SUPPLEMENT
   EXECUTION_FINISH_BASIS
   CASE_CLOSURE_DOCUMENT
+  FEE_PROOF
 
   @@map("material_category")
 }
@@ -1336,6 +1337,7 @@ model UploadDraft {
 }
 
 model Material {
+  feeProofRecords FeeRecord[] @relation("FeeProofMaterial")
   evidencePaperCertificates EvidencePaperCertificate[]
   executionSupplementDocuments CaseExecutionFilingSupplementDocument[]
   id               String                 @id @default(uuid()) @db.Uuid
@@ -1362,6 +1364,7 @@ model Material {
 }
 
 model ContentVersion {
+  feeProofRecords FeeRecord[] @relation("FeeProofContent")
   evidencePaperCertificates EvidencePaperCertificate[]
   executionSupplementUploadDraftId String? @unique @map("execution_supplement_upload_draft_id") @db.Uuid
   executionSupplementUploadDraft UploadDraft? @relation("ExecutionSupplementUpload", fields: [executionSupplementUploadDraftId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -4288,6 +4291,8 @@ model FeeRecord {
   amount Decimal @db.Decimal(30, 2)
   feeDate DateTime @map("fee_date") @db.Date
   source String @db.VarChar(20)
+  sourceKind String? @map("source_kind") @db.VarChar(50)
+  sourceId String? @map("source_id") @db.VarChar(200)
   actorUserId String? @map("actor_user_id") @db.Uuid
   idempotencyKey String? @map("idempotency_key") @db.VarChar(128)
   note String? @db.VarChar(500)
@@ -4300,8 +4305,11 @@ model FeeRecord {
   case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
   actor UserAccount? @relation("FeeRecordActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fee_record_actor_user_fk")
   actorMembership DepartmentMembership? @relation("FeeRecordInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "fee_record_actor_membership_fk")
+  proofMaterial Material? @relation("FeeProofMaterial", fields: [proofMaterialId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "fee_proof_material_department_fk")
+  proofContentVersion ContentVersion? @relation("FeeProofContent", fields: [proofMaterialId, proofContentVersionId], references: [materialId, id], onDelete: Restrict, onUpdate: Restrict, map: "fee_proof_content_material_fk")
   @@unique([id, departmentId])
   @@unique([departmentId, actorUserId, idempotencyKey], map: "fee_records_department_actor_idempotency_key")
+  @@unique([departmentId, sourceKind, sourceId], map: "fee_records_department_source_key")
   @@index([departmentId, feeDate, id])
   @@index([caseId, departmentId])
   @@map("fee_records")

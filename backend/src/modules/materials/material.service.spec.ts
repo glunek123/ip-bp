@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { ActorContext } from '../../access-control/actor-context';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { DatabaseService } from '../../database/database.service';
+import { OrganizationService } from '../../access-control/organization.service';
 import {
   BlobStorageUnavailableError,
   PRIVATE_BLOB_STORAGE,
@@ -28,6 +29,359 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  describe('financial and evidence exact version access', () => {
+    function uploadSetup() {
+      const f = createFixture();
+      f.db.case.findFirst.mockResolvedValue({ id: customerId });
+      f.transaction.case.findFirst.mockResolvedValue({ id: customerId });
+      f.service = new MaterialService(
+        f.db as unknown as DatabaseService,
+        f.access as unknown as AccessControlService,
+        f.storage,
+        f.coordinator,
+        () => now,
+        { lockDepartment: jest.fn() } as unknown as OrganizationService,
+      );
+      return f;
+    }
+    it('uses current fee.update inside the draft transaction without requiring case.read', async () => {
+      const f = uploadSetup();
+      await f.service.createUploadDraft(actor, {
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'FEE_PROOF',
+        purpose: 'FEE_PROOF',
+        originalFilename: '凭证.pdf',
+        declaredMimeType: 'application/pdf',
+      });
+      expect(f.transaction.uploadDraft.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            category: 'FEE_PROOF',
+            purpose: 'FEE_PROOF',
+            ownerId: customerId,
+          }),
+        }),
+      );
+      expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+        actor,
+        'fee.update',
+        f.transaction,
+      );
+      expect(
+        f.access.authorizeDepartmentAction.mock.calls.every(
+          (call) => call[1] === 'fee.update',
+        ),
+      ).toBe(true);
+    });
+    it('refuses a newly revoked upload before creating its draft', async () => {
+      const f = uploadSetup();
+      f.access.authorizeDepartmentAction.mockImplementation(
+        async (_actor: ActorContext, _action: string, reader: unknown) => {
+          if (reader === f.transaction) throw new ForbiddenException();
+        },
+      );
+      await expect(
+        f.service.createUploadDraft(actor, {
+          ownerType: 'CASE',
+          ownerId: customerId,
+          category: 'FEE_PROOF',
+          purpose: 'FEE_PROOF',
+          originalFilename: '凭证.pdf',
+          declaredMimeType: 'application/pdf',
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(f.transaction.uploadDraft.create).not.toHaveBeenCalled();
+    });
+    it('cleans the unconsumed blob when permission is revoked while bytes arrive', async () => {
+      const f = uploadSetup();
+      f.db.uploadDraft.findUnique.mockResolvedValue({
+        id: 'draft',
+        departmentId: actor.departmentId,
+        actorUserId: actor.userId,
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'FEE_PROOF',
+        purpose: 'FEE_PROOF',
+        originalFilename: '凭证.pdf',
+        declaredMimeType: 'application/pdf',
+        status: 'OPEN',
+        expiresAt: new Date(now.getTime() + 60000),
+        lawyerAccountBindingId: null,
+        customerAccountBindingId: null,
+        notaryOfficeAccountBindingId: null,
+        caseSectionRecordCommand: null,
+        executionSupplementFilingId: null,
+      });
+      f.storage.put.mockResolvedValue({
+        sizeBytes: 4,
+        sha256: 'a'.repeat(64),
+        detectedMimeType: 'application/pdf',
+      });
+      f.access.authorizeDepartmentAction.mockImplementation(
+        async (_actor: ActorContext, _action: string, reader: unknown) => {
+          if (reader === f.transaction) throw new ForbiddenException();
+        },
+      );
+      await expect(
+        f.service.finalizeUpload(actor, 'draft', Readable.from('%PDF')),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(f.storage.put).toHaveBeenCalled();
+      expect(f.storage.delete).toHaveBeenCalledTimes(1);
+      expect(f.transaction.material.create).not.toHaveBeenCalled();
+    });
+    it('permits versioned cleanup only for an unconsumed proof and preserves a frozen file', async () => {
+      const f = uploadSetup();
+      f.db.material.findFirst.mockResolvedValue({
+        ...materialRecord(),
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'FEE_PROOF',
+        purpose: 'FEE_PROOF',
+        contentVersions: [
+          { id: 'version-1', status: 'AVAILABLE', uploadedBy: actor.userId },
+        ],
+      });
+      f.transaction.materialReference.count.mockResolvedValue(0);
+      await expect(
+        f.service.softDelete(actor, 'material-1', 1),
+      ).resolves.toMatchObject({ status: 'DELETED', version: 2 });
+      f.transaction.material.updateMany.mockClear();
+      f.transaction.materialReference.count.mockResolvedValue(1);
+      await expect(
+        f.service.softDelete(actor, 'material-1', 1),
+      ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+      expect(f.transaction.material.updateMany).not.toHaveBeenCalled();
+      expect(f.storage.delete).not.toHaveBeenCalled();
+    });
+    it('never exposes fee proof names or IDs through a generic case.read material list', async () => {
+      const f = uploadSetup();
+      f.db.material.findMany.mockResolvedValue([
+        {
+          id: 'secret-fee-material',
+          category: 'FEE_PROOF',
+          contentVersions: [
+            { id: 'secret-cv', originalFilename: '财务凭证.pdf' },
+          ],
+        },
+      ]);
+      await expect(
+        f.service.listOwnerMaterials(actor, 'CASE', customerId),
+      ).resolves.toEqual({ items: [], total: 0 });
+      expect(f.db.material.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ category: { not: 'FEE_PROOF' } }),
+        }),
+      );
+    });
+    function feeSetup() {
+      const f = createFixture();
+      f.db.material.findFirst.mockResolvedValue({
+        id: 'proof',
+        departmentId: actor.departmentId,
+        ownerType: 'CASE',
+        ownerId: 'case',
+        category: 'FEE_PROOF',
+        purpose: 'FEE_PROOF',
+        status: 'ACTIVE',
+        deletedAt: null,
+        currentVersionId: 'proof-cv',
+        contentVersions: [
+          {
+            id: 'proof-cv',
+            status: 'AVAILABLE',
+            storageKey: 'private-proof',
+            originalFilename: '凭证.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 4n,
+            sha256: 'a'.repeat(64),
+          },
+        ],
+      });
+      f.transaction.feeRecord.findFirst.mockResolvedValue({ id: 'fee' });
+      f.transaction.materialReference.findFirst.mockResolvedValue({
+        id: 'frozen-proof',
+      });
+      f.storage.open.mockResolvedValue(Readable.from('pdf'));
+      return f;
+    }
+    it.each([
+      { ...actor, lawyerAccountId: 'lawyer' },
+      { ...actor, clientCustomerId: 'customer' },
+      { ...actor, notaryOfficeId: 'office' },
+    ])(
+      'denies external exact current fee CV before any case/current shortcut: %j',
+      async (external) => {
+        const f = feeSetup();
+        await expect(
+          f.service.openVersion(external, 'proof', 'proof-cv'),
+        ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+        expect(f.access.authorizeDepartmentAction).not.toHaveBeenCalled();
+        expect(f.storage.open).not.toHaveBeenCalled();
+      },
+    );
+    it('allows fee.read with real same-department case, fee and exact frozen reference, without case.read', async () => {
+      const f = feeSetup();
+      await expect(
+        f.service.openVersion(actor, 'proof', 'proof-cv'),
+      ).resolves.toMatchObject({ originalFilename: '凭证.pdf' });
+      expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+        actor,
+        'fee.read',
+        f.transaction,
+      );
+      expect(f.transaction.feeRecord.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            departmentId: actor.departmentId,
+            caseId: 'case',
+            proofMaterialId: 'proof',
+            proofContentVersionId: 'proof-cv',
+          }),
+        }),
+      );
+    });
+    it('does not substitute case.read when fee.read was revoked', async () => {
+      const f = feeSetup();
+      f.access.authorizeDepartmentAction.mockImplementation(
+        async (_actor: ActorContext, action: string) => {
+          if (action === 'fee.read') throw new ForbiddenException();
+        },
+      );
+      await expect(
+        f.service.openVersion(actor, 'proof', 'proof-cv'),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      expect(f.storage.open).not.toHaveBeenCalled();
+    });
+    it.each(['fee', 'reference'])(
+      'does not download an unconsumed/cross-case/forged proof when exact %s proof is absent',
+      async (missing) => {
+        const f = feeSetup();
+        if (missing === 'fee')
+          f.transaction.feeRecord.findFirst.mockResolvedValue(null);
+        else f.transaction.materialReference.findFirst.mockResolvedValue(null);
+        await expect(
+          f.service.openVersion(actor, 'proof', 'proof-cv'),
+        ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+        expect(f.storage.open).not.toHaveBeenCalled();
+      },
+    );
+    function evidenceSetup() {
+      const f = feeSetup();
+      f.db.material.findFirst.mockResolvedValue({
+        id: 'certificate',
+        departmentId: actor.departmentId,
+        ownerType: 'NOTARY_MATTER',
+        ownerId: 'matter',
+        category: 'NOTARY_CERTIFICATE',
+        purpose: 'NOTARY_CERTIFICATE',
+        status: 'ACTIVE',
+        deletedAt: null,
+        contentVersions: [
+          {
+            id: 'cv-2',
+            status: 'AVAILABLE',
+            storageKey: 'second-certificate',
+            originalFilename: '公证书第二份.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 4n,
+            sha256: 'b'.repeat(64),
+          },
+        ],
+      });
+      f.access.authorizeDepartmentAction.mockImplementation(
+        async (_actor: ActorContext, action: string) => {
+          if (action !== 'evidence.read') throw new ForbiddenException();
+        },
+      );
+      f.transaction.notaryCertificate.findFirst.mockResolvedValue({
+        id: 'typed-cert',
+        actorUserId: 'notary-actor',
+        notaryOfficeAccountBindingId: 'binding',
+        fromVersion: 4,
+        toVersion: 5,
+      });
+      f.transaction.evidencePaperCertificate.findFirst.mockResolvedValue({
+        id: 'paper',
+      });
+      f.transaction.auditEvent.findMany.mockResolvedValue([
+        {
+          id: 'source-audit',
+          details: {
+            certificateId: 'typed-cert',
+            fromVersion: 4,
+            toVersion: 5,
+            contentVersionIds: ['cv-1', 'cv-2'],
+          },
+        },
+      ]);
+      f.transaction.materialReference.findMany.mockResolvedValue([
+        { materialId: 'first', contentVersionId: 'cv-1' },
+        { materialId: 'certificate', contentVersionId: 'cv-2' },
+      ]);
+      f.db.materialReference.findFirst.mockResolvedValue({
+        id: 'source-ref',
+        actionEvent: { details: { contentVersionIds: ['cv-1', 'cv-2'] } },
+      });
+      return f;
+    }
+    it('uses internal evidence.read only for the real typed certificate and complete source set, including the second CV', async () => {
+      const f = evidenceSetup();
+      await expect(
+        f.service.openVersion(actor, 'certificate', 'cv-2'),
+      ).resolves.toMatchObject({ originalFilename: '公证书第二份.pdf' });
+      expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+        actor,
+        'evidence.read',
+        f.transaction,
+      );
+      expect(f.storage.open).toHaveBeenCalledWith('second-certificate');
+    });
+    it.each(['certificate', 'paper', 'audit', 'full-set', 'exact-pair'])(
+      'rejects missing or forged evidence %s source proof',
+      async (missing) => {
+        const f = evidenceSetup();
+        if (missing === 'certificate')
+          f.transaction.notaryCertificate.findFirst.mockResolvedValue(null);
+        if (missing === 'paper')
+          f.transaction.evidencePaperCertificate.findFirst.mockResolvedValue(
+            null,
+          );
+        if (missing === 'audit')
+          f.transaction.auditEvent.findMany.mockResolvedValue([]);
+        if (missing === 'full-set')
+          f.transaction.materialReference.findMany.mockResolvedValue([
+            { materialId: 'certificate', contentVersionId: 'cv-2' },
+          ]);
+        if (missing === 'exact-pair')
+          f.transaction.materialReference.findMany.mockResolvedValue([
+            { materialId: 'first', contentVersionId: 'cv-1' },
+            { materialId: 'wrong', contentVersionId: 'cv-2' },
+          ]);
+        await expect(
+          f.service.openVersion(actor, 'certificate', 'cv-2'),
+        ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+        expect(f.storage.open).not.toHaveBeenCalled();
+      },
+    );
+    it('does not grant evidence.read access to disclosure or unrelated CVs', async () => {
+      const f = evidenceSetup();
+      f.db.material.findFirst.mockResolvedValue({
+        id: 'disclosure',
+        departmentId: actor.departmentId,
+        ownerType: 'NOTARY_MATTER',
+        ownerId: 'matter',
+        category: 'NOTARY_DISCLOSURE',
+        status: 'ACTIVE',
+        contentVersions: [{ id: 'cv-2', status: 'AVAILABLE' }],
+      });
+      await expect(
+        f.service.openVersion(actor, 'disclosure', 'cv-2'),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      expect(f.transaction.notaryCertificate.findFirst).not.toHaveBeenCalled();
+      expect(f.storage.open).not.toHaveBeenCalled();
+    });
+  });
   describe('execution supplement first consumption', () => {
     const filingId = '40000000-0000-4000-8000-000000000001';
     const supplementId = '40000000-0000-4000-8000-000000000002';
@@ -5954,6 +6308,10 @@ function createFixture() {
   const leadFindFirst = jest.fn();
   const notaryMatterFindFirst = jest.fn();
   const transaction = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    feeRecord: { findFirst: jest.fn() },
+    notaryCertificate: { findFirst: jest.fn() },
+    evidencePaperCertificate: { findFirst: jest.fn() },
     caseExecutionFilingSupplement: {
       findFirst: jest.fn().mockResolvedValue(null),
       findUnique: jest.fn().mockResolvedValue(null),
@@ -6059,7 +6417,10 @@ function createFixture() {
       deleteMany: jest.fn(),
       createMany: jest.fn(async () => ({ count: 1 })),
     },
-    auditEvent: { create: jest.fn(async ({ data }) => data) },
+    auditEvent: {
+      create: jest.fn(async ({ data }) => data),
+      findMany: jest.fn(),
+    },
   };
   const db = {
     caseClosureDocument: { findMany: jest.fn().mockResolvedValue([]) },
