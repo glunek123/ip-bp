@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### 导航I1补闭、运行树冻结拒绝及结算v2固定（2026-10-17）
+
+UI新三raw AppShell.vue b984fb700d392d7e2c81c579d6a47f1eea8acf96e8afa54a14c25a56a338b973、spec2c38cb25d558865254ccd4e303ae52af58f3f79be572eb7ddeb24612729bb99e、styles2fafce97931aaa942bc4ddbc8415f465e8650fd9f5b9f699199b8f40e829e4af逐项匹配；原两轴补闭C/I/M0。非403保留已验证入口、明确失败提示与主动GET重试；首次失败不伪授权，403仍锁同授权identity，Abort/卸载/旧identity不污染，retry loading防重复。真实5反例RED→82/82、前端类型/Lint格式/diff通过，73旧记录保持。三文件源提交75a4e611/tree9bc4e297，主控单接3e6dcb33；不冒真浏览器PASS。
+
+自动审批拒绝在原ef001-integration创建验收分支并pick上述3文件：理由是原运行树冻结限制仍有效、建议独立树。CreateProcess前拒绝，操作未执行；未改命令重试或间接绕过，后续只读确认原clean67625b9/treef6b18e96及原分支保持，无服务/DB/业务/Grant变动。下一运行需父级明确解除该冻结用于此只读复验，或指定另一合法运行目录；已准备、已审源码可复用，旧浏览器3项2PASS/1FAIL证据不覆盖。普通错误与审批阻断分别保留。
+
+结算原35候选v2 manifest49bc708a0d57f5c3405f956dfecc22dfc0f9eeca3132b5540f9faf16e4994184，9文件替换+v1余26逐raw不变；组合指纹a462d10a6a12f1153ae36caa75da5122a163596f283bed668c457c379ed832f6实算一致。原Spec/Standards均ACCEPTED C/I/M0，I1六fees端点201/200响应schema与真实服务一致；I2中心净额不可选择/编辑/凭证/删除，完整sourceRows保留各真实ID/原额/状态/精确proof，caseId与零净额原行不消失，全匹配选择/跨页确认只用真实源行。RED旧后端9/前端2失败封存，最终18后端/25前端及prepared types/9文件Lint格式过，未重跑原26输入。代提交2b8dd5e895aa71a50e694426c66da061aadc6ddd/tree8e485a1a37dc10b2470275a48425b3b4b25a42be后共享树clean，不混schema/SQL/EF；尚非与最新主控累计的完整门禁或真实DB/HTTP/浏览器结果。
+
 ### EF既有只读页面2PASS/1FAIL及导航后续（2026-10-17）
 
 固定67625b9/treef6b18e96真实protected collection3/正式3，workers1/retries0/maxFailures1，2PASS/1FAIL、无skip/flaky；summary SHA7fd57cf75cc56bd501cf03be8379a93963c9fae3d759e260332f9482a771566e，主控逐项核101份seal证据bytes/SHA相符。正常source登录页、现案历史/当前、两个已有版本真实按钮下载（43与39bytes，SHA精确）、刷新/退出重登、反馈预填取消和补交空表单取消均通过；readonly读取与能力false/无写入口通过。撤权账号登录200、案件GET403，无EF数据与写按钮，但案件菜单可见，故该项按原GO FAIL保留；菜单本身不构成数据越权证明。
