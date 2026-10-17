@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-17T08:39:30.552Z",
+  "recordedAt": "2026-10-17T08:56:13.515Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -578,7 +578,7 @@
     "backend/src/modules/settlements/case-fee-entry.service.ts": "0096a9dc10e9b9795877a35089c6ddb0715441b6572857bffc786a21670f041b",
     "backend/src/modules/settlements/fee-proof-metadata.spec.ts": "07b13cef9b5c420ac5c4cf43303eb87d5e6165326e024420e302291a51a8b9fc",
     "backend/src/modules/settlements/fee-proof-migration.spec.ts": "284bebbb1d12db8858dbf25a262ecbabb75eea2eed703892b95c649ce7db8786",
-    "backend/src/modules/settlements/fee-proof.spec.ts": "40f8e68f154f24bc425f1dfdd760b58741a5a7492c115f3d829f70b3f93bdda3",
+    "backend/src/modules/settlements/fee-proof.spec.ts": "35d41dde00afe5b874d3b80db553502f293cf8f1725f53ed19e8cd6f13e1147d",
     "backend/src/modules/settlements/fee.controller.ts": "94b963688e8a5b3e066e9af39c318285ab78c2f364fe4c9ab6bed20c63e13593",
     "backend/src/modules/settlements/fee.dto.ts": "e1f565bcb2d07bf2efc7dbbc83985b4b01bf3d01cbc0af529e01d87f094d5c49",
     "backend/src/modules/settlements/fee.service.ts": "57bb91a9b9c2b1e539ee322f746fea84959f3984df39c3bde1bc70545e7debc6",

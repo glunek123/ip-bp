@@ -29,16 +29,14 @@ function setup(allowed = true) {
       return [];
     }),
     feeRecord: {
-      findFirst: jest
-        .fn()
-        .mockResolvedValue({
-          id: 'fee',
-          caseId: 'case',
-          version: 2,
-          deletedAt: null,
-          proofMaterialId: null,
-          proofContentVersionId: null,
-        }),
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'fee',
+        caseId: 'case',
+        version: 2,
+        deletedAt: null,
+        proofMaterialId: null,
+        proofContentVersionId: null,
+      }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     auditEvent: {
