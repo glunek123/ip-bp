@@ -30,6 +30,7 @@ import LawyerAccountsPage from '../modules/organization/LawyerAccountsPage.vue';
 import LawyerCaseListPage from '../modules/cases/LawyerCaseListPage.vue';
 import LawyerCaseDetailPage from '../modules/cases/LawyerCaseDetailPage.vue';
 import CalendarPage from '../modules/calendar/CalendarPage.vue';
+import SettlementCenterPage from '../modules/settlements/SettlementCenterPage.vue';
 import { useAuthStore } from '../stores/auth';
 import { pinia } from './pinia';
 
@@ -39,6 +40,15 @@ export const router = createRouter({
     { path: '/login', component: LoginPage, meta: { public: true } },
     { path: '/health', component: HealthPage, meta: { public: true } },
     { path: '/', redirect: '/customers' },
+    {
+      path: '/settlements',
+      component: SettlementCenterPage,
+      meta: {
+        audience: 'INTERNAL',
+        section: '结算中心',
+        breadcrumbs: ['结算中心'],
+      },
+    },
     {
       path: '/calendar',
       component: CalendarPage,

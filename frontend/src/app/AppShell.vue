@@ -4,6 +4,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../api/http';
 import { getCalendarSummary } from '../api/calendar';
+import { getSettlementContext } from '../api/settlements';
 import { listCases, type CaseStage, type CaseStageGroup } from '../api/cases';
 import { listLawyerCases } from '../api/cases';
 import { listLeads, type LeadStatus } from '../api/leads';
@@ -26,6 +27,7 @@ const route = useRoute();
 const router = useRouter();
 const drawerOpen = ref(false);
 const canViewPeople = ref(false);
+const canViewSettlements = ref(false);
 const canViewNotaryOffices = ref(false);
 const canManageLawyerAccounts = ref(false);
 const canViewNotaryMatters = ref(false);
@@ -189,6 +191,34 @@ function acceptCalendarSummary(event: globalThis.Event): void {
   calendarSummaryRevision += 1;
   calendarCount.value = detail.count;
 }
+
+watch(
+  identity,
+  async (currentIdentity, _previous, onCleanup) => {
+    canViewSettlements.value = false;
+    if (
+      currentIdentity === null ||
+      isClient.value ||
+      isNotary.value ||
+      isLawyer.value
+    )
+      return;
+    const controller = new AbortController();
+    let current = true;
+    onCleanup(() => {
+      current = false;
+      controller.abort();
+    });
+    try {
+      const context = await getSettlementContext({ signal: controller.signal });
+      if (current && identity.value === currentIdentity)
+        canViewSettlements.value = context.read || context.feeRead;
+    } catch {
+      if (current) canViewSettlements.value = false;
+    }
+  },
+  { immediate: true },
+);
 onMounted(() =>
   globalThis.window.addEventListener(
     calendarSummaryReadEvent,
@@ -867,6 +897,15 @@ async function logout(): Promise<void> {
             </RouterLink>
           </div>
         </div>
+        <RouterLink
+          v-if="!isClient && canViewSettlements"
+          class="app-nav__item"
+          :class="{ active: route.path === '/settlements' }"
+          data-test="settlement-nav"
+          to="/settlements"
+          @click="closeDrawer"
+          ><span>结算中心</span></RouterLink
+        >
         <RouterLink
           v-if="isClient"
           class="app-nav__item"

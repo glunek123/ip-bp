@@ -36,6 +36,7 @@ import CaseWorkspaceShell from './CaseWorkspaceShell.vue';
 import CaseDetailsSections from './CaseDetailsSections.vue';
 import CaseWorkspaceFiles from './CaseWorkspaceFiles.vue';
 import CaseWorkspaceFees from './CaseWorkspaceFees.vue';
+import { CaseFinancePanel } from '../settlements';
 import type {
   SectionKey,
   SectionAction,
@@ -1939,7 +1940,12 @@ onBeforeUnmount(() => {
           @open-upload="openUpload"
         />
       </template>
-      <template #fees><CaseWorkspaceFees :item="item" /></template>
+      <template #fees
+        ><CaseWorkspaceFees :item="item" /><CaseFinancePanel
+          v-if="activeTab === 'fees' && accessVerified && state === 'ready'"
+          :key="workspaceContext"
+          :case-id="item.id"
+      /></template>
       <template #editors>
         <ElDrawer
           v-model="drawerOpen"

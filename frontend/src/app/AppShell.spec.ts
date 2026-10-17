@@ -20,8 +20,12 @@ const api = vi.hoisted(() => ({
   listLawyerAccounts: vi.fn(),
   listLawyerCases: vi.fn(),
   getCalendarSummary: vi.fn(),
+  getSettlementContext: vi.fn(),
 }));
 const mountedShells: Array<ReturnType<typeof mount>> = [];
+vi.mock('../api/settlements', () => ({
+  getSettlementContext: api.getSettlementContext,
+}));
 
 vi.mock('../api/organization', () => ({
   getOrganizationManagementContext: api.getOrganizationManagementContext,
@@ -56,6 +60,7 @@ const session = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  api.getSettlementContext.mockResolvedValue({ read: false, feeRead: false });
   api.getCalendarSummary.mockResolvedValue({
     metrics: { next30: { count: 0 } },
   });
@@ -159,6 +164,11 @@ async function mountShell(
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      {
+        path: '/settlements',
+        component: { template: '<div />' },
+        meta: { section: '结算中心', breadcrumbs: ['结算中心'] },
+      },
       {
         path: '/customers',
         component: { template: '<div />' },
@@ -1190,4 +1200,24 @@ it('invalidates lawyer group badges on identity change and ignores the old respo
   expect(wrapper.get('[data-test="complaint-preparation-stage"]').text()).toBe(
     '准备起诉文书',
   );
+});
+
+describe('settlement center navigation', () => {
+  it.each([
+    { read: true, feeRead: false },
+    { read: false, feeRead: true },
+  ])(
+    'shows the entry only when the current internal read capability allows it: %j',
+    async (capability) => {
+      api.getSettlementContext.mockResolvedValue(capability);
+      const { wrapper } = await mountShell();
+      expect(
+        wrapper.get('[data-test="settlement-nav"]').attributes('href'),
+      ).toBe('/settlements');
+    },
+  );
+  it('keeps the entry hidden without either read capability', async () => {
+    const { wrapper } = await mountShell();
+    expect(wrapper.find('[data-test="settlement-nav"]').exists()).toBe(false);
+  });
 });

@@ -90,6 +90,7 @@ export class FeeService {
         ...(query.caseId === undefined ? {} : { caseId: query.caseId }),
       },
       include: {
+        proofContentVersion: { select: { originalFilename: true } },
         case: {
           select: {
             businessNo: true,
@@ -102,28 +103,68 @@ export class FeeService {
       },
       orderBy: [{ feeDate: 'desc' }, { id: 'desc' }],
     });
-    const display = mergeSampleFees(
-      raw.map((row) => ({
-        id: row.id,
-        caseId: row.caseId,
-        businessNo: row.case.businessNo,
-        courtCaseNo: row.case.courtCaseNo,
-        platform: row.case.sourceLead?.platform ?? null,
-        shopName: row.case.sourceLead?.shopName ?? null,
-        defendantNames: row.case.defendants.map((item) => item.name),
-        stage: row.case.stage,
-        type: row.type,
-        direction: row.direction as '收入' | '支出',
-        status: row.status,
-        amount: row.amount.toFixed(2),
-        feeDate: row.feeDate.toISOString().slice(0, 10),
-        source: row.source,
-        note: row.note,
-        version: row.version,
-        proofMaterialId: row.proofMaterialId,
-        proofContentVersionId: row.proofContentVersionId,
-      })),
-    );
+    const sources = raw.map((row) => ({
+      id: row.id,
+      caseId: row.caseId,
+      businessNo: row.case.businessNo,
+      courtCaseNo: row.case.courtCaseNo,
+      platform: row.case.sourceLead?.platform ?? null,
+      shopName: row.case.sourceLead?.shopName ?? null,
+      defendantNames: row.case.defendants.map((item) => item.name),
+      stage: row.case.stage,
+      type: row.type,
+      direction: row.direction as '收入' | '支出',
+      status: row.status,
+      amount: row.amount.toFixed(2),
+      feeDate: row.feeDate.toISOString().slice(0, 10),
+      source: row.source,
+      note: row.note,
+      version: row.version,
+      proofMaterialId: row.proofMaterialId,
+      proofContentVersionId: row.proofContentVersionId,
+      proofOriginalFilename:
+        row.proofMaterialId !== null && row.proofContentVersionId !== null
+          ? (row.proofContentVersion?.originalFilename ?? null)
+          : null,
+    }));
+    type Source = (typeof sources)[number];
+    let display: Array<
+      Source & { mergeTypes?: readonly string[]; sourceRows?: Source[] }
+    > = sources;
+    if (query.caseId === undefined) {
+      const groups = new Map<string, Source[]>();
+      for (const row of sources) {
+        if (row.type !== '样品费' && row.type !== '样品费退款') continue;
+        const group = groups.get(row.caseId) ?? [];
+        group.push(row);
+        groups.set(row.caseId, group);
+      }
+      const projections = mergeSampleFees(sources).map((row) =>
+        row.mergeTypes === undefined
+          ? row
+          : {
+              ...row,
+              proofMaterialId: null,
+              proofContentVersionId: null,
+              proofOriginalFilename: null,
+              sourceRows: groups.get(row.caseId)!,
+            },
+      );
+      const bySource = new Map<string, (typeof projections)[number]>();
+      for (const row of projections) {
+        for (const source of 'sourceRows' in row ? row.sourceRows : [row])
+          bySource.set(source.id, row);
+      }
+      const emitted = new Set<string>();
+      display = [];
+      for (const source of sources) {
+        // Zero net is omitted by the projection helper, not by the source ledger.
+        const row = bySource.get(source.id) ?? source;
+        if (emitted.has(row.id)) continue;
+        emitted.add(row.id);
+        display.push(row);
+      }
+    }
     const filtered = display.filter(
       (row) =>
         (query.type === undefined ||
@@ -135,13 +176,23 @@ export class FeeService {
         (query.to === undefined || row.feeDate <= query.to),
     );
     const offset = (query.page - 1) * query.pageSize;
+    const matching = filtered.flatMap((row) => row.sourceRows ?? [row]);
     return {
       items: filtered.slice(offset, offset + query.pageSize),
       total: filtered.length,
       page: query.page,
       pageSize: query.pageSize,
-      summary: feeSummary(display),
-      matchingIds: filtered.map((row) => row.id),
+      summary: feeSummary(
+        query.caseId === undefined ? mergeSampleFees(sources) : sources,
+      ),
+      matchingIds: matching.map((row) => row.id),
+      matchingSources: matching.map((row) => ({
+        id: row.id,
+        businessNo: row.businessNo,
+        type: row.type,
+        amount: row.amount,
+        status: row.status,
+      })),
     };
   }
 
