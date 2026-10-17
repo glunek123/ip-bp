@@ -87,8 +87,10 @@ const resolveProofHashes = Object.freeze({
     '211b3323777fed313dce76ef3c4b17609b34e69a87930c44483b90a18e6f256d',
 });
 
-function blocked(phase = 'GUARD') {
-  const error = new Error(`Minimal page acceptance BLOCKED: ${phase}`);
+function blocked(phase = 'GUARD', cause) {
+  const message = `Minimal page acceptance BLOCKED: ${phase}`;
+  const error =
+    cause === undefined ? new Error(message) : new Error(message, { cause });
   error.code = `MINIMAL_PAGE_${phase}`;
   throw error;
 }
@@ -700,6 +702,14 @@ export async function closeMinimalPageSession(
   { readSession, logout, guardedRevoke },
 ) {
   const scope = fixedScope(kind);
+  if (binding === null) {
+    try {
+      await logout();
+    } catch (error) {
+      blocked('SESSION_UNBOUND', error);
+    }
+    blocked('SESSION_UNBOUND');
+  }
   if (
     binding?.userId !== scope.userId ||
     binding.departmentId !== departmentId ||
@@ -1333,8 +1343,7 @@ export function createMinimalPageAcceptance(kind, options = {}) {
   }
 
   async function closeSession(logoutCallback) {
-    if (!bound) blocked();
-    const result = await closeMinimalPageSession(kind, bound, {
+    const result = await closeMinimalPageSession(kind, bound ?? null, {
       readSession: async (binding) =>
         one(
           client,

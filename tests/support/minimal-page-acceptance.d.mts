@@ -77,7 +77,7 @@ export function bindMinimalPageSession(
 ): MinimalPageSession;
 export function closeMinimalPageSession(
   kind: MinimalPageKind,
-  binding: MinimalPageSession,
+  binding: MinimalPageSession | null,
   delegates: {
     readSession(binding: MinimalPageSession): Promise<unknown>;
     logout(): Promise<void>;

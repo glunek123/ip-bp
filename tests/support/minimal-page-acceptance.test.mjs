@@ -241,6 +241,38 @@ test('logout checks exact session, then permits one guarded fallback only after 
   assert.equal(updates, 0);
 });
 
+test('unbound login attempts one normal logout, then always blocks without a DB fallback', async () => {
+  for (const logoutError of [null, new Error('synthetic UI failure')]) {
+    let logouts = 0;
+    let reads = 0;
+    let updates = 0;
+    await assert.rejects(
+      closeMinimalPageSession(kind, null, {
+        logout: async () => {
+          logouts += 1;
+          if (logoutError) throw logoutError;
+        },
+        readSession: async () => {
+          reads += 1;
+          return current;
+        },
+        guardedRevoke: async () => {
+          updates += 1;
+          return 1;
+        },
+      }),
+      (error) => {
+        assert.equal(error.code, 'MINIMAL_PAGE_SESSION_UNBOUND');
+        assert.equal(error.cause, logoutError ?? undefined);
+        return true;
+      },
+    );
+    assert.equal(logouts, 1);
+    assert.equal(reads, 0);
+    assert.equal(updates, 0);
+  }
+});
+
 test('valid normal logout has no guarded UPDATE; unresolved failure cannot pass', async () => {
   const binding = bind();
   let updates = 0;
