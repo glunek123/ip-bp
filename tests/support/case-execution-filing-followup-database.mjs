@@ -113,10 +113,11 @@ export function assertExecutionFilingFollowupMigrationSource(source) {
     '20261015170000_case_section_record_uploads',
     '20261016090000_case_record_material_guard_repair',
     '20261016093000_case_record_material_reference_reuse',
+    '20261016095000_execution_supplement_enum_preparation',
     '20261016100000_case_execution_filing_followups',
   ];
   if (
-    source.length !== 160 ||
+    source.length !== 161 ||
     tail.some((name, i) => source[154 + i]?.name !== name) ||
     source.some(
       (row, i) =>
@@ -133,10 +134,12 @@ export function assertExecutionFilingFollowupMigrationSource(source) {
     source[158].checksum !==
       '628a0fc0a664942896fdd85e3811bfe977702e4924ef33a58f83399a9bf8280e' ||
     source[159].checksum !==
+      'f9a18c2d93ac3bb75debac0835eee32dd9896fff267c1fa7275c959bddfeac5f' ||
+    source[160].checksum !==
       'e125a3278b0530860b1be49273fc667224451f8a6d35b420bdf14e2b9c684105'
   )
     throw new Error(
-      'EF001 requires the exact frozen 160-source chain including approved 156 through 160',
+      'EF001 requires the exact frozen 161-source chain including the separate0950 preparation',
     );
 }
 
@@ -157,19 +160,149 @@ async function readExecutionFilingFollowupMigrations() {
   return source;
 }
 
+/** Only this already observed R2 failure is recoverable by the later approved CLI run. */
+export function assertExecutionFilingFollowupHistoricalFailure(
+  row,
+  state,
+  receipt,
+) {
+  const originalStartedAt = '2026-10-16T09:36:04.563Z';
+  const instant = (value) => {
+    const time = new Date(value).getTime();
+    if (!Number.isFinite(time))
+      throw new Error('Invalid EF001 ledger timestamp');
+    return time;
+  };
+  if (
+    !row ||
+    row.id !== '9f547970-6eaa-4628-a670-f505590482e9' ||
+    row.migration_name !== '20261016100000_case_execution_filing_followups' ||
+    row.checksum !==
+      'e125a3278b0530860b1be49273fc667224451f8a6d35b420bdf14e2b9c684105' ||
+    ![originalStartedAt, '2026-10-16 09:36:04.563+00'].includes(
+      row.started_at,
+    ) ||
+    row.finished_at !== null ||
+    row.applied_steps_count !== 0 ||
+    row.logs_is_null !== true
+  )
+    throw new Error(
+      'EF001 historical failure differs from the exact original row',
+    );
+  if (state === 'UNRESOLVED') {
+    if (row.rolled_back_at !== null || receipt !== undefined)
+      throw new Error(
+        'EF001 owned probe requires the original unresolved failure',
+      );
+    return;
+  }
+  if (
+    state !== 'RESOLVED' ||
+    !receipt ||
+    receipt.protocol !== 'EF001_PRISMA_ROLLBACK_V1' ||
+    receipt.failedMigrationId !== row.id ||
+    receipt.migrationName !== row.migration_name ||
+    receipt.checksum !== row.checksum ||
+    receipt.originalStartedAt !== originalStartedAt ||
+    receipt.rolledBackAt !== row.rolled_back_at ||
+    typeof row.rolled_back_at !== 'string' ||
+    JSON.stringify(receipt.command) !==
+      JSON.stringify([
+        'node',
+        'node_modules/prisma/build/index.js',
+        'migrate',
+        'resolve',
+        '--rolled-back',
+        row.migration_name,
+      ]) ||
+    receipt.cwd !== 'backend' ||
+    receipt.exitCode !== 0 ||
+    !/^[a-f0-9]{64}$/u.test(receipt.stdoutSha256) ||
+    !/^[a-f0-9]{64}$/u.test(receipt.stderrSha256)
+  )
+    throw new Error(
+      'EF001 requires the exact successful official resolve receipt',
+    );
+  const start = instant(receipt.commandStartedAt),
+    end = instant(receipt.commandFinishedAt);
+  const rolledBack = instant(row.rolled_back_at);
+  if (
+    start < instant(originalStartedAt) ||
+    end < start ||
+    rolledBack < start ||
+    rolledBack > end
+  )
+    throw new Error(
+      'EF001 rollback timestamp is outside the official command window',
+    );
+}
+
+export function assertExecutionFilingFollowupResolveArtifacts(
+  receipt,
+  stdout,
+  stderr,
+) {
+  const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
+  if (
+    !receipt ||
+    digest(stdout) !== receipt.stdoutSha256 ||
+    digest(stderr) !== receipt.stderrSha256 ||
+    !stdout
+      .toString('utf8')
+      .includes('20261016100000_case_execution_filing_followups') ||
+    !stdout.toString('utf8').includes('marked as rolled back')
+  )
+    throw new Error(
+      'EF001 official resolve output does not match its exact receipt',
+    );
+}
+
+async function readExecutionFilingFollowupRollbackReceipt() {
+  const directory = resolve(
+    root,
+    '.local/ef001-evidence/official-ef001-resolve',
+  );
+  let bytes;
+  try {
+    bytes = await readFile(resolve(directory, 'receipt.json'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return undefined;
+    throw error;
+  }
+  const receipt = JSON.parse(bytes.toString('utf8'));
+  const [stdout, stderr] = await Promise.all([
+    readFile(resolve(directory, 'stdout.log')),
+    readFile(resolve(directory, 'stderr.log')),
+  ]);
+  assertExecutionFilingFollowupResolveArtifacts(receipt, stdout, stderr);
+  return receipt;
+}
+
 export function assertExecutionFilingFollowupMigrationLedger(
   identity,
   applied,
   source,
+  rollbackReceipt,
 ) {
   assertExecutionFilingFollowupMigrationSource(source);
+  const historical = applied.filter(
+    (row) => row.id === '9f547970-6eaa-4628-a670-f505590482e9',
+  );
+  if (historical.length !== 1)
+    throw new Error('EF001 must retain its one exact historical failure');
+  assertExecutionFilingFollowupHistoricalFailure(
+    historical[0],
+    'RESOLVED',
+    rollbackReceipt,
+  );
+  const successful = applied.filter((row) => row !== historical[0]);
   if (
     identity.length !== 1 ||
     identity[0].db !== 'dev_cor_test' ||
     identity[0].schema !== 'public' ||
     identity[0].username !== 'dev_cor_test' ||
-    applied.length !== source.length ||
-    applied.some(
+    successful.length !== source.length ||
+    successful.some(
       (row, i) =>
         row.migration_name !== source[i].name ||
         row.checksum !== source[i].checksum ||
@@ -197,6 +330,11 @@ function captureExecutionFilingFollowupTarget() {
 async function withDatabase(operation) {
   assertExecutionFilingFollowupR2Binding(process.env);
   const source = await readExecutionFilingFollowupMigrations();
+  const rollbackReceipt = await readExecutionFilingFollowupRollbackReceipt();
+  if (rollbackReceipt === undefined)
+    throw new Error(
+      'EF001 requires the official recovery receipt before capture',
+    );
   const target = captureExecutionFilingFollowupTarget();
   const { Client } = requireBackend('pg');
   const client = new Client({ connectionString: target.connectionString });
@@ -209,10 +347,15 @@ async function withDatabase(operation) {
     ).rows;
     const applied = (
       await client.query(
-        'SELECT migration_name,checksum,finished_at,rolled_back_at FROM public._prisma_migrations ORDER BY migration_name',
+        'SELECT id,migration_name,checksum,started_at::text,finished_at::text,rolled_back_at::text,applied_steps_count,(logs IS NULL) AS logs_is_null FROM public._prisma_migrations ORDER BY migration_name,started_at',
       )
     ).rows;
-    assertExecutionFilingFollowupMigrationLedger(identity, applied, source);
+    assertExecutionFilingFollowupMigrationLedger(
+      identity,
+      applied,
+      source,
+      rollbackReceipt,
+    );
     return await operation(client);
   } finally {
     await client.end();

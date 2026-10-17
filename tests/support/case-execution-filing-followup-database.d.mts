@@ -13,6 +13,41 @@ export type ExecutionFilingFollowupSnapshot = {
   facts: Record<string, ExecutionFilingFollowupRow[]>;
 };
 export type MigrationSource = { name: string; checksum: string };
+export type ExecutionFilingFollowupLedgerRow = {
+  id: string;
+  migration_name: string;
+  checksum: string;
+  started_at: Date | string;
+  finished_at: Date | string | null;
+  rolled_back_at: string | null;
+  applied_steps_count: number;
+  logs_is_null: boolean;
+};
+export type ExecutionFilingFollowupRollbackReceipt = {
+  protocol: 'EF001_PRISMA_ROLLBACK_V1';
+  failedMigrationId: string;
+  migrationName: string;
+  checksum: string;
+  originalStartedAt: string;
+  rolledBackAt: string;
+  command: readonly string[];
+  cwd: 'backend';
+  exitCode: 0;
+  commandStartedAt: string;
+  commandFinishedAt: string;
+  stdoutSha256: string;
+  stderrSha256: string;
+};
+export function assertExecutionFilingFollowupHistoricalFailure(
+  row: ExecutionFilingFollowupLedgerRow,
+  state: 'UNRESOLVED' | 'RESOLVED',
+  receipt?: ExecutionFilingFollowupRollbackReceipt,
+): void;
+export function assertExecutionFilingFollowupResolveArtifacts(
+  receipt: ExecutionFilingFollowupRollbackReceipt,
+  stdout: Buffer,
+  stderr: Buffer,
+): void;
 export function assertExecutionFilingFollowupR2Binding(
   environment: NodeJS.ProcessEnv,
 ): void;
@@ -21,13 +56,9 @@ export function assertExecutionFilingFollowupMigrationSource(
 ): void;
 export function assertExecutionFilingFollowupMigrationLedger(
   identity: readonly { db: string; schema: string; username: string }[],
-  applied: readonly {
-    migration_name: string;
-    checksum: string;
-    finished_at: Date | string | null;
-    rolled_back_at: Date | string | null;
-  }[],
+  applied: readonly ExecutionFilingFollowupLedgerRow[],
   source: readonly MigrationSource[],
+  rollbackReceipt: ExecutionFilingFollowupRollbackReceipt,
 ): void;
 export function createExecutionFilingFollowupActor(
   kind?: 'source' | 'operator' | 'readOnly' | 'foreign',

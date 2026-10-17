@@ -1,18 +1,19 @@
 type Environment = Record<string, string | undefined>;
 type Source = { name: string; sha256: string };
 type EnumRow = { type: string; label: string; position: string };
-type LedgerRow = {
-  migration_name: string;
-  checksum: string;
-  finished_at: unknown;
-  rolled_back_at: unknown;
-};
+import type { ExecutionFilingFollowupLedgerRow } from './case-execution-filing-followup-database.mjs';
 
 export type ExecutionFilingFollowupMigrationResult = {
   fingerprint: string;
   source: Source[];
   checks: string[];
   enumStaging: Array<{ type: string; label: string }>;
+  executionBoundary: {
+    efPreparation: 'whole-script';
+    efFacts: 'whole-script';
+    legacy156: 'split-simulation';
+    officialPrismaDeploy: 'runner-only-not-covered';
+  };
   fixture: string;
   memoryFile?: { size: number; sha256: string };
   publicUnchanged: boolean;
@@ -58,9 +59,13 @@ export function expectedExecutionFilingFollowupClassifier(
 ): string;
 export function assertExecutionFilingFollowupLedger(
   identity: Array<{ db: string; schema: string; username: string }>,
-  applied: LedgerRow[],
+  applied: ExecutionFilingFollowupLedgerRow[],
   plan: Array<Source>,
 ): void;
+export function replayExecutionFilingFollowupMigration(
+  client: { query(sql: string): Promise<unknown> },
+  entry: Source & { sql: string },
+): Promise<void>;
 export function verifyCaseExecutionFilingFollowupMigration(
   report?: (
     result: ExecutionFilingFollowupMigrationResult,

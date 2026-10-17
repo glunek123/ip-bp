@@ -11,6 +11,7 @@ import {
   assertMigrationIsolation,
   section156Prelude,
 } from './case-section-record-migration.mjs';
+import { assertExecutionFilingFollowupHistoricalFailure } from './case-execution-filing-followup-database.mjs';
 
 /* global __filename */
 const root =
@@ -23,6 +24,7 @@ const suffix = [
   '20261015170000_case_section_record_uploads',
   '20261016090000_case_record_material_guard_repair',
   '20261016093000_case_record_material_reference_reuse',
+  '20261016095000_execution_supplement_enum_preparation',
   '20261016100000_case_execution_filing_followups',
 ];
 const frozen = [
@@ -30,6 +32,7 @@ const frozen = [
   '883f2f80b615a0f746adb2ebbb6e17cc24d0ac577a61d236f3bb6375fbc0367d',
   'dfe31436055f7ab9bf8d0796c48b3a0dd38a16acf4e5b3554e04e3d299b7b869',
   '628a0fc0a664942896fdd85e3811bfe977702e4924ef33a58f83399a9bf8280e',
+  'f9a18c2d93ac3bb75debac0835eee32dd9896fff267c1fa7275c959bddfeac5f',
   'e125a3278b0530860b1be49273fc667224451f8a6d35b420bdf14e2b9c684105',
 ];
 const additions = [
@@ -105,8 +108,8 @@ export async function executionFilingFollowupMigrationPlan(
   const names = (await readdir(directory))
     .filter((name) => /^\d{14}_/u.test(name))
     .sort();
-  assert.equal(names.length, 160);
-  assert.deepEqual(names.slice(-6), suffix);
+  assert.equal(names.length, 161);
+  assert.deepEqual(names.slice(-7), suffix);
   const entries = [];
   for (const name of names) {
     const bytes = await readFile(resolve(directory, name, 'migration.sql'));
@@ -118,7 +121,11 @@ export async function executionFilingFollowupMigrationPlan(
     entries.slice(155).map(({ sha256 }) => sha256),
     frozen,
   );
-  executionFilingFollowup160Prelude(entries[159].sql);
+  const { prefix } = executionFilingFollowup160Prelude(entries[160].sql);
+  assert.equal(
+    entries[159].sql.replace(/--[^\n]*/gu, '').trim(),
+    prefix.replace(/--[^\n]*/gu, '').trim(),
+  );
   return entries;
 }
 
@@ -168,8 +175,8 @@ export function assertOwnedExecutionFilingFollowupSchema(
 }
 
 export function injectExecutionFilingFollowupFailure(transaction) {
-  assert.match(transaction, /^\nBEGIN;/u);
-  assert.match(transaction, /COMMIT;\s*$/u);
+  // Inspect the prefix, but keep it in the same query as the original body.
+  executionFilingFollowup160Prelude(transaction);
   return transaction.replace(
     /COMMIT;\s*$/u,
     `DO $probe$ BEGIN RAISE EXCEPTION '${marker}'; END $probe$;\nCOMMIT;`,
@@ -225,17 +232,40 @@ export function assertExecutionFilingFollowupLedger(identity, applied, plan) {
   assert.deepEqual(identity, [
     { db: 'dev_cor_test', schema: 'public', username: 'dev_cor_test' },
   ]);
-  assert.equal(plan.length, 160);
+  assert.equal(plan.length, 161);
+  assert.deepEqual(
+    plan.slice(-7).map((entry) => entry.name),
+    suffix,
+  );
+  assert.deepEqual(
+    plan.slice(155).map((entry) => entry.sha256),
+    frozen,
+  );
   assert.equal(
     applied.length,
-    159,
-    'Public must remain at exact predecessor159',
+    160,
+    'Public must retain predecessor159 and the exact unresolved original1000 failure',
   );
-  for (const [index, row] of applied.entries()) {
+  const original = applied.slice(0, 159);
+  for (const [index, row] of original.entries()) {
     assert.equal(row.migration_name, plan[index].name);
     assert.equal(row.checksum, plan[index].sha256);
     assert.ok(row.finished_at);
     assert.equal(row.rolled_back_at, null);
+  }
+  assertExecutionFilingFollowupHistoricalFailure(applied[159], 'UNRESOLVED');
+}
+
+/** Query-boundary seam: EF0950 and EF1000 are each sent once, in full. */
+export async function replayExecutionFilingFollowupMigration(client, entry) {
+  if (entry.name === suffix[1]) {
+    // Retained legacy156 simulation only; not proof of official Prisma sending.
+    const { prelude, transaction } = section156Prelude(entry.sql);
+    assert.equal(prelude + transaction, entry.sql);
+    await client.query(prelude);
+    await client.query(transaction);
+  } else {
+    await client.query(entry.sql);
   }
 }
 
@@ -285,7 +315,7 @@ async function snapshot(client, schema) {
     'SELECT indexname,indexdef FROM pg_indexes WHERE schemaname=$1 ORDER BY indexname',
     'SELECT typname,typtype FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 ORDER BY typname',
     'SELECT schemaname,sequencename,sequenceowner,data_type,start_value,min_value,max_value,increment_by,cycle,cache_size,last_value FROM pg_sequences WHERE schemaname=$1 ORDER BY sequencename',
-    'SELECT migration_name,checksum,finished_at::text,rolled_back_at::text FROM public._prisma_migrations ORDER BY migration_name',
+    'SELECT id,migration_name,checksum,started_at::text,finished_at::text,rolled_back_at::text,applied_steps_count,(logs IS NULL) AS logs_is_null FROM public._prisma_migrations ORDER BY migration_name,started_at',
   ];
   const structure = [];
   for (const sql of structureQueries)
@@ -434,6 +464,12 @@ export async function verifyCaseExecutionFilingFollowupMigration(
     source: plan.map(({ name, sha256 }) => ({ name, sha256 })),
     checks: [],
     enumStaging: [],
+    executionBoundary: {
+      efPreparation: 'whole-script',
+      efFacts: 'whole-script',
+      legacy156: 'split-simulation',
+      officialPrismaDeploy: 'runner-only-not-covered',
+    },
     fixture:
       'Minimal ACL, DRAFT customer and material metadata from in-memory bytes; excludes Case histories and stored blobs',
     publicUnchanged: false,
@@ -453,7 +489,7 @@ export async function verifyCaseExecutionFilingFollowupMigration(
     ).rows;
     const applied = (
       await client.query(
-        'SELECT migration_name,checksum,finished_at,rolled_back_at FROM public._prisma_migrations ORDER BY migration_name',
+        'SELECT id,migration_name,checksum,started_at::text,finished_at::text,rolled_back_at::text,applied_steps_count,(logs IS NULL) AS logs_is_null FROM public._prisma_migrations ORDER BY migration_name,started_at',
       )
     ).rows;
     assertExecutionFilingFollowupLedger(identity, applied, plan);
@@ -495,27 +531,13 @@ export async function verifyCaseExecutionFilingFollowupMigration(
       return name;
     };
     const replay = async (entries) => {
-      for (const entry of entries) {
-        if (entry.name === suffix[1]) {
-          const { prelude, transaction } = section156Prelude(entry.sql);
-          assert.equal(prelude + transaction, entry.sql);
-          await client.query(prelude);
-          await client.query(transaction);
-        } else if (entry.name === suffix[5]) {
-          const { prefix, transaction } = executionFilingFollowup160Prelude(
-            entry.sql,
-          );
-          await client.query(prefix);
-          await client.query(transaction);
-        } else {
-          await client.query(entry.sql);
-        }
-      }
+      for (const entry of entries)
+        await replayExecutionFilingFollowupMigration(client, entry);
     };
     const empty = await createOwned('empty');
     await replay(plan);
     await assert160Shape(client, empty, true);
-    result.checks.push('empty-original-chain160');
+    result.checks.push('empty-chain161-with-ef-whole-script-boundaries');
 
     const upgrade = await createOwned('upgrade');
     await replay(plan.slice(0, 159));
@@ -528,13 +550,18 @@ export async function verifyCaseExecutionFilingFollowupMigration(
       createHash('md5').update(oldFunction.prosrc).digest('hex'),
       oldClassifierMd5,
     );
-    const { prefix, transaction } = executionFilingFollowup160Prelude(
-      plan[159].sql,
+    // The preparation is one complete migration and commits before EF1000.
+    await replay([plan[159]]);
+    const afterPreparation = await snapshot(client, upgrade);
+    assert.equal(afterPreparation.structure, before.structure);
+    assert.deepEqual(afterPreparation.data, before.data);
+    const preparedEnums = classifyExecutionFilingFollowupEnumStaging(
+      before.enums,
+      afterPreparation.enums,
     );
-    await client.query(prefix);
     let caught;
     try {
-      await client.query(injectExecutionFilingFollowupFailure(transaction));
+      await client.query(injectExecutionFilingFollowupFailure(plan[160].sql));
     } catch (error) {
       caught = error;
     }
@@ -549,11 +576,12 @@ export async function verifyCaseExecutionFilingFollowupMigration(
       before.enums,
       afterFailure.enums,
     );
+    assert.deepEqual(result.enumStaging, preparedEnums);
     result.checks.push(
-      '160-controlled-failure-atomic-ddl-and-original-byte-retry',
+      '161-whole-script-failure-keeps-committed0950-only-and-exact-retry',
     );
 
-    await replay([plan[159]]);
+    await replay([plan[160]]);
     await assert160Shape(client, upgrade, true);
     const updated = await classifierRow(client, upgrade);
     assert.deepEqual(
@@ -569,7 +597,7 @@ export async function verifyCaseExecutionFilingFollowupMigration(
       updated.prosrc,
       expectedExecutionFilingFollowupClassifier(
         oldFunction.prosrc,
-        plan[159].sql,
+        plan[160].sql,
       ),
     );
     assert.deepEqual(
