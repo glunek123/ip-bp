@@ -109,6 +109,16 @@
   align-items: center;
 }
 
+.app-nav__status {
+  padding: 6px 10px;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+
+.app-nav__status p {
+  margin: 0;
+}
+
 .app-nav__group .app-nav__item {
   min-width: 0;
   flex: 1;
@@ -330,17 +340,17 @@
 
   .app-sidebar {
     position: fixed;
+    left: 0;
     visibility: hidden;
     width: min(280px, calc(100vw - 44px));
     transform: translateX(-100%);
-    transition:
-      transform 160ms ease,
-      visibility 160ms;
+    transition: none;
   }
 
   .app-sidebar[data-open='true'] {
     visibility: visible;
     transform: translateX(0);
+    transition: transform 160ms ease;
   }
 
   .app-sidebar-backdrop {

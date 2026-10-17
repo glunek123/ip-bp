@@ -6,6 +6,8 @@ import type { AuthSession } from '../api/auth';
 import { ApiError } from '../api/http';
 import { useAuthStore } from '../stores/auth';
 import AppShell from './AppShell.vue';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   notifyCalendarSummaryRead,
   workflowChangedEvent,
@@ -565,6 +567,187 @@ describe('AppShell', () => {
     expect(wrapper.find('[data-test="notary-nav"]').exists()).toBe(false);
   });
 
+  it('hides denied internal case navigation and stops counter reads until authorization changes', async () => {
+    api.listCases.mockRejectedValue(
+      new ApiError('revoked', 403, 'ACTION_FORBIDDEN'),
+    );
+    const { wrapper, router } = await mountShell('/cases/case-1');
+    expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="case-expand"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="案件范围与阶段"]').exists()).toBe(false);
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+    await router.push('/cases?view=department');
+    window.dispatchEvent(new Event(workflowChangedEvent));
+    await flushPromises();
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+    const auth = useAuthStore();
+    auth.session = { ...session, authorizationRevision: 2 };
+    await flushPromises();
+    expect(api.listCases).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+  });
+
+  it('keeps case navigation for an authorized read-only empty list', async () => {
+    const base = await api.listCases();
+    api.listCases.mockClear();
+    api.listCases.mockResolvedValue({ ...base, total: 0, items: [] });
+    const { wrapper } = await mountShell('/cases');
+    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('案件');
+    expect(wrapper.get('[data-test="case-view-department"]').text()).toBe(
+      '本部门全部',
+    );
+  });
+
+  it.each([
+    new ApiError('unavailable', 500, 'INTERNAL_ERROR'),
+    new TypeError('Failed to fetch'),
+    new ApiError('timed out', 0, 'TIMEOUT'),
+  ])(
+    'offers an explicit case navigation retry after an initial recoverable error %s',
+    async (error) => {
+      const base = await api.listCases();
+      api.listCases.mockClear();
+      api.listCases.mockRejectedValueOnce(error);
+      const { wrapper } = await mountShell('/cases');
+      expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+      expect(wrapper.get('[data-test="case-nav-error"]').text()).toContain(
+        '暂时无法读取',
+      );
+      expect(api.listCases).toHaveBeenCalledTimes(1);
+      const leadCalls = api.listLeads.mock.calls.length;
+      const notaryCalls = api.listNotaryMatters.mock.calls.length;
+      api.listCases.mockResolvedValueOnce(base);
+      await wrapper.get('[data-test="case-nav-retry"]').trigger('click');
+      await flushPromises();
+      expect(api.listCases).toHaveBeenCalledTimes(2);
+      expect(api.listLeads).toHaveBeenCalledTimes(leadCalls);
+      expect(api.listNotaryMatters).toHaveBeenCalledTimes(notaryCalls);
+      expect(wrapper.get('[data-test="case-nav"]').text()).toContain('案件');
+      expect(wrapper.find('[data-test="case-nav-error"]').exists()).toBe(false);
+    },
+  );
+
+  it('retains a known readable entry on server failure and obeys a denied retry', async () => {
+    const { wrapper, router } = await mountShell('/cases');
+    api.listCases.mockRejectedValueOnce(
+      new ApiError('unavailable', 500, 'INTERNAL_ERROR'),
+    );
+    await router.push('/cases?view=department');
+    await flushPromises();
+    expect(wrapper.get('[data-test="case-nav"]').text()).toBe('案件');
+    expect(wrapper.get('[data-test="case-nav-error"]').text()).toContain(
+      '暂时无法读取',
+    );
+    api.listCases.mockRejectedValue(
+      new ApiError('revoked', 403, 'ACTION_FORBIDDEN'),
+    );
+    await wrapper.get('[data-test="case-nav-retry"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="case-nav-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="case-nav-retry"]').exists()).toBe(false);
+    const calls = api.listCases.mock.calls.length;
+    window.dispatchEvent(new Event(workflowChangedEvent));
+    await flushPromises();
+    expect(api.listCases).toHaveBeenCalledTimes(calls);
+  });
+
+  it('does not clear a new identity failure with a late successful response', async () => {
+    const base = await api.listCases();
+    let resolveOld!: (value: unknown) => void;
+    api.listCases.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOld = resolve;
+      }),
+    );
+    const { wrapper } = await mountShell('/cases');
+    api.listCases.mockRejectedValue(new TypeError('Failed to fetch'));
+    const auth = useAuthStore();
+    auth.session = { ...session, authorizationRevision: 2 };
+    await flushPromises();
+    expect(wrapper.get('[data-test="case-nav-error"]').text()).toContain(
+      '暂时无法读取',
+    );
+    resolveOld(base);
+    await flushPromises();
+    expect(wrapper.get('[data-test="case-nav-error"]').text()).toContain(
+      '暂时无法读取',
+    );
+    expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+  });
+
+  it('disables an in-flight explicit retry without starting another read', async () => {
+    const base = await api.listCases();
+    api.listCases.mockClear();
+    api.listCases.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const { wrapper } = await mountShell('/cases');
+    let finish!: (value: unknown) => void;
+    api.listCases.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    await wrapper.get('[data-test="case-nav-retry"]').trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="case-nav-retry"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('[data-test="case-nav-retry"]').trigger('click');
+    await flushPromises();
+    expect(api.listCases).toHaveBeenCalledTimes(2);
+    finish(base);
+    await flushPromises();
+    expect(wrapper.find('[data-test="case-nav-error"]').exists()).toBe(false);
+    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('案件');
+  });
+
+  it.each([
+    new ApiError('unavailable', 500, 'INTERNAL_ERROR'),
+    new DOMException('aborted', 'AbortError'),
+  ])(
+    'ignores a late obsolete identity error %s after current success',
+    async (error) => {
+      let failOld!: (reason: unknown) => void;
+      api.listCases.mockReturnValueOnce(
+        new Promise((_resolve, reject) => {
+          failOld = reject;
+        }),
+      );
+      const { wrapper } = await mountShell('/cases');
+      const signal = api.listCases.mock.calls.at(-1)![2].signal as AbortSignal;
+      const auth = useAuthStore();
+      auth.session = { ...session, authorizationRevision: 2 };
+      await flushPromises();
+      expect(signal.aborted).toBe(true);
+      failOld(error);
+      await flushPromises();
+      expect(wrapper.get('[data-test="case-nav"]').text()).toContain('案件');
+      expect(wrapper.find('[data-test="case-nav-error"]').exists()).toBe(false);
+    },
+  );
+
+  it('aborts on unmount and cannot attach its late error to the next shell', async () => {
+    let failOld!: (reason: unknown) => void;
+    api.listCases.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        failOld = reject;
+      }),
+    );
+    const old = await mountShell('/cases');
+    const signal = api.listCases.mock.calls.at(-1)![2].signal as AbortSignal;
+    old.wrapper.unmount();
+    expect(signal.aborted).toBe(true);
+    const current = await mountShell('/cases');
+    failOld(new DOMException('aborted', 'AbortError'));
+    await flushPromises();
+    expect(current.wrapper.get('[data-test="case-nav"]').text()).toContain(
+      '案件',
+    );
+    expect(current.wrapper.find('[data-test="case-nav-error"]').exists()).toBe(
+      false,
+    );
+  });
+
   it('refreshes workflow counters after an in-place stage change', async () => {
     const { wrapper } = await mountShell('/notary-matters/matter-1');
     expect(wrapper.get('[data-test="notary-nav"]').text()).toContain('5');
@@ -602,6 +785,51 @@ describe('AppShell', () => {
     expect(
       wrapper.get('[data-test="app-sidebar"]').attributes('data-open'),
     ).toBe('false');
+  });
+
+  it('hides a closed sidebar immediately at the mobile breakpoint and keeps desktop layout outside it', () => {
+    const style = document.createElement('style');
+    style.textContent = readFileSync(
+      resolve(import.meta.dirname, '../styles/app-shell.css'),
+      'utf8',
+    );
+    document.head.append(style);
+    try {
+      const rules = Array.from(style.sheet!.cssRules);
+      const mobile = rules
+        .filter(
+          (rule): rule is CSSMediaRule => rule.type === CSSRule.MEDIA_RULE,
+        )
+        .find((rule) => rule.media.mediaText === '(max-width: 767px)')!;
+      const mobileRules = Array.from(mobile.cssRules).filter(
+        (rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE,
+      );
+      const closed = mobileRules.find(
+        (rule) => rule.selectorText === '.app-sidebar',
+      )!;
+      expect(closed.style.getPropertyValue('visibility')).toBe('hidden');
+      expect(closed.style.getPropertyValue('transform')).toBe(
+        'translateX(-100%)',
+      );
+      expect(closed.style.getPropertyValue('transition')).toBe('none');
+      const opened = mobileRules.find(
+        (rule) =>
+          rule.selectorText.replaceAll('"', "'") ===
+          ".app-sidebar[data-open='true']",
+      )!;
+      expect(opened.style.getPropertyValue('visibility')).toBe('visible');
+      expect(opened.style.getPropertyValue('transform')).toBe('translateX(0)');
+      const desktop = rules
+        .filter(
+          (rule): rule is CSSStyleRule => rule.type === CSSRule.STYLE_RULE,
+        )
+        .find((rule) => rule.selectorText === '.app-sidebar')!;
+      expect(desktop.style.getPropertyValue('position')).toBe('sticky');
+      expect(desktop.style.getPropertyValue('visibility')).toBe('');
+      expect(desktop.style.getPropertyValue('transform')).toBe('');
+    } finally {
+      style.remove();
+    }
   });
 
   it('allows the notary branch to be reopened from the mobile drawer', async () => {
@@ -1144,14 +1372,45 @@ it('discards stale group counters after range, authorization and user changes', 
   const auth = useAuthStore();
   auth.session = { ...session, authorizationRevision: 2 };
   await flushPromises();
-  expect(wrapper.get('[data-test="complaint-preparation-stage"]').text()).toBe(
-    '准备起诉文书',
-  );
+  expect(
+    wrapper.find('[data-test="complaint-preparation-stage"]').exists(),
+  ).toBe(false);
+  expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
   auth.session = { ...session, user: { ...session.user, id: 'user-2' } };
   await flushPromises();
-  expect(wrapper.get('[data-test="complaint-preparation-stage"]').text()).toBe(
-    '准备起诉文书',
+  expect(
+    wrapper.find('[data-test="complaint-preparation-stage"]').exists(),
+  ).toBe(false);
+  expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+});
+
+it('cannot restore internal case navigation with a late response from the revoked identity', async () => {
+  const base = await api.listCases();
+  const { wrapper, router } = await mountShell('/cases');
+  let resolveOld!: (value: unknown) => void;
+  api.listCases.mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolveOld = resolve;
+    }),
   );
+  await router.push('/cases?view=department');
+  await flushPromises();
+  const oldSignal = api.listCases.mock.calls.at(-1)![2].signal as AbortSignal;
+  api.listCases.mockRejectedValue(
+    new ApiError('revoked', 403, 'ACTION_FORBIDDEN'),
+  );
+  const auth = useAuthStore();
+  auth.session = { ...session, authorizationRevision: 2 };
+  await flushPromises();
+  expect(oldSignal.aborted).toBe(true);
+  expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+  resolveOld(base);
+  await flushPromises();
+  expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+  api.listCases.mockResolvedValue(base);
+  auth.session = { ...session, authorizationRevision: 3 };
+  await flushPromises();
+  expect(wrapper.get('[data-test="case-nav"]').text()).toContain('案件');
 });
 
 it('invalidates lawyer group badges on identity change and ignores the old response after revocation', async () => {

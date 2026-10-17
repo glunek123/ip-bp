@@ -29,6 +29,11 @@ const canViewPeople = ref(false);
 const canViewNotaryOffices = ref(false);
 const canManageLawyerAccounts = ref(false);
 const canViewNotaryMatters = ref(false);
+const canViewCases = ref(false);
+const caseReadError = ref('');
+const caseReadLoading = ref(false);
+const caseReadRevision = ref(0);
+let deniedCaseIdentity: string | null = null;
 const leadCounts = ref<Record<LeadStatus, number> | null>(null);
 const notaryCounts = ref<Record<NotaryListStage, number> | null>(null);
 const caseCounts = ref<Record<CaseStage, number> | null>(null);
@@ -407,7 +412,6 @@ watch(
     if (currentIdentity !== previous?.[0]) {
       leadCounts.value = null;
       notaryCounts.value = null;
-      caseCounts.value = null;
       canViewNotaryMatters.value = false;
     }
     if (
@@ -417,7 +421,6 @@ watch(
       isLawyer.value
     )
       return;
-    caseCounts.value = null;
     const controller = new AbortController();
     let current = true;
     onCleanup(() => {
@@ -425,13 +428,9 @@ watch(
       controller.abort();
     });
     try {
-      const [leadResult, notaryResult, caseResult] = await Promise.allSettled([
+      const [leadResult, notaryResult] = await Promise.allSettled([
         listLeads(1, 1, { signal: controller.signal }, undefined, 'LIBRARY'),
         listNotaryMatters(1, 1, { signal: controller.signal }),
-        listCases(1, 1, {
-          signal: controller.signal,
-          view: selectedCaseView.value,
-        }),
       ]);
       if (!current || identity.value !== currentIdentity) return;
       if (leadResult.status === 'fulfilled')
@@ -444,14 +443,62 @@ watch(
         notaryCounts.value = null;
         canViewNotaryMatters.value = false;
       }
-      caseCounts.value =
-        caseResult.status === 'fulfilled' ? caseResult.value.counts : null;
     } catch {
       if (current) {
         leadCounts.value = null;
         notaryCounts.value = null;
-        caseCounts.value = null;
       }
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  [identity, () => route.fullPath, countRevision, caseReadRevision],
+  async ([currentIdentity], previous, onCleanup) => {
+    caseCounts.value = null;
+    caseReadLoading.value = false;
+    if (currentIdentity !== previous?.[0]) {
+      canViewCases.value = false;
+      caseReadError.value = '';
+      deniedCaseIdentity = null;
+    }
+    if (
+      currentIdentity === null ||
+      isClient.value ||
+      isNotary.value ||
+      isLawyer.value ||
+      deniedCaseIdentity === currentIdentity
+    )
+      return;
+    const controller = new AbortController();
+    let current = true;
+    onCleanup(() => {
+      current = false;
+      controller.abort();
+    });
+    caseReadLoading.value = true;
+    try {
+      const result = await listCases(1, 1, {
+        signal: controller.signal,
+        view: selectedCaseView.value,
+      });
+      if (!current || identity.value !== currentIdentity) return;
+      caseCounts.value = result.counts;
+      canViewCases.value = true;
+      caseReadError.value = '';
+    } catch (error) {
+      if (!current || identity.value !== currentIdentity) return;
+      if (error instanceof ApiError && error.status === 403) {
+        canViewCases.value = false;
+        caseReadError.value = '';
+        deniedCaseIdentity = currentIdentity;
+      } else {
+        caseReadError.value = '案件导航暂时无法读取，请重试。';
+      }
+    } finally {
+      if (current && identity.value === currentIdentity)
+        caseReadLoading.value = false;
     }
   },
   { immediate: true },
@@ -762,7 +809,24 @@ async function logout(): Promise<void> {
           </RouterLink>
         </div>
 
-        <div v-if="!isClient" class="app-nav__group">
+        <div
+          v-if="!isClient && caseReadError"
+          class="app-nav__status"
+          data-test="case-nav-error"
+          role="status"
+        >
+          <p>{{ caseReadError }}</p>
+          <ElButton
+            text
+            size="small"
+            data-test="case-nav-retry"
+            :loading="caseReadLoading"
+            :disabled="caseReadLoading"
+            @click="caseReadRevision += 1"
+            >重新读取案件导航</ElButton
+          >
+        </div>
+        <div v-if="!isClient && canViewCases" class="app-nav__group">
           <RouterLink
             class="app-nav__item"
             :class="{ active: isCaseRoute }"
@@ -787,7 +851,7 @@ async function logout(): Promise<void> {
           </button>
         </div>
         <div
-          v-if="!isClient && expandedGroup === 'cases'"
+          v-if="!isClient && canViewCases && expandedGroup === 'cases'"
           class="app-subnav"
           aria-label="案件范围与阶段"
         >
