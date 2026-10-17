@@ -9,6 +9,8 @@ import { MaterialModule } from './modules/materials/material.module';
 import { LeadModule } from './modules/leads/lead.module';
 import { CaseModule } from './modules/cases/case.module';
 import { CalendarModule } from './modules/calendar';
+import { SettlementModule } from './modules/settlements/settlement.module';
+import { EvidenceModule } from './modules/evidence/evidence.module';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { CalendarModule } from './modules/calendar';
     LeadModule,
     CaseModule,
     CalendarModule,
+    SettlementModule,
+    EvidenceModule,
     HealthModule,
   ],
 })

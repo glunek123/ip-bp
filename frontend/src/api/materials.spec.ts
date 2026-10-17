@@ -1394,6 +1394,100 @@ describe('materials API', () => {
     });
   });
 
+  it('uploads a real fee proof through the existing CASE POST+PUT flow with its own purpose', async () => {
+    const file = new File(['%PDF-1.4 proof bytes'], '费用发票.pdf', {
+      type: 'application/pdf',
+    });
+    const result = {
+      ...uploaded,
+      purpose: 'FEE_PROOF',
+      originalFilename: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'proof-draft',
+            ownerType: 'CASE',
+            ownerId: 'case-1',
+            category: 'FEE_PROOF',
+            purpose: 'FEE_PROOF',
+            originalFilename: file.name,
+            declaredMimeType: file.type,
+            expiresAt: '2026-10-18T00:00:00.000Z',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(result)));
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: 'case-1',
+        category: 'FEE_PROOF',
+        purpose: 'FEE_PROOF',
+        file,
+      }),
+    ).resolves.toEqual(result);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      ownerType: 'CASE',
+      ownerId: 'case-1',
+      category: 'FEE_PROOF',
+      purpose: 'FEE_PROOF',
+    });
+    expect(fetch.mock.calls[1]?.[1]).toMatchObject({
+      method: 'PUT',
+      body: file,
+    });
+  });
+  it('rejects mislabelled, oversized or externally owned fee proofs before upload', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const file = new File(['proof'], '凭证.pdf', { type: 'application/pdf' });
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'NOTARY_MATTER',
+        ownerId: 'matter',
+        category: 'FEE_PROOF',
+        purpose: 'FEE_PROOF',
+        file,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: 'case',
+        category: 'FEE_PROOF',
+        purpose: 'PAYMENT_LIST',
+        file,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: 'case',
+        category: 'FEE_PROOF',
+        purpose: 'FEE_PROOF',
+        file: new File(['bad'], '凭证.pdf', { type: 'image/png' }),
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: 'case',
+        category: 'FEE_PROOF',
+        purpose: 'FEE_PROOF',
+        file: new File([new Uint8Array(50 * 1024 * 1024 + 1)], '超大.pdf', {
+          type: 'application/pdf',
+        }),
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('enforces the distinct evidence and screenshot file type/size limits', async () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);

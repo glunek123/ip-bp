@@ -5,6 +5,7 @@ import { DatabaseModule } from '../../database/database.module';
 import { MaterialModule } from '../materials';
 import { CaseModule } from '../cases';
 import { LeadController } from './lead.controller';
+import { LeadBatchPushController } from './lead-batch-push.controller';
 import { LeadService } from './lead.service';
 import {
   ClientLeadController,
@@ -44,6 +45,7 @@ import { NotaryCertificateService } from './notary-certificate.service';
   ],
   controllers: [
     LeadController,
+    LeadBatchPushController,
     ClientLeadController,
     ClientNotaryOpeningReviewController,
     ClientNotaryController,

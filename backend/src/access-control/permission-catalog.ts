@@ -9,6 +9,20 @@ export type PermissionCatalogItem = {
 const allScopes: PermissionScope[] = ['SELF', 'TEAM', 'DEPARTMENT'];
 
 export const internalAssignablePermissionActions = [
+  'EVIDENCE_READ',
+  'EVIDENCE_EDIT',
+  'EVIDENCE_BULK_STATUS',
+  'EVIDENCE_EXPORT',
+  'SETTLEMENT_READ',
+  'SETTLEMENT_TERMS_UPDATE',
+  'SETTLEMENT_LAUNCH',
+  'SETTLEMENT_BILL_CREATE',
+  'SETTLEMENT_BILL_CANCEL',
+  'FEE_READ',
+  'FEE_CREATE',
+  'FEE_UPDATE',
+  'FEE_LAUNCH',
+  'FEE_DELETE',
   'CUSTOMER_READ',
   'CUSTOMER_CREATE_DRAFT',
   'CUSTOMER_EDIT_ROUTINE',
@@ -101,6 +115,40 @@ export function isInternalAssignablePermissionAction(
 }
 
 const catalog: PermissionCatalogItem[] = [
+  { action: 'EVIDENCE_READ', label: '查看证物', scopes: ['DEPARTMENT'] },
+  { action: 'EVIDENCE_EDIT', label: '编辑证物台账', scopes: ['DEPARTMENT'] },
+  {
+    action: 'EVIDENCE_BULK_STATUS',
+    label: '批量更改证物状态',
+    scopes: ['DEPARTMENT'],
+  },
+  { action: 'EVIDENCE_EXPORT', label: '导出证物清单', scopes: ['DEPARTMENT'] },
+  { action: 'SETTLEMENT_READ', label: '查看结算中心', scopes: ['DEPARTMENT'] },
+  {
+    action: 'SETTLEMENT_TERMS_UPDATE',
+    label: '维护案件结算条件',
+    scopes: ['DEPARTMENT'],
+  },
+  {
+    action: 'SETTLEMENT_LAUNCH',
+    label: '发起案件结算',
+    scopes: ['DEPARTMENT'],
+  },
+  {
+    action: 'SETTLEMENT_BILL_CREATE',
+    label: '创建结算账单',
+    scopes: ['DEPARTMENT'],
+  },
+  {
+    action: 'SETTLEMENT_BILL_CANCEL',
+    label: '撤销结算账单',
+    scopes: ['DEPARTMENT'],
+  },
+  { action: 'FEE_READ', label: '查看费用中心', scopes: ['DEPARTMENT'] },
+  { action: 'FEE_CREATE', label: '创建费用', scopes: ['DEPARTMENT'] },
+  { action: 'FEE_UPDATE', label: '维护费用', scopes: ['DEPARTMENT'] },
+  { action: 'FEE_LAUNCH', label: '发起费用', scopes: ['DEPARTMENT'] },
+  { action: 'FEE_DELETE', label: '删除费用', scopes: ['DEPARTMENT'] },
   {
     action: 'CASE_EXECUTION_FEEDBACK_RECORD',
     label: '登记执行法院反馈',

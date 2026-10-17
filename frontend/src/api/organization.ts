@@ -38,6 +38,23 @@ export type OrganizationContextRole = OrganizationRole & {
 };
 
 export const permissionActionValues = [
+  'EVIDENCE_READ',
+  'EVIDENCE_EDIT',
+  'EVIDENCE_BULK_STATUS',
+  'EVIDENCE_EXPORT',
+  'SETTLEMENT_READ',
+  'SETTLEMENT_TERMS_UPDATE',
+  'SETTLEMENT_LAUNCH',
+  'SETTLEMENT_BILL_CREATE',
+  'SETTLEMENT_BILL_CANCEL',
+  'FEE_READ',
+  'FEE_CREATE',
+  'FEE_UPDATE',
+  'FEE_LAUNCH',
+  'FEE_DELETE',
+  'CASE_EXECUTION_MAILING_CORRECT',
+  'CASE_EXECUTION_FILING_CORRECT',
+  'CASE_EXECUTION_FINISH_CORRECT',
   'CUSTOMER_READ',
   'CUSTOMER_CREATE_DRAFT',
   'CUSTOMER_EDIT_ROUTINE',
@@ -115,6 +132,22 @@ export const permissionActionValues = [
 export const permissionScopeValues = ['SELF', 'TEAM', 'DEPARTMENT'] as const;
 
 export type PermissionAction = (typeof permissionActionValues)[number];
+const demoDepartmentActions = new Set<PermissionAction>([
+  'EVIDENCE_READ',
+  'EVIDENCE_EDIT',
+  'EVIDENCE_BULK_STATUS',
+  'EVIDENCE_EXPORT',
+  'SETTLEMENT_READ',
+  'SETTLEMENT_TERMS_UPDATE',
+  'SETTLEMENT_LAUNCH',
+  'SETTLEMENT_BILL_CREATE',
+  'SETTLEMENT_BILL_CANCEL',
+  'FEE_READ',
+  'FEE_CREATE',
+  'FEE_UPDATE',
+  'FEE_LAUNCH',
+  'FEE_DELETE',
+]);
 export type PermissionScope = (typeof permissionScopeValues)[number];
 export type OrganizationGrant = {
   action: PermissionAction;
@@ -285,7 +318,8 @@ function isGrant(value: unknown): value is OrganizationGrant {
     permissionActions.has(value.action) &&
     typeof value.scope === 'string' &&
     permissionScopes.has(value.scope) &&
-    (value.action !== 'CASE_EXTERNAL_ENTRY_ARCHIVE' ||
+    ((!demoDepartmentActions.has(value.action as PermissionAction) &&
+      value.action !== 'CASE_EXTERNAL_ENTRY_ARCHIVE') ||
       value.scope === 'DEPARTMENT')
   );
 }
@@ -319,6 +353,8 @@ function isPermissionCatalog(
       new Set(item.scopes).size !== item.scopes.length ||
       (item.action === 'CASE_READ' &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
+      (demoDepartmentActions.has(item.action as PermissionAction) &&
+        (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
       (item.action === 'CASE_EXTERNAL_ENTRY_ARCHIVE' &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
       ((item.action === 'CASE_MATCH' ||
@@ -345,6 +381,9 @@ function isPermissionCatalog(
         item.action === 'CASE_EXECUTION_SUPPLEMENT_SUBMIT' ||
         item.action === 'CASE_EXECUTION_SUPPLEMENT_CORRECT' ||
         item.action === 'CASE_EXECUTION_FINISH' ||
+        item.action === 'CASE_EXECUTION_MAILING_CORRECT' ||
+        item.action === 'CASE_EXECUTION_FILING_CORRECT' ||
+        item.action === 'CASE_EXECUTION_FINISH_CORRECT' ||
         item.action === 'CASE_CLOSURE_RECORD' ||
         item.action === 'CASE_CLOSURE_CORRECT' ||
         item.action === 'CASE_ARCHIVE' ||

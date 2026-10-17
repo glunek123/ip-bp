@@ -5,6 +5,20 @@ import { ActorContext } from './actor-context';
 export const ACCESS_CONTROL_STORE = Symbol('ACCESS_CONTROL_STORE');
 
 export type PermissionAction =
+  | 'evidence.read'
+  | 'evidence.edit'
+  | 'evidence.bulk-status'
+  | 'evidence.export'
+  | 'settlement.read'
+  | 'settlement.terms.update'
+  | 'settlement.launch'
+  | 'settlement.bill.create'
+  | 'settlement.bill.cancel'
+  | 'fee.read'
+  | 'fee.create'
+  | 'fee.update'
+  | 'fee.launch'
+  | 'fee.delete'
   | 'customer.read'
   | 'customer.create-draft'
   | 'customer.edit-routine'

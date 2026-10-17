@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+### Demo累计Final Review、259项宿主及真实只读盘点（2026-10-17）
+
+本地主控75e92ec6基础上合入已审结算35源2b8dd5e8及其证物前后端、双initializer、批量推送依赖；产品源无merge冲突，唯一context快照冲突保留主控后据已解释差异重记。组合首轮Final Review如实REJECTED I2：证物页面未注册route/menu，结算导航非403错误静默隐藏。原共享Owner仅AppShell.vue/spec、router.ts/spec修复，manifest SHAfc4d5868d5df48da4a62139a458361eaca5abd7dbea5415396c5890b1e0c401d，源提交44ab891e8808e478055ef67ca0ede32dfafe5145/tree9bde3b108336454320d6e3fa41f62c1ee1e6df74。四项raw依次8d9a4791/3bf20516/1fb0948e/07690258；复制前previousSha256全部匹配，原134清单其余文件逐raw保持，CSS2fafce97不变。两原独立Sol在实际主组合核4/4相同后累计Spec/Standards均ACCEPTED C/I/M0；旧拒绝和RED19/128pass、1个RED未消费deferred错误保留，GREEN147无unhandled。
+
+主组合实际检查：正常prepare:prisma退出0（Prisma7.10，无DB），check:fast:prepared退出0（18模块/164模型、两端及根类型、全仓Lint），旧宿主230/230；最终四文件接入后AppShell/router/CasePages三文件259/259退出0（9.01秒）、前端类型、四文件Lint/格式退出0。旧230不充当新259；其余未变输入已有证据复用，不连续重跑。新组合完整verify/NT006/双构建、165迁移/PG、财务/证物真实HTTP/浏览器均未执行，不套用EF676完整门禁。
+
+原Runner只读盘点：固定67625b9/treef6b18e96及原精确R2/public161，单次标准锁内REPEATABLE READ READ ONLY/34 SELECT，result SHA28d6e5b14e28455d83203a60573227a7eb6b0ef0c0383359ff58a44e32997fa4，manifest SHAd7ea7864635b927d5622d979d15b839c206a59938c947eb69a9b0468ab541e78，主控回读22项artifact bytes/hash全符。14新Action实Grant0；1200投影Q0（8PENDING排除），1300完整N2/异常0、预期8行，两证书各1CV。全87案无当前PRIMARY，主部门22案仅同一客户，无激活绑定LAWYER；现有CLIENT/NOTARY凭据没有已允许私密引用。0写入/新session/服务/HTTP/部署，ledger与安全摘要前后同，锁释放。后续最小申请不得称两客户/两律师/KNOWN源/新hook完整覆盖。
+
+运行树冻结是独立审批阻塞：对原ef001-integration67625b9创建分支并pick75a4，第一次及父级补充证据后唯一原命令重试均被自动审批拒绝，目标仍clean/原分支，操作未执行；第二拒绝receipt SHA dbc48059e8ff06c506f6b3dd7394c9f8bb76bc6ab4f12c8c2f02643b6fb700b6。用户针对该精确目标的确认待回；不换目录绕过、不复验产品。原只读浏览器2PASS/1FAIL、旧全部失败与预算使用保留。以下为历史记录。
+
 ### 导航I1补闭、运行树冻结拒绝及结算v2固定（2026-10-17）
 
 UI新三raw AppShell.vue b984fb700d392d7e2c81c579d6a47f1eea8acf96e8afa54a14c25a56a338b973、spec2c38cb25d558865254ccd4e303ae52af58f3f79be572eb7ddeb24612729bb99e、styles2fafce97931aaa942bc4ddbc8415f465e8650fd9f5b9f699199b8f40e829e4af逐项匹配；原两轴补闭C/I/M0。非403保留已验证入口、明确失败提示与主动GET重试；首次失败不伪授权，403仍锁同授权identity，Abort/卸载/旧identity不污染，retry loading防重复。真实5反例RED→82/82、前端类型/Lint格式/diff通过，73旧记录保持。三文件源提交75a4e611/tree9bc4e297，主控单接3e6dcb33；不冒真浏览器PASS。

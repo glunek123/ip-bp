@@ -12,12 +12,47 @@ const auth = vi.hoisted(() => ({
 vi.mock('../stores/auth', () => ({ useAuthStore: () => auth }));
 
 import { router } from './router';
+import EvidencePage from '../modules/evidence/EvidencePage.vue';
 
 beforeEach(async () => {
   auth.session = null;
   vi.resetAllMocks();
   auth.restore.mockResolvedValue(undefined);
   await router.push('/health');
+});
+
+describe('evidence routing', () => {
+  it('resolves the actual EvidencePage for an internal account', async () => {
+    auth.session = { principalType: 'INTERNAL', user: { id: 'reader' } };
+    await router.push('/evidence');
+    expect(router.currentRoute.value.path).toBe('/evidence');
+    expect(router.currentRoute.value.matched).toHaveLength(1);
+    expect(router.currentRoute.value.matched[0]!.components?.default).toBe(
+      EvidencePage,
+    );
+    expect(router.currentRoute.value.meta).toMatchObject({
+      audience: 'INTERNAL',
+      section: '证物',
+      breadcrumbs: ['证物'],
+    });
+  });
+  it('preserves an unauthenticated evidence destination for login', async () => {
+    await router.push('/evidence');
+    expect(router.currentRoute.value.path).toBe('/login');
+    expect(router.currentRoute.value.query.returnTo).toBe('/evidence');
+  });
+  it.each([
+    ['CLIENT', '/client/leads'],
+    ['LAWYER', '/lawyer/cases'],
+    ['NOTARY', '/notary-portal/matters'],
+  ] as const)(
+    'keeps %s on its external home',
+    async (principalType, expected) => {
+      auth.session = { principalType, user: { id: 'external' } };
+      await router.push('/evidence');
+      expect(router.currentRoute.value.path).toBe(expected);
+    },
+  );
 });
 
 describe('internal case workspace routing', () => {

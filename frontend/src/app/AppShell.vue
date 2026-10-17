@@ -4,6 +4,8 @@ import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../api/http';
 import { getCalendarSummary } from '../api/calendar';
+import { getSettlementContext } from '../api/settlements';
+import { listEvidence } from '../api/evidence';
 import { listCases, type CaseStage, type CaseStageGroup } from '../api/cases';
 import { listLawyerCases } from '../api/cases';
 import { listLeads, type LeadStatus } from '../api/leads';
@@ -194,6 +196,95 @@ function acceptCalendarSummary(event: globalThis.Event): void {
   calendarSummaryRevision += 1;
   calendarCount.value = detail.count;
 }
+
+function createReadNavigation(
+  read: (signal: globalThis.AbortSignal) => Promise<boolean>,
+  failureMessage: string,
+) {
+  const visible = ref(false);
+  const error = ref('');
+  const loading = ref(false);
+  const retryRevision = ref(0);
+  let deniedIdentity: string | null = null;
+  let failedIdentity: string | null = null;
+  watch(
+    [identity, () => route.fullPath, countRevision, retryRevision],
+    async ([currentIdentity, , , currentRetry], previous, onCleanup) => {
+      loading.value = false;
+      if (currentIdentity !== previous?.[0]) {
+        visible.value = false;
+        error.value = '';
+        deniedIdentity = null;
+        failedIdentity = null;
+      }
+      if (
+        currentIdentity === null ||
+        isClient.value ||
+        isNotary.value ||
+        isLawyer.value ||
+        deniedIdentity === currentIdentity ||
+        (failedIdentity === currentIdentity && currentRetry === previous?.[3])
+      )
+        return;
+      const controller = new AbortController();
+      let current = true;
+      onCleanup(() => {
+        current = false;
+        controller.abort();
+      });
+      loading.value = true;
+      try {
+        const allowed = await read(controller.signal);
+        if (!current || identity.value !== currentIdentity) return;
+        visible.value = allowed;
+        error.value = '';
+        failedIdentity = null;
+        if (!allowed) deniedIdentity = currentIdentity;
+      } catch (cause) {
+        if (!current || identity.value !== currentIdentity) return;
+        if (cause instanceof ApiError && cause.status === 403) {
+          visible.value = false;
+          error.value = '';
+          deniedIdentity = currentIdentity;
+          failedIdentity = null;
+        } else {
+          error.value = failureMessage;
+          failedIdentity = currentIdentity;
+        }
+      } finally {
+        if (current && identity.value === currentIdentity)
+          loading.value = false;
+      }
+    },
+    { immediate: true },
+  );
+  return {
+    visible,
+    error,
+    loading,
+    retry: () => {
+      if (!loading.value) retryRevision.value += 1;
+    },
+  };
+}
+const {
+  visible: canViewSettlements,
+  error: settlementReadError,
+  loading: settlementReadLoading,
+  retry: retrySettlements,
+} = createReadNavigation(async (signal) => {
+  const context = await getSettlementContext({ signal });
+  return context.read || context.feeRead;
+}, '结算导航暂时无法读取，请重试。');
+const {
+  visible: canViewEvidence,
+  error: evidenceReadError,
+  loading: evidenceReadLoading,
+  retry: retryEvidence,
+} = createReadNavigation(async (signal) => {
+  await listEvidence({ page: 1, pageSize: 1 }, { signal });
+  return true;
+}, '证物导航暂时无法读取，请重试。');
 onMounted(() =>
   globalThis.window.addEventListener(
     calendarSummaryReadEvent,
@@ -930,6 +1021,42 @@ async function logout(): Promise<void> {
               }}</span>
             </RouterLink>
           </div>
+        </div>
+        <RouterLink
+          v-if="!isClient && canViewSettlements"
+          class="app-nav__item"
+          :class="{ active: route.path === '/settlements' }"
+          data-test="settlement-nav"
+          to="/settlements"
+          @click="closeDrawer"
+          ><span>结算中心</span></RouterLink
+        >
+        <div v-if="settlementReadError" data-test="settlement-nav-error">
+          <p role="alert">{{ settlementReadError }}</p>
+          <ElButton
+            data-test="settlement-nav-retry"
+            :disabled="settlementReadLoading"
+            @click="retrySettlements"
+            >重新读取结算导航</ElButton
+          >
+        </div>
+        <RouterLink
+          v-if="canViewEvidence"
+          class="app-nav__item"
+          :class="{ active: route.path === '/evidence' }"
+          data-test="evidence-nav"
+          to="/evidence"
+          @click="closeDrawer"
+          ><span>证物</span></RouterLink
+        >
+        <div v-if="evidenceReadError" data-test="evidence-nav-error">
+          <p role="alert">{{ evidenceReadError }}</p>
+          <ElButton
+            data-test="evidence-nav-retry"
+            :disabled="evidenceReadLoading"
+            @click="retryEvidence"
+            >重新读取证物导航</ElButton
+          >
         </div>
         <RouterLink
           v-if="isClient"

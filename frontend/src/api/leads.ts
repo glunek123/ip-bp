@@ -241,6 +241,8 @@ export type LeadPushResult = {
   pushedByUserId: string;
   pushedByDisplayName: string;
 };
+export type LeadBatchPushItem = { leadId: string; expectedVersion: number };
+export type LeadBatchPushResult = { items: LeadPushResult[] };
 export type LeadList = {
   items: Lead[];
   total: number;
@@ -787,6 +789,50 @@ export async function pushLead(
   )
     throw invalidResponse();
   return data as LeadPushResult;
+}
+
+export async function pushLeadsBatch(
+  items: readonly LeadBatchPushItem[],
+  idempotencyKey: string,
+  options?: RequestOptions,
+): Promise<LeadBatchPushResult> {
+  const frozenItems = items.map((item) => ({ ...item }));
+  const normalizedHeaders: Record<string, string> = {};
+  new Headers(options?.headers).forEach((value, name) => {
+    normalizedHeaders[name] = value;
+  });
+  delete normalizedHeaders['idempotency-key'];
+  normalizedHeaders['Idempotency-Key'] = idempotencyKey;
+  const data = await requestJson('/leads/batch-push', {
+    ...options,
+    method: 'POST',
+    headers: normalizedHeaders,
+    retryOnCsrfInvalid: false,
+    body: { items: frozenItems },
+  });
+  if (
+    !isRecord(data) ||
+    !Array.isArray(data.items) ||
+    data.items.length !== frozenItems.length
+  )
+    throw invalidResponse();
+  const resultItems = data.items.map((entry, index) => {
+    const item = frozenItems[index]!;
+    if (
+      !isRecord(entry) ||
+      typeof entry.id !== 'string' ||
+      entry.id.toLowerCase() !== item.leadId.toLowerCase() ||
+      typeof entry.businessNo !== 'string' ||
+      entry.status !== 'WAITING_REVIEW' ||
+      entry.version !== item.expectedVersion + 1 ||
+      !isDateTime(entry.pushedAt) ||
+      typeof entry.pushedByUserId !== 'string' ||
+      typeof entry.pushedByDisplayName !== 'string'
+    )
+      throw invalidResponse();
+    return entry as LeadPushResult;
+  });
+  return { items: resultItems };
 }
 
 function requestBody(input: CreateLeadInput | UpdateLeadInput) {

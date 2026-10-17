@@ -48,6 +48,15 @@ const api = vi.hoisted(() => ({
   correctCaseJudgment: vi.fn(),
   chooseCaseJudgmentNextStep: vi.fn(),
   revokeCaseJudgmentNextStep: vi.fn(),
+  getSettlementContext: vi.fn(),
+  getCaseSettlement: vi.fn(),
+  listFees: vi.fn(),
+}));
+vi.mock('../../api/settlements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/settlements')>()),
+  getSettlementContext: api.getSettlementContext,
+  getCaseSettlement: api.getCaseSettlement,
+  listFees: api.listFees,
 }));
 vi.mock('../../api/leads', () => ({ getLead: api.getLead }));
 vi.mock('../../api/cases', async (importOriginal) => ({
@@ -83,6 +92,18 @@ beforeEach(() => {
       '<div v-show="modelValue" role="dialog" class="case-workspace-editors"><slot /></div>',
   };
   vi.resetAllMocks();
+  api.getSettlementContext.mockResolvedValue({
+    read: false,
+    termsUpdate: false,
+    launch: false,
+    billCreate: false,
+    billCancel: false,
+    feeRead: false,
+    feeCreate: false,
+    feeUpdate: false,
+    feeLaunch: false,
+    feeDelete: false,
+  });
   api.listCases.mockResolvedValue({
     items: [
       {
@@ -2719,4 +2740,79 @@ it.each([
   await flushPromises();
   expect(api.listCases).toHaveBeenCalledTimes(1);
   wrapper.unmount();
+});
+
+describe('real financial panels in the case workspace', () => {
+  it('passes the real case ID to both readable ledgers while withholding write forms', async () => {
+    api.getSettlementContext.mockResolvedValue({
+      read: true,
+      termsUpdate: false,
+      launch: false,
+      billCreate: false,
+      billCancel: false,
+      feeRead: true,
+      feeCreate: false,
+      feeUpdate: false,
+      feeLaunch: false,
+      feeDelete: false,
+    });
+    api.getCaseSettlement.mockResolvedValue({
+      caseId: 'case-1',
+      businessNo: 'CA-1',
+      stage: 'PENDING_MATCH',
+      customer: { id: 'customer-1', name: '客户甲' },
+      lawyers: [],
+      termsVersion: 0,
+      terms: null,
+      figures: {
+        basis: null,
+        customerPercent: null,
+        customerAutomaticAmount: null,
+        customerAmount: null,
+        customerSource: 'AUTOMATIC',
+        lawyerAutomaticAmount: null,
+        lawyerAmount: null,
+        lawyerSource: 'AUTOMATIC',
+      },
+      customerBalance: {
+        launched: '0.00',
+        remaining: null,
+        overLaunched: false,
+      },
+      lawyerBalance: { launched: '0.00', remaining: null, overLaunched: false },
+      launches: [],
+    });
+    api.listFees.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 100,
+      matchingIds: [],
+      summary: {
+        expense: '0.00',
+        income: '0.00',
+        pending: '0.00',
+        pendingCount: 0,
+      },
+    });
+    const wrapper = await mountRoute('/cases/case-1?tab=fees', CaseDetailPage);
+    expect(api.getCaseSettlement).toHaveBeenCalledWith(
+      'case-1',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(api.listFees).toHaveBeenCalledWith(
+      expect.objectContaining({ caseId: 'case-1' }),
+      expect.anything(),
+    );
+    expect(wrapper.find('.case-settlement').exists()).toBe(true);
+    expect(wrapper.find('.fee-center').exists()).toBe(true);
+    expect(wrapper.find('.case-settlement form').exists()).toBe(false);
+    wrapper.unmount();
+  });
+  it('does not request financial data without the corresponding read capability', async () => {
+    const wrapper = await mountRoute('/cases/case-1?tab=fees', CaseDetailPage);
+    expect(api.getCaseSettlement).not.toHaveBeenCalled();
+    expect(api.listFees).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
 });

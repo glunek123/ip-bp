@@ -10,7 +10,11 @@ import {
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
-import { Prisma } from '../../generated/prisma/client';
+import {
+  Prisma,
+  type LeadBatchPushReceipt,
+} from '../../generated/prisma/client';
+import { isUUID } from 'class-validator';
 import { MaterialService } from '../materials';
 import {
   CASE_TYPE_OPTIONS,
@@ -33,6 +37,7 @@ import {
   PushLeadDto,
   UpdateLeadDto,
 } from './lead.dto';
+import { LeadBatchPushDto } from './lead-batch-push.dto';
 
 const MAX_SERIALIZABLE_ATTEMPTS = 3;
 const leadInclude = {
@@ -219,6 +224,8 @@ type LeadPushResponse = {
   pushedByUserId: string;
   pushedByDisplayName: string;
 };
+type LeadBatchPushResponse = { items: LeadPushResponse[] };
+type LeadBatchFailure = { index: number; code: string };
 
 type LeadWithdrawalApplicationResponse = {
   id: string;
@@ -1156,6 +1163,393 @@ export class LeadService {
       }
     }
     throw this.versionConflict();
+  }
+
+  async pushBatch(
+    actor: ActorContext,
+    idempotencyKey: string,
+    input: LeadBatchPushDto,
+  ): Promise<LeadBatchPushResponse> {
+    if (!input || typeof input !== 'object' || !Array.isArray(input.items))
+      throw this.validation();
+    const items = input.items;
+    if (
+      !Array.isArray(items) ||
+      items.length < 1 ||
+      items.length > 20 ||
+      items.some(
+        (item) =>
+          !item ||
+          typeof item.leadId !== 'string' ||
+          !Number.isInteger(item.expectedVersion) ||
+          item.expectedVersion < 1 ||
+          !isUUID(item.leadId),
+      ) ||
+      new Set(items.map((item) => item.leadId.toLowerCase())).size !==
+        items.length
+    )
+      throw this.validation();
+    const originalRequest = { items: items.map((item) => ({ ...item })) };
+    const fingerprint = this.fingerprint({
+      action: 'lead.batch-push',
+      ...originalRequest,
+    });
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (tx) => {
+            const receipt = await tx.leadBatchPushReceipt.findUnique({
+              where: {
+                departmentId_actorUserId_idempotencyKey: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  idempotencyKey,
+                },
+              },
+            });
+            if (receipt)
+              return this.replayBatchReceipt(
+                tx,
+                actor,
+                receipt,
+                idempotencyKey,
+                fingerprint,
+              );
+            const indexes = new Map(
+              items.map((item, index) => [item.leadId.toLowerCase(), index]),
+            );
+            const ids = [...items]
+              .map((item) => item.leadId)
+              .sort((a, b) => {
+                const left = a.toLowerCase();
+                const right = b.toLowerCase();
+                return left < right ? -1 : left > right ? 1 : 0;
+              });
+            await tx.$queryRawUnsafe<Array<{ id: string }>>(
+              'SELECT "id" FROM "leads" WHERE "department_id" = $1::uuid AND "id" = ANY($2::uuid[]) ORDER BY "id"::text FOR UPDATE',
+              actor.departmentId,
+              ids,
+            );
+            const loaded = await tx.lead.findMany({
+              where: { departmentId: actor.departmentId, id: { in: ids } },
+              include: {
+                products: { orderBy: { position: 'asc' } },
+                customer: {
+                  select: {
+                    profileStatus: true,
+                    clientAccountBindings: {
+                      where: { active: true, user: { active: true } },
+                      select: { id: true },
+                      take: 1,
+                    },
+                  },
+                },
+              },
+            });
+            const byId = new Map(
+              loaded.map((lead) => [lead.id.toLowerCase(), lead]),
+            );
+            const failures: LeadBatchFailure[] = [];
+            for (const item of items) {
+              const index = indexes.get(item.leadId.toLowerCase())!;
+              const current = byId.get(item.leadId.toLowerCase());
+              if (!current) {
+                failures.push({ index, code: 'NOT_AVAILABLE' });
+                continue;
+              }
+              try {
+                await this.access.authorizeLead(
+                  actor,
+                  'lead.push',
+                  {
+                    departmentId: current.departmentId,
+                    responsibleUserId: current.responsibleUserId,
+                    ...(current.teamId === null
+                      ? {}
+                      : { teamId: current.teamId }),
+                  },
+                  tx,
+                );
+              } catch (error) {
+                if (!(error instanceof ForbiddenException)) throw error;
+                failures.push({ index, code: 'NOT_AVAILABLE' });
+                continue;
+              }
+              if (current.status !== 'WAITING_PUSH')
+                failures.push({ index, code: 'INVALID_STATE' });
+              else if (current.version !== item.expectedVersion)
+                failures.push({ index, code: 'VERSION_CONFLICT' });
+              else if (current.customer.profileStatus !== 'ADMITTED')
+                failures.push({ index, code: 'CUSTOMER_NOT_ADMITTED' });
+              else if (current.products.length === 0)
+                failures.push({ index, code: 'LEAD_PRODUCTS_REQUIRED' });
+              else if (current.customer.clientAccountBindings.length === 0)
+                failures.push({ index, code: 'CLIENT_ACCOUNT_UNAVAILABLE' });
+            }
+            if (failures.length)
+              throw new ConflictException({
+                code: 'BATCH_PUSH_REJECTED',
+                message: '批量推送未执行',
+                details: { failures },
+              });
+            const pusher = await tx.userAccount.findUnique({
+              where: { id: actor.userId },
+              select: { displayName: true },
+            });
+            if (!pusher)
+              throw new InternalServerErrorException('批量推送操作者不可用');
+            const pushedAt = new Date();
+            const resultItems: LeadPushResponse[] = [];
+            for (let index = 0; index < items.length; index += 1) {
+              const item = items[index]!;
+              const current = byId.get(item.leadId.toLowerCase())!;
+              const changed = await tx.lead.updateMany({
+                where: {
+                  id: current.id,
+                  departmentId: actor.departmentId,
+                  version: item.expectedVersion,
+                  status: 'WAITING_PUSH',
+                },
+                data: {
+                  status: 'WAITING_REVIEW',
+                  pushedAt,
+                  pushedByUserId: actor.userId,
+                  version: { increment: 1 },
+                },
+              });
+              if (changed.count !== 1) throw this.versionConflict();
+              await tx.auditEvent.create({
+                data: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  resourceType: 'lead',
+                  resourceId: current.id,
+                  action: 'lead.pushed',
+                  details: {
+                    fromVersion: item.expectedVersion,
+                    toVersion: item.expectedVersion + 1,
+                  },
+                },
+              });
+              resultItems.push({
+                id: current.id,
+                businessNo: current.businessNo,
+                status: 'WAITING_REVIEW',
+                version: item.expectedVersion + 1,
+                pushedAt: pushedAt.toISOString(),
+                pushedByUserId: actor.userId,
+                pushedByDisplayName: pusher.displayName,
+              });
+            }
+            const result: LeadBatchPushResponse = { items: resultItems };
+            await tx.leadBatchPushReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                idempotencyKey,
+                requestFingerprint: fingerprint,
+                originalRequest,
+                resultSnapshot: result,
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.versionConflict();
+        }
+        if (this.isUnique(error)) {
+          const receipt = await this.database.leadBatchPushReceipt.findUnique({
+            where: {
+              departmentId_actorUserId_idempotencyKey: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                idempotencyKey,
+              },
+            },
+          });
+          if (receipt)
+            return this.replayBatchReceipt(
+              this.database,
+              actor,
+              receipt,
+              idempotencyKey,
+              fingerprint,
+            );
+        }
+        throw error;
+      }
+    }
+    throw this.versionConflict();
+  }
+
+  private async replayBatchReceipt(
+    tx: Prisma.TransactionClient | DatabaseService,
+    actor: ActorContext,
+    receipt: LeadBatchPushReceipt,
+    idempotencyKey: string,
+    fingerprint: string,
+  ): Promise<LeadBatchPushResponse> {
+    if (
+      receipt.departmentId !== actor.departmentId ||
+      receipt.actorUserId !== actor.userId ||
+      receipt.idempotencyKey !== idempotencyKey ||
+      !(receipt.createdAt instanceof Date) ||
+      Number.isNaN(receipt.createdAt.getTime()) ||
+      !/^[0-9a-f]{64}$/u.test(receipt.requestFingerprint) ||
+      !receipt.originalRequest ||
+      typeof receipt.originalRequest !== 'object' ||
+      Array.isArray(receipt.originalRequest)
+    )
+      throw this.corruptReceipt();
+    const snapshot = receipt.originalRequest as {
+      items?: unknown;
+      [key: string]: unknown;
+    };
+    if (
+      Object.keys(snapshot).length !== 1 ||
+      !Object.hasOwn(snapshot, 'items') ||
+      !Array.isArray(snapshot.items) ||
+      snapshot.items.length < 1 ||
+      snapshot.items.length > 20 ||
+      snapshot.items.some((entry) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry))
+          return true;
+        const item = entry as Record<string, unknown>;
+        return (
+          Object.keys(item).length !== 2 ||
+          typeof item.leadId !== 'string' ||
+          !isUUID(item.leadId) ||
+          !Number.isInteger(item.expectedVersion) ||
+          (item.expectedVersion as number) < 1 ||
+          (item.expectedVersion as number) > 2147483647
+        );
+      }) ||
+      new Set(
+        (snapshot.items as Array<{ leadId: string }>).map((item) =>
+          item.leadId.toLowerCase(),
+        ),
+      ).size !== snapshot.items.length
+    )
+      throw this.corruptReceipt();
+    const originalItems = snapshot.items as Array<{
+      leadId: string;
+      expectedVersion: number;
+    }>;
+    const ids = originalItems.map((item) => item.leadId);
+    await tx.$queryRawUnsafe(
+      'SELECT "id" FROM "leads" WHERE "department_id" = $1::uuid AND "id" = ANY($2::uuid[]) ORDER BY "id"::text FOR UPDATE',
+      actor.departmentId,
+      ids,
+    );
+    const leads = await tx.lead.findMany({
+      where: { departmentId: actor.departmentId, id: { in: ids } },
+      select: {
+        id: true,
+        departmentId: true,
+        responsibleUserId: true,
+        teamId: true,
+      },
+    });
+    const byId = new Map<
+      string,
+      {
+        id: string;
+        departmentId: string;
+        responsibleUserId: string;
+        teamId: string | null;
+      }
+    >(leads.map((lead) => [lead.id.toLowerCase(), lead]));
+    const failures: LeadBatchFailure[] = [];
+    for (const [index, item] of originalItems.entries()) {
+      const lead = byId.get(item.leadId.toLowerCase());
+      if (!lead) {
+        failures.push({ index, code: 'NOT_AVAILABLE' });
+        continue;
+      }
+      try {
+        await this.access.authorizeLead(
+          actor,
+          'lead.push',
+          {
+            departmentId: lead.departmentId,
+            responsibleUserId: lead.responsibleUserId,
+            ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
+          },
+          tx,
+        );
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+        failures.push({ index, code: 'NOT_AVAILABLE' });
+      }
+    }
+    if (failures.length)
+      throw new ConflictException({
+        code: 'BATCH_PUSH_REJECTED',
+        message: '当前权限不足，无法确认原批量请求结果；请恢复权限后原样重试',
+        details: { failures },
+      });
+    const originalFingerprint = this.fingerprint({
+      action: 'lead.batch-push',
+      items: originalItems.map(({ leadId, expectedVersion }) => ({
+        leadId,
+        expectedVersion,
+      })),
+    });
+    if (receipt.requestFingerprint !== originalFingerprint)
+      throw this.corruptReceipt();
+    if (
+      !receipt.resultSnapshot ||
+      typeof receipt.resultSnapshot !== 'object' ||
+      Array.isArray(receipt.resultSnapshot)
+    )
+      throw this.corruptReceipt();
+    const resultSnapshot = receipt.resultSnapshot as {
+      items?: unknown;
+      [key: string]: unknown;
+    };
+    if (
+      Object.keys(resultSnapshot).length !== 1 ||
+      !Object.hasOwn(resultSnapshot, 'items') ||
+      !Array.isArray(resultSnapshot.items)
+    )
+      throw this.corruptReceipt();
+    const result = receipt.resultSnapshot as LeadBatchPushResponse;
+    if (
+      result.items.length !== originalItems.length ||
+      result.items.some((entry, index) => {
+        if (
+          !entry ||
+          typeof entry !== 'object' ||
+          Object.keys(entry).length !== 7
+        )
+          return true;
+        const expected = originalItems[index]!;
+        return (
+          typeof entry.id !== 'string' ||
+          !isUUID(entry.id) ||
+          entry.id.toLowerCase() !== expected.leadId.toLowerCase() ||
+          typeof entry.businessNo !== 'string' ||
+          entry.status !== 'WAITING_REVIEW' ||
+          entry.version !== expected.expectedVersion + 1 ||
+          typeof entry.pushedAt !== 'string' ||
+          Number.isNaN(Date.parse(entry.pushedAt)) ||
+          new Date(entry.pushedAt).toISOString() !== entry.pushedAt ||
+          typeof entry.pushedByUserId !== 'string' ||
+          entry.pushedByUserId !== actor.userId ||
+          typeof entry.pushedByDisplayName !== 'string'
+        );
+      })
+    )
+      throw this.corruptReceipt();
+    if (new Set(result.items.map((entry) => entry.pushedAt)).size !== 1)
+      throw this.corruptReceipt();
+    if (receipt.requestFingerprint !== fingerprint)
+      throw this.idempotencyConflict();
+    return result;
   }
 
   async applyWithdrawal(

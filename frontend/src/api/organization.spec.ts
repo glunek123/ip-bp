@@ -56,6 +56,63 @@ const context = {
     },
   ],
   permissionCatalog: [
+    { action: 'EVIDENCE_READ', label: '查看证物', scopes: ['DEPARTMENT'] },
+    { action: 'EVIDENCE_EDIT', label: '编辑证物台账', scopes: ['DEPARTMENT'] },
+    {
+      action: 'EVIDENCE_BULK_STATUS',
+      label: '批量更改证物状态',
+      scopes: ['DEPARTMENT'],
+    },
+    {
+      action: 'EVIDENCE_EXPORT',
+      label: '导出证物清单',
+      scopes: ['DEPARTMENT'],
+    },
+    {
+      action: 'SETTLEMENT_READ',
+      label: '查看结算中心',
+      scopes: ['DEPARTMENT'],
+    },
+    {
+      action: 'SETTLEMENT_TERMS_UPDATE',
+      label: '维护案件结算条件',
+      scopes: ['DEPARTMENT'],
+    },
+    {
+      action: 'SETTLEMENT_LAUNCH',
+      label: '发起案件结算',
+      scopes: ['DEPARTMENT'],
+    },
+    {
+      action: 'SETTLEMENT_BILL_CREATE',
+      label: '创建结算账单',
+      scopes: ['DEPARTMENT'],
+    },
+    {
+      action: 'SETTLEMENT_BILL_CANCEL',
+      label: '撤销结算账单',
+      scopes: ['DEPARTMENT'],
+    },
+    { action: 'FEE_READ', label: '查看费用中心', scopes: ['DEPARTMENT'] },
+    { action: 'FEE_CREATE', label: '创建费用', scopes: ['DEPARTMENT'] },
+    { action: 'FEE_UPDATE', label: '维护费用', scopes: ['DEPARTMENT'] },
+    { action: 'FEE_LAUNCH', label: '发起费用', scopes: ['DEPARTMENT'] },
+    { action: 'FEE_DELETE', label: '删除费用', scopes: ['DEPARTMENT'] },
+    {
+      action: 'CASE_EXECUTION_MAILING_CORRECT',
+      label: '更正执行邮寄资料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_EXECUTION_FILING_CORRECT',
+      label: '更正执行申请资料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_EXECUTION_FINISH_CORRECT',
+      label: '更正执行结束资料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
     {
       action: 'CUSTOMER_READ',
       label: '查看客户',
@@ -453,6 +510,23 @@ describe('organization API', () => {
 
     const result = await getOrganizationManagementContext();
     expect(result.permissionCatalog.map(({ action }) => action)).toEqual([
+      'EVIDENCE_READ',
+      'EVIDENCE_EDIT',
+      'EVIDENCE_BULK_STATUS',
+      'EVIDENCE_EXPORT',
+      'SETTLEMENT_READ',
+      'SETTLEMENT_TERMS_UPDATE',
+      'SETTLEMENT_LAUNCH',
+      'SETTLEMENT_BILL_CREATE',
+      'SETTLEMENT_BILL_CANCEL',
+      'FEE_READ',
+      'FEE_CREATE',
+      'FEE_UPDATE',
+      'FEE_LAUNCH',
+      'FEE_DELETE',
+      'CASE_EXECUTION_MAILING_CORRECT',
+      'CASE_EXECUTION_FILING_CORRECT',
+      'CASE_EXECUTION_FINISH_CORRECT',
       'CUSTOMER_READ',
       'CUSTOMER_CREATE_DRAFT',
       'CUSTOMER_EDIT_ROUTINE',
@@ -536,6 +610,40 @@ describe('organization API', () => {
     );
 
     await expect(getOrganizationManagementContext()).resolves.toEqual(context);
+  });
+
+  it.each([
+    'EVIDENCE_READ',
+    'EVIDENCE_EDIT',
+    'EVIDENCE_BULK_STATUS',
+    'EVIDENCE_EXPORT',
+    'SETTLEMENT_READ',
+    'SETTLEMENT_TERMS_UPDATE',
+    'SETTLEMENT_LAUNCH',
+    'SETTLEMENT_BILL_CREATE',
+    'SETTLEMENT_BILL_CANCEL',
+    'FEE_READ',
+    'FEE_CREATE',
+    'FEE_UPDATE',
+    'FEE_LAUNCH',
+    'FEE_DELETE',
+  ])('rejects non-department %s grants', async (action) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ...context,
+            roles: [
+              { ...context.roles[0], grants: [{ action, scope: 'SELF' }] },
+            ],
+          }),
+        ),
+      ),
+    );
+    await expect(getOrganizationManagementContext()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
   });
 
   it('accepts a department-scoped CASE_READ role grant', async () => {

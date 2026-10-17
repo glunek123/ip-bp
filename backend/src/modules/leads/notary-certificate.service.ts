@@ -12,6 +12,8 @@ import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
 import { CaseCreationService } from '../cases';
+import { initializeNotaryEvidence } from '../evidence';
+import { initializeNotaryFees } from '../settlements';
 
 type FeeInput = { state: 'KNOWN' | 'PENDING'; amount: string | null };
 export type CertificateInput = {
@@ -100,9 +102,20 @@ export class NotaryCertificateService {
                 customerId: true,
                 rightsHolderId: true,
                 responsibleUserId: true,
-                sourceLead: { select: { needDisclose: true } },
+                sourceLead: {
+                  select: {
+                    needDisclose: true,
+                    shopName: true,
+                    platform: true,
+                  },
+                },
+                notaryOffice: { select: { name: true } },
                 evidence: {
-                  select: { sampleFeeState: true, sampleFeeAmount: true },
+                  select: {
+                    sampleFeeState: true,
+                    sampleFeeAmount: true,
+                    evidenceAt: true,
+                  },
                 },
                 issuanceDecision: { select: { id: true, decision: true } },
               },
@@ -304,6 +317,31 @@ export class NotaryCertificateService {
               resourceId: matterId,
               facts: [...certificateFacts, ...disclosureFacts],
               actionEventId: audit.id,
+            });
+            await initializeNotaryEvidence(tx, {
+              departmentId: actor.departmentId,
+              sourceNotaryMatterId: matterId,
+              caseId: createdCase.id,
+              certificateId: certificate.id,
+              sourceActionEventId: audit.id,
+              actorUserId: actor.userId,
+              notaryOfficeAccountBindingId: binding.id,
+              certificateNo: normalized.certificateNo,
+              certificateDate: new Date(
+                `${normalized.certificateDate}T00:00:00.000Z`,
+              ),
+              evidenceAt: matter.evidence.evidenceAt,
+              officeName: matter.notaryOffice.name,
+              shopName: matter.sourceLead.shopName,
+              platform: matter.sourceLead.platform,
+              files,
+            });
+            await initializeNotaryFees(tx, {
+              departmentId: actor.departmentId,
+              matterId,
+              caseId: createdCase.id,
+              certificateId: certificate.id,
+              sourceActionEventId: audit.id,
             });
             await tx.notaryMatterCommandReceipt.create({
               data: {

@@ -2,7 +2,12 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
-import { listLeads, type Lead, type LeadStatus } from '../../api/leads';
+import {
+  getLead,
+  listLeads,
+  type Lead,
+  type LeadStatus,
+} from '../../api/leads';
 import {
   labelLeadPlatform,
   leadStatusCards,
@@ -18,6 +23,13 @@ import {
 import LeadQuickActionsPanel, {
   type FrozenLeadPush,
 } from './LeadQuickActionsPanel.vue';
+import LeadBatchPushPanel from './LeadBatchPushPanel.vue';
+import {
+  readPendingLeadBatchPush,
+  savePendingLeadBatchPush,
+  sameLeadBatchPush,
+  type FrozenLeadBatchPush,
+} from './lead-batch-push-recovery';
 
 const route = useRoute();
 const router = useRouter();
@@ -25,6 +37,13 @@ const auth = useAuthStore();
 const identity = computed(
   () =>
     `${auth.session?.user.id ?? ''}:${auth.session?.principalType ?? ''}:${auth.session?.department?.id ?? ''}:${auth.session?.authorizationRevision ?? ''}`,
+);
+const batchIdentity = computed(
+  () =>
+    `${auth.session?.user.id ?? ''}:${auth.session?.principalType ?? ''}:${auth.session?.department?.id ?? ''}`,
+);
+const authorizationGeneration = computed(() =>
+  String(auth.session?.authorizationRevision ?? ''),
 );
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<Lead[]>([]);
@@ -40,12 +59,28 @@ const currentPage = ref(1);
 const pageSize = ref(20);
 const canCreate = ref(false);
 let request: AbortController | undefined;
+let batchRequest: AbortController | undefined;
 const pendingPushes = ref(readPendingLeadCommands());
 const pendingStorageUnavailable = computed(() => pendingPushes.value === null);
 const pendingPush = computed(
   () => pendingPushes.value?.[identity.value] ?? null,
 );
 const activeLeadId = ref<string | null>(pendingPush.value?.leadId ?? null);
+const selectedIds = ref<string[]>([]);
+const pendingBatches = ref(readPendingLeadBatchPush());
+const pendingBatch = computed(
+  () => pendingBatches.value?.[batchIdentity.value] ?? null,
+);
+const pendingBatchBlocked = computed(() => pendingBatches.value === null);
+const batchActive = ref(false);
+const batchFreshLeads = ref<Lead[]>([]);
+const batchLoading = ref(false);
+const batchError = ref('');
+const selectedLeads = computed(() =>
+  selectedIds.value
+    .map((id) => items.value.find((lead) => lead.id === id))
+    .filter((lead): lead is Lead => !!lead),
+);
 const activeTitle = ref('线索下一步');
 function actionTitle(status: LeadStatus): string | null {
   switch (status) {
@@ -63,6 +98,7 @@ function openWorkflow(lead: Lead) {
   if (
     pendingPush.value ||
     pendingStorageUnavailable.value ||
+    pendingBatchBlocked.value ||
     activeLeadId.value
   )
     return;
@@ -91,6 +127,139 @@ function handlePushSucceeded(attempt: FrozenLeadPush): void {
   savePendingPush();
   void load();
 }
+function toggleSelected(lead: Lead, checked: boolean) {
+  if (batchActive.value || pendingBatch.value) return;
+  selectedIds.value = checked
+    ? [...selectedIds.value, lead.id]
+    : selectedIds.value.filter((id) => id !== lead.id);
+}
+function persistBatch(
+  attempt: FrozenLeadBatchPush | null,
+  settled: FrozenLeadBatchPush,
+  contextIdentity: string,
+  contextGeneration: string,
+) {
+  if (
+    contextIdentity !== batchIdentity.value ||
+    contextGeneration !== authorizationGeneration.value
+  )
+    return;
+  const entries = readPendingLeadBatchPush();
+  if (entries === null || settled.identity !== contextIdentity) return;
+  if (attempt) {
+    const current = entries[contextIdentity];
+    if (current && !sameLeadBatchPush(current, settled)) {
+      pendingBatches.value = entries;
+      return;
+    }
+    entries[contextIdentity] = attempt;
+  } else {
+    const current = entries[contextIdentity];
+    const local = pendingBatches.value?.[contextIdentity];
+    if (current && !sameLeadBatchPush(current, settled)) {
+      pendingBatches.value = entries;
+      return;
+    }
+    if (!current && local && !sameLeadBatchPush(local, settled)) return;
+    if (current) delete entries[contextIdentity];
+    if (savePendingLeadBatchPush(entries)) pendingBatches.value = entries;
+    else if (!current && local && sameLeadBatchPush(local, settled)) {
+      const next = { ...pendingBatches.value };
+      delete next[contextIdentity];
+      pendingBatches.value = next;
+    }
+    return;
+  }
+  if (savePendingLeadBatchPush(entries)) pendingBatches.value = entries;
+}
+function finishBatch(
+  attempt: FrozenLeadBatchPush,
+  contextIdentity: string,
+  generation: string,
+) {
+  if (
+    batchIdentity.value !== attempt.identity ||
+    contextIdentity !== attempt.identity ||
+    authorizationGeneration.value !== generation ||
+    !batchActive.value
+  )
+    return;
+  const entries = readPendingLeadBatchPush();
+  if (entries === null) return;
+  const pending = entries[attempt.identity];
+  if (pending && !sameLeadBatchPush(pending, attempt)) return;
+  batchActive.value = false;
+  selectedIds.value = [];
+  notifyWorkflowChanged();
+  void load();
+}
+async function refreshBatchSnapshot(
+  requested: readonly { leadId: string; expectedVersion?: number }[],
+  recovering = false,
+) {
+  if (!requested.length || requested.length > 20) return;
+  batchRequest?.abort();
+  const controller = new AbortController();
+  batchRequest = controller;
+  const scopeIdentity = identity.value;
+  const scopeGeneration = authorizationGeneration.value;
+  batchLoading.value = true;
+  batchError.value = '';
+  batchActive.value = false;
+  batchFreshLeads.value = [];
+  try {
+    const fresh = await Promise.all(
+      requested.map(({ leadId }) =>
+        getLead(leadId, { signal: controller.signal }),
+      ),
+    );
+    if (
+      controller.signal.aborted ||
+      batchRequest !== controller ||
+      scopeIdentity !== identity.value ||
+      scopeGeneration !== authorizationGeneration.value
+    )
+      return;
+    const departmentId = auth.session?.department?.id;
+    if (
+      fresh.some(
+        (lead, index) =>
+          lead.id.toLowerCase() !== requested[index]!.leadId.toLowerCase() ||
+          lead.departmentId !== departmentId ||
+          (!recovering &&
+            (lead.status !== 'WAITING_PUSH' || !lead.capabilities.push)),
+      )
+    ) {
+      batchError.value = '所选线索当前不可用或无推送权限，原请求已保留。';
+      return;
+    }
+    batchFreshLeads.value = fresh;
+    batchActive.value = true;
+  } catch {
+    if (
+      !controller.signal.aborted &&
+      batchRequest === controller &&
+      scopeIdentity === identity.value &&
+      scopeGeneration === authorizationGeneration.value
+    )
+      batchError.value = '无法读取当前线索和权限，批量请求未发送。';
+  } finally {
+    if (
+      batchRequest === controller &&
+      scopeIdentity === identity.value &&
+      scopeGeneration === authorizationGeneration.value
+    ) {
+      batchLoading.value = false;
+      batchRequest = undefined;
+    }
+  }
+}
+function openBatchPush() {
+  if (pendingBatch.value) return;
+  void refreshBatchSnapshot(
+    selectedLeads.value.map(({ id }) => ({ leadId: id })),
+  );
+}
 const selectedStatus = computed<LeadStatus | undefined>(() => {
   const value = route.query.status;
   return typeof value === 'string' &&
@@ -114,6 +283,7 @@ async function load(): Promise<void> {
   const controller = new AbortController();
   request = controller;
   state.value = 'loading';
+  selectedIds.value = [];
   items.value = [];
   total.value = 0;
   canCreate.value = false;
@@ -176,17 +346,33 @@ function safeProductUrl(value: string | null): string | null {
   }
 }
 watch(
-  () => [route.query.page, route.query.status, identity.value],
+  () => [
+    route.query.page,
+    route.query.status,
+    identity.value,
+    authorizationGeneration.value,
+  ],
   () => void load(),
   { immediate: true, flush: 'sync' },
 );
 watch(
-  identity,
-  (value) => {
+  () => [identity.value, authorizationGeneration.value],
+  ([value]) => {
     savePendingPush();
-    activeLeadId.value = pendingPushes.value?.[value]?.leadId ?? null;
+    activeLeadId.value = pendingPushes.value?.[String(value)]?.leadId ?? null;
+    batchRequest?.abort();
+    batchRequest = undefined;
+    batchLoading.value = false;
+    batchActive.value = false;
+    batchFreshLeads.value = [];
+    const attempt = pendingBatches.value?.[batchIdentity.value];
+    if (attempt)
+      void refreshBatchSnapshot(
+        attempt.items.map(({ leadId }) => ({ leadId })),
+        true,
+      );
   },
-  { flush: 'sync' },
+  { flush: 'sync', immediate: true },
 );
 watch(
   () => route.fullPath,
@@ -195,12 +381,15 @@ watch(
   },
   { flush: 'sync' },
 );
-onBeforeUnmount(() => request?.abort());
+onBeforeUnmount(() => {
+  request?.abort();
+  batchRequest?.abort();
+});
 </script>
 
 <template>
   <div class="page-view business-list-page">
-    <main :inert="!!activeLeadId">
+    <main :inert="!!activeLeadId || batchActive">
       <div class="page-head business-list-toolbar">
         <div>
           <h1>线索库</h1>
@@ -214,6 +403,18 @@ onBeforeUnmount(() => request?.abort());
         >
       </div>
       <section class="demo-card" aria-live="polite">
+        <div
+          v-if="state === 'ready' && selectedLeads.length"
+          class="lead-batch-toolbar"
+        >
+          <span>{{ selectedLeads.length }} 条已选</span>
+          <ElButton
+            data-test="open-batch-push"
+            :disabled="!!pendingPush || pendingBatchBlocked || batchLoading"
+            @click="openBatchPush"
+            >批量推送</ElButton
+          >
+        </div>
         <div v-if="state === 'loading'" class="state-panel">
           <span class="state-index">读取中</span>
           <h2>正在读取线索</h2>
@@ -242,6 +443,7 @@ onBeforeUnmount(() => request?.abort());
         >
           <table class="demo-table business-list-table lead-list-table">
             <colgroup>
+              <col style="width: 52px" />
               <col style="width: 200px" />
               <col style="width: 140px" />
               <col style="width: 100px" />
@@ -256,6 +458,7 @@ onBeforeUnmount(() => request?.abort());
             </colgroup>
             <thead>
               <tr>
+                <th aria-label="选择线索">选择</th>
                 <th>操作／线索编号</th>
                 <th>案件进展</th>
                 <th>平台</th>
@@ -275,12 +478,36 @@ onBeforeUnmount(() => request?.abort());
                 :key="lead.id"
                 data-test="lead-row"
               >
+                <td>
+                  <input
+                    v-if="lead.status === 'WAITING_PUSH'"
+                    type="checkbox"
+                    :aria-label="`选择 ${lead.businessNo}`"
+                    :checked="selectedIds.includes(lead.id)"
+                    :disabled="
+                      batchActive ||
+                      pendingBatchBlocked ||
+                      !!pendingBatch ||
+                      !!pendingPush
+                    "
+                    @change="
+                      toggleSelected(
+                        lead,
+                        ($event.target as HTMLInputElement).checked,
+                      )
+                    "
+                  />
+                </td>
                 <td class="business-list-cell--nowrap">
                   <ElButton
                     v-if="actionTitle(lead.status)"
                     type="primary"
                     data-test="lead-quick-action"
-                    :disabled="!!pendingPush || pendingStorageUnavailable"
+                    :disabled="
+                      !!pendingPush ||
+                      pendingStorageUnavailable ||
+                      pendingBatchBlocked
+                    "
                     @click="openWorkflow(lead)"
                     >{{ actionTitle(lead.status) }}</ElButton
                   >
@@ -384,8 +611,14 @@ onBeforeUnmount(() => request?.abort());
           >
         </nav>
       </section>
-      <p v-if="pendingStorageUnavailable" role="alert">
+      <p v-if="pendingStorageUnavailable || pendingBatchBlocked" role="alert">
         无法读取未决请求记录，流程办理暂不可用。
+      </p>
+      <p v-if="batchError" role="alert" data-test="batch-refresh-error">
+        {{ batchError }}
+      </p>
+      <p v-if="batchLoading" data-test="batch-refresh-loading">
+        正在重新核对所选线索和推送权限…
       </p>
       <p v-if="pendingPush && !activeLeadId" role="alert">
         有一项线索请求尚未确认，请先核对原请求。
@@ -403,6 +636,17 @@ onBeforeUnmount(() => request?.abort());
       @close="activeLeadId = null"
       @pending="savePendingPush"
       @succeeded="handlePushSucceeded"
+    />
+    <LeadBatchPushPanel
+      v-if="batchActive"
+      :key="`${batchIdentity}:${authorizationGeneration}`"
+      :leads="batchFreshLeads"
+      :identity="batchIdentity"
+      :context-generation="authorizationGeneration"
+      :pending="pendingBatch"
+      @pending="persistBatch"
+      @succeeded="finishBatch"
+      @close="batchActive = false"
     />
   </div>
 </template>

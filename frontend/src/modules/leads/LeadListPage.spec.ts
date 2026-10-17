@@ -4,6 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useAuthStore } from '../../stores/auth';
 import type { Lead, LeadPushResult, LeadDetail } from '../../api/leads';
+import {
+  readPendingLeadBatchPush,
+  savePendingLeadBatchPush,
+} from './lead-batch-push-recovery';
 import { defineComponent, h, type PropType } from 'vue';
 import { readPendingLeadCommands } from './LeadListWorkflowPanel.vue';
 import { ApiError } from '../../api/http';
@@ -14,6 +18,7 @@ const api = vi.hoisted(() => ({
   listLeads: vi.fn(),
   getLead: vi.fn(),
   pushLead: vi.fn(),
+  pushLeadsBatch: vi.fn(),
 }));
 vi.mock('../../api/leads', () => api);
 
@@ -78,6 +83,10 @@ const summary = {
   ],
   updatedAt: '2026-09-21T04:00:00Z',
 } satisfies Lead;
+const batchSummary: Lead = {
+  ...summary,
+  id: '33333333-3333-4333-8333-333333333333',
+};
 
 function detail(overrides: Partial<LeadDetail> = {}): LeadDetail {
   return {
@@ -176,9 +185,167 @@ afterEach(() => {
   vi.resetAllMocks();
   sessionStorage.removeItem('dev-cor:lead-workflow:pending');
   sessionStorage.removeItem('dev-cor:lead-quick-actions:pending-push');
+  localStorage.removeItem('lead-batch-push-pending-v1');
 });
 
 describe('LeadListPage', () => {
+  it('refreshes selected lead authorization and version before opening batch push', async () => {
+    api.listLeads.mockResolvedValue({
+      ...result,
+      items: [batchSummary],
+      total: 1,
+    });
+    api.getLead.mockResolvedValue(detail({ ...batchSummary, version: 4 }));
+    api.pushLeadsBatch.mockResolvedValue({ items: [] });
+    const { wrapper } = await mountWithRoute('/leads');
+    await wrapper.get('input[type="checkbox"]').setValue(true);
+    await wrapper.get('[data-test="open-batch-push"]').trigger('click');
+    await flushPromises();
+    expect(api.getLead).toHaveBeenCalledExactlyOnceWith(
+      batchSummary.id,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(wrapper.findAll('[data-test="batch-submit"]')).toHaveLength(1);
+    await wrapper.get('[data-test="batch-submit"]').trigger('click');
+    await flushPromises();
+    expect(api.pushLeadsBatch.mock.calls[0]?.[0]).toEqual([
+      { leadId: batchSummary.id, expectedVersion: 4 },
+    ]);
+  });
+
+  it.each(['success', 'explicit rejection'] as const)(
+    'allows a second batch after the first %s settles',
+    async (firstOutcome) => {
+      api.listLeads.mockResolvedValue({
+        ...result,
+        items: [batchSummary],
+        total: 1,
+      });
+      api.getLead.mockResolvedValue(detail(batchSummary));
+      if (firstOutcome === 'success') {
+        api.pushLeadsBatch
+          .mockResolvedValueOnce({ items: [pushResult(batchSummary.id, 1)] })
+          .mockResolvedValueOnce({ items: [pushResult(batchSummary.id, 1)] });
+      } else {
+        api.pushLeadsBatch
+          .mockRejectedValueOnce(
+            new ApiError('rejected', 409, 'BATCH_PUSH_REJECTED', undefined, {
+              failures: [{ index: 0, code: 'INVALID_STATE' }],
+            }),
+          )
+          .mockResolvedValueOnce({ items: [pushResult(batchSummary.id, 1)] });
+      }
+
+      const { wrapper } = await mountWithRoute('/leads');
+      await wrapper.get('input[type="checkbox"]').setValue(true);
+      await wrapper.get('[data-test="open-batch-push"]').trigger('click');
+      await flushPromises();
+      await wrapper.get('[data-test="batch-submit"]').trigger('click');
+      await flushPromises();
+
+      expect(
+        readPendingLeadBatchPush()?.['operator-1:INTERNAL:department-1'],
+      ).toBe(undefined);
+      await wrapper.get('input[type="checkbox"]').setValue(true);
+      await wrapper.get('[data-test="open-batch-push"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[data-test="batch-submit"]').exists()).toBe(true);
+      await wrapper.get('[data-test="batch-submit"]').trigger('click');
+      await flushPromises();
+
+      expect(api.pushLeadsBatch).toHaveBeenCalledTimes(2);
+      expect(api.pushLeadsBatch.mock.calls[0]?.[1]).not.toBe(
+        api.pushLeadsBatch.mock.calls[1]?.[1],
+      );
+    },
+  );
+
+  it('replays a recovered batch with its original body and key after fresh detail reads', async () => {
+    const batchIdentity = 'operator-1:INTERNAL:department-1';
+    const pending = {
+      identity: batchIdentity,
+      idempotencyKey: 'frozen-original-key',
+      items: [{ leadId: batchSummary.id, expectedVersion: 1 }],
+      uncertain: true,
+    };
+    expect(savePendingLeadBatchPush({ [batchIdentity]: pending })).toBe(true);
+    api.listLeads.mockResolvedValue({ ...result, items: [], total: 0 });
+    api.getLead.mockResolvedValue(
+      detail({ ...batchSummary, version: 9, status: 'WAITING_REVIEW' }),
+    );
+    api.pushLeadsBatch.mockResolvedValue({ items: [] });
+    const { wrapper } = await mountWithRoute('/leads');
+    await flushPromises();
+    expect(wrapper.findAll('[data-test="batch-submit"]')).toHaveLength(1);
+    await wrapper.get('[data-test="batch-submit"]').trigger('click');
+    await flushPromises();
+    expect(api.pushLeadsBatch).toHaveBeenCalledExactlyOnceWith(
+      pending.items,
+      pending.idempotencyKey,
+    );
+  });
+
+  it('does not open or submit when the fresh lead detail denies push permission', async () => {
+    api.listLeads.mockResolvedValue({
+      ...result,
+      items: [batchSummary],
+      total: 1,
+    });
+    api.getLead.mockResolvedValue(
+      detail({ capabilities: { ...detail().capabilities, push: false } }),
+    );
+    const { wrapper } = await mountWithRoute('/leads');
+    await wrapper.get('input[type="checkbox"]').setValue(true);
+    await wrapper.get('[data-test="open-batch-push"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.findAll('[data-test="batch-submit"]')).toHaveLength(0);
+    expect(wrapper.findAll('[data-test="batch-refresh-error"]')).toHaveLength(
+      1,
+    );
+    expect(api.pushLeadsBatch).not.toHaveBeenCalled();
+  });
+
+  it('ignores a late batch response after identity change without clearing the next actor request', async () => {
+    let resolveActorA!: (value: { items: [] }) => void;
+    const actorBIdentity = 'operator-B:INTERNAL:department-1';
+    const actorBPending = {
+      identity: actorBIdentity,
+      idempotencyKey: 'actor-b-key',
+      items: [{ leadId: batchSummary.id, expectedVersion: 1 }],
+      uncertain: true,
+    };
+    expect(savePendingLeadBatchPush({ [actorBIdentity]: actorBPending })).toBe(
+      true,
+    );
+    api.listLeads.mockResolvedValue({
+      ...result,
+      items: [batchSummary],
+      total: 1,
+    });
+    api.getLead.mockResolvedValue(detail(batchSummary));
+    api.pushLeadsBatch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveActorA = resolve;
+        }),
+    );
+    const { wrapper, auth } = await mountWithRoute('/leads');
+    await wrapper.get('input[type="checkbox"]').setValue(true);
+    await wrapper.get('[data-test="open-batch-push"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="batch-submit"]').trigger('click');
+    await flushPromises();
+    auth.session = {
+      ...auth.session!,
+      user: { ...auth.session!.user, id: 'operator-B' },
+      authorizationRevision: 2,
+    };
+    await flushPromises();
+    resolveActorA({ items: [] });
+    await flushPromises();
+    expect(readPendingLeadBatchPush()?.[actorBIdentity]).toEqual(actorBPending);
+  });
+
   it('reopens the original pending request after a failed fresh read and user close', async () => {
     const identity = 'operator-1:INTERNAL:department-1:1';
     sessionStorage.setItem(
@@ -507,6 +674,7 @@ describe('LeadListPage', () => {
       '10.00',
     );
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '选择',
       '操作／线索编号',
       '案件进展',
       '平台',
@@ -525,7 +693,7 @@ describe('LeadListPage', () => {
     expect(wrapper.get('.business-list-scroll').attributes('tabindex')).toBe(
       '0',
     );
-    expect(wrapper.findAll('colgroup col')).toHaveLength(11);
+    expect(wrapper.findAll('colgroup col')).toHaveLength(12);
     expect(wrapper.text()).toContain('shop-真实-001');
     expect(wrapper.text()).toContain('主体甲');
     expect(wrapper.find('table.demo-table').exists()).toBe(true);

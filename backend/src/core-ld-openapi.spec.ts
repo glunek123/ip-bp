@@ -31,6 +31,7 @@ import { ClientLeadService } from './modules/leads/client-lead.service';
 import { ClientNotaryController } from './modules/leads/client-notary.controller';
 import { ClientNotaryService } from './modules/leads/client-notary.service';
 import { LeadController } from './modules/leads/lead.controller';
+import { LeadBatchPushController } from './modules/leads/lead-batch-push.controller';
 import { LeadService } from './modules/leads/lead.service';
 import { NotaryListController } from './modules/leads/notary-list.controller';
 import { NotaryListService } from './modules/leads/notary-list.service';
@@ -313,6 +314,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         CustomerContactController,
         CustomerAgreementInvoiceController,
         LeadController,
+        LeadBatchPushController,
         ClientLeadController,
         ClientNotaryController,
         NotaryListController,
@@ -518,6 +520,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       'CustomerAccountResponseDto',
     ],
     ['post', '/api/v1/leads/{id}/push', '201', 'LeadPushResponseDto'],
+    ['post', '/api/v1/leads/batch-push', '201', 'LeadBatchPushResponseDto'],
     [
       'post',
       '/api/v1/leads/{id}/withdrawal-applications',

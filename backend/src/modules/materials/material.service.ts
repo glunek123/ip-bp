@@ -208,6 +208,7 @@ export type MaterialReferenceReader = MaterialAuthorizationReader &
   AccessControlSnapshotReader &
   Pick<MaterialTransactionClient, 'materialReference'>;
 const allowedMimeTypes = {
+  FEE_PROOF: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   CUSTOMER_IDENTITY: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   CUSTOMER_RIGHT_EVIDENCE: new Set([
     'application/pdf',
@@ -981,7 +982,25 @@ export class MaterialService {
             );
             return transaction.uploadDraft.create({ data: draftData });
           })
-        : await this.database.uploadDraft.create({ data: draftData });
+        : input.category === 'FEE_PROOF'
+          ? await this.database.$transaction(
+              async (transaction) => {
+                await this.lockFeeMaterialActor(transaction, actor);
+                await this.authorizeOwner(
+                  actor,
+                  'CASE',
+                  ownerId,
+                  'write',
+                  transaction,
+                  transaction,
+                  undefined,
+                  'FEE_PROOF',
+                );
+                return transaction.uploadDraft.create({ data: draftData });
+              },
+              { isolationLevel: 'Serializable' },
+            )
+          : await this.database.uploadDraft.create({ data: draftData });
     return {
       id: draft.id,
       ownerType: draft.ownerType,
@@ -1163,6 +1182,8 @@ export class MaterialService {
           throw this.invalidVersion();
         }
         await this.database.$transaction(async (transaction) => {
+          if (draft.category === 'FEE_PROOF')
+            await this.lockFeeMaterialActor(transaction, actor);
           if (draft.ownerType === 'CUSTOMER') {
             if (draft.category === 'CUSTOMER_AGREEMENT') {
               if (!this.organization)
@@ -1313,6 +1334,9 @@ export class MaterialService {
                       ownerId: draft.ownerId,
                       category: draft.category,
                       status: 'ACTIVE',
+                      ...(draft.category === 'FEE_PROOF'
+                        ? { references: { none: { purpose: 'FEE_PROOF' } } }
+                        : {}),
                       ...(draft.category === 'MAIL_RECEIPT'
                         ? {
                             currentVersion: {
@@ -1525,7 +1549,7 @@ export class MaterialService {
         actor,
         input.ownerType,
         input.ownerId,
-        'read',
+        input.category === 'FEE_PROOF' ? 'write' : 'read',
         transaction,
         transaction,
         input.leadAction,
@@ -2423,6 +2447,7 @@ export class MaterialService {
           ownerId,
           status: 'ACTIVE',
           id: { in: allowedMaterialIds },
+          category: { not: 'FEE_PROOF' },
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         select: {
@@ -2454,6 +2479,7 @@ export class MaterialService {
         },
       });
       const items = materials.flatMap((material) => {
+        if (material.category === 'FEE_PROOF') return [];
         const versions = material.contentVersions.filter((version) =>
           allowed.get(material.id)?.has(version.id),
         );
@@ -2601,6 +2627,9 @@ export class MaterialService {
         ...(ownerType === 'CUSTOMER' && !canViewAgreement
           ? { category: { not: 'CUSTOMER_AGREEMENT' as const } }
           : {}),
+        ...(ownerType === 'CASE'
+          ? { category: { not: 'FEE_PROOF' as const } }
+          : {}),
         ...(ownerType === 'NOTARY_MATTER' &&
         actor.notaryOfficeId === undefined &&
         actor.clientCustomerId === undefined
@@ -2678,31 +2707,230 @@ export class MaterialService {
       },
     });
     return {
-      items: items.map((material) => ({
-        id: material.id,
-        ownerType: material.ownerType,
-        ownerId: material.ownerId,
-        category: material.category,
-        purpose: toMaterialPurpose(material.purpose),
-        currentVersionId: material.currentVersionId,
-        status: 'ACTIVE' as const,
-        version: material.version,
-        deletedAt: material.deletedAt,
-        createdAt: material.createdAt,
-        updatedAt: material.updatedAt,
-        contentVersions: material.contentVersions.map((version) => ({
-          id: version.id,
-          materialId: version.materialId,
-          originalFilename: version.originalFilename,
-          mimeType: version.mimeType,
-          sizeBytes: Number(version.sizeBytes),
-          sha256: version.sha256,
-          status: 'AVAILABLE' as const,
-          createdAt: version.createdAt,
+      items: items
+        .filter((material) => material.category !== 'FEE_PROOF')
+        .map((material) => ({
+          id: material.id,
+          ownerType: material.ownerType,
+          ownerId: material.ownerId,
+          category: material.category,
+          purpose: toMaterialPurpose(material.purpose),
+          currentVersionId: material.currentVersionId,
+          status: 'ACTIVE' as const,
+          version: material.version,
+          deletedAt: material.deletedAt,
+          createdAt: material.createdAt,
+          updatedAt: material.updatedAt,
+          contentVersions: material.contentVersions.map((version) => ({
+            id: version.id,
+            materialId: version.materialId,
+            originalFilename: version.originalFilename,
+            mimeType: version.mimeType,
+            sizeBytes: Number(version.sizeBytes),
+            sha256: version.sha256,
+            status: 'AVAILABLE' as const,
+            createdAt: version.createdAt,
+          })),
         })),
-      })),
-      total: items.length,
+      total: items.filter((material) => material.category !== 'FEE_PROOF')
+        .length,
     };
+  }
+
+  private isInternalMaterialActor(actor: ActorContext): boolean {
+    return (
+      actor.clientCustomerId === undefined &&
+      actor.notaryOfficeId === undefined &&
+      actor.lawyerAccountId === undefined
+    );
+  }
+
+  private async lockFeeMaterialActor(
+    tx: MaterialTransactionClient,
+    actor: ActorContext,
+  ): Promise<void> {
+    if (!this.isInternalMaterialActor(actor)) throw this.forbidden();
+    if (!this.organization) throw new Error('OrganizationService unavailable');
+    await lockCustomerActorFacts(tx, this.organization, actor);
+    await this.accessControl.authorizeDepartmentAction(actor, 'fee.update', tx);
+  }
+
+  private async authorizeFeeProofDownload(
+    actor: ActorContext,
+    ownerType: MaterialOwnerTypeValue,
+    caseId: string,
+    materialId: string,
+    versionId: string,
+  ): Promise<void> {
+    if (ownerType !== 'CASE' || !this.isInternalMaterialActor(actor))
+      throw this.forbidden();
+    await this.database.$transaction(
+      async (tx) => {
+        await this.withMaterialAuthorization(() =>
+          this.accessControl.authorizeDepartmentAction(actor, 'fee.read', tx),
+        );
+        const fee = await tx.feeRecord.findFirst({
+          where: {
+            departmentId: actor.departmentId,
+            caseId,
+            deletedAt: null,
+            proofMaterialId: materialId,
+            proofContentVersionId: versionId,
+            case: { id: caseId, departmentId: actor.departmentId },
+          },
+          select: { id: true },
+        });
+        if (fee === null) throw this.notFound();
+        const ref = await tx.materialReference.findFirst({
+          where: {
+            departmentId: actor.departmentId,
+            resourceType: 'fee',
+            resourceId: fee.id,
+            purpose: 'FEE_PROOF',
+            materialId,
+            contentVersionId: versionId,
+            assetVersionId: null,
+            actionEventId: { not: null },
+            actionEvent: {
+              departmentId: actor.departmentId,
+              resourceType: 'FEE',
+              resourceId: fee.id,
+              action: 'fee.proof-updated',
+              internalActorUserId: { not: null },
+              AND: [
+                { details: { path: ['caseId'], equals: caseId } },
+                { details: { path: ['proofMaterialId'], equals: materialId } },
+                {
+                  details: {
+                    path: ['proofContentVersionId'],
+                    equals: versionId,
+                  },
+                },
+              ],
+            },
+          },
+          select: { id: true },
+        });
+        if (ref === null) throw this.notFound();
+      },
+      { isolationLevel: 'RepeatableRead' },
+    );
+  }
+
+  private async authorizeEvidenceCertificateDownload(
+    actor: ActorContext,
+    matterId: string,
+    materialId: string,
+    versionId: string,
+  ): Promise<void> {
+    if (!this.isInternalMaterialActor(actor)) throw this.forbidden();
+    await this.database.$transaction(
+      async (tx) => {
+        await this.withMaterialAuthorization(() =>
+          this.accessControl.authorizeDepartmentAction(
+            actor,
+            'evidence.read',
+            tx,
+          ),
+        );
+        const certificate = await tx.notaryCertificate.findFirst({
+          where: { matterId, departmentId: actor.departmentId },
+          select: {
+            id: true,
+            actorUserId: true,
+            notaryOfficeAccountBindingId: true,
+            fromVersion: true,
+            toVersion: true,
+          },
+        });
+        if (certificate === null) throw this.notFound();
+        const paper = await tx.evidencePaperCertificate.findFirst({
+          where: {
+            departmentId: actor.departmentId,
+            sourceKind: 'NOTARY_MATTER',
+            sourceId: matterId,
+            sourceNotaryMatterId: matterId,
+            sourceCertificateId: certificate.id,
+            removedAt: null,
+            group: {
+              departmentId: actor.departmentId,
+              sourceKind: 'NOTARY_MATTER',
+              sourceId: matterId,
+              sourceNotaryMatterId: matterId,
+              sourceInitializedAt: { not: null },
+            },
+          },
+          select: { id: true },
+        });
+        if (paper === null) throw this.notFound();
+        const audits = await tx.auditEvent.findMany({
+          where: {
+            departmentId: actor.departmentId,
+            resourceType: 'notary_matter',
+            resourceId: matterId,
+            action: 'notary.certificate_issued',
+            actorUserId: certificate.actorUserId,
+            notaryOfficeAccountBindingId:
+              certificate.notaryOfficeAccountBindingId,
+            internalActorUserId: null,
+            details: { path: ['certificateId'], equals: certificate.id },
+          },
+          select: { id: true, details: true },
+        });
+        if (audits.length !== 1) throw this.notFound();
+        const audit = audits[0];
+        const details = audit.details;
+        if (
+          details === null ||
+          typeof details !== 'object' ||
+          Array.isArray(details) ||
+          details.fromVersion !== certificate.fromVersion ||
+          details.toVersion !== certificate.toVersion ||
+          !Array.isArray(details.contentVersionIds)
+        )
+          throw this.notFound();
+        const ids = details.contentVersionIds;
+        if (
+          ids.length < 1 ||
+          ids.length > 10 ||
+          ids.some((id) => typeof id !== 'string') ||
+          new Set(ids).size !== ids.length ||
+          !ids.includes(versionId)
+        )
+          throw this.notFound();
+        const refs = await tx.materialReference.findMany({
+          where: {
+            departmentId: actor.departmentId,
+            resourceType: 'notary_matter',
+            resourceId: matterId,
+            purpose: 'NOTARY_CERTIFICATE',
+            actionEventId: audit.id,
+            assetVersionId: null,
+            material: {
+              departmentId: actor.departmentId,
+              ownerType: 'NOTARY_MATTER',
+              ownerId: matterId,
+              category: 'NOTARY_CERTIFICATE',
+              purpose: 'NOTARY_CERTIFICATE',
+            },
+          },
+          select: { materialId: true, contentVersionId: true },
+        });
+        if (
+          refs.length !== ids.length ||
+          new Set(refs.map((ref) => ref.contentVersionId)).size !==
+            ids.length ||
+          refs.some((ref) => !ids.includes(ref.contentVersionId)) ||
+          !refs.some(
+            (ref) =>
+              ref.materialId === materialId &&
+              ref.contentVersionId === versionId,
+          )
+        )
+          throw this.notFound();
+      },
+      { isolationLevel: 'RepeatableRead' },
+    );
   }
 
   async openVersion(
@@ -2718,6 +2946,19 @@ export class MaterialService {
     });
     const version = material?.contentVersions[0];
     if (material === null || version === undefined) throw this.notFound();
+    if (
+      material.category === 'FEE_PROOF' &&
+      !this.isInternalMaterialActor(actor)
+    )
+      throw this.forbidden();
+    if (
+      (material.category === 'FEE_PROOF' ||
+        material.category === 'NOTARY_CERTIFICATE') &&
+      (material.status !== 'ACTIVE' ||
+        material.deletedAt != null ||
+        version.status !== 'AVAILABLE')
+    )
+      throw this.notFound();
     if (material.ownerType === 'CASE' && material.status !== 'ACTIVE')
       throw this.notFound();
     if (
@@ -2806,20 +3047,44 @@ export class MaterialService {
         material.status !== 'ACTIVE')
     )
       throw this.notFound();
-    if (!(
-      actor.lawyerAccountId !== undefined &&
-      material.ownerType === 'NOTARY_MATTER'
-    ))
-      await this.authorizeOwner(
+    if (material.category === 'FEE_PROOF') {
+      await this.authorizeFeeProofDownload(
         actor,
         material.ownerType,
         material.ownerId,
-        'read',
-        this.database,
-        undefined,
-        undefined,
-        material.category,
+        materialId,
+        versionId,
       );
+    } else if (!(
+      actor.lawyerAccountId !== undefined &&
+      material.ownerType === 'NOTARY_MATTER'
+    ))
+      try {
+        await this.authorizeOwner(
+          actor,
+          material.ownerType,
+          material.ownerId,
+          'read',
+          this.database,
+          undefined,
+          undefined,
+          material.category,
+        );
+      } catch (error) {
+        if (
+          !(error instanceof ForbiddenException) ||
+          material.ownerType !== 'NOTARY_MATTER' ||
+          material.category !== 'NOTARY_CERTIFICATE' ||
+          !this.isInternalMaterialActor(actor)
+        )
+          throw error;
+        await this.authorizeEvidenceCertificateDownload(
+          actor,
+          material.ownerId,
+          materialId,
+          versionId,
+        );
+      }
     const notaryMatter =
       actor.notaryOfficeId === undefined
         ? null
@@ -3088,6 +3353,9 @@ export class MaterialService {
                 ownerId: material.ownerId,
                 category: material.category,
                 status: 'ACTIVE',
+                ...(material.category === 'FEE_PROOF'
+                  ? { references: { none: { purpose: 'FEE_PROOF' } } }
+                  : {}),
                 ...(material.category === 'MAIL_RECEIPT'
                   ? {
                       currentVersion: {
@@ -3328,6 +3596,27 @@ export class MaterialService {
       where: { id: materialId, departmentId: actor.departmentId },
       select: { ownerType: true, ownerId: true, category: true },
     });
+    if (hint?.category === 'FEE_PROOF') {
+      if (hint.ownerType !== 'CASE') throw this.invalidVersion();
+      await this.lockFeeMaterialActor(transaction, actor);
+      await this.authorizeOwner(
+        actor,
+        'CASE',
+        hint.ownerId,
+        'write',
+        transaction,
+        transaction,
+        undefined,
+        'FEE_PROOF',
+      );
+      const locked = await transaction.$queryRawUnsafe<Array<{ id: string }>>(
+        'SELECT "id" FROM "cases" WHERE "id"=$1::uuid AND "department_id"=$2::uuid FOR UPDATE',
+        hint.ownerId,
+        actor.departmentId,
+      );
+      if (locked.length !== 1) throw this.notFound();
+      return { agreementLocked: false };
+    }
     if (hint?.category === 'EXECUTION_SUPPLEMENT') {
       if (hint.ownerType !== 'CASE') throw this.invalidVersion();
       const locked = await transaction.$queryRawUnsafe<Array<{ id: string }>>(
@@ -4713,6 +5002,25 @@ export class MaterialService {
     >,
     notaryCategory?: MaterialCategoryValue,
   ): Promise<void> {
+    if (notaryCategory === 'FEE_PROOF') {
+      if (ownerType !== 'CASE' || !this.isInternalMaterialActor(actor))
+        throw this.forbidden();
+      await this.withMaterialAuthorization(() =>
+        this.accessControl.authorizeDepartmentAction(
+          actor,
+          operation === 'write' ? 'fee.update' : 'fee.read',
+          snapshotReader,
+        ),
+      );
+      if (
+        (await reader.case.findFirst({
+          where: { id: ownerId, departmentId: actor.departmentId },
+          select: { id: true },
+        })) === null
+      )
+        throw this.notFound();
+      return;
+    }
     if (
       ownerType === 'CUSTOMER' &&
       (actor.clientCustomerId !== undefined ||
@@ -5695,6 +6003,9 @@ export class MaterialService {
           input.category === 'EXECUTION_FINISH_BASIS' ||
           input.category === 'CASE_CLOSURE_DOCUMENT') &&
         input.purpose === input.category) ||
+      (input.ownerType === 'CASE' &&
+        input.category === 'FEE_PROOF' &&
+        input.purpose === input.category) ||
       (input.ownerType === 'NOTARY_MATTER' &&
         input.category === 'NOTARY_OPENING_PHOTO' &&
         input.purpose === 'NOTARY_OPENING_PHOTO') ||
@@ -5818,7 +6129,8 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'EXECUTION_FILING_PROOF' ||
     value === 'EXECUTION_SUPPLEMENT' ||
     value === 'EXECUTION_FINISH_BASIS' ||
-    value === 'CASE_CLOSURE_DOCUMENT'
+    value === 'CASE_CLOSURE_DOCUMENT' ||
+    value === 'FEE_PROOF'
   ) {
     return value;
   }
@@ -5852,7 +6164,8 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
               category === 'EXECUTION_FILING_PROOF' ||
               category === 'EXECUTION_SUPPLEMENT' ||
               category === 'EXECUTION_FINISH_BASIS' ||
-              category === 'CASE_CLOSURE_DOCUMENT'
+              category === 'CASE_CLOSURE_DOCUMENT' ||
+              category === 'FEE_PROOF'
             ? 10
             : 20;
 }
@@ -5874,7 +6187,8 @@ function materialFileLimit(category: keyof typeof allowedMimeTypes): number {
     category === 'EXECUTION_FILING_PROOF' ||
     category === 'EXECUTION_SUPPLEMENT' ||
     category === 'EXECUTION_FINISH_BASIS' ||
-    category === 'CASE_CLOSURE_DOCUMENT'
+    category === 'CASE_CLOSURE_DOCUMENT' ||
+    category === 'FEE_PROOF'
     ? 50 * 1024 * 1024
     : 20 * 1024 * 1024;
 }

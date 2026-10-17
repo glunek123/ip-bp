@@ -22,8 +22,14 @@ const api = vi.hoisted(() => ({
   listLawyerAccounts: vi.fn(),
   listLawyerCases: vi.fn(),
   getCalendarSummary: vi.fn(),
+  getSettlementContext: vi.fn(),
+  listEvidence: vi.fn(),
 }));
 const mountedShells: Array<ReturnType<typeof mount>> = [];
+vi.mock('../api/settlements', () => ({
+  getSettlementContext: api.getSettlementContext,
+}));
+vi.mock('../api/evidence', () => ({ listEvidence: api.listEvidence }));
 
 vi.mock('../api/organization', () => ({
   getOrganizationManagementContext: api.getOrganizationManagementContext,
@@ -58,6 +64,10 @@ const session = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  api.getSettlementContext.mockResolvedValue({ read: false, feeRead: false });
+  api.listEvidence.mockRejectedValue(
+    new ApiError('denied', 403, 'ACTION_FORBIDDEN'),
+  );
   api.getCalendarSummary.mockResolvedValue({
     metrics: { next30: { count: 0 } },
   });
@@ -161,6 +171,16 @@ async function mountShell(
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      {
+        path: '/evidence',
+        component: { template: '<div />' },
+        meta: { section: '证物', breadcrumbs: ['证物'] },
+      },
+      {
+        path: '/settlements',
+        component: { template: '<div />' },
+        meta: { section: '结算中心', breadcrumbs: ['结算中心'] },
+      },
       {
         path: '/customers',
         component: { template: '<div />' },
@@ -1450,3 +1470,243 @@ it('invalidates lawyer group badges on identity change and ignores the old respo
     '准备起诉文书',
   );
 });
+
+describe('settlement center navigation', () => {
+  it.each([
+    { read: true, feeRead: false },
+    { read: false, feeRead: true },
+  ])(
+    'shows the entry only when the current internal read capability allows it: %j',
+    async (capability) => {
+      api.getSettlementContext.mockResolvedValue(capability);
+      const { wrapper } = await mountShell();
+      expect(
+        wrapper.get('[data-test="settlement-nav"]').attributes('href'),
+      ).toBe('/settlements');
+    },
+  );
+  it('keeps the entry hidden without either read capability', async () => {
+    const { wrapper } = await mountShell();
+    expect(wrapper.find('[data-test="settlement-nav"]').exists()).toBe(false);
+  });
+});
+
+describe.each([
+  {
+    name: 'settlement',
+    mock: 'getSettlementContext',
+    path: '/settlements',
+    success: { read: true, feeRead: false },
+  },
+  {
+    name: 'evidence',
+    mock: 'listEvidence',
+    path: '/evidence',
+    success: {
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 1,
+      counts: {
+        allStageCases: 0,
+        statuses: {
+          ALL: 0,
+          UNDELIVERED: 0,
+          IN_STOCK: 0,
+          MAILED_TO_LAWYER: 0,
+          DESTROYED: 0,
+        },
+        stages: {},
+      },
+    },
+  },
+] as const)(
+  '$name navigation current read and explicit recovery',
+  ({ name, mock, path, success }) => {
+    it('shows an authorized read-only empty entry through the real read contract', async () => {
+      api[mock].mockResolvedValue(success);
+      const { wrapper } = await mountShell();
+      expect(wrapper.get(`[data-test="${name}-nav"]`).attributes('href')).toBe(
+        path,
+      );
+      if (name === 'evidence')
+        expect(api.listEvidence).toHaveBeenCalledWith(
+          { page: 1, pageSize: 1 },
+          { signal: expect.any(AbortSignal) },
+        );
+    });
+    it.each([
+      new ApiError('server', 500, 'INTERNAL_ERROR'),
+      new TypeError('Failed to fetch'),
+      new ApiError('timeout', 0, 'TIMEOUT'),
+    ])(
+      'shows recoverable failure %s and only retries the requested read',
+      async (error) => {
+        api[mock].mockRejectedValue(error);
+        const { wrapper, router } = await mountShell();
+        expect(wrapper.find(`[data-test="${name}-nav"]`).exists()).toBe(false);
+        expect(wrapper.get(`[data-test="${name}-nav-error"]`).text()).toContain(
+          '暂时无法读取',
+        );
+        expect(api[mock]).toHaveBeenCalledTimes(1);
+        await router.push('/customers');
+        window.dispatchEvent(new Event(workflowChangedEvent));
+        await flushPromises();
+        expect(api[mock]).toHaveBeenCalledTimes(1);
+        const other =
+          name === 'evidence' ? api.getSettlementContext : api.listEvidence;
+        const otherCalls = other.mock.calls.length;
+        api[mock].mockResolvedValue(success);
+        await wrapper.get(`[data-test="${name}-nav-retry"]`).trigger('click');
+        await flushPromises();
+        expect(api[mock]).toHaveBeenCalledTimes(2);
+        expect(other).toHaveBeenCalledTimes(otherCalls);
+        expect(
+          wrapper.get(`[data-test="${name}-nav"]`).attributes('href'),
+        ).toBe(path);
+        expect(wrapper.find(`[data-test="${name}-nav-error"]`).exists()).toBe(
+          false,
+        );
+      },
+    );
+    it('retains known readability on 500 then hides a denied retry and stops further probes', async () => {
+      api[mock].mockResolvedValue(success);
+      const { wrapper, router } = await mountShell();
+      api[mock].mockRejectedValueOnce(
+        new ApiError('server', 500, 'INTERNAL_ERROR'),
+      );
+      await router.push('/customers');
+      await flushPromises();
+      expect(wrapper.get(`[data-test="${name}-nav"]`).attributes('href')).toBe(
+        path,
+      );
+      expect(wrapper.get(`[data-test="${name}-nav-error"]`).text()).toContain(
+        '暂时无法读取',
+      );
+      api[mock].mockRejectedValue(
+        new ApiError('revoked', 403, 'ACTION_FORBIDDEN'),
+      );
+      await wrapper.get(`[data-test="${name}-nav-retry"]`).trigger('click');
+      await flushPromises();
+      expect(wrapper.find(`[data-test="${name}-nav"]`).exists()).toBe(false);
+      expect(wrapper.find(`[data-test="${name}-nav-error"]`).exists()).toBe(
+        false,
+      );
+      const calls = api[mock].mock.calls.length;
+      await router.push('/cases');
+      window.dispatchEvent(new Event(workflowChangedEvent));
+      await flushPromises();
+      expect(api[mock]).toHaveBeenCalledTimes(calls);
+      api[mock].mockResolvedValue(success);
+      useAuthStore().session = { ...session, authorizationRevision: 2 };
+      await flushPromises();
+      expect(wrapper.get(`[data-test="${name}-nav"]`).attributes('href')).toBe(
+        path,
+      );
+    });
+    it('disables an in-flight explicit retry and prevents duplicate reads', async () => {
+      api[mock].mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      const { wrapper } = await mountShell();
+      let finish!: (value: unknown) => void;
+      api[mock].mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      await wrapper.get(`[data-test="${name}-nav-retry"]`).trigger('click');
+      await flushPromises();
+      expect(
+        wrapper.get(`[data-test="${name}-nav-retry"]`).attributes('disabled'),
+      ).toBeDefined();
+      await wrapper.get(`[data-test="${name}-nav-retry"]`).trigger('click');
+      expect(api[mock]).toHaveBeenCalledTimes(2);
+      finish(success);
+      await flushPromises();
+      expect(wrapper.find(`[data-test="${name}-nav-error"]`).exists()).toBe(
+        false,
+      );
+    });
+    it('aborts the obsolete read and cannot restore a denied new identity from its late success', async () => {
+      let finish!: (value: unknown) => void;
+      api[mock].mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const { wrapper } = await mountShell();
+      const options = api[mock].mock.calls[0]!.at(-1) as {
+        signal: AbortSignal;
+      };
+      api[mock].mockRejectedValue(
+        new ApiError('revoked', 403, 'ACTION_FORBIDDEN'),
+      );
+      useAuthStore().session = {
+        ...session,
+        user: { ...session.user, id: 'new-user' },
+        department: { id: 'new-department', name: '新部门' },
+        authorizationRevision: 2,
+      };
+      await flushPromises();
+      expect(options.signal.aborted).toBe(true);
+      finish(success);
+      await flushPromises();
+      expect(wrapper.find(`[data-test="${name}-nav"]`).exists()).toBe(false);
+      expect(wrapper.find(`[data-test="${name}-nav-error"]`).exists()).toBe(
+        false,
+      );
+    });
+    it('keeps a new identity recoverable error when an old successful read arrives late', async () => {
+      let finish!: (value: unknown) => void;
+      api[mock].mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      );
+      const { wrapper } = await mountShell();
+      api[mock].mockRejectedValue(new TypeError('Failed to fetch'));
+      useAuthStore().session = { ...session, authorizationRevision: 2 };
+      await flushPromises();
+      finish(success);
+      await flushPromises();
+      expect(wrapper.find(`[data-test="${name}-nav"]`).exists()).toBe(false);
+      expect(wrapper.get(`[data-test="${name}-nav-error"]`).text()).toContain(
+        '暂时无法读取',
+      );
+    });
+    it('ignores a late old 403 after the new identity has succeeded', async () => {
+      let fail!: (reason: unknown) => void;
+      api[mock].mockReturnValueOnce(
+        new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+      );
+      const { wrapper } = await mountShell();
+      api[mock].mockResolvedValue(success);
+      useAuthStore().session = { ...session, authorizationRevision: 2 };
+      await flushPromises();
+      fail(new ApiError('old denied', 403, 'ACTION_FORBIDDEN'));
+      await flushPromises();
+      expect(wrapper.get(`[data-test="${name}-nav"]`).attributes('href')).toBe(
+        path,
+      );
+      expect(wrapper.find(`[data-test="${name}-nav-error"]`).exists()).toBe(
+        false,
+      );
+    });
+    it.each(['CLIENT', 'LAWYER', 'NOTARY'] as const)(
+      'never probes the internal read for a %s principal',
+      async (principalType) => {
+        api[mock].mockResolvedValue(success);
+        const { wrapper } = await mountShell('/leads', {
+          ...session,
+          principalType,
+        });
+        expect(api[mock]).not.toHaveBeenCalled();
+        expect(wrapper.find(`[data-test="${name}-nav"]`).exists()).toBe(false);
+        expect(wrapper.find(`[data-test="${name}-nav-error"]`).exists()).toBe(
+          false,
+        );
+      },
+    );
+  },
+);
