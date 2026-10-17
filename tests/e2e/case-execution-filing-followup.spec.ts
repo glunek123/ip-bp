@@ -547,7 +547,8 @@ async function finish(s: Session, f: Filing) {
         expectedFilingId: f.filingId,
         finishedAt: day(-1),
         reason: '正常原执行结束办理',
-        basisNote: null,
+        basisNote:
+          '合成验收依据：操作员已核对本轮测试案办理记录，用于验证执行结束后的原键恢复。',
         basisContentVersionIds: [],
       },
     }),
