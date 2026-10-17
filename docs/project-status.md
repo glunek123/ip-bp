@@ -1,5 +1,7 @@
 # 当前开发状态
 
+当前实际进度（2026-10-17）：EF固定1832d991的正常完整verify、whole-file owned风险专项、唯一原失败official resolve及正常官方deploy均已实际exit0；部署后独立保护核在触发器定义比较处停止，HTTP14未启动。已保存目录的纯离线诊断显示首个差异是PostgreSQL将事件顺序呈现为DELETE OR UPDATE，冻结DDL写UPDATE OR DELETE；仅允许逐表/函数/时点/参数不变的事件集合精确解释，原BLOCKED保留，其余比较及未到达保护项仍待Runner完成，不能据部署成功称功能验收通过。结算/证物共享13文件V3的同案子行及真实金融操作者约束已由原两Sol复审关闭，精确提交9da6febf；原证物树单一接入5c58bd99（同tree78bf1f72），各自领域WIP保留。两个原Task继续完整Demo实现，未执行1200/1300迁移或真实页面点击。
+
 候选更新（2026-10-17）：EF七文件修复95d9399/snapshot73d7284经独立Standards/Spec各C/I/M0后进入原Runner，但短只读前置发现原PG started_at真实值为2026-10-16 09:36:04.56343+00，旧报告/fixture曾截到毫秒而误拒；verify/owned/resolve/deploy/HTTP均未运行。原S两文件精度修复d0bcbbb绑定完整原文、拒相邻微秒和截断值，31纯测与同两Reviewer窄补审0；最终clean1832d991/treecd42cb4e已快进原运行树，新顺序单e02929c3…47d10下发，真实部署结果待Runner。共享13文件V2另经独审：证物子行同组案件一致性及金融操作者真实FK两项退回共享Owner修，Spec核实际Demo撤回纸本公证书号伪造定性，保留真实certificate_no；结算/证物继续原Task，尚未称完整功能或点击通过。
 
 恢复断点（2026-10-17）：用户明确“现在继续”。主控核昨天暂停记录：五树HEAD及未提交文件清单一致，主控clean d708f60；结算23项、证物14项、S七项WIP保留，未见断点之后文件改写，WIP未封完整raw故不冒称历史字节证明。原S通过父级有效通道恢复七文件修复，结算/证物原可见Task已实际恢复，所有权不变。原R2先见exited255，唯一Runner核原fullCID/镜像/卷/15438与退出日志后仅start一次并healthy；单锁READ ONLY快照核149全部旧PK行、71案、32文件、H42/terminal inactive v2及159成功+唯一failed1000完全同，五enum/新DDL未提交，result.json rawSHA cae5aefb39196c4b17e292c35945d571b305c4f31065d6669f3c793ab4144838主控已核。环境恢复不等于账本恢复，写槽仍关闭；待固定候选/独审及准确单后才按已批准范围官方resolve和deploy。真实HTTP14/点击尚未执行，人工预览未动。

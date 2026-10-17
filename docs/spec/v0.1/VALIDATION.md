@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### EF官方恢复与部署已执行；独立核验及HTTP仍分开（2026-10-17）
+
+固定1832d991/treecd42cb4e的正常完整verify、protected whole-file owned专项各实际PASS；随后官方resolve只将原唯一failed1000标记rolled-back并保留原历史，正常pnpm db:test:migrate:deploy仅执行一次exit0。实际结果在ef001-integration/.local/ef001-evidence/official-recovery-http14-1832d99-20261017/的Verify/Owned/Resolve/Migrate-result.json；主控已读，尚无HTTP14结果。原failed started_at精确文本仍为2026-10-16 09:36:04.56343+00，不用旧毫秒报告代替身份。
+
+PostMigrate-result.json保留BLOCKED/exit1：独立DDL检查首差异为触发器事件顺序delete or update与update or delete。offline-ddl-diagnostic.json用已保存目录复现，无新DB查询。主控仅准逐项事件集合及所有表/函数/时点/参数精确核对，保留原失败；若离线全部解释成立，再由唯一Runner补完原未到达READ ONLY保护项。此时不预记历史保持全PASS、不重跑部署、不运行HTTP或修改产品来迎合检查。
+
+结算/证物共享V3十三文件固定9da6febf6f0a388073072bca71928a03af63b26f，证物原树接入5c58bd9941951eef8c9802494883139926e0f068，两者tree78bf1f72ce553b8cced4028a7e5b98ada4344760。manifest31fdfc9ed3d0442fc4e2a1c99ac0430df3f4bd0ace07ba87ba47ddfd05d44cd5逐项raw一致。原Standards/Spec V3均ACCEPTED C/I/M0，真实certificate_no保留，组/子行案关联及四类金融账号/同部门成员FK缺口关闭。模型生成/类型及源码边界检查是编译依赖证据，实际1200/1300迁移、真实并发、完整Demo领域和页面验收尚未完成。
+
 ### EF精确原时间纠正；正式阶段仍待实际结果（2026-10-17）
 
 七文件候选73d72847独立两轴0后，唯一Runner在短准入首次停止。只读诊断rawSHA5736f08b022a6a2fcbb8dea34ea2c44b51123637a6d304c1e19623b5944337d4由主控核对：唯一failed1000原PG文本started_at为2026-10-16 09:36:04.56343+00，原summary/fixture的.563Z已丢失微秒，旧闭合时间guard误拒；其他失败行UUID/name/e125校验和/steps0/空字段全部同，0门禁/0恢复写入。原失败和执行单保留，不把其原静态审查0扩大成运行成功。
