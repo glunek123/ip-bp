@@ -3,11 +3,17 @@ import { Test } from '@nestjs/testing';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import request from 'supertest';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
+import type { ActorContext } from '../../access-control/actor-context';
 import { IDENTITY_ADAPTER } from '../../access-control/identity.adapter';
 import { AuthService } from '../../auth/auth.service';
+import type { SessionAuthentication } from '../../auth/authenticated-session';
 import { configureApp } from '../../common/configure-app';
-import { CaseExecutionFilingFollowupController } from './case-execution-filing-followup.controller';
+import {
+  CaseExecutionFilingFollowupController,
+  LawyerCaseExecutionFilingFollowupController,
+} from './case-execution-filing-followup.controller';
 import { CaseExecutionFilingFollowupService } from './case-execution-filing-followup.service';
+import { CaseModule } from './case.module';
 
 const caseId = '10000000-0000-4000-8000-000000000001';
 const filingId = '10000000-0000-4000-8000-000000000002';
@@ -18,6 +24,34 @@ const actor = {
   authorizationRevision: 1,
 };
 const lawyer = { ...actor, lawyerAccountId: actor.userId };
+const identities = new Map<string, ActorContext>([
+  ['internal', actor],
+  ['lawyer', lawyer],
+  ['client', { ...actor, clientCustomerId: targetId }],
+  ['notary', { ...actor, notaryOfficeId: targetId }],
+  ['mismatched-lawyer', { ...actor, lawyerAccountId: targetId }],
+  ['lawyer-client', { ...lawyer, clientCustomerId: targetId }],
+  ['lawyer-notary', { ...lawyer, notaryOfficeId: targetId }],
+  ['empty-client', { ...actor, clientCustomerId: '' }],
+  ['empty-notary', { ...actor, notaryOfficeId: '' }],
+]);
+const sessionAuthentication: SessionAuthentication = {
+  kind: 'session',
+  sessionId: targetId,
+  csrfDigest: 'test-only-digest',
+};
+const auth = {
+  resolveSession: jest.fn(async (token: string) => {
+    const identity = identities.get(token);
+    return identity
+      ? { actor: identity, authentication: sessionAuthentication }
+      : null;
+  }),
+  verifyCsrf: jest.fn(
+    (_authentication: SessionAuthentication, value: string) =>
+      value === 'valid-csrf',
+  ),
+};
 const feedback = {
   idempotencyKey: 'original-key',
   feedbackOn: null,
@@ -57,6 +91,21 @@ const routes = [
   },
 ] as const;
 
+function resultFor(route: (typeof routes)[number]) {
+  const common = {
+    id:
+      route.body.expectedRevision === 0
+        ? targetId
+        : '10000000-0000-4000-8000-000000000004',
+    filingId,
+    revision: route.body.expectedRevision + 1,
+    recordedAt: '2026-10-16T00:00:00.000Z',
+  };
+  return route.method.includes('Feedback')
+    ? { ...common, feedbackId: targetId }
+    : { ...common, supplementId: targetId };
+}
+
 describe('execution filing followup HTTP contract', () => {
   let app: INestApplication;
   const commands = {
@@ -67,15 +116,18 @@ describe('execution filing followup HTTP contract', () => {
   };
   beforeAll(async () => {
     const module = await Test.createTestingModule({
-      controllers: [CaseExecutionFilingFollowupController],
+      controllers: [
+        CaseExecutionFilingFollowupController,
+        LawyerCaseExecutionFilingFollowupController,
+      ],
       providers: [
         ActorContextGuard,
-        { provide: AuthService, useValue: { resolveSession: jest.fn() } },
+        { provide: AuthService, useValue: auth },
         {
           provide: IDENTITY_ADAPTER,
           useValue: {
-            resolve: jest.fn(async (token: string) =>
-              token === 'internal' ? actor : token === 'lawyer' ? lawyer : null,
+            resolve: jest.fn(
+              async (token: string) => identities.get(token) ?? null,
             ),
           },
         },
@@ -90,13 +142,8 @@ describe('execution filing followup HTTP contract', () => {
   afterAll(async () => app?.close());
   beforeEach(() => {
     jest.clearAllMocks();
-    for (const command of Object.values(commands))
-      command.mockResolvedValue({
-        id: targetId,
-        filingId,
-        revision: 1,
-        recordedAt: '2026-10-16T00:00:00.000Z',
-      });
+    for (const route of routes)
+      commands[route.method].mockResolvedValue(resultFor(route));
   });
   describe.each([
     ['cases', 'internal', actor],
@@ -111,7 +158,8 @@ describe('execution filing followup HTTP contract', () => {
           )
           .set('Authorization', `Bearer ${token}`)
           .send(route.body)
-          .expect(201);
+          .expect(201)
+          .expect(resultFor(route));
         expect(commands[route.method]).toHaveBeenCalledWith(identity, caseId, {
           ...route.body,
           ...route.anchors,
@@ -132,6 +180,81 @@ describe('execution filing followup HTTP contract', () => {
       },
     );
   });
+  describe.each([
+    [
+      'cases',
+      [
+        'lawyer',
+        'client',
+        'notary',
+        'mismatched-lawyer',
+        'lawyer-client',
+        'lawyer-notary',
+        'empty-client',
+        'empty-notary',
+      ],
+    ],
+    [
+      'lawyer/cases',
+      [
+        'internal',
+        'client',
+        'notary',
+        'mismatched-lawyer',
+        'lawyer-client',
+        'lawyer-notary',
+        'empty-client',
+        'empty-notary',
+      ],
+    ],
+  ] as const)('%s principal boundary', (prefix, tokens) => {
+    it.each(routes)(
+      'rejects every wrong principal before $method can read a version or receipt',
+      async (route) => {
+        for (const token of tokens) {
+          const response = await request(app.getHttpServer())
+            .post(
+              `/api/v1/${prefix}/${caseId}/execution-filings/${filingId}/${route.path}`,
+            )
+            .set('Authorization', `Bearer ${token}`)
+            .send(route.body)
+            .expect(403);
+          expect(response.body).toMatchObject({ code: 'ACTION_FORBIDDEN' });
+          expect(commands[route.method]).not.toHaveBeenCalled();
+        }
+      },
+    );
+  });
+  describe.each([
+    ['cases', 'lawyer/cases', 'internal'],
+    ['lawyer/cases', 'cases', 'lawyer'],
+  ] as const)(
+    'successful %s key through wrong %s portal',
+    (legalPrefix, wrongPrefix, token) => {
+      it.each(routes)(
+        'rejects the original successful $method key before delegation',
+        async (route) => {
+          const success = await request(app.getHttpServer())
+            .post(
+              `/api/v1/${legalPrefix}/${caseId}/execution-filings/${filingId}/${route.path}`,
+            )
+            .set('Authorization', `Bearer ${token}`)
+            .send(route.body)
+            .expect(201);
+          commands[route.method].mockClear();
+          commands[route.method].mockResolvedValue(success.body);
+          await request(app.getHttpServer())
+            .post(
+              `/api/v1/${wrongPrefix}/${caseId}/execution-filings/${filingId}/${route.path}`,
+            )
+            .set('Authorization', `Bearer ${token}`)
+            .send(route.body)
+            .expect(403);
+          expect(commands[route.method]).not.toHaveBeenCalled();
+        },
+      );
+    },
+  );
   it('rejects duplicate target anchors in correction bodies, invalid UUIDs and missing authentication', async () => {
     const url = `/api/v1/cases/${caseId}/execution-filings/${filingId}/feedbacks/${targetId}/corrections`;
     await request(app.getHttpServer())
@@ -150,6 +273,51 @@ describe('execution filing followup HTTP contract', () => {
       .expect(401);
     expect(commands.correctFeedback).not.toHaveBeenCalled();
   });
+  describe.each([
+    ['cases', 'lawyer/cases', 'internal'],
+    ['lawyer/cases', 'cases', 'lawyer'],
+  ] as const)(
+    '%s resolved cookie session',
+    (legalPrefix, wrongPrefix, token) => {
+      it.each(routes)(
+        'checks the portal principal for the successful $method key after valid CSRF',
+        async (route) => {
+          await request(app.getHttpServer())
+            .post(
+              `/api/v1/${legalPrefix}/${caseId}/execution-filings/${filingId}/${route.path}`,
+            )
+            .set('Cookie', `dev_cor_session=${token}`)
+            .set('X-CSRF-Token', 'valid-csrf')
+            .send(route.body)
+            .expect(201)
+            .expect(resultFor(route));
+          commands[route.method].mockClear();
+          const forbidden = await request(app.getHttpServer())
+            .post(
+              `/api/v1/${wrongPrefix}/${caseId}/execution-filings/${filingId}/${route.path}`,
+            )
+            .set('Cookie', `dev_cor_session=${token}`)
+            .set('X-CSRF-Token', 'valid-csrf')
+            .send(route.body)
+            .expect(403);
+          expect(forbidden.body).toMatchObject({ code: 'ACTION_FORBIDDEN' });
+          expect(auth.resolveSession).toHaveBeenCalledTimes(2);
+          expect(auth.verifyCsrf).toHaveBeenCalledTimes(2);
+          expect(commands[route.method]).not.toHaveBeenCalled();
+        },
+      );
+    },
+  );
+  it('retains session CSRF rejection before legitimate internal delegation', async () => {
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/cases/${caseId}/execution-filings/${filingId}/feedbacks`)
+      .set('Cookie', 'dev_cor_session=internal')
+      .set('X-CSRF-Token', 'invalid-csrf')
+      .send(routes[0].body)
+      .expect(403);
+    expect(response.body).toMatchObject({ code: 'CSRF_INVALID' });
+    expect(commands.recordFeedback).not.toHaveBeenCalled();
+  });
   it('retains the domain authorization failure as 403', async () => {
     commands.recordFeedback.mockRejectedValueOnce(
       new ForbiddenException({ code: 'ACTION_FORBIDDEN' }),
@@ -160,14 +328,34 @@ describe('execution filing followup HTTP contract', () => {
       .send(routes[0].body)
       .expect(403);
   });
+  it('registers both explicit portal controllers in CaseModule', () => {
+    const controllers: unknown = Reflect.getMetadata('controllers', CaseModule);
+    expect(controllers).toEqual(
+      expect.arrayContaining([
+        CaseExecutionFilingFollowupController,
+        LawyerCaseExecutionFilingFollowupController,
+      ]),
+    );
+  });
   it('publishes eight precise POST schemas without workflow fields or route anchors in body', () => {
     const doc = SwaggerModule.createDocument(
       app,
       new DocumentBuilder().build(),
     );
     expect(Object.keys(doc.paths)).toHaveLength(8);
+    expect(
+      new Set(Object.values(doc.paths).map((item) => item.post?.operationId))
+        .size,
+    ).toBe(8);
     for (const item of Object.values(doc.paths))
       expect(item.post?.responses['201']).toBeDefined();
+    for (const prefix of ['cases', 'lawyer/cases'])
+      for (const route of routes) {
+        const path = `/api/v1/${prefix}/{id}/execution-filings/{filingId}/${route.path.replace(targetId, route.method === 'correctFeedback' ? '{feedbackId}' : '{supplementId}')}`;
+        expect(doc.paths[path]?.post?.operationId).toBe(
+          `${prefix === 'cases' ? 'CaseExecutionFilingFollowupController' : 'LawyerCaseExecutionFilingFollowupController'}_${route.method}`,
+        );
+      }
     for (const name of [
       'RecordExecutionFilingFeedbackDto',
       'CorrectExecutionFilingFeedbackDto',

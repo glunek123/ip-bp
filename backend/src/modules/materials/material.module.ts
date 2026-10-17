@@ -8,7 +8,10 @@ import { LocalPrivateBlobStorage } from './local-private-blob-storage';
 import { MaterialCleanupService } from './material-cleanup.service';
 import { MaterialController } from './material.controller';
 import { CaseSectionRecordUploadController } from './case-section-record-upload.controller';
-import { ExecutionSupplementUploadController } from './execution-supplement-upload.controller';
+import {
+  ExecutionSupplementUploadController,
+  LawyerExecutionSupplementUploadController,
+} from './execution-supplement-upload.controller';
 import { MaterialService } from './material.service';
 import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
 import {
@@ -22,6 +25,7 @@ import {
     MaterialController,
     CaseSectionRecordUploadController,
     ExecutionSupplementUploadController,
+    LawyerExecutionSupplementUploadController,
   ],
   providers: [
     {

@@ -6,7 +6,10 @@ import { CaseExecutionFinishService } from './case-execution-finish.service';
 import { CaseExecutionMailingService } from './case-execution-mailing.service';
 import { CaseExecutionFilingService } from './case-execution-filing.service';
 import { CaseExecutionFilingFollowupService } from './case-execution-filing-followup.service';
-import { CaseExecutionFilingFollowupController } from './case-execution-filing-followup.controller';
+import {
+  CaseExecutionFilingFollowupController,
+  LawyerCaseExecutionFilingFollowupController,
+} from './case-execution-filing-followup.controller';
 import { Module } from '@nestjs/common';
 import { AccessControlModule } from '../../access-control/access-control.module';
 import { AuthModule } from '../../auth/auth.module';
@@ -57,6 +60,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
   ],
   controllers: [
     CaseExecutionFilingFollowupController,
+    LawyerCaseExecutionFilingFollowupController,
     CaseReadController,
     ClientCaseController,
     LawyerAccountController,
