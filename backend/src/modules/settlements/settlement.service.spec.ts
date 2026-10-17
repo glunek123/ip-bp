@@ -566,6 +566,133 @@ describe('settlement center source selection and receipts', () => {
       await offline.client.$disconnect();
     }
   });
+  function billCreationFixture(side = SettlementSideDtoValue.CUSTOMER) {
+    const f = setup({
+      active: true,
+      authorizationRevision: 1,
+      grants: [{ action: 'settlement.bill.create', scope: 'department' }],
+    });
+    const row = {
+      id: 'launch',
+      caseId: 'case',
+      side,
+      amount: new Prisma.Decimal('100.00'),
+      billId: null as string | null,
+      customerId: side === SettlementSideDtoValue.CUSTOMER ? 'customer' : null,
+      lawyerId: side === SettlementSideDtoValue.LAWYER ? 'lawyer' : null,
+      customer:
+        side === SettlementSideDtoValue.CUSTOMER ? { name: '客户' } : null,
+      lawyer:
+        side === SettlementSideDtoValue.LAWYER ? { fullName: '律师' } : null,
+      nth: 1,
+    };
+    const findMany = jest.fn().mockResolvedValue([row]);
+    const findUnique = jest.fn().mockResolvedValue(null);
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const create = jest.fn();
+    const updateMany = jest.fn();
+    const audit = jest.fn();
+    Object.assign(f.tx, {
+      caseSettlementLaunch: { findMany, updateMany },
+      settlementBill: { findUnique, findFirst, create },
+      auditEvent: { create: audit },
+    });
+    const input = {
+      side,
+      billDate: '2026-10-17',
+      launchIds: [row.id],
+      idempotencyKey: 'new-bill-key',
+    };
+    return {
+      ...f,
+      row,
+      input,
+      findMany,
+      findUnique,
+      findFirst,
+      create,
+      updateMany,
+      audit,
+    };
+  }
+
+  it.each([SettlementSideDtoValue.CUSTOMER, SettlementSideDtoValue.LAWYER])(
+    'rejects an already occupied %s launch with 409 before any bill, occupation or audit write',
+    async (side) => {
+      const f = billCreationFixture(side);
+      f.row.billId = 'current-bill';
+      await expect(f.service.createBill(actor, f.input)).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'SETTLEMENT_CHANGED' },
+      });
+      expect(f.events).toEqual([
+        'actor-facts-lock',
+        'authorize-current',
+        'case-lock:case',
+      ]);
+      expect(f.findFirst).not.toHaveBeenCalled();
+      expect(f.create).not.toHaveBeenCalled();
+      expect(f.updateMany).not.toHaveBeenCalled();
+      expect(f.audit).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preserves an unknown internal error instead of translating it into a bill conflict', async () => {
+    const f = billCreationFixture();
+    const error = new Error('UNEXPECTED_INTERNAL_FAILURE');
+    f.create.mockRejectedValue(error);
+    await expect(f.service.createBill(actor, f.input)).rejects.toBe(error);
+    expect(f.create).toHaveBeenCalledTimes(1);
+    expect(f.updateMany).not.toHaveBeenCalled();
+    expect(f.audit).not.toHaveBeenCalled();
+  });
+
+  it('replays the original successful key after cancellation and occupation by a later bill without new writes', async () => {
+    const f = billCreationFixture();
+    f.row.billId = 'later-bill';
+    f.findUnique.mockResolvedValue({
+      id: 'original-bill',
+      billNo: '2026101700001',
+      side: f.input.side,
+      billDate: new Date('2026-10-17T00:00:00.000Z'),
+      note: null,
+      amount: new Prisma.Decimal('100.00'),
+      cancelledAt: new Date('2026-10-17T01:00:00.000Z'),
+      items: [{ launchId: f.row.id }],
+    });
+    await expect(
+      f.service.createBill(actor, {
+        ...f.input,
+        idempotencyKey: 'original-bill-key',
+      }),
+    ).resolves.toEqual({
+      id: 'original-bill',
+      billNo: '2026101700001',
+      amount: '100.00',
+    });
+    expect(f.events).toEqual([
+      'actor-facts-lock',
+      'authorize-current',
+      'case-lock:case',
+    ]);
+    expect(f.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          departmentId_actorUserId_idempotencyKey: {
+            departmentId: actor.departmentId,
+            actorUserId: actor.userId,
+            idempotencyKey: 'original-bill-key',
+          },
+        },
+      }),
+    );
+    expect(f.findMany).toHaveBeenCalledTimes(1);
+    expect(f.findFirst).not.toHaveBeenCalled();
+    expect(f.create).not.toHaveBeenCalled();
+    expect(f.updateMany).not.toHaveBeenCalled();
+    expect(f.audit).not.toHaveBeenCalled();
+  });
+
   it('cancels exact stable source IDs without changing launched amounts or deleting bill history', async () => {
     const f = setup({
       active: true,

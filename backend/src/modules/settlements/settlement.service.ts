@@ -809,6 +809,7 @@ export class SettlementService {
             },
             include: { customer: true, lawyer: true },
           });
+          if (rows.some((row) => row.billId !== null)) throw changed();
           const selection = billSelection(
             input.side,
             input.launchIds,

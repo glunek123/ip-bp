@@ -1,5 +1,9 @@
 # SPEC-001 文档验证
 
+### F06真实关闭与E07精确冲突修复（2026-10-17）
+
+c1e56d8d正常完整verify实际PASS（139/2510/2347、NT006、双构建）。F06原body/key经页面原请求重试201，唯一账单/2明细/100元、发起占用及审计独立核PASS；F07撤销和F08重建201，现2账单4明细。随后E07预定409实际500，requestId 3f294c60-c316-41bc-9cc0-6a7a55f5df76，settlement-ledger.js:31的已占用检查抛普通INVALID_BILL_SELECTION；未新增第三账单。原summary .local/ef001-evidence/demo-A-bill-recovery-c1e56d8d-20261017/stop-summary.json SHAfc1fa9fe4b0045ea57970a2842e97fe513a2e17ab7356a32431448e756152cc9保持。原Owner服务仅新增一行明确占用→changed()检查，位置在授权/锁/原成功key回执之后、billSelection和编号/写入前；不泛捕获未知错误，不改SQL或原事务阻断。直接19/19、backend类型及静态PASS，原Spec/Quality均ACCEPTED C/I/M0，作者1a5c79b0；清单SHA22656acc03e1c580de4d8c14c7815dc1923d5d1fa5fc738c27cce2aee4d29d2f。真实E07恢复Pending，新产品候选须门禁后仅续原E07和剩链；余15成功写/5预定拒绝/6失败GET/2登录，角色未撤权，无重复前序或导出。旧行及92份文件保持，旧500证据不覆盖。
+
 ### A实际运行与F06最小修复（2026-10-17）
 
 643d1e8e/tree5dca1c2f正常完整verify工具139、前端2510、后台2347及双构建通过；protected owned165 1/1、334整文件发送/4故障原字节重试、独立公有保持均过。新161私密备份及TOC、92份missing-only无覆盖复制、一次官方165部署和独立旧行/账本/catalog/sequence/文件保持通过；仅批准3角色/3分配/20Grant及指定3账户授权版本增量。总摘要SHA260a334113ffd1d1fdc0ae84a627b05da3a9077e27f401a6ee12440d264af2ba。后续ignored加载、响应关联、下载读取错误均保留，未改产品迁就脚本。最终证物13成功项已累计完成，实际B/C按钮下载各46bytes且SHA匹配；页面案件来源自动带入、同页编辑/批量/导出已验，不把协议拒绝冒充UI输入恢复。
