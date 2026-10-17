@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### 两范围直接批准与单Runner恢复（2026-10-17）
+
+父级转交可信transcript：用户07:50UTC消息Sentinel_b78772dd69a081919383d5135db9c0d3“允许，都允许”，分别回应Sentinel_1424a392fc4c819184dcf21f18c2cc0a（Demo冻结最小申请raw fc74d558e73cd920f7d1b151669c70c62bed3ff6c85754029fd6facf8395f570）和Sentinel_53f85111c59c8191a22d173a2e948af0（2fd84bd2接原树并续原批只读）。未扩大至生产、人工预览或原EF14重跑。只读B先于public165的A，唯一原Runner01a13e67继续，避免共享R2基线被并行改变。
+
+核原Runner idle、a6clean、标准锁不存在及3101/5174空闲后，主控正常审批一次cherry-pick2fd84bd2076b062a58489963c9a51f137a50af14成功，原ef001-integration新HEAD047d256c4599e87123df459adb9323741acdf5ba/tree9355d51c9c5ede4b509b0add49f16c7a4e707105，两raw与受审源相同。GO为.local/ef001-evidence/runner-047d256-readonly-approved-go-20261017.md；原Runner已核前置和S1有效，累计1/4，尚未回报新正式结果。不重复作者21或完整门禁/构建。离线原shared Task准备专属4文件owned165 adapter，原evidence Task准备页面选择器；两者不连接R2，Demo后续必须固定受审源、正常完整verify后才owned/备份/public部署/权限/真实页面。批准及顺序回执.local/shared-demo-contract/demo-approval-and-serial-schedule-20261017.json SHA29d713bafA660afcfb33039863393022fe95dacf7dbb9c811075ce01deb64e09，旧申请字节保持。
+
 ### EF移动端文件名溢出定位与原作者两文件修复（2026-10-17）
 
 运行树a6ff78953dc6d19ef7354832fe96de12f94ec918的真实只读续验复用首轮S1，已通过真实菜单开关、历史current与两版本展示及43/39bytes两次精确下载，随后390px视口document.scrollWidth=454失败；首项FAIL、其余2项未执行、retry0。独立只读DOM专项1/1确认Panel右沿380、当前文件按钮右沿408.72、历史按钮右沿454.34，内层span与按钮white-space:nowrap。DOM summary SHA3d59b5871daa1b800fe12c0ab7f1e04e0d17c8a890f75d910003edb98c2771f7；实际查看最后390x844帧SHA df5a55586246bd81fb5d6ebc8f57a8d7eaef9fa31da704b6929f48ab4fdbca29。没有额外登录、下载或业务请求用于DOM专项；累计S1一个会话，153旧表/87案/92文件及其余安全数据保护保持，服务和锁释放。

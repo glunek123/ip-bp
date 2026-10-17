@@ -1,5 +1,7 @@
 # 当前开发状态
 
+最新授权与串行恢复（2026-10-17）：用户07:50UTC明确“允许，都允许”，对应冻结Demo最小申请fc74d558与原运行树接2fd84bd2后的同批只读回归，两范围均已批准，不再等待人类。先核原Runner idle、clean a6、无锁和服务，再在原ef001-integration一次pick为clean047d256c/tree9355d51c；原S1现场有效，累计1/4，原Runner已恢复只读3项，Demo暂不占R2槽。原shared Task准备独占4文件owned165 adapter，原evidence Task准备原13请求页面交接，均仅离线；A的最终候选/窄审/完整verify、owned风险、161新备份/public165、限定3role20Grant与34成功写依批准计划依次执行，尚未开始。EF14不重跑，失败与旧回执保留，不动生产或人工预览。下文Pending表述为此前历史。
+
 最新续办（2026-10-17）：a6真实窄屏续验已越过菜单、历史和两次精确旧/当前文件下载，发现390px视口的document.scrollWidth为454。一次只读DOM专项1/1确认Panel右沿380，历史文件按钮右沿454.34，按钮及span的nowrap造成溢出。原Panel Task经本地通道恢复，无新增作者或工作树；两文件局部换行修复已冻结提交2fd84bd2/tree343b62fb，完整文件名和下载参数保留，21/21及类型/静态通过，窄Spec/Standards审C/I/M0。运行树仍clean a6ff789，实际修复后的390px复验尚未批准或执行；累计仅S1一个正常会话，业务写0，旧153表/87案/92文件保护保持。给原作者发提交回执被自动审批拒绝，未送达且未重试；不影响源码提交。Demo完整执行申请仍待用户回复，不挪用EF许可。下文按历史保留。
 
 最新续办（2026-10-17）：用户已直接允许原ef001-integration解除本次代码冻结、建指定分支并接75a4。原命令在新证据后仅执行一次成功，现clean a6ff7895/treea75f1d26；旧676及两次未执行的审批拒绝保留。受影响前端225/225、类型/Lint格式通过，protected发现3项。正式首项在冷390正常登录/列表200之后，因辅助getByRole退出按钮未匹配而停，另2项未执行；保护核153旧表/87案/92文件保持，仅1正常session，0业务写。主控已实际查看原trace最后截图及DOM：sidebar data-open=false、logout节点存在但visibility:hidden；确定辅助假设桌面入口可访问，未认产品bug。父级已给真实打开菜单路径窄续验，原Runner仅修ignored helper并优先恢复本次S1，累计仍≤4session；实际新结果Pending，不加timeout、不改产品、保留首失败/129证据且不重包。
