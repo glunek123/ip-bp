@@ -1,5 +1,9 @@
 # 当前开发状态
 
+门户修复已固定（2026-10-17）：原E v2六文件manifest9f043a99经两轴Sol补审C/I/M0，错误主体先于领域/材料委托403，律师5个operationId唯一且内部ID/十路径不改。源提交28c8d617，运行树单pick85fcd292+context后clean67625b96991e4fcc2f966b0c8df4c2b70e74e5d7/treef6b18e96。旧strict161 helper、原14spec/SQL/DTO/domain未改。原Runner短READ ONLY已PASS：153表4837旧PK行、四身份全部真实关联、原唯一fact/receipt及旧32+新11bytes保持，补齐membership且原operator角色仅其一人持有。未来原场景撤权对象明确为新role_templates true/v1→false/v2，assignment不改；目前未写。新单f7bc2599…e9580已成功送达，只准一次正常full verify及ignored同案尾段/9项collection准备，正式HTTP/撤权仍待具体脚本核收后另GO。
+
+证物后端已接受并接依赖（2026-10-17）：日期finding按Demo可见提示修复，RED6→GREEN16、类型/Lint/格式通过；原Standards核28raw和其余24不变后关闭，Spec原安全/来源范围通过。仅28后端代提交9f2f9cf2，未混前端WIP；证物树又单接费用/材料5ddaa361+bd6b06ed，原Owner实施同原出证TX的费用initializer最小hook及组合编译。共享Owner待短暂停源后接该后端依赖，结算多笔费用/恢复及页面继续；PG/真实文件授权HTTP/页面均未验收，无新迁移部署。
+
 协调恢复（2026-10-17）：父级已确认原E权限修复turn01a147c3-996b启动，先前未送达为历史状态，不等于已修复。父级补用户原话后，向原结算Task原目标原消息仅重试一次已成功；原拒绝保留。证物日期Important已实际交原Owner，仅按Demo当前二审取二审日期作最小修复，尚未提交接受。原Runner只收到基于已保存证据的离线同案续验准备单，不capture/连接DB/HTTP/服务/权限，尚无新的真实运行准入。
 
 最新实际验收（2026-10-17）：固定2d670509/tree3c260ec1的原首案续验1/1 PASS：明确依据说明后finish201至WAITING_ARCHIVE/v4，四原body/key仍201同回执、四新key409，未新造首案。余13发现通过，实际3PASS/1FAIL/9未运行；失败为内部身份请求lawyer前缀，预期403却409 VERSION_CONFLICT（request a33b7653-299f-4f42-9d10-e2b2d3678335）。只读发现EF双前缀controller缺既有律师主体门槛，不能据此断言越权写入；原E定向修复派发AbsolutePathBuf未送达，现是待父级有效转交而非执行中。运行停止、锁/端口释放，累计9身份/66Grant/5案/11tiny，余预算12身份/105Grant/11案/49文件（含1份50MiB），不得重造已过或失败场景。parts-final-summary SHA26764e5ef25baf73554b0dee27ca2f7ec2a2ba7c8006032b811d513f299bdaea及safe failure SHAb20cd7a83fec6ab5eb7857c0c4a47eb9488c8ca2b7dc492988714d9af6a49623保留；未再resolve/deploy。

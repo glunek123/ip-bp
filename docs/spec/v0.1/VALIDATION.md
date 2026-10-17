@@ -1,5 +1,19 @@
 # SPEC-001 文档验证
 
+### EF门户修复源码接受及原对象短只读核；业务续验待门禁（2026-10-17）
+
+原E v2六文件manifest SHA9f043a9961c6cbb19e4aef517d9f46aa58c6460491f719ad9a0ff14043e320d9经原Spec和Standards独立补审均ACCEPTED C/I/M0。内部与律师portal分controller，认证actor的主体检查在领域/材料委托前；原domain当前授权先于旧成功receipt不变。Standards曾发现5个律师OpenAPI operationId重复，v2移除覆盖并由真实Lawyer类生成唯一ID，直接测试8/2路径和唯一ID集合，内部原ID保持，finding已关闭。作者controller79/79、领域定向16（v2复用未变输入）、类型/Lint/格式等为进程内证据，不冒真实HTTP。源28c8d617→运行树85fcd292+context67625b9/treef6b18e96，strict161 helper f45b4436及原14spec9013b3de保持；新的完整正常verify尚待唯一Runner实际结果。
+
+原Runner permission-membership-readonly-20261017 单次标准锁READ ONLY PASS，manifest SHA f906853273d282d446cd68dd29f086a55e9a64286b8d293131362cbbad401cb9：153表4837旧PK行逐列同原Part2Close、完整161成功+唯一原resolved历史、四actor真实membership/role/assignment/credential内存核对、原单feedback/receipt/body/result，以及旧32两端和新11真实文件均匹配；HTTP/服务/role/assignment/Grant写均0。已确认原helper撤自身role_templates而非assignment：仅operator roleb3fa20e6-5b9d-4d27-95fa-9e1f707b848a（只此actor持有）未来active true/version1→false/version2，assignment c33aa76d原样。旧offline assignment方案保留，以clarification增量纠正；未执行撤权。
+
+准确单runner-ef161-67625b9-gate-permission-preparation-20261017.md SHA f7bc2599b8411c18ee9b1a8b668c8bfb3e1833bb9677223bafd1fc518d4e9580已送达，只运行新身份边界组合一次正常full verify，成功后短保持核及ignored尾段TS/9未运行项的仅collection（1/9），交root核具体源再另正式GO。不重复已过首案/3项、不新造失败fixture、不再次resolve/deploy。累计9身份/66Grant/5案/11tiny及剩余预算不变，当前仍未宣称权限实际403和余9通过。
+
+### 证物日期修复与稳定后端交付（2026-10-17）
+
+更新28manifest SHA97e9784c7469f390d7e1b4e579169fed44eee4578d7e4aa91c2e7f850527f2eb由原Standards逐raw核同，其他24与原冻结完全一致。新增纯日期选择只在SECOND_INSTANCE取secondHearingOn、其他取hearingOn、缺失null不回退；筛选和展示共用，依据Demo index.html2924明确提示。实际RED6→GREEN16/16、类型/四文件Lint格式0，原51项和旧全构建仅保留为原候选证据，不合并称当前全跑。日期I关闭；后端28单提交9f2f9cf2e38ad34fb38ac45457356a7a5f0608f0，原Spec来源/权限/初始化范围通过，前端WIP未混。
+
+证物树接已审材料/费用两依赖5ddaa361+bd6b06ed，后续同原notary.issue事务费用hook、正常生成后的组合编译、公共App/菜单及完整页面仍独立实施/验证。没有执行新1150/1200/1300迁移、真实DB/HTTP/页面或新Grant。
+
 ### EF同案结束与跨阶段重放PASS；剩余权限场景停止（2026-10-17）
 
 原E单spec修复0fb861a仅补真实合成结束依据，不改服务/SQL。正式运行候选2d670509/tree3c260ec1复用已通过完整门禁，受影响类型/Lint/格式和strict context通过。原首案f3ebfaeb-85a8-41d4-9c51-8708a8b5895d的独立同案续验1/1 PASS，finish201至WAITING_ARCHIVE/version4；四原EF body/key跨阶段仍201且精确原结果，四新key409，finish后与重放后完整事实快照相同，无新fixture。原PS5 warning前置失败单独保留，改为已验证PS7正常stderr/exit路径后才正式执行，不伪造通过。
