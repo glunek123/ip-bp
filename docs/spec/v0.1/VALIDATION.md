@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### A实际运行与F06最小修复（2026-10-17）
+
+643d1e8e/tree5dca1c2f正常完整verify工具139、前端2510、后台2347及双构建通过；protected owned165 1/1、334整文件发送/4故障原字节重试、独立公有保持均过。新161私密备份及TOC、92份missing-only无覆盖复制、一次官方165部署和独立旧行/账本/catalog/sequence/文件保持通过；仅批准3角色/3分配/20Grant及指定3账户授权版本增量。总摘要SHA260a334113ffd1d1fdc0ae84a627b05da3a9077e27f401a6ee12440d264af2ba。后续ignored加载、响应关联、下载读取错误均保留，未改产品迁就脚本。最终证物13成功项已累计完成，实际B/C按钮下载各46bytes且SHA匹配；页面案件来源自动带入、同页编辑/批量/导出已验，不把协议拒绝冒充UI输入恢复。
+
+财务F06于10:54:49.874Z返回500，requestId bb33828c-8063-47d6-b839-543245fd1d98；已成条款v1/60和40两发起，账单/明细0。safe摘要位于.local/ef001-evidence/demo-A-tail-download-643d1e8e-20261017/stop-summary.json，SHAff571519707f2c9362a3f2fd063e517f00672004b5fb2908f63f5ba249bf38f0。失败页保留勾选/日期并显示结果未确认和原请求重试入口，未点击。指定PG时窗为空，不猜DB码。原Owner用实际生成Prisma客户端及永不连接的adapter复现原嵌套payload在SQL0报Unknown argument departmentId；修复仅删子项departmentId/side并用精确生成类型，由父账单复合关系赋值，原授权/锁/幂等/占用/audit顺序和数据库FK不变。作者7af48f12两文件15例、backend类型及静态通过，原Spec/Quality均ACCEPTED C/I/M0；manifest SHA6a0d2df31c2ebcfb52672af2de62bec6ca7b8867c338c1045dbebdfc7ee8d0a1。这仅证明参数修复，实际F06原body/key恢复Pending。新业务候选须所属门禁；不重复迁移、备份、角色或前序成功写。累计16成功写，原余18成功/5预定失败写/6失败GET/2登录，export余额0、角色未终结；旧87Case/92CV及安全和文件保护保持。
+
 ### B三项真实收口与A受审候选固定（2026-10-17）
 
 原Runner在047d256c4599e87123df459adb9323741acdf5ba/tree9355d51c9c5ede4b509b0add49f16c7a4e707105 protected发现3项，唯一正式3/3 PASS、skip/retry/flaky0。390x844的document宽390，Panel右沿380；原S1复用，历史及两tiny版本真实按钮下载、正常刷新/退出重登、桌面预填取消、readonly无写入口、revoked403且无案件菜单/EF均过。实际133 API请求，业务nonGET及禁止尝试0，仅3正常新login/1logout，累计A6回归S1+S2+readonly+revoked=4/4。独立153表旧PK/87Case/92CV/账本catalog序列和全部旧文件保持，仅S1正常变动及3批准新session，服务/端口/标准锁释放。summary位于ef001-integration/.local/ef001-evidence/browser-readonly-047d256-20261017/final-summary.json，SHAd3264e8869f6ede7241c8eaeec78439aba0ea7c8c88bfd08c4d5fe3b4ac10b4c；主控已实际查看封存390截图SHA bc2f73124835cca05eeb5c5858ee177989ce079324ec9a13badd6da24fa5bdbc，完整文件名在按钮内换行。所有旧失败保留，B预算封存，不重跑EF14。

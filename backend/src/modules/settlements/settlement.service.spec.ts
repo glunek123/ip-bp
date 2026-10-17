@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { Prisma } from '../../generated/prisma/client';
+import { Prisma, PrismaClient } from '../../generated/prisma/client';
 import type { ActorContext } from '../../access-control/actor-context';
 import {
   AccessControlService,
@@ -68,6 +68,45 @@ function setup(snapshot: AccessControlSnapshot) {
     service: new SettlementService(database, access, organization),
     fees: new FeeService(database, access, organization, {} as MaterialService),
   };
+}
+
+function offlineBillCompiler() {
+  const stop = new Error('OFFLINE_SQL_REACHED');
+  const sql = jest.fn(async () => {
+    throw stop;
+  });
+  type Adapter = Awaited<
+    ReturnType<NonNullable<Prisma.PrismaClientOptions['adapter']>['connect']>
+  >;
+  const adapter: Adapter = {
+    provider: 'postgres',
+    adapterName: 'offline-no-sql',
+    queryRaw: sql,
+    executeRaw: sql,
+    executeScript: sql,
+    dispose: async () => {},
+    getConnectionInfo: () => ({
+      schemaName: 'public',
+      supportsRelationJoins: true,
+    }),
+    startTransaction: async () => ({
+      provider: 'postgres',
+      adapterName: 'offline-no-sql',
+      queryRaw: sql,
+      executeRaw: sql,
+      options: { usePhantomQuery: true },
+      commit: async () => {},
+      rollback: async () => {},
+    }),
+  };
+  const client = new PrismaClient({
+    adapter: {
+      provider: 'postgres',
+      adapterName: 'offline-no-sql',
+      connect: async () => adapter,
+    },
+  });
+  return { client, sql, stop };
 }
 
 describe('financial current authorization before command receipts', () => {
@@ -464,10 +503,10 @@ describe('settlement center source selection and receipts', () => {
       },
     ];
     const create = jest.fn(
-      async ({ data }: { data: { billNo: string; amount: string } }) => ({
+      async ({ data }: Prisma.SettlementBillCreateArgs) => ({
         id: 'bill',
         billNo: data.billNo,
-        amount: new Prisma.Decimal(data.amount),
+        amount: new Prisma.Decimal(String(data.amount)),
       }),
     );
     Object.assign(f.tx, {
@@ -515,6 +554,17 @@ describe('settlement center source selection and receipts', () => {
         }),
       }),
     );
+    // Exercise the real generated Prisma7.10 validation/query compiler using the
+    // service's actual payload. The adapter can only throw, never contact pg.
+    const offline = offlineBillCompiler();
+    try {
+      await expect(
+        offline.client.settlementBill.create(create.mock.calls[0]![0]),
+      ).rejects.toThrow('OFFLINE_SQL_REACHED');
+      expect(offline.sql).toHaveBeenCalledTimes(1);
+    } finally {
+      await offline.client.$disconnect();
+    }
   });
   it('cancels exact stable source IDs without changing launched amounts or deleting bill history', async () => {
     const f = setup({

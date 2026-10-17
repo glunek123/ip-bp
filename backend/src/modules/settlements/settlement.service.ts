@@ -832,16 +832,18 @@ export class SettlementService {
               actorUserId: actor.userId,
               idempotencyKey: input.idempotencyKey,
               items: {
-                create: rows.map((row) => ({
-                  launchId: row.id,
-                  departmentId: actor.departmentId,
-                  side: row.side,
-                  caseId: row.caseId,
-                  payeeId: row.customerId ?? row.lawyerId ?? '',
-                  payeeName: row.customer?.name ?? row.lawyer?.fullName ?? '',
-                  nth: row.nth,
-                  amount: row.amount,
-                })),
+                create: rows.map(
+                  (
+                    row,
+                  ): Prisma.SettlementBillItemUncheckedCreateWithoutBillInput => ({
+                    launchId: row.id,
+                    caseId: row.caseId,
+                    payeeId: row.customerId ?? row.lawyerId ?? '',
+                    payeeName: row.customer?.name ?? row.lawyer?.fullName ?? '',
+                    nth: row.nth,
+                    amount: row.amount,
+                  }),
+                ),
               },
             },
           });
