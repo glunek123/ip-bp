@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### EF精确原时间纠正；正式阶段仍待实际结果（2026-10-17）
+
+七文件候选73d72847独立两轴0后，唯一Runner在短准入首次停止。只读诊断rawSHA5736f08b022a6a2fcbb8dea34ea2c44b51123637a6d304c1e19623b5944337d4由主控核对：唯一failed1000原PG文本started_at为2026-10-16 09:36:04.56343+00，原summary/fixture的.563Z已丢失微秒，旧闭合时间guard误拒；其他失败行UUID/name/e125校验和/steps0/空字段全部同，0门禁/0恢复写入。原失败和执行单保留，不把其原静态审查0扩大成运行成功。
+
+原S仅database helper及原纯test最小更正，manifest1cb37652b8c8894022fd15f882bb1470c4f35f27a381d4d19d012346aa8b671d；31纯测覆盖真实PG原文成功、正负一微秒/截断PG与ISO/回执原时间篡改拒绝，Lint/格式/语法通过。同两名独立Sol补审分别ACCEPTED C/I/M0，不重跑未变测试。source d0bcbbb0/snapshot1832d9913e01f3636fa5fe8b76ced8c46b143366、treecd42cb4e33cdc928e6cb06e533ae4d89104c9d92；原Runner停止且干净后单一快进，两个raw及0950/原1000 raw未漂移。新GO文件runner-ef161-1832d99-official-recovery-http14-20261017.md rawSHAe02929c3805538ec5e6875de660927e228f51aa06b3885d67c1e875a14147d10：正常完整verify→whole-file owned1→原具体许可的official resolve唯一失败/真实回执→正常deploy→独立保持核→原HTTP14，任一错误停止。阶段实际结果、已部署与真实点击分别登记，当前不预记通过。
+
 ### 暂停后原R2环境与历史只读复核（2026-10-17）
 
 唯一Runner在精确原1a98fc7/tree dc167da6执行原容器恢复。退出状态255经原fullCID、标签、锁定镜像、持久卷和loopback15438、退出日志及端口复核后，仅docker start一次，最终healthy；未recreate/pull/换卷或配置。单标准锁及一次REPEATABLE READ READ ONLY快照核159成功+唯一failed1000原行、149表全部旧PK行/安全、71案/32文件及历史源真实bytes均与昨天相同，五新enum和EF DDL仍未提交；1240source/761build哈希保持，锁已释放。真实result.json rawSHA cae5aefb39196c4b17e292c35945d571b305c4f31065d6669f3c793ab4144838由主控实际核对。证据位于ef001-integration/.local/ef001-evidence/r2-restart-readonly-20261017/；无新DB行/业务服务/HTTP/Grant/resolve/deploy/fixture或verify/owned重跑。此项仅环境恢复和旧事实保持，不是新迁移、EF功能或浏览器验收通过；写槽仍待固定已审候选及既定恢复条件。

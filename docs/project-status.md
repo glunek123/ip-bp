@@ -1,5 +1,7 @@
 # 当前开发状态
 
+候选更新（2026-10-17）：EF七文件修复95d9399/snapshot73d7284经独立Standards/Spec各C/I/M0后进入原Runner，但短只读前置发现原PG started_at真实值为2026-10-16 09:36:04.56343+00，旧报告/fixture曾截到毫秒而误拒；verify/owned/resolve/deploy/HTTP均未运行。原S两文件精度修复d0bcbbb绑定完整原文、拒相邻微秒和截断值，31纯测与同两Reviewer窄补审0；最终clean1832d991/treecd42cb4e已快进原运行树，新顺序单e02929c3…47d10下发，真实部署结果待Runner。共享13文件V2另经独审：证物子行同组案件一致性及金融操作者真实FK两项退回共享Owner修，Spec核实际Demo撤回纸本公证书号伪造定性，保留真实certificate_no；结算/证物继续原Task，尚未称完整功能或点击通过。
+
 恢复断点（2026-10-17）：用户明确“现在继续”。主控核昨天暂停记录：五树HEAD及未提交文件清单一致，主控clean d708f60；结算23项、证物14项、S七项WIP保留，未见断点之后文件改写，WIP未封完整raw故不冒称历史字节证明。原S通过父级有效通道恢复七文件修复，结算/证物原可见Task已实际恢复，所有权不变。原R2先见exited255，唯一Runner核原fullCID/镜像/卷/15438与退出日志后仅start一次并healthy；单锁READ ONLY快照核149全部旧PK行、71案、32文件、H42/terminal inactive v2及159成功+唯一failed1000完全同，五enum/新DDL未提交，result.json rawSHA cae5aefb39196c4b17e292c35945d571b305c4f31065d6669f3c793ab4144838主控已核。环境恢复不等于账本恢复，写槽仍关闭；待固定候选/独审及准确单后才按已批准范围官方resolve和deploy。真实HTTP14/点击尚未执行，人工预览未动。
 
 最新断点（2026-10-16）：原EF候选1a98的正常官方deploy首次失败，unsafe use of new enum EXECUTION_SUPPLEMENT；实际159成功+唯一failed1000（id9f547970-6eaa-4628-a670-f505590482e9、0步/未finished/未rolledback），五enum/新表/新列均未提交，149表71案32CV/旧安全与文件保持。HTTP14未启动。旧owned以prefix/body两query回放曾人为提交，不能作正式入口事务证据。原S已接手1a98独占修复分支，限定七文件，0950独立枚举准备保原1000bytes。用户09:50UTC已具体批准复核零部分提交后，官方resolve将唯一失败行标记rolled-back并保留历史，再正常部署0950及原1000；须源码固定、正式入口风险验证和独立审查成立后交原Runner，当前尚未执行恢复。结算/证物两个可见Task已实际写计算/规则/DTO及测试源码，结算Client生成原EPERM经原审批exit0后继续；仍不碰DB，目录所有权保持。
