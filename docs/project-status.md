@@ -1,5 +1,9 @@
 # 当前开发状态
 
+最新续办（2026-10-17）：用户已直接允许原ef001-integration解除本次代码冻结、建指定分支并接75a4。原命令在新证据后仅执行一次成功，现clean a6ff7895/treea75f1d26；旧676及两次未执行的审批拒绝保留。受影响前端225/225、类型/Lint格式通过，protected发现3项。正式首项在冷390正常登录/列表200之后，因辅助getByRole退出按钮未匹配而停，另2项未执行；保护核153旧表/87案/92文件保持，仅1正常session，0业务写。主控已实际查看原trace最后截图及DOM：sidebar data-open=false、logout节点存在但visibility:hidden；确定辅助假设桌面入口可访问，未认产品bug。父级已给真实打开菜单路径窄续验，原Runner仅修ignored helper并优先恢复本次S1，累计仍≤4session；实际新结果Pending，不加timeout、不改产品、保留首失败/129证据且不重包。
+
+结算／证物离线执行申请已确定：财务21+证物13=34成功写（含4上传/5重放/2no-op），另只读导出1，48余额14封存；0新用户/凭据/Case，3现案，3新角色/20Grant/3assignment及指定最多4次authrev变化；正常登录4session。对象收缩为1terms、2launch、2bill/4items/1cancel、3fee、2tinyPDF≤2KiB、1新证物组/3累计物品/0手工paper；只更新1300本轮两paper投影。owned固定2schema/4fault/4原字节重试/334文件发送；忠实镜像用既有复制事务内SET LOCAL replica、只写owned/public仅SELECT，恢复origin后才迁移，须纳用户审批。public165自动Q0/N2共8证物行，4新ledger；全部仍是未批准申请，未执行Demo登录/扩权/迁移/业务，不挪用EF只读许可。多客户/律师/门户/KNOWN自动源/新出证及多CV等缺口保留。以下旧断点按时间留存。
+
 Demo累计源码候选已闭合（2026-10-17）：结算35源2b8dd5e8、证物前后端/出证双initializer与已验EF源码已在本地主控组合；四文件导航修复44ab891e逐raw接入，真实/evidence路由及菜单可达，结算/证物独立403拒绝和非403主动GET恢复，原案件导航/CSS保持。两原Sol在实际主树累计Final Review均ACCEPTED，C/I/M0。原组合正常Prisma generate、check:fast:prepared过；最终主宿主AppShell/router/CasePages三文件259/259、前端类型、四文件Lint/格式过。只有源码/静态候选闭合，新的165迁移链完整verify、owned风险、public部署、真实财务/证物HTTP与页面仍未执行，不称完整Demo验收或发布。
 
 真实只读盘点已核（2026-10-17）：原67625b9/R2/public161，单次标准锁内34 SELECT/READ ONLY，22份artifact逐bytes/hash复核，0新session/HTTP/业务/Grant。现87案PRIMARY律师0，主部门22案同一客户、激活LAWYER账户0；已知门户凭据引用缺失。冻结1200投影Q0，8个PENDING排除；1300完整源N2，预期2组/2物品/2纸本/2审计共8行，两源各单CV。单客户现案/人工费用/历史证物可提出最小后续申请，但多客户/律师侧、KNOWN自动费用和新出证双initializer/同证书多文件仍有确切合法来源缺口。新3角色/20Grant/最多4次指定授权版本变化、业务对象/文件/备份/165部署均只是待审申请，旧EF21/171/16/60预算余额0，不借用。
