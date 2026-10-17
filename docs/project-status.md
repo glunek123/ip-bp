@@ -1,5 +1,7 @@
 # 当前开发状态
 
+协调恢复（2026-10-17）：父级已确认原E权限修复turn01a147c3-996b启动，先前未送达为历史状态，不等于已修复。父级补用户原话后，向原结算Task原目标原消息仅重试一次已成功；原拒绝保留。证物日期Important已实际交原Owner，仅按Demo当前二审取二审日期作最小修复，尚未提交接受。原Runner只收到基于已保存证据的离线同案续验准备单，不capture/连接DB/HTTP/服务/权限，尚无新的真实运行准入。
+
 最新实际验收（2026-10-17）：固定2d670509/tree3c260ec1的原首案续验1/1 PASS：明确依据说明后finish201至WAITING_ARCHIVE/v4，四原body/key仍201同回执、四新key409，未新造首案。余13发现通过，实际3PASS/1FAIL/9未运行；失败为内部身份请求lawyer前缀，预期403却409 VERSION_CONFLICT（request a33b7653-299f-4f42-9d10-e2b2d3678335）。只读发现EF双前缀controller缺既有律师主体门槛，不能据此断言越权写入；原E定向修复派发AbsolutePathBuf未送达，现是待父级有效转交而非执行中。运行停止、锁/端口释放，累计9身份/66Grant/5案/11tiny，余预算12身份/105Grant/11案/49文件（含1份50MiB），不得重造已过或失败场景。parts-final-summary SHA26764e5ef25baf73554b0dee27ca2f7ec2a2ba7c8006032b811d513f299bdaea及safe failure SHAb20cd7a83fec6ab5eb7857c0c4a47eb9488c8ca2b7dc492988714d9af6a49623保留；未再resolve/deploy。
 
 并行源码（2026-10-17）：费用自动来源/凭证与材料精确授权28文件经原Spec及Standards两轴C/I/M0，枚举准备单独e00c94fe、其余27文件64cd8028提交，未混入结算领域/页面WIP；未执行1150/1200/1300迁移或真实材料HTTP。证物首后端28文件已冻结，51/51与类型/构建/静态通过；Spec审通过，Standards发现一审/二审日期OR合并会丢二审筛选/显示，准确期望口径仍核实际Demo，候选未提交。页面WIP、公共注册和费用initializer hook仍待接线。完整Demo未验收。结算routine冻结确认消息曾被自动审批按未识别明确消息授权拒绝，未送达且未重试，不影响已完成只读审查与固定文件Git提交。
