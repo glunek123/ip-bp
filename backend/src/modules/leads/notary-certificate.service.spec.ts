@@ -3,6 +3,9 @@ import {
   NotaryCertificateService,
 } from './notary-certificate.service';
 import { randomUUID } from 'node:crypto';
+import { initializeNotaryEvidence } from '../evidence';
+
+jest.mock('../evidence');
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -27,6 +30,10 @@ const input: CertificateInput = {
 };
 
 function fixture() {
+  jest
+    .mocked(initializeNotaryEvidence)
+    .mockClear()
+    .mockResolvedValue({ groupId: 'evidence-group-1', created: true });
   const tx = {
     $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: matterId }]),
     userAccount: {
@@ -53,13 +60,17 @@ function fixture() {
         businessNo: 'NT-1',
         sourceLead: {
           needDisclose: false,
+          shopName: '真实店铺',
+          platform: 'TAOBAO',
           responsibleUserId: actor.userId,
           teamId: null,
         },
         evidence: {
+          evidenceAt: new Date('2026-09-26T00:00:00Z'),
           sampleFeeState: 'KNOWN',
           sampleFeeAmount: { toString: () => '200.00' },
         },
+        notaryOffice: { name: '真实公证处' },
         issuanceDecision: {
           id: '99999999-9999-4999-8999-999999999999',
           decision: 'ISSUE',
@@ -131,6 +142,45 @@ function fixture() {
 }
 
 describe('NotaryCertificateService', () => {
+  it('propagates initialization failure through the original transaction and never writes a success receipt', async () => {
+    const f = fixture();
+    jest
+      .mocked(initializeNotaryEvidence)
+      .mockRejectedValueOnce(new Error('证物来源初始化失败'));
+    await expect(
+      f.service.issue(actor, matterId, 'initialize-failed', input),
+    ).rejects.toThrow('证物来源初始化失败');
+    expect(f.tx.notaryMatterCommandReceipt.create).not.toHaveBeenCalled();
+    expect(f.database.$transaction).toHaveBeenCalledTimes(1);
+  });
+  it('initializes source ledger facts in the original transaction after the freeze, using the actual notary actor', async () => {
+    const f = fixture();
+    await f.service.issue(actor, matterId, 'initialize-source-1', input);
+    expect(initializeNotaryEvidence).toHaveBeenCalledWith(
+      f.tx,
+      expect.objectContaining({
+        actorUserId: actor.userId,
+        notaryOfficeAccountBindingId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        sourceActionEventId: '66666666-6666-4666-8666-666666666666',
+        sourceNotaryMatterId: matterId,
+        evidenceAt: new Date('2026-09-26T00:00:00Z'),
+        certificateNo: input.certificateNo,
+        files: [
+          {
+            materialId: '55555555-5555-4555-8555-555555555555',
+            contentVersionId: certificateVersionId,
+            originalFilename: 'certificate.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
+      }),
+    );
+    expect(
+      f.materials.freezeReferences.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      jest.mocked(initializeNotaryEvidence).mock.invocationCallOrder[0],
+    );
+  });
   it('atomically archives one certificate and creates one case without copying sample fee', async () => {
     const f = fixture();
     const result = await f.service.issue(actor, matterId, 'issue-1', input);
