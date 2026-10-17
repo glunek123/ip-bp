@@ -1,5 +1,19 @@
 # SPEC-001 文档验证
 
+### EF HTTP14真实首场景fixture失败；旧事实保持（2026-10-17）
+
+父级提供原07:28允许与10-17继续的精确本机R2授权，并恢复消息通道后，续单91270f77…05248a一次成功投递。原Runner protected发现14/1 exit0；正式14库存仅首项执行，exit1/maxFailures1/retries0，原报告unexpected1/skipped13/flaky0保留。失败为2026-10-17T01:58:55.625Z原新案f3ebfaeb-85a8-41d4-9c51-8708a8b5895d execution-finish POST400，request823b048a-4953-49b6-b413-e500023829e4。safe trace SHA009acb5d7ee8d10c55c02c97629e7a480bfa53caf157503cf4bb0971575002ac证expectedVersion3、basisNote:null/附件[]；spec helper与正式cases.md399/原finish.service403–404及原直接负例一致，正确规则拒绝无任何依据的结束请求，不构成放宽产品或迁移理由。
+
+Runner最终http14-failure-closure-summary.json SHA03863629447296347b744694c6bed7506bd99b12af8d2f2c470e368200c866b1已核。四命令真实201、4receipt/2feedback版本/2supplement版本/2doc保留，此前原body/key重放/冲突、刷新重登current/history及精确2supplement bytes断言实际越过；跨结束重放和后13场景未执行，不把这些局部证据记成完整场景PASS。新增2身份/15Grant/1案/4tiny共168bytes，合计72案/36文件；原旧行/安全/H42/terminal inactive v2/已闭合dadd与32文件保持，故障残留0，锁和服务端口释放，dockerlogs0。剩余预算必须扣除已创建对象，不自动整套重跑。
+
+仅原E测试准备需要一个有效合成依据说明，原服务/SQL/权限不改；主控已准备一spec窄修及“复用现有首案+剩余13”的后续方案，实际执行仍须固定候选和独立准确运行单。发送原E遇AbsolutePathBuf路由错误，已知未送达，relay位于主控.local/ef001-evidence/ef161-http14-finish-fixture-fix-relay-20261017.md；父级有效通道交接即可，无须重新申请原本机R2预算。真实页面点击、完整Demo和预览仍未验收。
+
+### EF恢复及补充保持核接受；HTTP14尚未派发（2026-10-17）
+
+实际post-deploy-addendum-summary.json SHA325cd832fad8b587478b938bac94c6c30eb0707310075a4809565cace6419c49及其12份proof逐项raw哈希由主控回读全符。原Standards Reviewer核44个触发器全字段与事件集合/数量、实参大小写及其余冻结DDL，不作其它宽松归一；原Spec Reviewer复核官方真实receipt/stdout/stderr、完整PG微秒原start及仅rolled_back_at改变、161成功+唯一原resolved共162与旧149PK/71案/安全/32文件/22原源/新4表0和4列null，均ACCEPTED C/I/M0。源仍clean1832/treecd42cb4e，原PostMigrate BLOCKED不覆盖，Supplement为单独PASS_ADDITIONAL_PRESERVATION；没有将原exit1改称exit0。
+
+正常本树完整verify实测工具139/前端2378/后端2124（实际NT006、双构建），owned发现1正式1、official resolve一次及正常deploy一次均exit0；这些输入未变，后续直接复用。HTTP14发现/正式均未运行。主控新独立续单runner-ef161-1832d99-http14-continuation-20261017.md SHA91270f774f554a611c4a3f546e20162974f91782945416ef472b6951ef05248a只接原预算Phase4，不再resolve/deploy/verify或重建原案。app消息通道Transport closed，续单已准备但已知未发送，父级需经原有效通道交原唯一Runner并获收讫；此通信阻塞不是新业务权限缺口。实际HTTP、浏览器点击和预览均未预记PASS。
+
 ### EF官方恢复与部署已执行；独立核验及HTTP仍分开（2026-10-17）
 
 固定1832d991/treecd42cb4e的正常完整verify、protected whole-file owned专项各实际PASS；随后官方resolve只将原唯一failed1000标记rolled-back并保留原历史，正常pnpm db:test:migrate:deploy仅执行一次exit0。实际结果在ef001-integration/.local/ef001-evidence/official-recovery-http14-1832d99-20261017/的Verify/Owned/Resolve/Migrate-result.json；主控已读，尚无HTTP14结果。原failed started_at精确文本仍为2026-10-16 09:36:04.56343+00，不用旧毫秒报告代替身份。
