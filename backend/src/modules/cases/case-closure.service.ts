@@ -229,6 +229,18 @@ export class CaseClosureService {
             }
             if (record.version !== input.expectedVersion)
               throw failure('VERSION_CONFLICT');
+            if (command === 'CORRECT' && record.closure !== null) {
+              const edited = await tx.caseClosureRecordCorrection.findFirst({
+                where: {
+                  caseId,
+                  departmentId: actor.departmentId,
+                  closureId: record.closure.id,
+                },
+                select: { id: true },
+              });
+              // A workflow version replacement must not hide the independent edit chain.
+              if (edited !== null) throw failure('VERSION_CONFLICT');
+            }
             const source = await readCaseSourceAnchor(
               tx,
               caseId,

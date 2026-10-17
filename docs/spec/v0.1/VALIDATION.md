@@ -1,5 +1,28 @@
 # SPEC-001 文档验证
 
+### EF161原十四内部HTTP场景分段覆盖完成，预算耗尽（2026-10-17）
+
+原Runner final-summary.json SHAb27a126b771c3834038d348b9c998d1aade1d816f40dc660aa434cc9a887edf0由主控核收，primary+post-process seal共134份证据逐项bytes/SHA相符。固定67625b9/treef6b18e96原source/build保持；新正式T1/1、N9/9均exit0、skip/retry/flaky0。T03:36:09.702Z/14.16秒，N03:37:38.757Z/91.61秒；两次独立closurePASS。既有完整正常门禁139/2378/2172、1241source/761build复用未重跑，未重新resolve/deploy。
+
+| 原场景范围                                                                                           | 实际证据如何闭合                                                                                                                | 边界                                       |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| 四命令、原申请保护、未知结果同键和跨finish恢复（1）                                                  | 初场景四命令/读取/文件已提交，fixture结束依据400保留；原首案续验完成finish201和四原键201同回执/四新键409，原事实快照相同        | 同原案续办，不重造首案或声称原14初跑PASS   |
+| 无本地申请的纯外部读取、无需伪造反馈正常结束、独立revision/共用key/路由锚/日期DTO（3）               | 2d670509的Part2前三项实际PASS，未重复运行                                                                                       | 原Part2第四项409失败及9未执行报告保持      |
+| foreign/readonly/撤权前置授权（1）                                                                   | 原readonly403/foreign404，加67625b9的T尾段：错lawyer门户403、readonly能力全false、唯一自身role撤权、原operator原成功body/key403 | 合并分段断言，不把T额外计为第15业务场景    |
+| 全局UUID占用、真实锁单胜、四命令各写点回滚、上传与保存隔离/精确复用/陈旧撤权、MIME与50MiB、池10（9） | N仅九个此前未执行标题，9/9；原16新对象故障点/超限拒绝按原断言实际执行                                                           | 预期故障保留，不重试测试、改期望或删除事实 |
+
+T只批准原operator自身roleb3fa20e6变inactive/version2及updated_at，assignment/member/user/Grant不变，三正常新session为仅其余差异；原feedback/audit/ref/receipt和业务行保留。N原有行仅正常案号计数器2026-10-17 last_value5→16及updated_at变化；其余旧PK、完整161账本+唯一原resolved历史、H42/终端inactivev2/dadd唯一revision1/Part1保护通过。旧32文件两端和新60全部真实bytes保持，124个物理副本核对，一份50MiB、59tiny共3033bytes；所有原故障结构已按限定新对象finally关闭，无额外手工清理。两正常managed服务和资源锁已释放。
+
+累计21身份/171自身新role部门Grant/16案/60成功文件全部用满，业务对象余额0。下一只读browser GO SHAa37c66f34f3569d0396767d20db19ad2e246578e2835019700c2eaf78c52bf86已成功送达：只原三身份/两案，真实页面浏览、刷新/重新登录、未提交表单取消、权限入口与两个已有tiny版本按钮读取；无新业务facts/CV/draft/role/Grant，最多四必要正常session。真实页面结果尚未收到，不能由APIRequestContext的HTTP测试推断浏览器。写入式页面的新增事实/文件需求须独立列明，超原预算先获许可；PRIMARY合法律师正向/脱敏、真正24h过期拒、上传claim/finalize流中争用及非current版本合法来源等原已声明缺口保持，不以十四内部场景覆盖掩盖。
+
+### 已集成、待集成和待真实验收的边界（2026-10-17）
+
+已集成独立候选：EF67625b9已验源码与全部既有事实；Demo共享schema/模型V3、费用来源/proof与精确材料读、证物后端与原出证双initializer在共享开发树5b5c23a2和证物树0cbb9d41已按审查小SHA交叉接入，后者仅源码/聚焦组合证据，不冒真实业务。
+
+待集成：结算领域/API/UI/公共AppModule/router/menu最终候选；证物前端9文件（原117项/Spec通过，Standards空CSV误导出finding原Owner窄修中）及两说明。均未混入当前冻结EF运行树，不自动扩大R2预算。
+
+待真实验收：Demo新组合完整门禁、1150/1200/1300独立风险与正式部署方案、真实源数据/新Action明确合法身份、HTTP及页面；当前public161不含这三迁移，0真实新模块Grant。人工预览/远端发布仍冻结。EF源码本地主控集成已逐一比较全部1090份非docs原始输入与已验67625b9，原始字节差异0，文档差异只以本轮Spec/格式/strict context重核，不把main文档分支误称该独立运行候选的重跑。
+
 ### 门户修复正常完整门禁PASS；原权限尾段与九项GO已核发（2026-10-17）
 
 固定clean67625b96991e4fcc2f966b0c8df4c2b70e74e5d7/treef6b18e96正常full verify实际一次exit0，03:16:29.449Z至03:21:26.271Z（296820ms），工具13文件139、前端127文件2378、后端126套2172，实际标准锁owner及双构建证据成立。gate-preparation-summary.json SHA115279805500376979a2662bcd62e6fb77f64631bfccb20573c476fa66ba9f4c由主控核读；before/after153表4837旧PK行/完整161账本+保留resolved原失败/原旧32两端与新11真实文件/H42/终端/Part1/dadd一致，结束锁释放端口空闲。新1241source/761build manifest固定，不再重复门禁、生成、构建或迁移。

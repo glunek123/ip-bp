@@ -1,12 +1,27 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { defineComponent, type Component, type PropType } from 'vue';
 import { RouterView, createRouter, createMemoryHistory } from 'vue-router';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CaseDetail, CaseSummary } from '../../api/cases';
+import type { CaseDetail, CaseSummary, CaseFile } from '../../api/cases';
+import type * as CaseApi from '../../api/cases';
+import type {
+  CaseSectionRecordUploadTarget,
+  CaseSectionRecordUploadedMaterial,
+} from '../../api/materials';
 import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
 import CaseListPage from './CaseListPage.vue';
-import { decodeCaseListRequest } from './CaseListWorkflowPanel.vue';
+import {
+  decodeCaseListRequest,
+  readCaseListRecordRecoveries,
+} from './CaseListWorkflowPanel.vue';
+import {
+  caseSectionRecordStorageKey,
+  type CaseSectionRecordKind,
+  type CaseSectionRecordRequest,
+} from './CaseSectionRecordCorrectionPanel.vue';
+import { sectionRecordCommands } from './case-workspace-section-edits';
 
 const api = vi.hoisted(() => ({
   getCase: vi.fn(),
@@ -14,6 +29,12 @@ const api = vi.hoisted(() => ({
   getExternalEntryOptions: vi.fn(),
   chooseCaseJudgmentNextStep: vi.fn(),
   correctCaseJudgment: vi.fn(),
+  correctCaseExecutionMailingRecord: vi.fn(),
+  correctCaseExecutionFilingRecord: vi.fn(),
+  correctCaseExecutionFinishRecord: vi.fn(),
+  correctCaseHearingRecord: vi.fn(),
+  correctCaseJudgmentRecord: vi.fn(),
+  correctCaseClosureRecord: vi.fn(),
   saveSecondInstance: vi.fn(),
   submitComplaint: vi.fn(),
   matchCase: vi.fn(),
@@ -26,6 +47,8 @@ vi.mock('../../api/cases', async (original) => ({
 const materials = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(),
   uploadMaterialFile: vi.fn(),
+  uploadCaseSectionRecordFile:
+    vi.fn<typeof import('../../api/materials').uploadCaseSectionRecordFile>(),
 }));
 vi.mock('../../api/materials', async (original) => ({
   ...(await original<typeof import('../../api/materials')>()),
@@ -177,8 +200,225 @@ function summary(detail = withJudgment()): CaseSummary {
 function list(items = [summary()]) {
   return { items, total: 40, page: 2, pageSize: 20, counts: {} };
 }
+const uid = (n: number) =>
+  `91000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const file: CaseFile = {
+  materialId: uid(20),
+  contentVersionId: uid(21),
+  originalFilename: '已冻结.pdf',
+  mimeType: 'application/pdf',
+};
+const otherFile: CaseFile = {
+  materialId: uid(22),
+  contentVersionId: uid(23),
+  originalFilename: '依据.pdf',
+  mimeType: 'application/pdf',
+};
+function recordFixture(): CaseDetail {
+  const item = structuredClone(baseItem);
+  item.id = uid(1);
+  item.stage = 'ARCHIVED';
+  item.version = 42;
+  const mailed = {
+    mailedAt: '2026-10-01',
+    mailReceiptContentVersionIds: [
+      file.contentVersionId,
+      otherFile.contentVersionId,
+    ],
+    files: [file, otherFile],
+  };
+  const filed = {
+    submittedAt: '2026-10-02',
+    executionFilingProofContentVersionIds: [file.contentVersionId],
+    files: [file],
+  };
+  const finished = {
+    finishedAt: '2026-10-03',
+    reason: '执行已结束',
+    basisNote: '原依据',
+    basisContentVersionIds: [file.contentVersionId],
+    files: [file],
+  };
+  const hearing = { hearingAt: '2026-10-04' };
+  const judgment = {
+    judgmentReceivedAt: '2026-10-05',
+    judgmentAmountState: 'KNOWN' as const,
+    judgmentAmount: '120.00',
+    paidLitigationFeeState: 'PENDING' as const,
+    paidLitigationFee: null,
+    judgmentContentVersionIds: [file.contentVersionId],
+    files: [file],
+  };
+  const closure = {
+    closeAt: '2026-10-06',
+    closeAmountState: 'KNOWN' as const,
+    closeAmt: '100.00',
+    note: '原说明',
+    closeContentVersionIds: [file.contentVersionId],
+    files: [file],
+  };
+  item.recordEdits = {
+    canUpdateDefendantContact: false,
+    canCorrectAcceptance: false,
+    defendantContacts: [],
+    acceptanceCorrections: [],
+    executionMailings: [
+      {
+        mailingId: uid(2),
+        mailingRevision: 2,
+        canEdit: true,
+        original: mailed,
+        effective: mailed,
+        history: [],
+      },
+    ],
+    executionFilings: [
+      {
+        filingId: uid(3),
+        filingRevision: 3,
+        canEdit: true,
+        original: filed,
+        effective: filed,
+        history: [],
+      },
+    ],
+    executionFinishes: [
+      {
+        finishId: uid(4),
+        finishRevision: 4,
+        canEdit: true,
+        original: finished,
+        effective: finished,
+        history: [],
+      },
+    ],
+    hearings: [
+      {
+        arrangementId: uid(5),
+        trialRoundId: uid(9),
+        hearingRevision: 5,
+        canEdit: true,
+        original: hearing,
+        effective: hearing,
+        history: [],
+      },
+    ],
+    judgments: [
+      {
+        judgmentId: uid(6),
+        trialRoundId: uid(9),
+        judgmentRevision: 6,
+        canEdit: true,
+        original: judgment,
+        effective: judgment,
+        history: [],
+      },
+    ],
+    closures: [
+      {
+        closureId: uid(7),
+        closureRevision: 0,
+        canEdit: true,
+        original: closure,
+        effective: closure,
+        history: [],
+      },
+    ],
+  };
+  item.closure = {
+    id: uid(7),
+    finishId: uid(4),
+    current: {
+      id: uid(8),
+      kind: 'REGISTER',
+      priorVersionId: null,
+      finishId: uid(4),
+      fromVersion: 40,
+      toVersion: 41,
+      ...closure,
+      correctionReason: null,
+      recordedAt: '2026-10-06T00:00:00Z',
+      recordedByUserId: uid(10),
+    },
+    history: [],
+  };
+  item.secondInstance.rounds = [
+    { id: uid(9), sequence: 1, sourceResultId: null, revokedAt: null },
+  ];
+  item.recordEdits.executionMailings![0]!.mailingRevision = 0;
+  item.recordEdits.executionFilings![0]!.filingRevision = 0;
+  item.recordEdits.executionFinishes![0]!.finishRevision = 0;
+  item.recordEdits.hearings![0]!.hearingRevision = 0;
+  item.recordEdits.judgments![0]!.judgmentRevision = 0;
+  item.executionMailing = {
+    id: uid(2),
+    confirmationId: null,
+    mailedAt: mailed.mailedAt,
+    recordedAt: '2026-10-01T00:00:00Z',
+    files: mailed.files,
+  };
+  item.executionFiling = {
+    id: uid(3),
+    mailingId: uid(2),
+    submittedAt: filed.submittedAt,
+    recordedAt: '2026-10-02T00:00:00Z',
+    files: filed.files,
+  };
+  item.executionFinish = {
+    id: uid(4),
+    filingId: uid(3),
+    finishedAt: finished.finishedAt,
+    reason: finished.reason,
+    basisNote: finished.basisNote,
+    recordedAt: '2026-10-03T00:00:00Z',
+    files: finished.files,
+  };
+  const arrangement = {
+    id: uid(5),
+    trialRoundId: uid(9),
+    hearingAt: hearing.hearingAt,
+    source: 'SCHEDULE' as const,
+    recordedAt: '2026-10-04T00:00:00Z',
+  };
+  item.hearing.currentArrangement = arrangement;
+  item.hearing.arrangements = [arrangement];
+  const judgmentFact = {
+    id: uid(6),
+    trialRoundId: uid(9),
+    kind: 'REGISTER' as const,
+    priorFactId: null,
+    judgmentReceivedAt: judgment.judgmentReceivedAt,
+    judgmentAmountState: judgment.judgmentAmountState,
+    judgmentAmount: judgment.judgmentAmount,
+    paidLitigationFeeState: judgment.paidLitigationFeeState,
+    paidLitigationFee: judgment.paidLitigationFee,
+    fromVersion: 35,
+    toVersion: 36,
+    recordedAt: '2026-10-05T00:00:00Z',
+    files: judgment.files,
+  };
+  item.judgment.current = judgmentFact;
+  item.judgment.history = [judgmentFact];
+  item.closure.history = [item.closure.current];
+  return item;
+}
+
 const wrappers: ReturnType<typeof mount>[] = [];
-async function render() {
+function workflowCanLeave(wrapper: ReturnType<typeof mount>): boolean {
+  const instance: unknown = wrapper.getComponent({
+    name: 'ListWorkflowDrawer',
+  }).vm;
+  if (typeof instance !== 'object' || instance === null)
+    throw new Error('Workflow exposes canLeave');
+  const canLeave: unknown = Reflect.get(instance, 'canLeave');
+  if (typeof canLeave !== 'function')
+    throw new Error('Workflow exposes canLeave');
+  const result: unknown = canLeave();
+  if (typeof result !== 'boolean')
+    throw new Error('Workflow canLeave returns boolean');
+  return result;
+}
+async function render(recordPanel?: Component) {
   const pinia = createPinia();
   const auth = useAuthStore(pinia);
   auth.session = {
@@ -196,6 +436,7 @@ async function render() {
     history: createMemoryHistory(),
     routes: [
       { path: '/cases', component: CaseListPage },
+      { path: '/cases/:id', component: { template: '<p>case detail</p>' } },
       { path: '/other', component: { template: '<p>other</p>' } },
     ],
   });
@@ -205,6 +446,9 @@ async function render() {
     global: {
       plugins: [pinia, router],
       stubs: {
+        ...(recordPanel
+          ? { CaseSectionRecordCorrectionPanel: recordPanel }
+          : {}),
         ElDrawer: {
           props: ['modelValue'],
           template:
@@ -656,5 +900,1063 @@ describe('case list workflow session', () => {
         },
       }),
     ).toBeNull();
+  });
+});
+
+type RecordAdmission = (input: {
+  caseId: string;
+  request: CaseSectionRecordRequest;
+  recovery: boolean;
+}) => boolean;
+const RecordPanelStub = defineComponent({
+  props: {
+    item: { type: Object as PropType<CaseDetail>, required: true },
+    kind: { type: String as PropType<CaseSectionRecordKind>, required: true },
+    actorKey: String,
+    contextKey: String,
+    initialTargetId: String,
+    beforeSubmit: Function as PropType<RecordAdmission>,
+    beforeUpload: Function as PropType<
+      (input: {
+        caseId: string;
+        target: CaseSectionRecordUploadTarget;
+      }) => boolean
+    >,
+  },
+  emits: [
+    'changed',
+    'state-change',
+    'upload-state-change',
+    'refresh',
+    'cancel',
+    'access-lost',
+  ],
+  template: '<section data-test="record-panel-contract" />',
+});
+const recordActor = 'INTERNAL:user-1:department-1';
+function recordRequest(
+  targetId = uid(5),
+): Extract<CaseSectionRecordRequest, { kind: 'hearing' }> {
+  return {
+    kind: 'hearing',
+    input: {
+      arrangementId: targetId,
+      trialRoundId: uid(9),
+      expectedHearingRevision: 0,
+      idempotencyKey: uid(30),
+      hearingAt: '2026-10-07',
+      reason: '核对原登记日期',
+    },
+  };
+}
+function retainRecord(
+  request: CaseSectionRecordRequest = recordRequest(),
+  actor = recordActor,
+) {
+  const stored = { version: 1, actor, caseId: uid(1), request };
+  const key = caseSectionRecordStorageKey(actor, uid(1), request);
+  sessionStorage.setItem(key, JSON.stringify(stored));
+  return { key, stored, raw: JSON.stringify(stored) };
+}
+async function openRecords(wrapper: ReturnType<typeof mount>) {
+  await wrapper.get('[data-case-record-edit]').trigger('click');
+  await flushPromises();
+}
+describe('case list section record host contract', () => {
+  beforeEach(() => {
+    const detail = recordFixture();
+    api.getCase.mockResolvedValue(detail);
+    api.listCases.mockResolvedValue(
+      list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
+    );
+  });
+
+  it('freshly reads one detail and exposes only the six permitted record commands', async () => {
+    const { wrapper } = await render(RecordPanelStub);
+    expect(api.getCase).not.toHaveBeenCalled();
+    await openRecords(wrapper);
+    expect(api.getCase).toHaveBeenCalledTimes(1);
+    expect(api.getCase.mock.calls[0]![0]).toBe(uid(1));
+    const selector = wrapper.get('[data-test="case-list-record-kind"]');
+    expect(
+      selector.findAll('option').map((option) => option.attributes('value')),
+    ).toEqual(['', ...sectionRecordCommands.map((command) => command.kind)]);
+    expect(wrapper.findComponent(RecordPanelStub).exists()).toBe(false);
+    for (const command of sectionRecordCommands) {
+      await selector.setValue(command.kind);
+      const child = wrapper.getComponent(RecordPanelStub);
+      expect(child.props('kind')).toBe(command.kind);
+      expect(child.props('actorKey')).toBe(recordActor);
+      expect(child.props('contextKey')).toContain(':1');
+    }
+    expect(api.correctCaseJudgment).not.toHaveBeenCalled();
+    expect(api.chooseCaseJudgmentNextStep).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('保存不会推进案件阶段');
+  });
+
+  it('uses fresh record canEdit permissions without falling back to old workflow corrections', async () => {
+    const detail = recordFixture();
+    detail.recordEdits!.hearings![0]!.canEdit = false;
+    detail.recordEdits!.judgments![0]!.canEdit = false;
+    detail.canCorrectJudgment = true;
+    api.getCase.mockResolvedValue(detail);
+    const { wrapper } = await render(RecordPanelStub);
+    await openRecords(wrapper);
+    const selector = wrapper.get('[data-test="case-list-record-kind"]');
+    expect(selector.find('option[value="judgment"]').exists()).toBe(false);
+    expect(selector.find('option[value="hearing"]').exists()).toBe(false);
+    expect(api.correctCaseJudgment).not.toHaveBeenCalled();
+  });
+
+  it('shows an explicit empty state and permits cancellation without a POST', async () => {
+    api.getCase.mockResolvedValue(baseItem);
+    api.listCases.mockResolvedValue(
+      list([{ ...summary(), canChooseJudgmentNextStep: false }]),
+    );
+    const { wrapper } = await render(RecordPanelStub);
+    await openRecords(wrapper);
+    expect(
+      wrapper.get('[data-test="case-list-record-unavailable"]').text(),
+    ).toContain('没有可更正');
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '取消／返回列表')!
+      .trigger('click');
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+  });
+
+  it('admits synchronously once, blocks navigation while busy, and refreshes the original query once on success', async () => {
+    const { wrapper, router } = await render(RecordPanelStub);
+    await openRecords(wrapper);
+    await wrapper
+      .get('[data-test="case-list-record-kind"]')
+      .setValue('hearing');
+    const child = wrapper.getComponent(RecordPanelStub);
+    const admit = child.props('beforeSubmit')!;
+    const input = { caseId: uid(1), request: recordRequest(), recovery: false };
+    expect(admit(input)).toBe(true);
+    expect(admit(input)).toBe(false);
+    child.vm.$emit('state-change', 'submitting');
+    await router.push('/other');
+    expect(router.currentRoute.value.path).toBe('/cases');
+    child.vm.$emit('changed');
+    child.vm.$emit('changed');
+    child.vm.$emit('state-change', 'idle');
+    await flushPromises();
+    expect(api.listCases).toHaveBeenCalledTimes(2);
+    expect(api.listCases.mock.calls[1]).toEqual([
+      2,
+      20,
+      expect.objectContaining({
+        view: 'department',
+        stage: 'WAITING_JUDGMENT',
+      }),
+    ]);
+    expect(router.currentRoute.value.query.page).toBe('2');
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+  });
+
+  it('settles a local failure to idle and cancels the original drawer without refreshing', async () => {
+    const { wrapper, router } = await render(RecordPanelStub);
+    await openRecords(wrapper);
+    await wrapper
+      .get('[data-test="case-list-record-kind"]')
+      .setValue('hearing');
+    const child = wrapper.getComponent(RecordPanelStub);
+    expect(
+      child.props('beforeSubmit')!({
+        caseId: uid(1),
+        request: recordRequest(),
+        recovery: false,
+      }),
+    ).toBe(true);
+    child.vm.$emit('state-change', 'idle');
+    await flushPromises();
+    child.vm.$emit('cancel');
+    await flushPromises();
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+    await router.push('/other');
+    expect(router.currentRoute.value.path).toBe('/other');
+  });
+
+  it('keeps unknown requests frozen and admits only an identical explicit recovery', async () => {
+    const { wrapper, router } = await render(RecordPanelStub);
+    await openRecords(wrapper);
+    await wrapper
+      .get('[data-test="case-list-record-kind"]')
+      .setValue('hearing');
+    const child = wrapper.getComponent(RecordPanelStub);
+    const admit = child.props('beforeSubmit')!;
+    const request = recordRequest();
+    expect(admit({ caseId: uid(1), request, recovery: false })).toBe(true);
+    const retained = retainRecord(request);
+    child.vm.$emit('state-change', 'unknown');
+    await flushPromises();
+    await router.push('/other');
+    expect(router.currentRoute.value.path).toBe('/cases');
+    expect(admit({ caseId: uid(1), request, recovery: false })).toBe(false);
+    expect(
+      admit({
+        caseId: uid(1),
+        request: {
+          ...request,
+          input: { ...request.input, idempotencyKey: uid(31) },
+        },
+        recovery: true,
+      }),
+    ).toBe(false);
+    expect(admit({ caseId: uid(1), request, recovery: true })).toBe(true);
+    expect(sessionStorage.getItem(retained.key)).toBe(retained.raw);
+    child.vm.$emit('state-change', 'unknown');
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers every off-filter target with the stable actor after authorization revision changes', async () => {
+    const first = retainRecord();
+    const second = retainRecord(recordRequest(uid(11)));
+    api.listCases.mockResolvedValue(list([]));
+    const { wrapper, auth } = await render(RecordPanelStub);
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    const recoveries = wrapper
+      .get('[aria-label="资料更正原请求恢复"]')
+      .findAll('button');
+    expect(recoveries).toHaveLength(2);
+    await recoveries[1]!.trigger('click');
+    await flushPromises();
+    const child = wrapper.getComponent(RecordPanelStub);
+    expect(child.props('initialTargetId')).toBe(uid(11));
+    expect(child.props('actorKey')).toBe(recordActor);
+    expect(child.props('contextKey')).toContain(':2');
+    expect(
+      child.props('beforeSubmit')!({
+        caseId: uid(1),
+        request: recordRequest(uid(11)),
+        recovery: true,
+      }),
+    ).toBe(true);
+    expect(sessionStorage.getItem(first.key)).toBe(first.raw);
+    expect(sessionStorage.getItem(second.key)).toBe(second.raw);
+  });
+
+  it('ignores another actor and visibly blocks malformed or misplaced recovery records', async () => {
+    retainRecord(recordRequest(), 'INTERNAL:other:department-1');
+    expect(readCaseListRecordRecoveries(recordActor)).toEqual([]);
+    const retained = retainRecord();
+    sessionStorage.setItem(retained.key, retained.raw.replace(uid(5), uid(11)));
+    expect(() => readCaseListRecordRecoveries(recordActor)).toThrow();
+    const { wrapper } = await render(RecordPanelStub);
+    expect(wrapper.get('[aria-label="资料更正原请求恢复"]').text()).toContain(
+      '无法核对',
+    );
+    expect(
+      wrapper.get('[data-case-record-edit]').attributes('disabled'),
+    ).toBeDefined();
+    expect(api.getCase).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(retained.key)).not.toBeNull();
+  });
+
+  it('allows a fresh session for another retained target after the selected request is known to have failed', async () => {
+    const first = retainRecord();
+    const second = retainRecord(recordRequest(uid(11)));
+    const { wrapper } = await render(RecordPanelStub);
+    await wrapper
+      .get('[aria-label="资料更正原请求恢复"]')
+      .findAll('button')[0]!
+      .trigger('click');
+    await flushPromises();
+    const child = wrapper.getComponent(RecordPanelStub);
+    expect(
+      child.props('beforeSubmit')!({
+        caseId: uid(1),
+        request: recordRequest(),
+        recovery: true,
+      }),
+    ).toBe(true);
+    sessionStorage.removeItem(first.key);
+    child.vm.$emit('state-change', 'idle');
+    await flushPromises();
+    child.vm.$emit('cancel');
+    await flushPromises();
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+    const recoveries = wrapper
+      .get('[aria-label="资料更正原请求恢复"]')
+      .findAll('button');
+    expect(recoveries).toHaveLength(1);
+    await recoveries[0]!.trigger('click');
+    await flushPromises();
+    expect(wrapper.getComponent(RecordPanelStub).props('initialTargetId')).toBe(
+      uid(11),
+    );
+    expect(sessionStorage.getItem(second.key)).toBe(second.raw);
+  });
+
+  it('invalidates stale events on auth changes and denies the active drawer on access loss', async () => {
+    const { wrapper, auth } = await render(RecordPanelStub);
+    await openRecords(wrapper);
+    await wrapper
+      .get('[data-test="case-list-record-kind"]')
+      .setValue('hearing');
+    const child = wrapper.getComponent(RecordPanelStub);
+    expect(
+      child.props('beforeSubmit')!({
+        caseId: uid(1),
+        request: recordRequest(),
+        recovery: false,
+      }),
+    ).toBe(true);
+    const retained = retainRecord();
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    child.vm.$emit('changed');
+    await flushPromises();
+    expect(sessionStorage.getItem(retained.key)).toBe(retained.raw);
+    expect(api.listCases).toHaveBeenCalledTimes(2);
+    await wrapper
+      .get('[aria-label="资料更正原请求恢复"] button')
+      .trigger('click');
+    await flushPromises();
+    wrapper.getComponent(RecordPanelStub).vm.$emit('access-lost');
+    await flushPromises();
+    expect(wrapper.text()).toContain('当前无法访问该记录');
+    expect(sessionStorage.getItem(retained.key)).toBe(retained.raw);
+    expect(api.listCases).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps preparation admission separate from business idle and ignores a late duplicate preparation completion', async () => {
+    const { wrapper, router } = await render(RecordPanelStub);
+    await openRecords(wrapper);
+    await wrapper
+      .get('[data-test="case-list-record-kind"]')
+      .setValue('judgment');
+    const child = wrapper.getComponent(RecordPanelStub);
+    const beforeUpload = child.props('beforeUpload')!;
+    expect(
+      beforeUpload({ caseId: uid(99), target: uploadTargets.judgment }),
+    ).toBe(false);
+    expect(
+      beforeUpload({ caseId: uid(1), target: uploadTargets.closure }),
+    ).toBe(false);
+    expect(
+      beforeUpload({ caseId: uid(1), target: uploadTargets.judgment }),
+    ).toBe(true);
+    expect(
+      beforeUpload({ caseId: uid(1), target: uploadTargets.judgment }),
+    ).toBe(false);
+    child.vm.$emit('upload-state-change', 'uploading');
+    child.vm.$emit('state-change', 'idle');
+    expect(workflowCanLeave(wrapper)).toBe(false);
+    child.vm.$emit('changed');
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+    child.vm.$emit('upload-state-change', 'idle');
+    expect(workflowCanLeave(wrapper)).toBe(true);
+    const request: CaseSectionRecordRequest = {
+      kind: 'judgment',
+      input: {
+        judgmentId: uid(6),
+        trialRoundId: uid(9),
+        expectedJudgmentRevision: 0,
+        idempotencyKey: uid(30),
+        judgmentReceivedAt: '2026-10-07',
+        judgmentAmountState: 'PENDING',
+        judgmentAmount: null,
+        paidLitigationFeeState: 'PENDING',
+        paidLitigationFee: null,
+        judgmentContentVersionIds: [file.contentVersionId],
+        reason: '核对判决资料',
+      },
+    };
+    expect(
+      child.props('beforeSubmit')!({
+        caseId: uid(1),
+        request,
+        recovery: false,
+      }),
+    ).toBe(true);
+    child.vm.$emit('upload-state-change', 'idle');
+    expect(workflowCanLeave(wrapper)).toBe(false);
+    const stored = retainRecord(request);
+    child.vm.$emit('state-change', 'unknown');
+    child.vm.$emit('upload-state-change', 'idle');
+    expect(
+      beforeUpload({ caseId: uid(1), target: uploadTargets.judgment }),
+    ).toBe(false);
+    await router.push('/other');
+    expect(router.currentRoute.value.path).toBe('/cases');
+    expect(sessionStorage.getItem(stored.key)).toBe(stored.raw);
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+  });
+});
+
+const recordCommandsUnderTest = [
+  {
+    kind: 'execution-mailing',
+    post: api.correctCaseExecutionMailingRecord,
+    expected: {
+      mailingId: uid(2),
+      expectedMailingRevision: 0,
+      mailReceiptContentVersionIds: [
+        file.contentVersionId,
+        otherFile.contentVersionId,
+      ],
+      reason: '列表核对资料',
+    },
+  },
+  {
+    kind: 'execution-filing',
+    post: api.correctCaseExecutionFilingRecord,
+    expected: {
+      filingId: uid(3),
+      expectedFilingRevision: 0,
+      executionFilingProofContentVersionIds: [file.contentVersionId],
+      reason: '列表核对资料',
+    },
+  },
+  {
+    kind: 'execution-finish',
+    post: api.correctCaseExecutionFinishRecord,
+    expected: {
+      finishId: uid(4),
+      expectedFinishRevision: 0,
+      basisContentVersionIds: [file.contentVersionId],
+      reason: '执行已结束',
+      correctionReason: '列表核对资料',
+    },
+  },
+  {
+    kind: 'hearing',
+    post: api.correctCaseHearingRecord,
+    expected: {
+      arrangementId: uid(5),
+      trialRoundId: uid(9),
+      expectedHearingRevision: 0,
+      reason: '列表核对资料',
+    },
+  },
+  {
+    kind: 'judgment',
+    post: api.correctCaseJudgmentRecord,
+    expected: {
+      judgmentId: uid(6),
+      trialRoundId: uid(9),
+      expectedJudgmentRevision: 0,
+      judgmentContentVersionIds: [file.contentVersionId],
+      reason: '列表核对资料',
+    },
+  },
+  {
+    kind: 'closure',
+    post: api.correctCaseClosureRecord,
+    expected: {
+      closureId: uid(7),
+      expectedClosureVersionId: uid(8),
+      expectedClosureRevision: 0,
+      closeContentVersionIds: [file.contentVersionId],
+      correctionReason: '列表核对资料',
+    },
+  },
+] as const;
+const uploadTargets = {
+  'execution-mailing': {
+    kind: 'EXECUTION_MAILING',
+    targetId: uid(2),
+    expectedRevision: 0,
+  },
+  'execution-filing': {
+    kind: 'EXECUTION_FILING',
+    targetId: uid(3),
+    expectedRevision: 0,
+  },
+  'execution-finish': {
+    kind: 'EXECUTION_FINISH',
+    targetId: uid(4),
+    expectedRevision: 0,
+  },
+  judgment: {
+    kind: 'JUDGMENT',
+    targetId: uid(6),
+    expectedRevision: 0,
+    trialRoundId: uid(9),
+  },
+  closure: {
+    kind: 'CLOSURE',
+    targetId: uid(7),
+    expectedRevision: 0,
+    expectedClosureVersionId: uid(8),
+  },
+} as const satisfies Record<
+  Exclude<CaseSectionRecordKind, 'hearing'>,
+  CaseSectionRecordUploadTarget
+>;
+function preparedRecordFile(
+  target: CaseSectionRecordUploadTarget,
+  n = 200,
+): CaseSectionRecordUploadedMaterial {
+  const purpose = {
+    EXECUTION_MAILING: 'MAIL_RECEIPT',
+    EXECUTION_FILING: 'EXECUTION_FILING_PROOF',
+    EXECUTION_FINISH: 'EXECUTION_FINISH_BASIS',
+    JUDGMENT: 'JUDGMENT',
+    CLOSURE: 'CASE_CLOSURE_DOCUMENT',
+  } as const;
+  return {
+    materialId: uid(n),
+    contentVersionId: uid(n + 1),
+    originalFilename: '列表新增.pdf',
+    mimeType: 'application/pdf',
+    purpose: purpose[target.kind],
+    sizeBytes: 5,
+    sha256: 'a'.repeat(64),
+    recordCorrection: target,
+  };
+}
+async function selectRecordUpload(wrapper: ReturnType<typeof mount>) {
+  const input = wrapper.get<globalThis.HTMLInputElement>(
+    '[data-test="section-record-upload"]',
+  );
+  Object.defineProperty(input.element, 'files', {
+    value: [
+      new globalThis.File(['%PDF-'], '列表新增.pdf', {
+        type: 'application/pdf',
+      }),
+    ],
+    configurable: true,
+  });
+  await input.trigger('change');
+}
+function deferredRecordUpload() {
+  let resolve!: (result: CaseSectionRecordUploadedMaterial) => void;
+  const promise = new Promise<CaseSectionRecordUploadedMaterial>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+async function editRecord(
+  wrapper: ReturnType<typeof mount>,
+  kind: CaseSectionRecordKind,
+) {
+  await openRecords(wrapper);
+  await wrapper.get('[data-test="case-list-record-kind"]').setValue(kind);
+  const panel = wrapper.get('[data-test="section-record-panel"]');
+  await panel.get('[data-test="section-record-date"]').setValue('2026-10-07');
+  await panel
+    .get('[data-test="section-record-reason"]')
+    .setValue('列表核对资料');
+  return panel;
+}
+describe('case list with the original six record forms and adapters', () => {
+  beforeEach(() => {
+    const detail = recordFixture();
+    api.getCase.mockResolvedValue(detail);
+    api.listCases.mockResolvedValue(
+      list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
+    );
+    api.correctCaseExecutionMailingRecord.mockImplementation(
+      async (
+        caseId: string,
+        input: CaseApi.CorrectExecutionMailingRecordInput,
+      ) => ({
+        ...input,
+        caseId,
+        mailingRevision: input.expectedMailingRevision + 1,
+      }),
+    );
+    api.correctCaseExecutionFilingRecord.mockImplementation(
+      async (
+        caseId: string,
+        input: CaseApi.CorrectExecutionFilingRecordInput,
+      ) => ({
+        ...input,
+        caseId,
+        filingRevision: input.expectedFilingRevision + 1,
+      }),
+    );
+    api.correctCaseExecutionFinishRecord.mockImplementation(
+      async (
+        caseId: string,
+        input: CaseApi.CorrectExecutionFinishRecordInput,
+      ) => ({
+        ...input,
+        caseId,
+        finishRevision: input.expectedFinishRevision + 1,
+      }),
+    );
+    api.correctCaseHearingRecord.mockImplementation(
+      async (caseId: string, input: CaseApi.CorrectHearingRecordInput) => ({
+        ...input,
+        caseId,
+        hearingRevision: input.expectedHearingRevision + 1,
+      }),
+    );
+    api.correctCaseJudgmentRecord.mockImplementation(
+      async (caseId: string, input: CaseApi.CorrectJudgmentRecordInput) => ({
+        ...input,
+        caseId,
+        judgmentRevision: input.expectedJudgmentRevision + 1,
+      }),
+    );
+    api.correctCaseClosureRecord.mockImplementation(
+      async (caseId: string, input: CaseApi.CorrectClosureRecordInput) => ({
+        ...input,
+        caseId,
+        closureRevision: input.expectedClosureRevision + 1,
+      }),
+    );
+  });
+
+  describe('independent list record upload preparation', () => {
+    it.each(
+      recordCommandsUnderTest.filter((command) => command.kind !== 'hearing'),
+    )(
+      'locks W for $kind preparation before transport, then saves only after separate business admission',
+      async ({ kind, post }) => {
+        const { wrapper, router } = await render();
+        const panel = await editRecord(wrapper, kind);
+        const before = structuredClone(recordFixture());
+        const wait = deferredRecordUpload();
+        const canLeave = () => workflowCanLeave(wrapper);
+        materials.uploadCaseSectionRecordFile.mockImplementationOnce(() => {
+          expect(canLeave()).toBe(false);
+          return wait.promise;
+        });
+        await selectRecordUpload(wrapper);
+        expect(canLeave()).toBe(false);
+        const upload = materials.uploadCaseSectionRecordFile.mock.calls[0]!;
+        expect(upload).toEqual([
+          uid(1),
+          uploadTargets[kind],
+          expect.any(globalThis.File),
+          { signal: expect.any(AbortSignal) },
+        ]);
+        expect(upload[3]!.signal).not.toBe(
+          api.getCase.mock.calls[0]![1].signal,
+        );
+        await selectRecordUpload(wrapper);
+        await panel.get('[data-test="section-record-form"]').trigger('submit');
+        await router.push('/other');
+        expect(router.currentRoute.value.path).toBe('/cases');
+        expect(materials.uploadCaseSectionRecordFile).toHaveBeenCalledTimes(1);
+        expect(post).not.toHaveBeenCalled();
+        expect(materials.uploadMaterialFile).not.toHaveBeenCalled();
+        expect(sessionStorage.length).toBe(0);
+        const uploaded = preparedRecordFile(uploadTargets[kind]);
+        wait.resolve(uploaded);
+        await flushPromises();
+        expect(canLeave()).toBe(true);
+        expect(
+          wrapper.find('[data-test="section-record-panel"]').exists(),
+        ).toBe(true);
+        expect(api.getCase).toHaveBeenCalledTimes(1);
+        expect(api.listCases).toHaveBeenCalledTimes(1);
+        expect(await api.getCase.mock.results[0]!.value).toEqual(before);
+        expect(sessionStorage.length).toBe(0);
+        expect(
+          wrapper.get<HTMLInputElement>(
+            `[data-test="section-record-file-${uploaded.contentVersionId}"]`,
+          ).element.checked,
+        ).toBe(true);
+        expect(post).not.toHaveBeenCalled();
+        await panel.get('[data-test="section-record-form"]').trigger('submit');
+        await flushPromises();
+        expect(post).toHaveBeenCalledTimes(1);
+        expect(JSON.stringify(post.mock.calls[0]![1])).toContain(
+          uploaded.contentVersionId,
+        );
+        expect(api.listCases).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it.each([
+      { status: 400, code: 'INVALID_INPUT' },
+      { status: 0, code: 'NETWORK_ERROR' },
+      { status: 403, code: 'FORBIDDEN' },
+      { status: 409, code: 'VERSION_CONFLICT' },
+    ])(
+      'settles upload failure $status to idle without confirming a file or producing a business command',
+      async ({ status, code }) => {
+        materials.uploadCaseSectionRecordFile.mockRejectedValueOnce(
+          new ApiError('upload failed', status, code),
+        );
+        const { wrapper, router } = await render();
+        await editRecord(wrapper, 'closure');
+        await selectRecordUpload(wrapper);
+        await flushPromises();
+        expect(materials.uploadCaseSectionRecordFile).toHaveBeenCalledTimes(1);
+        expect(workflowCanLeave(wrapper)).toBe(true);
+        expect(
+          wrapper
+            .find(`[data-test="section-record-file-${uid(201)}"]`)
+            .exists(),
+        ).toBe(false);
+        expect(
+          wrapper.find('[data-test="section-record-panel"]').exists(),
+        ).toBe(true);
+        expect(api.correctCaseClosureRecord).not.toHaveBeenCalled();
+        expect(api.getCase).toHaveBeenCalledTimes(1);
+        expect(api.listCases).toHaveBeenCalledTimes(1);
+        expect(sessionStorage.length).toBe(0);
+        await router.push('/other');
+        expect(router.currentRoute.value.path).toBe('/other');
+      },
+    );
+
+    it('does not add an unconfirmed upload to a later independent business request', async () => {
+      materials.uploadCaseSectionRecordFile.mockRejectedValueOnce(
+        new ApiError('upload unknown', 0, 'NETWORK_ERROR'),
+      );
+      const { wrapper } = await render();
+      const panel = await editRecord(wrapper, 'judgment');
+      await selectRecordUpload(wrapper);
+      await flushPromises();
+      expect(wrapper.text()).toContain('上传未确认');
+      expect(sessionStorage.length).toBe(0);
+      await panel.get('[data-test="section-record-form"]').trigger('submit');
+      await flushPromises();
+      expect(
+        api.correctCaseJudgmentRecord.mock.calls[0]![1]
+          .judgmentContentVersionIds,
+      ).toEqual([file.contentVersionId]);
+      expect(materials.uploadCaseSectionRecordFile).toHaveBeenCalledTimes(1);
+      expect(api.listCases).toHaveBeenCalledTimes(2);
+    });
+
+    it('aborts preparation without business pending and keeps a later preparation busy when the old response arrives', async () => {
+      const first = deferredRecordUpload();
+      const second = deferredRecordUpload();
+      materials.uploadCaseSectionRecordFile
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise);
+      const { wrapper } = await render();
+      await editRecord(wrapper, 'closure');
+      await selectRecordUpload(wrapper);
+      const original = materials.uploadCaseSectionRecordFile.mock.calls[0]!;
+      expect(workflowCanLeave(wrapper)).toBe(false);
+      await wrapper
+        .get('[data-test="section-record-upload-cancel"]')
+        .trigger('click');
+      expect(original[3]!.signal!.aborted).toBe(true);
+      expect(workflowCanLeave(wrapper)).toBe(true);
+      expect(sessionStorage.length).toBe(0);
+      await selectRecordUpload(wrapper);
+      expect(workflowCanLeave(wrapper)).toBe(false);
+      first.resolve(preparedRecordFile(uploadTargets.closure));
+      await flushPromises();
+      expect(workflowCanLeave(wrapper)).toBe(false);
+      expect(
+        wrapper.find(`[data-test="section-record-file-${uid(201)}"]`).exists(),
+      ).toBe(false);
+      second.resolve(preparedRecordFile(uploadTargets.closure, 202));
+      await flushPromises();
+      expect(workflowCanLeave(wrapper)).toBe(true);
+      expect(
+        wrapper.get<HTMLInputElement>(
+          `[data-test="section-record-file-${uid(203)}"]`,
+        ).element.checked,
+      ).toBe(true);
+      expect(api.getCase).toHaveBeenCalledTimes(1);
+      expect(api.listCases).toHaveBeenCalledTimes(1);
+      expect(api.correctCaseClosureRecord).not.toHaveBeenCalled();
+      expect(sessionStorage.length).toBe(0);
+    });
+
+    it.each(['authorization', 'identity'] as const)(
+      'invalidates old upload on $0 changes without settling or leaking files into a new busy session',
+      async (boundary) => {
+        const first = deferredRecordUpload();
+        const second = deferredRecordUpload();
+        materials.uploadCaseSectionRecordFile
+          .mockReturnValueOnce(first.promise)
+          .mockReturnValueOnce(second.promise);
+        const { wrapper, auth } = await render();
+        await editRecord(wrapper, 'judgment');
+        await selectRecordUpload(wrapper);
+        const original = materials.uploadCaseSectionRecordFile.mock.calls[0]!;
+        auth.session =
+          boundary === 'authorization'
+            ? { ...auth.session!, authorizationRevision: 2 }
+            : {
+                ...auth.session!,
+                user: { ...auth.session!.user, id: 'user-2' },
+              };
+        await flushPromises();
+        expect(original[3]!.signal!.aborted).toBe(true);
+        expect(
+          wrapper.find('[data-test="section-record-panel"]').exists(),
+        ).toBe(false);
+        await editRecord(wrapper, 'judgment');
+        await selectRecordUpload(wrapper);
+        expect(workflowCanLeave(wrapper)).toBe(false);
+        const reads = api.getCase.mock.calls.length;
+        const lists = api.listCases.mock.calls.length;
+        first.resolve(preparedRecordFile(uploadTargets.judgment));
+        await flushPromises();
+        expect(workflowCanLeave(wrapper)).toBe(false);
+        expect(
+          wrapper
+            .find(`[data-test="section-record-file-${uid(201)}"]`)
+            .exists(),
+        ).toBe(false);
+        expect(api.getCase).toHaveBeenCalledTimes(reads);
+        expect(api.listCases).toHaveBeenCalledTimes(lists);
+        expect(sessionStorage.length).toBe(0);
+        second.resolve(preparedRecordFile(uploadTargets.judgment, 202));
+        await flushPromises();
+        expect(workflowCanLeave(wrapper)).toBe(true);
+        expect(api.correctCaseJudgmentRecord).not.toHaveBeenCalled();
+      },
+    );
+
+    it('preserves a confirmed file in an unknown business request and does not readmit upload preparation', async () => {
+      const uploaded = preparedRecordFile(uploadTargets.judgment);
+      materials.uploadCaseSectionRecordFile.mockResolvedValueOnce(uploaded);
+      api.correctCaseJudgmentRecord.mockRejectedValueOnce(
+        new ApiError('business response lost', 0, 'NETWORK_ERROR'),
+      );
+      const { wrapper } = await render();
+      const panel = await editRecord(wrapper, 'judgment');
+      await selectRecordUpload(wrapper);
+      await flushPromises();
+      await panel.get('[data-test="section-record-form"]').trigger('submit');
+      await flushPromises();
+      const body = api.correctCaseJudgmentRecord.mock.calls[0]![1];
+      expect(body.judgmentContentVersionIds).toEqual([
+        file.contentVersionId,
+        uploaded.contentVersionId,
+      ]);
+      const raw = sessionStorage.getItem(sessionStorage.key(0)!);
+      expect(raw).toContain(uploaded.contentVersionId);
+      expect(
+        wrapper
+          .get('[data-test="section-record-upload"]')
+          .attributes('disabled'),
+      ).toBeDefined();
+      await selectRecordUpload(wrapper);
+      expect(materials.uploadCaseSectionRecordFile).toHaveBeenCalledTimes(1);
+      expect(workflowCanLeave(wrapper)).toBe(false);
+      expect(sessionStorage.getItem(sessionStorage.key(0)!)).toBe(raw);
+      await panel.get('[data-test="section-record-retry"]').trigger('click');
+      await flushPromises();
+      expect(api.correctCaseJudgmentRecord.mock.calls[1]![1]).toEqual(body);
+      expect(sessionStorage.length).toBe(0);
+      expect(api.listCases).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it.each(recordCommandsUnderTest)(
+    'submits $kind using its exact target/revision/files while keeping the list query',
+    async ({ kind, post, expected }) => {
+      const { wrapper, router } = await render();
+      const panel = await editRecord(wrapper, kind);
+      await panel.get('[data-test="section-record-form"]').trigger('submit');
+      await flushPromises();
+      expect(post).toHaveBeenCalledTimes(1);
+      expect(post.mock.calls[0]).toEqual([
+        uid(1),
+        expect.objectContaining({
+          ...expected,
+          idempotencyKey: expect.any(String),
+        }),
+        { signal: expect.any(AbortSignal) },
+      ]);
+      expect(post.mock.calls[0]![1]).not.toHaveProperty('expectedVersion');
+      const getSignal = api.getCase.mock.calls[0]![1].signal;
+      expect(post.mock.calls[0]![2].signal).not.toBe(getSignal);
+      expect(api.correctCaseJudgment).not.toHaveBeenCalled();
+      expect(api.chooseCaseJudgmentNextStep).not.toHaveBeenCalled();
+      expect(api.listCases).toHaveBeenCalledTimes(2);
+      expect(router.currentRoute.value.fullPath).toBe(
+        '/cases?view=department&stage=WAITING_JUDGMENT&page=2',
+      );
+      expect(wrapper.find('[data-test="section-record-panel"]').exists()).toBe(
+        false,
+      );
+      expect(sessionStorage.length).toBe(0);
+    },
+  );
+
+  it('settles a known failure without advancing, keeps the editable form and permits a retry', async () => {
+    api.correctCaseHearingRecord.mockRejectedValueOnce(
+      new ApiError('核对原因', 400, 'VALIDATION_ERROR'),
+    );
+    const { wrapper } = await render();
+    const panel = await editRecord(wrapper, 'hearing');
+    await panel.get('[data-test="section-record-form"]').trigger('submit');
+    await flushPromises();
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.length).toBe(0);
+    expect(
+      panel.get('[data-test="section-record-date"]').element,
+    ).toHaveProperty('value', '2026-10-07');
+    expect(
+      panel.get('[data-test="section-record-save"]').attributes('disabled'),
+    ).toBeUndefined();
+    await panel.get('[data-test="section-record-form"]').trigger('submit');
+    await flushPromises();
+    expect(api.correctCaseHearingRecord).toHaveBeenCalledTimes(2);
+    expect(api.listCases).toHaveBeenCalledTimes(2);
+  });
+
+  it('retains an unknown response and retries only the original body/key in the current W session', async () => {
+    api.correctCaseJudgmentRecord.mockRejectedValueOnce(
+      new ApiError('response lost', 0, 'NETWORK_ERROR'),
+    );
+    const { wrapper, router } = await render();
+    const panel = await editRecord(wrapper, 'judgment');
+    await panel.get('[data-test="section-record-form"]').trigger('submit');
+    await flushPromises();
+    expect(api.correctCaseJudgmentRecord).toHaveBeenCalledTimes(1);
+    const original = api.correctCaseJudgmentRecord.mock.calls[0]![1];
+    const stored = sessionStorage.getItem(sessionStorage.key(0)!);
+    expect(stored).toContain(original.idempotencyKey);
+    expect(
+      wrapper.get('[data-test="case-list-record-kind"]').attributes('disabled'),
+    ).toBeDefined();
+    await panel.get('[data-test="section-record-form"]').trigger('submit');
+    await router.push('/other');
+    expect(router.currentRoute.value.path).toBe('/cases');
+    expect(api.correctCaseJudgmentRecord).toHaveBeenCalledTimes(1);
+    await panel.get('[data-test="section-record-retry"]').trigger('click');
+    await flushPromises();
+    expect(api.correctCaseJudgmentRecord).toHaveBeenCalledTimes(2);
+    expect(api.correctCaseJudgmentRecord.mock.calls[1]![1]).toEqual(original);
+    expect(api.listCases).toHaveBeenCalledTimes(2);
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  it('denies on POST permission loss and retains the exact request for the original actor', async () => {
+    api.correctCaseHearingRecord.mockRejectedValueOnce(
+      new ApiError('permission withdrawn', 403, 'FORBIDDEN'),
+    );
+    const { wrapper } = await render();
+    const panel = await editRecord(wrapper, 'hearing');
+    await panel.get('[data-test="section-record-form"]').trigger('submit');
+    await flushPromises();
+    expect(wrapper.text()).toContain('当前无法访问该记录');
+    expect(wrapper.find('[data-test="section-record-panel"]').exists()).toBe(
+      false,
+    );
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+    expect(readCaseListRecordRecoveries(recordActor)).toEqual([
+      { caseId: uid(1), kind: 'hearing', targetId: uid(5) },
+    ]);
+    expect(
+      JSON.parse(sessionStorage.getItem(sessionStorage.key(0)!)!).request.input,
+    ).toEqual(api.correctCaseHearingRecord.mock.calls[0]![1]);
+  });
+
+  it('freshly reads after a 409 once W has settled and submits the new named revision', async () => {
+    api.correctCaseHearingRecord.mockRejectedValueOnce(
+      new ApiError('revision changed', 409, 'VERSION_CONFLICT'),
+    );
+    const { wrapper } = await render();
+    const panel = await editRecord(wrapper, 'hearing');
+    const fresh = recordFixture();
+    fresh.recordEdits!.hearings![0]!.hearingRevision = 1;
+    api.getCase.mockResolvedValue(fresh);
+    await panel.get('[data-test="section-record-form"]').trigger('submit');
+    await flushPromises();
+    expect(api.getCase).toHaveBeenCalledTimes(2);
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+    await wrapper
+      .get('[data-test="section-record-date"]')
+      .setValue('2026-10-08');
+    await wrapper
+      .get('[data-test="section-record-reason"]')
+      .setValue('重新核对最新资料');
+    await wrapper.get('[data-test="section-record-form"]').trigger('submit');
+    await flushPromises();
+    expect(api.correctCaseHearingRecord).toHaveBeenCalledTimes(2);
+    expect(api.correctCaseHearingRecord.mock.calls[1]![1]).toMatchObject({
+      expectedHearingRevision: 1,
+      hearingAt: '2026-10-08',
+    });
+    expect(api.listCases).toHaveBeenCalledTimes(2);
+  });
+
+  it('restores the second off-filter target exactly and never sends automatically', async () => {
+    retainRecord();
+    const second = retainRecord(recordRequest(uid(11)));
+    const detail = recordFixture();
+    detail.recordEdits!.hearings!.push({
+      ...detail.recordEdits!.hearings![0]!,
+      arrangementId: uid(11),
+    });
+    api.getCase.mockResolvedValue(detail);
+    api.listCases.mockResolvedValue(list([]));
+    const { wrapper, router } = await render();
+    await wrapper
+      .get('[aria-label="资料更正原请求恢复"]')
+      .findAll('button')[1]!
+      .trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="section-record-target"]').element,
+    ).toHaveProperty('value', uid(11));
+    expect(
+      wrapper.get('[data-test="case-list-record-kind"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper.get('[data-test="section-record-target"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(api.correctCaseHearingRecord).not.toHaveBeenCalled();
+    await router.push('/other');
+    expect(router.currentRoute.value.path).toBe('/cases');
+    await wrapper.get('[data-test="section-record-retry"]').trigger('click');
+    await flushPromises();
+    expect(api.correctCaseHearingRecord.mock.calls[0]![1]).toEqual(
+      second.stored.request.input,
+    );
+    expect(readCaseListRecordRecoveries(recordActor)).toEqual([
+      { caseId: uid(1), kind: 'hearing', targetId: uid(5) },
+    ]);
+    expect(api.listCases).toHaveBeenCalledTimes(2);
+    await wrapper
+      .get('[aria-label="资料更正原请求恢复"] button')
+      .trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="section-record-target"]').element,
+    ).toHaveProperty('value', uid(5));
+  });
+
+  it('preserves unknown body/key through re-mount and ignores a late response after authorization changes', async () => {
+    let resolve!: (value: unknown) => void;
+    api.correctCaseHearingRecord.mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const first = await render();
+    const panel = await editRecord(first.wrapper, 'hearing');
+    await panel.get('[data-test="section-record-form"]').trigger('submit');
+    await flushPromises();
+    const original = api.correctCaseHearingRecord.mock.calls[0]!;
+    const raw = sessionStorage.getItem(sessionStorage.key(0)!);
+    expect(original[2].signal.aborted).toBe(false);
+    first.auth.session = { ...first.auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    expect(original[2].signal.aborted).toBe(true);
+    const count = api.listCases.mock.calls.length;
+    resolve({ ...original[1], caseId: uid(1), hearingRevision: 1 });
+    await flushPromises();
+    expect(api.listCases).toHaveBeenCalledTimes(count);
+    expect(sessionStorage.getItem(sessionStorage.key(0)!)).toBe(raw);
+    first.wrapper.unmount();
+    api.listCases.mockResolvedValue(list([]));
+    const second = await render();
+    await second.wrapper
+      .get('[aria-label="资料更正原请求恢复"] button')
+      .trigger('click');
+    await flushPromises();
+    expect(api.correctCaseHearingRecord).toHaveBeenCalledTimes(1);
+    await second.wrapper
+      .get('[data-test="section-record-retry"]')
+      .trigger('click');
+    await flushPromises();
+    expect(api.correctCaseHearingRecord.mock.calls[1]![1]).toEqual(original[1]);
+    expect(sessionStorage.length).toBe(0);
   });
 });

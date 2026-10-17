@@ -237,6 +237,8 @@ describe('CaseHearingService', () => {
     });
     f.tx.caseHearingAdvance.findUnique.mockResolvedValue({
       id: advanceId,
+      departmentId: actor.departmentId,
+      toVersion: 9,
       arrangementId,
       caseId,
       trialRoundId,
@@ -266,6 +268,8 @@ describe('CaseHearingService', () => {
     f.tx.case.findFirst.mockResolvedValue(before);
     f.tx.caseHearingAdvance.findUnique.mockResolvedValue({
       id: advanceId,
+      departmentId: actor.departmentId,
+      toVersion: 9,
       arrangementId,
       caseId,
       trialRoundId,
@@ -358,6 +362,8 @@ describe('CaseHearingService', () => {
     });
     f.tx.caseHearingAdvance.findUnique.mockResolvedValue({
       id: advanceId,
+      departmentId: actor.departmentId,
+      toVersion: 9,
       arrangementId,
       caseId,
       trialRoundId,
@@ -375,6 +381,390 @@ describe('CaseHearingService', () => {
         data: expect.objectContaining({ currentHearingAdvanceId: advanceId }),
       }),
     );
+  });
+
+  function correctionFixture() {
+    const f = fixture();
+    f.tx.case.findFirst.mockResolvedValue({
+      id: caseId,
+      departmentId: actor.departmentId,
+      stage: 'WAITING_JUDGMENT',
+      version: 11,
+      currentTrialRoundId: trialRoundId,
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+      acceptance: {
+        acceptedAt: new Date('2026-10-01T00:00:00.000Z'),
+        corrections: [],
+      },
+      currentHearingArrangementId: 'current-correction',
+      currentHearingAdvanceId: advanceId,
+      currentJudgmentId: null,
+    });
+    const advance = {
+      id: advanceId,
+      departmentId: actor.departmentId,
+      caseId,
+      arrangementId,
+      trialRoundId,
+      externalEntryId: null,
+      toVersion: 9,
+    };
+    const correction = {
+      caseId,
+      departmentId: actor.departmentId,
+      newArrangementId: 'current-correction',
+      priorAdvanceId: advanceId,
+      resultStage: 'WAITING_JUDGMENT',
+      fromVersion: 10,
+      toVersion: 11,
+    };
+    const arrangement = {
+      id: 'current-correction',
+      caseId,
+      departmentId: actor.departmentId,
+      trialRoundId,
+      externalEntryId: null,
+      source: 'CORRECTION',
+      fromVersion: 10,
+      toVersion: 11,
+      correctionAsNew: correction,
+    };
+    f.tx.caseHearingAdvance.findUnique.mockResolvedValue(advance);
+    f.tx.caseHearingArrangement.findUnique.mockResolvedValue(arrangement);
+    const input = {
+      expectedVersion: 11,
+      idempotencyKey: 'third-correction',
+      hearingAt: '2026-10-07',
+      reason: '法院再次通知改期',
+    };
+    return { ...f, advance, arrangement, correction, input };
+  }
+
+  it.each(['2026-10-08', '2026-10-10', null])(
+    'continues two past-date corrections into %s, preserving the original advance history',
+    async (hearingAt) => {
+      const f = correctionFixture();
+      const result = await f.service.correct(actor, caseId, {
+        ...f.input,
+        hearingAt,
+      });
+      expect(result).toMatchObject({
+        stage: 'WAITING_HEARING',
+        version: 12,
+        hearingAt,
+      });
+      expect(f.tx.caseHearingArrangement.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'current-correction' } }),
+      );
+      expect(f.tx.caseHearingCorrection.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            priorArrangementId: 'current-correction',
+            priorAdvanceId: advanceId,
+            newArrangementId: result.arrangementId,
+            fromVersion: 11,
+            toVersion: 12,
+          }),
+        }),
+      );
+      expect(f.tx.case.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ currentHearingAdvanceId: null }),
+        }),
+      );
+      expect(f.tx.caseHearingAdvance.create).not.toHaveBeenCalled();
+      expect(f.signal.wake).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('continues another past-date correction without inventing a second advance', async () => {
+    const f = correctionFixture();
+    expect(await f.service.correct(actor, caseId, f.input)).toMatchObject({
+      stage: 'WAITING_JUDGMENT',
+      version: 12,
+    });
+    expect(f.tx.case.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ currentHearingAdvanceId: advanceId }),
+      }),
+    );
+    expect(f.tx.caseHearingAdvance.create).not.toHaveBeenCalled();
+    expect(f.signal.wake).not.toHaveBeenCalled();
+  });
+
+  it('continues the exact external source without requiring a fabricated acceptance', async () => {
+    const f = correctionFixture();
+    jest
+      .mocked(readCaseSourceAnchor)
+      .mockResolvedValueOnce(externalHearing as never);
+    const record = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...record,
+      acceptance: null,
+      currentTrialRound: {
+        origin: 'EXTERNAL_CURRENT',
+        externalEntryId: entryId,
+        sourceResultId: null,
+        revokedAt: null,
+      },
+    });
+    Object.assign(f.advance, { externalEntryId: entryId });
+    Object.assign(f.arrangement, { externalEntryId: entryId });
+    expect(await f.service.correct(actor, caseId, f.input)).toMatchObject({
+      stage: 'WAITING_JUDGMENT',
+    });
+    expect(f.tx.caseHearingArrangement.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          externalEntryId: entryId,
+          trialRoundId,
+        }),
+      }),
+    );
+  });
+
+  it('rejects a stale direct advance version without consulting unrelated corrections', async () => {
+    const f = correctionFixture();
+    Object.assign(f.advance, { arrangementId: 'current-correction' });
+    await expect(
+      f.service.correct(actor, caseId, f.input),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    expect(f.tx.caseHearingArrangement.findUnique).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['advance case', 'advance', 'caseId', 'other'],
+    ['advance department', 'advance', 'departmentId', 'other'],
+    ['advance round', 'advance', 'trialRoundId', 'other'],
+    ['advance source', 'advance', 'externalEntryId', entryId],
+    ['advance pointer', 'advance', 'id', 'other'],
+    ['advance future version', 'advance', 'toVersion', 12],
+    ['arrangement case', 'arrangement', 'caseId', 'other'],
+    ['arrangement department', 'arrangement', 'departmentId', 'other'],
+    ['arrangement round', 'arrangement', 'trialRoundId', 'other'],
+    ['arrangement source anchor', 'arrangement', 'externalEntryId', entryId],
+    ['arrangement type', 'arrangement', 'source', 'SCHEDULE'],
+    ['arrangement pointer', 'arrangement', 'id', 'other'],
+    ['arrangement stale version', 'arrangement', 'toVersion', 10],
+    ['arrangement broken version step', 'arrangement', 'fromVersion', 9],
+    ['missing correction', 'arrangement', 'correctionAsNew', null],
+    ['correction case', 'correction', 'caseId', 'other'],
+    ['correction department', 'correction', 'departmentId', 'other'],
+    ['correction new arrangement', 'correction', 'newArrangementId', 'other'],
+    ['correction prior advance', 'correction', 'priorAdvanceId', 'other'],
+    ['correction result stage', 'correction', 'resultStage', 'WAITING_HEARING'],
+    ['correction from version', 'correction', 'fromVersion', 9],
+    ['correction to version', 'correction', 'toVersion', 10],
+  ])(
+    'rejects broken continuation proof: %s',
+    async (_name, entity, key, value) => {
+      const f = correctionFixture();
+      const target =
+        entity === 'advance'
+          ? f.advance
+          : entity === 'arrangement'
+            ? f.arrangement
+            : f.correction;
+      Object.assign(target, { [key as string]: value });
+      await expect(
+        f.service.correct(actor, caseId, f.input),
+      ).rejects.toMatchObject({
+        response: { code: 'INVALID_STATE' },
+      });
+      expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
+      expect(f.tx.caseHearingCorrection.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects a stale request before querying the correction chain', async () => {
+    const f = correctionFixture();
+    await expect(
+      f.service.correct(actor, caseId, {
+        ...f.input,
+        expectedVersion: 10,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    expect(f.tx.caseHearingAdvance.findUnique).not.toHaveBeenCalled();
+    expect(f.tx.caseHearingArrangement.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('replays an unknown committed outcome without reading the now superseded chain', async () => {
+    const f = correctionFixture();
+    const result = await f.service.correct(actor, caseId, f.input);
+    const receipt = f.tx.caseHearingReceipt.create.mock.calls[0][0].data;
+    f.tx.caseHearingReceipt.findUnique.mockResolvedValue(receipt);
+    f.tx.caseHearingArrangement.findUnique.mockClear().mockResolvedValue(null);
+    expect(await f.service.correct(actor, caseId, f.input)).toEqual(result);
+    expect(f.tx.caseHearingArrangement.findUnique).not.toHaveBeenCalled();
+    await expect(
+      f.service.correct(actor, caseId, {
+        ...f.input,
+        hearingAt: null,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+    f.access.authorizeCase.mockRejectedValue(new ForbiddenException());
+    await expect(
+      f.service.correct(actor, caseId, f.input),
+    ).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+    expect(f.tx.caseHearingCorrection.create).toHaveBeenCalledTimes(1);
+    expect(f.tx.auditEvent.create).toHaveBeenCalledTimes(1);
+  });
+
+  function effectiveScanFixture(
+    originalDate: string | null,
+    headDate?: string | null,
+  ) {
+    const f = fixture();
+    const date = (value: string | null) =>
+      value === null ? null : new Date(`${value}T00:00:00.000Z`);
+    const record = {
+      stage: 'WAITING_HEARING',
+      version: 8,
+      currentTrialRoundId: trialRoundId,
+      currentHearingArrangementId: arrangementId,
+      currentHearingAdvanceId: null,
+      currentHearingArrangement: {
+        id: arrangementId,
+        hearingAt: date(originalDate),
+        toVersion: 8,
+        trialRoundId,
+        externalEntryId: null,
+        recordCorrections:
+          headDate === undefined ? [] : [{ hearingAt: date(headDate) }],
+      },
+    };
+    f.database.case.findMany.mockResolvedValue([
+      { id: caseId, departmentId: actor.departmentId },
+    ]);
+    f.tx.case.findFirst.mockResolvedValue(record);
+    f.tx.$queryRawUnsafe.mockImplementation((sql: string) =>
+      sql.includes('FOR UPDATE')
+        ? Promise.resolve([{ id: caseId }])
+        : Promise.resolve([{ due_at: new Date('2026-10-07T16:00:00.000Z') }]),
+    );
+    return { ...f, record };
+  }
+
+  it.each(['2026-10-12', null])(
+    'advances original %s using the exact past-date record head',
+    async (originalDate) => {
+      const f = effectiveScanFixture(originalDate, '2026-10-07');
+      expect(
+        await f.service.advanceDue(new Date('2026-10-08T10:00:00.000Z')),
+      ).toEqual({ advanced: 1, failed: 0 });
+      expect(f.database.case.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            currentHearingArrangement: {
+              is: {
+                OR: [
+                  { hearingAt: { lt: new Date('2026-10-08T00:00:00.000Z') } },
+                  {
+                    recordCorrections: {
+                      some: {
+                        hearingAt: { lt: new Date('2026-10-08T00:00:00.000Z') },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+        }),
+      );
+      expect(f.tx.case.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            currentHearingArrangement: {
+              select: expect.objectContaining({
+                recordCorrections: {
+                  orderBy: { toRevision: 'desc' },
+                  take: 1,
+                  select: { hearingAt: true },
+                },
+              }),
+            },
+          }),
+        }),
+      );
+      expect(f.tx.$queryRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('$1::date'),
+        '2026-10-07',
+      );
+      expect(f.tx.caseHearingAdvance.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            arrangementId,
+            dueAt: new Date('2026-10-07T16:00:00.000Z'),
+            fromVersion: 8,
+            toVersion: 9,
+          }),
+        }),
+      );
+    },
+  );
+
+  it.each(['2026-10-12', '2026-10-08', null])(
+    'does not advance a past original date when the latest record head is %s',
+    async (headDate) => {
+      const f = effectiveScanFixture('2026-10-06', headDate);
+      expect(
+        await f.service.advanceDue(new Date('2026-10-08T10:00:00.000Z')),
+      ).toEqual({ advanced: 0, failed: 0 });
+      expect(f.tx.caseHearingAdvance.create).not.toHaveBeenCalled();
+      expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('uses the original date only when the arrangement has no record correction', async () => {
+    const f = effectiveScanFixture('2026-10-07');
+    expect(
+      await f.service.advanceDue(new Date('2026-10-08T10:00:00.000Z')),
+    ).toEqual({ advanced: 1, failed: 0 });
+    expect(f.tx.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('$1::date'),
+      '2026-10-07',
+    );
+  });
+
+  it.each(['2026-10-12', null])(
+    'rereads record correction %s committed before acquiring the case lock',
+    async (headDate) => {
+      const f = effectiveScanFixture('2026-10-06', '2026-10-07');
+      f.tx.$queryRawUnsafe.mockImplementation((sql: string) => {
+        if (sql.includes('FOR UPDATE')) {
+          f.record.currentHearingArrangement.recordCorrections = [
+            {
+              hearingAt:
+                headDate === null
+                  ? null
+                  : new Date(`${headDate}T00:00:00.000Z`),
+            },
+          ];
+          return Promise.resolve([{ id: caseId }]);
+        }
+        return Promise.resolve([
+          { due_at: new Date('2026-10-07T16:00:00.000Z') },
+        ]);
+      });
+      expect(
+        await f.service.advanceDue(new Date('2026-10-08T10:00:00.000Z')),
+      ).toEqual({ advanced: 0, failed: 0 });
+      expect(f.tx.caseHearingAdvance.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not advance a stale candidate after its due arrangement was replaced', async () => {
+    const f = effectiveScanFixture('2026-10-12');
+    f.record.currentHearingArrangementId = 'new-arrangement';
+    f.record.currentHearingArrangement.id = 'new-arrangement';
+    expect(
+      await f.service.advanceDue(new Date('2026-10-08T10:00:00.000Z')),
+    ).toEqual({ advanced: 0, failed: 0 });
+    expect(f.tx.caseHearingAdvance.create).not.toHaveBeenCalled();
   });
 
   it('records a fresh execution time for each case after acquiring its lock', async () => {
@@ -402,6 +792,7 @@ describe('CaseHearingService', () => {
           currentHearingArrangement: {
             id: where.id === caseId ? arrangementId : secondArrangementId,
             hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+            recordCorrections: [],
             toVersion: 8,
             trialRoundId,
           },
@@ -446,6 +837,7 @@ describe('CaseHearingService', () => {
       currentHearingArrangement: {
         id: arrangementId,
         hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+        recordCorrections: [],
         toVersion: 8,
         trialRoundId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       },
@@ -484,6 +876,7 @@ describe('CaseHearingService', () => {
       currentHearingArrangement: {
         id: arrangementId,
         hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+        recordCorrections: [],
         toVersion: 8,
         trialRoundId,
         externalEntryId: entryId,
@@ -533,6 +926,7 @@ describe('CaseHearingService', () => {
           currentHearingArrangement: {
             id: arrangementId,
             hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+            recordCorrections: [],
             toVersion: 8,
             trialRoundId,
           },

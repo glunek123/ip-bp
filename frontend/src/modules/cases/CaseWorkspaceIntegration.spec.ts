@@ -2,7 +2,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CaseDetail } from '../../api/cases';
+import type { CaseDetail, CaseFile } from '../../api/cases';
 import type { LeadDetail } from '../../api/leads';
 import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
@@ -14,6 +14,7 @@ import CaseComplaintSubmissionForm from './CaseComplaintSubmissionForm.vue';
 import CaseHearingPanel from './CaseHearingPanel.vue';
 import CaseAcceptanceCorrectionPanel from './CaseAcceptanceCorrectionPanel.vue';
 import CaseDefendantContactPanel from './CaseDefendantContactPanel.vue';
+import CaseSectionRecordCorrectionPanel from './CaseSectionRecordCorrectionPanel.vue';
 import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
 
 const api = vi.hoisted(() => ({
@@ -31,6 +32,12 @@ const api = vi.hoisted(() => ({
   updateCaseDefendantContact: vi.fn(),
   correctCaseAcceptance: vi.fn(),
   saveSecondInstanceAcceptance: vi.fn(),
+  correctCaseExecutionMailingRecord: vi.fn(),
+  correctCaseExecutionFilingRecord: vi.fn(),
+  correctCaseExecutionFinishRecord: vi.fn(),
+  correctCaseHearingRecord: vi.fn(),
+  correctCaseJudgmentRecord: vi.fn(),
+  correctCaseClosureRecord: vi.fn(),
 }));
 vi.mock('../../api/cases', async (original) => ({
   ...(await original<typeof import('../../api/cases')>()),
@@ -44,6 +51,12 @@ vi.mock('../../api/cases', async (original) => ({
   updateCaseDefendantContact: api.updateCaseDefendantContact,
   correctCaseAcceptance: api.correctCaseAcceptance,
   saveSecondInstanceAcceptance: api.saveSecondInstanceAcceptance,
+  correctCaseExecutionMailingRecord: api.correctCaseExecutionMailingRecord,
+  correctCaseExecutionFilingRecord: api.correctCaseExecutionFilingRecord,
+  correctCaseExecutionFinishRecord: api.correctCaseExecutionFinishRecord,
+  correctCaseHearingRecord: api.correctCaseHearingRecord,
+  correctCaseJudgmentRecord: api.correctCaseJudgmentRecord,
+  correctCaseClosureRecord: api.correctCaseClosureRecord,
 }));
 vi.mock('../../api/leads', () => ({ getLead: api.getLead }));
 vi.mock('../../api/materials', async (original) => ({
@@ -140,6 +153,208 @@ const baseItem: CaseDetail = {
     revocations: [],
   },
 };
+const uid = (n: number) =>
+  `91000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const file: CaseFile = {
+  materialId: uid(20),
+  contentVersionId: uid(21),
+  originalFilename: '已冻结.pdf',
+  mimeType: 'application/pdf',
+};
+const otherFile: CaseFile = {
+  materialId: uid(22),
+  contentVersionId: uid(23),
+  originalFilename: '依据.pdf',
+  mimeType: 'application/pdf',
+};
+function recordFixture(): CaseDetail {
+  const item = structuredClone(baseItem);
+  item.id = uid(1);
+  item.stage = 'ARCHIVED';
+  item.version = 42;
+  const mailed = {
+    mailedAt: '2026-10-01',
+    mailReceiptContentVersionIds: [
+      file.contentVersionId,
+      otherFile.contentVersionId,
+    ],
+    files: [file, otherFile],
+  };
+  const filed = {
+    submittedAt: '2026-10-02',
+    executionFilingProofContentVersionIds: [file.contentVersionId],
+    files: [file],
+  };
+  const finished = {
+    finishedAt: '2026-10-03',
+    reason: '执行已结束',
+    basisNote: '原依据',
+    basisContentVersionIds: [file.contentVersionId],
+    files: [file],
+  };
+  const hearing = { hearingAt: '2026-10-04' };
+  const judgment = {
+    judgmentReceivedAt: '2026-10-05',
+    judgmentAmountState: 'KNOWN' as const,
+    judgmentAmount: '120.00',
+    paidLitigationFeeState: 'PENDING' as const,
+    paidLitigationFee: null,
+    judgmentContentVersionIds: [file.contentVersionId],
+    files: [file],
+  };
+  const closure = {
+    closeAt: '2026-10-06',
+    closeAmountState: 'KNOWN' as const,
+    closeAmt: '100.00',
+    note: '原说明',
+    closeContentVersionIds: [file.contentVersionId],
+    files: [file],
+  };
+  item.recordEdits = {
+    canUpdateDefendantContact: false,
+    canCorrectAcceptance: false,
+    defendantContacts: [],
+    acceptanceCorrections: [],
+    executionMailings: [
+      {
+        mailingId: uid(2),
+        mailingRevision: 2,
+        canEdit: true,
+        original: mailed,
+        effective: mailed,
+        history: [],
+      },
+    ],
+    executionFilings: [
+      {
+        filingId: uid(3),
+        filingRevision: 3,
+        canEdit: true,
+        original: filed,
+        effective: filed,
+        history: [],
+      },
+    ],
+    executionFinishes: [
+      {
+        finishId: uid(4),
+        finishRevision: 4,
+        canEdit: true,
+        original: finished,
+        effective: finished,
+        history: [],
+      },
+    ],
+    hearings: [
+      {
+        arrangementId: uid(5),
+        trialRoundId: uid(9),
+        hearingRevision: 5,
+        canEdit: true,
+        original: hearing,
+        effective: hearing,
+        history: [],
+      },
+    ],
+    judgments: [
+      {
+        judgmentId: uid(6),
+        trialRoundId: uid(9),
+        judgmentRevision: 6,
+        canEdit: true,
+        original: judgment,
+        effective: judgment,
+        history: [],
+      },
+    ],
+    closures: [
+      {
+        closureId: uid(7),
+        closureRevision: 0,
+        canEdit: true,
+        original: closure,
+        effective: closure,
+        history: [],
+      },
+    ],
+  };
+  item.closure = {
+    id: uid(7),
+    finishId: uid(4),
+    current: {
+      id: uid(8),
+      kind: 'REGISTER',
+      priorVersionId: null,
+      finishId: uid(4),
+      fromVersion: 40,
+      toVersion: 41,
+      ...closure,
+      correctionReason: null,
+      recordedAt: '2026-10-06T00:00:00Z',
+      recordedByUserId: uid(10),
+    },
+    history: [],
+  };
+  item.secondInstance.rounds = [
+    { id: uid(9), sequence: 1, sourceResultId: null, revokedAt: null },
+  ];
+  item.recordEdits.executionMailings![0]!.mailingRevision = 0;
+  item.recordEdits.executionFilings![0]!.filingRevision = 0;
+  item.recordEdits.executionFinishes![0]!.finishRevision = 0;
+  item.recordEdits.hearings![0]!.hearingRevision = 0;
+  item.recordEdits.judgments![0]!.judgmentRevision = 0;
+  item.executionMailing = {
+    id: uid(2),
+    confirmationId: null,
+    mailedAt: mailed.mailedAt,
+    recordedAt: '2026-10-01T00:00:00Z',
+    files: mailed.files,
+  };
+  item.executionFiling = {
+    id: uid(3),
+    mailingId: uid(2),
+    submittedAt: filed.submittedAt,
+    recordedAt: '2026-10-02T00:00:00Z',
+    files: filed.files,
+  };
+  item.executionFinish = {
+    id: uid(4),
+    filingId: uid(3),
+    finishedAt: finished.finishedAt,
+    reason: finished.reason,
+    basisNote: finished.basisNote,
+    recordedAt: '2026-10-03T00:00:00Z',
+    files: finished.files,
+  };
+  const arrangement = {
+    id: uid(5),
+    trialRoundId: uid(9),
+    hearingAt: hearing.hearingAt,
+    source: 'SCHEDULE' as const,
+    recordedAt: '2026-10-04T00:00:00Z',
+  };
+  item.hearing.currentArrangement = arrangement;
+  item.hearing.arrangements = [arrangement];
+  const judgmentFact = {
+    id: uid(6),
+    trialRoundId: uid(9),
+    kind: 'REGISTER' as const,
+    priorFactId: null,
+    judgmentReceivedAt: judgment.judgmentReceivedAt,
+    judgmentAmountState: judgment.judgmentAmountState,
+    judgmentAmount: judgment.judgmentAmount,
+    paidLitigationFeeState: judgment.paidLitigationFeeState,
+    paidLitigationFee: judgment.paidLitigationFee,
+    fromVersion: 35,
+    toVersion: 36,
+    recordedAt: '2026-10-05T00:00:00Z',
+    files: judgment.files,
+  };
+  item.judgment.current = judgmentFact;
+  item.judgment.history = [judgmentFact];
+  item.closure.history = [item.closure.current];
+  return item;
+}
 const sourceLead = {
   id: 'lead-1',
   businessNo: 'LD-20260921-001',
@@ -570,6 +785,7 @@ it.each([
 
 beforeEach(() => {
   vi.resetAllMocks();
+  sessionStorage.clear();
   api.getLead.mockRejectedValue(new ApiError('来源无权', 403, 'FORBIDDEN'));
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   api.downloadMaterialVersion.mockResolvedValue(undefined);
@@ -582,6 +798,398 @@ afterEach(() => {
 });
 
 describe('UI002 real case workspace host', () => {
+  it.each([
+    ['execution-mailing', 'execution', 'record-execution-mailing'],
+    ['execution-filing', 'execution', 'record-execution-filing'],
+    ['execution-finish', 'execution', 'record-execution-finish'],
+    ['hearing', 'first-instance', 'record-hearing-first'],
+    ['judgment', 'judgment', 'record-judgment'],
+    ['closure', 'closure-info', 'record-closure'],
+  ] as const)(
+    'clicks the real %s editor, saves its exact API and verifies only that date after fresh reads',
+    async (kind, section, command) => {
+      const item = recordFixture();
+      const before = structuredClone(item);
+      const fresh = structuredClone(item);
+      const value = '2026-10-07';
+      const metadata = {
+        id: uid(100),
+        priorCorrectionId: null,
+        fromRevision: 0,
+        toRevision: 1,
+        correctionReason: '核对登记日期',
+        recordedAt: '2026-10-15T00:00:00Z',
+        recordedByUserId: uid(10),
+      };
+      const receipt = {
+        caseId: item.id,
+        correctionId: metadata.id,
+        recordedAt: metadata.recordedAt,
+      };
+      let mock: typeof api.correctCaseHearingRecord;
+      switch (kind) {
+        case 'execution-mailing': {
+          const edit = fresh.recordEdits!.executionMailings![0]!;
+          edit.effective = { ...edit.effective, mailedAt: value };
+          edit.history = [{ ...edit.effective, ...metadata }];
+          edit.mailingRevision = 1;
+          fresh.executionMailing!.mailedAt = value;
+          mock = api.correctCaseExecutionMailingRecord;
+          mock.mockResolvedValue({
+            ...receipt,
+            mailingId: uid(2),
+            mailingRevision: 1,
+            mailedAt: value,
+          });
+          break;
+        }
+        case 'execution-filing': {
+          const edit = fresh.recordEdits!.executionFilings![0]!;
+          edit.effective = { ...edit.effective, submittedAt: value };
+          edit.history = [{ ...edit.effective, ...metadata }];
+          edit.filingRevision = 1;
+          fresh.executionFiling!.submittedAt = value;
+          mock = api.correctCaseExecutionFilingRecord;
+          mock.mockResolvedValue({
+            ...receipt,
+            filingId: uid(3),
+            filingRevision: 1,
+            submittedAt: value,
+          });
+          break;
+        }
+        case 'execution-finish': {
+          const edit = fresh.recordEdits!.executionFinishes![0]!;
+          edit.effective = { ...edit.effective, finishedAt: value };
+          edit.history = [{ ...edit.effective, ...metadata }];
+          edit.finishRevision = 1;
+          fresh.executionFinish!.finishedAt = value;
+          mock = api.correctCaseExecutionFinishRecord;
+          mock.mockResolvedValue({
+            ...receipt,
+            finishId: uid(4),
+            finishRevision: 1,
+            finishedAt: value,
+          });
+          break;
+        }
+        case 'hearing': {
+          const edit = fresh.recordEdits!.hearings![0]!;
+          edit.effective = { hearingAt: value };
+          edit.history = [{ ...edit.effective, ...metadata }];
+          edit.hearingRevision = 1;
+          fresh.hearing.currentArrangement = {
+            ...fresh.hearing.currentArrangement!,
+            hearingAt: value,
+          };
+          mock = api.correctCaseHearingRecord;
+          mock.mockResolvedValue({
+            ...receipt,
+            arrangementId: uid(5),
+            trialRoundId: uid(9),
+            hearingRevision: 1,
+            hearingAt: value,
+          });
+          break;
+        }
+        case 'judgment': {
+          const edit = fresh.recordEdits!.judgments![0]!;
+          edit.effective = { ...edit.effective, judgmentReceivedAt: value };
+          edit.history = [{ ...edit.effective, ...metadata }];
+          edit.judgmentRevision = 1;
+          fresh.judgment.current = {
+            ...fresh.judgment.current!,
+            judgmentReceivedAt: value,
+          };
+          mock = api.correctCaseJudgmentRecord;
+          mock.mockResolvedValue({
+            ...receipt,
+            judgmentId: uid(6),
+            trialRoundId: uid(9),
+            judgmentRevision: 1,
+            judgmentReceivedAt: value,
+          });
+          break;
+        }
+        case 'closure': {
+          const edit = fresh.recordEdits!.closures![0]!;
+          edit.effective = { ...edit.effective, closeAt: value };
+          edit.history = [{ ...edit.effective, ...metadata }];
+          edit.closureRevision = 1;
+          fresh.closure!.current = {
+            ...fresh.closure!.current,
+            closeAt: value,
+          };
+          mock = api.correctCaseClosureRecord;
+          mock.mockResolvedValue({
+            ...receipt,
+            closureId: uid(7),
+            closureRevision: 1,
+            closeAt: value,
+          });
+          break;
+        }
+      }
+      const { wrapper } = await render(item, `/cases/${item.id}`);
+      const reads = api.getCase.mock.calls.length;
+      await wrapper
+        .get(`[data-section="${section}"] .case-workspace-section__edit`)
+        .trigger('click');
+      await wrapper.get('[data-test="workspace-command"]').setValue(command);
+      await flushPromises();
+      const panel = wrapper.getComponent(CaseSectionRecordCorrectionPanel);
+      expect(panel.props('kind')).toBe(kind);
+      expect(panel.isVisible()).toBe(true);
+      await panel.get('[data-test="section-record-date"]').setValue(value);
+      await panel
+        .get('[data-test="section-record-reason"]')
+        .setValue('取消不写入');
+      await panel.get('[data-test="section-record-cancel"]').trigger('click');
+      await flushPromises();
+      expect(mock).not.toHaveBeenCalled();
+      expect(api.getCase).toHaveBeenCalledTimes(reads);
+      await wrapper
+        .get(`[data-section="${section}"] .case-workspace-section__edit`)
+        .trigger('click');
+      await wrapper.get('[data-test="workspace-command"]').setValue(command);
+      await flushPromises();
+      await panel.get('[data-test="section-record-date"]').setValue(value);
+      await panel
+        .get('[data-test="section-record-reason"]')
+        .setValue(metadata.correctionReason);
+      api.getCase.mockResolvedValue(fresh);
+      await panel.get('form').trigger('submit');
+      await flushPromises();
+      expect(mock).toHaveBeenCalledTimes(1);
+      expect(mock.mock.calls[0]![0]).toBe(item.id);
+      expect(mock.mock.calls[0]![1]).not.toHaveProperty('expectedVersion');
+      expect(mock.mock.calls[0]![2]).toEqual({
+        signal: expect.any(AbortSignal),
+      });
+      expect(api.getCase).toHaveBeenCalledTimes(reads + 1);
+      expect(wrapper.getComponent(CaseDetailsSections).props('item')).toEqual(
+        fresh,
+      );
+      expect(fresh.stage).toBe(before.stage);
+      expect(fresh.version).toBe(before.version);
+      expect(fresh.hearing.arrangements).toEqual(before.hearing.arrangements);
+      expect(fresh.judgment.history).toEqual(before.judgment.history);
+      expect(fresh.closure!.history).toEqual(before.closure!.history);
+      for (const other of [
+        'executionMailings',
+        'executionFilings',
+        'executionFinishes',
+        'hearings',
+        'judgments',
+        'closures',
+      ] as const) {
+        const own = {
+          'execution-mailing': 'executionMailings',
+          'execution-filing': 'executionFilings',
+          'execution-finish': 'executionFinishes',
+          hearing: 'hearings',
+          judgment: 'judgments',
+          closure: 'closures',
+        }[kind];
+        if (other !== own)
+          expect(fresh.recordEdits![other]).toEqual(before.recordEdits![other]);
+      }
+      await wrapper
+        .get(`[data-section="${section}"] .case-workspace-section__toggle`)
+        .trigger('click');
+      const groups = wrapper
+        .get(`[data-section="${section}"]`)
+        .findAll('.case-workspace-group');
+      const index = groups.findIndex((group) => group.text().includes(value));
+      expect(index).toBeGreaterThanOrEqual(0);
+      const buttons = wrapper
+        .get(`[data-section="${section}"]`)
+        .findAll('.case-workspace-group-nav button');
+      if (buttons[index]) await buttons[index]!.trigger('click');
+      expect(groups[index]!.isVisible()).toBe(true);
+      await wrapper.get('[data-test="case-refresh"]').trigger('click');
+      await flushPromises();
+      expect(api.getCase).toHaveBeenCalledTimes(reads + 2);
+      expect(
+        panel.get('[data-test="section-record-date"]').element,
+      ).toHaveProperty('value', value);
+      expect(mock).toHaveBeenCalledTimes(1);
+      expect(api.scheduleCaseHearing).not.toHaveBeenCalled();
+      expect(api.registerCaseAcceptance).not.toHaveBeenCalled();
+    },
+  );
+  it('selects a remanded first-instance hearing in the first-instance column without treating round sequence as second instance', async () => {
+    const item = recordFixture();
+    const first = item.recordEdits!.hearings![0]!;
+    item.recordEdits!.hearings!.push({
+      ...structuredClone(first),
+      arrangementId: uid(55),
+      trialRoundId: uid(99),
+      original: { hearingAt: '2026-10-08' },
+      effective: { hearingAt: '2026-10-08' },
+    });
+    item.secondInstance.rounds.push({
+      id: uid(99),
+      sequence: 2,
+      sourceResultId: null,
+      revokedAt: null,
+    });
+    const fresh = structuredClone(item);
+    fresh.recordEdits!.hearings![1]!.effective = { hearingAt: '2026-10-09' };
+    fresh.recordEdits!.hearings![1]!.hearingRevision = 1;
+    api.correctCaseHearingRecord.mockResolvedValue({
+      caseId: item.id,
+      correctionId: uid(100),
+      recordedAt: '2026-10-15T00:00:00Z',
+      arrangementId: uid(55),
+      trialRoundId: uid(99),
+      hearingRevision: 1,
+      hearingAt: '2026-10-09',
+    });
+    const { wrapper } = await render(item, `/cases/${item.id}`);
+    await wrapper
+      .get('[data-section="first-instance"] .case-workspace-section__edit')
+      .trigger('click');
+    const panel = wrapper.getComponent(CaseSectionRecordCorrectionPanel);
+    await panel.get('[data-test="section-record-target"]').setValue(uid(55));
+    expect(
+      wrapper
+        .get('[data-section="second-instance"] .case-workspace-section__edit')
+        .attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      panel.get('[data-test="section-record-date"]').element,
+    ).toHaveProperty('value', '2026-10-08');
+    await panel.get('[data-test="section-record-date"]').setValue('2026-10-09');
+    await panel
+      .get('[data-test="section-record-reason"]')
+      .setValue('发回重审登记日期');
+    api.getCase.mockResolvedValue(fresh);
+    await panel.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.correctCaseHearingRecord.mock.calls[0]![1]).toMatchObject({
+      arrangementId: uid(55),
+      trialRoundId: uid(99),
+      expectedHearingRevision: 0,
+    });
+    expect(fresh.recordEdits!.hearings![0]).toEqual(first);
+    expect(fresh.stage).toBe(item.stage);
+    expect(fresh.version).toBe(item.version);
+  });
+  it('restores a retained unknown record request through the real detail recovery entry and retries the original closure anchors', async () => {
+    const item = recordFixture();
+    const first = await render(item, `/cases/${item.id}`);
+    api.correctCaseClosureRecord.mockRejectedValueOnce(
+      new ApiError('结果未知', 0, 'NETWORK_ERROR'),
+    );
+    await first.wrapper
+      .get('[data-section="closure-info"] .case-workspace-section__edit')
+      .trigger('click');
+    const panel = first.wrapper.getComponent(CaseSectionRecordCorrectionPanel);
+    await panel.get('[data-test="section-record-date"]').setValue('2026-10-07');
+    await panel
+      .get('[data-test="section-record-reason"]')
+      .setValue('  原原因  ');
+    await panel.get('form').trigger('submit');
+    await flushPromises();
+    const body: unknown = structuredClone(
+      api.correctCaseClosureRecord.mock.calls[0]![1],
+    );
+    first.wrapper.unmount();
+    const newer = structuredClone(item);
+    newer.closure!.current.id = uid(88);
+    const second = await render(newer, `/cases/${newer.id}`);
+    expect(api.correctCaseClosureRecord).toHaveBeenCalledTimes(1);
+    await second.wrapper
+      .get('[data-test="recover-record-closure"]')
+      .trigger('click');
+    const recovered = second.wrapper.getComponent(
+      CaseSectionRecordCorrectionPanel,
+    );
+    expect(
+      recovered.get('[data-test="section-record-pending"]').text(),
+    ).toContain(uid(8));
+    api.correctCaseClosureRecord.mockResolvedValue({
+      caseId: item.id,
+      correctionId: uid(100),
+      recordedAt: '2026-10-15T00:00:00Z',
+      closureId: uid(7),
+      closureRevision: 1,
+      closeAt: '2026-10-07',
+    });
+    await recovered.get('[data-test="section-record-retry"]').trigger('click');
+    await flushPromises();
+    expect(api.correctCaseClosureRecord.mock.calls[1]![1]).toEqual(body);
+    expect(api.correctCaseClosureRecord).toHaveBeenCalledTimes(2);
+  });
+  it('opens the real workflow hearing correction for an advanced external WAITING_HEARING root without inventing acceptance', async () => {
+    const item: CaseDetail = {
+      ...structuredClone(baseItem),
+      sourceLead: null,
+      sourceNotaryMatter: null,
+      certificate: null,
+      fees: [],
+      origin: {
+        kind: 'EXTERNAL_ENTRY',
+        entryId: 'entry-1',
+        entryKind: 'EXTERNAL_TRANSFER',
+        initialStage: 'WAITING_HEARING',
+        stageReachedOn: '2026-10-01',
+        source: '外部真实接办',
+        reason: '真实当前阶段',
+        recordedAt: '2026-10-01T00:00:00Z',
+        recordedByUserId: 'operator-1',
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+    };
+    item.canCorrectHearing = true;
+    const arrangement = {
+      id: 'arrangement-1',
+      trialRoundId: 'round-1',
+      hearingAt: '2026-10-01',
+      source: 'SCHEDULE' as const,
+      recordedAt: '2026-10-01T00:00:00Z',
+    };
+    const advance = {
+      id: 'advance-1',
+      trialRoundId: 'round-1',
+      arrangementId: arrangement.id,
+      dueAt: '2026-10-01T16:00:00Z',
+      executedAt: '2026-10-01T16:00:00Z',
+    };
+    item.hearing = {
+      currentArrangement: arrangement,
+      currentAdvance: advance,
+      arrangements: [arrangement],
+      advances: [advance],
+      corrections: [],
+    };
+    const { wrapper } = await render(item);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    expect(
+      wrapper.getComponent(CaseHearingPanel).props('item').acceptance,
+    ).toBeNull();
+    expect(wrapper.get('[data-test="hearing-date"]').element).toHaveProperty(
+      'value',
+      '2026-10-01',
+    );
+    expect(
+      wrapper.get('[data-test="hearing-correct"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(api.scheduleCaseHearing).not.toHaveBeenCalled();
+  });
   it('opens only registered contact fields from case edit while keeping matching separate', async () => {
     const item = structuredClone(baseItem);
     item.stage = 'PENDING_MATCH';

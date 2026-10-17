@@ -64,7 +64,14 @@ export const internalAssignablePermissionActions = [
   'CASE_EXECUTION_CONFIRM',
   'CASE_EXECUTION_MAIL',
   'CASE_EXECUTION_FILING_SUBMIT',
+  'CASE_EXECUTION_FEEDBACK_RECORD',
+  'CASE_EXECUTION_FEEDBACK_CORRECT',
+  'CASE_EXECUTION_SUPPLEMENT_SUBMIT',
+  'CASE_EXECUTION_SUPPLEMENT_CORRECT',
   'CASE_EXECUTION_FINISH',
+  'CASE_EXECUTION_MAILING_CORRECT',
+  'CASE_EXECUTION_FILING_CORRECT',
+  'CASE_EXECUTION_FINISH_CORRECT',
   'CASE_CLOSURE_RECORD',
   'CASE_CLOSURE_CORRECT',
   'CASE_ARCHIVE',
@@ -94,6 +101,26 @@ export function isInternalAssignablePermissionAction(
 }
 
 const catalog: PermissionCatalogItem[] = [
+  {
+    action: 'CASE_EXECUTION_FEEDBACK_RECORD',
+    label: '登记执行法院反馈',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_EXECUTION_FEEDBACK_CORRECT',
+    label: '更正执行法院反馈',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_EXECUTION_SUPPLEMENT_SUBMIT',
+    label: '登记执行申请补交',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_EXECUTION_SUPPLEMENT_CORRECT',
+    label: '更正执行申请补交',
+    scopes: allScopes,
+  },
   { action: 'CUSTOMER_READ', label: '查看客户', scopes: allScopes },
   {
     action: 'CUSTOMER_RESPONSIBLE_TRANSFER',
@@ -270,6 +297,21 @@ const catalog: PermissionCatalogItem[] = [
     scopes: allScopes,
   },
   { action: 'CASE_EXECUTION_MAIL', label: '登记执行邮寄', scopes: allScopes },
+  {
+    action: 'CASE_EXECUTION_MAILING_CORRECT',
+    label: '更正执行邮寄资料',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_EXECUTION_FILING_CORRECT',
+    label: '更正执行申请资料',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_EXECUTION_FINISH_CORRECT',
+    label: '更正执行结束资料',
+    scopes: allScopes,
+  },
   {
     action: 'CASE_EXECUTION_FILING_SUBMIT',
     label: '申请执行',

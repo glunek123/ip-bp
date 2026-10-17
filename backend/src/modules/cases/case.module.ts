@@ -1,8 +1,15 @@
 import { CaseArchiveService } from './case-archive.service';
+import { CaseExecutionRecordEditService } from './case-execution-record-edit.service';
+import { CaseHistoricalRecordEditService } from './case-historical-record-edit.service';
 import { CaseClosureService } from './case-closure.service';
 import { CaseExecutionFinishService } from './case-execution-finish.service';
 import { CaseExecutionMailingService } from './case-execution-mailing.service';
 import { CaseExecutionFilingService } from './case-execution-filing.service';
+import { CaseExecutionFilingFollowupService } from './case-execution-filing-followup.service';
+import {
+  CaseExecutionFilingFollowupController,
+  LawyerCaseExecutionFilingFollowupController,
+} from './case-execution-filing-followup.controller';
 import { Module } from '@nestjs/common';
 import { AccessControlModule } from '../../access-control/access-control.module';
 import { AuthModule } from '../../auth/auth.module';
@@ -52,6 +59,8 @@ import { LawyerCaseController } from './lawyer-case.controller';
     MaterialModule,
   ],
   controllers: [
+    CaseExecutionFilingFollowupController,
+    LawyerCaseExecutionFilingFollowupController,
     CaseReadController,
     ClientCaseController,
     LawyerAccountController,
@@ -59,6 +68,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     LawyerCaseController,
   ],
   providers: [
+    CaseExecutionFilingFollowupService,
     CaseCalendarSourceService,
     CaseReadService,
     CaseCreationService,
@@ -70,6 +80,8 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseFilingService,
     CaseAcceptanceService,
     CaseRecordEditService,
+    CaseExecutionRecordEditService,
+    CaseHistoricalRecordEditService,
     CaseHearingService,
     CaseJudgmentService,
     CaseJudgmentNextStepService,

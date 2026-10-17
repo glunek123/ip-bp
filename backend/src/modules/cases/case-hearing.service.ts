@@ -275,19 +275,76 @@ export class CaseHearingService {
                 where: { id: record.currentHearingAdvanceId },
                 select: {
                   id: true,
+                  departmentId: true,
                   caseId: true,
                   arrangementId: true,
                   trialRoundId: true,
                   externalEntryId: true,
+                  toVersion: true,
                 },
               });
               if (
                 advance?.caseId !== caseId ||
-                advance.arrangementId !== record.currentHearingArrangementId ||
+                advance.id !== record.currentHearingAdvanceId ||
+                advance.departmentId !== actor.departmentId ||
                 advance.trialRoundId !== record.currentTrialRoundId ||
                 advance.externalEntryId !== entryId
               )
                 throw this.invalidState();
+              if (
+                advance.arrangementId === record.currentHearingArrangementId
+              ) {
+                if (advance.toVersion !== record.version)
+                  throw this.invalidState();
+              } else {
+                // A past-date correction retains the original advance. Prove
+                // continuation from the exact current arrangement, never from
+                // the latest correction or advance elsewhere in the case.
+                const arrangement = await tx.caseHearingArrangement.findUnique({
+                  where: { id: record.currentHearingArrangementId },
+                  select: {
+                    id: true,
+                    caseId: true,
+                    departmentId: true,
+                    trialRoundId: true,
+                    externalEntryId: true,
+                    source: true,
+                    fromVersion: true,
+                    toVersion: true,
+                    correctionAsNew: {
+                      select: {
+                        caseId: true,
+                        departmentId: true,
+                        newArrangementId: true,
+                        priorAdvanceId: true,
+                        resultStage: true,
+                        fromVersion: true,
+                        toVersion: true,
+                      },
+                    },
+                  },
+                });
+                const correction = arrangement?.correctionAsNew;
+                if (
+                  arrangement?.id !== record.currentHearingArrangementId ||
+                  arrangement.caseId !== caseId ||
+                  arrangement.departmentId !== actor.departmentId ||
+                  arrangement.trialRoundId !== record.currentTrialRoundId ||
+                  arrangement.externalEntryId !== entryId ||
+                  arrangement.source !== 'CORRECTION' ||
+                  arrangement.toVersion !== record.version ||
+                  arrangement.fromVersion + 1 !== arrangement.toVersion ||
+                  arrangement.fromVersion < advance.toVersion ||
+                  correction?.caseId !== caseId ||
+                  correction.departmentId !== actor.departmentId ||
+                  correction.newArrangementId !== arrangement.id ||
+                  correction.priorAdvanceId !== advance.id ||
+                  correction.resultStage !== 'WAITING_JUDGMENT' ||
+                  correction.fromVersion !== arrangement.fromVersion ||
+                  correction.toVersion !== arrangement.toVersion
+                )
+                  throw this.invalidState();
+              }
               priorAdvanceId = advance.id;
             }
             const recordedAt = this.clock.now();
@@ -427,7 +484,18 @@ export class CaseHearingService {
       where: {
         stage: 'WAITING_HEARING',
         currentHearingArrangement: {
-          is: { hearingAt: { lt: new Date(`${today}T00:00:00.000Z`) } },
+          is: {
+            OR: [
+              { hearingAt: { lt: new Date(`${today}T00:00:00.000Z`) } },
+              {
+                recordCorrections: {
+                  some: {
+                    hearingAt: { lt: new Date(`${today}T00:00:00.000Z`) },
+                  },
+                },
+              },
+            ],
+          },
         },
       },
       select: { id: true, departmentId: true },
@@ -465,6 +533,11 @@ export class CaseHearingService {
                   select: {
                     id: true,
                     hearingAt: true,
+                    recordCorrections: {
+                      orderBy: { toRevision: 'desc' },
+                      take: 1,
+                      select: { hearingAt: true },
+                    },
                     toVersion: true,
                     trialRoundId: true,
                     externalEntryId: true,
@@ -495,26 +568,34 @@ export class CaseHearingService {
               (source.kind === 'EXTERNAL_ENTRY' &&
                 record.currentAcceptanceId === null &&
                 source.initialStage !== 'WAITING_HEARING') ||
-              arrangement?.hearingAt == null ||
+              arrangement?.id !== record.currentHearingArrangementId ||
               arrangement.trialRoundId !== record.currentTrialRoundId ||
               (arrangement.externalEntryId ?? null) !== entryId ||
               record.version !== arrangement.toVersion
             )
               return false;
+            // The candidate query can include an older past-date correction.
+            // Only the exact current arrangement's locked latest head is effective;
+            // a head that explicitly clears the date never falls back to the root.
+            const hearingAt =
+              arrangement.recordCorrections.length > 0
+                ? arrangement.recordCorrections[0]!.hearingAt
+                : arrangement.hearingAt;
+            if (hearingAt === null) return false;
             const prior = await tx.caseHearingAdvance.findUnique({
               where: { arrangementId: arrangement.id },
               select: { id: true },
             });
             if (prior !== null) return false;
             const due = await tx.$queryRawUnsafe<Array<{ due_at: Date }>>(
-              'SELECT (("hearing_at" + 1)::timestamp AT TIME ZONE \'Asia/Shanghai\') AS due_at FROM "case_hearing_arrangements" WHERE "id" = $1::uuid',
-              arrangement.id,
+              "SELECT (($1::date + 1)::timestamp AT TIME ZONE 'Asia/Shanghai') AS due_at",
+              isoDate(hearingAt),
             );
             const executedAt = this.clock.now();
             if (
               due.length !== 1 ||
               due[0].due_at > executedAt ||
-              !hearingIsDue(isoDate(arrangement.hearingAt), executedAt)
+              !hearingIsDue(isoDate(hearingAt), executedAt)
             )
               return false;
             const advanceId = randomUUID();

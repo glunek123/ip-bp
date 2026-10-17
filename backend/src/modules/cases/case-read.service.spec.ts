@@ -1,4 +1,5 @@
 import { CaseReadService } from './case-read.service';
+import { Prisma } from '../../generated/prisma/client';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -58,6 +59,12 @@ function displaySource(leadId: string, matterId: string) {
 describe('CaseReadService', () => {
   function fixture() {
     const db = {
+      caseExecutionFilingFeedback: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      caseExecutionFilingSupplement: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       userAccount: {
         findUnique: jest
           .fn()
@@ -73,6 +80,7 @@ describe('CaseReadService', () => {
         groupBy: jest.fn().mockResolvedValue([]),
       },
       material: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRawUnsafe: jest.fn().mockResolvedValue([]),
       filingCourt: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn(),
     };
@@ -101,8 +109,11 @@ describe('CaseReadService', () => {
     };
     db.$transaction.mockImplementation(async (operation) =>
       operation({
+        caseExecutionFilingFeedback: db.caseExecutionFilingFeedback,
+        caseExecutionFilingSupplement: db.caseExecutionFilingSupplement,
         case: { findFirst: db.case.findFirst },
         material: db.material,
+        $queryRawUnsafe: db.$queryRawUnsafe,
       }),
     );
     return {
@@ -210,6 +221,732 @@ describe('CaseReadService', () => {
       complaintMailing: null,
     };
   }
+  describe('execution filing followup scoped read', () => {
+    const first = {
+      id: 'feedback-root',
+      feedbackId: 'feedback-root',
+      priorVersionId: null,
+      fromRevision: 0,
+      toRevision: 1,
+      correctionReason: null,
+      recordedAt: new Date('2026-10-16T00:00:00Z'),
+      feedbackOn: null,
+      courtCaseNo: null,
+      content: '真实反馈',
+    };
+    const corrected = {
+      ...first,
+      id: 'feedback-version-2',
+      priorVersionId: first.id,
+      fromRevision: 1,
+      toRevision: 2,
+      correctionReason: '内部原因',
+      content: '更正内容',
+    };
+    function withFiling(stage = 'EXECUTING') {
+      const f = fixture();
+      const record = {
+        ...externalRecord('WAITING_EXECUTION_FILING'),
+        stage,
+        executionFiling: {
+          id: 'local-filing',
+          mailingId: null,
+          submittedAt: new Date('2026-10-15T00:00:00Z'),
+          recordedAt: new Date('2026-10-15T00:00:00Z'),
+          toVersion: 2,
+        },
+      };
+      f.db.case.findFirst.mockResolvedValue(record);
+      f.db.caseExecutionFilingFeedback.findMany.mockResolvedValue([
+        first,
+        corrected,
+      ]);
+      return { ...f, record };
+    }
+    it('queries exact case, department and real filing inside the existing repeatable-read snapshot', async () => {
+      const f = withFiling();
+      const result = await f.service.get(actor, 'case-1');
+      const where = {
+        caseId: 'case-1',
+        departmentId: actor.departmentId,
+        filingId: 'local-filing',
+      };
+      expect(f.db.caseExecutionFilingFeedback.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where }),
+      );
+      expect(f.db.caseExecutionFilingSupplement.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where }),
+      );
+      expect(f.db.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: 'RepeatableRead',
+      });
+      expect(result.executionFilingFollowups).toMatchObject({
+        filingId: 'local-filing',
+        feedbacks: [
+          {
+            current: { id: corrected.id, revision: 2 },
+            history: [
+              { id: first.id, correctionReason: null },
+              { id: corrected.id, correctionReason: '内部原因' },
+            ],
+          },
+        ],
+      });
+      expect(result.executionFiling).toEqual({
+        id: 'local-filing',
+        mailingId: null,
+        submittedAt: '2026-10-15',
+        recordedAt: '2026-10-15T00:00:00.000Z',
+        files: [],
+      });
+    });
+    it('computes each current internal action independently rather than deriving writes from case.read', async () => {
+      const f = withFiling();
+      f.access.canAuthorizeCase.mockImplementation(
+        async (_actor: typeof actor, action: string) =>
+          action === 'case.execution.feedback.record' ||
+          action === 'case.execution.supplement.correct',
+      );
+      f.db.caseExecutionFilingSupplement.findMany.mockResolvedValue([
+        {
+          id: 'supplement-root',
+          supplementId: 'supplement-root',
+          priorVersionId: null,
+          fromRevision: 0,
+          toRevision: 1,
+          correctionReason: null,
+          recordedAt: new Date(),
+          submittedOn: null,
+          note: null,
+          documents: [
+            {
+              materialId: 'supplement-material',
+              contentVersionId: 'supplement-file',
+              contentVersion: {
+                originalFilename: '真实补交.pdf',
+                mimeType: 'application/pdf',
+              },
+            },
+          ],
+        },
+      ]);
+      const result = await f.service.get(actor, 'case-1');
+      expect(result.executionFilingFollowups).toMatchObject({
+        canRecordFeedback: true,
+        canSubmitSupplement: false,
+        feedbacks: [{ canCorrect: false }],
+        supplements: [{ canCorrect: true }],
+      });
+      for (const action of [
+        'case.execution.feedback.record',
+        'case.execution.feedback.correct',
+        'case.execution.supplement.submit',
+        'case.execution.supplement.correct',
+      ])
+        expect(f.access.canAuthorizeCase).toHaveBeenCalledWith(actor, action, {
+          departmentId: actor.departmentId,
+          responsibleUserId: actor.userId,
+        });
+    });
+    it('keeps a true empty filing distinct from an external EXECUTING source without a local filing', async () => {
+      const f = withFiling();
+      f.db.caseExecutionFilingFeedback.findMany.mockResolvedValue([]);
+      expect(
+        (await f.service.get(actor, 'case-1')).executionFilingFollowups,
+      ).toMatchObject({ feedbacks: [], supplements: [] });
+      f.db.case.findFirst.mockResolvedValue(externalRecord('EXECUTING'));
+      f.db.caseExecutionFilingFeedback.findMany.mockClear();
+      f.db.caseExecutionFilingSupplement.findMany.mockClear();
+      expect(
+        (await f.service.get(actor, 'case-1')).executionFilingFollowups,
+      ).toBeNull();
+      expect(f.db.caseExecutionFilingFeedback.findMany).not.toHaveBeenCalled();
+      expect(
+        f.db.caseExecutionFilingSupplement.findMany,
+      ).not.toHaveBeenCalled();
+    });
+    it('retains history after archive with all new write capabilities false', async () => {
+      const f = withFiling('ARCHIVED');
+      const closureVersion = {
+        id: 'closure-version',
+        kind: 'REGISTER',
+        priorVersionId: null,
+        finishId: 'finish',
+        fromVersion: 3,
+        toVersion: 4,
+        closeAt: null,
+        closeAmountState: 'UNKNOWN',
+        closeAmt: null,
+        note: null,
+        correctionReason: null,
+        recordedAt: new Date('2026-10-16T01:00:00Z'),
+        recordedByUserId: actor.userId,
+      };
+      f.db.case.findFirst.mockResolvedValue({
+        ...f.record,
+        version: 5,
+        executionFinish: {
+          id: 'finish',
+          filingId: 'local-filing',
+          finishedAt: new Date('2026-10-16T00:00:00Z'),
+          reason: 'EXECUTION_COLLECTED',
+          basisNote: null,
+          recordedAt: new Date('2026-10-16T00:00:00Z'),
+          toVersion: 3,
+        },
+        closure: {
+          id: 'closure',
+          finishId: 'finish',
+          currentVersionId: closureVersion.id,
+          versions: [closureVersion],
+        },
+        archive: {
+          id: 'archive',
+          closureId: 'closure',
+          closureVersionId: closureVersion.id,
+          currentVersionId: 'archive-version',
+          versions: [
+            {
+              id: 'archive-version',
+              kind: 'ARCHIVE',
+              priorVersionId: null,
+              closureVersionId: closureVersion.id,
+              fromVersion: 4,
+              toVersion: 5,
+              archiveAt: new Date('2026-10-16T00:00:00Z'),
+              archiveType: 'EXECUTION_COLLECTED',
+              archiveReason: '真实归档',
+              correctionReason: null,
+              recordedAt: new Date('2026-10-16T02:00:00Z'),
+              recordedByUserId: actor.userId,
+            },
+          ],
+        },
+      });
+      const result = await f.service.get(actor, 'case-1');
+      expect(result.executionFilingFollowups).toMatchObject({
+        canRecordFeedback: false,
+        canSubmitSupplement: false,
+        feedbacks: [{ canCorrect: false, current: { revision: 2 } }],
+      });
+    });
+    it('retains current PRIMARY scope in the actual lawyer query and strips internal reasons from history', async () => {
+      const f = withFiling();
+      f.db.userAccount.findUnique.mockResolvedValue({
+        accountType: 'LAWYER',
+        active: true,
+      });
+      const result = await f.service.get(
+        { ...actor, lawyerAccountId: actor.userId },
+        'case-1',
+      );
+      expect(f.db.case.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            departmentId: actor.departmentId,
+            lawyers: {
+              some: expect.objectContaining({ role: 'PRIMARY', endedAt: null }),
+            },
+          }),
+        }),
+      );
+      expect(result.executionFilingFollowups).toMatchObject({
+        canRecordFeedback: true,
+        canSubmitSupplement: true,
+        feedbacks: [{ canCorrect: true }],
+      });
+      expect(JSON.stringify(result.executionFilingFollowups)).not.toContain(
+        'correctionReason',
+      );
+      expect(JSON.stringify(result.executionFilingFollowups)).not.toContain(
+        '内部原因',
+      );
+    });
+  });
+  it('hides prepared judgment metadata from lawyer details until exact first-consumption proof without changing ordinary files', async () => {
+    const f = fixture();
+    const record = externalRecord('ARCHIVED');
+    const pendingId = '33333333-3333-4333-8333-333333333333';
+    const ordinaryId = '44444444-4444-4444-8444-444444444444';
+    f.db.case.findFirst.mockResolvedValue(record);
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    const materials = [
+      {
+        id: 'pending-material',
+        currentVersionId: pendingId,
+        contentVersions: [
+          {
+            id: pendingId,
+            originalFilename: '内部未提交判决.pdf',
+            mimeType: 'application/pdf',
+            caseSectionRecordUploadDraftId: 'dedicated-draft',
+          },
+        ],
+      },
+      {
+        id: 'ordinary-material',
+        currentVersionId: ordinaryId,
+        contentVersions: [
+          {
+            id: ordinaryId,
+            originalFilename: '原普通判决.pdf',
+            mimeType: 'application/pdf',
+            caseSectionRecordUploadDraftId: null,
+          },
+        ],
+      },
+    ];
+    f.db.material.findMany.mockImplementation(async ({ where }) =>
+      where.category === 'JUDGMENT' ? structuredClone(materials) : [],
+    );
+    const lawyer = { ...actor, lawyerAccountId: actor.userId };
+    const before = await f.service.get(lawyer, record.id);
+    expect(
+      before.judgment.availableFiles.map((file) => file.contentVersionId),
+    ).toEqual([ordinaryId]);
+    expect(JSON.stringify(before)).not.toContain('内部未提交判决.pdf');
+    expect(f.db.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('case_section_upload_has_first_freeze(v.id)'),
+      [pendingId],
+    );
+    f.db.$queryRawUnsafe.mockResolvedValue([{ id: pendingId }]);
+    const after = await f.service.get(lawyer, record.id);
+    expect(
+      after.judgment.availableFiles.map((file) => file.contentVersionId),
+    ).toEqual([pendingId, ordinaryId]);
+    expect(after.judgment.availableFiles[0]).not.toHaveProperty(
+      'caseSectionRecordUploadDraftId',
+    );
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
+    f.db.$queryRawUnsafe.mockClear();
+    expect(
+      (await f.service.get(actor, record.id)).judgment.availableFiles,
+    ).toHaveLength(2);
+    expect(f.db.$queryRawUnsafe).not.toHaveBeenCalled();
+  });
+  it('projects corrected execution mailing separately from its frozen record and hides internal correction evidence from lawyers', async () => {
+    const f = fixture();
+    const originalFile = {
+      materialId: 'old-material',
+      contentVersionId: 'old-content',
+      originalFilename: '原回执.pdf',
+      mimeType: 'application/pdf',
+    };
+    const effectiveFile = {
+      materialId: 'new-material',
+      contentVersionId: 'new-content',
+      originalFilename: '更正回执.pdf',
+      mimeType: 'application/pdf',
+    };
+    const mailing = {
+      id: 'mailing',
+      confirmationId: 'confirmation',
+      mailedAt: new Date('2026-10-01T00:00:00Z'),
+      recordedAt: new Date('2026-10-02T01:00:00Z'),
+    };
+    const record = {
+      ...externalRecord('EXECUTING'),
+      executionMailing: mailing,
+      executionMailingRecordCorrections: [
+        {
+          id: 'mailing-correction',
+          mailingId: 'mailing',
+          caseId: 'case-1',
+          departmentId: actor.departmentId,
+          priorCorrectionId: null,
+          fromRevision: 0,
+          toRevision: 1,
+          mailedAt: new Date('2026-09-30T00:00:00Z'),
+          correctionReason: '内部邮寄日期更正',
+          recordedAt: new Date('2026-10-03T01:00:00Z'),
+          recordedByUserId: 'correction-operator',
+          caseAnchorSnapshot: { privateMarker: 'do-not-expose-anchor' },
+          documents: [
+            {
+              materialId: effectiveFile.materialId,
+              contentVersionId: effectiveFile.contentVersionId,
+              contentVersion: {
+                originalFilename: effectiveFile.originalFilename,
+                mimeType: effectiveFile.mimeType,
+              },
+            },
+          ],
+        },
+      ],
+    };
+    f.materials.listFrozenCaseExecutionMailingFiles.mockResolvedValue([
+      originalFile,
+    ]);
+    f.db.case.findFirst.mockResolvedValue(record);
+    const before = JSON.stringify(record);
+    const detail = await f.service.get(actor, record.id);
+    expect(detail).toMatchObject({
+      stage: 'EXECUTING',
+      version: 1,
+      executionMailing: {
+        id: 'mailing',
+        mailedAt: '2026-09-30',
+        files: [effectiveFile],
+      },
+      recordEdits: {
+        executionMailings: [
+          {
+            mailingId: 'mailing',
+            mailingRevision: 1,
+            canEdit: true,
+            original: { mailedAt: '2026-10-01', files: [originalFile] },
+            effective: { mailedAt: '2026-09-30', files: [effectiveFile] },
+            history: [
+              {
+                id: 'mailing-correction',
+                correctionReason: '内部邮寄日期更正',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(record)).toBe(before);
+    expect(JSON.stringify(detail)).not.toContain('do-not-expose-anchor');
+    f.access.canAuthorizeCase.mockResolvedValue(false);
+    expect(await f.service.get(actor, record.id)).toMatchObject({
+      recordEdits: { executionMailings: [{ canEdit: false }] },
+    });
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    const lawyer = await f.service.get(
+      { ...actor, lawyerAccountId: actor.userId },
+      record.id,
+    );
+    expect(lawyer.executionMailing).toMatchObject({
+      id: 'mailing',
+      mailedAt: '2026-09-30',
+      files: [effectiveFile],
+    });
+    expect(lawyer).not.toHaveProperty('recordEdits');
+    expect(JSON.stringify(lawyer)).not.toContain('内部邮寄日期更正');
+    expect(JSON.stringify(lawyer)).not.toContain('correction-operator');
+  });
+  it('reads all six populated correction sections while preserving exact original targets, history and closure anchor', async () => {
+    const f = fixture();
+    const date = (day: number) =>
+      new Date(`2026-10-${String(day).padStart(2, '0')}T00:00:00Z`);
+    const originalFile = {
+      materialId: 'original-material',
+      contentVersionId: 'original-content',
+      originalFilename: '原文书.pdf',
+      mimeType: 'application/pdf',
+    };
+    const correctedFile = {
+      materialId: 'corrected-material',
+      contentVersionId: 'corrected-content',
+      contentVersion: {
+        originalFilename: '更正文书.pdf',
+        mimeType: 'application/pdf',
+      },
+    };
+    const correctedPublicFile = {
+      materialId: correctedFile.materialId,
+      contentVersionId: correctedFile.contentVersionId,
+      ...correctedFile.contentVersion,
+    };
+    const metadata = {
+      priorCorrectionId: null,
+      fromRevision: 0,
+      toRevision: 1,
+      correctionReason: '内部更正原因',
+      recordedAt: date(14),
+      recordedByUserId: 'internal-corrector',
+      caseAnchorSnapshot: { private: 'private-anchor' },
+    };
+    const correction = { ...metadata, documents: [correctedFile] };
+    const hearing = {
+      id: 'hearing',
+      trialRoundId: 'round-1',
+      hearingAt: date(1),
+      source: 'SCHEDULE',
+      recordedAt: date(1),
+      recordedByUserId: actor.userId,
+    };
+    const judgment = {
+      id: 'judgment',
+      trialRoundId: 'round-1',
+      kind: 'REGISTER',
+      priorFactId: null,
+      judgmentReceivedAt: date(3),
+      judgmentAmountState: 'KNOWN',
+      judgmentAmount: new Prisma.Decimal('123'),
+      paidLitigationFeeState: 'PENDING',
+      paidLitigationFee: null,
+      fromVersion: 2,
+      toVersion: 3,
+      recordedAt: date(3),
+      reason: null,
+      recordedByUserId: actor.userId,
+      versions: [
+        {
+          materialId: originalFile.materialId,
+          contentVersionId: originalFile.contentVersionId,
+          contentVersion: {
+            originalFilename: originalFile.originalFilename,
+            mimeType: originalFile.mimeType,
+          },
+        },
+      ],
+    };
+    const finish = {
+      id: 'finish',
+      filingId: 'filing',
+      finishedAt: date(9),
+      reason: '原结束原因',
+      basisNote: null,
+      fromVersion: 24,
+      toVersion: 25,
+      recordedAt: date(9),
+    };
+    const closureVersion = {
+      id: 'closure-version',
+      kind: 'REGISTER',
+      priorVersionId: null,
+      finishId: finish.id,
+      fromVersion: 25,
+      toVersion: 26,
+      closeAt: date(11),
+      closeAmountState: 'KNOWN',
+      closeAmt: new Prisma.Decimal('80'),
+      note: '原备注',
+      correctionReason: null,
+      recordedAt: date(11),
+      recordedByUserId: actor.userId,
+    };
+    const record = {
+      ...externalRecord('EXECUTING'),
+      stage: 'WAITING_ARCHIVE',
+      version: 26,
+      executionMailing: {
+        id: 'mailing',
+        confirmationId: 'confirmation',
+        mailedAt: date(5),
+        recordedAt: date(5),
+      },
+      executionFiling: {
+        id: 'filing',
+        mailingId: 'mailing',
+        submittedAt: date(7),
+        toVersion: 24,
+        recordedAt: date(7),
+      },
+      executionFinish: finish,
+      currentHearingArrangementId: hearing.id,
+      currentHearingArrangement: hearing,
+      hearingArrangements: [hearing],
+      currentJudgmentId: judgment.id,
+      judgmentFacts: [judgment],
+      closure: {
+        id: 'closure',
+        finishId: finish.id,
+        currentVersionId: closureVersion.id,
+        versions: [closureVersion],
+      },
+      executionMailingRecordCorrections: [
+        {
+          ...correction,
+          id: 'mailing-edit',
+          mailingId: 'mailing',
+          mailedAt: date(6),
+        },
+      ],
+      executionFilingRecordCorrections: [
+        {
+          ...correction,
+          id: 'filing-edit',
+          filingId: 'filing',
+          submittedAt: date(8),
+        },
+      ],
+      executionFinishRecordCorrections: [
+        {
+          ...correction,
+          id: 'finish-edit',
+          finishId: 'finish',
+          finishedAt: date(10),
+          businessReason: '更正结束业务原因',
+          basisNote: '依据说明',
+        },
+      ],
+      hearingRecordCorrections: [
+        {
+          ...metadata,
+          id: 'hearing-edit',
+          arrangementId: hearing.id,
+          trialRoundId: hearing.trialRoundId,
+          hearingAt: date(2),
+        },
+      ],
+      judgmentRecordCorrections: [
+        {
+          ...correction,
+          id: 'judgment-edit',
+          judgmentId: judgment.id,
+          trialRoundId: judgment.trialRoundId,
+          judgmentReceivedAt: date(4),
+          judgmentAmountState: 'KNOWN',
+          judgmentAmount: new Prisma.Decimal('100'),
+          paidLitigationFeeState: 'KNOWN',
+          paidLitigationFee: new Prisma.Decimal('0'),
+        },
+      ],
+      closureRecordCorrections: [
+        {
+          ...correction,
+          id: 'closure-edit',
+          closureId: 'closure',
+          sourceClosureVersionId: closureVersion.id,
+          closeAt: date(12),
+          closeAmountState: 'PENDING',
+          closeAmt: null,
+          note: null,
+        },
+      ],
+    };
+    for (const method of [
+      f.materials.listFrozenCaseExecutionMailingFiles,
+      f.materials.listFrozenCaseExecutionFilingFiles,
+      f.materials.listFrozenCaseExecutionFinishFiles,
+      f.materials.listFrozenCaseClosureFiles,
+    ])
+      method.mockResolvedValue([originalFile]);
+    f.db.case.findFirst.mockResolvedValue(record);
+    const originalSnapshot = JSON.stringify(record);
+    const detail = await f.service.get(actor, record.id);
+    expect(detail).toMatchObject({
+      stage: 'WAITING_ARCHIVE',
+      version: 26,
+      executionMailing: {
+        id: 'mailing',
+        mailedAt: '2026-10-06',
+        files: [correctedPublicFile],
+      },
+      executionFiling: {
+        id: 'filing',
+        submittedAt: '2026-10-08',
+        files: [correctedPublicFile],
+      },
+      executionFinish: {
+        id: 'finish',
+        finishedAt: '2026-10-10',
+        reason: '更正结束业务原因',
+        basisNote: '依据说明',
+        files: [correctedPublicFile],
+      },
+      hearing: {
+        currentArrangement: { id: 'hearing', hearingAt: '2026-10-02' },
+        arrangements: [{ id: 'hearing', hearingAt: '2026-10-01' }],
+      },
+      judgment: {
+        current: {
+          id: 'judgment',
+          judgmentReceivedAt: '2026-10-04',
+          judgmentAmount: '100.00',
+          paidLitigationFee: '0.00',
+          files: [correctedPublicFile],
+        },
+        history: [
+          { id: 'judgment', judgmentAmount: '123.00', files: [originalFile] },
+        ],
+      },
+      closure: {
+        id: 'closure',
+        current: {
+          id: 'closure-version',
+          closeAt: '2026-10-12',
+          closeAmountState: 'PENDING',
+          closeAmt: null,
+          note: null,
+          files: [correctedPublicFile],
+        },
+        history: [
+          {
+            id: 'closure-version',
+            closeAt: '2026-10-11',
+            closeAmt: '80.00',
+            files: [originalFile],
+          },
+        ],
+      },
+      recordEdits: {
+        executionMailings: [
+          { mailingId: 'mailing', mailingRevision: 1, canEdit: true },
+        ],
+        executionFilings: [
+          { filingId: 'filing', filingRevision: 1, canEdit: true },
+        ],
+        executionFinishes: [
+          { finishId: 'finish', finishRevision: 1, canEdit: true },
+        ],
+        hearings: [
+          {
+            arrangementId: 'hearing',
+            trialRoundId: 'round-1',
+            hearingRevision: 1,
+            canEdit: true,
+          },
+        ],
+        judgments: [
+          {
+            judgmentId: 'judgment',
+            trialRoundId: 'round-1',
+            judgmentRevision: 1,
+            canEdit: true,
+          },
+        ],
+        closures: [{ closureId: 'closure', closureRevision: 1, canEdit: true }],
+      },
+    });
+    expect(JSON.stringify(detail)).not.toContain('private-anchor');
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    const lawyer = await f.service.get(
+      { ...actor, lawyerAccountId: actor.userId },
+      record.id,
+    );
+    expect(lawyer.judgment.current).toMatchObject({ judgmentAmount: '100.00' });
+    expect(lawyer.closure?.current).toMatchObject({
+      id: 'closure-version',
+      closeAt: '2026-10-12',
+    });
+    expect(lawyer).not.toHaveProperty('recordEdits');
+    expect(JSON.stringify(lawyer)).not.toContain('内部更正原因');
+    expect(JSON.stringify(lawyer)).not.toContain('internal-corrector');
+    expect(JSON.stringify(record)).toBe(originalSnapshot);
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      closureRecordCorrections: [
+        {
+          ...record.closureRecordCorrections[0],
+          sourceClosureVersionId: 'foreign-version',
+        },
+      ],
+    });
+    await expect(f.service.get(actor, record.id)).rejects.toMatchObject({
+      response: { code: 'CASE_NOT_FOUND' },
+    });
+  });
+
   it.each([
     ['SECOND_INSTANCE', 'canSaveSecondInstance'],
     ['WAITING_EXECUTION_DOCUMENTS', 'canSubmitExecution'],

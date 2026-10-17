@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import CaseExecutionMailingPanel from './CaseExecutionMailingPanel.vue';
 import CaseExecutionFilingPanel from './CaseExecutionFilingPanel.vue';
+import CaseExecutionFilingFollowupPanel from './CaseExecutionFilingFollowupPanel.vue';
 import CaseExecutionFinishPanel from './CaseExecutionFinishPanel.vue';
 import CaseClosurePanel from './CaseClosurePanel.vue';
 import CaseArchivePanel from './CaseArchivePanel.vue';
@@ -9,7 +10,13 @@ import {
   primaryCaseAction,
   resolveCaseDetailActions,
 } from './case-workspace-actions';
-import { resolveCaseSectionEdits } from './case-workspace-section-edits';
+import {
+  resolveCaseSectionEdits,
+  sectionRecordCommands,
+} from './case-workspace-section-edits';
+import CaseSectionRecordCorrectionPanel, {
+  readCaseSectionRecordRequests,
+} from './CaseSectionRecordCorrectionPanel.vue';
 
 import {
   computed,
@@ -162,6 +169,31 @@ const timelineView = ref(false);
 const openedCommands = ref(new Set<string>());
 type WorkspaceCommand = { id: string; section: SectionKey; label: string };
 const openedCommandEntries = ref(new Map<string, WorkspaceCommand>());
+const recordRequestRevision = ref(0);
+const recordRecovery = computed(() => {
+  void recordRequestRevision.value;
+  const current = item.value;
+  if (!current || !secondInstanceActorKey.value)
+    return { commands: [] as WorkspaceCommand[], error: '' };
+  try {
+    const stored = readCaseSectionRecordRequests(
+      secondInstanceActorKey.value,
+      current.id,
+    );
+    return {
+      commands: sectionRecordCommands.filter((command) =>
+        stored.some(({ request }) => request.kind === command.kind),
+      ),
+      error: '',
+    };
+  } catch {
+    return {
+      commands: [] as WorkspaceCommand[],
+      error:
+        '资料更正原请求恢复记录无法读取，请保留当前会话核查；不会自动重发。',
+    };
+  }
+});
 const commands = computed<WorkspaceCommand[]>(() => {
   const current = item.value;
   if (!current) return [];
@@ -228,7 +260,10 @@ const commands = computed<WorkspaceCommand[]>(() => {
 });
 const priorEditors = computed(() =>
   [...openedCommandEntries.value.values()].filter(
-    (previous) => !commands.value.some((entry) => entry.id === previous.id),
+    (previous) =>
+      !commands.value.some((entry) => entry.id === previous.id) &&
+      !sectionEditCommands.value.some((entry) => entry.id === previous.id) &&
+      !recordRecovery.value.commands.some((entry) => entry.id === previous.id),
   ),
 );
 const businessCommands = computed(() =>
@@ -315,16 +350,12 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
       enabled: hasCommand('first-instance'),
       label: '编辑',
       hint: hasCommand('first-instance')
-        ? '更正已登记的一审受理日期／法院案号，保存不推进阶段。'
+        ? '更正已登记的一审受理／开庭资料，保存不推进阶段。'
         : acceptanceEditHint,
     },
     'second-instance': action('second-instance'),
     judgment: action('judgment'),
-    execution: {
-      enabled: false,
-      label: '编辑',
-      hint: '执行信息的独立更正接口尚未提供；流程办理请使用独立入口。',
-    },
+    execution: action('execution'),
     'closure-info':
       closurePending.value || archivePending.value
         ? {
@@ -342,12 +373,19 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
 });
 const editorCommands = computed(() => {
   if (sectionEditing.value)
-    return sectionEditCommands.value.filter(
-      (entry) => entry.section === editorSection.value,
-    );
+    return [
+      ...sectionEditCommands.value,
+      ...recordRecovery.value.commands.filter(
+        (command) =>
+          !sectionEditCommands.value.some((entry) => entry.id === command.id),
+      ),
+    ].filter((entry) => entry.section === editorSection.value);
   const entries = [...commands.value];
   for (const previous of openedCommandEntries.value.values())
-    if (!entries.some((entry) => entry.id === previous.id))
+    if (
+      !previous.id.startsWith('record-') &&
+      !entries.some((entry) => entry.id === previous.id)
+    )
       entries.push(previous);
   return editorSection.value === 'timeline'
     ? entries
@@ -365,7 +403,10 @@ const timelineEvents = computed(() =>
   item.value ? buildCaseWorkspaceEvents(item.value) : [],
 );
 function openCommand(command: WorkspaceCommand, editing = false): void {
-  if (!commands.value.some((entry) => entry.id === command.id)) return;
+  const permitted = editing
+    ? [...sectionEditCommands.value, ...recordRecovery.value.commands]
+    : commands.value;
+  if (!permitted.some((entry) => entry.id === command.id)) return;
   sectionEditing.value = editing;
   if (editing) editRequest.value += 1;
   timelineView.value = false;
@@ -377,7 +418,7 @@ function openCommand(command: WorkspaceCommand, editing = false): void {
 }
 function reopenPriorEditor(previous: WorkspaceCommand): void {
   if (!priorEditors.value.some((entry) => entry.id === previous.id)) return;
-  sectionEditing.value = false;
+  sectionEditing.value = previous.id.startsWith('record-');
   timelineView.value = false;
   editorSection.value = previous.section;
   selectedCommand.value = previous.id;
@@ -1824,6 +1865,17 @@ onBeforeUnmount(() => {
             @click="load"
             >刷新</ElButton
           >
+          <ElButton
+            v-for="command in recordRecovery.commands"
+            :key="command.id"
+            plain
+            :data-test="`recover-${command.id}`"
+            @click="openCommand(command, true)"
+            >核对{{ command.label }}原请求</ElButton
+          >
+          <p v-if="recordRecovery.error" role="alert">
+            {{ recordRecovery.error }}
+          </p>
         </div>
       </template>
       <template #details>
@@ -1865,6 +1917,17 @@ onBeforeUnmount(() => {
           :context-key="workspaceContext"
           @edit="editSection"
           @view-timeline="viewTimeline"
+        />
+        <CaseExecutionFilingFollowupPanel
+          v-if="
+            item.executionFiling ||
+            item.executionFilingFollowups !== undefined ||
+            (item.origin?.kind === 'EXTERNAL_ENTRY' &&
+              item.stage === 'EXECUTING')
+          "
+          :item="item"
+          :actor-key="identity"
+          @refresh="load"
         />
       </template>
       <template #files>
@@ -1952,6 +2015,22 @@ onBeforeUnmount(() => {
             </select>
           </label>
 
+          <template v-for="command in sectionRecordCommands" :key="command.id">
+            <CaseSectionRecordCorrectionPanel
+              v-if="openedCommands.has(command.id)"
+              v-show="!timelineView && selectedCommand === command.id"
+              :item="item"
+              :kind="command.kind"
+              :actor-key="secondInstanceActorKey"
+              :context-key="workspaceContext"
+              :open-revision="selectedCommand === command.id ? editRequest : 0"
+              @changed="load"
+              @refresh="load"
+              @access-lost="recordEditAccessLost"
+              @cancel="closeRecordEdit"
+              @state-change="recordRequestRevision += 1"
+            />
+          </template>
           <div
             v-if="openedCommands.has('confirm-complaint')"
             v-show="!timelineView && selectedCommand === 'confirm-complaint'"

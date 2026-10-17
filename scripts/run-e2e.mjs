@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { acquireLocalLock } from './local-lock.mjs';
 import { captureTestEnvironment } from './test-environment.mjs';
+import { assertSectionRecordUiAdmission } from './case-section-record-ui-admission.mjs';
 
 // Keep this legacy lock key stable across checkouts, even when the database port
 // changes: old and new candidates still share the application ports below.
@@ -48,6 +49,7 @@ export function acquireE2eResourceLock(options = {}) {
 }
 
 export function runE2e(root, args, dependencies = {}) {
+  assertSectionRecordUiAdmission(root, args);
   const pnpmVersion = dependencies.pnpmVersion ?? currentPnpmVersion();
   const captureEnvironment =
     dependencies.captureEnvironment ?? captureTestEnvironment;

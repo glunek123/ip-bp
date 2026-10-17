@@ -65,6 +65,8 @@ function succeed(root, scope = 'customer', selectedEnvironment = environment) {
   return attempt;
 }
 
+// Each transition validates the fixed candidate using real Git subprocesses.
+// Windows process latency can exceed Vitest's 5s default under host load.
 test('only the latest attempt for an exact validation key is reusable', (t) => {
   const root = repository(t);
   const first = succeed(root);
@@ -84,7 +86,7 @@ test('only the latest attempt for an exact validation key is reusable', (t) => {
     findReusableValidationScopeEvidence(root, 'customer', environment),
     undefined,
   );
-});
+}, 15_000);
 
 test('running and aborted attempts are never reusable', (t) => {
   const root = repository(t);

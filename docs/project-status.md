@@ -1,5 +1,10 @@
 # 当前开发状态
 
+EF分段HTTP覆盖已核收（2026-10-17）：原67625b9/treef6b18e96的正式T1/1+N9/9、两独立保持核均PASS，skip/retry/flaky0；final-summary SHAb27a126b771c3834038d348b9c998d1aade1d816f40dc660aa434cc9a887edf0及最终/补seal共134份证据逐raw回读匹配。原14场景通过初场景已提交事实+同案完成、此前3PASS、权限原部分断言+T尾段、N9分段覆盖，不是重新整跑14；原400fixture/409门户及PostMigrate BLOCKED均保留。角色b3fa20e6仅批准active/version/updated_at变为inactivev2，assignment不改；N旧行仅2026-10-17案号计数正常5→16/updated_at变化；完整161+原resolved历史、H42/终端/dadd/Part1/全部原字节保持，故障对象残留0/锁释放/端口空闲。
+
+对象预算已用满：累计21身份、171自身角色Grant、16案、60成功文件（59tiny+1份50MiB），原新增业务对象余额0。新只读浏览器GO a37c66f3…2bf86已送达原Runner，复用原source/readonly/revoked三身份及两现案，真实浏览/刷新/正常退出重登、未提交表单取消/权限入口、两个已有tiny版本真实按钮读取；只允许必要的新正常session最多4，不新增任何业务事实、上传、角色或Grant。真实浏览器结果待回执，当前仍不能称页面/写入式UI或PRIMARY真实律师正向、真实24h超时及流中争用等缺口通过；写入式页面需另列具体事实/文件需求，超原预算先取得所需许可。人工预览继续冻结。
+
+集成边界：已验EF候选已在本地主控分支合入，1090份非docs原始输入与67625b9逐项同字节；仅4个状态/路线图/验证/快照重叠保留主控最新记录，不改冻结运行树、不push远端。结算/证物已审模型、材料proof、证物后端与出证双initializer已在各自独立开发组合交叉接入（共享树5b5c23a2、证物树0cbb9d41），尚非main完整Demo交付。待集成：结算领域/API/UI和公共module/router/menu最终冻结；证物前端9文件空CSV异常成功finding窄修/复审后接入。待真实验收：上述新模块迁移风险/新组合门禁、明确合法身份与新增Action只目录0Grant、真实DB/HTTP/页面；当前public161未安装1150/1200/1300，不借用已用满EF预算写入这些新模块。
 EF新门禁实过并正式续验已派（2026-10-17）：67625b9正常完整verify仅一次exit0/296.8秒，工具139/前端2378/后端2172含双构建和真实标准锁，前后153表4837旧行及原字节保持；gate summary SHA11527980…ba9f4c，原collection最终1/9均exit0/callback0。主控已实际读审并核6份prepared source raw（manifest a3500456…c9fe27），单role执行器9048d09a严格钉原case/run/角色/唯一user/assignment/membership/成功回执，先真实wrong portal403及readonlyfalse才允许角色true/v1→false/v2，assignment不改。正式GO065f557d…01c181已成功送达原Runner：只原权限尾段T，T与保持核PASS后N原9项，workers1/retries0/maxFailures1，已过4场景不重跑、不重复门禁/构建/迁移/resolve，无新预算或Grant。当前T/N实际结果仍待回执。证物前端9文件已冻结117项及类型/静态过，已交原两Sol审；共享Owner多笔费用/页面定向22过，未报真实浏览器。
 
 出证双初始化接线已审入（2026-10-17）：证物Owner两文件费用hook以同原TX真实五源锚接证物之后/成功receipt之前，RED3→定向组合302/302、正常generate/类型/架构/Lint格式通过；两轴原Sol均C/I/M0，源0cbb9d41，已单接共享树5b5c23a2（此前证物28单接4edc9b04），两树页面/结算服务WIP保留。真实PG回滚/HTTP/页面仍未证明；共享Owner不再等待后端依赖，可继续最终模块和页面组合。EF67625完整门禁单已送达原Runner，但03:19:40UTC读取turn01a147da-e9ca仅userMessage、尚无命令回执，不把排队当verify执行；业务续验GO仍0，预算和角色未改。

@@ -233,6 +233,176 @@ export type CaseRecordEdits = {
   acceptanceCorrections: AcceptanceCorrectionEdit[];
   canSaveSecondInstanceAcceptance?: boolean;
   secondInstanceAcceptances?: SecondInstanceAcceptanceEdit[];
+  executionMailings?: ExecutionMailingRecordEdit[];
+  executionFilings?: ExecutionFilingRecordEdit[];
+  executionFinishes?: ExecutionFinishRecordEdit[];
+  hearings?: HearingRecordEdit[];
+  judgments?: JudgmentRecordEdit[];
+  closures?: ClosureRecordEdit[];
+};
+
+export type CorrectExecutionMailingRecordInput = Omit<
+  MailCaseExecutionInput,
+  'expectedVersion' | 'expectedConfirmationId'
+> & {
+  mailingId: string;
+  expectedMailingRevision: number;
+  reason: string;
+};
+export type CorrectExecutionFilingRecordInput = Omit<
+  SubmitCaseExecutionFilingInput,
+  'expectedVersion' | 'expectedMailingId'
+> & {
+  filingId: string;
+  expectedFilingRevision: number;
+  reason: string;
+};
+export type CorrectExecutionFinishRecordInput = Omit<
+  FinishCaseExecutionInput,
+  'expectedVersion' | 'expectedFilingId'
+> & {
+  finishId: string;
+  expectedFinishRevision: number;
+  correctionReason: string;
+};
+export type CorrectHearingRecordInput = Omit<
+  SaveCaseHearingInput,
+  'expectedVersion'
+> & {
+  arrangementId: string;
+  trialRoundId: string;
+  expectedHearingRevision: number;
+  reason: string;
+};
+export type CorrectJudgmentRecordInput = Omit<
+  RegisterCaseJudgmentInput,
+  'expectedVersion'
+> & {
+  judgmentId: string;
+  trialRoundId: string;
+  expectedJudgmentRevision: number;
+  reason: string;
+};
+export type CorrectClosureRecordInput = Omit<
+  RecordCaseClosureInput,
+  'expectedVersion' | 'expectedFinishId'
+> & {
+  closureId: string;
+  expectedClosureVersionId: string;
+  expectedClosureRevision: number;
+  correctionReason: string;
+};
+type RecordCorrectionResult = {
+  caseId: string;
+  correctionId: string;
+  recordedAt: string;
+};
+export type ExecutionMailingRecordCorrectionResult = RecordCorrectionResult & {
+  mailingId: string;
+  mailingRevision: number;
+  mailedAt: string;
+};
+export type ExecutionFilingRecordCorrectionResult = RecordCorrectionResult & {
+  filingId: string;
+  filingRevision: number;
+  submittedAt: string;
+};
+export type ExecutionFinishRecordCorrectionResult = RecordCorrectionResult & {
+  finishId: string;
+  finishRevision: number;
+  finishedAt: string;
+};
+export type HearingRecordCorrectionResult = RecordCorrectionResult & {
+  arrangementId: string;
+  trialRoundId: string;
+  hearingRevision: number;
+  hearingAt: string | null;
+};
+export type JudgmentRecordCorrectionResult = RecordCorrectionResult & {
+  judgmentId: string;
+  trialRoundId: string;
+  judgmentRevision: number;
+  judgmentReceivedAt: string;
+};
+export type ClosureRecordCorrectionResult = RecordCorrectionResult & {
+  closureId: string;
+  closureRevision: number;
+  closeAt: string | null;
+};
+
+type RecordCorrectionHistory = {
+  id: string;
+  priorCorrectionId: string | null;
+  fromRevision: number;
+  toRevision: number;
+  correctionReason: string;
+  recordedAt: string;
+  recordedByUserId: string;
+};
+type RecordEdit<Values> = {
+  canEdit: boolean;
+  original: Values;
+  effective: Values;
+  history: Array<Values & RecordCorrectionHistory>;
+};
+export type ExecutionMailingRecordValues = Pick<
+  CorrectExecutionMailingRecordInput,
+  'mailedAt' | 'mailReceiptContentVersionIds'
+> & { files: CaseFile[] };
+export type ExecutionFilingRecordValues = Pick<
+  CorrectExecutionFilingRecordInput,
+  'submittedAt' | 'executionFilingProofContentVersionIds'
+> & { files: CaseFile[] };
+export type ExecutionFinishRecordValues = Pick<
+  CorrectExecutionFinishRecordInput,
+  'finishedAt' | 'reason' | 'basisNote' | 'basisContentVersionIds'
+> & { files: CaseFile[] };
+export type HearingRecordValues = Pick<CorrectHearingRecordInput, 'hearingAt'>;
+export type JudgmentRecordValues = Pick<
+  CorrectJudgmentRecordInput,
+  | 'judgmentReceivedAt'
+  | 'judgmentAmountState'
+  | 'judgmentAmount'
+  | 'paidLitigationFeeState'
+  | 'paidLitigationFee'
+  | 'judgmentContentVersionIds'
+> & { files: CaseFile[] };
+export type ClosureRecordValues = Pick<
+  CorrectClosureRecordInput,
+  | 'closeAt'
+  | 'closeAmountState'
+  | 'closeAmt'
+  | 'note'
+  | 'closeContentVersionIds'
+> & { files: CaseFile[] };
+export type ExecutionMailingRecordEdit =
+  RecordEdit<ExecutionMailingRecordValues> & {
+    mailingId: string;
+    mailingRevision: number;
+  };
+export type ExecutionFilingRecordEdit =
+  RecordEdit<ExecutionFilingRecordValues> & {
+    filingId: string;
+    filingRevision: number;
+  };
+export type ExecutionFinishRecordEdit =
+  RecordEdit<ExecutionFinishRecordValues> & {
+    finishId: string;
+    finishRevision: number;
+  };
+export type HearingRecordEdit = RecordEdit<HearingRecordValues> & {
+  arrangementId: string;
+  trialRoundId: string;
+  hearingRevision: number;
+};
+export type JudgmentRecordEdit = RecordEdit<JudgmentRecordValues> & {
+  judgmentId: string;
+  trialRoundId: string;
+  judgmentRevision: number;
+};
+export type ClosureRecordEdit = RecordEdit<ClosureRecordValues> & {
+  closureId: string;
+  closureRevision: number;
 };
 export type CaseLawyer = {
   id: string;
@@ -282,6 +452,7 @@ type CaseDetailBase = Omit<CaseSummaryBase, 'displaySummary'> & {
   executionConfirmation: ExecutionConfirmation | null;
   executionMailing: ExecutionMailing | null;
   executionFiling: ExecutionFiling | null;
+  executionFilingFollowups?: ExecutionFilingFollowups | null;
   executionFinish: ExecutionFinish | null;
   closure: CaseClosure | null;
   archive: CaseArchive | null;
@@ -393,9 +564,13 @@ export type CaseDisplaySummary = {
     'COMPLAINT_CONFIRMATION' | 'COMPLAINT_SUBMISSION'
   >;
   judgmentAmount: CaseDisplayAmount<
-    'FIRST_INSTANCE_JUDGMENT' | 'SECOND_INSTANCE_RESULT'
+    | 'FIRST_INSTANCE_JUDGMENT'
+    | 'SECOND_INSTANCE_RESULT'
+    | 'FIRST_INSTANCE_JUDGMENT_RECORD_CORRECTION'
   >;
-  closureAmount: CaseDisplayAmount<'CASE_CLOSURE_VERSION'>;
+  closureAmount: CaseDisplayAmount<
+    'CASE_CLOSURE_VERSION' | 'CASE_CLOSURE_RECORD_CORRECTION'
+  >;
 };
 export type RecordCaseClosureInput = {
   expectedVersion: number;
@@ -820,6 +995,7 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     > | null;
     executionMailing: ExecutionMailing | null;
     executionFiling: ExecutionFiling | null;
+    executionFilingFollowups?: LawyerExecutionFilingFollowups | null;
     executionFinish: ExecutionFinish | null;
     closure: LawyerCaseClosure | null;
     archive: LawyerCaseArchive | null;
@@ -1417,8 +1593,12 @@ function displaySummary(
     displayAmount(value.judgmentAmount, [
       'FIRST_INSTANCE_JUDGMENT',
       'SECOND_INSTANCE_RESULT',
+      'FIRST_INSTANCE_JUDGMENT_RECORD_CORRECTION',
     ]) &&
-    displayAmount(value.closureAmount, ['CASE_CLOSURE_VERSION'])
+    displayAmount(value.closureAmount, [
+      'CASE_CLOSURE_VERSION',
+      'CASE_CLOSURE_RECORD_CORRECTION',
+    ])
   );
 }
 function archiveType(value: unknown): value is CaseArchiveType {
@@ -1623,23 +1803,27 @@ function closureVersion(
 function sameClosureVersion(
   left: CaseClosureVersion | LawyerCaseClosureVersion,
   right: CaseClosureVersion | LawyerCaseClosureVersion,
+  effectiveProjection = false,
 ): boolean {
   const rightValue: unknown = right;
   if (!record(rightValue)) return false;
   return Object.entries(left).every(([key, value]) =>
-    key === 'files'
-      ? left.files.length === right.files.length &&
-        left.files.every((file, i) => {
-          const other = right.files[i];
-          return (
-            other !== undefined &&
-            file.materialId === other.materialId &&
-            file.contentVersionId === other.contentVersionId &&
-            file.originalFilename === other.originalFilename &&
-            file.mimeType === other.mimeType
-          );
-        })
-      : rightValue[key] === value,
+    effectiveProjection &&
+    ['closeAt', 'closeAmountState', 'closeAmt', 'note', 'files'].includes(key)
+      ? true
+      : key === 'files'
+        ? left.files.length === right.files.length &&
+          left.files.every((file, i) => {
+            const other = right.files[i];
+            return (
+              other !== undefined &&
+              file.materialId === other.materialId &&
+              file.contentVersionId === other.contentVersionId &&
+              file.originalFilename === other.originalFilename &&
+              file.mimeType === other.mimeType
+            );
+          })
+        : rightValue[key] === value,
   );
 }
 function closureMatches(
@@ -1652,6 +1836,7 @@ function closureMatches(
   internal: boolean,
   directStart = false,
   directFinish = false,
+  recordEdits?: unknown,
 ): boolean {
   if (value === null)
     return (
@@ -1687,7 +1872,11 @@ function closureMatches(
   return (
     new Set(history.map((entry) => entry.id)).size === history.length &&
     last.toVersion === version &&
-    sameClosureVersion(value.current, last) &&
+    sameClosureVersion(
+      value.current,
+      last,
+      !internal || closureHasRecordProjection(value, recordEdits),
+    ) &&
     history.every(
       (entry, index) =>
         entry.finishId === (record(finish) ? finish.id : null) &&
@@ -2088,6 +2277,7 @@ function executionSourceMatches(
       internal,
       directArchive && value.executionFinish === null,
       directExecuting && value.executionFiling === null,
+      value.recordEdits,
     )
   )
     return false;
@@ -2553,7 +2743,12 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         'closure',
         'archive',
       ],
-      ['recordEdits', 'origin', 'canUploadDirectExecutionMaterials'],
+      [
+        'recordEdits',
+        'origin',
+        'canUploadDirectExecutionMaterials',
+        'executionFilingFollowups',
+      ],
     ) &&
     value.id === id &&
     summaryFields({
@@ -2696,6 +2891,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         value.judgmentNextStep,
         value.origin,
       )) &&
+    validSectionRecordTargets(value) &&
     validSecondInstance(
       value.secondInstance,
       true,
@@ -2720,7 +2916,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     typeof value.canCorrectClosure === 'boolean' &&
     archiveCapabilities(value) &&
     archiveMatches(value, true) &&
-    executionSourceMatches(value, true)
+    executionSourceMatches(value, true) &&
+    validExecutionFilingFollowups(value, true)
   );
 }
 function validRoundId(value: unknown): boolean {
@@ -3030,6 +3227,535 @@ function validAcceptanceHistory(value: unknown, internal: boolean): boolean {
     )
   );
 }
+const sectionRecordKinds = [
+  'executionMailings',
+  'executionFilings',
+  'executionFinishes',
+  'hearings',
+  'judgments',
+  'closures',
+] as const;
+type SectionRecordKind = (typeof sectionRecordKinds)[number];
+const sectionRecordContracts = {
+  executionMailings: {
+    target: 'mailingId',
+    revision: 'mailingRevision',
+    date: 'mailedAt',
+    route: 'execution-mailing-correction',
+    fields: ['mailedAt', 'mailReceiptContentVersionIds'],
+    files: 'mailReceiptContentVersionIds',
+    minimum: 1,
+    reason: 'reason',
+    round: false,
+  },
+  executionFilings: {
+    target: 'filingId',
+    revision: 'filingRevision',
+    date: 'submittedAt',
+    route: 'execution-filing-correction',
+    fields: ['submittedAt', 'executionFilingProofContentVersionIds'],
+    files: 'executionFilingProofContentVersionIds',
+    minimum: 1,
+    reason: 'reason',
+    round: false,
+  },
+  executionFinishes: {
+    target: 'finishId',
+    revision: 'finishRevision',
+    date: 'finishedAt',
+    route: 'execution-finish-correction',
+    fields: ['finishedAt', 'reason', 'basisNote', 'basisContentVersionIds'],
+    files: 'basisContentVersionIds',
+    minimum: 0,
+    reason: 'correctionReason',
+    round: false,
+  },
+  hearings: {
+    target: 'arrangementId',
+    revision: 'hearingRevision',
+    date: 'hearingAt',
+    route: 'hearing-record-correction',
+    fields: ['hearingAt'],
+    files: null,
+    minimum: 0,
+    reason: 'reason',
+    round: true,
+  },
+  judgments: {
+    target: 'judgmentId',
+    revision: 'judgmentRevision',
+    date: 'judgmentReceivedAt',
+    route: 'judgment-record-correction',
+    fields: [
+      'judgmentReceivedAt',
+      'judgmentAmountState',
+      'judgmentAmount',
+      'paidLitigationFeeState',
+      'paidLitigationFee',
+      'judgmentContentVersionIds',
+    ],
+    files: 'judgmentContentVersionIds',
+    minimum: 1,
+    reason: 'reason',
+    round: true,
+  },
+  closures: {
+    target: 'closureId',
+    revision: 'closureRevision',
+    date: 'closeAt',
+    route: 'closure-record-correction',
+    fields: [
+      'closeAt',
+      'closeAmountState',
+      'closeAmt',
+      'note',
+      'closeContentVersionIds',
+    ],
+    files: 'closeContentVersionIds',
+    minimum: 0,
+    reason: 'correctionReason',
+    round: false,
+  },
+} as const;
+function recordRevision(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+function correctionText(value: unknown): value is string {
+  return nonempty(value) && value.length <= 500;
+}
+function sectionAmount(
+  state: unknown,
+  amount: unknown,
+  response: boolean,
+): boolean {
+  return state === 'PENDING'
+    ? amount === null
+    : state === 'KNOWN' &&
+        typeof amount === 'string' &&
+        (response
+          ? /^(0|[1-9]\d{0,13})\.\d{2}$/u
+          : /^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u
+        ).test(amount);
+}
+function sectionValues(
+  value: Record<string, unknown>,
+  kind: SectionRecordKind,
+  response: boolean,
+): boolean {
+  const contract = sectionRecordContracts[kind];
+  const date = value[contract.date];
+  if (
+    !((kind === 'hearings' || kind === 'closures') && date === null) &&
+    !businessDate(date)
+  )
+    return false;
+  // Hearing dates may be in the future; other command dates use Shanghai today.
+  if (
+    !response &&
+    kind !== 'hearings' &&
+    typeof date === 'string' &&
+    date > todayShanghai()
+  )
+    return false;
+  if (contract.files !== null) {
+    const ids = value[contract.files];
+    if (
+      !Array.isArray(ids) ||
+      !uniqueVersions(ids, contract.minimum, 10) ||
+      new Set(ids.map((id: string) => id.toLowerCase())).size !== ids.length
+    )
+      return false;
+    if (response) {
+      const files = value.files;
+      if (
+        !Array.isArray(files) ||
+        files.length !== ids.length ||
+        !files.every(
+          (file) =>
+            caseFile(file) &&
+            uuidV4(file.materialId) &&
+            uuidV4(file.contentVersionId),
+        ) ||
+        new Set(
+          files.map((file: CaseFile) => file.contentVersionId.toLowerCase()),
+        ).size !== files.length ||
+        !files.every((file: CaseFile) =>
+          ids.some(
+            (id: string) =>
+              id.toLowerCase() === file.contentVersionId.toLowerCase(),
+          ),
+        )
+      )
+        return false;
+    }
+  }
+  if (
+    kind === 'executionFinishes' &&
+    (!finishText(value.reason) ||
+      (value.basisNote !== null && !finishText(value.basisNote)) ||
+      (value.basisNote === null &&
+        Array.isArray(value.basisContentVersionIds) &&
+        value.basisContentVersionIds.length === 0))
+  )
+    return false;
+  if (
+    kind === 'judgments' &&
+    (!sectionAmount(
+      value.judgmentAmountState,
+      value.judgmentAmount,
+      response,
+    ) ||
+      !sectionAmount(
+        value.paidLitigationFeeState,
+        value.paidLitigationFee,
+        response,
+      ))
+  )
+    return false;
+  if (
+    kind === 'closures' &&
+    (!sectionAmount(value.closeAmountState, value.closeAmt, response) ||
+      (value.note !== null && !finishText(value.note)))
+  )
+    return false;
+  return true;
+}
+function sameSectionValue(left: unknown, right: unknown): boolean {
+  if (Array.isArray(left) && Array.isArray(right))
+    return (
+      left.length === right.length &&
+      left.every((entry, index) => sameSectionValue(entry, right[index]))
+    );
+  if (record(left) && record(right))
+    return (
+      Object.keys(left).length === Object.keys(right).length &&
+      Object.keys(left).every(
+        (key) => key in right && sameSectionValue(left[key], right[key]),
+      )
+    );
+  return left === right;
+}
+function validSectionRecordEdits(value: Record<string, unknown>): boolean {
+  if (sectionRecordKinds.every((kind) => !(kind in value))) return true;
+  return sectionRecordKinds.every((kind) => {
+    const entries = value[kind];
+    if (!Array.isArray(entries)) return false;
+    const contract = sectionRecordContracts[kind];
+    const fields = [
+      ...contract.fields,
+      ...(contract.files === null ? [] : ['files']),
+    ];
+    const targets = new Set<string>();
+    return entries.every((entry) => {
+      if (
+        !record(entry) ||
+        !exact(entry, [
+          contract.target,
+          contract.revision,
+          'canEdit',
+          'original',
+          'effective',
+          'history',
+          ...(contract.round ? ['trialRoundId'] : []),
+        ])
+      )
+        return false;
+      const target = entry[contract.target];
+      if (
+        !uuidV4(target) ||
+        targets.has(target.toLowerCase()) ||
+        !recordRevision(entry[contract.revision]) ||
+        typeof entry.canEdit !== 'boolean' ||
+        (contract.round && !uuidV4(entry.trialRoundId)) ||
+        !record(entry.original) ||
+        !exact(entry.original, fields) ||
+        !sectionValues(entry.original, kind, true) ||
+        !record(entry.effective) ||
+        !exact(entry.effective, fields) ||
+        !sectionValues(entry.effective, kind, true) ||
+        !Array.isArray(entry.history)
+      )
+        return false;
+      targets.add(target.toLowerCase());
+      let prior: string | null = null;
+      let revision = 0;
+      let effective: Record<string, unknown> = entry.original;
+      const ids = new Set<string>();
+      for (const correction of entry.history) {
+        if (
+          !record(correction) ||
+          !exact(correction, [
+            ...fields,
+            'id',
+            'priorCorrectionId',
+            'fromRevision',
+            'toRevision',
+            'correctionReason',
+            'recordedAt',
+            'recordedByUserId',
+          ]) ||
+          !uuidV4(correction.id) ||
+          ids.has(correction.id.toLowerCase()) ||
+          correction.priorCorrectionId !== prior ||
+          correction.fromRevision !== revision ||
+          correction.toRevision !== revision + 1 ||
+          !recordRevision(correction.toRevision) ||
+          !correctionText(correction.correctionReason) ||
+          !utcTimestamp(correction.recordedAt) ||
+          !uuidV4(correction.recordedByUserId) ||
+          !sectionValues(correction, kind, true)
+        )
+          return false;
+        prior = correction.id;
+        ids.add(correction.id.toLowerCase());
+        revision += 1;
+        effective = correction;
+      }
+      const projected = entry.effective;
+      return (
+        entry[contract.revision] === revision &&
+        fields.every((field) =>
+          sameSectionValue(effective[field], projected[field]),
+        )
+      );
+    });
+  });
+}
+
+function sectionProjectionMatches(
+  source: Record<string, unknown>,
+  values: Record<string, unknown>,
+  kind: SectionRecordKind,
+): boolean {
+  const contract = sectionRecordContracts[kind];
+  return (
+    contract.fields
+      .filter((field) => field !== contract.files)
+      .every((field) => sameSectionValue(source[field], values[field])) &&
+    (contract.files === null || sameSectionValue(source.files, values.files))
+  );
+}
+function closureHasRecordProjection(
+  closure: Record<string, unknown>,
+  edits: unknown,
+): boolean {
+  if (
+    !record(edits) ||
+    !validSectionRecordEdits(edits) ||
+    !Array.isArray(edits.closures) ||
+    !record(closure.current) ||
+    !Array.isArray(closure.history)
+  )
+    return false;
+  const last: unknown = closure.history.at(-1);
+  return (
+    record(last) &&
+    edits.closures.some(
+      (entry) =>
+        record(entry) &&
+        entry.closureId === closure.id &&
+        record(entry.original) &&
+        record(entry.effective) &&
+        sectionProjectionMatches(last, entry.original, 'closures') &&
+        sectionProjectionMatches(
+          closure.current as Record<string, unknown>,
+          entry.effective,
+          'closures',
+        ),
+    )
+  );
+}
+function validSectionRecordTargets(detail: Record<string, unknown>): boolean {
+  const edits = detail.recordEdits;
+  if (!record(edits) || !('executionMailings' in edits)) return true;
+  if (!record(detail.hearing) || !record(detail.judgment)) return false;
+  const roots = {
+    executionMailings:
+      detail.executionMailing === null ? [] : [detail.executionMailing],
+    executionFilings:
+      detail.executionFiling === null ? [] : [detail.executionFiling],
+    executionFinishes:
+      detail.executionFinish === null ? [] : [detail.executionFinish],
+    hearings: detail.hearing.arrangements,
+    judgments: detail.judgment.history,
+    closures: detail.closure === null ? [] : [detail.closure],
+  };
+  return sectionRecordKinds.every((kind) => {
+    const entries = edits[kind];
+    const sources = roots[kind];
+    if (
+      !Array.isArray(entries) ||
+      !Array.isArray(sources) ||
+      entries.length !== sources.length
+    )
+      return false;
+    const contract = sectionRecordContracts[kind];
+    return entries.every((entry) => {
+      if (!record(entry) || !record(entry.original) || !record(entry.effective))
+        return false;
+      const source: unknown = sources.find(
+        (root) => record(root) && sameUuid(root.id, entry[contract.target]),
+      );
+      if (
+        !record(source) ||
+        (contract.round && !sameUuid(source.trialRoundId, entry.trialRoundId))
+      )
+        return false;
+      if (kind === 'closures') return closureHasRecordProjection(source, edits);
+      if (kind === 'hearings' || kind === 'judgments') {
+        if (!sectionProjectionMatches(source, entry.original, kind))
+          return false;
+        const current = kind === 'hearings' ? detail.hearing : detail.judgment;
+        if (!record(current)) return false;
+        const projected =
+          kind === 'hearings' ? current.currentArrangement : current.current;
+        return (
+          !record(projected) ||
+          projected.id !== source.id ||
+          sectionProjectionMatches(projected, entry.effective, kind)
+        );
+      }
+      return sectionProjectionMatches(source, entry.effective, kind);
+    });
+  });
+}
+
+type SectionRecordInputs = {
+  executionMailings: CorrectExecutionMailingRecordInput;
+  executionFilings: CorrectExecutionFilingRecordInput;
+  executionFinishes: CorrectExecutionFinishRecordInput;
+  hearings: CorrectHearingRecordInput;
+  judgments: CorrectJudgmentRecordInput;
+  closures: CorrectClosureRecordInput;
+};
+type SectionRecordResults = {
+  executionMailings: ExecutionMailingRecordCorrectionResult;
+  executionFilings: ExecutionFilingRecordCorrectionResult;
+  executionFinishes: ExecutionFinishRecordCorrectionResult;
+  hearings: HearingRecordCorrectionResult;
+  judgments: JudgmentRecordCorrectionResult;
+  closures: ClosureRecordCorrectionResult;
+};
+async function submitSectionRecordCorrection<K extends SectionRecordKind>(
+  id: string,
+  raw: SectionRecordInputs[K],
+  kind: K,
+  options?: RequestOptions,
+): Promise<SectionRecordResults[K]> {
+  const input: unknown = raw;
+  const contract = sectionRecordContracts[kind];
+  const expectedRevision = `expected${contract.revision[0]!.toUpperCase()}${contract.revision.slice(1)}`;
+  if (
+    !uuidV4(id) ||
+    !record(input) ||
+    !exact(input, [
+      contract.target,
+      expectedRevision,
+      'idempotencyKey',
+      contract.reason,
+      ...contract.fields,
+      ...(contract.round ? ['trialRoundId'] : []),
+      ...(kind === 'closures' ? ['expectedClosureVersionId'] : []),
+    ]) ||
+    !uuidV4(input[contract.target]) ||
+    !recordRevision(input[expectedRevision]) ||
+    input[expectedRevision] === Number.MAX_SAFE_INTEGER ||
+    !validIdempotencyKey(input.idempotencyKey) ||
+    !correctionText(input[contract.reason]) ||
+    (contract.round && !uuidV4(input.trialRoundId)) ||
+    (kind === 'closures' && !uuidV4(input.expectedClosureVersionId)) ||
+    !sectionValues(input, kind, false)
+  )
+    throw new ApiError('资料更正信息无效', 400, 'VALIDATION_ERROR');
+  // Bind receipt checks to the exact submitted body even if the caller later edits its draft.
+  const body = structuredClone(raw);
+  const submitted: unknown = body;
+  if (!record(submitted)) throw invalidResponse();
+  const headers = new Headers(options?.headers);
+  headers.set('Idempotency-Key', body.idempotencyKey);
+  // Aborting transport leaves a sent command's outcome unknown; callers retain
+  // the original actor/target/body/key for recovery. No session is cleared here.
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/${contract.route}`,
+    {
+      ...options,
+      method: 'POST',
+      headers: Object.fromEntries(headers),
+      body,
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, [
+      'caseId',
+      'correctionId',
+      'recordedAt',
+      contract.target,
+      contract.revision,
+      contract.date,
+      ...(contract.round ? ['trialRoundId'] : []),
+    ]) ||
+    !sameUuid(response.caseId, id) ||
+    !uuidV4(response.correctionId) ||
+    !utcTimestamp(response.recordedAt) ||
+    !sameUuid(response[contract.target], submitted[contract.target]) ||
+    !recordRevision(response[contract.revision]) ||
+    response[contract.revision] !== Number(submitted[expectedRevision]) + 1 ||
+    response[contract.date] !== submitted[contract.date] ||
+    (contract.round && !sameUuid(response.trialRoundId, submitted.trialRoundId))
+  )
+    throw invalidResponse();
+  // The selected contract above validates every member of this exact result shape.
+  return response as SectionRecordResults[K];
+}
+function sameUuid(left: unknown, right: unknown): boolean {
+  return (
+    uuidV4(left) && uuidV4(right) && left.toLowerCase() === right.toLowerCase()
+  );
+}
+export function correctCaseExecutionMailingRecord(
+  id: string,
+  input: CorrectExecutionMailingRecordInput,
+  options?: RequestOptions,
+): Promise<ExecutionMailingRecordCorrectionResult> {
+  return submitSectionRecordCorrection(id, input, 'executionMailings', options);
+}
+export function correctCaseExecutionFilingRecord(
+  id: string,
+  input: CorrectExecutionFilingRecordInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingRecordCorrectionResult> {
+  return submitSectionRecordCorrection(id, input, 'executionFilings', options);
+}
+export function correctCaseExecutionFinishRecord(
+  id: string,
+  input: CorrectExecutionFinishRecordInput,
+  options?: RequestOptions,
+): Promise<ExecutionFinishRecordCorrectionResult> {
+  return submitSectionRecordCorrection(id, input, 'executionFinishes', options);
+}
+export function correctCaseHearingRecord(
+  id: string,
+  input: CorrectHearingRecordInput,
+  options?: RequestOptions,
+): Promise<HearingRecordCorrectionResult> {
+  return submitSectionRecordCorrection(id, input, 'hearings', options);
+}
+export function correctCaseJudgmentRecord(
+  id: string,
+  input: CorrectJudgmentRecordInput,
+  options?: RequestOptions,
+): Promise<JudgmentRecordCorrectionResult> {
+  return submitSectionRecordCorrection(id, input, 'judgments', options);
+}
+export function correctCaseClosureRecord(
+  id: string,
+  input: CorrectClosureRecordInput,
+  options?: RequestOptions,
+): Promise<ClosureRecordCorrectionResult> {
+  return submitSectionRecordCorrection(id, input, 'closures', options);
+}
+
 function validRecordEdits(
   value: unknown,
   defendants: unknown,
@@ -3049,7 +3775,11 @@ function validRecordEdits(
         'defendantContacts',
         'acceptanceCorrections',
       ],
-      ['canSaveSecondInstanceAcceptance', 'secondInstanceAcceptances'],
+      [
+        'canSaveSecondInstanceAcceptance',
+        'secondInstanceAcceptances',
+        ...sectionRecordKinds,
+      ],
     ) ||
     'canSaveSecondInstanceAcceptance' in value !==
       'secondInstanceAcceptances' in value ||
@@ -3058,7 +3788,8 @@ function validRecordEdits(
     !Array.isArray(defendants) ||
     !Array.isArray(acceptances) ||
     !Array.isArray(value.defendantContacts) ||
-    !Array.isArray(value.acceptanceCorrections)
+    !Array.isArray(value.acceptanceCorrections) ||
+    !validSectionRecordEdits(value)
   )
     return false;
   const defendantById = new Map<string, CaseDefendant>();
@@ -3879,7 +4610,11 @@ export async function getLawyerCase(
         'closure',
         'archive',
       ],
-      ['origin', 'canUploadDirectExecutionMaterials'],
+      [
+        'origin',
+        'canUploadDirectExecutionMaterials',
+        'executionFilingFollowups',
+      ],
     ) ||
     result.id !== id ||
     !validLawyerSummary({
@@ -3970,7 +4705,8 @@ export async function getLawyerCase(
     typeof result.canSubmitExecutionFiling !== 'boolean' ||
     typeof result.canFinishExecution !== 'boolean' ||
     !archiveMatches(result, false) ||
-    !executionSourceMatches(result, false)
+    !executionSourceMatches(result, false) ||
+    !validExecutionFilingFollowups(result, false)
   )
     throw invalidResponse();
   return result as unknown as LawyerCaseDetail;
@@ -6382,4 +7118,561 @@ export function caseArchiveSession(
   effectScope(true).run(() => watch(context, state.clear, { flush: 'sync' }));
   archiveSessions.set(owner, state);
   return state;
+}
+
+type ExecutionFilingFeedbackFields = {
+  idempotencyKey: string;
+  feedbackOn: string | null;
+  courtCaseNo: string | null;
+  content: string;
+};
+type ExecutionFilingFollowupVersion = {
+  id: string;
+  revision: number;
+  recordedAt: string;
+};
+export type ExecutionFilingFeedbackVersion = ExecutionFilingFollowupVersion & {
+  feedbackOn: string | null;
+  courtCaseNo: string | null;
+  content: string;
+};
+export type ExecutionFilingSupplementVersion =
+  ExecutionFilingFollowupVersion & {
+    submittedOn: string | null;
+    note: string | null;
+    files: CaseFile[];
+  };
+export type ExecutionFilingFeedbackFollowup = {
+  feedbackId: string;
+  canCorrect: boolean;
+  current: ExecutionFilingFeedbackVersion;
+  history: Array<
+    ExecutionFilingFeedbackVersion & { correctionReason: string | null }
+  >;
+};
+export type ExecutionFilingSupplementFollowup = {
+  supplementId: string;
+  canCorrect: boolean;
+  current: ExecutionFilingSupplementVersion;
+  history: Array<
+    ExecutionFilingSupplementVersion & { correctionReason: string | null }
+  >;
+};
+export type LawyerExecutionFilingFeedbackFollowup = Omit<
+  ExecutionFilingFeedbackFollowup,
+  'history'
+> & { history: ExecutionFilingFeedbackVersion[] };
+export type LawyerExecutionFilingSupplementFollowup = Omit<
+  ExecutionFilingSupplementFollowup,
+  'history'
+> & { history: ExecutionFilingSupplementVersion[] };
+export type ExecutionFilingFollowups = {
+  filingId: string;
+  canRecordFeedback: boolean;
+  canSubmitSupplement: boolean;
+  feedbacks: ExecutionFilingFeedbackFollowup[];
+  supplements: ExecutionFilingSupplementFollowup[];
+};
+export type LawyerExecutionFilingFollowups = Omit<
+  ExecutionFilingFollowups,
+  'feedbacks' | 'supplements'
+> & {
+  feedbacks: LawyerExecutionFilingFeedbackFollowup[];
+  supplements: LawyerExecutionFilingSupplementFollowup[];
+};
+
+function normalizedFilingFollowupText(
+  value: unknown,
+  maximum: number,
+): value is string {
+  return filingFollowupText(value, maximum) && value.trim() === value;
+}
+function filingFollowupVersionKeys(
+  kind: 'feedbacks' | 'supplements',
+): string[] {
+  return [
+    'id',
+    'revision',
+    'recordedAt',
+    ...(kind === 'feedbacks'
+      ? ['feedbackOn', 'courtCaseNo', 'content']
+      : ['submittedOn', 'note', 'files']),
+  ];
+}
+function validFilingFollowupVersion(
+  value: unknown,
+  kind: 'feedbacks' | 'supplements',
+  internal: boolean,
+  history: boolean,
+  filesByVersion: Map<string, CaseFile>,
+): value is Record<string, unknown> {
+  if (
+    !record(value) ||
+    !exact(value, [
+      ...filingFollowupVersionKeys(kind),
+      ...(internal && history ? ['correctionReason'] : []),
+    ]) ||
+    !uuidV4(value.id) ||
+    !recordRevision(value.revision) ||
+    value.revision < 1 ||
+    !utcTimestamp(value.recordedAt)
+  )
+    return false;
+  if (
+    internal &&
+    history &&
+    (value.revision === 1
+      ? value.correctionReason !== null
+      : !normalizedFilingFollowupText(value.correctionReason, 500))
+  )
+    return false;
+  if (kind === 'feedbacks')
+    return (
+      (value.feedbackOn === null || businessDate(value.feedbackOn)) &&
+      (value.courtCaseNo === null ||
+        normalizedFilingFollowupText(value.courtCaseNo, 100)) &&
+      normalizedFilingFollowupText(value.content, 2000)
+    );
+  if (
+    (value.submittedOn !== null && !businessDate(value.submittedOn)) ||
+    (value.note !== null && !normalizedFilingFollowupText(value.note, 2000)) ||
+    !Array.isArray(value.files) ||
+    value.files.length < 1 ||
+    value.files.length > 10
+  )
+    return false;
+  const versions = new Set<string>();
+  for (const file of value.files) {
+    if (
+      !caseFile(file) ||
+      !uuidV4(file.materialId) ||
+      !uuidV4(file.contentVersionId)
+    )
+      return false;
+    const id = file.contentVersionId.toLowerCase();
+    if (versions.has(id)) return false;
+    versions.add(id);
+    const prior = filesByVersion.get(id);
+    if (
+      prior &&
+      (!sameUuid(prior.materialId, file.materialId) ||
+        prior.originalFilename !== file.originalFilename ||
+        prior.mimeType !== file.mimeType)
+    )
+      return false;
+    filesByVersion.set(id, file);
+  }
+  return true;
+}
+function validFilingFollowupRoots(
+  value: unknown,
+  kind: 'feedbacks' | 'supplements',
+  internal: boolean,
+  editable: boolean,
+  filesByVersion: Map<string, CaseFile>,
+): boolean {
+  if (!Array.isArray(value)) return false;
+  const target = kind === 'feedbacks' ? 'feedbackId' : 'supplementId';
+  const roots = new Set<string>();
+  const versions = new Set<string>();
+  let previous: { time: number; id: string } | undefined;
+  for (const root of value) {
+    if (
+      !record(root) ||
+      !exact(root, [target, 'canCorrect', 'current', 'history']) ||
+      !uuidV4(root[target]) ||
+      typeof root.canCorrect !== 'boolean' ||
+      (!editable && root.canCorrect) ||
+      !Array.isArray(root.history) ||
+      root.history.length === 0 ||
+      !validFilingFollowupVersion(
+        root.current,
+        kind,
+        internal,
+        false,
+        filesByVersion,
+      )
+    )
+      return false;
+    const rootId = root[target];
+    if (!uuidV4(rootId)) return false;
+    const current = root.current;
+    if (!record(current)) return false;
+    const id = rootId.toLowerCase();
+    if (roots.has(id)) return false;
+    roots.add(id);
+    let revision = 0;
+    let last: Record<string, unknown> | undefined;
+    for (const version of root.history) {
+      if (
+        !validFilingFollowupVersion(
+          version,
+          kind,
+          internal,
+          true,
+          filesByVersion,
+        ) ||
+        version.revision !== revision + 1 ||
+        !uuidV4(version.id) ||
+        versions.has(version.id.toLowerCase()) ||
+        (revision === 0 && !sameUuid(version.id, root[target]))
+      )
+        return false;
+      versions.add(version.id.toLowerCase());
+      revision += 1;
+      last = version;
+    }
+    if (!last) return false;
+    const latest = last;
+    if (
+      !filingFollowupVersionKeys(kind).every((field) =>
+        sameSectionValue(current[field], latest[field]),
+      )
+    )
+      return false;
+    const first: unknown = root.history[0];
+    if (!record(first) || typeof first.recordedAt !== 'string') return false;
+    const time = Date.parse(first.recordedAt);
+    if (
+      previous &&
+      (time > previous.time ||
+        (time === previous.time && id.localeCompare(previous.id) < 0))
+    )
+      return false;
+    previous = { time, id };
+  }
+  return true;
+}
+function validExecutionFilingFollowups(
+  detail: Record<string, unknown>,
+  internal: boolean,
+): boolean {
+  if (!('executionFilingFollowups' in detail)) return true;
+  const value = detail.executionFilingFollowups;
+  if (detail.executionFiling === null) return value === null;
+  if (
+    !record(detail.executionFiling) ||
+    !uuidV4(detail.executionFiling.id) ||
+    !record(value) ||
+    !exact(value, [
+      'filingId',
+      'canRecordFeedback',
+      'canSubmitSupplement',
+      'feedbacks',
+      'supplements',
+    ]) ||
+    !sameUuid(value.filingId, detail.executionFiling.id) ||
+    typeof value.canRecordFeedback !== 'boolean' ||
+    typeof value.canSubmitSupplement !== 'boolean'
+  )
+    return false;
+  const editable = detail.stage === 'EXECUTING';
+  if (!editable && (value.canRecordFeedback || value.canSubmitSupplement))
+    return false;
+  const files = new Map<string, CaseFile>();
+  return (
+    validFilingFollowupRoots(
+      value.feedbacks,
+      'feedbacks',
+      internal,
+      editable,
+      files,
+    ) &&
+    validFilingFollowupRoots(
+      value.supplements,
+      'supplements',
+      internal,
+      editable,
+      files,
+    )
+  );
+}
+export type RecordExecutionFilingFeedbackInput =
+  ExecutionFilingFeedbackFields & {
+    feedbackId: string;
+    expectedRevision: 0;
+  };
+export type CorrectExecutionFilingFeedbackInput =
+  ExecutionFilingFeedbackFields & {
+    expectedRevision: number;
+    correctionReason: string;
+  };
+type ExecutionFilingSupplementFields = {
+  idempotencyKey: string;
+  submittedOn: string | null;
+  note: string | null;
+  contentVersionIds: string[];
+};
+export type SubmitExecutionFilingSupplementInput =
+  ExecutionFilingSupplementFields & {
+    supplementId: string;
+    expectedRevision: 0;
+  };
+export type CorrectExecutionFilingSupplementInput =
+  ExecutionFilingSupplementFields & {
+    expectedRevision: number;
+    correctionReason: string;
+  };
+type ExecutionFilingFollowupResult = {
+  id: string;
+  filingId: string;
+  revision: number;
+  recordedAt: string;
+};
+export type ExecutionFilingFeedbackResult = ExecutionFilingFollowupResult & {
+  feedbackId: string;
+};
+export type ExecutionFilingSupplementResult = ExecutionFilingFollowupResult & {
+  supplementId: string;
+};
+type FilingFollowupInputs =
+  | RecordExecutionFilingFeedbackInput
+  | CorrectExecutionFilingFeedbackInput
+  | SubmitExecutionFilingSupplementInput
+  | CorrectExecutionFilingSupplementInput;
+type FilingFollowupResults = {
+  feedbacks: ExecutionFilingFeedbackResult;
+  supplements: ExecutionFilingSupplementResult;
+};
+
+function filingFollowupText(value: unknown, maximum: number): value is string {
+  // Match DTO validation of normalized text while preserving the submitted bytes.
+  if (typeof value !== 'string') return false;
+  const text = value.trim();
+  // class-validator's MinLength/MaxLength discount surrogate pairs and
+  // presentation selectors, rather than counting UTF-16 code units.
+  const length =
+    Array.from(text).length -
+    (text.match(/[^\uFE0F\uFE0E][\uFE0F\uFE0E]/gu)?.length ?? 0);
+  return length >= 1 && length <= maximum;
+}
+function validFilingFollowupInput(
+  value: unknown,
+  kind: keyof FilingFollowupResults,
+  correcting: boolean,
+): value is FilingFollowupInputs {
+  if (!record(value)) return false;
+  const target = kind === 'feedbacks' ? 'feedbackId' : 'supplementId';
+  const fields =
+    kind === 'feedbacks'
+      ? ['feedbackOn', 'courtCaseNo', 'content']
+      : ['submittedOn', 'note', 'contentVersionIds'];
+  if (
+    !exact(value, [
+      'idempotencyKey',
+      'expectedRevision',
+      ...fields,
+      ...(correcting ? ['correctionReason'] : [target]),
+    ]) ||
+    !filingFollowupText(value.idempotencyKey, 128) ||
+    !recordRevision(value.expectedRevision) ||
+    (correcting
+      ? value.expectedRevision < 1 ||
+        !filingFollowupText(value.correctionReason, 500)
+      : value.expectedRevision !== 0 || !uuidV4(value[target]))
+  )
+    return false;
+  if (kind === 'feedbacks')
+    return (
+      (value.feedbackOn === null || businessDate(value.feedbackOn)) &&
+      (value.courtCaseNo === null ||
+        filingFollowupText(value.courtCaseNo, 100)) &&
+      filingFollowupText(value.content, 2000)
+    );
+  return (
+    (value.submittedOn === null || businessDate(value.submittedOn)) &&
+    (value.note === null || filingFollowupText(value.note, 2000)) &&
+    Array.isArray(value.contentVersionIds) &&
+    uniqueVersions(value.contentVersionIds, 1, 10) &&
+    new Set(value.contentVersionIds.map((id: string) => id.toLowerCase()))
+      .size === value.contentVersionIds.length
+  );
+}
+async function sendFilingFollowup<K extends keyof FilingFollowupResults>(
+  prefix: 'cases' | 'lawyer/cases',
+  caseId: string,
+  filingId: string,
+  targetId: string | null,
+  raw: FilingFollowupInputs,
+  kind: K,
+  options?: RequestOptions,
+): Promise<FilingFollowupResults[K]> {
+  const correcting = targetId !== null;
+  if (
+    !uuidV4(caseId) ||
+    !uuidV4(filingId) ||
+    (correcting && !uuidV4(targetId)) ||
+    !validFilingFollowupInput(raw, kind, correcting)
+  )
+    throw new ApiError('执行申请后续资料输入无效', 400, 'VALIDATION_ERROR');
+  const body = structuredClone(raw);
+  const submitted: unknown = body;
+  if (!record(submitted)) throw invalidResponse();
+  const target = kind === 'feedbacks' ? 'feedbackId' : 'supplementId';
+  const expectedTarget = correcting ? targetId : submitted[target];
+  const expectedRevision = body.expectedRevision;
+  const headers = new Headers(options?.headers);
+  try {
+    headers.set('Idempotency-Key', body.idempotencyKey);
+  } catch {
+    throw new ApiError('幂等键无法用于请求头', 400, 'VALIDATION_ERROR');
+  }
+  const path = `/${prefix}/${encodeURIComponent(caseId)}/execution-filings/${encodeURIComponent(filingId)}/${kind}${correcting ? `/${encodeURIComponent(targetId)}/corrections` : ''}`;
+  options?.signal?.throwIfAborted();
+  // A transport abort cannot prove rollback. Recovery belongs to the caller's
+  // original actor, route anchors, complete body and key; no pending is cleared.
+  const response = await requestJson(path, {
+    ...options,
+    method: 'POST',
+    headers: Object.fromEntries(headers),
+    body,
+    retryOnCsrfInvalid: false,
+  });
+  options?.signal?.throwIfAborted();
+  if (
+    !record(response) ||
+    !exact(response, ['id', 'filingId', target, 'revision', 'recordedAt']) ||
+    !uuidV4(response.id) ||
+    !sameUuid(response.filingId, filingId) ||
+    !sameUuid(response[target], expectedTarget) ||
+    !recordRevision(response.revision) ||
+    response.revision < 1 ||
+    response.revision !== expectedRevision + 1 ||
+    !utcTimestamp(response.recordedAt)
+  )
+    throw invalidResponse();
+  return response as FilingFollowupResults[K];
+}
+
+export function recordCaseExecutionFilingFeedback(
+  caseId: string,
+  filingId: string,
+  input: RecordExecutionFilingFeedbackInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingFeedbackResult> {
+  return sendFilingFollowup(
+    'cases',
+    caseId,
+    filingId,
+    null,
+    input,
+    'feedbacks',
+    options,
+  );
+}
+export function correctCaseExecutionFilingFeedback(
+  caseId: string,
+  filingId: string,
+  feedbackId: string,
+  input: CorrectExecutionFilingFeedbackInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingFeedbackResult> {
+  return sendFilingFollowup(
+    'cases',
+    caseId,
+    filingId,
+    feedbackId,
+    input,
+    'feedbacks',
+    options,
+  );
+}
+export function submitCaseExecutionFilingSupplement(
+  caseId: string,
+  filingId: string,
+  input: SubmitExecutionFilingSupplementInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingSupplementResult> {
+  return sendFilingFollowup(
+    'cases',
+    caseId,
+    filingId,
+    null,
+    input,
+    'supplements',
+    options,
+  );
+}
+export function correctCaseExecutionFilingSupplement(
+  caseId: string,
+  filingId: string,
+  supplementId: string,
+  input: CorrectExecutionFilingSupplementInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingSupplementResult> {
+  return sendFilingFollowup(
+    'cases',
+    caseId,
+    filingId,
+    supplementId,
+    input,
+    'supplements',
+    options,
+  );
+}
+export function recordLawyerCaseExecutionFilingFeedback(
+  caseId: string,
+  filingId: string,
+  input: RecordExecutionFilingFeedbackInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingFeedbackResult> {
+  return sendFilingFollowup(
+    'lawyer/cases',
+    caseId,
+    filingId,
+    null,
+    input,
+    'feedbacks',
+    options,
+  );
+}
+export function correctLawyerCaseExecutionFilingFeedback(
+  caseId: string,
+  filingId: string,
+  feedbackId: string,
+  input: CorrectExecutionFilingFeedbackInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingFeedbackResult> {
+  return sendFilingFollowup(
+    'lawyer/cases',
+    caseId,
+    filingId,
+    feedbackId,
+    input,
+    'feedbacks',
+    options,
+  );
+}
+export function submitLawyerCaseExecutionFilingSupplement(
+  caseId: string,
+  filingId: string,
+  input: SubmitExecutionFilingSupplementInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingSupplementResult> {
+  return sendFilingFollowup(
+    'lawyer/cases',
+    caseId,
+    filingId,
+    null,
+    input,
+    'supplements',
+    options,
+  );
+}
+export function correctLawyerCaseExecutionFilingSupplement(
+  caseId: string,
+  filingId: string,
+  supplementId: string,
+  input: CorrectExecutionFilingSupplementInput,
+  options?: RequestOptions,
+): Promise<ExecutionFilingSupplementResult> {
+  return sendFilingFollowup(
+    'lawyer/cases',
+    caseId,
+    filingId,
+    supplementId,
+    input,
+    'supplements',
+    options,
+  );
 }

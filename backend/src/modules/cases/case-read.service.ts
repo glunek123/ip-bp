@@ -10,10 +10,20 @@ import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
 import {
+  executionFeedbackReadSelect,
+  executionSupplementReadSelect,
+  projectExecutionFilingFollowups,
+} from './case-execution-filing-followup-read';
+import {
   caseKnownCourtId,
   caseListDisplay,
   caseListDisplaySelect,
 } from './case-list-display-read';
+import {
+  projectSectionRecord,
+  sectionRecordCorrectionSelect,
+  sectionRecordFiles,
+} from './case-section-record-edit-read';
 
 const isoDate = (value: Date) => value.toISOString().slice(0, 10);
 
@@ -867,6 +877,7 @@ export class CaseReadService {
         ...(principal === 'LAWYER' ? this.lawyerWhere(actor) : {}),
       },
       select: {
+        ...sectionRecordCorrectionSelect,
         id: true,
         businessNo: true,
         stage: true,
@@ -1397,6 +1408,7 @@ export class CaseReadService {
                       id: true,
                       originalFilename: true,
                       mimeType: true,
+                      caseSectionRecordUploadDraftId: true,
                     },
                   },
                 },
@@ -1426,11 +1438,69 @@ export class CaseReadService {
                   },
                 },
               });
-        return { record, judgmentMaterials, executionMaterials };
+        if (principal === 'LAWYER') {
+          const preparedIds = judgmentMaterials.flatMap((material) =>
+            material.contentVersions
+              .filter(
+                (version) => version.caseSectionRecordUploadDraftId != null,
+              )
+              .map((version) => version.id),
+          );
+          const frozenIds =
+            preparedIds.length === 0
+              ? []
+              : await transaction.$queryRawUnsafe<Array<{ id: string }>>(
+                  'SELECT v.id FROM content_versions v WHERE v.id=ANY($1::uuid[]) AND case_section_upload_has_first_freeze(v.id)',
+                  preparedIds,
+                );
+          const allowed = new Set(frozenIds.map((row) => row.id));
+          for (const material of judgmentMaterials)
+            material.contentVersions = material.contentVersions.filter(
+              (version) =>
+                version.caseSectionRecordUploadDraftId == null ||
+                allowed.has(version.id),
+            );
+        }
+        const followupScope =
+          record?.executionFiling == null
+            ? null
+            : {
+                caseId: id,
+                departmentId: actor.departmentId,
+                filingId: record.executionFiling.id,
+              };
+        const [executionFeedbacks, executionSupplements] =
+          followupScope === null
+            ? [[], []]
+            : await Promise.all([
+                transaction.caseExecutionFilingFeedback.findMany({
+                  where: followupScope,
+                  orderBy: [{ feedbackId: 'asc' }, { toRevision: 'asc' }],
+                  select: executionFeedbackReadSelect,
+                }),
+                transaction.caseExecutionFilingSupplement.findMany({
+                  where: followupScope,
+                  orderBy: [{ supplementId: 'asc' }, { toRevision: 'asc' }],
+                  select: executionSupplementReadSelect,
+                }),
+              ]);
+        return {
+          record,
+          judgmentMaterials,
+          executionMaterials,
+          executionFeedbacks,
+          executionSupplements,
+        };
       },
       { isolationLevel: 'RepeatableRead' },
     );
-    const { record, judgmentMaterials, executionMaterials } = snapshot;
+    const {
+      record,
+      judgmentMaterials,
+      executionMaterials,
+      executionFeedbacks,
+      executionSupplements,
+    } = snapshot;
     if (record === null)
       throw new NotFoundException({
         code: 'RESOURCE_NOT_FOUND',
@@ -1934,7 +2004,279 @@ export class CaseReadService {
       dueAt: value.dueAt.toISOString(),
       executedAt: value.executedAt.toISOString(),
     });
+    const sectionEditActions = [
+      'case.execution.mailing.correct',
+      'case.execution.filing.correct',
+      'case.execution.finish.correct',
+      'case.hearing.correct',
+      'case.judgment.correct',
+      'case.closure.correct',
+    ] as const;
+    const sectionEditAllowed = await Promise.all(
+      sectionEditActions.map((action) =>
+        principal === 'INTERNAL'
+          ? this.access.canAuthorizeCase(actor, action, {
+              departmentId: actor.departmentId,
+              responsibleUserId: record.responsibleUserId,
+              ...(record.responsibleMembership.teamId
+                ? { teamId: record.responsibleMembership.teamId }
+                : {}),
+            })
+          : false,
+      ),
+    );
+    const executionMailingEdits = (
+      record.executionMailing == null ? [] : [record.executionMailing]
+    ).map((root) => {
+      const corrections = (
+        record.executionMailingRecordCorrections ?? []
+      ).filter((row) => row.mailingId === root.id);
+      const projection = projectSectionRecord(
+        {
+          mailedAt: isoDate(root.mailedAt),
+          mailReceiptContentVersionIds: executionMailingFiles.map(
+            (file) => file.contentVersionId,
+          ),
+          files: executionMailingFiles,
+        },
+        corrections,
+        (row) => ({
+          mailedAt: isoDate(row.mailedAt),
+          mailReceiptContentVersionIds: row.documents.map(
+            (doc) => doc.contentVersionId,
+          ),
+          files: sectionRecordFiles(row.documents),
+        }),
+      );
+      return {
+        mailingId: root.id,
+        mailingRevision: projection.revision,
+        canEdit: sectionEditAllowed[0] === true,
+        original: projection.original,
+        effective: projection.effective,
+        history: projection.history,
+      };
+    });
+    const executionFilingEdits = (
+      record.executionFiling == null ? [] : [record.executionFiling]
+    ).map((root) => {
+      const corrections = (
+        record.executionFilingRecordCorrections ?? []
+      ).filter((row) => row.filingId === root.id);
+      const projection = projectSectionRecord(
+        {
+          submittedAt: isoDate(root.submittedAt),
+          executionFilingProofContentVersionIds: executionFilingFiles.map(
+            (file) => file.contentVersionId,
+          ),
+          files: executionFilingFiles,
+        },
+        corrections,
+        (row) => ({
+          submittedAt: isoDate(row.submittedAt),
+          executionFilingProofContentVersionIds: row.documents.map(
+            (doc) => doc.contentVersionId,
+          ),
+          files: sectionRecordFiles(row.documents),
+        }),
+      );
+      return {
+        filingId: root.id,
+        filingRevision: projection.revision,
+        canEdit: sectionEditAllowed[1] === true,
+        original: projection.original,
+        effective: projection.effective,
+        history: projection.history,
+      };
+    });
+    const executionFinishEdits = (
+      record.executionFinish == null ? [] : [record.executionFinish]
+    ).map((root) => {
+      const corrections = (
+        record.executionFinishRecordCorrections ?? []
+      ).filter((row) => row.finishId === root.id);
+      const projection = projectSectionRecord(
+        {
+          finishedAt: isoDate(root.finishedAt),
+          reason: root.reason,
+          basisNote: root.basisNote,
+          basisContentVersionIds: executionFinishFiles.map(
+            (file) => file.contentVersionId,
+          ),
+          files: executionFinishFiles,
+        },
+        corrections,
+        (row) => ({
+          finishedAt: isoDate(row.finishedAt),
+          reason: row.businessReason,
+          basisNote: row.basisNote,
+          basisContentVersionIds: row.documents.map(
+            (doc) => doc.contentVersionId,
+          ),
+          files: sectionRecordFiles(row.documents),
+        }),
+      );
+      return {
+        finishId: root.id,
+        finishRevision: projection.revision,
+        canEdit: sectionEditAllowed[2] === true,
+        original: projection.original,
+        effective: projection.effective,
+        history: projection.history,
+      };
+    });
+    const hearingEdits = record.hearingArrangements.map((root) => {
+      const corrections = (record.hearingRecordCorrections ?? []).filter(
+        (row) =>
+          row.arrangementId === root.id &&
+          row.trialRoundId === root.trialRoundId,
+      );
+      const projection = projectSectionRecord(
+        { hearingAt: root.hearingAt === null ? null : isoDate(root.hearingAt) },
+        corrections,
+        (row) => ({
+          hearingAt: row.hearingAt === null ? null : isoDate(row.hearingAt),
+        }),
+      );
+      return {
+        arrangementId: root.id,
+        trialRoundId: root.trialRoundId,
+        hearingRevision: projection.revision,
+        canEdit: sectionEditAllowed[3] === true,
+        original: projection.original,
+        effective: projection.effective,
+        history: projection.history,
+      };
+    });
+    const judgmentEdits = judgmentHistory.map((root) => {
+      const corrections = (record.judgmentRecordCorrections ?? []).filter(
+        (row) =>
+          row.judgmentId === root.id && row.trialRoundId === root.trialRoundId,
+      );
+      const projection = projectSectionRecord(
+        {
+          judgmentReceivedAt: root.judgmentReceivedAt,
+          judgmentAmountState: root.judgmentAmountState,
+          judgmentAmount: root.judgmentAmount,
+          paidLitigationFeeState: root.paidLitigationFeeState,
+          paidLitigationFee: root.paidLitigationFee,
+          judgmentContentVersionIds: root.files.map(
+            (file) => file.contentVersionId,
+          ),
+          files: root.files,
+        },
+        corrections,
+        (row) => ({
+          judgmentReceivedAt: isoDate(row.judgmentReceivedAt),
+          judgmentAmountState: row.judgmentAmountState,
+          judgmentAmount: row.judgmentAmount?.toFixed(2) ?? null,
+          paidLitigationFeeState: row.paidLitigationFeeState,
+          paidLitigationFee: row.paidLitigationFee?.toFixed(2) ?? null,
+          judgmentContentVersionIds: row.documents.map(
+            (doc) => doc.contentVersionId,
+          ),
+          files: sectionRecordFiles(row.documents),
+        }),
+      );
+      return {
+        judgmentId: root.id,
+        trialRoundId: root.trialRoundId,
+        judgmentRevision: projection.revision,
+        canEdit: sectionEditAllowed[4] === true,
+        original: projection.original,
+        effective: projection.effective,
+        history: projection.history,
+      };
+    });
+    const closureEdits = (closure === null ? [] : [closure]).map((root) => {
+      const corrections = (record.closureRecordCorrections ?? []).filter(
+        (row) => row.closureId === root.id,
+      );
+      if (
+        corrections.some(
+          (row) => row.sourceClosureVersionId !== root.current.id,
+        )
+      )
+        throw invalidSource();
+      const projection = projectSectionRecord(
+        {
+          closeAt: root.current.closeAt,
+          closeAmountState: root.current.closeAmountState,
+          closeAmt: root.current.closeAmt,
+          note: root.current.note,
+          closeContentVersionIds: root.current.files.map(
+            (file) => file.contentVersionId,
+          ),
+          files: root.current.files,
+        },
+        corrections,
+        (row) => ({
+          closeAt: row.closeAt === null ? null : isoDate(row.closeAt),
+          closeAmountState: row.closeAmountState,
+          closeAmt: row.closeAmt?.toFixed(2) ?? null,
+          note: row.note,
+          closeContentVersionIds: row.documents.map(
+            (doc) => doc.contentVersionId,
+          ),
+          files: sectionRecordFiles(row.documents),
+        }),
+      );
+      return {
+        closureId: root.id,
+        closureRevision: projection.revision,
+        canEdit: sectionEditAllowed[5] === true,
+        original: projection.original,
+        effective: projection.effective,
+        history: projection.history,
+      };
+    });
+    const originalCurrentJudgment =
+      judgmentHistory.find((fact) => fact.id === record.currentJudgmentId) ??
+      null;
+    const effectiveCurrentJudgment = judgmentEdits.find(
+      (edit) => edit.judgmentId === record.currentJudgmentId,
+    )?.effective;
+    const currentHearingRecord = hearingEdits.find(
+      (edit) => edit.arrangementId === record.currentHearingArrangement?.id,
+    );
+    const followupActions = [
+      'case.execution.feedback.record',
+      'case.execution.feedback.correct',
+      'case.execution.supplement.submit',
+      'case.execution.supplement.correct',
+    ] as const;
+    const canFollowup = async (
+      action: (typeof followupActions)[number],
+    ): Promise<boolean> =>
+      record.executionFiling == null || record.stage !== 'EXECUTING'
+        ? false
+        : principal === 'LAWYER'
+          ? true
+          : this.access.canAuthorizeCase(actor, action, {
+              departmentId: actor.departmentId,
+              responsibleUserId: record.responsibleUserId,
+              ...(record.responsibleMembership.teamId
+                ? { teamId: record.responsibleMembership.teamId }
+                : {}),
+            });
+    const followupAllowed = await Promise.all([
+      canFollowup(followupActions[0]),
+      canFollowup(followupActions[1]),
+      canFollowup(followupActions[2]),
+      canFollowup(followupActions[3]),
+    ]);
+    const executionFilingFollowups =
+      record.executionFiling == null
+        ? null
+        : projectExecutionFilingFollowups({
+            filingId: record.executionFiling.id,
+            internal: principal === 'INTERNAL',
+            permissions: followupAllowed,
+            feedbacks: executionFeedbacks,
+            supplements: executionSupplements,
+          });
     const detail = {
+      executionFilingFollowups,
       id: record.id,
       businessNo: record.businessNo,
       stage: record.stage,
@@ -1973,13 +2315,24 @@ export class CaseReadService {
           : {
               id: record.executionMailing.id,
               confirmationId: record.executionMailing.confirmationId,
-              mailedAt: record.executionMailing.mailedAt
-                .toISOString()
-                .slice(0, 10),
+              mailedAt: executionMailingEdits[0]!.effective.mailedAt,
               recordedAt: record.executionMailing.recordedAt.toISOString(),
-              files: executionMailingFiles,
+              files: executionMailingEdits[0]!.effective.files,
             },
-      closure,
+      closure:
+        closure === null
+          ? null
+          : {
+              ...closure,
+              current: {
+                ...closure.current,
+                closeAt: closureEdits[0]!.effective.closeAt,
+                closeAmountState: closureEdits[0]!.effective.closeAmountState,
+                closeAmt: closureEdits[0]!.effective.closeAmt,
+                note: closureEdits[0]!.effective.note,
+                files: closureEdits[0]!.effective.files,
+              },
+            },
       archive,
       canArchive:
         record.stage === 'WAITING_ARCHIVE' &&
@@ -2036,13 +2389,11 @@ export class CaseReadService {
           : {
               id: record.executionFinish.id,
               filingId: record.executionFinish.filingId,
-              finishedAt: record.executionFinish.finishedAt
-                .toISOString()
-                .slice(0, 10),
-              reason: record.executionFinish.reason,
-              basisNote: record.executionFinish.basisNote,
+              finishedAt: executionFinishEdits[0]!.effective.finishedAt,
+              reason: executionFinishEdits[0]!.effective.reason,
+              basisNote: executionFinishEdits[0]!.effective.basisNote,
               recordedAt: record.executionFinish.recordedAt.toISOString(),
-              files: executionFinishFiles,
+              files: executionFinishEdits[0]!.effective.files,
             },
       executionFiling:
         record.executionFiling == null
@@ -2050,17 +2401,23 @@ export class CaseReadService {
           : {
               id: record.executionFiling.id,
               mailingId: record.executionFiling.mailingId,
-              submittedAt: record.executionFiling.submittedAt
-                .toISOString()
-                .slice(0, 10),
+              submittedAt: executionFilingEdits[0]!.effective.submittedAt,
               recordedAt: record.executionFiling.recordedAt.toISOString(),
-              files: executionFilingFiles,
+              files: executionFilingEdits[0]!.effective.files,
             },
       hearing: {
         currentArrangement:
           record.currentHearingArrangement === null
             ? null
-            : arrangement(record.currentHearingArrangement),
+            : {
+                ...arrangement(record.currentHearingArrangement),
+                hearingAt:
+                  currentHearingRecord === undefined
+                    ? (record.currentHearingArrangement.hearingAt
+                        ?.toISOString()
+                        .slice(0, 10) ?? null)
+                    : currentHearingRecord.effective.hearingAt,
+              },
         currentAdvance:
           record.currentHearingAdvance === null
             ? null
@@ -2081,9 +2438,25 @@ export class CaseReadService {
       },
       judgment: {
         current:
-          judgmentHistory.find(
-            (fact) => fact.id === record.currentJudgmentId,
-          ) ?? null,
+          originalCurrentJudgment === null
+            ? null
+            : {
+                ...originalCurrentJudgment,
+                ...(effectiveCurrentJudgment === undefined
+                  ? {}
+                  : {
+                      judgmentReceivedAt:
+                        effectiveCurrentJudgment.judgmentReceivedAt,
+                      judgmentAmountState:
+                        effectiveCurrentJudgment.judgmentAmountState,
+                      judgmentAmount: effectiveCurrentJudgment.judgmentAmount,
+                      paidLitigationFeeState:
+                        effectiveCurrentJudgment.paidLitigationFeeState,
+                      paidLitigationFee:
+                        effectiveCurrentJudgment.paidLitigationFee,
+                      files: effectiveCurrentJudgment.files,
+                    }),
+              },
         history: judgmentHistory,
         availableFiles: judgmentAvailableFiles,
       },
@@ -2184,6 +2557,12 @@ export class CaseReadService {
       ...(principal === 'INTERNAL'
         ? {
             recordEdits: {
+              executionMailings: executionMailingEdits,
+              executionFilings: executionFilingEdits,
+              executionFinishes: executionFinishEdits,
+              hearings: hearingEdits,
+              judgments: judgmentEdits,
+              closures: closureEdits,
               canSaveSecondInstanceAcceptance: canSaveSecondAcceptance,
               secondInstanceAcceptances: secondAcceptanceChoices.map(
                 (choice) => {
@@ -3063,6 +3442,7 @@ export class CaseReadService {
               },
         executionMailing: detail.executionMailing,
         executionFiling: detail.executionFiling,
+        executionFilingFollowups: detail.executionFilingFollowups,
         executionFinish: detail.executionFinish,
         complaint:
           detail.complaint === null

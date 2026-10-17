@@ -23,10 +23,17 @@ function createStore(
 
 describe('AccessControlService', () => {
   it.each([
+    'case.execution.feedback.record',
+    'case.execution.feedback.correct',
+    'case.execution.supplement.submit',
+    'case.execution.supplement.correct',
     'case.closure.record',
     'case.closure.correct',
     'case.archive',
     'case.archive.correct',
+    'case.execution.mailing.correct',
+    'case.execution.filing.correct',
+    'case.execution.finish.correct',
   ] as const)(
     'requires the independent live %s grant and its own scope',
     async (action) => {
@@ -36,6 +43,8 @@ describe('AccessControlService', () => {
         grants: [
           { action: 'case.read', scope: 'department' },
           { action: 'case.execution.finish', scope: 'department' },
+          { action: 'case.execution.mail', scope: 'department' },
+          { action: 'case.execution.filing.submit', scope: 'department' },
         ],
       };
       const service = new AccessControlService(createStore(snapshot));

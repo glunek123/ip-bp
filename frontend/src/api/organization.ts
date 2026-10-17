@@ -93,6 +93,10 @@ export const permissionActionValues = [
   'CASE_EXECUTION_CONFIRM',
   'CASE_EXECUTION_MAIL',
   'CASE_EXECUTION_FILING_SUBMIT',
+  'CASE_EXECUTION_FEEDBACK_RECORD',
+  'CASE_EXECUTION_FEEDBACK_CORRECT',
+  'CASE_EXECUTION_SUPPLEMENT_SUBMIT',
+  'CASE_EXECUTION_SUPPLEMENT_CORRECT',
   'CASE_EXECUTION_FINISH',
   'CASE_CLOSURE_RECORD',
   'CASE_CLOSURE_CORRECT',
@@ -336,6 +340,10 @@ function isPermissionCatalog(
         item.action === 'CASE_EXECUTION_CONFIRM' ||
         item.action === 'CASE_EXECUTION_MAIL' ||
         item.action === 'CASE_EXECUTION_FILING_SUBMIT' ||
+        item.action === 'CASE_EXECUTION_FEEDBACK_RECORD' ||
+        item.action === 'CASE_EXECUTION_FEEDBACK_CORRECT' ||
+        item.action === 'CASE_EXECUTION_SUPPLEMENT_SUBMIT' ||
+        item.action === 'CASE_EXECUTION_SUPPLEMENT_CORRECT' ||
         item.action === 'CASE_EXECUTION_FINISH' ||
         item.action === 'CASE_CLOSURE_RECORD' ||
         item.action === 'CASE_CLOSURE_CORRECT' ||

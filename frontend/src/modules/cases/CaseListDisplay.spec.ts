@@ -20,7 +20,8 @@ vi.mock('../../api/cases', async (importOriginal) => ({
   getCase: api.getCase,
   getExternalEntryOptions: api.getExternalEntryOptions,
 }));
-vi.mock('./CaseListWorkflowPanel.vue', () => ({
+vi.mock('./CaseListWorkflowPanel.vue', async (original) => ({
+  ...(await original<typeof import('./CaseListWorkflowPanel.vue')>()),
   default: {
     props: ['item', 'action'],
     template:
@@ -203,6 +204,29 @@ afterEach(() => {
 });
 
 describe('authorized internal case list display', () => {
+  it('labels corrected judgment and closure amount sources without changing their values', async () => {
+    const item = summary();
+    item.displaySummary.judgmentAmount = {
+      state: 'KNOWN',
+      amount: '15.00',
+      sourceType: 'FIRST_INSTANCE_JUDGMENT_RECORD_CORRECTION',
+      sourceId: sourceIds.correction,
+    };
+    item.displaySummary.closureAmount = {
+      state: 'PENDING',
+      amount: null,
+      sourceType: 'CASE_CLOSURE_RECORD_CORRECTION',
+      sourceId: sourceIds.changed,
+    };
+    api.listCases.mockResolvedValue(result([item]));
+    const { wrapper } = await mountList();
+    const text = wrapper.get('tbody tr').text();
+    expect(text).toContain('判决资料更正');
+    expect(text).toContain('结案资料更正');
+    expect(text).toContain('15.00');
+    expect(text).toContain('待定');
+    expect(text).not.toContain('未登记');
+  });
   it('opens an explicit judgment action in place and preserves list context', async () => {
     const item: CaseSummary = {
       ...summary(),

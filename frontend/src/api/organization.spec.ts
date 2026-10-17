@@ -331,6 +331,16 @@ const context = {
       label: '申请执行',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
+    ...[
+      ['CASE_EXECUTION_FEEDBACK_RECORD', '登记执行法院反馈'],
+      ['CASE_EXECUTION_FEEDBACK_CORRECT', '更正执行法院反馈'],
+      ['CASE_EXECUTION_SUPPLEMENT_SUBMIT', '登记执行申请补交'],
+      ['CASE_EXECUTION_SUPPLEMENT_CORRECT', '更正执行申请补交'],
+    ].map(([action, label]) => ({
+      action,
+      label,
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    })),
     {
       action: 'CASE_EXECUTION_FINISH',
       label: '登记执行结束',
@@ -498,6 +508,10 @@ describe('organization API', () => {
       'CASE_EXECUTION_CONFIRM',
       'CASE_EXECUTION_MAIL',
       'CASE_EXECUTION_FILING_SUBMIT',
+      'CASE_EXECUTION_FEEDBACK_RECORD',
+      'CASE_EXECUTION_FEEDBACK_CORRECT',
+      'CASE_EXECUTION_SUPPLEMENT_SUBMIT',
+      'CASE_EXECUTION_SUPPLEMENT_CORRECT',
       'CASE_EXECUTION_FINISH',
       'CASE_CLOSURE_RECORD',
       'CASE_CLOSURE_CORRECT',
@@ -677,6 +691,10 @@ describe('organization API', () => {
 
   it.each([
     'CASE_EXECUTION_CONFIRM',
+    'CASE_EXECUTION_FEEDBACK_RECORD',
+    'CASE_EXECUTION_FEEDBACK_CORRECT',
+    'CASE_EXECUTION_SUPPLEMENT_SUBMIT',
+    'CASE_EXECUTION_SUPPLEMENT_CORRECT',
     'CASE_EXECUTION_MAIL',
     'CASE_EXECUTION_FILING_SUBMIT',
     'CASE_EXECUTION_FINISH',

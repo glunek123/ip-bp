@@ -88,6 +88,7 @@ export class CaseJudgmentService {
                   select: {
                     trialRoundId: true,
                     externalEntryId: true,
+                    arrangementId: true,
                     arrangement: { select: { hearingAt: true } },
                   },
                 },
@@ -209,6 +210,17 @@ export class CaseJudgmentService {
               throw this.invalidState();
             if (record.version !== value.expectedVersion)
               throw this.versionConflict();
+            if (action === 'CORRECT' && record.currentJudgmentId !== null) {
+              const edited = await tx.caseJudgmentRecordCorrection.findFirst({
+                where: {
+                  caseId,
+                  departmentId: actor.departmentId,
+                  judgmentId: record.currentJudgmentId,
+                },
+                select: { id: true },
+              });
+              if (edited !== null) throw this.versionConflict();
+            }
             const acceptedOn = record.acceptance
               ? (
                   record.acceptance.corrections[0]?.acceptedAt ??
@@ -222,8 +234,25 @@ export class CaseJudgmentService {
             const stageFloor = isEntryStartingAt(source, 'WAITING_JUDGMENT')
               ? source.stageReachedOn
               : null;
+            const hearingEdit = validAdvance
+              ? await tx.caseHearingRecordCorrection.findFirst({
+                  where: {
+                    caseId,
+                    departmentId: actor.departmentId,
+                    trialRoundId: record.currentTrialRoundId!,
+                    arrangementId: realAdvance!.arrangementId,
+                  },
+                  orderBy: { toRevision: 'desc' },
+                  select: { hearingAt: true },
+                })
+              : null;
             const hearingOn = validAdvance
-              ? realAdvance?.arrangement.hearingAt?.toISOString().slice(0, 10)
+              ? (hearingEdit === null
+                  ? realAdvance?.arrangement.hearingAt
+                  : hearingEdit.hearingAt
+                )
+                  ?.toISOString()
+                  .slice(0, 10)
               : null;
             if (
               (acceptedOn !== null && value.judgmentReceivedAt < acceptedOn) ||

@@ -462,9 +462,17 @@ describe('real CA-016 closure detail integration', () => {
     // Remount clears only the form's success lock; the current full version is read from the server.
     wrapper.unmount();
     const next = await open('internal');
-    await next.wrapper
-      .get('[data-section="closure-info"] .case-workspace-section__edit')
-      .trigger('click');
+    // This exercises workflow CORRECT (Case.version 20 -> 21), whose entry remains
+    // separate from the non-advancing registered-record section editor.
+    expect(
+      next.wrapper.get('[data-test="workspace-primary-action"]').text(),
+    ).toBe('更正结案资料');
+    expect(
+      next.wrapper
+        .get('[data-section="closure-info"] .case-workspace-section__edit')
+        .attributes('disabled'),
+    ).toBeDefined();
+    await next.wrapper.get('[data-test="closure-correct"]').trigger('click');
     expect(
       next.wrapper.get('[data-test="closure-amount"]').element,
     ).toHaveProperty('value', '0.00');
@@ -498,8 +506,10 @@ describe('real CA-016 closure detail integration', () => {
         closeContentVersionIds: [file.contentVersionId],
       }),
     );
+    const readsBeforeRefresh = api.getCase.mock.calls.length;
     await next.wrapper.get('[data-test="case-refresh"]').trigger('click');
     await flushPromises();
+    expect(api.getCase).toHaveBeenCalledTimes(readsBeforeRefresh + 1);
     expect(next.wrapper.getComponent(CaseClosurePanel).props('item')).toEqual(
       fresh,
     );

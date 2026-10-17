@@ -19,7 +19,12 @@ import { OrganizationService } from '../../access-control/organization.service';
 import { lockCustomerActorFacts } from '../../access-control/customer-actor-facts-lock';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
-import type { Prisma } from '../../generated/prisma/client';
+import type { Prisma, UploadDraft } from '../../generated/prisma/client';
+import type { CaseSectionRecordUploadTarget } from './case-section-record-upload.dto';
+import type {
+  ExecutionSupplementUploadTarget,
+  ExecutionSupplementUploadDraftResultDto,
+} from './execution-supplement-upload.dto';
 import {
   CreateUploadDraftDto,
   MaterialCategoryValue,
@@ -45,6 +50,81 @@ declare const VALIDATED_MATERIAL_VERSION: unique symbol;
 
 export type MaterialTransactionClient = Prisma.TransactionClient;
 
+export type CaseSectionRecordKind =
+  | 'EXECUTION_MAILING'
+  | 'EXECUTION_FILING'
+  | 'EXECUTION_FINISH'
+  | 'JUDGMENT'
+  | 'CLOSURE';
+
+export type CaseSectionRecordCorrectionReferenceTarget = Readonly<{
+  kind: CaseSectionRecordKind;
+  correctionId: string;
+}>;
+
+const sectionRecordMaterials = {
+  EXECUTION_MAILING: {
+    category: 'MAIL_RECEIPT',
+    actions: [
+      'case.execution.mailed',
+      'case.execution.mailing.record-corrected',
+    ],
+  },
+  EXECUTION_FILING: {
+    category: 'EXECUTION_FILING_PROOF',
+    actions: [
+      'case.execution.filing.submitted',
+      'case.execution.filing.record-corrected',
+    ],
+  },
+  EXECUTION_FINISH: {
+    category: 'EXECUTION_FINISH_BASIS',
+    actions: [
+      'case.execution.finished',
+      'case.execution.finish.record-corrected',
+    ],
+  },
+  JUDGMENT: {
+    category: 'JUDGMENT',
+    actions: [
+      'case.judgment.registered',
+      'case.judgment.corrected',
+      'case.judgment.record-corrected',
+    ],
+  },
+  CLOSURE: {
+    category: 'CASE_CLOSURE_DOCUMENT',
+    actions: [
+      'case.closure.recorded',
+      'case.closure.corrected',
+      'case.closure.record-corrected',
+    ],
+  },
+} as const;
+
+const sectionRecordUploads = {
+  EXECUTION_MAILING: {
+    command: 'EXECUTION_MAILING_CORRECTION',
+    action: 'case.execution.mailing.correct',
+  },
+  EXECUTION_FILING: {
+    command: 'EXECUTION_FILING_CORRECTION',
+    action: 'case.execution.filing.correct',
+  },
+  EXECUTION_FINISH: {
+    command: 'EXECUTION_FINISH_CORRECTION',
+    action: 'case.execution.finish.correct',
+  },
+  JUDGMENT: {
+    command: 'JUDGMENT_RECORD_CORRECTION',
+    action: 'case.judgment.correct',
+  },
+  CLOSURE: {
+    command: 'CLOSURE_RECORD_CORRECTION',
+    action: 'case.closure.correct',
+  },
+} as const;
+
 export type AssertAvailableVersionsInput = Readonly<{
   ownerType: MaterialOwnerTypeValue;
   ownerId: string;
@@ -52,6 +132,9 @@ export type AssertAvailableVersionsInput = Readonly<{
   contentVersionIds: readonly string[];
   minCount?: number;
   maxCount?: number;
+  sectionRecordKind?: CaseSectionRecordKind;
+  sectionRecordTarget?: CaseSectionRecordUploadTarget;
+  executionSupplementTarget?: ExecutionSupplementUploadTarget;
   leadAction?: Extract<
     LeadAction,
     'lead.read' | 'lead.edit' | 'lead.evidence.decide' | 'notary.unbox.record'
@@ -194,6 +277,7 @@ const allowedMimeTypes = {
     'image/jpeg',
     'image/png',
   ]),
+  EXECUTION_SUPPLEMENT: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   EXECUTION_APPLICATION: new Set([
     'application/pdf',
     'application/msword',
@@ -209,6 +293,10 @@ export class MaterialService {
     {
       transaction: MaterialTransactionClient;
       canonicalFact: CanonicalMaterialVersionFact;
+      firstUploadTarget?: CaseSectionRecordUploadTarget;
+      sectionFreezeEventId?: string;
+      executionSupplementTarget?: ExecutionSupplementUploadTarget;
+      supplementFreezeEventId?: string;
     }
   >();
 
@@ -226,7 +314,496 @@ export class MaterialService {
     this.clock = clock ?? (() => new Date());
   }
 
+  async createExecutionSupplementUploadDraft(
+    actor: ActorContext,
+    caseId: string,
+    target: ExecutionSupplementUploadTarget,
+    file: Readonly<{ originalFilename: string; declaredMimeType: string }>,
+  ): Promise<ExecutionSupplementUploadDraftResultDto> {
+    const originalFilename = this.normalizeFilename(file.originalFilename);
+    const declaredMimeType = normalizeMimeType(file.declaredMimeType);
+    if (
+      !isMimeAllowedForPurpose(
+        'EXECUTION_SUPPLEMENT',
+        'EXECUTION_SUPPLEMENT',
+        declaredMimeType,
+      )
+    )
+      throw this.invalidVersion();
+    const createdAt = this.clock();
+    return this.database.$transaction(async (tx) => {
+      const bindingId = await this.assertExecutionSupplementTarget(
+        tx,
+        actor,
+        caseId,
+        target,
+      );
+      const draft = await tx.uploadDraft.create({
+        data: {
+          departmentId: actor.departmentId,
+          actorUserId: actor.userId,
+          ...(bindingId === undefined
+            ? { internalActorUserId: actor.userId }
+            : { lawyerAccountBindingId: bindingId }),
+          ownerType: 'CASE',
+          ownerId: caseId,
+          category: 'EXECUTION_SUPPLEMENT',
+          purpose: 'EXECUTION_SUPPLEMENT',
+          originalFilename,
+          declaredMimeType,
+          createdAt,
+          expiresAt: new Date(createdAt.getTime() + DAY_MS),
+          executionSupplementFilingId: target.filingId,
+          executionSupplementTargetId: target.supplementId,
+          executionSupplementRevision: target.expectedRevision,
+        },
+      });
+      return {
+        id: draft.id,
+        ownerType: 'CASE',
+        ownerId: caseId,
+        category: 'EXECUTION_SUPPLEMENT',
+        purpose: 'EXECUTION_SUPPLEMENT',
+        originalFilename,
+        declaredMimeType,
+        expiresAt: draft.expiresAt.toISOString(),
+        executionSupplement: { ...target },
+      };
+    });
+  }
+
+  private async validateExecutionSupplementUploadDraft(
+    tx: MaterialTransactionClient,
+    actor: ActorContext,
+    draft: UploadDraft,
+    pendingStorageKey: string | null,
+  ) {
+    const original = this.executionSupplementUploadTarget(draft);
+    if (original === undefined) throw this.invalidVersion();
+    const bindingId = await this.assertExecutionSupplementTarget(
+      tx,
+      actor,
+      draft.ownerId,
+      original,
+    );
+    const current = await tx.uploadDraft.findUnique({
+      where: { id: draft.id },
+    });
+    const target = current && this.executionSupplementUploadTarget(current);
+    if (
+      !current ||
+      !target ||
+      !this.sameExecutionSupplementTarget(target, original) ||
+      current.departmentId !== actor.departmentId ||
+      current.actorUserId !== actor.userId ||
+      current.ownerId !== draft.ownerId ||
+      current.category !== draft.category ||
+      current.purpose !== draft.purpose ||
+      current.originalFilename !== draft.originalFilename ||
+      current.declaredMimeType !== draft.declaredMimeType ||
+      current.internalActorUserId !==
+        (bindingId === undefined ? actor.userId : null) ||
+      current.lawyerAccountBindingId !== (bindingId ?? null)
+    )
+      throw this.invalidVersion();
+    if (
+      current.status !== 'OPEN' ||
+      current.expiresAt <= this.clock() ||
+      current.pendingStorageKey !== pendingStorageKey
+    )
+      throw this.versionConflict();
+  }
+
+  async createCaseSectionRecordUploadDraft(
+    actor: ActorContext,
+    caseId: string,
+    target: CaseSectionRecordUploadTarget,
+    file: Readonly<{ originalFilename: string; declaredMimeType: string }>,
+  ) {
+    const originalFilename = this.normalizeFilename(file.originalFilename);
+    const declaredMimeType = normalizeMimeType(file.declaredMimeType);
+    const category = sectionRecordMaterials[target.kind]?.category;
+    if (
+      !category ||
+      !isMimeAllowedForPurpose(category, category, declaredMimeType)
+    )
+      throw this.invalidVersion();
+    const createdAt = this.clock();
+    return this.database.$transaction(async (tx) => {
+      await this.assertSectionRecordTarget(tx, actor, caseId, target);
+      const draft = await tx.uploadDraft.create({
+        data: {
+          departmentId: actor.departmentId,
+          actorUserId: actor.userId,
+          internalActorUserId: actor.userId,
+          ownerType: 'CASE',
+          ownerId: caseId,
+          category,
+          purpose: category,
+          originalFilename,
+          declaredMimeType,
+          createdAt,
+          expiresAt: new Date(createdAt.getTime() + DAY_MS),
+          caseSectionRecordCommand: sectionRecordUploads[target.kind].command,
+          caseSectionRecordTargetId: target.targetId,
+          caseSectionRecordRevision: target.expectedRevision,
+          caseSectionRecordTrialRoundId:
+            target.kind === 'JUDGMENT' ? target.trialRoundId : null,
+          caseSectionRecordClosureVersionId:
+            target.kind === 'CLOSURE' ? target.expectedClosureVersionId : null,
+        },
+      });
+      return {
+        id: draft.id,
+        ownerType: 'CASE' as const,
+        ownerId: caseId,
+        category,
+        purpose: category,
+        originalFilename,
+        declaredMimeType,
+        expiresAt: draft.expiresAt.toISOString(),
+        recordCorrection: target,
+      };
+    });
+  }
+
+  private sectionRecordUploadTarget(
+    draft: UploadDraft,
+  ): CaseSectionRecordUploadTarget | undefined {
+    if (draft.caseSectionRecordCommand == null) {
+      if (
+        draft.caseSectionRecordTargetId != null ||
+        draft.caseSectionRecordRevision != null ||
+        draft.caseSectionRecordTrialRoundId != null ||
+        draft.caseSectionRecordClosureVersionId != null
+      )
+        throw this.invalidVersion();
+      return undefined;
+    }
+    const kind = (
+      Object.keys(sectionRecordUploads) as CaseSectionRecordKind[]
+    ).find(
+      (key) =>
+        sectionRecordUploads[key].command === draft.caseSectionRecordCommand,
+    );
+    if (
+      !kind ||
+      !draft.caseSectionRecordTargetId ||
+      draft.caseSectionRecordRevision == null ||
+      draft.ownerType !== 'CASE' ||
+      draft.internalActorUserId !== draft.actorUserId ||
+      draft.customerAccountBindingId != null ||
+      draft.notaryOfficeAccountBindingId != null ||
+      draft.lawyerAccountBindingId != null ||
+      draft.category !== sectionRecordMaterials[kind].category ||
+      draft.purpose !== draft.category
+    )
+      throw this.invalidVersion();
+    const base = {
+      targetId: draft.caseSectionRecordTargetId,
+      expectedRevision: draft.caseSectionRecordRevision,
+    };
+    if (kind === 'JUDGMENT') {
+      if (
+        !draft.caseSectionRecordTrialRoundId ||
+        draft.caseSectionRecordClosureVersionId != null
+      )
+        throw this.invalidVersion();
+      return {
+        ...base,
+        kind,
+        trialRoundId: draft.caseSectionRecordTrialRoundId,
+      };
+    }
+    if (kind === 'CLOSURE') {
+      if (
+        !draft.caseSectionRecordClosureVersionId ||
+        draft.caseSectionRecordTrialRoundId != null
+      )
+        throw this.invalidVersion();
+      return {
+        ...base,
+        kind,
+        expectedClosureVersionId: draft.caseSectionRecordClosureVersionId,
+      };
+    }
+    if (
+      draft.caseSectionRecordTrialRoundId != null ||
+      draft.caseSectionRecordClosureVersionId != null
+    )
+      throw this.invalidVersion();
+    return { ...base, kind };
+  }
+
+  private sameSectionRecordTarget(
+    a: CaseSectionRecordUploadTarget,
+    b: CaseSectionRecordUploadTarget,
+  ): boolean {
+    return (
+      a.kind === b.kind &&
+      a.targetId === b.targetId &&
+      a.expectedRevision === b.expectedRevision &&
+      (a.kind !== 'JUDGMENT' ||
+        (b.kind === 'JUDGMENT' && a.trialRoundId === b.trialRoundId)) &&
+      (a.kind !== 'CLOSURE' ||
+        (b.kind === 'CLOSURE' &&
+          a.expectedClosureVersionId === b.expectedClosureVersionId))
+    );
+  }
+
+  private async lockSectionRecordCase(
+    tx: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+  ) {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
+      throw this.forbidden();
+    const rows = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+      'SELECT "id" FROM "cases" WHERE "id"=$1::uuid AND "department_id"=$2::uuid FOR UPDATE',
+      caseId,
+      actor.departmentId,
+    );
+    if (rows.length !== 1) throw this.notFound();
+  }
+
+  private async assertSectionRecordTarget(
+    tx: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    target: CaseSectionRecordUploadTarget,
+    lock = true,
+  ) {
+    if (lock) await this.lockSectionRecordCase(tx, actor, caseId);
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
+      throw this.forbidden();
+    if (
+      !Number.isSafeInteger(target.expectedRevision) ||
+      target.expectedRevision < 0 ||
+      !sectionRecordUploads[target.kind]
+    )
+      throw this.invalidVersion();
+    const record = await tx.case.findFirst({
+      where: { id: caseId, departmentId: actor.departmentId },
+      select: {
+        departmentId: true,
+        responsibleUserId: true,
+        responsibleMembership: { select: { teamId: true } },
+      },
+    });
+    if (record === null) throw this.notFound();
+    const account = await tx.userAccount.findUnique({
+      where: { id: actor.userId },
+      select: { active: true, accountType: true },
+    });
+    if (!account?.active || account.accountType !== 'INTERNAL')
+      throw this.forbidden();
+    await this.accessControl.authorizeCase(
+      actor,
+      sectionRecordUploads[target.kind].action,
+      {
+        departmentId: record.departmentId,
+        responsibleUserId: record.responsibleUserId,
+        ...(record.responsibleMembership.teamId
+          ? { teamId: record.responsibleMembership.teamId }
+          : {}),
+      },
+      tx,
+    );
+    const scope = { caseId, departmentId: actor.departmentId };
+    const where = { ...scope, id: target.targetId };
+    let revision: number;
+    switch (target.kind) {
+      case 'EXECUTION_MAILING': {
+        if (
+          (await tx.caseExecutionMailing.findFirst({
+            where,
+            select: { id: true },
+          })) === null
+        )
+          throw this.notFound();
+        revision =
+          (
+            await tx.caseExecutionMailingRecordCorrection.findFirst({
+              where: { ...scope, mailingId: target.targetId },
+              orderBy: { toRevision: 'desc' },
+              select: { toRevision: true },
+            })
+          )?.toRevision ?? 0;
+        break;
+      }
+      case 'EXECUTION_FILING': {
+        if (
+          (await tx.caseExecutionFiling.findFirst({
+            where,
+            select: { id: true },
+          })) === null
+        )
+          throw this.notFound();
+        revision =
+          (
+            await tx.caseExecutionFilingRecordCorrection.findFirst({
+              where: { ...scope, filingId: target.targetId },
+              orderBy: { toRevision: 'desc' },
+              select: { toRevision: true },
+            })
+          )?.toRevision ?? 0;
+        break;
+      }
+      case 'EXECUTION_FINISH': {
+        if (
+          (await tx.caseExecutionFinish.findFirst({
+            where,
+            select: { id: true },
+          })) === null
+        )
+          throw this.notFound();
+        revision =
+          (
+            await tx.caseExecutionFinishRecordCorrection.findFirst({
+              where: { ...scope, finishId: target.targetId },
+              orderBy: { toRevision: 'desc' },
+              select: { toRevision: true },
+            })
+          )?.toRevision ?? 0;
+        break;
+      }
+      case 'JUDGMENT': {
+        if (
+          (await tx.caseJudgmentFact.findFirst({
+            where: { ...where, trialRoundId: target.trialRoundId },
+            select: { id: true },
+          })) === null
+        )
+          throw this.notFound();
+        revision =
+          (
+            await tx.caseJudgmentRecordCorrection.findFirst({
+              where: {
+                ...scope,
+                judgmentId: target.targetId,
+                trialRoundId: target.trialRoundId,
+              },
+              orderBy: { toRevision: 'desc' },
+              select: { toRevision: true },
+            })
+          )?.toRevision ?? 0;
+        break;
+      }
+      case 'CLOSURE': {
+        const closure = await tx.caseClosure.findFirst({
+          where,
+          select: { currentVersionId: true },
+        });
+        if (closure === null) throw this.notFound();
+        if (
+          closure.currentVersionId !== target.expectedClosureVersionId ||
+          (await tx.caseClosureVersion.findFirst({
+            where: {
+              ...scope,
+              closureId: target.targetId,
+              id: target.expectedClosureVersionId,
+            },
+            select: { id: true },
+          })) === null
+        )
+          throw this.versionConflict();
+        const head = await tx.caseClosureRecordCorrection.findFirst({
+          where: { ...scope, closureId: target.targetId },
+          orderBy: { toRevision: 'desc' },
+          select: { toRevision: true, sourceClosureVersionId: true },
+        });
+        if (
+          head &&
+          head.sourceClosureVersionId !== target.expectedClosureVersionId
+        )
+          throw this.versionConflict();
+        revision = head?.toRevision ?? 0;
+        break;
+      }
+    }
+    if (revision !== target.expectedRevision) throw this.versionConflict();
+  }
+
+  private async hasSectionUploadFirstFreeze(
+    tx: MaterialTransactionClient,
+    versionId: string,
+  ) {
+    const rows = await tx.$queryRawUnsafe<Array<{ consumed: boolean }>>(
+      'SELECT case_section_upload_has_first_freeze($1::uuid) AS consumed',
+      versionId,
+    );
+    return rows.length === 1 && rows[0]?.consumed === true;
+  }
+
+  private async sectionUploadPendingCount(
+    tx: MaterialTransactionClient,
+    actor: ActorContext,
+    draft: UploadDraft,
+  ): Promise<number> {
+    const rows = await tx.$queryRawUnsafe<Array<{ count: number }>>(
+      "SELECT count(*)::integer AS count FROM materials m WHERE m.department_id=$1::uuid AND m.owner_type='CASE' AND m.owner_id=$2::uuid AND m.category=$3::material_category AND m.status='ACTIVE' AND NOT case_section_upload_current_is_frozen(m.id,$2::uuid,$1::uuid,$3::text)",
+      actor.departmentId,
+      draft.ownerId,
+      draft.category,
+    );
+    const count = rows[0]?.count;
+    if (
+      rows.length !== 1 ||
+      !Number.isSafeInteger(count) ||
+      count === undefined ||
+      count < 0
+    )
+      throw this.invalidVersion();
+    return count;
+  }
+
+  private async validateSectionUploadDraft(
+    tx: MaterialTransactionClient,
+    actor: ActorContext,
+    draft: UploadDraft,
+    pendingStorageKey: string | null,
+  ) {
+    await this.lockSectionRecordCase(tx, actor, draft.ownerId);
+    const current = await tx.uploadDraft.findUnique({
+      where: { id: draft.id },
+    });
+    const target = current && this.sectionRecordUploadTarget(current);
+    const original = this.sectionRecordUploadTarget(draft);
+    if (
+      !current ||
+      !target ||
+      !original ||
+      current.departmentId !== actor.departmentId ||
+      current.actorUserId !== actor.userId ||
+      current.ownerId !== draft.ownerId ||
+      !this.sameSectionRecordTarget(original, target)
+    )
+      throw this.invalidVersion();
+    if (
+      current.status !== 'OPEN' ||
+      current.expiresAt <= this.clock() ||
+      current.pendingStorageKey !== pendingStorageKey
+    )
+      throw this.versionConflict();
+    await this.assertSectionRecordTarget(
+      tx,
+      actor,
+      current.ownerId,
+      target,
+      false,
+    );
+  }
+
   async createUploadDraft(actor: ActorContext, input: CreateUploadDraftDto) {
+    if (input.category === 'EXECUTION_SUPPLEMENT') throw this.validationError();
     this.assertCategoryPurposeMatrix(input);
     const originalFilename = this.normalizeFilename(input.originalFilename);
     const declaredMimeType = normalizeMimeType(input.declaredMimeType);
@@ -429,6 +1006,8 @@ export class MaterialService {
       where: { id: draftId },
     });
     if (draft === null) throw this.notFound();
+    const recordTarget = this.sectionRecordUploadTarget(draft);
+    const supplementTarget = this.executionSupplementUploadTarget(draft);
     if (
       draft.departmentId !== actor.departmentId ||
       draft.actorUserId !== actor.userId
@@ -491,16 +1070,17 @@ export class MaterialService {
         draft.category,
       );
     } else if (draft.ownerType === 'CASE') {
-      await this.authorizeOwner(
-        actor,
-        'CASE',
-        draft.ownerId,
-        'write',
-        this.database,
-        undefined,
-        undefined,
-        draft.category,
-      );
+      if (recordTarget === undefined && supplementTarget === undefined)
+        await this.authorizeOwner(
+          actor,
+          'CASE',
+          draft.ownerId,
+          'write',
+          this.database,
+          undefined,
+          undefined,
+          draft.category,
+        );
     } else if (draft.ownerType === 'NOTARY_MATTER') {
       await this.authorizeOwner(
         actor,
@@ -535,7 +1115,7 @@ export class MaterialService {
     return this.storageKeyCoordinator.withKey(storageKey, async () => {
       let pendingClaimed = false;
       try {
-        const claimed = await this.database.uploadDraft.updateMany({
+        const claimInput = {
           where: {
             id: draft.id,
             departmentId: actor.departmentId,
@@ -544,12 +1124,27 @@ export class MaterialService {
             ownerId: draft.ownerId,
             category: draft.category,
             purpose: draft.purpose,
-            status: 'OPEN',
+            status: 'OPEN' as const,
             expiresAt: { gt: this.clock() },
             pendingStorageKey: null,
           },
           data: { pendingStorageKey: storageKey },
-        });
+        };
+        const claimed =
+          recordTarget === undefined && supplementTarget === undefined
+            ? await this.database.uploadDraft.updateMany(claimInput)
+            : await this.database.$transaction(async (tx) => {
+                if (supplementTarget !== undefined)
+                  await this.validateExecutionSupplementUploadDraft(
+                    tx,
+                    actor,
+                    draft,
+                    null,
+                  );
+                else
+                  await this.validateSectionUploadDraft(tx, actor, draft, null);
+                return tx.uploadDraft.updateMany(claimInput);
+              });
         if (claimed.count !== 1) throw this.versionConflict();
         pendingClaimed = true;
         const blob = await this.storage.put(
@@ -616,16 +1211,31 @@ export class MaterialService {
               actor.departmentId,
             );
             if (locked.length !== 1) throw this.notFound();
-            await this.authorizeOwner(
-              actor,
-              'CASE',
-              draft.ownerId,
-              'write',
-              transaction,
-              transaction,
-              undefined,
-              draft.category,
-            );
+            if (supplementTarget !== undefined) {
+              await this.validateExecutionSupplementUploadDraft(
+                transaction,
+                actor,
+                draft,
+                storageKey,
+              );
+            } else if (recordTarget !== undefined) {
+              await this.validateSectionUploadDraft(
+                transaction,
+                actor,
+                draft,
+                storageKey,
+              );
+            } else
+              await this.authorizeOwner(
+                actor,
+                'CASE',
+                draft.ownerId,
+                'write',
+                transaction,
+                transaction,
+                undefined,
+                draft.category,
+              );
             if (actor.lawyerAccountId !== undefined) {
               const bindingId = await currentLawyerBindingId(
                 transaction,
@@ -676,55 +1286,80 @@ export class MaterialService {
             'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
             ownerQuotaKey(draft),
           );
-          const activeCount = await transaction.material.count({
-            where: {
-              departmentId: actor.departmentId,
-              ownerType: draft.ownerType,
-              ownerId: draft.ownerId,
-              category: draft.category,
-              status: 'ACTIVE',
-              ...(draft.category === 'MAIL_RECEIPT'
-                ? {
-                    currentVersion: {
-                      is: {
-                        materialReferences: {
-                          none: {
-                            purpose: 'MAIL_RECEIPT',
-                            actionEventId: { not: null },
-                          },
-                        },
-                      },
-                    },
-                  }
-                : draft.category === 'JUDGMENT'
-                  ? {
-                      contentVersions: {
-                        none: { caseJudgmentVersions: { some: {} } },
-                      },
-                    }
-                  : draft.category === 'CUSTOMER_RIGHT_EVIDENCE'
-                    ? {
-                        currentVersion: {
-                          is: {
-                            materialReferences: {
-                              none: { assetVersionId: { not: null } },
-                            },
-                          },
-                        },
-                      }
-                    : draft.category === 'CUSTOMER_AGREEMENT'
-                      ? {
-                          currentVersion: {
-                            is: {
-                              materialReferences: {
-                                none: { purpose: 'CUSTOMER_AGREEMENT' },
+          const dedicatedPendingPool =
+            recordTarget !== undefined &&
+            [
+              'EXECUTION_FILING_PROOF',
+              'EXECUTION_FINISH_BASIS',
+              'CASE_CLOSURE_DOCUMENT',
+            ].includes(draft.category);
+          const activeCount =
+            supplementTarget !== undefined
+              ? await this.executionSupplementPendingCount(
+                  transaction,
+                  actor,
+                  draft,
+                )
+              : dedicatedPendingPool
+                ? await this.sectionUploadPendingCount(
+                    transaction,
+                    actor,
+                    draft,
+                  )
+                : await transaction.material.count({
+                    where: {
+                      departmentId: actor.departmentId,
+                      ownerType: draft.ownerType,
+                      ownerId: draft.ownerId,
+                      category: draft.category,
+                      status: 'ACTIVE',
+                      ...(draft.category === 'MAIL_RECEIPT'
+                        ? {
+                            currentVersion: {
+                              is: {
+                                materialReferences: {
+                                  none: {
+                                    purpose: 'MAIL_RECEIPT',
+                                    actionEventId: { not: null },
+                                  },
+                                },
                               },
                             },
-                          },
-                        }
-                      : {}),
-            },
-          });
+                          }
+                        : draft.category === 'JUDGMENT'
+                          ? {
+                              contentVersions: {
+                                none: {
+                                  OR: [
+                                    { caseJudgmentVersions: { some: {} } },
+                                    { judgmentRecordDocuments: { some: {} } },
+                                  ],
+                                },
+                              },
+                            }
+                          : draft.category === 'CUSTOMER_RIGHT_EVIDENCE'
+                            ? {
+                                currentVersion: {
+                                  is: {
+                                    materialReferences: {
+                                      none: { assetVersionId: { not: null } },
+                                    },
+                                  },
+                                },
+                              }
+                            : draft.category === 'CUSTOMER_AGREEMENT'
+                              ? {
+                                  currentVersion: {
+                                    is: {
+                                      materialReferences: {
+                                        none: { purpose: 'CUSTOMER_AGREEMENT' },
+                                      },
+                                    },
+                                  },
+                                }
+                              : {}),
+                    },
+                  });
           if (activeCount >= materialLimit(draft.category)) {
             throw this.validationError();
           }
@@ -748,6 +1383,12 @@ export class MaterialService {
               sizeBytes: BigInt(blob.sizeBytes),
               sha256: blob.sha256,
               uploadedBy: actor.userId,
+              ...(recordTarget === undefined
+                ? {}
+                : { caseSectionRecordUploadDraftId: draft.id }),
+              ...(supplementTarget === undefined
+                ? {}
+                : { executionSupplementUploadDraftId: draft.id }),
             },
           });
           await transaction.material.update({
@@ -781,6 +1422,12 @@ export class MaterialService {
           mimeType: blob.detectedMimeType,
           sizeBytes: blob.sizeBytes,
           sha256: blob.sha256,
+          ...(recordTarget === undefined
+            ? {}
+            : { recordCorrection: recordTarget }),
+          ...(supplementTarget === undefined
+            ? {}
+            : { executionSupplement: supplementTarget }),
         };
       } catch (error) {
         let storageIsClean = false;
@@ -817,6 +1464,39 @@ export class MaterialService {
     const contentVersionIds = [...input.contentVersionIds];
     const minCount = input.minCount ?? 1;
     const maxCount = input.maxCount ?? Number.MAX_SAFE_INTEGER;
+    if (input.category === 'EXECUTION_SUPPLEMENT') {
+      if (
+        input.ownerType !== 'CASE' ||
+        !input.executionSupplementTarget ||
+        input.sectionRecordKind !== undefined ||
+        input.sectionRecordTarget !== undefined ||
+        minCount < 1 ||
+        maxCount > 10
+      )
+        throw this.invalidVersion();
+      await this.assertExecutionSupplementTarget(
+        transaction,
+        actor,
+        input.ownerId,
+        input.executionSupplementTarget,
+      );
+    } else if (input.executionSupplementTarget !== undefined)
+      throw this.invalidVersion();
+    if (
+      input.sectionRecordKind !== undefined &&
+      (input.ownerType !== 'CASE' ||
+        actor.clientCustomerId !== undefined ||
+        actor.notaryOfficeId !== undefined ||
+        actor.lawyerAccountId !== undefined ||
+        sectionRecordMaterials[input.sectionRecordKind]?.category !==
+          input.category)
+    )
+      throw this.invalidVersion();
+    if (
+      input.sectionRecordTarget !== undefined &&
+      input.sectionRecordTarget.kind !== input.sectionRecordKind
+    )
+      throw this.invalidVersion();
     if (
       !Number.isSafeInteger(minCount) ||
       !Number.isSafeInteger(maxCount) ||
@@ -840,16 +1520,17 @@ export class MaterialService {
       throw this.invalidVersion();
     }
 
-    await this.authorizeOwner(
-      actor,
-      input.ownerType,
-      input.ownerId,
-      'read',
-      transaction,
-      transaction,
-      input.leadAction,
-      input.category,
-    );
+    if (input.executionSupplementTarget === undefined)
+      await this.authorizeOwner(
+        actor,
+        input.ownerType,
+        input.ownerId,
+        'read',
+        transaction,
+        transaction,
+        input.leadAction,
+        input.category,
+      );
     const materials = await transaction.material.findMany({
       where: {
         departmentId: actor.departmentId,
@@ -878,6 +1559,8 @@ export class MaterialService {
             sizeBytes: true,
             status: true,
             uploadedBy: true,
+            caseSectionRecordUploadDraft: true,
+            executionSupplementUploadDraft: true,
           },
         },
       },
@@ -895,6 +1578,74 @@ export class MaterialService {
         throw this.invalidVersion();
       }
       for (const version of material.contentVersions) {
+        const supplementDraft = version.executionSupplementUploadDraft;
+        if (supplementDraft != null) {
+          const supplementTarget =
+            this.executionSupplementUploadTarget(supplementDraft);
+          if (
+            !supplementTarget ||
+            supplementDraft.status !== 'FINALIZED' ||
+            supplementDraft.departmentId !== material.departmentId ||
+            supplementDraft.ownerId !== material.ownerId ||
+            supplementDraft.ownerType !== material.ownerType ||
+            supplementDraft.category !== material.category ||
+            supplementDraft.purpose !== material.purpose ||
+            supplementDraft.actorUserId !== version.uploadedBy
+          )
+            throw this.invalidVersion();
+          if (
+            !(await this.hasExecutionSupplementFirstFreeze(
+              transaction,
+              version.id,
+              true,
+            )) &&
+            (!input.executionSupplementTarget ||
+              supplementDraft.actorUserId !== actor.userId ||
+              !this.sameExecutionSupplementTarget(
+                supplementTarget,
+                input.executionSupplementTarget,
+              ))
+          )
+            throw this.invalidVersion();
+        } else if (material.category === 'EXECUTION_SUPPLEMENT')
+          throw this.invalidVersion();
+        let firstUploadTarget: CaseSectionRecordUploadTarget | undefined;
+        const uploadDraft = version.caseSectionRecordUploadDraft;
+        if (uploadDraft != null) {
+          const uploadTarget = this.sectionRecordUploadTarget(uploadDraft);
+          if (
+            !uploadTarget ||
+            uploadDraft.status !== 'FINALIZED' ||
+            uploadDraft.departmentId !== material.departmentId ||
+            uploadDraft.ownerType !== material.ownerType ||
+            uploadDraft.ownerId !== material.ownerId ||
+            uploadDraft.category !== material.category ||
+            uploadDraft.purpose !== material.purpose ||
+            uploadDraft.actorUserId !== version.uploadedBy
+          )
+            throw this.invalidVersion();
+          if (
+            !(await this.hasSectionUploadFirstFreeze(transaction, version.id))
+          ) {
+            if (
+              !input.sectionRecordTarget ||
+              input.sectionRecordKind !== uploadTarget.kind ||
+              uploadDraft.actorUserId !== actor.userId ||
+              !this.sameSectionRecordTarget(
+                uploadTarget,
+                input.sectionRecordTarget,
+              )
+            )
+              throw this.invalidVersion();
+            await this.assertSectionRecordTarget(
+              transaction,
+              actor,
+              input.ownerId,
+              uploadTarget,
+            );
+            firstUploadTarget = uploadTarget;
+          }
+        }
         if (
           version.status !== 'AVAILABLE' ||
           (actor.notaryOfficeId !== undefined &&
@@ -911,6 +1662,7 @@ export class MaterialService {
               actor.departmentId,
               material.id,
               version.id,
+              input.sectionRecordKind,
             ))) ||
           (input.ownerType === 'CASE' &&
             input.category === 'MAIL_RECEIPT' &&
@@ -947,6 +1699,14 @@ export class MaterialService {
         this.validatedVersionFacts.set(fact, {
           transaction,
           canonicalFact,
+          ...(firstUploadTarget === undefined ? {} : { firstUploadTarget }),
+          ...(input.executionSupplementTarget === undefined
+            ? {}
+            : {
+                executionSupplementTarget: Object.freeze({
+                  ...input.executionSupplementTarget,
+                }),
+              }),
         });
         facts.set(version.id, fact);
       }
@@ -967,6 +1727,392 @@ export class MaterialService {
         return fact;
       }),
     );
+  }
+
+  /** Selection and first-consumption validation run before E inserts its version. */
+  async assertExecutionSupplementVersions(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    target: ExecutionSupplementUploadTarget,
+    contentVersionIds: readonly string[],
+  ): Promise<readonly ValidatedMaterialVersionFact[]> {
+    return this.assertAvailableVersions(transaction, actor, {
+      ownerType: 'CASE',
+      ownerId: caseId,
+      category: 'EXECUTION_SUPPLEMENT',
+      contentVersionIds,
+      minCount: 1,
+      maxCount: 10,
+      executionSupplementTarget: target,
+    });
+  }
+
+  private sameExecutionSupplementTarget(
+    a: ExecutionSupplementUploadTarget,
+    b: ExecutionSupplementUploadTarget,
+  ) {
+    return (
+      a.filingId.toLowerCase() === b.filingId.toLowerCase() &&
+      a.supplementId.toLowerCase() === b.supplementId.toLowerCase() &&
+      a.expectedRevision === b.expectedRevision
+    );
+  }
+
+  private executionSupplementUploadTarget(
+    draft: UploadDraft,
+  ): ExecutionSupplementUploadTarget | undefined {
+    if (
+      draft.executionSupplementFilingId == null &&
+      draft.executionSupplementTargetId == null &&
+      draft.executionSupplementRevision == null
+    )
+      return undefined;
+    if (
+      !draft.executionSupplementFilingId ||
+      !draft.executionSupplementTargetId ||
+      draft.executionSupplementRevision == null ||
+      !Number.isSafeInteger(draft.executionSupplementRevision) ||
+      draft.executionSupplementRevision < 0 ||
+      draft.ownerType !== 'CASE' ||
+      draft.category !== 'EXECUTION_SUPPLEMENT' ||
+      draft.purpose !== 'EXECUTION_SUPPLEMENT' ||
+      draft.caseSectionRecordCommand != null ||
+      draft.caseSectionRecordTargetId != null ||
+      draft.caseSectionRecordRevision != null ||
+      draft.caseSectionRecordTrialRoundId != null ||
+      draft.caseSectionRecordClosureVersionId != null ||
+      draft.customerAccountBindingId != null ||
+      draft.notaryOfficeAccountBindingId != null ||
+      (draft.internalActorUserId === draft.actorUserId &&
+        draft.lawyerAccountBindingId == null) ===
+        (draft.internalActorUserId == null &&
+          draft.lawyerAccountBindingId != null)
+    )
+      throw this.invalidVersion();
+    return {
+      filingId: draft.executionSupplementFilingId,
+      supplementId: draft.executionSupplementTargetId,
+      expectedRevision: draft.executionSupplementRevision,
+    };
+  }
+
+  private async assertExecutionSupplementTarget(
+    tx: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    target: ExecutionSupplementUploadTarget,
+    checkRevision: boolean | 'DELETE_PREPARATION' = true,
+  ): Promise<string | undefined> {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined
+    )
+      throw this.forbidden();
+    if (
+      !Number.isSafeInteger(target.expectedRevision) ||
+      target.expectedRevision < 0
+    )
+      throw this.invalidVersion();
+    const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+      'SELECT "id" FROM "cases" WHERE "id"=$1::uuid AND "department_id"=$2::uuid FOR UPDATE',
+      caseId,
+      actor.departmentId,
+    );
+    if (locked.length !== 1) throw this.notFound();
+    const record = await tx.case.findFirst({
+      where: { id: caseId, departmentId: actor.departmentId },
+      select: {
+        departmentId: true,
+        stage: true,
+        responsibleUserId: true,
+        responsibleMembership: { select: { teamId: true } },
+      },
+    });
+    if (record === null) throw this.notFound();
+    const account = await tx.userAccount.findUnique({
+      where: { id: actor.userId },
+      select: { active: true, accountType: true },
+    });
+    if (!account?.active) throw this.forbidden();
+    let lawyerBindingId: string | undefined;
+    if (actor.lawyerAccountId !== undefined && account.accountType === 'LAWYER')
+      lawyerBindingId = await currentLawyerBindingId(tx, actor, caseId, true);
+    else if (
+      actor.lawyerAccountId === undefined &&
+      account.accountType === 'INTERNAL'
+    )
+      await this.accessControl.authorizeCase(
+        actor,
+        target.expectedRevision === 0
+          ? 'case.execution.supplement.submit'
+          : 'case.execution.supplement.correct',
+        {
+          departmentId: record.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        },
+        tx,
+      );
+    else throw this.forbidden();
+    if (record.stage !== 'EXECUTING') throw this.versionConflict();
+    if (
+      (await tx.caseExecutionFiling.findFirst({
+        where: {
+          id: target.filingId,
+          caseId,
+          departmentId: actor.departmentId,
+        },
+        select: { id: true },
+      })) === null
+    )
+      throw this.notFound();
+    if (!checkRevision) return lawyerBindingId;
+    // UUID claims are serialized across cases; a scoped miss is never proof of a new root.
+    await tx.$executeRawUnsafe(
+      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+      `execution-filing-followup-target:${target.supplementId.toLowerCase()}`,
+    );
+    const head = await tx.caseExecutionFilingSupplement.findFirst({
+      where: { supplementId: target.supplementId },
+      orderBy: { toRevision: 'desc' },
+      select: {
+        id: true,
+        filingId: true,
+        caseId: true,
+        departmentId: true,
+        toRevision: true,
+      },
+    });
+    if (
+      target.expectedRevision === 0 &&
+      !(checkRevision === 'DELETE_PREPARATION' && head !== null)
+    ) {
+      const [versionCollision, feedbackCollision, foreignDraft] =
+        await Promise.all([
+          tx.caseExecutionFilingSupplement.findUnique({
+            where: { id: target.supplementId },
+            select: { id: true },
+          }),
+          tx.caseExecutionFilingFeedback.findFirst({
+            where: {
+              OR: [
+                { id: target.supplementId },
+                { feedbackId: target.supplementId },
+              ],
+            },
+            select: { id: true },
+          }),
+          tx.uploadDraft.findFirst({
+            where: {
+              executionSupplementTargetId: target.supplementId,
+              NOT: {
+                ownerId: caseId,
+                departmentId: actor.departmentId,
+                executionSupplementFilingId: target.filingId,
+                executionSupplementRevision: 0,
+                actorUserId: actor.userId,
+              },
+            },
+            select: { id: true },
+          }),
+        ]);
+      if (
+        head !== null ||
+        versionCollision !== null ||
+        feedbackCollision !== null ||
+        foreignDraft !== null
+      )
+        throw this.versionConflict();
+    } else {
+      const root = await tx.caseExecutionFilingSupplement.findUnique({
+        where: { id: target.supplementId },
+        select: {
+          id: true,
+          supplementId: true,
+          filingId: true,
+          caseId: true,
+          departmentId: true,
+          fromRevision: true,
+          toRevision: true,
+        },
+      });
+      if (
+        root === null ||
+        root.id !== root.supplementId ||
+        root.fromRevision !== 0 ||
+        root.toRevision !== 1 ||
+        root.caseId !== caseId ||
+        root.departmentId !== actor.departmentId ||
+        root.filingId !== target.filingId ||
+        head === null ||
+        head.caseId !== caseId ||
+        head.departmentId !== actor.departmentId ||
+        head.filingId !== target.filingId ||
+        (checkRevision === 'DELETE_PREPARATION'
+          ? head.toRevision < target.expectedRevision
+          : head.toRevision !== target.expectedRevision)
+      )
+        throw this.versionConflict();
+    }
+    return lawyerBindingId;
+  }
+
+  private async hasExecutionSupplementFirstFreeze(
+    tx: MaterialTransactionClient,
+    versionId: string,
+    priorOnly = false,
+  ): Promise<boolean> {
+    const rows = await tx.$queryRawUnsafe<Array<{ consumed: boolean }>>(
+      'SELECT case_execution_supplement_upload_first_freeze_proof($1::uuid,$2::boolean) AS consumed',
+      versionId,
+      priorOnly,
+    );
+    return rows.length === 1 && rows[0]?.consumed === true;
+  }
+
+  private async executionSupplementPendingCount(
+    tx: MaterialTransactionClient,
+    actor: ActorContext,
+    draft: Pick<UploadDraft, 'ownerId'>,
+  ): Promise<number> {
+    const rows = await tx.$queryRawUnsafe<Array<{ count: number }>>(
+      "SELECT count(*)::integer AS count FROM materials m WHERE m.department_id=$1::uuid AND m.owner_type='CASE' AND m.owner_id=$2::uuid AND m.category='EXECUTION_SUPPLEMENT' AND m.status='ACTIVE' AND NOT case_execution_supplement_upload_first_freeze_proof(m.current_version_id,false)",
+      actor.departmentId,
+      draft.ownerId,
+    );
+    const count = rows[0]?.count;
+    if (
+      rows.length !== 1 ||
+      count === undefined ||
+      !Number.isSafeInteger(count) ||
+      count < 0
+    )
+      throw this.invalidVersion();
+    return count;
+  }
+
+  /** E inserts its real version and audit first; only this method writes exact documents and refs. */
+  async freezeCaseExecutionSupplementReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    target: ExecutionSupplementUploadTarget & Readonly<{ versionId: string }>,
+    facts: readonly ValidatedMaterialVersionFact[],
+    auditEventId: string,
+  ): Promise<void> {
+    if (facts.length < 1 || facts.length > 10) throw this.invalidVersion();
+    const bindingId = await this.assertExecutionSupplementTarget(
+      transaction,
+      actor,
+      caseId,
+      target,
+      false,
+    );
+    const version = await transaction.caseExecutionFilingSupplement.findFirst({
+      where: {
+        id: target.versionId,
+        filingId: target.filingId,
+        supplementId: target.supplementId,
+        caseId,
+        departmentId: actor.departmentId,
+        fromRevision: target.expectedRevision,
+        toRevision: target.expectedRevision + 1,
+        recordedByUserId: actor.userId,
+        auditEventId,
+      },
+      select: {
+        id: true,
+        actorType: true,
+        internalActorUserId: true,
+        lawyerAccountBindingId: true,
+        auditEvent: {
+          select: {
+            actorUserId: true,
+            departmentId: true,
+            internalActorUserId: true,
+            lawyerAccountBindingId: true,
+            resourceType: true,
+            resourceId: true,
+            action: true,
+          },
+        },
+      },
+    });
+    if (
+      version === null ||
+      version.actorType !== (bindingId === undefined ? 'INTERNAL' : 'LAWYER') ||
+      version.internalActorUserId !==
+        (bindingId === undefined ? actor.userId : null) ||
+      version.lawyerAccountBindingId !== (bindingId ?? null) ||
+      version.auditEvent.actorUserId !== actor.userId ||
+      version.auditEvent.departmentId !== actor.departmentId ||
+      version.auditEvent.resourceType !== 'CASE' ||
+      version.auditEvent.resourceId !== caseId ||
+      version.auditEvent.internalActorUserId !== version.internalActorUserId ||
+      version.auditEvent.lawyerAccountBindingId !==
+        version.lawyerAccountBindingId ||
+      version.auditEvent.action !==
+        (target.expectedRevision === 0
+          ? 'case.execution.supplement.submitted'
+          : 'case.execution.supplement.corrected')
+    )
+      throw this.invalidVersion();
+    const canonicalFacts = facts.map((fact) => {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        !validation.executionSupplementTarget ||
+        !this.sameExecutionSupplementTarget(
+          validation.executionSupplementTarget,
+          target,
+        ) ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
+        canonical.category !== 'EXECUTION_SUPPLEMENT' ||
+        canonical.purpose !== 'EXECUTION_SUPPLEMENT' ||
+        !allowedMimeTypes.EXECUTION_SUPPLEMENT.has(canonical.mimeType) ||
+        canonical.sizeBytes <= 0n ||
+        canonical.sizeBytes > BigInt(materialFileLimit('EXECUTION_SUPPLEMENT'))
+      )
+        throw this.invalidVersion();
+      return canonical;
+    });
+    if (
+      new Set(canonicalFacts.map((f) => f.materialId)).size !== facts.length ||
+      new Set(canonicalFacts.map((f) => f.contentVersionId)).size !==
+        facts.length
+    )
+      throw this.invalidVersion();
+    for (const canonical of canonicalFacts)
+      await transaction.caseExecutionFilingSupplementDocument.create({
+        data: {
+          versionId: target.versionId,
+          supplementId: target.supplementId,
+          filingId: target.filingId,
+          caseId,
+          departmentId: actor.departmentId,
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+        },
+      });
+    for (const fact of facts) {
+      const validation = this.validatedVersionFacts.get(fact);
+      if (validation !== undefined)
+        validation.supplementFreezeEventId = auditEventId;
+    }
+    const inserted = await this.freezeReferences(transaction, {
+      departmentId: actor.departmentId,
+      resourceType: 'case',
+      resourceId: caseId,
+      facts,
+      actionEventId: auditEventId,
+    });
+    if (inserted.count !== facts.length) throw this.invalidVersion();
   }
 
   async assertCompleteCurrentCaseExecutionApplicationBundle(
@@ -1039,7 +2185,15 @@ export class MaterialService {
       if (
         validation === undefined ||
         validation.transaction !== transaction ||
-        validation.canonicalFact.departmentId !== input.departmentId
+        validation.canonicalFact.departmentId !== input.departmentId ||
+        (validation.executionSupplementTarget !== undefined &&
+          (validation.supplementFreezeEventId !== input.actionEventId ||
+            input.resourceType !== 'case' ||
+            input.resourceId !== validation.canonicalFact.ownerId)) ||
+        (validation.firstUploadTarget !== undefined &&
+          (validation.sectionFreezeEventId !== input.actionEventId ||
+            input.resourceType !== 'case' ||
+            input.resourceId !== validation.canonicalFact.ownerId))
       ) {
         throw this.invalidVersion();
       }
@@ -1121,6 +2275,7 @@ export class MaterialService {
         validation.transaction !== transaction ||
         validation.canonicalFact.departmentId !== actor.departmentId ||
         validation.canonicalFact.ownerType !== 'LEAD' ||
+        validation.firstUploadTarget !== undefined ||
         validation.canonicalFact.ownerId !== input.resourceId ||
         validation.canonicalFact.category !== 'LEAD_SCREENSHOT' ||
         validation.canonicalFact.purpose !== input.purpose
@@ -1565,6 +2720,24 @@ export class MaterialService {
     if (material === null || version === undefined) throw this.notFound();
     if (material.ownerType === 'CASE' && material.status !== 'ACTIVE')
       throw this.notFound();
+    if (
+      material.ownerType === 'CASE' &&
+      (actor.clientCustomerId !== undefined ||
+        actor.lawyerAccountId !== undefined ||
+        actor.notaryOfficeId !== undefined) &&
+      version.caseSectionRecordUploadDraftId != null &&
+      !(await this.hasSectionUploadFirstFreeze(this.database, version.id))
+    )
+      throw this.notFound();
+    if (
+      material.ownerType === 'CASE' &&
+      (actor.clientCustomerId !== undefined ||
+        actor.lawyerAccountId !== undefined ||
+        actor.notaryOfficeId !== undefined) &&
+      version.executionSupplementUploadDraftId != null &&
+      !(await this.hasExecutionSupplementFirstFreeze(this.database, version.id))
+    )
+      throw this.notFound();
     if (material.ownerType === 'CASE' && actor.clientCustomerId !== undefined) {
       await this.authorizeOwner(actor, 'CASE', material.ownerId, 'read');
       const allowed = await this.clientCaseVersionWhitelist(
@@ -1766,7 +2939,7 @@ export class MaterialService {
   ) {
     if (actor.notaryOfficeId !== undefined) throw this.forbidden();
     await this.withSerializableMaterialMutation(async (transaction) => {
-      const agreementLocked = await this.lockAgreementMaterialActorFirst(
+      const actorLocks = await this.lockMaterialMutationActorFirst(
         transaction,
         actor,
         materialId,
@@ -1780,13 +2953,20 @@ export class MaterialService {
         transaction,
         actor,
         materialId,
-        agreementLocked,
+        actorLocks.agreementLocked,
       );
       const material = await this.findMaterialForMutation(
         actor,
         materialId,
         transaction,
         transaction,
+        actorLocks.supplementCaseId === undefined
+          ? undefined
+          : {
+              transaction,
+              caseId: actorLocks.supplementCaseId,
+              operation: 'delete',
+            },
       );
       const currentVersion = material.contentVersions.find(
         (version) => version.id === material.currentVersionId,
@@ -1850,7 +3030,7 @@ export class MaterialService {
   ) {
     if (actor.notaryOfficeId !== undefined) throw this.forbidden();
     await this.withSerializableMaterialMutation(async (transaction) => {
-      const agreementLocked = await this.lockAgreementMaterialActorFirst(
+      const actorLocks = await this.lockMaterialMutationActorFirst(
         transaction,
         actor,
         materialId,
@@ -1864,13 +3044,20 @@ export class MaterialService {
         transaction,
         actor,
         materialId,
-        agreementLocked,
+        actorLocks.agreementLocked,
       );
       const material = await this.findMaterialForMutation(
         actor,
         materialId,
         transaction,
         transaction,
+        actorLocks.supplementCaseId === undefined
+          ? undefined
+          : {
+              transaction,
+              caseId: actorLocks.supplementCaseId,
+              operation: 'restore',
+            },
       );
       const currentVersion = material.contentVersions.find(
         (version) => version.id === material.currentVersionId,
@@ -1887,55 +3074,67 @@ export class MaterialService {
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         ownerQuotaKey(material),
       );
-      const activeCount = await transaction.material.count({
-        where: {
-          departmentId: material.departmentId,
-          ownerType: material.ownerType,
-          ownerId: material.ownerId,
-          category: material.category,
-          status: 'ACTIVE',
-          ...(material.category === 'MAIL_RECEIPT'
-            ? {
-                currentVersion: {
-                  is: {
-                    materialReferences: {
-                      none: {
-                        purpose: 'MAIL_RECEIPT',
-                        actionEventId: { not: null },
-                      },
-                    },
-                  },
-                },
-              }
-            : material.category === 'JUDGMENT'
-              ? {
-                  contentVersions: {
-                    none: { caseJudgmentVersions: { some: {} } },
-                  },
-                }
-              : material.category === 'CUSTOMER_RIGHT_EVIDENCE'
-                ? {
-                    currentVersion: {
-                      is: {
-                        materialReferences: {
-                          none: { assetVersionId: { not: null } },
-                        },
-                      },
-                    },
-                  }
-                : material.category === 'CUSTOMER_AGREEMENT'
+      const activeCount =
+        material.category === 'EXECUTION_SUPPLEMENT'
+          ? await this.executionSupplementPendingCount(
+              transaction,
+              actor,
+              material,
+            )
+          : await transaction.material.count({
+              where: {
+                departmentId: material.departmentId,
+                ownerType: material.ownerType,
+                ownerId: material.ownerId,
+                category: material.category,
+                status: 'ACTIVE',
+                ...(material.category === 'MAIL_RECEIPT'
                   ? {
                       currentVersion: {
                         is: {
                           materialReferences: {
-                            none: { purpose: 'CUSTOMER_AGREEMENT' },
+                            none: {
+                              purpose: 'MAIL_RECEIPT',
+                              actionEventId: { not: null },
+                            },
                           },
                         },
                       },
                     }
-                  : {}),
-        },
-      });
+                  : material.category === 'JUDGMENT'
+                    ? {
+                        contentVersions: {
+                          none: {
+                            OR: [
+                              { caseJudgmentVersions: { some: {} } },
+                              { judgmentRecordDocuments: { some: {} } },
+                            ],
+                          },
+                        },
+                      }
+                    : material.category === 'CUSTOMER_RIGHT_EVIDENCE'
+                      ? {
+                          currentVersion: {
+                            is: {
+                              materialReferences: {
+                                none: { assetVersionId: { not: null } },
+                              },
+                            },
+                          },
+                        }
+                      : material.category === 'CUSTOMER_AGREEMENT'
+                        ? {
+                            currentVersion: {
+                              is: {
+                                materialReferences: {
+                                  none: { purpose: 'CUSTOMER_AGREEMENT' },
+                                },
+                              },
+                            },
+                          }
+                        : {}),
+              },
+            });
       if (activeCount >= materialLimit(material.category)) {
         throw this.validationError();
       }
@@ -1986,26 +3185,89 @@ export class MaterialService {
     materialId: string,
     reader: MaterialMutationReader = this.database,
     snapshotReader?: AccessControlSnapshotReader,
+    supplement?: Readonly<{
+      transaction: MaterialTransactionClient;
+      caseId: string;
+      operation: 'delete' | 'restore';
+    }>,
   ) {
     const material = await reader.material.findFirst({
       where: { id: materialId, departmentId: actor.departmentId },
       include: {
         contentVersions: {
-          select: { id: true, uploadedBy: true, status: true },
+          select: {
+            id: true,
+            uploadedBy: true,
+            status: true,
+            originalFilename: true,
+            executionSupplementUploadDraft: true,
+          },
         },
       },
     });
     if (material === null) throw this.notFound();
-    await this.authorizeOwner(
-      actor,
-      material.ownerType,
-      material.ownerId,
-      'write',
-      reader,
-      snapshotReader,
-      undefined,
-      material.category,
-    );
+    if (material.category === 'EXECUTION_SUPPLEMENT') {
+      if (
+        supplement === undefined ||
+        reader !== supplement.transaction ||
+        material.ownerType !== 'CASE' ||
+        material.ownerId !== supplement.caseId
+      )
+        throw this.versionConflict();
+      const current = material.contentVersions.find(
+        (v) => v.id === material.currentVersionId,
+      );
+      const draft = current?.executionSupplementUploadDraft;
+      const target = draft && this.executionSupplementUploadTarget(draft);
+      if (
+        !current ||
+        !draft ||
+        !target ||
+        current.uploadedBy !== actor.userId ||
+        draft.actorUserId !== actor.userId ||
+        draft.departmentId !== actor.departmentId ||
+        draft.ownerId !== material.ownerId ||
+        draft.status !== 'FINALIZED' ||
+        draft.pendingStorageKey !== null ||
+        current.originalFilename !== draft.originalFilename
+      )
+        throw this.forbidden();
+      const binding = await this.assertExecutionSupplementTarget(
+        supplement.transaction,
+        actor,
+        material.ownerId,
+        target,
+        supplement.operation === 'delete' ? 'DELETE_PREPARATION' : true,
+      );
+      if (
+        draft.internalActorUserId !==
+          (binding === undefined ? actor.userId : null) ||
+        draft.lawyerAccountBindingId !== (binding ?? null)
+      )
+        throw this.forbidden();
+      if (
+        (await this.hasExecutionSupplementFirstFreeze(
+          supplement.transaction,
+          current.id,
+        )) ||
+        (await supplement.transaction.materialReference.count({
+          where: { materialId },
+        })) > 0
+      )
+        throw this.versionConflict();
+    } else {
+      if (supplement !== undefined) throw this.versionConflict();
+      await this.authorizeOwner(
+        actor,
+        material.ownerType,
+        material.ownerId,
+        'write',
+        reader,
+        snapshotReader,
+        undefined,
+        material.category,
+      );
+    }
     if (
       actor.lawyerAccountId !== undefined &&
       (material.ownerType !== 'CASE' ||
@@ -2055,20 +3317,32 @@ export class MaterialService {
     );
   }
 
-  private async lockAgreementMaterialActorFirst(
+  private async lockMaterialMutationActorFirst(
     transaction: MaterialTransactionClient,
     actor: ActorContext,
     materialId: string,
-  ): Promise<boolean> {
+  ): Promise<
+    Readonly<{ agreementLocked: boolean; supplementCaseId?: string }>
+  > {
     const hint = await transaction.material.findFirst({
       where: { id: materialId, departmentId: actor.departmentId },
       select: { ownerType: true, ownerId: true, category: true },
     });
+    if (hint?.category === 'EXECUTION_SUPPLEMENT') {
+      if (hint.ownerType !== 'CASE') throw this.invalidVersion();
+      const locked = await transaction.$queryRawUnsafe<Array<{ id: string }>>(
+        'SELECT "id" FROM "cases" WHERE "id"=$1::uuid AND "department_id"=$2::uuid FOR UPDATE',
+        hint.ownerId,
+        actor.departmentId,
+      );
+      if (locked.length !== 1) throw this.notFound();
+      return { agreementLocked: false, supplementCaseId: hint.ownerId };
+    }
     if (
       hint?.ownerType !== 'CUSTOMER' ||
       hint.category !== 'CUSTOMER_AGREEMENT'
     )
-      return false;
+      return { agreementLocked: false };
     if (!this.organization) throw new Error('OrganizationService unavailable');
     await lockCustomerActorFacts(transaction, this.organization, actor);
     await this.authorizeOwner(
@@ -2095,7 +3369,7 @@ export class MaterialService {
       undefined,
       hint.category,
     );
-    return true;
+    return { agreementLocked: true };
   }
 
   private async assertAgreementCategoryDidNotAppear(
@@ -2335,6 +3609,7 @@ export class MaterialService {
       validation.canonicalFact.ownerType !== 'CASE' ||
       validation.canonicalFact.ownerId !== caseId ||
       validation.canonicalFact.category !== 'COMPLAINT' ||
+      validation.firstUploadTarget !== undefined ||
       validation.canonicalFact.purpose !== 'COMPLAINT'
     )
       throw this.invalidVersion();
@@ -2368,6 +3643,7 @@ export class MaterialService {
         validation.canonicalFact.ownerType !== 'CASE' ||
         validation.canonicalFact.ownerId !== caseId ||
         validation.canonicalFact.category !== 'MAIL_RECEIPT' ||
+        validation.firstUploadTarget !== undefined ||
         validation.canonicalFact.purpose !== 'MAIL_RECEIPT'
       )
         throw this.invalidVersion();
@@ -2440,6 +3716,7 @@ export class MaterialService {
       const validation = this.validatedVersionFacts.get(fact);
       const canonical = validation?.canonicalFact;
       if (
+        validation?.firstUploadTarget !== undefined ||
         validation?.transaction !== transaction ||
         canonical?.departmentId !== actor.departmentId ||
         canonical.ownerType !== 'CASE' ||
@@ -2520,6 +3797,7 @@ export class MaterialService {
       const validation = this.validatedVersionFacts.get(fact);
       const canonical = validation?.canonicalFact;
       if (
+        validation?.firstUploadTarget !== undefined ||
         validation?.transaction !== transaction ||
         canonical?.departmentId !== actor.departmentId ||
         canonical.ownerType !== 'CASE' ||
@@ -2568,6 +3846,7 @@ export class MaterialService {
       const validation = this.validatedVersionFacts.get(fact);
       const canonical = validation?.canonicalFact;
       if (
+        validation?.firstUploadTarget !== undefined ||
         validation?.transaction !== transaction ||
         canonical?.departmentId !== actor.departmentId ||
         canonical.ownerType !== 'CASE' ||
@@ -2614,6 +3893,7 @@ export class MaterialService {
       const validation = this.validatedVersionFacts.get(fact);
       const canonical = validation?.canonicalFact;
       if (
+        validation?.firstUploadTarget !== undefined ||
         validation?.transaction !== transaction ||
         canonical?.departmentId !== actor.departmentId ||
         canonical.ownerType !== 'CASE' ||
@@ -2676,6 +3956,7 @@ export class MaterialService {
       const validation = this.validatedVersionFacts.get(fact);
       const canonical = validation?.canonicalFact;
       if (
+        validation?.firstUploadTarget !== undefined ||
         validation?.transaction !== transaction ||
         canonical?.departmentId !== actor.departmentId ||
         canonical.ownerType !== 'CASE' ||
@@ -2722,6 +4003,7 @@ export class MaterialService {
       const validation = this.validatedVersionFacts.get(fact);
       const canonical = validation?.canonicalFact;
       if (
+        validation?.firstUploadTarget !== undefined ||
         validation?.transaction !== transaction ||
         canonical?.departmentId !== actor.departmentId ||
         canonical.ownerType !== 'CASE' ||
@@ -2755,6 +4037,190 @@ export class MaterialService {
     }
   }
 
+  async freezeCaseSectionRecordCorrectionReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    target: CaseSectionRecordCorrectionReferenceTarget,
+    facts: readonly ValidatedMaterialVersionFact[],
+    auditEventId: string,
+  ): Promise<void> {
+    const definition = sectionRecordMaterials[target.kind];
+    if (
+      definition === undefined ||
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined ||
+      !caseId.trim() ||
+      !target.correctionId.trim() ||
+      !auditEventId.trim() ||
+      facts.length > 10 ||
+      (facts.length === 0 &&
+        target.kind !== 'EXECUTION_FINISH' &&
+        target.kind !== 'CLOSURE')
+    )
+      throw this.invalidVersion();
+    for (const fact of facts) {
+      const validation = this.validatedVersionFacts.get(fact);
+      if (validation?.firstUploadTarget !== undefined) {
+        if (
+          validation.transaction !== transaction ||
+          validation.firstUploadTarget.kind !== target.kind
+        )
+          throw this.invalidVersion();
+        await this.assertFirstUploadCorrection(
+          transaction,
+          actor,
+          caseId,
+          target.correctionId,
+          auditEventId,
+          validation.firstUploadTarget,
+        );
+      }
+    }
+    const canonicalFacts = facts.map((fact) => {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
+        canonical.category !== definition.category ||
+        canonical.purpose !== definition.category ||
+        !allowedMimeTypes[definition.category].has(canonical.mimeType) ||
+        canonical.sizeBytes <= 0n ||
+        canonical.sizeBytes > BigInt(materialFileLimit(definition.category))
+      )
+        throw this.invalidVersion();
+      return canonical;
+    });
+    if (
+      new Set(canonicalFacts.map((fact) => fact.materialId)).size !==
+        facts.length ||
+      new Set(canonicalFacts.map((fact) => fact.contentVersionId)).size !==
+        facts.length
+    ) {
+      throw this.invalidVersion();
+    }
+    for (const fact of canonicalFacts) {
+      const data = {
+        correctionId: target.correctionId,
+        caseId,
+        departmentId: actor.departmentId,
+        materialId: fact.materialId,
+        contentVersionId: fact.contentVersionId,
+      };
+      switch (target.kind) {
+        case 'EXECUTION_MAILING':
+          await transaction.caseExecutionMailingRecordCorrectionDocument.create(
+            { data },
+          );
+          break;
+        case 'EXECUTION_FILING':
+          await transaction.caseExecutionFilingRecordCorrectionDocument.create({
+            data,
+          });
+          break;
+        case 'EXECUTION_FINISH':
+          await transaction.caseExecutionFinishRecordCorrectionDocument.create({
+            data,
+          });
+          break;
+        case 'JUDGMENT':
+          await transaction.caseJudgmentRecordCorrectionDocument.create({
+            data,
+          });
+          break;
+        case 'CLOSURE':
+          await transaction.caseClosureRecordCorrectionDocument.create({
+            data,
+          });
+          break;
+      }
+    }
+    for (const fact of facts) {
+      const validation = this.validatedVersionFacts.get(fact);
+      if (validation?.firstUploadTarget !== undefined)
+        validation.sectionFreezeEventId = auditEventId;
+    }
+    if (facts.length > 0) {
+      const inserted = await this.freezeReferences(transaction, {
+        departmentId: actor.departmentId,
+        resourceType: 'case',
+        resourceId: caseId,
+        facts,
+        actionEventId: auditEventId,
+      });
+      if (inserted.count !== facts.length) throw this.invalidVersion();
+    }
+  }
+
+  private async assertFirstUploadCorrection(
+    tx: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    correctionId: string,
+    auditEventId: string,
+    target: CaseSectionRecordUploadTarget,
+  ) {
+    const where = {
+      id: correctionId,
+      caseId,
+      departmentId: actor.departmentId,
+      recordedByUserId: actor.userId,
+      auditEventId,
+      fromRevision: target.expectedRevision,
+    };
+    let exact = false;
+    switch (target.kind) {
+      case 'EXECUTION_MAILING':
+        exact =
+          (await tx.caseExecutionMailingRecordCorrection.findFirst({
+            where: { ...where, mailingId: target.targetId },
+            select: { id: true },
+          })) !== null;
+        break;
+      case 'EXECUTION_FILING':
+        exact =
+          (await tx.caseExecutionFilingRecordCorrection.findFirst({
+            where: { ...where, filingId: target.targetId },
+            select: { id: true },
+          })) !== null;
+        break;
+      case 'EXECUTION_FINISH':
+        exact =
+          (await tx.caseExecutionFinishRecordCorrection.findFirst({
+            where: { ...where, finishId: target.targetId },
+            select: { id: true },
+          })) !== null;
+        break;
+      case 'JUDGMENT':
+        exact =
+          (await tx.caseJudgmentRecordCorrection.findFirst({
+            where: {
+              ...where,
+              judgmentId: target.targetId,
+              trialRoundId: target.trialRoundId,
+            },
+            select: { id: true },
+          })) !== null;
+        break;
+      case 'CLOSURE':
+        exact =
+          (await tx.caseClosureRecordCorrection.findFirst({
+            where: {
+              ...where,
+              closureId: target.targetId,
+              sourceClosureVersionId: target.expectedClosureVersionId,
+            },
+            select: { id: true },
+          })) !== null;
+        break;
+    }
+    if (!exact) throw this.invalidVersion();
+  }
+
   async freezeCaseExecutionMailingReferences(
     transaction: MaterialTransactionClient,
     actor: ActorContext,
@@ -2767,6 +4233,7 @@ export class MaterialService {
       const validation = this.validatedVersionFacts.get(fact);
       const canonical = validation?.canonicalFact;
       if (
+        validation?.firstUploadTarget !== undefined ||
         validation?.transaction !== transaction ||
         canonical?.departmentId !== actor.departmentId ||
         canonical.ownerType !== 'CASE' ||
@@ -2812,6 +4279,7 @@ export class MaterialService {
       const validation = this.validatedVersionFacts.get(fact);
       const canonical = validation?.canonicalFact;
       if (
+        validation?.firstUploadTarget !== undefined ||
         validation?.transaction !== transaction ||
         canonical?.departmentId !== actor.departmentId ||
         canonical.ownerType !== 'CASE' ||
@@ -2858,6 +4326,7 @@ export class MaterialService {
       const validation = this.validatedVersionFacts.get(fact);
       const canonical = validation?.canonicalFact;
       if (
+        validation?.firstUploadTarget !== undefined ||
         validation?.transaction !== transaction ||
         canonical?.departmentId !== actor.departmentId ||
         canonical.ownerType !== 'CASE' ||
@@ -2931,6 +4400,7 @@ export class MaterialService {
       const validation = this.validatedVersionFacts.get(fact);
       const canonical = validation?.canonicalFact;
       if (
+        validation?.firstUploadTarget !== undefined ||
         validation?.transaction !== transaction ||
         canonical?.departmentId !== actor.departmentId ||
         canonical.ownerType !== 'CASE' ||
@@ -2972,7 +4442,37 @@ export class MaterialService {
     departmentId: string,
     materialId: string,
     contentVersionId: string,
+    sectionRecordKind?: CaseSectionRecordKind,
   ): Promise<boolean> {
+    if (category === 'EXECUTION_SUPPLEMENT')
+      return this.hasExecutionSupplementFirstFreeze(
+        transaction,
+        contentVersionId,
+        true,
+      );
+    if (sectionRecordKind !== undefined) {
+      const definition = sectionRecordMaterials[sectionRecordKind];
+      if (definition?.category !== category) return false;
+      return (
+        (await transaction.materialReference.findFirst({
+          where: {
+            departmentId,
+            resourceType: 'case',
+            resourceId: caseId,
+            materialId,
+            contentVersionId,
+            purpose: category,
+            actionEvent: {
+              departmentId,
+              resourceType: 'CASE',
+              resourceId: caseId,
+              action: { in: [...definition.actions] },
+            },
+          },
+          select: { id: true },
+        })) !== null
+      );
+    }
     if (category === 'CASE_CLOSURE_DOCUMENT')
       return (
         (await transaction.caseClosureDocument.findFirst({
@@ -3884,12 +5384,23 @@ export class MaterialService {
               'SECOND_INSTANCE_JUDGMENT',
               'EXECUTION_APPLICATION',
               'EXECUTION_FILING_PROOF',
+              'EXECUTION_SUPPLEMENT',
               'EXECUTION_FINISH_BASIS',
               'CASE_CLOSURE_DOCUMENT',
             ],
           },
         },
-        select: { id: true, category: true, currentVersionId: true },
+        select: {
+          id: true,
+          category: true,
+          currentVersionId: true,
+          currentVersion: {
+            select: {
+              caseSectionRecordUploadDraftId: true,
+              executionSupplementUploadDraftId: true,
+            },
+          },
+        },
       }),
       this.database.materialReference.findMany({
         where: {
@@ -3917,6 +5428,28 @@ export class MaterialService {
       materials.map((material) => [material.id, material.category]),
     );
     for (const material of materials) {
+      if (material.category === 'EXECUTION_SUPPLEMENT') {
+        const versions = new Set<string>();
+        if (
+          material.currentVersionId !== null &&
+          (await this.hasExecutionSupplementFirstFreeze(
+            this.database,
+            material.currentVersionId,
+          ))
+        )
+          versions.add(material.currentVersionId);
+        allowed.set(material.id, versions);
+        continue;
+      }
+      if (
+        material.currentVersionId !== null &&
+        material.currentVersion?.caseSectionRecordUploadDraftId != null &&
+        !(await this.hasSectionUploadFirstFreeze(
+          this.database,
+          material.currentVersionId,
+        ))
+      )
+        continue;
       if (
         material.currentVersionId !== null ||
         secondCategories.has(material.category)
@@ -3931,6 +5464,14 @@ export class MaterialService {
         );
     }
     for (const reference of references) {
+      if (
+        categories.get(reference.materialId) === 'EXECUTION_SUPPLEMENT' &&
+        !(await this.hasExecutionSupplementFirstFreeze(
+          this.database,
+          reference.contentVersionId,
+        ))
+      )
+        continue;
       if (secondCategories.has(categories.get(reference.materialId) ?? ''))
         continue;
       const versions = allowed.get(reference.materialId);
@@ -4040,7 +5581,11 @@ export class MaterialService {
             },
             actionEvent: {
               action: {
-                in: ['case.complaint.mailed', 'case.execution.mailed'],
+                in: [
+                  'case.complaint.mailed',
+                  'case.execution.mailed',
+                  'case.execution.mailing.record-corrected',
+                ],
               },
               resourceType: 'CASE',
               resourceId: caseId,
@@ -4146,6 +5691,7 @@ export class MaterialService {
           input.category === 'SECOND_INSTANCE_JUDGMENT' ||
           input.category === 'EXECUTION_APPLICATION' ||
           input.category === 'EXECUTION_FILING_PROOF' ||
+          input.category === 'EXECUTION_SUPPLEMENT' ||
           input.category === 'EXECUTION_FINISH_BASIS' ||
           input.category === 'CASE_CLOSURE_DOCUMENT') &&
         input.purpose === input.category) ||
@@ -4270,6 +5816,7 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'SECOND_INSTANCE_JUDGMENT' ||
     value === 'EXECUTION_APPLICATION' ||
     value === 'EXECUTION_FILING_PROOF' ||
+    value === 'EXECUTION_SUPPLEMENT' ||
     value === 'EXECUTION_FINISH_BASIS' ||
     value === 'CASE_CLOSURE_DOCUMENT'
   ) {
@@ -4303,6 +5850,7 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
               category === 'SECOND_INSTANCE_JUDGMENT' ||
               category === 'EXECUTION_APPLICATION' ||
               category === 'EXECUTION_FILING_PROOF' ||
+              category === 'EXECUTION_SUPPLEMENT' ||
               category === 'EXECUTION_FINISH_BASIS' ||
               category === 'CASE_CLOSURE_DOCUMENT'
             ? 10
@@ -4324,6 +5872,7 @@ function materialFileLimit(category: keyof typeof allowedMimeTypes): number {
     category === 'SECOND_INSTANCE_JUDGMENT' ||
     category === 'EXECUTION_APPLICATION' ||
     category === 'EXECUTION_FILING_PROOF' ||
+    category === 'EXECUTION_SUPPLEMENT' ||
     category === 'EXECUTION_FINISH_BASIS' ||
     category === 'CASE_CLOSURE_DOCUMENT'
     ? 50 * 1024 * 1024

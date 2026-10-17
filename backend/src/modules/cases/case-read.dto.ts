@@ -1,7 +1,16 @@
 import { caseArchiveTypes } from './case-archive.dto';
+import { ExecutionFilingFollowupsDto } from './case-execution-filing-followup-read.dto';
 import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  ClosureRecordEditsDto,
+  ExecutionFilingRecordEditsDto,
+  ExecutionFinishRecordEditsDto,
+  ExecutionMailingRecordEditsDto,
+  HearingRecordEditsDto,
+  JudgmentRecordEditsDto,
+} from './case-section-record-edit-read.dto';
 
 class CaseCertificateFileDto {
   @ApiProperty({ format: 'uuid' }) materialId!: string;
@@ -397,8 +406,10 @@ class CaseDisplayAmountDto {
       'COMPLAINT_CONFIRMATION',
       'COMPLAINT_SUBMISSION',
       'FIRST_INSTANCE_JUDGMENT',
+      'FIRST_INSTANCE_JUDGMENT_RECORD_CORRECTION',
       'SECOND_INSTANCE_RESULT',
       'CASE_CLOSURE_VERSION',
+      'CASE_CLOSURE_RECORD_CORRECTION',
     ],
     nullable: true,
   })
@@ -406,8 +417,10 @@ class CaseDisplayAmountDto {
     | 'COMPLAINT_CONFIRMATION'
     | 'COMPLAINT_SUBMISSION'
     | 'FIRST_INSTANCE_JUDGMENT'
+    | 'FIRST_INSTANCE_JUDGMENT_RECORD_CORRECTION'
     | 'SECOND_INSTANCE_RESULT'
     | 'CASE_CLOSURE_VERSION'
+    | 'CASE_CLOSURE_RECORD_CORRECTION'
     | null;
   @ApiProperty({ type: String, nullable: true, format: 'uuid' }) sourceId!:
     string | null;
@@ -764,6 +777,18 @@ class CaseSecondAcceptanceHistoryDto {
   history!: CaseSecondAcceptanceHistoryItemDto[];
 }
 class CaseRecordEditsDto {
+  @ApiProperty({ type: [ExecutionMailingRecordEditsDto] })
+  executionMailings!: ExecutionMailingRecordEditsDto[];
+  @ApiProperty({ type: [ExecutionFilingRecordEditsDto] })
+  executionFilings!: ExecutionFilingRecordEditsDto[];
+  @ApiProperty({ type: [ExecutionFinishRecordEditsDto] })
+  executionFinishes!: ExecutionFinishRecordEditsDto[];
+  @ApiProperty({ type: [HearingRecordEditsDto] })
+  hearings!: HearingRecordEditsDto[];
+  @ApiProperty({ type: [JudgmentRecordEditsDto] })
+  judgments!: JudgmentRecordEditsDto[];
+  @ApiProperty({ type: [ClosureRecordEditsDto] })
+  closures!: ClosureRecordEditsDto[];
   @ApiProperty() canUpdateDefendantContact!: boolean;
   @ApiProperty() canCorrectAcceptance!: boolean;
   @ApiProperty({ type: [CaseDefendantContactHistoryDto] })
@@ -808,6 +833,8 @@ export class CaseDetailResponseDto extends OmitType(CaseListItemDto, [
   executionMailing!: CaseExecutionMailingDto | null;
   @ApiProperty({ type: CaseExecutionFilingDto, nullable: true })
   executionFiling!: CaseExecutionFilingDto | null;
+  @ApiProperty({ type: ExecutionFilingFollowupsDto, nullable: true })
+  executionFilingFollowups!: ExecutionFilingFollowupsDto | null;
   @ApiProperty({ type: CaseExecutionFinishDto, nullable: true })
   executionFinish!: CaseExecutionFinishDto | null;
   @ApiProperty({ type: CaseHearingDto }) hearing!: CaseHearingDto;
