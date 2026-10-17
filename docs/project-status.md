@@ -1,5 +1,7 @@
 # 当前开发状态
 
+恢复断点（2026-10-17）：用户明确“现在继续”。主控核昨天暂停记录：五树HEAD及未提交文件清单一致，主控clean d708f60；结算23项、证物14项、S七项WIP保留，未见断点之后文件改写，WIP未封完整raw故不冒称历史字节证明。原S通过父级有效通道恢复七文件修复，结算/证物原可见Task已实际恢复，所有权不变。原R2先见exited255，唯一Runner核原fullCID/镜像/卷/15438与退出日志后仅start一次并healthy；单锁READ ONLY快照核149全部旧PK行、71案、32文件、H42/terminal inactive v2及159成功+唯一failed1000完全同，五enum/新DDL未提交，result.json rawSHA cae5aefb39196c4b17e292c35945d571b305c4f31065d6669f3c793ab4144838主控已核。环境恢复不等于账本恢复，写槽仍关闭；待固定候选/独审及准确单后才按已批准范围官方resolve和deploy。真实HTTP14/点击尚未执行，人工预览未动。
+
 最新断点（2026-10-16）：原EF候选1a98的正常官方deploy首次失败，unsafe use of new enum EXECUTION_SUPPLEMENT；实际159成功+唯一failed1000（id9f547970-6eaa-4628-a670-f505590482e9、0步/未finished/未rolledback），五enum/新表/新列均未提交，149表71案32CV/旧安全与文件保持。HTTP14未启动。旧owned以prefix/body两query回放曾人为提交，不能作正式入口事务证据。原S已接手1a98独占修复分支，限定七文件，0950独立枚举准备保原1000bytes。用户09:50UTC已具体批准复核零部分提交后，官方resolve将唯一失败行标记rolled-back并保留历史，再正常部署0950及原1000；须源码固定、正式入口风险验证和独立审查成立后交原Runner，当前尚未执行恢复。结算/证物两个可见Task已实际写计算/规则/DTO及测试源码，结算Client生成原EPERM经原审批exit0后继续；仍不碰DB，目录所有权保持。
 
 最新范围变更（2026-10-16）：用户已用“直接按demo的功能完成对齐”覆盖先前结算／证物最小首版。SD-60及完整功能对照已冻结，已创建可见Task：结算01a1440a-beeb-7a90-888c-705ec4df9494（demo-settlement-alignment）与证物01a1440b-a0a8-7111-8993-1baabae691b0（demo-evidence-alignment），均源自clean e48760d2。结算是本轮两模块共享schema／1200和1300迁移／权限目录／公共路由唯一Owner，证物不争写；加入0950后成功链序号为163–164。实际源码进度见上条，不把创建Task记为实现完成；原Demo能力保留，未表达的高风险分歧才问。原Runner终端d3d真实1/1PASS已收到c8100072…a1b12摘要，并入EF前当前保护基线，不等待新模块。

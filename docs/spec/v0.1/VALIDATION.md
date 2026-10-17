@@ -1,5 +1,9 @@
 # SPEC-001 文档验证
 
+### 暂停后原R2环境与历史只读复核（2026-10-17）
+
+唯一Runner在精确原1a98fc7/tree dc167da6执行原容器恢复。退出状态255经原fullCID、标签、锁定镜像、持久卷和loopback15438、退出日志及端口复核后，仅docker start一次，最终healthy；未recreate/pull/换卷或配置。单标准锁及一次REPEATABLE READ READ ONLY快照核159成功+唯一failed1000原行、149表全部旧PK行/安全、71案/32文件及历史源真实bytes均与昨天相同，五新enum和EF DDL仍未提交；1240source/761build哈希保持，锁已释放。真实result.json rawSHA cae5aefb39196c4b17e292c35945d571b305c4f31065d6669f3c793ab4144838由主控实际核对。证据位于ef001-integration/.local/ef001-evidence/r2-restart-readonly-20261017/；无新DB行/业务服务/HTTP/Grant/resolve/deploy/fixture或verify/owned重跑。此项仅环境恢复和旧事实保持，不是新迁移、EF功能或浏览器验收通过；写槽仍待固定已审候选及既定恢复条件。
+
 ### EF正式入口首次失败：保留现场，源码修复与恢复分离（2026-10-16）
 
 唯一Runner在clean1a98fc7正常pnpm db:test:migrate:deploy首次exit1，真实PG为unsafe use of new value EXECUTION_SUPPLEMENT of enum material_category；未启动HTTP14、未retry/resolve/rollback。安全摘要rawSHA48626b5d17d546ceb7c9fef08f70e1fb6e15e38bbf961508e34cc7dd04ddb8ae由主控实际核同。现159成功账本+唯一未完成1000 id9f547970-6eaa-4628-a670-f505590482e9，appliedSteps0、finished/rolledback均null；enumLabelsAdded/newTables/newNullableColumns均0，149旧表71Case/32CV/944audit/65session/counter13、全旧安全/文件保持。此前正常verify和owned五checks仍保留为其真实结果，但旧helper prefix/transaction两次query额外形成提交，未覆盖Prisma整文件的真实事务边界，不再扩大为正式部署通过。
