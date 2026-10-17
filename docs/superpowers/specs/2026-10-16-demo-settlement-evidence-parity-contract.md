@@ -51,6 +51,19 @@ Demo费用页的凭证/发票不是律师上传该账单发票的门户。REQ-ST
 
 ## 实施和验收
 
+### 已登记的自动费用与材料接线增量（2026-10-17）
+
+共享V3十三文件已经独审并固定提交，不代表费用来源、凭证或业务页面完成。以下仍由原共享Owner串行实现、单独冻结和复审，证物Owner不争写材料与schema：
+
+- `FeeRecord` 可增加成对的稳定 `sourceKind/sourceId` 与部门内源唯一键。自动来源仅从真实Case关联的原公证费用、采集样品费用事实投影，明确KNOWN金额包含真实0，UNKNOWN/PENDING不造0；日期与状态必须保留其真实来源含义，不把请求、发起或费用源日期当已支付/已回款。未出证无真实Case不造费用。手工费用不能冒充自动源。
+- 原出证事务通过已固定的纯公开initializer同步一次自动费用；源键防重，原公证处账号沿原出证授权，不新增fee Grant、不伪造内部actor。该helper只接可信事务/真实来源，不注册可由HTTP灌事实的接口。initializer由结算Owner实现；`notary-certificate.service.ts/.spec.ts`仍仅证物Owner接稳定SHA后的最小hook，保留旧Case/出证事实/原回执。
+- 新材料category/purpose `FEE_PROOF` 复用CASE owner及已有私有blob/签名/尺寸/精确版本机制。当前内部`fee.update`允许上传与替换，当前内部`fee.read`只允许真实同部门Fee/Case/精确版本归属的下载；CASE普通读取或律师当前版本捷径不能外泄费用凭证的ID、文件名或bytes。凭证保存/清空必须CAS/原key、审计与精确材料引用同事务；替换或移除费用不删除已引用旧版本。它仍是Demo费用凭证/发票槽，不是律师账单发票门户。
+- `evidence.read`只增加内部同部门、真实NOTARY_CERTIFICATE完整冻结版本集合的读取路径，沿现有受保护版本URL；下载独立核原certificate、typed/ref和原出证audit，不仅信UI ID或证物审计JSON，不放开披露资料、任意CV或外部身份。原合规公证处/律师证书读规则保留。证物源合同的`electronicFiles`完整保留1..10份版本，不默取首份。
+- 材料service/directspec及必要DTO/controller/module、前端materials API/directspec归共享Owner；结算读取有效结案额的最小公开seam为`cases/case-settlement-source.ts/.spec.ts`与`cases/index.ts`，同事务校验完整更正链，0/null/未登记分开，不能回退为旧金额或诉请额。
+- 若新增已有enum标签会在同一SQL文件中被使用，先独立的`20261016115000_fee_proof_category_prepare`只准备标签并独立提交；使用方保持整文件执行，不靠拆query模拟提交。该未发布新前向目录及1200必要增量由共享Owner唯一写，旧已发布0950/1000等raw不改。若采用1150，成功序号计划为batch162、1150为163、1200为164、1300为165；稳定身份始终以实际名称/raw为准，当前没有运行这些迁移或写新Grant。
+
+两任务的可编译领域小候选与页面WIP可以分开冻结和审查；离线规则、直接Prisma delegate测试、Vue交互测试不占R2写槽。实际迁移/并发/真实浏览器在固定组合和准确预算后由唯一Runner执行，不能把共享模型已审、类型通过或只画出控件记成完整Demo验收。
+
 Owner先把清单落成真实控件、字段、函数、输入边界、结果和直接测试的矩阵，再实施持久化；可明确先后小候选，不把未完成行删出完整目标。未表达的高风险分歧只暂停相应分支，其他继续。金额/迁移/授权高风险用Sol及另一Sol审查；清晰普通接线可由Luna执行。
 
 允许正常离线冻结依赖、Prisma生成、聚焦测试、类型/Lint/格式；首个EPERM用正式审批，不改缓存/TEMP/ACL绕过。两新Task不运行DB/Docker/HTTP/服务/真实浏览器，不写Grant、造测试账号或重置凭据。实际验收以后由唯一Runner按固定候选、预算和批准串行执行。

@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+### EF同案结束与跨阶段重放PASS；剩余权限场景停止（2026-10-17）
+
+原E单spec修复0fb861a仅补真实合成结束依据，不改服务/SQL。正式运行候选2d670509/tree3c260ec1复用已通过完整门禁，受影响类型/Lint/格式和strict context通过。原首案f3ebfaeb-85a8-41d4-9c51-8708a8b5895d的独立同案续验1/1 PASS，finish201至WAITING_ARCHIVE/version4；四原EF body/key跨阶段仍201且精确原结果，四新key409，finish后与重放后完整事实快照相同，无新fixture。原PS5 warning前置失败单独保留，改为已验证PS7正常stderr/exit路径后才正式执行，不伪造通过。
+
+余13项protected发现通过，实际3PASS/1FAIL/9未运行，retry0；失败是内部source actor POST lawyer/cases前缀应403却返回409 VERSION_CONFLICT，请求a33b7653-299f-4f42-9d10-e2b2d3678335。只读现源码确认共用双前缀控制器未执行既有律师主体检查，使请求到达正常内部版本冲突路径；这不是已发生越权写入的证据，也不能把预期改为409。readonly403、foreign404已过；后续readonly能力读取和原定撤权后原键拒绝未到达。原E修复消息AbsolutePathBuf失败，精确relay SHA9e9cf265fb9fc80b8d5927f1a8ad7266369d74c456c40510696402e8e8cbcbeb，待父级有效通道派发，尚非实施中。
+
+原Runner parts-final-summary.json SHA26764e5ef25baf73554b0dee27ca2f7ec2a2ba7c8006032b811d513f299bdaea及part2-failure-http-safe.json SHAb20cd7a83fec6ab5eb7857c0c4a47eb9488c8ca2b7dc492988714d9af6a49623固定本次结果；两阶段closure通过、旧事实/安全/文件保持，端口与锁释放。累计9身份/66个自身新角色Grant/5案/11tiny文件；剩余12身份/105Grant/11新案/49成功文件（48tiny+一份50MiB）及未执行原故障/超限子项。不得重造原失败/已过场景，不重复resolve或deploy；后续须先修审固定主体边界，再独立安排原失败对象和9未运行场景。完整14、真实页面和完整Demo仍未通过。
+
+### 自动费用及凭证共享静态候选（2026-10-17）
+
+原两Sol对frozen-fee-source-proof-manifest-v1.json（SHAb7488b3c136be3ea17680bdcddd0281712fef8941a0423e2a36b90531e05eeb6）28文件逐raw核同，Spec与Standards均ACCEPTED C/I/M0。枚举准备1150只新增FEE_PROOF，单提交e00c94fe8764888015ee25b2acaaba29fb89e478；其余27文件64cd8028b2c2f9ba77d1a5325c21bf2d5d348a1d。真实源自动费用保留KNOWN含0/未知PENDING、同事务来源与幂等约束；凭证精确版本/授权/audit/ref及旧历史不删；证物额外下载路径基于真实证书冻结集合而非只信JSON。作者材料265项、费用proof7项、迁移纯12项及API98项等聚焦证据不等于真实PG/HTTP/并发/页面结果。结算其余service/UI与证物本域候选仍分开开发审查，未部署这些新迁移。
+
 ### EF HTTP14真实首场景fixture失败；旧事实保持（2026-10-17）
 
 父级提供原07:28允许与10-17继续的精确本机R2授权，并恢复消息通道后，续单91270f77…05248a一次成功投递。原Runner protected发现14/1 exit0；正式14库存仅首项执行，exit1/maxFailures1/retries0，原报告unexpected1/skipped13/flaky0保留。失败为2026-10-17T01:58:55.625Z原新案f3ebfaeb-85a8-41d4-9c51-8708a8b5895d execution-finish POST400，request823b048a-4953-49b6-b413-e500023829e4。safe trace SHA009acb5d7ee8d10c55c02c97629e7a480bfa53caf157503cf4bb0971575002ac证expectedVersion3、basisNote:null/附件[]；spec helper与正式cases.md399/原finish.service403–404及原直接负例一致，正确规则拒绝无任何依据的结束请求，不构成放宽产品或迁移理由。
