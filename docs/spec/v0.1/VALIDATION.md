@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+### Demo A有限批准序列闭合及原证据边界（2026-10-17）
+
+固定业务候选2ef6a73919dbf7eb739d54a2fe63ddfa735c8727/tree50effa5496ba4b86e7a7d44e0ba8ee9dd85315ac的正常完整verify已实际通过工具139、前端2510、后台2351、NT006及双构建。后续仅ignored执行器定位、等待和采集修正，tracked源码/依赖/环境与产物未变；成功证物、财务前序、上传和导出均不重复。原owned165、161备份/92份无覆盖复制、官方165部署及3role/3assignment20Grant的既有成功独立复用。本批业务是多次停止后按原捕获断点续接的累计覆盖，不写成单次整套浏览器绿色运行。
+
+最终完成目录为.local/ef001-evidence/demo-A-f19-continuation-2ef6a739-20261017/。completion-summary.json SHA4bcf781247d3a54b72fe411d0a1673ee3756b2d4043163c449e33bff6a6ca91d；completion-manifest.json SHAd6a7cb7fc9c571c21a88903fb8cf4891feb6c0f0a64488f075998c0f93320876的26份文件逐bytes/hash复核相符。主控独立按实际私密捕获pin重算54个唯一step：34成功、13预定拒绝写、6失败GET、export1；三组F21/F03、F22/F07、F23/F13的method/path/body/key/status/result精确一致，原意外F06/E07的500及所有执行器失败保留，不混入预定拒绝数。正常A登录4/4，原计划额度全部耗尽。最终真实protected只读专项1/1 PASS、无业务HTTP/登录/服务，确认原165表旧PK和87Case/92CV、安全/账本/序列及原两根184次文件校验保持；新凭证2份共210bytes，材料引用冻结不删除，仅新sourceRole inactive/v2、assignment0变更，其余角色和旧权限不恢复。服务/端口/锁均释放，无后续执行。
+
+最后managed用例exit1原因是脚本误将内部缺部门权限的G06期望为FORBIDDEN；实际原GET /api/v1/evidence?page=1&pageSize=1返回403/CUSTOMER_ACTION_FORBIDDEN。冻结EvidenceService先核内部账号再调用authorizeDepartmentAction，冻结AccessControlService该路径由forbidden()返回实际码，主控已核同一原响应及源码。因此允许只校正脚本期望并离线核原响应，不重发G06，也不把原exit1改写为exit0。final-readonly结果原元数据重复sha256键导致来源hash标签覆盖，G06-source-code-addendum.json分列两源hash；主控逆换字段名后与实际执行前副本逐字相等，证明未改任何断言，原结果保留。
+
+F12/F15两次PUT的原二进制request body与上传response body在Playwright中未暴露/未留存，bodySHA明确null；现有materialId/CV引用来自实际proof请求及只读提交事实，不能称原HTTP响应捕获。binary-evidence-gap-register.json保留缺口和provenance，未用预期File字节填造raw body、未重传。实际文件证据独立闭合：原选中105bytes文件、准确draft/material/CV与费用v2/v3绑定、存储真实bytes、readonly按钮完成下载产物size/SHA均相符（P1 SHA d3089b6013877e493a2139d7f0151545e169cfef11101a680f0fd5fe6507b1e5，P2 SHA b4a540f146a900ed5ec02af9a494cf23decccbecf203c662756a27c145f44bf2）；主控再次核实际下载文件。这证明业务附件一致性，不补齐原上传报文可重放证据。
+
+操作员路径已实际观察：来源/案件自动带入，同案公共日期一次录两费用、两行批量发起，凭证选择后自动保存、替换与明确移除，账单原500时选择/日期保留且原请求重试后成功；净额行访问凭证仍需一次展开原始费用，可后续在原UI范围讨论更直达入口，不增本批点击或数据。协议拒绝不冒页面错误恢复。未覆盖多客户/跨案合单、PRIMARY律师/门户、KNOWN自动费用来源（本次Q0）、新出证双初始化、多CV/同组多纸本、并发/流中回滚、真实24h超时及大数据分页；不把本批有限内部验收记成全量Demo完成或生产/预览发布。本次收口只改状态、验证引用及对应快照，业务源码与2ef6a739相同，复用其实际门禁，不重跑已耗尽预算。
+
 ### F06真实关闭与E07精确冲突修复（2026-10-17）
 
 c1e56d8d正常完整verify实际PASS（139/2510/2347、NT006、双构建）。F06原body/key经页面原请求重试201，唯一账单/2明细/100元、发起占用及审计独立核PASS；F07撤销和F08重建201，现2账单4明细。随后E07预定409实际500，requestId 3f294c60-c316-41bc-9cc0-6a7a55f5df76，settlement-ledger.js:31的已占用检查抛普通INVALID_BILL_SELECTION；未新增第三账单。原summary .local/ef001-evidence/demo-A-bill-recovery-c1e56d8d-20261017/stop-summary.json SHAfc1fa9fe4b0045ea57970a2842e97fe513a2e17ab7356a32431448e756152cc9保持。原Owner服务仅新增一行明确占用→changed()检查，位置在授权/锁/原成功key回执之后、billSelection和编号/写入前；不泛捕获未知错误，不改SQL或原事务阻断。直接19/19、backend类型及静态PASS，原Spec/Quality均ACCEPTED C/I/M0，作者1a5c79b0；清单SHA22656acc03e1c580de4d8c14c7815dc1923d5d1fa5fc738c27cce2aee4d29d2f。真实E07恢复Pending，新产品候选须门禁后仅续原E07和剩链；余15成功写/5预定拒绝/6失败GET/2登录，角色未撤权，无重复前序或导出。旧行及92份文件保持，旧500证据不覆盖。
