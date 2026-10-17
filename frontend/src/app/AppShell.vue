@@ -1191,7 +1191,12 @@ async function logout(): Promise<void> {
           @click="logout"
           >退出</ElButton
         >
-        <p v-if="logoutError" class="app-user__error" role="alert">
+        <p
+          v-if="logoutError"
+          class="app-user__error"
+          role="alert"
+          data-test="logout-error"
+        >
           {{ logoutError }}
         </p>
       </footer>

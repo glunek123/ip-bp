@@ -10,6 +10,14 @@ const api = vi.hoisted(() => ({
   logout: vi.fn(),
   getOrganizationManagementContext: vi.fn(),
   listLeads: vi.fn(),
+  getSettlementContext: vi.fn(),
+  listEvidence: vi.fn(),
+  getCalendarSummary: vi.fn(),
+  listCases: vi.fn(),
+  listLawyerCases: vi.fn(),
+  listLawyerAccounts: vi.fn(),
+  listNotaryOffices: vi.fn(),
+  listNotaryMatters: vi.fn(),
 }));
 
 vi.mock('../api/auth', async (importOriginal) => ({
@@ -21,6 +29,24 @@ vi.mock('../api/organization', () => ({
 }));
 vi.mock('../api/leads', () => ({
   listLeads: api.listLeads,
+}));
+vi.mock('../api/settlements', () => ({
+  getSettlementContext: api.getSettlementContext,
+}));
+vi.mock('../api/evidence', () => ({ listEvidence: api.listEvidence }));
+vi.mock('../api/calendar', () => ({
+  getCalendarSummary: api.getCalendarSummary,
+}));
+vi.mock('../api/cases', () => ({
+  listCases: api.listCases,
+  listLawyerCases: api.listLawyerCases,
+}));
+vi.mock('../api/lawyer-accounts', () => ({
+  listLawyerAccounts: api.listLawyerAccounts,
+}));
+vi.mock('../api/notary', () => ({
+  listNotaryOffices: api.listNotaryOffices,
+  listNotaryMatters: api.listNotaryMatters,
 }));
 
 const session = {
@@ -49,6 +75,19 @@ const clientSession = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  api.getSettlementContext.mockResolvedValue({ read: false, feeRead: false });
+  api.getCalendarSummary.mockResolvedValue({
+    metrics: { next30: { count: 0 } },
+  });
+  for (const read of [
+    api.listEvidence,
+    api.listCases,
+    api.listLawyerCases,
+    api.listLawyerAccounts,
+    api.listNotaryOffices,
+    api.listNotaryMatters,
+  ])
+    read.mockRejectedValue(new ApiError('无权读取', 403, 'ACTION_FORBIDDEN'));
   api.getOrganizationManagementContext.mockResolvedValue({});
   api.listLeads.mockResolvedValue({
     items: [],
@@ -145,8 +184,47 @@ describe('application session controls', () => {
 
     expect(auth.session).toEqual(session);
     expect(router.currentRoute.value.path).toBe('/customers');
-    expect(wrapper.get('[role="alert"]').text()).toContain(
-      '服务暂时不可用，请稍后重试',
+    expect(
+      wrapper.get('[data-test="logout-error"][role="alert"]').text(),
+    ).toContain('服务暂时不可用，请稍后重试');
+    expect(wrapper.find('[data-test="settlement-nav-error"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="evidence-nav-error"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it('keeps navigation and logout errors visible together without clearing the session or route', async () => {
+    api.getSettlementContext.mockRejectedValue(
+      new ApiError('结算读取失败', 500, 'INTERNAL_ERROR'),
+    );
+    api.logout.mockRejectedValue(
+      new ApiError('退出服务暂时不可用', 503, 'HTTP_ERROR'),
+    );
+    const { auth, router, wrapper } = await mountApp();
+    await flushPromises();
+    await wrapper.get('[data-test="logout"]').trigger('click');
+    await flushPromises();
+    const navigation = wrapper.get(
+      '[data-test="settlement-nav-error"] [role="alert"]',
+    );
+    const logout = wrapper.get('[data-test="logout-error"][role="alert"]');
+    expect(navigation.isVisible()).toBe(true);
+    expect(navigation.text()).toContain('结算导航暂时无法读取');
+    expect(logout.isVisible()).toBe(true);
+    expect(logout.text()).toBe('退出服务暂时不可用');
+    expect(auth.session).toEqual(session);
+    expect(router.currentRoute.value.path).toBe('/customers');
+    api.logout.mockResolvedValue(undefined);
+    await wrapper.get('[data-test="logout"]').trigger('click');
+    await flushPromises();
+    expect(auth.session).toBeNull();
+    expect(router.currentRoute.value.path).toBe('/login');
+    expect(wrapper.find('[data-test="app-shell"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="logout-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="settlement-nav-error"]').exists()).toBe(
+      false,
     );
   });
 

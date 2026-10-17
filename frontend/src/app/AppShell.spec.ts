@@ -24,12 +24,17 @@ const api = vi.hoisted(() => ({
   getCalendarSummary: vi.fn(),
   getSettlementContext: vi.fn(),
   listEvidence: vi.fn(),
+  logout: vi.fn(),
 }));
 const mountedShells: Array<ReturnType<typeof mount>> = [];
 vi.mock('../api/settlements', () => ({
   getSettlementContext: api.getSettlementContext,
 }));
 vi.mock('../api/evidence', () => ({ listEvidence: api.listEvidence }));
+vi.mock('../api/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/auth')>()),
+  logout: api.logout,
+}));
 
 vi.mock('../api/organization', () => ({
   getOrganizationManagementContext: api.getOrganizationManagementContext,
@@ -1472,6 +1477,40 @@ it('invalidates lawyer group badges on identity change and ignores the old respo
 });
 
 describe('settlement center navigation', () => {
+  it('recovers the navigation error independently while retaining a failed logout and its signed-in context', async () => {
+    api.getSettlementContext.mockRejectedValue(
+      new ApiError('server', 500, 'INTERNAL_ERROR'),
+    );
+    api.logout.mockRejectedValue(
+      new ApiError('退出失败，请重试', 503, 'HTTP_ERROR'),
+    );
+    const { wrapper, router } = await mountShell('/customers');
+    await wrapper.get('[data-test="logout"]').trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="settlement-nav-error"] [role="alert"]').text(),
+    ).toContain('结算导航暂时无法读取');
+    expect(wrapper.get('[data-test="logout-error"][role="alert"]').text()).toBe(
+      '退出失败，请重试',
+    );
+    expect(useAuthStore().session).toEqual(session);
+    expect(router.currentRoute.value.path).toBe('/customers');
+    api.getSettlementContext.mockResolvedValue({ read: true, feeRead: false });
+    await wrapper.get('[data-test="settlement-nav-retry"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="settlement-nav-error"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.get('[data-test="settlement-nav"]').attributes('href')).toBe(
+      '/settlements',
+    );
+    expect(wrapper.get('[data-test="logout-error"][role="alert"]').text()).toBe(
+      '退出失败，请重试',
+    );
+    expect(useAuthStore().session).toEqual(session);
+    expect(router.currentRoute.value.path).toBe('/customers');
+    expect(api.logout).toHaveBeenCalledTimes(1);
+  });
   it.each([
     { read: true, feeRead: false },
     { read: false, feeRead: true },

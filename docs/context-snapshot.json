@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-17T08:56:13.515Z",
+  "recordedAt": "2026-10-17T09:14:53.765Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -819,10 +819,10 @@
     "frontend/src/api/rights-holders.ts": "7f7d636dd65e9f2849b15b32e5e7f341ee26121ce071bb7bf91f96a5c3f22b0b",
     "frontend/src/api/settlements.spec.ts": "7afda547ee85fe04b8ac2f597633460ec2902854de2c375d198621fa457c93d4",
     "frontend/src/api/settlements.ts": "a280448ab361ff6c00dd48ad2414afa5fa76fac412b02552300bb0988ead8377",
-    "frontend/src/app/App.spec.ts": "0ca4c11429d0896e547064cb33312c4ed403899de43f6b6dde953d1114ad778e",
+    "frontend/src/app/App.spec.ts": "1435fae6ec51a18bacc4c35d34109641256bacb58fbd5c7d5e6f66858f556a37",
     "frontend/src/app/App.vue": "4566ad99f43c572c6558397a54155a34ddf10475edac0c998557c08cbab6051f",
-    "frontend/src/app/AppShell.spec.ts": "3bf205164c1700f3f20b93ee92a37da31319b33193978875af091c108a22e8ad",
-    "frontend/src/app/AppShell.vue": "8d9a47915cde80459fec60c0ca6a7febf283752085da202b4a73782971da5bbe",
+    "frontend/src/app/AppShell.spec.ts": "b83e8800d9ff160e9bc70d24a8001c9f59bca34a43e6414f1424d7a15d479813",
+    "frontend/src/app/AppShell.vue": "6437f1ed3b9abc0a2fb7270f9f8773a5d6d4a36039cb90fb515ac89308dbb661",
     "frontend/src/app/HealthPage.spec.ts": "374b3b7045c8fe06caef5b6670ccab806ea197b14625019adabb055f17ede244",
     "frontend/src/app/HealthPage.vue": "614b2e7e45023353c7ff2fc48d19ce47925cc06ffdb01514ee6ac83a89461d28",
     "frontend/src/app/ListWorkflowDrawer.spec.ts": "54749a4c5f0710a6b5daf9a2fb17e5ebe831136136eed5bca44e8d82768e3b29",
