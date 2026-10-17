@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+### EF既有只读页面2PASS/1FAIL及导航后续（2026-10-17）
+
+固定67625b9/treef6b18e96真实protected collection3/正式3，workers1/retries0/maxFailures1，2PASS/1FAIL、无skip/flaky；summary SHA7fd57cf75cc56bd501cf03be8379a93963c9fae3d759e260332f9482a771566e，主控逐项核101份seal证据bytes/SHA相符。正常source登录页、现案历史/当前、两个已有版本真实按钮下载（43与39bytes，SHA精确）、刷新/退出重登、反馈预填取消和补交空表单取消均通过；readonly读取与能力false/无写入口通过。撤权账号登录200、案件GET403，无EF数据与写按钮，但案件菜单可见，故该项按原GO FAIL保留；菜单本身不构成数据越权证明。
+
+主控实看既有1440及390截图：后者是同登录态从桌面resize，导航覆盖/裁切内容的现象成立，尚未证明根因或冷启动手机情形。原前端Owner只获AppShell.vue/spec与app-shell.css最小核合同/样式修复权，独立树从03329e64切分支；执行单SHA48feb01224859ab944ba6fe6d5728afefa63177ac54e93475bfd5d74535eece1。发送原Task返回AbsolutePathBuf路径错误，未送达；须父级原通道恢复，不把排单写成实施完成。后续必须真实点击窄回归，不靠DOM替身声明布局通过。
+
+本次独立保持核PASS：153表5492旧行、87Case头/92CV、账本161+原resolved失败、全安全/sequence/所有物理版本保持，仅正常auth_sessions+4；业务对象/Grant变化0，预算余额仍0。133个API请求中仅正常login4/logout1为非GET，业务写请求0/500为0。标准锁和正常双服务释放。旧门禁/双构建/T1/N9复用，未重跑接口或迁移。
+
+证物前端9文件最终manifest e26ca238已原Spec通过、原Standards空导出finding闭合C/I/M0，仅API/API测试/挂载页面测试3文件相对前版变化，其余6文件不变；无效filename/CSV拒绝，有效CSV原bytes含BOM/空白保留。受影响RED8→GREEN27/27及类型/静态通过，旧117结果只绑定旧候选。源5320ac11/treee08fb39a提交后clean，单接共享树1c3c1026并逐项证明原结算35WIP未变。该35manifest49d2265d暂拒收：Standards C0/I2/M0（费用新端点缺响应schema、净额首笔冒真实操作对象），Spec按BD-05及fees Spec窄核由原通过修正C0/I1/M0，其余范围结论保留。样品100/退20显示80却发起100，不能隐藏退20及其凭证；要求净额只读展示、各原行ID/原额/状态/凭证独立可读可操作，净额0亦可查。已返还原Owner费用/OpenAPI/API/页面及纯投影必要文件做最窄修复，新候选待固定复审，不先提交。均非完整Demo真实业务验收；未混入冻结EF运行树。
+
 ### EF161原十四内部HTTP场景分段覆盖完成，预算耗尽（2026-10-17）
 
 原Runner final-summary.json SHAb27a126b771c3834038d348b9c998d1aade1d816f40dc660aa434cc9a887edf0由主控核收，primary+post-process seal共134份证据逐项bytes/SHA相符。固定67625b9/treef6b18e96原source/build保持；新正式T1/1、N9/9均exit0、skip/retry/flaky0。T03:36:09.702Z/14.16秒，N03:37:38.757Z/91.61秒；两次独立closurePASS。既有完整正常门禁139/2378/2172、1241source/761build复用未重跑，未重新resolve/deploy。

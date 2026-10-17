@@ -1,5 +1,9 @@
 # 当前开发状态
 
+只读浏览器新结果（2026-10-17）：固定67625b9真实3项为2PASS/1FAIL，skip/retry/flaky0；source历史/两个精确tiny版本按钮下载/刷新重登/预填取消、readonly入口均过。撤权身份登录200、案件GET403且无EF内容/按钮，唯一失败是案件菜单仍显示，不据此认定数据越权；390×844截图另见导航遮挡。主控实看两张PNG并核101份封存证据，summary SHA7fd57cf75cc56bd501cf03be8379a93963c9fae3d759e260332f9482a771566e；153表旧行/87案/92CV及全部字节保持，仅4获准正常session，无业务/Grant增量，锁/端口释放。原UI干净树已切到03329e64的独立shell-fix分支，限定AppShell两文件和app-shell.css核合同并窄修；发送遇AbsolutePathBuf未送达，须父级有效恢复，不能称实施中。新单SHA48feb01224859ab944ba6fe6d5728afefa63177ac54e93475bfd5d74535eece1，原运行树不动，后续只读回归不新增业务对象。
+
+本地集成新状态（2026-10-17）：已验EF源码已在主控03329e64/tree6b141504合入，1090非docs raw与67625b9相同。证物前端9文件空CSV异常finding已原Standards关闭，Spec原范围通过，受影响27/27及静态证据成立；源5320ac11已单接共享组合1c3c1026，结算35个冻结WIP逐raw保留，未混提交。结算35文件manifest49d2265d审后暂拒收：Standards I2，Spec窄核修正I1（其余原通过保留）；费用新增端点缺响应schema，样品100/退款20净额80却以首笔ID实操作100，违反BD-05净额仅展示/真实源行分别操作。已返还原Owner最窄费用/API/页面/纯投影文件修复，旧清单/失败保留，不先提交。真实DB/HTTP/页面未验；当前public161与已用满业务预算不变。人工预览/推送继续冻结。
+
 EF分段HTTP覆盖已核收（2026-10-17）：原67625b9/treef6b18e96的正式T1/1+N9/9、两独立保持核均PASS，skip/retry/flaky0；final-summary SHAb27a126b771c3834038d348b9c998d1aade1d816f40dc660aa434cc9a887edf0及最终/补seal共134份证据逐raw回读匹配。原14场景通过初场景已提交事实+同案完成、此前3PASS、权限原部分断言+T尾段、N9分段覆盖，不是重新整跑14；原400fixture/409门户及PostMigrate BLOCKED均保留。角色b3fa20e6仅批准active/version/updated_at变为inactivev2，assignment不改；N旧行仅2026-10-17案号计数正常5→16/updated_at变化；完整161+原resolved历史、H42/终端/dadd/Part1/全部原字节保持，故障对象残留0/锁释放/端口空闲。
 
 对象预算已用满：累计21身份、171自身角色Grant、16案、60成功文件（59tiny+1份50MiB），原新增业务对象余额0。新只读浏览器GO a37c66f3…2bf86已送达原Runner，复用原source/readonly/revoked三身份及两现案，真实浏览/刷新/正常退出重登、未提交表单取消/权限入口、两个已有tiny版本真实按钮读取；只允许必要的新正常session最多4，不新增任何业务事实、上传、角色或Grant。真实浏览器结果待回执，当前仍不能称页面/写入式UI或PRIMARY真实律师正向、真实24h超时及流中争用等缺口通过；写入式页面需另列具体事实/文件需求，超原预算先取得所需许可。人工预览继续冻结。
