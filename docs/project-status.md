@@ -1,5 +1,7 @@
 # 当前开发状态
 
+出证双初始化接线已审入（2026-10-17）：证物Owner两文件费用hook以同原TX真实五源锚接证物之后/成功receipt之前，RED3→定向组合302/302、正常generate/类型/架构/Lint格式通过；两轴原Sol均C/I/M0，源0cbb9d41，已单接共享树5b5c23a2（此前证物28单接4edc9b04），两树页面/结算服务WIP保留。真实PG回滚/HTTP/页面仍未证明；共享Owner不再等待后端依赖，可继续最终模块和页面组合。EF67625完整门禁单已送达原Runner，但03:19:40UTC读取turn01a147da-e9ca仅userMessage、尚无命令回执，不把排队当verify执行；业务续验GO仍0，预算和角色未改。
+
 门户修复已固定（2026-10-17）：原E v2六文件manifest9f043a99经两轴Sol补审C/I/M0，错误主体先于领域/材料委托403，律师5个operationId唯一且内部ID/十路径不改。源提交28c8d617，运行树单pick85fcd292+context后clean67625b96991e4fcc2f966b0c8df4c2b70e74e5d7/treef6b18e96。旧strict161 helper、原14spec/SQL/DTO/domain未改。原Runner短READ ONLY已PASS：153表4837旧PK行、四身份全部真实关联、原唯一fact/receipt及旧32+新11bytes保持，补齐membership且原operator角色仅其一人持有。未来原场景撤权对象明确为新role_templates true/v1→false/v2，assignment不改；目前未写。新单f7bc2599…e9580已成功送达，只准一次正常full verify及ignored同案尾段/9项collection准备，正式HTTP/撤权仍待具体脚本核收后另GO。
 
 证物后端已接受并接依赖（2026-10-17）：日期finding按Demo可见提示修复，RED6→GREEN16、类型/Lint/格式通过；原Standards核28raw和其余24不变后关闭，Spec原安全/来源范围通过。仅28后端代提交9f2f9cf2，未混前端WIP；证物树又单接费用/材料5ddaa361+bd6b06ed，原Owner实施同原出证TX的费用initializer最小hook及组合编译。共享Owner待短暂停源后接该后端依赖，结算多笔费用/恢复及页面继续；PG/真实文件授权HTTP/页面均未验收，无新迁移部署。
