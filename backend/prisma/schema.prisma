@@ -133,6 +133,20 @@ datasource db {
 }
 
 enum PermissionAction {
+  EVIDENCE_READ @map("evidence.read")
+  EVIDENCE_EDIT @map("evidence.edit")
+  EVIDENCE_BULK_STATUS @map("evidence.bulk-status")
+  EVIDENCE_EXPORT @map("evidence.export")
+  SETTLEMENT_READ @map("settlement.read")
+  SETTLEMENT_TERMS_UPDATE @map("settlement.terms.update")
+  SETTLEMENT_LAUNCH @map("settlement.launch")
+  SETTLEMENT_BILL_CREATE @map("settlement.bill.create")
+  SETTLEMENT_BILL_CANCEL @map("settlement.bill.cancel")
+  FEE_READ @map("fee.read")
+  FEE_CREATE @map("fee.create")
+  FEE_UPDATE @map("fee.update")
+  FEE_LAUNCH @map("fee.launch")
+  FEE_DELETE @map("fee.delete")
   CUSTOMER_READ                @map("customer.read")
   CUSTOMER_CREATE_DRAFT        @map("customer.create-draft")
   CUSTOMER_EDIT_ROUTINE        @map("customer.edit-routine")
@@ -655,6 +669,10 @@ model Team {
 }
 
 model UserAccount {
+  settlementLaunches CaseSettlementLaunch[] @relation("SettlementLaunchActor")
+  settlementBills SettlementBill[] @relation("SettlementBillActor")
+  feeRecords FeeRecord[] @relation("FeeRecordActor")
+  feeBatchReceipts FeeBatchReceipt[] @relation("FeeBatchReceiptActor")
   executionFeedbackVersions CaseExecutionFilingFeedback[] @relation("ExecutionFeedbackActor")
   executionSupplementVersions CaseExecutionFilingSupplement[] @relation("ExecutionSupplementActor")
   executionFollowupReceipts CaseExecutionFilingFollowupReceipt[] @relation("ExecutionFollowupReceiptActor")
@@ -795,6 +813,10 @@ model AuthThrottle {
 }
 
 model DepartmentMembership {
+  settlementLaunches CaseSettlementLaunch[] @relation("SettlementLaunchInternalActor")
+  settlementBills SettlementBill[] @relation("SettlementBillInternalActor")
+  feeRecords FeeRecord[] @relation("FeeRecordInternalActor")
+  feeBatchReceipts FeeBatchReceipt[] @relation("FeeBatchReceiptInternalActor")
   executionFeedbackVersions CaseExecutionFilingFeedback[] @relation("ExecutionFeedbackInternalActor")
   executionSupplementVersions CaseExecutionFilingSupplement[] @relation("ExecutionSupplementInternalActor")
   id                               String                            @id @default(uuid()) @db.Uuid
@@ -885,6 +907,7 @@ model RoleAssignment {
 }
 
 model Customer {
+  settlementLaunches CaseSettlementLaunch[]
   id                       String                       @id @default(uuid()) @db.Uuid
   name                     String
   normalizedName           String                       @map("normalized_name")
@@ -1313,6 +1336,7 @@ model UploadDraft {
 }
 
 model Material {
+  evidencePaperCertificates EvidencePaperCertificate[]
   executionSupplementDocuments CaseExecutionFilingSupplementDocument[]
   id               String                 @id @default(uuid()) @db.Uuid
   departmentId     String                 @map("department_id") @db.Uuid
@@ -1338,6 +1362,7 @@ model Material {
 }
 
 model ContentVersion {
+  evidencePaperCertificates EvidencePaperCertificate[]
   executionSupplementUploadDraftId String? @unique @map("execution_supplement_upload_draft_id") @db.Uuid
   executionSupplementUploadDraft UploadDraft? @relation("ExecutionSupplementUpload", fields: [executionSupplementUploadDraftId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   executionSupplementDocuments CaseExecutionFilingSupplementDocument[]
@@ -1885,6 +1910,9 @@ model NotaryOffice {
 }
 
 model NotaryMatter {
+  evidenceItems EvidenceItem[]
+  evidencePaperCertificates EvidencePaperCertificate[]
+  evidenceGroups EvidenceGroupVersion[]
   id                    String                       @id @default(uuid()) @db.Uuid
   businessNo            String                       @unique @map("business_no") @db.VarChar(100)
   departmentId          String                       @map("department_id") @db.Uuid
@@ -1928,6 +1956,7 @@ model NotaryMatter {
 }
 
 model NotaryCertificate {
+  evidencePaperCertificates EvidencePaperCertificate[]
   id                           String                     @id @default(uuid()) @db.Uuid
   matterId                     String                     @unique @map("matter_id") @db.Uuid
   departmentId                 String                     @map("department_id") @db.Uuid
@@ -1966,6 +1995,12 @@ model NotaryCertificateFee {
 }
 
 model Case {
+  evidenceItems EvidenceItem[]
+  evidencePaperCertificates EvidencePaperCertificate[]
+  evidenceGroups EvidenceGroupVersion[]
+  settlementTerms CaseSettlementTerms?
+  settlementLaunches CaseSettlementLaunch[]
+  feeRecords FeeRecord[]
   executionFeedbackVersions CaseExecutionFilingFeedback[]
   executionSupplementVersions CaseExecutionFilingSupplement[]
   executionFollowupReceipts CaseExecutionFilingFollowupReceipt[]
@@ -2172,6 +2207,7 @@ model CaseDefendant {
 }
 
 model LawyerProfile {
+  settlementLaunches CaseSettlementLaunch[]
   id             String                 @id @default(uuid()) @db.Uuid
   departmentId   String                 @map("department_id") @db.Uuid
   boundUserId    String?                @map("bound_user_id") @db.Uuid
@@ -4140,4 +4176,297 @@ model CaseSectionRecordEditReceipt {
   actor UserAccount @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   @@unique([departmentId, actorUserId, command, idempotencyKey])
   @@map("case_section_record_edit_receipts")
+}
+
+enum SettlementSide {
+  CUSTOMER
+  LAWYER
+  @@map("settlement_side")
+}
+
+enum LawyerSettlementMode {
+  FULL_RISK
+  HALF_RISK
+  FIXED_FEE
+  @@map("lawyer_settlement_mode")
+}
+
+model CaseSettlementTerms {
+  caseId String @id @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  version Int @default(1)
+  customerFormula String? @map("customer_formula") @db.VarChar(500)
+  lawyerMode LawyerSettlementMode? @map("lawyer_mode")
+  lawyerBaseFee Decimal? @map("lawyer_base_fee") @db.Decimal(30, 2)
+  lawyerSplitPercent Decimal? @map("lawyer_split_percent") @db.Decimal(20, 16)
+  customerManualAmount Decimal? @map("customer_manual_amount") @db.Decimal(30, 2)
+  lawyerManualAmount Decimal? @map("lawyer_manual_amount") @db.Decimal(30, 2)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([caseId, departmentId])
+  @@map("case_settlement_terms")
+}
+
+model CaseSettlementLaunch {
+  id String @id @default(uuid()) @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  side SettlementSide
+  nth Int
+  amount Decimal @db.Decimal(30, 2)
+  launchDate DateTime @map("launch_date") @db.Date
+  note String? @db.VarChar(500)
+  customerId String? @map("customer_id") @db.Uuid
+  lawyerId String? @map("lawyer_id") @db.Uuid
+  billId String? @map("bill_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  customer Customer? @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  lawyer LawyerProfile? @relation(fields: [lawyerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  bill SettlementBill? @relation("CurrentSettlementBill", fields: [billId, departmentId, side], references: [id, departmentId, side], onDelete: Restrict, onUpdate: Restrict)
+  billItems SettlementBillItem[]
+  actor UserAccount @relation("SettlementLaunchActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "settlement_launch_actor_user_fk")
+  actorMembership DepartmentMembership @relation("SettlementLaunchInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "settlement_launch_actor_membership_fk")
+  @@unique([caseId, side, nth])
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@unique([id, departmentId, side])
+  @@index([departmentId, side, launchDate, id])
+  @@map("case_settlement_launches")
+}
+
+model SettlementBill {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  side SettlementSide
+  billNo String @unique @map("bill_no") @db.VarChar(40)
+  billDate DateTime @map("bill_date") @db.Date
+  amount Decimal @db.Decimal(30, 2)
+  note String? @db.VarChar(500)
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  cancellationReason String? @map("cancellation_reason") @db.VarChar(500)
+  cancellationKey String? @map("cancellation_key") @db.VarChar(128)
+  actorUserId String @map("actor_user_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  currentLaunches CaseSettlementLaunch[] @relation("CurrentSettlementBill")
+  items SettlementBillItem[]
+  actor UserAccount @relation("SettlementBillActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "settlement_bill_actor_user_fk")
+  actorMembership DepartmentMembership @relation("SettlementBillInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "settlement_bill_actor_membership_fk")
+  @@unique([id, departmentId, side])
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@index([departmentId, side, billDate, id])
+  @@map("settlement_bills")
+}
+
+model SettlementBillItem {
+  id String @id @default(uuid()) @db.Uuid
+  billId String @map("bill_id") @db.Uuid
+  launchId String @map("launch_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  side SettlementSide
+  caseId String @map("case_id") @db.Uuid
+  payeeId String @map("payee_id") @db.Uuid
+  payeeName String @map("payee_name") @db.VarChar(200)
+  nth Int
+  amount Decimal @db.Decimal(30, 2)
+  bill SettlementBill @relation(fields: [billId, departmentId, side], references: [id, departmentId, side], onDelete: Restrict, onUpdate: Restrict)
+  launch CaseSettlementLaunch @relation(fields: [launchId, departmentId, side], references: [id, departmentId, side], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([billId, launchId])
+  @@index([launchId, departmentId])
+  @@map("settlement_bill_items")
+}
+
+model FeeRecord {
+  id String @id @default(uuid()) @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  type String @db.VarChar(50)
+  direction String @db.VarChar(10)
+  status String @db.VarChar(20)
+  amount Decimal @db.Decimal(30, 2)
+  feeDate DateTime @map("fee_date") @db.Date
+  source String @db.VarChar(20)
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  idempotencyKey String? @map("idempotency_key") @db.VarChar(128)
+  note String? @db.VarChar(500)
+  proofMaterialId String? @map("proof_material_id") @db.Uuid
+  proofContentVersionId String? @map("proof_content_version_id") @db.Uuid
+  launchedAt DateTime? @map("launched_at") @db.Timestamptz(3)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor UserAccount? @relation("FeeRecordActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fee_record_actor_user_fk")
+  actorMembership DepartmentMembership? @relation("FeeRecordInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "fee_record_actor_membership_fk")
+  @@unique([id, departmentId])
+  @@unique([departmentId, actorUserId, idempotencyKey], map: "fee_records_department_actor_idempotency_key")
+  @@index([departmentId, feeDate, id])
+  @@index([caseId, departmentId])
+  @@map("fee_records")
+}
+
+model FeeBatchReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  command String @db.VarChar(20)
+  selectedIds String[] @map("selected_ids") @db.Uuid
+  resultSnapshot Json @map("result_snapshot")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  actor UserAccount @relation("FeeBatchReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fee_batch_receipt_actor_user_fk")
+  actorMembership DepartmentMembership @relation("FeeBatchReceiptInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "fee_batch_receipt_actor_membership_fk")
+  @@unique([departmentId, actorUserId, idempotencyKey], map: "fee_batch_receipts_department_actor_key")
+  @@map("fee_batch_receipts")
+}
+
+enum EvidenceSourceKind {
+  CASE
+  NOTARY_MATTER
+  @@map("evidence_source_kind")
+}
+
+enum EvidenceItemStatus {
+  UNDELIVERED
+  IN_STOCK
+  MAILED_TO_LAWYER
+  DESTROYED
+  @@map("evidence_item_status")
+}
+
+enum EvidencePaperStatus {
+  NOT_ISSUED
+  MAILED_TO_LAWYER
+  @@map("evidence_paper_status")
+}
+
+model EvidenceGroupVersion {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  sourceKind EvidenceSourceKind @map("source_kind")
+  sourceId String @map("source_id") @db.Uuid
+  caseId String? @map("case_id") @db.Uuid
+  sourceNotaryMatterId String? @map("source_notary_matter_id") @db.Uuid
+  version Int @default(1)
+  sourceInitializedAt DateTime? @map("source_initialized_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  case Case? @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  sourceNotaryMatter NotaryMatter? @relation(fields: [sourceNotaryMatterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  items EvidenceItem[]
+  paperCertificates EvidencePaperCertificate[]
+  auditEvents EvidenceAuditEvent[]
+  /// Migration 1300 also compares nullable case IDs at transaction end.
+  caseScopedItems EvidenceItem[] @relation("EvidenceItemGroupCase")
+  caseScopedPaperCertificates EvidencePaperCertificate[] @relation("EvidencePaperGroupCase")
+  @@unique([departmentId, sourceKind, sourceId])
+  @@unique([id, departmentId])
+  @@unique([id, departmentId, sourceKind, sourceId])
+  @@unique([id, departmentId, caseId], map: "evidence_group_case_scope_key")
+  @@index([departmentId, caseId])
+  @@map("evidence_group_versions")
+}
+
+model EvidenceItem {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  groupId String @map("group_id") @db.Uuid
+  caseId String? @map("case_id") @db.Uuid
+  sourceNotaryMatterId String? @map("source_notary_matter_id") @db.Uuid
+  sourceKind EvidenceSourceKind @map("source_kind")
+  sourceId String @map("source_id") @db.Uuid
+  displayCode String? @map("display_code") @db.VarChar(200)
+  name String? @db.VarChar(200)
+  kind String? @db.VarChar(100)
+  collectedOn DateTime? @map("collected_on") @db.Date
+  provenance String? @db.VarChar(500)
+  shelfLocation String? @map("shelf_location") @db.VarChar(200)
+  keeperUserId String? @map("keeper_user_id") @db.Uuid
+  status EvidenceItemStatus @default(UNDELIVERED)
+  remark String? @db.VarChar(1000)
+  version Int @default(1)
+  removedAt DateTime? @map("removed_at") @db.Timestamptz(3)
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  updatedByUserId String @map("updated_by_user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  group EvidenceGroupVersion @relation(fields: [groupId, departmentId, sourceKind, sourceId], references: [id, departmentId, sourceKind, sourceId], onDelete: Restrict, onUpdate: Restrict)
+  caseScopedGroup EvidenceGroupVersion? @relation("EvidenceItemGroupCase", fields: [groupId, departmentId, caseId], references: [id, departmentId, caseId], onDelete: Restrict, onUpdate: NoAction, map: "evidence_item_group_case_fk")
+  case Case? @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  sourceNotaryMatter NotaryMatter? @relation(fields: [sourceNotaryMatterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  auditEvents EvidenceAuditEvent[]
+  @@unique([id, departmentId])
+  @@index([departmentId, caseId, status, createdAt, id])
+  @@index([departmentId, sourceKind, sourceId, status])
+  @@map("evidence_items")
+}
+
+model EvidencePaperCertificate {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  groupId String @map("group_id") @db.Uuid
+  caseId String? @map("case_id") @db.Uuid
+  sourceNotaryMatterId String? @map("source_notary_matter_id") @db.Uuid
+  sourceKind EvidenceSourceKind @map("source_kind")
+  sourceId String @map("source_id") @db.Uuid
+  sourceCertificateId String? @map("source_certificate_id") @db.Uuid
+  number String? @db.VarChar(200)
+  issuedOn DateTime? @map("issued_on") @db.Date
+  officeName String? @map("office_name") @db.VarChar(200)
+  pages Int?
+  contentVersionId String? @map("content_version_id") @db.Uuid
+  contentMaterialId String? @map("content_material_id") @db.Uuid
+  status EvidencePaperStatus @default(NOT_ISSUED)
+  version Int @default(1)
+  removedAt DateTime? @map("removed_at") @db.Timestamptz(3)
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  updatedByUserId String @map("updated_by_user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  group EvidenceGroupVersion @relation(fields: [groupId, departmentId, sourceKind, sourceId], references: [id, departmentId, sourceKind, sourceId], onDelete: Restrict, onUpdate: Restrict)
+  caseScopedGroup EvidenceGroupVersion? @relation("EvidencePaperGroupCase", fields: [groupId, departmentId, caseId], references: [id, departmentId, caseId], onDelete: Restrict, onUpdate: NoAction, map: "evidence_paper_group_case_fk")
+  case Case? @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  sourceNotaryMatter NotaryMatter? @relation(fields: [sourceNotaryMatterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  sourceCertificate NotaryCertificate? @relation(fields: [sourceCertificateId, sourceNotaryMatterId, departmentId], references: [id, matterId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  contentVersion ContentVersion? @relation(fields: [contentMaterialId, contentVersionId], references: [materialId, id], onDelete: Restrict, onUpdate: Restrict)
+  contentMaterial Material? @relation(fields: [contentMaterialId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  auditEvents EvidenceAuditEvent[]
+  @@unique([id, departmentId])
+  @@index([departmentId, caseId, createdAt, id])
+  @@index([departmentId, sourceKind, sourceId])
+  @@map("evidence_paper_certificates")
+}
+
+model EvidenceAuditEvent {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  internalActorUserId String? @map("internal_actor_user_id") @db.Uuid
+  notaryOfficeAccountBindingId String? @map("notary_office_account_binding_id") @db.Uuid
+  operation String @db.VarChar(50)
+  groupId String? @map("group_id") @db.Uuid
+  itemId String? @map("item_id") @db.Uuid
+  paperCertificateId String? @map("paper_certificate_id") @db.Uuid
+  beforeSnapshot Json? @map("before_snapshot")
+  afterSnapshot Json? @map("after_snapshot")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  group EvidenceGroupVersion? @relation(fields: [groupId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  item EvidenceItem? @relation(fields: [itemId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  paperCertificate EvidencePaperCertificate? @relation(fields: [paperCertificateId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  @@index([departmentId, groupId, createdAt])
+  @@map("evidence_audit_events")
+}
+
+model EvidenceCommandReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  command String @db.VarChar(30)
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  resultSnapshot Json @map("result_snapshot")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@map("evidence_command_receipts")
 }

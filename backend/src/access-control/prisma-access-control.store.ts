@@ -13,6 +13,20 @@ import {
 } from '../generated/prisma/enums';
 
 const actionMap = {
+  EVIDENCE_READ: 'evidence.read',
+  EVIDENCE_EDIT: 'evidence.edit',
+  EVIDENCE_BULK_STATUS: 'evidence.bulk-status',
+  EVIDENCE_EXPORT: 'evidence.export',
+  SETTLEMENT_READ: 'settlement.read',
+  SETTLEMENT_TERMS_UPDATE: 'settlement.terms.update',
+  SETTLEMENT_LAUNCH: 'settlement.launch',
+  SETTLEMENT_BILL_CREATE: 'settlement.bill.create',
+  SETTLEMENT_BILL_CANCEL: 'settlement.bill.cancel',
+  FEE_READ: 'fee.read',
+  FEE_CREATE: 'fee.create',
+  FEE_UPDATE: 'fee.update',
+  FEE_LAUNCH: 'fee.launch',
+  FEE_DELETE: 'fee.delete',
   CUSTOMER_READ: 'customer.read',
   CUSTOMER_CREATE_DRAFT: 'customer.create-draft',
   CUSTOMER_EDIT_ROUTINE: 'customer.edit-routine',
