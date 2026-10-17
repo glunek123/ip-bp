@@ -460,9 +460,8 @@ test('pins H42 as main and one terminal actor with the exact four grant IDs', ()
   );
 });
 
-test('validates the fixed-path terminal creation receipt against candidate, R2, H42 and exact additions', () => {
-  const manifest = makeManifest();
-  const receipt = {
+function makeV1CreationReceipt(manifest) {
+  return {
     version: 1,
     cohort: manifest.cohort,
     runId: manifest.runId,
@@ -569,6 +568,11 @@ test('validates the fixed-path terminal creation receipt against candidate, R2, 
       })),
     },
   };
+}
+
+test('validates the fixed-path terminal creation receipt against candidate, R2, H42 and exact additions', () => {
+  const manifest = makeManifest();
+  const receipt = makeV1CreationReceipt(manifest);
   const bytes = JSON.stringify(receipt);
   const receiptSha256 = createHash('sha256').update(bytes).digest('hex');
   manifest.creationReceiptSha256 = receiptSha256;
@@ -588,6 +592,15 @@ test('validates the fixed-path terminal creation receipt against candidate, R2, 
         candidateCommit: receipt.candidateCommit,
       }),
     /hash/u,
+  );
+  assert.throws(
+    () =>
+      validateLeadBatchPushCreationReceipt(receipt, receiptSha256, {
+        runId: manifest.runId,
+        creationReceiptSha256: receiptSha256,
+        candidateCommit: 'b'.repeat(40),
+      }),
+    /BLOCKED/u,
   );
   const altered = clone(receipt);
   altered.newObjects.roleGrants.push({
@@ -611,6 +624,141 @@ test('validates the fixed-path terminal creation receipt against candidate, R2, 
       ),
     /exact object diff/u,
   );
+});
+
+const canonicalReceiptValue = (value) =>
+  Array.isArray(value)
+    ? value.map(canonicalReceiptValue)
+    : value && typeof value === 'object'
+      ? Object.fromEntries(
+          Object.keys(value)
+            .sort()
+            .map((key) => [key, canonicalReceiptValue(value[key])]),
+        )
+      : value;
+
+const objectDiffSha256 = ({ beforeObjects, newObjects }) =>
+  createHash('sha256')
+    .update(
+      JSON.stringify(canonicalReceiptValue({ beforeObjects, newObjects })),
+    )
+    .digest('hex');
+
+function makeV2CreationReceipt(manifest) {
+  const v1 = makeV1CreationReceipt(manifest);
+  const beforeObjects = Object.fromEntries(
+    Object.keys(v1.newObjects).map((name) => [name, []]),
+  );
+  const newObjects = v1.newObjects;
+  return {
+    ...v1,
+    version: 2,
+    creationMode: 'NEW_PUBLIC165',
+    r2: { ...v1.r2, migrationCount: 165 },
+    migrationPins: pinnedMigrations().slice(155),
+    beforeObjects,
+    objectDiffSha256: objectDiffSha256({ beforeObjects, newObjects }),
+  };
+}
+
+test('v2 accepts only a genuine new-public-165 terminal creation shape', () => {
+  const manifest = makeManifest();
+  const receipt = makeV2CreationReceipt(manifest);
+  const hash = createHash('sha256')
+    .update(JSON.stringify(receipt))
+    .digest('hex');
+  assert.equal(
+    validateLeadBatchPushCreationReceipt(receipt, hash, {
+      runId: manifest.runId,
+      creationReceiptSha256: hash,
+      candidateCommit: receipt.candidateCommit,
+    }),
+    receipt,
+  );
+});
+
+test('v2 rejects occupied, partial, altered or unproved fixed terminal objects', () => {
+  const manifest = makeManifest();
+  const receipt = makeV2CreationReceipt(manifest);
+  const reject = (candidate) => {
+    const hash = createHash('sha256')
+      .update(JSON.stringify(candidate))
+      .digest('hex');
+    assert.throws(
+      () =>
+        validateLeadBatchPushCreationReceipt(candidate, hash, {
+          runId: manifest.runId,
+          creationReceiptSha256: hash,
+          candidateCommit: receipt.candidateCommit,
+        }),
+      /BLOCKED/u,
+    );
+  };
+  for (const name of Object.keys(receipt.beforeObjects)) {
+    const occupied = clone(receipt);
+    occupied.beforeObjects[name] = [receipt.newObjects[name][0]];
+    occupied.objectDiffSha256 = objectDiffSha256(occupied);
+    reject(occupied);
+
+    const partial = clone(receipt);
+    delete partial.beforeObjects[name];
+    partial.objectDiffSha256 = objectDiffSha256(partial);
+    reject(partial);
+
+    const missingNewObject = clone(receipt);
+    missingNewObject.newObjects[name] = [];
+    missingNewObject.objectDiffSha256 = objectDiffSha256(missingNewObject);
+    reject(missingNewObject);
+  }
+  const extraBefore = clone(receipt);
+  extraBefore.beforeObjects.other = [];
+  extraBefore.objectDiffSha256 = objectDiffSha256(extraBefore);
+  reject(extraBefore);
+  reject({ ...receipt, objectDiffSha256: 'f'.repeat(64) });
+  reject({ ...receipt, unapproved: true });
+});
+
+test('v2 rejects stale counts, every changed pin, wrong candidate or mixed receipt versions', () => {
+  const manifest = makeManifest();
+  const receipt = makeV2CreationReceipt(manifest);
+  const reject = (candidate, options = {}) => {
+    const hash = createHash('sha256')
+      .update(JSON.stringify(candidate))
+      .digest('hex');
+    assert.throws(
+      () =>
+        validateLeadBatchPushCreationReceipt(candidate, hash, {
+          runId: manifest.runId,
+          creationReceiptSha256: hash,
+          candidateCommit: receipt.candidateCommit,
+          ...options,
+        }),
+      /BLOCKED/u,
+    );
+  };
+  reject({ ...receipt, r2: { ...receipt.r2, migrationCount: 161 } });
+  reject({ ...receipt, r2: { ...receipt.r2, migrationCount: 164 } });
+  reject({ ...receipt, r2: { ...receipt.r2, migrationCount: 166 } });
+  reject({ ...receipt, migrationPins: receipt.migrationPins.slice(0, 9) });
+  reject({ ...receipt, migrationPins: [...receipt.migrationPins].reverse() });
+  for (let index = 0; index < receipt.migrationPins.length; index++) {
+    const changed = clone(receipt);
+    changed.migrationPins[index].checksum = 'f'.repeat(64);
+    reject(changed);
+  }
+  reject(receipt, { candidateCommit: 'b'.repeat(40) });
+  reject(receipt, { runId: '70000000-0000-4000-8000-000000000002' });
+  reject(receipt, { creationReceiptSha256: 'b'.repeat(64) });
+  reject({ ...receipt, candidateCommit: 'b'.repeat(40) });
+  reject({ ...receipt, version: 3 });
+  reject({ ...receipt, version: 1 });
+  reject({ ...receipt, creationMode: 'EXISTING_PUBLIC165' });
+  const missingMode = clone(receipt);
+  delete missingMode.creationMode;
+  reject(missingMode);
+  const v1WithV2Field = makeV1CreationReceipt(manifest);
+  v1WithV2Field.beforeObjects = receipt.beforeObjects;
+  reject(v1WithV2Field);
 });
 
 test('fault scope and non-transactional marker require this exact H42 batch and exactly one trigger hit', () => {

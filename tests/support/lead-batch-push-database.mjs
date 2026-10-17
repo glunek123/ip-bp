@@ -349,7 +349,7 @@ export function validateLeadBatchPushCreationReceipt(
   receiptSha256,
   { runId, creationReceiptSha256, candidateCommit },
 ) {
-  const expected = {
+  const expectedV1 = {
     version: 1,
     cohort: 'uxq03-lead-batch-push-20261016',
     runId,
@@ -370,6 +370,27 @@ export function validateLeadBatchPushCreationReceipt(
     },
     newObjects: expectedTerminalCreationObjects(),
   };
+  const beforeObjects = Object.fromEntries(
+    Object.keys(expectedV1.newObjects).map((name) => [name, []]),
+  );
+  const expectedV2 = {
+    ...expectedV1,
+    version: 2,
+    creationMode: 'NEW_PUBLIC165',
+    r2: expectedInstance,
+    migrationPins: Object.entries(migrationPins)
+      .map(([name, checksum]) => ({ name, checksum }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    beforeObjects,
+    objectDiffSha256: createHash('sha256')
+      .update(
+        JSON.stringify(
+          canonical({ beforeObjects, newObjects: expectedV1.newObjects }),
+        ),
+      )
+      .digest('hex'),
+  };
+  const expected = receipt?.version === 2 ? expectedV2 : expectedV1;
   if (
     !sha256.test(receiptSha256 ?? '') ||
     receiptSha256 !== creationReceiptSha256 ||

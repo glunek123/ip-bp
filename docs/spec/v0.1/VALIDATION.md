@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### 下一批回执追溯与创建时事实保护（2026-10-17）
+
+本地0565acbc之后，三个独立子任务只读追溯EF／线索原回执、静态计算新预算并核公证UXQ-02范围。EF三件原文件及官方Resolve-result／实际validator proof在原ef001-integration中存在，原hash、1000原字节与官方命令窗相符；本目录的缺失属于ignored路径未接入，不是原操作未成功，不需要重resolve。线索固定terminal回执在已查workspace中未找到，原e487运行单仅为计划，实际对象是否存在未查，不能补造创建历史。三件文件精确路径、hash及来源任务见[确认清单](../../superpowers/plans/2026-10-17-next-batch-acceptance-readiness.md)。
+
+独立Sol发现lead回执旧v1固定161，若在public165创建新terminal仍填旧模板会伪造创建时事实。原Owner仅修改helper及纯test加入v2 NEW_PUBLIC165：固定165／十pin、当前candidate／runId、六类目标全空before、原固定五身份关联＋四Grant的after及canonical差异SHA；v1原校验和旧候选拒绝保持。旧guard对合法v2的RED拒绝保留，修后13/13纯例、两文件Lint／格式／diff通过；同一独立Sol补审ACCEPTED、C/I/M0。没有实际创建、补写回执、恢复权限或数据库连接。与0565相比，产品／SQL／E2E、TypeScript／声明及架构输入未改，不重跑旧43纯例或完整verify；当前纯证据为EF33与lead最终13，不能称真实165功能通过。
+
+只读配置核查发现主控及几个旧运行目录.env.test为15433，R2 helper固定15438；本轮无capture、Docker、DB、HTTP、浏览器或迁移，未读取私密登录载荷；配置只输出目标身份，不输出密钥。新预算是待确认提案，原额度为0。EF首项没有末端logout，11个本批新session精确撤销步骤尚须固定和审查，不能在此之前开始两个执行块。公证只完成范围／Owner核查，三项业务决定未冻结，不派产品实现；没有派发拒绝或绕路。新提交推送仍需单独明确范围。
+
 ### 公开仓库代码备份与下一批验收准备（2026-10-17）
 
 用户明确替代此前“仓库必须私有”的条件，授权将固定候选 `0b90e9c3e28f7a1a3cf6cd195728f6a6da43cc52` 普通推送到公开仓库 `https://github.com/glunek123/ip-bp` 的现有分支 `codex/ui003-quick-actions-integration`。本次push exit0，随后ls-remote实核目标分支精确该SHA；main仍为 `b14752cad1f60cd98c609d0a2b436d7ec1d72cef`。备份范围166提交、283最终差异文件；没有强推、main合并、部署、迁移、数据库或登录状态上传。新一批本地准备改动不包含在此已完成备份中。
