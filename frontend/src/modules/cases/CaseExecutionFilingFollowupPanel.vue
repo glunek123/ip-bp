@@ -1022,6 +1022,7 @@ async function download(materialId: string, versionId: string) {
             <li v-for="file in supplementFiles" :key="file.contentVersionId">
               <ElButton
                 link
+                class="followup-file-link"
                 @click="download(file.materialId, file.contentVersionId)"
                 >{{ file.originalFilename }}</ElButton
               >
@@ -1080,6 +1081,7 @@ async function download(materialId: string, versionId: string) {
               >
                 <ElButton
                   link
+                  class="followup-file-link"
                   @click="download(file.materialId, file.contentVersionId)"
                   >{{ file.originalFilename }}</ElButton
                 >
@@ -1106,6 +1108,7 @@ async function download(materialId: string, versionId: string) {
                     >
                       <ElButton
                         link
+                        class="followup-file-link"
                         @click="
                           download(file.materialId, file.contentVersionId)
                         "
@@ -1122,3 +1125,21 @@ async function download(materialId: string, versionId: string) {
     </template>
   </section>
 </template>
+
+<style scoped>
+.followup-file-link {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  height: auto;
+  white-space: normal;
+  text-align: left;
+  vertical-align: top;
+}
+
+.followup-file-link :deep(span) {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+</style>

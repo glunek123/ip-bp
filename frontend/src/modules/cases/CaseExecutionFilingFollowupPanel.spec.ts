@@ -85,16 +85,18 @@ describe('execution filing followup panel', () => {
   });
 
   it('shows exact supplement history files and hides internal reasons for lawyer projection', async () => {
+    const originalName = `${'a'.repeat(43)}.pdf`;
+    const newName = `${'b'.repeat(39)}.pdf`;
     const originalFile = {
       materialId: '44444444-4444-4444-8444-444444444444',
       contentVersionId: '55555555-5555-4555-8555-555555555555',
-      originalFilename: '原文件.pdf',
+      originalFilename: originalName,
       mimeType: 'application/pdf',
     };
     const newFile = {
       ...originalFile,
       contentVersionId: '66666666-6666-4666-8666-666666666666',
-      originalFilename: '新文件.pdf',
+      originalFilename: newName,
     };
     const original = {
       id: feedbackId,
@@ -122,16 +124,25 @@ describe('execution filing followup panel', () => {
     const view = mount(CaseExecutionFilingFollowupPanel, {
       props: { item: lawyer, actorKey: 'LAWYER:user:dept:1', lawyer: true },
     });
-    expect(view.text()).toContain('原文件.pdf');
-    expect(view.text()).toContain('新文件.pdf');
+    expect(view.text()).toContain(originalName);
+    expect(view.text()).toContain(newName);
     expect(view.text()).not.toContain('更正原因');
-    await view
-      .findAll('button')
-      .find((button) => button.text().includes('原文件.pdf'))!
-      .trigger('click');
+    const fileLinks = view.findAll('button.followup-file-link');
+    expect(fileLinks.map((link) => link.text())).toEqual([
+      newName,
+      originalName,
+      newName,
+    ]);
+    await fileLinks[1]!.trigger('click');
     expect(materialApi.downloadMaterialVersion).toHaveBeenCalledWith(
       originalFile.materialId,
       originalFile.contentVersionId,
+      expect.any(AbortSignal),
+    );
+    await fileLinks[0]!.trigger('click');
+    expect(materialApi.downloadMaterialVersion).toHaveBeenCalledWith(
+      newFile.materialId,
+      newFile.contentVersionId,
       expect.any(AbortSignal),
     );
   });
@@ -720,6 +731,16 @@ describe('execution filing followup panel', () => {
       supplementId: feedbackId,
       expectedRevision: 2,
     });
+    const preparedLink = view
+      .findAll('[data-test="supplement-form"] button.followup-file-link')
+      .find((link) => link.text() === '新文件.pdf');
+    expect(preparedLink).toBeDefined();
+    await preparedLink!.trigger('click');
+    expect(materialApi.downloadMaterialVersion).toHaveBeenCalledWith(
+      '77777777-7777-4777-8777-777777777777',
+      newVersion,
+      expect.any(AbortSignal),
+    );
     await view.find('[data-test="supplement-submit"]').trigger('click');
     await flushPromises();
     expect(api.correctCaseExecutionFilingSupplement).toHaveBeenCalledWith(
