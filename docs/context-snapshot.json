@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-17T01:35:59.666Z",
+  "recordedAt": "2026-10-17T02:17:13.922Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1025,7 +1025,7 @@
     "tests/e2e/case-execution-confirmation-migration.spec.ts": "e631dd15309b44b4dfee1db1c4ad2f836a3f34e0a5fa8ae96b77e83d6d419f93",
     "tests/e2e/case-execution-filing-database.spec.ts": "22165a6d938ec0a0ade8f4310f6b9c69d1bf75abfede4eeb8746b0d56f3135ad",
     "tests/e2e/case-execution-filing-followup-migration.spec.ts": "9f1b61f338ea17d09686ee327316ea1268f1d586476b708d0f00f40397f6a5fa",
-    "tests/e2e/case-execution-filing-followup.spec.ts": "e2920752812aad31e7495132efe71d1f8001f478ec0d8a82620936a6f562a1da",
+    "tests/e2e/case-execution-filing-followup.spec.ts": "9013b3de0a87576df27b388eb676b772ddc0148ef934a6945b709859be503225",
     "tests/e2e/case-execution-finish-database.spec.ts": "1e7bb9e0fb72d815e84f55d5e65822cbfa4147db49f8036e501ccf318a1671fc",
     "tests/e2e/case-execution-finish.spec.ts": "4417527487e0d8747bd9a548336aee218d8bf7e4bb6ffaad56bc06600947c643",
     "tests/e2e/case-execution-mailing-migration.spec.ts": "d9b4c846e288819184d3ac497e1fc9053a364853afb3bcceefd9e20aa583400b",
