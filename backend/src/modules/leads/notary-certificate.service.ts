@@ -13,6 +13,7 @@ import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
 import { CaseCreationService } from '../cases';
 import { initializeNotaryEvidence } from '../evidence';
+import { initializeNotaryFees } from '../settlements';
 
 type FeeInput = { state: 'KNOWN' | 'PENDING'; amount: string | null };
 export type CertificateInput = {
@@ -334,6 +335,13 @@ export class NotaryCertificateService {
               shopName: matter.sourceLead.shopName,
               platform: matter.sourceLead.platform,
               files,
+            });
+            await initializeNotaryFees(tx, {
+              departmentId: actor.departmentId,
+              matterId,
+              caseId: createdCase.id,
+              certificateId: certificate.id,
+              sourceActionEventId: audit.id,
             });
             await tx.notaryMatterCommandReceipt.create({
               data: {

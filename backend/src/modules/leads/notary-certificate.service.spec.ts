@@ -4,8 +4,10 @@ import {
 } from './notary-certificate.service';
 import { randomUUID } from 'node:crypto';
 import { initializeNotaryEvidence } from '../evidence';
+import { initializeNotaryFees } from '../settlements';
 
 jest.mock('../evidence');
+jest.mock('../settlements');
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -30,6 +32,10 @@ const input: CertificateInput = {
 };
 
 function fixture() {
+  jest
+    .mocked(initializeNotaryFees)
+    .mockReset()
+    .mockResolvedValue({ createdCount: 3 });
   jest
     .mocked(initializeNotaryEvidence)
     .mockClear()
@@ -151,7 +157,43 @@ describe('NotaryCertificateService', () => {
       f.service.issue(actor, matterId, 'initialize-failed', input),
     ).rejects.toThrow('证物来源初始化失败');
     expect(f.tx.notaryMatterCommandReceipt.create).not.toHaveBeenCalled();
+    expect(initializeNotaryFees).not.toHaveBeenCalled();
     expect(f.database.$transaction).toHaveBeenCalledTimes(1);
+  });
+  it('propagates fee initialization failure through the original transaction without a success receipt', async () => {
+    const f = fixture();
+    jest
+      .mocked(initializeNotaryFees)
+      .mockRejectedValueOnce(new Error('费用来源初始化失败'));
+    await expect(
+      f.service.issue(actor, matterId, 'fee-initialize-failed', input),
+    ).rejects.toThrow('费用来源初始化失败');
+    expect(initializeNotaryEvidence).toHaveBeenCalledTimes(1);
+    expect(initializeNotaryFees).toHaveBeenCalledWith(f.tx, expect.any(Object));
+    expect(f.tx.notaryMatterCommandReceipt.create).not.toHaveBeenCalled();
+    expect(f.database.$transaction).toHaveBeenCalledTimes(1);
+  });
+  it('initializes fees with exact persisted identities in the same transaction after evidence and before its receipt', async () => {
+    const f = fixture();
+    await f.service.issue(actor, matterId, 'initialize-fees-1', input);
+    expect(initializeNotaryFees).toHaveBeenCalledTimes(1);
+    expect(initializeNotaryFees).toHaveBeenCalledWith(f.tx, {
+      departmentId: actor.departmentId,
+      matterId,
+      caseId: '88888888-8888-4888-8888-888888888888',
+      certificateId: '77777777-7777-4777-8777-777777777777',
+      sourceActionEventId: '66666666-6666-4666-8666-666666666666',
+    });
+    expect(
+      jest.mocked(initializeNotaryEvidence).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      jest.mocked(initializeNotaryFees).mock.invocationCallOrder[0],
+    );
+    expect(
+      jest.mocked(initializeNotaryFees).mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      f.tx.notaryMatterCommandReceipt.create.mock.invocationCallOrder[0],
+    );
   });
   it('initializes source ledger facts in the original transaction after the freeze, using the actual notary actor', async () => {
     const f = fixture();
@@ -217,6 +259,7 @@ describe('NotaryCertificateService', () => {
       f.service.issue(actor, matterId, 'issue-1', input),
     ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
     expect(f.tx.notaryMatter.updateMany).not.toHaveBeenCalled();
+    expect(initializeNotaryFees).not.toHaveBeenCalled();
   });
 
   it('rejects stale version and non ISSUE stage without changing facts', async () => {
@@ -280,6 +323,7 @@ describe('NotaryCertificateService', () => {
       }),
     ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
     expect(f.tx.notaryCertificate.create).toHaveBeenCalledTimes(1);
+    expect(initializeNotaryFees).toHaveBeenCalledTimes(1);
   });
 
   it('does not create a receipt when audit or frozen reference creation fails', async () => {
@@ -297,6 +341,7 @@ describe('NotaryCertificateService', () => {
         f.service.issue(actor, matterId, `fail-${failure}`, input),
       ).rejects.toThrow();
       expect(f.tx.notaryMatterCommandReceipt.create).not.toHaveBeenCalled();
+      expect(initializeNotaryFees).not.toHaveBeenCalled();
     }
   });
 
