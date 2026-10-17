@@ -166,7 +166,7 @@ export function assertExecutionFilingFollowupHistoricalFailure(
   state,
   receipt,
 ) {
-  const originalStartedAt = '2026-10-16T09:36:04.563Z';
+  const originalStartedAt = '2026-10-16 09:36:04.56343+00';
   const instant = (value) => {
     const time = new Date(value).getTime();
     if (!Number.isFinite(time))
@@ -179,9 +179,7 @@ export function assertExecutionFilingFollowupHistoricalFailure(
     row.migration_name !== '20261016100000_case_execution_filing_followups' ||
     row.checksum !==
       'e125a3278b0530860b1be49273fc667224451f8a6d35b420bdf14e2b9c684105' ||
-    ![originalStartedAt, '2026-10-16 09:36:04.563+00'].includes(
-      row.started_at,
-    ) ||
+    row.started_at !== originalStartedAt ||
     row.finished_at !== null ||
     row.applied_steps_count !== 0 ||
     row.logs_is_null !== true

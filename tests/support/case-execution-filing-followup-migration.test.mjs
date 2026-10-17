@@ -314,7 +314,7 @@ const originalFailure = () => ({
   id: '9f547970-6eaa-4628-a670-f505590482e9',
   migration_name: source160,
   checksum: source160Hash,
-  started_at: '2026-10-16T09:36:04.563Z',
+  started_at: '2026-10-16 09:36:04.56343+00',
   finished_at: null,
   rolled_back_at: null,
   applied_steps_count: 0,
@@ -549,15 +549,21 @@ test('owned admission rejects any mutation or extra row of the observed unresolv
 
 test('the historical failure start retains exact timestamp precision rather than Date rounding', () => {
   assertExecutionFilingFollowupHistoricalFailure(
-    { ...originalFailure(), started_at: '2026-10-16 09:36:04.563+00' },
+    { ...originalFailure(), started_at: '2026-10-16 09:36:04.56343+00' },
     'UNRESOLVED',
   );
-  assert.throws(() =>
-    assertExecutionFilingFollowupHistoricalFailure(
-      { ...originalFailure(), started_at: '2026-10-16 09:36:04.563001+00' },
-      'UNRESOLVED',
-    ),
-  );
+  for (const startedAt of [
+    '2026-10-16 09:36:04.563429+00',
+    '2026-10-16 09:36:04.563431+00',
+    '2026-10-16 09:36:04.563+00',
+    '2026-10-16T09:36:04.563Z',
+  ])
+    assert.throws(() =>
+      assertExecutionFilingFollowupHistoricalFailure(
+        { ...originalFailure(), started_at: startedAt },
+        'UNRESOLVED',
+      ),
+    );
 });
 
 // In-memory synthetic receipt only. This never creates the runner's real receipt file.
@@ -641,6 +647,10 @@ test('HTTP161 readiness retains exactly one original officially resolved failure
     { checksum: '0'.repeat(64) },
     { migrationName: preparation },
     { originalStartedAt: '2026-10-16T09:36:04.564Z' },
+    { originalStartedAt: '2026-10-16 09:36:04.563429+00' },
+    { originalStartedAt: '2026-10-16 09:36:04.563431+00' },
+    { originalStartedAt: '2026-10-16 09:36:04.563+00' },
+    { originalStartedAt: '2026-10-16T09:36:04.563Z' },
     { rolledBackAt: '2026-10-16 12:00:00.124+00' },
     { command: ['prisma', 'migrate', 'resolve', '--applied', source160] },
     { exitCode: 1 },
