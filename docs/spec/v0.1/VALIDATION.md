@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### 门户修复正常完整门禁PASS；原权限尾段与九项GO已核发（2026-10-17）
+
+固定clean67625b96991e4fcc2f966b0c8df4c2b70e74e5d7/treef6b18e96正常full verify实际一次exit0，03:16:29.449Z至03:21:26.271Z（296820ms），工具13文件139、前端127文件2378、后端126套2172，实际标准锁owner及双构建证据成立。gate-preparation-summary.json SHA115279805500376979a2662bcd62e6fb77f64631bfccb20573c476fa66ba9f4c由主控核读；before/after153表4837旧PK行/完整161账本+保留resolved原失败/原旧32两端与新11真实文件/H42/终端/Part1/dadd一致，结束锁释放端口空闲。新1241source/761build manifest固定，不再重复门禁、生成、构建或迁移。
+
+准备源manifest a3500456bc5f02b2a6bf05034624a8969d5fae4fabd7a4d00eeb507757c9fe27的6份TS/config/reporter由主控逐raw核同并实际读审；单role执行器SHA9048d09a4dc7b582de910ac7349a14cfd1eeb353be5d51276366e11083e38e9c，定义期无业务动作。实际protected collection权限尾段1项及原未运行9项均exit0/callback0，最终隐私安全断言改动后只重做受影响tail collection，原准备失败/旧文件均保留，不冒业务PASS。
+
+准确formal GO runner-ef161-67625b9-formal-permission-nine-go-20261017.md SHA065f557dc0a3a2397acefa0db1f3ecc2c926bd4c227d57d35ad2ec25d001c181已投递唯一Runner。T仅原51533641案同原source/operator/readonly，真实wrong-lawyer403及readonly写能力false后，冻结事务锁定原案/run/唯一actor/role/assignment/member/成功receipt，只允许原自身新roleb3fa20e6的active/version/updated_at true/v1→false/v2，assignment不动；然后原operator原成功body/key403。任何异常或未知commit停止无重试/恢复，三新正常session及唯一role三列为仅允许旧行差异。T及独立保持核均PASS才N：只原9未运行titles一次、包含原故障/50MiB等原预算；不重造失败场景/已过首案和三项，不加新权限。普通报告保状态/hash，原凭据/trace仅批准Temp。当前正式T/N实际回执尚未收到，不把GO当通过，也不把APIRequestContext HTTP当真实页面。
+
 ### EF门户修复源码接受及原对象短只读核；业务续验待门禁（2026-10-17）
 
 原E v2六文件manifest SHA9f043a9961c6cbb19e4aef517d9f46aa58c6460491f719ad9a0ff14043e320d9经原Spec和Standards独立补审均ACCEPTED C/I/M0。内部与律师portal分controller，认证actor的主体检查在领域/材料委托前；原domain当前授权先于旧成功receipt不变。Standards曾发现5个律师OpenAPI operationId重复，v2移除覆盖并由真实Lawyer类生成唯一ID，直接测试8/2路径和唯一ID集合，内部原ID保持，finding已关闭。作者controller79/79、领域定向16（v2复用未变输入）、类型/Lint/格式等为进程内证据，不冒真实HTTP。源28c8d617→运行树85fcd292+context67625b9/treef6b18e96，strict161 helper f45b4436及原14spec9013b3de保持；新的完整正常verify尚待唯一Runner实际结果。

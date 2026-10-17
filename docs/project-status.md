@@ -1,5 +1,7 @@
 # 当前开发状态
 
+EF新门禁实过并正式续验已派（2026-10-17）：67625b9正常完整verify仅一次exit0/296.8秒，工具139/前端2378/后端2172含双构建和真实标准锁，前后153表4837旧行及原字节保持；gate summary SHA11527980…ba9f4c，原collection最终1/9均exit0/callback0。主控已实际读审并核6份prepared source raw（manifest a3500456…c9fe27），单role执行器9048d09a严格钉原case/run/角色/唯一user/assignment/membership/成功回执，先真实wrong portal403及readonlyfalse才允许角色true/v1→false/v2，assignment不改。正式GO065f557d…01c181已成功送达原Runner：只原权限尾段T，T与保持核PASS后N原9项，workers1/retries0/maxFailures1，已过4场景不重跑、不重复门禁/构建/迁移/resolve，无新预算或Grant。当前T/N实际结果仍待回执。证物前端9文件已冻结117项及类型/静态过，已交原两Sol审；共享Owner多笔费用/页面定向22过，未报真实浏览器。
+
 出证双初始化接线已审入（2026-10-17）：证物Owner两文件费用hook以同原TX真实五源锚接证物之后/成功receipt之前，RED3→定向组合302/302、正常generate/类型/架构/Lint格式通过；两轴原Sol均C/I/M0，源0cbb9d41，已单接共享树5b5c23a2（此前证物28单接4edc9b04），两树页面/结算服务WIP保留。真实PG回滚/HTTP/页面仍未证明；共享Owner不再等待后端依赖，可继续最终模块和页面组合。EF67625完整门禁单已送达原Runner，但03:19:40UTC读取turn01a147da-e9ca仅userMessage、尚无命令回执，不把排队当verify执行；业务续验GO仍0，预算和角色未改。
 
 门户修复已固定（2026-10-17）：原E v2六文件manifest9f043a99经两轴Sol补审C/I/M0，错误主体先于领域/材料委托403，律师5个operationId唯一且内部ID/十路径不改。源提交28c8d617，运行树单pick85fcd292+context后clean67625b96991e4fcc2f966b0c8df4c2b70e74e5d7/treef6b18e96。旧strict161 helper、原14spec/SQL/DTO/domain未改。原Runner短READ ONLY已PASS：153表4837旧PK行、四身份全部真实关联、原唯一fact/receipt及旧32+新11bytes保持，补齐membership且原operator角色仅其一人持有。未来原场景撤权对象明确为新role_templates true/v1→false/v2，assignment不改；目前未写。新单f7bc2599…e9580已成功送达，只准一次正常full verify及ignored同案尾段/9项collection准备，正式HTTP/撤权仍待具体脚本核收后另GO。
