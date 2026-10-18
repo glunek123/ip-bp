@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+### 公证SD-61规格与实施边界同步（2026-10-18）
+
+用户确认公证资料带原因／历史更正、逐事项照片确认及逐项独立提交／未知先核实。原N工作区b388be29已只读确认干净，主控正常切到基于2284e2ef的 `codex/notary-record-batch-contract` 文档分支，原分支／成果和ca015验收候选不变。仅同步SD-61、公证Spec/DOMAIN、INPUT-016、路线图、恢复点和唯一实施清单；没有产品、schema、SQL、API或运行权限变更，不能称功能实现或新门禁通过。
+
+文档首轮Spec检查只报告README／READINESS／TECHNICAL-DESIGN缺最新SD-61声明；已补最小索引段落，复跑通过59REQ／71AC／11BQ／61SD。受改文档Prettier及diff检查通过；不运行代码／数据库测试，不把原16纯例或旧完整门禁标成新公证实现证据。
+
+原公证Task与原环境工具Task自动续办分别报 `AbsolutePathBuf deserialized without a base path`，包括显式使用返回的durable host后仍被拒绝；任务均未实际开始，不是审批拒绝。后台/schema/API单一Sol作者和独立UI作者的文件边界已准备，待用户在原任务直接恢复；未创建重复Task，未默认把分工表当运行中。原未参与实现的源码复审不覆盖新公证合同，独立技术审查仍待实施主体恢复后进行，不重新询问已批准三点。
+
+独立静态核对还更正了旧清单的环境描述：官方test-environment先验证.env.test基础15433模板，受保护DEV_COR_TEST_DATABASE_URL＋project/CID覆盖与capture.childEnvironment的最终连接为R2 15438，不能去连接15433或把基础文件改15438。旧成功R2脚本同形；本分支未改.env或guard、未做capture/DB/HTTP/服务/登录/迁移，不将原Runner配置首拒当作产品Bug或验收通过。主控含实际配置恢复／续跑的代发指令被自动审批拒绝，未送达；仅静态源码事实说明安全发送，不绕过该拒绝。准确操作仍由原Runner核其用户直接原文与审批，不从公证批准扩大。
+
 ### 两条最小页面入口代码准备（2026-10-17）
 
 新增共同辅助模块、声明、纯测试及 `playwright.minimal-pages.config.ts`，EF和线索各有独立页面spec及源码/预算纯回归，共8文件；不修改产品、SQL、依赖、环境或Grant。共同模块原三项Important（关键请求体发送前校验、capture前已有指纹密钥、主对象/材料/旧行精确差集）已由未参与实现的原Sol关闭，四文件两轴ACCEPTED C/I/M0；累计八源复审发现登录200后会话绑定失败会阻断正常logout；三文件窄修保证null绑定下只尝试一次原页面logout，成功/失败都以SESSION_UNBOUND退出、保留cause、read0/guardedUPDATE0。原Reviewer确认关闭，八源两轴最终ACCEPTED、C/I/M0。

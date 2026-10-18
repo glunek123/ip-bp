@@ -1,5 +1,19 @@
 # NT 公证
 
+2026-10-18 SD-61：用户已确认已登记资料带原因更正、跨事项逐一确认照片、逐项独立提交与未知结果先核实。以下为 UXQ-02 首片实施合同，不再等待这三项业务选择；尚不表示代码或真实验收完成，不授权测试账号、Grant、数据库部署或写入额度。
+
+### SD-61 首片接口与保持项
+
+- 更正仅限当前有效、具有新 `notary.record.correct` 操作及来源线索范围的内部账号，按既有 SELF／TEAM／DEPARTMENT Grant判断；不依据职级／角色名称放行，不自动给任何角色加权。客户和公证处首片不能提交更正。取证事实已存在时，取证日期／物流可在 `WAITING_UNBOX`、`UNBOX_REVIEW`、`ISSUANCE_DECISION`、`WAITING_CERTIFICATE`、`WAITING_RETURN` 更正；原开箱已存在时，寄件资料可在后四阶段更正。`ARCHIVED` 全部拒绝首次新更正，不开放重开。
+- `POST /api/v1/notary-matters/:id/evidence-corrections`：body仅 `{ expectedVersion, expectedRevision, correctionReason, evidenceAt, logistics }`。日期及物流沿原 `RecordNotaryEvidenceDto` 的真实日期、至少一条、公司／单号PRESENT或NONE与200／100字符规则；不新增today／先后关系门槛，不接收样品费或附件。`POST /api/v1/notary-matters/:id/opening-sender-corrections`：body仅 `{ expectedVersion, expectedRevision, correctionReason, senderName, senderPhone, senderAddress }`，三个寄件值均显式可为null，长度沿原200／100／500；不接收照片／出证字段。
+- 两命令均用既有 `Idempotency-Key` header（1～128字符），route唯一注入matter ID，拒绝未知字段和body异锚。`expectedVersion`是当前事项流程version，`expectedRevision`是本资料组revision（原事实为0）；原因去首尾空白后1～500字符，同一规范化值用于指纹／事实／审计，不改客户端原key。成功201返回 `{ matterId, correctionId, kind, revision, recordedAt }`，kind分别为 `EVIDENCE`／`OPENING_SENDER`，revision恰为expectedRevision+1。更正不推进stage或增加事项流程version。
+- 在原事项同事务锁内重新校验当前身份、Action与来源范围，授权后先核原成功回执，再对新写入核阶段／原事实／两个预期版本，追加不可变值版本、成功审计及回执；失败整体回滚，并发仅一个新revision胜出。原成功key同参在当前授权仍有效时返回首结果，异参409；不能因后来归档或流程version变化把旧成功当新写。不得UPDATE原Evidence／Logistics／Opening、照片、审核决定、证书、费用或Case锚；新物流版本行使用真实不可变UUID，不伪造或移用原物流ID。
+- 原有获准业务字段的当前投影与列表摘要采用effective值，保留原API字段形状、样品费用、原登记时间及冻结照片。内部详情新增独立 `recordEdits.evidence`／`recordEdits.openingSender`（原事实不存在为null），分别给出 `canCorrect`、当前revision、original、effective及升序更正history（真实correctionId／原因／操作者／时间／原新值）；不把history当新的操作步骤。已有客户／公证处只对其原本获准字段读取effective，不增加原因／操作人／内部history可见性。新字段缺席兼容旧响应，有字段时严格解码。
+- 跨事项批量开箱只增加内部列表勾选后的逐事项表单和结果汇总，复用现有 `POST /api/v1/notary-matters/:id/opening` 及单项payload／response／Action，逐项串行独立事务；不增加服务器批次表、后台job或新批量endpoint。每项自行上传／选择该owner的1～50个 `NOTARY_OPENING_PHOTO` CV，JPG／JPEG、PNG、WEBP且每张≤20MiB；上传准备成功不等于opening提交成功。不从快递号、文件顺序或其他事项推定归属。
+- 每项保存明确区分未提交、提交中、成功、确定失败、结果未知；已知失败和未执行项独立处理，不重发成功项。未知项持有原actor／department／matter／expectedVersion／完整body／key，阻止编辑该项后换键盲重试；显式核实仅复用原请求，当前重新授权后以原回执证明结果。沿现有sessionStorage pending和抽屉互斥模式实现，不另建通用状态／审批系统。身份切换／关闭／迟响应不污染其他事项，abort不证明未提交。
+
+代码文件归属与当前启动阻塞统一见[实施安排](../../../superpowers/plans/2026-10-17-next-batch-acceptance-readiness.md#7-公证最小实施契约与独占文件)。
+
 2026-10-15 SD-58列表交互：内部公证列表与公证处入口按各自真实能力，在列表抽屉打开原开箱／取证／出证等适用表单，不只跳详情锚点。内部与公证处的DTO、角色、材料和最小投影保持分别校验；同一步有合法分支时在表单选择，条件字段与提交文案对应真实去向。方向未定的资料保存须有独立正式Command；不能把NO_ISSUE误指向出证或自动创建案件。成功重查原行并保持筛选分页，未知结果沿原body／key恢复。共同合同与真实点击验收见[共享合同](shared.md#三模块列表流程表单sd-58)；本段不表示已实现或验收。
 
 线索取证来源与合并归档来源分开。普通办理候选：待取证→线上物流／线下报告→开箱待审核→开箱待确认→待出证→归档并转案；不出证转退货。线下确认可直接提诉的保留范围待审核。
@@ -21,6 +35,7 @@ CORE-NT-005的已确认最小门槛：每个`WAITING_CERTIFICATE`事项本切片
 - 异常、边界及待决：线下调查和直接诉讼门槛仍属B10；零费适用范围B17；合并归档不得当成普通待取证自动办理。
 - 依赖：BQ-03/BQ-04/BQ-05/BQ-09/T01/T02；正式操作者与数据范围统一受REQ-XM-001约束。相关批量、失败和重复控制见REQ-SH-004，未定策略不视为已批准。
 - AC-NT-001：**给定／操作**：原样品费0的线下事项提交调查费100和报告。**预期**：调查费为100，样品费不因该调查增加；来源可追溯；进入审核的材料门槛以B10最终确认表为准。
+- AC-NT-006：**给定／操作**：原线上取证／开箱事实已登记，当前有效且覆盖来源范围的内部人员具备 `notary.record.correct`，在允许的非归档阶段以当前事项版本、目标资料revision、原幂等键及非空原因更正取证日期／物流或寄件资料。**预期**：仅追加资料版本、审计和回执，原值及历次更正可查；事项阶段和流程version、样品费用、开箱照片／审核／出证／案件锚均不变。归档、跨范围、撤权、旧revision及同键异参拒绝；原成功键在当前重新授权后可返回原回执，不因后续流程版本变化重复写入。
 
 ## REQ-NT-002 开箱核对与审核确认
 
@@ -29,6 +44,7 @@ CORE-NT-005的已确认最小门槛：每个`WAITING_CERTIFICATE`事项本切片
 - 异常、边界及待决：混包和取证异常见BQ-04；手工改号角色、原值留痕和错误更正见BQ-03/04；识别未读到单号不能当作自动确认归属，SD-09要求人工审核候选；不侵权后取消归档时已生效范围见BQ-03；不伪造发货人。
 - 依赖：BQ-03/BQ-04/SD-09/T02/T05；正式操作者与数据范围统一受REQ-XM-001约束。相关批量、失败和重复控制见REQ-SH-004。
 - AC-NT-002：**给定／操作**：事项A有两个物流单号，上传含A和B单号的混包；再查看审核详情。**预期**：不得只核首包就全部归A；不能确认的组标待处理，不生成模拟发货人；审核展示与实际保存结果一致。
+- AC-NT-007：**给定／操作**：在内部列表明确勾选多个事项，各自确认寄件资料及仅属于该事项的有效照片后批量开箱。**预期**：每项仍走 NT-002 原Command、Action、版本及材料校验和独立事务，显示成功、确定失败、未执行、结果未知；成功项不重发，确定失败项独立处理，未知项保留原主体／目标／完整body／key，仅显式核实原结果。不跨事项移动CV，不按单号或队列猜照片归属，不将一项失败回滚其他已成功项，不套用 NT-010 的整批归档事务。
 
 ## REQ-NT-003 出证及转诉讼
 
