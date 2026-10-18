@@ -1,8 +1,10 @@
 # 下一批最小页面闭环与一次性确认清单
 
-状态：两条页面入口代码及离线准备已实现，八源累计独立复审两轴ACCEPTED、C/I/M0，尚未批准新增验收。以本页替代7ab3e257中的“EF接口首项＋线索八项、11会话”申请，不先跑API块再追加页面额度。远端代码备份仍为 `0b90e9c3e28f7a1a3cf6cd195728f6a6da43cc52`，后续本地准备提交未上传。旧业务、文件及登录额度均为0。
+状态：两条页面入口已实现。2026-10-18用户已在原Runner直接批准恢复基础配置、使用官方受保护R2覆盖并继续本页原两页额度；165只读核验通过，尚未登录即因旧EF身份封存不符停止，业务／上传／会话额度均未消耗。精确身份两源候选0901ffac已完成pure11/11／根类型／静态／离线发现和不同Sol两轴ACCEPTED、C/I/M0，最终文档固定后才交原Runner，不重复申请同一额度。以本页替代7ab3e257中的“EF接口首项＋线索八项、11会话”申请，不先跑API块再追加页面额度。远端代码备份仍为 `0b90e9c3e28f7a1a3cf6cd195728f6a6da43cc52`，后续本地准备提交未上传；此前已耗尽旧业务、文件及登录额度不恢复。
 
 ## 1. 已核环境及开跑条件
+
+本节前三条保留2026-10-17准备记录，其中“未连接DB／15433配置待定”已由2026-10-18真实只读前置更新：官方capture已通过且实际仅R2，ledger通过，身份旧1／1门槛停止。基础15433模板的含义以本页收口段落及当前验证记录的正式覆盖机制为准，不能据历史描述改成连接15433或把基础文件改15438。
 
 - 本轮仅只读Docker过滤inspect：R2完整CID `45addc0179e929dd1dcd4f835b6c6c14c36c2ac4aed5e6cd5842648bf5db5236` 正在运行、healthy；project `dev-cor-ui003-r2`、service `postgres-test`、`127.0.0.1:15438`、卷 `dev-cor-ui003-r2-pgdata`及固定postgres17.11镜像摘要 `051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0` 匹配。普通令牌访问Docker pipe被拒后，同一过滤inspect经正式审批成功；没有启动容器、服务或读取Config.Env。
 - ca015、原EF、test-runtime-stability及frontend-integration现有 `.env.test` 实际均为15433，本轮未改。未来执行单须明确允许唯一Runner正常配置一个固定运行树的R2 URL及本树private-file root，使用标准capture复核两URL/完整tuple，不借进程覆盖绕冲突校验。原文件只核字节；如本树缺文件，先列准确source/key/size/SHA/target清单，未经核准不复制或覆盖，不搬回私密归档。
@@ -14,7 +16,7 @@
 
 ### EF：填写一条法院反馈，再带原因更正
 
-仅复用原Runner已封存的activeSource：user `03620738-5f11-49f9-9279-95d51306e32e`、role `cfd6fa11-f04d-4e99-ab3c-2fccc8e22161`。原证据记录其active/v1、同部门有效membership/唯一assignment、10个DEPARTMENT Grant及受保护credential引用；没有读取私密载荷。必须live复核其中本片所需7项（case.read、customer.read、case.external-entry.create、case.execution.mail、case.execution.filing.submit、case.execution.feedback.record/correct）及全部原身份/授权行保持。复核失败就停，不恢复旧角色、补权或造新actor。本次新增身份/Grant均0，结束不撤旧source权限。
+仅复用原Runner已封存的activeSource：user `03620738-5f11-49f9-9279-95d51306e32e`、role `cfd6fa11-f04d-4e99-ab3c-2fccc8e22161`。原主role active/v1、同部门membership／原assignment和10个DEPARTMENT Grant保持；2026-10-18只读快照与Demo A授予／terminal回执精确核对，user授权revision已为3，另有固定active assignment指向已停用inactive/v2的Demo A角色。修复后的helper必须实时拒绝该额外角色复活、ID／状态／版本／scope／14个原Grant漂移或第三分配，不把双分配泛化放开。必须live复核其中本片所需7项（case.read、customer.read、case.external-entry.create、case.execution.mail、case.execution.filing.submit、case.execution.feedback.record/correct）及全部原身份/授权行保持。复核失败就停，不恢复旧角色、补权或造新actor。本次新增身份/Grant均0，结束不撤旧source权限。
 
 先由该身份仅用正常HTTP准备一个新HISTORICAL_BACKFILL Case：转入、执行邮寄、执行申请各1次；2个合成PDF各43bytes用于邮寄回执/申请证明，形成真实EXECUTING/v3和本地filing。不能SQL造Case/filing；这3次来源准备不冒称目标页面验收，也不运行原14项接口矩阵。
 
@@ -51,7 +53,7 @@
 3. 页面logout失败/未发出而唯一新ID已证时，至多一次精确fallback：事务内SELECT FOR UPDATE重核id/token_digest/user/dept/created_at/expires_at与绑定一致；已revoked仅读不更新，否则参数化UPDATE仅同id/token_digest/user/dept且revoked_at IS NULL，设置revoked_at，要求rowCount1。0行/任意不符即停。正常logout与fallback择一最终撤销效果，最多2个本轮ID；不delete、不撤旧session、不延长expires_at。
 4. 业务首失败后只准此收尾/只读对账，不做第二业务请求或下一块。保留全部新事实/材料/receipt；旧行保持，服务/端口/标准锁结束释放。绑定/守卫失败标为未完成，不制造清理PASS。
 
-本节是新执行申请，不是本轮已撤销。现成EF原测试只dispose、lead full8没有该页面logout，均不直接拿来执行本方案。
+本节只规定本批新会话的授权收尾，当前尚未登录或执行撤销。现成EF原测试只dispose、lead full8没有该页面logout，均不直接拿来执行本方案。
 
 ## 4. 已落地入口与验证边界
 
@@ -70,7 +72,9 @@ pnpm test:e2e tests/e2e/lead-batch-push-minimal-page.spec.ts --config playwright
 - 失败trace放用户Temp独占目录，可能包含登录态或口令表单值，按私密材料保护；不上传Git、不复制到普通报告，交接只给路径/hash和脱敏业务请求摘要。它不属于公开代码备份。
 - 可复用的原证据仍只覆盖原输入：2ef6a739完整verify139工具/2510前端/2351后端、NT006/双构建、EF14分段API及只读3项、165 owned/官方升级/历史保持。新8测试文件不是新产品完整门禁或真实页面通过；不重复迁移/resolve，不重跑原14或full8 API。PRIMARY/门户、真实24h过期、流中撤权、非current版本、20MiB/50MiB等边界、未知恢复、回滚/terminal等未验项继续保留，不夹入这两条页面。
 
-## 5. 公证三项最简推荐：一次决定，未实施
+## 5. 原公证三项建议（后续独立规格已确认）
+
+以下保留2026-10-17建议来源；三点已由后续用户确认，最小规格及准确范围以独立提交cfb3d2b3为准，原公证Task当前已恢复并在独立目录实施代码／纯测试。特别是来源授权沿原SELF／TEAM／DEPARTMENT，不从旧建议的TEAM／DEPARTMENT限制排除原SELF；不再等待三点业务答复。其公证schema／API／UI不并入本页冻结运行候选，仍无迁移执行、真实账号／Grant或数据库验收授权。
 
 依据INPUT-016、[当前公证Spec](../../spec/v0.1/modules/notary.md)、[NT002单项开箱设计](../specs/2026-09-24-core-nt-002-unboxing-materials-design.md)及Demo逆向M03。字段更正/跨事项开箱方向已批准，以下资格、阶段与批次语义是新增选择。
 
@@ -86,6 +90,6 @@ pnpm test:e2e tests/e2e/lead-batch-push-minimal-page.spec.ts --config playwright
 
 本轮已完成可执行但未运行的两条真实页面入口、共同准入/预算/会话收尾和纯回归；原生发现恰好两文件两项，callback0。八源累计独立源码复审两轴ACCEPTED、C/I/M0，含未绑定会话失败收尾窄修。原静态计划的ACCEPTED不冒充新增源码或真实UI通过。
 
-当前尚未给予正式运行GO。唯一剩余运行申请为本页两个窄场景：0新账号/Grant、1新Case、2新线索、2份PDF共86bytes、2新session、8次业务POST和4次上传阶段请求，必要读取与新session自身更新据实记录；两块各自正常logout一次，失败仅本页明确的精准收尾。旧EF/Demo/API/登录额度全部0，不复用、不挪用。
+2026-10-18用户已在原Runner直接授权继续本页两个窄场景，现仍未消耗：0新账号/Grant、1新Case、2新线索、2份PDF共86bytes、2新session、8次业务POST和4次上传阶段请求，必要读取与新session自身更新据实记录；两块各自正常logout一次，失败仅本页明确的精准收尾。旧EF/Demo/API/登录额度全部0，不复用、不挪用。真实页面还未开始，严格身份修复交付后仍须完整前置通过。
 
-执行前需明确唯一Runner正常配置固定树的R2 15438与本树private root（当前.env.test仍15433，本轮未改），核材料精确缺失copy清单、165 ledger/原resolved回执、既有身份全部授权/客户资格、旧事实和文件及后台候选；任一不满足就在服务启动前停下。公证三个业务决定仍待用户统一确认，不新建Action/Grant或实现其产品片。新本地代码/文档提交也不自动追加远端push；备份远端保持原固定0b90e9c3。
+官方要求.env.test基础模板为15433，再用受保护DEV_COR_TEST_DATABASE_URL＋project/CID覆盖和capture.childEnvironment确定实际R2 15438，不连接15433、不改guard或凭空消除冲突。原Runner已按此恢复并通过capture；不能把基础15433本身再判为坏配置。执行前仍核本树private root、材料精确缺失copy清单、165 ledger/原resolved回执、既有身份全部授权/客户资格、旧事实和文件及后台候选；任一不满足就在服务启动前停下。公证按独立cfb规格准备而不占本页执行槽，不由此授予其真实Grant或迁移。新本地代码/文档提交不自动追加远端push；备份远端保持原固定0b90e9c3。

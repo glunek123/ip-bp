@@ -1,6 +1,14 @@
 # SPEC-001 文档验证
 
+### 两页只读前置停止及精确身份核对（2026-10-18）
+
+原Runner在用户直接恢复／续验授权下，复原官方要求的基础15433模板，通过受保护DEV_COR_TEST_DATABASE_URL＋project/CID覆盖，standard capture实际仅R2 127.0.0.1:15438/dev_cor_test；没有连接15433或重复启动容器。原2284e2ef候选／tree bd305157干净，source/public165成功迁移及唯一已解决历史通过。一次REPEATABLE READ READ ONLY前置在EF身份门槛停止：当前user authorization_revision3、active assignment2，旧helper要求1／1；原主角色active/v1、10条Grant及所需7项都在。H42、客户资格、后台候选、物理字节及页面尚未继续；登录／业务／上传／账号或Grant变更均0，服务未启、锁释放。原摘要raw SHA256为28efe65d4c9417cf90bcaead082861b0c3c8bfac7dd8a421aca16cdc9c057f49，保留其BLOCKED结果，不称真实页面通过。
+
+只读本地历史核对证明额外assignment及revision3来自已批准Demo A有限扩权和末端撤权：授予回执1→2，末端回执2→3，额外角色inactive/v2、assignmentChanges0/restored=false。当前全旧行快照raw SHA256 9af63453625c852d4ac962f63596d07b2eb330b6f366791d117bbd662bba6db9；从末端afterRole全字段按JSONB文本重构的row SHA256 82342d82aff575729f097ec0da45ec94cec59b784cc5cbb760827bdc6ee267a8，与当前唯一PK行精确一致。额外assignment row SHA256 7f3a2b943165f5b0741b68e4ba38f7fe3da7dd7860eb65682fa0052fc7b73185及14条原Grant逐ID行hash也一致。不是回退账号版本、撤分配或恢复terminal角色的理由；修复只能在隔离分支精确接纳该已证明状态，继续拒绝任意额外角色、重新激活或字段漂移，旧原始失败与回执不修改。代码修复／纯测试及独立复审结果另按固定输入登记，不借此推断页面或全仓门禁通过。
+
 ### 两条最小页面入口代码准备（2026-10-17）
+
+本段以下保留原2284输入的历史证据。身份修复代码候选为`0901ffac3035c052fa6d462fbf81439f756a781d`，相对2284仅helper及直接pure两文件；raw SHA256分别为1bbaebada09ecfc74f6c348766a1434565db268c0dab4fb5a961c36e4240d9d8、1cef6af697a25cda0461598392270608cba60eccc46909ba7b3e74cebdb08c40。目标新终态用旧guard先RED，修后直接pure11/11，根tsc、两文件Lint／格式、架构和diff检查通过；原生Playwright同配置发现仍恰2文件2项、无callback／服务。不同Sol独立Spec及Standards两轴均ACCEPTED、C/I/M0，未复跑已过测试或接触DB。一次额外pnpm typecheck先调用backend Prisma generate，在Roaming缓存utime处EPERM停止，原失败保留；本补丁未改schema／后端类型，不改缓存权限或借此声称后端全门禁通过。最终文档／snapshot另按一致性核对，不覆盖未执行的真实页面。
 
 新增共同辅助模块、声明、纯测试及 `playwright.minimal-pages.config.ts`，EF和线索各有独立页面spec及源码/预算纯回归，共8文件；不修改产品、SQL、依赖、环境或Grant。共同模块原三项Important（关键请求体发送前校验、capture前已有指纹密钥、主对象/材料/旧行精确差集）已由未参与实现的原Sol关闭，四文件两轴ACCEPTED C/I/M0；累计八源复审发现登录200后会话绑定失败会阻断正常logout；三文件窄修保证null绑定下只尝试一次原页面logout，成功/失败都以SESSION_UNBOUND退出、保留cause、read0/guardedUPDATE0。原Reviewer确认关闭，八源两轴最终ACCEPTED、C/I/M0。
 
