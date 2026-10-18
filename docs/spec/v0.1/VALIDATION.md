@@ -1,5 +1,23 @@
 # SPEC-001 文档验证
 
+### 六草稿精确过期与页面发现阶段停止（2026-10-18）
+
+用户明确批准cleanup-assessment内六个固定draft仅OPEN→EXPIRED及真实updated_at、保留记录／不删除文件；原Runner在clean dadb0989/tree db226dab上重新核六ID与原行hash、P0/E6/L0/D0，事务内锁定并精确更新六行，一次提交／无自动重试。独立只读后核仅upload_drafts六行的status/updated_at差异，其余165表旧PK行、序列、ledger及身份授权保持，cleanup四分支归零；新基线phase3-all-old-rows.json与旧前置同时保留，不能声称六行从未改变。未运行cleanup全服务或物理清理，94份原文件字节核验通过。
+
+来源证据为ca015的.local/next-batch-preparation/exact-expiry-dadb0989-20261018：summary.json原SHA256 828de83691a1328e62b512872be4481d7590928d6002db14aacf59b22d7f615e；phase2-receipt为COMMITTED，phase3-closure逐行核准唯一允许delta。真实数据变化仅此六行，非schema部署或业务验收结果。
+
+随后EF正常protected命令exit1，No tests found、callback0，原Runner自有ignored证据配置继承相对testDir而未固定项目绝对tests/e2e，属于执行器发现配置错误；原输入和错误保留。线索命令未启动，未修／未重跑，两个页面没有真实PASS或业务失败结论。末次只读全库与六行更新后的新基线完全一致；新session／Case／lead／文件／业务POST／上传均0，无session需注销，matchingManagedNodeProcesses和端口为空、标准锁释放、R2未停止。私密证据未上传，产品／helper／Git HEAD未变。
+
+按用户最新完成当前任务后暂停要求，已有公证任务也已收口暂停；不启动新批次、扩展修复或重新执行成功准备。将来收到恢复指令后，先核此执行器testDir断点，再复用未消耗原两页预算与获批新基线；不得重做六行过期、恢复OPEN、修改expires_at、关闭守卫、迁移或追加Grant。
+
+### 公证SD61纯实现冻结并暂停（2026-10-18）
+
+原ui003-notary-list-workflow目录、codex/notary-record-batch-contract分支仍为HEAD cfb3d2b331db50ed02531eb417277dfa87fed674／基线tree a25b39d001a1a0b237d2e5304c626c15099fe072；该tree不是dirty候选tree。公共作者29文件及UI作者10文件共39文件（27改／12新增）全部冻结，staged0，未产生新提交。主控逐项回读39个SHA256均与.local/ui003-evidence/notary-sd61-pure-20261018/candidate-manifest.json相符，manifest原SHA256 efea851637e8fd95e1de52cb017be1e6c2d6f1ce852b0e0e1f3b4bd6013bb029；handoff.md、review.md、final-state.json保存完整边界。
+
+实际可信纯验证合计508个不同测试（后端直接96、后端跨契约141、前端API91、前端相关组件180，已去重），check:fast:prepared的架构18模块／167模型、三层类型和全仓Lint通过，Spec59REQ／71AC／11BQ／61SD、Prisma validate／generate及diffcheck通过。独立静态功能审查无剩余阻塞，Standards仍NOT PASSED、C0/I0/M1：backend/src/modules/leads/notary-record-edit.service.spec.ts一处Prettier失败按暂停指令保留，最终context未执行，未刷新快照，不能称完整ACCEPTED或完整门禁通过。shared http.ts迟到401通知的既有残余竞态仍列未验边界，不扩围修复。
+
+普通git add因.git/worktrees/ui003-notary-list-workflow/index.lock权限拒绝而失败，实际暂存0、锁文件不存在；这是普通沙箱权限失败，不是自动审批拒绝。未重试、提权绕过或代提交。真实DB／Grant／迁移执行／Docker／HTTP／浏览器／merge／push均0；原Task和三个子任务已停止，无已知本任务常驻服务或锁。未将这39文件或公证schema混入ca015，ca015仍冻结dadb0989。恢复须从原39文件及准确hash续办格式／检查断点，不能把基线SHA或纯测试解释成真实验收完成。
+
 ### 两页只读前置停止及精确身份核对（2026-10-18）
 
 原Runner在用户直接恢复／续验授权下，复原官方要求的基础15433模板，通过受保护DEV_COR_TEST_DATABASE_URL＋project/CID覆盖，standard capture实际仅R2 127.0.0.1:15438/dev_cor_test；没有连接15433或重复启动容器。原2284e2ef候选／tree bd305157干净，source/public165成功迁移及唯一已解决历史通过。一次REPEATABLE READ READ ONLY前置在EF身份门槛停止：当前user authorization_revision3、active assignment2，旧helper要求1／1；原主角色active/v1、10条Grant及所需7项都在。H42、客户资格、后台候选、物理字节及页面尚未继续；登录／业务／上传／账号或Grant变更均0，服务未启、锁释放。原摘要raw SHA256为28efe65d4c9417cf90bcaead082861b0c3c8bfac7dd8a421aca16cdc9c057f49，保留其BLOCKED结果，不称真实页面通过。
