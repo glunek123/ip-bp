@@ -344,7 +344,7 @@ test('startup rejects old candidates, throttle rows, day crossings and long wind
     assert.throws(() => assertMinimalPageStartupWindow({ ...input, ...delta }));
 });
 
-test('actor requires exactly original full grants and only one effective membership/assignment', () => {
+test('EF actor admits only the sealed Demo A terminal authorization state', () => {
   const grants = scope.actions.map((action, index) => ({
     id: `${String(index).padStart(8, '0')}-0000-4000-8000-000000000000`,
     action,
@@ -356,7 +356,7 @@ test('actor requires exactly original full grants and only one effective members
       id: scope.userId,
       active: true,
       account_type: 'INTERNAL',
-      authorization_revision: 1,
+      authorization_revision: 3,
     },
     role: {
       id: scope.roleId,
@@ -380,9 +380,48 @@ test('actor requires exactly original full grants and only one effective members
     },
     credential: { id: scope.credentialId, user_id: scope.userId },
     grants,
-    activeAssignments: [{ id: scope.assignmentId }],
+    extraRole: {
+      id: '49f006dd-1ee8-4399-aee8-41788b1035da',
+      department_id: scope.departmentId,
+      active: false,
+      version: 2,
+    },
+    extraAssignment: {
+      id: 'a3af87ea-0306-435f-aaad-757d983bf166',
+      user_id: scope.userId,
+      department_id: scope.departmentId,
+      role_template_id: '49f006dd-1ee8-4399-aee8-41788b1035da',
+      active: true,
+      version: 1,
+    },
+    extraGrants: [
+      ['721bec1c-0973-458c-8f80-930da871acaa', 'settlement.read'],
+      ['4e43d8cd-bf88-4ace-8614-a57f90413e61', 'settlement.terms.update'],
+      ['f807bbb8-8058-4cb0-80d7-7ecfacdc6d61', 'settlement.launch'],
+      ['33b56a6f-32bf-4df9-84ed-a5f1ecbd5b63', 'settlement.bill.create'],
+      ['147188f5-2bb7-4ade-979f-ad31bbf6441f', 'settlement.bill.cancel'],
+      ['732ed253-6342-4fd2-810a-ad6d7d400629', 'fee.read'],
+      ['33cd9343-0c68-4565-8086-1de6fc85979a', 'fee.create'],
+      ['f28907b7-3f33-4b67-96a4-e98ff6c20455', 'fee.update'],
+      ['4494e01c-36aa-4e5c-94a9-8bf911344337', 'fee.launch'],
+      ['efdb2d45-9a83-44ce-aab9-fd38c5b69e53', 'fee.delete'],
+      ['0d5a2f46-b4a8-451d-b9b7-76a9caacdb7a', 'evidence.read'],
+      ['b7311efd-6767-4f9c-adce-6e9e6c33cc55', 'evidence.edit'],
+      ['a444642d-4614-4b52-970a-80f54cfebff2', 'evidence.bulk-status'],
+      ['9c6e728e-ebe7-4c4b-bcc5-d61a9e2e0db3', 'evidence.export'],
+    ].map(([id, action]) => ({
+      id,
+      action,
+      scope: 'DEPARTMENT',
+      role_template_id: '49f006dd-1ee8-4399-aee8-41788b1035da',
+    })),
+    activeAssignments: [
+      { id: scope.assignmentId },
+      { id: 'a3af87ea-0306-435f-aaad-757d983bf166' },
+    ],
     activeMemberships: [{ id: scope.membershipId }],
     roleAssignments: [{ id: scope.assignmentId }],
+    extraRoleAssignments: [{ id: 'a3af87ea-0306-435f-aaad-757d983bf166' }],
   };
   assert.equal(assertMinimalPageActor(kind, rows, grants), scope);
   assert.throws(() =>
@@ -419,6 +458,172 @@ test('actor requires exactly original full grants and only one effective members
     assertMinimalPageActor(
       kind,
       { ...rows, user: { ...rows.user, authorization_revision: 2 } },
+      grants,
+    ),
+  );
+  for (const [field, value] of [
+    ['id', 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'],
+    ['active', true],
+    ['version', 1],
+    ['version', 3],
+    ['department_id', '10000000-0000-4000-8000-000000000002'],
+  ])
+    assert.throws(() =>
+      assertMinimalPageActor(
+        kind,
+        { ...rows, extraRole: { ...rows.extraRole, [field]: value } },
+        grants,
+      ),
+    );
+  for (const [field, value] of [
+    ['id', 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'],
+    ['user_id', 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'],
+    ['active', false],
+    ['version', 2],
+    ['department_id', '10000000-0000-4000-8000-000000000002'],
+    ['role_template_id', scope.roleId],
+  ])
+    assert.throws(() =>
+      assertMinimalPageActor(
+        kind,
+        {
+          ...rows,
+          extraAssignment: { ...rows.extraAssignment, [field]: value },
+        },
+        grants,
+      ),
+    );
+  for (const extraGrants of [
+    rows.extraGrants.slice(1),
+    [...rows.extraGrants, { ...rows.extraGrants[0], id: 'extra' }],
+    [
+      { ...rows.extraGrants[0], id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa' },
+      ...rows.extraGrants.slice(1),
+    ],
+    [{ ...rows.extraGrants[0], scope: 'GLOBAL' }, ...rows.extraGrants.slice(1)],
+    [
+      { ...rows.extraGrants[0], role_template_id: scope.roleId },
+      ...rows.extraGrants.slice(1),
+    ],
+    [
+      { ...rows.extraGrants[0], action: 'customer.read' },
+      ...rows.extraGrants.slice(1),
+    ],
+  ])
+    assert.throws(() =>
+      assertMinimalPageActor(kind, { ...rows, extraGrants }, grants),
+    );
+  assert.throws(() =>
+    assertMinimalPageActor(
+      kind,
+      { ...rows, activeAssignments: rows.activeAssignments.slice(0, 1) },
+      grants,
+    ),
+  );
+  assert.throws(() =>
+    assertMinimalPageActor(
+      kind,
+      {
+        ...rows,
+        activeAssignments: [
+          { id: scope.assignmentId },
+          { id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa' },
+        ],
+      },
+      grants,
+    ),
+  );
+  assert.throws(() =>
+    assertMinimalPageActor(
+      kind,
+      {
+        ...rows,
+        activeAssignments: [
+          ...rows.activeAssignments,
+          { id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa' },
+        ],
+      },
+      grants,
+    ),
+  );
+  assert.throws(() =>
+    assertMinimalPageActor(
+      kind,
+      {
+        ...rows,
+        extraRoleAssignments: [
+          ...rows.extraRoleAssignments,
+          { id: 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa' },
+        ],
+      },
+      grants,
+    ),
+  );
+  assert.throws(() =>
+    assertMinimalPageActor(
+      kind,
+      { ...rows, extraRoleAssignments: [{ id: scope.assignmentId }] },
+      grants,
+    ),
+  );
+});
+
+test('lead actor keeps the original single assignment and revision guard', () => {
+  const lead = minimalPageScopes.LEAD_BATCH;
+  const grants = lead.actions.map((action, index) => ({
+    id: `${String(index).padStart(8, '0')}-0000-4000-8000-000000000000`,
+    action,
+    scope: 'DEPARTMENT',
+    role_template_id: lead.roleId,
+  }));
+  const rows = {
+    user: {
+      id: lead.userId,
+      active: true,
+      account_type: 'INTERNAL',
+      authorization_revision: 1,
+    },
+    role: {
+      id: lead.roleId,
+      department_id: lead.departmentId,
+      active: true,
+      version: 1,
+    },
+    assignment: {
+      id: lead.assignmentId,
+      user_id: lead.userId,
+      department_id: lead.departmentId,
+      role_template_id: lead.roleId,
+      active: true,
+      version: 1,
+    },
+    membership: {
+      id: lead.membershipId,
+      user_id: lead.userId,
+      department_id: lead.departmentId,
+      active: true,
+    },
+    credential: { id: lead.credentialId, user_id: lead.userId },
+    grants,
+    activeAssignments: [{ id: lead.assignmentId }],
+    activeMemberships: [{ id: lead.membershipId }],
+    roleAssignments: [{ id: lead.assignmentId }],
+  };
+  assert.equal(assertMinimalPageActor('LEAD_BATCH', rows, grants), lead);
+  assert.throws(() =>
+    assertMinimalPageActor(
+      'LEAD_BATCH',
+      { ...rows, user: { ...rows.user, authorization_revision: 3 } },
+      grants,
+    ),
+  );
+  assert.throws(() =>
+    assertMinimalPageActor(
+      'LEAD_BATCH',
+      {
+        ...rows,
+        activeAssignments: [...rows.activeAssignments, { id: 'extra' }],
+      },
       grants,
     ),
   );

@@ -36,6 +36,28 @@ export const minimalPageScopes = Object.freeze({
       'case.execution.feedback.record',
       'case.execution.feedback.correct',
     ]),
+    demoATerminal: Object.freeze({
+      roleId: '49f006dd-1ee8-4399-aee8-41788b1035da',
+      assignmentId: 'a3af87ea-0306-435f-aaad-757d983bf166',
+      grants: Object.freeze(
+        [
+          ['721bec1c-0973-458c-8f80-930da871acaa', 'settlement.read'],
+          ['4e43d8cd-bf88-4ace-8614-a57f90413e61', 'settlement.terms.update'],
+          ['f807bbb8-8058-4cb0-80d7-7ecfacdc6d61', 'settlement.launch'],
+          ['33b56a6f-32bf-4df9-84ed-a5f1ecbd5b63', 'settlement.bill.create'],
+          ['147188f5-2bb7-4ade-979f-ad31bbf6441f', 'settlement.bill.cancel'],
+          ['732ed253-6342-4fd2-810a-ad6d7d400629', 'fee.read'],
+          ['33cd9343-0c68-4565-8086-1de6fc85979a', 'fee.create'],
+          ['f28907b7-3f33-4b67-96a4-e98ff6c20455', 'fee.update'],
+          ['4494e01c-36aa-4e5c-94a9-8bf911344337', 'fee.launch'],
+          ['efdb2d45-9a83-44ce-aab9-fd38c5b69e53', 'fee.delete'],
+          ['0d5a2f46-b4a8-451d-b9b7-76a9caacdb7a', 'evidence.read'],
+          ['b7311efd-6767-4f9c-adce-6e9e6c33cc55', 'evidence.edit'],
+          ['a444642d-4614-4b52-970a-80f54cfebff2', 'evidence.bulk-status'],
+          ['9c6e728e-ebe7-4c4b-bcc5-d61a9e2e0db3', 'evidence.export'],
+        ].map(([id, action]) => Object.freeze({ id, action })),
+      ),
+    }),
     privateCredential: Object.freeze({
       path: 'C:\\Users\\97830\\AppData\\Local\\Temp\\dev-cor-ef161-http14-b759db9e-72df-4974-b2cf-3c259b02c4a0\\part2-pwsh7-fba076cd-d2eb-455f-8039-61534d8bc973\\permission-continuation-input.private.json',
       sha256:
@@ -572,13 +594,53 @@ export function assertMinimalPageSourceAndLedger({
   return true;
 }
 
+function matchesDemoATerminalActor(scope, rows) {
+  const terminal = scope.demoATerminal;
+  if (!terminal)
+    return (
+      rows.extraRole === undefined &&
+      rows.extraAssignment === undefined &&
+      rows.extraGrants === undefined &&
+      rows.extraRoleAssignments === undefined
+    );
+  return (
+    rows?.extraRole?.id === terminal.roleId &&
+    rows.extraRole.department_id === departmentId &&
+    rows.extraRole.active === false &&
+    rows.extraRole.version === 2 &&
+    rows?.extraAssignment?.id === terminal.assignmentId &&
+    rows.extraAssignment.user_id === scope.userId &&
+    rows.extraAssignment.department_id === departmentId &&
+    rows.extraAssignment.role_template_id === terminal.roleId &&
+    rows.extraAssignment.active === true &&
+    rows.extraAssignment.version === 1 &&
+    Array.isArray(rows.extraGrants) &&
+    rows.extraGrants.length === terminal.grants.length &&
+    terminal.grants.every(
+      (expected) =>
+        rows.extraGrants.filter(
+          (grant) =>
+            grant.id === expected.id &&
+            grant.action === expected.action &&
+            grant.scope === 'DEPARTMENT' &&
+            grant.role_template_id === terminal.roleId,
+        ).length === 1,
+    ) &&
+    rows.extraRoleAssignments?.length === 1 &&
+    rows.extraRoleAssignments[0].id === terminal.assignmentId
+  );
+}
+
 export function assertMinimalPageActor(kind, rows, sealedGrants) {
   const scope = fixedScope(kind);
+  const expectedAssignmentIds = [scope.assignmentId];
+  if (scope.demoATerminal)
+    expectedAssignmentIds.push(scope.demoATerminal.assignmentId);
   if (
     rows?.user?.id !== scope.userId ||
     rows.user.active !== true ||
     rows.user.account_type !== 'INTERNAL' ||
-    rows.user.authorization_revision !== 1 ||
+    rows.user.authorization_revision !== (scope.demoATerminal ? 3 : 1) ||
     rows?.role?.id !== scope.roleId ||
     rows.role.department_id !== departmentId ||
     rows.role.active !== true ||
@@ -609,12 +671,17 @@ export function assertMinimalPageActor(kind, rows, sealedGrants) {
       (grant) =>
         grant.role_template_id !== scope.roleId || grant.scope !== 'DEPARTMENT',
     ) ||
-    rows.activeAssignments?.length !== 1 ||
-    rows.activeAssignments[0].id !== scope.assignmentId ||
+    rows.activeAssignments?.length !== expectedAssignmentIds.length ||
+    expectedAssignmentIds.some(
+      (id) =>
+        rows.activeAssignments.filter((assignment) => assignment.id === id)
+          .length !== 1,
+    ) ||
     rows.activeMemberships?.length !== 1 ||
     rows.activeMemberships[0].id !== scope.membershipId ||
     rows.roleAssignments?.length !== 1 ||
     rows.roleAssignments[0].id !== scope.assignmentId ||
+    !matchesDemoATerminalActor(scope, rows) ||
     !Array.isArray(sealedGrants) ||
     rows.grants.length !== sealedGrants.length ||
     rows.grants.some(
@@ -867,6 +934,10 @@ async function actorRows(client, scope) {
     activeAssignments,
     activeMemberships,
     roleAssignments,
+    extraRole,
+    extraAssignment,
+    extraGrants,
+    extraRoleAssignments,
   ] = await Promise.all([
     one(
       client,
@@ -917,6 +988,36 @@ async function actorRows(client, scope) {
         [scope.roleId],
       )
       .then((result) => result.rows),
+    scope.demoATerminal
+      ? one(
+          client,
+          'SELECT id::text,department_id::text,active,version FROM role_templates WHERE id=$1',
+          [scope.demoATerminal.roleId],
+        )
+      : undefined,
+    scope.demoATerminal
+      ? one(
+          client,
+          'SELECT id::text,user_id::text,department_id::text,role_template_id::text,active,version FROM role_assignments WHERE id=$1',
+          [scope.demoATerminal.assignmentId],
+        )
+      : undefined,
+    scope.demoATerminal
+      ? client
+          .query(
+            'SELECT id::text,action::text,scope::text,role_template_id::text FROM role_grants WHERE role_template_id=$1',
+            [scope.demoATerminal.roleId],
+          )
+          .then((result) => result.rows)
+      : undefined,
+    scope.demoATerminal
+      ? client
+          .query(
+            'SELECT id::text FROM role_assignments WHERE role_template_id=$1 AND active',
+            [scope.demoATerminal.roleId],
+          )
+          .then((result) => result.rows)
+      : undefined,
   ]);
   return {
     user,
@@ -928,6 +1029,10 @@ async function actorRows(client, scope) {
     activeAssignments,
     activeMemberships,
     roleAssignments,
+    extraRole,
+    extraAssignment,
+    extraGrants,
+    extraRoleAssignments,
   };
 }
 
