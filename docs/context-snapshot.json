@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-19T08:30:20.524Z",
+  "recordedAt": "2026-10-19T08:40:15.541Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -667,8 +667,8 @@
     "docs/demo-reverse/v158/modules/M10-customers.md": "9bf444edc6c90b1f82d87ffde465ceee55a5eb86308ff92aa237f265fd91899f",
     "docs/engineering-verification.md": "b7f80f141d4a7da5f28944bf5e3ba6d76d294b326f5d614029964b02f539d122",
     "docs/environment-lock.json": "a994a66b4d2a596aa6d24895f1195f74ad512b44a23927d871c255ed4ae1e00a",
-    "docs/environment.md": "6bd072ae66a96c3b849aaa28f3363a8f317c5f1f06878bc0cf8e9d96cb87176c",
-    "docs/feature-roadmap.md": "7d59711d6b3cd1d7d61dfcb0f69c4d6f5e46d52b691107dc94f28f05c1bda468",
+    "docs/environment.md": "05bb40f9dd49f9405f4bde770cb1d7d252b308093b2802e89e65dcd77c1fd22d",
+    "docs/feature-roadmap.md": "ef05c92c7bbebf5eaa1c0cee3f24d250d4353975e69ccc87c4947695d214e469",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
     "docs/project-status.md": "2ef53057410fa518d22e06858542e5e362e7e4d15003b18a3e5fccd2ed3d22f6",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
@@ -742,6 +742,7 @@
     "docs/superpowers/plans/2026-10-11-case-execution-materials.md": "7aab8d7710f872d34b6fa9e17dbf14d85b6f59c18334f5220bb6f8dccc9bede3",
     "docs/superpowers/plans/2026-10-15-list-workflow-task-briefs.md": "86a8402513f230e6c2be1cdc8df24ef1f0031bd9eadcda29039e0231dc13d3fa",
     "docs/superpowers/plans/2026-10-17-next-batch-acceptance-readiness.md": "72da8330b4515539d6f81b2838525c5c4d320e403039e6e6bf01687e12b081a4",
+    "docs/superpowers/plans/2026-10-19-development-runtime-isolation.md": "012300a5a9badc43c47d26210defa63a4304e254e371e102160decd66256be5d",
     "docs/superpowers/plans/2026-10-19-lead-csv-import-contract.md": "9fd08f267c0a2982f22f01440cc7022b89b071b5c47eb6e6511dbb038643b91a",
     "docs/superpowers/specs/2026-09-17-local-account-auth-design.md": "90318fbebae983c71e9558138cbd40b30ef02afce332a0e52f70797601a23d6f",
     "docs/superpowers/specs/2026-09-20-personnel-access-management-design.md": "bfeaf41d0356417c57a5030fd6dc9de0cfafa37d5404bb20cd3f7cff76ee5bda",

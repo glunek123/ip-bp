@@ -2,6 +2,10 @@
 
 检查日期：2026-09-15。范围：第一步复核、第二步版本选择与对齐、第三步工程环境实测。第三步验收结果见 [工程验收报告](engineering-verification.md)。
 
+## 开发与人工测试隔离（2026-10-19）
+
+当前人工 R2 与代码 worktree 已区分，但尚没有同时运行且实库已核实的独立开发/自动化测试环境。已有停止的开发容器及独立卷可优先申请复用；同卷 view 容器不能视为独立库。实际资源、后台调度风险和新增资源申请边界见[最小隔离方案](superpowers/plans/2026-10-19-development-runtime-isolation.md)。本轮仅盘点，不启动、迁移或改账号。
+
 ## 当前验证前提补充（2026-10-15）
 
 `pnpm verify`虽不启动Playwright，但后台Jest的`core-nt-006-migration.spec.ts`会启动真实PG探针，由标准capture读取测试配置并在随机schema执行迁移验证；它不是纯静态SQL检查。没有显式实例绑定时使用原15433。保护旧测试事实期间，应先准备并核验新实例、设置完整URL／PROJECT／CONTAINER_ID绑定，再运行含此探针的聚焦检查与正常verify，不能为门禁方便回用旧库或跳过该测试。工具入口与保护见scripts/test-environment.mjs，当前分配与候选见project-status／VALIDATION。
