@@ -1,5 +1,23 @@
 # SPEC-001 文档验证
 
+### EF来源成功、陈旧列表断言停止及只读归属（2026-10-19）
+
+原Runner实际在同fullCID正常start一次并healthy，今日完整前置通过；EF正式exit1／unexpected1，源保持clean dadb0989。摘要ca015/.local/next-batch-preparation/r2-resume-pages-dadb0989-20261019/summary.json SHA566b1f7043334af0d2a8e106baa4c2ce285705e54536fca56121d8b68c90718f已独立回读。真实Case6c151c42-3054-466b-9a0e-a8daaf99fbde／CA-20261019-0001为EXECUTING/v3，external-entry／mailing／filing三成功事实／回执及两份43byte文件均保留，反馈及其回执0。会话正常logout204并精确撤销；原94文件、全部旧行／权限／序列和六EXPIRED保持，本批服务／端口／锁释放，未运行线索页。
+
+主控及独立只读Task核safe-trace-http.json／usability-ledger及实际spec：成功GET /api/v1/cases在01:37:35.268／.271Z，均早于external-entries POST201（.349Z）、execution-mail 201（.971Z）及execution-filing-submit 201（01:37:36.257Z）；断言前无新列表GET，反馈POST0；logout后中止的GET不算刷新成功。spec来源完成后只点击同一路由case-nav，随即等待精确新案号。CaseListPage的load与“刷新”按钮已存在，route／identity未改变时不保证重载。普通trace未留列表响应body、query值和items count，故不据此指认产品筛选／分页bug，也不说刷新后的产品结果已验证。
+
+最小代码方向仅E2E：来源完成后通过页面真实刷新，关联该动作发起的新列表GET并等待成功，再保留原精确案号断言；不延长等待掩盖、不改产品／scope。此修复不能使旧spec整份重跑获得许可，已有来源与上传额度已用。下一真实续验必须独立固定原Case／filing／CV／三回执和允许差异checkpoint，原来源POST／上传全部禁发；不以调用预算函数或假计数代替原真实成功证明。剩余正常业务POST为5（EF2＋线索3），原总2session仅剩1且原EF已退出，若保留H42需另批1个EF登录及原精确收尾；未获补充授权前仅代码／纯测试准备。
+
+### 公证恢复成果核对与Git权限只读诊断（2026-10-19）
+
+用户原窗口直接恢复后的handoff及原review已读取。公证仍HEAD cfb3d2b3、39源未提交／staged0；新manifest 6537c55cb5dd1f2bb0b6bf4253b3087e14d725af5ae12fcadc8c6140029edbb3的39文件逐项hash全部匹配。唯一格式文件3079d1885f07c590574d7f22840ca6f55403b1ddb1061450538da7f871417fe3，其余38源不变，原Sol用完整AST对比确认无语义变化、关闭M1为C0/I0/M0；纯6项为旧测试重跑，不另加算覆盖。真实DB／HTTP／浏览器／迁移仍未执行，不能称完整产品验收通过。
+
+原普通git add日志准确为创建.git/worktrees/ui003-notary-list-workflow/index.lock Permission denied，未执行commit。主控仅Get-Acl／Get-Item／WindowsIdentity与Git只读查询：index.lock不存在、staged0、index及worktree Git目录非ReadOnly，目录可读且无reparse；仓库.git及其worktrees目录有继承Deny写条目，环境允许路径明确将.git配置为read。当前身份为CodexSandboxOffline；Deny SID未命中普通User／Groups枚举，未进一步读取restricted SID或做有效写入探针，所以不凭ACL文本断言仓库所有者本身缺权，更不将它认作僵尸锁。根.git的首个Get-Item因Hidden属性未带Force返回不可见，补Force后确认为Hidden／Directory而非缺失；该只读显示问题与git add失败区分。
+
+结论为普通受限执行器不具备该Git元数据写上下文，最小合法办法是走支持的require_escalated审批，在原工作树对核定39路径再次核hash／空index／无锁后精确add及本地commit；不改ACL、不删锁、不另借目录／账号。主控先前两次文档本地提交通过同一正式审批机制成功，只能说明支持入口可用，不代表本公证提交已批准或已完成。此次按父级先诊断要求未发起写入或提权试验。若正式审批后仍OS Permission denied，应保留原失败并交宿主支持核该特定gitdir，不能自行修ACL。
+
+文档范围同时纠正：此前15包将延期OCR、可选文件中心与外部自动集成混成本次运营Demo交付阻塞，现已撤回该数量；以SD-10、2026-09-23时序、SD-53和INPUT-016及M01／M02／M06／M08／M09为依据，来源明确的产品差异下限5包与范围待核组分开。这是规划口径修正，不是新增功能／测试授权。
+
 ### 今日离线发现通过与原R2停止断点（2026-10-19）
 
 原Runner在clean dadb0989上仅修自有ignored配置的绝对testDir，原生CLI两指定文件恰2项、callback0／webServer0、exit0，旧No tests found与配置保留，tracked产品／helper不变。后续原R2 fullCID只读inspect running=false，故在连接前停止，当前165账本、身份／旧行、94文件和跨日后台候选尚未实核；DB／HTTP／登录／业务／上传／Grant和六草稿重复更新均0，端口空闲且未取标准锁。真实摘要为ca015的.local/next-batch-preparation/resume-pages-dadb0989-20261019/summary.json，SHA256 a438f60a71ab0de276bbad2f7140bfb3ceaa8dbf5eee83e9948c97fae690c6fa，不是业务验收结果。
