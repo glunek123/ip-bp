@@ -47,6 +47,7 @@ type RequestExecutorOptions = RequestOptions & {
 
 let csrfToken: string | null = null;
 let sessionUserId: string | null = null;
+let sessionGeneration = 0;
 const unauthorizedListeners = new Set<() => void>();
 
 export function setCsrfToken(value: string | null): void {
@@ -55,30 +56,39 @@ export function setCsrfToken(value: string | null): void {
 
 export function setSessionIdentity(userId: string | null): void {
   sessionUserId = userId;
+  sessionGeneration += 1;
 }
 
-function notifyUnauthorized(): void {
+function notifyUnauthorized(generation: number): void {
+  if (generation !== sessionGeneration) return;
   setCsrfToken(null);
-  sessionUserId = null;
+  setSessionIdentity(null);
   for (const listener of unauthorizedListeners) listener();
 }
 
-let csrfRefreshInFlight: Promise<boolean> | null = null;
+let csrfRefreshInFlight: {
+  generation: number;
+  promise: Promise<boolean>;
+} | null = null;
 
-async function refreshCsrfFromSession(): Promise<boolean> {
-  if (csrfRefreshInFlight) return csrfRefreshInFlight;
-  csrfRefreshInFlight = (async () => {
+async function refreshCsrfFromSession(generation: number): Promise<boolean> {
+  if (generation !== sessionGeneration) return false;
+  if (csrfRefreshInFlight?.generation === generation)
+    return csrfRefreshInFlight.promise;
+  const promise = (async () => {
     try {
       const response = await fetch('/api/v1/auth/session', {
         method: 'GET',
         credentials: 'same-origin',
         headers: { Accept: 'application/json' },
       });
+      if (generation !== sessionGeneration) return false;
       if (!response.ok) {
-        if (response.status === 401) notifyUnauthorized();
+        if (response.status === 401) notifyUnauthorized(generation);
         return false;
       }
       const body: unknown = await response.json();
+      if (generation !== sessionGeneration) return false;
       if (!isRecord(body) || typeof body.csrfToken !== 'string') return false;
       const userId =
         isRecord(body.user) && typeof body.user.id === 'string'
@@ -89,7 +99,7 @@ async function refreshCsrfFromSession(): Promise<boolean> {
         userId !== null &&
         userId !== sessionUserId
       ) {
-        notifyUnauthorized();
+        notifyUnauthorized(generation);
         return false;
       }
       sessionUserId = userId;
@@ -99,10 +109,12 @@ async function refreshCsrfFromSession(): Promise<boolean> {
       return false;
     }
   })();
+  const refresh = { generation, promise };
+  csrfRefreshInFlight = refresh;
   try {
-    return await csrfRefreshInFlight;
+    return await promise;
   } finally {
-    csrfRefreshInFlight = null;
+    if (csrfRefreshInFlight === refresh) csrfRefreshInFlight = null;
   }
 }
 
@@ -243,6 +255,7 @@ async function executeRequest<T>(
   options: RequestExecutorOptions,
   parseSuccess: (response: Response, signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
+  const generation = sessionGeneration;
   const controller = new AbortController();
   const signal = options.signal
     ? AbortSignal.any([controller.signal, options.signal])
@@ -281,14 +294,16 @@ async function executeRequest<T>(
         path !== '/auth/session' &&
         path !== '/auth/logout'
       ) {
-        notifyUnauthorized();
+        notifyUnauthorized(generation);
       }
       if (
         apiError.status === 403 &&
         apiError.code === 'CSRF_INVALID' &&
         options.retryOnCsrfInvalid !== false &&
         path !== '/auth/session' &&
-        (await refreshCsrfFromSession())
+        generation === sessionGeneration &&
+        (await refreshCsrfFromSession(generation)) &&
+        generation === sessionGeneration
       ) {
         return await executeRequest(
           path,

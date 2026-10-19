@@ -2,12 +2,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getBlob,
   getJson,
+  onUnauthorized,
   postBlob,
   requestBinary,
   requestJson,
   setCsrfToken,
   setSessionIdentity,
 } from './http';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
 
 afterEach(() => {
   setCsrfToken(null);
@@ -264,14 +273,22 @@ describe('HTTP boundary', () => {
     setCsrfToken('stale-csrf-token');
 
     await expect(
-      requestJson('/customers', { method: 'POST', body: { name: '甲' } }),
+      requestJson('/customers', {
+        method: 'POST',
+        body: { name: '甲' },
+        headers: { 'Idempotency-Key': 'same-command' },
+      }),
     ).resolves.toBeUndefined();
 
     expect(fetch).toHaveBeenCalledTimes(3);
     expect(fetch.mock.calls[1]?.[0]).toBe('/api/v1/auth/session');
     expect(fetch.mock.calls[2]?.[1].headers).toEqual(
-      expect.objectContaining({ 'X-CSRF-Token': 'fresh-csrf-token' }),
+      expect.objectContaining({
+        'X-CSRF-Token': 'fresh-csrf-token',
+        'Idempotency-Key': 'same-command',
+      }),
     );
+    expect(fetch.mock.calls[2]?.[1].body).toBe('{"name":"甲"}');
     setCsrfToken(null);
   });
 
@@ -376,23 +393,192 @@ describe('HTTP boundary', () => {
     const { onUnauthorized } = await import('./http');
     const listener = vi.fn();
     const dispose = onUnauthorized(listener);
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
         new Response(
           JSON.stringify({ code: 'UNAUTHORIZED', message: '请登录' }),
           {
             status: 401,
           },
         ),
-      ),
-    );
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetch);
+    setCsrfToken('expired-token');
+    setSessionIdentity('expired-user');
     await expect(getJson('/customers')).rejects.toMatchObject({
       status: 401,
       code: 'UNAUTHORIZED',
     });
     expect(listener).toHaveBeenCalledTimes(1);
+    await requestJson('/customers', { method: 'POST', body: {} });
+    expect(fetch.mock.calls[1]?.[1].headers).not.toHaveProperty('X-CSRF-Token');
     dispose();
+  });
+
+  it.each(['other-user', 'same-user'])(
+    'ignores a late 401 after a new session for %s',
+    async (nextUserId) => {
+      const lateResponse = deferred<Response>();
+      const listener = vi.fn();
+      const dispose = onUnauthorized(listener);
+      const fetch = vi
+        .fn()
+        .mockImplementationOnce(() => lateResponse.promise)
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+      vi.stubGlobal('fetch', fetch);
+      setCsrfToken('old-token');
+      setSessionIdentity('same-user');
+
+      const oldRequest = getJson('/customers');
+      setCsrfToken('new-token');
+      setSessionIdentity(nextUserId);
+      lateResponse.resolve(
+        new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), { status: 401 }),
+      );
+
+      await expect(oldRequest).rejects.toMatchObject({
+        status: 401,
+        code: 'UNAUTHORIZED',
+      });
+      expect(listener).not.toHaveBeenCalled();
+      await requestJson('/customers', { method: 'POST', body: {} });
+      expect(fetch.mock.calls[1]?.[1].headers).toEqual(
+        expect.objectContaining({ 'X-CSRF-Token': 'new-token' }),
+      );
+      dispose();
+    },
+  );
+
+  it.each([
+    [401, 'new-user'],
+    [200, 'new-user'],
+    [401, 'old-user'],
+    [200, 'old-user'],
+  ] as const)(
+    'ignores a late CSRF refresh with status %i after a session for %s',
+    async (refreshStatus, nextUserId) => {
+      const lateRefresh = deferred<Response>();
+      const refreshStarted = deferred<void>();
+      const listener = vi.fn();
+      const dispose = onUnauthorized(listener);
+      const fetch = vi.fn((...args: [url: string, init: RequestInit]) => {
+        const [url] = args;
+        if (url === '/api/v1/auth/session') {
+          refreshStarted.resolve(undefined);
+          return lateRefresh.promise;
+        }
+        if (url === '/api/v1/customers')
+          return Promise.resolve(
+            new Response(JSON.stringify({ code: 'CSRF_INVALID' }), {
+              status: 403,
+            }),
+          );
+        return Promise.resolve(new Response(null, { status: 204 }));
+      });
+      vi.stubGlobal('fetch', fetch);
+      setCsrfToken('old-token');
+      setSessionIdentity('old-user');
+
+      const oldRequest = requestJson('/customers', {
+        method: 'POST',
+        body: { value: 1 },
+      });
+      await refreshStarted.promise;
+      setCsrfToken('new-token');
+      setSessionIdentity(nextUserId);
+      lateRefresh.resolve(
+        refreshStatus === 401
+          ? new Response(null, { status: 401 })
+          : new Response(
+              JSON.stringify({
+                csrfToken: 'old-refreshed-token',
+                user: { id: 'old-user' },
+              }),
+            ),
+      );
+
+      await expect(oldRequest).rejects.toMatchObject({
+        status: 403,
+        code: 'CSRF_INVALID',
+      });
+      expect(listener).not.toHaveBeenCalled();
+      expect(fetch).toHaveBeenCalledTimes(2);
+      await requestJson('/new-session', { method: 'POST', body: {} });
+      expect(fetch.mock.calls[2]?.[1].headers).toEqual(
+        expect.objectContaining({ 'X-CSRF-Token': 'new-token' }),
+      );
+      dispose();
+    },
+  );
+
+  it('deduplicates refreshes within a session without letting an old finally clear the new refresh', async () => {
+    const oldRefresh = deferred<Response>();
+    const newRefresh = deferred<Response>();
+    let refreshCount = 0;
+    const fetch = vi.fn((url: string, init: RequestInit) => {
+      if (url === '/api/v1/auth/session') {
+        refreshCount += 1;
+        return refreshCount === 1 ? oldRefresh.promise : newRefresh.promise;
+      }
+      const headers = init.headers as Record<string, string>;
+      return Promise.resolve(
+        headers['X-CSRF-Token'] === 'new-refreshed-token'
+          ? new Response(null, { status: 204 })
+          : new Response(JSON.stringify({ code: 'CSRF_INVALID' }), {
+              status: 403,
+            }),
+      );
+    });
+    vi.stubGlobal('fetch', fetch);
+    setCsrfToken('old-token');
+    setSessionIdentity('old-user');
+
+    const oldRequest = requestJson('/old', { method: 'POST', body: {} });
+    await new Promise((complete) => setTimeout(complete, 0));
+    setCsrfToken('new-token');
+    setSessionIdentity('new-user');
+    const newRequests = [
+      requestJson('/new-1', { method: 'POST', body: {} }),
+      requestJson('/new-2', { method: 'POST', body: {} }),
+    ];
+    const newResults = Promise.allSettled(newRequests);
+    await new Promise((complete) => setTimeout(complete, 0));
+    const refreshesBeforeOldSettles = fetch.mock.calls.filter(
+      ([url]) => url === '/api/v1/auth/session',
+    ).length;
+
+    oldRefresh.resolve(new Response(null, { status: 401 }));
+    await expect(oldRequest).rejects.toMatchObject({
+      status: 403,
+      code: 'CSRF_INVALID',
+    });
+    const thirdRequest = requestJson('/new-3', {
+      method: 'POST',
+      body: {},
+    });
+    await new Promise((complete) => setTimeout(complete, 0));
+    const refreshesAfterOldSettles = fetch.mock.calls.filter(
+      ([url]) => url === '/api/v1/auth/session',
+    ).length;
+
+    newRefresh.resolve(
+      new Response(
+        JSON.stringify({
+          csrfToken: 'new-refreshed-token',
+          user: { id: 'new-user' },
+        }),
+      ),
+    );
+    const results = await newResults;
+    await expect(thirdRequest).resolves.toBeUndefined();
+    expect(refreshesBeforeOldSettles).toBe(2);
+    expect(refreshesAfterOldSettles).toBe(2);
+    expect(results).toEqual([
+      { status: 'fulfilled', value: undefined },
+      { status: 'fulfilled', value: undefined },
+    ]);
   });
   it('leaves logout failure handling to the caller', async () => {
     const { onUnauthorized } = await import('./http');
