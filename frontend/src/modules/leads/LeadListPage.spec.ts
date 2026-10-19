@@ -3,7 +3,12 @@ import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useAuthStore } from '../../stores/auth';
-import type { Lead, LeadPushResult, LeadDetail } from '../../api/leads';
+import type {
+  Lead,
+  LeadPushResult,
+  LeadDetail,
+  LeadFormContext,
+} from '../../api/leads';
 import {
   readPendingLeadBatchPush,
   savePendingLeadBatchPush,
@@ -18,6 +23,7 @@ import { readPendingLeadCommands } from './LeadListWorkflowPanel.vue';
 import { ApiError } from '../../api/http';
 import LeadQuickActionsPanel from './LeadQuickActionsPanel.vue';
 import LeadListPage from './LeadListPage.vue';
+import * as leadCsvAdapter from './lead-csv-adapter';
 
 const api = vi.hoisted(() => ({
   listLeads: vi.fn(),
@@ -94,6 +100,53 @@ const batchSummary: Lead = {
   ...summary,
   id: '33333333-3333-4333-8333-333333333333',
 };
+
+const csvFormContext: LeadFormContext = {
+  customers: [
+    {
+      id: 'customer-1',
+      name: '客户甲',
+      rightsHolders: [{ id: 'holder-1', name: '主体甲' }],
+    },
+  ],
+  dictionaries: {
+    caseTypes: [{ value: 'CIVIL', label: '民事' }],
+    infringementTypes: [{ value: 'TRADEMARK', label: '商标权' }],
+    sources: [{ value: 'ONLINE', label: '线上' }],
+    platforms: {
+      ONLINE: [{ value: 'TAOBAO', label: '淘宝' }],
+      OFFLINE: [],
+    },
+  },
+};
+const validCsv = [
+  '客户,权利主体,案件类型,运营,线索来源,平台,侵权类型,线索发现日期,店铺名,店铺ID,是否需要披露,线索备注,商品链接,商品名称,销量,单价,评论数',
+  '客户甲,,民事,,线上,淘宝,商标权,2026-10-19 10:00,甲店铺,,否,,,商品甲,0,1.50,0',
+].join('\r\n');
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+async function uploadAndSelectCsv(wrapper: ReturnType<typeof mount>) {
+  const fileInput = wrapper.get('[data-test="csv-file-input"]');
+  Object.defineProperty(fileInput.element, 'files', {
+    configurable: true,
+    value: [new globalThis.File([validCsv], 'leads.csv', { type: 'text/csv' })],
+  });
+  await fileInput.trigger('change');
+  await flushPromises();
+  await vi.waitFor(() =>
+    expect(wrapper.find('[data-test="csv-row-2"]').exists()).toBe(true),
+  );
+  await wrapper.get('[data-test="csv-row-2"] input').setValue(true);
+}
 
 function detail(overrides: Partial<LeadDetail> = {}): LeadDetail {
   return {
@@ -197,6 +250,134 @@ afterEach(() => {
 });
 
 describe('LeadListPage', () => {
+  it('blocks single and batch workflow entry after an unknown CSV outcome', async () => {
+    api.listLeads.mockResolvedValue({
+      ...result,
+      items: [batchSummary],
+      total: 1,
+    });
+    api.getLeadFormContext.mockResolvedValue(csvFormContext);
+    api.importLeadCsvBatch.mockRejectedValue(new Error('network timeout'));
+    const { wrapper } = await mountWithRoute('/leads');
+    await wrapper.get('input[type="checkbox"]').setValue(true);
+    await wrapper.get('[data-test="open-csv-import"]').trigger('click');
+    await flushPromises();
+    await uploadAndSelectCsv(wrapper);
+    await wrapper.get('[data-test="csv-confirm-request"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="csv-unknown"]').exists()).toBe(true);
+    await wrapper.get('[data-test="csv-cancel-request"]').trigger('click');
+
+    const batchButton = wrapper.get('[data-test="open-batch-push"]');
+    const workflowButton = wrapper.get('[data-test="lead-quick-action"]');
+    expect(batchButton.attributes('disabled')).toBeDefined();
+    expect(workflowButton.attributes('disabled')).toBeDefined();
+    expect(wrapper.get('input[type="checkbox"]').element).toHaveProperty(
+      'disabled',
+      true,
+    );
+    await batchButton.trigger('click');
+    await workflowButton.trigger('click');
+    expect(api.getLead).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-test="submit-lead-workflow"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it('keeps an original CSV attempt when a known rejection arrives after auth changes', async () => {
+    api.listLeads.mockResolvedValue(result);
+    api.getLeadFormContext.mockResolvedValue(csvFormContext);
+    const request = deferred<{ items: [] }>();
+    api.importLeadCsvBatch.mockReturnValue(request.promise);
+    const { wrapper, auth } = await mountWithRoute('/leads');
+    await wrapper.get('[data-test="open-csv-import"]').trigger('click');
+    await flushPromises();
+    await uploadAndSelectCsv(wrapper);
+    await wrapper.get('[data-test="csv-confirm-request"]').trigger('click');
+    await flushPromises();
+    const actorIdentity = 'operator-1:INTERNAL:department-1';
+    const original = readPendingLeadCsvImports()?.[actorIdentity];
+    expect(original).toBeDefined();
+
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    request.reject(new ApiError('请求超出限制', 400, 'VALIDATION_ERROR'));
+    await flushPromises();
+
+    expect(readPendingLeadCsvImports()?.[actorIdentity]).toEqual(original);
+    expect(wrapper.find('[data-test="csv-import-panel"]').exists()).toBe(false);
+  });
+
+  it('keeps a late CSV success pending and skips its refresh after a route change', async () => {
+    api.listLeads.mockImplementation(async (page = 1) => ({
+      ...result,
+      items: [batchSummary],
+      total: 21,
+      page,
+    }));
+    api.getLeadFormContext.mockResolvedValue(csvFormContext);
+    const request = deferred<{ items: [] }>();
+    api.importLeadCsvBatch.mockReturnValue(request.promise);
+    const { wrapper, router } = await mountWithRoute('/leads');
+    await wrapper.get('[data-test="open-csv-import"]').trigger('click');
+    await flushPromises();
+    await uploadAndSelectCsv(wrapper);
+    await wrapper.get('[data-test="csv-confirm-request"]').trigger('click');
+    await flushPromises();
+    const actorIdentity = 'operator-1:INTERNAL:department-1';
+    const original = readPendingLeadCsvImports()?.[actorIdentity];
+    expect(original).toBeDefined();
+
+    await router.push('/leads?page=2');
+    await flushPromises();
+    const listCallsAfterRouteChange = api.listLeads.mock.calls.length;
+    request.resolve({ items: [] });
+    await flushPromises();
+
+    expect(readPendingLeadCsvImports()?.[actorIdentity]).toEqual(original);
+    expect(api.listLeads).toHaveBeenCalledTimes(listCallsAfterRouteChange);
+    expect(wrapper.find('[data-test="csv-import-panel"]').exists()).toBe(false);
+  });
+
+  it('does not accept parser output that settles after a route change', async () => {
+    api.listLeads.mockImplementation(async (page = 1) => ({
+      ...result,
+      items: [batchSummary],
+      total: 21,
+      page,
+    }));
+    api.getLeadFormContext.mockResolvedValue(csvFormContext);
+    const parsedRows = leadCsvAdapter.parseLeadCsvPreview(
+      new globalThis.TextEncoder().encode(validCsv),
+      { formContext: csvFormContext, operatorDisplayName: '运营甲' },
+    );
+    const parser = deferred<typeof parsedRows>();
+    const parseSpy = vi
+      .spyOn(leadCsvAdapter, 'parseLeadCsvPreview')
+      .mockImplementation(() => parser.promise as never);
+    const { wrapper, router } = await mountWithRoute('/leads');
+    await wrapper.get('[data-test="open-csv-import"]').trigger('click');
+    await flushPromises();
+    const fileInput = wrapper.get('[data-test="csv-file-input"]');
+    Object.defineProperty(fileInput.element, 'files', {
+      configurable: true,
+      value: [
+        new globalThis.File([validCsv], 'leads.csv', { type: 'text/csv' }),
+      ],
+    });
+    await fileInput.trigger('change');
+    await vi.waitFor(() => expect(parseSpy).toHaveBeenCalledOnce());
+
+    await router.push('/leads?page=2');
+    await flushPromises();
+    parser.resolve(parsedRows);
+    await flushPromises();
+
+    expect(parseSpy).toHaveBeenCalledOnce();
+    expect(wrapper.find('[data-test="csv-row-2"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="csv-import-panel"]').exists()).toBe(false);
+  });
+
   it('loads a fresh form context before opening CSV import', async () => {
     api.listLeads.mockResolvedValue(result);
     const formContext = {

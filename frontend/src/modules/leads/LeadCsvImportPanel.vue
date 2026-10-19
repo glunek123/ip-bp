@@ -184,12 +184,18 @@ async function chooseFile(
   const controller = new AbortController();
   activeRead = { generation, controller };
   try {
-    const rows = props.parseFile
-      ? await props.parseFile(file, controller.signal, mappingContext.value)
-      : parseLeadCsvPreview(
-          await readBytes(file, controller.signal),
-          mappingContext.value,
-        );
+    let rows: readonly LeadCsvParsedRow[];
+    if (props.parseFile) {
+      rows = await props.parseFile(
+        file,
+        controller.signal,
+        mappingContext.value,
+      );
+    } else {
+      const bytes = await readBytes(file, controller.signal);
+      if (controller.signal.aborted || !mounted) return;
+      rows = await parseLeadCsvPreview(bytes, mappingContext.value);
+    }
     if (
       !mounted ||
       controller.signal.aborted ||
