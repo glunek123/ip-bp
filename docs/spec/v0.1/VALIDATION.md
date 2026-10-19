@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+### 独立CSV模型及纯预览面板的交付边界（2026-10-19）
+
+模型候选 `9659a600456cf6507f240dee3116961a42e60cf2` 的23项纯测试，以及其子提交UI候选 `c83d5972a6715da7ef899fb9ae8720457b8d3ce8` / tree `de63ae44b721a03f03681380dadbd6077b2a19ac` 的15项组件测试分别通过，未声称同次组合门禁。累计恰4源，独立位于原CSV Task，未合入ca015。UI仅收模型快照，发携generation的选择／取消／确认意向；无默认全选、invalid不可选、无业务HTTP／新导入状态，不把意向当服务端授权。
+
+模型stamp-only选择校验曾被主控指出，真实RED3项后以冻结快照＋来源登记修复，最终23/23；UI真实挂载旧VNode的checkbox／cancel／confirm回调曾在换文件后发新generation，RED为3失败／原12通过。最小只读视图投影在渲染时捕获generation，执行时再核当前快照，最终15/15，正常新事件仍通过。隐藏预留ID、披露字段以是／否显示；当前只有客户／主体ID，名称解析仍待适配器，未假造已挂载生产界面。
+
+最终UI raw：panel `ffa28af35b8dad270351224425bcc89b2bb12a5d2d9c6668465d03ece86d7b99`，spec `d0e6ffb6bf9de365396f0a6c4909e7e10023a16a1bc63c74172d2fab4ef2b98b`。模型原raw未变。分别有定向TypeScript／vue-tsc、两文件ESLint和Prettier通过。Node24.21.0／pnpm11.27.0；参考树同package／lock字节的Vitest4.1.11、Vue3.5.42／TestUtils2.5.0／plugin-vue6.0.9、vue-tsc3.3.11、ESLint9.39.5／Prettier3.9.6。原树标准装配的网络失败保留；组件初次runner config loader失败为0测试，随后只改自身ignored配置为native loader真实加载SFC。未改node_modules／registry／缓存／锁文件、未复制源或关闭依赖守卫。初版12项账本保留，最终证据为独立树 `.local/lead-csv-evidence/panel-v2-verification.json`；模型证据 `verification.json`，过程及范围在 `contract.md`。
+
+本片为普通纯预览准备，作者自审和主控源码／hash／实际负例定点复核已完成；未安排独立Task Reviewer，不能称完整CSV独立Review通过。项目标准frontend／context门禁、CSV字节解析、名称解析、路由／宿主接线、提交事务、HTTP／浏览器／数据库验收均未完成。CASE_DIFF后续只读补证目前仅在原清单规划，本轮没有登录、runtime或新增业务写入；原正式FAIL与耗尽额度保持。
+
 ### Lead业务完成、正式收尾失败与额度耗尽（2026-10-19）
 
 运行候选 `e6845104ffc0f59d617e46d90e0b4c22df6b7ef7` / tree `8a7a1cb9ab7bb083ced93261e73523d0d8f3a899`，独立Lead配置受保护发现恰1项、0回调；正式唯一运行expected0／unexpected1、skipped／flaky0、exit1。现成附件确认login1／logout1、leadCreate2／batchPush1，三业务响应均201、UNKNOWN0；`verifyLeadResult`、列表／详情／刷新后的WAITING_REVIEW/v2断言及 `flowCompleted=true` 已到达，正常页面logout204通过。最后 `support.dispose()` 的 `CASE_DIFF` 使正式结果失败，保留原报告，不追认为真实正式PASS。
