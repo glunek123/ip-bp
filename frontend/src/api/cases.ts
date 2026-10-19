@@ -159,6 +159,14 @@ export type CaseList = {
   pageSize: number;
   counts: Record<CaseStage, number>;
 };
+export type CaseListQuery = {
+  q?: string;
+  customerName?: string;
+  rightsHolderName?: string;
+  courtCaseNo?: string;
+  sortBy?: 'createdAt' | 'businessNo' | 'rightsHolderName';
+  sortDirection?: 'asc' | 'desc';
+};
 export type CaseDefendant = {
   id: string;
   kind: 'PERSON' | 'ORGANIZATION';
@@ -4756,7 +4764,7 @@ export async function listCases(
     view?: CaseView;
     stage?: CaseStageFilter;
     stageGroup?: CaseStageGroup;
-  } = {},
+  } & CaseListQuery = {},
 ): Promise<CaseList> {
   if (options.stage && options.stage !== 'all' && options.stageGroup)
     throw new ApiError('案件阶段和阶段组不能同时筛选', 400, 'VALIDATION_ERROR');
@@ -4768,6 +4776,33 @@ export async function listCases(
   if (options.stage && options.stage !== 'all')
     query.set('stage', options.stage);
   if (options.stageGroup) query.set('stageGroup', options.stageGroup);
+  for (const key of [
+    'q',
+    'customerName',
+    'rightsHolderName',
+    'courtCaseNo',
+  ] as const) {
+    const value = options[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'string')
+      throw new ApiError('案件查询条件无效', 400, 'VALIDATION_ERROR');
+    const normalized = value.trim();
+    if (normalized.length > 200)
+      throw new ApiError('案件查询条件最多200个字符', 400, 'VALIDATION_ERROR');
+    if (normalized) query.set(key, normalized);
+  }
+  if (options.sortBy !== undefined) {
+    if (
+      !['createdAt', 'businessNo', 'rightsHolderName'].includes(options.sortBy)
+    )
+      throw new ApiError('案件排序字段无效', 400, 'VALIDATION_ERROR');
+    query.set('sortBy', options.sortBy);
+  }
+  if (options.sortDirection !== undefined) {
+    if (options.sortDirection !== 'asc' && options.sortDirection !== 'desc')
+      throw new ApiError('案件排序方向无效', 400, 'VALIDATION_ERROR');
+    query.set('sortDirection', options.sortDirection);
+  }
   const response = await getJson(`/cases?${query}`, options);
   if (
     !record(response) ||

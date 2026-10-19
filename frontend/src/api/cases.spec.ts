@@ -4149,6 +4149,73 @@ describe('cases API', () => {
     );
   });
 
+  it('encodes normalized list query and sort parameters without changing the strict list response', async () => {
+    const fetchMock = mockJson({
+      items: [],
+      total: 0,
+      page: 2,
+      pageSize: 10,
+      counts: Object.fromEntries(
+        [
+          'PENDING_MATCH',
+          'WAITING_COMPLAINT',
+          'WAITING_COMPLAINT_CONFIRMATION',
+          'WAITING_COMPLAINT_STAMP',
+          'WAITING_FILING',
+          'WAITING_FORMAL_ACCEPTANCE',
+          'WAITING_HEARING',
+          'WAITING_JUDGMENT',
+          'SECOND_INSTANCE',
+          'WAITING_EXECUTION_DOCUMENTS',
+          'WAITING_EXECUTION_CONFIRMATION',
+          'WAITING_EXECUTION_STAMP',
+          'WAITING_EXECUTION_FILING',
+          'EXECUTING',
+          'WAITING_ARCHIVE',
+          'ARCHIVED',
+        ].map((stage) => [stage, 0]),
+      ),
+    });
+    await listCases(2, 10, {
+      q: '  A&B + 案号  ',
+      customerName: '  客户  ',
+      rightsHolderName: '  ',
+      courtCaseNo: 'X/1',
+      sortBy: 'rightsHolderName',
+      sortDirection: 'asc',
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases?page=2&pageSize=10&view=mine&q=A%26B+%2B+%E6%A1%88%E5%8F%B7&customerName=%E5%AE%A2%E6%88%B7&courtCaseNo=X%2F1&sortBy=rightsHolderName&sortDirection=asc',
+    );
+  });
+
+  it('rejects overlong list query text before making a request', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      listCases(1, 20, { q: 'x'.repeat(201) }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported sort values and non-string list filters before fetching', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const invalidOptions = [
+      { sortBy: 'unknown' },
+      { sortDirection: 'sideways' },
+      { q: 12 },
+      { customerName: ['客户'] },
+    ];
+    for (const options of invalidOptions)
+      await expect(listCases(1, 20, options as never)).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('keeps complaint submit capability on a nonempty real list response', async () => {
     mockJson({
       items: [
