@@ -34,6 +34,50 @@ function safeCode(value: unknown): string | undefined {
 }
 
 function safeDetails(value: unknown, code: string): unknown {
+  if (code === 'CSV_IMPORT_REJECTED') {
+    const record = asRecord(value);
+    if (
+      Object.keys(record).length !== 1 ||
+      !Array.isArray(record.failures) ||
+      record.failures.length < 1 ||
+      record.failures.length > 20
+    )
+      return undefined;
+    const allowed = new Set([
+      'NOT_AVAILABLE',
+      'VALIDATION_ERROR',
+      'CUSTOMER_NOT_COOPERATING',
+      'LEAD_NUMBER_EXHAUSTED',
+    ]);
+    const failures = record.failures;
+    if (
+      !failures.every((value: unknown) => {
+        const failure = asRecord(value);
+        return (
+          Object.keys(failure).length === 3 &&
+          Number.isInteger(failure.index) &&
+          (failure.index as number) >= 0 &&
+          (failure.index as number) < 20 &&
+          Number.isInteger(failure.rowNumber) &&
+          (failure.rowNumber as number) >= 2 &&
+          (failure.rowNumber as number) <= 2_097_153 &&
+          typeof failure.code === 'string' &&
+          allowed.has(failure.code)
+        );
+      })
+    )
+      return undefined;
+    return {
+      failures: failures.map((value: unknown) => {
+        const failure = asRecord(value);
+        return {
+          index: failure.index,
+          rowNumber: failure.rowNumber,
+          code: failure.code,
+        };
+      }),
+    };
+  }
   if (
     Array.isArray(value) &&
     value.every((item: unknown) => typeof item === 'string')

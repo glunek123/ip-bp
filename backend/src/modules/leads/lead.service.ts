@@ -13,6 +13,7 @@ import { DatabaseService } from '../../database/database.service';
 import {
   Prisma,
   type LeadBatchPushReceipt,
+  type LeadCsvImportReceipt,
 } from '../../generated/prisma/client';
 import { isUUID } from 'class-validator';
 import { MaterialService } from '../materials';
@@ -38,6 +39,7 @@ import {
   UpdateLeadDto,
 } from './lead.dto';
 import { LeadBatchPushDto } from './lead-batch-push.dto';
+import { LeadCsvImportDto, LeadCsvImportInputDto } from './lead-csv-import.dto';
 
 const MAX_SERIALIZABLE_ATTEMPTS = 3;
 const leadInclude = {
@@ -226,6 +228,35 @@ type LeadPushResponse = {
 };
 type LeadBatchPushResponse = { items: LeadPushResponse[] };
 type LeadBatchFailure = { index: number; code: string };
+type LeadCsvImportResponse = {
+  items: Array<{ rowNumber: number; lead: LeadResponse }>;
+};
+type LeadCsvFailure = { index: number; rowNumber: number; code: string };
+const csvRequiredInputKeys = [
+  'customerId',
+  'rightsHolderId',
+  'caseType',
+  'infringementTypes',
+  'source',
+  'platform',
+  'foundAt',
+  'shopName',
+  'needDisclose',
+  'products',
+  'leadScreenshotContentVersionIds',
+] as const;
+const csvInputKeys = new Set<string>([
+  ...csvRequiredInputKeys,
+  'shopExternalId',
+  'remark',
+]);
+const csvProductKeys = new Set([
+  'url',
+  'title',
+  'quantity',
+  'unitPrice',
+  'commentCount',
+]);
 
 type LeadWithdrawalApplicationResponse = {
   id: string;
@@ -746,42 +777,15 @@ export class LeadService {
                   );
             const businessNo = await this.allocateBusinessNo(transaction);
             const created = await transaction.lead.create({
-              data: {
-                id: leadId,
-                departmentId: actor.departmentId,
+              data: this.leadCreateData(
+                actor,
+                input,
+                normalized,
+                membership.teamId,
+                leadId,
                 businessNo,
-                customerId: input.customerId,
-                rightsHolderId: input.rightsHolderId,
-                responsibleUserId: actor.userId,
-                teamId: membership.teamId,
-                status: 'WAITING_PUSH',
-                caseType: normalized.caseType,
-                source: normalized.source,
-                platform: normalized.platform,
-                foundAt: normalized.foundAtDate,
-                shopName: normalized.shopName,
-                shopExternalId: normalized.shopExternalId,
-                needDisclose: normalized.needDisclose,
-                remark: normalized.remark,
-                creationChannel: 'MANUAL',
-                externalSourceRef: null,
-                products: {
-                  create: normalized.products.map((product, index) => ({
-                    position: index + 1,
-                    url: product.url,
-                    title: product.title,
-                    quantity: product.quantity,
-                    unitPrice: product.unitPrice,
-                    commentCount: product.commentCount,
-                    estimatedAmount: product.estimatedAmount,
-                  })),
-                },
-                infringements: {
-                  create: normalized.infringementTypes.map((type) => ({
-                    type,
-                  })),
-                },
-              },
+                'MANUAL',
+              ),
               include: leadInclude,
             });
             if (input.reservedLeadId !== undefined) {
@@ -850,6 +854,455 @@ export class LeadService {
       }
     }
     throw this.versionConflict();
+  }
+
+  async importBatch(
+    actor: ActorContext,
+    idempotencyKey: string,
+    input: LeadCsvImportDto,
+  ): Promise<LeadCsvImportResponse> {
+    if (!idempotencyKey || idempotencyKey.length > 128) throw this.validation();
+    const items = this.csvItems(input);
+    const originalRequest = {
+      items: items.map(({ rowNumber, input: item }) => ({
+        rowNumber,
+        input: {
+          ...item,
+          infringementTypes: [...item.infringementTypes],
+          products: item.products.map((product) => ({ ...product })),
+          leadScreenshotContentVersionIds: [],
+        },
+      })),
+    };
+    if (Buffer.byteLength(JSON.stringify(originalRequest), 'utf8') > 92_160)
+      throw this.validation();
+    const fingerprint = this.csvFingerprint(originalRequest);
+    try {
+      if (!(await this.access.canAuthorizeNewLead(actor)))
+        throw this.actionForbidden();
+    } catch (error) {
+      throw this.mapAuthorization(error);
+    }
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (tx) => {
+            if (!(await this.access.canAuthorizeNewLead(actor, tx)))
+              throw this.actionForbidden();
+            const receipt = await tx.leadCsvImportReceipt.findUnique({
+              where: this.csvReceiptWhere(actor, idempotencyKey),
+            });
+            if (receipt)
+              return this.replayCsvReceipt(
+                tx,
+                actor,
+                receipt,
+                idempotencyKey,
+                fingerprint,
+              );
+
+            const membership = await tx.departmentMembership.findFirst({
+              where: {
+                userId: actor.userId,
+                departmentId: actor.departmentId,
+                active: true,
+              },
+              select: { teamId: true, team: { select: { status: true } } },
+            });
+            if (
+              !membership ||
+              (membership.teamId !== null &&
+                membership.team?.status !== 'ACTIVE')
+            )
+              throw this.actionForbidden();
+            try {
+              await this.access.authorizeLead(
+                actor,
+                'lead.create',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: actor.userId,
+                  ...(membership.teamId === null
+                    ? {}
+                    : { teamId: membership.teamId }),
+                },
+                tx,
+              );
+            } catch (error) {
+              throw this.mapAuthorization(error);
+            }
+            const normalized: NormalizedBusiness[] = [];
+            const failures: LeadCsvFailure[] = [];
+            for (const [index, item] of items.entries()) {
+              try {
+                normalized.push(this.normalizeBusiness(item.input));
+                await this.assertCustomerAndHolder(
+                  tx,
+                  actor,
+                  item.input.customerId,
+                  item.input.rightsHolderId,
+                  true,
+                );
+              } catch (error) {
+                if (error instanceof NotFoundException) {
+                  failures.push({
+                    index,
+                    rowNumber: item.rowNumber,
+                    code: 'NOT_AVAILABLE',
+                  });
+                } else if (error instanceof BadRequestException) {
+                  failures.push({
+                    index,
+                    rowNumber: item.rowNumber,
+                    code: 'VALIDATION_ERROR',
+                  });
+                } else if (
+                  error instanceof ConflictException &&
+                  (error.getResponse() as { code?: unknown }).code ===
+                    'LEAD_CUSTOMER_NOT_COOPERATING'
+                ) {
+                  failures.push({
+                    index,
+                    rowNumber: item.rowNumber,
+                    code: 'CUSTOMER_NOT_COOPERATING',
+                  });
+                } else {
+                  throw error;
+                }
+              }
+            }
+            if (failures.length) throw this.csvRejected(failures);
+            const result: LeadCsvImportResponse = { items: [] };
+            for (const [index, item] of items.entries()) {
+              let businessNo: string;
+              try {
+                businessNo = await this.allocateBusinessNo(tx);
+              } catch (error) {
+                if (
+                  error instanceof ConflictException &&
+                  (error.getResponse() as { code?: unknown }).code ===
+                    'LEAD_NUMBER_EXHAUSTED'
+                )
+                  throw this.csvRejected([
+                    {
+                      index,
+                      rowNumber: item.rowNumber,
+                      code: 'LEAD_NUMBER_EXHAUSTED',
+                    },
+                  ]);
+                throw error;
+              }
+              const leadId = randomUUID();
+              const created = await tx.lead.create({
+                data: this.leadCreateData(
+                  actor,
+                  item.input,
+                  normalized[index]!,
+                  membership.teamId,
+                  leadId,
+                  businessNo,
+                  'CSV',
+                ),
+                include: leadInclude,
+              });
+              await tx.auditEvent.create({
+                data: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  resourceType: 'lead',
+                  resourceId: leadId,
+                  action: 'lead.created',
+                  details: {
+                    businessNo,
+                    version: 1,
+                    productCount: normalized[index]!.products.length,
+                    infringementCount:
+                      normalized[index]!.infringementTypes.length,
+                    screenshotCount: 0,
+                  },
+                },
+              });
+              result.items.push({
+                rowNumber: item.rowNumber,
+                lead: this.view(created, []),
+              });
+            }
+            await tx.leadCsvImportReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                idempotencyKey,
+                requestFingerprint: fingerprint,
+                originalRequest,
+                resultSnapshot: result,
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.versionConflict();
+        }
+        if (this.isUnique(error)) {
+          const receipt = await this.database.leadCsvImportReceipt.findUnique({
+            where: this.csvReceiptWhere(actor, idempotencyKey),
+          });
+          if (receipt)
+            return this.replayCsvReceipt(
+              this.database,
+              actor,
+              receipt,
+              idempotencyKey,
+              fingerprint,
+            );
+        }
+        throw this.mapAuthorization(error);
+      }
+    }
+    throw this.versionConflict();
+  }
+
+  private csvItems(input: LeadCsvImportDto): LeadCsvImportDto['items'] {
+    if (
+      !input ||
+      !Array.isArray(input.items) ||
+      input.items.length < 1 ||
+      input.items.length > 20 ||
+      input.items.some(
+        (item) =>
+          !item ||
+          !Number.isInteger(item.rowNumber) ||
+          item.rowNumber < 2 ||
+          item.rowNumber > 2097153 ||
+          Object.keys(item).length !== 2 ||
+          !item.input ||
+          typeof item.input !== 'object' ||
+          csvRequiredInputKeys.some((key) => !Object.hasOwn(item.input, key)) ||
+          Object.keys(item.input).some((key) => !csvInputKeys.has(key)) ||
+          typeof item.input.customerId !== 'string' ||
+          typeof item.input.rightsHolderId !== 'string' ||
+          !isUUID(item.input.customerId, '4') ||
+          !isUUID(item.input.rightsHolderId, '4') ||
+          !Array.isArray(item.input.leadScreenshotContentVersionIds) ||
+          item.input.leadScreenshotContentVersionIds.length !== 0 ||
+          !Array.isArray(item.input.products) ||
+          item.input.products.some(
+            (product) =>
+              !product ||
+              typeof product !== 'object' ||
+              Object.keys(product).some((key) => !csvProductKeys.has(key)),
+          ) ||
+          Object.hasOwn(item.input, 'reservedLeadId'),
+      ) ||
+      new Set(input.items.map((item) => item.rowNumber)).size !==
+        input.items.length
+    )
+      throw this.validation();
+    return input.items;
+  }
+
+  private csvReceiptWhere(actor: ActorContext, idempotencyKey: string) {
+    return {
+      departmentId_actorUserId_idempotencyKey: {
+        departmentId: actor.departmentId,
+        actorUserId: actor.userId,
+        idempotencyKey,
+      },
+    };
+  }
+
+  private csvFingerprint(value: unknown): string {
+    const canonical = (part: unknown): unknown =>
+      Array.isArray(part)
+        ? part.map(canonical)
+        : part && typeof part === 'object'
+          ? Object.fromEntries(
+              Object.entries(part)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([key, value]) => [key, canonical(value)]),
+            )
+          : part;
+    return this.fingerprint({
+      action: 'lead.csv-import',
+      request: canonical(value),
+    });
+  }
+
+  private csvRejected(failures: LeadCsvFailure[]) {
+    return new ConflictException({
+      code: 'CSV_IMPORT_REJECTED',
+      message: 'CSV 导入未执行',
+      details: { failures },
+    });
+  }
+
+  private async replayCsvReceipt(
+    tx: Prisma.TransactionClient | DatabaseService,
+    actor: ActorContext,
+    receipt: LeadCsvImportReceipt,
+    idempotencyKey: string,
+    fingerprint: string,
+  ): Promise<LeadCsvImportResponse> {
+    if (
+      receipt.departmentId !== actor.departmentId ||
+      receipt.actorUserId !== actor.userId ||
+      receipt.idempotencyKey !== idempotencyKey ||
+      !(receipt.createdAt instanceof Date) ||
+      Number.isNaN(receipt.createdAt.getTime()) ||
+      !/^[0-9a-f]{64}$/u.test(receipt.requestFingerprint) ||
+      !receipt.originalRequest ||
+      typeof receipt.originalRequest !== 'object' ||
+      Array.isArray(receipt.originalRequest) ||
+      Object.keys(receipt.originalRequest).length !== 1 ||
+      !Object.hasOwn(receipt.originalRequest, 'items')
+    )
+      throw this.corruptReceipt();
+    let originalItems: LeadCsvImportDto['items'];
+    try {
+      originalItems = this.csvItems(
+        receipt.originalRequest as unknown as LeadCsvImportDto,
+      );
+      originalItems.forEach((item) => this.normalizeBusiness(item.input));
+    } catch {
+      throw this.corruptReceipt();
+    }
+    if (
+      this.csvFingerprint(receipt.originalRequest) !==
+      receipt.requestFingerprint
+    )
+      throw this.corruptReceipt();
+    const snapshot = receipt.resultSnapshot;
+    if (
+      !snapshot ||
+      typeof snapshot !== 'object' ||
+      Array.isArray(snapshot) ||
+      Object.keys(snapshot).length !== 1 ||
+      !Object.hasOwn(snapshot, 'items')
+    )
+      throw this.corruptReceipt();
+    const result = snapshot as LeadCsvImportResponse;
+    if (
+      !Array.isArray(result.items) ||
+      result.items.length !== originalItems.length ||
+      result.items.some(
+        (entry, index) =>
+          !entry ||
+          typeof entry !== 'object' ||
+          Object.keys(entry).length !== 2 ||
+          entry.rowNumber !== originalItems[index]!.rowNumber ||
+          !this.isLeadResponse(entry.lead) ||
+          !isUUID(entry.lead.id, '4') ||
+          entry.lead.departmentId !== actor.departmentId ||
+          entry.lead.responsibleUserId !== actor.userId ||
+          entry.lead.customerId !== originalItems[index]!.input.customerId ||
+          entry.lead.rightsHolderId !==
+            originalItems[index]!.input.rightsHolderId ||
+          entry.lead.creationChannel !== 'CSV' ||
+          entry.lead.externalSourceRef !== null ||
+          entry.lead.status !== 'WAITING_PUSH' ||
+          entry.lead.version !== 1 ||
+          entry.lead.pushedAt !== null ||
+          entry.lead.pushedByUserId !== null ||
+          entry.lead.reviewDecision !== null ||
+          entry.lead.evidenceDecision !== null ||
+          !this.csvBusinessSnapshotMatches(
+            originalItems[index]!.input,
+            entry.lead,
+          ) ||
+          entry.lead.leadScreenshotContentVersionIds.length !== 0,
+      ) ||
+      new Set(result.items.map((entry) => entry.lead.id)).size !==
+        result.items.length
+    )
+      throw this.corruptReceipt();
+    const ids = result.items.map((entry) => entry.lead.id);
+    const leads = await tx.lead.findMany({
+      where: { departmentId: actor.departmentId, id: { in: ids } },
+      select: {
+        id: true,
+        departmentId: true,
+        responsibleUserId: true,
+        teamId: true,
+      },
+    });
+    const byId = new Map(leads.map((lead) => [lead.id, lead]));
+    const failures: LeadCsvFailure[] = [];
+    for (const [index, entry] of result.items.entries()) {
+      const lead = byId.get(entry.lead.id);
+      if (
+        !lead ||
+        lead.departmentId !== actor.departmentId ||
+        lead.responsibleUserId !== entry.lead.responsibleUserId ||
+        lead.teamId !== entry.lead.teamId
+      ) {
+        failures.push({
+          index,
+          rowNumber: entry.rowNumber,
+          code: 'NOT_AVAILABLE',
+        });
+        continue;
+      }
+      try {
+        await this.access.authorizeLead(
+          actor,
+          'lead.create',
+          {
+            departmentId: lead.departmentId,
+            responsibleUserId: lead.responsibleUserId,
+            ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
+          },
+          tx,
+        );
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+        failures.push({
+          index,
+          rowNumber: entry.rowNumber,
+          code: 'NOT_AVAILABLE',
+        });
+      }
+    }
+    if (failures.length) throw this.csvRejected(failures);
+    if (receipt.requestFingerprint !== fingerprint)
+      throw this.idempotencyConflict();
+    return result;
+  }
+
+  private csvBusinessSnapshotMatches(
+    input: LeadCsvImportInputDto,
+    lead: LeadResponse,
+  ): boolean {
+    const normalized = this.normalizeBusiness(input);
+    return (
+      lead.caseType === normalized.caseType &&
+      lead.source === normalized.source &&
+      lead.platform === normalized.platform &&
+      lead.foundAt === normalized.foundAtDate.toISOString() &&
+      lead.shopName === normalized.shopName &&
+      lead.shopExternalId === normalized.shopExternalId &&
+      lead.needDisclose === normalized.needDisclose &&
+      lead.remark === normalized.remark &&
+      JSON.stringify([...lead.infringementTypes].sort()) ===
+        JSON.stringify([...normalized.infringementTypes].sort()) &&
+      lead.products.length === normalized.products.length &&
+      lead.products.every((product, index) => {
+        const source = normalized.products[index]!;
+        return (
+          isUUID(product.id, '4') &&
+          product.position === index + 1 &&
+          product.url === source.url &&
+          product.title === source.title &&
+          product.quantity === source.quantity &&
+          product.unitPrice ===
+            new Prisma.Decimal(source.unitPrice).toFixed(2) &&
+          product.commentCount === source.commentCount &&
+          product.estimatedAmount === source.estimatedAmount.toFixed(2)
+        );
+      })
+    );
   }
 
   async update(actor: ActorContext, id: string, input: UpdateLeadDto) {
@@ -2016,6 +2469,51 @@ export class LeadService {
       select: { id: true },
     });
     if (link === null) throw this.notFound();
+  }
+
+  private leadCreateData(
+    actor: ActorContext,
+    input: Pick<CreateLeadCommand, 'customerId' | 'rightsHolderId'>,
+    normalized: NormalizedBusiness,
+    teamId: string | null,
+    leadId: string,
+    businessNo: string,
+    creationChannel: 'MANUAL' | 'CSV',
+  ): Prisma.LeadUncheckedCreateInput {
+    return {
+      id: leadId,
+      departmentId: actor.departmentId,
+      businessNo,
+      customerId: input.customerId,
+      rightsHolderId: input.rightsHolderId,
+      responsibleUserId: actor.userId,
+      teamId,
+      status: 'WAITING_PUSH',
+      caseType: normalized.caseType,
+      source: normalized.source,
+      platform: normalized.platform,
+      foundAt: normalized.foundAtDate,
+      shopName: normalized.shopName,
+      shopExternalId: normalized.shopExternalId,
+      needDisclose: normalized.needDisclose,
+      remark: normalized.remark,
+      creationChannel,
+      externalSourceRef: null,
+      products: {
+        create: normalized.products.map((product, index) => ({
+          position: index + 1,
+          url: product.url,
+          title: product.title,
+          quantity: product.quantity,
+          unitPrice: product.unitPrice,
+          commentCount: product.commentCount,
+          estimatedAmount: product.estimatedAmount,
+        })),
+      },
+      infringements: {
+        create: normalized.infringementTypes.map((type) => ({ type })),
+      },
+    };
   }
 
   private normalizeBusiness(
