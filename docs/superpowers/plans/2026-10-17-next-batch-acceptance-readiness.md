@@ -1,5 +1,12 @@
 # 下一批最小页面闭环与一次性确认清单
 
+## CSV并行纯准备的唯一文件边界
+
+- 原“准备线索CSV预览导入契约”任务继续独占 `lead-csv-preview.ts`／直接spec、`LeadCsvPreviewPanel.vue`／直接spec。先关闭修正finding并在稳定输入执行标准前端类型、全部前端Vitest、前端ESLint、四源格式及bundle；保留原失败，不用替代工具链冒标准门禁。
+- “准备线索CSV解析适配契约”任务只新增 `lead-csv-parser.ts`／直接spec。第一阶段纯UTF-8／CSV词法输入为bytes和显式正整数资源界限，输出保留起始物理行的只读cells；BOM／转义／引号内换行／畸形／限额及输入不变异有聚焦反例。不默定产品文件上限，不直接生成业务有效行；身份、多商品表达、日期和重复来源待适配合同。
+- “准备线索CSV导入宿主接线”任务只新增 `LeadCsvImportPanel.vue`／直接spec。使用 `open`、`contextKey` 和注入的异步 `parseFile(file, signal)`，复用原唯一会话模型管理失效和选择。确认仅交当前来源冻结selection意向，不调用单笔create或伪造批量成功；生产列表／route挂载未在本阶段领取。
+- 公共批量API／schema／事务须先冻结TD-SLICE最小接口并由唯一Owner处理，不能从“明确选择”推导整批原子性，也不能以Promise.all单笔请求代替批次合同。全部任务均无新增真实库／HTTP／浏览器／账号／Grant权限，未消耗或恢复任何验收额度；主控负责Git和正式文档，子任务不争写共享文件。
+
 ## 本轮收尾补证方案（离线已执行，真实只读方案未启动，2026-10-19）
 
 `f6e3a82f`只修检验器的CASE身份锚：Lead原本允许新增Case为0，却因两个已登记Lead ID数组为truthy，进入EF的“新增1个Case”检查。两次创建／批推各201、列表／详情／刷新v2及退出已在e684真实到达，独立closure通过；这些事实不需要重做。原formal exit1仍保留，25项纯测和独立复审不等于修后整段真实E2E通过。

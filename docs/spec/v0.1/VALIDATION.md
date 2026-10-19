@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### CSV两项finding的静态关闭边界（2026-10-19）
+
+原CSV Task在c83d5972之上仅改面板及直接spec；固定raw分别为 `6f51bc6c5e60daa129a5e8442a829a99c4b12c63b8f1e7fdda911850c15f5f65`、`bdf05628aed10dc9e0d44f1bdc9038eaf42a52d5a4f180d0113b4534c42a8485`。原独立Standards Reviewer确认上海时区纯展示、按需ElButton／ElCheckbox关闭I1／M1，Standards ACCEPTED、C/I/M0；独立Spec Reviewer核raw foundAt不变、旧generation闭包及真实DOM测试仍在，Spec ACCEPTED、C/I/M0。二者均只读，未代作者运行测试，不能据此称修后组件或完整标准门禁已通过。
+
+修后定向组件命令在Vite/esbuild读取工作树上级目录时Access denied，配置加载前exit1；原Task已对同命令申请正式沙箱审批，当前待结果，未绕目录／权限或改用替代工具报告标准通过。已成功的离线冻结安装和修前类型检查分别保留，最终类型／全部前端Vitest／前端ESLint／四源格式／bundle仍按稳定新输入核实际结果。解析及宿主并行准备不改变此审查对象，也没有新增DB、HTTP、登录或业务验收。
+
 ### CASE_DIFF封存输入离线重放与CSV审查进展（2026-10-19）
 
 准备树固定helper raw `601216f0a2da4885b2301cc9c11dbc703acd18243bd84f929af292c01cc68ec9`。仅从原e684 Git blob与现helper提取纯比较声明，8个封存安全输入先核bytes／SHA；165表旧PK行及sequence逐项保持，新增项仅为已批准的Lead增量，两个真实Lead UUID按PostgreSQL jsonb主键文本hash精确对应唯一两条新增行。旧函数在该实际映射报CASE_DIFF，修后通过；5个内存反例分别拒绝旧行漂移、额外Case、错Lead、counter异常及旧Case变化。未重建原行payload、未导入helper运行环境或调用prepare／capture，登录、HTTP、DB、服务、新业务对象和材料文件操作均0。
