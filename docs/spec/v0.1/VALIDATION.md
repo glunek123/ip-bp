@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### 今日离线发现通过与原R2停止断点（2026-10-19）
+
+原Runner在clean dadb0989上仅修自有ignored配置的绝对testDir，原生CLI两指定文件恰2项、callback0／webServer0、exit0，旧No tests found与配置保留，tracked产品／helper不变。后续原R2 fullCID只读inspect running=false，故在连接前停止，当前165账本、身份／旧行、94文件和跨日后台候选尚未实核；DB／HTTP／登录／业务／上传／Grant和六草稿重复更新均0，端口空闲且未取标准锁。真实摘要为ca015的.local/next-batch-preparation/resume-pages-dadb0989-20261019/summary.json，SHA256 a438f60a71ab0de276bbad2f7140bfb3ceaa8dbf5eee83e9948c97fae690c6fa，不是业务验收结果。
+
+父级依据用户恢复开发与验收指令，要求先核原容器完整ID／pinned17.11／持久卷／15438绑定后正常恢复同一个容器，再做今日全部前置。该续单已成功投递原Runner，当前尚无执行／healthy证据，不能把投递成功当docker start已成功。旧行／时间／候选任意变化即停，任何新清理对象不受昨日六行许可覆盖，不新建库／容器、不改配置规避、不迁移或补权。公证仍等用户原窗口恢复，未重复发送。
+
 ### 跨日恢复只读核对与全域差异盘点（2026-10-19）
 
 用户明确恢复原任务并行及原未消耗两页范围；主控只读实核ca015 clean dadb09892b1b1bedd15789b8f9066cfa7f0d3617、独立文档树54d97fee，原公证cfb3d2b3下39源仍全部符合冻结manifest efea8516、dirty39／staged0。昨日exact-expiry summary 828de836与新基线保留，未再次执行六行更新。正常runtime24.21.0／pnpm11.27.0、文档树开工context检查通过；本轮没有真实capture、DB查询／写入、HTTP、登录、浏览器、服务或迁移新结果。
