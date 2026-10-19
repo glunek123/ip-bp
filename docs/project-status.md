@@ -1,5 +1,11 @@
 # 当前开发状态
 
+2026-10-19 checkpoint代码已固定8c1bc8c761a726b4a187e6daf6b5c0863cca9e54，仅原五份验收文件；独立Sol对最终五raw终核C/I/M0，关闭额外表漏检、分页GET误拦与文案编码问题。直接pure26/26一轮、最后helper18/18、root类型及定向Lint／格式通过；原EF入口现为已保存Case专用，来源／上传链不再可执行。下一步封存文档／快照后固定完整候选，生成绑定真实批准／五hash／HEAD／tree的ignored receipt，再交原Runner今日前置和先EF后Lead；新增登录尚未执行。公证166链只做独立准备，不混当前165。Demo五包和M00–M10证据边界已同步路线图，长期／待核范围不计本轮新增任务。
+
+2026-10-19授权已补齐：用户02:01:49 UTC消息Sentinel_99b86fc7c7ac81918193c5af43f85438明确允许补1次EF测试登录会话，父级已完整转交原文。用途仅复用原Case／filing／文件完成原剩余2反馈POST，不新增账号／Grant／Case／文件／上传，不挪用H42原1session／2Lead／3POST。完整证据已交原Runner并注明暂非GO；主控继续等待checkpoint纯验证、独立审查及精确候选，今日前置通过才由其先EF后线索、首异常停。此前“缺额外登录批准”为历史断点，不再重复申请。
+
+2026-10-19准备续办：父级明确批准在等待额外EF会话答复期间继续原案checkpoint代码／纯验证／独立审查，以及公证d8ab9b3e独立集成准备与最小真实验收计划。原EF失败只停止该次运行，不暂停这些已批准准备工作。checkpoint必须绑定原摘要566b1f70、精确Case／filing／三来源回执／两文件与当次after，区分真实priorConsumed和当前发送；缺额外登录授权回执仍在capture／webServer前拒绝。本轮仅允许准备，ca015保持dadb，不执行新登录、HTTP、迁移、Grant或公证记录写入；Demo差异和其余模块按实际证据层级补核，不扩简化业务范围。
+
 2026-10-19 EF测试流程窄修已固定：本地提交a4bf37923b4162c8aca6369bccd0e648a0306adf仅改原页面spec及直接纯测试。来源准备成功后点击现有“刷新”，先监听新列表GET，再等待该Request自身response为200，保留原精确案号可见断言，避免接受刷新前慢请求的响应。实际纯测试4/4、两文件Lint／格式、frontend及root类型、diff检查通过；整体typecheck尝试在backend Prisma generate的用户级engine utime EPERM停止，未重试生成或改缓存。未执行浏览器／DB／HTTP，也未更新ca015的dadb候选。修复不允许整份spec重跑；原Case／来源／文件额度已消耗，真实续验仍须严格checkpoint与额外1个EF登录会话授权，保留线索原会话额度。
 
 2026-10-19公证提交结果：用户在原窗口明确授权这一次require_escalated，原Owner正常提交d8ab9b3eb3700f9e3fc67b2f33b0e2ca27da2361／tree dfd7bc7517a012602d05928bc915ea9180dc14a3，parent cfb3d2b3。主控已只读复核commit恰39路径、39源hash全同已审manifest6537c55c、原树clean；没有删锁、改ACL或换目录／账号。格式M1已关，静态C0/I0/M0，不当作真实DB／HTTP／页面或迁移通过。公证所有子任务已结束，主控仅登记交付，未合入ca015、未启动后续实施；此前权限阻塞保留为已解决历史。当前开发仅准备EF测试编排窄修，真实原案续验仍待额外EF会话及严格checkpoint固定，不自动复跑。

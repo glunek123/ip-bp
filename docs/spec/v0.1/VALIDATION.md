@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+### EF原案checkpoint实现与离线验证（2026-10-19）
+
+五文件仅改minimal-page-acceptance.mjs／.d.mts／.test.mjs与原EF页面spec／直接pure test；产品／SQL／权限／Lead spec／配置不变。EF入口专用于Case6c151c42-3054-466b-9a0e-a8daaf99fbde及filingc1fab17d-d583-45ad-bf36-f3492c5d8b9b，删除当前可执行fresh建案／上传链，原实现保留Git历史。授权回执须核真实批准原文SHA、消息ID／时刻／精确额度、完整候选HEAD／tree／clean及五路径raw；原summary／trace／来源回执／两CV／165表旧行与96文件在只读预检核定，缺证据先于capture／webServer拒绝。priorConsumed与当前实发分开，当前只1login、2反馈POST、1logout；H42仍留原1session／2Lead／3POST。
+
+独立预审和主控实读发现并修复：封存表正则误拒_prisma_migrations、未核当前表全集、预算中文与镜像测试同损坏、分页GET误受写请求query限制。最终无U+FFFD／CRLF，actual snapshot函数假client覆盖旧账本／非法表名／额外表；预算测试从实际spec提取文案，包含分页GET、跨host和带query写反例。三直接pure文件含Lead共享回归一轮26/26，最后局部修复后受影响helper18/18、root tsc、helper Lint／格式通过，其余未变输入复用先前五文件检查；不将分轮数字相加造覆盖。最终五raw（helper／types／helper test／EF spec／EF test）为04511f49cbc6ad043b09981593d6af4b8f31709adefadc89066a4f2d0a307bc8、3f6cd18f362dc70d7cced5831ef79d89e46a70eb77a0c23343e000a47dc0710e、8e9f116756c9168203bfefdb531c549f81a76295e796b5610474e8f5f79a1b10、78357a9fbdfee6810e7946161696a0dbec586317b2f7bdb3edb304898c4c3ced、fbade15a41c9850a4f304359d6258b42564eb4bfb80b0e9a58deab3807cb45b3。独立Sol已按上述raw终核C/I/M0并独立核原summary及六配套proof；本地源码提交8c1bc8c761a726b4a187e6daf6b5c0863cca9e54，固定最终候选及receipt后交原Runner。本条没有运行新登录／DB／HTTP／浏览器／完整verify／NT006，不把编码中的live检查说成已执行。
+
+### 公证独立集成准备及Demo模块证据对账（2026-10-19，只读）
+
+独立Sol核d8ab9b3e的39路径对ca015 dadb／准备树add50均无文件级重叠差异，parent cfb3d2b3的11份来源分支公证规格／状态文档须另同步；未执行cherry-pick、编译或组合验证。来源有166个迁移目录，新20261018000100_notary_record_corrections原始SQL SHA256 0af29f0bd3ae041e4485d80a3a51f1ec259ea437e588e3f7402cc557f322c5f2。当前两页165源／账本gate会拒绝先合源或先应用该迁移，故公证实际集成与迁移必须在两页收尾后独立进行。最小事项／身份／Grant／图片SHA及大小尚未live核定，条件预算和缺口已并入原一次性计划；没有执行新增DB、Grant、迁移、HTTP或页面。39文件静态C0/I0/M0及508纯测试不扩大为真实验收。
+
+另由原Luna盘点任务对M00–M10、正式能力01–27及最新固定验证记录逐域核对，结论同步路线图：明确五包为CSV、线索／案件合法批归档、线索可恢复删除／确认后撤销、可解除案件合并组、服务端列表能力；均是有依据的独立队列，不是新增开工授权。客户／资产／协议／人工台账、CA018、原NT、Demo A有限内部费用／证物／结算等按各已验子集保留，不将旧Pending覆盖新记录；报表指标、模板整包数据、退款及其余批动作未冻结，OCR／爬虫延期、E03自动集成、生产条件另列，不计当前确定包数。本次未重跑这些模块测试、未声称全模块完成。
+
 ### EF陈旧列表测试流程窄修（2026-10-19）
 
 本地提交a4bf37923b4162c8aca6369bccd0e648a0306adf仅涉及tests/e2e/execution-feedback-minimal-page.spec.ts与tests/support/execution-feedback-minimal-page.test.mjs，raw SHA分别8ba02278ecded431576ac07e624c31dc3e5d49d89c1226fcbd11800c1c74bee3、dc9fb402ce40bb7a5532f15b32947d433996e69729b50a5bacbb2b904bd56897。来源准备后先监听新GET /api/v1/cases、点击已有刷新按钮、等待该Request自己的response为200，随后保留原精确businessNo链接断言；产品、预算、业务body／key、配置与超时均未修改。纯测试提取执行实际函数，以假Page验证监听→点击→新Request→其响应→可见断言，防止先前已发请求的慢响应误充本次刷新；RED后GREEN，最终4/4通过。两文件ESLint／Prettier、frontend vue-tsc、root tsc与diff检查通过，按未变输入复用作者结果。

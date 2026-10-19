@@ -1,5 +1,9 @@
 # 下一批最小页面闭环与一次性确认清单
 
+2026-10-19额外会话已批准：用户02:01:49 UTC／Sentinel_99b86fc7c7ac81918193c5af43f85438明确回复允许，父级完整转交，原Runner已收到原文。仅增1次EF登录／session用于原Case 6c151c42-3054-466b-9a0e-a8daaf99fbde的2次原剩余反馈业务POST，账号／Grant／Case／文件／上传／来源POST均不增加；H42原1session／2Lead／3POST保留。checkpoint与独立审查、精确候选、今日标准前置仍是运行前提，尚未发GO。以下“待批准”只保留为更早断点，不再重复询问该会话。
+
+本轮EF测试入口收窄为上述已保存原案的专用checkpoint续验：当前spec不再含可调用的fresh建案／上传链，full prepare缺精确mode拒绝。原fresh实现及失败证据完整保留于dadb等Git历史与原证据目录，未来新案测试须另定任务／额度，不能用本轮resume参数解锁。既有配置的EF preflightOnly仍执行固定receipt／证据门槛且只返回窗口，不读取credential或发HTTP；这不等于开放无mode的正式续验。
+
 2026-10-19测试刷新窄修已提交a4bf37923b4162c8aca6369bccd0e648a0306adf：仅原EF页面spec和直接纯测试，4/4及定向类型／Lint／格式通过。该补丁等待新GET请求自身200再查精确案号，不改变产品或预算；ca015未更新。原来源复用checkpoint尚待实现／审查，额外EF登录会话尚未获批，不能据此运行整份spec或重建来源。以下断点续验草案仍非运行指派。
 
 2026-10-19来源保留后的最小续验草案（尚未获新运行授权）：原EF已创建Case `6c151c42-3054-466b-9a0e-a8daaf99fbde`／`CA-20261019-0001` EXECUTING/v3，mailing `edc4c890-0a88-477b-8318-fea0e93586a0`、filing `c1fab17d-d583-45ad-bf36-f3492c5d8b9b`及两43byte CV／原三回执保留，反馈0；不得重造、重传或重放来源。固定受审修复后，先唯一Runner只读核当前身份／旧行文件／165／六EXPIRED及原Case、真实filing、两CV、来源receipt、反馈仍0，以上一轮after为新保护基线，允许旧Case只增加本次精确反馈／更正子事实，Case阶段／v3不变。恢复页面需先点击真实“刷新”并等待由该动作发起的成功列表GET，再按原案号进入，登记feedback revision1→原因更正revision2→刷新保持→退出，业务仅2POST。线索页仍另用原H42登录创建2lead／一次批推3POST。
@@ -83,6 +87,12 @@ pnpm test:e2e tests/e2e/lead-batch-push-minimal-page.spec.ts --config playwright
 - 可复用的原证据仍只覆盖原输入：2ef6a739完整verify139工具/2510前端/2351后端、NT006/双构建、EF14分段API及只读3项、165 owned/官方升级/历史保持。新8测试文件不是新产品完整门禁或真实页面通过；不重复迁移/resolve，不重跑原14或full8 API。PRIMARY/门户、真实24h过期、流中撤权、非current版本、20MiB/50MiB等边界、未知恢复、回滚/terminal等未验项继续保留，不夹入这两条页面。
 
 ## 5. 原公证三项建议（后续独立规格已确认）
+
+2026-10-19独立准备已核：d8ab9b3e／tree dfd7bc75的39路径与ca015 dadb、主准备树已提交版本均无文件级重叠改动；这是只读diff结论，尚未实际合入或验证组合。来源parent cfb3d2b3另有11份SD-61规格／状态文档，集成时须同步已批准语义，不能只拿代码而丢掉契约。公证代码及迁移不进入当前严格165两页候选。
+
+来源目录实数166，新SQL原始SHA256为0af29f0bd3ae041e4485d80a3a51f1ec259ea437e588e3f7402cc557f322c5f2。当前两页prepare的FROZEN_SOURCE在capture／PG前要求165源；先合公证源会拒绝。若先应用公证迁移但仍用165源码，则LEDGER要求的165成功＋唯一精确历史行被新账本破坏，也会拒绝。这是源码推论，不是本轮DB实测。实际顺序固定为先收尾当前两页165验收，再独立集成公证、核166新链、申请迁移及业务预算，不能为并行而放宽两页gate。
+
+新增数据库动作仅列申请，不执行：迁移20261018000100_notary_record_corrections增加notary.record.correct枚举和3张不可变更正表，新Action目录无自动Grant。最小验收先只读核两条同范围WAITING_UNBOX事项、一个内部合法开箱／更正身份及一个原已关联外部身份；目前没有已核可用ID／Grant／照片字节，不造对象或恢复旧权限。若可复用这些身份／事项，条件预算为0新事项／账号／角色；需要的精确新Grant须另批。两张照片若无可复用合法CV，则先固定每份SHA／字节，申请2draft POST＋2content PUT，不猜字节数。正常2次opening＋2次更正为4业务POST；若另批受控未知结果及同body/key核实，再加1请求；旧版／异参同键／外部拒绝各1可选负例使上限8。内部／外部各1session共2，全部另用新批准预算，绝不复用当前两页或旧耗尽额度。迁移、未知注入、业务写入和身份Grant变化均须精确批准；没有合法外部关联就保留外部有效读缺口，不临时造关联。真实验证需保留原evidence／opening／费用／Case／文件锚，更正仅新增revision、审计与回执，不推进流程version；仅文件级可合与508纯测试都不代表这些真实证明。
 
 以下保留2026-10-17建议来源；三点已由后续用户确认，最小规格及准确范围以独立提交cfb3d2b3为准，原公证Task当前已恢复并在独立目录实施代码／纯测试。特别是来源授权沿原SELF／TEAM／DEPARTMENT，不从旧建议的TEAM／DEPARTMENT限制排除原SELF；不再等待三点业务答复。其公证schema／API／UI不并入本页冻结运行候选，仍无迁移执行、真实账号／Grant或数据库验收授权。
 
