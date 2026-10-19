@@ -1216,7 +1216,7 @@ test('preserved EF live proof rejects changed case, source receipts, CVs and fee
       },
     ],
     materialReferences: seal.contentVersionIds.map((id) => ({
-      resource_type: 'CASE',
+      resource_type: 'case',
       resource_id: seal.caseId,
       content_version_id: id,
     })),
@@ -1239,6 +1239,13 @@ test('preserved EF live proof rejects changed case, source receipts, CVs and fee
         '00000000-0000-4000-8000-000000000000';
     },
     (copy) => {
+      copy.materialReferences[0].resource_type = 'CASE';
+    },
+    (copy) => {
+      copy.materialReferences[0].content_version_id =
+        '00000000-0000-4000-8000-000000000000';
+    },
+    (copy) => {
       copy.feedbacks.push({ id: 'existing' });
     },
   ]) {
@@ -1246,6 +1253,40 @@ test('preserved EF live proof rejects changed case, source receipts, CVs and fee
     change(copy);
     assert.throws(() => assertPreservedEfLiveState(copy));
   }
+});
+
+test('preserved EF material reference SQL matches both production freeze paths', async () => {
+  const service = await readFile(
+    new URL(
+      '../../backend/src/modules/materials/material.service.ts',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  for (const method of [
+    'freezeCaseExecutionMailingReferences',
+    'freezeCaseExecutionFilingReferences',
+  ]) {
+    const section = service
+      .split(`async ${method}(`)[1]
+      ?.split('\n  async ')[0];
+    assert.ok(
+      section?.includes('await transaction.materialReference.create({'),
+    );
+    assert.ok(section.includes("resourceType: 'case'"));
+    assert.equal(section.includes("resourceType: 'CASE'"), false);
+  }
+  const helper = await readFile(
+    new URL('./minimal-page-acceptance.mjs', import.meta.url),
+    'utf8',
+  );
+  const query = helper.match(
+    /materialReferences: await rows\(\s*"([^"]+)"\s*,\s*\[id, preservedEfCheckpoint\.contentVersionIds\]/u,
+  )?.[1];
+  assert.equal(
+    query,
+    "SELECT resource_type,resource_id::text,content_version_id::text FROM material_references WHERE resource_type='case' AND resource_id=$1 AND content_version_id=ANY($2::uuid[])",
+  );
 });
 
 test('preserved EF 165-table checkpoint protects old rows and admits only exact new facts', async () => {

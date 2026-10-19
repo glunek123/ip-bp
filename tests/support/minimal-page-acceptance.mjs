@@ -562,7 +562,7 @@ async function readPreservedEfLiveState(client) {
       [filing],
     ),
     materialReferences: await rows(
-      "SELECT resource_type,resource_id::text,content_version_id::text FROM material_references WHERE resource_type='CASE' AND resource_id=$1 AND content_version_id=ANY($2::uuid[])",
+      "SELECT resource_type,resource_id::text,content_version_id::text FROM material_references WHERE resource_type='case' AND resource_id=$1 AND content_version_id=ANY($2::uuid[])",
       [id, preservedEfCheckpoint.contentVersionIds],
     ),
     feedbacks: await rows(
@@ -638,7 +638,7 @@ export function assertPreservedEfLiveState(state) {
         !state.materialReferences.some((row) => row.content_version_id === id),
     ) ||
     state.materialReferences.some(
-      (row) => row.resource_id !== seal.caseId || row.resource_type !== 'CASE',
+      (row) => row.resource_id !== seal.caseId || row.resource_type !== 'case',
     ) ||
     state.feedbacks?.length !== 0 ||
     state.followupReceipts?.length !== 0

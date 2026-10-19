@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### 原案LIVE材料引用类型根因（2026-10-19）
+
+候选0cd41fc4e012137e7c4e348e9eba54110a73ab3d／tree832cc24dc8f0be62f6c9cb26e64e95527eee9d12。首个ignored只读probe的child字符串转义错误先于helper解析失败，原件保留；仅修两处换行转义、实际子脚本仅编译通过后，protected --list真实得到PRESERVED_EF_LIVE／MINIMAL_PAGE_PRESERVED_EF_LIVE／同causeCode。摘要e84c0473917ff845cfcc6c99e47d14e8b30ff2b75ccdc611579974ef1544acb9及probe-result／closure-result已独立核对；0服务／回调／session／HTTP／业务写入，165表旧行／catalog／sequence和96文件保持、锁释放。
+
+实际helper查询material_references使用resource_type='CASE'且断言也要求CASE；MaterialService的mailing和filing两强freeze真实创建resourceType:'case'，同表既有读取亦小写。两命令的audit_events使用大写CASE，不能套入材料引用。原封存typed mailing／filing各新增1、material references新增2，8份既有私密facts hash核同且其余Case／external／source／三回执条件均吻合，反馈／followup仍0；因此错误筛选会排除真实引用而必拒。修复限于精确小写case的SQL及断言，保持2CV、同案、原文件／权限／预算全部门槛；不修改产品、SQL或既有引用。纯回归及独立复审绑定后续固定源，真正前置及页面仍分别等待原Runner证明。
+
+两源最终raw SHA256：helper 1b9950f4d8cc9b2b128012f99ad95ffe6898d8d048f34e3f88a36bf655ff327c，直接test 3a3ce9d425d266288afb6664688fe703a749f672b9291dca1939d33dfcaf2881。实际生产freeze方法及helper读取SQL跨源对照先RED 2/2失败，修后直接pure23/23；大写／混合引用类型、错Case／CV等仍拒绝，root tsc、两文件ESLint／Prettier、diff检查通过。没有复跑未变的产品／完整门禁或使用既有运行额度；源码检查不能替代下一次只读前置与页面结果。
+
 ### checkpoint前置失败与安全诊断（2026-10-19）
 
 运行候选22cd51e80a217ea36e579c0cde787bc1e3196fe3／tree ff11a66b7f19f59f916d77bfa91eccf42181b316。首次ignored普通Node脚本错误地额外调用受保护prepare，正式命令未开始，原失败摘要SHA256 6ac3fc68d47b61c3006f5d54d5ecaf4a3ed26faa6bdf7acff61de64c4149877c保留。仅移除此额外调用后，真正protected入口取得标准锁，于配置pre-server checkpoint exit1，错误MINIMAL_PAGE_PREFLIGHT／playwright.minimal-pages.config.ts:67，尚无回调／webServer／新session／HTTP／业务写入。其closure通过，165旧行／catalog／sequence及96文件保持，锁／端口释放；已有stderr没有保留内部guard，不能推定底层SQL或产品错误。
