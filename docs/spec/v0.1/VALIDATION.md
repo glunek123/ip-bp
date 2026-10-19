@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+## CORE-CL-001 离线候选阶段证据（2026-10-19，尚未整体交付）
+
+开发树 `minimal-page-actor-admission`，API小基线 `739788a97fb3c34618d5d1c896e2cec5ae318c50`；后端及兼容纯测试提交 `8a63c1f842a84e101d5cff8c474827d829e56dd5`／tree `a9c5e9b4c90707221907e9cdad7111504c4ac5a0`。原后端、API、UI作者保留唯一文件所有权，主控只做哈希接入、检查与文档。公证候选和ca015运行树未混入。
+
+- 独立Sol窗口 `01a1544b-f5f2-7e21-a2ec-bd9137c05e50`：后端17源＋兼容纯测试2源的Spec／Quality均ACCEPTED，C/I/M0。查询在原授权范围之后、数据库分页前组合；偏好按当前账号／部门／流程桶保存，不增Action或Grant。
+- 本树8a63c1f8正常runtime为Node24.21.0／pnpm11.27.0，Prisma validate／generate与后端类型exit0；六个显式Jest套件180/180、两份Node纯测试49/49 exit0。Nest输出中的500/P2002属于既有负例，套件整体退出0。记录795份后端／配置／纯测试输入哈希以供后续精确比较；不是全仓依赖图或真实数据范围证明。
+- API四源此前在739788a9接入前的同raw组合325/325、前端／根类型通过。独立Spec阶段REJECTED C0/I0/M1、Quality ACCEPTED0：M-01为JS UTF-16长度与后端validator的Unicode计数不一致。已交原API作者最小修复；旧回合在13:24:31 UTC后未执行工具，随后明确返回max_output_tokens系统错误，非审批拒绝。已在同原任务／模型缩短指令续办，实际完成边界RED→修复后单文件321/321与类型检查；固定哈希与原窗口补审尚待交回，不提前关闭M-01。
+- UI原树HEAD9cfde7c8，六源停写。Unicode解析计数修复后受影响两测试文件32项及类型／静态通过；其余Panel证据属于修改前的三文件34项集合，未冒充同次整跑。其后独立UI审查Spec REJECTED C0/I1/M0、Quality ACCEPTED0，I-01为合法空查询变为无效URL时旧请求仍可能回写。作者已只改列表页／直接spec，补取消旧请求、清空结果及恢复合法查询，23/23页面测试与类型／Lint／格式／diff通过，仍待原窗口确认关闭。
+- 新增167目录仅为本片迁移文本。兼容纯测试旧输入34/46（12失败）保留；修后以自有CSV166、EF161、HTTP165完整前缀读取，49/49通过。运行helper及旧SQL原字节不改，默认入口仍拒绝超出其批准链的目录。该直接纯测试失败没有被写成完整verify失败；本轮没有运行完整verify。
+
+阶段证据在本树`.local/case-list-query-preferences/`：作者17/19文件manifest、API接入回执、`review-stage1.md`、`backend-combination/source-inputs.json`、各原日志及`result.json`。最终API补闭、UI补审、六源接入与组合门禁尚未完成；不能将本节当最终tree验收。后续验证范围及需另批的额度见[验证准备](../../superpowers/plans/2026-10-19-case-list-query-preferences-validation.md)。没有DB、capture、Docker、业务HTTP、浏览器、迁移执行、服务启动、权限修改、部署或推送；CSV两次策略拒绝仍保持BLOCKED，人工脚本未代跑。
+
 2026-10-19 共享 HTTP 会话隔离已在原作者窗口冻结，原独立 CSV 复审窗口核两份 raw 后 Spec/Quality 均 ACCEPTED、C0/I0/M0。仅 http.ts/spec：45e57e0aad986f726c65543d0942d330a6d17ef0a60c545f6f164dbda4e91b91 / d56e4436c70e9291152502efe61bae9bff91f7a66505c61d36c82d362f745795；旧请求401和旧refresh在换人/同用户重登后不污染新会话，代际去重与原请求重试边界保持。作者 RED5→HTTP/auth/store49/49；接入开发组合后 HTTP/auth/store/CSV API/列表页5文件121/121、前端及根类型通过，原定向Lint/格式结果按相同两文件复用。未重复派发已在d3b7关闭的CSV API/宿主修复。EF旧批准换行补丁接入2a5a84fc、21/21纯组件通过；ca015未接。CSV helper新候选 --list 两次均在进程创建前被策略拒绝，仍BLOCKED；[人工步骤](../../superpowers/plans/2026-10-19-csv-discovery-manual-check.md)已核import顶层/7项哈希并仅准备不代跑。无DB、真实HTTP、迁移、浏览器或新验收额度消耗。
 
 2026-10-19人工测试后只读基线续办完成：原runner首次自有查询误用不存在的material_references.ref_count而42703停止，原失败保留；依据真实schema修正后仅续材料小集合/物理字节和后台候选，未重做已完成165表哈希。当前全库快照为88Case、231Lead、96CV；材料续办96CV/110真实引用、377物理文件stream SHA/size及reparse检查完成，281未登记文件原样保留，材料四表与前次完整快照一致并明确两个时间窗口。开庭与材料清理四分支候选均0，H42保持84Grant、role/authrev2；0数据写入、清理、服务停启。续办summary SHA02f080c7600a50cd200b196924ab2c4dd50e5bf55168e458c85b86a25c0af4ee，manifest SHAb275935a2e2d0092dd5377f618fd669832a8fe6740f30cb5f328fb0e083e9d7e，证据在ca015的.local/manual-test/post-manual-baseline-20261019/continuation/。用户手测反馈问题尚未给细节，未记验收通过。后续实际实施另派原API窗口，仅http.ts/http.spec.ts修已登记迟到401与CSRF跨会话竞态；旧leads WIP保留，不改公证39源或运行环境。公证只读准备由独立子任务完成初稿，迁移语义/字面hash表达式勘误单独v2中，未以未冻结POST示意预算申请真实执行。
