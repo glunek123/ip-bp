@@ -258,7 +258,7 @@ H专项Origin准备源码已由原Owner完成两文件纯修复（a6d3d59，47/4
 
 2026-10-19断连后的原任务／候选／验收队列核对见[任务对账](superpowers/plans/2026-10-19-task-reconciliation.md)。旧历史段落不替代本节唯一Current；未验角色、报表及全局详情页要求仍保留。历史日期倒序统计数量待核，不当作0，也不新增日期业务规则。
 
-**CORE-CL-001｜内部案件列表查询与账号列偏好（UXQ-04A，原任务恢复，候选收口及独立复审中）。** API四文件已作为739788a9接入开发候选；后端冻结、UI接线与旧纯测试fixture兼容修复分别收口，整体尚未验收。最小范围与独占文件、字段／排序／账号保存规则见[冻结合同](superpowers/specs/2026-10-19-case-list-query-preferences-contract.md)，检查与后续独立运行边界见[验证准备](superpowers/plans/2026-10-19-case-list-query-preferences-validation.md)。只追加查询和本人的偏好，不包含统计／导出／批归档，不执行数据库迁移或真实验收；旧CSV166及公证独立候选保留。CSV人工结果等待不阻塞本片源码准备，也不解除其策略拒绝。
+**CORE-CL-001｜内部案件列表查询与账号列偏好（UXQ-04A，离线候选完成，真实验证待独立准入）。** 源码f2551344／tree423cb426含累计29源，原独立窗口两轴ACCEPTED、C/I/M0；组合前端11文件489项、类型／架构／定向静态／双构建通过，后端180与旧链纯测试49在795输入原字节一致后精确复用。API旧325是两文件集合，修后单文件321＋偏好5＝326，无测试删减。有限查询／稳定排序、账号／部门／流程桶的列偏好已实现，不把它扩成统计、导出或批量归档。范围仍见[冻结合同](superpowers/specs/2026-10-19-case-list-query-preferences-contract.md)，最终证据见VALIDATION，未来PG／迁移／页面及预算见[验证准备](superpowers/plans/2026-10-19-case-list-query-preferences-validation.md)。完整verify／NT006和真实验收未运行；旧CSV166、公证d8ab及ca015保留，CSV人工等待与策略拒绝不变。
 
 以下CORE-UI-003等为原任务恢复历史与既有验收边界，保留而不覆盖本批Current。
 

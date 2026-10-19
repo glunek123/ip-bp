@@ -1,16 +1,29 @@
 # SPEC-001 文档验证
 
-## CORE-CL-001 离线候选阶段证据（2026-10-19，尚未整体交付）
+## CORE-CL-001 离线候选收口（2026-10-19，真实验证未执行）
 
-开发树 `minimal-page-actor-admission`，API小基线 `739788a97fb3c34618d5d1c896e2cec5ae318c50`；后端及兼容纯测试提交 `8a63c1f842a84e101d5cff8c474827d829e56dd5`／tree `a9c5e9b4c90707221907e9cdad7111504c4ac5a0`。原后端、API、UI作者保留唯一文件所有权，主控只做哈希接入、检查与文档。公证候选和ca015运行树未混入。
+固定源码候选为 `f2551344f2914b3f75b8cfefb8a6521ed7e5975a`／tree `423cb4262632ed530f108c80bf2515455aa88413`，开发树minimal-page-actor-admission。累计29源＝后端17＋API4＋UI6＋兼容纯测试2；不含公证d8ab，也未接入ca015。原任务分别实施，主控只负责合同、哈希接入、定向检查及权威文档。迁移目录20261019120000_case_list_preferences仅编写文本，开发链167；无新Action／Grant／Case事实写入。
 
-- 独立Sol窗口 `01a1544b-f5f2-7e21-a2ec-bd9137c05e50`：后端17源＋兼容纯测试2源的Spec／Quality均ACCEPTED，C/I/M0。查询在原授权范围之后、数据库分页前组合；偏好按当前账号／部门／流程桶保存，不增Action或Grant。
-- 本树8a63c1f8正常runtime为Node24.21.0／pnpm11.27.0，Prisma validate／generate与后端类型exit0；六个显式Jest套件180/180、两份Node纯测试49/49 exit0。Nest输出中的500/P2002属于既有负例，套件整体退出0。记录795份后端／配置／纯测试输入哈希以供后续精确比较；不是全仓依赖图或真实数据范围证明。
-- API四源此前在739788a9接入前的同raw组合325/325、前端／根类型通过。独立Spec阶段REJECTED C0/I0/M1、Quality ACCEPTED0：M-01为JS UTF-16长度与后端validator的Unicode计数不一致。已交原API作者最小修复；旧回合在13:24:31 UTC后未执行工具，随后明确返回max_output_tokens系统错误，非审批拒绝。已在同原任务／模型缩短指令续办，实际完成边界RED→修复后单文件321/321与类型检查；固定哈希与原窗口补审尚待交回，不提前关闭M-01。
-- UI原树HEAD9cfde7c8，六源停写。Unicode解析计数修复后受影响两测试文件32项及类型／静态通过；其余Panel证据属于修改前的三文件34项集合，未冒充同次整跑。其后独立UI审查Spec REJECTED C0/I1/M0、Quality ACCEPTED0，I-01为合法空查询变为无效URL时旧请求仍可能回写。作者已只改列表页／直接spec，补取消旧请求、清空结果及恢复合法查询，23/23页面测试与类型／Lint／格式／diff通过，仍待原窗口确认关闭。
-- 新增167目录仅为本片迁移文本。兼容纯测试旧输入34/46（12失败）保留；修后以自有CSV166、EF161、HTTP165完整前缀读取，49/49通过。运行helper及旧SQL原字节不改，默认入口仍拒绝超出其批准链的目录。该直接纯测试失败没有被写成完整verify失败；本轮没有运行完整verify。
+### 独立审查与失败保留
 
-阶段证据在本树`.local/case-list-query-preferences/`：作者17/19文件manifest、API接入回执、`review-stage1.md`、`backend-combination/source-inputs.json`、各原日志及`result.json`。最终API补闭、UI补审、六源接入与组合门禁尚未完成；不能将本节当最终tree验收。后续验证范围及需另批的额度见[验证准备](../../superpowers/plans/2026-10-19-case-list-query-preferences-validation.md)。没有DB、capture、Docker、业务HTTP、浏览器、迁移执行、服务启动、权限修改、部署或推送；CSV两次策略拒绝仍保持BLOCKED，人工脚本未代跑。
+原独立Sol窗口 `01a1544b-f5f2-7e21-a2ec-bd9137c05e50` 对固定29源累计Spec／Quality均ACCEPTED，C/I/M0。初审API的M-01（UTF-16长度口径）与UI的I-01（合法空查询转无效URL时旧请求未失效）原REJECTED均保留，修复交原作者、原窗口补审关闭；不把作者自报当关闭。后端19及UI6的阶段结论单列，最终M-01关闭才形成累计通过。Reviewer只读核源／哈希，没有运行测试，不冒真实PG证据。
+
+原API回合13:24:31 UTC后无工具执行，最终明确返回max_output_tokens系统错误；同一原任务／模型缩短指令后完成修复，没有改权限、换路重试CSV或重造作者。原旧测试字节完整保留，精确对照删除／改写0字节，只新增1625字节、1个Vitest测试（内部循环覆盖补充平面及变体选择符的101／200／201边界）。此前325是案件API320＋列偏好5；修后321为案件API单文件，最终组合中两文件326，不能误认删测。
+
+### 实际组合检查与精确复用
+
+| 输入／候选                                                                              | 实际结果                                                                                                                    | 证据与限制                                                                                                                                             |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 8a63c1f842a84e101d5cff8c474827d829e56dd5／tree a9c5e9b4c90707221907e9cdad7111504c4ac5a0 | 正常Prisma validate／generate、后端类型exit0；6个显式Jest套件180/180；2份Node纯测试49/49，全部exit0                         | 795份后端／配置／纯测试输入在f255检查前后逐hash相同，限定复用这些结果，不称f255重新执行后端集合。Nest负例输出500/P2002保留，套件整体通过；没有DB连接。 |
+| clean f2551344／tree423cb426                                                            | 11份显式前端文件489/489，failed0、pending0；含案件API321、偏好5，以及页面／解析器／列设置／原办理／Drawer／会话隔离回归     | 标准pnpm入口，JSON逐文件结果保留；不是全前端或完整verify。                                                                                             |
+| 同一f255固定源                                                                          | 前端／根类型、18模块／166模型架构、27份源Lint／Prettier、prepared后端及前端双构建均exit0；检查后29源与795复用输入逐hash一致 | 原bundle大于500kB告警保留；没有启动服务、浏览器或NT006。schema／SQL两源不冒Prettier解析通过，schema已实际validate。                                    |
+| 旧链兼容纯测试                                                                          | 旧输入34/46（12失败）保留；固定CSV166、EF161、HTTP165自有前缀后49/49                                                        | 新167目录不进入legacyfixture；运行helper／旧SQL原字节不改，默认入口仍拒未批准目录及篡改。没有将这次直接纯测试失败写成完整verify失败。                  |
+
+Node24.21.0／pnpm11.27.0均按项目入口核对。证据在本树`.local/case-list-query-preferences/`：`final-reviewed29-manifest.json`、`final-source-review.md`、`api-test-retention.json`、backend-combination原日志／source-inputs／result、final-combination的frontend-results／checks／lint27／format27／post-source-verification。源码检查时HEAD/tree与收口文档HEAD分开记录；后续只有权威文档／快照变化，不能称文档提交重跑上述业务集合。
+
+### 未运行与保留队列
+
+完整verify（含NT006）、真实PG查询／偏好持久化／授权变化、空链及旧数据迁移升级、实际HTTP／浏览器均未运行，本片没有新增额度。离线源码准备完成，不等于完整Level3或上线验收。下一步只能按[验证准备](../../superpowers/plans/2026-10-19-case-list-query-preferences-validation.md)另给固定目标／账号／数据／有限预算，不复用旧耗尽额度。CSV两次策略拒绝仍BLOCKED，人工脚本未代跑；H42、用户人工事实／文件、公证d8ab和clean ca015均保留。没有capture、Docker、服务启动、迁移执行、Grant变更、部署或推送。历史日期倒序统计缺少可引用后续数量，以及其他详情页总体待验要求，已见[任务对账](../../superpowers/plans/2026-10-19-task-reconciliation.md)，不写未知为0或把本片关闭整个Demo。
 
 2026-10-19 共享 HTTP 会话隔离已在原作者窗口冻结，原独立 CSV 复审窗口核两份 raw 后 Spec/Quality 均 ACCEPTED、C0/I0/M0。仅 http.ts/spec：45e57e0aad986f726c65543d0942d330a6d17ef0a60c545f6f164dbda4e91b91 / d56e4436c70e9291152502efe61bae9bff91f7a66505c61d36c82d362f745795；旧请求401和旧refresh在换人/同用户重登后不污染新会话，代际去重与原请求重试边界保持。作者 RED5→HTTP/auth/store49/49；接入开发组合后 HTTP/auth/store/CSV API/列表页5文件121/121、前端及根类型通过，原定向Lint/格式结果按相同两文件复用。未重复派发已在d3b7关闭的CSV API/宿主修复。EF旧批准换行补丁接入2a5a84fc、21/21纯组件通过；ca015未接。CSV helper新候选 --list 两次均在进程创建前被策略拒绝，仍BLOCKED；[人工步骤](../../superpowers/plans/2026-10-19-csv-discovery-manual-check.md)已核import顶层/7项哈希并仅准备不代跑。无DB、真实HTTP、迁移、浏览器或新验收额度消耗。
 
