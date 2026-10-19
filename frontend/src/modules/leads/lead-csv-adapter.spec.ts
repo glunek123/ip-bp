@@ -300,6 +300,37 @@ describe('lead CSV business adapter', () => {
     );
   });
 
+  it('matches DTO URL host rules for whitespace, localhost, domains and IP literals', () => {
+    const makeRow = (url: string) => {
+      const row = [...base];
+      row[12] = url;
+      return row;
+    };
+    const parsed = parseLeadCsvPreview(
+      csv([
+        makeRow('https://example.com/a b'),
+        makeRow('http://localhost/p'),
+        makeRow('http://:@example.com/p'),
+        makeRow('http://[::1]:/p'),
+        makeRow('HTTPS://EXAMPLE.COM/p'),
+        makeRow('http://example.com:/p'),
+        makeRow('http://127.0.0.1/p'),
+        makeRow('http://[0:0:0:0:0:0:0:1]/p'),
+      ]),
+      context,
+    );
+    for (const index of [0, 1, 2, 3]) {
+      expect(parsed[index]).toMatchObject({ status: 'invalid' });
+      if (parsed[index]?.status !== 'invalid')
+        throw new Error('Expected invalid URL row');
+      expect(parsed[index].errors).toEqual(
+        expect.arrayContaining([expect.stringContaining('商品1链接')]),
+      );
+    }
+    for (const index of [4, 5, 6, 7])
+      expect(parsed[index]).toMatchObject({ status: 'valid' });
+  });
+
   it('accepts pure digit counts with redundant zero prefixes but rejects the numeric bound', () => {
     const padded = [...base];
     padded[14] = `000${'0'.repeat(30)}1`;

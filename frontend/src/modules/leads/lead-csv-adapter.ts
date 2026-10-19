@@ -228,6 +228,91 @@ function parsePrice(raw: string): ValueResult<string> {
     : { error: '单价必须是非负金额，最多两位小数' };
 }
 
+function isValidatorFqdn(hostname: string): boolean {
+  const labels = hostname.split('.');
+  const tld = labels.at(-1) ?? '';
+  if (
+    labels.length < 2 ||
+    !/^([a-z\u00a1-\u00a8\u00aa-\ud7ff\uf900-\ufdcf\ufdf0-\uffef]{2,}|xn[a-z0-9-]{2,})$/iu.test(
+      tld,
+    ) ||
+    /^\d+$/u.test(tld)
+  )
+    return false;
+  return labels.every(
+    (label) =>
+      label.length <= 63 &&
+      /^[a-z_\u00a1-\uffff0-9-]+$/iu.test(label) &&
+      !/[\uff01-\uff5e]/u.test(label) &&
+      !/^-|-$|_/u.test(label),
+  );
+}
+
+function isStrictIpv4(hostname: string): boolean {
+  const octets = hostname.split('.');
+  return (
+    octets.length === 4 &&
+    octets.every(
+      (octet) => /^(0|[1-9]\d{0,2})$/u.test(octet) && Number(octet) <= 255,
+    )
+  );
+}
+
+function isLeadProductUrl(value: string): boolean {
+  if (!value || /[\s<>]/u.test(value)) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+
+  const authority = /^https?:\/\/([^/?#]*)/iu.exec(value)?.[1];
+  if (!authority) return false;
+  const authorityParts = authority.split('@');
+  if (authorityParts.length > 2) return false;
+  if (authorityParts.length === 2) {
+    const [username, password] = authorityParts[0]!.split(':');
+    if (
+      authorityParts[0] === '' ||
+      authorityParts[0]!.split(':').length > 2 ||
+      (username === '' && password === '')
+    )
+      return false;
+  }
+  const hostPort = authority.slice(authority.lastIndexOf('@') + 1);
+  let hostname: string;
+  let port: string | undefined;
+  let ipv6 = false;
+  if (hostPort.startsWith('[')) {
+    const close = hostPort.indexOf(']');
+    if (close < 0) return false;
+    hostname = hostPort.slice(1, close);
+    const suffix = hostPort.slice(close + 1);
+    if (suffix && !suffix.startsWith(':')) return false;
+    if (suffix === ':') return false;
+    port = suffix ? suffix.slice(1) : undefined;
+    // WHATWG URL parsing validates the IPv6 address syntax.
+    if (!parsed.hostname.startsWith('[')) return false;
+    ipv6 = true;
+  } else {
+    const firstColon = hostPort.indexOf(':');
+    const lastColon = hostPort.lastIndexOf(':');
+    if (firstColon !== lastColon) return false;
+    hostname = lastColon < 0 ? hostPort : hostPort.slice(0, lastColon);
+    port = lastColon < 0 ? undefined : hostPort.slice(lastColon + 1);
+  }
+
+  if (
+    port !== undefined &&
+    port !== '' &&
+    (!/^\d+$/u.test(port) || Number(port) <= 0 || Number(port) > 65535)
+  )
+    return false;
+  return ipv6 || isStrictIpv4(hostname) || isValidatorFqdn(hostname);
+}
+
 function parseProduct(
   cells: readonly string[],
   offset: number,
@@ -237,15 +322,8 @@ function parseProduct(
   const url = canonicalText(cells[offset]!);
   const title = canonicalText(cells[offset + 1]!);
   if (!url && !title) errors.push(`商品${number}链接和名称至少填写一项`);
-  if (url) {
-    try {
-      const parsed = new URL(url);
-      if (!['http:', 'https:'].includes(parsed.protocol))
-        throw new Error('Invalid URL');
-    } catch {
-      errors.push(`商品${number}链接仅支持有效的http/https地址`);
-    }
-  }
+  if (url && !isLeadProductUrl(url))
+    errors.push(`商品${number}链接仅支持有效的http/https地址`);
   if (url.length > 2048) errors.push(`商品${number}链接超过2048字符`);
   if (title.length > 200) errors.push(`商品${number}名称超过200字符`);
   const quantity = parseCount(cells[offset + 2]!, `商品${number}销量`);
