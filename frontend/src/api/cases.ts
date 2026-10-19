@@ -4787,7 +4787,11 @@ export async function listCases(
     if (typeof value !== 'string')
       throw new ApiError('案件查询条件无效', 400, 'VALIDATION_ERROR');
     const normalized = value.trim();
-    if (normalized.length > 200)
+    const normalizedLength =
+      normalized.length -
+      (normalized.match(/[^\uFE0F\uFE0E][\uFE0F\uFE0E]/g) ?? []).length -
+      (normalized.match(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g) ?? []).length;
+    if (normalizedLength > 200)
       throw new ApiError('案件查询条件最多200个字符', 400, 'VALIDATION_ERROR');
     if (normalized) query.set(key, normalized);
   }

@@ -36,11 +36,32 @@ import {
   type CaseStageFilter,
   type CaseSummary,
   type CaseView,
+  type CaseListQuery,
 } from '../../api/cases';
+import {
+  defaultCaseListPreference,
+  type CaseListColumn,
+  type CaseListPreference,
+  type CaseListPreferenceBucket,
+} from '../../api/case-list-preference';
+import CaseListPreferencesPanel from './CaseListPreferencesPanel.vue';
+import {
+  caseListQueryKey,
+  parseCaseListQuery,
+  serializeCaseListQuery,
+} from './case-list-query';
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const sessionGeneration = ref(0);
+watch(
+  () => auth.session,
+  () => {
+    sessionGeneration.value += 1;
+  },
+  { flush: 'sync' },
+);
 const identity = computed(() =>
   auth.session === null
     ? ''
@@ -87,6 +108,31 @@ const invalidFilter = computed(
       stage.value === 'all') ||
     (route.query.stageGroup !== undefined && stageGroup.value === undefined),
 );
+const parsedListQuery = computed(() => parseCaseListQuery(route.query));
+const listFilters = computed<CaseListQuery>(() =>
+  parsedListQuery.value.ok ? parsedListQuery.value.value : {},
+);
+const effectiveListQuery = computed<CaseListQuery>(() => ({
+  ...listFilters.value,
+  sortBy: listFilters.value.sortBy ?? 'createdAt',
+  sortDirection: listFilters.value.sortDirection ?? 'desc',
+}));
+const listFilterKey = computed(() => caseListQueryKey(listFilters.value));
+const rawListQueryKey = computed(() =>
+  JSON.stringify(
+    [
+      'q',
+      'customerName',
+      'rightsHolderName',
+      'courtCaseNo',
+      'sortBy',
+      'sortDirection',
+    ].map((key) => [key, route.query[key] ?? null]),
+  ),
+);
+const listQueryValidityKey = computed(() =>
+  parsedListQuery.value.ok ? 'valid' : 'invalid',
+);
 const pageSize = 20;
 const page = computed(() => {
   const value = route.query.page;
@@ -99,15 +145,95 @@ const totalPages = computed(() =>
 );
 const requestKey = computed(
   () =>
-    `${identity.value}:${view.value}:${stage.value}:${stageGroup.value ?? ''}:${page.value}`,
+    `${sessionGeneration.value}:${identity.value}:${view.value}:${stage.value}:${stageGroup.value ?? ''}:${listQueryValidityKey.value}:${rawListQueryKey.value}:${listFilterKey.value}:${page.value}`,
 );
 const listQuery = computed(() =>
-  Object.fromEntries(
-    Object.entries(route.query).filter(([key]) =>
-      ['view', 'page', 'stage', 'stageGroup'].includes(key),
+  Object.fromEntries([
+    ...Object.entries(route.query).filter(
+      ([key, value]) =>
+        ['view', 'page', 'stage', 'stageGroup'].includes(key) &&
+        typeof value === 'string',
     ),
-  ),
+    ...Object.entries(serializeCaseListQuery(listFilters.value)),
+  ]),
 );
+const queryDraft = ref<{
+  q: string;
+  customerName: string;
+  rightsHolderName: string;
+  courtCaseNo: string;
+  sortBy: NonNullable<CaseListQuery['sortBy']>;
+  sortDirection: NonNullable<CaseListQuery['sortDirection']>;
+}>({
+  q: '',
+  customerName: '',
+  rightsHolderName: '',
+  courtCaseNo: '',
+  sortBy: 'createdAt',
+  sortDirection: 'desc',
+});
+watch(
+  () => parsedListQuery.value,
+  (parsed) => {
+    if (!parsed.ok) return;
+    queryDraft.value = {
+      q: parsed.value.q ?? '',
+      customerName: parsed.value.customerName ?? '',
+      rightsHolderName: parsed.value.rightsHolderName ?? '',
+      courtCaseNo: parsed.value.courtCaseNo ?? '',
+      sortBy: parsed.value.sortBy ?? 'createdAt',
+      sortDirection: parsed.value.sortDirection ?? 'desc',
+    };
+  },
+  { immediate: true },
+);
+function listRouteBase() {
+  return Object.fromEntries(
+    Object.entries(route.query).filter(
+      ([key, value]) =>
+        ['view', 'stage', 'stageGroup'].includes(key) &&
+        typeof value === 'string',
+    ),
+  );
+}
+function applyQuery() {
+  const next = {
+    q: queryDraft.value.q,
+    customerName: queryDraft.value.customerName,
+    rightsHolderName: queryDraft.value.rightsHolderName,
+    courtCaseNo: queryDraft.value.courtCaseNo,
+    sortBy: queryDraft.value.sortBy,
+    sortDirection: queryDraft.value.sortDirection,
+  } satisfies CaseListQuery;
+  const parsed = parseCaseListQuery(next);
+  if (!parsed.ok) {
+    error.value = parsed.message;
+    state.value = 'failed';
+    return;
+  }
+  void router.push({
+    query: {
+      ...listRouteBase(),
+      ...serializeCaseListQuery({
+        ...parsed.value,
+        sortBy: queryDraft.value.sortBy,
+        sortDirection: queryDraft.value.sortDirection,
+      }),
+      page: '1',
+    },
+  });
+}
+function clearQuery() {
+  queryDraft.value = {
+    q: '',
+    customerName: '',
+    rightsHolderName: '',
+    courtCaseNo: '',
+    sortBy: 'createdAt',
+    sortDirection: 'desc',
+  };
+  applyQuery();
+}
 function stageLabel(value: CaseSummary['stage']): string {
   if (value === 'PENDING_MATCH') return '待匹配';
   if (value === 'WAITING_COMPLAINT') return '待写诉状';
@@ -280,15 +406,123 @@ function leaveWorkflow() {
 }
 onBeforeRouteLeave(leaveWorkflow);
 onBeforeRouteUpdate(leaveWorkflow);
-watch(identity, closeWorkflow, { flush: 'sync' });
-const amountColumns = [
-  { key: 'claimAmount', label: '标的额' },
-  { key: 'judgmentAmount', label: '判决额' },
-  { key: 'closureAmount', label: '结案额' },
+watch([identity, sessionGeneration], closeWorkflow, { flush: 'sync' });
+const caseListColumnOrder = [
+  'businessNo',
+  'stage',
+  'customerName',
+  'rightsHolderName',
+  'platform',
+  'shopName',
+  'shopExternalId',
+  'defendants',
+  'lawyers',
+  'court',
+  'courtCaseNo',
+  'claimAmount',
+  'judgmentAmount',
+  'closureAmount',
 ] as const;
-const nameColumns = ['customerName', 'rightsHolderName'] as const;
+type CaseListAmountColumn = 'claimAmount' | 'judgmentAmount' | 'closureAmount';
+const columnOrder = ref<CaseListColumn[]>([...caseListColumnOrder]);
+const hiddenColumns = ref<CaseListColumn[]>([]);
+const visibleColumns = computed(() =>
+  columnOrder.value.filter((column) => !hiddenColumns.value.includes(column)),
+);
+const preferenceBucket = computed<CaseListPreferenceBucket>(
+  () => stageGroup.value ?? stage.value,
+);
+const preferenceRequestGeneration = computed(
+  () => `${sessionGeneration.value}:${identity.value}`,
+);
+watch(
+  [preferenceBucket, sessionGeneration, identity],
+  () => {
+    columnOrder.value = [...defaultCaseListPreference.order];
+    hiddenColumns.value = [...defaultCaseListPreference.hidden];
+  },
+  { immediate: true, flush: 'sync' },
+);
+function applyColumnPreference(
+  bucket: CaseListPreferenceBucket,
+  preference: CaseListPreference,
+  generation: string | number,
+) {
+  if (
+    bucket !== preferenceBucket.value ||
+    generation !== preferenceRequestGeneration.value
+  )
+    return;
+  columnOrder.value = [...preference.order];
+  hiddenColumns.value = [...preference.hidden];
+}
+const columnLabels: Record<CaseListColumn, string> = {
+  businessNo: '操作／案件编号',
+  stage: '案件进展',
+  customerName: '客户',
+  rightsHolderName: '权利主体',
+  platform: '平台',
+  shopName: '店铺',
+  shopExternalId: '店铺ID',
+  defendants: '被告',
+  lawyers: '律师',
+  court: '法院',
+  courtCaseNo: '案号',
+  claimAmount: '标的额',
+  judgmentAmount: '判决额',
+  closureAmount: '结案额',
+};
+function columnClass(column: CaseListColumn) {
+  if (
+    column === 'businessNo' ||
+    column === 'shopExternalId' ||
+    column === 'courtCaseNo'
+  )
+    return 'case-list-col--identity';
+  if (column === 'stage') return 'case-list-col--stage';
+  if (column === 'platform') return 'case-list-col--platform';
+  if (column.endsWith('Amount')) return 'case-list-col--amount';
+  return 'case-list-col--name';
+}
+function cellClass(column: CaseListColumn) {
+  if (
+    column === 'businessNo' ||
+    column === 'stage' ||
+    column === 'platform' ||
+    column === 'shopExternalId' ||
+    column === 'courtCaseNo'
+  )
+    return 'business-list-cell--nowrap';
+  if (column.endsWith('Amount')) return 'mono business-list-cell--number';
+  return 'business-list-cell--text';
+}
+function isAmountColumn(
+  column: CaseListColumn,
+): column is CaseListAmountColumn {
+  return (
+    column === 'claimAmount' ||
+    column === 'judgmentAmount' ||
+    column === 'closureAmount'
+  );
+}
+const minimumTableWidth = computed(() =>
+  visibleColumns.value.reduce((width, column) => {
+    if (
+      column === 'businessNo' ||
+      column === 'shopExternalId' ||
+      column === 'courtCaseNo'
+    )
+      return width + 200;
+    if (column === 'stage') return width + 140;
+    if (column === 'platform') return width + 100;
+    if (column.endsWith('Amount')) return width + 160;
+    return width + 180;
+  }, 0),
+);
 type DisplayAmount =
-  CaseSummary['displaySummary'][(typeof amountColumns)[number]['key']];
+  | CaseSummary['displaySummary']['claimAmount']
+  | CaseSummary['displaySummary']['judgmentAmount']
+  | CaseSummary['displaySummary']['closureAmount'];
 function amountLabel(amount: DisplayAmount): string {
   if (amount.state === 'UNRECORDED') return '未登记';
   if (amount.state === 'PENDING') return '待定';
@@ -325,6 +559,11 @@ async function load() {
     state.value = 'failed';
     return;
   }
+  if (!parsedListQuery.value.ok) {
+    error.value = parsedListQuery.value.message;
+    state.value = 'failed';
+    return;
+  }
   if (stage.value !== 'all' && stageGroup.value !== undefined) {
     const query = { ...route.query };
     delete query.stageGroup;
@@ -352,6 +591,7 @@ async function load() {
             stageGroup: stageGroup.value,
           }
         : { stage: stage.value }),
+      ...effectiveListQuery.value,
     });
     if (controller.signal.aborted || currentKey !== requestKey.value) return;
     const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
@@ -394,15 +634,23 @@ watch(
       view.value,
       stage.value,
       stageGroup.value,
+      listFilterKey.value,
       route.query.page,
       identity.value,
       route.query.stage,
       route.query.stageGroup,
+      sessionGeneration.value,
+      listQueryValidityKey.value,
+      rawListQueryKey.value,
     ] as const,
   (next, previous) => {
+    if (!parsedListQuery.value.ok) {
+      void load();
+      return;
+    }
     const filterChanged =
       previous &&
-      next.slice(0, 3).some((value, index) => value !== previous[index]);
+      next.slice(0, 4).some((value, index) => value !== previous[index]);
     // Canonicalizing a legal mixed bookmark preserves its page and scope.
     if (
       !invalidFilter.value &&
@@ -414,14 +662,14 @@ watch(
     }
     const canonicalized =
       previous &&
-      next[5] === previous[5] &&
+      next[6] === previous[6] &&
       next[1] !== 'all' &&
       previous[2] !== undefined &&
       next[2] === undefined;
     if (
       filterChanged &&
       !canonicalized &&
-      next[3] === previous[3] &&
+      next[4] === previous[4] &&
       page.value !== 1
     ) {
       request?.abort();
@@ -537,6 +785,53 @@ onBeforeUnmount(() => request?.abort());
           >本部门全部</ElButton
         >
       </div>
+      <CaseListPreferencesPanel
+        :bucket="preferenceBucket"
+        :request-generation="preferenceRequestGeneration"
+        @change="applyColumnPreference"
+      />
+      <form class="case-list-query" role="search" @submit.prevent="applyQuery">
+        <label>
+          <span>关键词</span>
+          <input
+            v-model="queryDraft.q"
+            type="search"
+            placeholder="编号、案号、客户、权利主体、被告"
+            data-test="case-query-keyword"
+          />
+        </label>
+        <label>
+          <span>客户</span>
+          <input v-model="queryDraft.customerName" />
+        </label>
+        <label>
+          <span>权利主体</span>
+          <input v-model="queryDraft.rightsHolderName" />
+        </label>
+        <label>
+          <span>案号</span>
+          <input v-model="queryDraft.courtCaseNo" />
+        </label>
+        <label>
+          <span>排序字段</span>
+          <select v-model="queryDraft.sortBy">
+            <option value="createdAt">创建时间</option>
+            <option value="businessNo">案件编号</option>
+            <option value="rightsHolderName">权利主体</option>
+          </select>
+        </label>
+        <label>
+          <span>顺序</span>
+          <select v-model="queryDraft.sortDirection">
+            <option value="desc">降序</option>
+            <option value="asc">升序</option>
+          </select>
+        </label>
+        <div class="case-list-query-actions">
+          <ElButton type="primary" native-type="submit">查询</ElButton>
+          <ElButton native-type="button" @click="clearQuery">清除筛选</ElButton>
+        </div>
+      </form>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h2>正在读取案件</h2>
       </section>
@@ -556,146 +851,133 @@ onBeforeUnmount(() => request?.abort());
           aria-label="案件列表，可横向滚动"
           tabindex="0"
         >
-          <table class="demo-table business-list-table case-list-table">
+          <table
+            class="demo-table business-list-table case-list-table"
+            :style="{ minWidth: `${minimumTableWidth}px` }"
+          >
             <caption class="sr-only">
               案件列表
             </caption>
             <colgroup>
-              <col class="case-list-col--identity" />
-              <col class="case-list-col--stage" />
-              <col class="case-list-col--name" />
-              <col class="case-list-col--name" />
-              <col class="case-list-col--platform" />
-              <col class="case-list-col--name" />
-              <col class="case-list-col--identity" />
-              <col class="case-list-col--name" />
-              <col class="case-list-col--name" />
-              <col class="case-list-col--name" />
-              <col class="case-list-col--identity" />
               <col
-                v-for="column in amountColumns"
-                :key="column.key"
-                class="case-list-col--amount"
+                v-for="column in visibleColumns"
+                :key="column"
+                :class="columnClass(column)"
               />
             </colgroup>
             <thead>
               <tr>
-                <th scope="col">操作／案件编号</th>
-                <th scope="col">案件进展</th>
-                <th scope="col">客户</th>
-                <th scope="col">权利主体</th>
-                <th scope="col">平台</th>
-                <th scope="col">店铺</th>
-                <th scope="col">店铺ID</th>
-                <th scope="col">被告</th>
-                <th scope="col">律师</th>
-                <th scope="col">法院</th>
-                <th scope="col">案号</th>
                 <th
-                  v-for="column in amountColumns"
-                  :key="column.key"
+                  v-for="column in visibleColumns"
+                  :key="column"
                   scope="col"
-                  class="num"
+                  :class="column.endsWith('Amount') ? 'num' : undefined"
                 >
-                  {{ column.label }}
+                  {{ columnLabels[column] }}
                 </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="item in items" :key="item.id">
-                <td class="business-list-cell--nowrap">
-                  <RouterLink
-                    class="mono"
-                    :to="{
-                      path: `/cases/${encodeURIComponent(item.id)}`,
-                      query: listQuery,
-                    }"
-                    >{{ item.businessNo }}</RouterLink
-                  >
-                  <div class="case-list-actions">
-                    <ElButton
-                      v-for="(action, index) in listActions(item)"
-                      :key="action.intent"
-                      :text="index !== 0"
-                      type="primary"
-                      :data-case-action="action.intent"
-                      :disabled="
-                        openingAction ||
-                        (!pendingActions.has(item.id) &&
-                          recordRecoveries.some(
-                            (recovery) => recovery.caseId === item.id,
-                          ))
-                      "
-                      @click="enterAction(item, action.intent)"
-                    >
-                      {{ action.label }}
-                    </ElButton>
-                    <ElButton
-                      text
-                      data-case-record-edit
-                      :disabled="
-                        openingAction ||
-                        !!recordRecoveryError ||
-                        pendingActions.has(item.id)
-                      "
-                      @click="enterRecordEditor(item)"
-                      >编辑已登记资料</ElButton
-                    >
-                    <span
-                      v-if="listActions(item).length === 0"
-                      class="field-help"
-                      >当前无可办操作</span
-                    >
-                  </div>
-                  <details class="case-list-context">
-                    <summary :title="item.owner.displayName">
-                      负责人：{{ item.owner.displayName }}
-                    </summary>
-                    <p>负责人：{{ item.owner.displayName }}</p>
-                    <p v-if="item.sourceLead">
-                      来源线索：<span class="mono case-list-identifier">{{
-                        item.sourceLead.businessNo
-                      }}</span>
-                    </p>
-                    <p v-if="item.sourceNotaryMatter">
-                      公证事项：<span class="mono case-list-identifier">{{
-                        item.sourceNotaryMatter.businessNo
-                      }}</span>
-                    </p>
-                    <p v-if="item.origin?.kind === 'EXTERNAL_ENTRY'">
-                      案件来源：{{
-                        item.origin.entryKind === 'EXTERNAL_TRANSFER'
-                          ? '外部转入'
-                          : '历史补录'
-                      }}
-                      · {{ item.origin.stageReachedOn }}
-                    </p>
-                  </details>
-                </td>
-                <td class="business-list-cell--nowrap">
-                  <span class="pill">{{ stageLabel(item.stage) }}</span>
-                </td>
                 <td
-                  v-for="column in nameColumns"
+                  v-for="column in visibleColumns"
                   :key="column"
-                  class="business-list-cell--text"
+                  :class="cellClass(column)"
                 >
-                  <details class="case-list-name">
+                  <template v-if="column === 'businessNo'">
+                    <RouterLink
+                      class="mono"
+                      :to="{
+                        path: `/cases/${encodeURIComponent(item.id)}`,
+                        query: listQuery,
+                      }"
+                      >{{ item.businessNo }}</RouterLink
+                    >
+                    <div class="case-list-actions">
+                      <ElButton
+                        v-for="(action, index) in listActions(item)"
+                        :key="action.intent"
+                        :text="index !== 0"
+                        type="primary"
+                        :data-case-action="action.intent"
+                        :disabled="
+                          openingAction ||
+                          (!pendingActions.has(item.id) &&
+                            recordRecoveries.some(
+                              (recovery) => recovery.caseId === item.id,
+                            ))
+                        "
+                        @click="enterAction(item, action.intent)"
+                      >
+                        {{ action.label }}
+                      </ElButton>
+                      <ElButton
+                        text
+                        data-case-record-edit
+                        :disabled="
+                          openingAction ||
+                          !!recordRecoveryError ||
+                          pendingActions.has(item.id)
+                        "
+                        @click="enterRecordEditor(item)"
+                        >编辑已登记资料</ElButton
+                      >
+                      <span
+                        v-if="listActions(item).length === 0"
+                        class="field-help"
+                        >当前无可办操作</span
+                      >
+                    </div>
+                    <details class="case-list-context">
+                      <summary :title="item.owner.displayName">
+                        负责人：{{ item.owner.displayName }}
+                      </summary>
+                      <p>负责人：{{ item.owner.displayName }}</p>
+                      <p v-if="item.sourceLead">
+                        来源线索：<span class="mono case-list-identifier">{{
+                          item.sourceLead.businessNo
+                        }}</span>
+                      </p>
+                      <p v-if="item.sourceNotaryMatter">
+                        公证事项：<span class="mono case-list-identifier">{{
+                          item.sourceNotaryMatter.businessNo
+                        }}</span>
+                      </p>
+                      <p v-if="item.origin?.kind === 'EXTERNAL_ENTRY'">
+                        案件来源：{{
+                          item.origin.entryKind === 'EXTERNAL_TRANSFER'
+                            ? '外部转入'
+                            : '历史补录'
+                        }}
+                        · {{ item.origin.stageReachedOn }}
+                      </p>
+                    </details>
+                  </template>
+                  <span v-else-if="column === 'stage'" class="pill">
+                    {{ stageLabel(item.stage) }}
+                  </span>
+                  <details
+                    v-else-if="
+                      column === 'customerName' || column === 'rightsHolderName'
+                    "
+                    class="case-list-name"
+                  >
                     <summary :title="item.displaySummary[column]">
                       {{ item.displaySummary[column] }}
                     </summary>
                     <p>{{ item.displaySummary[column] }}</p>
                   </details>
-                </td>
-                <td class="business-list-cell--nowrap">
-                  {{
-                    item.displaySummary.source.platform
-                      ? labelLeadPlatform(item.displaySummary.source.platform)
-                      : '未提供'
-                  }}
-                </td>
-                <td class="business-list-cell--text">
-                  <details class="case-list-name">
+                  <span v-else-if="column === 'platform'">
+                    {{
+                      item.displaySummary.source.platform
+                        ? labelLeadPlatform(item.displaySummary.source.platform)
+                        : '未提供'
+                    }}
+                  </span>
+                  <details
+                    v-else-if="column === 'shopName'"
+                    class="case-list-name"
+                  >
                     <summary
                       :title="item.displaySummary.source.shopName ?? '未提供'"
                     >
@@ -703,13 +985,14 @@ onBeforeUnmount(() => request?.abort());
                     </summary>
                     <p>{{ item.displaySummary.source.shopName ?? '未提供' }}</p>
                   </details>
-                </td>
-                <td class="mono business-list-cell--nowrap">
-                  {{ item.displaySummary.source.shopExternalId ?? '未登记' }}
-                </td>
-                <td class="business-list-cell--text">
+                  <span v-else-if="column === 'shopExternalId'" class="mono">
+                    {{ item.displaySummary.source.shopExternalId ?? '未登记' }}
+                  </span>
                   <details
-                    v-if="item.displaySummary.defendants.length"
+                    v-else-if="
+                      column === 'defendants' &&
+                      item.displaySummary.defendants.length
+                    "
                     class="case-list-name"
                   >
                     <summary>
@@ -728,11 +1011,11 @@ onBeforeUnmount(() => request?.abort());
                       </li>
                     </ul>
                   </details>
-                  <span v-else>未登记</span>
-                </td>
-                <td class="business-list-cell--text">
+                  <span v-else-if="column === 'defendants'">未登记</span>
                   <details
-                    v-if="item.displaySummary.lawyers.length"
+                    v-else-if="
+                      column === 'lawyers' && item.displaySummary.lawyers.length
+                    "
                     class="case-list-name"
                   >
                     <summary>
@@ -751,11 +1034,9 @@ onBeforeUnmount(() => request?.abort());
                       </li>
                     </ul>
                   </details>
-                  <span v-else>未登记</span>
-                </td>
-                <td class="business-list-cell--text">
+                  <span v-else-if="column === 'lawyers'">未登记</span>
                   <details
-                    v-if="item.displaySummary.court"
+                    v-else-if="column === 'court' && item.displaySummary.court"
                     class="case-list-name"
                   >
                     <summary :title="item.displaySummary.court.name">
@@ -763,34 +1044,28 @@ onBeforeUnmount(() => request?.abort());
                     </summary>
                     <p>{{ item.displaySummary.court.name }}</p>
                   </details>
-                  <span v-else>未登记</span>
-                </td>
-                <td class="mono business-list-cell--nowrap">
-                  {{ item.displaySummary.courtCaseNo ?? '未登记' }}
-                </td>
-                <td
-                  v-for="column in amountColumns"
-                  :key="column.key"
-                  class="mono business-list-cell--number"
-                >
-                  <span>{{
-                    amountLabel(item.displaySummary[column.key])
-                  }}</span>
-                  <details
-                    v-if="item.displaySummary[column.key].sourceId !== null"
-                    class="case-list-amount-source"
-                  >
-                    <summary>
-                      {{
-                        amountSourceLabel(
-                          item.displaySummary[column.key].sourceType,
-                        )
-                      }}
-                    </summary>
-                    <p>
-                      来源记录：{{ item.displaySummary[column.key].sourceId }}
-                    </p>
-                  </details>
+                  <span v-else-if="column === 'court'">未登记</span>
+                  <span v-else-if="column === 'courtCaseNo'" class="mono">
+                    {{ item.displaySummary.courtCaseNo ?? '未登记' }}
+                  </span>
+                  <template v-else-if="isAmountColumn(column)">
+                    <span>{{ amountLabel(item.displaySummary[column]) }}</span>
+                    <details
+                      v-if="item.displaySummary[column].sourceId !== null"
+                      class="case-list-amount-source"
+                    >
+                      <summary>
+                        {{
+                          amountSourceLabel(
+                            item.displaySummary[column].sourceType,
+                          )
+                        }}
+                      </summary>
+                      <p>
+                        来源记录：{{ item.displaySummary[column].sourceId }}
+                      </p>
+                    </details>
+                  </template>
                 </td>
               </tr>
             </tbody>
@@ -924,5 +1199,55 @@ onBeforeUnmount(() => request?.abort());
 
 .case-list-pagination span {
   white-space: nowrap;
+}
+
+.case-list-query {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  align-items: end;
+  gap: var(--s-3);
+  margin: var(--s-4) 0;
+}
+
+.case-list-query label {
+  display: grid;
+  gap: var(--s-1);
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+
+.case-list-query input,
+.case-list-query select {
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--s-2);
+  color: var(--color-ink);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-hairline);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.case-list-query input:focus,
+.case-list-query select:focus {
+  outline: 2px solid rgba(94, 106, 210, 0.25);
+  outline-offset: 1px;
+}
+
+.case-list-query-actions {
+  display: flex;
+  gap: var(--s-2);
+}
+
+@media (max-width: 900px) {
+  .case-list-query {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 540px) {
+  .case-list-query {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

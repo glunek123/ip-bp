@@ -4200,6 +4200,56 @@ describe('cases API', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('counts query lengths like the backend validator for supplementary and variation-selector characters', async () => {
+    const counts = Object.fromEntries(
+      [
+        'PENDING_MATCH',
+        'WAITING_COMPLAINT',
+        'WAITING_COMPLAINT_CONFIRMATION',
+        'WAITING_COMPLAINT_STAMP',
+        'WAITING_FILING',
+        'WAITING_FORMAL_ACCEPTANCE',
+        'WAITING_HEARING',
+        'WAITING_JUDGMENT',
+        'SECOND_INSTANCE',
+        'WAITING_EXECUTION_DOCUMENTS',
+        'WAITING_EXECUTION_CONFIRMATION',
+        'WAITING_EXECUTION_STAMP',
+        'WAITING_EXECUTION_FILING',
+        'EXECUTING',
+        'WAITING_ARCHIVE',
+        'ARCHIVED',
+      ].map((stage) => [stage, 0]),
+    );
+    for (const [kind, text] of [
+      ['supplementary', '📝'],
+      ['variation-selector', 'A\uFE0F'],
+    ] as const) {
+      for (const [length, accepted] of [
+        [101, true],
+        [200, true],
+        [201, false],
+      ] as const) {
+        const fetchMock = accepted
+          ? mockJson({ items: [], total: 0, page: 1, pageSize: 20, counts })
+          : vi.fn();
+        if (!accepted) vi.stubGlobal('fetch', fetchMock);
+        const query = text.repeat(length);
+        if (accepted)
+          await expect(listCases(1, 20, { q: query })).resolves.toMatchObject({
+            total: 0,
+          });
+        else
+          await expect(listCases(1, 20, { q: query })).rejects.toMatchObject({
+            code: 'VALIDATION_ERROR',
+          });
+        expect(fetchMock).toHaveBeenCalledTimes(accepted ? 1 : 0);
+        if (!accepted) vi.unstubAllGlobals();
+      }
+      void kind;
+    }
+  });
+
   it('rejects unsupported sort values and non-string list filters before fetching', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

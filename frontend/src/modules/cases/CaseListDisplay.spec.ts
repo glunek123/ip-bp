@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
-import { createMemoryHistory, createRouter } from 'vue-router';
+import { RouterView, createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthSession } from '../../api/auth';
 import type { CaseList, CaseSummary } from '../../api/cases';
@@ -14,16 +14,29 @@ const api = vi.hoisted(() => ({
   getExternalEntryOptions:
     vi.fn<typeof import('../../api/cases').getExternalEntryOptions>(),
 }));
+const workflowTest = vi.hoisted(() => ({ markUnknown: false }));
+const preferenceApi = vi.hoisted(() => ({
+  get: vi.fn(),
+  save: vi.fn(),
+}));
 vi.mock('../../api/cases', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/cases')>()),
   listCases: api.listCases,
   getCase: api.getCase,
   getExternalEntryOptions: api.getExternalEntryOptions,
 }));
+vi.mock('../../api/case-list-preference', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/case-list-preference')>()),
+  getCaseListPreference: preferenceApi.get,
+  saveCaseListPreference: preferenceApi.save,
+}));
 vi.mock('./CaseListWorkflowPanel.vue', async (original) => ({
   ...(await original<typeof import('./CaseListWorkflowPanel.vue')>()),
   default: {
-    props: ['item', 'action'],
+    props: ['item', 'action', 'session'],
+    mounted(this: { session: { restoreUnknown: () => void } }) {
+      if (workflowTest.markUnknown) this.session.restoreUnknown();
+    },
     template:
       '<div data-test="workflow-panel">{{ item.id }} {{ action }}</div>',
   },
@@ -173,7 +186,10 @@ async function mountList(
   });
   await router.push(path);
   await router.isReady();
-  const wrapper = mount(CaseListPage, { global: { plugins: [pinia, router] } });
+  const wrapper = mount(
+    { components: { RouterView }, template: '<RouterView />' },
+    { global: { plugins: [pinia, router] } },
+  );
   wrappers.push(wrapper);
   await flushPromises();
   return { wrapper, router, auth };
@@ -181,8 +197,28 @@ async function mountList(
 
 beforeEach(() => {
   vi.resetAllMocks();
+  workflowTest.markUnknown = false;
   api.getCase.mockResolvedValue({ id: 'case-1' });
   api.listCases.mockResolvedValue(result());
+  preferenceApi.get.mockResolvedValue({
+    order: [
+      'businessNo',
+      'stage',
+      'customerName',
+      'rightsHolderName',
+      'platform',
+      'shopName',
+      'shopExternalId',
+      'defendants',
+      'lawyers',
+      'court',
+      'courtCaseNo',
+      'claimAmount',
+      'judgmentAmount',
+      'closureAmount',
+    ],
+    hidden: [],
+  });
   api.getExternalEntryOptions.mockResolvedValue({
     canCreate: false,
     canCreateArchived: false,
@@ -226,6 +262,130 @@ describe('authorized internal case list display', () => {
     expect(text).toContain('15.00');
     expect(text).toContain('待定');
     expect(text).not.toContain('未登记');
+  });
+
+  it('applies text filters and paired sorting only after explicit query submit', async () => {
+    const { wrapper, router } = await mountList(
+      '/cases?view=department&stage=WAITING_ARCHIVE&page=2',
+    );
+    const countBeforeEdit = api.listCases.mock.calls.length;
+    await wrapper
+      .get('[data-test="case-query-keyword"]')
+      .setValue('  案号甲  ');
+    await wrapper.get('form[role="search"]').trigger('submit');
+    await flushPromises();
+    expect(api.listCases).toHaveBeenCalledTimes(countBeforeEdit + 1);
+    expect(api.listCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({
+        view: 'department',
+        stage: 'WAITING_ARCHIVE',
+        q: '案号甲',
+        sortBy: 'createdAt',
+        sortDirection: 'desc',
+      }),
+    );
+    expect(router.currentRoute.value.query).toEqual({
+      view: 'department',
+      stage: 'WAITING_ARCHIVE',
+      q: '案号甲',
+      sortBy: 'createdAt',
+      sortDirection: 'desc',
+      page: '1',
+    });
+  });
+
+  it('rejects repeated query parameters without silently widening the list', async () => {
+    const { wrapper } = await mountList('/cases?view=department&q=one&q=two');
+    expect(api.listCases).not.toHaveBeenCalled();
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      '查询参数 q 必须且只能出现一次',
+    );
+  });
+
+  it('aborts a pending list request when a valid empty query becomes invalid', async () => {
+    let resolveOld!: (value: CaseList) => void;
+    api.listCases.mockReturnValueOnce(
+      new Promise<CaseList>((resolve) => {
+        resolveOld = resolve;
+      }),
+    );
+    const { wrapper, router } = await mountList('/cases?view=department');
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+    const oldSignal = api.listCases.mock.calls[0]?.[2]?.signal;
+
+    await router.push({ query: { view: 'department', q: ['one', 'two'] } });
+    await flushPromises();
+
+    expect(oldSignal?.aborted).toBe(true);
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      '查询参数 q 必须且只能出现一次',
+    );
+    resolveOld(result([{ ...summary(), businessNo: 'STALE-INVALID' }]));
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('STALE-INVALID');
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads the list when an invalid query becomes a valid empty query', async () => {
+    const { wrapper, router } = await mountList(
+      '/cases?view=department&q=one&q=two',
+    );
+    expect(api.listCases).not.toHaveBeenCalled();
+
+    await router.push({ query: { view: 'department', q: '' } });
+    await flushPromises();
+
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+    expect(api.listCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({ view: 'department' }),
+    );
+    expect(api.listCases.mock.calls.at(-1)?.[2]).not.toHaveProperty('q');
+    expect(wrapper.get('tbody').text()).toContain('合成客户甲有限公司');
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+
+  it('keeps explicit query navigation blocked while a workflow result is unknown', async () => {
+    workflowTest.markUnknown = true;
+    api.listCases.mockResolvedValue(
+      result([{ ...summary(), canArchive: true }]),
+    );
+    const { wrapper, router } = await mountList();
+    await wrapper.get('[data-case-action="archive"]').trigger('click');
+    await flushPromises();
+    const listCalls = api.listCases.mock.calls.length;
+    await wrapper.get('[data-test="case-query-keyword"]').setValue('不应离开');
+    await wrapper.get('form[role="search"]').trigger('submit');
+    await flushPromises();
+    expect(router.currentRoute.value.query.q).toBeUndefined();
+    expect(api.listCases).toHaveBeenCalledTimes(listCalls);
+  });
+
+  it('ignores an old list response after the same identity receives a new session object', async () => {
+    const oldItem = { ...summary(), id: 'old-session', businessNo: 'OLD-1' };
+    const newItem = { ...summary(), id: 'new-session', businessNo: 'NEW-1' };
+    let resolveOld!: (value: CaseList) => void;
+    let resolveNew!: (value: CaseList) => void;
+    api.listCases
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (resolveOld = resolve)),
+      )
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (resolveNew = resolve)),
+      );
+    const { wrapper, auth } = await mountList();
+    expect(api.listCases).toHaveBeenCalledTimes(1);
+    auth.session = structuredClone(session);
+    await flushPromises();
+    expect(api.listCases).toHaveBeenCalledTimes(2);
+    resolveOld(result([oldItem]));
+    resolveNew(result([newItem]));
+    await flushPromises();
+    expect(wrapper.get('tbody').text()).toContain('NEW-1');
+    expect(wrapper.get('tbody').text()).not.toContain('OLD-1');
   });
   it('opens an explicit judgment action in place and preserves list context', async () => {
     const item: CaseSummary = {
@@ -453,6 +613,87 @@ describe('authorized internal case list display', () => {
     expect(cells[0]!.text()).toContain('当前无可办操作');
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
     expect(wrapper.text()).not.toMatch(/批量|已结清|未结清|实收额/);
+  });
+
+  it('applies the server preference order and hidden columns for the active process bucket', async () => {
+    const order = [
+      'businessNo',
+      'stage',
+      'rightsHolderName',
+      'customerName',
+      'platform',
+      'shopName',
+      'shopExternalId',
+      'defendants',
+      'lawyers',
+      'court',
+      'courtCaseNo',
+      'claimAmount',
+      'judgmentAmount',
+      'closureAmount',
+    ];
+    preferenceApi.get.mockResolvedValueOnce({
+      order,
+      hidden: ['customerName'],
+    });
+    const { wrapper } = await mountList();
+    expect(preferenceApi.get).toHaveBeenCalledWith('WAITING_ARCHIVE', {
+      signal: expect.any(AbortSignal),
+    });
+    expect(
+      wrapper
+        .findAll('thead th')
+        .map((cell) => cell.text())
+        .slice(0, 4),
+    ).toEqual(['操作／案件编号', '案件进展', '权利主体', '平台']);
+    expect(wrapper.findAll('thead th')).toHaveLength(13);
+    expect(
+      wrapper.findAll('thead th').some((cell) => cell.text() === '客户'),
+    ).toBe(false);
+  });
+
+  it('persists panel edits through PUT and updates the visible table only after confirmation', async () => {
+    const saved = {
+      order: [
+        'businessNo',
+        'stage',
+        'customerName',
+        'rightsHolderName',
+        'platform',
+        'shopName',
+        'shopExternalId',
+        'defendants',
+        'lawyers',
+        'court',
+        'courtCaseNo',
+        'claimAmount',
+        'judgmentAmount',
+        'closureAmount',
+      ],
+      hidden: ['customerName'],
+    };
+    preferenceApi.save.mockResolvedValueOnce(saved);
+    const { wrapper } = await mountList();
+    await wrapper.get('[data-test="open-column-settings"]').trigger('click');
+    const customerRow = wrapper
+      .findAll('[role="dialog"] li')
+      .find((row) => row.text().includes('客户'))!;
+    await customerRow.get('input[type="checkbox"]').setValue(false);
+    await wrapper
+      .findAll('[role="dialog"] button')
+      .find((button) => button.text() === '保存')!
+      .trigger('click');
+    await flushPromises();
+    expect(preferenceApi.save).toHaveBeenCalledWith(
+      'WAITING_ARCHIVE',
+      expect.objectContaining({ hidden: ['customerName'] }),
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(wrapper.findAll('thead th')).toHaveLength(13);
+    expect(
+      wrapper.findAll('thead th').some((cell) => cell.text() === '客户'),
+    ).toBe(false);
+    expect(wrapper.get('[role="status"]').text()).toContain('已保存');
   });
 
   it('keeps every defendant and lawyer in native keyboard-expandable details', async () => {
