@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-19T09:34:57.501Z",
+  "recordedAt": "2026-10-19T09:57:14.071Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -742,7 +742,7 @@
     "docs/superpowers/plans/2026-10-11-case-execution-materials.md": "7aab8d7710f872d34b6fa9e17dbf14d85b6f59c18334f5220bb6f8dccc9bede3",
     "docs/superpowers/plans/2026-10-15-list-workflow-task-briefs.md": "86a8402513f230e6c2be1cdc8df24ef1f0031bd9eadcda29039e0231dc13d3fa",
     "docs/superpowers/plans/2026-10-17-next-batch-acceptance-readiness.md": "72da8330b4515539d6f81b2838525c5c4d320e403039e6e6bf01687e12b081a4",
-    "docs/superpowers/plans/2026-10-19-csv-discovery-manual-check.md": "a3eba26b13526308e630072d16e1bf9592aa84a12fd8c379758fbf3d4e5bde7e",
+    "docs/superpowers/plans/2026-10-19-csv-discovery-manual-check.md": "8bd4a73bb55e45b1bab6b20e22406d8c7b7ff6b5b011e8c0e1e9056444081c9a",
     "docs/superpowers/plans/2026-10-19-development-runtime-isolation.md": "012300a5a9badc43c47d26210defa63a4304e254e371e102160decd66256be5d",
     "docs/superpowers/plans/2026-10-19-lead-csv-import-contract.md": "9fd08f267c0a2982f22f01440cc7022b89b071b5c47eb6e6511dbb038643b91a",
     "docs/superpowers/specs/2026-09-17-local-account-auth-design.md": "90318fbebae983c71e9558138cbd40b30ef02afce332a0e52f70797601a23d6f",

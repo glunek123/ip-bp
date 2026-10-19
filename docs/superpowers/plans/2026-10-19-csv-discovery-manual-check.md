@@ -14,6 +14,14 @@
 
 ## 用户可选择在普通 Windows PowerShell 执行
 
+为避免多行粘贴被逐行意外执行，已另备本机可审阅脚本（UTF-8 BOM兼容Windows PowerShell），只静态解析检查，未运行。优先在编辑器查看脚本后，用户自行决定是否用下面**一行**调用；不用再逐段粘贴下文。脚本先核全部7项哈希，再加载/检查运行时，最后执行同一唯一 `--list`；默认保留新Temp配置，不含删除或ExecutionPolicy修改。若策略阻止脚本，保留错误并停，不使用Bypass或改策略。
+
+```powershell
+& 'D:\工作项目\品维and知产\dev_cor\.local\worktrees\minimal-page-actor-admission\.local\csv-owned-review-followup\manual-csv-discovery.ps1'
+```
+
+脚本SHA256为 `dac041c2d86e95ef9f1f570f9dc37edbc1583655961306dea72342d3ffe1b638`，属于本机ignored交接文件，不是已执行的测试证据。成功预期及非敏感回报范围与下文一致；下文分段命令保留供审阅和理解，不要求重复执行。
+
 这不是要求关闭安全控制或绕过组织策略。若本机同样拒绝，保留错误并停止；不切管理员、不改权限策略。先执行这一段，只核对运行时及源码：
 
 ```powershell
