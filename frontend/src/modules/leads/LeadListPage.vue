@@ -3,11 +3,15 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
+  getLeadFormContext,
   getLead,
+  importLeadCsvBatch,
   listLeads,
   type Lead,
+  type LeadFormContext,
   type LeadStatus,
 } from '../../api/leads';
+import { ApiError } from '../../api/http';
 import {
   labelLeadPlatform,
   leadStatusCards,
@@ -30,6 +34,17 @@ import {
   sameLeadBatchPush,
   type FrozenLeadBatchPush,
 } from './lead-batch-push-recovery';
+import LeadCsvImportPanel from './LeadCsvImportPanel.vue';
+import {
+  clearPendingLeadCsvImport,
+  readPendingLeadCsvImports,
+  sameLeadCsvImport,
+  savePendingLeadCsvImports,
+  type FrozenLeadCsvImport,
+  type LeadCsvImportAttempt,
+  type LeadCsvImportSubmissionContext,
+  type LeadCsvImportSubmitOutcome,
+} from './lead-csv-import-recovery';
 
 const route = useRoute();
 const router = useRouter();
@@ -72,6 +87,23 @@ const pendingBatch = computed(
   () => pendingBatches.value?.[batchIdentity.value] ?? null,
 );
 const pendingBatchBlocked = computed(() => pendingBatches.value === null);
+const pendingCsvImports = ref(readPendingLeadCsvImports());
+const pendingCsvImport = computed(
+  () => pendingCsvImports.value?.[batchIdentity.value] ?? null,
+);
+const pendingCsvImportBlocked = computed(
+  () => pendingCsvImports.value === null,
+);
+const csvImportOpen = ref(false);
+const csvContextLoading = ref(false);
+const csvContextError = ref('');
+const csvRecoveryBusy = ref(false);
+const csvFormContext = ref<LeadFormContext | null>(null);
+const csvContextKey = ref('');
+let csvContextEpoch = 0;
+let csvContextRequest: AbortController | undefined;
+let csvRecoveryRequest: AbortController | undefined;
+let pageMounted = true;
 const batchActive = ref(false);
 const batchFreshLeads = ref<Lead[]>([]);
 const batchLoading = ref(false);
@@ -99,7 +131,11 @@ function openWorkflow(lead: Lead) {
     pendingPush.value ||
     pendingStorageUnavailable.value ||
     pendingBatchBlocked.value ||
-    activeLeadId.value
+    pendingPush.value ||
+    pendingStorageUnavailable.value ||
+    activeLeadId.value ||
+    csvImportOpen.value ||
+    csvContextLoading.value
   )
     return;
   activeTitle.value = actionTitle(lead.status) ?? '线索下一步';
@@ -128,7 +164,13 @@ function handlePushSucceeded(attempt: FrozenLeadPush): void {
   void load();
 }
 function toggleSelected(lead: Lead, checked: boolean) {
-  if (batchActive.value || pendingBatch.value) return;
+  if (
+    batchActive.value ||
+    pendingBatch.value ||
+    csvImportOpen.value ||
+    csvContextLoading.value
+  )
+    return;
   selectedIds.value = checked
     ? [...selectedIds.value, lead.id]
     : selectedIds.value.filter((id) => id !== lead.id);
@@ -255,10 +297,223 @@ async function refreshBatchSnapshot(
   }
 }
 function openBatchPush() {
-  if (pendingBatch.value) return;
+  if (pendingBatch.value || csvImportOpen.value || csvContextLoading.value)
+    return;
   void refreshBatchSnapshot(
     selectedLeads.value.map(({ id }) => ({ leadId: id })),
   );
+}
+function refreshPendingCsvImports(): void {
+  pendingCsvImports.value = readPendingLeadCsvImports();
+}
+function openCsvImport(): void {
+  if (
+    state.value !== 'ready' ||
+    !canCreate.value ||
+    auth.session?.principalType !== 'INTERNAL' ||
+    pendingCsvImport.value ||
+    pendingCsvImportBlocked.value ||
+    pendingBatch.value ||
+    pendingBatchBlocked.value ||
+    activeLeadId.value ||
+    batchActive.value ||
+    batchLoading.value ||
+    csvContextLoading.value
+  )
+    return;
+  csvContextRequest?.abort();
+  const controller = new AbortController();
+  csvContextRequest = controller;
+  const actorIdentity = batchIdentity.value;
+  const generation = authorizationGeneration.value;
+  const epoch = ++csvContextEpoch;
+  csvContextLoading.value = true;
+  csvContextError.value = '';
+  void getLeadFormContext({ signal: controller.signal })
+    .then((context) => {
+      if (
+        !pageMounted ||
+        controller.signal.aborted ||
+        csvContextRequest !== controller ||
+        actorIdentity !== batchIdentity.value ||
+        generation !== authorizationGeneration.value ||
+        epoch !== csvContextEpoch
+      )
+        return;
+      csvFormContext.value = context;
+      csvContextKey.value = `${actorIdentity}:${generation}:${epoch}`;
+      csvImportOpen.value = true;
+    })
+    .catch(() => {
+      if (
+        !controller.signal.aborted &&
+        actorIdentity === batchIdentity.value &&
+        generation === authorizationGeneration.value
+      )
+        csvContextError.value = '无法读取当前线索字典和权限，请重试。';
+    })
+    .finally(() => {
+      if (csvContextRequest === controller) {
+        csvContextRequest = undefined;
+        csvContextLoading.value = false;
+      }
+    });
+}
+function closeCsvImport(): void {
+  csvContextRequest?.abort();
+  csvContextRequest = undefined;
+  csvContextEpoch += 1;
+  csvImportOpen.value = false;
+  csvFormContext.value = null;
+  csvContextKey.value = '';
+}
+function safeCsvNoWrite(cause: unknown): cause is ApiError {
+  return (
+    cause instanceof ApiError &&
+    ((cause.status === 400 && cause.code === 'VALIDATION_ERROR') ||
+      (cause.status === 409 && cause.code === 'CSV_IMPORT_REJECTED'))
+  );
+}
+function clearCsvAttempt(attempt: FrozenLeadCsvImport): boolean {
+  if (!clearPendingLeadCsvImport(attempt)) return false;
+  refreshPendingCsvImports();
+  return true;
+}
+async function submitCsvAttempt(
+  attempt: LeadCsvImportAttempt,
+  context: LeadCsvImportSubmissionContext,
+): Promise<LeadCsvImportSubmitOutcome> {
+  if (
+    !pageMounted ||
+    !csvImportOpen.value ||
+    attempt.actorIdentity !== batchIdentity.value ||
+    context.contextKey !== csvContextKey.value ||
+    context.authorizationGeneration !== authorizationGeneration.value ||
+    pendingCsvImportBlocked.value ||
+    pendingCsvImport.value ||
+    pendingBatch.value ||
+    batchActive.value
+  )
+    return {
+      kind: 'rejected',
+      message: '当前账号或页面状态已变化，请重新打开导入。',
+    };
+  const frozen: FrozenLeadCsvImport = Object.freeze({
+    ...attempt,
+    uncertain: true,
+  });
+  const entries = readPendingLeadCsvImports();
+  if (entries === null || entries[attempt.actorIdentity]) {
+    pendingCsvImports.value = entries;
+    return { kind: 'rejected', message: '无法安全保存未决请求，未发送导入。' };
+  }
+  entries[attempt.actorIdentity] = frozen;
+  if (!savePendingLeadCsvImports(entries)) {
+    refreshPendingCsvImports();
+    return { kind: 'rejected', message: '无法保存未决请求，未发送导入。' };
+  }
+  pendingCsvImports.value = entries;
+  try {
+    const result = await importLeadCsvBatch(
+      attempt.items,
+      attempt.idempotencyKey,
+      {
+        signal: context.signal,
+      },
+    );
+    if (
+      context.signal.aborted ||
+      attempt.actorIdentity !== batchIdentity.value ||
+      context.contextKey !== csvContextKey.value ||
+      context.authorizationGeneration !== authorizationGeneration.value
+    )
+      return { kind: 'unknown', message: '请求结果待核对；请使用原请求恢复。' };
+    return { kind: 'created', result };
+  } catch (cause) {
+    if (safeCsvNoWrite(cause)) {
+      if (!clearCsvAttempt(frozen))
+        return {
+          kind: 'unknown',
+          message: '请求未创建，但本地请求状态无法更新。',
+        };
+      return { kind: 'rejected', message: cause.message };
+    }
+    return {
+      kind: 'unknown',
+      message:
+        cause instanceof Error
+          ? cause.message
+          : '请求结果待核对，请保留原请求。',
+    };
+  }
+}
+function handleCsvImported(
+  attempt: LeadCsvImportAttempt,
+  _result: unknown,
+  context: { contextKey: string; authorizationGeneration: string },
+): void {
+  if (
+    attempt.actorIdentity !== batchIdentity.value ||
+    !csvImportOpen.value ||
+    context.contextKey !== csvContextKey.value ||
+    context.authorizationGeneration !== authorizationGeneration.value
+  )
+    return;
+  const current = readPendingLeadCsvImports()?.[attempt.actorIdentity];
+  if (!current || !sameLeadCsvImport(current, { ...attempt, uncertain: true }))
+    return;
+  if (!clearCsvAttempt(current))
+    csvContextError.value = '导入已创建，但本地未决记录无法清除。';
+  closeCsvImport();
+  void load();
+}
+async function recoverCsvImport(): Promise<void> {
+  const attempt = pendingCsvImport.value;
+  if (!attempt || csvRecoveryBusy.value) return;
+  const stored = readPendingLeadCsvImports()?.[batchIdentity.value];
+  if (!stored || !sameLeadCsvImport(stored, attempt)) {
+    refreshPendingCsvImports();
+    return;
+  }
+  const controller = new AbortController();
+  csvRecoveryRequest = controller;
+  const actorIdentity = batchIdentity.value;
+  const generation = authorizationGeneration.value;
+  csvRecoveryBusy.value = true;
+  try {
+    const result = await importLeadCsvBatch(
+      attempt.items,
+      attempt.idempotencyKey,
+      { signal: controller.signal },
+    );
+    if (
+      controller.signal.aborted ||
+      actorIdentity !== batchIdentity.value ||
+      generation !== authorizationGeneration.value
+    )
+      return;
+    if (clearCsvAttempt(attempt)) void load();
+    else csvContextError.value = '导入已创建，但本地未决记录无法清除。';
+    void result;
+  } catch (cause) {
+    if (
+      !controller.signal.aborted &&
+      actorIdentity === batchIdentity.value &&
+      generation === authorizationGeneration.value &&
+      safeCsvNoWrite(cause)
+    ) {
+      if (!clearCsvAttempt(attempt))
+        csvContextError.value = '请求未创建，但本地未决记录无法更新。';
+      else csvContextError.value = cause.message;
+    } else if (!controller.signal.aborted) {
+      csvContextError.value = '恢复结果仍未确认。请保留原请求，不要重新导入。';
+    }
+  } finally {
+    if (csvRecoveryRequest === controller) {
+      csvRecoveryRequest = undefined;
+      csvRecoveryBusy.value = false;
+    }
+  }
 }
 const selectedStatus = computed<LeadStatus | undefined>(() => {
   const value = route.query.status;
@@ -358,6 +613,17 @@ watch(
 watch(
   () => [identity.value, authorizationGeneration.value],
   ([value]) => {
+    csvContextRequest?.abort();
+    csvContextRequest = undefined;
+    csvRecoveryRequest?.abort();
+    csvRecoveryRequest = undefined;
+    csvRecoveryBusy.value = false;
+    csvContextEpoch += 1;
+    csvImportOpen.value = false;
+    csvContextLoading.value = false;
+    csvFormContext.value = null;
+    csvContextKey.value = '';
+    refreshPendingCsvImports();
     savePendingPush();
     activeLeadId.value = pendingPushes.value?.[String(value)]?.leadId ?? null;
     batchRequest?.abort();
@@ -382,25 +648,47 @@ watch(
   { flush: 'sync' },
 );
 onBeforeUnmount(() => {
+  pageMounted = false;
   request?.abort();
   batchRequest?.abort();
+  csvContextRequest?.abort();
+  csvRecoveryRequest?.abort();
 });
 </script>
 
 <template>
   <div class="page-view business-list-page">
-    <main :inert="!!activeLeadId || batchActive">
+    <main
+      :inert="
+        !!activeLeadId || batchActive || csvImportOpen || csvContextLoading
+      "
+    >
       <div class="page-head business-list-toolbar">
         <div>
           <h1>线索库</h1>
           <p>记录当前账号有权查看、尚未移交公证的线索。</p>
         </div>
-        <RouterLink
-          v-if="state === 'ready' && canCreate"
-          to="/leads/new"
-          data-test="create-lead"
-          ><ElButton type="primary">新建线索</ElButton></RouterLink
-        >
+        <div v-if="state === 'ready' && canCreate" class="lead-create-actions">
+          <RouterLink to="/leads/new" data-test="create-lead"
+            ><ElButton type="primary">新建线索</ElButton></RouterLink
+          >
+          <ElButton
+            data-test="open-csv-import"
+            :disabled="
+              auth.session?.principalType !== 'INTERNAL' ||
+              !!pendingCsvImport ||
+              pendingCsvImportBlocked ||
+              !!pendingBatch ||
+              pendingBatchBlocked ||
+              !!activeLeadId ||
+              batchActive ||
+              batchLoading ||
+              csvContextLoading
+            "
+            @click="openCsvImport"
+            >{{ csvContextLoading ? '读取导入配置…' : '导入 CSV' }}</ElButton
+          >
+        </div>
       </div>
       <section class="demo-card" aria-live="polite">
         <div
@@ -410,7 +698,13 @@ onBeforeUnmount(() => {
           <span>{{ selectedLeads.length }} 条已选</span>
           <ElButton
             data-test="open-batch-push"
-            :disabled="!!pendingPush || pendingBatchBlocked || batchLoading"
+            :disabled="
+              !!pendingPush ||
+              pendingBatchBlocked ||
+              batchLoading ||
+              csvImportOpen ||
+              csvContextLoading
+            "
             @click="openBatchPush"
             >批量推送</ElButton
           >
@@ -488,7 +782,9 @@ onBeforeUnmount(() => {
                       batchActive ||
                       pendingBatchBlocked ||
                       !!pendingBatch ||
-                      !!pendingPush
+                      !!pendingPush ||
+                      csvImportOpen ||
+                      csvContextLoading
                     "
                     @change="
                       toggleSelected(
@@ -611,8 +907,18 @@ onBeforeUnmount(() => {
           >
         </nav>
       </section>
-      <p v-if="pendingStorageUnavailable || pendingBatchBlocked" role="alert">
+      <p
+        v-if="
+          pendingStorageUnavailable ||
+          pendingBatchBlocked ||
+          pendingCsvImportBlocked
+        "
+        role="alert"
+      >
         无法读取未决请求记录，流程办理暂不可用。
+      </p>
+      <p v-if="csvContextError" role="alert" data-test="csv-context-error">
+        {{ csvContextError }}
       </p>
       <p v-if="batchError" role="alert" data-test="batch-refresh-error">
         {{ batchError }}
@@ -627,6 +933,22 @@ onBeforeUnmount(() => {
         >
       </p>
     </main>
+    <div
+      v-if="pendingCsvImport && !csvImportOpen"
+      role="alert"
+      data-test="pending-csv-import"
+    >
+      <p>
+        有一批 CSV
+        导入请求尚未确认。恢复会重放同一组内容和请求键，请勿重新上传文件。
+      </p>
+      <ElButton
+        data-test="recover-csv-import"
+        :disabled="csvRecoveryBusy"
+        @click="recoverCsvImport"
+        >{{ csvRecoveryBusy ? '正在核对…' : '核对未确认导入' }}</ElButton
+      >
+    </div>
     <LeadQuickActionsPanel
       v-if="activeLeadId"
       :lead-id="activeLeadId"
@@ -647,6 +969,19 @@ onBeforeUnmount(() => {
       @pending="persistBatch"
       @succeeded="finishBatch"
       @close="batchActive = false"
+    />
+    <LeadCsvImportPanel
+      v-if="csvImportOpen && csvFormContext"
+      :key="csvContextKey"
+      :open="csvImportOpen"
+      :context-key="csvContextKey"
+      :form-context="csvFormContext"
+      :operator-display-name="auth.session?.user.displayName ?? ''"
+      :actor-identity="batchIdentity"
+      :authorization-generation="authorizationGeneration"
+      :submit-attempt="submitCsvAttempt"
+      @close-request="closeCsvImport"
+      @imported="handleCsvImported"
     />
   </div>
 </template>

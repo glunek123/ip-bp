@@ -8,6 +8,11 @@ import {
   readPendingLeadBatchPush,
   savePendingLeadBatchPush,
 } from './lead-batch-push-recovery';
+import {
+  readPendingLeadCsvImports,
+  savePendingLeadCsvImports,
+  type FrozenLeadCsvImport,
+} from './lead-csv-import-recovery';
 import { defineComponent, h, type PropType } from 'vue';
 import { readPendingLeadCommands } from './LeadListWorkflowPanel.vue';
 import { ApiError } from '../../api/http';
@@ -17,6 +22,8 @@ import LeadListPage from './LeadListPage.vue';
 const api = vi.hoisted(() => ({
   listLeads: vi.fn(),
   getLead: vi.fn(),
+  getLeadFormContext: vi.fn(),
+  importLeadCsvBatch: vi.fn(),
   pushLead: vi.fn(),
   pushLeadsBatch: vi.fn(),
 }));
@@ -186,9 +193,85 @@ afterEach(() => {
   sessionStorage.removeItem('dev-cor:lead-workflow:pending');
   sessionStorage.removeItem('dev-cor:lead-quick-actions:pending-push');
   localStorage.removeItem('lead-batch-push-pending-v1');
+  localStorage.removeItem('lead-csv-import-pending-v1');
 });
 
 describe('LeadListPage', () => {
+  it('loads a fresh form context before opening CSV import', async () => {
+    api.listLeads.mockResolvedValue(result);
+    const formContext = {
+      customers: [],
+      dictionaries: {
+        caseTypes: [],
+        infringementTypes: [],
+        sources: [],
+        platforms: { ONLINE: [], OFFLINE: [] },
+      },
+    };
+    api.getLeadFormContext.mockResolvedValue(formContext);
+    const { wrapper } = await mountWithRoute('/leads');
+    await wrapper.get('[data-test="open-csv-import"]').trigger('click');
+    await flushPromises();
+
+    expect(api.getLeadFormContext).toHaveBeenCalledExactlyOnceWith({
+      signal: expect.any(AbortSignal),
+    });
+    const panel = wrapper.findComponent({ name: 'LeadCsvImportPanel' });
+    expect(panel.exists()).toBe(true);
+    expect(panel.props('formContext')).toEqual(formContext);
+    expect(panel.props('actorIdentity')).toBe(
+      'operator-1:INTERNAL:department-1',
+    );
+    expect(panel.props('operatorDisplayName')).toBe('运营甲');
+  });
+
+  it('explicitly replays a pending CSV import with the same items and key', async () => {
+    const actorIdentity = 'operator-1:INTERNAL:department-1';
+    const pending: FrozenLeadCsvImport = {
+      actorIdentity,
+      idempotencyKey: 'original-csv-key',
+      uncertain: true,
+      items: [
+        {
+          rowNumber: 2,
+          input: {
+            customerId: 'customer-1',
+            rightsHolderId: 'holder-1',
+            caseType: 'CIVIL',
+            infringementTypes: ['TRADEMARK'],
+            source: 'ONLINE',
+            platform: 'TAOBAO',
+            foundAt: '2026-10-01T00:00:00.000Z',
+            shopName: '测试店铺',
+            needDisclose: false,
+            products: [
+              {
+                url: 'https://example.com',
+                quantity: 1,
+                unitPrice: '1.00',
+                commentCount: 0,
+              },
+            ],
+            leadScreenshotContentVersionIds: [],
+          },
+        },
+      ],
+    };
+    savePendingLeadCsvImports({ [actorIdentity]: pending });
+    api.importLeadCsvBatch.mockResolvedValue({ items: [] });
+    api.listLeads.mockResolvedValue(result);
+    const { wrapper } = await mountWithRoute('/leads');
+    await wrapper.get('[data-test="recover-csv-import"]').trigger('click');
+    await flushPromises();
+
+    expect(api.importLeadCsvBatch).toHaveBeenCalledExactlyOnceWith(
+      pending.items,
+      pending.idempotencyKey,
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(readPendingLeadCsvImports()?.[actorIdentity]).toBeUndefined();
+  });
+
   it('refreshes selected lead authorization and version before opening batch push', async () => {
     api.listLeads.mockResolvedValue({
       ...result,
