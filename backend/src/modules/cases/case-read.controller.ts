@@ -278,6 +278,24 @@ export class CaseReadController {
   @Get()
   @ApiOkResponse({ type: CaseListResponseDto })
   list(@CurrentActor() actor: ActorContext, @Query() query: CasePageQueryDto) {
+    const textQuery = {
+      q: query.q,
+      customerName: query.customerName,
+      rightsHolderName: query.rightsHolderName,
+      courtCaseNo: query.courtCaseNo,
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
+    };
+    if (Object.values(textQuery).every((value) => value === undefined)) {
+      return this.cases.list(
+        actor,
+        query.page,
+        query.pageSize,
+        query.view,
+        query.stage,
+        query.stageGroup,
+      );
+    }
     return this.cases.list(
       actor,
       query.page,
@@ -285,6 +303,7 @@ export class CaseReadController {
       query.view,
       query.stage,
       query.stageGroup,
+      textQuery,
     );
   }
 

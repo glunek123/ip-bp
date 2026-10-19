@@ -1,8 +1,21 @@
 import { caseArchiveTypes } from './case-archive.dto';
 import { ExecutionFilingFollowupsDto } from './case-execution-filing-followup-read.dto';
 import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import {
+  caseListSortBy,
+  caseListSortDirections,
+  CaseListTextQuery,
+} from './case-list-query';
 import {
   ClosureRecordEditsDto,
   ExecutionFilingRecordEditsDto,
@@ -310,7 +323,7 @@ class CaseSecondInstanceDto {
   acceptances?: CaseSecondInstanceAcceptanceSummaryDto[];
 }
 
-export class CasePageQueryDto {
+export class CasePageQueryDto implements CaseListTextQuery {
   @ApiPropertyOptional({ enum: ['mine', 'department'], default: 'department' })
   @IsOptional()
   @IsIn(['mine', 'department'])
@@ -377,6 +390,49 @@ export class CasePageQueryDto {
   @IsOptional()
   @IsIn(['COMPLAINT_PREPARATION', 'EXECUTION_PREPARATION'])
   stageGroup?: 'COMPLAINT_PREPARATION' | 'EXECUTION_PREPARATION';
+  @ApiPropertyOptional({
+    maxLength: 200,
+    description: '编号、案号、客户、权利主体、被告',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MaxLength(200)
+  q?: string;
+  @ApiPropertyOptional({ maxLength: 200 })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MaxLength(200)
+  customerName?: string;
+  @ApiPropertyOptional({ maxLength: 200 })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MaxLength(200)
+  rightsHolderName?: string;
+  @ApiPropertyOptional({ maxLength: 200 })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MaxLength(200)
+  courtCaseNo?: string;
+  @ApiPropertyOptional({ enum: caseListSortBy, default: 'createdAt' })
+  @IsOptional()
+  @IsIn(caseListSortBy)
+  sortBy?: (typeof caseListSortBy)[number];
+  @ApiPropertyOptional({ enum: caseListSortDirections, default: 'desc' })
+  @IsOptional()
+  @IsIn(caseListSortDirections)
+  sortDirection?: (typeof caseListSortDirections)[number];
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @Type(() => Number)
   @IsInt()

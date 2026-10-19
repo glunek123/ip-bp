@@ -825,6 +825,39 @@ describe('case read OpenAPI contract', () => {
         .get('/api/v1/cases')
         .query({ stageGroup: 'UNKNOWN' })
         .expect(400);
+      await request(app.getHttpServer())
+        .get('/api/v1/cases')
+        .query({
+          q: '  A%_  ',
+          customerName: '客户',
+          sortBy: 'businessNo',
+          sortDirection: 'asc',
+        })
+        .expect(200);
+      expect(listRead).toHaveBeenLastCalledWith(
+        expect.any(Object),
+        1,
+        20,
+        'department',
+        undefined,
+        undefined,
+        {
+          q: 'A%_',
+          customerName: '客户',
+          rightsHolderName: undefined,
+          courtCaseNo: undefined,
+          sortBy: 'businessNo',
+          sortDirection: 'asc',
+        },
+      );
+      await request(app.getHttpServer())
+        .get('/api/v1/cases')
+        .query({ q: ['A', 'B'] })
+        .expect(400);
+      await request(app.getHttpServer())
+        .get('/api/v1/cases')
+        .query({ sortBy: 'amount' })
+        .expect(400);
       expect(
         document.paths['/api/v1/cases']?.get?.responses['200'],
       ).toMatchObject({
@@ -1038,6 +1071,38 @@ describe('case read OpenAPI contract', () => {
 });
 
 describe('case list execution stage query validation', () => {
+  it('accepts trimmed literal filters and paired sort inputs without changing defaults', () => {
+    const query = plainToInstance(CasePageQueryDto, {
+      q: '  A%_\\  ',
+      customerName: ' 客户 ',
+      sortBy: 'rightsHolderName',
+      sortDirection: 'asc',
+    });
+    expect(validateSync(query)).toEqual([]);
+    expect(query).toMatchObject({
+      q: 'A%_\\',
+      customerName: '客户',
+      sortBy: 'rightsHolderName',
+      sortDirection: 'asc',
+      page: 1,
+      pageSize: 20,
+    });
+    const original = plainToInstance(CasePageQueryDto, {});
+    expect(original.sortBy).toBeUndefined();
+    expect(original.sortDirection).toBeUndefined();
+  });
+
+  it('rejects invalid sorts, arrays and text beyond 200 characters', () => {
+    for (const input of [
+      { sortBy: 'amount' },
+      { sortDirection: 'sideways' },
+      { q: ['A', 'B'] },
+      { customerName: 'x'.repeat(201) },
+    ])
+      expect(
+        validateSync(plainToInstance(CasePageQueryDto, input)).length,
+      ).toBeGreaterThan(0);
+  });
   it.each([
     'WAITING_EXECUTION_FILING',
     'EXECUTING',

@@ -21,6 +21,8 @@ import { CaseExternalEntryService } from './case-external-entry.service';
 import { CaseCalendarSourceService } from './case-calendar-source.service';
 import { CaseReadController } from './case-read.controller';
 import { CaseReadService } from './case-read.service';
+import { CaseListPreferenceController } from './case-list-preference.controller';
+import { CaseListPreferenceService } from './case-list-preference.service';
 import { CaseMatchService } from './case-match.service';
 import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
@@ -62,6 +64,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseExecutionFilingFollowupController,
     LawyerCaseExecutionFilingFollowupController,
     CaseReadController,
+    CaseListPreferenceController,
     ClientCaseController,
     LawyerAccountController,
     CaseLawyerCandidatesController,
@@ -71,6 +74,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseExecutionFilingFollowupService,
     CaseCalendarSourceService,
     CaseReadService,
+    CaseListPreferenceService,
     CaseCreationService,
     CaseExternalEntryService,
     CaseMatchService,

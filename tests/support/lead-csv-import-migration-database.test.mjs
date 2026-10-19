@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { test } from 'node:test';
-import { resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { inspect } from 'node:util';
 import { setImmediate } from 'node:timers';
 import {
@@ -31,6 +38,35 @@ const env = {
   DEV_COR_TEST_DATABASE_URL: url,
   npm_config_user_agent: 'pnpm/11.27.0 npm/? node/v24.21.0',
 };
+const migrationDirectory = resolve('backend/prisma/migrations');
+const csvMigration = '20261019090000_lead_csv_import_receipts';
+const caseListPreferenceMigration = '20261019120000_case_list_preferences';
+
+async function withCsvSourceFixture(operation) {
+  const temporaryRoot = resolve('.local');
+  await mkdir(temporaryRoot, { recursive: true });
+  const fixture = await mkdtemp(join(temporaryRoot, 'csv166-source-'));
+  try {
+    const names = (await readdir(migrationDirectory))
+      .filter((name) => /^\d{14}_/u.test(name))
+      .sort()
+      .slice(0, 166);
+    assert.equal(names.length, 166);
+    assert.equal(names.at(-1), csvMigration);
+    for (const name of names) {
+      await mkdir(join(fixture, name));
+      await writeFile(
+        join(fixture, name, 'migration.sql'),
+        await readFile(join(migrationDirectory, name, 'migration.sql')),
+      );
+    }
+    return await operation(fixture);
+  } finally {
+    assert.equal(dirname(fixture), temporaryRoot);
+    assert.ok(basename(fixture).startsWith('csv166-source-'));
+    await rm(fixture, { recursive: true });
+  }
+}
 
 function errorReport(error) {
   return [
@@ -258,7 +294,9 @@ test('first owned upgrade error survives rollback and connection-close failures'
     createLeadCsvBudget({ milliseconds: 120_000, now: time.now }),
     time,
   );
-  const plan = await readLeadCsvOfflinePlan();
+  const plan = await withCsvSourceFixture((fixture) =>
+    readLeadCsvOfflinePlan({ migrations: fixture }),
+  );
   await assert.rejects(
     runLeadCsvOwnedScenario(session, name, 'upgrade', plan),
     (error) => {
@@ -591,7 +629,9 @@ test('pure R2 guard rejects changed tuple and ambiguous URL before capture', () 
 });
 
 test('all 166 raw pins, 176 source groups, and reversible fault are frozen', async () => {
-  const plan = await readLeadCsvOfflinePlan();
+  const plan = await withCsvSourceFixture((fixture) =>
+    readLeadCsvOfflinePlan({ migrations: fixture }),
+  );
   assert.equal(plan.source.length, 166);
   assert.equal(
     plan.source.reduce((count, item) => count + item.parts.length, 0),
@@ -620,6 +660,27 @@ test('all 166 raw pins, 176 source groups, and reversible fault are frozen', asy
     assertOwnedSchema(`csv_risk_${nonce}_fault`, nonce, 'upgrade'),
   );
 });
+
+test('runtime default rejects the new migration instead of widening CSV166 admission', async () => {
+  await assert.rejects(readLeadCsvOfflinePlan(), (error) => {
+    assert.equal(error.code, 'ERR_ASSERTION');
+    assert.ok(error.actual.includes(caseListPreferenceMigration));
+    assert.equal(error.expected.at(-1), csvMigration);
+    return true;
+  });
+});
+
+test('CSV166 fixture still rejects a changed pinned migration byte', async () =>
+  withCsvSourceFixture(async (fixture) => {
+    const path = join(fixture, csvMigration, 'migration.sql');
+    await writeFile(
+      path,
+      Buffer.concat([await readFile(path), Buffer.from('\n-- changed\n')]),
+    );
+    await assert.rejects(readLeadCsvOfflinePlan({ migrations: fixture }), {
+      code: 'ERR_ASSERTION',
+    });
+  }));
 
 test('helper import and spec do not hide cleanup, grants, or credential writes', async () => {
   const helper = await readFile(

@@ -42,6 +42,8 @@ import { NotaryReturnArchiveBatchController } from './modules/leads/notary-retur
 import { NotaryReturnArchiveBatchService } from './modules/leads/notary-return-archive-batch.service';
 import { CaseReadController } from './modules/cases/case-read.controller';
 import { CaseReadService } from './modules/cases/case-read.service';
+import { CaseListPreferenceController } from './modules/cases/case-list-preference.controller';
+import { CaseListPreferenceService } from './modules/cases/case-list-preference.service';
 import { CaseMatchService } from './modules/cases/case-match.service';
 import { CaseComplaintService } from './modules/cases/case-complaint.service';
 import { CaseComplaintConfirmationService } from './modules/cases/case-complaint-confirmation.service';
@@ -321,6 +323,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         NotaryListExportController,
         NotaryReturnArchiveBatchController,
         CaseReadController,
+        CaseListPreferenceController,
       ],
       providers: [
         {
@@ -359,6 +362,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: NotaryListExportService, useValue: {} },
         { provide: NotaryReturnArchiveBatchService, useValue: {} },
         { provide: CaseReadService, useValue: {} },
+        { provide: CaseListPreferenceService, useValue: {} },
         { provide: CaseExternalEntryService, useValue: {} },
         { provide: CaseMatchService, useValue: {} },
         { provide: CaseComplaintService, useValue: {} },
@@ -529,6 +533,18 @@ describe('CORE-LD-002 OpenAPI contract', () => {
     ],
     ['get', '/api/v1/client/leads', '200', 'ClientLeadListResponseDto'],
     ['get', '/api/v1/notary-matters', '200', 'NotaryListResponseDto'],
+    [
+      'get',
+      '/api/v1/cases/list-preferences/{bucket}',
+      '200',
+      'CaseListPreferenceResponseDto',
+    ],
+    [
+      'put',
+      '/api/v1/cases/list-preferences/{bucket}',
+      '200',
+      'CaseListPreferenceResponseDto',
+    ],
     [
       'post',
       '/api/v1/notary-matters/return-archive-batches',

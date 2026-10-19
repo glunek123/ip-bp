@@ -20,6 +20,11 @@ import {
   caseListDisplaySelect,
 } from './case-list-display-read';
 import {
+  caseListOrderBy,
+  caseListTextWhere,
+  CaseListTextQuery,
+} from './case-list-query';
+import {
   projectSectionRecord,
   sectionRecordCorrectionSelect,
   sectionRecordFiles,
@@ -117,6 +122,7 @@ export class CaseReadService {
       | 'WAITING_ARCHIVE'
       | 'ARCHIVED',
     stageGroup?: 'COMPLAINT_PREPARATION' | 'EXECUTION_PREPARATION',
+    query: CaseListTextQuery = {},
   ) {
     if (stage !== undefined && stageGroup !== undefined)
       throw new BadRequestException({
@@ -124,6 +130,11 @@ export class CaseReadService {
         message: '阶段与阶段组不能同时筛选',
       });
     const principal = await this.scope(actor);
+    if (
+      principal === 'LAWYER' &&
+      Object.values(query).some((value) => value !== undefined)
+    )
+      throw this.forbidden();
     const baseWhere: Prisma.CaseWhereInput = {
       departmentId: actor.departmentId,
       ...(principal === 'LAWYER'
@@ -132,8 +143,13 @@ export class CaseReadService {
           ? { responsibleUserId: actor.userId }
           : {}),
     };
+    const textWhere = caseListTextWhere(query);
+    const filteredBaseWhere: Prisma.CaseWhereInput =
+      Object.keys(textWhere).length === 0
+        ? baseWhere
+        : { ...baseWhere, ...textWhere };
     const where: Prisma.CaseWhereInput = {
-      ...baseWhere,
+      ...filteredBaseWhere,
       ...(stage
         ? { stage }
         : stageGroup === 'COMPLAINT_PREPARATION'
@@ -161,7 +177,7 @@ export class CaseReadService {
     const [items, total, grouped] = await Promise.all([
       this.database.case.findMany({
         where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        orderBy: caseListOrderBy(query),
         skip: (page - 1) * pageSize,
         take: pageSize,
         select: {
@@ -260,14 +276,14 @@ export class CaseReadService {
       this.database.case.count({ where }),
       this.database.case.groupBy({
         by: ['stage'],
-        where: baseWhere,
+        where: filteredBaseWhere,
         _count: { _all: true },
       }),
     ]);
     const displayRecords =
       principal === 'INTERNAL' && items.length > 0
         ? await this.database.case.findMany({
-            where: { ...baseWhere, id: { in: items.map((item) => item.id) } },
+            where: { ...where, id: { in: items.map((item) => item.id) } },
             select: caseListDisplaySelect,
           })
         : [];

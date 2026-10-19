@@ -35,6 +35,8 @@ const directory = resolve('backend/prisma/migrations');
 const source160 = '20261016100000_case_execution_filing_followups';
 const source159 = '20261016093000_case_record_material_reference_reuse';
 const preparation = '20261016095000_execution_supplement_enum_preparation';
+const http165Last = '20261016130000_evidence_demo_alignment';
+const caseListPreferenceMigration = '20261019120000_case_list_preferences';
 const preparationHash =
   'f9a18c2d93ac3bb75debac0835eee32dd9896fff267c1fa7275c959bddfeac5f';
 const source160Hash =
@@ -79,13 +81,14 @@ test('official EF enum preparation is a separate whole migration before the unch
 
 async function withSourceFixture(operation) {
   const temporaryRoot = resolve('.local');
+  await mkdir(temporaryRoot, { recursive: true });
   const fixture = await mkdtemp(join(temporaryRoot, 'ef160-source-'));
   try {
     const names = (await readdir(directory))
       .filter((name) => /^\d{14}_/u.test(name))
       .sort();
-    assert.equal(names.length, 165);
     assert.equal(names[160], source160);
+    assert.equal(names[164], http165Last);
     // The owned migration probe deliberately models the frozen 161-prefix only.
     for (const name of names.slice(0, 161)) {
       await mkdir(join(fixture, name));
@@ -111,14 +114,32 @@ async function ownedPlan() {
 async function currentPublicSource() {
   const names = (await readdir(directory))
     .filter((name) => /^\d{14}_/u.test(name))
-    .sort();
-  return Promise.all(
+    .sort()
+    .slice(0, 165);
+  assert.equal(names.length, 165);
+  assert.equal(names.at(-1), http165Last);
+  const source = await Promise.all(
     names.map(async (name) => ({
       name,
       checksum: sha256(await readFile(join(directory, name, 'migration.sql'))),
     })),
   );
+  assertExecutionFilingFollowupMigrationSource(source);
+  return source;
 }
+
+test('default EF plan rejects the new directory while owned161 and HTTP165 stay frozen', async () => {
+  const names = (await readdir(directory))
+    .filter((name) => /^\d{14}_/u.test(name))
+    .sort();
+  assert.ok(names.includes(caseListPreferenceMigration));
+  await assert.rejects(executionFilingFollowupMigrationPlan(), (error) => {
+    assert.equal(error.code, 'ERR_ASSERTION');
+    assert.equal(error.actual, names.length);
+    assert.equal(error.expected, 161);
+    return true;
+  });
+});
 
 test('admission binds the full authorized R2 tuple and protected pnpm entry without side effects', () => {
   assert.equal(

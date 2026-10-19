@@ -2433,6 +2433,85 @@ describe('CaseReadService', () => {
       }),
     );
   });
+  it('filters before pagination and applies the same text scope to total and stage counts', async () => {
+    const f = fixture();
+    await f.service.list(actor, 2, 20, 'mine', 'WAITING_COMPLAINT', undefined, {
+      q: 'CA-1',
+      customerName: '客户',
+      sortBy: 'rightsHolderName',
+      sortDirection: 'asc',
+    });
+    const scope = {
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      AND: [
+        {
+          OR: [
+            { businessNo: { contains: 'CA-1', mode: 'insensitive' } },
+            { courtCaseNo: { contains: 'CA-1', mode: 'insensitive' } },
+            {
+              customer: {
+                is: { name: { contains: 'CA-1', mode: 'insensitive' } },
+              },
+            },
+            {
+              rightsHolder: {
+                is: { name: { contains: 'CA-1', mode: 'insensitive' } },
+              },
+            },
+            {
+              defendants: {
+                some: { name: { contains: 'CA-1', mode: 'insensitive' } },
+              },
+            },
+          ],
+        },
+        {
+          customer: { is: { name: { contains: '客户', mode: 'insensitive' } } },
+        },
+      ],
+    };
+    expect(f.db.case.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { ...scope, stage: 'WAITING_COMPLAINT' },
+        orderBy: [{ rightsHolder: { name: 'asc' } }, { id: 'asc' }],
+        skip: 20,
+        take: 20,
+      }),
+    );
+    expect(f.db.case.count).toHaveBeenCalledWith({
+      where: { ...scope, stage: 'WAITING_COMPLAINT' },
+    });
+    expect(f.db.case.groupBy).toHaveBeenCalledWith({
+      by: ['stage'],
+      where: scope,
+      _count: { _all: true },
+    });
+  });
+  it('keeps the lawyer original read while rejecting the new internal query inputs', async () => {
+    const f = fixture();
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    const lawyer = { ...actor, lawyerAccountId: actor.userId };
+    await f.service.list(lawyer, 1, 20);
+    expect(f.db.case.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          departmentId: actor.departmentId,
+          lawyers: expect.any(Object),
+        }),
+      }),
+    );
+    f.db.case.findMany.mockClear();
+    await expect(
+      f.service.list(lawyer, 1, 20, 'department', undefined, undefined, {
+        q: 'case',
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(f.db.case.findMany).not.toHaveBeenCalled();
+  });
   it('returns public list fields without internal ownership relation data', async () => {
     const f = fixture();
     f.db.case.findMany.mockResolvedValue([
