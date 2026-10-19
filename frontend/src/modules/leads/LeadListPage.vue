@@ -8,6 +8,7 @@ import {
   importLeadCsvBatch,
   listLeads,
   type Lead,
+  type LeadBusinessResult,
   type LeadFormContext,
   type LeadStatus,
 } from '../../api/leads';
@@ -98,6 +99,7 @@ const csvImportOpen = ref(false);
 const csvContextLoading = ref(false);
 const csvContextError = ref('');
 const csvRecoveryBusy = ref(false);
+const csvSuccessMessage = ref('');
 const csvFormContext = ref<LeadFormContext | null>(null);
 const csvContextKey = ref('');
 let csvContextEpoch = 0;
@@ -327,6 +329,8 @@ function openCsvImport(): void {
     state.value !== 'ready' ||
     !canCreate.value ||
     auth.session?.principalType !== 'INTERNAL' ||
+    pendingPush.value ||
+    pendingStorageUnavailable.value ||
     pendingCsvImport.value ||
     pendingCsvImportBlocked.value ||
     pendingBatch.value ||
@@ -345,6 +349,7 @@ function openCsvImport(): void {
   const epoch = ++csvContextEpoch;
   csvContextLoading.value = true;
   csvContextError.value = '';
+  csvSuccessMessage.value = '';
   void getLeadFormContext({ signal: controller.signal })
     .then((context) => {
       if (
@@ -378,6 +383,7 @@ function openCsvImport(): void {
 function closeCsvImport(): void {
   csvContextRequest?.abort();
   csvContextRequest = undefined;
+  csvContextLoading.value = false;
   csvContextEpoch += 1;
   csvImportOpen.value = false;
   csvFormContext.value = null;
@@ -419,6 +425,8 @@ async function submitCsvAttempt(
     attempt.actorIdentity !== batchIdentity.value ||
     context.contextKey !== csvContextKey.value ||
     context.authorizationGeneration !== authorizationGeneration.value ||
+    pendingPush.value ||
+    pendingStorageUnavailable.value ||
     pendingCsvImportBlocked.value ||
     pendingCsvImport.value ||
     pendingBatch.value ||
@@ -479,7 +487,9 @@ async function submitCsvAttempt(
 }
 function handleCsvImported(
   attempt: LeadCsvImportAttempt,
-  _result: unknown,
+  result: {
+    items: Array<{ rowNumber: number; lead: LeadBusinessResult }>;
+  },
   context: { contextKey: string; authorizationGeneration: string },
 ): void {
   if (
@@ -492,6 +502,7 @@ function handleCsvImported(
   const current = readPendingLeadCsvImports()?.[attempt.actorIdentity];
   if (!current || !sameLeadCsvImport(current, { ...attempt, uncertain: true }))
     return;
+  csvSuccessMessage.value = `已导入 ${result.items.length} 条线索。`;
   if (!clearCsvAttempt(current))
     csvContextError.value = '导入已创建，但本地未决记录无法清除。';
   closeCsvImport();
@@ -524,9 +535,9 @@ async function recoverCsvImport(): Promise<void> {
       contextEpoch !== csvContextEpoch
     )
       return;
+    csvSuccessMessage.value = `已导入 ${result.items.length} 条线索。`;
     if (clearCsvAttempt(attempt)) void load();
     else csvContextError.value = '导入已创建，但本地未决记录无法清除。';
-    void result;
   } catch (cause) {
     if (
       !controller.signal.aborted &&
@@ -681,6 +692,7 @@ watch(
 watch(
   () => route.fullPath,
   () => {
+    csvSuccessMessage.value = '';
     if (csvContextRequest || csvContextLoading.value || csvImportOpen.value)
       closeCsvImport();
     else csvContextEpoch += 1;
@@ -724,6 +736,10 @@ onBeforeUnmount(() => {
               pendingCsvImportBlocked ||
               !!pendingBatch ||
               pendingBatchBlocked ||
+              !!pendingPush ||
+              pendingStorageUnavailable ||
+              !!pendingCsvImport ||
+              pendingCsvImportBlocked ||
               !!activeLeadId ||
               batchActive ||
               batchLoading ||
@@ -972,6 +988,9 @@ onBeforeUnmount(() => {
       <p v-if="csvContextError" role="alert" data-test="csv-context-error">
         {{ csvContextError }}
       </p>
+      <p v-if="csvSuccessMessage" role="status" data-test="csv-success">
+        {{ csvSuccessMessage }}
+      </p>
       <p v-if="batchError" role="alert" data-test="batch-refresh-error">
         {{ batchError }}
       </p>
@@ -983,6 +1002,7 @@ onBeforeUnmount(() => {
         <ElButton
           data-test="reopen-pending-lead"
           :disabled="
+            pendingStorageUnavailable ||
             !!pendingCsvImport ||
             pendingCsvImportBlocked ||
             csvImportOpen ||

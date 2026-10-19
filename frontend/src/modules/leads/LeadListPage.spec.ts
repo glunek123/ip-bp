@@ -284,6 +284,59 @@ describe('LeadListPage', () => {
     );
   });
 
+  it('blocks CSV import when a single-lead request remains pending after close', async () => {
+    const identity = 'operator-1:INTERNAL:department-1:1';
+    sessionStorage.setItem(
+      'dev-cor:lead-workflow:pending',
+      JSON.stringify({
+        [identity]: {
+          identity,
+          leadId: summary.id,
+          expectedVersion: 1,
+          idempotencyKey: 'pending-single-lead',
+          action: 'push',
+          body: { expectedVersion: 1 },
+        },
+      }),
+    );
+    api.listLeads.mockResolvedValue(result);
+    api.getLead.mockRejectedValue(new Error('offline'));
+    const { wrapper } = await mountWithRoute('/leads');
+    await flushPromises();
+    await wrapper.get('[data-test="close-drawer"]').trigger('click');
+    const button = wrapper.get('[data-test="open-csv-import"]');
+    expect(button.attributes('disabled')).toBeDefined();
+    await button.trigger('click');
+    expect(api.getLeadFormContext).not.toHaveBeenCalled();
+    expect(api.importLeadCsvBatch).not.toHaveBeenCalled();
+  });
+
+  it('blocks CSV import when single-lead recovery storage is unreadable', async () => {
+    sessionStorage.setItem('dev-cor:lead-workflow:pending', '{invalid');
+    api.listLeads.mockResolvedValue(result);
+    const { wrapper } = await mountWithRoute('/leads');
+    const button = wrapper.get('[data-test="open-csv-import"]');
+    expect(button.attributes('disabled')).toBeDefined();
+    await button.trigger('click');
+    expect(api.getLeadFormContext).not.toHaveBeenCalled();
+    expect(api.importLeadCsvBatch).not.toHaveBeenCalled();
+  });
+
+  it('reports the actual created count for a new CSV import', async () => {
+    api.listLeads.mockResolvedValue(result);
+    api.getLeadFormContext.mockResolvedValue(csvFormContext);
+    api.importLeadCsvBatch.mockResolvedValue({ items: [{}, {}, {}] });
+    const { wrapper } = await mountWithRoute('/leads');
+    await wrapper.get('[data-test="open-csv-import"]').trigger('click');
+    await flushPromises();
+    await uploadAndSelectCsv(wrapper);
+    await wrapper.get('[data-test="csv-confirm-request"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-test="csv-success"]').text()).toContain(
+      '已导入 3 条线索',
+    );
+  });
+
   it('keeps an original CSV attempt when a known rejection arrives after auth changes', async () => {
     api.listLeads.mockResolvedValue(result);
     api.getLeadFormContext.mockResolvedValue(csvFormContext);
@@ -406,6 +459,53 @@ describe('LeadListPage', () => {
     expect(panel.props('operatorDisplayName')).toBe('运营甲');
   });
 
+  it('clears loading on route change and opens again with a fresh context', async () => {
+    api.listLeads.mockResolvedValue(result);
+    const oldContext = deferred<LeadFormContext>();
+    const freshContext: LeadFormContext = {
+      ...csvFormContext,
+      customers: [
+        {
+          id: 'customer-new',
+          name: '新客户',
+          rightsHolders: [{ id: 'holder-new', name: '新主体' }],
+        },
+      ],
+    };
+    api.getLeadFormContext
+      .mockReturnValueOnce(oldContext.promise)
+      .mockResolvedValueOnce(freshContext);
+    const { wrapper, router } = await mountWithRoute('/leads');
+    await wrapper.get('[data-test="open-csv-import"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-test="open-csv-import"]').text()).toContain(
+      '读取导入配置',
+    );
+
+    await router.push('/leads?status=WAITING_PUSH');
+    await flushPromises();
+    expect(wrapper.find('[data-test="csv-import-panel"]').exists()).toBe(false);
+    expect(
+      wrapper.get('[data-test="open-csv-import"]').attributes('disabled'),
+    ).toBeUndefined();
+
+    oldContext.resolve(csvFormContext);
+    await flushPromises();
+    expect(wrapper.find('[data-test="csv-import-panel"]').exists()).toBe(false);
+    expect(
+      wrapper.get('[data-test="open-csv-import"]').attributes('disabled'),
+    ).toBeUndefined();
+
+    await wrapper.get('[data-test="open-csv-import"]').trigger('click');
+    await flushPromises();
+    expect(api.getLeadFormContext).toHaveBeenCalledTimes(2);
+    expect(
+      wrapper
+        .findComponent({ name: 'LeadCsvImportPanel' })
+        .props('formContext'),
+    ).toEqual(freshContext);
+  });
+
   it('explicitly replays a pending CSV import with the same items and key', async () => {
     const actorIdentity = 'operator-1:INTERNAL:department-1';
     const pending: FrozenLeadCsvImport = {
@@ -439,7 +539,7 @@ describe('LeadListPage', () => {
       ],
     };
     savePendingLeadCsvImports({ [actorIdentity]: pending });
-    api.importLeadCsvBatch.mockResolvedValue({ items: [] });
+    api.importLeadCsvBatch.mockResolvedValue({ items: [{}, {}] });
     api.listLeads.mockResolvedValue(result);
     const { wrapper } = await mountWithRoute('/leads');
     await wrapper.get('[data-test="recover-csv-import"]').trigger('click');
@@ -451,6 +551,9 @@ describe('LeadListPage', () => {
       { signal: expect.any(AbortSignal) },
     );
     expect(readPendingLeadCsvImports()?.[actorIdentity]).toBeUndefined();
+    expect(wrapper.get('[data-test="csv-success"]').text()).toContain(
+      '已导入 2 条线索',
+    );
   });
 
   it('refreshes selected lead authorization and version before opening batch push', async () => {
