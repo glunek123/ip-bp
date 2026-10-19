@@ -1,5 +1,7 @@
 # 当前开发状态
 
+2026-10-19前置诊断接续：固定22cd51e8已交原Runner；第一次在自有普通Node前置额外调用受保护prepare被拒，修正后正常protected入口仍于webServer／回调前报告通用MINIMAL_PAGE_PREFLIGHT。两次均0新session／0HTTP／0业务写入，165表旧行／catalog／sequence和96文件保护收尾通过，原剩余额度不变。已实读授权、封存证据、源链、普通proof和既有fingerprint key均通过；现有catch丢失底层错误且stderr整段正则排除数字码，尚不能认定DB或产品根因。原Owner只补phase／code／causeCode白名单诊断及纯反例，原Reviewer定向补审；下一步原Runner仅在protected入口做强制list、无服务／回调的只读probe，取得精确根因并修复后才恢复EF及后续Lead，不盲重试、不重复询问未消耗的登录授权。
+
 2026-10-19 checkpoint代码已固定8c1bc8c761a726b4a187e6daf6b5c0863cca9e54，仅原五份验收文件；独立Sol对最终五raw终核C/I/M0，关闭额外表漏检、分页GET误拦与文案编码问题。直接pure26/26一轮、最后helper18/18、root类型及定向Lint／格式通过；原EF入口现为已保存Case专用，来源／上传链不再可执行。下一步封存文档／快照后固定完整候选，生成绑定真实批准／五hash／HEAD／tree的ignored receipt，再交原Runner今日前置和先EF后Lead；新增登录尚未执行。公证166链只做独立准备，不混当前165。Demo五包和M00–M10证据边界已同步路线图，长期／待核范围不计本轮新增任务。
 
 2026-10-19授权已补齐：用户02:01:49 UTC消息Sentinel_99b86fc7c7ac81918193c5af43f85438明确允许补1次EF测试登录会话，父级已完整转交原文。用途仅复用原Case／filing／文件完成原剩余2反馈POST，不新增账号／Grant／Case／文件／上传，不挪用H42原1session／2Lead／3POST。完整证据已交原Runner并注明暂非GO；主控继续等待checkpoint纯验证、独立审查及精确候选，今日前置通过才由其先EF后线索、首异常停。此前“缺额外登录批准”为历史断点，不再重复申请。

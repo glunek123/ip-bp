@@ -161,6 +161,96 @@ function blocked(phase = 'GUARD', cause) {
   throw error;
 }
 
+const preflightPhases = new Set([
+  'PREFLIGHT',
+  'R2_BINDING',
+  'PRESERVED_EF_AUTHORIZATION',
+  'PRESERVED_EF_EVIDENCE',
+  'FROZEN_SOURCE',
+  'ORDINARY_PROOF',
+  'CAPTURE',
+  'PG_CONNECT',
+  'LEDGER',
+  'ACTOR',
+  'PRESERVED_EF_LIVE',
+  'FIXTURE',
+  'STARTUP_WINDOW',
+  'PRIVATE_CREDENTIAL',
+]);
+const preflightCauseCodes = new Set([
+  'EACCES',
+  'ECONNREFUSED',
+  'ENOENT',
+  'EPERM',
+  'ETIMEDOUT',
+  'MODULE_NOT_FOUND',
+  'TYPE_ERROR',
+  'REFERENCE_ERROR',
+  'SYNTAX_ERROR',
+  'RANGE_ERROR',
+  'UNCLASSIFIED',
+]);
+const preflightGuardCodes = new Set([
+  ...[...preflightPhases].map((phase) => `MINIMAL_PAGE_${phase}`),
+  'MINIMAL_PAGE_GUARD',
+  'MINIMAL_PAGE_FINGERPRINT_KEY',
+  'MINIMAL_PAGE_PRESERVED_EF_HASH',
+  'MINIMAL_PAGE_PRESERVED_EF_FILES',
+  'MINIMAL_PAGE_PRESERVED_EF_TABLE',
+  'MINIMAL_PAGE_PRESERVED_EF_ROWS',
+]);
+const preflightMarker = '@@MINIMAL_PAGE_PREFLIGHT_DIAGNOSTIC@@';
+
+function safePreflightCauseCode(value, name) {
+  if (typeof value === 'string') {
+    if (preflightGuardCodes.has(value)) return value;
+    if (/^(?:[0-9][0-9A-Z]|P0|XX|HV|F0)[0-9A-Z]{3}$/u.test(value)) return value; // PostgreSQL SQLSTATE, without arbitrary five-letter text
+    if (preflightCauseCodes.has(value)) return value;
+  }
+  const names = {
+    TypeError: 'TYPE_ERROR',
+    ReferenceError: 'REFERENCE_ERROR',
+    SyntaxError: 'SYNTAX_ERROR',
+    RangeError: 'RANGE_ERROR',
+  };
+  return Object.hasOwn(names, name) ? names[name] : 'UNCLASSIFIED';
+}
+
+export function formatMinimalPagePreflightDiagnostic(error) {
+  const phase = preflightPhases.has(error?.phase) ? error.phase : 'PREFLIGHT';
+  const code = `MINIMAL_PAGE_${phase}`;
+  const causeCode = safePreflightCauseCode(error?.causeCode, error?.name);
+  return `${preflightMarker}${JSON.stringify({ phase, code, causeCode })}`;
+}
+
+export function parseMinimalPagePreflightDiagnostic(stderr) {
+  const lines = String(stderr).split(/\r?\n/u);
+  const matches = lines.filter((line) => line.startsWith(preflightMarker));
+  if (matches.length !== 1)
+    return {
+      phase: 'PREFLIGHT',
+      code: 'MINIMAL_PAGE_PREFLIGHT',
+      causeCode: 'UNCLASSIFIED',
+    };
+  try {
+    const raw = JSON.parse(matches[0].slice(preflightMarker.length));
+    if (
+      Object.keys(raw).sort().join(',') !== 'causeCode,code,phase' ||
+      !preflightPhases.has(raw.phase) ||
+      raw.code !== `MINIMAL_PAGE_${raw.phase}` ||
+      safePreflightCauseCode(raw.causeCode) !== raw.causeCode
+    )
+      throw new Error('invalid diagnostic');
+    return { phase: raw.phase, code: raw.code, causeCode: raw.causeCode };
+  } catch {
+    return {
+      phase: 'PREFLIGHT',
+      code: 'MINIMAL_PAGE_PREFLIGHT',
+      causeCode: 'UNCLASSIFIED',
+    };
+  }
+}
+
 function fixedScope(kind) {
   const scope = minimalPageScopes[kind];
   if (!scope) blocked();
@@ -2077,14 +2167,18 @@ export function createMinimalPageAcceptance(kind, options = {}) {
         fixture: { customerId, rightsHolderId },
       });
       return prepared;
-    } catch {
+    } catch (error) {
       await client?.query('ROLLBACK').catch(() => undefined);
       if (client) {
         const old = client;
         client = undefined;
         await old.end().catch(() => undefined);
       }
-      blocked(phase);
+      const failure = new Error(`Minimal page acceptance BLOCKED: ${phase}`);
+      failure.code = `MINIMAL_PAGE_${phase}`;
+      failure.phase = phase;
+      failure.causeCode = safePreflightCauseCode(error?.code, error?.name);
+      throw failure;
     }
   }
 

@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+### checkpoint前置失败与安全诊断（2026-10-19）
+
+运行候选22cd51e80a217ea36e579c0cde787bc1e3196fe3／tree ff11a66b7f19f59f916d77bfa91eccf42181b316。首次ignored普通Node脚本错误地额外调用受保护prepare，正式命令未开始，原失败摘要SHA256 6ac3fc68d47b61c3006f5d54d5ecaf4a3ed26faa6bdf7acff61de64c4149877c保留。仅移除此额外调用后，真正protected入口取得标准锁，于配置pre-server checkpoint exit1，错误MINIMAL_PAGE_PREFLIGHT／playwright.minimal-pages.config.ts:67，尚无回调／webServer／新session／HTTP／业务写入。其closure通过，165旧行／catalog／sequence及96文件保持，锁／端口释放；已有stderr没有保留内部guard，不能推定底层SQL或产品错误。
+
+静态及仅本地读取核验：真实授权读取、封存summary和配套proof、实际readSource／readFrozenEvidence／既有fingerprint key读取均通过；这些不是prepare／capture或实库通过。原catch丢失cause，外层以整段stderr匹配且正则排除R2等数字码，会掩盖可用诊断。最小修正只保留固定阶段／规范错误码三字段，忽略warning、raw message／stack／SQL／URL，并保持所有准入／预算／保护语义；其纯测试与定向复审另绑定固定源。实际根因待正常protected环境的只读probe，不把诊断补丁或0消耗失败写成页面验收通过。
+
 ### EF原案checkpoint实现与离线验证（2026-10-19）
 
 五文件仅改minimal-page-acceptance.mjs／.d.mts／.test.mjs与原EF页面spec／直接pure test；产品／SQL／权限／Lead spec／配置不变。EF入口专用于Case6c151c42-3054-466b-9a0e-a8daaf99fbde及filingc1fab17d-d583-45ad-bf36-f3492c5d8b9b，删除当前可执行fresh建案／上传链，原实现保留Git历史。授权回执须核真实批准原文SHA、消息ID／时刻／精确额度、完整候选HEAD／tree／clean及五路径raw；原summary／trace／来源回执／两CV／165表旧行与96文件在只读预检核定，缺证据先于capture／webServer拒绝。priorConsumed与当前实发分开，当前只1login、2反馈POST、1logout；H42仍留原1session／2Lead／3POST。

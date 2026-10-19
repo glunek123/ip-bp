@@ -2,7 +2,10 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
-import { assertMinimalPageR2Binding } from './tests/support/minimal-page-acceptance.mjs';
+import {
+  assertMinimalPageR2Binding,
+  parseMinimalPagePreflightDiagnostic,
+} from './tests/support/minimal-page-acceptance.mjs';
 import {
   createManagedTestRuntime,
   planManagedTestRuntime,
@@ -46,7 +49,7 @@ if (!listing) {
     '(deadlineIso<value.deadlineIso?deadlineIso:value.deadlineIso):value.deadlineIso}' +
     'finally{await run.dispose()}}' +
     'process.stdout.write(JSON.stringify({runId,deadlineIso}))' +
-    '}catch(e){process.stderr.write(String(e?.code??"MINIMAL_PAGE_PREFLIGHT"));process.exitCode=1}';
+    '}catch(e){process.stderr.write("\\n"+m.formatMinimalPagePreflightDiagnostic(e)+"\\n");process.exitCode=1}';
   try {
     const output = execFileSync(
       process.execPath,
@@ -60,11 +63,12 @@ if (!listing) {
     );
     admissionWindow = JSON.parse(output.toString('utf8'));
   } catch (error) {
-    const raw = String((error as { stderr?: Buffer }).stderr ?? '').trim();
-    const code = /^MINIMAL_PAGE_[A-Z_]+$/u.test(raw)
-      ? raw
-      : 'MINIMAL_PAGE_PREFLIGHT';
-    throw new Error(`Minimal page pre-server R2 admission failed: ${code}`);
+    const diagnostic = parseMinimalPagePreflightDiagnostic(
+      (error as { stderr?: Buffer }).stderr ?? '',
+    );
+    throw new Error(
+      `Minimal page pre-server R2 admission failed: ${diagnostic.phase}/${diagnostic.code}/${diagnostic.causeCode}`,
+    );
   }
 }
 const runtime = planManagedTestRuntime(createManagedTestRuntime(root, 'ui'));

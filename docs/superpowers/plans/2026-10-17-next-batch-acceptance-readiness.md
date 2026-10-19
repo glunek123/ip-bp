@@ -1,5 +1,7 @@
 # 下一批最小页面闭环与一次性确认清单
 
+当前执行顺序（2026-10-19前置阻断后）：先冻结安全诊断及定向审查，由原Runner在正常protected入口使用专属ignored配置，强制--list／webServer空／0callback，仅运行preflightOnly只读准入；成功或失败都结束，不进入登录。取得精确失败阶段后定向修复、复审并更新候选／receipt，才按原未消耗额度先EF后Lead。不得用普通Node或伪造pnpm上下文绕过guard，不把未知根因当成可忽略告警，也不自动重复正式页面命令。两次22cd前置失败均未新增session／HTTP／业务写入，不需重新申请同一额外EF登录授权。
+
 2026-10-19额外会话已批准：用户02:01:49 UTC／Sentinel_99b86fc7c7ac81918193c5af43f85438明确回复允许，父级完整转交，原Runner已收到原文。仅增1次EF登录／session用于原Case 6c151c42-3054-466b-9a0e-a8daaf99fbde的2次原剩余反馈业务POST，账号／Grant／Case／文件／上传／来源POST均不增加；H42原1session／2Lead／3POST保留。checkpoint与独立审查、精确候选、今日标准前置仍是运行前提，尚未发GO。以下“待批准”只保留为更早断点，不再重复询问该会话。
 
 本轮EF测试入口收窄为上述已保存原案的专用checkpoint续验：当前spec不再含可调用的fresh建案／上传链，full prepare缺精确mode拒绝。原fresh实现及失败证据完整保留于dadb等Git历史与原证据目录，未来新案测试须另定任务／额度，不能用本轮resume参数解锁。既有配置的EF preflightOnly仍执行固定receipt／证据门槛且只返回窗口，不读取credential或发HTTP；这不等于开放无mode的正式续验。

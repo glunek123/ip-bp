@@ -15,7 +15,9 @@ import {
   createMinimalPageRequestBudget,
   createMinimalPageAcceptance,
   createPreservedEfRequestBudget,
+  formatMinimalPagePreflightDiagnostic,
   minimalPageScopes,
+  parseMinimalPagePreflightDiagnostic,
   preservedEfCheckpoint,
   readPreservedEfEvidence,
   snapshotPreservedEfRows,
@@ -70,6 +72,80 @@ test('import and factory construction do no capture, DB or private reads', () =>
   });
   assert.equal(typeof support.prepare, 'function');
   assert.equal(typeof support.closeSession, 'function');
+});
+
+test('pre-server diagnostic survives git warnings and exposes only safe phase and codes', () => {
+  const error = Object.assign(
+    new Error('secret SQL and URL must never appear'),
+    {
+      phase: 'PRESERVED_EF_LIVE',
+      code: 'MINIMAL_PAGE_PRESERVED_EF_LIVE',
+      causeCode: '42P01',
+      sql: 'secret SQL',
+      url: 'secret URL',
+    },
+  );
+  const warning = 'warning: unable to access git ignore: Permission denied\n';
+  const encoded = formatMinimalPagePreflightDiagnostic(error);
+  const parsed = parseMinimalPagePreflightDiagnostic(`${warning}${encoded}\n`);
+  assert.deepEqual(parsed, {
+    phase: 'PRESERVED_EF_LIVE',
+    code: 'MINIMAL_PAGE_PRESERVED_EF_LIVE',
+    causeCode: '42P01',
+  });
+  assert.equal(encoded.includes('secret'), false);
+  assert.deepEqual(
+    parseMinimalPagePreflightDiagnostic(`${warning}MINIMAL_PAGE_PREFLIGHT`),
+    {
+      phase: 'PREFLIGHT',
+      code: 'MINIMAL_PAGE_PREFLIGHT',
+      causeCode: 'UNCLASSIFIED',
+    },
+  );
+  assert.equal(
+    parseMinimalPagePreflightDiagnostic(
+      formatMinimalPagePreflightDiagnostic({
+        phase: 'SQL $1',
+        code: 'MINIMAL_PAGE_R2_BINDING; secret',
+        causeCode: 'DATABASE_PASSWORD',
+      }),
+    ).code,
+    'MINIMAL_PAGE_PREFLIGHT',
+  );
+  assert.equal(
+    parseMinimalPagePreflightDiagnostic(
+      formatMinimalPagePreflightDiagnostic({
+        phase: 'PG_CONNECT',
+        code: 'MINIMAL_PAGE_PG_CONNECT',
+        causeCode: 'TOKEN',
+      }),
+    ).causeCode,
+    'UNCLASSIFIED',
+  );
+  assert.equal(
+    parseMinimalPagePreflightDiagnostic(
+      formatMinimalPagePreflightDiagnostic({
+        phase: 'PG_CONNECT',
+        code: 'MINIMAL_PAGE_DATABASE_PASSWORD',
+        causeCode: 'MINIMAL_PAGE_DATABASE_PASSWORD',
+      }),
+    ).causeCode,
+    'UNCLASSIFIED',
+  );
+  assert.equal(
+    parseMinimalPagePreflightDiagnostic(`${encoded}\n${encoded}`).code,
+    'MINIMAL_PAGE_PREFLIGHT',
+  );
+  assert.equal(
+    parseMinimalPagePreflightDiagnostic(
+      formatMinimalPagePreflightDiagnostic({
+        phase: 'R2_BINDING',
+        code: 'MINIMAL_PAGE_R2_BINDING',
+        causeCode: 'ENOENT',
+      }),
+    ).code,
+    'MINIMAL_PAGE_R2_BINDING',
+  );
 });
 
 test('database diff rejects old-row drift, extra targets, and counter overrun', () => {

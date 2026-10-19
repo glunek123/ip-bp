@@ -29,6 +29,12 @@ export function readPreservedEfEvidence(
   root: string,
 ): Promise<Record<string, unknown>>;
 export function readPreservedEfAuthorization(root: string): Promise<unknown>;
+export function formatMinimalPagePreflightDiagnostic(error: unknown): string;
+export function parseMinimalPagePreflightDiagnostic(stderr: string | Buffer): {
+  phase: string;
+  code: string;
+  causeCode: string;
+};
 export function snapshotPreservedEfRows(
   client: { query(sql: string): Promise<{ rows: unknown[] }> },
   sealed: { tables: Array<{ table: string; pk: string[] }> },
