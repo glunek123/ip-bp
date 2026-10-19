@@ -1,6 +1,6 @@
 # SPEC-001 文档验证
 
-## 客户详情二级内容与按钮语义（2026-10-19，离线收口中）
+## 客户详情二级内容与按钮语义（2026-10-19，离线交付）
 
 用户明确批准原UI任务实施CustomerDetailPage.vue及直接spec、离线测试与独立复审。基线b1a15e937491f4771ddbe8a8c07aacd66d42530f；原作者在customer-detail-secondary-ui树实施，原case-list-query-ui六WIP不动。只读派发最初因授权范围被拒，用户具体批准后同路径唯一重试成功；这次后续实施另有明确批准，不将其当CSV动作或数据库额度。
 
@@ -10,7 +10,17 @@
 
 原独立Sol窗口首次按精确两hash只读复审，Spec／Quality均为C0/I0/M1，未标ACCEPTED：M-01为同一客户先切外层资产、再进联系人hash时，外层基本信息未同步可见。原报告已留`.local/customer-detail-secondary/review-initial.md`，交原作者仅两文件补回归与修复；新增真实router用例先红、修后整页30/30，前端类型及两文件静态exit0。修复后两raw为a57029d32ae4ac094102d2d9b90163742c168291a2336eb02040d0b4808b172f／d09826573d40bfb2514507167bad6793c100ea00ab50f1af1e7c403673c1c732，原29断言保留；已知hash从资产／结算回基本，未知hash及延迟内部导航不覆盖后来一级选择。实际命令／红绿保留在author-m01-validation.json，原窗口已按这两新raw补审关闭M-01，Spec／Quality均ACCEPTED、C/I/M0；只读审查未重跑测试，原结论保存在review-accepted.md。
 
-固定组合的相关组件回归及快速静态门禁尚未执行。不能据作者30项宣称真实页面或整个客户模块验收完成。本轮无DB／capture／Docker／HTTP／browser／服务／迁移／Grant／环境操作，不执行完整verify或NT006，不新增或复用已耗真实测试额度，不推送或接入ca015。CSV既有拒绝、公证d8ab与历史数据保护边界不变。
+主控固定clean候选`90bc74d6d753e19032aee3b8c6b883c8b90af70e`／tree`d35e4e5304d09600ec34d16fbe4263c50d319927`后，实际执行下列显式离线切片；与基线累计仅两份源码、四份必要说明及对应快照，不混公证、CSV或环境配置。普通页面导航变更不改变后端授权／数据契约，本轮不调用含数据库E2E的整模块customer scope，也不将局部检查冒称完整verify。
+
+| 检查                                                                                       | 实际结果与边界                                                                                                     |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| 11份显式客户组件（详情、编辑、联系人、合作、协议、开票、权利主体、准入、账号、资产、结算） | 183/183，failed0、pending0；Vitest JSON的testResults实际11文件，numTotalTestSuites22包含describe层，不能写成22文件 |
+| pnpm check:fast:prepared                                                                   | exit0：架构18模块／166模型、前后端prepared类型及根类型、全仓缓存Lint；未生成或连接数据库                           |
+| 两源＋四文档＋快照Prettier、spec:check、context:check:strict、git diff --check             | 全exit0；Spec59REQ／69AC／11BQ／60SD，context1340文本                                                              |
+
+运行时按项目入口核Node24.21.0／pnpm11.27.0，原始日志、11文件JSON及逐步退出码在`.local/customer-detail-secondary/`的customer-components.json、final-gates.json及同名log；实际起止时间使用UTC明确标注。测试前后HEAD及工作区均保持固定，收口后只补记真实结果和对应快照，不称后续文档HEAD重新执行过该集合。未重跑完整verify、NT006、整模块测试或构建，不把作者30项与主控183项简单相加为不同测试总数。
+
+离线源码、独立两轴审查和上述切片已完成；真实页面及整个客户模块仍未由本轮验收。本轮无DB／capture／Docker／HTTP／browser／服务／迁移／Grant／环境操作，不新增或复用已耗真实测试额度，不推送或接入ca015。CSV既有拒绝、公证d8ab与历史数据保护边界不变。
 
 ## CORE-CL-001 离线候选收口（2026-10-19，真实验证未执行）
 
