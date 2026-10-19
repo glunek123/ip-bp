@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+### EF陈旧列表测试流程窄修（2026-10-19）
+
+本地提交a4bf37923b4162c8aca6369bccd0e648a0306adf仅涉及tests/e2e/execution-feedback-minimal-page.spec.ts与tests/support/execution-feedback-minimal-page.test.mjs，raw SHA分别8ba02278ecded431576ac07e624c31dc3e5d49d89c1226fcbd11800c1c74bee3、dc9fb402ce40bb7a5532f15b32947d433996e69729b50a5bacbb2b904bd56897。来源准备后先监听新GET /api/v1/cases、点击已有刷新按钮、等待该Request自己的response为200，随后保留原精确businessNo链接断言；产品、预算、业务body／key、配置与超时均未修改。纯测试提取执行实际函数，以假Page验证监听→点击→新Request→其响应→可见断言，防止先前已发请求的慢响应误充本次刷新；RED后GREEN，最终4/4通过。两文件ESLint／Prettier、frontend vue-tsc、root tsc与diff检查通过，按未变输入复用作者结果。
+
+单独整体pnpm typecheck实际失败在backend Prisma generate对AppData下schema-engine的utime EPERM；未重复生成、改ACL／缓存，也未称该命令通过。不触发生成的frontend与root类型检查实际通过。无浏览器、DB、HTTP、capture、服务或完整verify；ca015仍clean dadb0989。原失败及来源事实保留，页面续验尚未执行。下一步必须绑定原Case／filing／CV／三回执及上轮after保护基线，以真实priorConsumed证明来源额度，不伪造发送计数；额外EF登录1次／session1仍需单独批准，不能挪用线索保留会话或直接重跑原spec。
+
+### 公证正式支持审批提交核对（2026-10-19）
+
+用户在原任务窗口明确授权一次require_escalated git add／commit，原Owner通过支持审批成功，未修改ACL。候选d8ab9b3eb3700f9e3fc67b2f33b0e2ca27da2361／tree dfd7bc7517a012602d05928bc915ea9180dc14a3／parent cfb3d2b331db50ed02531eb417277dfa87fed674。主控在原ui003-notary-list-workflow只读核commit路径恰39个，逐项hash与新manifest6537c55cb5dd1f2bb0b6bf4253b3087e14d725af5ae12fcadc8c6140029edbb3全符、工作树clean，committed-state.json存在。此前普通暂存128／index.lock不存在及路由AbsolutePathBuf错误原证据均保留；正式审批成功不是改ACL或绕道重建成果。
+
+已审纯门禁与格式AST同义补审按固定源复用，不重算508或6项。只交候选并停止：DB／Grant／迁移执行／真实HTTP／浏览器／Docker／merge／push仍0，未把39源接入dadb运行树，未宣称完整产品验收或关闭共享http.ts范围外残余。所有原子任务已结束，本条只登记用户批准提交及主控只读核验。
+
 ### EF来源成功、陈旧列表断言停止及只读归属（2026-10-19）
 
 原Runner实际在同fullCID正常start一次并healthy，今日完整前置通过；EF正式exit1／unexpected1，源保持clean dadb0989。摘要ca015/.local/next-batch-preparation/r2-resume-pages-dadb0989-20261019/summary.json SHA566b1f7043334af0d2a8e106baa4c2ce285705e54536fca56121d8b68c90718f已独立回读。真实Case6c151c42-3054-466b-9a0e-a8daaf99fbde／CA-20261019-0001为EXECUTING/v3，external-entry／mailing／filing三成功事实／回执及两份43byte文件均保留，反馈及其回执0。会话正常logout204并精确撤销；原94文件、全部旧行／权限／序列和六EXPIRED保持，本批服务／端口／锁释放，未运行线索页。

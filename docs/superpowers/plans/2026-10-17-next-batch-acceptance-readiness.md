@@ -1,5 +1,7 @@
 # 下一批最小页面闭环与一次性确认清单
 
+2026-10-19测试刷新窄修已提交a4bf37923b4162c8aca6369bccd0e648a0306adf：仅原EF页面spec和直接纯测试，4/4及定向类型／Lint／格式通过。该补丁等待新GET请求自身200再查精确案号，不改变产品或预算；ca015未更新。原来源复用checkpoint尚待实现／审查，额外EF登录会话尚未获批，不能据此运行整份spec或重建来源。以下断点续验草案仍非运行指派。
+
 2026-10-19来源保留后的最小续验草案（尚未获新运行授权）：原EF已创建Case `6c151c42-3054-466b-9a0e-a8daaf99fbde`／`CA-20261019-0001` EXECUTING/v3，mailing `edc4c890-0a88-477b-8318-fea0e93586a0`、filing `c1fab17d-d583-45ad-bf36-f3492c5d8b9b`及两43byte CV／原三回执保留，反馈0；不得重造、重传或重放来源。固定受审修复后，先唯一Runner只读核当前身份／旧行文件／165／六EXPIRED及原Case、真实filing、两CV、来源receipt、反馈仍0，以上一轮after为新保护基线，允许旧Case只增加本次精确反馈／更正子事实，Case阶段／v3不变。恢复页面需先点击真实“刷新”并等待由该动作发起的成功列表GET，再按原案号进入，登记feedback revision1→原因更正revision2→刷新保持→退出，业务仅2POST。线索页仍另用原H42登录创建2lead／一次批推3POST。
 
 额度：已用1session／1Case／3来源业务POST／2PDF共86bytes／4上传阶段；反馈写0，原H42页未开始，业务还余5POST，上传与来源对象余额0。原EF session已logout204并撤销，不能复用cookie或将旧会话重新启用。为保留原剩余1个H42会话，**须额外明确批准1次原EF身份登录／1session及其原正常logout或已绑定ID精确fallback**；不增加账号／Grant／Case／文件／来源或业务POST额度，不获批前不运行。resume checkpoint必须由真实原日志与当前只读行／hash证明，区分priorConsumed与本次发送计数，不给未发请求虚计成功、不放宽原预算。每次仍新核真实日期与至多15分钟同日窗口，任何新候选／权限／source漂移先停，未知结果不得自动换键或补量。最终候选／源hash与checkpoint形状另在代码冻结后交Runner，不直接重跑原全spec。
