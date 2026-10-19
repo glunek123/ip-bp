@@ -16,6 +16,9 @@ import {
   ApiCreatedResponse,
   ApiHeader,
   ApiTags,
+  ApiExtraModels,
+  ApiOkResponse,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { ActorContext } from '../../access-control/actor-context';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
@@ -31,6 +34,7 @@ import {
   NotaryIssuanceDecisionResponseDto,
   SetNotaryOfficeStatusDto,
   TransferLeadToNotaryDto,
+  NotaryRecordEditsResponseDto,
 } from './lead-notary.dto';
 import { LeadNotaryService } from './lead-notary.service';
 import { NotaryOpeningService } from './notary-opening.service';
@@ -50,7 +54,6 @@ import {
   NotaryOfficeAccountListResponseDto,
   NotaryOfficeAccountResponseDto,
 } from './notary-office-account-response.dto';
-import { ApiOkResponse } from '@nestjs/swagger';
 
 @ApiTags('notary-offices')
 @ApiBearerAuth()
@@ -146,6 +149,17 @@ export class LeadNotaryController {
   }
 
   @Get('notary-matters/:id')
+  @ApiExtraModels(NotaryRecordEditsResponseDto)
+  @ApiOkResponse({
+    description: '公证事项详情；recordEdits 为内部资料更正历史',
+    schema: {
+      type: 'object',
+      additionalProperties: true,
+      properties: {
+        recordEdits: { $ref: getSchemaPath(NotaryRecordEditsResponseDto) },
+      },
+    },
+  })
   get(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,

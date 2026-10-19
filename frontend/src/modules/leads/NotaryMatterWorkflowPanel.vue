@@ -27,9 +27,12 @@ import {
 const props = defineProps<{
   detail: NotaryMatterDetail;
   session: ListWorkflowSession;
+  disabled?: boolean;
 }>();
+const emit = defineEmits<{ failed: [message: string] }>();
 const matter = computed(() => props.detail);
 let contextGeneration = 0;
+let openingPostController: AbortController | undefined;
 const downloadRequests = new Set<AbortController>();
 const downloadError = ref('');
 let openingMaterialsRequest: AbortController | undefined;
@@ -557,12 +560,16 @@ type Command =
   | { kind: 'return'; input: Parameters<typeof archiveNotaryReturn>[1] }
   | { kind: 'evidence'; input: RecordNotaryEvidenceInput };
 type Pending = { command: Command; key: string };
+function actorIdentityKey(actorKey: string): string {
+  return actorKey.split(':').slice(0, 3).join(':');
+}
 const busy = ref(false);
 const unknown = ref(false);
 const message = ref('');
 const blocked = ref(false);
 const locked = computed(() => busy.value || unknown.value || blocked.value);
-const storageKey = `notary-list-request:${JSON.stringify([props.session.context.actorKey, props.detail.id, props.session.context.actionKey])}`;
+const storageKey = `notary-list-request:${JSON.stringify([actorIdentityKey(props.session.context.actorKey), props.detail.id, props.session.context.actionKey])}`;
+let pendingStorageKey: string | null = null;
 let pending: Pending | null = null;
 const reviewSubmitLabel = computed(() =>
   reviewResult.value === 'INFRINGEMENT'
@@ -749,11 +756,18 @@ function allowed(command: Command, recovery = false): boolean {
   );
 }
 
-function post(request: Pending) {
+function post(
+  request: Pending,
+  openingSignal?: NonNullable<typeof openingPostController>['signal'],
+) {
   const { command, key } = request;
   switch (command.kind) {
     case 'opening':
-      return recordNotaryOpening(props.detail.id, command.input, key);
+      return openingSignal
+        ? recordNotaryOpening(props.detail.id, command.input, key, {
+            signal: openingSignal,
+          })
+        : recordNotaryOpening(props.detail.id, command.input, key);
     case 'review':
       return reviewNotaryOpening(props.detail.id, command.input, key);
     case 'issuance':
@@ -768,6 +782,7 @@ async function execute(command: Command, recovery = false): Promise<void> {
   const session = props.session;
   if (
     busy.value ||
+    props.disabled ||
     blocked.value ||
     (!recovery && unknown.value) ||
     !allowed(command, recovery) ||
@@ -780,6 +795,7 @@ async function execute(command: Command, recovery = false): Promise<void> {
       // Persist before dispatch. A reload while POST is in flight must recover
       // this exact body/key rather than silently opening a new command.
       globalThis.sessionStorage.setItem(storageKey, JSON.stringify(request));
+      pendingStorageKey = storageKey;
       const frozen: unknown = JSON.parse(JSON.stringify(request));
       if (!validPending(frozen)) throw new Error('Invalid request');
       pending = frozen;
@@ -790,38 +806,62 @@ async function execute(command: Command, recovery = false): Promise<void> {
   }
   if (!pending || !session.beginSubmit({ recovery })) return;
   const request = pending;
+  const executionGeneration = contextGeneration;
+  const openingController =
+    request.command.kind === 'opening' ? new AbortController() : undefined;
+  if (openingController) openingPostController = openingController;
   busy.value = true;
   message.value = '';
   try {
-    await post(request);
+    await post(request, openingController?.signal);
     // The pending slot belongs to the original actor/record, even if its panel
     // was invalidated. Never refresh or notify the next session for a late POST.
     if (
-      globalThis.sessionStorage.getItem(storageKey) === JSON.stringify(request)
+      contextGeneration !== executionGeneration ||
+      openingController?.signal.aborted ||
+      !session.isCurrent()
     )
-      globalThis.sessionStorage.removeItem(storageKey);
+      return;
+    if (
+      pendingStorageKey &&
+      globalThis.sessionStorage.getItem(pendingStorageKey) ===
+        JSON.stringify(request)
+    )
+      globalThis.sessionStorage.removeItem(pendingStorageKey);
+    pendingStorageKey = null;
     if (!session.isCurrent()) return;
     pending = null;
     unknown.value = false;
     notifyWorkflowChanged();
     session.endSubmit('success');
   } catch (error) {
-    if (!session.isCurrent()) return;
+    if (
+      contextGeneration !== executionGeneration ||
+      openingController?.signal.aborted ||
+      !session.isCurrent()
+    )
+      return;
     const uncertain =
       !(error instanceof ApiError) ||
       error.status === 0 ||
       error.status >= 500 ||
       ['INVALID_RESPONSE', 'TIMEOUT', 'NETWORK_ERROR'].includes(error.code);
     unknown.value = uncertain;
-    session.endSubmit(uncertain ? 'unknown' : 'failed');
     if (uncertain) {
+      session.endSubmit('unknown');
       message.value =
         '提交结果暂时未知，原内容与请求键已保留；请使用相同请求键重试。';
     } else {
       if (!(recovery && [401, 403, 404].includes(error.status))) {
-        globalThis.sessionStorage.removeItem(storageKey);
+        if (pendingStorageKey)
+          globalThis.sessionStorage.removeItem(pendingStorageKey);
+        pendingStorageKey = null;
         pending = null;
       }
+      // Let an enclosing batch inspect the slot after classification: a
+      // missing slot is a definite first rejection; a recovery denial keeps
+      // the original body/key and remains unknown.
+      session.endSubmit('failed');
       blocked.value = [401, 403, 404, 409].includes(error.status);
       const feedback =
         error.code === 'VERSION_CONFLICT' || error.code === 'INVALID_STATE'
@@ -834,22 +874,49 @@ async function execute(command: Command, recovery = false): Promise<void> {
         (blocked.value
           ? '请返回列表核对最新资料或权限后重新打开。'
           : '。输入已保留，请修正后重试。');
+      emit('failed', message.value);
       if ([401, 403, 404].includes(error.status)) session.deny();
     }
   } finally {
-    busy.value = false;
+    if (openingPostController === openingController)
+      openingPostController = undefined;
+    if (contextGeneration === executionGeneration) busy.value = false;
   }
 }
 async function retry() {
   if (pending) await execute(pending.command, true);
 }
 try {
-  const saved = globalThis.sessionStorage.getItem(storageKey);
+  const matches: string[] = [];
+  for (let index = 0; index < globalThis.sessionStorage.length; index += 1) {
+    const key = globalThis.sessionStorage.key(index);
+    if (!key?.startsWith('notary-list-request:')) continue;
+    let tuple: unknown;
+    try {
+      tuple = JSON.parse(key.slice('notary-list-request:'.length));
+    } catch {
+      continue;
+    }
+    if (
+      Array.isArray(tuple) &&
+      tuple.length === 3 &&
+      typeof tuple[0] === 'string' &&
+      actorIdentityKey(tuple[0]) ===
+        actorIdentityKey(props.session.context.actorKey) &&
+      tuple[1] === props.detail.id &&
+      tuple[2] === props.session.context.actionKey
+    )
+      matches.push(key);
+  }
+  if (matches.length > 1) throw new Error('Ambiguous pending request');
+  const savedKey = matches[0] ?? storageKey;
+  const saved = globalThis.sessionStorage.getItem(savedKey);
   if (saved) {
     const decoded: unknown = JSON.parse(saved);
     if (!validPending(decoded) || !allowed(decoded.command, true))
       throw new Error('Invalid pending request');
     pending = decoded;
+    pendingStorageKey = savedKey;
     switch (decoded.command.kind) {
       case 'issuance':
         issuanceChoice.value = decoded.command.input.decision;
@@ -908,9 +975,18 @@ watch(
   () => props.session.contextKey,
   () => {
     contextGeneration += 1;
+    openingPostController?.abort();
+    openingPostController = undefined;
+    busy.value = false;
     openingMaterialsRequest?.abort();
   },
   { flush: 'sync' },
+);
+watch(
+  () => [props.detail.version, props.detail.stage],
+  () => {
+    if (!unknown.value) blocked.value = false;
+  },
 );
 if (
   props.detail.capabilities.recordOpening &&
@@ -919,6 +995,8 @@ if (
   void refreshOpeningPhotos(props.detail.id);
 onBeforeUnmount(() => {
   contextGeneration += 1;
+  openingPostController?.abort();
+  openingPostController = undefined;
   openingMaterialsRequest?.abort();
   for (const controller of downloadRequests) controller.abort();
 });
@@ -973,7 +1051,7 @@ onBeforeUnmount(() => {
   <ElButton
     v-if="unknown"
     data-test="notary-workflow-retry"
-    :disabled="busy"
+    :disabled="busy || props.disabled"
     @click="retry"
     >使用相同请求键重试</ElButton
   >
@@ -986,7 +1064,7 @@ onBeforeUnmount(() => {
   </p>
   <fieldset
     v-if="formAvailable"
-    :disabled="locked"
+    :disabled="locked || props.disabled"
     style="border: 0; padding: 0"
   >
     <section

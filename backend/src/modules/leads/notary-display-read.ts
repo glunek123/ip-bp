@@ -11,6 +11,7 @@ import {
   Prisma,
 } from '../../generated/prisma/client';
 import { isFrozenOpeningPhotoVersion } from '../materials';
+import { SenderEditValue } from './notary-record-edit-read';
 
 export const NOTARY_DISPLAY_LEAD_SELECT = {
   id: true,
@@ -53,6 +54,8 @@ type DisplayMatter = {
     senderPhone: string | null;
     senderAddress: string | null;
   } | null;
+  evidenceCorrections: Array<{ evidenceAt: Date; revision: number }>;
+  openingSenderCorrections: Array<SenderEditValue & { revision: number }>;
   certificate: {
     id: string;
     certificateNo: string;
@@ -183,6 +186,16 @@ export async function readNotaryDisplay(
   if (!Number.isSafeInteger(photoCount) || photoCount < 0)
     throw corruptSource();
   const certificate = matter.certificate;
+  const evidenceCorrection = matter.evidenceCorrections.reduce(
+    (latest, row) =>
+      latest === undefined || row.revision > latest.revision ? row : latest,
+    undefined as (typeof matter.evidenceCorrections)[number] | undefined,
+  );
+  const senderCorrection = matter.openingSenderCorrections.reduce(
+    (latest, row) =>
+      latest === undefined || row.revision > latest.revision ? row : latest,
+    undefined as (typeof matter.openingSenderCorrections)[number] | undefined,
+  );
   const fee = (category: string) =>
     certificate?.fees.find((row) => row.category === category);
   return {
@@ -194,15 +207,29 @@ export async function readNotaryDisplay(
       shopExternalId: matter.sourceLead.shopExternalId,
     },
     transferredAt: notaryTransferredDate(matter.createdAt),
-    evidenceAt: matter.evidence?.evidenceAt.toISOString().slice(0, 10) ?? null,
+    evidenceAt:
+      matter.evidence === null
+        ? null
+        : (evidenceCorrection?.evidenceAt ?? matter.evidence.evidenceAt)
+            .toISOString()
+            .slice(0, 10),
     openingSummary:
       matter.opening === null
         ? null
         : {
             photoCount,
-            senderName: matter.opening.senderName,
-            senderPhone: matter.opening.senderPhone,
-            senderAddress: matter.opening.senderAddress,
+            senderName:
+              senderCorrection === undefined
+                ? matter.opening.senderName
+                : senderCorrection.senderName,
+            senderPhone:
+              senderCorrection === undefined
+                ? matter.opening.senderPhone
+                : senderCorrection.senderPhone,
+            senderAddress:
+              senderCorrection === undefined
+                ? matter.opening.senderAddress
+                : senderCorrection.senderAddress,
           },
     certificateSummary:
       certificate == null

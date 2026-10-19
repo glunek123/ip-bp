@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import { Prisma } from '../../generated/prisma/client';
 import { LeadNotaryService } from './lead-notary.service';
 
 describe('LeadNotaryService opening review read projection', () => {
@@ -25,6 +26,8 @@ describe('LeadNotaryService opening review read projection', () => {
       },
       notaryOffice: { id: officeId, name: '公证处' },
       evidence: null,
+      evidenceCorrections: [],
+      openingSenderCorrections: [],
       opening: {
         senderName: null,
         senderPhone: null,
@@ -130,6 +133,93 @@ describe('LeadNotaryService opening review read projection', () => {
       archivedAt: '2026-09-28T01:00:00.000Z',
     });
     expect(JSON.stringify(result)).not.toContain('secret-user');
+    const correctedRecord = {
+      ...record,
+      opening: { ...record.opening, senderName: 'old-sender' },
+      evidence: {
+        evidenceAt: new Date('2026-09-24'),
+        sampleFeeState: 'KNOWN',
+        sampleFeeAmount: new Prisma.Decimal('88.00'),
+        recordedAt: new Date('2026-09-24T01:00:00Z'),
+        recordedByUserId: actor.userId,
+        logistics: [
+          {
+            id: 'original-logistics',
+            companyState: 'NONE',
+            companyValue: null,
+            trackingState: 'PRESENT',
+            trackingValue: 'old',
+          },
+        ],
+      },
+      evidenceCorrections: [
+        {
+          id: 'correction-1',
+          revision: 1,
+          correctionReason: '核实单号',
+          actorUserId: actor.userId,
+          recordedAt: new Date('2026-09-29T01:00:00Z'),
+          evidenceAt: new Date('2026-09-25'),
+          logistics: [
+            {
+              id: 'new-logistics',
+              companyState: 'NONE',
+              companyValue: null,
+              trackingState: 'PRESENT',
+              trackingValue: 'new',
+            },
+          ],
+        },
+      ],
+      openingSenderCorrections: [
+        {
+          id: 'correction-2',
+          revision: 1,
+          correctionReason: '取消寄件人',
+          actorUserId: actor.userId,
+          recordedAt: new Date('2026-09-29T02:00:00Z'),
+          senderName: null,
+          senderPhone: null,
+          senderAddress: null,
+        },
+      ],
+    };
+    database.notaryMatter.findFirst.mockResolvedValue(correctedRecord);
+    const corrected = await service.getMatter(actor, matterId);
+    expect(corrected).toMatchObject({
+      version: 4,
+      evidenceAt: '2026-09-25',
+      openingSummary: { senderName: null },
+      opening: { senderName: null },
+      evidence: {
+        evidenceAt: '2026-09-25',
+        sampleFeeAmount: '88.00',
+        logistics: [{ id: 'new-logistics' }],
+      },
+      recordEdits: {
+        evidence: {
+          revision: 1,
+          canCorrect: false,
+          original: {
+            evidenceAt: '2026-09-24',
+            logistics: [{ id: 'original-logistics' }],
+          },
+          history: [
+            {
+              correctionId: 'correction-1',
+              before: { evidenceAt: '2026-09-24' },
+              after: { evidenceAt: '2026-09-25' },
+            },
+          ],
+        },
+        openingSender: {
+          revision: 1,
+          canCorrect: false,
+          original: { senderName: 'old-sender' },
+          effective: { senderName: null },
+        },
+      },
+    });
     database.notaryMatter.findFirst.mockResolvedValue({
       ...record,
       stage: 'WAITING_CERTIFICATE',

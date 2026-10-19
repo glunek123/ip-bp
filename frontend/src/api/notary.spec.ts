@@ -19,7 +19,85 @@ import {
   reviewNotaryOpening,
   decideNotaryIssuance,
   archiveNotaryReturn,
+  correctNotaryEvidence,
+  correctNotaryOpeningSender,
 } from './notary';
+
+describe('notary record corrections', () => {
+  it('posts normalized evidence correction with an explicit key and signal', async () => {
+    const result = {
+      matterId: 'matter-1',
+      correctionId: 'correction-1',
+      kind: 'EVIDENCE',
+      revision: 1,
+      recordedAt: '2026-10-18T00:00:00.000Z',
+    };
+    http.requestJson.mockResolvedValue(result);
+    const signal = new AbortController().signal;
+    await expect(
+      correctNotaryEvidence(
+        'matter-1',
+        {
+          expectedVersion: 2,
+          expectedRevision: 0,
+          correctionReason: '  补正  ',
+          evidenceAt: '2026-10-17',
+          logistics: [
+            {
+              companyState: 'PRESENT',
+              companyValue: '公司',
+              trackingState: 'NONE',
+              trackingValue: null,
+            },
+          ],
+        },
+        'same-key',
+        { signal },
+      ),
+    ).resolves.toEqual(result);
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/notary-matters/matter-1/evidence-corrections',
+      expect.objectContaining({
+        signal,
+        headers: { 'Idempotency-Key': 'same-key' },
+        body: expect.objectContaining({ correctionReason: '补正' }),
+      }),
+    );
+  });
+
+  it('rejects a malformed receipt and preserves nullable sender fields', async () => {
+    const input = {
+      expectedVersion: 3,
+      expectedRevision: 1,
+      correctionReason: '修正',
+      senderName: null,
+      senderPhone: null,
+      senderAddress: '地址',
+    };
+    http.requestJson.mockResolvedValueOnce({
+      matterId: 'matter-1',
+      correctionId: 'correction-2',
+      kind: 'OPENING_SENDER',
+      revision: 2,
+      recordedAt: '2026-10-18T00:00:00.000Z',
+    });
+    await correctNotaryOpeningSender('matter-1', input, 'key-2');
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/notary-matters/matter-1/opening-sender-corrections',
+      expect.objectContaining({ body: input }),
+    );
+    http.requestJson.mockResolvedValueOnce({
+      matterId: 'matter-1',
+      correctionId: 'correction-3',
+      kind: 'OPENING_SENDER',
+      revision: 3,
+      recordedAt: '2026-10-18T00:00:00.000Z',
+    });
+    await expect(
+      correctNotaryOpeningSender('matter-1', input, 'key-2'),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+});
 
 const displayFields = {
   sourceSummary: {
@@ -293,6 +371,50 @@ describe('notary operational display contract', () => {
     http.getJson.mockResolvedValue(issued);
     const result = await getNotaryMatter('matter-1');
     expect(result.certificateFiles).toEqual(certificateFiles);
+    const recordEdits = {
+      evidence: {
+        canCorrect: false,
+        revision: 0,
+        original: {
+          evidenceAt: issued.evidence.evidenceAt,
+          logistics: issued.evidence.logistics,
+        },
+        effective: {
+          evidenceAt: issued.evidence.evidenceAt,
+          logistics: issued.evidence.logistics,
+        },
+        history: [],
+      },
+      openingSender: {
+        canCorrect: false,
+        revision: 0,
+        original: { senderName: null, senderPhone: null, senderAddress: null },
+        effective: { senderName: null, senderPhone: null, senderAddress: null },
+        history: [],
+      },
+    };
+    http.getJson.mockResolvedValue({ ...issued, recordEdits });
+    await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
+      recordEdits,
+    });
+    http.getJson.mockResolvedValue({
+      ...issued,
+      recordEdits: {
+        ...recordEdits,
+        evidence: {
+          ...recordEdits.evidence,
+          effective: {
+            ...recordEdits.evidence.effective,
+            logistics: [
+              { ...issued.evidence.logistics[0], privateHint: 'leak' },
+            ],
+          },
+        },
+      },
+    });
+    await expect(getNotaryMatter('matter-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
     const archived = {
       ...issued,
       linkedCase: { ...issued.linkedCase, stage: 'ARCHIVED' },

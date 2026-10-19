@@ -34,6 +34,8 @@ import { NotaryOfficeAccountService } from './notary-office-account.service';
 import { NotaryPortalController } from './notary-portal.controller';
 import { NotaryPortalService } from './notary-portal.service';
 import { NotaryCertificateService } from './notary-certificate.service';
+import { NotaryRecordEditController } from './notary-record-edit.controller';
+import { NotaryRecordEditService } from './notary-record-edit.service';
 
 @Module({
   imports: [
@@ -55,6 +57,7 @@ import { NotaryCertificateService } from './notary-certificate.service';
     LeadNotaryController,
     NotaryOfficeController,
     NotaryPortalController,
+    NotaryRecordEditController,
   ],
   providers: [
     LeadService,
@@ -72,6 +75,7 @@ import { NotaryCertificateService } from './notary-certificate.service';
     NotaryOfficeAccountService,
     NotaryPortalService,
     NotaryCertificateService,
+    NotaryRecordEditService,
   ],
   exports: [LeadService, ClientLeadService, LeadNotaryService],
 })

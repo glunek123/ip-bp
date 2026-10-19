@@ -47,6 +47,8 @@ describe('NotaryPortalService', () => {
       version: 6,
       createdAt: new Date('2026-09-28T01:00:00.000Z'),
       sourceLead: { needDisclose: false },
+      evidenceCorrections: [],
+      openingSenderCorrections: [],
       evidence: {
         evidenceAt: new Date('2026-09-27T00:00:00.000Z'),
         sampleFeeState: 'KNOWN',
@@ -95,6 +97,7 @@ describe('NotaryPortalService', () => {
       },
     ]);
     const result = await f.service.get(actor, 'matter-1');
+    expect(result).not.toHaveProperty('recordEdits');
     expect(result.certificate).toMatchObject({
       certificateNo: '2026-001',
       caseBusinessNo: 'CA-1',
@@ -159,14 +162,31 @@ describe('NotaryPortalService', () => {
       version: 3,
       createdAt: new Date('2026-09-28T01:00:00.000Z'),
       sourceLead: { needDisclose: true },
+      evidenceCorrections: [
+        {
+          evidenceAt: new Date('2026-09-29T00:00:00.000Z'),
+          logistics: [
+            {
+              id: 'real-correction-logistics',
+              companyState: 'NONE',
+              companyValue: null,
+              trackingState: 'PRESENT',
+              trackingValue: 'new-tracking',
+            },
+          ],
+        },
+      ],
+      openingSenderCorrections: [
+        { senderName: null, senderPhone: null, senderAddress: null },
+      ],
       evidence: {
         evidenceAt: new Date('2026-09-27T00:00:00.000Z'),
         sampleFeeState: 'KNOWN',
         sampleFeeAmount: { toString: () => '200.00' },
-        logistics: [],
+        logistics: [{ id: 'old-logistics', trackingValue: 'old-tracking' }],
       },
       opening: {
-        senderName: null,
+        senderName: 'old-sender',
         senderPhone: null,
         senderAddress: null,
         recordedAt: new Date('2026-09-28T02:00:00.000Z'),
@@ -202,10 +222,18 @@ describe('NotaryPortalService', () => {
       createdAt: '2026-09-28T01:00:00.000Z',
       disclosureRequired: true,
       evidence: {
-        evidenceAt: '2026-09-27',
+        evidenceAt: '2026-09-29',
         sampleFeeState: 'KNOWN',
         sampleFeeAmount: '200.00',
-        logistics: [],
+        logistics: [
+          {
+            id: 'real-correction-logistics',
+            companyState: 'NONE',
+            companyValue: null,
+            trackingState: 'PRESENT',
+            trackingValue: 'new-tracking',
+          },
+        ],
       },
       opening: {
         senderName: null,

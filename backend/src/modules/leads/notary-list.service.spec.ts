@@ -25,6 +25,8 @@ function fixture() {
     evidenceMode: 'ONLINE_PURCHASE',
     evidence: null,
     opening: null,
+    evidenceCorrections: [],
+    openingSenderCorrections: [],
     openingReviewDecision: null,
     issuanceDecision: null,
     certificate: null,
@@ -84,6 +86,28 @@ function fixture() {
 }
 
 describe('NotaryListService', () => {
+  it('uses the latest effective evidence date without changing its fee summary', async () => {
+    const { service, repo, matter } = fixture();
+    repo.findMany.mockResolvedValue([
+      {
+        ...matter,
+        stage: 'WAITING_UNBOX',
+        evidence: {
+          evidenceAt: new Date('2026-09-24'),
+          sampleFeeState: 'PENDING',
+          sampleFeeAmount: null,
+        },
+        evidenceCorrections: [
+          { revision: 1, evidenceAt: new Date('2026-09-25') },
+        ],
+      },
+    ]);
+    const result = await service.list(actor, 1, 20);
+    expect(result.items[0]).toMatchObject({
+      evidenceAt: '2026-09-25',
+      fees: { sample: { state: 'PENDING', amount: null } },
+    });
+  });
   it('uses the source-lead scope for items, total and all stage counters', async () => {
     const { service, repo, access, scope, matter } = fixture();
     const result = await service.list(actor, 2, 20, 'PENDING_EVIDENCE');
