@@ -692,36 +692,53 @@ function matchesCsvImportInput(
   lead: LeadBusinessResult,
   input: LeadCsvImportInput,
 ): boolean {
+  const submittedInfringementTypes = new Set(input.infringementTypes);
+  const returnedInfringementTypes = new Set(lead.infringementTypes);
   return (
     lead.customerId === input.customerId &&
     lead.rightsHolderId === input.rightsHolderId &&
     lead.caseType === input.caseType &&
     lead.infringementTypes.length === input.infringementTypes.length &&
-    lead.infringementTypes.every(
-      (infringementType, index) =>
-        infringementType === input.infringementTypes[index],
+    returnedInfringementTypes.size === lead.infringementTypes.length &&
+    lead.infringementTypes.every((infringementType) =>
+      submittedInfringementTypes.has(infringementType),
     ) &&
     lead.source === input.source &&
     lead.platform === input.platform &&
-    lead.foundAt === input.foundAt &&
-    lead.shopName === input.shopName &&
-    lead.shopExternalId === (input.shopExternalId ?? null) &&
+    lead.foundAt === new Date(input.foundAt).toISOString() &&
+    lead.shopName === normalizeLeadText(input.shopName) &&
+    lead.shopExternalId === normalizeOptionalLeadText(input.shopExternalId) &&
     lead.needDisclose === input.needDisclose &&
-    lead.remark === (input.remark ?? null) &&
+    lead.remark === normalizeOptionalLeadText(input.remark) &&
     lead.products.length === input.products.length &&
     lead.products.every((product, index) => {
       const submitted = input.products[index];
       return (
         submitted !== undefined &&
         product.position === index + 1 &&
-        product.url === (submitted.url ?? null) &&
-        product.title === (submitted.title ?? null) &&
+        product.url === normalizeOptionalLeadText(submitted.url) &&
+        product.title === normalizeOptionalLeadText(submitted.title) &&
         product.quantity === submitted.quantity &&
-        product.unitPrice === submitted.unitPrice &&
+        moneyInCents(product.unitPrice) === moneyInCents(submitted.unitPrice) &&
         product.commentCount === submitted.commentCount
       );
     })
   );
+}
+
+function moneyInCents(value: string): bigint {
+  const decimalIndex = value.indexOf('.');
+  const whole = decimalIndex < 0 ? value : value.slice(0, decimalIndex);
+  const fraction = decimalIndex < 0 ? '' : value.slice(decimalIndex + 1);
+  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
+}
+
+function normalizeLeadText(value: string): string {
+  return value.normalize('NFKC').trim();
+}
+
+function normalizeOptionalLeadText(value: string | undefined): string | null {
+  return value === undefined ? null : normalizeLeadText(value);
 }
 
 function isLead(value: unknown): value is Lead {

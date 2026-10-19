@@ -932,6 +932,188 @@ describe('Lead API', () => {
     }
   });
 
+  it('matches CSV product prices by cents while preserving request text', async () => {
+    for (const [submittedPrice, returnedPrice] of [
+      ['1', '1.00'],
+      ['1.5', '1.50'],
+      ['1.50', '1.50'],
+    ] as const) {
+      const item = csvImportItem(2);
+      item.input.products[0]!.unitPrice = submittedPrice;
+      const resultLead = csvLeadResult('csv-price', item.input);
+      resultLead.products[0]!.unitPrice = returnedPrice;
+      http.requestJson.mockResolvedValueOnce({
+        items: [{ rowNumber: item.rowNumber, lead: resultLead }],
+      });
+
+      await expect(
+        importLeadCsvBatch([item], 'price-key'),
+      ).resolves.toMatchObject({
+        items: [
+          {
+            rowNumber: 2,
+            lead: { products: [{ unitPrice: returnedPrice }] },
+          },
+        ],
+      });
+      expect(http.requestJson).toHaveBeenLastCalledWith(
+        '/leads/csv-import',
+        expect.objectContaining({
+          body: {
+            items: [
+              {
+                rowNumber: 2,
+                input: expect.objectContaining({
+                  products: [
+                    expect.objectContaining({ unitPrice: submittedPrice }),
+                  ],
+                }),
+              },
+            ],
+          },
+        }),
+      );
+    }
+
+    const item = csvImportItem(2);
+    item.input.products[0]!.unitPrice = '1.5';
+    const resultLead = csvLeadResult('csv-price-mismatch', item.input);
+    resultLead.products[0]!.unitPrice = '1.51';
+    http.requestJson.mockResolvedValueOnce({
+      items: [{ rowNumber: item.rowNumber, lead: resultLead }],
+    });
+    await expect(importLeadCsvBatch([item], 'price-key')).rejects.toMatchObject(
+      {
+        code: 'INVALID_RESPONSE',
+      },
+    );
+    expect(http.requestJson).toHaveBeenLastCalledWith(
+      '/leads/csv-import',
+      expect.objectContaining({
+        body: {
+          items: [
+            {
+              rowNumber: 2,
+              input: expect.objectContaining({
+                products: [expect.objectContaining({ unitPrice: '1.5' })],
+              }),
+            },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('matches CSV infringement types as an exact set while preserving request order', async () => {
+    const item = csvImportItem(2);
+    item.input.infringementTypes = ['TRADEMARK', 'SOFTWARE_COPYRIGHT'];
+    const resultLead = csvLeadResult('csv-infringements', item.input);
+    resultLead.infringementTypes = ['SOFTWARE_COPYRIGHT', 'TRADEMARK'];
+    http.requestJson.mockResolvedValueOnce({
+      items: [{ rowNumber: item.rowNumber, lead: resultLead }],
+    });
+
+    await expect(
+      importLeadCsvBatch([item], 'infringement-key'),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          rowNumber: 2,
+          lead: { infringementTypes: ['SOFTWARE_COPYRIGHT', 'TRADEMARK'] },
+        },
+      ],
+    });
+    expect(http.requestJson).toHaveBeenLastCalledWith(
+      '/leads/csv-import',
+      expect.objectContaining({
+        body: {
+          items: [
+            {
+              rowNumber: 2,
+              input: expect.objectContaining({
+                infringementTypes: ['TRADEMARK', 'SOFTWARE_COPYRIGHT'],
+              }),
+            },
+          ],
+        },
+      }),
+    );
+
+    for (const invalidTypes of [
+      ['SOFTWARE_COPYRIGHT'],
+      ['SOFTWARE_COPYRIGHT', 'SOFTWARE_COPYRIGHT'],
+    ] as const) {
+      const invalidLead = csvLeadResult('csv-invalid-types', item.input);
+      invalidLead.infringementTypes = [...invalidTypes];
+      http.requestJson.mockResolvedValueOnce({
+        items: [{ rowNumber: item.rowNumber, lead: invalidLead }],
+      });
+      await expect(
+        importLeadCsvBatch([item], 'infringement-key'),
+      ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    }
+  });
+
+  it('matches backend-normalized timestamps and text without rewriting the request', async () => {
+    const item = csvImportItem(2);
+    item.input.foundAt = '2026-09-21T12:00:00+08:00';
+    item.input.shopName = '\u3000Ａ店\u3000';
+    item.input.shopExternalId = '\u3000ID-Ａ\u3000';
+    item.input.remark = '\u3000备注Ａ\u3000';
+    item.input.products[0]!.url = '\u3000https://example.com/Ａ\u3000';
+    item.input.products[0]!.title = '\u3000商品Ａ\u3000';
+    const resultLead = csvLeadResult('csv-normalized', item.input);
+    resultLead.foundAt = '2026-09-21T04:00:00.000Z';
+    resultLead.shopName = 'A店';
+    resultLead.shopExternalId = 'ID-A';
+    resultLead.remark = '备注A';
+    resultLead.products[0]!.url = 'https://example.com/A';
+    resultLead.products[0]!.title = '商品A';
+    http.requestJson.mockResolvedValueOnce({
+      items: [{ rowNumber: item.rowNumber, lead: resultLead }],
+    });
+
+    await expect(
+      importLeadCsvBatch([item], 'normalization-key'),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          rowNumber: 2,
+          lead: {
+            foundAt: '2026-09-21T04:00:00.000Z',
+            shopName: 'A店',
+            shopExternalId: 'ID-A',
+            remark: '备注A',
+            products: [{ url: 'https://example.com/A', title: '商品A' }],
+          },
+        },
+      ],
+    });
+    expect(http.requestJson).toHaveBeenLastCalledWith(
+      '/leads/csv-import',
+      expect.objectContaining({
+        body: { items: [{ rowNumber: 2, input: item.input }] },
+      }),
+    );
+
+    const mismatchLead = csvLeadResult(
+      'csv-normalization-mismatch',
+      item.input,
+    );
+    mismatchLead.foundAt = '2026-09-21T04:01:00.000Z';
+    mismatchLead.shopName = 'A店';
+    mismatchLead.shopExternalId = 'ID-A';
+    mismatchLead.remark = '备注A';
+    mismatchLead.products[0]!.url = 'https://example.com/A';
+    mismatchLead.products[0]!.title = '商品A';
+    http.requestJson.mockResolvedValueOnce({
+      items: [{ rowNumber: item.rowNumber, lead: mismatchLead }],
+    });
+    await expect(
+      importLeadCsvBatch([item], 'normalization-key'),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+
   it('propagates aborted and unknown request outcomes without inventing a result', async () => {
     const abortError = new DOMException('aborted', 'AbortError');
     http.requestJson.mockRejectedValueOnce(abortError);
