@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### CSV完整导入代码候选：源码冻结、待统一检查（2026-10-19）
+
+本片以纯准备收口 `4885c334` 为基线，不更新ca015或公证树。固定源码 `b5db9a06b79a4a7693f67600c7f445ea3926b171`／tree `7dbeecc9972a27ed014e270ce108f540fa68068d`，累计25源（前端12、后台及registry13）。API规范化修复 `20879fb5` 保留请求原文，按金额、侵权集合、时点及NFKC.trim语义核成功回执；原作者API26项、类型及定向静态通过。宿主六源及修复至 `7d80a00d`：未知请求双向互斥、跨身份／授权迟返回、路由中止解析／提交／恢复、加载状态复位和成功实际条数提示均已补闭。原59／63项聚焦及最后页面37项证据按各自输入保留，不相加冒称同次统一测试。URL适配最终两漏拒修复已精确转移并标准格式化，C作者24地址Node对照仅为诊断；Root先前13项属于旧URL源，最终统一集合才能证明本次新源。
+
+后台原 `d34ef606` 与修复 `80297cd3` 的13源在Root逐字相等：新触发器绑定原请求／实际Lead及商品／侵权；端点在DTO转换前计紧凑原JSON的UTF-8字节；亚毫秒字符串先截到毫秒再转换；旧来源约束两个分支逐字保留，只追加CSV＋NULL。Root正常Prisma validate初次在原缓存schema-engine的utime报EPERM，保留exit1；经正式审批在原入口重试后validate／generate均exit0，没有删除缓存、改ACL或换入口。随后本树5个显式纯Jest套件130项、后端类型与prepared构建实际exit0；不含NT006，没有连接数据库。
+
+原指定独立Sol及内部审查多次实际报 `Selected model is at capacity`；按三级规则由无作者历史的隔离同模型家族主体完成降级累计两轴补审，源码C/I/M0，明确独立性不足，外部独立Review仍Pending。`.local/csv-import-full-evidence/`保留各候选、红绿结果、转移hash及模型不可用回执；不把容量中断记为通过，不以Root结果回填原C树。最终统一前端集合和静态检查尚待执行，所有纯SQL回归及Prisma生成均不等于PostgreSQL执行／真实回滚竞争证明。实际DB／capture／Docker／登录／业务HTTP／浏览器／服务／Grant／迁移执行／推送均0；完整verify因含NT006未运行，有限真实验收只有未授权草案，旧额度不恢复。
+
 ### CSV八源组合交付与原树证据边界（2026-10-19）
 
 固定业务源码候选 `8f4db1ec95ea2bf0ca8cb61aa22960f23450651e`／tree `b2add38943091d0dbef1220f150e93353a7b6ceb`，准备树 `minimal-page-actor-admission`；自 `fc723aa3` 累计仅8份CSV源。原预览最终修复 `2e12f3b3` 已接入；词法parser与宿主由各自原Task交付后Root精确转移、标准Prettier，格式变化及原hash有单独清单。parser输出只读cells／物理起始行且要求显式正整数bytes／records／columns界限；宿主只接受注入 `parseFile(File, AbortSignal)` 的有效行，以唯一session处理同步context失效、换文件、取消／重开、卸载、迟回调及一次明确selection意向。业务CSV映射、多商品、身份名称、重复来源、生产列表／路由及后端批量事务未实现；未来真正提交前仍须复核selection属于当前会话，不把当前意向当提交授权。
