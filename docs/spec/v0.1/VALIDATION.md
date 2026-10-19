@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### 跨日恢复只读核对与全域差异盘点（2026-10-19）
+
+用户明确恢复原任务并行及原未消耗两页范围；主控只读实核ca015 clean dadb09892b1b1bedd15789b8f9066cfa7f0d3617、独立文档树54d97fee，原公证cfb3d2b3下39源仍全部符合冻结manifest efea8516、dirty39／staged0。昨日exact-expiry summary 828de836与新基线保留，未再次执行六行更新。正常runtime24.21.0／pnpm11.27.0、文档树开工context检查通过；本轮没有真实capture、DB查询／写入、HTTP、登录、浏览器、服务或迁移新结果。
+
+已实际启动并完成只读全系统盘点，覆盖能力01–27及逆向M00–M10，结果增量写回现有路线图而不建重复总账。初次盘点引用较早矩阵，错误把结算／证物写成从未实跑、把CA018和权利资产写成待开发；主控核最新固定摘要后退回，修正版采用2ef6a739累计Demo A及CU组合、CA018、独立SD61冻结回执。此前失败与有限验收范围不改，未因此推断全量Demo、生产或新候选门禁通过。此为文档证据一致性修正，不是新业务验证。
+
+两原Task续单已保存于独立文档树.local/resume-20261019/{notary-resume.md,runner-resume.md}。原窗口工具初始未暴露，后来恢复；read_thread确认两原Task均idle后，Runner续单成功送达。公证格式修复续单被自动审批以“latest trusted user instruction explicitly said to pause”拒绝，未送达；随后只读核对安全替代消息返回invalid turn/start params: AbsolutePathBuf deserialized without a base path，仍未成功启动。父级当前恢复用户证据已在可信transcript中，读取父线程未返回可额外核验的turn；没有将同一被拒动作改道或间接执行，也未创建重复作者／Runner。公证需用户在原窗口直接发恢复指令。恢复必须由原Owner接单；公证实际DB另定范围，Runner先离线testDir发现2项callback0，再按今日真实日期／后台候选／15分钟硬窗口及旧行文件／身份锁重新准入。若有新现场变化先停，不扩大清理、权限、对象或会话额度。
+
 ### 六草稿精确过期与页面发现阶段停止（2026-10-18）
 
 用户明确批准cleanup-assessment内六个固定draft仅OPEN→EXPIRED及真实updated_at、保留记录／不删除文件；原Runner在clean dadb0989/tree db226dab上重新核六ID与原行hash、P0/E6/L0/D0，事务内锁定并精确更新六行，一次提交／无自动重试。独立只读后核仅upload_drafts六行的status/updated_at差异，其余165表旧PK行、序列、ledger及身份授权保持，cleanup四分支归零；新基线phase3-all-old-rows.json与旧前置同时保留，不能声称六行从未改变。未运行cleanup全服务或物理清理，94份原文件字节核验通过。
