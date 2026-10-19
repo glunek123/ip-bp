@@ -20,6 +20,11 @@ export function assertPreservedEfEvidence(
   evidence: Record<string, unknown>,
 ): true;
 export function assertPreservedEfLiveState(state: unknown): true;
+export function assertPreservedEfFiles(
+  expectedFiles: Array<{ id: string; bytes: number; sha256: string }>,
+  versionRows: Array<{ id: string; storage_key: string }>,
+  blobsBefore: ReadonlyMap<string, string>,
+): true;
 export function assertPreservedEfRows(
   previous: unknown,
   current: unknown,

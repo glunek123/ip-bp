@@ -647,6 +647,24 @@ export function assertPreservedEfLiveState(state) {
   return true;
 }
 
+export function assertPreservedEfFiles(
+  expectedFiles,
+  versionRows,
+  blobsBefore,
+) {
+  if (
+    versionRows.length !== expectedFiles.length ||
+    new Set(expectedFiles.map((file) => file.id)).size !==
+      expectedFiles.length ||
+    expectedFiles.some((file) => {
+      const row = versionRows.find((item) => item.id === file.id);
+      return !row || blobsBefore.get(row.storage_key) !== file.sha256;
+    })
+  )
+    blocked('PRESERVED_EF_FILES');
+  return true;
+}
+
 export function assertPreservedEfRows(previous, current, complete = false) {
   const additions = complete
     ? {
@@ -2041,15 +2059,7 @@ export function createMinimalPageAcceptance(kind, options = {}) {
             'SELECT id::text,storage_key FROM content_versions',
           )
         ).rows;
-        if (
-          versionRows.length !== expectedFiles.length ||
-          blobsBefore.size !== expectedFiles.length ||
-          expectedFiles.some((file) => {
-            const row = versionRows.find((item) => item.id === file.id);
-            return !row || blobsBefore.get(row.storage_key) !== file.sha256;
-          })
-        )
-          blocked('PRESERVED_EF_FILES');
+        assertPreservedEfFiles(expectedFiles, versionRows, blobsBefore);
       }
       phase = 'FIXTURE';
       const fixture = await one(

@@ -1,5 +1,9 @@
 # 当前开发状态
 
+2026-10-19文件准入接续：2ff863a9的真实只读probe已通过原案LIVE，停于PRESERVED_EF_FILES；96份登记CV字节仍全部吻合，私有根另含281份未在该登记集合的旧物理文件，共377份。helper误把全根计数等同96；只移除此等式并强化封存ID唯一性，仍逐项核96个DB路径／SHA，完整保留本轮全377 before／after及新增0。281文件mtime均为10月15日且无reparse，但缺原运行时刻全集封存，不能声称自原run不变；不删文件、不补数据。三源pure24/24、类型／Lint／格式及原Reviewer C/I/M0，真实前置仍待原Runner确认。独立CSV契约Task已创建并使用独立工作树，先仅新增纯预览会话模型／测试；当前165验收、公证166和导入后续事务各自隔离。
+
+用户日常主线已再次确认：运营内部导入线索并关联客户→运营推送对应客户→客户审核确认→运营继续公证和案件→结束结算归档。客户不提供线索；手工录入不冒充CSV导入已验。逐阶段实现／待验／缺失及继承、追溯要求统一并入原一次性验收清单，不增外部角色、迁移或真实写入额度。
+
 2026-10-19精确根因：0cd41fc4的受保护只读probe已越过源链／capture／PG／ledger／actor／165行，明确在PRESERVED_EF_LIVE拒绝；摘要e84c0473917ff845cfcc6c99e47d14e8b30ff2b75ccdc611579974ef1544acb9及closure已核，0服务／session／HTTP／写入。原Owner与Reviewer独立确认helper把material_references筛选和断言误写为大写CASE，实际mailing／filing两强freeze均写小写case；audit_events的大写CASE是另一表契约。8份既有私密facts hash及其余Case／来源／回执锚点均吻合，无需新查询或修改数据。仅修helper两处精确字面值并补实际读SQL／生产契约回归，仍拒大写／混合类型／错Case或CV；审查固定后再由原Runner只读确认，成功才恢复未消耗页面额度。
 
 2026-10-19前置诊断接续：固定22cd51e8已交原Runner；第一次在自有普通Node前置额外调用受保护prepare被拒，修正后正常protected入口仍于webServer／回调前报告通用MINIMAL_PAGE_PREFLIGHT。两次均0新session／0HTTP／0业务写入，165表旧行／catalog／sequence和96文件保护收尾通过，原剩余额度不变。已实读授权、封存证据、源链、普通proof和既有fingerprint key均通过；现有catch丢失底层错误且stderr整段正则排除数字码，尚不能认定DB或产品根因。原Owner只补phase／code／causeCode白名单诊断及纯反例，原Reviewer定向补审；下一步原Runner仅在protected入口做强制list、无服务／回调的只读probe，取得精确根因并修复后才恢复EF及后续Lead，不盲重试、不重复询问未消耗的登录授权。

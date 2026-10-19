@@ -8,6 +8,7 @@ import {
   assertMinimalPageStartupWindow,
   assertPreservedEfAuthorization,
   assertPreservedEfEvidence,
+  assertPreservedEfFiles,
   assertPreservedEfLiveState,
   assertPreservedEfRows,
   bindMinimalPageSession,
@@ -1286,6 +1287,49 @@ test('preserved EF material reference SQL matches both production freeze paths',
   assert.equal(
     query,
     "SELECT resource_type,resource_id::text,content_version_id::text FROM material_references WHERE resource_type='case' AND resource_id=$1 AND content_version_id=ANY($2::uuid[])",
+  );
+});
+
+test('preserved EF file checkpoint binds registered versions without rejecting unrelated old files', async () => {
+  const evidence = await readPreservedEfEvidence(process.cwd());
+  const expected = evidence['closure-addendum/file-closure.json'].files;
+  const versions = expected.map((file) => ({
+    id: file.id,
+    storage_key: `registered/${file.id}`,
+  }));
+  const blobs = new Map(
+    expected.map((file) => [`registered/${file.id}`, file.sha256]),
+  );
+  for (let index = 0; index < 281; index += 1)
+    blobs.set(`unregistered-old/${index}`, 'f'.repeat(64));
+  assert.equal(expected.length, 96);
+  assert.equal(blobs.size, 377);
+  assert.equal(assertPreservedEfFiles(expected, versions, blobs), true);
+  const checkBad = (files, rows, physical) =>
+    assert.throws(
+      () => assertPreservedEfFiles(files, rows, physical),
+      /PRESERVED_EF_FILES/u,
+    );
+  const missing = new Map(blobs);
+  missing.delete(versions[0].storage_key);
+  checkBad(expected, versions, missing);
+  const changed = new Map(blobs);
+  changed.set(versions[0].storage_key, '0'.repeat(64));
+  checkBad(expected, versions, changed);
+  checkBad(
+    expected,
+    [{ ...versions[0], storage_key: 'wrong/path' }, ...versions.slice(1)],
+    blobs,
+  );
+  checkBad(
+    expected,
+    [...versions, { id: 'extra', storage_key: 'extra' }],
+    blobs,
+  );
+  checkBad(
+    [{ ...expected[0] }, { ...expected[0] }, ...expected.slice(2)],
+    versions,
+    blobs,
   );
 });
 
