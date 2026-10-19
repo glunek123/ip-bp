@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+## 客户详情二级内容与按钮语义（2026-10-19，离线收口中）
+
+用户明确批准原UI任务实施CustomerDetailPage.vue及直接spec、离线测试与独立复审。基线b1a15e937491f4771ddbe8a8c07aacd66d42530f；原作者在customer-detail-secondary-ui树实施，原case-list-query-ui六WIP不动。只读派发最初因授权范围被拒，用户具体批准后同路径唯一重试成功；这次后续实施另有明确批准，不将其当CSV动作或数据库额度。
+
+范围为基本信息内真正的二级tabpanel及本页按钮语义，保留原三个一级页签。作者回报原窗口人类选择“合并联系人与权利人（推荐）”，故两组共页且#customer-contacts与#customer-rights-holders均可进入；其余资料、准入身份、账号、协议、开票、历史各清晰可达，合作与负责人维持原页签外常驻。原子Panel挂载条件、草稿、权限、pending／unknown／stale、身份与迟到响应隔离保持；不增请求、业务入口或公共CSS，不改API／后端／业务保存规则。
+
+作者基线28/28；新增布局与hash两个聚焦回归先红，首候选整页29/29，前端vue-tsc、两文件Lint／Prettier及diff检查exit0。原失败与实际命令输出由主控从原Task工具记录保存至`.local/customer-detail-secondary/author-tool-validation.json`，作者没有另存raw日志，不虚构其日志路径。首候选两份raw为d009eb36f6f1069b1037569313e0a9563bc4147368c573fd855c0754512a1c11／e4284956c4c3a3795408e59aacbabd0603414a6836269a7acba28594837c2efc。
+
+原独立Sol窗口首次按精确两hash只读复审，Spec／Quality均为C0/I0/M1，未标ACCEPTED：M-01为同一客户先切外层资产、再进联系人hash时，外层基本信息未同步可见。原报告已留`.local/customer-detail-secondary/review-initial.md`，交原作者仅两文件补回归与修复；新增真实router用例先红、修后整页30/30，前端类型及两文件静态exit0。修复后两raw为a57029d32ae4ac094102d2d9b90163742c168291a2336eb02040d0b4808b172f／d09826573d40bfb2514507167bad6793c100ea00ab50f1af1e7c403673c1c732，原29断言保留；已知hash从资产／结算回基本，未知hash及延迟内部导航不覆盖后来一级选择。实际命令／红绿保留在author-m01-validation.json，原窗口已按这两新raw补审关闭M-01，Spec／Quality均ACCEPTED、C/I/M0；只读审查未重跑测试，原结论保存在review-accepted.md。
+
+固定组合的相关组件回归及快速静态门禁尚未执行。不能据作者30项宣称真实页面或整个客户模块验收完成。本轮无DB／capture／Docker／HTTP／browser／服务／迁移／Grant／环境操作，不执行完整verify或NT006，不新增或复用已耗真实测试额度，不推送或接入ca015。CSV既有拒绝、公证d8ab与历史数据保护边界不变。
+
 ## CORE-CL-001 离线候选收口（2026-10-19，真实验证未执行）
 
 固定源码候选为 `f2551344f2914b3f75b8cfefb8a6521ed7e5975a`／tree `423cb4262632ed530f108c80bf2515455aa88413`，开发树minimal-page-actor-admission。累计29源＝后端17＋API4＋UI6＋兼容纯测试2；不含公证d8ab，也未接入ca015。原任务分别实施，主控只负责合同、哈希接入、定向检查及权威文档。迁移目录20261019120000_case_list_preferences仅编写文本，开发链167；无新Action／Grant／Case事实写入。

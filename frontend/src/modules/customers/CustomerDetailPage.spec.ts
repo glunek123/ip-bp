@@ -126,7 +126,7 @@ afterEach(() => {
   globalThis.sessionStorage.clear();
 });
 
-async function mountPage(customerId = 'customer-1') {
+async function mountPage(customerId = 'customer-1', hash = '') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -135,7 +135,7 @@ async function mountPage(customerId = 'customer-1') {
       { path: '/customers/:id/edit', component: { template: '<div />' } },
     ],
   });
-  await router.push(`/customers/${customerId}`);
+  await router.push(`/customers/${customerId}${hash}`);
   await router.isReady();
   const wrapper = mount(CustomerDetailPage, {
     global: {
@@ -907,8 +907,8 @@ describe('CustomerDetailPage', () => {
       capabilities: {
         editRoutine: true,
         admit: true,
-        agreement: { read: false, edit: false },
-        invoice: { read: false, edit: false },
+        agreement: { read: true, edit: false },
+        invoice: { read: true, edit: false },
         settlement: { read: true, register: false, correct: false },
       },
       history: [],
@@ -931,15 +931,69 @@ describe('CustomerDetailPage', () => {
       wrapper.get('[role="tabpanel"][id="customer-tab-basic"]').text(),
     ).toContain('客户资料');
 
+    const basicSections = [
+      '客户资料',
+      '联系人与权利人',
+      '准入与身份',
+      '企业账号',
+      '协议',
+      '开票资料',
+      '办理历史',
+    ];
+    const basicSectionTabs = wrapper.findAll(
+      '[data-test="customer-basic-sections"] [role="tab"]',
+    );
+    expect(basicSectionTabs.map((tab) => tab.text())).toEqual(basicSections);
+    for (const tab of basicSectionTabs) {
+      const panel = wrapper.get(`#${tab.attributes('aria-controls')}`);
+      await tab.trigger('click');
+      await flushPromises();
+      expect(tab.attributes('aria-selected')).toBe('true');
+      expect(panel.attributes('role')).toBe('tabpanel');
+      expect(panel.isVisible()).toBe(true);
+    }
+    expect(wrapper.find('[data-test="agreement-panel-stub"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-test="invoice-panel-stub"]').exists()).toBe(
+      true,
+    );
+    const cooperationHeading = wrapper
+      .findAll('h2')
+      .find((heading) => heading.text() === '合作与负责运营');
+    expect(cooperationHeading?.isVisible()).toBe(true);
+
+    const profileSectionTab = wrapper.get(
+      '[data-test="customer-basic-section-tab-profile"]',
+    );
+    await profileSectionTab.trigger('click');
+    await profileSectionTab.trigger('keydown', { key: 'ArrowRight' });
+    await flushPromises();
+    const contactsSectionTab = wrapper.get(
+      '[data-test="customer-basic-section-tab-contacts"]',
+    );
+    expect(contactsSectionTab.attributes('aria-selected')).toBe('true');
+    expect(contactsSectionTab.attributes('tabindex')).toBe('0');
+
+    const accountSectionTab = wrapper.get(
+      '[data-test="customer-basic-section-tab-accounts"]',
+    );
+    await accountSectionTab.trigger('click');
+    await flushPromises();
     await wrapper.get('[data-test="account-draft"]').setValue('未提交草稿');
     await assetsTab.trigger('click');
+    await flushPromises();
     expect(assetsTab.attributes('aria-selected')).toBe('true');
     expect(
       wrapper.get('[role="tabpanel"][id="customer-tab-assets"]').text(),
     ).toContain('真实权利资产台账');
     expect(
-      wrapper.get('[role="tabpanel"][id="customer-tab-basic"]').isVisible(),
-    ).toBe(false);
+      (
+        wrapper.get('[role="tabpanel"][id="customer-tab-basic"]')
+          .element as HTMLElement
+      ).style.display,
+    ).toBe('none');
+    expect(cooperationHeading?.isVisible()).toBe(true);
 
     await settlementTab.trigger('click');
     const settlementPanel = wrapper.get(
@@ -958,6 +1012,102 @@ describe('CustomerDetailPage', () => {
       (wrapper.get('[data-test="account-draft"]').element as HTMLInputElement)
         .value,
     ).toBe('未提交草稿');
+  });
+
+  it('opens the matching basic-info page for an existing hash bookmark', async () => {
+    setInternalActor();
+    api.getCustomer.mockResolvedValue(
+      customerRecord('customer-1', '客户甲', {
+        read: true,
+        register: true,
+        correct: false,
+      }),
+    );
+    const { router, wrapper } = await mountPage(
+      'customer-1',
+      '#customer-contacts',
+    );
+    await flushPromises();
+
+    const contactsTab = wrapper.get(
+      '[data-test="customer-basic-section-tab-contacts"]',
+    );
+    const contactsPanel = wrapper.get('[id="customer-basic-panel-contacts"]');
+    expect(router.currentRoute.value.hash).toBe('#customer-contacts');
+    expect(contactsTab.attributes('aria-selected')).toBe('true');
+    expect(contactsPanel.isVisible()).toBe(true);
+    expect(wrapper.find('#customer-contacts').exists()).toBe(true);
+    await router.push('/customers/customer-1#customer-rights-holders');
+    await flushPromises();
+    expect(contactsTab.attributes('aria-selected')).toBe('true');
+    expect(contactsPanel.isVisible()).toBe(true);
+    expect(wrapper.find('#customer-rights-holders').exists()).toBe(true);
+    expect(
+      wrapper
+        .get('#customer-rights-holders')
+        .element.closest('[role="tabpanel"]')?.id,
+    ).toBe('customer-basic-panel-contacts');
+
+    const basicTab = wrapper.get(
+      '[role="tab"][aria-controls="customer-tab-basic"]',
+    );
+    const assetsTab = wrapper.get(
+      '[role="tab"][aria-controls="customer-tab-assets"]',
+    );
+    await assetsTab.trigger('click');
+    await router.push('/customers/customer-1#customer-contacts');
+    await flushPromises();
+    expect(basicTab.attributes('aria-selected')).toBe('true');
+    expect(contactsTab.attributes('aria-selected')).toBe('true');
+
+    const settlementsTab = wrapper.get(
+      '[role="tab"][aria-controls="customer-tab-settlements"]',
+    );
+    await settlementsTab.trigger('click');
+    await router.push('/customers/customer-1#customer-rights-holders');
+    await flushPromises();
+    expect(basicTab.attributes('aria-selected')).toBe('true');
+    expect(contactsTab.attributes('aria-selected')).toBe('true');
+  });
+
+  it('does not switch the top-level tab for an unknown hash or a late section navigation', async () => {
+    setInternalActor();
+    api.getCustomer.mockResolvedValue(customerRecord('customer-1', '客户甲'));
+    const { router, wrapper } = await mountPage();
+    await flushPromises();
+    const basicTab = wrapper.get(
+      '[role="tab"][aria-controls="customer-tab-basic"]',
+    );
+    const assetsTab = wrapper.get(
+      '[role="tab"][aria-controls="customer-tab-assets"]',
+    );
+    await assetsTab.trigger('click');
+    await router.push('/customers/customer-1#customer-not-a-section');
+    await flushPromises();
+    expect(assetsTab.attributes('aria-selected')).toBe('true');
+
+    let releaseHistory!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
+    const removeGuard = router.beforeEach(async (to) => {
+      if (to.hash === '#customer-history') await gate;
+    });
+    await router.push('/customers/customer-1');
+    await flushPromises();
+    await wrapper
+      .get('[role="tab"][aria-controls="customer-tab-basic"]')
+      .trigger('click');
+    await wrapper
+      .get('[data-test="customer-basic-section-tab-history"]')
+      .trigger('click');
+    await flushPromises();
+    await assetsTab.trigger('click');
+    releaseHistory();
+    await flushPromises();
+    expect(assetsTab.attributes('aria-selected')).toBe('true');
+    expect(basicTab.attributes('aria-selected')).toBe('false');
+    removeGuard();
   });
 
   it('ignores a late response after switching from customer A to customer B', async () => {
