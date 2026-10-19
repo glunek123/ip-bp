@@ -1,5 +1,7 @@
 # 当前开发状态
 
+2026-10-19 CL原验收任务的只读前置计划已完成并读回，SHA5a35c711…56e1b及五个源码锚点匹配，准确缺口已同步[验证准备](superpowers/plans/2026-10-19-case-list-query-preferences-validation.md)：完整verify内NT006真实DDL／fixture尚无新运行授权，CL167／CSV166需分开，专属helper／spec／config／数据与请求预算尚缺。仅ignored计划，不是运行授权。下一项拟选客户详情真正二级内容，向原UI任务的只读派发被自动审批拒绝，用户具体批准待回复，未启动／未换路重试；不能称新批并行开发已运行。
+
 2026-10-19断连任务对账已核原三任务、候选／WIP、CSV阻塞、公证d8ab、ca015和Demo后续队列，详见[任务对账](superpowers/plans/2026-10-19-task-reconciliation.md)。排队／未加载不当作丢失；执行结束日期历史倒序数量未找到后续成功回执，补记待核而非0；其他详情页层级、按钮语义与字段对齐仍须各模块交付前验收，不随本片关闭。对账未执行任何运行时动作。
 
 2026-10-19 CORE-CL-001（UXQ-04A）离线源码候选已收口：固定f2551344f2914b3f75b8cfefb8a6521ed7e5975a／tree423cb4262632ed530f108c80bf2515455aa88413，后端17、API4、UI6及兼容纯测试2共29源累计独立Spec／Quality均ACCEPTED、C/I/M0，M-01与I-01已由原窗口关闭。最终组合11份前端489项、前端／根类型、架构、27源Lint／格式及双构建均通过；后端8a63的Prisma校验／生成、后端类型、6套180项和两份纯测试49项在795份相关输入逐hash完全相同时限定复用，不冒新HEAD重跑。原API系统max_output_tokens故障已同任务同模型恢复；321为案件API单文件，另5偏好测试，总326，旧325后仅新增1测试，字节核对无删除／覆盖。迁移167仅文本，旧CSV166／EF161／HTTP165真实helper与旧SQL不改。完整verify／NT006、PG／迁移升级／真实HTTP／浏览器尚未运行，不能标功能正式验收；运行边界与CSV策略阻塞不变，H42、人工数据、公证d8ab和ca015保持。证据及新额度待批范围见VALIDATION和[验证准备](superpowers/plans/2026-10-19-case-list-query-preferences-validation.md)。
