@@ -9,10 +9,14 @@ vi.mock('./http', async (importOriginal) => ({
 }));
 
 import {
+  type LeadBusinessResult,
+  type LeadCsvImportItem,
+  type LeadCsvImportInput,
   createLead,
   getLead,
   getLeadEditContext,
   getLeadFormContext,
+  importLeadCsvBatch,
   listLeads,
   pushLead,
   pushLeadsBatch,
@@ -115,6 +119,64 @@ const createInput = {
   ],
   leadScreenshotContentVersionIds: ['version-1'],
 };
+
+function csvImportInput(): LeadCsvImportInput {
+  return {
+    ...createInput,
+    infringementTypes: [...createInput.infringementTypes],
+    products: createInput.products.map((product) => ({ ...product })),
+    leadScreenshotContentVersionIds: [],
+  };
+}
+
+function csvImportItem(rowNumber: number): LeadCsvImportItem {
+  return { rowNumber, input: csvImportInput() };
+}
+
+function csvLeadResult(
+  id: string,
+  input: LeadCsvImportInput,
+): LeadBusinessResult {
+  return {
+    id,
+    businessNo: `LD-CSV-${id}`,
+    departmentId: 'department-1',
+    customerId: input.customerId,
+    rightsHolderId: input.rightsHolderId,
+    responsibleUserId: 'user-1',
+    teamId: null,
+    status: 'WAITING_PUSH',
+    caseType: input.caseType,
+    infringementTypes: [...input.infringementTypes],
+    source: input.source,
+    platform: input.platform,
+    foundAt: input.foundAt,
+    shopName: input.shopName,
+    shopExternalId: input.shopExternalId ?? null,
+    needDisclose: input.needDisclose,
+    remark: input.remark ?? null,
+    creationChannel: 'CSV',
+    externalSourceRef: null,
+    products: input.products.map((product, index) => ({
+      id: `${id}-product-${index + 1}`,
+      position: index + 1,
+      url: product.url ?? null,
+      title: product.title ?? null,
+      quantity: product.quantity,
+      unitPrice: product.unitPrice,
+      commentCount: product.commentCount,
+      estimatedAmount: '4.65',
+    })),
+    leadScreenshotContentVersionIds: [],
+    version: 1,
+    pushedAt: null,
+    pushedByUserId: null,
+    pushedByDisplayName: null,
+    reviewDecision: null,
+    createdAt: '2026-09-21T04:00:00.000Z',
+    updatedAt: '2026-09-21T04:00:00.000Z',
+  };
+}
 
 beforeEach(() => vi.resetAllMocks());
 
@@ -665,5 +727,223 @@ describe('Lead API', () => {
         body: { items },
       }),
     );
+  });
+
+  it('imports CSV rows in explicit order with a frozen body and caller options', async () => {
+    const items = [csvImportItem(8), csvImportItem(3)];
+    const expectedItems = [csvImportItem(8), csvImportItem(3)];
+    const headers = {
+      'X-Trace': 'before',
+      'idempotency-key': 'caller-key',
+    };
+    const signal = new AbortController().signal;
+    http.requestJson.mockResolvedValueOnce({
+      items: [
+        { rowNumber: 8, lead: csvLeadResult('csv-a', expectedItems[0]!.input) },
+        { rowNumber: 3, lead: csvLeadResult('csv-b', expectedItems[1]!.input) },
+      ],
+    });
+
+    const result = importLeadCsvBatch(items, 'fixed-key', {
+      signal,
+      timeoutMs: 1234,
+      headers,
+    });
+    items[0]!.input.shopName = '调用后变更';
+    items[0]!.input.products[0]!.quantity = 88;
+    headers['X-Trace'] = 'after';
+    await expect(result).resolves.toMatchObject({
+      items: [
+        { rowNumber: 8, lead: { id: 'csv-a', creationChannel: 'CSV' } },
+        { rowNumber: 3, lead: { id: 'csv-b', creationChannel: 'CSV' } },
+      ],
+    });
+
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/leads/csv-import',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Idempotency-Key': 'fixed-key',
+          'x-trace': 'before',
+        },
+        signal,
+        timeoutMs: 1234,
+        retryOnCsrfInvalid: false,
+        body: {
+          items: expectedItems.map((item) => ({
+            rowNumber: item.rowNumber,
+            input: item.input,
+          })),
+        },
+      }),
+    );
+    expect(headers).toEqual({
+      'X-Trace': 'after',
+      'idempotency-key': 'caller-key',
+    });
+  });
+
+  it('rejects invalid CSV row bounds, duplicate rows, oversized batches and forbidden fields before sending', async () => {
+    const valid = csvImportItem(2);
+    const invalidItems: unknown[] = [
+      [],
+      Array.from({ length: 21 }, (_, index) => csvImportItem(index + 2)),
+      [csvImportItem(1)],
+      [csvImportItem(2_097_154)],
+      [csvImportItem(2), csvImportItem(2)],
+      [
+        {
+          ...valid,
+          input: { ...valid.input, reservedLeadId: 'reserved-id' },
+        },
+      ],
+      [
+        {
+          ...valid,
+          input: {
+            ...valid.input,
+            leadScreenshotContentVersionIds: ['version-1'],
+          },
+        },
+      ],
+      [{ ...valid, unexpected: true }],
+      [{ ...valid, input: { ...valid.input, unexpected: true } }],
+    ];
+
+    for (const items of invalidItems) {
+      await expect(
+        importLeadCsvBatch(items as readonly LeadCsvImportItem[], 'batch-key'),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    }
+    await expect(importLeadCsvBatch([valid], '  ')).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+    expect(http.requestJson).not.toHaveBeenCalled();
+  });
+
+  it('enforces the 90 KiB serialized JSON limit using UTF-8 bytes', async () => {
+    const item = csvImportItem(2);
+    item.input.remark = '';
+    const emptyRemarkBytes = new TextEncoder().encode(
+      JSON.stringify({
+        items: [{ rowNumber: item.rowNumber, input: item.input }],
+      }),
+    ).length;
+    const remainingBytes = 92_160 - emptyRemarkBytes;
+    const chineseCharacters = Math.floor(remainingBytes / 3);
+    const asciiCharacters = remainingBytes % 3;
+    item.input.remark =
+      '界'.repeat(chineseCharacters) + 'a'.repeat(asciiCharacters);
+    const exactBody = {
+      items: [{ rowNumber: item.rowNumber, input: item.input }],
+    };
+    expect(new TextEncoder().encode(JSON.stringify(exactBody)).length).toBe(
+      92_160,
+    );
+
+    http.requestJson.mockResolvedValueOnce({
+      items: [{ rowNumber: 2, lead: csvLeadResult('csv-exact', item.input) }],
+    });
+    await expect(
+      importLeadCsvBatch([item], 'batch-key'),
+    ).resolves.toMatchObject({
+      items: [{ rowNumber: 2, lead: { id: 'csv-exact' } }],
+    });
+
+    const oversizedItem = csvImportItem(2);
+    oversizedItem.input.remark = '界'.repeat(chineseCharacters + 1);
+    await expect(
+      importLeadCsvBatch([oversizedItem], 'batch-key'),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining('90KiB'),
+    });
+    expect(http.requestJson).toHaveBeenCalledTimes(1);
+  });
+
+  it('strictly validates CSV result shape, row order, source, initial state and unique IDs', async () => {
+    const items = [csvImportItem(8), csvImportItem(3)];
+    const validResponse = {
+      items: items.map((item, index) => ({
+        rowNumber: item.rowNumber,
+        lead: csvLeadResult(`csv-${index}`, item.input),
+      })),
+    };
+    http.requestJson.mockResolvedValueOnce(validResponse);
+    await expect(importLeadCsvBatch(items, 'batch-key')).resolves.toEqual(
+      validResponse,
+    );
+
+    const firstLead = csvLeadResult('csv-a', items[0]!.input);
+    const secondLead = csvLeadResult('csv-b', items[1]!.input);
+    const invalidResponses: unknown[] = [
+      { ...validResponse, unexpected: true },
+      {
+        items: [
+          { rowNumber: 8, lead: firstLead, unexpected: true },
+          { rowNumber: 3, lead: secondLead },
+        ],
+      },
+      {
+        items: [
+          { rowNumber: 8, lead: { ...firstLead, unexpected: true } },
+          { rowNumber: 3, lead: secondLead },
+        ],
+      },
+      {
+        items: [
+          { rowNumber: 3, lead: firstLead },
+          { rowNumber: 8, lead: secondLead },
+        ],
+      },
+      {
+        items: [
+          { rowNumber: 8, lead: { ...firstLead, creationChannel: 'MANUAL' } },
+          { rowNumber: 3, lead: secondLead },
+        ],
+      },
+      {
+        items: [
+          { rowNumber: 8, lead: { ...firstLead, status: 'WAITING_REVIEW' } },
+          { rowNumber: 3, lead: secondLead },
+        ],
+      },
+      {
+        items: [
+          { rowNumber: 8, lead: { ...firstLead, version: 2 } },
+          { rowNumber: 3, lead: secondLead },
+        ],
+      },
+      {
+        items: [
+          { rowNumber: 8, lead: firstLead },
+          { rowNumber: 3, lead: { ...secondLead, id: firstLead.id } },
+        ],
+      },
+    ];
+
+    for (const response of invalidResponses) {
+      http.requestJson.mockResolvedValueOnce(response);
+      await expect(
+        importLeadCsvBatch(items, 'batch-key'),
+      ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    }
+  });
+
+  it('propagates aborted and unknown request outcomes without inventing a result', async () => {
+    const abortError = new DOMException('aborted', 'AbortError');
+    http.requestJson.mockRejectedValueOnce(abortError);
+    await expect(
+      importLeadCsvBatch([csvImportItem(2)], 'batch-key', {
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toBe(abortError);
+
+    http.requestJson.mockResolvedValueOnce({ items: [] });
+    await expect(
+      importLeadCsvBatch([csvImportItem(2)], 'batch-key'),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
 });

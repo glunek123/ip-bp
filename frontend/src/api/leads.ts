@@ -91,6 +91,16 @@ export type CreateLeadInput = LeadBusinessInput & {
   customerId: string;
   reservedLeadId?: string;
 };
+export type LeadCsvImportInput = Omit<
+  CreateLeadInput,
+  'reservedLeadId' | 'leadScreenshotContentVersionIds'
+> & {
+  leadScreenshotContentVersionIds: readonly [];
+};
+export type LeadCsvImportItem = Readonly<{
+  rowNumber: number;
+  input: LeadCsvImportInput;
+}>;
 export type UpdateLeadInput = LeadMutableBusinessInput & {
   expectedVersion: number;
 };
@@ -156,6 +166,9 @@ export type LeadBusinessResult = {
   reviewDecision: LeadReviewDecision | null;
   createdAt: string;
   updatedAt: string;
+};
+export type LeadCsvImportResult = {
+  items: Array<{ rowNumber: number; lead: LeadBusinessResult }>;
 };
 export type Lead = LeadBusinessResult & {
   displayNames: {
@@ -474,6 +487,241 @@ function isLeadBusinessResult(value: unknown): value is LeadBusinessResult {
 }
 function invalidResponse(): ApiError {
   return new ApiError('服务返回了无效的线索数据', 200, 'INVALID_RESPONSE');
+}
+
+function invalidCsvImportRequest(): ApiError {
+  return new ApiError('CSV批量导入请求无效', 400, 'VALIDATION_ERROR');
+}
+
+function hasExactKeys(
+  value: unknown,
+  keys: readonly string[],
+): value is Record<string, unknown> {
+  if (!isRecord(value)) return false;
+  const actualKeys = Object.keys(value);
+  return (
+    actualKeys.length === keys.length &&
+    actualKeys.every((key) => keys.includes(key))
+  );
+}
+
+const csvImportInputKeys = [
+  'customerId',
+  'rightsHolderId',
+  'caseType',
+  'infringementTypes',
+  'source',
+  'platform',
+  'foundAt',
+  'shopName',
+  'shopExternalId',
+  'needDisclose',
+  'remark',
+  'products',
+  'leadScreenshotContentVersionIds',
+];
+const csvImportProductKeys = [
+  'url',
+  'title',
+  'quantity',
+  'unitPrice',
+  'commentCount',
+];
+const csvImportRequiredInputKeys = [
+  'customerId',
+  'rightsHolderId',
+  'caseType',
+  'infringementTypes',
+  'source',
+  'platform',
+  'foundAt',
+  'shopName',
+  'needDisclose',
+  'products',
+  'leadScreenshotContentVersionIds',
+];
+
+function isLeadCsvImportProduct(value: unknown): value is LeadProductInput {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value);
+  return (
+    keys.every((key) => csvImportProductKeys.includes(key)) &&
+    ['quantity', 'unitPrice', 'commentCount'].every((key) =>
+      keys.includes(key),
+    ) &&
+    (value.url === undefined || typeof value.url === 'string') &&
+    (value.title === undefined || typeof value.title === 'string') &&
+    ((typeof value.url === 'string' && value.url.trim().length > 0) ||
+      (typeof value.title === 'string' && value.title.trim().length > 0)) &&
+    isCount(value.quantity) &&
+    typeof value.unitPrice === 'string' &&
+    moneyPattern.test(value.unitPrice) &&
+    isCount(value.commentCount)
+  );
+}
+
+function isLeadCsvImportInput(value: unknown): value is LeadCsvImportInput {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value);
+  const screenshots = value.leadScreenshotContentVersionIds;
+  const infringementValues = value.infringementTypes;
+  const products = value.products;
+  return (
+    keys.every((key) => csvImportInputKeys.includes(key)) &&
+    csvImportRequiredInputKeys.every((key) => keys.includes(key)) &&
+    typeof value.customerId === 'string' &&
+    value.customerId.trim().length > 0 &&
+    typeof value.rightsHolderId === 'string' &&
+    value.rightsHolderId.trim().length > 0 &&
+    member(caseTypes, value.caseType) &&
+    Array.isArray(infringementValues) &&
+    infringementValues.length >= 1 &&
+    infringementValues.length <= 12 &&
+    new Set(infringementValues).size === infringementValues.length &&
+    infringementValues.every((item) => member(infringementTypes, item)) &&
+    member(sources, value.source) &&
+    member(
+      value.source === 'ONLINE' ? onlinePlatforms : offlinePlatforms,
+      value.platform,
+    ) &&
+    isDateTime(value.foundAt) &&
+    typeof value.shopName === 'string' &&
+    value.shopName.trim().length > 0 &&
+    value.shopName.length <= 200 &&
+    (value.shopExternalId === undefined ||
+      typeof value.shopExternalId === 'string') &&
+    typeof value.needDisclose === 'boolean' &&
+    (value.remark === undefined || typeof value.remark === 'string') &&
+    Array.isArray(products) &&
+    products.length >= 1 &&
+    products.length <= 100 &&
+    products.every(isLeadCsvImportProduct) &&
+    Array.isArray(screenshots) &&
+    screenshots.length === 0
+  );
+}
+
+function isLeadCsvImportItem(value: unknown): value is LeadCsvImportItem {
+  return (
+    hasExactKeys(value, ['rowNumber', 'input']) &&
+    Number.isInteger(value.rowNumber) &&
+    (value.rowNumber as number) >= 2 &&
+    (value.rowNumber as number) <= 2_097_153 &&
+    isLeadCsvImportInput(value.input)
+  );
+}
+
+function isLeadCsvImportItems(
+  value: unknown,
+): value is readonly LeadCsvImportItem[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 20)
+    return false;
+  const rowNumbers = new Set<number>();
+  for (const item of value) {
+    if (!isLeadCsvImportItem(item) || rowNumbers.has(item.rowNumber))
+      return false;
+    rowNumbers.add(item.rowNumber);
+  }
+  return true;
+}
+
+const csvImportLeadKeys = [
+  'id',
+  'businessNo',
+  'departmentId',
+  'customerId',
+  'rightsHolderId',
+  'responsibleUserId',
+  'teamId',
+  'status',
+  'caseType',
+  'infringementTypes',
+  'source',
+  'platform',
+  'foundAt',
+  'shopName',
+  'shopExternalId',
+  'needDisclose',
+  'remark',
+  'creationChannel',
+  'externalSourceRef',
+  'products',
+  'leadScreenshotContentVersionIds',
+  'version',
+  'pushedAt',
+  'pushedByUserId',
+  'pushedByDisplayName',
+  'reviewDecision',
+  'createdAt',
+  'updatedAt',
+];
+const csvImportProductResultKeys = [
+  'id',
+  'position',
+  'url',
+  'title',
+  'quantity',
+  'unitPrice',
+  'commentCount',
+  'estimatedAmount',
+];
+
+function isStrictCsvLeadResult(value: unknown): value is LeadBusinessResult {
+  return (
+    hasExactKeys(value, csvImportLeadKeys) &&
+    isLeadBusinessResult(value) &&
+    value.products.every(
+      (product) =>
+        hasExactKeys(product, csvImportProductResultKeys) && isProduct(product),
+    ) &&
+    value.id.trim().length > 0 &&
+    value.businessNo.trim().length > 0 &&
+    value.creationChannel === 'CSV' &&
+    value.status === 'WAITING_PUSH' &&
+    value.version === 1 &&
+    value.leadScreenshotContentVersionIds.length === 0 &&
+    value.pushedAt === null &&
+    value.pushedByUserId === null &&
+    value.pushedByDisplayName === null &&
+    value.reviewDecision === null &&
+    value.externalSourceRef === null
+  );
+}
+
+function matchesCsvImportInput(
+  lead: LeadBusinessResult,
+  input: LeadCsvImportInput,
+): boolean {
+  return (
+    lead.customerId === input.customerId &&
+    lead.rightsHolderId === input.rightsHolderId &&
+    lead.caseType === input.caseType &&
+    lead.infringementTypes.length === input.infringementTypes.length &&
+    lead.infringementTypes.every(
+      (infringementType, index) =>
+        infringementType === input.infringementTypes[index],
+    ) &&
+    lead.source === input.source &&
+    lead.platform === input.platform &&
+    lead.foundAt === input.foundAt &&
+    lead.shopName === input.shopName &&
+    lead.shopExternalId === (input.shopExternalId ?? null) &&
+    lead.needDisclose === input.needDisclose &&
+    lead.remark === (input.remark ?? null) &&
+    lead.products.length === input.products.length &&
+    lead.products.every((product, index) => {
+      const submitted = input.products[index];
+      return (
+        submitted !== undefined &&
+        product.position === index + 1 &&
+        product.url === (submitted.url ?? null) &&
+        product.title === (submitted.title ?? null) &&
+        product.quantity === submitted.quantity &&
+        product.unitPrice === submitted.unitPrice &&
+        product.commentCount === submitted.commentCount
+      );
+    })
+  );
 }
 
 function isLead(value: unknown): value is Lead {
@@ -832,6 +1080,92 @@ export async function pushLeadsBatch(
       throw invalidResponse();
     return entry as LeadPushResult;
   });
+  return { items: resultItems };
+}
+
+const maxLeadCsvImportBodyBytes = 92_160;
+
+export async function importLeadCsvBatch(
+  items: readonly LeadCsvImportItem[],
+  idempotencyKey: string,
+  options?: RequestOptions,
+): Promise<LeadCsvImportResult> {
+  if (
+    !isLeadCsvImportItems(items) ||
+    typeof idempotencyKey !== 'string' ||
+    idempotencyKey.trim().length === 0
+  )
+    throw invalidCsvImportRequest();
+
+  const capturedItems: LeadCsvImportItem[] = items.map((item) => ({
+    rowNumber: item.rowNumber,
+    input: {
+      ...item.input,
+      infringementTypes: [...item.input.infringementTypes],
+      products: item.input.products.map((product) => ({ ...product })),
+      leadScreenshotContentVersionIds: [],
+    },
+  }));
+  const body = {
+    items: capturedItems.map(({ rowNumber, input }) => ({
+      rowNumber,
+      input: {
+        ...input,
+        infringementTypes: [...input.infringementTypes],
+        products: input.products.map((product) => ({ ...product })),
+        leadScreenshotContentVersionIds: [],
+      },
+    })),
+  };
+  const bodyBytes = new TextEncoder().encode(JSON.stringify(body)).length;
+  if (bodyBytes > maxLeadCsvImportBodyBytes)
+    throw new ApiError(
+      'CSV导入内容超过90KiB，请减少导入行数或文本内容后重试',
+      400,
+      'VALIDATION_ERROR',
+    );
+
+  const normalizedHeaders: Record<string, string> = {};
+  new Headers(options?.headers).forEach((value, name) => {
+    normalizedHeaders[name] = value;
+  });
+  delete normalizedHeaders['idempotency-key'];
+  normalizedHeaders['Idempotency-Key'] = idempotencyKey;
+
+  const data = await requestJson('/leads/csv-import', {
+    ...options,
+    method: 'POST',
+    headers: normalizedHeaders,
+    retryOnCsrfInvalid: false,
+    body,
+  });
+  if (
+    !hasExactKeys(data, ['items']) ||
+    !Array.isArray(data.items) ||
+    data.items.length !== capturedItems.length
+  )
+    throw invalidResponse();
+
+  const responseItems: unknown[] = data.items;
+  const resultItems: LeadCsvImportResult['items'] = [];
+  const leadIds = new Set<string>();
+  for (const [index, responseItem] of responseItems.entries()) {
+    const submitted = capturedItems[index];
+    if (
+      !submitted ||
+      !hasExactKeys(responseItem, ['rowNumber', 'lead']) ||
+      responseItem.rowNumber !== submitted.rowNumber ||
+      !isStrictCsvLeadResult(responseItem.lead) ||
+      !matchesCsvImportInput(responseItem.lead, submitted.input) ||
+      leadIds.has(responseItem.lead.id.toLowerCase())
+    )
+      throw invalidResponse();
+    leadIds.add(responseItem.lead.id.toLowerCase());
+    resultItems.push({
+      rowNumber: submitted.rowNumber,
+      lead: responseItem.lead,
+    });
+  }
   return { items: resultItems };
 }
 

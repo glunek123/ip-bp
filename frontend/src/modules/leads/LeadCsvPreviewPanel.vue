@@ -2,10 +2,12 @@
 import { computed } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElCheckbox } from 'element-plus/es/components/checkbox/index.mjs';
+import type { LeadFormContext } from '../../api/leads';
 import type { LeadCsvParsedRow, LeadCsvPreview } from './lead-csv-preview';
 
 const props = defineProps<{
   snapshot: LeadCsvPreview;
+  formContext?: LeadFormContext;
 }>();
 
 const emit = defineEmits<{
@@ -14,12 +16,57 @@ const emit = defineEmits<{
   confirmRequest: [request: { generation: number }];
 }>();
 
-function canConfirm(snapshot: LeadCsvPreview): boolean {
+type LeadNames = { customerName: string; rightsHolderName: string };
+
+function resolveNames(
+  customerId: string,
+  rightsHolderId: string,
+  context: LeadFormContext | undefined,
+): LeadNames | null {
+  if (!context) return null;
+  const customers = context.customers.filter(
+    (customer) => customer.id === customerId,
+  );
+  if (customers.length !== 1) return null;
+  const customer = customers[0]!;
+  const customerName = customer.name.trim();
+  if (
+    !customerName ||
+    context.customers.filter(
+      (candidate) => candidate.name.trim() === customerName,
+    ).length !== 1
+  )
+    return null;
+
+  const rightsHolders = customer.rightsHolders.filter(
+    (rightsHolder) => rightsHolder.id === rightsHolderId,
+  );
+  if (rightsHolders.length !== 1) return null;
+  const rightsHolderName = rightsHolders[0]!.name.trim();
+  if (
+    !rightsHolderName ||
+    customer.rightsHolders.filter(
+      (candidate) => candidate.name.trim() === rightsHolderName,
+    ).length !== 1
+  )
+    return null;
+
+  return { customerName, rightsHolderName };
+}
+
+function canConfirm(
+  snapshot: LeadCsvPreview,
+  context: LeadFormContext | undefined,
+): boolean {
   if (snapshot.phase !== 'ready' || snapshot.selectedRowNumbers.length === 0)
     return false;
   const validRowNumbers = new Set(
     snapshot.rows
-      .filter((row) => row.status === 'valid')
+      .filter(
+        (row) =>
+          row.status === 'valid' &&
+          resolveNames(row.input.customerId, row.input.rightsHolderId, context),
+      )
       .map((row) => row.rowNumber),
   );
   return (
@@ -48,9 +95,22 @@ function changeSelection(
     generation !== snapshot.generation ||
     snapshot.phase !== 'ready' ||
     row.status !== 'valid' ||
+    !resolveNames(
+      row.input.customerId,
+      row.input.rightsHolderId,
+      props.formContext,
+    ) ||
     !snapshot.rows.some(
       (current) =>
-        current.rowNumber === row.rowNumber && current.status === 'valid',
+        current.rowNumber === row.rowNumber &&
+        current.status === 'valid' &&
+        current.input.customerId === row.input.customerId &&
+        current.input.rightsHolderId === row.input.rightsHolderId &&
+        resolveNames(
+          current.input.customerId,
+          current.input.rightsHolderId,
+          props.formContext,
+        ),
     )
   )
     return;
@@ -76,7 +136,10 @@ function requestCancel(generation: number): void {
 }
 
 function requestConfirm(generation: number): void {
-  if (generation !== props.snapshot.generation || !canConfirm(props.snapshot))
+  if (
+    generation !== props.snapshot.generation ||
+    !canConfirm(props.snapshot, props.formContext)
+  )
     return;
   emit('confirmRequest', { generation });
 }
@@ -88,9 +151,17 @@ const display = computed(() => {
     generation,
     phase: snapshot.phase,
     fileName: snapshot.fileName,
-    canConfirm: canConfirm(snapshot),
+    canConfirm: canConfirm(snapshot, props.formContext),
     rows: snapshot.rows.map((row) => ({
       row,
+      names:
+        row.status === 'valid'
+          ? resolveNames(
+              row.input.customerId,
+              row.input.rightsHolderId,
+              props.formContext,
+            )
+          : null,
       selected: snapshot.selectedRowNumbers.includes(row.rowNumber),
       key: `${generation}:${row.rowNumber}`,
       change: (checkedValue: boolean | number | string) =>
@@ -153,13 +224,15 @@ const display = computed(() => {
               :key="displayRow.key"
               :data-test="`csv-row-${displayRow.row.rowNumber}`"
               :aria-disabled="
-                displayRow.row.status === 'invalid' ? 'true' : undefined
+                displayRow.row.status === 'invalid' || !displayRow.names
+                  ? 'true'
+                  : undefined
               "
             >
               <th scope="row">{{ displayRow.row.rowNumber }}</th>
               <td>
                 <div
-                  v-if="displayRow.row.status === 'valid'"
+                  v-if="displayRow.row.status === 'valid' && displayRow.names"
                   class="lead-csv-preview__select"
                 >
                   <ElCheckbox
@@ -169,6 +242,11 @@ const display = computed(() => {
                     @change="displayRow.change"
                   />
                 </div>
+                <span v-else-if="displayRow.row.status === 'valid'">
+                  <span data-test="csv-row-unavailable">
+                    客户或权利主体不可用
+                  </span>
+                </span>
                 <span v-else>不可选</span>
               </td>
               <td>
@@ -206,10 +284,10 @@ const display = computed(() => {
                   v-if="displayRow.row.status === 'valid'"
                   class="lead-csv-preview__fields"
                 >
-                  <dt>客户 ID</dt>
-                  <dd>{{ displayRow.row.input.customerId }}</dd>
-                  <dt>权利主体 ID</dt>
-                  <dd>{{ displayRow.row.input.rightsHolderId }}</dd>
+                  <dt>客户</dt>
+                  <dd>{{ displayRow.names?.customerName ?? '不可用' }}</dd>
+                  <dt>权利主体</dt>
+                  <dd>{{ displayRow.names?.rightsHolderName ?? '不可用' }}</dd>
                   <dt>案件类型</dt>
                   <dd>{{ displayRow.row.input.caseType }}</dd>
                   <dt>侵权类型</dt>

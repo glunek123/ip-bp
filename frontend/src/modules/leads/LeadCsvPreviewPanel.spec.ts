@@ -3,11 +3,31 @@ import { describe, expect, it } from 'vitest';
 import type { VNode } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElCheckbox } from 'element-plus/es/components/checkbox/index.mjs';
-import type { CreateLeadInput } from '../../api/leads';
+import type { CreateLeadInput, LeadFormContext } from '../../api/leads';
 import type { LeadCsvParsedRow, LeadCsvPreview } from './lead-csv-preview';
 import LeadCsvPreviewPanel from './LeadCsvPreviewPanel.vue';
 
 type CheckboxValue = boolean | number | string;
+
+const formContext: LeadFormContext = {
+  customers: [
+    {
+      id: 'customer-a',
+      name: '客户甲',
+      rightsHolders: [{ id: 'holder-a', name: '主体甲' }],
+    },
+  ],
+  dictionaries: {
+    caseTypes: [],
+    infringementTypes: [],
+    sources: [],
+    platforms: { ONLINE: [], OFFLINE: [] },
+  },
+};
+
+function mountWithContext(snapshot: LeadCsvPreview) {
+  return mount(LeadCsvPreviewPanel, { props: { snapshot, formContext } });
+}
 
 function vnodeHandler<T>(vnode: VNode, name: string): (value: T) => unknown {
   const handler = vnode?.props?.[name];
@@ -106,18 +126,16 @@ describe('LeadCsvPreviewPanel', () => {
   );
 
   it('displays the active file, row errors and duplicate hints without selecting rows', () => {
-    const wrapper = mount(LeadCsvPreviewPanel, {
-      props: {
-        snapshot: readySnapshot([
-          validRow(2, '甲店铺', ['已有相近店铺名称']),
-          {
-            rowNumber: 3,
-            status: 'invalid',
-            errors: ['客户无法匹配', '商品单价非法'],
-          },
-        ]),
-      },
-    });
+    const wrapper = mountWithContext(
+      readySnapshot([
+        validRow(2, '甲店铺', ['已有相近店铺名称']),
+        {
+          rowNumber: 3,
+          status: 'invalid',
+          errors: ['客户无法匹配', '商品单价非法'],
+        },
+      ]),
+    );
     expect(wrapper.get('[data-test="csv-file-name"]').text()).toContain(
       '运营线索.csv',
     );
@@ -144,14 +162,12 @@ describe('LeadCsvPreviewPanel', () => {
   });
 
   it('does not nest labels around valid-row checkboxes or render them for invalid rows', () => {
-    const wrapper = mount(LeadCsvPreviewPanel, {
-      props: {
-        snapshot: readySnapshot([
-          validRow(2),
-          { rowNumber: 3, status: 'invalid', errors: ['无效行'] },
-        ]),
-      },
-    });
+    const wrapper = mountWithContext(
+      readySnapshot([
+        validRow(2),
+        { rowNumber: 3, status: 'invalid', errors: ['无效行'] },
+      ]),
+    );
     const validRowElement = wrapper.get('[data-test="csv-row-2"]').element;
     const invalidRowElement = wrapper.get('[data-test="csv-row-3"]').element;
 
@@ -165,14 +181,49 @@ describe('LeadCsvPreviewPanel', () => {
     ).toBeNull();
   });
 
-  it('renders all CreateLeadInput fields and each product value without estimating', () => {
-    const wrapper = mount(LeadCsvPreviewPanel, {
-      props: { snapshot: readySnapshot([validRow(2)]) },
-    });
+  it('marks missing or ambiguous customer and rights-holder mappings unavailable', () => {
+    const customer = formContext.customers[0]!;
+    const contexts: Array<LeadFormContext | undefined> = [
+      undefined,
+      {
+        ...formContext,
+        customers: [
+          ...formContext.customers,
+          { ...customer, id: 'customer-b', name: ' 客户甲 ' },
+        ],
+      },
+      {
+        ...formContext,
+        customers: [{ ...customer, rightsHolders: [] }],
+      },
+    ];
+
+    for (const context of contexts) {
+      const snapshot = readySnapshot([validRow(2)], [2]);
+      const props = {
+        snapshot,
+        formContext: context as LeadFormContext,
+      };
+      const wrapper = mount(LeadCsvPreviewPanel, { props });
+      const row = wrapper.get('[data-test="csv-row-2"]');
+
+      expect(row.text()).toContain('客户或权利主体不可用');
+      expect(row.text()).not.toContain('customer-a');
+      expect(row.text()).not.toContain('holder-a');
+      expect(row.get('[data-test="csv-row-unavailable"]')).toBeDefined();
+      expect(row.find('input[type="checkbox"]').exists()).toBe(false);
+      expect(
+        wrapper.get('[data-test="csv-confirm-request"]').attributes('disabled'),
+      ).toBeDefined();
+    }
+  });
+
+  it('renders business names and all other CreateLeadInput fields without estimating', () => {
+    const wrapper = mountWithContext(readySnapshot([validRow(2)]));
     const text = wrapper.get('[data-test="csv-row-2"]').text();
     for (const expected of [
-      'customer-a',
-      'holder-a',
+      '客户甲',
+      '主体甲',
       'CIVIL',
       'TRADEMARK',
       'ONLINE',
@@ -198,6 +249,8 @@ describe('LeadCsvPreviewPanel', () => {
     expect(text).not.toContain('估算');
     expect(text).not.toContain('hidden-reserved-lead-id');
     expect(text).not.toContain('预留线索 ID');
+    expect(text).not.toContain('customer-a');
+    expect(text).not.toContain('holder-a');
   });
 
   it('displays foundAt in Shanghai time while preserving the UTC input value', () => {
@@ -211,7 +264,7 @@ describe('LeadCsvPreviewPanel', () => {
         suspectedDuplicates: [],
       },
     ]);
-    const wrapper = mount(LeadCsvPreviewPanel, { props: { snapshot } });
+    const wrapper = mountWithContext(snapshot);
     const rowText = wrapper.get('[data-test="csv-row-2"]').text();
 
     expect(rowText).toContain('2026/10/19 00:30:00');
@@ -222,15 +275,13 @@ describe('LeadCsvPreviewPanel', () => {
   });
 
   it('emits an explicit valid-row selection request with the displayed generation', async () => {
-    const wrapper = mount(LeadCsvPreviewPanel, {
-      props: {
-        snapshot: readySnapshot([
-          validRow(2),
-          { rowNumber: 3, status: 'invalid', errors: ['无效行'] },
-          validRow(4),
-        ]),
-      },
-    });
+    const wrapper = mountWithContext(
+      readySnapshot([
+        validRow(2),
+        { rowNumber: 3, status: 'invalid', errors: ['无效行'] },
+        validRow(4),
+      ]),
+    );
     await wrapper.get('[data-test="csv-row-4"] input').setValue(true);
     expect(wrapper.emitted('selectRows')).toEqual([
       [{ generation: 8, rowNumbers: [4] }],
@@ -239,18 +290,16 @@ describe('LeadCsvPreviewPanel', () => {
   });
 
   it('keeps selection order in the preview and never includes invalid rows', async () => {
-    const wrapper = mount(LeadCsvPreviewPanel, {
-      props: {
-        snapshot: readySnapshot(
-          [
-            validRow(2),
-            { rowNumber: 3, status: 'invalid', errors: ['无效行'] },
-            validRow(4),
-          ],
-          [2],
-        ),
-      },
-    });
+    const wrapper = mountWithContext(
+      readySnapshot(
+        [
+          validRow(2),
+          { rowNumber: 3, status: 'invalid', errors: ['无效行'] },
+          validRow(4),
+        ],
+        [2],
+      ),
+    );
     await wrapper.get('[data-test="csv-row-4"] input').setValue(true);
     expect(wrapper.emitted('selectRows')?.[0]?.[0]).toEqual({
       generation: 8,
@@ -263,11 +312,9 @@ describe('LeadCsvPreviewPanel', () => {
   });
 
   it('emits confirm intent only for a current nonempty valid selection', async () => {
-    const wrapper = mount(LeadCsvPreviewPanel, {
-      props: {
-        snapshot: readySnapshot([validRow(2), validRow(4)], [4]),
-      },
-    });
+    const wrapper = mountWithContext(
+      readySnapshot([validRow(2), validRow(4)], [4]),
+    );
     const confirm = wrapper.get('[data-test="csv-confirm-request"]');
     expect(confirm.attributes('disabled')).toBeUndefined();
     await confirm.trigger('click');
@@ -281,9 +328,7 @@ describe('LeadCsvPreviewPanel', () => {
       { rowNumber: 3, status: 'invalid', errors: ['无效行'] },
     ];
     for (const selectedRowNumbers of [[], [2, 2], [3], [99]]) {
-      const wrapper = mount(LeadCsvPreviewPanel, {
-        props: { snapshot: readySnapshot(rows, selectedRowNumbers) },
-      });
+      const wrapper = mountWithContext(readySnapshot(rows, selectedRowNumbers));
       expect(
         wrapper.get('[data-test="csv-confirm-request"]').attributes('disabled'),
       ).toBeDefined();
@@ -316,9 +361,9 @@ describe('LeadCsvPreviewPanel', () => {
   });
 
   it('uses only the currently displayed generation when the host replaces the file snapshot', async () => {
-    const wrapper = mount(LeadCsvPreviewPanel, {
-      props: { snapshot: readySnapshot([validRow(2, 'A店铺')], [], 21) },
-    });
+    const wrapper = mountWithContext(
+      readySnapshot([validRow(2, 'A店铺')], [], 21),
+    );
     await wrapper.get('[data-test="csv-row-2"] input').setValue(true);
     await wrapper.setProps({
       snapshot: readySnapshot([validRow(2, 'B店铺')], [], 22),
@@ -338,9 +383,9 @@ describe('LeadCsvPreviewPanel', () => {
   });
 
   it('rejects the captured old checkbox VNode handler after replacing its batch', async () => {
-    const wrapper = mount(LeadCsvPreviewPanel, {
-      props: { snapshot: readySnapshot([validRow(2, 'A店铺')], [], 31) },
-    });
+    const wrapper = mountWithContext(
+      readySnapshot([validRow(2, 'A店铺')], [], 31),
+    );
     const checkbox = wrapper.getComponent(ElCheckbox);
     const oldHandler = vnodeHandler<CheckboxValue>(
       checkbox.vm.$.vnode,
@@ -379,9 +424,7 @@ describe('LeadCsvPreviewPanel', () => {
   });
 
   it('rejects the captured old confirm VNode handler after replacing its batch', async () => {
-    const wrapper = mount(LeadCsvPreviewPanel, {
-      props: { snapshot: readySnapshot([validRow(2)], [2], 51) },
-    });
+    const wrapper = mountWithContext(readySnapshot([validRow(2)], [2], 51));
     const confirm = wrapper
       .findAllComponents(ElButton)
       .find(
