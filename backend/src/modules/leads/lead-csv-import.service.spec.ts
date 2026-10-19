@@ -1,4 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
@@ -104,6 +106,102 @@ function fixture() {
 }
 
 describe('LeadService CSV import', () => {
+  it('preserves every previously valid external-source combination and adds CSV without a reference', () => {
+    const previous = readFileSync(
+      join(
+        __dirname,
+        '../../../prisma/migrations/20260921011000_add_core_ld_schema/migration.sql',
+      ),
+      'utf8',
+    );
+    const current = readFileSync(
+      join(
+        __dirname,
+        '../../../prisma/migrations/20261019090000_lead_csv_import_receipts/migration.sql',
+      ),
+      'utf8',
+    );
+    const legacyManual =
+      '("creation_channel" = \'MANUAL\' AND "external_source_ref" IS NULL)';
+    const legacyExternal =
+      '("creation_channel" <> \'MANUAL\' AND NULLIF(BTRIM("external_source_ref"), \'\') IS NOT NULL)';
+    expect(previous).toContain(legacyManual);
+    expect(previous).toContain(legacyExternal);
+    expect(current).toContain(legacyManual);
+    expect(current).toContain(legacyExternal);
+    expect(current).toContain(
+      '("creation_channel" = \'CSV\' AND "external_source_ref" IS NULL)',
+    );
+    const oldAccepts = (channel: string, ref: string | null) =>
+      channel === 'MANUAL' ? ref === null : Boolean(ref?.trim());
+    const newAccepts = (channel: string, ref: string | null) =>
+      oldAccepts(channel, ref) || (channel === 'CSV' && ref === null);
+    for (const channel of ['MANUAL', 'CSV', 'OCR', 'CRAWLER', 'HISTORICAL']) {
+      for (const ref of [null, '', '  ', 'external-row']) {
+        if (oldAccepts(channel, ref))
+          expect(newAccepts(channel, ref)).toBe(true);
+      }
+    }
+    expect(newAccepts('CSV', 'external-row')).toBe(true);
+    expect(newAccepts('CSV', null)).toBe(true);
+  });
+  it('statically binds every original business field to the Lead in the deferred receipt guard', () => {
+    const sql = readFileSync(
+      join(
+        __dirname,
+        '../../../prisma/migrations/20261019090000_lead_csv_import_receipts/migration.sql',
+      ),
+      'utf8',
+    );
+    for (const fragment of [
+      'lead_csv_js_millis_timestamp(request_input->>\'foundAt\') IS DISTINCT FROM target_lead."found_at"',
+      'lead_csv_normalized_text(request_input->>\'shopName\') IS DISTINCT FROM target_lead."shop_name"',
+      'lead_csv_normalized_text(request_input->>\'shopExternalId\') IS DISTINCT FROM target_lead."shop_external_id"',
+      'lead_csv_normalized_text(request_input->>\'remark\') IS DISTINCT FROM target_lead."remark"',
+      'request_input->\'needDisclose\' IS DISTINCT FROM to_jsonb(target_lead."need_disclose")',
+      "jsonb_array_elements_text(request_input->'infringementTypes')",
+      "jsonb_array_elements(request_input->'products')",
+      'request_product->\'quantity\' IS DISTINCT FROM to_jsonb(target_product."quantity")',
+      '(request_product->>\'unitPrice\')::numeric IS DISTINCT FROM target_product."unit_price"',
+      'request_product->\'commentCount\' IS DISTINCT FROM to_jsonb(target_product."comment_count")',
+    ])
+      expect(sql).toContain(fragment);
+    const normalize = (value: string) => value.normalize('NFKC').trim();
+    expect(normalize('伪造店铺')).not.toBe('真实店铺');
+    expect(normalize(' Ⅳ号店铺\u00a0')).toBe('IV号店铺');
+  });
+  it('statically truncates ISO fractional seconds before timestamp parsing at the JS millisecond boundary', () => {
+    const sql = readFileSync(
+      join(
+        __dirname,
+        '../../../prisma/migrations/20261019090000_lead_csv_import_receipts/migration.sql',
+      ),
+      'utf8',
+    );
+    expect(sql).toContain(
+      'CREATE FUNCTION lead_csv_js_millis_timestamp(value text)',
+    );
+    expect(sql).toContain('regexp_replace(value,');
+    expect(sql).not.toContain("(request_input->>'foundAt')::timestamptz");
+    const truncate = (value: string) =>
+      value.replace(
+        /(\.[0-9]{3})[0-9]+([Zz]|[+-][0-9]{2}:?[0-9]{2})?$/u,
+        '$1$2',
+      );
+    for (const source of [
+      '2026-10-19T00:00:00.1234Z',
+      '2026-10-19T00:00:00.9999999Z',
+      '2026-10-19T08:00:00.9999999+08:00',
+      '1970-01-01T00:00:00.0009Z',
+      '1969-12-31T23:59:59.9999Z',
+      '1969-12-31T23:59:59.9999999Z',
+      '1969-12-31T23:59:59.0000009-02:00',
+    ]) {
+      expect(new Date(truncate(source)).toISOString()).toBe(
+        new Date(source).toISOString(),
+      );
+    }
+  });
   it('creates each selected row in order with CSV provenance and one batch receipt', async () => {
     const f = fixture();
     const result = await f.service.importBatch(actor, 'key', request());

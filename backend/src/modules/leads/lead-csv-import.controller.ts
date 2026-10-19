@@ -3,8 +3,13 @@ import {
   Body,
   Controller,
   Headers,
+  CallHandler,
+  ExecutionContext,
+  Injectable,
+  NestInterceptor,
   Post,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -19,6 +24,21 @@ import { CsrfGuard } from '../../auth/csrf.guard';
 import { LeadCsvImportDto } from './lead-csv-import.dto';
 import { LeadCsvImportResponseDto } from './lead-csv-import-response.dto';
 import { LeadService } from './lead.service';
+import type { Observable } from 'rxjs';
+
+@Injectable()
+export class LeadCsvImportBodyLimitInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const request = context.switchToHttp().getRequest<{ body: unknown }>();
+    const compact = JSON.stringify(request.body);
+    if (
+      typeof compact !== 'string' ||
+      Buffer.byteLength(compact, 'utf8') > 92_160
+    )
+      throw new BadRequestException({ code: 'VALIDATION_ERROR' });
+    return next.handle();
+  }
+}
 
 @ApiTags('leads')
 @ApiBearerAuth()
@@ -28,6 +48,7 @@ export class LeadCsvImportController {
   constructor(private readonly leads: LeadService) {}
 
   @Post('csv-import')
+  @UseInterceptors(LeadCsvImportBodyLimitInterceptor)
   @ApiHeader({ name: 'Idempotency-Key', required: true })
   @ApiCreatedResponse({ type: LeadCsvImportResponseDto })
   importBatch(
