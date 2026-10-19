@@ -34,6 +34,116 @@ async function sources() {
   );
 }
 
+async function extractRefreshHelper() {
+  const specText = await readFile(paths.spec, 'utf8');
+  const source = ts.createSourceFile(
+    'execution-feedback-minimal-page.spec.ts',
+    specText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const helper = source.statements.find(
+    (statement) =>
+      ts.isFunctionDeclaration(statement) &&
+      statement.name?.text === 'refreshCasesAndFindBusinessNo',
+  );
+  assert.ok(
+    helper,
+    'The spec must expose its actual refresh orchestration helper',
+  );
+  const javascript = ts.transpile(helper.getText(source), {
+    target: ts.ScriptTarget.ES2022,
+  });
+  return new Function(`${javascript}\nreturn refreshCasesAndFindBusinessNo;`)();
+}
+
+async function expectLinkVisibleAfterRefresh(locator) {
+  assert.equal(locator, caseLink);
+  assert.ok(
+    responseCompleted,
+    'The list GET must complete before checking the link',
+  );
+  sequence.push('visible');
+}
+
+let sequence;
+let responseCompleted;
+let caseLink;
+
+test('refreshes the real case list and waits for that GET before looking for the new business number', async () => {
+  sequence = ['initial-list-get-completed-before-source-creation'];
+  responseCompleted = false;
+  caseLink = { businessNo: 'CA-TEST-NEW' };
+  let resolveListRequest;
+  const list = {
+    getByRole(role, options) {
+      assert.equal(role, 'link');
+      assert.deepEqual(options, { name: 'CA-TEST-NEW', exact: true });
+      return caseLink;
+    },
+  };
+  const response = {
+    status: () => 200,
+  };
+  const staleResponse = {
+    request: () => ({ method: () => 'GET' }),
+    url: () => 'http://127.0.0.1/api/v1/cases?page=1',
+    status: () => 200,
+  };
+  const page = {
+    getByTestId(testId) {
+      assert.equal(testId, 'case-list');
+      return list;
+    },
+    getByRole(role, options) {
+      assert.equal(role, 'button');
+      assert.deepEqual(options, { name: '刷新', exact: true });
+      return {
+        async click() {
+          sequence.push('refresh-click');
+          assert.equal(typeof resolveListRequest, 'function');
+          const request = {
+            method: () => 'GET',
+            url: () => 'http://127.0.0.1/api/v1/cases?page=1',
+            async response() {
+              responseCompleted = true;
+              sequence.push('new-list-get-200');
+              return response;
+            },
+          };
+          sequence.push('new-list-request');
+          resolveListRequest(request);
+        },
+      };
+    },
+    waitForRequest(predicate) {
+      sequence.push('wait-for-new-list-request');
+      return new Promise((resolve) => {
+        resolveListRequest = (candidate) => {
+          if (predicate(candidate)) resolve(candidate);
+        };
+      });
+    },
+    waitForResponse(predicate) {
+      sequence.push('stale-response-completed-after-wait-setup');
+      assert.equal(predicate(staleResponse), true);
+      return Promise.resolve(staleResponse);
+    },
+  };
+
+  const refresh = await extractRefreshHelper();
+  await refresh(page, 'CA-TEST-NEW', expectLinkVisibleAfterRefresh);
+  assert.deepEqual(sequence, [
+    'initial-list-get-completed-before-source-creation',
+    'wait-for-new-list-request',
+    'refresh-click',
+    'new-list-request',
+    'new-list-get-200',
+    'visible',
+  ]);
+});
+
 function literal(node) {
   return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)
     ? node.text

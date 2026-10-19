@@ -3,6 +3,7 @@ import {
   expect,
   test,
   type APIRequestContext,
+  type Locator,
   type Page,
   type Route,
 } from '@playwright/test';
@@ -119,6 +120,31 @@ function captureFeedbackRequest(route: Route) {
     delivery: 'continued' as 'continued' | 'blocked_before_dispatch',
     responseStatus: null as number | null,
   };
+}
+
+async function refreshCasesAndFindBusinessNo(
+  page: Page,
+  businessNo: string,
+  expectVisible: (locator: Locator) => Promise<void>,
+) {
+  const caseLink = page.getByTestId('case-list').getByRole('link', {
+    name: businessNo,
+    exact: true,
+  });
+  const refreshedCases = page.waitForRequest(
+    (request) =>
+      request.method() === 'GET' &&
+      new URL(request.url()).pathname === '/api/v1/cases',
+  );
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  const request = await refreshedCases;
+  const response = await request.response();
+  if (!response)
+    throw new Error('Refreshing the case list returned no response');
+  if (response.status() !== 200)
+    throw new Error(`Refreshing the case list returned ${response.status()}`);
+  await expectVisible(caseLink);
+  return caseLink;
 }
 
 function hasMinimalPageWindow(value: unknown): value is MinimalPageWindow {
@@ -343,13 +369,11 @@ test('records and corrects execution court feedback through the real case page',
     expect(filed.version).toBe(3);
     budget.setFiling(String(filed.filingId));
 
-    await page.getByTestId('case-nav').click();
-    const caseList = page.getByTestId('case-list');
-    const caseLink = caseList.getByRole('link', {
-      name: createdDetail.businessNo,
-      exact: true,
-    });
-    await expect(caseLink).toBeVisible();
+    const caseLink = await refreshCasesAndFindBusinessNo(
+      page,
+      createdDetail.businessNo,
+      (link) => expect(link).toBeVisible(),
+    );
     await caseLink.click();
 
     const panel = page.getByTestId('execution-filing-followup-panel');
