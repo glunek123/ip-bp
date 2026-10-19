@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
 import test from 'node:test';
+import vm from 'node:vm';
+import ts from 'typescript';
 import {
   assertMinimalPageActor,
   assertMinimalPageDatabaseDiff,
@@ -23,6 +27,142 @@ import {
   readPreservedEfEvidence,
   snapshotPreservedEfRows,
 } from './minimal-page-acceptance.mjs';
+
+const leadConfigSource = await readFile(
+  new URL('../../playwright.lead-minimal-page.config.ts', import.meta.url),
+  'utf8',
+);
+const originalConfigSource = await readFile(
+  new URL('../../playwright.minimal-pages.config.ts', import.meta.url),
+  'utf8',
+);
+
+test('Lead config retains the original pre-server admission block', () => {
+  const admission = (source) =>
+    source.slice(
+      source.indexOf('if (!listing) {'),
+      source.indexOf('const runtime ='),
+    );
+  assert.equal(admission(leadConfigSource), admission(originalConfigSource));
+});
+
+function loadLeadConfigOffline(argv, childError) {
+  const calls = [];
+  const captured = { childKinds: [], r2Checks: 0, runtimePlans: 0 };
+  const output = ts.transpileModule(leadConfigSource, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const exports = {};
+  const sandbox = {
+    exports,
+    __dirname: process.cwd(),
+    process: { argv, env: {} },
+    require(name) {
+      if (name === 'node:child_process')
+        return {
+          execFileSync(_command, args) {
+            calls.push('child');
+            captured.childKinds.push(JSON.parse(args[args.length - 1]));
+            if (childError) throw { stderr: Buffer.from('safe diagnostic') };
+            return Buffer.from(
+              JSON.stringify({
+                runId: '11111111-1111-4111-8111-111111111111',
+                deadlineIso: '2026-10-19T04:30:00.000Z',
+              }),
+            );
+          },
+        };
+      if (name === 'node:os') return { tmpdir };
+      if (name === 'node:path') return { resolve };
+      if (name === '@playwright/test')
+        return {
+          defineConfig: (value) => value,
+          devices: { 'Desktop Chrome': {} },
+        };
+      if (name === './tests/support/minimal-page-acceptance.mjs')
+        return {
+          assertMinimalPageR2Binding() {
+            calls.push('R2');
+            captured.r2Checks++;
+          },
+          parseMinimalPagePreflightDiagnostic() {
+            return {
+              phase: 'PRESERVED_EF_LIVE',
+              code: 'MINIMAL_PAGE_PRESERVED_EF_LIVE',
+              causeCode: 'MINIMAL_PAGE_PRESERVED_EF_ROWS',
+            };
+          },
+        };
+      if (name === './scripts/managed-test-runtime.mjs')
+        return {
+          createManagedTestRuntime: () => ({}),
+          planManagedTestRuntime: () => {
+            captured.runtimePlans++;
+            return {
+              baseURL: 'http://127.0.0.1:5174',
+              webServer: ['synthetic'],
+            };
+          },
+        };
+      throw new Error(`Unexpected import: ${name}`);
+    },
+  };
+  vm.runInNewContext(output, sandbox, {
+    filename: 'playwright.lead-minimal-page.config.ts',
+  });
+  return { config: exports.default, calls, captured };
+}
+
+test('Lead config admits only Lead across CLI and reloaded worker argument shapes', () => {
+  for (const argv of [
+    [
+      'node',
+      'cli.js',
+      'test',
+      'tests/e2e/lead-batch-push-minimal-page.spec.ts',
+    ],
+    ['node', 'loaderProcessEntry.js'],
+    ['node', 'workerProcessEntry.js'],
+    [
+      'node',
+      'cli.js',
+      'test',
+      'tests/e2e/execution-feedback-minimal-page.spec.ts',
+    ],
+    [],
+  ]) {
+    const { config, calls, captured } = loadLeadConfigOffline(argv);
+    assert.deepEqual(captured.childKinds, [['LEAD_BATCH']]);
+    assert.deepEqual(calls, ['R2', 'child']);
+    assert.equal(captured.runtimePlans, 1);
+    assert.deepEqual(Array.from(config.testMatch), [
+      'lead-batch-push-minimal-page.spec.ts',
+    ]);
+    assert.equal(
+      config.metadata.minimalPageWindow.runId,
+      '11111111-1111-4111-8111-111111111111',
+    );
+    assert.deepEqual(Array.from(config.webServer), ['synthetic']);
+  }
+});
+
+test('Lead config listing stays offline and interactive or failed admission remains closed', () => {
+  const listing = loadLeadConfigOffline(['node', 'cli.js', 'test', '--list']);
+  assert.equal(listing.captured.r2Checks, 0);
+  assert.deepEqual(listing.captured.childKinds, []);
+  assert.deepEqual(Array.from(listing.config.webServer), []);
+  assert.throws(
+    () => loadLeadConfigOffline(['node', 'cli.js', '--ui']),
+    /interactive execution/u,
+  );
+  assert.throws(
+    () => loadLeadConfigOffline(['node', 'cli.js', 'test'], true),
+    /PRESERVED_EF_LIVE\/MINIMAL_PAGE_PRESERVED_EF_LIVE\/MINIMAL_PAGE_PRESERVED_EF_ROWS/u,
+  );
+});
 
 const kind = 'EF_FEEDBACK';
 const scope = minimalPageScopes[kind];

@@ -1,5 +1,9 @@
 # 下一批最小页面闭环与一次性确认清单
 
+2026-10-19执行断点：原案EF已在2bf4b14b真实1/1通过，额外1登录和2反馈POST已耗并闭合，不再重复。Lead独立命令在服务前PRESERVED_EF_ROWS拒绝，原H42的1登录／2Lead／3POST未耗。已定位Playwright loader／worker重载配置时本进程argv不含原单文件，旧配置回退同时校验EF；拟固定Lead专用配置，每次重载仍保留全部真实Lead前置，不用环境变量跳过校验。不放宽旧行、不另造基线成功证明。定向验证后只续Lead，仍同环境／原权限／原数据范围、首异常停。EF成功事实及本轮全377物理文件保护作为已封存历史保留，详细证据只见VALIDATION。
+
+修复冻结并审查后，后续唯一页面命令改为 `pnpm test:e2e tests/e2e/lead-batch-push-minimal-page.spec.ts --config playwright.lead-minimal-page.config.ts --workers=1 --retries=0`。不能再用原双kind配置运行本轮Lead，也不能重新执行EF。Lead前基线是已保存的EF成功后完整现场（rows SHA256 `87f3f28c0e61a5e8a44698a62f07c8e603f378473c4f83750d5ec62aa1ae3068`），仅此真实已批准增量；fresh准入、原H42资格及本轮完整文件保护保持，不能靠改写原source proof或放宽差异来进入。
+
 文件集合前提：保护对象含96个已登记CV及当前私有根全部旧物理文件，二者不是等量集合。不得为符合计数删除额外旧文件，也不得把其旧mtime当原时刻封存证明；登记CV逐项匹配和本轮全根before／after、新增0均须保留。此修复前置通过后才续原两页，不增上传额度。
 
 ## 日常业务主线与验收映射

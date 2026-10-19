@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+### EF页面通过、Lead服务前阻断与CSV纯模型（2026-10-19）
+
+真实页面候选为 `2bf4b14bcbd805153c1a972dd20762909b8e17dd` / tree `bd6b7585e774451026fe089aa35845db1f614bde`。原Runner先通过无数据库／服务的argv round-trip，修正其ignored wrapper的output参数字面引号，旧ENOENT证据保留。随后EF标准单文件实际expected1、unexpected／skipped／flaky0，完成原案反馈初记及带原因更正；新增1session正常退出、2feedback版本／2receipt／2audit，当前revision2，原Case仍EXECUTING/v3、来源不变。96登记CV及本轮全377物理文件无新增／改变／删除；旧281文件不据此追认为自原始run起不变。
+
+EF独立收尾通过后才运行Lead单文件；其在配置服务前阶段报 `PRESERVED_EF_LIVE / MINIMAL_PAGE_PRESERVED_EF_LIVE / MINIMAL_PAGE_PRESERVED_EF_ROWS`，expected0／unexpected1，未到回调、登录或HTTP。已保存的EF-after与Lead-after全165表PK行／sequence摘要相同；Lead closure及377文件保护通过，端口空闲、标准锁释放。EF的额外1登录／2POST已消耗，不再运行；Lead原H42的1登录／2Lead／3POST未耗。当前定位配置选片，不将异常直接定为产品问题，也不放宽数据保护。安全证据目录为ca015的 `.local/next-batch-preparation/preserved-pages-argv-fixed-2bf4b14b-20261019/`，summary SHA256 `62a3a1cbd4221c14da3b2084c22c84b9ce9f822747e8a37810ec2d1ad342677e`，manifest `1155e91cbe02619725e734429f0b9c2ff6e428ee2ef7be116f25f6c37f8fb0ab`；原报文／trace仍仅在批准私密目录。
+
+选片根因已由锁定Playwright 1.63源码核对：CLI保存原argv，但worker重新加载配置时，本进程argv没有原Lead文件；旧配置的空选择回退使它重新校验EF。helper的 `resumeMode` 本来只对EF启用，未发现Lead缺失已批准增量的业务保护。修复新增 `playwright.lead-minimal-page.config.ts`，固定仅LEAD_BATCH和唯一Lead文件；保留原完整同步pre-server准入、R2／来源／账本／权限／行／文件／会话及预算守卫，原EF配置和helper实现不变。直接测试编译执行真实配置，覆盖CLI／loader／worker／空argv／EF位置参数，且核完整admission块同原文件逐字相等；不引入环境开关或动态成功回执。最终config raw `606d169f597dd9c73c8013959f3c71e66cd29c55699b637dafc8c389e6fd388a`，test raw `6730e3189838e58c22ecc1ef12a31ff81b5f3587f1506bb29bcacf52232bb08d`。作者实际pure24/24、定向Lint与root类型通过；第三条JS块比对测试追加后曾格式WARN，最终仅格式化、显式格式check及diffcheck通过，未重复未变逻辑。独立Sol按最终两raw与完整准入块核对，Spec／Quality均ACCEPTED、C/I/M0；测试和静态证据复用不冒称Reviewer重跑。该修复不代表Lead真实页面已通过。
+
+独立CSV候选 `9659a600456cf6507f240dee3116961a42e60cf2` / tree `d4e09529eeeddc0612b73ba9cf25aff92e86a0f1` 仅新增 `lead-csv-preview.ts` 及直接spec。冻结raw为 `5ba820699a5437fd6c0e50b3aa1e098d0d188350d37dc19c1d5c01da3ad86a92` / `e9e45a786222527689801f8472d762b2a3784f0e03b76c870587685fb572e3f0`。伪造／篡改选择快照先RED3项，再23/23 GREEN；同锁参考工具链定向TypeScript、两文件ESLint／Prettier通过。Task原树联网装配因socket／timeout／metadata错误exit1，标准context及frontend门禁未执行；该失败不因参考CLI结果改写。证据在其 `.local/lead-csv-evidence/contract.md`、`verification.json`。无HTTP／DB／browser或导入写事务，未接产品UI，未混入ca015；安装残留未提交。根提交后尾部普通status遍历未返回，已终止该只读步骤；随后独立核实commit仅两源、tracked与index差异为空及raw吻合，未重复提交。
+
 ### 登记文件与全物理根分界（2026-10-19）
 
 候选2ff863a9496708ef45e3e9f17f7f8b494ce59d07的protected只读probe已过原案LIVE，后报PRESERVED_EF_LIVE／MINIMAL_PAGE_PRESERVED_EF_LIVE／MINIMAL_PAGE_PRESERVED_EF_FILES；摘要SHA256 000b3654ce4b76a6d6f24c07c76b7cd87482ba8752f8f54f8de5d41b69d606cf。原Runner closure核165旧行／catalog／sequence和96份登记CV字节保持，0服务／回调／session／HTTP／业务写入，锁／端口释放。原Owner只读盘点发现全根377个普通文件，96个登记CV按ID／字节／SHA全匹配，另281个正常UUID存储键文件、0reparse、mtime均为2026-10-15；额外清单按path／size／SHA排序的摘要a1d25798b772493922885031ce41d00bae80ec38bbc5f7b8f69641380f0fb9dc。mtime只作来源线索，没有原运行时刻对这281个文件的密码学清单，不追认其历史未变。
