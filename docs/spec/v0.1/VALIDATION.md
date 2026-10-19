@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### CASE_DIFF封存输入离线重放与CSV审查进展（2026-10-19）
+
+准备树固定helper raw `601216f0a2da4885b2301cc9c11dbc703acd18243bd84f929af292c01cc68ec9`。仅从原e684 Git blob与现helper提取纯比较声明，8个封存安全输入先核bytes／SHA；165表旧PK行及sequence逐项保持，新增项仅为已批准的Lead增量，两个真实Lead UUID按PostgreSQL jsonb主键文本hash精确对应唯一两条新增行。旧函数在该实际映射报CASE_DIFF，修后通过；5个内存反例分别拒绝旧行漂移、额外Case、错Lead、counter异常及旧Case变化。未重建原行payload、未导入helper运行环境或调用prepare／capture，登录、HTTP、DB、服务、新业务对象和材料文件操作均0。
+
+证据在准备树 `.local/lead-case-diff-offline-replay/`：`replay.mjs` SHA256 `4fa3887290bfd9cd1ebe2ee929cab9dd1cf81864b156748a4803061528d944ad`，`result.json` 为 `44b14e1fd3360a9c07fed08ac3d49dacb38743bec418d55744dc4fa98abf9bb8`，`hashmanifest.json` 为 `d948f88155071f16fb65e415e0c37aed8496f3df89faa47e34b99b569d086895`。独立Reviewer重新核8输入及映射、旧失败／新通过／反例，Spec／Quality均ACCEPTED、未关闭C/I/M0。结论为OFFLINE_REPLAY_PASS，仅关闭检验器误报；历史formal仍FAIL_CASE_DIFF，不转为真实E2E PASS，不授予新运行额度。封存closure中唯一新会话已撤销、两Lead为WAITING_REVIEW/v2、96登记CV与377文件保持。无需为了此解释再做真实只读登录；如未来另要新候选页面证据，仍须单独明确批准。
+
+CSV `2ff863a9...c83d5972` 累计4源由独立上下文审查：Spec ACCEPTED、C/I/M0；Standards为C0/I1/M1，发现UTC直接显示和原生按钮未遵守上海时区／既有组件规范。原Task仅修面板与直接测试，未关闭finding前不称独立Review全通过。原树 `pnpm install --offline --frozen-lockfile` 已实际exit0，920包复用／下载0；原输入前端类型exit0，仅作阶段证据。新修复的定向检查及稳定候选完整标准前端集合尚待最终回执，不能借旧定向工具结果替代。解析／宿主新增任务仅离线准备、各自新文件，不新增共享API／schema或真实验收。
+
 ### 独立CSV模型及纯预览面板的交付边界（2026-10-19）
 
 模型候选 `9659a600456cf6507f240dee3116961a42e60cf2` 的23项纯测试，以及其子提交UI候选 `c83d5972a6715da7ef899fb9ae8720457b8d3ce8` / tree `de63ae44b721a03f03681380dadbd6077b2a19ac` 的15项组件测试分别通过，未声称同次组合门禁。累计恰4源，独立位于原CSV Task，未合入ca015。UI仅收模型快照，发携generation的选择／取消／确认意向；无默认全选、invalid不可选、无业务HTTP／新导入状态，不把意向当服务端授权。
