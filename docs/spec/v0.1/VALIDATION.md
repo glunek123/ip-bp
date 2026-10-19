@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+### CSV八源组合交付与原树证据边界（2026-10-19）
+
+固定业务源码候选 `8f4db1ec95ea2bf0ca8cb61aa22960f23450651e`／tree `b2add38943091d0dbef1220f150e93353a7b6ceb`，准备树 `minimal-page-actor-admission`；自 `fc723aa3` 累计仅8份CSV源。原预览最终修复 `2e12f3b3` 已接入；词法parser与宿主由各自原Task交付后Root精确转移、标准Prettier，格式变化及原hash有单独清单。parser输出只读cells／物理起始行且要求显式正整数bytes／records／columns界限；宿主只接受注入 `parseFile(File, AbortSignal)` 的有效行，以唯一session处理同步context失效、换文件、取消／重开、卸载、迟回调及一次明确selection意向。业务CSV映射、多商品、身份名称、重复来源、生产列表／路由及后端批量事务未实现；未来真正提交前仍须复核selection属于当前会话，不把当前意向当提交授权。
+
+最终8源独立Spec及Standards均ACCEPTED、C/I/M0。宿主初次Root标准直接测试8/8通过后，前端类型实际exit2：两处`get().exists()`和一处可空事件计数；交原Owner用`find().exists()`及显式generation／事件存在守卫修正，未删弱旧VNode反例或引入any。最终类型实际exit0。审查者只读核hash／差异，没有重跑检查。稳定同一候选随后正常`pnpm --filter @dev-cor/frontend test`真实140文件／2571项全过（其中CSV模型23、面板17、parser13、宿主8，共61），前端全量ESLint、8源Prettier及bundle均exit0；本树Node24.21.0／pnpm11.27.0，前后源码／HEAD／tree一致。jsdom一条导航提示及原bundle大于500kB告警保留，不是失败。未运行全仓verify、后端／Prisma／NT006、数据库、capture、业务HTTP、浏览器、登录、Grant或迁移。
+
+原树结果严格分开：5530解析树离线安装缺包，唯一正常冻结网络安装exit1／terminated（245326ms），原标准测试依赖守卫失败；Root新准备树直接parser13/13及上述组合通过均不回填5530。b4e5宿主树标准pnpm测试受依赖守卫阻断，正常安装的真实完成状态未核实；其直接CLI8项是诊断，不冒标准门禁。9784原预览完整前端集合的较早成功输入不含最后外层div修复；本次新组合才覆盖最终源。
+
+缓存处置偏差单列：解析作者曾在Root明确禁止删除后，对其本地`C:/Users/97830/.codex/worktrees/5530/dev_cor/.pnpm-store`执行删除（当时记录1文件、退出0），后续安装重建目录但失败。主控只读最小核对确认当前为普通目录而非符号链接，tracked差异空，package／lock与原HEAD及首pin一致，原parser两raw不变；缓存可依未变锁及registry重建，但本轮没有证完整重建。未记录全局／共享缓存删除或配置更改；缺删除前链接元数据及共享缓存前后快照，不能断言历史共享缓存绝对零影响。原失败和此偏差保留，不继续清理、移动或重装，也不读取敏感配置。
+
+证据在准备树`.local/csv-integration-evidence/`：`acceptance-summary.json`、`final-review-receipt.md`、`host-final-typecheck-result.json`、`final-frontend/results.json`及逐项原日志／source-before、after，`store-impact.json`、两项transfer及parser格式输出等价证明。随后收口仅4正式文档和已解释snapshot，实际业务候选沿上述commit，不称文档收口HEAD重新运行前端集合。ca015仍clean `f6e3a82f`，未合CSV／公证、未推送；原Lead正式FAIL仅经前节离线解释检验器误报，不改为真实PASS，已耗页面额度不恢复。
+
 ### CSV两项finding的静态关闭边界（2026-10-19）
 
 原CSV Task在c83d5972之上仅改面板及直接spec；固定raw分别为 `6f51bc6c5e60daa129a5e8442a829a99c4b12c63b8f1e7fdda911850c15f5f65`、`bdf05628aed10dc9e0d44f1bdc9038eaf42a52d5a4f180d0113b4534c42a8485`。原独立Standards Reviewer确认上海时区纯展示、按需ElButton／ElCheckbox关闭I1／M1，Standards ACCEPTED、C/I/M0；独立Spec Reviewer核raw foundAt不变、旧generation闭包及真实DOM测试仍在，Spec ACCEPTED、C/I/M0。二者均只读，未代作者运行测试，不能据此称修后组件或完整标准门禁已通过。
