@@ -1,18 +1,19 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import type { VNode } from 'vue';
+import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import { ElCheckbox } from 'element-plus/es/components/checkbox/index.mjs';
 import type { CreateLeadInput } from '../../api/leads';
 import type { LeadCsvParsedRow, LeadCsvPreview } from './lead-csv-preview';
 import LeadCsvPreviewPanel from './LeadCsvPreviewPanel.vue';
 
-type NativeEventHandler = (event: Event) => unknown;
+type CheckboxValue = boolean | number | string;
 
-function vnodeHandler(element: Element, name: string): NativeEventHandler {
-  const vnode = (element as Element & { __vnode?: VNode }).__vnode;
+function vnodeHandler<T>(vnode: VNode, name: string): (value: T) => unknown {
   const handler = vnode?.props?.[name];
   if (typeof handler !== 'function')
     throw new Error(`Expected a mounted VNode ${name} handler`);
-  return handler as NativeEventHandler;
+  return handler as (value: T) => unknown;
 }
 
 function leadInput(shopName = '合成店铺'): CreateLeadInput {
@@ -142,6 +143,28 @@ describe('LeadCsvPreviewPanel', () => {
     expect(wrapper.emitted('confirmRequest')).toBeUndefined();
   });
 
+  it('does not nest labels around valid-row checkboxes or render them for invalid rows', () => {
+    const wrapper = mount(LeadCsvPreviewPanel, {
+      props: {
+        snapshot: readySnapshot([
+          validRow(2),
+          { rowNumber: 3, status: 'invalid', errors: ['无效行'] },
+        ]),
+      },
+    });
+    const validRowElement = wrapper.get('[data-test="csv-row-2"]').element;
+    const invalidRowElement = wrapper.get('[data-test="csv-row-3"]').element;
+
+    expect(validRowElement.querySelector('label label')).toBeNull();
+    expect(
+      validRowElement.querySelector('input[type="checkbox"]'),
+    ).not.toBeNull();
+    expect(invalidRowElement.querySelector('label')).toBeNull();
+    expect(
+      invalidRowElement.querySelector('input[type="checkbox"]'),
+    ).toBeNull();
+  });
+
   it('renders all CreateLeadInput fields and each product value without estimating', () => {
     const wrapper = mount(LeadCsvPreviewPanel, {
       props: { snapshot: readySnapshot([validRow(2)]) },
@@ -154,7 +177,7 @@ describe('LeadCsvPreviewPanel', () => {
       'TRADEMARK',
       'ONLINE',
       'TAOBAO',
-      '2026-10-19T02:00:00.000Z',
+      '2026/10/19 10:00:00',
       '合成店铺',
       '00123',
       '否',
@@ -175,6 +198,27 @@ describe('LeadCsvPreviewPanel', () => {
     expect(text).not.toContain('估算');
     expect(text).not.toContain('hidden-reserved-lead-id');
     expect(text).not.toContain('预留线索 ID');
+  });
+
+  it('displays foundAt in Shanghai time while preserving the UTC input value', () => {
+    const input = leadInput();
+    input.foundAt = '2026-10-18T16:30:00.000Z';
+    const snapshot = readySnapshot([
+      {
+        rowNumber: 2,
+        status: 'valid',
+        input,
+        suspectedDuplicates: [],
+      },
+    ]);
+    const wrapper = mount(LeadCsvPreviewPanel, { props: { snapshot } });
+    const rowText = wrapper.get('[data-test="csv-row-2"]').text();
+
+    expect(rowText).toContain('2026/10/19 00:30:00');
+    expect(rowText).not.toContain('2026-10-18T16:30:00.000Z');
+    expect(snapshot.rows[0]?.status).toBe('valid');
+    if (snapshot.rows[0]?.status === 'valid')
+      expect(snapshot.rows[0].input.foundAt).toBe('2026-10-18T16:30:00.000Z');
   });
 
   it('emits an explicit valid-row selection request with the displayed generation', async () => {
@@ -297,18 +341,17 @@ describe('LeadCsvPreviewPanel', () => {
     const wrapper = mount(LeadCsvPreviewPanel, {
       props: { snapshot: readySnapshot([validRow(2, 'A店铺')], [], 31) },
     });
-    const input = wrapper.get('[data-test="csv-row-2"] input')
-      .element as HTMLInputElement;
-    const oldHandler = vnodeHandler(input, 'onChange');
-    input.checked = true;
-    const firstEvent = new globalThis.Event('change');
-    Object.defineProperty(firstEvent, 'target', { value: input });
-    oldHandler(firstEvent);
+    const checkbox = wrapper.getComponent(ElCheckbox);
+    const oldHandler = vnodeHandler<CheckboxValue>(
+      checkbox.vm.$.vnode,
+      'onChange',
+    );
+    oldHandler(true);
     expect(wrapper.emitted('selectRows')).toHaveLength(1);
     await wrapper.setProps({
       snapshot: readySnapshot([validRow(2, 'B店铺')], [], 32),
     });
-    oldHandler(firstEvent);
+    oldHandler(false);
     expect(wrapper.emitted('selectRows')).toHaveLength(1);
     expect(wrapper.emitted('selectRows')?.[0]?.[0]).toEqual({
       generation: 31,
@@ -320,13 +363,18 @@ describe('LeadCsvPreviewPanel', () => {
     const wrapper = mount(LeadCsvPreviewPanel, {
       props: { snapshot: readySnapshot([validRow(2)], [], 41) },
     });
-    const cancel = wrapper.get('[data-test="csv-cancel-request"]').element;
-    const oldHandler = vnodeHandler(cancel, 'onClick');
-    oldHandler(new globalThis.Event('click'));
+    const cancel = wrapper
+      .findAllComponents(ElButton)
+      .find(
+        (button) => button.attributes('data-test') === 'csv-cancel-request',
+      );
+    if (!cancel) throw new Error('Expected the cancel button component');
+    const oldHandler = vnodeHandler<MouseEvent>(cancel.vm.$.vnode, 'onClick');
+    oldHandler(new globalThis.MouseEvent('click'));
     await wrapper.setProps({
       snapshot: readySnapshot([validRow(2, 'B店铺')], [], 42),
     });
-    oldHandler(new globalThis.Event('click'));
+    oldHandler(new globalThis.MouseEvent('click'));
     expect(wrapper.emitted('cancelRequest')).toEqual([[{ generation: 41 }]]);
   });
 
@@ -334,13 +382,18 @@ describe('LeadCsvPreviewPanel', () => {
     const wrapper = mount(LeadCsvPreviewPanel, {
       props: { snapshot: readySnapshot([validRow(2)], [2], 51) },
     });
-    const confirm = wrapper.get('[data-test="csv-confirm-request"]').element;
-    const oldHandler = vnodeHandler(confirm, 'onClick');
-    oldHandler(new globalThis.Event('click'));
+    const confirm = wrapper
+      .findAllComponents(ElButton)
+      .find(
+        (button) => button.attributes('data-test') === 'csv-confirm-request',
+      );
+    if (!confirm) throw new Error('Expected the confirm button component');
+    const oldHandler = vnodeHandler<MouseEvent>(confirm.vm.$.vnode, 'onClick');
+    oldHandler(new globalThis.MouseEvent('click'));
     await wrapper.setProps({
       snapshot: readySnapshot([validRow(2, 'B店铺')], [2], 52),
     });
-    oldHandler(new globalThis.Event('click'));
+    oldHandler(new globalThis.MouseEvent('click'));
     expect(wrapper.emitted('confirmRequest')).toEqual([[{ generation: 51 }]]);
   });
 });

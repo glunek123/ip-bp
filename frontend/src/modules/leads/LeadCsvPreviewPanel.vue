@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import { ElCheckbox } from 'element-plus/es/components/checkbox/index.mjs';
 import type { LeadCsvParsedRow, LeadCsvPreview } from './lead-csv-preview';
 
 const props = defineProps<{
@@ -29,15 +31,20 @@ function canConfirm(snapshot: LeadCsvPreview): boolean {
   );
 }
 
+function formatTime(value: string): string {
+  return new Date(value).toLocaleString('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    hour12: false,
+  });
+}
+
 function changeSelection(
   row: LeadCsvParsedRow,
   generation: number,
-  event: InstanceType<typeof globalThis.Event>,
+  checkedValue: boolean | number | string,
 ): void {
-  const input = event.target;
   const { snapshot } = props;
   if (
-    !(input instanceof globalThis.HTMLInputElement) ||
     generation !== snapshot.generation ||
     snapshot.phase !== 'ready' ||
     row.status !== 'valid' ||
@@ -49,7 +56,7 @@ function changeSelection(
     return;
 
   const selected = new Set(snapshot.selectedRowNumbers);
-  if (input.checked) selected.add(row.rowNumber);
+  if (checkedValue === true) selected.add(row.rowNumber);
   else selected.delete(row.rowNumber);
   const rowNumbers = snapshot.rows.flatMap((current) =>
     current.status === 'valid' && selected.has(current.rowNumber)
@@ -86,8 +93,8 @@ const display = computed(() => {
       row,
       selected: snapshot.selectedRowNumbers.includes(row.rowNumber),
       key: `${generation}:${row.rowNumber}`,
-      change: (event: InstanceType<typeof globalThis.Event>) =>
-        changeSelection(row, generation, event),
+      change: (checkedValue: boolean | number | string) =>
+        changeSelection(row, generation, checkedValue),
     })),
     cancelListeners: { click: () => requestCancel(generation) },
     confirmListeners: { click: () => requestConfirm(generation) },
@@ -151,18 +158,17 @@ const display = computed(() => {
             >
               <th scope="row">{{ displayRow.row.rowNumber }}</th>
               <td>
-                <label
+                <div
                   v-if="displayRow.row.status === 'valid'"
                   class="lead-csv-preview__select"
                 >
-                  <input
-                    type="checkbox"
-                    :checked="displayRow.selected"
+                  <ElCheckbox
+                    data-test="csv-row-selection"
+                    :model-value="displayRow.selected"
                     :aria-label="`选择第 ${displayRow.row.rowNumber} 行线索`"
                     @change="displayRow.change"
                   />
-                  选择
-                </label>
+                </div>
                 <span v-else>不可选</span>
               </td>
               <td>
@@ -215,7 +221,7 @@ const display = computed(() => {
                   <dt>平台</dt>
                   <dd>{{ displayRow.row.input.platform }}</dd>
                   <dt>发现时间</dt>
-                  <dd>{{ displayRow.row.input.foundAt }}</dd>
+                  <dd>{{ formatTime(displayRow.row.input.foundAt) }}</dd>
                   <dt>店铺名称</dt>
                   <dd>{{ displayRow.row.input.shopName }}</dd>
                   <dt>店铺外部 ID</dt>
@@ -269,24 +275,26 @@ const display = computed(() => {
       <p v-if="!display.canConfirm" data-test="csv-selection-required">
         先明确选择至少一条有效线索。
       </p>
-      <button
-        type="button"
+      <ElButton
+        key="confirm"
+        native-type="button"
         data-test="csv-confirm-request"
         :disabled="!display.canConfirm"
         v-on="display.confirmListeners"
       >
         请求确认所选线索
-      </button>
+      </ElButton>
     </template>
 
-    <button
-      type="button"
+    <ElButton
+      key="cancel"
+      native-type="button"
       data-test="csv-cancel-request"
       :disabled="display.phase === 'closed'"
       v-on="display.cancelListeners"
     >
       取消预览
-    </button>
+    </ElButton>
   </section>
 </template>
 
