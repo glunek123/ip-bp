@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+### Lead业务完成、正式收尾失败与额度耗尽（2026-10-19）
+
+运行候选 `e6845104ffc0f59d617e46d90e0b4c22df6b7ef7` / tree `8a7a1cb9ab7bb083ced93261e73523d0d8f3a899`，独立Lead配置受保护发现恰1项、0回调；正式唯一运行expected0／unexpected1、skipped／flaky0、exit1。现成附件确认login1／logout1、leadCreate2／batchPush1，三业务响应均201、UNKNOWN0；`verifyLeadResult`、列表／详情／刷新后的WAITING_REVIEW/v2断言及 `flowCompleted=true` 已到达，正常页面logout204通过。最后 `support.dispose()` 的 `CASE_DIFF` 使正式结果失败，保留原报告，不追认为真实正式PASS。
+
+独立只读closure通过：EF成功后的165旧表PK行及安全保持，Case／来源／sequence不变；仅新增2Lead、各2product／infringement／command receipt、1batch receipt、4audit、1已撤会话及当天lead counter行（last_value2），旧counter行保持。两Lead均为WAITING_REVIEW/v2。96登记CV和本轮全377物理文件无新增／修改／删除；端口空闲、标准锁释放。原Runner实际EF调用／新Case／文件／上传／账号／Grant／迁移均0。证据目录 ca015 `.local/next-batch-preparation/lead-only-e6845104-20261019/`，summary SHA256 `fbed914d132dc90f7019c4612caa4d21f9bcfff6836a3aea53401b38ff7242f3`，manifest `c532a342b7285d9bcfbc2cd76e1a9a216ccaabc4d637661941d2140e1cbe5e70`；raw仍只在批准私密目录。EF与Lead原登录／业务额度全部耗尽，不得重登、重造或重推。
+
+源码根因：Lead的 `registered` 是两个UUID数组，Case增量上限原为0且旧Case摘要未变；共用检验器随后仍对truthy registered执行EF专用“新增一个Case且ID相同”条件，必然误报。最小修复只给该身份锚增加 `kind === 'EF_FEEDBACK'`；Lead的Case零增量、旧摘要、两个Lead ID与唯一counter＋2检查均保留。helper raw `601216f0a2da4885b2301cc9c11dbc703acd18243bd84f929af292c01cc68ec9`，test raw `281d175d9f9911b030d3592983c35c2061d70d19501cef6a8b4949dd3007b537`。RED复现CASE_DIFF，修后focused2/2、full25/25，定向Lint／格式／diff通过；额外Case、旧Case漂移、错Lead ID和EF错Case仍拒。独立Sol按固定raw、实际日志和完整守卫核对，Spec／Quality ACCEPTED、C/I/M0，复用作者结果未运行DB或页面。证据在准备树 `.local/lead-case-diff-red-green/`。此纯修复未进行真实重跑，不能改变已耗预算或原formal FAIL；需要新的真实验证时另报具体额度。
+
 ### EF页面通过、Lead服务前阻断与CSV纯模型（2026-10-19）
 
 真实页面候选为 `2bf4b14bcbd805153c1a972dd20762909b8e17dd` / tree `bd6b7585e774451026fe089aa35845db1f614bde`。原Runner先通过无数据库／服务的argv round-trip，修正其ignored wrapper的output参数字面引号，旧ENOENT证据保留。随后EF标准单文件实际expected1、unexpected／skipped／flaky0，完成原案反馈初记及带原因更正；新增1session正常退出、2feedback版本／2receipt／2audit，当前revision2，原Case仍EXECUTING/v3、来源不变。96登记CV及本轮全377物理文件无新增／改变／删除；旧281文件不据此追认为自原始run起不变。

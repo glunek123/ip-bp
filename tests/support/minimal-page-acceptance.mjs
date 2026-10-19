@@ -1893,6 +1893,7 @@ export function assertMinimalPageDatabaseDiff(
       blocked('ROW_DIFF');
     if (
       table === 'cases' &&
+      kind === 'EF_FEEDBACK' &&
       registered &&
       (added.length !== 1 || added[0] !== registered)
     )

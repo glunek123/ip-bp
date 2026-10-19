@@ -1,5 +1,7 @@
 # 下一批最小页面闭环与一次性确认清单
 
+2026-10-19本轮执行已结束：EF真实1/1通过；Lead三业务POST均201，列表／详情／刷新v2与正常退出通过，但最终dispose的CASE_DIFF误报导致正式FAIL。原两页所有登录／业务额度均已耗尽，以下运行命令与预算仅保留为历史，不再构成启动授权。检验器最小单条件修复已获纯25/25和独立双轴C/I/M0；不重跑任何登录／业务操作，不改原失败。新真实操作必须先报告对象、session、请求及伴随写上限，由用户明确批准。现阶段只继续独立CSV纯预览UI准备，公证166不混入验收树。
+
 2026-10-19执行断点：原案EF已在2bf4b14b真实1/1通过，额外1登录和2反馈POST已耗并闭合，不再重复。Lead独立命令在服务前PRESERVED_EF_ROWS拒绝，原H42的1登录／2Lead／3POST未耗。已定位Playwright loader／worker重载配置时本进程argv不含原单文件，旧配置回退同时校验EF；拟固定Lead专用配置，每次重载仍保留全部真实Lead前置，不用环境变量跳过校验。不放宽旧行、不另造基线成功证明。定向验证后只续Lead，仍同环境／原权限／原数据范围、首异常停。EF成功事实及本轮全377物理文件保护作为已封存历史保留，详细证据只见VALIDATION。
 
 修复冻结并审查后，后续唯一页面命令改为 `pnpm test:e2e tests/e2e/lead-batch-push-minimal-page.spec.ts --config playwright.lead-minimal-page.config.ts --workers=1 --retries=0`。不能再用原双kind配置运行本轮Lead，也不能重新执行EF。Lead前基线是已保存的EF成功后完整现场（rows SHA256 `87f3f28c0e61a5e8a44698a62f07c8e603f378473c4f83750d5ec62aa1ae3068`），仅此真实已批准增量；fresh准入、原H42资格及本轮完整文件保护保持，不能靠改写原source proof或放宽差异来进入。

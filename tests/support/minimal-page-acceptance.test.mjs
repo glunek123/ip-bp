@@ -391,6 +391,94 @@ test('database diff rejects old-row drift, extra targets, and counter overrun', 
       '11111111-1111-4111-8111-111111111111',
     ),
   );
+  assert.throws(
+    () =>
+      assertMinimalPageDatabaseDiff(
+        'EF_FEEDBACK',
+        before,
+        after,
+        oldCounter,
+        newCounter,
+        true,
+        '22222222-2222-4222-8222-222222222222',
+      ),
+    /CASE_DIFF/u,
+  );
+});
+
+test('Lead database diff accepts exact two leads and rejects Case or Lead drift', () => {
+  const ids = [
+    'b93c0aff-c548-4839-9571-442dfcff5393',
+    'a511ba62-da24-4ddd-a739-1635bc637254',
+  ];
+  const sizes = {
+    cases: 0,
+    case_external_entries: 0,
+    case_external_entry_receipts: 0,
+    case_trial_rounds: 0,
+    upload_drafts: 0,
+    materials: 0,
+    content_versions: 0,
+    material_references: 0,
+    case_execution_mailings: 0,
+    case_execution_mailing_versions: 0,
+    case_execution_mailing_receipts: 0,
+    case_execution_filings: 0,
+    case_execution_filing_versions: 0,
+    case_execution_filing_receipts: 0,
+    case_execution_filing_feedbacks: 0,
+    case_execution_filing_followup_receipts: 0,
+    leads: 2,
+    lead_products: 2,
+    lead_infringements: 2,
+    lead_command_receipts: 2,
+    lead_batch_push_receipts: 1,
+    audit_events: 4,
+  };
+  const oldDigest = 'a'.repeat(64);
+  const newDigest = 'b'.repeat(64);
+  const before = new Map(
+    Object.keys(sizes).map((table) => [table, new Map([['old', oldDigest]])]),
+  );
+  const after = new Map(
+    Object.entries(sizes).map(([table, count]) => [
+      table,
+      new Map([
+        ...before.get(table),
+        ...Array.from({ length: count }, (_, index) => [
+          table === 'leads' ? ids[index] : `${table}-${index}`,
+          newDigest,
+        ]),
+      ]),
+    ]),
+  );
+  const counterBefore = new Map([['2026-10-15', 228]]);
+  const counterAfter = new Map([...counterBefore, ['2026-10-19', 2]]);
+  const check = (current, registered = ids) =>
+    assertMinimalPageDatabaseDiff(
+      'LEAD_BATCH',
+      before,
+      current,
+      counterBefore,
+      counterAfter,
+      true,
+      registered,
+    );
+
+  assert.equal(check(after), true);
+  const extraCase = new Map(after);
+  extraCase.set(
+    'cases',
+    new Map([...after.get('cases'), ['new-case', newDigest]]),
+  );
+  assert.throws(() => check(extraCase), /ROW_DIFF/u);
+  const changedCase = new Map(after);
+  changedCase.set('cases', new Map([['old', newDigest]]));
+  assert.throws(() => check(changedCase), /OLD_ROW_DRIFT/u);
+  assert.throws(
+    () => check(after, ['22222222-2222-4222-8222-222222222222', ids[1]]),
+    /LEAD_DIFF/u,
+  );
 });
 
 test('new login binds one exact session and rejects old, foreign, ambiguous and stale rows', () => {
