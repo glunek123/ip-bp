@@ -62,9 +62,23 @@ $$;
 -- JavaScript Date keeps the first three fractional-second digits. Truncate the
 -- source text before PostgreSQL's microsecond timestamp input can round it.
 CREATE FUNCTION lead_csv_js_millis_timestamp(value text) RETURNS timestamptz
-LANGUAGE sql STABLE STRICT AS $$
-  SELECT regexp_replace(value,
-    '(\.[0-9]{3})[0-9]+([Zz]|[+-][0-9]{2}:?[0-9]{2})?$', '\1\2')::timestamptz
+LANGUAGE plpgsql STABLE STRICT AS $$
+DECLARE
+  truncated text;
+  offset_parts text[];
+  offset_minutes integer;
+BEGIN
+  truncated := regexp_replace(value,
+    '(\.[0-9]{3})[0-9]+([Zz]|[+-][0-9]{2}:?[0-9]{2})?$', '\1\2');
+  offset_parts := regexp_match(truncated, '([+-])([0-9]{2}):?([0-9]{2})$');
+  IF offset_parts IS NOT NULL AND offset_parts[2]::integer > 15 THEN
+    offset_minutes := offset_parts[2]::integer * 60 + offset_parts[3]::integer;
+    IF offset_parts[1] = '-' THEN offset_minutes := -offset_minutes; END IF;
+    RETURN regexp_replace(truncated, '[+-][0-9]{2}:?[0-9]{2}$', 'Z')::timestamptz
+      - make_interval(mins => offset_minutes);
+  END IF;
+  RETURN truncated::timestamptz;
+END
 $$;
 
 CREATE FUNCTION validate_lead_csv_import_receipt() RETURNS trigger
@@ -138,13 +152,14 @@ BEGIN
     SELECT "id", "business_no", "department_id", "customer_id", "rights_holder_id",
       "responsible_user_id", "team_id", "creation_channel", "status", "version",
       "case_type", "source", "platform", "found_at", "shop_name", "shop_external_id",
-      "need_disclose", "remark", "pushed_at"
+      "need_disclose", "remark", "external_source_ref", "pushed_at"
       INTO target_lead FROM "leads" WHERE "id" = (result_lead->>'id')::uuid;
     IF NOT FOUND OR target_lead."department_id" <> NEW."department_id"
        OR target_lead."responsible_user_id" <> NEW."actor_user_id"
        OR target_lead."customer_id" IS DISTINCT FROM (request_input->>'customerId')::uuid
        OR target_lead."rights_holder_id" IS DISTINCT FROM (request_input->>'rightsHolderId')::uuid
        OR target_lead."creation_channel" <> 'CSV'
+       OR target_lead."external_source_ref" IS NOT NULL
        OR target_lead."status" <> 'WAITING_PUSH' OR target_lead."version" <> 1
        OR target_lead."pushed_at" IS NOT NULL
        OR result_lead->>'id' IS DISTINCT FROM target_lead."id"::text

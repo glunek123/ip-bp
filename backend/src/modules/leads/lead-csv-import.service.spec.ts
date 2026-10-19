@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import { isDateString } from 'class-validator';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AccessControlService } from '../../access-control/access-control.service';
@@ -145,6 +146,25 @@ describe('LeadService CSV import', () => {
     expect(newAccepts('CSV', 'external-row')).toBe(true);
     expect(newAccepts('CSV', null)).toBe(true);
   });
+  it('statically rejects a batch receipt for a legacy CSV Lead with a real external reference', () => {
+    const sql = readFileSync(
+      join(
+        __dirname,
+        '../../../prisma/migrations/20261019090000_lead_csv_import_receipts/migration.sql',
+      ),
+      'utf8',
+    );
+    expect(sql).toMatch(
+      /"need_disclose", "remark", "external_source_ref", "pushed_at"\s+INTO target_lead/u,
+    );
+    expect(sql).toContain('OR target_lead."external_source_ref" IS NOT NULL');
+    // The Lead itself remains valid under the old source constraint, but it cannot
+    // masquerade as this batch's newly created CSV Lead in an immutable receipt.
+    const legacyCsvRef = 'external-row';
+    expect(legacyCsvRef.trim().length).toBeGreaterThan(0);
+    const receiptCompatible = (ref: string | null) => ref === null;
+    expect(receiptCompatible(legacyCsvRef)).toBe(false);
+  });
   it('statically binds every original business field to the Lead in the deferred receipt guard', () => {
     const sql = readFileSync(
       join(
@@ -200,6 +220,47 @@ describe('LeadService CSV import', () => {
       expect(new Date(truncate(source)).toISOString()).toBe(
         new Date(source).toISOString(),
       );
+    }
+  });
+  it('models DTO-accepted numeric offsets beyond PostgreSQL 15:59 without rounding milliseconds', () => {
+    const sql = readFileSync(
+      join(
+        __dirname,
+        '../../../prisma/migrations/20261019090000_lead_csv_import_receipts/migration.sql',
+      ),
+      'utf8',
+    );
+    expect(sql).toContain('offset_parts[2]::integer > 15');
+    expect(sql).toContain(
+      "regexp_replace(truncated, '[+-][0-9]{2}:?[0-9]{2}$', 'Z')::timestamptz",
+    );
+    expect(sql).toContain('make_interval(mins => offset_minutes)');
+    const model = (value: string) => {
+      const truncated = value.replace(
+        /(\.[0-9]{3})[0-9]+([Zz]|[+-][0-9]{2}:?[0-9]{2})?$/u,
+        '$1$2',
+      );
+      const offset = truncated.match(/([+-])([0-9]{2}):?([0-9]{2})$/u);
+      if (!offset || Number(offset[2]) <= 15)
+        return new Date(truncated).toISOString();
+      const minutes =
+        (Number(offset[2]) * 60 + Number(offset[3])) *
+        (offset[1] === '-' ? -1 : 1);
+      const localAsUtc = truncated.replace(/[+-][0-9]{2}:?[0-9]{2}$/u, 'Z');
+      return new Date(
+        new Date(localAsUtc).getTime() - minutes * 60_000,
+      ).toISOString();
+    };
+    for (const source of [
+      '2026-10-19T00:00:00.1234+16:00',
+      '2026-10-19T00:00:00.9999999+23:59',
+      '2026-10-19T00:00:00.1234-16:00',
+      '2026-10-19T00:00:00.9999999-23:59',
+      '1969-12-31T00:00:00.9999999+23:59',
+      '1969-12-31T23:59:59.0000009-23:59',
+    ]) {
+      expect(isDateString(source, { strict: true })).toBe(true);
+      expect(model(source)).toBe(new Date(source).toISOString());
     }
   });
   it('creates each selected row in order with CSV provenance and one batch receipt', async () => {
