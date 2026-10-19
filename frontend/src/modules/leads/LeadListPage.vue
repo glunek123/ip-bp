@@ -543,19 +543,11 @@ async function recoverCsvImport(): Promise<void> {
       !controller.signal.aborted &&
       actorIdentity === batchIdentity.value &&
       generation === authorizationGeneration.value &&
-      contextEpoch === csvContextEpoch &&
-      safeCsvNoWrite(cause)
-    ) {
-      if (!clearCsvAttempt(attempt))
-        csvContextError.value = '请求未创建，但本地未决记录无法更新。';
-      else csvContextError.value = cause.message;
-    } else if (
-      !controller.signal.aborted &&
-      actorIdentity === batchIdentity.value &&
-      generation === authorizationGeneration.value &&
       contextEpoch === csvContextEpoch
     ) {
-      csvContextError.value = '恢复结果仍未确认。请保留原请求，不要重新导入。';
+      const message =
+        cause instanceof Error ? cause.message : '恢复请求结果仍未确认。';
+      csvContextError.value = `${message} 原请求及请求键已保留。`;
     }
   } finally {
     if (csvRecoveryRequest === controller) {

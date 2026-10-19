@@ -168,7 +168,10 @@ export type LeadBusinessResult = {
   updatedAt: string;
 };
 export type LeadCsvImportResult = {
-  items: Array<{ rowNumber: number; lead: LeadBusinessResult }>;
+  items: Array<{
+    rowNumber: number;
+    lead: LeadBusinessResult & { evidenceDecision: null };
+  }>;
 };
 export type Lead = LeadBusinessResult & {
   displayNames: {
@@ -652,6 +655,7 @@ const csvImportLeadKeys = [
   'pushedByUserId',
   'pushedByDisplayName',
   'reviewDecision',
+  'evidenceDecision',
   'createdAt',
   'updatedAt',
 ];
@@ -666,10 +670,16 @@ const csvImportProductResultKeys = [
   'estimatedAmount',
 ];
 
-function isStrictCsvLeadResult(value: unknown): value is LeadBusinessResult {
+function isStrictCsvLeadResult(
+  value: unknown,
+): value is LeadBusinessResult & { evidenceDecision: null } {
+  if (
+    !hasExactKeys(value, csvImportLeadKeys) ||
+    value.evidenceDecision !== null ||
+    !isLeadBusinessResult(value)
+  )
+    return false;
   return (
-    hasExactKeys(value, csvImportLeadKeys) &&
-    isLeadBusinessResult(value) &&
     value.products.every(
       (product) =>
         hasExactKeys(product, csvImportProductResultKeys) && isProduct(product),

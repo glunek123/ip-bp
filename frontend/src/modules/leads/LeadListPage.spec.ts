@@ -124,6 +124,41 @@ const validCsv = [
   '客户甲,,民事,,线上,淘宝,商标权,2026-10-19 10:00,甲店铺,,否,,,商品甲,0,1.50,0',
 ].join('\r\n');
 
+function pendingCsvImport(
+  actorIdentity = 'operator-1:INTERNAL:department-1',
+): FrozenLeadCsvImport {
+  return {
+    actorIdentity,
+    idempotencyKey: 'original-csv-key',
+    uncertain: true,
+    items: [
+      {
+        rowNumber: 2,
+        input: {
+          customerId: 'customer-1',
+          rightsHolderId: 'holder-1',
+          caseType: 'CIVIL',
+          infringementTypes: ['TRADEMARK'],
+          source: 'ONLINE',
+          platform: 'TAOBAO',
+          foundAt: '2026-10-01T00:00:00.000Z',
+          shopName: '测试店铺',
+          needDisclose: false,
+          products: [
+            {
+              url: 'https://example.com',
+              quantity: 1,
+              unitPrice: '1.00',
+              commentCount: 0,
+            },
+          ],
+          leadScreenshotContentVersionIds: [],
+        },
+      },
+    ],
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
@@ -555,6 +590,151 @@ describe('LeadListPage', () => {
       '已导入 2 条线索',
     );
   });
+
+  it('retains the original body and key when uncertain recovery is rejected, then settles only on success', async () => {
+    api.listLeads.mockResolvedValue({
+      ...result,
+      items: [batchSummary],
+      total: 1,
+    });
+    api.getLeadFormContext.mockResolvedValue(csvFormContext);
+    api.importLeadCsvBatch
+      .mockRejectedValueOnce(new Error('original response lost'))
+      .mockRejectedValueOnce(
+        new ApiError('当前范围不可访问', 409, 'CSV_IMPORT_REJECTED'),
+      )
+      .mockResolvedValueOnce({ items: [{}, {}] });
+    const { wrapper } = await mountWithRoute('/leads');
+    await wrapper.get('input[type="checkbox"]').setValue(true);
+    await wrapper.get('[data-test="open-csv-import"]').trigger('click');
+    await flushPromises();
+    await uploadAndSelectCsv(wrapper);
+    await wrapper.get('[data-test="csv-confirm-request"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="csv-cancel-request"]').trigger('click');
+    const actorIdentity = 'operator-1:INTERNAL:department-1';
+    const original = readPendingLeadCsvImports()?.[actorIdentity];
+    expect(original).toBeDefined();
+
+    await wrapper.get('[data-test="recover-csv-import"]').trigger('click');
+    await flushPromises();
+    expect(readPendingLeadCsvImports()?.[actorIdentity]).toEqual(original);
+    expect(api.importLeadCsvBatch).toHaveBeenCalledTimes(2);
+    expect(api.listLeads).toHaveBeenCalledTimes(1);
+    expect(
+      wrapper.get('[data-test="open-csv-import"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper.get('[data-test="open-batch-push"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper.get('[data-test="lead-quick-action"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(wrapper.get('input[type="checkbox"]').element).toHaveProperty(
+      'disabled',
+      true,
+    );
+    for (const [items, idempotencyKey] of api.importLeadCsvBatch.mock.calls) {
+      expect(items).toEqual(original?.items);
+      expect(idempotencyKey).toBe(original?.idempotencyKey);
+    }
+
+    await wrapper.get('[data-test="recover-csv-import"]').trigger('click');
+    await flushPromises();
+    expect(api.importLeadCsvBatch).toHaveBeenCalledTimes(3);
+    expect(readPendingLeadCsvImports()?.[actorIdentity]).toBeUndefined();
+    expect(api.listLeads).toHaveBeenCalledTimes(2);
+    expect(wrapper.get('[data-test="csv-success"]').text()).toContain(
+      '已导入 2 条线索',
+    );
+    expect(wrapper.find('[data-test="recover-csv-import"]').exists()).toBe(
+      false,
+    );
+    for (const [items, idempotencyKey] of api.importLeadCsvBatch.mock.calls) {
+      expect(items).toEqual(original?.items);
+      expect(idempotencyKey).toBe(original?.idempotencyKey);
+    }
+  });
+
+  it.each([
+    [400, 'VALIDATION_ERROR'],
+    [403, 'FORBIDDEN'],
+    [409, 'CSV_IMPORT_REJECTED'],
+    [500, 'INTERNAL_ERROR'],
+  ] as const)(
+    'retains an uncertain CSV recovery after HTTP %i %s',
+    async (status, code) => {
+      const actorIdentity = 'operator-1:INTERNAL:department-1';
+      const pending = pendingCsvImport(actorIdentity);
+      expect(savePendingLeadCsvImports({ [actorIdentity]: pending })).toBe(
+        true,
+      );
+      api.listLeads.mockResolvedValue(result);
+      api.importLeadCsvBatch.mockRejectedValue(
+        new ApiError('恢复请求未确认', status, code),
+      );
+      const { wrapper } = await mountWithRoute('/leads');
+      await wrapper.get('[data-test="recover-csv-import"]').trigger('click');
+      await flushPromises();
+
+      expect(readPendingLeadCsvImports()?.[actorIdentity]).toEqual(pending);
+      expect(api.importLeadCsvBatch).toHaveBeenCalledExactlyOnceWith(
+        pending.items,
+        pending.idempotencyKey,
+        { signal: expect.any(AbortSignal) },
+      );
+      expect(wrapper.find('[data-test="recover-csv-import"]').exists()).toBe(
+        true,
+      );
+      expect(wrapper.find('[data-test="csv-success"]').exists()).toBe(false);
+    },
+  );
+
+  it.each(['identity', 'authorization', 'route'] as const)(
+    'retains a late CSV recovery success after %s changes',
+    async (change) => {
+      const actorIdentity = 'operator-1:INTERNAL:department-1';
+      const pending = pendingCsvImport(actorIdentity);
+      expect(savePendingLeadCsvImports({ [actorIdentity]: pending })).toBe(
+        true,
+      );
+      api.listLeads.mockImplementation(async (page = 1) => ({
+        ...result,
+        items: [],
+        total: 21,
+        page,
+      }));
+      const request = deferred<{ items: [] }>();
+      api.importLeadCsvBatch.mockReturnValue(request.promise);
+      const { wrapper, auth, router } = await mountWithRoute('/leads');
+      await wrapper.get('[data-test="recover-csv-import"]').trigger('click');
+      await flushPromises();
+      expect(api.importLeadCsvBatch).toHaveBeenCalledOnce();
+
+      if (change === 'identity') {
+        auth.session = {
+          ...auth.session!,
+          user: { ...auth.session!.user, id: 'operator-B' },
+          authorizationRevision: 2,
+        };
+      } else if (change === 'authorization') {
+        auth.session = {
+          ...auth.session!,
+          authorizationRevision: 2,
+        };
+      } else {
+        await router.push('/leads?page=2');
+      }
+      await flushPromises();
+      const listCallsAfterContextChange = api.listLeads.mock.calls.length;
+      request.resolve({ items: [] });
+      await flushPromises();
+
+      expect(readPendingLeadCsvImports()?.[actorIdentity]).toEqual(pending);
+      expect(api.listLeads).toHaveBeenCalledTimes(listCallsAfterContextChange);
+      expect(wrapper.find('[data-test="csv-success"]').exists()).toBe(false);
+    },
+  );
 
   it('refreshes selected lead authorization and version before opening batch push', async () => {
     api.listLeads.mockResolvedValue({

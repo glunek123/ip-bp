@@ -136,7 +136,7 @@ function csvImportItem(rowNumber: number): LeadCsvImportItem {
 function csvLeadResult(
   id: string,
   input: LeadCsvImportInput,
-): LeadBusinessResult {
+): LeadBusinessResult & { evidenceDecision: null } {
   return {
     id,
     businessNo: `LD-CSV-${id}`,
@@ -173,6 +173,7 @@ function csvLeadResult(
     pushedByUserId: null,
     pushedByDisplayName: null,
     reviewDecision: null,
+    evidenceDecision: null,
     createdAt: '2026-09-21T04:00:00.000Z',
     updatedAt: '2026-09-21T04:00:00.000Z',
   };
@@ -784,6 +785,45 @@ describe('Lead API', () => {
     });
   });
 
+  it('accepts the complete backend CSV projection for the initial response and same-key replay', async () => {
+    const items = [csvImportItem(2)];
+    const backendResponse = {
+      items: [
+        {
+          rowNumber: 2,
+          lead: csvLeadResult('csv-replay', items[0]!.input),
+        },
+      ],
+    };
+    http.requestJson
+      .mockResolvedValueOnce(backendResponse)
+      .mockResolvedValueOnce(backendResponse);
+
+    const initial = await importLeadCsvBatch(items, 'same-csv-key');
+    const replay = await importLeadCsvBatch(items, 'same-csv-key');
+
+    expect(initial).toEqual(backendResponse);
+    expect(replay).toEqual(initial);
+    const expectedRequest = expect.objectContaining({
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'same-csv-key' },
+      body: {
+        items: [{ rowNumber: 2, input: items[0]!.input }],
+      },
+      retryOnCsrfInvalid: false,
+    });
+    expect(http.requestJson).toHaveBeenNthCalledWith(
+      1,
+      '/leads/csv-import',
+      expectedRequest,
+    );
+    expect(http.requestJson).toHaveBeenNthCalledWith(
+      2,
+      '/leads/csv-import',
+      expectedRequest,
+    );
+  });
+
   it('rejects invalid CSV row bounds, duplicate rows, oversized batches and forbidden fields before sending', async () => {
     const valid = csvImportItem(2);
     const invalidItems: unknown[] = [
@@ -878,6 +918,10 @@ describe('Lead API', () => {
 
     const firstLead = csvLeadResult('csv-a', items[0]!.input);
     const secondLead = csvLeadResult('csv-b', items[1]!.input);
+    const leadWithoutEvidenceDecision: Partial<typeof firstLead> = {
+      ...firstLead,
+    };
+    delete leadWithoutEvidenceDecision.evidenceDecision;
     const invalidResponses: unknown[] = [
       { ...validResponse, unexpected: true },
       {
@@ -889,6 +933,21 @@ describe('Lead API', () => {
       {
         items: [
           { rowNumber: 8, lead: { ...firstLead, unexpected: true } },
+          { rowNumber: 3, lead: secondLead },
+        ],
+      },
+      {
+        items: [
+          { rowNumber: 8, lead: leadWithoutEvidenceDecision },
+          { rowNumber: 3, lead: secondLead },
+        ],
+      },
+      {
+        items: [
+          {
+            rowNumber: 8,
+            lead: { ...firstLead, evidenceDecision: { result: 'NO_EVIDENCE' } },
+          },
           { rowNumber: 3, lead: secondLead },
         ],
       },

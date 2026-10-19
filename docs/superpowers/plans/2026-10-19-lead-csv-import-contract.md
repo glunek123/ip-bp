@@ -48,7 +48,7 @@ importLeadCsvBatch(items: readonly LeadCsvImportItem[], key: string, options?: R
 - 使用独立不可变批次回执 `LeadCsvImportReceipt`（部门＋actor＋key唯一），保存完整有序请求、指纹和有序成功快照；不能塞假Lead或借用单条回执行伪装批次。必要新schema／前向migration仅本片所有，不修改已存在SQL或公证migration。
 - 首次执行在所有校验通过后才写；任一项、编号／审计／回执失败均整批回滚。安全业务拒绝409 `CSV_IMPORT_REJECTED`，details `{failures:[{index,rowNumber,code}]}`；不可用目标统一NOT_AVAILABLE，不输出外部ID、名称或阶段。DTO结构失败400，认证／权限沿原语义，同键异参409 IDEMPOTENCY_CONFLICT。
 - 重放先按保存的原始范围重验当前actor权限及创建结果的精确部门／responsible／team范围，然后比较指纹；同键同请求返回原201快照，不受后续正常阶段变化影响，不重复编号或审计。不能靠修改body删除原请求的失权项。结构损坏回执拒绝；冲突重试只沿既有限次规则，不把未知结果当未写。
-- API入口严格校验请求和unknown响应、rowNumber顺序／唯一、lead数量／ID／CSV来源及初始快照锚，捕获输入／header快照；写请求禁止自动业务／CSRF重试。
+- API入口严格校验请求和unknown响应、rowNumber顺序／唯一、lead数量／ID／CSV来源及初始快照锚；成功投影必须包含后端真实新建字段evidenceDecision:null，缺项、额外项和非null值均拒绝。捕获输入／header快照；写请求禁止自动业务／CSRF重试。
 - 请求body的金额、文本、时间及侵权顺序保持原值；成功回执按既有后端规范化后的业务等值核对（金额精确到分、时间点毫秒、NFKC.trim文本、无重复侵权集合），不能把合法的格式规范化误判成未知响应。商品和行的对应顺序仍须精确。
 
 ## 宿主与正式页面
@@ -57,7 +57,7 @@ importLeadCsvBatch(items: readonly LeadCsvImportItem[], key: string, options?: R
 
 宿主只增加技术提交状态：处理中、明确失败、结果待核对；不建审批中心、后台任务或第二业务工作流。成功201才提示真实导入数量并emit imported让列表重取一次；取消提交前零写、失败不清选择。网络／abort／未知响应不清原body/key，只能用户显式原样重放；持久化最小pending到本地既有模式，恢复严格解码并绑稳定actor，拒绝损坏／跨身份。身份或授权变化不接纳旧迟成功，不自动刷新／关闭／产生新key；不保存原CSV字节、File或凭据。路由离开、换文件和重开不得使旧选择或未知请求混入新批次。
 
-宿主props固定为`open/contextKey/formContext/operatorDisplayName/actorIdentity/authorizationGeneration/submitAttempt`；可保留可选的异步`parseFile`测试seam，默认正式实现仍是File读取＋纯adapter，不绕上下文和actor检查。面板同步重验selection后冻结`{actorIdentity,idempotencyKey,items}`，把捕获的context／授权代次和独立signal交页面回调。回调在首个await前核当前身份并写pending，才调用API；返回created／rejected／unknown技术判别。只有明确400 VALIDATION_ERROR、409 CSV_IMPORT_REJECTED等已确认整体未写入的拒绝可结算pending；401／403／IDEMPOTENCY_CONFLICT、500、解码失败及身份变化均保留原请求，不据此自动换键。恢复不要求重传CSV，也不用新context改写原items，最终当前权限由后端裁决。
+宿主props固定为`open/contextKey/formContext/operatorDisplayName/actorIdentity/authorizationGeneration/submitAttempt`；可保留可选的异步`parseFile`测试seam，默认正式实现仍是File读取＋纯adapter，不绕上下文和actor检查。面板同步重验selection后冻结`{actorIdentity,idempotencyKey,items}`，把捕获的context／授权代次和独立signal交页面回调。回调在首个await前核当前身份并写pending，才调用API；返回created／rejected／unknown技术判别。仅首次提交且可确认整体未写入时，明确400 VALIDATION_ERROR、409 CSV_IMPORT_REJECTED等拒绝才可结算pending；401／403／IDEMPOTENCY_CONFLICT、500、解码失败及身份变化均保留原请求，不据此自动换键。恢复请求使用原body／原key，任一400／403／409／500或未知拒绝都不能证明原批次未创建，必须保留原请求和互斥；只有当前身份／授权代次／路由一致并确认真实成功快照后才结算一次。恢复不要求重传CSV，也不用新context改写原items，最终当前权限由后端裁决。
 
 ## 唯一文件所有权与执行限制
 
