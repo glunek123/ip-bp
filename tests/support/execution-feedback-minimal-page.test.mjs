@@ -289,6 +289,18 @@ test('real EF acceptance selectors resolve to current Vue templates', async () =
   assertSelectorContract(spec, vueSources);
 });
 
+test('preserved EF page cannot recreate the source through its API request client', async () => {
+  const spec = await readFile(paths.spec, 'utf8');
+  assert.match(spec, /mode: 'PRESERVED_EF_CHECKPOINT'/u);
+  assert.match(spec, /createPreservedEfRequestBudget\(/u);
+  assert.match(spec, /budget\.admit\(\s*request\.method\(\)/u);
+  assert.doesNotMatch(spec, /request\.(?:post|put|patch|delete)\(/u);
+  assert.doesNotMatch(
+    spec,
+    /uploadProof\(|externalEntryBody|execution-filing-submit/u,
+  );
+});
+
 test('previous incorrect correction button and history heading fail the same contract', async () => {
   const [spec, vueSources] = await Promise.all([
     readFile(paths.spec, 'utf8'),

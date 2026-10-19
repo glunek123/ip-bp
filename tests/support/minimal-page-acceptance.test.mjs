@@ -1,15 +1,24 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   assertMinimalPageActor,
   assertMinimalPageDatabaseDiff,
   assertMinimalPageStartupWindow,
+  assertPreservedEfAuthorization,
+  assertPreservedEfEvidence,
+  assertPreservedEfLiveState,
+  assertPreservedEfRows,
   bindMinimalPageSession,
   closeMinimalPageSession,
   createMinimalPageRequestBudget,
   createMinimalPageAcceptance,
+  createPreservedEfRequestBudget,
   minimalPageScopes,
+  preservedEfCheckpoint,
+  readPreservedEfEvidence,
+  snapshotPreservedEfRows,
 } from './minimal-page-acceptance.mjs';
 
 const kind = 'EF_FEEDBACK';
@@ -42,7 +51,20 @@ const bind = (after = [original, current], value = cookie) =>
   );
 
 test('import and factory construction do no capture, DB or private reads', () => {
+  assert.throws(
+    () =>
+      createMinimalPageAcceptance(kind, {
+        environment: {},
+        root: process.cwd(),
+      }),
+    /PRESERVED_EF_MODE/u,
+  );
+  assert.equal(
+    typeof createMinimalPageAcceptance(kind, { preflightOnly: true }).prepare,
+    'function',
+  );
   const support = createMinimalPageAcceptance(kind, {
+    mode: 'PRESERVED_EF_CHECKPOINT',
     environment: {},
     root: process.cwd(),
   });
@@ -968,4 +990,361 @@ test('EF budget admits only the fixed two-file and two-feedback sequence', () =>
   });
   budget.admit('POST', url('/api/v1/auth/logout'));
   assert.equal(budget.assertComplete(), true);
+});
+
+test('preserved EF checkpoint binds immutable ordinary evidence and rejects forged prior use', async () => {
+  const evidence = await readPreservedEfEvidence(process.cwd());
+  const input = {
+    summary: evidence['summary.json'],
+    trace: evidence['safe-trace-http.json'],
+    delta: evidence['database-delta.json'],
+    facts: evidence['closure-addendum/actual-facts.json'],
+    closure: evidence['closure-addendum/closure-proof.json'],
+    files: evidence['closure-addendum/file-closure.json'],
+  };
+  assert.equal(assertPreservedEfEvidence(input), true);
+  const mutate = (change) => {
+    const copy = globalThis.structuredClone(input);
+    change(copy);
+    assert.throws(() => assertPreservedEfEvidence(copy), /PRESERVED_EF/u);
+  };
+  mutate((copy) => {
+    copy.trace.budget.counts.external = 0;
+  });
+  mutate((copy) => {
+    copy.summary.execution.EF.case.id = '00000000-0000-4000-8000-000000000000';
+  });
+  mutate((copy) => {
+    copy.facts.case_execution_filing_receipts.count = 0;
+  });
+  mutate((copy) => {
+    copy.files.files.find((file) => file.new).sha256 = '0'.repeat(64);
+  });
+  mutate((copy) => {
+    copy.closure.feedbackWrites = 1;
+  });
+});
+
+test('preserved EF authorization is exact to the approval, scope and candidate', () => {
+  const candidateHashes = Object.fromEntries(
+    [
+      'tests/support/minimal-page-acceptance.mjs',
+      'tests/support/minimal-page-acceptance.d.mts',
+      'tests/support/minimal-page-acceptance.test.mjs',
+      'tests/e2e/execution-feedback-minimal-page.spec.ts',
+      'tests/support/execution-feedback-minimal-page.test.mjs',
+    ].map((path) => [path, 'a'.repeat(64)]),
+  );
+  const git = { head: 'b'.repeat(40), tree: 'c'.repeat(40) };
+  const receipt = {
+    mode: preservedEfCheckpoint.mode,
+    requestMessageId: 'Sentinel_74f90cb0aadc8191b21a8eb37dbec5a0',
+    requestAtUtc: '2026-10-19T01:58:27Z',
+    approvalMessageId: 'Sentinel_99b86fc7c7ac81918193c5af43f85438',
+    approvalAtUtc: '2026-10-19T02:01:49Z',
+    summarySha256: preservedEfCheckpoint.summarySha256,
+    caseId: preservedEfCheckpoint.caseId,
+    actorId: scope.userId,
+    additionalEfSessions: 1,
+    efFeedbackPosts: 2,
+    sourcePosts: 0,
+    uploadRequests: 0,
+    pdfs: 0,
+    leadSessionsRemaining: 1,
+    leadPostsRemaining: 3,
+    candidateHead: git.head,
+    candidateTree: git.tree,
+    candidateHashes,
+  };
+  assert.equal(
+    assertPreservedEfAuthorization(receipt, candidateHashes, git),
+    true,
+  );
+  for (const [field, value] of [
+    ['caseId', '00000000-0000-4000-8000-000000000000'],
+    ['sourcePosts', 1],
+    ['leadPostsRemaining', 4],
+    ['summarySha256', '0'.repeat(64)],
+    ['candidateTree', '0'.repeat(40)],
+    ['approvalMessageId', 'invented'],
+  ])
+    assert.throws(() =>
+      assertPreservedEfAuthorization(
+        { ...receipt, [field]: value },
+        candidateHashes,
+        git,
+      ),
+    );
+  assert.throws(() =>
+    assertPreservedEfAuthorization(
+      {
+        ...receipt,
+        candidateHashes: {
+          ...candidateHashes,
+          'tests/support/minimal-page-acceptance.mjs': '0'.repeat(64),
+        },
+      },
+      candidateHashes,
+      git,
+    ),
+  );
+  assert.throws(() =>
+    assertPreservedEfAuthorization(undefined, candidateHashes, git),
+  );
+});
+
+test('preserved EF live proof rejects changed case, source receipts, CVs and feedback', () => {
+  const seal = preservedEfCheckpoint;
+  const state = {
+    case: {
+      id: seal.caseId,
+      business_no: seal.businessNo,
+      stage: 'EXECUTING',
+      version: 3,
+      department_id: scope.departmentId,
+      responsible_user_id: scope.userId,
+      customer_id: '50000000-0000-4000-8000-000000000002',
+      rights_holder_id: '60000000-0000-4000-8000-000000000001',
+    },
+    external: [
+      {
+        id: 'a6319ad3-2f5e-4b40-9d6e-0a8dbfb22766',
+        case_id: seal.caseId,
+        recorded_by_user_id: scope.userId,
+        source: `minimal-page:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:${scope.userId}`,
+      },
+    ],
+    mailings: [{ id: seal.mailingId, case_id: seal.caseId }],
+    filings: [{ id: seal.filingId, case_id: seal.caseId }],
+    externalReceipts: [{ id: seal.receiptIds.external, case_id: seal.caseId }],
+    mailingReceipts: [{ id: seal.receiptIds.mailing, case_id: seal.caseId }],
+    filingReceipts: [{ id: seal.receiptIds.filing, case_id: seal.caseId }],
+    contentVersions: seal.contentVersionIds.map((id) => ({
+      id,
+      material_id: id,
+      storage_key: `${scope.departmentId}/${id}/${id}`,
+      sha256: seal.pdfSha256,
+      size_bytes: '43',
+      status: 'AVAILABLE',
+    })),
+    mailingVersions: [
+      {
+        mailing_id: seal.mailingId,
+        content_version_id: seal.contentVersionIds[0],
+      },
+    ],
+    filingVersions: [
+      {
+        filing_id: seal.filingId,
+        content_version_id: seal.contentVersionIds[1],
+      },
+    ],
+    materialReferences: seal.contentVersionIds.map((id) => ({
+      resource_type: 'CASE',
+      resource_id: seal.caseId,
+      content_version_id: id,
+    })),
+    feedbacks: [],
+    followupReceipts: [],
+  };
+  assert.equal(assertPreservedEfLiveState(state), true);
+  for (const change of [
+    (copy) => {
+      copy.case.version = 4;
+    },
+    (copy) => {
+      copy.filingReceipts = [];
+    },
+    (copy) => {
+      copy.contentVersions[0].sha256 = '0'.repeat(64);
+    },
+    (copy) => {
+      copy.materialReferences[0].resource_id =
+        '00000000-0000-4000-8000-000000000000';
+    },
+    (copy) => {
+      copy.feedbacks.push({ id: 'existing' });
+    },
+  ]) {
+    const copy = globalThis.structuredClone(state);
+    change(copy);
+    assert.throws(() => assertPreservedEfLiveState(copy));
+  }
+});
+
+test('preserved EF 165-table checkpoint protects old rows and admits only exact new facts', async () => {
+  const evidence = await readPreservedEfEvidence(process.cwd());
+  const baseline = evidence['all-after-rows.json'];
+  const current = globalThis.structuredClone(baseline);
+  assert.equal(assertPreservedEfRows(baseline, current), true);
+  current.tables.find((table) => table.table === 'cases').rows[0].row_sha256 =
+    '0'.repeat(64);
+  assert.throws(
+    () => assertPreservedEfRows(baseline, current),
+    /PRESERVED_EF_ROWS/u,
+  );
+  const added = globalThis.structuredClone(baseline);
+  added.tables
+    .find((table) => table.table === 'case_execution_filing_feedbacks')
+    .rows.push({ pk_sha256: 'a'.repeat(64), row_sha256: 'b'.repeat(64) });
+  assert.throws(
+    () => assertPreservedEfRows(baseline, added),
+    /PRESERVED_EF_ROWS/u,
+  );
+  assert.equal(assertPreservedEfRows(baseline, added, 'partial'), true);
+  added.tables
+    .find((table) => table.table === 'leads')
+    .rows.push({ pk_sha256: 'a'.repeat(64), row_sha256: 'b'.repeat(64) });
+  assert.throws(
+    () => assertPreservedEfRows(baseline, added, 'partial'),
+    /PRESERVED_EF_ROWS/u,
+  );
+});
+
+test('preserved EF snapshot reads all 165 tables including migrations and rejects an extra or unsafe table', async () => {
+  const evidence = await readPreservedEfEvidence(process.cwd());
+  const sealed = evidence['all-after-rows.json'];
+  const names = sealed.tables.map((entry) => entry.table).sort();
+  const queries = [];
+  const client = {
+    async query(sql) {
+      queries.push(sql);
+      if (sql.includes('FROM pg_tables'))
+        return { rows: names.map((tablename) => ({ tablename })) };
+      return { rows: [] };
+    },
+  };
+  const result = await snapshotPreservedEfRows(client, sealed);
+  assert.equal(result.tables.length, 165);
+  assert.ok(queries.some((sql) => sql.includes('public."_prisma_migrations"')));
+  const extraClient = {
+    async query(sql) {
+      return {
+        rows: sql.includes('FROM pg_tables')
+          ? [...names, 'unsealed_table']
+              .sort()
+              .map((tablename) => ({ tablename }))
+          : [],
+      };
+    },
+  };
+  await assert.rejects(
+    snapshotPreservedEfRows(extraClient, sealed),
+    /PRESERVED_EF_TABLE/u,
+  );
+  const unsafe = globalThis.structuredClone(sealed);
+  unsafe.tables[0].table = 'bad;drop';
+  const unsafeClient = {
+    async query(sql) {
+      return {
+        rows: sql.includes('FROM pg_tables')
+          ? unsafe.tables
+              .map((entry) => ({ tablename: entry.table }))
+              .sort((a, b) => a.tablename.localeCompare(b.tablename))
+          : [],
+      };
+    },
+  };
+  await assert.rejects(
+    snapshotPreservedEfRows(unsafeClient, unsafe),
+    /PRESERVED_EF_TABLE/u,
+  );
+});
+
+test('preserved EF budget keeps prior use separate and denies source or upload before dispatch', () => {
+  const runId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const budget = createPreservedEfRequestBudget(runId, 'synthetic-user');
+  const url = (path) => `http://127.0.0.1:5174${path}`;
+  assert.equal(budget.priorConsumed.external, 1);
+  assert.deepEqual(budget.counts(), {});
+  budget.admit('GET', url('/api/v1/cases?page=1&pageSize=20'));
+  budget.admit('HEAD', url('/api/v1/cases?page=1'));
+  assert.throws(() =>
+    budget.admit('GET', 'https://example.test/api/v1/cases?page=1'),
+  );
+  assert.throws(() =>
+    budget.admit('POST', url('/api/v1/auth/login?retry=1'), {
+      username: 'synthetic-user',
+      password: 'synthetic-password',
+    }),
+  );
+  for (const [method, path] of [
+    ['POST', '/api/v1/cases/external-entries'],
+    ['POST', '/api/v1/materials/upload-drafts'],
+    [
+      'PUT',
+      '/api/v1/materials/upload-drafts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/content',
+    ],
+    ['POST', `/api/v1/cases/${preservedEfCheckpoint.caseId}/execution-mail`],
+    [
+      'POST',
+      `/api/v1/cases/${preservedEfCheckpoint.caseId}/execution-filing-submit`,
+    ],
+  ])
+    assert.throws(() => budget.admit(method, url(path), {}));
+  assert.deepEqual(budget.counts(), {});
+  budget.admit('POST', url('/api/v1/auth/login'), {
+    username: 'synthetic-user',
+    password: 'synthetic-password',
+  });
+  assert.equal(budget.counts().login, 1);
+  assert.equal(budget.priorConsumed.login, 1);
+});
+
+test('preserved EF budget admits the actual page wording, one new session and two feedback writes', async () => {
+  const runId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const spec = await readFile(
+    new URL('../e2e/execution-feedback-minimal-page.spec.ts', import.meta.url),
+    'utf8',
+  );
+  const firstContent = /const firstContent = `([^`]+)`;/u
+    .exec(spec)?.[1]
+    ?.replace('${prepared.runId}', runId);
+  const secondContent = /const secondContent = `([^`]+)`;/u
+    .exec(spec)?.[1]
+    ?.replace('${prepared.runId}', runId);
+  const correctionReason = /const correctionReason = '([^']+)';/u.exec(
+    spec,
+  )?.[1];
+  assert.ok(firstContent && secondContent && correctionReason);
+  const feedbackId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  const budget = createPreservedEfRequestBudget(runId, 'synthetic-user');
+  const base = `http://127.0.0.1:5174/api/v1/cases/${preservedEfCheckpoint.caseId}/execution-filings/${preservedEfCheckpoint.filingId}/feedbacks`;
+  budget.admit('POST', 'http://127.0.0.1:5174/api/v1/auth/login', {
+    username: 'synthetic-user',
+    password: 'synthetic-password',
+  });
+  budget.admit('POST', base, {
+    idempotencyKey: 'one',
+    expectedRevision: 0,
+    feedbackOn: null,
+    courtCaseNo: null,
+    content: firstContent,
+    feedbackId,
+  });
+  budget.setFeedbackRoot(feedbackId);
+  budget.admit('POST', `${base}/${feedbackId}/corrections`, {
+    idempotencyKey: 'two',
+    expectedRevision: 1,
+    feedbackOn: null,
+    courtCaseNo: null,
+    content: secondContent,
+    correctionReason: correctionReason,
+  });
+  budget.admit('POST', 'http://127.0.0.1:5174/api/v1/auth/logout');
+  assert.equal(budget.assertComplete(), true);
+  assert.deepEqual(budget.counts(), {
+    login: 1,
+    feedback: 1,
+    correction: 1,
+    logout: 1,
+  });
+  assert.equal(budget.priorConsumed.external, 1);
+  assert.throws(() => budget.admit('POST', base, {}));
+  assert.throws(() =>
+    budget.admit('POST', 'http://127.0.0.1:5174/api/v1/auth/login', {
+      username: 'synthetic-user',
+      password: 'synthetic-password',
+    }),
+  );
 });

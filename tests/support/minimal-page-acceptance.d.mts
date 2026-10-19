@@ -1,5 +1,53 @@
 export type MinimalPageKind = 'EF_FEEDBACK' | 'LEAD_BATCH';
-export type MinimalPageWindow = { runId: string; deadlineIso: string };
+export const preservedEfCheckpoint: Readonly<{
+  mode: 'PRESERVED_EF_CHECKPOINT';
+  summarySha256: string;
+  caseId: string;
+  businessNo: string;
+  mailingId: string;
+  filingId: string;
+  contentVersionIds: readonly string[];
+  receiptIds: Readonly<Record<'external' | 'mailing' | 'filing', string>>;
+  pdfSha256: string;
+  priorConsumed: Readonly<Record<string, number>>;
+}>;
+export function assertPreservedEfAuthorization(
+  receipt: unknown,
+  candidateHashes: Record<string, string>,
+  candidateGit: { head: string; tree: string },
+): true;
+export function assertPreservedEfEvidence(
+  evidence: Record<string, unknown>,
+): true;
+export function assertPreservedEfLiveState(state: unknown): true;
+export function assertPreservedEfRows(
+  previous: unknown,
+  current: unknown,
+  complete?: boolean | 'partial',
+): true;
+export function readPreservedEfEvidence(
+  root: string,
+): Promise<Record<string, unknown>>;
+export function readPreservedEfAuthorization(root: string): Promise<unknown>;
+export function snapshotPreservedEfRows(
+  client: { query(sql: string): Promise<{ rows: unknown[] }> },
+  sealed: { tables: Array<{ table: string; pk: string[] }> },
+): Promise<unknown>;
+export function createPreservedEfRequestBudget(
+  runId: string,
+  username: string,
+): Readonly<{
+  admit(method: string, url: string, rawBody?: unknown): void;
+  setFeedbackRoot(id: string): void;
+  priorConsumed: Readonly<Record<string, number>>;
+  counts(): Readonly<Record<string, number>>;
+  assertComplete(): true;
+}>;
+export type MinimalPageWindow = {
+  runId: string;
+  deadlineIso: string;
+  sourceRunId?: string;
+};
 export type MinimalPageActor = {
   userId: string;
   departmentId: string;
@@ -103,6 +151,7 @@ export function createMinimalPageRequestBudget(
   assertComplete(): true;
 }>;
 type MinimalPageOptions = {
+  mode?: 'PRESERVED_EF_CHECKPOINT';
   root?: string;
   environment?: NodeJS.ProcessEnv;
   window?: MinimalPageWindow;

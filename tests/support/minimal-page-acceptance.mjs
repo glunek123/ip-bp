@@ -13,6 +13,50 @@ import { validateLeadBatchPushBinding } from './lead-batch-push-database.mjs';
 import { captureTestEnvironment } from '../../scripts/test-environment.mjs';
 
 const sha = (value) => createHash('sha256').update(value).digest('hex');
+export const preservedEfCheckpoint = Object.freeze({
+  mode: 'PRESERVED_EF_CHECKPOINT',
+  summarySha256:
+    '566b1f7043334af0d2a8e106baa4c2ce285705e54536fca56121d8b68c90718f',
+  caseId: '6c151c42-3054-466b-9a0e-a8daaf99fbde',
+  businessNo: 'CA-20261019-0001',
+  mailingId: 'edc4c890-0a88-477b-8318-fea0e93586a0',
+  filingId: 'c1fab17d-d583-45ad-bf36-f3492c5d8b9b',
+  contentVersionIds: Object.freeze([
+    '0cb8fb1c-81fe-42d9-9815-6bdb39e798b1',
+    'b1b2b0fd-757d-41a2-9c8e-da66d933e6d4',
+  ]),
+  receiptIds: Object.freeze({
+    external: '861537f5-de3e-4aeb-bef4-60ae349b32b1',
+    mailing: 'e2761ab5-9c0d-4b80-9cf2-4d1bfe1d8c8a',
+    filing: '1b4e4e77-dc31-4dbf-ba52-8b40b065143c',
+  }),
+  pdfSha256: 'a920a7cdb0a855fa2f00a0991f9fde35c8db481f204e97dec56f07c917ebe29e',
+  priorConsumed: Object.freeze({
+    login: 1,
+    external: 1,
+    draft: 2,
+    filePut: 2,
+    mail: 1,
+    filing: 1,
+    logout: 1,
+    feedback: 0,
+    correction: 0,
+  }),
+});
+const preservedEfEvidenceHashes = Object.freeze({
+  'safe-trace-http.json':
+    '70688f1c0cd68880bcff8ffa4ce723bb53cd06f52e9712ab63a8cbe04595d15a',
+  'database-delta.json':
+    'c70de4137cfd604534447207fdbca7ad8fab1c1c5d2b17c0adb40df3fd8d986c',
+  'all-after-rows.json':
+    'b299d57133bd5c7e92f628c2b5fe83ea21b614f7038fe97e8ddf8adfea9f98e4',
+  'closure-addendum/actual-facts.json':
+    'e0e2143467a2ed8cc46b5bd473b822df5759064f5f47f2cdb90c510a6d735a3b',
+  'closure-addendum/closure-proof.json':
+    '63d6f11592bbfbe6c512680f54b019e7e78b65c537bd20865e7951eca5d4b3a5',
+  'closure-addendum/file-closure.json':
+    '04728af27c85f83ab1d91ff4563fb19b3beed4f8b532e92e946105ec339f1069',
+});
 const departmentId = '10000000-0000-4000-8000-000000000001';
 const customerId = '50000000-0000-4000-8000-000000000002';
 const rightsHolderId = '60000000-0000-4000-8000-000000000001';
@@ -123,10 +167,577 @@ function fixedScope(kind) {
   return scope;
 }
 
+// This is an evidence reference, not a source of extra budget. The caller must
+// supply a separately frozen receipt for the exact five-file candidate.
+export function assertPreservedEfAuthorization(
+  receipt,
+  candidateHashes,
+  candidateGit,
+) {
+  if (
+    receipt?.mode !== preservedEfCheckpoint.mode ||
+    receipt?.requestMessageId !== 'Sentinel_74f90cb0aadc8191b21a8eb37dbec5a0' ||
+    receipt?.requestAtUtc !== '2026-10-19T01:58:27Z' ||
+    receipt?.approvalMessageId !==
+      'Sentinel_99b86fc7c7ac81918193c5af43f85438' ||
+    receipt?.approvalAtUtc !== '2026-10-19T02:01:49Z' ||
+    receipt?.summarySha256 !== preservedEfCheckpoint.summarySha256 ||
+    receipt?.caseId !== preservedEfCheckpoint.caseId ||
+    receipt?.actorId !== minimalPageScopes.EF_FEEDBACK.userId ||
+    receipt?.additionalEfSessions !== 1 ||
+    receipt?.efFeedbackPosts !== 2 ||
+    receipt?.sourcePosts !== 0 ||
+    receipt?.uploadRequests !== 0 ||
+    receipt?.pdfs !== 0 ||
+    receipt?.leadSessionsRemaining !== 1 ||
+    receipt?.leadPostsRemaining !== 3 ||
+    !/^[0-9a-f]{40}$/u.test(candidateGit?.head ?? '') ||
+    !/^[0-9a-f]{40}$/u.test(candidateGit?.tree ?? '') ||
+    receipt?.candidateHead !== candidateGit.head ||
+    receipt?.candidateTree !== candidateGit.tree ||
+    !candidateHashes ||
+    Object.keys(candidateHashes).length !== 5 ||
+    Object.keys(receipt.candidateHashes ?? {}).length !== 5 ||
+    Object.entries(candidateHashes).some(
+      ([path, digest]) =>
+        !/^[0-9a-f]{64}$/u.test(digest) ||
+        receipt.candidateHashes[path] !== digest,
+    )
+  )
+    blocked('PRESERVED_EF_AUTHORIZATION');
+  return true;
+}
+
+export function assertPreservedEfEvidence({
+  summary,
+  trace,
+  delta,
+  facts,
+  closure,
+  files,
+}) {
+  const seal = preservedEfCheckpoint;
+  const sourceTables = [
+    ['case_external_entry_receipts', seal.receiptIds.external],
+    ['case_execution_mailing_receipts', seal.receiptIds.mailing],
+    ['case_execution_filing_receipts', seal.receiptIds.filing],
+  ];
+  if (
+    summary?.result !== 'PAUSED_EF_LIST_VISIBILITY_FAILURE' ||
+    summary?.execution?.EF?.case?.id !== seal.caseId ||
+    summary.execution.EF.case.business_no !== seal.businessNo ||
+    summary.execution.EF.case.stage !== 'EXECUTING' ||
+    summary.execution.EF.case.version !== 3 ||
+    summary?.budget?.used?.newSessions !== 1 ||
+    summary.budget.used.businessPOST !== 3 ||
+    summary.budget.used.uploadRequests !== 4 ||
+    summary.budget.used.PDFs !== 2 ||
+    summary.budget.used.PDFBytes !== 86 ||
+    summary.budget.remaining.newCases !== 0 ||
+    summary.budget.remaining.PDFs !== 0 ||
+    summary.budget.remaining.uploadRequests !== 0 ||
+    summary?.protection?.oldRowsUnchanged !== true ||
+    summary.protection.old94FilesUnchanged !== true ||
+    summary.protection.sixYesterdayExpiredPreserved !== true ||
+    summary.protection.totalPhysicalFiles !== 96 ||
+    summary.execution.EF.feedbackWrites !== 0 ||
+    trace?.caseId !== seal.caseId ||
+    trace?.budget?.feedbackRequestCount !== 0 ||
+    trace?.budget?.budgetGuardError != null ||
+    JSON.stringify({ ...trace.budget.counts, feedback: 0, correction: 0 }) !==
+      JSON.stringify(seal.priorConsumed) ||
+    delta?.oldRowsUnchanged !== true ||
+    delta?.sequencesEqual !== true ||
+    closure?.oldRowsUnchanged !== true ||
+    closure?.sequencesUnchanged !== true ||
+    closure?.sixExpiredRowsPreserved !== true ||
+    closure?.feedbackWrites !== 0 ||
+    closure?.leadWrites !== 0 ||
+    files?.count !== 96 ||
+    files?.allOriginalFilesMatch !== true ||
+    sourceTables.some(
+      ([table, id]) =>
+        facts?.[table]?.count !== 1 ||
+        JSON.stringify(facts[table].ids) !== JSON.stringify([id]),
+    ) ||
+    facts?.case_execution_filing_feedbacks?.count !== 0 ||
+    facts?.case_execution_filing_followup_receipts?.count !== 0
+  )
+    blocked('PRESERVED_EF_EVIDENCE');
+  const newFiles = files.files.filter((entry) => entry.new === true);
+  if (
+    newFiles.length !== 2 ||
+    newFiles.some(
+      (entry) =>
+        !seal.contentVersionIds.includes(entry.id) ||
+        entry.bytes !== 43 ||
+        entry.sha256 !== seal.pdfSha256,
+    ) ||
+    new Set(newFiles.map((entry) => entry.id)).size !== 2
+  )
+    blocked('PRESERVED_EF_FILES');
+  const writes = trace.requests.filter(
+    (entry) => !['GET', 'HEAD'].includes(entry.method),
+  );
+  const expected = [
+    ['POST', '/api/v1/auth/login', 200],
+    ['POST', '/api/v1/cases/external-entries', 201],
+    ['POST', '/api/v1/materials/upload-drafts', 201],
+    [
+      'PUT',
+      '/api/v1/materials/upload-drafts/e6967a75-3a27-4723-91c1-9f4084210c7a/content',
+      200,
+    ],
+    ['POST', `/api/v1/cases/${seal.caseId}/execution-mail`, 201],
+    ['POST', '/api/v1/materials/upload-drafts', 201],
+    [
+      'PUT',
+      '/api/v1/materials/upload-drafts/d71667cd-8c8e-4e37-be86-c57add65694a/content',
+      200,
+    ],
+    ['POST', `/api/v1/cases/${seal.caseId}/execution-filing-submit`, 201],
+    ['POST', '/api/v1/auth/logout', 204],
+  ];
+  if (
+    JSON.stringify(
+      writes.map(({ method, path, status }) => [method, path, status]),
+    ) !== JSON.stringify(expected)
+  )
+    blocked('PRESERVED_EF_TRACE');
+  return true;
+}
+
+export async function readPreservedEfEvidence(root) {
+  const directory = resolve(
+    root,
+    '../ca015-integration/.local/next-batch-preparation/r2-resume-pages-dadb0989-20261019',
+  );
+  const names = ['summary.json', ...Object.keys(preservedEfEvidenceHashes)];
+  const values = {};
+  for (const name of names) {
+    const bytes = await readFile(resolve(directory, name));
+    const expected =
+      name === 'summary.json'
+        ? preservedEfCheckpoint.summarySha256
+        : preservedEfEvidenceHashes[name];
+    if (sha(bytes) !== expected) blocked('PRESERVED_EF_HASH');
+    values[name] = JSON.parse(bytes.toString('utf8'));
+  }
+  assertPreservedEfEvidence({
+    summary: values['summary.json'],
+    trace: values['safe-trace-http.json'],
+    delta: values['database-delta.json'],
+    facts: values['closure-addendum/actual-facts.json'],
+    closure: values['closure-addendum/closure-proof.json'],
+    files: values['closure-addendum/file-closure.json'],
+  });
+  return Object.freeze(values);
+}
+
+const preservedCandidatePaths = Object.freeze([
+  'tests/support/minimal-page-acceptance.mjs',
+  'tests/support/minimal-page-acceptance.d.mts',
+  'tests/support/minimal-page-acceptance.test.mjs',
+  'tests/e2e/execution-feedback-minimal-page.spec.ts',
+  'tests/support/execution-feedback-minimal-page.test.mjs',
+]);
+
+export async function readPreservedEfAuthorization(root) {
+  const location = resolve(root, '../ca015-integration/.local/resume-20261019');
+  const authorizationProof = await readFile(
+    resolve(
+      root,
+      '.local/resume-20261019/ef-extra-session-authorization-20261019.md',
+    ),
+  );
+  if (
+    sha(authorizationProof) !==
+    '0ff9b9ef6524275341de55ba543b6238a42559c8227b9a900bfb684715741fbc'
+  )
+    blocked('PRESERVED_EF_AUTHORIZATION');
+  const receipt = JSON.parse(
+    await readFile(resolve(location, 'ef-checkpoint-receipt.json'), 'utf8'),
+  );
+  const hashes = Object.fromEntries(
+    await Promise.all(
+      preservedCandidatePaths.map(async (path) => [
+        path,
+        sha(await readFile(resolve(root, path))),
+      ]),
+    ),
+  );
+  const candidateGit = {
+    head: execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim(),
+    tree: execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim(),
+  };
+  if (
+    execFileSync('git', ['status', '--porcelain'], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim()
+  )
+    blocked('PRESERVED_EF_CANDIDATE');
+  assertPreservedEfAuthorization(receipt, hashes, candidateGit);
+  return receipt;
+}
+
+export async function snapshotPreservedEfRows(client, sealed) {
+  const actualTables = (
+    await client.query(
+      "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename",
+    )
+  ).rows.map((row) => row.tablename);
+  const expectedTables = sealed.tables.map((entry) => entry.table).sort();
+  if (
+    actualTables.length !== expectedTables.length ||
+    actualTables.some((name, index) => name !== expectedTables[index])
+  )
+    blocked('PRESERVED_EF_TABLE');
+  const tables = [];
+  for (const entry of sealed.tables) {
+    if (
+      !/^[_a-z][_a-z0-9]*$/u.test(entry.table) ||
+      !Array.isArray(entry.pk) ||
+      entry.pk.length === 0 ||
+      entry.pk.some((key) => !/^[a-z][a-z0-9_]*$/u.test(key))
+    )
+      blocked('PRESERVED_EF_TABLE');
+    const key = `jsonb_build_object(${entry.pk.map((name) => `'${name}',t."${name}"`).join(',')})`;
+    const rows = (
+      await client.query(
+        `SELECT encode(sha256(convert_to(${key}::text,'UTF8')),'hex') AS pk_sha256,encode(sha256(convert_to(to_jsonb(t)::text,'UTF8')),'hex') AS row_sha256 FROM public."${entry.table}" t ORDER BY ${entry.pk.map((name) => `t."${name}"`).join(',')}`,
+      )
+    ).rows;
+    tables.push({ table: entry.table, pk: entry.pk, rows });
+  }
+  const sequences = (
+    await client.query(
+      "SELECT schemaname,sequencename,start_value,min_value,max_value,increment_by,cycle,cache_size,last_value FROM pg_sequences WHERE schemaname='public' ORDER BY sequencename",
+    )
+  ).rows;
+  return { tables, sequences };
+}
+
+async function readPreservedEfLiveState(client) {
+  const id = preservedEfCheckpoint.caseId;
+  const filing = preservedEfCheckpoint.filingId;
+  const mailing = preservedEfCheckpoint.mailingId;
+  const rows = async (sql, values) => (await client.query(sql, values)).rows;
+  const caseRows = await rows(
+    'SELECT id::text,business_no,stage::text,version,department_id::text,responsible_user_id::text,customer_id::text,rights_holder_id::text FROM cases WHERE id=$1',
+    [id],
+  );
+  return {
+    case: caseRows.length === 1 ? caseRows[0] : null,
+    external: await rows(
+      'SELECT id::text,case_id::text,recorded_by_user_id::text,source FROM case_external_entries WHERE case_id=$1',
+      [id],
+    ),
+    mailings: await rows(
+      'SELECT id::text,case_id::text FROM case_execution_mailings WHERE case_id=$1',
+      [id],
+    ),
+    filings: await rows(
+      'SELECT id::text,case_id::text FROM case_execution_filings WHERE case_id=$1',
+      [id],
+    ),
+    externalReceipts: await rows(
+      'SELECT id::text,case_id::text FROM case_external_entry_receipts WHERE case_id=$1',
+      [id],
+    ),
+    mailingReceipts: await rows(
+      'SELECT id::text,case_id::text FROM case_execution_mailing_receipts WHERE case_id=$1',
+      [id],
+    ),
+    filingReceipts: await rows(
+      'SELECT id::text,case_id::text FROM case_execution_filing_receipts WHERE case_id=$1',
+      [id],
+    ),
+    contentVersions: await rows(
+      'SELECT cv.id::text,cv.material_id::text,cv.storage_key,cv.sha256,cv.size_bytes::text,cv.status::text FROM content_versions cv WHERE cv.id=ANY($1::uuid[])',
+      [preservedEfCheckpoint.contentVersionIds],
+    ),
+    mailingVersions: await rows(
+      'SELECT mailing_id::text,content_version_id::text FROM case_execution_mailing_versions WHERE mailing_id=$1',
+      [mailing],
+    ),
+    filingVersions: await rows(
+      'SELECT filing_id::text,content_version_id::text FROM case_execution_filing_versions WHERE filing_id=$1',
+      [filing],
+    ),
+    materialReferences: await rows(
+      "SELECT resource_type,resource_id::text,content_version_id::text FROM material_references WHERE resource_type='CASE' AND resource_id=$1 AND content_version_id=ANY($2::uuid[])",
+      [id, preservedEfCheckpoint.contentVersionIds],
+    ),
+    feedbacks: await rows(
+      'SELECT id::text FROM case_execution_filing_feedbacks WHERE case_id=$1 AND filing_id=$2',
+      [id, filing],
+    ),
+    followupReceipts: await rows(
+      'SELECT id::text FROM case_execution_filing_followup_receipts WHERE case_id=$1 AND filing_id=$2',
+      [id, filing],
+    ),
+  };
+}
+
+export function assertPreservedEfLiveState(state) {
+  const seal = preservedEfCheckpoint;
+  const exact = (rows, ids) =>
+    Array.isArray(rows) &&
+    rows.length === ids.length &&
+    ids.every((id) => rows.some((row) => row.id === id));
+  const c = state?.case;
+  if (
+    c?.id !== seal.caseId ||
+    c.business_no !== seal.businessNo ||
+    c.stage !== 'EXECUTING' ||
+    c.version !== 3 ||
+    c.department_id !== departmentId ||
+    c.responsible_user_id !== minimalPageScopes.EF_FEEDBACK.userId ||
+    c.customer_id !== customerId ||
+    c.rights_holder_id !== rightsHolderId ||
+    !exact(state.external, ['a6319ad3-2f5e-4b40-9d6e-0a8dbfb22766']) ||
+    state.external[0].case_id !== seal.caseId ||
+    state.external[0].recorded_by_user_id !==
+      minimalPageScopes.EF_FEEDBACK.userId ||
+    !new RegExp(
+      `^minimal-page:[0-9a-f-]{36}:${minimalPageScopes.EF_FEEDBACK.userId}$`,
+      'u',
+    ).test(state.external[0].source ?? '') ||
+    !exact(state.mailings, [seal.mailingId]) ||
+    state.mailings[0].case_id !== seal.caseId ||
+    !exact(state.filings, [seal.filingId]) ||
+    state.filings[0].case_id !== seal.caseId ||
+    !exact(state.externalReceipts, [seal.receiptIds.external]) ||
+    !exact(state.mailingReceipts, [seal.receiptIds.mailing]) ||
+    !exact(state.filingReceipts, [seal.receiptIds.filing]) ||
+    [
+      ...state.externalReceipts,
+      ...state.mailingReceipts,
+      ...state.filingReceipts,
+    ].some((row) => row.case_id !== seal.caseId) ||
+    !exact(state.contentVersions, seal.contentVersionIds) ||
+    state.contentVersions.some(
+      (row) =>
+        row.sha256 !== seal.pdfSha256 ||
+        Number(row.size_bytes) !== 43 ||
+        row.status !== 'AVAILABLE' ||
+        row.storage_key !== `${departmentId}/${row.material_id}/${row.id}`,
+    ) ||
+    state.mailingVersions?.length !== 1 ||
+    !seal.contentVersionIds.includes(
+      state.mailingVersions[0].content_version_id,
+    ) ||
+    state.mailingVersions[0].mailing_id !== seal.mailingId ||
+    state.filingVersions?.length !== 1 ||
+    !seal.contentVersionIds.includes(
+      state.filingVersions[0].content_version_id,
+    ) ||
+    state.filingVersions[0].content_version_id ===
+      state.mailingVersions[0].content_version_id ||
+    state.filingVersions[0].filing_id !== seal.filingId ||
+    state.materialReferences?.length !== 2 ||
+    seal.contentVersionIds.some(
+      (id) =>
+        !state.materialReferences.some((row) => row.content_version_id === id),
+    ) ||
+    state.materialReferences.some(
+      (row) => row.resource_id !== seal.caseId || row.resource_type !== 'CASE',
+    ) ||
+    state.feedbacks?.length !== 0 ||
+    state.followupReceipts?.length !== 0
+  )
+    blocked('PRESERVED_EF_LIVE');
+  return true;
+}
+
+export function assertPreservedEfRows(previous, current, complete = false) {
+  const additions = complete
+    ? {
+        auth_sessions: 1,
+        case_execution_filing_feedbacks: 2,
+        case_execution_filing_followup_receipts: 2,
+        audit_events: 2,
+      }
+    : {};
+  if (
+    !Array.isArray(previous?.tables) ||
+    !Array.isArray(current?.tables) ||
+    previous.tables.length !== 165 ||
+    current.tables.length !== 165 ||
+    JSON.stringify(previous.sequences) !== JSON.stringify(current.sequences)
+  )
+    blocked('PRESERVED_EF_ROWS');
+  for (const original of previous.tables) {
+    const observed = current.tables.find(
+      (item) => item.table === original.table,
+    );
+    if (
+      !observed ||
+      JSON.stringify(observed.pk) !== JSON.stringify(original.pk)
+    )
+      blocked('PRESERVED_EF_ROWS');
+    const old = new Map(
+      original.rows.map((row) => [row.pk_sha256, row.row_sha256]),
+    );
+    const now = new Map(
+      observed.rows.map((row) => [row.pk_sha256, row.row_sha256]),
+    );
+    if (
+      old.size !== original.rows.length ||
+      now.size !== observed.rows.length ||
+      [...old].some(([id, digest]) => now.get(id) !== digest) ||
+      (complete === 'partial'
+        ? now.size - old.size > (additions[original.table] ?? 0)
+        : now.size - old.size !== (additions[original.table] ?? 0))
+    )
+      blocked('PRESERVED_EF_ROWS');
+  }
+  return true;
+}
+
 export function assertMinimalPageR2Binding(environment) {
   assertExecutionFilingFollowupR2Binding(environment);
   validateLeadBatchPushBinding(environment);
   return true;
+}
+
+export function createPreservedEfRequestBudget(runId, username) {
+  if (!uuid.test(runId ?? '') || typeof username !== 'string' || !username)
+    blocked('PRESERVED_EF_BUDGET');
+  const counts = new Map();
+  let feedbackId;
+  let initialFeedbackId;
+  const add = (name, maximum) => {
+    const next = (counts.get(name) ?? 0) + 1;
+    if (next > maximum) blocked('PRESERVED_EF_BUDGET');
+    counts.set(name, next);
+  };
+  const parse = (value) => {
+    try {
+      const result = typeof value === 'string' ? JSON.parse(value) : value;
+      if (!result || typeof result !== 'object' || Array.isArray(result))
+        blocked('PRESERVED_EF_BODY');
+      return result;
+    } catch {
+      blocked('PRESERVED_EF_BODY');
+    }
+  };
+  const sameKeys = (body, names) =>
+    Object.keys(body).sort().join('|') === [...names].sort().join('|');
+  function admit(method, rawUrl, rawBody) {
+    let url;
+    try {
+      url = new URL(rawUrl);
+    } catch {
+      blocked('PRESERVED_EF_TARGET');
+    }
+    if (
+      !['http://127.0.0.1:5174', 'http://127.0.0.1:3101'].includes(url.origin)
+    )
+      blocked('PRESERVED_EF_TARGET');
+    if (method === 'GET' || method === 'HEAD') return;
+    if (url.search || url.hash) blocked('PRESERVED_EF_TARGET');
+    const path = url.pathname;
+    if (method === 'POST' && path === '/api/v1/auth/login') {
+      const body = parse(rawBody);
+      if (
+        !sameKeys(body, ['username', 'password']) ||
+        body.username !== username ||
+        typeof body.password !== 'string' ||
+        body.password.length < 12
+      )
+        blocked('PRESERVED_EF_BODY');
+      return add('login', 1);
+    }
+    if (method === 'POST' && path === '/api/v1/auth/logout') {
+      if (rawBody != null && rawBody !== '' && rawBody !== '{}')
+        blocked('PRESERVED_EF_BODY');
+      return add('logout', 1);
+    }
+    const base = `/api/v1/cases/${preservedEfCheckpoint.caseId}/execution-filings/${preservedEfCheckpoint.filingId}/feedbacks`;
+    if (method === 'POST' && path === base) {
+      const body = parse(rawBody);
+      if (
+        !sameKeys(body, [
+          'idempotencyKey',
+          'expectedRevision',
+          'feedbackOn',
+          'courtCaseNo',
+          'content',
+          'feedbackId',
+        ]) ||
+        typeof body.idempotencyKey !== 'string' ||
+        !body.idempotencyKey ||
+        body.expectedRevision !== 0 ||
+        body.feedbackOn !== null ||
+        body.courtCaseNo !== null ||
+        !uuid.test(body.feedbackId ?? '') ||
+        body.content !== `合成执行反馈初始记录 ${runId}`
+      )
+        blocked('PRESERVED_EF_BODY');
+      if ((counts.get('feedback') ?? 0) !== 0) blocked('PRESERVED_EF_BUDGET');
+      initialFeedbackId = body.feedbackId.toLowerCase();
+      return add('feedback', 1);
+    }
+    if (
+      method === 'POST' &&
+      feedbackId &&
+      path === `${base}/${feedbackId}/corrections`
+    ) {
+      const body = parse(rawBody);
+      if (
+        !sameKeys(body, [
+          'idempotencyKey',
+          'expectedRevision',
+          'feedbackOn',
+          'courtCaseNo',
+          'content',
+          'correctionReason',
+        ]) ||
+        typeof body.idempotencyKey !== 'string' ||
+        !body.idempotencyKey ||
+        body.expectedRevision !== 1 ||
+        body.feedbackOn !== null ||
+        body.courtCaseNo !== null ||
+        body.content !== `合成执行反馈更正记录 ${runId}` ||
+        body.correctionReason !== '补充核对后的反馈内容'
+      )
+        blocked('PRESERVED_EF_BODY');
+      return add('correction', 1);
+    }
+    blocked('PRESERVED_EF_TARGET');
+  }
+  return Object.freeze({
+    admit,
+    setFeedbackRoot(value) {
+      if (
+        !uuid.test(value ?? '') ||
+        value.toLowerCase() !== initialFeedbackId ||
+        feedbackId
+      )
+        blocked('PRESERVED_EF_TARGET');
+      feedbackId = value.toLowerCase();
+    },
+    priorConsumed: preservedEfCheckpoint.priorConsumed,
+    counts: () => Object.freeze(Object.fromEntries(counts)),
+    assertComplete() {
+      if (
+        (counts.get('login') ?? 0) !== 1 ||
+        (counts.get('feedback') ?? 0) !== 1 ||
+        (counts.get('correction') ?? 0) !== 1 ||
+        (counts.get('logout') ?? 0) !== 1
+      )
+        blocked('PRESERVED_EF_INCOMPLETE');
+      return true;
+    },
+  });
 }
 
 export function createMinimalPageRequestBudget(kind) {
@@ -1233,6 +1844,12 @@ async function sessionSnapshot(client) {
 
 export function createMinimalPageAcceptance(kind, options = {}) {
   const scope = fixedScope(kind);
+  const resumeMode =
+    kind === 'EF_FEEDBACK' &&
+    (options.mode === preservedEfCheckpoint.mode ||
+      options.preflightOnly === true);
+  if (options.mode !== undefined && !resumeMode) blocked('PRESERVED_EF_MODE');
+  if (kind === 'EF_FEEDBACK' && !resumeMode) blocked('PRESERVED_EF_MODE');
   const root = resolve(options.root ?? process.cwd());
   const environment = options.environment ?? process.env;
   let client;
@@ -1251,12 +1868,21 @@ export function createMinimalPageAcceptance(kind, options = {}) {
   let blobRoot;
   let verified = false;
   let sessionClosed = false;
+  let preservedEvidence;
+  let preservedRows;
+  let preservedSourceRunId;
 
   async function prepare() {
     if (prepared || client) blocked();
     let phase = 'R2_BINDING';
     assertMinimalPageR2Binding(environment); // before capture, Docker, PG, services
     try {
+      if (resumeMode) {
+        phase = 'PRESERVED_EF_AUTHORIZATION';
+        await readPreservedEfAuthorization(root); // no capture, credential, PG or HTTP yet
+        phase = 'PRESERVED_EF_EVIDENCE';
+        preservedEvidence = await readPreservedEfEvidence(root);
+      }
       phase = 'FROZEN_SOURCE';
       const source = await readSource(root);
       phase = 'ORDINARY_PROOF';
@@ -1300,9 +1926,41 @@ export function createMinimalPageAcceptance(kind, options = {}) {
       sessionsBefore = await sessionSnapshot(client);
       rowsBefore = await rowDigestSnapshot(client, kind);
       counterBefore = await counterSnapshot(client, kind);
+      if (resumeMode) {
+        phase = 'PRESERVED_EF_LIVE';
+        preservedRows = await snapshotPreservedEfRows(
+          client,
+          preservedEvidence['all-after-rows.json'],
+        );
+        assertPreservedEfRows(
+          preservedEvidence['all-after-rows.json'],
+          preservedRows,
+        );
+        const live = await readPreservedEfLiveState(client);
+        assertPreservedEfLiveState(live);
+        preservedSourceRunId = live.external[0].source.split(':')[1];
+      }
       blobRoot = captured.childEnvironment.PRIVATE_FILE_ROOT;
-      if (options.preflightOnly !== true)
+      if (resumeMode || options.preflightOnly !== true)
         blobsBefore = await blobSnapshot(blobRoot);
+      if (resumeMode) {
+        const expectedFiles =
+          preservedEvidence['closure-addendum/file-closure.json'].files;
+        const versionRows = (
+          await client.query(
+            'SELECT id::text,storage_key FROM content_versions',
+          )
+        ).rows;
+        if (
+          versionRows.length !== expectedFiles.length ||
+          blobsBefore.size !== expectedFiles.length ||
+          expectedFiles.some((file) => {
+            const row = versionRows.find((item) => item.id === file.id);
+            return !row || blobsBefore.get(row.storage_key) !== file.sha256;
+          })
+        )
+          blocked('PRESERVED_EF_FILES');
+      }
       phase = 'FIXTURE';
       const fixture = await one(
         client,
@@ -1315,6 +1973,7 @@ export function createMinimalPageAcceptance(kind, options = {}) {
           (row) => row.id,
         ),
       );
+      if (resumeMode) registered = preservedEfCheckpoint.caseId;
       originalLeadIds = new Set(
         (await client.query('SELECT id::text FROM leads')).rows.map(
           (row) => row.id,
@@ -1374,7 +2033,11 @@ export function createMinimalPageAcceptance(kind, options = {}) {
       const runId = inherited?.runId ?? options.runId ?? randomUUID();
       if (!uuid.test(runId)) blocked();
       if (options.preflightOnly === true) {
-        prepared = Object.freeze({ runId, deadlineIso });
+        prepared = Object.freeze({
+          runId,
+          deadlineIso,
+          sourceRunId: resumeMode ? preservedSourceRunId : undefined,
+        });
         return prepared;
       }
       const credentialBytes = await readFile(scope.privateCredential.path);
@@ -1404,6 +2067,7 @@ export function createMinimalPageAcceptance(kind, options = {}) {
       prepared = Object.freeze({
         runId,
         deadlineIso,
+        sourceRunId: resumeMode ? preservedSourceRunId : undefined,
         actor: {
           userId: scope.userId,
           departmentId,
@@ -1701,15 +2365,33 @@ export function createMinimalPageAcceptance(kind, options = {}) {
           )
             blocked('SESSION_DIFF');
           const rowsAfter = await rowDigestSnapshot(old, kind);
-          await assertMinimalPageDatabaseDiff(
-            kind,
-            rowsBefore,
-            rowsAfter,
-            counterBefore,
-            await counterSnapshot(old, kind),
-            verified,
-            registered,
-          );
+          if (resumeMode) {
+            const current = await snapshotPreservedEfRows(
+              old,
+              preservedEvidence['all-after-rows.json'],
+            );
+            assertPreservedEfRows(
+              preservedEvidence['all-after-rows.json'],
+              current,
+              verified ? true : 'partial',
+            );
+            const counterAfter = await counterSnapshot(old, kind);
+            if (
+              JSON.stringify([...counterBefore]) !==
+              JSON.stringify([...counterAfter])
+            )
+              blocked('PRESERVED_EF_COUNTER');
+          } else {
+            await assertMinimalPageDatabaseDiff(
+              kind,
+              rowsBefore,
+              rowsAfter,
+              counterBefore,
+              await counterSnapshot(old, kind),
+              verified,
+              registered,
+            );
+          }
           const blobsAfter = await blobSnapshot(blobRoot);
           if (
             [...blobsBefore].some(
@@ -1720,13 +2402,13 @@ export function createMinimalPageAcceptance(kind, options = {}) {
           const newBlobs = [...blobsAfter.keys()].filter(
             (path) => !blobsBefore.has(path),
           );
-          const blobMaximum = kind === 'EF_FEEDBACK' ? 2 : 0;
+          const blobMaximum = resumeMode ? 0 : kind === 'EF_FEEDBACK' ? 2 : 0;
           if (
             newBlobs.length > blobMaximum ||
             (verified && newBlobs.length !== blobMaximum)
           )
             blocked('BLOB_DIFF');
-          if (kind === 'EF_FEEDBACK' && verified) {
+          if (kind === 'EF_FEEDBACK' && verified && !resumeMode) {
             const newVersions = [
               ...rowsAfter.get('content_versions').keys(),
             ].filter((id) => !rowsBefore.get('content_versions').has(id));

@@ -1,92 +1,16 @@
-import { randomUUID } from 'node:crypto';
 import {
   expect,
   test,
-  type APIRequestContext,
   type Locator,
   type Page,
   type Route,
 } from '@playwright/test';
 import {
   createMinimalPageAcceptance,
-  createMinimalPageRequestBudget,
+  createPreservedEfRequestBudget,
+  preservedEfCheckpoint,
   type MinimalPageWindow,
 } from '../support/minimal-page-acceptance.mjs';
-
-const pdf = Buffer.from('%PDF-1.7\nEF001 exact synthetic bytes\n%%EOF\n');
-
-function dayShanghai(offset: number): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-  const date = new Date(`${parts}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + offset);
-  return date.toISOString().slice(0, 10);
-}
-
-async function expectStatus(
-  response: Awaited<ReturnType<APIRequestContext['post']>>,
-  expected: number,
-): Promise<Record<string, unknown>> {
-  expect(response.status()).toBe(expected);
-  return (await response.json()) as Record<string, unknown>;
-}
-
-async function uploadProof(
-  request: APIRequestContext,
-  headers: Record<string, string>,
-  caseId: string,
-  category: 'MAIL_RECEIPT' | 'EXECUTION_FILING_PROOF',
-  budget: ReturnType<typeof createMinimalPageRequestBudget>,
-  origin: string,
-): Promise<string> {
-  const draftBody = {
-    ownerType: 'CASE',
-    ownerId: caseId,
-    category,
-    purpose: category,
-    originalFilename: `${randomUUID()}.pdf`,
-    declaredMimeType: 'application/pdf',
-  };
-  budget.admit(
-    'POST',
-    new URL('/api/v1/materials/upload-drafts', origin).href,
-    draftBody,
-  );
-  const draftResponse = await request.post('/api/v1/materials/upload-drafts', {
-    headers,
-    data: draftBody,
-  });
-  const draft = await expectStatus(draftResponse, 201);
-  expect(typeof draft.id).toBe('string');
-  budget.setDraft(String(draft.id));
-  budget.admit(
-    'PUT',
-    new URL(
-      `/api/v1/materials/upload-drafts/${String(draft.id)}/content`,
-      origin,
-    ).href,
-    pdf,
-  );
-  const uploadResponse = await request.put(
-    `/api/v1/materials/upload-drafts/${String(draft.id)}/content`,
-    {
-      headers: { ...headers, 'Content-Type': 'application/octet-stream' },
-      data: pdf,
-    },
-  );
-  const uploaded = await expectStatus(uploadResponse, 200);
-  expect(uploaded.sizeBytes).toBe(43);
-  expect(uploaded.sha256).toBe(
-    'a920a7cdb0a855fa2f00a0991f9fde35c8db481f204e97dec56f07c917ebe29e',
-  );
-  expect(typeof uploaded.contentVersionId).toBe('string');
-  budget.setProof(category, String(uploaded.contentVersionId));
-  return String(uploaded.contentVersionId);
-}
 
 async function loginThroughUi(
   page: Page,
@@ -174,8 +98,9 @@ test('records and corrects execution court feedback through the real case page',
     throw new Error('Malformed managed minimal-page deadline metadata');
   const acceptance = createMinimalPageAcceptance('EF_FEEDBACK', {
     window,
+    mode: 'PRESERVED_EF_CHECKPOINT',
   });
-  const budget = createMinimalPageRequestBudget('EF_FEEDBACK');
+  let budget: ReturnType<typeof createPreservedEfRequestBudget> | undefined;
   let loggedIn = false;
   let preparedCaseId: string | undefined;
   let flowCompleted = false;
@@ -199,6 +124,7 @@ test('records and corrects execution court feedback through the real case page',
         ? captureFeedbackRequest(route)
         : undefined;
       try {
+        if (!budget) throw new Error('Preserved EF budget is not prepared');
         budget.admit(
           request.method(),
           request.url(),
@@ -225,7 +151,10 @@ test('records and corrects execution court feedback through the real case page',
 
   try {
     const prepared = await acceptance.prepare();
-    budget.setRunId(prepared.runId, prepared.actor.username);
+    budget = createPreservedEfRequestBudget(
+      prepared.runId,
+      prepared.actor.username,
+    );
     await acceptance.beforeLogin();
     let origin = '';
     const csrfToken = await loginThroughUi(
@@ -247,127 +176,31 @@ test('records and corrects execution court feedback through the real case page',
 
     expect(origin).toBeTruthy();
     expect(csrfToken).toBeTruthy();
-    expect(csrfToken).toBeTruthy();
+    const request = page.context().request;
     await expect(page).toHaveURL(/\/cases$/u);
     await expect(
       page.getByRole('button', { name: '退出登录', exact: true }),
     ).toBeVisible();
 
-    // The page context's request client shares the UI login cookies. All source
-    // setup is ordinary authenticated HTTP and uses the same CSRF token.
-    const request = page.context().request;
-    const headers = { Origin: origin, 'X-CSRF-Token': csrfToken };
-    const source = `minimal-page:${prepared.runId}:${prepared.actor.userId}`;
-    const externalEntryBody = {
-      idempotencyKey: randomUUID(),
-      entryKind: 'HISTORICAL_BACKFILL',
-      initialStage: 'WAITING_EXECUTION_STAMP',
-      stageReachedOn: dayShanghai(-6),
-      source,
-      reason: '独立EF页面验收来源',
-      customerId: prepared.fixture.customerId,
-      rightsHolderId: prepared.fixture.rightsHolderId,
-      defendants: [],
-      lawyerAccountId: null,
-      lawyerProfileId: null,
-      known: {
-        courtId: null,
-        courtCaseNo: null,
-        acceptedOn: null,
-        secondInstanceAcceptedOn: null,
-        platform: null,
-        shopName: null,
-        shopExternalId: null,
-        caseType: null,
-        infringementTypes: null,
-      },
-    };
-    budget.admit(
-      'POST',
-      new URL('/api/v1/cases/external-entries', origin).href,
-      externalEntryBody,
-    );
-    const createdResponse = await request.post(
-      '/api/v1/cases/external-entries',
-      {
-        headers,
-        data: externalEntryBody,
-      },
-    );
-    const created = await expectStatus(createdResponse, 201);
-    expect(typeof created.id).toBe('string');
-    expect(typeof created.version).toBe('number');
-    preparedCaseId = String(created.id);
-    budget.setCase(preparedCaseId);
-    await acceptance.registerCase(preparedCaseId);
+    preparedCaseId = preservedEfCheckpoint.caseId;
     budget.admit(
       'GET',
       new URL(`/api/v1/cases/${preparedCaseId}`, origin).href,
     );
-    const createdDetailResponse = await request.get(
+    const checkpointResponse = await request.get(
       `/api/v1/cases/${preparedCaseId}`,
     );
-    expect(createdDetailResponse.status()).toBe(200);
-    const createdDetail = (await createdDetailResponse.json()) as {
+    expect(checkpointResponse.status()).toBe(200);
+    const createdDetail = (await checkpointResponse.json()) as {
+      id: string;
       businessNo: string;
       stage: string;
       version: number;
     };
-    expect(createdDetail.stage).toBe('WAITING_EXECUTION_STAMP');
-    expect(createdDetail.version).toBe(created.version);
-    expect(createdDetail.businessNo).toBeTruthy();
-
-    const mailProofId = await uploadProof(
-      request,
-      headers,
-      preparedCaseId,
-      'MAIL_RECEIPT',
-      budget,
-      origin,
-    );
-    const mailPath = `/api/v1/cases/${preparedCaseId}/execution-mail`;
-    const mailBody = {
-      expectedVersion: created.version,
-      idempotencyKey: randomUUID(),
-      expectedConfirmationId: null,
-      mailedAt: dayShanghai(-5),
-      mailReceiptContentVersionIds: [mailProofId],
-    };
-    budget.admit('POST', new URL(mailPath, origin).href, mailBody);
-    const mailedResponse = await request.post(mailPath, {
-      headers,
-      data: mailBody,
-    });
-    const mailed = await expectStatus(mailedResponse, 201);
-    expect(typeof mailed.mailingId).toBe('string');
-    expect(typeof mailed.version).toBe('number');
-    budget.setMailing(String(mailed.mailingId));
-
-    const filingProofId = await uploadProof(
-      request,
-      headers,
-      preparedCaseId,
-      'EXECUTION_FILING_PROOF',
-      budget,
-      origin,
-    );
-    const filingPath = `/api/v1/cases/${preparedCaseId}/execution-filing-submit`;
-    const filingBody = {
-      expectedVersion: mailed.version,
-      idempotencyKey: randomUUID(),
-      expectedMailingId: mailed.mailingId,
-      submittedAt: dayShanghai(-4),
-      executionFilingProofContentVersionIds: [filingProofId],
-    };
-    budget.admit('POST', new URL(filingPath, origin).href, filingBody);
-    const filedResponse = await request.post(filingPath, {
-      headers,
-      data: filingBody,
-    });
-    const filed = await expectStatus(filedResponse, 201);
-    expect(typeof filed.filingId).toBe('string');
-    expect(filed.version).toBe(3);
-    budget.setFiling(String(filed.filingId));
+    expect(createdDetail.id).toBe(preparedCaseId);
+    expect(createdDetail.businessNo).toBe(preservedEfCheckpoint.businessNo);
+    expect(createdDetail.stage).toBe('EXECUTING');
+    expect(createdDetail.version).toBe(3);
 
     const caseLink = await refreshCasesAndFindBusinessNo(
       page,
@@ -420,7 +253,9 @@ test('records and corrects execution court feedback through the real case page',
         feedbacks: Array<{ feedbackId: string; current: { revision: number } }>;
       };
     };
-    expect(afterFirst.executionFilingFollowups.filingId).toBe(filed.filingId);
+    expect(afterFirst.executionFilingFollowups.filingId).toBe(
+      preservedEfCheckpoint.filingId,
+    );
     expect(afterFirst.executionFilingFollowups.feedbacks).toEqual([
       expect.objectContaining({
         feedbackId: firstResult.feedbackId,
@@ -472,7 +307,7 @@ test('records and corrects execution court feedback through the real case page',
     await acceptance.verifyEfResult(
       preparedCaseId,
       firstResult.feedbackId,
-      String(filed.filingId),
+      preservedEfCheckpoint.filingId,
     );
 
     await page.reload();
@@ -518,7 +353,7 @@ test('records and corrects execution court feedback through the real case page',
         expect(closed.revoked).toBe(true);
         expect(closed.fallback).toBe(false);
         expect(closed.logoutSucceeded).toBe(true);
-        budget.assertComplete();
+        budget?.assertComplete();
       }
     } catch (cause) {
       cleanupError = cause;
@@ -529,7 +364,8 @@ test('records and corrects execution court feedback through the real case page',
           contentType: 'application/json',
           body: Buffer.from(
             JSON.stringify({
-              counts: budget.counts(),
+              priorConsumed: budget?.priorConsumed,
+              counts: budget?.counts(),
               budgetGuardError,
               requests: feedbackRequests,
             }),
