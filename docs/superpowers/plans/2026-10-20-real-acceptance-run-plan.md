@@ -110,3 +110,75 @@ CL pin仍null；未来owned／runtime分别需要真实批准收据、完整执�
 | 服务与保持 | 最终匹配源码正常生成／构建；仅获批时由protected入口启动3101／5174，冲突就停，不换端口或关人工服务。启动前有限核后台清理／调度资格；原R2、ca015、H42、旧事实／文件全部不动。保留本批新事实，不reset、回滚成功业务、删文件或恢复撤权。                                                                                                                                                                             |
 
 20／21上限、跨部门、真实并发／故障回滚、动态撤权等其余边界单列后续缺口，纯测试不冒PG证明。案件CSV导出的CASE_EXPORT、新公证Action与所需合法源不在上述7Grant或48请求内；要真实验证时另批有限切片。本草案未创建任何身份、权限或源事实，也未启动服务、登录、上传或测试。
+
+## 2026-10-20 LD008最小核心验收固定提案（待用户一次确认）
+
+本节取代上一节的3身份／48请求草案；只准备提案与本地合成材料，**尚未获准执行**。目标是一次真正的“两条线索整批不取证归档＋原键复核”，不加入额外反例、公证、CSV导出、旧R2或其他模块验收。不需要用户提供任何真实个人资料、既有业务账号或口令；唯一需要用户补充的是是否批准本节完整范围。
+
+### 固定候选与隔离目标
+
+- 固定业务代码 `c92ad7ae347417548fa282131001f8d2ace16066`／tree `5254bb354916978193fe86185db79e64054fed3b`，19源已累计独立复审0；本提案新增内容仅文档／本地材料，不改变代码。
+- 原acceptance目录当前仍7bef339f；获准后仅将其正常更新到上述固定候选，复用既有锁定依赖和环境，正常Prisma生成／prepared双构建；不复用别树dist，不运行完整verify／NT006或新owned风险工程。
+- 唯一目标 `dev-cor-csv-export-acceptance`／CID `d9a68d83abb972297d6af23a00a3e491c3b402fb3cd684c38e1a25f9f090e446`／`127.0.0.1:15439/dev_cor_test`／卷 `dev-cor-csv-export-acceptance-pgdata`。镜像、CID、端口、卷、169账本及空业务基线须现场匹配；退出／不健康／端口或锁冲突就停，不自动启动数据库、另建库、换端口或动R2。
+- 正常官方`pnpm db:test:migrate:deploy`仅1次，169→170。170为`20261020100000_lead_no_evidence_batch`，raw SHA `27dddb50de8dbeb164fbfc0f0d4b30ac4fdf0e4b25f666ba8206abc7bff531bd`；仅新增专用批次回执表、唯一键／外键、不可变与事实／逐项typed回执／audit一致性守卫。原169字节不变，不手工改账本、不重跑169；失败或结果不明即停，不resolve／retry／改SQL。
+- 本提案直接在无业务历史的新169库验证该增量和核心流程；不冒称覆盖170全新空链、带历史升级、故障注入／并发或完整正式门禁。
+
+### 身份和主数据：最多18行有限fixture，分两次事务
+
+本地固定对象manifest为`.local/lead-no-evidence-batch/minimal-core-proposal/fixture-and-material-manifest.json`，runId `9e3e6ad9-746a-4985-8bc6-642d2762e7d7`；该manifest raw SHA 8daa58104a30db09d65b2ac307959c1c9a5d2f5108ffa31c1ff5ed68949b5a13；全部UUID／名称／动作及材料hash已在其中列明，只有API返回的Lead／CV／回执ID在运行时按本批来源登记。不使用“发现其他可用身份”的备用方案。
+
+| 有限fixture关系                              | 最多新行 | 创建时点与限制                                                                                                   |
+| -------------------------------------------- | -------: | ---------------------------------------------------------------------------------------------------------------- |
+| departments                                  |        1 | 唯一合成部门，不建team                                                                                           |
+| user_accounts                                |        2 | 1 INTERNAL主操作员、1 CLIENT；active，authorizationRevision=1                                                    |
+| local_credentials                            |        2 | 每身份1条；批准后才在内存生成两个新合成口令，调用现有password helper；仅用户Temp私密交接，不输出／提交口令或hash |
+| department_memberships                       |        1 | 仅主操作员，teamId=null                                                                                          |
+| role_templates／role_assignments             |     1＋1 | 唯一主操作角色及其INTERNAL绑定，version=1，不给CLIENT内部角色                                                    |
+| role_grants                                  |        6 | 精确DEPARTMENT：customer.read、customer.admit、lead.read、lead.create、lead.push、lead.evidence.decide           |
+| customers                                    |        1 | 合成DRAFT、version1、主操作员负责；不预置准入身份、冻结快照、联系人兼容投影或ADMITTED                            |
+| rights_holders／customer_rights_holder_links |     1＋1 | 合成主体及同部门／同客户唯一关联                                                                                 |
+| customer_account_bindings                    |        1 | 仅真实admission成功后，绑定本批CLIENT到本批唯一客户                                                              |
+
+启动应用前第一次事务仅INSERT其中15行（不含CLIENT的user／credential／binding）；真实客户准入后，第二次事务仅INSERT后3行。合计最多18，不upsert、不UPDATE／DELETE任何既有身份或Grant，不生成虚假业务audit。CLIENT无需user.manage或其他管理权限，本有限fixture创建本身纳入本次申请。任何已占用UUID／用户名或额外既有业务数据均停止，不换对象重建。
+
+客户类型用OTHER_ORGANIZATION，证件类型ORGANIZATION_REGISTRATION_CERTIFICATE，号码仅`SYNTHETIC-LD008-<runId>`，有效期NOT_STATED；联系人名为合成值，邮箱`ld008-contact@example.invalid`，不使用真实电话。联系人不直接fixture插入，由真实admission首次创建：最多1 customer_contact及1初次contact_version，并正常建立兼容投影／冻结快照。
+
+### 已固定的唯一文件与合法业务来源
+
+纯合成PDF已在本地生成：`.local/lead-no-evidence-batch/minimal-core-proposal/synthetic-customer-identity.pdf`，**684bytes**，1页，SHA256 `ad7a4f6a311d0f909da88e023094068f6e881e0c9506de11101758c1d8e1a74b`。页面只含“SYNTHETIC TEST ONLY”“NOT VALID FOR IDENTIFICATION”等ASCII测试字样，无真人资料、签章、JavaScript或外部资源。已固定PDF1.4原字节，不是实际身份证明，也未上传。
+
+合法源仅按正常API形成：
+
+1. INTERNAL一次正常登录。以CUSTOMER／本客户ID、CUSTOMER_IDENTITY／IDENTITY_FULL、application/pdf创建一个upload-draft，再PUT上述684bytes；最多1 draft／material／CV和1物理文件。
+2. POST本客户admission一次：expectedVersion1、上述合成组织身份、联系人姓名／邮箱、唯一真实返回CV；不传admissionContactId，由正式服务创建首联系人。成功客户version2／ADMITTED，最多1 admission_receipt及正式引用／audit。
+3. 插入前述CLIENT三行fixture，再由CLIENT正常登录；两次POST /leads，各建1条、各1商品。caseType=CIVIL、infringementTypes=[TRADEMARK]、source=ONLINE、platform=OTHER、foundAt=本阶段开始ISO时间；两合成店铺；每商品quantity1／unitPrice1.00／commentCount0，无外部URL、截图或真实商户资料。
+4. INTERNAL一次POST /leads/batch-push提交这两条version1；CLIENT分别一次POST /client/leads/:id/reviews，expectedVersion2、result=INFRINGEMENT且无reason。得到两条真实WAITING_EVIDENCE_DECISION／version3源，不直接SQL造审核、推进、归档、成功回执或Case。
+
+正常API派生的商品快照、审核、audit、typed回执／批推回执与编号计数，仅限这两条Lead及本客户；正常编号计数至多涉及两个Shanghai业务日期键、合计递增2（覆盖跨日边界），不手工修改。禁止增加第三条线索、文件、公证、费用或Case。
+
+### 核心页面与有限HTTP：最多44次
+
+原Runner复用既有protected入口、正常CSRF／session和预算记录方式，不新增通用执行器；workers1、retries0、程序请求不自动跟随redirect。两个身份只各登录一次，各持自己的内存cookie；主操作员页面复用本轮自己的已认证上下文，不读旧storageState。只打开一次正常线索列表 http://127.0.0.1:5174/leads?page=1，选择上述两条，逐项fresh详情／能力后填写两条固定合成原因（原字符串含首尾空格）；取消一次应零command，再重新打开确认整体后果并真正保存。两次打开均仍绑定同两条及当前版本，不换对象。
+
+| 程序请求类别           | 上限 | 精确用途                                                                                                                                                                   |
+| ---------------------- | ---: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 源业务POST             |    6 | customer admission1、Lead create2、batch-push1、CLIENT reviews2                                                                                                            |
+| batch-no-evidence POST |    2 | 页面原请求一次201；随后同一INTERNAL在内存会话中以捕获的完整原body／Idempotency-Key程序重放一次201，结果逐字段一致且零新增事实                                              |
+| 上传                   |    2 | upload-drafts POST1（201）＋原content PUT1（200），唯一684bytes PDF                                                                                                        |
+| 登录／退出             |    4 | 两身份各POST login1／logout1；最多2个新session，正常退出及既有节流键维护如实记录，不另行删除session或清理节流表                                                            |
+| 普通业务GET            |   30 | 本批auth/session、Lead列表／form-context／精确两条详情、CLIENT两条读取及客户本对象的必要读取；含主布局正常导航／计数能力探测和归档后列表回读，不再全页reload或巡游其它模块 |
+| 合计                   |   44 | 8业务POST＋2上传＋4认证＋30GET；其中业务新增成功写主要为6源命令和1归档命令，第二归档请求只能重放，不新增归档事实                                                           |
+
+主布局对未授权组织管理／律师／公证／案件／证物等入口的正常GET探测可返回403，作为已知隐藏能力结果记录，不补Grant；结算／日历允许正常空能力／空计数响应或其现有授权403；只限主布局初始化探测。这些属于30 GET内，不主动访问相关业务页面。核心路径任一403、500、契约不符、超额或redirect均为异常立即停。2次batch请求不制造丢响应／unknown；网络未知时保留原body/key并停，不消费第二次额度作盲目重试。
+
+成功判定为：两条均ARCHIVED／version4，原客户INFRINGEMENT审核保持；新增恰2个不取证决定、2份原typed evidence_decide回执和1份批次回执及对应真实audit，原因等于原输入trim，页面显示真实成功后以原筛选分页回读；第二同键结果与首次逐字段一致，前述计数／版本／历史完全不再变化。任一步未成立就FAIL，不把HTTP201当整条通过。拒绝旧版本、只读403、20／21上限、跨部门／撤权／并发等额外反例本次全部后移。
+
+### 普通只读保持核、服务期限与结束方式
+
+- 只用原Runner既有capture／锁及普通REPEATABLE READ READ ONLY快照；最多4个阶段快照、每阶段至多32 SELECT，合计128，每句5秒、每阶段2分钟。这里限制独立验收SQL，不把正常Prisma／HTTP内部SQL冒充额外手工额度。
+- S0部署前核固定CID／URL／schema／169全ledger及无额外失败／未完行、空业务基线、无清理／调度候选；S1在170＋首15 fixture后核170精确名称／checksum／完成状态及18行计划中的当前15行、旧ledger不变；S2在真实源准备和CLIENT三行fixture后核18行归属／6Grant、两Lead v3、真实客户审核和唯一材料；S3在两POST及正常退出后核前述终态／零重复／身份权限保持、684bytes实文件SHA／size、正常session维护、无意外候选／owned schema。
+- 只读关系限账本／本批安全身份和本批客户／联系人／主体关联、两条Lead及其商品／审核／决定／receipt／audit、单文件draft／material／CV／reference、正常auth_sessions／节流及至多两个日期编号键；不读取密码／token／cookie明文，不扫描R2、全磁盘或私密备份。不造一套全库验收工程。
+- 固定应用后端3101、前端5174，仅loopback；端口占用就停，不停止人工服务或更换端口。启动前准备（代码／正常生成构建／单次170／首fixture及核验）最多15分钟。**从启动第一个应用进程到两服务、页面／API上下文与本批检查连接全部结束最多30分钟**，包含登录、业务、退出、S2／S3和正常health等待；整个业务执行最多45分钟。到期终止自身运行、保存结果，不延长、不增加重试。
+- 静态JS／CSS／页面、favicon以及既有managed health检查只限本次两个loopback服务、同一30分钟生命周期、一次线索页面核心流程；不为每个静态资源新建计数器，不加载外部站点或开展额外页面。现有test env／PRIVATE_FILE_ROOT保持本acceptance目录，不复制R2材料／口令／登录态。
+- 保留新库／卷、18行fixture、全部真实业务、正常认证维护及唯一文件；不reset、DROP、回滚成功业务、删文件、撤销／恢复Grant。结束仅正常logout与关闭自身服务／连接／锁；原始含凭据的trace／响应仅用户Temp私密目录，普通报告只脱敏字段及路径／SHA。异常／不确定写入时立即停并保留，不自动重做、补角色、换key或造备用数据；必要的正常退出／关闭属于结束额度，不能继续业务。
+- 本提案不含新数据库start、owned DDL、故障注入、完整verify／NT006、导出、公证、生产／预览、push或应用发布；唯一待批测试迁移仅为上文169→170。没有必须由用户另给的个人信息／凭据／业务规则；只待对本完整最小范围的新批准。
