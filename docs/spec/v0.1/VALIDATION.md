@@ -1,5 +1,27 @@
 # SPEC-001 文档验证
 
+## 2026-10-20 线索批量不取证归档离线交付与新169环境
+
+固定组合源码候选为 `b14d6840baf29b639bbc2a4d1c622a9f06db8dde`，tree `5bc84c692086d3de356a259e60ce938dc96e9ad7`。原后端11文件v2提交 `1486369001da2411e2aa2e976469b8fe612d8fe5`、前端8文件提交 `8b23607ccdb0e2df04eef1bdee8b8a52d0fbec33`，主控普通接入，无冲突；19份raw逐一等于原独立审清单。原169份迁移Git内容全部未改，仅新增 `20261020100000_lead_no_evidence_batch`（raw SHA `27dddb50de8dbeb164fbfc0f0d4b30ac4fdf0e4b25f666ba8206abc7bff531bd`），170只编写未执行。
+
+实现沿[冻结合同](../../superpowers/specs/2026-10-20-lead-no-evidence-batch-contract.md)：有权运营对明确选中1～20条待确认且原客户审核为INFRINGEMENT的线索一次Serializable事务归档，逐项原因／事实／审计／原typed回执和专用不可变批次回执关联；锁按UUID顺序，返回原请求顺序。原保存对象当前真实权限先于原key结果重放，未知时保留原有序body／key，不根据已归档状态误阻原请求核实。前端逐项fresh能力、逐条原因、整体后果确认、持久化先于POST、单条／批推／CSV互斥及完整路由／身份／授权代际隔离均接线。
+
+原Reviewer先审公开三契约及前端8文件，再累计后端11文件、修复diff及实际主控19源组合。M-LD008-01为新批后端接受INTEGER最大值而成功需要+1；作者真实RED两反例后仅修新批DTO／服务及两份直接spec，统一上限2147483646，原单条／批推未扩改。v2清单 SHA `5b6a14180fe542d5aabdf59388421abd1e7e7677d497cff5c409c2a47ef574dc`；最终Spec／Quality均ACCEPTED、C/I/M0。两作者及原Reviewer的宿主turn_context已核gpt-6.1-sol；仅模型请求不当实际模型。Reviewer只读源码，不把其结论当真实PG或页面结果。
+
+| 主控实际检查   | 候选、结果及证据边界                                                                                                                                                                |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 后端直接纯回归 | b14d6840明确12 suite／309项通过，覆盖新batch DTO／controller／service、原单条不取证／Lead服务／controller、批推DTO／service、CSV三类及OpenAPI；未选择NT006或迁移实库测试。          |
+| 前端直接纯回归 | 39f0904a明确10 files／151项通过，包含新API／recovery／Panel／LeadList及原单条、批推、CSV和其恢复。随后只接后端，341份前端／工具相关输入raw全部未变，限定复用到b14，不冒称再次执行。 |
+| Prisma与静态   | 主控schema正常validate／generate 7.10.0均通过，不连接DB。b14的check:fast:prepared通过：架构18模块／170模型、前端／后端／根prepared类型及全仓ESLint。                                |
+| 格式           | 17份受改TS／Vue／MJS的Prettier检查通过；schema／SQL原字节以清单核对，不运行normalize。                                                                                              |
+| 构建           | 同b14源码后端prepared和前端bundle均实际通过；Vite大于500KiB chunk警告保留，未改阈值。构建产物未带入169冻结运行树或发布。                                                            |
+
+精确源清单、实际日志、模型元数据、原RED／作者旧289及后续47结果的引用边界在主控`.local/lead-no-evidence-batch/`；作者计数不加算为新主控同轮测试。两个原作者树clean并停写，旧notary／CSV／CL运行helper与ca015不动。本片没有实际归档或页面成功回执；完整verify包含NT006，未获本片运行授权，因此未执行或标成完整门禁通过。
+
+另一路获批新隔离库已由原Runner固定7bef339f完成：project `dev-cor-csv-export-acceptance`、`127.0.0.1:15439/dev_cor_test`、独占卷保留healthy；一次正常官方deploy退出0，169／169 finished、rollback0及全部checksum匹配。47份普通证据bytes／SHA已由主控只读回读；summary SHA `1c3e2d676e2ec8803525c5c7dcfe96987b1bd57186e78f99f4065ee3bd153f04`，manifest SHA `e85873f6a03c67ce06fe3df42c6ac4770427b5ca1cce7329a11ddb869853aa7b`。业务账号、凭据、角色、Grant、session和业务事实均0；无R2连接／复制、登录、应用服务或真实测试。Runner durable实际模型不可核实，不能与已核三本地Task混称。该证据只证明新空库169全链，不能证明170、保留升级、回滚／并发、CSV导出或归档页面。
+
+后续最小账号／精确Action／合法源／请求预算已经[单列为未批准草案](../../superpowers/plans/2026-10-20-real-acceptance-run-plan.md#2026-10-20-新15439环境结果与批量不取证归档后续申请草案)：新3业务身份、2角色7Grant、有限DRAFT主数据fixture与真实admission／推送／客户审核；程序HTTP候选48须最终脚本复核，170部署／owned风险／NT006和服务另列。Reviewer指出的DRAFT源创建方式与只读403路径两处草案缺口已澄清。未创建这些对象或消耗此预算，旧耗尽额度不恢复；未push／合main／部署或改生产／预览。
+
 ## 2026-10-20 公证与案件CSV导出组合离线交付
 
 固定业务源码候选为 `41d8a921ae717655fb2df8d1ceb6b1feef3f98e6`，tree `19881826cfff8fdf0020c939f6af2b634e6ef69a`。基于开发34b1560c，正常接入原公证d8ab9b3e（39源）与导出七文件8ef0f243、后端六文件90e2255c、前端六文件414c7e03；累计51个不同源文件。公证原窗口625项及源码独立审0只属于其34b组合，主控先核1257非文档raw全同再合入，未将它加算为当前新运行项。

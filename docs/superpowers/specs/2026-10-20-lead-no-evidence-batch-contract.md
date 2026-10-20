@@ -12,7 +12,7 @@
 
 ## 冻结HTTP与前端接口
 
-- POST /api/v1/leads/batch-no-evidence，正常INTERNAL认证／CSRF，Idempotency-Key必需且沿单条校验，成功201。body仅{items:[{leadId,expectedVersion,reason}]}；1～20，UUID身份大小写去重，版本正整数及现有存储界限；拒空、重复、超限、result/status/actor/department等异锚或未知字段。
+- POST /api/v1/leads/batch-no-evidence，正常INTERNAL认证／CSRF，Idempotency-Key必需且沿单条校验，成功201。body仅{items:[{leadId,expectedVersion,reason}]}；1～20，UUID身份大小写去重，expectedVersion为1..2147483646，给成功+1保留INTEGER空间；拒空、重复、超限、result/status/actor/department等异锚或未知字段。
 - response仅{items:LeadEvidenceDecisionResult[]}，每项复用原单条完整结果：id/leadId/status=ARCHIVED/version/result=NO_EVIDENCE/reason/decidedByDisplayName/decidedAt/archiveType=NO_EVIDENCE/archivedAt；条数及顺序精确对应请求，无伪造成功、部分结果或额外ID。
 - 新frontend/src/api/lead-no-evidence-batch.ts/.spec.ts，导出LeadNoEvidenceBatchInput、LeadNoEvidenceBatchResult和decideLeadNoEvidenceBatch(input, options?:RequestOptions)。key沿RequestOptions.headers传入，原有序body／文本与原key快照；严格decoder按真实DTO，POST禁自动业务／CSRF重试，不写共享http.ts或既有leads.ts。
 - 原列表使用当前明确选择，打开时逐项fresh getLead核真实capabilities.evidenceDecide、版本及原审核状态；非法项明确指出且整批不可提交。展示业务可读编号／名称、每项原因及归档后果；不从全局catalog、职级或read推写权限。

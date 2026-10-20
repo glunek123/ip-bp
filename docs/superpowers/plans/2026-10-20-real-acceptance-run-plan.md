@@ -85,3 +85,28 @@ CL pin仍null；未来owned／runtime分别需要真实批准收据、完整执�
 证据位于原ca015 `.local/manual-test/acceptance-run-plan-20261020/qualification-runs/2026-10-20T045403624Z-d1c54985-61da-4944-ac00-66e69e436f66/`。summary SHA256 `8b09db001c96a3213c93426b0109408cfd35ed71f10d55def148d36432a21687`，manifest SHA256 `939d6506aae086a1826d34fb74987a4cfbeb8fbdca88ae094c9e314439df9245`；主控仅本地回读14项artifact的bytes／SHA均相符，没有额外查询。许可已用毕，不自动重跑或进入CL真实验收。
 
 下一步仅整理可先验的核心功能与隔离合成数据最小方案，不再增加资格盘点／框架。特殊字符和法院号正样本可后置，不能通过改旧案／补权限让全套gate勉强通过；未批准任何新凭据、资源或写库。原公证并行离线集成派发未送达（AbsolutePathBuf路由错误），独立业务准备已核既有计数／结算／证物不重做，受权清单导出需先明确权限、字段及快照上限。
+
+## 2026-10-20 新15439环境结果与批量不取证归档后续申请草案
+
+本节与上文R2资格／CSV166／CL167执行单分开。用户随后批准固定7bef339f新建隔离169库；原Runner已经完成，不能再按“准备”重复执行。本节后续业务预算仍未获批准，不恢复旧耗尽额度。
+
+新目标为project `dev-cor-csv-export-acceptance`，CID `d9a68d83abb972297d6af23a00a3e491c3b402fb3cd684c38e1a25f9f090e446`，`127.0.0.1:15439/dev_cor_test`，独占卷 `dev-cor-csv-export-acceptance-pgdata`，锁定PostgreSQL17.11。固定acceptance目录仍为7bef339f／treef040f723，未接入本批新170。一次正常官方`pnpm db:test:migrate:deploy`退出0，169份名称／checksum／finished全部匹配、rollback0；容器healthy并保留。业务账号／凭据／角色／Grant／session及业务事实均0；Postgres初始化的DB连接角色不等于业务账号。未连接或复制R2数据，没有启动应用服务、登录、测试或真实导出／归档。
+
+普通证据在acceptance树`.local/csv-export-acceptance-169-20261020/continuation/`，summary SHA `1c3e2d676e2ec8803525c5c7dcfe96987b1bd57186e78f99f4065ee3bd153f04`、47份普通artifact manifest SHA `e85873f6a03c67ce06fe3df42c6ac4770427b5ca1cce7329a11ddb869853aa7b`。主控已逐份回读bytes／SHA，未为收口再发Docker／PG请求。初次context在安装前因依赖准备顺序停止的记录保留；一次正常离线安装后才续办，真正deploy仅1次。Runner模型参数请求6.1-sol，durable实际模型不可核实；不以参数冒称实际模型。两作者及独立Reviewer的宿主turn_context则已核gpt-6.1-sol。
+
+### 下一次最小真实纵向范围（未批准、未执行）
+
+仅建议先验证CORE-LD-008，不把案件导出、公证或旧CSV真实验收拼入。需由原Runner结合最终源码／脚本，固定对象manifest、Action、上传bytes、每条payload／原key和请求上限，再提交独立运行申请；本页数值是可审阅草案，不是可执行准入。
+
+| 项目       | 建议最小范围与必须披露的影响                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 数据库     | 对已保留的新15439库另批一次169→170官方部署；169额度已消耗，不重建空库。170空链／保留升级、真实回滚／锁／触发器风险仍缺PG证据；如需owned专项或完整verify中的NT006，另列DDL／fixture／清理范围，不能夹在纯测试中执行。                                                                                                                                                                                             |
+| 新身份     | 1部门、3个合成业务身份：INTERNAL主操作员、INTERNAL只读反例、绑定唯一合成客户的CLIENT；仅创建其必需credential／membership／assignment。2个内部角色，拟共7条DEPARTMENT Grant。不存在可直接登录的新库旧账号，不借R2账号或旧口令。                                                                                                                                                                                   |
+| 精确Action | 主角色6项：`customer.read`、`customer.admit`、`lead.read`、`lead.create`、`lead.push`、`lead.evidence.decide`；只读角色仅`lead.read`。CLIENT仅正常客户主体绑定。此有限身份fixture本身须批准；若改走正常账号管理API，则先核额外`user.manage`需求，不自动加权。                                                                                                                                                    |
+| 合成源     | 明确拟用有限fixture仅INSERT：1个DRAFT客户及1联系人、1权利主体／关联，逐项ID和字段列入待批准manifest；不通过未预算的客户创建／编辑API，不授customer.create-draft或customer.edit-routine。1份≤1KiB固定合成CUSTOMER_IDENTITY PDF，未来先钉bytes／SHA。通过真实客户admission，不SQL伪造ADMITTED。2条新Lead、各1商品、截图数组为空；正常批推后由CLIENT对两条分别真实INFRINGEMENT审核，不SQL伪造审核、归档或成功回执。 |
+| 准备请求   | 上传draft POST＋content PUT共2次；客户admission POST1、Lead create POST2、batch-push POST1、client review POST2，共6次源业务POST。准确route与payload须以最终正常Controller／DTO和冻结脚本复核。                                                                                                                                                                                                                  |
+| 核心归档   | 拟4次batch POST：混入一个旧version的整批拒绝；页面正确提交；同原body／key显式核实（可在首成功后丢响应）；只读身份直接程序POST403，核服务器零写；页面fresh capability会提前阻止新提交，不把它冒作页面已发403，也不借主操作员pending或预置客户端恢复记录。分别核零部分写、两项真实事实／审计／typed回执／批次回执、重复请求零新增和原列表状态。                                                                    |
+| 登录与读取 | 拟至多3次正常登录／3次退出；披露新session及正常节流维护。程序GET拟上限30，必须由最终页面步骤核实后冻结。草案业务POST10＋上传2＋认证6＋GET30＝48次程序HTTP；静态资源及正常受管health检查另行列项，不能冒称纳入48或无限放行。                                                                                                                                                                                      |
+| 服务与保持 | 最终匹配源码正常生成／构建；仅获批时由protected入口启动3101／5174，冲突就停，不换端口或关人工服务。启动前有限核后台清理／调度资格；原R2、ca015、H42、旧事实／文件全部不动。保留本批新事实，不reset、回滚成功业务、删文件或恢复撤权。                                                                                                                                                                             |
+
+20／21上限、跨部门、真实并发／故障回滚、动态撤权等其余边界单列后续缺口，纯测试不冒PG证明。案件CSV导出的CASE_EXPORT、新公证Action与所需合法源不在上述7Grant或48请求内；要真实验证时另批有限切片。本草案未创建任何身份、权限或源事实，也未启动服务、登录、上传或测试。
