@@ -1,5 +1,7 @@
 # 当前开发状态
 
+2026-10-20 用户05:06:56 UTC明确同意案件列表CSV导出首片，现CORE-CL-002（UXQ-04B首片）由原后端Sol与原UI Luna在独立case-list-csv-export-backend／frontend工作树并行实施；共同base34b1560c，旧CL成果／ca015／公证不动。冻结[最小合同](superpowers/specs/2026-10-20-case-list-csv-export-contract.md)：内部现有可见范围＋独立case.export、同步同快照最多1000行、七业务列、公式注入／编码／转义保护，新增权限目录0Grant，不做新统计或通用导出平台。原独立Sol已核接口合同无阻断矛盾，代码固定后补审；纯实现进行中，未执行真实导出／迁移／环境／权限变更。公证原任务路由仍未恢复，不把这次同意当其已启动。
+
 2026-10-20 固定v5只读资格已按用户04:51:17批准完成：原Runner04:54:03–06 UTC实际10SELECT、S08因数据不足跳过，QUALIFICATION_MISSING／exit2，无SQL异常。原R2／165账本／H42 active84Grant和rev2／96CV元数据匹配，观察窗内清理／调度候选0；原会话差异保持。缺的是3个forbidden候选的获准凭据引用，以及23案（mine3）法院案号全null和字面字符正样本0，完整query／page期望未生成。连接／锁释放、登录／服务／写入／迁移／权限／copy0；不继续盘点空字段，不改真实留存案，特殊字符边界不阻塞其他核心用例或无关模块。summary8b09db00…1687、manifest939d6506…245均本地核同。详情见[执行结果及下一步](superpowers/plans/2026-10-20-real-acceptance-run-plan.md)。
 
 CL源码仍clean aa0e33d76ed4b482687783c1b34eef46c03cfa90／tree7966e1b9da97cee7e9db5d6469a39f83689c83cd，六文件增量两轴0、18/18纯测及类型静态通过；本树先前正常build及874产物按编译输入不变复用，pin=null，未接ca015／main。CSV原目录clean9c04严格166原raw保持。并行原公证d8ab离线集成检查派发因AbsolutePathBuf路由错误未送达，不换路径重做；用户须在原公证窗口恢复。独立reports_business_scope已完成报表业务只读边界核对：现有列表计数／结算／证物不重做，受权筛选清单导出还需权限／字段／快照三项裁定，未编码新规则。原CL作者正只读拆分可先验核心与隔离合成数据方案，不新建验收框架或消耗旧额度。
@@ -277,7 +279,7 @@ S共享后端任务01a13eba-6a0b-74af-9ef0-852b446e40c0的首合同已独立冻�
 
 ## 当前任务
 
-**CORE-CL-001｜内部案件列表查询与账号列偏好。** 唯一Current与路线图一致，冻结契约见[实施合同](superpowers/specs/2026-10-19-case-list-query-preferences-contract.md)。原CORE-UI-003及以下正文保留历史恢复边界；新片不借用其真实验收预算。
+**CORE-CL-002｜案件列表受权CSV清单导出。** 唯一Current与路线图一致，范围与Owner见[最小合同](superpowers/specs/2026-10-20-case-list-csv-export-contract.md)。CORE-CL-001原查询／列偏好源码及真实验证待办继续保留；本片不复用旧额度，不改ca015或公证。
 
 **CORE-UI-003｜接续六栏已登记资料更正／精确附件上传（155三列表已验收交付）。** 远端main与任务分支、本地主main均实核b39b90e；155正常完整verify及同树9项通过仅覆盖三列表。后续独立section-record-edit-frontend-integration保留六目标精确Command/原body-key恢复、closure双锚、有效读取及专用附件首次消费闭环，E/H测试准入源审已关闭；156/157迁移及真实PG/浏览器仍未验收，开庭扫描竞争测试按本次明确40001诊断补矩阵。不得放宽人工Command或其它异常，不改生产隔离/即时重试/日期规则，预览81ebfed/150继续冻结。
 

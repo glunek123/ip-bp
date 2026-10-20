@@ -1,5 +1,7 @@
 # 功能开发路线图
 
+2026-10-20 用户05:06:56 UTC明确同意案件列表CSV导出首片，现CORE-CL-002（UXQ-04B首片）由原后端Sol与原UI Luna在独立case-list-csv-export-backend／frontend工作树并行实施；共同base34b1560c，旧CL成果／ca015／公证不动。冻结[最小合同](superpowers/specs/2026-10-20-case-list-csv-export-contract.md)：内部现有可见范围＋独立case.export、同步同快照最多1000行、七业务列、公式注入／编码／转义保护，新增权限目录0Grant，不做新统计或通用导出平台。原独立Sol已核接口合同无阻断矛盾，代码固定后补审；纯实现进行中，未执行真实导出／迁移／环境／权限变更。公证原任务路由仍未恢复，不把这次同意当其已启动。
+
 2026-10-19 本轮交付：HTTP会话隔离两文件原独立补审ACCEPTED C0/I0/M0，开发组合定向121/121和前端/根类型通过；EF旧批准换行补丁已接开发树2a5a84fc，21/21纯测试通过，运行树未动。CSV新helper的native发现两次进程前拒绝仍BLOCKED，[人工检查交接](superpowers/plans/2026-10-19-csv-discovery-manual-check.md)只准备、不代跑。下一独立Demo切片建议先冻结“案件列表查询/列偏好”：最小字段与排序白名单、空值口径、偏好保存位置/账号归属及明确文件Owner；INPUT-016原规划队列不是本片实施授权，当前不擅自开工，不混入统计/导出/批量归档或新权限。原CSV两项finding不重复实施，真实验收仍须独立有限准入。
 
 2026-10-19人工测试后只读基线续办完成：原runner首次自有查询误用不存在的material_references.ref_count而42703停止，原失败保留；依据真实schema修正后仅续材料小集合/物理字节和后台候选，未重做已完成165表哈希。当前全库快照为88Case、231Lead、96CV；材料续办96CV/110真实引用、377物理文件stream SHA/size及reparse检查完成，281未登记文件原样保留，材料四表与前次完整快照一致并明确两个时间窗口。开庭与材料清理四分支候选均0，H42保持84Grant、role/authrev2；0数据写入、清理、服务停启。续办summary SHA02f080c7600a50cd200b196924ab2c4dd50e5bf55168e458c85b86a25c0af4ee，manifest SHAb275935a2e2d0092dd5377f618fd669832a8fe6740f30cb5f328fb0e083e9d7e，证据在ca015的.local/manual-test/post-manual-baseline-20261019/continuation/。用户手测反馈问题尚未给细节，未记验收通过。后续实际实施另派原API窗口，仅http.ts/http.spec.ts修已登记迟到401与CSRF跨会话竞态；旧leads WIP保留，不改公证39源或运行环境。公证只读准备由独立子任务完成初稿，迁移语义/字面hash表达式勘误单独v2中，未以未冻结POST示意预算申请真实执行。
@@ -258,7 +260,7 @@ H专项Origin准备源码已由原Owner完成两文件纯修复（a6d3d59，47/4
 
 2026-10-19断连后的原任务／候选／验收队列核对见[任务对账](superpowers/plans/2026-10-19-task-reconciliation.md)。旧历史段落不替代本节唯一Current；未验角色、报表及全局详情页要求仍保留。历史日期倒序统计数量待核，不当作0，也不新增日期业务规则。
 
-**CORE-CL-001｜内部案件列表查询与账号列偏好（UXQ-04A，离线候选完成，真实验证待独立准入）。** 源码f2551344／tree423cb426含累计29源，原独立窗口两轴ACCEPTED、C/I/M0；组合前端11文件489项、类型／架构／定向静态／双构建通过，后端180与旧链纯测试49在795输入原字节一致后精确复用。API旧325是两文件集合，修后单文件321＋偏好5＝326，无测试删减。有限查询／稳定排序、账号／部门／流程桶的列偏好已实现，不把它扩成统计、导出或批量归档。范围仍见[冻结合同](superpowers/specs/2026-10-19-case-list-query-preferences-contract.md)，最终证据见VALIDATION，未来PG／迁移／页面及预算见[验证准备](superpowers/plans/2026-10-19-case-list-query-preferences-validation.md)。完整verify／NT006和真实验收未运行；旧CSV166、公证d8ab及ca015保留，CSV人工等待与策略拒绝不变。
+**CORE-CL-002｜案件列表受权CSV清单导出（UXQ-04B首片，已批准实施）。** 用户2026-10-20明确同意内部人员沿现有读取范围并检查独立导出权限、当前筛选最多1000行和固定七列，不自动授Grant。接口、同快照、CSV安全及唯一作者见[冻结合同](superpowers/specs/2026-10-20-case-list-csv-export-contract.md)。原Sol后端与原Luna前端已在两个独立工作树启动；代码及必要定向纯测试、固定候选独立审查待完成，不执行真实导出／迁移／账号授权。CORE-CL-001查询／列偏好源码及验收准备保持已交付，真实核心分片与完整边界待另批，不因本片重做已有计数／筛选；旧CSV、公证、ca015及权限原样保留。
 
 以下CORE-UI-003等为原任务恢复历史与既有验收边界，保留而不覆盖本批Current。
 
