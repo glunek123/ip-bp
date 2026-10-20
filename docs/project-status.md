@@ -1,5 +1,7 @@
 # 当前开发状态
 
+2026-10-20 用户恢复推进并优先询问真实验收／CSV卡点。已核昨晚clean e27628a0、原CL／客户详情WIP、公证clean d8ab、ca015 clean f6均保留；CSV人工脚本及七项绑定raw仍全匹配，依赖存在，未执行。CL专属六执行件已交原后端Task在独占case-list-query-acceptance离线准备，当前尚未完成代码／复审，不把active当已运行验收。CSV两次策略拒绝不重试，普通用户人工--list只解决发现；新真实动作先申请一次精确R2只读盘点，随后才冻结新预算。CL167与公证166并集168、完整verify内NT006写库边界均已静态重核；准确人工步骤和待批提示词见[验收阻塞交接](superpowers/plans/2026-10-20-acceptance-blockers.md)。本轮无DB／环境／HTTP／browser／迁移／Grant操作。
+
 2026-10-19 客户详情二级内容及按钮语义已离线交付：原UI唯一作者两文件，首审M-01同页书签外层可见性已补红绿并由原独立Sol关闭，Spec／Quality均ACCEPTED、C/I/M0。主控固定90bc74d6／tree d35e4e53实际11份相关组件183/183、check:fast:prepared及格式／Spec／严格context／diff全exit0；后续只补结果文档和快照。联系人与权利主体按原窗口回报的人类选择合并，两个旧hash保留；合作与负责人仍常驻、各组权限／草稿／pending／unknown保持。原CL六WIP保留，实际证据和未验边界见[验证记录](spec/v0.1/VALIDATION.md#客户详情二级内容与按钮语义2026-10-19离线交付)。无DB／环境／真实页面验收或新增额度；其他详情总体队列、CL真实验证、CSV拒绝均不因此关闭。
 
 2026-10-19 CL原验收任务的只读前置计划已完成并读回，SHA5a35c711…56e1b及五个源码锚点匹配，准确缺口已同步[验证准备](superpowers/plans/2026-10-19-case-list-query-preferences-validation.md)：完整verify内NT006真实DDL／fixture尚无新运行授权，CL167／CSV166需分开，专属helper／spec／config／数据与请求预算尚缺。仅ignored计划，不是运行授权。下一项拟选客户详情真正二级内容，向原UI任务的只读派发被自动审批拒绝，用户具体批准待回复，未启动／未换路重试；不能称新批并行开发已运行。
