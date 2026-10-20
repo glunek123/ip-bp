@@ -274,6 +274,11 @@ const context = {
       scopes: ['DEPARTMENT'],
     },
     {
+      action: 'CASE_EXPORT',
+      label: '导出案件清单',
+      scopes: ['DEPARTMENT'],
+    },
+    {
       action: 'CASE_MATCH',
       label: '匹配案件',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -564,6 +569,7 @@ describe('organization API', () => {
       'NOTARY_RETURN_ARCHIVE',
       'NOTARY_LIST_EXPORT',
       'CASE_READ',
+      'CASE_EXPORT',
       'CASE_MATCH',
       'CASE_EXTERNAL_ENTRY_CREATE',
       'CASE_EXTERNAL_ENTRY_ARCHIVE',
@@ -678,6 +684,25 @@ describe('organization API', () => {
           ]),
         },
       ],
+    });
+  });
+
+  it('accepts only a department-scoped CASE_EXPORT role grant', async () => {
+    const body = {
+      ...context,
+      roles: [
+        {
+          ...context.roles[0]!,
+          grants: [{ action: 'CASE_EXPORT', scope: 'DEPARTMENT' }],
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(body))),
+    );
+    await expect(getOrganizationManagementContext()).resolves.toMatchObject({
+      roles: [{ grants: [{ action: 'CASE_EXPORT', scope: 'DEPARTMENT' }] }],
     });
   });
 
@@ -947,6 +972,15 @@ describe('organization API', () => {
     },
     {
       ...context,
+      roles: [
+        {
+          ...context.roles[0],
+          grants: [{ action: 'CASE_EXPORT', scope: 'SELF' }],
+        },
+      ],
+    },
+    {
+      ...context,
       permissionCatalog: [
         ...context.permissionCatalog,
         context.permissionCatalog[0],
@@ -984,6 +1018,12 @@ describe('organization API', () => {
         item.action === 'CASE_EXTERNAL_ENTRY_ARCHIVE'
           ? { ...item, scopes: ['TEAM'] }
           : item,
+      ),
+    },
+    {
+      ...context,
+      permissionCatalog: context.permissionCatalog.map((item) =>
+        item.action === 'CASE_EXPORT' ? { ...item, scopes: ['SELF'] } : item,
       ),
     },
     {

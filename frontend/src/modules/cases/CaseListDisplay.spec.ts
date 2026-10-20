@@ -14,6 +14,14 @@ const api = vi.hoisted(() => ({
   getExternalEntryOptions:
     vi.fn<typeof import('../../api/cases').getExternalEntryOptions>(),
 }));
+const exportApi = vi.hoisted(() => ({
+  exportCsv:
+    vi.fn<typeof import('../../api/case-list-export').exportCaseListCsv>(),
+  capability:
+    vi.fn<
+      typeof import('../../api/case-list-export').getCaseListExportCapability
+    >(),
+}));
 const workflowTest = vi.hoisted(() => ({ markUnknown: false }));
 const preferenceApi = vi.hoisted(() => ({
   get: vi.fn(),
@@ -29,6 +37,11 @@ vi.mock('../../api/case-list-preference', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/case-list-preference')>()),
   getCaseListPreference: preferenceApi.get,
   saveCaseListPreference: preferenceApi.save,
+}));
+vi.mock('../../api/case-list-export', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/case-list-export')>()),
+  exportCaseListCsv: exportApi.exportCsv,
+  getCaseListExportCapability: exportApi.capability,
 }));
 vi.mock('./CaseListWorkflowPanel.vue', async (original) => ({
   ...(await original<typeof import('./CaseListWorkflowPanel.vue')>()),
@@ -233,6 +246,12 @@ beforeEach(() => {
       infringementTypes: [],
     },
   });
+  exportApi.exportCsv.mockResolvedValue({
+    blob: new Blob(['csv'], { type: 'text/csv' }),
+    filename: 'case-list.csv',
+    mimeType: 'text/csv',
+  });
+  exportApi.capability.mockResolvedValue({ canExport: false });
 });
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
@@ -857,5 +876,304 @@ describe('authorized internal case list display', () => {
     expect(wrapper.find('tbody').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('合成客户甲有限公司');
     expect(wrapper.text()).not.toContain('当前没有案件');
+  });
+
+  it('shows the export action only after the current internal actor capability resolves true', async () => {
+    exportApi.capability.mockResolvedValueOnce({ canExport: true });
+    const { wrapper } = await mountList();
+    expect(wrapper.get('[data-test="export-current-case-list"]').text()).toBe(
+      '导出当前筛选结果',
+    );
+
+    const { wrapper: deniedWrapper } = await mountList();
+    expect(
+      deniedWrapper.find('[data-test="export-current-case-list"]').exists(),
+    ).toBe(false);
+    expect(api.listCases).toHaveBeenCalledTimes(2);
+  });
+
+  it('exports only the applied route filters and revokes the local download URL', async () => {
+    exportApi.capability.mockResolvedValue({ canExport: true });
+    const { wrapper } = await mountList(
+      '/cases?view=department&stage=WAITING_ARCHIVE&q=已应用&sortBy=rightsHolderName&sortDirection=asc&page=1',
+    );
+    await wrapper
+      .get('[data-test="case-query-keyword"]')
+      .setValue('未提交草稿');
+    const createObjectURL = vi.fn(() => 'blob:case-list');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
+    vi.spyOn(
+      globalThis.HTMLAnchorElement.prototype,
+      'click',
+    ).mockImplementation(() => {});
+
+    await wrapper
+      .get('[data-test="export-current-case-list"]')
+      .trigger('click');
+    await flushPromises();
+
+    expect(exportApi.exportCsv).toHaveBeenCalledExactlyOnceWith(
+      {
+        view: 'department',
+        stage: 'WAITING_ARCHIVE',
+        q: '已应用',
+        sortBy: 'rightsHolderName',
+        sortDirection: 'asc',
+      },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(exportApi.exportCsv.mock.calls[0]?.[0]).not.toHaveProperty('page');
+    expect(exportApi.exportCsv.mock.calls[0]?.[0]).not.toHaveProperty(
+      'pageSize',
+    );
+    expect(exportApi.exportCsv.mock.calls[0]?.[0]).not.toHaveProperty(
+      '未提交草稿',
+    );
+    expect(createObjectURL).toHaveBeenCalledExactlyOnceWith(expect.any(Blob));
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:case-list');
+  });
+
+  it('allows only one export request for repeated clicks', async () => {
+    exportApi.capability.mockResolvedValue({ canExport: true });
+    let resolveExport!: (value: {
+      blob: Blob;
+      filename: string;
+      mimeType: string;
+    }) => void;
+    exportApi.exportCsv.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveExport = resolve;
+      }),
+    );
+    const { wrapper } = await mountList();
+    vi.spyOn(
+      globalThis.HTMLAnchorElement.prototype,
+      'click',
+    ).mockImplementation(() => {});
+    const button = wrapper.get('[data-test="export-current-case-list"]');
+    await button.trigger('click');
+    await button.trigger('click');
+    expect(exportApi.exportCsv).toHaveBeenCalledTimes(1);
+    resolveExport({
+      blob: new Blob(['csv'], { type: 'text/csv' }),
+      filename: 'case-list.csv',
+      mimeType: 'text/csv',
+    });
+    await flushPromises();
+  });
+
+  it('aborts and ignores an export response after the applied route query changes', async () => {
+    exportApi.capability.mockResolvedValue({ canExport: true });
+    let resolveExport!: (value: {
+      blob: Blob;
+      filename: string;
+      mimeType: string;
+    }) => void;
+    exportApi.exportCsv.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveExport = resolve;
+      }),
+    );
+    const { wrapper, router } = await mountList();
+    const createObjectURL = vi.fn(() => 'blob:stale');
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() });
+    await wrapper
+      .get('[data-test="export-current-case-list"]')
+      .trigger('click');
+    const signal = exportApi.exportCsv.mock.calls[0]?.[1]?.signal;
+    await router.push('/cases?view=department&stage=WAITING_ARCHIVE&q=changed');
+    await flushPromises();
+    expect(signal?.aborted).toBe(true);
+    resolveExport({
+      blob: new Blob(['stale'], { type: 'text/csv' }),
+      filename: 'case-list.csv',
+      mimeType: 'text/csv',
+    });
+    await flushPromises();
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'an unrecognized query parameter',
+      '/cases?view=department&stage=WAITING_ARCHIVE&extra=1',
+    ],
+    [
+      'a hash-only change',
+      '/cases?view=department&stage=WAITING_ARCHIVE#section',
+    ],
+  ])(
+    'aborts and ignores an export response after %s changes the full route',
+    async (_label, destination) => {
+      exportApi.capability.mockResolvedValue({ canExport: true });
+      let resolveExport!: (value: {
+        blob: Blob;
+        filename: string;
+        mimeType: string;
+      }) => void;
+      exportApi.exportCsv.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveExport = resolve;
+        }),
+      );
+      const { wrapper, router } = await mountList();
+      const createObjectURL = vi.fn(() => 'blob:unknown-route');
+      vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() });
+      await wrapper
+        .get('[data-test="export-current-case-list"]')
+        .trigger('click');
+      const signal = exportApi.exportCsv.mock.calls[0]?.[1]?.signal;
+
+      await router.push(destination);
+      await flushPromises();
+      expect(signal?.aborted).toBe(true);
+      resolveExport({
+        blob: new Blob(['stale'], { type: 'text/csv' }),
+        filename: 'case-list.csv',
+        mimeType: 'text/csv',
+      });
+      await flushPromises();
+      expect(createObjectURL).not.toHaveBeenCalled();
+    },
+  );
+
+  it('aborts stale capability and export results after the actor authorization changes', async () => {
+    let resolveCapability!: (value: { canExport: boolean }) => void;
+    exportApi.capability.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveCapability = resolve;
+      }),
+    );
+    exportApi.capability.mockResolvedValueOnce({ canExport: false });
+    const { wrapper, auth } = await mountList();
+    const oldCapabilitySignal = exportApi.capability.mock.calls[0]?.[0]?.signal;
+    expect(
+      wrapper.find('[data-test="export-current-case-list"]').exists(),
+    ).toBe(false);
+    auth.session = { ...session, authorizationRevision: 2 };
+    await flushPromises();
+    expect(oldCapabilitySignal?.aborted).toBe(true);
+    resolveCapability({ canExport: true });
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="export-current-case-list"]').exists(),
+    ).toBe(false);
+    expect(exportApi.capability).toHaveBeenCalledTimes(2);
+  });
+
+  it('aborts an export on authorization change and ignores its late file', async () => {
+    exportApi.capability
+      .mockResolvedValueOnce({ canExport: true })
+      .mockResolvedValueOnce({ canExport: false });
+    let resolveExport!: (value: {
+      blob: Blob;
+      filename: string;
+      mimeType: string;
+    }) => void;
+    exportApi.exportCsv.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveExport = resolve;
+      }),
+    );
+    const { wrapper, auth } = await mountList();
+    const createObjectURL = vi.fn(() => 'blob:old-identity');
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() });
+    await wrapper
+      .get('[data-test="export-current-case-list"]')
+      .trigger('click');
+    const signal = exportApi.exportCsv.mock.calls[0]?.[1]?.signal;
+    auth.session = { ...session, authorizationRevision: 2 };
+    await flushPromises();
+    expect(signal?.aborted).toBe(true);
+    resolveExport({
+      blob: new Blob(['stale'], { type: 'text/csv' }),
+      filename: 'case-list.csv',
+      mimeType: 'text/csv',
+    });
+    await flushPromises();
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('aborts an export on unmount and does not download a late response', async () => {
+    exportApi.capability.mockResolvedValue({ canExport: true });
+    let resolveExport!: (value: {
+      blob: Blob;
+      filename: string;
+      mimeType: string;
+    }) => void;
+    exportApi.exportCsv.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveExport = resolve;
+      }),
+    );
+    const { wrapper } = await mountList();
+    const createObjectURL = vi.fn(() => 'blob:unmounted');
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() });
+    await wrapper
+      .get('[data-test="export-current-case-list"]')
+      .trigger('click');
+    const signal = exportApi.exportCsv.mock.calls[0]?.[1]?.signal;
+    wrapper.unmount();
+    wrappers.splice(wrappers.indexOf(wrapper), 1);
+    expect(signal?.aborted).toBe(true);
+    resolveExport({
+      blob: new Blob(['stale'], { type: 'text/csv' }),
+      filename: 'case-list.csv',
+      mimeType: 'text/csv',
+    });
+    await flushPromises();
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('never requests export capability or shows the action for non-internal sessions', async () => {
+    exportApi.capability.mockResolvedValue({ canExport: true });
+    const { wrapper, auth } = await mountList();
+    auth.session = {
+      ...session,
+      principalType: 'CLIENT',
+      department: null,
+      departments: [],
+      customer: { id: 'customer-1', name: '合成客户甲有限公司' },
+    };
+    await flushPromises();
+    expect(exportApi.capability).toHaveBeenCalledTimes(1);
+    expect(
+      wrapper.find('[data-test="export-current-case-list"]').exists(),
+    ).toBe(false);
+  });
+
+  it.each([
+    [new ApiError('too many', 400, 'CASE_EXPORT_LIMIT_EXCEEDED'), '超过1000项'],
+    [new ApiError('forbidden', 403, 'FORBIDDEN'), '已无案件导出权限'],
+  ])(
+    'shows a clear export failure without changing the list',
+    async (failure, text) => {
+      exportApi.capability.mockResolvedValue({ canExport: true });
+      exportApi.exportCsv.mockRejectedValueOnce(failure);
+      const { wrapper } = await mountList();
+      await wrapper
+        .get('[data-test="export-current-case-list"]')
+        .trigger('click');
+      await flushPromises();
+      expect(wrapper.get('[role="alert"]').text()).toContain(text);
+      expect(wrapper.get('tbody tr').text()).toContain('合成客户甲有限公司');
+      expect(api.listCases).toHaveBeenCalledTimes(1);
+      if (failure.status === 403)
+        expect(
+          wrapper.find('[data-test="export-current-case-list"]').exists(),
+        ).toBe(false);
+    },
+  );
+
+  it('keeps the case list available when capability lookup is forbidden', async () => {
+    exportApi.capability.mockRejectedValue(
+      new ApiError('Forbidden', 403, 'FORBIDDEN'),
+    );
+    const { wrapper } = await mountList();
+    expect(wrapper.get('tbody tr').text()).toContain('合成客户甲有限公司');
+    expect(
+      wrapper.find('[data-test="export-current-case-list"]').exists(),
+    ).toBe(false);
   });
 });

@@ -87,6 +87,7 @@ export const permissionActionValues = [
   'NOTARY_RETURN_ARCHIVE',
   'NOTARY_LIST_EXPORT',
   'CASE_READ',
+  'CASE_EXPORT',
   'CASE_MATCH',
   'CASE_EXTERNAL_ENTRY_CREATE',
   'CASE_EXTERNAL_ENTRY_ARCHIVE',
@@ -320,7 +321,8 @@ function isGrant(value: unknown): value is OrganizationGrant {
     typeof value.scope === 'string' &&
     permissionScopes.has(value.scope) &&
     ((!demoDepartmentActions.has(value.action as PermissionAction) &&
-      value.action !== 'CASE_EXTERNAL_ENTRY_ARCHIVE') ||
+      value.action !== 'CASE_EXTERNAL_ENTRY_ARCHIVE' &&
+      value.action !== 'CASE_EXPORT') ||
       value.scope === 'DEPARTMENT')
   );
 }
@@ -353,6 +355,8 @@ function isPermissionCatalog(
       ) ||
       new Set(item.scopes).size !== item.scopes.length ||
       (item.action === 'CASE_READ' &&
+        (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
+      (item.action === 'CASE_EXPORT' &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
       (demoDepartmentActions.has(item.action as PermissionAction) &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||

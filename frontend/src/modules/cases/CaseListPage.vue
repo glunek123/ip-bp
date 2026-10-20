@@ -9,6 +9,11 @@ import {
 } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
+import {
+  exportCaseListCsv,
+  getCaseListExportCapability,
+  type CaseListExportInput,
+} from '../../api/case-list-export';
 import { useAuthStore } from '../../stores/auth';
 import { labelLeadPlatform } from '../leads/index';
 import ListWorkflowDrawer from '../../app/ListWorkflowDrawer.vue';
@@ -146,6 +151,78 @@ const totalPages = computed(() =>
 const requestKey = computed(
   () =>
     `${sessionGeneration.value}:${identity.value}:${view.value}:${stage.value}:${stageGroup.value ?? ''}:${listQueryValidityKey.value}:${rawListQueryKey.value}:${listFilterKey.value}:${page.value}`,
+);
+const exportInput = computed<CaseListExportInput | null>(() => {
+  if (
+    auth.session?.principalType !== 'INTERNAL' ||
+    invalidFilter.value ||
+    !parsedListQuery.value.ok ||
+    (stage.value !== 'all' && stageGroup.value !== undefined)
+  )
+    return null;
+  return {
+    view: view.value,
+    ...(stage.value === 'all' ? {} : { stage: stage.value }),
+    ...(stageGroup.value ? { stageGroup: stageGroup.value } : {}),
+    ...serializeCaseListQuery(effectiveListQuery.value),
+  };
+});
+const exportContextKey = computed(
+  () => `${route.fullPath}:${requestKey.value}`,
+);
+const exportCapability = ref(false);
+const canExportCsv = computed(
+  () => exportCapability.value && exportInput.value !== null,
+);
+const exporting = ref(false);
+const exportError = ref('');
+let capabilityController: AbortController | undefined;
+let capabilityGeneration = 0;
+let exportController: AbortController | undefined;
+let exportGeneration = 0;
+watch(
+  [identity, sessionGeneration],
+  ([currentIdentity, currentSessionGeneration]) => {
+    const generation = ++capabilityGeneration;
+    capabilityController?.abort();
+    capabilityController = undefined;
+    exportCapability.value = false;
+    if (!currentIdentity || auth.session?.principalType !== 'INTERNAL') return;
+    const controller = new AbortController();
+    capabilityController = controller;
+    void getCaseListExportCapability({ signal: controller.signal })
+      .then((result) => {
+        if (
+          controller.signal.aborted ||
+          generation !== capabilityGeneration ||
+          identity.value !== currentIdentity ||
+          sessionGeneration.value !== currentSessionGeneration
+        )
+          return;
+        exportCapability.value = result.canExport;
+      })
+      .catch(() => {
+        if (
+          !controller.signal.aborted &&
+          generation === capabilityGeneration &&
+          identity.value === currentIdentity &&
+          sessionGeneration.value === currentSessionGeneration
+        )
+          exportCapability.value = false;
+      });
+  },
+  { immediate: true, flush: 'sync' },
+);
+watch(
+  exportContextKey,
+  () => {
+    exportGeneration += 1;
+    exportController?.abort();
+    exportController = undefined;
+    exporting.value = false;
+    exportError.value = '';
+  },
+  { flush: 'sync' },
 );
 const listQuery = computed(() =>
   Object.fromEntries([
@@ -614,6 +691,71 @@ async function load() {
     state.value = 'failed';
   }
 }
+function downloadCsv(
+  blob: InstanceType<typeof globalThis.Blob>,
+  filename: string,
+): void {
+  const objectUrl = globalThis.URL.createObjectURL(blob);
+  try {
+    const link = globalThis.document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    link.click();
+  } finally {
+    globalThis.URL.revokeObjectURL(objectUrl);
+  }
+}
+async function exportCurrentList(): Promise<void> {
+  const input = exportInput.value;
+  if (!canExportCsv.value || !input || exporting.value) return;
+  const key = exportContextKey.value;
+  const generation = ++exportGeneration;
+  const controller = new AbortController();
+  exportController?.abort();
+  exportController = controller;
+  exporting.value = true;
+  exportError.value = '';
+  try {
+    const result = await exportCaseListCsv(
+      { ...input },
+      {
+        signal: controller.signal,
+      },
+    );
+    if (
+      controller.signal.aborted ||
+      generation !== exportGeneration ||
+      key !== exportContextKey.value ||
+      !canExportCsv.value
+    )
+      return;
+    downloadCsv(result.blob, result.filename);
+  } catch (cause) {
+    if (
+      controller.signal.aborted ||
+      generation !== exportGeneration ||
+      key !== exportContextKey.value
+    )
+      return;
+    if (
+      cause instanceof ApiError &&
+      cause.code === 'CASE_EXPORT_LIMIT_EXCEEDED'
+    )
+      exportError.value = '当前筛选结果超过1000项，请缩小筛选范围后重试。';
+    else if (
+      cause instanceof ApiError &&
+      (cause.status === 401 || cause.status === 403)
+    ) {
+      exportCapability.value = false;
+      exportError.value = '当前账号已无案件导出权限，请刷新列表后重试。';
+    } else exportError.value = '案件清单导出失败，请稍后重试。';
+  } finally {
+    if (generation === exportGeneration) {
+      exporting.value = false;
+      exportController = undefined;
+    }
+  }
+}
 function setView(next: CaseView) {
   if (next === view.value) return;
   void router.push({ query: { ...route.query, view: next, page: '1' } });
@@ -693,7 +835,15 @@ watch(
   },
   { immediate: true },
 );
-onBeforeUnmount(() => request?.abort());
+onBeforeUnmount(() => {
+  request?.abort();
+  capabilityGeneration += 1;
+  capabilityController?.abort();
+  capabilityController = undefined;
+  exportGeneration += 1;
+  exportController?.abort();
+  exportController = undefined;
+});
 </script>
 
 <template>
@@ -718,6 +868,15 @@ onBeforeUnmount(() => request?.abort());
         </div>
         <div class="case-list-head-actions">
           <ElButton
+            v-if="canExportCsv"
+            type="primary"
+            :loading="exporting"
+            :disabled="exporting || state !== 'ready'"
+            data-test="export-current-case-list"
+            @click="exportCurrentList"
+            >导出当前筛选结果</ElButton
+          >
+          <ElButton
             v-if="canCreateExternalEntry"
             type="primary"
             @click="router.push('/cases/external-entry')"
@@ -726,6 +885,9 @@ onBeforeUnmount(() => request?.abort());
           <ElButton text :loading="state === 'loading'" @click="load"
             >刷新</ElButton
           >
+          <p v-if="exportError" class="submit-error" role="alert">
+            {{ exportError }}
+          </p>
         </div>
       </div>
       <section
