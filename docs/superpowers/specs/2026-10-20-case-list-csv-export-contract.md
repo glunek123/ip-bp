@@ -5,6 +5,7 @@
 ## HTTP与权限
 
 - `POST /api/v1/cases/exports/csv`，正常认证／CSRF，成功200，`Content-Type: text/csv; charset=utf-8`，固定附件名`case-list.csv`。采用既有导出POST／Blob模式；不提供匿名／律师／客户导出入口。
+- `GET /api/v1/cases/exports/capability`：仅当前INTERNAL actor正常认证并具备CASE_READ可读，精确响应`{canExport:boolean}`。同一只读事务实际核当前CASE_EXPORT／DEPARTMENT，有读无导出返回false；非内部／无读权限403，其他授权读取或数据库错误照常抛出，不吞成false。不查询业务行、不写导出审计、不新增Grant或session权限框架。POST仍独立在RR事务重验双权限。
 - body为`CaseListExportInput`：可选view（mine／department，默认department）、stage、stageGroup及原六查询字段q/customerName/rightsHolderName/courtCaseNo/sortBy/sortDirection。沿CL001验证、空白／200字符／白名单和stage与stageGroup互斥；严拒page/pageSize、ID清单、部门／actor锚及其他未知属性。
 - INTERNAL身份在同一事务快照内以既有AccessControlService重验`CASE_READ`和新增`CASE_EXPORT`（wire `case.export`），作用域DEPARTMENT沿现有目录，不创造新scope。查询沿原department、mine责任人、阶段、字面AND／OR及稳定id asc排序；任何筛选不得放宽原可见范围。无额外筛选表示当前全部授权范围，仍受1000上限。
 - schema仅追加PermissionAction值；新前向迁移目录`20261020090000_case_list_csv_export`只注册该enum，不含任何Grant／role／user／assignment变化。不改旧迁移，不执行迁移或更新测试环境。
@@ -18,13 +19,14 @@
 
 ## 前端
 
-- 新`frontend/src/api/case-list-export.ts`导出`CaseListExportInput`及`exportCaseListCsv(input, options?: RequestOptions): Promise<{blob: Blob; filename: string; mimeType: string}>`，复用`postBlob`，严格mime／附件结果与输入校验，固定原路由，强制`retryOnCsrfInvalid:false`。不修改共享http.ts或cases.ts。
-- 原列表新增“导出当前筛选结果”，仅内部兼有读取／导出权限可见。仅快照当前已应用的合法查询／范围／阶段／排序，不发送尚未点击查询的草稿或分页；原筛选、分页和列偏好体验保持。重复点击互斥；切身份、撤权、query／route变更、卸载使旧响应失效，不触发旧文件下载。失败明确提示，主动重试另一次新请求，不自动请求或伪成功。
+- 新`frontend/src/api/case-list-export.ts`导出`CaseListExportInput`及`exportCaseListCsv(input, options?: RequestOptions): Promise<{blob: Blob; filename: string; mimeType: string}>`，同模块新增`CaseListExportCapability`及`getCaseListExportCapability(options?: RequestOptions): Promise<CaseListExportCapability>`，复用getJson严格解码唯一boolean字段；导出复用`postBlob`，严格mime／附件结果与输入校验，固定原路由，强制`retryOnCsrfInvalid:false`。不修改共享http.ts或cases.ts。
+- 原列表新增“导出当前筛选结果”，仅内部且当前能力GET明确true可见；等待、失败、身份／授权revision变化即清除旧true，失败不阻断正常列表。能力请求有独立abort／代际隔离，不以全局permissionCatalog或管理接口推断当前Grant。仅快照当前已应用的合法查询／范围／阶段／排序，不发送尚未点击查询的草稿或分页；原筛选、分页和列偏好体验保持。重复点击互斥；切身份、撤权、query／route变更、卸载使旧响应失效，不触发旧文件下载。失败明确提示，主动重试另一次新请求，不自动请求或伪成功。
 - 成功使用既有本地Blob下载方式并释放object URL，不上传其他服务，不存储真实下载内容或登录状态。纯测试用fake Blob／URL。
 
 ## 唯一作者与验证
 
-- 后端原Sol：新cases/case-list-export.dto/service/controller及各直接spec；case.module.ts；schema.prisma；唯一新migration.sql；permission-catalog.ts及直接spec；必要core-ld-openapi.spec.ts。优先复用case-list-query.ts，确需抽取既有列表where／projection时仅最小case-read.service.ts及直接spec，并保留原列表合同。不抢前端文件。
+- 后端原Sol：新cases/case-list-export.dto/service/controller、独立case-list-export-capability.dto及各直接spec；case.module.ts；schema.prisma；唯一新migration.sql；permission-catalog.ts及直接spec；access-control.service.ts仅CASE_EXPORT动作联合、prisma-access-control.store.ts及直接spec仅该Action映射；必要core-ld-openapi.spec.ts。优先复用case-list-query.ts，确需抽取既有列表where／projection时仅最小case-read.service.ts及直接spec，并保留原列表合同。不抢前端文件。
 - 前端原Luna：新API两文件，CaseListPage.vue／CaseListDisplay.spec.ts，必要case-list-query.ts／spec，organization.ts／spec仅追加严格Action解码。后端／API稳定字段不等WIP猜测；不得写共享http／schema／后端或公证文件。
+- 新能力GET只归本导出候选；旧CL aa0固定验收树与精确GET守卫不改，未来组合运行须单独列新请求范围。
 - 主控独占本合同及权威状态／Spec文档；原独立Sol Reviewer审高风险权限／查询／CSV和最终累计组合。各作者独立工作树，不覆盖旧CL WIP；普通Git失败交主控精确代提交，不改ACL或删锁。
 - 离线直接纯测试覆盖读取＋导出双权限／跨部门及mine／撤权、原过滤排序／1000与1001／空集、七列无敏感字段、公式注入和CSV编码转义、事务／失败审计、输入快照／abort／旧身份迟成功／按钮互斥及原列表回归。运行必要prepared类型／Lint／格式，Prisma仅validate／generate，不连接DB。不执行完整verify／NT006、真实PG／HTTP／导出、迁移、Grant、服务／浏览器、部署或push；真实验收另给有限批准。
