@@ -78,8 +78,12 @@ Agent此前两次发现动作均在进程创建前被策略拒绝，仍保留，
 
 原条件性批准、原因未知仍尝试一次的批准及旧锁归档批准分别记录Sentinel_cf4c85311e28819191324b4f39a6e9e5、Sentinel_8b9a1e4066908191b7d4c293a5b51f17、Sentinel_97a1e012bf9c81918118a9934e91e0bd。之前详细过程的原文副本留 `.local/cl-acceptance-preparation-20261020/blockers-before-closeout-v3.md`，不覆盖任何原运行证据。本页更新为当前准确状态，不构成额外运行指派。
 
-## 当前离线准备已闭合，下一步需具体资格许可
+## 2026-10-20 只读资格实查：Missing，不阻塞无关业务
 
-原后台作者、UI作者和Runner各自最小准备已固定，原Reviewer累计源码及v5资格包两轴均0；I-CL-REDIRECT、I-DOC01和SQL词法误判均关闭。v5 manifest SHA8299aa8c25d799c8c5b18022b2d04a4a191dcbc54c520e297da40fa49d6b783b。纯检查真实SQL11/11、17正例／21负例／22哈希篡改／8长度通过；v3 COPY注释及v4合法CREATE字符串误判原件保留，未用编码／拼接绕词，v5 SQL原字节不动，改逐项固定SHA白名单和词法检查并保留PG只读事务。不是现场SQL语法／数据通过。
+用户04:51:17 UTC明确批准原固定v5（Sentinel_485a59d3a3ec81918ea1b2514dcbadae）。原Runner04:54:03.626–04:54:06.581 UTC实际一次完成，wrapper exit2、QUALIFICATION_MISSING，无SQL异常；实发10 SELECT，S08因预定数据条件不足跳过。一次capture／标准锁／RR READ ONLY事务；read_only=on、repeatable read，事务结束、自有锁与连接释放。登录／服务／业务写入／迁移／权限／材料bytes读取或copy均0。
 
-下一次仅可请用户批准原Runner、原ca015／R2、固定v5包装器的一capture／标准锁／RR READ ONLY连接，最多11条固定SELECT、每句5秒／总600秒，核已有身份／账本／CL数据／后台资格及96CV元数据。缺项或首异常停，不登录、起服务、测试、迁移、写库、改权限或copy。当前尚未批准／执行；不得把过去泛称20SELECT或本页文档当实际许可。参数／rowcap／固定hash及可直接给用户的简短确认见[执行单](2026-10-20-real-acceptance-run-plan.md)。
+满足：原R2／165成功及唯一resolved历史账本、H42 active／84原Grant／role与authrev2及原assignment、96登记CV元数据和路径hash均匹配；本次T0至T0+15min清理／调度候选0。这只证明该观察窗，不自动覆盖未来服务启动。原H42旧会话差异原因未知仍保留。
+
+缺项只有两组：3个现存forbidden候选没有已批准可用凭据引用；部门23案（mine3）court_case_no全部null，字面%、_、反斜杠匹配均0，dataReady=false，未生成S08完整query／page期望。不能把S08跳过写成查询失败或核心列表不可用，也不因此阻塞公证等无关模块。停止后不补查空字段、不更改留存案或造账号／Grant；核心用例与边界用例应分开安排，后者可在独立合成测试环境补齐，再单独批准必要资源／写入。
+
+证据位于原ca015 `.local/manual-test/acceptance-run-plan-20261020/qualification-runs/2026-10-20T045403624Z-d1c54985-61da-4944-ac00-66e69e436f66/`。summary SHA256 `8b09db001c96a3213c93426b0109408cfd35ed71f10d55def148d36432a21687`，manifest SHA256 `939d6506aae086a1826d34fb74987a4cfbeb8fbdca88ae094c9e314439df9245`；主控仅本地回读14项artifact的bytes／SHA均相符，没有额外查询。许可已用毕，不自动重跑或进入CL真实验收。

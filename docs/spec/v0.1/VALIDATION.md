@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+## 2026-10-20 只读资格实查：Missing，不阻塞无关业务
+
+用户04:51:17 UTC明确批准原固定v5（Sentinel_485a59d3a3ec81918ea1b2514dcbadae）。原Runner04:54:03.626–04:54:06.581 UTC实际一次完成，wrapper exit2、QUALIFICATION_MISSING，无SQL异常；实发10 SELECT，S08因预定数据条件不足跳过。一次capture／标准锁／RR READ ONLY事务；read_only=on、repeatable read，事务结束、自有锁与连接释放。登录／服务／业务写入／迁移／权限／材料bytes读取或copy均0。
+
+满足：原R2／165成功及唯一resolved历史账本、H42 active／84原Grant／role与authrev2及原assignment、96登记CV元数据和路径hash均匹配；本次T0至T0+15min清理／调度候选0。这只证明该观察窗，不自动覆盖未来服务启动。原H42旧会话差异原因未知仍保留。
+
+缺项只有两组：3个现存forbidden候选没有已批准可用凭据引用；部门23案（mine3）court_case_no全部null，字面%、_、反斜杠匹配均0，dataReady=false，未生成S08完整query／page期望。不能把S08跳过写成查询失败或核心列表不可用，也不因此阻塞公证等无关模块。停止后不补查空字段、不更改留存案或造账号／Grant；核心用例与边界用例应分开安排，后者可在独立合成测试环境补齐，再单独批准必要资源／写入。
+
+证据位于原ca015 `.local/manual-test/acceptance-run-plan-20261020/qualification-runs/2026-10-20T045403624Z-d1c54985-61da-4944-ac00-66e69e436f66/`。summary SHA256 `8b09db001c96a3213c93426b0109408cfd35ed71f10d55def148d36432a21687`，manifest SHA256 `939d6506aae086a1826d34fb74987a4cfbeb8fbdca88ae094c9e314439df9245`；主控仅本地回读14项artifact的bytes／SHA均相符，没有额外查询。许可已用毕，不自动重跑或进入CL真实验收。
+
 ## CL167 专属验收准备（2026-10-20，离线候选）
 
 最新独占候选`aa0e33d76ed4b482687783c1b34eef46c03cfa90`／tree `7966e1b9da97cee7e9db5d6469a39f83689c83cd`，parent b0d3bbfb。相对原候选精确六文件（五修改及一新增page）；累计七份专项文件、原owned spec不变。标准锁内整run preflight≤7，正常服务后两登录、33API后内存会话页面、两个context及逐请求maxRedirects:0已接线。原Reviewer核最终raw关闭I-CL-REDIRECT，累计Spec／Quality均ACCEPTED、C/I/M0；pin仍null、未接ca015／main、未push。

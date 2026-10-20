@@ -1,6 +1,6 @@
 # CSV／CL真实验收准备与下一次只读资格单
 
-状态：2026-10-20离线准备；**本页不是运行许可**。原独立Reviewer已确认固定资格包v5的Spec／Quality均C/I/M0，可提交一次明确的只读资格批准。真实账号、数据和后台资格尚未查询，后续完整运行仍不能直接GO。公证及其他新功能不在本片，旧耗尽额度不恢复。
+状态：2026-10-20离线准备；**本页不是运行许可**。原独立Reviewer已确认固定资格包v5的Spec／Quality均C/I/M0，可提交一次明确的只读资格批准。固定检查随后按另批许可完成，结果Missing见末节；不追加盘点，核心用例和边界数据分开处理，后续完整运行未获批准。公证及其他新功能不在本片，旧耗尽额度不恢复。
 
 ## 已固定的候选与离线证据
 
@@ -74,10 +74,14 @@ CL pin仍null；未来owned／runtime分别需要真实批准收据、完整执�
 - 双webServer各30秒、reuseExistingServer=false、绝对cwd。锁定PW1.63正常无重定向路径backend健康至多34、前端root／404fallback至多68，共102；backend相应至多34个DatabaseService.ping。底层健康HTTP重定向没有硬总cap，102不是无条件全网络上限，非预期重定向停、不改共享PW。静态资源／有限导航另列。
 - preflight在标准锁内整个run仅一次、至多7条直接只读PG；配置／worker不各重给7。API内部ORM、健康ping、官方迁移及保持核另有用途，不冒充在7条内。
 
-## 给用户的一次具体确认及原窗口提示
+## 2026-10-20 只读资格实查：Missing，不阻塞无关业务
 
-当前只可提出以下批准：
+用户04:51:17 UTC明确批准原固定v5（Sentinel_485a59d3a3ec81918ea1b2514dcbadae）。原Runner04:54:03.626–04:54:06.581 UTC实际一次完成，wrapper exit2、QUALIFICATION_MISSING，无SQL异常；实发10 SELECT，S08因预定数据条件不足跳过。一次capture／标准锁／RR READ ONLY事务；read_only=on、repeatable read，事务结束、自有锁与连接释放。登录／服务／业务写入／迁移／权限／材料bytes读取或copy均0。
 
-> 允许原“验收独立环境快捷操作”任务在原ca015和精确R2执行已审v5只读资格包一次：一capture／一标准锁／一个RR READ ONLY事务，最多11条固定SELECT、每句5秒／整体10分钟，仅核账本、已有身份及数据资格、后台候选和96CV元数据。缺项或首异常停；不登录、起服务、测试、迁移、写库、改权限或复制文件；只保存本地脱敏证据及资格／路径计划。固定manifest SHA为8299aa8c25d799c8c5b18022b2d04a4a191dcbc54c520e297da40fa49d6b783b。
+满足：原R2／165成功及唯一resolved历史账本、H42 active／84原Grant／role与authrev2及原assignment、96登记CV元数据和路径hash均匹配；本次T0至T0+15min清理／调度候选0。这只证明该观察窗，不自动覆盖未来服务启动。原H42旧会话差异原因未知仍保留。
 
-用户尚未给此批准，不派发执行。获批后原窗口只允许固定wrapper，不扩至后续阶段。完成后根据真实Missing给下一份具体运行确认，不逐项试探、补造fixture、读新凭据或恢复旧额度。原Review、v1–v4失败、会话历史差异及各时点证据保留；已执行只读边界见[阻塞交接](2026-10-20-acceptance-blockers.md)。
+缺项只有两组：3个现存forbidden候选没有已批准可用凭据引用；部门23案（mine3）court_case_no全部null，字面%、_、反斜杠匹配均0，dataReady=false，未生成S08完整query／page期望。不能把S08跳过写成查询失败或核心列表不可用，也不因此阻塞公证等无关模块。停止后不补查空字段、不更改留存案或造账号／Grant；核心用例与边界用例应分开安排，后者可在独立合成测试环境补齐，再单独批准必要资源／写入。
+
+证据位于原ca015 `.local/manual-test/acceptance-run-plan-20261020/qualification-runs/2026-10-20T045403624Z-d1c54985-61da-4944-ac00-66e69e436f66/`。summary SHA256 `8b09db001c96a3213c93426b0109408cfd35ed71f10d55def148d36432a21687`，manifest SHA256 `939d6506aae086a1826d34fb74987a4cfbeb8fbdca88ae094c9e314439df9245`；主控仅本地回读14项artifact的bytes／SHA均相符，没有额外查询。许可已用毕，不自动重跑或进入CL真实验收。
+
+下一步仅整理可先验的核心功能与隔离合成数据最小方案，不再增加资格盘点／框架。特殊字符和法院号正样本可后置，不能通过改旧案／补权限让全套gate勉强通过；未批准任何新凭据、资源或写库。原公证并行离线集成派发未送达（AbsolutePathBuf路由错误），独立业务准备已核既有计数／结算／证物不重做，受权清单导出需先明确权限、字段及快照上限。
