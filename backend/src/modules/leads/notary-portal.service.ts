@@ -119,6 +119,28 @@ export class NotaryPortalService {
             },
           },
         },
+        evidenceCorrections: {
+          orderBy: { revision: 'desc' },
+          take: 1,
+          select: {
+            evidenceAt: true,
+            logistics: {
+              orderBy: { position: 'asc' },
+              select: {
+                id: true,
+                companyState: true,
+                companyValue: true,
+                trackingState: true,
+                trackingValue: true,
+              },
+            },
+          },
+        },
+        openingSenderCorrections: {
+          orderBy: { revision: 'desc' },
+          take: 1,
+          select: { senderName: true, senderPhone: true, senderAddress: true },
+        },
         opening: {
           select: {
             senderName: true,
@@ -236,19 +258,35 @@ export class NotaryPortalService {
         matter.stage === 'ARCHIVED' || matter.evidence === null
           ? null
           : {
-              evidenceAt: matter.evidence.evidenceAt.toISOString().slice(0, 10),
+              evidenceAt: (
+                matter.evidenceCorrections[0]?.evidenceAt ??
+                matter.evidence.evidenceAt
+              )
+                .toISOString()
+                .slice(0, 10),
               sampleFeeState: matter.evidence.sampleFeeState,
               sampleFeeAmount:
                 matter.evidence.sampleFeeAmount?.toString() ?? null,
-              logistics: matter.evidence.logistics,
+              logistics:
+                matter.evidenceCorrections[0]?.logistics ??
+                matter.evidence.logistics,
             },
       opening:
         matter.stage === 'ARCHIVED' || matter.opening === null
           ? null
           : {
-              senderName: matter.opening.senderName,
-              senderPhone: matter.opening.senderPhone,
-              senderAddress: matter.opening.senderAddress,
+              senderName:
+                matter.openingSenderCorrections[0] === undefined
+                  ? matter.opening.senderName
+                  : matter.openingSenderCorrections[0].senderName,
+              senderPhone:
+                matter.openingSenderCorrections[0] === undefined
+                  ? matter.opening.senderPhone
+                  : matter.openingSenderCorrections[0].senderPhone,
+              senderAddress:
+                matter.openingSenderCorrections[0] === undefined
+                  ? matter.opening.senderAddress
+                  : matter.openingSenderCorrections[0].senderAddress,
               recordedAt: matter.opening.recordedAt.toISOString(),
               photos: refs
                 .filter((ref) =>

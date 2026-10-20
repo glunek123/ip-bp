@@ -36,6 +36,7 @@ import {
 } from '../../api/notary-list-preference';
 import { useAuthStore } from '../../stores/auth';
 import NotaryReturnArchiveBatchPanel from './NotaryReturnArchiveBatchPanel.vue';
+import NotaryBatchOpeningPanel from './NotaryBatchOpeningPanel.vue';
 import { labelLeadPlatform } from './lead-options';
 import type { CaseStage } from '../../api/cases';
 
@@ -55,10 +56,14 @@ const identity = computed(
   () =>
     `${auth.session?.user.id ?? ''}:${auth.session?.principalType ?? ''}:${auth.session?.department?.id ?? ''}:${auth.session?.authorizationRevision ?? ''}`,
 );
+function actorIdentityKey(actorKey: string): string {
+  return actorKey.split(':').slice(0, 3).join(':');
+}
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const workflowOpen = ref(false);
 const workflowContext = ref<ListWorkflowContext | null>(null);
 const workflowDrawer = ref<{ canLeave: () => boolean }>();
+const openingBatchPanel = ref<{ canLeave: () => boolean }>();
 function loadWorkflowDetail({ context, signal }: ListWorkflowLoad) {
   return getNotaryMatter(context.recordId, { signal });
 }
@@ -66,6 +71,7 @@ function openWorkflow(
   matter: NotaryMatterListItem,
   action: { label: string; anchor: string },
 ) {
+  if (batchOpen.value || openingBatchOpen.value) return;
   if (workflowDrawer.value && !workflowDrawer.value.canLeave()) return;
   workflowContext.value = {
     recordId: matter.id,
@@ -88,7 +94,8 @@ function pendingRequests(): ListWorkflowContext[] {
       if (
         !Array.isArray(parts) ||
         parts.length !== 3 ||
-        parts[0] !== identity.value ||
+        typeof parts[0] !== 'string' ||
+        actorIdentityKey(parts[0]) !== actorIdentityKey(identity.value) ||
         typeof parts[1] !== 'string' ||
         typeof parts[2] !== 'string' ||
         ![
@@ -100,12 +107,19 @@ function pendingRequests(): ListWorkflowContext[] {
         ].includes(parts[2])
       )
         continue;
-      requests.push({
-        actorKey: identity.value,
-        recordId: parts[1],
-        actionKey: parts[2],
-        title: '核对未确认的公证请求',
-      });
+      if (
+        !requests.some(
+          (request) =>
+            request.recordId === parts[1] && request.actionKey === parts[2],
+        )
+      ) {
+        requests.push({
+          actorKey: identity.value,
+          recordId: parts[1],
+          actionKey: parts[2],
+          title: '核对未确认的公证请求',
+        });
+      }
     }
   } catch {
     return requests;
@@ -113,13 +127,17 @@ function pendingRequests(): ListWorkflowContext[] {
   return requests;
 }
 function resumeWorkflow(context: ListWorkflowContext) {
+  if (batchOpen.value || openingBatchOpen.value) return;
   if (workflowDrawer.value && !workflowDrawer.value.canLeave()) return;
   workflowContext.value = context;
   workflowOpen.value = true;
 }
 
 function canLeaveWorkflow() {
-  return workflowDrawer.value?.canLeave() ?? true;
+  return (
+    (workflowDrawer.value?.canLeave() ?? true) &&
+    (openingBatchPanel.value?.canLeave() ?? true)
+  );
 }
 onBeforeRouteLeave(canLeaveWorkflow);
 onBeforeRouteUpdate(canLeaveWorkflow);
@@ -128,6 +146,7 @@ watch(
   () => {
     workflowOpen.value = false;
     workflowContext.value = null;
+    openingBatchOpen.value = false;
   },
   { flush: 'sync' },
 );
@@ -151,6 +170,8 @@ const preferenceMessage = ref('正在读取个人列设置。');
 const saving = ref(false);
 const selectedIds = ref<string[]>([]);
 const batchOpen = ref(false);
+const openingBatchOpen = ref(false);
+const openingBatchSummary = ref('');
 type PendingBatch = {
   items: ArchiveNotaryReturnBatchInput[];
   key: string;
@@ -366,7 +387,8 @@ function matterActions(
       return (
         globalThis.sessionStorage.getItem(
           `notary-list-request:${JSON.stringify([identity.value, matter.id, action.anchor])}`,
-        ) !== null
+        ) !== null ||
+        hasPendingRequestFor(identity.value, matter.id, action.anchor)
       );
     } catch {
       return false;
@@ -375,6 +397,34 @@ function matterActions(
   return saved
     ? [{ ...saved, label: `恢复${saved.label}请求` }]
     : actions.filter((action) => action.enabled).slice(0, 1);
+}
+function hasPendingRequestFor(
+  actorKey: string,
+  matterId: string,
+  actionKey: string,
+): boolean {
+  const wanted = actorIdentityKey(actorKey);
+  for (let index = 0; index < globalThis.sessionStorage.length; index += 1) {
+    const key = globalThis.sessionStorage.key(index);
+    if (!key?.startsWith('notary-list-request:')) continue;
+    try {
+      const tuple: unknown = JSON.parse(
+        key.slice('notary-list-request:'.length),
+      );
+      if (
+        Array.isArray(tuple) &&
+        tuple.length === 3 &&
+        typeof tuple[0] === 'string' &&
+        actorIdentityKey(tuple[0]) === wanted &&
+        tuple[1] === matterId &&
+        tuple[2] === actionKey
+      )
+        return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
 }
 const exportScopeKey = computed(() =>
   JSON.stringify({
@@ -425,6 +475,7 @@ function invalidateExport(): void {
 }
 
 function toggleMatter(id: string, checked: boolean): void {
+  openingBatchSummary.value = '';
   if (checked) {
     if (selectedIds.value.length >= 1000) {
       exportMessage.value = '最多可选择 1000 项，请缩小范围。';
@@ -442,6 +493,7 @@ function toggleMatter(id: string, checked: boolean): void {
 }
 
 function toggleCurrentPage(checked: boolean): void {
+  openingBatchSummary.value = '';
   const pageIds = items.value.map((item) => item.id);
   if (checked) {
     const next = [...new Set([...selectedIds.value, ...pageIds])];
@@ -459,6 +511,7 @@ function toggleCurrentPage(checked: boolean): void {
 
 function clearSelection(): void {
   selectedIds.value = [];
+  openingBatchSummary.value = '';
   invalidateExport();
   exportMessage.value = '';
 }
@@ -468,6 +521,35 @@ function completeBatch(): void {
   batchOpen.value = false;
   activeBatchRequest.value = null;
   void load();
+}
+
+function completeOpeningBatch(
+  failedItems: Array<{ id: string; businessNo?: string; note?: string }>,
+): void {
+  openingBatchOpen.value = false;
+  if (failedItems.length > 0) {
+    selectedIds.value = failedItems.map((item) => item.id);
+    openingBatchSummary.value = `${failedItems.length} 个事项确定失败，已保留勾选以便刷新后重试。${failedItems.map((item) => `${item.businessNo ?? item.id}：${item.note ?? '请重新核对事项'}`).join('；')}`;
+  } else {
+    clearSelection();
+    openingBatchSummary.value = '所选事项均已逐项登记开箱。';
+  }
+  invalidateExport();
+  exportMessage.value = '';
+  void load();
+}
+
+function closeOpeningBatch(successfulIds: string[] = []): void {
+  if (openingBatchPanel.value && !openingBatchPanel.value.canLeave()) return;
+  openingBatchOpen.value = false;
+  if (successfulIds.length > 0) {
+    const succeeded = new Set(successfulIds);
+    selectedIds.value = selectedIds.value.filter((id) => !succeeded.has(id));
+    openingBatchSummary.value = `${successfulIds.length} 个事项已完成开箱并从勾选中移除；其余事项仍保留。`;
+    invalidateExport();
+    exportMessage.value = '';
+    void load();
+  }
 }
 
 function holdBatch(request: PendingBatch): void {
@@ -868,22 +950,46 @@ onBeforeUnmount(() => {
           <span data-test="selected-count"
             >已选择 {{ selectedIds.length }} 项</span
           >
+          <span
+            v-if="openingBatchSummary"
+            data-test="batch-opening-summary"
+            role="status"
+            >{{ openingBatchSummary }}</span
+          >
           <ElButton
             data-test="clear-selection"
-            :disabled="selectedIds.length === 0 || batchOpen"
+            :disabled="
+              selectedIds.length === 0 || batchOpen || openingBatchOpen
+            "
             @click="clearSelection"
             >清空选择</ElButton
           >
           <ElButton
             data-test="batch-archive-open"
             :disabled="
-              selectedIds.length === 0 || batchOpen || !!pendingBatchForScope
+              selectedIds.length === 0 ||
+              batchOpen ||
+              openingBatchOpen ||
+              workflowOpen ||
+              !!pendingBatchForScope
             "
             @click="
               activeBatchRequest = null;
               batchOpen = true;
             "
             >批量归档</ElButton
+          >
+          <ElButton
+            data-test="batch-opening-open"
+            :disabled="
+              selectedIds.length === 0 ||
+              batchOpen ||
+              openingBatchOpen ||
+              workflowOpen ||
+              !!pendingBatchForScope
+            "
+            @click="openingBatchOpen = true"
+            >逐项批量开箱</ElButton
           >
           <ElButton
             v-if="pendingBatchForScope && !batchOpen"
@@ -984,6 +1090,14 @@ onBeforeUnmount(() => {
         @frozen="holdBatch"
         @resolved="resolveBatch"
         @completed="completeBatch"
+      />
+      <NotaryBatchOpeningPanel
+        v-if="openingBatchOpen"
+        ref="openingBatchPanel"
+        :matter-ids="selectedIds"
+        :actor-key="identity"
+        @close="closeOpeningBatch"
+        @completed="completeOpeningBatch"
       />
       <section
         v-if="settingsOpen"
@@ -1125,7 +1239,10 @@ onBeforeUnmount(() => {
                       items.every((matter) => selectedIds.includes(matter.id))
                     "
                     :disabled="
-                      items.length === 0 || batchOpen || !!pendingBatchForScope
+                      items.length === 0 ||
+                      batchOpen ||
+                      openingBatchOpen ||
+                      !!pendingBatchForScope
                     "
                     @change="
                       toggleCurrentPage(
@@ -1161,7 +1278,9 @@ onBeforeUnmount(() => {
                     :aria-label="`选择${matter.businessNo}`"
                     data-test="select-matter"
                     :checked="selectedIds.includes(matter.id)"
-                    :disabled="batchOpen || !!pendingBatchForScope"
+                    :disabled="
+                      batchOpen || openingBatchOpen || !!pendingBatchForScope
+                    "
                     @change="
                       toggleMatter(
                         matter.id,

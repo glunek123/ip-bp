@@ -345,7 +345,13 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(90);
+    expect(result.permissionCatalog).toHaveLength(91);
+    expect(result.permissionCatalog).toContainEqual(
+      expect.objectContaining({
+        action: 'NOTARY_RECORD_CORRECT',
+        scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+      }),
+    );
     for (const [action, label] of [
       ['CASE_EXECUTION_FEEDBACK_RECORD', '登记执行法院反馈'],
       ['CASE_EXECUTION_FEEDBACK_CORRECT', '更正执行法院反馈'],

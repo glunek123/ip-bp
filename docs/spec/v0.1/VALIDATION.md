@@ -1,5 +1,7 @@
 # SPEC-001 文档验证
 
+2026-10-20 公证原d8ab9b3e已在原窗口完成与开发34b1560c的离线源码组合：625项不同纯测试、三处prepared类型和静态通过，独立source-only审C0/I0/M0。主控现接入原39源及SD-61文档；三处源码自动组合，五份状态文档逐项保留开发主线与公证契约。开发34b至接入前仅五文档变化，不借此声称当前含导出新源码已测；后续最终组合另核。迁移当前仅文件168，新增导出后为169，旧真实165/166/167准入不放宽。原公证树和ca015/R2不动，无迁移／Grant／服务／真实页面验收。
+
 ## 2026-10-20 只读资格实查：Missing，不阻塞无关业务
 
 用户04:51:17 UTC明确批准原固定v5（Sentinel_485a59d3a3ec81918ea1b2514dcbadae）。原Runner04:54:03.626–04:54:06.581 UTC实际一次完成，wrapper exit2、QUALIFICATION_MISSING，无SQL异常；实发10 SELECT，S08因预定数据条件不足跳过。一次capture／标准锁／RR READ ONLY事务；read_only=on、repeatable read，事务结束、自有锁与连接释放。登录／服务／业务写入／迁移／权限／材料bytes读取或copy均0。
@@ -248,6 +250,16 @@ helper原条件blobsBefore.size等于96必拒；修正仅去掉全根与登记�
 原Runner在用户直接恢复／续验授权下，复原官方要求的基础15433模板，通过受保护DEV_COR_TEST_DATABASE_URL＋project/CID覆盖，standard capture实际仅R2 127.0.0.1:15438/dev_cor_test；没有连接15433或重复启动容器。原2284e2ef候选／tree bd305157干净，source/public165成功迁移及唯一已解决历史通过。一次REPEATABLE READ READ ONLY前置在EF身份门槛停止：当前user authorization_revision3、active assignment2，旧helper要求1／1；原主角色active/v1、10条Grant及所需7项都在。H42、客户资格、后台候选、物理字节及页面尚未继续；登录／业务／上传／账号或Grant变更均0，服务未启、锁释放。原摘要raw SHA256为28efe65d4c9417cf90bcaead082861b0c3c8bfac7dd8a421aca16cdc9c057f49，保留其BLOCKED结果，不称真实页面通过。
 
 只读本地历史核对证明额外assignment及revision3来自已批准Demo A有限扩权和末端撤权：授予回执1→2，末端回执2→3，额外角色inactive/v2、assignmentChanges0/restored=false。当前全旧行快照raw SHA256 9af63453625c852d4ac962f63596d07b2eb330b6f366791d117bbd662bba6db9；从末端afterRole全字段按JSONB文本重构的row SHA256 82342d82aff575729f097ec0da45ec94cec59b784cc5cbb760827bdc6ee267a8，与当前唯一PK行精确一致。额外assignment row SHA256 7f3a2b943165f5b0741b68e4ba38f7fe3da7dd7860eb65682fa0052fc7b73185及14条原Grant逐ID行hash也一致。不是回退账号版本、撤分配或恢复terminal角色的理由；修复只能在隔离分支精确接纳该已证明状态，继续拒绝任意额外角色、重新激活或字段漂移，旧原始失败与回执不修改。代码修复／纯测试及独立复审结果另按固定输入登记，不借此推断页面或全仓门禁通过。
+
+### 公证SD-61规格与实施边界同步（2026-10-18）
+
+用户确认公证资料带原因／历史更正、逐事项照片确认及逐项独立提交／未知先核实。原N工作区b388be29已只读确认干净，主控正常切到基于2284e2ef的 `codex/notary-record-batch-contract` 文档分支，原分支／成果和ca015验收候选不变。仅同步SD-61、公证Spec/DOMAIN、INPUT-016、路线图、恢复点和唯一实施清单；没有产品、schema、SQL、API或运行权限变更，不能称功能实现或新门禁通过。
+
+文档首轮Spec检查只报告README／READINESS／TECHNICAL-DESIGN缺最新SD-61声明；已补最小索引段落，复跑通过59REQ／71AC／11BQ／61SD。受改文档Prettier及diff检查通过；不运行代码／数据库测试，不把原16纯例或旧完整门禁标成新公证实现证据。
+
+原公证Task与原环境工具Task自动续办分别报 `AbsolutePathBuf deserialized without a base path`，包括显式使用返回的durable host后仍被拒绝；任务均未实际开始，不是审批拒绝。后台/schema/API单一Sol作者和独立UI作者的文件边界已准备，待用户在原任务直接恢复；未创建重复Task，未默认把分工表当运行中。原未参与实现的源码复审不覆盖新公证合同，独立技术审查仍待实施主体恢复后进行，不重新询问已批准三点。
+
+独立静态核对还更正了旧清单的环境描述：官方test-environment先验证.env.test基础15433模板，受保护DEV_COR_TEST_DATABASE_URL＋project/CID覆盖与capture.childEnvironment的最终连接为R2 15438，不能去连接15433或把基础文件改15438。旧成功R2脚本同形；本分支未改.env或guard、未做capture/DB/HTTP/服务/登录/迁移，不将原Runner配置首拒当作产品Bug或验收通过。主控含实际配置恢复／续跑的代发指令被自动审批拒绝，未送达；仅静态源码事实说明安全发送，不绕过该拒绝。准确操作仍由原Runner核其用户直接原文与审批，不从公证批准扩大。
 
 ### 两条最小页面入口代码准备（2026-10-17）
 

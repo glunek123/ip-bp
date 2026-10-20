@@ -188,6 +188,13 @@ async function mountPage(path: string) {
           template:
             '<section v-if="modelValue"><slot/><slot name="footer"/></section>',
         },
+        NotaryBatchOpeningPanel: {
+          props: ['matterIds'],
+          emits: ['close'],
+          setup: () => ({ canLeave: () => true }),
+          template:
+            '<section data-test="batch-opening-panel">{{ matterIds.join(",") }}<button data-test="batch-opening-close" @click="$emit(\'close\', [\'matter-1\'])" /></section>',
+        },
       },
     },
   });
@@ -559,6 +566,90 @@ describe('NotaryMatterListPage', () => {
       '0 项',
     );
     expect(workflow.notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the separate per-matter unboxing workflow from the existing selection', async () => {
+    api.listNotaryMatters.mockResolvedValue({
+      ...result,
+      items: [{ ...result.items[0], stage: 'WAITING_UNBOX' }],
+    });
+    const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    await wrapper.get('[data-test="batch-opening-open"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="batch-opening-panel"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.get('[data-test="batch-opening-panel"]').text()).toContain(
+      'matter-1',
+    );
+    expect(wrapper.find('[data-test="batch-opening-close"]').exists()).toBe(
+      true,
+    );
+  });
+
+  it('keeps unprocessed selections and refreshes after closing a partly successful opening batch', async () => {
+    const second = {
+      ...result.items[0],
+      id: 'matter-2',
+      businessNo: 'NT-002',
+      stage: 'WAITING_UNBOX' as const,
+    };
+    api.listNotaryMatters.mockResolvedValue({
+      ...result,
+      items: [{ ...result.items[0], stage: 'WAITING_UNBOX' }, second],
+      total: 2,
+    });
+    const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
+    await wrapper.get('[data-test="select-page"]').setValue(true);
+    await wrapper.get('[data-test="batch-opening-open"]').trigger('click');
+    await wrapper.get('[data-test="batch-opening-close"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-test="selected-count"]').text()).toContain(
+      '1 项',
+    );
+    expect(wrapper.text()).toContain('其余事项仍保留');
+    expect(api.listNotaryMatters).toHaveBeenCalledTimes(2);
+    expect(api.listNotaryMatters.mock.calls[1]?.[3]).toBe('WAITING_UNBOX');
+  });
+
+  it('shows a recoverable action when the pending request uses the same actor at an older authorization revision', async () => {
+    api.listNotaryMatters.mockResolvedValue({
+      ...result,
+      items: [{ ...result.items[0], stage: 'WAITING_UNBOX' }],
+    });
+    api.getNotaryMatter.mockResolvedValue({
+      id: 'matter-1',
+      businessNo: 'NT-001',
+      stage: 'WAITING_UNBOX',
+      version: 5,
+      capabilities: { recordOpening: true },
+    });
+    const oldKey = `notary-list-request:${JSON.stringify(['user-1:INTERNAL:department-1:0', 'matter-1', 'opening-form'])}`;
+    sessionStorage.setItem(
+      oldKey,
+      JSON.stringify({
+        command: {
+          kind: 'opening',
+          input: { expectedVersion: 4, contentVersionIds: ['photo-v1'] },
+        },
+        key: 'old-auth-revision-key',
+      }),
+    );
+    const { wrapper } = await mountPage('/notary-matters');
+    expect(wrapper.findAll('[data-test="notary-resume-request"]')).toHaveLength(
+      1,
+    );
+    await wrapper.get('[data-test="notary-resume-request"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="notary-workflow-retry"]').exists()).toBe(
+      true,
+    );
+    expect(api.getNotaryMatter).toHaveBeenCalledWith(
+      'matter-1',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    wrapper.unmount();
   });
 
   it.each(['identity', 'department', 'stage'])(

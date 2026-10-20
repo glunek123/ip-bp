@@ -1,5 +1,7 @@
 # 正式系统业务 Spec v0.1
 
+2026-10-18追加SD-61：用户同意公证资料带原因更正并保留历史、归档首片只读、逐事项照片与逐项提交/未知先核实。最小字段和接口见[公证Spec](modules/notary.md)，唯一作者和实施顺序见[清单](../../superpowers/plans/2026-10-17-next-batch-acceptance-readiness.md#7-公证最小实施契约与独占文件)；不重做NT008/009/010，不夹带证书或费用更正，也不等于实现或真实验收完成。
+
 2026-10-16追加SD-60：[结算与证物完整Demo对齐合同](../../superpowers/specs/2026-10-16-demo-settlement-evidence-parity-contract.md)冻结最新完整对齐范围和两个Task唯一所有权，覆盖同日收窄建议；Demo原有能力不删，不以部分首版代替完整目标，实际实现和验证另行交付。
 
 2026-10-15追加SD-59：[执行申请后续最小契约](../../superpowers/specs/2026-10-15-execution-filing-followup-contract.md)仅冻结反馈／补交范围并排队CORE-EF-001；原CA-014提交进EXECUTING不变，不把未登记反馈变为硬门槛。尚未实现／验收。

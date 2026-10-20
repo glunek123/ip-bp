@@ -239,6 +239,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'NOTARY_RECORD_CORRECT',
+      label: '更正公证登记资料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_UNBOX_RECORD',
       label: '登记开箱材料',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -552,6 +557,7 @@ describe('organization API', () => {
       'LEAD_WITHDRAW_APPLY',
       'LEAD_EVIDENCE_DECIDE',
       'NOTARY_EVIDENCE_RECORD',
+      'NOTARY_RECORD_CORRECT',
       'NOTARY_UNBOX_RECORD',
       'NOTARY_OPENING_REVIEW',
       'NOTARY_ISSUANCE_DECIDE',

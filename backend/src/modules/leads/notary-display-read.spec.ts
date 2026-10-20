@@ -37,6 +37,8 @@ function fixture() {
       sampleFeeAmount: new Prisma.Decimal('0'),
     },
     opening: { senderName: null, senderPhone: '123', senderAddress: null },
+    evidenceCorrections: [],
+    openingSenderCorrections: [],
     openingReviewDecision: {
       result: 'INFRINGEMENT',
       reason: null,

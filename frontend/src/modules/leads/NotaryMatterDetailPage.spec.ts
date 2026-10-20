@@ -45,6 +45,8 @@ const api = vi.hoisted(() => ({
   reviewNotaryOpening: vi.fn(),
   decideNotaryIssuance: vi.fn(),
   archiveNotaryReturn: vi.fn(),
+  correctNotaryEvidence: vi.fn(),
+  correctNotaryOpeningSender: vi.fn(),
 }));
 const materials = vi.hoisted(() => ({
   downloadMaterialVersion: vi.fn(),
@@ -68,9 +70,18 @@ const matter = {
   leadVersion: 4,
   stage: 'PENDING_EVIDENCE',
   version: 2,
-  capabilities: { recordEvidence: true, recordOpening: false },
+  capabilities: {
+    recordEvidence: true,
+    recordOpening: false,
+    reviewOpening: false,
+    decideIssuance: false,
+    archiveReturn: false,
+  },
   evidence: null,
   opening: null,
+  reviewDecision: null,
+  issuanceDecision: null,
+  returnArchive: null,
   notaryOffice: { id: 'office-1', name: '广州市南方公证处' },
   selectedProductIds: ['product-1'],
   selectedContentVersionIds: ['content-1'],
@@ -318,6 +329,439 @@ beforeEach(() => {
 });
 
 describe('NotaryMatterDetailPage', () => {
+  it('shows record correction history on archived details without offering a new correction', async () => {
+    api.getNotaryMatter.mockResolvedValue({
+      ...matter,
+      stage: 'ARCHIVED',
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+        decideIssuance: false,
+        archiveReturn: false,
+      },
+      recordEdits: {
+        evidence: {
+          canCorrect: false,
+          revision: 1,
+          original: { evidenceAt: '2026-10-01', logistics: [] },
+          effective: { evidenceAt: '2026-10-02', logistics: [] },
+          history: [
+            {
+              correctionId: 'c-1',
+              revision: 1,
+              correctionReason: '日期录入错误',
+              actorUserId: 'operator-1',
+              recordedAt: '2026-10-03T00:00:00Z',
+              before: { evidenceAt: '2026-10-01', logistics: [] },
+              after: { evidenceAt: '2026-10-02', logistics: [] },
+            },
+          ],
+        },
+        openingSender: null,
+      },
+    });
+    const wrapper = await mountPage();
+    expect(
+      wrapper.get('[data-test="notary-record-corrections"]').text(),
+    ).toContain('日期录入错误');
+    expect(wrapper.find('[data-test="correct-evidence"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('keeps the correction panel and draft visible while refreshed facts arrive after a 409', async () => {
+    const logistics = [
+      {
+        id: 'log-1',
+        companyState: 'PRESENT',
+        companyValue: '顺丰',
+        trackingState: 'PRESENT',
+        trackingValue: 'SF1',
+      },
+    ];
+    const recordEdits = {
+      evidence: {
+        canCorrect: true,
+        revision: 0,
+        original: { evidenceAt: '2026-10-01', logistics },
+        effective: { evidenceAt: '2026-10-01', logistics },
+        history: [],
+      },
+      openingSender: null,
+    };
+    const current = {
+      ...matter,
+      capabilities: {
+        recordEvidence: true,
+        recordOpening: false,
+        reviewOpening: false,
+        decideIssuance: false,
+        archiveReturn: false,
+      },
+      evidence: {
+        evidenceAt: '2026-10-01',
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: '2026-10-02T00:00:00Z',
+        recordedByUserId: 'operator-1',
+        logistics,
+      },
+      recordEdits,
+    };
+    api.getNotaryMatter
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce({ ...current, version: 3 });
+    api.correctNotaryEvidence.mockRejectedValueOnce(
+      new ApiError('stale', 409, 'VERSION_CONFLICT'),
+    );
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="notary-record-corrections"] textarea')
+      .setValue('保留冲突原因');
+    await wrapper
+      .get('[data-test="notary-record-corrections"] input[type="date"]')
+      .setValue('2026-10-02');
+    await wrapper.get('[data-test="correct-evidence"]').trigger('click');
+    await flushPromises();
+    expect(api.getNotaryMatter).toHaveBeenCalledTimes(2);
+    expect(
+      wrapper.find('[data-test="notary-record-corrections"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.get<HTMLTextAreaElement>(
+        '[data-test="notary-record-corrections"] textarea',
+      ).element.value,
+    ).toBe('保留冲突原因');
+    expect(wrapper.get('[data-test="correction-message"]').text()).toContain(
+      '事项状态或版本已变化',
+    );
+    expect(api.correctNotaryEvidence).toHaveBeenCalledWith(
+      'matter-1',
+      expect.objectContaining({
+        expectedVersion: 2,
+        correctionReason: '保留冲突原因',
+        evidenceAt: '2026-10-02',
+      }),
+      expect.any(String),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    wrapper.unmount();
+  });
+
+  it('clears the submitted correction draft after a successful write and fresh read', async () => {
+    const before = [
+      {
+        id: 'log-1',
+        companyState: 'PRESENT',
+        companyValue: '顺丰',
+        trackingState: 'PRESENT',
+        trackingValue: 'SF1',
+      },
+    ];
+    const after = [
+      {
+        id: 'log-2',
+        companyState: 'PRESENT',
+        companyValue: '中通',
+        trackingState: 'PRESENT',
+        trackingValue: 'ZT2',
+      },
+    ];
+    const makeEdits = (revision: number, rows: typeof before) => ({
+      evidence: {
+        canCorrect: true,
+        revision,
+        original: { evidenceAt: '2026-10-01', logistics: before },
+        effective: {
+          evidenceAt: revision ? '2026-10-02' : '2026-10-01',
+          logistics: rows,
+        },
+        history: [],
+      },
+      openingSender: null,
+    });
+    api.getNotaryMatter
+      .mockResolvedValueOnce({
+        ...matter,
+        evidence: {
+          evidenceAt: '2026-10-01',
+          sampleFeeState: 'PENDING',
+          sampleFeeAmount: null,
+          recordedAt: '2026-10-02T00:00:00Z',
+          recordedByUserId: 'operator-1',
+          logistics: before,
+        },
+        recordEdits: makeEdits(0, before),
+      })
+      .mockResolvedValueOnce({
+        ...matter,
+        version: 3,
+        evidence: {
+          evidenceAt: '2026-10-02',
+          sampleFeeState: 'PENDING',
+          sampleFeeAmount: null,
+          recordedAt: '2026-10-03T00:00:00Z',
+          recordedByUserId: 'operator-1',
+          logistics: after,
+        },
+        recordEdits: makeEdits(1, after),
+      });
+    api.correctNotaryEvidence.mockResolvedValueOnce({
+      matterId: 'matter-1',
+      correctionId: 'c-success',
+      kind: 'EVIDENCE',
+      revision: 1,
+      recordedAt: '2026-10-03T00:00:00Z',
+    });
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="notary-record-corrections"] textarea')
+      .setValue('修正物流');
+    await wrapper
+      .get('[data-test="notary-record-corrections"] input[type="date"]')
+      .setValue('2026-10-02');
+    await wrapper
+      .get('[data-test="notary-record-corrections"] input[maxlength="200"]')
+      .setValue('中通');
+    await wrapper
+      .get('[data-test="notary-record-corrections"] input[maxlength="100"]')
+      .setValue('ZT2');
+    await wrapper.get('[data-test="correct-evidence"]').trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.get<HTMLTextAreaElement>(
+        '[data-test="notary-record-corrections"] textarea',
+      ).element.value,
+    ).toBe('');
+    expect(
+      wrapper.get('[data-test="notary-record-corrections"]').text(),
+    ).toContain('中通');
+    expect(api.correctNotaryEvidence).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it('locks correction and workflow writes through a 409 fact refresh without invalidating the next write', async () => {
+    const logistics = [
+      {
+        id: 'log-1',
+        companyState: 'PRESENT' as const,
+        companyValue: '顺丰',
+        trackingState: 'PRESENT' as const,
+        trackingValue: 'SF1',
+      },
+    ];
+    const current = {
+      ...matter,
+      capabilities: {
+        recordEvidence: true,
+        recordOpening: false,
+        reviewOpening: false,
+        decideIssuance: false,
+        archiveReturn: false,
+      },
+      evidence: {
+        evidenceAt: '2026-10-01',
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: '2026-10-02T00:00:00Z',
+        recordedByUserId: 'operator-1',
+        logistics,
+      },
+      recordEdits: {
+        evidence: {
+          canCorrect: true,
+          revision: 0,
+          original: { evidenceAt: '2026-10-01', logistics },
+          effective: { evidenceAt: '2026-10-01', logistics },
+          history: [],
+        },
+        openingSender: null,
+      },
+    } as NotaryMatterDetail;
+    let resolveRefresh: (fresh: NotaryMatterDetail) => void = () => {};
+    const refresh = new Promise<NotaryMatterDetail>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    api.getNotaryMatter
+      .mockResolvedValueOnce(current)
+      .mockReturnValueOnce(refresh)
+      .mockResolvedValueOnce({ ...current, version: 4 });
+    api.correctNotaryEvidence
+      .mockRejectedValueOnce(new ApiError('stale', 409, 'VERSION_CONFLICT'))
+      .mockReturnValueOnce(new Promise(() => {}));
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="notary-record-corrections"] textarea')
+      .setValue('冲突后保留');
+    await wrapper.get('[data-test="correct-evidence"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="correction-refreshing"]').exists()).toBe(
+      true,
+    );
+    await wrapper.get('[data-test="correct-evidence"]').trigger('click');
+    expect(api.correctNotaryEvidence).toHaveBeenCalledTimes(1);
+    expect(
+      wrapper
+        .get('[data-test="notary-record-corrections"] .correction-form')
+        .attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper.findAll('fieldset').some((fieldset) => fieldset.element.disabled),
+    ).toBe(true);
+
+    resolveRefresh({ ...current, version: 3 });
+    await flushPromises();
+    expect(wrapper.find('[data-test="correction-refreshing"]').exists()).toBe(
+      false,
+    );
+    expect(
+      wrapper.get<HTMLTextAreaElement>(
+        '[data-test="notary-record-corrections"] textarea',
+      ).element.value,
+    ).toBe('冲突后保留');
+    await wrapper.get('[data-test="correct-evidence"]').trigger('click');
+    expect(api.correctNotaryEvidence).toHaveBeenCalledTimes(2);
+    expect(
+      sessionStorage.getItem(
+        `notary-record-correction:${JSON.stringify(['user-1:INTERNAL:department-1', 'matter-1'])}`,
+      ),
+    ).toContain('冲突后保留');
+    wrapper.unmount();
+  });
+
+  it('blocks new writes after a failed fact read until explicit reread succeeds', async () => {
+    const logistics = [
+      {
+        id: 'log-1',
+        companyState: 'PRESENT' as const,
+        companyValue: '顺丰',
+        trackingState: 'PRESENT' as const,
+        trackingValue: 'SF1',
+      },
+    ];
+    const current = {
+      ...matter,
+      capabilities: {
+        recordEvidence: true,
+        recordOpening: false,
+        reviewOpening: false,
+        decideIssuance: false,
+        archiveReturn: false,
+      },
+      evidence: {
+        evidenceAt: '2026-10-01',
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: '2026-10-02T00:00:00Z',
+        recordedByUserId: 'operator-1',
+        logistics,
+      },
+      recordEdits: {
+        evidence: {
+          canCorrect: true,
+          revision: 0,
+          original: { evidenceAt: '2026-10-01', logistics },
+          effective: { evidenceAt: '2026-10-01', logistics },
+          history: [],
+        },
+        openingSender: null,
+      },
+    } as NotaryMatterDetail;
+    api.getNotaryMatter
+      .mockResolvedValueOnce(current)
+      .mockRejectedValueOnce(new Error('temporary read failure'))
+      .mockResolvedValueOnce(current);
+    api.correctNotaryEvidence.mockRejectedValueOnce(
+      new ApiError('stale', 409, 'VERSION_CONFLICT'),
+    );
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="notary-record-corrections"] textarea')
+      .setValue('读取失败后保留');
+    await wrapper.get('[data-test="correct-evidence"]').trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="correction-refresh-error"]').exists(),
+    ).toBe(true);
+    await wrapper.get('[data-test="correct-evidence"]').trigger('click');
+    expect(api.correctNotaryEvidence).toHaveBeenCalledTimes(1);
+    await wrapper
+      .get('[data-test="retry-correction-refresh"]')
+      .trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="correction-refresh-error"]').exists(),
+    ).toBe(false);
+    expect(
+      wrapper.get<HTMLTextAreaElement>(
+        '[data-test="notary-record-corrections"] textarea',
+      ).element.value,
+    ).toBe('读取失败后保留');
+    wrapper.unmount();
+  });
+
+  it('aborts a correction fact read when authorization context changes', async () => {
+    const logistics = [
+      {
+        id: 'log-1',
+        companyState: 'PRESENT' as const,
+        companyValue: '顺丰',
+        trackingState: 'PRESENT' as const,
+        trackingValue: 'SF1',
+      },
+    ];
+    const current = {
+      ...matter,
+      evidence: {
+        evidenceAt: '2026-10-01',
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: '2026-10-02T00:00:00Z',
+        recordedByUserId: 'operator-1',
+        logistics,
+      },
+      recordEdits: {
+        evidence: {
+          canCorrect: true,
+          revision: 0,
+          original: { evidenceAt: '2026-10-01', logistics },
+          effective: { evidenceAt: '2026-10-01', logistics },
+          history: [],
+        },
+        openingSender: null,
+      },
+    } as NotaryMatterDetail;
+    let resolveRefresh: (fresh: NotaryMatterDetail) => void = () => {};
+    const refresh = new Promise<NotaryMatterDetail>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    api.getNotaryMatter
+      .mockResolvedValueOnce(current)
+      .mockReturnValueOnce(refresh)
+      .mockResolvedValueOnce(current);
+    api.correctNotaryEvidence.mockRejectedValueOnce(
+      new ApiError('stale', 409, 'VERSION_CONFLICT'),
+    );
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="notary-record-corrections"] textarea')
+      .setValue('切换身份时取消读取');
+    await wrapper.get('[data-test="correct-evidence"]').trigger('click');
+    await flushPromises();
+    const signal = api.getNotaryMatter.mock.calls[1]?.[1]
+      ?.signal as AbortSignal;
+    expect(signal.aborted).toBe(false);
+    useAuthStore().session = {
+      ...useAuthStore().session!,
+      authorizationRevision: 2,
+    };
+    await flushPromises();
+    expect(signal.aborted).toBe(true);
+    resolveRefresh(current);
+    await flushPromises();
+    wrapper.unmount();
+  });
+
   it('keeps the saved frozen opening and its download visible while reviewing', async () => {
     api.getNotaryMatter.mockResolvedValue({
       ...matter,
@@ -870,6 +1314,8 @@ describe('NotaryMatterDetailPage', () => {
       .mockResolvedValueOnce(archived)
       .mockResolvedValueOnce(waitingReturn);
     api.archiveNotaryReturn.mockResolvedValue({});
+    api.correctNotaryEvidence.mockResolvedValue({});
+    api.correctNotaryOpeningSender.mockResolvedValue({});
 
     const wrapper = await mountPage();
     const reason = '😀'.repeat(2501);
@@ -1560,6 +2006,7 @@ describe('NotaryMatterDetailPage', () => {
         senderName: '寄件人甲',
       },
       expect.any(String),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(wrapper.get('[data-test="saved-opening"]').text()).toContain(
       '开箱.jpg',

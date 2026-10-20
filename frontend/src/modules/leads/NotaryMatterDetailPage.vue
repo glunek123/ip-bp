@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
+import {
+  RouterLink,
+  useRoute,
+  onBeforeRouteLeave,
+  onBeforeRouteUpdate,
+} from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import { labelLeadPlatform } from './lead-options';
@@ -15,6 +20,7 @@ import {
 } from '../../api/notary';
 import { createListWorkflowContext } from '../../app/list-workflow-context';
 import NotaryMatterWorkflowPanel from './NotaryMatterWorkflowPanel.vue';
+import NotaryRecordCorrectionPanel from './NotaryRecordCorrectionPanel.vue';
 const route = useRoute();
 const auth = useAuthStore();
 const actorKey = computed(() =>
@@ -30,11 +36,16 @@ const requestScopeKey = computed(
 );
 let contextGeneration = 0;
 let request: AbortController | undefined;
+let correctionRefreshRequest: AbortController | undefined;
 const downloadRequests = new Set<AbortController>();
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 type DetailElement = InstanceType<typeof globalThis.HTMLElement>;
 const detailRoot = ref<DetailElement>();
 const matter = ref<NotaryMatterDetail>();
+const correctionPanel = ref<{ canLeave: () => boolean }>();
+const correctionLocked = ref(false);
+const correctionRefreshing = ref(false);
+const correctionRefreshError = ref(false);
 const downloadError = ref('');
 const caseStageLabels: Record<CaseStage, string> = {
   PENDING_MATCH: '待匹配',
@@ -211,6 +222,39 @@ async function load(): Promise<boolean> {
     return false;
   }
 }
+async function refreshCorrectionFacts(): Promise<void> {
+  if (correctionRefreshing.value) return;
+  const generation = contextGeneration;
+  const matterId = String(route.params.id);
+  const controller = new AbortController();
+  correctionRefreshRequest = controller;
+  correctionRefreshing.value = true;
+  correctionRefreshError.value = false;
+  try {
+    const fresh = await getNotaryMatter(matterId, {
+      signal: controller.signal,
+    });
+    if (
+      controller.signal.aborted ||
+      generation !== contextGeneration ||
+      String(route.params.id) !== matterId ||
+      !auth.session ||
+      auth.session.principalType !== 'INTERNAL'
+    )
+      return;
+    matter.value = fresh;
+    state.value = 'ready';
+  } catch {
+    // Keep the current correction form and its conflict message available.
+    if (!controller.signal.aborted && generation === contextGeneration)
+      correctionRefreshError.value = true;
+  } finally {
+    if (correctionRefreshRequest === controller) {
+      correctionRefreshRequest = undefined;
+      if (generation === contextGeneration) correctionRefreshing.value = false;
+    }
+  }
+}
 
 const workflow = createListWorkflowContext<NotaryMatterDetail>(
   async () => {
@@ -220,6 +264,43 @@ const workflow = createListWorkflowContext<NotaryMatterDetail>(
   { success: () => void load() },
 );
 const workflowState = workflow.state;
+function canLeaveDetail() {
+  return (
+    workflowState.value.requestState === 'idle' &&
+    (correctionPanel.value?.canLeave() ?? true)
+  );
+}
+onBeforeRouteLeave(canLeaveDetail);
+onBeforeRouteUpdate(canLeaveDetail);
+function actorIdentityKey(value: string): string {
+  return value.split(':').slice(0, 3).join(':');
+}
+function hasPendingWorkflowRequest(
+  recordId: string,
+  actionKey: string,
+): boolean {
+  for (let index = 0; index < globalThis.sessionStorage.length; index += 1) {
+    const key = globalThis.sessionStorage.key(index);
+    if (!key?.startsWith('notary-list-request:')) continue;
+    try {
+      const tuple: unknown = JSON.parse(
+        key.slice('notary-list-request:'.length),
+      );
+      if (
+        Array.isArray(tuple) &&
+        tuple.length === 3 &&
+        typeof tuple[0] === 'string' &&
+        actorIdentityKey(tuple[0]) === actorIdentityKey(actorKey.value) &&
+        tuple[1] === recordId &&
+        tuple[2] === actionKey
+      )
+        return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
+}
 watch(
   matter,
   (current) => {
@@ -236,11 +317,12 @@ watch(
     ];
     let saved: string | undefined;
     try {
-      saved = actions.find((action) =>
-        globalThis.sessionStorage.getItem(
-          'notary-list-request:' +
-            JSON.stringify([actorKey.value, current.id, action]),
-        ),
+      saved = actions.find(
+        (action) =>
+          globalThis.sessionStorage.getItem(
+            'notary-list-request:' +
+              JSON.stringify([actorKey.value, current.id, action]),
+          ) || hasPendingWorkflowRequest(current.id, action),
       );
     } catch {
       /* The panel blocks dispatch when storage is unavailable. */
@@ -261,10 +343,15 @@ watch(
 );
 function clearContext() {
   contextGeneration += 1;
+  correctionRefreshRequest?.abort();
+  correctionRefreshRequest = undefined;
+  correctionRefreshing.value = false;
+  correctionRefreshError.value = false;
   request?.abort();
   for (const controller of downloadRequests) controller.abort();
   downloadRequests.clear();
   matter.value = undefined;
+  correctionLocked.value = false;
   downloadError.value = '';
   workflow.dispose();
 }
@@ -349,7 +436,10 @@ watch(
           <ElButton
             data-test="refresh-matter"
             text
-            :disabled="workflowState.requestState !== 'idle'"
+            :disabled="
+              workflowState.requestState !== 'idle' ||
+              (correctionPanel && !correctionPanel.canLeave())
+            "
             @click="load"
             >刷新</ElButton
           >
@@ -552,7 +642,41 @@ watch(
           :key="workflowState.session.contextKey"
           :detail="matter"
           :session="workflowState.session"
+          :disabled="
+            correctionLocked || correctionRefreshing || correctionRefreshError
+          "
         />
+        <NotaryRecordCorrectionPanel
+          v-if="matter"
+          :key="`${matter.id}:${actorKey}`"
+          ref="correctionPanel"
+          :detail="matter"
+          :actor-key="actorKey"
+          :blocked="workflowState.requestState !== 'idle'"
+          :refreshing="correctionRefreshing || correctionRefreshError"
+          @refreshed="refreshCorrectionFacts"
+          @locking="correctionLocked = $event"
+        />
+        <p
+          v-if="correctionRefreshing"
+          role="status"
+          data-test="correction-refreshing"
+        >
+          正在重新读取更正事实，读取完成前不能开始新更正或核实原请求。
+        </p>
+        <p
+          v-if="correctionRefreshError"
+          role="alert"
+          data-test="correction-refresh-error"
+        >
+          最新事实读取失败。请重试读取；读取成功前不能开始新更正。
+          <ElButton
+            data-test="retry-correction-refresh"
+            @click="refreshCorrectionFacts"
+          >
+            重新读取
+          </ElButton>
+        </p>
         <section
           id="saved-opening"
           tabindex="-1"

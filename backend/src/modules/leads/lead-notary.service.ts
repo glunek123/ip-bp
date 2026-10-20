@@ -19,6 +19,7 @@ import {
   readNotaryDisplay,
 } from './notary-display-read';
 import { openingReviewMatchesStage } from './notary-opening-review-read';
+import { readNotaryRecordEdits } from './notary-record-edit-read';
 import {
   CreateNotaryOfficeDto,
   RecordNotaryEvidenceDto,
@@ -673,6 +674,11 @@ export class LeadNotaryService {
         evidence: {
           include: { logistics: { orderBy: { position: 'asc' } } },
         },
+        evidenceCorrections: {
+          orderBy: { revision: 'asc' },
+          include: { logistics: { orderBy: { position: 'asc' } } },
+        },
+        openingSenderCorrections: { orderBy: { revision: 'asc' } },
         opening: true,
         openingReviewDecision: {
           select: {
@@ -889,6 +895,7 @@ export class LeadNotaryService {
     const frozenPhotoCount = new Set(
       openingReferences.map((reference) => reference.contentVersionId),
     ).size;
+    const recordEdits = await readNotaryRecordEdits(this.access, actor, matter);
     return {
       id: matter.id,
       businessNo: matter.businessNo,
@@ -897,6 +904,7 @@ export class LeadNotaryService {
       leadVersion: matter.toLeadVersion,
       stage: matter.stage,
       version: matter.version,
+      recordEdits,
       capabilities: await notaryDisplayCapabilities(
         this.access,
         actor,
@@ -955,9 +963,12 @@ export class LeadNotaryService {
         matter.opening === null
           ? null
           : {
-              senderName: matter.opening.senderName,
-              senderPhone: matter.opening.senderPhone,
-              senderAddress: matter.opening.senderAddress,
+              senderName:
+                recordEdits.openingSender?.effective.senderName ?? null,
+              senderPhone:
+                recordEdits.openingSender?.effective.senderPhone ?? null,
+              senderAddress:
+                recordEdits.openingSender?.effective.senderAddress ?? null,
               recordedAt: matter.opening.recordedAt.toISOString(),
               recordedByUserId: matter.opening.recordedByUserId,
               photos: openingReferences.map((reference) => ({
@@ -971,19 +982,15 @@ export class LeadNotaryService {
         matter.evidence === null
           ? null
           : {
-              evidenceAt: matter.evidence.evidenceAt.toISOString().slice(0, 10),
+              evidenceAt:
+                recordEdits.evidence?.effective.evidenceAt ??
+                matter.evidence.evidenceAt.toISOString().slice(0, 10),
               sampleFeeState: matter.evidence.sampleFeeState,
               sampleFeeAmount:
                 matter.evidence.sampleFeeAmount?.toFixed(2) ?? null,
               recordedAt: matter.evidence.recordedAt.toISOString(),
               recordedByUserId: matter.evidence.recordedByUserId,
-              logistics: matter.evidence.logistics.map((row) => ({
-                id: row.id,
-                companyState: row.companyState,
-                companyValue: row.companyValue,
-                trackingState: row.trackingState,
-                trackingValue: row.trackingValue,
-              })),
+              logistics: recordEdits.evidence?.effective.logistics ?? [],
             },
       notaryOffice: matter.notaryOffice,
       selectedProductIds: productSnapshot.map((item) => item.id),

@@ -82,6 +82,88 @@ export class NotaryLogisticsDto {
   trackingValue?: string | null;
 }
 
+export class NotaryEditLogisticsResponseDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ enum: ['PRESENT', 'NONE'] }) companyState!: 'PRESENT' | 'NONE';
+  @ApiProperty({ type: String, nullable: true, maxLength: 200 })
+  companyValue!: string | null;
+  @ApiProperty({ enum: ['PRESENT', 'NONE'] }) trackingState!:
+    'PRESENT' | 'NONE';
+  @ApiProperty({ type: String, nullable: true, maxLength: 100 })
+  trackingValue!: string | null;
+}
+
+export class NotaryEvidenceEditValueResponseDto {
+  @ApiProperty({ format: 'date' }) evidenceAt!: string;
+  @ApiProperty({ type: [NotaryEditLogisticsResponseDto] })
+  logistics!: NotaryEditLogisticsResponseDto[];
+}
+
+export class NotaryOpeningSenderEditValueResponseDto {
+  @ApiProperty({ type: String, nullable: true, maxLength: 200 }) senderName!:
+    string | null;
+  @ApiProperty({ type: String, nullable: true, maxLength: 100 }) senderPhone!:
+    string | null;
+  @ApiProperty({ type: String, nullable: true, maxLength: 500 })
+  senderAddress!: string | null;
+}
+
+export class NotaryEvidenceEditHistoryResponseDto {
+  @ApiProperty({ format: 'uuid' }) correctionId!: string;
+  @ApiProperty({ minimum: 1 }) revision!: number;
+  @ApiProperty() correctionReason!: string;
+  @ApiProperty({ format: 'uuid' }) actorUserId!: string;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiProperty({ type: NotaryEvidenceEditValueResponseDto })
+  before!: NotaryEvidenceEditValueResponseDto;
+  @ApiProperty({ type: NotaryEvidenceEditValueResponseDto })
+  after!: NotaryEvidenceEditValueResponseDto;
+}
+
+export class NotaryOpeningSenderEditHistoryResponseDto {
+  @ApiProperty({ format: 'uuid' }) correctionId!: string;
+  @ApiProperty({ minimum: 1 }) revision!: number;
+  @ApiProperty() correctionReason!: string;
+  @ApiProperty({ format: 'uuid' }) actorUserId!: string;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiProperty({ type: NotaryOpeningSenderEditValueResponseDto })
+  before!: NotaryOpeningSenderEditValueResponseDto;
+  @ApiProperty({ type: NotaryOpeningSenderEditValueResponseDto })
+  after!: NotaryOpeningSenderEditValueResponseDto;
+}
+
+export class NotaryEvidenceEditGroupResponseDto {
+  @ApiProperty() canCorrect!: boolean;
+  @ApiProperty({ minimum: 0 }) revision!: number;
+  @ApiProperty({ type: NotaryEvidenceEditValueResponseDto })
+  original!: NotaryEvidenceEditValueResponseDto;
+  @ApiProperty({ type: NotaryEvidenceEditValueResponseDto })
+  effective!: NotaryEvidenceEditValueResponseDto;
+  @ApiProperty({ type: [NotaryEvidenceEditHistoryResponseDto] })
+  history!: NotaryEvidenceEditHistoryResponseDto[];
+}
+
+export class NotaryOpeningSenderEditGroupResponseDto {
+  @ApiProperty() canCorrect!: boolean;
+  @ApiProperty({ minimum: 0 }) revision!: number;
+  @ApiProperty({ type: NotaryOpeningSenderEditValueResponseDto })
+  original!: NotaryOpeningSenderEditValueResponseDto;
+  @ApiProperty({ type: NotaryOpeningSenderEditValueResponseDto })
+  effective!: NotaryOpeningSenderEditValueResponseDto;
+  @ApiProperty({ type: [NotaryOpeningSenderEditHistoryResponseDto] })
+  history!: NotaryOpeningSenderEditHistoryResponseDto[];
+}
+
+export class NotaryRecordEditsResponseDto {
+  @ApiProperty({ type: NotaryEvidenceEditGroupResponseDto, nullable: true })
+  evidence!: NotaryEvidenceEditGroupResponseDto | null;
+  @ApiProperty({
+    type: NotaryOpeningSenderEditGroupResponseDto,
+    nullable: true,
+  })
+  openingSender!: NotaryOpeningSenderEditGroupResponseDto | null;
+}
+
 export class RecordNotaryEvidenceDto {
   @ApiProperty({ description: '实际取证日期，YYYY-MM-DD' })
   @IsString()

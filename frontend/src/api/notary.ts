@@ -125,6 +125,58 @@ export type NotaryEvidence = {
   logistics: NotaryEvidenceLogistics[];
 };
 
+export type NotaryEvidenceEditValue = {
+  evidenceAt: string;
+  logistics: NotaryEvidenceLogistics[];
+};
+export type NotaryOpeningSenderEditValue = {
+  senderName: string | null;
+  senderPhone: string | null;
+  senderAddress: string | null;
+};
+export type NotaryRecordEditHistory<T> = {
+  correctionId: string;
+  revision: number;
+  correctionReason: string;
+  actorUserId: string;
+  recordedAt: string;
+  before: T;
+  after: T;
+};
+export type NotaryRecordEditGroup<T> = {
+  canCorrect: boolean;
+  revision: number;
+  original: T;
+  effective: T;
+  history: NotaryRecordEditHistory<T>[];
+};
+export type NotaryRecordEdits = {
+  evidence: NotaryRecordEditGroup<NotaryEvidenceEditValue> | null;
+  openingSender: NotaryRecordEditGroup<NotaryOpeningSenderEditValue> | null;
+};
+export type NotaryRecordCorrectionResult = {
+  matterId: string;
+  correctionId: string;
+  kind: 'EVIDENCE' | 'OPENING_SENDER';
+  revision: number;
+  recordedAt: string;
+};
+export type CorrectNotaryEvidenceInput = {
+  expectedVersion: number;
+  expectedRevision: number;
+  correctionReason: string;
+  evidenceAt: string;
+  logistics: Array<Omit<NotaryEvidenceLogistics, 'id'>>;
+};
+export type CorrectNotaryOpeningSenderInput = {
+  expectedVersion: number;
+  expectedRevision: number;
+  correctionReason: string;
+  senderName: string | null;
+  senderPhone: string | null;
+  senderAddress: string | null;
+};
+
 export type NotaryOpeningPhoto = {
   materialId: string;
   contentVersionId: string;
@@ -282,6 +334,7 @@ export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> &
     reviewDecision: NotaryOpeningReviewDecision | null;
     issuanceDecision: NotaryIssuanceDecision | null;
     returnArchive: NotaryReturnArchiveSummary | null;
+    recordEdits?: NotaryRecordEdits;
     sourceLead: { id: string; businessNo: string };
     selectedProducts: LeadProduct[];
     selectedMaterials: Array<{
@@ -326,6 +379,101 @@ function isEvidence(value: unknown): value is NotaryEvidence {
     Array.isArray(value.logistics) &&
     value.logistics.length > 0 &&
     value.logistics.every(isLogistics)
+  );
+}
+
+function isEvidenceEditValue(value: unknown): value is NotaryEvidenceEditValue {
+  return (
+    isRecord(value) &&
+    exactKeys(value, ['evidenceAt', 'logistics']) &&
+    typeof value.evidenceAt === 'string' &&
+    isCalendarDate(value.evidenceAt) &&
+    Array.isArray(value.logistics) &&
+    value.logistics.length > 0 &&
+    value.logistics.every(
+      (row) =>
+        isRecord(row) &&
+        exactKeys(row, [
+          'id',
+          'companyState',
+          'companyValue',
+          'trackingState',
+          'trackingValue',
+        ]) &&
+        isLogistics(row),
+    )
+  );
+}
+
+function isOpeningSenderEditValue(
+  value: unknown,
+): value is NotaryOpeningSenderEditValue {
+  return (
+    isRecord(value) &&
+    exactKeys(value, ['senderName', 'senderPhone', 'senderAddress']) &&
+    (value.senderName === null || typeof value.senderName === 'string') &&
+    (value.senderPhone === null || typeof value.senderPhone === 'string') &&
+    (value.senderAddress === null || typeof value.senderAddress === 'string')
+  );
+}
+
+function isRecordEditGroup<T>(
+  value: unknown,
+  isValue: (candidate: unknown) => candidate is T,
+): value is NotaryRecordEditGroup<T> {
+  if (
+    !isRecord(value) ||
+    !exactKeys(value, [
+      'canCorrect',
+      'revision',
+      'original',
+      'effective',
+      'history',
+    ]) ||
+    typeof value.canCorrect !== 'boolean' ||
+    !Number.isInteger(value.revision) ||
+    (value.revision as number) < 0 ||
+    !isValue(value.original) ||
+    !isValue(value.effective) ||
+    !Array.isArray(value.history) ||
+    value.history.length !== value.revision
+  )
+    return false;
+  return value.history.every(
+    (entry, index) =>
+      isRecord(entry) &&
+      exactKeys(entry, [
+        'correctionId',
+        'revision',
+        'correctionReason',
+        'actorUserId',
+        'recordedAt',
+        'before',
+        'after',
+      ]) &&
+      typeof entry.correctionId === 'string' &&
+      entry.correctionId.length > 0 &&
+      entry.revision === index + 1 &&
+      typeof entry.correctionReason === 'string' &&
+      entry.correctionReason.trim().length > 0 &&
+      entry.correctionReason === entry.correctionReason.trim() &&
+      typeof entry.actorUserId === 'string' &&
+      entry.actorUserId.length > 0 &&
+      typeof entry.recordedAt === 'string' &&
+      !Number.isNaN(Date.parse(entry.recordedAt)) &&
+      isValue(entry.before) &&
+      isValue(entry.after),
+  );
+}
+
+function isRecordEdits(value: unknown): value is NotaryRecordEdits {
+  return (
+    isRecord(value) &&
+    exactKeys(value, ['evidence', 'openingSender']) &&
+    (value.evidence === null ||
+      isRecordEditGroup(value.evidence, isEvidenceEditValue)) &&
+    (value.openingSender === null ||
+      isRecordEditGroup(value.openingSender, isOpeningSenderEditValue))
   );
 }
 
@@ -848,6 +996,7 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
     typeof detail.capabilities.decideIssuance === 'boolean' &&
     typeof detail.capabilities.archiveReturn === 'boolean' &&
     (detail.evidence === null || isEvidence(detail.evidence)) &&
+    (detail.recordEdits === undefined || isRecordEdits(detail.recordEdits)) &&
     (detail.opening === null || isOpening(detail.opening)) &&
     (detail.reviewDecision === null ||
       isReviewDecision(detail.reviewDecision)) &&
@@ -1261,6 +1410,7 @@ export async function recordNotaryOpening(
   id: string,
   input: RecordNotaryOpeningInput,
   idempotencyKey: string,
+  options: RequestOptions = {},
 ): Promise<RecordNotaryOpeningResult> {
   if (
     !Number.isInteger(input.expectedVersion) ||
@@ -1276,9 +1426,22 @@ export async function recordNotaryOpening(
   const data = await requestJson(
     `/notary-matters/${encodeURIComponent(id)}/opening`,
     {
+      ...options,
       method: 'POST',
-      headers: { 'Idempotency-Key': idempotencyKey },
-      body: { ...input, contentVersionIds: [...input.contentVersionIds] },
+      headers: { ...options.headers, 'Idempotency-Key': idempotencyKey },
+      body: {
+        expectedVersion: input.expectedVersion,
+        contentVersionIds: [...input.contentVersionIds],
+        ...(input.senderName === undefined
+          ? {}
+          : { senderName: input.senderName }),
+        ...(input.senderPhone === undefined
+          ? {}
+          : { senderPhone: input.senderPhone }),
+        ...(input.senderAddress === undefined
+          ? {}
+          : { senderAddress: input.senderAddress }),
+      },
     },
   );
   if (
@@ -1292,6 +1455,150 @@ export async function recordNotaryOpening(
     data.opening.senderName !== (input.senderName?.trim() || null) ||
     data.opening.senderPhone !== (input.senderPhone?.trim() || null) ||
     data.opening.senderAddress !== (input.senderAddress?.trim() || null)
+  )
+    throw invalidResponse();
+  return data;
+}
+
+function isCorrectionResult(
+  value: unknown,
+  matterId: string,
+  kind: NotaryRecordCorrectionResult['kind'],
+  revision: number,
+): value is NotaryRecordCorrectionResult {
+  return (
+    isRecord(value) &&
+    exactKeys(value, [
+      'matterId',
+      'correctionId',
+      'kind',
+      'revision',
+      'recordedAt',
+    ]) &&
+    value.matterId === matterId &&
+    typeof value.correctionId === 'string' &&
+    value.correctionId.length > 0 &&
+    value.kind === kind &&
+    value.revision === revision &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt))
+  );
+}
+
+function validCorrectionBase(
+  input: {
+    expectedVersion: number;
+    expectedRevision: number;
+    correctionReason: string;
+  },
+  key: string,
+): boolean {
+  const reason = input.correctionReason.trim();
+  return (
+    Number.isInteger(input.expectedVersion) &&
+    input.expectedVersion >= 1 &&
+    Number.isInteger(input.expectedRevision) &&
+    input.expectedRevision >= 0 &&
+    reason.length >= 1 &&
+    reason.length <= 500 &&
+    key.length >= 1 &&
+    key.length <= 128
+  );
+}
+
+export async function correctNotaryEvidence(
+  matterId: string,
+  input: CorrectNotaryEvidenceInput,
+  idempotencyKey: string,
+  options: RequestOptions = {},
+): Promise<NotaryRecordCorrectionResult> {
+  if (
+    !validCorrectionBase(input, idempotencyKey) ||
+    !isCalendarDate(input.evidenceAt) ||
+    !Array.isArray(input.logistics) ||
+    input.logistics.length === 0 ||
+    !input.logistics.every(
+      (row) =>
+        (row.companyState === 'PRESENT'
+          ? typeof row.companyValue === 'string' &&
+            row.companyValue.trim().length >= 1 &&
+            row.companyValue.trim().length <= 200
+          : row.companyState === 'NONE' && row.companyValue === null) &&
+        (row.trackingState === 'PRESENT'
+          ? typeof row.trackingValue === 'string' &&
+            row.trackingValue.trim().length >= 1 &&
+            row.trackingValue.trim().length <= 100
+          : row.trackingState === 'NONE' && row.trackingValue === null),
+    )
+  )
+    throw new ApiError('取证更正信息无效', 400, 'VALIDATION_ERROR');
+  const data = await requestJson(
+    `/notary-matters/${encodeURIComponent(matterId)}/evidence-corrections`,
+    {
+      method: 'POST',
+      ...options,
+      headers: { ...options.headers, 'Idempotency-Key': idempotencyKey },
+      body: {
+        expectedVersion: input.expectedVersion,
+        expectedRevision: input.expectedRevision,
+        correctionReason: input.correctionReason.trim(),
+        evidenceAt: input.evidenceAt,
+        logistics: input.logistics.map((row) => ({
+          companyState: row.companyState,
+          companyValue: row.companyValue,
+          trackingState: row.trackingState,
+          trackingValue: row.trackingValue,
+        })),
+      },
+    },
+  );
+  if (
+    !isCorrectionResult(data, matterId, 'EVIDENCE', input.expectedRevision + 1)
+  )
+    throw invalidResponse();
+  return data;
+}
+
+export async function correctNotaryOpeningSender(
+  matterId: string,
+  input: CorrectNotaryOpeningSenderInput,
+  idempotencyKey: string,
+  options: RequestOptions = {},
+): Promise<NotaryRecordCorrectionResult> {
+  if (
+    !validCorrectionBase(input, idempotencyKey) ||
+    !(['senderName', 'senderPhone', 'senderAddress'] as const).every(
+      (field) =>
+        input[field] === null ||
+        (typeof input[field] === 'string' &&
+          input[field]!.length <=
+            { senderName: 200, senderPhone: 100, senderAddress: 500 }[field]),
+    )
+  )
+    throw new ApiError('寄件更正信息无效', 400, 'VALIDATION_ERROR');
+  const data = await requestJson(
+    `/notary-matters/${encodeURIComponent(matterId)}/opening-sender-corrections`,
+    {
+      method: 'POST',
+      ...options,
+      headers: { ...options.headers, 'Idempotency-Key': idempotencyKey },
+      body: {
+        expectedVersion: input.expectedVersion,
+        expectedRevision: input.expectedRevision,
+        correctionReason: input.correctionReason.trim(),
+        senderName: input.senderName,
+        senderPhone: input.senderPhone,
+        senderAddress: input.senderAddress,
+      },
+    },
+  );
+  if (
+    !isCorrectionResult(
+      data,
+      matterId,
+      'OPENING_SENDER',
+      input.expectedRevision + 1,
+    )
   )
     throw invalidResponse();
   return data;

@@ -172,6 +172,7 @@ enum PermissionAction {
   LEAD_WITHDRAW_APPLY          @map("lead.withdraw.apply")
   LEAD_EVIDENCE_DECIDE         @map("lead.evidence.decide")
   NOTARY_EVIDENCE_RECORD       @map("notary.evidence.record")
+  NOTARY_RECORD_CORRECT        @map("notary.record.correct")
   NOTARY_UNBOX_RECORD          @map("notary.unbox.record")
   NOTARY_OPENING_REVIEW        @map("notary.opening.review")
   NOTARY_ISSUANCE_DECIDE       @map("notary.issuance.decide")
@@ -713,6 +714,8 @@ model UserAccount {
   createdNotaryOffices             NotaryOffice[]                    @relation("NotaryOfficeCreator")
   createdNotaryMatters             NotaryMatter[]                    @relation("NotaryMatterCreator")
   recordedNotaryEvidence           NotaryMatterEvidence[]            @relation("NotaryEvidenceRecorder")
+  notaryEvidenceCorrections         NotaryEvidenceCorrection[]
+  notaryOpeningSenderCorrections    NotaryOpeningSenderCorrection[]
   clientReviewReceipts             ClientLeadReviewReceipt[]         @relation("ClientLeadReviewReceiptActor")
   notaryOpeningReviewDecisions     NotaryOpeningReviewDecision[]     @relation("NotaryOpeningReviewDecisionActor")
   notaryIssuanceDecisions          NotaryIssuanceDecision[]          @relation("NotaryIssuanceDecisionActor")
@@ -1958,6 +1961,8 @@ model NotaryMatter {
   selectedProducts      NotaryMatterProduct[]
   selectedMaterials     NotaryMatterMaterial[]
   evidence              NotaryMatterEvidence?
+  evidenceCorrections   NotaryEvidenceCorrection[]
+  openingSenderCorrections NotaryOpeningSenderCorrection[]
   opening               NotaryMatterOpening?
   openingReviewDecision NotaryOpeningReviewDecision?
   issuanceDecision      NotaryIssuanceDecision?
@@ -3290,10 +3295,64 @@ model NotaryMatterEvidence {
   matter           NotaryMatter            @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_matter_evidence_matter_department_fkey")
   recordedBy       UserAccount             @relation("NotaryEvidenceRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict)
   logistics        NotaryMatterLogistics[]
+  corrections      NotaryEvidenceCorrection[] @relation("NotaryEvidenceCorrectionOriginal")
   returnRefunds    NotaryReturnAmount[]
 
   @@unique([matterId, departmentId], map: "notary_matter_evidence_matter_department_key")
   @@map("notary_matter_evidence")
+}
+
+model NotaryEvidenceCorrection {
+  id               String                              @id @default(uuid()) @db.Uuid
+  matterId         String                              @map("matter_id") @db.Uuid
+  departmentId     String                              @map("department_id") @db.Uuid
+  revision         Int
+  correctionReason String                              @map("correction_reason") @db.VarChar(500)
+  evidenceAt       DateTime                            @map("evidence_at") @db.Date
+  actorUserId      String                              @map("actor_user_id") @db.Uuid
+  recordedAt       DateTime                            @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  matter           NotaryMatter                        @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  originalEvidence NotaryMatterEvidence                @relation("NotaryEvidenceCorrectionOriginal", fields: [matterId, departmentId], references: [matterId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_evidence_corrections_original_fkey")
+  actor            UserAccount                         @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  logistics        NotaryEvidenceCorrectionLogistics[]
+
+  @@unique([matterId, revision])
+  @@index([departmentId, matterId])
+  @@map("notary_evidence_corrections")
+}
+
+model NotaryEvidenceCorrectionLogistics {
+  id            String                    @id @default(uuid()) @db.Uuid
+  correctionId  String                    @map("correction_id") @db.Uuid
+  position      Int
+  companyState  NotaryLogisticsFieldState @map("company_state")
+  companyValue  String?                   @map("company_value") @db.VarChar(200)
+  trackingState NotaryLogisticsFieldState @map("tracking_state")
+  trackingValue String?                   @map("tracking_value") @db.VarChar(100)
+  correction    NotaryEvidenceCorrection  @relation(fields: [correctionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([correctionId, position])
+  @@map("notary_evidence_correction_logistics")
+}
+
+model NotaryOpeningSenderCorrection {
+  id               String              @id @default(uuid()) @db.Uuid
+  matterId         String              @map("matter_id") @db.Uuid
+  departmentId     String              @map("department_id") @db.Uuid
+  revision         Int
+  correctionReason String              @map("correction_reason") @db.VarChar(500)
+  senderName       String?             @map("sender_name") @db.VarChar(200)
+  senderPhone      String?             @map("sender_phone") @db.VarChar(100)
+  senderAddress    String?             @map("sender_address") @db.VarChar(500)
+  actorUserId      String              @map("actor_user_id") @db.Uuid
+  recordedAt       DateTime            @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  matter           NotaryMatter        @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  originalOpening  NotaryMatterOpening @relation("NotaryOpeningSenderCorrectionOriginal", fields: [matterId, departmentId], references: [matterId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_opening_sender_corrections_original_fkey")
+  actor            UserAccount         @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([matterId, revision])
+  @@index([departmentId, matterId])
+  @@map("notary_opening_sender_corrections")
 }
 
 model NotaryMatterOpening {
@@ -3311,6 +3370,7 @@ model NotaryMatterOpening {
   internalActorMembership      DepartmentMembership?        @relation("NotaryOpeningInternalActor", fields: [internalActorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   notaryOfficeAccountBinding   NotaryOfficeAccountBinding?  @relation(fields: [notaryOfficeAccountBindingId, recordedByUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   reviewDecision               NotaryOpeningReviewDecision?
+  senderCorrections             NotaryOpeningSenderCorrection[] @relation("NotaryOpeningSenderCorrectionOriginal")
 
   @@unique([matterId, departmentId], map: "notary_matter_opening_matter_department_key")
   @@map("notary_matter_opening")

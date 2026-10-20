@@ -151,15 +151,15 @@ pnpm test:e2e tests/e2e/lead-batch-push-minimal-page.spec.ts --config playwright
 
 以下保留2026-10-17建议来源；三点已由后续用户确认，最小规格及准确范围以独立提交cfb3d2b3为准，原公证Task当前已恢复并在独立目录实施代码／纯测试。特别是来源授权沿原SELF／TEAM／DEPARTMENT，不从旧建议的TEAM／DEPARTMENT限制排除原SELF；不再等待三点业务答复。其公证schema／API／UI不并入本页冻结运行候选，仍无迁移执行、真实账号／Grant或数据库验收授权。
 
-依据INPUT-016、[当前公证Spec](../../spec/v0.1/modules/notary.md)、[NT002单项开箱设计](../specs/2026-09-24-core-nt-002-unboxing-materials-design.md)及Demo逆向M03。字段更正/跨事项开箱方向已批准，以下资格、阶段与批次语义是新增选择。
+用户已同意内部受权人员带原因更正并留历史／归档暂不改、每事项确认自己的照片、逐项保存且未知先核实。依据INPUT-016、[SD-61与当前公证Spec](../../spec/v0.1/modules/notary.md)、[NT002单项开箱设计](../specs/2026-09-24-core-nt-002-unboxing-materials-design.md)及Demo逆向M03；三项不再等待业务答复，实施仍遵守原事实和权限边界。
 
-| 决定                          | 推荐首片                                                                                                                                                                                                                                                                                                                             | 既有依据/准确影响                                                                                                                                                                                                                                                |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 谁更正哪些资料、冻结/归档边界 | 仅获新 `notary.record.correct` Action的内部操作员，按现有DEPARTMENT/TEAM来源范围；公证处/客户首片不开放，不新增职级门槛或自动Grant。取证日/物流在原取证事实存在后的WAITING_UNBOX、UNBOX_REVIEW、ISSUANCE_DECISION、WAITING_CERTIFICATE、WAITING_RETURN可带原因追加revision；寄件须原开箱事实存在，在后四阶段可改；ARCHIVED首片只读。 | 现取证/开箱为不可变原事实，无独立更正API/版本。仅改变“当前资料”投影；原审核/决定/照片归属/冻结CV/Case及费用锚保持，物流改动不改派照片。证书编号/日期/文件另片。资格和允许阶段是本次选择，不从SD-24或普通record Action推定。                                      |
-| 跨事项照片归属、可复用页面    | 内部公证事项列表现有勾选区加独立批量入口，逐事项明确matter ID/version、寄件信息及照片；未知/混包/多匹配保持未提交。首片无ZIP/单号自动分派。                                                                                                                                                                                          | 复用NotaryMatterListPage.vue的selectedIds及NotaryMatterWorkflowPanel.vue单项照片上传/选择；现没有完整跨事项归属面板。每项只WAITING_UNBOX，写时重验notary.unbox.record及来源范围；NOTARY_MATTER owner、1–50张JPG/PNG/WEBP且每张≤20MiB保持，一事项CV不挪另一事项。 |
-| 逐项结果还是整批回滚          | 推荐逐项独立事务，显示成功/确定失败/未执行/未知；成功不重做。确定失败/未执行刷新事实和版本后重提；未知只按原body/key核回唯一结果，不当失败换key重试。                                                                                                                                                                                | 单项opening现有事实/引用/审计/回执的原子性可复用；批次聚合/恢复是新合同。NT010整批原子仅限WAITING_RETURN＋NO_ISSUE归档，不能套本片；Demo的ZIP逐组/队列兜底不构成正式依据。                                                                                       |
+| 决定                          | 推荐首片                                                                                                                                                                                                                                                                                                                                              | 既有依据/准确影响                                                                                                                                                                                                                                                |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 谁更正哪些资料、冻结/归档边界 | 仅获新 `notary.record.correct` Action的内部操作员，按原notary动作已有SELF/TEAM/DEPARTMENT来源范围；公证处/客户首片不开放，不新增职级门槛或自动Grant。取证日/物流在原取证事实存在后的WAITING_UNBOX、UNBOX_REVIEW、ISSUANCE_DECISION、WAITING_CERTIFICATE、WAITING_RETURN可带原因追加revision；寄件须原开箱事实存在，在后四阶段可改；ARCHIVED首片只读。 | 现取证/开箱为不可变原事实，无独立更正API/版本。仅改变“当前资料”投影；原审核/决定/照片归属/冻结CV/Case及费用锚保持，物流改动不改派照片。证书编号/日期/文件另片。资格按已批准内部受权范围与原Grant模型实施，不从SD-24角色名或旧record Action自动获得新权限。       |
+| 跨事项照片归属、可复用页面    | 内部公证事项列表现有勾选区加独立批量入口，逐事项明确matter ID/version、寄件信息及照片；未知/混包/多匹配保持未提交。首片无ZIP/单号自动分派。                                                                                                                                                                                                           | 复用NotaryMatterListPage.vue的selectedIds及NotaryMatterWorkflowPanel.vue单项照片上传/选择；现没有完整跨事项归属面板。每项只WAITING_UNBOX，写时重验notary.unbox.record及来源范围；NOTARY_MATTER owner、1–50张JPG/PNG/WEBP且每张≤20MiB保持，一事项CV不挪另一事项。 |
+| 逐项结果还是整批回滚          | 推荐逐项独立事务，显示成功/确定失败/未执行/未知；成功不重做。确定失败/未执行刷新事实和版本后重提；未知只按原body/key核回唯一结果，不当失败换key重试。                                                                                                                                                                                                 | 单项opening现有事实/引用/审计/回执的原子性可复用；批次聚合/恢复是新合同。NT010整批原子仅限WAITING_RETURN＋NO_ISSUE归档，不能套本片；Demo的ZIP逐组/队列兜底不构成正式依据。                                                                                       |
 
-可整体采用推荐或逐项改动；冻结前不写新Command/schema/按钮/Grant。冻结后只按backend/schema/API与内部UI唯一作者分工，不建通用审批系统、不重复NT008/009/010，不混证书更正/误建删除/终止。源码及旧Owner定位保留在本机ignored notary-scope.md，不再新增路由台账。
+三项已批准，按下节最小契约和唯一文件作者推进；原公证任务自动启动路径错误仍未解决，尚无实施Worker实际启动。不建通用审批系统、不重复NT008/009/010，不混证书更正/误建删除/终止，不创建运行账号或Grant。
 
 ## 6. 收口与一次性运行申请
 
@@ -168,3 +168,23 @@ pnpm test:e2e tests/e2e/lead-batch-push-minimal-page.spec.ts --config playwright
 2026-10-18用户已在原Runner直接授权继续本页两个窄场景，现仍未消耗：0新账号/Grant、1新Case、2新线索、2份PDF共86bytes、2新session、8次业务POST和4次上传阶段请求，必要读取与新session自身更新据实记录；两块各自正常logout一次，失败仅本页明确的精准收尾。旧EF/Demo/API/登录额度全部0，不复用、不挪用。真实页面还未开始，严格身份修复交付后仍须完整前置通过。
 
 官方要求.env.test基础模板为15433，再用受保护DEV_COR_TEST_DATABASE_URL＋project/CID覆盖和capture.childEnvironment确定实际R2 15438，不连接15433、不改guard或凭空消除冲突。原Runner已按此恢复并通过capture；不能把基础15433本身再判为坏配置。执行前仍核本树private root、材料精确缺失copy清单、165 ledger/原resolved回执、既有身份全部授权/客户资格、旧事实和文件及后台候选；任一不满足就在服务启动前停下。公证按独立cfb规格准备而不占本页执行槽，不由此授予其真实Grant或迁移。新本地代码/文档提交不自动追加远端push；备份远端保持原固定0b90e9c3。
+
+## 7. 公证最小实施契约与独占文件
+
+业务已批准，不为细节再加业务确认步骤；正常写入、升级、账号和测试额度仍独立。公证Spec冻结两资料组更正的路径/body/版本/结果与当前投影，批量开箱复用原单项 `/opening`，不增加批次数据库、后台队列、通用审批或必经页面。资料维护不改流程version；更正自己的revision和真实历史，不改取证费用、照片、审核、证书或Case锚。
+
+### 文件与串并行顺序
+
+- 主控唯一维护本节、公证Spec、DOMAIN相关字段含义、SD-61、INPUT-016、路线图、项目状态和验证说明；本次仅原N目录 `codex/notary-record-batch-contract` 文档分支，原N的b388及ca015的2284验收候选不变。
+- 原「实现公证列表流程办理」`01a13ef4-c67e-70c6-9886-6ab55e035008` 是公证实施协调入口。其保存cwd混合Linux与Windows路径，省略host及显式durable host均turn/start失败；原b388现场已确认干净，现仅主控在独立规格分支维护文档，不是权限审批拒绝。先由用户直接在该原任务恢复，不创建重复Task/覆盖旧成果；以下是分工安排，不冒称已实际启动。
+- 公共合同/后台/schema仅一个Sol作者：`backend/prisma/schema.prisma`、仅新增且单一登记的公证前向migration、`scripts/prisma-model-owners.mjs`；`backend/src/modules/leads/notary-record-edit.dto.ts/.service.ts/.controller.ts`及直接测试、必要的读取helper/直接测试；既有`lead-notary.service.ts/.spec.ts`、`lead-notary.dto.ts`、`notary-list.service.ts/.spec.ts`、`notary-list.dto.ts`、`lead.module.ts`和确有差异的client/notary-portal最小读取投影；新Action所需permission-catalog、prisma-access-control.store与LeadAction类型的最小增量及直接测试。首次候选前给准确manifest，未列共享路径先协调，不动旧migration或materials业务。
+- 同一公共合同作者先给可编译DTO/read/Action小基线，并**唯一**维护 `frontend/src/api/notary.ts/.spec.ts` 和 `frontend/src/api/organization.ts/.spec.ts`。新更正函数沿现有显式header key与RequestOptions模式，旧opening仅按需要追加可选options参数以透传signal，不另造transport、不自动业务重试。不可同时让后台作者、API作者和UI作者修改这四API文件。
+- UI在该小基线稳定后由原任务内独立Luna并行：新 `NotaryRecordCorrectionPanel.vue/.spec.ts`、`NotaryBatchOpeningPanel.vue/.spec.ts`；既有 `NotaryMatterListPage.vue/.spec.ts`、`NotaryMatterDetailPage.vue/.spec.ts` 及确需复用的 `NotaryMatterWorkflowPanel.vue/.spec.ts`，均位于 `frontend/src/modules/leads/`。独占这些UI文件，不写schema/API/共享抽屉；原列表勾选/当前事项就地表单、每项照片确认及原sessionStorage pending可复用，不复制一个业务工作台。
+- 不提前强制改物流行数、日期相对门槛或追加角色步骤；使用原DTO的真实值/明确NONE语义和现有source权限。内部详情原值/effective/history就地折叠，外部只保持其已有允许字段，不泄漏内部原因/操作者。新物流版本用真实行ID，不能伪造或复用原物流ID来掩盖追加。
+- schema/Action枚举新增须明确PG enum提交边界，不能在同一官方发送事务中ADD VALUE后即使用新值；前向迁移可设计和编写，本轮不执行，不更新旧165页面guard去默许新schema。后台/权限/迁移/幂等/并发和最终组合由未参与实现的Sol审查，普通UI不逐Task新增Reviewer。
+
+### 允许的代码验证
+
+仅本地fake-DB后端单测、Controller/DTO/OpenAPI契约、前端mock组件/API、纯状态与源SQL静态回归、类型/Lint/格式/架构/Spec。Prisma只可正常validate/generate，不连接DB；不运行完整verify（其NT006会真实访问DB）、protected E2E、迁移回放、capture、Docker、HTTP或浏览器。真实PostgreSQL/照片字节/阶段竞争/未知原键恢复另给固定候选和明确预算后由唯一Runner执行，不能拿pure mock作实库证据。
+
+原两条最小页面、旧A/B、备份、resolve和旧成功请求均不重复；公证代码准备与它们的运行槽隔离。任务恢复、固定小基线和实际并行Worker分别报告，未启动的分工只列待办。

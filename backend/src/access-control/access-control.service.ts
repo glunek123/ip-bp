@@ -44,6 +44,7 @@ export type PermissionAction =
   | 'lead.withdraw.apply'
   | 'lead.evidence.decide'
   | 'notary.evidence.record'
+  | 'notary.record.correct'
   | 'notary.unbox.record'
   | 'notary.opening.review'
   | 'notary.issuance.decide'
@@ -107,6 +108,7 @@ export type CustomerScope = PermissionScope;
 export type LeadAction =
   | Extract<PermissionAction, `lead.${string}`>
   | 'notary.evidence.record'
+  | 'notary.record.correct'
   | 'notary.unbox.record'
   | 'notary.opening.review'
   | 'notary.issuance.decide'

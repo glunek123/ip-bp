@@ -72,6 +72,21 @@ export class NotaryListService {
               sampleFeeAmount: true,
             },
           },
+          evidenceCorrections: {
+            orderBy: { revision: 'desc' },
+            take: 1,
+            select: { evidenceAt: true, revision: true },
+          },
+          openingSenderCorrections: {
+            orderBy: { revision: 'desc' },
+            take: 1,
+            select: {
+              senderName: true,
+              senderPhone: true,
+              senderAddress: true,
+              revision: true,
+            },
+          },
           opening: {
             select: {
               senderName: true,
