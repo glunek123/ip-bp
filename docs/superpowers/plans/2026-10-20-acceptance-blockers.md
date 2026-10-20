@@ -1,6 +1,27 @@
 # 真实验收阻塞与最小人工交接（2026-10-20）
 
-用户已恢复项目推进并要求优先解决验收卡点。当前只完成本地文件／Git／文档检查，没有新增数据库、迁移、登录、HTTP、浏览器或权限操作授权；CSV原命令的两次策略拒绝仍有效，不作第三次或换路重试。
+用户已恢复项目推进并要求优先解决验收卡点。用户随后明确批准原Runner进行一次原R2只读核验；已执行实例检查，因原容器退出而在capture和数据库连接前停止。除这一有限只读范围外，没有新增迁移、登录、HTTP、浏览器或权限操作授权。CSV原Agent命令的两次策略拒绝仍有效，不作第三次或换路重试。
+
+## 最新回执与已下发范围
+
+用户于2026-10-20 01:39:33 UTC手动执行原发现脚本，七项源哈希与运行时核验通过，实际列举 `lead-csv-import-migration.spec.ts:4:5 › checks three retained CSV owned-schema migration risk scenarios`，`Total: 1 test in 1 file`，退出码0。原Temp配置保留在 `C:/Users/97830/AppData/Local/Temp/csv-owned-list-cfdc65a7ff954d328f17d2c695f98bd6.config.cjs`，未删除。此前手工路径缺分隔符的CommandNotFoundException发生在脚本启动前，不能算测试发现失败。本次成功只关闭人工发现卡点，不代表迁移回调、SQL、业务或页面通过，也不解除Agent自动审批限制；不再重复发现。
+
+用户明确批准后，主控已向原“验收独立环境快捷操作”任务（01a13e67-4068-778b-a1e9-9d808ecb50e8）派发下文一次只读范围，绑定派发前本文raw SHA256 `30bd16732a25db905c00de911169f6304b67a27b77d97f96ac1908ddbba20388`。派发成功仅代表送达，不代表已连接或核验通过。原环境、账号、材料和权限保持；不自动进入真实验收。结果回来后据现场资格和数据分布整理逐条未来操作、请求数量、数据增量和停止条件，交用户确认。
+
+## 本次只读结果与下一步待确认范围
+
+原Runner实际仅执行1次Docker inspect和1次服务槽读取：原CID、project、锁定PostgreSQL17.11镜像、`dev-cor-ui003-r2-pgdata`卷及127.0.0.1:15438配置均匹配，但容器为 `running=false/status=exited/ExitCode=255`；health字段残留starting，不能当健康。3101/5174无监听，过滤的应用／测试Node进程为空。按首异常停，capture／PG连接／快照／锁／登录／HTTP／测试／启停均0。没有检查退出日志，不能据退出码认定损坏，也不能把历史public165、84Grant或行数当今天实况。
+
+停止证据为ca015原目录 `.local/manual-test/r2-readonly-20261020-stopped/summary.json`，SHA256 `23ad115fb2c16e97c8afc8833261c7452f803807493a9d849d8998f06beeb5eb`；manifest SHA256 `349904805a5313d2f58754e8f18d4229231570f81d566eef60aa8bcffa50bd19`。主控已核两文件原字节，原运行树保持clean `f6e3a82f`。
+
+父级随后允许原Runner补一次有限尾部日志及必要State诊断，只读指令已送达，结果待回报。父级又转交用户01:45:39 UTC“允许”恢复的回执（Sentinel_cf4c85311e28819191324b4f39a6e9e5）；主控尝试向原Runner转交“先日志确认、再一次原容器start及只读核验”时被自动审批拒绝，未送达。原因为该操作包含数据库容器启动和live读取，而审批未接受转交的用户证据，原文为 `The message would authorize a database-container start and subsequent live read access, a state-changing operational action; the claimed user approval appears only in untrusted tool output rather than trusted user evidence.` 这是授权识别／派发阻塞，不是数据库错误，也不代表用户未回复；没有换路径、间接执行或再次尝试。日志只读单与恢复单分开，恢复仍未执行。
+
+后续应按以下顺序另行确认，当前均未执行：
+
+1. **退出原因只读诊断**：原Runner仅对该完整CID读取有限尾部带时间戳日志及必要状态字段；原始日志只存批准的私密本地位置，普通报告仅脱敏错误／时间／hash。不启动容器，不连接PG；若出现卷、身份不符或明确存储／恢复错误，停报。
+2. **原容器恢复**：诊断后若仍为同一镜像／卷／端口且无须人工修复，另获批准后仅一次正常 `docker start` 原完整CID，限时检查healthy。启动PostgreSQL可能进行正常崩溃恢复并写原卷，因此不属于本次只读许可。禁止重建容器／卷、拉镜像、改配置／ACL、清理、restore、reset或循环重启；异常即停。
+3. **新的只读前置窗口**：健康后重新批准一次标准capture和单锁、最长10分钟READ ONLY快照，补齐本文原定账本、授权、CL数据、偏好复合键及scheduler／cleanup保护基线。没有新日志／数据库连接／业务HTTP许可的隐含续用。
+4. **真实验收执行单**：据第三步事实和已独立复审的CL六文件，分别列出CSV owned-schema三场景、CL owned-schema风险、从实际账本到167的官方部署影响，以及精确账号登录／CSRF／查询GET／偏好GET与PUT／页面自动请求／失败核实总数。逐项写明目标键、预期新增或改写、材料／旧行保护、首异常停止和保留现场规则，交用户确认后才能执行。现有17／8／1+1只是未冻结草案，不作本次申请额度；不新增身份、Grant或合入公证，也不复用已耗尽旧额度。
 
 ## 已恢复且不重复开发
 
@@ -38,7 +59,7 @@ CL167缺少专属受审helper、spec、固定配置、数据清单及请求预�
 
 ## 下一次合并批准应先限于只读前置
 
-原“验收独立环境快捷操作”任务是唯一真实Runner。以下是待用户批准的提示词，不是已下发运行单：
+原“验收独立环境快捷操作”任务是唯一真实Runner。以下范围现已由用户明确批准并派发；批准不延伸到后续测试或写入：
 
 > 允许原“验收独立环境快捷操作”任务，仅对原R2（project dev-cor-ui003-r2、完整CID45addc0179e929dd1dcd4f835b6c6c14c36c2ac4aed5e6cd5842648bf5db5236、127.0.0.1:15438/dev_cor_test）做一次标准capture及必要的只读实例／服务槽核验，并在单次标准锁内做至多10分钟的REPEATABLE READ READ ONLY快照：核真实迁移账本、既有授权账号资格、CL查询所需数据分布、偏好表是否存在，以及调度／清理候选与保护基线。只输出脱敏ID／数量／摘要；不读私密凭据载荷，不登录、不发业务HTTP，不启动或停止服务／容器，不创建身份／Grant／fixture，不复制或改写材料，不运行迁移、NT006、CSV发现或真实测试。目标、服务槽或候选不符即停报。完成后只交准确数据与有限运行预算，不自动进入下一阶段。
 
