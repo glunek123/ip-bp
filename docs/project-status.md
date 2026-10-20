@@ -1,5 +1,9 @@
 # 当前开发状态
 
+2026-10-20 已按用户“提交、合并、推送后继续并行开发”完成上一批交付：4份LD008收口文档提交06eb56a0，main从b14752ca正常快进至06eb56a03a07e0d0eb1f58fcb5698b96a8fcef9e，远端main及codex/minimal-page-actor-admission均已核相同SHA。固定tree dd8570c4经累计404文件／250提交独立两轴ACCEPTED、C/I/M0；一次正常完整verify工具139、前端2787、后端2479共5405项及双构建通过，NT006真实owned探针、锁释放和有限public前后保持有证据。CI workflow／check run／commit status均0，不称服务器验证通过；只推代码文档，无部署或R2操作。具体记录见VALIDATION。
+
+当前转入CORE-CG-001案件合并办理组首片，依据既有SD-27／REQ-CA-006，由原后端与前端任务复用独立干净目录，原独立窗口继续source-only审；三窗当前turn_context均已核gpt-6.1-sol。后端DTO／read／Action首4套57项纯测通过，创建／解除及控制器直接检查23项通过；I-CG-READ-01查询范围finding已修为v2固定两文件，待原窗口补审，完整Command／建表SQL候选仍收尾，不冒通过或可部署。用户同意的前端开工回报已实际发送成功，原窗口activeFlags为空；前端已新增API和三个组件共5份源码，前后端真实并行，未重发回报或另开作者。不执行本片DB／迁移／Grant／真实验收，也不恢复旧额度。[开工边界](superpowers/plans/2026-10-20-case-handling-groups.md)为唯一实施入口，旧客户详情和案件列表WIP保留。
+
 2026-10-20 LD008用户批准的最小核心真实验收已PASS：固定c92ad7ae／tree5254bb35，唯一正式场景expected1、unexpected／skip／flaky／retry0。真实页面取消零Command；两条合法来源线索归档为ARCHIVED／v4，原body／key复核201、结果一致且无重复事实。HTTP38／44、累计SELECT66／128；170单次部署、18行有限fixture、单角色6项DEPARTMENT Grant及684bytes合成PDF保留，两会话正常退出，3101／5174空闲、自身锁释放、源码clean。原Runner08:05:06–08:05:56UTC完成，本批不再追加运行；主控已核29份普通结果文件，原失败和私密证据均保留。仅核心闭环通过，完整verify／NT006／回滚竞争及额外负例未验；5次已计额GET缺独立响应事件、旧closure累计14的元数据勘误均见[验证记录](spec/v0.1/VALIDATION.md#2026-10-20-ld008最小核心真实验收通过)。Current保留本批收口，Next不自动启动，旧额度不恢复。
 
 2026-10-20 LD008 v2原窗口补审已关闭I-MODULE-01，Spec／Quality均ACCEPTED C/I/M0，v2 35／35与原版17／17哈希匹配；主控已回读33份普通文件，私密payload未读。已按用户“离线通过然后正式验收”同一批准向唯一原Runner发阶段二GO，未等待重复批准：只用v2固定执行器和c92源码，从现有170＋15fixture继续，新窗口15min准备／30min应用／总45min，首正式异常停；不重迁移／重建／重置凭据。GO发出时正式结果尚未回报，不能称页面或归档通过；历史SELECT35／128、44HTTP未消费，以Runner实际新回执更新。
@@ -305,7 +309,9 @@ S共享后端任务01a13eba-6a0b-74af-9ef0-852b446e40c0的首合同已独立冻�
 
 ## 当前任务
 
-**CORE-LD-008｜线索批量不取证归档（UXQ-03-B）。** 唯一Current与路线图一致，范围与Owner见[最小合同](superpowers/specs/2026-10-20-lead-no-evidence-batch-contract.md)。批推／CSV和单条不取证不重做；169新实例迁移独立固定7bef，170仅编写，R2／业务账号／Grant／登录／服务不在本片执行范围。
+**CORE-CG-001｜案件合并办理组首片。** 原前后端并行实现，原独立Reviewer按固定合同和完整候选分段source-only审。源案归属／阶段／版本不改，当前仅代码和纯测试，未开展本片DB／Grant／真实验收；唯一Owner与具体边界见[开工计划](superpowers/plans/2026-10-20-case-handling-groups.md)。下列原切片段落保留交付与恢复历史，不构成多个Current。
+
+**CORE-LD-008｜上一阶段线索批量不取证归档（UXQ-03-B）交付历史。** 范围与Owner见[最小合同](superpowers/specs/2026-10-20-lead-no-evidence-batch-contract.md)，实际170部署／最小核心页面验收及main交付以本页顶部和VALIDATION的新记录为准。批推／CSV和单条不取证不重做，旧额度不恢复。
 
 **CORE-UI-003｜接续六栏已登记资料更正／精确附件上传（155三列表已验收交付）。** 远端main与任务分支、本地主main均实核b39b90e；155正常完整verify及同树9项通过仅覆盖三列表。后续独立section-record-edit-frontend-integration保留六目标精确Command/原body-key恢复、closure双锚、有效读取及专用附件首次消费闭环，E/H测试准入源审已关闭；156/157迁移及真实PG/浏览器仍未验收，开庭扫描竞争测试按本次明确40001诊断补矩阵。不得放宽人工Command或其它异常，不改生产隔离/即时重试/日期规则，预览81ebfed/150继续冻结。
 

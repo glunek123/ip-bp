@@ -1,5 +1,19 @@
 # SPEC-001 文档验证
 
+## 2026-10-20 已完成开发累计合并与普通推送
+
+用户明确要求“推送提交开发到现在的系统”“推送合并”“然后继续进行并行开发系统”。主控核对main为既有唯一默认集成目标，正常fetch后远端及本地main均为b14752cad1f60cd98c609d0a2b436d7ec1d72cef。已完成开发线包含UI003／分栏更正与材料、EF、结算／证物、CSV导入、案件查询／列偏好、客户二级详情、公证SD61、CSV导出及LD008；独立冻结／未知脏WIP未强行纳入。公证d8ab为祖先，CSV导出／EF／证物／查询API相关作者提交已等价接入；结算前后端目录与1a5c79b0内容一致，未遗漏所述修复。
+
+四份LD008实际结果文档及对应快照已按正式审批提交为`06eb56a03a07e0d0eb1f58fcb5698b96a8fcef9e`，tree `dd8570c482a42e76b6cc041a9870477c38c8cb19`。原独立窗口对main至该候选累计404文件／250提交做source-only Final Review，Spec／Quality均ACCEPTED、C/I/M0；复用已接纳子候选审查，重点核对集成缝、权限映射、模块接线及迁移组合。其结论不代替运行门禁。
+
+原唯一Runner在该干净候选正常执行一次`pnpm verify`，08:34:28.315–08:40:42.762UTC退出0。工具13文件139项、前端151文件2787项、后端168套2479项，合计5405项；Prisma正常生成、严格context、Spec、架构、两端／根类型、Lint、格式及本树双构建均通过。Vite大chunk警告保留。NT006属于真实PG探针，未跳过／过滤：本次15439、原project／CID，实际owned-schema锁owner PID37132于08:39:50UTC观察到，08:39:52UTC释放，结束无owned残留和资源锁。没有外层重入锁，没有启动应用服务、HTTP、登录或重跑LD008；未执行public迁移／Grant变更或触碰R2。
+
+此前ignored只读保护摘要先因目录name／char拼接类型歧义42725失败，原失败时verify尝试0；原Runner只在独立continuation副本加显式text转换后继续同一授权。实际正常verify仅1次，未将前置错误记为业务／迁移失败，未修改产品或放宽guard。有限前后保护核实public170账本／源checksum、catalog函数枚举摘要、选定LD008业务行及脱敏安全元数据不变；它不是全库审计，未复制或另扫物理材料。证据在`.local/verify-06eb-20261020/continuation/summary.json`及manifest，manifest SHA256 `cf072229213ab8598011b10d80c30f910484948e3db5d250eb5ffef8b6541dd3`，原日志留批准Temp，仅公开路径／hash。
+
+公开推送前检查了新增历史465个blob，未发现强凭据特征；当前及新增历史未见env私密配置、数据库归档、登录状态或依赖缓存进入Git。lead-list-workflow.spec.ts固定口令属于coreLeadFixtures合成测试身份，相同值只出现19个测试／support路径，没有真实配置引用证据；未展示原值或尝试登录，也不宣称已证明所有环境无效。具体无秘密扫描回执在ignored`.local/git-delivery-20261020/prepush-audit.json`。
+
+普通推送开发分支后，main正常`--ff-only`至06eb，未解冲突或形成新业务tree；按已实际验证的同tree复用完整门禁，不机械重跑。最终原子普通push成功，Git ls-remote及GitHub API均确认远端main和codex/minimal-page-actor-admission为同一06eb完整SHA。无强推、main历史重写、部署、标签、生产／R2迁移或清理。主工作区原`.pnpm-store/`未跟踪依赖缓存原样保留、不纳入Git；其他作者脏现场未覆盖。GitHub本SHA workflow runs0、check runs0、commit statuses0，main无保护；这是无CI记录，不冒称远端CI通过或将push accepted当verified。c92最小核心PASS及原数据／全部失败证据保留，各功能真实验收边界不因工程门禁或合并扩张。
+
 ## 2026-10-20 LD008最小核心真实验收通过
 
 用户明确批准先完整修复执行器并离线验证，再继续原一次最小核心场景。原独立窗口已关闭I-MODULE-01，v2两轴ACCEPTED、C/I/M0；主控据同一授权给唯一原Runner阶段二GO。实际运行候选为clean `c92ad7ae347417548fa282131001f8d2ace16066`／tree `5254bb354916978193fe86185db79e64054fed3b`，工作树`case-list-csv-export-acceptance`。仅隔离project `dev-cor-csv-export-acceptance`、127.0.0.1:15439／dev_cor_test和原独占卷；R2、ca015、生产及预览未操作。
