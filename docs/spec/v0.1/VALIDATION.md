@@ -2,9 +2,13 @@
 
 ## CL167 专属验收准备（2026-10-20，离线候选）
 
-独占分支固定 `b0d3bbfb48a9e03c1fac95750a45aa6a8ead83b9`／tree `6bdb7fe37f14bb2be0486661847b77e20aa03ce9`，仅六份新helper／类型／纯测试／两spec／配置，parent e27628a0。原作者15/15纯测试及类型、六源静态、语法和架构通过；原独立Sol经三轮修复补审，最终Spec／Quality ACCEPTED、C/I/M0，限定为默认拒绝的离线准备源码，pin仍null。主控提交前后逐raw核对，未改变已验输入，未重复测试，也未将其接入ca015／main或填收据。
+最新独占候选`aa0e33d76ed4b482687783c1b34eef46c03cfa90`／tree `7966e1b9da97cee7e9db5d6469a39f83689c83cd`，parent b0d3bbfb。相对原候选精确六文件（五修改及一新增page）；累计七份专项文件、原owned spec不变。标准锁内整run preflight≤7，正常服务后两登录、33API后内存会话页面、两个context及逐请求maxRedirects:0已接线。原Reviewer核最终raw关闭I-CL-REDIRECT，累计Spec／Quality均ACCEPTED、C/I/M0；pin仍null、未接ca015／main、未push。
 
-未运行完整verify／NT006、真实构建、capture／PG／HTTP、发现或浏览器；不是完整Level3验收。runtime33次spec HTTP和PG最多7、owned354迁移发送／总PG上限400均只是待批代码上限，不包含登录／服务健康／页面等外围动作；认证维护既有session的字段与ID也须单列。完整修复、原失败和真实工具证据、剩余范围见[专项准备记录](../../superpowers/plans/2026-10-19-case-list-query-preferences-validation.md#2026-10-20-六文件离线准备候选)。R2本轮恢复／旧锁归档成功不等于整体数据检查通过：只读比较165表后在单会话差异处停止，未修改或重置基线。
+实际最终纯测试18/18及定向类型／Lint／格式通过；原15／17项证据按各自输入留存，不相加。原本树pnpm build:prepared实际通过；后续只改测试／配置，874份backend/dist逐字节匹配，未重跑构建；清单378dd944…671c6、执行输入aa176418…bf50。未执行完整verify／NT006、PG、HTTP、发现或浏览器，不是完整Level3验收。程序APIcap58=登录2＋原33＋页面最多23；标准健康／静态资源／ORM另计，认证维护新session与username throttle也需明确批准，不称全库只读。
+
+CSV原目录已对齐已有clean9c04e68a，166迁移及4专项raw全同，人工发现1项证据复用、不再Agent发现。原Runner资格包v5真实11/11 SQL分段、17词法正例／21负例／22篡改／8长度纯检查通过，原Reviewer固定hash Spec／Quality0；仅可请用户批准一次固定11 SELECT只读资格，不是现场已验。manifest8299aa8c…b783b、wrapper7c8a4933…d91781、SQL1169b7c5…3978b；原粗禁词的COPY注释／CREATE字符串误判及I-DOC01已关闭，原失败保留。完整候选／日志／Review和下一次具体范围见[专项准备记录](../../superpowers/plans/2026-10-19-case-list-query-preferences-validation.md#2026-10-20-六文件离线准备候选)与[执行单](../../superpowers/plans/2026-10-20-real-acceptance-run-plan.md)。
+
+较早已获批的R2恢复、会话单SELECT及剩余结构／材料只读维持原证据：result20fbf07a…84a26、manifest aaf51db8…0bd03，四材料表／377物理文件未变、281孤立文件保留。旧会话历史原因未知、多窗口非同一原子快照继续明示，未重置基线。本轮仅离线准备及提交，不新增真实运行额度。
 
 ## 客户详情二级内容与按钮语义（2026-10-19，离线交付）
 
