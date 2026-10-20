@@ -1,5 +1,19 @@
 # 当前开发状态
 
+2026-10-20 LD008用户批准的最小核心真实验收已PASS：固定c92ad7ae／tree5254bb35，唯一正式场景expected1、unexpected／skip／flaky／retry0。真实页面取消零Command；两条合法来源线索归档为ARCHIVED／v4，原body／key复核201、结果一致且无重复事实。HTTP38／44、累计SELECT66／128；170单次部署、18行有限fixture、单角色6项DEPARTMENT Grant及684bytes合成PDF保留，两会话正常退出，3101／5174空闲、自身锁释放、源码clean。原Runner08:05:06–08:05:56UTC完成，本批不再追加运行；主控已核29份普通结果文件，原失败和私密证据均保留。仅核心闭环通过，完整verify／NT006／回滚竞争及额外负例未验；5次已计额GET缺独立响应事件、旧closure累计14的元数据勘误均见[验证记录](spec/v0.1/VALIDATION.md#2026-10-20-ld008最小核心真实验收通过)。Current保留本批收口，Next不自动启动，旧额度不恢复。
+
+2026-10-20 LD008 v2原窗口补审已关闭I-MODULE-01，Spec／Quality均ACCEPTED C/I/M0，v2 35／35与原版17／17哈希匹配；主控已回读33份普通文件，私密payload未读。已按用户“离线通过然后正式验收”同一批准向唯一原Runner发阶段二GO，未等待重复批准：只用v2固定执行器和c92源码，从现有170＋15fixture继续，新窗口15min准备／30min应用／总45min，首正式异常停；不重迁移／重建／重置凭据。GO发出时正式结果尚未回报，不能称页面或归档通过；历史SELECT35／128、44HTTP未消费，以Runner实际新回执更新。
+
+2026-10-20 阶段一原source-only复核定位唯一I-MODULE-01：Playwright worker／loader重载core.config会重复创建application-start.json并EEXIST；Spec C/I/M0/0/0、Quality0/1/0，原发现green不能代替正式worker加载验证。原Runner已在同一用户离线完整修复授权内窄修整个main初始化段，worker只校验复用原计时／锁证据，不刷新期限；不启动正式场景、不新增测试权限或业务写入。补齐实际配置重加载回归后仍由原窗口仅补diff，不另建验收工程。
+
+2026-10-20 LD008验收执行器完整兼容修复已离线通过并冻结，尚未正式运行：原生Node导入／显式CLI加载均PASS，实际受保护Playwright发现恰1项、exit0，callback／webServer／PG／业务HTTP均0。业务用例、snapshot／fixture、时间守卫字节保持，c92源码clean；原Runner新清单SHA3b80d02d…203d，主控已逐项核15份普通文件，未读私密payload。旧import.meta及后续顶层await两次发现失败保留。用户最新明确允许先完整修复并离线迭代通过，再正式验收；已交原独立窗口source-only补核，闭合后按同授权给原Runner阶段二GO，无需重复询问。保持170＋已提交15fixture断点，不重迁移或重建；累计SELECT35／128、HTTP0／44，正式新窗口15min准备＋30min应用／总45min，旧绝对截止不冒作新窗口。详见VALIDATION；正式业务仍未通过。
+
+2026-10-20 LD008 restart2已在测试发现首异常停止：真实时间守卫离线PASS，169→170官方单次exit0、首15fixture（1INTERNAL／1角色／6DEPARTMENT Grant等）提交，S1完整170及限定对象通过。collection exit1／0测试，state.mjs的import.meta在Playwright加载模式下报Cannot use import.meta outside a module；callback／webServer0，CLIENT三行、登录、上传、源业务、页面归档、原键复核均未执行。累计SELECT35/128（历史14＋新S0/S1共21），44HTTP全未消费；连接锁释放、服务未启动，170与15行不得重做／重建。旧失败保持，父级已报告用户并申请仅模块加载修复及断点恢复，尚待批准；主控只记录，不修复、不重试、不新增DB检查。
+
+2026-10-20 LD008 restart1再次按首异常停止：离线阶段分支PASS且0运行时调用，真实S0用11SELECT通过169／空业务／后台0核验，累计含旧3为14/128；随后preflight-and-migrate.ps1第15行把ConvertFrom-Json已生成的DateTime转文化字符串再Parse.ToUniversalTime，错误将07:27UTC判成前一日23:27，误触准备超时。实际窗口未到期；原STOPPED_PREPARATION_DEADLINE摘要保留，由diagnostic-addendum纠正为执行器时间解析错误。170／fixture／login／upload／HTTP／services／页面／原键复核全0，连接和锁释放。主控仅核现成9份manifest与附录，未修复或重跑；父级已报告用户，新恢复尚未批准。
+
+2026-10-20 LD008核心验收已在S0首异常停止：原Runner06:54:26UTC开始，候选自身Prisma生成／prepared双构建exit0；07:01:02只读计数UNION提前引用170才新增的lead_no_evidence_batch_receipts，触发42P01。现有169账本已读取匹配，但空业务／后台核验未完成，不能称S0通过。该错误归ignored执行器阶段查询，不是已测业务或170 SQL失败；170尝试0、fixture0、所有HTTP／登录／上传／服务／页面／原键复核0，仅已发SELECT3/128（含失败句）。连接与自身标准锁释放，原库卷与失败证据保留，未修后重试。主控已核8份停止证据bytes／SHA；详情见VALIDATION。本轮停止，原期限未延长，后续修正和恢复须明确指派。
+
 2026-10-20 用户已正式批准LD008最小核心验收（Sentinel_c2d579d8ee7c8191b097f31609854f8e）。主控已核原Runner idle，唯一验收目录从7bef正常fast-forward到固定c92ad7ae／tree5254bb35并保持clean，完整批准原文已交原“验收独立环境快捷操作”任务；不是第二执行者。原Runner06:54:26UTC开始15min准备，候选自身正常生成／prepared构建均exit0；170迁移、18行fixture、登录、真实页面和原键复核结果尚未出，不预写通过。仅新15439、两身份／1角色6Grant、2合法线索／684bytes PDF、44HTTP与128只读SELECT，应用3101／5174最多30min、总体45min，首异常停，原R2和旧额度不动。批准提案正文与manifest保持固定原字节；下条“待新批准”为此前提案阶段记录。
 
 2026-10-20 LD008最小核心真实验收提案仅离线固定：候选c92ad7ae、新15439库169→170一次、1INTERNAL＋1CLIENT、1角色6项DEPARTMENT Grant、最多18行有限fixture、两条合法源线索一次归档并原key复核。唯一纯合成PDF684bytes已本地固定，未上传；拟44程序HTTP、4有限只读快照，应用3101／5174生命周期最多30min、总业务45min。准确对象manifest／材料hash／范围与停止边界见[固定提案](superpowers/plans/2026-10-20-real-acceptance-run-plan.md#2026-10-20-ld008最小核心验收固定提案待用户一次确认)。本轮无账号／口令／Grant／DB／服务／登录／真实API操作，不新增开发或测试工程；仅待用户新批准，旧3身份48请求草案被本核心范围取代。

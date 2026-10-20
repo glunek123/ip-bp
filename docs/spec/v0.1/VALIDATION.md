@@ -1,5 +1,57 @@
 # SPEC-001 文档验证
 
+## 2026-10-20 LD008最小核心真实验收通过
+
+用户明确批准先完整修复执行器并离线验证，再继续原一次最小核心场景。原独立窗口已关闭I-MODULE-01，v2两轴ACCEPTED、C/I/M0；主控据同一授权给唯一原Runner阶段二GO。实际运行候选为clean `c92ad7ae347417548fa282131001f8d2ace16066`／tree `5254bb354916978193fe86185db79e64054fed3b`，工作树`case-list-csv-export-acceptance`。仅隔离project `dev-cor-csv-export-acceptance`、127.0.0.1:15439／dev_cor_test和原独占卷；R2、ca015、生产及预览未操作。
+
+唯一正常受保护正式用例exit0，expected1、unexpected／skipped／flaky／retries均0。准备起点08:05:06.402UTC，首应用起点08:05:12.377UTC，正常入口08:05:56.065UTC结束；用例10986ms，Playwright总43595.963ms。实际未刷新15min准备／30min应用／总45min截止。08:08:00UTC收尾确认3101／5174无监听、自身共享锁已释放，两会话均经正常204退出并在S3核实撤销。
+
+实际通过：原170和15fixture断点只读复核后复用，未重复迁移或重置凭据；原内部身份上传唯一684bytes合成PDF并经正常客户准入，随后只补批准的CLIENT3行。两条各一个商品的线索经正常创建、批推和客户INFRINGEMENT审核成为待确认／v3。真实页面取消时Command0；再次逐项填写原因并确认后一次保存201，两条页面及数据库均为ARCHIVED／v4。用完全相同body和幂等键复核201、结果深相等，最终仅两条取证决定、两条相应typed回执增量、一个批量回执和两条相应审计增量；原两条客户审核、准入和批推事实保留。S2／S3均PASS；真实文件大小684和SHA256 `ad7a4f6a311d0f909da88e023094068f6e881e0c9506de11101758c1d8e1a74b`匹配。
+
+实际程序请求38／44：业务POST8、上传2、登录2、退出2、GET24；无自动重试。已捕获33个响应事件，含6个冻结合同允许的布局模块GET403；另5次GET尝试缺独立响应事件，原因未单独记录，不推测为取消或成功，仍全部保守计入38。所有业务POST响应均已捕获。实际只读SELECT累计66／128＝历史35＋新断点10＋S2／S3各10＋CLIENT状态查询1；收尾未追加PG或HTTP。原冻结用例closure.json的knownHistoricalSelects14是旧元数据，原文件未改，由最终summary明确勘误，不据此少算额度。
+
+最终测试库保留170账本、18行有限安全／基础fixture、1INTERNAL＋1CLIENT、1角色6项DEPARTMENT Grant，以及正常来源产生的全部业务事实、材料、文件和会话历史；不清库、不删文件、不恢复权限。普通证据在验收树`.local/ld008-core-c92-offline-final-20261020/v2/`：runtime-summary.json SHA256 `cbfe6f9c2cb27d1d99558b119298fbe3afd8cd5940d5dda523fdd772e9336a6b`，runtime-manifest.json SHA256 `18d272ed33ec4624e0bea0dd697583bad86d0d2d299df440e606ec727deadd46`。主控逐项回读29份普通文件bytes／SHA全符，未读私密payload；独立HTTP计额附录SHA256 `ce945c3f51e12ca9f32c3425081ad3dece05f990f3fcf523e729f67e3b60f4df`。成功运行按retain-on-failure未产生trace，已有私密报告、日志、截图及原请求留批准Temp，仅保存路径／hash，不伪造trace。
+
+本结论仅为用户本次批准的LD008最小核心闭环通过。原源码／纯测试／独立复审证据仍按各自实际输入复用，不声称新完整verify、NT006、SQL回滚／并发或额外负例、全系统和生产发布已通过。原S0、时间解释、模块导入及v1 worker配置失败和全部原证据保留。后续只补权威结果文档及对应快照，不改已运行c92源码、配置、业务断言、批准提案或运行输入；不因此重跑正式场景，也不自动启动下一片或恢复旧额度。
+
+## 2026-10-20 LD008执行器完整兼容修复离线通过
+
+v2补审已实际完成：I-MODULE-01关闭，两轴ACCEPTED、Spec／Quality C/I/M0。新冻结目录为前述offline-final的`v2/`，manifest SHA256为`b733f152a4de1466cc7b82fd190f886a9ab70aaa1a6cadca30b54a7bfbadb600`；原Reviewer回读35项、原版17项全匹配，主控回读其中33份普通文件全符。新增实际旧配置块RED复现EEXIST及worker错误prepare截止，实际新函数离线GREEN：main唯一创建，可信IPC worker／loader只读校验原记录、锁身份、应用及总体截止，拒重复main、缺失／陈旧／延期记录和假worker。真实Node及保护入口发现1项均通过；生命周期回归是离线模拟，未声称真实worker或应用已运行。业务用例、snapshot／fixture、原时间守卫不变，旧green与失败均保留。主控已据用户明确条件授权向同一原Runner发阶段二GO，只用v2精确路径一次正式命令；新的起点由Runner实际记录，历史35SELECT及现有170＋15行断点不清零、不重做。发GO时正式结果尚未回报。
+
+首份green的原source-only复核保留唯一I-MODULE-01（Spec C/I/M0/0/0、Quality0/1/0）：本机锁定Playwright的workerProcessEntry→deserializeConfig→loadConfig会再次执行用户配置；原core.config仅以`--list`区分，worker正式重载会重复排他写入application-start.json并EEXIST。已交原Runner在同一离线完整修复授权内最小处理整个main初始化段，含准备期限检查、应用起点和锁证据；worker／loader只读复核首次证据和应用期限，不能重置计时。正式仍未执行，原green保留为阶段一中间证据，待v2冻结与原窗口差异补核后才给阶段二GO。
+
+用户已明确批准先完整修好Node／Playwright兼容并离线验证通过，随后继续原一次正式核心验收。原Runner独占ignored执行器，原模块加载失败及module-continuation顶层await失败均保留；没有为修复修改业务、SQL、权限或业务断言。新目录为验收树`.local/ld008-core-c92-offline-final-20261020/`，固定c92ad7ae／tree5254bb35、源码clean。实际Node导入和显式CLI load-check通过；正常受保护Playwright入口发现恰1项、exit0，回调／webServer／PG／业务HTTP0，标准入口的只读capture和互斥照常保留。snapshot／fixture、core.spec业务内容、实际时间守卫均保持原字节。
+
+07:51:44UTC绿色回执已冻结；manifest.json SHA256为`3b80d02dce7464cb8a08e7497c5cc2046fb9ab7dab96710fa34093eb8aec203d`。主控回读15份普通文件的bytes／SHA全符，私密payload读取0；source-only补核已交原独立窗口，尚未以作者绿色报告代替复审结论。阶段二仍未启动：现有170单次部署和首15fixture保留、CLIENT3尚未建、原合成凭据不重置；历史SELECT35、剩余最多93、HTTP44均未消费。补核闭合后由原Runner按用户同一条件授权启动新的15min准备／30min应用／总45min窗口，只运行原一次场景，首正式异常停。旧窗口截止与旧失败结果不覆盖，也不因离线通过声称真实页面、归档或重放已通过。
+
+## 2026-10-20 LD008 restart2发现加载错误停止
+
+真实时间守卫已离线验证实际wrapper绑定、UTC／+08／-05及恰到期／前后一个tick、PS7自动DateTime回归，外部调用0。新轮07:22:10UTC开始，准备截止07:37:10、总体08:07:10；同c92内容构建按现有产物清单限定复用。S0通过后，官方169→170仅一次exit0，首15行INTERNAL／角色／6Grant／DRAFT客户与主体fixture提交，S1为170完整账本／限定对象PASS，业务源和session仍0。证据见原acceptance目录.local/ld008-core-c92-restart2-20261020/。
+
+07:26:14测试collection exit1、exactOne=false、callbacks0、webServers0：state.mjs在Playwright加载模式下Cannot use import.meta outside a module。原命令／错误保留，formal没有运行；不是170 SQL或真实业务失败。模块修复未实施，未换入口、重做发现或继续业务。15行已获批对象和170保持，不重迁移、不重fixture；CLIENT相关3行尚未创建。
+
+累计35/128普通SELECT（旧14＋新S0 11＋S1 10）；程序HTTP0/44，login0、logout0、upload0、businessPOST0、GET0，页面取消／保存／原键复核0，无应用服务启动；连接和锁释放。两条真实归档与同键零重复仍未验证。父级已向用户报告并请求单点模块加载修复及原断点一次继续，批准尚未到；主控按停令只补现成记录，无新增DB/capture／PG日志／运行检查工程。文档保留待收口WIP，不借此称完整验收通过。
+
+## 2026-10-20 LD008 restart1时间解释错误停止
+
+用户允许仅修正S0阶段顺序并重启一次后，原Runner保留旧失败，使用新ld008-core-c92-restart1-20261020目录。离线actual分支proof PASS，capture／PG／HTTP0：S0仅catalog核170表不存在，迁移后才查表数据。真实S0于07:14:03UTC通过169完整账本、空业务及后台候选0；本轮11SELECT，含首次3累计14/128。候选clean c92不变，正常生成／prepared双构建exit0。
+
+新轮开始07:12:02、准备截止07:27:02、总体截止07:57:02UTC。preflight-and-migrate.ps1第15行在官方迁移前错误解释截止时间：PowerShell7 ConvertFrom-Json已返回DateTime，再经文化字符串2026/10/20 7:27:02和Parse.ToUniversalTime，错成2026-10-19T23:27:02Z。因此误报PREPARATION_DEADLINE，并非真实15min到期；原stop-summary不覆盖，deadline-diagnostic-addendum.json明确纠正为STOPPED_RUNNER_DEADLINE_PARSE_ERROR。截止不延长，脚本未修后续跑。
+
+170尝试0、fixture0、口令／账号／Grant创建0、login／logout／upload／业务POST／GET／应用进程／页面取消保存／原键复核全0；连接／自身锁释放，不存在待关闭的自有业务服务。两条真实归档与同键零重复仍未验证。原Runner新库／卷、旧169及两轮失败均保留，R2未连接。此次首次异常发生于执行器，不能列为产品或迁移SQL失败。
+
+原manifest9份bytes／SHA本地读回相符；summary SHA43bbb43d2d64cb26c66d81e3b5f249e5e189676f6ca1029692006a659646fb42，附录另行固定hash并区分manifest范围，主控receipt见.local/lead-no-evidence-batch/minimal-core-proposal/restart1-stop-readback.json。收到父级停令后只整理现成记录，无新增运行／检查工程、修复或重试。仅等待用户对时间解析单点修正及恢复的新批准。
+
+## 2026-10-20 LD008核心验收S0首异常停止
+
+批准后的唯一原Runner在固定c92ad7ae／tree5254bb35上开始执行，原acceptance目录正常fast-forward，目标仍新15439／CID d9a68d83／独占卷，R2未连接。正常Prisma生成与本树prepared双构建exit0。S0读取169份成功账本并逐项与源核对，第三条只读计数UNION却把170才创建的lead_no_evidence_batch_receipts也列入，07:01:02UTC触发42P01（parserOpenTable）。原state.mjs第30行／S0.json／preparation-error.json保存了该分阶段执行器错误；不是新批业务、权限或170迁移的运行失败。
+
+S0整体BLOCKED：仅3/128 SELECT已发送（含失败句），businessEmptyCheckCompleted=false，后台清理核验未到达；连接和自身标准锁已释放。170官方部署尝试0/1、fixture INSERT0/18、账号／凭据／Grant创建0、程序HTTP0/44（业务POST0/8、上传0/2、登录0/2、退出0/2、GET0/30），应用进程／页面取消／保存／原键复核均0。未发生真实归档，也没有归档失败的业务结果；功能仍未验。没有启动数据库、应用服务或第二执行者，源树clean c92不变；未新采全库保持快照，不冒称完成全部空业务保护核。
+
+现成停止证据位于case-list-csv-export-acceptance/.local/ld008-core-c92-20261020/。stop-summary-corrected.json SHA b0ff799ab7f14ec0be447f4232d1ebd1b6646434606d66748ff81d12ff4ce6b3，8份public artifact逐项bytes／SHA由主控本地回读匹配；主控receipt在.local/lead-no-evidence-batch/minimal-core-proposal/execution-stop-readback.json。收口首次元数据序列化因PowerShell自动变量Error命名失败，仅中断该无DB进程后另存corrected回执，没有再次连库、修执行器或重试。169旧证据及本轮原错误保留，未reset／cleanup／追加权限／改SQL。
+
+准备期限原07:09:26、总体期限原07:39:26UTC未延长。最小后续是原Runner仅修正S0的169阶段关系清单（170表应核为不存在，S1以后才读取）；源SQL／账本／UUID／业务payload／原预算不应放宽。原首异常停止规则仍生效，不能因后续配额尚未消费就自动重跑或刷新期限。本次执行结束为STOPPED_S0_RUNNER_SCHEMA_PHASE_ERROR，不是验收PASS。
+
 ## 2026-10-20 线索批量不取证归档离线交付与新169环境
 
 固定组合源码候选为 `b14d6840baf29b639bbc2a4d1c622a9f06db8dde`，tree `5bc84c692086d3de356a259e60ce938dc96e9ad7`。原后端11文件v2提交 `1486369001da2411e2aa2e976469b8fe612d8fe5`、前端8文件提交 `8b23607ccdb0e2df04eef1bdee8b8a52d0fbec33`，主控普通接入，无冲突；19份raw逐一等于原独立审清单。原169份迁移Git内容全部未改，仅新增 `20261020100000_lead_no_evidence_batch`（raw SHA `27dddb50de8dbeb164fbfc0f0d4b30ac4fdf0e4b25f666ba8206abc7bff531bd`），170只编写未执行。
