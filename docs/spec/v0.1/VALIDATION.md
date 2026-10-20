@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+## CL167 专属验收准备（2026-10-20，离线候选）
+
+独占分支固定 `b0d3bbfb48a9e03c1fac95750a45aa6a8ead83b9`／tree `6bdb7fe37f14bb2be0486661847b77e20aa03ce9`，仅六份新helper／类型／纯测试／两spec／配置，parent e27628a0。原作者15/15纯测试及类型、六源静态、语法和架构通过；原独立Sol经三轮修复补审，最终Spec／Quality ACCEPTED、C/I/M0，限定为默认拒绝的离线准备源码，pin仍null。主控提交前后逐raw核对，未改变已验输入，未重复测试，也未将其接入ca015／main或填收据。
+
+未运行完整verify／NT006、真实构建、capture／PG／HTTP、发现或浏览器；不是完整Level3验收。runtime33次spec HTTP和PG最多7、owned354迁移发送／总PG上限400均只是待批代码上限，不包含登录／服务健康／页面等外围动作；认证维护既有session的字段与ID也须单列。完整修复、原失败和真实工具证据、剩余范围见[专项准备记录](../../superpowers/plans/2026-10-19-case-list-query-preferences-validation.md#2026-10-20-六文件离线准备候选)。R2本轮恢复／旧锁归档成功不等于整体数据检查通过：只读比较165表后在单会话差异处停止，未修改或重置基线。
+
 ## 客户详情二级内容与按钮语义（2026-10-19，离线交付）
 
 用户明确批准原UI任务实施CustomerDetailPage.vue及直接spec、离线测试与独立复审。基线b1a15e937491f4771ddbe8a8c07aacd66d42530f；原作者在customer-detail-secondary-ui树实施，原case-list-query-ui六WIP不动。只读派发最初因授权范围被拒，用户具体批准后同路径唯一重试成功；这次后续实施另有明确批准，不将其当CSV动作或数据库额度。
