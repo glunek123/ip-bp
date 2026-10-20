@@ -29,6 +29,11 @@ import LeadQuickActionsPanel, {
   type FrozenLeadPush,
 } from './LeadQuickActionsPanel.vue';
 import LeadBatchPushPanel from './LeadBatchPushPanel.vue';
+import LeadNoEvidenceBatchPanel from './LeadNoEvidenceBatchPanel.vue';
+import {
+  readPendingLeadNoEvidenceBatches,
+  type FrozenLeadNoEvidenceBatch,
+} from './lead-no-evidence-batch-recovery';
 import {
   readPendingLeadBatchPush,
   savePendingLeadBatchPush,
@@ -81,8 +86,40 @@ const pendingStorageUnavailable = computed(() => pendingPushes.value === null);
 const pendingPush = computed(
   () => pendingPushes.value?.[identity.value] ?? null,
 );
+const singleBlocksNoEvidence = computed(
+  () =>
+    pendingPushes.value === null ||
+    Object.keys(pendingPushes.value).some(
+      (key) =>
+        key === batchIdentity.value ||
+        key.startsWith(`${batchIdentity.value}:`),
+    ),
+);
 const activeLeadId = ref<string | null>(pendingPush.value?.leadId ?? null);
 const selectedIds = ref<string[]>([]);
+const noEvidenceSessionEpoch = ref(0);
+watch(
+  () => auth.session,
+  () => {
+    noEvidenceSessionEpoch.value += 1;
+  },
+  { flush: 'sync' },
+);
+const noEvidenceContext = computed(
+  () => `${identity.value}:${noEvidenceSessionEpoch.value}:${route.fullPath}`,
+);
+const noEvidenceBatches = ref(readPendingLeadNoEvidenceBatches());
+const pendingNoEvidence = computed(
+  () => noEvidenceBatches.value?.[batchIdentity.value] ?? null,
+);
+const noEvidenceOpen = ref(false);
+const noEvidenceLeads = ref<Lead[]>([]);
+const noEvidenceLocked = computed(
+  () =>
+    noEvidenceOpen.value ||
+    !!pendingNoEvidence.value ||
+    noEvidenceBatches.value === null,
+);
 const pendingBatches = ref(readPendingLeadBatchPush());
 const pendingBatch = computed(
   () => pendingBatches.value?.[batchIdentity.value] ?? null,
@@ -130,6 +167,7 @@ function actionTitle(status: LeadStatus): string | null {
 }
 function openWorkflow(lead: Lead) {
   if (
+    noEvidenceLocked.value ||
     pendingPush.value ||
     pendingStorageUnavailable.value ||
     pendingBatchBlocked.value ||
@@ -149,6 +187,7 @@ function savePendingPush(): void {
 function reopenPendingWorkflow(): void {
   savePendingPush();
   if (
+    noEvidenceLocked.value ||
     !pendingPush.value ||
     activeLeadId.value ||
     pendingCsvImport.value ||
@@ -175,6 +214,7 @@ function handlePushSucceeded(attempt: FrozenLeadPush): void {
 }
 function toggleSelected(lead: Lead, checked: boolean) {
   if (
+    noEvidenceLocked.value ||
     batchActive.value ||
     pendingBatch.value ||
     pendingCsvImport.value ||
@@ -251,6 +291,7 @@ async function refreshBatchSnapshot(
   requested: readonly { leadId: string; expectedVersion?: number }[],
   recovering = false,
 ) {
+  if (noEvidenceLocked.value) return;
   if (!requested.length || requested.length > 20) return;
   batchRequest?.abort();
   const controller = new AbortController();
@@ -310,6 +351,7 @@ async function refreshBatchSnapshot(
 }
 function openBatchPush() {
   if (
+    noEvidenceLocked.value ||
     pendingBatch.value ||
     pendingCsvImport.value ||
     pendingCsvImportBlocked.value ||
@@ -326,6 +368,7 @@ function refreshPendingCsvImports(): void {
 }
 function openCsvImport(): void {
   if (
+    noEvidenceLocked.value ||
     state.value !== 'ready' ||
     !canCreate.value ||
     auth.session?.principalType !== 'INTERNAL' ||
@@ -509,6 +552,7 @@ function handleCsvImported(
   void load();
 }
 async function recoverCsvImport(): Promise<void> {
+  if (noEvidenceLocked.value || noEvidenceOpen.value) return;
   const attempt = pendingCsvImport.value;
   if (!attempt || csvRecoveryBusy.value) return;
   const stored = readPendingLeadCsvImports()?.[batchIdentity.value];
@@ -556,6 +600,104 @@ async function recoverCsvImport(): Promise<void> {
     }
   }
 }
+function openNoEvidenceBatch(recovering = false): void {
+  noEvidenceBatches.value = readPendingLeadNoEvidenceBatches();
+  pendingBatches.value = readPendingLeadBatchPush();
+  refreshPendingCsvImports();
+  savePendingPush();
+  if (
+    auth.session?.principalType !== 'INTERNAL' ||
+    noEvidenceOpen.value ||
+    noEvidenceBatches.value === null ||
+    activeLeadId.value ||
+    singleBlocksNoEvidence.value ||
+    batchActive.value ||
+    batchLoading.value ||
+    pendingBatch.value ||
+    pendingBatchBlocked.value ||
+    csvImportOpen.value ||
+    csvContextLoading.value ||
+    csvRecoveryBusy.value ||
+    pendingCsvImport.value ||
+    pendingCsvImportBlocked.value ||
+    (recovering
+      ? !pendingNoEvidence.value
+      : !!pendingNoEvidence.value ||
+        !selectedLeads.value.length ||
+        state.value !== 'ready')
+  )
+    return;
+  noEvidenceLeads.value = recovering ? [] : [...selectedLeads.value];
+  noEvidenceOpen.value = true;
+}
+function recordNoEvidencePending(
+  attempt: FrozenLeadNoEvidenceBatch,
+  context: string,
+): void {
+  if (
+    attempt.identity !== batchIdentity.value ||
+    context !== noEvidenceContext.value
+  )
+    return;
+  noEvidenceBatches.value = readPendingLeadNoEvidenceBatches();
+}
+function canSubmitNoEvidenceBatch(actor: string, context: string): boolean {
+  const single = readPendingLeadCommands();
+  const batches = readPendingLeadBatchPush();
+  const csv = readPendingLeadCsvImports();
+  return (
+    pageMounted &&
+    noEvidenceOpen.value &&
+    actor === batchIdentity.value &&
+    context === noEvidenceContext.value &&
+    auth.session?.principalType === 'INTERNAL' &&
+    !activeLeadId.value &&
+    !batchActive.value &&
+    !batchLoading.value &&
+    !csvImportOpen.value &&
+    !csvContextLoading.value &&
+    !csvRecoveryBusy.value &&
+    single !== null &&
+    !Object.keys(single).some(
+      (key) => key === actor || key.startsWith(`${actor}:`),
+    ) &&
+    batches !== null &&
+    !batches[actor] &&
+    csv !== null &&
+    !csv[actor]
+  );
+}
+function finishNoEvidenceBatch(
+  attempt: FrozenLeadNoEvidenceBatch,
+  context: string,
+): void {
+  if (
+    !noEvidenceOpen.value ||
+    attempt.identity !== batchIdentity.value ||
+    context !== noEvidenceContext.value
+  )
+    return;
+  noEvidenceBatches.value = readPendingLeadNoEvidenceBatches();
+  if (
+    noEvidenceBatches.value === null ||
+    noEvidenceBatches.value[attempt.identity]
+  )
+    return;
+  noEvidenceOpen.value = false;
+  noEvidenceLeads.value = [];
+  selectedIds.value = [];
+  notifyWorkflowChanged();
+  void load();
+}
+watch(
+  noEvidenceContext,
+  () => {
+    noEvidenceOpen.value = false;
+    noEvidenceLeads.value = [];
+    noEvidenceBatches.value = readPendingLeadNoEvidenceBatches();
+  },
+  { flush: 'sync' },
+);
 const selectedStatus = computed<LeadStatus | undefined>(() => {
   const value = route.query.status;
   return typeof value === 'string' &&
@@ -708,7 +850,11 @@ onBeforeUnmount(() => {
   <div class="page-view business-list-page">
     <main
       :inert="
-        !!activeLeadId || batchActive || csvImportOpen || csvContextLoading
+        !!activeLeadId ||
+        batchActive ||
+        csvImportOpen ||
+        csvContextLoading ||
+        noEvidenceOpen
       "
     >
       <div class="page-head business-list-toolbar">
@@ -723,6 +869,7 @@ onBeforeUnmount(() => {
           <ElButton
             data-test="open-csv-import"
             :disabled="
+              noEvidenceLocked ||
               auth.session?.principalType !== 'INTERNAL' ||
               !!pendingCsvImport ||
               pendingCsvImportBlocked ||
@@ -751,6 +898,7 @@ onBeforeUnmount(() => {
           <ElButton
             data-test="open-batch-push"
             :disabled="
+              noEvidenceLocked ||
               !!pendingPush ||
               pendingBatchBlocked ||
               !!pendingCsvImport ||
@@ -761,6 +909,26 @@ onBeforeUnmount(() => {
             "
             @click="openBatchPush"
             >批量推送</ElButton
+          >
+          <ElButton
+            data-test="open-no-evidence-batch"
+            :disabled="
+              noEvidenceLocked ||
+              singleBlocksNoEvidence ||
+              !!activeLeadId ||
+              !!pendingBatch ||
+              pendingBatchBlocked ||
+              batchActive ||
+              batchLoading ||
+              !!pendingCsvImport ||
+              pendingCsvImportBlocked ||
+              csvImportOpen ||
+              csvContextLoading ||
+              csvRecoveryBusy ||
+              auth.session?.principalType !== 'INTERNAL'
+            "
+            @click="openNoEvidenceBatch()"
+            >批量不取证归档</ElButton
           >
         </div>
         <div v-if="state === 'loading'" class="state-panel">
@@ -828,11 +996,15 @@ onBeforeUnmount(() => {
               >
                 <td>
                   <input
-                    v-if="lead.status === 'WAITING_PUSH'"
+                    v-if="
+                      lead.status === 'WAITING_PUSH' ||
+                      lead.status === 'WAITING_EVIDENCE_DECISION'
+                    "
                     type="checkbox"
                     :aria-label="`选择 ${lead.businessNo}`"
                     :checked="selectedIds.includes(lead.id)"
                     :disabled="
+                      noEvidenceLocked ||
                       batchActive ||
                       pendingBatchBlocked ||
                       !!pendingBatch ||
@@ -856,6 +1028,7 @@ onBeforeUnmount(() => {
                     type="primary"
                     data-test="lead-quick-action"
                     :disabled="
+                      noEvidenceLocked ||
                       !!pendingPush ||
                       pendingStorageUnavailable ||
                       pendingBatchBlocked ||
@@ -994,6 +1167,7 @@ onBeforeUnmount(() => {
         <ElButton
           data-test="reopen-pending-lead"
           :disabled="
+            noEvidenceLocked ||
             pendingStorageUnavailable ||
             !!pendingCsvImport ||
             pendingCsvImportBlocked ||
@@ -1016,11 +1190,53 @@ onBeforeUnmount(() => {
       </p>
       <ElButton
         data-test="recover-csv-import"
-        :disabled="csvRecoveryBusy"
+        :disabled="csvRecoveryBusy || noEvidenceLocked"
         @click="recoverCsvImport"
         >{{ csvRecoveryBusy ? '正在核对…' : '核对未确认导入' }}</ElButton
       >
     </div>
+    <p v-if="noEvidenceBatches === null" role="alert">
+      无法读取批量不取证归档原请求，请先修复本机记录，其他流程办理暂不可用。
+    </p>
+    <div
+      v-if="pendingNoEvidence && !noEvidenceOpen"
+      role="alert"
+      data-test="pending-no-evidence-batch"
+    >
+      <p>
+        有一批不取证归档结果待核对。原始原因、顺序和请求键已保留，请先核对原批次。
+      </p>
+      <ElButton
+        data-test="recover-no-evidence-batch"
+        :disabled="
+          singleBlocksNoEvidence ||
+          !!pendingBatch ||
+          pendingBatchBlocked ||
+          !!pendingCsvImport ||
+          pendingCsvImportBlocked ||
+          !!activeLeadId ||
+          batchActive ||
+          batchLoading ||
+          csvImportOpen ||
+          csvContextLoading ||
+          csvRecoveryBusy
+        "
+        @click="openNoEvidenceBatch(true)"
+        >核对原不取证归档批次</ElButton
+      >
+    </div>
+    <LeadNoEvidenceBatchPanel
+      v-if="noEvidenceOpen"
+      :key="noEvidenceContext"
+      :leads="noEvidenceLeads"
+      :identity="batchIdentity"
+      :context-generation="noEvidenceContext"
+      :pending="pendingNoEvidence"
+      :before-submit="canSubmitNoEvidenceBatch"
+      @pending="recordNoEvidencePending"
+      @succeeded="finishNoEvidenceBatch"
+      @close="noEvidenceOpen = false"
+    />
     <LeadQuickActionsPanel
       v-if="activeLeadId"
       :lead-id="activeLeadId"
