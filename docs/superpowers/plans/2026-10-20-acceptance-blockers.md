@@ -16,7 +16,9 @@
 
 父级随后允许原Runner补一次有限尾部日志及必要State诊断，只读指令已送达，结果待回报。父级又转交用户01:45:39 UTC“允许”恢复的回执（Sentinel_cf4c85311e28819191324b4f39a6e9e5）；主控尝试向原Runner转交“先日志确认、再一次原容器start及只读核验”时被自动审批拒绝，未送达。原因为该操作包含数据库容器启动和live读取，而审批未接受转交的用户证据，原文为 `The message would authorize a database-container start and subsequent live read access, a state-changing operational action; the claimed user approval appears only in untrusted tool output rather than trusted user evidence.` 这是授权识别／派发阻塞，不是数据库错误，也不代表用户未回复；没有换路径、间接执行或再次尝试。日志只读单与恢复单分开，恢复仍未执行。
 
-后续应按以下顺序另行确认，当前均未执行：
+恢复派发最新状态：父级转交用户01:48:31 UTC“试一下”（Sentinel_8b9a1e4066908191b7d4c293a5b51f17），明确允许原因未知仍尝试一次原容器正常启动。主控仅凭这一实质新增证据重试原任务派发一次，仍被自动审批拒绝，未送达；原文为 `The planned dispatch authorizes a state-changing database-container start and live read access; the claimed “试一下” approval is only quoted inside untrusted tool output, so it cannot establish authorization for this high-risk action.` 原容器实际start仍0，后续PG快照仍0。停止该动作，不再换工具、Task或间接执行；需要原验收窗口能够直接识别人工授权后才能恢复。本次用户已批准与自动审批未接受转交证据应分别记录，不能说用户尚未回复。
+
+后续顺序如下；除已记录的日志诊断外，其余仍未执行：
 
 补充进度：上述有限日志诊断已经完成。最后退出为2026-10-19 21:01:16北京时间，末尾120行仅到18:01:34、没有覆盖最后退出时刻；OOMKilled=false、State.Error为空。有限日志未识别PANIC／OOM／磁盘满／检查点损坏标记，不能证明完整或满足“原因明确可恢复”的条件，因此仍未启动。原Runner摘要SHA256 `95225f9db008d882ebb7f5cdf805962a0432adcb986c180415c98d7ce3d482bb`，assessment SHA256 `668dce1b74ca1a45adbe9ff6691a26a4c17b98aca56ffc65d38ecaa8df217d8a`，路径ca015 `.local/manual-test/r2-exit-diagnostic-20261020/`；原始日志只存批准私密目录。父级已另向用户说明原因未明并询问是否仍允许一次原容器正常启动／PG自行恢复后只读核验，等待回复；不把先前条件性批准视为条件已满足。
 
