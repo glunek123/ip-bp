@@ -180,6 +180,8 @@ enum PermissionAction {
   NOTARY_LIST_EXPORT           @map("notary.list.export")
   CASE_READ                    @map("case.read")
   CASE_EXPORT                  @map("case.export")
+  CASE_GROUP_CREATE            @map("case.group.create")
+  CASE_GROUP_DISSOLVE          @map("case.group.dissolve")
   CASE_EXTERNAL_ENTRY_CREATE   @map("case.external-entry.create")
   CASE_EXTERNAL_ENTRY_ARCHIVE  @map("case.external-entry.archive")
   CASE_MATCH                   @map("case.match")
@@ -616,6 +618,7 @@ enum TeamStatus {
 }
 
 model Department {
+  caseHandlingGroups CaseHandlingGroup[]
   id                               String                            @id @default(uuid()) @db.Uuid
   name                             String
   memberships                      DepartmentMembership[]
@@ -835,6 +838,8 @@ model AuthThrottle {
 }
 
 model DepartmentMembership {
+  caseHandlingGroupEvents CaseHandlingGroupEvent[]
+  caseHandlingGroupReceipts CaseHandlingGroupReceipt[]
   settlementLaunches CaseSettlementLaunch[] @relation("SettlementLaunchInternalActor")
   settlementBills SettlementBill[] @relation("SettlementBillInternalActor")
   feeRecords FeeRecord[] @relation("FeeRecordInternalActor")
@@ -932,6 +937,7 @@ model RoleAssignment {
 }
 
 model Customer {
+  caseHandlingGroups CaseHandlingGroup[]
   settlementLaunches CaseSettlementLaunch[]
   id                       String                       @id @default(uuid()) @db.Uuid
   name                     String
@@ -2024,6 +2030,7 @@ model NotaryCertificateFee {
 }
 
 model Case {
+  handlingGroupMembers CaseHandlingGroupMember[]
   evidenceItems EvidenceItem[]
   evidencePaperCertificates EvidencePaperCertificate[]
   evidenceGroups EvidenceGroupVersion[]
@@ -2136,6 +2143,7 @@ model Case {
 
   @@unique([id, departmentId])
   @@unique([sourceNotaryMatterId, departmentId])
+  @@unique([id, customerId, departmentId], map: "cases_handling_group_customer_key")
   @@unique([sourceNotaryMatterId, sourceLeadId, customerId, rightsHolderId, departmentId])
   @@unique([certificateId, sourceNotaryMatterId, departmentId])
   @@index([departmentId, createdAt, id])
@@ -3729,7 +3737,79 @@ enum AuditActorKind {
   @@map("audit_actor_kind")
 }
 
+model CaseHandlingGroup {
+  id String @id @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  customerId String @map("customer_id") @db.Uuid
+  revision Int @default(1)
+  status String @db.VarChar(16)
+  createdAt DateTime @map("created_at") @db.Timestamptz(3)
+  dissolvedAt DateTime? @map("dissolved_at") @db.Timestamptz(3)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  customer Customer @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  members CaseHandlingGroupMember[]
+  events CaseHandlingGroupEvent[]
+  receipts CaseHandlingGroupReceipt[]
+  @@unique([id, departmentId])
+  @@unique([id, customerId, departmentId])
+  @@index([departmentId, createdAt, id])
+  @@map("case_handling_groups")
+}
+
+model CaseHandlingGroupMember {
+  groupId String @map("group_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  customerId String @map("customer_id") @db.Uuid
+  group CaseHandlingGroup @relation(fields: [groupId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  case Case @relation(fields: [caseId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  @@id([groupId, caseId])
+  @@index([caseId, departmentId])
+  @@map("case_handling_group_members")
+}
+
+model CaseHandlingGroupEvent {
+  id String @id @db.Uuid
+  groupId String @map("group_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  revision Int
+  status String @db.VarChar(16)
+  beforeCaseIds String[] @map("before_case_ids") @db.Uuid
+  afterCaseIds String[] @map("after_case_ids") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  actorDisplayNameSnapshot String @map("actor_display_name_snapshot")
+  recordedAt DateTime @map("recorded_at") @db.Timestamptz(3)
+  auditEventId String @unique @map("audit_event_id") @db.Uuid
+  group CaseHandlingGroup @relation(fields: [groupId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor DepartmentMembership @relation(fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  receipt CaseHandlingGroupReceipt?
+  @@unique([groupId, revision])
+  @@unique([id, groupId, departmentId], map: "cg_event_scope_key")
+  @@map("case_handling_group_events")
+}
+
+model CaseHandlingGroupReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  groupId String @map("group_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  command String @db.VarChar(16)
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  originalRequest Json @map("original_request")
+  resultSnapshot Json @map("result_snapshot")
+  eventId String @unique @map("event_id") @db.Uuid
+  group CaseHandlingGroup @relation(fields: [groupId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor DepartmentMembership @relation(fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  event CaseHandlingGroupEvent @relation(fields: [eventId, groupId, departmentId], references: [id, groupId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([eventId, groupId, departmentId], map: "cg_receipt_event_scope_key")
+  @@unique([departmentId, actorUserId, command, idempotencyKey], map: "case_handling_group_receipts_actor_command_key")
+  @@map("case_handling_group_receipts")
+}
+
 model AuditEvent {
+  caseHandlingGroupEvent CaseHandlingGroupEvent?
   executionFeedbackVersion CaseExecutionFilingFeedback?
   executionSupplementVersion CaseExecutionFilingSupplement?
   closureRecordCorrections CaseClosureRecordCorrection[]

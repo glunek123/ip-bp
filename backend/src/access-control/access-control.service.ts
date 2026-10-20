@@ -52,6 +52,8 @@ export type PermissionAction =
   | 'notary.list.export'
   | 'case.read'
   | 'case.export'
+  | 'case.group.create'
+  | 'case.group.dissolve'
   | 'case.external-entry.create'
   | 'case.external-entry.archive'
   | 'case.match'
@@ -115,7 +117,9 @@ export type LeadAction =
   | 'notary.issuance.decide'
   | 'notary.return.archive'
   | 'notary.list.export'
-  | 'case.read';
+  | 'case.read'
+  | 'case.group.create'
+  | 'case.group.dissolve';
 
 export type CustomerResourceFacts = {
   departmentId: string;
@@ -345,6 +349,8 @@ export class AccessControlService {
   async authorizeCase(
     actor: ActorContext,
     action:
+      | 'case.group.create'
+      | 'case.group.dissolve'
       | 'case.match'
       | 'case.complaint.submit'
       | 'case.complaint.confirm'
@@ -398,6 +404,8 @@ export class AccessControlService {
   async canAuthorizeCase(
     actor: ActorContext,
     action:
+      | 'case.group.create'
+      | 'case.group.dissolve'
       | 'case.match'
       | 'case.complaint.submit'
       | 'case.complaint.confirm'

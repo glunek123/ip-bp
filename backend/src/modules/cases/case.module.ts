@@ -25,6 +25,9 @@ import { CaseListPreferenceController } from './case-list-preference.controller'
 import { CaseListPreferenceService } from './case-list-preference.service';
 import { CaseListExportController } from './case-list-export.controller';
 import { CaseListExportService } from './case-list-export.service';
+import { CaseHandlingGroupController } from './case-handling-group.controller';
+import { CaseHandlingGroupRead } from './case-handling-group.read';
+import { CaseHandlingGroupService } from './case-handling-group.service';
 import { CaseMatchService } from './case-match.service';
 import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
@@ -68,6 +71,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseReadController,
     CaseListPreferenceController,
     CaseListExportController,
+    CaseHandlingGroupController,
     ClientCaseController,
     LawyerAccountController,
     CaseLawyerCandidatesController,
@@ -79,6 +83,8 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseReadService,
     CaseListPreferenceService,
     CaseListExportService,
+    CaseHandlingGroupRead,
+    CaseHandlingGroupService,
     CaseCreationService,
     CaseExternalEntryService,
     CaseMatchService,
