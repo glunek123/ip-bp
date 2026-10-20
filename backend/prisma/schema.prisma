@@ -642,6 +642,7 @@ model Department {
   notaryReturnArchiveBatchReceipts NotaryReturnArchiveBatchReceipt[]
   leadCommandReceipts              LeadCommandReceipt[]
   leadBatchPushReceipts            LeadBatchPushReceipt[]
+  leadNoEvidenceBatchReceipts      LeadNoEvidenceBatchReceipt[]
   leadCsvImportReceipts            LeadCsvImportReceipt[]
   clientAccountBindings            CustomerAccountBinding[]
   notaryOfficeAccountBindings      NotaryOfficeAccountBinding[]
@@ -860,6 +861,7 @@ model DepartmentMembership {
   responsibleCases                 Case[]                            @relation("CaseResponsibleMembership")
   leadCommandReceipts              LeadCommandReceipt[]              @relation("LeadCommandReceiptActor")
   leadBatchPushReceipts            LeadBatchPushReceipt[]            @relation("LeadBatchPushReceiptActor")
+  leadNoEvidenceBatchReceipts      LeadNoEvidenceBatchReceipt[]      @relation("LeadNoEvidenceBatchReceiptActor")
   leadCsvImportReceipts            LeadCsvImportReceipt[]            @relation("LeadCsvImportReceiptActor")
   notaryOpeningReviewDecisions     NotaryOpeningReviewDecision[]     @relation("NotaryOpeningReviewDecisionInternalActor")
   notaryIssuanceDecisions          NotaryIssuanceDecision[]          @relation("NotaryIssuanceDecisionInternalActor")
@@ -3686,6 +3688,22 @@ model LeadBatchPushReceipt {
 
   @@unique([departmentId, actorUserId, idempotencyKey], map: "lead_batch_push_receipts_department_actor_key")
   @@map("lead_batch_push_receipts")
+}
+
+model LeadNoEvidenceBatchReceipt {
+  id                 String               @id @default(uuid()) @db.Uuid
+  departmentId       String               @map("department_id") @db.Uuid
+  actorUserId        String               @map("actor_user_id") @db.Uuid
+  idempotencyKey     String               @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String               @map("request_fingerprint") @db.Char(64)
+  originalRequest    Json                 @map("original_request")
+  resultSnapshot     Json                 @map("result_snapshot")
+  department         Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  actorMembership    DepartmentMembership @relation("LeadNoEvidenceBatchReceiptActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "lead_no_evidence_batch_receipts_actor_department_fkey")
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([departmentId, actorUserId, idempotencyKey], map: "lead_no_evidence_batch_receipts_department_actor_key")
+  @@map("lead_no_evidence_batch_receipts")
 }
 
 model LeadCsvImportReceipt {

@@ -6,6 +6,7 @@ import { MaterialModule } from '../materials';
 import { CaseModule } from '../cases';
 import { LeadController } from './lead.controller';
 import { LeadBatchPushController } from './lead-batch-push.controller';
+import { LeadNoEvidenceBatchController } from './lead-no-evidence-batch.controller';
 import { LeadCsvImportController } from './lead-csv-import.controller';
 import { LeadService } from './lead.service';
 import {
@@ -49,6 +50,7 @@ import { NotaryRecordEditService } from './notary-record-edit.service';
   controllers: [
     LeadController,
     LeadBatchPushController,
+    LeadNoEvidenceBatchController,
     LeadCsvImportController,
     ClientLeadController,
     ClientNotaryOpeningReviewController,
