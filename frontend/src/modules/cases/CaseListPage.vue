@@ -867,6 +867,15 @@ onBeforeUnmount(() => {
           </p>
         </div>
         <div class="case-list-head-actions">
+          <RouterLink
+            v-if="auth.session?.principalType === 'INTERNAL'"
+            :to="{
+              path: '/case-handling-groups',
+              query: { returnTo: route.fullPath },
+            }"
+            data-test="case-handling-groups-entry"
+            >案件办理组</RouterLink
+          >
           <ElButton
             v-if="canExportCsv"
             type="primary"

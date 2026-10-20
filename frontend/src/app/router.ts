@@ -24,6 +24,7 @@ import ClientCaseDetailPage from '../modules/client/ClientCaseDetailPage.vue';
 import NotaryPortalListPage from '../modules/notary/NotaryPortalListPage.vue';
 import NotaryPortalDetailPage from '../modules/notary/NotaryPortalDetailPage.vue';
 import CaseListPage from '../modules/cases/CaseListPage.vue';
+import CaseHandlingGroupsPage from '../modules/cases/CaseHandlingGroupsPage.vue';
 import CaseDetailPage from '../modules/cases/CaseDetailPage.vue';
 import CaseExternalEntryPage from '../modules/cases/CaseExternalEntryPage.vue';
 import LawyerAccountsPage from '../modules/organization/LawyerAccountsPage.vue';
@@ -125,6 +126,15 @@ export const router = createRouter({
       path: '/cases',
       component: CaseListPage,
       meta: { audience: 'INTERNAL', section: '案件', breadcrumbs: ['案件'] },
+    },
+    {
+      path: '/case-handling-groups/:id?',
+      component: CaseHandlingGroupsPage,
+      meta: {
+        audience: 'INTERNAL',
+        section: '案件',
+        breadcrumbs: ['案件', '案件办理组'],
+      },
     },
     {
       path: '/cases/:id',

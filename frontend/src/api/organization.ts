@@ -88,6 +88,8 @@ export const permissionActionValues = [
   'NOTARY_LIST_EXPORT',
   'CASE_READ',
   'CASE_EXPORT',
+  'CASE_GROUP_CREATE',
+  'CASE_GROUP_DISSOLVE',
   'CASE_MATCH',
   'CASE_EXTERNAL_ENTRY_CREATE',
   'CASE_EXTERNAL_ENTRY_ARCHIVE',
@@ -320,6 +322,9 @@ function isGrant(value: unknown): value is OrganizationGrant {
     permissionActions.has(value.action) &&
     typeof value.scope === 'string' &&
     permissionScopes.has(value.scope) &&
+    (!['CASE_GROUP_CREATE', 'CASE_GROUP_DISSOLVE'].includes(value.action) ||
+      value.scope === 'TEAM' ||
+      value.scope === 'DEPARTMENT') &&
     ((!demoDepartmentActions.has(value.action as PermissionAction) &&
       value.action !== 'CASE_EXTERNAL_ENTRY_ARCHIVE' &&
       value.action !== 'CASE_EXPORT') ||
@@ -358,6 +363,11 @@ function isPermissionCatalog(
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
       (item.action === 'CASE_EXPORT' &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
+      ((item.action === 'CASE_GROUP_CREATE' ||
+        item.action === 'CASE_GROUP_DISSOLVE') &&
+        (item.scopes.length !== 2 ||
+          item.scopes[0] !== 'TEAM' ||
+          item.scopes[1] !== 'DEPARTMENT')) ||
       (demoDepartmentActions.has(item.action as PermissionAction) &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
       (item.action === 'CASE_EXTERNAL_ENTRY_ARCHIVE' &&

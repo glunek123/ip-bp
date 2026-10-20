@@ -13,6 +13,7 @@ vi.mock('../stores/auth', () => ({ useAuthStore: () => auth }));
 
 import { router } from './router';
 import EvidencePage from '../modules/evidence/EvidencePage.vue';
+import CaseHandlingGroupsPage from '../modules/cases/CaseHandlingGroupsPage.vue';
 
 beforeEach(async () => {
   auth.session = null;
@@ -51,6 +52,51 @@ describe('evidence routing', () => {
       auth.session = { principalType, user: { id: 'external' } };
       await router.push('/evidence');
       expect(router.currentRoute.value.path).toBe(expected);
+    },
+  );
+});
+
+describe('internal handling group routing', () => {
+  it.each([
+    '/case-handling-groups',
+    '/case-handling-groups/55555555-5555-4555-8555-555555555555',
+  ])(
+    'resolves the real group page and preserves list return context for %s',
+    async (path) => {
+      auth.session = { principalType: 'INTERNAL', user: { id: 'reader' } };
+      await router.push({
+        path,
+        query: { returnTo: '/cases?view=department&page=3&q=合成#records' },
+      });
+      expect(router.currentRoute.value.matched[0]?.components?.default).toBe(
+        CaseHandlingGroupsPage,
+      );
+      expect(router.currentRoute.value.meta.audience).toBe('INTERNAL');
+      expect(router.currentRoute.value.meta.caseWorkspace).not.toBe(true);
+      expect(router.currentRoute.value.query.returnTo).toBe(
+        '/cases?view=department&page=3&q=合成#records',
+      );
+    },
+  );
+  it('preserves the full unauthenticated group destination for normal login', async () => {
+    await router.push(
+      '/case-handling-groups?page=2&returnTo=%2Fcases%3Fpage%3D3#original',
+    );
+    expect(router.currentRoute.value.path).toBe('/login');
+    expect(router.currentRoute.value.query.returnTo).toBe(
+      '/case-handling-groups?page=2&returnTo=%2Fcases%3Fpage%3D3#original',
+    );
+  });
+  it.each([
+    ['CLIENT', '/client/leads'],
+    ['LAWYER', '/lawyer/cases'],
+    ['NOTARY', '/notary-portal/matters'],
+  ] as const)(
+    'does not expose the internal group route to %s',
+    async (principalType, home) => {
+      auth.session = { principalType, user: { id: 'external' } };
+      await router.push('/case-handling-groups');
+      expect(router.currentRoute.value.path).toBe(home);
     },
   );
 });

@@ -279,6 +279,16 @@ const context = {
       scopes: ['DEPARTMENT'],
     },
     {
+      action: 'CASE_GROUP_CREATE',
+      label: '建立合并办理组',
+      scopes: ['TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_GROUP_DISSOLVE',
+      label: '解除合并办理组',
+      scopes: ['TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'CASE_MATCH',
       label: '匹配案件',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -570,6 +580,8 @@ describe('organization API', () => {
       'NOTARY_LIST_EXPORT',
       'CASE_READ',
       'CASE_EXPORT',
+      'CASE_GROUP_CREATE',
+      'CASE_GROUP_DISSOLVE',
       'CASE_MATCH',
       'CASE_EXTERNAL_ENTRY_CREATE',
       'CASE_EXTERNAL_ENTRY_ARCHIVE',
@@ -733,6 +745,61 @@ describe('organization API', () => {
       ],
     });
   });
+  it.each(['CASE_GROUP_CREATE', 'CASE_GROUP_DISSOLVE'] as const)(
+    'decodes only TEAM/DEPARTMENT for %s without inferring actor authority',
+    async (action) => {
+      for (const scope of ['TEAM', 'DEPARTMENT']) {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn().mockResolvedValue(
+            new Response(
+              JSON.stringify({
+                ...context,
+                roles: [{ ...context.roles[0], grants: [{ action, scope }] }],
+              }),
+            ),
+          ),
+        );
+        await expect(getOrganizationManagementContext()).resolves.toMatchObject(
+          { roles: [{ grants: [{ action, scope }] }] },
+        );
+      }
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              ...context,
+              roles: [
+                { ...context.roles[0], grants: [{ action, scope: 'SELF' }] },
+              ],
+            }),
+          ),
+        ),
+      );
+      await expect(getOrganizationManagementContext()).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              ...context,
+              permissionCatalog: context.permissionCatalog.map((item) =>
+                item.action === action
+                  ? { ...item, scopes: ['SELF', 'TEAM', 'DEPARTMENT'] }
+                  : item,
+              ),
+            }),
+          ),
+        ),
+      );
+      await expect(getOrganizationManagementContext()).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    },
+  );
 
   it('accepts a self-scoped CASE_MATCH role grant', async () => {
     const body = {

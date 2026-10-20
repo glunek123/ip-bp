@@ -194,6 +194,10 @@ async function mountList(
     history: createMemoryHistory(),
     routes: [
       { path: '/cases', component: CaseListPage },
+      {
+        path: '/case-handling-groups',
+        component: { template: '<p>办理组</p>' },
+      },
       { path: '/cases/:id', component: { template: '<p>详情</p>' } },
     ],
   });
@@ -259,6 +263,32 @@ afterEach(() => {
 });
 
 describe('authorized internal case list display', () => {
+  it('opens the group page with the complete original list bookmark', async () => {
+    const original =
+      '/cases?view=department&stage=WAITING_ARCHIVE&page=1&q=合成&sortBy=businessNo&sortDirection=asc#original';
+    const { wrapper, router } = await mountList(original);
+    const before = router.currentRoute.value.fullPath;
+    await wrapper
+      .get('[data-test="case-handling-groups-entry"]')
+      .trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/case-handling-groups');
+    expect(router.currentRoute.value.query.returnTo).toBe(before);
+  });
+  it('keeps the group entry behind the existing unknown workflow navigation lock', async () => {
+    workflowTest.markUnknown = true;
+    api.listCases.mockResolvedValue(
+      result([{ ...summary(), canArchive: true }]),
+    );
+    const { wrapper, router } = await mountList();
+    await wrapper.get('[data-case-action="archive"]').trigger('click');
+    await flushPromises();
+    await wrapper
+      .get('[data-test="case-handling-groups-entry"]')
+      .trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/cases');
+  });
   it('labels corrected judgment and closure amount sources without changing their values', async () => {
     const item = summary();
     item.displaySummary.judgmentAmount = {
