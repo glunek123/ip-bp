@@ -179,6 +179,7 @@ enum PermissionAction {
   NOTARY_RETURN_ARCHIVE        @map("notary.return.archive")
   NOTARY_LIST_EXPORT           @map("notary.list.export")
   CASE_READ                    @map("case.read")
+  CASE_EXPORT                  @map("case.export")
   CASE_EXTERNAL_ENTRY_CREATE   @map("case.external-entry.create")
   CASE_EXTERNAL_ENTRY_ARCHIVE  @map("case.external-entry.archive")
   CASE_MATCH                   @map("case.match")

@@ -51,6 +51,7 @@ export type PermissionAction =
   | 'notary.return.archive'
   | 'notary.list.export'
   | 'case.read'
+  | 'case.export'
   | 'case.external-entry.create'
   | 'case.external-entry.archive'
   | 'case.match'

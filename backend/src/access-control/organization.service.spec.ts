@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(91);
+    expect(result.permissionCatalog).toHaveLength(92);
     expect(result.permissionCatalog).toContainEqual(
       expect.objectContaining({
         action: 'NOTARY_RECORD_CORRECT',
@@ -480,6 +480,11 @@ describe('OrganizationService management context', () => {
     expect(result.permissionCatalog).toContainEqual({
       action: 'CASE_READ',
       label: '查看案件',
+      scopes: ['DEPARTMENT'],
+    });
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'CASE_EXPORT',
+      label: '导出案件列表',
       scopes: ['DEPARTMENT'],
     });
     expect(result.permissionCatalog).toContainEqual({

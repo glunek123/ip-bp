@@ -59,6 +59,7 @@ const actionMap = {
   NOTARY_RETURN_ARCHIVE: 'notary.return.archive',
   NOTARY_LIST_EXPORT: 'notary.list.export',
   CASE_READ: 'case.read',
+  CASE_EXPORT: 'case.export',
   CASE_EXTERNAL_ENTRY_CREATE: 'case.external-entry.create',
   CASE_EXTERNAL_ENTRY_ARCHIVE: 'case.external-entry.archive',
   CASE_MATCH: 'case.match',
