@@ -1,5 +1,7 @@
 # 当前开发状态
 
+2026-10-21 RP001前后端生产接线已独立组合至860fb78280e4955fca70fb207bb4eeab88691254／treed0d6af934f8a63119e611a91808ba31a912e9e16：后端3077b8b8、前端57a6f5a8及原Panel92fcc821共25源，逐项raw一致，原Reviewer累计Spec／Quality ACCEPTED、C/I/M0。本组合实际后端5套49项、前端5文件240项纯测试通过；check:fast:prepared（20模块／174模型、前后端及根类型、全仓Lint）和双构建均exit0，Vite大chunk警告保留。报表已有内部部门capability／overview、导航及页面；实际实现总数／进行中／归档计数和批准的归档已知标的额均值。Demo其余分布、累计金额、结案率与导出仍按字段矩阵集中核定，不以占位关闭完整报表中心。组合工程证据在独立reports-core-integration树.local/rp001-validation/combo-860fb782-20261021；完整verify／NT006、PG／HTTP／页面未执行，未推送合并或部署。原CG／EF树保持c705df98及原业务build输入，未混入报表导航新增GET；D-only离线接口已交付13项受影响回归，候选绑定及身份回执仍由原Runner／Reviewer窄补闭，外部178HTTP／2新session／79行及账号维护尚待批准。
+
 2026-10-21 RP001后端已独立提交3077b8b80ae208ea638a71778651bb86a75647ca／treee9b1ea041c2795dfaedfc86494683d5350e7c83f，15源哈希全匹配、作者树clean。原Reviewer累计Spec／Quality ACCEPTED、C/I/M0，两项错误码Minor关闭；原45项不同纯测试复用，新增4项使用真实ACL／过滤器通过，不冒称一次49项全跑。DTO稳定，前端继续API／导航生产接线；已有Panel22和注入式Page13结果不等于组合或真实报表验收。Root当前树尚未混入报表源，CG／EF D-only外部恢复未批；原Runner通道由父窗口cloud续接，不再重复本地派单。
 
 2026-10-21 用户明确批准新残留恢复及报表推荐口径后，restart3实际RECOVER／A／B／C均PASS：原OID42255／42256精确回收；完整345文件调用、3个负例及两schema清理通过；官方部署一次升至public172并保护旧行；25行fixture／11Grant保留。D在两案、邮寄／立案及2份PDF完成后报EXECUTOR_FAILURE首停，最后成功保护点为steps139来源核对，补交／办理组事实均0。原steps catch丢失内层error，orchestrate又未保留失败budget，精确HTTP总数未知、仅能证下界12，不能推断原预算余量；这是证据缺陷，不证明原页面失败仅属脚本或产品。E已停用2个新账号、撤销实际1session，连接／锁释放、端口空闲，成功数据保留，不重做A/B/C或不确定HTTP。原Runner和原前端各修所属最小cause／budget失败回执及实际入口反例；D-only恢复需另列现有对象、账号／临时口令／新会话和单轮预算。RP001前后端已沿原两窗并行实际实施，按新SD-62和Demo逐项对齐，不混入当前验收树；原独立Reviewer接续，不增加审查层。

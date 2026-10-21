@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## 2026-10-21 RP001组合源码、纯测试与工程检查通过
+
+独立组合树reports-core-integration／codex/reports-core-integration固定源候选860fb78280e4955fca70fb207bb4eeab88691254，treed0d6af934f8a63119e611a91808ba31a912e9e16。基于原CG／EF文档收口c705df98，仅接入后端3077b8b8的15源、Panel92fcc821的2源及前端57a6f5a8的8源；25份raw与作者冻结／独立复审输入一致，Spec／Quality累计ACCEPTED、C/I/M0。未把报表源混入原CG／EF页面运行树，新增导航capability GET不占用原验收预算。
+
+本组合实际后端5套49项、前端5文件240项纯测试均exit0（分别50.204秒、38.624秒，含启动）；不是拼接作者早期局部结果。随后check:fast:prepared实际92.964秒exit0，覆盖架构20模块／174模型、前后端及根类型、全仓Lint；本树双构建27.233秒exit0，Vite超过500kB的chunk警告保留。新树正常offline frozen安装920包／下载0；正常Prisma生成首轮因用户缓存utime EPERM失败，正式审批后重试同一生成入口成功，未改ACL、未绕过校验、未连接数据库。完整日志与各退出码在该树.local/rp001-validation/combo-860fb782-20261021/。
+
+可交付能力为内部本部门的报表capability／overview、严格API、导航及真实页面接线；全部案件计数、进行中／归档计数与累计归档已知金额均值按SD-62实现。类型／平台、法院TOP5、金额桶、累计额、结案率及报表导出的未决来源／粒度／权限仍逐字段列明，不以待确认占位视为完成。完整verify及NT006、真实PG读取／HTTP／页面均未执行，原741a4b0e的完整verify不覆盖这个新组合；无模型、迁移、Grant、业务写入、推送合并或部署。此后仅文档／快照收口时复用这25源的上述证据，不冒称文档HEAD重跑业务门禁。
+
 ## 2026-10-21 RP001后端核心候选通过源码复审（无真实报表验收）
 
 原后端独立树从70f389f0交付15源，最终提交3077b8b80ae208ea638a71778651bb86a75647ca／treee9b1ea041c2795dfaedfc86494683d5350e7c83f，主控逐文件SHA核对15/15一致、暂存范围恰15且收尾clean。部门capability／overview两个GET和窄cases来源出口已实现，权限先于查询、同RR快照完整计数／归档金额、三态均值及十进制两位舍入；没有模型、迁移、Grant或报表导出。
