@@ -22,6 +22,170 @@ function createStore(
 }
 
 describe('AccessControlService', () => {
+  describe('report permission intersections', () => {
+    const cases: AccessControlSnapshot['grants'] = [
+      { action: 'case.read', scope: 'department' },
+    ];
+    const make = (grants: AccessControlSnapshot['grants']) =>
+      new AccessControlService(
+        createStore({ active: true, authorizationRevision: 4, grants }),
+      );
+    it('does not infer amount or export permission from the original case read grant', async () => {
+      const access = make(cases);
+      await expect(access.reportAccessViews(actor)).resolves.toEqual({
+        views: [],
+        exportViews: [],
+      });
+      await expect(
+        access.buildReportScope(actor, 'department'),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    });
+    it.each(['self', 'department'] as const)(
+      'derives precise owner/dept predicates from %s amount grants',
+      async (scope) => {
+        const access = make([
+          ...cases,
+          { action: 'report.amount.read', scope },
+        ]);
+        await expect(access.buildReportScope(actor, 'mine')).resolves.toEqual({
+          view: 'mine',
+          availableViews: scope === 'self' ? ['mine'] : ['mine', 'department'],
+          where: {
+            departmentId: actor.departmentId,
+            responsibleUserId: actor.userId,
+          },
+        });
+        if (scope === 'self') {
+          await expect(
+            access.buildReportScope(actor, 'department'),
+          ).rejects.toThrow(ForbiddenException);
+          await expect(
+            access.buildReportScope(actor, undefined),
+          ).resolves.toMatchObject({ view: 'mine' });
+        } else {
+          await expect(
+            access.buildReportScope(actor, 'department'),
+          ).resolves.toEqual({
+            view: 'department',
+            availableViews: ['mine', 'department'],
+            where: { departmentId: actor.departmentId },
+          });
+          await expect(
+            access.buildReportScope(actor, undefined),
+          ).resolves.toMatchObject({ view: 'department' });
+        }
+      },
+    );
+    it.each([
+      { amount: 'self', exported: 'department' },
+      { amount: 'department', exported: 'self' },
+    ] as const)(
+      'intersects amount $amount with export $exported instead of combining them into wider access',
+      async ({ amount, exported }) => {
+        const access = make([
+          ...cases,
+          { action: 'report.amount.read', scope: amount },
+          { action: 'report.export', scope: exported },
+        ]);
+        await expect(access.reportAccessViews(actor)).resolves.toMatchObject({
+          exportViews: ['mine'],
+        });
+        await expect(
+          access.buildReportScope(actor, 'department', 'export'),
+        ).rejects.toThrow(ForbiddenException);
+        await expect(
+          access.buildReportScope(actor, 'mine', 'export'),
+        ).resolves.toMatchObject({
+          where: { responsibleUserId: actor.userId },
+        });
+      },
+    );
+    it('unions scopes only within the same action, requires export separately and shares the same transaction reader', async () => {
+      const grants: AccessControlSnapshot['grants'] = [
+        ...cases,
+        { action: 'report.amount.read', scope: 'self' },
+        { action: 'report.amount.read', scope: 'department' },
+      ];
+      const store = createStore({
+        active: true,
+        authorizationRevision: 4,
+        grants,
+      });
+      const access = new AccessControlService(store),
+        reader = {} as AccessControlSnapshotReader;
+      await expect(access.reportAccessViews(actor, reader)).resolves.toEqual({
+        views: ['mine', 'department'],
+        exportViews: [],
+      });
+      await expect(
+        access.buildReportScope(actor, 'department', 'export', reader),
+      ).rejects.toThrow(ForbiddenException);
+      expect(store.loadSnapshot).toHaveBeenLastCalledWith(
+        actor.userId,
+        actor.departmentId,
+        reader,
+      );
+    });
+    it('requires original department case visibility and never treats TEAM as an allowed amount scope', async () => {
+      await expect(
+        make([
+          { action: 'report.amount.read', scope: 'department' },
+        ]).buildReportScope(actor, 'department'),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        make([
+          ...cases,
+          { action: 'report.amount.read', scope: 'team', teamId: 'team-a' },
+        ]).reportAccessViews(actor),
+      ).resolves.toEqual({ views: [], exportViews: [] });
+    });
+    it.each([
+      null,
+      { active: false, authorizationRevision: 4, grants: cases },
+      { active: true, authorizationRevision: 5, grants: cases },
+    ])(
+      'rejects missing, inactive or stale snapshots with report error codes',
+      async (snapshot) => {
+        await expect(
+          new AccessControlService(createStore(snapshot)).buildReportScope(
+            actor,
+            'mine',
+          ),
+        ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      },
+    );
+    it.each([
+      { clientCustomerId: 'customer' },
+      { lawyerAccountId: actor.userId },
+      { notaryOfficeId: 'office' },
+    ])(
+      'does not grant internal reports to an external context',
+      async (external) => {
+        const store = createStore({
+          active: true,
+          authorizationRevision: 4,
+          grants: [
+            ...cases,
+            { action: 'report.amount.read', scope: 'department' },
+          ],
+        });
+        await expect(
+          new AccessControlService(store).reportAccessViews({
+            ...actor,
+            ...external,
+          }),
+        ).rejects.toThrow(ForbiddenException);
+        expect(store.loadSnapshot).not.toHaveBeenCalled();
+      },
+    );
+    it('does not hide unexpected store failures as denial', async () => {
+      const error = new Error('store failed'),
+        store = { loadSnapshot: jest.fn().mockRejectedValue(error) };
+      await expect(
+        new AccessControlService(store).reportAccessViews(actor),
+      ).rejects.toBe(error);
+    });
+  });
   it.each([
     'case.execution.feedback.record',
     'case.execution.feedback.correct',

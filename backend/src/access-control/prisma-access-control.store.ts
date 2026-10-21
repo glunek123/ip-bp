@@ -60,6 +60,8 @@ const actionMap = {
   NOTARY_LIST_EXPORT: 'notary.list.export',
   CASE_READ: 'case.read',
   CASE_EXPORT: 'case.export',
+  REPORT_AMOUNT_READ: 'report.amount.read',
+  REPORT_EXPORT: 'report.export',
   CASE_GROUP_CREATE: 'case.group.create',
   CASE_GROUP_DISSOLVE: 'case.group.dissolve',
   CASE_EXTERNAL_ENTRY_CREATE: 'case.external-entry.create',

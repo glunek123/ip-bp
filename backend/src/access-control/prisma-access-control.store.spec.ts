@@ -28,6 +28,61 @@ const snapshotRecord = {
 };
 
 describe('PrismaAccessControlStore', () => {
+  it.each(['SELF', 'DEPARTMENT'] as const)(
+    'maps the two report actions only from explicit %s grants',
+    async (scope) => {
+      const record = {
+        ...snapshotRecord,
+        roleAssignments: [
+          {
+            teamId: null,
+            roleTemplate: {
+              active: true,
+              grants: [
+                { action: 'REPORT_AMOUNT_READ', scope },
+                { action: 'REPORT_EXPORT', scope },
+              ],
+            },
+          },
+        ],
+      };
+      const store = new PrismaAccessControlStore({
+        userAccount: { findUnique: jest.fn().mockResolvedValue(record) },
+      } as unknown as DatabaseService);
+      await expect(
+        store.loadSnapshot('user-a', 'department-a'),
+      ).resolves.toMatchObject({
+        grants: [
+          { action: 'report.amount.read', scope: scope.toLowerCase() },
+          { action: 'report.export', scope: scope.toLowerCase() },
+        ],
+      });
+    },
+  );
+  it.each(['CLIENT', 'LAWYER', 'NOTARY'])(
+    'does not enable report grants for %s by changing the internal-only store boundary',
+    async (accountType) => {
+      const record = {
+        ...snapshotRecord,
+        accountType,
+        roleAssignments: [
+          {
+            teamId: null,
+            roleTemplate: {
+              active: true,
+              grants: [{ action: 'REPORT_AMOUNT_READ', scope: 'DEPARTMENT' }],
+            },
+          },
+        ],
+      };
+      const store = new PrismaAccessControlStore({
+        userAccount: { findUnique: jest.fn().mockResolvedValue(record) },
+      } as unknown as DatabaseService);
+      await expect(
+        store.loadSnapshot('user-a', 'department-a'),
+      ).resolves.toBeNull();
+    },
+  );
   it.each(['SELF', 'TEAM', 'DEPARTMENT'] as const)(
     'maps EF001 only from explicit %s followup grants',
     async (scope) => {

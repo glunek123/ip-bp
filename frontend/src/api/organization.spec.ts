@@ -12,6 +12,129 @@ import * as organizationApi from './organization';
 
 afterEach(() => vi.unstubAllGlobals());
 
+describe('report amount/export organization configuration only', () => {
+  it.each([
+    ['REPORT_AMOUNT_READ', 'SELF'],
+    ['REPORT_AMOUNT_READ', 'DEPARTMENT'],
+    ['REPORT_EXPORT', 'SELF'],
+    ['REPORT_EXPORT', 'DEPARTMENT'],
+  ] as const)(
+    'decodes %s with %s without creating actor capability',
+    async (action, scope) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              ...context,
+              roles: [{ ...context.roles[0], grants: [{ action, scope }] }],
+            }),
+          ),
+        ),
+      );
+      const result = await getOrganizationManagementContext();
+      expect(result.roles[0]?.grants).toEqual([{ action, scope }]);
+      expect(result).not.toHaveProperty('canReadReports');
+      expect(result).not.toHaveProperty('availableViews');
+    },
+  );
+  it.each(['REPORT_AMOUNT_READ', 'REPORT_EXPORT'] as const)(
+    'rejects TEAM/GLOBAL role grants and malformed catalog scopes for %s',
+    async (action) => {
+      for (const scope of ['TEAM', 'GLOBAL']) {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn().mockResolvedValue(
+            new Response(
+              JSON.stringify({
+                ...context,
+                roles: [{ ...context.roles[0], grants: [{ action, scope }] }],
+              }),
+            ),
+          ),
+        );
+        await expect(getOrganizationManagementContext()).rejects.toMatchObject({
+          code: 'INVALID_RESPONSE',
+        });
+      }
+      for (const scopes of [
+        [],
+        ['SELF'],
+        ['DEPARTMENT'],
+        ['TEAM', 'DEPARTMENT'],
+        ['SELF', 'TEAM', 'DEPARTMENT'],
+        ['DEPARTMENT', 'SELF'],
+        ['SELF', 'SELF'],
+      ]) {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn().mockResolvedValue(
+            new Response(
+              JSON.stringify({
+                ...context,
+                permissionCatalog: context.permissionCatalog.map((item) =>
+                  item.action === action ? { ...item, scopes } : item,
+                ),
+              }),
+            ),
+          ),
+        );
+        await expect(getOrganizationManagementContext()).rejects.toMatchObject({
+          code: 'INVALID_RESPONSE',
+        });
+      }
+    },
+  );
+  it.each(['REPORT_AMOUNT_READ', 'REPORT_EXPORT'] as const)(
+    'rejects %s TEAM grant locally before role mutation HTTP',
+    async (action) => {
+      const fetch = vi.fn();
+      vi.stubGlobal('fetch', fetch);
+      await expect(
+        copyRoleTemplate({
+          sourceRoleTemplateId: 'role-1',
+          name: '合成角色',
+          grants: [{ action, scope: 'TEAM' }],
+        }),
+      ).rejects.toMatchObject({ code: 'INVALID_PERMISSION_GRANT' });
+      await expect(
+        updateRoleTemplate('role-1', {
+          name: '合成角色',
+          expectedVersion: 2,
+          grants: [{ action, scope: 'TEAM' }],
+        }),
+      ).rejects.toMatchObject({ code: 'INVALID_PERMISSION_GRANT' });
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+  it('does not accept a third REPORT_READ action or dotted backend permission keys as actions', async () => {
+    for (const action of [
+      'REPORT_READ',
+      'report.amount.read',
+      'report.export',
+    ]) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              ...context,
+              permissionCatalog: context.permissionCatalog.map((item) =>
+                item.action === 'REPORT_AMOUNT_READ'
+                  ? { ...item, action }
+                  : item,
+              ),
+            }),
+          ),
+        ),
+      );
+      await expect(getOrganizationManagementContext()).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+});
+
 const context = {
   capabilities: {
     createUser: true,
@@ -277,6 +400,16 @@ const context = {
       action: 'CASE_EXPORT',
       label: '导出案件清单',
       scopes: ['DEPARTMENT'],
+    },
+    {
+      action: 'REPORT_AMOUNT_READ',
+      label: '查看报表金额',
+      scopes: ['SELF', 'DEPARTMENT'],
+    },
+    {
+      action: 'REPORT_EXPORT',
+      label: '导出报表',
+      scopes: ['SELF', 'DEPARTMENT'],
     },
     {
       action: 'CASE_GROUP_CREATE',
@@ -580,6 +713,8 @@ describe('organization API', () => {
       'NOTARY_LIST_EXPORT',
       'CASE_READ',
       'CASE_EXPORT',
+      'REPORT_AMOUNT_READ',
+      'REPORT_EXPORT',
       'CASE_GROUP_CREATE',
       'CASE_GROUP_DISSOLVE',
       'CASE_MATCH',

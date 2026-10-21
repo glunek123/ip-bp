@@ -52,6 +52,8 @@ export type PermissionAction =
   | 'notary.list.export'
   | 'case.read'
   | 'case.export'
+  | 'report.amount.read'
+  | 'report.export'
   | 'case.group.create'
   | 'case.group.dissolve'
   | 'case.external-entry.create'
@@ -107,6 +109,16 @@ export type PermissionAction =
   | 'role.manage';
 export type CustomerAction = Extract<PermissionAction, `customer.${string}`>;
 export type PermissionScope = 'self' | 'team' | 'department';
+export type ReportView = 'mine' | 'department';
+export type ReportAccessViews = {
+  views: ReportView[];
+  exportViews: ReportView[];
+};
+export type ReportReadScope = {
+  view: ReportView;
+  availableViews: ReportView[];
+  where: { departmentId: string; responsibleUserId?: string };
+};
 export type CustomerScope = PermissionScope;
 export type LeadAction =
   | Extract<PermissionAction, `lead.${string}`>
@@ -193,6 +205,85 @@ export class AccessControlService {
       )
     )
       throw this.forbidden();
+  }
+
+  async reportAccessViews(
+    actor: ActorContext,
+    reader?: AccessControlSnapshotReader,
+  ): Promise<ReportAccessViews> {
+    const denied = () =>
+      new ForbiddenException({
+        code: 'ACTION_FORBIDDEN',
+        message: '无权读取此范围的报表',
+      });
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.lawyerAccountId !== undefined ||
+      actor.notaryOfficeId !== undefined
+    )
+      throw denied();
+    let snapshot: AccessControlSnapshot;
+    try {
+      snapshot = await this.loadCurrentSnapshot(actor, reader);
+    } catch (error) {
+      if (error instanceof ForbiddenException) throw denied();
+      throw error;
+    }
+    if (
+      !snapshot.grants.some(
+        (grant) => grant.action === 'case.read' && grant.scope === 'department',
+      )
+    )
+      throw denied();
+    const covers = (
+      action: 'report.amount.read' | 'report.export',
+      view: ReportView,
+    ) =>
+      snapshot.grants.some(
+        (grant) =>
+          grant.action === action &&
+          (grant.scope === 'department' ||
+            (grant.scope === 'self' && view === 'mine')),
+      );
+    const views = (['mine', 'department'] as const).filter((view) =>
+      covers('report.amount.read', view),
+    );
+    return {
+      views,
+      exportViews: views.filter((view) => covers('report.export', view)),
+    };
+  }
+
+  // Both page and future export must use this same intersection. Export never
+  // broadens the readable/money cohort, even when a different role grants it.
+  async buildReportScope(
+    actor: ActorContext,
+    requestedView: ReportView | undefined,
+    operation: 'read' | 'export' = 'read',
+    reader?: AccessControlSnapshotReader,
+  ): Promise<ReportReadScope> {
+    const access = await this.reportAccessViews(actor, reader);
+    const view =
+      requestedView ??
+      (access.views.includes('department') ? 'department' : access.views[0]);
+    if (
+      view === undefined ||
+      !(operation === 'export' ? access.exportViews : access.views).includes(
+        view,
+      )
+    )
+      throw new ForbiddenException({
+        code: 'ACTION_FORBIDDEN',
+        message: '无权读取此范围的报表',
+      });
+    return {
+      view,
+      availableViews: access.views,
+      where: {
+        departmentId: actor.departmentId,
+        ...(view === 'mine' ? { responsibleUserId: actor.userId } : {}),
+      },
+    };
   }
 
   async authorizeCustomer(

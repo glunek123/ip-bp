@@ -1,5 +1,19 @@
 # SPEC-001 文档验证
 
+## 2026-10-21 RP center权限与即时CSV组合源码、工程验证
+
+独立reports-core-integration在既有beef406b基线上组合原BE37、FE12源。后台v3仅修真实Nest模块测试的两处深导入；所有生产源码相对已审CSV v2保持，前端平台公开入口修复及四文件下载接线均在同一原Reviewer累计审查中关闭，Spec／Quality C/I/M0。完整输入分别保存于该树.local/rp001-validation/center-two-actions-20261021/csv-backend-v3-copy-receipt.json及csv-frontend-copy-receipt.json；原BE172项SQL未变，173仅追加report.amount.read／report.export两个enum，没有执行迁移或自动写Grant。
+
+本组合实际后台7套159项、前端2文件73项均exit0。后台新增Nest模块测试随后触发架构护栏：私有materials导入不合法，fast在第一步停止，build未执行。原作者仅修该spec，保留真实模块／owner实例／Controller调用链，使用既有无I/O存储分支和后台启动哨兵；实际1/1、架构、lint／格式通过。Root按原始hash同步单文件后，仅重跑失败fast及双构建，均exit0，未重复159／73；159轮的其他158项及未改生产输入结果复用，不能称修后再次完整159运行。更早34源组合218／221及其fast／build另存，不与新CSV轮拼作一次测试总数。
+
+最终check:fast:prepared覆盖20模块／174模型、前后端／根类型及全仓Lint；双构建完成，原Vite大chunk警告保留。新CSV日志及退出码在.local/rp001-validation/csv-combo-20261021/，包括原失败check-fast.log及修后check-fast-module-boundary-fixed.log，不覆盖失败。类型生成输入未再改变，复用本轮正常Prisma7.10生成结果；没有再次安装依赖或扩大验证目标。
+
+最后收口仅将ReportDistributionsPanel的label表达式折为单行，原表达式及其余源码不变；旧字节保留于同证据目录，格式后raw为a4861922ab0aa602cb927446ab7d9c59f73e75dc52d697853f811bb289130489。47份支持Prettier的源码与5文档格式通过，SQL／Prisma原字节未交给不支持的格式解析器。纯测试、类型、Lint证据按该等价差异复用；前端bundle按最终SFC字节补构建，不重复后端或完整门禁。标准快照只在49源及5文档已逐项核对后记录，严格上下文、Spec和差异检查绑定本地收口；本地提交不代表推送或现场验收。
+
+实际实现边界为active INTERNAL、合法案件范围交集独立金额／导出权限，客户与公证来源各自授权、同RR reader、严格view／CSV三列和附件头、前端取消／迟回／互斥及URL回收。这里只证明源码、纯测试与工程：完整verify／NT006、新173真实PG风险验证、真实报表HTTP／权限／浏览器下载均未执行；不得以mock的RR事务及模块编译代替PostgreSQL快照和撤权实测。外部客户／律师／公证处通用报表、历史发布／领取仍未完成。未推送、合并或部署。
+
+原CG／EF验收树c705df98未混入报表源：attempt2成功事实及76新增行保留，资源等待／timeout／有限安全观测纯修复已独立审过；真实失败仍不能唯一归因。90HTTP／两会话／累计81的最小尾段仅为待批准范围，未恢复账号、创建新会话或正式运行。H42／R2仅离线核165原始迁移前缀及8项追加影响，不执行迁移、Grant或还原。
+
 ## 2026-10-21 RP001组合源码、纯测试与工程检查通过
 
 独立组合树reports-core-integration／codex/reports-core-integration固定源候选860fb78280e4955fca70fb207bb4eeab88691254，treed0d6af934f8a63119e611a91808ba31a912e9e16。基于原CG／EF文档收口c705df98，仅接入后端3077b8b8的15源、Panel92fcc821的2源及前端57a6f5a8的8源；25份raw与作者冻结／独立复审输入一致，Spec／Quality累计ACCEPTED、C/I/M0。未把报表源混入原CG／EF页面运行树，新增导航capability GET不占用原验收预算。

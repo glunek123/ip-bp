@@ -180,6 +180,8 @@ enum PermissionAction {
   NOTARY_LIST_EXPORT           @map("notary.list.export")
   CASE_READ                    @map("case.read")
   CASE_EXPORT                  @map("case.export")
+  REPORT_AMOUNT_READ           @map("report.amount.read")
+  REPORT_EXPORT                @map("report.export")
   CASE_GROUP_CREATE            @map("case.group.create")
   CASE_GROUP_DISSOLVE          @map("case.group.dissolve")
   CASE_EXTERNAL_ENTRY_CREATE   @map("case.external-entry.create")

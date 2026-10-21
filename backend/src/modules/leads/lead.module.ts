@@ -9,6 +9,7 @@ import { LeadBatchPushController } from './lead-batch-push.controller';
 import { LeadNoEvidenceBatchController } from './lead-no-evidence-batch.controller';
 import { LeadCsvImportController } from './lead-csv-import.controller';
 import { LeadService } from './lead.service';
+import { NotaryReportsSourceService } from './notary-reports-source.service';
 import {
   ClientLeadController,
   ClientNotaryOpeningReviewController,
@@ -64,6 +65,7 @@ import { NotaryRecordEditService } from './notary-record-edit.service';
     NotaryRecordEditController,
   ],
   providers: [
+    NotaryReportsSourceService,
     LeadService,
     ClientLeadService,
     ClientNotaryService,
@@ -81,6 +83,11 @@ import { NotaryRecordEditService } from './notary-record-edit.service';
     NotaryCertificateService,
     NotaryRecordEditService,
   ],
-  exports: [LeadService, ClientLeadService, LeadNotaryService],
+  exports: [
+    LeadService,
+    ClientLeadService,
+    LeadNotaryService,
+    NotaryReportsSourceService,
+  ],
 })
 export class LeadModule {}

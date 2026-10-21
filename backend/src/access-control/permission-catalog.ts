@@ -56,6 +56,8 @@ export const internalAssignablePermissionActions = [
   'NOTARY_LIST_EXPORT',
   'CASE_READ',
   'CASE_EXPORT',
+  'REPORT_AMOUNT_READ',
+  'REPORT_EXPORT',
   'CASE_GROUP_CREATE',
   'CASE_GROUP_DISSOLVE',
   'CASE_EXTERNAL_ENTRY_CREATE',
@@ -290,6 +292,16 @@ const catalog: PermissionCatalogItem[] = [
   },
   { action: 'CASE_READ', label: '查看案件', scopes: ['DEPARTMENT'] },
   { action: 'CASE_EXPORT', label: '导出案件列表', scopes: ['DEPARTMENT'] },
+  {
+    action: 'REPORT_AMOUNT_READ',
+    label: '查看报表金额',
+    scopes: ['SELF', 'DEPARTMENT'],
+  },
+  {
+    action: 'REPORT_EXPORT',
+    label: '导出报表',
+    scopes: ['SELF', 'DEPARTMENT'],
+  },
   {
     action: 'CASE_GROUP_CREATE',
     label: '建立合并办理组',

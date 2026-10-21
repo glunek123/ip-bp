@@ -6,6 +6,8 @@ export { CaseReportsSourceService } from './case-reports-source.service';
 export type {
   CaseReportAmount,
   CaseReportsSnapshot,
+  CaseReportsCenterSnapshot,
+  CaseReportsExportSnapshot,
 } from './case-reports-source.service';
 export {
   readCaseSettlementSource,

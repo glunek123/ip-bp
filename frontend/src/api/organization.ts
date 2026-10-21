@@ -88,6 +88,8 @@ export const permissionActionValues = [
   'NOTARY_LIST_EXPORT',
   'CASE_READ',
   'CASE_EXPORT',
+  'REPORT_AMOUNT_READ',
+  'REPORT_EXPORT',
   'CASE_GROUP_CREATE',
   'CASE_GROUP_DISSOLVE',
   'CASE_MATCH',
@@ -136,6 +138,10 @@ export const permissionActionValues = [
 export const permissionScopeValues = ['SELF', 'TEAM', 'DEPARTMENT'] as const;
 
 export type PermissionAction = (typeof permissionActionValues)[number];
+const reportActions = new Set<PermissionAction>([
+  'REPORT_AMOUNT_READ',
+  'REPORT_EXPORT',
+]);
 const demoDepartmentActions = new Set<PermissionAction>([
   'EVIDENCE_READ',
   'EVIDENCE_EDIT',
@@ -322,6 +328,9 @@ function isGrant(value: unknown): value is OrganizationGrant {
     permissionActions.has(value.action) &&
     typeof value.scope === 'string' &&
     permissionScopes.has(value.scope) &&
+    (!reportActions.has(value.action as PermissionAction) ||
+      value.scope === 'SELF' ||
+      value.scope === 'DEPARTMENT') &&
     (!['CASE_GROUP_CREATE', 'CASE_GROUP_DISSOLVE'].includes(value.action) ||
       value.scope === 'TEAM' ||
       value.scope === 'DEPARTMENT') &&
@@ -363,6 +372,10 @@ function isPermissionCatalog(
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
       (item.action === 'CASE_EXPORT' &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
+      (reportActions.has(item.action as PermissionAction) &&
+        (item.scopes.length !== 2 ||
+          item.scopes[0] !== 'SELF' ||
+          item.scopes[1] !== 'DEPARTMENT')) ||
       ((item.action === 'CASE_GROUP_CREATE' ||
         item.action === 'CASE_GROUP_DISSOLVE') &&
         (item.scopes.length !== 2 ||

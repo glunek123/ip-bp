@@ -1,5 +1,9 @@
 # 当前开发状态
 
+2026-10-21恢复后，CORE-RP-001内部center、金额／导出独立SELF／DEPARTMENT权限及即时CSV已在独立reports-core-integration组合：后端37源、前端12源，原Reviewer累计Spec／Quality ACCEPTED、C/I/M0，源码／Spec原字节已核。新CSV组合实际后端7套159项、前端2文件73项通过；模块测试随后仅修两处跨模块导入，以原作者1/1补证，本树失败fast重跑和双构建均exit0，未重复159／73。前一34源218／221及工程通过单独保留，不冒称覆盖后来的CSV。实际能力含同一合法RR范围内总数／分布、已知累计及分档／未知数量、归档均值、Demo“结案率”，并按各域真实权限导出Demo三列六类汇总；运营新配置默认SELF，部门全部需额外提权，不自动改旧Grant。新增173仅SQL文本，完整verify／NT006、真实PG／HTTP／浏览器及外部客户／律师／公证处报表尚未验证；未推送合并或部署。详见[验证记录](spec/v0.1/VALIDATION.md)。
+
+Current仍为CORE-CG-002／EF资源页断点收口：原两案、四CV、补交与建组成功事实保留，attempt2在首次资源摘要空态附近失败，现有证据不能唯一归因。三页签等待／timeout／安全观测已纯回归并获原Reviewer C/I/M0；唯一原Runner仅离线接线。新拟尾段仅资源核对→解除及原键重放→W刷新／退出→R读取／403／退出，上限90HTTP、两新会话、最多5新行且累计76→81，禁止重做A/B/C、上传、补交、下载和建组；未取得本次具体批准前不启账号或正式运行。H42只完成历史165→173影响和账号专属两部门权限分析，R2仍冻结、零操作；不把普通恢复开发当成迁移或增权许可。
+
 2026-10-21 RP001前后端生产接线已独立组合至860fb78280e4955fca70fb207bb4eeab88691254／treed0d6af934f8a63119e611a91808ba31a912e9e16：后端3077b8b8、前端57a6f5a8及原Panel92fcc821共25源，逐项raw一致，原Reviewer累计Spec／Quality ACCEPTED、C/I/M0。本组合实际后端5套49项、前端5文件240项纯测试通过；check:fast:prepared（20模块／174模型、前后端及根类型、全仓Lint）和双构建均exit0，Vite大chunk警告保留。报表已有内部部门capability／overview、导航及页面；实际实现总数／进行中／归档计数和批准的归档已知标的额均值。Demo其余分布、累计金额、结案率与导出仍按字段矩阵集中核定，不以占位关闭完整报表中心。组合工程证据在独立reports-core-integration树.local/rp001-validation/combo-860fb782-20261021；完整verify／NT006、PG／HTTP／页面未执行，未推送合并或部署。原CG／EF树保持c705df98及原业务build输入，未混入报表导航新增GET；D-only离线接口已交付13项受影响回归，候选绑定及身份回执仍由原Runner／Reviewer窄补闭，外部178HTTP／2新session／79行及账号维护尚待批准。
 
 2026-10-21 RP001后端已独立提交3077b8b80ae208ea638a71778651bb86a75647ca／treee9b1ea041c2795dfaedfc86494683d5350e7c83f，15源哈希全匹配、作者树clean。原Reviewer累计Spec／Quality ACCEPTED、C/I/M0，两项错误码Minor关闭；原45项不同纯测试复用，新增4项使用真实ACL／过滤器通过，不冒称一次49项全跑。DTO稳定，前端继续API／导航生产接线；已有Panel22和注入式Page13结果不等于组合或真实报表验收。Root当前树尚未混入报表源，CG／EF D-only外部恢复未批；原Runner通道由父窗口cloud续接，不再重复本地派单。

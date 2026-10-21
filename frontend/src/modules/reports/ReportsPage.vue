@@ -12,13 +12,19 @@ import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
   getReportsCapability,
-  getReportsOverview,
-  type ReportsOverview,
+  getReportsCenter,
+  type ReportsCenter,
+  type ReportsView,
 } from '../../api/reports';
 import { useAuthStore } from '../../stores/auth';
+import { createReportsExportController } from '../../api/reports-export';
 import ReportSummaryPanel, {
   type LoadReportSummary,
 } from './ReportSummaryPanel.vue';
+import ReportDistributionsPanel from './ReportDistributionsPanel.vue';
+import ReportAmountsPanel, {
+  type ReportAmountsView,
+} from './ReportAmountsPanel.vue';
 
 const auth = useAuthStore();
 const route = useRoute();
@@ -34,7 +40,10 @@ const actorKey = computed(
   () => `${auth.session?.principalType ?? ''}:${auth.session?.user.id ?? ''}`,
 );
 const scopeKey = computed(() => auth.session?.department?.id ?? '');
-const contextKey = computed(() =>
+const requestedView = ref<ReportsView>();
+const confirmedView = ref<ReportsView>();
+const availableViews = ref<ReportsView[]>([]);
+const identityContext = computed(() =>
   JSON.stringify([
     actorKey.value,
     scopeKey.value,
@@ -43,14 +52,117 @@ const contextKey = computed(() =>
     route.fullPath,
   ]),
 );
+const contextKey = computed(() =>
+  JSON.stringify([identityContext.value, requestedView.value]),
+);
 const access = ref<'checking' | 'allowed' | 'denied'>('checking');
 const capabilityFailed = ref(false);
-const overview = ref<ReportsOverview | null>(null);
+const overview = ref<ReportsCenter | null>(null);
+const selectedView = computed(
+  () => requestedView.value ?? confirmedView.value ?? '',
+);
+const viewLabel = computed(() =>
+  selectedView.value === 'mine'
+    ? '本人负责'
+    : selectedView.value === 'department'
+      ? '本部门全部'
+      : '当前范围',
+);
+function changeView(event: globalThis.Event): void {
+  const value = (event.target as globalThis.HTMLSelectElement).value;
+  if (
+    (value === 'mine' || value === 'department') &&
+    availableViews.value.includes(value)
+  )
+    requestedView.value = value;
+}
+const amountsView = computed<ReportAmountsView | null>(() =>
+  overview.value
+    ? {
+        totalCases: overview.value.totalCases,
+        archivedCases: overview.value.archivedCases,
+        knownAmountCases: overview.value.money.knownCases,
+        unknownAmountCases: overview.value.money.unknownCases,
+        cumulativeAmountText: overview.value.money.total.amount,
+        closureRatePercentText: overview.value.closureRate.percent,
+        buckets: overview.value.money.buckets.map((row, i) => ({
+          key: (
+            [
+              'LT_100000',
+              '100000_TO_300000',
+              '300000_TO_500000',
+              'GTE_500000',
+            ] as const
+          )[i]!,
+          count: row.count,
+        })),
+      }
+    : null,
+);
 let epoch = 0;
 let active = true;
 let mounted = true;
 let capabilityController: AbortController | undefined;
+const exporting = ref(false),
+  exportError = ref(''),
+  exportDeniedKey = ref('');
+let exportGeneration = 0;
+const exportContextKey = computed(() =>
+  JSON.stringify([
+    contextKey.value,
+    epoch,
+    overview.value?.view ?? confirmedView.value,
+  ]),
+);
+const canExport = computed(
+  () =>
+    mounted &&
+    active &&
+    access.value === 'allowed' &&
+    overview.value !== null &&
+    overview.value.view === selectedView.value &&
+    overview.value.exportViews.includes(overview.value.view) &&
+    exportDeniedKey.value !== exportContextKey.value,
+);
+const csvExport = createReportsExportController(() => ({
+  actorKey: actorKey.value,
+  contextKey: exportContextKey.value,
+  view: overview.value?.view ?? confirmedView.value ?? 'mine',
+  canExport: canExport.value,
+}));
+function invalidateExport(): void {
+  exportGeneration += 1;
+  csvExport.cancel();
+  exporting.value = false;
+  exportError.value = '';
+  exportDeniedKey.value = '';
+}
+async function exportCurrentReport(): Promise<void> {
+  if (!canExport.value || exporting.value) return;
+  const generation = exportGeneration,
+    key = exportContextKey.value;
+  exporting.value = true;
+  exportError.value = '';
+  try {
+    await csvExport.download();
+  } catch (cause) {
+    if (generation !== exportGeneration || key !== exportContextKey.value)
+      return;
+    if (cause instanceof ApiError && cause.status === 401) {
+      clear();
+      access.value = 'denied';
+      return;
+    }
+    if (cause instanceof ApiError && cause.status === 403) {
+      exportDeniedKey.value = key;
+      exportError.value = '当前范围暂不可导出，请刷新报表后重试。';
+    } else exportError.value = '报表导出失败，请稍后重试。';
+  } finally {
+    if (generation === exportGeneration) exporting.value = false;
+  }
+}
 function clear(): void {
+  invalidateExport();
   epoch += 1;
   capabilityController?.abort();
   capabilityController = undefined;
@@ -96,23 +208,23 @@ async function checkAccess(): Promise<void> {
     else capabilityFailed.value = true;
   }
 }
-const distributions = [
-  { key: 'platforms', title: '平台分布' },
-  { key: 'types', title: '案件类型分布' },
-  { key: 'courts', title: '立案法院 TOP 5' },
-  { key: 'amount-buckets', title: '标的额区间分布' },
-];
 const loadApprovedAverage: LoadReportSummary = async (options) => {
+  invalidateExport();
   const generation = epoch,
     key = contextKey.value;
   overview.value = null;
   try {
     if (access.value !== 'allowed' || !active || !mounted)
       throw new ApiError('当前无法读取报表', 403, 'FORBIDDEN');
-    const result = await getReportsOverview(options);
+    const result = await getReportsCenter(
+      requestedView.value ?? confirmedView.value,
+      options,
+    );
     if (!current(generation, key, options.signal) || access.value !== 'allowed')
       throw new Error('Stale report context');
     overview.value = result;
+    confirmedView.value = result.view;
+    availableViews.value = [...result.availableViews];
     if (result.status === 'VALUE')
       return { kind: 'value', decimalText: result.amount };
     if (result.status === 'NO_RECORDS')
@@ -134,15 +246,28 @@ const loadApprovedAverage: LoadReportSummary = async (options) => {
   }
 };
 watch(
-  contextKey,
+  identityContext,
   () => {
     clear();
+    requestedView.value = undefined;
+    confirmedView.value = undefined;
+    availableViews.value = [];
     const queued = epoch;
     void Promise.resolve().then(() => {
       if (epoch === queued && mounted && active) return checkAccess();
     });
   },
   { immediate: true, flush: 'sync' },
+);
+watch(
+  requestedView,
+  () => {
+    invalidateExport();
+    epoch += 1;
+    capabilityController?.abort();
+    overview.value = null;
+  },
+  { flush: 'sync' },
 );
 onDeactivated(() => {
   active = false;
@@ -167,19 +292,48 @@ onBeforeUnmount(() => {
       <div>
         <h1>数据报表</h1>
         <p class="reports-subtitle">
-          本部门 · 当前案件数：<span data-test="report-header-count">{{
+          {{ viewLabel }} · 当前案件数：<span data-test="report-header-count">{{
             overview ? overview.totalCases : '统计未读取'
           }}</span>
         </p>
       </div>
+      <label
+        v-if="availableViews.length && access === 'allowed'"
+        class="reports-view-picker"
+        >统计范围
+        <select
+          data-test="report-view"
+          :value="selectedView"
+          @change="changeView"
+        >
+          <option v-for="view in availableViews" :key="view" :value="view">
+            {{ view === 'mine' ? '本人负责' : '本部门全部' }}
+          </option>
+        </select>
+      </label>
       <div class="reports-export">
         <ElButton
-          disabled
+          :disabled="!canExport || exporting"
+          :loading="exporting"
           data-test="export-reports"
           aria-describedby="reports-export-note"
+          @click="exportCurrentReport"
           >导出报表</ElButton
         >
-        <p id="reports-export-note">导出范围与权限待确认</p>
+        <p id="reports-export-note">
+          {{
+            overview && !canExport
+              ? '当前范围暂不可导出'
+              : exporting
+                ? '正在准备报表…'
+                : overview
+                  ? '导出当前范围报表'
+                  : '请先读取当前范围报表'
+          }}
+        </p>
+        <p v-if="exportError" role="alert" data-test="report-export-error">
+          {{ exportError }}
+        </p>
       </div>
     </header>
     <div class="reports-kpis" aria-label="报表指标">
@@ -194,14 +348,7 @@ onBeforeUnmount(() => {
           }}
         </p>
       </section>
-      <section
-        class="reports-card"
-        aria-label="累计标的额"
-        data-test="report-pending-total-amount"
-      >
-        <h2>累计标的额</h2>
-        <p role="status">口径待确认</p>
-      </section>
+      <ReportAmountsPanel :view="amountsView" part="total" />
       <section
         v-if="capabilityFailed"
         class="reports-card"
@@ -221,35 +368,25 @@ onBeforeUnmount(() => {
         :access="access"
         :load="loadApprovedAverage"
       />
-      <section
-        class="reports-card"
-        aria-label="结案率"
-        data-test="report-pending-close-rate"
-      >
-        <h2>结案率</h2>
-        <p role="status">口径待确认</p>
-      </section>
+      <ReportAmountsPanel :view="amountsView" part="rate" />
     </div>
     <p class="reports-definition">
-      平均标的额口径：本部门累计已归档案件，仅计标的金额已知的案件，0元计入；无样本显示“暂无数据”，人民币保留两位小数。
+      平均标的额口径：当前范围累计已归档案件，仅计标的金额已知的案件，0元计入；无样本显示“暂无数据”，人民币保留两位小数。
     </p>
     <p v-if="overview" class="reports-definition" data-test="report-metadata">
       已归档 {{ overview.archivedCases }} 件，均值仅含已知标的额 · 口径
       {{ overview.definitionVersion }} · 生成时间
       <time :datetime="overview.generatedAt">{{ overview.generatedAt }}</time>
     </p>
-    <div class="reports-distributions" aria-label="分布与法院统计">
-      <section
-        v-for="item in distributions"
-        :key="item.key"
-        class="reports-card"
-        :aria-label="item.title"
-        :data-test="`report-pending-${item.key}`"
-      >
-        <h2>{{ item.title }}</h2>
-        <p role="status">口径待确认</p>
-      </section>
-    </div>
+    <ReportDistributionsPanel
+      :view="
+        overview
+          ? { totalCases: overview.totalCases, ...overview.distributions }
+          : null
+      "
+      :scope-label="viewLabel"
+    />
+    <ReportAmountsPanel :view="amountsView" part="buckets" />
   </main>
 </template>
 
