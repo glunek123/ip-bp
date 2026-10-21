@@ -8,7 +8,9 @@
 
 原前端六文件以`defdb0b07bdc2fd3b7e1d83ba6f7b01fba08701a`提交，主控接入`89bb73e61270afa2fe72307a7e8315fa6846c1ed`。累计审唯一M-CG002-01为前端page整数上限比后台最大合法offset少一边界值：原API两文件补反例先RED4项，再仅调整page上限到2147483648，offset及其他整数限制不变。最新API57／57、同输入Page41／Panel16通过，类型／定向静态通过；不把原API49或API＋Page90与新集合重复相加。最终六源清单SHA `8beabedc7942e4ce74d874bd21607e3da84c026e5efabbb50c5088d54496e74a`，原Reviewer补闭后累计20源Spec／Quality均ACCEPTED、C/I/M0；主控已核20raw与清单一致。原v1清单及RED均保留，忽略目录证据统一在`.local/case-group-aggregation/`。
 
-本片只读元数据及费用投影已接真实生产API，页面按需读取并沿原精确CV下载，未改原Command／pending。当前组合工程门禁待固定新tree执行，不预写通过或借用CG001旧树门禁；完整`pnpm verify`包含NT006真实PostgreSQL owned-schema路径，本轮未获新增数据库测试操作授权，未跳过／过滤后伪称完整verify。未执行DB／capture／Docker、迁移171／172、Grant／账号、HTTP／登录／服务／浏览器、推送或部署，完整AC及真实权限／文件字节仍待单独有限验收。
+本片只读元数据及费用投影已接生产接口代码，页面按需读取并沿原精确CV下载，未改原Command／pending。组合工程检查已在干净固定`46106349c44764526e1d13d92327700539fa48e1`／tree `292fb0672a330b4865904ff530928c8e6d209664`于02:37:53.980–02:39:00.190UTC实际通过：正常`pnpm check:fast:prepared`和`pnpm build:prepared`均exit0，含18模块／174模型、两端及根prepared类型、全仓ESLint和本树双构建，Vite大于500kB的chunk警告保留。原Reviewer补核组合20源与清单一致、文档无新增业务方向，累计两轴ACCEPTED及C/I/M0保持。日志与结果为ignored`.local/case-group-aggregation/final-46106349-fast.log`、`final-46106349-build.log`及`final-46106349-engineering.json`；后续仅结果文档／快照变化，明确复用该源码候选证据，不称收口HEAD重跑过工程门禁。
+
+完整`pnpm verify`仍未执行：其backend Jest包含`core-nt-006-migration.spec.ts`，第二项启动`core-nt-006-migration-probe.mjs`并经标准capture／锁连接独立测试库，依次创建empty／upgrade／guard三个随机自有schema、回放NT006相关旧迁移及合成事实、验证故障后清理自身schema。本轮尚无该新增真实PG操作授权，未跳过／过滤后伪称完整verify；它也不能替代新171／172或组资源真实专项。最小后续范围须明确批准唯一原Runner在已有15439／dev_cor_test独立目标先重核身份再执行一次标准完整verify，允许上述自有schema写入和按既有guard清理，保留public事实、原R2及Grant，不能依据历史CID当作现场已匹配。新组PG／页面另列有限来源／权限／请求，不与完整verify混同。未执行DB／capture／Docker、迁移171／172、Grant／账号、HTTP／登录／服务／浏览器、推送或部署，完整AC及真实权限／文件字节仍待单独有限验收。
 
 ## 2026-10-21 CORE-CG-001源码累计复审闭合（非真实验收）
 

@@ -35,6 +35,8 @@
 
 当前固定实现：后台14源清单`ac366eaa…dac4`，原实现提交`bd79007a`、主控`c5e50b4c`；前端6源v2清单`8beabedc…e74a`，原提交`defdb0b0`、主控`89bb73e6`。20源累计两轴ACCEPTED、C/I/M0，唯一分页边界M-CG002-01已关闭；原后台308项及DTO11项、当前前端API57／Page41／Panel16项纯测试证据成立，不重复相加被替换的旧API49。主控逐项核20raw一致，组合工程门禁尚待在冻结新tree上执行，不借CG001旧树的静态／构建结果充当通过。
 
+实际组合工程检查已在干净固定`46106349c44764526e1d13d92327700539fa48e1`／tree`292fb0672a330b4865904ff530928c8e6d209664`执行通过：正常check:fast:prepared及本树双构建均exit0，原大chunk警告保持。原Reviewer再核20raw与清单匹配，无实质集成漂移；现仅补记结果与快照，不重跑相同源码。日志及结果在`.local/case-group-aggregation/final-46106349-*`。完整verify及本片真实PG／HTTP／页面并未执行，原作者仅并行准备CG风险与EF剩余验收范围。
+
 2026-10-21稳定依赖交接：原后端`bb565e8fb9814f170ea5fcc0a710966901bc6f79`仅提交资源DTO及直接spec，主控接入`b23c3e17`、原前端接入`9cb7bbb7`，其余活动实现原样保留。11项DTO纯测试及类型／定向静态通过，原Reviewer的Spec／Quality均ACCEPTED、C/I/M0仅覆盖这两个文件。原前端注入Panel16项纯测试通过；生产API与Page继续接线，真实read／helper／controller仍待固定候选、原Reviewer累计审查及最终组合工程检查，不提前宣称端点或完整AC可用。
 
 纯组件／API／服务／Controller检查覆盖精确来源和去重、当前权限／无权限、隐藏成员不读取、分页、合法历史版本、未知金额及原账身份、403／404和身份／授权revision／session／完整路由变化后的迟响应隔离。详情资源明确按需加载，不改变原组列表的默认请求，也不结算或清除原Command pending。原相同输入证据直接复用，不机械重跑已交付149／218集合。
