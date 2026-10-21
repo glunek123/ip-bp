@@ -291,6 +291,18 @@ export class CaseHandlingGroupRead {
   }
 
   detail(actor: ActorContext, id: string): Promise<CaseHandlingGroupDetailDto> {
+    return this.withVisibleGroup(actor, id, async (group) => group);
+  }
+
+  withVisibleGroup<T>(
+    actor: ActorContext,
+    id: string,
+    run: (
+      group: CaseHandlingGroupDetailDto,
+      tx: Prisma.TransactionClient,
+      scope: Prisma.CaseWhereInput,
+    ) => Promise<T>,
+  ): Promise<T> {
     if (!isUUID(id)) throw invalid();
     return this.read(actor, async (tx, scope) => {
       const row = await tx.caseHandlingGroup.findFirst({
@@ -304,7 +316,7 @@ export class CaseHandlingGroupRead {
       if (!row) throw handlingGroupNotFound();
       const result = await this.project(tx, actor, row);
       if (!result.members.length) throw handlingGroupNotFound();
-      return result;
+      return run(result, tx, scope);
     });
   }
 

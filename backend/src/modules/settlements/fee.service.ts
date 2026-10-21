@@ -24,6 +24,7 @@ import { loadFinancialAuditReceipt } from './settlement-audit-receipt';
 import { searchCaseSettlementSources } from '../cases';
 import { MaterialService } from '../materials';
 import { feeSummary, mergeSampleFees } from './settlement-ledger';
+import { feeReadInclude, projectFeeReadRow } from './fee-read';
 import {
   CreateFeeDto,
   FeeCaseOptionsDto,
@@ -89,44 +90,10 @@ export class FeeService {
         deletedAt: null,
         ...(query.caseId === undefined ? {} : { caseId: query.caseId }),
       },
-      include: {
-        proofContentVersion: { select: { originalFilename: true } },
-        case: {
-          select: {
-            businessNo: true,
-            stage: true,
-            courtCaseNo: true,
-            sourceLead: { select: { platform: true, shopName: true } },
-            defendants: { select: { name: true }, orderBy: { id: 'asc' } },
-          },
-        },
-      },
+      include: feeReadInclude,
       orderBy: [{ feeDate: 'desc' }, { id: 'desc' }],
     });
-    const sources = raw.map((row) => ({
-      id: row.id,
-      caseId: row.caseId,
-      businessNo: row.case.businessNo,
-      courtCaseNo: row.case.courtCaseNo,
-      platform: row.case.sourceLead?.platform ?? null,
-      shopName: row.case.sourceLead?.shopName ?? null,
-      defendantNames: row.case.defendants.map((item) => item.name),
-      stage: row.case.stage,
-      type: row.type,
-      direction: row.direction as '收入' | '支出',
-      status: row.status,
-      amount: row.amount.toFixed(2),
-      feeDate: row.feeDate.toISOString().slice(0, 10),
-      source: row.source,
-      note: row.note,
-      version: row.version,
-      proofMaterialId: row.proofMaterialId,
-      proofContentVersionId: row.proofContentVersionId,
-      proofOriginalFilename:
-        row.proofMaterialId !== null && row.proofContentVersionId !== null
-          ? (row.proofContentVersion?.originalFilename ?? null)
-          : null,
-    }));
+    const sources = raw.map(projectFeeReadRow);
     type Source = (typeof sources)[number];
     let display: Array<
       Source & { mergeTypes?: readonly string[]; sourceRows?: Source[] }

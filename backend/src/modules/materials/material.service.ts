@@ -2737,6 +2737,143 @@ export class MaterialService {
     };
   }
 
+  async listCaseResourceMetadata(actor: ActorContext, caseId: string) {
+    if (!this.isInternalMaterialActor(actor)) throw this.forbidden();
+    // Enumerate through the original policies before selecting exact metadata.
+    const owned = await this.listOwnerMaterials(actor, 'CASE', caseId);
+    const source = await this.database.case.findFirst({
+      where: { id: caseId, departmentId: actor.departmentId },
+      select: { sourceNotaryMatterId: true, certificateId: true },
+    });
+    if (source === null) throw this.notFound();
+    const allowed = new Map<
+      string,
+      {
+        ownerType: 'CASE' | 'NOTARY_MATTER';
+        ownerId: string;
+        versions: Set<string>;
+      }
+    >();
+    const add = (
+      materialId: string,
+      contentVersionId: string,
+      ownerType: 'CASE' | 'NOTARY_MATTER',
+      ownerId: string,
+    ) => {
+      const entry = allowed.get(materialId) ?? {
+        ownerType,
+        ownerId,
+        versions: new Set<string>(),
+      };
+      if (entry.ownerType !== ownerType || entry.ownerId !== ownerId)
+        throw this.notFound();
+      entry.versions.add(contentVersionId);
+      allowed.set(materialId, entry);
+    };
+    for (const material of owned.items) {
+      if (material.category === 'FEE_PROOF' || material.purpose === 'FEE_PROOF')
+        continue;
+      for (const version of material.contentVersions)
+        add(material.id, version.id, 'CASE', caseId);
+    }
+    if (source.sourceNotaryMatterId !== null && source.certificateId !== null) {
+      const frozen = await this.listFrozenCertificateFiles(
+        actor,
+        source.sourceNotaryMatterId,
+        source.certificateId,
+      );
+      for (const ref of frozen)
+        add(
+          ref.materialId,
+          ref.contentVersionId,
+          'NOTARY_MATTER',
+          source.sourceNotaryMatterId,
+        );
+    }
+    if (!allowed.size) return [];
+    const rows = await this.database.material.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        status: 'ACTIVE',
+        category: { not: 'FEE_PROOF' },
+        purpose: { not: 'FEE_PROOF' },
+        OR: [...allowed].map(([id, entry]) => ({
+          id,
+          ownerType: entry.ownerType,
+          ownerId: entry.ownerId,
+          contentVersions: {
+            some: { id: { in: [...entry.versions] }, status: 'AVAILABLE' },
+          },
+        })),
+      },
+      select: {
+        id: true,
+        ownerType: true,
+        ownerId: true,
+        category: true,
+        purpose: true,
+        currentVersionId: true,
+        contentVersions: {
+          where: {
+            id: {
+              in: [...allowed.values()].flatMap((entry) => [...entry.versions]),
+            },
+            status: 'AVAILABLE',
+          },
+          select: {
+            id: true,
+            originalFilename: true,
+            mimeType: true,
+            sizeBytes: true,
+            sha256: true,
+          },
+        },
+      },
+    });
+    const result: Array<{
+      materialId: string;
+      contentVersionId: string;
+      originalFilename: string;
+      mimeType: string;
+      sizeBytes: string;
+      sha256: string;
+      category: Exclude<MaterialCategoryValue, 'FEE_PROOF'>;
+      purpose: string;
+      isCurrent: boolean;
+    }> = [];
+    for (const row of rows) {
+      const entry = allowed.get(row.id);
+      if (
+        !entry ||
+        entry.ownerType !== row.ownerType ||
+        entry.ownerId !== row.ownerId ||
+        row.category === 'FEE_PROOF' ||
+        row.purpose === 'FEE_PROOF'
+      )
+        continue;
+      for (const version of row.contentVersions) {
+        if (!entry.versions.has(version.id)) continue;
+        result.push({
+          materialId: row.id,
+          contentVersionId: version.id,
+          originalFilename: version.originalFilename,
+          mimeType: version.mimeType,
+          sizeBytes: version.sizeBytes.toString(),
+          sha256: version.sha256,
+          category: row.category,
+          purpose: toMaterialPurpose(row.purpose),
+          isCurrent: row.currentVersionId === version.id,
+        });
+      }
+    }
+    if (
+      result.length !==
+      [...allowed.values()].reduce((sum, entry) => sum + entry.versions.size, 0)
+    )
+      throw this.notFound();
+    return result;
+  }
+
   private isInternalMaterialActor(actor: ActorContext): boolean {
     return (
       actor.clientCustomerId === undefined &&

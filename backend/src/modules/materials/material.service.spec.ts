@@ -29,6 +29,191 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  describe('case resource metadata without file access', () => {
+    function setupMetadata() {
+      const f = createFixture();
+      f.db.case.findFirst.mockResolvedValue({
+        id: customerId,
+        sourceNotaryMatterId: null,
+        certificateId: null,
+      });
+      const version = (id: string) => ({
+        id,
+        materialId: 'case-material',
+        originalFilename: id + '.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 9007199254740993n,
+        sha256: 'a'.repeat(64),
+        status: 'AVAILABLE',
+        createdAt: now,
+      });
+      const material = {
+        id: 'case-material',
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'COMPLAINT',
+        purpose: 'COMPLAINT',
+        currentVersionId: 'current',
+        status: 'ACTIVE',
+        version: 2,
+        deletedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        contentVersions: [version('old'), version('current')],
+      };
+      f.db.material.findMany.mockResolvedValue([material]);
+      return { ...f, material, version };
+    }
+
+    it('retains old and current exact versions and exact bigint size without reading blobs or writing audits', async () => {
+      const f = setupMetadata();
+      const result = await f.service.listCaseResourceMetadata(
+        actor,
+        customerId,
+      );
+      expect(result).toEqual([
+        expect.objectContaining({
+          contentVersionId: 'old',
+          isCurrent: false,
+          sizeBytes: '9007199254740993',
+        }),
+        expect.objectContaining({
+          contentVersionId: 'current',
+          isCurrent: true,
+        }),
+      ]);
+      expect(f.db.material.findMany).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          where: expect.objectContaining({
+            departmentId: actor.departmentId,
+            category: { not: 'FEE_PROOF' },
+            OR: [
+              expect.objectContaining({
+                id: 'case-material',
+                ownerType: 'CASE',
+                ownerId: customerId,
+              }),
+            ],
+          }),
+        }),
+      );
+      expect(JSON.stringify(result)).not.toMatch(/storageKey|stream|path/u);
+      expect(f.storage.open).not.toHaveBeenCalled();
+      expect(f.storage.put).not.toHaveBeenCalled();
+      expect(f.storage.delete).not.toHaveBeenCalled();
+      expect(f.transaction.auditEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('uses the original frozen certificate policy and preserves its old exact CV', async () => {
+      const f = setupMetadata();
+      f.db.case.findFirst.mockResolvedValue({
+        id: customerId,
+        sourceNotaryMatterId: 'matter',
+        certificateId: 'certificate',
+      });
+      const frozen = jest
+        .spyOn(f.service, 'listFrozenCertificateFiles')
+        .mockResolvedValue([
+          {
+            purpose: 'NOTARY_CERTIFICATE',
+            materialId: 'frozen-material',
+            contentVersionId: 'frozen-old',
+            originalFilename: 'frozen-old.pdf',
+            mimeType: 'application/pdf',
+          },
+        ]);
+      f.db.material.findMany
+        .mockResolvedValueOnce([f.material])
+        .mockResolvedValueOnce([
+          f.material,
+          {
+            ...f.material,
+            id: 'frozen-material',
+            ownerType: 'NOTARY_MATTER',
+            ownerId: 'matter',
+            category: 'NOTARY_CERTIFICATE',
+            purpose: 'NOTARY_CERTIFICATE',
+            currentVersionId: 'other-current',
+            contentVersions: [
+              f.version('frozen-old'),
+              f.version('other-current'),
+            ],
+          },
+        ]);
+      const result = await f.service.listCaseResourceMetadata(
+        actor,
+        customerId,
+      );
+      expect(frozen).toHaveBeenCalledWith(actor, 'matter', 'certificate');
+      expect(result).toHaveLength(3);
+      expect(result[2]).toMatchObject({
+        materialId: 'frozen-material',
+        contentVersionId: 'frozen-old',
+        isCurrent: false,
+      });
+      expect(
+        result.some((entry) => entry.contentVersionId === 'other-current'),
+      ).toBe(false);
+      expect(f.storage.open).not.toHaveBeenCalled();
+    });
+
+    it('excludes proofs even if an upstream row is returned and rejects missing exact versions', async () => {
+      const f = setupMetadata();
+      f.db.material.findMany
+        .mockResolvedValueOnce([
+          f.material,
+          {
+            ...f.material,
+            id: 'proof',
+            category: 'FEE_PROOF',
+            purpose: 'FEE_PROOF',
+          },
+        ])
+        .mockResolvedValueOnce([f.material]);
+      const result = await f.service.listCaseResourceMetadata(
+        actor,
+        customerId,
+      );
+      expect(result.some((entry) => entry.materialId === 'proof')).toBe(false);
+      const missing = setupMetadata();
+      missing.db.material.findMany
+        .mockResolvedValueOnce([missing.material])
+        .mockResolvedValueOnce([
+          {
+            ...missing.material,
+            contentVersions: [missing.version('current')],
+          },
+        ]);
+      await expect(
+        missing.service.listCaseResourceMetadata(actor, customerId),
+      ).rejects.toMatchObject({
+        response: { code: 'RESOURCE_NOT_FOUND' },
+      });
+    });
+
+    it('rejects external or revoked actors before any material metadata read', async () => {
+      const f = setupMetadata();
+      for (const external of [
+        { ...actor, lawyerAccountId: 'lawyer' },
+        { ...actor, clientCustomerId: 'client' },
+        { ...actor, notaryOfficeId: 'office' },
+      ]) {
+        await expect(
+          f.service.listCaseResourceMetadata(external, customerId),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+      }
+      f.access.authorizeDepartmentAction.mockRejectedValue(
+        new ForbiddenException(),
+      );
+      await expect(
+        f.service.listCaseResourceMetadata(actor, customerId),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(f.db.material.findMany).not.toHaveBeenCalled();
+      expect(f.storage.open).not.toHaveBeenCalled();
+    });
+  });
+
   describe('financial and evidence exact version access', () => {
     function uploadSetup() {
       const f = createFixture();
