@@ -16,7 +16,7 @@
 
 内部API以`/api/v1/case-handling-groups`为独立资源，外部角色不增加写入口。创建输入为`{groupId,caseIds,idempotencyKey}`（稳定UUID、2～20条不同源案的请求技术界限）；解除为`POST /:id/dissolve`，输入`{expectedRevision,idempotencyKey}`，目标groupId只在route。Command结果最小为`{id,revision,status,recordedAt}`，ACTIVE初次revision1、解除DISSOLVED revision2。只读成员最小为`{caseId,businessNo,customerId,customerName,stage}`，组详情含`id/revision/status/createdAt/members/canDissolve`。
 
-首个作者微合同发布`GET /capability -> {canCreate}`、`GET /candidates`分页选案、根分页组列表和`GET /:id`详情，分页默认20／上限100。创建成员视为集合，UUID小写去重排序，锁／指纹使用一致规范化结果；前端保存原body／key供核对。key不自动trim，而是要求原输入无首尾空白、Unicode码点1～128。不得默加“一案只能一组”或同阶段／主体／被告限制。该微合同纯测4套57项通过；I-CG-READ-01查询范围问题已由原Owner修为v2，仅read及直接spec变化，原窗口待补审，不能先记为ACCEPTED或可部署。首片材料／费用仍链接原源案视图，完整跨案材料／费用聚合AC尚未关闭。
+首个作者微合同发布`GET /capability -> {canCreate}`、`GET /candidates`分页选案、根分页组列表和`GET /:id`详情，分页默认20／上限100。创建成员视为集合，UUID小写去重排序，锁／指纹使用一致规范化结果；前端保存原body／key供核对。key不自动trim，而是要求原输入无首尾空白、Unicode码点1～128。不得默加“一案只能一组”或同阶段／主体／被告限制。I-CG-READ-01已由原窗口按v2固定两文件关闭，六合同文件及后续完整后台18文件Spec／Quality均ACCEPTED、C/I/M0；后台固定提交1d84a285，9套149项纯测试通过，尚无真实PG证据。首片材料／费用仍链接原源案视图，完整跨案材料／费用聚合AC尚未关闭。
 
 所有写入重验当前身份／Action／全部源案范围，授权先于旧成功回执；版本／成员锁按既有串行规则，原key只认同完整body和同身份，未知结果保留原请求。原source／Case版本不写，组事实、成员、审计、typed回执在同一事务内；先列对应并发／直接SQL／失败原子风险，源单测不冒充PG证据。
 
@@ -26,4 +26,8 @@
 
 后端必要共享接线追加归同Owner：`access-control.service.ts`的新Action联合类型、`prisma-access-control.store.ts`的枚举映射、`backend/src/access-control/organization.service.spec.ts`的目录数量夹具；不改原授权语义。前端08:51UTC开工回报一度等待工具审批；用户同意后原消息已实际发送成功，原窗口activeFlags为空，现已新增API及三个组件共5份源文件。该等待没有取消开发，也未重发原消息或创建替代作者；前后端按原分工继续，只读核实的消息结果不解释为新增DB／Grant授权。
 
-作者只做聚焦纯测试、类型、Lint／格式和正常Prisma validate／generate；不连接DB、执行迁移、capture／Docker／HTTP／登录／服务／浏览器，不改实际Grant或测试账号，不跑完整verify。真实验收须另列精确运行范围，不能复用已耗尽额度。其他目录的客户详情2份及案件列表原6份／页面步骤WIP保留，不合入或覆盖。本文件是开工边界，不是实现、独立复审或真实验收完成记录。
+后台1d84a285已审并提交；前端生产接线14源／218项定向测试及静态通过后提交a9a66b66，主控组合7241927f。真实capability、候选分页及逐案重核、组列表／详情、建立／解除、原请求恢复、内部路由和原列表书签均已落源，原独立窗口待审最终组合，具体结果以VALIDATION为准。
+
+2026-10-21恢复后，原最终Reviewer的唯一M-CG-API-01已由原前端两文件最小修并补4反例，API31／31及类型静态通过；bdcb5ee7接入主控462e1eaa，32源累计两轴ACCEPTED、C/I/M0。源案归属／现有原请求语义不变；首片修后工程检查与文档收口完成情况仅以VALIDATION后续实际记录为准，材料／费用完整聚合仍不是本片已交付能力。
+
+作者只做聚焦纯测试、类型、Lint／格式和正常Prisma validate／generate；不连接DB、执行迁移、capture／Docker／HTTP／登录／服务／浏览器，不改实际Grant或测试账号，不跑完整verify。真实验收须另列精确运行范围，不能复用已耗尽额度。其他目录的客户详情2份及案件列表原6份／页面步骤WIP保留，不合入或覆盖。本文件说明实施边界，不代替正式验证记录或表示已真实验收。

@@ -1,8 +1,10 @@
 # 当前开发状态
 
+2026-10-21 已从7241927f及原5文档／空暂存断点恢复，无新增漂移或成果覆盖。原前端／后台／Reviewer均沿原窗口以gpt-6.1-sol继续；32源累计最终审仅一项M-CG-API-01已在原前端两文件修复，4真RED→API31／31及类型静态通过，原窗口补审关闭，Spec／Quality均ACCEPTED、C/I/M0。修复bdcb5ee7已单一接入主控462e1eaa，后端149及原前端未变测试继续复用。首组合check:fast:prepared在7241927f退出0；当前修后最终组合工程检查与文档收口待完成，不能称完整verify或真实验收通过。R2、DB写入、迁移执行、Grant及正式验收边界不扩大，旧额度不恢复；main仍为最后已核06eb，本地新批次未推送或部署。
+
 2026-10-20 已按用户“提交、合并、推送后继续并行开发”完成上一批交付：4份LD008收口文档提交06eb56a0，main从b14752ca正常快进至06eb56a03a07e0d0eb1f58fcb5698b96a8fcef9e，远端main及codex/minimal-page-actor-admission均已核相同SHA。固定tree dd8570c4经累计404文件／250提交独立两轴ACCEPTED、C/I/M0；一次正常完整verify工具139、前端2787、后端2479共5405项及双构建通过，NT006真实owned探针、锁释放和有限public前后保持有证据。CI workflow／check run／commit status均0，不称服务器验证通过；只推代码文档，无部署或R2操作。具体记录见VALIDATION。
 
-当前转入CORE-CG-001案件合并办理组首片，依据既有SD-27／REQ-CA-006，由原后端与前端任务复用独立干净目录，原独立窗口继续source-only审；三窗当前turn_context均已核gpt-6.1-sol。后端DTO／read／Action首4套57项纯测通过，创建／解除及控制器直接检查23项通过；I-CG-READ-01查询范围finding已修为v2固定两文件，待原窗口补审，完整Command／建表SQL候选仍收尾，不冒通过或可部署。用户同意的前端开工回报已实际发送成功，原窗口activeFlags为空；前端已新增API和三个组件共5份源码，前后端真实并行，未重发回报或另开作者。不执行本片DB／迁移／Grant／真实验收，也不恢复旧额度。[开工边界](superpowers/plans/2026-10-20-case-handling-groups.md)为唯一实施入口，旧客户详情和案件列表WIP保留。
+CORE-CG-001案件合并办理组首片已形成完整源码候选：后台1d84a285（18源／149纯测／原两轴审C/I/M0），前端a9a66b66（14源／218纯测／类型静态通过），主控组合7241927f，候选待原独立窗口Final Review及组合工程检查。三窗当前turn_context均已核gpt-6.1-sol；原前端通信审批已解除，未重复消息或另开作者。原案身份／阶段／Case.version／材料费用归属不写，材料费用仅链接原案，完整聚合AC未关闭。本片DB／迁移执行／Grant／真实HTTP或页面验收均未执行，旧额度不恢复。[实施边界](superpowers/plans/2026-10-20-case-handling-groups.md)为唯一入口；远端main仍06eb56a0，当前本地源码候选没有自动合并／推送或上线，旧客户详情和案件列表WIP保留。
 
 2026-10-20 LD008用户批准的最小核心真实验收已PASS：固定c92ad7ae／tree5254bb35，唯一正式场景expected1、unexpected／skip／flaky／retry0。真实页面取消零Command；两条合法来源线索归档为ARCHIVED／v4，原body／key复核201、结果一致且无重复事实。HTTP38／44、累计SELECT66／128；170单次部署、18行有限fixture、单角色6项DEPARTMENT Grant及684bytes合成PDF保留，两会话正常退出，3101／5174空闲、自身锁释放、源码clean。原Runner08:05:06–08:05:56UTC完成，本批不再追加运行；主控已核29份普通结果文件，原失败和私密证据均保留。仅核心闭环通过，完整verify／NT006／回滚竞争及额外负例未验；5次已计额GET缺独立响应事件、旧closure累计14的元数据勘误均见[验证记录](spec/v0.1/VALIDATION.md#2026-10-20-ld008最小核心真实验收通过)。Current保留本批收口，Next不自动启动，旧额度不恢复。
 

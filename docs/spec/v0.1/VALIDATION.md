@@ -1,5 +1,25 @@
 # SPEC-001 文档验证
 
+## 2026-10-21 CORE-CG-001源码累计复审闭合（非真实验收）
+
+用户明确恢复昨日暂停后，主控先核7241927f、原5份文档WIP、空暂存与原快照无新增漂移，保留1d84a285后台和a9a66b66前端成果。原独立窗口对固定32源继续Final Review，确认后台18源及I-CG-READ-01关闭结论仍有效；唯一M-CG-API-01为前端异常响应会接受ACTIVE／revision2、DISSOLVED／revision1及expectedRevision2→revision3。该问题未见正常后端路径产生，属于成功确认边界的Minor，不是新增业务规则或真实运行故障。
+
+原前端仅修改API和直接spec，两文件先新增4项真实RED，再最小加入合法状态／revision组合校验；目标ID及expected+1关联、原输入范围、原body／key和恢复语义不变。API31／31、前端类型、两文件Lint／格式／diff均通过，未重复后台149或未变全前端218。原窗口核新两hash、其他30源不变，正式关闭M-CG-API-01，32源累计Spec／Quality均ACCEPTED、C/I/M0。API raw `9563b8ec4c70fe349dc125f4791b279f925724b41b3e25e64b153d6915940117`，spec raw `133a66be1c3509718c955e3a69a6f6316d1f60e8ec6fd90530de82acb8ec5fa0`；原作者修复提交`bdcb5ee728d105f9cf944fd900ccf49bffa8ba53`，主控单一接入`462e1eaa0acee1dd59002f5902b06b78db5c11f1`。
+
+恢复后的首轮组合`pnpm check:fast:prepared`在原7241927f实际exit0：18模块／174模型、两端及根prepared类型、全仓ESLint通过，日志和结果在ignored`.local/case-handling-groups-integration/combination-fast-20261021*`。Prisma生成复用暂停前相同schema的正常7.10.0生成；本次修复影响的最终检查／构建另按修后固定候选补齐，未完成前不借旧候选宣称全门禁通过。`pnpm verify`包含NT006真实PG路径，本次尚未运行，不过滤后伪称完整verify；R2、DB写入、迁移部署、Grant／账号、HTTP／登录／服务／浏览器均未在本片执行，旧额度不恢复。完整材料／费用聚合AC和迁移、并发、回滚等真实验收仍保留未验边界。
+
+## 2026-10-20 CORE-CG-001源码候选（非真实验收）
+
+后台首片固定提交`1d84a28523c311760628b10b8532f41f13fb558b`，tree `d1166eb05552c6fd1e5e9648e5d83cf768d9221d`，恰18文件；主控接入为`616302e6b2d1a391971d53d2f9112e9b2c103122`，前端稳定依赖接入为`90f27598fa1e20e9587685714d2fed7dad5a6fd0`。主控逐项核对18份工作区和提交blob raw SHA均与作者冻结清单一致，原作者只读核clean。此前I-CG-READ-01要求成员读取范围进入数据库嵌套查询；原窗口已补审v2关闭，再审完整后台候选，Spec／Quality均ACCEPTED、C/I/M0。作者清单SHA `ec19e2a4bb9ded4b6a9baa7869504a812e6c5160610f28140b92bcb1b82f25d1`；集成字节核对位于ignored`.local/case-handling-groups-integration/backend-source-consistency.json`。
+
+作者实际9套149项定向纯测试、后端类型、白名单Lint／格式、架构／Spec及正常Prisma validate／generate通过；格式调整后仅控制器3项定向补跑。主控同字节证据复用，不重跑未变149项；集成目录正常Prisma 7.10.0生成通过，无DB连接。控制器仅直接调用及元数据断言，未声称HTTP运行。迁移171仅追加两Action enum，172建组／成员／事件／typed回执，原170份迁移未改；本批没有执行任何迁移或真实Grant。
+
+后台已审写链锁序、全成员当前授权先于旧回执重放、规范化UUID集合、原key语义及组／成员／审计／事件／回执同事务写入；源Case、阶段／版本、材料与费用不写。原前端开工通信经用户同意后实际送达，沿原窗口完成生产接线。前端固定`a9a66b66480d2fed9933bb203f578aab42f11fb2`／tree `9e89ce646ff868adee88d9ff59866055afd1164c`，14份源文件；主控逐项bytes／raw核同后提交，单一接入`7241927f2ddbc707de1089f1bb1229a2e87f8a1c`。清单位于ignored`.local/case-handling-groups-integration/frontend-candidate-v1.json`，SHA `cc26f75563441030f78451ce4e024829f6fe19fb9bd8ea61faaec985bbb697d0`。
+
+前端7个定向文件218项、Vue类型、白名单ESLint／Prettier和diff检查实际通过；原26项是早期组件切片，不重复相加。覆盖真实capability／候选分页／逐案重核、建立解除、原body/key恢复、403保留pending、详情不可读仍核原请求、路由／身份／新session／授权revision迟响应隔离、原列表返回书签和Action严格解码。列表可选route ID空字符串误触详情读取、两测试文件格式复核失败已在原Owner修复后通过；未据首次普通纯测试失败追加审批。最终前后端组合source-only复审和工程检查待执行，不能先记为完整通过。
+
+本片尚不覆盖完整材料／费用聚合AC、真实PG锁／竞争／失败回滚／直接SQL／迁移和页面验收；只提供原案归属摘要与原案链接。原已耗尽测试额度不恢复；上述新增两迁移未执行、实际Grant／账号／数据库／HTTP／服务／浏览器操作均0，远端main仍06eb，本地候选不表示上线。
+
 ## 2026-10-20 已完成开发累计合并与普通推送
 
 用户明确要求“推送提交开发到现在的系统”“推送合并”“然后继续进行并行开发系统”。主控核对main为既有唯一默认集成目标，正常fetch后远端及本地main均为b14752cad1f60cd98c609d0a2b436d7ec1d72cef。已完成开发线包含UI003／分栏更正与材料、EF、结算／证物、CSV导入、案件查询／列偏好、客户二级详情、公证SD61、CSV导出及LD008；独立冻结／未知脏WIP未强行纳入。公证d8ab为祖先，CSV导出／EF／证物／查询API相关作者提交已等价接入；结算前后端目录与1a5c79b0内容一致，未遗漏所述修复。
