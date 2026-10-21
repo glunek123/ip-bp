@@ -130,7 +130,7 @@ BEGIN
     SELECT * INTO receipt FROM "case_handling_group_receipts" WHERE "event_id" = event."id";
     IF NOT FOUND THEN RAISE EXCEPTION 'handling group typed receipt missing' USING ERRCODE = '23514'; END IF;
     IF receipt."group_id" <> target_id OR receipt."department_id" <> root."department_id" OR receipt."actor_user_id" <> event."actor_user_id"
-      OR receipt."command" <> CASE WHEN event."revision" = 1 THEN 'CREATE' ELSE 'DISSOLVE' END
+      OR receipt."command" <> (CASE WHEN event."revision" = 1 THEN 'CREATE' ELSE 'DISSOLVE' END)
       OR jsonb_typeof(receipt."original_request") IS DISTINCT FROM 'object'
       OR jsonb_typeof(receipt."result_snapshot") IS DISTINCT FROM 'object'
       OR receipt."original_request"->>'groupId' IS DISTINCT FROM target_id::text
