@@ -1,4 +1,23 @@
-# CG／EF 两案最小真实验收批准范围（待用户批准）
+# CG／EF 两案最小真实验收批准范围（restart3 A/B/C通过；D首停）
+
+## 批准与实际执行状态
+
+最新用户恢复批准为Sentinel_1e0da65b7f908191a99e81d848ca81f2。restart3已完成RECOVER、完整A345／3负例／清理、官方B升至172及C的25行fixture／11Grant；不再恢复旧schema或重复迁移／fixture。D在来源准备后下一案件详情步骤发生未知内层错误，原包装器只留下EXECUTOR_FAILURE且丢失budget，不能确认HTTP总数或剩余额度；补交／办理组尚未执行。E已停用新2用户并撤销实际1session，全部数据／2份PDF保留，连接／锁释放、服务关闭。当前只修cause／预算证据保留并准备D-only最小方案，未获新批准前不重启已停账号、不重置其凭据或增加会话／HTTP。下文旧首停及恢复批准是历史，不应据旧名单再次DROP；完整A/B/C成功证据复用，不为D重跑。
+当前待恢复的精确名单仅为本轮新残留：cg_core_empty_a0b8aed8935b59e4／OID42255／174表、cg_core_upgrade_16f4014b4e79fa73／OID42256／0表，owner均dev_cor_test，1条目录SELECT已核；旧OID35011／35012已回收。snapshot局部上下文修复及实际8/8、受影响deadline1/1合计423ms已完成，原Reviewer三文件窄补审ACCEPTED、C/I/M0。任何下一正式回收必须重新核此名单的身份／owner／跨schema依赖及public基线，用户对新两对象的恢复未确认前不DROP／重跑。若批准恢复，仍是完整A345＋原3负例通过并清理后才B及原CDE，不拼历史172次，也不改变原业务上限。
+
+最新定位已闭合：原Runner在一个只读事务内以两条相同SELECT对照public／owned search_path，267函数原始目录摘要不变，呈现摘要精确复现本轮差异，连接62ms且无持久变更。原snapshot作者仅修快照事务内渲染上下文并补低成本入口回归，原函数比较不放宽。旧A仍FAIL，新两残留未授权删除或正式重跑；不得把本次只读定因或用户对轻量改进的认可当作新恢复批准。
+
+最新实际状态：用户Sentinel_d949437869488191a3d6e4fe3428321c明确批准精确回收原两残留后完整恢复。原Reviewer对v7／924ba9b7累计窄审C/I/M0；RECOVER实际PASS，仅DROP原两个登记schema，public前后保护通过。restart2 A在07:17:03.406–07:17:06.835UTC成功调用空schema全部172原文件，随后PUBLIC_SUMMARY_CHANGED首停，upgrade／3负例及B／CDE均未进入。现有三个快照仅functions聚合hash不同，171旧表行身份／xmin、170账本、catalog、enum、sequence、counter相同，不能据此宣称public完整保护PASS，也不能先认定产品函数被改。新两schema为cg_core_empty_a0b8aed8935b59e4及cg_core_upgrade_16f4014b4e79fa73，未确认清理成功；保留现场、连接及锁已释放。旧OID35011／35012已回收，不得再次沿旧名单DROP。当前仅定位摘要差异，不自动清理／再跑；恢复批准不等于本轮通过。原失败和本轮结果分目录保存，详见VALIDATION。
+
+用户已通过`Sentinel_cd59b912f0288191ab859daf2b881d0d`批准下述限定轮次。正式输入为245f8065／treed366361d及当时本文SHA256 `034a6ff6e3a7bf33af8acb6f3e777f96091551025e6dc1c3323578ebb86e83e7`，v5执行器SHA256 `688e1b089e732bdb4112eeb5a13706d9acd0640f6d763daed71dd479eac40401`，累计源码／清单独立审查C/I/M0。
+
+2026-10-21首轮正式A于05:58:32.827UTC启动，1.396秒后在初始public只读基线采集退出1／ERR_ASSERTION：执行器标识符校验误拒`_prisma_migrations`。已执行3条SELECT、BEGIN／ROLLBACK各1及5条timeout控制；schema创建、迁移调用、B／CDE、fixture、HTTP、会话和服务均0。连接与自有锁释放，原失败及v5清单保留；因基线未取得，清理helper记录`UNCONFIRMED/NO_PUBLIC_BASELINE`，并非已有schema清理成功的证明。原Runner仅离线修复首字符规则为`[a-z_]`并补实际snapshot入口回归，RED 4过1失败→GREEN 5/5、两文件语法通过；原Reviewer补审ACCEPTED、Spec／Quality C/I/M0。修复清单位于原证据目录`snapshot-identifier-fix/manifest.json`（SHA256 `7a0629c5053ffe77ada82e04fa3b374035d2ea7a6b0575a802b69779f666f3ef`），13份依赖主控回读匹配，修前字节已归档。未重封存运行候选或新增真实操作，正式阶段保持停止，重跑须单独确认。
+
+冻结执行器经独立复核将两案可选被告收缩为`defendants: []`，省去两行以计入真实mailing／filing各一条版本事实，基础25＋正常API52＋号码计数器新增0或1仍不超过78；不改变两案、组、补交或文件断言。以下已同步这一收缩，原批准／失败输入可从245f8065复原。
+
+用户针对修复后待确认重跑要求继续，父级转交`Sentinel_a215e1af3d588191bd1373f3f4a1bef8`并明确批准一次原范围正式重跑。restart1于06:30:42.296UTC开始，3.314秒后在空schema第172迁移文件调用以42601首停（前171成功）；清理报25P02，B／CDE、fixture、HTTP、会话均0。原停止证据位于`evidence/restart1/stop-summary.json`（SHA256 `96ef96dab1863fdab6a4533f6ed8887a9d90fa7be15f7c53176ccd3ec4c8071c`），不覆盖v5。仅追加已批准只读诊断，实际empty schema `cg_core_empty_357c598b77d3418d`有170表、upgrade `cg_core_upgrade_f3c4cd8a7eb05501`有0表；public成功账本仍170，未完成全after校验。主控用同一原日志离线证明服务端172全文等于原c4454079哈希，位置9079落第133行未括号CASE内THEN（证明`root/restart1-source-position.json`，SHA256 `a03db6a5d170891e7bacb031ebbb3755602444568f436285a726532fbb4a7ff6`）；原作者正在最小修复。当前不得自动清理残留／再次正式运行，也不推送合并有实质阻塞的批次；新的源码修复及独立报表准备不受此运行停止影响。
+
+修复源码已在原作者70f389f0、集成924ba9b7固定：172仅加两个括号，新raw SHA256 `2969be9fbf63d75ef092c331eb59868e30e3c8d750c6c7d5c5a81578c242896d`，逆删逐字节还原原批准c445；原Reviewer两文件补审C/I/M0，直接源码回归1/1及定向静态通过，尚无新PG执行。下文c445是旧批准／失败输入，不可将其当修复后pin。恢复最低范围为先核准确schema／OID35011及35012的归属、public保护和跨schema依赖，再仅回收这两个残留；闭合后另一次完整A仍需345迁移调用及原负例，旧失败172次保留历史，不能用“剩余173次”冒完整新轮。A和清理通过才B一次官方升级，再到原上限CDE；目前仅形成恢复方案，未执行。驱动ReadyForQuery与失败事务E回滚修复由原Owner离线补齐并窄审，不增加场景、Grant或业务预算。
 
 ## 已有证据与目标
 
@@ -8,7 +27,7 @@
 
 本单取**一个组G：建立一次、同键重放一次、解除一次、同键重放一次**，删除前端提案的第二组G2；文件取较小的每份1KiB上限。后端56次API提案与前端189次提案不叠跑，统一成下述188次页面＋必要同源API预算。
 
-## 待批准的有序操作
+## 已批准的有序操作（当前停止）
 
 1. **owned风险专项**：仅cg_core_empty_<16hex>、cg_core_upgrade_<16hex>两schema，后缀开始时各生成一次并登记，search_path仅自身、无public回退。empty原172文件各执行一次；upgrade先原1～170、6行合成旧元数据（部门／INTERNAL用户／成员／ADMITTED客户／主体／关联各1）、171一次。upgrade内创建确切冲突表case_handling_group_receipts(probe integer)，172预期42P07后ROLLBACK，核6旧行／Case0不变、无半建表和cases约束、171枚举保留；只删该冲突表后原172字节重试一次。总计345次迁移文件调用，不冒充345条SQL语句。
 2. 同upgrade只做3个绕DTO负例：ACTIVE／revision2、ACTIVE1无成员提交、成员引用未创建Case，分别预期23514／deferred23514／23503并回滚。不SQL造Case／历史，不声称完整并发或旧Case升级证明。成功后仅回收登记的两schema；清理前核public摘要／跨schema依赖，不能证明只影响自有对象时保留现场，不按prefix或无条件CASCADE删除。
@@ -30,7 +49,7 @@ W的唯一主写profile共10项，**均DEPARTMENT**：customer.read、case.read�
 
 ## 两案与真实页面范围
 
-W用**同一浏览器会话**发两次POST /api/v1/cases/external-entries，均EXTERNAL_TRANSFER、同C／H、合成来源和各1个合成被告，known九键显式null。A初始WAITING_EXECUTION_STAMP、B初始WAITING_COMPLAINT；日期取本轮上海日，不跨日悄改原请求。
+W用**同一浏览器会话**发两次POST /api/v1/cases/external-entries，均EXTERNAL_TRANSFER、同C／H、合成来源，两个请求均`defendants: []`，known九键显式null。A初始WAITING_EXECUTION_STAMP、B初始WAITING_COMPLAINT；日期取本轮上海日，不跨日悄改原请求。
 
 A先普通MAIL_RECEIPT的POST /materials/upload-drafts＋PUT内容，再POST /cases/A/execution-mail（expectedVersion1、expectedConfirmationId=null）；再普通EXECUTION_FILING_PROOF同型上传和POST /cases/A/execution-filing-submit（expectedVersion2、真实mailingId）。由正常返回取得A EXECUTING／version3及filing F，B保持version1，不直改stage或伪造申请根。
 
@@ -40,7 +59,7 @@ CG页面建立G=[A,B]并原body／key同W重放1次；核不同stage可入组、
 
 R正常登录后可读G／材料／A补交历史，写能力false；只发3个预定403：W原建组、原解除、原EF更正body／key各一次，核当前授权先于回执、零新增。无故意丢响应／CSRF故障、额外组、换key／root／CV或自动业务重试。
 
-基础25行之外，成功API事实预计52行，含Case2、external entry2／receipt2／被告2／trial round1、mailing及filing各1＋各receipt1、EF版本2／document2／receipt2、组1／成员2／事件2／receipt2、audit8、draft／material／CV／reference各4、session2；合计77行。当天case_number_counters只允许同一个键增量2，新增0或1行，因此新行上限78；该counter是正常API允许的旧行变化，其余旧对象保持。重放／403不增加业务事实。2成功迁移账本及owned临时对象另记，不混算。
+基础25行之外，成功API事实预计52行，含Case2、external entry2／receipt2／被告0／trial round1、mailing及filing各1＋各receipt1＋各version1、EF版本2／document2／receipt2、组1／成员2／事件2／receipt2、audit8、draft／material／CV／reference各4、session2；合计77行。当天case_number_counters只允许同一个键增量2，新增0或1行，因此新行上限78；该counter是正常API允许的旧行变化，其余旧对象保持。重放／403不增加业务事实。2成功迁移账本及owned临时对象另记，不混算。
 
 ## 单一硬预算：188 HTTP／2会话／4文件
 
@@ -82,6 +101,6 @@ Shell探测其他模块可能按原权限403，不为消除探测增Grant；只�
 
 前后核目标、完整账本、旧行摘要／序列、有限安全摘要及本轮对象／文件；不展示旧凭据或读取无关业务正文。非计划内错误、未知响应、越权、scope／revision／bytes不符、额外请求、超时／超额即停；不重试业务、补权限、重建对象、清历史或自动恢复。仅本单新账号失效、会话撤销、自有schema及本轮服务／锁／连接收尾可继续，收尾失败留证不能掩盖首失败。
 
-本片不关闭PRIMARY／律师正向与脱敏、公证／SAMPLE非空费用及known0／pending、跨部门／TEAM全矩阵、真实锁竞争、旧Case历史升级、真正24h／流中竞争、合法非current CV、UI丢响应恢复或新会话重登。无另一个已冻结业务切片可独立增写，不扩CA019、支付、OCR或外部集成。本单待批准，以上迁移／fixture／Grant／业务／页面均未执行。
+本片不关闭PRIMARY／律师正向与脱敏、公证／SAMPLE非空费用及known0／pending、跨部门／TEAM全矩阵、真实锁竞争、旧Case历史升级、真正24h／流中竞争、合法非current CV、UI丢响应恢复或新会话重登。无另一个已冻结业务切片可独立增写，不扩CA019、支付、OCR或外部集成。本单已批准但首轮A失败停止，迁移／fixture／Grant／业务／页面均未执行，不自动扩大为第二次正式轮次。
 
 源方案：原后端minimum-runtime-plan-20261021.md SHA21cfc3ba25d2af04d69e86a6a4603dd6783acabaded42611c74fe292850daf2c；原前端同名方案SHAfff7bbd8d9fdd9a084391c4fdd547d1c38f98f8defb7e57bf4c5b8514c430185。Root只收缩为一个组、每PDF1KiB，删一条新组POST得188总额；health及结束session核验纳入已有GET上限，不叠加第二轮。

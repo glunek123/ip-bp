@@ -1,5 +1,7 @@
 # 技术设计基线、低负担回溯、可配置授权与客户切片
 
+2026-10-21追加SD-62：[报表首片](modules/reports.md)使用当前内部部门case.read授权及同一RepeatableRead快照，完整部门计数与归档已知标的额来源分开，十进制最终HALF_UP两位。reports通过cases窄只读出口取数，DTO明确值／无记录／无已知样本三态；capability不代替实际读取授权。无需新模型、迁移或Grant；不将Demo字段、快照导出或客户范围自动作为已实现功能。
+
 2026-10-18追加SD-61：[公证Spec](modules/notary.md)采用原事项/资料组独立revision、追加更正和effective读取，不改原Evidence/Logistics/Opening、流程version、费用及冻结材料锚；批量开箱只组织原单项Command，每项独立事务及原key未知恢复。schema/Action/API由单一Sol作者先出可编译小基线，UI按[独占安排](../../superpowers/plans/2026-10-17-next-batch-acceptance-readiness.md#7-公证最小实施契约与独占文件)消费；不建通用批次/审批平台，物理迁移仅设计编写不执行，原任务路径恢复和独立技术审查尚待完成。
 
 2026-10-16追加SD-60：[结算与证物完整Demo对齐合同](../../superpowers/specs/2026-10-16-demo-settlement-evidence-parity-contract.md)要求真实持久化来源、金额精确计算、稳定源行和内部版本审计；共享schema／迁移／权限目录／公共路由只由结算Task写，证物Task消费固定小基线。具体DTO和物理模型微合同由Owner交主控统一冻结，不新增运营审批或外部成功假象。

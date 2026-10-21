@@ -1,5 +1,46 @@
 # SPEC-001 文档验证
 
+## 2026-10-21 RP001后端核心候选通过源码复审（无真实报表验收）
+
+原后端独立树从70f389f0交付15源，最终提交3077b8b80ae208ea638a71778651bb86a75647ca／treee9b1ea041c2795dfaedfc86494683d5350e7c83f，主控逐文件SHA核对15/15一致、暂存范围恰15且收尾clean。部门capability／overview两个GET和窄cases来源出口已实现，权限先于查询、同RR快照完整计数／归档金额、三态均值及十进制两位舍入；没有模型、迁移、Grant或报表导出。
+
+作者首次5套中4套27项通过，来源套件mock签名类型错误后单独修复18/18，因此45项不同纯测试通过而非原整轮一次全绿；后端类型、15源Lint／格式及架构19模块／174模型通过。原Reviewer初审两项Minor均为错误码合同：真实ACL拒绝透传CUSTOMER_ACTION_FORBIDDEN、内部REPORT_SOURCE_INVALID被误称公开500。最小Source／直接spec两文件修复，只将ForbiddenException映射ACTION_FORBIDDEN，非权限异常保留原对象；公开500合同遵循既有过滤器INTERNAL_ERROR，未改共享ACL／filter。使用实际AccessControlService的两条拒绝路径RED后GREEN，新增4项聚焦检查通过，未变45项复用，不称一次49项全跑。
+
+原Reviewer补审最终15源Spec／Quality均ACCEPTED、C/I/M0，DTO及其余13源不变；详细候选和补丁证据在后端树`.local/rp001-contract/backend-files-v2.json`及`backend-minor-handoff.md`。该提交尚未混入正在收口的CG／EF运行树或推送main；前端生产接线、组合工程检查及真实报表HTTP／页面均未完成。其他Demo指标按矩阵显式待裁定，不以均值首片关闭完整报表中心或REQ-RP-002。
+
+## 2026-10-21 CG／EF restart3迁移与fixture通过，页面D首停
+
+用户明确批准清理新两残留及原范围恢复后，唯一Runner沿已审924ba9b7／tree2e861f6e执行，运行冻结SHA b58d5aa5dccbd04b06cff46dd43f62edae62f14b5f61bf150121e0e1131b0ce6。RECOVER在07:47:36.830–07:47:38.828UTC仅回收OID42255／42256，public保护通过。A在07:47:48.499–07:47:55.809UTC实际完整345次原文件调用通过，预期冲突42P07及3个负例23514／23514／23503符合，6行旧元数据保持；本轮两个owned schema均清理、无残留。修复后的172不再只是源码正则通过，空库与保留升级路径均有本轮真实PG证明；不得把旧失败轮调用拼入这345次。
+
+B在07:48:07.910–07:48:29.928UTC仅一次官方部署，public账本升至172，旧行及sequence保护通过。C实际新增原25行fixture、11Grant；D于07:48:50.178UTC开始，在两案／邮寄／立案来源及2份合成PDF完成后首个未知错误停止。最后保存成功的来源保护点为steps139，A为EXECUTING／v3、B为WAITING_COMPLAINT／v1；补交版本和办理组均0。原steps的catch重新抛通用Error丢失内层原因，orchestrate又只记录name／code且忽略失败budget，因此仅存EXECUTOR_FAILURE；原真实页面错误和精确HTTP总数不可恢复，不能推断是产品或脚本，也不能猜原188次的剩余量。
+
+E实际PASS：2个本轮新用户停用、auth revision到2，实际1个会话已撤销；52行新增数据（含原25fixture、来源事实、旧会话和号码计数器1行）及2份PDF保留。连接关闭、3101／5174无监听、自有锁释放，未重试或删除成功数据。停止证据`.local/cg-ef-minimal-245f8065-20261021/evidence/restart3/stop-summary.json` SHA ff080853992dac92b7955c3685e67024ac533aff4542c2d33ce43b49ae46d47e，manifest SHA2773f97413eed84cd02cc84afcdc87e5cc7278ce27861db480a5a17937bfe663；A/B/C与D FAIL分别保留，不称整轮或页面验收通过。
+
+原作者只补原因／固定stepId／预算安全回执及实际入口失败注入，不打印口令、cookie、token、正文或未脱敏错误栈；D-only新入口必须复用已有来源，不再次迁移、创建fixture或重复不确定HTTP。新提案为精确2账号恢复active／authrev2→3、2原凭据换新内存口令、2新会话、178次独立HTTP和剩2PDF；收尾disabled／authrev4，保留原撤销会话，最终最多79行而非原78（多出的1为保留旧会话）。这些均为待批提案，实际恢复、密码更新或新请求均未执行。
+
+## 2026-10-21 CG／EF精确恢复通过，restart2 A在函数摘要差异处停止
+
+最小上下文修复已由原作者固定：snapshot.mjs SHA1e4162c1bf746cca8fc77e2bff0bc1b957e50a467a3befcd3c76f25b2e3e5bbe，仅在原事务内增加SET LOCAL search_path TO public；snapshot.test.mjs SHA3015ca398e6f99bc1c3cf237f0f0f47110e11dc7f26c0862eafe0718232038f0。保留原下划线入口与非法标识符等5例，再验证不同调用上下文摘要一致、真实函数改变仍检出、采集失败保留首错并恢复调用方path。实际RED 7过1失败→GREEN 8/8；deadline.test.mjs仅将受影响入口的两处发送计数预期由3改4（新局部控制语句），SHA7df20b3a2ea78c17af29b46b6b5d5bf33385e75015fd257ca0270a00ae27ba81，该单例1/1及两syntax通过，总检查423ms。未重跑其余driver集合或全仓门禁；本次修复检查PG／HTTP均0。证据snapshot-context-fix/summary.json SHA31910d92a5dfb81bc559a206a61f77681852ac88dd4411e7e5fe0ff6242b6ff1、manifest SHA f61c3cd826d6b87a45dd4e872e1d51f17f6f904a9dee93358a0c7ea7517a97f6；原Reviewer完成三文件窄补审ACCEPTED、Spec／Quality C/I/M0，未执行测试或PG，该结论不授权正式重跑。
+
+为准确列出新残留，仅追加一次READ ONLY目录查询，1 SELECT／30ms：cg_core_empty_a0b8aed8935b59e4的OID42255、174表；cg_core_upgrade_16f4014b4e79fa73的OID42256、0表；owner／current_user均dev_cor_test，public成功账本170。连接和锁释放，持久变更0、无额外查询。结果residual-ownership-readonly-20261021/result.json SHA dce4ec6b7b5ee71073cbbfad1c397a23a6d11a71ecdb9c320a5734a81d5d253d；这些只是归属事实，不是新DROP或正式重跑批准。
+
+后续一次窄只读对照已闭合该摘要差异：既有15439目标、单RR READ ONLY事务内两条相同SELECT，仅用SET LOCAL切换public与本轮owned上下文。267个public函数原始pg_proc目录行aggregate MD5均为c01b178e75c245745047f8bfd7a10128，pg_get_functiondef呈现摘要分别精确等于原before6314…2fb6a与after884d…76260，证明本次报警可由渲染上下文单独解释。2 SELECT／4控制语句、连接62ms，未返回函数全文／业务行或凭据；持久变更0，连接和锁释放，没有重复迁移、清理或业务操作。证据`.local/cg-ef-minimal-245f8065-20261021/evidence/function-context-readonly-20261021/result.json` SHA660eb3769bc1792165511dca07c0c20639863b82168a36d691bf8ccf6a225434，manifest SHAe17b228ea0253446fba5ef42a87a51276acd36c49aeffee76d1a6bd20df2922c。旧A FAIL保持；snapshot作者仅修事务局部渲染上下文，保留函数保护，受影响回归和窄审尚待结果。
+
+实际候选为924ba9b770516af74b1e691d735ddf9b34237c88／tree2e861f6e32b13e5c7ce3c40974d7582fcabd8334；原Reviewer对172源码、snapshot标识符、ReadyForQuery／受控回滚、精确残留回收及新attempt接线累计窄审ACCEPTED，Spec／Quality C/I/M0。v7冻结SHA e90fac3575916a098001d899cd75c51463221cb2462d882604b7431479038640，42/42文件、21/21证据依赖和两份已解释文档WIP匹配。源码924与旧245可信应用构建明确区分，未重复5656项完整verify，不能将旧构建证据写成924全门禁重跑。
+
+用户批准精确回收后，唯一Runner的RECOVER实际2.489秒PASS：原cg_core_empty_357c598b77d3418d／OID35011与cg_core_upgrade_f3c4cd8a7eb05501／OID35012经归属、原public基线及跨schema依赖核验后在一个事务中回收，public保护通过，未动其他schema。随后A于07:17:03.406–07:17:06.835UTC运行，空schema的172个迁移文件调用全部成功，修复后的172 raw2969be9f已越过旧42601；结构和跨schema依赖检查成功。A随后在public摘要比较报HelperFailure／PUBLIC_SUMMARY_CHANGED，未到upgrade、3个预期负例或完整345次调用，不能称完整风险专项通过。
+
+主控与Runner均离线比较既存A-before／after-empty／before-drop：171张旧表的行身份／xmin、170成功账本、catalog、enum、sequence、counter和source摘要相同；唯一差异是functions聚合hash由6314f5a48f3eee6a4b2118cc4112fb6a变为884d3f123be28424e34e16c2d9c76260，连带fingerprint变化。采集器对pg_get_functiondef的摘要未固定调用search_path，属于待核假设；仅有聚合hash不能证明实际函数变化或证明只是呈现差异，不忽略该字段或放宽比较。
+
+新登记cg_core_empty_a0b8aed8935b59e4／cg_core_upgrade_16f4014b4e79fa73未获清理成功证明，成功DROP计数0；按首异常规则保留，不自动删除。连接关闭、锁释放、驱动最终状态I；B官方部署、C fixture、D页面、E账号收尾均未执行，新增账号／Grant／PDF／会话／HTTP／应用服务均0。停止结果为`.local/cg-ef-minimal-245f8065-20261021/evidence/restart2/stop-summary.json`，SHA a9ffa8489891b6db3fb4ef03be103e4c3aa8a67d1530a0ad88393d6f17428302；manifest SHA 7a964e56d2cd47b5691333d2ee3aed0dad60a66de30c6cc83999e7cbed380c04。v5、restart1、restart2不拼成完整轮次；尚未满足无实质问题后的推送合并条件。
+
+### 已落地回归与后续复用
+
+- 版本化直接回归`backend/src/modules/cases/case-handling-group-migration.spec.ts`保护IF内CASE括号，旧源1失败→修后1通过；该源码检查不是PG解析。此次真实空schema完整172文件执行成功是新增PG证据，upgrade／负例仍未完成。
+- 原Runner的真实snapshot入口对`_prisma_migrations`及其余合法／非法标识符已有5/5离线回归；锁定pg.Client实际Query／ErrorResponse／ReadyForQuery处理入口已有RED 6过3失败→GREEN 9/9；exact回收实际函数5/5、接线3/3。它们位于ignored runner目录，不随Git备份，不能称已纳入仓库默认测试。
+- 后续复用执行器时，先用其真实snapshot入口传入合法下划线表名和非法标识符；用锁定pg.Client的实际事件处理方法延迟ReadyForQuery，核原错误身份、E后显式ROLLBACK前无SET、断连／到期后无后续发送；再用实际回收函数核exact身份漂移、跨schema依赖、public漂移与DROP失败不重试。可以复用上述未变测试，不以纯mock替代入口。真实PG和异常清理效果须在对应授权的owned-schema范围执行，不因离线通过自动扩额度。
+- 新增迁移的真实PG验证、执行边界及失败事务处理约定已补入conventions；不为本次教训新增框架、重复审查层或无关全仓重跑。当前函数摘要问题仍在定位，未记为已修复。
+
 ## 2026-10-21 CG／EF只读资格核验完成（缺少来源对象）
 
 固定`b4eeee7ca117fa037bf2402a556a69269105c149`／tree`756e6fc996ee5a8c9571fcdbfe4ee05ec92e26bc`，唯一原Runner核既有15439的精确CID／卷／端口及healthy状态后，以一次REPEATABLE READ READ ONLY事务发送7条SELECT，正常COMMIT，失败语句0；连接窗口130ms，运行609ms，均在10分钟／12条上限内。完整170名称／checksum／finished／无rollback与源码前缀相符；案件、正常来源案、外部转入、EXECUTING本地filing与选中候选均0。Q7～Q11因无关联候选未发，账号／PRIMARY／材料／certificate／费用资格尚未建立，不能据此推断全库不存在。
