@@ -11,6 +11,19 @@ const api = vi.hoisted(() => ({
   create: vi.fn(),
   dissolve: vi.fn(),
 }));
+const resources = vi.hoisted(() => ({
+  materials: vi.fn(),
+  fees: vi.fn(),
+  download: vi.fn(),
+}));
+vi.mock('../../api/case-handling-group-resources', () => ({
+  getCaseHandlingGroupMaterials: resources.materials,
+  getCaseHandlingGroupFees: resources.fees,
+}));
+vi.mock('../../api/materials', async (original) => ({
+  ...(await original<typeof import('../../api/materials')>()),
+  downloadMaterialVersion: resources.download,
+}));
 vi.mock('../../api/case-handling-groups', async (original) => ({
   ...(await original<typeof import('../../api/case-handling-groups')>()),
   getCaseHandlingGroupCapability: api.capability,
@@ -21,6 +34,10 @@ vi.mock('../../api/case-handling-groups', async (original) => ({
   dissolveCaseHandlingGroup: api.dissolve,
 }));
 import { ApiError } from '../../api/http';
+import type {
+  GroupMaterials,
+  GroupFees,
+} from '../../api/case-handling-group-resources';
 import type { CaseHandlingGroupAttempt } from '../../api/case-handling-groups';
 import {
   readPendingCaseHandlingGroups,
@@ -279,6 +296,88 @@ const visibleDetail = {
   members: visibleMembers,
   canDissolve: true,
 };
+const resourceMaterial = {
+  caseId: firstCase,
+  businessNo: 'CA-合成001',
+  materialId: secondCase,
+  contentVersionId: customerId,
+  originalFilename: '原历史材料.pdf',
+  mimeType: 'application/pdf',
+  sizeBytes: '9007199254740993',
+  sha256: 'a'.repeat(64),
+  category: 'COMPLAINT' as const,
+  purpose: 'COMPLAINT',
+  isCurrent: false,
+};
+function resourceMaterials(page = 1): GroupMaterials {
+  return {
+    groupId,
+    revision: 1,
+    status: 'ACTIVE',
+    items: [resourceMaterial],
+    total: 21,
+    page,
+    pageSize: 20,
+  };
+}
+function resourceFees(canReadLedger = true, page = 1): GroupFees {
+  const common = {
+    groupId,
+    revision: 1,
+    status: 'ACTIVE' as const,
+    notarySummaries: [
+      {
+        caseId: firstCase,
+        businessNo: 'CA-合成001',
+        sourceType: 'NOTARY_MATTER_EVIDENCE' as const,
+        sourceId: customerId,
+        category: 'SAMPLE' as const,
+        state: 'PENDING' as const,
+        amount: null,
+      },
+    ],
+  };
+  return canReadLedger
+    ? {
+        ...common,
+        canReadLedger: true,
+        ledger: {
+          items: [
+            {
+              feeId: customerId,
+              caseId: firstCase,
+              businessNo: 'CA-合成001',
+              type: '样品费',
+              direction: '支出',
+              status: '已登记',
+              amount: '0.00',
+              feeDate: '2026-10-21',
+              source: '原费用来源',
+              sourceKind: null,
+              sourceId: null,
+              note: null,
+              version: 1,
+              proofMaterialId: null,
+              proofContentVersionId: null,
+              proofOriginalFilename: null,
+            },
+          ],
+          total: 21,
+          page,
+          pageSize: 20,
+        },
+      }
+    : { ...common, canReadLedger: false, ledger: null };
+}
+async function openResources(
+  wrapper: ReturnType<typeof mount>,
+  section = 'materials',
+) {
+  if (wrapper.find('[data-test="open-group-resources"]').exists())
+    await wrapper.get('[data-test="open-group-resources"]').trigger('click');
+  await wrapper.get(`[data-test="view-${section}"]`).trigger('click');
+  await flushPromises();
+}
 const pageWrappers: ReturnType<typeof mount>[] = [];
 async function mountGroups(path = '/case-handling-groups') {
   const pinia = createPinia();
@@ -360,6 +459,186 @@ describe('handling groups production page adapter', () => {
   afterEach(() => {
     pageWrappers.splice(0).forEach((wrapper) => wrapper.unmount());
     vi.restoreAllMocks();
+  });
+  it('loads resources only on explicit intent, downloads the original CV and preserves business pending', async () => {
+    const pending = {
+      kind: 'DISSOLVE' as const,
+      actorKey,
+      groupId,
+      input: { expectedRevision: 1, idempotencyKey: 'unknown-original' },
+    };
+    savePendingCaseHandlingGroups({ [actorKey]: pending });
+    resources.materials.mockResolvedValue(resourceMaterials());
+    resources.download.mockResolvedValue(undefined);
+    const { wrapper } = await mountGroups(`/case-handling-groups/${groupId}`);
+    expect(resources.materials).not.toHaveBeenCalled();
+    expect(resources.fees).not.toHaveBeenCalled();
+    await wrapper.get('[data-test="open-group-resources"]').trigger('click');
+    expect(resources.materials).not.toHaveBeenCalled();
+    await openResources(wrapper);
+    expect(resources.materials).toHaveBeenCalledExactlyOnceWith(
+      { groupId, revision: 1, status: 'ACTIVE' },
+      { page: 1, pageSize: 20 },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(wrapper.text()).toContain('原历史材料.pdf · 历史版本');
+    expect(wrapper.text()).toContain('9007199254740993 bytes');
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '下载原版本')!
+      .trigger('click');
+    await flushPromises();
+    expect(resources.download).toHaveBeenCalledExactlyOnceWith(
+      secondCase,
+      customerId,
+      expect.any(AbortSignal),
+    );
+    expect(readPendingCaseHandlingGroups()?.[actorKey]).toEqual(pending);
+    expect(api.create).not.toHaveBeenCalled();
+    expect(api.dissolve).not.toHaveBeenCalled();
+  });
+  it('maps material and ledger pagination independently and keeps source summaries outside ledger totals', async () => {
+    resources.materials
+      .mockResolvedValueOnce(resourceMaterials())
+      .mockResolvedValueOnce(resourceMaterials(2));
+    resources.fees
+      .mockResolvedValueOnce(resourceFees())
+      .mockResolvedValueOnce(resourceFees())
+      .mockResolvedValueOnce(resourceFees(true, 2));
+    const { wrapper } = await mountGroups(`/case-handling-groups/${groupId}`);
+    await openResources(wrapper);
+    await wrapper.get('[data-test="resources-next"]').trigger('click');
+    await flushPromises();
+    expect(resources.materials.mock.calls[1][1]).toEqual({
+      page: 2,
+      pageSize: 20,
+    });
+    await openResources(wrapper, 'notary-summary');
+    expect(wrapper.text()).toContain('来源：公证事项证据');
+    expect(wrapper.text()).toContain('样品费 · 待确认 · 金额未知');
+    expect(
+      wrapper.get('[data-test="resources-next"]').attributes('disabled'),
+    ).toBeDefined();
+    await openResources(wrapper, 'ledger');
+    expect(wrapper.text()).toContain(
+      '样品费 · 支出 · 2026-10-21 · 原费用来源 · 已登记 · 0.00',
+    );
+    expect(wrapper.text()).not.toContain('金额未知');
+    await wrapper.get('[data-test="resources-next"]').trigger('click');
+    await flushPromises();
+    expect(resources.fees.mock.calls.map((call) => call[1])).toEqual([
+      { page: 1, pageSize: 20 },
+      { page: 1, pageSize: 20 },
+      { page: 2, pageSize: 20 },
+    ]);
+  });
+  it('shows unreadable ledger explicitly while still allowing source summaries', async () => {
+    resources.fees.mockResolvedValue(resourceFees(false));
+    const { wrapper } = await mountGroups(`/case-handling-groups/${groupId}`);
+    await openResources(wrapper, 'ledger');
+    expect(wrapper.text()).toContain('当前无完整费用账读取权限');
+    expect(wrapper.text()).not.toContain('当前页没有可显示');
+    await openResources(wrapper, 'notary-summary');
+    expect(wrapper.text()).toContain('样品费 · 待确认 · 金额未知');
+  });
+  it.each(['actor', 'authorization', 'session', 'route', 'group'])(
+    'aborts resource reads and hides late source projections on %s change',
+    async (mode) => {
+      let resolve!: (value: GroupMaterials) => void;
+      resources.materials.mockReturnValue(
+        new Promise((done) => {
+          resolve = done;
+        }),
+      );
+      const { wrapper, router, auth } = await mountGroups(
+        `/case-handling-groups/${groupId}`,
+      );
+      await openResources(wrapper);
+      const signal = resources.materials.mock.calls[0][2].signal as AbortSignal;
+      if (mode === 'actor')
+        auth.session = {
+          ...auth.session!,
+          user: { ...auth.session!.user, id: 'next-actor' },
+        };
+      if (mode === 'authorization')
+        auth.session = { ...auth.session!, authorizationRevision: 2 };
+      if (mode === 'session') auth.session = { ...auth.session! };
+      if (mode === 'route')
+        await router.push({ query: { returnTo: '/cases?q=changed' } });
+      if (mode === 'group')
+        await router.push(`/case-handling-groups/${secondCase}`);
+      await flushPromises();
+      expect(signal.aborted).toBe(true);
+      resolve(resourceMaterials());
+      await flushPromises();
+      expect(wrapper.text()).not.toContain(resourceMaterial.originalFilename);
+      expect(resources.materials).toHaveBeenCalledTimes(1);
+    },
+  );
+  it.each([403, 404])(
+    'keeps resource HTTP %i failure visible without clearing pending or fabricating an empty page',
+    async (status) => {
+      const pending = attempt();
+      savePendingCaseHandlingGroups({ [actorKey]: pending });
+      resources.materials.mockRejectedValue(
+        new ApiError('private-error', status, 'UNREADABLE'),
+      );
+      const { wrapper } = await mountGroups(`/case-handling-groups/${groupId}`);
+      await openResources(wrapper);
+      expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+      expect(wrapper.text()).not.toContain('当前页没有可显示');
+      expect(wrapper.text()).not.toContain('private-error');
+      expect(readPendingCaseHandlingGroups()?.[actorKey]).toEqual(pending);
+    },
+  );
+  it('reads a dissolved group with its exact snapshot without offering a new command', async () => {
+    api.detail.mockResolvedValue({
+      ...visibleDetail,
+      status: 'DISSOLVED',
+      revision: 2,
+      canDissolve: false,
+    });
+    resources.materials.mockResolvedValue({
+      ...resourceMaterials(),
+      status: 'DISSOLVED',
+      revision: 2,
+    });
+    const { wrapper } = await mountGroups(`/case-handling-groups/${groupId}`);
+    await openResources(wrapper);
+    expect(resources.materials.mock.calls[0][0]).toEqual({
+      groupId,
+      revision: 2,
+      status: 'DISSOLVED',
+    });
+    expect(wrapper.text()).toContain(resourceMaterial.originalFilename);
+    expect(wrapper.find('[data-test="dissolve-group"]').exists()).toBe(false);
+    expect(api.dissolve).not.toHaveBeenCalled();
+  });
+  it('passes cancellation to the original version download on a new authorization context', async () => {
+    resources.materials.mockResolvedValue(resourceMaterials());
+    let finish!: () => void;
+    resources.download.mockReturnValue(
+      new Promise<void>((done) => {
+        finish = done;
+      }),
+    );
+    const { wrapper, auth } = await mountGroups(
+      `/case-handling-groups/${groupId}`,
+    );
+    await openResources(wrapper);
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '下载原版本')!
+      .trigger('click');
+    const signal = resources.download.mock.calls[0][2] as AbortSignal;
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    expect(signal.aborted).toBe(true);
+    finish();
+    await flushPromises();
+    expect(wrapper.text()).not.toContain(resourceMaterial.originalFilename);
+    expect(api.create).not.toHaveBeenCalled();
+    expect(api.dissolve).not.toHaveBeenCalled();
   });
   it('keeps readable groups available when current create capability is false or fails', async () => {
     api.capability.mockRejectedValue(new ApiError('denied', 403, 'FORBIDDEN'));

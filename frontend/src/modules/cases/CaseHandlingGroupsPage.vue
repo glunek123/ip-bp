@@ -146,6 +146,15 @@ import {
 } from '../../api/case-handling-groups';
 import CaseHandlingGroupCreatePanel from './CaseHandlingGroupCreatePanel.vue';
 import CaseHandlingGroupDetailPanel from './CaseHandlingGroupDetailPanel.vue';
+import {
+  getCaseHandlingGroupMaterials,
+  getCaseHandlingGroupFees,
+} from '../../api/case-handling-group-resources';
+import { downloadMaterialVersion } from '../../api/materials';
+import CaseHandlingGroupResourcesPanel, {
+  type LoadGroupResourcePage,
+  type DownloadGroupMaterial,
+} from './CaseHandlingGroupResourcesPanel.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -195,6 +204,102 @@ const canCreate = ref(false);
 const detail = ref<CaseHandlingGroupDetail | null>(null);
 const detailError = ref('');
 const detailOpen = ref(false);
+const resourcesOpen = ref(false);
+const loadResources: LoadGroupResourcePage = async (request) => {
+  if (
+    !actorKey.value ||
+    !detailOpen.value ||
+    !detail.value ||
+    request.groupId !== detail.value.id
+  )
+    throw new ApiError('当前无法读取办理组资料', 403, 'FORBIDDEN');
+  const snapshot = {
+    groupId: detail.value.id,
+    revision: detail.value.revision,
+    status: detail.value.status,
+  };
+  const query = {
+    page: request.section === 'notary-summary' ? 1 : request.page,
+    pageSize: request.pageSize,
+  };
+  const options = { signal: request.signal };
+  if (request.section === 'materials') {
+    const result = await getCaseHandlingGroupMaterials(
+      snapshot,
+      query,
+      options,
+    );
+    return {
+      page: result.page,
+      pageSize: result.pageSize,
+      total: result.total,
+      items: result.items.map((item) => ({
+        kind: 'material' as const,
+        caseId: item.caseId,
+        businessNo: item.businessNo,
+        materialId: item.materialId,
+        contentVersionId: item.contentVersionId,
+        fileName: item.originalFilename,
+        versionLabel: item.isCurrent ? '当前版本' : '历史版本',
+        metadata: `${item.category} · ${item.purpose} · ${item.mimeType} · ${item.sizeBytes} bytes · SHA256 ${item.sha256}`,
+      })),
+    };
+  }
+  const result = await getCaseHandlingGroupFees(snapshot, query, options);
+  if (request.section === 'notary-summary') {
+    const labels = {
+      NOTARY: '公证费',
+      SAMPLE: '样品费',
+      INVESTIGATION: '调查费',
+      DISCLOSURE: '披露费',
+    };
+    return {
+      page: 1,
+      pageSize: Math.max(20, result.notarySummaries.length),
+      total: result.notarySummaries.length,
+      items: result.notarySummaries.map((item) => ({
+        kind: 'notary-summary' as const,
+        caseId: item.caseId,
+        businessNo: item.businessNo,
+        sourceType: item.sourceType,
+        sourceId: item.sourceId,
+        category: item.category,
+        label: labels[item.category],
+        amount: item.amount,
+        stateLabel: item.state === 'PENDING' ? '待确认' : '已知',
+      })),
+    };
+  }
+  if (!result.canReadLedger)
+    throw new ApiError('无费用账读取权限', 403, 'FORBIDDEN');
+  return {
+    page: result.ledger.page,
+    pageSize: result.ledger.pageSize,
+    total: result.ledger.total,
+    items: result.ledger.items.map((item) => ({
+      kind: 'ledger' as const,
+      caseId: item.caseId,
+      businessNo: item.businessNo,
+      sourceId: item.feeId,
+      label: `${item.type} · ${item.direction} · ${item.feeDate} · ${item.source}`,
+      amount: item.amount,
+      stateLabel: item.status,
+    })),
+  };
+};
+const downloadResource: DownloadGroupMaterial = async (
+  material,
+  { signal },
+) => {
+  if (!actorKey.value || !detailOpen.value || !detail.value)
+    throw new ApiError('当前无法下载', 403, 'FORBIDDEN');
+  signal.throwIfAborted();
+  await downloadMaterialVersion(
+    material.materialId,
+    material.contentVersionId,
+    signal,
+  );
+};
 const entries = ref(readPendingCaseHandlingGroups());
 const pending = computed(() => entries.value?.[actorKey.value] ?? null);
 const createOpen = ref(false);
@@ -249,6 +354,7 @@ async function loadPage(): Promise<void> {
     loadController === controller;
   createOpen.value = false;
   detailOpen.value = false;
+  resourcesOpen.value = false;
   detail.value = null;
   groups.value = [];
   total.value = 0;
@@ -560,6 +666,7 @@ async function recoverDissolve(): Promise<void> {
 }
 function closeDetail(): void {
   detailOpen.value = false;
+  resourcesOpen.value = false;
   if (route.params.id !== undefined)
     void router.push({
       path: '/case-handling-groups',
@@ -727,22 +834,47 @@ onBeforeUnmount(() => {
         </template>
       </CaseHandlingGroupCreatePanel>
     </section>
-    <CaseHandlingGroupDetailPanel
+    <section
       v-if="detailOpen && displayedDetail"
-      :key="pageContext"
-      :detail="displayedDetail"
-      :actor-key="actorKey"
-      :context-key="pageContext"
-      :pending="
-        pendingDissolve?.groupId.toLowerCase() ===
-        displayedDetail.id.toLowerCase()
-          ? pendingDissolve
-          : null
-      "
-      :submit-attempt="submitAttempt"
-      @close="closeDetail"
-      @confirmed="handleConfirmed"
-    />
+      role="dialog"
+      aria-modal="true"
+      aria-label="案件办理组详情"
+    >
+      <CaseHandlingGroupDetailPanel
+        role="region"
+        :aria-modal="undefined"
+        :key="pageContext"
+        :detail="displayedDetail"
+        :actor-key="actorKey"
+        :context-key="pageContext"
+        :pending="
+          pendingDissolve?.groupId.toLowerCase() ===
+          displayedDetail.id.toLowerCase()
+            ? pendingDissolve
+            : null
+        "
+        :submit-attempt="submitAttempt"
+        @close="closeDetail"
+        @confirmed="handleConfirmed"
+      />
+      <section class="demo-card" aria-label="办理组资源入口">
+        <ElButton
+          v-if="!resourcesOpen"
+          data-test="open-group-resources"
+          @click="resourcesOpen = true"
+          >查看组内材料与费用</ElButton
+        >
+        <CaseHandlingGroupResourcesPanel
+          v-else
+          :key="pageContext"
+          :group="displayedDetail"
+          :actor-key="actorKey"
+          :context-key="pageContext"
+          :load-page="loadResources"
+          :download-material="downloadResource"
+        />
+      </section>
+    </section>
   </div>
 </template>
 
