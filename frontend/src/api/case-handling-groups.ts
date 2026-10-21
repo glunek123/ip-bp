@@ -139,6 +139,13 @@ function dissolveInput(
   );
 }
 
+function validStatusRevision(status: unknown, revision: unknown): boolean {
+  return (
+    (status === 'ACTIVE' && revision === 1) ||
+    (status === 'DISSOLVED' && revision === 2)
+  );
+}
+
 export function isCaseHandlingGroupCommandResult(
   value: unknown,
   attempt: CommandExpectation,
@@ -157,6 +164,7 @@ export function isCaseHandlingGroupCommandResult(
     result.revision ===
       (attempt.kind === 'CREATE' ? 1 : attempt.input.expectedRevision + 1) &&
     result.status === (attempt.kind === 'CREATE' ? 'ACTIVE' : 'DISSOLVED') &&
+    validStatusRevision(result.status, result.revision) &&
     typeof result.recordedAt === 'string' &&
     /^\d{4}-\d{2}-\d{2}T/u.test(result.recordedAt) &&
     Number.isFinite(Date.parse(result.recordedAt))
@@ -248,6 +256,7 @@ function decodeDetail(value: unknown): CaseHandlingGroupDetail {
     (value.revision as number) < 1 ||
     (value.revision as number) > 2_147_483_647 ||
     (value.status !== 'ACTIVE' && value.status !== 'DISSOLVED') ||
+    !validStatusRevision(value.status, value.revision) ||
     !dateTime(value.createdAt) ||
     !Array.isArray(value.members) ||
     !value.members.every(member) ||

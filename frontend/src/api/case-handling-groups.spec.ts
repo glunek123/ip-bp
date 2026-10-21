@@ -188,6 +188,8 @@ describe('handling group frozen production API', () => {
     { ...detail(), members: [{ ...source, stage: 'UNKNOWN' }] },
     { ...detail(), members: [source, source] },
     { ...detail(), id },
+    { ...detail(), status: 'ACTIVE', revision: 2 },
+    { ...detail(), status: 'DISSOLVED', revision: 1 },
   ])('rejects non-contract detail data %j', async (value) => {
     http.getJson.mockResolvedValue(value);
     await expect(getCaseHandlingGroup(group)).rejects.toMatchObject({
@@ -294,6 +296,27 @@ describe('handling group frozen production API', () => {
       },
     );
   });
+  it.each([2, 2_147_483_646])(
+    'preserves allowed expectedRevision %i but rejects an impossible dissolved revision',
+    async (expectedRevision) => {
+      http.requestJson.mockResolvedValue({
+        id: group,
+        revision: expectedRevision + 1,
+        status: 'DISSOLVED',
+        recordedAt: '2026-10-20T00:00:00.000Z',
+      });
+      const input = { expectedRevision, idempotencyKey: 'original-key' };
+      await expect(
+        dissolveCaseHandlingGroup(group, input),
+      ).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+      expect(http.requestJson).toHaveBeenCalledExactlyOnceWith(
+        `/case-handling-groups/${group}/dissolve`,
+        { method: 'POST', body: input, retryOnCsrfInvalid: false },
+      );
+    },
+  );
   it('refuses extra anchors and noncanonical keys without posting', async () => {
     await expect(
       createCaseHandlingGroup({
