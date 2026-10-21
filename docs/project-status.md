@@ -1,5 +1,7 @@
 # 当前开发状态
 
+2026-10-21 CG／EF只读资格核验完成：唯一原Runner在b4eeee7c／tree756e6fc9、既有15439执行7条SELECT，READ ONLY事务正常提交，SQL失败0，连接与自有锁已释放。public完整170账本与源码前缀相符；案件、外部转入、EXECUTING本地filing均0，关联账号／PRIMARY／材料／费用查询按无候选短路，不能称这些对象全库不存在。16份普通证据bytes／SHA已核；本次没有登录、服务、迁移、Grant、文件或业务写入。原两作者清单已收取并合为[待批准最小范围](superpowers/plans/2026-10-21-next-business-acceptance-scope.md)：2自有schema后官方171／172一次、25行基础fixture／11Grant／2临时账号、正常两案／单组／内部补交、188HTTP／2会话／4份各≤1KiB PDF，精确新账号失效收尾；不重复资格／verify，不叠跑API和页面版。旧existing-object／64HTTP不可执行；PRIMARY及公证非空仍另列，尚未运行新单。
+
 2026-10-21 CORE-CG-001／002最终组合完整工程门禁通过：唯一原Runner在干净741a4b0e／treefc962826正常pnpm verify仅1次，03:07:29–03:13:08UTC exit0；工具139、前端157文件2954、后端177套2563，共5656项及双构建通过。原15439容器同CID／卷／端口一次启动恢复后healthy，NT006三个实际schema清理、标准锁释放，有限public账本／catalog／namespace前后保持，账本仍170。主控已核21份普通证据bytes／SHA，私密原日志未读；源码20源审C/I/M0及原文档保全，不重跑该树。新171／172、真实组业务／文件页面、EF补交／PRIMARY剩余边界仍未验，原R2／public升级／Grant／HTTP业务均未操作。后续只读资格12SELECT及有限CG／EF子集均待新批准，见[最小范围](superpowers/plans/2026-10-21-next-business-acceptance-scope.md)；没有另一个已冻结可独立增写的功能，不为持续扩大需求。
 
 2026-10-21 范围复核已由原Reviewer裁定不构成CG002实现finding：当前CASE_READ目录和SD39仅允许DEPARTMENT，TEAM／DEPARTMENT分别是组建立／解除的范围；通用scope分支及SELF／TEAM mock过滤测试不证明正式案件／附件资源读取已支持这些组合。保留原详情、材料及下载政策，不改目录或实际Grant，20源累计ACCEPTED及工程检查结论有效。原后端已补PG准备说明，原前端已形成EF001补交／PRIMARY剩余页面方案；其中拟64HTTP／4session／4文件只是待批上限，内部反馈页面已有2026-10-19历史实证，不重复申请其已用额度。

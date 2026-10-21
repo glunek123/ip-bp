@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## 2026-10-21 CG／EF只读资格核验完成（缺少来源对象）
+
+固定`b4eeee7ca117fa037bf2402a556a69269105c149`／tree`756e6fc996ee5a8c9571fcdbfe4ee05ec92e26bc`，唯一原Runner核既有15439的精确CID／卷／端口及healthy状态后，以一次REPEATABLE READ READ ONLY事务发送7条SELECT，正常COMMIT，失败语句0；连接窗口130ms，运行609ms，均在10分钟／12条上限内。完整170名称／checksum／finished／无rollback与源码前缀相符；案件、正常来源案、外部转入、EXECUTING本地filing与选中候选均0。Q7～Q11因无关联候选未发，账号／PRIMARY／材料／certificate／费用资格尚未建立，不能据此推断全库不存在。
+
+快照时及15分钟检查窗内维护候选均0，此结论不替代未来服务启动前检查。连接及自有锁均释放，NT006残留0。HTTP、登录、应用／容器启动、迁移、DDL／DML、Grant、fixture、物理文件读写和R2操作均0。结果是`QUALIFICATION_MISSING`，不是SQL失败或业务验收失败，也不是待重复申请的只读操作。
+
+证据为`.local/cg-ef-qualification-b4eeee7c-20261021/summary.json`（SHA`b8f3b693c6c9796437f0b8f11ba6e372922fe60f64b413352e46748829426029`）及`manifest.json`（SHA`db9fe6effc62930c72c22ac186ec03d3d11a5b07ba291ddb0eb433662d176261`）；主控回读16份普通文件bytes／SHA全符。原两作者已给离线最小清单，主控选择一个组、4份各≤1KiB PDF，把两种提案合为188HTTP单预算，25行fixture／11Grant／2账号及2 owned schema、官方171／172一次均待明确批准；文件、身份、迁移和页面没有因文档定稿而执行。具体边界见[批准范围](../../superpowers/plans/2026-10-21-next-business-acceptance-scope.md)。原工程门禁仍只绑定下述741a4b0e，不为文档重跑。
+
 ## 2026-10-21 CG组合完整工程门禁通过（非新业务验收）
 
 用户明确允许既有15439的一次标准verify及NT006三个自有schema，原唯一Runner固定`741a4b0e61ab5f90b0768eb66eb7e350a31f911b`／tree `fc962826fd9d008d6e6465728efccd99fe7a98ac`。初次前置因原容器running=false／exited／unhealthy停止，capture／PG／SQL／正式verify／schema尝试均0；该前置不是完整门禁失败，也未消耗一次正式执行。父级确认恢复同一个已有容器属于必要准备后，原Runner仅一次正常start同CID／原卷／端口，fresh健康及隔离核验通过，未重建环境或更改配置。
@@ -10,7 +18,7 @@ NT006实际观察到`nt006_empty_72c2f6a050ac2e6e`、`nt006_upgrade_d5d221e8677e
 
 结果为`.local/verify-cg002-741a4b0e-20261021/continuation/summary.json`，SHA `392e371ad06f359776c0344a407ce6120839709d2f4aa24ac912cc3caafceef1`；manifest SHA `f8f7604962aa6198b95166b34ef29c389c9e29efedf8bc05924b48e20e6e04eb`。主控逐项回读21份普通证据bytes／SHA均匹配，未读取Temp私密原日志，核对回执在`.local/case-group-aggregation/verify-evidence-checked-20261021.json`。结束候选仍clean；此后只补非执行性结果文档／快照，保留本次实际commit／tree，不冒称文档收口HEAD又运行门禁。
 
-本次未触R2、public171／172部署、Grant／账号、登录、应用服务、业务HTTP／页面或额外owned风险专项，不能替代CG完整AC或EF剩余角色／上传证明。两份离线准备已汇总为[最小后续提案](../../superpowers/plans/2026-10-21-next-business-acceptance-scope.md)，建议先一次只读资格核验；其12SELECT及后续CG／EF业务预算均未批准，不从本次一次verify自动推导。
+本次门禁未触R2、public171／172部署、Grant／账号、登录、应用服务、业务HTTP／页面或额外owned风险专项，不能替代CG完整AC或EF剩余角色／上传证明。后续只读资格核验已有上段正常完成结果；新的有限合成fixture／迁移／业务预算仍待明确批准，不从本次一次verify自动推导。
 
 ## 2026-10-21 CORE-CG-002材料与费用只读聚合源码复审（非真实验收）
 
