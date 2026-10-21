@@ -33,6 +33,7 @@ import LawyerCaseDetailPage from '../modules/cases/LawyerCaseDetailPage.vue';
 import CalendarPage from '../modules/calendar/CalendarPage.vue';
 import SettlementCenterPage from '../modules/settlements/SettlementCenterPage.vue';
 import EvidencePage from '../modules/evidence/EvidencePage.vue';
+import ReportsPage from '../modules/reports/ReportsPage.vue';
 import { useAuthStore } from '../stores/auth';
 import { pinia } from './pinia';
 
@@ -42,6 +43,15 @@ export const router = createRouter({
     { path: '/login', component: LoginPage, meta: { public: true } },
     { path: '/health', component: HealthPage, meta: { public: true } },
     { path: '/', redirect: '/customers' },
+    {
+      path: '/reports',
+      component: ReportsPage,
+      meta: {
+        audience: 'INTERNAL',
+        section: '数据报表',
+        breadcrumbs: ['数据报表'],
+      },
+    },
     {
       path: '/evidence',
       component: EvidencePage,

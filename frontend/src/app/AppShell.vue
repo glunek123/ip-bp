@@ -6,6 +6,7 @@ import { ApiError } from '../api/http';
 import { getCalendarSummary } from '../api/calendar';
 import { getSettlementContext } from '../api/settlements';
 import { listEvidence } from '../api/evidence';
+import { getReportsCapability } from '../api/reports';
 import { listCases, type CaseStage, type CaseStageGroup } from '../api/cases';
 import { listLawyerCases } from '../api/cases';
 import { listLeads, type LeadStatus } from '../api/leads';
@@ -200,6 +201,7 @@ function acceptCalendarSummary(event: globalThis.Event): void {
 function createReadNavigation(
   read: (signal: globalThis.AbortSignal) => Promise<boolean>,
   failureMessage: string,
+  options: { watchSession?: boolean } = {},
 ) {
   const visible = ref(false);
   const error = ref('');
@@ -208,10 +210,23 @@ function createReadNavigation(
   let deniedIdentity: string | null = null;
   let failedIdentity: string | null = null;
   watch(
-    [identity, () => route.fullPath, countRevision, retryRevision],
-    async ([currentIdentity, , , currentRetry], previous, onCleanup) => {
+    [
+      identity,
+      () => route.fullPath,
+      countRevision,
+      retryRevision,
+      () => (options.watchSession ? auth.session : null),
+    ],
+    async (
+      [currentIdentity, , , currentRetry, currentSession],
+      previous,
+      onCleanup,
+    ) => {
       loading.value = false;
-      if (currentIdentity !== previous?.[0]) {
+      if (
+        currentIdentity !== previous?.[0] ||
+        (options.watchSession && currentSession !== previous?.[4])
+      ) {
         visible.value = false;
         error.value = '';
         deniedIdentity = null;
@@ -285,6 +300,16 @@ const {
   await listEvidence({ page: 1, pageSize: 1 }, { signal });
   return true;
 }, '证物导航暂时无法读取，请重试。');
+const {
+  visible: canViewReports,
+  error: reportsReadError,
+  loading: reportsReadLoading,
+  retry: retryReports,
+} = createReadNavigation(
+  async (signal) => (await getReportsCapability({ signal })).canRead,
+  '报表导航暂时无法读取，请重试。',
+  { watchSession: true },
+);
 onMounted(() =>
   globalThis.window.addEventListener(
     calendarSummaryReadEvent,
@@ -1038,6 +1063,24 @@ async function logout(): Promise<void> {
             :disabled="settlementReadLoading"
             @click="retrySettlements"
             >重新读取结算导航</ElButton
+          >
+        </div>
+        <RouterLink
+          v-if="canViewReports"
+          class="app-nav__item"
+          :class="{ active: route.path === '/reports' }"
+          data-test="reports-nav"
+          to="/reports"
+          @click="closeDrawer"
+          ><span>数据报表</span></RouterLink
+        >
+        <div v-if="reportsReadError" data-test="reports-nav-error">
+          <p role="alert">{{ reportsReadError }}</p>
+          <ElButton
+            data-test="reports-nav-retry"
+            :disabled="reportsReadLoading"
+            @click="retryReports"
+            >重新读取报表导航</ElButton
           >
         </div>
         <RouterLink

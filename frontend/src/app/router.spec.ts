@@ -14,12 +14,40 @@ vi.mock('../stores/auth', () => ({ useAuthStore: () => auth }));
 import { router } from './router';
 import EvidencePage from '../modules/evidence/EvidencePage.vue';
 import CaseHandlingGroupsPage from '../modules/cases/CaseHandlingGroupsPage.vue';
+import ReportsPage from '../modules/reports/ReportsPage.vue';
 
 beforeEach(async () => {
   auth.session = null;
   vi.resetAllMocks();
   auth.restore.mockResolvedValue(undefined);
   await router.push('/health');
+});
+
+describe('reports routing', () => {
+  it('resolves the actual reports page only for an internal account', async () => {
+    auth.session = { principalType: 'INTERNAL', user: { id: 'reader' } };
+    await router.push('/reports');
+    expect(router.currentRoute.value.matched[0]!.components?.default).toBe(
+      ReportsPage,
+    );
+    expect(router.currentRoute.value.meta).toMatchObject({
+      audience: 'INTERNAL',
+      section: '数据报表',
+    });
+  });
+  it('preserves an unauthenticated reports destination for login', async () => {
+    await router.push('/reports');
+    expect(router.currentRoute.value.path).toBe('/login');
+    expect(router.currentRoute.value.query.returnTo).toBe('/reports');
+  });
+  it.each(['CLIENT', 'LAWYER', 'NOTARY'] as const)(
+    'rejects reports navigation for %s',
+    async (principalType) => {
+      auth.session = { principalType, user: { id: 'external' } };
+      await router.push('/reports');
+      expect(router.currentRoute.value.path).not.toBe('/reports');
+    },
+  );
 });
 
 describe('evidence routing', () => {

@@ -24,9 +24,13 @@ const api = vi.hoisted(() => ({
   getCalendarSummary: vi.fn(),
   getSettlementContext: vi.fn(),
   listEvidence: vi.fn(),
+  reportsCapability: vi.fn(),
   logout: vi.fn(),
 }));
 const mountedShells: Array<ReturnType<typeof mount>> = [];
+vi.mock('../api/reports', () => ({
+  getReportsCapability: api.reportsCapability,
+}));
 vi.mock('../api/settlements', () => ({
   getSettlementContext: api.getSettlementContext,
 }));
@@ -69,6 +73,7 @@ const session = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  api.reportsCapability.mockResolvedValue({ canRead: false });
   api.getSettlementContext.mockResolvedValue({ read: false, feeRead: false });
   api.listEvidence.mockRejectedValue(
     new ApiError('denied', 403, 'ACTION_FORBIDDEN'),
@@ -177,6 +182,11 @@ async function mountShell(
     history: createMemoryHistory(),
     routes: [
       {
+        path: '/reports',
+        component: { template: '<div />' },
+        meta: { section: '数据报表', breadcrumbs: ['数据报表'] },
+      },
+      {
         path: '/evidence',
         component: { template: '<div />' },
         meta: { section: '证物', breadcrumbs: ['证物'] },
@@ -259,6 +269,37 @@ async function mountShell(
 }
 
 describe('AppShell', () => {
+  it('shows reports navigation only from the real current capability and clears it on denial', async () => {
+    api.reportsCapability
+      .mockResolvedValueOnce({ canRead: true })
+      .mockResolvedValueOnce({ canRead: false });
+    const { wrapper, router } = await mountShell();
+    expect(wrapper.get('[data-test="reports-nav"]').attributes('href')).toBe(
+      '/reports',
+    );
+    await router.push('/reports');
+    await flushPromises();
+    expect(wrapper.find('[data-test="reports-nav"]').exists()).toBe(false);
+  });
+  it('rejects a late reports capability from the previous session', async () => {
+    let resolve!: (value: { canRead: boolean }) => void;
+    api.reportsCapability
+      .mockReturnValueOnce(
+        new Promise((done) => {
+          resolve = done;
+        }),
+      )
+      .mockResolvedValueOnce({ canRead: false });
+    const { wrapper } = await mountShell();
+    const signal = api.reportsCapability.mock.calls[0][0].signal as AbortSignal;
+    const auth = useAuthStore();
+    auth.session = { ...auth.session! };
+    await flushPromises();
+    expect(signal.aborted).toBe(true);
+    resolve({ canRead: true });
+    await flushPromises();
+    expect(wrapper.find('[data-test="reports-nav"]').exists()).toBe(false);
+  });
   it('uses the current calendar read for its badge and rejects an older summary response', async () => {
     let resolveOld:
       ((value: { metrics: { next30: { count: number } } }) => void) | undefined;
