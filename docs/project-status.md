@@ -1,5 +1,9 @@
 # 当前开发状态
 
+2026-10-21 范围复核已由原Reviewer裁定不构成CG002实现finding：当前CASE_READ目录和SD39仅允许DEPARTMENT，TEAM／DEPARTMENT分别是组建立／解除的范围；通用scope分支及SELF／TEAM mock过滤测试不证明正式案件／附件资源读取已支持这些组合。保留原详情、材料及下载政策，不改目录或实际Grant，20源累计ACCEPTED及工程检查结论有效。原后端已补PG准备说明，原前端已形成EF001补交／PRIMARY剩余页面方案；其中拟64HTTP／4session／4文件只是待批上限，内部反馈页面已有2026-10-19历史实证，不重复申请其已用额度。
+
+2026-10-21 用户已明确批准一次标准verify，仅既有隔离15439／dev_cor_test及NT006自有empty／upgrade／guard三个schema的创建、写入和清理。主控已核唯一原Runner idle、没有本批verify运行记录，现冻结实际候选并交原Runner执行；尚未启动前不记通过。schema实际后缀由探针生成，隔离身份和自身资源锁须现场核实；失败首停保留证据，不手工盲清或扩为多轮。R2、public升级、Grant／账号、真实业务／页面及推送部署仍不在此批准内。
+
 2026-10-21 CORE-CG-002源码与纯工程收口：固定干净46106349／tree292fb067在02:37:53–02:39:00UTC正常check:fast:prepared及本树后端／前端构建均exit0，18模块／174模型、两端及根类型、全仓Lint通过，原Vite大chunk警告保留。20源累计两轴ACCEPTED、C/I/M0，原Reviewer又核组合20raw一致；后台308＋DTO11、前端API57／Page41／Panel16按固定输入复用，不重跑。后续仅结果文档／快照收口，不借文档HEAD冒称重跑。完整verify内NT006需真实PG的3个自有schema及fixture／清理，本批尚无新增运行授权；迁移171／172、真实组Command／页面及文件字节均未验，未推送或部署。原作者已并行只读准备CG风险验收范围和Next EF001写入式页面／PRIMARY剩余边界，不重造身份或恢复额度，正式运行仍须具体批准。
 
 2026-10-21 CORE-CG-002源码累计20源两轴ACCEPTED、C/I/M0：后台bd79007a接入c5e50b4c，前端defdb0b0接入89bb73e6，20份raw哈希逐项一致。唯一M-CG002-01已在原API两文件修复并由原Reviewer关闭，4项RED后API57／57，未变Page41／Panel16复用；后台308项及DTO11项、各自类型静态通过。原三份文档差异保留并同步本片合同，现准备固定组合树工程检查，尚未记为通过。材料和费用读取已生产接线，但完整verify、PG／HTTP／页面和发布未执行；CG001原候选0d68603c及文档aef6c933保持。
