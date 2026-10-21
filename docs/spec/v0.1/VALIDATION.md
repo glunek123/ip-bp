@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+## 2026-10-21 CORE-CG-002材料与费用只读聚合源码复审（非真实验收）
+
+在保留CG001 `0d68603c`及原文档`aef6c933`的前提下，原前后端与原Reviewer继续独立分工。DTO两文件先以`bb565e8f`稳定，主控`b23c3e17`、前端`9cb7bbb7`为同补丁；原11项直接纯测及微合同两轴C/I/M0成立。后端其余12实现文件提交`bd79007a7d030dc7293709a674c469d55f630b72`，主控接入`c5e50b4c252846ee07d6cd47fcd44580b350c8f8`；14源清单SHA `ac366eaa7a332189063fe9bc07c1f595e9a6cee9d0e5b167ce933fa87566dac4`已逐项核对，后台两轴ACCEPTED、C/I/M0。
+
+后台六套聚焦验证覆盖308项：初轮307项中306通过，唯一非法ID测试误将原同步抛错作为异步拒绝，修正后受影响15项通过；随后缩短组事务并增边界断言，最终read16项通过，另五套未变输入292项复用。类型／Lint／格式／架构通过，原openVersion和费用写路径未改。组信息及可见源案集合在短事务读取，费用账在该事务内先按源案／部门／当前fee.read范围查询和计数；材料和公证摘要随后经原入口再次授权，拒绝整体报错，不把组快照称全部资源原子快照。
+
+原前端六文件以`defdb0b07bdc2fd3b7e1d83ba6f7b01fba08701a`提交，主控接入`89bb73e61270afa2fe72307a7e8315fa6846c1ed`。累计审唯一M-CG002-01为前端page整数上限比后台最大合法offset少一边界值：原API两文件补反例先RED4项，再仅调整page上限到2147483648，offset及其他整数限制不变。最新API57／57、同输入Page41／Panel16通过，类型／定向静态通过；不把原API49或API＋Page90与新集合重复相加。最终六源清单SHA `8beabedc7942e4ce74d874bd21607e3da84c026e5efabbb50c5088d54496e74a`，原Reviewer补闭后累计20源Spec／Quality均ACCEPTED、C/I/M0；主控已核20raw与清单一致。原v1清单及RED均保留，忽略目录证据统一在`.local/case-group-aggregation/`。
+
+本片只读元数据及费用投影已接真实生产API，页面按需读取并沿原精确CV下载，未改原Command／pending。当前组合工程门禁待固定新tree执行，不预写通过或借用CG001旧树门禁；完整`pnpm verify`包含NT006真实PostgreSQL owned-schema路径，本轮未获新增数据库测试操作授权，未跳过／过滤后伪称完整verify。未执行DB／capture／Docker、迁移171／172、Grant／账号、HTTP／登录／服务／浏览器、推送或部署，完整AC及真实权限／文件字节仍待单独有限验收。
+
 ## 2026-10-21 CORE-CG-001源码累计复审闭合（非真实验收）
 
 用户明确恢复昨日暂停后，主控先核7241927f、原5份文档WIP、空暂存与原快照无新增漂移，保留1d84a285后台和a9a66b66前端成果。原独立窗口对固定32源继续Final Review，确认后台18源及I-CG-READ-01关闭结论仍有效；唯一M-CG-API-01为前端异常响应会接受ACTIVE／revision2、DISSOLVED／revision1及expectedRevision2→revision3。该问题未见正常后端路径产生，属于成功确认边界的Minor，不是新增业务规则或真实运行故障。

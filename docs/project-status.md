@@ -1,5 +1,9 @@
 # 当前开发状态
 
+2026-10-21 CORE-CG-002源码累计20源两轴ACCEPTED、C/I/M0：后台bd79007a接入c5e50b4c，前端defdb0b0接入89bb73e6，20份raw哈希逐项一致。唯一M-CG002-01已在原API两文件修复并由原Reviewer关闭，4项RED后API57／57，未变Page41／Panel16复用；后台308项及DTO11项、各自类型静态通过。原三份文档差异保留并同步本片合同，现准备固定组合树工程检查，尚未记为通过。材料和费用读取已生产接线，但完整verify、PG／HTTP／页面和发布未执行；CG001原候选0d68603c及文档aef6c933保持。
+
+2026-10-21 CORE-CG-002两文件DTO小基线已稳定：原后端bb565e8f、主控b23c3e17、原前端9cb7bbb7为同补丁；11项直接纯测试及类型／静态通过，原Reviewer仅此微合同两轴ACCEPTED、C/I/M0。前端注入式资源Panel16项纯测通过，现继续严格API与页面按需接线；后端继续真实read／helper／controller，联合响应的fees类型问题由原Owner处理，不新增授权。此前六处后端WIP及两份Panel保留，原四份文档／快照已提交aef6c933；此阶段不表示资源端点、完整聚合或组合门禁已通过，运行限制不变。
+
 2026-10-21 已在原三窗启动CORE-CG-002材料／费用只读聚合：三个干净原目录从0d68603c分别建立case-group-aggregation-backend／frontend／integration分支，原分支和成果保留。后端负责真实read／DTO及最小接线，先固定小基线；前端先做注入式资源Panel，生产API待稳定SHA，文件不重叠；原Reviewer独立预审边界与固定候选。只沿SD-27／FE-005保留源案、原材料CV和原费用身份，费用摘要与完整账分区、fee.read独立，不加支付／迁移／权限。具体范围见[只读聚合计划](superpowers/plans/2026-10-21-case-group-read-aggregation.md)。上一片源码最终候选0d68603c／tree89b726b4仍保留，未推送、部署或真实验收；原运行限制与旧额度保持。
 
 2026-10-21 CORE-CG-001首片源码与纯工程收口完成：从7241927f及原5文档／空暂存恢复，无新增漂移或成果覆盖；沿原3窗gpt-6.1-sol修复并关闭唯一M-CG-API-01，32源累计Spec／Quality均ACCEPTED、C/I/M0。修复bdcb5ee7接入462e1eaa后冻结c5a33611／tree af8ae892；该干净候选正常check:fast:prepared及本树双构建均exit0，Vite大chunk警告保留。后台149、原前端218复用，受影响API31／31含4新增反例及类型静态通过，不重复计数；源码／文档与真实验收的边界见VALIDATION。首片材料费用仍只链接原案，完整聚合AC和真实PG／页面未验；不称完整verify、已推送或上线。R2、DB写入、迁移执行、Grant及正式验收授权均不扩大，旧额度不恢复；main为最后已核06eb。
