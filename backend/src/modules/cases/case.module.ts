@@ -19,6 +19,7 @@ import { MaterialModule } from '../materials';
 import { CaseCreationService } from './case-creation.service';
 import { CaseExternalEntryService } from './case-external-entry.service';
 import { CaseCalendarSourceService } from './case-calendar-source.service';
+import { CaseReportsSourceService } from './case-reports-source.service';
 import { CaseReadController } from './case-read.controller';
 import { CaseReadService } from './case-read.service';
 import { CaseListPreferenceController } from './case-list-preference.controller';
@@ -83,6 +84,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
   providers: [
     CaseExecutionFilingFollowupService,
     CaseCalendarSourceService,
+    CaseReportsSourceService,
     CaseReadService,
     CaseListPreferenceService,
     CaseListExportService,
@@ -118,6 +120,10 @@ import { LawyerCaseController } from './lawyer-case.controller';
     ClientCaseService,
     LawyerAccountService,
   ],
-  exports: [CaseCreationService, CaseCalendarSourceService],
+  exports: [
+    CaseCreationService,
+    CaseCalendarSourceService,
+    CaseReportsSourceService,
+  ],
 })
 export class CaseModule {}

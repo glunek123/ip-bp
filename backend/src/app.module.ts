@@ -11,6 +11,7 @@ import { CaseModule } from './modules/cases/case.module';
 import { CalendarModule } from './modules/calendar';
 import { SettlementModule } from './modules/settlements/settlement.module';
 import { EvidenceModule } from './modules/evidence/evidence.module';
+import { ReportsModule } from './modules/reports';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { EvidenceModule } from './modules/evidence/evidence.module';
     CalendarModule,
     SettlementModule,
     EvidenceModule,
+    ReportsModule,
     HealthModule,
   ],
 })
