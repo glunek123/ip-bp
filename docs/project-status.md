@@ -1,6 +1,6 @@
 # 当前开发状态
 
-2026-10-21 已从7241927f及原5文档／空暂存断点恢复，无新增漂移或成果覆盖。原前端／后台／Reviewer均沿原窗口以gpt-6.1-sol继续；32源累计最终审仅一项M-CG-API-01已在原前端两文件修复，4真RED→API31／31及类型静态通过，原窗口补审关闭，Spec／Quality均ACCEPTED、C/I/M0。修复bdcb5ee7已单一接入主控462e1eaa，后端149及原前端未变测试继续复用。首组合check:fast:prepared在7241927f退出0；当前修后最终组合工程检查与文档收口待完成，不能称完整verify或真实验收通过。R2、DB写入、迁移执行、Grant及正式验收边界不扩大，旧额度不恢复；main仍为最后已核06eb，本地新批次未推送或部署。
+2026-10-21 CORE-CG-001首片源码与纯工程收口完成：从7241927f及原5文档／空暂存恢复，无新增漂移或成果覆盖；沿原3窗gpt-6.1-sol修复并关闭唯一M-CG-API-01，32源累计Spec／Quality均ACCEPTED、C/I/M0。修复bdcb5ee7接入462e1eaa后冻结c5a33611／tree af8ae892；该干净候选正常check:fast:prepared及本树双构建均exit0，Vite大chunk警告保留。后台149、原前端218复用，受影响API31／31含4新增反例及类型静态通过，不重复计数；源码／文档与真实验收的边界见VALIDATION。首片材料费用仍只链接原案，完整聚合AC和真实PG／页面未验；不称完整verify、已推送或上线。R2、DB写入、迁移执行、Grant及正式验收授权均不扩大，旧额度不恢复；main为最后已核06eb。
 
 2026-10-20 已按用户“提交、合并、推送后继续并行开发”完成上一批交付：4份LD008收口文档提交06eb56a0，main从b14752ca正常快进至06eb56a03a07e0d0eb1f58fcb5698b96a8fcef9e，远端main及codex/minimal-page-actor-admission均已核相同SHA。固定tree dd8570c4经累计404文件／250提交独立两轴ACCEPTED、C/I/M0；一次正常完整verify工具139、前端2787、后端2479共5405项及双构建通过，NT006真实owned探针、锁释放和有限public前后保持有证据。CI workflow／check run／commit status均0，不称服务器验证通过；只推代码文档，无部署或R2操作。具体记录见VALIDATION。
 

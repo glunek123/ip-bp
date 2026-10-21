@@ -8,6 +8,10 @@
 
 恢复后的首轮组合`pnpm check:fast:prepared`在原7241927f实际exit0：18模块／174模型、两端及根prepared类型、全仓ESLint通过，日志和结果在ignored`.local/case-handling-groups-integration/combination-fast-20261021*`。Prisma生成复用暂停前相同schema的正常7.10.0生成；本次修复影响的最终检查／构建另按修后固定候选补齐，未完成前不借旧候选宣称全门禁通过。`pnpm verify`包含NT006真实PG路径，本次尚未运行，不过滤后伪称完整verify；R2、DB写入、迁移部署、Grant／账号、HTTP／登录／服务／浏览器均未在本片执行，旧额度不恢复。完整材料／费用聚合AC和迁移、并发、回滚等真实验收仍保留未验边界。
 
+修后最终工程检查已在干净固定`c5a33611645d49875c37cabd793804f7e3212785`／tree `af8ae892a887cd4d9b075570f441d2145f916ab3`实际通过：正常`pnpm check:fast:prepared`及`pnpm build:prepared`均exit0，含18模块／174模型、两端及根类型、全仓ESLint和正常后端／前端构建；Vite大于500kB的chunk警告保留。该门禁在原Reviewer关闭两finding之后执行；同schema正常Prisma生成与未变测试证据复用，没有重跑149后台或完整218前端。API新增4反例分别先RED后31／31 GREEN；因此不把原218与31直接相加。日志为ignored`.local/case-handling-groups-integration/final-fast-20261021.log`、`final-build-20261021.log`及`final-engineering-20261021-result.json`，32源原raw／提交blob逐项核同见`source-consistency-v2.json`。后续收口提交只改文档与快照，按文档检查闭合，不再次执行同代码工程门禁。
+
+本次只交付建立／可见源案读取／解除留史、真实API接线和原请求恢复的本地源码候选；没有public迁移、真实Group写入或网页验证。完整`verify`（含NT006真实PG）、迁移171／172风险专项、并发／回滚和新增Action真实授权范围均未执行；若需要运行，应另给具体目标和有限操作，不自动使用R2或恢复旧额度。完整材料／费用聚合仍是下一源代码切片，未由首片原案链接替代。
+
 ## 2026-10-20 CORE-CG-001源码候选（非真实验收）
 
 后台首片固定提交`1d84a28523c311760628b10b8532f41f13fb558b`，tree `d1166eb05552c6fd1e5e9648e5d83cf768d9221d`，恰18文件；主控接入为`616302e6b2d1a391971d53d2f9112e9b2c103122`，前端稳定依赖接入为`90f27598fa1e20e9587685714d2fed7dad5a6fd0`。主控逐项核对18份工作区和提交blob raw SHA均与作者冻结清单一致，原作者只读核clean。此前I-CG-READ-01要求成员读取范围进入数据库嵌套查询；原窗口已补审v2关闭，再审完整后台候选，Spec／Quality均ACCEPTED、C/I/M0。作者清单SHA `ec19e2a4bb9ded4b6a9baa7869504a812e6c5160610f28140b92bcb1b82f25d1`；集成字节核对位于ignored`.local/case-handling-groups-integration/backend-source-consistency.json`。
