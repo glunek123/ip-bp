@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+## 2026-10-21 CG组合完整工程门禁通过（非新业务验收）
+
+用户明确允许既有15439的一次标准verify及NT006三个自有schema，原唯一Runner固定`741a4b0e61ab5f90b0768eb66eb7e350a31f911b`／tree `fc962826fd9d008d6e6465728efccd99fe7a98ac`。初次前置因原容器running=false／exited／unhealthy停止，capture／PG／SQL／正式verify／schema尝试均0；该前置不是完整门禁失败，也未消耗一次正式执行。父级确认恢复同一个已有容器属于必要准备后，原Runner仅一次正常start同CID／原卷／端口，fresh健康及隔离核验通过，未重建环境或更改配置。
+
+标准`pnpm verify`仅执行1次，03:07:29.371–03:13:08.764UTC退出0。严格context、Spec、架构、正常Prisma生成、两端及根类型、Lint、格式、工具13文件139项、前端157文件2954项、后端177套2563项及本树双构建通过，总计5656项；原Vite大chunk警告保留。未过滤或跳过NT006，未重跑已通过树。原停机证据与后续continuation分开，既有06eb记录未覆盖。
+
+NT006实际观察到`nt006_empty_72c2f6a050ac2e6e`、`nt006_upgrade_d5d221e8677eadf6`、`nt006_guard_7ba697e45a184c91`，最终namespace元数据与before相同、残留0。标准锁实际probe PID41272于03:11:22.175UTC被观察，03:11:24.369UTC已释放，结束锁不存在、连接和观察器关闭，无外层重入锁。前后各4条有限只读元数据及探针期间20条namespace观察SELECT；public170账本／relations／functions／enums及namespace前后匹配。没有读取业务／账号行或物理材料，不把该有限保护写成全库业务数据审计。
+
+结果为`.local/verify-cg002-741a4b0e-20261021/continuation/summary.json`，SHA `392e371ad06f359776c0344a407ce6120839709d2f4aa24ac912cc3caafceef1`；manifest SHA `f8f7604962aa6198b95166b34ef29c389c9e29efedf8bc05924b48e20e6e04eb`。主控逐项回读21份普通证据bytes／SHA均匹配，未读取Temp私密原日志，核对回执在`.local/case-group-aggregation/verify-evidence-checked-20261021.json`。结束候选仍clean；此后只补非执行性结果文档／快照，保留本次实际commit／tree，不冒称文档收口HEAD又运行门禁。
+
+本次未触R2、public171／172部署、Grant／账号、登录、应用服务、业务HTTP／页面或额外owned风险专项，不能替代CG完整AC或EF剩余角色／上传证明。两份离线准备已汇总为[最小后续提案](../../superpowers/plans/2026-10-21-next-business-acceptance-scope.md)，建议先一次只读资格核验；其12SELECT及后续CG／EF业务预算均未批准，不从本次一次verify自动推导。
+
 ## 2026-10-21 CORE-CG-002材料与费用只读聚合源码复审（非真实验收）
 
 收口后原Reviewer追加范围复核：CASE_READ当前目录仅DEPARTMENT，SD39为案件与附件读的现行口径；TEAM只适用于组建立／解除等独立动作。SELF／TEAM注入式mock证明的是过滤编排，不构成正式资源读取成功证明；原CaseRead／MaterialService要求DEPARTMENT不是本片新增finding，累计20源两轴ACCEPTED、C/I/M0保持。不改业务源或授实际Grant，未因此追加运行测试。

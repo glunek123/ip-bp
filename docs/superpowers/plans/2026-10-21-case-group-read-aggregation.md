@@ -45,3 +45,5 @@
 本片仅代码、纯测试、类型和定向静态／构建。DB、capture、Docker、真实HTTP／登录／服务／浏览器、迁移执行、Grant／账号、完整verify、预览／部署均未授权；已有耗尽额度不恢复。完整PG与页面AC需要另列目标和有限操作，代码实现或原案链接不代替真实验收。
 
 后续单次门禁批准（2026-10-21）：用户仅允许在既有15439／dev_cor_test运行一次标准verify，含NT006三个自有schema；唯一原Runner先确认目标与互斥、固定候选，结果未出前不预写通过。此前代码开发边界仅被该准确例外覆盖，不授权public171／172部署、Grant、R2或页面。schema名称模式是`nt006_empty_<16hex>`、`nt006_upgrade_<16hex>`、`nt006_guard_<16hex>`，实际名称尚未生成；原probe finally依次恢复search_path并删除自身确切schema，外层关闭连接／释放锁。若连接或事务异常使清理中断，须报告实际残留并停止，不按prefix扩大DROP或自动再跑正式门禁。
+
+上述门禁已由唯一原Runner在`741a4b0e`／tree`fc962826`实际一次通过：5656项及双构建exit0，三个实际schema清理、标准锁释放，有限public元数据保持。原容器仅恢复一次；停机前置不计正式门禁，旧证据均保留。准确schema名／时间／summary与manifest SHA见VALIDATION；只交付工程结果，不声称新171／172或真实组页面已验。下一步按[有限资格／业务提案](2026-10-21-next-business-acceptance-scope.md)单独确认，不自动继续实际操作。
