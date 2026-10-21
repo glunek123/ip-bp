@@ -1,5 +1,7 @@
 # 当前开发状态
 
+2026-10-21 已在原三窗启动CORE-CG-002材料／费用只读聚合：三个干净原目录从0d68603c分别建立case-group-aggregation-backend／frontend／integration分支，原分支和成果保留。后端负责真实read／DTO及最小接线，先固定小基线；前端先做注入式资源Panel，生产API待稳定SHA，文件不重叠；原Reviewer独立预审边界与固定候选。只沿SD-27／FE-005保留源案、原材料CV和原费用身份，费用摘要与完整账分区、fee.read独立，不加支付／迁移／权限。具体范围见[只读聚合计划](superpowers/plans/2026-10-21-case-group-read-aggregation.md)。上一片源码最终候选0d68603c／tree89b726b4仍保留，未推送、部署或真实验收；原运行限制与旧额度保持。
+
 2026-10-21 CORE-CG-001首片源码与纯工程收口完成：从7241927f及原5文档／空暂存恢复，无新增漂移或成果覆盖；沿原3窗gpt-6.1-sol修复并关闭唯一M-CG-API-01，32源累计Spec／Quality均ACCEPTED、C/I/M0。修复bdcb5ee7接入462e1eaa后冻结c5a33611／tree af8ae892；该干净候选正常check:fast:prepared及本树双构建均exit0，Vite大chunk警告保留。后台149、原前端218复用，受影响API31／31含4新增反例及类型静态通过，不重复计数；源码／文档与真实验收的边界见VALIDATION。首片材料费用仍只链接原案，完整聚合AC和真实PG／页面未验；不称完整verify、已推送或上线。R2、DB写入、迁移执行、Grant及正式验收授权均不扩大，旧额度不恢复；main为最后已核06eb。
 
 2026-10-20 已按用户“提交、合并、推送后继续并行开发”完成上一批交付：4份LD008收口文档提交06eb56a0，main从b14752ca正常快进至06eb56a03a07e0d0eb1f58fcb5698b96a8fcef9e，远端main及codex/minimal-page-actor-admission均已核相同SHA。固定tree dd8570c4经累计404文件／250提交独立两轴ACCEPTED、C/I/M0；一次正常完整verify工具139、前端2787、后端2479共5405项及双构建通过，NT006真实owned探针、锁释放和有限public前后保持有证据。CI workflow／check run／commit status均0，不称服务器验证通过；只推代码文档，无部署或R2操作。具体记录见VALIDATION。
@@ -310,6 +312,8 @@ S共享后端任务01a13eba-6a0b-74af-9ef0-852b446e40c0的首合同已独立冻�
 用户最新列表验收要求覆盖线索/公证/案件：操作列用明确下一节点主按钮，在列表内填表提交，成功刷新原行并保持筛选分页；同一步多分支在表单明确选择，无默认/万能stage切换，资料编辑独立。判决可先保存而暂不决定后续，不强造二审受理。当前B仅待推送快捷、C跳详情、D交接导航不等于该新范围已实现；接续独立列表任务及共享弹层Owner由父级创建，当前原功能验收不打断。
 
 ## 当前任务
+
+**CORE-CG-002｜案件组内材料与费用只读聚合。** 承接已交付首片和既有SD-27／REQ-FE-005，沿原前后端Owner及独立Reviewer并行，最小稳定合同先交接，当前仅代码／纯验证；禁止运行范围见[实施计划](superpowers/plans/2026-10-21-case-group-read-aggregation.md)。下列CG001及更早段落保留历史，不构成多个Current。
 
 **CORE-CG-001｜案件合并办理组首片。** 原前后端并行实现，原独立Reviewer按固定合同和完整候选分段source-only审。源案归属／阶段／版本不改，当前仅代码和纯测试，未开展本片DB／Grant／真实验收；唯一Owner与具体边界见[开工计划](superpowers/plans/2026-10-20-case-handling-groups.md)。下列原切片段落保留交付与恢复历史，不构成多个Current。
 

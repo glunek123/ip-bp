@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-21T01:43:20.937Z",
+  "recordedAt": "2026-10-21T01:58:50.486Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -709,9 +709,9 @@
     "docs/engineering-verification.md": "b7f80f141d4a7da5f28944bf5e3ba6d76d294b326f5d614029964b02f539d122",
     "docs/environment-lock.json": "a994a66b4d2a596aa6d24895f1195f74ad512b44a23927d871c255ed4ae1e00a",
     "docs/environment.md": "05bb40f9dd49f9405f4bde770cb1d7d252b308093b2802e89e65dcd77c1fd22d",
-    "docs/feature-roadmap.md": "435e8781a306fc0cbe894ccf34118ea32c6ab6da0f5cb19995a2591e2ff73ed1",
+    "docs/feature-roadmap.md": "bcfcd0d8da2660b04dfdcb8d0803960c9ff3a53f61ab22ca778df6b6e5b17190",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "e202897eb1e5373f5facd4cea360dc907dd598a417b7eac9b4535d78b909b22e",
+    "docs/project-status.md": "57fa2f1845d282b39e00be9da0455cc8ebb56515c65fd6d6bd1153c2484e6a60",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
@@ -791,6 +791,7 @@
     "docs/superpowers/plans/2026-10-20-acceptance-blockers.md": "c74ba184c20547cda4ddf1afe5a1777bfc97f70780c5c91a555cfb3239c8fc4e",
     "docs/superpowers/plans/2026-10-20-case-handling-groups.md": "db9f357910a949a6ab50628b35055e2a8e1b9e9738c82c54f2cfe901554ed91b",
     "docs/superpowers/plans/2026-10-20-real-acceptance-run-plan.md": "6aa7a566329c9f61b20ff18cc972109a37bb3f8cf780a5014b1c24f7f66fdf19",
+    "docs/superpowers/plans/2026-10-21-case-group-read-aggregation.md": "45872f13e14bd829529405782ab163ab56f7c0a39a08b33249e959d2ab871890",
     "docs/superpowers/specs/2026-09-17-local-account-auth-design.md": "90318fbebae983c71e9558138cbd40b30ef02afce332a0e52f70797601a23d6f",
     "docs/superpowers/specs/2026-09-20-personnel-access-management-design.md": "bfeaf41d0356417c57a5030fd6dc9de0cfafa37d5404bb20cd3f7cff76ee5bda",
     "docs/superpowers/specs/2026-09-20-role-template-management-design.md": "51c18905b48e4b2b3ca835446b59dcb4e489eb8813b4922255fd403161b90dd8",
