@@ -1070,7 +1070,7 @@ const closureCallbacks = computed(() => {
 });
 
 async function load() {
-  if (!active) return;
+  if (!active || auth.session === null) return;
   request?.abort();
   const controller = new AbortController();
   request = controller;
