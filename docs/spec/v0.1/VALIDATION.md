@@ -2,6 +2,8 @@
 
 ## 2026-10-22 CG／EF最小内部闭环与注销页面收口
 
+**最终工程门禁补证（下方待批说明转为历史）：** 唯一Runner在clean5e7376ec03055acd05ffdea3014466fa7c8ace2a／treefd4b09013230b1a645a5366e2a08a7ea03d7c031正常执行pnpm verify一次，exit0、耗5分46秒，工具139／后台178套2564／前端158文件2961，合5664项及双构建通过。NT006三自有schema已清理，public172metadata和所核security前后同，Rdisabled20／Wdisabled12，observer连接及标准锁关闭。真实回执为.local/verify-logout-5e7376ec-20261022/summary.json，SHA576b294ac4e029fc23e54c14178de0f2913c246fa77848615d98acbc7c08107f。本次门禁后的差异仅为三份状态／验证文档和对应已解释snapshot，不改代码、测试、契约、权限或运行输入；文档专项后复用5e门禁，不声称收口HEAD重新实跑verify，不运行额外页面、迁移或Grant。远端CI未配置（workflows0），不得称服务器CI通过。
+
 **最终门禁尚缺：** 原Reviewer已确认功能证据齐全，但当前不能给最终集成ACCEPTED。741至940的执行性差异使非执行性收口例外不适用；真实PG、FE定向及UI各闭合对应风险，不能替代新固定候选的一次标准`pnpm verify`。原NT006三个自有schema的一次写入授权已用，当前待新的具体授权，未擅自运行或push／merge。本节记录业务已验与门禁待验两个独立事实；文档专项不冒充完整verify。
 
 本次已验代码为`940264623e104c70867c47feeef34e48155aedc6`、tree`b90398d529392f71483591ce891be6c30f2cf3d7`。范围是原15439隔离库、两个既有合成账号、两案／单客户／单组的已批准内部最小闭环；没有重做A/B/C、重复解除组或扩大Grant。以下分段通过证据共同闭合本期路径，**不将旧正式FAIL改写为PASS，也不称一次全流程无失败运行**。
