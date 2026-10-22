@@ -55,6 +55,36 @@ afterEach(() => {
 });
 
 describe('reports CSV API', () => {
+  it('downloads the native fetch CSV Blob essence through the actual POST decoder', async () => {
+    const actual = await vi.importActual<typeof import('./http')>('./http');
+    http.postBlob.mockImplementation(actual.postBlob);
+    const blob = new Blob(['\uFEFF"维度","项目","数值"\r\n'], {
+      type: 'text/csv',
+    });
+    const filename = file().filename;
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="case-reports_2026-10-21.csv"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      }),
+      blob: async () => blob,
+    });
+    vi.stubGlobal('fetch', fetch);
+    const controller = createReportsExportController(() => ({
+      actorKey: 'actor-1',
+      contextKey: 'session-1:auth-1',
+      view: 'department',
+      canExport: true,
+    }));
+    await expect(controller.download()).resolves.toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(createURL).toHaveBeenCalledExactlyOnceWith(blob);
+    expect(clicks).toHaveLength(1);
+    expect(clicks[0]?.download).toBe(filename);
+    expect(revokeURL).toHaveBeenCalledExactlyOnceWith('blob:synthetic-report');
+  });
   it.each(['mine', 'department'] as const)(
     'posts only explicit %s view with options snapshot and no CSRF retry',
     async (view) => {
@@ -107,7 +137,7 @@ describe('reports CSV API', () => {
     { mimeType: 'application/json' },
     { blob: new Blob([], { type: 'text/csv;charset=utf-8' }) },
     { blob: new Blob(['x'], { type: 'application/json' }) },
-    { blob: new Blob(['x'], { type: 'text/csv' }) },
+    { blob: new Blob(['x'], { type: '' }) },
     { blob: new Blob(['x'], { type: 'text/csv;charset=gbk' }) },
   ])(
     'rejects invalid CSV metadata %# without reading or reconstructing CSV',

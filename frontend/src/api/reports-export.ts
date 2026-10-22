@@ -55,8 +55,10 @@ export async function exportReportsCsv(
     result.blob.size === 0 ||
     !validFilename(result.filename) ||
     result.mimeType !== 'text/csv' ||
-    result.blob.type.replace(/\s/gu, '').toLowerCase() !==
-      'text/csv;charset=utf-8'
+    // Native fetch can serialize the Blob MIME type without charset parameters.
+    !['text/csv', 'text/csv;charset=utf-8'].includes(
+      result.blob.type.replace(/\s/gu, '').toLowerCase(),
+    )
   )
     throw new ApiError('服务返回了无效的报表CSV文件', 502, 'INVALID_RESPONSE');
   // CSV is opaque server output: never parse it or construct rows in the client.
