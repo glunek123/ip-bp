@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
-import { ApiError } from '../api/http';
+import { ApiError, setSessionIdentity } from '../api/http';
 import { getCalendarSummary } from '../api/calendar';
 import { getSettlementContext } from '../api/settlements';
 import { listEvidence } from '../api/evidence';
@@ -660,12 +660,24 @@ function closeDrawer(): void {
 
 async function logout(): Promise<void> {
   if (loggingOut.value) return;
+  const logoutSession = auth.session;
   loggingOut.value = true;
   logoutError.value = '';
   try {
     await auth.logout();
     await router.replace('/login');
   } catch (error) {
+    if (auth.session !== logoutSession) return;
+    if (
+      error instanceof ApiError &&
+      error.status === 401 &&
+      error.code === 'UNAUTHORIZED'
+    ) {
+      auth.clear();
+      setSessionIdentity(null);
+      await router.replace('/login');
+      return;
+    }
     logoutError.value =
       error instanceof ApiError
         ? error.message

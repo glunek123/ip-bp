@@ -321,6 +321,7 @@ async function mountRoute(
 ) {
   const pinia = createPinia();
   setActivePinia(pinia);
+  if (component === CaseDetailPage) setInternalSession(pinia);
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -500,9 +501,7 @@ function judgmentDetailWithChoiceCapability(id: string) {
   };
 }
 
-async function mountRoutedDetail(path: string, realPage?: Component) {
-  const pinia = createPinia();
-  setActivePinia(pinia);
+function setInternalSession(pinia: ReturnType<typeof createPinia>) {
   const auth = useAuthStore(pinia);
   auth.session = {
     principalType: 'INTERNAL',
@@ -516,6 +515,13 @@ async function mountRoutedDetail(path: string, realPage?: Component) {
     csrfToken: 'csrf',
   };
   auth.restored = true;
+  return auth;
+}
+
+async function mountRoutedDetail(path: string, realPage?: Component) {
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const auth = setInternalSession(pinia);
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -794,6 +800,7 @@ describe('case pages', () => {
     await router.isReady();
     const pinia = createPinia();
     setActivePinia(pinia);
+    setInternalSession(pinia);
     const wrapper = mount(RouterView, { global: { plugins: [pinia, router] } });
     await flushPromises();
     await wrapper.get('[data-test="case-list"] a').trigger('click');
