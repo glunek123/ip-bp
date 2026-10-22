@@ -1,5 +1,31 @@
 # SPEC-001 文档验证
 
+## 2026-10-22 CG／EF最小内部闭环与注销页面收口
+
+**最终门禁尚缺：** 原Reviewer已确认功能证据齐全，但当前不能给最终集成ACCEPTED。741至940的执行性差异使非执行性收口例外不适用；真实PG、FE定向及UI各闭合对应风险，不能替代新固定候选的一次标准`pnpm verify`。原NT006三个自有schema的一次写入授权已用，当前待新的具体授权，未擅自运行或push／merge。本节记录业务已验与门禁待验两个独立事实；文档专项不冒充完整verify。
+
+本次已验代码为`940264623e104c70867c47feeef34e48155aedc6`、tree`b90398d529392f71483591ce891be6c30f2cf3d7`。范围是原15439隔离库、两个既有合成账号、两案／单客户／单组的已批准内部最小闭环；没有重做A/B/C、重复解除组或扩大Grant。以下分段通过证据共同闭合本期路径，**不将旧正式FAIL改写为PASS，也不称一次全流程无失败运行**。
+
+| 事实                       | 实际证据与边界                                                                                                                                                                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 工程主体                   | 741a4b0e／treefc962826的一次完整verify：工具139＋前2954＋后2563＝5656，双构建，NT006三schema清理。该结论只绑定原树；不是940完整verify。                                                                                                                       |
+| 172修复／真实迁移          | 924ba9b7仅补receipt.command CASE括号及结构反例；随后restart3完整345文件调用＋3预期失败、两schema清理及官方public171／172升级通过。旧语法失败保留。                                                                                                            |
+| 内部补交、更正、下载、建组 | 原d-only-attempt2已成功提交／更正与原键重放、两份精确下载、建组及重放；其GROUP_RESOURCES首停与成功业务分开记录。                                                                                                                                              |
+| 资源及解除                 | group-tail-attempt3摘要／台账／四材料200解码；解除实际提交DISSOLVED/rev2，恰追加event／receipt／audit各1，随后脚本等待超时。summary SHA`df0ed5ce870497492e4fa8b38df627cdb38c6635b5d16a676d76563d20451b6d`。                                                   |
+| 同键重放与刷新             | dissolved-rev2-attempt1原请求／key重放、W刷新和正常退出通过，group仍rev2、无新业务行；R历史当次额度拦截保留。summary SHA`8945993c750f64bdc858807f9c74c16ae171d7713aad78ffa52dbf2c2eb5ca70`。                                                                  |
+| R历史与拒绝                | readonly-history-attempt1历史版本／只读控制、三次精确403通过；当次退出后的自动读取被脚本拦截，未借此宣称退出UI通过。summary SHA`3535c3e44182f5a94cf62c7b2758c52bbce79f76414c949a5b98e18ceaa812f4`。                                                           |
+| 注销安全                   | auth-logout-api-attempt1真实login200／logout204／原cookie401，探针前后R仍active15，排除停用因素；3请求／1session／1row。summary SHA`fa68a8691e8d9438a89b6950c2564aa9be28d902c3491a830275f3cdd8afbcba`。                                                       |
+| 正常注销和重登             | 940首轮真实正常logout204、跳登录且无案件残留、再次登录200／案件可见已通过；随后LIST_RETURN以UNKNOWN_ROUTE首停；确定存在默认排序白名单漏项，但未记录首个被拦URL，不能唯一归因。summary SHA`f92fdb23008130641a74cb28a6783a8b33cb13f8c69fd9ce56da2d3e027dd8d7`。 |
+| 最后UI尾段                 | 同940的tail-attempt1正式PASS／exit0，失效注销204、Back保护、受保护地址硬加载通过；实际28请求GET26／POST2、1新session／1行。summary SHA`5826b1fc6f36b17ae708b84507ea89cef7c42b8fdd2c7ab017efd10491a1ccee`。                                                    |
+
+普通回执保存在原`minimal-page-actor-admission/.local/cg-ef-minimal-245f8065-20261021/evidence/`及`logout-ui-fix-integration/.local/logout-ui-evidence/`；此处只记录路径和摘要，不提交数据库、环境密钥、Cookie、登录状态或私密日志。早期restart3 D内层错误及预算丢失仍是历史缺口，不用本轮已知计数反推未知旧请求。
+
+最新受控续验计额链累计232HTTP（GET213／POST19）、9新会话、合成数据总88行，未超已批236／9／88。R已停用rev20，W停用rev12；唯一新session在注销前已精确撤销，finally无额外撤销，context／数据库连接／两应用端口／标准锁全部收尾；public172、旧11Grant／所有旧身份关系／既有业务及四文件保全。没有R2／H42操作、173或新报表Grant、推送部署。
+
+940相对741的执行性增量只有172两括号及直接结构spec、logout四FE文件。172用真实PG链补证；FE为CasePages112＋新7实际119通过，未变AppShell110复用原结果，前端类型／Lint／格式／bundle及上述真实UI通过；原Reviewer对应增量均ACCEPTED、C/I/M0。未声称940实跑原5656。当前收口只补project-status／feature-roadmap／本记录和解释后的context快照，不改变业务、测试、依赖或运行配置；最终记录实际文档专项和Final Review结论，不能以.md后缀掩盖业务变化。
+
+本批约定最小内部路径已无已知功能阻断；完整AC、PRIMARY律师、非空公证费用、多来源／并发／流中回滚等仍未验。报表546d5a96及173、31新Grant、106HTTP／4session／11合成PDF、190新增成功行属于下一独立未运行申请；R20／W12为其待绑定起点。代码进入main不等于生产／运营部署、迁移或人工账号增权。
+
 ## 2026-10-21 RP001后端核心候选通过源码复审（无真实报表验收）
 
 原后端独立树从70f389f0交付15源，最终提交3077b8b80ae208ea638a71778651bb86a75647ca／treee9b1ea041c2795dfaedfc86494683d5350e7c83f，主控逐文件SHA核对15/15一致、暂存范围恰15且收尾clean。部门capability／overview两个GET和窄cases来源出口已实现，权限先于查询、同RR快照完整计数／归档金额、三态均值及十进制两位舍入；没有模型、迁移、Grant或报表导出。
