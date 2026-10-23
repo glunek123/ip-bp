@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+## 2026-10-23 Demo优化首四片离线集成阶段
+
+基线为已推送main `81dcea7430f091c83cde78ea9e97b886ce716eb4`，本地优化分支依次提交175客户经理模型 `46a3a59ad0489effd581ac6c02228044dd4ba1a9`、账单可读信息 `7e508330d2cbd3fa57e948f0e722b283a03a4ff4`、客户／线索28源 `82b842e6a936c4bfb8c88dae3198735df2bdb1e7`、公证20列 `1642f81b14897f84bb459c0a79cdf7ad56958e6b`（tree `a2d1bb90acda8754147cb5fabdf71f3f96752d91`）。固定差异均与原作者manifest或patch哈希一致；原Reviewer累计对应范围Spec／Quality的C/I/M均为0。公证逐行主体查询Minor已改为同事务按部门批量读取并补闭。
+
+作者证据分别为：账单后端31项、前端32项及最后API19项受影响复验；客户／线索BE218项按修夹具后45项复验加未变173项复用记录，不冒称一次218全绿；FE7文件174项；公证最新服务17项、原前端51项未变复用。各自类型、定向Lint、格式及diff通过。175 Prisma validate通过，但没有真实迁移证明。输入manifest保留在本地ignored `.local/demo-optimization/`，不是随仓库交付的可复现PG证据。
+
+Root在上述已提交源码和本轮六份文档修改上实际执行正常Prisma generate及一次`check:fast:prepared`，exit0：20模块／174模型架构检查、前后端及根类型、全仓缓存Lint通过；六份受影响文档格式和`spec:check`通过（59REQ／71AC／11BQ／62SD）。本阶段没有重跑作者纯测试、完整verify、构建或页面；不称最终五片组合门禁。后续一审176改变源码后须完成其影响检查及独立审查，不能复用本次结果冒称新树已验。
+
+真实数据库／迁移、账号／Grant、HTTP、浏览器和部署均未执行。175／176需另行固定候选并申请受保护临时schema检查；既有R2、技术账号及已结束测试额度不复用。首批新增字段、20列导出及查询均未标真实业务验收通过；本地提交尚未推送main。
+
 ## 2026-10-23 UAT本地私有存储接线与离线交付
 
 本轮在已交付bc3d9e3a之后，只补既有E02适配器的显式选择，不重做已通过的报表CSV、174或其他业务验收。新增可选`PRIVATE_BLOB_STORAGE_DRIVER=local`；production默认仍为Unavailable，development／test默认保持原Local行为。未知driver、显式local缺少根目录及原不安全路径均拒绝；现有存储算法、PrivateBlobStorage接口、鉴权、部门范围、模型和迁移均未修改。
