@@ -1042,7 +1042,7 @@ onBeforeUnmount(() => {
             }}）
           </label>
           <p>
-            仅导出事项编号、阶段、来源线索编号、公证处、创建时间五列；不含附件和内部费用。
+            导出固定20列取证清单，含获准读取的已记录费用；未知值留空，真实零保留0.00。物流按顺序换行对应，不含附件。
           </p>
           <p v-if="exportPreview" data-test="export-preview-count">
             预览范围：{{

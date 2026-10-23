@@ -3,6 +3,7 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { NotaryListExportService } from './notary-list-export.service';
+import { Prisma } from '../../generated/prisma/client';
 
 const actor: ActorContext = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -25,12 +26,29 @@ const row = {
   businessNo: 'NT-001',
   stage: 'PENDING_EVIDENCE',
   createdAt: new Date('2026-09-30T01:02:03.000Z'),
-  sourceLead: { businessNo: 'LD-001' },
+  rightsHolderId: 'holder-1',
+  sourceLead: {
+    businessNo: 'LD-001',
+    platform: 'TAOBAO',
+    shopName: '店铺',
+    shopExternalId: null,
+    pushedAt: new Date('2026-09-20T16:00:00Z'),
+  },
+  evidence: null,
+  evidenceCorrections: [],
+  opening: null,
+  openingSenderCorrections: [],
+  certificate: null,
   notaryOffice: { name: '示例公证处' },
 };
 
 function fixture() {
   const tx = {
+    rightsHolder: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([{ id: 'holder-1', name: '权利主体' }]),
+    },
     userAccount: {
       findUnique: jest
         .fn()
@@ -59,6 +77,202 @@ function fixture() {
 }
 
 describe('NotaryListExportService', () => {
+  it('loads unique same-department holders once and maps repeated and different holders in row order', async () => {
+    const { service, tx } = fixture();
+    tx.notaryMatter.findMany.mockResolvedValueOnce([
+      row,
+      { ...row, id: otherId, businessNo: 'NT-002', rightsHolderId: 'holder-2' },
+      { ...row, id: mixedCaseId, businessNo: 'NT-003' },
+    ]);
+    tx.rightsHolder.findMany.mockResolvedValueOnce([
+      { id: 'holder-2', name: '第二主体' },
+      { id: 'holder-1', name: '权利主体' },
+    ]);
+    const { csv } = await service.export(actor, {
+      mode: 'FILTERED',
+      expectedCount: 3,
+    });
+    expect(
+      csv
+        .split('\r\n')
+        .slice(1, 4)
+        .map((line) => line.split(',').slice(0, 2)),
+    ).toEqual([
+      ['NT-001', '权利主体'],
+      ['NT-002', '第二主体'],
+      ['NT-003', '权利主体'],
+    ]);
+    expect(tx.rightsHolder.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.rightsHolder.findMany).toHaveBeenCalledWith({
+      where: {
+        departmentId: actor.departmentId,
+        id: { in: ['holder-1', 'holder-2'] },
+      },
+      select: { id: true, name: true },
+    });
+  });
+
+  it('rejects missing holders before generating an audit', async () => {
+    const { service, tx } = fixture();
+    tx.rightsHolder.findMany.mockResolvedValueOnce([]);
+    await expect(
+      service.export(actor, { mode: 'FILTERED', expectedCount: 1 }),
+    ).rejects.toMatchObject({ response: { code: 'INTERNAL_ERROR' } });
+    expect(tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'positive',
+      [
+        {
+          category: 'DISCLOSURE',
+          state: 'KNOWN',
+          amount: new Prisma.Decimal('19.25'),
+        },
+      ],
+      '19.25',
+    ],
+    [
+      'zero',
+      [
+        {
+          category: 'DISCLOSURE',
+          state: 'KNOWN',
+          amount: new Prisma.Decimal('0'),
+        },
+      ],
+      '0.00',
+    ],
+    [
+      'pending',
+      [{ category: 'DISCLOSURE', state: 'PENDING', amount: null }],
+      '',
+    ],
+    ['unrecorded', [], ''],
+  ])(
+    'exports disclosure %s using the actual certificate fact',
+    async (_label, fees, expected) => {
+      const { service, tx } = fixture();
+      tx.notaryMatter.findMany.mockResolvedValueOnce([
+        {
+          ...row,
+          certificate: {
+            certificateNo: '证一',
+            certificateDate: new Date('2026-03-03'),
+            fees,
+          },
+        },
+      ] as unknown as (typeof row)[]);
+      const { csv } = await service.export(actor, {
+        mode: 'FILTERED',
+        expectedCount: 1,
+      });
+      expect(csv.split('\r\n')[1]?.split(',')[14]).toBe(expected);
+      expect(tx.notaryMatter.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            certificate: {
+              select: expect.objectContaining({
+                fees: expect.objectContaining({
+                  where: {
+                    category: { in: ['NOTARY', 'INVESTIGATION', 'DISCLOSURE'] },
+                  },
+                }),
+              }),
+            },
+          }),
+        }),
+      );
+    },
+  );
+
+  it('uses effective corrections and paired ordered logistics, preserving zero and unknown fees', async () => {
+    const { service, tx } = fixture();
+    tx.notaryMatter.findMany.mockResolvedValueOnce([
+      {
+        ...row,
+        evidence: {
+          evidenceAt: new Date('2026-01-01'),
+          sampleFeeState: 'KNOWN',
+          sampleFeeAmount: new Prisma.Decimal('0'),
+          logistics: [{ companyValue: '旧公司', trackingValue: '旧单号' }],
+        },
+        evidenceCorrections: [
+          {
+            evidenceAt: new Date('2026-02-02'),
+            logistics: [
+              { companyValue: '公司一', trackingValue: '单一' },
+              { companyValue: null, trackingValue: '单二' },
+            ],
+          },
+        ],
+        opening: {
+          senderName: '旧发货人',
+          senderPhone: '旧电话',
+          senderAddress: '旧地址',
+        },
+        openingSenderCorrections: [
+          {
+            senderName: '=新发货人',
+            senderPhone: null,
+            senderAddress: '新地址',
+          },
+        ],
+        certificate: {
+          certificateNo: '证一',
+          certificateDate: new Date('2026-03-03'),
+          fees: [
+            {
+              category: 'NOTARY',
+              state: 'KNOWN',
+              amount: new Prisma.Decimal('12.34'),
+            },
+            { category: 'INVESTIGATION', state: 'PENDING', amount: null },
+            {
+              category: 'DISCLOSURE',
+              state: 'KNOWN',
+              amount: new Prisma.Decimal('0'),
+            },
+          ],
+        },
+      },
+    ] as unknown as (typeof row)[]);
+    const { csv } = await service.export(actor, {
+      mode: 'SELECTED',
+      matterIds: [matterId],
+      expectedCount: 1,
+    });
+    expect(csv).toContain(
+      '2026-09-21,2026-02-02,"\'=新发货人",,新地址,12.34,,0.00,0.00,"公司一\n","单一\n单二",示例公证处,证一,2026-03-03',
+    );
+    expect(csv).not.toContain('旧');
+    expect(tx.notaryMatter.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          evidenceCorrections: expect.objectContaining({
+            orderBy: { revision: 'desc' },
+            take: 1,
+            include: { logistics: { orderBy: { position: 'asc' } } },
+          }),
+          openingSenderCorrections: expect.objectContaining({
+            orderBy: { revision: 'desc' },
+            take: 1,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('rechecks authorization at download after a successful preview', async () => {
+    const { service, access, tx } = fixture();
+    await service.preview(actor, { mode: 'FILTERED' });
+    access.buildLeadScope.mockRejectedValueOnce(new ForbiddenException());
+    await expect(
+      service.export(actor, { mode: 'FILTERED', expectedCount: 1 }),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    expect(tx.auditEvent.create).not.toHaveBeenCalled();
+  });
   it('requires both current grants and intersects their source-lead scopes', async () => {
     const { service, tx, access, database } = fixture();
     await expect(
@@ -182,14 +396,14 @@ describe('NotaryListExportService', () => {
     expect(tx.auditEvent.create).not.toHaveBeenCalled();
   });
 
-  it('writes five ordered BOM CSV columns and actual IDs to the audit in the transaction', async () => {
+  it('writes exactly twenty ordered BOM CSV columns and actual IDs to the audit in the transaction', async () => {
     const { service, tx } = fixture();
     tx.notaryMatter.findMany.mockResolvedValueOnce([
       {
         ...row,
         id: otherId,
         businessNo: '\t=cmd',
-        sourceLead: { businessNo: '"x\ny"' },
+        sourceLead: { ...row.sourceLead, shopName: '"x\ny"' },
         notaryOffice: { name: '  +SUM(1)' },
       },
       row,
@@ -199,8 +413,13 @@ describe('NotaryListExportService', () => {
       stage: 'PENDING_EVIDENCE',
       expectedCount: 2,
     });
-    expect(result.csv).toBe(
-      '\uFEFF公证事项编号,阶段,来源线索编号,公证处,创建时间\r\n"\t\'=cmd",待取证,"""x\ny""","  \'+SUM(1)",2026-09-30T01:02:03.000Z\r\nNT-001,待取证,LD-001,示例公证处,2026-09-30T01:02:03.000Z\r\n',
+    expect(result.csv.split('\r\n')[0]).toBe(
+      '\uFEFF公证编号,权利主体,平台,店铺名,店铺ID,案件进展,推送日期,取证日期,发货人,发货电话,发货地址,公证费,调查费,样品费,披露费,快递公司,快递单号,公证处,公证书编号,出证日期',
+    );
+    expect(result.csv).toContain('"\t\'=cmd",权利主体,淘宝,"""x\ny"""');
+    expect(result.csv).toContain('"  \'+SUM(1)"');
+    expect(result.csv).toContain(
+      'NT-001,权利主体,淘宝,店铺,,待取证,2026-09-21,,,,,,,,,,,示例公证处,,\r\n',
     );
     expect(tx.auditEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({

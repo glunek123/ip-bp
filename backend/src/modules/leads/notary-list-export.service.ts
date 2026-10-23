@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { AccessControlService } from '../../access-control/access-control.service';
@@ -16,6 +17,26 @@ import {
   PreviewNotaryListExportDto,
 } from './notary-list-export.dto';
 import { NotaryListStage } from './notary-list.dto';
+import { notaryDisplayFee, notaryTransferredDate } from './notary-display-read';
+
+const exportHeader =
+  '公证编号,权利主体,平台,店铺名,店铺ID,案件进展,推送日期,取证日期,发货人,发货电话,发货地址,公证费,调查费,样品费,披露费,快递公司,快递单号,公证处,公证书编号,出证日期';
+const platformLabels = {
+  TAOBAO: '淘宝',
+  TMALL: '天猫',
+  PINDUODUO: '拼多多',
+  JD: '京东',
+  DOUYIN: '抖音',
+  ALIBABA_1688: '1688',
+  XIAOHONGSHU: '小红书',
+  KUAISHOU: '快手',
+  XIANYU: '闲鱼',
+  WECHAT: '微信',
+  MEITUAN: '美团',
+  DIANPING: '大众点评',
+  MAP: '地图',
+  OTHER: '其他',
+};
 
 const stageLabels: Record<NotaryListStage, string> = {
   PENDING_EVIDENCE: '待取证',
@@ -64,21 +85,72 @@ export class NotaryListExportService {
             message: '导出范围已变化，请重新预览',
           });
         }
+        const holders = await tx.rightsHolder.findMany({
+          where: {
+            departmentId: actor.departmentId,
+            id: { in: [...new Set(rows.map((row) => row.rightsHolderId))] },
+          },
+          select: { id: true, name: true },
+        });
+        const holderNames = new Map(
+          holders.map((holder) => [holder.id, holder.name]),
+        );
         const csv =
           '\uFEFF' +
           [
-            '公证事项编号,阶段,来源线索编号,公证处,创建时间',
-            ...rows.map((row) =>
-              [
+            exportHeader,
+            ...rows.map((row) => {
+              const holderName = holderNames.get(row.rightsHolderId);
+              if (holderName === undefined || !holderName.trim()) {
+                throw new InternalServerErrorException({
+                  code: 'INTERNAL_ERROR',
+                  message: '公证事项来源数据不完整',
+                });
+              }
+              const evidence = row.evidenceCorrections[0] ?? row.evidence;
+              const sender = row.openingSenderCorrections[0] ?? row.opening;
+              const logistics = evidence?.logistics ?? [];
+              const fee = (category: string) =>
+                notaryDisplayFee(
+                  row.certificate?.fees.find(
+                    (item) => item.category === category,
+                  ),
+                ).amount ?? '';
+              return [
                 row.businessNo,
+                holderName,
+                platformLabels[row.sourceLead.platform],
+                row.sourceLead.shopName,
+                row.sourceLead.shopExternalId ?? '',
                 stageLabels[row.stage],
-                row.sourceLead.businessNo,
+                row.sourceLead.pushedAt === null
+                  ? ''
+                  : notaryTransferredDate(row.sourceLead.pushedAt),
+                evidence?.evidenceAt.toISOString().slice(0, 10) ?? '',
+                sender?.senderName ?? '',
+                sender?.senderPhone ?? '',
+                sender?.senderAddress ?? '',
+                fee('NOTARY'),
+                fee('INVESTIGATION'),
+                notaryDisplayFee(
+                  row.evidence === null
+                    ? null
+                    : {
+                        state: row.evidence.sampleFeeState,
+                        amount: row.evidence.sampleFeeAmount,
+                      },
+                ).amount ?? '',
+                fee('DISCLOSURE'),
+                logistics.map((item) => item.companyValue ?? '').join('\n'),
+                logistics.map((item) => item.trackingValue ?? '').join('\n'),
                 row.notaryOffice.name,
-                row.createdAt.toISOString(),
+                row.certificate?.certificateNo ?? '',
+                row.certificate?.certificateDate.toISOString().slice(0, 10) ??
+                  '',
               ]
                 .map(csvCell)
-                .join(','),
-            ),
+                .join(',');
+            }),
           ].join('\r\n') +
           '\r\n';
         const details =
@@ -171,7 +243,42 @@ export class NotaryListExportService {
         businessNo: true,
         stage: true,
         createdAt: true,
-        sourceLead: { select: { businessNo: true } },
+        rightsHolderId: true,
+        sourceLead: {
+          select: {
+            businessNo: true,
+            platform: true,
+            shopName: true,
+            shopExternalId: true,
+            pushedAt: true,
+          },
+        },
+        evidence: { include: { logistics: { orderBy: { position: 'asc' } } } },
+        evidenceCorrections: {
+          orderBy: { revision: 'desc' },
+          take: 1,
+          include: { logistics: { orderBy: { position: 'asc' } } },
+        },
+        opening: {
+          select: { senderName: true, senderPhone: true, senderAddress: true },
+        },
+        openingSenderCorrections: {
+          orderBy: { revision: 'desc' },
+          take: 1,
+          select: { senderName: true, senderPhone: true, senderAddress: true },
+        },
+        certificate: {
+          select: {
+            certificateNo: true,
+            certificateDate: true,
+            fees: {
+              where: {
+                category: { in: ['NOTARY', 'INVESTIGATION', 'DISCLOSURE'] },
+              },
+              select: { category: true, state: true, amount: true },
+            },
+          },
+        },
         notaryOffice: { select: { name: true } },
       },
     });
