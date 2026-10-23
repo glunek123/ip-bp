@@ -944,6 +944,7 @@ model Customer {
   id                       String                       @id @default(uuid()) @db.Uuid
   name                     String
   normalizedName           String                       @map("normalized_name")
+  customerManagerName      String?                      @map("customer_manager_name") @db.VarChar(100)
   customerType             String?                      @map("customer_type")
   identityType             String?                      @map("identity_type")
   identityNumber           String?                      @map("identity_number")
