@@ -1,6 +1,18 @@
 # SPEC-001 文档验证
 
-## 2026-10-23 一审176源码补审与五片组合候选
+## 2026-10-23 首批隔离PG通过与专项筛选源码组合
+
+隔离PG实际通过候选为`6b6153d716124e29cc4429488292bffe51494c84`，tree`81a96ed621b10786a1ac89ede4b1d8737f9079f4`。176 v4保留原SQL前缀，在同一尚未正式部署的草稿末尾前向替换`ca018_assert_external_trial_round`，仅把原案号比较改为现有有效受理案号函数，来源、部门、轮次、形状和指针保护完整保留；没有177。当前176 SQL SHA为`834c43c2783bb056715de3e5937f58dc3a4621ae343cc6e99cb95e6116b79153`。原Reviewer对两项产品差异与夹具窄审、两项诊断差异窄审分别ACCEPTED，C/I/M均0；源码直接回归2项、夹具7项及执行器真实外层故障注入1项按固定输入复用，不相加为完整业务验收。
+
+唯一Runner于06:33:48.751—06:34:02.160 UTC执行本轮，exit0／13.409秒。空库176、旧174真实链升级175／176、整份176 SQL失败原子回滚、字段新登记／继承／清空、连续No1→No2→No3更正、三个旧body／key重放和10个目标23514反例事务均通过。本轮353次整迁移文件调用、94次正向插入尝试（含14次临时Grant）、30次反例插入；每schema47条合成行。`cg_core_empty_92e63d4688e891ee`／OID101127和`cg_core_upgrade_c4ed41d487ebcff2`／OID101128均按owner／OID／跨schema依赖检查后精确清理，cleanupErrors＝0，连接／锁释放，净保留0。public174保护通过且未升级；没有登录凭据、会话、材料、业务HTTP、R2／H42或生产操作。
+
+结果为ignored`.local/demo-optimization/175176-acceptance/attempt-20261023T063348751Z-38fcc4e8/RESULT.json`，SHA`27ebdb4e1973538d9ac40886c3acd182416aa5954fc1ef19d5ecb2fe9b73cda1`；冻结v3清单SHA`aa3e02e92e20a873ca57466ee10c9baf731289ba8abf16fc2cfb4b2dc54d29da`。此前Prisma枚举夹具失败及真实旧守卫冲突的两个FAIL原样保留，没有拼成一次通过；累计705次文件调用、134次正向尝试（含22次Grant尝试）、48次反例尝试、58.137秒。22为跨轮尝试数，不是22条持久public授权；整文件调用也不是底层SQL语句总数。
+
+专项筛选原候选`92b8a7c72a7424dc47f14f15a0ca58db02d07dad`／tree`51caa2d7a4b173d1806afe06f05b9df119f36675`的19源＋1份Spec已独立审查。原BE83项、FE437项纯测试通过；该固定组合正常Prisma生成、`check:fast:prepared`、Spec、20文件格式／差异及前后端构建均exit0，未重复纯测试。工程回执SHA`cdf2d37255bceeb303162d562f89f1e0516a9288dce245adcaa4c8d8e0f0280d`，只保留Vite约1.86MB／gzip526KB大包提示；没有完整verify、PG或真实筛选页面／CSV运行。
+
+本地源码组合`51ce0c720d613081c50b21d5aba7088f68ef9f96`／tree`e28badef45c3f71d528c27f871ff3d317c0dbce1`已形成。6b6153d7和92b8a7c7是ace56c76的两个分支，不互为祖先；两项守卫／直接回归与20项筛选文件无重叠，组合是精确并集。相对92b8a7c7仅多已PG验证的176 SQL及直接源码回归，应用TS／Vue、schema、依赖和构建配置不变；相对6b6153d7仅多原冻结20文件。复用分别匹配输入的PG、工程及直接检查证据，不声称51ce0c72曾单次执行完整verify或PG。组合末核与本次三份非执行状态文档检查另记；真实页面及public175／176部署尚未执行，未推送。
+
+## 2026-10-23 一审176源码补审与五片组合候选（PG前历史）
 
 一审176 v3的25源已集成本地`e953ce9afea3d691e21c28dda886eebb65a686a9`，tree`7eac9868e8f7a0e7074865a979083fd75d4d13a0`。完整冻结清单SHA256为`93e1f4d1892195699206bf75d09bcd2075cb10360bcb8919749bc84ea7b62315`，集成后25／25 raw匹配；schema与176 SQL分别为`32f9522706743e1cf70e0ccb1e8845d181659cc31d0da5d52896768b3927255b`、`693eee6051afbfaf6613170ae37f24cd254510f4134b9aeb55d3a1334b5c3e4a`。175执行源按仓库LF保存，SHA为`ab62f59c5d9e50de948fa2682ca533caa19d9d505c2b40bf98a2896e83bb5c08`；作者原CRLF副本仅历史保留，不在运行时归一化来匹配旧哈希。
 
