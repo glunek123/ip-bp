@@ -1,3 +1,4 @@
+import { keyDetailDate } from './case-key-details';
 import {
   BadRequestException,
   ConflictException,
@@ -39,6 +40,7 @@ type ContactValue = {
   address: string | null;
 };
 type AcceptanceValue = {
+  paymentDueAt?: string | null;
   acceptanceId: string;
   expectedAcceptanceRevision: number;
   idempotencyKey: string;
@@ -254,6 +256,7 @@ export class CaseRecordEditService {
                 courtId: true,
                 acceptedAt: true,
                 courtCaseNo: true,
+                paymentDueAt: true,
                 corrections: {
                   orderBy: { toRevision: 'desc' },
                   take: 1,
@@ -262,6 +265,7 @@ export class CaseRecordEditService {
                     toRevision: true,
                     acceptedAt: true,
                     courtCaseNo: true,
+                    paymentDueAt: true,
                   },
                 },
               },
@@ -275,9 +279,21 @@ export class CaseRecordEditService {
               latest?.acceptedAt ?? acceptance.acceptedAt,
             );
             const beforeNo = latest?.courtCaseNo ?? acceptance.courtCaseNo;
+            const beforePayment =
+              (latest === undefined
+                ? acceptance.paymentDueAt
+                : latest.paymentDueAt) ?? null;
+            const paymentDueAt =
+              value.paymentDueAt === undefined
+                ? beforePayment
+                : value.paymentDueAt === null
+                  ? null
+                  : new Date(`${value.paymentDueAt}T00:00:00.000Z`);
             if (
               beforeDate === value.acceptedAt &&
-              beforeNo === value.courtCaseNo
+              beforeNo === value.courtCaseNo &&
+              (beforePayment?.getTime() ?? null) ===
+                (paymentDueAt?.getTime() ?? null)
             )
               throw this.validation('受理信息没有变化');
             await this.validateAcceptanceDate(
@@ -311,6 +327,10 @@ export class CaseRecordEditService {
                   toRevision: revision + 1,
                   beforeAcceptedAt: beforeDate,
                   beforeCourtCaseNo: beforeNo,
+                  beforePaymentDueAt:
+                    beforePayment?.toISOString().slice(0, 10) ?? null,
+                  paymentDueAt:
+                    paymentDueAt?.toISOString().slice(0, 10) ?? null,
                   acceptedAt: value.acceptedAt,
                   courtCaseNo: value.courtCaseNo,
                   reason: value.reason,
@@ -330,6 +350,7 @@ export class CaseRecordEditService {
                 toRevision: revision + 1,
                 acceptedAt: new Date(`${value.acceptedAt}T00:00:00.000Z`),
                 courtCaseNo: value.courtCaseNo,
+                paymentDueAt,
                 reason: value.reason,
                 recordedAt,
                 recordedByUserId: actor.userId,
@@ -854,12 +875,14 @@ export class CaseRecordEditService {
       'acceptedAt',
       'courtCaseNo',
       'reason',
+      'paymentDueAt',
     ];
     if (
       input === null ||
       typeof input !== 'object' ||
       Array.isArray(input) ||
-      Object.keys(input).length !== keys.length ||
+      Object.keys(input).length < keys.length - 1 ||
+      Object.keys(input).length > keys.length ||
       Object.keys(input).some((key) => !keys.includes(key)) ||
       typeof input.acceptanceId !== 'string' ||
       !uuid.test(input.acceptanceId) ||
@@ -886,6 +909,7 @@ export class CaseRecordEditService {
     )
       throw this.validation('受理更正参数无效');
     return {
+      ...keyDetailDate(input),
       acceptanceId: input.acceptanceId,
       expectedAcceptanceRevision: input.expectedAcceptanceRevision,
       idempotencyKey: input.idempotencyKey,

@@ -177,6 +177,7 @@ function hearing(v: unknown): v is CorrectHearingRecordInput {
       'trialRoundId',
       'expectedHearingRevision',
       'hearingAt',
+      ...(['hearingPlace', 'judgeName'] as const).filter((key) => key in v),
       'reason',
     ]) &&
     common(v) &&
@@ -184,6 +185,13 @@ function hearing(v: unknown): v is CorrectHearingRecordInput {
     uuid(v.trialRoundId) &&
     revision(v.expectedHearingRevision) &&
     date(v.hearingAt, true) &&
+    (['hearingPlace', 'judgeName'] as const).every(
+      (key) =>
+        !(key in v) ||
+        v[key] === null ||
+        (typeof v[key] === 'string' &&
+          v[key].length <= (key === 'hearingPlace' ? 500 : 200)),
+    ) &&
     reason(v.reason)
   );
 }
@@ -586,6 +594,8 @@ const error = ref('');
 const success = ref('');
 const draft = reactive({
   date: '',
+  hearingPlace: '',
+  judgeName: '',
   amountState: 'PENDING' as 'KNOWN' | 'PENDING',
   amount: '',
   feeState: 'PENDING' as 'KNOWN' | 'PENDING',
@@ -668,6 +678,8 @@ function defaultId(): string {
 function resetDraft(): void {
   Object.assign(draft, {
     date: '',
+    hearingPlace: '',
+    judgeName: '',
     amountState: 'PENDING',
     amount: '',
     feeState: 'PENDING',
@@ -705,6 +717,8 @@ function resetDraft(): void {
       break;
     case 'hearing':
       draft.date = target.entry.effective.hearingAt ?? '';
+      draft.hearingPlace = target.entry.effective.hearingPlace ?? '';
+      draft.judgeName = target.entry.effective.judgeName ?? '';
       break;
     case 'judgment':
       draft.date = target.entry.effective.judgmentReceivedAt;
@@ -746,7 +760,11 @@ function businessValues(request: CaseSectionRecordRequest): string {
         comparedIds(request.input.basisContentVersionIds),
       ]);
     case 'hearing':
-      return JSON.stringify([request.input.hearingAt]);
+      return JSON.stringify([
+        request.input.hearingAt,
+        request.input.hearingPlace ?? null,
+        request.input.judgeName ?? null,
+      ]);
     case 'judgment':
       return JSON.stringify([
         request.input.judgmentReceivedAt,
@@ -788,7 +806,11 @@ function effectiveValues(target: Target): string {
         comparedIds(target.entry.effective.basisContentVersionIds),
       ]);
     case 'hearing':
-      return JSON.stringify([target.entry.effective.hearingAt]);
+      return JSON.stringify([
+        target.entry.effective.hearingAt,
+        target.entry.effective.hearingPlace ?? null,
+        target.entry.effective.judgeName ?? null,
+      ]);
     case 'judgment':
       return JSON.stringify([
         target.entry.effective.judgmentReceivedAt,
@@ -1209,6 +1231,8 @@ function businessRequest(key: string): CaseSectionRecordRequest | null {
           trialRoundId: target.entry.trialRoundId,
           expectedHearingRevision: target.entry.hearingRevision,
           hearingAt: draft.date || null,
+          hearingPlace: draft.hearingPlace.trim() || null,
+          judgeName: draft.judgeName.trim() || null,
           reason,
         },
       };
@@ -1486,8 +1510,11 @@ function displayValues(
       { label: '结束原因', value: value.reason },
       { label: '依据说明', value: value.basisNote ?? '未登记' },
     );
-  if ('hearingAt' in value)
+  if ('hearingAt' in value) {
     result.push({ label: '开庭日期', value: value.hearingAt ?? '未知' });
+    result.push({ label: '开庭地点', value: value.hearingPlace ?? '未填写' });
+    result.push({ label: '法官姓名', value: value.judgeName ?? '未填写' });
+  }
   if ('judgmentReceivedAt' in value)
     result.push(
       { label: '收到判决日期', value: value.judgmentReceivedAt },
@@ -1744,6 +1771,20 @@ onBeforeUnmount(() => {
             :disabled="!editable"
           />
         </label>
+        <div v-if="kind === 'hearing'">
+          <label
+            >开庭地点（选填）<input
+              v-model="draft.hearingPlace"
+              maxlength="500"
+              :disabled="submitting"
+          /></label>
+          <label
+            >法官姓名（选填）<input
+              v-model="draft.judgeName"
+              maxlength="200"
+              :disabled="submitting"
+          /></label>
+        </div>
         <fieldset v-if="kind !== 'hearing'" class="form-stack">
           <legend>本条资料的精确文件版本</legend>
           <p class="field-help">

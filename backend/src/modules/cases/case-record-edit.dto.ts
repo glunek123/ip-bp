@@ -1,5 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsString, IsUUID, Min, ValidateIf } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsOptional,
+  IsInt,
+  IsString,
+  IsUUID,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 
 export class UpdateDefendantContactDto {
   @ApiProperty({ format: 'uuid' })
@@ -31,6 +38,11 @@ export class UpdateDefendantContactDto {
 }
 
 export class CorrectCaseAcceptanceDto {
+  @ApiPropertyOptional({ type: String, nullable: true, format: 'date' })
+  @IsOptional()
+  @IsString()
+  paymentDueAt?: string | null;
+
   @ApiProperty({ format: 'uuid' })
   @IsUUID('4')
   acceptanceId!: string;

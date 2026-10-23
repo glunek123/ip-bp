@@ -1,3 +1,4 @@
+import { keyDetailHearing } from './case-key-details';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   BadRequestException,
@@ -63,15 +64,21 @@ export class CaseHistoricalRecordEditService {
     caseId: string,
     input: CorrectHearingRecordDto,
   ): Promise<HearingRecordCorrectionResultDto> {
-    this.keys(input, [
-      'arrangementId',
-      'trialRoundId',
-      'expectedHearingRevision',
-      'idempotencyKey',
-      'reason',
-      'hearingAt',
-    ]);
+    this.keys(
+      input,
+      [
+        'arrangementId',
+        'trialRoundId',
+        'expectedHearingRevision',
+        'idempotencyKey',
+        'reason',
+        'hearingAt',
+        ...Object.keys(keyDetailHearing(input)),
+      ],
+      ['hearingPlace', 'judgeName'],
+    );
     const value = {
+      ...keyDetailHearing(input),
       arrangementId: this.id(input.arrangementId),
       trialRoundId: this.id(input.trialRoundId),
       expectedHearingRevision: this.revision(input.expectedHearingRevision),
@@ -111,10 +118,21 @@ export class CaseHistoricalRecordEditService {
           value.hearingAt,
           target.advances.length > 0,
         );
+        const current = head ?? target;
         const before = {
-          hearingAt: day(head === null ? target.hearingAt : head.hearingAt),
+          hearingAt: day(current.hearingAt),
+          hearingPlace: current.hearingPlace ?? null,
+          judgeName: current.judgeName ?? null,
         };
-        const after = { hearingAt: value.hearingAt };
+        const after = {
+          hearingAt: value.hearingAt,
+          hearingPlace:
+            value.hearingPlace === undefined
+              ? before.hearingPlace
+              : value.hearingPlace,
+          judgeName:
+            value.judgeName === undefined ? before.judgeName : value.judgeName,
+        };
         this.changed(before, after);
         const stamp = await this.audit(
           tx,
@@ -135,6 +153,8 @@ export class CaseHistoricalRecordEditService {
             arrangementId: target.id,
             trialRoundId: target.trialRoundId,
             hearingAt: dateValue(value.hearingAt),
+            hearingPlace: after.hearingPlace,
+            judgeName: after.judgeName,
           },
         });
         return {
@@ -822,13 +842,19 @@ export class CaseHistoricalRecordEditService {
       throw failure('VALIDATION_ERROR');
   }
 
-  private keys(value: object, keys: string[]) {
+  private keys(value: object, keys: string[], optionalKeys: string[] = []) {
     if (
       !value ||
       typeof value !== 'object' ||
       Array.isArray(value) ||
-      Object.keys(value).length !== keys.length ||
-      Object.keys(value).some((key) => !keys.includes(key))
+      Object.entries(value).filter(
+        ([key, entry]) => !optionalKeys.includes(key) || entry !== undefined,
+      ).length !== keys.length ||
+      Object.entries(value).some(
+        ([key, entry]) =>
+          (!optionalKeys.includes(key) || entry !== undefined) &&
+          !keys.includes(key),
+      )
     )
       throw failure('VALIDATION_ERROR');
   }

@@ -1,3 +1,6 @@
+import { ValidationPipe } from '@nestjs/common';
+import { configureApp } from '../../common/configure-app';
+import { RegisterCaseAcceptanceDto } from './case-acceptance.dto';
 import { ForbiddenException } from '@nestjs/common';
 import { CaseAcceptanceService } from './case-acceptance.service';
 
@@ -348,4 +351,88 @@ describe('CaseAcceptanceService', () => {
     ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
     expect(f.database.$transaction).not.toHaveBeenCalled();
   });
+  it('accepts only real payment dates without a today threshold, and preserves the old receipt fingerprint', async () => {
+    const f = fixture();
+    const saved = await f.service.register(actor, caseId, input);
+    const oldReceipt = f.tx.caseAcceptanceReceipt.create.mock.calls[0]![0].data;
+    // Legacy normalized request before any paymentDueAt key existed.
+    expect(oldReceipt.requestFingerprint).toBe(
+      '1aefddda50d95772b5132e5b09e5394cef28328eaed4578641589c920d182960',
+    );
+    f.tx.caseAcceptanceReceipt.findUnique.mockResolvedValue({
+      ...oldReceipt,
+      resultSnapshot: saved,
+    });
+    await expect(
+      f.service.register(actor, caseId, { ...input }),
+    ).resolves.toEqual(saved);
+    expect(f.tx.caseAcceptance.create).toHaveBeenCalledTimes(1);
+    const next = fixture();
+    await next.service.register(actor, caseId, {
+      ...input,
+      paymentDueAt: '2099-01-01',
+    });
+    expect(next.tx.caseAcceptance.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          paymentDueAt: new Date('2099-01-01T00:00:00.000Z'),
+        }),
+      }),
+    );
+    await expect(
+      next.service.register(actor, caseId, {
+        ...input,
+        paymentDueAt: '2026-02-30',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+  });
+  it('accepts legacy DTO instances from the real project pipe and replays their existing receipt', async () => {
+    const f = fixture();
+    const oldResult = await f.service.register(actor, caseId, input);
+    const receipt = f.tx.caseAcceptanceReceipt.create.mock.calls[0]![0].data;
+    f.tx.caseAcceptanceReceipt.findUnique.mockResolvedValue(receipt);
+    const dto = await projectValidationPipe().transform(
+      { ...input },
+      { type: 'body', metatype: RegisterCaseAcceptanceDto },
+    );
+    expect(dto).toBeInstanceOf(RegisterCaseAcceptanceDto);
+    await expect(f.service.register(actor, caseId, dto)).resolves.toEqual(
+      oldResult,
+    );
+    expect(f.tx.caseAcceptance.create).toHaveBeenCalledTimes(1);
+    const explicitUndefined = await projectValidationPipe().transform(
+      { ...input, paymentDueAt: undefined },
+      { type: 'body', metatype: RegisterCaseAcceptanceDto },
+    );
+    await expect(
+      f.service.register(actor, caseId, explicitUndefined),
+    ).resolves.toEqual(oldResult);
+    expect(f.tx.caseAcceptance.create).toHaveBeenCalledTimes(1);
+    const clearing = fixture();
+    const explicitNull = await projectValidationPipe().transform(
+      { ...input, paymentDueAt: null },
+      { type: 'body', metatype: RegisterCaseAcceptanceDto },
+    );
+    await clearing.service.register(actor, caseId, explicitNull);
+    expect(clearing.tx.caseAcceptance.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ paymentDueAt: null }),
+      }),
+    );
+  });
 });
+
+function projectValidationPipe(): ValidationPipe {
+  let pipe: ValidationPipe | undefined;
+  configureApp({
+    getHttpAdapter: () => ({ getInstance: () => ({ set: jest.fn() }) }),
+    setGlobalPrefix: jest.fn(),
+    use: jest.fn(),
+    useGlobalFilters: jest.fn(),
+    useGlobalPipes: (value: ValidationPipe) => {
+      pipe = value;
+    },
+  } as never);
+  if (!pipe) throw new Error('Missing project ValidationPipe');
+  return pipe;
+}

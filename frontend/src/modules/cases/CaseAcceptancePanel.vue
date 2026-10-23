@@ -48,6 +48,7 @@ const emit = defineEmits<{ changed: []; refresh: [] }>();
 
 const acceptedAt = ref(todayShanghai());
 const courtCaseNo = ref('');
+const paymentDueAt = ref('');
 const courtId = ref('');
 const courts = ref<FilingCourt[]>([]);
 const courtsLoading = ref(false);
@@ -92,6 +93,7 @@ function abortDownloads(): void {
 function clearContext(): void {
   acceptedAt.value = todayShanghai();
   courtCaseNo.value = '';
+  paymentDueAt.value = '';
   courtId.value = '';
   courts.value = [];
   selected.value = new Set();
@@ -264,6 +266,7 @@ function makeInput(): RegisterCaseAcceptanceInput {
   const input: RegisterCaseAcceptanceInput = {
     expectedVersion: props.item.version,
     idempotencyKey: requestKey || (requestKey = makeKey()),
+    paymentDueAt: paymentDueAt.value || null,
     acceptedAt: acceptedAt.value,
     courtCaseNo: courtCaseNo.value.trim(),
     ...(needsCourt.value ? { courtId: courtId.value } : {}),
@@ -461,6 +464,12 @@ async function download(file: CaseFile): Promise<void> {
           "
         />
       </label>
+      <label
+        >缴费截止日（选填）<input
+          v-model="paymentDueAt"
+          type="date"
+          :disabled="submitting"
+      /></label>
       <label>
         <span>法院案号 <span class="required-mark">*</span></span>
         <input
@@ -506,6 +515,7 @@ async function download(file: CaseFile): Promise<void> {
     </form>
 
     <p v-else-if="item.acceptance" data-test="case-acceptance-record">
+      缴费截止日：{{ item.acceptance.paymentDueAt ?? '未填写' }} ·
       实际受理日期：{{ item.acceptance.acceptedAt }} · 法院案号：{{
         item.acceptance.courtCaseNo
       }}

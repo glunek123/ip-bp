@@ -153,6 +153,56 @@ function mountPanel(
 }
 
 describe('case hearing panel', () => {
+  it('keeps an unknown request exact, then uses deferred refreshed details for the next date edit', async () => {
+    const arrangement = {
+      id: '80000000-0000-4000-8000-000000000011',
+      trialRoundId: '70000000-0000-4000-8000-000000000099',
+      hearingAt: '2026-10-20',
+      source: 'SCHEDULE' as const,
+      recordedAt: '2026-10-01T00:00:00.000Z',
+      hearingPlace: '旧法庭',
+      judgeName: '旧法官',
+    };
+    const item = {
+      ...baseItem,
+      hearing: { ...baseItem.hearing, currentArrangement: arrangement },
+    };
+    api.scheduleCaseHearing.mockRejectedValueOnce(
+      new ApiError('timeout', 0, 'TIMEOUT'),
+    );
+    const wrapper = mountPanel(item);
+    await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-21');
+    await wrapper.get('[data-test="hearing-save"]').trigger('click');
+    await flushPromises();
+    const original = structuredClone(api.scheduleCaseHearing.mock.calls[0]);
+    const refreshed = {
+      ...item,
+      hearing: {
+        ...item.hearing,
+        currentArrangement: {
+          ...arrangement,
+          hearingPlace: '更正法庭',
+          judgeName: null,
+        },
+      },
+    };
+    await wrapper.setProps({ item: refreshed });
+    expect(
+      (wrapper.get('input[maxlength="500"]').element as HTMLInputElement).value,
+    ).toBe('旧法庭');
+    await wrapper.get('[data-test="hearing-retry"]').trigger('click');
+    await flushPromises();
+    expect(api.scheduleCaseHearing.mock.calls[1]).toEqual(original);
+    await wrapper.setProps({ item: { ...refreshed } });
+    await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-22');
+    await wrapper.get('[data-test="hearing-save"]').trigger('click');
+    await flushPromises();
+    expect(api.scheduleCaseHearing.mock.calls[2]?.[1]).toMatchObject({
+      hearingAt: '2026-10-22',
+      hearingPlace: '更正法庭',
+      judgeName: null,
+    });
+  });
   it('allows a real hearing date for a direct external entry without formal acceptance', async () => {
     const { sourceLead, sourceNotaryMatter, certificate, fees, ...base } =
       baseItem;
@@ -663,6 +713,63 @@ describe('case hearing panel', () => {
     expect(wrapper.find('[data-test="hearing-correct"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="hearing-schedule-form"]').exists()).toBe(
       false,
+    );
+  });
+  it('submits the entered hearing place and judge with the ordinary schedule', async () => {
+    const wrapper = mountPanel(baseItem);
+    await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-08');
+    await wrapper.get('input[maxlength="500"]').setValue('第一法庭');
+    await wrapper.get('input[maxlength="200"]').setValue('张法官');
+    await wrapper.get('[data-test="hearing-save"]').trigger('click');
+    await flushPromises();
+    expect(api.scheduleCaseHearing).toHaveBeenCalledWith(
+      baseItem.id,
+      expect.objectContaining({
+        hearingPlace: '第一法庭',
+        judgeName: '张法官',
+      }),
+      'internal',
+    );
+  });
+  it('uses refreshed effective details after same-version record correction when only the date is edited', async () => {
+    const arrangement = {
+      id: '80000000-0000-4000-8000-000000000011',
+      trialRoundId: '70000000-0000-4000-8000-000000000099',
+      hearingAt: '2026-10-20',
+      source: 'SCHEDULE' as const,
+      recordedAt: '2026-10-01T00:00:00.000Z',
+      hearingPlace: '旧法庭',
+      judgeName: '旧法官',
+    };
+    const item = {
+      ...baseItem,
+      hearing: { ...baseItem.hearing, currentArrangement: arrangement },
+    };
+    const wrapper = mountPanel(item);
+    await wrapper.setProps({
+      item: {
+        ...item,
+        hearing: {
+          ...item.hearing,
+          currentArrangement: {
+            ...arrangement,
+            hearingPlace: '更正法庭',
+            judgeName: null,
+          },
+        },
+      },
+    });
+    await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-21');
+    await wrapper.get('[data-test="hearing-save"]').trigger('click');
+    await flushPromises();
+    expect(api.scheduleCaseHearing).toHaveBeenCalledWith(
+      item.id,
+      expect.objectContaining({
+        hearingAt: '2026-10-21',
+        hearingPlace: '更正法庭',
+        judgeName: null,
+      }),
+      'internal',
     );
   });
 });

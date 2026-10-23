@@ -1,3 +1,4 @@
+import { keyDetailDate } from './case-key-details';
 import {
   BadRequestException,
   ConflictException,
@@ -285,6 +286,7 @@ export class CaseAcceptanceService {
                   fromVersion: value.expectedVersion,
                   toVersion: value.expectedVersion + 1,
                   acceptedAt: value.acceptedAt,
+                  paymentDueAt: value.paymentDueAt ?? null,
                   courtCaseNo: value.courtCaseNo,
                   ...(value.courtId !== null ? { courtId: value.courtId } : {}),
                   acceptanceNoticeContentVersionIds:
@@ -307,6 +309,10 @@ export class CaseAcceptanceService {
                 courtId: value.courtId,
                 acceptedAt: new Date(`${value.acceptedAt}T00:00:00.000Z`),
                 courtCaseNo: value.courtCaseNo,
+                paymentDueAt:
+                  value.paymentDueAt == null
+                    ? null
+                    : new Date(`${value.paymentDueAt}T00:00:00.000Z`),
                 recordedAt,
                 recordedByUserId: actor.userId,
                 auditEventId: audit.id,
@@ -405,6 +411,7 @@ export class CaseAcceptanceService {
     )
       throw this.validation();
     return {
+      ...keyDetailDate(input),
       expectedVersion: input.expectedVersion,
       idempotencyKey: input.idempotencyKey,
       acceptedAt: input.acceptedAt,

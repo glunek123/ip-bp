@@ -196,7 +196,9 @@ export type AcceptanceCorrectionEdit = {
   acceptanceRevision: number;
   originalAcceptedAt: string;
   originalCourtCaseNo: string;
+  originalPaymentDueAt?: string | null;
   history: Array<{
+    paymentDueAt?: string | null;
     id: string;
     priorCorrectionId: string | null;
     fromRevision: number;
@@ -365,7 +367,10 @@ export type ExecutionFinishRecordValues = Pick<
   CorrectExecutionFinishRecordInput,
   'finishedAt' | 'reason' | 'basisNote' | 'basisContentVersionIds'
 > & { files: CaseFile[] };
-export type HearingRecordValues = Pick<CorrectHearingRecordInput, 'hearingAt'>;
+export type HearingRecordValues = Pick<
+  CorrectHearingRecordInput,
+  'hearingAt' | 'hearingPlace' | 'judgeName'
+>;
 export type JudgmentRecordValues = Pick<
   CorrectJudgmentRecordInput,
   | 'judgmentReceivedAt'
@@ -698,6 +703,8 @@ export type CaseArchivePendingRequest =
   | { command: 'ARCHIVE'; input: ArchiveCaseInput }
   | { command: 'CORRECT'; input: CorrectCaseArchiveInput };
 export type CaseHearingArrangement = {
+  hearingPlace?: string | null;
+  judgeName?: string | null;
   id: string;
   trialRoundId: string;
   hearingAt: string | null;
@@ -851,6 +858,7 @@ export type AcceptanceMaterialGroup = {
   later: CaseFile[];
 };
 export type CaseAcceptance = {
+  paymentDueAt?: string | null;
   id: string;
   trialRoundId: string;
   acceptedAt: string;
@@ -2599,9 +2607,14 @@ function exactWithOptional(
 function validHearingArrangement(value: unknown, internal: boolean): boolean {
   if (!record(value)) return false;
   const required = ['id', 'trialRoundId', 'hearingAt', 'source', 'recordedAt'];
-  const optional = internal ? ['recordedByUserId'] : [];
+  const optional = [
+    'hearingPlace',
+    'judgeName',
+    ...(internal ? ['recordedByUserId'] : []),
+  ];
   return (
     exactWithOptional(value, required, optional) &&
+    optionalHearingDetails(value) &&
     uuidV4(value.id) &&
     uuidV4(value.trialRoundId) &&
     (value.hearingAt === null || businessDate(value.hearingAt)) &&
@@ -3200,9 +3213,10 @@ function validAcceptanceHistory(value: unknown, internal: boolean): boolean {
     'recordedAt',
     'files',
   ];
-  const optional = internal ? ['recordedByUserId'] : [];
+  const optional = ['paymentDueAt', ...(internal ? ['recordedByUserId'] : [])];
   return (
     exactWithOptional(value, required, optional) &&
+    optionalPayment(value) &&
     uuidV4(value.id) &&
     uuidV4(value.trialRoundId) &&
     businessDate(value.acceptedAt) &&
@@ -3426,6 +3440,7 @@ function sectionValues(
       (value.note !== null && !finishText(value.note)))
   )
     return false;
+  if (kind === 'hearings' && !optionalHearingDetails(value)) return false;
   return true;
 }
 function sameSectionValue(left: unknown, right: unknown): boolean {
@@ -3468,6 +3483,12 @@ function validSectionRecordEdits(value: Record<string, unknown>): boolean {
         ])
       )
         return false;
+      const detailKeys =
+        kind === 'hearings' ? ['hearingPlace', 'judgeName'] : [];
+      const valueKeys = (v: Record<string, unknown>) => [
+        ...fields,
+        ...detailKeys.filter((key) => key in v),
+      ];
       const target = entry[contract.target];
       if (
         !uuidV4(target) ||
@@ -3476,10 +3497,10 @@ function validSectionRecordEdits(value: Record<string, unknown>): boolean {
         typeof entry.canEdit !== 'boolean' ||
         (contract.round && !uuidV4(entry.trialRoundId)) ||
         !record(entry.original) ||
-        !exact(entry.original, fields) ||
+        !exact(entry.original, valueKeys(entry.original)) ||
         !sectionValues(entry.original, kind, true) ||
         !record(entry.effective) ||
-        !exact(entry.effective, fields) ||
+        !exact(entry.effective, valueKeys(entry.effective)) ||
         !sectionValues(entry.effective, kind, true) ||
         !Array.isArray(entry.history)
       )
@@ -3493,7 +3514,7 @@ function validSectionRecordEdits(value: Record<string, unknown>): boolean {
         if (
           !record(correction) ||
           !exact(correction, [
-            ...fields,
+            ...valueKeys(correction),
             'id',
             'priorCorrectionId',
             'fromRevision',
@@ -3522,7 +3543,7 @@ function validSectionRecordEdits(value: Record<string, unknown>): boolean {
       const projected = entry.effective;
       return (
         entry[contract.revision] === revision &&
-        fields.every((field) =>
+        [...fields, ...detailKeys].every((field) =>
           sameSectionValue(effective[field], projected[field]),
         )
       );
@@ -3537,7 +3558,10 @@ function sectionProjectionMatches(
 ): boolean {
   const contract = sectionRecordContracts[kind];
   return (
-    contract.fields
+    [
+      ...contract.fields,
+      ...(kind === 'hearings' ? ['hearingPlace', 'judgeName'] : []),
+    ]
       .filter((field) => field !== contract.files)
       .every((field) => sameSectionValue(source[field], values[field])) &&
     (contract.files === null || sameSectionValue(source.files, values.files))
@@ -3662,6 +3686,9 @@ async function submitSectionRecordCorrection<K extends SectionRecordKind>(
       'idempotencyKey',
       contract.reason,
       ...contract.fields,
+      ...(kind === 'hearings' && record(input)
+        ? ['hearingPlace', 'judgeName'].filter((key) => key in input)
+        : []),
       ...(contract.round ? ['trialRoundId'] : []),
       ...(kind === 'closures' ? ['expectedClosureVersionId'] : []),
     ]) ||
@@ -3884,6 +3911,7 @@ function validRecordEdits(
         'acceptanceRevision',
         'originalAcceptedAt',
         'originalCourtCaseNo',
+        ...('originalPaymentDueAt' in entry ? ['originalPaymentDueAt'] : []),
         'history',
       ]) ||
       !uuidV4(entry.acceptanceId) ||
@@ -3894,6 +3922,9 @@ function validRecordEdits(
         entry.trialRoundId ||
       !Number.isInteger(entry.acceptanceRevision) ||
       (entry.acceptanceRevision as number) < 0 ||
+      ('originalPaymentDueAt' in entry &&
+        entry.originalPaymentDueAt !== null &&
+        !businessDate(entry.originalPaymentDueAt)) ||
       !businessDate(entry.originalAcceptedAt) ||
       !nonempty(entry.originalCourtCaseNo) ||
       entry.originalCourtCaseNo.trim() !== entry.originalCourtCaseNo ||
@@ -3906,6 +3937,7 @@ function validRecordEdits(
     let priorId: string | null = null;
     let acceptedAt = entry.originalAcceptedAt;
     let courtCaseNo = entry.originalCourtCaseNo;
+    let paymentDueAt = entry.originalPaymentDueAt ?? null;
     for (const correction of entry.history) {
       if (
         !record(correction) ||
@@ -3915,6 +3947,7 @@ function validRecordEdits(
           'fromRevision',
           'toRevision',
           'acceptedAt',
+          ...('paymentDueAt' in correction ? ['paymentDueAt'] : []),
           'courtCaseNo',
           'reason',
           'recordedAt',
@@ -3924,6 +3957,7 @@ function validRecordEdits(
         correction.priorCorrectionId !== priorId ||
         correction.fromRevision !== revision ||
         correction.toRevision !== revision + 1 ||
+        !optionalPayment(correction) ||
         !businessDate(correction.acceptedAt) ||
         !nonempty(correction.courtCaseNo) ||
         correction.courtCaseNo.trim() !== correction.courtCaseNo ||
@@ -3940,10 +3974,12 @@ function validRecordEdits(
       priorId = correction.id;
       acceptedAt = correction.acceptedAt;
       courtCaseNo = correction.courtCaseNo;
+      paymentDueAt = correction.paymentDueAt ?? null;
     }
     const current = acceptanceById.get(entry.acceptanceId)!;
     if (
       revision !== entry.acceptanceRevision ||
+      (current.paymentDueAt ?? null) !== paymentDueAt ||
       current.acceptedAt !== acceptedAt ||
       current.courtCaseNo !== courtCaseNo
     )
@@ -4890,6 +4926,7 @@ export type SubmitCaseFilingResult = {
   recordedAt: string;
 };
 export type RegisterCaseAcceptanceInput = {
+  paymentDueAt?: string | null;
   expectedVersion: number;
   idempotencyKey: string;
   acceptedAt: string;
@@ -4908,6 +4945,8 @@ export type RegisterCaseAcceptanceResult = {
   recordedAt: string;
 };
 export type SaveCaseHearingInput = {
+  hearingPlace?: string | null;
+  judgeName?: string | null;
   expectedVersion: number;
   idempotencyKey: string;
   hearingAt: string | null;
@@ -5416,6 +5455,7 @@ function uniqueVersions(values: string[], minimum: number, maximum: number) {
 }
 function validCaseHearingInput(input: SaveCaseHearingInput): boolean {
   return (
+    optionalHearingDetails({ ...input }) &&
     Number.isInteger(input.expectedVersion) &&
     input.expectedVersion >= 1 &&
     typeof input.idempotencyKey === 'string' &&
@@ -5708,6 +5748,7 @@ export async function registerCaseAcceptance(
     !input.idempotencyKey ||
     input.idempotencyKey !== input.idempotencyKey.trim() ||
     input.idempotencyKey.length > 128 ||
+    !optionalPayment({ ...input }) ||
     !businessDate(input.acceptedAt) ||
     input.acceptedAt > todayShanghai() ||
     (input.courtId !== undefined && !uuidV4(input.courtId)) ||
@@ -5725,6 +5766,9 @@ export async function registerCaseAcceptance(
   const body = {
     expectedVersion: input.expectedVersion,
     idempotencyKey: input.idempotencyKey,
+    ...(!Object.hasOwn(input, 'paymentDueAt')
+      ? {}
+      : { paymentDueAt: input.paymentDueAt }),
     acceptedAt: input.acceptedAt,
     courtCaseNo,
     ...(input.courtId === undefined ? {} : { courtId: input.courtId }),
@@ -6438,6 +6482,7 @@ export type UpdateCaseDefendantContactResult = {
   recordedAt: string;
 };
 export type CorrectCaseAcceptanceInput = {
+  paymentDueAt?: string | null;
   acceptanceId: string;
   expectedAcceptanceRevision: number;
   idempotencyKey: string;
@@ -6555,6 +6600,7 @@ export async function correctCaseAcceptance(
   const courtCaseNo = input.courtCaseNo.trim();
   const reason = input.reason.trim();
   if (
+    !optionalPayment({ ...input }) ||
     !uuidV4(id) ||
     !uuidV4(input.acceptanceId) ||
     !Number.isInteger(input.expectedAcceptanceRevision) ||
@@ -6576,6 +6622,9 @@ export async function correctCaseAcceptance(
         acceptanceId: input.acceptanceId,
         expectedAcceptanceRevision: input.expectedAcceptanceRevision,
         idempotencyKey: input.idempotencyKey,
+        ...(!Object.hasOwn(input, 'paymentDueAt')
+          ? {}
+          : { paymentDueAt: input.paymentDueAt }),
         acceptedAt: input.acceptedAt,
         courtCaseNo,
         reason,
@@ -7713,5 +7762,23 @@ export function correctLawyerCaseExecutionFilingSupplement(
     input,
     'supplements',
     options,
+  );
+}
+
+function optionalPayment(value: Record<string, unknown>): boolean {
+  return (
+    !('paymentDueAt' in value) ||
+    value.paymentDueAt === null ||
+    businessDate(value.paymentDueAt)
+  );
+}
+function optionalHearingDetails(value: Record<string, unknown>): boolean {
+  return (['hearingPlace', 'judgeName'] as const).every(
+    (key) =>
+      !(key in value) ||
+      value[key] === null ||
+      (typeof value[key] === 'string' &&
+        value[key] === value[key].trim() &&
+        value[key].length <= (key === 'hearingPlace' ? 500 : 200)),
   );
 }

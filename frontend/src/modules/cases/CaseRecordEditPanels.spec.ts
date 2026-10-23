@@ -595,6 +595,7 @@ describe('case record edit panels', () => {
       idempotencyKey: expect.any(String),
       acceptedAt: '2026-10-02',
       courtCaseNo: '（2026）更正案号',
+      paymentDueAt: null,
       reason: '核对立案通知',
     });
     expect(

@@ -97,6 +97,8 @@ class CaseAcceptanceFileDto extends CaseCertificateFileDto {
   category!: 'ACCEPTANCE_NOTICE' | 'PAYMENT_LIST' | 'SERVICE_DOCUMENT';
 }
 class CaseAcceptanceSummaryDto {
+  @ApiPropertyOptional({ type: String, nullable: true, format: 'date' })
+  paymentDueAt?: string | null;
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
   @ApiProperty({ format: 'date' }) acceptedAt!: string;
@@ -124,6 +126,10 @@ class CaseAcceptanceMaterialsDto {
 }
 
 class CaseHearingArrangementDto {
+  @ApiPropertyOptional({ type: String, nullable: true }) hearingPlace?:
+    string | null;
+  @ApiPropertyOptional({ type: String, nullable: true }) judgeName?:
+    string | null;
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
   @ApiProperty({ type: String, nullable: true, format: 'date' }) hearingAt!:
@@ -788,6 +794,8 @@ class CaseDefendantContactHistoryDto {
   history!: CaseDefendantContactChangeDto[];
 }
 class CaseAcceptanceCorrectionHistoryItemDto {
+  @ApiPropertyOptional({ type: String, nullable: true, format: 'date' })
+  paymentDueAt?: string | null;
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ type: String, nullable: true, format: 'uuid' })
   priorCorrectionId!: string | null;
@@ -800,6 +808,8 @@ class CaseAcceptanceCorrectionHistoryItemDto {
   @ApiProperty({ format: 'uuid' }) recordedByUserId!: string;
 }
 class CaseAcceptanceCorrectionHistoryDto {
+  @ApiPropertyOptional({ type: String, nullable: true, format: 'date' })
+  originalPaymentDueAt?: string | null;
   @ApiProperty({ format: 'uuid' }) acceptanceId!: string;
   @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
   @ApiProperty() acceptanceRevision!: number;

@@ -12,6 +12,11 @@ import {
 } from 'class-validator';
 
 export class RegisterCaseAcceptanceDto {
+  @ApiPropertyOptional({ type: String, nullable: true, format: 'date' })
+  @IsOptional()
+  @IsString()
+  paymentDueAt?: string | null;
+
   @ApiProperty({ minimum: 1 })
   @IsInt()
   @Min(1)

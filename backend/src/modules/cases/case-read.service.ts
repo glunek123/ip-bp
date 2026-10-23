@@ -942,6 +942,7 @@ export class CaseReadService {
             court: { select: { id: true, name: true } },
             acceptedAt: true,
             courtCaseNo: true,
+            paymentDueAt: true,
             recordedAt: true,
             recordedByUserId: true,
             corrections: {
@@ -953,6 +954,7 @@ export class CaseReadService {
                 toRevision: true,
                 acceptedAt: true,
                 courtCaseNo: true,
+                paymentDueAt: true,
                 reason: true,
                 recordedAt: true,
                 recordedByUserId: true,
@@ -978,6 +980,7 @@ export class CaseReadService {
             court: { select: { id: true, name: true } },
             acceptedAt: true,
             courtCaseNo: true,
+            paymentDueAt: true,
             recordedAt: true,
             recordedByUserId: true,
             corrections: {
@@ -989,6 +992,7 @@ export class CaseReadService {
                 toRevision: true,
                 acceptedAt: true,
                 courtCaseNo: true,
+                paymentDueAt: true,
                 reason: true,
                 recordedAt: true,
                 recordedByUserId: true,
@@ -1263,6 +1267,8 @@ export class CaseReadService {
             id: true,
             trialRoundId: true,
             hearingAt: true,
+            hearingPlace: true,
+            judgeName: true,
             source: true,
             recordedAt: true,
             recordedByUserId: true,
@@ -1283,6 +1289,8 @@ export class CaseReadService {
             id: true,
             trialRoundId: true,
             hearingAt: true,
+            hearingPlace: true,
+            judgeName: true,
             source: true,
             recordedAt: true,
             recordedByUserId: true,
@@ -2007,6 +2015,8 @@ export class CaseReadService {
       id: value.id,
       trialRoundId: value.trialRoundId,
       hearingAt: value.hearingAt?.toISOString().slice(0, 10) ?? null,
+      hearingPlace: value.hearingPlace ?? null,
+      judgeName: value.judgeName ?? null,
       source: value.source,
       recordedAt: value.recordedAt.toISOString(),
       ...(principal === 'INTERNAL'
@@ -2148,10 +2158,16 @@ export class CaseReadService {
           row.trialRoundId === root.trialRoundId,
       );
       const projection = projectSectionRecord(
-        { hearingAt: root.hearingAt === null ? null : isoDate(root.hearingAt) },
+        {
+          hearingAt: root.hearingAt === null ? null : isoDate(root.hearingAt),
+          hearingPlace: root.hearingPlace ?? null,
+          judgeName: root.judgeName ?? null,
+        },
         corrections,
         (row) => ({
           hearingAt: row.hearingAt === null ? null : isoDate(row.hearingAt),
+          hearingPlace: row.hearingPlace ?? null,
+          judgeName: row.judgeName ?? null,
         }),
       );
       return {
@@ -2427,6 +2443,14 @@ export class CaseReadService {
             ? null
             : {
                 ...arrangement(record.currentHearingArrangement),
+                hearingPlace:
+                  currentHearingRecord === undefined
+                    ? (record.currentHearingArrangement.hearingPlace ?? null)
+                    : currentHearingRecord.effective.hearingPlace,
+                judgeName:
+                  currentHearingRecord === undefined
+                    ? (record.currentHearingArrangement.judgeName ?? null)
+                    : currentHearingRecord.effective.judgeName,
                 hearingAt:
                   currentHearingRecord === undefined
                     ? (record.currentHearingArrangement.hearingAt
@@ -2657,6 +2681,8 @@ export class CaseReadService {
                   acceptance.corrections.at(-1)?.toRevision ?? 0,
                 originalAcceptedAt: isoDate(acceptance.acceptedAt),
                 originalCourtCaseNo: acceptance.courtCaseNo,
+                originalPaymentDueAt:
+                  acceptance.paymentDueAt?.toISOString().slice(0, 10) ?? null,
                 history: acceptance.corrections.map((correction) => ({
                   id: correction.id,
                   priorCorrectionId: correction.priorCorrectionId,
@@ -2664,6 +2690,8 @@ export class CaseReadService {
                   toRevision: correction.toRevision,
                   acceptedAt: isoDate(correction.acceptedAt),
                   courtCaseNo: correction.courtCaseNo,
+                  paymentDueAt:
+                    correction.paymentDueAt?.toISOString().slice(0, 10) ?? null,
                   reason: correction.reason,
                   recordedAt: correction.recordedAt.toISOString(),
                   recordedByUserId: correction.recordedByUserId,
@@ -3171,6 +3199,13 @@ export class CaseReadService {
               courtCaseNo:
                 record.acceptance.corrections.at(-1)?.courtCaseNo ??
                 record.acceptance.courtCaseNo,
+              paymentDueAt:
+                (record.acceptance.corrections.length === 0
+                  ? record.acceptance.paymentDueAt
+                  : record.acceptance.corrections.at(-1)?.paymentDueAt
+                )
+                  ?.toISOString()
+                  .slice(0, 10) ?? null,
               recordedAt: record.acceptance.recordedAt.toISOString(),
               recordedByUserId: record.acceptance.recordedByUserId,
               files: record.acceptance.versions.map((version) => ({
@@ -3196,6 +3231,13 @@ export class CaseReadService {
           .toISOString()
           .slice(0, 10),
         courtCaseNo: value.corrections.at(-1)?.courtCaseNo ?? value.courtCaseNo,
+        paymentDueAt:
+          (value.corrections.length === 0
+            ? value.paymentDueAt
+            : value.corrections.at(-1)?.paymentDueAt
+          )
+            ?.toISOString()
+            .slice(0, 10) ?? null,
         recordedAt: value.recordedAt.toISOString(),
         ...(principal === 'INTERNAL'
           ? { recordedByUserId: value.recordedByUserId }

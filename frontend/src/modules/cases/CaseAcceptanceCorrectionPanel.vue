@@ -26,6 +26,7 @@ const emit = defineEmits<{
 const acceptanceId = ref(props.item.acceptances[0]?.id ?? '');
 const acceptedAt = ref('');
 const courtCaseNo = ref('');
+const paymentDueAt = ref('');
 const reason = ref('');
 const submitting = ref(false);
 const error = ref('');
@@ -35,6 +36,7 @@ const draftBase = ref<{
   acceptanceRevision: number;
   acceptedAt: string;
   courtCaseNo: string;
+  paymentDueAt: string | null;
 } | null>(null);
 let revision = 0;
 let active = true;
@@ -85,6 +87,7 @@ const canRetryOriginal = computed(
 function setSelectedValues(): void {
   acceptedAt.value = selected.value?.acceptedAt ?? '';
   courtCaseNo.value = selected.value?.courtCaseNo ?? '';
+  paymentDueAt.value = selected.value?.paymentDueAt ?? '';
   reason.value = '';
   draftBase.value =
     selected.value && recordEdit.value
@@ -92,6 +95,7 @@ function setSelectedValues(): void {
           acceptanceRevision: recordEdit.value.acceptanceRevision,
           acceptedAt: selected.value.acceptedAt,
           courtCaseNo: selected.value.courtCaseNo,
+          paymentDueAt: selected.value.paymentDueAt ?? null,
         }
       : null;
 }
@@ -106,6 +110,7 @@ const canSave = computed(() => {
       recordEdit.value.acceptanceRevision &&
     draftBase.value.acceptedAt === selected.value?.acceptedAt &&
     draftBase.value.courtCaseNo === selected.value?.courtCaseNo &&
+    draftBase.value.paymentDueAt === (selected.value?.paymentDueAt ?? null) &&
     !submitting.value &&
     unknownRequest.value === null &&
     /^\d{4}-\d{2}-\d{2}$/u.test(acceptedAt.value) &&
@@ -114,7 +119,8 @@ const canSave = computed(() => {
     nextReason.length >= 1 &&
     nextReason.length <= 500 &&
     (acceptedAt.value !== selected.value?.acceptedAt ||
-      nextNo !== selected.value?.courtCaseNo)
+      nextNo !== selected.value?.courtCaseNo ||
+      (paymentDueAt.value || null) !== (selected.value?.paymentDueAt ?? null))
   );
 });
 watch(
@@ -145,12 +151,15 @@ watch(
     () => recordEdit.value?.acceptanceRevision,
     () => selected.value?.acceptedAt,
     () => selected.value?.courtCaseNo,
+    () => selected.value?.paymentDueAt,
   ],
   (next, previous) => {
     if (!previous || unknownRequest.value) return;
     const hasDraft =
       acceptedAt.value !== (draftBase.value?.acceptedAt ?? '') ||
       courtCaseNo.value !== (draftBase.value?.courtCaseNo ?? '') ||
+      (paymentDueAt.value || null) !==
+        (draftBase.value?.paymentDueAt ?? null) ||
       reason.value.trim().length > 0;
     setSelectedValues();
     if (
@@ -262,6 +271,7 @@ function save(): void {
     acceptanceId: selected.value.id,
     expectedAcceptanceRevision: draftBase.value.acceptanceRevision,
     idempotencyKey: key,
+    paymentDueAt: paymentDueAt.value || null,
     acceptedAt: acceptedAt.value,
     courtCaseNo: courtCaseNo.value.trim(),
     reason: reason.value.trim(),
@@ -333,6 +343,12 @@ onBeforeUnmount(() => {
           :disabled="!!unknownRequest"
         />
       </label>
+      <label
+        >缴费截止日（选填）<input
+          v-model="paymentDueAt"
+          type="date"
+          :disabled="submitting || unknownRequest !== null"
+      /></label>
       <label class="form-field">
         &#x6cd5;&#x9662;&#x6848;&#x53f7;
         <input

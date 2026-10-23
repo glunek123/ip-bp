@@ -1,3 +1,5 @@
+import { ValidationPipe } from '@nestjs/common';
+import { configureApp } from '../../common/configure-app';
 import { ForbiddenException } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { CaseHistoricalRecordEditService } from './case-historical-record-edit.service';
@@ -770,4 +772,82 @@ describe('CaseHistoricalRecordEditService', () => {
     ).toThrow();
     expect(f.database.$transaction).not.toHaveBeenCalled();
   });
+});
+
+it('retains omitted hearing details and appends explicit null without rewriting the original', async () => {
+  for (const clear of [false, true]) {
+    const f = fixture();
+    f.tx.caseHearingArrangement.findFirst.mockResolvedValue({
+      id: targetId,
+      trialRoundId: roundId,
+      hearingAt: at('2026-01-02'),
+      hearingPlace: '第一法庭',
+      judgeName: '张法官',
+      advances: [],
+    });
+    await f.service.correctHearing(actor, caseId, {
+      ...hearing,
+      ...(clear ? { hearingPlace: null, judgeName: null } : {}),
+    });
+    expect(f.tx.caseHearingRecordCorrection.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          hearingPlace: clear ? null : '第一法庭',
+          judgeName: clear ? null : '张法官',
+        }),
+      }),
+    );
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+  }
+});
+
+function projectValidationPipe(): ValidationPipe {
+  let pipe: ValidationPipe | undefined;
+  configureApp({
+    getHttpAdapter: () => ({ getInstance: () => ({ set: jest.fn() }) }),
+    setGlobalPrefix: jest.fn(),
+    use: jest.fn(),
+    useGlobalFilters: jest.fn(),
+    useGlobalPipes: (value: ValidationPipe) => {
+      pipe = value;
+    },
+  } as never);
+  if (!pipe) throw new Error('Missing project ValidationPipe');
+  return pipe;
+}
+
+it('accepts legacy DTO instances from the real project pipe and replays their existing receipt', async () => {
+  const f = fixture();
+  const oldResult = await f.service.correctHearing(actor, caseId, hearing);
+  const receipt =
+    f.tx.caseSectionRecordEditReceipt.create.mock.calls[0]![0].data;
+  f.tx.caseSectionRecordEditReceipt.findUnique.mockResolvedValue(receipt);
+  const dto = await projectValidationPipe().transform(
+    { ...hearing },
+    { type: 'body', metatype: CorrectHearingRecordDto },
+  );
+  expect(dto).toBeInstanceOf(CorrectHearingRecordDto);
+  await expect(f.service.correctHearing(actor, caseId, dto)).resolves.toEqual(
+    oldResult,
+  );
+  expect(f.tx.caseHearingRecordCorrection.create).toHaveBeenCalledTimes(1);
+  const explicitUndefined = await projectValidationPipe().transform(
+    { ...hearing, hearingPlace: undefined, judgeName: undefined },
+    { type: 'body', metatype: CorrectHearingRecordDto },
+  );
+  await expect(
+    f.service.correctHearing(actor, caseId, explicitUndefined),
+  ).resolves.toEqual(oldResult);
+  expect(f.tx.caseHearingRecordCorrection.create).toHaveBeenCalledTimes(1);
+  const clearing = fixture();
+  const explicitNull = await projectValidationPipe().transform(
+    { ...hearing, hearingPlace: null, judgeName: null },
+    { type: 'body', metatype: CorrectHearingRecordDto },
+  );
+  await clearing.service.correctHearing(actor, caseId, explicitNull);
+  expect(clearing.tx.caseHearingRecordCorrection.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({ hearingPlace: null, judgeName: null }),
+    }),
+  );
 });

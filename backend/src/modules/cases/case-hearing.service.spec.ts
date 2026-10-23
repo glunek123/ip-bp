@@ -1,3 +1,6 @@
+import { ValidationPipe } from '@nestjs/common';
+import { configureApp } from '../../common/configure-app';
+import { SaveCaseHearingDto } from './case-hearing.dto';
 import { ForbiddenException, Logger } from '@nestjs/common';
 import { CaseHearingService } from './case-hearing.service';
 import { readCaseSourceAnchor } from './case-entry-source';
@@ -62,6 +65,7 @@ describe('CaseHearingService', () => {
         create: jest.fn().mockResolvedValue({}),
       },
       caseHearingArrangement: {
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: arrangementId }),
         findUnique: jest.fn().mockResolvedValue({
           id: arrangementId,
@@ -955,4 +959,53 @@ describe('CaseHearingService', () => {
       logged.mockRestore();
     }
   });
+  it('accepts legacy DTO instances from the real project pipe and replays their existing receipt', async () => {
+    const f = fixture();
+    const oldResult = await f.service.schedule(actor, caseId, request);
+    const receipt = f.tx.caseHearingReceipt.create.mock.calls[0]![0].data;
+    f.tx.caseHearingReceipt.findUnique.mockResolvedValue(receipt);
+    const dto = await projectValidationPipe().transform(
+      { ...request },
+      { type: 'body', metatype: SaveCaseHearingDto },
+    );
+    expect(dto).toBeInstanceOf(SaveCaseHearingDto);
+    await expect(f.service.schedule(actor, caseId, dto)).resolves.toEqual(
+      oldResult,
+    );
+    expect(f.tx.caseHearingArrangement.create).toHaveBeenCalledTimes(1);
+    const explicitUndefined = await projectValidationPipe().transform(
+      { ...request, hearingPlace: undefined, judgeName: undefined },
+      { type: 'body', metatype: SaveCaseHearingDto },
+    );
+    await expect(
+      f.service.schedule(actor, caseId, explicitUndefined),
+    ).resolves.toEqual(oldResult);
+    expect(f.tx.caseHearingArrangement.create).toHaveBeenCalledTimes(1);
+    const clearing = fixture();
+    const explicitNull = await projectValidationPipe().transform(
+      { ...request, hearingPlace: null, judgeName: null },
+      { type: 'body', metatype: SaveCaseHearingDto },
+    );
+    await clearing.service.schedule(actor, caseId, explicitNull);
+    expect(clearing.tx.caseHearingArrangement.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ hearingPlace: null, judgeName: null }),
+      }),
+    );
+  });
 });
+
+function projectValidationPipe(): ValidationPipe {
+  let pipe: ValidationPipe | undefined;
+  configureApp({
+    getHttpAdapter: () => ({ getInstance: () => ({ set: jest.fn() }) }),
+    setGlobalPrefix: jest.fn(),
+    use: jest.fn(),
+    useGlobalFilters: jest.fn(),
+    useGlobalPipes: (value: ValidationPipe) => {
+      pipe = value;
+    },
+  } as never);
+  if (!pipe) throw new Error('Missing project ValidationPipe');
+  return pipe;
+}

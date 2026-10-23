@@ -7688,3 +7688,22 @@ describe('EF001 exact execution filing followup reads', () => {
       }
   });
 });
+
+it('sends optional hearing details without changing the original command receipt shape', async () => {
+  const command = sectionCommands[3]!;
+  const input = { ...command.input, hearingPlace: '第一法庭', judgeName: null };
+  const receipt = {
+    caseId: archiveCaseId,
+    correctionId: '80000000-0000-4000-8000-000000000201',
+    recordedAt: '2026-10-13T00:00:00.000Z',
+    arrangementId: input.arrangementId,
+    trialRoundId: input.trialRoundId,
+    hearingRevision: 1,
+    hearingAt: input.hearingAt,
+  };
+  mockJson(receipt);
+  await expect(command.send(input)).resolves.toEqual(receipt);
+  expect(
+    JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]?.body)),
+  ).toMatchObject({ hearingPlace: '第一法庭', judgeName: null });
+});

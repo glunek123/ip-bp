@@ -1,3 +1,6 @@
+import { ValidationPipe } from '@nestjs/common';
+import { configureApp } from '../../common/configure-app';
+import { CorrectCaseAcceptanceDto } from './case-record-edit.dto';
 import { CaseRecordEditService } from './case-record-edit.service';
 
 const actor = {
@@ -535,4 +538,90 @@ describe('CaseRecordEditService', () => {
       f.tx.caseSecondInstanceAcceptanceChange.create,
     ).toHaveBeenCalledTimes(1);
   });
+  it('preserves an omitted payment deadline and appends an explicit null clearing', async () => {
+    for (const clear of [false, true]) {
+      const f = fixture();
+      f.tx.caseAcceptance.findFirst.mockResolvedValue({
+        trialRoundId: roundId,
+        acceptedAt: new Date('2026-10-02T00:00:00.000Z'),
+        courtCaseNo: 'old',
+        paymentDueAt: new Date('2026-12-31T00:00:00.000Z'),
+        corrections: [],
+      });
+      await f.service.correctAcceptance(actor, caseId, {
+        ...acceptanceInput,
+        ...(clear ? { paymentDueAt: null } : {}),
+      });
+      expect(f.tx.caseAcceptanceCorrection.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            paymentDueAt: clear ? null : new Date('2026-12-31T00:00:00.000Z'),
+          }),
+        }),
+      );
+    }
+  });
+  it('rejects impossible payment dates before entering a transaction', async () => {
+    const f = fixture();
+    await expect(
+      f.service.correctAcceptance(actor, caseId, {
+        ...acceptanceInput,
+        paymentDueAt: '2026-02-30',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.caseAcceptanceCorrection.create).not.toHaveBeenCalled();
+  });
+  it('accepts legacy DTO instances from the real project pipe and replays their existing receipt', async () => {
+    const f = fixture();
+    const oldResult = await f.service.correctAcceptance(
+      actor,
+      caseId,
+      acceptanceInput,
+    );
+    const receipt = f.tx.caseRecordEditReceipt.create.mock.calls[0]![0].data;
+    f.tx.caseRecordEditReceipt.findUnique.mockResolvedValue(receipt);
+    const dto = await projectValidationPipe().transform(
+      { ...acceptanceInput },
+      { type: 'body', metatype: CorrectCaseAcceptanceDto },
+    );
+    expect(dto).toBeInstanceOf(CorrectCaseAcceptanceDto);
+    await expect(
+      f.service.correctAcceptance(actor, caseId, dto),
+    ).resolves.toEqual(oldResult);
+    expect(f.tx.caseAcceptanceCorrection.create).toHaveBeenCalledTimes(1);
+    const explicitUndefined = await projectValidationPipe().transform(
+      { ...acceptanceInput, paymentDueAt: undefined },
+      { type: 'body', metatype: CorrectCaseAcceptanceDto },
+    );
+    await expect(
+      f.service.correctAcceptance(actor, caseId, explicitUndefined),
+    ).resolves.toEqual(oldResult);
+    expect(f.tx.caseAcceptanceCorrection.create).toHaveBeenCalledTimes(1);
+    const clearing = fixture();
+    const explicitNull = await projectValidationPipe().transform(
+      { ...acceptanceInput, paymentDueAt: null },
+      { type: 'body', metatype: CorrectCaseAcceptanceDto },
+    );
+    await clearing.service.correctAcceptance(actor, caseId, explicitNull);
+    expect(clearing.tx.caseAcceptanceCorrection.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ paymentDueAt: null }),
+      }),
+    );
+  });
 });
+
+function projectValidationPipe(): ValidationPipe {
+  let pipe: ValidationPipe | undefined;
+  configureApp({
+    getHttpAdapter: () => ({ getInstance: () => ({ set: jest.fn() }) }),
+    setGlobalPrefix: jest.fn(),
+    use: jest.fn(),
+    useGlobalFilters: jest.fn(),
+    useGlobalPipes: (value: ValidationPipe) => {
+      pipe = value;
+    },
+  } as never);
+  if (!pipe) throw new Error('Missing project ValidationPipe');
+  return pipe;
+}

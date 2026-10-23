@@ -1,3 +1,4 @@
+import { keyDetailHearing } from './case-key-details';
 import {
   BadRequestException,
   ConflictException,
@@ -94,6 +95,7 @@ export class CaseHearingService {
     )
       throw this.validation();
     return {
+      ...keyDetailHearing(input),
       expectedVersion: input.expectedVersion,
       idempotencyKey: key,
       hearingAt: date,
@@ -347,6 +349,32 @@ export class CaseHearingService {
               }
               priorAdvanceId = advance.id;
             }
+            const priorDetails =
+              record.currentHearingArrangementId === null
+                ? null
+                : await tx.caseHearingArrangement.findFirst({
+                    where: {
+                      id: record.currentHearingArrangementId,
+                      caseId,
+                      departmentId: actor.departmentId,
+                    },
+                    include: {
+                      recordCorrections: {
+                        orderBy: { toRevision: 'desc' },
+                        take: 1,
+                      },
+                    },
+                  });
+            const effectiveDetails =
+              priorDetails?.recordCorrections?.[0] ?? priorDetails;
+            const hearingPlace =
+              value.hearingPlace === undefined
+                ? (effectiveDetails?.hearingPlace ?? null)
+                : value.hearingPlace;
+            const judgeName =
+              value.judgeName === undefined
+                ? (effectiveDetails?.judgeName ?? null)
+                : value.judgeName;
             const recordedAt = this.clock.now();
             const newStage =
               action === 'CORRECT' && hearingIsDue(value.hearingAt, recordedAt)
@@ -369,6 +397,8 @@ export class CaseHearingService {
                 details: {
                   arrangementId,
                   hearingAt: value.hearingAt,
+                  hearingPlace,
+                  judgeName,
                   fromVersion: value.expectedVersion,
                   toVersion: value.expectedVersion + 1,
                   ...(action === 'CORRECT'
@@ -394,6 +424,8 @@ export class CaseHearingService {
                   value.hearingAt === null
                     ? null
                     : new Date(`${value.hearingAt}T00:00:00.000Z`),
+                hearingPlace,
+                judgeName,
                 source: action === 'SCHEDULE' ? 'SCHEDULE' : 'CORRECTION',
                 recordedAt,
                 recordedByUserId: actor.userId,

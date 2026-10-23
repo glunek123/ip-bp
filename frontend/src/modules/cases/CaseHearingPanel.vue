@@ -43,6 +43,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{ changed: []; refresh: [] }>();
 const hearingAt = ref(props.item.hearing.currentArrangement?.hearingAt ?? '');
+const hearingPlace = ref(
+  props.item.hearing.currentArrangement?.hearingPlace ?? '',
+);
+const judgeName = ref(props.item.hearing.currentArrangement?.judgeName ?? '');
 const clearDate = ref(false);
 const correctionReason = ref('');
 const submitting = ref(false);
@@ -70,6 +74,9 @@ function isCurrent(context: OperationContext): boolean {
 }
 function resetContext(): void {
   hearingAt.value = props.item.hearing.currentArrangement?.hearingAt ?? '';
+  hearingPlace.value =
+    props.item.hearing.currentArrangement?.hearingPlace ?? '';
+  judgeName.value = props.item.hearing.currentArrangement?.judgeName ?? '';
   clearDate.value = false;
   correctionReason.value = '';
   submitting.value = false;
@@ -89,6 +96,39 @@ onBeforeUnmount(() => {
   active = false;
   revision += 1;
 });
+let effectiveDetailsDirty = false;
+function syncEffectiveDetails(): void {
+  if (
+    !effectiveDetailsDirty ||
+    submitting.value ||
+    unknownRequest.value !== null
+  )
+    return;
+  hearingAt.value = props.item.hearing.currentArrangement?.hearingAt ?? '';
+  hearingPlace.value =
+    props.item.hearing.currentArrangement?.hearingPlace ?? '';
+  judgeName.value = props.item.hearing.currentArrangement?.judgeName ?? '';
+  effectiveDetailsDirty = false;
+}
+watch(
+  [
+    () => props.item.hearing.currentArrangement?.id,
+    () => props.item.hearing.currentArrangement?.hearingAt,
+    () => props.item.hearing.currentArrangement?.hearingPlace,
+    () => props.item.hearing.currentArrangement?.judgeName,
+  ],
+  () => {
+    // Record corrections have an independent revision and leave Case.version unchanged.
+    effectiveDetailsDirty = true;
+    syncEffectiveDetails();
+  },
+  { flush: 'sync' },
+);
+watch(
+  [() => submitting.value, () => unknownRequest.value !== null],
+  syncEffectiveDetails,
+  { flush: 'sync' },
+);
 onDeactivated(() => {
   active = false;
   revision += 1;
@@ -168,6 +208,8 @@ function makeInput(): SaveCaseHearingInput {
     expectedVersion: props.item.version,
     idempotencyKey: makeKey(),
     hearingAt: selectedDate.value,
+    hearingPlace: hearingPlace.value.trim() || null,
+    judgeName: judgeName.value.trim() || null,
   };
 }
 function isUnknownOutcome(reason: unknown): boolean {
@@ -318,6 +360,10 @@ function setDateMode(): void {
 <template>
   <section class="demo-card demo-card--pad" data-test="case-hearing-panel">
     <h2 class="form-section-title">开庭安排</h2>
+    <p v-if="item.hearing.currentArrangement">
+      开庭地点：{{ item.hearing.currentArrangement.hearingPlace ?? '未填写' }} ·
+      法官姓名：{{ item.hearing.currentArrangement.judgeName ?? '未填写' }}
+    </p>
     <p v-if="item.stage === 'WAITING_JUDGMENT'" role="status">
       当前阶段：待判决。此阶段仅表示系统已按开庭日期推进，不代表法院已经判决。
     </p>
@@ -331,6 +377,18 @@ function setDateMode(): void {
       data-test="hearing-schedule-form"
       @submit.prevent="schedule"
     >
+      <label
+        >开庭地点（选填）<input
+          v-model="hearingPlace"
+          maxlength="500"
+          :disabled="submitting || unknownRequest !== null"
+      /></label>
+      <label
+        >法官姓名（选填）<input
+          v-model="judgeName"
+          maxlength="200"
+          :disabled="submitting || unknownRequest !== null"
+      /></label>
       <label class="field-label" for="hearing-date">开庭日期</label>
       <input
         id="hearing-date"
@@ -382,6 +440,18 @@ function setDateMode(): void {
       <p>
         更正会保留旧安排和系统推进历史。未来日期或清除日期后返回待开庭；已到期的更正仍保持待判决。后续再登记到期日期时，系统会再次推进。
       </p>
+      <label
+        >开庭地点（选填）<input
+          v-model="hearingPlace"
+          maxlength="500"
+          :disabled="submitting || unknownRequest !== null"
+      /></label>
+      <label
+        >法官姓名（选填）<input
+          v-model="judgeName"
+          maxlength="200"
+          :disabled="submitting || unknownRequest !== null"
+      /></label>
       <label class="field-label" for="hearing-correction-date"
         >更正后的开庭日期</label
       >

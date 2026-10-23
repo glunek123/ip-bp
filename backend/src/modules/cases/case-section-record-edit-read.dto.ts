@@ -88,6 +88,8 @@ export class ExecutionFinishRecordEditsDto {
 }
 export class HearingRecordValuesDto extends PickType(CorrectHearingRecordDto, [
   'hearingAt',
+  'hearingPlace',
+  'judgeName',
 ] as const) {}
 export class HearingRecordHistoryDto extends IntersectionType(
   HearingRecordValuesDto,

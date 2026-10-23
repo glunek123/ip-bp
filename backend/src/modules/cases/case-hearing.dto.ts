@@ -1,6 +1,7 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsInt,
+  IsOptional,
   IsString,
   Matches,
   MaxLength,
@@ -10,6 +11,17 @@ import {
 } from 'class-validator';
 
 export class SaveCaseHearingDto {
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  hearingPlace?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  judgeName?: string | null;
+
   @ApiProperty({ minimum: 1 })
   @IsInt()
   @Min(1)
