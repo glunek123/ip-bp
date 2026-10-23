@@ -8,6 +8,7 @@ import {
   getCustomer,
   updateCustomerDraft,
   type CustomerDetail,
+  type CustomerDraftInput,
   type CustomerDuplicateSummary,
 } from '../../api/customers';
 import { ApiError } from '../../api/http';
@@ -35,7 +36,6 @@ const state = ref<
 const expectedVersion = ref(0);
 const name = ref('');
 const customerManagerName = ref('');
-const originalManager = ref('');
 const managerError = ref('');
 const customerType = ref('');
 const identityType = ref('');
@@ -79,6 +79,20 @@ function onCustomerTypeChanged(): void {
 function editable(value: string): string {
   return value.trim();
 }
+
+function editableValues() {
+  return {
+    name: editable(name.value),
+    customerManagerName: editable(customerManagerName.value),
+    customerType: editable(customerType.value),
+    identityType: editable(identityType.value),
+    identityNumber: editable(identityNumber.value),
+    issuingCountryOrRegion: editable(issuingCountryOrRegion.value),
+    category: editable(category.value),
+    region: editable(region.value),
+  };
+}
+const initialValues = ref(editableValues());
 
 async function loadVisibleDuplicates(
   query: Parameters<typeof findCustomerDuplicates>[0],
@@ -131,13 +145,13 @@ function useLatestSnapshot(): void {
   expectedVersion.value = latest.version;
   name.value = latest.name;
   customerManagerName.value = latest.customerManagerName ?? '';
-  originalManager.value = customerManagerName.value;
   customerType.value = normalizeCustomerTypeOption(latest.customerType);
   identityType.value = normalizeIdentityTypeOption(latest.identityType);
   identityNumber.value = latest.identityNumber ?? '';
   issuingCountryOrRegion.value = latest.issuingCountryOrRegion ?? '';
   category.value = latest.category ?? '';
   region.value = latest.region ?? '';
+  initialValues.value = editableValues();
   latestSnapshot.value = null;
   duplicateMatches.value = [];
   submitError.value = '';
@@ -173,13 +187,13 @@ async function load(): Promise<void> {
     expectedVersion.value = customer.version;
     name.value = customer.name;
     customerManagerName.value = customer.customerManagerName ?? '';
-    originalManager.value = customerManagerName.value;
     customerType.value = normalizeCustomerTypeOption(customer.customerType);
     identityType.value = normalizeIdentityTypeOption(customer.identityType);
     identityNumber.value = customer.identityNumber ?? '';
     issuingCountryOrRegion.value = customer.issuingCountryOrRegion ?? '';
     category.value = customer.category ?? '';
     region.value = customer.region ?? '';
+    initialValues.value = editableValues();
     state.value = 'ready';
   } catch (error) {
     if (controller.signal.aborted) return;
@@ -220,22 +234,26 @@ async function submit(): Promise<void> {
 
   saving.value = true;
   try {
-    await updateCustomerDraft(String(route.params.id), {
+    const values = editableValues();
+    const input: CustomerDraftInput = {
       expectedVersion: expectedVersion.value,
-      name: name.value.trim(),
-      ...(manager !== originalManager.value
-        ? { customerManagerName: manager || null }
-        : {}),
-      customerType: editable(customerType.value),
-      identityType: editable(identityType.value),
-      identityNumber: editable(identityNumber.value),
-      issuingCountryOrRegion: editable(issuingCountryOrRegion.value),
-      category: editable(category.value),
-      region: editable(region.value),
-      ...(needsDuplicateNameReason.value
-        ? { duplicateNameReason: duplicateNameReason.value.trim() }
-        : {}),
-    });
+    };
+    for (const key of [
+      'name',
+      'customerType',
+      'identityType',
+      'identityNumber',
+      'issuingCountryOrRegion',
+      'category',
+      'region',
+    ] as const) {
+      if (values[key] !== initialValues.value[key]) input[key] = values[key];
+    }
+    if (manager !== initialValues.value.customerManagerName)
+      input.customerManagerName = manager || null;
+    if (needsDuplicateNameReason.value)
+      input.duplicateNameReason = duplicateNameReason.value.trim();
+    await updateCustomerDraft(String(route.params.id), input);
     isDirty.value = false;
     await router.push(`/customers/${String(route.params.id)}`);
   } catch (error) {

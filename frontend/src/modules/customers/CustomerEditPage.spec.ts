@@ -16,6 +16,7 @@ vi.mock('../../api/customers', () => api);
 
 afterEach(() => {
   vi.resetAllMocks();
+  vi.unstubAllGlobals();
   useAuthStore(pinia).session = null;
   globalThis.sessionStorage.clear();
 });
@@ -65,6 +66,169 @@ async function mountPage() {
 }
 
 describe('CustomerEditPage', () => {
+  it('sends only the edited manager through the real JSON transport and decoder', async () => {
+    const actual = await vi.importActual<typeof import('../../api/customers')>(
+      '../../api/customers',
+    );
+    const legacy = {
+      ...customer,
+      profileStatus: 'admitted',
+      customerType: 'enterprise',
+      identityType: 'CREDIT-CODE',
+      identityNumber: 'CGMIN-LEGACY',
+      version: 9,
+    };
+    api.getCustomer.mockResolvedValue(legacy);
+    api.updateCustomerDraft.mockImplementation(actual.updateCustomerDraft);
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...legacy,
+          identityValidFrom: null,
+          identityValidTo: null,
+          identityValidityMode: null,
+          admittedAt: '2026-09-17T00:00:00.000Z',
+          customerManagerName: '经理乙',
+          version: 10,
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { wrapper, router } = await mountPage();
+    await flushPromises();
+    await wrapper.get('input[name="customerManagerName"]').setValue(' 经理乙 ');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/customers/customer-1');
+    expect(fetchMock.mock.calls[0]?.[1].method).toBe('PATCH');
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1].body)).toEqual({
+      expectedVersion: 9,
+      customerManagerName: '经理乙',
+    });
+    expect(router.currentRoute.value.fullPath).toBe('/customers/customer-1');
+    wrapper.unmount();
+  });
+
+  it('forwards an actual admitted identity edit and preserves its server rejection without retrying', async () => {
+    api.getCustomer.mockResolvedValue({
+      ...customer,
+      profileStatus: 'admitted',
+      version: 7,
+    });
+    api.updateCustomerDraft.mockRejectedValue(
+      new ApiError('不可更改身份', 409, 'INVALID_STATE'),
+    );
+    const { wrapper, router } = await mountPage();
+    await flushPromises();
+    await wrapper.get('input[name="name"]').setValue('新的主体名称');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.updateCustomerDraft).toHaveBeenCalledExactlyOnceWith(
+      'customer-1',
+      { expectedVersion: 7, name: '新的主体名称' },
+    );
+    expect(api.getCustomer).toHaveBeenCalledTimes(1);
+    expect(router.currentRoute.value.path).toBe('/customers/customer-1/edit');
+    expect(wrapper.text()).toContain('客户资料没有保存成功');
+    wrapper.unmount();
+  });
+
+  it('updates and clears ordinary draft fields without resending untouched values', async () => {
+    api.getCustomer.mockResolvedValue({
+      ...customer,
+      category: '旧类别',
+      region: '旧地区',
+    });
+    api.updateCustomerDraft.mockResolvedValue(customer);
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    await wrapper.get('input[name="category"]').setValue(' 新类别 ');
+    await wrapper.get('input[name="region"]').setValue(' ');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.updateCustomerDraft).toHaveBeenCalledExactlyOnceWith(
+      'customer-1',
+      { expectedVersion: 1, category: '新类别', region: '' },
+    );
+    wrapper.unmount();
+  });
+
+  it('resets the comparison baseline when the user adopts a newer conflict snapshot', async () => {
+    api.getCustomer.mockResolvedValueOnce(customer).mockResolvedValueOnce({
+      ...customer,
+      name: '服务器新名',
+      category: '服务器类别',
+      version: 2,
+    });
+    api.findCustomerDuplicates.mockResolvedValue({
+      exactIdentity: [],
+      sameName: [],
+    });
+    api.updateCustomerDraft
+      .mockRejectedValueOnce(
+        new ApiError('版本冲突', 409, 'CUSTOMER_VERSION_CONFLICT'),
+      )
+      .mockResolvedValue(customer);
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    await wrapper.get('input[name="name"]').setValue('已放弃的本地名称');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    await wrapper.get('button[name="useLatest"]').trigger('click');
+    await wrapper.get('input[name="customerManagerName"]').setValue('新经理');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.updateCustomerDraft).toHaveBeenLastCalledWith('customer-1', {
+      expectedVersion: 2,
+      customerManagerName: '新经理',
+    });
+    wrapper.unmount();
+  });
+  it.each(['新经理', ''])(
+    'changes only the manager of an admitted legacy snapshot (%s), without resending frozen identity',
+    async (manager) => {
+      const legacy = {
+        ...customer,
+        profileStatus: 'admitted',
+        name: 'Legacy Customer',
+        customerType: 'enterprise',
+        identityType: 'CREDIT-CODE',
+        identityNumber: 'CGMIN-LEGACY',
+        customerManagerName: '旧经理',
+        version: 17,
+      };
+      api.getCustomer.mockResolvedValue(legacy);
+      api.updateCustomerDraft.mockImplementation(
+        async (_id: string, input: Record<string, unknown>) => {
+          // The actual backend rejects explicitly supplied identity values that differ
+          // from the stored identity/canonical caches of an admitted customer.
+          if (
+            ['name', 'customerType', 'identityType', 'identityNumber'].some(
+              (key) => Object.hasOwn(input, key),
+            )
+          )
+            throw new ApiError('主体信息不可日常修改', 409, 'INVALID_STATE');
+          return {
+            ...legacy,
+            customerManagerName: manager || null,
+            version: 18,
+          };
+        },
+      );
+      const { wrapper, router } = await mountPage();
+      await flushPromises();
+      await wrapper.get('input[name="customerManagerName"]').setValue(manager);
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      expect(api.updateCustomerDraft).toHaveBeenCalledExactlyOnceWith(
+        'customer-1',
+        { expectedVersion: 17, customerManagerName: manager || null },
+      );
+      expect(router.currentRoute.value.fullPath).toBe('/customers/customer-1');
+      wrapper.unmount();
+    },
+  );
   it.each([false, true])(
     'retains manager edit intent across a version conflict (changed=%s)',
     async (changed) => {
@@ -74,6 +238,7 @@ describe('CustomerEditPage', () => {
           ...customer,
           version: 2,
           customerManagerName: '服务器经理',
+          category: '服务器新类别',
         });
       api.findCustomerDuplicates.mockResolvedValue({
         exactIdentity: [],
@@ -97,6 +262,8 @@ describe('CustomerEditPage', () => {
       await flushPromises();
       const body = api.updateCustomerDraft.mock.calls.at(-1)?.[1];
       expect(body.expectedVersion).toBe(2);
+      expect(body).not.toHaveProperty('category');
+      expect(body).not.toHaveProperty('identityType');
       if (changed) expect(body.customerManagerName).toBe('本地经理');
       else expect(body).not.toHaveProperty('customerManagerName');
       wrapper.unmount();
@@ -185,7 +352,7 @@ describe('CustomerEditPage', () => {
     expect(wrapper.find('form').exists()).toBe(false);
   });
 
-  it('loads the current draft and saves the full editable snapshot', async () => {
+  it('loads the current draft and saves only changed editable fields', async () => {
     api.getCustomer.mockResolvedValue(customer);
     api.updateCustomerDraft.mockResolvedValue({
       ...customer,
@@ -214,9 +381,6 @@ describe('CustomerEditPage', () => {
       customerType: 'ENTERPRISE',
       identityType: 'BUSINESS_LICENSE',
       identityNumber: '91310000abc123',
-      issuingCountryOrRegion: '',
-      category: '',
-      region: '',
     });
     expect(router.currentRoute.value.fullPath).toBe('/customers/customer-1');
   });
