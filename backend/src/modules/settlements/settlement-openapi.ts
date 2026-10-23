@@ -87,6 +87,8 @@ const billItem = object({
   id: uuid,
   launchId: uuid,
   caseId: uuid,
+  caseBusinessNo: string,
+  launchDate: day,
   payeeId: uuid,
   payeeName: string,
   nth: positive,

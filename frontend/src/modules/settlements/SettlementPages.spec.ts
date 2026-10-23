@@ -180,6 +180,71 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 describe('settlement page behavior (mounted components, not real browser)', () => {
+  it.each([false, true])(
+    'shows bill item source facts with legacy=%s',
+    async (legacy) => {
+      const bill = {
+        id: 'bill',
+        billNo: '2026101900001',
+        side: 'CUSTOMER',
+        billDate: '2026-10-19',
+        amount: '20.00',
+        note: null,
+        cancelledAt: null,
+        cancellationReason: null,
+        payees: ['客户甲'],
+        count: 1,
+      };
+      api.listSettlementBills.mockResolvedValue({
+        items: [bill],
+        total: 1,
+        page: 1,
+        pageSize: 100,
+      });
+      api.getSettlementBill.mockResolvedValue({
+        ...bill,
+        items: [
+          {
+            id: 'stable-item',
+            launchId: 'launch',
+            caseId: 'case-uuid',
+            payeeName: '客户甲',
+            payeeId: 'customer',
+            nth: 2,
+            amount: '20.00',
+            ...(legacy
+              ? {}
+              : {
+                  caseBusinessNo: 'CASE-2026-完整单号',
+                  launchDate: '2026-10-17',
+                }),
+          },
+        ],
+      });
+      const wrapper = render(SettlementCenterPage);
+      await flushPromises();
+      await button(wrapper, '查看').trigger('click');
+      await flushPromises();
+      const detail = wrapper.get('[aria-label="账单详情"]');
+      expect(detail.findAll('th').map((cell) => cell.text())).toEqual([
+        '收付方',
+        '案件单号',
+        '发起结算日期',
+        '次数',
+        '金额',
+      ]);
+      expect(detail.getComponent(RouterLinkStub).props('to')).toBe(
+        '/cases/case-uuid',
+      );
+      expect(detail.getComponent(RouterLinkStub).text()).toBe(
+        legacy ? '历史信息未提供' : 'CASE-2026-完整单号',
+      );
+      expect(detail.findAll('tbody td')[2]!.text()).toBe(
+        legacy ? '历史信息未提供' : '2026-10-17',
+      );
+      expect(detail.text()).not.toContain('case-uuid');
+    },
+  );
   it('recalculates the draft immediately and saves a rounded manual value for this case only', async () => {
     const wrapper = render(CaseSettlementPanel, {
       caseId: 'case',

@@ -4,6 +4,33 @@ import { SettlementController } from './settlement.controller';
 import { CaseFeeEntryController } from './case-fee-entry.controller';
 import { FeeController } from './fee.controller';
 describe('settlement public response metadata (no application/server)', () => {
+  it('documents real case business numbers and launch dates in bill detail', () => {
+    expect(
+      Reflect.getMetadata(
+        'swagger/apiResponse',
+        SettlementController.prototype.billDetail,
+      ),
+    ).toMatchObject({
+      '200': {
+        schema: {
+          properties: {
+            items: {
+              items: {
+                required: expect.arrayContaining([
+                  'caseBusinessNo',
+                  'launchDate',
+                ]),
+                properties: {
+                  caseBusinessNo: { type: 'string' },
+                  launchDate: { type: 'string', format: 'date' },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+  });
   it('separates exact original fee rows from read-only nets and documents all matching original amounts', () => {
     const schema = Reflect.getMetadata(
       'swagger/apiResponse',

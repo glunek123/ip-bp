@@ -8,6 +8,7 @@ import {
   createCaseFeeEntries,
   createSettlementBill,
   getSettlementContext,
+  getSettlementBill,
   listSettlementLaunches,
   listFees,
   previewSettlementBillNumber,
@@ -16,6 +17,65 @@ import {
 beforeEach(() => vi.resetAllMocks());
 afterEach(() => vi.restoreAllMocks());
 describe('settlement API contracts', () => {
+  const billItem = {
+    id: 'item',
+    launchId: 'launch',
+    caseId: 'case-uuid',
+    caseBusinessNo: 'CASE-2026-完整单号',
+    launchDate: '2024-02-29',
+    payeeId: 'customer',
+    payeeName: '客户甲',
+    nth: 2,
+    amount: '20.00',
+  };
+  function billResponse(item: Record<string, unknown>) {
+    return {
+      id: 'bill',
+      billNo: '2026101700001',
+      side: 'CUSTOMER',
+      billDate: '2026-10-17',
+      amount: '20.00',
+      note: null,
+      cancelledAt: null,
+      cancellationReason: null,
+      items: [item],
+    };
+  }
+  it('keeps the real business number and launch day from bill detail', async () => {
+    http.getJson.mockResolvedValue(billResponse(billItem));
+    await expect(getSettlementBill('bill')).resolves.toMatchObject({
+      items: [billItem],
+    });
+    expect(http.getJson).toHaveBeenCalledWith('/settlements/bills/bill');
+  });
+  it('accepts missing historical fields without inventing values', async () => {
+    const legacy: Record<string, unknown> = { ...billItem };
+    delete legacy.caseBusinessNo;
+    delete legacy.launchDate;
+    http.getJson.mockResolvedValue(billResponse(legacy));
+    const result = await getSettlementBill('bill');
+    expect(result.items[0]).not.toHaveProperty('caseBusinessNo');
+    expect(result.items[0]).not.toHaveProperty('launchDate');
+  });
+  it.each([
+    ['caseBusinessNo', null],
+    ['caseBusinessNo', 123],
+    ['caseBusinessNo', ''],
+    ['caseBusinessNo', '   '],
+    ['launchDate', null],
+    ['launchDate', 123],
+    ['launchDate', '2026-02-29'],
+    ['launchDate', '2026-04-31'],
+    ['launchDate', '2026-10-17T00:00:00Z'],
+    ['launchDate', '2026-1-7'],
+  ])('rejects malformed present bill item %s: %s', async (field, value) => {
+    http.getJson.mockResolvedValue(
+      billResponse({ ...billItem, [field]: value }),
+    );
+    await expect(getSettlementBill('bill')).rejects.toMatchObject({
+      code: 'INVALID_SETTLEMENT_RESPONSE',
+    });
+  });
   it('keeps the exact proof filename and rejects names attached to an empty proof', async () => {
     const fee = {
       id: 'fee',

@@ -92,6 +92,8 @@ export type SettlementBillDetail = Omit<SettlementBill, 'payees' | 'count'> & {
     id: string;
     launchId: string;
     caseId: string;
+    caseBusinessNo?: string;
+    launchDate?: string;
     payeeId: string;
     payeeName: string;
     nth: number;
@@ -153,6 +155,22 @@ function string(value: unknown): string {
 function nullableString(value: unknown): string | null {
   if (value === null) return null;
   return string(value);
+}
+function businessNumber(value: unknown): string {
+  const result = string(value);
+  if (result.trim().length === 0) throw invalid();
+  return result;
+}
+function financialDay(value: unknown): string {
+  const result = string(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(result)) throw invalid();
+  const date = new Date(`${result}T00:00:00.000Z`);
+  if (
+    !Number.isFinite(date.getTime()) ||
+    date.toISOString().slice(0, 10) !== result
+  )
+    throw invalid();
+  return result;
 }
 function number(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)
@@ -551,6 +569,12 @@ export async function getSettlementBill(
         id: string(item.id),
         launchId: string(item.launchId),
         caseId: string(item.caseId),
+        ...(Object.hasOwn(item, 'caseBusinessNo')
+          ? { caseBusinessNo: businessNumber(item.caseBusinessNo) }
+          : {}),
+        ...(Object.hasOwn(item, 'launchDate')
+          ? { launchDate: financialDay(item.launchDate) }
+          : {}),
         payeeId: string(item.payeeId),
         payeeName: string(item.payeeName),
         nth: number(item.nth),

@@ -952,7 +952,19 @@ export class SettlementService {
     await this.access.authorizeDepartmentAction(actor, 'settlement.read');
     const bill = await this.database.settlementBill.findFirst({
       where: { id: billId, departmentId: actor.departmentId },
-      include: { items: { orderBy: { id: 'asc' } } },
+      include: {
+        items: {
+          orderBy: { id: 'asc' },
+          include: {
+            launch: {
+              select: {
+                launchDate: true,
+                case: { select: { businessNo: true } },
+              },
+            },
+          },
+        },
+      },
     });
     if (bill === null)
       throw new NotFoundException({
@@ -972,6 +984,8 @@ export class SettlementService {
         id: item.id,
         launchId: item.launchId,
         caseId: item.caseId,
+        caseBusinessNo: item.launch.case.businessNo,
+        launchDate: item.launch.launchDate.toISOString().slice(0, 10),
         payeeId: item.payeeId,
         payeeName: item.payeeName,
         nth: item.nth,

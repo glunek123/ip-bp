@@ -686,7 +686,8 @@ async function cancelBill(): Promise<void> {
           <thead>
             <tr>
               <th>收付方</th>
-              <th>案件</th>
+              <th>案件单号</th>
+              <th>发起结算日期</th>
               <th>次数</th>
               <th>金额</th>
             </tr>
@@ -696,9 +697,10 @@ async function cancelBill(): Promise<void> {
               <td>{{ item.payeeName }}</td>
               <td>
                 <RouterLink :to="`/cases/${item.caseId}`">{{
-                  item.caseId
+                  item.caseBusinessNo ?? '历史信息未提供'
                 }}</RouterLink>
               </td>
+              <td>{{ item.launchDate ?? '历史信息未提供' }}</td>
               <td>{{ item.nth }}</td>
               <td>{{ item.amount }}</td>
             </tr>

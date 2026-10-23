@@ -109,6 +109,77 @@ function offlineBillCompiler() {
   return { client, sql, stop };
 }
 
+describe('bill detail readable source projection', () => {
+  it.each([null, new Date('2026-10-20T08:00:00Z')])(
+    'reads original launch facts even when cancelledAt=%s',
+    async (cancelledAt) => {
+      const authorizeDepartmentAction = jest.fn().mockResolvedValue(undefined);
+      const findFirst = jest.fn().mockResolvedValue({
+        id: 'bill',
+        billNo: '2026101900001',
+        side: 'CUSTOMER',
+        billDate: new Date('2026-10-19T00:00:00Z'),
+        amount: new Prisma.Decimal('20'),
+        note: null,
+        cancelledAt,
+        cancellationReason: null,
+        items: [
+          {
+            id: 'item',
+            launchId: 'launch',
+            caseId: 'case-uuid',
+            payeeId: 'customer',
+            payeeName: '客户甲',
+            nth: 2,
+            amount: new Prisma.Decimal('20'),
+            launch: {
+              launchDate: new Date('2026-10-17T00:00:00Z'),
+              case: { businessNo: 'CASE-2026-完整单号' },
+            },
+          },
+        ],
+      });
+      const service = new SettlementService(
+        { settlementBill: { findFirst } } as unknown as DatabaseService,
+        { authorizeDepartmentAction } as unknown as AccessControlService,
+        {} as OrganizationService,
+      );
+      await expect(service.billDetail(actor, 'bill')).resolves.toMatchObject({
+        items: [
+          {
+            id: 'item',
+            caseId: 'case-uuid',
+            caseBusinessNo: 'CASE-2026-完整单号',
+            launchDate: '2026-10-17',
+            payeeId: 'customer',
+            amount: '20.00',
+          },
+        ],
+      });
+      expect(authorizeDepartmentAction).toHaveBeenCalledWith(
+        actor,
+        'settlement.read',
+      );
+      expect(findFirst).toHaveBeenCalledWith({
+        where: { id: 'bill', departmentId: actor.departmentId },
+        include: {
+          items: {
+            orderBy: { id: 'asc' },
+            include: {
+              launch: {
+                select: {
+                  launchDate: true,
+                  case: { select: { businessNo: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+    },
+  );
+});
+
 describe('financial current authorization before command receipts', () => {
   const revoked: AccessControlSnapshot = {
     active: true,
