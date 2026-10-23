@@ -83,4 +83,65 @@ describe('environment validation', () => {
     });
     expect(production.PRIVATE_FILE_ROOT).toBeUndefined();
   });
+
+  it('preserves an explicit local storage driver in production', () => {
+    expect(
+      validateEnvironment({
+        ...valid,
+        NODE_ENV: 'production',
+        PRIVATE_BLOB_STORAGE_DRIVER: 'local',
+      }),
+    ).toMatchObject({ PRIVATE_BLOB_STORAGE_DRIVER: 'local' });
+  });
+
+  it('requires a private root when production explicitly selects local storage', () => {
+    expect(() =>
+      validateEnvironment({
+        ...valid,
+        NODE_ENV: 'production',
+        PRIVATE_BLOB_STORAGE_DRIVER: 'local',
+        PRIVATE_FILE_ROOT: undefined,
+      }),
+    ).toThrow('PRIVATE_FILE_ROOT');
+  });
+
+  it.each(['LOCAL', '', 's3', 'local ', false, 1])(
+    'rejects unsupported storage driver %s',
+    (PRIVATE_BLOB_STORAGE_DRIVER) => {
+      expect(() =>
+        validateEnvironment({ ...valid, PRIVATE_BLOB_STORAGE_DRIVER }),
+      ).toThrow('PRIVATE_BLOB_STORAGE_DRIVER');
+    },
+  );
+
+  it('does not echo an invalid storage driver value', () => {
+    const rejected = 'invalid-driver-with-private-value';
+    try {
+      validateEnvironment({ ...valid, PRIVATE_BLOB_STORAGE_DRIVER: rejected });
+      throw new Error('Expected storage driver validation to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain('PRIVATE_BLOB_STORAGE_DRIVER');
+      expect((error as Error).message).not.toContain(rejected);
+    }
+  });
+
+  it.each([
+    'relative/private-files',
+    resolve(repositoryRoot, 'frontend', 'private-files'),
+    resolve(repositoryRoot, 'backend', 'src', 'private-files'),
+    resolve(repositoryRoot, '.local/runner-temp/uat-private'),
+  ])(
+    'retains the path checks for explicit production local storage: %s',
+    (PRIVATE_FILE_ROOT) => {
+      expect(() =>
+        validateEnvironment({
+          ...valid,
+          NODE_ENV: 'production',
+          PRIVATE_BLOB_STORAGE_DRIVER: 'local',
+          PRIVATE_FILE_ROOT,
+        }),
+      ).toThrow('PRIVATE_FILE_ROOT');
+    },
+  );
 });

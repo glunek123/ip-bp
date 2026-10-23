@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+## 2026-10-23 UAT本地私有存储接线与离线交付
+
+本轮在已交付bc3d9e3a之后，只补既有E02适配器的显式选择，不重做已通过的报表CSV、174或其他业务验收。新增可选`PRIVATE_BLOB_STORAGE_DRIVER=local`；production默认仍为Unavailable，development／test默认保持原Local行为。未知driver、显式local缺少根目录及原不安全路径均拒绝；现有存储算法、PrivateBlobStorage接口、鉴权、部门范围、模型和迁移均未修改。
+
+[环境直接测试](../../../backend/src/common/environment.spec.ts)与[实际模块provider测试](../../../backend/src/modules/materials/private-blob-storage.provider.spec.ts)共38项，RED为13失败／25通过，修复后GREEN38／38。provider测试从MaterialModule真实元数据取得同一工厂，经validateEnvironment和ConfigService选择适配器，在新临时目录用小合成PDF完成put／open／hash／delete并拒绝路径穿越；没有启动Nest、数据库、监听器或清理定时器。后端类型及5源定向ESLint／格式exit0。原Reviewer对5源和2份配置说明窄审ACCEPTED，Spec／Quality C/I/M均0，逐项SHA与作者冻结清单相同。
+
+Root仅补受影响的组合检查：TypeScript独立输出到ignored目录，共960文件且新provider已生成，未覆盖旧backend/dist；架构检查20模块／174模型通过。环境模板仅占位，运营手册按真实页面／权限核对，UTF-8及7个本地链接检查通过。该Level2配置接线复用未变业务和适配器证据，不新增完整verify、NT006、DB或HTTP运行；最终文档／快照检查与本地提交另按当前交付回执核实，不冒称全系统AC。
+
+旧bc3源码包和前端包已校验并保留为基线，状态NOT_DEPLOYED；新增代码的交付输入必须以新候选及其manifest为准。前端源码未变，可复用已验的正确前端产物，不能取旧的修复前dist。交付包不包含真实环境、私有材料、数据库或登录状态，也不预置跨平台Node／Prisma运行依赖；后端编译不等于目标操作系统上已启动。
+
+代码可交付范围是单后端实例、独占本地私有持久目录的显式接线；未验证真实服务器的ACL／符号链接与挂载、持久化、HTTPS代理、材料HTTP及实际授权、静态加密、备份恢复和部署。用户将在开发完成后自行租服务器，不构成本轮离线开发阻塞；实际启用、迁移和身份权限仍需各自准确范围。H42、R2及原已停用技术身份不变，外部报表历史／整包迁移／OCR／托管CI没有启动。
+
 ## 2026-10-22 内部报表中心与CSV有限真实验收收口
 
 代码候选120560ca97ca88c10d1f75ecf278839e058432a2，tree4a0f59e5631da942bccb44c53d0c3de37cfbff61。相对d420528b只修改报表导出API及直接测试：真实浏览器fetch的CSV Blob可只保留MIME essence `text/csv`，旧实现强制附带charset而误拒合法文件。冻结完整页面、与controller契约一致的合成响应已复现该条件；单项对照恢复下载，新增直接回归先RED后GREEN，36／36通过，前端类型、定向Lint／格式、独立输出目录构建和原Reviewer窄审通过。错误MIME、空文件、显式非UTF-8参数、坏文件名、权限与上下文隔离保持；旧现场没有记录的响应头／Blob类型不作追认。

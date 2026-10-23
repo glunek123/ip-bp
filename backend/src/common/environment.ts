@@ -8,6 +8,7 @@ export interface Environment {
   TRUST_PROXY_HOPS: number;
   E2E_IDENTITY_FIXTURES?: string;
   PRIVATE_FILE_ROOT?: string;
+  PRIVATE_BLOB_STORAGE_DRIVER?: 'local';
 }
 
 export function validateEnvironment(
@@ -69,9 +70,18 @@ export function validateEnvironment(
   if (identityFixtures !== undefined && mode !== 'test') {
     throw new Error('E2E_IDENTITY_FIXTURES is allowed only in test');
   }
+  const storageDriver = input.PRIVATE_BLOB_STORAGE_DRIVER;
+  if (storageDriver !== undefined && storageDriver !== 'local') {
+    throw new Error('PRIVATE_BLOB_STORAGE_DRIVER must be local when set');
+  }
   const privateFileRoot = input.PRIVATE_FILE_ROOT;
   if (mode !== 'production' && typeof privateFileRoot !== 'string') {
     throw new Error('PRIVATE_FILE_ROOT is required in development and test');
+  }
+  if (storageDriver === 'local' && typeof privateFileRoot !== 'string') {
+    throw new Error(
+      'PRIVATE_FILE_ROOT is required for local private blob storage',
+    );
   }
   if (privateFileRoot !== undefined) {
     if (
@@ -92,6 +102,9 @@ export function validateEnvironment(
     ...(privateFileRoot === undefined
       ? {}
       : { PRIVATE_FILE_ROOT: resolve(privateFileRoot) }),
+    ...(storageDriver === undefined
+      ? {}
+      : { PRIVATE_BLOB_STORAGE_DRIVER: storageDriver }),
     ...(identityFixtures === undefined
       ? {}
       : { E2E_IDENTITY_FIXTURES: identityFixtures }),
