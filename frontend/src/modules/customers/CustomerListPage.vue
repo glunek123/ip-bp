@@ -1,17 +1,49 @@
 <script setup lang="ts">
 import './customer-workspace.css';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { RouterLink, useRouter } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { listCustomers, type CustomerSummary } from '../../api/customers';
 import { pinia } from '../../app/pinia';
 import { useAuthStore } from '../../stores/auth';
 
 const router = useRouter();
+const route = useRoute();
 const auth = useAuthStore(pinia);
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<CustomerSummary[]>([]);
 const canCreateDraft = ref(false);
+const total = ref(0);
+const currentPage = ref(1);
+const keyword = ref('');
+const cooperation = ref('');
+const formError = ref('');
+const isCooperation = (
+  value: unknown,
+): value is CustomerSummary['cooperationStatus'] =>
+  value === 'COOPERATING' || value === 'PAUSED' || value === 'TERMINATED';
+const queryError = computed(() => {
+  const { q, cooperationStatus, page } = route.query;
+  if (
+    q !== undefined &&
+    (typeof q !== 'string' || Array.from(q.trim()).length > 200)
+  )
+    return '客户关键词无效，最多200字。';
+  if (cooperationStatus !== undefined && !isCooperation(cooperationStatus))
+    return '客户合作状态无效。';
+  if (
+    page !== undefined &&
+    (typeof page !== 'string' ||
+      !/^[1-9]\d*$/.test(page) ||
+      !Number.isSafeInteger(Number(page)))
+  )
+    return '客户页码无效。';
+  return '';
+});
+const requestedPage = computed(() =>
+  queryError.value ? 1 : Number(route.query.page ?? 1),
+);
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / 20)));
 const maintenanceSuccessNotice = ref('');
 const actorIdentity = computed(() => {
   const session = auth.session;
@@ -88,21 +120,112 @@ async function load(): Promise<void> {
   activeRequest?.abort();
   const controller = new AbortController();
   activeRequest = controller;
+  const session = auth.session;
+  const actor = actorIdentity.value;
+  items.value = [];
+  total.value = 0;
+  canCreateDraft.value = false;
   state.value = 'loading';
+  if (queryError.value) {
+    state.value = 'failed';
+    return;
+  }
+  const page = requestedPage.value;
   try {
-    const result = await listCustomers(1, 20, { signal: controller.signal });
-    if (controller.signal.aborted) return;
+    const result = await listCustomers(
+      page,
+      20,
+      { signal: controller.signal },
+      {
+        ...(typeof route.query.q === 'string' && route.query.q.trim()
+          ? { q: route.query.q.trim() }
+          : {}),
+        ...(isCooperation(route.query.cooperationStatus)
+          ? { cooperationStatus: route.query.cooperationStatus }
+          : {}),
+      },
+    );
+    if (
+      controller.signal.aborted ||
+      activeRequest !== controller ||
+      session !== auth.session ||
+      actor !== actorIdentity.value
+    )
+      return;
+    const lastPage = Math.max(1, Math.ceil(result.total / 20));
+    if (page > lastPage) {
+      await router.replace({
+        query: { ...route.query, page: String(lastPage) },
+      });
+      return;
+    }
     items.value = result.items;
+    total.value = result.total;
+    currentPage.value = result.page;
     canCreateDraft.value = result.capabilities.createDraft;
     state.value = 'ready';
   } catch {
-    if (!controller.signal.aborted) state.value = 'failed';
+    if (
+      !controller.signal.aborted &&
+      activeRequest === controller &&
+      session === auth.session &&
+      actor === actorIdentity.value
+    )
+      state.value = 'failed';
   }
 }
 
+async function applyQuery(clear = false): Promise<void> {
+  const q = clear ? '' : keyword.value.trim();
+  if (Array.from(q).length > 200) {
+    formError.value = '客户关键词最多200字。';
+    return;
+  }
+  formError.value = '';
+  const query = { ...route.query };
+  delete query.q;
+  delete query.cooperationStatus;
+  if (q) query.q = q;
+  if (!clear && isCooperation(cooperation.value))
+    query.cooperationStatus = cooperation.value;
+  query.page = '1';
+  await router.push({ query });
+}
+async function goToPage(page: number): Promise<void> {
+  if (
+    state.value !== 'ready' ||
+    page < 1 ||
+    page > totalPages.value ||
+    page === requestedPage.value
+  )
+    return;
+  await router.push({ query: { ...route.query, page: String(page) } });
+}
+watch(
+  () => [route.query.q, route.query.cooperationStatus],
+  () => {
+    keyword.value = typeof route.query.q === 'string' ? route.query.q : '';
+    cooperation.value = isCooperation(route.query.cooperationStatus)
+      ? route.query.cooperationStatus
+      : '';
+    formError.value = '';
+  },
+  { immediate: true, flush: 'sync' },
+);
+watch(
+  [
+    () => route.query.q,
+    () => route.query.cooperationStatus,
+    () => route.query.page,
+    () => auth.session,
+    actorIdentity,
+  ],
+  () => void load(),
+  { immediate: true, flush: 'sync' },
+);
+
 onMounted(() => {
   consumeMaintenanceSuccessNotice();
-  void load();
 });
 onBeforeUnmount(() => activeRequest?.abort());
 </script>
@@ -140,6 +263,44 @@ onBeforeUnmount(() => activeRequest?.abort());
         </div>
       </div>
 
+      <form
+        aria-label="客户查询"
+        class="customer-heading-actions"
+        @submit.prevent="applyQuery()"
+      >
+        <label
+          >关键词<input
+            v-model="keyword"
+            data-test="customer-query"
+            class="text-input"
+            placeholder="客户名／证件号／主营类目／地区"
+        /></label>
+        <label
+          >合作状态<select
+            v-model="cooperation"
+            data-test="customer-cooperation"
+            class="text-input"
+          >
+            <option value="">全部</option>
+            <option value="COOPERATING">合作中</option>
+            <option value="PAUSED">已暂停合作</option>
+            <option value="TERMINATED">已终止合作</option>
+          </select></label
+        >
+        <ElButton native-type="submit" data-test="customer-search"
+          >查询</ElButton
+        >
+        <ElButton
+          native-type="button"
+          data-test="customer-clear"
+          @click="applyQuery(true)"
+          >清除筛选</ElButton
+        >
+      </form>
+      <p v-if="formError || queryError" role="alert">
+        {{ formError || queryError }}
+      </p>
+
       <section class="ledger-panel" aria-live="polite">
         <div v-if="state === 'loading'" class="state-panel">
           <span class="state-index">读取中</span>
@@ -150,11 +311,19 @@ onBeforeUnmount(() => activeRequest?.abort());
           <span class="state-index">连接失败</span>
           <h2>客户列表暂时无法加载</h2>
           <p>已保留当前页面，可以直接重试。</p>
-          <ElButton data-test="retry" @click="load">重新加载</ElButton>
+          <ElButton v-if="!queryError" data-test="retry" @click="load"
+            >重新加载</ElButton
+          >
         </div>
         <div v-else-if="items.length === 0" class="state-panel">
           <span class="state-index">0 条记录</span>
-          <h2>还没有客户记录</h2>
+          <h2>
+            {{
+              route.query.q || route.query.cooperationStatus
+                ? '当前筛选下没有客户记录'
+                : '还没有客户记录'
+            }}
+          </h2>
           <p>有创建权限时，可从右上角新建一份客户草稿。</p>
         </div>
         <div v-else class="customer-list">
@@ -190,6 +359,24 @@ onBeforeUnmount(() => activeRequest?.abort());
           </RouterLink>
         </div>
       </section>
+      <nav v-if="state === 'ready'" aria-label="客户分页">
+        <span data-test="customer-total"
+          >共 {{ total }} 条 · 第 {{ currentPage }} / {{ totalPages }} 页 ·
+          每页20条</span
+        >
+        <ElButton
+          data-test="customer-prev"
+          :disabled="currentPage <= 1"
+          @click="goToPage(currentPage - 1)"
+          >上一页</ElButton
+        >
+        <ElButton
+          data-test="customer-next"
+          :disabled="currentPage >= totalPages"
+          @click="goToPage(currentPage + 1)"
+          >下一页</ElButton
+        >
+      </nav>
     </main>
   </div>
 </template>

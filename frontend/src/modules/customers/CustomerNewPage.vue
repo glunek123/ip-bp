@@ -14,6 +14,8 @@ import { useUnsavedForm } from '../../app/use-unsaved-form';
 
 const router = useRouter();
 const name = ref('');
+const customerManagerName = ref('');
+const managerError = ref('');
 const nameError = ref('');
 const admissionContactName = ref('');
 const admissionContactPhone = ref('');
@@ -48,6 +50,9 @@ async function submit(): Promise<void> {
   if (saving.value) return;
   const normalizedName = name.value.trim();
   nameError.value = normalizedName ? '' : '请输入客户名称';
+  const manager = customerManagerName.value.trim();
+  managerError.value =
+    Array.from(manager).length > 100 ? '客户经理最多100字' : '';
   const contactName = admissionContactName.value.trim();
   const contactPhone = admissionContactPhone.value.trim();
   const contactEmail = admissionContactEmail.value.trim();
@@ -76,6 +81,7 @@ async function submit(): Promise<void> {
   duplicateMatches.value = [];
   if (
     nameError.value ||
+    managerError.value ||
     admissionContactError.value ||
     duplicateNameReasonError.value
   )
@@ -85,6 +91,7 @@ async function submit(): Promise<void> {
   try {
     const created = await createCustomerDraft({
       name: normalizedName,
+      ...(manager ? { customerManagerName: manager } : {}),
       ...(hasContact
         ? {
             admissionContactName: contactName,
@@ -140,6 +147,15 @@ async function submit(): Promise<void> {
         @input="isDirty = true"
         @change="isDirty = true"
       >
+        <label class="field-label" for="customer-manager-name">客户经理</label>
+        <input
+          id="customer-manager-name"
+          v-model="customerManagerName"
+          name="customerManagerName"
+          class="text-input"
+          :aria-invalid="Boolean(managerError)"
+        />
+        <p v-if="managerError" role="alert">{{ managerError }}</p>
         <label class="field-label" for="customer-name"
           >客户名称<RequiredFieldMark
         /></label>

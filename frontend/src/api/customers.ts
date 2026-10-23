@@ -14,6 +14,7 @@ import type {
 export type CustomerSummary = {
   id: string;
   name: string;
+  customerManagerName?: string | null;
   customerType: string | null;
   identityType: string | null;
   identityNumber: string | null;
@@ -83,6 +84,7 @@ export type CustomerDraftLifecycleInput = {
 export type CustomerDraftInput = {
   expectedVersion: number;
   name?: string;
+  customerManagerName?: string | null;
   customerType?: string;
   identityType?: string;
   identityNumber?: string;
@@ -378,6 +380,8 @@ function isCooperationStatus(
 function isCustomerSummary(value: unknown): value is CustomerSummary {
   return (
     isRecord(value) &&
+    (!Object.hasOwn(value, 'customerManagerName') ||
+      isNullableString(value.customerManagerName)) &&
     typeof value.id === 'string' &&
     typeof value.name === 'string' &&
     isNullableString(value.customerType) &&
@@ -410,11 +414,27 @@ export async function listCustomers(
   page = 1,
   pageSize = 20,
   options: RequestOptions = {},
+  filters: {
+    q?: string;
+    cooperationStatus?: CustomerSummary['cooperationStatus'];
+  } = {},
 ): Promise<CustomerList> {
-  const data = await getJson(
-    `/customers?page=${page}&pageSize=${pageSize}`,
-    options,
-  );
+  if (
+    (filters.q !== undefined &&
+      (typeof filters.q !== 'string' ||
+        Array.from(filters.q.trim()).length > 200)) ||
+    (filters.cooperationStatus !== undefined &&
+      !isCooperationStatus(filters.cooperationStatus))
+  )
+    throw new ApiError('客户查询条件无效', 400, 'VALIDATION_ERROR');
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  if (filters.q?.trim()) query.set('q', filters.q.trim());
+  if (filters.cooperationStatus)
+    query.set('cooperationStatus', filters.cooperationStatus);
+  const data = await getJson(`/customers?${query}`, options);
   if (
     !isRecord(data) ||
     !Array.isArray(data.items) ||
@@ -657,6 +677,7 @@ export function restoreCustomerDraft(
 
 export async function createCustomerDraft(input: {
   name: string;
+  customerManagerName?: string | null;
   category?: string;
   region?: string;
   admissionContactName?: string;

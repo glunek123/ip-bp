@@ -212,6 +212,22 @@ function customerRecord(
 }
 
 describe('CustomerDetailPage', () => {
+  it.each([null, '经理乙'])(
+    'shows manager %s independently of the responsible operator',
+    async (customerManagerName) => {
+      setInternalActor();
+      api.getCustomer.mockResolvedValue({
+        ...customerRecord('customer-1', '客户甲'),
+        customerManagerName,
+      });
+      const { wrapper } = await mountPage();
+      await flushPromises();
+      expect(wrapper.get('[data-test="customer-manager-name"]').text()).toBe(
+        customerManagerName ?? '未填写',
+      );
+      expect(wrapper.text()).toContain('运营甲');
+    },
+  );
   it('uses one settlement list owner for the KPI and panel, without refetching on customer version changes', async () => {
     setInternalActor();
     settlementApi.listCustomerSettlements.mockResolvedValue({

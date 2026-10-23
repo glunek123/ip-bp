@@ -358,6 +358,7 @@ export class LeadService {
     pageSize: number,
     status?: LeadStatus,
     view?: 'LIBRARY',
+    q?: string,
   ) {
     if (view === 'LIBRARY' && status === 'TRANSFERRED_TO_NOTARY')
       throw new BadRequestException({
@@ -370,10 +371,31 @@ export class LeadService {
     } catch (error) {
       throw this.mapAuthorization(error);
     }
-    const visibleScope =
+    const viewScope =
       view === 'LIBRARY'
         ? { ...scope, status: { not: 'TRANSFERRED_TO_NOTARY' as const } }
         : scope;
+    const keyword = q?.trim();
+    const match = keyword
+      ? {
+          contains: keyword.replace(/[\\%_]/g, '\\$&'),
+          mode: 'insensitive' as const,
+        }
+      : undefined;
+    const visibleScope: Prisma.LeadWhereInput = match
+      ? {
+          AND: [
+            viewScope,
+            {
+              OR: [
+                { businessNo: match },
+                { shopName: match },
+                { products: { some: { title: match } } },
+              ],
+            },
+          ],
+        }
+      : viewScope;
     const itemScope =
       status === undefined ? visibleScope : { ...visibleScope, status };
     const [items, total, groups, create] = await Promise.all([

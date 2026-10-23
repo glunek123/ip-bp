@@ -1351,6 +1351,12 @@ onBeforeUnmount(() => {
                   <dd>{{ customer.category || '未填写' }}</dd>
                 </div>
                 <div>
+                  <dt>客户经理</dt>
+                  <dd data-test="customer-manager-name">
+                    {{ customer.customerManagerName || '未填写' }}
+                  </dd>
+                </div>
+                <div>
                   <dt>客户组织类型</dt>
                   <dd>{{ labelCustomerType(customer.customerType) }}</dd>
                 </div>

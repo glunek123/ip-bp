@@ -295,6 +295,71 @@ afterEach(() => {
 });
 
 describe('LeadListPage', () => {
+  it('applies and clears a keyword while preserving stage and resetting page', async () => {
+    api.listLeads.mockImplementation(async (page: number) => ({
+      ...result,
+      page,
+      total: 41,
+    }));
+    const { wrapper, router } = await mountWithRoute(
+      '/leads?status=WAITING_PUSH&page=2',
+    );
+    await wrapper.get('[data-test="lead-query"]').setValue(' 商品甲 ');
+    await wrapper.get('form[aria-label="线索关键词查询"]').trigger('submit');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({
+      status: 'WAITING_PUSH',
+      page: '1',
+      q: '商品甲',
+    });
+    expect(api.listLeads).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.anything(),
+      'WAITING_PUSH',
+      'LIBRARY',
+      '商品甲',
+    );
+    await router.push('/leads?status=WAITING_PUSH&page=2&q=商品甲');
+    await flushPromises();
+    expect(api.listLeads).toHaveBeenLastCalledWith(
+      2,
+      20,
+      expect.anything(),
+      'WAITING_PUSH',
+      'LIBRARY',
+      '商品甲',
+    );
+    await wrapper.get('[data-test="lead-clear"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({
+      status: 'WAITING_PUSH',
+      page: '1',
+    });
+  });
+
+  it('rejects repeated keyword values and fences a late response', async () => {
+    let resolveOld: ((value: unknown) => void) | undefined;
+    api.listLeads.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+    );
+    const { wrapper, router } = await mountWithRoute('/leads');
+    const signal = api.listLeads.mock.calls[0]?.[2].signal as AbortSignal;
+    await router.push('/leads?q=a&q=b');
+    await flushPromises();
+    expect(signal.aborted).toBe(true);
+    resolveOld?.({ ...result, items: [batchSummary], total: 1 });
+    await flushPromises();
+    expect(wrapper.text()).toContain('线索关键词无效');
+    expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
+    api.listLeads.mockResolvedValue(result);
+    await router.push('/leads?q=');
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('线索关键词无效');
+  });
   it('freshly checks selected no-evidence leads, submits one batch and preserves list filter', async () => {
     const selected: Lead = {
       ...batchSummary,
@@ -385,6 +450,9 @@ describe('LeadListPage', () => {
       wrapper.get('[data-test="pending-no-evidence-batch"]').text(),
     ).toContain('原始原因');
     for (const selector of [
+      '[data-test="lead-query"]',
+      '[data-test="lead-search"]',
+      '[data-test="lead-clear"]',
       '[data-test="open-batch-push"]',
       '[data-test="open-csv-import"]',
       '[data-test="lead-quick-action"]',

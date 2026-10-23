@@ -29,6 +29,25 @@ async function mountPage() {
 }
 
 describe('CustomerNewPage', () => {
+  it('creates an independently entered manager and rejects overlong names', async () => {
+    api.createCustomerDraft.mockResolvedValue({ id: 'customer-1' });
+    const { wrapper } = await mountPage();
+    await wrapper.get('input[name="name"]').setValue('客户甲');
+    await wrapper
+      .get('input[name="customerManagerName"]')
+      .setValue('长'.repeat(101));
+    await wrapper.get('form').trigger('submit');
+    expect(api.createCustomerDraft).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('客户经理最多100字');
+    await wrapper.get('input[name="customerManagerName"]').setValue(' 经理乙 ');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.createCustomerDraft).toHaveBeenCalledWith({
+      name: '客户甲',
+      customerManagerName: '经理乙',
+    });
+    wrapper.unmount();
+  });
   it('marks the only unconditional field as required', async () => {
     const { wrapper } = await mountPage();
 

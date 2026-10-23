@@ -557,6 +557,10 @@ describe('CustomerAdmissionService', () => {
   });
 
   it('returns the exact original snapshot after a later routine edit', async () => {
+    customerFindUnique.mockResolvedValue({
+      ...updated,
+      customerManagerName: '原客户经理',
+    });
     const original = await service.admit(
       actor,
       customerId,
@@ -568,6 +572,7 @@ describe('CustomerAdmissionService', () => {
     const resultSnapshot = receiptCreate.mock.calls[0]?.[0]?.data
       .resultSnapshot as unknown;
     const writesAfterFirst = customerUpdateMany.mock.calls.length;
+    expect(original.customerManagerName).toBe('原客户经理');
     receiptFindUnique.mockResolvedValue({
       requestFingerprint: fingerprint,
       resultCustomerId: customerId,
@@ -577,6 +582,7 @@ describe('CustomerAdmissionService', () => {
     customerFindUnique.mockResolvedValue({
       ...updated,
       category: '后来修改的分类',
+      customerManagerName: '后来客户经理',
       version: 3,
       updatedAt: new Date('2026-09-21T04:00:00.000Z'),
     });
@@ -602,6 +608,7 @@ describe('CustomerAdmissionService', () => {
       ...(created.resultSnapshot as Record<string, unknown>),
     };
     delete legacySnapshot.cooperationStatus;
+    delete legacySnapshot.customerManagerName;
     receiptFindUnique.mockResolvedValue({
       requestFingerprint: created.requestFingerprint,
       resultCustomerId: customerId,
@@ -613,6 +620,8 @@ describe('CustomerAdmissionService', () => {
       service.admit(actor, customerId, 'legacy-key', command()),
     ).resolves.toEqual(original);
     expect(legacySnapshot).not.toHaveProperty('cooperationStatus');
+    expect(legacySnapshot).not.toHaveProperty('customerManagerName');
+    expect(original.customerManagerName).toBeNull();
     expect(receiptCreate).toHaveBeenCalledTimes(1);
     expect(auditCreate).toHaveBeenCalledTimes(1);
     expect(customerUpdateMany).toHaveBeenCalledTimes(1);
@@ -689,6 +698,7 @@ describe('CustomerAdmissionService', () => {
     ).resolves.toEqual({
       id: customerId,
       name: '上海示例企业',
+      customerManagerName: null,
       customerType: 'ENTERPRISE',
       identityType: 'BUSINESS_LICENSE',
       identityNumber: '9131-0000-ABCD-1234',

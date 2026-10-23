@@ -8,6 +8,7 @@ import {
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
+import { Prisma } from '../../generated/prisma/client';
 import { OrganizationService } from '../../access-control/organization.service';
 import {
   isCustomerContactRetryable,
@@ -22,6 +23,7 @@ import {
 import { normalizeCustomerIdentityNumber } from './customer-identity';
 
 export type CustomerRecord = {
+  customerManagerName?: string | null;
   id: string;
   name: string;
   normalizedName: string;
@@ -56,6 +58,7 @@ export type CustomerRecord = {
 };
 
 export type CustomerSummary = {
+  customerManagerName: string | null;
   id: string;
   name: string;
   customerType: string | null;
@@ -111,6 +114,7 @@ export type CustomerDetail = CustomerSummary & {
 };
 
 type NormalizedCustomerEdit = {
+  customerManagerName: string | null;
   name: string;
   normalizedName: string;
   customerType: string | null;
@@ -126,6 +130,7 @@ type NormalizedCustomerEdit = {
 };
 
 const editableFields: Array<keyof NormalizedCustomerEdit> = [
+  'customerManagerName',
   'name',
   'customerType',
   'identityType',
@@ -201,6 +206,9 @@ export class CustomerService {
           normalizedName,
           category: this.normalizeOptional(input.category),
           region: this.normalizeOptional(input.region),
+          customerManagerName: this.normalizeOptional(
+            input.customerManagerName,
+          ),
           ...admissionContact,
           profileStatus: 'DRAFT',
           departmentId: actor.departmentId,
@@ -265,6 +273,8 @@ export class CustomerService {
     actor: ActorContext,
     page: number,
     pageSize: number,
+    q?: string,
+    cooperationStatus?: CustomerSummary['cooperationStatus'],
   ): Promise<{
     items: CustomerSummary[];
     total: number;
@@ -276,14 +286,43 @@ export class CustomerService {
       this.accessControl.buildCustomerScope(actor, 'customer.read'),
       this.accessControl.canAuthorizeNewCustomer(actor),
     ]);
+    const keyword = q?.trim();
+    const match = keyword
+      ? {
+          contains: keyword.replace(/[\\%_]/g, '\\$&'),
+          mode: 'insensitive' as const,
+        }
+      : undefined;
+    const listWhere: Prisma.CustomerWhereInput =
+      keyword || cooperationStatus
+        ? {
+            AND: [
+              where,
+              {
+                deletedAt: null,
+                ...(cooperationStatus ? { cooperationStatus } : {}),
+                ...(match
+                  ? {
+                      OR: [
+                        { name: match },
+                        { identityNumber: match },
+                        { category: match },
+                        { region: match },
+                      ],
+                    }
+                  : {}),
+              },
+            ],
+          }
+        : { ...where, deletedAt: null };
     const [customers, total] = await this.database.$transaction([
       this.database.customer.findMany({
-        where: { ...where, deletedAt: null },
+        where: listWhere,
         orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      this.database.customer.count({ where: { ...where, deletedAt: null } }),
+      this.database.customer.count({ where: listWhere }),
     ]);
 
     return {
@@ -904,6 +943,10 @@ export class CustomerService {
     return {
       name,
       normalizedName: this.normalizeComparable(name),
+      customerManagerName:
+        input.customerManagerName !== undefined
+          ? this.normalizeOptional(input.customerManagerName)
+          : (current.customerManagerName ?? null),
       customerType,
       identityType,
       identityNumber,
@@ -1020,8 +1063,8 @@ export class CustomerService {
     }
   }
 
-  private normalizeOptional(value: string | undefined): string | null {
-    if (value === undefined) return null;
+  private normalizeOptional(value: string | null | undefined): string | null {
+    if (value == null) return null;
     const normalized = value.trim();
     return normalized.length === 0 ? null : normalized;
   }
@@ -1042,7 +1085,8 @@ export class CustomerService {
     value: string | null,
   ): string | null {
     if (value === null) return value;
-    if (field === 'admissionContactName') return '***';
+    if (field === 'admissionContactName' || field === 'customerManagerName')
+      return '***';
     if (field === 'admissionContactEmail') {
       const separator = value.lastIndexOf('@');
       return separator < 0 ? '***' : `***${value.slice(separator)}`;
@@ -1120,6 +1164,7 @@ export class CustomerService {
 
 export function toCustomerSummary(customer: CustomerRecord): CustomerSummary {
   return {
+    customerManagerName: customer.customerManagerName ?? null,
     id: customer.id,
     name: customer.name,
     customerType: customer.customerType ?? null,

@@ -175,6 +175,13 @@ export class DecideLeadEvidenceDto {
 }
 
 export class LeadListQueryDto {
+  @ApiPropertyOptional({ maxLength: 200 })
+  @Transform(trim)
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MaxLength(200)
+  q?: string;
+
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @Type(() => Number)
   @IsInt()

@@ -38,6 +38,75 @@ const summary = {
 };
 
 describe('customer API', () => {
+  it('encodes trimmed filters, omits empty keywords and rejects invalid query values', async () => {
+    const fetchMock = vi.fn().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            items: [summary],
+            total: 21,
+            page: 2,
+            pageSize: 20,
+            capabilities: { createDraft: false },
+          }),
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await listCustomers(
+      2,
+      20,
+      {},
+      { q: ' 名称 & 证件 ', cooperationStatus: 'PAUSED' },
+    );
+    const url = new URL(
+      String(fetchMock.mock.calls[0]?.[0]),
+      'https://example.test',
+    );
+    expect(url.searchParams.get('q')).toBe('名称 & 证件');
+    expect(url.searchParams.get('cooperationStatus')).toBe('PAUSED');
+    expect(url.searchParams.get('page')).toBe('2');
+    await listCustomers(2, 20, {}, { q: ' ' });
+    expect(String(fetchMock.mock.calls[1]?.[0])).not.toContain('&q=');
+    await expect(
+      listCustomers(1, 20, {}, { q: '字'.repeat(201) }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([undefined, null, '客户经理甲', 12])(
+    'validates the optional manager response %s',
+    async (manager) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  ...summary,
+                  ...(manager === undefined
+                    ? {}
+                    : { customerManagerName: manager }),
+                },
+              ],
+              total: 1,
+              page: 1,
+              pageSize: 20,
+              capabilities: { createDraft: false },
+            }),
+          ),
+        ),
+      );
+      if (typeof manager === 'number')
+        await expect(listCustomers()).rejects.toMatchObject({
+          code: 'INVALID_RESPONSE',
+        });
+      else
+        expect((await listCustomers()).items[0]?.customerManagerName).toBe(
+          manager,
+        );
+    },
+  );
   const contact = {
     id: 'contact-1',
     customerId: 'customer-1',

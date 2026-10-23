@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsInt,
+  IsIn,
   IsEmail,
   IsString,
   IsUUID,
@@ -19,6 +20,13 @@ const trim = ({ value }: { value: unknown }): unknown =>
 const admissionPhonePattern = /^(?=(?:\D*\d){6,20}\D*$)[+()\d\s-]+$/u;
 
 class AdmissionContactFieldsDto {
+  @ApiPropertyOptional({ type: String, maxLength: 100, nullable: true })
+  @Transform(trim)
+  @ValidateIf((_object, value) => value !== undefined && value !== null)
+  @IsString()
+  @MaxLength(100)
+  customerManagerName?: string | null;
+
   @ApiPropertyOptional({ maxLength: 100 })
   @Transform(trim)
   @ValidateIf((_object, value) => value !== undefined)
@@ -168,6 +176,18 @@ export class CustomerDuplicatesQueryDto {
 }
 
 export class CustomerListQueryDto {
+  @ApiPropertyOptional({ maxLength: 200 })
+  @Transform(trim)
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MaxLength(200)
+  q?: string;
+
+  @ApiPropertyOptional({ enum: ['COOPERATING', 'PAUSED', 'TERMINATED'] })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(['COOPERATING', 'PAUSED', 'TERMINATED'])
+  cooperationStatus?: 'COOPERATING' | 'PAUSED' | 'TERMINATED';
+
   @ApiPropertyOptional({ default: 1, minimum: 1 })
   @Type(() => Number)
   @IsInt()

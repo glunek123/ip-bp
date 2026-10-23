@@ -54,6 +54,7 @@ export class LeadController {
       query.pageSize,
       query.status,
       query.view,
+      query.q,
     );
   }
   @Get(':id/edit-context') editContext(

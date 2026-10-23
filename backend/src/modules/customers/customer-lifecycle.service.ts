@@ -160,14 +160,16 @@ export class CustomerLifecycleService {
               );
             const snapshot = receipt.resultSnapshot as Omit<
               CustomerSummary,
-              'cooperationStatus'
+              'cooperationStatus' | 'customerManagerName'
             > & {
+              customerManagerName?: string | null;
               cooperationStatus?: CustomerSummary['cooperationStatus'];
             };
             // Receipts written before CU005 represent the then-implicit
             // COOPERATING state. Their immutable JSON is never rewritten.
             return {
               ...snapshot,
+              customerManagerName: snapshot.customerManagerName ?? null,
               cooperationStatus: snapshot.cooperationStatus ?? 'COOPERATING',
             };
           }

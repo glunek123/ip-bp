@@ -105,6 +105,7 @@ describe('CustomerService', () => {
     ).resolves.toEqual({
       id: created.id,
       name: '测试客户甲',
+      customerManagerName: null,
       customerType: null,
       identityType: null,
       identityNumber: null,
@@ -317,6 +318,130 @@ describe('CustomerService', () => {
     expect(canAuthorizeNewCustomer).toHaveBeenCalledWith(actor);
   });
 
+  it('stores a trimmed manager name without deriving it from the responsible user', async () => {
+    auditCreate.mockResolvedValue({ id: 'manager-create-audit' });
+    customerCreate.mockImplementation(({ data }) => ({
+      ...data,
+      id: 'customer-manager',
+      version: 1,
+      cooperationStatus: 'COOPERATING',
+      updatedAt: new Date('2026-10-23T01:00:00.000Z'),
+    }));
+    transaction.mockImplementation(async (callback) =>
+      callback({
+        customer: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: customerCreate,
+        },
+        auditEvent: { create: auditCreate },
+      }),
+    );
+    const result = await service.createDraft(actor, {
+      name: '客户甲',
+      customerManagerName: '  姓名甲  ',
+    });
+    expect(result.customerManagerName).toBe('姓名甲');
+    expect(customerCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          customerManagerName: '姓名甲',
+          responsibleUserId: actor.userId,
+        }),
+      }),
+    );
+  });
+
+  it.each(['DRAFT', 'ADMITTED'] as const)(
+    'preserves, clears, and edits the independent manager field for %s',
+    async (profileStatus) => {
+      for (const supplied of [undefined, null, '   ', '  新姓名  ', '旧姓名']) {
+        const current = {
+          id: 'manager-customer',
+          name: '客户甲',
+          normalizedName: '客户甲',
+          customerManagerName: '旧姓名',
+          profileStatus,
+          customerType: null,
+          identityType: null,
+          identityNumber: null,
+          normalizedIdentityNumber: null,
+          issuingCountryOrRegion: null,
+          category: null,
+          region: null,
+          admissionContactName: null,
+          admissionContactPhone: null,
+          admissionContactEmail: null,
+          departmentId: actor.departmentId,
+          responsibleUserId: actor.userId,
+          teamId: null,
+          version: 2,
+          updatedAt: new Date('2026-10-23T01:00:00.000Z'),
+        };
+        const expected =
+          supplied === undefined ? '旧姓名' : supplied?.trim() || null;
+        const changed = expected !== current.customerManagerName;
+        const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+        const audit = jest.fn();
+        transaction.mockImplementation(async (callback) =>
+          callback({
+            customer: {
+              findFirst: jest.fn().mockResolvedValue(current),
+              updateMany,
+              findUnique: jest.fn().mockResolvedValue({
+                ...current,
+                customerManagerName: expected,
+                version: changed ? 3 : 2,
+              }),
+            },
+            auditEvent: { create: audit },
+          }),
+        );
+        const result = await service.updateDraft(actor, current.id, {
+          expectedVersion: 2,
+          ...(supplied === undefined ? {} : { customerManagerName: supplied }),
+        });
+        expect(result).toMatchObject({
+          customerManagerName: expected,
+          responsibleUserId: actor.userId,
+          profileStatus: profileStatus === 'DRAFT' ? 'draft' : 'admitted',
+          version: changed ? 3 : 2,
+        });
+        if (changed) {
+          expect(updateMany).toHaveBeenCalledWith(
+            expect.objectContaining({
+              where: expect.objectContaining({ version: 2, deletedAt: null }),
+              data: expect.objectContaining({
+                customerManagerName: expected,
+                version: { increment: 1 },
+              }),
+            }),
+          );
+          const data = updateMany.mock.calls[0]?.[0]?.data;
+          expect(data).not.toHaveProperty('responsibleUserId');
+          expect(data).not.toHaveProperty('profileStatus');
+          expect(audit).toHaveBeenCalledWith(
+            expect.objectContaining({
+              data: expect.objectContaining({
+                details: expect.objectContaining({
+                  changedFields: ['customerManagerName'],
+                  changes: {
+                    customerManagerName: {
+                      before: '***',
+                      after: expected === null ? null : '***',
+                    },
+                  },
+                }),
+              }),
+            }),
+          );
+        } else {
+          expect(updateMany).not.toHaveBeenCalled();
+          expect(audit).not.toHaveBeenCalled();
+        }
+      }
+    },
+  );
+
   it('uses one non-leaking id-and-scope query for detail', async () => {
     buildCustomerScope.mockResolvedValue({ departmentId: actor.departmentId });
     customerFindFirst.mockResolvedValue(null);
@@ -338,6 +463,45 @@ describe('CustomerService', () => {
     });
     expect(auditFindMany).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { departmentId: actor.departmentId, responsibleUserId: actor.userId },
+    {
+      departmentId: actor.departmentId,
+      OR: [{ teamId: 'team-1' }, { responsibleUserId: actor.userId }],
+    },
+  ])(
+    'intersects customer search and cooperation filtering with the original scope %#',
+    async (scope) => {
+      buildCustomerScope.mockResolvedValue(scope);
+      customerFindMany.mockResolvedValue([]);
+      customerCount.mockResolvedValue(0);
+      transaction.mockResolvedValue([[], 0]);
+
+      await service.list(actor, 2, 50, '  100%_\\  ', 'PAUSED');
+
+      const match = { contains: '100\\%\\_\\\\', mode: 'insensitive' };
+      const where = {
+        AND: [
+          scope,
+          {
+            deletedAt: null,
+            cooperationStatus: 'PAUSED',
+            OR: [
+              { name: match },
+              { identityNumber: match },
+              { category: match },
+              { region: match },
+            ],
+          },
+        ],
+      };
+      expect(customerFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where, skip: 50, take: 50 }),
+      );
+      expect(customerCount).toHaveBeenCalledWith({ where });
+    },
+  );
 
   it('returns the shared creation event only after the scoped customer is found', async () => {
     const customer = {

@@ -34,6 +34,9 @@ const state = ref<
 >('loading');
 const expectedVersion = ref(0);
 const name = ref('');
+const customerManagerName = ref('');
+const originalManager = ref('');
+const managerError = ref('');
 const customerType = ref('');
 const identityType = ref('');
 const identityNumber = ref('');
@@ -127,6 +130,8 @@ function useLatestSnapshot(): void {
   if (latest === null) return;
   expectedVersion.value = latest.version;
   name.value = latest.name;
+  customerManagerName.value = latest.customerManagerName ?? '';
+  originalManager.value = customerManagerName.value;
   customerType.value = normalizeCustomerTypeOption(latest.customerType);
   identityType.value = normalizeIdentityTypeOption(latest.identityType);
   identityNumber.value = latest.identityNumber ?? '';
@@ -167,6 +172,8 @@ async function load(): Promise<void> {
     }
     expectedVersion.value = customer.version;
     name.value = customer.name;
+    customerManagerName.value = customer.customerManagerName ?? '';
+    originalManager.value = customerManagerName.value;
     customerType.value = normalizeCustomerTypeOption(customer.customerType);
     identityType.value = normalizeIdentityTypeOption(customer.identityType);
     identityNumber.value = customer.identityNumber ?? '';
@@ -186,6 +193,9 @@ async function load(): Promise<void> {
 async function submit(): Promise<void> {
   if (saving.value) return;
   nameError.value = name.value.trim() ? '' : '请输入客户名称';
+  const manager = customerManagerName.value.trim();
+  managerError.value =
+    Array.from(manager).length > 100 ? '客户经理最多100字' : '';
   const hasIdentityType = Boolean(identityType.value.trim());
   const hasIdentityNumber = Boolean(identityNumber.value.trim());
   identityError.value =
@@ -200,7 +210,12 @@ async function submit(): Promise<void> {
   restoreTargetId.value = undefined;
   duplicateMatches.value = [];
   latestSnapshot.value = null;
-  if (nameError.value || identityError.value || duplicateNameReasonError.value)
+  if (
+    nameError.value ||
+    managerError.value ||
+    identityError.value ||
+    duplicateNameReasonError.value
+  )
     return;
 
   saving.value = true;
@@ -208,6 +223,9 @@ async function submit(): Promise<void> {
     await updateCustomerDraft(String(route.params.id), {
       expectedVersion: expectedVersion.value,
       name: name.value.trim(),
+      ...(manager !== originalManager.value
+        ? { customerManagerName: manager || null }
+        : {}),
       customerType: editable(customerType.value),
       identityType: editable(identityType.value),
       identityNumber: editable(identityNumber.value),
@@ -413,6 +431,19 @@ onBeforeUnmount(() => activeRequest?.abort());
               />
             </div>
             <div>
+              <label
+                class="field-label field-label--spaced"
+                for="customer-manager-name"
+                >客户经理</label
+              >
+              <input
+                id="customer-manager-name"
+                v-model="customerManagerName"
+                name="customerManagerName"
+                class="text-input"
+                :aria-invalid="Boolean(managerError)"
+              />
+              <p v-if="managerError" role="alert">{{ managerError }}</p>
               <label class="field-label field-label--spaced" for="category"
                 >客户类别</label
               >

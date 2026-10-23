@@ -77,10 +77,12 @@ describe('CustomerLifecycleService legacy receipt projection', () => {
       service.deleteDraft(actor, id, 'legacy-key', input),
     ).resolves.toEqual({
       ...snapshot,
+      customerManagerName: null,
       cooperationStatus: 'COOPERATING',
     });
     expect(tx.customer.updateMany).not.toHaveBeenCalled();
     expect(snapshot).not.toHaveProperty('cooperationStatus');
+    expect(snapshot).not.toHaveProperty('customerManagerName');
   });
 
   it('checks current authorization before reading a legacy receipt', async () => {

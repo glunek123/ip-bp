@@ -65,6 +65,92 @@ async function mountPage() {
 }
 
 describe('CustomerEditPage', () => {
+  it.each([false, true])(
+    'retains manager edit intent across a version conflict (changed=%s)',
+    async (changed) => {
+      api.getCustomer
+        .mockResolvedValueOnce({ ...customer, customerManagerName: '经理甲' })
+        .mockResolvedValueOnce({
+          ...customer,
+          version: 2,
+          customerManagerName: '服务器经理',
+        });
+      api.findCustomerDuplicates.mockResolvedValue({
+        exactIdentity: [],
+        sameName: [],
+      });
+      api.updateCustomerDraft
+        .mockRejectedValueOnce(
+          new ApiError('版本冲突', 409, 'CUSTOMER_VERSION_CONFLICT'),
+        )
+        .mockResolvedValue(customer);
+      const { wrapper } = await mountPage();
+      await flushPromises();
+      await wrapper.get('input[name="name"]').setValue('本地名称');
+      if (changed)
+        await wrapper
+          .get('input[name="customerManagerName"]')
+          .setValue('本地经理');
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      await wrapper.get('button[name="retryLatest"]').trigger('click');
+      await flushPromises();
+      const body = api.updateCustomerDraft.mock.calls.at(-1)?.[1];
+      expect(body.expectedVersion).toBe(2);
+      if (changed) expect(body.customerManagerName).toBe('本地经理');
+      else expect(body).not.toHaveProperty('customerManagerName');
+      wrapper.unmount();
+    },
+  );
+  it.each(['draft', 'admitted'])(
+    'clears a manager in a %s profile without changing operator ownership',
+    async (profileStatus) => {
+      api.getCustomer.mockResolvedValue({
+        ...customer,
+        profileStatus,
+        customerManagerName: '经理乙',
+      });
+      api.updateCustomerDraft.mockResolvedValue(customer);
+      const { wrapper } = await mountPage();
+      await flushPromises();
+      expect(
+        wrapper.get('input[name="customerManagerName"]').element,
+      ).toHaveProperty('value', '经理乙');
+      await wrapper.get('input[name="customerManagerName"]').setValue(' ');
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      expect(api.updateCustomerDraft).toHaveBeenCalledWith(
+        'customer-1',
+        expect.objectContaining({ customerManagerName: null }),
+      );
+      expect(api.updateCustomerDraft.mock.calls[0]?.[1]).not.toHaveProperty(
+        'responsibleUserId',
+      );
+      wrapper.unmount();
+    },
+  );
+
+  it('omits an unchanged manager and validates its maximum length', async () => {
+    api.getCustomer.mockResolvedValue({
+      ...customer,
+      customerManagerName: '经理乙',
+    });
+    api.updateCustomerDraft.mockResolvedValue(customer);
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    await wrapper
+      .get('input[name="customerManagerName"]')
+      .setValue('长'.repeat(101));
+    await wrapper.get('form').trigger('submit');
+    expect(api.updateCustomerDraft).not.toHaveBeenCalled();
+    await wrapper.get('input[name="customerManagerName"]').setValue(' 经理乙 ');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.updateCustomerDraft.mock.calls[0]?.[1]).not.toHaveProperty(
+      'customerManagerName',
+    );
+    wrapper.unmount();
+  });
   it('blocks a direct edit route while a contact command is pending', async () => {
     useAuthStore(pinia).session = {
       principalType: 'INTERNAL',

@@ -1417,6 +1417,61 @@ describe('LeadService', () => {
     });
   });
 
+  it('intersects keyword search with library scope and applies it to counters independently of selected status', async () => {
+    const scope = {
+      departmentId: actor.departmentId,
+      OR: [{ teamId: 'team-1' }, { responsibleUserId: actor.userId }],
+    };
+    const leadRepo = {
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+      groupBy: jest
+        .fn()
+        .mockResolvedValue([{ status: 'ARCHIVED', _count: { _all: 3 } }]),
+    };
+    const service = new LeadService(
+      { lead: leadRepo } as unknown as DatabaseService,
+      {
+        buildLeadScope: jest.fn().mockResolvedValue(scope),
+        canAuthorizeNewLead: jest.fn().mockResolvedValue(false),
+      } as unknown as AccessControlService,
+      {
+        listCurrentReferenceVersionIds: jest.fn(),
+      } as unknown as MaterialService,
+    );
+    const result = await service.list(
+      actor,
+      2,
+      50,
+      'WAITING_PUSH',
+      'LIBRARY',
+      '  100%_\\  ',
+    );
+    const match = { contains: '100\\%\\_\\\\', mode: 'insensitive' };
+    const visibleScope = {
+      AND: [
+        { ...scope, status: { not: 'TRANSFERRED_TO_NOTARY' } },
+        {
+          OR: [
+            { businessNo: match },
+            { shopName: match },
+            { products: { some: { title: match } } },
+          ],
+        },
+      ],
+    };
+    const where = { ...visibleScope, status: 'WAITING_PUSH' };
+    expect(leadRepo.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where, skip: 50, take: 50 }),
+    );
+    expect(leadRepo.count).toHaveBeenCalledWith({ where });
+    expect(leadRepo.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: visibleScope }),
+    );
+    expect(result.counts.ARCHIVED).toBe(3);
+    expect(result.counts.TRANSFERRED_TO_NOTARY).toBe(0);
+  });
+
   it('rejects a transferred status filter in the library view', async () => {
     const service = new LeadService(
       {} as DatabaseService,

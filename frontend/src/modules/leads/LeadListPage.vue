@@ -715,6 +715,55 @@ const requestedPage = computed(() => {
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(total.value / pageSize.value)),
 );
+const queryDraft = ref('');
+const queryFormError = ref('');
+const queryError = computed(() => {
+  const q = route.query.q;
+  return q !== undefined &&
+    (typeof q !== 'string' || Array.from(q.trim()).length > 200)
+    ? '线索关键词无效，最多200字。'
+    : '';
+});
+const queryBlocked = computed(() =>
+  Boolean(
+    activeLeadId.value ||
+    batchActive.value ||
+    batchLoading.value ||
+    noEvidenceOpen.value ||
+    noEvidenceLocked.value ||
+    csvImportOpen.value ||
+    csvContextLoading.value ||
+    csvRecoveryBusy.value ||
+    pendingCsvImport.value ||
+    pendingCsvImportBlocked.value ||
+    pendingBatch.value ||
+    pendingBatchBlocked.value ||
+    pendingPush.value ||
+    pendingStorageUnavailable.value,
+  ),
+);
+watch(
+  () => route.query.q,
+  () => {
+    queryDraft.value = typeof route.query.q === 'string' ? route.query.q : '';
+    queryFormError.value = '';
+  },
+  { immediate: true, flush: 'sync' },
+);
+async function applyQuery(clear = false): Promise<void> {
+  if (queryBlocked.value) return;
+  const q = clear ? '' : queryDraft.value.trim();
+  if (Array.from(q).length > 200) {
+    queryFormError.value = '线索关键词最多200字。';
+    return;
+  }
+  queryFormError.value = '';
+  const query = { ...route.query };
+  query.page = '1';
+  delete query.q;
+  if (q) query.q = q;
+  await router.push({ query });
+}
 
 async function load(): Promise<void> {
   request?.abort();
@@ -726,19 +775,27 @@ async function load(): Promise<void> {
   total.value = 0;
   canCreate.value = false;
   const scope = identity.value;
+  const session = auth.session;
   const page = requestedPage.value;
   const status = selectedStatus.value;
+  if (queryError.value) {
+    state.value = 'failed';
+    return;
+  }
   try {
-    const result = await listLeads(
+    const args = [
       page,
       20,
       { signal: controller.signal },
       status,
       'LIBRARY',
-    );
+    ] as const;
+    const q = typeof route.query.q === 'string' ? route.query.q.trim() : '';
+    const result = await (q ? listLeads(...args, q) : listLeads(...args));
     if (
       controller.signal.aborted ||
       scope !== identity.value ||
+      session !== auth.session ||
       request !== controller
     )
       return;
@@ -759,6 +816,7 @@ async function load(): Promise<void> {
     if (
       !controller.signal.aborted &&
       scope === identity.value &&
+      session === auth.session &&
       request === controller
     )
       state.value = 'failed';
@@ -787,6 +845,8 @@ watch(
   () => [
     route.query.page,
     route.query.status,
+    route.query.q,
+    auth.session,
     identity.value,
     authorizationGeneration.value,
   ],
@@ -889,6 +949,36 @@ onBeforeUnmount(() => {
           >
         </div>
       </div>
+      <form
+        aria-label="线索关键词查询"
+        class="business-list-toolbar"
+        @submit.prevent="applyQuery()"
+      >
+        <label
+          >关键词<input
+            v-model="queryDraft"
+            data-test="lead-query"
+            class="text-input"
+            placeholder="编号／店铺／商品名称"
+            :disabled="queryBlocked"
+        /></label>
+        <ElButton
+          native-type="submit"
+          data-test="lead-search"
+          :disabled="queryBlocked"
+          >查询</ElButton
+        >
+        <ElButton
+          native-type="button"
+          data-test="lead-clear"
+          :disabled="queryBlocked"
+          @click="applyQuery(true)"
+          >清除关键词</ElButton
+        >
+      </form>
+      <p v-if="queryFormError || queryError" role="alert">
+        {{ queryFormError || queryError }}
+      </p>
       <section class="demo-card" aria-live="polite">
         <div
           v-if="state === 'ready' && selectedLeads.length"

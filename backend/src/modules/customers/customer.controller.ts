@@ -68,7 +68,13 @@ export class CustomerController {
     @CurrentActor() actor: ActorContext,
     @Query() query: CustomerListQueryDto,
   ) {
-    return this.customers.list(actor, query.page, query.pageSize);
+    return this.customers.list(
+      actor,
+      query.page,
+      query.pageSize,
+      query.q,
+      query.cooperationStatus,
+    );
   }
 
   @Get('duplicates')

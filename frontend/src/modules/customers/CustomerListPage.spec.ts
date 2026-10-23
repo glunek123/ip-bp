@@ -52,6 +52,130 @@ function mountListPage() {
 }
 
 describe('CustomerListPage', () => {
+  it('clears the prior identity projection and ignores its late response', async () => {
+    const auth = useAuthStore(pinia);
+    let resolveOld: ((value: unknown) => void) | undefined;
+    api.listCustomers.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+    );
+    const { wrapper } = mountListPage();
+    const signal = api.listCustomers.mock.calls.at(-1)?.[2]
+      .signal as AbortSignal;
+    api.listCustomers.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      capabilities: { createDraft: false },
+    });
+    auth.session = {
+      principalType: 'INTERNAL',
+      user: { id: 'new-user', displayName: '运营乙', username: 'b' },
+      department: { id: 'new-department', name: '乙部门' },
+      departments: [],
+      customer: null,
+      notaryOffice: null,
+      authorizationRevision: 2,
+      expiresAt: '2099-01-01T00:00:00.000Z',
+      csrfToken: 'new-csrf',
+    };
+    await flushPromises();
+    expect(signal.aborted).toBe(true);
+    resolveOld?.({
+      items: [summary],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      capabilities: { createDraft: true },
+    });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('客户甲');
+    expect(wrapper.find('[data-test="create-customer"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+  it('paginates beyond twenty customers and applies and clears route filters', async () => {
+    api.listCustomers.mockImplementation(async (page: number) => ({
+      items: [{ ...summary, name: `第${page}页客户` }],
+      total: 21,
+      page,
+      pageSize: 20,
+      capabilities: { createDraft: false },
+    }));
+    const { wrapper, router } = mountListPage();
+    await router.push('/customers');
+    await flushPromises();
+    await wrapper.get('[data-test="customer-next"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.query.page).toBe('2');
+    expect(wrapper.text()).toContain('第2页客户');
+    await wrapper.get('[data-test="customer-query"]').setValue(' 证件甲 ');
+    await wrapper.get('[data-test="customer-cooperation"]').setValue('PAUSED');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toMatchObject({
+      q: '证件甲',
+      cooperationStatus: 'PAUSED',
+      page: '1',
+    });
+    expect(api.listCustomers).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.anything(),
+      { q: '证件甲', cooperationStatus: 'PAUSED' },
+    );
+    await wrapper.get('[data-test="customer-next"]').trigger('click');
+    await flushPromises();
+    expect(api.listCustomers).toHaveBeenLastCalledWith(
+      2,
+      20,
+      expect.anything(),
+      { q: '证件甲', cooperationStatus: 'PAUSED' },
+    );
+    await wrapper.get('[data-test="customer-clear"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({ page: '1' });
+    wrapper.unmount();
+  });
+
+  it('aborts a pending list when repeated query values become invalid and recovers', async () => {
+    let resolveOld: ((value: unknown) => void) | undefined;
+    api.listCustomers.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+    );
+    const { wrapper, router } = mountListPage();
+    const signal = api.listCustomers.mock.calls.at(-1)?.[2]
+      .signal as AbortSignal;
+    await router.push('/customers?q=a&q=b');
+    await flushPromises();
+    expect(signal.aborted).toBe(true);
+    resolveOld?.({
+      items: [summary],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      capabilities: { createDraft: true },
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain('客户关键词无效');
+    expect(wrapper.text()).not.toContain('客户甲');
+    api.listCustomers.mockResolvedValue({
+      items: [summary],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      capabilities: { createDraft: false },
+    });
+    await router.push('/customers?q=');
+    await flushPromises();
+    expect(wrapper.text()).toContain('客户甲');
+    wrapper.unmount();
+  });
   it('shows and consumes a confirmed access-loss notice for its original actor', async () => {
     useAuthStore(pinia).session = {
       principalType: 'INTERNAL',

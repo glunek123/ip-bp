@@ -76,7 +76,11 @@ type AdmissionReceipt = {
   resultSnapshot: unknown;
 };
 
-type HistoricalCustomerSummary = Omit<CustomerSummary, 'cooperationStatus'> & {
+type HistoricalCustomerSummary = Omit<
+  CustomerSummary,
+  'cooperationStatus' | 'customerManagerName'
+> & {
+  customerManagerName?: string | null;
   cooperationStatus?: CustomerSummary['cooperationStatus'];
 };
 
@@ -607,6 +611,7 @@ export class CustomerAdmissionService {
     return {
       id: snapshot.id,
       name: snapshot.name,
+      customerManagerName: snapshot.customerManagerName ?? null,
       customerType: snapshot.customerType,
       identityType: snapshot.identityType,
       identityNumber: snapshot.identityNumber,
@@ -633,6 +638,7 @@ export class CustomerAdmissionService {
     return {
       id: result.id,
       name: result.name,
+      customerManagerName: result.customerManagerName,
       customerType: result.customerType,
       identityType: result.identityType,
       identityNumber: result.identityNumber,
@@ -679,6 +685,9 @@ export class CustomerAdmissionService {
     return (
       typeof snapshot.id === 'string' &&
       typeof snapshot.name === 'string' &&
+      (snapshot.customerManagerName === undefined ||
+        snapshot.customerManagerName === null ||
+        typeof snapshot.customerManagerName === 'string') &&
       nullableStrings.every(
         (field) =>
           snapshot[field] === null || typeof snapshot[field] === 'string',

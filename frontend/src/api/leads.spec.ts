@@ -226,6 +226,36 @@ describe('internal lead display names', () => {
 });
 
 describe('Lead API', () => {
+  it('encodes a trimmed keyword with stage and pagination and validates length before HTTP', async () => {
+    http.getJson.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 2,
+      pageSize: 20,
+      counts: {
+        WAITING_PUSH: 0,
+        WAITING_REVIEW: 0,
+        WAITING_EVIDENCE_DECISION: 0,
+        TRANSFERRED_TO_NOTARY: 0,
+        ARCHIVED: 0,
+      },
+      capabilities: { create: false },
+    });
+    await listLeads(2, 20, {}, 'WAITING_PUSH', 'LIBRARY', ' 商品 & 编号 ');
+    const url = new URL(
+      http.getJson.mock.calls[0]?.[0],
+      'https://example.test',
+    );
+    expect(url.searchParams.get('q')).toBe('商品 & 编号');
+    expect(url.searchParams.get('status')).toBe('WAITING_PUSH');
+    expect(url.searchParams.get('page')).toBe('2');
+    await listLeads(2, 20, {}, undefined, 'LIBRARY', ' ');
+    expect(http.getJson.mock.calls[1]?.[0]).not.toContain('&q=');
+    await expect(
+      listLeads(1, 20, {}, undefined, 'LIBRARY', '字'.repeat(201)),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(http.getJson).toHaveBeenCalledTimes(2);
+  });
   it('strictly validates form context and every unknown response', async () => {
     http.getJson.mockResolvedValueOnce(context);
     await expect(getLeadFormContext()).resolves.toEqual(context);

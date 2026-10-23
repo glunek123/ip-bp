@@ -828,13 +828,20 @@ export async function listLeads(
   options: RequestOptions = {},
   status?: LeadStatus,
   view?: 'LIBRARY',
+  q?: string,
 ): Promise<LeadList> {
+  if (
+    q !== undefined &&
+    (typeof q !== 'string' || Array.from(q.trim()).length > 200)
+  )
+    throw new ApiError('线索关键词不能超过200字', 400, 'VALIDATION_ERROR');
   const query = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
   });
   if (status !== undefined) query.set('status', status);
   if (view !== undefined) query.set('view', view);
+  if (q?.trim()) query.set('q', q.trim());
   const data = await getJson(`/leads?${query.toString()}`, options);
   const counts = isRecord(data) ? data.counts : undefined;
   const capabilities = isRecord(data) ? data.capabilities : undefined;
