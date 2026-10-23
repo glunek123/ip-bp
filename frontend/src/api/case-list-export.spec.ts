@@ -30,6 +30,56 @@ function file(
 
 describe('case list CSV export API', () => {
   beforeEach(() => vi.resetAllMocks());
+  it('exports all five applied specialized filters without losing literal characters', async () => {
+    http.postBlob.mockResolvedValue(file());
+    await exportCaseListCsv({
+      shopName: ' 店铺%_\\甲 ',
+      defendantName: ' 被告乙 ',
+      courtName: ' 法院丙 ',
+      lawyerName: ' 律师丁 ',
+      caseType: 'HEARING_REPRESENTATION',
+    });
+    expect(http.postBlob).toHaveBeenCalledExactlyOnceWith(
+      '/cases/exports/csv',
+      {
+        shopName: '店铺%_\\甲',
+        defendantName: '被告乙',
+        courtName: '法院丙',
+        lawyerName: '律师丁',
+        caseType: 'HEARING_REPRESENTATION',
+      },
+      { retryOnCsrfInvalid: false },
+    );
+  });
+
+  it.each(['shopName', 'defendantName', 'courtName', 'lawyerName'])(
+    'validates specialized export text %s before HTTP',
+    async (key) => {
+      for (const value of [null, ['a', 'b'], 1, 'x'.repeat(201)]) {
+        await expect(
+          exportCaseListCsv({ [key]: value } as never),
+        ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+      }
+      expect(http.postBlob).not.toHaveBeenCalled();
+      http.postBlob.mockResolvedValue(file());
+      await exportCaseListCsv({ [key]: ' ' });
+      expect(http.postBlob).toHaveBeenCalledWith(
+        '/cases/exports/csv',
+        {},
+        expect.anything(),
+      );
+    },
+  );
+
+  it.each(['', 'OTHER', ['CIVIL', 'CIVIL'], null, 1])(
+    'rejects invalid export case type %j',
+    async (caseType) => {
+      await expect(
+        exportCaseListCsv({ caseType } as never),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+      expect(http.postBlob).not.toHaveBeenCalled();
+    },
+  );
 
   it('posts only the current view, stage, and normalized applied query', async () => {
     http.postBlob.mockResolvedValue(file());

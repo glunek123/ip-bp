@@ -1,4 +1,7 @@
 import { Prisma } from '../../generated/prisma/client';
+import { LeadCaseType } from '../../generated/prisma/enums';
+
+export const caseListCaseTypes = Object.values(LeadCaseType);
 
 export const caseListSortBy = [
   'createdAt',
@@ -15,6 +18,11 @@ export interface CaseListTextQuery {
   customerName?: string;
   rightsHolderName?: string;
   courtCaseNo?: string;
+  shopName?: string;
+  defendantName?: string;
+  courtName?: string;
+  lawyerName?: string;
+  caseType?: LeadCaseType;
   sortBy?: CaseListSortBy;
   sortDirection?: CaseListSortDirection;
 }
@@ -26,6 +34,7 @@ const literalContains = (value: string) => ({
 
 export function caseListTextWhere(
   query: CaseListTextQuery,
+  knownCourtIds: readonly string[] = [],
 ): Prisma.CaseWhereInput {
   const q = query.q?.trim();
   const customerName = query.customerName?.trim();
@@ -51,7 +60,146 @@ export function caseListTextWhere(
       rightsHolder: { is: { name: literalContains(rightsHolderName) } },
     });
   if (courtCaseNo) and.push({ courtCaseNo: literalContains(courtCaseNo) });
+  const normalSource: Prisma.CaseWhereInput = {
+    sourceLeadId: { not: null },
+    sourceNotaryMatterId: { not: null },
+    certificateId: { not: null },
+    externalEntry: { is: null },
+  };
+  const externalSource: Prisma.CaseWhereInput = {
+    sourceLeadId: null,
+    sourceNotaryMatterId: null,
+    certificateId: null,
+    externalEntry: { isNot: null },
+  };
+  const shopName = query.shopName?.trim();
+  if (shopName)
+    and.push({
+      OR: [
+        {
+          AND: [
+            normalSource,
+            { sourceLead: { is: { shopName: literalContains(shopName) } } },
+          ],
+        },
+        {
+          AND: [
+            externalSource,
+            {
+              externalEntry: {
+                is: {
+                  known: {
+                    path: ['shopName'],
+                    string_contains: literalContains(shopName).contains,
+                    mode: 'insensitive',
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    });
+  if (query.caseType)
+    and.push({
+      OR: [
+        {
+          AND: [
+            normalSource,
+            { sourceLead: { is: { caseType: query.caseType } } },
+          ],
+        },
+        {
+          AND: [
+            externalSource,
+            {
+              externalEntry: {
+                is: { known: { path: ['caseType'], equals: query.caseType } },
+              },
+            },
+          ],
+        },
+      ],
+    });
+  const defendantName = query.defendantName?.trim();
+  if (defendantName)
+    and.push({
+      defendants: { some: { name: literalContains(defendantName) } },
+    });
+  const lawyerName = query.lawyerName?.trim();
+  if (lawyerName)
+    and.push({
+      lawyers: {
+        some: {
+          role: 'PRIMARY',
+          endedAt: null,
+          lawyer: { is: { fullName: literalContains(lawyerName) } },
+        },
+      },
+    });
+  const courtName = query.courtName?.trim();
+  if (courtName) {
+    const noAcceptanceCourt: Prisma.CaseWhereInput = {
+      OR: [
+        { acceptance: { is: null } },
+        { acceptance: { is: { courtId: null } } },
+      ],
+    };
+    and.push({
+      OR: [
+        {
+          acceptance: {
+            is: { court: { is: { name: literalContains(courtName) } } },
+          },
+        },
+        {
+          AND: [
+            noAcceptanceCourt,
+            {
+              filingSubmission: {
+                is: { courtName: literalContains(courtName) },
+              },
+            },
+          ],
+        },
+        {
+          AND: [
+            noAcceptanceCourt,
+            { filingSubmission: { is: null } },
+            externalSource,
+            {
+              externalEntry: {
+                is: {
+                  OR: knownCourtIds.map((id) => ({
+                    known: { path: ['courtId'], equals: id },
+                  })),
+                },
+              },
+            },
+          ],
+        },
+      ],
+    });
+  }
   return and.length === 0 ? {} : { AND: and };
+}
+
+export async function caseListDepartmentTextWhere(
+  database: Pick<Prisma.TransactionClient, 'filingCourt'>,
+  departmentId: string,
+  query: CaseListTextQuery,
+): Promise<Prisma.CaseWhereInput> {
+  const courtName = query.courtName?.trim();
+  const courts = courtName
+    ? await database.filingCourt.findMany({
+        where: { departmentId, name: literalContains(courtName) },
+        select: { id: true },
+      })
+    : [];
+  return caseListTextWhere(
+    query,
+    courts.map(({ id }) => id),
+  );
 }
 
 export function caseListOrderBy(

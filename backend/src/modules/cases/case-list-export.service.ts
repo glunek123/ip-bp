@@ -21,7 +21,8 @@ import {
   caseListOrderBy,
   caseListSortBy,
   caseListSortDirections,
-  caseListTextWhere,
+  caseListDepartmentTextWhere,
+  caseListCaseTypes,
   CaseListTextQuery,
 } from './case-list-query';
 
@@ -152,6 +153,11 @@ export class CaseListExportService {
       'customerName',
       'rightsHolderName',
       'courtCaseNo',
+      'shopName',
+      'defendantName',
+      'courtName',
+      'lawyerName',
+      'caseType',
       'sortBy',
       'sortDirection',
     ];
@@ -170,6 +176,8 @@ export class CaseListExportService {
         )) ||
       (input.stage !== undefined && input.stageGroup !== undefined) ||
       (input.sortBy !== undefined && !caseListSortBy.includes(input.sortBy)) ||
+      (input.caseType !== undefined &&
+        !caseListCaseTypes.includes(input.caseType)) ||
       (input.sortDirection !== undefined &&
         !caseListSortDirections.includes(input.sortDirection))
     )
@@ -179,6 +187,7 @@ export class CaseListExportService {
       sortBy: input.sortBy ?? 'createdAt',
       sortDirection: input.sortDirection ?? 'desc',
       ...(input.stage === undefined ? {} : { stage: input.stage }),
+      ...(input.caseType === undefined ? {} : { caseType: input.caseType }),
       ...(input.stageGroup === undefined
         ? {}
         : { stageGroup: input.stageGroup }),
@@ -188,6 +197,10 @@ export class CaseListExportService {
       'customerName',
       'rightsHolderName',
       'courtCaseNo',
+      'shopName',
+      'defendantName',
+      'courtName',
+      'lawyerName',
     ] as const) {
       const value = input[key];
       if (value === undefined) continue;
@@ -220,12 +233,17 @@ export class CaseListExportService {
           throw new ForbiddenException({ code: 'ACTION_FORBIDDEN' });
         await this.access.authorizeDepartmentAction(actor, 'case.read', tx);
         await this.access.authorizeDepartmentAction(actor, 'case.export', tx);
+        const textWhere = await caseListDepartmentTextWhere(
+          tx,
+          actor.departmentId,
+          filter,
+        );
         const where: Prisma.CaseWhereInput = {
           departmentId: actor.departmentId,
           ...(filter.view === 'mine'
             ? { responsibleUserId: actor.userId }
             : {}),
-          ...caseListTextWhere(filter),
+          ...textWhere,
           ...(filter.stage !== undefined
             ? { stage: filter.stage }
             : filter.stageGroup === 'COMPLAINT_PREPARATION'

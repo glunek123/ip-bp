@@ -5,6 +5,7 @@ import { DatabaseService } from '../../database/database.service';
 import { CaseStage } from '../../generated/prisma/enums';
 import { CaseListDisplayRecord } from './case-list-display-read';
 import { CaseListExportInput } from './case-list-export.dto';
+import { caseListTextWhere } from './case-list-query';
 import {
   caseListExportCsv,
   CaseListExportService,
@@ -106,6 +107,56 @@ function harness(rows: ReturnType<typeof row>[] = []) {
 }
 
 describe('case list CSV export', () => {
+  it('normalizes every special filter and uses the shared court mapping inside the authorized snapshot', async () => {
+    const f = harness();
+    f.tx.filingCourt.findMany.mockResolvedValue([{ id: 'court' }]);
+    const query = {
+      shopName: 'shop',
+      defendantName: 'defendant',
+      courtName: 'court',
+      lawyerName: 'lawyer',
+      caseType: 'CIVIL' as const,
+    };
+    await f.service.export(actor, {
+      view: 'department',
+      ...query,
+      shopName: ' shop ',
+      courtName: ' court ',
+    });
+    expect(f.tx.case.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          departmentId: actor.departmentId,
+          ...caseListTextWhere(query, ['court']),
+        },
+        take: 1001,
+      }),
+    );
+    expect(f.tx.filingCourt.findMany).toHaveBeenCalledTimes(1);
+    expect(
+      f.access.authorizeDepartmentAction.mock.invocationCallOrder[1],
+    ).toBeLessThan(f.tx.filingCourt.findMany.mock.invocationCallOrder[0]!);
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          details: expect.objectContaining({
+            filter: expect.objectContaining(query),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('does not query courts before rejecting an unauthorized export', async () => {
+    const f = harness();
+    f.access.authorizeDepartmentAction.mockRejectedValue(
+      new ForbiddenException(),
+    );
+    await expect(
+      f.service.export(actor, { view: 'department', courtName: 'court' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(f.tx.filingCourt.findMany).not.toHaveBeenCalled();
+  });
   it('reports capability from current department grants without exporting or auditing', async () => {
     const granted = harness();
     await expect(granted.service.capability(actor)).resolves.toEqual({
@@ -315,6 +366,9 @@ describe('case list CSV export', () => {
       { stage: 'WAITING_HEARING', stageGroup: 'COMPLAINT_PREPARATION' },
       { q: 'a'.repeat(201) },
       { sortBy: 'unknown' },
+      { caseType: 'UNKNOWN' },
+      { caseType: ['CIVIL', 'CRIMINAL'] },
+      { caseType: null },
     ]) {
       const setup = harness();
       await expect(
@@ -330,6 +384,10 @@ describe('case list CSV export', () => {
       'customerName',
       'rightsHolderName',
       'courtCaseNo',
+      'shopName',
+      'defendantName',
+      'courtName',
+      'lawyerName',
     ] as const) {
       for (const unit of ['字', '😀', '✈️']) {
         const accepted = harness();

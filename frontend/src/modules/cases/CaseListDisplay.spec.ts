@@ -263,9 +263,128 @@ afterEach(() => {
 });
 
 describe('authorized internal case list display', () => {
+  it('applies five specialized drafts together, retains them across pages and clears to page one', async () => {
+    api.listCases.mockImplementation(async (page = 1) => ({
+      ...result(),
+      total: 21,
+      page,
+    }));
+    const { wrapper, router } = await mountList(
+      '/cases?view=department&stage=WAITING_ARCHIVE',
+    );
+    const reads = api.listCases.mock.calls.length;
+    await wrapper.get('[data-test="case-query-shop"]').setValue(' 店铺甲 ');
+    await wrapper
+      .get('[data-test="case-query-defendant"]')
+      .setValue(' 被告乙 ');
+    await wrapper.get('[data-test="case-query-court"]').setValue(' 法院丙 ');
+    await wrapper.get('[data-test="case-query-lawyer"]').setValue(' 律师丁 ');
+    await wrapper
+      .get('[data-test="case-query-type"]')
+      .setValue('HEARING_REPRESENTATION');
+    expect(api.listCases).toHaveBeenCalledTimes(reads);
+    expect(router.currentRoute.value.query.shopName).toBeUndefined();
+    await wrapper.get('form[role="search"]').trigger('submit');
+    await flushPromises();
+    const filters = {
+      shopName: '店铺甲',
+      defendantName: '被告乙',
+      courtName: '法院丙',
+      lawyerName: '律师丁',
+      caseType: 'HEARING_REPRESENTATION',
+    };
+    expect(api.listCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining(filters),
+    );
+    expect(router.currentRoute.value.query).toMatchObject({
+      ...filters,
+      page: '1',
+    });
+    await wrapper.get('[data-test="next-page"]').trigger('click');
+    await flushPromises();
+    expect(api.listCases).toHaveBeenLastCalledWith(
+      2,
+      20,
+      expect.objectContaining(filters),
+    );
+    await wrapper.get('[data-test="case-query-clear"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({
+      view: 'department',
+      stage: 'WAITING_ARCHIVE',
+      page: '1',
+      sortBy: 'createdAt',
+      sortDirection: 'desc',
+    });
+    for (const key of Object.keys(filters))
+      expect(api.listCases.mock.calls.at(-1)?.[2]).not.toHaveProperty(key);
+    expect(wrapper.get('[data-test="case-query-type"]').element).toHaveProperty(
+      'value',
+      '',
+    );
+  });
+
+  it('restores specialized drafts from URL without extra candidate reads', async () => {
+    const { wrapper } = await mountList(
+      '/cases?view=department&shopName=店铺&defendantName=被告&courtName=法院&lawyerName=律师&caseType=CRIMINAL',
+    );
+    for (const [selector, value] of [
+      ['shop', '店铺'],
+      ['defendant', '被告'],
+      ['court', '法院'],
+      ['lawyer', '律师'],
+      ['type', 'CRIMINAL'],
+    ]) {
+      expect(
+        wrapper.get(`[data-test="case-query-${selector}"]`).element,
+      ).toHaveProperty('value', value);
+    }
+    expect(api.getCase).not.toHaveBeenCalled();
+    expect(api.getExternalEntryOptions).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['shopName', 'defendantName', 'courtName', 'lawyerName', 'caseType'])(
+    'aborts and fences a pending response when %s becomes repeated, then recovers',
+    async (key) => {
+      let resolveOld!: (value: CaseList) => void;
+      api.listCases.mockReturnValueOnce(
+        new Promise<CaseList>((resolve) => {
+          resolveOld = resolve;
+        }),
+      );
+      const { wrapper, router } = await mountList('/cases?view=department');
+      const signal = api.listCases.mock.calls[0]?.[2]?.signal;
+      await router.push({
+        query: { view: 'department', [key]: ['CIVIL', 'CIVIL'] },
+      });
+      await flushPromises();
+      expect(signal?.aborted).toBe(true);
+      expect(wrapper.get('[role="alert"]').text()).toContain(
+        `查询参数 ${key} 必须且只能出现一次`,
+      );
+      resolveOld(result([{ ...summary(), businessNo: 'STALE-SPECIAL' }]));
+      await flushPromises();
+      expect(wrapper.text()).not.toContain('STALE-SPECIAL');
+      expect(api.listCases).toHaveBeenCalledTimes(1);
+      await router.push('/cases?view=department');
+      await flushPromises();
+      expect(api.listCases).toHaveBeenCalledTimes(2);
+      expect(wrapper.get('tbody').text()).toContain('合成客户甲有限公司');
+    },
+  );
+
+  it('rejects an unknown URL case type rather than loading an unfiltered list', async () => {
+    const { wrapper } = await mountList(
+      '/cases?view=department&caseType=OTHER',
+    );
+    expect(api.listCases).not.toHaveBeenCalled();
+    expect(wrapper.get('[role="alert"]').text()).toContain('案件类型无效');
+  });
   it('opens the group page with the complete original list bookmark', async () => {
     const original =
-      '/cases?view=department&stage=WAITING_ARCHIVE&page=1&q=合成&sortBy=businessNo&sortDirection=asc#original';
+      '/cases?view=department&stage=WAITING_ARCHIVE&page=1&q=合成&shopName=店铺&defendantName=被告&courtName=法院&lawyerName=律师&caseType=CIVIL&sortBy=businessNo&sortDirection=asc#original';
     const { wrapper, router } = await mountList(original);
     const before = router.currentRoute.value.fullPath;
     await wrapper
@@ -407,9 +526,13 @@ describe('authorized internal case list display', () => {
     await flushPromises();
     const listCalls = api.listCases.mock.calls.length;
     await wrapper.get('[data-test="case-query-keyword"]').setValue('不应离开');
+    await wrapper.get('[data-test="case-query-shop"]').setValue('未知期间草稿');
+    await wrapper.get('[data-test="case-query-type"]').setValue('CRIMINAL');
     await wrapper.get('form[role="search"]').trigger('submit');
     await flushPromises();
     expect(router.currentRoute.value.query.q).toBeUndefined();
+    expect(router.currentRoute.value.query.shopName).toBeUndefined();
+    expect(router.currentRoute.value.query.caseType).toBeUndefined();
     expect(api.listCases).toHaveBeenCalledTimes(listCalls);
   });
 
@@ -925,11 +1048,13 @@ describe('authorized internal case list display', () => {
   it('exports only the applied route filters and revokes the local download URL', async () => {
     exportApi.capability.mockResolvedValue({ canExport: true });
     const { wrapper } = await mountList(
-      '/cases?view=department&stage=WAITING_ARCHIVE&q=已应用&sortBy=rightsHolderName&sortDirection=asc&page=1',
+      '/cases?view=department&stage=WAITING_ARCHIVE&q=已应用&shopName=店铺&defendantName=被告&courtName=法院&lawyerName=律师&caseType=CIVIL&sortBy=rightsHolderName&sortDirection=asc&page=1',
     );
     await wrapper
       .get('[data-test="case-query-keyword"]')
       .setValue('未提交草稿');
+    await wrapper.get('[data-test="case-query-shop"]').setValue('未应用店铺');
+    await wrapper.get('[data-test="case-query-type"]').setValue('CRIMINAL');
     const createObjectURL = vi.fn(() => 'blob:case-list');
     const revokeObjectURL = vi.fn();
     vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
@@ -948,6 +1073,11 @@ describe('authorized internal case list display', () => {
         view: 'department',
         stage: 'WAITING_ARCHIVE',
         q: '已应用',
+        shopName: '店铺',
+        defendantName: '被告',
+        courtName: '法院',
+        lawyerName: '律师',
+        caseType: 'CIVIL',
         sortBy: 'rightsHolderName',
         sortDirection: 'asc',
       },
@@ -1012,7 +1142,9 @@ describe('authorized internal case list display', () => {
       .get('[data-test="export-current-case-list"]')
       .trigger('click');
     const signal = exportApi.exportCsv.mock.calls[0]?.[1]?.signal;
-    await router.push('/cases?view=department&stage=WAITING_ARCHIVE&q=changed');
+    await router.push(
+      '/cases?view=department&stage=WAITING_ARCHIVE&lawyerName=changed',
+    );
     await flushPromises();
     expect(signal?.aborted).toBe(true);
     resolveExport({

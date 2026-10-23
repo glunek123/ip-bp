@@ -21,7 +21,7 @@ import {
 } from './case-list-display-read';
 import {
   caseListOrderBy,
-  caseListTextWhere,
+  caseListDepartmentTextWhere,
   CaseListTextQuery,
 } from './case-list-query';
 import {
@@ -143,7 +143,11 @@ export class CaseReadService {
           ? { responsibleUserId: actor.userId }
           : {}),
     };
-    const textWhere = caseListTextWhere(query);
+    const textWhere = await caseListDepartmentTextWhere(
+      this.database,
+      actor.departmentId,
+      query,
+    );
     const filteredBaseWhere: Prisma.CaseWhereInput =
       Object.keys(textWhere).length === 0
         ? baseWhere

@@ -7,15 +7,18 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  ValidateIf,
   Max,
   MaxLength,
   Min,
 } from 'class-validator';
 import {
   caseListSortBy,
+  caseListCaseTypes,
   caseListSortDirections,
   CaseListTextQuery,
 } from './case-list-query';
+import { LeadCaseType } from '../../generated/prisma/enums';
 import {
   ClosureRecordEditsDto,
   ExecutionFilingRecordEditsDto,
@@ -330,6 +333,48 @@ class CaseSecondInstanceDto {
 }
 
 export class CasePageQueryDto implements CaseListTextQuery {
+  @ApiPropertyOptional({ maxLength: 200 })
+  @ValidateIf((_object, value) => value !== undefined)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MaxLength(200)
+  shopName?: string;
+
+  @ApiPropertyOptional({ maxLength: 200 })
+  @ValidateIf((_object, value) => value !== undefined)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MaxLength(200)
+  defendantName?: string;
+
+  @ApiPropertyOptional({ maxLength: 200 })
+  @ValidateIf((_object, value) => value !== undefined)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MaxLength(200)
+  courtName?: string;
+
+  @ApiPropertyOptional({ maxLength: 200 })
+  @ValidateIf((_object, value) => value !== undefined)
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MaxLength(200)
+  lawyerName?: string;
+
+  @ApiPropertyOptional({ enum: caseListCaseTypes })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @IsIn(caseListCaseTypes)
+  caseType?: LeadCaseType;
+
   @ApiPropertyOptional({ enum: ['mine', 'department'], default: 'department' })
   @IsOptional()
   @IsIn(['mine', 'department'])

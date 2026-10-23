@@ -160,6 +160,11 @@ export type CaseList = {
   counts: Record<CaseStage, number>;
 };
 export type CaseListQuery = {
+  shopName?: string;
+  defendantName?: string;
+  courtName?: string;
+  lawyerName?: string;
+  caseType?: LeadCaseType;
   q?: string;
   customerName?: string;
   rightsHolderName?: string;
@@ -4817,6 +4822,10 @@ export async function listCases(
     'customerName',
     'rightsHolderName',
     'courtCaseNo',
+    'shopName',
+    'defendantName',
+    'courtName',
+    'lawyerName',
   ] as const) {
     const value = options[key];
     if (value === undefined) continue;
@@ -4830,6 +4839,11 @@ export async function listCases(
     if (normalizedLength > 200)
       throw new ApiError('案件查询条件最多200个字符', 400, 'VALIDATION_ERROR');
     if (normalized) query.set(key, normalized);
+  }
+  if (options.caseType !== undefined) {
+    if (!validLeadCaseType(options.caseType))
+      throw new ApiError('案件类型无效', 400, 'VALIDATION_ERROR');
+    query.set('caseType', options.caseType);
   }
   if (options.sortBy !== undefined) {
     if (

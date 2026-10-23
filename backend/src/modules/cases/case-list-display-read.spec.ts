@@ -274,10 +274,20 @@ describe('authorized case list display', () => {
       },
     });
     record.acceptance = { court: { id: 'actual-court', name: '真实受理法院' } };
+    record.filingSubmission = {
+      courtId: 'submitted-court',
+      courtName: '立案提交快照法院',
+    };
     expect(caseListDisplay(record).court).toEqual({
       id: 'actual-court',
       name: '真实受理法院',
     });
+    record.acceptance = { court: null };
+    expect(
+      caseListDisplay(record, { id: 'known-court', name: '原审已知法院' })
+        .court,
+    ).toEqual({ id: 'submitted-court', name: '立案提交快照法院' });
+    record.filingSubmission = null;
     record.acceptance = null;
     expect(
       caseListDisplay(record, { id: 'known-court', name: '原审已知法院' })

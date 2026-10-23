@@ -9,6 +9,41 @@ import { CsrfGuard } from '../../auth/csrf.guard';
 import { configureApp } from '../../common/configure-app';
 import { CaseListExportController } from './case-list-export.controller';
 import { CaseListExportService } from './case-list-export.service';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
+import { CaseListExportInput } from './case-list-export.dto';
+
+describe('case special filters pure contract', () => {
+  it('retains all inherited filters through the actual CSV method', async () => {
+    const input = plainToInstance(CaseListExportInput, {
+      shopName: ' 店铺 ',
+      defendantName: ' 被告 ',
+      courtName: ' 法院 ',
+      lawyerName: ' 律师 ',
+      caseType: 'CIVIL',
+    });
+    expect(
+      validateSync(input, { whitelist: true, forbidNonWhitelisted: true }),
+    ).toEqual([]);
+    const exportCsv = jest.fn().mockResolvedValue({ csv: 'csv' });
+    const response = { setHeader: jest.fn(), send: jest.fn() };
+    const controller = new CaseListExportController({
+      export: exportCsv,
+    } as never);
+    await controller.export(actor, input, response as never);
+    expect(exportCsv).toHaveBeenCalledWith(
+      actor,
+      expect.objectContaining({
+        shopName: '店铺',
+        defendantName: '被告',
+        courtName: '法院',
+        lawyerName: '律师',
+        caseType: 'CIVIL',
+      }),
+    );
+    expect(response.send).toHaveBeenCalledWith('csv');
+  });
+});
 
 const actor: ActorContext = {
   userId: '11111111-1111-4111-8111-111111111111',

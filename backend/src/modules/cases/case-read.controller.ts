@@ -283,6 +283,15 @@ export class CaseReadController {
       customerName: query.customerName,
       rightsHolderName: query.rightsHolderName,
       courtCaseNo: query.courtCaseNo,
+      ...(query.shopName === undefined ? {} : { shopName: query.shopName }),
+      ...(query.defendantName === undefined
+        ? {}
+        : { defendantName: query.defendantName }),
+      ...(query.courtName === undefined ? {} : { courtName: query.courtName }),
+      ...(query.lawyerName === undefined
+        ? {}
+        : { lawyerName: query.lawyerName }),
+      ...(query.caseType === undefined ? {} : { caseType: query.caseType }),
       sortBy: query.sortBy,
       sortDirection: query.sortDirection,
     };

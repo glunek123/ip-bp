@@ -6,8 +6,14 @@ import {
   type RequestOptions,
 } from './http';
 import type { CaseStage, CaseStageGroup, CaseView } from './cases';
+import type { LeadCaseType } from './leads';
 
 export type CaseListExportInput = {
+  shopName?: string;
+  defendantName?: string;
+  courtName?: string;
+  lawyerName?: string;
+  caseType?: LeadCaseType;
   view?: CaseView;
   stage?: CaseStage;
   stageGroup?: CaseStageGroup;
@@ -30,6 +36,11 @@ export type CaseListExportCapability = { canExport: boolean };
 const exportPath = '/cases/exports/csv';
 const capabilityPath = '/cases/exports/capability';
 const allowedKeys = new Set([
+  'shopName',
+  'defendantName',
+  'courtName',
+  'lawyerName',
+  'caseType',
   'view',
   'stage',
   'stageGroup',
@@ -63,6 +74,10 @@ const stageGroups = new Set<CaseStageGroup>([
   'EXECUTION_PREPARATION',
 ]);
 const queryFields = [
+  'shopName',
+  'defendantName',
+  'courtName',
+  'lawyerName',
   'q',
   'customerName',
   'rightsHolderName',
@@ -131,6 +146,21 @@ function encodeInput(input: CaseListExportInput): JsonValue {
     throw invalidInput();
 
   const body: Record<string, JsonValue> = {};
+  if (candidate.caseType !== undefined) {
+    if (
+      typeof candidate.caseType !== 'string' ||
+      ![
+        'CIVIL',
+        'CRIMINAL',
+        'ADMINISTRATIVE',
+        'INVESTIGATION',
+        'NOTARIZATION',
+        'HEARING_REPRESENTATION',
+      ].includes(candidate.caseType)
+    )
+      throw invalidInput();
+    body.caseType = candidate.caseType;
+  }
   if (candidate.view !== undefined) body.view = candidate.view;
   if (candidate.stage !== undefined) body.stage = candidate.stage;
   if (candidate.stageGroup !== undefined)

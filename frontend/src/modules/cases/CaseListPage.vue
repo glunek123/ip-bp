@@ -52,6 +52,7 @@ import {
 import CaseListPreferencesPanel from './CaseListPreferencesPanel.vue';
 import {
   caseListQueryKey,
+  caseListCaseTypes,
   parseCaseListQuery,
   serializeCaseListQuery,
 } from './case-list-query';
@@ -130,6 +131,11 @@ const rawListQueryKey = computed(() =>
       'customerName',
       'rightsHolderName',
       'courtCaseNo',
+      'shopName',
+      'defendantName',
+      'courtName',
+      'lawyerName',
+      'caseType',
       'sortBy',
       'sortDirection',
     ].map((key) => [key, route.query[key] ?? null]),
@@ -235,6 +241,11 @@ const listQuery = computed(() =>
   ]),
 );
 const queryDraft = ref<{
+  shopName: string;
+  defendantName: string;
+  courtName: string;
+  lawyerName: string;
+  caseType: (typeof caseListCaseTypes)[number] | '';
   q: string;
   customerName: string;
   rightsHolderName: string;
@@ -242,6 +253,11 @@ const queryDraft = ref<{
   sortBy: NonNullable<CaseListQuery['sortBy']>;
   sortDirection: NonNullable<CaseListQuery['sortDirection']>;
 }>({
+  shopName: '',
+  defendantName: '',
+  courtName: '',
+  lawyerName: '',
+  caseType: '',
   q: '',
   customerName: '',
   rightsHolderName: '',
@@ -254,6 +270,11 @@ watch(
   (parsed) => {
     if (!parsed.ok) return;
     queryDraft.value = {
+      shopName: parsed.value.shopName ?? '',
+      defendantName: parsed.value.defendantName ?? '',
+      courtName: parsed.value.courtName ?? '',
+      lawyerName: parsed.value.lawyerName ?? '',
+      caseType: parsed.value.caseType ?? '',
       q: parsed.value.q ?? '',
       customerName: parsed.value.customerName ?? '',
       rightsHolderName: parsed.value.rightsHolderName ?? '',
@@ -275,6 +296,13 @@ function listRouteBase() {
 }
 function applyQuery() {
   const next = {
+    shopName: queryDraft.value.shopName,
+    defendantName: queryDraft.value.defendantName,
+    courtName: queryDraft.value.courtName,
+    lawyerName: queryDraft.value.lawyerName,
+    ...(queryDraft.value.caseType
+      ? { caseType: queryDraft.value.caseType }
+      : {}),
     q: queryDraft.value.q,
     customerName: queryDraft.value.customerName,
     rightsHolderName: queryDraft.value.rightsHolderName,
@@ -302,6 +330,11 @@ function applyQuery() {
 }
 function clearQuery() {
   queryDraft.value = {
+    shopName: '',
+    defendantName: '',
+    courtName: '',
+    lawyerName: '',
+    caseType: '',
     q: '',
     customerName: '',
     rightsHolderName: '',
@@ -311,6 +344,14 @@ function clearQuery() {
   };
   applyQuery();
 }
+const caseTypeLabels: Record<(typeof caseListCaseTypes)[number], string> = {
+  CIVIL: '民事',
+  CRIMINAL: '刑事',
+  ADMINISTRATIVE: '行政',
+  INVESTIGATION: '调查',
+  NOTARIZATION: '公证',
+  HEARING_REPRESENTATION: '代开庭',
+};
 function stageLabel(value: CaseSummary['stage']): string {
   if (value === 'PENDING_MATCH') return '待匹配';
   if (value === 'WAITING_COMPLAINT') return '待写诉状';
@@ -984,6 +1025,41 @@ onBeforeUnmount(() => {
           <input v-model="queryDraft.courtCaseNo" />
         </label>
         <label>
+          <span>店铺名</span>
+          <input v-model="queryDraft.shopName" data-test="case-query-shop" />
+        </label>
+        <label>
+          <span>被告</span>
+          <input
+            v-model="queryDraft.defendantName"
+            data-test="case-query-defendant"
+          />
+        </label>
+        <label>
+          <span>立案法院</span>
+          <input v-model="queryDraft.courtName" data-test="case-query-court" />
+        </label>
+        <label>
+          <span>律师</span>
+          <input
+            v-model="queryDraft.lawyerName"
+            data-test="case-query-lawyer"
+          />
+        </label>
+        <label>
+          <span>案件类型</span>
+          <select v-model="queryDraft.caseType" data-test="case-query-type">
+            <option value="">全部</option>
+            <option
+              v-for="value in caseListCaseTypes"
+              :key="value"
+              :value="value"
+            >
+              {{ caseTypeLabels[value] }}
+            </option>
+          </select>
+        </label>
+        <label>
           <span>排序字段</span>
           <select v-model="queryDraft.sortBy">
             <option value="createdAt">创建时间</option>
@@ -1000,7 +1076,12 @@ onBeforeUnmount(() => {
         </label>
         <div class="case-list-query-actions">
           <ElButton type="primary" native-type="submit">查询</ElButton>
-          <ElButton native-type="button" @click="clearQuery">清除筛选</ElButton>
+          <ElButton
+            native-type="button"
+            data-test="case-query-clear"
+            @click="clearQuery"
+            >清除筛选</ElButton
+          >
         </div>
       </form>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">

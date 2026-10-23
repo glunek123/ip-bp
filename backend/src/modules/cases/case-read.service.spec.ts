@@ -1,5 +1,6 @@
 import { CaseReadService } from './case-read.service';
 import { Prisma } from '../../generated/prisma/client';
+import { caseListTextWhere } from './case-list-query';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -2488,6 +2489,43 @@ describe('CaseReadService', () => {
       _count: { _all: true },
     });
   });
+  it('shares all special filters before paging across items, total and stage-independent counts', async () => {
+    const f = fixture();
+    f.db.filingCourt.findMany.mockResolvedValue([{ id: 'court' }]);
+    const query = {
+      q: 'CA',
+      shopName: 'shop',
+      defendantName: 'defendant',
+      courtName: 'court',
+      lawyerName: 'lawyer',
+      caseType: 'CIVIL' as const,
+    };
+    await f.service.list(
+      actor,
+      3,
+      10,
+      'mine',
+      'WAITING_HEARING',
+      undefined,
+      query,
+    );
+    const base = {
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      ...caseListTextWhere(query, ['court']),
+    };
+    const where = { ...base, stage: 'WAITING_HEARING' };
+    expect(f.db.case.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where, skip: 20, take: 10 }),
+    );
+    expect(f.db.case.count).toHaveBeenCalledWith({ where });
+    expect(f.db.case.groupBy).toHaveBeenCalledWith({
+      by: ['stage'],
+      where: base,
+      _count: { _all: true },
+    });
+    expect(f.db.filingCourt.findMany).toHaveBeenCalledTimes(1);
+  });
   it('keeps the lawyer original read while rejecting the new internal query inputs', async () => {
     const f = fixture();
     f.db.userAccount.findUnique.mockResolvedValue({
@@ -2512,6 +2550,29 @@ describe('CaseReadService', () => {
     ).rejects.toMatchObject({ status: 403 });
     expect(f.db.case.findMany).not.toHaveBeenCalled();
   });
+  it.each(['shopName', 'defendantName', 'courtName', 'lawyerName', 'caseType'])(
+    'rejects special %s filters at the existing lawyer boundary before court or case queries',
+    async (key) => {
+      const f = fixture();
+      f.db.userAccount.findUnique.mockResolvedValue({
+        accountType: 'LAWYER',
+        active: true,
+      });
+      await expect(
+        f.service.list(
+          { ...actor, lawyerAccountId: actor.userId },
+          1,
+          20,
+          'department',
+          undefined,
+          undefined,
+          { [key]: key === 'caseType' ? 'CIVIL' : 'name' },
+        ),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      expect(f.db.filingCourt.findMany).not.toHaveBeenCalled();
+      expect(f.db.case.findMany).not.toHaveBeenCalled();
+    },
+  );
   it('returns public list fields without internal ownership relation data', async () => {
     const f = fixture();
     f.db.case.findMany.mockResolvedValue([

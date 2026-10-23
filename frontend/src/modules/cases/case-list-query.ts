@@ -1,3 +1,14 @@
+import type { LeadCaseType } from '../../api/leads';
+
+export const caseListCaseTypes = [
+  'CIVIL',
+  'CRIMINAL',
+  'ADMINISTRATIVE',
+  'INVESTIGATION',
+  'NOTARIZATION',
+  'HEARING_REPRESENTATION',
+] as const satisfies readonly LeadCaseType[];
+
 export const caseListSortFields = [
   'createdAt',
   'businessNo',
@@ -8,6 +19,11 @@ export type CaseListSortField = (typeof caseListSortFields)[number];
 export type CaseListSortDirection = 'asc' | 'desc';
 
 export interface CaseListQuery {
+  shopName?: string;
+  defendantName?: string;
+  courtName?: string;
+  lawyerName?: string;
+  caseType?: LeadCaseType;
   q?: string;
   customerName?: string;
   rightsHolderName?: string;
@@ -22,12 +38,21 @@ export type ParsedCaseListQuery =
   { ok: true; value: CaseListQuery } | { ok: false; message: string };
 
 const textKeys = [
+  'shopName',
+  'defendantName',
+  'courtName',
+  'lawyerName',
   'q',
   'customerName',
   'rightsHolderName',
   'courtCaseNo',
 ] as const;
-const caseListKeys = [...textKeys, 'sortBy', 'sortDirection'] as const;
+const caseListKeys = [
+  ...textKeys,
+  'caseType',
+  'sortBy',
+  'sortDirection',
+] as const;
 
 function scalar(value: unknown): value is string {
   return typeof value === 'string';
@@ -50,7 +75,11 @@ export function parseCaseListQuery(
     if (value === undefined) continue;
     if (!scalar(value))
       return { ok: false, message: `查询参数 ${key} 必须且只能出现一次。` };
-    if (key === 'sortBy') {
+    if (key === 'caseType') {
+      if (!caseListCaseTypes.includes(value as LeadCaseType))
+        return { ok: false, message: '案件类型无效，请调整后重试。' };
+      parsed.caseType = value as LeadCaseType;
+    } else if (key === 'sortBy') {
       if (!caseListSortFields.includes(value as CaseListSortField))
         return { ok: false, message: '排序字段无效，请调整排序后重试。' };
       parsed.sortBy = value as CaseListSortField;
@@ -77,6 +106,7 @@ export function serializeCaseListQuery(
     if (value) serialized[key] = value;
   }
   if (query.sortBy) serialized.sortBy = query.sortBy;
+  if (query.caseType) serialized.caseType = query.caseType;
   if (query.sortDirection) serialized.sortDirection = query.sortDirection;
   return serialized;
 }

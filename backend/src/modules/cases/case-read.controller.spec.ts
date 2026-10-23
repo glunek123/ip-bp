@@ -19,6 +19,55 @@ import { CaseReadController } from './case-read.controller';
 import { LawyerCaseController } from './lawyer-case.controller';
 import { CasePageQueryDto } from './case-read.dto';
 import { CaseReadService } from './case-read.service';
+
+describe('case special filters pure contract', () => {
+  it('passes all new validated filters through the real list method without adding absent fields to old inputs', async () => {
+    const list = jest.fn().mockResolvedValue({ items: [] });
+    const actor = {
+      userId: 'user',
+      departmentId: 'department',
+      authorizationRevision: 1,
+    };
+    const query = plainToInstance(CasePageQueryDto, {
+      shopName: ' 店铺 ',
+      defendantName: ' 被告 ',
+      courtName: ' 法院 ',
+      lawyerName: ' 律师 ',
+      caseType: 'CIVIL',
+      page: '2',
+      pageSize: '50',
+    });
+    expect(
+      validateSync(query, { whitelist: true, forbidNonWhitelisted: true }),
+    ).toEqual([]);
+    await CaseReadController.prototype.list.call(
+      { cases: { list } } as never,
+      actor,
+      query,
+    );
+    expect(list).toHaveBeenCalledWith(
+      actor,
+      2,
+      50,
+      'department',
+      undefined,
+      undefined,
+      expect.objectContaining({
+        shopName: '店铺',
+        defendantName: '被告',
+        courtName: '法院',
+        lawyerName: '律师',
+        caseType: 'CIVIL',
+      }),
+    );
+    await CaseReadController.prototype.list.call(
+      { cases: { list } } as never,
+      actor,
+      plainToInstance(CasePageQueryDto, {}),
+    );
+    expect(list.mock.calls[1]).toHaveLength(6);
+  });
+});
 import { CaseExternalEntryService } from './case-external-entry.service';
 import { CaseMatchService } from './case-match.service';
 import { CaseComplaintService } from './case-complaint.service';

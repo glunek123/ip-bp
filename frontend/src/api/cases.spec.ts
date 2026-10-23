@@ -4181,13 +4181,37 @@ describe('cases API', () => {
       customerName: '  客户  ',
       rightsHolderName: '  ',
       courtCaseNo: 'X/1',
+      shopName: ' 店铺%_\\甲 ',
+      defendantName: ' 被告乙 ',
+      courtName: ' 法院丙 ',
+      lawyerName: ' 律师丁 ',
+      caseType: 'HEARING_REPRESENTATION',
       sortBy: 'rightsHolderName',
       sortDirection: 'asc',
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      '/api/v1/cases?page=2&pageSize=10&view=mine&q=A%26B+%2B+%E6%A1%88%E5%8F%B7&customerName=%E5%AE%A2%E6%88%B7&courtCaseNo=X%2F1&sortBy=rightsHolderName&sortDirection=asc',
+      '/api/v1/cases?page=2&pageSize=10&view=mine&q=A%26B+%2B+%E6%A1%88%E5%8F%B7&customerName=%E5%AE%A2%E6%88%B7&courtCaseNo=X%2F1&shopName=%E5%BA%97%E9%93%BA%25_%5C%E7%94%B2&defendantName=%E8%A2%AB%E5%91%8A%E4%B9%99&courtName=%E6%B3%95%E9%99%A2%E4%B8%99&lawyerName=%E5%BE%8B%E5%B8%88%E4%B8%81&caseType=HEARING_REPRESENTATION&sortBy=rightsHolderName&sortDirection=asc',
     );
   });
+
+  it.each(['shopName', 'defendantName', 'courtName', 'lawyerName', 'caseType'])(
+    'rejects invalid specialized list filter %s before HTTP',
+    async (key) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      for (const value of [
+        null,
+        ['a', 'b'],
+        4,
+        ...(key === 'caseType' ? ['', 'OTHER'] : ['x'.repeat(201)]),
+      ]) {
+        await expect(
+          listCases(1, 20, { [key]: value } as never),
+        ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+      }
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects overlong list query text before making a request', async () => {
     const fetchMock = vi.fn();

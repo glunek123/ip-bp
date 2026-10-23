@@ -6,6 +6,69 @@ import {
 } from './case-list-query';
 
 describe('case list query URL contract', () => {
+  it('normalizes all five specialized filters and includes each in the request key', () => {
+    const query = {
+      shopName: ' 店铺&甲 ',
+      defendantName: ' 被告乙 ',
+      courtName: ' 法院丙 ',
+      lawyerName: ' 律师丁 ',
+      caseType: 'CIVIL',
+    };
+    const parsed = parseCaseListQuery(query);
+    expect(parsed).toEqual({
+      ok: true,
+      value: {
+        shopName: '店铺&甲',
+        defendantName: '被告乙',
+        courtName: '法院丙',
+        lawyerName: '律师丁',
+        caseType: 'CIVIL',
+      },
+    });
+    if (!parsed.ok) throw new Error('Expected valid query');
+    expect(serializeCaseListQuery(parsed.value)).toEqual(parsed.value);
+    for (const key of Object.keys(query))
+      expect(caseListQueryKey(parsed.value)).toContain(`${key}=`);
+  });
+
+  it.each(['shopName', 'defendantName', 'courtName', 'lawyerName'])(
+    'strictly validates specialized text %s',
+    (key) => {
+      expect(parseCaseListQuery({ [key]: ['a', 'b'] }).ok).toBe(false);
+      expect(parseCaseListQuery({ [key]: null }).ok).toBe(false);
+      expect(parseCaseListQuery({ [key]: 12 }).ok).toBe(false);
+      expect(parseCaseListQuery({ [key]: 'a'.repeat(201) }).ok).toBe(false);
+      expect(parseCaseListQuery({ [key]: '😀\uFE0F'.repeat(200) })).toEqual({
+        ok: true,
+        value: { [key]: '😀\uFE0F'.repeat(200) },
+      });
+      expect(parseCaseListQuery({ [key]: '  ' })).toEqual({
+        ok: true,
+        value: {},
+      });
+    },
+  );
+
+  it.each([
+    'CIVIL',
+    'CRIMINAL',
+    'ADMINISTRATIVE',
+    'INVESTIGATION',
+    'NOTARIZATION',
+    'HEARING_REPRESENTATION',
+  ])('accepts the real case type %s', (caseType) => {
+    expect(parseCaseListQuery({ caseType })).toEqual({
+      ok: true,
+      value: { caseType },
+    });
+  });
+
+  it.each(['', 'OTHER', ['CIVIL', 'CIVIL'], null, 3])(
+    'rejects invalid case type %j without widening the list',
+    (caseType) => {
+      expect(parseCaseListQuery({ caseType }).ok).toBe(false);
+    },
+  );
   it('trims text, drops blanks and retains only the six supported fields', () => {
     const parsed = parseCaseListQuery({
       q: '  被告甲  ',
