@@ -96,3 +96,46 @@ BEGIN
   IF r."id" IS NULL OR r."result_snapshot" IS DISTINCT FROM jsonb_build_object('caseId',NEW."case_id",'correctionId',NEW."id",'recordedAt',to_char(NEW."recorded_at" AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'arrangementId',NEW."arrangement_id",'hearingRevision',NEW."to_revision",'hearingAt',NEW."hearing_at",'trialRoundId',NEW."trial_round_id") THEN RAISE EXCEPTION 'section correction receipt mismatch' USING ERRCODE='23514'; END IF;
   RETURN NEW;
 END; $$;
+
+-- Keep the external source anchors; compare the append-only effective acceptance number.
+CREATE OR REPLACE FUNCTION "ca018_assert_external_trial_round"(target_case uuid,target_department uuid)
+RETURNS void LANGUAGE plpgsql AS $$
+DECLARE c record; e record; r record; s record; a record;
+BEGIN
+  SELECT * INTO c FROM "cases" WHERE "id"=target_case AND "department_id"=target_department;
+  SELECT * INTO e FROM "case_external_entries" WHERE "case_id"=target_case AND "department_id"=target_department;
+  IF c."id" IS NULL OR e."id" IS NULL OR c."source_lead_id" IS NOT NULL OR c."source_notary_matter_id" IS NOT NULL OR c."certificate_id" IS NOT NULL
+  THEN RAISE EXCEPTION 'external trial round lacks entry root' USING ERRCODE='23514'; END IF;
+  IF c."current_trial_round_id" IS NULL THEN
+    IF (c."stage" IN ('WAITING_HEARING','WAITING_JUDGMENT','SECOND_INSTANCE','WAITING_EXECUTION_DOCUMENTS','WAITING_EXECUTION_CONFIRMATION','WAITING_EXECUTION_STAMP','WAITING_EXECUTION_FILING','EXECUTING','WAITING_ARCHIVE') OR
+      (c."stage"='ARCHIVED' AND e."initial_stage"<>'ARCHIVED') OR c."current_acceptance_id" IS NOT NULL OR
+      c."current_hearing_arrangement_id" IS NOT NULL OR c."current_hearing_advance_id" IS NOT NULL OR c."current_judgment_id" IS NOT NULL OR
+      c."current_judgment_next_step_id" IS NOT NULL OR c."current_second_instance_progress_id" IS NOT NULL OR c."current_second_instance_result_id" IS NOT NULL OR
+      EXISTS (SELECT 1 FROM "case_trial_rounds" x WHERE x."case_id"=target_case AND x."department_id"=target_department))
+    THEN RAISE EXCEPTION 'external case current round missing' USING ERRCODE='23514'; END IF;
+    RETURN;
+  END IF;
+  SELECT * INTO r FROM "case_trial_rounds" WHERE "id"=c."current_trial_round_id" AND "case_id"=target_case AND "department_id"=target_department;
+  IF r."id" IS NULL OR r."revoked_at" IS NOT NULL OR r."external_entry_id" IS DISTINCT FROM e."id"
+  THEN RAISE EXCEPTION 'external current round mismatch' USING ERRCODE='23514'; END IF;
+  IF r."origin"='EXTERNAL_CURRENT' THEN
+    IF r."sequence"<>1 OR r."source_result_id" IS NOT NULL THEN RAISE EXCEPTION 'external current round shape mismatch' USING ERRCODE='23514'; END IF;
+  ELSE
+    SELECT * INTO s FROM "case_second_instance_results" WHERE "id"=r."source_result_id" AND "case_id"=target_case AND "department_id"=target_department;
+    IF r."origin"<>'NORMAL' OR r."sequence"<=1 OR s."id" IS NULL OR s."external_entry_id" IS DISTINCT FROM e."id" OR s."result"<>'REMAND' OR
+      EXISTS (SELECT 1 FROM "case_second_instance_result_revocations" z WHERE z."result_id"=s."id")
+    THEN RAISE EXCEPTION 'external remand round source mismatch' USING ERRCODE='23514'; END IF;
+  END IF;
+  SELECT * INTO a FROM "case_acceptances" WHERE "id"=c."current_acceptance_id" AND "case_id"=target_case AND "department_id"=target_department;
+  IF c."current_acceptance_id" IS NOT NULL AND (a."id" IS NULL OR a."trial_round_id" IS DISTINCT FROM r."id" OR
+      a."external_entry_id" IS DISTINCT FROM e."id" OR case_effective_acceptance_no(a."id") IS DISTINCT FROM c."court_case_no")
+  THEN RAISE EXCEPTION 'external current acceptance mismatch' USING ERRCODE='23514'; END IF;
+  IF (c."current_hearing_arrangement_id" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "case_hearing_arrangements" x WHERE x."id"=c."current_hearing_arrangement_id" AND x."trial_round_id"=r."id" AND x."external_entry_id"=e."id")) OR
+     (c."current_hearing_advance_id" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "case_hearing_advances" x WHERE x."id"=c."current_hearing_advance_id" AND x."trial_round_id"=r."id" AND x."external_entry_id"=e."id")) OR
+     (c."current_judgment_id" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "case_judgment_facts" x WHERE x."id"=c."current_judgment_id" AND x."trial_round_id"=r."id" AND x."external_entry_id"=e."id")) OR
+     (c."current_judgment_next_step_id" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "case_judgment_next_steps" x WHERE x."id"=c."current_judgment_next_step_id" AND x."trial_round_id"=r."id" AND x."external_entry_id"=e."id")) OR
+     (c."current_second_instance_progress_id" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "case_second_instance_progresses" x WHERE x."id"=c."current_second_instance_progress_id" AND x."trial_round_id"=r."id" AND x."external_entry_id"=e."id")) OR
+     (c."current_second_instance_result_id" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "case_second_instance_results" x WHERE x."id"=c."current_second_instance_result_id" AND x."external_entry_id"=e."id" AND
+       (x."trial_round_id"=r."id" OR (x."result"='REMAND' AND x."id"=r."source_result_id"))))
+  THEN RAISE EXCEPTION 'external current fact pointer crosses round' USING ERRCODE='23514'; END IF;
+END; $$;
