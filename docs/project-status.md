@@ -1,3 +1,17 @@
+## 2026-10-25 UI已同步main，恢复C/E批人工验收及收尾
+
+UI交付64251f4a6c39e9d87df91ba770bd98317b3f716e已从codex/operations-ui-efficiency正常快进到本地主目录main并推送GitHub main；三者提交一致。未强推、重置、整仓暂存或部署。主目录原未跟踪.pnpm-store/和已有stash保留。下方“仅本地”是此前检查点，不代表本次同步结果。
+
+本批先在该提交重新编译后端与前端，核对855份源码输入、页面实际JS DAxSkGv4/CSS Cx6ghnr8及隔离绑定15439，再通过可见真实浏览器操作。随后发现判决资料更正与二审日期校验不一致，新增本地修复922fbba3d5ff4b39add4a668d0554665cbf1d805、629b7dac4b1c3349c9056592de339b3d64b9519c，位于codex/manual-uat-post-ui-20261025，尚未合并/推送。这两项后端增量不属于已推送UI交付；受理原步骤复测通过，正常来源进展仍受下述独立数据库缺陷阻塞，不能标整体修复完成。最终验收运行revision manual-resume-e-20261025-second-dates：后端重建，前端未变且输入/产物hash核对后复用。
+
+22条新增/明确化记录已追加既有coverage.csv：14通过、3次失败、1阻塞、4未测试；这是本批操作记录，含修复前RED，不是22个互不重复功能，也不计算全系统通过率。正常主案0003完成判决零元/待定、独立更正、执行准备选择及撤销、双方上诉、二审受理，现SECOND_INSTANCE v14；二审进展仍0条。既有外录案0001完成未知金额判决、被告单方上诉、二审进展、维持原判、撤销维持、发回重审并刷新，现WAITING_FORMAL_ACCEPTANCE v13/第2轮；原轮事实保留。没有新增案件、账号或费用；必要文件上传由17/20到20/20，预算用尽。已通过客户经理等未重跑。
+
+MAN-CA-007/P2：二审受理及进展服务读取原判决日期，忽略独立有效更正。4个新增反例在旧代码失败；两文件合计54项定向测试、check:fast、格式及后端构建通过。受理日期24原步骤页面复测成功；进展复测被MAN-CA-008阻塞，不冒充通过。MAN-CA-008/P1：check_case_second_instance_final在正常来源进展分支无条件要求外部转入的choice/judgment来源，真实保存返回500/23514；只读确认事务回滚、主案version14、进展/回执均0。真实外录分支成功不能代替正常来源通过。此缺陷需独立的前向迁移、正常/外部来源反例及数据库审查，本批未改旧迁移或执行新迁移。判决/二审低权限、改判、进展清空、发回撤销及其余原未测项继续保留；原生确认工具阻塞仍未解决。
+
+用户选择“按原约定收尾，结束时关闭”。已退出页面登录、恢复视口、停用W37、恢复原binding active21，temporary role/assignment inactive16，Grant0/session0；R44/L8/N6/C12均停用，外部绑定保持停用。服务/helper退出，3101/5174/5175无监听；15439及175/176账本保留，无迁移/清库。收尾快照resume-e-after-close-20261025.json；业务事实resume-e-final-business-facts.json；明细resume-e-uat-results.json、coverage.csv及[本批验证记录](spec/v0.1/VALIDATION.md#2026-10-25-main同步恢复ce批判决与二审人工验收)。证据目录仍为.local/manual-acceptance-90708add-20261023。
+
+下次恢复先核对HEAD/差异、运行时、隔离绑定及账号当前版本；旧W启用helper的35/19/14常量已过期，不能照搬。按最新源码重新构建并核对实际运行版本；当前只有read-only快照helper可直接复用。不重复建案或上传，20份材料额度已满；normal主案进展从MAN-CA-008阻塞点继续，外录案从第2轮真实受理条件继续，不修改时间或跳阶段。
+
 ## 2026-10-25 九类UI改造完成，业务验收继续待办
 
 修改前归档ba487d0f601515dbb6bc88f51abbaf8385ace363已正常合并/推送main，远端备份codex/pre-ui-efficiency-20261024一致，原有改动全部保留。新UI位于codex/operations-ui-efficiency，产品提交f8abfa18e5f60af4e69b8ab037545337f8ba585f及d30ad2100abf70630f12bd1163cbfe64a5e0bd77，仅本地、未推送/部署。正确源码目录D:\工作项目\品维and知产\dev_cor\.local\worktrees\reports-core-integration。
