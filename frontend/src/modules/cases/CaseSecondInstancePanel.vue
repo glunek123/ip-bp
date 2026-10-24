@@ -83,6 +83,11 @@ const judgeName = ref('');
 const documentFiles = ref<PanelFile[]>([]);
 const serviceFiles = ref<PanelFile[]>([]);
 const judgmentFiles = ref<PanelFile[]>([]);
+const documentCandidates = ref<PanelFile[]>([]);
+const serviceCandidates = ref<PanelFile[]>([]);
+const judgmentCandidates = ref<PanelFile[]>([]);
+const existingJudgmentLoading = ref(false);
+const existingJudgmentMessage = ref('');
 const resultChoice = ref<ResultChoice>('');
 const receivedAt = ref('');
 const feeState = ref<AmountState>('');
@@ -264,18 +269,21 @@ const roundHistory = computed(() =>
 const documentOptions = computed(() =>
   uniqueFiles([
     ...second.value.progresses.flatMap((entry) => entry.documentFiles),
+    ...documentCandidates.value,
     ...documentFiles.value,
   ]),
 );
 const serviceOptions = computed(() =>
   uniqueFiles([
     ...second.value.progresses.flatMap((entry) => entry.serviceFiles),
+    ...serviceCandidates.value,
     ...serviceFiles.value,
   ]),
 );
 const judgmentOptions = computed(() =>
   uniqueFiles([
     ...second.value.results.flatMap((entry) => entry.files),
+    ...judgmentCandidates.value,
     ...judgmentFiles.value,
   ]),
 );
@@ -283,6 +291,13 @@ function uniqueFiles(files: PanelFile[]): PanelFile[] {
   return [
     ...new Map(files.map((file) => [file.contentVersionId, file])).values(),
   ];
+}
+function clearCandidates(): void {
+  documentCandidates.value = [];
+  serviceCandidates.value = [];
+  judgmentCandidates.value = [];
+  existingJudgmentLoading.value = false;
+  existingJudgmentMessage.value = '';
 }
 
 function resetDraft(): void {
@@ -309,6 +324,7 @@ function clearSensitive(): void {
   documentFiles.value = [];
   serviceFiles.value = [];
   judgmentFiles.value = [];
+  clearCandidates();
   accessDenied.value = true;
 }
 watch(
@@ -317,6 +333,7 @@ watch(
     unsubscribeCommand?.();
     revision += 1;
     resetDraft();
+    clearCandidates();
     pending.value = false;
     pendingUnknown.value = pendingSecondInstanceCommand(recoveryIdentity());
     error.value = '';
@@ -381,6 +398,12 @@ watch(
   () => props.contextKey,
   () => {
     revision += 1;
+    documentFiles.value = [];
+    serviceFiles.value = [];
+    judgmentFiles.value = [];
+    clearCandidates();
+    recoveryFiles.value = [];
+    verifiedRecoveryFiles.value.clear();
     pending.value = false;
     pendingUnknown.value = pendingSecondInstanceCommand(recoveryIdentity());
     uploadUnknown.value =
@@ -401,6 +424,7 @@ watch(
   ],
   () => {
     resetDraft();
+    clearCandidates();
     if (pendingUnknown.value === null) {
       if (!conflictNeedsReview.value) error.value = '';
       if (
@@ -713,6 +737,64 @@ function toggleJudgmentFile(contentVersionId: string, checked: boolean): void {
   else if (!checked) next.delete(contentVersionId);
   judgmentFiles.value = [...next.values()];
 }
+async function loadExistingJudgmentFiles(): Promise<void> {
+  if (
+    !canRegister.value ||
+    existingJudgmentLoading.value ||
+    uploading.value !== null ||
+    uploadUnknown.value ||
+    pendingUnknown.value !== null
+  )
+    return;
+  const context = capture();
+  const frozenKeys = new Set(
+    second.value.results.flatMap((result) =>
+      result.files.map((file) => `${file.materialId}:${file.contentVersionId}`),
+    ),
+  );
+  existingJudgmentLoading.value = true;
+  existingJudgmentMessage.value = '';
+  try {
+    const result = await listOwnerMaterials('CASE', context.id);
+    if (!currentContext(context)) return;
+    judgmentCandidates.value = uniqueFiles(
+      result.items
+        .filter(
+          (material) =>
+            material.ownerType === 'CASE' &&
+            material.ownerId === context.id &&
+            material.category === 'SECOND_INSTANCE_JUDGMENT' &&
+            material.purpose === 'SECOND_INSTANCE_JUDGMENT' &&
+            material.status === 'ACTIVE',
+        )
+        .flatMap((material) =>
+          material.contentVersions
+            .filter(
+              (version) =>
+                version.status === 'AVAILABLE' &&
+                (version.id === material.currentVersionId ||
+                  frozenKeys.has(`${material.id}:${version.id}`)),
+            )
+            .map((version) => ({
+              materialId: material.id,
+              contentVersionId: version.id,
+              originalFilename: version.originalFilename,
+              mimeType: version.mimeType,
+            })),
+        ),
+    );
+    existingJudgmentMessage.value = judgmentCandidates.value.length
+      ? '请选择本案已上传的裁判文书版本；登记前仍可取消选择。'
+      : '本案没有可选的裁判文书版本。';
+  } catch (reason) {
+    if (!currentContext(context)) return;
+    if (reason instanceof ApiError && [403, 404].includes(reason.status))
+      clearSensitive();
+    existingJudgmentMessage.value = '无法读取本案裁判文书，请刷新案件详情。';
+  } finally {
+    if (currentContext(context)) existingJudgmentLoading.value = false;
+  }
+}
 async function upload(
   kind: UploadKind,
   event: globalThis.Event,
@@ -720,7 +802,13 @@ async function upload(
   const input = event.target as globalThis.HTMLInputElement;
   const file = input.files?.[0];
   input.value = '';
-  if (!file || uploading.value || uploadUnknown.value || pendingUnknown.value)
+  if (
+    !file ||
+    uploading.value ||
+    uploadUnknown.value ||
+    pendingUnknown.value ||
+    (kind === 'judgment' && existingJudgmentLoading.value)
+  )
     return;
   const context = capture();
   const identity = recoveryIdentity();
@@ -786,6 +874,13 @@ async function upload(
         ),
         choice,
       ];
+    const candidates =
+      kind === 'document'
+        ? documentCandidates
+        : kind === 'service'
+          ? serviceCandidates
+          : judgmentCandidates;
+    candidates.value = uniqueFiles([...candidates.value, choice]);
     uploadMessage.value = '文件已上传并可选择；业务登记尚未提交。';
   } catch (reason) {
     if (currentContext(context)) {
@@ -924,6 +1019,13 @@ function adoptRecoveryFile(file: (typeof recoveryFiles.value)[number]): void {
         ? serviceFiles
         : judgmentFiles;
   target.value = uniqueFiles([...target.value, chosen]);
+  const candidates =
+    marker.kind === 'document'
+      ? documentCandidates
+      : marker.kind === 'service'
+        ? serviceCandidates
+        : judgmentCandidates;
+  candidates.value = uniqueFiles([...candidates.value, chosen]);
   uploadUnknown.value = false;
   recoveryFiles.value = [];
   verifiedRecoveryFiles.value.clear();
@@ -1275,10 +1377,29 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             accept="application/pdf,image/jpeg,image/png"
             data-test="second-instance-judgment-upload"
             :disabled="
-              uploading !== null || uploadUnknown || pendingUnknown !== null
+              uploading !== null ||
+              existingJudgmentLoading ||
+              uploadUnknown ||
+              pendingUnknown !== null
             "
             @change="upload('judgment', $event)"
         /></label>
+        <button
+          data-test="second-instance-existing-judgment"
+          type="button"
+          :disabled="
+            existingJudgmentLoading ||
+            uploading !== null ||
+            uploadUnknown ||
+            pendingUnknown !== null
+          "
+          @click="loadExistingJudgmentFiles"
+        >
+          {{ existingJudgmentLoading ? '读取中…' : '选择已有裁判文书' }}
+        </button>
+        <p v-if="existingJudgmentMessage" role="status">
+          {{ existingJudgmentMessage }}
+        </p>
         <label v-for="file in judgmentOptions" :key="file.contentVersionId"
           ><input
             data-test="second-instance-result-file-choice"

@@ -176,6 +176,321 @@ function mountPanel(
 }
 
 describe('CaseSecondInstancePanel', () => {
+  it('keeps an uploaded judgment option after unchecking so it can be selected again', async () => {
+    api.uploadMaterialFile.mockResolvedValueOnce(resultFile);
+    const detail = item();
+    detail.secondInstance.results = [];
+    const wrapper = mountPanel({ item: detail });
+    const upload = wrapper.get('[data-test="second-instance-judgment-upload"]');
+    Object.defineProperty(upload.element, 'files', {
+      configurable: true,
+      value: [
+        new File(['judgment'], 'judgment.pdf', { type: 'application/pdf' }),
+      ],
+    });
+    await upload.trigger('change');
+    await flushPromises();
+    const selector = '[data-test="second-instance-result-file-choice"]';
+    expect(wrapper.findAll(selector)).toHaveLength(1);
+    await wrapper.get(selector).setValue(false);
+    expect(wrapper.findAll(selector)).toHaveLength(1);
+    await wrapper.get(selector).setValue(true);
+    expect((wrapper.get(selector).element as HTMLInputElement).checked).toBe(
+      true,
+    );
+    wrapper.unmount();
+  });
+
+  it('does not start a judgment upload while an existing-material list is pending', async () => {
+    let resolveList!: (value: unknown) => void;
+    api.listOwnerMaterials.mockReturnValueOnce(
+      new Promise((resolve) => (resolveList = resolve)),
+    );
+    api.uploadMaterialFile.mockResolvedValueOnce(resultFile);
+    const detail = item();
+    detail.secondInstance.results = [];
+    const wrapper = mountPanel({ item: detail });
+    await wrapper
+      .get('[data-test="second-instance-existing-judgment"]')
+      .trigger('click');
+    const upload = wrapper.get('[data-test="second-instance-judgment-upload"]');
+    expect((upload.element as HTMLInputElement).disabled).toBe(true);
+    Object.defineProperty(upload.element, 'files', {
+      configurable: true,
+      value: [
+        new File(['judgment'], 'judgment.pdf', { type: 'application/pdf' }),
+      ],
+    });
+    await upload.trigger('change');
+    expect(api.uploadMaterialFile).not.toHaveBeenCalled();
+    resolveList({ items: [], total: 0 });
+    await flushPromises();
+    expect((upload.element as HTMLInputElement).disabled).toBe(false);
+    await upload.trigger('change');
+    await flushPromises();
+    expect(api.uploadMaterialFile).toHaveBeenCalledTimes(1);
+    const selector = '[data-test="second-instance-result-file-choice"]';
+    await wrapper.get(selector).setValue(false);
+    expect(wrapper.findAll(selector)).toHaveLength(1);
+    await wrapper.get(selector).setValue(true);
+    wrapper.unmount();
+  });
+
+  it('drops selected file versions when the authorization context changes', async () => {
+    api.uploadMaterialFile
+      .mockResolvedValueOnce({ ...resultFile, contentVersionId: id('71') })
+      .mockResolvedValueOnce({ ...resultFile, contentVersionId: id('72') })
+      .mockResolvedValueOnce({ ...resultFile, contentVersionId: id('73') });
+    api.saveSecondInstance.mockResolvedValueOnce({});
+    const detail = item();
+    detail.secondInstance.results = [];
+    const wrapper = mountPanel({ item: detail });
+    for (const kind of ['document', 'service', 'judgment']) {
+      const upload = wrapper.get(
+        `[data-test="second-instance-${kind}-upload"]`,
+      );
+      Object.defineProperty(upload.element, 'files', {
+        configurable: true,
+        value: [new File([kind], `${kind}.pdf`, { type: 'application/pdf' })],
+      });
+      await upload.trigger('change');
+      await flushPromises();
+    }
+    expect(
+      wrapper.findAll('[data-test="second-instance-result-file-choice"]'),
+    ).toHaveLength(1);
+    expect(
+      wrapper.findAll(
+        '[data-test="second-instance-progress-form"] fieldset input[type="checkbox"]',
+      ),
+    ).toHaveLength(2);
+    await wrapper.setProps({
+      contextKey: 'internal:user-a:authorization-revision-2',
+    });
+    expect(
+      wrapper.findAll('[data-test="second-instance-result-file-choice"]'),
+    ).toHaveLength(0);
+    expect(
+      wrapper.findAll(
+        '[data-test="second-instance-progress-form"] fieldset input[type="checkbox"]',
+      ),
+    ).toHaveLength(0);
+    expect(
+      wrapper
+        .get('[data-test="second-instance-result-submit"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    await wrapper
+      .get('[data-test="second-instance-progress-form"]')
+      .trigger('submit');
+    expect(
+      api.saveSecondInstance.mock.calls.at(-1)?.[1].progress,
+    ).toMatchObject({
+      documentContentVersionIds: [],
+      serviceContentVersionIds: [],
+    });
+    wrapper.unmount();
+  });
+
+  it('keeps an uploaded progress document option after unchecking', async () => {
+    api.uploadMaterialFile.mockResolvedValueOnce(resultFile);
+    const wrapper = mountPanel();
+    const upload = wrapper.get('[data-test="second-instance-document-upload"]');
+    Object.defineProperty(upload.element, 'files', {
+      configurable: true,
+      value: [
+        new File(['document'], 'document.pdf', { type: 'application/pdf' }),
+      ],
+    });
+    await upload.trigger('change');
+    await flushPromises();
+    const choice = wrapper.get(
+      '[data-test="second-instance-progress-form"] fieldset input[type="checkbox"]',
+    );
+    await choice.setValue(false);
+    expect(
+      wrapper.findAll(
+        '[data-test="second-instance-progress-form"] fieldset input[type="checkbox"]',
+      ),
+    ).toHaveLength(1);
+    await wrapper
+      .get(
+        '[data-test="second-instance-progress-form"] fieldset input[type="checkbox"]',
+      )
+      .setValue(true);
+    wrapper.unmount();
+  });
+
+  it('loads only this case current or frozen judgment versions after remount', async () => {
+    const detail = item();
+    const oldFrozen = resultFile;
+    const current = {
+      ...resultFile,
+      contentVersionId: id('8'),
+      originalFilename: '本案新裁判.pdf',
+    };
+    const oldUnfrozen = {
+      ...resultFile,
+      contentVersionId: id('9'),
+      originalFilename: '未冻结旧版.pdf',
+    };
+    const listed = (
+      ownerId: string,
+      category: string,
+      purpose: string,
+      status: string,
+      materialId = resultFile.materialId,
+      filename = current.originalFilename,
+    ) => ({
+      id: materialId,
+      ownerType: 'CASE',
+      ownerId,
+      category,
+      purpose,
+      status,
+      currentVersionId: current.contentVersionId,
+      contentVersions: [
+        {
+          id: oldFrozen.contentVersionId,
+          status: 'AVAILABLE',
+          originalFilename: oldFrozen.originalFilename,
+          mimeType: oldFrozen.mimeType,
+        },
+        {
+          id: current.contentVersionId,
+          status: 'AVAILABLE',
+          originalFilename: filename,
+          mimeType: current.mimeType,
+        },
+        {
+          id: oldUnfrozen.contentVersionId,
+          status: 'AVAILABLE',
+          originalFilename: oldUnfrozen.originalFilename,
+          mimeType: oldUnfrozen.mimeType,
+        },
+      ],
+    });
+    api.listOwnerMaterials.mockResolvedValue({
+      items: [
+        listed(
+          id('20'),
+          'SECOND_INSTANCE_JUDGMENT',
+          'SECOND_INSTANCE_JUDGMENT',
+          'ACTIVE',
+        ),
+        listed(
+          id('99'),
+          'SECOND_INSTANCE_JUDGMENT',
+          'SECOND_INSTANCE_JUDGMENT',
+          'ACTIVE',
+          id('61'),
+          '跨案.pdf',
+        ),
+        listed(
+          id('20'),
+          'SECOND_INSTANCE_SERVICE',
+          'SECOND_INSTANCE_JUDGMENT',
+          'ACTIVE',
+          id('62'),
+          '错类别.pdf',
+        ),
+        listed(
+          id('20'),
+          'SECOND_INSTANCE_JUDGMENT',
+          'OTHER',
+          'ACTIVE',
+          id('63'),
+          '错用途.pdf',
+        ),
+        listed(
+          id('20'),
+          'SECOND_INSTANCE_JUDGMENT',
+          'SECOND_INSTANCE_JUDGMENT',
+          'DELETED',
+          id('64'),
+          '已删除.pdf',
+        ),
+      ],
+      total: 5,
+    });
+    const wrapper = mountPanel({ item: detail });
+    await wrapper
+      .get('[data-test="second-instance-existing-judgment"]')
+      .trigger('click');
+    await flushPromises();
+    expect(api.listOwnerMaterials).toHaveBeenCalledWith('CASE', id('20'));
+    expect(wrapper.text()).toContain(current.originalFilename);
+    expect(wrapper.text()).not.toContain(oldUnfrozen.originalFilename);
+    for (const forbidden of [
+      '跨案.pdf',
+      '错类别.pdf',
+      '错用途.pdf',
+      '已删除.pdf',
+    ])
+      expect(wrapper.text()).not.toContain(forbidden);
+    await wrapper
+      .get('[data-test="second-instance-result-file-choice"]:not(:checked)')
+      .setValue(true);
+    wrapper.unmount();
+    const returned = mountPanel({ item: detail });
+    await returned
+      .get('[data-test="second-instance-existing-judgment"]')
+      .trigger('click');
+    await flushPromises();
+    expect(returned.text()).toContain(current.originalFilename);
+    expect(returned.text()).not.toContain(oldUnfrozen.originalFilename);
+    returned.unmount();
+  });
+
+  it('discards a late material list after a case switch and clears options on denial', async () => {
+    let resolveList!: (value: unknown) => void;
+    api.listOwnerMaterials.mockReturnValueOnce(
+      new Promise((resolve) => (resolveList = resolve)),
+    );
+    const wrapper = mountPanel();
+    await wrapper
+      .get('[data-test="second-instance-existing-judgment"]')
+      .trigger('click');
+    const newItem = { ...item(), id: id('98') } as CaseDetail;
+    await wrapper.setProps({ item: newItem });
+    resolveList({
+      items: [
+        {
+          id: resultFile.materialId,
+          ownerType: 'CASE',
+          ownerId: id('20'),
+          category: 'SECOND_INSTANCE_JUDGMENT',
+          purpose: 'SECOND_INSTANCE_JUDGMENT',
+          status: 'ACTIVE',
+          currentVersionId: id('88'),
+          contentVersions: [
+            {
+              id: id('88'),
+              status: 'AVAILABLE',
+              originalFilename: '旧案候选.pdf',
+              mimeType: 'application/pdf',
+            },
+          ],
+        },
+      ],
+      total: 1,
+    });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('旧案候选.pdf');
+    api.listOwnerMaterials.mockRejectedValueOnce(
+      new ApiError('denied', 403, 'FORBIDDEN'),
+    );
+    await wrapper
+      .get('[data-test="second-instance-existing-judgment"]')
+      .trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="second-instance-result-form"]').exists(),
+    ).toBe(false);
+    expect(wrapper.text()).toContain('当前账号不能查看或办理此案件');
+    wrapper.unmount();
+  });
+
   it('uses the matching appeal and round acceptance as the result lower bound', () => {
     const detail = item();
     detail.acceptance!.acceptedAt = '2026-10-01';

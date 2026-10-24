@@ -3647,3 +3647,17 @@ MAN-CA-007证据resume-c-second-acceptance-save-failed.txt/.png、resume-c-secon
 **未覆盖与恢复点。** 正常来源主案仍SECOND_INSTANCE v14，二审进展/结果因MAN-CA-008未通过；外录案保留第2轮待正式立案。改判真实提交、已保存二审可空字段清空、发回结果撤销、重审后续受理/开庭、判决与二审低权限/律师矩阵及原覆盖清单中的其他未测项继续待办。原生确认工具问题和已记需求缺口仍保留。客户经理等已通过功能未重复测试；没有改系统时钟或stage制造通过。上传20/20用尽，下一次不能自动新增文件。
 
 **账号与环境收尾，通过。** 用户明确选结束时关闭。已正常退出W、恢复临时视口；W disabled37，原binding active21，临时role/assignment inactive16，Grant0/session0；R44/L8/N6/C12保持停用，外部绑定不变。close回执resume-c-w-close.json，snapshot resume-e-after-close-20261025.json/.log；3101/5174/5175无监听，helper退出。15439和175/176保留，无迁移/重置/清库。下次先核对HEAD与差异、runtime版本、隔离绑定和当前账号revision再启动，旧启用helper常量已过期。服务启动模式仍为校验build manifest/源码与产物hash后启动Nest 3101、Vite preview5174；不直接运行遗留helper或复用旧构建。此批不等于全流程验收完成或绝对无Bug。
+
+## 2026-10-25 MAN-CA-008续验与材料候选修复（Resume F，进行中）
+
+候选574a15aac1265a864fa8e40518b91662dbcfda77，沿原分支和两案断点继续，未重跑已通过客户经理或无关业务。177迁移为20261025090000_case_second_instance_normal_source_guard；正常来源误被要求有外录choice/judgment同源关联。前向迁移只给原外录来源子句增加“本案同部门存在外录入口”适用条件，其余数据库守卫保持，不改历史迁移、不改业务事实。独立审查累计main64251f4a→574a15aa双轴ACCEPTED、Critical/Important/Minor均0。
+
+176上的初次owned PG专项1/1通过，含176→177升级、空库回放、失败回滚、来源谓词正反例、其他函数与触发器保持、public不变及owned对象清理。来源DO不等于完整保存事务。public预检确认前176账本全部成功且checksum逐项相同，唯一pending为177；正常部署177后177全部成功且checksum一致。前后10案stage/version/轮次和二审指针、进展1、回执4均不变。证据：resume-f-public-predeploy.json、resume-f-deploy177.log、resume-f-public-postdeploy.json。
+
+新构建revision manual-resume-f-20261025-ca008，855份源码输入及实际JS DAxSkGv4/CSS Cx6ghnr8核对。L使用新会话：正常案0003保存二审日期2026-10-24、地点MAN1025-合成二审法庭、法官MAN1025-合成二审法官成功；刷新、回列表重进值保持，阶段仍二审。然后将三个可空字段清空保存，刷新为空、原值历史保留。证据：resume-f-normal-progress-reload.txt/.png、resume-f-normal-progress-reentered.txt、resume-f-normal-progress-cleared-reload.txt/.png。W原角色和外录相邻保存仍待，不以L一次成功代替所有角色。
+
+仅补上传主案二审裁判PDF650B一份，累计21/21；没有二审结果提交。MAN-CA-009/P2：取消勾选后候选同步消失，刷新也无法选回已上传但未登记的文书。原文件未删除，禁止重传凑通过。局部修复将已上传候选与本次选择分开，增加明确“选择已有裁判文书”入口，只从现有授权API列出本案同类别/用途、有效且精确可用版本，保留未知上传恢复门槛；组件反例先RED后29/29通过，两项审查P2已修复关闭；独立双轴ACCEPTED C0/I0/M0，页面复测待完成。证据：resume-f-normal-second-file-upload21.txt/.png；实际取消勾选后DOM已无候选，代码toggle也证明选择与候选原先同源。
+
+初次pnpm verify为失败，不能写全门禁通过：139工具、3313前端、2897后端通过；旧CORE-NT-006迁移测试1项因未注入受管隔离绑定而停止，未连接或写库。build:prepared随后单独exit0。旧测试完整3个临时schema及177后CA008重跑2个schema（合计5）的补充授权待确认，任意时刻最多2。W预检同时发现批准清单中的CASE_READ/SELF不在实际目录（只支持DEPARTMENT），保护检查拒绝，未启用W、未写无效grant；等待合法读取范围更正。该清单错误与产品bug分开记录，R/L权限不擅自扩大。
+
+本节是中途断点，结果、覆盖清单、收尾及正常合并/推送回执将在完成后补充；改判、发回撤销、W/R低权限与外录回归均未预写通过。证据根目录仍为.local/manual-acceptance-90708add-20261023。
