@@ -402,7 +402,7 @@ async function launch(): Promise<void> {
       </p>
       <form v-if="props.canUpdate" @submit.prevent="saveTerms">
         <label v-if="side === 'CUSTOMER'"
-          >客户结算条件<ElInput
+          >结算条件<ElInput
             v-model="formula"
             :disabled="uncertain || saving"
             placeholder="客户结算金额=结案金额×70%"
@@ -507,7 +507,7 @@ async function launch(): Promise<void> {
         <thead>
           <tr>
             <th>次数</th>
-            <th>日期</th>
+            <th>发起日期</th>
             <th>金额</th>
             <th>账单</th>
             <th>备注</th>
@@ -534,8 +534,8 @@ async function launch(): Promise<void> {
   color: var(--color-ink);
 }
 .case-settlement form {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   align-items: end;
   padding: 12px;
@@ -546,6 +546,27 @@ async function launch(): Promise<void> {
   display: grid;
   gap: 4px;
   min-width: 160px;
+}
+.case-settlement form h3,
+.case-settlement form > p,
+.case-settlement form > button {
+  grid-column: 1 / -1;
+}
+.case-settlement form > button {
+  justify-self: end;
+}
+.case-settlement form label {
+  min-width: 0;
+}
+@media (max-width: 760px) {
+  .case-settlement form {
+    grid-template-columns: 1fr;
+  }
+  .case-settlement form h3,
+  .case-settlement form > p,
+  .case-settlement form > button {
+    grid-column: auto;
+  }
 }
 .case-settlement button,
 .case-settlement input,

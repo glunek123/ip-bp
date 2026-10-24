@@ -116,6 +116,33 @@ const permissionCatalog = [
 afterEach(() => vi.clearAllMocks());
 
 describe('RoleTemplateEditor', () => {
+  it('searches permission groups without dropping selected hidden grants', async () => {
+    api.updateRoleTemplate.mockResolvedValue(role);
+    const wrapper = mount(RoleTemplateEditor, {
+      props: { mode: 'edit', role, permissionCatalog },
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-test="permission-search"]').setValue('管理角色');
+    expect(wrapper.find('[data-test="grant-CUSTOMER_READ"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="grant-ROLE_MANAGE"]').exists()).toBe(true);
+    await wrapper.get('[data-test="grant-ROLE_MANAGE"]').setValue(true);
+    await wrapper.get('[data-test="role-template-save"]').trigger('click');
+    await flushPromises();
+
+    expect(api.updateRoleTemplate).toHaveBeenCalledWith(
+      role.id,
+      expect.objectContaining({
+        grants: expect.arrayContaining([
+          { action: 'CUSTOMER_READ', scope: 'DEPARTMENT' },
+          { action: 'ROLE_MANAGE', scope: 'SELF' },
+        ]),
+      }),
+    );
+  });
+
   it('offers the two explicit hearing actions but not the automatic audit action', async () => {
     api.getRoleTemplateImpact.mockResolvedValue({
       roleTemplateId: role.id,

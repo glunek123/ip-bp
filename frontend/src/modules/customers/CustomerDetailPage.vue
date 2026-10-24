@@ -3,6 +3,7 @@ import './customer-workspace.css';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
 import { ApiError } from '../../api/http';
 import {
   getCustomer,
@@ -20,6 +21,7 @@ import CustomerContactsPanel from './CustomerContactsPanel.vue';
 import CustomerAgreementPanel from './CustomerAgreementPanel.vue';
 import CustomerInvoiceProfilePanel from './CustomerInvoiceProfilePanel.vue';
 import CustomerSettlementsPanel from './CustomerSettlementsPanel.vue';
+import CustomerEditPage from './CustomerEditPage.vue';
 import { labelCustomerType, labelIdentityType } from './customer-labels';
 import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
@@ -57,6 +59,10 @@ const state = ref<'loading' | 'ready' | 'missing' | 'failed' | 'unavailable'>(
 );
 const customer = ref<CustomerDetail>();
 const activeTab = ref<'basic' | 'assets' | 'settlements'>('basic');
+const editOpen = ref(false);
+const editForm = ref<{
+  requestClose: (done?: () => void) => void;
+}>();
 const customerBasicSections = [
   { key: 'profile', label: '客户资料', hash: 'customer-profile' },
   { key: 'contacts', label: '联系人与权利人', hash: 'customer-contacts' },
@@ -248,6 +254,13 @@ const otherMaintenanceBlocked = computed(
 const sharedWriteBlocked = computed(
   () => otherMaintenanceBlocked.value || settlementPending.value,
 );
+function beforeCloseEdit(done: () => void): void {
+  editForm.value?.requestClose(done);
+}
+async function onCustomerEdited(): Promise<void> {
+  editOpen.value = false;
+  await load();
+}
 const agreementBlocked = computed(
   () =>
     !!frozenDelete.value ||
@@ -1043,6 +1056,7 @@ watch(settlementOwner.status, (status) => {
 watch(
   () => `${String(route.params.id)}:${actorKey.value}`,
   () => {
+    editOpen.value = false;
     viewGeneration += 1;
     abortRequests();
     restorePending(String(route.params.id));
@@ -1129,14 +1143,14 @@ onBeforeUnmount(() => {
               @click="deletePrompt = true"
               >删除草稿</ElButton
             >
-            <RouterLink
+            <ElButton
               class="customer-action-link"
               v-if="customer.capabilities.editRoutine && !sharedWriteBlocked"
               data-test="edit-customer"
-              :to="`/customers/${customer.id}/edit`"
+              @click="editOpen = true"
             >
               编辑资料
-            </RouterLink>
+            </ElButton>
             <span class="status-chip status-chip--large">{{
               profileLabel(customer.profileStatus)
             }}</span>
@@ -1637,6 +1651,21 @@ onBeforeUnmount(() => {
             @command-confirmed="refreshAfterSettlementCommand"
           />
         </section>
+        <ElDrawer
+          v-model="editOpen"
+          title="编辑客户资料"
+          size="min(900px, 100vw)"
+          append-to-body
+          destroy-on-close
+          :before-close="beforeCloseEdit"
+        >
+          <CustomerEditPage
+            ref="editForm"
+            embedded
+            @saved="onCustomerEdited"
+            @close-requested="editOpen = false"
+          />
+        </ElDrawer>
       </template>
     </main>
   </div>
@@ -1709,6 +1738,49 @@ onBeforeUnmount(() => {
   padding: var(--s-3);
   border: 1px solid var(--color-hairline);
   border-radius: 8px;
+}
+
+.customer-detail-page :deep(.settlement-top-kpis) {
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.customer-detail-page :deep(.settlement-top-kpis > div) {
+  gap: 2px;
+  padding: 8px 12px;
+}
+.customer-detail-page :deep(.settlement-top-kpis strong) {
+  font-size: 19px;
+  line-height: 1.35;
+}
+.customer-detail-page :deep([data-test='cooperation-panel']) {
+  margin-bottom: 10px;
+  padding: 12px 16px;
+}
+.customer-detail-page :deep([data-test='cooperation-panel'] > h2) {
+  margin-bottom: 8px;
+}
+.customer-detail-page
+  :deep([data-test='cooperation-panel'] .detail-grid > div) {
+  padding: 6px 0;
+}
+.customer-detail-page
+  :deep([data-test='cooperation-panel'] .cooperation-actions) {
+  gap: 6px;
+  margin-top: 8px;
+}
+.customer-detail-page .customer-tabs {
+  margin-bottom: 8px;
+}
+.customer-detail-page .customer-tabs__tab {
+  padding: 8px 12px;
+}
+.customer-detail-page .customer-basic-section-tabs {
+  margin-bottom: 10px;
+}
+.customer-detail-page .customer-basic-section-tabs button {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 13px;
 }
 
 .settlement-top-kpis__bar {

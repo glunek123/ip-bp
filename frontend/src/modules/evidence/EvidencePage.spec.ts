@@ -124,6 +124,41 @@ beforeEach(() => {
 });
 
 describe('EvidencePage', () => {
+  it('keeps all progress choices available in a collapsed multi-select filter', async () => {
+    const wrapper = mount(EvidencePage);
+    await flushPromises();
+
+    expect(wrapper.find<HTMLDetailsElement>('.stage-filter').element.open).toBe(
+      false,
+    );
+    expect(wrapper.findAll('.stage-row input[type="checkbox"]')).toHaveLength(
+      16,
+    );
+    expect(wrapper.find('.stage-filter summary').text()).toContain('已选 0 项');
+    await wrapper
+      .findAll('.stage-row label')
+      .find((label) => label.text().includes('待匹配'))!
+      .get('input')
+      .setValue(true);
+    await flushPromises();
+    expect(wrapper.find<HTMLDetailsElement>('.stage-filter').element.open).toBe(
+      true,
+    );
+    expect(wrapper.find('.stage-filter summary').text()).toContain('已选 1 项');
+    expect(api.listEvidence).toHaveBeenLastCalledWith(
+      expect.objectContaining({ stages: ['PENDING_MATCH'] }),
+      expect.any(Object),
+    );
+    await wrapper.get('.stage-row button').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('.stage-filter summary').text()).toContain('已选 0 项');
+    expect(api.listEvidence).toHaveBeenLastCalledWith(
+      expect.objectContaining({ stages: [] }),
+      expect.any(Object),
+    );
+    wrapper.unmount();
+  });
+
   it.each([
     { filename: '证物清单.csv', csv: '' },
     { filename: '证物清单.csv', csv: ' \t\r\n\u3000' },

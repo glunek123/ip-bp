@@ -181,7 +181,7 @@ async function save(): Promise<void> {
   <ElDialog
     v-model="open"
     title="添加案件费用"
-    width="min(1050px,94vw)"
+    width="min(1180px,94vw)"
     :before-close="beforeClose"
     :close-on-click-modal="!disabled"
     :close-on-press-escape="!disabled"
@@ -208,7 +208,7 @@ async function save(): Promise<void> {
               :value="type"
               :label="type" /></ElSelect></label
         ><label
-          >方向<ElSelect v-model="draft.direction" :disabled="disabled"
+          >收支<ElSelect v-model="draft.direction" :disabled="disabled"
             ><ElOption value="支出" label="支出" /><ElOption
               value="收入"
               label="收入" /></ElSelect></label
@@ -233,16 +233,20 @@ async function save(): Promise<void> {
           >移除此行</ElButton
         >
       </div>
-      <ElButton :disabled="disabled" @click="rows.push(row())"
-        >再添加一笔</ElButton
-      >
+      <div class="case-fee-entry__actions">
+        <ElButton :disabled="disabled" @click="rows.push(row())"
+          >再添加一笔</ElButton
+        >
+      </div>
       <p v-if="error" role="alert">{{ error }}</p>
       <p v-if="unknown" role="status">
         保存结果尚未确认，重试使用原批次和每行的原请求身份。
       </p>
-      <ElButton native-type="submit" type="primary" :loading="saving">{{
-        unknown ? '用原批次重试' : '保存全部费用'
-      }}</ElButton>
+      <div class="case-fee-entry__actions">
+        <ElButton native-type="submit" type="primary" :loading="saving">{{
+          unknown ? '用原批次重试' : '保存全部费用'
+        }}</ElButton>
+      </div>
     </form></ElDialog
   >
 </template>
@@ -262,6 +266,11 @@ async function save(): Promise<void> {
   align-items: end;
   border-bottom: 1px solid var(--color-hairline);
   padding-bottom: 12px;
+}
+.case-fee-entry__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 @media (max-width: 760px) {
   .case-fee-entry__row {

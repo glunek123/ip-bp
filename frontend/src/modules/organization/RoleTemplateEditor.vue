@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
@@ -29,7 +29,42 @@ const pending = ref(false);
 const error = ref('');
 const impact = ref<RoleTemplateImpact | null>(null);
 const impactState = ref<'idle' | 'loading' | 'failed'>('idle');
+const permissionQuery = ref('');
 let active = true;
+
+const groupLabels: Record<string, string> = {
+  CASE: '案件',
+  CUSTOMER: '客户',
+  EVIDENCE: '证物与材料',
+  FEE: '费用',
+  LEAD: '线索与公证',
+  NOTARY: '线索与公证',
+  REPORT: '报表',
+  ROLE: '人员与权限',
+  TEAM: '人员与权限',
+  USER: '人员与权限',
+  SETTLEMENT: '结算',
+};
+const permissionGroups = computed(() => {
+  const query = permissionQuery.value.trim().toLocaleLowerCase();
+  const groups = new Map<
+    string,
+    { label: string; items: OrganizationPermissionCatalogItem[] }
+  >();
+  for (const item of props.permissionCatalog) {
+    if (
+      query &&
+      !`${item.label} ${item.action}`.toLocaleLowerCase().includes(query)
+    )
+      continue;
+    const prefix = item.action.split('_')[0] ?? '';
+    const label = groupLabels[prefix] ?? '其他权限';
+    const group = groups.get(label) ?? { label, items: [] };
+    group.items.push(item);
+    groups.set(label, group);
+  }
+  return [...groups.values()];
+});
 
 const scopeRank: Record<PermissionScope, number> = {
   SELF: 0,
@@ -151,32 +186,54 @@ onBeforeUnmount(() => {
       <p id="grant-scope-guidance" class="field-guidance grant-scope-guidance">
         本人：仅本人负责的数据；团队：当前团队数据；部门：本部门数据。
       </p>
-      <label
-        v-for="item in permissionCatalog"
-        :key="item.action"
-        class="grant-option"
-        :class="{ 'grant-option--selected': selected[item.action] }"
-      >
+      <label class="grant-search">
+        <span>查找权限</span>
         <input
-          v-model="selected[item.action]"
-          type="checkbox"
-          :data-test="`grant-${item.action}`"
+          v-model="permissionQuery"
+          type="search"
+          placeholder="搜索权限名称或代码"
+          aria-label="搜索权限名称或代码"
+          data-test="permission-search"
         />
-        <span class="grant-option__label" :title="item.action">
-          <strong>{{ item.label }}</strong>
-        </span>
-        <select
-          v-model="scopes[item.action]"
-          :disabled="!selected[item.action]"
-          :aria-label="`${item.label}范围`"
-          aria-describedby="grant-scope-guidance"
-          :data-test="`scope-${item.action}`"
-        >
-          <option v-for="scope in item.scopes" :key="scope" :value="scope">
-            {{ scope === 'SELF' ? '本人' : scope === 'TEAM' ? '团队' : '部门' }}
-          </option>
-        </select>
       </label>
+      <section
+        v-for="group in permissionGroups"
+        :key="group.label"
+        class="grant-group"
+        :aria-label="group.label"
+        :data-grant-group="group.label"
+      >
+        <h3>{{ group.label }}</h3>
+        <label
+          v-for="item in group.items"
+          :key="item.action"
+          class="grant-option"
+          :class="{ 'grant-option--selected': selected[item.action] }"
+        >
+          <input
+            v-model="selected[item.action]"
+            type="checkbox"
+            :data-test="`grant-${item.action}`"
+          />
+          <span class="grant-option__label" :title="item.action">
+            <strong>{{ item.label }}</strong>
+          </span>
+          <select
+            v-model="scopes[item.action]"
+            :disabled="!selected[item.action]"
+            :aria-label="`${item.label}范围`"
+            aria-describedby="grant-scope-guidance"
+            :data-test="`scope-${item.action}`"
+          >
+            <option v-for="scope in item.scopes" :key="scope" :value="scope">
+              {{
+                scope === 'SELF' ? '本人' : scope === 'TEAM' ? '团队' : '部门'
+              }}
+            </option>
+          </select>
+        </label>
+      </section>
+      <p v-if="permissionGroups.length === 0" role="status">没有匹配的权限。</p>
     </div>
 
     <aside v-if="mode === 'edit'" class="impact-preview">
@@ -214,3 +271,72 @@ onBeforeUnmount(() => {
     </footer>
   </section>
 </template>
+
+<style scoped>
+.role-template-editor {
+  display: grid;
+  gap: 16px;
+  width: min(1040px, 94vw);
+  max-height: min(90vh, 920px);
+  overflow: auto;
+  padding: 24px;
+  background: var(--color-surface-1);
+  color: var(--color-ink);
+}
+.role-template-editor__header,
+.grant-editor__heading,
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.grant-editor {
+  display: grid;
+  gap: 12px;
+}
+.grant-search {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.grant-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.grant-group h3 {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+  font-size: 1rem;
+}
+.grant-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(90px, 120px);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--color-hairline);
+  border-radius: 6px;
+}
+.grant-option__label {
+  min-width: 0;
+}
+.dialog-actions {
+  justify-content: flex-end;
+  position: sticky;
+  bottom: 0;
+  padding: 12px 0 0;
+  background: var(--color-surface-1);
+}
+@media (max-width: 700px) {
+  .grant-group {
+    grid-template-columns: 1fr;
+  }
+  .grant-group h3 {
+    grid-column: auto;
+  }
+}
+</style>

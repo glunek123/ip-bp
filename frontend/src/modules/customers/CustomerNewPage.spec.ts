@@ -10,7 +10,10 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../../api/customers', () => api);
 
-afterEach(() => vi.resetAllMocks());
+afterEach(() => {
+  vi.resetAllMocks();
+  vi.restoreAllMocks();
+});
 
 async function mountPage() {
   const router = createRouter({
@@ -29,6 +32,71 @@ async function mountPage() {
 }
 
 describe('CustomerNewPage', () => {
+  it('keeps an embedded draft when close confirmation is declined', async () => {
+    const { wrapper } = await mountPage();
+    await wrapper.setProps({ embedded: true });
+    await wrapper.get('input[name="name"]').setValue('客户甲');
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await wrapper.get('[data-test="customer-new-cancel"]').trigger('click');
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(wrapper.get('input[name="name"]').element).toHaveProperty(
+      'value',
+      '客户甲',
+    );
+    expect(wrapper.emitted('closeRequested')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('emits close from the embedded cancel button when the form is clean', async () => {
+    const { wrapper } = await mountPage();
+    await wrapper.setProps({ embedded: true });
+    const confirm = vi.spyOn(window, 'confirm');
+    await wrapper.get('[data-test="customer-new-cancel"]').trigger('click');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(wrapper.emitted('closeRequested')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it('emits an embedded save result without navigating away from the list', async () => {
+    api.createCustomerDraft.mockResolvedValue({ id: 'customer-1' });
+    const { wrapper, router } = await mountPage();
+    await wrapper.setProps({ embedded: true });
+    await wrapper.get('input[name="name"]').setValue('客户甲');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(wrapper.emitted('saved')).toEqual([['customer-1']]);
+    expect(router.currentRoute.value.fullPath).toBe('/customers/new');
+    wrapper.unmount();
+  });
+
+  it('blocks drawer closure while creation is pending and emits the eventual save', async () => {
+    let resolveCreate!: (value: { id: string }) => void;
+    api.createCustomerDraft.mockReturnValue(
+      new Promise((resolve) => (resolveCreate = resolve)),
+    );
+    const { wrapper } = await mountPage();
+    await wrapper.setProps({ embedded: true });
+    await wrapper.get('input[name="name"]').setValue('客户甲');
+    await wrapper.get('form').trigger('submit');
+    expect(
+      wrapper.get('[data-test="customer-new-cancel"]').attributes('disabled'),
+    ).toBeDefined();
+    let closeDoneCalled = false;
+    (
+      wrapper.vm as unknown as {
+        requestClose: (done: () => void) => void;
+      }
+    ).requestClose(() => {
+      closeDoneCalled = true;
+    });
+    expect(closeDoneCalled).toBe(false);
+    expect(wrapper.emitted('closeRequested')).toBeUndefined();
+    resolveCreate({ id: 'customer-1' });
+    await flushPromises();
+    expect(wrapper.emitted('saved')).toEqual([['customer-1']]);
+    wrapper.unmount();
+  });
+
   it('creates an independently entered manager and rejects overlong names', async () => {
     api.createCustomerDraft.mockResolvedValue({ id: 'customer-1' });
     const { wrapper } = await mountPage();

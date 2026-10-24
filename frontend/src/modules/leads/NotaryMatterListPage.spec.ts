@@ -1070,7 +1070,7 @@ describe('NotaryMatterListPage', () => {
     ]);
     expect(
       wrapper.get('[data-test="column-preference-status"]').text(),
-    ).toContain('个人列设置已加载');
+    ).not.toContain('个人列设置已加载');
   });
   it('requires an explicit scope and a successful preview before download', async () => {
     api.listNotaryMatters.mockResolvedValue(result);

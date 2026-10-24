@@ -114,6 +114,11 @@ describe('RoleTemplatePanel', () => {
     expect(wrapper.text()).toContain('客户经办');
     expect(wrapper.text()).toContain('3 位人员');
     expect(wrapper.text()).toContain('查看客户 · 部门');
+    expect(
+      wrapper.get<HTMLDetailsElement>('.role-template-card__grants').element
+        .open,
+    ).toBe(false);
+    expect(wrapper.text()).toContain('查看权限组合（1 项）');
     await wrapper.get('[data-test="edit-role-role-1"]').trigger('click');
     expect(wrapper.get('[data-test="editor"]').text()).toBe('edit:客户经办');
   });

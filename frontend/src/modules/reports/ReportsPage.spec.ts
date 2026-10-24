@@ -426,9 +426,16 @@ describe('real RP001 reports page', () => {
     expect(wrapper.get('[data-test="report-metadata"]').text()).toContain(
       '已归档 2 件',
     );
+    expect(wrapper.get('[data-test="report-metadata"]').text()).toContain(
+      '数据生成时间',
+    );
+    expect(wrapper.get('[data-test="report-metadata"]').text()).not.toContain(
+      'RP001-2',
+    );
     expect(wrapper.get('time').attributes('datetime')).toBe(
       overview().generatedAt,
     );
+    expect(wrapper.get('time').text()).toContain('2026年10月21日');
     expect(wrapper.findAll('[data-test^="report-pending-"]')).toHaveLength(0);
     expect(wrapper.get('[data-test="report-cumulative-decimal"]').text()).toBe(
       '40000.00',

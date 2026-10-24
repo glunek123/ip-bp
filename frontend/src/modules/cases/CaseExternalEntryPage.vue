@@ -13,6 +13,7 @@ import {
   type ExternalEntryOptions,
 } from '../../api/cases';
 import type { InfringementType } from '../../api/leads';
+import { caseStageLabels } from './case-workspace-read-model';
 
 type DefendantDraft = {
   kind: 'PERSON' | 'ORGANIZATION';
@@ -313,7 +314,7 @@ onMounted(() => void loadOptions());
                       stage.value === 'ARCHIVED' && !options.canCreateArchived
                     "
                   >
-                    {{ stage.label
+                    {{ caseStageLabels[stage.value]
                     }}{{ stage.value === 'ARCHIVED' ? ' · 需额外授权' : '' }}
                   </option>
                 </select>

@@ -265,6 +265,22 @@ const queryDraft = ref<{
   sortBy: 'createdAt',
   sortDirection: 'desc',
 });
+const appliedMoreFilterCount = computed(() => {
+  const activeText = (value: unknown) =>
+    typeof value === 'string' ? value.trim().length > 0 : value !== undefined;
+  const filterCount = [
+    'shopName',
+    'defendantName',
+    'courtName',
+    'lawyerName',
+    'caseType',
+  ].filter((key) => activeText(route.query[key])).length;
+  const customSort =
+    (route.query.sortBy !== undefined && route.query.sortBy !== 'createdAt') ||
+    (route.query.sortDirection !== undefined &&
+      route.query.sortDirection !== 'desc');
+  return filterCount + Number(customSort);
+});
 watch(
   () => parsedListQuery.value,
   (parsed) => {
@@ -919,7 +935,6 @@ onBeforeUnmount(() => {
           >
           <ElButton
             v-if="canExportCsv"
-            type="primary"
             :loading="exporting"
             :disabled="exporting || state !== 'ready'"
             data-test="export-current-case-list"
@@ -1024,56 +1039,77 @@ onBeforeUnmount(() => {
           <span>案号</span>
           <input v-model="queryDraft.courtCaseNo" />
         </label>
-        <label>
-          <span>店铺名</span>
-          <input v-model="queryDraft.shopName" data-test="case-query-shop" />
-        </label>
-        <label>
-          <span>被告</span>
-          <input
-            v-model="queryDraft.defendantName"
-            data-test="case-query-defendant"
-          />
-        </label>
-        <label>
-          <span>立案法院</span>
-          <input v-model="queryDraft.courtName" data-test="case-query-court" />
-        </label>
-        <label>
-          <span>律师</span>
-          <input
-            v-model="queryDraft.lawyerName"
-            data-test="case-query-lawyer"
-          />
-        </label>
-        <label>
-          <span>案件类型</span>
-          <select v-model="queryDraft.caseType" data-test="case-query-type">
-            <option value="">全部</option>
-            <option
-              v-for="value in caseListCaseTypes"
-              :key="value"
-              :value="value"
+        <details
+          class="case-list-more-filters"
+          data-test="case-list-more-filters"
+          :open="appliedMoreFilterCount > 0"
+        >
+          <summary>
+            更多筛选<span
+              v-if="appliedMoreFilterCount > 0"
+              data-test="case-list-more-filter-count"
+              >（已应用 {{ appliedMoreFilterCount }} 项）</span
             >
-              {{ caseTypeLabels[value] }}
-            </option>
-          </select>
-        </label>
-        <label>
-          <span>排序字段</span>
-          <select v-model="queryDraft.sortBy">
-            <option value="createdAt">创建时间</option>
-            <option value="businessNo">案件编号</option>
-            <option value="rightsHolderName">权利主体</option>
-          </select>
-        </label>
-        <label>
-          <span>顺序</span>
-          <select v-model="queryDraft.sortDirection">
-            <option value="desc">降序</option>
-            <option value="asc">升序</option>
-          </select>
-        </label>
+          </summary>
+          <div class="case-list-more-filters__grid">
+            <label>
+              <span>店铺名</span>
+              <input
+                v-model="queryDraft.shopName"
+                data-test="case-query-shop"
+              />
+            </label>
+            <label>
+              <span>被告</span>
+              <input
+                v-model="queryDraft.defendantName"
+                data-test="case-query-defendant"
+              />
+            </label>
+            <label>
+              <span>立案法院</span>
+              <input
+                v-model="queryDraft.courtName"
+                data-test="case-query-court"
+              />
+            </label>
+            <label>
+              <span>律师</span>
+              <input
+                v-model="queryDraft.lawyerName"
+                data-test="case-query-lawyer"
+              />
+            </label>
+            <label>
+              <span>案件类型</span>
+              <select v-model="queryDraft.caseType" data-test="case-query-type">
+                <option value="">全部</option>
+                <option
+                  v-for="value in caseListCaseTypes"
+                  :key="value"
+                  :value="value"
+                >
+                  {{ caseTypeLabels[value] }}
+                </option>
+              </select>
+            </label>
+            <label>
+              <span>排序字段</span>
+              <select v-model="queryDraft.sortBy">
+                <option value="createdAt">创建时间</option>
+                <option value="businessNo">案件编号</option>
+                <option value="rightsHolderName">权利主体</option>
+              </select>
+            </label>
+            <label>
+              <span>顺序</span>
+              <select v-model="queryDraft.sortDirection">
+                <option value="desc">降序</option>
+                <option value="asc">升序</option>
+              </select>
+            </label>
+          </div>
+        </details>
         <div class="case-list-query-actions">
           <ElButton type="primary" native-type="submit">查询</ElButton>
           <ElButton
@@ -1491,14 +1527,50 @@ onBeforeUnmount(() => {
   gap: var(--s-2);
 }
 
+.case-list-more-filters {
+  grid-column: 1 / -1;
+}
+
+.case-list-more-filters > summary {
+  cursor: pointer;
+  color: var(--color-ink-muted);
+}
+
+.case-list-more-filters__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  align-items: end;
+  gap: var(--s-3);
+  margin-top: var(--s-3);
+}
+
+.case-list-query-actions {
+  grid-column: 1 / -1;
+}
+
+.case-list-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+}
+
 @media (max-width: 900px) {
   .case-list-query {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+
+  .case-list-more-filters__grid {
     grid-template-columns: repeat(2, minmax(150px, 1fr));
   }
 }
 
 @media (max-width: 540px) {
   .case-list-query {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .case-list-more-filters__grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

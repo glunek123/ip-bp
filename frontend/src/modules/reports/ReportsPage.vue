@@ -68,6 +68,15 @@ const viewLabel = computed(() =>
       ? '本部门全部'
       : '当前范围',
 );
+function formatGeneratedAt(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Shanghai',
+  }).format(date);
+}
 function changeView(event: globalThis.Event): void {
   const value = (event.target as globalThis.HTMLSelectElement).value;
   if (
@@ -370,14 +379,18 @@ onBeforeUnmount(() => {
       />
       <ReportAmountsPanel :view="amountsView" part="rate" />
     </div>
-    <p class="reports-definition">
-      平均标的额口径：当前范围累计已归档案件，仅计标的金额已知的案件，0元计入；无样本显示“暂无数据”，人民币保留两位小数。
-    </p>
-    <p v-if="overview" class="reports-definition" data-test="report-metadata">
-      已归档 {{ overview.archivedCases }} 件，均值仅含已知标的额 · 口径
-      {{ overview.definitionVersion }} · 生成时间
-      <time :datetime="overview.generatedAt">{{ overview.generatedAt }}</time>
-    </p>
+    <details class="reports-definition">
+      <summary>查看统计口径</summary>
+      <p>
+        平均标的额统计当前范围内已归档案件，只计算已知标的金额的案件，0元计入；没有已知金额时显示“暂无数据”，人民币保留两位小数。
+      </p>
+      <p v-if="overview" data-test="report-metadata">
+        已归档 {{ overview.archivedCases }} 件；数据生成时间：
+        <time :datetime="overview.generatedAt">{{
+          formatGeneratedAt(overview.generatedAt)
+        }}</time>
+      </p>
+    </details>
     <ReportDistributionsPanel
       :view="
         overview
@@ -420,6 +433,13 @@ onBeforeUnmount(() => {
 }
 .reports-definition {
   margin-block: var(--s-4);
+}
+.reports-definition summary {
+  width: fit-content;
+  cursor: pointer;
+}
+.reports-definition p {
+  margin-block: var(--s-2);
 }
 .reports-export p {
   margin-block: var(--s-2) 0;

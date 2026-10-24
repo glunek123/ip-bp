@@ -24,6 +24,7 @@ import {
 import { todayShanghai } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
 import { formatSettlementAmount } from '../customers';
+import { labelLeadPlatform } from '../leads';
 import CaseFeeEntryDialog from './CaseFeeEntryDialog.vue';
 import {
   loadFinancialPending,
@@ -759,8 +760,8 @@ onBeforeUnmount(() => {
           ><ElOption value="支出" label="支出" /><ElOption
             value="收入"
             label="收入" /></ElSelect></label
-      ><label>日期从<ElInput v-model="filters.from" type="date" /></label
-      ><label>日期至<ElInput v-model="filters.to" type="date" /></label
+      ><label>费用日期从<ElInput v-model="filters.from" type="date" /></label
+      ><label>费用日期至<ElInput v-model="filters.to" type="date" /></label
       ><ElButton native-type="submit">查询</ElButton
       ><ElButton @click="clearFilter">清除</ElButton>
     </form>
@@ -880,7 +881,13 @@ onBeforeUnmount(() => {
               ><span v-else-if="isNet">{{ row.status }}（代表状态）</span>
             </td>
             <td v-if="columns.date">{{ row.feeDate }}</td>
-            <td v-if="columns.platform">{{ row.platform ?? '—' }}</td>
+            <td v-if="columns.platform">
+              {{
+                row.platform === 'TAOBAO'
+                  ? labelLeadPlatform('TAOBAO')
+                  : (row.platform ?? '—')
+              }}
+            </td>
             <td v-if="columns.shop">{{ row.shopName ?? '—' }}</td>
             <td v-if="columns.defendant">
               {{ row.defendantNames.join('、') || '—' }}
@@ -981,11 +988,11 @@ onBeforeUnmount(() => {
     <ElDialog
       v-model="showCreate"
       title="新增费用"
-      width="min(680px, 94vw)"
+      width="min(920px, 94vw)"
       :close-on-click-modal="!unknownCreate"
       ><form class="fee-center__create" @submit.prevent="saveCreate">
         <label v-if="!props.caseId"
-          >关联案件<ElSelect
+          >案件<ElSelect
             v-model="form.caseId"
             filterable
             remote
@@ -1018,7 +1025,7 @@ onBeforeUnmount(() => {
               :value="type"
               :label="type" /></ElSelect></label
         ><label
-          >方向<ElSelect
+          >收支<ElSelect
             v-model="form.direction"
             :disabled="saving || unknownCreate"
             ><ElOption value="支出" label="支出" /><ElOption
@@ -1040,7 +1047,7 @@ onBeforeUnmount(() => {
               :value="status"
               :label="status" /></ElSelect></label
         ><label
-          >日期<ElInput
+          >费用日期<ElInput
             v-model="form.feeDate"
             type="date"
             :disabled="saving || unknownCreate" /></label
@@ -1115,12 +1122,17 @@ small {
   font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
-.fee-center__filters,
 .fee-center__create {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: end;
   gap: 10px;
+}
+.fee-center__filters {
+  display: flex;
+  align-items: end;
   flex-wrap: wrap;
+  gap: 10px;
 }
 label {
   display: grid;
@@ -1129,10 +1141,17 @@ label {
   min-width: 140px;
 }
 .fee-center__create label {
-  flex: 1 1 220px;
+  min-width: 0;
 }
 .fee-center__create label:first-child {
-  flex-basis: 100%;
+  grid-column: 1 / -1;
+}
+.fee-center__create > p {
+  grid-column: 1 / -1;
+}
+.fee-center__create > button {
+  grid-column: 1 / -1;
+  justify-self: end;
 }
 .fee-center__toolbar > span {
   margin-right: auto;
@@ -1176,6 +1195,14 @@ td .el-select {
   color: var(--color-danger);
 }
 @media (max-width: 700px) {
+  .fee-center__create {
+    grid-template-columns: 1fr;
+  }
+  .fee-center__create label:first-child,
+  .fee-center__create > p,
+  .fee-center__create > button {
+    grid-column: auto;
+  }
   .fee-center__metrics {
     grid-template-columns: 1fr;
   }

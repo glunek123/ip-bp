@@ -105,7 +105,7 @@ onBeforeUnmount(() => request?.abort());
         <div>
           <span class="pill">待推送</span>
           <h1>新建线索</h1>
-          <p>填写业务事实并保存，暂不执行推送。</p>
+          <p>保存后可在详情页继续办理。</p>
         </div>
         <RouterLink class="back-link" to="/leads">返回线索列表</RouterLink>
       </div>

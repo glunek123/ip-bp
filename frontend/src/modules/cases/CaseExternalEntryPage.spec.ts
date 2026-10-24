@@ -89,6 +89,12 @@ describe('CaseExternalEntryPage', () => {
       (wrapper.find('input[type="date"]').element as HTMLInputElement).value,
     ).toBe('');
     expect(wrapper.text()).toContain('录入后的正常流程');
+    const stageOptions = wrapper
+      .findAll('select')[1]!
+      .findAll('option')
+      .map((option) => option.text());
+    expect(stageOptions).toContain('待开庭');
+    expect(stageOptions).not.toContain('WAITING_HEARING');
 
     const selects = wrapper.findAll('select');
     await selects[0]!.setValue('EXTERNAL_TRANSFER');

@@ -217,7 +217,7 @@ describe('settlement page behavior (mounted components, not real browser)', () =
       canUpdate: true,
     });
     await flushPromises();
-    await input(wrapper, '客户结算条件').setValue('结案金额×50%');
+    await input(wrapper, '结算条件').setValue('结案金额×50%');
     expect(wrapper.text()).toContain('试算金额：待定');
 
     await wrapper.setProps({ closureVersionId: 'closure-v1' });
@@ -225,9 +225,9 @@ describe('settlement page behavior (mounted components, not real browser)', () =
 
     expect(api.getCaseSettlement).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain('结案基数：2.00 元');
-    expect(
-      (input(wrapper, '客户结算条件').element as HTMLInputElement).value,
-    ).toBe('结案金额×50%');
+    expect((input(wrapper, '结算条件').element as HTMLInputElement).value).toBe(
+      '结案金额×50%',
+    );
     expect(
       (input(wrapper, '客户结算金额').element as HTMLInputElement).value,
     ).toBe('1.00');
@@ -252,16 +252,16 @@ describe('settlement page behavior (mounted components, not real browser)', () =
       canUpdate: true,
     });
     await flushPromises();
-    await input(wrapper, '客户结算条件').setValue('结案金额×50%');
+    await input(wrapper, '结算条件').setValue('结案金额×50%');
     await input(wrapper, '客户结算金额').setValue('12.34');
 
     await wrapper.setProps({ closureVersionId: 'closure-v2' });
     await flushPromises();
 
     expect(wrapper.text()).toContain('结案基数：2.00 元');
-    expect(
-      (input(wrapper, '客户结算条件').element as HTMLInputElement).value,
-    ).toBe('结案金额×50%');
+    expect((input(wrapper, '结算条件').element as HTMLInputElement).value).toBe(
+      '结案金额×50%',
+    );
     expect(
       (input(wrapper, '客户结算金额').element as HTMLInputElement).value,
     ).toBe('12.34');
@@ -288,7 +288,7 @@ describe('settlement page behavior (mounted components, not real browser)', () =
       'HALF_RISK',
     );
     await input(wrapper, '基础费').setValue('123.45');
-    await input(wrapper, '分成比例').setValue('45');
+    await input(wrapper, '分成比例（%）').setValue('45');
     await input(wrapper, '律师结算金额').setValue('7.89');
 
     await wrapper.setProps({ closureVersionId: 'closure-v2' });
@@ -304,9 +304,9 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     expect((input(wrapper, '基础费').element as HTMLInputElement).value).toBe(
       '123.45',
     );
-    expect((input(wrapper, '分成比例').element as HTMLInputElement).value).toBe(
-      '45',
-    );
+    expect(
+      (input(wrapper, '分成比例（%）').element as HTMLInputElement).value,
+    ).toBe('45');
     expect(
       (input(wrapper, '律师结算金额').element as HTMLInputElement).value,
     ).toBe('7.89');
@@ -328,7 +328,7 @@ describe('settlement page behavior (mounted components, not real browser)', () =
       canUpdate: true,
     });
     await flushPromises();
-    await input(wrapper, '客户结算条件').setValue('结案金额×50%');
+    await input(wrapper, '结算条件').setValue('结案金额×50%');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     const original = structuredClone(
@@ -485,7 +485,7 @@ describe('settlement page behavior (mounted components, not real browser)', () =
       canLaunch: true,
     });
     await flushPromises();
-    await input(wrapper, '客户结算条件').setValue('结案金额×80%');
+    await input(wrapper, '结算条件').setValue('结案金额×80%');
     expect(
       (input(wrapper, '客户结算金额').element as HTMLInputElement).value,
     ).toBe('80.00');
@@ -520,7 +520,7 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     const original = structuredClone(
       api.updateCaseSettlementTerms.mock.calls[0]![1],
     );
-    expect(input(wrapper, '客户结算条件').attributes('disabled')).toBeDefined();
+    expect(input(wrapper, '结算条件').attributes('disabled')).toBeDefined();
     await button(wrapper, '用原请求重试保存').trigger('click');
     await flushPromises();
     expect(api.updateCaseSettlementTerms.mock.calls[1]![1]).toEqual(original);
@@ -533,9 +533,9 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     await flushPromises();
     await button(wrapper, '律师结算').trigger('click');
     await flushPromises();
-    expect((input(wrapper, '本次金额').element as HTMLInputElement).value).toBe(
-      '30.00',
-    );
+    expect(
+      (input(wrapper, '本次金额（元）').element as HTMLInputElement).value,
+    ).toBe('30.00');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(api.launchSettlement).toHaveBeenCalledWith(
@@ -655,7 +655,7 @@ describe('case fee entry and same-source note editing', () => {
       proofMaterialId: null,
       proofContentVersionId: null,
       defendantNames: [],
-      platform: null,
+      platform: 'TAOBAO',
       shopName: null,
       courtCaseNo: null,
     };
@@ -699,6 +699,8 @@ describe('case fee entry and same-source note editing', () => {
       expect.objectContaining({ caseId: 'case' }),
       expect.anything(),
     );
+    expect(wrapper.text()).toContain('淘宝');
+    expect(wrapper.text()).not.toContain('TAOBAO');
   });
 });
 

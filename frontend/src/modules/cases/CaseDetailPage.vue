@@ -1847,7 +1847,7 @@ onBeforeUnmount(() => {
             <ElButton
               v-for="command in moreCommands"
               :key="command.id"
-              :type="command.label.startsWith('撤销') ? 'danger' : 'primary'"
+              :type="command.label.startsWith('撤销') ? 'danger' : 'default'"
               plain
               :data-command="command.id"
               @click="openCommand(command)"

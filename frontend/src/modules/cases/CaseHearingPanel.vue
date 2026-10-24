@@ -368,37 +368,43 @@ function setDateMode(): void {
       当前阶段：待判决。此阶段仅表示系统已按开庭日期推进，不代表法院已经判决。
     </p>
     <p>
-      系统会在开庭日期次日
-      00:00（北京时间）自动推进至待判决。登记已到期日期后，服务器会补跑；待判决不代表法院已经判决。
+      开庭日期次日 00:00（北京时间）案件进入待判决；待判决不代表法院已经判决。
     </p>
 
     <form
       v-if="canSchedule"
+      class="demo-form-grid"
       data-test="hearing-schedule-form"
       @submit.prevent="schedule"
     >
-      <label
-        >开庭地点（选填）<input
+      <label>
+        开庭地点（选填）
+        <input
           v-model="hearingPlace"
           maxlength="500"
           :disabled="submitting || unknownRequest !== null"
-      /></label>
-      <label
-        >法官姓名（选填）<input
+        />
+      </label>
+      <label>
+        法官姓名（选填）
+        <input
           v-model="judgeName"
           maxlength="200"
           :disabled="submitting || unknownRequest !== null"
-      /></label>
-      <label class="field-label" for="hearing-date">开庭日期</label>
-      <input
-        id="hearing-date"
-        v-model="hearingAt"
-        data-test="hearing-date"
-        type="date"
-        :min="acceptanceDate"
-        :disabled="clearDate || submitting || unknownRequest !== null"
-        aria-describedby="hearing-date-guidance"
-      />
+        />
+      </label>
+      <label for="hearing-date">
+        开庭日期
+        <input
+          id="hearing-date"
+          v-model="hearingAt"
+          data-test="hearing-date"
+          type="date"
+          :min="acceptanceDate"
+          :disabled="clearDate || submitting || unknownRequest !== null"
+          aria-describedby="hearing-date-guidance"
+        />
+      </label>
       <p id="hearing-date-guidance" class="field-guidance">
         日期不得早于正式立案日期 {{ acceptanceDate }}。允许补录真实过去日期。
       </p>
@@ -438,75 +444,83 @@ function setDateMode(): void {
     <section v-if="canCorrect" data-test="hearing-correction-form">
       <h3>更正自动推进</h3>
       <p>
-        更正会保留旧安排和系统推进历史。未来日期或清除日期后返回待开庭；已到期的更正仍保持待判决。后续再登记到期日期时，系统会再次推进。
+        更正会保留旧安排和推进记录。未来日期或清除日期后返回待开庭；已到期的更正仍保持待判决。
       </p>
-      <label
-        >开庭地点（选填）<input
-          v-model="hearingPlace"
-          maxlength="500"
-          :disabled="submitting || unknownRequest !== null"
-      /></label>
-      <label
-        >法官姓名（选填）<input
-          v-model="judgeName"
-          maxlength="200"
-          :disabled="submitting || unknownRequest !== null"
-      /></label>
-      <label class="field-label" for="hearing-correction-date"
-        >更正后的开庭日期</label
-      >
-      <input
-        id="hearing-correction-date"
-        v-model="hearingAt"
-        data-test="hearing-date"
-        type="date"
-        :min="acceptanceDate"
-        :disabled="clearDate || submitting || unknownRequest !== null"
-      />
-      <button
-        v-if="!clearDate"
-        type="button"
-        data-test="hearing-clear-date"
-        :disabled="submitting"
-        @click="setClearDate"
-      >
-        清除开庭日期
-      </button>
-      <button
-        v-else
-        type="button"
-        data-test="hearing-set-date"
-        :disabled="submitting"
-        @click="setDateMode"
-      >
-        改填开庭日期
-      </button>
-      <label class="field-label" for="hearing-correction-reason"
-        >纠错原因</label
-      >
-      <textarea
-        id="hearing-correction-reason"
-        v-model="correctionReason"
-        data-test="hearing-correction-reason"
-        maxlength="500"
-        rows="3"
-        :disabled="submitting || unknownRequest !== null"
-        aria-describedby="hearing-reason-guidance"
-      />
-      <p id="hearing-reason-guidance" class="field-guidance">
-        必填，去除首尾空格后 1～500 个字符。
-      </p>
-      <p v-if="clearDate" role="status">
-        清除后案件返回待开庭，并保留原安排和系统推进记录。
-      </p>
-      <button
-        type="button"
-        data-test="hearing-correct"
-        :disabled="!correctionReady"
-        @click="correct"
-      >
-        {{ submitting ? '正在更正…' : '提交更正' }}
-      </button>
+      <div class="demo-form-grid">
+        <label>
+          开庭地点（选填）
+          <input
+            v-model="hearingPlace"
+            maxlength="500"
+            :disabled="submitting || unknownRequest !== null"
+          />
+        </label>
+        <label>
+          法官姓名（选填）
+          <input
+            v-model="judgeName"
+            maxlength="200"
+            :disabled="submitting || unknownRequest !== null"
+          />
+        </label>
+        <label for="hearing-correction-date">
+          更正后的开庭日期
+          <input
+            id="hearing-correction-date"
+            v-model="hearingAt"
+            data-test="hearing-date"
+            type="date"
+            :min="acceptanceDate"
+            :disabled="clearDate || submitting || unknownRequest !== null"
+          />
+        </label>
+        <label for="hearing-correction-reason">
+          纠错原因
+          <textarea
+            id="hearing-correction-reason"
+            v-model="correctionReason"
+            data-test="hearing-correction-reason"
+            maxlength="500"
+            rows="3"
+            :disabled="submitting || unknownRequest !== null"
+            aria-describedby="hearing-reason-guidance"
+          />
+        </label>
+        <p id="hearing-reason-guidance" class="field-guidance">
+          必填，去除首尾空格后 1～500 个字符。
+        </p>
+        <div class="form-actions">
+          <button
+            v-if="!clearDate"
+            type="button"
+            data-test="hearing-clear-date"
+            :disabled="submitting"
+            @click="setClearDate"
+          >
+            清除开庭日期
+          </button>
+          <button
+            v-else
+            type="button"
+            data-test="hearing-set-date"
+            :disabled="submitting"
+            @click="setDateMode"
+          >
+            改填开庭日期
+          </button>
+          <button
+            type="button"
+            data-test="hearing-correct"
+            :disabled="!correctionReady"
+            @click="correct"
+          >
+            {{ submitting ? '正在更正…' : '提交更正' }}
+          </button>
+        </div>
+        <p v-if="clearDate" role="status">
+          清除后案件返回待开庭，并保留原安排和推进记录。
+        </p>
+      </div>
     </section>
 
     <p v-if="error" class="submit-error" role="alert">{{ error }}</p>

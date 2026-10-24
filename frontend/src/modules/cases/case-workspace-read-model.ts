@@ -57,7 +57,7 @@ const leadPlatformLabels: Record<LeadDetail['platform'], string> = {
   OTHER: '其他',
 };
 
-const stageLabels: Record<CaseStage, string> = {
+export const caseStageLabels: Record<CaseStage, string> = {
   PENDING_MATCH: '待匹配',
   WAITING_COMPLAINT: '待写诉状',
   WAITING_COMPLAINT_CONFIRMATION: '诉状待确认',
@@ -392,7 +392,7 @@ export function buildCaseWorkspaceEvents(item: CaseDetail): WorkspaceEvent[] {
         ...(value.reason === undefined
           ? []
           : [field('更正原因', value.reason)]),
-        field('更正后阶段', stageLabels[value.resultStage]),
+        field('更正后阶段', caseStageLabels[value.resultStage]),
         field('原安排标识', value.priorArrangementId),
         field('新安排标识', value.newArrangementId),
         ...actor(value.recordedByUserId),
@@ -776,7 +776,7 @@ export function buildCaseWorkspaceSections(
             '被告',
             item.defendants.map((value) => value.name).join('、') || null,
           ),
-          field('当前阶段', stageLabels[item.stage]),
+          field('当前阶段', caseStageLabels[item.stage]),
           date('创建时间', item.createdAt),
           date('实际匹配日期', item.matchedOn),
           date('匹配记录时间', item.matchedAt),

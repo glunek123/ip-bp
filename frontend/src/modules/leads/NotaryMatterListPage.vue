@@ -728,7 +728,7 @@ async function loadPreference(userId: string | undefined): Promise<void> {
     savedPreference.value = copyPreference(preference);
     setDraft(preference);
     preferenceState.value = 'ready';
-    preferenceMessage.value = '个人列设置已加载。';
+    preferenceMessage.value = '';
   } catch {
     if (
       controller.signal.aborted ||

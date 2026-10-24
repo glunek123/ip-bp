@@ -3,9 +3,11 @@ import './customer-workspace.css';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
 import { listCustomers, type CustomerSummary } from '../../api/customers';
 import { pinia } from '../../app/pinia';
 import { useAuthStore } from '../../stores/auth';
+import CustomerNewPage from './CustomerNewPage.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -18,6 +20,10 @@ const currentPage = ref(1);
 const keyword = ref('');
 const cooperation = ref('');
 const formError = ref('');
+const createOpen = ref(false);
+const createForm = ref<{
+  requestClose: (done?: () => void) => void;
+}>();
 const isCooperation = (
   value: unknown,
 ): value is CustomerSummary['cooperationStatus'] =>
@@ -201,6 +207,13 @@ async function goToPage(page: number): Promise<void> {
     return;
   await router.push({ query: { ...route.query, page: String(page) } });
 }
+function beforeCloseCreate(done: () => void): void {
+  createForm.value?.requestClose(done);
+}
+async function onCustomerCreated(): Promise<void> {
+  createOpen.value = false;
+  await load();
+}
 watch(
   () => [route.query.q, route.query.cooperationStatus],
   () => {
@@ -253,13 +266,14 @@ onBeforeUnmount(() => activeRequest?.abort());
             data-test="deleted-drafts-link"
             >已删除草稿</RouterLink
           >
-          <RouterLink
+          <ElButton
             v-if="state === 'ready' && canCreateDraft"
-            to="/customers/new"
+            type="primary"
             data-test="create-customer"
+            @click="createOpen = true"
           >
-            <ElButton type="primary">新建客户</ElButton>
-          </RouterLink>
+            新建客户
+          </ElButton>
         </div>
       </div>
 
@@ -378,5 +392,20 @@ onBeforeUnmount(() => activeRequest?.abort());
         >
       </nav>
     </main>
+    <ElDrawer
+      v-model="createOpen"
+      title="新建客户"
+      size="min(760px, 100vw)"
+      append-to-body
+      destroy-on-close
+      :before-close="beforeCloseCreate"
+    >
+      <CustomerNewPage
+        ref="createForm"
+        embedded
+        @saved="onCustomerCreated"
+        @close-requested="createOpen = false"
+      />
+    </ElDrawer>
   </div>
 </template>

@@ -60,12 +60,15 @@ function displayCount(metric: CalendarMetric | undefined): string {
         </p>
       </div>
     </dl>
-    <p v-if="ready" class="field-help">
-      统计范围为当前有权查看的全部已接入事件，不随切月变化。30天内待办<span
-        v-if="window"
-        >（{{ window.from }}至{{ window.through }}，含两端）</span
-      >以服务端上海当天为起点；未接入类别不计入。
-    </p>
+    <details v-if="ready" class="field-help calendar-statistics__definition">
+      <summary>查看统计范围</summary>
+      <p>
+        统计范围为当前有权查看的全部已接入事件，不随切月变化。30天内待办<span
+          v-if="window"
+          >（{{ window.from }}至{{ window.through }}，含两端）</span
+        >以服务端上海当天为起点；未接入类别不计入。
+      </p>
+    </details>
   </section>
 </template>
 
@@ -90,6 +93,13 @@ function displayCount(metric: CalendarMetric | undefined): string {
   font: 600 24px/1.3 var(--font-mono);
   color: var(--color-ink);
   overflow-wrap: anywhere;
+}
+.calendar-statistics__definition summary {
+  width: fit-content;
+  cursor: pointer;
+}
+.calendar-statistics__definition p {
+  margin: var(--s-2) 0 0;
 }
 @media (max-width: 760px) {
   .calendar-statistics-cards {

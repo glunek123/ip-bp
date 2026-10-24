@@ -12,8 +12,8 @@
   --color-hairline-strong: #d2d2d8;
   --color-ink: #0f1011;
   --color-ink-muted: #5c5e66;
-  --color-ink-subtle: #8a8c93;
-  --color-ink-tertiary: #a9abb2;
+  --color-ink-subtle: #666a73;
+  --color-ink-tertiary: #727580;
   --color-success: #057a55;
   --color-warning: #b45309;
   --color-danger: #c4272b;
@@ -41,4 +41,8 @@
   --el-color-primary-light-9: #eff0fb;
   --el-font-family: var(--font-text);
   --el-border-radius-base: 6px;
+  --el-component-size: 36px;
+  --el-text-color-primary: var(--color-ink);
+  --el-text-color-regular: var(--color-ink-muted);
+  --el-text-color-placeholder: #6b7280;
 }

@@ -1,0 +1,305 @@
+/* Shared layout for operational screens. Component styles load before this file. */
+.page-view,
+.page-view--narrow,
+.workspace-main,
+.workspace-main--narrow {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+  padding: 24px 28px 40px;
+}
+
+.section-heading,
+.detail-heading,
+.section-heading--form,
+.page-head {
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 20px;
+}
+
+.section-heading h1,
+.detail-heading h1,
+.page-head h1 {
+  font: 650 24px/1.4 var(--font-text);
+  letter-spacing: 0;
+}
+
+.section-heading p:last-child,
+.page-head p {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.section-kicker,
+.page-head .eyebrow {
+  display: none;
+}
+
+.detail-actions,
+.case-list-head-actions,
+.form-actions,
+.demo-form-actions,
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.detail-actions > a,
+.case-list-head-actions > a {
+  padding: 6px 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.detail-actions .el-button + .el-button,
+.case-list-head-actions .el-button + .el-button,
+.form-actions .el-button + .el-button,
+.demo-form-actions .el-button + .el-button,
+.dialog-actions .el-button + .el-button {
+  margin-left: 0;
+}
+
+.business-list-toolbar {
+  justify-content: flex-start;
+}
+
+.form-panel,
+.demo-card--pad {
+  padding: 20px;
+}
+
+.ledger-panel,
+.form-panel,
+.history-panel,
+.person-card,
+.role-template-card {
+  box-shadow: none;
+}
+
+.field-label {
+  margin-bottom: 6px;
+  color: var(--color-ink-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.demo-form-grid > label,
+.product-fields > label,
+.compact-form > label,
+.lead-form__grid > label,
+.inline-field {
+  display: block;
+  min-width: 0;
+  color: var(--color-ink-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.demo-form-grid > label > :is(input, select, textarea),
+.product-fields > label > :is(input, select, textarea),
+.compact-form > label > :is(input, select, textarea),
+.lead-form__grid > label > :is(input, select, textarea),
+.inline-field > :is(input, select, textarea) {
+  display: block;
+  margin-top: 6px;
+}
+
+:where(.app-content, .el-drawer__body, .el-dialog__body)
+  :is(input, select, textarea):not(
+    [type='checkbox'],
+    [type='radio'],
+    [type='file'],
+    [type='hidden'],
+    .el-input__inner,
+    .el-select__input,
+    .el-textarea__inner
+  ) {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: 6px;
+  background: var(--color-surface-1);
+  color: var(--color-ink);
+  font: 14px/1.5 var(--font-text);
+}
+
+:where(.app-content, .el-drawer__body, .el-dialog__body) textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+:where(.app-content, .el-drawer__body, .el-dialog__body)
+  :is(input, textarea)::placeholder {
+  color: var(--el-text-color-placeholder);
+}
+
+:where(.app-content, .el-drawer__body, .el-dialog__body)
+  :is(input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+:where(.app-content, .el-drawer__body, .el-dialog__body)
+  :is(input, select, textarea):disabled {
+  background: var(--color-surface-2);
+  cursor: not-allowed;
+}
+
+:where(.app-content, .el-drawer__body, .el-dialog__body)
+  :is(input[type='checkbox'], input[type='radio']) {
+  accent-color: var(--color-primary);
+}
+
+:where(.app-content, .el-drawer__body, .el-dialog__body)
+  button:not(.el-button, [aria-expanded], [role='tab'], .case-workspace-tab) {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: 6px;
+  background: var(--color-surface-1);
+  color: var(--color-ink);
+  font: 13px/1.5 var(--font-text);
+  cursor: pointer;
+}
+
+:where(.app-content, .el-drawer__body, .el-dialog__body)
+  .form-actions
+  > button[type='submit'] {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+}
+
+:where(.app-content, .el-drawer__body, .el-dialog__body) button:disabled {
+  cursor: not-allowed;
+}
+
+.form-actions,
+.demo-form-actions {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.form-section-title,
+.card-section-title {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.customer-row {
+  min-height: 56px;
+}
+
+.person-card__header,
+.person-card__body,
+.person-card__actions {
+  padding: 16px 20px;
+}
+
+.role-template-editor {
+  width: min(1040px, 100%);
+  padding: 24px;
+}
+
+.role-template-editor > .dialog-actions {
+  position: sticky;
+  bottom: -24px;
+  z-index: 2;
+  margin-inline: -24px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--color-hairline);
+  background: var(--color-surface-1);
+}
+
+.dialog-backdrop {
+  z-index: 2000;
+}
+
+.el-dialog {
+  max-width: calc(100vw - 32px);
+  border-radius: 10px;
+}
+
+.el-dialog__header,
+.el-drawer__header {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-hairline);
+}
+
+.el-dialog__title,
+.el-drawer__title {
+  color: var(--color-ink);
+  font: 600 18px/1.5 var(--font-text);
+}
+
+.el-drawer__body .page-view,
+.el-drawer__body .workspace-main {
+  padding: 0;
+}
+
+.el-drawer__body .demo-card {
+  box-shadow: none;
+}
+
+.el-drawer__footer {
+  border-top: 1px solid var(--color-hairline);
+  background: var(--color-surface-1);
+}
+
+.case-workspace {
+  max-width: none;
+}
+
+.case-workspace-section__tools {
+  flex-wrap: wrap;
+}
+
+@media (min-width: 1280px) {
+  .demo-form-grid,
+  .lead-form__grid,
+  .compact-form {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .el-drawer__body .demo-form-grid,
+  .el-drawer__body .lead-form__grid,
+  .el-drawer__body .compact-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .page-view,
+  .page-view--narrow,
+  .workspace-main,
+  .workspace-main--narrow {
+    padding: 16px 12px 28px;
+  }
+
+  .section-heading,
+  .detail-heading,
+  .page-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .demo-form-grid,
+  .lead-form__grid,
+  .compact-form {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-actions {
+    margin-left: 0;
+  }
+}

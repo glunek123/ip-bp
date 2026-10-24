@@ -639,7 +639,7 @@ async function cancelBill(): Promise<void> {
           <thead>
             <tr>
               <th>编号</th>
-              <th>日期</th>
+              <th>账单日期</th>
               <th>收付方</th>
               <th>条数</th>
               <th>金额</th>

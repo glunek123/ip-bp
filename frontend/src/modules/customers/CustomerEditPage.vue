@@ -29,6 +29,14 @@ import {
 
 const route = useRoute();
 const router = useRouter();
+const props = withDefaults(defineProps<{ embedded?: boolean }>(), {
+  embedded: false,
+});
+const embedded = computed(() => props.embedded);
+const emit = defineEmits<{
+  saved: [];
+  closeRequested: [];
+}>();
 const auth = useAuthStore(pinia);
 const state = ref<
   'loading' | 'ready' | 'missing' | 'denied' | 'failed' | 'contact-pending'
@@ -57,6 +65,25 @@ const isDirty = ref(false);
 let activeRequest: AbortController | undefined;
 
 useUnsavedForm(isDirty);
+
+function requestClose(done?: () => void): void {
+  if (saving.value) return;
+  if (
+    isDirty.value &&
+    !globalThis.window.confirm('当前填写内容尚未保存，确认关闭吗？')
+  )
+    return;
+  isDirty.value = false;
+  if (done) done();
+  else emit('closeRequested');
+}
+function openContacts(): void {
+  requestClose(() => {
+    emit('closeRequested');
+    void router.push(`/customers/${String(route.params.id)}#customer-contacts`);
+  });
+}
+defineExpose({ requestClose });
 
 const displayedCustomerTypeOptions = computed(() =>
   customerTypeOptionsWithCurrent(customerType.value),
@@ -255,7 +282,8 @@ async function submit(): Promise<void> {
       input.duplicateNameReason = duplicateNameReason.value.trim();
     await updateCustomerDraft(String(route.params.id), input);
     isDirty.value = false;
-    await router.push(`/customers/${String(route.params.id)}`);
+    if (props.embedded) emit('saved');
+    else await router.push(`/customers/${String(route.params.id)}`);
   } catch (error) {
     if (error instanceof ApiError) {
       if (error.code === 'CUSTOMER_NAME_REASON_REQUIRED') {
@@ -307,9 +335,13 @@ onBeforeUnmount(() => activeRequest?.abort());
 </script>
 
 <template>
-  <div class="page-view customer-workspace customer-form-page">
+  <div
+    class="page-view customer-workspace customer-form-page"
+    :class="{ 'customer-form-page--embedded': embedded }"
+  >
     <main>
       <RouterLink
+        v-if="!embedded"
         class="back-link"
         :to="`/customers/${String(route.params.id)}`"
       >
@@ -348,7 +380,7 @@ onBeforeUnmount(() => activeRequest?.abort());
         <ElButton @click="load">重新加载</ElButton>
       </section>
       <template v-else>
-        <div class="section-heading section-heading--form">
+        <div v-if="!embedded" class="section-heading section-heading--form">
           <div>
             <p class="section-kicker">编辑客户</p>
             <h1>基础资料</h1>
@@ -486,10 +518,14 @@ onBeforeUnmount(() => activeRequest?.abort());
               />
             </div>
           </div>
-          <p>联系人请在客户详情的“联系人关系”中维护。</p>
+          <p v-if="!embedded">联系人请在客户详情的“联系人关系”中维护。</p>
           <RouterLink
+            v-if="!embedded"
             :to="`/customers/${String(route.params.id)}#customer-contacts`"
             >管理联系人</RouterLink
+          >
+          <a v-else href="#customer-contacts" @click.prevent="openContacts"
+            >管理联系人</a
           >
 
           <template v-if="needsDuplicateNameReason">
@@ -545,8 +581,18 @@ onBeforeUnmount(() => activeRequest?.abort());
             </ElButton>
           </div>
           <div class="form-actions">
-            <RouterLink :to="`/customers/${String(route.params.id)}`"
+            <RouterLink
+              v-if="!embedded"
+              :to="`/customers/${String(route.params.id)}`"
               >取消</RouterLink
+            >
+            <ElButton
+              v-else
+              native-type="button"
+              data-test="customer-edit-cancel"
+              :disabled="saving"
+              @click="requestClose()"
+              >取消</ElButton
             >
             <ElButton
               native-type="submit"

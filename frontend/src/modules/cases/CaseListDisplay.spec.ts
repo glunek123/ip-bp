@@ -324,12 +324,28 @@ describe('authorized internal case list display', () => {
       'value',
       '',
     );
+    expect(
+      wrapper.get('[data-test="case-list-more-filters"]').attributes('open'),
+    ).toBeUndefined();
+    expect(
+      wrapper.find('[data-test="case-list-more-filter-count"]').exists(),
+    ).toBe(false);
+    expect(wrapper.get('[data-test="case-query-shop"]').element).toHaveProperty(
+      'value',
+      '',
+    );
   });
 
   it('restores specialized drafts from URL without extra candidate reads', async () => {
     const { wrapper } = await mountList(
       '/cases?view=department&shopName=店铺&defendantName=被告&courtName=法院&lawyerName=律师&caseType=CRIMINAL',
     );
+    expect(
+      wrapper.get('[data-test="case-list-more-filters"]').attributes('open'),
+    ).toBeDefined();
+    expect(
+      wrapper.get('[data-test="case-list-more-filter-count"]').text(),
+    ).toBe('（已应用 5 项）');
     for (const [selector, value] of [
       ['shop', '店铺'],
       ['defendant', '被告'],
@@ -1037,6 +1053,9 @@ describe('authorized internal case list display', () => {
     expect(wrapper.get('[data-test="export-current-case-list"]').text()).toBe(
       '导出当前筛选结果',
     );
+    expect(
+      wrapper.get('[data-test="export-current-case-list"]').classes(),
+    ).not.toContain('el-button--primary');
 
     const { wrapper: deniedWrapper } = await mountList();
     expect(
@@ -1050,6 +1069,12 @@ describe('authorized internal case list display', () => {
     const { wrapper } = await mountList(
       '/cases?view=department&stage=WAITING_ARCHIVE&q=已应用&shopName=店铺&defendantName=被告&courtName=法院&lawyerName=律师&caseType=CIVIL&sortBy=rightsHolderName&sortDirection=asc&page=1',
     );
+    expect(
+      wrapper.get('[data-test="case-list-more-filters"]').attributes('open'),
+    ).toBeDefined();
+    expect(
+      wrapper.get('[data-test="case-list-more-filter-count"]').text(),
+    ).toBe('（已应用 6 项）');
     await wrapper
       .get('[data-test="case-query-keyword"]')
       .setValue('未提交草稿');

@@ -13,6 +13,14 @@ import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import { useUnsavedForm } from '../../app/use-unsaved-form';
 
 const router = useRouter();
+const props = withDefaults(defineProps<{ embedded?: boolean }>(), {
+  embedded: false,
+});
+const embedded = computed(() => props.embedded);
+const emit = defineEmits<{
+  saved: [customerId: string];
+  closeRequested: [];
+}>();
 const name = ref('');
 const customerManagerName = ref('');
 const managerError = ref('');
@@ -37,6 +45,19 @@ const hasAdmissionContact = computed(() =>
 );
 
 useUnsavedForm(isDirty);
+
+function requestClose(done?: () => void): void {
+  if (saving.value) return;
+  if (
+    isDirty.value &&
+    !globalThis.window.confirm('当前填写内容尚未保存，确认关闭吗？')
+  )
+    return;
+  isDirty.value = false;
+  if (done) done();
+  else emit('closeRequested');
+}
+defineExpose({ requestClose });
 
 async function loadVisibleSameName(name: string): Promise<void> {
   try {
@@ -104,7 +125,8 @@ async function submit(): Promise<void> {
         : {}),
     });
     isDirty.value = false;
-    await router.push(`/customers/${created.id}`);
+    if (props.embedded) emit('saved', created.id);
+    else await router.push(`/customers/${created.id}`);
   } catch (error) {
     if (
       error instanceof ApiError &&
@@ -131,10 +153,15 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <div class="page-view customer-workspace customer-form-page">
+  <div
+    class="page-view customer-workspace customer-form-page"
+    :class="{ 'customer-form-page--embedded': embedded }"
+  >
     <main>
-      <RouterLink class="back-link" to="/customers">← 返回客户列表</RouterLink>
-      <div class="section-heading section-heading--form">
+      <RouterLink v-if="!embedded" class="back-link" to="/customers"
+        >← 返回客户列表</RouterLink
+      >
+      <div v-if="!embedded" class="section-heading section-heading--form">
         <div>
           <p class="section-kicker">客户管理</p>
           <h1>新建客户</h1>
@@ -147,104 +174,115 @@ async function submit(): Promise<void> {
         @input="isDirty = true"
         @change="isDirty = true"
       >
-        <label class="field-label" for="customer-manager-name">客户经理</label>
-        <input
-          id="customer-manager-name"
-          v-model="customerManagerName"
-          name="customerManagerName"
-          class="text-input"
-          :aria-invalid="Boolean(managerError)"
-        />
-        <p v-if="managerError" role="alert">{{ managerError }}</p>
-        <label class="field-label" for="customer-name"
-          >客户名称<RequiredFieldMark
-        /></label>
-        <input
-          id="customer-name"
-          v-model="name"
-          name="name"
-          class="text-input"
-          :class="{ 'text-input--invalid': nameError }"
-          autocomplete="organization"
-          maxlength="200"
-          :aria-invalid="Boolean(nameError)"
-          :aria-describedby="nameError ? 'customer-name-error' : undefined"
-          @input="nameError = ''"
-        />
-        <p v-if="nameError" id="customer-name-error" class="field-error">
-          {{ nameError }}
-        </p>
-        <p class="field-help">没有正式证件也可以保存，但暂不能进入正式业务。</p>
-
-        <fieldset class="form-section">
-          <legend>准入联系人</legend>
-          <p id="admission-contact-guidance" class="field-help">
-            整组可不填；开始填写后，联系人姓名必填，电话或邮箱至少填写一种。
-          </p>
-          <label class="field-label" for="admission-contact-name">
-            联系人姓名<RequiredFieldMark v-if="hasAdmissionContact" />
-          </label>
-          <input
-            id="admission-contact-name"
-            v-model="admissionContactName"
-            name="admissionContactName"
-            class="text-input"
-            autocomplete="name"
-            maxlength="100"
-            :required="hasAdmissionContact"
-            :aria-describedby="
-              admissionContactError
-                ? 'admission-contact-guidance admission-contact-error'
-                : 'admission-contact-guidance'
-            "
-            @input="admissionContactError = ''"
-          />
-          <p
-            data-test="admission-contact-channel-requirement"
-            class="field-help field-label--spaced"
-          >
-            联系方式：电话或邮箱至少一种<RequiredFieldMark
-              v-if="hasAdmissionContact"
+        <div class="customer-new-fields">
+          <div>
+            <label class="field-label" for="customer-manager-name"
+              >客户经理</label
+            >
+            <input
+              id="customer-manager-name"
+              v-model="customerManagerName"
+              name="customerManagerName"
+              class="text-input"
+              :aria-invalid="Boolean(managerError)"
             />
-          </p>
-          <label
-            class="field-label field-label--spaced"
-            for="admission-contact-phone"
-            >电话</label
-          >
-          <input
-            id="admission-contact-phone"
-            v-model="admissionContactPhone"
-            name="admissionContactPhone"
-            class="text-input"
-            autocomplete="tel"
-            maxlength="30"
-            aria-describedby="admission-contact-guidance"
-            @input="admissionContactError = ''"
-          />
-          <label
-            class="field-label field-label--spaced"
-            for="admission-contact-email"
-            >邮箱</label
-          >
-          <input
-            id="admission-contact-email"
-            v-model="admissionContactEmail"
-            name="admissionContactEmail"
-            class="text-input"
-            autocomplete="email"
-            maxlength="254"
-            aria-describedby="admission-contact-guidance"
-            @input="admissionContactError = ''"
-          />
-          <p
-            v-if="admissionContactError"
-            id="admission-contact-error"
-            class="field-error"
-          >
-            {{ admissionContactError }}
-          </p>
-        </fieldset>
+            <p v-if="managerError" role="alert">{{ managerError }}</p>
+            <label class="field-label" for="customer-name"
+              >客户名称<RequiredFieldMark
+            /></label>
+            <input
+              id="customer-name"
+              v-model="name"
+              name="name"
+              class="text-input"
+              :class="{ 'text-input--invalid': nameError }"
+              autocomplete="organization"
+              maxlength="200"
+              :aria-invalid="Boolean(nameError)"
+              :aria-describedby="nameError ? 'customer-name-error' : undefined"
+              @input="nameError = ''"
+            />
+            <p v-if="nameError" id="customer-name-error" class="field-error">
+              {{ nameError }}
+            </p>
+            <p class="field-help">
+              没有正式证件也可以保存，但暂不能进入正式业务。
+            </p>
+          </div>
+
+          <fieldset class="form-section">
+            <legend>准入联系人</legend>
+            <p
+              id="admission-contact-guidance"
+              class="field-help customer-new-fields__wide"
+            >
+              可留空；填写后需有姓名和电话或邮箱。
+            </p>
+            <label class="field-label" for="admission-contact-name">
+              联系人姓名<RequiredFieldMark v-if="hasAdmissionContact" />
+            </label>
+            <input
+              id="admission-contact-name"
+              v-model="admissionContactName"
+              name="admissionContactName"
+              class="text-input"
+              autocomplete="name"
+              maxlength="100"
+              :required="hasAdmissionContact"
+              :aria-describedby="
+                admissionContactError
+                  ? 'admission-contact-guidance admission-contact-error'
+                  : 'admission-contact-guidance'
+              "
+              @input="admissionContactError = ''"
+            />
+            <p
+              data-test="admission-contact-channel-requirement"
+              class="field-help field-label--spaced"
+            >
+              联系方式：电话或邮箱至少一种<RequiredFieldMark
+                v-if="hasAdmissionContact"
+              />
+            </p>
+            <label
+              class="field-label field-label--spaced"
+              for="admission-contact-phone"
+              >电话</label
+            >
+            <input
+              id="admission-contact-phone"
+              v-model="admissionContactPhone"
+              name="admissionContactPhone"
+              class="text-input"
+              autocomplete="tel"
+              maxlength="30"
+              aria-describedby="admission-contact-guidance"
+              @input="admissionContactError = ''"
+            />
+            <label
+              class="field-label field-label--spaced"
+              for="admission-contact-email"
+              >邮箱</label
+            >
+            <input
+              id="admission-contact-email"
+              v-model="admissionContactEmail"
+              name="admissionContactEmail"
+              class="text-input"
+              autocomplete="email"
+              maxlength="254"
+              aria-describedby="admission-contact-guidance"
+              @input="admissionContactError = ''"
+            />
+            <p
+              v-if="admissionContactError"
+              id="admission-contact-error"
+              class="field-error"
+            >
+              {{ admissionContactError }}
+            </p>
+          </fieldset>
+        </div>
         <template v-if="needsDuplicateNameReason">
           <label
             class="field-label field-label--spaced"
@@ -280,7 +318,15 @@ async function submit(): Promise<void> {
           </li>
         </ul>
         <div class="form-actions">
-          <RouterLink to="/customers">取消</RouterLink>
+          <RouterLink v-if="!embedded" to="/customers">取消</RouterLink>
+          <ElButton
+            v-else
+            native-type="button"
+            data-test="customer-new-cancel"
+            :disabled="saving"
+            @click="requestClose()"
+            >取消</ElButton
+          >
           <ElButton
             native-type="submit"
             type="primary"

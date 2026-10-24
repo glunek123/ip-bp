@@ -189,7 +189,7 @@ describe('CaseWorkspaceFees', () => {
     const rows = wrapper.findAll('[data-test="source-fee"]');
     expect(rows).toHaveLength(4);
     expect(rows[0]!.text()).toContain('¥ 0.00');
-    expect(rows[0]!.text()).toContain('KNOWN');
+    expect(rows[0]!.text()).not.toContain('KNOWN');
     expect(rows[0]!.text()).toContain('certificate-fee');
     const sourceDetails = rows[0]!.get('[data-test="fee-source-details"]');
     expect(sourceDetails.attributes('open')).toBeUndefined();
@@ -197,10 +197,12 @@ describe('CaseWorkspaceFees', () => {
     sourceDetails.element.setAttribute('open', '');
     expect(sourceDetails.get('p').isVisible()).toBe(true);
     expect(sourceDetails.get('p').text()).toContain('certificate-fee');
-    expect(rows[1]!.text()).toContain('PENDING');
+    expect(rows[1]!.text()).toContain('待定');
+    expect(rows[1]!.text()).not.toContain('PENDING');
     expect(rows[1]!.text()).not.toContain('¥');
     expect(rows[2]!.text()).toContain('¥ 90071992547409.99');
-    expect(rows[3]!.text()).toContain('UNRECORDED');
+    expect(rows[3]!.text()).toContain('未登记');
+    expect(rows[3]!.text()).not.toContain('UNRECORDED');
     expect(rows[3]!.text()).not.toContain('¥ 0');
     expect(wrapper.text()).not.toContain('合计');
   });
@@ -219,13 +221,13 @@ describe('CaseWorkspaceFees', () => {
     expect(wrapper.text()).toContain('evidence-a');
     expect(wrapper.text()).toContain('evidence-b');
     expect(wrapper.get('[data-test="amount-claim"]').text()).toContain(
-      'UNRECORDED',
+      '未登记',
     );
     expect(wrapper.get('[data-test="amount-judgment"]').text()).toContain(
-      'UNRECORDED',
+      '未登记',
     );
     expect(wrapper.get('[data-test="amount-closure"]').text()).toContain(
-      'UNRECORDED',
+      '未登记',
     );
     expect(wrapper.text()).not.toContain('¥ 0.00');
   });
@@ -256,7 +258,8 @@ describe('CaseWorkspaceFees', () => {
     item.secondInstance.currentResult = second();
     item.closure = closure();
     const wrapper = render(item);
-    expect(wrapper.get('[data-test="amount-claim"]').text()).toContain(
+    expect(wrapper.get('[data-test="amount-claim"]').text()).toContain('待定');
+    expect(wrapper.get('[data-test="amount-claim"]').text()).not.toContain(
       'PENDING',
     );
     expect(wrapper.get('[data-test="amount-claim"]').text()).toContain(
@@ -278,13 +281,13 @@ describe('CaseWorkspaceFees', () => {
       '¥ 90071992547409.99',
     );
     expect(wrapper.get('[data-test="amount-second-fee"]').text()).toContain(
-      'PENDING',
+      '待定',
     );
     expect(wrapper.get('[data-test="amount-closure"]').text()).toContain(
       'closure-version',
     );
     expect(wrapper.get('[data-test="amount-closure"]').text()).toContain(
-      'PENDING',
+      '待定',
     );
     item.complaintConfirmation = null;
     item.closure.current.closeAmountState = 'KNOWN';
@@ -304,10 +307,10 @@ describe('CaseWorkspaceFees', () => {
     item.secondInstance.results = [{ ...second(), revocationId: 'revocation' }];
     const wrapper = render(item);
     expect(wrapper.get('[data-test="amount-judgment"]').text()).toContain(
-      'UNRECORDED',
+      '未登记',
     );
     expect(wrapper.get('[data-test="amount-second"]').text()).toContain(
-      'UNRECORDED',
+      '未登记',
     );
     expect(wrapper.text()).not.toContain('100.01');
     expect(wrapper.text()).not.toContain('90071992547409.99');
@@ -319,7 +322,7 @@ describe('CaseWorkspaceFees', () => {
     };
     await wrapper.setProps({ item: structuredClone(item) });
     expect(wrapper.get('[data-test="amount-second"]').text()).toContain(
-      'UNRECORDED',
+      '未登记',
     );
     expect(wrapper.get('[data-test="amount-second"]').text()).toContain(
       '发回重审',
@@ -378,6 +381,6 @@ describe('CaseWorkspaceFees', () => {
     await wrapper.setProps({ item: { ...baseItem, id: 'case-2' } });
     expect(wrapper.text()).not.toContain('123.45');
     expect(wrapper.text()).not.toContain('old-private-source');
-    expect(wrapper.text()).toContain('UNRECORDED');
+    expect(wrapper.text()).toContain('未登记');
   });
 });

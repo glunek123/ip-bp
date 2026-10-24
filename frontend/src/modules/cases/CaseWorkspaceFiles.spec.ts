@@ -186,7 +186,9 @@ describe('CaseWorkspaceFiles', () => {
     const rows = wrapper.findAll('[data-test="workspace-file"]');
     expect(rows).toHaveLength(2);
     expect(rows[0]!.text()).toContain('来源公证书');
-    expect(rows[0]!.text()).toContain('一审判决历史 j-old');
+    expect(rows[0]!.text()).toContain('历史一审判决');
+    expect(rows[0]!.findAll('p')[0]!.text()).toContain('用途：');
+    expect(rows[0]!.findAll('p')[0]!.text()).not.toContain('application/pdf');
     expect(rows[0]!.text()).toContain('历史版本');
     const details = rows[0]!.get('[data-test="workspace-file-details"]');
     expect(details.attributes('open')).toBeUndefined();
@@ -196,6 +198,8 @@ describe('CaseWorkspaceFiles', () => {
     details.element.setAttribute('open', '');
     expect(details.findAll('p').every((entry) => entry.isVisible())).toBe(true);
     expect(details.text()).toContain('版本标识：v1');
+    expect(details.text()).toContain('关联记录标识：j-old');
+    expect(details.text()).toContain('文件类型：application/pdf');
     expect(list).toHaveBeenCalledWith('case-1', {
       signal: expect.any(AbortSignal),
     });
@@ -384,12 +388,12 @@ describe('CaseWorkspaceFiles', () => {
       '立案证据',
       '冻结材料',
       '后续材料',
-      '二审送达历史',
-      '二审裁判历史',
+      '历史二审送达材料',
+      '历史二审裁判',
       '已确认执行',
       '执行立案凭证',
       '执行结束依据',
-      '结案历史',
+      '历史结案材料',
     ])
       expect(wrapper.text()).toContain(label);
   });

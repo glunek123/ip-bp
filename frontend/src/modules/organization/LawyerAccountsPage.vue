@@ -317,7 +317,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="page-view page-view--narrow">
+  <div class="page-view">
     <main>
       <div class="page-head">
         <div>
@@ -327,9 +327,11 @@ onBeforeUnmount(() => {
         </div>
         <ElButton text :loading="loading" @click="refresh">刷新</ElButton>
       </div>
-      <p class="field-help">
-        停用账号会撤销现有会话，但不会删除历史案件关联。停用单个档案绑定会阻止该绑定继续用于承办，历史记录仍保留。绑定历史档案只影响今后的承办权限，不会改写过去的案件记录。
-      </p>
+      <details class="field-help">
+        <summary>账号与档案绑定说明</summary>
+        <p>停用账号会撤销现有会话，历史案件关联会保留。</p>
+        <p>停用档案绑定会阻止后续承办，历史记录不会改写。</p>
+      </details>
       <p v-if="error" class="submit-error" role="alert">{{ error }}</p>
       <p v-if="notice" role="status">{{ notice }}</p>
       <section v-if="!forbidden" class="demo-card demo-card--pad">

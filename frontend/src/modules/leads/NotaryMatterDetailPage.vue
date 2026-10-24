@@ -743,7 +743,10 @@ watch(
         >
           <h2 class="form-section-title">出证决定记录</h2>
           <p>
-            决定：{{ matter.issuanceDecision.decision }} →
+            决定：{{
+              matter.issuanceDecision.decision === 'ISSUE' ? '同意出证' : '退货'
+            }}
+            →
             {{
               matter.issuanceDecision.decision === 'ISSUE' ? '待出证' : '待退货'
             }}

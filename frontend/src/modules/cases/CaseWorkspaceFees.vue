@@ -129,7 +129,6 @@ function displayAmount(row: AmountRow): string {
         <dt class="case-workspace-field__label">{{ row.label }}</dt>
         <dd class="case-workspace-field__value">
           {{ displayAmount(row) }}
-          <span>（{{ row.state }} · {{ stateLabels[row.state] }}）</span>
         </dd>
         <dd class="case-workspace-field__help">来源：{{ row.source }}</dd>
         <dd v-if="row.sourceId" class="case-workspace-field__help">
@@ -153,7 +152,6 @@ function displayAmount(row: AmountRow): string {
         <dt class="case-workspace-field__label">{{ row.label }}</dt>
         <dd class="case-workspace-field__value">
           {{ displayAmount(row) }}
-          <span>（{{ row.state }} · {{ stateLabels[row.state] }}）</span>
         </dd>
         <dd class="case-workspace-field__help">来源：{{ row.source }}</dd>
         <dd v-if="row.sourceId" class="case-workspace-field__help">

@@ -263,7 +263,7 @@ describe('case hearing panel', () => {
   it('allows a valid past date and explains automatic next-day advancement before save', async () => {
     const wrapper = mountPanel();
     expect(wrapper.text()).toContain('次日 00:00（北京时间）');
-    expect(wrapper.text()).toContain('服务器会补跑');
+    expect(wrapper.text()).not.toContain('服务器会补跑');
     expect(wrapper.text()).toContain('不代表法院已经判决');
     await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-05');
     expect(

@@ -1425,6 +1425,12 @@ describe('NotaryMatterDetailPage', () => {
     expect(
       wrapper.get('[data-test="issuance-decision-record"]').text(),
     ).toContain('待出证');
+    expect(
+      wrapper.get('[data-test="issuance-decision-record"]').text(),
+    ).toContain('同意出证');
+    expect(
+      wrapper.get('[data-test="issuance-decision-record"]').text(),
+    ).not.toContain('ISSUE');
   });
 
   it('offers no default opening result and requires a reason for no infringement', async () => {

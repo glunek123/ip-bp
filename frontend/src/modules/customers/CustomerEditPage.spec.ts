@@ -16,6 +16,7 @@ vi.mock('../../api/customers', () => api);
 
 afterEach(() => {
   vi.resetAllMocks();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   useAuthStore(pinia).session = null;
   globalThis.sessionStorage.clear();
@@ -49,15 +50,22 @@ const customer = {
   history: [],
 };
 
-async function mountPage() {
+async function mountPage(embedded = false) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: '/customers/:id/edit', component: CustomerEditPage },
+      {
+        path: '/customers/:id',
+        component: CustomerEditPage,
+        props: { embedded: true },
+      },
       { path: '/customers/:id', component: { template: '<div />' } },
     ],
   });
-  await router.push('/customers/customer-1/edit');
+  await router.push(
+    embedded ? '/customers/customer-1' : '/customers/customer-1/edit',
+  );
   await router.isReady();
   return {
     wrapper: mount(RouterView, { global: { plugins: [router] } }),
@@ -66,6 +74,82 @@ async function mountPage() {
 }
 
 describe('CustomerEditPage', () => {
+  it('keeps embedded edits when close confirmation is declined', async () => {
+    api.getCustomer.mockResolvedValue(customer);
+    const { wrapper } = await mountPage(true);
+    const editor = wrapper.getComponent(CustomerEditPage);
+    await flushPromises();
+    await editor.get('input[name="name"]').setValue('本地名称');
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await editor.get('[data-test="customer-edit-cancel"]').trigger('click');
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(
+      (editor.get('input[name="name"]').element as HTMLInputElement).value,
+    ).toBe('本地名称');
+    expect(editor.emitted('closeRequested')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('emits close from the embedded cancel button when the form is clean', async () => {
+    api.getCustomer.mockResolvedValue(customer);
+    const { wrapper } = await mountPage(true);
+    const editor = wrapper.getComponent(CustomerEditPage);
+    await flushPromises();
+    const confirm = vi.spyOn(window, 'confirm');
+    await editor.get('[data-test="customer-edit-cancel"]').trigger('click');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(editor.emitted('closeRequested')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it('emits embedded save and stays on the detail route', async () => {
+    api.getCustomer.mockResolvedValue(customer);
+    api.updateCustomerDraft.mockResolvedValue(customer);
+    const { wrapper, router } = await mountPage(true);
+    const editor = wrapper.getComponent(CustomerEditPage);
+    await flushPromises();
+    await editor.get('input[name="name"]').setValue('客户甲新版');
+    await editor.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.updateCustomerDraft).toHaveBeenCalledExactlyOnceWith(
+      'customer-1',
+      { expectedVersion: 1, name: '客户甲新版' },
+    );
+    expect(editor.emitted('saved')).toHaveLength(1);
+    expect(router.currentRoute.value.fullPath).toBe('/customers/customer-1');
+    wrapper.unmount();
+  });
+
+  it('blocks drawer closure while an edit is pending and emits the eventual save', async () => {
+    let resolveUpdate!: (value: typeof customer) => void;
+    api.getCustomer.mockResolvedValue(customer);
+    api.updateCustomerDraft.mockReturnValue(
+      new Promise((resolve) => (resolveUpdate = resolve)),
+    );
+    const { wrapper } = await mountPage(true);
+    const editor = wrapper.getComponent(CustomerEditPage);
+    await flushPromises();
+    await editor.get('input[name="name"]').setValue('客户甲新版');
+    await editor.get('form').trigger('submit');
+    expect(
+      editor.get('[data-test="customer-edit-cancel"]').attributes('disabled'),
+    ).toBeDefined();
+    let closeDoneCalled = false;
+    (
+      editor.vm as unknown as {
+        requestClose: (done: () => void) => void;
+      }
+    ).requestClose(() => {
+      closeDoneCalled = true;
+    });
+    expect(closeDoneCalled).toBe(false);
+    expect(editor.emitted('closeRequested')).toBeUndefined();
+    resolveUpdate(customer);
+    await flushPromises();
+    expect(editor.emitted('saved')).toHaveLength(1);
+    wrapper.unmount();
+  });
+
   it('sends only the edited manager through the real JSON transport and decoder', async () => {
     const actual = await vi.importActual<typeof import('../../api/customers')>(
       '../../api/customers',

@@ -965,19 +965,21 @@ onBeforeUnmount(() => {
             placeholder="编号／店铺／商品名称"
             :disabled="queryBlocked"
         /></label>
-        <ElButton
-          native-type="submit"
-          data-test="lead-search"
-          :disabled="queryBlocked"
-          >查询</ElButton
-        >
-        <ElButton
-          native-type="button"
-          data-test="lead-clear"
-          :disabled="queryBlocked"
-          @click="applyQuery(true)"
-          >清除关键词</ElButton
-        >
+        <div class="lead-query-actions">
+          <ElButton
+            native-type="submit"
+            data-test="lead-search"
+            :disabled="queryBlocked"
+            >查询</ElButton
+          >
+          <ElButton
+            native-type="button"
+            data-test="lead-clear"
+            :disabled="queryBlocked"
+            @click="applyQuery(true)"
+            >清除关键词</ElButton
+          >
+        </div>
       </form>
       <p v-if="queryFormError || queryError" role="alert">
         {{ queryFormError || queryError }}

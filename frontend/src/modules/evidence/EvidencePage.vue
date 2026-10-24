@@ -535,24 +535,33 @@ function paperIdentity(
           清除时间
         </ElButton>
       </div>
-      <div class="stage-row" aria-label="案件进展多选">
-        <span>案件进展：{{ page?.counts.allStageCases ?? '—' }} 案</span>
-        <label v-for="stage in evidenceStages" :key="stage.value"
-          ><input
-            type="checkbox"
-            :checked="filter.stages?.includes(stage.value)"
-            @change="toggleStage(stage.value)"
-          />{{ stage.label }}
-          {{ page ? (page.counts.stages[stage.value] ?? 0) : '—' }}</label
-        >
-        <ElButton
-          v-if="filter.stages?.length"
-          native-type="button"
-          @click="setFilter('stages', [])"
-        >
-          清除进展
-        </ElButton>
-      </div>
+      <details
+        class="stage-filter"
+        :open="Boolean(filter.stages?.length)"
+        aria-label="按案件进展筛选"
+      >
+        <summary>
+          案件进展筛选 · 已选 {{ filter.stages?.length ?? 0 }} 项 ·
+          {{ page?.counts.allStageCases ?? '—' }} 案
+        </summary>
+        <div class="stage-row" aria-label="案件进展多选">
+          <label v-for="stage in evidenceStages" :key="stage.value"
+            ><input
+              type="checkbox"
+              :checked="filter.stages?.includes(stage.value)"
+              @change="toggleStage(stage.value)"
+            />{{ stage.label }}
+            {{ page ? (page.counts.stages[stage.value] ?? 0) : '—' }}</label
+          >
+          <ElButton
+            v-if="filter.stages?.length"
+            native-type="button"
+            @click="setFilter('stages', [])"
+          >
+            清除进展
+          </ElButton>
+        </div>
+      </details>
     </section>
 
     <section class="list-card">
@@ -982,6 +991,17 @@ h3 {
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
+}
+.stage-filter {
+  margin-bottom: 12px;
+}
+.stage-filter summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--color-ink-muted, #5c5e66);
+}
+.stage-filter .stage-row {
+  margin-top: 10px;
 }
 .filter-grid label,
 .modal label {

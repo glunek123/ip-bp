@@ -58,14 +58,17 @@ function saved(): void {
           </div>
           <span>{{ role.activeAssignmentCount }} 位人员</span>
         </header>
-        <ul>
-          <li
-            v-for="grant in role.grants"
-            :key="`${grant.action}:${grant.scope}`"
-          >
-            {{ grantLabel(grant, permissionCatalog) }}
-          </li>
-        </ul>
+        <details class="role-template-card__grants">
+          <summary>查看权限组合（{{ role.grants.length }} 项）</summary>
+          <ul>
+            <li
+              v-for="grant in role.grants"
+              :key="`${grant.action}:${grant.scope}`"
+            >
+              {{ grantLabel(grant, permissionCatalog) }}
+            </li>
+          </ul>
+        </details>
         <footer v-if="canManage">
           <ElButton
             text

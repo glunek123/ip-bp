@@ -5,7 +5,11 @@ import CustomerListPage from './CustomerListPage.vue';
 import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
 
-const api = vi.hoisted(() => ({ listCustomers: vi.fn() }));
+const api = vi.hoisted(() => ({
+  listCustomers: vi.fn(),
+  createCustomerDraft: vi.fn(),
+  findCustomerDuplicates: vi.fn(),
+}));
 vi.mock('../../api/customers', () => api);
 
 afterEach(() => {

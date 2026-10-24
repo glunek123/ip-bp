@@ -26,7 +26,12 @@ const props = defineProps<{
   ) => Promise<void>;
 }>();
 const emit = defineEmits<{ 'open-upload': [] }>();
-type FileRow = CaseFile & { key: string; sources: string[] };
+type FileRow = CaseFile & {
+  key: string;
+  sources: string[];
+  versionLabels: string[];
+  technicalSources: string[];
+};
 const pool = ref<OwnerMaterial[]>([]);
 const loadState = ref<'loading' | 'ready' | 'denied' | 'failed'>('loading');
 const downloadMessage = ref('');
@@ -42,14 +47,30 @@ function fileKey(file: CaseFile): string {
 }
 const rows = computed(() => {
   const files = new Map<string, FileRow>();
-  function add(items: readonly CaseFile[], source: string): void {
+  function add(
+    items: readonly CaseFile[],
+    source: string,
+    versionLabel = '已登记版本',
+    sourceId?: string,
+  ): void {
     for (const file of items) {
       const key = fileKey(file);
       if (invalidFiles.value.has(key)) continue;
       const existing = files.get(key);
       if (existing) {
         if (!existing.sources.includes(source)) existing.sources.push(source);
-      } else files.set(key, { ...file, key, sources: [source] });
+        if (!existing.versionLabels.includes(versionLabel))
+          existing.versionLabels.push(versionLabel);
+        if (sourceId && !existing.technicalSources.includes(sourceId))
+          existing.technicalSources.push(sourceId);
+      } else
+        files.set(key, {
+          ...file,
+          key,
+          sources: [source],
+          versionLabels: [versionLabel],
+          technicalSources: sourceId ? [sourceId] : [],
+        });
     }
   }
   const item = props.item;
@@ -70,29 +91,32 @@ const rows = computed(() => {
   add(item.filingSubmission?.screenshotFiles ?? [], '立案截图');
   add(item.acceptance?.files ?? [], '受理材料');
   for (const entry of item.acceptances)
-    add(entry.files, `受理历史 ${entry.id}`);
+    add(entry.files, '历史受理材料', '已登记版本', entry.id);
   for (const [category, group] of Object.entries(item.acceptanceMaterials)) {
-    add(group.available, `${category} 可用材料`);
-    add(group.frozen, `${category} 冻结材料`);
-    add(group.later, `${category} 后续材料`);
+    const categoryLabel = materialCategoryLabel(
+      category as OwnerMaterial['category'],
+    );
+    add(group.available, `${categoryLabel} 可用材料`);
+    add(group.frozen, `${categoryLabel} 冻结材料`);
+    add(group.later, `${categoryLabel} 后续材料`);
   }
   add(item.judgment.current?.files ?? [], '一审判决');
   for (const entry of item.judgment.history)
-    add(entry.files, `一审判决历史 ${entry.id}`);
+    add(entry.files, '历史一审判决', '已登记版本', entry.id);
   add(item.judgment.availableFiles, '可用判决材料');
   const second = item.secondInstance;
   add(second.currentProgress?.documentFiles ?? [], '二审文书');
   add(second.currentProgress?.serviceFiles ?? [], '二审送达材料');
   for (const entry of second.progresses) {
-    add(entry.documentFiles, `二审文书历史 ${entry.id}`);
-    add(entry.serviceFiles, `二审送达历史 ${entry.id}`);
+    add(entry.documentFiles, '历史二审文书', '已登记版本', entry.id);
+    add(entry.serviceFiles, '历史二审送达材料', '已登记版本', entry.id);
   }
   add(second.currentResult?.files ?? [], '二审裁判');
   for (const entry of second.results)
-    add(entry.files, `二审裁判历史 ${entry.id}`);
+    add(entry.files, '历史二审裁判', '已登记版本', entry.id);
   add(item.executionSubmission.current?.files ?? [], '执行申请');
   for (const entry of item.executionSubmission.submissions)
-    add(entry.files, `执行申请历史 ${entry.id}`);
+    add(entry.files, '历史执行申请', '已登记版本', entry.id);
   add(item.executionSubmission.availableFiles, '可用执行材料');
   add(item.executionConfirmation?.files ?? [], '已确认执行材料');
   add(item.executionMailing?.files ?? [], '执行邮寄回执');
@@ -100,7 +124,7 @@ const rows = computed(() => {
   add(item.executionFinish?.files ?? [], '执行结束依据');
   add(item.closure?.current.files ?? [], '结案材料');
   for (const entry of item.closure?.history ?? [])
-    add(entry.files, `结案历史 ${entry.id}`);
+    add(entry.files, '历史结案材料', '已登记版本', entry.id);
   for (const material of pool.value) {
     if (
       material.ownerType !== 'CASE' ||
@@ -119,12 +143,44 @@ const rows = computed(() => {
             mimeType: version.mimeType,
           },
         ],
-        `本案上传池 · ${material.category} · ${version.id === material.currentVersionId ? '当前版本' : '历史版本'}`,
+        `${materialCategoryLabel(material.category)} · ${version.id === material.currentVersionId ? '当前版本' : '历史版本'}`,
+        version.id === material.currentVersionId ? '当前版本' : '历史版本',
       );
     }
   }
   return [...files.values()];
 });
+
+function materialCategoryLabel(category: OwnerMaterial['category']): string {
+  const labels: Record<OwnerMaterial['category'], string> = {
+    CUSTOMER_IDENTITY: '客户身份证明',
+    CUSTOMER_RIGHT_EVIDENCE: '权利证明',
+    CUSTOMER_AGREEMENT: '客户协议',
+    LEAD_SCREENSHOT: '线索截图',
+    NOTARY_OPENING_PHOTO: '公证开箱照片',
+    NOTARY_CERTIFICATE: '公证书',
+    NOTARY_DISCLOSURE: '披露材料',
+    COMPLAINT: '起诉状',
+    AUTHORIZATION: '授权材料',
+    MAIL_RECEIPT: '邮寄回执',
+    FILING_EVIDENCE: '立案证据',
+    FILING_SCREENSHOT: '立案截图',
+    ACCEPTANCE_NOTICE: '受理通知',
+    PAYMENT_LIST: '缴费清单',
+    SERVICE_DOCUMENT: '送达文书',
+    JUDGMENT: '一审判决',
+    SECOND_INSTANCE_DOCUMENT: '二审文书',
+    SECOND_INSTANCE_SERVICE: '二审送达材料',
+    SECOND_INSTANCE_JUDGMENT: '二审裁判',
+    EXECUTION_APPLICATION: '执行申请',
+    EXECUTION_FILING_PROOF: '执行立案凭证',
+    EXECUTION_SUPPLEMENT: '执行补充材料',
+    EXECUTION_FINISH_BASIS: '执行结束依据',
+    CASE_CLOSURE_DOCUMENT: '结案材料',
+    FEE_PROOF: '费用凭证',
+  };
+  return labels[category];
+}
 
 // This requests the existing stage editor; it never grants generic upload access.
 const canOpenUpload = computed(() => {
@@ -309,9 +365,6 @@ async function download(row: FileRow): Promise<void> {
         >进入本阶段材料表单</ElButton
       >
     </div>
-    <p class="case-workspace-field__help">
-      按精确版本下载；来源与历史材料保留原关联。上传通过已有阶段表单办理。
-    </p>
     <p v-if="loadState === 'loading'" role="status">正在加载本案上传材料…</p>
     <p v-else-if="loadState === 'denied'" role="alert">
       本案上传池不存在或无访问权限；以下仅显示案件详情已授权的文件引用。
@@ -335,16 +388,22 @@ async function download(row: FileRow): Promise<void> {
           row.originalFilename
         }}</span>
         <p class="case-workspace-field__help">
-          {{ row.mimeType }}
+          用途：{{ row.sources.join('；') }}
+        </p>
+        <p class="case-workspace-field__help">
+          版本：{{ row.versionLabels.join('；') }}
         </p>
         <details
           class="case-workspace-field__help"
           data-test="workspace-file-details"
         >
           <summary>来源与版本详情</summary>
-          <p>来源：{{ row.sources.join('；') }}</p>
           <p>材料标识：{{ row.materialId }}</p>
           <p>版本标识：{{ row.contentVersionId }}</p>
+          <p v-if="row.technicalSources.length">
+            关联记录标识：{{ row.technicalSources.join('；') }}
+          </p>
+          <p>文件类型：{{ row.mimeType }}</p>
         </details>
         <ElButton
           :loading="downloading.has(row.key)"

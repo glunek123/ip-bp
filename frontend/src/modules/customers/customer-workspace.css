@@ -353,6 +353,59 @@
 .page-view.customer-workspace .customer-form-fields {
   margin-bottom: 16px;
 }
+.page-view.customer-workspace .customer-new-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 20px;
+  align-items: start;
+  margin-bottom: 4px;
+}
+.page-view.customer-workspace .customer-new-fields > fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 8px 16px;
+}
+.page-view.customer-workspace .customer-new-fields > fieldset > legend,
+.page-view.customer-workspace .customer-new-fields > fieldset > p,
+.page-view.customer-workspace
+  .customer-new-fields
+  > fieldset
+  > input[name='admissionContactName'],
+.page-view.customer-workspace
+  .customer-new-fields
+  > fieldset
+  > label[for='admission-contact-name'],
+.page-view.customer-workspace
+  .customer-new-fields
+  > fieldset
+  > p[role='alert'] {
+  grid-column: 1 / -1;
+}
+.page-view.customer-workspace .customer-new-fields > fieldset > label,
+.page-view.customer-workspace .customer-new-fields > fieldset > input {
+  margin-top: 0;
+}
+.page-view.customer-workspace
+  .customer-new-fields
+  > fieldset
+  > .field-label--spaced {
+  align-self: end;
+}
+.page-view.customer-workspace.customer-form-page--embedded {
+  max-width: none;
+  width: 100%;
+  padding: 0;
+}
+.page-view.customer-workspace.customer-form-page--embedded > main {
+  max-width: none;
+  padding: 0;
+}
+.page-view.customer-workspace.customer-form-page--embedded .form-panel {
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+}
 .page-view.customer-workspace .customer-form-fields .field-label {
   margin-top: 0;
 }
@@ -631,6 +684,8 @@
     gap: 8px;
   }
   .page-view.customer-workspace .customer-form-fields,
+  .page-view.customer-workspace .customer-new-fields,
+  .page-view.customer-workspace .customer-new-fields > fieldset,
   .page-view.customer-workspace .customer-document-form,
   .page-view.customer-workspace .customer-contacts-form,
   .page-view.customer-workspace .settlement-register-form,
