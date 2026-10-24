@@ -488,7 +488,16 @@ export class CaseRecordEditService {
                     },
                     select: {
                       id: true,
-                      judgment: { select: { judgmentReceivedAt: true } },
+                      judgment: {
+                        select: {
+                          judgmentReceivedAt: true,
+                          recordCorrections: {
+                            orderBy: { toRevision: 'desc' },
+                            take: 1,
+                            select: { judgmentReceivedAt: true },
+                          },
+                        },
+                      },
                     },
                   });
             if (value.choiceId !== null && choice === null)
@@ -556,7 +565,11 @@ export class CaseRecordEditService {
               if (
                 choice?.judgment !== null &&
                 choice?.judgment !== undefined &&
-                value.acceptedAt < isoDate(choice.judgment.judgmentReceivedAt)
+                value.acceptedAt <
+                  isoDate(
+                    choice.judgment.recordCorrections[0]?.judgmentReceivedAt ??
+                      choice.judgment.judgmentReceivedAt,
+                  )
               )
                 throw this.validation('二审受理日期不得早于原判决收到日');
               const checked = await tx.$queryRaw<Array<{ valid: boolean }>>`

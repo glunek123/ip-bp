@@ -102,6 +102,7 @@ describe('CaseRecordEditService', () => {
           id: choiceId,
           judgment: {
             judgmentReceivedAt: new Date('2026-10-08T00:00:00.000Z'),
+            recordCorrections: [] as Array<{ judgmentReceivedAt: Date }>,
           },
         }),
       },
@@ -418,6 +419,39 @@ describe('CaseRecordEditService', () => {
       }),
     );
   });
+
+  it.each([
+    ['2026-10-08', '2026-10-06', '2026-10-07', true],
+    ['2026-10-06', '2026-10-08', '2026-10-07', false],
+  ])(
+    'validates second acceptance against the effective judgment date (%s -> %s)',
+    async (original, corrected, acceptedAt, valid) => {
+      const f = fixture();
+      f.tx.caseJudgmentNextStep.findFirst.mockResolvedValueOnce({
+        id: choiceId,
+        judgment: {
+          judgmentReceivedAt: new Date(`${original}T00:00:00.000Z`),
+          recordCorrections: [
+            { judgmentReceivedAt: new Date(`${corrected}T00:00:00.000Z`) },
+          ],
+        },
+      });
+      const result = f.service.saveSecondInstanceAcceptance(actor, caseId, {
+        ...secondInput,
+        acceptedAt,
+      });
+      if (valid) {
+        await expect(result).resolves.toMatchObject({ acceptedAt });
+      } else {
+        await expect(result).rejects.toMatchObject({
+          response: { code: 'VALIDATION_ERROR' },
+        });
+        expect(
+          f.tx.caseSecondInstanceAcceptanceChange.create,
+        ).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it('records a direct second-instance acceptance against the real entry and local round', async () => {
     const f = fixture();
