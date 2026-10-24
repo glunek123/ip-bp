@@ -56,14 +56,6 @@ function edit(): void {
         >
           {{ actionLabel ?? action.label }}
         </button>
-        <span
-          v-if="action.hint"
-          :id="`${id}-hint`"
-          :title="action.hint"
-          class="case-workspace-field__help"
-        >
-          {{ action.hint }}
-        </span>
       </div>
     </div>
     <div
@@ -73,6 +65,13 @@ function edit(): void {
       role="region"
       :aria-labelledby="`${id}-toggle`"
     >
+      <p
+        v-if="action.hint"
+        :id="`${id}-hint`"
+        class="case-workspace-field__help"
+      >
+        {{ action.hint }}
+      </p>
       <slot />
     </div>
   </section>

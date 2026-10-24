@@ -1539,7 +1539,7 @@ async function complaint() {
         v-if="action !== 'second-instance' && action !== 'register-judgment'"
         class="field-help"
       >
-        未提交的表单不会推进案件。此步骤暂无独立保存草稿接口，请确认信息及去向后提交。
+        未提交的修改不会保存。
       </p>
     </fieldset>
   </section>

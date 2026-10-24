@@ -117,13 +117,17 @@ describe('CaseWorkspaceSection', () => {
       '.case-workspace-section__edit',
     );
     expect(edit.element.disabled).toBe(true);
-    expect(wrapper.get(`#${edit.attributes('aria-describedby')}`).text()).toBe(
+    expect(wrapper.get('.case-workspace-section__header').text()).not.toContain(
       '本栏没有可办理的登记命令，只读',
     );
+    const hint = wrapper.get(`#${edit.attributes('aria-describedby')}`);
+    expect(hint.text()).toBe('本栏没有可办理的登记命令，只读');
+    expect(hint.isVisible()).toBe(false);
     edit.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(wrapper.emitted('edit')).toBeUndefined();
     await wrapper.get('.case-workspace-section__toggle').trigger('click');
     expect(wrapper.get('.case-workspace-section__body').isVisible()).toBe(true);
+    expect(hint.isVisible()).toBe(true);
   });
 
   it('uses the explicit timeline label without manufacturing a generic action', async () => {

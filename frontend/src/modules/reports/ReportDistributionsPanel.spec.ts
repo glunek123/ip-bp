@@ -66,7 +66,7 @@ describe('pure report distributions', () => {
     expect(
       platforms.findAll('.distribution-track span')[1]?.attributes('style'),
     ).toContain('66.666');
-    expect(wrapper.text()).toContain('不表示占全部案件的比例');
+    expect(wrapper.text()).toContain('条长比较件数，非占比。');
     expect(
       wrapper
         .findAll('.distribution-track')

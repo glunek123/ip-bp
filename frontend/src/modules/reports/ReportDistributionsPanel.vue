@@ -174,7 +174,7 @@ const sections = computed(() => {
           {{ scopeLabel ?? '本部门' }}累计案件；未登记单独列示。
         </p>
         <p v-if="section.rows.length" class="distribution-note">
-          条长按本图最大案件数比较，不表示占全部案件的比例。
+          条长比较件数，非占比。
         </p>
       </template>
     </section>

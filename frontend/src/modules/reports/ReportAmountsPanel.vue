@@ -190,7 +190,7 @@ const rows = computed(() => {
           {{ view.unknownAmountCases }} 件，未纳入分档。
         </p>
         <p v-if="view.knownAmountCases > 0" class="amount-note">
-          条长按本图最大案件数比较，不表示占全部案件的比例。
+          条长比较件数，非占比。
         </p>
       </template>
     </section>

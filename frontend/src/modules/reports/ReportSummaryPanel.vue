@@ -148,7 +148,7 @@ onBeforeUnmount(() => {
     <template v-else-if="projection">
       <p v-if="projection.kind === 'value'" class="report-value">
         <span data-test="report-decimal">{{ projection.decimalText }}</span>
-        <span class="report-currency">CNY</span>
+        <span class="report-currency">元</span>
       </p>
       <p v-else role="status" :data-test="`report-${projection.kind}`">
         {{ projection.messageText }}

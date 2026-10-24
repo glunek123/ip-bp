@@ -143,7 +143,7 @@ const rows = computed(() => {
             mimeType: version.mimeType,
           },
         ],
-        `${materialCategoryLabel(material.category)} · ${version.id === material.currentVersionId ? '当前版本' : '历史版本'}`,
+        materialCategoryLabel(material.category),
         version.id === material.currentVersionId ? '当前版本' : '历史版本',
       );
     }
@@ -180,6 +180,46 @@ function materialCategoryLabel(category: OwnerMaterial['category']): string {
     FEE_PROOF: '费用凭证',
   };
   return labels[category];
+}
+
+function primaryUse(sources: readonly string[]): string {
+  const priorities = [
+    '已确认诉状',
+    '已确认执行材料',
+    '执行立案凭证',
+    '执行结束依据',
+    '一审判决',
+    '二审裁判',
+    '二审文书',
+    '二审送达材料',
+    '受理材料',
+    '执行申请',
+    '结案材料',
+    '历史一审判决',
+    '历史二审裁判',
+    '历史二审文书',
+    '历史二审送达材料',
+    '历史受理材料',
+    '历史结案材料',
+    '来源公证书',
+    '来源披露材料',
+    '起诉授权材料',
+    '诉状邮寄回执',
+    '立案证据',
+    '立案截图',
+    '起诉诉状',
+  ];
+  return (
+    priorities.find((source) => sources.includes(source)) ??
+    sources[0] ??
+    '案件材料'
+  );
+}
+
+function primaryVersion(labels: readonly string[]): string {
+  if (labels.includes('当前版本')) return '当前版本';
+  if (labels.includes('历史版本')) return '历史版本';
+  return '已登记版本';
 }
 
 // This requests the existing stage editor; it never grants generic upload access.
@@ -388,16 +428,17 @@ async function download(row: FileRow): Promise<void> {
           row.originalFilename
         }}</span>
         <p class="case-workspace-field__help">
-          用途：{{ row.sources.join('；') }}
+          用途：{{ primaryUse(row.sources) }}
         </p>
         <p class="case-workspace-field__help">
-          版本：{{ row.versionLabels.join('；') }}
+          版本：{{ primaryVersion(row.versionLabels) }}
         </p>
         <details
           class="case-workspace-field__help"
           data-test="workspace-file-details"
         >
           <summary>来源与版本详情</summary>
+          <p>关联用途：{{ row.sources.join('；') }}</p>
           <p>材料标识：{{ row.materialId }}</p>
           <p>版本标识：{{ row.contentVersionId }}</p>
           <p v-if="row.technicalSources.length">

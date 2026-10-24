@@ -185,11 +185,9 @@ describe('CaseWorkspaceFiles', () => {
     await flushPromises();
     const rows = wrapper.findAll('[data-test="workspace-file"]');
     expect(rows).toHaveLength(2);
-    expect(rows[0]!.text()).toContain('来源公证书');
-    expect(rows[0]!.text()).toContain('历史一审判决');
-    expect(rows[0]!.findAll('p')[0]!.text()).toContain('用途：');
+    expect(rows[0]!.findAll('p')[0]!.text()).toBe('用途：历史一审判决');
+    expect(rows[0]!.findAll('p')[1]!.text()).toBe('版本：历史版本');
     expect(rows[0]!.findAll('p')[0]!.text()).not.toContain('application/pdf');
-    expect(rows[0]!.text()).toContain('历史版本');
     const details = rows[0]!.get('[data-test="workspace-file-details"]');
     expect(details.attributes('open')).toBeUndefined();
     expect(details.findAll('p').every((entry) => !entry.isVisible())).toBe(
@@ -197,6 +195,9 @@ describe('CaseWorkspaceFiles', () => {
     );
     details.element.setAttribute('open', '');
     expect(details.findAll('p').every((entry) => entry.isVisible())).toBe(true);
+    expect(details.text()).toContain(
+      '关联用途：来源公证书；历史一审判决；起诉状',
+    );
     expect(details.text()).toContain('版本标识：v1');
     expect(details.text()).toContain('关联记录标识：j-old');
     expect(details.text()).toContain('文件类型：application/pdf');
@@ -205,6 +206,38 @@ describe('CaseWorkspaceFiles', () => {
     });
     await rows[0]!.get('button').trigger('click');
     expect(download).toHaveBeenCalledWith('m1', 'v1', expect.any(AbortSignal));
+  });
+
+  it('prefers current business use when one exact version is linked to current and history', async () => {
+    const item = structuredClone(baseItem);
+    const judgment = {
+      trialRoundId: 'round',
+      kind: 'REGISTER' as const,
+      priorFactId: null,
+      judgmentReceivedAt: '2026-10-12',
+      judgmentAmountState: 'KNOWN' as const,
+      judgmentAmount: '0.00',
+      paidLitigationFeeState: 'PENDING' as const,
+      paidLitigationFee: null,
+      fromVersion: 1,
+      toVersion: 2,
+      recordedAt: '2026-10-12T00:00:00Z',
+      files: [file()],
+    };
+    item.judgment.current = { ...judgment, id: 'j-current' };
+    item.judgment.history = [{ ...judgment, id: 'j-old' }];
+    const currentPoolMaterial = { ...material(), currentVersionId: 'v1' };
+    const { wrapper } = render(
+      item,
+      vi.fn().mockResolvedValue({ items: [currentPoolMaterial], total: 1 }),
+    );
+    await flushPromises();
+    const row = wrapper.findAll('[data-test="workspace-file"]')[0]!;
+    expect(row.findAll('p')[0]!.text()).toBe('用途：一审判决');
+    expect(row.findAll('p')[1]!.text()).toBe('版本：当前版本');
+    expect(row.get('[data-test="workspace-file-details"]').text()).toContain(
+      '关联用途：一审判决；历史一审判决',
+    );
   });
 
   it('keeps different materials with the same version key, excludes foreign and deleted pool entries', async () => {

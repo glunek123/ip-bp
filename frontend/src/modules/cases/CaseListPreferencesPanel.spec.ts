@@ -57,7 +57,7 @@ describe('CaseListPreferencesPanel', () => {
     await clickButton(wrapper, '取消');
     expect(api.get).toHaveBeenCalledTimes(1);
     expect(api.save).not.toHaveBeenCalled();
-    expect(wrapper.get('[role="status"]').text()).toBe('已读取服务器设置');
+    expect(wrapper.get('[role="status"]').text()).toBe('');
   });
 
   it('sends the edited complete order through the real preference API module', async () => {
@@ -108,7 +108,7 @@ describe('CaseListPreferencesPanel', () => {
     await flushPromises();
     finishOld({ ...defaults, hidden: ['customerName'] });
     await flushPromises();
-    expect(wrapper.get('[role="status"]').text()).toBe('已读取服务器设置');
+    expect(wrapper.get('[role="status"]').text()).toBe('');
     expect(api.get).toHaveBeenCalledTimes(2);
   });
 

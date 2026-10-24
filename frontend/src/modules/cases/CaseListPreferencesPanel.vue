@@ -84,7 +84,7 @@ async function fetchPreference() {
     saved.value = copy(result);
     draft.value = copy(result);
     emit('change', props.bucket, copy(result), props.requestGeneration);
-    status.value = '已读取服务器设置';
+    status.value = '';
   } catch {
     if (controller.signal.aborted || !isCurrent(token, key)) return;
     saved.value = copy(defaultCaseListPreference);

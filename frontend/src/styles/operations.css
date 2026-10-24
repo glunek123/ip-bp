@@ -21,9 +21,18 @@
 
 .section-heading h1,
 .detail-heading h1,
-.page-head h1 {
+.page-head h1,
+.app-content h1 {
   font: 650 24px/1.4 var(--font-text);
   letter-spacing: 0;
+}
+
+.app-content h2 {
+  font: 600 18px/1.4 var(--font-text);
+}
+
+.app-content h3 {
+  font: 600 16px/1.4 var(--font-text);
 }
 
 .section-heading p:last-child,
@@ -157,7 +166,14 @@
 }
 
 :where(.app-content, .el-drawer__body, .el-dialog__body)
-  button:not(.el-button, [aria-expanded], [role='tab'], .case-workspace-tab) {
+  button:not(
+    .el-button,
+    .el-dialog__headerbtn,
+    .el-drawer__close-btn,
+    [aria-expanded],
+    [role='tab'],
+    .case-workspace-tab
+  ) {
   min-height: 32px;
   padding: 5px 10px;
   border: 1px solid var(--color-hairline-strong);

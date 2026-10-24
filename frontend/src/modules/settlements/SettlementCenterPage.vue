@@ -489,7 +489,7 @@ async function cancelBill(): Promise<void> {
             </dd>
           </div>
         </dl>
-        <div class="filters">
+        <div class="filters settlement-filters">
           <label
             >查询案件／主体 <ElInput v-model="keyword" placeholder="案号或名称"
           /></label>
@@ -761,6 +761,17 @@ async function cancelBill(): Promise<void> {
 .filters label {
   display: grid;
   gap: 4px;
+}
+.settlement-filters > label {
+  min-width: min(100%, 170px);
+}
+.settlement-filters > label:first-child {
+  flex: 1 1 220px;
+}
+.settlement-filters :deep(.el-select),
+.settlement-filters :deep(.el-input) {
+  width: 100%;
+  min-width: 0;
 }
 button,
 input,

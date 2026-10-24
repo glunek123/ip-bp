@@ -367,13 +367,15 @@ onBeforeUnmount(() => {
             >电话（选填）<input v-model="phone" class="text-input"
           /></label>
         </div>
-        <ElButton
-          type="primary"
-          :loading="saving"
-          :disabled="!canCreate || saving"
-          @click="create"
-          >创建并绑定新档案</ElButton
-        >
+        <div class="form-actions">
+          <ElButton
+            type="primary"
+            :loading="saving"
+            :disabled="!canCreate || saving"
+            @click="create"
+            >创建并绑定新档案</ElButton
+          >
+        </div>
       </section>
       <section v-if="!forbidden" class="demo-card demo-card--pad">
         <h2 class="form-section-title">绑定已有承办档案</h2>
@@ -424,12 +426,14 @@ onBeforeUnmount(() => {
         <p v-if="profiles.length === 0" class="field-help">
           {{ profileSearchError ? '' : '没有可绑定的历史档案。' }}
         </p>
-        <ElButton
-          :disabled="!canBindProfile() || saving"
-          :loading="saving"
-          @click="bind"
-          >确认绑定</ElButton
-        >
+        <div class="form-actions">
+          <ElButton
+            :disabled="!canBindProfile() || saving"
+            :loading="saving"
+            @click="bind"
+            >确认绑定</ElButton
+          >
+        </div>
       </section>
       <section v-if="!forbidden" class="demo-card demo-card--pad">
         <h2 class="form-section-title">账号与档案</h2>

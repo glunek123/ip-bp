@@ -67,7 +67,7 @@ describe('report summary component seam', () => {
         decimalText,
       );
       expect(wrapper.get('h2').text()).toBe('已归档案件平均标的额');
-      expect(wrapper.text()).toContain('CNY');
+      expect(wrapper.text()).toContain('元');
       expect(wrapper.text()).not.toContain('平均结案金额');
       expect(wrapper.text()).not.toContain('万元');
     },
