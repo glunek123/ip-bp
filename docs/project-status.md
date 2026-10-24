@@ -1,3 +1,15 @@
+## 2026-10-25 九类UI改造完成，业务验收继续待办
+
+修改前归档ba487d0f601515dbb6bc88f51abbaf8385ace363已正常合并/推送main，远端备份codex/pre-ui-efficiency-20261024一致，原有改动全部保留。新UI位于codex/operations-ui-efficiency，产品提交f8abfa18e5f60af4e69b8ab037545337f8ba585f及d30ad2100abf70630f12bd1163cbfe64a5e0bd77，仅本地、未推送/部署。正确源码目录D:\工作项目\品维and知产\dev_cor\.local\worktrees\reports-core-integration。
+
+MAN-UI-001至009已按本轮观察范围修复：按需组件样式/弹窗、宽工作区/分栏/按钮层级、中文业务名称/简短提示、筛选收纳、权限检索、文件用途/版本去重及客户同页抽屉。安全确认、未知/零元、权限、版本和最小PATCH不改；保存未决禁止关闭。真实观察25处及1024桌面，集中修正残留后只复查受影响处；完整UAT未完成。详见[最新UI复查](spec/v0.1/VALIDATION.md#2026-10-25-九类ui改造与真实页面复查)。
+
+最终check:fast、定向测试、受影响格式及前端构建通过，两批独立集成审查ACCEPTED。revision ui-efficiency-final-20261025，manifest build-ui-efficiency-final-20261025.json，352前端输入hash核实，实际JS DAxSkGv4/CSS Cx6ghnr8。后端无改动、输出hash核实后复用；未重跑整套UAT或迁移，浏览器error/warn为空。证据仍在.local/manual-acceptance-90708add-20261023。
+
+真实25日后，原24日开庭的CA20261023-0001/0003由正常后台任务00:05:29进入WAITING_JUDGMENT v7/v10；没有改时间/stage或登记判决/二审。后续按实际阶段接续。原生脏确认/移除等工具阻塞保留；低权限和外部角色、本页新建实际保存及后续业务本批未重验。
+
+本批业务新增0，无上传/导出/删除；经理临时改值后通过页面恢复空值。已登出/恢复视口；W disabled35、原binding active19、temporary role/assignment inactive14、Grant0/session0；R44/L8/N6/C12仍停用。3101/5174/5175无监听，helper退出；15439和175/176保留。原W helper常量过期，下次按现场校准后再启用。回执ui-final-after-20261025.json、ui-fix-w-close.json。
+
 ## 2026-10-24 UI改造前归档与实施边界
 
 用户授权先将当前成果提交、正常合并和推送留档，再修MAN-UI-001至009。归档候选为90708add加原42份tracked修改和fee-launch.spec.ts；产品源码尚未做UI改造。14个直接前端文件426项、2个后端文件12项及check:fast通过；只读审查ACCEPTED，无产品阻塞，修正两处过期完成态文字。已知UI缺陷、原生确认工具问题和未完成UAT均保留，不把归档称验收通过。
