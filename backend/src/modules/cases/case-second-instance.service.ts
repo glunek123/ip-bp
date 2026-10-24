@@ -84,6 +84,7 @@ type LockedCase = {
     judgmentReceivedAt: Date;
     judgmentAmountState: 'KNOWN' | 'PENDING';
     judgmentAmount: Prisma.Decimal | null;
+    recordCorrections: { judgmentReceivedAt: Date }[];
   } | null;
   currentJudgmentNextStep: {
     id: string;
@@ -200,6 +201,11 @@ export class CaseSecondInstanceService {
                     judgmentReceivedAt: true,
                     judgmentAmountState: true,
                     judgmentAmount: true,
+                    recordCorrections: {
+                      orderBy: { toRevision: 'desc' },
+                      take: 1,
+                      select: { judgmentReceivedAt: true },
+                    },
                   },
                 },
                 currentJudgmentNextStep: {
@@ -413,7 +419,12 @@ export class CaseSecondInstanceService {
         ? source.stageReachedOn
         : null;
     const judgmentDate = realAppeal
-      ? record.currentJudgment?.judgmentReceivedAt.toISOString().slice(0, 10)
+      ? (
+          record.currentJudgment?.recordCorrections[0]?.judgmentReceivedAt ??
+          record.currentJudgment?.judgmentReceivedAt
+        )
+          ?.toISOString()
+          .slice(0, 10)
       : null;
     if (
       value.progress.hearingAt !== null &&

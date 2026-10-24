@@ -68,6 +68,7 @@ describe('CaseSecondInstanceService', () => {
         judgmentReceivedAt: new Date('2026-01-01T00:00:00.000Z'),
         judgmentAmountState: 'KNOWN',
         judgmentAmount: '100.00',
+        recordCorrections: [] as Array<{ judgmentReceivedAt: Date }>,
       },
       currentJudgmentNextStep: {
         id: choiceId,
@@ -568,6 +569,36 @@ describe('CaseSecondInstanceService', () => {
       }),
     );
   });
+
+  it.each([
+    ['2026-01-03', '2026-01-01', true],
+    ['2026-01-01', '2026-01-03', false],
+  ])(
+    'uses the effective judgment date for second progress (%s -> %s)',
+    async (original, corrected, valid) => {
+      const f = fixture();
+      f.record.currentJudgment.judgmentReceivedAt = new Date(
+        `${original}T00:00:00Z`,
+      );
+      f.record.currentJudgment.recordCorrections = [
+        { judgmentReceivedAt: new Date(`${corrected}T00:00:00Z`) },
+      ];
+      const response = f.service.save(actor, caseId, {
+        ...saveInput(),
+        progress: { ...blank, hearingAt: '2026-01-02' },
+      });
+      if (valid) {
+        await expect(response).resolves.toMatchObject({
+          stage: 'SECOND_INSTANCE',
+        });
+      } else {
+        await expect(response).rejects.toMatchObject({
+          response: { code: 'VALIDATION_ERROR' },
+        });
+        expect(f.tx.caseSecondInstanceProgress.create).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it('does not create a blank first progress fact or advance version', async () => {
     const f = fixture();
