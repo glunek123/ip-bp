@@ -40,7 +40,7 @@ const actorKey = computed(
   () => `${auth.session?.principalType ?? ''}:${auth.session?.user.id ?? ''}`,
 );
 const scopeKey = computed(() => auth.session?.department?.id ?? '');
-const requestedView = ref<ReportsView>();
+const requestedView = ref<ReportsView>('mine');
 const confirmedView = ref<ReportsView>();
 const availableViews = ref<ReportsView[]>([]);
 const identityContext = computed(() =>
@@ -249,7 +249,7 @@ watch(
   identityContext,
   () => {
     clear();
-    requestedView.value = undefined;
+    requestedView.value = 'mine';
     confirmedView.value = undefined;
     availableViews.value = [];
     const queued = epoch;

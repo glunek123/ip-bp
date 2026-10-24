@@ -222,7 +222,8 @@ function parseCount(raw: string, label: string): ValueResult<number> {
 }
 
 function parsePrice(raw: string): ValueResult<string> {
-  const value = raw.trim() || '0';
+  const value = raw.trim();
+  if (!value) return { error: '单价不能为空；已知为零请填0或0.00' };
   return /^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/u.test(value)
     ? { value }
     : { error: '单价必须是非负金额，最多两位小数' };

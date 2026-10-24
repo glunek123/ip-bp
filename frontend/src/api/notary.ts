@@ -929,7 +929,7 @@ function isProductSnapshot(value: unknown): value is LeadProduct {
     (value.title === null || typeof value.title === 'string') &&
     (value.url !== null || value.title !== null) &&
     Number.isInteger(value.quantity) &&
-    (value.quantity as number) >= 1 &&
+    (value.quantity as number) >= 0 &&
     isMoney(value.unitPrice) &&
     Number.isInteger(value.commentCount) &&
     (value.commentCount as number) >= 0 &&

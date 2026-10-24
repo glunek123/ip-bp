@@ -33,6 +33,7 @@ import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
 import { ApiError, type RequestOptions } from '../../api/http';
 import { getLead, type LeadDetail } from '../../api/leads';
 import CaseWorkspaceShell from './CaseWorkspaceShell.vue';
+import { caseListQueryKeys } from './case-list-query';
 import CaseDetailsSections from './CaseDetailsSections.vue';
 import CaseWorkspaceFiles from './CaseWorkspaceFiles.vue';
 import CaseWorkspaceFees from './CaseWorkspaceFees.vue';
@@ -128,7 +129,9 @@ const backTo = computed(() => ({
   path: '/cases',
   query: Object.fromEntries(
     Object.entries(route.query).filter(([key]) =>
-      ['view', 'page', 'stage', 'stageGroup'].includes(key),
+      ['view', 'page', 'stage', 'stageGroup', ...caseListQueryKeys].includes(
+        key,
+      ),
     ),
   ),
 }));
@@ -1945,6 +1948,7 @@ onBeforeUnmount(() => {
           v-if="activeTab === 'fees' && accessVerified && state === 'ready'"
           :key="workspaceContext"
           :case-id="item.id"
+          :closure-version-id="item.closure?.current.id ?? null"
       /></template>
       <template #editors>
         <ElDrawer

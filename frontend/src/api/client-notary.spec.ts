@@ -61,6 +61,31 @@ const detail = {
 beforeEach(() => vi.resetAllMocks());
 
 describe('client notary API', () => {
+  it('accepts zero sales in a source snapshot and still rejects invalid counts', async () => {
+    const zeroSales = {
+      ...detail,
+      selectedProducts: [
+        {
+          ...detail.selectedProducts[0],
+          quantity: 0,
+          commentCount: 3,
+          estimatedAmount: '27.00',
+        },
+      ],
+    };
+    http.getJson.mockResolvedValue(zeroSales);
+    await expect(getClientNotaryMatter('matter-1')).resolves.toEqual(zeroSales);
+    for (const quantity of [-1, 0.5]) {
+      http.getJson.mockResolvedValue({
+        ...zeroSales,
+        selectedProducts: [{ ...zeroSales.selectedProducts[0], quantity }],
+      });
+      await expect(getClientNotaryMatter('matter-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+
   it('requests pending work by default and allows source lead batch discovery', async () => {
     const result = {
       items: [

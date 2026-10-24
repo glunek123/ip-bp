@@ -153,14 +153,16 @@ const selectedLeads = computed(() =>
     .filter((lead): lead is Lead => !!lead),
 );
 const activeTitle = ref('线索下一步');
-function actionTitle(status: LeadStatus): string | null {
-  switch (status) {
+function actionTitle(lead: Lead): string | null {
+  switch (lead.status) {
     case 'WAITING_PUSH':
       return '推送给客户审核';
     case 'WAITING_EVIDENCE_DECISION':
       return '确认取证安排';
     case 'ARCHIVED':
-      return '申请撤回归档';
+      return lead.reviewDecision?.result === 'NO_INFRINGEMENT'
+        ? '申请撤回归档'
+        : null;
     default:
       return null;
   }
@@ -178,7 +180,7 @@ function openWorkflow(lead: Lead) {
     csvContextLoading.value
   )
     return;
-  activeTitle.value = actionTitle(lead.status) ?? '线索下一步';
+  activeTitle.value = actionTitle(lead) ?? '线索下一步';
   activeLeadId.value = lead.id;
 }
 function savePendingPush(): void {
@@ -546,6 +548,7 @@ function handleCsvImported(
   if (!current || !sameLeadCsvImport(current, { ...attempt, uncertain: true }))
     return;
   csvSuccessMessage.value = `已导入 ${result.items.length} 条线索。`;
+  notifyWorkflowChanged();
   if (!clearCsvAttempt(current))
     csvContextError.value = '导入已创建，但本地未决记录无法清除。';
   closeCsvImport();
@@ -1114,7 +1117,7 @@ onBeforeUnmount(() => {
                 </td>
                 <td class="business-list-cell--nowrap">
                   <ElButton
-                    v-if="actionTitle(lead.status)"
+                    v-if="actionTitle(lead)"
                     type="primary"
                     data-test="lead-quick-action"
                     :disabled="
@@ -1128,7 +1131,7 @@ onBeforeUnmount(() => {
                       csvContextLoading
                     "
                     @click="openWorkflow(lead)"
-                    >{{ actionTitle(lead.status) }}</ElButton
+                    >{{ actionTitle(lead) }}</ElButton
                   >
                   <RouterLink
                     :to="`/leads/${lead.id}`"

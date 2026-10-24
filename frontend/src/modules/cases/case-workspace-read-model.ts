@@ -941,7 +941,7 @@ export function buildCaseWorkspaceSections(
             },
             ...source.products.map((value) => ({
               id: `product:${value.id}`,
-              title: `商品 ${value.position + 1}`,
+              title: `商品 ${value.position}`,
               fields: [
                 field('商品标题', value.title),
                 field('链接', value.url),

@@ -36,9 +36,13 @@ SD-08已将Demo清晰字段、状态及正常入口作为本版业务基线；�
 
 内部`POST /api/v1/leads/csv-import`以既有`lead.create`范围及单个Serializable事务提交明确选中的1～20个有效行，单次全成或全回滚，成功均为WAITING_PUSH／v1／CSV，不自动推送或客户确认。专用批次回执记录原有序请求／指纹／结果；当前权限及原保存结果范围重验先于同键比较，原键原请求重放不重复编号、事实或审计。未知结果仅显式原样核对，不自动生成新键或分批。没有新权限、角色或审批工作流。
 
+2026-10-24 用户确认CSV单价规则：单价为空时该行无效并提示“单价不能为空；已知为零请填0或0.00”；明确输入0或0.00是有效零价。此规则只调整CSV单价；销量和评论数空白仍按现有合同默认0。无需schema或迁移。旧构建空单价显示0的失败证据保留；修复及空价／负值预览、显式零价导入的直接页面结果见VALIDATION的RUN-MA1024-LEAD-UAT-01/02。
+
 本段仅冻结已批准方向的最小技术合同，不声明代码／迁移／页面已通过；当前仅允许纯测试及不连接业务库的静态准备，真实登录、库和页面额度均0。ca015和公证分支不随此切片更动。
 
 ## REQ-LD-003 推送、侵权审核与归档
+
+2026-10-23交互调整：客户“确认侵权”单击提交，不再弹出原生二次确认框；按钮附近保留进入“线索待确认”、由运营决定取证和当前入口不能撤回的说明。提交期间禁用审核按钮，沿用现有版本、授权与幂等重试规则。
 
 - 状态：部分确认（SD-13）＋待审核。来源：L-C04 L-D03 L-D04。字段组：LD05/LD06。
 - 目标／动作与结果：推送符合条件的待推送线索至待审核；获授权客户可查看推送给本企业的线索并执行审核。侵权结论进入待确认，不侵权进入归档分支；不取证记录决定及归档信息。所有入口按当前状态和企业数据范围校验，不以按钮是否显示代替规则。
@@ -110,3 +114,17 @@ SD-02补充：允许一条只读来源线索关联多个公证事项，每次明
 表单文案按Demo：权利主体、案件类型、平台、销量，名称与链接拆项；新建needDisclose初始未选择，必须明确是／否后才提交现有boolean，编辑保留原true／false。不修改客户／主体身份、已移交只读限制、材料与Command。详情仅复用真实审核／决定／批次时间，不造confirmAt、运营名单或财务事实。批量推送、CSV、批归档等新能力不在此呈现批次。
 
 与公证／案件共用真实表头、列网格、对齐及紧凑分页；相同视口／窄窗口视觉与权限语义验收，无字段也不能用稀疏空卡片冒充完整表格。
+
+### 2026-10-24批量推送及客户审核确认
+
+**RUN-MA1024-LEAD-PUSH-01／两条批量预览与取消通过。** W选择同客户A/B两条WAITING_PUSH线索，预览显示2条；取消后两条仍WAITING_PUSH且继续选中2条，重开面板可继续。证据`lead-batch-push-preview-two.txt`、`lead-batch-push-cancel-still-waiting.txt`。
+
+**RUN-MA1024-LEAD-PUSH-02／两条批量推送通过。** 重开面板提交A/B后两条进入WAITING_REVIEW，侧栏待推送0、待审核2即时更新。证据`lead-batch-push-two-success.txt/.png`。
+
+**RUN-MA1024-LEAD-CLIENT-01／A侵权确认通过。** C待审核队列显示A/B两条；点击确认A即成功，无原生确认框。刷新后客户记录保留确认，返回pending只剩B一条。证据`lead-client-two-pending-after-batch-push.txt`、`lead-client-a-confirmed-infringement.txt`、`lead-client-a-confirmed-after-refresh.txt`。
+
+**RUN-MA1024-LEAD-CLIENT-02／B侵权确认及已处理表通过。** 确认B后pending显示“暂无待审核线索”；processed表A/B均显示“已确认侵权”，旧main等已进入公证的记录仍保留。B未执行不取证；W也尚未执行批量不取证。证据`lead-client-b-confirmed-infringement.txt`、`lead-client-pending-empty-after-two-confirmations.txt`、`lead-client-processed-two-plus-existing.txt`。
+
+**RUN-MA1024-LEAD-CLIENT-03／processed页breadcrumb文案待核阻塞。** 客户processed页breadcrumb显示“待审核线索”，H1为“已处理线索”。列为MAN-LD-003轻微文案/导航体验待核Spec；没有擅自更改文案。证据`lead-client-processed-two-plus-existing.txt`。
+
+当前线索额度3/6；两条新增线索均由WAITING_PUSH经正常批量推送进入客户审核，并已确认侵权。未执行批量不取证或其他审核支路。CSV本地文件解析不计入server材料上传额度。

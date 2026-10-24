@@ -1,4 +1,5 @@
 import { NotaryPortalService } from './notary-portal.service';
+import { Prisma } from '../../generated/prisma/client';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -23,6 +24,43 @@ function fixture() {
 }
 
 describe('NotaryPortalService', () => {
+  it.each([
+    ['0.00', '0.00'],
+    ['12.30', '12.30'],
+  ])(
+    'preserves the two-decimal sample fee scale for %s',
+    async (amount, expectedAmount) => {
+      const f = fixture();
+      f.db.notaryMatter.findFirst.mockResolvedValue({
+        id: 'matter-1',
+        businessNo: 'NT-1',
+        stage: 'WAITING_UNBOX',
+        version: 1,
+        createdAt: new Date('2026-10-24T01:00:00.000Z'),
+        sourceLead: { needDisclose: false },
+        evidenceCorrections: [],
+        openingSenderCorrections: [],
+        evidence: {
+          evidenceAt: new Date('2026-10-23T00:00:00.000Z'),
+          sampleFeeState: 'KNOWN',
+          sampleFeeAmount: new Prisma.Decimal(amount),
+          logistics: [],
+        },
+        opening: null,
+        issuanceDecision: null,
+        certificate: null,
+      });
+
+      const result = await f.service.get(actor, 'matter-1');
+
+      expect(result.evidence).toMatchObject({
+        sampleFeeState: 'KNOWN',
+        sampleFeeAmount: expectedAmount,
+      });
+      expect(result.capabilities.recordOpening).toBe(true);
+    },
+  );
+
   it('lists archived records only when this office has an issued certificate', async () => {
     const f = fixture();
     await f.service.list(actor, 1, 20, 'ARCHIVED');
@@ -52,7 +90,7 @@ describe('NotaryPortalService', () => {
       evidence: {
         evidenceAt: new Date('2026-09-27T00:00:00.000Z'),
         sampleFeeState: 'KNOWN',
-        sampleFeeAmount: { toString: () => '200.00' },
+        sampleFeeAmount: new Prisma.Decimal('200.00'),
         logistics: [{ id: 'logistics-1', trackingValue: 'private-tracking' }],
       },
       opening: {
@@ -182,7 +220,7 @@ describe('NotaryPortalService', () => {
       evidence: {
         evidenceAt: new Date('2026-09-27T00:00:00.000Z'),
         sampleFeeState: 'KNOWN',
-        sampleFeeAmount: { toString: () => '200.00' },
+        sampleFeeAmount: new Prisma.Decimal('200.00'),
         logistics: [{ id: 'old-logistics', trackingValue: 'old-tracking' }],
       },
       opening: {

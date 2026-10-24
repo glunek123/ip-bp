@@ -23,6 +23,7 @@ import {
 } from '../../api/settlements';
 import { todayShanghai } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
+import { formatSettlementAmount } from '../customers';
 import CaseFeeEntryDialog from './CaseFeeEntryDialog.vue';
 import {
   loadFinancialPending,
@@ -78,6 +79,13 @@ const types = [
 ];
 const ordinaryStatuses = ['未发起', '发起', '已支付'];
 const refundStatuses = ['退原告', '退律所'];
+function isZeroFeeAmount(amount: string): boolean {
+  try {
+    return formatSettlementAmount(amount) === '¥0.00';
+  } catch {
+    return false;
+  }
+}
 const filters = reactive({
   type: '',
   status: '',
@@ -323,6 +331,13 @@ const allSelected = computed(
     matchingIds.value.length > 0 &&
     matchingIds.value.every((id) => selected.value.has(id)),
 );
+const zeroOnlySelection = computed(() => {
+  const sourceRows = [...selected.value].map((id) => selectionSources.get(id));
+  return (
+    sourceRows.length > 0 &&
+    sourceRows.every((row) => row !== undefined && isZeroFeeAmount(row.amount))
+  );
+});
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / 100)));
 const formStatuses = computed(() =>
   form.type === '诉讼退费' ? refundStatuses : ordinaryStatuses,
@@ -567,9 +582,14 @@ async function batch(
           `${row!.businessNo} · ${row!.type}：${row!.amount} 元（${row!.status}）`,
       )
       .join('\n');
+    const zeroLaunchNote =
+      command === 'launch' &&
+      originals.some((row) => row !== undefined && isZeroFeeAmount(row.amount))
+        ? '\n其中零元费用将跳过并保留“未发起”状态。'
+        : '';
     if (
       !globalThis.confirm(
-        `${command === 'delete' ? `确认从费用台账移除 ${requestedIds.length} 条原始费用？历史记录将保留。` : '确认按以下原始金额分别发起未发起费用？'}\n${details}\n样品净额仅用于展示，不作为财务指令。`,
+        `${command === 'delete' ? `确认从费用台账移除 ${requestedIds.length} 条原始费用？历史记录将保留。` : '确认按以下原始金额分别发起未发起费用？'}${zeroLaunchNote}\n${details}\n样品净额仅用于展示，不作为财务指令。`,
       )
     )
       return;
@@ -593,7 +613,18 @@ async function batch(
     const result = await batchFees(original.command, original.body);
     if (!sameContext(originalIdentity)) return;
     clearFinancialPending(scope, 'batch', original);
-    notice.value = `${result.processedCount} 条费用已${pendingBatch.command === 'delete' ? '移除' : '发起'}，合计 ${result.amount} 元`;
+    const skippedZeroCount =
+      original.command === 'launch'
+        ? original.body.ids.filter((id) => {
+            const row = selectionSources.get(id);
+            return (
+              row !== undefined &&
+              isZeroFeeAmount(row.amount) &&
+              !result.processedIds.includes(id)
+            );
+          }).length
+        : 0;
+    notice.value = `${result.processedCount} 条费用已${original.command === 'delete' ? '移除' : '发起'}，合计 ${result.amount} 元${skippedZeroCount > 0 ? `，${skippedZeroCount} 条零元费用已跳过` : ''}`;
     pendingBatch = null;
     unknownBatch.value = false;
     const remainingSelection = new Set(selected.value);
@@ -617,7 +648,8 @@ async function setStatus(row: FeeRow, status: unknown): Promise<void> {
     saving.value ||
     status === row.status ||
     !props.canUpdate ||
-    unknownUpdate.value
+    unknownUpdate.value ||
+    (status === '发起' && isZeroFeeAmount(row.amount))
   )
     return;
   saving.value = true;
@@ -736,7 +768,9 @@ onBeforeUnmount(() => {
       <span>已选 {{ selected.size }} 条 · 当前筛选 {{ total }} 条</span
       ><ElButton
         v-if="props.canLaunch"
-        :disabled="saving || selected.size === 0 || unknownBatch"
+        :disabled="
+          saving || selected.size === 0 || unknownBatch || zeroOnlySelection
+        "
         @click="batch('launch')"
         >批量发起</ElButton
       ><ElButton
@@ -759,6 +793,9 @@ onBeforeUnmount(() => {
         </div>
       </details>
     </div>
+    <p v-if="zeroOnlySelection" role="status">
+      零元费用仅保留记录，不可发起；混选时零元费用将跳过。
+    </p>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="unknownBatch" role="status">
       结果尚未确认。<ElButton :disabled="saving" @click="batch('launch')"
@@ -836,8 +873,11 @@ onBeforeUnmount(() => {
                     : ordinaryStatuses"
                   :key="status"
                   :value="status"
+                  :disabled="status === '发起' && isZeroFeeAmount(row.amount)"
                   :label="status" /></ElSelect
-              ><span v-else>{{ row.status }}（代表状态）</span>
+              ><small v-if="isZeroFeeAmount(row.amount) && !isNet">
+                零元费用仅保留记录，不可标记为发起 </small
+              ><span v-else-if="isNet">{{ row.status }}（代表状态）</span>
             </td>
             <td v-if="columns.date">{{ row.feeDate }}</td>
             <td v-if="columns.platform">{{ row.platform ?? '—' }}</td>

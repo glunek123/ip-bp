@@ -112,14 +112,18 @@ export const router = createRouter({
     {
       path: '/notary-portal/matters',
       component: NotaryPortalListPage,
-      meta: { audience: 'NOTARY', section: '待开箱', breadcrumbs: ['待开箱'] },
+      meta: {
+        audience: 'NOTARY',
+        section: '公证事项',
+        breadcrumbs: ['公证事项'],
+      },
     },
     {
       path: '/notary-portal/matters/:id',
       component: NotaryPortalDetailPage,
       meta: {
         audience: 'NOTARY',
-        section: '待开箱',
+        section: '公证事项',
         breadcrumbs: ['公证事项', '事项详情'],
       },
     },

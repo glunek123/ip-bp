@@ -750,6 +750,20 @@ describe('LeadDetailPage', () => {
           archiveType: 'NO_EVIDENCE',
           archivedAt: '2026-10-15T00:00:00Z',
         },
+        history: [
+          {
+            kind: 'EVIDENCE_DECISION',
+            id: 'evidence-decision-1',
+            fromVersion: 3,
+            toVersion: 4,
+            result: 'NO_EVIDENCE',
+            reason: '现阶段不取证',
+            archiveType: 'NO_EVIDENCE',
+            archivedAt: '2026-10-15T00:00:00Z',
+            decidedByDisplayName: '运营甲',
+            occurredAt: '2026-10-15T00:00:00Z',
+          },
+        ],
       });
       return { status: 'ARCHIVED' };
     });
@@ -771,6 +785,10 @@ describe('LeadDetailPage', () => {
     const record = wrapper.get('[data-test="evidence-decision-record"]');
     expect(record.text()).toContain('现阶段不取证');
     expect(record.text()).toContain('运营甲');
+    const history = wrapper.get('[data-test="withdrawal-history"]');
+    expect(history.text()).toContain('运营不取证归档');
+    expect(history.text()).toContain('不取证并归档');
+    expect(history.text()).not.toContain('客户确认撤回');
     expect(wrapper.find('[data-test="lead-workflow-form"]').exists()).toBe(
       false,
     );

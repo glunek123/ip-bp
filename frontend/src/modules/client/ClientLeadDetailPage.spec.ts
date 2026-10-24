@@ -172,7 +172,23 @@ describe('ClientLeadDetailPage', () => {
   });
 
   it('shows the safe no-evidence archive outcome to the client without operator-only data', async () => {
-    leadApi.getClientLead.mockResolvedValue(noEvidenceLead);
+    leadApi.getClientLead.mockResolvedValue({
+      ...noEvidenceLead,
+      history: [
+        {
+          kind: 'EVIDENCE_DECISION',
+          id: 'evidence-decision-1',
+          fromVersion: 3,
+          toVersion: 4,
+          result: 'NO_EVIDENCE',
+          reason: '现阶段不取证',
+          archiveType: 'NO_EVIDENCE',
+          archivedAt: '2026-09-22T04:00:00Z',
+          decidedByDisplayName: '运营甲',
+          occurredAt: '2026-09-22T04:00:00Z',
+        },
+      ],
+    });
     const wrapper = await mountPage();
     const record = wrapper.get('[data-test="client-evidence-decision-record"]');
     expect(record.text()).toContain('运营决定：不取证并归档');
@@ -180,6 +196,10 @@ describe('ClientLeadDetailPage', () => {
     expect(record.text()).toContain('现阶段不取证');
     expect(wrapper.text()).not.toContain('下一步：等待运营确认是否取证');
     expect(record.text()).not.toContain('decidedByUserId');
+    const history = wrapper.get('[data-test="client-withdrawal-history"]');
+    expect(history.text()).toContain('运营不取证归档');
+    expect(history.text()).toContain('不取证并归档');
+    expect(history.text()).not.toContain('客户确认撤回');
     expect(wrapper.find('[data-test="confirm-infringement"]').exists()).toBe(
       false,
     );
@@ -344,15 +364,37 @@ describe('ClientLeadDetailPage', () => {
     );
   });
 
-  it('explains the consequence and cancellation does not submit', async () => {
+  it('explains the consequence and submits once without a modal while blocking repeated clicks', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    let finishReview: () => void = () => undefined;
+    leadApi.reviewClientLead.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishReview = resolve;
+      }),
+    );
+    leadApi.getClientLead
+      .mockResolvedValueOnce(lead)
+      .mockResolvedValueOnce(processedLead);
     const wrapper = await mountPage();
     expect(wrapper.text()).toContain('线索待确认');
     expect(wrapper.text()).toContain('运营决定是否取证');
     expect(wrapper.text()).toContain('当前入口不能撤回');
     await wrapper.get('[data-test="confirm-infringement"]').trigger('click');
-    expect(confirm).toHaveBeenCalled();
-    expect(leadApi.reviewClientLead).not.toHaveBeenCalled();
+    await wrapper.get('[data-test="confirm-infringement"]').trigger('click');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(leadApi.reviewClientLead).toHaveBeenCalledExactlyOnceWith(
+      'lead-1',
+      2,
+      expect.any(String),
+    );
+    for (const action of ['confirm-infringement', 'confirm-no-infringement']) {
+      expect(
+        wrapper.get(`[data-test="${action}"]`).attributes('aria-disabled'),
+      ).toBe('true');
+    }
+    finishReview();
+    await flushPromises();
+    expect(wrapper.text()).toContain('已确认侵权，等待运营确认是否取证');
     confirm.mockRestore();
   });
 

@@ -82,6 +82,26 @@ function csv(rows: readonly string[][], columns = header): Uint8Array {
 }
 
 describe('lead CSV business adapter', () => {
+  it('requires an explicit unit price while accepting a known zero', () => {
+    const emptyPrice = [...base];
+    emptyPrice[15] = '';
+    const blankPricePreview = parseLeadCsvPreview(csv([emptyPrice]), context);
+    expect(blankPricePreview[0]).toMatchObject({
+      status: 'invalid',
+      errors: ['商品1单价不能为空；已知为零请填0或0.00'],
+    });
+
+    const knownZero = [...emptyPrice];
+    knownZero[15] = '0.00';
+    const knownZeroPreview = parseLeadCsvPreview(csv([knownZero]), context);
+    expect(knownZeroPreview[0]).toMatchObject({
+      status: 'valid',
+      input: {
+        products: [{ quantity: 0, unitPrice: '0.00', commentCount: 3 }],
+      },
+    });
+  });
+
   it('maps exact authorized identities, multiple products, Shanghai time and numeric defaults', () => {
     const columns = [
       ...header,
@@ -372,7 +392,13 @@ describe('lead CSV business adapter', () => {
         `商品${product}单价`,
         `商品${product}评论数`,
       );
-      row.push('', product === 100 ? '末商品' : '', '', '', '');
+      row.push(
+        '',
+        product === 100 ? '末商品' : '',
+        '',
+        product === 100 ? '0.00' : '',
+        '',
+      );
     }
     const parsed = parseLeadCsvPreview(csv([row], columns), context);
     expect(columns).toHaveLength(512);

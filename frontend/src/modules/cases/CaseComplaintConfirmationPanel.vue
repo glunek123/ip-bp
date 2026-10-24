@@ -740,7 +740,6 @@ onBeforeUnmount(() => {
       <p v-if="downloadError" class="submit-error" role="alert">
         {{ downloadError }}
       </p>
-      <p class="field-help">本阶段不提供邮寄或其他未实现的后续操作。</p>
     </template>
   </section>
 </template>

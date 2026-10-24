@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
+import { workflowChangedEvent } from '../../app/workflow-events';
 import { useAuthStore } from '../../stores/auth';
 import type {
   Lead,
@@ -684,15 +685,23 @@ describe('LeadListPage', () => {
     api.listLeads.mockResolvedValue(result);
     api.getLeadFormContext.mockResolvedValue(csvFormContext);
     api.importLeadCsvBatch.mockResolvedValue({ items: [{}, {}, {}] });
+    const onWorkflowChanged = vi.fn();
+    window.addEventListener(workflowChangedEvent, onWorkflowChanged);
+    cleanups.push(() =>
+      window.removeEventListener(workflowChangedEvent, onWorkflowChanged),
+    );
     const { wrapper } = await mountWithRoute('/leads');
+    expect(onWorkflowChanged).not.toHaveBeenCalled();
     await wrapper.get('[data-test="open-csv-import"]').trigger('click');
     await flushPromises();
+    expect(onWorkflowChanged).not.toHaveBeenCalled();
     await uploadAndSelectCsv(wrapper);
     await wrapper.get('[data-test="csv-confirm-request"]').trigger('click');
     await flushPromises();
     expect(wrapper.get('[data-test="csv-success"]').text()).toContain(
       '已导入 3 条线索',
     );
+    expect(onWorkflowChanged).toHaveBeenCalledOnce();
   });
 
   it('keeps an original CSV attempt when a known rejection arrives after auth changes', async () => {
@@ -729,6 +738,11 @@ describe('LeadListPage', () => {
     api.getLeadFormContext.mockResolvedValue(csvFormContext);
     const request = deferred<{ items: [] }>();
     api.importLeadCsvBatch.mockReturnValue(request.promise);
+    const onWorkflowChanged = vi.fn();
+    window.addEventListener(workflowChangedEvent, onWorkflowChanged);
+    cleanups.push(() =>
+      window.removeEventListener(workflowChangedEvent, onWorkflowChanged),
+    );
     const { wrapper, router } = await mountWithRoute('/leads');
     await wrapper.get('[data-test="open-csv-import"]').trigger('click');
     await flushPromises();
@@ -748,6 +762,7 @@ describe('LeadListPage', () => {
     expect(readPendingLeadCsvImports()?.[actorIdentity]).toEqual(original);
     expect(api.listLeads).toHaveBeenCalledTimes(listCallsAfterRouteChange);
     expect(wrapper.find('[data-test="csv-import-panel"]').exists()).toBe(false);
+    expect(onWorkflowChanged).not.toHaveBeenCalled();
   });
 
   it('does not accept parser output that settles after a route change', async () => {
@@ -1273,6 +1288,57 @@ describe('LeadListPage', () => {
     await wrapper.get('[data-test="close-drawer"]').trigger('click');
     await flushPromises();
     expect(wrapper.find('[data-test="lead-workflow-form"]').exists()).toBe(
+      false,
+    );
+  });
+  it('shows withdrawal only for archived leads with a current no-infringement decision', async () => {
+    const noEvidenceArchive = {
+      ...summary,
+      id: 'lead-no-evidence',
+      businessNo: 'LD-NO-EVIDENCE',
+      status: 'ARCHIVED' as const,
+      reviewDecision: {
+        result: 'INFRINGEMENT' as const,
+        reviewerDisplayName: '客户甲',
+        decidedAt: '2026-10-20T00:00:00Z',
+      },
+    };
+    const eligibleArchive = {
+      ...summary,
+      id: 'lead-no-infringement',
+      businessNo: 'LD-NO-INFRINGEMENT',
+      status: 'ARCHIVED' as const,
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT' as const,
+        reason: '确认未侵权',
+        reviewerDisplayName: '客户甲',
+        decidedAt: '2026-10-20T00:00:00Z',
+        archiveType: 'NO_INFRINGEMENT' as const,
+        archivedAt: '2026-10-20T00:00:00Z',
+      },
+    };
+    const unknownArchive = {
+      ...summary,
+      id: 'lead-unknown-archive',
+      businessNo: 'LD-UNKNOWN-ARCHIVE',
+      status: 'ARCHIVED' as const,
+      reviewDecision: undefined,
+    };
+    api.listLeads.mockResolvedValue({
+      ...result,
+      items: [noEvidenceArchive, eligibleArchive, unknownArchive],
+      total: 3,
+    });
+    const { wrapper } = await mountWithRoute('/leads?status=ARCHIVED');
+    const rows = wrapper.findAll('[data-test="lead-row"]');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]!.find('[data-test="lead-quick-action"]').exists()).toBe(
+      false,
+    );
+    expect(rows[1]!.find('[data-test="lead-quick-action"]').text()).toBe(
+      '申请撤回归档',
+    );
+    expect(rows[2]!.find('[data-test="lead-quick-action"]').exists()).toBe(
       false,
     );
   });

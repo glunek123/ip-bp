@@ -945,6 +945,42 @@ describe('notary API', () => {
     expect(http.getJson).toHaveBeenCalledWith('/notary-matters/matter%2F1', {});
   });
 
+  it.each([0, 3])(
+    'loads a zero-sales source product with %i comments without changing its snapshot',
+    async (commentCount) => {
+      const detail = {
+        ...matter,
+        selectedContentVersionIds: [],
+        sourceLead: { id: 'lead-1', businessNo: 'LD-001' },
+        selectedProducts: [
+          {
+            id: 'product-1',
+            position: 1,
+            url: null,
+            title: '零销量商品',
+            quantity: 0,
+            unitPrice: '1.50',
+            commentCount,
+            estimatedAmount: commentCount === 0 ? '0.00' : '4.50',
+          },
+        ],
+        selectedMaterials: [],
+      };
+      http.getJson.mockResolvedValue(detail);
+      await expect(getNotaryMatter('matter-1')).resolves.toEqual(detail);
+
+      for (const quantity of [-1, 0.5]) {
+        http.getJson.mockResolvedValue({
+          ...detail,
+          selectedProducts: [{ ...detail.selectedProducts[0], quantity }],
+        });
+        await expect(getNotaryMatter('matter-1')).rejects.toMatchObject({
+          code: 'INVALID_RESPONSE',
+        });
+      }
+    },
+  );
+
   it('loads the evidence capability and persisted evidence contract', async () => {
     const logistics = [
       {

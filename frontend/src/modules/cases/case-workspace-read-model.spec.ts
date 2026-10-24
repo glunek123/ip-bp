@@ -335,8 +335,8 @@ describe('case workspace read model', () => {
     lead.products = [
       {
         id: 'product-1',
-        position: 0,
-        title: null,
+        position: 1,
+        title: '合成商品',
         url: null,
         quantity: 0,
         unitPrice: '0.00',
@@ -350,6 +350,9 @@ describe('case workspace read model', () => {
       'ready',
     )[1]!;
     expect(section.message).toBeNull();
+    expect(
+      section.groups.find((group) => group.id === 'product:product-1')?.title,
+    ).toBe('商品 1');
     expect(JSON.stringify(section)).toContain('真实店铺');
     expect(JSON.stringify(section)).toContain('0.00 元');
     expect(section.help).toContain('来源线索只读');

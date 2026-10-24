@@ -328,12 +328,20 @@ export class FeeService {
           });
         await lockFinancialCases(tx, actor, [record.caseId]);
         if (input.status !== undefined) checkStatus(record.type, input.status);
+        if (input.status === '发起' && record.amount.isZero())
+          throw new BadRequestException({
+            code: 'ZERO_FEE_CANNOT_LAUNCH',
+            message: '零元费用不能标记为发起',
+          });
         const changed = await tx.feeRecord.updateMany({
           where: {
             id: feeId,
             departmentId: actor.departmentId,
             version: input.expectedVersion,
             deletedAt: null,
+            ...(input.status === '发起'
+              ? { amount: { gt: new Prisma.Decimal(0) } }
+              : {}),
           },
           data: {
             version: { increment: 1 },
@@ -604,7 +612,9 @@ export class FeeService {
             });
           const ready =
             command === 'LAUNCH'
-              ? rows.filter((row) => row.status === '未发起')
+              ? rows.filter(
+                  (row) => row.status === '未发起' && row.amount.gt(0),
+                )
               : rows;
           if (ready.length === 0)
             throw new BadRequestException({
@@ -620,7 +630,12 @@ export class FeeService {
               id: { in: processedIds },
               departmentId: actor.departmentId,
               deletedAt: null,
-              ...(command === 'LAUNCH' ? { status: '未发起' } : {}),
+              ...(command === 'LAUNCH'
+                ? {
+                    status: '未发起',
+                    amount: { gt: new Prisma.Decimal(0) },
+                  }
+                : {}),
             },
             data:
               command === 'LAUNCH'

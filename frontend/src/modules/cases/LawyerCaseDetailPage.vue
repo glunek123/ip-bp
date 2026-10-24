@@ -853,7 +853,7 @@ onBeforeUnmount(() => {
             {{ item.certificate.certificateDate }}
           </p>
           <p>实际匹配日期：{{ item.matchedOn ?? '未记录' }}</p>
-          <h3>承办法官</h3>
+          <h3>承办律师</h3>
           <ul>
             <li v-for="lawyer in item.lawyers" :key="lawyer.id">
               {{ lawyer.fullName }} · {{ lawyer.lawFirm ?? '律所未填写' }}

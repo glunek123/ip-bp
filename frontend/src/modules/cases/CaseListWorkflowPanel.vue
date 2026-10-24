@@ -1,5 +1,6 @@
 <script lang="ts">
 import * as api from '../../api/cases';
+import { notifyWorkflowChanged } from '../../app/workflow-events';
 import {
   parseCaseActionIntent,
   type CaseActionIntent,
@@ -719,7 +720,10 @@ async function submit(request: CaseListRequest, recovery = false) {
       globalThis.sessionStorage.getItem(storageKey) === JSON.stringify(stored)
     )
       globalThis.sessionStorage.removeItem(storageKey);
-    if (current()) pending.value = null;
+    if (current()) {
+      pending.value = null;
+      notifyWorkflowChanged();
+    }
     session.endSubmit('success');
     return result;
   } catch (reason) {

@@ -33,10 +33,10 @@ const session: AuthSession = {
 const overview = (): Extract<ReportsCenter, { status: 'VALUE' }> => ({
   metric: 'ARCHIVED_CASE_AVERAGE_CLAIM_AMOUNT',
   currency: 'CNY',
-  scope: 'DEPARTMENT',
+  scope: 'SELF',
   period: 'ALL_TIME',
   definitionVersion: 'RP001-2',
-  view: 'department',
+  view: 'mine',
   availableViews: ['mine', 'department'],
   exportViews: [],
   distributions: {
@@ -158,7 +158,7 @@ describe('real RP001 reports page', () => {
   it('exports the exact current view once with no confirmation and revokes its download URL', async () => {
     api.center.mockResolvedValue({
       ...overview(),
-      exportViews: ['department'],
+      exportViews: ['mine'],
     });
     const pending = deferred<ReturnType<typeof exportFile>>();
     exportHttp.postBlob.mockReturnValueOnce(pending.promise);
@@ -169,7 +169,7 @@ describe('real RP001 reports page', () => {
     await button.trigger('click');
     expect(exportHttp.postBlob).toHaveBeenCalledExactlyOnceWith(
       '/reports/export',
-      { view: 'department' },
+      { view: 'mine' },
       { signal: expect.any(AbortSignal), retryOnCsrfInvalid: false },
     );
     expect(button.attributes('disabled')).toBeDefined();
@@ -205,7 +205,7 @@ describe('real RP001 reports page', () => {
       );
       await wrapper.get('[data-test="export-reports"]').trigger('click');
       const signal = exportHttp.postBlob.mock.calls[0][2].signal as AbortSignal;
-      if (mode === 'view') await wrapper.get('select').setValue('mine');
+      if (mode === 'view') await wrapper.get('select').setValue('department');
       if (mode === 'refresh')
         await wrapper.get('[data-test="refresh-report"]').trigger('click');
       if (mode === 'actor')
@@ -238,7 +238,7 @@ describe('real RP001 reports page', () => {
     async (status) => {
       api.center.mockResolvedValue({
         ...overview(),
-        exportViews: ['department'],
+        exportViews: ['mine'],
       });
       exportHttp.postBlob.mockRejectedValueOnce(
         new ApiError('private-export-body', status, 'ACTION_FORBIDDEN'),
@@ -267,7 +267,7 @@ describe('real RP001 reports page', () => {
   it('ignores a late old export denial after a session changes', async () => {
     api.center.mockResolvedValue({
       ...overview(),
-      exportViews: ['department'],
+      exportViews: ['mine'],
     });
     const pending = deferred<ReturnType<typeof exportFile>>();
     exportHttp.postBlob.mockReturnValueOnce(pending.promise);
@@ -297,6 +297,10 @@ describe('real RP001 reports page', () => {
       wrapper.get('[data-test="export-reports"]').attributes('disabled'),
     ).toBeDefined();
   });
+  it('requests the operator’s own cases by default', async () => {
+    await page();
+    expect(api.center.mock.calls[0][0]).toBe('mine');
+  });
   it('uses the returned default view and only offers server-authorized view choices', async () => {
     api.center.mockResolvedValue({
       ...overview(),
@@ -305,7 +309,7 @@ describe('real RP001 reports page', () => {
       availableViews: ['mine'],
     });
     const { wrapper } = await page();
-    expect(api.center.mock.calls[0][0]).toBeUndefined();
+    expect(api.center.mock.calls[0][0]).toBe('mine');
     expect(
       wrapper
         .get('[data-test="report-view"]')
@@ -323,9 +327,9 @@ describe('real RP001 reports page', () => {
     api.center
       .mockReturnValueOnce(old.promise)
       .mockReturnValueOnce(latest.promise);
-    await wrapper.get('select').setValue('mine');
+    await wrapper.get('select').setValue('department');
     await flushPromises();
-    expect(api.center.mock.calls[1][0]).toBe('mine');
+    expect(api.center.mock.calls[1][0]).toBe('department');
     const signal = api.center.mock.calls[1][1].signal as AbortSignal;
     expect(wrapper.get('[data-test="report-header-count"]').text()).toBe(
       '统计未读取',
@@ -334,14 +338,14 @@ describe('real RP001 reports page', () => {
       wrapper.find('[data-test="report-cumulative-decimal"]').exists(),
     ).toBe(false);
     expect(wrapper.findAll('.distribution-list li')).toHaveLength(0);
-    await wrapper.get('select').setValue('department');
+    await wrapper.get('select').setValue('mine');
     await flushPromises();
     expect(signal.aborted).toBe(true);
-    expect(api.center.mock.calls[2][0]).toBe('department');
+    expect(api.center.mock.calls[2][0]).toBe('mine');
     old.resolve({
       ...overview(),
-      view: 'mine',
-      scope: 'SELF',
+      view: 'department',
+      scope: 'DEPARTMENT',
       amount: '999999.00',
     });
     await flushPromises();
@@ -351,10 +355,35 @@ describe('real RP001 reports page', () => {
     expect(wrapper.get('[data-test="report-decimal"]').text()).toBe('2000.00');
     expect(api.capability).toHaveBeenCalledTimes(1);
   });
+  it('resets an explicit department selection to mine when the actor changes', async () => {
+    const { wrapper, auth } = await page();
+    const old = deferred<ReportsCenter>();
+    api.center
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce(overview());
+    await wrapper.get('select').setValue('department');
+    await flushPromises();
+    const signal = api.center.mock.calls[1][1].signal as AbortSignal;
+    auth.session = {
+      ...auth.session!,
+      user: { ...auth.session!.user, id: 'new-actor' },
+    };
+    await flushPromises();
+    expect(signal.aborted).toBe(true);
+    expect(api.center.mock.calls[2][0]).toBe('mine');
+    old.resolve({
+      ...overview(),
+      view: 'department',
+      scope: 'DEPARTMENT',
+      amount: '999999.00',
+    });
+    await flushPromises();
+    expect(wrapper.get('[data-test="report-decimal"]').text()).toBe('2000.00');
+  });
   it('does not silently switch a forbidden explicit view and only enables a listed export view', async () => {
     api.center.mockResolvedValue({
       ...overview(),
-      exportViews: ['department'],
+      exportViews: ['mine'],
     });
     const { wrapper } = await page();
     expect(
@@ -363,7 +392,7 @@ describe('real RP001 reports page', () => {
     api.center.mockRejectedValueOnce(
       new ApiError('private', 403, 'ACTION_FORBIDDEN'),
     );
-    await wrapper.get('select').setValue('mine');
+    await wrapper.get('select').setValue('department');
     await flushPromises();
     expect(api.center).toHaveBeenCalledTimes(2);
     expect(wrapper.find('select').exists()).toBe(false);
@@ -375,7 +404,7 @@ describe('real RP001 reports page', () => {
   it('loads real capability then one snapshot and aligns all Demo fields without fake unapproved data', async () => {
     const { wrapper } = await page();
     expect(api.capability).toHaveBeenCalledTimes(1);
-    expect(api.center).toHaveBeenCalledExactlyOnceWith(undefined, {
+    expect(api.center).toHaveBeenCalledExactlyOnceWith('mine', {
       signal: expect.any(AbortSignal),
     });
     expect(wrapper.findAll('h2').map((item) => item.text())).toEqual([

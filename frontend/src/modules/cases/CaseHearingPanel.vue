@@ -271,7 +271,7 @@ async function send(
     else await correctCaseHearing(context.id, input as CorrectCaseHearingInput);
     if (!isCurrent(context)) return;
     unknownRequest.value = null;
-    success.value = '开庭命令已受理，正在读取案件当前状态。';
+    success.value = '开庭命令已受理。';
     notifyWorkflowChanged();
     emit('changed');
   } catch (reason) {

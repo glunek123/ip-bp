@@ -181,13 +181,6 @@ async function confirmWithdrawal(): Promise<void> {
 
 async function confirmInfringement(): Promise<void> {
   if (!lead.value || !lead.value.capabilities.review || reviewing.value) return;
-  if (
-    !globalThis.window.confirm(
-      '确认后线索将进入“线索待确认”，由运营决定是否取证；当前入口不能撤回。确定确认侵权吗？',
-    )
-  )
-    return;
-
   reviewKey ??= makeReviewKey();
   reviewError.value = '';
   reviewSuccess.value = '';
@@ -655,7 +648,9 @@ onBeforeUnmount(() => request?.abort());
                     ? '客户审核'
                     : item.kind === 'WITHDRAWAL_APPLICATION'
                       ? '撤回申请'
-                      : '客户确认撤回'
+                      : item.kind === 'EVIDENCE_DECISION'
+                        ? '运营不取证归档'
+                        : '客户确认撤回'
                 }}
                 · {{ formatTime(item.occurredAt) }}
                 <span v-if="item.reviewerDisplayName">
@@ -671,7 +666,9 @@ onBeforeUnmount(() => request?.abort());
                       ? '判定不侵权'
                       : item.result === 'INFRINGEMENT'
                         ? '确认侵权'
-                        : item.result
+                        : item.result === 'NO_EVIDENCE'
+                          ? '不取证并归档'
+                          : item.result
                   }}</span
                 >
                 <span v-if="item.reason"> · {{ item.reason }}</span>

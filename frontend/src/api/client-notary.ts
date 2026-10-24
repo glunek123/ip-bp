@@ -275,7 +275,7 @@ function isClientDetail(value: unknown): value is ClientNotaryMatterDetail {
         (product.url === null || typeof product.url === 'string') &&
         (product.title !== null || product.url !== null) &&
         Number.isInteger(product.quantity) &&
-        (product.quantity as number) >= 1 &&
+        (product.quantity as number) >= 0 &&
         typeof product.unitPrice === 'string' &&
         /^(0|[1-9]\d{0,15})\.\d{2}$/u.test(product.unitPrice) &&
         Number.isInteger(product.commentCount) &&

@@ -283,6 +283,182 @@ describe('case hearing panel', () => {
     expect(wrapper.emitted('changed')).toHaveLength(1);
   });
 
+  it('reports a saved schedule without claiming readback progress', async () => {
+    api.scheduleCaseHearing.mockResolvedValueOnce({
+      ...commandResult,
+      stage: 'WAITING_JUDGMENT',
+      hearingAt: '2026-10-05',
+    });
+    const wrapper = mountPanel();
+    await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-05');
+    await wrapper.get('[data-test="hearing-save"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('开庭命令已受理。');
+    expect(wrapper.text()).not.toContain('正在读取案件当前状态');
+    await wrapper.setProps({ item: { ...baseItem } });
+    expect(wrapper.text()).toContain('开庭命令已受理。');
+
+    await wrapper.setProps({
+      item: {
+        ...baseItem,
+        stage: 'WAITING_JUDGMENT',
+        hearing: {
+          ...baseItem.hearing,
+          currentArrangement: {
+            id: commandResult.arrangementId,
+            trialRoundId: '70000000-0000-4000-8000-000000000099',
+            hearingAt: '2026-10-05',
+            source: 'SCHEDULE',
+            recordedAt: commandResult.recordedAt,
+          },
+        },
+      },
+    });
+    expect(wrapper.text()).toContain('开庭命令已受理。');
+  });
+
+  it('reports a successful date clear without claiming readback progress', async () => {
+    const priorArrangement = {
+      id: '80000000-0000-4000-8000-000000000011',
+      trialRoundId: '70000000-0000-4000-8000-000000000099',
+      hearingAt: '2026-10-20',
+      source: 'SCHEDULE' as const,
+      recordedAt: '2026-10-01T00:00:00.000Z',
+    };
+    const item = {
+      ...baseItem,
+      hearing: { ...baseItem.hearing, currentArrangement: priorArrangement },
+    };
+    const wrapper = mountPanel(item);
+    await wrapper.get('[data-test="hearing-clear-date"]').trigger('click');
+    await wrapper.get('[data-test="hearing-save"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('开庭命令已受理。');
+    expect(wrapper.text()).not.toContain('正在读取案件当前状态');
+
+    await wrapper.setProps({
+      item: {
+        ...item,
+        hearing: {
+          ...item.hearing,
+          currentArrangement: {
+            ...priorArrangement,
+            id: commandResult.arrangementId,
+            hearingAt: null,
+          },
+        },
+      },
+    });
+    expect(wrapper.text()).toContain('开庭命令已受理。');
+  });
+
+  it('reports a successful correction without claiming readback progress', async () => {
+    const item: CaseDetail = {
+      ...baseItem,
+      stage: 'WAITING_JUDGMENT',
+      canScheduleHearing: false,
+      canCorrectHearing: true,
+      hearing: {
+        ...baseItem.hearing,
+        currentArrangement: {
+          id: '80000000-0000-4000-8000-000000000011',
+          trialRoundId: '70000000-0000-4000-8000-000000000099',
+          hearingAt: '2026-10-05',
+          source: 'SCHEDULE',
+          recordedAt: '2026-10-01T00:00:00.000Z',
+        },
+        currentAdvance: {
+          id: '80000000-0000-4000-8000-000000000012',
+          trialRoundId: '70000000-0000-4000-8000-000000000099',
+          arrangementId: '80000000-0000-4000-8000-000000000011',
+          dueAt: '2026-10-06T00:00:00.000Z',
+          executedAt: '2026-10-06T00:01:00.000Z',
+        },
+      },
+    };
+    const wrapper = mountPanel(item);
+    await wrapper
+      .get('[data-test="hearing-correction-reason"]')
+      .setValue('法院通知日期有误');
+    await wrapper.get('[data-test="hearing-correct"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('开庭命令已受理。');
+    expect(wrapper.text()).not.toContain('正在读取案件当前状态');
+
+    await wrapper.setProps({
+      item: {
+        ...item,
+        hearing: {
+          ...item.hearing,
+          currentArrangement: {
+            ...item.hearing.currentArrangement!,
+            id: commandResult.arrangementId,
+            source: 'CORRECTION',
+            hearingAt: null,
+          },
+        },
+      },
+    });
+    expect(wrapper.text()).toContain('开庭命令已受理。');
+  });
+
+  it('reports accepted injected commands without waiting for a readback receipt', async () => {
+    const submitCommand = vi.fn().mockResolvedValue(undefined);
+    const wrapper = mount(CaseHearingPanel, {
+      props: {
+        item: baseItem,
+        lawyer: false,
+        contextKey: 'INTERNAL:user-1:1',
+        submitCommand,
+      },
+    });
+    await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-05');
+    await wrapper.get('[data-test="hearing-save"]').trigger('click');
+    await flushPromises();
+    expect(submitCommand).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain('开庭命令已受理。');
+    expect(wrapper.text()).not.toContain('正在读取案件当前状态');
+    expect(wrapper.find('[data-test="hearing-retry"]').exists()).toBe(false);
+  });
+
+  it('reports retry acknowledgement when the current props already contain its arrangement', async () => {
+    api.scheduleCaseHearing
+      .mockRejectedValueOnce(new ApiError('timeout', 0, 'TIMEOUT'))
+      .mockResolvedValueOnce(commandResult);
+    const wrapper = mountPanel();
+    await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-05');
+    await wrapper.get('[data-test="hearing-save"]').trigger('click');
+    await flushPromises();
+    const originalRequest = structuredClone(
+      api.scheduleCaseHearing.mock.calls[0],
+    );
+
+    await wrapper.setProps({
+      item: {
+        ...baseItem,
+        hearing: {
+          ...baseItem.hearing,
+          currentArrangement: {
+            id: commandResult.arrangementId,
+            trialRoundId: '70000000-0000-4000-8000-000000000099',
+            hearingAt: '2026-10-05',
+            source: 'SCHEDULE',
+            recordedAt: commandResult.recordedAt,
+          },
+        },
+      },
+    });
+    expect(wrapper.find('[data-test="hearing-retry"]').exists()).toBe(true);
+    await wrapper.get('[data-test="hearing-retry"]').trigger('click');
+    await flushPromises();
+
+    expect(api.scheduleCaseHearing.mock.calls[1]).toEqual(originalRequest);
+    expect(wrapper.text()).toContain('开庭命令已受理。');
+    expect(wrapper.text()).not.toContain('正在读取案件当前状态');
+    expect(wrapper.find('[data-test="hearing-retry"]').exists()).toBe(false);
+  });
+
   it('blocks a date before formal acceptance and requires an explicit clear choice', async () => {
     const wrapper = mountPanel({
       ...baseItem,

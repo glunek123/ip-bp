@@ -89,6 +89,47 @@ describe('notary portal API', () => {
       code: 'INVALID_RESPONSE',
     });
   });
+  it('accepts a known zero sample fee and explicitly absent logistics values', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ...matter,
+            evidence: {
+              evidenceAt: '2026-10-24',
+              sampleFeeState: 'KNOWN',
+              sampleFeeAmount: '0.00',
+              logistics: [
+                {
+                  id: 'logistics-1',
+                  companyState: 'NONE',
+                  companyValue: null,
+                  trackingState: 'NONE',
+                  trackingValue: null,
+                },
+              ],
+            },
+          }),
+        ),
+      ),
+    );
+
+    await expect(getNotaryPortalMatter('matter-1')).resolves.toMatchObject({
+      evidence: {
+        sampleFeeState: 'KNOWN',
+        sampleFeeAmount: '0.00',
+        logistics: [
+          {
+            companyState: 'NONE',
+            companyValue: null,
+            trackingState: 'NONE',
+            trackingValue: null,
+          },
+        ],
+      },
+    });
+  });
   it('rejects a DTO containing customer or fee information', async () => {
     vi.stubGlobal(
       'fetch',

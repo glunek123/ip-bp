@@ -97,7 +97,7 @@ async function dissolve(): Promise<void> {
   }
 }
 watch(
-  () => [props.actorKey, props.contextKey, props.detail.id],
+  [() => props.actorKey, () => props.contextKey, () => props.detail.id],
   () => {
     invalidated.value = true;
     epoch += 1;

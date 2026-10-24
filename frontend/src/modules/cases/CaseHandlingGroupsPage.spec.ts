@@ -497,6 +497,60 @@ describe('handling groups production page adapter', () => {
     expect(api.create).not.toHaveBeenCalled();
     expect(api.dissolve).not.toHaveBeenCalled();
   });
+  it('keeps a dissolve receipt current while the parent publishes its pending request', async () => {
+    let resolveDissolve!: (value: {
+      id: string;
+      revision: number;
+      status: 'DISSOLVED';
+      recordedAt: string;
+    }) => void;
+    let isDissolved = false;
+    api.detail.mockImplementation(async (id: string) => ({
+      ...visibleDetail,
+      id,
+      status: isDissolved ? 'DISSOLVED' : 'ACTIVE',
+      revision: isDissolved ? 2 : 1,
+      canDissolve: !isDissolved,
+    }));
+    api.dissolve.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveDissolve = resolve;
+      }),
+    );
+
+    const { wrapper } = await mountGroups(`/case-handling-groups/${groupId}`);
+    await wrapper.get('[data-test="confirm-dissolve-group"]').setValue(true);
+    await wrapper.get('[data-test="dissolve-group"]').trigger('click');
+    await flushPromises();
+
+    const [calledGroupId, originalInput, options] = api.dissolve.mock.calls[0]!;
+    const signal = options.signal as AbortSignal;
+    expect(calledGroupId).toBe(groupId);
+    expect(originalInput).toMatchObject({
+      expectedRevision: 1,
+      idempotencyKey: expect.any(String),
+    });
+    expect(readPendingCaseHandlingGroups()?.[actorKey]).toEqual({
+      kind: 'DISSOLVE',
+      actorKey,
+      groupId,
+      input: originalInput,
+    });
+    expect(signal.aborted).toBe(false);
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+
+    isDissolved = true;
+    resolveDissolve({
+      ...result,
+      status: 'DISSOLVED',
+      revision: 2,
+    });
+    await flushPromises();
+
+    expect(readPendingCaseHandlingGroups()).toEqual({});
+    expect(wrapper.text()).toContain('办理组操作已确认，原案归属保持完整。');
+    expect(wrapper.text()).toContain('已解除');
+  });
   it('maps material and ledger pagination independently and keeps source summaries outside ledger totals', async () => {
     resources.materials
       .mockResolvedValueOnce(resourceMaterials())

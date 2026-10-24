@@ -27,7 +27,12 @@ import {
   isPendingLaunch,
 } from './financial-pending';
 const props = withDefaults(
-  defineProps<{ caseId: string; canUpdate?: boolean; canLaunch?: boolean }>(),
+  defineProps<{
+    caseId: string;
+    closureVersionId?: string | null;
+    canUpdate?: boolean;
+    canLaunch?: boolean;
+  }>(),
   { canUpdate: false, canLaunch: false },
 );
 const auth = useAuthStore();
@@ -152,7 +157,21 @@ watch(
   { flush: 'sync' },
 );
 watch(side, syncSide);
-async function load(): Promise<void> {
+async function load(options: { preserveDraft?: boolean } = {}): Promise<void> {
+  const preserved = options.preserveDraft
+    ? {
+        formula: formula.value,
+        mode: mode.value,
+        baseFee: baseFee.value,
+        split: split.value,
+        draftAmount: draftAmount.value,
+        manualAmount: manual.value,
+        launchAmount: launchAmount.value,
+        launchDate: launchDate.value,
+        launchNote: launchNote.value,
+        lawyerId: lawyerId.value,
+      }
+    : null;
   const current = ++revision;
   request?.abort();
   request = new AbortController();
@@ -164,19 +183,35 @@ async function load(): Promise<void> {
     });
     if (current !== revision) return;
     detail.value = next;
-    hydrating = true;
-    formula.value =
-      pendingTerms?.customerFormula ?? next.terms?.customerFormula ?? '';
-    mode.value =
-      pendingTerms?.lawyerMode ?? next.terms?.lawyerMode ?? 'FULL_RISK';
-    baseFee.value =
-      pendingTerms?.lawyerBaseFee ?? next.terms?.lawyerBaseFee ?? '0';
-    split.value =
-      pendingTerms?.lawyerSplitPercent ??
-      next.terms?.lawyerSplitPercent ??
-      '30';
-    hydrating = false;
-    syncSide();
+    if (preserved) {
+      formula.value = preserved.formula;
+      mode.value = preserved.mode;
+      baseFee.value = preserved.baseFee;
+      split.value = preserved.split;
+      draftAmount.value = pendingTerms
+        ? preserved.draftAmount
+        : preserved.manualAmount
+          ? preserved.draftAmount
+          : (preview.value.amount ?? '');
+      launchAmount.value = preserved.launchAmount;
+      launchDate.value = preserved.launchDate;
+      launchNote.value = preserved.launchNote;
+      lawyerId.value = preserved.lawyerId;
+    } else {
+      hydrating = true;
+      formula.value =
+        pendingTerms?.customerFormula ?? next.terms?.customerFormula ?? '';
+      mode.value =
+        pendingTerms?.lawyerMode ?? next.terms?.lawyerMode ?? 'FULL_RISK';
+      baseFee.value =
+        pendingTerms?.lawyerBaseFee ?? next.terms?.lawyerBaseFee ?? '0';
+      split.value =
+        pendingTerms?.lawyerSplitPercent ??
+        next.terms?.lawyerSplitPercent ??
+        '30';
+      hydrating = false;
+      syncSide();
+    }
     state.value = 'ready';
   } catch (cause) {
     if (current === revision) {
@@ -186,8 +221,15 @@ async function load(): Promise<void> {
   }
 }
 watch(
-  identity,
-  async () => {
+  [identity, () => props.closureVersionId],
+  async ([currentIdentity], [previousIdentity]) => {
+    if (
+      previousIdentity !== undefined &&
+      currentIdentity === previousIdentity
+    ) {
+      await load({ preserveDraft: true });
+      return;
+    }
     pendingTerms = null;
     pendingLaunch = null;
     unknownTerms.value = false;
@@ -321,7 +363,7 @@ async function launch(): Promise<void> {
     <h2>案件结算</h2>
     <p v-if="state === 'loading'">正在读取结算条件…</p>
     <p v-else-if="state === 'failed'" role="alert">
-      {{ error }}<ElButton @click="load">重试</ElButton>
+      {{ error }}<ElButton @click="load()">重试</ElButton>
     </p>
     <template v-else-if="detail">
       <p>

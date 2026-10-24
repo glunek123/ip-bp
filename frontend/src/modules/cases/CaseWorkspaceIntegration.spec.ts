@@ -537,6 +537,40 @@ async function tab(wrapper: VueWrapper, key: string) {
 }
 
 describe('UXQ-01-C list action intents', () => {
+  it('returns to the same case filters and sorting without detail-only query keys', async () => {
+    const listQuery = {
+      view: 'department',
+      stage: 'WAITING_JUDGMENT',
+      page: '3',
+      q: 'CA-1',
+      customerName: '客户甲',
+      rightsHolderName: '权利人甲',
+      courtCaseNo: '合成案号',
+      shopName: '合成店铺',
+      defendantName: '合成被告',
+      courtName: '合成法院',
+      lawyerName: '合成律师',
+      caseType: 'CIVIL',
+      sortBy: 'businessNo',
+      sortDirection: 'asc',
+    };
+    const query = new URLSearchParams({
+      ...listQuery,
+      tab: 'files',
+      unrelated: 'drop',
+    });
+    const { wrapper } = await render(
+      structuredClone(baseItem),
+      `/cases/case-1?${query}`,
+    );
+    const href = wrapper.get('a[href^="/cases?"]').attributes('href');
+    if (href === undefined) {
+      throw new Error('Expected case list return link to have an href');
+    }
+    const back = new URL(href, 'http://localhost');
+    expect(Object.fromEntries(back.searchParams)).toEqual(listQuery);
+  });
+
   it('waits for a fresh case version, opens one existing form and consumes only the intent', async () => {
     const current = { ...structuredClone(baseItem), canRegisterJudgment: true };
     const { wrapper, router } = await render(current);

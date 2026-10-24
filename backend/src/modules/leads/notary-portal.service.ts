@@ -266,7 +266,7 @@ export class NotaryPortalService {
                 .slice(0, 10),
               sampleFeeState: matter.evidence.sampleFeeState,
               sampleFeeAmount:
-                matter.evidence.sampleFeeAmount?.toString() ?? null,
+                matter.evidence.sampleFeeAmount?.toFixed(2) ?? null,
               logistics:
                 matter.evidenceCorrections[0]?.logistics ??
                 matter.evidence.logistics,

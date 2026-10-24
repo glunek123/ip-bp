@@ -47,7 +47,7 @@ const textKeys = [
   'rightsHolderName',
   'courtCaseNo',
 ] as const;
-const caseListKeys = [
+export const caseListQueryKeys = [
   ...textKeys,
   'caseType',
   'sortBy',
@@ -70,7 +70,7 @@ export function parseCaseListQuery(
   query: CaseListRouteQuery,
 ): ParsedCaseListQuery {
   const parsed: CaseListQuery = {};
-  for (const key of caseListKeys) {
+  for (const key of caseListQueryKeys) {
     const value = query[key];
     if (value === undefined) continue;
     if (!scalar(value))
@@ -113,7 +113,7 @@ export function serializeCaseListQuery(
 
 export function caseListQueryKey(query: CaseListQuery): string {
   const serialized = serializeCaseListQuery(query);
-  return caseListKeys
+  return caseListQueryKeys
     .filter((key) => serialized[key] !== undefined)
     .map((key) => `${key}=${encodeURIComponent(serialized[key]!)}`)
     .join('&');

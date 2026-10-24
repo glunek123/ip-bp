@@ -10,6 +10,7 @@ import type {
   CaseSectionRecordUploadedMaterial,
 } from '../../api/materials';
 import { ApiError } from '../../api/http';
+import { workflowChangedEvent } from '../../app/workflow-events';
 import { useAuthStore } from '../../stores/auth';
 import CaseListPage from './CaseListPage.vue';
 import {
@@ -35,6 +36,7 @@ const api = vi.hoisted(() => ({
   correctCaseHearingRecord: vi.fn(),
   correctCaseJudgmentRecord: vi.fn(),
   correctCaseClosureRecord: vi.fn(),
+  finishCaseExecution: vi.fn(),
   saveSecondInstance: vi.fn(),
   submitComplaint: vi.fn(),
   matchCase: vi.fn(),
@@ -461,6 +463,31 @@ async function render(recordPanel?: Component) {
   await flushPromises();
   return { wrapper, router, auth };
 }
+function executionDetail(): CaseDetail {
+  return {
+    ...baseItem,
+    stage: 'EXECUTING',
+    version: 10,
+    canFinishExecution: true,
+    executionFiling: {
+      id: uid(31),
+      mailingId: null,
+      submittedAt: '2026-10-01',
+      recordedAt: '2026-10-01T00:00:00Z',
+      files: [],
+    },
+  };
+}
+async function openFinishPanel(wrapper: ReturnType<typeof mount>) {
+  await wrapper.get('[data-case-action="finish"]').trigger('click');
+  await flushPromises();
+  const panel = wrapper.get('[data-test="execution-finish-panel"]');
+  await panel.get('[data-test="execution-finish-date"]').setValue('2026-10-23');
+  await panel.get('[data-test="execution-finish-reason"]').setValue('执行完毕');
+  await panel.get('[data-test="execution-finish-note"]').setValue('依据已核实');
+  await panel.get('[data-test="execution-finish-review"]').trigger('click');
+  return panel;
+}
 async function choose(
   wrapper: ReturnType<typeof mount>,
   branch: 'APPEAL' | 'EXECUTION' = 'APPEAL',
@@ -497,6 +524,105 @@ afterEach(() => {
 });
 
 describe('case list workflow session', () => {
+  it('broadcasts one workflow update before successful finish closes its adapter session', async () => {
+    const detail = executionDetail();
+    api.getCase.mockResolvedValue(detail);
+    api.listCases.mockResolvedValue(
+      list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
+    );
+    api.finishCaseExecution.mockResolvedValue({
+      id: detail.id,
+      finishId: uid(32),
+      filingId: detail.executionFiling!.id,
+      stage: 'WAITING_ARCHIVE',
+      version: 11,
+      finishedAt: '2026-10-23',
+      recordedAt: '2026-10-24T00:00:00Z',
+    });
+    const changed = vi.fn();
+    window.addEventListener(workflowChangedEvent, changed);
+    const { wrapper } = await render();
+    try {
+      const panel = await openFinishPanel(wrapper);
+      await panel.get('[data-test="execution-finish-submit"]').trigger('click');
+      await flushPromises();
+      expect(api.finishCaseExecution).toHaveBeenCalledTimes(1);
+      expect(changed).toHaveBeenCalledTimes(1);
+      expect(wrapper.find('[data-test="case-list-workflow"]').exists()).toBe(
+        false,
+      );
+    } finally {
+      window.removeEventListener(workflowChangedEvent, changed);
+      wrapper.unmount();
+    }
+  });
+
+  it('does not broadcast when the finish transport fails', async () => {
+    const detail = executionDetail();
+    api.getCase.mockResolvedValue(detail);
+    api.listCases.mockResolvedValue(
+      list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
+    );
+    api.finishCaseExecution.mockRejectedValue(
+      new ApiError('validation failed', 400, 'VALIDATION_ERROR'),
+    );
+    const changed = vi.fn();
+    window.addEventListener(workflowChangedEvent, changed);
+    const { wrapper } = await render();
+    try {
+      const panel = await openFinishPanel(wrapper);
+      await panel.get('[data-test="execution-finish-submit"]').trigger('click');
+      await flushPromises();
+      expect(api.finishCaseExecution).toHaveBeenCalledTimes(1);
+      expect(changed).not.toHaveBeenCalled();
+      expect(wrapper.find('[data-test="case-list-workflow"]').exists()).toBe(
+        true,
+      );
+    } finally {
+      window.removeEventListener(workflowChangedEvent, changed);
+      wrapper.unmount();
+    }
+  });
+
+  it('does not broadcast a late finish after its identity session is invalidated', async () => {
+    let resolve!: (value: unknown) => void;
+    const detail = executionDetail();
+    api.getCase.mockResolvedValue(detail);
+    api.listCases.mockResolvedValue(
+      list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
+    );
+    api.finishCaseExecution.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const changed = vi.fn();
+    window.addEventListener(workflowChangedEvent, changed);
+    const { wrapper, auth } = await render();
+    try {
+      const panel = await openFinishPanel(wrapper);
+      await panel.get('[data-test="execution-finish-submit"]').trigger('click');
+      await flushPromises();
+      expect(api.finishCaseExecution).toHaveBeenCalledTimes(1);
+      auth.session = { ...auth.session!, authorizationRevision: 2 };
+      await flushPromises();
+      resolve({
+        id: detail.id,
+        finishId: uid(32),
+        filingId: detail.executionFiling!.id,
+        stage: 'WAITING_ARCHIVE',
+        version: 11,
+        finishedAt: '2026-10-23',
+        recordedAt: '2026-10-24T00:00:00Z',
+      });
+      await flushPromises();
+      expect(changed).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(workflowChangedEvent, changed);
+      wrapper.unmount();
+    }
+  });
+
   it('reuses previously uploaded complaint materials without uploading or advancing before explicit submit', async () => {
     const detail = {
       ...baseItem,

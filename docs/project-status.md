@@ -1,4 +1,198 @@
+## 2026-10-24 UI改造前归档与实施边界
+
+用户授权先将当前成果提交、正常合并和推送留档，再修MAN-UI-001至009。归档候选为90708add加原42份tracked修改和fee-launch.spec.ts；产品源码尚未做UI改造。14个直接前端文件426项、2个后端文件12项及check:fast通过；只读审查ACCEPTED，无产品阻塞，修正两处过期完成态文字。已知UI缺陷、原生确认工具问题和未完成UAT均保留，不把归档称验收通过。
+
+旧快照124项漂移已核对：90项涉及此前已提交变更，34项仅为本批待归档变化，无无法解释项；核对记录pre-ui-archive-context-audit.json。本次刷新仅记录已经检查的实际源码，不回退或覆盖任何差异。未启动服务、改账号或迁移数据库。归档远端成功后才开始UI源码修改。
+
+UI实施保持业务字段、接口、权限、金额未知语义、日期条件和安全确认；先补齐按需组件样式，再统一宽布局、分栏和操作层级，清理技术文字，减少日常编辑／新建跳转。沿用原工作树与合成数据，修后真实页面复查；不以组件测试替代页面证据。
+
+## 2026-10-24 真实页面UI审查完成（未修改界面）
+
+按用户要求，通过真实浏览器正常登录W，逐页点击、展开、滚动及打开／取消未改动表单，查看25处内部页面、页签与弹层，另查看登录页。主要视口1440×900，另保留初始窄屏客户截图。发现MAN-UI-001至009，详见[真实页面UI审查](spec/v0.1/VALIDATION.md#2026-10-24-真实页面ui审查)。优先问题是缺少Element Plus组件样式：新增费用弹窗透明、static定位且铺到屏幕左上方；运行样式表中el-dialog规则0。其次为英文状态／技术说明外露、表单宽度不一致、按钮与字段层次混乱、筛选和说明过密。案件列表既有抽屉办理应保留，不能把所有页面跳转都机械改为弹窗。
+
+复用已核验的manual-resume-b-20261024构建；相对build-current的sourceDrift只有此前专项新增取消反例的SettlementPages.spec.ts，没有被审产品源码漂移。没有产品修改、重新构建、业务表单提交、迁移、上传或造数；此前功能验收结论不变。本批只记录UI问题，未把观察界面计为业务流程通过。
+
+已正常登出、恢复浏览器临时视口，W停用rev33、原binding active v17、temporary assignment和role均inactive v12，Grant0、未撤销会话0；其他批准账号维持停用。3101／5174／5175无监听，服务及账号helper已退出。部门案件阶段、版本与开庭日期和检查前一致。最终回执ui-review-final-receipt-20261024.json。未提交或推送；原42份tracked修改和1份untracked文件保留。旧费用确认事件归因仍阻塞，本次没有重删或处理原生确认框。
+
+## 2026-10-24 费用确认框专项排查（未恢复业务验收）
+
+只读核对发现：实际源码及此前运行构建均在原生confirm返回false时立即退出，随后才创建pending请求并调用费用删除接口；该次已显示原生确认文案，不能用未知请求重试分支解释。新增单行／批量取消组件反例共2项，与原相邻移除测试合计4项通过；取消不调用API、不写待重试请求、再次点击仍确认。仅增加测试，未改产品逻辑；不替代真实页面取消验收。
+
+无业务依赖的127.0.0.1:5175隔离诊断页复现确认框出现后读取事件／页面状态均在Emulation.setFocusEmulationEnabled超时。旧业务页保留事件返回truncated=true且无确认事件，无法追溯旧框关闭来源。工具阻塞已复现，但“工具自动确认旧删除”尚无直接证据。用户在隔离诊断期间说“我点击了确认”，与旧事件“没有点击”的回执分开保留；已请求澄清所指，未据此改写旧结论。原费用确认项继续阻塞；不重删、不恢复费用、不修改确认逻辑。
+
+隔离诊断标签与5175服务已关闭；业务3101/5174未启动，账号未操作。详细证据见VALIDATION的“费用确认框专项排查”及原证据目录中的confirm-diagnostic-investigation-20261024.json、confirm-old-tab-buffered-events-20261024.json、confirm-cancel-component-test-20261024.log。后续先核清用户回执指向及可用的确认框处理途径，再继续依赖确认框的验收。
+
+## 2026-10-24 最终收尾检查点（Resume B）
+
+本批真实页面工作已收尾，整体UAT仍未完成。最终回执`resume-b-final-receipt-20261024.json`记录时间2026-10-24T13:53:34.700Z，HEAD `90708adda34247f8299b713e8b1f601f0a28cc6a`，37份源码输入hash与构建一致、sourceDrift为空；42个tracked修改和1个untracked `backend/src/modules/settlements/fee-launch.spec.ts`均保留，未提交或推送。没有本轮产品代码改动。
+
+最终账号状态：W disabled rev31、原binding active v15、temporary assignment inactive v10、Grant0、session0；R44、L8、N6、C12均disabled，C/N/L外部binding仍inactive。浏览器已登出（`resume-b-browser-logged-out.txt`）。3101/5174 application listeners为空；backend helper PID41060与frontend PID20756均已不存在。服务先返回`SERVICES_CLOSED`，再以Ctrl-C结束残留事件循环；authhelper也已退出。只读关闭快照见`resume-b-close-snapshot-20261024.json/.log`及`w-b-flow-close.json`。
+
+本批新增并核对的窄范围UI结果见[当前结果索引](spec/v0.1/VALIDATION.md#本轮当前结果索引2026-10-24)和各RUN：证物进展多选/并集/清除及单条所选CSV；健康页正常状态与重新检查；既有商标证明v3/v4当前和历史版本；既有协议附件v3/v4当前和历史版本；CA21-0001两条执行补交历史E1/E2分别下载。客户及律师账单链接、费用行案件链接、费用类型筛选等也已按对应RUN完成。本批增加商标证明和协议附件上传各1次，server材料17/20；权利资产2/2、协议1/1、CSV本地选择5次。费用一条2.34元记录已软删除但历史保留，当前活动3条、历史总4条；预算不返还。确认框处理来源不明的费用移除交互继续保留为阻塞；其他native-confirm动作未因本批完成而外推通过。
+
+用户回执补充：用户明确表示没有点击约21:21的2.34元费用移除确认框。工具调用记录也没有执行accept或dismiss；因此排除“用户手动确认”的解释，确认完成的来源及原因仍未查明。该项继续阻塞，不记取消通过或认定产品缺陷。本次只补充证据，不恢复账号、服务或页面操作；证据`resume-b-fee-confirm-human-reply.json`。
+
+当前数据库15439/dev_cor_test，成功账本175/176。主案6207仍WAIT_HEARING v9、开庭日2026-10-24；03d案件仍WAIT_HEARING、开庭日2026-10-24。判决、二审及真实日期推进尚未测试。
+
+下一次继续时先只读核验HEAD、dirty tree、数据库和账号/绑定版本、Node/pnpm、服务与材料/到期开庭候选。`resume-b-w-flow.mjs`按旧baseline29编写，不能直接运行；需核对live W rev31、role、assignment10及原binding15。现有`services-only.mjs`的三小时lookahead可能在10月25日前提前命中这两条潜在开庭候选，但这不表示日期前置已满足。真实日期到10月25日后，先只读核验恰为主案6207和03d两案及各自实际日期，再最小调整guard，使其只接纳这两条合法候选；其他draft/material候选必须仍为0。不得盲目绕过guard。按正常应用流程推进，不改系统时间、不直接修改数据库stage。完整UAT与跨企业/跨公证处隔离仍未完成。
+
+## 历史暂停检查点（2026-10-24，CA-006页面复测完成）
+
+本批按用户要求暂停。最终暂停回执`pause-final-receipt-20261024.json`生成于2026-10-24T08:04:45.8749818Z：HEAD为`90708adda34247f8299b713e8b1f601f0a28cc6a`，sourceMatchesBuild=true、sourceDrift=[]；42个tracked文件修改、1个untracked文件`backend/src/modules/settlements/fee-launch.spec.ts`；applicationListeners=[]，所有测试账号已停用，临时Grant和未撤销会话均为0；代码未提交、未推送。Git状态另见`pause-git-status-20261024.txt`。
+
+最终候选revision`manual-resume-20261024-hearing-notice`，manifest`build-hearing-notice-20261024.json`。frontend build exit0，index SHA256`f2ea46f98a75be38d98375e826d0658f2b43ffe405be7b96db5c3743ff39d916`、JS`gDCEx-dt`、CSS`CQOm-QR-`；37份源码/Spec输入hash。backend fee/notary输出沿fee-zero候选未变并已核对。浏览器runtime和实际script一致，见`browser-observed-hearing-notice-build.json`。MAN-CA-006最小文案“开庭命令已受理。”的定向Spec 25项、类型、Lint、格式检查通过；L原`CA20261023-0001`路径上保存、清除、恢复和刷新均已实测通过。旧失败保留；此页面证据不外推W的注入UI路径。
+
+本批其余已验项目和边界见[当前结果索引](spec/v0.1/VALIDATION.md#本轮当前结果索引2026-10-24)。受理通知书补传仍在`CA20261023-0001`，材料15/20，CSV本地文件选择5次。用户协助保存的通知PDF为650B且SHA与原件一致。费用现4条：原2笔人工2.34/1.11、原自动公证1.23，以及新增自动样品0.00；1.23已发起，0.00仍未发起。其余此前预算和测试数据沿VALIDATION中最近RUN记录。
+
+暂停现场核验：W账号disabled rev29，C disabled rev12，N disabled rev6，L disabled rev8，R保持disabled rev44；原W/R bindings active 13/5，外部C/N/L bindings inactive 12/6/8，临时Grant总数0，会话总数0。数据库15439保留175/176成功账本，主案仍WAIT_HEARING v9／hearing24。服务16520关闭，3101/5174无监听，后台helper正常退出；Edge已logout。只读快照为`pause-snapshot-20261024.json/.log`，账号回执为`w-flow-close.json`、`cn-flow-close.json`、`lawyer-flow-close.json`，浏览器状态为`pause-20261024-browser-logged-out.txt`。
+
+下一次继续前重新核实HEAD、差异、绑定数据库、Node/pnpm runtime、服务状态和到期开庭候选；旧resume helper中的账号版本常量已过期，不能直接复用。不得在暂停状态下启动服务、恢复账号或推进业务数据。主案判决、二审和跨日推进仍未测试。
+
+## 历史检查点（2026-10-24零元费用稳定候选与页面复测）
+
+稳定候选 revision manual-resume-20261024-fee-zero，HEAD 90708add，40份tracked修改+1份untracked新fee-launch.spec；35份源码/Spec输入hash。新测试无用import导致首轮checkfast lint失败，已移除且无业务断言变化；对应文件lint/Prettier通过，既有5项断言测试结果可复用。context/spec exit 0，backend build:prepared和frontend bundle exit 0；全checkfast重跑结果尚未确认。root review完成。manifest build-fee-zero-20261024.json；frontend index SHA256 2793df1f88a9a00d438e683938ad336fce21b02d42875b0efbe96555d94f62b7，JS BC6UOx6_、CSS CQOm-QR-；backend fee output SHA256 8be956f5ad4d0752bec02b0c8f491eae530a4c252d13ebb05b0acce4f7abd185。浏览器runtime和实际script已核。服务27429 PID35756／FE39492于2026-10-24T07:33:04.267Z启动，后台候选0；绑定15439未变，W28/C11/N5/L7 active、R44 disabled。
+
+零元全选后批量按钮禁用并显示规则提示；单行发起Option禁用；刷新后零元行仍未发起。混选零元+原自动公证1.23后按钮enabled，点击弹出原生confirm。插件点击超时，getJsDialog确认原生confirm存在；root已请用户确认“零元跳过”并点击确定。混选提交尚未完成，不能记录为通过。用户保存公证导出CSV仍待回执。以上为窄范围验收，不表示所有零元发起路径均完成。
+
+## 历史检查点（2026-10-24零元发起实现与公证CSV导出，页面复测前）
+
+MAN-FE-001规则已获批，定向实现和测试完成：FeeService批量LAUNCH仅发起金额>0；单行update拒绝0元；发起CAS要求金额>0。费用中心全0选择集禁用并提示、单行发起Option禁用、混选说明会跳过零元。原body/key语义保持。backend fee-launch.spec 5/5，SettlementPages 21/21，4个直接文件格式检查通过，root diff review无阻塞。集成门禁/checkfast和新build仍在运行，尚无真实页面复测结果；73367旧服务已停止。MAN-FE-001不倒推为规则澄清前的历史缺陷。
+
+公证处导出真实预览全部4条后确认下载。待保存CSV为1458B，SHA256 EFB20D5B894C78B08FD6FF599BFE299EFA21A24966F3FD3F8B04C6FCA9E3AE1C；20列与Demo一致。NT22-002样品0.00、其余三费空；NT23-001公证费1.23、其他费空；NT22-001和NT24-001未知金额为空，且无证书/出证日期。浏览器文件仍为crdownload，已请求用户保存；当前只确认预览和文件内容，不称正式保存通过。多行物流未测。
+
+## 历史检查点（2026-10-24零元发起规则与NT001不侵权分支）
+
+用户已正式确认SD-26零元费用发起行为：费用记录保留，单笔零元不得发起或经单行状态入口标记已发起；批量发起跳过零元项；选中项全为零元时阻止并提示。MAN-FE-001从待澄清进入实施阶段，不倒推为既有bug。源码Agent正在修FeeService批量与单行状态入口、FeeCenterPanel和直接spec；代码、测试、门禁及真实页面复测未完成，规则已写入fees Spec和Decision。先前零元行按钮enabled的RUN保留为规则澄清前历史。
+
+复用既有线索C（bfee8dd1…／LD20261024-003），W单项推送、C确认侵权后，W移交现有RP001，取证样品PENDING、公司/单号NONE。生成新公证事项1eb6b48b-be76-432a-9cd6-dab02931763a／NT20261024-001；W上传既有PNG #14并开箱，C提交NO_INFRINGEMENT后页面显示归档、审核人RP001合成客户、时间2026-10-24 15:20:36及合成原因，普通页面无撤回表单。新证据已核：C端硬刷新后结论/原因/审核人/时间保留，审核队列0条；N已出证队列不含NT22-001/NT24-001无证归档，N直访同一公证处的无证NT22-001被拒。lead-C不侵权分支后验现已通过；不扩展为跨公证处隔离证明。此分支未增加线索、账号、人工/已知费用或退款source。线索4/6、案件2/3、公证2/3、server材料14/20、CSV本地选择5次；费用现4行（原3条：人工2.34/1.11及自动公证1.23，另加自动样品0.00一条），没有新增known费用。旧MAN-FE-001零元选择观察仍只作为规则澄清前事实，原流程预算保持。
+
+## 历史检查点（2026-10-24 NT002审核出证与零元费用核对）
+
+NT002公证闭环已完成到证书归档；原MAN-NT-003读取失败保留，金额线修复候选上的读取通过另列。C对NT002审核时未选结论被拒；选“不侵权”但原因空白被native required拦截；改“确认侵权”提交成功，硬刷新后审核人C、时间15:00:33和下一步运营决定均保留。不侵权结论成功归档未测试。W决定是否出证时未选direction被拒，选择出证后状态WAIT_CERT。N证书表单沿用样品KNOWN 0.00且不可改，其他三项费用保留PENDING；填写证书TEST-MAN1024-零样品001、日期24并上传既有纯合成650B PDF，未勾选提交disabled、勾选后启用，正常确认后出证归档。队列待出证为空，已出证2项（主案与本案）；详情证书/日期/文件正确，硬刷新一致。新案CA20261024-0003，case ID 911dd00d-389a-40d5-ac97-d94eb4b0ba3e，PENDING_MATCH；来源NT002、原负责人R及同客户/权利主体信息保留，W mine仍8符合R负责范围，未判为缺陷。
+
+W费用中心现4行：新增的唯一自动样品费为支出0.00、未发起、日期24、NT002店铺并关联CA20261024-0003；总支出3.57、收入1.11、待付0、已发起0。其他三项待确认费用仍为PENDING，没有按0造费用行。额外自动费授权1/1已用；原费用额度3/3由2笔人工费用2.34和1.11、1笔自动公证费1.23组成；本轮另新增1笔自动样品费0.00，四行中没有其他新增已知费用。仅选择0元费用时批量发起按钮enabled，随后取消选择，未提交。零元是否允许本地标记发起的规则待业务答复，记MAN-FE-001待澄清，不据按钮可用判产品bug或通过。
+
+当前业务预算：案件2/3（新增CA20261024-0003）；server材料上传12/20；本地CSV选择5次；线索4/6；新公证事项1/3。N已退出，W重新登录。账号W28/C11/N5/L7 active、R44 disabled；服务73367 PID39376／FE31208，3101/5174监听，后台候选0。NT002新案财务页显示样品KNOWN 0.00、其他公证/调查/披露费用PENDING；诉状/判决/结案未登记，结算基数/金额/余额待定，已发起0.00且无发起记录，零与未知区分正确。费用中心选择唯一零元行时发起按钮enabled，取消选择、未提交；MAN-FE-001待业务澄清。随后复用既有NT001完成sample PENDING取证、W运营开箱与审核、不出证后KEEP归档；原费用3条加额外零元自动费用1条保持不变，无新增known费用或退款source。归档详情保留原因、W操作人、KEEP方式、退款/运费不适用、样品待定、无证书和无关联案件。更正原因textarea仍enabled，但更正提交入口不存在；仅记界面建议。当前复用既有线索C计划走不侵权公证分支，尚未创建或操作。详见最新VALIDATION RUN与ignored coverage.csv。
+
+## 历史检查点（2026-10-24公证金额线修复与开箱复测）
+
+候选 manual-resume-20261024-notary-money-wire，36份tracked修改未提交／未推送。MAN-NT-003后端以Decimal.toFixed(2)序列化金额；真实Prisma.Decimal 0.00/12.30先RED后GREEN，backend 7/7；前端API严格保留两位金额并验证NONE/null共12/12。前端兼容绕过已精确撤销，无diff。root review完成；check:fast、backend build:prepared、frontend bundle均exit 0。日志 check-fast-notary-money-wire-20261024.log、build-notary-money-wire-backend-20261024.log、build-notary-money-wire-frontend-20261024.log。manifest build-notary-money-wire-20261024.json；revision同名，JS/CSS仍为B9ir0XyM/CUGf3gro、frontend index SHA256 8670ee95ad2f4c3f998a5018e8e6bd1679f9aa7a24233f1cd4f37f47d7e6f057；backend service输出SHA256 46be2e8fc68ca842115d7ea27491f81bec057b86450598454f3eb2958bccee14。浏览器runtime已核，服务73367 PID39376、FE31208运行，3101/5174监听，后台候选0；W28/C11/N5/L7 active、R44 disabled。
+
+MAN-NT-003旧失败保留；新构建下N仅绑定RP001，重新读取NT002开箱表单和事项详情均成功，硬刷新详情仍成功。N随后上传一份既有4607B合成PNG；未勾选时提交disabled，勾选后恢复。填写合成寄件人和地址、电话留空后提交开箱成功，进入UNBOX_REVIEW；刷新后照片1份、电话未登记、无再次提交按钮。server材料上传11/20。N已正常退出，C正在正常登录进行后续审核；尚未客户审核、出证、新case或新增feeRecord。获批自动来源零元费用仅完成notary事项登记，费用行须待出证后在费用中心确认。详细证据与旧失败历史见最新VALIDATION RUN及ignored coverage.csv。
+
+## 历史检查点（2026-10-24 lead-uat候选及线索UI复测）
+
+当前候选`manual-resume-20261024-lead-uat`，33份tracked修改未提交／未推送。root已review四项窄diff；`check:fast`和frontend `build:bundle`均exit 0。manifest `build-lead-uat-20261024.json`；index SHA256 `8670ee95ad2f4c3f998a5018e8e6bd1679f9aa7a24233f1cd4f37f47d7e6f057`，JS `B9ir0XyM`、CSS `CUGf3gro`，29份frontend输入hash已核；backend entry `95d9…`不变。浏览器runtime和实际script与manifest一致。服务51855 PID6416／FE37208运行，3101/5174监听，后台候选0；W28/C11/N5/L7 active、R44 disabled。启动后首个非TTY进程因stdin EOF自行关闭已处理，非产品故障。
+
+W对A/B两条WAITING_PUSH线索查看同客户2条批量推送预览后取消，二者仍WAITING_PUSH且选中数2；重开后批量推送成功，进入WAITING_REVIEW，侧栏待推送0／待审核2即时更新。C看到待审核2条，先确认A，刷新后客户记录保留，pending仅剩B；随后确认B，pending显示“暂无待审核线索”，processed表A/B均“已确认侵权”，既有main等已进入公证的数据保留。W随后对A/B批量执行不取证：逐条原因必填且拒绝纯空格，整体确认未勾选时禁用；取消后两条仍待确认，重开时原因和确认状态清空。重新填写独立原因并确认后一次提交成功，无需刷新，侧栏待确认0／已归档2；硬刷新后A仍归档，A/B详情各自保留原因和C确认记录，归档时间14:27:53、v4。旧构建中的MAN-LD-003历史错标及MAN-LD-005撤回入口误显失败保留为历史；新构建中运营端和C端不取证历史均正确，列表A/B撤回入口为0。C端刷新后仍显示“不取证并归档”、W姓名、各自原因/时间及正确历史类型，旧客户审核记录保留。未触发review或撤回确认。无现存NO_INFRINGEMENT归档行，撤回正例真实UI未测；单独归档分支未测。
+
+原RUN-LD-006／008的空单价与侧栏陈旧失败保留为历史；新候选已复测修复通过。原MAN-LD-003失败仍保留，运营端和客户端历史映射本轮均通过。MAN-LD-005撤回入口误显修复后，NO_EVIDENCE运营列表真实复测通过；无NO_INFRINGEMENT现有行，正例真实UI未测。MAN-LD-004导航文案待核：processed页breadcrumb为“待审核线索”，h1为“已处理线索”；尚未核Spec，不据此判定产品缺陷或擅自改名。MAN-LD-001空价CSV预览三行全无效且取消未导入；-0.01、1.001单价和-1销量均无效不可选。空主体行有效符合合同的唯一主体默认规则。单独显式0/0.00行CSV新增C `bfee8dd1-44cd-4be8-85b2-382fa2c3020a`／LD20261024-003，WAITING_PUSH；无需刷新列表3、待推1、归档2，刷新后保持。线索预算4/6；server材料上传10/20，CSV本地文件选择累计5次。A店名搜索1条、NONE空态、清除恢复3条；归档筛选2条且不显示撤回入口。待推送筛选显示C一条，证据`lead-waiting-push-filter-one-c.txt`。主客户协议历史显示v1/v2两版但均无附件；权利资产页显示合成商标v2及2条历史，当前无已登记证明。案件6207当前费用凭证由用户协助保存后核对为650B且SHA与原纯合成PDF一致；工具download事件超时保留，未验证历史版本下载。未写入费用或新增上传，材料上传仍10/20。案件6207文件页核对五份材料的原案来源与精确版本，未下载；立案/受理材料补录表单显示已有日期23日、案号更2号及3类可后补项，取消后案件仍WAITING_HEARING，未新增上传。NT20261022-002获批0.00样品费后已完成取证登记并刷新核对，进入待开箱；自动来源费用行尚未在全局费用中心核实。N正常登录后可见NT002待开箱，但开箱drawer与详情GET均失败，重载一次仍失败；N未上传或POST。W同记录仍可读；console无相关应用错误，MAN-NT-003 P2根因待定位，不判为权限或数据问题。N已正常退出，W重新登录检查费用中心后自动来源费用行仍未确认；server材料上传仍10/20。NT002新案财务页显示样品KNOWN 0.00、其他公证/调查/披露费用PENDING；诉状/判决/结案未登记，结算基数/金额/余额待定，已发起0.00且无发起记录，零与未知区分正确。费用中心选择唯一零元行时发起按钮enabled，取消选择、未提交；MAN-FE-001待业务澄清。随后复用既有NT001完成sample PENDING取证、W运营开箱与审核、不出证后KEEP归档；原费用3条加额外零元自动费用1条保持不变，无新增known费用或退款source。归档详情保留原因、W操作人、KEEP方式、退款/运费不适用、样品待定、无证书和无关联案件。更正原因textarea仍enabled，但更正提交入口不存在；仅记界面建议。当前复用既有线索C计划走不侵权公证分支，尚未创建或操作。详见最新VALIDATION RUN与ignored coverage.csv。
+
+## 历史检查点（2026-10-24空价规则答复前、批量推送前）
+
+沿用`manual-resume-20261024-group-receipt`构建，服务已关闭，待新候选构建与页面复测，W28/C11/N5/L7 active、R44 disabled；本轮没有变更权限、服务或账号revision。33份tracked修改未提交／未推送。
+
+原空数值版CSV（2有效+1缺店名无效）在预览中把空单价显示为0，随后取消、未导入。MAN-LD-001是规则与实现冲突：当前导入合同将空白默认成0，但用户要求未知金额不能按0；建议拒绝空价的异步问题尚未收到答复，未改代码。该业务判断阻塞，不据当前显示判定规则通过。
+
+随后选择真实已知0/0.00单价CSV，预览2有效+1无效，缺店名行不可选。确认所选线索后实际直接提交成功两条：A `cbd45dc3-c83d-4317-9951-74f473bea01a`／LD-20261024-001，B `59f4caeb-1d26-4a53-94fd-926cc7ff8e03`／LD-20261024-002，均为WAITING_PUSH。导入后侧栏计数仍为0，硬刷新后列表和侧栏显示2；MAN-LD-002 P2失败未修复。线索预算3/6（既有main 1条加本轮2条）。尚未批量推送、客户确认或不取证。CSV通过本地文件选择和解析，不是server材料上传；材料上传额度仍10/20。本轮没有新增批量动作。证据与RUN见VALIDATION和ignored `coverage.csv`。
+
+## 历史检查点（2026-10-24 CSV导入前：客户C日历与空预览）
+
+沿用`manual-resume-20261024-group-receipt`构建和服务：服务79258、FE3184；W28/C11/N5/L7 active、R44 disabled，账号revision未变。26份tracked修改仍未提交／未推送。客户C已正常退出，W已正常重新登录。
+
+C在`/client/calendar`当月显示2条合法开庭事件；30天待办1、开庭总数2。协议到期无查看权限，缴费和重要节点未接入。20日事件进入CA20261022-0001，已归档且本企业已推送，可读known 0.00标的额、历史材料和邮寄记录；24日事件进入CA20261023-0003，待开庭、标的1000、本企业已确认材料。两条事件的本企业归属与跳转正确；当前没有额外企业事件数据，因此未验证跨企业事件排除。
+
+线索列表原0条时打开CSV导入空预览并取消，返回原0条列表；没有选择、上传或输入文件，也没有新增线索。已批准额度内的2条有效+1条无效CSV预览及后续批量不取证流程仍未执行；离线fixture准备中，不记导入通过或新线索。既有预算与权限状态未变化。详见VALIDATION和ignored `coverage.csv`。
+
+## 2026-10-24 最新恢复检查点（办理组修复复验、日历与公证取证）
+
+当前候选为`manual-resume-20261024-group-receipt`，HEAD `90708adda34247f8299b713e8b1f601f0a28cc6a`，26份tracked修改未提交／未推送。`CaseHandlingGroupDetailPanel`已改为观察多源primitive字段。父子deferred回归先RED（pending signal被误abort），修复后CaseHandlingGroupsPage相关44/44、typecheck、prettier、`check:fast`和frontend build均exit 0，root独立diff review完成。构建manifest为`build-group-receipt-20261024.json`；浏览器实际核对runtime和脚本：JS `PhuZaGq0`、CSS `DGRTSzC4`，index SHA256 `afdb8ade3d386bbf1be734a0c7c965552a256e8e4895d6c5cf010298166e87a4`；后端entry未变。旧服务关闭后，新服务79258 PID29172、FE3184运行，后台候选0。W28/C11/N5/L7 active，R44 disabled。
+
+MAN-CG-001修复构建复验通过，旧失败历史仍保留。先用原组`a5a827c2-ad98-4600-81f7-9b8a58ab8292`页面原body/key核对解除请求，成功toast后硬刷新为DISSOLVED、两源案保留、无stale/pending。用户另批准并仅创建一组`6d34ca82-bbee-4c66-8cba-9eb9059848fc`，成员仍为原案03d896与6207；未勾选创建确认时提交disabled、勾选后enabled。查看资源与5份材料后首次确认解除即成功，无reload、重试或陈旧反馈；刷新后已解除、两源案保留、无pending/stale。两组额度各1/1已满。解除后的a5a组完整费用仍可读，三笔均归属6207原案。第一次旧构建失败仍由旧RUN记录；新构建修复结果另列PASS。
+
+W的日历10月有20日和24日两项开庭，30天待办1、全部开庭2、协议0。11月事件为空、统计不随月份切换；硬刷新保留11月。9月为空；回到本月后事件恢复，刷新仍有2项。费用截止和重要节点未接入，未测。24日事件跳转主案的观察来自旧构建：直接进入6207主案详情，标题更2、待开庭，没有弹窗；不外推到新构建。
+
+公证导出无选择时预览禁用，选择主案预览1条后取消、清空为0；全部筛选预览3条并导出。用户协助完成保存：正式`notary-matters.csv`为951B、SHA256 `E5295A7EBE6151996FBE4FF2FD276E4A732E148A59DC881B128A4F73435A6D6B`，与pending副本匹配；20列名顺序与`demo/app.js`第7601–7602行一致，3行对应列表001/old002/old001，已知费用1.23，未知金额为空，不含附件。真实0金额与多行物流换行未测。取证事项NT20261022-002：空日期被原生必填拦截；样品金额-1和1.001均拒绝；公司和单号空值分别触发必填。取消后重开默认字段为空，仍待取证；未登记、未新增费用或推进阶段。
+
+额度：客户2/2、联系人2/2、权利资产2/2、上传10/20；费用3/3、人工台账2/2、协议1/1、开票档案1/1、结算发起2/2、账单2/2；办理组原预算1/1及额外批准预算1/1均已用满。未新增客户、费用、账号、密码、绑定或公证处。本轮RUN与窄映射见VALIDATION及ignored `coverage.csv`。
+
+## 2026-10-24 最新恢复检查点（办理组解除反馈缺陷）
+
+沿用最终adapter候选及身份状态：HEAD `90708adda34247f8299b713e8b1f601f0a28cc6a`，24份tracked修改未提交／未推送；服务与W28/C11/N5/L7 active、R44 disabled均未变化。客户/联系人预算2/2、权利资产2/2、上传10/20。本轮实际新建办理组`a5a827c2-ad98-4600-81f7-9b8a58ab8292`（办理中），仅含原案`CA20261023-0001`与`CA20261023-0003`，办理组额度1/1已满；没有新增案件、费用或第二组。
+
+MAN-CG-001（P2）暂未修复：对新组勾选解除后确认，界面提示身份、组或页面已变化并要求重新读取，组成员详情消失，只剩保留原请求/关闭；没有重发。硬刷新后GET显示新组已解除、两源案仍保留，但解除请求仍待核。实际解除已持久化不等于页面交互完成，因此验收状态为失败；根继续只读；停止盲目重试，不发新幂等键；修复后仅通过页面原请求核对。只读诊断已定位为pending prop替换造成getter数组引用变化，从而误判stale并中断回执；修复代码正在调整为仅观察多源primitive字段。当前尚无新测试或构建结果。
+
+新组资源核对确认3条费用均来自CA20261023-0003，5份当前材料也均来自该案；公证摘要含已知1.23与3项金额未知。旧已解除组`31429b9e…`仍关联2个旧源案，4份材料来自旧870b案当前版本；公证摘要和完整费用为空。公证处/账号与律师账号本轮均只读核查，没有新账号、密码、绑定或公证处。最新结果见VALIDATION和ignored `coverage.csv`。
+
+## 2026-10-24 最新恢复检查点（第二客户准入与权属单行登记）
+
+沿用最终adapter构建`manual-resume-20261024-list-adapter-counter`及运行检查点；HEAD `90708adda34247f8299b713e8b1f601f0a28cc6a`，24份tracked修改未提交／未推送，W28/C11/N5/L7 active、R44 disabled。新增第二客户`4a9604c8-2650-4c9a-9de0-a6474b0648b5`／`MAN1024-准入流程B合成客户`，准入成功并关联原holder `10e98058…`；创建时第2联系人`MAN1024-流程B合成联系人`／`man1024-flow-b@example.invalid`（无电话）。客户2/2、联系人2/2额度已满。第二客户仅新增一个权利资产，权利资产2/2；复用650B合成PDF两次后上传额度10/20。无新holder、企业账号、协议、开票档案、结算记录或额外资金操作。
+
+客户B登记组织类型、兼容证件与活动联系人，日期逆序先正确拒绝，清空开始日期、证件类型改为未注明后准入成功；硬刷新后仍已准入。材料区域只读，显示现有PDF及下载入口，但本轮未点击下载。客户B关联原holder后硬刷新仍只有该主体，holder详情只读；未新建holder。第2权利资产通过批量上传界面仅登记一行，类型OTHER、权利人文字和日期为空、期限UNKNOWN，材料为650B合成PDF；完成单行登记，硬刷新仍显示1条。本结果不代表多行批量登记能力，也未做OCR或撤下／删除。
+
+期间意外打开的合作表单未填写或确认即取消，客户状态保持COOPERATING；记录为页面重绘/工具时序观察，不认定产品缺陷。当前浏览器仍停留在首个客户草稿准入页；缺少主体类型、兼容证件、证件号、活动联系人和完整材料时提示缺项，客户仍为草稿。更新后的全部独立RUN见VALIDATION和ignored `coverage.csv`。
+
+## 2026-10-24 最新恢复检查点（CSV保存及客户草稿闭环）
+
+最终adapter候选状态沿用上个检查点：`manual-resume-20261024-list-adapter-counter`，fast/frontend build exit0，浏览器核`index-CITELThS.js`／SHA256 `323f8335ca79e13e533532a4e23ec0bc63969252254f98839783c6eb5a8166ea`；服务6699 PID19156、FE20748；24份tracked修改未提交、未推送。W28/C11/N5/L7 active，R44 disabled。
+
+用户已协助保存两份CSV。正式`case-list.csv`为307B，SHA256 `2d8357fc76d0b09aabeb1d3d44f2a002c1faaeff3e62be563a89ed6be9ede77a`；`案件报表_2026-10-24.csv`为225B，SHA256 `8097b4ac53656e7bc7dd7079d024e371ba8cc95eaed7b90f3776120abf46ebef`。两份文件均与各自pending副本逐字节匹配，回执`csv-final-save-receipt-20261024.json`。历史crdownload/待确认阻塞保留；这次记录为用户协助保存成功，不称浏览器工具独立完成。
+
+用户已确认未保存草稿离开。原生confirm被手动确认后页面回到客户列表，没有创建`MAN1024-取消`客户；此前工具dismiss超时作为历史保留。之后新建唯一客户草稿`342376f7-1ecc-43c5-9f35-e9423cb274cf`／`MAN1024-专用可删除恢复草稿`，新客户预算1/2。该草稿没有新增联系人、准入或文件，已测试必填提示、取消/软删除/恢复、合作状态操作和不完整准入提示。当前页面在该草稿准入页；输入缺失项提示后仍为草稿。细节按独立RUN和证据记在VALIDATION/ignored coverage。
+
+## 2026-10-24 最新恢复检查点（adapter候选页面复测）
+
+当前目录 `.local/worktrees/reports-core-integration`，HEAD `90708adda34247f8299b713e8b1f601f0a28cc6a`；24份tracked修改未提交、未推送。最终列表adapter候选 `manual-resume-20261024-list-adapter-counter` 已执行`check:fast`及frontend build，均exit 0；manifest `build-list-adapter-counter-20261024.json`，页面资源`frontend/dist/assets/index-CITELThS.js`（CSS `CQfGY1P2`），index SHA256 `323f8335ca79e13e533532a4e23ec0bc63969252254f98839783c6eb5a8166ea`。浏览器已核`runtime-version`与script。服务6699 PID19156、frontend 20748运行；W28/C11/N5/L7 active，R44 disabled。
+
+MAN-CA-005在最终adapter候选页面复测通过：新增获批外录案`89ae88b4-076f-47d7-a752-b9cc1869092e`／`CA20261024-0002`仅用于执行结束和计数，列表0行，侧栏EXECUTING 0／WAIT_ARCHIVE 2即时更新，未刷新。额外外录额度1/1已用，原批外录案1/1也已用。随后在旧案`870b1871-b61b-4db0-a462-1ae50c5c22ff`归档，列表与计数即时更新；未对新案做其他业务、费用或结算操作。
+
+报表业务数据增长后，W默认mine 8案／进行中4案、已知标的额2案共1000.00、未知6案、归档4案／结案率50%；显式部门9案／进行中5案、已知3案合计101000.01、未知6案、归档4案／结案率44%；刷新仍回mine8。未知金额未按0计入。客户新建流程目前停在未保存草稿的浏览器原生confirm；浏览器工具已检测到confirm，但dismiss因Emulation焦点操作超时，正在等待用户手动取消。新客户未保存；空名称尝试只读到`nativevalidationMessage=''`，未观察AX反馈，不能记客户名必填通过。两项CSV浏览器保存仍待确认，临时文件为crdownload，未记下载通过。
+
+最新细节和保留的失败历史见`docs/spec/v0.1/VALIDATION.md`与ignored `coverage.csv`。不得把父消息中的候选文件、manifest或预算数量误写为实际完成；本检查点已按浏览器、运行回执及来源证据核实。
+
+## 2026-10-24 最新恢复检查点（MAN-CA-005／MAN-ST-001页面复测）
+
+当前目录仍为`.local/worktrees/reports-core-integration`，HEAD `90708adda34247f8299b713e8b1f601f0a28cc6a`；当前24份tracked修改未提交、未推送。已浏览器核对页面构建`frontend/dist/assets/index-C6hnOnHW.js`，index SHA256 `5d09ed16011c9a2576a4876b7e3b04947acae4ca3b35cf71954ffb6a9ffbb7aa`；该构建的`check:fast`和`build:bundle`均exit 0，manifest为`build-workflow-basis-sync-20261024.json`。这次C6构建不含后来新增的列表adapter事件修复；根正在会话2267构建/检查新adapter候选，不能把C6门禁结果套用到新源码。 列表adapter源码定向spec 51/51、前端typecheck和两文件格式检查已通过，源码尚未进入新的浏览器构建。证据日志在ignored `man-ca-005/adapter-green.log`、`typecheck.log`及`format.log`。服务当前已关闭，浏览器复测账号W28/C11/N5/L7 active、R44 disabled。
+
+C6构建的MAN-CA-005复测仍失败：唯一原批获批外录案`e454a06b-9b9a-4761-9fb8-5958086ca5ec`／`CA20261024-0001`真实创建于EXECUTING，执行结束成功后列表0行，但侧栏仍为强制执行中1／待归档1；预期0／2，只有切换刷新后才显示正确。原批外录复测额度1/1已用完。新增可用额度为最多1件外录复测案，仅允许执行结束与计数复测；尚未创建，不含账号或费用操作。
+
+MAN-ST-001在同一C6构建通过即时更新复测：登记结案金额2.00后，费用金额与结算基数同页均即时显示2.00，50%公式预览1.00且保留；刷新后更正结案资料为4.00，基数和预览即时变为4.00／2.00，手调草稿7.00和50%公式保留，阶段仍WAIT_ARCHIVE。未知网络body保护只由既有组件测试（19项加精确2项）证明，未做UI网络故障演练。
+
+外录案后续律师结算已使用本轮第2/2次发起额度和第2/2张账单额度；账单及律师settlement细节、归档与页面能力观察见VALIDATION新增RUN。费用3/3、手工台账2/2、协议1/1、invoice profile1/1、上传8/20。当前不将已用尽额度的外录案混入新增的1件复测额度。来源盘点1397仍是候选，不是已测数量；所有真实页面证据与失败历史见`docs/spec/v0.1/VALIDATION.md`和ignored `coverage.csv`。
+
 # 当前开发状态
+
+## 2026-10-24 13:07 最新恢复检查点
+
+当前目录仍为`.local/worktrees/reports-core-integration`，HEAD `90708adda34247f8299b713e8b1f601f0a28cc6a`；24份tracked修改均未提交、未推送。新构建尚未运行，当前浏览器仍是既有GR构建；根check:fast/build执行中等待新候选，服务已关闭，3101/5174均无监听。W28/C11/N5/L7仍active，R disabled rev44。今天新增的公证处/律师只读、客户协议与开票版本历史、客户收付款台账、结案归档、执行结束、客户结算账单及费用页操作均为合成数据验收，逐项RUN见`docs/spec/v0.1/VALIDATION.md`及ignored `coverage.csv`。
+
+两项新UI缺陷仍待新构建复测：MAN-CA-005执行结束后侧栏强制执行中/待归档计数未即时更新，刷新后正确；执行结束组件最小修复已由定向spec 43/43、前端typecheck及格式检查验证，但未做新构建页面复测。MAN-ST-001结案登记后费用页结案金额已更新、结算基数仍显示待定，刷新后正确；独立前端修复及其定向19项、精确2项GREEN、初轮范围较宽的RED、类型和格式证据均已归档于`.local/man-st-001/20261024-settlement-basis-refresh.md`，源文件已精确恢复；仍待集成构建页面复测。当前不要将这两项UI验收标为通过。费用预算3/3已满；结算发起1/2、账单1/2，各剩1次。撤销账单、批量费用发起及移除凭证受已知native confirm工具限制，本轮未重试，记为阻塞；账单“关闭”另已实际成功多次。来源盘点1397项仍是候选数，不是已测数量。
+
+## 2026-10-24 12:41 最新恢复检查点
+
+当前集成目录 `.local/worktrees/reports-core-integration`，HEAD `90708adda34247f8299b713e8b1f601f0a28cc6a`；19份tracked修改均未提交、未推送。MAN-RP-001修复后的`check:fast`与`build:bundle`均exit 0，浏览器核对构建资源`frontend/dist/assets/index-GR7UCLeA.js`及报告SHA256 `f2ab88f4d69a87c60868c29d8414f2064956b26764a4b31e7a8531d828410eae`。R首次及刷新默认本人负责1案/100000.01，显式部门7案/101000.01；导出范围交集仍只含本人数据。40项ReportsPage spec通过。旧RUN-NT-007失败历史保留；本日另有公证员面包屑复测通过。W确认诉状抽屉检查对象为R的CA-20261022-0002（`9742c316-d04c-4115-8643-62fa7b4af656`），不是主案CA0003。
+
+组织页真实UI验收已完成：创建团队`aa93292e-2b85-4c73-8f63-e6976f746605`（MAN1024-UI验收组）、仅`CUSTOMER_READ/SELF`角色`45f438d3-1f56-433b-8592-236fe44b4717`（MAN1024-UI客户只读）及绑定`R5687e318-43e5-4ff3-ba62-d04f83eb5dd2`。空名/无权限提示、取消复制、团队分组、绑定、启用R、既有口令登录后客户SELF仅1条、组织页拒绝、角色改名修订后恢复V3并刷新均有UI证据。原共享`CASE_READ/DEPARTMENT`绑定未改，故不能概括R总体只具客户权限。UI停用账号／绑定／团队受原生confirm工具故障阻塞；角色页没有停用入口。随后仅执行严格对象、版本和目标守卫的auth-only teardown：R disabled rev44，原三绑定布尔值及版本不变，team=null，新binding inactive v2、新role inactive v4/Grant0、新team INACTIVE、新R sessions 0。此为受限teardown回执，不记为UI停用通过。刷新页面确认R停用、未分组、新角色恢复、团队停用。证据见VALIDATION及ignored `org-ui-*`文件。当前W28/C11/N5/L7 active，服务61621运行。1397项仍只是未测候选数。
+
+## 2026-10-24 12:23 最新恢复检查点
+
+当前集成目录为 `.local/worktrees/reports-core-integration`，HEAD 为 `90708adda34247f8299b713e8b1f601f0a28cc6a`。19 份 tracked 修改均未提交、未推送；本次仍未提交或推送。MAN-RP-001 默认本人负责修复已在此候选上完成 `check:fast` 与 `build:bundle`，两者 exit 0。构建产物为 `frontend/dist/assets/index-GR7UCLeA.js`，浏览器已核对本轮 `build-report-default-20261024.json`、`runtime-version`、HEAD、构建输入和 `frontendIndexSHA256=f2ab88f4d69a87c60868c29d8414f2064956b26764a4b31e7a8531d828410eae`。
+
+MAN-RP-001 在 R 账号已复测：首次进入及刷新后均为“本人负责”1 案，累计标的额100000.01，无归档均值显示“暂无数据”；显式切换“本部门全部”后为7案、101000.01。无金额权限时拒绝返回报表数据并禁用导出；只有金额SELF权限时仍为1案且导出禁用；金额SELF与导出DEPARTMENT交叉后仍只有本人视图可选，导出CSV为3列、7条数据行，仅含本人1案及本人范围客户／公证统计，未扩大范围。CSV内容已由ignored副本核对，浏览器原生保存仍待完成。权限准备中一次尝试的CASE_READ／EVIDENCE_READ SELF范围不受目录支持，导致的403不记为产品失败；随后改用获批部门范围继续检查。原R当前已停用rev37，原绑定active/v5、Grant 0、新会话0；硬刷新后回到登录页。详细证据及受限边界见 `docs/spec/v0.1/VALIDATION.md` 与ignored `coverage.csv`。
+
+本轮其他真实页面复测：公证员待出证／已出证队列面包屑正确（MAN-NT-002）；律师详情承办律师标题正确，直接访问非本人承办案被拒绝（MAN-CA-001）；客户端待盖章列表为空、已登记2案可见，主案记录为只读，直接访问未确认案被拒绝；W在R案CA-20261022-0002（`9742c316-d04c-4115-8643-62fa7b4af656`）确认诉状抽屉核对旧邮寄提示已消失，关闭时未提交（MAN-CA-002）。律师日历只显示当前承办主案24日事件，未混入W的旧案20日事件。证物复测只更新原有合成证物：编辑取消备注后重开仍为空，保存编号`MAN1024-EV-001`／货架`SYN-A-01`／合成备注后刷新持久；批量空选及未指定状态均有提示，唯一原证物可批量改为`MAILED_TO_LAWYER`，在库筛选为空、全部筛选恢复1条；详情显示来源`notary.certificate_issued`及主案更2关联。未新增或删除证物，台账状态不代表实际物流。费用删除的浏览器原生confirm仍受工具限制；用户已手动取消，2.34费用仍在，不再记录为等待用户关闭。详细截图及AX证据见本节末尾新RUN条目。
+
+本轮组织页scope测试尚未开始。用户额外批准的范围仅包括创建1个`MAN1024-UI验收组`团队和1个“仅客户SELF”角色，以及R临时团队／角色／账号启停；不含新账号、口令或共享角色。完成后必须停用R并恢复原绑定和团队；新增团队及角色保留为停用。费用原生confirm、CASECSV和报表CSV的浏览器保存不是已完成项目验收。当前W28／C11／N5／L7 active，R disabled；服务已安全重启到新构建，3101／5174监听，后台预检0，数据库仍176且本轮未迁移。来源盘点生成的1397项仍是待验候选数，不是已测数。
+
+2026-10-24 11:46（Asia/Shanghai）用户开机后明确恢复人工验收。集成目录仍为 `.local/worktrees/reports-core-integration`，HEAD90708adda34247f8299b713e8b1f601f0a28cc6a及昨日17份未提交修改保留；没有新提交／推送。Edge插件已连接，15439原测试容器已恢复，未迁移／重建／清库。昨日实际主链已从原线索经公证出证转为CA-20261023-0003，完成匹配、起诉书、律师确认、邮寄、立案提交、受理及两次开庭资料更正／两次案号更正，当前WAITING_HEARING，开庭日期2026-10-24；按规则次日才可自动推进，不能修改系统时间或绕过。五项筛选各自正反例已测，同条件导出尚未测。用户照片下载成功反馈已补记为用户辅助确认通过，原插件下载事件超时记录保留。
+
+暂停收尾回执：W停用rev27、原绑定active／v11、临时Grant0；企业停用rev10、公证员停用rev4、律师停用rev6且绑定停用v6；R停用rev31，原绑定恢复；本轮新会话0、3101／5174关闭。今日只按已批准身份及剩余额度恢复，不重置口令或重复造数。累计新增1联系人、1资产、1线索、1公证、1流程案、6次合成文件上传、1笔自动公证费1.23，其余未消耗预算保留。客户经理通过项不重测。
+
+当前待办：返回列表丢失查询条件MAN-CA-004已作窄修、83项定向测试通过，但暂停前check:fast因新增测试href可空类型报错，最新修复尚未构建／页面复测；先修准确测试类型、运行必要检查并重建，再恢复真实登录。MAN-NT-002面包屑、MAN-CA-001承办律师标题、MAN-CA-002陈旧邮寄提示已修待页面复测；MAN-CA-003商品序号已页面复测。完整页面／低权限／互斥分支／费用结算报表仍大量未测，不称全面验收完成。最新详证见VALIDATION及ignored coverage.csv，历史段落仅代表各自时间点。
+
+2026-10-23 17:55（Asia/Shanghai）恢复：用户要求取消当前“确认侵权”的二次确认；仅移除企业线索详情该入口的原生确认框，保留旁边后果提示、提交禁用、版本和幂等校验。以90708add为基线的未提交候选已重新构建，前端资源index-CMNL2D9E.js；30项详情组件测试、check:fast、Spec及受影响格式通过。用户手动取消并关闭旧阻塞标签后，GPT在新Edge标签正常登录原企业账号，对原LD-20261023-001单击提交成功；整页刷新仍为线索待确认，审核历史仅1条，待审核队列空、已处理队列可见。原确认框工具故障仍未修复，不能据此把其他确认操作写为通过。企业账号已退出并停用rev8、本轮会话0；沿已批准范围恢复W临时部门全权限继续原线索，不新增相同数据。代码未提交／未推送，全面验收未完成；详细证据见VALIDATION及ignored验收目录。
+
+2026-10-23 17:33（Asia/Shanghai）人工式验收断点：最终提交90708adda34247f8299b713e8b1f601f0a28cc6a已重新运行pnpm build成功，浏览器实际读取新构建版本。GPT在原已准入合成客户上完成经理保存／刷新、清空／刷新、名称必填和经理101字拒绝；联系人新增／设为主要、商标资产新增／修订至第2版及历史入口已操作。新线索b6fb4965-7e3b-4411-91ff-0b2268b7c2a1由列表推送后，企业客户端可见，仍为WAITING_REVIEW／v2；确认侵权未完成。浏览器确认框通道失败后，电脑工具因无法可靠识别Windows浏览器URL而明确终止本轮；这是工具阻塞，不认定产品故障，不绕过。收尾：Wdisabled23、原binding active／v7；Rdisabled31、企业客户disabled4、律师disabled4、新公证员39326a12-2c44-4fa2-9307-01defdffce81 disabled2，临时Grant0、本轮活动会话0、3101／5174关闭，public仍176。用户已批准额外身份与有限合成数据范围，本轮实际仅新增1联系人、1资产、1线索及1测试公证账号；不得重建成功对象或沿用旧账号基线。详细证据在ignored `.local/manual-acceptance-90708add-20261023/`；后续从确认框工具能力恢复，全面验收尚未完成。
 
 2026-10-23 09:07 UTC 新验收窗口按用户后续指令转为代码同步，未登录、未进行页面业务操作。此前已获单独授权临时启用W并配置所在测试部门96项权限；现已完成收尾：W停用rev21、原binding active／v5、临时Grant0、新会话0，3101／5174关闭，15439仍176。下文rev19／v3是前轮历史，不能作为后续账号准入基线。证据见ignored `.local/manual-acceptance-20261023/close.json`。本轮只交付代码，客户经理修复仍待真实页面复测，后续页面尚未完成验收；后续须从最终提交重新构建并核对运行版本，不复用旧构建或已消费的claim。
 

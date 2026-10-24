@@ -10,7 +10,10 @@ import { useAuthStore } from '../../stores/auth';
 import CaseSettlementPanel from './CaseSettlementPanel.vue';
 import FeeCenterPanel from './FeeCenterPanel.vue';
 
-const props = defineProps<{ caseId: string }>();
+const props = defineProps<{
+  caseId: string;
+  closureVersionId?: string | null;
+}>();
 const auth = useAuthStore();
 const identity = computed(
   () =>
@@ -55,6 +58,7 @@ onBeforeUnmount(() => {
         v-if="context.read"
         :key="`settlement:${identity}:${caseId}`"
         :case-id="caseId"
+        :closure-version-id="props.closureVersionId"
         :can-update="context.termsUpdate"
         :can-launch="context.launch"
       />
