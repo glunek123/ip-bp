@@ -3877,3 +3877,27 @@ J于22:57前完成关闭：262/500请求、5/5登录、上传0（原21/21保留�
 仍未完成：0001第3轮实际跨日至判决（独立K已批准但日期未到／尚未执行）；其他角色和未测清单、自然错误恢复、原生确认工具限制、MAN-LD-004导航体验。本案已只读找到1份ACTIVE/AVAILABLE的既有JUDGMENT合成版本，能否通过判决表单合法选择仍待实页确认。K不得上传、改系统时钟／stage或重复迁移。独立UAT还缺服务器和对应部署授权，不提供虚构测试入口。
 
 本次收口相对893df778只补实际结果、交接及已核快照；执行源码不得再漂移。完成受影响文档格式、Spec、strict context及diff检查后，按既有独立Git授权正常快进／推送main；完整SHA和三方一致性以resume-j-git-delivery.json实际回执为准，不预写推送成功。保留原.pnpm-store/、旧stash和其他任务成果，不部署生产。
+
+## 2026-10-26 独立K批重审跨日与判决
+
+### K批最终收尾与运营试测范围
+
+用户独立批准call_a896e9fb3a4e4c928287d62b38c0acef后，于北京时间26日00:05一次接续。仅原15439/dev_cor_test持久卷容器、3101／5174和W两项权限；旧J保持关闭。现场main／集成为d5749d3645d22de2ce00fe1ba5c085589aebaf66，工作区干净，根main仅原.pnpm-store/。先核原container d9a68d83…90e446、回环绑定／卷、177完整账本checksum／public、W46原绑定29／临时24和25／Grant0／session0。未重建、清库、重复迁移或启动其他账号。
+
+产物复用以实际校验为依据：855源码、962后端输出、前端index及DRmgpDbo／Ccdq_iei资产SHA逐项匹配J已测产物，执行源码相对893df778没有变化；K manifest绑定d5749d36。未另跑构建或程序测试，不把同源复用说成新完整verify。K helper原冻结SHA及独立静态审查匹配后使用；唯一后台候选是0001第3轮／安排39584bba／25日开庭、v19，draft／material候选均0。先启动时pg_isready尚未就绪，随后正常就绪再继续，未执行失败业务或迁移。
+
+| 检查          | 实际操作与结果                                                                                                                                                                                                                                                 |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 正常跨日调度  | K原起点26日00:06:58，正常Nest调度于00:07:01.602产生SYSTEM／actorUserId null的case.hearing.auto_advanced，dueAt为26日00:00，唯一安排v19→20。页面待开庭0／待判决1，未改时钟／stage或手动伪造推进                                                                 |
+| 第3轮判决登记 | W新会话仅CASE_READ/DEPARTMENT＋CASE_JUDGMENT_REGISTER/SELF。从列表“登记判决”进入，收到日26日、判决和实缴诉讼费均待定；已有1份本案PDF自动选中，提交前核对后仅点击一次。00:08:43产生REGISTER v20→21、1条新判决／1回执，仍待判决                                  |
+| 无新增上传    | 精确复用CV0846656d-d276-4262-8b2f-a4d6ccd3c48d、既有材料a94bdecb，SHA424936a6c2678e1299c5edf1ab62142c5aa7c2cf80fe7aeb7ea739283e3a55fb。两金额存PENDING/null，未按0处理；新材料／上传草稿／案件／费用均0，原21/21额度不重置                                     |
+| 刷新与重进    | 列表刷新后判决额“待定”；再进入详情、展开判决，再刷新重开，均显示“发回重审第3轮·判决登记”、26日、两项“待确认”及原PDF。旧第1轮24日判决及既有历史仍保留；其他9案核心指针／阶段／版本与K前一致                                                                     |
+| 精确收尾      | 实际75/200请求、1/2登录、上传0，00:11停用W／登出／停服务，00:12:48恢复原DB停止，原60分没有延长。W48停用，原绑定active31，临时assignment inactive26／role inactive27，Grant／未撤销会话0；R52/L12/C12/N6未启。177账本checksum不变，仅public，卷／资料／历史保留 |
+
+真实页面证据：resume-k-after-natural-advance-list.txt/.png、resume-k-judgment-before-submit.txt/.png、resume-k-judgment-list-reloaded.txt、resume-k-judgment-detail-reentered.txt、resume-k-judgment-detail-reloaded.txt/.png、resume-k-judgment-persistent-fields.png。只读事实resume-k-final-business-audit.json断言PASS，精确推进／判决／版本／金额／材料及其他9案均已核；原候选resume-k-background-candidates.json，完整账本resume-k-before/final-ledger.json，账号resume-k-final-accounts.json，收尾resume-k-identities-close.json／resume-k-environment-closed.json／resume-k-request-budget.json。独立双轴只读复核Spec／质量ACCEPTED，C0/I0/M0，不复跑程序检查。
+
+覆盖清单追加5条K通过记录，总1789条历史／来源盘点记录，431通过、24历史失败、1289未测试、43历史／当前阻塞、2不适用。J旧跨日阻塞由本批实测通过接续，原行保留；这些不是独立功能或开放Bug数，不计算系统通过率。见resume-k-coverage-append.json。
+
+本批没有新确认的产品故障，结论仅为已批准的“第3轮正常跨日＋判决登记和持久化”通过。该案后续上诉／执行／归档不在K范围，其他原未测页面、权限矩阵、自然错误恢复、原生确认工具限制仍未测试。独立UAT服务器未租、无独立测试网址；当前本机账号／环境按授权关闭，不能直接登录。已有源码可用于限定范围的下一批试测准备，不称全系统验收完成、判决生效或生产上线。
+
+本次仅更新实际完成记录／运营交接／已核快照，程序源码、依赖、配置、迁移及测试输入不改。完成受影响格式／Spec／strict context／diff检查后，按既有独立Git授权正常合并推送main，以resume-k-git-delivery.json核三方SHA；保留旧stash／.pnpm-store/，不强推或部署生产。K执行开关CLOSED／approved=false，历史批准另存，剩余额度不可续用；本次一次接续完成后删除自动接续。
