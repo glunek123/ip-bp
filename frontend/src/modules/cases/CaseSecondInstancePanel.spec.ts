@@ -280,6 +280,94 @@ describe('CaseSecondInstancePanel', () => {
     clearSecondInstanceUpload(marker);
   });
 
+  it('uses only confirmed progress after a same-version change to RESULT-only', async () => {
+    const detail = item();
+    const confirmedFile = { ...resultFile, contentVersionId: id('60') };
+    detail.secondInstance.currentProgress = {
+      id: id('24'),
+      trialRoundId: round2,
+      choiceId: choice2,
+      hearingAt: '2026-10-08',
+      hearingPlace: '已保存地点',
+      judgeName: '已保存法官',
+      documentFiles: [confirmedFile],
+      serviceFiles: [],
+    } as never;
+    api.uploadMaterialFile.mockResolvedValueOnce({
+      ...resultFile,
+      contentVersionId: id('61'),
+    });
+    api.registerSecondInstanceResult.mockResolvedValueOnce({});
+    const wrapper = mountPanel({ item: detail });
+    await wrapper
+      .get('[data-test="second-instance-hearing-at"]')
+      .setValue('2026-10-09');
+    const upload = wrapper.get('[data-test="second-instance-document-upload"]');
+    Object.defineProperty(upload.element, 'files', {
+      configurable: true,
+      value: [new File(['draft'], 'draft.pdf', { type: 'application/pdf' })],
+    });
+    await upload.trigger('change');
+    await flushPromises();
+    await wrapper.setProps({
+      item: { ...detail, canSaveSecondInstance: false } as CaseDetail,
+    });
+    expect(
+      wrapper.find('[data-test="second-instance-progress-form"]').exists(),
+    ).toBe(false);
+    await wrapper
+      .get('[data-test="second-instance-result-option"][value="REMAND"]')
+      .setValue();
+    await wrapper
+      .get('[data-test="second-instance-received-at"]')
+      .setValue('2026-10-10');
+    await wrapper
+      .get('[data-test="second-instance-fee-state"][value="PENDING"]')
+      .setValue();
+    await wrapper
+      .get('[data-test="second-instance-result-file-choice"]')
+      .setValue(true);
+    await wrapper
+      .get('[data-test="second-instance-result-form"]')
+      .trigger('submit');
+    await wrapper
+      .get('[data-test="second-instance-confirm-result"]')
+      .trigger('click');
+    await flushPromises();
+    expect(api.registerSecondInstanceResult).toHaveBeenCalledWith(
+      detail.id,
+      expect.objectContaining({
+        expectedProgressId: id('24'),
+        progress: {
+          hearingAt: '2026-10-08',
+          hearingPlace: '已保存地点',
+          judgeName: '已保存法官',
+          documentContentVersionIds: [id('60')],
+          serviceContentVersionIds: [],
+        },
+      }),
+      'internal',
+    );
+    wrapper.unmount();
+  });
+
+  it('clears scalar progress drafts when the authorization context changes', async () => {
+    const wrapper = mountPanel();
+    await wrapper
+      .get('[data-test="second-instance-hearing-at"]')
+      .setValue('2026-10-09');
+    await wrapper.setProps({
+      contextKey: 'internal:user-a:authorization-revision-2',
+    });
+    expect(
+      (
+        wrapper.get('[data-test="second-instance-hearing-at"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe('');
+    wrapper.unmount();
+  });
+
   it('keeps SAVE-only and read-only actions separate from result registration', async () => {
     const saveOnly = item();
     saveOnly.canRegisterSecondInstanceResult = false;

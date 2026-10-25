@@ -405,9 +405,7 @@ watch(
   () => props.contextKey,
   () => {
     revision += 1;
-    documentFiles.value = [];
-    serviceFiles.value = [];
-    judgmentFiles.value = [];
+    resetDraft();
     clearCandidates();
     recoveryFiles.value = [];
     verifiedRecoveryFiles.value.clear();
@@ -505,6 +503,18 @@ function progressPayload(): SecondInstanceProgressInput {
     serviceContentVersionIds: selectedServiceIds.value,
   };
 }
+function confirmedProgressPayload(): SecondInstanceProgressInput {
+  const current = second.value.currentProgress;
+  return {
+    hearingAt: current?.hearingAt ?? null,
+    hearingPlace: current?.hearingPlace ?? null,
+    judgeName: current?.judgeName ?? null,
+    documentContentVersionIds:
+      current?.documentFiles.map((file) => file.contentVersionId) ?? [],
+    serviceContentVersionIds:
+      current?.serviceFiles.map((file) => file.contentVersionId) ?? [],
+  };
+}
 function makeProgressInput(): SaveSecondInstanceInput {
   return {
     expectedVersion: props.item.version,
@@ -539,7 +549,9 @@ function makeResultInput(): RegisterSecondInstanceResultInput {
               : { state: 'KNOWN' as const, amount: changedAmount.value.trim() },
         }
       : {}),
-    progress: progressPayload(),
+    progress: canSaveCurrent.value
+      ? progressPayload()
+      : confirmedProgressPayload(),
   };
 }
 async function send(command: PendingCommand): Promise<void> {
