@@ -162,6 +162,13 @@ const canRegister = computed(
     (currentChoice.value !== null || directExternalRound.value) &&
     second.value.currentResult === null,
 );
+const canRecoverUpload = computed(() => {
+  if (!uploadUnknown.value) return false;
+  const marker = readSecondInstanceUpload(recoveryIdentity());
+  if (marker?.kind === 'judgment') return canRegister.value;
+  if (marker) return canSaveCurrent.value;
+  return canSaveCurrent.value && canRegister.value;
+});
 const canRevoke = computed(
   () =>
     !props.lawyer &&
@@ -756,7 +763,7 @@ async function loadExistingJudgmentFiles(): Promise<void> {
   existingJudgmentMessage.value = '';
   try {
     const result = await listOwnerMaterials('CASE', context.id);
-    if (!currentContext(context)) return;
+    if (!currentContext(context) || !canRegister.value) return;
     judgmentCandidates.value = uniqueFiles(
       result.items
         .filter(
@@ -913,6 +920,7 @@ async function refreshRecoveryFiles(): Promise<void> {
   if (!mounted) return;
   if (
     !uploadUnknown.value ||
+    !canRecoverUpload.value ||
     recoveryLoading.value ||
     uploading.value ||
     accessDenied.value
@@ -943,7 +951,7 @@ async function refreshRecoveryFiles(): Promise<void> {
   verifiedRecoveryFiles.value.clear();
   try {
     const result = await listOwnerMaterials('CASE', context.id);
-    if (!currentContext(context)) return;
+    if (!currentContext(context) || !canRecoverUpload.value) return;
     recoveryFiles.value = result.items
       .filter(
         (material) =>
@@ -1187,8 +1195,9 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
     <p v-if="accessDenied" role="status">
       当前账号不能查看或办理此案件，请刷新案件详情。
     </p>
-    <template v-if="canSaveCurrent">
+    <template v-if="canSaveCurrent || canRegister">
       <form
+        v-if="canSaveCurrent"
         data-test="second-instance-progress-form"
         @submit.prevent="saveProgress"
       >
@@ -1270,6 +1279,7 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
         </button>
       </form>
       <form
+        v-if="canRegister"
         data-test="second-instance-result-form"
         @submit.prevent="openResultConfirmation"
       >
@@ -1463,7 +1473,10 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
       </button>
     </section>
     <p v-if="uploadMessage" role="status">{{ uploadMessage }}</p>
-    <div v-if="uploadUnknown && !accessDenied" class="demo-card demo-card--pad">
+    <div
+      v-if="uploadUnknown && canRecoverUpload"
+      class="demo-card demo-card--pad"
+    >
       <p role="alert">
         上传结果未知。请下载已有材料的精确版本核对，再明确选用。
       </p>

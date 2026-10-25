@@ -5,7 +5,9 @@ import type { CaseDetail } from '../../api/cases';
 import { ApiError } from '../../api/http';
 import CaseSecondInstancePanel from './CaseSecondInstancePanel.vue';
 import {
+  beginSecondInstanceUpload,
   clearSecondInstanceCommand,
+  clearSecondInstanceUpload,
   pendingSecondInstanceCommand,
 } from './case-second-instance-recovery';
 
@@ -176,6 +178,142 @@ function mountPanel(
 }
 
 describe('CaseSecondInstancePanel', () => {
+  it('lets RESULT-only register with an existing judgment without exposing progress editing', async () => {
+    const detail = item();
+    detail.canSaveSecondInstance = false;
+    detail.secondInstance.results = [];
+    api.listOwnerMaterials.mockResolvedValueOnce({
+      items: [
+        {
+          id: id('70'),
+          ownerType: 'CASE',
+          ownerId: detail.id,
+          category: 'SECOND_INSTANCE_JUDGMENT',
+          purpose: 'SECOND_INSTANCE_JUDGMENT',
+          status: 'ACTIVE',
+          currentVersionId: id('71'),
+          contentVersions: [
+            {
+              id: id('71'),
+              status: 'AVAILABLE',
+              originalFilename: '已有裁判.pdf',
+              mimeType: 'application/pdf',
+            },
+          ],
+        },
+      ],
+      total: 1,
+    });
+    api.registerSecondInstanceResult.mockResolvedValueOnce({});
+    const wrapper = mountPanel({ item: detail });
+    expect(
+      wrapper.find('[data-test="second-instance-progress-form"]').exists(),
+    ).toBe(false);
+    expect(
+      wrapper.find('[data-test="second-instance-document-upload"]').exists(),
+    ).toBe(false);
+    expect(
+      wrapper.find('[data-test="second-instance-service-upload"]').exists(),
+    ).toBe(false);
+    expect(
+      wrapper.find('[data-test="second-instance-result-form"]').exists(),
+    ).toBe(true);
+    await wrapper
+      .get('[data-test="second-instance-existing-judgment"]')
+      .trigger('click');
+    await flushPromises();
+    expect(api.listOwnerMaterials).toHaveBeenCalledWith('CASE', detail.id);
+    await wrapper
+      .get('[data-test="second-instance-result-file-choice"]:not(:checked)')
+      .setValue(true);
+    await wrapper
+      .get('[data-test="second-instance-result-option"][value="REMAND"]')
+      .setValue();
+    await wrapper
+      .get('[data-test="second-instance-received-at"]')
+      .setValue('2026-10-10');
+    await wrapper
+      .get('[data-test="second-instance-fee-state"][value="PENDING"]')
+      .setValue();
+    await wrapper
+      .get('[data-test="second-instance-result-form"]')
+      .trigger('submit');
+    await wrapper
+      .get('[data-test="second-instance-confirm-result"]')
+      .trigger('click');
+    await flushPromises();
+    expect(api.saveSecondInstance).not.toHaveBeenCalled();
+    expect(api.registerSecondInstanceResult).toHaveBeenCalledWith(
+      detail.id,
+      expect.objectContaining({
+        result: 'REMAND',
+        judgmentContentVersionIds: [id('71')],
+        progress: {
+          hearingAt: null,
+          hearingPlace: null,
+          judgeName: null,
+          documentContentVersionIds: [],
+          serviceContentVersionIds: [],
+        },
+      }),
+      'internal',
+    );
+    wrapper.unmount();
+  });
+
+  it('does not offer progress upload recovery after SAVE is withdrawn', () => {
+    const identity = {
+      actor: 'internal:user-a:department-a',
+      caseId: id('20'),
+    };
+    const marker = beginSecondInstanceUpload(identity, 'document');
+    const detail = item();
+    detail.canSaveSecondInstance = false;
+    const wrapper = mountPanel({ item: detail });
+    expect(
+      wrapper.find('[data-test="second-instance-result-form"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-test="second-instance-recovery-refresh"]').exists(),
+    ).toBe(false);
+    wrapper.unmount();
+    clearSecondInstanceUpload(marker);
+  });
+
+  it('keeps SAVE-only and read-only actions separate from result registration', async () => {
+    const saveOnly = item();
+    saveOnly.canRegisterSecondInstanceResult = false;
+    const saveWrapper = mountPanel({ item: saveOnly });
+    expect(
+      saveWrapper.find('[data-test="second-instance-progress-form"]').exists(),
+    ).toBe(true);
+    expect(
+      saveWrapper.find('[data-test="second-instance-result-form"]').exists(),
+    ).toBe(false);
+    await saveWrapper
+      .get('[data-test="second-instance-progress-form"]')
+      .trigger('submit');
+    await flushPromises();
+    expect(api.saveSecondInstance).toHaveBeenCalledTimes(1);
+    expect(api.registerSecondInstanceResult).not.toHaveBeenCalled();
+    saveWrapper.unmount();
+
+    const readOnly = item();
+    readOnly.canSaveSecondInstance = false;
+    readOnly.canRegisterSecondInstanceResult = false;
+    const readWrapper = mountPanel({ item: readOnly });
+    expect(
+      readWrapper.find('[data-test="second-instance-round-1"]').exists(),
+    ).toBe(true);
+    expect(
+      readWrapper.find('[data-test="second-instance-progress-form"]').exists(),
+    ).toBe(false);
+    expect(
+      readWrapper.find('[data-test="second-instance-result-form"]').exists(),
+    ).toBe(false);
+    readWrapper.unmount();
+  });
+
   it('keeps an uploaded judgment option after unchecking so it can be selected again', async () => {
     api.uploadMaterialFile.mockResolvedValueOnce(resultFile);
     const detail = item();
