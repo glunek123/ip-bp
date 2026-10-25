@@ -3806,3 +3806,15 @@ R启用前BASELINE_CHANGED：只读确认账号rev47停用、原绑定7／临时
 独立审查额外发现Important/P2：同组件从SAVE+RESULT变为RESULT-only时，旧未保存进展标量可能随隐藏表单提交。最小修复587fa594、集成ac0479f2：RESULT-only输入只取当前已确认进展及精确文件版本快照，仍有SAVE时保留原表单行为；contextKey变化清理旧草稿。新增两反例先RED，组件34/34、类型／Lint／格式通过。此为前端使用既有授权的Level 2切片，不改权限目录、后端或业务数据规则；独立审查核finding关闭，最终组合门禁及W原页面待实际取得结果后补记，不能对旧8424候选声称关闭。
 
 最新组合d5d98643实际CasePanel＋Evidence组件53/53通过，但check:fast因ARCH-MODULE-IMPORT失败1项：证物页跨模块直接导入leads/lead-options内部文件。此为真实代码边界问题，不归因环境、不跳过架构检查。局部补丁23f9483d改用现有leads公开入口的labelLeadPlatform，未知／原型属性安全回退；Evidence组件21/21和架构检查通过。CasePanel34源码未变，复用d5d986实际通过证据；最终仅重跑受影响Evidence及快速门禁、格式、构建。失败日志resume-i-final-check-fast.log与实际exit1回执保留，不删除失败用例。最终新候选结果须以resume-i-final2-*回执为准，不把旧d5d986完整门禁冒称通过。
+
+### MAN-CA-010实页通过与MAN-CA-011新断点
+
+新组合db35b3bf已实际通过Evidence21、check:fast、受影响格式及前后端构建；CasePanel34源码未变，复用d5d986实际组件通过结果，客户13及本批W/R客户实页也复用。新JS index-D6wJylbH.js／CSS index-tFeMWSl9.css与manifest一致。见resume-i-final2-*回执，未重跑不相关全仓verify或迁移。
+
+W仍仅RESULT权限、没有SAVE：列表原入口现可见结果表单，不显示进展保存；选择既有本案精确裁判文书、日期25日、诉讼费待确认，正常核对／确认登记发回成功。刷新重进后0001仍同案，待正式立案v17、当前第3轮，第2轮仍撤销；未新增案或上传。见resume-i-w-result-only-form-visible.txt、resume-i-w-remand-confirmation.txt、resume-i-remand-list-reloaded.txt、resume-i-acceptance-conflict-business-facts.json。MAN-CA-010相关原步骤通过。R在新包正常案详情二审信息可读但各编辑／办理禁用，见resume-i-final-r-second-readonly.txt/.png；R已登出并停用rev50、临时Grant/session0、原绑定active v9。
+
+MAN-EV-002新包真实W“查看”已显示平台“淘宝”、来源“公证出证”，原证物／纸质资料字段不变，见resume-i-evidence-labels-fixed.txt/.png，显示修复通过。
+
+**MAN-CA-011／产品流程阻塞P1。** 同案第3轮受理填25日、民再1025I号、现有本部门法院、材料0，界面提示“案件阶段或版本已变化”；没有重复提交。I请求账没有任何acceptance-register POST，数据库仍v17／当前受理null，说明错误在HTTP之前，不能称后端409或数据库守卫拒绝。CaseListWorkflowPanel严格请求shape的acceptance漏176已实现paymentDueAt，而表单总带该键（空值也带）；decoder因此合成INVALID_STATE。hearing与更正同漏hearingPlace/judgeName。精确来源只读JSON证明状态／来源条件满足；法院经正常select可选，不把AX折叠菜单的disabled描述误判成法院不可用。证据resume-i-retrial-acceptance-conflict.txt/.png、resume-i-acceptance-source-diagnosis.json、resume-i-request-budget.json。
+
+最小修复2e865cb4、集成f306d8ae，只在对应shape加入已确认的optional(nullable(string))字段；严格未知键拒绝、旧省略恢复、actor／case／version／action与原幂等键保护均保留。真实表单→列表适配→API调用反例先RED，CaseWorkspaceIntegration与CaseListWorkflowPanel相关114/114、类型／Lint／格式通过；独立Spec／质量ACCEPTED C0/I0/M0，组合仍Level2。根核对Worker与集成frontend/backend源码无差异，复用其114测试，不改后端、权限、迁移或业务表。最新构建后只复测原受理及直接相邻开庭，不重做发回／旧已通过动作，实际通过结论待页面完成后补记。
