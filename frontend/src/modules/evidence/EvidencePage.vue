@@ -32,7 +32,7 @@ import {
   toggleVisibleEvidence,
 } from './evidence-selection';
 import { evidenceStageLabel, evidenceStages } from './evidence-stage-labels';
-import { labelLeadPlatform, leadPlatformLabels } from '../leads/lead-options';
+import { labelLeadPlatform } from '../leads';
 
 const statusLabels: Record<EvidenceStatus, string> = {
   UNDELIVERED: '未交付',
@@ -47,16 +47,18 @@ const paperLabels: Record<PaperStatus, string> = {
 const evidenceProvenanceLabels: Readonly<Record<string, string>> = {
   'notary.certificate_issued': '公证出证',
 };
-function isLeadPlatform(value: string): value is LeadPlatform {
-  return Object.hasOwn(leadPlatformLabels, value);
-}
 function platformLabel(value: string | null): string {
-  return value && isLeadPlatform(value) ? labelLeadPlatform(value) : '—';
+  if (!value) return '—';
+  const label = labelLeadPlatform(value as LeadPlatform);
+  return typeof label === 'string' ? label : '—';
 }
 function provenanceLabel(value: string | null): string {
   if (!value) return '—';
-  const label = evidenceProvenanceLabels[value];
-  if (label) return label;
+  if (Object.hasOwn(evidenceProvenanceLabels, value)) {
+    const label = evidenceProvenanceLabels[value];
+    return typeof label === 'string' ? label : '—';
+  }
+  if (Object.hasOwn(Object.prototype, value)) return '—';
   return /^(?:[a-z][a-z\d]*(?:[._-][a-z\d]+)+|[A-Z][A-Z\d]*(?:_[A-Z\d]+)+)$/u.test(
     value,
   )
