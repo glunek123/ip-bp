@@ -1,5 +1,7 @@
 # SPEC-001 文档验证
 
+最新断点与门禁结论见[Resume G/H最终收尾](#2026-10-25-resume-gh最终门禁与断点验收收尾)。下方各历史批次保留当时的失败、阻塞及未推送状态；不能据旧段落判断当前缺陷或Git交付状态。
+
 ## 2026-10-25 九类UI改造与真实页面复查
 
 **RUN-MA1025-UI-FIX-01／本轮已测UI范围通过，完整业务验收未完成。** 改造前提交`ba487d0f601515dbb6bc88f51abbaf8385ace363`已正常快进并推送GitHub main，远端备份`codex/pre-ui-efficiency-20261024`一致。原42份tracked修改和新增fee-launch.spec.ts均已归档，没有覆盖或丢弃。新UI在`codex/operations-ui-efficiency`，产品提交`f8abfa18e5f60af4e69b8ab037545337f8ba585f`、`d30ad2100abf70630f12bd1163cbfe64a5e0bd77`，UI未推送、未部署生产。
@@ -3682,3 +3684,78 @@ MAN-CA-007证据resume-c-second-acceptance-save-failed.txt/.png、resume-c-secon
 账号和服务已收尾：浏览器正常登出；W37/R44均未启用，L停用rev10、原律师binding停用v10；W/R专属临时Grant0、原角色绑定保持，三类账号未撤销会话0。服务返回SERVICES_CLOSED，3101/5174无监听，helper退出。累计64业务请求/1登录，600/7未耗尽，重启未重置计数；15439测试库177及资料保留。回执resume-f-closed-20261025.json、resume-f-lawyer-close.json、resume-f-request-budget.json、resume-f-browser-logged-out.txt。内置浏览器本次结果文件下载成功，不据此关闭旧费用原生确认框的工具阻塞。
 
 待用户在最新“合并更正范围”中确认后，才能执行最终旧迁移与177后PG专项，再启W/R完成读权限、正常案结果撤销后原角色进展、外录发回撤销/进展回归；只用原两案和21份材料，不增加上传。关机前先将本地已审成果正常推送任务分支留档；main暂不集成，因为正式门禁和必要相邻页面仍阻塞。不得把任务分支备份称为main已合并。推送完整SHA以最终Git核对回执为准。
+
+## 2026-10-25 Resume G/H最终门禁与断点验收收尾
+
+**当前结论：本次必需门禁和相关页面步骤通过，可以按独立Git授权正常集成main；完整系统人工验收仍未完成。** 从23f80d7bee3d43ce4561cd8582ae663f6f964440恢复，没有重跑客户经理等无关已通过页面，没有新增案件或重复上传。源码候选为1dd6fcbbde1247b13fcf471cd05af27943d94002，tree为d121373b3d15fbc3cc3a5f281d571ea24e9915b2。证据根目录仍为`.local/manual-acceptance-90708add-20261023/`。
+
+### 完整门禁的实际原因与最终结果
+
+| 检查／批次              | 实际结论与证明边界                                                                                                                                                                      | 证据                                                                                             |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 旧F完整verify           | 实际exit1：旧CORE-NT-006因未注入受管测试库绑定，在数据库连接前拒绝；不是产品断言已失败。139工具／3313前端／2897后端通过不能写完整通过。旧失败不删除                                     | resume-f-verify.log                                                                              |
+| 开机后环境              | 原DB容器处于exited，卷仍在；按新批准只启动原容器。H首次启动因health尚starting被预检拒绝，未启账号／服务；健康后正常启动                                                                 | resume-h-startup-health.json                                                                     |
+| G最终完整verify         | exit0，12:39–12:46（上海）；HEAD前后相同且干净。工具139/139、前端3319/3319（164文件）、后端2898/2898（195套件）；strict context、Spec、架构、Prisma、类型、Lint、格式和前后端构建均完成 | resume-g-verify.log；resume-g-verify-result.json                                                 |
+| 177后真实PostgreSQL专项 | 1/1通过，7.7秒；覆盖176→177升级、全新177、失败原子性、来源守卫及只读真实来源。DO来源条件专项不代替完整保存事务，完整事务另由下表真实UI验证                                              | resume-g-ca008-pg-after177.log                                                                   |
+| 隔离与迁移              | verify旧专项3个schema＋CA008专项2个，全部精确清理，仅public保留。门禁前后public事实JSON完全一致；177条迁移账本及checksum不变。没有重复部署175/176/177，没有清库                         | resume-g-public-before-gates.json；resume-g-public-after-gates.json；resume-gh-final-ledger.json |
+| 独立审查                | 不同主体独立核对累计源码、风险、完整门禁、PG与G/H真实UI／最终事实；Spec及质量均ACCEPTED，C0/I0/M0                                                                                       | review_ca008_guard最终结论；resume-gh-final-audit.json                                           |
+
+855份输入与产物hash核验，实际浏览器JS `index-DS6lXjuo.js`、CSS `index-tFeMWSl9.css`与新manifest一致，见build-resume-g-20261025.json。没有伪造响应、改时钟、关闭权限或数据库守卫。源码与已审8ceb1e1d完全相同；1dd6仅新增已批准计划、恢复记录及快照。该次verify包含了正常构建，不复用旧运行页面。
+
+### 缺陷与修复结论
+
+| 编号／分类             | 原因、最小修复与提交                                                                                                                                                                                                                                                                                | 本次结论                                                                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| MAN-CA-007／产品Bug P2 | 原判决日期25日已独立更正24日，服务仍按原日期比较；复用922fbba3d5ff4b39add4a668d0554665cbf1d805及629b7dac4b1c3349c9056592de339b3d64b9519c的有效日期读取                                                                                                                                              | W保存24日正常来源进展、二审受理清空／恢复并刷新通过；不重复开发                                                                    |
+| MAN-CA-008／产品Bug P1 | check_case_second_instance_final对正常NOTARY进展也无条件要求case_external_entries及外录同源choice/judgment，合法保存触发23514／500。574a15aac1265a864fa8e40518b91662dbcfda77新增177前向迁移，只将原外录同源检查限定到本案同部门存在外录来源；其他权限、版本、指针、材料及审计守卫保留，历史迁移不改 | 正常案W原步骤不再500，保存／刷新／重进成功；外录保存与清空相邻UI回归通过。真实PG反例仍拒绝错误来源及跨案／跨部门。相关必需验收关闭 |
+| MAN-CA-009／产品Bug P2 | 取消勾选误删上传候选；8ceb1e1d92d6369c0250a28572085447c6642b8e分离候选与选择，复用已有授权材料列表并过滤本案精确版本；异步互斥、权限变化清草稿反例已修                                                                                                                                              | 复用F批L真实复选／改判／刷新／下载通过证据，29项组件及本次完整门禁通过；本轮未重复上传或假称重新测过该页面                         |
+
+177文件为backend/prisma/migrations/20261025090000_case_second_instance_normal_source_guard/migration.sql，checksum为2c60f6944d6f63edca361a9b48e7ac8afb1ef0332c0d18c2cbbbbc6cd21a3dc9。本次没有新产品改动，复用已有正确修复。
+
+### G/H真实浏览器操作结果
+
+所有下列UI结果由GPT读取当前页面、点击／填写／正常确认并观察保存反馈取得；代码、日志及数据库只读事实用于交叉核对，不替代页面操作。G/H独立新授权见最小计划及用户批准记录；不恢复F旧会话、权限或额度。
+
+| 项目／角色／前置条件    | 实际页面步骤与结果                                                                                                    | 关键证据                                                                                                                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R无Grant                | 新登录，打开案件列表及0003／0001详情；均明确拒绝，无案件内容泄露                                                      | resume-g-r-no-grants-cases.txt/.png；resume-g-r-no-grants-normal-detail.txt；resume-g-r-no-grants-external-detail.txt                                                             |
+| R授权变更／会话         | 只授CASE_READ/DEPARTMENT，撤本批旧会话；刷新旧页转登录，新会话可读                                                    | resume-g-r-old-session-revoked.txt；resume-g-r-department-default-mine.txt                                                                                                        |
+| R部门范围／只读         | 默认本人2案，正常切部门10案；两案详情、刷新、记录抽屉均可读但无可执行保存或流程操作                                   | resume-g-r-department-list-no-export.txt；resume-g-r-normal-record-drawer-readonly.txt；resume-g-r-normal-readonly-reload.txt；resume-g-r-department-external-second-readonly.txt |
+| R报表／导出             | CASE_EXPORT入口不可用；报表显示统计未读取，金额统计不可读、导出disabled；没有写入或报表／导出Grant                    | resume-g-r-no-report-amount-export.txt；resume-g-r-report-denied.png                                                                                                              |
+| W正常案0003撤销CHANGE   | 起点执行准备v17，无执行提交；填写原因、核对影响、勾选并正常确认撤销，回第1轮二审v18，原CHANGE金额／文书和撤销原因保留 | resume-g-w-normal-before-revoke.txt；resume-g-normal-change-revoked-list.txt/.png                                                                                                 |
+| W正常来源进展原步骤     | 保存2026-10-24、MAN1025-合成二审法庭／法官；提示成功，刷新列表重开仍正确，阶段二审、v19，历史保留                     | resume-g-w-normal-progress-reloaded-reentered.txt；resume-g-w-normal-progress-reloaded.png                                                                                        |
+| W二审受理清空           | 从详情二审信息编辑，说明原因后清空受理日期与二审案号，保存、刷新重进仍空；一审案号未变                                | resume-g-w-second-acceptance-cleared-reload.txt；resume-g-w-second-acceptance-cleared.png                                                                                         |
+| W二审受理恢复           | 恢复24日／（2026）测0101民终1025号，保存、刷新重进一致；更正历史3条，案件仍二审v19                                    | resume-g-w-second-acceptance-restored-reload.txt；resume-g-w-second-acceptance-restored.png                                                                                       |
+| W外录0001撤销REMAND     | 起点第2轮待正式立案v13且子轮无事实；正常撤销、刷新，回第1轮二审v14，第2轮显示已撤销，一审案号恢复，未知金额仍待定     | resume-g-external-remand-revoked-list-reload.txt；resume-g-external-remand-revoked-round1.txt                                                                                     |
+| G外录相邻保存与额度中断 | 保存24日／既有合成法庭，补MAN1025G-合成外录法官，事实已v15；刷新请求因300额度到限在业务前拦截，当时只记阻塞并立即清理 | resume-g-quota-business-facts.json；resume-g-request-budget.json                                                                                                                  |
+| H独立尾验刷新           | 新批准、W新会话，仅读＋进展SELF；重进看见G保存的日期／地点／法官及原历史，补齐原刷新断点                              | resume-h-external-saved-progress-fresh-session.txt；resume-h-external-saved-progress.png                                                                                          |
+| H外录清空／刷新         | 日期、地点、法官清空，只保存1次；关闭、刷新重进后仍全空，3条历史及已撤销第2轮保留，二审v16                            | resume-h-external-progress-cleared-reload.txt/.png；resume-h-external-cleared-fields-visible.png                                                                                  |
+
+R只有案件部门读取，没有写、CASE_EXPORT、REPORT_AMOUNT_READ或REPORT_EXPORT。案件事实金额仍可能随CASE_READ可见，不能把报表金额限制说成所有案件金额均隐藏。当前权限目录不含CASE_READ/SELF，空Grant拒绝不能冒称“SELF本人读取”通过；本轮没有直接构造恶意后端POST，页面只读也不证明所有后端写入负例。
+
+### 覆盖清单与仍未完成项
+
+既有coverage.csv追加16条G/H RUN：15通过、1次额度中断阻塞。H两条后续记录已解决G外录刷新／清空断点，旧G阻塞行作为历史保留，不是当前未修产品失败。全表1740条历史与路由操作盘点记录：通过394、失败19、阻塞38、未测试1287、不适用2；包含同一问题修复前RED及后续GREEN，不能当作1740项独立功能或据此计算全系统通过率。每条含页面、角色、前置、步骤、预期、实际、状态和证据。
+
+| 范围               | 当前边界                                                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| 本次必要断点       | 完整verify、177后PG、W/R已批权限对照、正常案进展、受理更正、外录撤销／保存／清空已完成，无本批未关闭流程阻塞                   |
+| 原已通过内容       | 客户经理、F批L改判／材料复选下载、MAN-NT-003修复后公证读取等复用已有证据，不重复验收，也不因旧RED误标为当前失败                |
+| 仍未测试／能力缺口 | CASE_READ/SELF当前目录无此能力；其他角色／判决与二审权限分支、恶意后端POST负例及覆盖清单其余未测动作保持未测，不扩改权限模型   |
+| 旧工具问题         | 原生费用确认框及2.34元移除的确认来源归因未在本批解决；未再次删除费用，也未绕过确认                                             |
+| 后续业务           | 重审第2轮及后续受理／开庭、其他执行分支和跨日条件未在本批继续；当前外录空子轮已合法撤销，不能强改时间／阶段或再造案补测        |
+| 界面观察           | 窄案件权限账号默认登录客户页可能出现连接失败文案；本批正常导航案件继续。仅记待定位体验观察，未判客户业务缺陷或擅自增加客户权限 |
+
+### 额度、事实与环境收尾
+
+G使用3次登录、300个已处理业务请求，另1次在处理前被额度守卫拦截；到限后停服务、账号、权限及会话并恢复DB停止。H是用户另批新账，1次登录、40/150请求、仅1次进展清空保存，20分钟内结束。H首次health预检拒绝未消耗登录／业务请求。新增schema G合计5、H0；上传均0、旧累计21/21保留。没有新增案件、客户、账号、费用或二审结果。见resume-g-scope.json、resume-g-request-budget.json、resume-h-scope.json、resume-h-request-budget.json。
+
+最终事实：正常0003第1轮二审v19、3条进展、3条受理更正历史；外录0001第1轮二审v16、3条进展、当前可空字段均空、空第2轮已撤销；其余8案完全不变。原裁判文书精确版本及SHA未变，未知金额没有变成0。只读核对见resume-gh-final-business-facts.json、resume-gh-final-ledger.json、resume-gh-final-audit.json。
+
+浏览器正常登出。W停用rev41、R rev47、L rev10、N rev6、C rev12；临时Grant0、未撤销会话0。W原绑定active v25、临时绑定／角色inactive v20；R原绑定active v7、临时绑定inactive v6；律师绑定维持inactive v10。3101/5174无监听，应用/helper退出；原15439容器d9a68d83…90e446恢复exited，持久卷保留。证据resume-h-browser-logged-out.txt/.png、resume-h-w-close.json、resume-g-r-close.json、resume-gh-final-accounts.json、resume-gh-processes-closed.json、resume-gh-environment-closed.json。
+
+### 非执行性收口与Git集成条件
+
+1dd6是实际执行完整verify的commit/tree，不把后续文档提交冒称重新执行过完整verify。其后仅修改本节、开发状态、已经执行的H授权补记及对应已核快照；没有源码、测试、依赖、运行／构建配置、契约、权限模型或验收标准变化。按三级规则“非执行性收口例外”检查完整累计diff、受影响格式、Spec、strict context和git diff --check后复用原门禁与独立审查证据。最终检查回执与提交关系保存为resume-gh-doc-closeout.json及resume-gh-git-delivery.json，只有真实检查及推送成功后才填写成功回执。
+
+Git正常合并／推送已有独立授权。收口提交需核实main为祖先且无他人tracked修改，正常快进至同一提交并正常推送glunek123/ip-bp main，再以ls-remote核对本地主main、集成分支与远端完整SHA一致。不得强推、整仓盲目暂存或覆盖其他任务；原.pnpm-store/及旧stash保留。不部署生产。当前服务和W均关闭；代码可供后续人工测试，实际登录需下一批新的最小测试启用授权，不能复用本轮已撤销会话或额度。
