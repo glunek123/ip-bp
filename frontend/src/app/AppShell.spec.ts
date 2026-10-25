@@ -505,6 +505,61 @@ describe('AppShell', () => {
     );
   });
 
+  it('groups settlement, evidence, and customer links under the toolbar', async () => {
+    api.getSettlementContext.mockResolvedValue({
+      read: true,
+      feeRead: false,
+    });
+    api.listEvidence.mockResolvedValue({});
+    const { wrapper, router } = await mountShell('/settlements');
+    await flushPromises();
+
+    const nav = wrapper.get('nav[aria-label="主要导航"]');
+    const toolbarLabel = nav
+      .findAll('.app-nav__label')
+      .find((label) => label.text() === '工具栏');
+    const navigationOrder = nav
+      .findAll('a')
+      .map((link) => link.attributes('data-test'));
+
+    expect(toolbarLabel).toBeDefined();
+    expect(navigationOrder.indexOf('settlement-nav')).toBeGreaterThanOrEqual(
+      0,
+    );
+    expect(navigationOrder.indexOf('settlement-nav')).toBeLessThan(
+      navigationOrder.indexOf('evidence-nav'),
+    );
+    expect(navigationOrder.indexOf('evidence-nav')).toBeLessThan(
+      navigationOrder.indexOf('customer-nav'),
+    );
+    expect(nav.get('[data-test="settlement-nav"]').classes()).toContain(
+      'active',
+    );
+    expect(nav.get('[data-test="evidence-nav"]').text()).toContain('证物管理');
+
+    await router.push('/evidence');
+    await flushPromises();
+    expect(nav.get('[data-test="evidence-nav"]').classes()).toContain(
+      'active',
+    );
+    await router.push('/customers');
+    await flushPromises();
+    expect(nav.get('[data-test="customer-nav"]').classes()).toContain(
+      'active',
+    );
+
+    await wrapper.get('[data-test="mobile-nav-toggle"]').trigger('click');
+    expect(
+      wrapper.get('[data-test="mobile-nav-toggle"]').attributes('aria-expanded'),
+    ).toBe('true');
+    await nav.get('[data-test="settlement-nav"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/settlements');
+    expect(
+      wrapper.get('[data-test="mobile-nav-toggle"]').attributes('aria-expanded'),
+    ).toBe('false');
+  });
+
   it('shows the internal case entry without exposing it to clients', async () => {
     const { wrapper } = await mountShell();
     expect(wrapper.get('[data-test="case-nav"]').attributes('href')).toBe(

@@ -1060,24 +1060,6 @@ async function logout(): Promise<void> {
           </div>
         </div>
         <RouterLink
-          v-if="!isClient && canViewSettlements"
-          class="app-nav__item"
-          :class="{ active: route.path === '/settlements' }"
-          data-test="settlement-nav"
-          to="/settlements"
-          @click="closeDrawer"
-          ><span>结算中心</span></RouterLink
-        >
-        <div v-if="settlementReadError" data-test="settlement-nav-error">
-          <p role="alert">{{ settlementReadError }}</p>
-          <ElButton
-            data-test="settlement-nav-retry"
-            :disabled="settlementReadLoading"
-            @click="retrySettlements"
-            >重新读取结算导航</ElButton
-          >
-        </div>
-        <RouterLink
           v-if="canViewReports"
           class="app-nav__item"
           :class="{ active: route.path === '/reports' }"
@@ -1093,24 +1075,6 @@ async function logout(): Promise<void> {
             :disabled="reportsReadLoading"
             @click="retryReports"
             >重新读取报表导航</ElButton
-          >
-        </div>
-        <RouterLink
-          v-if="canViewEvidence"
-          class="app-nav__item"
-          :class="{ active: route.path === '/evidence' }"
-          data-test="evidence-nav"
-          to="/evidence"
-          @click="closeDrawer"
-          ><span>证物</span></RouterLink
-        >
-        <div v-if="evidenceReadError" data-test="evidence-nav-error">
-          <p role="alert">{{ evidenceReadError }}</p>
-          <ElButton
-            data-test="evidence-nav-retry"
-            :disabled="evidenceReadLoading"
-            @click="retryEvidence"
-            >重新读取证物导航</ElButton
           >
         </div>
         <RouterLink
@@ -1149,21 +1113,58 @@ async function logout(): Promise<void> {
           <span>公证审核</span>
         </RouterLink>
 
-        <template v-if="!isClient">
-          <p class="app-nav__label app-nav__label--spaced">工具栏</p>
-          <RouterLink
-            class="app-nav__item"
-            :class="{ active: isCustomerRoute }"
-            data-test="customer-nav"
-            to="/customers"
-            @click="closeDrawer"
+        <p v-if="!isClient" class="app-nav__label app-nav__label--spaced">
+          工具栏
+        </p>
+        <RouterLink
+          v-if="!isClient && canViewSettlements"
+          class="app-nav__item"
+          :class="{ active: route.path === '/settlements' }"
+          data-test="settlement-nav"
+          to="/settlements"
+          @click="closeDrawer"
+          ><span>结算中心</span></RouterLink
+        >
+        <div v-if="settlementReadError" data-test="settlement-nav-error">
+          <p role="alert">{{ settlementReadError }}</p>
+          <ElButton
+            data-test="settlement-nav-retry"
+            :disabled="settlementReadLoading"
+            @click="retrySettlements"
+            >重新读取结算导航</ElButton
           >
-            <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M4 4.5h12v11H4zM7 2.5h6v4H7z" />
-            </svg>
-            <span>客户管理</span>
-          </RouterLink>
-        </template>
+        </div>
+        <RouterLink
+          v-if="canViewEvidence"
+          class="app-nav__item"
+          :class="{ active: route.path === '/evidence' }"
+          data-test="evidence-nav"
+          to="/evidence"
+          @click="closeDrawer"
+          ><span>证物管理</span></RouterLink
+        >
+        <div v-if="evidenceReadError" data-test="evidence-nav-error">
+          <p role="alert">{{ evidenceReadError }}</p>
+          <ElButton
+            data-test="evidence-nav-retry"
+            :disabled="evidenceReadLoading"
+            @click="retryEvidence"
+            >重新读取证物导航</ElButton
+          >
+        </div>
+        <RouterLink
+          v-if="!isClient"
+          class="app-nav__item"
+          :class="{ active: isCustomerRoute }"
+          data-test="customer-nav"
+          to="/customers"
+          @click="closeDrawer"
+        >
+          <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M4 4.5h12v11H4zM7 2.5h6v4H7z" />
+          </svg>
+          <span>客户管理</span>
+        </RouterLink>
 
         <template
           v-if="
