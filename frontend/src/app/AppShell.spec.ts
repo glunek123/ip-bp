@@ -523,9 +523,16 @@ describe('AppShell', () => {
       .map((link) => link.attributes('data-test'));
 
     expect(toolbarLabel).toBeDefined();
-    expect(navigationOrder.indexOf('settlement-nav')).toBeGreaterThanOrEqual(
-      0,
+    expect(toolbarLabel?.element.nextElementSibling).toBe(
+      nav.get('[data-test="settlement-nav"]').element,
     );
+    expect(
+      nav.get('[data-test="settlement-nav"]').element.nextElementSibling,
+    ).toBe(nav.get('[data-test="evidence-nav"]').element);
+    expect(
+      nav.get('[data-test="evidence-nav"]').element.nextElementSibling,
+    ).toBe(nav.get('[data-test="customer-nav"]').element);
+    expect(navigationOrder.indexOf('settlement-nav')).toBeGreaterThanOrEqual(0);
     expect(navigationOrder.indexOf('settlement-nav')).toBeLessThan(
       navigationOrder.indexOf('evidence-nav'),
     );
@@ -539,24 +546,24 @@ describe('AppShell', () => {
 
     await router.push('/evidence');
     await flushPromises();
-    expect(nav.get('[data-test="evidence-nav"]').classes()).toContain(
-      'active',
-    );
+    expect(nav.get('[data-test="evidence-nav"]').classes()).toContain('active');
     await router.push('/customers');
     await flushPromises();
-    expect(nav.get('[data-test="customer-nav"]').classes()).toContain(
-      'active',
-    );
+    expect(nav.get('[data-test="customer-nav"]').classes()).toContain('active');
 
     await wrapper.get('[data-test="mobile-nav-toggle"]').trigger('click');
     expect(
-      wrapper.get('[data-test="mobile-nav-toggle"]').attributes('aria-expanded'),
+      wrapper
+        .get('[data-test="mobile-nav-toggle"]')
+        .attributes('aria-expanded'),
     ).toBe('true');
     await nav.get('[data-test="settlement-nav"]').trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.path).toBe('/settlements');
     expect(
-      wrapper.get('[data-test="mobile-nav-toggle"]').attributes('aria-expanded'),
+      wrapper
+        .get('[data-test="mobile-nav-toggle"]')
+        .attributes('aria-expanded'),
     ).toBe('false');
   });
 
