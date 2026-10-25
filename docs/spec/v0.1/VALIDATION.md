@@ -3847,3 +3847,33 @@ MAN-EV-002新包真实W“查看”已显示平台“淘宝”、来源“公证
 收尾：实际294/600 API、6/6登录，原起点07:25:55 UTC到服务关闭约08:28 UTC，在90分钟内；上传0、原21/21保留，费用新增0，没有支付／对外通知。W停用rev43、R50、L12，C12/N6一直停用；临时Grant0、这批测试账号未撤销会话0。原W绑定active v27、临时绑定／role inactive v22；R原绑定active v9、临时分配inactive v8、role按事务停用；L律师绑定inactive v12。已正常退出浏览器、所有应用／身份helper退出，3101/5174/5175/15439无监听，原容器d9a68d83…90e446恢复exited，持久卷与历史保留。receipt：resume-i-w-close.json、resume-i-r-close.json、resume-i-lawyer-close.json、resume-i-final-accounts.json、resume-i-environment-closed.json、resume-i-request-budget.json。关闭完成态之后的CtrlC只退出已清理wrapper，不把该TTY退出1误作产品测试失败。I scope标CLOSED、执行开关approved=false，原批准记录另存resume-i-approved-scope.json，剩余额度不得续用。
 
 最终仅补本节、开发状态、恢复指针及对应核过的快照；相对0873执行源码必须0差异。按非执行性收口例外完成受影响格式、Spec、strict context及git diff --check，保留原实际通过候选／tree和UI证据。正常快进／推送main及本地／集成／远端完整SHA以resume-i-git-delivery.json实际成功回执为准，不预写推送结果。主目录原.pnpm-store/、旧stash和其他任务成果保留，不强推、不部署生产。代码可供下一批人工试用，但当前环境和临时账号均关闭，不能直接登录。
+
+## 2026-10-25 运营交付准备增量J
+
+### J批最终收尾与运营交付边界
+
+本轮从已推送0de80d74增量继续。用户批准独立J范围，旧I不续用；后另批仅26日实际到达才可开始的独立K，当前尚未执行。计划见[交付准备](../../superpowers/plans/2026-10-25-operations-trial-delivery.md)，[运营交接](../../operations/operations-trial-handoff.md)汇总限定试测范围。用户确认尚未租服务器，本机验收不等于部署独立UAT。
+
+| 本批闭环           | 实际证据与结论                                                                                                                                                                                                                                                                                                                                             |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| SAVE-only真实正例  | W仅CASE_READ/DEPARTMENT＋CASE_SECOND_INSTANCE_SAVE/SELF。0003原法官有值，先清空后恢复原值，分别保存／刷新／重进；两条新进展、v19→21，日期24日及原法庭不变。结果表单不可用。resume-j-save-only-*.txt/.png、resume-j-final-business-audit.json                                                                                                               |
+| 打开草稿后撤权     | 填未提交法官草稿，撤SAVE并撤旧会话，再由旧页面点击保存，401回登录。新W会话不再有二审保存动作；记录仍v21、无第3条进展，旧草稿未入库。resume-j-revoked-draft-login-redirect、resume-j-after-revocation-business-facts                                                                                                                                        |
+| 受理截止日实页补验 | 详情一审编辑明确选择第3轮／民再1025I号，截止日null→2026-10-26→null，2次更正及刷新重进通过，原25日受理／案号不变。本轮列表“编辑已登记资料”只有开庭类，受理独立入口在详情；未把它直接判权限Bug                                                                                                                                                               |
+| 开庭资料实页补验   | 第3轮25日安排的地点／法官清空后保存、刷新，恢复原值再保存／刷新并展开两条历史；日期25日、stage待开庭及Case.version19不变。resume-j-hearing-*.txt/.png；受理与开庭共4更正，无新费用                                                                                                                                                                         |
+| R外录边界          | R仅CASE_READ/DEPARTMENT，切已获额外授权的部门范围后可读0001，编辑弹层无可更正资料。另1次格式正确RESULT辅助HTTP返回403/ACTION_FORBIDDEN并登出，无业务回执／阶段版本变化。拒绝发生在业务阶段和材料检查前，不冒称那些检查已通过。resume-j-r-external-result-denial.json、resume-j-r-external-readonly-editor                                                  |
+| 本人报表导出       | W第二阶段仅本人客户／线索读取、金额／导出SELF及相关更正权；页面只允许本人视图。实际点击一次下载378B／11行CSV，8案、23客户、累计标的额1000.00、公证在办0；客户／公证只读计数匹配，界面已知2／未知6仍区分。SHA256 5577e1d0e472ead49f05975f8c0f1f6271fb5a910d40758531e02082297c3ec2。resume-j-report-download.json、最终文件Downloads/案件报表_2026-10-25.csv |
+| 用户追加工具栏调整 | AppShell仅移动结算中心、证物管理、客户管理及原错误重试块至工具栏，保留权限、路径、active及closeDrawer。113项组件直接验证三项连续相邻、active和移动端关闭；W实际新构建中客户入口在工具栏后且active，另外两项未获读权所以隐藏。本轮不称全权限三入口真实页面共显通过。resume-j-sidebar-ui.json、resume-j-sidebar-w-authorized-links                           |
+
+产品候选893df778bf6cc1dbaeb6e545b2be78a5b964a32f；最初0de80d74重新构建已通过，后只改前端AppShell／对应测试及计划／交接；最终前端重新构建，浏览器实际脚本index-DRmgpDbo.js／CSS index-Ccdq_iei.css。855源码输入、未变后端源码及全部962原输出hash核对通过，backend仍绑定同一15439，未使用旧前端。两版运行下业务模块源码不变，已测J业务证据仍有效，不重跑无关流程。
+
+门禁：check:fast exit0（架构、前后端及根类型、Lint）；第一次`test -- file`参数转发未形成文件过滤，实际164文件3337项前端通过，保留原结果而不再重跑。补强同组断言后明确`exec vitest run src/app/AppShell.spec.ts`为1文件113项通过，受影响前端typecheck／Lint／格式通过。新前端build exit0。独立集成双轴ACCEPTED C0/I0/M0；本片为既有权限不变的导航局部调整，不冒称新完整verify／数据库E2E或全业务验收。
+
+环境／工具问题分开记录：J启动辅助脚本的旧后台预检以“重启时刻＋90分”滚动检查，22:51重启时把26日候选算入，Nest启动前拒绝。最小修正统一查询到原J截止23:35，原预算／deadline／正常调度及候选非零拒绝均不改；独立复核通过，后续启动实见候选0。另一次只读审计helper把MaterialReference字段写成ownerType而非resourceType，事务只读查询失败，修正后断言通过；不记为产品Bug、业务写入或门禁失败。
+
+J于22:57前完成关闭：262/500请求、5/5登录、上传0（原21/21保留），无新增案件／账号／费用／schema／迁移。W停用rev46，原绑定active29／临时assignment inactive24／role inactive25；R停用rev52，原绑定active11／临时assignment inactive10／role inactive16；两专用角色Grant0、所有本批账号未撤销会话0，L12/C12/N6未启。浏览器登出，应用／helper退出，3101／5174／5175无监听，原15439容器exited且卷保留；177完整账本checksum不变，仅public，进展6→8／回执13→15仅对应W两次进展。resume-j-identities-close.json、resume-j-final-accounts.json、resume-j-final-ledger.json、resume-j-environment-closed.json、resume-j-request-budget.json。J执行开关关闭、历史批准另存；剩余额度过期不续用。
+
+覆盖清单追加14条J记录：10通过、1次已修环境辅助脚本历史失败、1未测试、2阻塞。全表1784条来源盘点／历史操作记录（426通过、24历史失败、1289未测试、43历史／当前阻塞、2不适用）；同一功能可有多次RED/GREEN，不能当作独立功能数、开放Bug数或计算系统通过率。见resume-j-coverage-append.json；旧记录不覆盖。
+
+仍未完成：0001第3轮实际跨日至判决（独立K已批准但日期未到／尚未执行）；其他角色和未测清单、自然错误恢复、原生确认工具限制、MAN-LD-004导航体验。本案已只读找到1份ACTIVE/AVAILABLE的既有JUDGMENT合成版本，能否通过判决表单合法选择仍待实页确认。K不得上传、改系统时钟／stage或重复迁移。独立UAT还缺服务器和对应部署授权，不提供虚构测试入口。
+
+本次收口相对893df778只补实际结果、交接及已核快照；执行源码不得再漂移。完成受影响文档格式、Spec、strict context及diff检查后，按既有独立Git授权正常快进／推送main；完整SHA和三方一致性以resume-j-git-delivery.json实际回执为准，不预写推送成功。保留原.pnpm-store/、旧stash和其他任务成果，不部署生产。
