@@ -5,6 +5,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
 import { listCustomers, type CustomerSummary } from '../../api/customers';
+import { ApiError } from '../../api/http';
 import { pinia } from '../../app/pinia';
 import { useAuthStore } from '../../stores/auth';
 import CustomerNewPage from './CustomerNewPage.vue';
@@ -12,7 +13,7 @@ import CustomerNewPage from './CustomerNewPage.vue';
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore(pinia);
-const state = ref<'loading' | 'ready' | 'failed'>('loading');
+const state = ref<'loading' | 'ready' | 'failed' | 'forbidden'>('loading');
 const items = ref<CustomerSummary[]>([]);
 const canCreateDraft = ref(false);
 const total = ref(0);
@@ -170,14 +171,17 @@ async function load(): Promise<void> {
     currentPage.value = result.page;
     canCreateDraft.value = result.capabilities.createDraft;
     state.value = 'ready';
-  } catch {
+  } catch (reason) {
     if (
       !controller.signal.aborted &&
       activeRequest === controller &&
       session === auth.session &&
       actor === actorIdentity.value
     )
-      state.value = 'failed';
+      state.value =
+        reason instanceof ApiError && reason.status === 403
+          ? 'forbidden'
+          : 'failed';
   }
 }
 
@@ -320,6 +324,11 @@ onBeforeUnmount(() => activeRequest?.abort());
           <span class="state-index">读取中</span>
           <h2>正在读取客户</h2>
           <p>只加载当前账号有权查看的记录。</p>
+        </div>
+        <div v-else-if="state === 'forbidden'" class="state-panel">
+          <span class="state-index">权限不足</span>
+          <h2>当前账号无权查看客户列表</h2>
+          <p>如需查看客户资料，请联系管理员分配相应权限。</p>
         </div>
         <div v-else-if="state === 'failed'" class="state-panel">
           <span class="state-index">连接失败</span>

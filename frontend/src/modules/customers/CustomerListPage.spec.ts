@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CustomerListPage from './CustomerListPage.vue';
+import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
 
@@ -372,6 +373,18 @@ describe('CustomerListPage', () => {
     await wrapper.get('[data-test="retry"]').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('客户甲');
+  });
+
+  it('shows a permission message instead of a connection failure for 403', async () => {
+    api.listCustomers.mockRejectedValueOnce(
+      new ApiError('权限不足', 403, 'FORBIDDEN'),
+    );
+    const { wrapper } = mountListPage();
+    await flushPromises();
+    expect(wrapper.text()).toContain('当前账号无权查看客户列表');
+    expect(wrapper.text()).not.toContain('连接失败');
+    expect(wrapper.find('[data-test="retry"]').exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it('hides creation when the server does not grant the action', async () => {
