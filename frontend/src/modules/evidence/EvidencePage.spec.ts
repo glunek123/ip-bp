@@ -354,6 +354,52 @@ describe('EvidencePage', () => {
     expect(wrapper.find('[role="dialog"]').text()).toContain('EV-B');
   });
 
+  it('shows Chinese platform and provenance labels with a safe unknown fallback', async () => {
+    const existing = await api.getEvidenceGroup();
+    api.getEvidenceGroup.mockResolvedValue({
+      ...existing,
+      case: { ...existing.case, platform: 'TAOBAO' },
+      items: [
+        { ...first, provenance: 'notary.certificate_issued' },
+        { ...second, provenance: 'notary.unknown_event' },
+      ],
+    });
+    const wrapper = mount(EvidencePage);
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .filter((button) => button.text() === '查看')[0]
+      .trigger('click');
+    await flushPromises();
+    const dialogText = wrapper.get('[role="dialog"]').text();
+    expect(dialogText).toContain('平台：淘宝');
+    expect(dialogText).toContain('来源：公证出证');
+    expect(dialogText).toContain('来源：—');
+    expect(dialogText).not.toContain('TAOBAO');
+    expect(dialogText).not.toContain('notary.certificate_issued');
+    expect(dialogText).not.toContain('notary.unknown_event');
+    wrapper.unmount();
+  });
+
+  it('does not show an unknown platform code in the evidence group view', async () => {
+    const existing = await api.getEvidenceGroup();
+    api.getEvidenceGroup.mockResolvedValue({
+      ...existing,
+      case: { ...existing.case, platform: 'FUTURE_PLATFORM' },
+    });
+    const wrapper = mount(EvidencePage);
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .filter((button) => button.text() === '查看')[0]
+      .trigger('click');
+    await flushPromises();
+    const dialogText = wrapper.get('[role="dialog"]').text();
+    expect(dialogText).toContain('平台：—');
+    expect(dialogText).not.toContain('FUTURE_PLATFORM');
+    wrapper.unmount();
+  });
+
   it('keeps selection across filters and sends selected IDs to the bulk dialog', async () => {
     const wrapper = mount(EvidencePage);
     await flushPromises();

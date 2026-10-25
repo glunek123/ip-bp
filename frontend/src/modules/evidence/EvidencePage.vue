@@ -26,11 +26,13 @@ import {
   type EvidenceGroupSummary,
   type EvidenceGroupPage,
 } from '../../api/evidence';
+import type { LeadPlatform } from '../../api/leads';
 import {
   reconcileEvidenceSelection,
   toggleVisibleEvidence,
 } from './evidence-selection';
 import { evidenceStageLabel, evidenceStages } from './evidence-stage-labels';
+import { labelLeadPlatform, leadPlatformLabels } from '../leads/lead-options';
 
 const statusLabels: Record<EvidenceStatus, string> = {
   UNDELIVERED: '未交付',
@@ -42,6 +44,25 @@ const paperLabels: Record<PaperStatus, string> = {
   NOT_ISSUED: '未出纸质证',
   MAILED_TO_LAWYER: '纸质证邮寄律师',
 };
+const evidenceProvenanceLabels: Readonly<Record<string, string>> = {
+  'notary.certificate_issued': '公证出证',
+};
+function isLeadPlatform(value: string): value is LeadPlatform {
+  return Object.hasOwn(leadPlatformLabels, value);
+}
+function platformLabel(value: string | null): string {
+  return value && isLeadPlatform(value) ? labelLeadPlatform(value) : '—';
+}
+function provenanceLabel(value: string | null): string {
+  if (!value) return '—';
+  const label = evidenceProvenanceLabels[value];
+  if (label) return label;
+  return /^(?:[a-z][a-z\d]*(?:[._-][a-z\d]+)+|[A-Z][A-Z\d]*(?:_[A-Z\d]+)+)$/u.test(
+    value,
+  )
+    ? '—'
+    : value;
+}
 const statusKeys = Object.keys(statusLabels) as EvidenceStatus[];
 const paperKeys = Object.keys(paperLabels) as PaperStatus[];
 const filter = ref<EvidenceFilter>({ page: 1, pageSize: 20, stages: [] });
@@ -693,7 +714,7 @@ function paperIdentity(
           >查看关联案件</a
         >
         <p>
-          平台：{{ group.case.platform || '—' }} · 店铺名：{{
+          平台：{{ platformLabel(group.case.platform) }} · 店铺名：{{
             group.case.shopName || '—'
           }}
           · 案号：{{ group.case.caseNo || '—' }}
@@ -714,7 +735,7 @@ function paperIdentity(
                 item.keeperName || '—'
               }}
             </p>
-            <p>来源：{{ item.provenance || '—' }}</p>
+            <p>来源：{{ provenanceLabel(item.provenance) }}</p>
           </li>
         </ul>
         <p v-if="!group.items.length">该案件暂无证物</p>
