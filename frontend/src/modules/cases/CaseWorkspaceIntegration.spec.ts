@@ -6,6 +6,7 @@ import type { CaseDetail, CaseFile } from '../../api/cases';
 import type { LeadDetail } from '../../api/leads';
 import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
+import { createListWorkflowContext } from '../../app/list-workflow-context';
 import CaseDetailPage from './CaseDetailPage.vue';
 import App from '../../app/App.vue';
 import CaseWorkspaceFiles from './CaseWorkspaceFiles.vue';
@@ -13,6 +14,9 @@ import CaseDetailsSections from './CaseDetailsSections.vue';
 import CaseComplaintSubmissionForm from './CaseComplaintSubmissionForm.vue';
 import CaseHearingPanel from './CaseHearingPanel.vue';
 import CaseAcceptanceCorrectionPanel from './CaseAcceptanceCorrectionPanel.vue';
+import CaseListWorkflowPanel, {
+  decodeCaseListRequest,
+} from './CaseListWorkflowPanel.vue';
 import CaseDefendantContactPanel from './CaseDefendantContactPanel.vue';
 import CaseSectionRecordCorrectionPanel from './CaseSectionRecordCorrectionPanel.vue';
 import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
@@ -26,6 +30,7 @@ const api = vi.hoisted(() => ({
   matchCase: vi.fn(),
   listLawyerMatchCandidates: vi.fn(),
   scheduleCaseHearing: vi.fn(),
+  correctCaseHearing: vi.fn(),
   registerCaseAcceptance: vi.fn(),
   uploadMaterialFile: vi.fn(),
   listFilingCourts: vi.fn(),
@@ -46,6 +51,7 @@ vi.mock('../../api/cases', async (original) => ({
   matchCase: api.matchCase,
   listLawyerMatchCandidates: api.listLawyerMatchCandidates,
   scheduleCaseHearing: api.scheduleCaseHearing,
+  correctCaseHearing: api.correctCaseHearing,
   registerCaseAcceptance: api.registerCaseAcceptance,
   listFilingCourts: api.listFilingCourts,
   updateCaseDefendantContact: api.updateCaseDefendantContact,
@@ -531,12 +537,209 @@ async function renderSpa(item: CaseDetail, realDrawer = false) {
   await flushPromises();
   return { wrapper, router, auth };
 }
+async function renderListWorkflow(
+  item: CaseDetail,
+  action: 'acceptance' | 'hearing',
+) {
+  const context = createListWorkflowContext(async () => item);
+  await context.sync({
+    recordId: item.id,
+    actorKey: 'INTERNAL:operator-1:department-1:1',
+    actionKey: action,
+    title: action,
+  });
+  const session = context.state.value.session;
+  if (!session) throw new Error('Expected a ready list workflow session');
+  const wrapper = mount(CaseListWorkflowPanel, {
+    attachTo: document.body,
+    props: { item, action, session, requestState: 'idle' },
+  });
+  wrappers.push(wrapper);
+  await flushPromises();
+  return wrapper;
+}
 async function tab(wrapper: VueWrapper, key: string) {
   await wrapper.get(`[data-workspace-tab="${key}"]`).trigger('click');
   await flushPromises();
 }
 
 describe('UXQ-01-C list action intents', () => {
+  it.each([null, '2026-10-20'])(
+    'submits the real acceptance form through the list adapter with payment due %s',
+    async (dueAt) => {
+      const item = structuredClone(baseItem);
+      item.stage = 'WAITING_FORMAL_ACCEPTANCE';
+      item.canRegisterAcceptance = true;
+      item.filingSubmission = {
+        court: { id: 'court-1', name: 'Court' },
+        submittedAt: '2026-10-03',
+        recordedAt: '2026-10-03T03:00:00Z',
+        recordedByUserId: 'user-1',
+        mediationNo: null,
+        evidenceFiles: [],
+        screenshotFiles: [],
+      };
+      api.registerCaseAcceptance.mockResolvedValueOnce({});
+      const wrapper = await renderListWorkflow(item, 'acceptance');
+      await wrapper
+        .get('[data-test="acceptance-accepted-at"]')
+        .setValue('2026-10-05');
+      await wrapper
+        .get('[data-test="acceptance-court-case-no"]')
+        .setValue('Court-1');
+      if (dueAt)
+        await wrapper
+          .get(
+            '[data-test="case-acceptance-panel"] input[type="date"]:not([data-test])',
+          )
+          .setValue(dueAt);
+      await wrapper.get('[data-test="acceptance-register"]').trigger('click');
+      await flushPromises();
+      expect(api.registerCaseAcceptance).toHaveBeenCalledWith(
+        item.id,
+        expect.objectContaining({
+          expectedVersion: item.version,
+          paymentDueAt: dueAt,
+          acceptedAt: '2026-10-05',
+          courtCaseNo: 'Court-1',
+        }),
+      );
+    },
+  );
+
+  it.each([
+    [
+      'schedule',
+      'WAITING_HEARING',
+      'canScheduleHearing',
+      'hearing-save',
+      '第一法庭',
+      '张法官',
+    ],
+    [
+      'schedule',
+      'WAITING_HEARING',
+      'canScheduleHearing',
+      'hearing-save',
+      '',
+      '',
+    ],
+    [
+      'correct',
+      'WAITING_JUDGMENT',
+      'canCorrectHearing',
+      'hearing-correct',
+      '第一法庭',
+      '张法官',
+    ],
+    [
+      'correct',
+      'WAITING_JUDGMENT',
+      'canCorrectHearing',
+      'hearing-correct',
+      '',
+      '',
+    ],
+  ] as const)(
+    'submits the real %s hearing form with place %s and judge %s through the list adapter',
+    async (kind, stage, capability, button, place, judge) => {
+      const item = structuredClone(baseItem);
+      item.stage = stage;
+      item[capability] = true;
+      item.acceptance = {
+        id: 'acceptance-1',
+        trialRoundId: 'round-1',
+        acceptedAt: '2026-10-05',
+        courtCaseNo: 'Court-1',
+        court: null,
+        recordedAt: '2026-10-05T01:00:00Z',
+        recordedByUserId: 'user-1',
+        files: [],
+      };
+      api.scheduleCaseHearing.mockResolvedValueOnce({});
+      api.correctCaseHearing.mockResolvedValueOnce({});
+      const wrapper = await renderListWorkflow(item, 'hearing');
+      const form = wrapper.get(
+        kind === 'schedule'
+          ? '[data-test="hearing-schedule-form"]'
+          : '[data-test="hearing-correction-form"]',
+      );
+      if (place) await form.get('input[maxlength="500"]').setValue(place);
+      if (judge) await form.get('input[maxlength="200"]').setValue(judge);
+      await form.get('[data-test="hearing-date"]').setValue('2026-10-06');
+      if (kind === 'correct')
+        await form
+          .get('[data-test="hearing-correction-reason"]')
+          .setValue('核对法院通知');
+      await form.get(`[data-test="${button}"]`).trigger('click');
+      await flushPromises();
+      if (kind === 'schedule')
+        expect(api.scheduleCaseHearing).toHaveBeenCalledWith(
+          item.id,
+          expect.objectContaining({
+            hearingAt: '2026-10-06',
+            hearingPlace: place || null,
+            judgeName: judge || null,
+          }),
+        );
+      else
+        expect(api.correctCaseHearing).toHaveBeenCalledWith(
+          item.id,
+          expect.objectContaining({
+            hearingAt: '2026-10-06',
+            hearingPlace: place || null,
+            judgeName: judge || null,
+            reason: '核对法院通知',
+          }),
+        );
+    },
+  );
+
+  it('accepts legacy omitted optional fields and rejects unknown list-request fields', () => {
+    const envelope = {
+      version: 1,
+      actor: 'actor',
+      caseId: 'case-1',
+      action: 'acceptance',
+      command: {
+        kind: 'acceptance',
+        input: {
+          expectedVersion: 7,
+          idempotencyKey: 'key',
+          acceptedAt: '2026-10-05',
+          courtCaseNo: 'Court-1',
+        },
+      },
+    };
+    expect(decodeCaseListRequest(envelope)).not.toBeNull();
+    expect(
+      decodeCaseListRequest({
+        ...envelope,
+        command: {
+          ...envelope.command,
+          input: { ...envelope.command.input, unknown: 'x' },
+        },
+      }),
+    ).toBeNull();
+    const hearing = {
+      ...envelope,
+      action: 'hearing',
+      command: {
+        kind: 'hearing',
+        input: { expectedVersion: 7, idempotencyKey: 'key', hearingAt: null },
+      },
+    };
+    expect(decodeCaseListRequest(hearing)).not.toBeNull();
+    expect(
+      decodeCaseListRequest({
+        ...hearing,
+        command: {
+          ...hearing.command,
+          input: { ...hearing.command.input, unknown: 'x' },
+        },
+      }),
+    ).toBeNull();
+  });
   it('returns to the same case filters and sorting without detail-only query keys', async () => {
     const listQuery = {
       view: 'department',

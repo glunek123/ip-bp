@@ -202,14 +202,24 @@ const schema = {
   },
   acceptance: {
     acceptedAt: string,
+    paymentDueAt: optional(nullable(string)),
     courtCaseNo: string,
     courtId: optional(string),
     acceptanceNoticeContentVersionIds: optional(strings),
     paymentListContentVersionIds: optional(strings),
     serviceDocumentContentVersionIds: optional(strings),
   },
-  hearing: { hearingAt: nullable(string) },
-  'hearing-correction': { hearingAt: nullable(string), reason: string },
+  hearing: {
+    hearingAt: nullable(string),
+    hearingPlace: optional(nullable(string)),
+    judgeName: optional(nullable(string)),
+  },
+  'hearing-correction': {
+    hearingAt: nullable(string),
+    hearingPlace: optional(nullable(string)),
+    judgeName: optional(nullable(string)),
+    reason: string,
+  },
   judgment: judgmentFields,
   'judgment-correction': { ...judgmentFields, reason: string },
   choice: {
