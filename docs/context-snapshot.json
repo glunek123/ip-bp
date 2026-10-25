@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-25T07:50:33.667Z",
+  "recordedAt": "2026-10-25T07:54:57.945Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -777,7 +777,7 @@
     "docs/spec/v0.1/READINESS.md": "d5cd73783d9e506b4a03bd10dabe769f6ac890e6c2709cb2145dbf60648cab8c",
     "docs/spec/v0.1/README.md": "aa9848a4e11592864ad79223afe447f7ed286f242aa3d8788ec0a81316c849c2",
     "docs/spec/v0.1/TECHNICAL-DESIGN.md": "8f3316d69608844aac0ba34ea63a73396813aa0dc12b8cb36423941118732da0",
-    "docs/spec/v0.1/VALIDATION.md": "7283f73239486bec8581cd5b39a14ea04f5fad7306ebd4caa75cc49800a96a68",
+    "docs/spec/v0.1/VALIDATION.md": "e52d342b7745b9a689ca845925e5de47fdab30da01c0b44a4eef24512ae5d994",
     "docs/spec/v0.1/modules/calendar.md": "3991b1148b13e2bf2daad951caa48935c5ed6a202b12817b3c47624ad3e0c774",
     "docs/spec/v0.1/modules/cases.md": "83feeb8535749b7e15a0003e74d7f62c5aade4d2179cff47ac88c140e8eb0058",
     "docs/spec/v0.1/modules/customers.md": "f1883579dead96203455db0e394d37ed5cf59c59ab26af79b7de82f9440e8ab9",
@@ -1135,8 +1135,8 @@
     "frontend/src/modules/customers/index.ts": "322ca3eeba539c8023516ae5b98f57528cce437d0f8c81607b5ab95ece60554c",
     "frontend/src/modules/customers/use-customer-settlements.spec.ts": "2d4f4df86b60aaa9b7250ce163983a7db2b196b640bb2c541ec17cba5201d27f",
     "frontend/src/modules/customers/use-customer-settlements.ts": "ef65c9fb7e314809c27ffbb5efe5240578d805c998bc4ff908bdced8e2e86f16",
-    "frontend/src/modules/evidence/EvidencePage.spec.ts": "a7127750b4dae40a3d822f3b600f8d1fb9aa745ef79928d11d4dc9b1592d602f",
-    "frontend/src/modules/evidence/EvidencePage.vue": "9f272936a478e6c7e41d5fd6b7b795494e03d8bda8abd91db008885538abc43c",
+    "frontend/src/modules/evidence/EvidencePage.spec.ts": "e5fbe70bd4b98f9b8985498f7d694da3062bbf168f9e86256bd7f92b0c62d224",
+    "frontend/src/modules/evidence/EvidencePage.vue": "04b22e9bf9a4a07d5f7d5d071671a61ae6b65731587de9d43c69f265af8a33f3",
     "frontend/src/modules/evidence/evidence-selection.spec.ts": "283d80b2d8c1f057769ecb7e41e647d145fdfb1a2d1f8ef8a60013b842605665",
     "frontend/src/modules/evidence/evidence-selection.ts": "9450ec96d4b326f7aa9a491ec7d48626d1083f73e0d7c34df6c693ddbd67b42b",
     "frontend/src/modules/evidence/evidence-stage-labels.ts": "55b034ea69e9727767733c6df4dd5a447fd5c695b2350aee3c9dee1c66e53d58",
