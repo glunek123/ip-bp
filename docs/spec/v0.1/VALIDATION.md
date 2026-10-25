@@ -1,6 +1,6 @@
 # SPEC-001 文档验证
 
-已合并批次的结论见[Resume G/H最终收尾](#2026-10-25-resume-gh最终门禁与断点验收收尾)，388666ee后增量见[运营试用准备](#2026-10-25-运营试用准备增量批次i)。下方各历史批次保留当时的失败、阻塞及未推送状态；不能据旧段落判断当前缺陷或Git交付状态。
+最新结论见[I批最终收尾](#i批最终收尾与未测边界)，388666ee前结论见[Resume G/H最终收尾](#2026-10-25-resume-gh最终门禁与断点验收收尾)。下方各历史批次保留当时的失败、阻塞及未推送状态；不能据旧段落判断当前缺陷或Git交付状态。
 
 ## 2026-10-25 九类UI改造与真实页面复查
 
@@ -3818,3 +3818,32 @@ MAN-EV-002新包真实W“查看”已显示平台“淘宝”、来源“公证
 **MAN-CA-011／产品流程阻塞P1。** 同案第3轮受理填25日、民再1025I号、现有本部门法院、材料0，界面提示“案件阶段或版本已变化”；没有重复提交。I请求账没有任何acceptance-register POST，数据库仍v17／当前受理null，说明错误在HTTP之前，不能称后端409或数据库守卫拒绝。CaseListWorkflowPanel严格请求shape的acceptance漏176已实现paymentDueAt，而表单总带该键（空值也带）；decoder因此合成INVALID_STATE。hearing与更正同漏hearingPlace/judgeName。精确来源只读JSON证明状态／来源条件满足；法院经正常select可选，不把AX折叠菜单的disabled描述误判成法院不可用。证据resume-i-retrial-acceptance-conflict.txt/.png、resume-i-acceptance-source-diagnosis.json、resume-i-request-budget.json。
 
 最小修复2e865cb4、集成f306d8ae，只在对应shape加入已确认的optional(nullable(string))字段；严格未知键拒绝、旧省略恢复、actor／case／version／action与原幂等键保护均保留。真实表单→列表适配→API调用反例先RED，CaseWorkspaceIntegration与CaseListWorkflowPanel相关114/114、类型／Lint／格式通过；独立Spec／质量ACCEPTED C0/I0/M0，组合仍Level2。根核对Worker与集成frontend/backend源码无差异，复用其114测试，不改后端、权限、迁移或业务表。最新构建后只复测原受理及直接相邻开庭，不重做发回／旧已通过动作，实际通过结论待页面完成后补记。
+
+### I批最终收尾与未测边界
+
+**本批四项明确缺陷的必要范围已关闭，完整系统UAT仍未完成。** 最终实际运行源码为0873a1e7b2553516191aece3b82f081264c5ba27，tree0038ecb8515b125c2e6f037a7dee352f3d19da34。新构建JS index-D9pXGQhy.js、CSS index-tFeMWSl9.css与855份输入／产物hash一致；CaseList修复后没有再改执行源码。final3 check:fast、前后端build、受影响格式、Spec及strict context均exit0；客户13／二审34／证物21／列表114各按实际匹配输入复用，不重复求和当全仓结果。列表114由Worker实跑，根核对frontend/backend源码逐字一致；最终Review Spec／质量ACCEPTED，未关闭C0/I0/M0。没有运行新完整verify、DB E2E或迁移，也不冒称运行过。
+
+| 编号           | 最终修复与真实复测                                                                                   | 本批结论                                                       |
+| -------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| MAN-CU-001／P2 | 只把客户403与连接故障分开；W客户SELF正常、R无客户权准确提示且刷新保持                                | 通过；不放宽客户权限／默认路由                                 |
+| MAN-EV-002／P2 | 复用模块公开平台映射、来源中文展示及未知码安全回退；同一证物新包显示淘宝／公证出证，原字段保持       | 通过；初次跨模块私有导入被架构门禁拒，修正后通过，旧失败留存   |
+| MAN-CA-010／P1 | 进展／结果表单按各自已有权限，RESULT-only快照只取已确认进展；W原入口可登记结果并实际发回成功         | 通过；权限切换隐藏草稿风险由34项组件反例覆盖，未做真实中途撤权 |
+| MAN-CA-011／P1 | 严格列表恢复shape补176已实现的缴费截止日、开庭地点及法官；原受理空日期字段路径实际成功，再跑相邻开庭 | 通过；不删exact校验，不把最初客户端INVALID_STATE说成后端冲突   |
+
+实际W新流程：0001第1轮二审v16→新发回结果→第3轮待正式立案v17→受理v18→开庭安排v19。法院正常选择原RP001，受理25日／（2026）测0101民再1025I号／缴费截止日null，材料0；受理刷新后仍一致。开庭25日／MAN1025I-第3轮重审法庭／MAN1025I-重审合成法官，刷新重进三字段及新增历史保持，阶段仍WAITING_HEARING。只有1个新结果、1个新轮、1条受理及1条开庭，旧第2轮仍已撤销。L通过额外批准的第6次正常登录查看两案，正常案按原PRIMARY绑定可见进展与结果能力，外录新轮数据与W一致；L只执行查看，不等于将其账号权限改为只读。
+
+强交叉证据：resume-i-retrial-acceptance-save-feedback.txt、resume-i-retrial-acceptance-reloaded.txt、resume-i-retrial-hearing-reloaded.txt/.png、resume-i-lawyer-normal-second-read.txt、resume-i-lawyer-retrial-read.txt/.png；只读resume-i-final-retrial-facts.json确认当前第3轮／受理／开庭指针一致、日期／地点／法官完全匹配、新费用0。resume-i-final-audit.json全部断言通过：0003完整事实和材料未变，其余9案未变、总10案，进展总6、二审回执13；177条迁移及checksum完全不变，仅public，未新增schema、案、账号或上传。
+
+覆盖CSV在最初I程序准备3条之后再追加27条：20通过、4历史失败、2阻塞、1未测。4失败为两个UI修复前RED、受理适配RED和1次测试准备入参失败；不是4个当前未修Bug。2阻塞分别为已经解决的R helper角色版本核对历史、仍缺领域读取权的报表CSV正例。原I客户页面待授权阻塞已由新W/R通过RUN接续。全表1770条历史／来源盘点记录（通过416、失败23、阻塞41、未测试1288、不适用2），不代表互不重复功能，不计算系统通过率。明细及追加编号见resume-i-final-coverage-append.json。
+
+| 仍未完成             | 明确边界                                                                                                                                                         |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 新重审跨日与后续判决 | 25日开庭的实际推进条件为26日北京时间；本批未跨日、未登记新判决／新一轮二审或后续执行归档，不改时钟／stage。服务已停，下一批需新授权恢复并核正常补跑候选          |
+| 权限／写入剩余分支   | R只有3个有效403，另1个空文书400不是权限结论；外录结果写拒绝等未测分支保留。SAVE-only及中途授权变化主要由组件覆盖，不能说全角色都做了真实页面；L没有再次写入      |
+| 新字段剩余操作       | 本次受理空缴费截止日实页通过，非空值由列表集成测试覆盖；开庭更正null／非空也由集成测试覆盖，未授更正权而不做真实更正                                             |
+| 报表与异常恢复       | 本批没有LEAD_READ，按已确认跨域统计权限拒绝CSV，正例未测；无自然失败的报表／证物重试和其他未知结果恢复不人为造故障                                               |
+| 其他页面／交互       | 继续使用原未测清单。MAN-LD-004导航UX仍待核；旧原生确认工具限制本批未复测、不再次删除费用。用户后来已说明曾点击确认，不能把早先“未点击”记录当作产品自动删除的证据 |
+
+收尾：实际294/600 API、6/6登录，原起点07:25:55 UTC到服务关闭约08:28 UTC，在90分钟内；上传0、原21/21保留，费用新增0，没有支付／对外通知。W停用rev43、R50、L12，C12/N6一直停用；临时Grant0、这批测试账号未撤销会话0。原W绑定active v27、临时绑定／role inactive v22；R原绑定active v9、临时分配inactive v8、role按事务停用；L律师绑定inactive v12。已正常退出浏览器、所有应用／身份helper退出，3101/5174/5175/15439无监听，原容器d9a68d83…90e446恢复exited，持久卷与历史保留。receipt：resume-i-w-close.json、resume-i-r-close.json、resume-i-lawyer-close.json、resume-i-final-accounts.json、resume-i-environment-closed.json、resume-i-request-budget.json。关闭完成态之后的CtrlC只退出已清理wrapper，不把该TTY退出1误作产品测试失败。I scope标CLOSED、执行开关approved=false，原批准记录另存resume-i-approved-scope.json，剩余额度不得续用。
+
+最终仅补本节、开发状态、恢复指针及对应核过的快照；相对0873执行源码必须0差异。按非执行性收口例外完成受影响格式、Spec、strict context及git diff --check，保留原实际通过候选／tree和UI证据。正常快进／推送main及本地／集成／远端完整SHA以resume-i-git-delivery.json实际成功回执为准，不预写推送结果。主目录原.pnpm-store/、旧stash和其他任务成果保留，不强推、不部署生产。代码可供下一批人工试用，但当前环境和临时账号均关闭，不能直接登录。
