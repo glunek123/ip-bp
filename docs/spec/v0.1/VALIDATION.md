@@ -3901,3 +3901,55 @@ J于22:57前完成关闭：262/500请求、5/5登录、上传0（原21/21保留�
 本批没有新确认的产品故障，结论仅为已批准的“第3轮正常跨日＋判决登记和持久化”通过。该案后续上诉／执行／归档不在K范围，其他原未测页面、权限矩阵、自然错误恢复、原生确认工具限制仍未测试。独立UAT服务器未租、无独立测试网址；当前本机账号／环境按授权关闭，不能直接登录。已有源码可用于限定范围的下一批试测准备，不称全系统验收完成、判决生效或生产上线。
 
 本次仅更新实际完成记录／运营交接／已核快照，程序源码、依赖、配置、迁移及测试输入不改。完成受影响格式／Spec／strict context／diff检查后，按既有独立Git授权正常合并推送main，以resume-k-git-delivery.json核三方SHA；保留旧stash／.pnpm-store/，不强推或部署生产。K执行开关CLOSED／approved=false，历史批准另存，剩余额度不可续用；本次一次接续完成后删除自动接续。
+
+## 2026-10-26 M批两项准入补验
+
+用户集中批准call_a658d7c864374404856bfa540dda404d的新独立范围，不续J/K。起点main／集成／远端均71793868527f05b4c9ac0c7de8c895b730ad9f18；只读核查当前SD-39、服务端和直接测试，没有发现需要把案件读取改回SELF的依据。案件原公证四项费用摘要属于CORE-CG-002批准的案件读取内容；完整费用账另受fee.read约束，最初金额疑点已依据Spec排除，未制造缺陷或修改投影。品维、知产是同一公司两个部门，模型采用Department，不因本轮组织文字澄清新增公司实体或迁移数据。
+
+### 离线与启动事实
+
+- 原容器d9a68d83…90e446及dev-cor-csv-export-acceptance-pgdata卷、127.0.0.1:15439/dev_cor_test绑定正确；177条完整账本四字段规范hash为e83527681f5b028bce85e40021bda532a0952cb785fba22c728bfc78b902619f，与K逐项一致，仅public。五账号原停用修订、专属角色／绑定、会话0均预检通过，未清库、迁移或建schema。
+- pnpm build:prepared实际exit0；855源码、962后端输出和前端DRmgpDbo／Ccdq_iei写入build-admission-m-20261026.json，本次确为重新构建。tracked变化只在文档，不重复无关程序门禁。组织交接／UAT清单／计划／跨模块Spec已做受影响格式和Spec检查，59REQ／71AC／11BQ／62SD通过。
+- admission-m专用生命周期静态检查及独立SolReview完成，批准绑定、启动前身份重查、上传未知结果和双方进程异常退出联动finding已关闭；不把工具脚本Review当作页面验收。服务于26日01:24:57启动，固定截止04:24:57；W/R/C/N按范围启用，L仅供律师匹配不登录。现场另有既有LD008-SYNTHETIC部门可供R跨部门反例，无需新建部门。实际内容版本37与历史上传账21不是同一口径，本批从0独立计数，不重置旧账。
+
+### 历史启动断点（后续已接续）
+
+新CSV仅本机准备1行，未导入，没有新线索／公证／案件／费用／账单或上传。真实浏览器可读新登录页，W用户名已填，尚未提交登录。现有identity元数据没有口令；通过原accounts.mjs初始化规则只读核验，R/C/N匹配、W不匹配，未改凭据或新建会话，不能用错误口令反复试。W原口令恢复或另行补充重设批准前，闭环及三组权限仍未测；不预写通过。只读预检脚本最初一处scope字段名对接错误已纠正并复核，属于测试准备问题，不是产品保存失败。
+
+证据沿用.local/manual-acceptance-90708add-20261023：admission-m-before.json、admission-m-physical-precheck.json、admission-m-build.log、build-admission-m-20261026.json、admission-m-scope.json、admission-m-lifecycle.json、admission-m-request-budget.json、admission-m-identities-active.json、admission-m-credential-source-check.json。最终业务ID、页面证据、状态、实际额度和清理回执待真实执行后追加；当前不声称两项准入完成或可以交付服务器试测。
+
+### M批最终收尾与两项准入结论
+
+**同记录闭环及普通运营三组权限的限定准入已解决，可进入独立服务器试测环境的交付准备。** 报告业务截止北京时间2026-10-26 02:58:52；当前环境和账号已经关闭，尚无供运营其他电脑访问的测试网址。不是生产上线、全模块验收或完整角色矩阵通过。原历史启动断点已由本节接续。
+
+实际运行源码为71793868527f05b4c9ac0c7de8c895b730ad9f18。重新构建exit0，manifest绑定855源码、962后端输出及前端index-DRmgpDbo.js／index-Ccdq_iei.css；启动时核物理容器、卷、177完整账本及同源产物。此后未改产品源码、接口、权限实现、迁移、测试输入或运行配置，只补组织口径、验收结果和交接。复用仍匹配的已有程序门禁，不把新构建、脚本审查或21项只读断言说成全部页面通过。
+
+| 同一记录与路径    | 真实页面操作和保存后核对                                                                                                                                                                                                                                     | 证据（既有本机证据目录）                                                                                                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CSV→客户确认      | 一条MAN1026M-single-chain.csv导入LD-20261026-001（51866bdb-be1b-4332-8510-cf28816b8e98），W推送、C正常登录确认侵权；刷新及W重进客户审核历史保留                                                                                                              | admission-m-lead-imported-refreshed、lead-pushed-refreshed、w-client-audit-reentered.txt                                                                                                           |
+| 公证→正常来源案件 | 同线索产生NT-20261026-001（e16e86f4-cdc9-4650-b5ef-d7d13c586cc7），W取证、开箱及获准内部审核；N出证并归档，生成唯一NOTARY来源CA-20261026-0001（6be50b88-4329-436d-9a53-e54569e4ee54），不是外录替代                                                          | admission-m-notary-evidence/opening/issuance-refreshed、certificate-issued-refreshed.txt；admission-m-chain.json                                                                                   |
+| 一审正常路径      | W本人匹配、诉状及授权书、确认、邮寄、提交、受理和开庭。合成历史业务日期10月1日；真实SYSTEM调度于26日02:37:47执行已于2日00:00到期的开庭推进；2日收到判决，金额KNOWN100.00、实缴诉讼费KNOWN0.00；刷新／重进保存一致                                            | admission-m-w-match-refreshed、complaint-submitted/confirmed-refreshed、complaint-mail-refreshed、filing-refreshed、acceptance-refreshed、hearing-system-advance-refreshed、judgment-refreshed.txt |
+| 执行结束          | 本案选择执行并勾选已核实前提，上传执行申请／邮寄／备案凭证；实际26日登记申请与备案，随后按合成和解撤回申请登记结束。UI明确无需先登记法院反馈；依据说明可替代结束附件。本轮没有法院已受理、执行到款或真实资金结清事实                                         | admission-m-execution-choice/submitted/confirmed/mail/filing/finish-refreshed.txt                                                                                                                  |
+| 费用／结算／账单  | 来源自动公证费1.23元、样品／调查／披露费用保持待定，不按0计。结案100.00元，保存“结案金额×50%”自动试算50.00；刷新后发起第1次客户结算50.00，重进仅选此明细生成账单2026102600001（29648748-0a48-4dad-acf8-9e6dd3a1a72f），日期26日、单案50.00，刷新再次查看一致 | admission-m-closure-persisted-detail、settlement-terms-refreshed、settlement-launch-refreshed、bill-refreshed-detail.txt/.png                                                                      |
+| 和解归档          | 本案正常保存26日和解结案归档，刷新重进为ARCHIVED／v18，结案100与归档说明保留；实收实付仍未登记。归档不代表账单付款或款项结清                                                                                                                                 | admission-m-archive-refreshed-detail.txt/.png；admission-m-final-business-audit.json                                                                                                               |
+
+结算发起ID为f0ef02df-0ecf-47b1-b0c4-34c3975cb735；唯一新增费用58b10ec6-7a55-4ab4-8f21-17b1726c3c60通过公证书448d95d5-1ed9-41bc-8e7f-4d384e037a4d及NOTARY事项关联本案，不复制为第二笔费用。最终只读事务21项断言PASS：恰1新线索／1公证／1正常案、10份新内容版本且总数37→47、10种分类及本链引用一致、1笔自动费／无手工费／无支付指令、1次客户发起／1账单、旧10案核心不变、无新部门／schema，177账本checksum不变且仅public。审计SHA256为7ab0bbddc16bd2872dad15d4b6994a4fa595ae55b5437b29473b0afa9fe3194b。材料均由页面上传；抽核开箱照片、公证书和诉状的实际下载字节／SHA与原合成文件相同，不把只读材料关联审计代替10份逐件下载。
+
+| 普通运营对照       | 页面、接口及实际结果                                                                                                                                                                                                                                                                                                                        | 证据                                                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 本人负责W          | CASE_READ/DEPARTMENT＋所需办理SELF及明确独立结算授权；本人列表、详情及上述真实办理成功。不是全权限管理员，也未改共享角色                                                                                                                                                                                                                    | admission-m-w-own-case-list/detail、w-match-refreshed及上述主链实页记录                                                                           |
+| 同部门他人R        | 仅CASE_READ/DEPARTMENT＋CASE_MATCH/SELF；本人过滤排除W新案，部门列表和规范详情直链可读、办理入口禁用。格式合法MATCH返回403/ACTION_FORBIDDEN，案件导出403；完整费用账403。CASE_READ显式允许读取本案来源公证书，逐件PDF下载200且SHA匹配，不误判成越权                                                                                         | admission-m-r-same-department-*、r-source-download.json、r-fee-permission-page.txt；r-api-probes-same.json及same-tail.json                        |
+| 跨部门R            | 先撤A部门M权限／会话，再使用既有B测试部门临时绑定；页面两列表不含该案、规范直链不可访问；直接API列表无该案，已存在的详情、材料和合法MATCH均404，完整账403。未改案件归属、未新增第二业务样本                                                                                                                                                 | admission-m-r-foreign-*；r-api-probes-foreign.json                                                                                                |
+| 金额与导出独立授权 | W获明确Grant时实页下载本案CSV1条、本人报表CSV9案／23客户／累计标的额1100.00／公证在办0；未知6案单列、已知0仍计入。UI正常登出后只撤W本批CASE_EXPORT、REPORT_AMOUNT_READ、REPORT_EXPORT，新会话案件详情200、报表能力canRead:false、报表中心403、案件及报表导出各403，再登出204。按现行Spec缺金额权限是报表整体拒绝，不编造200隐藏金额投影合同 | admission-m-case-csv-receipt.json（SHA8f1598a2…c282）、report-csv-receipt.json（SHA3eba19c8…4ebf）、w-tail-revoke-receipt.json、w-tail-probe.json |
+
+权限结论覆盖本次读取、匹配办理反例及独立金额／导出路径；不是所有办理动作均逐个做了三部门负例。服务端现行SD-39“部门读、本人办理”与用户确认一致，本轮没有权限实现修复。组织文字仅澄清品维、知产为同公司两部门，Department模型符合，不新增公司模型或迁移数据。
+
+既有coverage.csv本批共追加17条操作记录：15条限定范围通过、2条测试准备历史失败，编号均为RUN-MA1026M-*。前3条记录当时的导入、公证转案及R同部门UI断点，后14条接续到归档、服务端权限和清理，不覆盖原行。详情见admission-m-coverage-append.json及原CSV；历史盘点与多次RED/GREEN不是互斥独立功能数，不计算系统通过率。
+
+测试准备问题保留原回执：首次R MATCH辅助请求误传整个详情而400，不算权限拒绝；只重跑正确DTO及尚未执行的导出。same-tail元数据曾误标B，独立AuthSession只读审计证明实际A部门会话且早于切B；不覆盖原回执。首次B辅助登录遗漏departmentId得到DEPARTMENT_REQUIRED，修正显式部门后一次成功；所有尝试仍计数。辅助最终审计首轮误猜source大小写／JSON数字类型，按实际schema修正后只读通过。均未产生非法业务事实，不列产品Bug；M没有新的已证产品阻塞，不等于系统无问题。
+
+清理已完成：实际1087/1500 API、14/14登录尝试、10/12上传尝试及10/10成功，旧21/21封存，总成功累计31；保守计6次定向拒绝写尝试，其中1次参数400不能当授权拒绝证据。01:24:57启动、02:57:23身份关闭、02:58:52原DB停止，固定04:24:57期限未延长。W52/R55/C14/N8/L14全部停用；本批Grant／未撤销会话0、2原分配恢复、3临时角色及分配停用、R的B成员停用，C/N/L绑定恢复原停用状态。应用退出、3101/5174/15439无监听、原容器exited，卷／合成事实／材料和历史保留。admission-m-identities-close.json、services.json、environment-closed.json与最终审计交叉一致；M scope为CLOSED／approved=false，批准原始字节另存approved-scope，剩余额度不得复用。用户额外批准的W一次口令重设仅存本机保护文件，关闭账号不等于允许继续登录。
+
+本轮暂不开放：律师发票／律师账单及真实财务回填、付款、通知；本样本未走的上诉／重审／特殊执行分支；完整角色动作矩阵、原未测页面和自然故障恢复。既有原生确认工具限制单列，本批没有为工具修改确认逻辑或再次删除费用。服务器、HTTPS／网络可达、独立DB／私有文件、运营实名试用账号与部门样本、备份恢复演练和反馈责任人仍待交付，最小清单见既有uat-environment.md。需要新的目标／账号授权，未自行采购、部署或生成持续凭据。
+
+收口仅更新上述事实、组织文字、原覆盖清单与交接／快照；相对71793868累计产品源码差异应为0。受影响格式、Spec、strict context和diff检查及独立审查结果以admission-m-doc-gates.json／admission-m-final-review.json实际回执为准；Git正常合并推送及最终三方完整SHA以admission-m-git-delivery.json为准，不预写成功，不把文档HEAD称作新运行构建。
