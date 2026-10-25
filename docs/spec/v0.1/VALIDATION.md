@@ -3782,3 +3782,25 @@ Git正常合并／推送已有独立授权。收口提交需核实main为祖先�
 权限核查澄清：SD-39／REQ-CA-010现行契约为案件部门读取、本人负责才可办理；页面显式默认mine已通过。CASE_READ/SELF未列目录不等于确认Bug或必需功能缺口。直接API省略view时默认department与页面默认不同，本批不擅自改变既有契约；报表金额及导出分别按自己的显式Grant核验。MAN-LD-004为processed队列H1／面包屑差异的UX待核，Demo未定义该客户端页的面包屑，暂不改业务名称。
 
 I批新增3条覆盖RUN：组件通过、快速门禁通过、真实UI因新授权待确认而阻塞；coverage.csv现1743条历史与盘点记录，不据此计算独立功能通过率。I批新授权申请集中列明W/R/L、原15439、600请求／5登录／90分钟、上传0及清理范围，尚未批准时只做离线工作。旧权限、会话、G/H账不恢复；原DB与应用当前关闭。真实UI、后端越权负例及重审正向流转均未预写通过；Git按独立授权与必要门禁／页面结果执行。
+
+### I批新授权执行、实际页面与两个增量问题
+
+用户已批准call_1e856694ff9945f88c1eee57db39c26f完整I范围，随后call_c99ea902831f41b9b742c4d29e8be55c只追加L登录1次（总6）；600请求、90分钟及其他权限／上传0／schema0／清理不变。新账起点2026-10-25T07:25:55.143Z，重启仍累计，旧G/H不动。原15439持久卷容器启动并健康；新构建f7b87582实页JS index-CJeqBWiK.js／CSS index-tFeMWSl9.css已核，与855输入和产物hash一致，未用旧包。启动最初非TTY stdin关闭导致正常退出，随后TTY恢复同一I账；不是产品故障。
+
+R启用前BASELINE_CHANGED：只读确认账号rev47停用、原绑定7／临时分配6未变，但专属role实际11，helper误把角色版本当分配版本6。事务拒绝、无身份写入；仅将精确role基线修为11，独立复核后启用并仅授CASE_READ/DEPARTMENT。证据resume-i-identity-precheck.json、resume-i-r-baseline-correction.json。此为测试准备错误，不是产品Bug或放宽守卫。
+
+| 实际补测                 | 结论／证据                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MAN-CU-001合法与拒绝     | W仅客户SELF正常加载23条；R无客户权限显示“当前账号无权查看客户列表”，没有连接失败或网络重试，刷新后保持。通过，见resume-i-w-customer-authorized.txt/.png、resume-i-r-customer-forbidden-reloaded.txt/.png                                                                                                                                                              |
+| 证物全选／取消、零数筛选 | 2件全选显示2，再取消为0；在库0和已销毁0显示空态，回全部恢复2件。未提交批量状态，见resume-i-evidence-all-selected.txt、resume-i-evidence-destroyed-empty.txt、resume-i-evidence-in-stock-empty.txt                                                                                                                                                                     |
+| 证物来源选择／取消       | 0003命中1案、无匹配为空、清空恢复10项；打开原证物编辑后未改直接取消，原编号／货架／状态保留。见resume-i-evidence-source-match/empty/cleared/editor/cancelled.txt                                                                                                                                                                                                      |
+| 已有纸质公证书下载       | 真实页面下载正式PDF落盘，650B，SHA与原合成文件相同；没有上传。见resume-i-evidence-paper-download.json                                                                                                                                                                                                                                                                 |
+| 报表均值刷新             | 点击归档均值卡片刷新后0.00保持，累计标的1000.00、已知2／未知6语义保留。见resume-i-report-average-before/after.txt                                                                                                                                                                                                                                                     |
+| 报表导出前提             | W本批只有REPORT_EXPORT/SELF、金额SELF及客户SELF，没有LEAD_READ；即时CSV公证统计按Spec需所属域读取，因此exportViews为空。拒绝属预期，不加权绕过；正例导出保持未测，未消耗本批1次导出上限                                                                                                                                                                               |
+| R后端越权辅助            | 共4探测：正常0003进展、0003结果、外录0001进展三个有效请求均403/ACTION_FORBIDDEN；另一次0003结果因测试文书列表空在鉴权前400/VALIDATION_ERROR，不能算权限通过。两案全部事实JSON前后严格相同（v19／v16、历史与指针未变）。见resume-i-r-write-denials.json、resume-i-r-write-denials-corrected.json、resume-i-after-r-denials-business-facts.json。辅助HTTP不冒充人工页面 |
+
+**MAN-EV-002／产品显示缺陷P2。** W在/evidence→MAN1024-EV-001“查看”看到平台TAOBAO、来源notary.certificate_issued，应使用现有中文业务词，不能改API值。EvidencePage局部复用平台映射、已知来源翻译“公证出证”，保留中文自定义来源、未知技术码回退“—”；原字段／规则不改。Worker652072c1，集成66234637；反例先RED，组件19/19通过。证据resume-i-evidence-detail-technical-labels.txt/.png；修后真实页面待新组合构建后复测。
+
+**MAN-CA-010／产品流程阻塞P1。** W只有CASE_SECOND_INSTANCE_RESULT/SELF且没有SAVE时，0001列表“二审登记／结果”入口可开，弹窗只有历史，无结果表单。原因是CaseSecondInstancePanel把进展和结果整体包在canSaveCurrent；应分别按已有SAVE／RESULT能力显示，不能给W补SAVE来让流程通过。Worker0f8aa17、集成8424e72a拆门控，不改DTO／后端鉴权；RESULT命令按既有契约允许进展快照。证据resume-i-second-result-only-hidden.txt/.png，尚未提交结果或改变案件。
+
+独立审查额外发现Important/P2：同组件从SAVE+RESULT变为RESULT-only时，旧未保存进展标量可能随隐藏表单提交。最小修复587fa594、集成ac0479f2：RESULT-only输入只取当前已确认进展及精确文件版本快照，仍有SAVE时保留原表单行为；contextKey变化清理旧草稿。新增两反例先RED，组件34/34、类型／Lint／格式通过。此为前端使用既有授权的Level 2切片，不改权限目录、后端或业务数据规则；独立审查核finding关闭，最终组合门禁及W原页面待实际取得结果后补记，不能对旧8424候选声称关闭。
