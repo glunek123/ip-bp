@@ -34,7 +34,7 @@ export class CustomerDocumentVersionQueryDto {
   pageSize = 20;
 }
 
-class AgreementFieldsDto {
+export class AgreementFieldsDto {
   @ApiPropertyOptional({ maxLength: 200 })
   @Transform(trim)
   @ValidateIf((_o, v) => v !== undefined)
@@ -54,6 +54,12 @@ class AgreementFieldsDto {
   @IsString()
   @MaxLength(200)
   settlementMethod?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 500 })
+  @Transform(optionalText)
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @IsString()
+  @MaxLength(500)
+  settlementFormula?: string | null;
   @ApiPropertyOptional({ enum: ['FIXED', 'LONG_TERM', 'UNKNOWN'] })
   @ValidateIf((_o, v) => v !== undefined)
   @IsIn(['FIXED', 'LONG_TERM', 'UNKNOWN'])
@@ -156,6 +162,8 @@ export class AgreementVersionResponseDto {
   @ApiProperty({ type: String, nullable: true }) model!: string | null;
   @ApiProperty({ type: String, nullable: true }) settlementMethod!:
     string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 500 })
+  settlementFormula?: string | null;
   @ApiProperty({ enum: ['FIXED', 'LONG_TERM', 'UNKNOWN'] })
   validityMode!: string;
   @ApiProperty({ type: String, format: 'date', nullable: true })

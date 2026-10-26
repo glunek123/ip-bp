@@ -28,6 +28,7 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 
 describe('CustomerController', () => {
   const createDraft = jest.fn();
+  const creationContext = jest.fn();
   const list = jest.fn();
   const get = jest.fn();
   const findDuplicates = jest.fn();
@@ -52,7 +53,14 @@ describe('CustomerController', () => {
         { provide: IDENTITY_ADAPTER, useValue: identity },
         {
           provide: CustomerService,
-          useValue: { createDraft, list, get, findDuplicates, updateDraft },
+          useValue: {
+            createDraft,
+            creationContext,
+            list,
+            get,
+            findDuplicates,
+            updateDraft,
+          },
         },
         { provide: CustomerAdmissionService, useValue: { admit } },
         {
@@ -110,6 +118,40 @@ describe('CustomerController', () => {
       .expect(201)
       .expect({ id: 'customer-1', name: '客户甲' });
     expect(createDraft).toHaveBeenCalledWith(actor, { name: '客户甲' });
+  });
+
+  it('returns creation choices through the static route for the trusted actor', async () => {
+    const choices = {
+      responsibleUserId: actor.userId,
+      operators: [{ id: actor.userId, displayName: '运营甲' }],
+      canSetInitialAgreement: true,
+    };
+    creationContext.mockResolvedValue(choices);
+    await request(app.getHttpServer())
+      .get('/api/v1/customers/creation-context')
+      .set('Authorization', 'Bearer allowed-token')
+      .expect(200)
+      .expect(choices);
+    expect(creationContext).toHaveBeenCalledWith(actor);
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it('validates nested initial cooperation fields before creating the draft', async () => {
+    for (const initialAgreement of [
+      [],
+      null,
+      { settlementFormula: '长'.repeat(501) },
+      { settlementFormula: 70 },
+      { unknown: 'forged' },
+      { contentVersionIds: ['not-a-uuid'] },
+    ]) {
+      await request(app.getHttpServer())
+        .post('/api/v1/customers')
+        .set('Authorization', 'Bearer allowed-token')
+        .send({ name: '客户甲', initialAgreement })
+        .expect(400);
+    }
+    expect(createDraft).not.toHaveBeenCalled();
   });
 
   it('accepts one admission contact with a phone or email', async () => {

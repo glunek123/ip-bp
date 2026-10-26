@@ -26,6 +26,7 @@ const mountView = (view: ReportDistributionsView | null = sample()) =>
 describe('pure report distributions', () => {
   it('renders formal platform codes with existing Chinese labels', () => {
     const view = sample();
+    view.types = [{ value: 'HEARING_REPRESENTATION', count: 10 }];
     view.platforms = [
       { value: 'JD', count: 6 },
       { value: 'TMALL', count: 4 },
@@ -39,6 +40,10 @@ describe('pure report distributions', () => {
     ).toEqual(['京东6 件', '天猫4 件']);
     expect(wrapper.text()).not.toContain('JD');
     expect(wrapper.text()).not.toContain('TMALL');
+    expect(
+      wrapper.get('[data-test="report-distribution-types"]').text(),
+    ).toContain('代开庭10 件');
+    expect(view.types[0]?.value).toBe('HEARING_REPRESENTATION');
   });
   it('renders the three approved bar lists with exact counts and explicit unknown groups', () => {
     const wrapper = mountView();

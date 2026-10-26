@@ -80,6 +80,7 @@ defineExpose({
 
 <template>
   <ElDrawer
+    class="list-workflow-drawer"
     :model-value="visible"
     :title="state.context?.title ?? ''"
     size="min(720px, 100vw)"
@@ -87,16 +88,24 @@ defineExpose({
     destroy-on-close
     :before-close="beforeClose"
   >
-    <div v-if="state.status === 'loading'" role="status">
+    <div v-if="state.status === 'loading'" class="workflow-state" role="status">
       <slot name="loading" :context="state.context">正在加载最新资料…</slot>
     </div>
-    <div v-else-if="state.status === 'error'" role="alert">
+    <div
+      v-else-if="state.status === 'error'"
+      class="workflow-state"
+      role="alert"
+    >
       <slot name="error" :error="state.error" :retry="workflow.retry">
         <p>资料加载失败，请重试。</p>
         <ElButton @click="workflow.retry">重新加载</ElButton>
       </slot>
     </div>
-    <div v-else-if="state.status === 'denied'" role="alert">
+    <div
+      v-else-if="state.status === 'denied'"
+      class="workflow-state"
+      role="alert"
+    >
       <slot name="denied" :error="state.error" :retry="workflow.retry">
         <p>当前无法访问该记录或办理此操作，请核对权限后重试。</p>
         <ElButton @click="workflow.retry">重新核对</ElButton>
@@ -105,10 +114,14 @@ defineExpose({
     <template
       v-else-if="state.status === 'ready' && state.detail && state.session"
     >
-      <p v-if="state.requestState === 'unknown'" role="alert">
+      <p
+        v-if="state.requestState === 'unknown'"
+        class="workflow-note"
+        role="alert"
+      >
         请求结果尚未确认，请使用原请求的核对或恢复操作，勿重新提交。
       </p>
-      <div :key="state.session.contextKey">
+      <div :key="state.session.contextKey" class="list-workflow-content">
         <slot
           :detail="state.detail"
           :session="state.session"
@@ -123,3 +136,5 @@ defineExpose({
     </template>
   </ElDrawer>
 </template>
+
+<style src="../styles/list-workflow.css"></style>

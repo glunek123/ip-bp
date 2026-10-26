@@ -1,5 +1,15 @@
 # 运营测试环境配置与恢复准备
 
+## 2026-10-26 16:44 既有上海UAT更新
+
+当前运行f6ae58ad5649c422afed6e10c08369a691a6ae42，current及后端PID目录均指向/srv/ip-bp-uat/releases/f6ae58ad5649c422afed6e10c08369a691a6ae42；HTTPS、服务、数据库与私有文件路径沿用。Node24.21.0/pnpm11.27.0/PG17.11不变，UTC保留，唯一新增迁移20261026090000_customer_agreement_settlement_formula正常部署，账本178。新系统名称为知产案管系统，公网index-CrjZY2xE.js/index-DtxvY7NT.css与新包一致；965个Linux重建产物hash重现包内值。
+
+包SHA d7d54b4a7d532162498652514b2a4dc633a5c78010be80645780f6ba28595793，原包由root保存在/srv/ip-bp-uat/packages/zhichan-uat-20261026-f6ae58ad.tar.gz，VERSION在/etc/ip-bp-uat/version-f6ae58ad.json。当前linux-build-receipt.json已更新，SHA a6cd609412b9deb9f05ec0a6df29fecbfcc685f864beb16227a239cada14d58e，旧版另存linux-build-receipt-ad8e0818.json。初始runtime.env/引导脚本是旧版历史证据，不能重新初始化现有账号或复用旧授权。
+
+切换前一致备份在/var/backups/ip-bp-uat/upgrade-f6ae58ad5649c422afed6e10c08369a691a6ae42-20261026T084409Z，含数据库、角色、全部私有文件和受保护配置，校验通过。178迁移前后174业务表数量与内容指纹一致，未新增业务对象或增权，保留当时3客户/5线索/3公证/3案/7账号/164Grant。此为本次恢复基线；下方最初6账号备份是历史点。旧应用目录保留，回退只切应用，178可空列及已有文字保留；本轮未实际回退、覆盖恢复或另做整机灾备。
+
+真实页面确认客户完整表单、角色全选按钮、三案与原材料关联读取，未提交业务或权限修改。发布时复用浏览器用户既有登录，只开检查标签，未注销该用户。正式角色范围以既有配置为准，zhichan在更新前已具准入/部门办理，不能据高权限页面结果替代普通角色隔离验收。服务持续运行，旧账本/权限/附件不重置。
+
 ## 2026-10-26 上海独立UAT实际部署
 
 当前入口为[公网IP试测系统](https://111.231.164.248/)，不是本机127.0.0.1。实例lhins-o53t3rpq，物理元数据ins-km5z09rh；Ubuntu24.04，2核4GB，60GB盘，5Mbps。运行源码ad8e081855de3bab0ad471c29f54b6c2538c1025，服务器发布目录/srv/ip-bp-uat/releases/ad8e081855de3bab0ad471c29f54b6c2538c1025，current链接到该目录。Node24.21.0、pnpm11.27.0、PG17.11；Linux构建965文件与同源本机逐项相同。部署记录的后续文档提交与运行源码分别标识。

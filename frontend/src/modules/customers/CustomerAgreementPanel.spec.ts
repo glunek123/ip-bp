@@ -330,7 +330,7 @@ describe('CustomerAgreementPanel', () => {
     await flushPromises();
 
     expect(api.getCustomerAgreement).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain('当前没有协议读取权限');
+    expect(wrapper.text()).toContain('当前没有合作协议读取权限');
     expect(wrapper.text()).not.toContain('当前协议第三版');
   });
 

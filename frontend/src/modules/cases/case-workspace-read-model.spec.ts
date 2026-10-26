@@ -332,6 +332,8 @@ describe('case workspace read model', () => {
 
   it('projects actual source fields and zero values, with capability-specific help', () => {
     const lead = leadFixture();
+    lead.caseType = 'HEARING_REPRESENTATION';
+    lead.infringementTypes = ['TRADEMARK', 'ART_COPYRIGHT', 'INVENTION_PATENT'];
     lead.products = [
       {
         id: 'product-1',
@@ -350,6 +352,17 @@ describe('case workspace read model', () => {
       'ready',
     )[1]!;
     expect(section.message).toBeNull();
+    expect(section.groups.find((group) => group.id === 'lead')?.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: '案件类型', value: '代开庭' }),
+        expect.objectContaining({
+          label: '侵权类型',
+          value: '商标权、美术作品著作权、发明专利权',
+        }),
+        expect.objectContaining({ label: '来源', value: '线上' }),
+        expect.objectContaining({ label: '平台', value: '淘宝' }),
+      ]),
+    );
     expect(
       section.groups.find((group) => group.id === 'product:product-1')?.title,
     ).toBe('商品 1');

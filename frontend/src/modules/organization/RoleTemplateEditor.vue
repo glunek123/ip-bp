@@ -72,6 +72,22 @@ const scopeRank: Record<PermissionScope, number> = {
   DEPARTMENT: 2,
 };
 
+function widestScope(
+  item: OrganizationPermissionCatalogItem,
+): PermissionScope | undefined {
+  return [...item.scopes].sort(
+    (left, right) => scopeRank[right] - scopeRank[left],
+  )[0];
+}
+
+function selectAllInternalPermissions(): void {
+  for (const item of props.permissionCatalog) {
+    const scope = widestScope(item);
+    selected[item.action] = scope !== undefined;
+    if (scope) scopes[item.action] = scope;
+  }
+}
+
 for (const item of props.permissionCatalog) {
   const existing = props.role.grants
     .filter((grant) => grant.action === item.action)
@@ -109,6 +125,7 @@ function errorMessage(value: unknown): string {
 }
 
 async function submit(): Promise<void> {
+  if (pending.value) return;
   const trimmedName = name.value.trim();
   const grants = props.permissionCatalog.flatMap<OrganizationGrant>((item) =>
     selected[item.action]
@@ -186,6 +203,15 @@ onBeforeUnmount(() => {
       <p id="grant-scope-guidance" class="field-guidance grant-scope-guidance">
         本人：仅本人负责的数据；团队：当前团队数据；部门：本部门数据。
       </p>
+      <p class="field-guidance">
+        客户准入可直接赋给运营账号，无需单独创建准入主管账号；权限范围以各动作规则为准。
+      </p>
+      <ElButton
+        data-test="select-all-internal-permissions"
+        :disabled="pending"
+        @click="selectAllInternalPermissions"
+        >选择全部内部权限</ElButton
+      >
       <label class="grant-search">
         <span>查找权限</span>
         <input

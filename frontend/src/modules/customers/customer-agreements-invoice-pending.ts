@@ -91,6 +91,7 @@ function validAgreementBody(
     'title',
     'model',
     'settlementMethod',
+    'settlementFormula',
     'validityMode',
     'effectiveFrom',
     'effectiveTo',
@@ -112,6 +113,8 @@ function validAgreementBody(
     (body.model === undefined || validNullableText(body.model, 100)) &&
     (body.settlementMethod === undefined ||
       validNullableText(body.settlementMethod, 200)) &&
+    (body.settlementFormula === undefined ||
+      validNullableText(body.settlementFormula, 500)) &&
     (body.validityMode === undefined ||
       body.validityMode === 'FIXED' ||
       body.validityMode === 'LONG_TERM' ||
@@ -219,7 +222,7 @@ export function savePendingCustomerDocumentCommand(
     command.key.length < 1 ||
     command.key.length > 200
   ) {
-    throw new TypeError('协议或开票维护请求无效');
+    throw new TypeError('合作协议或开票维护请求无效');
   }
   globalThis.sessionStorage.setItem(
     commandStorageKey(command),
@@ -272,7 +275,7 @@ export function savePendingCustomerAgreementUpload(
     !marker.customerId ||
     !Number.isFinite(Date.parse(marker.createdAt))
   ) {
-    throw new TypeError('协议上传恢复标记无效');
+    throw new TypeError('合作协议上传恢复标记无效');
   }
   globalThis.sessionStorage.setItem(
     uploadStorageKey(marker),
@@ -310,7 +313,7 @@ export function beginCustomerAgreementUpload(
   identity: CustomerAgreementUploadIdentity,
 ): ActiveAgreementUpload {
   const key = uploadStorageKey(identity);
-  if (activeAgreementUploads.has(key)) throw new Error('协议上传仍在进行');
+  if (activeAgreementUploads.has(key)) throw new Error('合作协议上传仍在进行');
   let resolveFinished!: () => void;
   const finished = new Promise<void>((resolve) => {
     resolveFinished = resolve;

@@ -13,20 +13,12 @@ export type ReportDistributionsView = {
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { labelLeadPlatform } from '../leads';
+import { labelLeadPlatform, leadCaseTypeLabels as typeLabels } from '../leads';
 
 const props = defineProps<{
   view: ReportDistributionsView | null;
   scopeLabel?: string;
 }>();
-const typeLabels: Record<LeadCaseType, string> = {
-  CIVIL: '民事',
-  CRIMINAL: '刑事',
-  ADMINISTRATIVE: '行政',
-  INVESTIGATION: '调查',
-  NOTARIZATION: '公证',
-  HEARING_REPRESENTATION: '开庭代理',
-};
 const count = (value: number) => Number.isSafeInteger(value) && value >= 0;
 const label = (value: string) =>
   typeof value === 'string' && value.trim().length > 0;

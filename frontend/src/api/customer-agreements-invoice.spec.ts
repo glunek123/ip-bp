@@ -74,6 +74,42 @@ const invoiceResponse = {
 };
 
 describe('customer agreements and invoice API', () => {
+  it('accepts recorded settlement text while keeping old agreement snapshots compatible', async () => {
+    for (const version of [
+      agreementVersion,
+      { ...agreementVersion, settlementFormula: null },
+      { ...agreementVersion, settlementFormula: '客户结算金额=结案金额*70%' },
+    ]) {
+      const response = {
+        ...agreementResponse,
+        agreement: { ...agreementResponse.agreement, currentVersion: version },
+      };
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(new Response(JSON.stringify(response))),
+      );
+      await expect(getCustomerAgreement('customer-1')).resolves.toEqual(
+        response,
+      );
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ...agreementResponse,
+            agreement: {
+              ...agreementResponse.agreement,
+              currentVersion: { ...agreementVersion, settlementFormula: 70 },
+            },
+          }),
+        ),
+      ),
+    );
+    await expect(getCustomerAgreement('customer-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
   it('decodes a stable agreement response and its exact current material version', async () => {
     const fetch = vi
       .fn()

@@ -1566,6 +1566,7 @@ model CustomerAgreementVersion {
   title             String                        @db.VarChar(200)
   model             String?                       @db.VarChar(100)
   settlementMethod  String?                       @map("settlement_method") @db.VarChar(200)
+  settlementFormula String?                       @map("settlement_formula") @db.VarChar(500)
   validityMode      CustomerAgreementValidityMode @map("validity_mode")
   effectiveFrom     DateTime?                     @map("effective_from") @db.Date
   effectiveTo       DateTime?                     @map("effective_to") @db.Date

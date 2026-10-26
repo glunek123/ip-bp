@@ -3,6 +3,8 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { CustomerService } from './customer.service';
+import { CustomerCooperationService } from './customer-cooperation.service';
+import { CustomerAgreementInvoiceService } from './customer-agreement-invoice.service';
 
 jest.mock('./customer-contact-locks', () => ({
   isCustomerContactRetryable: () => false,
@@ -58,7 +60,21 @@ describe('CustomerService', () => {
   const organization = {
     lockDepartment: jest.fn(),
   } as unknown as OrganizationService;
-  const service = new CustomerService(database, accessControl, organization);
+  const transferResponsible = jest.fn();
+  const createAgreement = jest.fn();
+  const cooperation = {
+    transferResponsible,
+  } as unknown as CustomerCooperationService;
+  const documents = {
+    createAgreement,
+  } as unknown as CustomerAgreementInvoiceService;
+  const service = new CustomerService(
+    database,
+    accessControl,
+    organization,
+    cooperation,
+    documents,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -72,6 +88,45 @@ describe('CustomerService', () => {
     tryBuildCustomerScope.mockResolvedValue({
       departmentId: actor.departmentId,
     });
+  });
+
+  it('stores an entered identity, category and region without admitting the new customer', async () => {
+    customerCreate.mockImplementation(async ({ data }) => ({
+      ...data,
+      id: '33333333-3333-4333-8333-333333333333',
+      version: 1,
+      cooperationStatus: 'COOPERATING',
+      updatedAt: new Date('2026-10-26T00:00:00Z'),
+    }));
+    auditCreate.mockResolvedValue({ id: 'audit-1' });
+    transaction.mockImplementation(async (callback) =>
+      callback({
+        customer: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: customerCreate,
+        },
+        auditEvent: { create: auditCreate },
+      }),
+    );
+    const result = await service.createDraft(actor, {
+      name: '客户甲',
+      customerType: 'ENTERPRISE',
+      identityType: 'BUSINESS_LICENSE',
+      identityNumber: ' 9133-0100MA2ABC1234X ',
+      category: '家居日用',
+      region: '华东',
+    });
+    expect(customerCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        identityType: 'BUSINESS_LICENSE',
+        identityNumber: '9133-0100MA2ABC1234X',
+        normalizedIdentityNumber: '91330100MA2ABC1234X',
+        category: '家居日用',
+        region: '华东',
+        profileStatus: 'DRAFT',
+      }),
+    });
+    expect(result.profileStatus).toBe('draft');
   });
 
   it('creates a trimmed draft with server-derived ownership and one audit event', async () => {
@@ -144,6 +199,95 @@ describe('CustomerService', () => {
         resourceType: 'customer',
       }),
     });
+  });
+
+  it('does not create an agreement or advance the customer version for unfilled cooperation fields', async () => {
+    customerCreate.mockImplementation(async ({ data }) => ({
+      ...data,
+      id: '33333333-3333-4333-8333-333333333333',
+      version: 1,
+      cooperationStatus: 'COOPERATING',
+      updatedAt: new Date('2026-10-26T00:00:00Z'),
+    }));
+    auditCreate.mockResolvedValue({ id: 'audit-1' });
+    transaction.mockImplementation(async (callback) =>
+      callback({
+        customer: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: customerCreate,
+          findUniqueOrThrow: jest.fn(),
+        },
+        auditEvent: { create: auditCreate },
+      }),
+    );
+
+    for (const initialAgreement of [
+      {},
+      {
+        model: null,
+        settlementMethod: '  ',
+        settlementFormula: null,
+        effectiveFrom: null,
+        effectiveTo: null,
+        validityMode: 'UNKNOWN' as const,
+        contentVersionIds: [],
+      },
+    ]) {
+      const created = await service.createDraft(actor, {
+        name: '空合作资料',
+        initialAgreement,
+      });
+      expect(created.version).toBe(1);
+      expect(createAgreement).not.toHaveBeenCalled();
+    }
+  });
+
+  it('creates an agreement when a cooperation field is supplied and defaults its title', async () => {
+    const created = {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: '有合作资料',
+      version: 1,
+      profileStatus: 'DRAFT',
+      cooperationStatus: 'COOPERATING',
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      updatedAt: new Date('2026-10-26T00:00:00Z'),
+    };
+    customerCreate.mockResolvedValue(created);
+    auditCreate.mockResolvedValue({ id: 'audit-1' });
+    const findUniqueOrThrow = jest.fn().mockResolvedValue({
+      ...created,
+      version: 2,
+    });
+    transaction.mockImplementation(async (callback) =>
+      callback({
+        customer: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: customerCreate,
+          findUniqueOrThrow,
+        },
+        auditEvent: { create: auditCreate },
+      }),
+    );
+    createAgreement.mockResolvedValue({});
+
+    const result = await service.createDraft(actor, {
+      name: created.name,
+      initialAgreement: { settlementFormula: '按实际回款结算' },
+    });
+    expect(createAgreement).toHaveBeenCalledWith(
+      actor,
+      created.id,
+      expect.any(String),
+      {
+        settlementFormula: '按实际回款结算',
+        title: '合作协议',
+        validityMode: 'UNKNOWN',
+        expectedCustomerVersion: 1,
+      },
+      expect.any(Object),
+    );
+    expect(result.version).toBe(2);
   });
 
   it('propagates audit failure from the same transaction callback', async () => {

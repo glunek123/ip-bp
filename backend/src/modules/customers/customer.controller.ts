@@ -25,6 +25,7 @@ import {
   CreateCustomerDraftDto,
   CustomerDuplicatesQueryDto,
   CustomerListQueryDto,
+  CustomerCreationContextResponseDto,
   UpdateCustomerDraftDto,
 } from './customer.dto';
 import { CustomerService } from './customer.service';
@@ -75,6 +76,12 @@ export class CustomerController {
       query.q,
       query.cooperationStatus,
     );
+  }
+
+  @Get('creation-context')
+  @ApiOkResponse({ type: CustomerCreationContextResponseDto })
+  creationContext(@CurrentActor() actor: ActorContext) {
+    return this.customers.creationContext(actor);
   }
 
   @Get('duplicates')

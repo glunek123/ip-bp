@@ -15,7 +15,10 @@ import {
   type CaseListExportInput,
 } from '../../api/case-list-export';
 import { useAuthStore } from '../../stores/auth';
-import { labelLeadPlatform } from '../leads/index';
+import {
+  labelLeadPlatform,
+  leadCaseTypeLabels as caseTypeLabels,
+} from '../leads/index';
 import ListWorkflowDrawer from '../../app/ListWorkflowDrawer.vue';
 import type {
   ListWorkflowContext,
@@ -360,14 +363,6 @@ function clearQuery() {
   };
   applyQuery();
 }
-const caseTypeLabels: Record<(typeof caseListCaseTypes)[number], string> = {
-  CIVIL: '民事',
-  CRIMINAL: '刑事',
-  ADMINISTRATIVE: '行政',
-  INVESTIGATION: '调查',
-  NOTARIZATION: '公证',
-  HEARING_REPRESENTATION: '代开庭',
-};
 function stageLabel(value: CaseSummary['stage']): string {
   if (value === 'PENDING_MATCH') return '待匹配';
   if (value === 'WAITING_COMPLAINT') return '待写诉状';

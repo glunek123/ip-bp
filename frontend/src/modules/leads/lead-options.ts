@@ -1,4 +1,39 @@
-import type { LeadPlatform, LeadStatus } from '../../api/leads';
+import type {
+  InfringementType,
+  LeadCaseType,
+  LeadPlatform,
+  LeadSource,
+  LeadStatus,
+} from '../../api/leads';
+
+export const leadCaseTypeLabels: Record<LeadCaseType, string> = {
+  CIVIL: '民事',
+  CRIMINAL: '刑事',
+  ADMINISTRATIVE: '行政',
+  INVESTIGATION: '调查',
+  NOTARIZATION: '公证',
+  HEARING_REPRESENTATION: '代开庭',
+};
+
+export const leadInfringementTypeLabels: Record<InfringementType, string> = {
+  TRADEMARK: '商标权',
+  SOFTWARE_COPYRIGHT: '软件著作权',
+  ART_COPYRIGHT: '美术作品著作权',
+  AUDIOVISUAL_COPYRIGHT: '视听作品著作权',
+  TEXT_COPYRIGHT: '文字作品著作权',
+  INVENTION_PATENT: '发明专利权',
+  DESIGN_PATENT: '外观设计专利权',
+  UTILITY_MODEL_PATENT: '实用新型专利权',
+  UNFAIR_COMPETITION: '不正当竞争',
+  NETWORK_DISSEMINATION: '信息网络传播权',
+  PORTRAIT_RIGHT: '肖像权',
+  OTHER: '其他',
+};
+
+export const leadSourceLabels: Record<LeadSource, string> = {
+  ONLINE: '线上',
+  OFFLINE: '线下',
+};
 
 export const leadStatusCards: ReadonlyArray<{
   status: LeadStatus;
@@ -37,6 +72,18 @@ export const leadPlatformLabels: Record<LeadPlatform, string> = {
 
 export function labelLeadPlatform(platform: LeadPlatform): string {
   return leadPlatformLabels[platform];
+}
+
+const leadBusinessLabels = new Map<string, string>([
+  ...Object.entries(leadCaseTypeLabels),
+  ...Object.entries(leadInfringementTypeLabels),
+  ...Object.entries(leadSourceLabels),
+  ...Object.entries(leadPlatformLabels),
+]);
+
+// The client-facing contract also accepts historical string values.
+export function labelLeadBusinessValue(value: string): string {
+  return leadBusinessLabels.get(value) ?? value;
 }
 
 export function decimalEstimate(

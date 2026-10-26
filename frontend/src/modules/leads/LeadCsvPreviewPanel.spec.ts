@@ -218,16 +218,19 @@ describe('LeadCsvPreviewPanel', () => {
     }
   });
 
-  it('renders business names and all other CreateLeadInput fields without estimating', () => {
-    const wrapper = mountWithContext(readySnapshot([validRow(2)]));
+  it('renders Chinese business labels while preserving the encoded input and recorded product fields', () => {
+    const snapshot = readySnapshot([validRow(2)]);
+    const original = structuredClone(snapshot);
+    const wrapper = mountWithContext(snapshot);
     const text = wrapper.get('[data-test="csv-row-2"]').text();
     for (const expected of [
       '客户甲',
       '主体甲',
-      'CIVIL',
-      'TRADEMARK',
-      'ONLINE',
-      'TAOBAO',
+      '民事',
+      '商标权',
+      '线上',
+      '淘宝',
+      '商品链接',
       '2026/10/19 10:00:00',
       '合成店铺',
       '00123',
@@ -246,6 +249,9 @@ describe('LeadCsvPreviewPanel', () => {
       'content-version-a',
     ])
       expect(text).toContain(expected);
+    for (const code of ['CIVIL', 'TRADEMARK', 'ONLINE', 'TAOBAO', 'URL'])
+      expect(text).not.toContain(code);
+    expect(snapshot).toEqual(original);
     expect(text).not.toContain('估算');
     expect(text).not.toContain('hidden-reserved-lead-id');
     expect(text).not.toContain('预留线索 ID');

@@ -63,8 +63,11 @@ test('administrator copies a template, assigns it, and edits permissions for the
     .locator('.role-template-card')
     .filter({ hasText: '团队客户经办' });
   await sourceCard.getByRole('button', { name: '复制' }).click();
-  await page.getByLabel('模板名称').fill('团队客户经办副本');
-  await page.getByRole('button', { name: '保存模板' }).click();
+  const copyDialog = page.getByRole('dialog', { name: '创建角色模板' });
+  await copyDialog.getByLabel('模板名称').fill('团队客户经办副本');
+  await copyDialog
+    .getByRole('button', { name: '保存模板', exact: true })
+    .click();
   const copiedCard = page
     .locator('.role-template-card')
     .filter({ hasText: '团队客户经办副本' });
@@ -100,7 +103,7 @@ test('administrator copies a template, assigns it, and edits permissions for the
     await login(operatorPage, 'role.operator', 'Role-operator-pass-2026');
     await expect(operatorPage).toHaveURL(/\/customers$/);
     await expect(
-      operatorPage.getByRole('link', { name: '新建客户' }),
+      operatorPage.getByRole('button', { name: '新建客户' }),
     ).toBeVisible();
 
     const assigned = await getRoleTemplateSnapshot('团队客户经办副本');
@@ -109,9 +112,18 @@ test('administrator copies a template, assigns it, and edits permissions for the
     expect(authorizationRevision).toBeDefined();
 
     await copiedCard.getByRole('button', { name: '编辑' }).click();
-    await expect(page.getByText('模板运营员')).toBeVisible();
-    await page.locator('[data-test="grant-CUSTOMER_CREATE_DRAFT"]').uncheck();
-    await page.getByRole('button', { name: '保存模板' }).click();
+    const editDialog = page.getByRole('dialog', {
+      name: '团队客户经办副本',
+    });
+    await expect(
+      editDialog.getByText('模板运营员', { exact: true }),
+    ).toBeVisible();
+    await editDialog
+      .locator('[data-test="grant-CUSTOMER_CREATE_DRAFT"]')
+      .uncheck();
+    await editDialog
+      .getByRole('button', { name: '保存模板', exact: true })
+      .click();
     await expect(copiedCard.getByText('V2')).toBeVisible();
 
     const updated = await getRoleTemplateSnapshot('团队客户经办副本');
@@ -128,7 +140,7 @@ test('administrator copies a template, assigns it, and edits permissions for the
     await operatorPage.reload();
     await expect(operatorPage).toHaveURL(/\/customers$/);
     await expect(
-      operatorPage.getByRole('link', { name: '新建客户' }),
+      operatorPage.getByRole('button', { name: '新建客户' }),
     ).toHaveCount(0);
   } finally {
     await operatorContext.close();

@@ -21,6 +21,9 @@ import {
   UpdateCustomerDraftDto,
 } from './customer.dto';
 import { normalizeCustomerIdentityNumber } from './customer-identity';
+import { randomUUID } from 'node:crypto';
+import { CustomerCooperationService } from './customer-cooperation.service';
+import { CustomerAgreementInvoiceService } from './customer-agreement-invoice.service';
 
 export type CustomerRecord = {
   customerManagerName?: string | null;
@@ -149,7 +152,60 @@ export class CustomerService {
     private readonly database: DatabaseService,
     private readonly accessControl: AccessControlService,
     private readonly organization: OrganizationService,
+    private readonly cooperation: CustomerCooperationService,
+    private readonly documents: CustomerAgreementInvoiceService,
   ) {}
+
+  async creationContext(actor: ActorContext) {
+    const facts = await this.accessControl.authorizeNewCustomer(actor);
+    const canTransfer = await this.accessControl.canAuthorizeCustomer(
+      actor,
+      'customer.responsible.transfer',
+      facts,
+    );
+    const candidates = await this.database.userAccount.findMany({
+      where: {
+        active: true,
+        accountType: 'INTERNAL',
+        ...(!canTransfer ? { id: actor.userId } : {}),
+        memberships: {
+          some: {
+            departmentId: actor.departmentId,
+            active: true,
+            OR: [{ teamId: null }, { team: { status: 'ACTIVE' } }],
+          },
+        },
+      },
+      orderBy: [{ displayName: 'asc' }, { id: 'asc' }],
+      select: { id: true, displayName: true },
+    });
+    const allowed = await Promise.all(
+      candidates.map(
+        async (candidate) =>
+          candidate.id === actor.userId ||
+          (await this.accessControl.canAuthorizeCustomer(
+            actor,
+            'customer.read',
+            { ...facts, responsibleUserId: candidate.id },
+          )),
+      ),
+    );
+    const agreementActions = [
+      'customer.read',
+      'customer.agreement.read',
+      'customer.agreement.edit',
+    ] as const;
+    const agreementPermissions = await Promise.all(
+      agreementActions.map((action) =>
+        this.accessControl.canAuthorizeCustomer(actor, action, facts),
+      ),
+    );
+    return {
+      responsibleUserId: actor.userId,
+      operators: candidates.filter((_candidate, index) => allowed[index]),
+      canSetInitialAgreement: agreementPermissions.every(Boolean),
+    };
+  }
 
   async createDraft(
     actor: ActorContext,
@@ -163,108 +219,189 @@ export class CustomerService {
       input.duplicateNameReason,
     );
     const admissionContact = this.normalizeAdmissionContact(input);
+    const identity = normalizeCustomerIdentityNumber(input.identityNumber);
+    const identityType = this.normalizeIdentity(input.identityType);
+    this.assertIdentityPair(identityType, identity.normalized);
     const readScope = await this.accessControl.tryBuildCustomerScope(
       actor,
       'customer.read',
     );
-    const customer = await this.database.$transaction(async (transaction) => {
-      await transaction.$executeRawUnsafe?.(
-        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-        `${actor.departmentId}:${normalizedName}`,
-      );
-      if (facts.teamId !== undefined) {
-        const teams = await transaction.$queryRawUnsafe<
-          Array<{ status: 'ACTIVE' | 'INACTIVE' }>
-        >(
-          `SELECT "status" FROM "teams"
+    const customer = await this.database
+      .$transaction(async (transaction) => {
+        await transaction.$executeRawUnsafe?.(
+          'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+          `${actor.departmentId}:${normalizedName}`,
+        );
+        if (facts.teamId !== undefined) {
+          const teams = await transaction.$queryRawUnsafe<
+            Array<{ status: 'ACTIVE' | 'INACTIVE' }>
+          >(
+            `SELECT "status" FROM "teams"
            WHERE "id" = $1::uuid AND "department_id" = $2::uuid
            FOR SHARE`,
-          facts.teamId,
-          actor.departmentId,
-        );
-        if (teams.length !== 1 || teams[0]?.status !== 'ACTIVE') {
-          throw new ForbiddenException({
-            code: 'CUSTOMER_ACTION_FORBIDDEN',
-            message: '无权执行此客户操作',
-          });
-        }
-      }
-      const sameName =
-        readScope === null
-          ? null
-          : await transaction.customer.findFirst({
-              where: { normalizedName, ...readScope, deletedAt: null },
-              select: { id: true },
+            facts.teamId,
+            actor.departmentId,
+          );
+          if (teams.length !== 1 || teams[0]?.status !== 'ACTIVE') {
+            throw new ForbiddenException({
+              code: 'CUSTOMER_ACTION_FORBIDDEN',
+              message: '无权执行此客户操作',
             });
-      if (sameName !== null) {
-        if (duplicateNameReason === null) throw this.nameReasonRequired();
-      }
+          }
+        }
+        const sameName =
+          readScope === null
+            ? null
+            : await transaction.customer.findFirst({
+                where: { normalizedName, ...readScope, deletedAt: null },
+                select: { id: true },
+              });
+        if (sameName !== null) {
+          if (duplicateNameReason === null) throw this.nameReasonRequired();
+        }
 
-      let created = await transaction.customer.create({
-        data: {
-          name,
-          normalizedName,
-          category: this.normalizeOptional(input.category),
-          region: this.normalizeOptional(input.region),
-          customerManagerName: this.normalizeOptional(
-            input.customerManagerName,
-          ),
-          ...admissionContact,
-          profileStatus: 'DRAFT',
-          departmentId: actor.departmentId,
-          responsibleUserId: actor.userId,
-          teamId: facts.teamId ?? null,
-        },
-      });
-      if (admissionContact.admissionContactName !== null) {
-        const contact = await transaction.customerContact.create({
+        let created = await transaction.customer.create({
           data: {
-            customerId: created.id,
+            name,
+            normalizedName,
+            category: this.normalizeOptional(input.category),
+            region: this.normalizeOptional(input.region),
+            customerManagerName: this.normalizeOptional(
+              input.customerManagerName,
+            ),
+            customerType: this.normalizeOptional(input.customerType),
+            identityType,
+            identityNumber: identity.display,
+            normalizedIdentityNumber: identity.normalized,
+            ...admissionContact,
+            profileStatus: 'DRAFT',
             departmentId: actor.departmentId,
-            name: admissionContact.admissionContactName,
-            phone: admissionContact.admissionContactPhone,
-            email: admissionContact.admissionContactEmail,
-            origin: 'LEGACY_CREATE',
-            createdByUserId: actor.userId,
-            updatedByUserId: actor.userId,
+            responsibleUserId: actor.userId,
+            teamId: facts.teamId ?? null,
           },
         });
-        await recordContactVersion(
-          transaction,
-          contact,
-          'CREATED',
-          null,
-          actor.userId,
-        );
-        created = await transaction.customer.update({
-          where: { id: created.id },
-          data: { compatibilityContactId: contact.id },
-        });
-      }
-      await transaction.auditEvent.create({
-        data: {
-          departmentId: actor.departmentId,
-          actorUserId: actor.userId,
-          resourceType: 'customer',
-          resourceId: created.id,
-          action: 'customer.draft-created',
-          details: { customerId: created.id },
-        },
-      });
-      if (sameName !== null && duplicateNameReason !== null) {
+        if (admissionContact.admissionContactName !== null) {
+          const contact = await transaction.customerContact.create({
+            data: {
+              customerId: created.id,
+              departmentId: actor.departmentId,
+              name: admissionContact.admissionContactName,
+              phone: admissionContact.admissionContactPhone,
+              email: admissionContact.admissionContactEmail,
+              origin: 'LEGACY_CREATE',
+              createdByUserId: actor.userId,
+              updatedByUserId: actor.userId,
+            },
+          });
+          await recordContactVersion(
+            transaction,
+            contact,
+            'CREATED',
+            null,
+            actor.userId,
+          );
+          created = await transaction.customer.update({
+            where: { id: created.id },
+            data: { compatibilityContactId: contact.id },
+          });
+        }
         await transaction.auditEvent.create({
           data: {
             departmentId: actor.departmentId,
             actorUserId: actor.userId,
             resourceType: 'customer',
             resourceId: created.id,
-            action: 'customer.duplicate-name-overridden',
-            details: { reason: duplicateNameReason },
+            action: 'customer.draft-created',
+            details: { customerId: created.id },
           },
         });
-      }
-      return created;
-    });
+        if (sameName !== null && duplicateNameReason !== null) {
+          await transaction.auditEvent.create({
+            data: {
+              departmentId: actor.departmentId,
+              actorUserId: actor.userId,
+              resourceType: 'customer',
+              resourceId: created.id,
+              action: 'customer.duplicate-name-overridden',
+              details: { reason: duplicateNameReason },
+            },
+          });
+        }
+        const agreement = input.initialAgreement;
+        const hasInitialAgreement =
+          agreement !== undefined &&
+          (Boolean(agreement.title?.trim()) ||
+            Boolean(agreement.model?.trim()) ||
+            Boolean(agreement.settlementMethod?.trim()) ||
+            Boolean(agreement.settlementFormula?.trim()) ||
+            (agreement.validityMode !== undefined &&
+              agreement.validityMode !== 'UNKNOWN') ||
+            Boolean(agreement.effectiveFrom) ||
+            Boolean(agreement.effectiveTo) ||
+            Boolean(agreement.contentVersionIds?.length));
+        if (hasInitialAgreement && agreement !== undefined) {
+          await this.documents.createAgreement(
+            actor,
+            created.id,
+            randomUUID(),
+            {
+              ...agreement,
+              title: agreement.title?.trim() || '合作协议',
+              validityMode: agreement.validityMode ?? 'UNKNOWN',
+              expectedCustomerVersion: created.version,
+            },
+            transaction,
+          );
+          created = await transaction.customer.findUniqueOrThrow({
+            where: { id: created.id },
+          });
+        }
+        if (
+          input.responsibleUserId !== undefined &&
+          input.responsibleUserId !== actor.userId
+        ) {
+          const assigned = await this.cooperation.transferResponsible(
+            actor,
+            created.id,
+            randomUUID(),
+            {
+              expectedVersion: created.version,
+              targetUserId: input.responsibleUserId,
+              reason: '新建客户时指定负责运营',
+            },
+            transaction,
+          );
+          if (!assigned.canReadAfter)
+            throw new ForbiddenException({
+              code: 'CUSTOMER_ACTION_FORBIDDEN',
+              message: '所选运营会使客户超出当前可读范围',
+            });
+          created = await transaction.customer.findUniqueOrThrow({
+            where: { id: created.id },
+          });
+        }
+        return created;
+      })
+      .catch(async (error: unknown) => {
+        if (!this.isUniqueConstraintError(error)) throw error;
+        if (
+          readScope !== null &&
+          identityType !== null &&
+          identity.normalized !== null
+        ) {
+          const duplicate = await this.database.customer.findFirst({
+            where: {
+              ...readScope,
+              deletedAt: null,
+              identityType,
+              normalizedIdentityNumber: identity.normalized,
+            },
+            select: { id: true },
+          });
+          if (duplicate !== null) throw this.identityDuplicate();
+        }
+        throw this.duplicateConflict();
+      });
 
     return this.toSummary(customer);
   }

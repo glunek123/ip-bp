@@ -4,6 +4,12 @@ import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElCheckbox } from 'element-plus/es/components/checkbox/index.mjs';
 import type { LeadFormContext } from '../../api/leads';
 import type { LeadCsvParsedRow, LeadCsvPreview } from './lead-csv-preview';
+import {
+  labelLeadPlatform,
+  leadCaseTypeLabels,
+  leadInfringementTypeLabels,
+  leadSourceLabels,
+} from './lead-options';
 
 const props = defineProps<{
   snapshot: LeadCsvPreview;
@@ -289,15 +295,23 @@ const display = computed(() => {
                   <dt>权利主体</dt>
                   <dd>{{ displayRow.names?.rightsHolderName ?? '不可用' }}</dd>
                   <dt>案件类型</dt>
-                  <dd>{{ displayRow.row.input.caseType }}</dd>
+                  <dd>
+                    {{ leadCaseTypeLabels[displayRow.row.input.caseType] }}
+                  </dd>
                   <dt>侵权类型</dt>
                   <dd>
-                    {{ displayRow.row.input.infringementTypes.join('、') }}
+                    {{
+                      displayRow.row.input.infringementTypes
+                        .map((type) => leadInfringementTypeLabels[type])
+                        .join('、')
+                    }}
                   </dd>
                   <dt>线索来源</dt>
-                  <dd>{{ displayRow.row.input.source }}</dd>
+                  <dd>{{ leadSourceLabels[displayRow.row.input.source] }}</dd>
                   <dt>平台</dt>
-                  <dd>{{ displayRow.row.input.platform }}</dd>
+                  <dd>
+                    {{ labelLeadPlatform(displayRow.row.input.platform) }}
+                  </dd>
                   <dt>发现时间</dt>
                   <dd>{{ formatTime(displayRow.row.input.foundAt) }}</dd>
                   <dt>店铺名称</dt>
@@ -318,7 +332,7 @@ const display = computed(() => {
                       >
                         <span>商品 {{ index + 1 }}</span>
                         <dl class="lead-csv-preview__product-fields">
-                          <dt>URL</dt>
+                          <dt>商品链接</dt>
                           <dd>{{ product.url }}</dd>
                           <dt>名称</dt>
                           <dd>{{ product.title }}</dd>

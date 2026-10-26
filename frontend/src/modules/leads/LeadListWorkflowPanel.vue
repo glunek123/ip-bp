@@ -625,9 +625,24 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section data-test="lead-workflow-form">
-    <p>{{ detail.businessNo }} · {{ detail.shopName }}</p>
-    <p>客户：{{ detail.displayNames.customerName }}</p>
+  <section class="workflow-panel" data-test="lead-workflow-form">
+    <section class="workflow-card" aria-label="线索信息">
+      <h2>线索信息</h2>
+      <dl class="workflow-facts">
+        <div>
+          <dt>线索编号</dt>
+          <dd>{{ detail.businessNo }}</dd>
+        </div>
+        <div>
+          <dt>客户</dt>
+          <dd>{{ detail.displayNames.customerName }}</dd>
+        </div>
+        <div class="workflow-facts__wide">
+          <dt>店铺名称</dt>
+          <dd>{{ detail.shopName }}</dd>
+        </div>
+      </dl>
+    </section>
     <p v-if="storageUnavailable" role="alert">
       无法安全读取未决请求，暂不能提交。
     </p>

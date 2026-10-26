@@ -142,8 +142,9 @@ export class CustomerCooperationService {
     customerId: string,
     key: string,
     input: CustomerResponsibleTransferDto,
+    transaction?: Prisma.TransactionClient,
   ): Promise<CustomerMaintenanceResult> {
-    return this.command(actor, customerId, key, 'TRANSFER', input);
+    return this.command(actor, customerId, key, 'TRANSFER', input, transaction);
   }
 
   changeCooperation(
@@ -162,6 +163,7 @@ export class CustomerCooperationService {
     key: string,
     action: MaintenanceAction,
     input: CustomerResponsibleTransferDto | CustomerCooperationDto,
+    transaction?: Prisma.TransactionClient,
   ): Promise<CustomerMaintenanceResult> {
     const reason = input.reason?.trim() ?? null;
     if (
@@ -185,187 +187,189 @@ export class CustomerCooperationService {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        return await this.database.$transaction(
-          async (tx) => {
-            await this.organization.lockDepartment(tx, actor.departmentId);
-            await this.lockAuthorizationFacts(
-              tx,
-              actor,
-              action === 'TRANSFER' ? targetUserId : null,
-            );
-            // This preliminary authorization precedes the receipt lookup. The
-            // customer row is checked again after it is locked below.
-            await this.visibleCustomer(
-              tx,
-              actor,
-              customerId,
-              actionPermissions[action],
-            );
-            const prior = await tx.customerMaintenanceReceipt.findUnique({
-              where: {
-                departmentId_actorUserId_idempotencyKey: {
-                  departmentId: actor.departmentId,
-                  actorUserId: actor.userId,
-                  idempotencyKey: key,
-                },
-              },
-              include: { fact: true },
-            });
-            if (prior === null && action === 'TRANSFER') {
-              await this.assertEligibleTarget(
-                tx,
-                actor.departmentId,
-                targetUserId!,
-              );
-            }
-            const locked = await tx.$queryRaw<Array<{ id: string }>>`
-              SELECT id FROM customers
-              WHERE id = ${customerId}::uuid AND department_id = ${actor.departmentId}::uuid
-              FOR UPDATE`;
-            if (locked.length !== 1) throw this.notFound();
-            const current = await this.visibleCustomer(
-              tx,
-              actor,
-              customerId,
-              actionPermissions[action],
-            );
-            if (prior !== null) {
-              if (
-                prior.action !== action ||
-                prior.customerId !== customerId ||
-                prior.requestFingerprint !== fingerprint
-              )
-                throw this.conflict(
-                  'CUSTOMER_IDEMPOTENCY_CONFLICT',
-                  '幂等键已用于不同请求',
-                );
-              return this.result(
-                actor,
-                tx,
-                current,
-                action,
-                prior.fact.toVersion,
-                prior.fact.occurredAt,
-              );
-            }
-            if (current.version !== input.expectedVersion) {
-              throw this.versionConflict();
-            }
-            if (
-              action === 'TRANSFER' &&
-              current.responsibleUserId === targetUserId
-            ) {
-              throw this.conflict(
-                'CUSTOMER_RESPONSIBLE_CONFLICT',
-                '目标已是当前负责运营',
-              );
-            }
-            if (
-              action !== 'TRANSFER' &&
-              !this.allowedTransition(current.cooperationStatus, action)
-            ) {
-              throw this.conflict(
-                'CUSTOMER_COOPERATION_STATE_CONFLICT',
-                '当前合作状态不允许此操作',
-              );
-            }
-            const nextStatus =
-              action === 'TRANSFER'
-                ? current.cooperationStatus
-                : toStatuses[action];
-            const changed = await tx.customer.updateMany({
-              where: {
-                id: customerId,
-                departmentId: actor.departmentId,
-                version: input.expectedVersion,
-                deletedAt: null,
-                ...(action === 'TRANSFER'
-                  ? { responsibleUserId: current.responsibleUserId }
-                  : { cooperationStatus: current.cooperationStatus }),
-              },
-              data: {
-                ...(action === 'TRANSFER'
-                  ? { responsibleUserId: targetUserId! }
-                  : { cooperationStatus: nextStatus }),
-                version: { increment: 1 },
-              },
-            });
-            if (changed.count !== 1) throw this.versionConflict();
-            const audit = await tx.auditEvent.create({
-              data: {
-                departmentId: actor.departmentId,
-                actorUserId: actor.userId,
-                resourceType: 'customer',
-                resourceId: customerId,
-                action:
-                  action === 'TRANSFER'
-                    ? 'customer.responsible-transferred'
-                    : `customer.cooperation-${publicActions[action]}`,
-                details: {
-                  fromVersion: input.expectedVersion,
-                  toVersion: input.expectedVersion + 1,
-                  ...(action === 'TRANSFER'
-                    ? {
-                        fromResponsibleUserId: current.responsibleUserId,
-                        toResponsibleUserId: targetUserId,
-                      }
-                    : {
-                        fromStatus: current.cooperationStatus,
-                        toStatus: nextStatus,
-                      }),
-                  reason,
-                },
-              },
-            });
-            const fact = await tx.customerMaintenanceFact.create({
-              data: {
-                customerId,
-                departmentId: actor.departmentId,
-                action,
-                actorUserId: actor.userId,
-                fromVersion: input.expectedVersion,
-                toVersion: input.expectedVersion + 1,
-                fromCooperationStatus:
-                  action === 'TRANSFER' ? null : current.cooperationStatus,
-                toCooperationStatus: action === 'TRANSFER' ? null : nextStatus,
-                fromResponsibleUserId:
-                  action === 'TRANSFER' ? current.responsibleUserId : null,
-                toResponsibleUserId:
-                  action === 'TRANSFER' ? targetUserId : null,
-                reason,
-                auditEventId: audit.id,
-              },
-            });
-            await tx.customerMaintenanceReceipt.create({
-              data: {
+        const work = async (tx: Prisma.TransactionClient) => {
+          await this.organization.lockDepartment(tx, actor.departmentId);
+          await this.lockAuthorizationFacts(
+            tx,
+            actor,
+            action === 'TRANSFER' ? targetUserId : null,
+          );
+          // This preliminary authorization precedes the receipt lookup. The
+          // customer row is checked again after it is locked below.
+          await this.visibleCustomer(
+            tx,
+            actor,
+            customerId,
+            actionPermissions[action],
+          );
+          const prior = await tx.customerMaintenanceReceipt.findUnique({
+            where: {
+              departmentId_actorUserId_idempotencyKey: {
                 departmentId: actor.departmentId,
                 actorUserId: actor.userId,
                 idempotencyKey: key,
-                requestFingerprint: fingerprint,
-                action,
-                customerId,
-                factId: fact.id,
               },
-            });
+            },
+            include: { fact: true },
+          });
+          if (prior === null && action === 'TRANSFER') {
+            await this.assertEligibleTarget(
+              tx,
+              actor.departmentId,
+              targetUserId!,
+            );
+          }
+          const locked = await tx.$queryRaw<Array<{ id: string }>>`
+              SELECT id FROM customers
+              WHERE id = ${customerId}::uuid AND department_id = ${actor.departmentId}::uuid
+              FOR UPDATE`;
+          if (locked.length !== 1) throw this.notFound();
+          const current = await this.visibleCustomer(
+            tx,
+            actor,
+            customerId,
+            actionPermissions[action],
+          );
+          if (prior !== null) {
+            if (
+              prior.action !== action ||
+              prior.customerId !== customerId ||
+              prior.requestFingerprint !== fingerprint
+            )
+              throw this.conflict(
+                'CUSTOMER_IDEMPOTENCY_CONFLICT',
+                '幂等键已用于不同请求',
+              );
             return this.result(
               actor,
               tx,
-              {
-                ...current,
-                responsibleUserId:
-                  action === 'TRANSFER'
-                    ? targetUserId!
-                    : current.responsibleUserId,
-                cooperationStatus: nextStatus,
-              },
+              current,
               action,
-              fact.toVersion,
-              fact.occurredAt,
+              prior.fact.toVersion,
+              prior.fact.occurredAt,
             );
-          },
-          { isolationLevel: 'Serializable' },
-        );
+          }
+          if (current.version !== input.expectedVersion) {
+            throw this.versionConflict();
+          }
+          if (
+            action === 'TRANSFER' &&
+            current.responsibleUserId === targetUserId
+          ) {
+            throw this.conflict(
+              'CUSTOMER_RESPONSIBLE_CONFLICT',
+              '目标已是当前负责运营',
+            );
+          }
+          if (
+            action !== 'TRANSFER' &&
+            !this.allowedTransition(current.cooperationStatus, action)
+          ) {
+            throw this.conflict(
+              'CUSTOMER_COOPERATION_STATE_CONFLICT',
+              '当前合作状态不允许此操作',
+            );
+          }
+          const nextStatus =
+            action === 'TRANSFER'
+              ? current.cooperationStatus
+              : toStatuses[action];
+          const changed = await tx.customer.updateMany({
+            where: {
+              id: customerId,
+              departmentId: actor.departmentId,
+              version: input.expectedVersion,
+              deletedAt: null,
+              ...(action === 'TRANSFER'
+                ? { responsibleUserId: current.responsibleUserId }
+                : { cooperationStatus: current.cooperationStatus }),
+            },
+            data: {
+              ...(action === 'TRANSFER'
+                ? { responsibleUserId: targetUserId! }
+                : { cooperationStatus: nextStatus }),
+              version: { increment: 1 },
+            },
+          });
+          if (changed.count !== 1) throw this.versionConflict();
+          const audit = await tx.auditEvent.create({
+            data: {
+              departmentId: actor.departmentId,
+              actorUserId: actor.userId,
+              resourceType: 'customer',
+              resourceId: customerId,
+              action:
+                action === 'TRANSFER'
+                  ? 'customer.responsible-transferred'
+                  : `customer.cooperation-${publicActions[action]}`,
+              details: {
+                fromVersion: input.expectedVersion,
+                toVersion: input.expectedVersion + 1,
+                ...(action === 'TRANSFER'
+                  ? {
+                      fromResponsibleUserId: current.responsibleUserId,
+                      toResponsibleUserId: targetUserId,
+                    }
+                  : {
+                      fromStatus: current.cooperationStatus,
+                      toStatus: nextStatus,
+                    }),
+                reason,
+              },
+            },
+          });
+          const fact = await tx.customerMaintenanceFact.create({
+            data: {
+              customerId,
+              departmentId: actor.departmentId,
+              action,
+              actorUserId: actor.userId,
+              fromVersion: input.expectedVersion,
+              toVersion: input.expectedVersion + 1,
+              fromCooperationStatus:
+                action === 'TRANSFER' ? null : current.cooperationStatus,
+              toCooperationStatus: action === 'TRANSFER' ? null : nextStatus,
+              fromResponsibleUserId:
+                action === 'TRANSFER' ? current.responsibleUserId : null,
+              toResponsibleUserId: action === 'TRANSFER' ? targetUserId : null,
+              reason,
+              auditEventId: audit.id,
+            },
+          });
+          await tx.customerMaintenanceReceipt.create({
+            data: {
+              departmentId: actor.departmentId,
+              actorUserId: actor.userId,
+              idempotencyKey: key,
+              requestFingerprint: fingerprint,
+              action,
+              customerId,
+              factId: fact.id,
+            },
+          });
+          return this.result(
+            actor,
+            tx,
+            {
+              ...current,
+              responsibleUserId:
+                action === 'TRANSFER'
+                  ? targetUserId!
+                  : current.responsibleUserId,
+              cooperationStatus: nextStatus,
+            },
+            action,
+            fact.toVersion,
+            fact.occurredAt,
+          );
+        };
+        return transaction
+          ? await work(transaction)
+          : await this.database.$transaction(work, {
+              isolationLevel: 'Serializable',
+            });
       } catch (error) {
+        if (transaction) throw error;
         if (this.isRetryableLockConflict(error)) {
           if (attempt < maxAttempts) {
             await new Promise((resolve) => setTimeout(resolve, attempt * 15));

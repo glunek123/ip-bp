@@ -47,7 +47,7 @@ function date(value: string | null | undefined): Date | null {
   )
     throw new BadRequestException({
       code: 'VALIDATION_ERROR',
-      message: '协议日期无效',
+      message: '合作协议日期无效',
     });
   return parsed;
 }
@@ -232,6 +232,7 @@ export class CustomerAgreementInvoiceService {
       title: row.title,
       model: row.model,
       settlementMethod: row.settlementMethod,
+      settlementFormula: row.settlementFormula ?? null,
       validityMode: row.validityMode,
       effectiveFrom: isoDay(row.effectiveFrom),
       effectiveTo: isoDay(row.effectiveTo),
@@ -429,6 +430,7 @@ export class CustomerAgreementInvoiceService {
     customerId: string,
     key: string,
     input: CreateAgreementDto,
+    transaction?: Prisma.TransactionClient,
   ) {
     return this.agreementCommand(
       actor,
@@ -437,6 +439,7 @@ export class CustomerAgreementInvoiceService {
       key,
       'AGREEMENT_CREATE',
       input,
+      transaction,
     );
   }
   reviseAgreement(
@@ -531,9 +534,10 @@ export class CustomerAgreementInvoiceService {
     key: string,
     action: 'AGREEMENT_CREATE' | 'AGREEMENT_REVISE',
     input: AgreementInput,
+    transaction?: Prisma.TransactionClient,
   ) {
     const hash = fingerprint(action, customerId, agreementId, input);
-    return this.runCommand(async (tx) => {
+    const work = async (tx: Prisma.TransactionClient) => {
       const customer = await this.lockedCustomer(
         tx,
         actor,
@@ -555,7 +559,7 @@ export class CustomerAgreementInvoiceService {
         where: { customerId, departmentId: actor.departmentId },
       });
       if (action === 'AGREEMENT_CREATE' && agreement)
-        throw fail('AGREEMENT_EXISTS', '客户协议已存在');
+        throw fail('AGREEMENT_EXISTS', '客户合作协议已存在');
       if (
         action === 'AGREEMENT_REVISE' &&
         (!agreement ||
@@ -563,7 +567,7 @@ export class CustomerAgreementInvoiceService {
           agreement.version !==
             (input as ReviseAgreementDto).expectedAgreementVersion)
       )
-        throw fail('AGREEMENT_VERSION_CONFLICT', '协议版本已变化');
+        throw fail('AGREEMENT_VERSION_CONFLICT', '合作协议版本已变化');
       const prior = agreement?.currentVersionId
         ? await tx.customerAgreementVersion.findUnique({
             where: { id: agreement.currentVersionId },
@@ -574,7 +578,7 @@ export class CustomerAgreementInvoiceService {
       if (!title || !validityMode)
         throw new BadRequestException({
           code: 'VALIDATION_ERROR',
-          message: '协议字段不完整',
+          message: '合作协议字段不完整',
         });
       const effectiveFrom =
         input.effectiveFrom === undefined
@@ -591,13 +595,13 @@ export class CustomerAgreementInvoiceService {
       )
         throw new BadRequestException({
           code: 'VALIDATION_ERROR',
-          message: '协议期限无效',
+          message: '合作协议期限无效',
         });
       const ids = input.contentVersionIds ?? prior?.contentVersionIds ?? [];
       if (ids.length > 10 || new Set(ids).size !== ids.length)
         throw new BadRequestException({
           code: 'VALIDATION_ERROR',
-          message: '协议材料版本重复或超限',
+          message: '合作协议材料版本重复或超限',
         });
       const facts = ids.length
         ? await this.materials.assertAvailableVersions(tx, actor, {
@@ -610,7 +614,7 @@ export class CustomerAgreementInvoiceService {
           })
         : [];
       if (facts.some((fact) => fact.purpose !== 'CUSTOMER_AGREEMENT'))
-        throw fail('MATERIAL_VERSION_CONFLICT', '协议材料用途不符');
+        throw fail('MATERIAL_VERSION_CONFLICT', '合作协议材料用途不符');
       const changed = await tx.customer.updateMany({
         where: {
           id: customerId,
@@ -659,6 +663,10 @@ export class CustomerAgreementInvoiceService {
             input.settlementMethod === undefined
               ? (prior?.settlementMethod ?? null)
               : input.settlementMethod,
+          settlementFormula:
+            input.settlementFormula === undefined
+              ? (prior?.settlementFormula ?? null)
+              : input.settlementFormula,
           validityMode,
           effectiveFrom,
           effectiveTo,
@@ -688,7 +696,7 @@ export class CustomerAgreementInvoiceService {
         },
       });
       if (updated.count !== 1)
-        throw fail('AGREEMENT_VERSION_CONFLICT', '协议版本已变化');
+        throw fail('AGREEMENT_VERSION_CONFLICT', '合作协议版本已变化');
       const result = {
         agreement: {
           id: stableId,
@@ -710,7 +718,8 @@ export class CustomerAgreementInvoiceService {
         },
       });
       return result;
-    });
+    };
+    return transaction ? work(transaction) : this.runCommand(work);
   }
 
   private async invoiceCommand(

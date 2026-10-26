@@ -18,6 +18,7 @@ export type CustomerAgreementVersion = {
   title: string;
   model: string | null;
   settlementMethod: string | null;
+  settlementFormula?: string | null;
   validityMode: AgreementValidityMode;
   effectiveFrom: string | null;
   effectiveTo: string | null;
@@ -85,6 +86,7 @@ type AgreementFields = {
   title?: string;
   model?: string | null;
   settlementMethod?: string | null;
+  settlementFormula?: string | null;
   validityMode?: AgreementValidityMode;
   effectiveFrom?: string | null;
   effectiveTo?: string | null;
@@ -198,6 +200,9 @@ function isAgreementVersion(
       'title',
       'model',
       'settlementMethod',
+      ...(Object.hasOwn(value, 'settlementFormula')
+        ? ['settlementFormula']
+        : []),
       'validityMode',
       'effectiveFrom',
       'effectiveTo',
@@ -217,6 +222,8 @@ function isAgreementVersion(
     value.title.length === 0 ||
     !nullableString(value.model) ||
     !nullableString(value.settlementMethod) ||
+    (value.settlementFormula !== undefined &&
+      !nullableString(value.settlementFormula)) ||
     (value.validityMode !== 'FIXED' &&
       value.validityMode !== 'LONG_TERM' &&
       value.validityMode !== 'UNKNOWN') ||
@@ -311,7 +318,7 @@ function isInvoiceEntity(
 
 function invalidResponse(): ApiError {
   return new ApiError(
-    '服务返回了无效的客户协议或开票数据',
+    '服务返回了无效的客户合作协议或开票数据',
     200,
     'INVALID_RESPONSE',
   );
@@ -410,7 +417,7 @@ function validatePage(page: number, pageSize: number): void {
     pageSize < 1 ||
     pageSize > 100
   ) {
-    throw new RangeError('客户协议与开票历史分页参数无效');
+    throw new RangeError('客户合作协议与开票历史分页参数无效');
   }
 }
 
