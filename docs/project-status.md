@@ -1,4 +1,10 @@
-## 2026-10-26 上海独立UAT：三组正常来源样本已交付
+## 2026-10-26 上海UAT追加律师账号完成
+
+用户明确要求补齐律师账号并写入原交接文件。复用既有正式API新增虚构律师顾言（lvshi）、远泽律师事务所和运营部单一有效档案绑定；口令仅补入原受限“运营试测账号.txt”，原六个口令未改。账号共7个启用，律师无内部成员或运营Grant；admin为创建临时增加的LAWYER_ACCOUNT_MANAGE/DEPARTMENT已按原ID撤回，仍为原7项，全库Grant仍127。
+
+真实浏览器验证lvshi登录与未分派0条空态；pinwei逐案打开0001/0002/0003匹配表单，均自动选中唯一候选“顾言（lvshi）”，关闭表单未保存。最终只读核三案仍PENDING_MATCH/v1、本轮会话均登出、服务持续运行。运营可从pinwei匹配开始，再以lvshi办理已分派案件；后续诉讼尚未在本轮重跑，不表示完整流程已通过。运行源码仍ad8e0818，无源码/schema/迁移/正式权限规则修改。证据在原server-uat-20261026的lawyer-account-intent.json、lawyer-final-audit.json和页面截图/AX记录；详情见[当前交接](operations/operations-trial-handoff.md)。下方六账号/缺律师为追加授权前的历史检查点。
+
+## 2026-10-26 上海独立UAT：三组正常来源样本已交付（追加律师前）
 
 公网入口为[运营试测系统](https://111.231.164.248/)。服务器lhins-o53t3rpq（物理metadata ins-km5z09rh），Ubuntu24.04；Node24.21.0、pnpm11.27.0、PostgreSQL17.11、Nginx1.24.0、Certbot5.8.0已实际安装。运行源码为ad8e081855de3bab0ad471c29f54b6c2538c1025，发布目录/srv/ip-bp-uat/releases/ad8e081855de3bab0ad471c29f54b6c2538c1025，current指向该目录。Linux后端962/前端3产物与同源本机逐项一致，回执08b17327f1e60c1349ea27b2126f035c1a6cb00fea0cafdea977071f2bc736a0。当前仅同步部署记录，不纳入主目录另一任务的未提交前端修改。
 

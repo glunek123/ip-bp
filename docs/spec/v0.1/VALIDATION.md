@@ -3991,3 +3991,11 @@ J于22:57前完成关闭：262/500请求、5/5登录、上传0（原21/21保留�
 本次按用户最新口径仅1运营部，未新增公司或业务分类模型。admin7项、manager2项、pinwei/zhichan各59项，金额/导出单独明确；C/N仅各自客户/公证处绑定。为开通C/N给admin的CUSTOMER_READ/DEPARTMENT和NOTARY_OFFICE_MANAGE/DEPARTMENT两项已按原Grant ID撤销，恢复7项；配置API会话和页面/权限辅助会话全部正常登出。最终只读数量1客户、3线索、3公证、3案件、6启用账号、127Grant、0未撤销会话、177成功迁移。服务、账号和长期SSH保留，不设置旧本地批次额度或人工自动关闭；原12小时会话/CSRF/登录节流保留。新UAT跨部门负例未重测（只批准1部门），原M同执行源码的隔离/独立金额导出证据保留，不把管理员验证替代普通运营。
 
 证据总目录为主目录.local/server-uat-20261026；截图同时保存在本机visualizations/2026/10/26/server-trial-selection，运行断点deployment-progress.json，构建linux-build-receipt.json，独立只读审查在review-preparation；账号/密码和备份均只在受限本机文件，未进Git。既有coverage.csv按RUN-UAT-20261026-*追加实际记录，原未测盘点和历史失败保留，不计算系统“通过率”。最终文档门禁/Git同步以本轮实际doc-gates.json/git-delivery.json回执为准，不以本段预写检查通过。
+
+### 2026-10-26 后续授权：律师账号补齐
+
+用户明确要求新增律师账号并将凭据写入原交接文件后，已通过正常admin登录、CSRF和POST /lawyer-accounts创建虚构顾言（lvshi）/远泽律师事务所。201后GET列表200读回唯一账号及活跃档案，创建会话204登出。账号c8d14ade-540b-4ef3-927e-bd523c94c351，档案68a6e12f-4067-4745-93bc-a8d6361dd960，绑定b768be88-da1b-4b8f-b56f-70076ecf1131；绑定仅原运营部，不创建内部部门成员或授运营Grant。原UAT-DATA-001中“缺有效律师账号”已解决；匹配保存和后续诉讼验证仍未执行。
+
+真实浏览器用lvshi登录，显示顾言律师工作台、本人承办案件0条和正常空态；未有承办关系，0条符合预期。登出后以pinwei逐案打开CA-20261026-0001/0002/0003匹配表单，三案均自动选中唯一“顾言（lvshi）”。只打开/关闭，不输入被告、不提交匹配，不提前替运营完成流程。13:03北京时间只读核三案仍PENDING_MATCH/v1，7账号启用、全库127Grant、0未撤销会话、服务active；本轮未上传材料、改日期、造案件或修改业务状态。后续办理须由pinwei先正常分派，lvshi才能读/办相应承办案，zhichan不能代办pinwei三案。
+
+admin仅为本次创建临时增加LAWYER_ACCOUNT_MANAGE/DEPARTMENT一项，完成后按原Grant ID精确撤回至7项；沿用已审查的隔离目标/源码/构建/迁移账本/角色版本守卫，未放宽规则。首次调用因缺初始化环境文件在RELEASE_ROOT预写守卫停止，补齐正确bootstrap位置与runtime.env后同脚本执行成功，无业务数据写入或关闭守卫。用户要求的原“运营试测账号.txt”已补入律师口令，原六口令保持；只允许本机当前用户/SYSTEM的ACL已核，凭据未进入Git/聊天。证据为lawyer-account-intent.json、lawyer-handoff-file-check.json、lawyer-final-audit.json、uat-lawyer-login-empty.png、uat-case-0001-lawyer-candidate.png和0002/0003候选AX文件；脚本聚焦审查ACCEPTED，记录review-preparation/lawyer-account-setup-review.md。文档门禁与正常Git交付以lawyer-doc-gates.json/lawyer-git-delivery.json实际回执为准；运行源码仍ad8e0818，未重跑无关全量程序测试或页面验收。
