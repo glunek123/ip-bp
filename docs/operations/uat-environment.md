@@ -1,5 +1,23 @@
 # 运营测试环境配置与恢复准备
 
+## 2026-10-26 上海独立UAT实际部署
+
+当前入口为[公网IP试测系统](https://111.231.164.248/)，不是本机127.0.0.1。实例lhins-o53t3rpq，物理元数据ins-km5z09rh；Ubuntu24.04，2核4GB，60GB盘，5Mbps。运行源码ad8e081855de3bab0ad471c29f54b6c2538c1025，服务器发布目录/srv/ip-bp-uat/releases/ad8e081855de3bab0ad471c29f54b6c2538c1025，current链接到该目录。Node24.21.0、pnpm11.27.0、PG17.11；Linux构建965文件与同源本机逐项相同。部署记录的后续文档提交与运行源码分别标识。
+
+新库dev_cor_uat、专用角色ipbp_uat_app、附件根/var/lib/ip-bp-uat/private均独立，未复制开发/15439库。177份现有迁移已部署，不重复修改历史迁移。数据库/后端只监听127.0.0.1:5432/3101；Nginx公开80/443，同源/api代理。生产模式显式local存储，配置在/etc/ip-bp-uat/backend.env，不使用backend/.env。systemd服务ip-bp-uat以非root账号运行，已设开机启动。
+
+必须显式设置UAT数据库连接时区UTC，并重启连接池后用同一Prisma适配器验证。锁定adapter-pg7.10会将timestamptz返回文本的+08改为+00，非UTC连接会使读取值偏移；本轮只读对照复现02:00Z读成10:00Z，导致CSV回执23514/500。仅ALTER DATABASE dev_cor_uat SET TimeZone='UTC'后，02:00Z正确读回，原页面导入恢复。没有改系统时钟、业务日期、守卫、schema或业务数据。pnpm官方tar解包的隐式目录还须可遍历，构建PATH须含Node及pnpm命令入口；这些安装问题已在现场修正。
+
+正式IP证书已签发，UTC到期2026-11-01 18:07:15（北京时间11月2日02:07:15）；Certbot5.8.0自动续期timer和成功后的nginx -t/reload hook已配置，renew --dry-run --run-deploy-hooks成功。用户已在控制台确认开放443，保留原22/80，未购买附加服务。原SSH密码未改，长期部署公钥按用户要求保留。
+
+六个独立UAT账号、单一运营部及三组样本见[运营交接](operations-trial-handoff.md)。不设人工使用次数/自动停用；系统原认证校验保留。临时两Grant已精确撤销，GPT会话0，服务和账号保持运行。尚无律师账号，诉讼办理不是本轮公网已测范围。
+
+一致性快照在短暂停后端窗口取得，服务器路径/var/backups/ip-bp-uat/20261026-operations-baseline；DB dump、roles、私有附件和运行配置含敏感信息，只在受限目录，已下载本机.local/server-uat-20261026/private-backups并逐项核hash。一次新隔离数据库/文件副本恢复后，关键数量1客户/3线索/3公证/3案件/6账号/127Grant/0未撤销会话/177迁移一致，7份附件逐文件hash正确，恢复副本已清理。第一次pg_restore因postgres不能读root私有路径而失败；确认副本仍空后改由root打开dump经stdin交给pg_restore，再恢复通过，未放宽备份目录权限或重建主库。主服务已恢复。未验证整机灾备、异机恢复或公网切换。
+
+日常核查使用systemctl status ip-bp-uat nginx postgresql、nginx -t和公网/api/v1/health。重启后端用systemctl restart ip-bp-uat，不运行读开发.env的pnpm start。账号密码在本机受限交接文件，禁止放入静态目录/Git。云实例到期2026-11-26 09:41:41且自动续费关闭；具体并发能力尚未压测。
+
+以下为通用配置模板和历史准备口径；当前运行事实以上述部署记录为准，不构成额外环境或数据操作授权。
+
 本页与 [UAT 配置模板](../../backend/.env.uat.example)交付单实例 Node 后端的配置准备，不代表环境已部署或可供人工验证。源码提供显式可选的 `PRIVATE_BLOB_STORAGE_DRIVER=local`，复用现有私有文件适配器；生产默认仍不可用，模板没有启用该选项。
 
 编写基线：`bc3d9e3aa4e7e708f5471c91ec078af67dcfb915`。实际部署须绑定之后获准的完整提交和构建产物。本轮不创建环境、不连接数据库、不执行备份、迁移或恢复，不启用账号或赋予业务权限。人工测试账号增权按用户要求放在功能完成之后。
@@ -130,7 +148,7 @@ node --env-file="<PROTECTED_UAT_ENV_FILE>" dist/main.js
 
 用户已确定开发完成后自行租服务器作为 UAT；具体 OS、域名、代理、真实私有目录和权限在部署前落实。本次默认关闭的本地存储接线可以离线完成，不等待服务器选型，不代表已经启用、部署或验收附件功能。真实账号增权、连接、迁移、备份恢复和人工验证仍须对应执行授权。
 
-### 最小服务器交付检查（全部待做）
+### 最小服务器交付检查（部署前历史清单，当前见页首）
 
 服务器租用和部署尚未完成。以下检查是后续交付的最低记录项；当前没有一项可标记为通过，需由获准执行者在实际 UAT 主机和独立资源上完成并记录证据：
 
