@@ -10,7 +10,10 @@ import { DatabaseService } from '../../database/database.service';
 import { SettlementService } from './settlement.service';
 import { FeeService } from './fee.service';
 import { financialFingerprint } from './settlement-input';
-import { SettlementSideDtoValue } from './settlement.dto';
+import {
+  LawyerSettlementModeDtoValue,
+  SettlementSideDtoValue,
+} from './settlement.dto';
 import { MaterialService } from '../materials';
 import { SettlementPageDto } from './settlement.dto';
 
@@ -420,6 +423,89 @@ describe('effective closure amount through the settlement read service', () => {
 });
 
 describe('settlement center source selection and receipts', () => {
+  describe('full-risk lawyer terms', () => {
+    function termsFixture() {
+      const f = setup({
+        active: true,
+        authorizationRevision: 1,
+        grants: [{ action: 'settlement.terms.update', scope: 'department' }],
+      });
+      const create = jest.fn().mockResolvedValue({ version: 1 });
+      Object.assign(f.tx, {
+        auditEvent: {
+          findMany: jest.fn().mockResolvedValue([]),
+          create: jest.fn().mockResolvedValue({ id: 'audit' }),
+        },
+        case: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'case',
+            departmentId: 'department',
+            businessNo: 'CA-20261026-0001',
+            customerId: 'customer',
+            stage: 'WAITING_ARCHIVE',
+            version: 1,
+            complaintAmountState: null,
+            complaintAmount: null,
+            complaintConfirmation: null,
+            customer: {
+              id: 'customer',
+              departmentId: 'department',
+              name: '客户甲',
+            },
+            lawyers: [],
+            closure: null,
+          }),
+        },
+        caseSettlementTerms: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          create,
+        },
+      });
+      return { f, create };
+    }
+
+    it.each(['0', '0.00'])(
+      'accepts a zero base fee (%s) with a positive split',
+      async (lawyerBaseFee) => {
+        const { f, create } = termsFixture();
+        await expect(
+          f.service.updateTerms(actor, 'case', {
+            side: SettlementSideDtoValue.LAWYER,
+            lawyerMode: LawyerSettlementModeDtoValue.FULL_RISK,
+            lawyerBaseFee,
+            lawyerSplitPercent: '30',
+            expectedTermsVersion: 0,
+            idempotencyKey: `full-risk-${lawyerBaseFee}`,
+          }),
+        ).resolves.toEqual({ caseId: 'case', termsVersion: 1 });
+        expect(create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            lawyerMode: 'FULL_RISK',
+            lawyerBaseFee,
+            lawyerSplitPercent: '30',
+          }),
+        });
+      },
+    );
+
+    it('rejects a positive base fee in full-risk mode before writing terms', async () => {
+      const { f, create } = termsFixture();
+      await expect(
+        f.service.updateTerms(actor, 'case', {
+          side: SettlementSideDtoValue.LAWYER,
+          lawyerMode: LawyerSettlementModeDtoValue.FULL_RISK,
+          lawyerBaseFee: '1',
+          lawyerSplitPercent: '30',
+          expectedTermsVersion: 0,
+          idempotencyKey: 'full-risk-positive-base',
+        }),
+      ).rejects.toMatchObject({
+        response: { code: 'INVALID_SETTLEMENT_TERMS' },
+      });
+      expect(create).not.toHaveBeenCalled();
+    });
+  });
+
   it('authorizes and locks before replaying an unchanged terms request, rejecting changed content under the same key', async () => {
     const f = setup({
       active: true,
