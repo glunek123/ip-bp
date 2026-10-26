@@ -42,6 +42,31 @@ const permissionCatalog = [
     scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
   },
   {
+    action: 'CUSTOMER_ADMIT' as const,
+    label: '客户准入',
+    scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
+  },
+  {
+    action: 'FEE_READ' as const,
+    label: '查看费用',
+    scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
+  },
+  {
+    action: 'SETTLEMENT_READ' as const,
+    label: '查看结算',
+    scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
+  },
+  {
+    action: 'USER_MANAGE' as const,
+    label: '管理人员',
+    scopes: ['SELF'] as const,
+  },
+  {
+    action: 'TEAM_READ' as const,
+    label: '无合法范围示例',
+    scopes: [] as const,
+  },
+  {
     action: 'CASE_COMPLAINT_SUBMIT' as const,
     label: '提交起诉材料',
     scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
@@ -116,6 +141,59 @@ const permissionCatalog = [
 afterEach(() => vi.clearAllMocks());
 
 describe('RoleTemplateEditor', () => {
+  it('selects the full catalog at each action’s widest legal scope without auto-saving', async () => {
+    api.updateRoleTemplate.mockResolvedValue(role);
+    const wrapper = mount(RoleTemplateEditor, {
+      props: { mode: 'edit', role, permissionCatalog },
+    });
+    await flushPromises();
+    await wrapper.get('[data-test="permission-search"]').setValue('查看客户');
+    await wrapper
+      .get('[data-test="select-all-internal-permissions"]')
+      .trigger('click');
+
+    expect(api.updateRoleTemplate).not.toHaveBeenCalled();
+    expect(api.copyRoleTemplate).not.toHaveBeenCalled();
+    await wrapper.get('[data-test="permission-search"]').setValue('');
+    for (const item of permissionCatalog.filter((item) => item.scopes.length)) {
+      expect(
+        wrapper.get<HTMLInputElement>(`[data-test="grant-${item.action}"]`)
+          .element.checked,
+      ).toBe(true);
+    }
+    expect(
+      wrapper.get<HTMLInputElement>('[data-test="grant-TEAM_READ"]').element
+        .checked,
+    ).toBe(false);
+    expect(
+      wrapper.get('[data-test="scope-USER_MANAGE"]').element,
+    ).toHaveProperty('value', 'SELF');
+
+    await wrapper.get('[data-test="role-template-save"]').trigger('click');
+    await flushPromises();
+    expect(api.updateRoleTemplate).toHaveBeenCalledOnce();
+    const grants = api.updateRoleTemplate.mock.calls[0]?.[1].grants;
+    expect(grants).toHaveLength(
+      permissionCatalog.filter((item) => item.scopes.length > 0).length,
+    );
+    expect(grants).toContainEqual({
+      action: 'CUSTOMER_ADMIT',
+      scope: 'DEPARTMENT',
+    });
+    expect(grants).toContainEqual({ action: 'FEE_READ', scope: 'DEPARTMENT' });
+    expect(grants).toContainEqual({
+      action: 'SETTLEMENT_READ',
+      scope: 'DEPARTMENT',
+    });
+    expect(grants).toContainEqual({ action: 'USER_MANAGE', scope: 'SELF' });
+    expect(grants).not.toContainEqual(
+      expect.objectContaining({ action: 'TEAM_READ' }),
+    );
+    expect(grants).not.toContainEqual(
+      expect.objectContaining({ action: 'EXTERNAL_ACTION' }),
+    );
+  });
+
   it('searches permission groups without dropping selected hidden grants', async () => {
     api.updateRoleTemplate.mockResolvedValue(role);
     const wrapper = mount(RoleTemplateEditor, {
@@ -307,6 +385,39 @@ describe('RoleTemplateEditor', () => {
       wrapper.get('[data-test="role-template-name"]').element,
     ).toHaveProperty('value', '我的修改');
     expect(wrapper.get('[role="alert"]').text()).toContain('刷新');
+    expect(wrapper.emitted('saved')).toBeUndefined();
+  });
+
+  it('keeps the full selection and name after a 403 response', async () => {
+    api.getRoleTemplateImpact.mockResolvedValue({
+      roleTemplateId: role.id,
+      version: role.version,
+      activeAssignmentCount: 0,
+      affectedUsers: [],
+    });
+    api.updateRoleTemplate.mockRejectedValue(
+      new ApiError('forbidden', 403, 'FORBIDDEN'),
+    );
+    const wrapper = mount(RoleTemplateEditor, {
+      props: { mode: 'edit', role, permissionCatalog },
+    });
+    await flushPromises();
+    await wrapper
+      .get('[data-test="role-template-name"]')
+      .setValue('运营全权限');
+    await wrapper
+      .get('[data-test="select-all-internal-permissions"]')
+      .trigger('click');
+    await wrapper.get('[data-test="role-template-save"]').trigger('click');
+    await flushPromises();
+
+    expect(
+      wrapper.get('[data-test="role-template-name"]').element,
+    ).toHaveProperty('value', '运营全权限');
+    expect(
+      wrapper.get('[data-test="grant-CUSTOMER_ADMIT"]').element,
+    ).toHaveProperty('checked', true);
+    expect(wrapper.get('[role="alert"]').text()).toContain('权限不足');
     expect(wrapper.emitted('saved')).toBeUndefined();
   });
 

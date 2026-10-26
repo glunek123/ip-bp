@@ -699,9 +699,9 @@ async function logout(): Promise<void> {
     />
     <aside class="app-sidebar" data-test="app-sidebar" :data-open="drawerOpen">
       <RouterLink class="app-brand" :to="homePath" @click="closeDrawer">
-        <span class="app-brand__mark" aria-hidden="true">品</span>
+        <span class="app-brand__mark" aria-hidden="true">案</span>
         <span>
-          <strong>品维·知产</strong>
+          <strong>知产案管系统</strong>
           <small>{{
             isClient
               ? '企业审核端'

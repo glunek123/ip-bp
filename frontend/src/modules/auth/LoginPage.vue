@@ -94,9 +94,9 @@ async function submit(): Promise<void> {
 <template>
   <main class="login-shell">
     <section class="login-card">
-      <div class="login-brand"><span class="workspace-mark">品知</span></div>
+      <div class="login-brand"><span class="workspace-mark">案</span></div>
       <p class="section-kicker">Secure access</p>
-      <h1>登录品维·知产业务管理</h1>
+      <h1>知产案管系统</h1>
       <p class="login-intro">
         使用管理员为你创建的内部、公证处或企业客户账号登录。
       </p>

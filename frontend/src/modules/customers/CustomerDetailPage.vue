@@ -68,7 +68,7 @@ const customerBasicSections = [
   { key: 'contacts', label: '联系人与权利人', hash: 'customer-contacts' },
   { key: 'admission', label: '准入与身份', hash: 'customer-admission' },
   { key: 'accounts', label: '企业账号', hash: 'customer-accounts' },
-  { key: 'agreements', label: '协议', hash: 'customer-agreements' },
+  { key: 'agreements', label: '合作协议', hash: 'customer-agreements' },
   { key: 'invoice', label: '开票资料', hash: 'customer-invoice-profile' },
   { key: 'history', label: '办理历史', hash: 'customer-history' },
 ] as const;

@@ -1840,8 +1840,9 @@ describe('NotaryMatterDetailPage', () => {
       expect.any(String),
     );
     expect(wrapper.text()).toContain('等待开箱');
-    expect(wrapper.text()).toContain('顺丰');
-    expect(wrapper.text()).not.toContain('顺丰快递');
+    expect(wrapper.get('[data-test="saved-evidence"] li').text()).toBe(
+      '快递公司：顺丰；快递单号：无',
+    );
     expect(wrapper.find('[data-test="evidence-date"]').exists()).toBe(false);
     api.getNotaryMatter.mockResolvedValueOnce({
       ...matter,

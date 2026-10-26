@@ -1187,7 +1187,7 @@ async function complaint() {
 </script>
 
 <template>
-  <section data-test="case-list-workflow">
+  <section class="workflow-panel" data-test="case-list-workflow">
     <p v-if="error" role="alert">{{ error }}</p>
     <button
       v-if="error && !storageBlocked"
@@ -1295,6 +1295,7 @@ async function complaint() {
     </p>
     <fieldset
       v-if="!recordMode && !storageBlocked && allowed"
+      class="workflow-form-scope"
       :disabled="busy || !!pending"
       :inert="busy || !!pending"
     >

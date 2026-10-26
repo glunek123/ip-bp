@@ -355,10 +355,29 @@
 }
 .page-view.customer-workspace .customer-new-fields {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   align-items: start;
   margin-bottom: 4px;
+}
+.page-view.customer-workspace .customer-create-scope {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.page-view.customer-workspace .customer-new-fields__wide {
+  grid-column: 1 / -1;
+}
+.page-view.customer-workspace .customer-create-section > div {
+  min-width: 0;
+}
+.page-view.customer-workspace .customer-create-section .field-label {
+  display: block;
+  margin: 0 0 6px;
+}
+.page-view.customer-workspace .customer-create-section .field-help {
+  margin: 6px 0 0;
 }
 .page-view.customer-workspace .customer-new-fields > fieldset {
   display: grid;

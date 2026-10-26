@@ -1002,39 +1002,72 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <section v-if="matter.evidence" aria-label="已登记取证资料">
-    <p>
-      取证日期：{{ matter.evidence.evidenceAt }}；样品费用：{{
-        matter.evidence.sampleFeeState === 'KNOWN'
-          ? `${matter.evidence.sampleFeeAmount} 元`
-          : '待定'
-      }}
-    </p>
-    <ul>
+  <section
+    v-if="matter.evidence"
+    class="workflow-card"
+    aria-label="已登记取证资料"
+  >
+    <h2>取证与物流</h2>
+    <dl class="workflow-facts">
+      <div>
+        <dt>取证日期</dt>
+        <dd>{{ matter.evidence.evidenceAt }}</dd>
+      </div>
+      <div>
+        <dt>样品费用</dt>
+        <dd>
+          {{
+            matter.evidence.sampleFeeState === 'KNOWN'
+              ? `${matter.evidence.sampleFeeAmount} 元`
+              : '待定'
+          }}
+        </dd>
+      </div>
+    </dl>
+    <ul class="workflow-logistics">
       <li v-for="row in matter.evidence.logistics" :key="row.id">
-        快递公司：{{
-          row.companyState === 'NONE' ? '无' : row.companyValue
-        }}；快递单号：{{
-          row.trackingState === 'NONE' ? '无' : row.trackingValue
-        }}
+        <dl class="workflow-facts">
+          <div>
+            <dt>快递公司</dt>
+            <dd>
+              {{ row.companyState === 'NONE' ? '无' : row.companyValue }}
+            </dd>
+          </div>
+          <div>
+            <dt>快递单号</dt>
+            <dd>
+              {{ row.trackingState === 'NONE' ? '无' : row.trackingValue }}
+            </dd>
+          </div>
+        </dl>
       </li>
     </ul>
   </section>
   <section
     v-if="matter.opening"
+    class="workflow-card"
     aria-label="本事项已提交开箱资料"
     data-test="workflow-saved-opening"
   >
     <h2>已提交的开箱材料</h2>
-    <p>
-      寄件人：{{ matter.opening.senderName ?? '未登记' }}；电话：{{
-        matter.opening.senderPhone ?? '未登记'
-      }}；地址：{{ matter.opening.senderAddress ?? '未登记' }}
-    </p>
-    <ul>
+    <dl class="workflow-facts">
+      <div>
+        <dt>寄件人</dt>
+        <dd>{{ matter.opening.senderName ?? '未登记' }}</dd>
+      </div>
+      <div>
+        <dt>电话</dt>
+        <dd>{{ matter.opening.senderPhone ?? '未登记' }}</dd>
+      </div>
+      <div class="workflow-facts__wide">
+        <dt>地址</dt>
+        <dd>{{ matter.opening.senderAddress ?? '未登记' }}</dd>
+      </div>
+    </dl>
+    <ul class="workflow-files">
       <li v-for="photo in matter.opening.photos" :key="photo.contentVersionId">
-        {{ photo.originalFilename
-        }}<ElButton
+        <span class="workflow-files__name">{{ photo.originalFilename }}</span
+        ><ElButton
           text
           :data-test="`workflow-download-photo-${photo.contentVersionId}`"
           @click="downloadFrozenPhoto(photo.materialId, photo.contentVersionId)"
@@ -1044,9 +1077,6 @@ onBeforeUnmount(() => {
     </ul>
     <p v-if="downloadError" role="alert">{{ downloadError }}</p>
   </section>
-  <p>
-    本表单提交会推进阶段；当前服务暂不支持仅保存这些资料。已上传材料会保留。
-  </p>
   <p v-if="message" role="alert">{{ message }}</p>
   <ElButton
     v-if="unknown"
@@ -1064,8 +1094,8 @@ onBeforeUnmount(() => {
   </p>
   <fieldset
     v-if="formAvailable"
+    class="workflow-form-scope"
     :disabled="locked || props.disabled"
-    style="border: 0; padding: 0"
   >
     <section
       id="opening-form"
@@ -1073,7 +1103,7 @@ onBeforeUnmount(() => {
       v-if="
         matter.stage === 'WAITING_UNBOX' && matter.capabilities.recordOpening
       "
-      class="demo-card demo-card--pad"
+      class="demo-card demo-card--pad workflow-card"
       data-test="opening-form"
     >
       <h2 class="form-section-title">登记开箱材料</h2>
@@ -1209,19 +1239,22 @@ onBeforeUnmount(() => {
           {{ openingError }}
         </p>
         <p v-if="openingSuccess" role="status">{{ openingSuccess }}</p>
-        <ElButton
-          v-if="matter.capabilities.recordOpening"
-          data-test="record-opening-submit"
-          native-type="submit"
-          :loading="submittingOpening"
-          :disabled="
-            submittingOpening ||
-            uploadingOpeningPhotos ||
-            deletingOpeningMaterialId !== null ||
-            refreshingOpeningPhotos
-          "
-          >登记开箱并进入审核</ElButton
-        >
+        <div class="workflow-actions">
+          <ElButton
+            v-if="matter.capabilities.recordOpening"
+            type="primary"
+            data-test="record-opening-submit"
+            native-type="submit"
+            :loading="submittingOpening"
+            :disabled="
+              submittingOpening ||
+              uploadingOpeningPhotos ||
+              deletingOpeningMaterialId !== null ||
+              refreshingOpeningPhotos
+            "
+            >登记开箱并进入审核</ElButton
+          >
+        </div>
       </form>
     </section>
 
@@ -1229,7 +1262,7 @@ onBeforeUnmount(() => {
       v-if="
         matter.capabilities.archiveReturn && matter.stage === 'WAITING_RETURN'
       "
-      class="demo-card demo-card--pad"
+      class="demo-card demo-card--pad workflow-card"
       data-test="return-archive-form"
       id="return-archive-form"
       tabindex="-1"
@@ -1412,13 +1445,16 @@ onBeforeUnmount(() => {
         <p v-if="returnArchiveSuccess" role="status">
           {{ returnArchiveSuccess }}
         </p>
-        <ElButton
-          data-test="return-archive-submit"
-          native-type="submit"
-          :loading="submittingReturnArchive"
-          :disabled="submittingReturnArchive || (locked && !unknown)"
-          >{{ returnSubmitLabel }}</ElButton
-        >
+        <div class="workflow-actions">
+          <ElButton
+            type="primary"
+            data-test="return-archive-submit"
+            native-type="submit"
+            :loading="submittingReturnArchive"
+            :disabled="submittingReturnArchive || (locked && !unknown)"
+            >{{ returnSubmitLabel }}</ElButton
+          >
+        </div>
       </form>
     </section>
     <section
@@ -1426,7 +1462,7 @@ onBeforeUnmount(() => {
         matter.stage === 'PENDING_EVIDENCE' &&
         matter.capabilities.recordEvidence
       "
-      class="demo-card demo-card--pad"
+      class="demo-card demo-card--pad workflow-card"
       data-test="evidence-form"
       id="evidence-form"
       tabindex="-1"
@@ -1521,20 +1557,23 @@ onBeforeUnmount(() => {
           {{ evidenceError }}
         </p>
         <p v-if="evidenceSuccess" role="status">{{ evidenceSuccess }}</p>
-        <ElButton
-          data-test="record-evidence-submit"
-          native-type="submit"
-          :loading="submittingEvidence"
-          :disabled="submittingEvidence"
-          >登记并进入待开箱</ElButton
-        >
+        <div class="workflow-actions">
+          <ElButton
+            type="primary"
+            data-test="record-evidence-submit"
+            native-type="submit"
+            :loading="submittingEvidence"
+            :disabled="submittingEvidence"
+            >登记并进入待开箱</ElButton
+          >
+        </div>
       </form>
     </section>
     <section
       v-if="
         matter.capabilities.reviewOpening && matter.stage === 'UNBOX_REVIEW'
       "
-      class="demo-card demo-card--pad"
+      class="demo-card demo-card--pad workflow-card"
       data-test="opening-review-section"
       id="review-form"
       tabindex="-1"
@@ -1545,30 +1584,39 @@ onBeforeUnmount(() => {
         data-test="opening-review-form"
         @submit.prevent="submitOpeningReview"
       >
-        <p>确认侵权后进入开箱待确认，由运营决定是否出证。</p>
-        <p>不侵权将立即归档，普通入口不能撤回。</p>
-        <label>
-          <input
-            v-model="reviewResult"
-            data-test="opening-review-result"
-            type="radio"
-            name="opening-review-result"
-            value="INFRINGEMENT"
-            :disabled="submittingReview || locked"
-          />
-          确认侵权
-        </label>
-        <label>
-          <input
-            v-model="reviewResult"
-            data-test="opening-review-result-no-infringement"
-            type="radio"
-            name="opening-review-result"
-            value="NO_INFRINGEMENT"
-            :disabled="submittingReview || locked"
-          />
-          判定不侵权
-        </label>
+        <fieldset class="workflow-choices">
+          <legend class="sr-only">审核结论</legend>
+          <label class="workflow-choice">
+            <input
+              v-model="reviewResult"
+              data-test="opening-review-result"
+              type="radio"
+              name="opening-review-result"
+              value="INFRINGEMENT"
+              :disabled="submittingReview || locked"
+            />
+            <span
+              ><strong>确认侵权</strong
+              ><small
+                >确认侵权后进入开箱待确认，由运营决定是否出证。</small
+              ></span
+            >
+          </label>
+          <label class="workflow-choice">
+            <input
+              v-model="reviewResult"
+              data-test="opening-review-result-no-infringement"
+              type="radio"
+              name="opening-review-result"
+              value="NO_INFRINGEMENT"
+              :disabled="submittingReview || locked"
+            />
+            <span
+              ><strong>判定不侵权</strong
+              ><small>不侵权将立即归档，普通入口不能撤回。</small></span
+            >
+          </label>
+        </fieldset>
         <label v-if="reviewResult === 'NO_INFRINGEMENT'">
           不侵权原因<RequiredFieldMark />
           <textarea
@@ -1588,13 +1636,16 @@ onBeforeUnmount(() => {
           {{ reviewError }}
         </p>
         <p v-if="reviewSuccess" role="status">{{ reviewSuccess }}</p>
-        <ElButton
-          data-test="opening-review-submit"
-          native-type="submit"
-          :loading="submittingReview"
-          :disabled="submittingReview || (locked && !unknown)"
-          >{{ reviewSubmitLabel }}</ElButton
-        >
+        <div class="workflow-actions">
+          <ElButton
+            type="primary"
+            data-test="opening-review-submit"
+            native-type="submit"
+            :loading="submittingReview"
+            :disabled="submittingReview || (locked && !unknown)"
+            >{{ reviewSubmitLabel }}</ElButton
+          >
+        </div>
       </form>
     </section>
     <section
@@ -1602,7 +1653,7 @@ onBeforeUnmount(() => {
         matter.capabilities.decideIssuance &&
         matter.stage === 'ISSUANCE_DECISION'
       "
-      class="demo-card demo-card--pad"
+      class="demo-card demo-card--pad workflow-card"
       data-test="issuance-decision-section"
       id="issuance-form"
       tabindex="-1"
@@ -1610,38 +1661,47 @@ onBeforeUnmount(() => {
       <h2 class="form-section-title">是否出证</h2>
       <p>选择 出证 → 待出证，或 不出证 → 待退货。决定保存后不可修改。</p>
       <form @submit.prevent="submitIssuanceDecision">
-        <label
-          ><input
-            v-model="issuanceChoice"
-            data-test="issuance-decision-issue"
-            type="radio"
-            name="issuance-decision"
-            value="ISSUE"
-            :disabled="submittingIssuance || locked"
-          />出证 → 待出证</label
-        >
-        <label
-          ><input
-            v-model="issuanceChoice"
-            data-test="issuance-decision-no-issue"
-            type="radio"
-            name="issuance-decision"
-            value="NO_ISSUE"
-            :disabled="submittingIssuance || locked"
-          />不出证 → 待退货</label
-        >
+        <fieldset class="workflow-choices">
+          <legend class="sr-only">是否出证</legend>
+          <label class="workflow-choice"
+            ><input
+              v-model="issuanceChoice"
+              data-test="issuance-decision-issue"
+              type="radio"
+              name="issuance-decision"
+              value="ISSUE"
+              :disabled="submittingIssuance || locked"
+            />出证 → 待出证</label
+          >
+          <label class="workflow-choice"
+            ><input
+              v-model="issuanceChoice"
+              data-test="issuance-decision-no-issue"
+              type="radio"
+              name="issuance-decision"
+              value="NO_ISSUE"
+              :disabled="submittingIssuance || locked"
+            />不出证 → 待退货</label
+          >
+        </fieldset>
         <p v-if="issuanceError" class="field-error" role="alert">
           {{ issuanceError }}
         </p>
         <p v-if="issuanceSuccess" role="status">{{ issuanceSuccess }}</p>
-        <ElButton
-          data-test="issuance-decision-submit"
-          native-type="submit"
-          :loading="submittingIssuance"
-          :disabled="submittingIssuance || (locked && !unknown)"
-          >{{ issuanceSubmitLabel }}</ElButton
-        >
+        <div class="workflow-actions">
+          <ElButton
+            type="primary"
+            data-test="issuance-decision-submit"
+            native-type="submit"
+            :loading="submittingIssuance"
+            :disabled="submittingIssuance || (locked && !unknown)"
+            >{{ issuanceSubmitLabel }}</ElButton
+          >
+        </div>
       </form>
     </section>
   </fieldset>
+  <p class="workflow-note">
+    本表单提交会推进阶段；当前服务暂不支持仅保存这些资料。已上传材料会保留。
+  </p>
 </template>

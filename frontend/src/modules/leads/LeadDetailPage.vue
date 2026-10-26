@@ -9,7 +9,13 @@ import {
   downloadMaterialVersion,
   listOwnerMaterials,
 } from '../../api/materials';
-import { leadStatusLabels } from './lead-options';
+import {
+  labelLeadPlatform,
+  leadCaseTypeLabels,
+  leadInfringementTypeLabels,
+  leadSourceLabels,
+  leadStatusLabels,
+} from './lead-options';
 import { summarizeLeadProducts } from './lead-display';
 import { useAuthStore } from '../../stores/auth';
 import LeadQuickActionsPanel from './LeadQuickActionsPanel.vue';
@@ -101,44 +107,6 @@ const workflowGuidance = computed(() => {
       return '请核对当前线索记录后安排后续办理。';
   }
 });
-const labels: Record<string, string> = {
-  CIVIL: '民事',
-  CRIMINAL: '刑事',
-  ADMINISTRATIVE: '行政',
-  INVESTIGATION: '调查',
-  NOTARIZATION: '公证',
-  HEARING_REPRESENTATION: '代开庭',
-  TRADEMARK: '商标权',
-  SOFTWARE_COPYRIGHT: '软件著作权',
-  ART_COPYRIGHT: '美术作品著作权',
-  AUDIOVISUAL_COPYRIGHT: '视听作品著作权',
-  TEXT_COPYRIGHT: '文字作品著作权',
-  INVENTION_PATENT: '发明专利权',
-  DESIGN_PATENT: '外观设计专利权',
-  UTILITY_MODEL_PATENT: '实用新型专利权',
-  UNFAIR_COMPETITION: '不正当竞争',
-  NETWORK_DISSEMINATION: '信息网络传播权',
-  PORTRAIT_RIGHT: '肖像权',
-  OTHER: '其他',
-  ONLINE: '线上',
-  OFFLINE: '线下',
-  TAOBAO: '淘宝',
-  TMALL: '天猫',
-  PINDUODUO: '拼多多',
-  JD: '京东',
-  DOUYIN: '抖音',
-  ALIBABA_1688: '1688',
-  XIAOHONGSHU: '小红书',
-  KUAISHOU: '快手',
-  XIANYU: '闲鱼',
-  WECHAT: '微信',
-  MEITUAN: '美团',
-  DIANPING: '大众点评',
-  MAP: '地图',
-};
-function label(value: string): string {
-  return labels[value] ?? value;
-}
 function formatTime(value: string): string {
   return new Date(value).toLocaleString('zh-CN', {
     timeZone: 'Asia/Shanghai',
@@ -360,11 +328,14 @@ onBeforeUnmount(clearContext);
             </div>
             <div>
               <dt>案件类型</dt>
-              <dd>{{ label(lead.caseType) }}</dd>
+              <dd>{{ leadCaseTypeLabels[lead.caseType] }}</dd>
             </div>
             <div>
               <dt>来源／平台</dt>
-              <dd>{{ label(lead.source) }} · {{ label(lead.platform) }}</dd>
+              <dd>
+                {{ leadSourceLabels[lead.source] }} ·
+                {{ labelLeadPlatform(lead.platform) }}
+              </dd>
             </div>
             <div>
               <dt>负责人</dt>
@@ -385,7 +356,13 @@ onBeforeUnmount(clearContext);
             </div>
             <div>
               <dt>侵权类型</dt>
-              <dd>{{ lead.infringementTypes.map(label).join('、') }}</dd>
+              <dd>
+                {{
+                  lead.infringementTypes
+                    .map((type) => leadInfringementTypeLabels[type])
+                    .join('、')
+                }}
+              </dd>
             </div>
             <div>
               <dt>披露标记</dt>

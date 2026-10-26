@@ -4,6 +4,7 @@ import {
   createCustomerDraft,
   findCustomerDuplicates,
   getCustomer,
+  getCustomerCreationContext,
   listCustomerContacts,
   listCustomerContactVersions,
   createCustomerContact,
@@ -38,6 +39,31 @@ const summary = {
 };
 
 describe('customer API', () => {
+  it('decodes real creation choices and rejects a missing current operator or extra fields', async () => {
+    const context = {
+      responsibleUserId: 'user-1',
+      operators: [{ id: 'user-1', displayName: '运营甲' }],
+      canSetInitialAgreement: true,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(context))),
+    );
+    await expect(getCustomerCreationContext()).resolves.toEqual(context);
+    for (const invalid of [
+      { ...context, operators: [] },
+      { ...context, administrator: true },
+      { ...context, operators: [...context.operators, ...context.operators] },
+    ]) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(new Response(JSON.stringify(invalid))),
+      );
+      await expect(getCustomerCreationContext()).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
   it('encodes trimmed filters, omits empty keywords and rejects invalid query values', async () => {
     const fetchMock = vi.fn().mockImplementation(
       async () =>

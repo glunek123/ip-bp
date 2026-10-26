@@ -38,6 +38,7 @@ type AgreementForm = {
   title: string;
   model: string;
   settlementMethod: string;
+  settlementFormula: string;
   validityMode: AgreementValidityMode;
   effectiveFrom: string;
   effectiveTo: string;
@@ -97,6 +98,7 @@ function emptyForm(): AgreementForm {
     title: '',
     model: '',
     settlementMethod: '',
+    settlementFormula: '',
     validityMode: 'UNKNOWN',
     effectiveFrom: '',
     effectiveTo: '',
@@ -189,6 +191,7 @@ function formFromVersion(version?: CustomerAgreementVersion): AgreementForm {
     title: version?.title ?? '',
     model: version?.model ?? '',
     settlementMethod: version?.settlementMethod ?? '',
+    settlementFormula: version?.settlementFormula ?? '',
     validityMode: version?.validityMode ?? 'UNKNOWN',
     effectiveFrom: version?.effectiveFrom ?? '',
     effectiveTo: version?.effectiveTo ?? '',
@@ -227,13 +230,14 @@ function restorePending(): void {
         title: body.title ?? '',
         model: body.model ?? '',
         settlementMethod: body.settlementMethod ?? '',
+        settlementFormula: body.settlementFormula ?? '',
         validityMode: body.validityMode ?? 'UNKNOWN',
         effectiveFrom: body.effectiveFrom ?? '',
         effectiveTo: body.effectiveTo ?? '',
         files: [],
       };
     }
-    message.value = '协议请求结果未知，原请求已保留。请按原请求重试。';
+    message.value = '合作协议请求结果未知，原请求已保留。请按原请求重试。';
     setField('unknown', true);
   } else {
     status.value = 'idle';
@@ -266,7 +270,7 @@ async function refreshCurrent(): Promise<void> {
       form.value = formFromVersion(latest.agreement?.currentVersion);
       editing.value = false;
       status.value = 'idle';
-      message.value = '协议当前版已刷新。';
+      message.value = '合作协议当前版已刷新。';
     }
     setField('stale', false);
     emit('refresh-requested', customerId, actorKey);
@@ -285,8 +289,8 @@ async function refreshCurrent(): Promise<void> {
     setField('stale', true);
     message.value =
       status.value === 'refresh-needed'
-        ? '协议已提交，但当前版本刷新失败。请只读刷新。'
-        : '协议资料暂时无法刷新，请重试读取。';
+        ? '合作协议已提交，但当前版本刷新失败。请只读刷新。'
+        : '合作协议资料暂时无法刷新，请重试读取。';
   }
 }
 
@@ -319,7 +323,7 @@ async function loadHistory(page = 1): Promise<void> {
       setField('stale', true);
       emit('unavailable', customerId, actorKey);
     } else {
-      message.value = '协议历史暂时无法读取，请重试。';
+      message.value = '合作协议历史暂时无法读取，请重试。';
     }
   } finally {
     if (current(ownGeneration, customerId, actorKey))
@@ -349,11 +353,15 @@ function setValidityMode(mode: AgreementValidityMode): void {
 
 function makeBody(): PendingCustomerDocumentCommand['body'] {
   const latest = data.value;
-  if (!latest) throw new Error('协议资料尚未读取');
+  if (!latest) throw new Error('合作协议资料尚未读取');
   const fields = {
     title: form.value.title.trim(),
     model: form.value.model.trim() || null,
     settlementMethod: form.value.settlementMethod.trim() || null,
+    ...(form.value.settlementFormula.trim() ||
+    latest.agreement?.currentVersion.settlementFormula
+      ? { settlementFormula: form.value.settlementFormula.trim() || null }
+      : {}),
     validityMode: form.value.validityMode,
     effectiveFrom: form.value.effectiveFrom || null,
     effectiveTo:
@@ -402,7 +410,7 @@ async function submit(): Promise<void> {
       } as PendingCustomerDocumentCommand;
       savePendingCustomerDocumentCommand(command);
     } catch {
-      message.value = '无法保存协议请求，请检查当前浏览器存储后重试。';
+      message.value = '无法保存合作协议请求，请检查当前浏览器存储后重试。';
       return;
     }
     pending = command;
@@ -446,7 +454,7 @@ async function submit(): Promise<void> {
       setField('unknown', false);
       status.value = 'conflict';
       message.value =
-        '协议已在其他位置更新。草稿已保留，请刷新当前版并核对后再提交。';
+        '合作协议已在其他位置更新。草稿已保留，请刷新当前版并核对后再提交。';
       await refreshCurrent();
       status.value = 'conflict';
       return;
@@ -466,7 +474,7 @@ async function submit(): Promise<void> {
     }
     if (isUnknown(error)) {
       status.value = 'unknown';
-      message.value = '协议请求结果未知，原请求已保留。请按原请求重试。';
+      message.value = '合作协议请求结果未知，原请求已保留。请按原请求重试。';
       setField('unknown', true);
     } else {
       clearPendingCustomerDocumentCommand(key);
@@ -476,7 +484,7 @@ async function submit(): Promise<void> {
       message.value =
         error instanceof ApiError
           ? error.message
-          : '协议未提交，请检查内容后重试。';
+          : '合作协议未提交，请检查内容后重试。';
     }
   } finally {
     if (current(ownGeneration, customerId, actorKey)) submitting.value = false;
@@ -507,7 +515,7 @@ async function uploadSelectedFile(event: globalThis.Event): Promise<void> {
   if (!key) {
     uploadUnknown.value = true;
     setField('uploadUnknown', true);
-    message.value = '无法确认协议上传身份，请停止上传并联系管理员核查。';
+    message.value = '无法确认合作协议上传身份，请停止上传并联系管理员核查。';
     return;
   }
   const previousUpload = currentCustomerAgreementUpload(key);
@@ -515,7 +523,7 @@ async function uploadSelectedFile(event: globalThis.Event): Promise<void> {
     uploadUnknown.value = true;
     uploading.value = true;
     setField('uploadUnknown', true);
-    message.value = '协议文件仍在上传，请等待结果后再核对。';
+    message.value = '合作协议文件仍在上传，请等待结果后再核对。';
     void previousUpload.then(() => {
       if (current(ownGeneration, customerId, actorKey)) uploading.value = false;
     });
@@ -531,7 +539,7 @@ async function uploadSelectedFile(event: globalThis.Event): Promise<void> {
     uploadUnknown.value = true;
     setField('uploadUnknown', true);
     message.value =
-      '无法保存恢复标记，协议文件未上传；请停止重传并联系管理员核查。';
+      '无法保存恢复标记，合作协议文件未上传；请停止重传并联系管理员核查。';
     return;
   }
   let activeUpload: ReturnType<typeof beginCustomerAgreementUpload>;
@@ -540,7 +548,7 @@ async function uploadSelectedFile(event: globalThis.Event): Promise<void> {
   } catch {
     uploadUnknown.value = true;
     setField('uploadUnknown', true);
-    message.value = '协议文件仍在上传，请等待结果后再核对。';
+    message.value = '合作协议文件仍在上传，请等待结果后再核对。';
     return;
   }
   uploadUnknown.value = true;
@@ -560,7 +568,7 @@ async function uploadSelectedFile(event: globalThis.Event): Promise<void> {
       clearPendingCustomerAgreementUpload(key);
     } catch {
       message.value =
-        '协议文件已上传，但无法清除恢复标记。请停止重传并人工核对。';
+        '合作协议文件已上传，但无法清除恢复标记。请停止重传并人工核对。';
       return;
     }
     uploadUnknown.value = false;
@@ -571,7 +579,7 @@ async function uploadSelectedFile(event: globalThis.Event): Promise<void> {
       originalFilename: uploaded.originalFilename,
       mimeType: uploaded.mimeType,
     });
-    message.value = '协议文件已上传，尚未绑定到新版本。';
+    message.value = '合作协议文件已上传，尚未绑定到新版本。';
   } catch (error) {
     if (!current(ownGeneration, customerId, actorKey)) return;
     if (
@@ -584,14 +592,14 @@ async function uploadSelectedFile(event: globalThis.Event): Promise<void> {
       message.value = '当前权限或客户范围已变化。上传恢复标记已保留。';
     } else if (isUnknownUpload(error)) {
       message.value =
-        '协议上传结果未知。请刷新已有文件、下载核对精确版本后再明确选用；不要再次上传。';
+        '合作协议上传结果未知。请刷新已有文件、下载核对精确版本后再明确选用；不要再次上传。';
     } else {
       try {
         clearPendingCustomerAgreementUpload(key);
         uploadUnknown.value = false;
         setField('uploadUnknown', false);
         message.value =
-          error instanceof ApiError ? error.message : '协议文件上传失败。';
+          error instanceof ApiError ? error.message : '合作协议文件上传失败。';
       } catch {
         message.value = '无法清除恢复标记，请停止重传并人工核对。';
       }
@@ -636,10 +644,10 @@ async function refreshRecoveryFiles(): Promise<void> {
       );
     if (recoveryFiles.value.length === 0) {
       message.value =
-        '当前没有可核对的协议文件。未知上传标记已保留，请联系管理员核查。';
+        '当前没有可核对的合作协议文件。未知上传标记已保留，请联系管理员核查。';
     } else {
       message.value =
-        '请下载每个候选版本人工核对，再选择要用于协议的精确版本。';
+        '请下载每个候选版本人工核对，再选择要用于合作协议的精确版本。';
     }
   } catch (error) {
     if (!current(ownGeneration, customerId, actorKey)) return;
@@ -651,7 +659,7 @@ async function refreshRecoveryFiles(): Promise<void> {
       setField('stale', true);
       emit('unavailable', customerId, actorKey);
     } else {
-      message.value = '协议文件列表暂时无法刷新，未知上传标记已保留。';
+      message.value = '合作协议文件列表暂时无法刷新，未知上传标记已保留。';
     }
   } finally {
     if (current(ownGeneration, customerId, actorKey))
@@ -716,7 +724,7 @@ function adoptRecoveryFile(file: RecoveryFile): void {
   uploadUnknown.value = false;
   setField('uploadUnknown', false);
   recoveryFiles.value = [];
-  message.value = '已人工核对并选用此协议文件版本。';
+  message.value = '已人工核对并选用此合作协议文件版本。';
 }
 
 async function downloadFile(file: CustomerAgreementFile): Promise<void> {
@@ -735,7 +743,7 @@ async function downloadFile(file: CustomerAgreementFile): Promise<void> {
       setField('stale', true);
       emit('unavailable', customerId, actorKey);
     } else {
-      message.value = '协议文件下载失败，请稍后重试。';
+      message.value = '合作协议文件下载失败，请稍后重试。';
     }
   }
 }
@@ -768,8 +776,8 @@ onBeforeUnmount(() => {
   >
     <header>
       <div>
-        <span class="state-index">协议</span>
-        <h2 id="agreement-heading">客户协议</h2>
+        <span class="state-index">合作协议</span>
+        <h2 id="agreement-heading">合作协议</h2>
       </div>
       <ElButton
         v-if="
@@ -785,17 +793,17 @@ onBeforeUnmount(() => {
         :disabled="blockedByOtherMaintenance"
         @click="startEditing"
       >
-        {{ hasAgreement ? '编辑新版本' : '建立协议' }}
+        {{ hasAgreement ? '编辑新版本' : '建立合作协议' }}
       </ElButton>
     </header>
 
     <p v-if="!canRead && (status === 'unknown' || uploadUnknown)" role="status">
-      协议存在待恢复结果。读取权限恢复后可重试原请求或核对已有文件。
+      合作协议存在待恢复结果。读取权限恢复后可重试原请求或核对已有文件。
     </p>
     <p v-else-if="!canRead" data-test="agreement-no-read">
-      当前没有协议读取权限。
+      当前没有合作协议读取权限。
     </p>
-    <p v-else-if="state === 'loading'">正在读取协议资料。</p>
+    <p v-else-if="state === 'loading'">正在读取合作协议资料。</p>
     <div v-else-if="state === 'failed'" role="alert">
       <p>{{ message }}</p>
       <ElButton
@@ -809,7 +817,7 @@ onBeforeUnmount(() => {
     <template v-else-if="data">
       <template v-if="!editing">
         <p v-if="!data.agreement" data-test="agreement-not-created">
-          尚未建立协议。
+          尚未建立合作协议。
         </p>
         <template v-else>
           <p data-test="agreement-version">
@@ -818,13 +826,21 @@ onBeforeUnmount(() => {
           <h3>{{ data.agreement.currentVersion.title }}</h3>
           <dl class="detail-grid">
             <div>
-              <dt>协议型号</dt>
+              <dt>合作模式</dt>
               <dd>{{ data.agreement.currentVersion.model || '未填写' }}</dd>
             </div>
             <div>
               <dt>结算方式</dt>
               <dd>
                 {{ data.agreement.currentVersion.settlementMethod || '未填写' }}
+              </dd>
+            </div>
+            <div>
+              <dt>结算条件（公式）</dt>
+              <dd>
+                {{
+                  data.agreement.currentVersion.settlementFormula || '未填写'
+                }}
               </dd>
             </div>
             <div>
@@ -842,7 +858,7 @@ onBeforeUnmount(() => {
           </dl>
           <div class="customer-document-files">
             <p v-if="data.agreement.currentVersion.files.length === 0">
-              未附协议文件
+              未附合作协议文件
             </p>
             <ul v-else>
               <li
@@ -861,7 +877,7 @@ onBeforeUnmount(() => {
             </ul>
           </div>
           <p class="draft-note">
-            期限和文件信息仅记录已提交资料，不判断协议效力或签署状态。
+            期限和文件信息仅记录已提交资料，不判断合作协议效力或签署状态。
           </p>
         </template>
       </template>
@@ -873,7 +889,7 @@ onBeforeUnmount(() => {
         @submit.prevent="submit"
       >
         <label
-          >协议名称<input
+          >合作协议名称<input
             v-model="form.title"
             maxlength="200"
             required
@@ -882,7 +898,7 @@ onBeforeUnmount(() => {
             "
         /></label>
         <label
-          >型号<input
+          >合作模式<input
             v-model="form.model"
             maxlength="100"
             :disabled="
@@ -897,6 +913,21 @@ onBeforeUnmount(() => {
               !canEdit || blockedByOtherMaintenance || status === 'unknown'
             "
         /></label>
+        <label
+          >结算条件（公式）
+          <input
+            v-model="form.settlementFormula"
+            name="settlementFormula"
+            maxlength="500"
+            :disabled="
+              !canEdit || blockedByOtherMaintenance || status === 'unknown'
+            "
+            placeholder="例：客户结算金额=结案金额*70%"
+          />
+          <small class="field-guidance"
+            >记录合作约定，不会自动修改案件结算条件或金额。</small
+          >
+        </label>
         <label
           >期限类型
           <select
@@ -941,14 +972,14 @@ onBeforeUnmount(() => {
             uploadUnknown
           "
         >
-          <legend>协议文件（最多 10 份）</legend>
+          <legend>合作协议文件（最多 10 份）</legend>
           <input
             type="file"
             accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
             :disabled="form.files.length >= 10 || uploading"
             @change="uploadSelectedFile"
           />
-          <p v-if="form.files.length === 0">未附协议文件</p>
+          <p v-if="form.files.length === 0">未附合作协议文件</p>
           <ul v-else>
             <li v-for="file in form.files" :key="file.contentVersionId">
               <span>{{ file.originalFilename }}</span>
@@ -965,9 +996,9 @@ onBeforeUnmount(() => {
               </ElButton>
             </li>
           </ul>
-          <p v-if="uploading" role="status">正在上传协议文件。</p>
+          <p v-if="uploading" role="status">正在上传合作协议文件。</p>
           <p v-if="uploadUnknown" role="alert">
-            协议上传结果未知。刷新列表后下载核对精确版本，不能再次上传。
+            合作协议上传结果未知。刷新列表后下载核对精确版本，不能再次上传。
           </p>
         </fieldset>
         <p v-if="status === 'unknown' || status === 'conflict'" role="alert">
@@ -1015,7 +1046,7 @@ onBeforeUnmount(() => {
 
       <div v-if="uploadUnknown && canRead" class="customer-document-recovery">
         <p role="status">
-          上传结果未知。请下载并人工核对现有精确版本，再选择是否用于协议。
+          上传结果未知。请下载并人工核对现有精确版本，再选择是否用于合作协议。
         </p>
         <ElButton
           native-type="button"
@@ -1023,7 +1054,7 @@ onBeforeUnmount(() => {
           :disabled="recoveryLoading || uploading"
           @click="refreshRecoveryFiles"
         >
-          刷新已有协议文件
+          刷新已有合作协议文件
         </ElButton>
         <ul>
           <li
@@ -1065,11 +1096,12 @@ onBeforeUnmount(() => {
         >
           {{ historyOpen ? '收起版本历史' : '查看版本历史' }}
         </ElButton>
-        <section v-if="historyOpen" aria-label="协议版本历史">
+        <section v-if="historyOpen" aria-label="合作协议版本历史">
           <ol>
             <li v-for="item in history" :key="item.id">
               <h4>第 {{ item.version }} 版 · {{ item.title }}</h4>
               <time>{{ item.recordedAt }} · {{ item.recordedByUserId }}</time>
+              <p>结算条件（公式）：{{ item.settlementFormula || '未填写' }}</p>
               <p>
                 期限：{{
                   item.validityMode === 'FIXED'
@@ -1079,7 +1111,7 @@ onBeforeUnmount(() => {
                       : '期限未知'
                 }}
               </p>
-              <p v-if="item.files.length === 0">未附协议文件</p>
+              <p v-if="item.files.length === 0">未附合作协议文件</p>
               <ul v-else>
                 <li v-for="file in item.files" :key="file.contentVersionId">
                   {{ file.originalFilename }}

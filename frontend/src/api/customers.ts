@@ -10,6 +10,32 @@ import type {
   IdentityTypeCode,
   IdentityValidityModeCode,
 } from '../modules/customers/customer-admission-options';
+import type { CreateCustomerAgreementInput } from './customer-agreements-invoice';
+
+export type CustomerCreationContext = {
+  responsibleUserId: string;
+  operators: Array<{ id: string; displayName: string }>;
+  canSetInitialAgreement: boolean;
+};
+
+export type CreateCustomerDraftInput = {
+  name: string;
+  customerManagerName?: string | null;
+  customerType?: string;
+  identityType?: string;
+  identityNumber?: string;
+  category?: string;
+  region?: string;
+  responsibleUserId?: string;
+  initialAgreement?: Omit<
+    CreateCustomerAgreementInput,
+    'expectedCustomerVersion'
+  >;
+  admissionContactName?: string;
+  admissionContactPhone?: string;
+  admissionContactEmail?: string;
+  duplicateNameReason?: string;
+};
 
 export type CustomerSummary = {
   id: string;
@@ -675,16 +701,38 @@ export function restoreCustomerDraft(
   return lifecycleCommand(id, 'restore-draft', input, idempotencyKey);
 }
 
-export async function createCustomerDraft(input: {
-  name: string;
-  customerManagerName?: string | null;
-  category?: string;
-  region?: string;
-  admissionContactName?: string;
-  admissionContactPhone?: string;
-  admissionContactEmail?: string;
-  duplicateNameReason?: string;
-}): Promise<CustomerSummary> {
+export async function getCustomerCreationContext(
+  options: RequestOptions = {},
+): Promise<CustomerCreationContext> {
+  const data = await getJson('/customers/creation-context', options);
+  if (
+    !isRecord(data) ||
+    Object.keys(data).sort().join(',') !==
+      'canSetInitialAgreement,operators,responsibleUserId' ||
+    typeof data.responsibleUserId !== 'string' ||
+    !data.responsibleUserId ||
+    typeof data.canSetInitialAgreement !== 'boolean' ||
+    !Array.isArray(data.operators) ||
+    !data.operators.every(
+      (operator) =>
+        isRecord(operator) &&
+        Object.keys(operator).sort().join(',') === 'displayName,id' &&
+        typeof operator.id === 'string' &&
+        operator.id.length > 0 &&
+        typeof operator.displayName === 'string' &&
+        operator.displayName.trim().length > 0,
+    ) ||
+    new Set(data.operators.map((operator) => operator.id)).size !==
+      data.operators.length ||
+    !data.operators.some((operator) => operator.id === data.responsibleUserId)
+  )
+    throw invalidResponse();
+  return data as CustomerCreationContext;
+}
+
+export async function createCustomerDraft(
+  input: CreateCustomerDraftInput,
+): Promise<CustomerSummary> {
   const data = await requestJson('/customers', {
     method: 'POST',
     body: input,
