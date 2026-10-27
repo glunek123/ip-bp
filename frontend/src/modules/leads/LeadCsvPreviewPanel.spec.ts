@@ -100,8 +100,8 @@ function readySnapshot(
 describe('LeadCsvPreviewPanel', () => {
   it.each([
     ['closed', '预览已关闭。'],
-    ['empty', '尚未选择 CSV 文件。'],
-    ['reading', '正在读取当前 CSV 文件…'],
+    ['empty', '尚未选择导入文件。'],
+    ['reading', '正在读取当前文件…'],
     ['error', '文件读取失败，当前预览已清除。请重新选择文件。'],
   ] as const)(
     'shows the %s state without inventing an import result',

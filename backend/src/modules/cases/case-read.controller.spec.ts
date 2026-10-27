@@ -514,6 +514,7 @@ describe('case read OpenAPI contract', () => {
         .fn()
         .mockResolvedValue({ caseId: routeCaseId }),
     };
+    const findCourts = jest.fn().mockResolvedValue([]);
     const reads = new CaseReadService(
       {
         userAccount: {
@@ -525,6 +526,7 @@ describe('case read OpenAPI contract', () => {
         lawyerAccountBinding: {
           findFirst: jest.fn().mockResolvedValue({ id: 'binding-1' }),
         },
+        filingCourt: { findMany: findCourts },
         case: {
           findMany: jest.fn().mockResolvedValue([]),
           count: jest.fn().mockResolvedValue(0),
@@ -887,6 +889,13 @@ describe('case read OpenAPI contract', () => {
           sortDirection: 'asc',
         })
         .expect(200);
+      expect(findCourts).toHaveBeenCalledWith({
+        where: {
+          departmentId: routeCaseId,
+          OR: [{ name: { contains: 'A\\%\\_', mode: 'insensitive' } }],
+        },
+        select: { id: true },
+      });
       expect(listRead).toHaveBeenLastCalledWith(
         expect.any(Object),
         1,
