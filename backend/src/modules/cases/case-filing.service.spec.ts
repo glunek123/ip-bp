@@ -283,7 +283,27 @@ describe('CaseFilingService', () => {
   it.each([
     { ...input, submittedAt: futureDateInShanghai() },
     { ...input, submittedAt: '2026-02-30' },
-    { ...input, filingEvidenceContentVersionIds: [] },
+    {
+      ...input,
+      filingEvidenceContentVersionIds: [],
+      consolidationSourceContentVersionIds: [],
+    },
+    {
+      ...input,
+      filingEvidenceContentVersionIds: Array.from(
+        { length: 51 },
+        (_, index) =>
+          `00000000-0000-4000-8000-${(index + 1).toString(16).padStart(12, '0')}`,
+      ),
+    },
+    {
+      ...input,
+      consolidationSourceContentVersionIds: Array.from(
+        { length: 51 },
+        (_, index) =>
+          `00000000-0000-4000-8000-${(index + 101).toString(16).padStart(12, '0')}`,
+      ),
+    },
     { ...input, filingEvidenceContentVersionIds: [evidenceId, evidenceId] },
     { ...input, filingScreenshotContentVersionIds: [evidenceId] },
     { ...input, mediationNo: ' 001 ' },
