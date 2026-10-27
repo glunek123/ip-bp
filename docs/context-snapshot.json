@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-27T17:21:15.244Z",
+  "recordedAt": "2026-10-27T17:39:15.306Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -581,7 +581,7 @@
     "backend/src/modules/leads/lead-csv-import.controller.ts": "8b138dca9f0adfb6a3ba55d81683198534d73f6de8e17222e7a08c6ad515a01a",
     "backend/src/modules/leads/lead-csv-import.dto.spec.ts": "7bfcede7c8e10a007126556847ae9f3d224a8bd9451892c103518501f6077dd7",
     "backend/src/modules/leads/lead-csv-import.dto.ts": "0e9916e240b15e3bde2433a97deec9e5f4098db30537d0142ffa75a8263aa843",
-    "backend/src/modules/leads/lead-csv-import.service.spec.ts": "689b093fab25684db8de30b0b8cc930c56c62414b71b31a6aa5decbff344c7d7",
+    "backend/src/modules/leads/lead-csv-import.service.spec.ts": "73434b0debf44c3b99acf548811f1ec8563c53cc95b77efcd567f1f5b9abcaa5",
     "backend/src/modules/leads/lead-evidence-decision-response.dto.ts": "eef514534cd3df9ba091b28328371ffd26c193db8083cfd021f426a4d96dc943",
     "backend/src/modules/leads/lead-evidence-decision.spec.ts": "4128963e8e08ce73c5e776b53aa8b219444fbe147c8c35f837737969e1e10003",
     "backend/src/modules/leads/lead-filter-options.spec.ts": "c1f103639db38e8376970f1bef9f8c5f3add5a0ce139e6ac383974f945ecf8ca",
@@ -612,7 +612,7 @@
     "backend/src/modules/leads/lead.dto.ts": "221d8acd3adec741b2d55f1e548f0f221cb137c86767795a3bc66582cbbe25a7",
     "backend/src/modules/leads/lead.module.ts": "a496034bdefe68238c8f4e6e026f905b0f6a2d8e6baf14d244c623d48b5deb04",
     "backend/src/modules/leads/lead.service.spec.ts": "49d9e346b86dd3d15e9248c100746856481ad57acb01143a5bd3f617c6bbb591",
-    "backend/src/modules/leads/lead.service.ts": "4072ecb4c2827298cb749f2bd1242b9c64eca6be2a13ae39de3a1bdb11eefbb2",
+    "backend/src/modules/leads/lead.service.ts": "47439deb05be09959fc526583fb7cd1749e9bff87e93216db1314b2b6d46ad48",
     "backend/src/modules/leads/notary-account-migration.spec.ts": "fa097fb82d7ee31bc7b3634de0c0f8137ac5566e81c8addcfca7537b3aa8309e",
     "backend/src/modules/leads/notary-certificate.dto.ts": "d4660c8130a15a8e7ae28573cc82fb1a733fdc21055be24c13951d53ee2a3258",
     "backend/src/modules/leads/notary-certificate.service.spec.ts": "18d7e0d09dc5e2570ac324d38f754ff6d368393742f8a118c9218620cb3e914e",
