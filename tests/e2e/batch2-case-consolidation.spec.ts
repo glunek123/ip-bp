@@ -475,6 +475,7 @@ test.describe
           idempotencyKey: randomUUID(),
           matchedOn: new Date().toISOString().slice(0, 10),
           defendants: [defendant],
+          lawyerAccountId: fixture.lawyerUserId,
         },
       },
     );
