@@ -1,7 +1,12 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -11,6 +16,13 @@ import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import { CalendarService } from './calendar.service';
+import { CalendarReminderService } from './calendar-reminder.service';
+import {
+  ManualItemDto,
+  ManualItemUpdateDto,
+  ReminderReadDto,
+  RefundApplicationDto,
+} from './calendar-reminder.dto';
 import { CalendarMonthQueryDto, CalendarSummaryQueryDto } from './calendar.dto';
 import {
   CalendarSnapshotResponseDto,
@@ -33,7 +45,70 @@ function exactQuery(query: object, names: string[]): void {
 @Controller('calendar')
 @UseGuards(ActorContextGuard, CsrfGuard)
 export class CalendarController {
-  constructor(private readonly calendar: CalendarService) {}
+  constructor(
+    private readonly calendar: CalendarService,
+    private readonly reminders: CalendarReminderService,
+  ) {}
+
+  @Get('personal')
+  personal(
+    @CurrentActor() actor: ActorContext,
+    @Query() query: CalendarMonthQueryDto,
+  ) {
+    exactQuery(query, ['month']);
+    return this.reminders.manualMonth(actor, query.month);
+  }
+
+  @Get('refund-dates')
+  refundDates(
+    @CurrentActor() actor: ActorContext,
+    @Query() query: CalendarMonthQueryDto,
+  ) {
+    exactQuery(query, ['month']);
+    return this.reminders.refundMonth(actor, query.month);
+  }
+
+  @Post('personal')
+  createPersonal(
+    @CurrentActor() actor: ActorContext,
+    @Body() input: ManualItemDto,
+  ) {
+    return this.reminders.createManual(actor, input);
+  }
+
+  @Patch('personal/:id')
+  updatePersonal(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() input: ManualItemUpdateDto,
+  ) {
+    return this.reminders.updateManual(actor, id, input);
+  }
+
+  @Get('reminders')
+  dueReminders(
+    @CurrentActor() actor: ActorContext,
+    @Query() query: CalendarSummaryQueryDto,
+  ) {
+    exactQuery(query, []);
+    return this.reminders.due(actor);
+  }
+
+  @Post('reminders/read')
+  readReminder(
+    @CurrentActor() actor: ActorContext,
+    @Body() input: ReminderReadDto,
+  ) {
+    return this.reminders.markRead(actor, input);
+  }
+
+  @Post('refund-applications')
+  registerRefundApplication(
+    @CurrentActor() actor: ActorContext,
+    @Body() input: RefundApplicationDto,
+  ) {
+    return this.reminders.registerRefundApplication(actor, input);
+  }
 
   @Get('summary')
   @ApiOkResponse({

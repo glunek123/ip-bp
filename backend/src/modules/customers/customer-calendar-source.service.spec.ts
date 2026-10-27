@@ -77,6 +77,24 @@ describe('CustomerCalendarSourceService', () => {
       },
     ]);
   });
+  it('uses the latest actual transfer fact as the owner epoch', async () => {
+    const { database, service } = fixture();
+    database.customer.findMany.mockImplementation(async (query) =>
+      query.select?.maintenanceFacts
+        ? [{ id: 'customer-1', maintenanceFacts: [{ id: 'transfer-2' }] }]
+        : [{ id: 'customer-1', name: '客户' }],
+    );
+    expect(await service.listOwnedReminders(actor)).toMatchObject([
+      { sourceId: 'version-2', ownerEpoch: 'transfer-2' },
+    ]);
+    expect(
+      database.customer.findMany.mock.calls.some(
+        ([query]) =>
+          query.where.responsibleUserId === actor.userId &&
+          query.where.departmentId === actor.departmentId,
+      ),
+    ).toBe(true);
+  });
 
   it('marks agreement forbidden without querying customers when one scope is absent', async () => {
     const { database, access, service } = fixture();

@@ -14,8 +14,19 @@ import {
   type CalendarSummary,
 } from '../../api/calendar';
 import { ApiError } from '../../api/http';
+import {
+  createManualCalendar,
+  listManualCalendar,
+  listRefundCalendar,
+  updateManualCalendar,
+  type ManualCalendarItem,
+  type RefundCalendarDate,
+} from '../../api/calendar-reminders';
 import { useAuthStore } from '../../stores/auth';
-import { notifyCalendarSummaryRead } from '../../app/workflow-events';
+import {
+  notifyCalendarSummaryRead,
+  notifyWorkflowChanged,
+} from '../../app/workflow-events';
 import CalendarMonthGrid from './CalendarMonthGrid.vue';
 import CalendarStatistics from './CalendarStatistics.vue';
 import { calendarMonthLabel, type CalendarEvent } from './calendar-month';
@@ -44,6 +55,35 @@ const error = ref('');
 const snapshot = shallowRef<CalendarSnapshot | null>(null);
 const summary = shallowRef<CalendarSummary | null>(null);
 const navigationError = ref('');
+const manualItems = ref<ManualCalendarItem[]>([]);
+const refundDates = ref<RefundCalendarDate[]>([]);
+const manualOpen = ref(false);
+const manualEditing = ref<ManualCalendarItem | null>(null);
+const manualTitle = ref('');
+const manualDate = ref('');
+const manualNote = ref('');
+const manualSaving = ref(false);
+const manualError = ref('');
+const isInternal = computed(() => auth.session?.principalType === 'INTERNAL');
+const monthEvents = computed<CalendarEvent[]>(() => [
+  ...(snapshot.value?.events ?? []),
+  ...manualItems.value.map((item) => ({
+    eventKey: `MANUAL:${item.id}`,
+    date: item.eventDate,
+    type: 'other' as const,
+    title: item.title,
+    sub: item.note,
+    caseId: null,
+  })),
+  ...refundDates.value.map((item) => ({
+    eventKey: `${item.sourceType}:${item.sourceId}`,
+    date: item.dueDate,
+    type: 'other' as const,
+    title: item.applied ? `${item.title} · 已登记申请` : item.title,
+    sub: item.businessNo,
+    caseId: item.caseId,
+  })),
+]);
 const navigating = ref(false);
 const canRead = computed(
   () => identity.value !== '' && state.value !== 'forbidden',
@@ -108,13 +148,21 @@ async function load(): Promise<void> {
       if (current() && failure) throw new Error('month navigation failed');
       return;
     }
-    const result = await getCalendarSnapshot(currentMonth, {
-      signal: controller.signal,
-    });
+    const [result, personal, refunds] = await Promise.all([
+      getCalendarSnapshot(currentMonth, { signal: controller.signal }),
+      isInternal.value
+        ? listManualCalendar(currentMonth, { signal: controller.signal })
+        : Promise.resolve([]),
+      isInternal.value
+        ? listRefundCalendar(currentMonth, { signal: controller.signal })
+        : Promise.resolve([]),
+    ]);
     if (!current()) return;
     if (result.month !== currentMonth)
       throw new Error('calendar month mismatch');
     snapshot.value = result;
+    manualItems.value = personal;
+    refundDates.value = refunds;
     summary.value = result;
     state.value = 'ready';
     if (result.metrics.next30.count !== null)
@@ -123,6 +171,8 @@ async function load(): Promise<void> {
     if (!current()) return;
     notifyCalendarSummaryRead(currentIdentity, null);
     snapshot.value = null;
+    manualItems.value = [];
+    refundDates.value = [];
     summary.value = null;
     if (
       reason instanceof ApiError &&
@@ -137,6 +187,39 @@ async function load(): Promise<void> {
       state.value = 'failed';
       error.value = '日历暂时无法加载，请检查连接后重试。';
     }
+  }
+}
+function openManual(item: ManualCalendarItem | null): void {
+  manualEditing.value = item;
+  manualTitle.value = item?.title ?? '';
+  manualDate.value = item?.eventDate ?? summary.value?.today ?? '';
+  manualNote.value = item?.note ?? '';
+  manualError.value = '';
+  manualOpen.value = true;
+}
+async function saveManual(): Promise<void> {
+  if (manualSaving.value) return;
+  manualSaving.value = true;
+  manualError.value = '';
+  try {
+    const input = {
+      title: manualTitle.value,
+      eventDate: manualDate.value,
+      note: manualNote.value || null,
+    };
+    if (manualEditing.value)
+      await updateManualCalendar(manualEditing.value, input);
+    else await createManualCalendar(input);
+    notifyWorkflowChanged();
+    manualOpen.value = false;
+    await load();
+  } catch (reason) {
+    manualError.value =
+      reason instanceof ApiError
+        ? reason.message
+        : '保存失败，请检查输入后重试';
+  } finally {
+    manualSaving.value = false;
   }
 }
 
@@ -205,6 +288,8 @@ onBeforeUnmount(() => {
   revision += 1;
   navigationRevision += 1;
   request?.abort();
+  manualItems.value = [];
+  refundDates.value = [];
 });
 </script>
 
@@ -230,6 +315,12 @@ onBeforeUnmount(() => {
             @click="load"
             >刷新</ElButton
           >
+          <ElButton
+            v-if="isInternal && ready"
+            type="primary"
+            @click="openManual(null)"
+            >新增个人事项</ElButton
+          >
         </div>
       </div>
       <CalendarStatistics
@@ -239,6 +330,23 @@ onBeforeUnmount(() => {
         :loading="state === 'loading'"
         :error="error"
       />
+      <section
+        v-if="isInternal && manualOpen"
+        class="calendar-personal-form"
+        aria-label="编辑个人事项"
+      >
+        <h2>{{ manualEditing ? '编辑个人事项' : '新增个人事项' }}</h2>
+        <label>标题 <input v-model="manualTitle" maxlength="200" /></label>
+        <label>日期 <input v-model="manualDate" type="date" /></label>
+        <label>备注 <textarea v-model="manualNote" maxlength="1000" /></label>
+        <p v-if="manualError" role="alert">{{ manualError }}</p>
+        <div>
+          <ElButton :loading="manualSaving" type="primary" @click="saveManual"
+            >保存</ElButton
+          >
+          <ElButton @click="manualOpen = false">关闭</ElButton>
+        </div>
+      </section>
       <p v-if="navigationError" role="alert" class="submit-error">
         {{ navigationError }}
       </p>
@@ -254,7 +362,7 @@ onBeforeUnmount(() => {
       <CalendarMonthGrid
         v-if="month !== null"
         :month="month"
-        :events="snapshot?.events ?? []"
+        :events="monthEvents"
         :today="summary?.today ?? null"
         :loading="state === 'loading'"
         :error="error"
@@ -264,6 +372,21 @@ onBeforeUnmount(() => {
         @update:month="changeMonth"
         @open-case="openCase"
       />
+      <section
+        v-if="isInternal && ready"
+        class="calendar-personal"
+        aria-label="个人事项"
+      >
+        <h2>个人事项</h2>
+        <p v-if="manualItems.length === 0">本月没有个人事项。</p>
+        <ul v-else>
+          <li v-for="item in manualItems" :key="item.id">
+            <span>{{ item.eventDate }} · {{ item.title }}</span>
+            <span v-if="item.note">{{ item.note }}</span>
+            <ElButton text @click="openManual(item)">编辑</ElButton>
+          </li>
+        </ul>
+      </section>
       <ElButton
         v-if="state === 'failed' || state === 'forbidden'"
         type="primary"
@@ -273,3 +396,50 @@ onBeforeUnmount(() => {
     </main>
   </div>
 </template>
+
+<style scoped>
+.calendar-personal,
+.calendar-personal-form {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-hairline);
+  border-radius: 10px;
+  background: var(--color-surface-1);
+}
+.calendar-personal h2,
+.calendar-personal-form h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+.calendar-personal ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.calendar-personal li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--color-hairline);
+}
+.calendar-personal-form {
+  display: grid;
+  gap: 10px;
+  max-width: 520px;
+}
+.calendar-personal-form label {
+  display: grid;
+  gap: 4px;
+}
+.calendar-personal-form input,
+.calendar-personal-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--color-hairline);
+  border-radius: 6px;
+  font: inherit;
+}
+</style>

@@ -11,6 +11,10 @@ export type CustomerAgreementExpiryFact = {
   name: string | null;
 };
 
+export type CustomerOwnedReminderFact = CustomerAgreementExpiryFact & {
+  ownerEpoch: string;
+};
+
 type SelectedCustomer = { id: string; name: string };
 type SelectedAgreement = {
   id: string;
@@ -160,6 +164,48 @@ export class CustomerCalendarSourceService {
     });
     await this.revalidate(actor, customers, agreements, versions);
     return facts;
+  }
+
+  async listOwnedReminders(
+    actor: ActorContext,
+  ): Promise<CustomerOwnedReminderFact[]> {
+    const facts = await this.list(actor);
+    if (facts === null || facts.length === 0) return [];
+    const read = async () =>
+      this.database.customer.findMany({
+        where: {
+          departmentId: actor.departmentId,
+          id: { in: facts.map((fact) => fact.customerId) },
+          responsibleUserId: actor.userId,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          maintenanceFacts: {
+            where: { action: 'TRANSFER' },
+            orderBy: { toVersion: 'desc' },
+            take: 1,
+            select: { id: true },
+          },
+        },
+      });
+    const customers = await read();
+    const current = await read();
+    if (JSON.stringify(customers) !== JSON.stringify(current))
+      throw forbidden();
+    if (JSON.stringify(facts) !== JSON.stringify(await this.list(actor)))
+      throw forbidden();
+    const epochs = new Map(
+      customers.map((customer) => [
+        customer.id,
+        customer.maintenanceFacts[0]?.id ?? customer.id,
+      ]),
+    );
+    await this.assertAccount(actor);
+    return facts.flatMap((fact) => {
+      const ownerEpoch = epochs.get(fact.customerId);
+      return ownerEpoch ? [{ ...fact, ownerEpoch }] : [];
+    });
   }
 
   private async revalidate(

@@ -5,10 +5,18 @@ import { CaseModule } from '../cases';
 import { CustomerModule } from '../customers';
 import { CalendarController } from './calendar.controller';
 import { CalendarService } from './calendar.service';
+import { CalendarReminderService } from './calendar-reminder.service';
+import { DatabaseModule } from '../../database/database.module';
 
 @Module({
-  imports: [AuthModule, AccessControlModule, CaseModule, CustomerModule],
+  imports: [
+    AuthModule,
+    AccessControlModule,
+    DatabaseModule,
+    CaseModule,
+    CustomerModule,
+  ],
   controllers: [CalendarController],
-  providers: [CalendarService],
+  providers: [CalendarService, CalendarReminderService],
 })
 export class CalendarModule {}

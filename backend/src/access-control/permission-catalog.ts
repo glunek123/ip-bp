@@ -77,6 +77,7 @@ export const internalAssignablePermissionActions = [
   'CASE_HEARING_SCHEDULE',
   'CASE_HEARING_CORRECT',
   'CASE_JUDGMENT_REGISTER',
+  'CASE_REFUND_APPLICATION_RECORD',
   'CASE_JUDGMENT_CORRECT',
   'CASE_JUDGMENT_NEXT_STEP',
   'CASE_JUDGMENT_NEXT_STEP_REVOKE',
@@ -265,7 +266,11 @@ const catalog: PermissionCatalogItem[] = [
     scopes: allScopes,
   },
   { action: 'LEAD_REVIEW_PROXY', label: '代客户审核线索', scopes: allScopes },
-  { action: 'LEAD_WITHDRAW_CONFIRM_PROXY', label: '代客户确认撤回', scopes: allScopes },
+  {
+    action: 'LEAD_WITHDRAW_CONFIRM_PROXY',
+    label: '代客户确认撤回',
+    scopes: allScopes,
+  },
   {
     action: 'NOTARY_EVIDENCE_RECORD',
     label: '登记取证与物流',
@@ -291,7 +296,11 @@ const catalog: PermissionCatalogItem[] = [
     label: '决定出证或不出证',
     scopes: allScopes,
   },
-  { action: 'NOTARY_CERTIFICATE_ISSUE_PROXY', label: '代公证处登记出证', scopes: allScopes },
+  {
+    action: 'NOTARY_CERTIFICATE_ISSUE_PROXY',
+    label: '代公证处登记出证',
+    scopes: allScopes,
+  },
   {
     action: 'NOTARY_RETURN_ARCHIVE',
     label: '办理不出证退货归档',
@@ -349,6 +358,11 @@ const catalog: PermissionCatalogItem[] = [
   {
     action: 'CASE_JUDGMENT_REGISTER',
     label: '登记一审判决',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_REFUND_APPLICATION_RECORD',
+    label: '登记判决退费已申请',
     scopes: allScopes,
   },
   { action: 'CASE_JUDGMENT_CORRECT', label: '更正一审判决', scopes: allScopes },

@@ -22,6 +22,9 @@ const api = vi.hoisted(() => ({
   listLawyerAccounts: vi.fn(),
   listLawyerCases: vi.fn(),
   getCalendarSummary: vi.fn(),
+  listDueReminders: vi.fn(),
+  markReminderRead: vi.fn(),
+  registerRefundApplication: vi.fn(),
   getSettlementContext: vi.fn(),
   listEvidence: vi.fn(),
   reportsCapability: vi.fn(),
@@ -45,6 +48,11 @@ vi.mock('../api/organization', () => ({
 }));
 vi.mock('../api/calendar', () => ({
   getCalendarSummary: api.getCalendarSummary,
+}));
+vi.mock('../api/calendar-reminders', () => ({
+  listDueReminders: api.listDueReminders,
+  markReminderRead: api.markReminderRead,
+  registerRefundApplication: api.registerRefundApplication,
 }));
 vi.mock('../api/lawyer-accounts', () => ({
   listLawyerAccounts: api.listLawyerAccounts,
@@ -73,6 +81,7 @@ const session = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  api.listDueReminders.mockResolvedValue([]);
   api.reportsCapability.mockResolvedValue({ canRead: false });
   api.getSettlementContext.mockResolvedValue({ read: false, feeRead: false });
   api.listEvidence.mockRejectedValue(
@@ -354,6 +363,62 @@ describe('AppShell', () => {
     expect(api.getCalendarSummary).toHaveBeenCalledWith({
       signal: expect.any(AbortSignal),
     });
+  });
+
+  it('keeps close separate from read and shows several due items in one top-right panel', async () => {
+    api.listDueReminders.mockResolvedValue([
+      {
+        sourceType: 'MANUAL',
+        sourceId: 'm1',
+        sourceEpoch: 'm1',
+        eventDate: '2026-10-27',
+        dueAt: '2026-10-27T01:00:00.000Z',
+        title: '准备材料',
+        note: null,
+        caseId: null,
+        customerId: null,
+        readAt: null,
+      },
+      {
+        sourceType: 'FIRST_INSTANCE_JUDGMENT',
+        sourceId: 'j1',
+        sourceEpoch: 'case:0',
+        eventDate: '2026-10-12',
+        dueAt: '2026-10-27T01:00:00.000Z',
+        title: '判决退费待核',
+        note: '案-1',
+        caseId: 'case',
+        customerId: null,
+        readAt: null,
+      },
+    ]);
+    const { wrapper } = await mountShell();
+    expect(wrapper.get('.app-reminders__toggle').text()).toContain('2');
+    await wrapper.get('.app-reminders__toggle').trigger('click');
+    expect(wrapper.get('.app-reminders__panel').text()).toContain('准备材料');
+    await wrapper.get('.app-reminders__panel header button').trigger('click');
+    expect(api.markReminderRead).not.toHaveBeenCalled();
+    expect(wrapper.get('.app-reminders__toggle').text()).toContain('2');
+  });
+
+  it('ignores a delayed reminder response after identity changes', async () => {
+    let resolveOld: ((value: unknown[]) => void) | undefined;
+    api.listDueReminders
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOld = resolve;
+          }),
+      )
+      .mockResolvedValue([]);
+    const { wrapper } = await mountShell();
+    const auth = useAuthStore();
+    auth.session = null;
+    await flushPromises();
+    resolveOld?.([{ title: '旧用户事项', readAt: null }]);
+    await flushPromises();
+    expect(wrapper.find('.app-reminders').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('旧用户事项');
   });
 
   it('does not disguise a failed calendar summary as a zero count', async () => {

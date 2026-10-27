@@ -81,6 +81,7 @@ const actionMap = {
   CASE_HEARING_SCHEDULE: 'case.hearing.schedule',
   CASE_HEARING_CORRECT: 'case.hearing.correct',
   CASE_JUDGMENT_REGISTER: 'case.judgment.register',
+  CASE_REFUND_APPLICATION_RECORD: 'case.refund.application.record',
   CASE_JUDGMENT_CORRECT: 'case.judgment.correct',
   CASE_JUDGMENT_NEXT_STEP: 'case.judgment.next_step',
   CASE_JUDGMENT_NEXT_STEP_REVOKE: 'case.judgment.next_step.revoke',

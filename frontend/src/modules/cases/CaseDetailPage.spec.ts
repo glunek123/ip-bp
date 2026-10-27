@@ -47,6 +47,11 @@ vi.mock('../../api/calendar', () => ({
     metrics: { next30: { count: 0 } },
   })),
 }));
+vi.mock('../../api/calendar-reminders', () => ({
+  listDueReminders: vi.fn(async () => []),
+  markReminderRead: vi.fn(),
+  registerRefundApplication: vi.fn(),
+}));
 vi.mock('../../api/organization', () => ({
   getOrganizationManagementContext: vi.fn(async () => ({})),
 }));

@@ -113,6 +113,53 @@ describe('CaseCalendarSourceService', () => {
     );
     expect(database.case.findMany).not.toHaveBeenCalled();
   });
+  it('projects only owner facts, original formal registration time and case responsibility epoch', async () => {
+    const { service, database } = fixture('INTERNAL');
+    database.case.findMany.mockResolvedValue([
+      {
+        id: 'case-1',
+        businessNo: 'BUS-1',
+        responsibilityEpoch: 2,
+        currentHearingArrangement: null,
+        currentSecondInstanceProgress: null,
+        judgmentFacts: [
+          { id: 'j-1', recordedAt: new Date('2026-10-26T17:30:00Z') },
+        ],
+        secondInstanceResults: [
+          { id: 's-1', recordedAt: new Date('2026-10-27T01:00:00Z') },
+        ],
+      },
+    ]);
+    const facts = await service.listOwnedReminders(actor);
+    expect(facts).toMatchObject([
+      {
+        sourceType: 'FIRST_INSTANCE_JUDGMENT',
+        sourceId: 'j-1',
+        date: '2026-10-27',
+        ownerEpoch: 'case-1:2',
+      },
+      {
+        sourceType: 'SECOND_INSTANCE_RESULT',
+        sourceId: 's-1',
+        date: '2026-10-27',
+        ownerEpoch: 'case-1:2',
+      },
+    ]);
+    expect(database.case.findMany.mock.calls[0][0]).toMatchObject({
+      where: {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      },
+      select: {
+        judgmentFacts: {
+          where: { kind: 'REGISTER', trialRound: { revokedAt: null } },
+        },
+        secondInstanceResults: {
+          where: { revocation: { is: null }, trialRound: { revokedAt: null } },
+        },
+      },
+    });
+  });
 
   it('uses the current PRIMARY lawyer predicate', async () => {
     const { service, database } = fixture('LAWYER');

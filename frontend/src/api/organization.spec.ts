@@ -497,6 +497,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_REFUND_APPLICATION_RECORD',
+      label: '登记判决退费已申请',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'CASE_JUDGMENT_CORRECT',
       label: '更正一审判决',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -737,6 +742,7 @@ describe('organization API', () => {
       'CASE_HEARING_SCHEDULE',
       'CASE_HEARING_CORRECT',
       'CASE_JUDGMENT_REGISTER',
+      'CASE_REFUND_APPLICATION_RECORD',
       'CASE_JUDGMENT_CORRECT',
       'CASE_JUDGMENT_NEXT_STEP',
       'CASE_JUDGMENT_NEXT_STEP_REVOKE',

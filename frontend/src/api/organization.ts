@@ -107,6 +107,7 @@ export const permissionActionValues = [
   'CASE_HEARING_SCHEDULE',
   'CASE_HEARING_CORRECT',
   'CASE_JUDGMENT_REGISTER',
+  'CASE_REFUND_APPLICATION_RECORD',
   'CASE_JUDGMENT_CORRECT',
   'CASE_JUDGMENT_NEXT_STEP',
   'CASE_JUDGMENT_NEXT_STEP_REVOKE',
@@ -398,6 +399,7 @@ function isPermissionCatalog(
         item.action === 'CASE_HEARING_SCHEDULE' ||
         item.action === 'CASE_HEARING_CORRECT' ||
         item.action === 'CASE_JUDGMENT_REGISTER' ||
+        item.action === 'CASE_REFUND_APPLICATION_RECORD' ||
         item.action === 'CASE_JUDGMENT_CORRECT' ||
         item.action === 'CASE_JUDGMENT_NEXT_STEP' ||
         item.action === 'CASE_JUDGMENT_NEXT_STEP_REVOKE' ||

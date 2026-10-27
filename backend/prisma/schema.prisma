@@ -201,6 +201,7 @@ enum PermissionAction {
   CASE_HEARING_SCHEDULE        @map("case.hearing.schedule")
   CASE_HEARING_CORRECT         @map("case.hearing.correct")
   CASE_JUDGMENT_REGISTER       @map("case.judgment.register")
+  CASE_REFUND_APPLICATION_RECORD @map("case.refund.application.record")
   CASE_JUDGMENT_CORRECT        @map("case.judgment.correct")
   CASE_JUDGMENT_NEXT_STEP      @map("case.judgment.next_step")
   CASE_JUDGMENT_NEXT_STEP_REVOKE @map("case.judgment.next_step.revoke")
@@ -851,6 +852,9 @@ model AuthThrottle {
 }
 
 model DepartmentMembership {
+  calendarManualItems CalendarManualItem[] @relation("CalendarManualOwner")
+  calendarReminderReads CalendarReminderRead[] @relation("CalendarReminderOwner")
+  refundApplications CaseRefundApplication[] @relation("CaseRefundApplicant")
   caseHandlingGroupEvents CaseHandlingGroupEvent[]
   caseHandlingGroupReceipts CaseHandlingGroupReceipt[]
   settlementLaunches CaseSettlementLaunch[] @relation("SettlementLaunchInternalActor")
@@ -2098,6 +2102,7 @@ model NotaryCertificateFee {
 }
 
 model Case {
+  refundApplications CaseRefundApplication[]
   handlingGroupMembers CaseHandlingGroupMember[]
   evidenceItems EvidenceItem[]
   evidencePaperCertificates EvidencePaperCertificate[]
@@ -2127,6 +2132,7 @@ model Case {
   customerId                    String                             @map("customer_id") @db.Uuid
   rightsHolderId                String                             @map("rights_holder_id") @db.Uuid
   responsibleUserId             String                             @map("responsible_user_id") @db.Uuid
+  responsibilityEpoch           Int                                @default(0) @map("responsibility_epoch")
   stage                         CaseStage                          @default(PENDING_MATCH)
   version                       Int                                @default(1)
   matchedAt                     DateTime?                          @map("matched_at") @db.Timestamptz(3)
@@ -3111,6 +3117,57 @@ model CaseSecondInstanceResultRevocation {
   @@unique([caseId, toVersion])
   @@unique([resultId, caseId, departmentId])
   @@map("case_second_instance_result_revocations")
+}
+
+// Calendar facts are owned by one current principal. System reminders are
+// projected from their source modules; only user state is stored here.
+model CalendarManualItem {
+  id           String   @id @default(uuid()) @db.Uuid
+  departmentId String   @map("department_id") @db.Uuid
+  ownerUserId  String   @map("owner_user_id") @db.Uuid
+  title        String   @db.VarChar(200)
+  eventDate    DateTime @map("event_date") @db.Date
+  note         String?  @db.VarChar(1000)
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  owner        DepartmentMembership @relation("CalendarManualOwner", fields: [ownerUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "calendar_manual_items_owner_fkey")
+
+  @@index([departmentId, ownerUserId, eventDate])
+  @@map("calendar_manual_items")
+}
+
+model CalendarReminderRead {
+  id           String   @id @default(uuid()) @db.Uuid
+  departmentId String   @map("department_id") @db.Uuid
+  ownerUserId  String   @map("owner_user_id") @db.Uuid
+  sourceType   String   @map("source_type") @db.VarChar(40)
+  sourceId     String   @map("source_id") @db.Uuid
+  sourceEpoch  String   @map("source_epoch") @db.VarChar(80)
+  eventDate    DateTime @map("event_date") @db.Date
+  readAt       DateTime @default(now()) @map("read_at") @db.Timestamptz(3)
+  owner        DepartmentMembership @relation("CalendarReminderOwner", fields: [ownerUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "calendar_reminder_reads_owner_fkey")
+
+  @@unique([departmentId, ownerUserId, sourceType, sourceId, sourceEpoch, eventDate], map: "calendar_reminder_read_unique")
+  @@map("calendar_reminder_reads")
+}
+
+model CaseRefundApplication {
+  id                String   @id @default(uuid()) @db.Uuid
+  departmentId      String   @map("department_id") @db.Uuid
+  caseId            String   @map("case_id") @db.Uuid
+  sourceType        String   @map("source_type") @db.VarChar(40)
+  sourceId          String   @map("source_id") @db.Uuid
+  applicantUserId   String   @map("applicant_user_id") @db.Uuid
+  applicationDate   DateTime @map("application_date") @db.Date
+  note              String?  @db.VarChar(1000)
+  recordedAt        DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  case              Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "case_refund_applications_case_fkey")
+  applicant         DepartmentMembership @relation("CaseRefundApplicant", fields: [applicantUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "case_refund_applications_applicant_fkey")
+
+  @@unique([departmentId, sourceType, sourceId], map: "case_refund_application_source_unique")
+  @@index([departmentId, caseId])
+  @@map("case_refund_applications")
 }
 
 model CaseSecondInstanceReceipt {
