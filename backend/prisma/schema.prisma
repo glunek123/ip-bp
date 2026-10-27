@@ -1353,6 +1353,8 @@ model RightsHolderCommandReceipt {
 }
 
 model UploadDraft {
+    leadImageImportTask LeadImageImportTask? @relation("LeadImageImportUploadDraft")
+    sourceContentVersion ContentVersion? @relation("SourceUploadDraft")
   executionSupplementFilingId String? @map("execution_supplement_filing_id") @db.Uuid
   executionSupplementTargetId String? @map("execution_supplement_target_id") @db.Uuid
   executionSupplementRevision Int? @map("execution_supplement_revision")
@@ -1425,6 +1427,8 @@ model Material {
 }
 
 model ContentVersion {
+  sourceUploadDraftId String? @unique @map("source_upload_draft_id") @db.Uuid
+  sourceUploadDraft UploadDraft? @relation("SourceUploadDraft", fields: [sourceUploadDraftId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   leadImageImportTasks LeadImageImportTask[]
   feeCancellationPayments FeeCancellationPayment[] @relation("FeeCancellationPaymentProofContent")
   feeRefundReconciliations FeeRefundReconciliation[] @relation("FeeRefundReconciliationProofContent")
@@ -1986,7 +1990,9 @@ model LeadImageImportTask {
   urlSha256 String @map("url_sha256") @db.Char(64)
   status String @default("PENDING") @db.VarChar(20)
   attemptCount Int @default(0) @map("attempt_count")
+    generation Int @default(0)
   leaseUntil DateTime? @map("lease_until") @db.Timestamptz(3)
+    uploadDraftId String? @unique @map("upload_draft_id") @db.Uuid
   contentVersionId String? @map("content_version_id") @db.Uuid
   failureCode String? @map("failure_code") @db.VarChar(60)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -1995,6 +2001,7 @@ model LeadImageImportTask {
   product LeadProduct @relation(fields: [productId, leadId], references: [id, leadId], onDelete: Restrict)
   actorMembership DepartmentMembership @relation("LeadImageImportActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   contentVersion ContentVersion? @relation(fields: [contentVersionId], references: [id], onDelete: Restrict)
+    uploadDraft UploadDraft? @relation("LeadImageImportUploadDraft", fields: [uploadDraftId], references: [id], onDelete: Restrict)
 
   @@unique([leadId, productId, urlSha256])
   @@index([status, leaseUntil, createdAt])

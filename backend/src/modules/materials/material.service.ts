@@ -1033,6 +1033,12 @@ export class MaterialService {
     actor: ActorContext,
     draftId: string,
     source: NodeJS.ReadableStream,
+    importFence?: {
+      taskId: string;
+      generation: number;
+      attemptCount: number;
+      urlSha256: string;
+    },
   ) {
     const draft = await this.database.uploadDraft.findUnique({
       where: { id: draftId },
@@ -1206,6 +1212,20 @@ export class MaterialService {
           throw this.invalidVersion();
         }
         await this.database.$transaction(async (transaction) => {
+          if (importFence) {
+            const owned = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "lead_image_import_tasks" WHERE "id" = $1::uuid AND "upload_draft_id" = $2::uuid AND "status" = $3 AND "generation" = $4 AND "attempt_count" = $5 AND "url_sha256" = $6 AND "lease_until" > CURRENT_TIMESTAMP FOR UPDATE',
+              importFence.taskId,
+              draftId,
+              'LEASED',
+              importFence.generation,
+              importFence.attemptCount,
+              importFence.urlSha256,
+            );
+            if (owned.length !== 1) throw this.versionConflict();
+          }
           if (draft.category === 'FEE_PROOF')
             await this.lockFeeMaterialActor(transaction, actor);
           if (draft.ownerType === 'CUSTOMER') {
@@ -1458,6 +1478,7 @@ export class MaterialService {
               sizeBytes: BigInt(blob.sizeBytes),
               sha256: blob.sha256,
               uploadedBy: actor.userId,
+              sourceUploadDraftId: draft.id,
               ...(recordTarget === undefined
                 ? {}
                 : { caseSectionRecordUploadDraftId: draft.id }),

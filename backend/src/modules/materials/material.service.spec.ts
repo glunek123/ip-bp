@@ -6997,3 +6997,31 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+
+describe('import screenshot upload fence', () => {
+  it('does not create a material version after its lease was replaced', async () => {
+    const fixture = createFixture();
+    fixture.db.uploadDraft.findUnique.mockResolvedValue(openDraft());
+    fixture.storage.put.mockResolvedValue({
+      sizeBytes: 8,
+      sha256: 'a'.repeat(64),
+      detectedMimeType: 'image/png',
+    });
+    fixture.transaction.$queryRawUnsafe.mockResolvedValue([]);
+    await expect(
+      fixture.service.finalizeUpload(
+        actor,
+        '44444444-4444-4444-8444-444444444444',
+        Readable.from(Buffer.from('fake png')),
+        {
+          taskId: '99999999-9999-4999-8999-999999999999',
+          generation: 0,
+          attemptCount: 1,
+          urlSha256: 'b'.repeat(64),
+        },
+      ),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    expect(fixture.transaction.contentVersion.create).not.toHaveBeenCalled();
+    expect(fixture.storage.delete).toHaveBeenCalledTimes(1);
+  });
+});

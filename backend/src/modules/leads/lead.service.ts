@@ -1925,6 +1925,14 @@ export class LeadService {
     id: string,
     productId: string,
     input: UpdateLeadProductScreenshotsDto,
+    importFence?: {
+      taskId: string;
+      generation: number;
+      attemptCount: number;
+      urlSha256: string;
+      uploadDraftId: string;
+      contentVersionId: string;
+    },
   ) {
     if (
       !Number.isInteger(input.expectedVersion) ||
@@ -1960,6 +1968,23 @@ export class LeadService {
               actor.departmentId,
             );
             if (locked.length !== 1) throw this.notFound();
+            if (importFence) {
+              const owned = await transaction.$queryRawUnsafe<
+                Array<{ id: string }>
+              >(
+                'SELECT "id" FROM "lead_image_import_tasks" WHERE "id" = $1::uuid AND "lead_id" = $2::uuid AND "product_id" = $3::uuid AND "status" = $4 AND "generation" = $5 AND "attempt_count" = $6 AND "url_sha256" = $7 AND "upload_draft_id" = $8::uuid AND "content_version_id" = $9::uuid AND "lease_until" > CURRENT_TIMESTAMP FOR UPDATE',
+                importFence.taskId,
+                id,
+                productId,
+                'LEASED',
+                importFence.generation,
+                importFence.attemptCount,
+                importFence.urlSha256,
+                importFence.uploadDraftId,
+                importFence.contentVersionId,
+              );
+              if (owned.length !== 1) throw this.versionConflict();
+            }
             const current = await transaction.lead.findFirst({
               where: { id, ...scope },
               include: leadInclude,

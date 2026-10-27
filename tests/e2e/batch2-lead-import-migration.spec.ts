@@ -38,6 +38,7 @@ test('migration 189 exists on the owned database with scoped task constraints', 
     expect(names).toContain('lead_image_import_tasks_lead_fk');
     expect(names).toContain('lead_image_import_tasks_product_fk');
     expect(names).toContain('lead_image_import_tasks_actor_fk');
+    expect(names).toContain('lead_image_import_tasks_upload_draft_fk');
     expect(names).toContain('lead_image_import_tasks_unique_url');
     const wrongProduct =
       await client.query(`SELECT count(*)::int AS count FROM lead_image_import_tasks t

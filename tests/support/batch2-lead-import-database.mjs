@@ -57,6 +57,8 @@ export async function attachSyntheticLeadImage(taskId) {
       if (current?.status === 'ATTACHED') {
         if (
           !current.contentVersion ||
+          current.contentVersion.sourceUploadDraftId !==
+            current.uploadDraftId ||
           current.contentVersion.material.ownerType !== 'LEAD' ||
           current.contentVersion.material.ownerId !== current.leadId
         )
@@ -74,6 +76,23 @@ export async function attachSyntheticLeadImage(taskId) {
           throw new Error(
             'Synthetic image version lacks the exact product association',
           );
+        const [versionCount, associationCount] = await Promise.all([
+          database.contentVersion.count({
+            where: {
+              originalFilename: `import-${current.id}-${current.urlSha256}`,
+              material: { ownerType: 'LEAD', ownerId: current.leadId },
+            },
+          }),
+          database.leadProductScreenshot.count({
+            where: {
+              leadId: current.leadId,
+              productId: current.productId,
+              contentVersionId: current.contentVersionId,
+            },
+          }),
+        ]);
+        if (versionCount !== 1 || associationCount !== 1)
+          throw new Error('Synthetic task created duplicate private versions');
         if (
           current.contentVersion.sha256 !==
           createHash('sha256').update(png).digest('hex')

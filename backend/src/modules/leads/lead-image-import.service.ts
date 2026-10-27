@@ -17,6 +17,7 @@ import { LeadService } from './lead.service';
 import { downloadLeadImage, RemoteImageError } from './lead-remote-image';
 export const LEAD_IMAGE_DOWNLOADER = Symbol('LEAD_IMAGE_DOWNLOADER');
 export type LeadImageDownloader = typeof downloadLeadImage;
+class LostImageLease extends Error {}
 
 @Injectable()
 export class LeadImageImportService implements OnModuleInit, OnModuleDestroy {
@@ -121,10 +122,13 @@ export class LeadImageImportService implements OnModuleInit, OnModuleDestroy {
       data: {
         url,
         urlSha256: hash,
+        generation: { increment: 1 },
         status: 'PENDING',
         failureCode: null,
         leaseUntil: null,
-        contentVersionId: null,
+        ...(hash === task.urlSha256
+          ? {}
+          : { contentVersionId: null, uploadDraftId: null }),
         attemptCount: 0,
       },
     });
@@ -201,6 +205,22 @@ export class LeadImageImportService implements OnModuleInit, OnModuleDestroy {
     task: NonNullable<Awaited<ReturnType<LeadImageImportService['lease']>>>,
   ): Promise<void> {
     try {
+      const fence = () => ({
+        id: task.id,
+        status: 'LEASED',
+        generation: task.generation,
+        attemptCount: task.attemptCount,
+        urlSha256: task.urlSha256,
+        leaseUntil: { gt: new Date() },
+      });
+      const assertLease = async () => {
+        const owned = await this.database.leadImageImportTask.findFirst({
+          where: fence(),
+          select: { id: true },
+        });
+        if (!owned) throw new LostImageLease();
+      };
+      await assertLease();
       const user = await this.database.userAccount.findFirst({
         where: {
           id: task.actorUserId,
@@ -219,46 +239,82 @@ export class LeadImageImportService implements OnModuleInit, OnModuleDestroy {
         authorizationRevision: user.authorizationRevision,
       };
       const filename = `import-${task.id}-${task.urlSha256}`;
+      let draftId = task.uploadDraftId;
       let versionId = task.contentVersionId;
-      if (!versionId) {
-        const existing = await this.database.contentVersion.findFirst({
-          where: {
-            originalFilename: filename,
-            uploadedBy: actor.userId,
-            material: {
-              ownerType: 'LEAD',
-              ownerId: task.leadId,
-              departmentId: task.departmentId,
-            },
-          },
-          select: { id: true },
-        });
-        versionId = existing?.id ?? null;
-      }
+      if (!versionId && draftId)
+        versionId =
+          (
+            await this.database.contentVersion.findUnique({
+              where: { sourceUploadDraftId: draftId },
+              select: { id: true },
+            })
+          )?.id ?? null;
       if (!versionId) {
         const image = await this.download(task.url);
-        const draft = await this.materials.createUploadDraft(actor, {
-          ownerType: 'LEAD',
-          ownerId: task.leadId,
-          category: 'LEAD_SCREENSHOT',
-          purpose: 'LEAD_SCREENSHOT',
-          originalFilename: filename,
-          declaredMimeType: image.mimeType,
+        await assertLease();
+        if (!draftId) {
+          const draft = await this.materials.createUploadDraft(actor, {
+            ownerType: 'LEAD',
+            ownerId: task.leadId,
+            category: 'LEAD_SCREENSHOT',
+            purpose: 'LEAD_SCREENSHOT',
+            originalFilename: filename,
+            declaredMimeType: image.mimeType,
+          });
+          const claimed = await this.database.leadImageImportTask.updateMany({
+            where: { ...fence(), uploadDraftId: null },
+            data: { uploadDraftId: draft.id },
+          });
+          if (claimed.count !== 1) throw new LostImageLease();
+          draftId = draft.id;
+        }
+        await assertLease();
+        const existing = await this.database.contentVersion.findUnique({
+          where: { sourceUploadDraftId: draftId },
+          select: { id: true },
         });
-        const uploaded = await this.materials.finalizeUpload(
-          actor,
-          draft.id,
-          Readable.from([image.bytes]),
-        );
-        versionId = uploaded.contentVersionId;
+        if (existing) versionId = existing.id;
+        else {
+          try {
+            const uploaded = await this.materials.finalizeUpload(
+              actor,
+              draftId,
+              Readable.from([image.bytes]),
+              {
+                taskId: task.id,
+                generation: task.generation,
+                attemptCount: task.attemptCount,
+                urlSha256: task.urlSha256,
+              },
+            );
+            versionId = uploaded.contentVersionId;
+          } catch (cause) {
+            // A prior worker can finish the same one-time draft after takeover.
+            for (let attempt = 0; attempt < 25; attempt++) {
+              const completed = await this.database.contentVersion.findUnique({
+                where: { sourceUploadDraftId: draftId },
+                select: { id: true },
+              });
+              if (completed) {
+                versionId = completed.id;
+                break;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+            if (!versionId) throw cause;
+          }
+        }
       }
-      await this.database.leadImageImportTask.updateMany({
-        where: { id: task.id, status: 'LEASED' },
+      if (!draftId || !versionId) throw new LostImageLease();
+      const stored = await this.database.leadImageImportTask.updateMany({
+        where: { ...fence(), uploadDraftId: draftId },
         data: {
           contentVersionId: versionId,
         },
       });
+      if (stored.count !== 1) throw new LostImageLease();
       for (let attempt = 0; attempt < 3; attempt++) {
+        await assertLease();
         const lead = await this.database.lead.findFirst({
           where: { id: task.leadId, departmentId: task.departmentId },
           select: {
@@ -285,6 +341,14 @@ export class LeadImageImportService implements OnModuleInit, OnModuleDestroy {
               expectedVersion: lead.version,
               screenshotContentVersionIds: [...ids, versionId],
             },
+            {
+              taskId: task.id,
+              generation: task.generation,
+              attemptCount: task.attemptCount,
+              urlSha256: task.urlSha256,
+              uploadDraftId: draftId,
+              contentVersionId: versionId,
+            },
           );
           break;
         } catch (cause) {
@@ -293,10 +357,11 @@ export class LeadImageImportService implements OnModuleInit, OnModuleDestroy {
         }
       }
       await this.database.leadImageImportTask.updateMany({
-        where: { id: task.id, status: 'LEASED' },
+        where: { ...fence(), uploadDraftId: draftId },
         data: { status: 'ATTACHED', leaseUntil: null, failureCode: null },
       });
     } catch (cause) {
+      if (cause instanceof LostImageLease) return;
       const code =
         cause instanceof RemoteImageError
           ? cause.code
@@ -304,7 +369,13 @@ export class LeadImageImportService implements OnModuleInit, OnModuleDestroy {
             ? 'NOT_AUTHORIZED'
             : 'PROCESSING_ERROR';
       await this.database.leadImageImportTask.updateMany({
-        where: { id: task.id, status: 'LEASED' },
+        where: {
+          id: task.id,
+          status: 'LEASED',
+          generation: task.generation,
+          attemptCount: task.attemptCount,
+          urlSha256: task.urlSha256,
+        },
         data: { status: 'FAILED', failureCode: code, leaseUntil: null },
       });
     }
