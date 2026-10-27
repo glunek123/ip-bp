@@ -30,6 +30,11 @@ const emit = defineEmits<{
 const busy = ref(false);
 const error = ref('');
 const failures = ref<Array<{ index: number; code: string }>>([]);
+function failureLabel(code: string): string {
+  return code === 'CLIENT_ACCOUNT_UNAVAILABLE'
+    ? '客户无可用账号，且当前操作者无同范围的客户审核代办权限'
+    : code;
+}
 const items = computed<LeadBatchPushItem[]>(
   () =>
     props.pending?.items ??
@@ -187,7 +192,7 @@ onMounted(() => {
     <p v-if="error" role="alert">{{ error }}</p>
     <ul v-if="failures.length" aria-label="批次失败项">
       <li v-for="failure in failures" :key="`${failure.index}:${failure.code}`">
-        第 {{ failure.index + 1 }} 项：{{ failure.code }}
+        第 {{ failure.index + 1 }} 项：{{ failureLabel(failure.code) }}
       </li>
     </ul>
     <ElButton

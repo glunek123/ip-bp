@@ -103,6 +103,17 @@ const leadReadInclude = {
 
 const leadDetailInclude = {
   ...leadReadInclude,
+  customer: {
+    select: {
+      name: true,
+      profileStatus: true,
+      clientAccountBindings: {
+        where: { active: true, user: { active: true } },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  },
   notaryMatters: {
     orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }],
     select: {
@@ -555,8 +566,9 @@ export class LeadService {
         application.originalDecisionId === lead.activeReviewDecisionId &&
         application.confirmation === null,
     );
-    const proxyConfirmWithdrawal = pending !== undefined &&
-      await this.canProxyAction(actor, lead, 'lead.withdraw.confirm.proxy');
+    const proxyConfirmWithdrawal =
+      pending !== undefined &&
+      (await this.canProxyAction(actor, lead, 'lead.withdraw.confirm.proxy'));
     const history = [
       ...(lead.evidenceDecision === null || lead.evidenceDecision === undefined
         ? []
@@ -697,10 +709,15 @@ export class LeadService {
     lead: LeadDetailRecord,
     action: 'lead.review.proxy' | 'lead.withdraw.confirm.proxy',
   ): Promise<boolean> {
-    if (actor.clientCustomerId !== undefined || actor.notaryOfficeId !== undefined || actor.lawyerAccountId !== undefined)
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
       return false;
     const account = await this.database.userAccount.findUnique({
-      where: { id: actor.userId }, select: { accountType: true, active: true },
+      where: { id: actor.userId },
+      select: { accountType: true, active: true },
     });
     if (account?.accountType !== 'INTERNAL' || !account.active) return false;
     try {
@@ -1947,7 +1964,7 @@ export class LeadService {
             }
             const pusher = await transaction.userAccount.findUnique({
               where: { id: actor.userId },
-              select: { displayName: true },
+              select: { displayName: true, accountType: true, active: true },
             });
             if (pusher === null)
               throw new InternalServerErrorException(
@@ -1973,7 +1990,7 @@ export class LeadService {
               throw this.customerNotAdmitted();
             if (current.products.length === 0) throw this.productsRequired();
             if (current.customer.clientAccountBindings.length === 0)
-              throw this.clientAccountUnavailable();
+              await this.requireProxyPush(actor, current, pusher, transaction);
             const pushedAt = new Date();
             const changed = await transaction.lead.updateMany({
               where: {
@@ -2143,6 +2160,12 @@ export class LeadService {
             const byId = new Map(
               loaded.map((lead) => [lead.id.toLowerCase(), lead]),
             );
+            const pusher = await tx.userAccount.findUnique({
+              where: { id: actor.userId },
+              select: { displayName: true, accountType: true, active: true },
+            });
+            if (!pusher)
+              throw new InternalServerErrorException('批量推送操作者不可用');
             const failures: LeadBatchFailure[] = [];
             for (const item of items) {
               const index = indexes.get(item.leadId.toLowerCase())!;
@@ -2177,8 +2200,14 @@ export class LeadService {
                 failures.push({ index, code: 'CUSTOMER_NOT_ADMITTED' });
               else if (current.products.length === 0)
                 failures.push({ index, code: 'LEAD_PRODUCTS_REQUIRED' });
-              else if (current.customer.clientAccountBindings.length === 0)
-                failures.push({ index, code: 'CLIENT_ACCOUNT_UNAVAILABLE' });
+              else if (current.customer.clientAccountBindings.length === 0) {
+                try {
+                  await this.requireProxyPush(actor, current, pusher, tx);
+                } catch (error) {
+                  if (!(error instanceof ConflictException)) throw error;
+                  failures.push({ index, code: 'CLIENT_ACCOUNT_UNAVAILABLE' });
+                }
+              }
             }
             if (failures.length)
               throw new ConflictException({
@@ -2186,12 +2215,6 @@ export class LeadService {
                 message: '批量推送未执行',
                 details: { failures },
               });
-            const pusher = await tx.userAccount.findUnique({
-              where: { id: actor.userId },
-              select: { displayName: true },
-            });
-            if (!pusher)
-              throw new InternalServerErrorException('批量推送操作者不可用');
             const pushedAt = new Date();
             const resultItems: LeadPushResponse[] = [];
             for (let index = 0; index < items.length; index += 1) {
@@ -3577,17 +3600,56 @@ export class LeadService {
       throw error;
     }
   }
-  private async canPush(actor: ActorContext, lead: LeadRecord) {
+  private async canPush(actor: ActorContext, lead: LeadDetailRecord) {
     if (lead.status !== 'WAITING_PUSH') return false;
+    if (
+      lead.customer.profileStatus !== 'ADMITTED' ||
+      lead.products.length === 0
+    )
+      return false;
     try {
       await this.access.authorizeLead(actor, 'lead.push', {
         departmentId: lead.departmentId,
         responsibleUserId: lead.responsibleUserId,
         ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
       });
+      if (lead.customer.clientAccountBindings.length === 0)
+        return this.canProxyAction(actor, lead, 'lead.review.proxy');
       return true;
     } catch (error) {
       if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
+
+  private async requireProxyPush(
+    actor: ActorContext,
+    lead: Pick<LeadRecord, 'departmentId' | 'responsibleUserId' | 'teamId'>,
+    account: { accountType: string; active: boolean },
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    if (
+      account.accountType !== 'INTERNAL' ||
+      !account.active ||
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
+      throw this.clientAccountUnavailable();
+    try {
+      await this.access.authorizeLead(
+        actor,
+        'lead.review.proxy',
+        {
+          departmentId: lead.departmentId,
+          responsibleUserId: lead.responsibleUserId,
+          ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
+        },
+        tx,
+      );
+    } catch (error) {
+      if (error instanceof ForbiddenException)
+        throw this.clientAccountUnavailable();
       throw error;
     }
   }
@@ -4004,7 +4066,7 @@ export class LeadService {
   private clientAccountUnavailable() {
     return new ConflictException({
       code: 'CLIENT_ACCOUNT_UNAVAILABLE',
-      message: '客户没有可用的已绑定账号',
+      message: '客户没有可用账号，且当前操作者没有同范围的客户审核代办权限',
     });
   }
   private versionConflict() {

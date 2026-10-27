@@ -41,7 +41,13 @@ function fixture() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     userAccount: {
-      findUnique: jest.fn().mockResolvedValue({ displayName: 'Operator' }),
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({
+          displayName: 'Operator',
+          accountType: 'INTERNAL',
+          active: true,
+        }),
     },
     auditEvent: { create: jest.fn().mockResolvedValue({}) },
   };
@@ -59,6 +65,7 @@ function fixture() {
     tx,
     access,
     database,
+    records,
   };
 }
 
@@ -75,6 +82,100 @@ describe('LeadService batch push', () => {
     expect(f.tx.lead.updateMany).toHaveBeenCalledTimes(2);
     expect(f.tx.auditEvent.create).toHaveBeenCalledTimes(2);
     expect(f.tx.leadBatchPushReceipt.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts an unbound customer with proxy authority and replays the original success', async () => {
+    const f = fixture();
+    // Override the preflight result without changing the immutable receipt path.
+    f.tx.lead.findMany.mockResolvedValueOnce([
+      {
+        ...f.records[0],
+        customer: { ...f.records[0]!.customer, clientAccountBindings: [] },
+      },
+      f.records[1],
+    ]);
+    const input = {
+      items: ids.map((leadId) => ({ leadId, expectedVersion: 1 })),
+    };
+    const first = await f.service.pushBatch(actor, 'unbound-key', input);
+    expect(f.access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'lead.review.proxy',
+      {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      },
+      f.tx,
+    );
+    const receipt = f.tx.leadBatchPushReceipt.create.mock.calls[0]?.[0]?.data;
+    f.tx.leadBatchPushReceipt.findUnique.mockResolvedValueOnce({
+      ...receipt,
+      createdAt: new Date('2026-10-16T00:00:00.000Z'),
+    });
+    f.tx.lead.findMany.mockResolvedValueOnce(
+      ids.map((id) => ({
+        id,
+        businessNo: id.slice(0, 8),
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+        teamId: null,
+      })),
+    );
+    await expect(
+      f.service.pushBatch(actor, 'unbound-key', input),
+    ).resolves.toEqual(first);
+    expect(f.tx.lead.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects the whole batch when an unbound item lacks same-scope proxy authority', async () => {
+    const f = fixture();
+    f.tx.lead.findMany.mockResolvedValueOnce([
+      {
+        id: ids[0],
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+        teamId: null,
+        businessNo: 'LD-1',
+        status: 'WAITING_PUSH',
+        version: 1,
+        products: [{ id: 'product' }],
+        customer: { profileStatus: 'ADMITTED', clientAccountBindings: [] },
+      },
+      {
+        id: ids[1],
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+        teamId: null,
+        businessNo: 'LD-2',
+        status: 'WAITING_PUSH',
+        version: 1,
+        products: [{ id: 'product' }],
+        customer: {
+          profileStatus: 'ADMITTED',
+          clientAccountBindings: [{ id: 'binding' }],
+        },
+      },
+    ]);
+    (f.access.authorizeLead as jest.Mock).mockImplementation(
+      async (_actor, action) => {
+        if (action === 'lead.review.proxy')
+          throw new ForbiddenException('different scope');
+      },
+    );
+    await expect(
+      f.service.pushBatch(actor, 'unbound-denied', {
+        items: ids.map((leadId) => ({ leadId, expectedVersion: 1 })),
+      }),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'BATCH_PUSH_REJECTED',
+        details: {
+          failures: [{ index: 0, code: 'CLIENT_ACCOUNT_UNAVAILABLE' }],
+        },
+      },
+    });
+    expect(f.tx.lead.updateMany).not.toHaveBeenCalled();
+    expect(f.tx.leadBatchPushReceipt.create).not.toHaveBeenCalled();
   });
 
   it('preflights every target and performs zero writes if one target is invalid', async () => {
