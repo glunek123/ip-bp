@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isValidUsername } from './username';
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
@@ -16,7 +17,7 @@ const departments = ref<DepartmentChoice[]>([]);
 const submitting = ref(false);
 const errorMessage = ref('');
 const canSubmit = computed(
-  () => username.value.trim().length >= 3 && password.value.length >= 12,
+  () => isValidUsername(username.value) && password.value.length >= 12,
 );
 
 function safeReturnPath(

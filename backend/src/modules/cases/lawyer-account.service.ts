@@ -575,7 +575,9 @@ export class LawyerAccountService {
       error instanceof Error && error.message === 'USERNAME_INVALID';
     return new BadRequestException({
       code: username ? 'USERNAME_INVALID' : 'PASSWORD_INVALID',
-      message: username ? '用户名格式不正确' : '密码长度必须为12至128个字符',
+      message: username
+        ? '用户名需为3至64个字符且不能含控制字符'
+        : '密码长度必须为12至128个字符',
     });
   }
   private forbidden() {

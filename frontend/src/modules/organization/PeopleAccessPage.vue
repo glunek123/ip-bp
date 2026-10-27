@@ -17,6 +17,7 @@ import {
   type OrganizationUser,
 } from '../../api/organization';
 import { useAuthStore } from '../../stores/auth';
+import { isValidUsername } from '../auth/username';
 import RoleTemplatePanel from './RoleTemplatePanel.vue';
 
 const auth = useAuthStore();
@@ -114,7 +115,7 @@ async function run(key: string, action: () => Promise<void>): Promise<boolean> {
 async function submitCreateUser(): Promise<void> {
   if (
     !createForm.displayName.trim() ||
-    createForm.username.trim().length < 3 ||
+    !isValidUsername(createForm.username) ||
     createForm.password.length < 12 ||
     !createForm.roleTemplateId
   ) {
@@ -380,7 +381,8 @@ onBeforeUnmount(() => activeRequest?.abort());
             id="organization-user-guidance"
             class="field-guidance inline-form-grid__guidance"
           >
-            用户名至少 3 个字符；初始密码至少 12
+            用户名至少 3 个字符、最多 64
+            个字符，可用邮箱或自定义形式；初始密码至少 12
             个字符。本人：仅本人负责的数据；团队：当前团队数据；部门：本部门数据。
           </p>
           <ElButton

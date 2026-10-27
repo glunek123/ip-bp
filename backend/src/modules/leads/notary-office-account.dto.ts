@@ -12,11 +12,13 @@ export class CreateNotaryOfficeAccountDto {
   @MinLength(1)
   @MaxLength(100)
   displayName!: string;
-  @ApiProperty({ minLength: 3, maxLength: 64 })
-  @Transform(trim)
+  @ApiProperty({
+    maxLength: 256,
+    description: '规范化后用户名为3至64个Unicode字符，可使用邮箱或自定义形式',
+  })
   @IsString()
-  @MinLength(3)
-  @MaxLength(64)
+  @MinLength(1)
+  @MaxLength(256)
   username!: string;
   @ApiProperty({ minLength: 12, maxLength: 128 })
   @IsString()

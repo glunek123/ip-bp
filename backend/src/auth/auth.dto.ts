@@ -8,8 +8,9 @@ import {
 
 export class LoginDto {
   @IsString()
-  @MinLength(3)
-  @MaxLength(64)
+  @MinLength(1)
+  // Transport bound; the shared account rule checks length after trim/NFKC.
+  @MaxLength(256)
   username!: string;
 
   @IsString()

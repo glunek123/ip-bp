@@ -84,7 +84,7 @@ describe('CustomerAccountService', () => {
 
     const result = await service.create(actor, customer.id, {
       displayName: ' 客户审核人 ',
-      username: ' CLIENT.A ',
+      username: ' CLIENT+A@EXAMPLE.COM ',
       password: 'correct horse battery staple',
     });
 
@@ -96,7 +96,7 @@ describe('CustomerAccountService', () => {
       select: expect.any(Object),
     });
     expect(transaction.localCredential.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ username: 'client.a' }),
+      data: expect.objectContaining({ username: 'client+a@example.com' }),
     });
     expect(transaction.customerAccountBinding.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -110,7 +110,7 @@ describe('CustomerAccountService', () => {
     });
     expect(result).toMatchObject({
       displayName: '客户审核人',
-      username: 'client.a',
+      username: 'client+a@example.com',
       accountActive: true,
       bindingActive: true,
     });

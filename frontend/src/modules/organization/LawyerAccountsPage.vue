@@ -14,6 +14,7 @@ import {
   type UnboundLawyerProfile,
 } from '../../api/lawyer-accounts';
 import { useAuthStore } from '../../stores/auth';
+import { isValidUsername } from '../auth/username';
 
 const auth = useAuthStore();
 const accounts = ref<LawyerAccount[]>([]);
@@ -56,7 +57,7 @@ const successfulProfileSearch = ref<{
 const canCreate = computed(
   () =>
     !!fullName.value.trim() &&
-    !!username.value.trim() &&
+    isValidUsername(username.value) &&
     password.value.length >= 12,
 );
 
@@ -349,6 +350,9 @@ onBeforeUnmount(() => {
               autocomplete="off"
               required
           /></label>
+          <p class="field-help">
+            支持邮箱或自定义用户名，规范化后为 3 至 64 个字符。
+          </p>
           <label
             >初始密码 <span aria-hidden="true">*</span
             ><input

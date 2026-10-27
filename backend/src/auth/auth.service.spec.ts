@@ -42,7 +42,7 @@ describe('AuthService', () => {
     const database = createDatabase();
     database.transaction.localCredential.findUnique.mockResolvedValue({
       userId,
-      username: 'lawyer.zhang',
+      username: 'lawyer.zhang+case@example.com',
       passwordHash: await hashPassword('correct horse battery staple'),
       user: {
         id: userId,
@@ -62,7 +62,10 @@ describe('AuthService', () => {
     );
 
     const result = await auth.login(
-      { username: 'lawyer.zhang', password: 'correct horse battery staple' },
+      {
+        username: '  LAWYER.ZHANG+CASE@EXAMPLE.COM  ',
+        password: 'correct horse battery staple',
+      },
       '127.0.0.1',
     );
 
@@ -73,6 +76,13 @@ describe('AuthService', () => {
       customer: null,
       notaryOffice: null,
     });
+    expect(
+      database.transaction.localCredential.findUnique,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { username: 'lawyer.zhang+case@example.com' },
+      }),
+    );
     expect(database.transaction.authSession.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         userId,

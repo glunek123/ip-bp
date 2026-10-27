@@ -14,6 +14,7 @@ import {
   setNotaryOfficeAccountActive,
   type NotaryOfficeAccount,
 } from '../../api/notary-office-accounts';
+import { isValidUsername } from '../auth/username';
 
 const state = ref<'loading' | 'ready' | 'forbidden' | 'failed'>('loading');
 const offices = ref<NotaryOffice[]>([]);
@@ -59,7 +60,12 @@ async function toggleAccounts(office: NotaryOffice): Promise<void> {
 }
 
 async function addAccount(officeId: string): Promise<void> {
-  if (creatingAccount.value || accountPassword.value.length < 12) return;
+  if (
+    creatingAccount.value ||
+    !isValidUsername(accountUsername.value) ||
+    accountPassword.value.length < 12
+  )
+    return;
   creatingAccount.value = true;
   accountError.value = '';
   accountSuccess.value = '';
@@ -292,9 +298,10 @@ onBeforeUnmount(() => request?.abort());
               data-test="notary-account-username"
               class="text-input"
               required
-              minlength="3"
-              maxlength="64"
             />
+            <p class="field-help">
+              支持邮箱或自定义用户名，规范化后为 3 至 64 个字符。
+            </p>
             <label
               class="field-label field-label--spaced"
               for="notary-account-password"
@@ -322,7 +329,7 @@ onBeforeUnmount(() => request?.abort());
               :disabled="
                 creatingAccount ||
                 !accountName.trim() ||
-                !accountUsername.trim() ||
+                !isValidUsername(accountUsername) ||
                 accountPassword.length < 12
               "
               >创建账号</ElButton

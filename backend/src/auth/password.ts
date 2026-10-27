@@ -39,8 +39,11 @@ const SCRYPT_POLICIES: Readonly<Record<string, ScryptPolicy>> = {
 };
 
 export function normalizeUsername(value: string): string {
+  const forbidden = /[\p{Cc}\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/u;
+  if (forbidden.test(value)) throw new Error('USERNAME_INVALID');
   const normalized = value.trim().normalize('NFKC').toLowerCase();
-  if (!/^[a-z0-9._-]{3,64}$/.test(normalized)) {
+  const length = Array.from(normalized).length;
+  if (length < 3 || length > 64 || forbidden.test(normalized)) {
     throw new Error('USERNAME_INVALID');
   }
   return normalized;

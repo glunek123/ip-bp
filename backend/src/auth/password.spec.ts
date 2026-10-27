@@ -9,12 +9,26 @@ import {
 describe('local password boundary', () => {
   it('normalizes usernames with trim, NFKC and lowercase', () => {
     expect(normalizeUsername('  Ａdmin.User  ')).toBe('admin.user');
+    expect(normalizeUsername('  User.Name+Tag@Example.COM  ')).toBe(
+      'user.name+tag@example.com',
+    );
+    expect(normalizeUsername('自定义 用户')).toBe('自定义 用户');
+    expect(normalizeUsername(' ＵＳＥＲ+TAG＠EXAMPLE.COM ')).toBe(
+      normalizeUsername('user+tag@example.com'),
+    );
   });
 
-  it.each(['ab', 'has space', '中文用户', 'a'.repeat(65)])(
-    'rejects invalid username %p',
-    (value) =>
-      expect(() => normalizeUsername(value)).toThrow('USERNAME_INVALID'),
+  it.each([
+    'ab',
+    '   ',
+    'a'.repeat(65),
+    'abc\nxyz',
+    'abc\u007fxyz',
+    'abc\u200bxyz',
+    '\nabc',
+    'abc\t',
+  ])('rejects invalid username %p', (value) =>
+    expect(() => normalizeUsername(value)).toThrow('USERNAME_INVALID'),
   );
 
   it('counts password Unicode code points without trimming', () => {

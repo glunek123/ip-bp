@@ -352,7 +352,7 @@ export class OrganizationService {
         code,
         message:
           code === 'USERNAME_INVALID'
-            ? '用户名格式不正确'
+            ? '用户名需为3至64个字符且不能含控制字符'
             : '密码长度必须为12至128个字符',
       });
     }

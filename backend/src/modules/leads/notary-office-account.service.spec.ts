@@ -64,12 +64,12 @@ describe('NotaryOfficeAccountService', () => {
     const f = fixture();
     const result = await f.service.create(actor, officeId, {
       displayName: '公证员',
-      username: 'notary.a',
+      username: 'NOTARY+A@EXAMPLE.COM',
       password: 'correct horse battery staple',
     });
     expect(result).toMatchObject({
       id: accountId,
-      username: 'notary.a',
+      username: 'notary+a@example.com',
       bindingActive: true,
       bindingVersion: 1,
     });
@@ -85,7 +85,7 @@ describe('NotaryOfficeAccountService', () => {
     expect(f.tx.localCredential.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         userId: accountId,
-        username: 'notary.a',
+        username: 'notary+a@example.com',
         passwordHash: expect.stringMatching(/^scrypt\$v2\$/),
       }),
     });

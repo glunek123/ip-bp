@@ -11,6 +11,7 @@ import {
   type ClientAccountCapabilities,
 } from '../../api/client-accounts';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
+import { isValidUsername } from '../auth/username';
 
 const props = defineProps<{ customerId: string; admitted: boolean }>();
 const accounts = ref<ClientAccount[]>([]);
@@ -30,15 +31,19 @@ const canSubmit = computed(
     props.admitted &&
     capabilities.value?.canCreate === true &&
     displayName.value.trim().length > 0 &&
-    username.value.trim().length >= 3 &&
+    isValidUsername(username.value) &&
     password.value.length >= 12 &&
     !submitting.value,
 );
 const missingRequirements = computed(() => {
   const missing: string[] = [];
   if (!displayName.value.trim()) missing.push('填写客户侧使用人姓名');
-  if (username.value.trim().length < 3)
-    missing.push('填写至少 3 个字符的用户名');
+  if (!isValidUsername(username.value))
+    missing.push(
+      username.value.trim().length < 3
+        ? '填写至少 3 个字符的用户名'
+        : '填写不超过 64 个字符且不含控制字符的用户名',
+    );
   if (password.value.length < 12) missing.push('填写至少 12 个字符的初始密码');
   return missing;
 });
@@ -242,7 +247,8 @@ watch(
           id="client-account-guidance"
           class="field-guidance inline-form-grid__guidance"
         >
-          用户名至少 3 个字符；初始密码至少 12
+          用户名至少 3 个字符、最多 64
+          个字符，可用邮箱或自定义形式；初始密码至少 12
           个字符。创建后，该账号将绑定当前客户企业，只能查看本企业已推送线索。
         </p>
         <p

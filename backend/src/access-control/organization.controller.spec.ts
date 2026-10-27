@@ -164,7 +164,7 @@ describe('OrganizationController', () => {
 
     expect(createUser).toHaveBeenCalledWith(actor, {
       displayName: '运营乙',
-      username: 'Operator.B',
+      username: ' Operator.B ',
       password: 'temporary-pass-123',
       teamId: null,
       roleTemplateId: '44444444-4444-4444-8444-444444444444',
