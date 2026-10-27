@@ -9,7 +9,7 @@ assertBatch2ImportOwnedRuntime();
 
 export default defineConfig({
   testDir: '../e2e',
-  testMatch: 'batch2-lead-import.spec.ts',
+  testMatch: '**/batch2-lead-import.spec.ts',
   fullyParallel: false,
   workers: 1,
   retries: 0,
