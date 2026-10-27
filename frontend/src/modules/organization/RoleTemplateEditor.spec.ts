@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
+import type { OrganizationPermissionCatalogItem } from '../../api/organization';
 import RoleTemplateEditor from './RoleTemplateEditor.vue';
 
 const api = vi.hoisted(() => ({
@@ -141,6 +142,41 @@ const permissionCatalog = [
 afterEach(() => vi.clearAllMocks());
 
 describe('RoleTemplateEditor', () => {
+  it('shows the three backend proxy actions without granting them automatically', async () => {
+    const proxyCatalog: OrganizationPermissionCatalogItem[] = [
+      {
+        action: 'LEAD_REVIEW_PROXY' as const,
+        label: '代客户审核线索',
+        scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+      },
+      {
+        action: 'LEAD_WITHDRAW_CONFIRM_PROXY' as const,
+        label: '代客户确认撤回',
+        scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+      },
+      {
+        action: 'NOTARY_CERTIFICATE_ISSUE_PROXY' as const,
+        label: '代公证处登记出证',
+        scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+      },
+    ];
+    const wrapper = mount(RoleTemplateEditor, {
+      props: {
+        mode: 'copy',
+        role,
+        permissionCatalog: [...permissionCatalog, ...proxyCatalog],
+      },
+    });
+    for (const item of proxyCatalog) {
+      expect(wrapper.text()).toContain(item.label);
+      expect(
+        wrapper.get<HTMLInputElement>(`[data-test="grant-${item.action}"]`)
+          .element.checked,
+      ).toBe(false);
+    }
+    expect(api.copyRoleTemplate).not.toHaveBeenCalled();
+  });
+
   it('adds only department customer read and admission grants to the current selection', async () => {
     const wrapper = mount(RoleTemplateEditor, {
       props: { mode: 'copy', role, permissionCatalog },

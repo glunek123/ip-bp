@@ -362,6 +362,16 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'LEAD_REVIEW_PROXY',
+      label: '代客户审核线索',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'LEAD_WITHDRAW_CONFIRM_PROXY',
+      label: '代客户确认撤回',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_EVIDENCE_RECORD',
       label: '登记取证与物流',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -384,6 +394,11 @@ const context = {
     {
       action: 'NOTARY_ISSUANCE_DECIDE',
       label: '决定是否出证',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'NOTARY_CERTIFICATE_ISSUE_PROXY',
+      label: '代公证处登记出证',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
@@ -720,11 +735,14 @@ describe('organization API', () => {
       'LEAD_PUSH',
       'LEAD_WITHDRAW_APPLY',
       'LEAD_EVIDENCE_DECIDE',
+      'LEAD_REVIEW_PROXY',
+      'LEAD_WITHDRAW_CONFIRM_PROXY',
       'NOTARY_EVIDENCE_RECORD',
       'NOTARY_RECORD_CORRECT',
       'NOTARY_UNBOX_RECORD',
       'NOTARY_OPENING_REVIEW',
       'NOTARY_ISSUANCE_DECIDE',
+      'NOTARY_CERTIFICATE_ISSUE_PROXY',
       'NOTARY_RETURN_ARCHIVE',
       'NOTARY_LIST_EXPORT',
       'CASE_READ',
@@ -787,6 +805,59 @@ describe('organization API', () => {
       action: 'USER_MANAGE',
       label: '管理人员',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    });
+  });
+
+  it.each([
+    ['LEAD_REVIEW_PROXY', '代客户审核线索'],
+    ['LEAD_WITHDRAW_CONFIRM_PROXY', '代客户确认撤回'],
+    ['NOTARY_CERTIFICATE_ISSUE_PROXY', '代公证处登记出证'],
+  ] as const)(
+    'accepts backend catalog and role grant for %s',
+    async (action, label) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              ...context,
+              roles: [
+                { ...context.roles[0], grants: [{ action, scope: 'TEAM' }] },
+              ],
+            }),
+          ),
+        ),
+      );
+      const result = await getOrganizationManagementContext();
+      expect(result.permissionCatalog).toContainEqual({
+        action,
+        label,
+        scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+      });
+      expect(result.roles[0]?.grants).toEqual([{ action, scope: 'TEAM' }]);
+    },
+  );
+
+  it.each([
+    'LEAD_REVIEW_PROXY',
+    'LEAD_WITHDRAW_CONFIRM_PROXY',
+    'NOTARY_CERTIFICATE_ISSUE_PROXY',
+  ] as const)('still rejects a catalog missing %s', async (action) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ...context,
+            permissionCatalog: context.permissionCatalog.filter(
+              (item) => item.action !== action,
+            ),
+          }),
+        ),
+      ),
+    );
+    await expect(getOrganizationManagementContext()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
     });
   });
 
