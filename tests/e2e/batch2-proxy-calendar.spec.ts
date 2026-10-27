@@ -197,6 +197,30 @@ test.describe.serial('Batch 2 owned proxy and calendar acceptance', () => {
       }),
       201,
     );
+    const month = eventDate.slice(0, 7);
+    const personalItems = async (actor: Actor) =>
+      body<
+        Array<{
+          id: string;
+          title: string;
+          eventDate: string;
+          note: string | null;
+          version: number;
+        }>
+      >(
+        await actor.context.get(`/api/v1/calendar/personal?month=${month}`),
+        200,
+      );
+    const original = {
+      id: created.id,
+      title,
+      eventDate,
+      note: '验收备注',
+      version: created.version,
+    };
+    expect(
+      (await personalItems(operator)).find((item) => item.id === created.id),
+    ).toEqual(original);
     const foreignEdit = await foreign.context.patch(
       `/api/v1/calendar/personal/${created.id}`,
       {
@@ -209,7 +233,13 @@ test.describe.serial('Batch 2 owned proxy and calendar acceptance', () => {
         },
       },
     );
-    expect([403, 404]).toContain(foreignEdit.status());
+    expect(foreignEdit.status()).toBe(409);
+    expect(
+      (await personalItems(operator)).find((item) => item.id === created.id),
+    ).toEqual(original);
+    expect(
+      (await personalItems(foreign)).some((item) => item.id === created.id),
+    ).toBe(false);
     const colleagueEdit = await colleague.context.patch(
       `/api/v1/calendar/personal/${created.id}`,
       {
@@ -222,7 +252,13 @@ test.describe.serial('Batch 2 owned proxy and calendar acceptance', () => {
         },
       },
     );
-    expect([403, 404]).toContain(colleagueEdit.status());
+    expect(colleagueEdit.status()).toBe(409);
+    expect(
+      (await personalItems(operator)).find((item) => item.id === created.id),
+    ).toEqual(original);
+    expect(
+      (await personalItems(colleague)).some((item) => item.id === created.id),
+    ).toBe(false);
     const due = await body<
       Array<{
         sourceType: string;
