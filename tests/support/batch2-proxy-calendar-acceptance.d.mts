@@ -18,6 +18,8 @@ export function readBatch2ProxyAudit(
     internal_actor_user_id: string | null;
     binding_id: string | null;
     actor_user_id: string;
+    result: string;
+    occurred_at: Date;
   }>
 >;
 export function readBatch2CertificateDownstream(

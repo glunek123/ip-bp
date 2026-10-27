@@ -25,17 +25,17 @@ node "$batch2Env/run.mjs" exec node tests/support/batch2-proxy-calendar-pre-app.
 
 ```powershell
 node "$batch2Env/run.mjs" db:test:migrate:deploy
+node "$batch2Env/run.mjs" exec node tests/support/batch2-proxy-calendar-numbering.mjs
 node "$batch2Env/run.mjs" build:prepared
 ```
 
-不得从旧测试库复制 schema 或账号。准备每套独立合成 fixture，核验唯一随机部门、实际业务源版本、相应角色授权与身份后，再在对应 READY flag 下执行下列单套命令；当前 P/C fixture 缺口见下节，**尚不能直接执行 P/C 命令**。
+不得从旧测试库复制 schema 或账号。P/C spec 的专用 fixture 在执行时生成随机部门、真实本地账号、已准入客户与权利主体；其余业务 ID 由正式 HTTP 创建/推送/登记取得。各套验收在对应 READY flag 下执行：
 
 ```powershell
 node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-username.spec.ts
 node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-case-consolidation.spec.ts
 $env:BATCH2_IMPORT_E2E_READY = '1'
 node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-lead-import.spec.ts
-# 仅在下述 P/C fixture 阻断解除后：
 node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-proxy-calendar.spec.ts
 ```
 
@@ -43,17 +43,16 @@ Playwright 配置在加载 spec 前启动 app，所以前置探针不能用 Play
 
 wrapper 固定要求 `NODE_ENV=test`、`DEV_COR_TEST_DATABASE_PROJECT=dev-cor-ops-batch2-20261027`、完整容器 ID、`DATABASE_URL=DEV_COR_TEST_DATABASE_URL=postgresql://dev_cor_test:<隐藏密码>@127.0.0.1:15440/dev_cor_test`，并接管 3101/5174 应用端口。P/C helper 还要求 `BATCH2_ACCEPTANCE_READY=batch2-ops-20261027-approved`；U/M 要求 `DEV_COR_OPS_BATCH2_READY=1`。真实密码不写日志或命令行；`run.mjs` 从受控 `.env.test` 注入。所有 flag 只在对应命令的 PowerShell 进程内设置。
 
-## P/C/R 当前 fixture 缺口（执行前必须补齐）
+## P/C/R 合成来源与范围
 
-`tests/e2e/batch2-proxy-calendar.spec.ts` 目前引用 `coreLeadFixtures.tokenA/tokenSelf`。这只是技术 Bearer 测试 token 常量；新空库没有相应用户/部门/角色，且 `core-lead-database.mjs` 的 `seedCoreLeadE2eData` 会写固定 ID 并执行共享清理，不适合本批唯一随机部门。**所以即使 P/C JSON 环境变量齐全，当前 P/C spec 也不能直接执行成功。** 不得把 U 套真实账号密码登录视作 P/C 的真实浏览器验收。建议在独立随机部门内建立两名内部账号及所需角色，再用真实 cookie/CSRF HTTP 登录（或经过守卫的专用技术 token）替代这两个 core token；须先完成 fixture helper/Review。
+`batch2-proxy-calendar-fixture.mjs` 仅在上述完整新环境 guard 通过后写 public 中**新的随机部门**：运营、同部门同事、外部门人员、绑定在一名客户上的外部客户账号、两名已准入客户及权利主体。账号密码随机生成，只在 Playwright 进程内用于正式 `/auth/login`；各角色各自 cookie 和 CSRF。运营角色只获本套显式必要 scope grant，客户与公证处原有权限**不**授给运营。没有使用 `coreLeadFixtures`、固定技术 Bearer token、旧库 reset 或批量删除。
 
-当前 P/C spec 还要求以下预备数据；它只做事后断言，**不会创建这些事实**：
+V6 的新空库把客户编号单例设为 `-1`，正式线索与外录案件创建要求编号已就绪。root 在 public 190 全链迁移后、任何 suite 创建客户前调用 `batch2-proxy-calendar-numbering.mjs` 一次。它仅在本次获批新容器且 `public.customers` 为 0、编号单例仍为 `-1` 时把单例置 0，并在 `.local/batch2-calendar/numbering-receipt.json` 留下容器与前后状态收据；否则硬失败。fixture 自身不初始化，使用后端 `allocateCustomerBusinessId` 在合成客户事务内分配真实纯数字编号。该准备步骤不执行生产历史编号切换草稿，也不写旧库。
 
-| 输入                                                                                | 必须由隔离 fixture 产生的当前事实                                                                                                                                                                                                                                                                                                                                                      |
-| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BATCH2_REFUND_SOURCE_ID`, `BATCH2_REFUND_SOURCE_TYPE`, `BATCH2_REFUND_OWNER_TOKEN` | 本批随机部门的案件负责人；一审/重审 `REGISTER` fact 或二审有效结果的真实 `recordedAt`；负责人有 `case.read` 与显式 `case.refund.application.record` scope grant。仅附件或判决书落款日期不够。                                                                                                                                                                                          |
-| `BATCH2_PROXY_REVIEW_FIXTURES`                                                      | JSON 数组两条，分别是外部账号存在/不存在的 `WAITING_REVIEW` 线索。字段 `leadId, expectedVersion, operatorToken, operatorUserId, externalAccountExists`；运营角色显式有 `lead.read` 和 `lead.review.proxy`，token 对应同一真实内部 actor。                                                                                                                                              |
-| `BATCH2_PROXY_WITHDRAW_FIXTURE`                                                     | JSON 对象 `leadId, applicationId, expectedVersion, operatorToken, operatorUserId`；有效且待客户确认的撤回申请，同部门运营显式有 `lead.withdraw.confirm.proxy` 与原读取 scope。                                                                                                                                                                                                         |
-| `BATCH2_PROXY_CERT_FIXTURE`                                                         | JSON 对象 `matterId, operatorToken, operatorUserId, body`；`WAITING_CERTIFICATE` 且已有真实材料版本的公证事项。`body` 要有 `expectedVersion, certificateNo, certificateDate, contentVersionIds, needDisclose, disclosureContentVersionIds, fees`；运营显式有 `notary.certificate.issue.proxy` 和该模块原读取/办理 scope。费用、证物初始化依赖有效案件/线索/公证来源，不可只填任意 ID。 |
+P 套由正式 HTTP 创建、推送两名客户各一条线索，然后走运营代客户审核、撤回申请/代确认及并发原客户审核的同版本竞争。另一条线索经审核、转公证、取证、真实材料上传、开箱、开箱审核、出证决定，再由运营代办公证处出证；分别建立有、无外部公证员账号的两套，核材料下载、审计 actor/binding、证物与费用。浏览器额外点击一次线索列表“代办客户审核”。
 
-上述变量不得存成持久明文 token 文件或输出到日志；root 的实际验收 driver 应在受控进程内生成并传给该次 Playwright 子进程。存在/不存在外部账号均只是在隔离合成部门的业务状态；不能假装没有账号，也不能把 `CLIENT`/`NOTARY` grants 授给运营。C/R 还缺浏览器级右上角自动展开、已读和跳转的真实交互：现有 P/C spec 主要验证 HTTP 与 SQL，前端组件测试不能代替浏览器结果。
+C 套通过本人 HTTP 创建昨天事项，再以真实浏览器晚登录核右上角内容、查看跳转、标记已读及刷新持久；同部门另一人和外部门均不能改。R 套通过正式 `cases/external-entries` 建立 `WAITING_JUDGMENT` 当前阶段，真实上传判决 PDF 并调用 `judgment-register`；按服务端 `recordedAt` 的北京时间日期 +15 天核退费日历。合成案件负责人随后 A→B→A 两次变更，检查 epoch +2 与来源转移；正式更正换附件后原 REGISTER 日期不重算。最后登记真实已申请日期并核相同请求/冲突、已申请状态。它没有伪造附件日期作为正式登记。
+
+无账号推送的产品修复位于独立候选 `fef81434`：仅当操作者同时具有同一线索范围的 `lead.push` 和 `lead.review.proxy` 时允许进入 `WAITING_REVIEW`，后续仍需真实审核结论。源代码与脚本 Review 通过且该修复合入最终候选后，再运行本套正式 HTTP 链。不要靠直接改线索状态、伪造推送收据或绑定临时客户账号让测试变绿。
+
+脚本写好但尚未在新 PostgreSQL/HTTP/UI 上执行。R 本轮真实纵向只覆盖一审首次正式登记及更正；二审、重审、轮次撤销、归档后财务待办与已到期历史源的真实 PG/HTTP 反例仍须在 root 的最终验收清单里追加或明确记为未验收。09:00 边界已有纯函数/组件测试；真实时钟边界也尚未实测。脚本 Review 通过后若新环境出现 schema 前置冲突，只修本套合成数据，不绕过约束或默认增权。
