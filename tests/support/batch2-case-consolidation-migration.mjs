@@ -127,8 +127,15 @@ export async function verifyBatch2CaseConsolidationMigration() {
     const childId = randomUUID();
     const customerId = randomUUID();
     const rightsHolderId = randomUUID();
+    const contactId = randomUUID();
     await query('BEGIN');
     try {
+      const historicalTime = (
+        await query(
+          `SELECT to_char(date_trunc('milliseconds', now()) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS recorded_at,
+            ((now() AT TIME ZONE 'Asia/Shanghai')::date)::text AS stage_reached_on`,
+        )
+      ).rows[0];
       await query(
         'INSERT INTO departments(id,name,updated_at) VALUES ($1,$2,now())',
         [departmentId, 'Batch 2 synthetic'],
@@ -142,8 +149,45 @@ export async function verifyBatch2CaseConsolidationMigration() {
         [randomUUID(), actorId, departmentId],
       );
       await query(
-        "INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,profile_status,admitted_at,ever_admitted,updated_at) VALUES ($1,$2,$2,$3,$4,'ADMITTED',now(),true,now())",
-        [customerId, `Batch2 ${schema}`, departmentId, actorId],
+        "INSERT INTO customers(id,name,normalized_name,customer_type,identity_type,identity_number,normalized_identity_number,identity_validity_mode,admission_contact_name,admission_contact_phone,compatibility_contact_id,admission_contact_snapshot_name,admission_contact_snapshot_phone,admission_contact_snapshot_source,admission_contact_snapshot_frozen_at,department_id,responsible_user_id,profile_status,admitted_at,ever_admitted,updated_at) VALUES ($1,$2,$2,'ENTERPRISE','BUSINESS_LICENSE',$3,$3,'LONG_TERM',$4,$5,$6,$4,$5,'NEW_ADMISSION',now(),$7,$8,'ADMITTED',now(),true,now())",
+        [
+          customerId,
+          `Batch2 ${schema}`,
+          `91310000${randomUUID().replaceAll('-', '').slice(0, 10).toUpperCase()}`,
+          '合成历史联系人',
+          '13800000000',
+          contactId,
+          departmentId,
+          actorId,
+        ],
+      );
+      await query(
+        "INSERT INTO customer_contacts(id,customer_id,department_id,name,phone,is_primary,origin,created_by_user_id) VALUES ($1,$2,$3,$4,$5,true,'ADMISSION_FREEFORM',$6)",
+        [
+          contactId,
+          customerId,
+          departmentId,
+          '合成历史联系人',
+          '13800000000',
+          actorId,
+        ],
+      );
+      await query(
+        "INSERT INTO customer_contact_versions(id,contact_id,version,action,before,after,actor_user_id,source) VALUES ($1,$2,1,'CREATED',NULL,$3,$4,'HUMAN')",
+        [
+          randomUUID(),
+          contactId,
+          {
+            name: '合成历史联系人',
+            phone: '13800000000',
+            email: null,
+            duty: null,
+            isPrimary: true,
+            endedAt: null,
+            endReason: null,
+          },
+          actorId,
+        ],
       );
       await query(
         'INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,$2,$3,now())',
@@ -155,11 +199,15 @@ export async function verifyBatch2CaseConsolidationMigration() {
       );
       for (const [index, caseId] of [mainId, childId].entries()) {
         const auditId = randomUUID();
+        const entryId = randomUUID();
+        const businessNo = `CA-B2-${index}-${schema}`;
+        const source = `Batch2 ${schema}`;
+        const reason = 'Historical valid external case before migration 188';
         await query(
           "INSERT INTO cases(id,business_no,department_id,customer_id,rights_holder_id,responsible_user_id,stage,version) VALUES ($1,$2,$3,$4,$5,$6,'PENDING_MATCH',1)",
           [
             caseId,
-            `CA-B2-${index}-${schema}`,
+            businessNo,
             departmentId,
             customerId,
             rightsHolderId,
@@ -167,17 +215,31 @@ export async function verifyBatch2CaseConsolidationMigration() {
           ],
         );
         await query(
-          "INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,resource_type,resource_id,action) VALUES ($1,$2,$3,$3,'CASE',$4,'case.external-entry.created')",
-          [auditId, departmentId, actorId, caseId],
+          "INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,resource_type,resource_id,action,details) VALUES ($1,$2,$3,$3,'CASE',$4,'case.external-entry.created',$5)",
+          [
+            auditId,
+            departmentId,
+            actorId,
+            caseId,
+            {
+              entryId,
+              entryKind: 'EXTERNAL_TRANSFER',
+              initialStage: 'PENDING_MATCH',
+              stageReachedOn: historicalTime.stage_reached_on,
+              source,
+              reason,
+            },
+          ],
         );
         await query(
-          "INSERT INTO case_external_entries(id,case_id,department_id,entry_kind,initial_stage,stage_reached_on,source,reason,known,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,'EXTERNAL_TRANSFER','PENDING_MATCH',current_date,$4,$5,$6,$7,$8)",
+          "INSERT INTO case_external_entries(id,case_id,department_id,entry_kind,initial_stage,stage_reached_on,source,reason,known,recorded_by_user_id,recorded_at,audit_event_id) VALUES ($1,$2,$3,'EXTERNAL_TRANSFER','PENDING_MATCH',$4,$5,$6,$7,$8,$9,$10)",
           [
-            randomUUID(),
+            entryId,
             caseId,
             departmentId,
-            `Batch2 ${schema}`,
-            'Historical valid external case before migration 188',
+            historicalTime.stage_reached_on,
+            source,
+            reason,
             {
               courtId: null,
               courtCaseNo: null,
@@ -190,7 +252,27 @@ export async function verifyBatch2CaseConsolidationMigration() {
               infringementTypes: null,
             },
             actorId,
+            historicalTime.recorded_at,
             auditId,
+          ],
+        );
+        await query(
+          'INSERT INTO case_external_entry_receipts(id,department_id,actor_user_id,case_id,idempotency_key,request_fingerprint,result_snapshot) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+          [
+            randomUUID(),
+            departmentId,
+            actorId,
+            caseId,
+            `batch2-history-${caseId}`,
+            'a'.repeat(64),
+            {
+              id: caseId,
+              businessNo,
+              stage: 'PENDING_MATCH',
+              version: 1,
+              entryId,
+              recordedAt: historicalTime.recorded_at,
+            },
           ],
         );
       }
