@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -82,66 +82,193 @@ export async function verifyBatch2EmptyMigrationAndEpoch() {
   ] = Array.from({ length: 10 }, randomUUID);
   const tag = `batch2-${schema}`;
   const seedOldExternalDecision = async () => {
-    await client.query(
-      'INSERT INTO departments (id,name,updated_at) VALUES ($1,$2,now())',
-      [department, tag],
-    );
-    await client.query(
-      `INSERT INTO user_accounts (id,external_subject,display_name,updated_at,account_type)
+    // The legacy CLIENT and its sole binding are one deferred-constraint unit.
+    await client.query('BEGIN');
+    try {
+      await client.query(
+        'INSERT INTO departments (id,name,updated_at) VALUES ($1,$2,now())',
+        [department, tag],
+      );
+      await client.query(
+        `INSERT INTO user_accounts (id,external_subject,display_name,updated_at,account_type)
       VALUES ($1,$2,$3,now(),'INTERNAL'),($4,$5,$6,now(),'INTERNAL'),($7,$8,$9,now(),'CLIENT')`,
-      [
-        userA,
-        `${tag}-a`,
-        '批次A',
-        userB,
-        `${tag}-b`,
-        '批次B',
-        externalUser,
-        `${tag}-external`,
-        '外部客户',
-      ],
-    );
-    await client.query(
-      'INSERT INTO department_memberships (id,user_id,department_id,updated_at) VALUES ($1,$2,$3,now()),($4,$5,$3,now())',
-      [randomUUID(), userA, department, randomUUID(), userB],
-    );
-    await client.query(
-      `INSERT INTO customers
-      (id,name,normalized_name,department_id,responsible_user_id,profile_status,admitted_at,ever_admitted,updated_at)
-      VALUES ($1,$2,$2,$3,$4,'ADMITTED',now(),true,now())`,
-      [customer, tag, department, userA],
-    );
-    await client.query(
-      'INSERT INTO rights_holders (id,name,department_id,updated_at) VALUES ($1,$2,$3,now())',
-      [holder, tag, department],
-    );
-    await client.query(
-      `INSERT INTO customer_account_bindings (id,user_id,customer_id,department_id,updated_at)
+        [
+          userA,
+          `${tag}-a`,
+          '批次A',
+          userB,
+          `${tag}-b`,
+          '批次B',
+          externalUser,
+          `${tag}-external`,
+          '外部客户',
+        ],
+      );
+      await client.query(
+        'INSERT INTO department_memberships (id,user_id,department_id,updated_at) VALUES ($1,$2,$3,now()),($4,$5,$3,now())',
+        [randomUUID(), userA, department, randomUUID(), userB],
+      );
+      await client.query(
+        `INSERT INTO customers
+      (id,name,normalized_name,department_id,responsible_user_id,profile_status,
+       customer_type,identity_type,identity_number,normalized_identity_number,identity_validity_mode,
+       admission_contact_name,admission_contact_phone,admitted_at,ever_admitted,updated_at)
+      VALUES ($1,$2,$2,$3,$4,'ADMITTED','ENTERPRISE','BUSINESS_LICENSE',$5,$5,'LONG_TERM',
+              '合成联系人','13800138000',now(),true,now())`,
+        [
+          customer,
+          tag,
+          department,
+          userA,
+          customer.replaceAll('-', '').slice(0, 18).toUpperCase(),
+        ],
+      );
+      await client.query(
+        'INSERT INTO rights_holders (id,name,department_id,updated_at) VALUES ($1,$2,$3,now())',
+        [holder, tag, department],
+      );
+      await client.query(
+        `INSERT INTO customer_account_bindings (id,user_id,customer_id,department_id,updated_at)
       VALUES ($1,$2,$3,$4,now())`,
-      [bindingId, externalUser, customer, department],
-    );
-    await client.query(
-      `INSERT INTO leads (id,department_id,business_no,customer_id,rights_holder_id,responsible_user_id,
+        [bindingId, externalUser, customer, department],
+      );
+      await client.query(
+        `INSERT INTO leads (id,department_id,business_no,customer_id,rights_holder_id,responsible_user_id,
       status,case_type,source,platform,found_at,shop_name,need_disclose,version,pushed_at,pushed_by_user_id,updated_at)
       VALUES ($1,$2,$3,$4,$5,$6,'WAITING_REVIEW','CIVIL','ONLINE','TAOBAO',now(),$7,false,2,now(),$6,now())`,
-      [leadId, department, `${tag}-lead`, customer, holder, userA, tag],
-    );
-    await client.query(
-      `INSERT INTO lead_review_decisions
+        [leadId, department, `${tag}-lead`, customer, holder, userA, tag],
+      );
+      await client.query(
+        `INSERT INTO lead_review_decisions
       (id,department_id,lead_id,customer_id,reviewer_user_id,customer_account_binding_id,
        reviewer_display_name_snapshot,result,from_version,to_version)
       VALUES ($1,$2,$3,$4,$5,$6,'外部客户','INFRINGEMENT',2,3)`,
-      [decisionId, department, leadId, customer, externalUser, bindingId],
-    );
-    await client.query(
-      `UPDATE leads SET active_review_decision_id=$2,status='WAITING_EVIDENCE_DECISION',version=3
+        [decisionId, department, leadId, customer, externalUser, bindingId],
+      );
+      await client.query(
+        `UPDATE leads SET active_review_decision_id=$2,status='WAITING_EVIDENCE_DECISION',version=3
       WHERE id=$1`,
-      [leadId, decisionId],
-    );
-    await client.query(
-      'INSERT INTO cases (id,business_no,department_id,customer_id,rights_holder_id,responsible_user_id) VALUES ($1,$2,$3,$4,$5,$6)',
-      [caseId, `${tag}-case`, department, customer, holder, userA],
-    );
+        [leadId, decisionId],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    }
+  };
+  const seedExternalCaseForEpoch = async () => {
+    // Before 187, create a real external-entry root with its audit and receipt.
+    // The original notary path needs an issued certificate and cannot be faked.
+    const entryId = randomUUID();
+    const auditId = randomUUID();
+    const timing = (
+      await client.query(
+        "SELECT clock_timestamp()::timestamptz(3) AS recorded_at,(now() AT TIME ZONE 'Asia/Shanghai')::date::text AS stage_date",
+      )
+    ).rows[0];
+    const businessNo = `${tag}-case`;
+    const source = '合成旧版外录案件';
+    const reason = '验证正式外录来源和负责人版本';
+    const known = {
+      courtId: null,
+      courtCaseNo: null,
+      acceptedOn: null,
+      secondInstanceAcceptedOn: null,
+      platform: null,
+      shopName: null,
+      shopExternalId: null,
+      caseType: null,
+      infringementTypes: null,
+    };
+    const idempotencyKey = randomUUID();
+    const normalizedRequest = {
+      idempotencyKey,
+      entryKind: 'EXTERNAL_TRANSFER',
+      initialStage: 'PENDING_MATCH',
+      stageReachedOn: timing.stage_date,
+      source,
+      reason,
+      customerId: customer,
+      rightsHolderId: holder,
+      defendants: [],
+      lawyerAccountId: null,
+      lawyerProfileId: null,
+      known,
+    };
+    const requestFingerprint = createHash('sha256')
+      .update(
+        JSON.stringify({ ...normalizedRequest, idempotencyKey: undefined }),
+      )
+      .digest('hex');
+    await client.query('BEGIN');
+    try {
+      await client.query(
+        'INSERT INTO cases (id,business_no,department_id,customer_id,rights_holder_id,responsible_user_id) VALUES ($1,$2,$3,$4,$5,$6)',
+        [caseId, businessNo, department, customer, holder, userA],
+      );
+      await client.query(
+        `INSERT INTO audit_events
+        (id,department_id,actor_user_id,internal_actor_user_id,resource_type,resource_id,action,details)
+        VALUES ($1,$2,$3,$3,'CASE',$4,'case.external-entry.created',$5)`,
+        [
+          auditId,
+          department,
+          userA,
+          caseId,
+          {
+            entryId,
+            entryKind: 'EXTERNAL_TRANSFER',
+            initialStage: 'PENDING_MATCH',
+            stageReachedOn: timing.stage_date,
+            source,
+            reason,
+          },
+        ],
+      );
+      await client.query(
+        `INSERT INTO case_external_entries
+        (id,case_id,department_id,entry_kind,initial_stage,stage_reached_on,source,reason,
+         known,recorded_by_user_id,recorded_at,audit_event_id)
+        VALUES ($1,$2,$3,'EXTERNAL_TRANSFER','PENDING_MATCH',$4,$5,$6,$7,$8,$9,$10)`,
+        [
+          entryId,
+          caseId,
+          department,
+          timing.stage_date,
+          source,
+          reason,
+          known,
+          userA,
+          timing.recorded_at,
+          auditId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO case_external_entry_receipts
+        (id,department_id,actor_user_id,case_id,idempotency_key,request_fingerprint,result_snapshot)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [
+          randomUUID(),
+          department,
+          userA,
+          caseId,
+          idempotencyKey,
+          requestFingerprint,
+          {
+            id: caseId,
+            businessNo,
+            stage: 'PENDING_MATCH',
+            version: 1,
+            entryId,
+            recordedAt: timing.recorded_at.toISOString(),
+          },
+        ],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    }
   };
   let created = false;
   await client.connect();
@@ -173,6 +300,8 @@ export async function verifyBatch2EmptyMigrationAndEpoch() {
           'utf8',
         ),
       );
+      if (name === '20261027120000_batch2_proxy_flows')
+        await seedExternalCaseForEpoch();
     }
     const legacy = (
       await client.query(
