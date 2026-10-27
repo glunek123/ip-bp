@@ -8,6 +8,12 @@ import { LeadController } from './lead.controller';
 import { LeadBatchPushController } from './lead-batch-push.controller';
 import { LeadNoEvidenceBatchController } from './lead-no-evidence-batch.controller';
 import { LeadCsvImportController } from './lead-csv-import.controller';
+import { LeadImageImportController } from './lead-image-import.controller';
+import {
+  LEAD_IMAGE_DOWNLOADER,
+  LeadImageImportService,
+} from './lead-image-import.service';
+import { downloadLeadImage } from './lead-remote-image';
 import { LeadService } from './lead.service';
 import { NotaryReportsSourceService } from './notary-reports-source.service';
 import {
@@ -53,6 +59,7 @@ import { NotaryRecordEditService } from './notary-record-edit.service';
     LeadBatchPushController,
     LeadNoEvidenceBatchController,
     LeadCsvImportController,
+    LeadImageImportController,
     ClientLeadController,
     ClientNotaryOpeningReviewController,
     ClientNotaryController,
@@ -67,6 +74,8 @@ import { NotaryRecordEditService } from './notary-record-edit.service';
   providers: [
     NotaryReportsSourceService,
     LeadService,
+    LeadImageImportService,
+    { provide: LEAD_IMAGE_DOWNLOADER, useValue: downloadLeadImage },
     ClientLeadService,
     ClientNotaryService,
     LeadNotaryService,

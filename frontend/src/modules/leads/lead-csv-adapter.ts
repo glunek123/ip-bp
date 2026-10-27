@@ -213,7 +213,8 @@ function parseShanghaiTime(raw: string): ValueResult<string> {
 }
 
 function parseCount(raw: string, label: string): ValueResult<number> {
-  const value = raw.trim() || '0';
+  const value = raw.trim();
+  if (!value) return { error: `${label}不能为空；已知为零请填0` };
   if (!/^\d+$/u.test(value)) return { error: `${label}必须是范围内的非负整数` };
   const digits = value.replace(/^0+/u, '') || '0';
   if (digits.length > 10 || BigInt(digits) > 2_147_483_647n)
@@ -353,7 +354,7 @@ function parseProduct(
   };
 }
 
-function mapRow(
+export function mapLegacyLeadRecord(
   record: LeadCsvRecord,
   context: LeadCsvMappingContext,
 ): LeadCsvParsedRow {
@@ -495,7 +496,7 @@ export function parseLeadCsvPreview(
     if (record.cells.every((cell) => cell.trim() === '')) continue;
     if (record.cells.length !== width)
       throw new LeadCsvHeaderError(record.startLine, 'CSV数据行列数与表头不同');
-    const row = mapRow(record, context);
+    const row = mapLegacyLeadRecord(record, context);
     if (row.status === 'valid') {
       const key = fingerprint(row.input);
       const first = seen.get(key);

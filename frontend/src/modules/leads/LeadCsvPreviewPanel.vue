@@ -185,17 +185,17 @@ const display = computed(() => {
     aria-labelledby="lead-csv-preview-title"
     data-test="lead-csv-preview"
   >
-    <h2 id="lead-csv-preview-title">CSV 线索预览</h2>
+    <h2 id="lead-csv-preview-title">线索导入预览</h2>
     <p v-if="display.fileName" data-test="csv-file-name">
       当前文件：{{ display.fileName }}
     </p>
 
     <p v-if="display.phase === 'closed'" data-test="csv-closed">预览已关闭。</p>
     <p v-else-if="display.phase === 'empty'" data-test="csv-empty">
-      尚未选择 CSV 文件。
+      尚未选择导入文件。
     </p>
     <p v-else-if="display.phase === 'reading'" aria-live="polite">
-      正在读取当前 CSV 文件…
+      正在读取当前文件…
     </p>
     <p v-else-if="display.phase === 'error'" role="alert" data-test="csv-error">
       文件读取失败，当前预览已清除。请重新选择文件。
@@ -342,6 +342,34 @@ const display = computed(() => {
                           <dd>{{ product.unitPrice }}</dd>
                           <dt>评论数</dt>
                           <dd>{{ product.commentCount }}</dd>
+                          <dt
+                            v-if="
+                              displayRow.row.remoteScreenshots?.some(
+                                (group) => group.productNumber === index + 1,
+                              )
+                            "
+                          >
+                            待下载截图
+                          </dt>
+                          <dd
+                            v-if="
+                              displayRow.row.remoteScreenshots?.some(
+                                (group) => group.productNumber === index + 1,
+                              )
+                            "
+                          >
+                            <ul>
+                              <li
+                                v-for="url in displayRow.row.remoteScreenshots?.find(
+                                  (group) => group.productNumber === index + 1,
+                                )?.urls ?? []"
+                                :key="url"
+                              >
+                                {{ url }}
+                              </li>
+                            </ul>
+                            导入线索后后台下载；失败时线索仍保留，图片在详情页标记待补。
+                          </dd>
                         </dl>
                       </li>
                     </ol>

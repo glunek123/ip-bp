@@ -305,7 +305,7 @@ describe('LeadCsvImportPanel', () => {
     await wrapper.setProps({ contextKey: 'scope-b' });
     expect(signal.aborted).toBe(true);
     expect(wrapper.find('[data-test="csv-file-name"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('尚未选择 CSV 文件。');
+    expect(wrapper.text()).toContain('尚未选择导入文件。');
 
     await chooseFile(wrapper, 'B.csv');
     const secondSignal = parseFile.mock.calls[1]?.[1] as AbortSignal;
@@ -364,7 +364,7 @@ describe('LeadCsvImportPanel', () => {
     expect(parseFile).toHaveBeenCalledTimes(2);
     expect(submitAttempt).toHaveBeenCalledTimes(submittedCount);
     await update;
-    expect(wrapper.text()).toContain('尚未选择 CSV 文件。');
+    expect(wrapper.text()).toContain('尚未选择导入文件。');
 
     const currentFileInput = captureFileInputHandler(wrapper);
     await invokeFileHandler(currentFileInput, 'C.csv');

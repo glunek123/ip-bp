@@ -16,6 +16,12 @@ export type LeadCsvImportInput = Omit<
 export type LeadCsvImportItem = Readonly<{
   rowNumber: number;
   input: LeadCsvImportInput;
+  remoteScreenshots?: readonly {
+    productNumber: number;
+    sourceGroupNumber: number;
+    urls: readonly string[];
+  }[];
+  operatorText?: string;
 }>;
 
 export type LeadCsvImportAttempt = Readonly<{
@@ -208,11 +214,36 @@ function isImportInput(value: unknown): value is LeadCsvImportInput {
 function isImportItem(value: unknown): value is LeadCsvImportItem {
   return (
     isRecord(value) &&
-    hasExactKeys(value, ['rowNumber', 'input']) &&
+    hasExactKeys(
+      value,
+      ['rowNumber', 'input'],
+      ['remoteScreenshots', 'operatorText'],
+    ) &&
     Number.isSafeInteger(value.rowNumber) &&
     (value.rowNumber as number) >= 2 &&
     (value.rowNumber as number) <= 2_097_153 &&
-    isImportInput(value.input)
+    isImportInput(value.input) &&
+    (value.operatorText === undefined ||
+      (typeof value.operatorText === 'string' &&
+        value.operatorText.trim().length > 0 &&
+        value.operatorText.length <= 200)) &&
+    (value.remoteScreenshots === undefined ||
+      (Array.isArray(value.remoteScreenshots) &&
+        value.remoteScreenshots.every(
+          (group: unknown) =>
+            isRecord(group) &&
+            hasExactKeys(group, [
+              'productNumber',
+              'sourceGroupNumber',
+              'urls',
+            ]) &&
+            Number.isInteger(group.productNumber) &&
+            Number(group.productNumber) >= 1 &&
+            Number.isInteger(group.sourceGroupNumber) &&
+            Number(group.sourceGroupNumber) >= 1 &&
+            Array.isArray(group.urls) &&
+            group.urls.every((url: unknown) => typeof url === 'string'),
+        )))
   );
 }
 
@@ -258,7 +289,24 @@ function freezeItem(item: LeadCsvImportItem): LeadCsvImportItem {
   Object.freeze(input.products);
   Object.freeze(input.leadScreenshotContentVersionIds);
   Object.freeze(input);
-  return Object.freeze({ rowNumber: item.rowNumber, input });
+  return Object.freeze({
+    rowNumber: item.rowNumber,
+    input,
+    ...(item.operatorText ? { operatorText: item.operatorText } : {}),
+    ...(item.remoteScreenshots
+      ? {
+          remoteScreenshots: Object.freeze(
+            item.remoteScreenshots.map((group) =>
+              Object.freeze({
+                productNumber: group.productNumber,
+                sourceGroupNumber: group.sourceGroupNumber,
+                urls: Object.freeze([...group.urls]),
+              }),
+            ),
+          ),
+        }
+      : {}),
+  });
 }
 
 function freezeAttempt(attempt: FrozenLeadCsvImport): FrozenLeadCsvImport {

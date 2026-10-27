@@ -70,7 +70,7 @@ const base = [
   '备注',
   '',
   '商品甲',
-  '',
+  '0',
   '1.50',
   '3',
 ];
@@ -102,7 +102,7 @@ describe('lead CSV business adapter', () => {
     });
   });
 
-  it('maps exact authorized identities, multiple products, Shanghai time and numeric defaults', () => {
+  it('maps exact authorized identities, multiple products, Shanghai time and explicit zeros', () => {
     const columns = [
       ...header,
       '商品2链接',
@@ -395,9 +395,9 @@ describe('lead CSV business adapter', () => {
       row.push(
         '',
         product === 100 ? '末商品' : '',
-        '',
+        product === 100 ? '0' : '',
         product === 100 ? '0.00' : '',
-        '',
+        product === 100 ? '0' : '',
       );
     }
     const parsed = parseLeadCsvPreview(csv([row], columns), context);

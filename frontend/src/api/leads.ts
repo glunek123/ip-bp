@@ -106,6 +106,12 @@ export type LeadCsvImportInput = Omit<
 export type LeadCsvImportItem = Readonly<{
   rowNumber: number;
   input: LeadCsvImportInput;
+  remoteScreenshots?: readonly {
+    productNumber: number;
+    sourceGroupNumber: number;
+    urls: readonly string[];
+  }[];
+  operatorText?: string;
 }>;
 export type UpdateLeadInput = LeadMutableBusinessInput & {
   expectedVersion: number;
@@ -636,11 +642,40 @@ function isLeadCsvImportInput(value: unknown): value is LeadCsvImportInput {
 
 function isLeadCsvImportItem(value: unknown): value is LeadCsvImportItem {
   return (
-    hasExactKeys(value, ['rowNumber', 'input']) &&
+    isRecord(value) &&
+    Object.hasOwn(value, 'rowNumber') &&
+    Object.hasOwn(value, 'input') &&
+    Object.keys(value).every((key) =>
+      ['rowNumber', 'input', 'remoteScreenshots', 'operatorText'].includes(key),
+    ) &&
     Number.isInteger(value.rowNumber) &&
     (value.rowNumber as number) >= 2 &&
     (value.rowNumber as number) <= 2_097_153 &&
-    isLeadCsvImportInput(value.input)
+    isLeadCsvImportInput(value.input) &&
+    (value.operatorText === undefined ||
+      (typeof value.operatorText === 'string' &&
+        value.operatorText.trim().length > 0 &&
+        value.operatorText.length <= 200)) &&
+    (value.remoteScreenshots === undefined ||
+      (Array.isArray(value.remoteScreenshots) &&
+        value.remoteScreenshots.length <= 100 &&
+        value.remoteScreenshots.every(
+          (group: unknown) =>
+            isRecord(group) &&
+            hasExactKeys(group, [
+              'productNumber',
+              'sourceGroupNumber',
+              'urls',
+            ]) &&
+            Number.isInteger(group.productNumber) &&
+            Number(group.productNumber) >= 1 &&
+            Number.isInteger(group.sourceGroupNumber) &&
+            Number(group.sourceGroupNumber) >= 1 &&
+            Array.isArray(group.urls) &&
+            group.urls.length >= 1 &&
+            group.urls.length <= 20 &&
+            group.urls.every((url: unknown) => typeof url === 'string'),
+        )))
   );
 }
 
@@ -1211,6 +1246,16 @@ export async function importLeadCsvBatch(
 
   const capturedItems: LeadCsvImportItem[] = items.map((item) => ({
     rowNumber: item.rowNumber,
+    ...(item.operatorText ? { operatorText: item.operatorText } : {}),
+    ...(item.remoteScreenshots
+      ? {
+          remoteScreenshots: item.remoteScreenshots.map((group) => ({
+            productNumber: group.productNumber,
+            sourceGroupNumber: group.sourceGroupNumber,
+            urls: [...group.urls],
+          })),
+        }
+      : {}),
     input: {
       ...item.input,
       infringementTypes: [...item.input.infringementTypes],
@@ -1219,15 +1264,26 @@ export async function importLeadCsvBatch(
     },
   }));
   const body = {
-    items: capturedItems.map(({ rowNumber, input }) => ({
-      rowNumber,
-      input: {
-        ...input,
-        infringementTypes: [...input.infringementTypes],
-        products: input.products.map((product) => ({ ...product })),
-        leadScreenshotContentVersionIds: [],
-      },
-    })),
+    items: capturedItems.map(
+      ({ rowNumber, input, remoteScreenshots, operatorText }) => ({
+        rowNumber,
+        ...(operatorText ? { operatorText } : {}),
+        ...(remoteScreenshots
+          ? {
+              remoteScreenshots: remoteScreenshots.map((group) => ({
+                ...group,
+                urls: [...group.urls],
+              })),
+            }
+          : {}),
+        input: {
+          ...input,
+          infringementTypes: [...input.infringementTypes],
+          products: input.products.map((product) => ({ ...product })),
+          leadScreenshotContentVersionIds: [],
+        },
+      }),
+    ),
   };
   const bodyBytes = new TextEncoder().encode(JSON.stringify(body)).length;
   if (bodyBytes > maxLeadCsvImportBodyBytes)

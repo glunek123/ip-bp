@@ -45,8 +45,13 @@ function fixture() {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
     },
+    leadImageImportTask: { create: jest.fn().mockResolvedValue({}) },
     departmentMembership: {
       findFirst: jest.fn().mockResolvedValue({ teamId: null }),
+      count: jest.fn().mockResolvedValue(1),
+    },
+    userAccount: {
+      findFirst: jest.fn().mockResolvedValue({ displayName: '运营甲' }),
     },
     customer: {
       findFirst: jest
@@ -291,6 +296,60 @@ describe('LeadService CSV import', () => {
     expect(f.database.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: 'Serializable',
     });
+  });
+
+  it('queues a screenshot against the exact created product without delaying the lead transaction', async () => {
+    const f = fixture();
+    const inputRequest = request();
+    inputRequest.items = [
+      {
+        ...inputRequest.items[0]!,
+        operatorText: '运营甲',
+        remoteScreenshots: [
+          {
+            productNumber: 1,
+            sourceGroupNumber: 3,
+            urls: ['https://images.example/one.png'],
+          },
+        ],
+      },
+    ];
+    const result = await f.service.importBatch(
+      actor,
+      'image-key',
+      inputRequest,
+    );
+    expect(result.items).toHaveLength(1);
+    expect(f.tx.leadImageImportTask.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        rowNumber: 2,
+        productNumber: 3,
+        productId: result.items[0]!.lead.products[0]!.id,
+        url: 'https://images.example/one.png',
+      }),
+    });
+    expect(
+      f.tx.leadCsvImportReceipt.create.mock.calls[0]?.[0].data
+        .remoteFingerprint,
+    ).toMatch(/^[0-9a-f]{64}$/u);
+  });
+
+  it('rejects an ambiguous operator name before creating any lead', async () => {
+    const f = fixture();
+    f.tx.departmentMembership.count.mockResolvedValue(2);
+    const inputRequest = request();
+    inputRequest.items = [
+      { ...inputRequest.items[0]!, operatorText: '运营甲' },
+    ];
+    await expect(
+      f.service.importBatch(actor, 'operator-key', inputRequest),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'CSV_IMPORT_REJECTED',
+        details: { failures: [{ rowNumber: 2, code: 'VALIDATION_ERROR' }] },
+      },
+    });
+    expect(f.tx.lead.create).not.toHaveBeenCalled();
   });
 
   it('preflights every customer and writes nothing if a later row is unavailable', async () => {

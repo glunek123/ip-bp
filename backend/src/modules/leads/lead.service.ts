@@ -1114,7 +1114,18 @@ export class LeadService {
     };
     if (Buffer.byteLength(JSON.stringify(originalRequest), 'utf8') > 92_160)
       throw this.validation();
+    if (Buffer.byteLength(JSON.stringify(input), 'utf8') > 92_160)
+      throw this.validation();
     const fingerprint = this.csvFingerprint(originalRequest);
+    const remoteRequest = items.map((item) => ({
+      screenshots: item.remoteScreenshots ?? [],
+      operatorText: item.operatorText ?? null,
+    }));
+    const remoteFingerprint = remoteRequest.some(
+      (entry) => entry.screenshots.length || entry.operatorText,
+    )
+      ? this.csvFingerprint(remoteRequest)
+      : null;
     try {
       if (!(await this.access.canAuthorizeNewLead(actor)))
         throw this.actionForbidden();
@@ -1137,6 +1148,7 @@ export class LeadService {
                 receipt,
                 idempotencyKey,
                 fingerprint,
+                remoteFingerprint,
               );
 
             const membership = await tx.departmentMembership.findFirst({
@@ -1174,6 +1186,33 @@ export class LeadService {
             const failures: LeadCsvFailure[] = [];
             for (const [index, item] of items.entries()) {
               try {
+                if (item.operatorText !== undefined) {
+                  const operator = await tx.userAccount.findFirst({
+                    where: {
+                      id: actor.userId,
+                      active: true,
+                      accountType: 'INTERNAL',
+                    },
+                    select: { displayName: true },
+                  });
+                  const count = await tx.departmentMembership.count({
+                    where: {
+                      departmentId: actor.departmentId,
+                      active: true,
+                      user: {
+                        displayName: item.operatorText,
+                        active: true,
+                        accountType: 'INTERNAL',
+                      },
+                    },
+                  });
+                  if (
+                    !operator ||
+                    operator.displayName !== item.operatorText ||
+                    count !== 1
+                  )
+                    throw this.validation();
+                }
                 normalized.push(this.normalizeBusiness(item.input));
                 customerBusinessIds.push(
                   await this.assertCustomerAndHolder(
@@ -1253,6 +1292,26 @@ export class LeadService {
                 rowNumber: item.rowNumber,
                 lead: this.view(created, []),
               });
+              for (const group of item.remoteScreenshots ?? []) {
+                const product = created.products.find(
+                  (entry) => entry.position === group.productNumber,
+                );
+                if (!product) throw this.validation();
+                for (const url of group.urls) {
+                  await tx.leadImageImportTask.create({
+                    data: {
+                      departmentId: actor.departmentId,
+                      actorUserId: actor.userId,
+                      leadId,
+                      productId: product.id,
+                      rowNumber: item.rowNumber,
+                      productNumber: group.sourceGroupNumber,
+                      url,
+                      urlSha256: createHash('sha256').update(url).digest('hex'),
+                    },
+                  });
+                }
+              }
             }
             await tx.leadCsvImportReceipt.create({
               data: {
@@ -1260,6 +1319,7 @@ export class LeadService {
                 actorUserId: actor.userId,
                 idempotencyKey,
                 requestFingerprint: fingerprint,
+                remoteFingerprint,
                 originalRequest,
                 resultSnapshot: result,
               },
@@ -1284,6 +1344,7 @@ export class LeadService {
               receipt,
               idempotencyKey,
               fingerprint,
+              remoteFingerprint,
             );
         }
         throw this.mapAuthorization(error);
@@ -1304,7 +1365,19 @@ export class LeadService {
           !Number.isInteger(item.rowNumber) ||
           item.rowNumber < 2 ||
           item.rowNumber > 2097153 ||
-          Object.keys(item).length !== 2 ||
+          Object.keys(item).some(
+            (key) =>
+              ![
+                'rowNumber',
+                'input',
+                'remoteScreenshots',
+                'operatorText',
+              ].includes(key),
+          ) ||
+          (item.operatorText !== undefined &&
+            (typeof item.operatorText !== 'string' ||
+              !item.operatorText.trim() ||
+              item.operatorText.length > 200)) ||
           !item.input ||
           typeof item.input !== 'object' ||
           csvRequiredInputKeys.some((key) => !Object.hasOwn(item.input, key)) ||
@@ -1322,6 +1395,37 @@ export class LeadService {
               typeof product !== 'object' ||
               Object.keys(product).some((key) => !csvProductKeys.has(key)),
           ) ||
+          (item.remoteScreenshots !== undefined &&
+            (!Array.isArray(item.remoteScreenshots) ||
+              item.remoteScreenshots.length > item.input.products.length ||
+              new Set(
+                item.remoteScreenshots.map((group) => group?.productNumber),
+              ).size !== item.remoteScreenshots.length ||
+              item.remoteScreenshots.reduce(
+                (count, group) =>
+                  count + (Array.isArray(group?.urls) ? group.urls.length : 21),
+                0,
+              ) > 20 ||
+              item.remoteScreenshots.some(
+                (group) =>
+                  !group ||
+                  !Number.isInteger(group.sourceGroupNumber) ||
+                  group.sourceGroupNumber < 1 ||
+                  group.sourceGroupNumber > 100 ||
+                  !Number.isInteger(group.productNumber) ||
+                  group.productNumber < 1 ||
+                  group.productNumber > item.input.products.length ||
+                  !Array.isArray(group.urls) ||
+                  group.urls.length < 1 ||
+                  group.urls.length > 20 ||
+                  new Set(group.urls).size !== group.urls.length ||
+                  group.urls.some(
+                    (url) =>
+                      typeof url !== 'string' ||
+                      url.length > 2048 ||
+                      !/^https?:\/\//iu.test(url),
+                  ),
+              ))) ||
           Object.hasOwn(item.input, 'reservedLeadId'),
       ) ||
       new Set(input.items.map((item) => item.rowNumber)).size !==
@@ -1372,6 +1476,7 @@ export class LeadService {
     receipt: LeadCsvImportReceipt,
     idempotencyKey: string,
     fingerprint: string,
+    remoteFingerprint: string | null = null,
   ): Promise<LeadCsvImportResponse> {
     if (
       receipt.departmentId !== actor.departmentId ||
@@ -1494,7 +1599,10 @@ export class LeadService {
       }
     }
     if (failures.length) throw this.csvRejected(failures);
-    if (receipt.requestFingerprint !== fingerprint)
+    if (
+      receipt.requestFingerprint !== fingerprint ||
+      receipt.remoteFingerprint !== remoteFingerprint
+    )
       throw this.idempotencyConflict();
     const currentNumbers = new Map(
       leads.map((lead) => [lead.id, lead.businessNo]),

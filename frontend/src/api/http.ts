@@ -172,6 +172,28 @@ export function requestBinary(
   );
 }
 
+export function postTypedBinary(
+  path: string,
+  body: Blob,
+  contentType: string,
+  options: RequestOptions = {},
+): Promise<unknown> {
+  return executeRequest(
+    path,
+    {
+      ...options,
+      method: 'POST',
+      body,
+      headers: {
+        Accept: 'application/json',
+        ...options.headers,
+        'Content-Type': contentType,
+      },
+    },
+    parseJsonSuccess,
+  );
+}
+
 export function getBlob(
   path: string,
   options: RequestOptions = {},

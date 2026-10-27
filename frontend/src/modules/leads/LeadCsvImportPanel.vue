@@ -16,6 +16,20 @@ import type {
   LeadCsvImportSubmitOutcome,
 } from './lead-csv-import-recovery';
 import LeadCsvPreviewPanel from './LeadCsvPreviewPanel.vue';
+import {
+  previewLeadWorkbook,
+  downloadLeadWorkbookTemplate,
+  type LeadWorkbookSheet,
+} from '../../api/lead-workbook';
+import { parseLeadCsvRecords } from './lead-csv-parser';
+import {
+  leadImportFields,
+  mapLeadTableRows,
+  officialLeadColumns,
+  suggestLeadColumnMapping,
+  type LeadColumnMapping,
+  type LeadTableRecord,
+} from './lead-import-table';
 
 const props = defineProps<{
   open: boolean;
@@ -52,6 +66,58 @@ const confirmationSent = ref(false);
 const selectionError = ref('');
 const fileError = ref('');
 const submitError = ref('');
+const workbookSheets = ref<LeadWorkbookSheet[]>([]);
+const sheetIndex = ref<number | null>(null);
+const headerIndex = ref<number | null>(null);
+const fieldColumns = ref<Record<string, number | null>>({});
+const ignoredConfirmed = ref(false);
+const pendingGeneration = ref<number | null>(null);
+const sourceRows = computed<LeadTableRecord[]>(() =>
+  sheetIndex.value === null
+    ? []
+    : (workbookSheets.value[sheetIndex.value]?.rows ?? []),
+);
+const header = computed(() =>
+  headerIndex.value === null
+    ? null
+    : (sourceRows.value[headerIndex.value] ?? null),
+);
+const mappingFields = computed(() => {
+  const numbered = Object.keys(fieldColumns.value).flatMap((field) => {
+    const match = /(?:商品名称|商品链接|销量|单价|评论数|截图)(\d+)$/u.exec(
+      field,
+    );
+    return match ? [Number(match[1])] : [];
+  });
+  return leadImportFields(Math.max(10, ...numbered));
+});
+const baseMappingFields = leadImportFields(1);
+const numberedGroups = computed(() =>
+  Array.from(
+    { length: (mappingFields.value.length - baseMappingFields.length) / 6 },
+    (_, index) => index + 2,
+  ),
+);
+const groupFields = (number: number) =>
+  ['商品名称', '商品链接', '销量', '单价', '评论数', '截图'].map(
+    (field) => `${field}${number}`,
+  );
+const extraColumns = computed(
+  () =>
+    header.value?.cells.flatMap((label, index) =>
+      label.trim() && !Object.values(fieldColumns.value).includes(index)
+        ? [{ index, label }]
+        : [],
+    ) ?? [],
+);
+const rawPreviewRows = computed(() =>
+  headerIndex.value === null
+    ? []
+    : sourceRows.value
+        .slice(headerIndex.value + 1)
+        .filter((row) => row.cells.some((cell) => cell.trim()))
+        .slice(0, 3),
+);
 let mounted = true;
 let activeRead: { generation: number; controller: AbortController } | null =
   null;
@@ -91,6 +157,12 @@ function resetSession(isOpen: boolean): void {
   selectionError.value = '';
   fileError.value = '';
   submitError.value = '';
+  workbookSheets.value = [];
+  sheetIndex.value = null;
+  headerIndex.value = null;
+  fieldColumns.value = {};
+  ignoredConfirmed.value = false;
+  pendingGeneration.value = null;
   if (isOpen) session.open();
   else session.cancel();
   syncSnapshot();
@@ -175,7 +247,7 @@ async function chooseFile(
   syncSnapshot();
   if (generation === null) return;
   if (file.size > 2 * 1024 * 1024) {
-    fileError.value = 'CSV 文件不能超过 2 MiB。';
+    fileError.value = '导入文件不能超过 2 MiB。';
     session.failFile(generation);
     syncSnapshot();
     return;
@@ -184,17 +256,38 @@ async function chooseFile(
   const controller = new AbortController();
   activeRead = { generation, controller };
   try {
-    let rows: readonly LeadCsvParsedRow[];
+    let rows: readonly LeadCsvParsedRow[] | null = null;
     if (props.parseFile) {
       rows = await props.parseFile(
         file,
         controller.signal,
         mappingContext.value,
       );
+    } else if (/\.xlsx$/iu.test(file.name)) {
+      workbookSheets.value = await previewLeadWorkbook(file, {
+        signal: controller.signal,
+      });
     } else {
       const bytes = await readBytes(file, controller.signal);
       if (controller.signal.aborted || !mounted) return;
-      rows = await parseLeadCsvPreview(bytes, mappingContext.value);
+      const records = parseLeadCsvRecords(bytes, {
+        maxBytes: 2 * 1024 * 1024,
+        maxRecords: 1001,
+        maxColumns: 620,
+      });
+      try {
+        rows = parseLeadCsvPreview(bytes, mappingContext.value);
+      } catch {
+        workbookSheets.value = [
+          {
+            name: 'CSV',
+            rows: records.map((record) => ({
+              rowNumber: record.startLine,
+              cells: [...record.cells],
+            })),
+          },
+        ];
+      }
     }
     if (
       !mounted ||
@@ -204,7 +297,11 @@ async function chooseFile(
       authorizationGenerationAtRender !== props.authorizationGeneration
     )
       return;
-    session.acceptParsed(generation, rows);
+    if (rows) session.acceptParsed(generation, rows);
+    else {
+      pendingGeneration.value = generation;
+      if (workbookSheets.value.length === 1) chooseSheet(0);
+    }
   } catch {
     if (
       mounted &&
@@ -213,13 +310,95 @@ async function chooseFile(
       contextKeyAtRender === props.contextKey &&
       authorizationGenerationAtRender === props.authorizationGeneration
     ) {
-      fileError.value = '无法解析当前 CSV 文件，请检查编码、表头和内容。';
+      fileError.value = '无法解析当前导入文件，请检查格式、表头和内容。';
       session.failFile(generation);
     }
   } finally {
     if (activeRead?.generation === generation) activeRead = null;
     if (mounted) syncSnapshot();
   }
+}
+
+function chooseSheet(index: number): void {
+  if (
+    !Number.isInteger(index) ||
+    index < 0 ||
+    index >= workbookSheets.value.length
+  )
+    return;
+  sheetIndex.value = index;
+  headerIndex.value = null;
+  fieldColumns.value = {};
+  ignoredConfirmed.value = false;
+  const candidates = sourceRows.value.slice(0, 20).flatMap((row, rowIndex) => {
+    const guess = suggestLeadColumnMapping(row.cells);
+    return guess.missingFields.length === 0 &&
+      Object.values(guess.fields).filter((value) => value !== null).length >= 15
+      ? [rowIndex]
+      : [];
+  });
+  if (candidates.length === 1) chooseHeader(candidates[0]!);
+}
+
+function chooseHeader(index: number): void {
+  if (
+    !Number.isInteger(index) ||
+    index < 0 ||
+    index >= Math.min(20, sourceRows.value.length)
+  )
+    return;
+  headerIndex.value = index;
+  fieldColumns.value = {
+    ...suggestLeadColumnMapping(sourceRows.value[index]!.cells).fields,
+  };
+  ignoredConfirmed.value = false;
+}
+
+function confirmMapping(): void {
+  const generation = pendingGeneration.value;
+  if (generation === null || !header.value || headerIndex.value === null)
+    return;
+  const chosen = Object.values(fieldColumns.value).filter(
+    (value): value is number => value !== null && value !== undefined,
+  );
+  if (new Set(chosen).size !== chosen.length) {
+    fileError.value = '一个源列不能映射多个字段。';
+    return;
+  }
+  const base = suggestLeadColumnMapping(header.value.cells);
+  const mapping: LeadColumnMapping = {
+    ...base,
+    fields: { ...fieldColumns.value },
+    missingFields: officialLeadColumns.filter(
+      (field) =>
+        !['案件单号', '店铺ID', '线索备注', '运营', '截图'].includes(field) &&
+        fieldColumns.value[field] == null,
+    ),
+  };
+  if (mapping.missingFields.length) {
+    fileError.value = `缺少必要字段：${mapping.missingFields.join('、')}`;
+    return;
+  }
+  if (extraColumns.value.length && !ignoredConfirmed.value) {
+    fileError.value = '请先确认忽略未映射的列。';
+    return;
+  }
+  const rows = mapLeadTableRows(
+    sourceRows.value.slice(headerIndex.value + 1),
+    mapping,
+    mappingContext.value,
+  );
+  if (rows.length > 1000) {
+    fileError.value = '单个文件最多1000条数据行。';
+    return;
+  }
+  if (!session.acceptParsed(generation, rows)) {
+    fileError.value = '导入预览已过期，请重新选择文件。';
+    return;
+  }
+  pendingGeneration.value = null;
+  fileError.value = '';
+  syncSnapshot();
 }
 
 function selectRows(request: {
@@ -253,30 +432,51 @@ function freezeItems(
   selection: LeadCsvSelection,
 ): readonly LeadCsvImportItem[] {
   return Object.freeze(
-    selection.rows.map(({ rowNumber, input: selected }) => {
-      const infringementTypes = Object.freeze([...selected.infringementTypes]);
-      const products = Object.freeze(
-        selected.products.map((product) => Object.freeze({ ...product })),
-      );
-      const input = Object.freeze({
-        customerId: selected.customerId,
-        rightsHolderId: selected.rightsHolderId,
-        caseType: selected.caseType,
-        infringementTypes,
-        source: selected.source,
-        platform: selected.platform,
-        foundAt: selected.foundAt,
-        shopName: selected.shopName,
-        ...(selected.shopExternalId === undefined
-          ? {}
-          : { shopExternalId: selected.shopExternalId }),
-        needDisclose: selected.needDisclose,
-        ...(selected.remark === undefined ? {} : { remark: selected.remark }),
-        products,
-        leadScreenshotContentVersionIds: Object.freeze([]) as readonly [],
-      });
-      return Object.freeze({ rowNumber, input });
-    }),
+    selection.rows.map(
+      ({ rowNumber, input: selected, remoteScreenshots, operatorText }) => {
+        const infringementTypes = Object.freeze([
+          ...selected.infringementTypes,
+        ]);
+        const products = Object.freeze(
+          selected.products.map((product) => Object.freeze({ ...product })),
+        );
+        const input = Object.freeze({
+          customerId: selected.customerId,
+          rightsHolderId: selected.rightsHolderId,
+          caseType: selected.caseType,
+          infringementTypes,
+          source: selected.source,
+          platform: selected.platform,
+          foundAt: selected.foundAt,
+          shopName: selected.shopName,
+          ...(selected.shopExternalId === undefined
+            ? {}
+            : { shopExternalId: selected.shopExternalId }),
+          needDisclose: selected.needDisclose,
+          ...(selected.remark === undefined ? {} : { remark: selected.remark }),
+          products,
+          leadScreenshotContentVersionIds: Object.freeze([]) as readonly [],
+        });
+        return Object.freeze({
+          rowNumber,
+          input,
+          ...(operatorText ? { operatorText } : {}),
+          ...(remoteScreenshots
+            ? {
+                remoteScreenshots: Object.freeze(
+                  remoteScreenshots.map((group) =>
+                    Object.freeze({
+                      productNumber: group.productNumber,
+                      sourceGroupNumber: group.sourceGroupNumber,
+                      urls: Object.freeze([...group.urls]),
+                    }),
+                  ),
+                ),
+              }
+            : {}),
+        });
+      },
+    ),
   );
 }
 
@@ -371,17 +571,32 @@ function cancelRequest(request: { generation: number }): void {
   emit('closeRequest');
 }
 
-function downloadTemplate(): void {
-  const content = createLeadCsvTemplate(mappingContext.value);
-  const blob = new globalThis.Blob([`\uFEFF${content}`], {
-    type: 'text/csv;charset=utf-8',
-  });
+function saveTemplate(blob: globalThis.Blob, name: string): void {
   const url = globalThis.URL.createObjectURL(blob);
   const anchor = globalThis.document.createElement('a');
   anchor.href = url;
-  anchor.download = '线索导入模板.csv';
+  anchor.download = name;
   anchor.click();
   globalThis.URL.revokeObjectURL(url);
+}
+
+async function downloadTemplate(): Promise<void> {
+  try {
+    const result = await downloadLeadWorkbookTemplate();
+    saveTemplate(result.blob, '线索导入模板.xlsx');
+  } catch {
+    fileError.value = '无法下载 Excel 模板。';
+  }
+}
+
+function downloadCsvTemplate(): void {
+  const content = createLeadCsvTemplate(mappingContext.value);
+  saveTemplate(
+    new globalThis.Blob([`\uFEFF${content}`], {
+      type: 'text/csv;charset=utf-8',
+    }),
+    '旧版线索导入模板.csv',
+  );
 }
 
 onBeforeUnmount(() => {
@@ -398,30 +613,148 @@ onBeforeUnmount(() => {
     class="demo-card demo-card--pad"
     data-test="csv-import-panel"
   >
-    <h2>导入线索 CSV</h2>
+    <h2>导入线索 Excel / CSV</h2>
     <p>
-      单个文件最多 2 MiB；每次最多提交 20 条线索，实际请求还受 90 KiB
-      上限约束。解析完成不表示全文件可以一次提交。
+      单个文件最多 2 MiB、1000 条数据行；每次最多提交 20 条线索，实际请求还受 90
+      KiB 上限约束。解析完成不表示全文件可以一次提交。
     </p>
     <ElButton
       data-test="csv-download-template"
       :disabled="submitting"
       @click="downloadTemplate"
     >
-      下载 CSV 模板
+      下载 Excel 模板（19 列，预留 10 组商品）
     </ElButton>
+    <ElButton :disabled="submitting" @click="downloadCsvTemplate"
+      >下载旧版 CSV 模板</ElButton
+    >
     <label>
-      选择 CSV 文件
+      选择 Excel 或 CSV 文件
       <input
         :key="`${contextKey}:${authorizationGeneration}:${snapshot.generation}`"
         ref="input"
         type="file"
-        accept=".csv,text/csv"
+        accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         :disabled="submitting || confirmationSent"
         data-test="csv-file-input"
         v-on="{ change: display.onFileChange }"
       />
     </label>
+    <div v-if="pendingGeneration !== null" data-test="lead-column-mapping">
+      <label v-if="workbookSheets.length > 1"
+        >工作表
+        <select
+          :value="sheetIndex ?? ''"
+          @change="
+            chooseSheet(Number(($event.target as HTMLSelectElement).value))
+          "
+        >
+          <option value="" disabled>请选择工作表</option>
+          <option
+            v-for="(sheet, index) in workbookSheets"
+            :key="index"
+            :value="index"
+          >
+            {{ sheet.name }}
+          </option>
+        </select>
+      </label>
+      <label v-if="sheetIndex !== null"
+        >表头行
+        <select
+          :value="headerIndex ?? ''"
+          @change="
+            chooseHeader(Number(($event.target as HTMLSelectElement).value))
+          "
+        >
+          <option value="" disabled>请选择表头行</option>
+          <option
+            v-for="(row, index) in sourceRows.slice(0, 20)"
+            :key="row.rowNumber"
+            :value="index"
+          >
+            第 {{ row.rowNumber }} 行：{{ row.cells.slice(0, 4).join(' / ') }}
+          </option>
+        </select>
+      </label>
+      <template v-if="header">
+        <p>请核对字段对应。重复、歧义或未识别列需手动处理。</p>
+        <label v-for="field in baseMappingFields" :key="field"
+          >{{ field }}
+          <select
+            v-model.number="fieldColumns[field]"
+            @change="ignoredConfirmed = false"
+          >
+            <option :value="null">不映射</option>
+            <option
+              v-for="(label, index) in header.cells"
+              :key="index"
+              :value="index"
+            >
+              {{ index + 1 }}：{{ label || '（空列）' }}
+            </option>
+          </select>
+        </label>
+        <details v-for="number in numberedGroups" :key="number">
+          <summary>商品 {{ number }} 的列</summary>
+          <label v-for="field in groupFields(number)" :key="field"
+            >{{ field }}
+            <select
+              v-model.number="fieldColumns[field]"
+              @change="ignoredConfirmed = false"
+            >
+              <option :value="null">不映射</option>
+              <option
+                v-for="(label, index) in header.cells"
+                :key="index"
+                :value="index"
+              >
+                {{ index + 1 }}：{{ label || '（空列）' }}
+              </option>
+            </select>
+          </label>
+        </details>
+        <p v-if="extraColumns.length">
+          未导入列：{{
+            extraColumns
+              .map((item) => `${item.index + 1} ${item.label}`)
+              .join('、')
+          }}
+        </p>
+        <label v-if="extraColumns.length"
+          ><input
+            v-model="ignoredConfirmed"
+            type="checkbox"
+          />我确认忽略上述列的数据</label
+        >
+        <details v-if="rawPreviewRows.length">
+          <summary>查看前 {{ rawPreviewRows.length }} 行原始数据</summary>
+          <div style="overflow-x: auto">
+            <table>
+              <thead>
+                <tr>
+                  <th>行</th>
+                  <th v-for="(label, index) in header.cells" :key="index">
+                    {{ label || `第${index + 1}列` }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in rawPreviewRows" :key="row.rowNumber">
+                  <td>{{ row.rowNumber }}</td>
+                  <td v-for="(_, index) in header.cells" :key="index">
+                    {{ row.cells[index] ?? '' }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+        <ElButton data-test="lead-confirm-mapping" @click="confirmMapping"
+          >确认映射并预览数据</ElButton
+        >
+      </template>
+    </div>
     <p v-if="fileError" role="alert" data-test="csv-file-error">
       {{ fileError }}
     </p>

@@ -8,6 +8,11 @@ import MaterialPreviewDialog from '../../app/MaterialPreviewDialog.vue';
 import { getLead, type LeadDetail } from '../../api/leads';
 import { updateLeadProductScreenshots } from '../../api/leads';
 import {
+  getLeadImageImports,
+  retryLeadImageImport,
+  type LeadImageImportTask,
+} from '../../api/lead-workbook';
+import {
   downloadMaterialVersion,
   listOwnerMaterials,
   uploadMaterialFile,
@@ -63,6 +68,39 @@ const productScreenshotMetadata = ref(new Map<string, ProductScreenshot>());
 const productScreenshotBusy = ref(new Set<string>());
 const productScreenshotUncertain = ref(new Set<string>());
 const screenshotMessage = ref('');
+const imageTasks = ref<LeadImageImportTask[]>([]);
+const imageTaskError = ref('');
+const retryUrls = ref<Record<string, string>>({});
+let imagePoll: ReturnType<typeof globalThis.setInterval> | undefined;
+const tasksForProduct = (productId: string) =>
+  imageTasks.value.filter((task) => task.productId === productId);
+function imageFailureMessage(code: string | null): string {
+  const messages: Record<string, string> = {
+    INVALID_URL: '链接格式无效',
+    BLOCKED_ADDRESS: '链接指向不可访问的地址',
+    HTTP_ERROR: '链接无法直接下载',
+    INVALID_IMAGE: '返回内容不是有效图片',
+    TOO_LARGE: '图片超过大小限制',
+    TIMEOUT: '下载超时',
+    NOT_AUTHORIZED: '当前无权附加截图',
+    PROCESSING_TIMEOUT: '处理超时',
+    PROCESSING_ERROR: '保存图片失败',
+  };
+  return messages[code ?? ''] ?? '处理失败';
+}
+async function retryImageTask(task: LeadImageImportTask): Promise<void> {
+  const url = retryUrls.value[task.id] ?? task.url;
+  try {
+    await retryLeadImageImport(taskProductLeadId(), task.id, url);
+    imageTaskError.value = '';
+    imageTasks.value = await getLeadImageImports(taskProductLeadId());
+  } catch (error) {
+    imageTaskError.value = error instanceof Error ? error.message : '重试失败';
+  }
+}
+function taskProductLeadId(): string {
+  return String(route.params.id);
+}
 const selectedScreenshot = ref<{
   materialId: string;
   versionId: string;
@@ -153,6 +191,7 @@ async function load(): Promise<void> {
   lead.value = undefined;
   screenshots.value = [];
   productScreenshotMetadata.value = new Map();
+  imageTasks.value = [];
   selectedScreenshot.value = undefined;
   transferredMatter.value = undefined;
   transferSuccess.value = '';
@@ -224,7 +263,39 @@ async function load(): Promise<void> {
           ),
         ),
     );
+    try {
+      imageTasks.value = await getLeadImageImports(current.id, {
+        signal: controller.signal,
+      });
+    } catch {
+      imageTaskError.value = '图片导入状态暂不可用，请刷新重试。';
+    }
     state.value = 'ready';
+    if (imagePoll) globalThis.clearInterval(imagePoll);
+    imagePoll = globalThis.setInterval(() => {
+      if (
+        !imageTasks.value.some((task) =>
+          ['PENDING', 'LEASED', 'STORED'].includes(task.status),
+        )
+      )
+        return;
+      const scope = requestScopeKey.value;
+      void getLeadImageImports(current.id)
+        .then((next) => {
+          if (scope !== requestScopeKey.value) return;
+          const becameAttached = next.some(
+            (item) =>
+              item.status === 'ATTACHED' &&
+              imageTasks.value.find((previous) => previous.id === item.id)
+                ?.status !== 'ATTACHED',
+          );
+          imageTasks.value = next;
+          if (becameAttached) void load();
+        })
+        .catch(() => {
+          imageTaskError.value = '图片导入状态暂不可用，请刷新重试。';
+        });
+    }, 5_000);
   } catch (error) {
     if (
       controller.signal.aborted ||
@@ -379,6 +450,8 @@ function handleScreenshotUnavailable(status: 403 | 404): void {
       : '截图文件已不存在，请刷新线索资料';
 }
 function clearContext() {
+  if (imagePoll) globalThis.clearInterval(imagePoll);
+  imagePoll = undefined;
   contextGeneration += 1;
   request?.abort();
   for (const controller of downloadRequests) controller.abort();
@@ -641,6 +714,41 @@ onBeforeUnmount(clearContext);
                       @remove="removeProductScreenshot(product.id, $event)"
                       @replace="replaceProductScreenshots(product.id, $event)"
                     />
+                    <ul
+                      v-if="tasksForProduct(product.id).length"
+                      data-test="lead-image-import-tasks"
+                    >
+                      <li
+                        v-for="task in tasksForProduct(product.id)"
+                        :key="task.id"
+                      >
+                        导入第 {{ task.rowNumber }} 行／商品组
+                        {{ task.productNumber }}：
+                        {{
+                          task.status === 'ATTACHED'
+                            ? '已保存到系统'
+                            : task.status === 'FAILED'
+                              ? `待补：${imageFailureMessage(task.failureCode)}`
+                              : '下载处理中'
+                        }}
+                        <span class="mono">{{ task.url }}</span>
+                        <template
+                          v-if="
+                            task.status === 'FAILED' &&
+                            lead.capabilities.productScreenshotsEdit
+                          "
+                        >
+                          <input
+                            v-model="retryUrls[task.id]"
+                            :placeholder="task.url"
+                            aria-label="补充图片链接"
+                          />
+                          <ElButton @click="retryImageTask(task)"
+                            >重试链接</ElButton
+                          >
+                        </template>
+                      </li>
+                    </ul>
                   </td>
                 </tr>
               </tbody>
@@ -668,6 +776,7 @@ onBeforeUnmount(clearContext);
           <p v-if="screenshotMessage" role="status" class="field-help">
             {{ screenshotMessage }}
           </p>
+          <p v-if="imageTaskError" role="alert">{{ imageTaskError }}</p>
           <div class="lead-unassigned-screenshots" data-test="lead-attachments">
             <h3>截图（商品归属待关联）</h3>
             <p class="field-help">

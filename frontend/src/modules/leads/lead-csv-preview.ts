@@ -6,6 +6,12 @@ export type LeadCsvParsedRow =
       status: 'valid';
       input: CreateLeadInput;
       suspectedDuplicates: readonly string[];
+      remoteScreenshots?: readonly {
+        productNumber: number;
+        sourceGroupNumber: number;
+        urls: readonly string[];
+      }[];
+      operatorText?: string;
     }
   | {
       rowNumber: number;
@@ -31,6 +37,12 @@ export type LeadCsvSelection = Readonly<{
   rows: readonly Readonly<{
     rowNumber: number;
     input: LeadCsvSelectedInput;
+    remoteScreenshots?: readonly {
+      productNumber: number;
+      sourceGroupNumber: number;
+      urls: readonly string[];
+    }[];
+    operatorText?: string;
   }>[];
 }>;
 
@@ -50,6 +62,16 @@ function copyRow(row: LeadCsvParsedRow): LeadCsvParsedRow {
         status: 'valid',
         input: copyInput(row.input),
         suspectedDuplicates: [...row.suspectedDuplicates],
+        ...(row.remoteScreenshots
+          ? {
+              remoteScreenshots: row.remoteScreenshots.map((group) => ({
+                productNumber: group.productNumber,
+                sourceGroupNumber: group.sourceGroupNumber,
+                urls: [...group.urls],
+              })),
+            }
+          : {}),
+        ...(row.operatorText ? { operatorText: row.operatorText } : {}),
       }
     : { rowNumber: row.rowNumber, status: 'invalid', errors: [...row.errors] };
 }
@@ -139,6 +161,22 @@ export class LeadCsvPreviewSession {
                 Object.freeze({
                   rowNumber: row.rowNumber,
                   input: captureInput(row.input),
+                  ...(row.remoteScreenshots
+                    ? {
+                        remoteScreenshots: Object.freeze(
+                          row.remoteScreenshots.map((group) =>
+                            Object.freeze({
+                              productNumber: group.productNumber,
+                              sourceGroupNumber: group.sourceGroupNumber,
+                              urls: Object.freeze([...group.urls]),
+                            }),
+                          ),
+                        ),
+                      }
+                    : {}),
+                  ...(row.operatorText
+                    ? { operatorText: row.operatorText }
+                    : {}),
                 }),
               ]
             : [],

@@ -55,6 +55,25 @@ afterEach(() => {
 });
 
 describe('lead CSV import recovery', () => {
+  it('retains screenshot URLs and operator text in the exact idempotent retry body', () => {
+    const withImage = {
+      ...item(2),
+      operatorText: '运营甲',
+      remoteScreenshots: [
+        {
+          productNumber: 1,
+          sourceGroupNumber: 3,
+          urls: ['https://images.example/a.png'],
+        },
+      ],
+    };
+    const saved = attempt([withImage]);
+    expect(savePendingLeadCsvImports({ [actorIdentity]: saved })).toBe(true);
+    const recovered = readPendingLeadCsvImports()?.[actorIdentity];
+    expect(recovered?.items[0]).toEqual(withImage);
+    expect(sameLeadCsvImport(recovered!, saved)).toBe(true);
+    expect(sameLeadCsvImport(recovered!, attempt([item(2)]))).toBe(false);
+  });
   it('starts empty and stores only a frozen actor, key and exact selected items', () => {
     expect(readPendingLeadCsvImports()).toEqual({});
     const saved = attempt([item(3, '第三行'), item(7, '第七行')]);

@@ -851,6 +851,7 @@ model AuthThrottle {
 }
 
 model DepartmentMembership {
+  leadImageImportTasks LeadImageImportTask[] @relation("LeadImageImportActor")
   caseHandlingGroupEvents CaseHandlingGroupEvent[]
   caseHandlingGroupReceipts CaseHandlingGroupReceipt[]
   settlementLaunches CaseSettlementLaunch[] @relation("SettlementLaunchInternalActor")
@@ -1424,6 +1425,7 @@ model Material {
 }
 
 model ContentVersion {
+  leadImageImportTasks LeadImageImportTask[]
   feeCancellationPayments FeeCancellationPayment[] @relation("FeeCancellationPaymentProofContent")
   feeRefundReconciliations FeeRefundReconciliation[] @relation("FeeRefundReconciliationProofContent")
   productScreenshot LeadProductScreenshot?
@@ -1753,6 +1755,7 @@ model CustomerAdmissionReceipt {
 
 model Lead {
   productScreenshots LeadProductScreenshot[]
+  imageImportTasks LeadImageImportTask[]
   id                     String                      @id @default(uuid()) @db.Uuid
   departmentId           String                      @map("department_id") @db.Uuid
   businessNo             String                      @unique @map("business_no") @db.VarChar(100)
@@ -1964,10 +1967,39 @@ model LeadProduct {
   lead             Lead                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
   notarySelections NotaryMatterProduct[]
   screenshots      LeadProductScreenshot[]
+  imageImportTasks LeadImageImportTask[]
 
   @@unique([id, leadId], map: "lead_products_id_lead_id_key")
   @@unique([leadId, position])
   @@map("lead_products")
+}
+
+model LeadImageImportTask {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  leadId String @map("lead_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  rowNumber Int @map("row_number")
+  productNumber Int @map("product_number")
+  url String @db.VarChar(2048)
+  urlSha256 String @map("url_sha256") @db.Char(64)
+  status String @default("PENDING") @db.VarChar(20)
+  attemptCount Int @default(0) @map("attempt_count")
+  leaseUntil DateTime? @map("lease_until") @db.Timestamptz(3)
+  contentVersionId String? @map("content_version_id") @db.Uuid
+  failureCode String? @map("failure_code") @db.VarChar(60)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  lead Lead @relation(fields: [leadId, departmentId], references: [id, departmentId], onDelete: Restrict)
+  product LeadProduct @relation(fields: [productId, leadId], references: [id, leadId], onDelete: Restrict)
+  actorMembership DepartmentMembership @relation("LeadImageImportActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  contentVersion ContentVersion? @relation(fields: [contentVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([leadId, productId, urlSha256])
+  @@index([status, leaseUntil, createdAt])
+  @@index([departmentId, actorUserId, createdAt])
+  @@map("lead_image_import_tasks")
 }
 
 model LeadProductScreenshot {
@@ -3828,6 +3860,7 @@ model LeadCsvImportReceipt {
   actorUserId        String               @map("actor_user_id") @db.Uuid
   idempotencyKey     String               @map("idempotency_key") @db.VarChar(128)
   requestFingerprint String               @map("request_fingerprint") @db.Char(64)
+  remoteFingerprint String? @map("remote_fingerprint") @db.Char(64)
   originalRequest    Json                 @map("original_request")
   resultSnapshot     Json                 @map("result_snapshot")
   department         Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)

@@ -631,7 +631,18 @@ function handleCsvImported(
   const current = readPendingLeadCsvImports()?.[attempt.actorIdentity];
   if (!current || !sameLeadCsvImport(current, { ...attempt, uncertain: true }))
     return;
-  csvSuccessMessage.value = `已导入 ${result.items.length} 条线索。`;
+  const imageCount = attempt.items.reduce(
+    (total, item) =>
+      total +
+      (item.remoteScreenshots ?? []).reduce(
+        (subtotal, group) => subtotal + group.urls.length,
+        0,
+      ),
+    0,
+  );
+  csvSuccessMessage.value = imageCount
+    ? `已导入 ${result.items.length} 条线索；${imageCount} 张截图正在后台下载。失败截图会保留线索并在详情页标为待补。`
+    : `已导入 ${result.items.length} 条线索。`;
   notifyWorkflowChanged();
   if (!clearCsvAttempt(current))
     csvContextError.value = '导入已创建，但本地未决记录无法清除。';

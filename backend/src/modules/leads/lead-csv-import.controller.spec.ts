@@ -7,6 +7,7 @@ import {
 import { of } from 'rxjs';
 import { INTERCEPTORS_METADATA } from '@nestjs/common/constants';
 import { ActorContext } from '../../access-control/actor-context';
+import { AccessControlService } from '../../access-control/access-control.service';
 import {
   LeadCsvImportBodyLimitInterceptor,
   LeadCsvImportController,
@@ -20,9 +21,12 @@ describe('LeadCsvImportController', () => {
 
   it('passes a trimmed key and unchanged batch to the service', async () => {
     const importBatch = jest.fn().mockResolvedValue({ items: [] });
-    const controller = new LeadCsvImportController({
-      importBatch,
-    } as unknown as LeadService);
+    const controller = new LeadCsvImportController(
+      {
+        importBatch,
+      } as unknown as LeadService,
+      {} as AccessControlService,
+    );
     await expect(
       controller.importBatch(actor, ' batch-key ', body),
     ).resolves.toEqual({ items: [] });
@@ -33,9 +37,12 @@ describe('LeadCsvImportController', () => {
     'rejects missing or oversized key %#',
     (key) => {
       const importBatch = jest.fn();
-      const controller = new LeadCsvImportController({
-        importBatch,
-      } as unknown as LeadService);
+      const controller = new LeadCsvImportController(
+        {
+          importBatch,
+        } as unknown as LeadService,
+        {} as AccessControlService,
+      );
       expect(() => controller.importBatch(actor, key, body)).toThrow(
         BadRequestException,
       );
