@@ -254,6 +254,7 @@ export async function verifyBatch2LeadImportUpgrade() {
     const crossDepartmentActorId = randomUUID();
     const teamId = randomUUID();
     const customerId = randomUUID();
+    const contactId = randomUUID();
     const holderId = randomUUID();
     for (const id of [departmentId, otherDepartmentId])
       await query(
@@ -282,18 +283,89 @@ export async function verifyBatch2LeadImportUpgrade() {
         'INSERT INTO department_memberships(id,user_id,department_id,team_id,updated_at) VALUES($1,$2,$3,$4,now())',
         [randomUUID(), userId, deptId, memberTeamId],
       );
-    await query(
-      `INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,updated_at)
-      VALUES($1,'合成客户','合成客户',$2,$3,now())`,
-      [customerId, departmentId, actorId],
+    // This owned schema is before the separately authorized numbering cutover.
+    // A NULL historical business_id is legal only while its counter is -1.
+    check(
+      (await count(
+        query,
+        'SELECT count(*) AS n FROM customer_business_number_counters WHERE singleton_id=1 AND last_value=-1',
+      )) === 1,
+      'Owned schema already crossed the customer numbering cutover',
     );
-    await query(
-      'INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES($1,$2,$3,now())',
-      [holderId, '合成主体', departmentId],
-    );
-    await query(
-      'INSERT INTO customer_rights_holder_links(id,customer_id,rights_holder_id,department_id) VALUES($1,$2,$3,$4)',
-      [randomUUID(), customerId, holderId, departmentId],
+    const customerIdentity = `91310000${nonce.slice(0, 10).toUpperCase()}`;
+    await query('BEGIN');
+    try {
+      await query(
+        `INSERT INTO customers(id,name,normalized_name,customer_type,identity_type,
+          identity_number,normalized_identity_number,identity_validity_mode,
+          department_id,responsible_user_id,cooperation_status,updated_at)
+         VALUES($1,'合成客户','合成客户','ENTERPRISE','BUSINESS_LICENSE',
+          $2,$2,'LONG_TERM',$3,$4,'COOPERATING',now())`,
+        [customerId, customerIdentity, departmentId, actorId],
+      );
+      await query(
+        `INSERT INTO customer_contacts(id,customer_id,department_id,name,phone,origin,
+          created_by_user_id,updated_by_user_id)
+         VALUES($1,$2,$3,'合成联系人','13800000000','ADMISSION_FREEFORM',$4,$4)`,
+        [contactId, customerId, departmentId, actorId],
+      );
+      await query(
+        `UPDATE customers SET profile_status='ADMITTED',admitted_at=now(),
+          admission_contact_name='合成联系人',admission_contact_phone='13800000000',
+          compatibility_contact_id=$2,admission_contact_snapshot_name='合成联系人',
+          admission_contact_snapshot_phone='13800000000',
+          admission_contact_snapshot_source='NEW_ADMISSION',
+          admission_contact_snapshot_frozen_at=now(),version=version+1,updated_at=now()
+         WHERE id=$1`,
+        [customerId, contactId],
+      );
+      await query(
+        'INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES($1,$2,$3,now())',
+        [holderId, '合成主体', departmentId],
+      );
+      await query(
+        'INSERT INTO customer_rights_holder_links(id,customer_id,rights_holder_id,department_id) VALUES($1,$2,$3,$4)',
+        [randomUUID(), customerId, holderId, departmentId],
+      );
+      await query('COMMIT');
+    } catch (error) {
+      await query('ROLLBACK');
+      throw error;
+    }
+    const eligibleCustomer = (
+      await query(
+        `SELECT profile_status,cooperation_status,ever_admitted,admitted_at,
+          customer_type,identity_type,identity_number,normalized_identity_number,
+          identity_validity_mode,identity_valid_to,deleted_at,compatibility_contact_id,
+          admission_contact_name,admission_contact_phone,
+          admission_contact_snapshot_name,admission_contact_snapshot_phone,
+          admission_contact_snapshot_source,admission_contact_snapshot_frozen_at,
+          business_id FROM customers WHERE id=$1`,
+        [customerId],
+      )
+    ).rows[0];
+    check(
+      eligibleCustomer?.profile_status === 'ADMITTED' &&
+        eligibleCustomer.cooperation_status === 'COOPERATING' &&
+        eligibleCustomer.ever_admitted === true &&
+        eligibleCustomer.admitted_at !== null &&
+        eligibleCustomer.customer_type === 'ENTERPRISE' &&
+        eligibleCustomer.identity_type === 'BUSINESS_LICENSE' &&
+        eligibleCustomer.identity_number === customerIdentity &&
+        eligibleCustomer.normalized_identity_number === customerIdentity &&
+        eligibleCustomer.identity_validity_mode === 'LONG_TERM' &&
+        eligibleCustomer.identity_valid_to === null &&
+        eligibleCustomer.deleted_at === null &&
+        eligibleCustomer.compatibility_contact_id === contactId &&
+        eligibleCustomer.admission_contact_name === '合成联系人' &&
+        eligibleCustomer.admission_contact_phone === '13800000000' &&
+        eligibleCustomer.admission_contact_snapshot_name === '合成联系人' &&
+        eligibleCustomer.admission_contact_snapshot_phone === '13800000000' &&
+        eligibleCustomer.admission_contact_snapshot_source ===
+          'NEW_ADMISSION' &&
+        eligibleCustomer.admission_contact_snapshot_frozen_at !== null &&
+        eligibleCustomer.business_id === null,
+      'Synthetic customer is not eligible for the historical lead',
     );
 
     const oldLeadId = randomUUID();
