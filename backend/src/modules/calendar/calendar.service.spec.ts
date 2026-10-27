@@ -147,6 +147,7 @@ describe('CalendarService', () => {
     const service = { summary: jest.fn(), snapshot: jest.fn() };
     const controller = new CalendarController(
       service as unknown as CalendarService,
+      {} as never,
     );
     const actor = { userId: 'u', departmentId: 'd', authorizationRevision: 1 };
     expect(() => controller.summary(actor, { extra: 'x' })).toThrow(

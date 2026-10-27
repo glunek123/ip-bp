@@ -1,4 +1,7 @@
 export const prismaModelOwners = Object.freeze({
+  CalendarManualItem: 'calendar',
+  CalendarReminderRead: 'calendar',
+  CaseRefundApplication: 'calendar',
   CaseSettlementTerms: 'settlements',
   CaseSettlementLaunch: 'settlements',
   SettlementBill: 'settlements',

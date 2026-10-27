@@ -16,6 +16,19 @@ export type CaseCalendarFact = {
   judge: string | null;
 };
 
+export type CaseOwnedReminderFact = {
+  sourceType:
+    | 'FIRST_INSTANCE_HEARING'
+    | 'SECOND_INSTANCE_HEARING'
+    | 'FIRST_INSTANCE_JUDGMENT'
+    | 'SECOND_INSTANCE_RESULT';
+  sourceId: string;
+  date: string;
+  caseId: string;
+  businessNo: string;
+  ownerEpoch: string;
+};
+
 type Principal = 'INTERNAL' | 'LAWYER' | 'CLIENT';
 const calendarDate = (value: Date): string => value.toISOString().slice(0, 10);
 const forbidden = () =>
@@ -237,5 +250,107 @@ export class CaseCalendarSourceService {
     if (JSON.stringify(actual) !== JSON.stringify([...facts].sort(factOrder)))
       throw forbidden();
     if ((await this.principal(actor)) !== principal) throw forbidden();
+  }
+
+  // Published owner-only projection for due reminders. Ordinary calendar
+  // readers keep their existing broader read model; that model is not a
+  // recipient list. The case owner has no transfer command in this version.
+  async listOwnedReminders(
+    actor: ActorContext,
+  ): Promise<CaseOwnedReminderFact[]> {
+    const principal = await this.principal(actor);
+    if (principal !== 'INTERNAL') return [];
+    const read = async (): Promise<CaseOwnedReminderFact[]> => {
+      const scope = { ...this.where(actor, principal) };
+      delete scope.OR;
+      const cases = await this.database.case.findMany({
+        where: { ...scope, responsibleUserId: actor.userId },
+        select: {
+          id: true,
+          responsibilityEpoch: true,
+          businessNo: true,
+          currentHearingArrangement: {
+            select: {
+              id: true,
+              hearingAt: true,
+              recordCorrections: {
+                orderBy: { toRevision: 'desc' },
+                take: 1,
+                select: { hearingAt: true },
+              },
+            },
+          },
+          currentSecondInstanceProgress: {
+            select: { id: true, hearingAt: true },
+          },
+          judgmentFacts: {
+            where: { kind: 'REGISTER', trialRound: { revokedAt: null } },
+            select: { id: true, recordedAt: true },
+          },
+          secondInstanceResults: {
+            where: {
+              revocation: { is: null },
+              trialRound: { revokedAt: null },
+            },
+            select: { id: true, recordedAt: true },
+          },
+        },
+      });
+      const facts: CaseOwnedReminderFact[] = [];
+      for (const item of cases) {
+        const add = (
+          sourceType: CaseOwnedReminderFact['sourceType'],
+          sourceId: string,
+          date: string,
+        ) =>
+          facts.push({
+            sourceType,
+            sourceId,
+            date,
+            caseId: item.id,
+            businessNo: item.businessNo,
+            ownerEpoch: `${item.id}:${item.responsibilityEpoch}`,
+          });
+        const first = item.currentHearingArrangement;
+        const corrected = first?.recordCorrections[0];
+        const firstDate =
+          corrected === undefined ? first?.hearingAt : corrected.hearingAt;
+        if (first && firstDate)
+          add('FIRST_INSTANCE_HEARING', first.id, calendarDate(firstDate));
+        const second = item.currentSecondInstanceProgress;
+        if (second?.hearingAt)
+          add(
+            'SECOND_INSTANCE_HEARING',
+            second.id,
+            calendarDate(second.hearingAt),
+          );
+        for (const fact of item.judgmentFacts)
+          add(
+            'FIRST_INSTANCE_JUDGMENT',
+            fact.id,
+            calendarDate(
+              new Date(fact.recordedAt.getTime() + 8 * 60 * 60 * 1000),
+            ),
+          );
+        for (const result of item.secondInstanceResults)
+          add(
+            'SECOND_INSTANCE_RESULT',
+            result.id,
+            calendarDate(
+              new Date(result.recordedAt.getTime() + 8 * 60 * 60 * 1000),
+            ),
+          );
+      }
+      return facts.sort(
+        (a, b) =>
+          a.sourceType.localeCompare(b.sourceType) ||
+          a.sourceId.localeCompare(b.sourceId),
+      );
+    };
+    const facts = await read();
+    if (JSON.stringify(facts) !== JSON.stringify(await read()))
+      throw forbidden();
+    await this.principal(actor);
+    return facts;
   }
 }

@@ -19,10 +19,20 @@ const api = vi.hoisted(() => ({
       (month: string, options?: RequestOptions) => Promise<CalendarSnapshot>
     >(),
   summary: vi.fn<(options?: RequestOptions) => Promise<CalendarSummary>>(),
+  manual: vi.fn(),
+  refunds: vi.fn(),
+  createManual: vi.fn(),
+  updateManual: vi.fn(),
 }));
 vi.mock('../../api/calendar', () => ({
   getCalendarSnapshot: api.snapshot,
   getCalendarSummary: api.summary,
+}));
+vi.mock('../../api/calendar-reminders', () => ({
+  listManualCalendar: api.manual,
+  listRefundCalendar: api.refunds,
+  createManualCalendar: api.createManual,
+  updateManualCalendar: api.updateManual,
 }));
 enableAutoUnmount(afterEach);
 
@@ -162,6 +172,8 @@ async function render(
 }
 beforeEach(() => {
   vi.resetAllMocks();
+  api.manual.mockResolvedValue([]);
+  api.refunds.mockResolvedValue([]);
   api.snapshot.mockImplementation(async (month) => snapshot(month));
   api.summary.mockResolvedValue(snapshot());
 });
@@ -170,6 +182,36 @@ afterEach(() => {
 });
 
 describe('CalendarPage', () => {
+  it('shows own manual and formal refund dates beside existing court and agreement sources', async () => {
+    api.manual.mockResolvedValue([
+      {
+        id: 'manual-1',
+        title: '本人事项',
+        eventDate: '2026-10-20',
+        note: '准备文件',
+        version: 1,
+      },
+    ]);
+    api.refunds.mockResolvedValue([
+      {
+        sourceType: 'FIRST_INSTANCE_JUDGMENT',
+        sourceId: 'judgment-1',
+        caseId: 'case-1',
+        dueDate: '2026-10-28',
+        title: '一审判决退费待核',
+        businessNo: '案-1',
+        applied: false,
+      },
+    ]);
+    const { wrapper } = await render();
+    expect(wrapper.findAll('.calendar-event')).toHaveLength(5);
+    expect(wrapper.get('.calendar-personal').text()).toContain('本人事项');
+    expect(
+      wrapper
+        .get('[data-event-key="FIRST_INSTANCE_JUDGMENT:judgment-1"]')
+        .text(),
+    ).toContain('退费');
+  });
   it('uses only official month data and stable metrics with missing-source labels and server today', async () => {
     const { wrapper } = await render();
     expect(api.snapshot).toHaveBeenCalledWith('2026-10', {

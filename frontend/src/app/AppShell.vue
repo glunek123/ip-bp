@@ -3,7 +3,14 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError, setSessionIdentity } from '../api/http';
+import { nextBeijingNineDelay } from './reminder-clock';
 import { getCalendarSummary } from '../api/calendar';
+import {
+  listDueReminders,
+  markReminderRead,
+  registerRefundApplication,
+  type DueReminder,
+} from '../api/calendar-reminders';
 import { getSettlementContext } from '../api/settlements';
 import { listEvidence } from '../api/evidence';
 import { getReportsCapability } from '../api/reports';
@@ -21,6 +28,7 @@ import { leadStatusCards } from '../modules/leads/lead-options';
 import { useAuthStore } from '../stores/auth';
 import {
   calendarSummaryReadEvent,
+  notifyWorkflowChanged,
   workflowChangedEvent,
 } from './workflow-events';
 
@@ -45,6 +53,19 @@ const internalCaseCounts = ref<Record<
   Record<CaseStage, number>
 > | null>(null);
 const calendarCount = ref<number | null>(null);
+const dueReminders = ref<DueReminder[]>([]);
+const remindersOpen = ref(false);
+const reminderError = ref('');
+const refundSource = ref<DueReminder | null>(null);
+const refundDate = ref('');
+const refundNote = ref('');
+const reminderBusy = ref(false);
+let reminderRevision = 0;
+let reminderTimer: ReturnType<typeof globalThis.setInterval> | undefined;
+let reminderNineTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
+const unreadReminderCount = computed(
+  () => dueReminders.value.filter((item) => item.readAt === null).length,
+);
 let calendarSummaryRevision = 0;
 const countRevision = ref(0);
 const expandedGroup = ref<
@@ -161,6 +182,122 @@ const calendarIdentity = computed(() => {
         session.customer?.id,
         session.authorizationRevision,
       ]);
+});
+async function refreshReminders(): Promise<void> {
+  const currentIdentity = identity.value;
+  const currentRevision = ++reminderRevision;
+  if (auth.session?.principalType !== 'INTERNAL' || currentIdentity === null) {
+    dueReminders.value = [];
+    return;
+  }
+  try {
+    const items = await listDueReminders();
+    if (
+      currentIdentity === identity.value &&
+      currentRevision === reminderRevision
+    ) {
+      dueReminders.value = items;
+      reminderError.value = '';
+    }
+  } catch {
+    if (
+      currentIdentity === identity.value &&
+      currentRevision === reminderRevision
+    )
+      reminderError.value = '提醒暂时无法读取';
+  }
+}
+async function readReminder(item: DueReminder): Promise<void> {
+  if (reminderBusy.value) return;
+  reminderBusy.value = true;
+  try {
+    await markReminderRead(item);
+    await refreshReminders();
+  } catch (error) {
+    reminderError.value =
+      error instanceof ApiError ? error.message : '标记已读失败';
+  } finally {
+    reminderBusy.value = false;
+  }
+}
+function openRefund(item: DueReminder): void {
+  refundSource.value = item;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const part = (type: string) =>
+    parts.find((entry) => entry.type === type)!.value;
+  refundDate.value = `${part('year')}-${part('month')}-${part('day')}`;
+  refundNote.value = '';
+}
+async function saveRefund(): Promise<void> {
+  const item = refundSource.value;
+  if (!item || reminderBusy.value) return;
+  reminderBusy.value = true;
+  try {
+    await registerRefundApplication(
+      item,
+      refundDate.value,
+      refundNote.value || null,
+    );
+    refundSource.value = null;
+    notifyWorkflowChanged();
+    await refreshReminders();
+  } catch (error) {
+    reminderError.value =
+      error instanceof ApiError ? error.message : '登记失败';
+  } finally {
+    reminderBusy.value = false;
+  }
+}
+function onReminderResume(): void {
+  void refreshReminders();
+}
+function onReminderVisibility(): void {
+  if (globalThis.document.visibilityState === 'visible')
+    void refreshReminders();
+}
+function scheduleBeijingNine(): void {
+  reminderNineTimer = globalThis.setTimeout(() => {
+    void refreshReminders();
+    scheduleBeijingNine();
+  }, nextBeijingNineDelay(new Date()));
+}
+watch(
+  identity,
+  () => {
+    dueReminders.value = [];
+    refundSource.value = null;
+    remindersOpen.value = false;
+    void refreshReminders();
+  },
+  { immediate: true },
+);
+onMounted(() => {
+  reminderTimer = globalThis.setInterval(onReminderResume, 60_000);
+  scheduleBeijingNine();
+  globalThis.window.addEventListener('focus', onReminderResume);
+  globalThis.window.addEventListener('online', onReminderResume);
+  globalThis.window.addEventListener(workflowChangedEvent, onReminderResume);
+  globalThis.document.addEventListener(
+    'visibilitychange',
+    onReminderVisibility,
+  );
+});
+onBeforeUnmount(() => {
+  if (reminderTimer) globalThis.clearInterval(reminderTimer);
+  if (reminderNineTimer) globalThis.clearTimeout(reminderNineTimer);
+  globalThis.window.removeEventListener('focus', onReminderResume);
+  globalThis.window.removeEventListener('online', onReminderResume);
+  globalThis.window.removeEventListener(workflowChangedEvent, onReminderResume);
+  globalThis.document.removeEventListener(
+    'visibilitychange',
+    onReminderVisibility,
+  );
+  reminderRevision += 1;
 });
 watch(
   [calendarIdentity, countRevision],
@@ -1398,6 +1535,82 @@ async function logout(): Promise<void> {
             }}</span>
           </template>
         </nav>
+        <div
+          v-if="auth.session?.principalType === 'INTERNAL'"
+          class="app-reminders"
+        >
+          <button
+            type="button"
+            class="app-reminders__toggle"
+            :aria-expanded="remindersOpen"
+            @click="
+              remindersOpen = !remindersOpen;
+              if (remindersOpen) refreshReminders();
+            "
+          >
+            提醒
+            <span v-if="unreadReminderCount > 0">{{
+              unreadReminderCount
+            }}</span>
+          </button>
+          <section
+            v-if="remindersOpen"
+            class="app-reminders__panel"
+            aria-label="到期提醒"
+          >
+            <header>
+              <strong>到期提醒</strong
+              ><button type="button" @click="remindersOpen = false">
+                关闭
+              </button>
+            </header>
+            <p v-if="reminderError" role="alert">{{ reminderError }}</p>
+            <p v-if="dueReminders.length === 0">暂无到期事项</p>
+            <ul v-else>
+              <li
+                v-for="item in dueReminders"
+                :key="`${item.sourceType}:${item.sourceId}:${item.sourceEpoch}:${item.eventDate}`"
+              >
+                <span>{{ item.title }} · {{ item.dueAt.slice(0, 10) }}</span>
+                <small v-if="item.note">{{ item.note }}</small>
+                <span v-if="item.readAt">已读</span>
+                <button
+                  v-else
+                  type="button"
+                  :disabled="reminderBusy"
+                  @click="readReminder(item)"
+                >
+                  标记已读
+                </button>
+                <button
+                  v-if="
+                    item.sourceType === 'FIRST_INSTANCE_JUDGMENT' ||
+                    item.sourceType === 'SECOND_INSTANCE_RESULT'
+                  "
+                  type="button"
+                  @click="openRefund(item)"
+                >
+                  登记已申请
+                </button>
+              </li>
+            </ul>
+            <div v-if="refundSource" class="app-reminders__refund">
+              <strong>登记真实申请</strong>
+              <label>申请日期 <input v-model="refundDate" type="date" /></label>
+              <label
+                >备注 <input v-model="refundNote" maxlength="1000"
+              /></label>
+              <button
+                type="button"
+                :disabled="reminderBusy"
+                @click="saveRefund"
+              >
+                保存
+              </button>
+              <button type="button" @click="refundSource = null">取消</button>
+            </div>
+          </section>
+        </div>
       </header>
       <main
         class="app-content"
