@@ -3,6 +3,8 @@ export declare function verifyBatch2CaseConsolidationMigration(): Promise<{
   preserved: number;
   tables: number;
   incompleteRoot: string | null;
+  rootAfterFailed: number;
+  incompleteRootRetry: string | null;
   childProgress: string | null;
   immutableMember: string | null;
   mainProgress: string | null;
