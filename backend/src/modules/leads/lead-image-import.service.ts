@@ -86,55 +86,84 @@ export class LeadImageImportService implements OnModuleInit, OnModuleDestroy {
       !/^https?:\/\//iu.test(url)
     )
       throw new ConflictException({ code: 'INVALID_IMAGE_URL' });
-    const scope = await this.access.buildLeadScope(actor, 'lead.edit');
-    const lead = await this.database.lead.findFirst({
-      where: { id: leadId, ...scope },
-      select: { id: true, status: true },
+    return this.database.$transaction(async (tx) => {
+      const scope = await this.access.buildLeadScope(actor, 'lead.edit', tx);
+      const lead = await tx.lead.findFirst({
+        where: { id: leadId, ...scope },
+        select: { id: true, status: true },
+      });
+      if (!lead) throw new NotFoundException({ code: 'NOT_AVAILABLE' });
+      if (lead.status === 'ARCHIVED')
+        throw new ForbiddenException({ code: 'ARCHIVED_READ_ONLY' });
+      const task = await tx.leadImageImportTask.findFirst({
+        where: { id: taskId, leadId, departmentId: actor.departmentId },
+      });
+      if (!task) throw new NotFoundException({ code: 'NOT_AVAILABLE' });
+      if (task.status !== 'FAILED')
+        throw new ConflictException({ code: 'IMAGE_TASK_NOT_FAILED' });
+      const hash = createHash('sha256').update(url).digest('hex');
+      const duplicate = await tx.leadImageImportTask.findFirst({
+        where: {
+          leadId,
+          productId: task.productId,
+          urlSha256: hash,
+          id: { not: taskId },
+        },
+        select: { id: true },
+      });
+      if (duplicate)
+        throw new ConflictException({ code: 'IMAGE_URL_ALREADY_QUEUED' });
+      const priorActorId = task.retryActorUserId ?? task.actorUserId;
+      const priorVersion = task.uploadDraftId
+        ? await tx.contentVersion.findUnique({
+            where: { sourceUploadDraftId: task.uploadDraftId },
+            select: { id: true },
+          })
+        : null;
+      const keepDraft =
+        hash === task.urlSha256 &&
+        (priorActorId === actor.userId || priorVersion !== null);
+      const result = await tx.leadImageImportTask.updateMany({
+        where: {
+          id: taskId,
+          leadId,
+          departmentId: actor.departmentId,
+          status: 'FAILED',
+          generation: task.generation,
+        },
+        data: {
+          url,
+          urlSha256: hash,
+          retryActorUserId: actor.userId,
+          generation: { increment: 1 },
+          status: 'PENDING',
+          failureCode: null,
+          leaseUntil: null,
+          ...(keepDraft
+            ? { contentVersionId: priorVersion?.id ?? task.contentVersionId }
+            : { contentVersionId: null, uploadDraftId: null }),
+          attemptCount: 0,
+        },
+      });
+      if (result.count !== 1)
+        throw new ConflictException({ code: 'IMAGE_TASK_CHANGED' });
+      await tx.auditEvent.create({
+        data: {
+          departmentId: actor.departmentId,
+          actorUserId: actor.userId,
+          resourceType: 'lead',
+          resourceId: leadId,
+          action: 'lead.image_import.retry',
+          details: {
+            taskId,
+            productId: task.productId,
+            generation: task.generation + 1,
+            urlSha256: hash,
+          },
+        },
+      });
+      return { id: taskId, status: 'PENDING' };
     });
-    if (!lead) throw new NotFoundException({ code: 'NOT_AVAILABLE' });
-    if (lead.status === 'ARCHIVED')
-      throw new ForbiddenException({ code: 'ARCHIVED_READ_ONLY' });
-    const task = await this.database.leadImageImportTask.findFirst({
-      where: { id: taskId, leadId, departmentId: actor.departmentId },
-    });
-    if (!task) throw new NotFoundException({ code: 'NOT_AVAILABLE' });
-    if (task.status !== 'FAILED')
-      throw new ConflictException({ code: 'IMAGE_TASK_NOT_FAILED' });
-    const hash = createHash('sha256').update(url).digest('hex');
-    const duplicate = await this.database.leadImageImportTask.findFirst({
-      where: {
-        leadId,
-        productId: task.productId,
-        urlSha256: hash,
-        id: { not: taskId },
-      },
-      select: { id: true },
-    });
-    if (duplicate)
-      throw new ConflictException({ code: 'IMAGE_URL_ALREADY_QUEUED' });
-    const result = await this.database.leadImageImportTask.updateMany({
-      where: {
-        id: taskId,
-        leadId,
-        departmentId: actor.departmentId,
-        status: 'FAILED',
-      },
-      data: {
-        url,
-        urlSha256: hash,
-        generation: { increment: 1 },
-        status: 'PENDING',
-        failureCode: null,
-        leaseUntil: null,
-        ...(hash === task.urlSha256
-          ? {}
-          : { contentVersionId: null, uploadDraftId: null }),
-        attemptCount: 0,
-      },
-    });
-    if (result.count !== 1)
-      throw new ConflictException({ code: 'IMAGE_TASK_CHANGED' });
-    return { id: taskId, status: 'PENDING' };
   }
 
   private async tick(): Promise<void> {
@@ -211,6 +240,7 @@ export class LeadImageImportService implements OnModuleInit, OnModuleDestroy {
         generation: task.generation,
         attemptCount: task.attemptCount,
         urlSha256: task.urlSha256,
+        retryActorUserId: task.retryActorUserId ?? null,
         leaseUntil: { gt: new Date() },
       });
       const assertLease = async () => {
@@ -223,7 +253,7 @@ export class LeadImageImportService implements OnModuleInit, OnModuleDestroy {
       await assertLease();
       const user = await this.database.userAccount.findFirst({
         where: {
-          id: task.actorUserId,
+          id: task.retryActorUserId ?? task.actorUserId,
           active: true,
           accountType: 'INTERNAL',
           memberships: {
@@ -234,7 +264,7 @@ export class LeadImageImportService implements OnModuleInit, OnModuleDestroy {
       });
       if (!user) throw new ForbiddenException({ code: 'ACTOR_UNAVAILABLE' });
       const actor: ActorContext = {
-        userId: task.actorUserId,
+        userId: task.retryActorUserId ?? task.actorUserId,
         departmentId: task.departmentId,
         authorizationRevision: user.authorizationRevision,
       };

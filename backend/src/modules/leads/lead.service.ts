@@ -255,6 +255,12 @@ type LeadCsvImportResponse = {
   items: Array<{ rowNumber: number; lead: LeadResponse }>;
 };
 type LeadCsvFailure = { index: number; rowNumber: number; code: string };
+type CsvImportOwner = { userId: string; teamId: string | null };
+class CsvOperatorError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+  }
+}
 const csvRequiredInputKeys = [
   'customerId',
   'rightsHolderId',
@@ -349,6 +355,50 @@ export class LeadService {
           },
         },
       });
+      const memberships = await this.database.departmentMembership.findMany({
+        where: {
+          departmentId: actor.departmentId,
+          active: true,
+          user: { active: true, accountType: 'INTERNAL' },
+        },
+        select: {
+          userId: true,
+          teamId: true,
+          team: { select: { status: true } },
+          user: {
+            select: {
+              displayName: true,
+              localCredential: { select: { username: true } },
+            },
+          },
+        },
+      });
+      const operators: Array<{
+        id: string;
+        displayName: string;
+        username: string | null;
+      }> = [];
+      for (const membership of memberships) {
+        if (membership.teamId !== null && membership.team?.status !== 'ACTIVE')
+          continue;
+        const facts = {
+          departmentId: actor.departmentId,
+          responsibleUserId: membership.userId,
+          ...(membership.teamId === null ? {} : { teamId: membership.teamId }),
+        };
+        try {
+          await this.access.authorizeLead(actor, 'lead.create', facts);
+          await this.access.authorizeLead(actor, 'lead.read', facts);
+        } catch (error) {
+          if (error instanceof ForbiddenException) continue;
+          throw error;
+        }
+        operators.push({
+          id: membership.userId,
+          displayName: membership.user.displayName,
+          username: membership.user.localCredential?.username ?? null,
+        });
+      }
       return {
         customers: customers.map((customer) => ({
           id: customer.id,
@@ -357,6 +407,7 @@ export class LeadService {
             (link) => link.rightsHolder,
           ),
         })),
+        operators,
         dictionaries: {
           caseTypes: CASE_TYPE_OPTIONS,
           infringementTypes: INFRINGEMENT_TYPE_OPTIONS,
@@ -658,8 +709,9 @@ export class LeadService {
         application.originalDecisionId === lead.activeReviewDecisionId &&
         application.confirmation === null,
     );
-    const proxyConfirmWithdrawal = pending !== undefined &&
-      await this.canProxyAction(actor, lead, 'lead.withdraw.confirm.proxy');
+    const proxyConfirmWithdrawal =
+      pending !== undefined &&
+      (await this.canProxyAction(actor, lead, 'lead.withdraw.confirm.proxy'));
     const history = [
       ...(lead.evidenceDecision === null || lead.evidenceDecision === undefined
         ? []
@@ -800,10 +852,15 @@ export class LeadService {
     lead: LeadDetailRecord,
     action: 'lead.review.proxy' | 'lead.withdraw.confirm.proxy',
   ): Promise<boolean> {
-    if (actor.clientCustomerId !== undefined || actor.notaryOfficeId !== undefined || actor.lawyerAccountId !== undefined)
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
       return false;
     const account = await this.database.userAccount.findUnique({
-      where: { id: actor.userId }, select: { accountType: true, active: true },
+      where: { id: actor.userId },
+      select: { accountType: true, active: true },
     });
     if (account?.accountType !== 'INTERNAL' || !account.active) return false;
     try {
@@ -1156,6 +1213,7 @@ export class LeadService {
                 userId: actor.userId,
                 departmentId: actor.departmentId,
                 active: true,
+                user: { active: true, accountType: 'INTERNAL' },
               },
               select: { teamId: true, team: { select: { status: true } } },
             });
@@ -1165,54 +1223,19 @@ export class LeadService {
                 membership.team?.status !== 'ACTIVE')
             )
               throw this.actionForbidden();
-            try {
-              await this.access.authorizeLead(
-                actor,
-                'lead.create',
-                {
-                  departmentId: actor.departmentId,
-                  responsibleUserId: actor.userId,
-                  ...(membership.teamId === null
-                    ? {}
-                    : { teamId: membership.teamId }),
-                },
-                tx,
-              );
-            } catch (error) {
-              throw this.mapAuthorization(error);
-            }
             const normalized: NormalizedBusiness[] = [];
             const customerBusinessIds: Array<string | null> = [];
+            const owners: CsvImportOwner[] = [];
             const failures: LeadCsvFailure[] = [];
             for (const [index, item] of items.entries()) {
               try {
-                if (item.operatorText !== undefined) {
-                  const operator = await tx.userAccount.findFirst({
-                    where: {
-                      id: actor.userId,
-                      active: true,
-                      accountType: 'INTERNAL',
-                    },
-                    select: { displayName: true },
-                  });
-                  const count = await tx.departmentMembership.count({
-                    where: {
-                      departmentId: actor.departmentId,
-                      active: true,
-                      user: {
-                        displayName: item.operatorText,
-                        active: true,
-                        accountType: 'INTERNAL',
-                      },
-                    },
-                  });
-                  if (
-                    !operator ||
-                    operator.displayName !== item.operatorText ||
-                    count !== 1
-                  )
-                    throw this.validation();
-                }
+                const owner = await this.csvImportOwner(
+                  tx,
+                  actor,
+                  membership,
+                  item,
+                );
+                owners.push(owner);
                 normalized.push(this.normalizeBusiness(item.input));
                 customerBusinessIds.push(
                   await this.assertCustomerAndHolder(
@@ -1224,7 +1247,13 @@ export class LeadService {
                   ),
                 );
               } catch (error) {
-                if (error instanceof NotFoundException) {
+                if (error instanceof CsvOperatorError) {
+                  failures.push({
+                    index,
+                    rowNumber: item.rowNumber,
+                    code: error.code,
+                  });
+                } else if (error instanceof NotFoundException) {
                   failures.push({
                     index,
                     rowNumber: item.rowNumber,
@@ -1264,10 +1293,11 @@ export class LeadService {
                   actor,
                   item.input,
                   normalized[index]!,
-                  membership.teamId,
+                  owners[index]!.teamId,
                   leadId,
                   businessNo,
                   'CSV',
+                  owners[index]!.userId,
                 ),
                 include: leadInclude,
               });
@@ -1377,6 +1407,11 @@ export class LeadService {
           (item.operatorText !== undefined &&
             (typeof item.operatorText !== 'string' ||
               !item.operatorText.trim() ||
+              Array.from(item.operatorText).some(
+                (character) =>
+                  character.charCodeAt(0) < 32 ||
+                  character.charCodeAt(0) === 127,
+              ) ||
               item.operatorText.length > 200)) ||
           !item.input ||
           typeof item.input !== 'object' ||
@@ -1470,6 +1505,69 @@ export class LeadService {
     });
   }
 
+  private async csvImportOwner(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    importerMembership: { teamId: string | null },
+    item: LeadCsvImportDto['items'][number],
+  ): Promise<CsvImportOwner> {
+    let owner: CsvImportOwner = {
+      userId: actor.userId,
+      teamId: importerMembership.teamId,
+    };
+    if (item.operatorText !== undefined) {
+      const displayName = item.operatorText.trim();
+      const username = displayName.normalize('NFKC').toLowerCase();
+      const matches = await tx.departmentMembership.findMany({
+        where: {
+          departmentId: actor.departmentId,
+          active: true,
+          user: {
+            active: true,
+            accountType: 'INTERNAL',
+            OR: [{ displayName }, { localCredential: { is: { username } } }],
+          },
+        },
+        select: {
+          userId: true,
+          teamId: true,
+          team: { select: { status: true } },
+        },
+      });
+      if (matches.length === 0)
+        throw new CsvOperatorError('OPERATOR_NOT_FOUND');
+      if (matches.length !== 1)
+        throw new CsvOperatorError('OPERATOR_AMBIGUOUS');
+      const match = matches[0]!;
+      if (match.teamId !== null && match.team?.status !== 'ACTIVE')
+        throw new CsvOperatorError('OPERATOR_NOT_AVAILABLE');
+      owner = { userId: match.userId, teamId: match.teamId };
+    }
+    const facts = {
+      departmentId: actor.departmentId,
+      responsibleUserId: owner.userId,
+      ...(owner.teamId === null ? {} : { teamId: owner.teamId }),
+    };
+    try {
+      await this.access.authorizeLead(actor, 'lead.create', facts, tx);
+      await this.access.authorizeLead(actor, 'lead.read', facts, tx);
+    } catch (error) {
+      if (error instanceof ForbiddenException)
+        throw new CsvOperatorError('OPERATOR_NOT_AUTHORIZED');
+      throw error;
+    }
+    if (item.remoteScreenshots?.some((group) => group.urls.length)) {
+      try {
+        await this.access.authorizeLead(actor, 'lead.edit', facts, tx);
+      } catch (error) {
+        if (error instanceof ForbiddenException)
+          throw new CsvOperatorError('OPERATOR_IMAGE_NOT_AUTHORIZED');
+        throw error;
+      }
+    }
+    return owner;
+  }
+
   private async replayCsvReceipt(
     tx: Prisma.TransactionClient | DatabaseService,
     actor: ActorContext,
@@ -1528,7 +1626,7 @@ export class LeadService {
           !this.isLeadResponse(entry.lead) ||
           !isUUID(entry.lead.id, '4') ||
           entry.lead.departmentId !== actor.departmentId ||
-          entry.lead.responsibleUserId !== actor.userId ||
+          !isUUID(entry.lead.responsibleUserId, '4') ||
           entry.lead.customerId !== originalItems[index]!.input.customerId ||
           entry.lead.rightsHolderId !==
             originalItems[index]!.input.rightsHolderId ||
@@ -1579,16 +1677,13 @@ export class LeadService {
         continue;
       }
       try {
-        await this.access.authorizeLead(
-          actor,
-          'lead.create',
-          {
-            departmentId: lead.departmentId,
-            responsibleUserId: lead.responsibleUserId,
-            ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
-          },
-          tx,
-        );
+        const facts = {
+          departmentId: lead.departmentId,
+          responsibleUserId: lead.responsibleUserId,
+          ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
+        };
+        await this.access.authorizeLead(actor, 'lead.create', facts, tx);
+        await this.access.authorizeLead(actor, 'lead.read', facts, tx);
       } catch (error) {
         if (!(error instanceof ForbiddenException)) throw error;
         failures.push({
@@ -1972,7 +2067,7 @@ export class LeadService {
               const owned = await transaction.$queryRawUnsafe<
                 Array<{ id: string }>
               >(
-                'SELECT "id" FROM "lead_image_import_tasks" WHERE "id" = $1::uuid AND "lead_id" = $2::uuid AND "product_id" = $3::uuid AND "status" = $4 AND "generation" = $5 AND "attempt_count" = $6 AND "url_sha256" = $7 AND "upload_draft_id" = $8::uuid AND "content_version_id" = $9::uuid AND "lease_until" > CURRENT_TIMESTAMP FOR UPDATE',
+                'SELECT "id" FROM "lead_image_import_tasks" WHERE "id" = $1::uuid AND "lead_id" = $2::uuid AND "product_id" = $3::uuid AND "status" = $4 AND "generation" = $5 AND "attempt_count" = $6 AND "url_sha256" = $7 AND "upload_draft_id" = $8::uuid AND "content_version_id" = $9::uuid AND COALESCE("retry_actor_user_id", "actor_user_id") = $10::uuid AND "lease_until" > CURRENT_TIMESTAMP FOR UPDATE',
                 importFence.taskId,
                 id,
                 productId,
@@ -1982,6 +2077,7 @@ export class LeadService {
                 importFence.urlSha256,
                 importFence.uploadDraftId,
                 importFence.contentVersionId,
+                actor.userId,
               );
               if (owned.length !== 1) throw this.versionConflict();
             }
@@ -3480,6 +3576,7 @@ export class LeadService {
     leadId: string,
     businessNo: string,
     creationChannel: 'MANUAL' | 'CSV',
+    responsibleUserId: string = actor.userId,
   ): Prisma.LeadUncheckedCreateInput {
     return {
       id: leadId,
@@ -3487,7 +3584,7 @@ export class LeadService {
       businessNo,
       customerId: input.customerId,
       rightsHolderId: input.rightsHolderId,
-      responsibleUserId: actor.userId,
+      responsibleUserId,
       teamId,
       status: 'WAITING_PUSH',
       caseType: normalized.caseType,

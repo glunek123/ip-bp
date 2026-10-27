@@ -55,7 +55,7 @@ export class LeadCsvImportItemDto {
   @ApiProperty({
     required: false,
     maxLength: 200,
-    description: '模板运营列，须唯一匹配当前实际操作人',
+    description: '模板运营列，须唯一匹配本部门有权负责运营的实名或登录用户名',
   })
   @IsOptional()
   @IsString()

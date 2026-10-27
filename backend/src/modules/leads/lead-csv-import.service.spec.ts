@@ -49,6 +49,11 @@ function fixture() {
     departmentMembership: {
       findFirst: jest.fn().mockResolvedValue({ teamId: null }),
       count: jest.fn().mockResolvedValue(1),
+      findMany: jest
+        .fn()
+        .mockResolvedValue([
+          { userId: actor.userId, teamId: null, team: null },
+        ]),
     },
     userAccount: {
       findFirst: jest.fn().mockResolvedValue({ displayName: '运营甲' }),
@@ -120,6 +125,48 @@ function fixture() {
 }
 
 describe('LeadService CSV import', () => {
+  it('keeps every historical receipt guard while replacing only the owner identity rule in migration 190', () => {
+    const base = readFileSync(
+      join(
+        __dirname,
+        '../../../prisma/migrations/20261019090000_lead_csv_import_receipts/migration.sql',
+      ),
+      'utf8',
+    );
+    const forward = readFileSync(
+      join(
+        __dirname,
+        '../../../prisma/migrations/20261027160000_batch2_import_responsible_operator/migration.sql',
+      ),
+      'utf8',
+    );
+    const functionText = (sql: string) =>
+      sql.slice(
+        sql.indexOf('FUNCTION validate_lead_csv_import_receipt()'),
+        sql.indexOf(
+          '$$;',
+          sql.indexOf('FUNCTION validate_lead_csv_import_receipt()'),
+        ) + 3,
+      );
+    const original = functionText(base);
+    const expected = original
+      .replace(
+        'OR target_lead."responsible_user_id" <> NEW."actor_user_id"',
+        'OR NOT EXISTS (SELECT 1 FROM "department_memberships" membership JOIN "user_accounts" owner ON owner."id" = membership."user_id" LEFT JOIN "teams" team ON team."id" = membership."team_id" WHERE membership."user_id" = target_lead."responsible_user_id" AND membership."department_id" = NEW."department_id" AND membership."active" AND owner."active" AND owner."account_type" = \'INTERNAL\' AND membership."team_id" IS NOT DISTINCT FROM target_lead."team_id" AND (membership."team_id" IS NULL OR team."status" = \'ACTIVE\'))',
+      )
+      .replace(
+        'result_lead->>\'responsibleUserId\' IS DISTINCT FROM NEW."actor_user_id"::text',
+        'result_lead->>\'responsibleUserId\' IS DISTINCT FROM target_lead."responsible_user_id"::text',
+      );
+    expect(forward).toContain(
+      'CREATE OR REPLACE FUNCTION validate_lead_csv_import_receipt()',
+    );
+    expect(forward).toContain('ADD COLUMN "retry_actor_user_id" UUID');
+    expect(forward).toContain(
+      '"lead_image_import_tasks_retry_actor_membership_fkey"',
+    );
+    expect(functionText(forward)).toBe(expected);
+  });
   it('preserves every previously valid external-source combination and adds CSV without a reference', () => {
     const previous = readFileSync(
       join(
@@ -336,7 +383,14 @@ describe('LeadService CSV import', () => {
 
   it('rejects an ambiguous operator name before creating any lead', async () => {
     const f = fixture();
-    f.tx.departmentMembership.count.mockResolvedValue(2);
+    f.tx.departmentMembership.findMany.mockResolvedValue([
+      { userId: actor.userId, teamId: null, team: null },
+      {
+        userId: '99999999-9999-4999-8999-999999999999',
+        teamId: null,
+        team: null,
+      },
+    ]);
     const inputRequest = request();
     inputRequest.items = [
       { ...inputRequest.items[0]!, operatorText: '运营甲' },
@@ -346,11 +400,121 @@ describe('LeadService CSV import', () => {
     ).rejects.toMatchObject({
       response: {
         code: 'CSV_IMPORT_REJECTED',
-        details: { failures: [{ rowNumber: 2, code: 'VALIDATION_ERROR' }] },
+        details: { failures: [{ rowNumber: 2, code: 'OPERATOR_AMBIGUOUS' }] },
       },
     });
     expect(f.tx.lead.create).not.toHaveBeenCalled();
   });
+
+  it('assigns mixed authorized owners and teams while keeping the importer as audit actor', async () => {
+    const f = fixture();
+    const otherUserId = '99999999-9999-4999-8999-999999999999';
+    const teamId = '88888888-8888-4888-8888-888888888888';
+    f.tx.departmentMembership.findMany.mockImplementation(async ({ where }) =>
+      where.user.OR[0].displayName === '运营乙'
+        ? [{ userId: otherUserId, teamId, team: { status: 'ACTIVE' } }]
+        : [{ userId: actor.userId, teamId: null, team: null }],
+    );
+    const items = [
+      { ...request().items[0]!, operatorText: '运营乙' },
+      { ...request().items[1]!, operatorText: '运营甲' },
+    ];
+    const result = await f.service.importBatch(actor, 'mixed-owner', { items });
+    expect(
+      result.items.map(({ lead }) => [lead.responsibleUserId, lead.teamId]),
+    ).toEqual([
+      [otherUserId, teamId],
+      [actor.userId, null],
+    ]);
+    expect(
+      f.tx.auditEvent.create.mock.calls.map(([call]) => call.data.actorUserId),
+    ).toEqual([actor.userId, actor.userId]);
+    expect(f.access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'lead.create',
+      {
+        departmentId: actor.departmentId,
+        responsibleUserId: otherUserId,
+        teamId,
+      },
+      f.tx,
+    );
+  });
+
+  it.each([
+    ['missing', [], 'OPERATOR_NOT_FOUND'],
+    [
+      'inactive team',
+      [
+        {
+          userId: '99999999-9999-4999-8999-999999999999',
+          teamId: '88888888-8888-4888-8888-888888888888',
+          team: { status: 'INACTIVE' },
+        },
+      ],
+      'OPERATOR_NOT_AVAILABLE',
+    ],
+  ])('rejects a %s operator before writing', async (_label, matches, code) => {
+    const f = fixture();
+    f.tx.departmentMembership.findMany.mockResolvedValue(matches);
+    await expect(
+      f.service.importBatch(actor, 'bad-operator', {
+        items: [{ ...request().items[0]!, operatorText: '运营乙' }],
+      }),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'CSV_IMPORT_REJECTED',
+        details: { failures: [{ rowNumber: 2, code }] },
+      },
+    });
+    expect(f.tx.lead.create).not.toHaveBeenCalled();
+  });
+
+  it.each(['lead.create', 'lead.read', 'lead.edit'] as const)(
+    'rejects missing target %s scope before writing',
+    async (action) => {
+      const f = fixture();
+      (f.access.authorizeLead as jest.Mock).mockImplementation(
+        async (_actor, requested) => {
+          if (requested === action) throw new ForbiddenException();
+        },
+      );
+      const item = {
+        ...request().items[0]!,
+        operatorText: '运营甲',
+        ...(action === 'lead.edit'
+          ? {
+              remoteScreenshots: [
+                {
+                  productNumber: 1,
+                  sourceGroupNumber: 1,
+                  urls: ['https://images.example/one.png'],
+                },
+              ],
+            }
+          : {}),
+      };
+      await expect(
+        f.service.importBatch(actor, `scope-${action}`, { items: [item] }),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'CSV_IMPORT_REJECTED',
+          details: {
+            failures: [
+              {
+                rowNumber: 2,
+                code:
+                  action === 'lead.edit'
+                    ? 'OPERATOR_IMAGE_NOT_AUTHORIZED'
+                    : 'OPERATOR_NOT_AUTHORIZED',
+              },
+            ],
+          },
+        },
+      });
+      expect(f.tx.lead.create).not.toHaveBeenCalled();
+    },
+  );
 
   it('preflights every customer and writes nothing if a later row is unavailable', async () => {
     const f = fixture();
@@ -438,6 +602,43 @@ describe('LeadService CSV import', () => {
     expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
   });
 
+  it('replays a different responsible operator by saved ID after a display-name change', async () => {
+    const f = fixture();
+    const otherUserId = '99999999-9999-4999-8999-999999999999';
+    f.tx.departmentMembership.findMany.mockResolvedValue([
+      { userId: otherUserId, teamId: null, team: null },
+    ]);
+    const original = {
+      items: [{ ...request().items[0]!, operatorText: '旧姓名' }],
+    };
+    const first = await f.service.importBatch(actor, 'renamed-owner', original);
+    const receipt = f.tx.leadCsvImportReceipt.create.mock.calls[0]?.[0].data;
+    f.tx.leadCsvImportReceipt.findUnique.mockResolvedValue({
+      ...receipt,
+      createdAt: new Date('2026-10-19T01:00:00.000Z'),
+    });
+    f.tx.departmentMembership.findMany.mockClear();
+    f.tx.lead.findMany.mockResolvedValue([
+      {
+        id: first.items[0]!.lead.id,
+        businessNo: first.items[0]!.lead.businessNo,
+        departmentId: actor.departmentId,
+        responsibleUserId: otherUserId,
+        teamId: null,
+      },
+    ]);
+    await expect(
+      f.service.importBatch(actor, 'renamed-owner', original),
+    ).resolves.toEqual(first);
+    expect(f.tx.departmentMembership.findMany).not.toHaveBeenCalled();
+    expect(f.tx.lead.create).toHaveBeenCalledTimes(1);
+    await expect(
+      f.service.importBatch(actor, 'renamed-owner', {
+        items: [{ ...original.items[0]!, operatorText: '新姓名' }],
+      }),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+  });
+
   it('rechecks all original results before comparing the changed body fingerprint', async () => {
     const f = fixture();
     const first = await f.service.importBatch(actor, 'key', request());
@@ -456,6 +657,8 @@ describe('LeadService CSV import', () => {
       })),
     );
     (f.access.authorizeLead as jest.Mock)
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new ForbiddenException());
     await expect(

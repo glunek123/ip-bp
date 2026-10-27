@@ -393,7 +393,11 @@ describe('LeadService', () => {
     const service = new LeadService(
       {
         lead: { findFirst: jest.fn().mockResolvedValue(lead) },
-        userAccount: { findUnique: jest.fn().mockResolvedValue({ accountType: 'CLIENT', active: true }) },
+        userAccount: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({ accountType: 'CLIENT', active: true }),
+        },
       } as unknown as DatabaseService,
       access as unknown as AccessControlService,
       {
@@ -1532,6 +1536,19 @@ describe('LeadService', () => {
     ]);
     const database = {
       customer: { findMany: customerFindMany },
+      departmentMembership: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            userId: actor.userId,
+            teamId: null,
+            team: null,
+            user: {
+              displayName: '运营甲',
+              localCredential: { username: 'operator.a' },
+            },
+          },
+        ]),
+      },
     } as unknown as DatabaseService;
     const access = {
       canAuthorizeNewLead: jest.fn().mockResolvedValue(true),
@@ -1539,6 +1556,7 @@ describe('LeadService', () => {
         departmentId: actor.departmentId,
         responsibleUserId: actor.userId,
       }),
+      authorizeLead: jest.fn().mockResolvedValue(undefined),
     } as unknown as AccessControlService;
     await expect(
       new LeadService(database, access, {} as MaterialService).formContext(
@@ -1546,6 +1564,9 @@ describe('LeadService', () => {
       ),
     ).resolves.toMatchObject({
       customers: [{ id: 'c', rightsHolders: [{ id: 'r' }] }],
+      operators: [
+        { id: actor.userId, displayName: '运营甲', username: 'operator.a' },
+      ],
     });
     expect(customerFindMany).toHaveBeenCalledWith(
       expect.objectContaining({

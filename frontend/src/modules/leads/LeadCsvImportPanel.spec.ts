@@ -16,6 +16,9 @@ import LeadCsvImportPanel from './LeadCsvImportPanel.vue';
 import LeadCsvPreviewPanel from './LeadCsvPreviewPanel.vue';
 
 const formContext: LeadFormContext = {
+  operators: [
+    { id: 'operator-a', displayName: '运营甲', username: 'operator.a' },
+  ],
   customers: [
     {
       id: 'customer-a',

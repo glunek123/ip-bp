@@ -9,6 +9,9 @@ import {
 const context: LeadCsvMappingContext = {
   operatorDisplayName: '运营甲',
   formContext: {
+    operators: [
+      { id: 'operator-1', displayName: '运营甲', username: 'operator.one' },
+    ],
     customers: [
       {
         id: 'customer',

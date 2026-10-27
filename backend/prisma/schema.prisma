@@ -854,6 +854,7 @@ model AuthThrottle {
 
 model DepartmentMembership {
   leadImageImportTasks LeadImageImportTask[] @relation("LeadImageImportActor")
+  leadImageImportRetryTasks LeadImageImportTask[] @relation("LeadImageImportRetryActor")
   calendarManualItems CalendarManualItem[] @relation("CalendarManualOwner")
   calendarReminderReads CalendarReminderRead[] @relation("CalendarReminderOwner")
   refundApplications CaseRefundApplication[] @relation("CaseRefundApplicant")
@@ -1989,6 +1990,7 @@ model LeadImageImportTask {
   id String @id @default(uuid()) @db.Uuid
   departmentId String @map("department_id") @db.Uuid
   actorUserId String @map("actor_user_id") @db.Uuid
+  retryActorUserId String? @map("retry_actor_user_id") @db.Uuid
   leadId String @map("lead_id") @db.Uuid
   productId String @map("product_id") @db.Uuid
   rowNumber Int @map("row_number")
@@ -2007,6 +2009,7 @@ model LeadImageImportTask {
   lead Lead @relation(fields: [leadId, departmentId], references: [id, departmentId], onDelete: Restrict)
   product LeadProduct @relation(fields: [productId, leadId], references: [id, leadId], onDelete: Restrict)
   actorMembership DepartmentMembership @relation("LeadImageImportActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  retryActorMembership DepartmentMembership? @relation("LeadImageImportRetryActor", fields: [retryActorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   contentVersion ContentVersion? @relation(fields: [contentVersionId], references: [id], onDelete: Restrict)
     uploadDraft UploadDraft? @relation("LeadImageImportUploadDraft", fields: [uploadDraftId], references: [id], onDelete: Restrict)
 

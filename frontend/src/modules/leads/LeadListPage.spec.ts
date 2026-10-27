@@ -112,6 +112,9 @@ const batchSummary: Lead = {
 };
 
 const csvFormContext: LeadFormContext = {
+  operators: [
+    { id: 'operator-1', displayName: '运营甲', username: 'operator' },
+  ],
   customers: [
     {
       id: 'customer-1',
@@ -1319,10 +1322,10 @@ describe('LeadListPage', () => {
     );
     await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
     await flushPromises();
-    expect(api.getLead).toHaveBeenCalledExactlyOnceWith(
-      summary.id,
+    expect(api.getLead).toHaveBeenCalledExactlyOnceWith(summary.id);
+    expect(wrapper.find('[data-test="submit-lead-workflow"]').exists()).toBe(
+      false,
     );
-    expect(wrapper.find('[data-test="submit-lead-workflow"]').exists()).toBe(false);
     expect(api.pushLead).toHaveBeenCalledOnce();
     expect(router.currentRoute.value.path).toBe('/leads');
     expect(wrapper.find('[data-test="lead-workflow-form"]').exists()).toBe(
@@ -1526,7 +1529,9 @@ describe('LeadListPage', () => {
     // A later request in the same storage slot must survive a stale completion.
     await flushPromises();
     expect(api.listLeads).toHaveBeenCalledOnce();
-    expect(readPendingLeadCommands()?.[original.identity]?.idempotencyKey).toBe('newer-key');
+    expect(readPendingLeadCommands()?.[original.identity]?.idempotencyKey).toBe(
+      'newer-key',
+    );
   });
   it('keeps independent edit route and exact return query without a workflow command', async () => {
     api.listLeads.mockResolvedValue({

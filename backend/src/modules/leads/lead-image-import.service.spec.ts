@@ -1,5 +1,8 @@
 import { AccessControlService } from '../../access-control/access-control.service';
 import { Readable } from 'node:stream';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { DatabaseService } from '../../database/database.service';
 import { MaterialService } from '../materials';
 import { LeadImageImportService } from './lead-image-import.service';
@@ -23,6 +26,17 @@ const task = {
 };
 
 describe('LeadImageImportService', () => {
+  it('fences both material finalization and product attachment to the effective retry actor', () => {
+    const material = readFileSync(
+      join(__dirname, '../materials/material.service.ts'),
+      'utf8',
+    );
+    const lead = readFileSync(join(__dirname, 'lead.service.ts'), 'utf8');
+    for (const source of [material, lead])
+      expect(source).toContain(
+        'COALESCE("retry_actor_user_id", "actor_user_id")',
+      );
+  });
   it('attaches a stored version to only the selected product and records completion', async () => {
     const database = {
       userAccount: {
@@ -154,6 +168,7 @@ function concurrentFixture(
     status: 'LEASED',
     attemptCount: 1,
     generation: 0,
+    retryActorUserId: null as string | null,
     urlSha256: task.urlSha256,
     uploadDraftId: null as string | null,
     contentVersionId: null as string | null,
@@ -162,6 +177,7 @@ function concurrentFixture(
     where.status === current.status &&
     where.attemptCount === current.attemptCount &&
     where.generation === current.generation &&
+    where.retryActorUserId === current.retryActorUserId &&
     where.urlSha256 === current.urlSha256 &&
     (!Object.hasOwn(where, 'uploadDraftId') ||
       where.uploadDraftId === current.uploadDraftId);
@@ -290,6 +306,7 @@ describe('LeadImageImportService lease fencing', () => {
     const oldWork = f.service['process'](f.imageTask as never);
     await waitForCall(download);
     f.current.generation = 1;
+    f.current.retryActorUserId = '99999999-9999-4999-8999-999999999999';
     f.current.urlSha256 = 'b'.repeat(64);
     f.current.status = 'PENDING';
     pending.resolve(image);
@@ -301,10 +318,12 @@ describe('LeadImageImportService lease fencing', () => {
   });
 
   it('replaces a failed link with a new generation and clears its old draft', async () => {
+    const retryActorId = '99999999-9999-4999-8999-999999999999';
     const access = {
       buildLeadScope: jest.fn().mockResolvedValue({}),
     } as unknown as AccessControlService;
-    const database = {
+    const tx = {
+      contentVersion: { findUnique: jest.fn().mockResolvedValue(null) },
       lead: {
         findFirst: jest.fn().mockResolvedValue({
           id: task.leadId,
@@ -318,6 +337,13 @@ describe('LeadImageImportService lease fencing', () => {
           .mockResolvedValueOnce(null),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      auditEvent: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const database = {
+      ...tx,
+      $transaction: jest.fn(
+        async (callback: (transaction: typeof tx) => unknown) => callback(tx),
+      ),
     } as unknown as DatabaseService;
     const service = new LeadImageImportService(
       database,
@@ -328,7 +354,7 @@ describe('LeadImageImportService lease fencing', () => {
     );
     await service.retry(
       {
-        userId: task.actorUserId,
+        userId: retryActorId,
         departmentId: task.departmentId,
         authorizationRevision: 7,
       },
@@ -340,10 +366,180 @@ describe('LeadImageImportService lease fencing', () => {
       where: expect.objectContaining({ id: task.id, status: 'FAILED' }),
       data: expect.objectContaining({
         generation: { increment: 1 },
+        retryActorUserId: retryActorId,
         uploadDraftId: null,
         contentVersionId: null,
         status: 'PENDING',
       }),
     });
+    expect(tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: retryActorId,
+        action: 'lead.image_import.retry',
+      }),
+    });
+    expect(access.buildLeadScope).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: retryActorId }),
+      'lead.edit',
+      tx,
+    );
+  });
+
+  it('refuses a replacement link without current edit scope and makes no task or audit write', async () => {
+    const access = {
+      buildLeadScope: jest.fn().mockRejectedValue(new Error('scope denied')),
+    } as unknown as AccessControlService;
+    const tx = {
+      lead: { findFirst: jest.fn() },
+      leadImageImportTask: { findFirst: jest.fn(), updateMany: jest.fn() },
+      auditEvent: { create: jest.fn() },
+    };
+    const database = {
+      ...tx,
+      $transaction: jest.fn(
+        async (callback: (transaction: typeof tx) => unknown) => callback(tx),
+      ),
+    } as unknown as DatabaseService;
+    const service = new LeadImageImportService(
+      database,
+      access,
+      {} as MaterialService,
+      {} as LeadService,
+      jest.fn(),
+    );
+    await expect(
+      service.retry(
+        {
+          userId: '99999999-9999-4999-8999-999999999999',
+          departmentId: task.departmentId,
+          authorizationRevision: 1,
+        },
+        task.leadId,
+        task.id,
+        'https://example.com/new.png',
+      ),
+    ).rejects.toThrow('scope denied');
+    expect(tx.leadImageImportTask.updateMany).not.toHaveBeenCalled();
+    expect(tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['completed old upload', { id: task.contentVersionId }, true],
+    ['unfinished old draft', null, false],
+  ])(
+    'lets a new actor retry the same URL after %s without using the old draft identity',
+    async (_label, priorVersion, keepDraft) => {
+      const retryActorId = '99999999-9999-4999-8999-999999999999';
+      const oldHash = createHash('sha256').update(task.url).digest('hex');
+      const tx = {
+        lead: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue({ id: task.leadId, status: 'WAITING_PUSH' }),
+        },
+        leadImageImportTask: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValueOnce({
+              ...task,
+              urlSha256: oldHash,
+              status: 'FAILED',
+            })
+            .mockResolvedValueOnce(null),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+        contentVersion: {
+          findUnique: jest.fn().mockResolvedValue(priorVersion),
+        },
+        auditEvent: { create: jest.fn().mockResolvedValue({}) },
+      };
+      const database = {
+        ...tx,
+        $transaction: jest.fn(
+          async (callback: (transaction: typeof tx) => unknown) => callback(tx),
+        ),
+      } as unknown as DatabaseService;
+      const access = {
+        buildLeadScope: jest.fn().mockResolvedValue({}),
+      } as unknown as AccessControlService;
+      const service = new LeadImageImportService(
+        database,
+        access,
+        {} as MaterialService,
+        {} as LeadService,
+        jest.fn(),
+      );
+      await service.retry(
+        {
+          userId: retryActorId,
+          departmentId: task.departmentId,
+          authorizationRevision: 1,
+        },
+        task.leadId,
+        task.id,
+        task.url,
+      );
+      const write = tx.leadImageImportTask.updateMany.mock.calls[0]?.[0];
+      expect(write.data).toMatchObject({
+        retryActorUserId: retryActorId,
+        generation: { increment: 1 },
+      });
+      expect(write.data.uploadDraftId).toBe(keepDraft ? undefined : null);
+      expect(write.data.contentVersionId).toBe(
+        keepDraft ? task.contentVersionId : null,
+      );
+      expect(task.actorUserId).not.toBe(retryActorId);
+    },
+  );
+
+  it('processes a retried task as the actual retry actor, preserving the original actor', async () => {
+    const retryActorId = '99999999-9999-4999-8999-999999999999';
+    const database = {
+      userAccount: {
+        findFirst: jest
+          .fn()
+          .mockImplementation(async ({ where }) =>
+            where.id === retryActorId ? { authorizationRevision: 9 } : null,
+          ),
+      },
+      lead: {
+        findFirst: jest.fn().mockResolvedValue({
+          version: 2,
+          status: 'WAITING_PUSH',
+          products: [{ screenshots: [] }],
+        }),
+      },
+      leadImageImportTask: {
+        findFirst: jest.fn().mockResolvedValue({ id: task.id }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    } as unknown as DatabaseService;
+    const leads = {
+      updateProductScreenshots: jest.fn().mockResolvedValue({}),
+    } as unknown as LeadService;
+    const service = new LeadImageImportService(
+      database,
+      {} as AccessControlService,
+      {} as MaterialService,
+      leads,
+      jest.fn(),
+    );
+    await service['process']({
+      ...task,
+      retryActorUserId: retryActorId,
+    } as never);
+    expect(database.userAccount.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: retryActorId }),
+      }),
+    );
+    expect(leads.updateProductScreenshots).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: retryActorId }),
+      task.leadId,
+      task.productId,
+      expect.any(Object),
+      expect.any(Object),
+    );
+    expect(task.actorUserId).not.toBe(retryActorId);
   });
 });

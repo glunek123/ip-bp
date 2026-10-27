@@ -49,6 +49,11 @@ export type LeadOption<T extends string = string> = {
   label: string;
 };
 export type LeadFormContext = {
+  operators?: ReadonlyArray<{
+    id: string;
+    displayName: string;
+    username: string | null;
+  }>;
   customers: ReadonlyArray<{
     id: string;
     name: string;
@@ -833,11 +838,19 @@ function decodeLeadFormContext(data: unknown): LeadFormContext {
   if (
     !isRecord(data) ||
     !Array.isArray(data.customers) ||
+    !Array.isArray(data.operators) ||
     !isRecord(data.dictionaries)
   )
     throw invalidResponse();
   const dictionaries = data.dictionaries;
   if (
+    !data.operators.every(
+      (operator) =>
+        isRecord(operator) &&
+        typeof operator.id === 'string' &&
+        typeof operator.displayName === 'string' &&
+        (operator.username === null || typeof operator.username === 'string'),
+    ) ||
     !data.customers.every(
       (customer) =>
         isRecord(customer) &&
@@ -994,8 +1007,10 @@ export async function getLead(
     typeof capabilities.evidenceDecide !== 'boolean' ||
     typeof capabilities.transferToNotary !== 'boolean' ||
     typeof capabilities.createEvidenceBatch !== 'boolean' ||
-    (capabilities.proxyReview !== undefined && typeof capabilities.proxyReview !== 'boolean') ||
-    (capabilities.proxyConfirmWithdrawal !== undefined && typeof capabilities.proxyConfirmWithdrawal !== 'boolean') ||
+    (capabilities.proxyReview !== undefined &&
+      typeof capabilities.proxyReview !== 'boolean') ||
+    (capabilities.proxyConfirmWithdrawal !== undefined &&
+      typeof capabilities.proxyConfirmWithdrawal !== 'boolean') ||
     (capabilities.productScreenshotsEdit !== undefined &&
       typeof capabilities.productScreenshotsEdit !== 'boolean') ||
     (detail.evidenceDecision !== null &&

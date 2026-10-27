@@ -29,6 +29,9 @@ import {
 
 const option = (value: string, label = value) => ({ value, label });
 const context = {
+  operators: [
+    { id: 'user-1', displayName: '运营甲', username: 'operator.one' },
+  ],
   customers: [
     {
       id: 'customer-1',

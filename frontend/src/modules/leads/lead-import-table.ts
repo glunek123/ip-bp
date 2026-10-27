@@ -188,7 +188,9 @@ export function mapLeadTableRows(
     if (get('案件单号').trim())
       errors.push('案件单号由系统生成，请清空文件中的号码');
     if (!get('运营').trim())
-      errors.push('运营不能为空，须填写当前操作人的唯一实名');
+      errors.push(
+        '运营不能为空，须填写负责运营的实名；重名时填写唯一登录用户名',
+      );
     const remoteScreenshots: {
       productNumber: number;
       sourceGroupNumber: number;

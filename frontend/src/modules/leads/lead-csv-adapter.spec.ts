@@ -30,6 +30,9 @@ const header = [
 const context: LeadCsvMappingContext = {
   operatorDisplayName: '真实运营',
   formContext: {
+    operators: [
+      { id: 'operator-1', displayName: '真实运营', username: 'operator.one' },
+    ],
     customers: [
       {
         id: 'customer-1',
@@ -82,6 +85,35 @@ function csv(rows: readonly string[][], columns = header): Uint8Array {
 }
 
 describe('lead CSV business adapter', () => {
+  it('keeps blank legacy operator for the actor and resolves a different unique username', () => {
+    const blank = parseLeadCsvPreview(csv([base]), context)[0];
+    expect(blank).toMatchObject({ status: 'valid' });
+    if (blank?.status === 'valid') expect(blank.operatorText).toBeUndefined();
+    const named = [...base];
+    named[3] = ' ＯＰＥＲＡＴＯＲ．ＯＮＥ ';
+    const parsed = parseLeadCsvPreview(csv([named]), context)[0];
+    expect(parsed).toMatchObject({
+      status: 'valid',
+      operatorText: 'ＯＰＥＲＡＴＯＲ．ＯＮＥ',
+    });
+    const ambiguousContext = {
+      ...context,
+      formContext: {
+        ...context.formContext,
+        operators: [
+          { id: 'first', displayName: '同名', username: 'first' },
+          { id: 'second', displayName: '同名', username: 'second' },
+        ],
+      },
+    };
+    named[3] = '同名';
+    expect(
+      parseLeadCsvPreview(csv([named]), ambiguousContext)[0],
+    ).toMatchObject({
+      status: 'invalid',
+      errors: [expect.stringContaining('歧义')],
+    });
+  });
   it('requires an explicit unit price while accepting a known zero', () => {
     const emptyPrice = [...base];
     emptyPrice[15] = '';

@@ -3,6 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { assertBatch2ImportTarget } from '../support/batch2-lead-import-target.mjs';
+import {
+  assertDistinctOperatorReceipt,
+  assertRetriedImageTaskIdentity,
+} from '../support/batch2-lead-operator-receipt.mjs';
 
 // Activation requires a separately authorized, disposable batch-2 PG/app/files
 // environment. The historic UI003 fixture is deliberately not reused.
@@ -24,7 +28,19 @@ test('XLSX preview, lead persistence, failed screenshot task and exact replay', 
   const rightsHolderId = process.env.BATCH2_IMPORT_HOLDER_ID;
   const otherToken = process.env.BATCH2_IMPORT_OTHER_DEPARTMENT_TOKEN;
   const operatorName = process.env.BATCH2_IMPORT_OPERATOR_NAME;
-  if (!token || !customerId || !rightsHolderId || !otherToken || !operatorName)
+  const originalActorId = process.env.BATCH2_IMPORT_OPERATOR_ID;
+  const retryToken = process.env.BATCH2_IMPORT_RETRY_OPERATOR_TOKEN;
+  const retryActorId = process.env.BATCH2_IMPORT_RETRY_OPERATOR_ID;
+  if (
+    !token ||
+    !customerId ||
+    !rightsHolderId ||
+    !otherToken ||
+    !operatorName ||
+    !originalActorId ||
+    !retryToken ||
+    !retryActorId
+  )
     throw new Error('Batch-2 synthetic actor fixture is incomplete');
   const headers = { Authorization: `Bearer ${token}` };
   const template = await request.get('/api/v1/leads/xlsx-template', {
@@ -139,6 +155,103 @@ test('XLSX preview, lead persistence, failed screenshot task and exact replay', 
   const retained = await request.get(`/api/v1/leads/${lead.id}`, { headers });
   expect(retained.status()).toBe(200);
   expect((await retained.json()).products[0].id).toBe(lead.products[0].id);
+  const retried = await request.post(
+    `/api/v1/leads/${lead.id}/image-imports/${items[0].id}/retry`,
+    {
+      headers: { Authorization: `Bearer ${retryToken}` },
+      data: { url: 'http://203.0.113.2/no-image.png' },
+    },
+  );
+  expect(retried.status(), await retried.text()).toBe(201);
+  await assertRetriedImageTaskIdentity({
+    taskId: items[0].id,
+    originalActorId,
+    retryActorId,
+  });
+});
+
+test('department importer assigns another responsible operator and self scope cannot assign that owner', async ({
+  request,
+}) => {
+  const token = process.env.BATCH2_IMPORT_DEPARTMENT_OPERATOR_TOKEN;
+  const selfToken = process.env.BATCH2_IMPORT_SELF_ONLY_TOKEN;
+  const ownerName = process.env.BATCH2_IMPORT_TARGET_OPERATOR_NAME;
+  const ownerId = process.env.BATCH2_IMPORT_TARGET_OPERATOR_ID;
+  const ownerTeamId = process.env.BATCH2_IMPORT_TARGET_TEAM_ID;
+  const actorId = process.env.BATCH2_IMPORT_DEPARTMENT_OPERATOR_ID;
+  const customerId = process.env.BATCH2_IMPORT_CUSTOMER_ID;
+  const rightsHolderId = process.env.BATCH2_IMPORT_HOLDER_ID;
+  if (
+    !token ||
+    !selfToken ||
+    !ownerName ||
+    !ownerId ||
+    !ownerTeamId ||
+    !actorId ||
+    !customerId ||
+    !rightsHolderId
+  )
+    throw new Error('Batch-2 distinct-owner synthetic fixture is incomplete');
+  const key = randomUUID();
+  const body = {
+    items: [
+      {
+        rowNumber: 2,
+        operatorText: ownerName,
+        input: {
+          customerId,
+          rightsHolderId,
+          caseType: 'CIVIL',
+          infringementTypes: ['TRADEMARK'],
+          source: 'ONLINE',
+          platform: 'TAOBAO',
+          foundAt: '2026-10-27T00:00:00.000Z',
+          shopName: `合成异人运营-${key}`,
+          needDisclose: false,
+          products: [
+            { title: '合成商品', quantity: 0, unitPrice: '0', commentCount: 0 },
+          ],
+          leadScreenshotContentVersionIds: [],
+        },
+      },
+    ],
+  };
+  const denied = await request.post('/api/v1/leads/csv-import', {
+    headers: {
+      Authorization: `Bearer ${selfToken}`,
+      'Idempotency-Key': randomUUID(),
+    },
+    data: body,
+  });
+  expect(denied.status()).toBe(409);
+  expect((await denied.json()).details.failures[0]).toMatchObject({
+    rowNumber: 2,
+    code: 'OPERATOR_NOT_AUTHORIZED',
+  });
+  const headers = { Authorization: `Bearer ${token}`, 'Idempotency-Key': key };
+  const created = await request.post('/api/v1/leads/csv-import', {
+    headers,
+    data: body,
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const lead = (await created.json()).items[0].lead;
+  expect(lead).toMatchObject({
+    responsibleUserId: ownerId,
+    teamId: ownerTeamId,
+  });
+  await assertDistinctOperatorReceipt({
+    leadId: lead.id,
+    key,
+    actorId,
+    ownerId,
+    teamId: ownerTeamId,
+  });
+  const replay = await request.post('/api/v1/leads/csv-import', {
+    headers,
+    data: body,
+  });
+  expect(replay.status(), await replay.text()).toBe(201);
+  expect((await replay.json()).items[0].lead.id).toBe(lead.id);
 });
 
 test('operator maps and previews the 19-column workbook in the existing import panel', async ({

@@ -386,9 +386,27 @@ export function mapLegacyLeadRecord(
     '案件类型',
   );
   const operator = cells[3]!.trim();
-  if (!context.operatorDisplayName.trim()) errors.push('当前运营身份不可用');
-  if (operator && operator !== context.operatorDisplayName.trim())
-    errors.push('运营必须为空或等于当前操作者实名');
+  if (operator) {
+    if (
+      Array.from(operator).some(
+        (character) =>
+          character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+      )
+    )
+      errors.push('运营包含无效控制字符');
+    else {
+      const username = operator.normalize('NFKC').toLowerCase();
+      const matches = (context.formContext.operators ?? []).filter(
+        (option) =>
+          option.displayName.trim() === operator ||
+          option.username === username,
+      );
+      if (matches.length !== 1)
+        errors.push(
+          `运营${matches.length ? '有歧义，请填写唯一登录用户名' : '不在当前可选范围'}`,
+        );
+    }
+  }
   const source = matchOption(
     cells[4]!,
     context.formContext.dictionaries.sources,
@@ -455,6 +473,7 @@ export function mapLegacyLeadRecord(
     rowNumber: record.startLine,
     status: 'valid',
     suspectedDuplicates: [],
+    ...(operator ? { operatorText: operator } : {}),
     input: {
       customerId: customer.id,
       rightsHolderId: holder.id,
