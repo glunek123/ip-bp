@@ -189,6 +189,44 @@ describe('case list query builders', () => {
     });
     expect(filingCourt.findMany).toHaveBeenCalledTimes(1);
   });
+  it('keeps keyword and explicit court filters separate for external-entry court IDs', async () => {
+    const filingCourt = {
+      findMany: jest
+        .fn()
+        .mockResolvedValueOnce([{ id: 'beijing-id' }])
+        .mockResolvedValueOnce([{ id: 'shanghai-id' }]),
+    };
+    const where = await caseListDepartmentTextWhere(
+      { filingCourt } as never,
+      'department',
+      { q: '北京', courtName: '上海' },
+    );
+    expect(filingCourt.findMany.mock.calls).toEqual([
+      [
+        {
+          where: {
+            departmentId: 'department',
+            OR: [{ name: { contains: '北京', mode: 'insensitive' } }],
+          },
+          select: { id: true },
+        },
+      ],
+      [
+        {
+          where: {
+            departmentId: 'department',
+            OR: [{ name: { contains: '上海', mode: 'insensitive' } }],
+          },
+          select: { id: true },
+        },
+      ],
+    ]);
+    const [keyword, named] = where.AND as Array<{ OR: object[] }>;
+    expect(JSON.stringify(keyword)).toContain('"equals":"beijing-id"');
+    expect(JSON.stringify(keyword)).not.toContain('"equals":"shanghai-id"');
+    expect(JSON.stringify(named)).toContain('"equals":"shanghai-id"');
+    expect(JSON.stringify(named)).not.toContain('"equals":"beijing-id"');
+  });
   it('keeps all five special filters together with old keyword filtering', () => {
     const query = {
       q: 'old',
