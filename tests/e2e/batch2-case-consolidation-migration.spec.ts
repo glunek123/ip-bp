@@ -8,6 +8,8 @@ test('Batch 2 migration preserves earlier cases and enforces root, child and imm
     preserved: 2,
     tables: 4,
     incompleteRoot: '23514',
+    rootAfterFailed: 0,
+    incompleteRootRetry: '23514',
     childProgress: '23514',
     immutableMember: '55000',
     mainProgress: null,

@@ -14,7 +14,9 @@ export function assertBatch2CaseConsolidationTarget() {
     process.env.DEV_COR_TEST_DATABASE_PROJECT !==
       'dev-cor-ops-batch2-20261027' ||
     process.env.DEV_COR_OPS_BATCH2_READY !== '1' ||
-    !process.env.DEV_COR_TEST_DATABASE_CONTAINER_ID ||
+    !/^[a-f0-9]{64}$/u.test(
+      process.env.DEV_COR_TEST_DATABASE_CONTAINER_ID ?? '',
+    ) ||
     process.env.DEV_COR_TEST_DATABASE_CONTAINER_ID !==
       process.env.DEV_COR_OPS_BATCH2_OWNED_CONTAINER_ID
   )
@@ -38,6 +40,9 @@ export function assertBatch2CaseConsolidationTarget() {
 export async function prepareBatch2CaseConsolidationFixture() {
   const databaseUrl = assertBatch2CaseConsolidationTarget();
   const { hashPassword } = requireBackend('./dist/auth/password.js');
+  const { allocateCustomerBusinessId } = requireBackend(
+    './dist/modules/business-numbering/business-numbering.service.js',
+  );
   const client = new Client({ connectionString: databaseUrl });
   const run = randomUUID();
   const departmentId = randomUUID();
@@ -45,23 +50,33 @@ export async function prepareBatch2CaseConsolidationFixture() {
   const customerId = randomUUID();
   const holderId = randomUUID();
   const roleId = randomUUID();
+  const lawyerUserId = randomUUID();
+  const lawyerProfileId = randomUUID();
   const username = `batch2-${run}`;
   const password = `Batch2-${randomUUID()}`;
   const passwordHash = await hashPassword(password);
-  const businessTag = `B2-${run.slice(0, 8)}`;
-  const cases = Array.from({ length: 23 }, (_, index) => ({
-    id: randomUUID(),
-    businessNo: `${businessTag}-${String(index + 1).padStart(2, '0')}`,
-    feeId: index < 2 ? randomUUID() : null,
-  }));
+  const businessTag = `Batch2 shop ${run}`;
   await client.connect();
   try {
-    const database = (await client.query('SELECT current_database() AS name'))
-      .rows[0].name;
-    if (database !== 'dev_cor_test')
+    const identity = (
+      await client.query(
+        'SELECT current_database() AS name,current_schema() AS schema',
+      )
+    ).rows[0];
+    if (identity.name !== 'dev_cor_test' || identity.schema !== 'public')
       throw new Error('Unexpected batch 2 database');
     await client.query('BEGIN');
-    await client.query('SET LOCAL session_replication_role = replica');
+    const numbering = (
+      await client.query(
+        'SELECT last_value FROM customer_business_number_counters WHERE singleton_id=1 FOR UPDATE',
+      )
+    ).rows[0];
+    if (!numbering || BigInt(numbering.last_value) < 0n)
+      throw new Error('Root-owned empty numbering initialization is required');
+    const businessId = await allocateCustomerBusinessId({
+      $queryRawUnsafe: async (sql, ...values) =>
+        (await client.query(sql, values)).rows,
+    });
     await client.query(
       'INSERT INTO departments(id,name,updated_at) VALUES ($1,$2,now())',
       [departmentId, `Batch2 ${run}`],
@@ -73,6 +88,14 @@ export async function prepareBatch2CaseConsolidationFixture() {
     await client.query(
       'INSERT INTO local_credentials(id,user_id,username,password_hash,updated_at) VALUES ($1,$2,$3,$4,now())',
       [randomUUID(), userId, username, passwordHash],
+    );
+    await client.query(
+      "INSERT INTO user_accounts(id,external_subject,display_name,account_type,updated_at) VALUES ($1,$2,$3,'LAWYER',now())",
+      [lawyerUserId, `batch2-lawyer:${run}`, 'Batch 2 synthetic lawyer'],
+    );
+    await client.query(
+      'INSERT INTO local_credentials(id,user_id,username,password_hash,updated_at) VALUES ($1,$2,$3,$4,now())',
+      [randomUUID(), lawyerUserId, `batch2-lawyer-${run}`, passwordHash],
     );
     await client.query(
       'INSERT INTO department_memberships(id,user_id,department_id,updated_at) VALUES ($1,$2,$3,now())',
@@ -89,21 +112,39 @@ export async function prepareBatch2CaseConsolidationFixture() {
     for (const [action, scope] of [
       ['case.read', 'DEPARTMENT'],
       ['case.export', 'DEPARTMENT'],
+      ['customer.read', 'DEPARTMENT'],
+      ['customer.account.create', 'DEPARTMENT'],
+      ['case.external-entry.create', 'SELF'],
       ['case.consolidate', 'SELF'],
       ['case.match', 'SELF'],
+      ['case.complaint.submit', 'SELF'],
+      ['case.complaint.confirm', 'SELF'],
+      ['case.complaint.mail', 'SELF'],
       ['case.filing.submit', 'SELF'],
       ['fee.read', 'DEPARTMENT'],
+      ['lead.read', 'DEPARTMENT'],
+      ['lead.create', 'SELF'],
+      ['lead.push', 'SELF'],
+      ['lead.review.proxy', 'SELF'],
+      ['notary.office.manage', 'DEPARTMENT'],
+      ['notary.evidence.record', 'SELF'],
+      ['notary.unbox.record', 'SELF'],
+      ['notary.opening.review', 'SELF'],
+      ['notary.issuance.decide', 'SELF'],
+      ['notary.certificate.issue.proxy', 'SELF'],
     ])
       await client.query(
         'INSERT INTO role_grants(id,role_template_id,action,scope) VALUES ($1,$2,$3,$4)',
         [randomUUID(), roleId, action, scope],
       );
     await client.query(
-      'INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,updated_at) VALUES ($1,$2,$3,$4,$5,now())',
+      "INSERT INTO customers(id,business_id,name,normalized_name,customer_type,identity_type,identity_number,normalized_identity_number,identity_validity_mode,admission_contact_snapshot_name,admission_contact_snapshot_phone,admission_contact_snapshot_source,admission_contact_snapshot_frozen_at,department_id,responsible_user_id,profile_status,admitted_at,ever_admitted,updated_at) VALUES ($1,$2,$3,$4,'ENTERPRISE','BUSINESS_LICENSE',$5,$5,'LONG_TERM','合成联系人','13800000000','NEW_ADMISSION',now(),$6,$7,'ADMITTED',now(),true,now())",
       [
         customerId,
+        businessId,
         `Batch 2 customer ${run}`,
         `batch2 customer ${run}`,
+        `91310000${run.replaceAll('-', '').slice(0, 16).toUpperCase()}`,
         departmentId,
         userId,
       ],
@@ -116,59 +157,14 @@ export async function prepareBatch2CaseConsolidationFixture() {
       'INSERT INTO customer_rights_holder_links(id,customer_id,rights_holder_id,department_id) VALUES ($1,$2,$3,$4)',
       [randomUUID(), customerId, holderId, departmentId],
     );
-    for (const [index, item] of cases.entries()) {
-      const auditId = randomUUID();
-      await client.query(
-        "INSERT INTO cases(id,business_no,department_id,customer_id,rights_holder_id,responsible_user_id,stage,version,created_at) VALUES ($1,$2,$3,$4,$5,$6,'PENDING_MATCH',1,now()-($7::int * interval '1 second'))",
-        [
-          item.id,
-          item.businessNo,
-          departmentId,
-          customerId,
-          holderId,
-          userId,
-          index,
-        ],
-      );
-      await client.query(
-        "INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,resource_type,resource_id,action) VALUES ($1,$2,$3,$3,'CASE',$4,'case.external-entry.recorded')",
-        [auditId, departmentId, userId, item.id],
-      );
-      await client.query(
-        "INSERT INTO case_external_entries(id,case_id,department_id,entry_kind,initial_stage,stage_reached_on,source,reason,known,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,'HISTORICAL_BACKFILL','WAITING_FILING',current_date,$4,$5,$6,$7,$8)",
-        [
-          randomUUID(),
-          item.id,
-          departmentId,
-          `Batch2 ${run}`,
-          'Synthetic isolated case',
-          {
-            courtId: null,
-            courtCaseNo: null,
-            acceptedOn: null,
-            secondInstanceAcceptedOn: null,
-            platform: 'TAOBAO',
-            shopName: 'Batch 2 shop',
-            shopExternalId: `shop-${run}`,
-            caseType: 'CIVIL',
-            infringementTypes: null,
-          },
-          userId,
-          auditId,
-        ],
-      );
-      if (item.feeId)
-        await client.query(
-          "INSERT INTO fee_records(id,case_id,department_id,type,direction,status,amount,fee_date,source,actor_user_id,idempotency_key) VALUES ($1,$2,$3,'公证费','支出','已支付',10,current_date,'manual',$4,$5)",
-          [
-            item.feeId,
-            item.id,
-            departmentId,
-            userId,
-            `batch2-fee-${index}-${run}`,
-          ],
-        );
-    }
+    await client.query(
+      'INSERT INTO lawyer_profiles(id,department_id,full_name,bound_user_id) VALUES ($1,$2,$3,$4)',
+      [lawyerProfileId, departmentId, `Batch2 lawyer ${run}`, lawyerUserId],
+    );
+    await client.query(
+      'INSERT INTO lawyer_account_bindings(id,user_id,department_id,profile_id,updated_at) VALUES ($1,$2,$3,$4,now())',
+      [randomUUID(), lawyerUserId, departmentId, lawyerProfileId],
+    );
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
@@ -176,7 +172,20 @@ export async function prepareBatch2CaseConsolidationFixture() {
   } finally {
     await client.end();
   }
-  return { run, businessTag, departmentId, userId, username, password, cases };
+  return {
+    run,
+    businessTag,
+    shopExternalId: `shop-${run}`,
+    departmentId,
+    userId,
+    customerId,
+    holderId,
+    lawyerUserId,
+    lawyerProfileId,
+    username,
+    password,
+    cases: [],
+  };
 }
 
 export async function inspectBatch2CaseConsolidationFixture(
@@ -206,49 +215,24 @@ export async function inspectBatch2CaseConsolidationFixture(
   }
 }
 
-export async function prepareBatch2ConsolidatedFilingSource(
-  departmentId,
-  userId,
-  mainCaseId,
-  childCaseId,
-) {
+export async function addBatch2OriginalCaseFees(departmentId, userId, cases) {
   const client = new Client({
     connectionString: assertBatch2CaseConsolidationTarget(),
   });
-  const courtId = randomUUID();
-  const materialId = randomUUID();
-  const contentVersionId = randomUUID();
   await client.connect();
   try {
     await client.query('BEGIN');
-    await client.query(
-      "UPDATE cases SET stage='WAITING_FILING' WHERE id=$1 AND department_id=$2",
-      [mainCaseId, departmentId],
-    );
-    await client.query(
-      'INSERT INTO filing_courts(id,department_id,name) VALUES ($1,$2,$3)',
-      [courtId, departmentId, `Batch2 court ${randomUUID()}`],
-    );
-    await client.query(
-      "INSERT INTO materials(id,department_id,owner_type,owner_id,category,purpose) VALUES ($1,$2,'CASE',$3,'FILING_EVIDENCE','FILING_EVIDENCE')",
-      [materialId, departmentId, childCaseId],
-    );
-    await client.query(
-      "INSERT INTO content_versions(id,material_id,storage_key,original_filename,mime_type,size_bytes,sha256,uploaded_by) VALUES ($1,$2,$3,'batch2-source.pdf','application/pdf',4,$4,$5)",
-      [
-        contentVersionId,
-        materialId,
-        `batch2/${randomUUID()}`,
-        'a'.repeat(64),
-        userId,
-      ],
-    );
-    await client.query(
-      'UPDATE materials SET current_version_id=$2 WHERE id=$1',
-      [materialId, contentVersionId],
-    );
+    const feeIds = [];
+    for (const [index, item] of cases.entries()) {
+      const feeId = randomUUID();
+      await client.query(
+        "INSERT INTO fee_records(id,case_id,department_id,type,direction,status,amount,fee_date,source,actor_user_id,idempotency_key) VALUES ($1,$2,$3,'公证费','支出','已支付',10,current_date,'manual',$4,$5)",
+        [feeId, item.id, departmentId, userId, `batch2-fee-${index}-${feeId}`],
+      );
+      feeIds.push(feeId);
+    }
     await client.query('COMMIT');
-    return { courtId, materialId, contentVersionId };
+    return feeIds;
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
     throw error;
