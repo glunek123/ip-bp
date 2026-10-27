@@ -106,7 +106,7 @@ export type EvidenceSourceProjection = {
   certificate: {
     id: string;
     actorUserId: string;
-    notaryOfficeAccountBindingId: string;
+    notaryOfficeAccountBindingId: string | null;
     number: string;
     issuedOn: Date;
     officeName: string;

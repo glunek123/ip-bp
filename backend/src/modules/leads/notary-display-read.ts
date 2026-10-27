@@ -21,6 +21,7 @@ export const NOTARY_DISPLAY_LEAD_SELECT = {
   platform: true,
   shopName: true,
   shopExternalId: true,
+  needDisclose: true,
 } satisfies Prisma.LeadSelect;
 
 export const NOTARY_DISPLAY_CERTIFICATE_SELECT = {
@@ -286,6 +287,7 @@ export async function notaryDisplayCapabilities(
     reviewOpening: false,
     decideIssuance: false,
     archiveReturn: false,
+    proxyIssueCertificate: false,
   };
   const infringement =
     matter.opening !== null &&
@@ -324,6 +326,12 @@ export async function notaryDisplayCapabilities(
         matter.evidence !== null &&
         infringement &&
         matter.issuanceDecision?.decision === 'NO_ISSUE',
+    ],
+    [
+      'proxyIssueCertificate',
+      'notary.certificate.issue.proxy',
+      matter.stage === 'WAITING_CERTIFICATE' && matter.evidence !== null &&
+        matter.issuanceDecision?.decision === 'ISSUE',
     ],
   ] as const;
   for (const [key, action, eligible] of actions) {

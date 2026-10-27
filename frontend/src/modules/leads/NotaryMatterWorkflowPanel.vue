@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
+import { NotaryPortalWorkflowPanel } from '../notary';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 import type { ListWorkflowSession } from '../../app/list-workflow-context';
 import {
@@ -1002,6 +1003,9 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
+  <section v-if="session.context.actionKey === 'certificate'" id="certificate" tabindex="-1">
+    <NotaryPortalWorkflowPanel :detail="detail" :session="session" proxy />
+  </section>
   <section
     v-if="matter.evidence"
     class="workflow-card"
@@ -1085,7 +1089,7 @@ onBeforeUnmount(() => {
     @click="retry"
     >使用相同请求键重试</ElButton
   >
-  <p v-if="!formAvailable" role="alert">
+  <p v-if="session.context.actionKey !== 'certificate' && !formAvailable" role="alert">
     {{
       unknown
         ? '当前事项可能已经推进；恢复只会核对原冻结请求。'

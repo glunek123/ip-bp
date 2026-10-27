@@ -27,6 +27,7 @@ export type NotaryDisplayFee =
   | { state: 'UNRECORDED' | 'PENDING'; amount: null }
   | { state: 'KNOWN'; amount: string };
 export type NotaryDisplayCapabilities = {
+  proxyIssueCertificate?: boolean;
   recordEvidence: boolean;
   recordOpening: boolean;
   reviewOpening: boolean;
@@ -312,6 +313,7 @@ export type RecordNotaryEvidenceResult = {
 
 export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> &
   NotaryMatterDisplay & {
+    disclosureRequired?: boolean;
     certificateFiles: NotaryCertificateFile[];
     stage:
       | 'PENDING_EVIDENCE'
@@ -328,6 +330,7 @@ export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> &
       reviewOpening: boolean;
       decideIssuance: boolean;
       archiveReturn: boolean;
+      proxyIssueCertificate?: boolean;
     };
     evidence: NotaryEvidence | null;
     opening: NotaryOpening | null;
@@ -663,6 +666,7 @@ function isNotaryDisplay(
       'reviewOpening',
       'decideIssuance',
       'archiveReturn',
+      ...(capabilities.proxyIssueCertificate === undefined ? [] : ['proxyIssueCertificate']),
     ]) &&
     Object.values(capabilities).every((allowed) => typeof allowed === 'boolean')
   );
@@ -989,12 +993,15 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
       'reviewOpening',
       'decideIssuance',
       'archiveReturn',
+      ...(detail.capabilities.proxyIssueCertificate === undefined ? [] : ['proxyIssueCertificate']),
     ]) &&
     typeof detail.capabilities.recordEvidence === 'boolean' &&
     typeof detail.capabilities.recordOpening === 'boolean' &&
     typeof detail.capabilities.reviewOpening === 'boolean' &&
     typeof detail.capabilities.decideIssuance === 'boolean' &&
     typeof detail.capabilities.archiveReturn === 'boolean' &&
+    (detail.disclosureRequired === undefined || typeof detail.disclosureRequired === 'boolean') &&
+    (detail.capabilities.proxyIssueCertificate === undefined || typeof detail.capabilities.proxyIssueCertificate === 'boolean') &&
     (detail.evidence === null || isEvidence(detail.evidence)) &&
     (detail.recordEdits === undefined || isRecordEdits(detail.recordEdits)) &&
     (detail.opening === null || isOpening(detail.opening)) &&

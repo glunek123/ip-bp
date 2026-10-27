@@ -110,7 +110,10 @@ const workflowGuidance = computed(() => {
       };
     case 'WAITING_CERTIFICATE':
       return {
-        text: '下一步由公证处在公证处办理端的待出证事项中登记真实公证书和所需材料。完成后由运营接手案件，运营在本页查看结果。',
+        text: '下一步登记真实公证书、材料和费用；获授权的运营可在本页代办公证处出证。',
+        ...(current.capabilities.proxyIssueCertificate
+          ? { anchor: 'certificate', action: '代办公证处出证' }
+          : {}),
       };
     case 'WAITING_RETURN':
       return {
@@ -290,10 +293,13 @@ function hasPendingWorkflowRequest(
 ): boolean {
   for (let index = 0; index < globalThis.sessionStorage.length; index += 1) {
     const key = globalThis.sessionStorage.key(index);
-    if (!key?.startsWith('notary-list-request:')) continue;
+    const prefix = actionKey === 'certificate'
+      ? 'notary-proxy-certificate-request:'
+      : 'notary-list-request:';
+    if (!key?.startsWith(prefix)) continue;
     try {
       const tuple: unknown = JSON.parse(
-        key.slice('notary-list-request:'.length),
+        key.slice(prefix.length),
       );
       if (
         Array.isArray(tuple) &&
@@ -323,13 +329,14 @@ watch(
       'review-form',
       'issuance-form',
       'return-archive-form',
+      'certificate',
     ];
     let saved: string | undefined;
     try {
       saved = actions.find(
         (action) =>
           globalThis.sessionStorage.getItem(
-            'notary-list-request:' +
+            (action === 'certificate' ? 'notary-proxy-certificate-request:' : 'notary-list-request:') +
               JSON.stringify([actorKey.value, current.id, action]),
           ) || hasPendingWorkflowRequest(current.id, action),
       );
@@ -387,6 +394,7 @@ watch(
         'issuance-form',
         'return-archive-form',
         'certificate-summary',
+        'certificate',
       ].includes(anchor)
     )
       return;

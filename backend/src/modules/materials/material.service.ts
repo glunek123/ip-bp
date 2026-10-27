@@ -2690,6 +2690,18 @@ export class MaterialService {
     const clientVersionIds = allowedClientReferences?.map(
       ({ contentVersionId }) => contentVersionId,
     );
+    let canListProxyCertificate = false;
+    if (ownerType === 'NOTARY_MATTER' && actor.notaryOfficeId === undefined && actor.clientCustomerId === undefined) {
+      try {
+        const scope = await this.accessControl.buildLeadScope(actor, 'notary.certificate.issue.proxy');
+        canListProxyCertificate = (await this.database.notaryMatter.findFirst({
+          where: { id: ownerId, departmentId: actor.departmentId, stage: 'WAITING_CERTIFICATE', sourceLead: scope },
+          select: { id: true },
+        })) != null;
+      } catch {
+        canListProxyCertificate = false;
+      }
+    }
     const items = await this.database.material.findMany({
       where: {
         departmentId: actor.departmentId,
@@ -2704,7 +2716,8 @@ export class MaterialService {
           : {}),
         ...(ownerType === 'NOTARY_MATTER' &&
         actor.notaryOfficeId === undefined &&
-        actor.clientCustomerId === undefined
+        actor.clientCustomerId === undefined &&
+        !canListProxyCertificate
           ? {
               category: {
                 notIn: ['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'] as const,
@@ -5835,6 +5848,20 @@ export class MaterialService {
         (notaryCategory === 'NOTARY_CERTIFICATE' ||
           notaryCategory === 'NOTARY_DISCLOSURE');
       if (caseCertificateRead) {
+        const pendingProxy = await reader.notaryMatter.findFirst({
+          where: { id: ownerId, departmentId: actor.departmentId, stage: 'WAITING_CERTIFICATE' },
+          select: { departmentId: true, sourceLead: { select: { responsibleUserId: true, teamId: true } } },
+        });
+        if (pendingProxy) {
+          await this.withMaterialAuthorization(() =>
+            this.accessControl.authorizeLead(actor, 'notary.certificate.issue.proxy', {
+              departmentId: pendingProxy.departmentId,
+              responsibleUserId: pendingProxy.sourceLead.responsibleUserId,
+              ...(pendingProxy.sourceLead.teamId ? { teamId: pendingProxy.sourceLead.teamId } : {}),
+            }, snapshotReader),
+          );
+          return;
+        }
         await this.withMaterialAuthorization(() =>
           this.accessControl.authorizeDepartmentAction(
             actor,
@@ -5852,9 +5879,11 @@ export class MaterialService {
         if (relatedCase === null) throw this.notFound();
         return;
       }
+      const proxyCertificateWrite = operation === 'write' &&
+        (notaryCategory === 'NOTARY_CERTIFICATE' || notaryCategory === 'NOTARY_DISCLOSURE');
       const action =
         operation === 'write'
-          ? 'notary.unbox.record'
+          ? proxyCertificateWrite ? 'notary.certificate.issue.proxy' : 'notary.unbox.record'
           : (leadAction ?? 'lead.read');
       const scope = await this.withMaterialAuthorization(() =>
         this.accessControl.buildLeadScope(actor, action, snapshotReader),
@@ -5875,11 +5904,11 @@ export class MaterialService {
       });
       if (matter === null) throw this.notFound();
       if (operation === 'write') {
-        if (matter.stage !== 'WAITING_UNBOX') throw this.versionConflict();
+        if (matter.stage !== (proxyCertificateWrite ? 'WAITING_CERTIFICATE' : 'WAITING_UNBOX')) throw this.versionConflict();
         await this.withMaterialAuthorization(() =>
           this.accessControl.authorizeLead(
             actor,
-            'notary.unbox.record',
+            action,
             {
               departmentId: matter.departmentId,
               responsibleUserId: matter.sourceLead.responsibleUserId,

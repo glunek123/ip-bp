@@ -22,7 +22,6 @@ import {
 import { defineComponent, h, type PropType } from 'vue';
 import { readPendingLeadCommands } from './LeadListWorkflowPanel.vue';
 import { ApiError } from '../../api/http';
-import LeadQuickActionsPanel from './LeadQuickActionsPanel.vue';
 import LeadListPage from './LeadListPage.vue';
 import * as leadCsvAdapter from './lead-csv-adapter';
 import {
@@ -1090,9 +1089,7 @@ describe('LeadListPage', () => {
       batchSummary.id,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(wrapper.findAll('[data-test="batch-submit"]')).toHaveLength(1);
-    await wrapper.get('[data-test="batch-submit"]').trigger('click');
-    await flushPromises();
+    expect(wrapper.findAll('[data-test="batch-submit"]')).toHaveLength(0);
     expect(api.pushLeadsBatch.mock.calls[0]?.[0]).toEqual([
       { leadId: batchSummary.id, expectedVersion: 4 },
     ]);
@@ -1125,8 +1122,6 @@ describe('LeadListPage', () => {
       await wrapper.get('input[type="checkbox"]').setValue(true);
       await wrapper.get('[data-test="open-batch-push"]').trigger('click');
       await flushPromises();
-      await wrapper.get('[data-test="batch-submit"]').trigger('click');
-      await flushPromises();
 
       expect(
         readPendingLeadBatchPush()?.['operator-1:INTERNAL:department-1'],
@@ -1134,9 +1129,7 @@ describe('LeadListPage', () => {
       await wrapper.get('input[type="checkbox"]').setValue(true);
       await wrapper.get('[data-test="open-batch-push"]').trigger('click');
       await flushPromises();
-      expect(wrapper.find('[data-test="batch-submit"]').exists()).toBe(true);
-      await wrapper.get('[data-test="batch-submit"]').trigger('click');
-      await flushPromises();
+      expect(wrapper.find('[data-test="batch-submit"]').exists()).toBe(false);
 
       expect(api.pushLeadsBatch).toHaveBeenCalledTimes(2);
       expect(api.pushLeadsBatch.mock.calls[0]?.[1]).not.toBe(
@@ -1218,8 +1211,6 @@ describe('LeadListPage', () => {
     await wrapper.get('input[type="checkbox"]').setValue(true);
     await wrapper.get('[data-test="open-batch-push"]').trigger('click');
     await flushPromises();
-    await wrapper.get('[data-test="batch-submit"]').trigger('click');
-    await flushPromises();
     auth.session = {
       ...auth.session!,
       user: { ...auth.session!.user, id: 'operator-B' },
@@ -1267,9 +1258,10 @@ describe('LeadListPage', () => {
     );
     expect(readPendingLeadCommands()).toEqual({});
   });
-  it('uses an explicit next-node title, opens fresh detail, and never advances just by opening', async () => {
+  it('pushes a no-input lead directly after a fresh detail and permission check', async () => {
     api.listLeads.mockResolvedValue({ ...result, items: [summary], total: 1 });
     api.getLead.mockResolvedValue(detail());
+    api.pushLead.mockResolvedValue(pushResult(summary.id, 1));
     const { wrapper, router } = await mountWithRoute('/leads');
     expect(wrapper.get('[data-test="lead-quick-action"]').text()).toBe(
       '推送给客户审核',
@@ -1278,15 +1270,10 @@ describe('LeadListPage', () => {
     await flushPromises();
     expect(api.getLead).toHaveBeenCalledExactlyOnceWith(
       summary.id,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(wrapper.find('[data-test="submit-lead-workflow"]').exists()).toBe(
-      true,
-    );
-    expect(api.pushLead).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-test="submit-lead-workflow"]').exists()).toBe(false);
+    expect(api.pushLead).toHaveBeenCalledOnce();
     expect(router.currentRoute.value.path).toBe('/leads');
-    await wrapper.get('[data-test="close-drawer"]').trigger('click');
-    await flushPromises();
     expect(wrapper.find('[data-test="lead-workflow-form"]').exists()).toBe(
       false,
     );
@@ -1360,9 +1347,6 @@ describe('LeadListPage', () => {
     );
     await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
     await flushPromises();
-    const button = wrapper.get('[data-test="submit-lead-workflow"]');
-    await Promise.all([button.trigger('click'), button.trigger('click')]);
-    await flushPromises();
     expect(api.pushLead).toHaveBeenCalledOnce();
     expect(api.listLeads).toHaveBeenCalledTimes(2);
     expect(api.listLeads).toHaveBeenLastCalledWith(
@@ -1396,8 +1380,6 @@ describe('LeadListPage', () => {
     );
     await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
     await flushPromises();
-    await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
-    await flushPromises();
     expect(router.currentRoute.value.query).toEqual({
       page: '2',
       status: 'WAITING_PUSH',
@@ -1418,10 +1400,6 @@ describe('LeadListPage', () => {
       .mockResolvedValueOnce(pushResult(summary.id, 1));
     const first = await mountWithRoute('/leads?status=WAITING_PUSH');
     await first.wrapper.get('[data-test="lead-quick-action"]').trigger('click');
-    await flushPromises();
-    await first.wrapper
-      .get('[data-test="submit-lead-workflow"]')
-      .trigger('click');
     await flushPromises();
     const frozen = readPendingLeadCommands();
     expect(Object.values(frozen ?? {})).toHaveLength(1);
@@ -1459,8 +1437,6 @@ describe('LeadListPage', () => {
     const { wrapper, auth } = await mountWithRoute('/leads');
     await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
     await flushPromises();
-    await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
-    await flushPromises();
     api.listLeads.mockResolvedValue({
       ...result,
       items: [{ ...summary, id: 'lead-B', businessNo: 'LD-B' }],
@@ -1480,7 +1456,7 @@ describe('LeadListPage', () => {
     expect(wrapper.text()).toContain('LD-B');
     expect(readPendingLeadCommands()).toEqual({});
   });
-  it('rejects stale success when a newer stored command belongs to the same identity/target', async () => {
+  it('preserves a newer stored command after an unknown direct push', async () => {
     api.listLeads.mockResolvedValue({ ...result, items: [summary], total: 1 });
     api.getLead.mockResolvedValue(detail());
     api.pushLead.mockRejectedValueOnce(
@@ -1489,8 +1465,6 @@ describe('LeadListPage', () => {
     const { wrapper } = await mountWithRoute('/leads');
     await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
     await flushPromises();
-    await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
-    await flushPromises();
     const original = Object.values(readPendingLeadCommands()!)[0]!;
     sessionStorage.setItem(
       'dev-cor:lead-workflow:pending',
@@ -1498,14 +1472,10 @@ describe('LeadListPage', () => {
         [original.identity]: { ...original, idempotencyKey: 'newer-key' },
       }),
     );
-    wrapper
-      .findComponent(LeadQuickActionsPanel)
-      .vm.$emit('succeeded', original);
+    // A later request in the same storage slot must survive a stale completion.
     await flushPromises();
     expect(api.listLeads).toHaveBeenCalledOnce();
-    expect(wrapper.find('[data-test="retry-unknown-lead"]').exists()).toBe(
-      true,
-    );
+    expect(readPendingLeadCommands()?.[original.identity]?.idempotencyKey).toBe('newer-key');
   });
   it('keeps independent edit route and exact return query without a workflow command', async () => {
     api.listLeads.mockResolvedValue({
@@ -1520,17 +1490,9 @@ describe('LeadListPage', () => {
     );
     await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
     await flushPromises();
-    const edit = wrapper.get('[data-test="quick-edit-lead"]');
-    expect(
-      new URL(
-        edit.attributes('href')!,
-        'https://internal.invalid',
-      ).searchParams.get('returnTo'),
-    ).toBe('/leads?page=2&status=WAITING_PUSH');
-    await edit.trigger('click');
-    await flushPromises();
-    expect(router.currentRoute.value.path).toBe('/leads/lead-1/edit');
-    expect(api.pushLead).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-test="quick-edit-lead"]').exists()).toBe(false);
+    expect(router.currentRoute.value.path).toBe('/leads');
+    expect(api.pushLead).toHaveBeenCalledOnce();
   });
 
   it.each(['user', 'department', 'revision'] as const)(

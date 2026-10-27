@@ -12,6 +12,8 @@ export type FrozenLeadCommand = FrozenLeadPush &
     | { action: 'push'; body: { expectedVersion: number } }
     | { action: 'transfer'; body: CreateNotaryMatterInput }
     | { action: 'withdraw'; body: { reason: string; expectedVersion: number } }
+    | { action: 'proxy-review'; body: { result: 'INFRINGEMENT' | 'NO_INFRINGEMENT'; reason?: string; expectedVersion: number } }
+    | { action: 'proxy-withdraw'; body: { applicationId: string; expectedVersion: number } }
     | {
         action: 'no-evidence';
         body: {
@@ -51,6 +53,11 @@ function isAttempt(value: unknown): value is FrozenLeadCommand {
       return Object.keys(value.body).length === 1;
     case 'withdraw':
       return typeof value.body.reason === 'string';
+    case 'proxy-review':
+      return (value.body.result === 'INFRINGEMENT' && value.body.reason === undefined) ||
+        (value.body.result === 'NO_INFRINGEMENT' && typeof value.body.reason === 'string');
+    case 'proxy-withdraw':
+      return typeof value.body.applicationId === 'string';
     case 'no-evidence':
       return (
         value.body.result === 'NO_EVIDENCE' &&
@@ -74,12 +81,22 @@ export function sameLeadAttempt(
   left: FrozenLeadPush,
   right: FrozenLeadPush,
 ): boolean {
-  return (
+  const sameIdentity = (
     left.identity === right.identity &&
     left.leadId === right.leadId &&
     left.expectedVersion === right.expectedVersion &&
     left.idempotencyKey === right.idempotencyKey
   );
+  if (!sameIdentity) return false;
+  const leftCommand = 'action' in left ? left as FrozenLeadCommand : null;
+  const rightCommand = 'action' in right ? right as FrozenLeadCommand : null;
+  if (leftCommand && rightCommand)
+    return leftCommand.action === rightCommand.action &&
+      JSON.stringify(leftCommand.body) === JSON.stringify(rightCommand.body);
+  const command = leftCommand ?? rightCommand;
+  return command === null ||
+    (command.action === 'push' &&
+      JSON.stringify(command.body) === JSON.stringify({ expectedVersion: command.expectedVersion }));
 }
 function readLegacy(): Record<string, FrozenLeadPush & { status: string }> {
   const parsed: unknown = JSON.parse(
@@ -140,7 +157,7 @@ export function readPendingLeadCommands(): Record<
     return null;
   }
 }
-function storeAttempt(attempt: FrozenLeadCommand, settled = false): boolean {
+export function storeAttempt(attempt: FrozenLeadCommand, settled = false): boolean {
   try {
     const entries = readPendingLeadCommands();
     if (!entries) return false;
@@ -179,6 +196,7 @@ import {
   decideLeadNoEvidence,
   type LeadDetail,
 } from '../../api/leads';
+import { proxyReviewLead, proxyConfirmLeadWithdrawal } from '../../api/client-leads';
 import {
   createNotaryMatter,
   listNotaryOffices,
@@ -200,6 +218,8 @@ const emit = defineEmits<{
 }>();
 const choice = ref<'' | 'transfer' | 'no-evidence'>('');
 const reason = ref('');
+const proxyResult = ref<'' | 'INFRINGEMENT' | 'NO_INFRINGEMENT'>('');
+const proxyWithdrawalConfirmed = ref(false);
 const productIds = ref<string[]>([]);
 const contentVersionIds = ref<string[]>([]);
 const officeId = ref('');
@@ -227,6 +247,10 @@ const transferAllowed = computed(
     props.detail.capabilities.createEvidenceBatch,
 );
 const action = computed(() => {
+  if (props.detail.status === 'WAITING_REVIEW' && props.detail.capabilities.proxyReview)
+    return 'proxy-review';
+  if (props.detail.status === 'ARCHIVED' && props.detail.capabilities.proxyConfirmWithdrawal && props.detail.pendingWithdrawalApplication)
+    return 'proxy-withdraw';
   if (props.detail.status === 'WAITING_PUSH' && props.detail.capabilities.push)
     return 'push';
   if (props.detail.status === 'WAITING_EVIDENCE_DECISION') {
@@ -254,7 +278,9 @@ const hasAction = computed(
     props.detail.capabilities.push ||
     transferAllowed.value ||
     props.detail.capabilities.evidenceDecide ||
-    props.detail.capabilities.withdrawApply,
+    props.detail.capabilities.withdrawApply ||
+    props.detail.capabilities.proxyReview ||
+    props.detail.capabilities.proxyConfirmWithdrawal,
 );
 const locked = computed(
   () => busy.value || !!frozen.value || denied.value || conflict.value,
@@ -269,6 +295,10 @@ const valid = computed(() => {
   )
     return false;
   if (action.value === 'push') return true;
+  if (action.value === 'proxy-review')
+    return proxyResult.value === 'INFRINGEMENT' ||
+      (proxyResult.value === 'NO_INFRINGEMENT' && reasonLength.value > 0 && reasonLength.value <= 5000);
+  if (action.value === 'proxy-withdraw') return proxyWithdrawalConfirmed.value;
   if (action.value !== 'transfer')
     return reasonLength.value > 0 && reasonLength.value <= 5000;
   return (
@@ -288,6 +318,8 @@ const submitLabel = computed(
         : '移交公证并保留只读线索',
       'no-evidence': '不取证并归档',
       withdraw: '提交撤回申请，等待客户确认',
+      'proxy-review': '代办客户审核',
+      'proxy-withdraw': '代办客户确认撤回',
       '': '请先选择取证去向',
     })[action.value],
 );
@@ -301,6 +333,8 @@ const frozenLabel = computed(() =>
             : '移交公证',
         'no-evidence': '不取证并归档',
         withdraw: '申请撤回归档',
+        'proxy-review': '代办客户审核',
+        'proxy-withdraw': '代办客户确认撤回',
       }[frozen.value.action]
     : '',
 );
@@ -393,6 +427,11 @@ function capability(
   switch (operation) {
     case 'push':
       return detail.capabilities.push;
+    case 'proxy-review':
+      return detail.status === 'WAITING_REVIEW' && detail.capabilities.proxyReview === true;
+    case 'proxy-withdraw':
+      return detail.status === 'ARCHIVED' && detail.capabilities.proxyConfirmWithdrawal === true &&
+        detail.pendingWithdrawalApplication?.id === props.detail.pendingWithdrawalApplication?.id;
     case 'transfer':
       return (
         detail.capabilities.transferToNotary ||
@@ -426,6 +465,14 @@ async function send(attempt: FrozenLeadCommand) {
           attempt.body.expectedVersion,
           attempt.idempotencyKey,
         );
+        break;
+      case 'proxy-review':
+        await proxyReviewLead(attempt.leadId, attempt.body.result,
+          attempt.body.expectedVersion, attempt.idempotencyKey, attempt.body.reason);
+        break;
+      case 'proxy-withdraw':
+        await proxyConfirmLeadWithdrawal(attempt.leadId, attempt.body.applicationId,
+          attempt.body.expectedVersion, attempt.idempotencyKey);
         break;
       case 'withdraw':
         await applyLeadWithdrawal(
@@ -533,6 +580,23 @@ async function submit() {
         action: operation,
         body: { expectedVersion: latest.version },
       };
+    else if (operation === 'proxy-review')
+      attempt = {
+        ...base,
+        action: operation,
+        body: {
+          expectedVersion: latest.version,
+          result: proxyResult.value as 'INFRINGEMENT' | 'NO_INFRINGEMENT',
+          ...(proxyResult.value === 'NO_INFRINGEMENT' ? { reason: reason.value.trim() } : {}),
+        },
+      };
+    else if (operation === 'proxy-withdraw')
+      attempt = {
+        ...base,
+        action: operation,
+        body: { expectedVersion: latest.version,
+          applicationId: latest.pendingWithdrawalApplication!.id },
+      };
     else if (operation === 'transfer')
       attempt = {
         ...base,
@@ -612,6 +676,11 @@ onMounted(() => {
       contentVersionIds.value = [...pending.body.selectedContentVersionIds];
       officeId.value = pending.body.notaryOfficeId;
       purpose.value = pending.body.batchPurpose;
+    } else if (pending.action === 'proxy-review') {
+      proxyResult.value = pending.body.result;
+      reason.value = pending.body.reason ?? '';
+    } else if (pending.action === 'proxy-withdraw') {
+      proxyWithdrawalConfirmed.value = true;
     } else if (pending.action !== 'push') {
       reason.value = pending.body.reason;
       if (pending.action === 'no-evidence') choice.value = 'no-evidence';
@@ -658,7 +727,7 @@ onBeforeUnmount(() => {
           份截图。
         </p>
       </template>
-      <p v-else-if="frozen.action !== 'push'">原因：{{ frozen.body.reason }}</p>
+      <p v-else-if="'reason' in frozen.body && frozen.body.reason">原因：{{ frozen.body.reason }}</p>
       <ElButton
         data-test="retry-unknown-lead"
         :disabled="busy || storageUnavailable"
@@ -778,6 +847,21 @@ onBeforeUnmount(() => {
         </label>
         <p>取证方式：线上购买。用途必填，最多500个字符。</p>
       </template>
+      <template v-else-if="action === 'proxy-review'">
+        <p>运营将以本人身份代办客户审核。请核对真实结论；系统记录代办人、时间和结果。</p>
+        <fieldset :disabled="locked">
+          <legend>客户审核结论<RequiredFieldMark /></legend>
+          <label><input v-model="proxyResult" type="radio" value="INFRINGEMENT" />确认侵权</label>
+          <label><input v-model="proxyResult" type="radio" value="NO_INFRINGEMENT" />确认不侵权</label>
+        </fieldset>
+        <label v-if="proxyResult === 'NO_INFRINGEMENT'" class="field-label">不侵权原因<RequiredFieldMark />
+          <textarea v-model="reason" class="text-area" maxlength="5000" :disabled="locked" />
+        </label>
+      </template>
+      <template v-else-if="action === 'proxy-withdraw'">
+        <p>客户撤回申请已经存在。代办后将回到待审核；请先核对客户实际意愿。</p>
+        <label><input v-model="proxyWithdrawalConfirmed" type="checkbox" :disabled="locked" />已核对客户同意撤回</label>
+      </template>
       <template v-else-if="action === 'no-evidence' || action === 'withdraw'">
         <p>
           {{
@@ -818,9 +902,7 @@ onBeforeUnmount(() => {
         >{{ submitLabel }}</ElButton
       >
     </template>
-    <p v-else>
-      当前账号没有可办理的下一步；请核对最新状态和权限。客户审核及确认须由客户在客户办理端完成。
-    </p>
+    <p v-else>当前账号没有可办理的下一步；请核对最新状态和权限。</p>
   </section>
 </template>
 

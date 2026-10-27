@@ -92,6 +92,21 @@ function fixture() {
 }
 
 describe('real notary evidence initialization', () => {
+  it('keeps an internal proxy issuer on the certificate, source audit and evidence audit', async () => {
+    const f = fixture();
+    const proxyFacts = { ...facts, actorUserId: 'operator-1',
+      internalActorUserId: 'operator-1', notaryOfficeAccountBindingId: null };
+    await initializeNotaryEvidence(f.tx, proxyFacts);
+    expect(f.store.notaryCertificate.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ actorUserId: 'operator-1', internalActorUserId: 'operator-1', notaryOfficeAccountBindingId: null }),
+    }));
+    expect(f.store.auditEvent.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ actorUserId: 'operator-1', internalActorUserId: 'operator-1', notaryOfficeAccountBindingId: null }),
+    }));
+    expect(f.store.evidenceAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      actorUserId: 'operator-1', internalActorUserId: 'operator-1', notaryOfficeAccountBindingId: null,
+    }) });
+  });
   it('creates only source-backed ledger initial states, keeps unknown physical fields null and retains all exact versions', async () => {
     const f = fixture();
     await expect(initializeNotaryEvidence(f.tx, facts)).resolves.toEqual({
@@ -118,7 +133,7 @@ describe('real notary evidence initialization', () => {
     const audit = f.store.evidenceAuditEvent.create.mock.calls[0][0].data;
     expect(audit.actorUserId).toBe('notary-user');
     expect(audit.notaryOfficeAccountBindingId).toBe('binding-1');
-    expect(audit.internalActorUserId).toBeUndefined();
+    expect(audit.internalActorUserId).toBeNull();
     expect(audit.afterSnapshot.electronicFiles).toEqual(
       facts.files.map((file) => ({
         materialId: file.materialId,

@@ -393,6 +393,7 @@ describe('LeadService', () => {
     const service = new LeadService(
       {
         lead: { findFirst: jest.fn().mockResolvedValue(lead) },
+        userAccount: { findUnique: jest.fn().mockResolvedValue({ accountType: 'CLIENT', active: true }) },
       } as unknown as DatabaseService,
       access as unknown as AccessControlService,
       {

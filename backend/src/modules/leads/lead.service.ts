@@ -533,6 +533,7 @@ export class LeadService {
       withdrawApply,
       evidenceDecide,
       createEvidenceBatch,
+      proxyReview,
     ] = await Promise.all([
       this.currentScreenshotIds(actor, [lead.id]),
       this.canEdit(actor, lead),
@@ -540,6 +541,9 @@ export class LeadService {
       this.canApplyWithdrawal(actor, lead),
       this.canDecideEvidence(actor, lead),
       this.canCreateEvidenceBatch(actor, lead),
+      lead.status === 'WAITING_REVIEW' && lead.activeReviewDecisionId === null
+        ? this.canProxyAction(actor, lead, 'lead.review.proxy')
+        : Promise.resolve(false),
     ]);
     const productScreenshotsEdit =
       lead.status === 'WAITING_PUSH'
@@ -551,6 +555,8 @@ export class LeadService {
         application.originalDecisionId === lead.activeReviewDecisionId &&
         application.confirmation === null,
     );
+    const proxyConfirmWithdrawal = pending !== undefined &&
+      await this.canProxyAction(actor, lead, 'lead.withdraw.confirm.proxy');
     const history = [
       ...(lead.evidenceDecision === null || lead.evidenceDecision === undefined
         ? []
@@ -620,6 +626,8 @@ export class LeadService {
         evidenceDecide,
         transferToNotary: evidenceDecide,
         createEvidenceBatch,
+        proxyReview,
+        proxyConfirmWithdrawal,
       },
       notaryMatters: lead.notaryMatters.map((matter) => ({
         id: matter.id,
@@ -673,6 +681,30 @@ export class LeadService {
       return false;
     try {
       await this.access.authorizeLead(actor, 'lead.withdraw.apply', {
+        departmentId: lead.departmentId,
+        responsibleUserId: lead.responsibleUserId,
+        ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
+
+  private async canProxyAction(
+    actor: ActorContext,
+    lead: LeadDetailRecord,
+    action: 'lead.review.proxy' | 'lead.withdraw.confirm.proxy',
+  ): Promise<boolean> {
+    if (actor.clientCustomerId !== undefined || actor.notaryOfficeId !== undefined || actor.lawyerAccountId !== undefined)
+      return false;
+    const account = await this.database.userAccount.findUnique({
+      where: { id: actor.userId }, select: { accountType: true, active: true },
+    });
+    if (account?.accountType !== 'INTERNAL' || !account.active) return false;
+    try {
+      await this.access.authorizeLead(actor, action, {
         departmentId: lead.departmentId,
         responsibleUserId: lead.responsibleUserId,
         ...(lead.teamId === null ? {} : { teamId: lead.teamId }),

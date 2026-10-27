@@ -13,16 +13,29 @@ import {
 } from '../../api/materials';
 import {
   recordNotaryPortalCertificate,
+  recordProxyNotaryCertificate,
   recordNotaryPortalOpening,
   type NotaryPortalCertificateInput,
   type NotaryPortalMatter,
 } from '../../api/notary-portal';
-import type { RecordNotaryOpeningInput } from '../../api/notary';
+import type { NotaryMatterDetail, RecordNotaryOpeningInput } from '../../api/notary';
 const props = defineProps<{
-  detail: NotaryPortalMatter;
+  detail: NotaryPortalMatter | NotaryMatterDetail;
   session: ListWorkflowSession;
+  proxy?: boolean;
 }>();
-const matter = computed(() => props.detail);
+const matter = computed(() => ({
+  ...props.detail,
+  disclosureRequired: props.detail.disclosureRequired ?? false,
+  capabilities: {
+    recordOpening: !props.proxy && props.detail.capabilities.recordOpening,
+    issueCertificate: props.proxy
+      ? Boolean(typeof props.detail.disclosureRequired === 'boolean' &&
+          'proxyIssueCertificate' in props.detail.capabilities &&
+          props.detail.capabilities.proxyIssueCertificate)
+      : Boolean((props.detail as NotaryPortalMatter).capabilities.issueCertificate),
+  },
+}));
 const materials = ref<OwnerMaterial[]>([]);
 const excludedPhotoIds = ref<Set<string>>(new Set());
 const senderName = ref('');
@@ -386,7 +399,7 @@ const unknown = ref(false);
 const message = ref('');
 const blocked = ref(false);
 const locked = computed(() => busy.value || unknown.value || blocked.value);
-const storageKey = `notary-portal-list-request:${JSON.stringify([props.session.context.actorKey, props.detail.id, props.session.context.actionKey])}`;
+const storageKey = `${props.proxy ? 'notary-proxy-certificate-request' : 'notary-portal-list-request'}:${JSON.stringify([props.session.context.actorKey, props.detail.id, props.session.context.actionKey])}`;
 let pending: Pending | null = null;
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -446,7 +459,7 @@ function validPending(value: unknown): value is Pending {
 
 const requestedAction = computed(() => props.session.context.actionKey);
 const currentAction = computed<Command['kind'] | null>(() => {
-  const current = props.detail;
+  const current = matter.value;
   if (current.stage === 'WAITING_UNBOX' && current.capabilities.recordOpening)
     return 'opening';
   if (
@@ -474,7 +487,9 @@ function post(request: Pending) {
   const { command, key } = request;
   return command.kind === 'opening'
     ? recordNotaryPortalOpening(props.detail.id, command.input, key)
-    : recordNotaryPortalCertificate(props.detail.id, command.input, key);
+    : props.proxy
+      ? recordProxyNotaryCertificate(props.detail.id, command.input, key)
+      : recordNotaryPortalCertificate(props.detail.id, command.input, key);
 }
 
 async function execute(command: Command, recovery = false): Promise<void> {
@@ -585,6 +600,7 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
+  <p v-if="proxy" role="status">运营代办公证处出证；提交后记录真实运营账号、时间和结果。</p>
   <p>提交会推进阶段；当前服务暂不支持仅保存这些资料。已上传材料会保留。</p>
   <p v-if="message" role="alert">{{ message }}</p>
   <ElButton

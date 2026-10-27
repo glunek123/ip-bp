@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   pushLeadsBatch,
@@ -20,6 +20,7 @@ const props = defineProps<{
   identity: string;
   contextGeneration: string;
   pending?: FrozenLeadBatchPush | null;
+  autoSubmit?: boolean;
 }>();
 const emit = defineEmits<{
   close: [];
@@ -159,10 +160,14 @@ async function submit() {
     busy.value = false;
   }
 }
+onMounted(() => {
+  if (props.autoSubmit && !props.pending) void submit();
+});
 </script>
 
 <template>
   <section
+    v-if="!autoSubmit || !!error || !!pending"
     class="demo-card lead-batch-panel"
     role="dialog"
     aria-modal="true"
@@ -186,11 +191,12 @@ async function submit() {
       </li>
     </ul>
     <ElButton
+      v-if="!autoSubmit || !!pending"
       type="primary"
       data-test="batch-submit"
       :disabled="busy || items.length < 1"
       @click="submit"
-      >{{ busy ? '正在提交' : '整批推送' }}</ElButton
+      >{{ busy ? '正在提交' : '按原请求核对' }}</ElButton
     >
     <ElButton
       data-test="batch-close"

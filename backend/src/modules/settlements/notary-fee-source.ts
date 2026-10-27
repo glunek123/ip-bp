@@ -45,7 +45,7 @@ export async function initializeNotaryFees(
       action: 'notary.certificate_issued',
       actorUserId: certificate.actorUserId,
       notaryOfficeAccountBindingId: certificate.notaryOfficeAccountBindingId,
-      internalActorUserId: null,
+      internalActorUserId: certificate.internalActorUserId,
     },
   });
   const details = event?.details;
@@ -140,6 +140,7 @@ export async function initializeNotaryFees(
         departmentId: facts.departmentId,
         actorUserId: event.actorUserId,
         notaryOfficeAccountBindingId: event.notaryOfficeAccountBindingId,
+        internalActorUserId: event.internalActorUserId,
         resourceType: 'FEE',
         resourceId: fee.id,
         action: 'fee.source-initialized',
