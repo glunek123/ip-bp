@@ -428,6 +428,69 @@ describe('LeadService CSV import', () => {
     });
   });
 
+  it('stores the original eight product fields and replays the initial empty screenshots after later attachments', async () => {
+    const f = fixture();
+    const first = await f.service.importBatch(actor, 'snapshot', request());
+    const receipt = f.tx.leadCsvImportReceipt.create.mock.calls[0]?.[0].data;
+    for (const entry of first.items)
+      expect(entry.lead.products[0]!.screenshotContentVersionIds).toEqual([]);
+    for (const entry of receipt.resultSnapshot.items)
+      expect(Object.keys(entry.lead.products[0]).sort()).toEqual(
+        [
+          'id',
+          'position',
+          'url',
+          'title',
+          'quantity',
+          'unitPrice',
+          'commentCount',
+          'estimatedAmount',
+        ].sort(),
+      );
+    f.tx.leadCsvImportReceipt.findUnique.mockResolvedValueOnce({
+      ...receipt,
+      createdAt: new Date('2026-10-19T01:00:00.000Z'),
+    });
+    f.tx.lead.findMany.mockResolvedValueOnce(
+      first.items.map(({ lead }) => ({
+        id: lead.id,
+        businessNo: lead.businessNo,
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+        teamId: null,
+        products: [{ screenshotContentVersionIds: [customerId] }],
+      })),
+    );
+    await expect(
+      f.service.importBatch(actor, 'snapshot', request()),
+    ).resolves.toEqual(first);
+    expect(f.tx.lead.create).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { screenshotContentVersionIds: [] },
+    { screenshotContentVersionIds: [customerId] },
+    { extra: 'unexpected' },
+  ])(
+    'rejects a receipt containing additional product fields %#',
+    async (extra) => {
+      const f = fixture();
+      const first = await f.service.importBatch(actor, 'snapshot', request());
+      const receipt = f.tx.leadCsvImportReceipt.create.mock.calls[0]?.[0].data;
+      const snapshot = structuredClone(receipt.resultSnapshot);
+      Object.assign(snapshot.items[0].lead.products[0], extra);
+      f.tx.leadCsvImportReceipt.findUnique.mockResolvedValueOnce({
+        ...receipt,
+        resultSnapshot: snapshot,
+        createdAt: new Date('2026-10-19T01:00:00.000Z'),
+      });
+      await expect(
+        f.service.importBatch(actor, 'snapshot', request()),
+      ).rejects.toMatchObject({ response: { message: '线索回执数据损坏' } });
+      expect(f.tx.lead.create).toHaveBeenCalledTimes(first.items.length);
+    },
+  );
+
   it('queues a screenshot against the exact created product without delaying the lead transaction', async () => {
     const f = fixture();
     const inputRequest = request();

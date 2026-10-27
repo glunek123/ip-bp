@@ -1362,7 +1362,24 @@ export class LeadService {
                 requestFingerprint: fingerprint,
                 remoteFingerprint,
                 originalRequest,
-                resultSnapshot: result,
+                resultSnapshot: {
+                  items: result.items.map(({ rowNumber, lead }) => ({
+                    rowNumber,
+                    lead: {
+                      ...lead,
+                      products: lead.products.map((product) => ({
+                        id: product.id,
+                        position: product.position,
+                        url: product.url,
+                        title: product.title,
+                        quantity: product.quantity,
+                        unitPrice: product.unitPrice,
+                        commentCount: product.commentCount,
+                        estimatedAmount: product.estimatedAmount,
+                      })),
+                    },
+                  })),
+                },
               },
             });
             return result;
@@ -1632,9 +1649,9 @@ export class LeadService {
       !Object.hasOwn(snapshot, 'items')
     )
       throw this.corruptReceipt();
-    const result = snapshot as LeadCsvImportResponse;
+    const result = this.csvReceiptSnapshot(snapshot);
     if (
-      !Array.isArray(result.items) ||
+      !result ||
       result.items.length !== originalItems.length ||
       result.items.some(
         (entry, index) =>
@@ -1740,6 +1757,52 @@ export class LeadService {
       });
     }
     return { items: refreshedItems };
+  }
+
+  private csvReceiptSnapshot(value: unknown): LeadCsvImportResponse | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return null;
+    const snapshot = value as Record<string, unknown>;
+    if (!Array.isArray(snapshot.items)) return null;
+    const keys = new Set([
+      'id',
+      'position',
+      'url',
+      'title',
+      'quantity',
+      'unitPrice',
+      'commentCount',
+      'estimatedAmount',
+    ]);
+    const items: unknown[] = [];
+    for (const value of snapshot.items) {
+      if (!value || typeof value !== 'object' || Array.isArray(value))
+        return null;
+      const entry = value as Record<string, unknown>;
+      if (
+        !entry.lead ||
+        typeof entry.lead !== 'object' ||
+        Array.isArray(entry.lead)
+      )
+        return null;
+      const lead = entry.lead as Record<string, unknown>;
+      if (!Array.isArray(lead.products)) return null;
+      const products: unknown[] = [];
+      for (const value of lead.products) {
+        if (!value || typeof value !== 'object' || Array.isArray(value))
+          return null;
+        const product = value as Record<string, unknown>;
+        const actualKeys = Object.keys(product);
+        if (
+          actualKeys.length !== keys.size ||
+          actualKeys.some((key) => !keys.has(key))
+        )
+          return null;
+        products.push({ ...product, screenshotContentVersionIds: [] });
+      }
+      items.push({ ...entry, lead: { ...lead, products } });
+    }
+    return { items } as unknown as LeadCsvImportResponse;
   }
 
   private csvBusinessSnapshotMatches(
