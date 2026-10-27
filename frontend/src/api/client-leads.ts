@@ -502,6 +502,43 @@ export async function reviewClientLead(
   return value;
 }
 
+export async function proxyReviewLead(
+  id: string,
+  result: 'INFRINGEMENT' | 'NO_INFRINGEMENT',
+  expectedVersion: number,
+  idempotencyKey: string,
+  reason?: string,
+  options: RequestOptions = {},
+): Promise<ClientLeadReviewResult> {
+  const value = await requestJson(`/leads/${encodeURIComponent(id)}/proxy-reviews`, {
+    ...options,
+    method: 'POST',
+    headers: { ...options.headers, 'Idempotency-Key': idempotencyKey },
+    body: { result, expectedVersion, ...(result === 'NO_INFRINGEMENT' ? { reason: reason?.trim() } : {}) },
+  });
+  if (!isClientLeadReviewResult(value, expectedVersion, result)) throw invalidResponse();
+  return value;
+}
+
+export async function proxyConfirmLeadWithdrawal(
+  id: string,
+  applicationId: string,
+  expectedVersion: number,
+  idempotencyKey: string,
+  options: RequestOptions = {},
+): Promise<ClientLeadWithdrawalConfirmationResult> {
+  const value = await requestJson(`/leads/${encodeURIComponent(id)}/proxy-withdrawal-confirmations`, {
+    ...options,
+    method: 'POST',
+    headers: { ...options.headers, 'Idempotency-Key': idempotencyKey },
+    body: { applicationId, expectedVersion },
+  });
+  if (!isRecord(value) || typeof value.id !== 'string' || value.applicationId !== applicationId ||
+    value.leadId !== id || value.status !== 'WAITING_REVIEW' || value.version !== expectedVersion + 1 ||
+    typeof value.confirmedByDisplayName !== 'string' || !isDateTime(value.confirmedAt)) throw invalidResponse();
+  return value as ClientLeadWithdrawalConfirmationResult;
+}
+
 export async function reviewClientLeadNoInfringement(
   id: string,
   expectedVersion: number,

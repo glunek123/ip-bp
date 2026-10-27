@@ -172,11 +172,14 @@ enum PermissionAction {
   LEAD_PUSH                    @map("lead.push")
   LEAD_WITHDRAW_APPLY          @map("lead.withdraw.apply")
   LEAD_EVIDENCE_DECIDE         @map("lead.evidence.decide")
+  LEAD_REVIEW_PROXY           @map("lead.review.proxy")
+  LEAD_WITHDRAW_CONFIRM_PROXY @map("lead.withdraw.confirm.proxy")
   NOTARY_EVIDENCE_RECORD       @map("notary.evidence.record")
   NOTARY_RECORD_CORRECT        @map("notary.record.correct")
   NOTARY_UNBOX_RECORD          @map("notary.unbox.record")
   NOTARY_OPENING_REVIEW        @map("notary.opening.review")
   NOTARY_ISSUANCE_DECIDE       @map("notary.issuance.decide")
+  NOTARY_CERTIFICATE_ISSUE_PROXY @map("notary.certificate.issue.proxy")
   NOTARY_RETURN_ARCHIVE        @map("notary.return.archive")
   NOTARY_LIST_EXPORT           @map("notary.list.export")
   CASE_READ                    @map("case.read")
@@ -895,6 +898,10 @@ model DepartmentMembership {
   notaryReturnArchiveBatchReceipts NotaryReturnArchiveBatchReceipt[] @relation("NotaryReturnArchiveBatchReceiptInternalActor")
   notaryAuditEvents                AuditEvent[]                      @relation("AuditInternalActor")
   withdrawalApplications           LeadWithdrawalApplication[]
+  proxyLeadReviewDecisions          LeadReviewDecision[]             @relation("ProxyLeadReviewActor")
+  proxyLeadReviewReceipts           ClientLeadReviewReceipt[]        @relation("ProxyLeadReviewReceiptActor")
+  proxyWithdrawalConfirmations      LeadWithdrawalConfirmation[]     @relation("ProxyWithdrawalConfirmationActor")
+  proxyNotaryCertificates           NotaryCertificate[]             @relation("ProxyNotaryCertificateActor")
   evidenceDecisions                LeadEvidenceDecision[]
   createdAt                        DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                        DateTime                          @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -1803,7 +1810,9 @@ model LeadReviewDecision {
   leadId                      String                     @map("lead_id") @db.Uuid
   customerId                  String                     @map("customer_id") @db.Uuid
   reviewerUserId              String                     @map("reviewer_user_id") @db.Uuid
-  customerAccountBindingId    String                     @map("customer_account_binding_id") @db.Uuid
+  actorKind                   String                     @default("CLIENT") @map("actor_kind") @db.VarChar(20)
+  internalActorUserId         String?                    @map("internal_actor_user_id") @db.Uuid
+  customerAccountBindingId    String?                    @map("customer_account_binding_id") @db.Uuid
   reviewerDisplayNameSnapshot String                     @map("reviewer_display_name_snapshot")
   result                      LeadReviewResult
   reason                      String?                    @db.Text
@@ -1817,7 +1826,8 @@ model LeadReviewDecision {
   activeForLead               Lead?                      @relation("LeadActiveReviewDecision")
   customer                    Customer                   @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "lead_review_decisions_customer_department_fkey")
   reviewer                    UserAccount                @relation("LeadReviewDecisionReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
-  customerAccountBinding      CustomerAccountBinding     @relation(fields: [customerAccountBindingId, reviewerUserId, customerId, departmentId], references: [id, userId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_review_decisions_binding_reviewer_customer_department_fkey")
+  customerAccountBinding      CustomerAccountBinding?    @relation(fields: [customerAccountBindingId, reviewerUserId, customerId, departmentId], references: [id, userId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_review_decisions_binding_reviewer_customer_department_fkey")
+  internalActorMembership     DepartmentMembership?      @relation("ProxyLeadReviewActor", fields: [internalActorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_review_decisions_proxy_membership_fkey")
   receipt                     ClientLeadReviewReceipt?
   withdrawalApplication       LeadWithdrawalApplication?
   evidenceArchive             LeadEvidenceDecision?
@@ -1826,6 +1836,7 @@ model LeadReviewDecision {
   @@unique([id, leadId, customerId, departmentId], map: "lead_review_decisions_active_identity_key")
   @@unique([id, leadId, customerId, departmentId, result], map: "lead_review_decisions_evidence_identity_key")
   @@unique([id, departmentId, leadId, reviewerUserId, customerAccountBindingId, toVersion], map: "lead_review_decisions_receipt_identity_key")
+  @@unique([id, departmentId, leadId, reviewerUserId, toVersion], map: "lead_review_decisions_proxy_receipt_identity_key")
   @@index([departmentId, customerId, decidedAt])
   @@map("lead_review_decisions")
 }
@@ -1892,7 +1903,9 @@ model LeadWithdrawalConfirmation {
   customerId               String                    @map("customer_id") @db.Uuid
   departmentId             String                    @map("department_id") @db.Uuid
   actorUserId              String                    @map("actor_user_id") @db.Uuid
-  customerAccountBindingId String                    @map("customer_account_binding_id") @db.Uuid
+  actorKind                String                    @default("CLIENT") @map("actor_kind") @db.VarChar(20)
+  internalActorUserId      String?                   @map("internal_actor_user_id") @db.Uuid
+  customerAccountBindingId String?                   @map("customer_account_binding_id") @db.Uuid
   confirmedAt              DateTime                  @default(now()) @map("confirmed_at") @db.Timestamptz(3)
   fromVersion              Int                       @map("from_version")
   toVersion                Int                       @map("to_version")
@@ -1900,7 +1913,8 @@ model LeadWithdrawalConfirmation {
   requestFingerprint       String                    @map("request_fingerprint") @db.Char(64)
   resultSnapshot           Json                      @map("result_snapshot")
   application              LeadWithdrawalApplication @relation(fields: [applicationId, originalDecisionId, leadId, customerId, departmentId], references: [id, originalDecisionId, leadId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_withdrawal_confirmations_application_identity_fkey")
-  customerAccountBinding   CustomerAccountBinding    @relation(fields: [customerAccountBindingId, actorUserId, customerId, departmentId], references: [id, userId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_withdrawal_confirmations_binding_identity_fkey")
+  customerAccountBinding   CustomerAccountBinding?   @relation(fields: [customerAccountBindingId, actorUserId, customerId, departmentId], references: [id, userId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_withdrawal_confirmations_binding_identity_fkey")
+  internalActorMembership DepartmentMembership?     @relation("ProxyWithdrawalConfirmationActor", fields: [internalActorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_withdrawal_confirmations_proxy_membership_fkey")
 
   @@unique([departmentId, actorUserId, idempotencyKey], map: "lead_withdrawal_confirmations_department_actor_key")
   @@unique([applicationId, originalDecisionId, leadId, customerId, departmentId], map: "lead_withdrawal_confirmations_application_identity_key")
@@ -1912,7 +1926,9 @@ model ClientLeadReviewReceipt {
   id                       String                 @id @default(uuid()) @db.Uuid
   departmentId             String                 @map("department_id") @db.Uuid
   actorUserId              String                 @map("actor_user_id") @db.Uuid
-  customerAccountBindingId String                 @map("customer_account_binding_id") @db.Uuid
+  actorKind                String                 @default("CLIENT") @map("actor_kind") @db.VarChar(20)
+  internalActorUserId      String?                @map("internal_actor_user_id") @db.Uuid
+  customerAccountBindingId String?                @map("customer_account_binding_id") @db.Uuid
   action                   String                 @db.VarChar(100)
   idempotencyKey           String                 @map("idempotency_key") @db.VarChar(128)
   requestFingerprint       String                 @map("request_fingerprint") @db.Char(64)
@@ -1922,13 +1938,15 @@ model ClientLeadReviewReceipt {
   resultSnapshot           Json                   @map("result_snapshot")
   department               Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   actor                    UserAccount            @relation("ClientLeadReviewReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict)
-  customerAccountBinding   CustomerAccountBinding @relation(fields: [customerAccountBindingId], references: [id], onDelete: Restrict)
+  customerAccountBinding   CustomerAccountBinding? @relation(fields: [customerAccountBindingId], references: [id], onDelete: Restrict)
+  internalActorMembership  DepartmentMembership?  @relation("ProxyLeadReviewReceiptActor", fields: [internalActorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "client_lead_review_receipts_proxy_membership_fkey")
   resultLead               Lead                   @relation(fields: [resultLeadId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "client_lead_review_receipts_lead_department_fkey")
-  reviewDecision           LeadReviewDecision     @relation(fields: [reviewDecisionId, departmentId, resultLeadId, actorUserId, customerAccountBindingId, resultLeadVersion], references: [id, departmentId, leadId, reviewerUserId, customerAccountBindingId, toVersion], onDelete: Restrict, onUpdate: Restrict, map: "client_lead_review_receipts_decision_identity_fkey")
+  reviewDecision           LeadReviewDecision     @relation(fields: [reviewDecisionId, departmentId, resultLeadId, actorUserId, resultLeadVersion], references: [id, departmentId, leadId, reviewerUserId, toVersion], onDelete: Restrict, onUpdate: Restrict, map: "client_lead_review_receipts_decision_identity_fkey")
   createdAt                DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([departmentId, actorUserId, action, idempotencyKey], map: "client_lead_review_receipts_department_actor_action_key")
   @@unique([reviewDecisionId, departmentId, resultLeadId, actorUserId, customerAccountBindingId, resultLeadVersion], map: "client_lead_review_receipts_decision_identity_key")
+  @@unique([reviewDecisionId, departmentId, resultLeadId, actorUserId, resultLeadVersion], map: "client_lead_review_receipts_proxy_decision_identity_key")
   @@index([resultLeadId, departmentId])
   @@map("client_lead_review_receipts")
 }
@@ -2044,8 +2062,10 @@ model NotaryCertificate {
   departmentId                 String                     @map("department_id") @db.Uuid
   issuanceDecisionId           String                     @unique @map("issuance_decision_id") @db.Uuid
   issuanceDecisionChoice       NotaryIssuanceChoice       @default(ISSUE) @map("issuance_decision_choice")
-  notaryOfficeAccountBindingId String                     @map("notary_office_account_binding_id") @db.Uuid
+  notaryOfficeAccountBindingId String?                    @map("notary_office_account_binding_id") @db.Uuid
   actorUserId                  String                     @map("actor_user_id") @db.Uuid
+  actorKind                    String                     @default("NOTARY") @map("actor_kind") @db.VarChar(20)
+  internalActorUserId          String?                    @map("internal_actor_user_id") @db.Uuid
   certificateNo                String                     @map("certificate_no") @db.VarChar(200)
   certificateDate              DateTime                   @map("certificate_date") @db.Date
   needDisclose                 Boolean                    @map("need_disclose")
@@ -2054,7 +2074,8 @@ model NotaryCertificate {
   toVersion                    Int                        @map("to_version")
   matter                       NotaryMatter               @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
   issuanceDecision             NotaryIssuanceDecision     @relation(fields: [issuanceDecisionId, matterId, departmentId, issuanceDecisionChoice], references: [id, matterId, departmentId, decision], onDelete: Restrict, onUpdate: Restrict)
-  notaryOfficeAccountBinding   NotaryOfficeAccountBinding @relation(fields: [notaryOfficeAccountBindingId, actorUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  notaryOfficeAccountBinding   NotaryOfficeAccountBinding? @relation(fields: [notaryOfficeAccountBindingId, actorUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  internalActorMembership      DepartmentMembership?      @relation("ProxyNotaryCertificateActor", fields: [internalActorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_certificates_proxy_membership_fkey")
   fees                         NotaryCertificateFee[]
   case                         Case?
 

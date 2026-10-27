@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { ActorContext } from '../../access-control/actor-context';
+import { AccessControlService } from '../../access-control/access-control.service';
 import type { PermissionAction } from '../../access-control/access-control.service';
 import { DatabaseService } from '../../database/database.service';
 import type { Prisma } from '../../generated/prisma/client';
@@ -146,6 +147,7 @@ export class ClientLeadService {
   constructor(
     private readonly database: DatabaseService,
     private readonly materials: MaterialService,
+    private readonly access?: AccessControlService,
   ) {}
 
   async list(
@@ -285,6 +287,7 @@ export class ClientLeadService {
     id: string,
     idempotencyKey: string,
     input: ReviewClientLeadDto,
+    proxy = false,
   ): Promise<ClientLeadReviewResult> {
     if (
       (input.result === 'NO_INFRINGEMENT' &&
@@ -317,10 +320,12 @@ export class ClientLeadService {
       try {
         return await this.database.$transaction(
           async (transaction) => {
-            const binding = await this.assertClient(actor, transaction);
+            const binding = proxy
+              ? await this.assertProxyReview(actor, id, transaction)
+              : await this.assertClient(actor, transaction);
             const receipt =
               await transaction.clientLeadReviewReceipt.findUnique({
-                where: this.reviewReceiptWhere(actor, idempotencyKey),
+                where: this.reviewReceiptWhere(actor, idempotencyKey, proxy),
               });
             if (receipt !== null) {
               await this.assertReplayLead(
@@ -401,6 +406,8 @@ export class ClientLeadService {
                 customerId: binding.customerId,
                 reviewerUserId: actor.userId,
                 customerAccountBindingId: binding.id,
+                actorKind: proxy ? 'INTERNAL_PROXY' : 'CLIENT',
+                internalActorUserId: proxy ? actor.userId : null,
                 reviewerDisplayNameSnapshot: binding.reviewerDisplayName,
                 result: input.result,
                 fromVersion: input.expectedVersion,
@@ -453,7 +460,9 @@ export class ClientLeadService {
                 departmentId: actor.departmentId,
                 actorUserId: actor.userId,
                 customerAccountBindingId: binding.id,
-                action: CLIENT_LEAD_REVIEW_ACTION,
+                actorKind: proxy ? 'INTERNAL_PROXY' : 'CLIENT',
+                internalActorUserId: proxy ? actor.userId : null,
+                action: proxy ? 'lead.review.proxy' : CLIENT_LEAD_REVIEW_ACTION,
                 idempotencyKey,
                 requestFingerprint: fingerprint,
                 resultLeadId: id,
@@ -472,10 +481,12 @@ export class ClientLeadService {
           throw this.versionConflict();
         }
         if (this.isUnique(error)) {
-          const binding = await this.assertClient(actor);
+          const binding = proxy
+            ? await this.assertProxyReview(actor, id, this.database)
+            : await this.assertClient(actor);
           const receipt =
             await this.database.clientLeadReviewReceipt.findUnique({
-              where: this.reviewReceiptWhere(actor, idempotencyKey),
+              where: this.reviewReceiptWhere(actor, idempotencyKey, proxy),
             });
           if (receipt !== null) {
             await this.assertReplayLead(
@@ -499,11 +510,12 @@ export class ClientLeadService {
     id: string,
     idempotencyKey: string,
     input: ConfirmClientLeadWithdrawalDto,
+    proxy = false,
   ): Promise<ClientLeadWithdrawalConfirmationResult> {
     const fingerprint = createHash('sha256')
       .update(
         JSON.stringify({
-          action: CLIENT_LEAD_WITHDRAW_CONFIRM_ACTION,
+          action: proxy ? 'lead.withdraw.confirm.proxy' : CLIENT_LEAD_WITHDRAW_CONFIRM_ACTION,
           leadId: id,
           applicationId: input.applicationId,
           expectedVersion: input.expectedVersion,
@@ -514,7 +526,9 @@ export class ClientLeadService {
       try {
         return await this.database.$transaction(
           async (transaction) => {
-            const binding = await this.assertClient(actor, transaction);
+            const binding = proxy
+              ? await this.assertProxyReview(actor, id, transaction, 'lead.withdraw.confirm.proxy')
+              : await this.assertClient(actor, transaction);
             const receipt =
               await transaction.leadWithdrawalConfirmation.findUnique({
                 where: this.confirmationReceiptWhere(actor, idempotencyKey),
@@ -622,6 +636,8 @@ export class ClientLeadService {
                 customerId: binding.customerId,
                 departmentId: actor.departmentId,
                 actorUserId: actor.userId,
+                actorKind: proxy ? 'INTERNAL_PROXY' : 'CLIENT',
+                internalActorUserId: proxy ? actor.userId : null,
                 customerAccountBindingId: binding.id,
                 confirmedAt,
                 fromVersion: input.expectedVersion,
@@ -641,7 +657,9 @@ export class ClientLeadService {
           throw this.versionConflict();
         }
         if (this.isUnique(error)) {
-          const binding = await this.assertClient(actor);
+          const binding = proxy
+            ? await this.assertProxyReview(actor, id, this.database, 'lead.withdraw.confirm.proxy')
+            : await this.assertClient(actor);
           const receipt =
             await this.database.leadWithdrawalConfirmation.findUnique({
               where: this.confirmationReceiptWhere(actor, idempotencyKey),
@@ -769,12 +787,45 @@ export class ClientLeadService {
     };
   }
 
-  private reviewReceiptWhere(actor: ActorContext, idempotencyKey: string) {
+  private async assertProxyReview(
+    actor: ActorContext,
+    leadId: string,
+    reader: Prisma.TransactionClient,
+    action: 'lead.review.proxy' | 'lead.withdraw.confirm.proxy' = 'lead.review.proxy',
+  ): Promise<{ id: null; customerId: string; reviewerDisplayName: string }> {
+    if (actor.clientCustomerId !== undefined || actor.notaryOfficeId !== undefined || actor.lawyerAccountId !== undefined)
+      throw this.forbidden();
+    const [account, lead] = await Promise.all([
+      reader.userAccount.findUnique({
+        where: { id: actor.userId },
+        select: { active: true, accountType: true, displayName: true },
+      }),
+      reader.lead.findFirst({
+        where: { id: leadId, departmentId: actor.departmentId },
+        select: { customerId: true, departmentId: true, responsibleUserId: true, teamId: true },
+      }),
+    ]);
+    if (account?.accountType !== 'INTERNAL' || !account.active || !this.access)
+      throw this.forbidden();
+    if (lead === null) throw this.notFound();
+    await this.access.authorizeLead(actor, action, {
+      departmentId: lead.departmentId,
+      responsibleUserId: lead.responsibleUserId,
+      ...(lead.teamId ? { teamId: lead.teamId } : {}),
+    }, reader);
+    return {
+      id: null,
+      customerId: lead.customerId,
+      reviewerDisplayName: `${account.displayName.trim()}（运营代办）`,
+    };
+  }
+
+  private reviewReceiptWhere(actor: ActorContext, idempotencyKey: string, proxy = false) {
     return {
       departmentId_actorUserId_action_idempotencyKey: {
         departmentId: actor.departmentId,
         actorUserId: actor.userId,
-        action: CLIENT_LEAD_REVIEW_ACTION,
+        action: proxy ? 'lead.review.proxy' : CLIENT_LEAD_REVIEW_ACTION,
         idempotencyKey,
       },
     };

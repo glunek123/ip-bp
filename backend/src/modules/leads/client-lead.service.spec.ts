@@ -671,6 +671,30 @@ function setupReview() {
 }
 
 describe('ClientLeadService.review', () => {
+  it('records the actual internal proxy actor and separate scoped action', async () => {
+    const f = setupReview();
+    const internalActor = { userId: actor.userId, departmentId: actor.departmentId, authorizationRevision: actor.authorizationRevision };
+    const access = { authorizeLead: jest.fn().mockResolvedValue(undefined) };
+    (f.transaction as typeof f.transaction & { userAccount: { findUnique: jest.Mock } }).userAccount = {
+      findUnique: jest.fn().mockResolvedValue({ accountType: 'INTERNAL', active: true, displayName: '运营甲' }),
+    };
+    const service = new ClientLeadService(f.database as never, {} as never, access as never);
+    await service.review(internalActor, lead.id, 'proxy-review-key', {
+      result: 'INFRINGEMENT', expectedVersion: 2,
+    }, true);
+    expect(access.authorizeLead).toHaveBeenCalledWith(internalActor, 'lead.review.proxy',
+      expect.objectContaining({ departmentId: actor.departmentId, responsibleUserId: lead.responsibleUserId }), f.transaction);
+    expect(f.transaction.customerAccountBinding.findFirst).not.toHaveBeenCalled();
+    expect(f.transaction.leadReviewDecision.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      actorKind: 'INTERNAL_PROXY', reviewerUserId: actor.userId,
+      internalActorUserId: actor.userId, customerAccountBindingId: null,
+      reviewerDisplayNameSnapshot: '运营甲（运营代办）',
+    }) });
+    expect(f.transaction.clientLeadReviewReceipt.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      action: 'lead.review.proxy', actorKind: 'INTERNAL_PROXY', actorUserId: actor.userId,
+      internalActorUserId: actor.userId, customerAccountBindingId: null,
+    }) });
+  });
   it('creates a new decision only after the active pointer was cleared, and preserves the old receipt', async () => {
     const { service, transaction } = setupReview();
     transaction.lead.findFirst.mockResolvedValue({
@@ -1328,6 +1352,26 @@ describe('ClientLeadService.confirmWithdrawal', () => {
     fixture: ReturnType<typeof setupConfirmation>,
     key = 'confirm-key',
   ) => fixture.service.confirmWithdrawal(actor, lead.id, key, input);
+
+  it('confirms the original application under the real internal proxy identity', async () => {
+    const f = setupConfirmation();
+    const internalActor = { userId: actor.userId, departmentId: actor.departmentId, authorizationRevision: actor.authorizationRevision };
+    const access = { authorizeLead: jest.fn().mockResolvedValue(undefined) };
+    (f.transaction as typeof f.transaction & { userAccount: { findUnique: jest.Mock } }).userAccount = {
+      findUnique: jest.fn().mockResolvedValue({ accountType: 'INTERNAL', active: true, displayName: '运营甲' }),
+    };
+    const service = new ClientLeadService(f.database as never, {} as never, access as never);
+    const result = await service.confirmWithdrawal(internalActor, lead.id, 'proxy-confirm-key', input, true);
+    expect(result.status).toBe('WAITING_REVIEW');
+    expect(access.authorizeLead).toHaveBeenCalledWith(internalActor, 'lead.withdraw.confirm.proxy',
+      expect.objectContaining({ departmentId: actor.departmentId }), f.transaction);
+    expect(f.transaction.customerAccountBinding.findFirst).not.toHaveBeenCalled();
+    expect(f.transaction.leadWithdrawalConfirmation.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      actorKind: 'INTERNAL_PROXY', actorUserId: actor.userId,
+      internalActorUserId: actor.userId, customerAccountBindingId: null,
+      applicationId,
+    }) });
+  });
 
   it('lets another effective account of the original enterprise confirm atomically', async () => {
     const fixture = setupConfirmation();

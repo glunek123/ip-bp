@@ -369,6 +369,7 @@ export async function recordNotaryPortalCertificate(
   id: string,
   input: NotaryPortalCertificateInput,
   idempotencyKey: string,
+  proxy = false,
 ): Promise<RecordNotaryPortalCertificateResult> {
   if (
     !Number.isInteger(input.expectedVersion) ||
@@ -395,7 +396,9 @@ export async function recordNotaryPortalCertificate(
   )
     throw new ApiError('公证书信息无效', 400, 'VALIDATION_ERROR');
   const response = await requestJson(
-    `${path}/${encodeURIComponent(id)}/certificate`,
+    proxy
+      ? `/notary-matters/${encodeURIComponent(id)}/proxy-certificate`
+      : `${path}/${encodeURIComponent(id)}/certificate`,
     {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
@@ -451,6 +454,14 @@ export async function recordNotaryPortalCertificate(
   )
     throw invalidResponse();
   return response as unknown as RecordNotaryPortalCertificateResult;
+}
+
+export function recordProxyNotaryCertificate(
+  id: string,
+  input: NotaryPortalCertificateInput,
+  idempotencyKey: string,
+): Promise<RecordNotaryPortalCertificateResult> {
+  return recordNotaryPortalCertificate(id, input, idempotencyKey, true);
 }
 
 export async function recordNotaryPortalOpening(

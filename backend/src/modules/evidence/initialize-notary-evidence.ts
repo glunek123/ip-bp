@@ -23,6 +23,7 @@ export async function initializeNotaryEvidence(
       departmentId: facts.departmentId,
       actorUserId: facts.actorUserId,
       notaryOfficeAccountBindingId: facts.notaryOfficeAccountBindingId,
+      internalActorUserId: facts.internalActorUserId ?? null,
     },
     select: {
       certificateNo: true,
@@ -56,6 +57,7 @@ export async function initializeNotaryEvidence(
       departmentId: facts.departmentId,
       actorUserId: facts.actorUserId,
       notaryOfficeAccountBindingId: facts.notaryOfficeAccountBindingId,
+      internalActorUserId: facts.internalActorUserId ?? null,
       resourceType: 'notary_matter',
       resourceId: facts.sourceNotaryMatterId,
       action: 'notary.certificate_issued',
@@ -220,6 +222,7 @@ export async function initializeNotaryEvidence(
       departmentId: facts.departmentId,
       actorUserId: facts.actorUserId,
       notaryOfficeAccountBindingId: facts.notaryOfficeAccountBindingId,
+      internalActorUserId: facts.internalActorUserId ?? null,
       operation: 'INITIALIZE_NOTARY_SOURCE',
       groupId: group.id,
       itemId: item.id,

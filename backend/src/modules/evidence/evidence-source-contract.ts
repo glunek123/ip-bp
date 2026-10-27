@@ -21,7 +21,8 @@ export type InitializeNotaryEvidenceFacts = {
   certificateId: string;
   sourceActionEventId: string;
   actorUserId: string;
-  notaryOfficeAccountBindingId: string;
+  notaryOfficeAccountBindingId: string | null;
+  internalActorUserId?: string | null;
   certificateNo: string;
   certificateDate: Date;
   evidenceAt: Date;

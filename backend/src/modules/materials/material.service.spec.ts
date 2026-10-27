@@ -3795,6 +3795,10 @@ describe('MaterialService', () => {
       fixture.access.buildLeadScope.mockResolvedValue({
         departmentId: actor.departmentId,
       });
+      fixture.access.buildLeadScope.mockImplementation(async (_actor: unknown, action: string) => {
+        if (action === 'notary.certificate.issue.proxy') throw new ForbiddenException();
+        return { departmentId: actor.departmentId };
+      });
       fixture.db.notaryMatter.findFirst.mockResolvedValue({
         id: 'matter-1',
         departmentId: actor.departmentId,

@@ -7,6 +7,7 @@ import {
   getLead,
   importLeadCsvBatch,
   listLeads,
+  pushLead,
   type Lead,
   type LeadBusinessResult,
   type LeadFormContext,
@@ -24,6 +25,8 @@ import { notifyWorkflowChanged } from '../../app/workflow-events';
 import {
   readPendingLeadCommands,
   sameLeadAttempt,
+  storeAttempt,
+  type FrozenLeadCommand,
 } from './LeadListWorkflowPanel.vue';
 import LeadQuickActionsPanel, {
   type FrozenLeadPush,
@@ -107,6 +110,8 @@ const singleBlocksNoEvidence = computed(
     ),
 );
 const activeLeadId = ref<string | null>(pendingPush.value?.leadId ?? null);
+const directPushBusy = ref(false);
+const directPushError = ref('');
 const selectedIds = ref<string[]>([]);
 const noEvidenceSessionEpoch = ref(0);
 watch(
@@ -168,6 +173,8 @@ function actionTitle(lead: Lead): string | null {
   switch (lead.status) {
     case 'WAITING_PUSH':
       return '推送给客户审核';
+    case 'WAITING_REVIEW':
+      return '代办客户审核';
     case 'WAITING_EVIDENCE_DECISION':
       return '确认取证安排';
     case 'ARCHIVED':
@@ -178,8 +185,68 @@ function actionTitle(lead: Lead): string | null {
       return null;
   }
 }
+async function pushDirectly(lead: Lead): Promise<void> {
+  if (directPushBusy.value) return;
+  const actor = identity.value;
+  directPushBusy.value = true;
+  directPushError.value = '';
+  let sent = false;
+  try {
+    const latest = await getLead(lead.id);
+    if (actor !== identity.value) return;
+    if (latest.status !== 'WAITING_PUSH' || !latest.capabilities.push) {
+      directPushError.value = '线索状态或权限已变化，请刷新后办理。';
+      return;
+    }
+    const attempt: FrozenLeadCommand = {
+      identity: actor,
+      leadId: latest.id,
+      expectedVersion: latest.version,
+      idempotencyKey: globalThis.crypto.randomUUID(),
+      action: 'push',
+      body: { expectedVersion: latest.version },
+    };
+    if (!storeAttempt(attempt)) {
+      directPushError.value = '无法安全保存原请求，推送未发送。';
+      return;
+    }
+    savePendingPush();
+    sent = true;
+    await pushLead(latest.id, latest.version, attempt.idempotencyKey);
+    if (!storeAttempt(attempt, true)) {
+      directPushError.value = '请求已返回，但原请求未能清理，请按原请求核对。';
+      return;
+    }
+    savePendingPush();
+    if (actor !== identity.value) return;
+    notifyWorkflowChanged();
+    await load();
+  } catch (error) {
+    if (actor !== identity.value) return;
+    const definite =
+      error instanceof ApiError &&
+      error.status >= 400 &&
+      error.status < 500 &&
+      error.status !== 408 &&
+      error.code !== 'INVALID_RESPONSE';
+    if (sent && definite) {
+      const pending = readPendingLeadCommands()?.[actor];
+      if (pending?.action === 'push' && storeAttempt(pending, true)) {
+        savePendingPush();
+        directPushError.value = '推送未成功，请刷新线索后查看原因并重试。';
+        return;
+      }
+    }
+    directPushError.value = sent
+      ? '结果尚未确认，原请求和请求键已保留；请按原请求核对。'
+      : '无法读取最新线索，推送未发送。';
+  } finally {
+    directPushBusy.value = false;
+  }
+}
 function openWorkflow(lead: Lead) {
   if (
+    directPushBusy.value ||
     noEvidenceLocked.value ||
     pendingPush.value ||
     pendingStorageUnavailable.value ||
@@ -191,6 +258,10 @@ function openWorkflow(lead: Lead) {
     csvContextLoading.value
   )
     return;
+  if (lead.status === 'WAITING_PUSH' && !pendingPush.value) {
+    void pushDirectly(lead);
+    return;
+  }
   activeTitle.value = actionTitle(lead) ?? '线索下一步';
   activeLeadId.value = lead.id;
 }
@@ -364,6 +435,7 @@ async function refreshBatchSnapshot(
 }
 function openBatchPush() {
   if (
+    directPushBusy.value ||
     noEvidenceLocked.value ||
     pendingBatch.value ||
     pendingCsvImport.value ||
@@ -1116,6 +1188,7 @@ onBeforeUnmount(() => {
                     :checked="selectedIds.includes(lead.id)"
                     :disabled="
                       noEvidenceLocked ||
+                      directPushBusy ||
                       batchActive ||
                       pendingBatchBlocked ||
                       !!pendingBatch ||
@@ -1140,6 +1213,7 @@ onBeforeUnmount(() => {
                     data-test="lead-quick-action"
                     :disabled="
                       noEvidenceLocked ||
+                      directPushBusy ||
                       !!pendingPush ||
                       pendingStorageUnavailable ||
                       pendingBatchBlocked ||
@@ -1313,6 +1387,9 @@ onBeforeUnmount(() => {
       <p v-if="batchError" role="alert" data-test="batch-refresh-error">
         {{ batchError }}
       </p>
+      <p v-if="directPushError" role="alert" data-test="direct-push-error">
+        {{ directPushError }}
+      </p>
       <p v-if="batchLoading" data-test="batch-refresh-loading">
         正在重新核对所选线索和推送权限…
       </p>
@@ -1403,6 +1480,7 @@ onBeforeUnmount(() => {
     />
     <LeadBatchPushPanel
       v-if="batchActive"
+      auto-submit
       :key="`${batchIdentity}:${authorizationGeneration}`"
       :leads="batchFreshLeads"
       :identity="batchIdentity"

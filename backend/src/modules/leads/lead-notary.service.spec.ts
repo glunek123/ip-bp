@@ -119,6 +119,7 @@ describe('LeadNotaryService opening review read projection', () => {
       reviewOpening: false,
       decideIssuance: false,
       archiveReturn: false,
+      proxyIssueCertificate: false,
     });
     expect(result).toHaveProperty('returnArchive', null);
     expect(result.certificateFiles).toEqual([]);

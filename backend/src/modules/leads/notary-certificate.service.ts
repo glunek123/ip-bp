@@ -8,6 +8,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ActorContext } from '../../access-control/actor-context';
+import { AccessControlService } from '../../access-control/access-control.service';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
@@ -57,6 +58,7 @@ export class NotaryCertificateService {
     private readonly database: DatabaseService,
     private readonly materials: MaterialService,
     private readonly cases: CaseCreationService,
+    private readonly access?: AccessControlService,
   ) {}
 
   async issue(
@@ -64,6 +66,7 @@ export class NotaryCertificateService {
     matterId: string,
     idempotencyKey: string,
     input: CertificateInput,
+    proxy = false,
   ): Promise<CertificateResult> {
     const normalized = this.normalize(input);
     if (
@@ -74,8 +77,9 @@ export class NotaryCertificateService {
     )
       throw this.validation();
     if (
-      actor.notaryOfficeId === undefined ||
-      actor.clientCustomerId !== undefined
+      actor.clientCustomerId !== undefined ||
+      actor.lawyerAccountId !== undefined ||
+      (proxy ? actor.notaryOfficeId !== undefined : actor.notaryOfficeId === undefined)
     )
       throw this.forbidden();
     const fingerprint = createHash('sha256')
@@ -108,9 +112,11 @@ export class NotaryCertificateService {
                     needDisclose: true,
                     shopName: true,
                     platform: true,
+                    responsibleUserId: true,
+                    teamId: true,
                   },
                 },
-                notaryOffice: { select: { name: true } },
+                notaryOffice: { select: { name: true, status: true } },
                 evidence: {
                   select: {
                     sampleFeeState: true,
@@ -126,23 +132,36 @@ export class NotaryCertificateService {
               where: { id: actor.userId },
               select: { accountType: true, active: true },
             });
-            if (
-              account?.accountType !== 'NOTARY' ||
-              !account.active ||
-              matter.notaryOfficeId !== actor.notaryOfficeId
-            )
-              throw this.forbidden();
-            const binding = await tx.notaryOfficeAccountBinding.findFirst({
-              where: {
-                userId: actor.userId,
-                departmentId: actor.departmentId,
-                notaryOfficeId: actor.notaryOfficeId,
-                active: true,
-                notaryOffice: { status: 'ACTIVE' },
-              },
-              select: { id: true },
-            });
-            if (binding === null) throw this.forbidden();
+            let bindingId: string | null;
+            if (proxy) {
+              if (account?.accountType !== 'INTERNAL' || !account.active || !this.access || matter.notaryOffice.status !== 'ACTIVE')
+                throw this.forbidden();
+              await this.access.authorizeLead(actor, 'notary.certificate.issue.proxy', {
+                departmentId: matter.departmentId,
+                responsibleUserId: matter.sourceLead.responsibleUserId,
+                ...(matter.sourceLead.teamId ? { teamId: matter.sourceLead.teamId } : {}),
+              }, tx);
+              bindingId = null;
+            } else {
+              if (
+                account?.accountType !== 'NOTARY' ||
+                !account.active ||
+                matter.notaryOfficeId !== actor.notaryOfficeId
+              )
+                throw this.forbidden();
+              const binding = await tx.notaryOfficeAccountBinding.findFirst({
+                where: {
+                  userId: actor.userId,
+                  departmentId: actor.departmentId,
+                  notaryOfficeId: actor.notaryOfficeId,
+                  active: true,
+                  notaryOffice: { status: 'ACTIVE' },
+                },
+                select: { id: true },
+              });
+              if (binding === null) throw this.forbidden();
+              bindingId = binding.id;
+            }
             const prior = await tx.notaryMatterCommandReceipt.findUnique({
               where: {
                 departmentId_actorUserId_action_idempotencyKey: {
@@ -236,7 +255,9 @@ export class NotaryCertificateService {
                 matterId,
                 departmentId: actor.departmentId,
                 issuanceDecisionId: matter.issuanceDecision.id,
-                notaryOfficeAccountBindingId: binding.id,
+                notaryOfficeAccountBindingId: bindingId,
+                actorKind: proxy ? 'INTERNAL_PROXY' : 'NOTARY',
+                internalActorUserId: proxy ? actor.userId : null,
                 actorUserId: actor.userId,
                 certificateNo: normalized.certificateNo,
                 certificateDate: new Date(
@@ -294,7 +315,8 @@ export class NotaryCertificateService {
               data: {
                 departmentId: actor.departmentId,
                 actorUserId: actor.userId,
-                notaryOfficeAccountBindingId: binding.id,
+                notaryOfficeAccountBindingId: bindingId,
+                internalActorUserId: proxy ? actor.userId : null,
                 resourceType: 'notary_matter',
                 resourceId: matterId,
                 action: 'notary.certificate_issued',
@@ -309,6 +331,7 @@ export class NotaryCertificateService {
                   contentVersionIds: normalized.contentVersionIds,
                   disclosureContentVersionIds:
                     normalized.disclosureContentVersionIds,
+                  actorKind: proxy ? 'INTERNAL_PROXY' : 'NOTARY',
                 },
               },
             });
@@ -326,7 +349,8 @@ export class NotaryCertificateService {
               certificateId: certificate.id,
               sourceActionEventId: audit.id,
               actorUserId: actor.userId,
-              notaryOfficeAccountBindingId: binding.id,
+              notaryOfficeAccountBindingId: bindingId,
+              internalActorUserId: proxy ? actor.userId : null,
               certificateNo: normalized.certificateNo,
               certificateDate: new Date(
                 `${normalized.certificateDate}T00:00:00.000Z`,
@@ -348,7 +372,8 @@ export class NotaryCertificateService {
               data: {
                 departmentId: actor.departmentId,
                 actorUserId: actor.userId,
-                notaryOfficeAccountBindingId: binding.id,
+                notaryOfficeAccountBindingId: bindingId,
+                internalActorUserId: proxy ? actor.userId : null,
                 action: ACTION,
                 idempotencyKey,
                 requestFingerprint: fingerprint,

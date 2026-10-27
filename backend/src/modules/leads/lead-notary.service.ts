@@ -904,6 +904,7 @@ export class LeadNotaryService {
       leadVersion: matter.toLeadVersion,
       stage: matter.stage,
       version: matter.version,
+      disclosureRequired: matter.sourceLead.needDisclose,
       recordEdits,
       capabilities: await notaryDisplayCapabilities(
         this.access,

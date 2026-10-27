@@ -195,6 +195,8 @@ export type LeadDetail = Lead & {
     evidenceDecide: boolean;
     transferToNotary: boolean;
     createEvidenceBatch: boolean;
+    proxyReview?: boolean;
+    proxyConfirmWithdrawal?: boolean;
     productScreenshotsEdit?: boolean;
   };
   evidenceDecision: LeadEvidenceDecision | null;
@@ -917,6 +919,8 @@ export async function getLead(
     typeof capabilities.evidenceDecide !== 'boolean' ||
     typeof capabilities.transferToNotary !== 'boolean' ||
     typeof capabilities.createEvidenceBatch !== 'boolean' ||
+    (capabilities.proxyReview !== undefined && typeof capabilities.proxyReview !== 'boolean') ||
+    (capabilities.proxyConfirmWithdrawal !== undefined && typeof capabilities.proxyConfirmWithdrawal !== 'boolean') ||
     (capabilities.productScreenshotsEdit !== undefined &&
       typeof capabilities.productScreenshotsEdit !== 'boolean') ||
     (detail.evidenceDecision !== null &&
@@ -938,6 +942,8 @@ export async function getLead(
       evidenceDecide: capabilities.evidenceDecide,
       transferToNotary: capabilities.transferToNotary,
       createEvidenceBatch: capabilities.createEvidenceBatch,
+      proxyReview: capabilities.proxyReview === true,
+      proxyConfirmWithdrawal: capabilities.proxyConfirmWithdrawal === true,
       productScreenshotsEdit: capabilities.productScreenshotsEdit === true,
     },
     notaryMatters: detail.notaryMatters,

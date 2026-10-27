@@ -32,6 +32,9 @@ import {
   UpdateLeadProductScreenshotsDto,
 } from './lead.dto';
 import { LeadService } from './lead.service';
+import { ClientLeadService } from './client-lead.service';
+import { ConfirmClientLeadWithdrawalDto, ReviewClientLeadDto } from './client-lead-review.dto';
+import { ClientLeadReviewResultDto, ClientLeadWithdrawalConfirmationResultDto } from './client-lead-response.dto';
 import { LeadPushResponseDto } from './lead-push-response.dto';
 import { LeadWithdrawalApplicationResponseDto } from './lead-withdrawal-application-response.dto';
 import { LeadEvidenceDecisionResponseDto } from './lead-evidence-decision-response.dto';
@@ -41,7 +44,7 @@ import { LeadEvidenceDecisionResponseDto } from './lead-evidence-decision-respon
 @Controller('leads')
 @UseGuards(ActorContextGuard, CsrfGuard)
 export class LeadController {
-  constructor(private readonly leads: LeadService) {}
+  constructor(private readonly leads: LeadService, private readonly clientLeads?: ClientLeadService) {}
 
   @Get('form-context') formContext(@CurrentActor() actor: ActorContext) {
     return this.leads.formContext(actor);
@@ -119,6 +122,42 @@ export class LeadController {
       id,
       this.requireIdempotencyKey(idempotencyKey),
       input,
+    );
+  }
+
+  @Post(':id/proxy-reviews')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiCreatedResponse({ type: ClientLeadReviewResultDto })
+  proxyReview(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() input: ReviewClientLeadDto,
+  ) {
+    return this.clientLeads!.review(
+      actor,
+      id,
+      this.requireIdempotencyKey(idempotencyKey),
+      input,
+      true,
+    );
+  }
+
+  @Post(':id/proxy-withdrawal-confirmations')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiCreatedResponse({ type: ClientLeadWithdrawalConfirmationResultDto })
+  proxyConfirmWithdrawal(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() input: ConfirmClientLeadWithdrawalDto,
+  ) {
+    return this.clientLeads!.confirmWithdrawal(
+      actor,
+      id,
+      this.requireIdempotencyKey(idempotencyKey),
+      input,
+      true,
     );
   }
 

@@ -154,7 +154,7 @@ describe('notary workflow handoff guidance', () => {
     });
     const wrapper = await mountPage();
     expect(wrapper.get('[data-test="notary-workflow"]').text()).toContain(
-      '下一步由公证处',
+      '下一步登记真实公证书',
     );
     expect(wrapper.find('[data-test="notary-workflow-action"]').exists()).toBe(
       false,
@@ -162,6 +162,19 @@ describe('notary workflow handoff guidance', () => {
     expect(wrapper.find('[data-test="certificate-submit"]').exists()).toBe(
       false,
     );
+  });
+
+  it('opens the full certificate form for an authorized internal proxy', async () => {
+    api.getNotaryMatter.mockResolvedValue({
+      ...matter,
+      stage: 'WAITING_CERTIFICATE',
+      disclosureRequired: false,
+      capabilities: { proxyIssueCertificate: true },
+    });
+    const wrapper = await mountPage();
+    expect(wrapper.get('[data-test="notary-workflow-action"]').attributes('href')).toContain('#certificate');
+    expect(wrapper.find('#certificate [data-test="certificate-form"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="certificate-number"]').exists()).toBe(true);
   });
 
   it('prominently links only the projected exact case and removes it after lost visibility', async () => {

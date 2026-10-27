@@ -87,10 +87,13 @@ function pendingRequests(): ListWorkflowContext[] {
   try {
     for (let index = 0; index < globalThis.sessionStorage.length; index += 1) {
       const key = globalThis.sessionStorage.key(index);
-      if (!key?.startsWith('notary-list-request:')) continue;
-      const parts: unknown = JSON.parse(
-        key.slice('notary-list-request:'.length),
-      );
+      const prefix = key?.startsWith('notary-list-request:')
+        ? 'notary-list-request:'
+        : key?.startsWith('notary-proxy-certificate-request:')
+          ? 'notary-proxy-certificate-request:'
+          : null;
+      if (!prefix) continue;
+      const parts: unknown = JSON.parse(key!.slice(prefix.length));
       if (
         !Array.isArray(parts) ||
         parts.length !== 3 ||
@@ -104,6 +107,7 @@ function pendingRequests(): ListWorkflowContext[] {
           'review-form',
           'issuance-form',
           'return-archive-form',
+          'certificate',
         ].includes(parts[2])
       )
         continue;
@@ -377,6 +381,11 @@ function matterActions(
       anchor: 'issuance-form',
     },
     {
+      enabled: Boolean(matter.capabilities.proxyIssueCertificate),
+      label: '代办公证处出证',
+      anchor: 'certificate',
+    },
+    {
       enabled: matter.capabilities.archiveReturn,
       label: '办理退货归档',
       anchor: 'return-archive-form',
@@ -386,7 +395,7 @@ function matterActions(
     try {
       return (
         globalThis.sessionStorage.getItem(
-          `notary-list-request:${JSON.stringify([identity.value, matter.id, action.anchor])}`,
+          `${action.anchor === 'certificate' ? 'notary-proxy-certificate-request' : 'notary-list-request'}:${JSON.stringify([identity.value, matter.id, action.anchor])}`,
         ) !== null ||
         hasPendingRequestFor(identity.value, matter.id, action.anchor)
       );
@@ -406,10 +415,13 @@ function hasPendingRequestFor(
   const wanted = actorIdentityKey(actorKey);
   for (let index = 0; index < globalThis.sessionStorage.length; index += 1) {
     const key = globalThis.sessionStorage.key(index);
-    if (!key?.startsWith('notary-list-request:')) continue;
+    const prefix = actionKey === 'certificate'
+      ? 'notary-proxy-certificate-request:'
+      : 'notary-list-request:';
+    if (!key?.startsWith(prefix)) continue;
     try {
       const tuple: unknown = JSON.parse(
-        key.slice('notary-list-request:'.length),
+        key.slice(prefix.length),
       );
       if (
         Array.isArray(tuple) &&
