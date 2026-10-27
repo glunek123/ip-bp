@@ -1,31 +1,59 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve, sep } from 'node:path';
 import { assertBatch2Admission } from './batch2-proxy-calendar-acceptance.mjs';
 
 const backend = createRequire(resolve(process.cwd(), 'backend/package.json'));
 const { Client } = backend('pg');
 
+export function assertPlainNumberingReceiptPath(candidateRoot) {
+  const root = resolve(candidateRoot);
+  const local = resolve(root, '.local');
+  const path = resolve(local, 'batch2-calendar/numbering-receipt.json');
+  if (
+    relative(root, local) !== '.local' ||
+    !path.toLowerCase().startsWith(`${local.toLowerCase()}${sep}`)
+  )
+    throw new Error('Numbering receipt escaped the candidate .local directory');
+  let reachedCandidate = false;
+  for (let current = path; ; current = dirname(current)) {
+    let stat;
+    try {
+      stat = lstatSync(current);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    if (stat) {
+      if (stat.isSymbolicLink())
+        throw new Error('Linked numbering receipt path');
+      if (realpathSync.native(current).toLowerCase() !== current.toLowerCase())
+        throw new Error('Linked numbering receipt path');
+    }
+    if (current === root) reachedCandidate = true;
+    const parent = dirname(current);
+    if (parent === current) break;
+  }
+  if (!reachedCandidate) throw new Error('Candidate root was not reached');
+  if (lstatExists(path))
+    throw new Error('Batch 2 numbering receipt already exists');
+  return path;
+}
+
+function lstatExists(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
 // Run once in the new, empty, owned public database after all migrations and
 // before any suite seeds a customer. Never call this from a fixture.
 export async function initializeBatch2EmptyNumbering() {
   const { databaseUrl } = assertBatch2Admission();
-  const path = resolve(
-    process.cwd(),
-    '.local/batch2-calendar/numbering-receipt.json',
-  );
-  try {
-    const previous = JSON.parse(readFileSync(path, 'utf8'));
-    if (previous.containerId !== process.env.DEV_COR_TEST_DATABASE_CONTAINER_ID)
-      throw new Error(
-        'Existing numbering receipt belongs to a different container',
-      );
-    throw new Error(
-      'Batch 2 numbering was already initialized in this container',
-    );
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-  }
+  const path = assertPlainNumberingReceiptPath(process.cwd());
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
   let committed = false;
@@ -73,8 +101,13 @@ export async function initializeBatch2EmptyNumbering() {
     counterAfter: 0,
     initializedAt: new Date().toISOString(),
   };
+  assertPlainNumberingReceiptPath(process.cwd());
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'w' });
+  assertPlainNumberingReceiptPath(process.cwd());
+  writeFileSync(path, `${JSON.stringify(receipt, null, 2)}\n`, {
+    flag: 'wx',
+    mode: 0o600,
+  });
   return receipt;
 }
 
