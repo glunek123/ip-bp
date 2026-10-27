@@ -32,6 +32,13 @@
   --font-text:
     'Inter', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  --app-control-height: 32px;
+  --app-action-min-width: 72px;
+  --app-action-width: 88px;
+  --app-action-wide-width: 128px;
+  --app-detail-gap: 12px;
+  --app-section-gap: 16px;
+  --app-content-padding: 20px;
   --el-color-primary: var(--color-primary);
   --el-color-primary-dark-2: var(--color-primary-hover);
   --el-color-primary-light-3: #8e97e0;
@@ -41,8 +48,15 @@
   --el-color-primary-light-9: #eff0fb;
   --el-font-family: var(--font-text);
   --el-border-radius-base: 6px;
-  --el-component-size: 36px;
+  --el-component-size: var(--app-control-height);
   --el-text-color-primary: var(--color-ink);
   --el-text-color-regular: var(--color-ink-muted);
   --el-text-color-placeholder: #6b7280;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --app-control-height: 36px;
+    --app-content-padding: 12px;
+  }
 }

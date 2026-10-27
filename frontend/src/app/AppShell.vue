@@ -40,12 +40,16 @@ let deniedCaseIdentity: string | null = null;
 const leadCounts = ref<Record<LeadStatus, number> | null>(null);
 const notaryCounts = ref<Record<NotaryListStage, number> | null>(null);
 const caseCounts = ref<Record<CaseStage, number> | null>(null);
+const internalCaseCounts = ref<Record<
+  'mine' | 'department',
+  Record<CaseStage, number>
+> | null>(null);
 const calendarCount = ref<number | null>(null);
 let calendarSummaryRevision = 0;
 const countRevision = ref(0);
-const expandedGroup = ref<'cases' | 'leads' | 'notary' | 'settings' | null>(
-  null,
-);
+const expandedGroup = ref<
+  'cases' | 'department-cases' | 'leads' | 'notary' | 'settings' | null
+>(null);
 type CaseStageCard = { label: string; stages: readonly CaseStage[] } & (
   | { stage: CaseStage; stageGroup?: never }
   | { stage?: never; stageGroup: CaseStageGroup }
@@ -94,9 +98,16 @@ function caseCardSelected(card: CaseStageCard): boolean {
     : card.stageGroup !== undefined &&
         card.stageGroup === selectedCaseStageGroup.value;
 }
-function caseCardCount(card: CaseStageCard): number {
+function caseCardCount(
+  card: CaseStageCard,
+  view?: 'mine' | 'department',
+): number {
   return card.stages.reduce(
-    (sum, stage) => sum + (caseCounts.value?.[stage] ?? 0),
+    (sum, stage) =>
+      sum +
+      (view
+        ? (internalCaseCounts.value?.[view][stage] ?? 0)
+        : (caseCounts.value?.[stage] ?? 0)),
     0,
   );
 }
@@ -324,14 +335,23 @@ onBeforeUnmount(() =>
 );
 const breadcrumbs = computed(() =>
   Array.isArray(route.meta.breadcrumbs)
-    ? route.meta.breadcrumbs.filter(
-        (item): item is string => typeof item === 'string',
-      )
+    ? route.meta.breadcrumbs
+        .filter((item): item is string => typeof item === 'string')
+        .map((item, index) =>
+          isCaseRoute.value && index === 0
+            ? selectedCaseView.value === 'mine'
+              ? '我的案件'
+              : '全部部门案件'
+            : item,
+        )
     : [],
 );
 const isCustomerRoute = computed(() => route.path.startsWith('/customers'));
 const isCaseRoute = computed(
-  () => route.path === '/cases' || route.path.startsWith('/cases/'),
+  () =>
+    route.path === '/cases' ||
+    (route.path.startsWith('/cases/') &&
+      route.path !== '/cases/external-entry'),
 );
 const isLawyerCaseRoute = computed(
   () =>
@@ -412,7 +432,14 @@ const notaryTotal = computed(() =>
         0,
       ),
 );
-const caseTotal = computed(() =>
+const caseTotal = (view: 'mine' | 'department') =>
+  internalCaseCounts.value === null
+    ? null
+    : Object.values(internalCaseCounts.value[view]).reduce(
+        (total, count) => total + count,
+        0,
+      );
+const lawyerCaseTotal = computed(() =>
   caseCounts.value === null
     ? null
     : Object.values(caseCounts.value).reduce(
@@ -425,9 +452,12 @@ const userInitial = computed(
 );
 
 watch(
-  () => route.path,
-  (path) => {
-    if (path.startsWith('/cases')) expandedGroup.value = 'cases';
+  () => route.fullPath,
+  () => {
+    const path = route.path;
+    if (path.startsWith('/cases'))
+      expandedGroup.value =
+        route.query.view === 'department' ? 'department-cases' : 'cases';
     else if (path.startsWith('/notary-matters')) expandedGroup.value = 'notary';
     else if (path.startsWith('/leads')) expandedGroup.value = 'leads';
     else if (path === '/notary-offices' || path.startsWith('/settings/'))
@@ -570,9 +600,10 @@ watch(
 );
 
 watch(
-  [identity, () => route.fullPath, countRevision, caseReadRevision],
+  [identity, countRevision, caseReadRevision],
   async ([currentIdentity], previous, onCleanup) => {
     caseCounts.value = null;
+    internalCaseCounts.value = null;
     caseReadLoading.value = false;
     if (currentIdentity !== previous?.[0]) {
       canViewCases.value = false;
@@ -595,12 +626,15 @@ watch(
     });
     caseReadLoading.value = true;
     try {
-      const result = await listCases(1, 1, {
-        signal: controller.signal,
-        view: selectedCaseView.value,
-      });
+      const [mineResult, departmentResult] = await Promise.all([
+        listCases(1, 1, { signal: controller.signal, view: 'mine' }),
+        listCases(1, 1, { signal: controller.signal, view: 'department' }),
+      ]);
       if (!current || identity.value !== currentIdentity) return;
-      caseCounts.value = result.counts;
+      internalCaseCounts.value = {
+        mine: mineResult.counts,
+        department: departmentResult.counts,
+      };
       canViewCases.value = true;
       caseReadError.value = '';
     } catch (error) {
@@ -714,23 +748,6 @@ async function logout(): Promise<void> {
         </span>
       </RouterLink>
 
-      <nav v-if="!isNotary" class="app-nav" aria-label="日期事件导航">
-        <RouterLink
-          class="app-nav__item"
-          :class="{ active: route.path === calendarPath }"
-          data-test="calendar-nav"
-          :to="calendarPath"
-          @click="closeDrawer"
-        >
-          <span>日历</span>
-          <span
-            v-if="calendarCount !== null"
-            class="app-nav__badge"
-            data-test="calendar-count"
-            >{{ calendarCount }}</span
-          >
-        </RouterLink>
-      </nav>
       <nav v-if="isNotary" class="app-nav" aria-label="公证处导航">
         <p class="app-nav__label">公证处工作台</p>
         <RouterLink
@@ -752,8 +769,8 @@ async function logout(): Promise<void> {
           @click="closeDrawer"
         >
           <span>本人案件</span
-          ><span v-if="caseTotal !== null" class="app-nav__badge">{{
-            caseTotal
+          ><span v-if="lawyerCaseTotal !== null" class="app-nav__badge">{{
+            lawyerCaseTotal
           }}</span>
         </RouterLink>
         <div class="app-subnav" aria-label="本人案件阶段">
@@ -765,8 +782,8 @@ async function logout(): Promise<void> {
             to="/lawyer/cases"
             @click="closeDrawer"
             ><span>全部阶段</span
-            ><span v-if="caseTotal !== null" class="app-nav__badge">{{
-              caseTotal
+            ><span v-if="lawyerCaseTotal !== null" class="app-nav__badge">{{
+              lawyerCaseTotal
             }}</span></RouterLink
           >
           <div
@@ -809,6 +826,21 @@ async function logout(): Promise<void> {
             </RouterLink>
           </div>
         </div>
+        <p class="app-nav__label app-nav__label--spaced">工具栏</p>
+        <RouterLink
+          class="app-nav__item"
+          :class="{ active: route.path === calendarPath }"
+          data-test="calendar-nav"
+          :to="calendarPath"
+          @click="closeDrawer"
+          ><span>日历</span
+          ><span
+            v-if="calendarCount !== null"
+            class="app-nav__badge"
+            data-test="calendar-count"
+            >{{ calendarCount }}</span
+          ></RouterLink
+        >
       </nav>
       <nav v-else class="app-nav" aria-label="主要导航">
         <p class="app-nav__label">工作台</p>
@@ -820,9 +852,6 @@ async function logout(): Promise<void> {
             to="/leads"
             @click="closeDrawer"
           >
-            <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M3 3.5h14v13H3zM6 7h8M6 10h8M6 13h5" />
-            </svg>
             <span>线索库</span>
             <span v-if="leadTotal !== null" class="app-nav__badge">{{
               leadTotal
@@ -880,9 +909,6 @@ async function logout(): Promise<void> {
             to="/notary-matters"
             @click="closeDrawer"
           >
-            <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M5 2.5h8l3 3v12H5zM8 9h5M8 12h5M8 15h4" />
-            </svg>
             <span>公证阶段</span>
             <span v-if="notaryTotal !== null" class="app-nav__badge">{{
               notaryTotal
@@ -957,124 +983,185 @@ async function logout(): Promise<void> {
         <div v-if="!isClient && canViewCases" class="app-nav__group">
           <RouterLink
             class="app-nav__item"
-            :class="{ active: isCaseRoute }"
-            data-test="case-nav"
-            to="/cases"
+            :class="{ active: isCaseRoute && selectedCaseView === 'mine' }"
+            data-test="case-view-mine"
+            data-case-view="mine"
+            :to="{ path: '/cases', query: { ...caseViewQuery('mine') } }"
             @click="closeDrawer"
           >
-            <span>案件</span>
-            <span v-if="caseTotal !== null" class="app-nav__badge">{{
-              caseTotal
+            <span>我的案件</span
+            ><span v-if="caseTotal('mine') !== null" class="app-nav__badge">{{
+              caseTotal('mine')
             }}</span>
           </RouterLink>
           <button
             class="app-nav__expand"
             type="button"
             data-test="case-expand"
-            :aria-expanded="expandedGroup === 'cases'"
-            aria-label="展开或收起案件"
-            @click="expandedGroup = expandedGroup === 'cases' ? null : 'cases'"
+            :aria-expanded="
+              expandedGroup === 'cases' && selectedCaseView === 'mine'
+            "
+            aria-label="展开或收起我的案件阶段"
+            @click="
+              expandedGroup =
+                expandedGroup === 'cases' && selectedCaseView === 'mine'
+                  ? null
+                  : 'cases'
+            "
           >
-            {{ expandedGroup === 'cases' ? '⌄' : '›' }}
+            {{
+              expandedGroup === 'cases' && selectedCaseView === 'mine'
+                ? '⌄'
+                : '›'
+            }}
           </button>
         </div>
         <div
-          v-if="!isClient && canViewCases && expandedGroup === 'cases'"
+          v-if="
+            !isClient &&
+            canViewCases &&
+            expandedGroup === 'cases' &&
+            selectedCaseView === 'mine'
+          "
           class="app-subnav"
           aria-label="案件范围与阶段"
         >
           <RouterLink
             class="app-subnav__item"
-            :class="{ active: isCaseRoute && selectedCaseView === 'mine' }"
-            data-test="case-view-mine"
-            :to="{
-              path: '/cases',
-              query: caseViewQuery('mine'),
+            :class="{
+              active:
+                isCaseRoute &&
+                selectedCaseView === 'mine' &&
+                allCaseStagesSelected,
             }"
+            :to="{ path: '/cases', query: { view: 'mine' } }"
             @click="closeDrawer"
-            >我负责</RouterLink
+            ><span>全部阶段</span
+            ><span v-if="caseTotal('mine') !== null" class="app-nav__badge">{{
+              caseTotal('mine')
+            }}</span></RouterLink
           >
           <RouterLink
+            v-for="card in caseStageCards"
+            :key="card.stageGroup ?? card.stage"
             class="app-subnav__item"
+            :data-test="
+              card.stageGroup === 'COMPLAINT_PREPARATION'
+                ? 'complaint-preparation-stage'
+                : card.stageGroup === 'EXECUTION_PREPARATION'
+                  ? 'execution-preparation-stage'
+                  : 'case-stage'
+            "
+            :class="{
+              active:
+                isCaseRoute &&
+                selectedCaseView === 'mine' &&
+                caseCardSelected(card),
+            }"
+            :to="{
+              path: '/cases',
+              query: {
+                view: 'mine',
+                ...(card.stageGroup
+                  ? { stageGroup: card.stageGroup }
+                  : { stage: card.stage }),
+              },
+            }"
+            @click="closeDrawer"
+            ><span>{{ card.label }}</span
+            ><span v-if="internalCaseCounts" class="app-nav__badge">{{
+              caseCardCount(card, 'mine')
+            }}</span></RouterLink
+          >
+        </div>
+        <div v-if="canViewCases" class="app-nav__group">
+          <RouterLink
+            v-if="canViewCases"
+            class="app-nav__item"
             :class="{
               active: isCaseRoute && selectedCaseView === 'department',
             }"
             data-test="case-view-department"
-            :to="{
-              path: '/cases',
-              query: caseViewQuery('department'),
-            }"
+            data-case-view="department"
+            :to="{ path: '/cases', query: { ...caseViewQuery('department') } }"
             @click="closeDrawer"
-            >本部门全部</RouterLink
+            ><span>全部部门案件</span
+            ><span
+              v-if="caseTotal('department') !== null"
+              class="app-nav__badge"
+              >{{ caseTotal('department') }}</span
+            ></RouterLink
           >
+          <button
+            v-if="canViewCases"
+            class="app-nav__expand"
+            type="button"
+            data-test="case-expand-department"
+            :aria-expanded="expandedGroup === 'department-cases'"
+            aria-label="展开或收起全部部门案件阶段"
+            @click="
+              expandedGroup =
+                expandedGroup === 'department-cases' ? null : 'department-cases'
+            "
+          >
+            {{ expandedGroup === 'department-cases' ? '⌄' : '›' }}
+          </button>
+        </div>
+        <div
+          v-if="
+            !isClient && canViewCases && expandedGroup === 'department-cases'
+          "
+          class="app-subnav"
+          aria-label="案件范围与阶段"
+        >
           <RouterLink
             class="app-subnav__item"
             :class="{
-              active: isCaseRoute && allCaseStagesSelected,
+              active:
+                isCaseRoute &&
+                selectedCaseView === 'department' &&
+                allCaseStagesSelected,
             }"
-            :to="{ path: '/cases', query: { view: selectedCaseView } }"
+            :to="{ path: '/cases', query: { view: 'department' } }"
             @click="closeDrawer"
+            ><span>全部阶段</span
+            ><span
+              v-if="caseTotal('department') !== null"
+              class="app-nav__badge"
+              >{{ caseTotal('department') }}</span
+            ></RouterLink
           >
-            <span>全部阶段</span>
-            <span v-if="caseTotal !== null" class="app-nav__badge">{{
-              caseTotal
-            }}</span>
-          </RouterLink>
-          <div
+          <RouterLink
             v-for="card in caseStageCards"
             :key="card.stageGroup ?? card.stage"
+            class="app-subnav__item"
             :data-test="
               card.stageGroup === 'COMPLAINT_PREPARATION'
-                ? 'complaint-preparation-nav'
+                ? 'complaint-preparation-stage'
                 : card.stageGroup === 'EXECUTION_PREPARATION'
-                  ? 'execution-preparation-nav'
-                  : undefined
+                  ? 'execution-preparation-stage'
+                  : 'case-stage'
             "
-          >
-            <RouterLink
-              class="app-subnav__item"
-              :class="{ active: isCaseRoute && caseCardSelected(card) }"
-              :data-test="
-                card.stageGroup === 'COMPLAINT_PREPARATION'
-                  ? 'complaint-preparation-stage'
-                  : card.stageGroup === 'EXECUTION_PREPARATION'
-                    ? 'execution-preparation-stage'
-                    : 'case-stage'
-              "
-              :to="{
-                path: '/cases',
-                query: {
-                  view: selectedCaseView,
-                  ...(card.stageGroup
-                    ? { stageGroup: card.stageGroup }
-                    : { stage: card.stage }),
-                },
-              }"
-              @click="closeDrawer"
-            >
-              <span>{{ card.label }}</span
-              ><span v-if="caseCounts" class="app-nav__badge">{{
-                caseCardCount(card)
-              }}</span>
-            </RouterLink>
-          </div>
-        </div>
-        <RouterLink
-          v-if="canViewReports"
-          class="app-nav__item"
-          :class="{ active: route.path === '/reports' }"
-          data-test="reports-nav"
-          to="/reports"
-          @click="closeDrawer"
-          ><span>数据报表</span></RouterLink
-        >
-        <div v-if="reportsReadError" data-test="reports-nav-error">
-          <p role="alert">{{ reportsReadError }}</p>
-          <ElButton
-            data-test="reports-nav-retry"
-            :disabled="reportsReadLoading"
-            @click="retryReports"
-            >重新读取报表导航</ElButton
+            :class="{
+              active:
+                isCaseRoute &&
+                selectedCaseView === 'department' &&
+                caseCardSelected(card),
+            }"
+            :to="{
+              path: '/cases',
+              query: {
+                view: 'department',
+                ...(card.stageGroup
+                  ? { stageGroup: card.stageGroup }
+                  : { stage: card.stage }),
+              },
+            }"
+            @click="closeDrawer"
+            ><span>{{ card.label }}</span
+            ><span v-if="internalCaseCounts" class="app-nav__badge">{{
+              caseCardCount(card, 'department')
+            }}</span></RouterLink
           >
         </div>
         <RouterLink
@@ -1085,9 +1172,6 @@ async function logout(): Promise<void> {
           to="/client/leads"
           @click="closeDrawer"
         >
-          <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M3 3.5h14v13H3zM6 7h8M6 10h8M6 13h5" />
-          </svg>
           <span>线索审核</span>
         </RouterLink>
         <RouterLink
@@ -1107,15 +1191,43 @@ async function logout(): Promise<void> {
           to="/client/notary-matters"
           @click="closeDrawer"
         >
-          <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M5 2.5h8l3 3v12H5zM8 9h5M8 12h5M8 15h4" />
-          </svg>
           <span>公证审核</span>
         </RouterLink>
 
-        <p v-if="!isClient" class="app-nav__label app-nav__label--spaced">
-          工具栏
-        </p>
+        <p class="app-nav__label app-nav__label--spaced">工具栏</p>
+        <RouterLink
+          v-if="!isNotary"
+          class="app-nav__item"
+          :class="{ active: route.path === calendarPath }"
+          data-test="calendar-nav"
+          :to="calendarPath"
+          @click="closeDrawer"
+          ><span>日历</span
+          ><span
+            v-if="calendarCount !== null"
+            class="app-nav__badge"
+            data-test="calendar-count"
+            >{{ calendarCount }}</span
+          ></RouterLink
+        >
+        <RouterLink
+          v-if="canViewReports"
+          class="app-nav__item"
+          :class="{ active: route.path === '/reports' }"
+          data-test="reports-nav"
+          to="/reports"
+          @click="closeDrawer"
+          ><span>数据报表</span></RouterLink
+        >
+        <div v-if="reportsReadError" data-test="reports-nav-error">
+          <p role="alert">{{ reportsReadError }}</p>
+          <ElButton
+            data-test="reports-nav-retry"
+            :disabled="reportsReadLoading"
+            @click="retryReports"
+            >重新读取报表导航</ElButton
+          >
+        </div>
         <RouterLink
           v-if="!isClient && canViewSettlements"
           class="app-nav__item"
@@ -1160,9 +1272,6 @@ async function logout(): Promise<void> {
           to="/customers"
           @click="closeDrawer"
         >
-          <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M4 4.5h12v11H4zM7 2.5h6v4H7z" />
-          </svg>
           <span>客户管理</span>
         </RouterLink>
 
@@ -1183,13 +1292,10 @@ async function logout(): Promise<void> {
               expandedGroup = expandedGroup === 'settings' ? null : 'settings'
             "
           >
-            <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
-              <circle cx="10" cy="10" r="3" />
-              <path
-                d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.5 1.5M14.5 14.5 16 16M16 4l-1.5 1.5M5.5 14.5 4 16"
-              />
-            </svg>
             <span>设置</span>
+            <span class="app-nav__chevron" aria-hidden="true">{{
+              expandedGroup === 'settings' ? '⌄' : '›'
+            }}</span>
           </button>
           <div v-if="expandedGroup === 'settings'" class="app-subnav">
             <RouterLink

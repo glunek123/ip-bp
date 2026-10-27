@@ -111,7 +111,6 @@ test('customer creation drawer saves complete cooperation terms without a file a
   await expect(
     page.getByText('91330100MA2ABC1234X', { exact: true }),
   ).toBeVisible();
-  await page.getByRole('tab', { name: '合作协议', exact: true }).click();
   const agreement = page.locator('[data-test="agreement-panel"]');
   await expect(
     agreement.getByText('首版合作协议', { exact: true }),
@@ -123,7 +122,6 @@ test('customer creation drawer saves complete cooperation terms without a file a
     agreement.getByText('未附合作协议文件', { exact: true }),
   ).toBeVisible();
   await page.reload();
-  await page.getByRole('tab', { name: '合作协议', exact: true }).click();
   await expect(
     agreement.getByText('客户结算金额=结案金额*70%', { exact: true }),
   ).toBeVisible();
@@ -147,7 +145,6 @@ test('customer creation drawer saves complete cooperation terms without a file a
     agreement.locator('[data-test="agreement-version"]'),
   ).toContainText('第 2 版');
   await page.reload();
-  await page.getByRole('tab', { name: '合作协议', exact: true }).click();
   await expect(
     agreement.getByText('后补合作协议.pdf', { exact: true }),
   ).toBeVisible();

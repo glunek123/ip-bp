@@ -229,12 +229,18 @@ async function save(): Promise<void> {
             v-model="draft.note"
             :maxlength="500"
             :disabled="disabled" /></label
-        ><ElButton :disabled="disabled" @click="rows.splice(index, 1)"
+        ><ElButton
+          class="action-size--compact"
+          :disabled="disabled"
+          @click="rows.splice(index, 1)"
           >移除此行</ElButton
         >
       </div>
       <div class="case-fee-entry__actions">
-        <ElButton :disabled="disabled" @click="rows.push(row())"
+        <ElButton
+          class="action-size--standard"
+          :disabled="disabled"
+          @click="rows.push(row())"
           >再添加一笔</ElButton
         >
       </div>
@@ -243,9 +249,13 @@ async function save(): Promise<void> {
         保存结果尚未确认，重试使用原批次和每行的原请求身份。
       </p>
       <div class="case-fee-entry__actions">
-        <ElButton native-type="submit" type="primary" :loading="saving">{{
-          unknown ? '用原批次重试' : '保存全部费用'
-        }}</ElButton>
+        <ElButton
+          class="action-size--wide"
+          native-type="submit"
+          type="primary"
+          :loading="saving"
+          >{{ unknown ? '用原批次重试' : '保存全部费用' }}</ElButton
+        >
       </div>
     </form></ElDialog
   >
@@ -253,28 +263,56 @@ async function save(): Promise<void> {
 <style scoped>
 .case-fee-entry {
   display: grid;
-  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--app-detail-gap, 12px);
 }
 .case-fee-entry label {
   display: grid;
   gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+}
+.case-fee-entry > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 12px;
 }
 .case-fee-entry__row {
   display: grid;
-  grid-template-columns: 1.2fr 0.7fr 1fr 1fr 1.2fr auto;
-  gap: 8px;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--app-detail-gap, 12px);
   align-items: end;
   border-bottom: 1px solid var(--color-hairline);
-  padding-bottom: 12px;
+  padding: 0 0 10px;
+}
+.case-fee-entry__row > button {
+  justify-self: end;
 }
 .case-fee-entry__actions {
+  grid-column: 1 / -1;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
 }
 @media (max-width: 760px) {
+  .case-fee-entry {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .case-fee-entry__row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 420px) {
+  .case-fee-entry,
+  .case-fee-entry__row {
+    grid-template-columns: 1fr;
+  }
+  .case-fee-entry__row,
+  .case-fee-entry > p,
+  .case-fee-entry__actions {
+    grid-column: auto;
   }
 }
 </style>

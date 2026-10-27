@@ -475,7 +475,7 @@ export class SettlementService {
           }
           const record = await this.caseFacts(tx, actor, caseId);
           if (
-            record.stage !== 'WAITING_ARCHIVE' ||
+            !['WAITING_ARCHIVE', 'ARCHIVED'].includes(record.stage) ||
             (record.settlementTerms?.version ?? 0) !==
               input.expectedTermsVersion
           )

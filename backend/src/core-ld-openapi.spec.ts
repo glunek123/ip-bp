@@ -1,4 +1,5 @@
 import { CaseArchiveService } from './modules/cases/case-archive.service';
+import { CaseEarlyArchiveService } from './modules/cases/case-early-archive.service';
 import { CaseExecutionRecordEditService } from './modules/cases/case-execution-record-edit.service';
 import { CaseHistoricalRecordEditService } from './modules/cases/case-historical-record-edit.service';
 import { CaseClosureService } from './modules/cases/case-closure.service';
@@ -326,6 +327,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         CaseListPreferenceController,
       ],
       providers: [
+        { provide: CaseEarlyArchiveService, useValue: { archive: jest.fn() } },
         {
           provide: CaseArchiveService,
           useValue: {

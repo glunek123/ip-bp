@@ -65,6 +65,8 @@ export type LeadFormContext = {
 };
 
 export type LeadProductInput = {
+  id?: string;
+  screenshotContentVersionIds?: readonly string[];
   url?: string;
   title?: string;
   quantity: number;
@@ -93,8 +95,12 @@ export type CreateLeadInput = LeadBusinessInput & {
 };
 export type LeadCsvImportInput = Omit<
   CreateLeadInput,
-  'reservedLeadId' | 'leadScreenshotContentVersionIds'
+  'reservedLeadId' | 'leadScreenshotContentVersionIds' | 'products'
 > & {
+  products: readonly Omit<
+    LeadProductInput,
+    'id' | 'screenshotContentVersionIds'
+  >[];
   leadScreenshotContentVersionIds: readonly [];
 };
 export type LeadCsvImportItem = Readonly<{
@@ -114,6 +120,7 @@ export type LeadProduct = {
   unitPrice: string;
   commentCount: number;
   estimatedAmount: string;
+  screenshotContentVersionIds?: string[];
 };
 export type LeadReviewDecision =
   | {
@@ -188,6 +195,7 @@ export type LeadDetail = Lead & {
     evidenceDecide: boolean;
     transferToNotary: boolean;
     createEvidenceBatch: boolean;
+    productScreenshotsEdit?: boolean;
   };
   evidenceDecision: LeadEvidenceDecision | null;
   pendingWithdrawalApplication: LeadWithdrawalApplication | null;
@@ -352,6 +360,9 @@ function isOption<T extends string>(
   );
 }
 function isProduct(value: unknown): value is LeadProduct {
+  const screenshotIds = isRecord(value)
+    ? value.screenshotContentVersionIds
+    : undefined;
   return (
     isRecord(value) &&
     typeof value.id === 'string' &&
@@ -365,7 +376,11 @@ function isProduct(value: unknown): value is LeadProduct {
     moneyPattern.test(value.unitPrice) &&
     isCount(value.commentCount) &&
     typeof value.estimatedAmount === 'string' &&
-    moneyPattern.test(value.estimatedAmount)
+    moneyPattern.test(value.estimatedAmount) &&
+    Array.isArray(screenshotIds) &&
+    screenshotIds.length <= 20 &&
+    new Set(screenshotIds).size === screenshotIds.length &&
+    screenshotIds.every((id) => typeof id === 'string')
   );
 }
 function isReviewDecision(value: unknown): value is LeadReviewDecision {
@@ -433,6 +448,13 @@ function isLeadBusinessResult(value: unknown): value is LeadBusinessResult {
   const infringements = value.infringementTypes;
   const products = value.products;
   const screenshotIds = value.leadScreenshotContentVersionIds;
+  const productScreenshotIds = Array.isArray(products)
+    ? products.flatMap((product) =>
+        isRecord(product) && Array.isArray(product.screenshotContentVersionIds)
+          ? product.screenshotContentVersionIds
+          : [],
+      )
+    : [];
   return (
     typeof value.id === 'string' &&
     typeof value.businessNo === 'string' &&
@@ -468,6 +490,12 @@ function isLeadBusinessResult(value: unknown): value is LeadBusinessResult {
     products.every(
       (product, index) => isProduct(product) && product.position === index + 1,
     ) &&
+    products.reduce(
+      (total, product) =>
+        total + (product.screenshotContentVersionIds?.length ?? 0),
+      0,
+    ) <= 20 &&
+    new Set(productScreenshotIds).size === productScreenshotIds.length &&
     Array.isArray(screenshotIds) &&
     screenshotIds.length <= 20 &&
     new Set(screenshotIds).size === screenshotIds.length &&
@@ -668,6 +696,7 @@ const csvImportProductResultKeys = [
   'unitPrice',
   'commentCount',
   'estimatedAmount',
+  'screenshotContentVersionIds',
 ];
 
 function isStrictCsvLeadResult(
@@ -888,6 +917,8 @@ export async function getLead(
     typeof capabilities.evidenceDecide !== 'boolean' ||
     typeof capabilities.transferToNotary !== 'boolean' ||
     typeof capabilities.createEvidenceBatch !== 'boolean' ||
+    (capabilities.productScreenshotsEdit !== undefined &&
+      typeof capabilities.productScreenshotsEdit !== 'boolean') ||
     (detail.evidenceDecision !== null &&
       !isEvidenceDecision(detail.evidenceDecision)) ||
     !isNotaryMatterSummaries(detail.notaryMatters) ||
@@ -907,6 +938,7 @@ export async function getLead(
       evidenceDecide: capabilities.evidenceDecide,
       transferToNotary: capabilities.transferToNotary,
       createEvidenceBatch: capabilities.createEvidenceBatch,
+      productScreenshotsEdit: capabilities.productScreenshotsEdit === true,
     },
     notaryMatters: detail.notaryMatters,
   };
@@ -1204,11 +1236,26 @@ export async function importLeadCsvBatch(
 }
 
 function requestBody(input: CreateLeadInput | UpdateLeadInput) {
+  const {
+    products,
+    infringementTypes,
+    leadScreenshotContentVersionIds,
+    ...fields
+  } = input;
   return {
-    ...input,
-    infringementTypes: [...input.infringementTypes],
-    products: input.products.map((product) => ({ ...product })),
-    leadScreenshotContentVersionIds: [...input.leadScreenshotContentVersionIds],
+    ...fields,
+    infringementTypes: [...infringementTypes],
+    products: products.map((product) => {
+      const { id, screenshotContentVersionIds, ...business } = product;
+      return {
+        ...business,
+        ...(id === undefined ? {} : { id }),
+        ...(screenshotContentVersionIds === undefined
+          ? {}
+          : { screenshotContentVersionIds: [...screenshotContentVersionIds] }),
+      };
+    }),
+    leadScreenshotContentVersionIds: [...leadScreenshotContentVersionIds],
   };
 }
 
@@ -1233,6 +1280,29 @@ export async function updateLead(
     method: 'PATCH',
     body: requestBody(input),
   });
+  if (!isLeadBusinessResult(data)) throw invalidResponse();
+  return data;
+}
+
+export async function updateLeadProductScreenshots(
+  leadId: string,
+  productId: string,
+  input: {
+    expectedVersion: number;
+    screenshotContentVersionIds: readonly string[];
+  },
+): Promise<LeadBusinessResult> {
+  const data = await requestJson(
+    `/leads/${encodeURIComponent(leadId)}/products/${encodeURIComponent(productId)}/screenshots`,
+    {
+      method: 'PUT',
+      body: {
+        expectedVersion: input.expectedVersion,
+        screenshotContentVersionIds: [...input.screenshotContentVersionIds],
+      },
+    },
+  );
+  if (!isRecord(data)) throw invalidResponse();
   if (!isLeadBusinessResult(data)) throw invalidResponse();
   return data;
 }

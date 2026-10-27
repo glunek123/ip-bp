@@ -1678,6 +1678,7 @@ describe('materials API', () => {
     await expect(
       uploadMaterialFile({
         ownerType: 'LEAD_DRAFT',
+        ownerId: 'reserved-lead-1',
         category: 'LEAD_SCREENSHOT',
         purpose: 'LEAD_SCREENSHOT',
         file,

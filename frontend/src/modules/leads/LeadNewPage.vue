@@ -16,10 +16,14 @@ const router = useRouter();
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const context = ref<LeadFormContext>();
 const saving = ref(false);
+const uncertainWrite = ref(false);
 const submitError = ref('');
 const progress = ref('');
 const isDirty = ref(false);
-const uploadIds = new Map<InstanceType<typeof globalThis.File>, string>();
+const uploadIds = new Map<
+  string,
+  Map<InstanceType<typeof globalThis.File>, string>
+>();
 let reservedLeadId: string | undefined;
 let request: AbortController | undefined;
 const idempotencyKey = makeKey();
@@ -49,39 +53,62 @@ async function submit(value: LeadFormSubmission): Promise<void> {
   saving.value = true;
   submitError.value = '';
   try {
-    for (const [index, file] of value.screenshotFiles.entries()) {
-      if (uploadIds.has(file)) continue;
-      progress.value = `正在上传 ${file.name}（${index + 1}/${value.screenshotFiles.length}）`;
-      const uploaded = await uploadMaterialFile({
-        ownerType: 'LEAD_DRAFT',
-        ...(reservedLeadId ? { ownerId: reservedLeadId } : {}),
-        category: 'LEAD_SCREENSHOT',
-        purpose: 'LEAD_SCREENSHOT',
-        file,
-      });
-      if (!uploaded.reservedOwnerId)
-        throw new ApiError('服务未返回预留线索', 200, 'INVALID_RESPONSE');
-      if (reservedLeadId && uploaded.reservedOwnerId !== reservedLeadId)
-        throw new ApiError('预留线索不一致', 200, 'INVALID_RESPONSE');
-      reservedLeadId = uploaded.reservedOwnerId;
-      uploadIds.set(file, uploaded.contentVersionId);
+    const productScreenshots = new Map<string, string[]>();
+    const pending = value.productScreenshotFiles.flatMap((item) =>
+      item.files.map((file) => ({ productId: item.productId, file })),
+    );
+    for (const [index, item] of pending.entries()) {
+      let productUploads = uploadIds.get(item.productId);
+      if (!productUploads) {
+        productUploads = new Map();
+        uploadIds.set(item.productId, productUploads);
+      }
+      let contentVersionId = productUploads.get(item.file);
+      if (!contentVersionId) {
+        progress.value = `正在上传 ${item.file.name}（${index + 1}/${pending.length}）`;
+        const uploaded = await uploadMaterialFile({
+          ownerType: 'LEAD_DRAFT',
+          ...(reservedLeadId ? { ownerId: reservedLeadId } : {}),
+          category: 'LEAD_SCREENSHOT',
+          purpose: 'LEAD_SCREENSHOT',
+          file: item.file,
+        });
+        if (reservedLeadId && uploaded.reservedOwnerId !== reservedLeadId)
+          throw new ApiError('预留线索不一致', 200, 'INVALID_RESPONSE');
+        reservedLeadId = uploaded.reservedOwnerId;
+        contentVersionId = uploaded.contentVersionId;
+        productUploads.set(item.file, contentVersionId);
+      }
+      productScreenshots.set(item.productId, [
+        ...(productScreenshots.get(item.productId) ?? []),
+        contentVersionId,
+      ]);
     }
     progress.value = '正在保存线索';
-    const contentVersionIds: string[] = [];
-    for (const file of value.screenshotFiles) {
-      const contentVersionId = uploadIds.get(file);
-      if (!contentVersionId)
-        throw new ApiError('截图上传结果不完整', 200, 'INVALID_RESPONSE');
-      contentVersionIds.push(contentVersionId);
+    let created;
+    try {
+      created = await createLead(
+        {
+          ...value.fields,
+          ...(reservedLeadId ? { reservedLeadId } : {}),
+          leadScreenshotContentVersionIds: [],
+          products: value.fields.products.map((product) => ({
+            ...product,
+            screenshotContentVersionIds: [
+              ...(product.screenshotContentVersionIds ?? []),
+              ...(productScreenshots.get(product.id ?? '') ?? []),
+            ],
+          })),
+        },
+        idempotencyKey,
+      );
+    } catch (error) {
+      uncertainWrite.value =
+        !(error instanceof ApiError) ||
+        error.status >= 500 ||
+        error.code === 'INVALID_RESPONSE';
+      throw error;
     }
-    const created = await createLead(
-      {
-        ...value.fields,
-        ...(reservedLeadId ? { reservedLeadId } : {}),
-        leadScreenshotContentVersionIds: contentVersionIds,
-      },
-      idempotencyKey,
-    );
     isDirty.value = false;
     await router.push(`/leads/${created.id}`);
   } catch (error) {
@@ -117,34 +144,47 @@ onBeforeUnmount(() => request?.abort());
         <ElButton @click="load">重新加载</ElButton>
       </section>
       <template v-else-if="context">
-        <p v-if="progress" class="operation-progress" aria-live="polite">
-          {{ progress }}
-        </p>
-        <p v-if="submitError" class="submit-error" role="alert">
-          {{ submitError }}
-        </p>
         <section
-          v-if="context.customers.length === 0"
-          class="ledger-panel state-panel"
-          data-test="no-admitted-customers"
+          v-if="uncertainWrite"
+          class="state-panel ledger-panel"
+          role="alert"
         >
-          <h2>尚无已准入客户</h2>
-          <p>线索只能关联已完成准入的客户，请先完成客户准入。</p>
-          <RouterLink data-test="go-to-customers" to="/customers">
-            <ElButton type="primary">去客户列表</ElButton>
-          </RouterLink>
+          <h2>线索保存结果未确认</h2>
+          <p>
+            请先返回线索列表核对记录，再决定下一步。当前表单已锁定，不能用新内容重复提交。
+          </p>
+          <RouterLink to="/leads">返回线索列表</RouterLink>
         </section>
-        <LeadForm
-          v-else
-          :context="context"
-          :submitting="saving"
-          submit-label="创建线索"
-          @dirty="isDirty = true"
-          @submit="submit"
-          ><template #cancel
-            ><RouterLink to="/leads">取消</RouterLink></template
-          ></LeadForm
-        >
+        <template v-else>
+          <p v-if="progress" class="operation-progress" aria-live="polite">
+            {{ progress }}
+          </p>
+          <p v-if="submitError" class="submit-error" role="alert">
+            {{ submitError }}
+          </p>
+          <section
+            v-if="context.customers.length === 0"
+            class="ledger-panel state-panel"
+            data-test="no-admitted-customers"
+          >
+            <h2>尚无已准入客户</h2>
+            <p>线索只能关联已完成准入的客户，请先完成客户准入。</p>
+            <RouterLink data-test="go-to-customers" to="/customers">
+              <ElButton type="primary">去客户列表</ElButton>
+            </RouterLink>
+          </section>
+          <LeadForm
+            v-else
+            :context="context"
+            :submitting="saving"
+            submit-label="创建线索"
+            @dirty="isDirty = true"
+            @submit="submit"
+            ><template #cancel
+              ><RouterLink to="/leads">取消</RouterLink></template
+            ></LeadForm
+          >
+        </template>
       </template>
     </main>
   </div>

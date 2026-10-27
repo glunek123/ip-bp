@@ -13,6 +13,7 @@ vi.mock('../stores/auth', () => ({ useAuthStore: () => auth }));
 
 import { router } from './router';
 import EvidencePage from '../modules/evidence/EvidencePage.vue';
+import CaseListPage from '../modules/cases/CaseListPage.vue';
 import CaseHandlingGroupsPage from '../modules/cases/CaseHandlingGroupsPage.vue';
 import ReportsPage from '../modules/reports/ReportsPage.vue';
 
@@ -101,6 +102,10 @@ describe('internal handling group routing', () => {
       );
       expect(router.currentRoute.value.meta.audience).toBe('INTERNAL');
       expect(router.currentRoute.value.meta.caseWorkspace).not.toBe(true);
+      expect(router.currentRoute.value.meta.breadcrumbs).toEqual([
+        '案件',
+        '案件系列',
+      ]);
       expect(router.currentRoute.value.query.returnTo).toBe(
         '/cases?view=department&page=3&q=合成#records',
       );
@@ -202,6 +207,43 @@ describe('internal case workspace routing', () => {
     await router.push('/cases/case-1?tab=history&view=department&page=3');
     expect(router.currentRoute.value.query).toEqual({
       view: 'department',
+      page: '3',
+    });
+  });
+});
+
+describe('internal case list scope routing', () => {
+  beforeEach(() => {
+    auth.session = { principalType: 'INTERNAL', user: { id: 'operator-user' } };
+  });
+
+  it.each(['mine', 'department'] as const)(
+    'preserves the %s scope and list filters on the shared case route',
+    async (view) => {
+      await router.push(`/cases?view=${view}&stage=WAITING_HEARING&page=3`);
+      expect(router.currentRoute.value.matched[0]?.components?.default).toBe(
+        CaseListPage,
+      );
+      expect(router.currentRoute.value.query).toEqual({
+        view,
+        stage: 'WAITING_HEARING',
+        page: '3',
+      });
+      expect(router.currentRoute.value.meta).toMatchObject({
+        audience: 'INTERNAL',
+        section: '案件',
+        breadcrumbs: ['案件'],
+      });
+    },
+  );
+
+  it('keeps legacy /cases URLs on the personal scope by default', async () => {
+    await router.push('/cases?stage=WAITING_HEARING&page=3');
+    expect(router.currentRoute.value.matched[0]?.components?.default).toBe(
+      CaseListPage,
+    );
+    expect(router.currentRoute.value.query).toEqual({
+      stage: 'WAITING_HEARING',
       page: '3',
     });
   });

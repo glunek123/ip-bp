@@ -118,9 +118,9 @@ onBeforeUnmount(() => {
     class="demo-card handling-group-panel"
     role="dialog"
     aria-modal="true"
-    aria-label="案件办理组详情"
+    aria-label="案件系列详情"
   >
-    <h2>案件办理组</h2>
+    <h2>案件系列</h2>
     <p v-if="invalidated" role="alert">
       当前身份、组或页面已变化，请重新读取。
     </p>
@@ -167,7 +167,7 @@ onBeforeUnmount(() => {
           :disabled="busy"
           data-test="confirm-dissolve-group"
         />已核对解除后各原案及其历史仍完整保留，确认{{
-          frozen ? '核对原解除请求' : '解除办理组'
+          frozen ? '核对原解除请求' : '解除案件系列'
         }}。</label
       >
       <p v-if="error" role="alert">{{ error }}</p>
@@ -178,7 +178,7 @@ onBeforeUnmount(() => {
         :disabled="!confirmed || busy"
         :loading="busy"
         @click="dissolve"
-        >{{ frozen ? '核对原解除请求' : '解除办理组' }}</ElButton
+        >{{ frozen ? '核对原解除请求' : '解除案件系列' }}</ElButton
       >
     </template>
     <ElButton

@@ -50,3 +50,14 @@ describe('handling group permission catalog', () => {
     },
   );
 });
+
+it('offers enterprise account creation only at department scope', () => {
+  expect(internalAssignablePermissionActions).toContain(
+    'CUSTOMER_ACCOUNT_CREATE',
+  );
+  expect(
+    permissionCatalog.filter(
+      (item) => item.action === 'CUSTOMER_ACCOUNT_CREATE',
+    ),
+  ).toEqual([expect.objectContaining({ scopes: ['DEPARTMENT'] })]);
+});

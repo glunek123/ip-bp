@@ -124,6 +124,86 @@ beforeEach(() => {
 });
 
 describe('EvidencePage', () => {
+  it('groups page and list actions and keeps the empty table structure available', async () => {
+    api.listEvidence.mockResolvedValueOnce({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      counts: {
+        statuses: {
+          ALL: 0,
+          UNDELIVERED: 0,
+          IN_STOCK: 0,
+          MAILED_TO_LAWYER: 0,
+          DESTROYED: 0,
+        },
+        stages: {},
+        allStageCases: 0,
+      },
+    });
+    const wrapper = mount(EvidencePage);
+    await flushPromises();
+
+    expect(wrapper.find('.page-head__actions.operation-bar').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('.list-card > .actions.operation-bar').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('.table-wrap').exists()).toBe(true);
+    expect(wrapper.text()).toContain('没有匹配的证物');
+    expect(wrapper.find('.pager.operation-bar').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('hides pagination when one page contains all evidence', async () => {
+    api.listEvidence.mockResolvedValueOnce({
+      items: [first],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      counts,
+    });
+    const wrapper = mount(EvidencePage);
+    await flushPromises();
+
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1);
+    expect(wrapper.find('.pager.operation-bar').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('keeps a previous-page path when page two reports a shrunken total', async () => {
+    api.listEvidence.mockImplementation(
+      (requestedFilter: { page?: number }) => {
+        const requestedPage = requestedFilter.page ?? 1;
+        return Promise.resolve({
+          items: requestedPage === 1 ? [first, second] : [first],
+          total: requestedPage === 1 ? 21 : 1,
+          page: requestedPage,
+          pageSize: 20,
+          counts,
+        });
+      },
+    );
+    const wrapper = mount(EvidencePage);
+    await flushPromises();
+    await wrapper.get('.pager button:last-child').trigger('click');
+    await flushPromises();
+
+    const pager = wrapper.get('.pager.operation-bar');
+    expect(pager.text()).toContain('第 2 页');
+    expect(pager.findAll('button')[0]!.attributes('disabled')).toBeUndefined();
+    expect(pager.findAll('button')[1]!.attributes('disabled')).toBeDefined();
+    await pager.findAll('button')[0]!.trigger('click');
+    await flushPromises();
+    expect(api.listEvidence).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 1 }),
+      expect.anything(),
+    );
+    wrapper.unmount();
+  });
+
   it('keeps all progress choices available in a collapsed multi-select filter', async () => {
     const wrapper = mount(EvidencePage);
     await flushPromises();

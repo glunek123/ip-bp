@@ -147,7 +147,7 @@ export const router = createRouter({
       meta: {
         audience: 'INTERNAL',
         section: '案件',
-        breadcrumbs: ['案件', '案件办理组'],
+        breadcrumbs: ['案件', '案件系列'],
       },
     },
     {

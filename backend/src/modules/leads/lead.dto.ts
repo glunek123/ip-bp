@@ -39,6 +39,22 @@ const trim = ({ value }: { value: unknown }): unknown =>
 const moneyPattern = /^(0|[1-9]\d{0,15})(\.\d{1,2})?$/u;
 
 export class LeadProductDto {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: '稳定商品 ID；新建可省略。',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  id?: string;
+
+  @ApiPropertyOptional({ type: [String], maxItems: 20 })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  screenshotContentVersionIds?: string[];
+
   @ApiPropertyOptional({ maxLength: 2048 })
   @Transform(trim)
   @ValidateIf((_object, value) => value !== undefined)
@@ -123,7 +139,7 @@ export class LeadBusinessFieldsDto {
     type: [String],
     maxItems: 20,
     description:
-      '创建时仅接受预留 Lead 草稿版本；编辑时必须完整提交当前已属于该 Lead 的可变截图版本集合。',
+      '历史线索级待关联截图。商品截图应填写在对应商品的 screenshotContentVersionIds 中；创建时版本须属于预留 Lead 草稿，编辑时须属于当前 Lead。',
   })
   @IsArray()
   @ArrayMaxSize(20)
@@ -143,6 +159,17 @@ export class CreateLeadDto extends LeadBusinessFieldsDto {
 
 export class UpdateLeadDto extends LeadBusinessFieldsDto {
   @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
+}
+
+export class UpdateLeadProductScreenshotsDto {
+  @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
+
+  @ApiProperty({ type: [String], maxItems: 20 })
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  screenshotContentVersionIds!: string[];
 }
 
 export class PushLeadDto {

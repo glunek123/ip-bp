@@ -141,6 +141,38 @@ const permissionCatalog = [
 afterEach(() => vi.clearAllMocks());
 
 describe('RoleTemplateEditor', () => {
+  it('adds only department customer read and admission grants to the current selection', async () => {
+    const wrapper = mount(RoleTemplateEditor, {
+      props: { mode: 'copy', role, permissionCatalog },
+    });
+    await wrapper.get('[data-test="grant-FEE_READ"]').setValue(true);
+    await wrapper
+      .get('[data-test="add-department-admission-grants"]')
+      .trigger('click');
+    expect(
+      wrapper.get('[data-test="grant-CUSTOMER_READ"]').element,
+    ).toHaveProperty('checked', true);
+    expect(
+      wrapper.get('[data-test="scope-CUSTOMER_READ"]').element,
+    ).toHaveProperty('value', 'DEPARTMENT');
+    expect(
+      wrapper.get('[data-test="grant-CUSTOMER_ADMIT"]').element,
+    ).toHaveProperty('checked', true);
+    expect(
+      wrapper.get('[data-test="scope-CUSTOMER_ADMIT"]').element,
+    ).toHaveProperty('value', 'DEPARTMENT');
+    expect(wrapper.get('[data-test="grant-FEE_READ"]').element).toHaveProperty(
+      'checked',
+      true,
+    );
+    expect(
+      wrapper.get('[data-test="grant-ROLE_MANAGE"]').element,
+    ).toHaveProperty('checked', false);
+    expect(
+      wrapper.get('[data-test="grant-USER_MANAGE"]').element,
+    ).toHaveProperty('checked', false);
+    expect(api.copyRoleTemplate).not.toHaveBeenCalled();
+  });
   it('selects the full catalog at each action’s widest legal scope without auto-saving', async () => {
     api.updateRoleTemplate.mockResolvedValue(role);
     const wrapper = mount(RoleTemplateEditor, {

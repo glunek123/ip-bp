@@ -3,6 +3,7 @@ import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError } from '../../api/http';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
+import MaterialPreviewDialog from '../../app/MaterialPreviewDialog.vue';
 import {
   createCustomerAgreement,
   getCustomerAgreement,
@@ -48,6 +49,11 @@ type RecoveryFile = {
   materialId: string;
   version: MaterialContentVersion;
 };
+type FilePreview = {
+  materialId: string;
+  contentVersionId: string;
+  filename: string;
+};
 
 const props = defineProps<{
   customerId: string;
@@ -89,6 +95,7 @@ const historyPage = ref(1);
 const historyTotal = ref(0);
 const historyLoading = ref(false);
 const historyOpen = ref(false);
+const filePreview = ref<FilePreview>();
 const versionCount = 20;
 let generation = 0;
 let pending: PendingCustomerDocumentCommand | undefined;
@@ -175,6 +182,7 @@ function setField(
 }
 
 function clearSensitiveProjection(): void {
+  closeFilePreview();
   data.value = undefined;
   history.value = [];
   historyTotal.value = 0;
@@ -184,6 +192,24 @@ function clearSensitiveProjection(): void {
   form.value = emptyForm();
   editing.value = false;
   message.value = '';
+}
+function closeFilePreview(): void {
+  filePreview.value = undefined;
+}
+function previewFile(file: CustomerAgreementFile): void {
+  if (!props.canRead) return;
+  filePreview.value = {
+    materialId: file.materialId,
+    contentVersionId: file.contentVersionId,
+    filename: file.originalFilename,
+  };
+}
+function handlePreviewUnavailable(): void {
+  const customerId = props.customerId;
+  const actorKey = props.actorKey;
+  clearSensitiveProjection();
+  setField('stale', true);
+  emit('unavailable', customerId, actorKey);
 }
 
 function formFromVersion(version?: CustomerAgreementVersion): AgreementForm {
@@ -765,6 +791,7 @@ watch(
 
 onBeforeUnmount(() => {
   generation += 1;
+  closeFilePreview();
 });
 </script>
 
@@ -776,7 +803,6 @@ onBeforeUnmount(() => {
   >
     <header>
       <div>
-        <span class="state-index">合作协议</span>
         <h2 id="agreement-heading">合作协议</h2>
       </div>
       <ElButton
@@ -866,6 +892,13 @@ onBeforeUnmount(() => {
                 :key="file.contentVersionId"
               >
                 <span>{{ file.originalFilename }}</span>
+                <ElButton
+                  native-type="button"
+                  :data-test="`agreement-preview-${file.contentVersionId}`"
+                  @click="previewFile(file)"
+                >
+                  预览
+                </ElButton>
                 <ElButton
                   native-type="button"
                   :data-test="`agreement-download-${file.contentVersionId}`"
@@ -1117,6 +1150,13 @@ onBeforeUnmount(() => {
                   {{ file.originalFilename }}
                   <ElButton
                     native-type="button"
+                    :data-test="`history-preview-${file.contentVersionId}`"
+                    @click="previewFile(file)"
+                  >
+                    预览
+                  </ElButton>
+                  <ElButton
+                    native-type="button"
                     :data-test="`history-download-${file.contentVersionId}`"
                     @click="downloadFile(file)"
                   >
@@ -1149,6 +1189,15 @@ onBeforeUnmount(() => {
       </div>
       <p v-if="message && !editing" role="status">{{ message }}</p>
     </template>
+    <MaterialPreviewDialog
+      v-if="filePreview"
+      :material-id="filePreview.materialId"
+      :content-version-id="filePreview.contentVersionId"
+      :filename="filePreview.filename"
+      :scope-key="`${customerId}:${actorKey}:${canRead}`"
+      @close="closeFilePreview"
+      @unavailable="handlePreviewUnavailable"
+    />
   </section>
 </template>
 

@@ -8,6 +8,11 @@ import type {
   updateFeeProof,
   cancelSettlementBill,
 } from '../../api/settlements';
+import type {
+  cancelFee,
+  verifyCancelledFeePayment,
+  reconcileCancelledFeeRefund,
+} from '../../api/fee-cancellations';
 type RecordValue = Record<string, unknown>;
 function record(value: unknown): value is RecordValue {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -222,6 +227,86 @@ export function isPendingFeeProof(value: unknown): value is PendingFeeProof {
     key(value.body.idempotencyKey) &&
     ((value.body.materialId === null && value.body.contentVersionId === null) ||
       (text(value.body.materialId) && text(value.body.contentVersionId)))
+  );
+}
+export type PendingFeeCancellation = {
+  feeId: string;
+  body: Parameters<typeof cancelFee>[1];
+};
+export function isPendingFeeCancellation(
+  v: unknown,
+): v is PendingFeeCancellation {
+  return (
+    record(v) &&
+    keys(v, ['feeId', 'body']) &&
+    text(v.feeId) &&
+    record(v.body) &&
+    keys(v.body, ['expectedVersion', 'idempotencyKey', 'reason']) &&
+    version(v.body.expectedVersion) &&
+    key(v.body.idempotencyKey) &&
+    typeof v.body.reason === 'string' &&
+    v.body.reason.trim().length > 0 &&
+    v.body.reason.length <= 500
+  );
+}
+export type PendingFeePaymentVerification = {
+  feeId: string;
+  body: Parameters<typeof verifyCancelledFeePayment>[1];
+};
+export function isPendingFeePaymentVerification(
+  v: unknown,
+): v is PendingFeePaymentVerification {
+  if (
+    !record(v) ||
+    !keys(v, ['feeId', 'body']) ||
+    !text(v.feeId) ||
+    !record(v.body) ||
+    !keys(v.body, [
+      'amount',
+      'paymentDate',
+      'proofMaterialId',
+      'proofContentVersionId',
+      'idempotencyKey',
+    ]) ||
+    !money(v.body.amount) ||
+    !key(v.body.idempotencyKey) ||
+    !(v.body.paymentDate === null || day(v.body.paymentDate)) ||
+    !(
+      (v.body.proofMaterialId === null &&
+        v.body.proofContentVersionId === null) ||
+      (text(v.body.proofMaterialId) && text(v.body.proofContentVersionId))
+    )
+  )
+    return false;
+  return v.body.amount === '0' || v.body.amount === '0.00'
+    ? v.body.paymentDate === null || day(v.body.paymentDate)
+    : day(v.body.paymentDate);
+}
+export type PendingFeeRefund = {
+  feeId: string;
+  body: Parameters<typeof reconcileCancelledFeeRefund>[1];
+};
+export function isPendingFeeRefund(v: unknown): v is PendingFeeRefund {
+  return (
+    record(v) &&
+    keys(v, ['feeId', 'body']) &&
+    text(v.feeId) &&
+    record(v.body) &&
+    keys(v.body, [
+      'amount',
+      'refundDate',
+      'proofMaterialId',
+      'proofContentVersionId',
+      'idempotencyKey',
+    ]) &&
+    money(v.body.amount) &&
+    v.body.amount !== '0' &&
+    v.body.amount !== '0.00' &&
+    day(v.body.refundDate) &&
+    key(v.body.idempotencyKey) &&
+    ((v.body.proofMaterialId === null &&
+      v.body.proofContentVersionId === null) ||
+      (text(v.body.proofMaterialId) && text(v.body.proofContentVersionId)))
   );
 }
 export function isPendingCaseFees(

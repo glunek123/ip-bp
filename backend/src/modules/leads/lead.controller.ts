@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -28,6 +29,7 @@ import {
   LeadListQueryDto,
   PushLeadDto,
   UpdateLeadDto,
+  UpdateLeadProductScreenshotsDto,
 } from './lead.dto';
 import { LeadService } from './lead.service';
 import { LeadPushResponseDto } from './lead-push-response.dto';
@@ -91,6 +93,16 @@ export class LeadController {
     @Body() input: UpdateLeadDto,
   ) {
     return this.leads.update(actor, id, input);
+  }
+
+  @Put(':id/products/:productId/screenshots')
+  updateProductScreenshots(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('productId', new ParseUUIDPipe()) productId: string,
+    @Body() input: UpdateLeadProductScreenshotsDto,
+  ) {
+    return this.leads.updateProductScreenshots(actor, id, productId, input);
   }
 
   @Post(':id/push')

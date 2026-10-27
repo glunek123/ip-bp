@@ -70,6 +70,7 @@ describe('CaseExternalEntryService input boundary', () => {
       .digest('hex');
     const actor = { userId: id, departmentId: id, authorizationRevision: 1 };
     const tx = {
+      $queryRawUnsafe: jest.fn(),
       userAccount: {
         findUnique: jest.fn().mockResolvedValue({
           id,
@@ -98,6 +99,7 @@ describe('CaseExternalEntryService input boundary', () => {
       case: {
         findFirst: jest.fn().mockResolvedValue({
           id,
+          businessNo: '00120260101001',
           customerId: id,
           rightsHolderId: id,
           responsibleUserId: id,
@@ -105,7 +107,9 @@ describe('CaseExternalEntryService input boundary', () => {
           externalEntry: { id, initialStage: 'PENDING_MATCH' },
         }),
       },
-      caseNumberCounter: { upsert: jest.fn() },
+      businessNumberAlias: {
+        findUnique: jest.fn().mockResolvedValue({ oldNumber: 'CA-1' }),
+      },
     };
     const db = {
       $transaction: jest
@@ -130,6 +134,15 @@ describe('CaseExternalEntryService input boundary', () => {
       id,
       id,
     );
-    expect(tx.caseNumberCounter.upsert).not.toHaveBeenCalled();
+    expect(tx.$queryRawUnsafe).not.toHaveBeenCalled();
+    customerSource.assertEligible.mockResolvedValue('001');
+    await expect(replay.create(actor, input)).resolves.toMatchObject({
+      id,
+      businessNo: '00120260101001',
+    });
+    expect(tx.businessNumberAlias.findUnique).toHaveBeenCalledWith({
+      where: { entityType_entityId: { entityType: 'CASE', entityId: id } },
+      select: { oldNumber: true },
+    });
   });
 });

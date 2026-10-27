@@ -311,6 +311,90 @@ describe('financial current authorization before command receipts', () => {
   });
 });
 
+describe('settlement launch after archive', () => {
+  it.each([
+    ['ARCHIVED', '100', true],
+    ['ARCHIVED', null, false],
+    ['PENDING_MATCH', '100', false],
+  ] as const)(
+    'stage %s with claim %s launches only when the amount is known: %s',
+    async (stage, claim, succeeds) => {
+      const test = setup({
+        active: true,
+        authorizationRevision: 1,
+        grants: [{ action: 'settlement.launch', scope: 'department' }],
+      });
+      const create = jest.fn().mockResolvedValue({
+        id: 'new-launch',
+        nth: 1,
+        amount: new Prisma.Decimal('20'),
+      });
+      Object.assign(test.tx, {
+        case: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'case',
+            departmentId: 'department',
+            businessNo: 'CASE-1',
+            customerId: 'customer',
+            stage,
+            version: 2,
+            complaintAmountState: claim === null ? null : 'KNOWN',
+            complaintAmount: claim === null ? null : new Prisma.Decimal(claim),
+            complaintConfirmation: null,
+            customer: {
+              id: 'customer',
+              departmentId: 'department',
+              name: '客户甲',
+            },
+            lawyers: [],
+            closure: null,
+          }),
+        },
+        caseSettlementTerms: {
+          findUnique: jest.fn().mockResolvedValue({
+            departmentId: 'department',
+            version: 1,
+            customerFormula: '结案金额 × 20%',
+            lawyerMode: null,
+            lawyerBaseFee: null,
+            lawyerSplitPercent: null,
+            customerManualAmount: null,
+            lawyerManualAmount: null,
+          }),
+        },
+        caseSettlementLaunch: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          findMany: jest.fn().mockResolvedValue([]),
+          create,
+        },
+        auditEvent: { create: jest.fn().mockResolvedValue({}) },
+      });
+      if (succeeds) {
+        await expect(
+          test.service.launch(actor, 'case', launchInput),
+        ).resolves.toEqual({
+          id: 'new-launch',
+          nth: 1,
+          amount: '20.00',
+        });
+        expect(create).toHaveBeenCalledTimes(1);
+      } else {
+        await expect(
+          test.service.launch(actor, 'case', launchInput),
+        ).rejects.toMatchObject({
+          response: {
+            code:
+              claim === null && stage === 'ARCHIVED'
+                ? 'UNKNOWN_SETTLEMENT_AMOUNT'
+                : 'SETTLEMENT_CHANGED',
+          },
+        });
+        expect(create).not.toHaveBeenCalled();
+      }
+    },
+  );
+});
+
 describe('effective closure amount through the settlement read service', () => {
   it.each([
     ['80', '56.00', '24.00', '36.00'],

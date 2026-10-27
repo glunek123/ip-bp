@@ -1,4 +1,9 @@
 import { CaseArchiveService } from './case-archive.service';
+import { CaseEarlyArchiveService } from './case-early-archive.service';
+import {
+  EarlyArchiveCaseInput,
+  EarlyArchiveCaseResult,
+} from './case-early-archive.dto';
 import { CaseExecutionRecordEditService } from './case-execution-record-edit.service';
 import { CaseHistoricalRecordEditService } from './case-historical-record-edit.service';
 import {
@@ -176,6 +181,7 @@ export class CaseReadController {
     private readonly executionFinish: CaseExecutionFinishService,
     private readonly closure: CaseClosureService,
     private readonly archive: CaseArchiveService,
+    private readonly earlyArchive: CaseEarlyArchiveService,
     private readonly courts: FilingCourtService,
     private readonly executionRecordEdit: CaseExecutionRecordEditService,
     private readonly historicalRecordEdit: CaseHistoricalRecordEditService,
@@ -381,6 +387,15 @@ export class CaseReadController {
     @Body() body: ArchiveCaseInput,
   ) {
     return this.archive.archive(actor, id, body);
+  }
+  @Post(':id/early-archive')
+  @ApiCreatedResponse({ type: EarlyArchiveCaseResult })
+  earlyArchiveCase(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: EarlyArchiveCaseInput,
+  ) {
+    return this.earlyArchive.archive(actor, id, body);
   }
   @Post(':id/archive-correction')
   @ApiCreatedResponse({ type: CaseArchiveResult })

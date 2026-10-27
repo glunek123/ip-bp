@@ -1,17 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
   createClientAccount,
+  getClientAccountCapabilities,
   listClientAccounts,
   setClientAccountStatus,
   type ClientAccount,
+  type ClientAccountCapabilities,
 } from '../../api/client-accounts';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 
 const props = defineProps<{ customerId: string; admitted: boolean }>();
 const accounts = ref<ClientAccount[]>([]);
+const capabilities = ref<ClientAccountCapabilities | null>(null);
+const createdAccount = ref<ClientAccount | null>(null);
+let requestVersion = 0;
 const loading = ref(false);
 const submitting = ref(false);
 const changingId = ref('');
@@ -23,6 +28,7 @@ const password = ref('');
 const canSubmit = computed(
   () =>
     props.admitted &&
+    capabilities.value?.canCreate === true &&
     displayName.value.trim().length > 0 &&
     username.value.trim().length >= 3 &&
     password.value.length >= 12 &&
@@ -38,45 +44,71 @@ const missingRequirements = computed(() => {
 });
 
 async function load(): Promise<void> {
+  const version = ++requestVersion;
+  accounts.value = [];
+  capabilities.value = null;
+  createdAccount.value = null;
   if (!props.admitted) return;
   loading.value = true;
   errorMessage.value = '';
   try {
-    accounts.value = await listClientAccounts(props.customerId);
+    const access = await getClientAccountCapabilities(props.customerId);
+    if (version !== requestVersion) return;
+    capabilities.value = access;
+    if (access.canManage) {
+      const result = await listClientAccounts(props.customerId);
+      if (version !== requestVersion) return;
+      accounts.value = result;
+    }
   } catch (error) {
+    if (version !== requestVersion) return;
+    accounts.value = [];
+    capabilities.value = null;
     errorMessage.value =
       error instanceof ApiError ? error.message : '客户账号暂时无法加载';
   } finally {
-    loading.value = false;
+    if (version === requestVersion) loading.value = false;
   }
 }
 
 async function create(): Promise<void> {
   if (!canSubmit.value) return;
+  const version = requestVersion;
+  const customerId = props.customerId;
   submitting.value = true;
   errorMessage.value = '';
   successMessage.value = '';
   try {
-    await createClientAccount(props.customerId, {
+    const created = await createClientAccount(customerId, {
       displayName: displayName.value.trim(),
       username: username.value.trim(),
       password: password.value,
     });
+    if (version !== requestVersion) return;
     displayName.value = '';
     username.value = '';
     password.value = '';
     successMessage.value = '账号已创建并绑定';
-    await load();
+    if (capabilities.value?.canManage) {
+      await load();
+    } else {
+      createdAccount.value = created;
+    }
   } catch (error) {
+    if (version !== requestVersion) return;
     errorMessage.value =
       error instanceof ApiError ? error.message : '客户账号创建失败';
+    if (error instanceof ApiError && error.status === 403) await load();
   } finally {
+    password.value = '';
     submitting.value = false;
   }
 }
 
 async function toggle(account: ClientAccount): Promise<void> {
   if (changingId.value) return;
+  const version = requestVersion;
+  const customerId = props.customerId;
   if (
     account.bindingActive &&
     !globalThis.window.confirm(
@@ -89,10 +121,11 @@ async function toggle(account: ClientAccount): Promise<void> {
   successMessage.value = '';
   try {
     const updated = await setClientAccountStatus(
-      props.customerId,
+      customerId,
       account.id,
       !account.bindingActive,
     );
+    if (version !== requestVersion) return;
     accounts.value = accounts.value.map((item) =>
       item.id === updated.id ? updated : item,
     );
@@ -100,6 +133,8 @@ async function toggle(account: ClientAccount): Promise<void> {
       ? '客户账号已启用'
       : '客户账号已停用';
   } catch (error) {
+    if (version !== requestVersion) return;
+    if (error instanceof ApiError && error.status === 403) await load();
     errorMessage.value =
       error instanceof ApiError ? error.message : '客户账号状态更新失败';
   } finally {
@@ -107,14 +142,24 @@ async function toggle(account: ClientAccount): Promise<void> {
   }
 }
 
-onMounted(() => void load());
+watch(
+  () => [props.customerId, props.admitted] as const,
+  () => {
+    displayName.value = '';
+    username.value = '';
+    password.value = '';
+    successMessage.value = '';
+    errorMessage.value = '';
+    void load();
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
   <section class="ledger-panel detail-card" data-test="client-account-panel">
     <div class="panel-heading">
       <div>
-        <p class="section-kicker">企业登录账号</p>
         <h2>客户账号</h2>
       </div>
       <ElButton v-if="admitted" text :loading="loading" @click="load"
@@ -123,8 +168,18 @@ onMounted(() => void load());
     </div>
     <p v-if="!admitted">客户准入后才可创建客户账号。</p>
     <template v-else>
-      <p v-if="accounts.length === 0 && !loading">尚未绑定客户账号。</p>
-      <ul v-else class="compact-list">
+      <p v-if="createdAccount && !capabilities?.canManage">
+        已创建：{{ createdAccount.displayName }}（{{
+          createdAccount.username
+        }}）
+      </p>
+      <p v-if="capabilities?.canManage && accounts.length === 0 && !loading">
+        尚未绑定客户账号。
+      </p>
+      <ul
+        v-if="capabilities?.canManage && accounts.length"
+        class="compact-list"
+      >
         <li v-for="account in accounts" :key="account.id">
           <span>
             <strong>{{ account.displayName }}</strong>
@@ -141,7 +196,7 @@ onMounted(() => void load());
           </ElButton>
         </li>
       </ul>
-      <div class="inline-form-grid">
+      <div v-if="capabilities?.canCreate" class="inline-form-grid">
         <label>
           <span>客户侧使用人姓名<RequiredFieldMark /></span>
           <input
@@ -217,3 +272,40 @@ onMounted(() => void load());
     </p>
   </section>
 </template>
+
+<style scoped>
+.inline-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--s-3) var(--s-4);
+}
+.inline-form-grid > label {
+  display: grid;
+  gap: var(--s-1);
+  min-width: 0;
+}
+.inline-form-grid > label > span {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+.inline-form-grid > label > input {
+  width: 100%;
+  min-width: 0;
+}
+.inline-form-grid > :deep(.el-button) {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+@media (max-width: 900px) {
+  .inline-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .inline-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+</style>

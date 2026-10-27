@@ -10,7 +10,7 @@
   align-items: center;
   gap: var(--s-4);
   margin: 0;
-  padding: var(--s-5) var(--s-6);
+  padding: var(--s-3) var(--app-content-padding);
   border-bottom: 1px solid var(--color-hairline);
   color: var(--color-ink);
 }
@@ -34,7 +34,7 @@
 .list-workflow-drawer .el-drawer__body {
   min-width: 0;
   min-height: 0;
-  padding: var(--s-5) var(--s-6) var(--s-6);
+  padding: var(--s-3) var(--app-content-padding) var(--s-4);
   background: var(--color-canvas);
   overscroll-behavior: contain;
   overflow-wrap: anywhere;
@@ -42,7 +42,7 @@
 
 .list-workflow-drawer .el-drawer__footer {
   flex-shrink: 0;
-  padding: var(--s-3) var(--s-6);
+  padding: var(--s-3) var(--app-content-padding);
   border-top: 1px solid var(--color-hairline);
   background: var(--color-surface-1);
 }
@@ -52,7 +52,7 @@
 .list-workflow-content .workflow-form-scope {
   display: grid;
   min-width: 0;
-  gap: var(--s-4);
+  gap: var(--app-detail-gap);
 }
 
 .list-workflow-content :where(h2, h3, p, ul, ol, dl, fieldset) {
@@ -131,8 +131,8 @@
 .list-workflow-content .workflow-card {
   display: grid;
   min-width: 0;
-  gap: var(--s-4);
-  padding: var(--s-5);
+  gap: var(--app-detail-gap);
+  padding: var(--app-section-gap);
   border: 1px solid var(--color-hairline);
   border-radius: 8px;
   background: var(--color-surface-1);
@@ -146,7 +146,7 @@
 .list-workflow-content .workflow-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-4) var(--s-5);
+  gap: var(--app-detail-gap);
   min-width: 0;
 }
 
@@ -275,7 +275,7 @@
 .list-workflow-content .el-button,
 .list-workflow-drawer .el-drawer__footer .el-button {
   height: auto;
-  min-height: 36px;
+  min-height: var(--app-control-height);
   white-space: normal;
   line-height: 1.5;
 }
@@ -286,12 +286,18 @@
 }
 .workflow-state {
   display: grid;
-  gap: var(--s-4);
-  padding: var(--s-5);
+  gap: var(--app-detail-gap);
+  padding: var(--app-section-gap);
   border: 1px solid var(--color-hairline);
   border-radius: 8px;
   background: var(--color-surface-1);
 }
+@media (min-width: 1024px) {
+  .list-workflow-content .workflow-facts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 540px) {
   .list-workflow-drawer .el-drawer__header {
     padding: var(--s-4);

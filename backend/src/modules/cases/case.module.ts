@@ -1,4 +1,9 @@
 import { CaseArchiveService } from './case-archive.service';
+import { CaseEarlyArchiveService } from './case-early-archive.service';
+import { CaseCsvImportController } from './case-csv-import.controller';
+import { CaseCsvImportService } from './case-csv-import.service';
+import { CaseBatchArchiveController } from './case-batch-archive.controller';
+import { CaseBatchArchiveService } from './case-batch-archive.service';
 import { CaseExecutionRecordEditService } from './case-execution-record-edit.service';
 import { CaseHistoricalRecordEditService } from './case-historical-record-edit.service';
 import { CaseClosureService } from './case-closure.service';
@@ -69,6 +74,8 @@ import { LawyerCaseController } from './lawyer-case.controller';
     MaterialModule,
   ],
   controllers: [
+    CaseCsvImportController,
+    CaseBatchArchiveController,
     CaseExecutionFilingFollowupController,
     LawyerCaseExecutionFilingFollowupController,
     CaseReadController,
@@ -82,6 +89,8 @@ import { LawyerCaseController } from './lawyer-case.controller';
     LawyerCaseController,
   ],
   providers: [
+    CaseCsvImportService,
+    CaseBatchArchiveService,
     CaseExecutionFilingFollowupService,
     CaseCalendarSourceService,
     CaseReportsSourceService,
@@ -113,6 +122,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseExecutionFinishService,
     CaseClosureService,
     CaseArchiveService,
+    CaseEarlyArchiveService,
     CaseHearingSchedulerService,
     CaseHearingSignal,
     { provide: CASE_HEARING_CLOCK, useClass: SystemCaseHearingClock },

@@ -138,6 +138,7 @@ describe('LeadService batch push', () => {
     f.tx.lead.findMany.mockResolvedValueOnce(
       ids.map((id) => ({
         id,
+        businessNo: id.slice(0, 8),
         departmentId: actor.departmentId,
         responsibleUserId: actor.userId,
         teamId: null,

@@ -248,8 +248,118 @@ export const settlementResponses = {
       }),
     },
   ),
+  cancelledFees: page(
+    object({
+      ...feeSourceFields,
+      deletedAt: nullable(timestamp),
+      cancellation: nullable(
+        object({
+          id: uuid,
+          outcome: { type: 'string', enum: ['DELETED', 'VOIDED'] },
+          reason: string,
+          actorUserId: uuid,
+          createdAt: timestamp,
+          refundReconciliationStatus: {
+            type: 'string',
+            enum: ['NOT_REQUIRED', 'PENDING', 'PAYMENT_UNVERIFIED'],
+          },
+          reconciliationStatus: {
+            type: 'string',
+            enum: [
+              'NOT_REQUIRED',
+              'PAYMENT_UNVERIFIED',
+              'NO_PAYMENT',
+              'REFUND_PENDING',
+              'PARTIAL_REFUND',
+              'REFUND_RECORDED',
+            ],
+          },
+          remainingVerifiedPayment: nullable(money),
+        }),
+      ),
+    }),
+  ),
   feeReceipt: {
     ...object({ id: uuid, version: positive }),
+    additionalProperties: false,
+  },
+  feeCancelReceipt: object({
+    id: uuid,
+    version: positive,
+    cancellationId: uuid,
+    outcome: { type: 'string', enum: ['DELETED', 'VOIDED'] },
+    refundReconciliationStatus: {
+      type: 'string',
+      enum: ['NOT_REQUIRED', 'PENDING', 'PAYMENT_UNVERIFIED'],
+    },
+  }),
+  feePaymentVerificationReceipt: object({
+    id: uuid,
+    cancellationId: uuid,
+    amount: money,
+    paymentDate: nullable(day),
+  }),
+  feeRefundReconciliationReceipt: object({
+    id: uuid,
+    cancellationId: uuid,
+    amount: money,
+    refundDate: day,
+  }),
+  feeHistory: {
+    ...object({
+      ...feeSourceFields,
+      deletedAt: nullable(timestamp),
+      cancellation: nullable(
+        object({
+          id: uuid,
+          outcome: { type: 'string', enum: ['DELETED', 'VOIDED'] },
+          originalStatus: string,
+          originalAmount: money,
+          originalVersion: positive,
+          reason: string,
+          actorUserId: uuid,
+          createdAt: timestamp,
+          refundReconciliationStatus: {
+            type: 'string',
+            enum: ['NOT_REQUIRED', 'PENDING', 'PAYMENT_UNVERIFIED'],
+          },
+          reconciliationStatus: {
+            type: 'string',
+            enum: [
+              'NOT_REQUIRED',
+              'PAYMENT_UNVERIFIED',
+              'NO_PAYMENT',
+              'REFUND_PENDING',
+              'PARTIAL_REFUND',
+              'REFUND_RECORDED',
+            ],
+          },
+        }),
+      ),
+      paymentVerification: nullable(
+        object({
+          id: uuid,
+          amount: money,
+          paymentDate: nullable(day),
+          proofMaterialId: nullable(uuid),
+          proofContentVersionId: nullable(uuid),
+          actorUserId: uuid,
+          createdAt: timestamp,
+        }),
+      ),
+      refunds: array(
+        object({
+          id: uuid,
+          amount: money,
+          refundDate: day,
+          proofMaterialId: nullable(uuid),
+          proofContentVersionId: nullable(uuid),
+          actorUserId: uuid,
+          createdAt: timestamp,
+        }),
+      ),
+      remainingVerifiedPayment: nullable(money),
+    }),
     additionalProperties: false,
   },
   feeBatchReceipt: {

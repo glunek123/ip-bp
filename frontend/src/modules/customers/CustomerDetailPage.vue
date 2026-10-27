@@ -19,7 +19,6 @@ import type { RightAssetRecoverySnapshot } from './customer-right-assets-recover
 import CustomerCooperationPanel from './CustomerCooperationPanel.vue';
 import CustomerContactsPanel from './CustomerContactsPanel.vue';
 import CustomerAgreementPanel from './CustomerAgreementPanel.vue';
-import CustomerInvoiceProfilePanel from './CustomerInvoiceProfilePanel.vue';
 import CustomerSettlementsPanel from './CustomerSettlementsPanel.vue';
 import CustomerEditPage from './CustomerEditPage.vue';
 import { labelCustomerType, labelIdentityType } from './customer-labels';
@@ -46,7 +45,6 @@ import {
   settlementRecoveryBarWidth,
 } from './customer-settlement-money';
 import {
-  hasPendingCustomerAgreementInvoice,
   readPendingCustomerAgreementUpload,
   readPendingCustomerDocumentCommand,
 } from './customer-agreements-invoice-pending';
@@ -63,16 +61,15 @@ const editOpen = ref(false);
 const editForm = ref<{
   requestClose: (done?: () => void) => void;
 }>();
-const customerBasicSections = [
-  { key: 'profile', label: '客户资料', hash: 'customer-profile' },
-  { key: 'contacts', label: '联系人与权利人', hash: 'customer-contacts' },
-  { key: 'admission', label: '准入与身份', hash: 'customer-admission' },
-  { key: 'accounts', label: '企业账号', hash: 'customer-accounts' },
-  { key: 'agreements', label: '合作协议', hash: 'customer-agreements' },
-  { key: 'invoice', label: '开票资料', hash: 'customer-invoice-profile' },
-  { key: 'history', label: '办理历史', hash: 'customer-history' },
-] as const;
-type CustomerBasicSection = (typeof customerBasicSections)[number]['key'];
+const customerBasicHashes = new Set([
+  'customer-profile',
+  'customer-contacts',
+  'customer-rights-holders',
+  'customer-admission',
+  'customer-accounts',
+  'customer-agreements',
+  'customer-history',
+]);
 const requests = new Set<AbortController>();
 const deletionReason = ref('');
 const deletePrompt = ref(false);
@@ -92,100 +89,16 @@ const agreementState = ref({
   stale: false,
   uploadUnknown: false,
 });
-const invoiceState = ref({ unknown: false, stale: false });
-const pendingStorageBlocked = ref(false);
 const settlementUnknown = ref(false);
 const settlementStale = ref(false);
 const settlementDetailRefreshNeeded = ref(false);
 const settlementConfirmedStorage = ref(false);
 const admissionRefreshFailed = ref(false);
 let viewGeneration = 0;
-let pendingSecondaryNavigation: string | undefined;
 const removeRouteAfterEach = router.afterEach((to) => {
-  if (pendingSecondaryNavigation === to.fullPath) {
-    pendingSecondaryNavigation = undefined;
-    return;
-  }
   const requestedHash = to.hash.slice(1);
-  if (
-    requestedHash === 'customer-rights-holders' ||
-    customerBasicSections.some((section) => section.hash === requestedHash)
-  )
-    activeTab.value = 'basic';
+  if (customerBasicHashes.has(requestedHash)) activeTab.value = 'basic';
 });
-
-const visibleCustomerBasicSections = computed(() =>
-  customerBasicSections.filter((section) => {
-    if (section.key === 'agreements')
-      return (
-        customer.value?.capabilities.agreement.read ||
-        agreementState.value.unknown ||
-        agreementState.value.stale ||
-        agreementState.value.uploadUnknown
-      );
-    if (section.key === 'invoice')
-      return (
-        customer.value?.capabilities.invoice.read ||
-        invoiceState.value.unknown ||
-        invoiceState.value.stale
-      );
-    return true;
-  }),
-);
-const activeCustomerBasicSection = computed<CustomerBasicSection>(() => {
-  const requestedHash = route.hash.slice(1);
-  if (requestedHash === 'customer-rights-holders') return 'contacts';
-  const requestedSection = visibleCustomerBasicSections.value.find(
-    (section) => section.hash === requestedHash,
-  );
-  return requestedSection?.key ?? 'profile';
-});
-function selectCustomerBasicSection(section: CustomerBasicSection): void {
-  const target = customerBasicSections.find((item) => item.key === section);
-  if (target) {
-    const location = {
-      path: route.path,
-      query: route.query,
-      hash: `#${target.hash}`,
-    };
-    const targetFullPath = router.resolve(location).fullPath;
-    pendingSecondaryNavigation = targetFullPath;
-    void router
-      .replace(location)
-      .catch(() => undefined)
-      .finally(() => {
-        if (pendingSecondaryNavigation === targetFullPath)
-          pendingSecondaryNavigation = undefined;
-      });
-  }
-}
-
-function handleCustomerBasicSectionKeydown(
-  event: globalThis.KeyboardEvent,
-  section: CustomerBasicSection,
-): void {
-  const sections = visibleCustomerBasicSections.value;
-  const currentIndex = sections.findIndex((item) => item.key === section);
-  let nextIndex: number | undefined;
-  if (event.key === 'ArrowRight')
-    nextIndex = (currentIndex + 1) % sections.length;
-  else if (event.key === 'ArrowLeft')
-    nextIndex = (currentIndex - 1 + sections.length) % sections.length;
-  else if (event.key === 'Home') nextIndex = 0;
-  else if (event.key === 'End') nextIndex = sections.length - 1;
-  if (nextIndex === undefined) return;
-
-  event.preventDefault();
-  const nextSection = sections[nextIndex];
-  if (!nextSection) return;
-  const tabs = (event.currentTarget as globalThis.HTMLElement).parentElement;
-  tabs
-    ?.querySelector<globalThis.HTMLButtonElement>(
-      `[data-customer-basic-tab="${nextSection.key}"]`,
-    )
-    ?.focus();
-  selectCustomerBasicSection(nextSection.key);
-}
 
 const actor = computed(() => {
   const session = auth.session;
@@ -235,12 +148,9 @@ const contactsWriteBlocked = computed(
 );
 const documentPending = computed(
   () =>
-    pendingStorageBlocked.value ||
     agreementState.value.unknown ||
     agreementState.value.uploadUnknown ||
-    agreementState.value.stale ||
-    invoiceState.value.unknown ||
-    invoiceState.value.stale,
+    agreementState.value.stale,
 );
 const otherMaintenanceBlocked = computed(
   () =>
@@ -268,23 +178,7 @@ const agreementBlocked = computed(
     contactsWriteBlocked.value ||
     currentProjectionStale.value ||
     assetPending.value ||
-    pendingStorageBlocked.value ||
-    settlementPending.value ||
-    invoiceState.value.unknown ||
-    invoiceState.value.stale,
-);
-const invoiceBlocked = computed(
-  () =>
-    !!frozenDelete.value ||
-    maintenancePending.value ||
-    contactsWriteBlocked.value ||
-    currentProjectionStale.value ||
-    assetPending.value ||
-    pendingStorageBlocked.value ||
-    settlementPending.value ||
-    agreementState.value.unknown ||
-    agreementState.value.uploadUnknown ||
-    agreementState.value.stale,
+    settlementPending.value,
 );
 const assetsBlocked = computed(
   () =>
@@ -292,7 +186,6 @@ const assetsBlocked = computed(
     maintenancePending.value ||
     contactsWriteBlocked.value ||
     currentProjectionStale.value ||
-    pendingStorageBlocked.value ||
     documentPending.value ||
     settlementPending.value,
 );
@@ -342,8 +235,6 @@ function restorePending(customerId: string): void {
     assetRecoverySnapshot.value = undefined;
   assetPending.value = !!assetRecoverySnapshot.value;
   agreementState.value = { unknown: false, stale: false, uploadUnknown: false };
-  invoiceState.value = { unknown: false, stale: false };
-  pendingStorageBlocked.value = false;
   settlementUnknown.value = false;
   settlementStale.value = false;
   settlementDetailRefreshNeeded.value = false;
@@ -379,25 +270,12 @@ function restorePending(customerId: string): void {
       ...base,
       kind: 'agreement',
     });
-    const invoice = readPendingCustomerDocumentCommand({
-      ...base,
-      kind: 'invoice',
-    });
     const upload = readPendingCustomerAgreementUpload(base);
     agreementState.value = {
       ...agreementState.value,
       unknown: !!agreement,
       uploadUnknown: !!upload,
     };
-    invoiceState.value = { ...invoiceState.value, unknown: !!invoice };
-    pendingStorageBlocked.value =
-      hasPendingCustomerAgreementInvoice(
-        { userId: base.userId, departmentId: base.departmentId },
-        customerId,
-      ) &&
-      !agreement &&
-      !invoice &&
-      !upload;
   }
 }
 
@@ -635,7 +513,7 @@ function updateCustomerVersion(customerId: string, version: number): void {
 }
 
 function updateDocumentState(
-  kind: 'agreement' | 'invoice',
+  kind: 'agreement',
   customerId: string,
   sourceActorKey: string,
   field: 'unknown' | 'stale' | 'uploadUnknown',
@@ -649,8 +527,6 @@ function updateDocumentState(
     return;
   if (kind === 'agreement' && field in agreementState.value)
     agreementState.value = { ...agreementState.value, [field]: value };
-  if (kind === 'invoice' && field in invoiceState.value)
-    invoiceState.value = { ...invoiceState.value, [field]: value };
 }
 
 function updateSettlementState(
@@ -1324,38 +1200,18 @@ onBeforeUnmount(() => {
           v-show="activeTab === 'basic'"
         >
           <div
-            class="customer-basic-section-tabs"
-            role="tablist"
-            aria-label="客户基本信息内容"
-            data-test="customer-basic-sections"
-          >
-            <button
-              v-for="section in visibleCustomerBasicSections"
-              :id="`customer-basic-section-tab-${section.key}`"
-              :key="section.key"
-              :data-customer-basic-tab="section.key"
-              :data-test="`customer-basic-section-tab-${section.key}`"
-              type="button"
-              role="tab"
-              :aria-controls="`customer-basic-panel-${section.key}`"
-              :aria-selected="activeCustomerBasicSection === section.key"
-              :tabindex="activeCustomerBasicSection === section.key ? 0 : -1"
-              @click="selectCustomerBasicSection(section.key)"
-              @keydown="handleCustomerBasicSectionKeydown($event, section.key)"
-            >
-              {{ section.label }}
-            </button>
-          </div>
-          <section
-            id="customer-basic-panel-profile"
-            class="customer-basic-section-panel"
-            role="tabpanel"
-            aria-labelledby="customer-basic-section-tab-profile"
-            tabindex="0"
-            v-show="activeCustomerBasicSection === 'profile'"
+            class="customer-basic-overview"
+            data-test="customer-basic-overview"
           >
             <section id="customer-profile" class="ledger-panel detail-card">
+              <h2>客户资料</h2>
               <dl class="detail-grid">
+                <div>
+                  <dt>客户ID</dt>
+                  <dd data-test="customer-business-id">
+                    {{ customer.businessId ?? '待编号' }}
+                  </dd>
+                </div>
                 <div>
                   <dt>资料状态</dt>
                   <dd>{{ profileLabel(customer.profileStatus) }}</dd>
@@ -1419,171 +1275,108 @@ onBeforeUnmount(() => {
                   <dd>{{ formatTime(customer.updatedAt) }}</dd>
                 </div>
               </dl>
-              <p class="draft-note">
-                {{
-                  customer.profileStatus === 'admitted'
-                    ? '客户已完成准入，可用于创建正式线索。'
-                    : '资料尚未准入，可继续补充证件与联系人。'
-                }}
-              </p>
             </section>
-          </section>
-          <section
-            id="customer-basic-panel-contacts"
-            class="customer-basic-section-panel"
-            role="tabpanel"
-            aria-labelledby="customer-basic-section-tab-contacts"
-            tabindex="0"
-            v-show="activeCustomerBasicSection === 'contacts'"
-          >
-            <CustomerContactsPanel
-              id="customer-contacts"
-              :customer="customer"
-              :actor="actor"
-              :blocked-by-other-maintenance="
-                !!frozenDelete ||
-                maintenancePending ||
-                currentProjectionStale ||
-                assetPending ||
-                documentPending ||
-                settlementPending
+            <section class="customer-basic-group" aria-label="联系人与权利人">
+              <CustomerContactsPanel
+                id="customer-contacts"
+                :customer="customer"
+                :actor="actor"
+                :blocked-by-other-maintenance="
+                  !!frozenDelete ||
+                  maintenancePending ||
+                  currentProjectionStale ||
+                  assetPending ||
+                  documentPending ||
+                  settlementPending
+                "
+                @refreshed="acceptContactRefresh"
+                @pending-changed="updateContactsPending"
+                @projection-stale="updateContactProjectionStale"
+                @unavailable="handleContactUnavailable"
+              />
+              <CustomerRightsHolderPanel
+                v-if="!sharedWriteBlocked"
+                id="customer-rights-holders"
+                :customer-id="customer.id"
+                :customer-version="customer.version"
+                :can-edit="customer.capabilities.editRoutine"
+                @version-updated="updateCustomerVersion"
+                @refresh-requested="refreshCustomerVersion"
+                @customer-not-found="returnToCustomerList"
+              />
+            </section>
+            <section class="customer-basic-group" aria-label="准入与身份">
+              <CustomerAdmissionPanel
+                v-if="!sharedWriteBlocked"
+                id="customer-admission"
+                :customer="customer"
+                @admitted="acceptAdmission"
+                @customer-refreshed="acceptAdmissionRefresh"
+                @customer-not-found="returnFromAdmission"
+              />
+            </section>
+            <section class="customer-basic-group" aria-label="企业账号">
+              <CustomerAccountPanel
+                v-if="!sharedWriteBlocked"
+                id="customer-accounts"
+                :customer-id="customer.id"
+                :admitted="customer.profileStatus === 'admitted'"
+              />
+            </section>
+            <section
+              v-if="
+                customer.capabilities.agreement.read ||
+                agreementState.unknown ||
+                agreementState.stale ||
+                agreementState.uploadUnknown
               "
-              @refreshed="acceptContactRefresh"
-              @pending-changed="updateContactsPending"
-              @projection-stale="updateContactProjectionStale"
-              @unavailable="handleContactUnavailable"
-            />
-            <CustomerRightsHolderPanel
-              v-if="!sharedWriteBlocked"
-              id="customer-rights-holders"
-              :customer-id="customer.id"
-              :customer-version="customer.version"
-              :can-edit="customer.capabilities.editRoutine"
-              @version-updated="updateCustomerVersion"
-              @refresh-requested="refreshCustomerVersion"
-              @customer-not-found="returnToCustomerList"
-            />
-          </section>
-          <section
-            id="customer-basic-panel-admission"
-            class="customer-basic-section-panel"
-            role="tabpanel"
-            aria-labelledby="customer-basic-section-tab-admission"
-            tabindex="0"
-            v-show="activeCustomerBasicSection === 'admission'"
-          >
-            <CustomerAdmissionPanel
-              v-if="!sharedWriteBlocked"
-              id="customer-admission"
-              :customer="customer"
-              @admitted="acceptAdmission"
-              @customer-refreshed="acceptAdmissionRefresh"
-              @customer-not-found="returnFromAdmission"
-            />
-          </section>
-          <section
-            id="customer-basic-panel-accounts"
-            class="customer-basic-section-panel"
-            role="tabpanel"
-            aria-labelledby="customer-basic-section-tab-accounts"
-            tabindex="0"
-            v-show="activeCustomerBasicSection === 'accounts'"
-          >
-            <CustomerAccountPanel
-              v-if="!sharedWriteBlocked"
-              id="customer-accounts"
-              :customer-id="customer.id"
-              :admitted="customer.profileStatus === 'admitted'"
-            />
-          </section>
-          <section
-            id="customer-basic-panel-agreements"
-            class="customer-basic-section-panel"
-            role="tabpanel"
-            aria-labelledby="customer-basic-section-tab-agreements"
-            tabindex="0"
-            v-show="activeCustomerBasicSection === 'agreements'"
-          >
-            <div id="customer-agreements">
-              <CustomerAgreementPanel
-                v-if="
-                  customer.capabilities.agreement.read ||
-                  agreementState.unknown ||
-                  agreementState.stale ||
-                  agreementState.uploadUnknown
-                "
-                :customer-id="customer.id"
-                :customer-version="customer.version"
-                :can-read="customer.capabilities.agreement.read"
-                :can-edit="customer.capabilities.agreement.edit"
-                :actor="
-                  actor
-                    ? { userId: actor.userId, departmentId: actor.departmentId }
-                    : null
-                "
-                :actor-key="actorKey"
-                :blocked-by-other-maintenance="agreementBlocked"
-                @document-state="updateDocumentState"
-                @version-updated="updateDocumentCustomerVersion"
-                @refresh-requested="refreshDocumentCustomer"
-                @unavailable="handleDocumentUnavailable"
-              />
-            </div>
-          </section>
-          <section
-            id="customer-basic-panel-invoice"
-            class="customer-basic-section-panel"
-            role="tabpanel"
-            aria-labelledby="customer-basic-section-tab-invoice"
-            tabindex="0"
-            v-show="activeCustomerBasicSection === 'invoice'"
-          >
-            <div id="customer-invoice-profile">
-              <CustomerInvoiceProfilePanel
-                v-if="
-                  customer.capabilities.invoice.read ||
-                  invoiceState.unknown ||
-                  invoiceState.stale
-                "
-                :customer-id="customer.id"
-                :customer-version="customer.version"
-                :can-read="customer.capabilities.invoice.read"
-                :can-edit="customer.capabilities.invoice.edit"
-                :actor="
-                  actor
-                    ? { userId: actor.userId, departmentId: actor.departmentId }
-                    : null
-                "
-                :actor-key="actorKey"
-                :blocked-by-other-maintenance="invoiceBlocked"
-                @document-state="updateDocumentState"
-                @version-updated="updateDocumentCustomerVersion"
-                @refresh-requested="refreshDocumentCustomer"
-                @unavailable="handleDocumentUnavailable"
-              />
-            </div>
-          </section>
-          <section
-            id="customer-basic-panel-history"
-            class="customer-basic-section-panel"
-            role="tabpanel"
-            aria-labelledby="customer-basic-section-tab-history"
-            tabindex="0"
-            v-show="activeCustomerBasicSection === 'history'"
-          >
-            <details id="customer-history" class="history-panel">
-              <summary>办理历史 · {{ customer.history.length }} 条</summary>
-              <ol>
-                <li
-                  v-for="event in customer.history"
-                  :key="`${event.action}-${event.occurredAt}`"
-                >
-                  <strong>{{ actionLabel(event.action) }}</strong>
-                  <time>{{ formatTime(event.occurredAt) }}</time>
-                </li>
-              </ol>
-            </details>
-          </section>
+              class="customer-basic-group"
+              aria-label="合作协议"
+            >
+              <div id="customer-agreements">
+                <CustomerAgreementPanel
+                  v-if="
+                    customer.capabilities.agreement.read ||
+                    agreementState.unknown ||
+                    agreementState.stale ||
+                    agreementState.uploadUnknown
+                  "
+                  :customer-id="customer.id"
+                  :customer-version="customer.version"
+                  :can-read="customer.capabilities.agreement.read"
+                  :can-edit="customer.capabilities.agreement.edit"
+                  :actor="
+                    actor
+                      ? {
+                          userId: actor.userId,
+                          departmentId: actor.departmentId,
+                        }
+                      : null
+                  "
+                  :actor-key="actorKey"
+                  :blocked-by-other-maintenance="agreementBlocked"
+                  @document-state="updateDocumentState"
+                  @version-updated="updateDocumentCustomerVersion"
+                  @refresh-requested="refreshDocumentCustomer"
+                  @unavailable="handleDocumentUnavailable"
+                />
+              </div>
+            </section>
+            <section class="customer-basic-group" aria-label="办理历史">
+              <details id="customer-history" class="history-panel">
+                <summary>办理历史 · {{ customer.history.length }} 条</summary>
+                <ol>
+                  <li
+                    v-for="event in customer.history"
+                    :key="`${event.action}-${event.occurredAt}`"
+                  >
+                    <strong>{{ actionLabel(event.action) }}</strong>
+                    <time>{{ formatTime(event.occurredAt) }}</time>
+                  </li>
+                </ol>
+              </details>
+            </section>
+          </div>
         </section>
         <section
           id="customer-tab-assets"
@@ -1679,52 +1472,6 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--color-hairline);
 }
 
-.customer-basic-section-tabs {
-  display: flex;
-  gap: 0;
-  margin: 0 0 var(--s-4);
-  overflow-x: auto;
-  border-bottom: 1px solid var(--color-hairline);
-  overscroll-behavior-x: contain;
-}
-
-.customer-basic-section-tabs button {
-  flex: 0 0 auto;
-  min-height: 36px;
-  padding: var(--s-2) var(--s-3);
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--color-ink-muted);
-  cursor: pointer;
-  font: inherit;
-  white-space: nowrap;
-}
-
-.customer-basic-section-tabs button:hover {
-  color: var(--color-primary);
-}
-
-.customer-basic-section-tabs button[aria-selected='true'] {
-  border-bottom-color: var(--color-primary);
-  color: var(--color-primary);
-  font-weight: 600;
-}
-
-.customer-basic-section-tabs button:focus-visible {
-  outline: 2px solid var(--color-primary-focus);
-  outline-offset: 2px;
-}
-
-.customer-basic-section-panel {
-  min-width: 0;
-}
-
-.customer-basic-section-panel:focus-visible {
-  outline: 2px solid var(--color-primary-focus);
-  outline-offset: 2px;
-}
-
 .settlement-top-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1773,14 +1520,6 @@ onBeforeUnmount(() => {
 }
 .customer-detail-page .customer-tabs__tab {
   padding: 8px 12px;
-}
-.customer-detail-page .customer-basic-section-tabs {
-  margin-bottom: 10px;
-}
-.customer-detail-page .customer-basic-section-tabs button {
-  min-height: 32px;
-  padding: 6px 10px;
-  font-size: 13px;
 }
 
 .settlement-top-kpis__bar {

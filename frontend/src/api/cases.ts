@@ -107,6 +107,7 @@ type CaseSummaryBase = {
   canRecordClosure: boolean;
   canCorrectClosure: boolean;
   canArchive: boolean;
+  canEarlyArchive?: boolean;
   canCorrectArchive: boolean;
   displaySummary: CaseDisplaySummary;
   canSubmitComplaint: boolean;
@@ -474,6 +475,7 @@ type CaseDetailBase = Omit<CaseSummaryBase, 'displaySummary'> & {
   executionFinish: ExecutionFinish | null;
   closure: CaseClosure | null;
   archive: CaseArchive | null;
+  earlyArchive?: CaseEarlyArchive | null;
   recordEdits?: CaseRecordEdits;
 };
 export type CaseDetail = Omit<CaseDetailBase, 'certificate' | 'fees'> &
@@ -699,6 +701,31 @@ export type CaseArchive = {
   closureVersionId: string;
   current: CaseArchiveVersion;
   history: CaseArchiveVersion[];
+};
+export type CaseEarlyArchive = {
+  id: string;
+  fromStage: Exclude<CaseStage, 'ARCHIVED'>;
+  fromVersion: number;
+  toVersion: number;
+  archiveAt: string;
+  reason: string;
+  recordedAt: string;
+  recordedByUserId: string;
+};
+export type LawyerCaseEarlyArchive = Omit<CaseEarlyArchive, 'recordedByUserId'>;
+export type EarlyArchiveCaseInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  archiveAt: string;
+  reason: string;
+};
+export type EarlyArchiveCaseResult = {
+  id: string;
+  earlyArchiveId: string;
+  fromStage: Exclude<CaseStage, 'ARCHIVED'>;
+  stage: 'ARCHIVED';
+  version: number;
+  recordedAt: string;
 };
 export type LawyerCaseArchive = Omit<CaseArchive, 'current' | 'history'> & {
   current: LawyerCaseArchiveVersion;
@@ -947,6 +974,7 @@ export type LawyerCaseSummary = {
   canRecordClosure: boolean;
   canCorrectClosure: false;
   canArchive: boolean;
+  canEarlyArchive?: boolean;
   canCorrectArchive: false;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
@@ -1020,6 +1048,7 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     executionFinish: ExecutionFinish | null;
     closure: LawyerCaseClosure | null;
     archive: LawyerCaseArchive | null;
+    earlyArchive?: LawyerCaseEarlyArchive | null;
   };
 export type LawyerCaseOrigin =
   | { kind: 'NOTARY' }
@@ -1474,7 +1503,7 @@ function summaryFields(value: unknown): boolean {
         'sourceLead',
         'sourceNotaryMatter',
       ],
-      ['origin', 'canUploadDirectExecutionMaterials'],
+      ['origin', 'canUploadDirectExecutionMaterials', 'canEarlyArchive'],
     ) &&
     nonempty(value.id) &&
     nonempty(value.businessNo) &&
@@ -1501,6 +1530,9 @@ function summaryFields(value: unknown): boolean {
     typeof value.canRecordClosure === 'boolean' &&
     typeof value.canCorrectClosure === 'boolean' &&
     archiveCapabilities(value) &&
+    (value.canEarlyArchive === undefined ||
+      typeof value.canEarlyArchive === 'boolean') &&
+    (value.canEarlyArchive !== true || value.stage !== 'ARCHIVED') &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -1696,6 +1728,37 @@ function archiveMatches(
   internal: boolean,
 ): boolean {
   const archive = value.archive;
+  const early = value.earlyArchive;
+  if (early !== undefined && early !== null) {
+    return (
+      archive === null &&
+      value.stage === 'ARCHIVED' &&
+      value.canArchive === false &&
+      value.canCorrectArchive === false &&
+      record(early) &&
+      exact(early, [
+        'id',
+        'fromStage',
+        'fromVersion',
+        'toVersion',
+        'archiveAt',
+        'reason',
+        'recordedAt',
+        ...(internal ? ['recordedByUserId'] : []),
+      ]) &&
+      uuidV4(early.id) &&
+      validStage(early.fromStage) &&
+      early.fromStage !== 'ARCHIVED' &&
+      Number.isSafeInteger(early.fromVersion) &&
+      Number(early.fromVersion) >= 1 &&
+      early.toVersion === Number(early.fromVersion) + 1 &&
+      early.toVersion === value.version &&
+      businessDate(early.archiveAt) &&
+      nonempty(early.reason) &&
+      utcTimestamp(early.recordedAt) &&
+      (!internal || uuidV4(early.recordedByUserId))
+    );
+  }
   const directArchived =
     record(value.origin) &&
     value.origin.kind === 'EXTERNAL_ENTRY' &&
@@ -1714,6 +1777,7 @@ function archiveMatches(
           record(value.closure.current) &&
           value.closure.current.toVersion === value.version))
     );
+  if (early !== undefined && early !== null) return false;
   if (
     value.stage !== 'ARCHIVED' ||
     value.canArchive !== false ||
@@ -2770,6 +2834,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         'archive',
       ],
       [
+        'canEarlyArchive',
+        'earlyArchive',
         'recordEdits',
         'origin',
         'canUploadDirectExecutionMaterials',
@@ -2795,6 +2861,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       canRecordClosure: value.canRecordClosure,
       canCorrectClosure: value.canCorrectClosure,
       canArchive: value.canArchive,
+      canEarlyArchive: value.canEarlyArchive,
       canCorrectArchive: value.canCorrectArchive,
       canSubmitComplaint: value.canSubmitComplaint,
       canConfirmComplaint: value.canConfirmComplaint,
@@ -2941,8 +3008,20 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     typeof value.canRecordClosure === 'boolean' &&
     typeof value.canCorrectClosure === 'boolean' &&
     archiveCapabilities(value) &&
+    (value.canEarlyArchive === undefined ||
+      typeof value.canEarlyArchive === 'boolean') &&
+    (value.canEarlyArchive !== true || value.stage !== 'ARCHIVED') &&
     archiveMatches(value, true) &&
-    executionSourceMatches(value, true) &&
+    executionSourceMatches(
+      record(value.earlyArchive)
+        ? {
+            ...value,
+            stage: value.earlyArchive.fromStage,
+            version: value.earlyArchive.fromVersion,
+          }
+        : value,
+      true,
+    ) &&
     validExecutionFilingFollowups(value, true)
   );
 }
@@ -4375,7 +4454,7 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
         'canRevokeSecondInstanceResult',
         'createdAt',
       ],
-      ['canUploadDirectExecutionMaterials'],
+      ['canUploadDirectExecutionMaterials', 'canEarlyArchive'],
     ) &&
     nonempty(value.id) &&
     nonempty(value.businessNo) &&
@@ -4397,6 +4476,7 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
     value.canCorrectClosure === false &&
     archiveCapabilities(value) &&
     value.canCorrectArchive === false &&
+    (value.canEarlyArchive === undefined || value.canEarlyArchive === false) &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -4661,6 +4741,8 @@ export async function getLawyerCase(
       ],
       [
         'origin',
+        'canEarlyArchive',
+        'earlyArchive',
         'canUploadDirectExecutionMaterials',
         'executionFilingFollowups',
       ],
@@ -4682,6 +4764,7 @@ export async function getLawyerCase(
       canRecordClosure: result.canRecordClosure,
       canCorrectClosure: result.canCorrectClosure,
       canArchive: result.canArchive,
+      canEarlyArchive: result.canEarlyArchive,
       canCorrectArchive: result.canCorrectArchive,
       canSubmitComplaint: result.canSubmitComplaint,
       canConfirmComplaint: result.canConfirmComplaint,
@@ -4754,7 +4837,16 @@ export async function getLawyerCase(
     typeof result.canSubmitExecutionFiling !== 'boolean' ||
     typeof result.canFinishExecution !== 'boolean' ||
     !archiveMatches(result, false) ||
-    !executionSourceMatches(result, false) ||
+    !executionSourceMatches(
+      record(result.earlyArchive)
+        ? {
+            ...result,
+            stage: result.earlyArchive.fromStage,
+            version: result.earlyArchive.fromVersion,
+          }
+        : result,
+      false,
+    ) ||
     !validExecutionFilingFollowups(result, false)
   )
     throw invalidResponse();
@@ -7164,6 +7256,58 @@ export function archiveCase(
   audience: 'internal' | 'lawyer' = 'internal',
 ): Promise<CaseArchiveResult> {
   return submitArchive(id, input, 'ARCHIVE', audience);
+}
+export async function earlyArchiveCase(
+  id: string,
+  input: EarlyArchiveCaseInput,
+): Promise<EarlyArchiveCaseResult> {
+  if (
+    !uuidV4(id) ||
+    !record(input) ||
+    !exact(input, [
+      'expectedVersion',
+      'idempotencyKey',
+      'archiveAt',
+      'reason',
+    ]) ||
+    !Number.isSafeInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    input.expectedVersion >= Number.MAX_SAFE_INTEGER ||
+    !validIdempotencyKey(input.idempotencyKey) ||
+    !businessDate(input.archiveAt) ||
+    input.archiveAt > todayShanghai() ||
+    !finishText(input.reason) ||
+    input.reason.length > 2000
+  )
+    throw new ApiError('提前归档信息无效', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/early-archive`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body: input,
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, [
+      'id',
+      'earlyArchiveId',
+      'fromStage',
+      'stage',
+      'version',
+      'recordedAt',
+    ]) ||
+    response.id !== id ||
+    !uuidV4(response.earlyArchiveId) ||
+    !validStage(response.fromStage) ||
+    response.fromStage === 'ARCHIVED' ||
+    response.stage !== 'ARCHIVED' ||
+    response.version !== input.expectedVersion + 1 ||
+    !utcTimestamp(response.recordedAt)
+  )
+    throw invalidResponse();
+  return response as EarlyArchiveCaseResult;
 }
 export function correctCaseArchive(
   id: string,

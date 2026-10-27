@@ -13,13 +13,21 @@ const leadApi = vi.hoisted(() => ({
   pushLead: vi.fn(),
   applyLeadWithdrawal: vi.fn(),
   decideLeadNoEvidence: vi.fn(),
+  updateLeadProductScreenshots: vi.fn(),
 }));
 const customerApi = vi.hoisted(() => ({ getCustomer: vi.fn() }));
 const holderApi = vi.hoisted(() => ({ getCustomerRightsHolder: vi.fn() }));
 const materialApi = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(),
   downloadMaterialVersion: vi.fn(),
+  uploadMaterialFile: vi.fn(),
 }));
+const previewDialogStub = {
+  props: ['materialId', 'contentVersionId', 'filename', 'scopeKey'],
+  emits: ['close', 'unavailable'],
+  template:
+    '<div data-test="preview-dialog-stub" :data-material-id="materialId" :data-version-id="contentVersionId" />',
+};
 const notaryApi = vi.hoisted(() => ({
   listNotaryOffices: vi.fn(),
   createNotaryOffice: vi.fn(),
@@ -61,6 +69,7 @@ const lead = {
       unitPrice: '3.00',
       commentCount: 0,
       estimatedAmount: '6.00',
+      screenshotContentVersionIds: [],
     },
   ],
   leadScreenshotContentVersionIds: ['version-1'],
@@ -78,6 +87,7 @@ const lead = {
     evidenceDecide: false,
     transferToNotary: false,
     createEvidenceBatch: false,
+    productScreenshotsEdit: false,
   },
   notaryMatters: [],
   pendingWithdrawalApplication: null,
@@ -142,7 +152,13 @@ async function mountPage() {
   const wrapper = mount(
     { components: { RouterView }, template: '<RouterView />' },
     {
-      global: { plugins: [pinia, router], stubs: { ElDrawer: DrawerStub } },
+      global: {
+        plugins: [pinia, router],
+        stubs: {
+          ElDrawer: DrawerStub,
+          MaterialPreviewDialog: previewDialogStub,
+        },
+      },
     },
   );
   cleanups.push(() => wrapper.unmount());
@@ -342,10 +358,10 @@ describe('LeadDetailPage', () => {
       capabilities: { ...lead.capabilities, push: false, edit: false },
     });
     const wrapper = await mountPage();
-    expect(wrapper.get('[data-test="lead-workflow"]').text()).toContain(
-      '下一步由客户',
+    expect(wrapper.get('[data-test="lead-workflow-status"]').text()).toContain(
+      '等待客户审核',
     );
-    expect(wrapper.get('[data-test="lead-workflow"]').text()).toContain(
+    expect(wrapper.get('[data-test="lead-workflow-status"]').text()).toContain(
       '不能代客户确认',
     );
     expect(wrapper.find('[data-test="handoff-form-link"]').exists()).toBe(
@@ -365,6 +381,30 @@ describe('LeadDetailPage', () => {
     ).toBe(true);
     expect(wrapper.get('[data-test="lead-attachments"]').text()).toContain(
       '侵权截图.png',
+    );
+    expect(wrapper.find('[data-test="lead-workflow"]').exists()).toBe(false);
+    expect(wrapper.get('[data-test="lead-products-table"]').text()).toContain(
+      '商品归属待关联',
+    );
+    await wrapper
+      .get('[data-test="preview-screenshot-version-1"]')
+      .trigger('click');
+    expect(
+      wrapper.get('[data-test="preview-dialog-stub"]').attributes(),
+    ).toMatchObject({
+      'data-material-id': 'material-1',
+      'data-version-id': 'version-1',
+    });
+  });
+
+  it('does not expose material version ids when screenshot reading fails', async () => {
+    materialApi.listOwnerMaterials.mockRejectedValue(new Error('unavailable'));
+    const wrapper = await mountPage();
+    expect(wrapper.get('[data-test="lead-attachments"]').text()).toContain(
+      '截图暂时无法读取',
+    );
+    expect(wrapper.get('[data-test="lead-attachments"]').text()).not.toContain(
+      'version-1',
     );
   });
 
@@ -452,6 +492,7 @@ describe('LeadDetailPage', () => {
         evidenceDecide: false,
         transferToNotary: false,
         createEvidenceBatch: true,
+        productScreenshotsEdit: false,
       },
       products: [
         {
@@ -464,6 +505,7 @@ describe('LeadDetailPage', () => {
           commentCount: 7,
           unitPrice: '4503599627370496.51',
           estimatedAmount: '9007199254740993.02',
+          screenshotContentVersionIds: [],
         },
         {
           ...lead.products[0],
@@ -473,6 +515,7 @@ describe('LeadDetailPage', () => {
           commentCount: 3,
           unitPrice: '0.10',
           estimatedAmount: '0.30',
+          screenshotContentVersionIds: [],
           url: 'javascript:alert(1)',
         },
       ],
@@ -490,7 +533,8 @@ describe('LeadDetailPage', () => {
       '销量',
       '单价（元）',
       '评论数',
-      '销售总额（估算／元）',
+      '计算金额（元）',
+      '商品截图',
     ]);
     expect(table.get('tbody tr').text()).toContain('评论估算商品');
     expect(table.text()).toContain(longTitle);
@@ -505,7 +549,44 @@ describe('LeadDetailPage', () => {
         .get('[data-test="lead-product-summary"]')
         .findAll('td')
         .map((cell) => cell.text()),
-    ).toEqual(['2', '—', '10', '9007199254740993.32']);
+    ).toEqual(['2', '—', '10', '9007199254740993.32', '']);
+  });
+
+  it('uploads and associates a product screenshot only when the server capability is true', async () => {
+    const editableScreenshots = {
+      ...lead,
+      capabilities: { ...lead.capabilities, productScreenshotsEdit: true },
+    };
+    leadApi.getLead.mockResolvedValue(editableScreenshots);
+    materialApi.listOwnerMaterials.mockResolvedValue({ items: [] });
+    materialApi.uploadMaterialFile.mockResolvedValue({
+      materialId: 'material-new',
+      contentVersionId: 'version-new',
+      originalFilename: 'new.png',
+      purpose: 'LEAD_SCREENSHOT',
+      mimeType: 'image/png',
+      sizeBytes: 5,
+      sha256: 'a'.repeat(64),
+    });
+    leadApi.updateLeadProductScreenshots.mockResolvedValue(lead);
+    const wrapper = await mountPage();
+    const input = wrapper.get('input[type="file"][aria-label="替换商品截图"]');
+    const file = new File(['image'], 'new.png', { type: 'image/png' });
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [file],
+    });
+    await input.trigger('change');
+    await flushPromises();
+    expect(materialApi.uploadMaterialFile).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerType: 'LEAD', ownerId: 'lead-1' }),
+    );
+    expect(leadApi.updateLeadProductScreenshots).toHaveBeenCalledWith(
+      'lead-1',
+      'p',
+      { expectedVersion: 1, screenshotContentVersionIds: ['version-new'] },
+    );
+    wrapper.unmount();
   });
 
   it('aborts pending detail reads when the account context unmounts the page', async () => {

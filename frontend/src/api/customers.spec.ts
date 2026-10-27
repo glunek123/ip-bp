@@ -757,6 +757,17 @@ describe('customer API', () => {
     );
   });
 
+  it('decodes a naturally expanded customer display id', async () => {
+    const numbered = { ...summary, businessId: '1000' };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(numbered))),
+    );
+    await expect(createCustomerDraft({ name: '客户甲' })).resolves.toEqual(
+      numbered,
+    );
+  });
+
   it('creates a draft with one admission contact', async () => {
     const fetch = vi.fn().mockResolvedValue(
       new Response(

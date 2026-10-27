@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(96);
+    expect(result.permissionCatalog).toHaveLength(97);
     expect(result.permissionCatalog).toContainEqual(
       expect.objectContaining({
         action: 'NOTARY_RECORD_CORRECT',
@@ -396,6 +396,11 @@ describe('OrganizationService management context', () => {
       action: 'CUSTOMER_RESTORE_DRAFT',
       label: '恢复客户草稿',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    });
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'CUSTOMER_ACCOUNT_CREATE',
+      label: '创建企业账号',
+      scopes: ['DEPARTMENT'],
     });
     expect(result.permissionCatalog).toContainEqual({
       action: 'CUSTOMER_RIGHT_ASSET_WITHDRAW',
@@ -466,6 +471,11 @@ describe('OrganizationService management context', () => {
       action: 'LAWYER_ACCOUNT_MANAGE',
       label: '管理律师账号',
       scopes: ['DEPARTMENT'],
+    });
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'USER_MANAGE',
+      label: '管理人员',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     });
     expect(result.permissionCatalog).toContainEqual({
       action: 'CASE_FILING_SUBMIT',

@@ -48,12 +48,19 @@ function fixture() {
     departmentMembership: {
       findFirst: jest.fn().mockResolvedValue({ teamId: null }),
     },
-    customer: { findFirst: jest.fn().mockResolvedValue({ id: customerId }) },
+    customer: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue({ id: customerId, businessId: '001' }),
+    },
     customerRightsHolderLink: {
       findFirst: jest.fn().mockResolvedValue({ id: 'link' }),
     },
     $queryRawUnsafe: jest.fn().mockImplementation(async (sql: string) => {
-      if (sql.includes('lead_number_counters')) {
+      if (sql.includes('customer_business_number_counters')) {
+        return [{ last_value: 1n }];
+      }
+      if (sql.includes('customer_daily_number_counters')) {
         sequence += 1;
         return [{ sequence, business_date: new Date('2026-10-19') }];
       }
@@ -82,6 +89,7 @@ function fixture() {
       })),
       findMany: jest.fn().mockResolvedValue([]),
     },
+    businessNumberAlias: { findUnique: jest.fn() },
     auditEvent: { create: jest.fn().mockResolvedValue({}) },
   };
   const database = {
@@ -329,7 +337,7 @@ describe('LeadService CSV import', () => {
     },
   );
 
-  it('replays the original snapshot after later state changes without writes', async () => {
+  it('replays old CSV receipts with current display numbers and no writes', async () => {
     const f = fixture();
     const first = await f.service.importBatch(actor, 'key', request());
     const receipt = f.tx.leadCsvImportReceipt.create.mock.calls[0]?.[0].data;
@@ -337,9 +345,17 @@ describe('LeadService CSV import', () => {
       ...receipt,
       createdAt: new Date('2026-10-19T01:00:00.000Z'),
     });
+    f.tx.businessNumberAlias.findUnique.mockImplementation(
+      async ({ where }) => ({
+        oldNumber: first.items.find(
+          (item) => item.lead.id === where.entityType_entityId.entityId,
+        )?.lead.businessNo,
+      }),
+    );
     f.tx.lead.findMany.mockResolvedValueOnce(
-      first.items.map(({ lead }) => ({
+      first.items.map(({ lead }, index) => ({
         id: lead.id,
+        businessNo: `00120261019${String(index + 11).padStart(3, '0')}`,
         departmentId: actor.departmentId,
         responsibleUserId: actor.userId,
         teamId: null,
@@ -350,7 +366,15 @@ describe('LeadService CSV import', () => {
     f.tx.auditEvent.create.mockClear();
     await expect(
       f.service.importBatch(actor, 'key', request()),
-    ).resolves.toEqual(first);
+    ).resolves.toEqual({
+      items: first.items.map((item, index) => ({
+        ...item,
+        lead: {
+          ...item.lead,
+          businessNo: `00120261019${String(index + 11).padStart(3, '0')}`,
+        },
+      })),
+    });
     expect(f.tx.lead.create).not.toHaveBeenCalled();
     expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
   });
@@ -366,6 +390,7 @@ describe('LeadService CSV import', () => {
     f.tx.lead.findMany.mockResolvedValueOnce(
       first.items.map(({ lead }) => ({
         id: lead.id,
+        businessNo: lead.businessNo,
         departmentId: actor.departmentId,
         responsibleUserId: actor.userId,
         teamId: null,
@@ -397,6 +422,7 @@ describe('LeadService CSV import', () => {
     f.tx.lead.findMany.mockResolvedValueOnce(
       first.items.map(({ lead }) => ({
         id: lead.id,
+        businessNo: lead.businessNo,
         departmentId: actor.departmentId,
         responsibleUserId: actor.userId,
         teamId: null,
@@ -421,6 +447,7 @@ describe('LeadService CSV import', () => {
     f.tx.lead.findMany.mockResolvedValueOnce(
       first.items.map(({ lead }) => ({
         id: lead.id,
+        businessNo: lead.businessNo,
         departmentId: actor.departmentId,
         responsibleUserId: actor.userId,
         teamId: null,
@@ -442,6 +469,7 @@ describe('LeadService CSV import', () => {
     f.tx.lead.findMany.mockResolvedValueOnce(
       first.items.map(({ lead }, index) => ({
         id: lead.id,
+        businessNo: lead.businessNo,
         departmentId: index === 0 ? actor.departmentId : customerId,
         responsibleUserId: actor.userId,
         teamId: null,

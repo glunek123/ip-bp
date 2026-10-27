@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createClientAccount,
+  getClientAccountCapabilities,
   listClientAccounts,
   setClientAccountStatus,
 } from './client-accounts';
@@ -17,6 +18,24 @@ const account = {
 };
 
 describe('client account API', () => {
+  it('strictly decodes capabilities', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ canCreate: true, canManage: false })),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ canCreate: 'yes', canManage: false })),
+      );
+    vi.stubGlobal('fetch', fetch);
+    await expect(getClientAccountCapabilities('customer-1')).resolves.toEqual({
+      canCreate: true,
+      canManage: false,
+    });
+    await expect(
+      getClientAccountCapabilities('customer-1'),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
   it('lists, creates and deactivates a bound client account', async () => {
     const fetch = vi
       .fn()

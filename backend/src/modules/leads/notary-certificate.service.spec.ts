@@ -88,6 +88,9 @@ function fixture() {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
     },
+    businessNumberAlias: {
+      findUnique: jest.fn().mockResolvedValue({ oldNumber: 'CA-1' }),
+    },
     notaryCertificate: {
       create: jest
         .fn()
@@ -309,6 +312,22 @@ describe('NotaryCertificateService', () => {
     expect(await f.service.issue(actor, matterId, 'replay-1', input)).toEqual(
       original,
     );
+    f.cases.readReceiptIdentity.mockResolvedValueOnce({
+      id: original.case.id,
+      businessNo: '00120260928001',
+      certificate: {
+        toVersion: original.version,
+        certificateNo: original.certificate.certificateNo,
+        certificateDate: new Date(
+          `${original.certificate.certificateDate}T00:00:00.000Z`,
+        ),
+        issuedAt: new Date(original.certificate.issuedAt),
+        needDisclose: false,
+      },
+    });
+    await expect(
+      f.service.issue(actor, matterId, 'replay-1', input),
+    ).resolves.toMatchObject({ case: { businessNo: '00120260928001' } });
     f.tx.notaryOfficeAccountBinding.findFirst.mockResolvedValue(null);
     await expect(
       f.service.issue(actor, matterId, 'replay-1', input),

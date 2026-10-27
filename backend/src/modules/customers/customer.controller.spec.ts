@@ -35,6 +35,7 @@ describe('CustomerController', () => {
   const updateDraft = jest.fn();
   const admit = jest.fn();
   const listClientAccounts = jest.fn();
+  const clientAccountCapabilities = jest.fn();
   const createClientAccount = jest.fn();
   const setClientAccountStatus = jest.fn();
   let app: INestApplication;
@@ -75,6 +76,7 @@ describe('CustomerController', () => {
           provide: CustomerAccountService,
           useValue: {
             list: listClientAccounts,
+            capabilities: clientAccountCapabilities,
             create: createClientAccount,
             setStatus: setClientAccountStatus,
           },
@@ -93,6 +95,19 @@ describe('CustomerController', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('returns account capabilities through a customer-scoped route', async () => {
+    clientAccountCapabilities.mockResolvedValue({
+      canCreate: true,
+      canManage: false,
+    });
+    await request(app.getHttpServer())
+      .get(`/api/v1/customers/${customerId}/client-accounts/capabilities`)
+      .set('Authorization', 'Bearer allowed-token')
+      .expect(200)
+      .expect({ canCreate: true, canManage: false });
+    expect(clientAccountCapabilities).toHaveBeenCalledWith(actor, customerId);
   });
 
   it('returns 401 without a trusted identity', async () => {

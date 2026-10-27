@@ -107,6 +107,49 @@ function harness(rows: ReturnType<typeof row>[] = []) {
 }
 
 describe('case list CSV export', () => {
+  it('exports selected IDs in request order and audits the explicit scope', async () => {
+    const first = '11111111-1111-4111-8111-111111111111';
+    const second = '33333333-3333-4333-8333-333333333333';
+    const f = harness([row(second), row(first)]);
+    const result = await f.service.exportSelection(actor, {
+      view: 'department',
+      ids: [first, second],
+    });
+    expect(result.csv.indexOf(`CA-${first}`)).toBeLessThan(
+      result.csv.indexOf(`CA-${second}`),
+    );
+    expect(f.tx.case.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: { in: [first, second] },
+          departmentId: actor.departmentId,
+        },
+      }),
+    );
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        details: {
+          scope: 'selection',
+          view: 'department',
+          ids: [first, second],
+          rowCount: 2,
+          columnVersion: 1,
+        },
+      }),
+    });
+  });
+
+  it('rejects incomplete selected scope rather than silently omitting a case', async () => {
+    const f = harness([]);
+    await expect(
+      f.service.exportSelection(actor, {
+        view: 'mine',
+        ids: ['11111111-1111-4111-8111-111111111111'],
+      }),
+    ).rejects.toThrow(ForbiddenException);
+    expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
   it('normalizes every special filter and uses the shared court mapping inside the authorized snapshot', async () => {
     const f = harness();
     f.tx.filingCourt.findMany.mockResolvedValue([{ id: 'court' }]);
@@ -280,6 +323,7 @@ describe('case list CSV export', () => {
         departmentId: actor.departmentId,
         action: 'case.list.exported',
         details: {
+          scope: 'filter',
           filter: {
             view: 'mine',
             sortBy: 'rightsHolderName',

@@ -10,6 +10,8 @@ export type CaseEntryCustomer = {
   rightsHolders: Array<{ id: string; name: string }>;
 };
 
+export type CaseCsvCustomer = CaseEntryCustomer & { businessId: string | null };
+
 @Injectable()
 export class CustomerCaseEntrySourceService {
   constructor(
@@ -17,9 +19,16 @@ export class CustomerCaseEntrySourceService {
     private readonly access: AccessControlService,
   ) {}
 
-  async list(actor: ActorContext): Promise<CaseEntryCustomer[]> {
-    const scope = await this.access.buildCustomerScope(actor, 'customer.read');
-    const rows = await this.database.customer.findMany({
+  async list(
+    actor: ActorContext,
+    tx?: Prisma.TransactionClient,
+  ): Promise<CaseEntryCustomer[]> {
+    const scope = await this.access.buildCustomerScope(
+      actor,
+      'customer.read',
+      tx,
+    );
+    const rows = await (tx ?? this.database).customer.findMany({
       where: {
         AND: [scope],
         departmentId: actor.departmentId,
@@ -43,12 +52,47 @@ export class CustomerCaseEntrySourceService {
     }));
   }
 
+  async listForCsv(
+    actor: ActorContext,
+    tx?: Prisma.TransactionClient,
+  ): Promise<CaseCsvCustomer[]> {
+    const scope = await this.access.buildCustomerScope(
+      actor,
+      'customer.read',
+      tx,
+    );
+    const rows = await (tx ?? this.database).customer.findMany({
+      where: {
+        AND: [scope],
+        departmentId: actor.departmentId,
+        profileStatus: 'ADMITTED',
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        businessId: true,
+        rightsHolderLinks: {
+          where: { departmentId: actor.departmentId },
+          select: { rightsHolder: { select: { id: true, name: true } } },
+        },
+      },
+      orderBy: [{ businessId: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map(({ id, name, businessId, rightsHolderLinks }) => ({
+      id,
+      name,
+      businessId,
+      rightsHolders: rightsHolderLinks.map(({ rightsHolder }) => rightsHolder),
+    }));
+  }
+
   async assertEligible(
     tx: Prisma.TransactionClient,
     actor: ActorContext,
     customerId: string,
     rightsHolderId: string,
-  ): Promise<void> {
+  ): Promise<string | null> {
     const scope = await this.access.buildCustomerScope(
       actor,
       'customer.read',
@@ -90,9 +134,10 @@ export class CustomerCaseEntrySourceService {
     );
     const current = await tx.customer.findFirst({
       where: { ...where, AND: [currentScope] },
-      select: { id: true },
+      select: { id: true, businessId: true },
     });
     if (current === null) throw this.notFound();
+    return current.businessId;
   }
 
   private notFound() {

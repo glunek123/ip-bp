@@ -57,6 +57,28 @@ function mountListPage() {
 }
 
 describe('CustomerListPage', () => {
+  it('shows business IDs and labels null or legacy IDs as pending', async () => {
+    api.listCustomers.mockResolvedValue({
+      items: [
+        { ...summary, businessId: '001' },
+        { ...summary, id: 'customer-2', name: '客户乙', businessId: null },
+        { ...summary, id: 'customer-3', name: '客户丙' },
+      ],
+      total: 3,
+      page: 1,
+      pageSize: 20,
+      capabilities: { createDraft: false },
+    });
+    const { wrapper } = mountListPage();
+    await flushPromises();
+
+    const rows = wrapper.findAll('.customer-row');
+    expect(rows[0]!.text()).toContain('客户ID 001');
+    expect(rows[1]!.text()).toContain('客户ID 待编号');
+    expect(rows[2]!.text()).toContain('客户ID 待编号');
+    wrapper.unmount();
+  });
+
   it('clears the prior identity projection and ignores its late response', async () => {
     const auth = useAuthStore(pinia);
     let resolveOld: ((value: unknown) => void) | undefined;

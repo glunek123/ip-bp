@@ -15,6 +15,11 @@ export type CreateClientAccountInput = {
   password: string;
 };
 
+export type ClientAccountCapabilities = {
+  canCreate: boolean;
+  canManage: boolean;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -34,6 +39,21 @@ function isClientAccount(value: unknown): value is ClientAccount {
 
 function invalidResponse(): ApiError {
   return new ApiError('服务返回了无效的客户账号数据', 200, 'INVALID_RESPONSE');
+}
+
+export async function getClientAccountCapabilities(
+  customerId: string,
+): Promise<ClientAccountCapabilities> {
+  const data = await getJson(
+    `/customers/${encodeURIComponent(customerId)}/client-accounts/capabilities`,
+  );
+  if (
+    !isRecord(data) ||
+    typeof data.canCreate !== 'boolean' ||
+    typeof data.canManage !== 'boolean'
+  )
+    throw invalidResponse();
+  return { canCreate: data.canCreate, canManage: data.canManage };
 }
 
 export async function listClientAccounts(

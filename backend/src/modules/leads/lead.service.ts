@@ -17,7 +17,15 @@ import {
   type LeadNoEvidenceBatchReceipt,
 } from '../../generated/prisma/client';
 import { isUUID } from 'class-validator';
-import { MaterialService } from '../materials';
+import {
+  MaterialService,
+  type MaterialTransactionClient,
+  type ValidatedMaterialVersionFact,
+} from '../materials';
+import {
+  allocateCustomerDailyNumber,
+  resolveHistoricalNumber,
+} from '../business-numbering';
 import {
   CASE_TYPE_OPTIONS,
   CASE_TYPES,
@@ -38,6 +46,7 @@ import {
   CreateLeadCommand,
   PushLeadDto,
   UpdateLeadDto,
+  UpdateLeadProductScreenshotsDto,
 } from './lead.dto';
 import { LeadBatchPushDto } from './lead-batch-push.dto';
 import {
@@ -49,7 +58,13 @@ import { LeadCsvImportDto, LeadCsvImportInputDto } from './lead-csv-import.dto';
 
 const MAX_SERIALIZABLE_ATTEMPTS = 3;
 const leadInclude = {
-  products: { orderBy: { position: 'asc' as const } },
+  products: {
+    orderBy: { position: 'asc' as const },
+    include: {
+      screenshots: { orderBy: { createdAt: 'asc' as const } },
+      notarySelections: true,
+    },
+  },
   infringements: { orderBy: { type: 'asc' as const } },
   pushedBy: { select: { displayName: true } },
   reviewDecision: {
@@ -149,6 +164,7 @@ type LeadProductResponse = {
   unitPrice: string;
   commentCount: number;
   estimatedAmount: string;
+  screenshotContentVersionIds: string[];
 };
 type LeadResponse = {
   id: string;
@@ -525,6 +541,10 @@ export class LeadService {
       this.canDecideEvidence(actor, lead),
       this.canCreateEvidenceBatch(actor, lead),
     ]);
+    const productScreenshotsEdit =
+      lead.status === 'WAITING_PUSH'
+        ? edit
+        : await this.canEditProductScreenshots(actor, lead);
     const applications = lead.withdrawalApplications ?? [];
     const pending = applications.find(
       (application) =>
@@ -594,6 +614,7 @@ export class LeadService {
       ...this.readView(lead, screenshotIds.get(lead.id) ?? []),
       capabilities: {
         edit,
+        productScreenshotsEdit,
         push,
         withdrawApply,
         evidenceDecide,
@@ -734,10 +755,16 @@ export class LeadService {
       throw this.mapAuthorization(error);
     }
     const normalized = this.normalizeBusiness(input);
-    if (
-      input.leadScreenshotContentVersionIds.length > 0 &&
-      input.reservedLeadId === undefined
-    )
+    const productScreenshotIds = normalized.products.flatMap(
+      (product) => product.screenshotContentVersionIds ?? [],
+    );
+    const allScreenshotIds = [
+      ...input.leadScreenshotContentVersionIds,
+      ...productScreenshotIds,
+    ];
+    if (new Set(allScreenshotIds).size !== allScreenshotIds.length)
+      throw this.validation();
+    if (allScreenshotIds.length > 0 && input.reservedLeadId === undefined)
       throw this.validation();
     const leadId = input.reservedLeadId ?? randomUUID();
     const fingerprint = this.fingerprint({
@@ -755,7 +782,12 @@ export class LeadService {
               where: this.receiptWhere(actor, 'create', idempotencyKey),
             });
             if (receipt !== null)
-              return this.receiptResult(actor, receipt, fingerprint);
+              return this.receiptResult(
+                transaction,
+                actor,
+                receipt,
+                fingerprint,
+              );
 
             const membership = await transaction.departmentMembership.findFirst(
               {
@@ -790,7 +822,7 @@ export class LeadService {
             } catch (error) {
               throw this.mapAuthorization(error);
             }
-            await this.assertCustomerAndHolder(
+            const businessId = await this.assertCustomerAndHolder(
               transaction,
               actor,
               input.customerId,
@@ -808,14 +840,15 @@ export class LeadService {
                       ownerType: 'LEAD_DRAFT',
                       ownerId: input.reservedLeadId,
                       category: 'LEAD_SCREENSHOT',
-                      contentVersionIds: [
-                        ...input.leadScreenshotContentVersionIds,
-                      ],
+                      contentVersionIds: allScreenshotIds,
                       minCount: 0,
                       maxCount: 20,
                     },
                   );
-            const businessNo = await this.allocateBusinessNo(transaction);
+            const businessNo = await allocateCustomerDailyNumber(transaction, {
+              customerId: input.customerId,
+              businessId,
+            });
             const created = await transaction.lead.create({
               data: this.leadCreateData(
                 actor,
@@ -835,6 +868,14 @@ export class LeadService {
                 versions: materialFacts,
               });
             }
+            await this.replaceProductScreenshots(
+              transaction,
+              actor.departmentId,
+              leadId,
+              created.products,
+              normalized.products,
+              materialFacts,
+            );
             if (materialFacts.length > 0) {
               await this.materials.freezeReferences(transaction, {
                 departmentId: actor.departmentId,
@@ -853,13 +894,30 @@ export class LeadService {
                 details: {
                   businessNo,
                   version: 1,
+                  fromVersion: 0,
+                  toVersion: 1,
                   productCount: normalized.products.length,
                   infringementCount: normalized.infringementTypes.length,
                   screenshotCount: materialFacts.length,
+                  productScreenshots: {
+                    before: [],
+                    after: created.products.map((product, index) => ({
+                      productId: product.id,
+                      contentVersionIds: [
+                        ...(normalized.products[index]
+                          ?.screenshotContentVersionIds ?? []),
+                      ],
+                    })),
+                  },
                 },
               },
             });
-            const result = this.view(created, [
+            const createdWithScreenshots = await transaction.lead.findUnique({
+              where: { id: leadId },
+              include: leadInclude,
+            });
+            if (createdWithScreenshots === null) throw this.notFound();
+            const result = this.view(createdWithScreenshots, [
               ...input.leadScreenshotContentVersionIds,
             ]);
             await transaction.leadCommandReceipt.create({
@@ -888,7 +946,12 @@ export class LeadService {
             where: this.receiptWhere(actor, 'create', idempotencyKey),
           });
           if (receipt !== null)
-            return this.receiptResult(actor, receipt, fingerprint);
+            return this.receiptResult(
+              this.database,
+              actor,
+              receipt,
+              fingerprint,
+            );
         }
         throw this.mapAuthorization(error);
       }
@@ -972,16 +1035,19 @@ export class LeadService {
               throw this.mapAuthorization(error);
             }
             const normalized: NormalizedBusiness[] = [];
+            const customerBusinessIds: Array<string | null> = [];
             const failures: LeadCsvFailure[] = [];
             for (const [index, item] of items.entries()) {
               try {
                 normalized.push(this.normalizeBusiness(item.input));
-                await this.assertCustomerAndHolder(
-                  tx,
-                  actor,
-                  item.input.customerId,
-                  item.input.rightsHolderId,
-                  true,
+                customerBusinessIds.push(
+                  await this.assertCustomerAndHolder(
+                    tx,
+                    actor,
+                    item.input.customerId,
+                    item.input.rightsHolderId,
+                    true,
+                  ),
                 );
               } catch (error) {
                 if (error instanceof NotFoundException) {
@@ -1014,24 +1080,10 @@ export class LeadService {
             if (failures.length) throw this.csvRejected(failures);
             const result: LeadCsvImportResponse = { items: [] };
             for (const [index, item] of items.entries()) {
-              let businessNo: string;
-              try {
-                businessNo = await this.allocateBusinessNo(tx);
-              } catch (error) {
-                if (
-                  error instanceof ConflictException &&
-                  (error.getResponse() as { code?: unknown }).code ===
-                    'LEAD_NUMBER_EXHAUSTED'
-                )
-                  throw this.csvRejected([
-                    {
-                      index,
-                      rowNumber: item.rowNumber,
-                      code: 'LEAD_NUMBER_EXHAUSTED',
-                    },
-                  ]);
-                throw error;
-              }
+              const businessNo = await allocateCustomerDailyNumber(tx, {
+                customerId: item.input.customerId,
+                businessId: customerBusinessIds[index] ?? null,
+              });
               const leadId = randomUUID();
               const created = await tx.lead.create({
                 data: this.leadCreateData(
@@ -1263,6 +1315,7 @@ export class LeadService {
       where: { departmentId: actor.departmentId, id: { in: ids } },
       select: {
         id: true,
+        businessNo: true,
         departmentId: true,
         responsibleUserId: true,
         teamId: true,
@@ -1308,7 +1361,28 @@ export class LeadService {
     if (failures.length) throw this.csvRejected(failures);
     if (receipt.requestFingerprint !== fingerprint)
       throw this.idempotencyConflict();
-    return result;
+    const currentNumbers = new Map(
+      leads.map((lead) => [lead.id, lead.businessNo]),
+    );
+    const refreshedItems = [];
+    for (const entry of result.items) {
+      const currentNumber = currentNumbers.get(entry.lead.id);
+      if (
+        !currentNumber ||
+        !(await resolveHistoricalNumber(tx, {
+          entityType: 'LEAD',
+          entityId: entry.lead.id,
+          receiptNumber: entry.lead.businessNo,
+          currentNumber,
+        }))
+      )
+        throw this.corruptReceipt();
+      refreshedItems.push({
+        ...entry,
+        lead: { ...entry.lead, businessNo: currentNumber },
+      });
+    }
+    return { items: refreshedItems };
   }
 
   private csvBusinessSnapshotMatches(
@@ -1377,14 +1451,78 @@ export class LeadService {
             if (current.status !== 'WAITING_PUSH') throw this.invalidState();
             if (current.version !== input.expectedVersion)
               throw this.versionConflict();
+            const legacyNoIds = normalized.products.every(
+              (product) => product.id === undefined,
+            );
+            if (legacyNoIds) {
+              if (
+                normalized.products.length !== current.products.length ||
+                current.products.some(
+                  (product) =>
+                    (product.screenshots?.length ?? 0) > 0 ||
+                    (product.notarySelections?.length ?? 0) > 0,
+                ) ||
+                normalized.products.some(
+                  (product) =>
+                    (product.screenshotContentVersionIds ?? []).length > 0,
+                )
+              )
+                throw this.versionConflict();
+              normalized.products.forEach((product, index) => {
+                product.id = current.products[index]!.id;
+              });
+            } else if (normalized.products.some((product) => !product.id)) {
+              throw this.versionConflict();
+            }
+            const oldById = new Map(
+              current.products.map((product) => [product.id, product]),
+            );
+            if (
+              normalized.products.some(
+                (product) =>
+                  product.screenshotContentVersionIds === undefined &&
+                  (oldById.get(product.id!)?.screenshots.length ?? 0) > 0,
+              )
+            )
+              throw this.versionConflict();
+            const nextIds = new Set(
+              normalized.products.map((product) => product.id!),
+            );
+            const newIds = [...nextIds].filter(
+              (productId) => !oldById.has(productId),
+            );
+            if (newIds.length > 0) {
+              const ownedElsewhere = await transaction.leadProduct.findMany({
+                where: { id: { in: newIds } },
+                select: { id: true },
+              });
+              if (ownedElsewhere.length > 0) throw this.versionConflict();
+            }
+            if (
+              current.products.some(
+                (product) =>
+                  !nextIds.has(product.id) &&
+                  ((product.screenshots?.length ?? 0) > 0 ||
+                    (product.notarySelections?.length ?? 0) > 0),
+              )
+            )
+              throw this.versionConflict();
             await this.assertCustomerAndHolder(
               transaction,
               actor,
               current.customerId,
               current.rightsHolderId,
             );
+            const allScreenshotIds = [
+              ...input.leadScreenshotContentVersionIds,
+              ...normalized.products.flatMap(
+                (product) => product.screenshotContentVersionIds ?? [],
+              ),
+            ];
+            if (new Set(allScreenshotIds).size !== allScreenshotIds.length)
+              throw this.validation();
             const materialFacts =
-              input.leadScreenshotContentVersionIds.length === 0
+              allScreenshotIds.length === 0
                 ? []
                 : await this.materials.assertAvailableVersions(
                     transaction,
@@ -1393,9 +1531,7 @@ export class LeadService {
                       ownerType: 'LEAD',
                       ownerId: id,
                       category: 'LEAD_SCREENSHOT',
-                      contentVersionIds: [
-                        ...input.leadScreenshotContentVersionIds,
-                      ],
+                      contentVersionIds: allScreenshotIds,
                       minCount: 0,
                       maxCount: 20,
                       leadAction: 'lead.edit',
@@ -1421,13 +1557,24 @@ export class LeadService {
               },
             });
             if (changed.count !== 1) throw this.versionConflict();
-            await transaction.leadProduct.deleteMany({ where: { leadId: id } });
+            await transaction.leadProductScreenshot.deleteMany({
+              where: { leadId: id, departmentId: actor.departmentId },
+            });
+            await transaction.leadProduct.deleteMany({
+              where: { leadId: id, id: { notIn: [...nextIds] } },
+            });
+            for (const [index, product] of current.products.entries()) {
+              if (!nextIds.has(product.id)) continue;
+              await transaction.leadProduct.update({
+                where: { id: product.id },
+                data: { position: -(index + 1) },
+              });
+            }
             await transaction.leadInfringement.deleteMany({
               where: { leadId: id },
             });
-            await transaction.leadProduct.createMany({
-              data: normalized.products.map((product, index) => ({
-                leadId: id,
+            for (const [index, product] of normalized.products.entries()) {
+              const data = {
                 position: index + 1,
                 url: product.url,
                 title: product.title,
@@ -1435,8 +1582,31 @@ export class LeadService {
                 unitPrice: product.unitPrice,
                 commentCount: product.commentCount,
                 estimatedAmount: product.estimatedAmount,
-              })),
+              };
+              if (oldById.has(product.id!)) {
+                await transaction.leadProduct.update({
+                  where: { id: product.id! },
+                  data,
+                });
+              } else {
+                await transaction.leadProduct.create({
+                  data: { id: product.id!, leadId: id, ...data },
+                });
+              }
+            }
+            const updatedProducts = await transaction.leadProduct.findMany({
+              where: { leadId: id },
+              orderBy: { position: 'asc' },
+              select: { id: true },
             });
+            await this.replaceProductScreenshots(
+              transaction,
+              actor.departmentId,
+              id,
+              updatedProducts,
+              normalized.products,
+              materialFacts,
+            );
             await transaction.leadInfringement.createMany({
               data: normalized.infringementTypes.map((type) => ({
                 leadId: id,
@@ -1470,6 +1640,20 @@ export class LeadService {
                   fromVersion: input.expectedVersion,
                   toVersion: input.expectedVersion + 1,
                   changedFields,
+                  productScreenshots: {
+                    before: current.products.map((product) => ({
+                      productId: product.id,
+                      contentVersionIds: product.screenshots.map(
+                        (screenshot) => screenshot.contentVersionId,
+                      ),
+                    })),
+                    after: normalized.products.map((product) => ({
+                      productId: product.id!,
+                      contentVersionIds: [
+                        ...(product.screenshotContentVersionIds ?? []),
+                      ],
+                    })),
+                  },
                 },
               },
             });
@@ -1479,6 +1663,189 @@ export class LeadService {
             });
             if (updated === null) throw this.notFound();
             return this.view(updated, referenceResult.afterVersionIds);
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.versionConflict();
+        }
+        throw this.mapAuthorization(error);
+      }
+    }
+    throw this.versionConflict();
+  }
+
+  async updateProductScreenshots(
+    actor: ActorContext,
+    id: string,
+    productId: string,
+    input: UpdateLeadProductScreenshotsDto,
+  ) {
+    if (
+      !Number.isInteger(input.expectedVersion) ||
+      input.expectedVersion < 1 ||
+      !Array.isArray(input.screenshotContentVersionIds) ||
+      input.screenshotContentVersionIds.length > 20 ||
+      new Set(input.screenshotContentVersionIds).size !==
+        input.screenshotContentVersionIds.length ||
+      input.screenshotContentVersionIds.some(
+        (versionId) => typeof versionId !== 'string' || !isUUID(versionId, '4'),
+      )
+    )
+      throw this.validation();
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (transaction) => {
+            let scope;
+            try {
+              scope = await this.access.buildLeadScope(
+                actor,
+                'lead.edit',
+                transaction,
+              );
+            } catch (error) {
+              throw this.mapAuthorization(error);
+            }
+            const locked = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              id,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            const current = await transaction.lead.findFirst({
+              where: { id, ...scope },
+              include: leadInclude,
+            });
+            if (current === null) throw this.notFound();
+            if (current.status === 'ARCHIVED') throw this.invalidState();
+            if (current.version !== input.expectedVersion)
+              throw this.versionConflict();
+            const product = current.products.find(
+              (item) => item.id === productId,
+            );
+            if (product === undefined) throw this.notFound();
+            const currentRefs =
+              await this.materials.listCurrentReferenceVersionIds(
+                transaction,
+                actor,
+                {
+                  resourceType: 'lead',
+                  resourceId: id,
+                  purpose: 'LEAD_SCREENSHOT',
+                },
+              );
+            const previousTargetIds = new Set(
+              product.screenshots.map((item) => item.contentVersionId),
+            );
+            const retainedIds = currentRefs.filter(
+              (versionId) => !previousTargetIds.has(versionId),
+            );
+            const nextIds = [
+              ...retainedIds,
+              ...input.screenshotContentVersionIds,
+            ];
+            if (nextIds.length > 20 || new Set(nextIds).size !== nextIds.length)
+              throw this.validation();
+            const facts = await this.materials.assertAvailableVersions(
+              transaction,
+              actor,
+              {
+                ownerType: 'LEAD',
+                ownerId: id,
+                category: 'LEAD_SCREENSHOT',
+                contentVersionIds: nextIds,
+                minCount: 0,
+                maxCount: 20,
+                leadAction: 'lead.edit',
+              },
+            );
+            const changed = await transaction.lead.updateMany({
+              where: {
+                id,
+                departmentId: actor.departmentId,
+                version: input.expectedVersion,
+                status: { not: 'ARCHIVED' },
+              },
+              data: { version: { increment: 1 } },
+            });
+            if (changed.count !== 1) throw this.versionConflict();
+            await transaction.leadProductScreenshot.deleteMany({
+              where: {
+                leadId: id,
+                departmentId: actor.departmentId,
+                productId,
+              },
+            });
+            const factById = new Map(
+              facts.map((fact) => [fact.contentVersionId, fact]),
+            );
+            const rows = input.screenshotContentVersionIds.map(
+              (contentVersionId) => {
+                const fact = factById.get(contentVersionId);
+                if (fact === undefined) throw this.validation();
+                return {
+                  leadId: id,
+                  departmentId: actor.departmentId,
+                  productId,
+                  materialId: fact.materialId,
+                  contentVersionId,
+                };
+              },
+            );
+            if (rows.length > 0)
+              await transaction.leadProductScreenshot.createMany({
+                data: rows,
+              });
+            const references = await this.materials.replaceCurrentReferences(
+              transaction,
+              actor,
+              {
+                resourceType: 'lead',
+                resourceId: id,
+                purpose: 'LEAD_SCREENSHOT',
+                versions: facts,
+              },
+            );
+            await transaction.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                resourceType: 'lead',
+                resourceId: id,
+                action: 'lead.product-screenshots.updated',
+                details: {
+                  productId,
+                  fromVersion: input.expectedVersion,
+                  toVersion: input.expectedVersion + 1,
+                  beforeVersionIds: [...previousTargetIds],
+                  afterVersionIds: [...input.screenshotContentVersionIds],
+                  productScreenshots: {
+                    before: [
+                      { productId, contentVersionIds: [...previousTargetIds] },
+                    ],
+                    after: [
+                      {
+                        productId,
+                        contentVersionIds: [
+                          ...input.screenshotContentVersionIds,
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+            });
+            const updated = await transaction.lead.findUnique({
+              where: { id },
+              include: leadInclude,
+            });
+            if (updated === null) throw this.notFound();
+            return this.view(updated, references.afterVersionIds);
           },
           { isolationLevel: 'Serializable' },
         );
@@ -1559,6 +1926,7 @@ export class LeadService {
             });
             if (receipt !== null)
               return this.pushReceiptResult(
+                transaction,
                 actor,
                 receipt,
                 fingerprint,
@@ -1644,6 +2012,7 @@ export class LeadService {
             });
             if (pusher !== null)
               return this.pushReceiptResult(
+                this.database,
                 actor,
                 receipt,
                 fingerprint,
@@ -1942,6 +2311,7 @@ export class LeadService {
       where: { departmentId: actor.departmentId, id: { in: ids } },
       select: {
         id: true,
+        businessNo: true,
         departmentId: true,
         responsibleUserId: true,
         teamId: true,
@@ -1951,6 +2321,7 @@ export class LeadService {
       string,
       {
         id: string;
+        businessNo: string;
         departmentId: string;
         responsibleUserId: string;
         teamId: string | null;
@@ -2042,7 +2413,22 @@ export class LeadService {
       throw this.corruptReceipt();
     if (receipt.requestFingerprint !== fingerprint)
       throw this.idempotencyConflict();
-    return result;
+    const refreshedItems = [];
+    for (const entry of result.items) {
+      const currentNumber = byId.get(entry.id.toLowerCase())?.businessNo;
+      if (
+        !currentNumber ||
+        !(await resolveHistoricalNumber(tx, {
+          entityType: 'LEAD',
+          entityId: entry.id,
+          receiptNumber: entry.businessNo,
+          currentNumber,
+        }))
+      )
+        throw this.corruptReceipt();
+      refreshedItems.push({ ...entry, businessNo: currentNumber });
+    }
+    return { items: refreshedItems };
   }
 
   async applyWithdrawal(
@@ -2778,7 +3164,7 @@ export class LeadService {
     };
     const visibleCustomer = await transaction.customer.findFirst({
       where: customerWhere,
-      select: { id: true },
+      select: { id: true, businessId: true },
     });
     if (visibleCustomer === null) throw this.notFound();
     const locked = await transaction.$queryRawUnsafe<
@@ -2807,7 +3193,7 @@ export class LeadService {
     }
     const customer = await transaction.customer.findFirst({
       where: customerWhere,
-      select: { id: true },
+      select: { id: true, businessId: true },
     });
     if (customer === null) throw this.notFound();
     const link = await transaction.customerRightsHolderLink.findFirst({
@@ -2815,6 +3201,7 @@ export class LeadService {
       select: { id: true },
     });
     if (link === null) throw this.notFound();
+    return customer.businessId;
   }
 
   private leadCreateData(
@@ -2847,6 +3234,7 @@ export class LeadService {
       externalSourceRef: null,
       products: {
         create: normalized.products.map((product, index) => ({
+          id: product.id ?? randomUUID(),
           position: index + 1,
           url: product.url,
           title: product.title,
@@ -2891,6 +3279,16 @@ export class LeadService {
     const foundAtDate = new Date(input.foundAt);
     if (Number.isNaN(foundAtDate.getTime())) throw this.validation();
     const products = input.products.map((product) => this.product(product));
+    const productIds = products.map((product) => product.id).filter(Boolean);
+    const screenshotIds = products.flatMap(
+      (product) => product.screenshotContentVersionIds ?? [],
+    );
+    if (
+      productIds.length !== new Set(productIds).size ||
+      screenshotIds.length !== new Set(screenshotIds).size ||
+      screenshotIds.length + input.leadScreenshotContentVersionIds.length > 20
+    )
+      throw this.validation();
     return {
       ...input,
       shopName,
@@ -2902,6 +3300,19 @@ export class LeadService {
   }
 
   private product(product: ProductInput) {
+    if (product.id !== undefined && !isUUID(product.id, '4'))
+      throw this.validation();
+    if (
+      product.screenshotContentVersionIds !== undefined &&
+      (!Array.isArray(product.screenshotContentVersionIds) ||
+        product.screenshotContentVersionIds.length > 20 ||
+        product.screenshotContentVersionIds.some(
+          (id) => typeof id !== 'string' || !isUUID(id, '4'),
+        ) ||
+        new Set(product.screenshotContentVersionIds).size !==
+          product.screenshotContentVersionIds.length)
+    )
+      throw this.validation();
     const url = this.optional(product.url, 2048);
     const title = this.optional(product.title, 200);
     if (url === null && title === null) throw this.validation();
@@ -2938,30 +3349,6 @@ export class LeadService {
 
   private platformMatches(source: LeadSource, platform: LeadPlatform) {
     return PLATFORM_OPTIONS[source].some((option) => option.value === platform);
-  }
-
-  private async allocateBusinessNo(transaction: Prisma.TransactionClient) {
-    const rows = await transaction.$queryRawUnsafe<
-      Array<{ sequence: number; business_date: Date | string }>
-    >(
-      `INSERT INTO "lead_number_counters" ("business_date", "last_value", "updated_at")
-       VALUES ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date, 1, CURRENT_TIMESTAMP)
-       ON CONFLICT ("business_date") DO UPDATE SET "last_value" = "lead_number_counters"."last_value" + 1, "updated_at" = CURRENT_TIMESTAMP
-       WHERE "lead_number_counters"."last_value" < 999
-       RETURNING "last_value" AS "sequence", "business_date"`,
-    );
-    const sequence = Number(rows[0]?.sequence);
-    if (!Number.isInteger(sequence) || sequence < 1 || sequence > 999)
-      throw this.numberExhausted();
-    const businessDate = rows[0]?.business_date;
-    const dateCode =
-      businessDate instanceof Date
-        ? businessDate.toISOString().slice(0, 10).replaceAll('-', '')
-        : String(businessDate ?? '')
-            .slice(0, 10)
-            .replaceAll('-', '');
-    if (!/^\d{8}$/u.test(dateCode)) throw this.versionConflict();
-    return `LD-${dateCode}-${String(sequence).padStart(3, '0')}`;
   }
 
   private readView(
@@ -3020,8 +3407,18 @@ export class LeadService {
         unitPrice: this.decimal(product.unitPrice),
         commentCount: product.commentCount,
         estimatedAmount: this.decimal(product.estimatedAmount),
+        screenshotContentVersionIds: (product.screenshots ?? []).map(
+          (screenshot) => screenshot.contentVersionId,
+        ),
       })),
-      leadScreenshotContentVersionIds: [...leadScreenshotContentVersionIds],
+      leadScreenshotContentVersionIds: leadScreenshotContentVersionIds.filter(
+        (versionId) =>
+          !record.products.some((product) =>
+            (product.screenshots ?? []).some(
+              (screenshot) => screenshot.contentVersionId === versionId,
+            ),
+          ),
+      ),
       version: record.version,
       pushedAt: record.pushedAt?.toISOString() ?? null,
       pushedByUserId: record.pushedByUserId ?? null,
@@ -3063,6 +3460,38 @@ export class LeadService {
   private decimal(value: Prisma.Decimal) {
     return value.toFixed(2);
   }
+
+  private async replaceProductScreenshots(
+    transaction: MaterialTransactionClient,
+    departmentId: string,
+    leadId: string,
+    products: readonly Pick<LeadRecord['products'][number], 'id'>[],
+    inputs: readonly NormalizedBusiness['products'][number][],
+    facts: readonly ValidatedMaterialVersionFact[],
+  ) {
+    const factsById = new Map(
+      facts.map((fact) => [fact.contentVersionId, fact]),
+    );
+    const associations = inputs.flatMap((input, index) =>
+      (input.screenshotContentVersionIds ?? []).map((contentVersionId) => {
+        const fact = factsById.get(contentVersionId);
+        const product = products[index];
+        if (fact === undefined || product === undefined)
+          throw this.validation();
+        return {
+          leadId,
+          departmentId,
+          productId: product.id,
+          materialId: fact.materialId,
+          contentVersionId,
+        };
+      }),
+    );
+    if (associations.length > 0)
+      await transaction.leadProductScreenshot.createMany({
+        data: associations,
+      });
+  }
   private async currentScreenshotIds(
     actor: ActorContext,
     leadIds: readonly string[],
@@ -3085,6 +3514,24 @@ export class LeadService {
   }
   private async canEdit(actor: ActorContext, lead: LeadRecord) {
     if (lead.status !== 'WAITING_PUSH') return false;
+    try {
+      const scope = await this.access.buildLeadScope(actor, 'lead.edit');
+      return (
+        (await this.database.lead.findFirst({
+          where: { id: lead.id, ...scope },
+          select: { id: true },
+        })) !== null
+      );
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
+  private async canEditProductScreenshots(
+    actor: ActorContext,
+    lead: LeadRecord,
+  ) {
+    if (lead.status === 'ARCHIVED') return false;
     try {
       const scope = await this.access.buildLeadScope(actor, 'lead.edit');
       return (
@@ -3142,6 +3589,7 @@ export class LeadService {
         unitPrice: product.unitPrice,
         commentCount: product.commentCount,
         estimatedAmount: product.estimatedAmount,
+        screenshotContentVersionIds: [...product.screenshotContentVersionIds],
       })),
       leadScreenshotContentVersionIds: [
         ...response.leadScreenshotContentVersionIds,
@@ -3208,7 +3656,11 @@ export class LeadService {
           Number.isInteger(product.quantity) &&
           typeof product.unitPrice === 'string' &&
           Number.isInteger(product.commentCount) &&
-          typeof product.estimatedAmount === 'string',
+          typeof product.estimatedAmount === 'string' &&
+          Array.isArray(product.screenshotContentVersionIds) &&
+          product.screenshotContentVersionIds.every(
+            (id) => typeof id === 'string',
+          ),
       ) &&
       Array.isArray(candidate.leadScreenshotContentVersionIds) &&
       candidate.leadScreenshotContentVersionIds.every(
@@ -3266,11 +3718,12 @@ export class LeadService {
       },
     };
   }
-  private receiptResult(
+  private async receiptResult(
+    tx: Pick<Prisma.TransactionClient, 'lead' | 'businessNumberAlias'>,
     actor: ActorContext,
     receipt: Receipt,
     fingerprint: string,
-  ): LeadResponse {
+  ): Promise<LeadResponse> {
     if (receipt.requestFingerprint !== fingerprint)
       throw this.idempotencyConflict();
     const snapshot = receipt.resultSnapshot;
@@ -3281,20 +3734,36 @@ export class LeadService {
       snapshot.departmentId !== actor.departmentId
     )
       throw this.corruptReceipt();
+    const current = await tx.lead.findUnique({
+      where: { id: receipt.resultLeadId },
+      select: { businessNo: true },
+    });
+    if (
+      !current ||
+      !(await resolveHistoricalNumber(tx, {
+        entityType: 'LEAD',
+        entityId: receipt.resultLeadId,
+        receiptNumber: snapshot.businessNo,
+        currentNumber: current.businessNo,
+      }))
+    )
+      throw this.corruptReceipt();
     return {
       ...snapshot,
+      businessNo: current.businessNo,
       pushedByDisplayName: snapshot.pushedByDisplayName ?? null,
       reviewDecision: snapshot.reviewDecision ?? null,
       evidenceDecision: snapshot.evidenceDecision ?? null,
     };
   }
-  private pushReceiptResult(
+  private async pushReceiptResult(
+    tx: Pick<Prisma.TransactionClient, 'lead' | 'businessNumberAlias'>,
     actor: ActorContext,
     receipt: Receipt,
     fingerprint: string,
     leadId: string,
     fallbackDisplayName: string,
-  ): LeadPushResponse {
+  ): Promise<LeadPushResponse> {
     if (receipt.requestFingerprint !== fingerprint)
       throw this.idempotencyConflict();
     const snapshot = receipt.resultSnapshot;
@@ -3318,8 +3787,23 @@ export class LeadService {
         typeof result.pushedByDisplayName !== 'string')
     )
       throw this.corruptReceipt();
+    const current = await tx.lead.findUnique({
+      where: { id: leadId },
+      select: { businessNo: true },
+    });
+    if (
+      !current ||
+      !(await resolveHistoricalNumber(tx, {
+        entityType: 'LEAD',
+        entityId: leadId,
+        receiptNumber: result.businessNo,
+        currentNumber: current.businessNo,
+      }))
+    )
+      throw this.corruptReceipt();
     return {
       ...(result as Omit<LeadPushResponse, 'pushedByDisplayName'>),
+      businessNo: current.businessNo,
       pushedByDisplayName:
         typeof result.pushedByDisplayName === 'string'
           ? result.pushedByDisplayName
@@ -3501,12 +3985,6 @@ export class LeadService {
     return new ConflictException({
       code: 'IDEMPOTENCY_CONFLICT',
       message: '该 Idempotency-Key 已用于不同请求',
-    });
-  }
-  private numberExhausted() {
-    return new ConflictException({
-      code: 'LEAD_NUMBER_EXHAUSTED',
-      message: '当日线索编号已用尽',
     });
   }
   private corruptReceipt() {

@@ -318,10 +318,11 @@ afterEach(() => {
 async function mountRoute(
   path: string,
   component: typeof CaseListPage | typeof CaseDetailPage,
+  internal = component === CaseDetailPage,
 ) {
   const pinia = createPinia();
   setActivePinia(pinia);
-  if (component === CaseDetailPage) setInternalSession(pinia);
+  if (internal) setInternalSession(pinia);
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -593,7 +594,10 @@ describe('case pages', () => {
       CaseListPage,
     );
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
-      '操作／案件编号',
+      '案件编号',
+      '负责人',
+      '操作',
+      '来源',
       '案件进展',
       '客户',
       '权利主体',
@@ -613,19 +617,17 @@ describe('case pages', () => {
         .findAll('thead th')
         .every((cell) => cell.attributes('scope') === 'col'),
     ).toBe(true);
-    expect(wrapper.findAll('colgroup col')).toHaveLength(14);
+    expect(wrapper.findAll('colgroup col')).toHaveLength(17);
     const cells = wrapper.findAll('tbody tr td');
-    expect(cells).toHaveLength(14);
+    expect(cells).toHaveLength(17);
     expect(cells[0]!.get('a').text()).toBe('CA-20261013-00001234');
     expect(cells[0]!.get('a').attributes('href')).toBe(
       '/cases/case%2Fencoded?view=department&stage=PENDING_MATCH',
     );
-    expect(cells[0]!.text()).toContain('LD-20261013-00005678');
-    expect(cells[0]!.text()).toContain('NZ-20261013-00009012');
-    expect(cells[0]!.get('details summary').text()).toBe(
-      `负责人：${ownerName}`,
-    );
-    expect(cells[0]!.get('details p').text()).toBe(`负责人：${ownerName}`);
+    expect(cells[1]!.text()).toBe(ownerName);
+    expect(cells[2]!.text()).toContain('编辑资料');
+    expect(cells[3]!.text()).toContain('LD-20261013-00005678');
+    expect(cells[3]!.text()).toContain('NZ-20261013-00009012');
     expect(wrapper.get('.business-list-scroll').attributes()).toMatchObject({
       role: 'region',
       tabindex: '0',
@@ -681,9 +683,12 @@ describe('case pages', () => {
       const rows = wrapper.findAll('tbody tr');
       expect(rows[0]!.findAll('[data-case-action]')).toHaveLength(1);
       expect(rows[0]!.get('[data-case-action]').text()).not.toBe('办理');
-      expect(rows[1]!.findAll('td')[0]!.get('.field-help').text()).toBe(
-        '当前无可办操作',
-      );
+      const actionColumnIndex = wrapper
+        .findAll('thead th')
+        .findIndex((header) => header.text() === '操作');
+      expect(
+        rows[1]!.findAll('td')[actionColumnIndex]!.get('.field-help').text(),
+      ).toBe('当前无可办操作');
       expect(rows[1]!.find('[data-case-action]').exists()).toBe(false);
       wrapper.unmount();
     },
@@ -835,26 +840,23 @@ describe('case pages', () => {
   });
 
   it.each(['mine', 'department'] as const)(
-    'resets page when switching from %s and restores the old scope on back',
+    'keeps the %s scope fixed and restores that scope on browser back',
     async (view) => {
       await paginatedCases();
       const wrapper = await mountRoute(
         `/cases?view=${view}&page=2`,
         CaseListPage,
       );
-      const next = view === 'mine' ? 'department' : 'mine';
-      await wrapper
-        .findAll('button')
-        .find(
-          (button) =>
-            button.text() === (next === 'mine' ? '我负责' : '本部门全部'),
-        )!
-        .trigger('click');
+      expect(wrapper.text()).toContain(
+        view === 'mine' ? '我的案件' : '全部部门案件',
+      );
+      expect(wrapper.find('[aria-label="案件范围"]').exists()).toBe(false);
+      await wrapper.vm.$router.push(`/cases?view=${view}&page=1`);
       await flushPromises();
       expect(api.listCases).toHaveBeenLastCalledWith(
         1,
         20,
-        expect.objectContaining({ view: next }),
+        expect.objectContaining({ view }),
       );
       wrapper.vm.$router.back();
       await flushPromises();
@@ -920,7 +922,7 @@ describe('case pages', () => {
     wrapper.unmount();
   });
 
-  it('ignores a late old-page response after changing scope', async () => {
+  it('ignores a late old-page response after navigating to the department scope', async () => {
     const base = await paginatedCases();
     let resolveOld!: (value: unknown) => void;
     api.listCases.mockReturnValueOnce(
@@ -930,10 +932,7 @@ describe('case pages', () => {
     );
     const wrapper = await mountRoute('/cases?page=2', CaseListPage);
     expect(wrapper.text()).toContain('正在读取案件');
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '本部门全部')!
-      .trigger('click');
+    await wrapper.vm.$router.push('/cases?view=department');
     await flushPromises();
     expect(api.listCases.mock.calls[0]?.[2].signal.aborted).toBe(true);
     resolveOld({
@@ -1003,10 +1002,15 @@ describe('case pages', () => {
   });
 
   it('lists source identities and links to the internal read-only detail', async () => {
-    const wrapper = await mountRoute('/cases', CaseListPage);
+    const wrapper = await mountRoute('/cases', CaseListPage, true);
     expect(wrapper.get('[data-test="case-list"]').text()).toContain('LD-1');
     expect(wrapper.get('[data-test="case-list"]').text()).toContain('NZ-1');
     expect(wrapper.get('a[href="/cases/case-1"]').text()).toBe('CA-1');
+    const cells = wrapper.findAll('[data-test="case-list"] tbody tr td');
+    expect(cells[1]!.text()).toContain('负责人');
+    expect(cells[2]!.classes()).toContain('business-list-cell--text');
+    expect(cells[3]!.text()).toContain('LD-1');
+    expect(wrapper.get('.case-list-head-actions').text()).toContain('案件系列');
   });
 
   it('loads the execution preparation group as one atomic-stage filter', async () => {

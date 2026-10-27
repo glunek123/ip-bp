@@ -327,6 +327,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CUSTOMER_ACCOUNT_CREATE',
+      label: '创建企业账号',
+      scopes: ['DEPARTMENT'],
+    },
+    {
       action: 'LEAD_READ',
       label: '查看线索',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -698,6 +703,7 @@ describe('organization API', () => {
       'CUSTOMER_SETTLEMENT_REGISTER',
       'CUSTOMER_SETTLEMENT_CORRECT',
       'CUSTOMER_ADMIT',
+      'CUSTOMER_ACCOUNT_CREATE',
       'LEAD_READ',
       'LEAD_CREATE',
       'LEAD_EDIT',
@@ -760,6 +766,16 @@ describe('organization API', () => {
       'ROLE_ASSIGN',
       'ROLE_MANAGE',
     ]);
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'CUSTOMER_ACCOUNT_CREATE',
+      label: '创建企业账号',
+      scopes: ['DEPARTMENT'],
+    });
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'USER_MANAGE',
+      label: '管理人员',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    });
   });
 
   it('decodes the management context', async () => {

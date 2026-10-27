@@ -97,7 +97,7 @@ describe('LeadNewPage', () => {
     expect(wrapper.find('.page-view').exists()).toBe(true);
   });
 
-  it('prevents duplicate submits and reuses one idempotency key', async () => {
+  it('locks the form after an uncertain create result', async () => {
     let reject!: (reason?: unknown) => void;
     leadApi.createLead.mockImplementation(
       () => new Promise((_resolve, fail) => (reject = fail)),
@@ -108,18 +108,16 @@ describe('LeadNewPage', () => {
     expect(leadApi.createLead).toHaveBeenCalledTimes(1);
     reject(new Error('failed'));
     await flushPromises();
-    await wrapper.get('form').trigger('submit');
-    expect(leadApi.createLead).toHaveBeenCalledTimes(2);
-    expect(leadApi.createLead.mock.calls[1]?.[1]).toBe(
-      leadApi.createLead.mock.calls[0]?.[1],
-    );
+    expect(wrapper.find('form').exists()).toBe(false);
+    expect(wrapper.text()).toContain('线索保存结果未确认');
+    expect(leadApi.createLead).toHaveBeenCalledTimes(1);
   });
 
   it('reuses the reserved owner and does not upload successful files again on retry', async () => {
     const first = new File(['a'], 'a.png', { type: 'image/png' });
     const second = new File(['b'], 'b.png', { type: 'image/png' });
     materialApi.uploadMaterialFile
-      .mockResolvedValueOnce({
+      .mockImplementationOnce(async () => ({
         contentVersionId: 'version-a',
         reservedOwnerId: 'reserved-lead',
         materialId: 'm-a',
@@ -128,21 +126,21 @@ describe('LeadNewPage', () => {
         mimeType: 'image/png',
         sizeBytes: 1,
         sha256: 'a'.repeat(64),
-      })
+      }))
       .mockRejectedValueOnce(new Error('storage'))
-      .mockResolvedValueOnce({
+      .mockImplementationOnce(async (input: { ownerId: string }) => ({
         contentVersionId: 'version-b',
-        reservedOwnerId: 'reserved-lead',
+        reservedOwnerId: input.ownerId,
         materialId: 'm-b',
         originalFilename: 'b.png',
         purpose: 'LEAD_SCREENSHOT',
         mimeType: 'image/png',
         sizeBytes: 1,
         sha256: 'b'.repeat(64),
-      });
+      }));
     leadApi.createLead.mockResolvedValue({ id: 'lead-1' });
     const { wrapper, router } = await mountPage();
-    const input = wrapper.get('input[name="screenshots"]');
+    const input = wrapper.get('[data-test="product-screenshots-0"]');
     Object.defineProperty(input.element, 'files', {
       configurable: true,
       value: [first, second],
@@ -154,16 +152,22 @@ describe('LeadNewPage', () => {
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(materialApi.uploadMaterialFile).toHaveBeenCalledTimes(3);
+    const reservedId = 'reserved-lead';
     expect(materialApi.uploadMaterialFile.mock.calls[1]?.[0]).toMatchObject({
-      ownerId: 'reserved-lead',
+      ownerId: reservedId,
     });
     expect(materialApi.uploadMaterialFile.mock.calls[2]?.[0]).toMatchObject({
-      ownerId: 'reserved-lead',
+      ownerId: reservedId,
     });
     expect(leadApi.createLead).toHaveBeenCalledWith(
       expect.objectContaining({
-        reservedLeadId: 'reserved-lead',
-        leadScreenshotContentVersionIds: ['version-a', 'version-b'],
+        reservedLeadId: reservedId,
+        leadScreenshotContentVersionIds: [],
+        products: [
+          expect.objectContaining({
+            screenshotContentVersionIds: ['version-a', 'version-b'],
+          }),
+        ],
       }),
       expect.any(String),
     );

@@ -85,6 +85,7 @@ describe('independent scoped fee read', () => {
       departmentId: actor.departmentId,
       caseId: { in: ['visible-case'] },
       deletedAt: null,
+      cancellation: { is: null },
       case: { is: scope },
     };
     expect(f.tx.feeRecord.count).toHaveBeenCalledWith({ where });

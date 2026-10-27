@@ -78,8 +78,9 @@ type AdmissionReceipt = {
 
 type HistoricalCustomerSummary = Omit<
   CustomerSummary,
-  'cooperationStatus' | 'customerManagerName'
+  'cooperationStatus' | 'customerManagerName' | 'businessId'
 > & {
+  businessId?: string | null;
   customerManagerName?: string | null;
   cooperationStatus?: CustomerSummary['cooperationStatus'];
 };
@@ -159,7 +160,12 @@ export class CustomerAdmissionService {
                 where: this.receiptWhere(actor, idempotencyKey),
               });
             if (receipt !== null) {
-              return this.rebuildReceiptResult(actor, receipt, fingerprint);
+              return this.rebuildReceiptResult(
+                actor,
+                receipt,
+                fingerprint,
+                current.businessId,
+              );
             }
 
             if (current.version !== input.expectedVersion) {
@@ -436,7 +442,16 @@ export class CustomerAdmissionService {
           select: { id: true },
         });
         if (visible === null) throw this.notFound();
-        return this.rebuildReceiptResult(actor, receipt, fingerprint);
+        const current = await this.database.customer.findUnique({
+          where: { id: customerId },
+          select: { businessId: true },
+        });
+        return this.rebuildReceiptResult(
+          actor,
+          receipt,
+          fingerprint,
+          current?.businessId,
+        );
       }
     }
     throw this.contactConflict('CUSTOMER_CONTACT_BUSY');
@@ -595,6 +610,7 @@ export class CustomerAdmissionService {
     actor: ActorContext,
     receipt: AdmissionReceipt,
     fingerprint: string,
+    businessId: string | null | undefined,
   ): CustomerSummary {
     if (receipt.requestFingerprint !== fingerprint) {
       throw this.idempotencyConflict();
@@ -610,6 +626,7 @@ export class CustomerAdmissionService {
     }
     return {
       id: snapshot.id,
+      ...(businessId === undefined ? {} : { businessId }),
       name: snapshot.name,
       customerManagerName: snapshot.customerManagerName ?? null,
       customerType: snapshot.customerType,
@@ -637,6 +654,9 @@ export class CustomerAdmissionService {
   private resultSnapshot(result: CustomerSummary): Prisma.InputJsonObject {
     return {
       id: result.id,
+      ...(result.businessId === undefined
+        ? {}
+        : { businessId: result.businessId }),
       name: result.name,
       customerManagerName: result.customerManagerName,
       customerType: result.customerType,
@@ -684,6 +704,10 @@ export class CustomerAdmissionService {
     ];
     return (
       typeof snapshot.id === 'string' &&
+      (snapshot.businessId === undefined ||
+        snapshot.businessId === null ||
+        (typeof snapshot.businessId === 'string' &&
+          /^\d{3,}$/u.test(snapshot.businessId))) &&
       typeof snapshot.name === 'string' &&
       (snapshot.customerManagerName === undefined ||
         snapshot.customerManagerName === null ||

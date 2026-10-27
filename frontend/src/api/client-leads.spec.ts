@@ -38,6 +38,7 @@ const lead = {
       unitPrice: '10.00',
       commentCount: 0,
       estimatedAmount: '10.00',
+      screenshotContentVersionIds: [],
     },
   ],
   leadScreenshotContentVersionIds: ['version-1'],

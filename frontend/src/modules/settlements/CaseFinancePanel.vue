@@ -81,9 +81,9 @@ onBeforeUnmount(() => {
 <style scoped>
 .case-finance-panel {
   display: grid;
-  gap: 24px;
-  margin-top: 24px;
-  padding-top: 24px;
+  gap: var(--app-section-gap, 16px);
+  margin-top: 20px;
+  padding-top: var(--app-section-gap, 16px);
   border-top: 1px solid var(--color-hairline);
 }
 </style>

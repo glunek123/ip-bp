@@ -24,7 +24,7 @@ import {
 import { todayShanghai } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
 import { formatSettlementAmount } from '../customers';
-import { labelLeadPlatform } from '../leads';
+import { labelLeadBusinessValue } from '../leads';
 import CaseFeeEntryDialog from './CaseFeeEntryDialog.vue';
 import {
   loadFinancialPending,
@@ -33,11 +33,15 @@ import {
   isPendingFee,
   isPendingFeeBatch,
   isPendingFeeProof,
+  isPendingFeeCancellation,
+  type PendingFeeCancellation,
 } from './financial-pending';
 import {
   uploadMaterialFile,
   downloadMaterialVersion,
 } from '../../api/materials';
+import { cancelFee } from '../../api/fee-cancellations';
+import FeeCancellationHistoryPanel from './FeeCancellationHistoryPanel.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -136,6 +140,9 @@ const error = ref('');
 const notice = ref('');
 const showCreate = ref(false);
 const showCaseCreate = ref(false);
+const pendingCancellation = ref<PendingFeeCancellation | null>(null);
+const unknownCancellation = ref(false);
+const showCancellations = ref(false);
 const form = reactive({
   caseId: props.caseId ?? '',
   type: '诉讼费',
@@ -314,6 +321,83 @@ async function clearProof(row: FeeRow): Promise<void> {
   };
   await saveProof();
 }
+async function cancelOriginalFee(row: FeeRow): Promise<void> {
+  if (row.sourceRows || !props.canDelete || saving.value) return;
+  const scope = pendingScope.value;
+  if (!pendingCancellation.value) {
+    const reason = globalThis.prompt(
+      `取消／作废 ${row.businessNo} · ${row.type}（${row.amount} 元，${row.status}）的原因？已发起或已支付费用作废后需核实真实实付和退款。`,
+    );
+    if (!reason?.trim()) return;
+    pendingCancellation.value = {
+      feeId: row.id,
+      body: {
+        expectedVersion: row.version,
+        reason: reason.trim(),
+        idempotencyKey: globalThis.crypto.randomUUID(),
+      },
+    };
+  }
+  const original = pendingCancellation.value;
+  const originalIdentity = identity.value;
+  saving.value = true;
+  error.value = '';
+  try {
+    storeFinancialPending(scope, 'fee-cancel', original);
+    const result = await cancelFee(original.feeId, original.body);
+    if (!sameContext(originalIdentity)) return;
+    clearFinancialPending(scope, 'fee-cancel', original);
+    pendingCancellation.value = null;
+    unknownCancellation.value = false;
+    notice.value =
+      result.outcome === 'VOIDED'
+        ? '费用已作废；请在取消记录中核实实际支付及退款。'
+        : '费用已取消';
+    await load();
+  } catch (cause) {
+    if (sameContext(originalIdentity)) {
+      if (rejected(cause)) {
+        clearFinancialPending(scope, 'fee-cancel', original);
+        pendingCancellation.value = null;
+      }
+      unknownCancellation.value = pendingCancellation.value !== null;
+      error.value = message(cause);
+    }
+  } finally {
+    if (sameContext(originalIdentity)) saving.value = false;
+  }
+}
+async function retryPendingCancellation(): Promise<void> {
+  const original = pendingCancellation.value;
+  if (!original || !props.canDelete || saving.value) return;
+  const originalIdentity = identity.value;
+  const scope = pendingScope.value;
+  saving.value = true;
+  error.value = '';
+  try {
+    storeFinancialPending(scope, 'fee-cancel', original);
+    const result = await cancelFee(original.feeId, original.body);
+    if (!sameContext(originalIdentity)) return;
+    clearFinancialPending(scope, 'fee-cancel', original);
+    pendingCancellation.value = null;
+    unknownCancellation.value = false;
+    notice.value =
+      result.outcome === 'VOIDED'
+        ? '费用已作废；请在取消记录中核实实际收付及退款。'
+        : '费用已取消';
+    await load();
+  } catch (cause) {
+    if (!sameContext(originalIdentity)) return;
+    if (rejected(cause)) {
+      clearFinancialPending(scope, 'fee-cancel', original);
+      pendingCancellation.value = null;
+      unknownCancellation.value = false;
+    }
+    error.value = message(cause);
+  } finally {
+    if (sameContext(originalIdentity)) saving.value = false;
+  }
+}
 async function downloadProof(row: FeeRow): Promise<void> {
   if (row.sourceRows) return;
   if (!row.proofMaterialId || !row.proofContentVersionId) return;
@@ -410,6 +494,8 @@ watch(
     pendingCreate = null;
     pendingBatch = null;
     pendingProof = null;
+    pendingCancellation.value = null;
+    unknownCancellation.value = false;
     proofTarget = null;
     unknownProof.value = false;
     saving.value = false;
@@ -440,9 +526,15 @@ watch(
       pendingCreate = loadFinancialPending(scope, 'create', isPendingFee);
       pendingBatch = loadFinancialPending(scope, 'batch', isPendingFeeBatch);
       pendingProof = loadFinancialPending(scope, 'proof', isPendingFeeProof);
+      pendingCancellation.value = loadFinancialPending(
+        scope,
+        'fee-cancel',
+        isPendingFeeCancellation,
+      );
       unknownCreate.value = pendingCreate !== null;
       unknownBatch.value = pendingBatch !== null;
       unknownProof.value = pendingProof !== null;
+      unknownCancellation.value = pendingCancellation.value !== null;
       if (pendingCreate) {
         const original = pendingCreate;
         Object.assign(form, {
@@ -707,7 +799,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="fee-center">
-    <header class="fee-center__heading">
+    <header class="operation-bar fee-center__heading">
       <div>
         <h2>费用中心</h2>
         <p>
@@ -719,379 +811,438 @@ onBeforeUnmount(() => {
         type="primary"
         :disabled="saving"
         @click="openCreate"
+        class="action-size--wide"
         >新增费用</ElButton
       >
     </header>
-    <div v-if="summary" class="fee-center__metrics">
-      <div>
-        <span>支出合计</span><strong>{{ summary.expense }} 元</strong>
-      </div>
-      <div>
-        <span>收入合计</span><strong>{{ summary.income }} 元</strong>
-      </div>
-      <div>
-        <span>待支付</span><strong>{{ summary.pending }} 元</strong
-        ><small>{{ summary.pendingCount }} 笔已发起支出</small>
-      </div>
-    </div>
-    <form class="fee-center__filters" @submit.prevent="applyFilter">
-      <label
-        >费用类型<ElSelect
-          v-model="filters.type"
-          clearable
-          placeholder="全部类型"
-          ><ElOption
-            v-for="type in types"
-            :key="type"
-            :value="type"
-            :label="type" /></ElSelect></label
-      ><label
-        >状态<ElSelect v-model="filters.status" clearable placeholder="全部状态"
-          ><ElOption
-            v-for="status in [...ordinaryStatuses, ...refundStatuses]"
-            :key="status"
-            :value="status"
-            :label="status" /></ElSelect></label
-      ><label
-        >方向<ElSelect
-          v-model="filters.direction"
-          clearable
-          placeholder="全部方向"
-          ><ElOption value="支出" label="支出" /><ElOption
-            value="收入"
-            label="收入" /></ElSelect></label
-      ><label>费用日期从<ElInput v-model="filters.from" type="date" /></label
-      ><label>费用日期至<ElInput v-model="filters.to" type="date" /></label
-      ><ElButton native-type="submit">查询</ElButton
-      ><ElButton @click="clearFilter">清除</ElButton>
-    </form>
-    <div class="fee-center__toolbar">
-      <span>已选 {{ selected.size }} 条 · 当前筛选 {{ total }} 条</span
-      ><ElButton
-        v-if="props.canLaunch"
-        :disabled="
-          saving || selected.size === 0 || unknownBatch || zeroOnlySelection
-        "
-        @click="batch('launch')"
-        >批量发起</ElButton
-      ><ElButton
-        v-if="props.canDelete"
-        type="danger"
-        plain
-        :disabled="saving || selected.size === 0 || unknownBatch"
-        @click="batch('delete')"
-        >删除</ElButton
-      >
-      <details>
-        <summary>展示列</summary>
-        <div class="fee-center__columns">
-          <ElCheckbox
-            v-for="key in columnKeys"
-            :key="key"
-            v-model="columns[key]"
-            >{{ columnLabels[key] }}</ElCheckbox
-          >
-        </div>
-      </details>
-    </div>
-    <p v-if="zeroOnlySelection" role="status">
-      零元费用仅保留记录，不可发起；混选时零元费用将跳过。
-    </p>
-    <p v-if="error" role="alert">{{ error }}</p>
-    <p v-if="unknownBatch" role="status">
-      结果尚未确认。<ElButton :disabled="saving" @click="batch('launch')"
-        >重试原批量请求</ElButton
-      >
-    </p>
-    <p v-if="notice" role="status">{{ notice }}</p>
-    <p v-if="state === 'loading'">正在读取费用…</p>
-    <div v-else-if="state === 'failed'">
-      <ElButton @click="load">重新读取</ElButton>
-    </div>
-    <p v-else-if="rows.length === 0">当前条件下暂无费用</p>
-    <div v-else class="fee-center__table">
-      <table>
-        <thead>
-          <tr>
-            <th>
-              <ElCheckbox
-                :model-value="allSelected"
-                aria-label="全选当前筛选费用"
-                :disabled="unknownBatch"
-                @change="toggleAll"
-              />
-            </th>
-            <th
-              v-for="key in columnKeys.filter((column) => columns[column])"
-              :key="key"
-            >
-              {{ columnLabels[key] }}
-            </th>
-            <th>凭证</th>
-            <th v-if="props.canDelete">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="{ row, key, isNet } in tableRows" :key="key">
-            <td>
-              <ElButton v-if="isNet" link @click="toggleGroup(row.id)">{{
-                expandedGroups.has(row.id) ? '收起原始费用' : '展开原始费用'
-              }}</ElButton>
-              <ElCheckbox
-                v-else
-                :model-value="selected.has(row.id)"
-                :aria-label="`选择 ${row.businessNo} ${row.type}`"
-                :disabled="unknownBatch"
-                @change="toggle(row.id)"
-              />
-            </td>
-            <td v-if="columns.type">
-              {{ row.type }}<small v-if="isNet">净额 · 仅展示</small>
-              <small>
-                ·
-                {{
-                  row.source === 'auto'
-                    ? '公证来源'
-                    : row.source === 'manual'
-                      ? '手工登记'
-                      : '来源待定'
-                }}</small
-              >
-            </td>
-            <td v-if="columns.direction">{{ row.direction }}</td>
-            <td v-if="columns.amount" class="money">{{ row.amount }}</td>
-            <td v-if="columns.status">
-              <ElSelect
-                v-if="!isNet"
-                :model-value="row.status"
-                :disabled="
-                  saving || unknownBatch || unknownUpdate || !props.canUpdate
-                "
-                @change="setStatus(row, $event)"
-                ><ElOption
-                  v-for="status in row.type === '诉讼退费'
-                    ? refundStatuses
-                    : ordinaryStatuses"
-                  :key="status"
-                  :value="status"
-                  :disabled="status === '发起' && isZeroFeeAmount(row.amount)"
-                  :label="status" /></ElSelect
-              ><small v-if="isZeroFeeAmount(row.amount) && !isNet">
-                零元费用仅保留记录，不可标记为发起 </small
-              ><span v-else-if="isNet">{{ row.status }}（代表状态）</span>
-            </td>
-            <td v-if="columns.date">{{ row.feeDate }}</td>
-            <td v-if="columns.platform">
-              {{
-                row.platform === 'TAOBAO'
-                  ? labelLeadPlatform('TAOBAO')
-                  : (row.platform ?? '—')
-              }}
-            </td>
-            <td v-if="columns.shop">{{ row.shopName ?? '—' }}</td>
-            <td v-if="columns.defendant">
-              {{ row.defendantNames.join('、') || '—' }}
-            </td>
-            <td v-if="columns.case">
-              <RouterLink :to="`/cases/${row.caseId}`">{{
-                row.courtCaseNo ?? row.businessNo
-              }}</RouterLink>
-            </td>
-            <td v-if="columns.note">
-              <ElInput
-                v-if="props.canUpdate && !isNet"
-                v-model="noteDrafts[row.id]"
-                :aria-label="`${row.businessNo} ${row.type}备注`"
-                :maxlength="500"
-                :disabled="saving || unknownUpdate"
-                @change="setNote(row, $event)"
-              /><span v-else>{{ isNet ? '—' : row.note || '—' }}</span>
-            </td>
-            <td>
-              <span v-if="isNet">凭证见各笔原始费用</span
-              ><template v-else>
-                <ElButton
-                  v-if="row.proofContentVersionId"
-                  link
-                  @click="downloadProof(row)"
-                  >{{ row.proofOriginalFilename || '下载凭证' }}</ElButton
-                ><span v-else>未上传</span
-                ><template v-if="props.canUpdate"
-                  ><ElButton
-                    link
-                    :disabled="saving || unknownProof"
-                    @click="chooseProof(row)"
-                    >{{
-                      row.proofContentVersionId ? '替换' : '上传凭证/发票'
-                    }}</ElButton
-                  ><ElButton
-                    v-if="row.proofContentVersionId"
-                    link
-                    :disabled="saving || unknownProof"
-                    @click="clearProof(row)"
-                    >移除凭证</ElButton
-                  ></template
-                >
-              </template>
-            </td>
-            <td v-if="props.canDelete">
-              <ElButton
-                v-if="!isNet"
-                link
-                type="danger"
-                :disabled="saving || unknownBatch"
-                @click="batch('delete', [row.id])"
-                >移除费用</ElButton
-              >
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="fee-center__pager">
-      <ElButton :disabled="page <= 1 || state === 'loading'" @click="page -= 1"
-        >上一页</ElButton
-      ><span>{{ page }} / {{ pageCount }}</span
-      ><ElButton
-        :disabled="page >= pageCount || state === 'loading'"
-        @click="page += 1"
-        >下一页</ElButton
-      >
-    </div>
-    <input
-      ref="proofInput"
-      type="file"
-      accept=".pdf,.jpg,.jpeg,.png"
-      hidden
-      @change="uploadProof"
-    />
-    <p v-if="unknownProof" role="alert">
-      凭证保存结果尚未确认。请保留原请求核对。<ElButton
-        :disabled="saving"
-        @click="saveProof"
-        >用原请求重试保存</ElButton
-      >
-    </p>
-    <p v-if="unknownUpdate" role="alert">
-      费用修改结果尚未确认。<ElButton :disabled="saving" @click="load"
-        >刷新并核对当前费用</ElButton
-      >
-    </p>
-    <CaseFeeEntryDialog
-      v-if="props.caseId && props.canCreate"
-      :key="identity + props.caseId"
-      v-model:open="showCaseCreate"
+    <ElButton
+      class="action-size--standard"
+      @click="showCancellations = !showCancellations"
+      >{{ showCancellations ? '返回费用列表' : '取消／作废记录' }}</ElButton
+    >
+    <FeeCancellationHistoryPanel
+      v-if="showCancellations"
       :case-id="props.caseId"
-      :can-create="props.canCreate"
-      @saved="load"
+      :can-update="props.canUpdate"
     />
-    <ElDialog
-      v-model="showCreate"
-      title="新增费用"
-      width="min(920px, 94vw)"
-      :close-on-click-modal="!unknownCreate"
-      ><form class="fee-center__create" @submit.prevent="saveCreate">
-        <label v-if="!props.caseId"
-          >案件<ElSelect
-            v-model="form.caseId"
-            filterable
-            remote
-            :remote-method="searchCases"
-            :loading="caseLoading"
-            :disabled="saving || unknownCreate"
-            placeholder="搜索店铺、权利主体、被告或案号"
-            ><ElOption
-              v-for="item in caseOptions"
-              :key="item.id"
-              :value="item.id"
-              :label="`${item.businessNo} · ${item.shopName ?? item.customerName} · ${item.rightsHolderName}`" /></ElSelect
-          ><ElButton
-            v-if="caseOptions.length < caseTotal"
-            text
-            :disabled="caseLoading"
-            @click="
-              casePage += 1;
-              searchCases(caseQuery, true);
-            "
-            >加载更多案件</ElButton
-          ></label
-        ><label
+    <template v-else>
+      <div v-if="summary" class="fee-center__metrics" aria-label="费用统计">
+        <div>
+          <span>支出合计</span><strong>{{ summary.expense }} 元</strong>
+        </div>
+        <div>
+          <span>收入合计</span><strong>{{ summary.income }} 元</strong>
+        </div>
+        <div>
+          <span>待支付</span><strong>{{ summary.pending }} 元</strong
+          ><small>{{ summary.pendingCount }} 笔已发起支出</small>
+        </div>
+      </div>
+      <form
+        class="fee-center__filters"
+        aria-label="筛选费用"
+        @submit.prevent="applyFilter"
+      >
+        <label
           >费用类型<ElSelect
-            v-model="form.type"
-            :disabled="saving || unknownCreate"
+            v-model="filters.type"
+            clearable
+            placeholder="全部类型"
             ><ElOption
               v-for="type in types"
               :key="type"
               :value="type"
               :label="type" /></ElSelect></label
         ><label
-          >收支<ElSelect
-            v-model="form.direction"
-            :disabled="saving || unknownCreate"
-            ><ElOption value="支出" label="支出" /><ElOption
-              value="收入"
-              label="收入" /></ElSelect></label
-        ><label
-          >金额（元）<ElInput
-            v-model="form.amount"
-            :disabled="saving || unknownCreate"
-            inputmode="decimal"
-            placeholder="填写正金额" /></label
-        ><label
           >状态<ElSelect
-            v-model="form.status"
-            :disabled="saving || unknownCreate"
+            v-model="filters.status"
+            clearable
+            placeholder="全部状态"
             ><ElOption
-              v-for="status in formStatuses"
+              v-for="status in [...ordinaryStatuses, ...refundStatuses]"
               :key="status"
               :value="status"
               :label="status" /></ElSelect></label
         ><label
-          >费用日期<ElInput
-            v-model="form.feeDate"
-            type="date"
-            :disabled="saving || unknownCreate" /></label
-        ><label
-          >备注<ElInput
-            v-model="form.note"
-            maxlength="500"
-            :disabled="saving || unknownCreate"
-        /></label>
-        <p v-if="unknownCreate" role="status">
-          结果尚未确认，重试将使用原案件、金额、日期及请求键。
-        </p>
-        <ElButton
-          type="primary"
-          native-type="submit"
-          :loading="saving"
-          :disabled="!form.caseId"
-          >{{ unknownCreate ? '重试原创建请求' : '创建费用' }}</ElButton
+          >方向<ElSelect
+            v-model="filters.direction"
+            clearable
+            placeholder="全部方向"
+            ><ElOption value="支出" label="支出" /><ElOption
+              value="收入"
+              label="收入" /></ElSelect></label
+        ><label>费用日期从<ElInput v-model="filters.from" type="date" /></label
+        ><label>费用日期至<ElInput v-model="filters.to" type="date" /></label>
+        <div class="operation-actions fee-center__filter-actions">
+          <ElButton native-type="submit" class="action-size--standard"
+            >查询</ElButton
+          >
+          <ElButton
+            native-type="button"
+            class="action-size--compact"
+            @click="clearFilter"
+            >清除</ElButton
+          >
+        </div>
+      </form>
+      <div class="operation-bar fee-center__toolbar">
+        <span>已选 {{ selected.size }} 条 · 当前筛选 {{ total }} 条</span>
+        <div class="operation-actions fee-center__toolbar-actions">
+          <ElButton
+            v-if="props.canLaunch"
+            class="action-size--standard"
+            :disabled="
+              saving || selected.size === 0 || unknownBatch || zeroOnlySelection
+            "
+            @click="batch('launch')"
+            >批量发起</ElButton
+          ><ElButton
+            v-if="props.canDelete"
+            class="action-size--compact"
+            type="danger"
+            plain
+            :disabled="saving || selected.size === 0 || unknownBatch"
+            @click="batch('delete')"
+            >删除</ElButton
+          >
+          <details>
+            <summary>展示列</summary>
+            <div class="fee-center__columns">
+              <ElCheckbox
+                v-for="key in columnKeys"
+                :key="key"
+                v-model="columns[key]"
+                >{{ columnLabels[key] }}</ElCheckbox
+              >
+            </div>
+          </details>
+        </div>
+      </div>
+      <p v-if="zeroOnlySelection" role="status">
+        零元费用仅保留记录，不可发起；混选时零元费用将跳过。
+      </p>
+      <p v-if="error" role="alert">{{ error }}</p>
+      <p v-if="unknownBatch" role="status">
+        结果尚未确认。<ElButton :disabled="saving" @click="batch('launch')"
+          >重试原批量请求</ElButton
         >
-      </form></ElDialog
-    >
+      </p>
+      <p v-if="notice" role="status">{{ notice }}</p>
+      <p v-if="state === 'loading'">正在读取费用…</p>
+      <div v-else-if="state === 'failed'">
+        <ElButton @click="load">重新读取</ElButton>
+      </div>
+      <p v-else-if="rows.length === 0">当前条件下暂无费用</p>
+      <div v-else class="fee-center__table">
+        <table>
+          <thead>
+            <tr>
+              <th>
+                <ElCheckbox
+                  :model-value="allSelected"
+                  aria-label="全选当前筛选费用"
+                  :disabled="unknownBatch"
+                  @change="toggleAll"
+                />
+              </th>
+              <th
+                v-for="key in columnKeys.filter((column) => columns[column])"
+                :key="key"
+              >
+                {{ columnLabels[key] }}
+              </th>
+              <th>凭证</th>
+              <th v-if="props.canDelete">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="{ row, key, isNet } in tableRows" :key="key">
+              <td>
+                <ElButton v-if="isNet" link @click="toggleGroup(row.id)">{{
+                  expandedGroups.has(row.id) ? '收起原始费用' : '展开原始费用'
+                }}</ElButton>
+                <ElCheckbox
+                  v-else
+                  :model-value="selected.has(row.id)"
+                  :aria-label="`选择 ${row.businessNo} ${row.type}`"
+                  :disabled="unknownBatch"
+                  @change="toggle(row.id)"
+                />
+              </td>
+              <td v-if="columns.type">
+                {{ row.type }}<small v-if="isNet">净额 · 仅展示</small>
+                <small>
+                  ·
+                  {{
+                    row.source === 'auto'
+                      ? '公证来源'
+                      : row.source === 'manual'
+                        ? '手工登记'
+                        : '来源待定'
+                  }}</small
+                >
+              </td>
+              <td v-if="columns.direction">{{ row.direction }}</td>
+              <td v-if="columns.amount" class="fee-center__money">
+                {{ row.amount }}
+              </td>
+              <td v-if="columns.status">
+                <ElSelect
+                  v-if="!isNet"
+                  :model-value="row.status"
+                  :disabled="
+                    saving || unknownBatch || unknownUpdate || !props.canUpdate
+                  "
+                  @change="setStatus(row, $event)"
+                  ><ElOption
+                    v-for="status in row.type === '诉讼退费'
+                      ? refundStatuses
+                      : ordinaryStatuses"
+                    :key="status"
+                    :value="status"
+                    :disabled="status === '发起' && isZeroFeeAmount(row.amount)"
+                    :label="status" /></ElSelect
+                ><small v-if="isZeroFeeAmount(row.amount) && !isNet">
+                  零元费用仅保留记录，不可标记为发起 </small
+                ><span v-else-if="isNet">{{ row.status }}（代表状态）</span>
+              </td>
+              <td v-if="columns.date">{{ row.feeDate }}</td>
+              <td v-if="columns.platform">
+                {{
+                  row.platform === null
+                    ? '—'
+                    : labelLeadBusinessValue(row.platform)
+                }}
+              </td>
+              <td v-if="columns.shop">{{ row.shopName ?? '—' }}</td>
+              <td v-if="columns.defendant">
+                {{ row.defendantNames.join('、') || '—' }}
+              </td>
+              <td v-if="columns.case">
+                <RouterLink :to="`/cases/${row.caseId}`">{{
+                  row.courtCaseNo ?? row.businessNo
+                }}</RouterLink>
+              </td>
+              <td v-if="columns.note">
+                <ElInput
+                  v-if="props.canUpdate && !isNet"
+                  v-model="noteDrafts[row.id]"
+                  :aria-label="`${row.businessNo} ${row.type}备注`"
+                  :maxlength="500"
+                  :disabled="saving || unknownUpdate"
+                  @change="setNote(row, $event)"
+                /><span v-else>{{ isNet ? '—' : row.note || '—' }}</span>
+              </td>
+              <td>
+                <span v-if="isNet">凭证见各笔原始费用</span>
+                <div v-else class="operation-actions fee-center__proof-actions">
+                  <ElButton
+                    v-if="row.proofContentVersionId"
+                    link
+                    class="action-size--wide"
+                    @click="downloadProof(row)"
+                    >{{ row.proofOriginalFilename || '下载凭证' }}</ElButton
+                  ><span v-else>未上传</span
+                  ><template v-if="props.canUpdate"
+                    ><ElButton
+                      link
+                      :disabled="saving || unknownProof"
+                      @click="chooseProof(row)"
+                      >{{
+                        row.proofContentVersionId ? '替换' : '上传凭证/发票'
+                      }}</ElButton
+                    ><ElButton
+                      v-if="row.proofContentVersionId"
+                      link
+                      class="action-size--compact"
+                      :disabled="saving || unknownProof"
+                      @click="clearProof(row)"
+                      >移除凭证</ElButton
+                    ></template
+                  >
+                </div>
+              </td>
+              <td v-if="props.canDelete">
+                <ElButton
+                  v-if="!isNet"
+                  link
+                  type="danger"
+                  :disabled="saving || unknownBatch"
+                  @click="batch('delete', [row.id])"
+                  class="action-size--wide"
+                  >移除费用</ElButton
+                ><ElButton
+                  v-if="!isNet"
+                  link
+                  type="danger"
+                  :disabled="saving || unknownBatch"
+                  @click="cancelOriginalFee(row)"
+                  class="action-size--wide"
+                  >{{
+                    unknownCancellation
+                      ? '核实取消结果／重试原请求'
+                      : '取消费用'
+                  }}</ElButton
+                >
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="fee-center__pager">
+        <ElButton
+          :disabled="page <= 1 || state === 'loading'"
+          @click="page -= 1"
+          >上一页</ElButton
+        ><span>{{ page }} / {{ pageCount }}</span
+        ><ElButton
+          :disabled="page >= pageCount || state === 'loading'"
+          @click="page += 1"
+          >下一页</ElButton
+        >
+      </div>
+      <input
+        ref="proofInput"
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png"
+        hidden
+        @change="uploadProof"
+      />
+      <p v-if="unknownProof" role="alert">
+        凭证保存结果尚未确认。请保留原请求核对。<ElButton
+          :disabled="saving"
+          @click="saveProof"
+          >用原请求重试保存</ElButton
+        >
+      </p>
+      <p v-if="unknownCancellation" role="alert">
+        取消结果尚未确认。系统保留原费用、原因和请求键。<ElButton
+          :disabled="saving"
+          @click="retryPendingCancellation"
+          >核实取消结果／重试原请求</ElButton
+        >
+      </p>
+      <p v-if="unknownUpdate" role="alert">
+        费用修改结果尚未确认。<ElButton :disabled="saving" @click="load"
+          >刷新并核对当前费用</ElButton
+        >
+      </p>
+      <CaseFeeEntryDialog
+        v-if="props.caseId && props.canCreate"
+        :key="identity + props.caseId"
+        v-model:open="showCaseCreate"
+        :case-id="props.caseId"
+        :can-create="props.canCreate"
+        @saved="load"
+      />
+      <ElDialog
+        v-model="showCreate"
+        title="新增费用"
+        width="min(920px, 94vw)"
+        :close-on-click-modal="!unknownCreate"
+        ><form class="fee-center__create" @submit.prevent="saveCreate">
+          <label v-if="!props.caseId"
+            >案件<ElSelect
+              v-model="form.caseId"
+              filterable
+              remote
+              :remote-method="searchCases"
+              :loading="caseLoading"
+              :disabled="saving || unknownCreate"
+              placeholder="搜索店铺、权利主体、被告或案号"
+              ><ElOption
+                v-for="item in caseOptions"
+                :key="item.id"
+                :value="item.id"
+                :label="`${item.businessNo} · ${item.shopName ?? item.customerName} · ${item.rightsHolderName}`" /></ElSelect
+            ><ElButton
+              v-if="caseOptions.length < caseTotal"
+              text
+              :disabled="caseLoading"
+              @click="
+                casePage += 1;
+                searchCases(caseQuery, true);
+              "
+              >加载更多案件</ElButton
+            ></label
+          ><label
+            >费用类型<ElSelect
+              v-model="form.type"
+              :disabled="saving || unknownCreate"
+              ><ElOption
+                v-for="type in types"
+                :key="type"
+                :value="type"
+                :label="type" /></ElSelect></label
+          ><label
+            >收支<ElSelect
+              v-model="form.direction"
+              :disabled="saving || unknownCreate"
+              ><ElOption value="支出" label="支出" /><ElOption
+                value="收入"
+                label="收入" /></ElSelect></label
+          ><label
+            >金额（元）<ElInput
+              v-model="form.amount"
+              :disabled="saving || unknownCreate"
+              inputmode="decimal"
+              placeholder="填写正金额" /></label
+          ><label
+            >状态<ElSelect
+              v-model="form.status"
+              :disabled="saving || unknownCreate"
+              ><ElOption
+                v-for="status in formStatuses"
+                :key="status"
+                :value="status"
+                :label="status" /></ElSelect></label
+          ><label
+            >费用日期<ElInput
+              v-model="form.feeDate"
+              type="date"
+              :disabled="saving || unknownCreate" /></label
+          ><label
+            >备注<ElInput
+              v-model="form.note"
+              maxlength="500"
+              :disabled="saving || unknownCreate"
+          /></label>
+          <p v-if="unknownCreate" role="status">
+            结果尚未确认，重试将使用原案件、金额、日期及请求键。
+          </p>
+          <ElButton
+            type="primary"
+            native-type="submit"
+            :loading="saving"
+            :disabled="!form.caseId"
+            >{{ unknownCreate ? '重试原创建请求' : '创建费用' }}</ElButton
+          >
+        </form></ElDialog
+      >
+    </template>
   </section>
 </template>
 
 <style scoped>
 .fee-center {
   display: grid;
-  gap: 16px;
+  gap: var(--app-section-gap, 16px);
   color: var(--color-ink);
 }
 .fee-center__heading,
-.fee-center__toolbar,
 .fee-center__pager {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.fee-center__heading {
   justify-content: space-between;
+  min-width: 0;
+}
+.fee-center__heading > div:first-child {
+  min-width: 0;
 }
 h2,
 p {
   margin: 0;
+}
+.fee-center__heading h2 {
+  font-size: 15px;
 }
 .fee-center__heading p {
   color: var(--color-ink-muted);
@@ -1101,16 +1252,15 @@ p {
 .fee-center__metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  border: 1px solid var(--color-hairline);
+  gap: var(--app-detail-gap, 12px);
 }
 .fee-center__metrics > div {
   display: grid;
-  gap: 6px;
-  padding: 16px;
-  border-right: 1px solid var(--color-hairline);
-}
-.fee-center__metrics > div:last-child {
-  border-right: 0;
+  align-content: start;
+  gap: 4px;
+  min-height: 78px;
+  padding: 10px 12px;
+  background: var(--color-surface-1);
 }
 .fee-center__metrics span,
 small {
@@ -1118,27 +1268,29 @@ small {
   font-size: 12px;
 }
 .fee-center__metrics strong {
-  font-size: 20px;
+  font-size: 18px;
   font-variant-numeric: tabular-nums;
-  font-weight: 500;
+  font-weight: 600;
+  text-align: right;
 }
 .fee-center__create {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   align-items: end;
-  gap: 10px;
+  gap: var(--app-detail-gap, 12px);
 }
 .fee-center__filters {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr)) auto;
   align-items: end;
-  flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
 }
 label {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   font-size: 12px;
-  min-width: 140px;
+  min-width: 0;
 }
 .fee-center__create label {
   min-width: 0;
@@ -1153,51 +1305,98 @@ label {
   grid-column: 1 / -1;
   justify-self: end;
 }
+.fee-center__filter-actions {
+  flex-wrap: nowrap;
+}
+.fee-center__toolbar {
+  justify-content: space-between;
+}
 .fee-center__toolbar > span {
-  margin-right: auto;
+  flex: 1 1 auto;
   font-size: 12px;
+  color: var(--color-ink-muted);
+}
+.fee-center__toolbar-actions {
+  justify-content: flex-end;
 }
 .fee-center__columns {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 6px 12px;
+  min-width: min(480px, 90vw);
 }
 .fee-center__table {
   overflow-x: auto;
+  min-width: 0;
 }
 table {
   width: 100%;
   border-collapse: collapse;
   white-space: nowrap;
+  font-size: 12px;
 }
 th,
 td {
   text-align: left;
-  padding: 10px;
+  padding: 7px 8px;
   border-bottom: 1px solid var(--color-hairline);
-  font-size: 12px;
 }
 th {
   color: var(--color-ink-muted);
   background: var(--color-surface-2);
   font-weight: 500;
 }
-td .el-select {
-  width: 110px;
+.fee-center__table td .el-select {
+  width: 112px;
 }
-.money {
+.fee-center__money {
   font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.fee-center__proof-actions {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.fee-center__proof-actions :deep(.el-button.is-link) {
+  padding-inline: 2px;
 }
 .fee-center__pager {
   justify-content: end;
   font-size: 12px;
+}
+.fee-center__pager > span {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-muted);
+}
+[role='status'],
+[role='alert'] {
+  margin: 0;
 }
 [role='alert'] {
   color: var(--color-danger);
 }
 @media (max-width: 700px) {
   .fee-center__create {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fee-center__create label:first-child,
+  .fee-center__create > p {
+    grid-column: 1 / -1;
+  }
+  .fee-center__filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .fee-center__filter-actions {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 420px) {
+  .fee-center__create,
+  .fee-center__filters {
     grid-template-columns: 1fr;
   }
+  .fee-center__filter-actions,
   .fee-center__create label:first-child,
   .fee-center__create > p,
   .fee-center__create > button {
@@ -1206,9 +1405,11 @@ td .el-select {
   .fee-center__metrics {
     grid-template-columns: 1fr;
   }
-  .fee-center__metrics > div {
-    border-right: 0;
-    border-bottom: 1px solid var(--color-hairline);
+  .fee-center__toolbar {
+    align-items: flex-start;
+  }
+  .fee-center__toolbar-actions {
+    flex-wrap: wrap;
   }
 }
 </style>

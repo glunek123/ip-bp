@@ -1,4 +1,5 @@
 import { CaseArchiveService } from './case-archive.service';
+import { CaseEarlyArchiveService } from './case-early-archive.service';
 import { CaseExecutionRecordEditService } from './case-execution-record-edit.service';
 import { CaseHistoricalRecordEditService } from './case-historical-record-edit.service';
 import { CaseClosureService } from './case-closure.service';
@@ -245,6 +246,7 @@ describe('exact internal section record correction routes', () => {
           CaseExecutionFinishService,
           CaseClosureService,
           CaseArchiveService,
+          CaseEarlyArchiveService,
           FilingCourtService,
         ].map((provide) => ({ provide, useValue: {} })),
         { provide: CaseExecutionRecordEditService, useValue: execution },
@@ -456,6 +458,7 @@ describe('internal complaint mailing route identity', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       {} as FilingCourtService,
       {} as never,
       {} as never,
@@ -544,6 +547,7 @@ describe('case read OpenAPI contract', () => {
             correct: jest.fn().mockResolvedValue({ stage: 'ARCHIVED' }),
           },
         },
+        { provide: CaseEarlyArchiveService, useValue: { archive: jest.fn() } },
         {
           provide: CaseClosureService,
           useValue: closure,

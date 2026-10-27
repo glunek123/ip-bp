@@ -5,6 +5,7 @@ import CaseExecutionFilingFollowupPanel from './CaseExecutionFilingFollowupPanel
 import CaseExecutionFinishPanel from './CaseExecutionFinishPanel.vue';
 import CaseClosurePanel from './CaseClosurePanel.vue';
 import CaseArchivePanel from './CaseArchivePanel.vue';
+import CaseEarlyArchivePanel from './CaseEarlyArchivePanel.vue';
 import {
   parseCaseActionIntent,
   primaryCaseAction,
@@ -800,6 +801,12 @@ const finishCallbacks = computed(() => {
 });
 
 const archiveSession = caseArchiveSession(auth, () => identity.value);
+const earlyArchiveOpen = ref(false);
+function handleEarlyArchiveChanged(): void {
+  earlyArchiveOpen.value = false;
+  notifyWorkflowChanged();
+  void load();
+}
 const archivePending = computed(() => archiveSession.pending(id.value));
 const archiveCallbacks = computed(() => {
   const caseId = item.value?.id ?? id.value;
@@ -1839,6 +1846,14 @@ onBeforeUnmount(() => {
             @click="openCommand(primaryCommand)"
             >{{ primaryCommand.label }}</ElButton
           >
+          <ElButton
+            v-if="item.canEarlyArchive === true && item.stage !== 'ARCHIVED'"
+            class="action-size--wide"
+            type="danger"
+            data-test="open-detail-early-archive"
+            @click="earlyArchiveOpen = true"
+            >提前归档</ElButton
+          >
           <details
             v-if="moreCommands.length > 0"
             data-test="workspace-more-actions"
@@ -2526,6 +2541,14 @@ onBeforeUnmount(() => {
         </ElDrawer>
       </template>
     </CaseWorkspaceShell>
+    <CaseEarlyArchivePanel
+      v-if="earlyArchiveOpen && item"
+      :item="item"
+      :context-key="identity"
+      @close="earlyArchiveOpen = false"
+      @completed="handleEarlyArchiveChanged"
+      @access-lost="load"
+    />
   </div>
 </template>
 

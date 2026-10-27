@@ -324,7 +324,10 @@ describe('handling group frozen production API', () => {
         caseIds: [id, other],
         idempotencyKey: ' key',
       }),
-    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '案件系列请求无效',
+    });
     await expect(
       dissolveCaseHandlingGroup(group, {
         expectedRevision: 1,

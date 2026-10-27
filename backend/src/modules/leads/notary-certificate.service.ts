@@ -12,6 +12,7 @@ import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
 import { CaseCreationService } from '../cases';
+import { resolveHistoricalNumber } from '../business-numbering';
 import { initializeNotaryEvidence } from '../evidence';
 import { initializeNotaryFees } from '../settlements';
 
@@ -499,7 +500,6 @@ export class NotaryCertificateService {
     );
     if (
       stored === null ||
-      stored.businessNo !== caseValue.businessNo ||
       stored.certificate === null ||
       stored.certificate.toVersion !== result.version ||
       stored.certificate.certificateNo !== certificateValue.certificateNo ||
@@ -509,7 +509,22 @@ export class NotaryCertificateService {
       stored.certificate.needDisclose !== certificateValue.needDisclose
     )
       throw this.corruptReceipt();
-    return snapshot as CertificateResult;
+    if (
+      !(await resolveHistoricalNumber(tx, {
+        entityType: 'CASE',
+        entityId: caseValue.id,
+        receiptNumber: caseValue.businessNo,
+        currentNumber: stored.businessNo,
+      }))
+    )
+      throw this.corruptReceipt();
+    return {
+      ...(snapshot as CertificateResult),
+      case: {
+        ...(snapshot as CertificateResult).case,
+        businessNo: stored.businessNo,
+      },
+    };
   }
   private isRetryable(error: unknown): boolean {
     if (error === null || typeof error !== 'object') return false;

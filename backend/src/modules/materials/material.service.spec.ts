@@ -387,6 +387,8 @@ describe('MaterialService', () => {
       f.transaction.materialReference.findFirst.mockResolvedValue({
         id: 'frozen-proof',
       });
+      f.transaction.feeCancellationPayment.findFirst.mockResolvedValue(null);
+      f.transaction.feeRefundReconciliation.findFirst.mockResolvedValue(null);
       f.storage.open.mockResolvedValue(Readable.from('pdf'));
       return f;
     }
@@ -437,6 +439,163 @@ describe('MaterialService', () => {
         f.service.openVersion(actor, 'proof', 'proof-cv'),
       ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
       expect(f.storage.open).not.toHaveBeenCalled();
+    });
+    it.each([
+      {
+        kind: 'payment',
+        model: 'feeCancellationPayment' as const,
+        resourceType: 'fee-payment-verification',
+        action: 'fee.payment-verified',
+        detailId: 'paymentId',
+      },
+      {
+        kind: 'refund',
+        model: 'feeRefundReconciliation' as const,
+        resourceType: 'fee-refund-reconciliation',
+        action: 'fee.refund-reconciled',
+        detailId: 'refundId',
+      },
+    ])(
+      'opens an exact $kind proof only with fee.read, same-case immutable fact, audit and frozen reference',
+      async ({ model, resourceType, action, detailId }) => {
+        const f = feeSetup();
+        f.transaction.feeRecord.findFirst.mockResolvedValue(null);
+        f.transaction[model].findFirst.mockResolvedValue({
+          id: 'fact',
+          feeId: 'fee',
+          cancellationId: 'cancellation',
+          actorUserId: actor.userId,
+          actionEventId: 'audit',
+        });
+        await expect(
+          f.service.openVersion(actor, 'proof', 'proof-cv'),
+        ).resolves.toMatchObject({ originalFilename: '凭证.pdf' });
+        expect(f.transaction[model].findFirst).toHaveBeenCalledWith({
+          where: expect.objectContaining({
+            departmentId: actor.departmentId,
+            caseId: 'case',
+            proofMaterialId: 'proof',
+            proofContentVersionId: 'proof-cv',
+            cancellation: {
+              is: {
+                departmentId: actor.departmentId,
+                caseId: 'case',
+                outcome: 'VOIDED',
+              },
+            },
+          }),
+          select: expect.any(Object),
+        });
+        expect(f.transaction.materialReference.findFirst).toHaveBeenCalledWith({
+          where: expect.objectContaining({
+            departmentId: actor.departmentId,
+            resourceType,
+            resourceId: 'fact',
+            materialId: 'proof',
+            contentVersionId: 'proof-cv',
+            actionEventId: 'audit',
+            actionEvent: expect.objectContaining({
+              resourceId: 'fee',
+              action,
+              internalActorUserId: actor.userId,
+              AND: expect.arrayContaining([
+                { details: { path: [detailId], equals: 'fact' } },
+              ]),
+            }),
+          }),
+          select: { id: true },
+        });
+        expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+          actor,
+          'fee.read',
+          f.transaction,
+        );
+      },
+    );
+    it('rejects a new reconciliation proof without its exact fact or reference', async () => {
+      const f = feeSetup();
+      f.transaction.feeRecord.findFirst.mockResolvedValue(null);
+      await expect(
+        f.service.openVersion(actor, 'proof', 'proof-cv'),
+      ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+      f.transaction.feeCancellationPayment.findFirst.mockResolvedValue({
+        id: 'fact',
+        feeId: 'fee',
+        cancellationId: 'cancellation',
+        actorUserId: actor.userId,
+        actionEventId: 'audit',
+      });
+      f.transaction.materialReference.findFirst.mockResolvedValue(null);
+      await expect(
+        f.service.openVersion(actor, 'proof', 'proof-cv'),
+      ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+      expect(f.storage.open).not.toHaveBeenCalled();
+    });
+    it('reuses only a previously reconciled exact historical proof with current fee.read', async () => {
+      const f = feeSetup();
+      const historical = {
+        id: 'proof',
+        departmentId: actor.departmentId,
+        ownerType: 'CASE',
+        ownerId: 'case',
+        category: 'FEE_PROOF',
+        purpose: 'FEE_PROOF',
+        status: 'ACTIVE',
+        currentVersionId: 'new-cv',
+        contentVersions: [
+          {
+            id: 'proof-cv',
+            status: 'AVAILABLE',
+            mimeType: 'application/pdf',
+            sizeBytes: 4n,
+          },
+        ],
+      };
+      f.transaction.case.findFirst.mockResolvedValue({ id: 'case' });
+      f.transaction.material.findMany.mockResolvedValue([historical]);
+      f.transaction.feeCancellationPayment.findFirst.mockResolvedValue({
+        id: 'fact',
+        feeId: 'fee',
+        cancellationId: 'cancellation',
+        actorUserId: actor.userId,
+        actionEventId: 'audit',
+      });
+      const select = () =>
+        f.service.assertAvailableVersions(
+          f.transaction as unknown as MaterialTransactionClient,
+          actor,
+          {
+            ownerType: 'CASE',
+            ownerId: 'case',
+            category: 'FEE_PROOF',
+            contentVersionIds: ['proof-cv'],
+          },
+        );
+      await expect(select()).resolves.toHaveLength(1);
+      expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+        actor,
+        'fee.read',
+        f.transaction,
+      );
+      f.transaction.feeCancellationPayment.findFirst.mockResolvedValue(null);
+      await expect(select()).rejects.toMatchObject({
+        response: { code: 'MATERIAL_VERSION_INVALID' },
+      });
+      f.transaction.feeCancellationPayment.findFirst.mockResolvedValue({
+        id: 'fact',
+        feeId: 'fee',
+        cancellationId: 'cancellation',
+        actorUserId: actor.userId,
+        actionEventId: 'audit',
+      });
+      f.access.authorizeDepartmentAction.mockImplementation(
+        async (_actor: ActorContext, action: string) => {
+          if (action === 'fee.read') throw new ForbiddenException();
+        },
+      );
+      await expect(select()).rejects.toMatchObject({
+        response: { code: 'ACTION_FORBIDDEN' },
+      });
     });
     it.each(['fee', 'reference'])(
       'does not download an unconsumed/cross-case/forged proof when exact %s proof is absent',
@@ -4691,6 +4850,151 @@ describe('MaterialService', () => {
     ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
   });
 
+  it('allows LEAD screenshot drafts only for an editable active lead', async () => {
+    const fixture = createFixture();
+    const leadId = '55555555-5555-4555-8555-555555555555';
+    fixture.access.buildLeadScope.mockResolvedValue({
+      departmentId: actor.departmentId,
+    });
+    fixture.db.lead.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+      status: 'WAITING_REVIEW',
+    });
+    await expect(
+      fixture.service.createUploadDraft(actor, {
+        ownerType: 'LEAD',
+        ownerId: leadId,
+        category: 'LEAD_SCREENSHOT',
+        purpose: 'LEAD_SCREENSHOT',
+        originalFilename: 'capture.png',
+        declaredMimeType: 'image/png',
+      }),
+    ).resolves.toMatchObject({ ownerType: 'LEAD', ownerId: leadId });
+    expect(fixture.access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'lead.edit',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+      undefined,
+    );
+
+    fixture.db.lead.findFirst.mockResolvedValueOnce({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+      status: 'ARCHIVED',
+    });
+    await expect(
+      fixture.service.createUploadDraft(actor, {
+        ownerType: 'LEAD',
+        ownerId: leadId,
+        category: 'LEAD_SCREENSHOT',
+        purpose: 'LEAD_SCREENSHOT',
+        originalFilename: 'capture.png',
+        declaredMimeType: 'image/png',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+  });
+
+  it('rechecks archival before finalizing a LEAD screenshot draft', async () => {
+    const fixture = createFixture();
+    fixture.db.uploadDraft.findUnique.mockResolvedValue(
+      openDraft({ ownerType: 'LEAD' }),
+    );
+    fixture.access.buildLeadScope.mockResolvedValue({
+      departmentId: actor.departmentId,
+    });
+    fixture.db.lead.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+      status: 'ARCHIVED',
+    });
+    await expect(
+      fixture.service.finalizeUpload(
+        actor,
+        '44444444-4444-4444-8444-444444444444',
+        Readable.from(Buffer.from('bytes')),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    expect(fixture.storage.put).not.toHaveBeenCalled();
+  });
+
+  it.each(['archive', 'revoke', 'disable'] as const)(
+    'rejects a LEAD screenshot when %s happens during storage.put',
+    async (change) => {
+      const fixture = createFixture();
+      fixture.db.uploadDraft.findUnique.mockResolvedValue(
+        openDraft({ ownerType: 'LEAD' }),
+      );
+      fixture.db.lead.findFirst
+        .mockResolvedValueOnce({
+          departmentId: actor.departmentId,
+          responsibleUserId: actor.userId,
+          teamId: null,
+          status: 'WAITING_REVIEW',
+        })
+        .mockResolvedValue({
+          departmentId: actor.departmentId,
+          responsibleUserId: actor.userId,
+          teamId: null,
+          status: change === 'archive' ? 'ARCHIVED' : 'WAITING_REVIEW',
+        });
+      fixture.transaction.userAccount.findUnique.mockResolvedValue({
+        active: change !== 'disable',
+        accountType: 'INTERNAL',
+      });
+      fixture.access.buildLeadScope.mockImplementation(
+        (_actor, _action, reader) =>
+          reader === fixture.transaction && change === 'revoke'
+            ? Promise.reject(new ForbiddenException())
+            : Promise.resolve({ departmentId: actor.departmentId }),
+      );
+      let releasePut:
+        | ((value: {
+            sizeBytes: number;
+            sha256: string;
+            detectedMimeType: string;
+          }) => void)
+        | undefined;
+      let putStarted: (() => void) | undefined;
+      const putStartedPromise = new Promise<void>((resolve) => {
+        putStarted = resolve;
+      });
+      fixture.storage.put.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            releasePut = resolve;
+            putStarted?.();
+          }),
+      );
+      const pending = fixture.service.finalizeUpload(
+        actor,
+        '44444444-4444-4444-8444-444444444444',
+        Readable.from(Buffer.from('bytes')),
+      );
+      await putStartedPromise;
+      releasePut?.({
+        sizeBytes: 5,
+        sha256: 'a'.repeat(64),
+        detectedMimeType: 'image/png',
+      });
+      await expect(pending).rejects.toMatchObject({
+        response: {
+          code: change === 'archive' ? 'VERSION_CONFLICT' : 'ACTION_FORBIDDEN',
+        },
+      });
+      expect(fixture.transaction.material.create).not.toHaveBeenCalled();
+      expect(fixture.storage.delete).toHaveBeenCalledTimes(1);
+      expect(fixture.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('FROM "leads"'),
+        '55555555-5555-4555-8555-555555555555',
+        actor.departmentId,
+      );
+    },
+  );
+
   it('rechecks current lead authorization before consuming an upload draft', async () => {
     const fixture = createFixture();
     fixture.db.uploadDraft.findUnique.mockResolvedValue(openDraft());
@@ -5969,6 +6273,7 @@ describe('MaterialService', () => {
         departmentId: true,
         responsibleUserId: true,
         teamId: true,
+        status: true,
       },
     });
     expect(transaction.uploadDraft.findFirst).not.toHaveBeenCalled();
@@ -6495,6 +6800,8 @@ function createFixture() {
   const transaction = {
     $queryRaw: jest.fn().mockResolvedValue([]),
     feeRecord: { findFirst: jest.fn() },
+    feeCancellationPayment: { findFirst: jest.fn().mockResolvedValue(null) },
+    feeRefundReconciliation: { findFirst: jest.fn().mockResolvedValue(null) },
     notaryCertificate: { findFirst: jest.fn() },
     evidencePaperCertificate: { findFirst: jest.fn() },
     caseExecutionFilingSupplement: {

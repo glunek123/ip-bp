@@ -75,6 +75,17 @@ const displayItems = computed(() =>
     products: [...lead.products].sort((a, b) => a.position - b.position),
   })),
 );
+const productLinkMessage = ref('');
+async function copyProductUrl(url: string): Promise<void> {
+  const safeUrl = safeProductUrl(url);
+  if (!safeUrl) return;
+  try {
+    await globalThis.navigator.clipboard.writeText(url);
+    productLinkMessage.value = '商品链接已复制';
+  } catch {
+    productLinkMessage.value = '复制失败，请打开商品链接后从地址栏复制';
+  }
+}
 const total = ref(0);
 const currentPage = ref(1);
 const pageSize = ref(20);
@@ -1060,7 +1071,7 @@ onBeforeUnmount(() => {
               <col style="width: 100px" />
               <col style="width: 160px" />
               <col style="width: 160px" />
-              <col style="width: 220px" />
+              <col style="width: 290px" />
               <col style="width: 100px" />
               <col style="width: 120px" />
               <col style="width: 100px" />
@@ -1075,11 +1086,16 @@ onBeforeUnmount(() => {
                 <th>平台</th>
                 <th>店铺名</th>
                 <th>店铺ID</th>
-                <th>商品链接</th>
+                <th>商品信息</th>
                 <th class="num">销量</th>
                 <th class="num">单价（元）</th>
                 <th class="num">评论数</th>
-                <th class="num">销售总额（估算／元）</th>
+                <th
+                  class="num"
+                  title="单价×销量；销量为0时按评论数计算。仅用于线索评估，不代表实际成交额"
+                >
+                  计算金额（元）
+                </th>
                 <th>线索发现日期</th>
               </tr>
             </thead>
@@ -1160,32 +1176,72 @@ onBeforeUnmount(() => {
                 <td class="business-list-cell--text mono">
                   {{ lead.shopExternalId || '未登记' }}
                 </td>
-                <td class="business-list-cell--text">
-                  <details v-if="products.length">
-                    <summary>
-                      {{ products.length }} 件商品 · 查看名称／链接
-                    </summary>
-                    <ul class="lead-list-products">
-                      <li v-for="product in products" :key="product.id">
-                        <span>{{ product.title || '未登记商品名称' }}</span>
-                        <a
-                          v-if="safeProductUrl(product.url)"
-                          :href="safeProductUrl(product.url)!"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          >{{ product.url }}</a
+                <td class="business-list-cell--text lead-product-cell">
+                  <div v-if="products.length" class="lead-list-products">
+                    <span
+                      class="lead-product-name"
+                      :title="products[0]?.title || '未登记商品名称'"
+                      >{{ products[0]?.title || '未登记商品名称' }}</span
+                    >
+                    <a
+                      v-if="safeProductUrl(products[0]?.url ?? null)"
+                      class="lead-product-url"
+                      :href="safeProductUrl(products[0]?.url ?? null)!"
+                      :title="products[0]?.url ?? ''"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      >{{ products[0]?.url }}</a
+                    >
+                    <span v-else class="lead-product-url">无有效商品链接</span>
+                    <button
+                      v-if="safeProductUrl(products[0]?.url ?? null)"
+                      type="button"
+                      class="lead-product-copy"
+                      :aria-label="`复制商品链接：${products[0]?.title || '未登记商品名称'}`"
+                      @click="copyProductUrl(products[0]!.url!)"
+                    >
+                      复制
+                    </button>
+                    <details
+                      v-if="products.length > 1"
+                      class="lead-product-more"
+                    >
+                      <summary>{{ products.length }} 件商品</summary>
+                      <ul>
+                        <li
+                          v-for="product in products.slice(1)"
+                          :key="product.id"
                         >
-                        <span v-else>无有效商品链接</span>
-                      </li>
-                    </ul>
-                  </details>
+                          <span :title="product.title || '未登记商品名称'">{{
+                            product.title || '未登记商品名称'
+                          }}</span>
+                          <a
+                            v-if="safeProductUrl(product.url)"
+                            :href="safeProductUrl(product.url)!"
+                            :title="product.url ?? ''"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >{{ product.url }}</a
+                          >
+                          <span v-else>无有效商品链接</span>
+                          <button
+                            v-if="safeProductUrl(product.url)"
+                            type="button"
+                            @click="copyProductUrl(product.url!)"
+                          >
+                            复制
+                          </button>
+                        </li>
+                      </ul>
+                    </details>
+                  </div>
                   <span v-else>未登记商品</span>
                 </td>
                 <td
                   class="num mono business-list-cell--number"
                   data-test="lead-quantity-total"
                 >
-                  {{ summary.quantityTotal }}
+                  {{ products.length ? summary.quantityTotal : '未登记' }}
                 </td>
                 <td
                   class="num mono business-list-cell--number"
@@ -1197,13 +1253,13 @@ onBeforeUnmount(() => {
                   class="num mono business-list-cell--number"
                   data-test="lead-comment-total"
                 >
-                  {{ summary.commentTotal }}
+                  {{ products.length ? summary.commentTotal : '未登记' }}
                 </td>
                 <td
                   class="num mono business-list-cell--number"
                   data-test="lead-estimated-amount"
                 >
-                  {{ summary.estimatedAmount }}
+                  {{ products.length ? summary.estimatedAmount : '未计算' }}
                 </td>
                 <td class="mono business-list-cell--nowrap">
                   {{ formatTime(lead.foundAt) }}
@@ -1212,6 +1268,9 @@ onBeforeUnmount(() => {
             </tbody>
           </table>
         </div>
+        <p v-if="productLinkMessage" class="field-help" role="status">
+          {{ productLinkMessage }}
+        </p>
         <nav
           v-if="state === 'ready'"
           class="lead-pagination business-list-footer"
@@ -1371,7 +1430,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .lead-list-table {
-  min-width: 1560px;
+  min-width: 1630px;
   table-layout: fixed;
 }
 .lead-list-table details {
@@ -1392,11 +1451,51 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 .lead-list-products {
-  margin: 8px 0;
-  padding-left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  white-space: nowrap;
 }
-.lead-list-products a {
+.lead-product-name,
+.lead-product-url {
   display: block;
-  overflow-wrap: anywhere;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lead-product-copy,
+.lead-product-more summary {
+  flex: 0 0 auto;
+  padding: 2px 3px;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.lead-product-more {
+  flex: 0 0 auto;
+}
+.lead-product-more ul {
+  padding-left: 12px;
+  margin: 5px 0;
+}
+.lead-product-more li {
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+}
+.lead-product-more li > span,
+.lead-product-more li > a {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

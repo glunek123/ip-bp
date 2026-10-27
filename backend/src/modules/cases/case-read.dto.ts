@@ -627,6 +627,16 @@ class CaseArchiveDto {
   @ApiProperty({ type: [CaseArchiveVersionDto] })
   history!: CaseArchiveVersionDto[];
 }
+class CaseEarlyArchiveDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() fromStage!: string;
+  @ApiProperty() fromVersion!: number;
+  @ApiProperty() toVersion!: number;
+  @ApiProperty({ format: 'date' }) archiveAt!: string;
+  @ApiProperty() reason!: string;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiProperty({ format: 'uuid' }) recordedByUserId!: string;
+}
 class CaseClosureDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) finishId!: string;
@@ -704,6 +714,7 @@ class CaseListItemDto {
   @ApiProperty() canRecordClosure!: boolean;
   @ApiProperty() canCorrectClosure!: boolean;
   @ApiProperty() canArchive!: boolean;
+  @ApiProperty() canEarlyArchive!: boolean;
   @ApiProperty() canCorrectArchive!: boolean;
   @ApiProperty({ type: CaseDisplaySummaryDto })
   displaySummary!: CaseDisplaySummaryDto;
@@ -936,6 +947,8 @@ export class CaseDetailResponseDto extends OmitType(CaseListItemDto, [
   closure!: CaseClosureDto | null;
   @ApiProperty({ type: CaseArchiveDto, nullable: true })
   archive!: CaseArchiveDto | null;
+  @ApiProperty({ type: CaseEarlyArchiveDto, nullable: true })
+  earlyArchive!: CaseEarlyArchiveDto | null;
   @ApiProperty({ type: CaseExecutionConfirmationDto, nullable: true })
   executionConfirmation!: CaseExecutionConfirmationDto | null;
   @ApiProperty({ type: CaseExecutionSubmissionDto })

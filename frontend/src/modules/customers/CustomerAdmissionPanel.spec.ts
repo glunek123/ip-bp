@@ -26,6 +26,12 @@ const materialApi = vi.hoisted(() => ({
   deleteMaterial: vi.fn(),
   restoreMaterial: vi.fn(),
 }));
+const previewDialogStub = {
+  props: ['materialId', 'contentVersionId', 'filename', 'scopeKey'],
+  emits: ['close', 'unavailable'],
+  template:
+    '<div data-test="preview-dialog-stub" :data-material-id="materialId" :data-version-id="contentVersionId"><button data-test="preview-denied" @click="$emit(\'unavailable\', 403)">deny</button></div>',
+};
 vi.mock('../../api/customers', () => customerApi);
 vi.mock('../../api/materials', () => materialApi);
 
@@ -196,6 +202,96 @@ describe('CustomerAdmissionPanel', () => {
     expect(wrapper.text()).toContain('完整身份证明材料');
     expect(wrapper.find('select[name="documentPurpose"]').exists()).toBe(false);
     expect(wrapper.findAll('.required-mark').length).toBeGreaterThan(0);
+  });
+
+  it('shows only identity materials with fixed Chinese labels', async () => {
+    const frontMaterial = {
+      ...fullMaterial,
+      id: 'identity-front',
+      purpose: 'IDENTITY_FRONT',
+      currentVersionId: 'version-front',
+      contentVersions: [
+        {
+          ...fullMaterial.contentVersions[0],
+          id: 'version-front',
+          materialId: 'identity-front',
+          originalFilename: '身份证人像面.png',
+        },
+      ],
+    };
+    const backMaterial = {
+      ...fullMaterial,
+      id: 'identity-back',
+      purpose: 'IDENTITY_BACK',
+      currentVersionId: 'version-back',
+      contentVersions: [
+        {
+          ...fullMaterial.contentVersions[0],
+          id: 'version-back',
+          materialId: 'identity-back',
+          originalFilename: '身份证国徽面.png',
+        },
+      ],
+    };
+    const agreementMaterial = {
+      ...fullMaterial,
+      id: 'agreement-1',
+      category: 'CUSTOMER_AGREEMENT',
+      purpose: 'CUSTOMER_AGREEMENT',
+      currentVersionId: 'agreement-version-1',
+      contentVersions: [
+        {
+          ...fullMaterial.contentVersions[0],
+          id: 'agreement-version-1',
+          materialId: 'agreement-1',
+          originalFilename: '合作协议.pdf',
+        },
+      ],
+    };
+    const wrapper = await mountPanel([
+      fullMaterial,
+      frontMaterial,
+      backMaterial,
+      agreementMaterial,
+    ]);
+
+    expect(wrapper.text()).toContain('证件.pdf');
+    expect(wrapper.text()).toContain('完整证件');
+    expect(wrapper.text()).toContain('身份证人像面.png');
+    expect(wrapper.text()).toContain('人像面');
+    expect(wrapper.text()).toContain('身份证国徽面.png');
+    expect(wrapper.text()).toContain('国徽面');
+    expect(wrapper.text()).not.toContain('合作协议.pdf');
+    expect(wrapper.text()).not.toContain('CUSTOMER_AGREEMENT');
+    expect(
+      wrapper.find('[data-test="remove-material-agreement-1"]').exists(),
+    ).toBe(false);
+    expect(materialApi.listOwnerMaterials).toHaveBeenCalledWith(
+      'CUSTOMER',
+      customer.id,
+    );
+    expect(materialApi.deleteMaterial).not.toHaveBeenCalled();
+  });
+
+  it('keeps the identity empty state when the response contains only an agreement', async () => {
+    const agreementMaterial = {
+      ...fullMaterial,
+      id: 'agreement-1',
+      category: 'CUSTOMER_AGREEMENT',
+      purpose: 'CUSTOMER_AGREEMENT',
+      contentVersions: [
+        {
+          ...fullMaterial.contentVersions[0],
+          materialId: 'agreement-1',
+          originalFilename: '合作协议.pdf',
+        },
+      ],
+    };
+    const wrapper = await mountPanel([agreementMaterial]);
+
+    expect(wrapper.text()).toContain('尚未上传身份证明。');
+    expect(wrapper.text()).not.toContain('合作协议.pdf');
+    expect(wrapper.find('.material-card').exists()).toBe(false);
   });
 
   it('links identity choices to the selected subject type', async () => {
@@ -633,6 +729,7 @@ describe('CustomerAdmissionPanel', () => {
           },
         },
       },
+      global: { stubs: { MaterialPreviewDialog: previewDialogStub } },
     });
     await flushPromises();
 
@@ -642,12 +739,24 @@ describe('CustomerAdmissionPanel', () => {
       wrapper.find('[data-test="remove-material-material-1"]').exists(),
     ).toBe(false);
     await wrapper
+      .get('[data-test="preview-material-material-1"]')
+      .trigger('click');
+    expect(
+      wrapper.get('[data-test="preview-dialog-stub"]').attributes(),
+    ).toMatchObject({
+      'data-material-id': 'material-1',
+      'data-version-id': 'version-1',
+    });
+    await wrapper
       .get('[data-test="download-material-material-1"]')
       .trigger('click');
     expect(materialApi.downloadMaterialVersion).toHaveBeenCalledWith(
       'material-1',
       'version-1',
     );
+    await wrapper.get('[data-test="preview-denied"]').trigger('click');
+    expect(wrapper.text()).not.toContain('证件.pdf');
+    expect(wrapper.text()).toContain('当前账号无权查看客户材料');
   });
 
   it.each([

@@ -116,7 +116,7 @@ beforeEach(async () => {
   await router.push('/cases/case-1');
   await router.isReady();
   wrapper = mount(App, {
-    global: { plugins: [pinia, router], stubs: { ElDrawer: true } },
+    global: { plugins: [pinia, router] },
   });
   await flushPromises();
   expect(wrapper.text()).toContain(detail.businessNo);
@@ -131,6 +131,28 @@ afterEach(async () => {
   await router.push('/health');
   await flushPromises();
   vi.unstubAllGlobals();
+});
+
+it('shows the detail early-archive entry only when the case read grants capability', async () => {
+  expect(
+    wrapper!.find('[data-test="open-detail-early-archive"]').exists(),
+  ).toBe(false);
+  api.getCase.mockResolvedValue({
+    ...structuredClone(detail),
+    canEarlyArchive: true,
+  });
+  await wrapper!.get('[data-test="case-refresh"]').trigger('click');
+  await flushPromises();
+  await wrapper!
+    .get('[data-test="open-detail-early-archive"]')
+    .trigger('click');
+  await flushPromises();
+  const drawer = document.body.querySelector(
+    '.operation-drawer[aria-label="提前归档案件"]',
+  );
+  expect(drawer?.textContent).toContain('提前归档');
+  expect(drawer?.textContent).toContain('不会登记结案或款项');
+  expect(drawer?.querySelector('textarea')).not.toBeNull();
 });
 
 it('logout UI clears the case and reaches login without any new unauthenticated case read', async () => {

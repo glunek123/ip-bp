@@ -360,7 +360,12 @@ onBeforeUnmount(() => activeRequest?.abort());
             class="customer-row"
             :to="`/customers/${customer.id}`"
           >
-            <strong>{{ customer.name }}</strong>
+            <span class="customer-list-name">
+              <strong>{{ customer.name }}</strong>
+              <span class="mono customer-list-business-id"
+                >客户ID {{ customer.businessId ?? '待编号' }}</span
+              >
+            </span>
             <span class="customer-statuses">
               <span class="status-chip">{{
                 customer.profileStatus === 'admitted' ? '已准入' : '草稿'
@@ -418,3 +423,18 @@ onBeforeUnmount(() => activeRequest?.abort());
     </ElDrawer>
   </div>
 </template>
+
+<style scoped>
+.customer-list-name {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.customer-list-business-id {
+  display: block;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+</style>

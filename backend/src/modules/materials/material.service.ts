@@ -896,6 +896,19 @@ export class MaterialService {
         notaryOfficeAccountBindingId = binding.id;
       }
       ownerId = input.ownerId;
+    } else if (input.ownerType === 'LEAD') {
+      if (input.ownerId === undefined) throw this.validationError();
+      await this.authorizeOwner(
+        actor,
+        'LEAD',
+        input.ownerId,
+        'write',
+        this.database,
+        undefined,
+        undefined,
+        input.category,
+      );
+      ownerId = input.ownerId;
     } else {
       if (!(await this.accessControl.canAuthorizeNewLead(actor))) {
         throw this.forbidden();
@@ -1111,6 +1124,17 @@ export class MaterialService {
         undefined,
         draft.category,
       );
+    } else if (draft.ownerType === 'LEAD') {
+      await this.authorizeOwner(
+        actor,
+        'LEAD',
+        draft.ownerId,
+        'write',
+        this.database,
+        undefined,
+        undefined,
+        draft.category,
+      );
     } else if (
       draft.ownerType !== 'LEAD_DRAFT' ||
       !(await this.accessControl.canAuthorizeNewLead(actor))
@@ -1267,6 +1291,33 @@ export class MaterialService {
               if (bindingId !== draft.lawyerAccountBindingId)
                 throw this.forbidden();
             }
+          }
+          if (draft.ownerType === 'LEAD') {
+            if (!this.isInternalMaterialActor(actor)) throw this.forbidden();
+            const locked = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              draft.ownerId,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            const account = await transaction.userAccount.findUnique({
+              where: { id: actor.userId },
+              select: { active: true, accountType: true },
+            });
+            if (account?.active !== true || account.accountType !== 'INTERNAL')
+              throw this.forbidden();
+            await this.authorizeOwner(
+              actor,
+              'LEAD',
+              draft.ownerId,
+              'write',
+              transaction,
+              transaction,
+              undefined,
+              draft.category,
+            );
           }
           if (actor.notaryOfficeId !== undefined) {
             const locked = await transaction.$queryRawUnsafe<
@@ -1670,16 +1721,28 @@ export class MaterialService {
             firstUploadTarget = uploadTarget;
           }
         }
+        let historicalCaseVersionAllowed = true;
         if (
-          version.status !== 'AVAILABLE' ||
-          (actor.notaryOfficeId !== undefined &&
-            input.category === 'NOTARY_OPENING_PHOTO' &&
-            version.uploadedBy !== actor.userId) ||
-          facts.has(version.id) ||
-          !contentVersionIds.includes(version.id) ||
-          (input.ownerType === 'CASE' &&
-            material.currentVersionId !== version.id &&
-            !(await this.isFrozenCaseVersion(
+          input.ownerType === 'CASE' &&
+          material.currentVersionId !== version.id
+        ) {
+          if (input.category === 'FEE_PROOF') {
+            await this.withMaterialAuthorization(() =>
+              this.accessControl.authorizeDepartmentAction(
+                actor,
+                'fee.read',
+                transaction,
+              ),
+            );
+            historicalCaseVersionAllowed = await this.hasFeeReconciliationProof(
+              transaction,
+              actor.departmentId,
+              input.ownerId,
+              material.id,
+              version.id,
+            );
+          } else
+            historicalCaseVersionAllowed = await this.isFrozenCaseVersion(
               transaction,
               input.category,
               input.ownerId,
@@ -1687,7 +1750,16 @@ export class MaterialService {
               material.id,
               version.id,
               input.sectionRecordKind,
-            ))) ||
+            );
+        }
+        if (
+          version.status !== 'AVAILABLE' ||
+          (actor.notaryOfficeId !== undefined &&
+            input.category === 'NOTARY_OPENING_PHOTO' &&
+            version.uploadedBy !== actor.userId) ||
+          facts.has(version.id) ||
+          !contentVersionIds.includes(version.id) ||
+          !historicalCaseVersionAllowed ||
           (input.ownerType === 'CASE' &&
             input.category === 'MAIL_RECEIPT' &&
             actor.clientCustomerId !== undefined &&
@@ -2917,40 +2989,175 @@ export class MaterialService {
           },
           select: { id: true },
         });
-        if (fee === null) throw this.notFound();
-        const ref = await tx.materialReference.findFirst({
-          where: {
-            departmentId: actor.departmentId,
-            resourceType: 'fee',
-            resourceId: fee.id,
-            purpose: 'FEE_PROOF',
-            materialId,
-            contentVersionId: versionId,
-            assetVersionId: null,
-            actionEventId: { not: null },
-            actionEvent: {
-              departmentId: actor.departmentId,
-              resourceType: 'FEE',
-              resourceId: fee.id,
-              action: 'fee.proof-updated',
-              internalActorUserId: { not: null },
-              AND: [
-                { details: { path: ['caseId'], equals: caseId } },
-                { details: { path: ['proofMaterialId'], equals: materialId } },
-                {
-                  details: {
-                    path: ['proofContentVersionId'],
-                    equals: versionId,
+        const ref =
+          fee === null
+            ? null
+            : await tx.materialReference.findFirst({
+                where: {
+                  departmentId: actor.departmentId,
+                  resourceType: 'fee',
+                  resourceId: fee.id,
+                  purpose: 'FEE_PROOF',
+                  materialId,
+                  contentVersionId: versionId,
+                  assetVersionId: null,
+                  actionEventId: { not: null },
+                  actionEvent: {
+                    departmentId: actor.departmentId,
+                    resourceType: 'FEE',
+                    resourceId: fee.id,
+                    action: 'fee.proof-updated',
+                    internalActorUserId: { not: null },
+                    AND: [
+                      { details: { path: ['caseId'], equals: caseId } },
+                      {
+                        details: {
+                          path: ['proofMaterialId'],
+                          equals: materialId,
+                        },
+                      },
+                      {
+                        details: {
+                          path: ['proofContentVersionId'],
+                          equals: versionId,
+                        },
+                      },
+                    ],
                   },
                 },
-              ],
-            },
-          },
-          select: { id: true },
-        });
-        if (ref === null) throw this.notFound();
+                select: { id: true },
+              });
+        if (
+          ref === null &&
+          !(await this.hasFeeReconciliationProof(
+            tx,
+            actor.departmentId,
+            caseId,
+            materialId,
+            versionId,
+          ))
+        )
+          throw this.notFound();
       },
       { isolationLevel: 'RepeatableRead' },
+    );
+  }
+
+  private async hasFeeReconciliationProof(
+    tx: MaterialTransactionClient,
+    departmentId: string,
+    caseId: string,
+    materialId: string,
+    versionId: string,
+  ): Promise<boolean> {
+    type Source = Readonly<{
+      id: string;
+      feeId: string;
+      cancellationId: string;
+      actorUserId: string;
+      actionEventId: string;
+    }>;
+    const hasExactReference = async (
+      source: Source,
+      resourceType: 'fee-payment-verification' | 'fee-refund-reconciliation',
+      action: 'fee.payment-verified' | 'fee.refund-reconciled',
+      detailId: 'paymentId' | 'refundId',
+    ) =>
+      (await tx.materialReference.findFirst({
+        where: {
+          departmentId,
+          resourceType,
+          resourceId: source.id,
+          purpose: 'FEE_PROOF',
+          materialId,
+          contentVersionId: versionId,
+          assetVersionId: null,
+          actionEventId: source.actionEventId,
+          actionEvent: {
+            departmentId,
+            resourceType: 'FEE',
+            resourceId: source.feeId,
+            action,
+            actorKind: 'HUMAN',
+            actorUserId: source.actorUserId,
+            internalActorUserId: source.actorUserId,
+            customerAccountBindingId: null,
+            lawyerAccountBindingId: null,
+            notaryOfficeAccountBindingId: null,
+            AND: [
+              { details: { path: [detailId], equals: source.id } },
+              {
+                details: {
+                  path: ['cancellationId'],
+                  equals: source.cancellationId,
+                },
+              },
+              { details: { path: ['proofMaterialId'], equals: materialId } },
+              {
+                details: {
+                  path: ['proofContentVersionId'],
+                  equals: versionId,
+                },
+              },
+            ],
+          },
+        },
+        select: { id: true },
+      })) !== null;
+    const payment = await tx.feeCancellationPayment.findFirst({
+      where: {
+        departmentId,
+        caseId,
+        proofMaterialId: materialId,
+        proofContentVersionId: versionId,
+        cancellation: { is: { departmentId, caseId, outcome: 'VOIDED' } },
+        fee: { is: { departmentId, caseId, deletedAt: null } },
+        case: { is: { id: caseId, departmentId } },
+      },
+      select: {
+        id: true,
+        feeId: true,
+        cancellationId: true,
+        actorUserId: true,
+        actionEventId: true,
+      },
+    });
+    if (
+      payment &&
+      (await hasExactReference(
+        payment,
+        'fee-payment-verification',
+        'fee.payment-verified',
+        'paymentId',
+      ))
+    )
+      return true;
+    const refund = await tx.feeRefundReconciliation.findFirst({
+      where: {
+        departmentId,
+        caseId,
+        proofMaterialId: materialId,
+        proofContentVersionId: versionId,
+        cancellation: { is: { departmentId, caseId, outcome: 'VOIDED' } },
+        fee: { is: { departmentId, caseId, deletedAt: null } },
+        case: { is: { id: caseId, departmentId } },
+      },
+      select: {
+        id: true,
+        feeId: true,
+        cancellationId: true,
+        actorUserId: true,
+        actionEventId: true,
+      },
+    });
+    return (
+      refund !== null &&
+      (await hasExactReference(
+        refund,
+        'fee-refund-reconciliation',
+        'fee.refund-reconciled',
+        'refundId',
+      ))
     );
   }
 
@@ -5782,10 +5989,12 @@ export class MaterialService {
         departmentId: true,
         responsibleUserId: true,
         teamId: true,
+        status: true,
       },
     });
     if (lead === null) throw this.notFound();
     if (operation === 'write') {
+      if (lead.status === 'ARCHIVED') throw this.versionConflict();
       await this.withMaterialAuthorization(() =>
         this.accessControl.authorizeLead(
           actor,
@@ -6116,6 +6325,9 @@ export class MaterialService {
       (input.ownerType === 'CUSTOMER' &&
         input.category === 'CUSTOMER_AGREEMENT' &&
         input.purpose === 'CUSTOMER_AGREEMENT') ||
+      (input.ownerType === 'LEAD' &&
+        input.category === 'LEAD_SCREENSHOT' &&
+        input.purpose === 'LEAD_SCREENSHOT') ||
       (input.ownerType === 'LEAD_DRAFT' &&
         input.category === 'LEAD_SCREENSHOT' &&
         input.purpose === 'LEAD_SCREENSHOT') ||

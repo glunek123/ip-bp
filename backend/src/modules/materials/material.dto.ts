@@ -82,11 +82,13 @@ export const materialPurposes = [
 export type MaterialPurposeValue = (typeof materialPurposes)[number];
 
 export class CreateUploadDraftDto {
-  @ApiProperty({ enum: ['CUSTOMER', 'LEAD_DRAFT', 'NOTARY_MATTER', 'CASE'] })
-  @IsIn(['CUSTOMER', 'LEAD_DRAFT', 'NOTARY_MATTER', 'CASE'])
+  @ApiProperty({
+    enum: ['CUSTOMER', 'LEAD_DRAFT', 'LEAD', 'NOTARY_MATTER', 'CASE'],
+  })
+  @IsIn(['CUSTOMER', 'LEAD_DRAFT', 'LEAD', 'NOTARY_MATTER', 'CASE'])
   ownerType!: Extract<
     MaterialOwnerTypeValue,
-    'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER' | 'CASE'
+    'CUSTOMER' | 'LEAD_DRAFT' | 'LEAD' | 'NOTARY_MATTER' | 'CASE'
   >;
 
   @ApiPropertyOptional({ format: 'uuid' })

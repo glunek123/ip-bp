@@ -45,6 +45,7 @@ const actionMap = {
   CUSTOMER_SETTLEMENT_REGISTER: 'customer.settlement.register',
   CUSTOMER_SETTLEMENT_CORRECT: 'customer.settlement.correct',
   CUSTOMER_ADMIT: 'customer.admit',
+  CUSTOMER_ACCOUNT_CREATE: 'customer.account.create',
   LEAD_READ: 'lead.read',
   LEAD_CREATE: 'lead.create',
   LEAD_EDIT: 'lead.edit',

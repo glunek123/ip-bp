@@ -360,47 +360,57 @@ async function launch(): Promise<void> {
 
 <template>
   <section class="case-settlement">
-    <h2>案件结算</h2>
+    <header class="case-settlement__heading">
+      <h2>案件结算</h2>
+      <RouterLink to="/settlements">前往结算中心</RouterLink>
+    </header>
     <p v-if="state === 'loading'">正在读取结算条件…</p>
     <p v-else-if="state === 'failed'" role="alert">
       {{ error }}<ElButton @click="load()">重试</ElButton>
     </p>
     <template v-else-if="detail">
-      <p>
-        {{ detail.businessNo }} · {{ detail.customer.name }} ·
-        <RouterLink to="/settlements">前往结算中心</RouterLink>
+      <p class="case-settlement__identity">
+        {{ detail.businessNo }} · {{ detail.customer.name }}
       </p>
-      <div role="tablist" aria-label="结算侧别">
+      <div class="operation-bar" role="tablist" aria-label="结算侧别">
         <ElButton
           role="tab"
+          class="action-size--standard"
           :aria-selected="side === 'CUSTOMER'"
           :disabled="uncertain || saving"
           @click="side = 'CUSTOMER'"
           >客户结算</ElButton
         ><ElButton
           role="tab"
+          class="action-size--standard"
           :aria-selected="side === 'LAWYER'"
           :disabled="uncertain || saving"
           @click="side = 'LAWYER'"
           >律师结算</ElButton
         >
       </div>
-      <p>
-        结案基数：{{ detail.figures.basis ?? '待定' }} 元；当前保存金额：{{
-          amount ?? '待定'
-        }}
-        元。
-      </p>
-      <p>
-        已发起：{{ balance?.launched }} 元；可发起余额：{{
-          balance?.remaining ?? '待定'
-        }}
-        元。
-      </p>
+      <div class="case-settlement__summary">
+        <p>
+          结案基数：{{ detail.figures.basis ?? '待定' }} 元；当前保存金额：{{
+            amount ?? '待定'
+          }}
+          元。
+        </p>
+        <p>
+          已发起：{{ balance?.launched }} 元；可发起余额：{{
+            balance?.remaining ?? '待定'
+          }}
+          元。
+        </p>
+      </div>
       <p v-if="balance?.overLaunched" role="alert">
         当前保存金额低于历史已发起额。历史记录保留，当前不能继续发起。
       </p>
-      <form v-if="props.canUpdate" @submit.prevent="saveTerms">
+      <form
+        v-if="props.canUpdate"
+        class="case-settlement__form case-settlement__terms"
+        @submit.prevent="saveTerms"
+      >
         <label v-if="side === 'CUSTOMER'"
           >结算条件<ElInput
             v-model="formula"
@@ -446,13 +456,18 @@ async function launch(): Promise<void> {
         </p>
         <ElButton
           native-type="submit"
+          class="action-size--wide"
           :disabled="saving || unknownLaunch || !!preview.error"
           >{{
             unknownTerms ? '用原请求重试保存' : '保存本案结算条件'
           }}</ElButton
         >
       </form>
-      <form v-if="canLaunch || unknownLaunch" @submit.prevent="launch">
+      <form
+        v-if="canLaunch || unknownLaunch"
+        class="case-settlement__form case-settlement__launch"
+        @submit.prevent="launch"
+      >
         <h3>
           发起第 {{ nextNth }} 次{{ side === 'CUSTOMER' ? '客户' : '律师' }}结算
         </h3>
@@ -484,6 +499,7 @@ async function launch(): Promise<void> {
         /></label>
         <ElButton
           native-type="submit"
+          class="action-size--wide"
           :disabled="saving || unknownTerms || (side === 'LAWYER' && !lawyerId)"
           >{{ unknownLaunch ? '用原请求重试发起' : '发起结算' }}</ElButton
         >
@@ -503,91 +519,131 @@ async function launch(): Promise<void> {
       <p v-if="notice" role="status">{{ notice }}</p>
       <h3>发起记录</h3>
       <p v-if="sideLaunches.length === 0">暂无发起记录</p>
-      <table v-else>
-        <thead>
-          <tr>
-            <th>次数</th>
-            <th>发起日期</th>
-            <th>金额</th>
-            <th>账单</th>
-            <th>备注</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in sideLaunches" :key="row.id">
-            <td>{{ row.nth }}</td>
-            <td>{{ row.launchDate }}</td>
-            <td>{{ row.amount }}</td>
-            <td>{{ row.billId ? '已入单' : '未入单' }}</td>
-            <td>{{ row.note ?? '—' }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-else class="case-settlement__table">
+        <table>
+          <thead>
+            <tr>
+              <th>次数</th>
+              <th>发起日期</th>
+              <th>金额（元）</th>
+              <th>账单</th>
+              <th>备注</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in sideLaunches" :key="row.id">
+              <td>{{ row.nth }}</td>
+              <td>{{ row.launchDate }}</td>
+              <td class="money">{{ row.amount }}</td>
+              <td>{{ row.billId ? '已入单' : '未入单' }}</td>
+              <td>{{ row.note ?? '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </template>
   </section>
 </template>
 <style scoped>
 .case-settlement {
   display: grid;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
   color: var(--color-ink);
 }
-.case-settlement form {
+.case-settlement__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.case-settlement__heading h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.case-settlement__identity {
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.case-settlement__summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  align-items: end;
-  padding: 12px;
-  border: 1px solid var(--color-hairline);
+  gap: 8px 16px;
+  padding: 8px 12px;
   background: var(--color-surface-1);
+}
+.case-settlement__summary p {
+  margin: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.case-settlement__form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+  align-items: end;
+  padding: 0;
 }
 .case-settlement label {
   display: grid;
   gap: 4px;
-  min-width: 160px;
+  min-width: 0;
+  font-size: 12px;
 }
-.case-settlement form h3,
-.case-settlement form > p,
-.case-settlement form > button {
+.case-settlement__form h3,
+.case-settlement__form > p,
+.case-settlement__form > button {
   grid-column: 1 / -1;
 }
-.case-settlement form > button {
+.case-settlement__form > button {
   justify-self: end;
 }
-.case-settlement form label {
+.case-settlement__table {
   min-width: 0;
+  overflow-x: auto;
+}
+.case-settlement__table table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.case-settlement__table th,
+.case-settlement__table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--color-hairline);
+  text-align: left;
+}
+.case-settlement__table th {
+  color: var(--color-ink-muted);
+  background: var(--color-surface-2);
+}
+.case-settlement__table .money {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 @media (max-width: 760px) {
-  .case-settlement form {
-    grid-template-columns: 1fr;
+  .case-settlement__form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .case-settlement form h3,
-  .case-settlement form > p,
-  .case-settlement form > button {
-    grid-column: auto;
+  .case-settlement__form h3,
+  .case-settlement__form > p,
+  .case-settlement__form > button {
+    grid-column: 1 / -1;
   }
 }
 .case-settlement button,
 .case-settlement input,
 .case-settlement select {
-  padding: 7px 9px;
-  border: 1px solid var(--color-hairline-strong);
-  background: var(--color-surface-1);
-  color: var(--color-ink);
+  min-height: var(--app-control-height, 32px);
 }
 .case-settlement button[aria-selected='true'] {
   border-color: var(--color-primary);
   color: var(--color-primary);
 }
-.case-settlement table {
-  border-collapse: collapse;
-  width: 100%;
-}
-.case-settlement td,
-.case-settlement th {
-  padding: 8px;
-  border-bottom: 1px solid var(--color-hairline);
-  text-align: left;
+.case-settlement [role='alert'] {
+  color: var(--color-danger);
 }
 </style>

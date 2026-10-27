@@ -21,6 +21,10 @@ import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import {
   CreateFeeDto,
+  CancelFeeDto,
+  CancelledFeePageDto,
+  VerifyCancelledFeePaymentDto,
+  ReconcileCancelledFeeRefundDto,
   FeeCaseOptionsDto,
   FeeIdsDto,
   FeePageDto,
@@ -58,6 +62,24 @@ export class FeeController {
     return this.service.caseOptions(actor, query);
   }
 
+  @Get('cancellations')
+  @ApiOkResponse({ schema: settlementResponses.cancelledFees })
+  cancellations(
+    @CurrentActor() actor: ActorContext,
+    @Query() query: CancelledFeePageDto,
+  ) {
+    return this.service.listCancellations(actor, query);
+  }
+
+  @Get(':feeId/history')
+  @ApiOkResponse({ schema: settlementResponses.feeHistory })
+  history(
+    @CurrentActor() actor: ActorContext,
+    @Param('feeId', new ParseUUIDPipe()) feeId: string,
+  ) {
+    return this.service.history(actor, feeId);
+  }
+
   @Patch(':feeId')
   @ApiOkResponse({ schema: settlementResponses.feeReceipt })
   update(
@@ -88,5 +110,39 @@ export class FeeController {
   @ApiCreatedResponse({ schema: settlementResponses.feeBatchReceipt })
   delete(@CurrentActor() actor: ActorContext, @Body() input: FeeIdsDto) {
     return this.service.batch(actor, 'DELETE', input);
+  }
+
+  @Post(':feeId/cancel')
+  @ApiCreatedResponse({ schema: settlementResponses.feeCancelReceipt })
+  cancel(
+    @CurrentActor() actor: ActorContext,
+    @Param('feeId', new ParseUUIDPipe()) feeId: string,
+    @Body() input: CancelFeeDto,
+  ) {
+    return this.service.cancel(actor, feeId, input);
+  }
+
+  @Post(':feeId/payment-verification')
+  @ApiCreatedResponse({
+    schema: settlementResponses.feePaymentVerificationReceipt,
+  })
+  verifyPayment(
+    @CurrentActor() actor: ActorContext,
+    @Param('feeId', new ParseUUIDPipe()) feeId: string,
+    @Body() input: VerifyCancelledFeePaymentDto,
+  ) {
+    return this.service.verifyCancelledPayment(actor, feeId, input);
+  }
+
+  @Post(':feeId/refund-reconciliations')
+  @ApiCreatedResponse({
+    schema: settlementResponses.feeRefundReconciliationReceipt,
+  })
+  reconcileRefund(
+    @CurrentActor() actor: ActorContext,
+    @Param('feeId', new ParseUUIDPipe()) feeId: string,
+    @Body() input: ReconcileCancelledFeeRefundDto,
+  ) {
+    return this.service.reconcileCancelledRefund(actor, feeId, input);
   }
 }

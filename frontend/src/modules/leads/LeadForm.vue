@@ -18,7 +18,10 @@ type EditableFields = Omit<
 >;
 export type LeadFormSubmission = {
   fields: EditableFields;
-  screenshotFiles: Array<InstanceType<typeof globalThis.File>>;
+  productScreenshotFiles: Array<{
+    productId: string;
+    files: Array<InstanceType<typeof globalThis.File>>;
+  }>;
 };
 type InitialValue = Omit<
   Partial<EditableFields>,
@@ -27,6 +30,8 @@ type InitialValue = Omit<
   shopExternalId?: string | null;
   remark?: string | null;
   products?: Array<{
+    id?: string;
+    screenshotContentVersionIds?: string[];
     url?: string | null;
     title?: string | null;
     quantity: number;
@@ -35,6 +40,9 @@ type InitialValue = Omit<
   }>;
 };
 type ProductDraft = {
+  id: string;
+  screenshotContentVersionIds: string[];
+  screenshotFiles: Array<InstanceType<typeof globalThis.File>>;
   url: string;
   title: string;
   quantity: string;
@@ -47,13 +55,11 @@ const props = withDefaults(
     context: LeadFormContext;
     initialValue?: InitialValue;
     customerLocked?: boolean;
-    allowScreenshots?: boolean;
     submitting?: boolean;
     submitLabel?: string;
   }>(),
   {
     customerLocked: false,
-    allowScreenshots: true,
     submitting: false,
     submitLabel: '保存线索',
   },
@@ -80,6 +86,11 @@ const remark = ref(initial?.remark ?? '');
 const products = ref<ProductDraft[]>(
   initial?.products?.length
     ? initial.products.map((product) => ({
+        id: product.id ?? globalThis.crypto.randomUUID(),
+        screenshotContentVersionIds: [
+          ...(product.screenshotContentVersionIds ?? []),
+        ],
+        screenshotFiles: [],
         url: product.url ?? '',
         title: product.title ?? '',
         quantity: String(product.quantity),
@@ -88,8 +99,8 @@ const products = ref<ProductDraft[]>(
       }))
     : [newProduct()],
 );
-const screenshotFiles = ref<Array<InstanceType<typeof globalThis.File>>>([]);
 const errors = reactive<Record<string, string>>({});
+const screenshotValidationError = ref('');
 
 const selectedCustomer = computed(() =>
   props.context.customers.find((customer) => customer.id === customerId.value),
@@ -110,6 +121,9 @@ const platforms = computed(() =>
 
 function newProduct(): ProductDraft {
   return {
+    id: globalThis.crypto.randomUUID(),
+    screenshotContentVersionIds: [],
+    screenshotFiles: [],
     url: '',
     title: '',
     quantity: '0',
@@ -157,6 +171,41 @@ function removeProduct(index: number): void {
     markDirty();
   }
 }
+function onProductFilesChanged(
+  index: number,
+  event: InstanceType<typeof globalThis.Event>,
+): void {
+  if (!(event.target instanceof globalThis.HTMLInputElement)) return;
+  const files = Array.from(event.target.files ?? []);
+  const existing = products.value.reduce(
+    (count, product) =>
+      count +
+      product.screenshotContentVersionIds.length +
+      product.screenshotFiles.length,
+    0,
+  );
+  const current = products.value[index];
+  if (!current) return;
+  const total = existing - current.screenshotFiles.length + files.length;
+  if (
+    total > 20 ||
+    files.some((file) => file.size > 20 * 1024 * 1024) ||
+    files.some(
+      (file) =>
+        !['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(
+          file.type,
+        ),
+    )
+  ) {
+    screenshotValidationError.value =
+      total > 20 ? '所有商品截图合计最多 20 份' : '截图格式或大小不符合要求';
+    current.screenshotFiles = [];
+  } else {
+    screenshotValidationError.value = '';
+    current.screenshotFiles = files;
+  }
+  markDirty();
+}
 function estimate(product: ProductDraft): string {
   return (
     decimalEstimate(
@@ -165,33 +214,6 @@ function estimate(product: ProductDraft): string {
       product.unitPrice,
     ) ?? '—'
   );
-}
-function onFilesChanged(event: InstanceType<typeof globalThis.Event>): void {
-  if (!(event.target instanceof globalThis.HTMLInputElement)) return;
-  const files = Array.from(event.target.files ?? []);
-  errors.screenshots = '';
-  if (files.length > 20) {
-    errors.screenshots = '最多选择 20 份截图';
-    screenshotFiles.value = [];
-    return;
-  }
-  const allowed = new Set([
-    'application/pdf',
-    'image/jpeg',
-    'image/png',
-    'image/webp',
-  ]);
-  if (files.some((file) => !allowed.has(file.type))) {
-    errors.screenshots = '截图仅支持 PDF、JPG/JPEG、PNG、WEBP';
-    screenshotFiles.value = [];
-    return;
-  }
-  if (files.some((file) => file.size > 20 * 1024 * 1024)) {
-    errors.screenshots = '每份截图不能超过 20MB';
-    screenshotFiles.value = [];
-    return;
-  }
-  screenshotFiles.value = files;
 }
 function nonNegativeInteger(value: string): boolean {
   return /^(0|[1-9]\d*)$/u.test(value) && BigInt(value) <= 2_147_483_647n;
@@ -223,13 +245,11 @@ function firstErrorSelector(): string | undefined {
     }
   }
   if (errors.needDisclose) return '[name="needDisclose"]';
-  if (errors.screenshots) return '[name="screenshots"]';
   return undefined;
 }
 function validate(): boolean {
-  const screenshotError = errors.screenshots;
   for (const key of Object.keys(errors)) delete errors[key];
-  if (screenshotError) errors.screenshots = screenshotError;
+  if (screenshotValidationError.value) return false;
   if (!customerId.value) errors.customerId = '请选择客户';
   if (!rightsHolderId.value) errors.rightsHolderId = '请选择权利主体';
   if (!caseType.value) errors.caseType = '请选择案件类型';
@@ -288,6 +308,8 @@ async function submit(): Promise<void> {
       needDisclose: needDisclose.value,
       ...(remark.value.trim() ? { remark: remark.value.trim() } : {}),
       products: products.value.map((product) => ({
+        id: product.id,
+        screenshotContentVersionIds: [...product.screenshotContentVersionIds],
         ...(product.url.trim() ? { url: product.url.trim() } : {}),
         ...(product.title.trim() ? { title: product.title.trim() } : {}),
         quantity: Number(product.quantity),
@@ -295,7 +317,10 @@ async function submit(): Promise<void> {
         commentCount: Number(product.commentCount),
       })),
     },
-    screenshotFiles: [...screenshotFiles.value],
+    productScreenshotFiles: products.value.map((product) => ({
+      productId: product.id,
+      files: [...product.screenshotFiles],
+    })),
   });
 }
 </script>
@@ -562,14 +587,32 @@ async function submit(): Promise<void> {
             ></label
           >
           <p class="estimate-preview mono" :data-test="`estimate-${index}`">
-            预估销售额（元） {{ estimate(product) }}
+            计算金额（元） {{ estimate(product) }}
           </p>
+          <label>
+            <span>商品截图</span>
+            <input
+              type="file"
+              multiple
+              accept="application/pdf,image/jpeg,image/png,image/webp"
+              :data-test="`product-screenshots-${index}`"
+              @change="onProductFilesChanged(index, $event)"
+            />
+            <small
+              >已关联
+              {{ product.screenshotContentVersionIds.length }} 份；本次新增
+              {{ product.screenshotFiles.length }} 份。</small
+            >
+            <small v-if="screenshotValidationError" class="field-error">{{
+              screenshotValidationError
+            }}</small>
+          </label>
           <p
             :id="`product-estimate-guidance-${index}`"
             class="field-guidance product-estimate-guidance"
           >
-            预估销售额 = 单价 × 销量；销量为 0
-            时使用评论数。该金额仅供线索评估，不代表真实成交金额。
+            计算金额＝单价 × 销量；销量为 0
+            时改用评论数。此金额仅供线索评估参考，不代表实际成交额。
           </p>
         </div>
       </article>
@@ -611,32 +654,6 @@ async function submit(): Promise<void> {
         class="text-area"
         maxlength="5000"
       />
-
-      <div v-if="allowScreenshots" class="lead-upload">
-        <label class="field-label" for="lead-screenshots"
-          >线索截图（选填）</label
-        >
-        <input
-          id="lead-screenshots"
-          name="screenshots"
-          type="file"
-          multiple
-          accept="application/pdf,image/jpeg,image/png,image/webp"
-          aria-describedby="lead-screenshots-guidance"
-          @change="onFilesChanged"
-        />
-        <p id="lead-screenshots-guidance" class="field-help">
-          最多 20 份，每份不超过 20MB。
-        </p>
-        <p v-if="errors.screenshots" class="field-error">
-          {{ errors.screenshots }}
-        </p>
-        <ul v-if="screenshotFiles.length" class="file-name-list">
-          <li v-for="file in screenshotFiles" :key="file.name">
-            {{ file.name }}
-          </li>
-        </ul>
-      </div>
     </section>
 
     <footer class="demo-form-actions">

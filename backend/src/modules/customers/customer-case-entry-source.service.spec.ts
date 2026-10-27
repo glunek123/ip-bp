@@ -69,6 +69,53 @@ describe('CustomerCaseEntrySourceService', () => {
     );
   });
 
+  it('exposes scoped customer business IDs only for CSV matching', async () => {
+    findMany.mockResolvedValue([
+      {
+        id: 'customer',
+        name: '真实客户',
+        businessId: 'CU-1',
+        rightsHolderLinks: [
+          { rightsHolder: { id: 'holder', name: '真实主体' } },
+        ],
+      },
+    ]);
+    await expect(service.listForCsv(actor)).resolves.toEqual([
+      {
+        id: 'customer',
+        name: '真实客户',
+        businessId: 'CU-1',
+        rightsHolders: [{ id: 'holder', name: '真实主体' }],
+      },
+    ]);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [{ responsibleUserId: actor.userId }],
+          departmentId: actor.departmentId,
+          profileStatus: 'ADMITTED',
+          deletedAt: null,
+        },
+        select: expect.objectContaining({ businessId: true }),
+      }),
+    );
+  });
+
+  it('reads CSV candidates and customer scope through the supplied transaction', async () => {
+    const txFindMany = jest.fn().mockResolvedValue([]);
+    const reader = {
+      customer: { findMany: txFindMany },
+    } as unknown as Prisma.TransactionClient;
+    await expect(service.listForCsv(actor, reader)).resolves.toEqual([]);
+    expect(buildCustomerScope).toHaveBeenCalledWith(
+      actor,
+      'customer.read',
+      reader,
+    );
+    expect(txFindMany).toHaveBeenCalledTimes(1);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
   it('rejects an invisible customer before acquiring a party lock', async () => {
     findFirst.mockResolvedValue(null);
     await expect(

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
+import { assertReadyCustomerBusinessId } from '../business-numbering';
 
 export type CreateCaseFromCertificateFacts = Readonly<{
   departmentId: string;
@@ -41,27 +42,32 @@ export class CaseCreationService {
     tx: Prisma.TransactionClient,
     facts: CreateCaseFromCertificateFacts,
   ) {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(facts.issuedAt);
-    const year = parts.find((part) => part.type === 'year')?.value;
-    const month = parts.find((part) => part.type === 'month')?.value;
-    const day = parts.find((part) => part.type === 'day')?.value;
-    if (year === undefined || month === undefined || day === undefined)
-      throw new Error('Case business date unavailable');
-    const date = `${year}-${month}-${day}`;
-    const counter = await tx.caseNumberCounter.upsert({
-      where: { businessDate: new Date(`${date}T00:00:00.000Z`) },
-      create: { businessDate: new Date(`${date}T00:00:00.000Z`), lastValue: 1 },
-      update: { lastValue: { increment: 1 } },
+    const sources = await tx.$queryRawUnsafe<
+      Array<{ business_no: string; business_id: string | null }>
+    >(
+      `SELECT lead."business_no", customer."business_id"
+       FROM "leads" lead JOIN "customers" customer ON customer."id" = lead."customer_id"
+       WHERE lead."id" = $1::uuid AND lead."customer_id" = $2::uuid AND lead."department_id" = $3::uuid
+       FOR UPDATE OF lead`,
+      facts.sourceLeadId,
+      facts.customerId,
+      facts.departmentId,
+    );
+    if (sources.length !== 1) throw new Error('Case source lead unavailable');
+    await assertReadyCustomerBusinessId(tx, sources[0]!.business_id);
+    const latest = await tx.case.aggregate({
+      where: { sourceLeadId: facts.sourceLeadId },
+      _max: { sourceLeadOrdinal: true },
     });
-    const businessNo = `CA-${year}${month}${day}-${String(counter.lastValue).padStart(4, '0')}`;
+    const ordinal = (latest._max.sourceLeadOrdinal ?? 0) + 1;
+    const businessNo =
+      ordinal === 1
+        ? sources[0]!.business_no
+        : `${sources[0]!.business_no}-${String(ordinal).padStart(2, '0')}`;
     return tx.case.create({
       data: {
         businessNo,
+        sourceLeadOrdinal: ordinal,
         departmentId: facts.departmentId,
         sourceLeadId: facts.sourceLeadId,
         sourceNotaryMatterId: facts.sourceNotaryMatterId,

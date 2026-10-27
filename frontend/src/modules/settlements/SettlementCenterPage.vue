@@ -127,6 +127,12 @@ const pageCount = computed(() =>
 const billPageCount = computed(() =>
   Math.max(1, Math.ceil(bills.value.total / bills.value.pageSize)),
 );
+const showLaunchPagination = computed(
+  () => page.value > 1 || launches.value.total > launches.value.pageSize,
+);
+const showBillPagination = computed(
+  () => billPage.value > 1 || bills.value.total > bills.value.pageSize,
+);
 function applyFilter(): void {
   if (page.value !== 1) page.value = 1;
   else void load();
@@ -401,15 +407,20 @@ async function cancelBill(): Promise<void> {
 
 <template>
   <main class="settlement-center">
-    <header>
+    <header class="settlement-center__heading">
       <h1>结算中心</h1>
       <p>
         发起、入单与财务实际结果分别展示。未接入财务回填时，实际收付与日期保持待定。
       </p>
     </header>
-    <div role="tablist" aria-label="结算中心页签" class="tabs">
+    <div
+      role="tablist"
+      aria-label="结算中心页签"
+      class="operation-bar settlement-center__tabs"
+    >
       <ElButton
         role="tab"
+        class="action-size--standard"
         :disabled="!capabilities?.read || unknownBill || unknownCancel"
         :aria-selected="tab === 'CUSTOMER'"
         @click="tab = 'CUSTOMER'"
@@ -418,6 +429,7 @@ async function cancelBill(): Promise<void> {
       </ElButton>
       <ElButton
         role="tab"
+        class="action-size--standard"
         :disabled="!capabilities?.read || unknownBill || unknownCancel"
         :aria-selected="tab === 'LAWYER'"
         @click="tab = 'LAWYER'"
@@ -426,6 +438,7 @@ async function cancelBill(): Promise<void> {
       </ElButton>
       <ElButton
         role="tab"
+        class="action-size--wide"
         :disabled="!capabilities?.feeRead || unknownBill || unknownCancel"
         :aria-selected="tab === 'FEES'"
         @click="tab = 'FEES'"
@@ -443,39 +456,51 @@ async function cancelBill(): Promise<void> {
       :can-delete="capabilities.feeDelete"
     />
     <template v-else-if="capabilities.read">
-      <p v-if="error" role="alert">
-        {{ error }} <ElButton @click="load">刷新</ElButton>
+      <p v-if="error" role="alert" class="settlement-center__message">
+        {{ error }}
+        <ElButton class="action-size--standard" @click="load">刷新</ElButton>
       </p>
       <p v-if="notice" role="status">{{ notice }}</p>
-      <section class="card">
+      <section class="settlement-center__detail">
         <h2>{{ tab === 'CUSTOMER' ? '客户' : '律师' }}结算明细</h2>
         <dl v-if="summary" class="kpis">
           <div>
             <dt>发起金额</dt>
-            <dd>{{ summary.launchedAmount }} 元</dd>
+            <dd class="money">{{ summary.launchedAmount }} 元</dd>
           </div>
           <div>
             <dt>已入单金额</dt>
-            <dd>{{ summary.billedAmount }} 元</dd>
+            <dd class="money">{{ summary.billedAmount }} 元</dd>
           </div>
           <div>
             <dt>未入单金额</dt>
-            <dd>
+            <dd class="money">
               {{ summary.unbilledAmount }} 元 · {{ summary.unbilledCount }} 条
             </dd>
           </div>
           <div>
             <dt>{{ side === 'CUSTOMER' ? '已开票金额' : '已开票待付' }}</dt>
-            <dd>{{ summary.invoiceAmount ?? '待财务回填' }}</dd>
+            <dd class="money">
+              {{ summary.invoiceAmount ?? '待财务回填'
+              }}<span v-if="summary.invoiceAmount !== null"> 元</span>
+            </dd>
           </div>
           <div>
             <dt>{{ side === 'CUSTOMER' ? '实际回款' : '实际打款' }}</dt>
-            <dd>
+            <dd class="money">
               {{
                 (side === 'CUSTOMER'
                   ? summary.receivedAmount
                   : summary.paidAmount) ?? '待财务回填'
-              }}
+              }}<span
+                v-if="
+                  (side === 'CUSTOMER'
+                    ? summary.receivedAmount
+                    : summary.paidAmount) !== null
+                "
+              >
+                元</span
+              >
             </dd>
           </div>
           <div>
@@ -489,7 +514,11 @@ async function cancelBill(): Promise<void> {
             </dd>
           </div>
         </dl>
-        <div class="filters settlement-filters">
+        <form
+          class="settlement-center__filters"
+          aria-label="筛选结算明细"
+          @submit.prevent="applyFilter"
+        >
           <label
             >查询案件／主体 <ElInput v-model="keyword" placeholder="案号或名称"
           /></label>
@@ -509,81 +538,106 @@ async function cancelBill(): Promise<void> {
           ></label>
           <label>发起起日<ElInput v-model="from" type="date" /></label
           ><label>发起止日<ElInput v-model="to" type="date" /></label>
-          <ElButton @click="applyFilter">查询</ElButton
-          ><ElButton @click="clearFilter">清除筛选</ElButton>
-        </div>
-        <p>
+          <div class="operation-actions settlement-center__filter-actions">
+            <ElButton native-type="submit" class="action-size--standard"
+              >查询</ElButton
+            >
+            <ElButton
+              native-type="button"
+              class="action-size--wide"
+              @click="clearFilter"
+              >清除筛选</ElButton
+            >
+          </div>
+        </form>
+        <p class="settlement-center__selection">
           明细 {{ launches.total }} 条 · 已选
           {{ selectedCount }} 条。勾选会在切换筛选时保留。
         </p>
         <p v-if="loading">正在加载…</p>
         <p v-else-if="visible.length === 0">当前条件下暂无结算明细</p>
-        <table v-else>
-          <thead>
-            <tr>
-              <th>
-                <ElCheckbox
-                  aria-label="全选当前可入单明细"
-                  :model-value="allSelected"
-                  :disabled="unknownBill"
-                  @change="toggleAll"
-                />
-              </th>
-              <th>发起日期</th>
-              <th>收付方</th>
-              <th>案件</th>
-              <th>次数</th>
-              <th>金额</th>
-              <th>入单</th>
-              <th v-if="side === 'CUSTOMER'">已开票</th>
-              <th>{{ side === 'CUSTOMER' ? '实际回款' : '实际打款' }}</th>
-              <th>{{ side === 'CUSTOMER' ? '回款日期' : '打款日期' }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in visible" :key="row.id">
-              <td>
-                <ElCheckbox
-                  :aria-label="`选择 ${row.businessNo} 第${row.nth}次`"
-                  :model-value="selected.has(row.id)"
-                  :disabled="row.billId !== null || unknownBill"
-                  @change="toggle(row.id)"
-                />
-              </td>
-              <td>{{ row.launchDate }}</td>
-              <td>
-                {{ row.payeeName ?? '—'
-                }}{{ row.lawFirm ? ` / ${row.lawFirm}` : '' }}
-              </td>
-              <td>
-                <RouterLink :to="`/cases/${row.caseId}`">{{
-                  row.businessNo
-                }}</RouterLink>
-              </td>
-              <td>{{ row.nth }}</td>
-              <td>{{ row.amount }}</td>
-              <td>{{ row.billId ? '已入单' : '未入单' }}</td>
-              <td v-if="side === 'CUSTOMER'">{{ row.invoiceAmount ?? '—' }}</td>
-              <td>
-                {{
-                  (side === 'CUSTOMER' ? row.receivedAmount : row.paidAmount) ??
-                  '—'
-                }}
-              </td>
-              <td>{{ row.actualPaymentDate ?? '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="pager">
-          <ElButton :disabled="page <= 1" @click="page -= 1"> 上一页</ElButton
+        <div v-else class="settlement-center__table">
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  <ElCheckbox
+                    aria-label="全选当前可入单明细"
+                    :model-value="allSelected"
+                    :disabled="unknownBill"
+                    @change="toggleAll"
+                  />
+                </th>
+                <th>发起日期</th>
+                <th>收付方</th>
+                <th>案件</th>
+                <th>次数</th>
+                <th>金额（元）</th>
+                <th>入单</th>
+                <th v-if="side === 'CUSTOMER'">已开票</th>
+                <th>{{ side === 'CUSTOMER' ? '实际回款' : '实际打款' }}</th>
+                <th>{{ side === 'CUSTOMER' ? '回款日期' : '打款日期' }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in visible" :key="row.id">
+                <td>
+                  <ElCheckbox
+                    :aria-label="`选择 ${row.businessNo} 第${row.nth}次`"
+                    :model-value="selected.has(row.id)"
+                    :disabled="row.billId !== null || unknownBill"
+                    @change="toggle(row.id)"
+                  />
+                </td>
+                <td>{{ row.launchDate }}</td>
+                <td>
+                  {{ row.payeeName ?? '—'
+                  }}{{ row.lawFirm ? ` / ${row.lawFirm}` : '' }}
+                </td>
+                <td>
+                  <RouterLink :to="`/cases/${row.caseId}`">{{
+                    row.businessNo
+                  }}</RouterLink>
+                </td>
+                <td>{{ row.nth }}</td>
+                <td class="money">{{ row.amount }}</td>
+                <td>{{ row.billId ? '已入单' : '未入单' }}</td>
+                <td v-if="side === 'CUSTOMER'">
+                  {{ row.invoiceAmount ?? '—' }}
+                </td>
+                <td>
+                  {{
+                    (side === 'CUSTOMER'
+                      ? row.receivedAmount
+                      : row.paidAmount) ?? '—'
+                  }}
+                </td>
+                <td>{{ row.actualPaymentDate ?? '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div
+          v-if="showLaunchPagination"
+          class="operation-bar settlement-center__pager"
+        >
+          <ElButton
+            class="action-size--standard"
+            :disabled="page <= 1"
+            @click="page -= 1"
+            >上一页</ElButton
           ><span>{{ page }} / {{ pageCount }}</span
-          ><ElButton :disabled="page >= pageCount" @click="page += 1">
+          ><ElButton
+            class="action-size--standard"
+            :disabled="page >= pageCount"
+            @click="page += 1"
+          >
             下一页
           </ElButton>
         </div>
         <form
           v-if="capabilities.billCreate"
-          class="filters"
+          class="settlement-center__bill-create"
           @submit.prevent="createBill"
         >
           <label
@@ -601,23 +655,33 @@ async function cancelBill(): Promise<void> {
               :disabled="unknownBill" /></label
           ><ElButton
             native-type="submit"
+            class="action-size--wide"
             :disabled="saving || selectedCount === 0"
           >
             合并生成账单（{{ selectedCount }} 条）
           </ElButton>
         </form>
-        <p v-if="capabilities.billCreate && billPreview">
+        <p
+          v-if="capabilities.billCreate && billPreview"
+          class="settlement-center__note"
+        >
           编号预览：{{ billPreview }}（未占号，以创建结果为准）
         </p>
-        <p v-if="unknownBill" role="alert">
+        <p v-if="unknownBill" role="alert" class="settlement-center__message">
           账单创建结果尚未确认。<ElButton :disabled="saving" @click="createBill"
             >用原请求重试</ElButton
           >
         </p>
       </section>
-      <section class="card">
+      <section class="settlement-center__bills">
         <h2>账单</h2>
-        <div class="filters">
+        <form
+          class="settlement-center__bill-filters"
+          @submit.prevent="
+            billPage = 1;
+            load();
+          "
+        >
           <label>账单号／收付方<ElInput v-model="billQuery" /></label
           ><label
             >账单状态<ElSelect v-model="billHistory"
@@ -626,53 +690,66 @@ async function cancelBill(): Promise<void> {
                 label="已发起" /><ElOption
                 value="CANCELLED"
                 label="已撤销" /></ElSelect></label
-          ><ElButton
-            @click="
-              billPage = 1;
-              load();
-            "
+          ><ElButton native-type="submit" class="action-size--standard"
             >查询账单</ElButton
           >
-        </div>
+        </form>
         <p v-if="bills.items.length === 0">暂无账单</p>
-        <table v-else>
-          <thead>
-            <tr>
-              <th>编号</th>
-              <th>账单日期</th>
-              <th>收付方</th>
-              <th>条数</th>
-              <th>金额</th>
-              <th>状态</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="bill in bills.items" :key="bill.id">
-              <td>{{ bill.billNo }}</td>
-              <td>{{ bill.billDate }}</td>
-              <td>{{ bill.payees.join('、') }}</td>
-              <td>{{ bill.count }}</td>
-              <td>{{ bill.amount }}</td>
-              <td>{{ bill.cancelledAt ? '已撤销' : '已发起' }}</td>
-              <td>
-                <ElButton @click="viewBill(bill.id)">查看</ElButton>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="pager">
-          <ElButton :disabled="billPage <= 1" @click="billPage -= 1"
+        <div v-else class="settlement-center__table">
+          <table>
+            <thead>
+              <tr>
+                <th>编号</th>
+                <th>账单日期</th>
+                <th>收付方</th>
+                <th>条数</th>
+                <th>金额（元）</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="bill in bills.items" :key="bill.id">
+                <td>{{ bill.billNo }}</td>
+                <td>{{ bill.billDate }}</td>
+                <td>{{ bill.payees.join('、') }}</td>
+                <td>{{ bill.count }}</td>
+                <td class="money">{{ bill.amount }}</td>
+                <td>{{ bill.cancelledAt ? '已撤销' : '已发起' }}</td>
+                <td>
+                  <ElButton
+                    class="action-size--compact"
+                    @click="viewBill(bill.id)"
+                    >查看</ElButton
+                  >
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div
+          v-if="showBillPagination"
+          class="operation-bar settlement-center__pager"
+        >
+          <ElButton
+            class="action-size--wide"
+            :disabled="billPage <= 1"
+            @click="billPage -= 1"
             >上一页账单</ElButton
           ><span>{{ billPage }} / {{ billPageCount }}</span
           ><ElButton
+            class="action-size--wide"
             :disabled="billPage >= billPageCount"
             @click="billPage += 1"
             >下一页账单</ElButton
           >
         </div>
       </section>
-      <section v-if="detail" class="card" aria-label="账单详情">
+      <section
+        v-if="detail"
+        class="settlement-center__bill-detail"
+        aria-label="账单详情"
+      >
         <h2>账单 {{ detail.billNo }}</h2>
         <p>
           {{ detail.billDate }} · {{ detail.amount }} 元 ·
@@ -682,33 +759,35 @@ async function cancelBill(): Promise<void> {
           撤销原因：{{ detail.cancellationReason }}
         </p>
         <p v-if="detail.note">备注：{{ detail.note }}</p>
-        <table>
-          <thead>
-            <tr>
-              <th>收付方</th>
-              <th>案件单号</th>
-              <th>发起结算日期</th>
-              <th>次数</th>
-              <th>金额</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in detail.items" :key="item.id">
-              <td>{{ item.payeeName }}</td>
-              <td>
-                <RouterLink :to="`/cases/${item.caseId}`">{{
-                  item.caseBusinessNo ?? '历史信息未提供'
-                }}</RouterLink>
-              </td>
-              <td>{{ item.launchDate ?? '历史信息未提供' }}</td>
-              <td>{{ item.nth }}</td>
-              <td>{{ item.amount }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="settlement-center__table">
+          <table>
+            <thead>
+              <tr>
+                <th>收付方</th>
+                <th>案件单号</th>
+                <th>发起结算日期</th>
+                <th>次数</th>
+                <th>金额（元）</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in detail.items" :key="item.id">
+                <td>{{ item.payeeName }}</td>
+                <td>
+                  <RouterLink :to="`/cases/${item.caseId}`">{{
+                    item.caseBusinessNo ?? '历史信息未提供'
+                  }}</RouterLink>
+                </td>
+                <td>{{ item.launchDate ?? '历史信息未提供' }}</td>
+                <td>{{ item.nth }}</td>
+                <td class="money">{{ item.amount }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <form
           v-if="!detail.cancelledAt && capabilities.billCancel"
-          class="filters"
+          class="operation-bar settlement-center__bill-cancel"
           @submit.prevent="cancelBill"
         >
           <label
@@ -736,50 +815,200 @@ async function cancelBill(): Promise<void> {
 <style scoped>
 .settlement-center {
   display: grid;
-  gap: 16px;
-  padding: 24px;
+  gap: var(--app-section-gap, 16px);
+  padding: 16px 20px;
   color: var(--color-ink);
 }
-.tabs,
-.filters,
-.pager,
-.kpis {
+.settlement-center__heading {
   display: flex;
   flex-wrap: wrap;
-  align-items: end;
-  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
 }
-.tabs {
+.settlement-center__heading h1,
+.settlement-center__heading p,
+.settlement-center__detail h2,
+.settlement-center__bills h2,
+.settlement-center__bill-detail h2 {
+  margin: 0;
+}
+.settlement-center__heading h1 {
+  font-size: 20px;
+}
+.settlement-center__heading p,
+.settlement-center__note {
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.settlement-center__tabs {
   border-bottom: 1px solid var(--color-hairline);
+  padding-bottom: 8px;
 }
-.card {
-  padding: 16px;
-  border: 1px solid var(--color-hairline);
+.settlement-center__detail,
+.settlement-center__bills,
+.settlement-center__bill-detail {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.settlement-center__detail > h2,
+.settlement-center__bills > h2,
+.settlement-center__bill-detail > h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.settlement-center__bills,
+.settlement-center__bill-detail {
+  border-top: 1px solid var(--color-hairline);
+  padding-top: var(--app-section-gap, 16px);
+}
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--app-detail-gap, 12px);
+  margin: 0;
+}
+.kpis > div {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  min-height: 82px;
+  padding: 10px 12px;
   background: var(--color-surface-1);
-  overflow-x: auto;
 }
-.filters label {
+.kpis dt {
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.kpis dd {
+  min-width: 0;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.kpis dd.money {
+  text-align: right;
+}
+.settlement-center__filters,
+.settlement-center__bill-filters {
+  display: grid;
+  grid-template-columns: minmax(190px, 2fr) repeat(4, minmax(100px, 1fr)) auto;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+.settlement-center__bill-filters {
+  grid-template-columns: minmax(210px, 2fr) minmax(140px, 1fr) auto;
+}
+.settlement-center__filters label,
+.settlement-center__bill-filters label,
+.settlement-center__bill-create label {
   display: grid;
   gap: 4px;
+  min-width: 0;
+  color: var(--color-ink-muted);
+  font-size: 12px;
 }
-.settlement-filters > label {
-  min-width: min(100%, 170px);
-}
-.settlement-filters > label:first-child {
-  flex: 1 1 220px;
-}
-.settlement-filters :deep(.el-select),
-.settlement-filters :deep(.el-input) {
+.settlement-center__filters :deep(.el-input),
+.settlement-center__filters :deep(.el-select),
+.settlement-center__bill-filters :deep(.el-input),
+.settlement-center__bill-filters :deep(.el-select),
+.settlement-center__bill-create :deep(.el-input) {
   width: 100%;
   min-width: 0;
 }
-button,
-input,
-select {
-  padding: 7px 9px;
-  border: 1px solid var(--color-hairline-strong);
-  background: var(--color-surface-1);
-  color: var(--color-ink);
+.settlement-center__filter-actions {
+  flex-wrap: nowrap;
+}
+.settlement-center__selection,
+.settlement-center__note {
+  margin: 0;
+}
+.settlement-center__selection {
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.settlement-center__table {
+  min-width: 0;
+  overflow-x: auto;
+}
+.settlement-center__table table {
+  min-width: 960px;
+}
+.settlement-center__table th {
+  color: var(--color-ink-muted);
+  background: var(--color-surface-2);
+  font-weight: 550;
+  white-space: nowrap;
+}
+.settlement-center__table td,
+.settlement-center__table th {
+  padding: 8px 10px;
+}
+.settlement-center__table .money {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.settlement-center__pager {
+  justify-content: flex-end;
+  gap: 8px;
+}
+.settlement-center__bill-create {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(220px, 2fr) auto;
+  align-items: end;
+  gap: 8px;
+  padding-top: 4px;
+}
+.settlement-center__bill-create > .settlement-center__note,
+.settlement-center__bill-create > [role='alert'] {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.settlement-center__bill-create > [role='alert'] {
+  color: var(--color-danger);
+}
+.settlement-center__bill-create > button {
+  justify-self: end;
+}
+.settlement-center__bill-detail > p {
+  margin: 0;
+}
+.settlement-center__bill-detail > form {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.settlement-center__bill-detail > form label {
+  flex: 1 1 240px;
+}
+.settlement-center__bill-detail > [role='alert'] {
+  color: var(--color-danger);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th,
+td {
+  border-bottom: 1px solid var(--color-hairline);
+  text-align: left;
+}
+.settlement-center__pager {
+  display: flex;
+  align-items: center;
+}
+.settlement-center__pager > span {
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 button[aria-selected='true'] {
   border-color: var(--color-primary);
@@ -788,18 +1017,55 @@ button[aria-selected='true'] {
 button:disabled {
   opacity: 0.5;
 }
-table {
-  width: 100%;
-  border-collapse: collapse;
+@media (max-width: 1100px) {
+  .kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .settlement-center__filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .settlement-center__filter-actions {
+    grid-column: 1 / -1;
+  }
 }
-th,
-td {
-  padding: 9px;
-  border-bottom: 1px solid var(--color-hairline);
-  text-align: left;
+@media (max-width: 760px) {
+  .settlement-center {
+    padding: 12px;
+  }
+  .kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .settlement-center__filters,
+  .settlement-center__bill-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .settlement-center__bill-create {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .settlement-center__bill-create > button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
 }
-.pager {
-  justify-content: end;
-  margin-top: 12px;
+@media (max-width: 420px) {
+  .kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .settlement-center__filters,
+  .settlement-center__bill-filters,
+  .settlement-center__bill-create {
+    grid-template-columns: 1fr;
+  }
+  .settlement-center__filter-actions,
+  .settlement-center__bill-create > .settlement-center__note,
+  .settlement-center__bill-create > [role='alert'] {
+    grid-column: auto;
+  }
+  .settlement-center__filter-actions {
+    flex-wrap: wrap;
+  }
+  .settlement-center__bill-create > button {
+    grid-column: auto;
+  }
 }
 </style>

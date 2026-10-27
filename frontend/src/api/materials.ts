@@ -152,7 +152,7 @@ export type OwnerMaterial = {
 export type UploadMaterialFileInput = {
   ownerType: Extract<
     MaterialOwnerType,
-    'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER' | 'CASE'
+    'CUSTOMER' | 'LEAD_DRAFT' | 'LEAD' | 'NOTARY_MATTER' | 'CASE'
   >;
   ownerId?: string;
   category: MaterialCategory;
@@ -164,7 +164,7 @@ type UploadDraftResponse = {
   id: string;
   ownerType: Extract<
     MaterialOwnerType,
-    'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER' | 'CASE'
+    'CUSTOMER' | 'LEAD_DRAFT' | 'LEAD' | 'NOTARY_MATTER' | 'CASE'
   >;
   ownerId: string;
   reservedOwnerId?: string;
@@ -287,6 +287,7 @@ function isUploadDraft(
     typeof value.id === 'string' &&
     (value.ownerType === 'CUSTOMER' ||
       value.ownerType === 'LEAD_DRAFT' ||
+      value.ownerType === 'LEAD' ||
       value.ownerType === 'NOTARY_MATTER' ||
       value.ownerType === 'CASE') &&
     typeof value.ownerId === 'string' &&
@@ -400,6 +401,24 @@ export async function uploadMaterialFile(
   const originalFilename = input.file.name.trim();
   if (originalFilename.length === 0) {
     throw new ApiError('文件名不能为空', 400, 'VALIDATION_ERROR');
+  }
+  if (input.category === 'LEAD_SCREENSHOT') {
+    const allowed = new Map([
+      ['.pdf', 'application/pdf'],
+      ['.jpg', 'image/jpeg'],
+      ['.jpeg', 'image/jpeg'],
+      ['.png', 'image/png'],
+      ['.webp', 'image/webp'],
+    ]);
+    const extension = originalFilename.toLowerCase().match(/\.[^.]+$/u)?.[0];
+    if (
+      !['LEAD_DRAFT', 'LEAD'].includes(input.ownerType) ||
+      (input.ownerType === 'LEAD' && !input.ownerId) ||
+      input.purpose !== 'LEAD_SCREENSHOT' ||
+      allowed.get(extension ?? '') !== input.file.type ||
+      input.file.size > 20 * 1024 * 1024
+    )
+      throw new ApiError('线索截图归属或文件类型无效', 400, 'VALIDATION_ERROR');
   }
   if (
     input.ownerType === 'CUSTOMER' &&

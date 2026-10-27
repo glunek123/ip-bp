@@ -6,6 +6,10 @@ import { CustomerService } from './customer.service';
 import { CustomerCooperationService } from './customer-cooperation.service';
 import { CustomerAgreementInvoiceService } from './customer-agreement-invoice.service';
 
+jest.mock('../business-numbering', () => ({
+  allocateCustomerBusinessId: jest.fn().mockResolvedValue('001'),
+}));
+
 jest.mock('./customer-contact-locks', () => ({
   isCustomerContactRetryable: () => false,
   lockVisibleCustomerForRoutineEdit: jest.fn(

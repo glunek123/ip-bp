@@ -213,6 +213,87 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+.page-view.customer-detail-page .customer-basic-overview {
+  display: grid;
+  gap: 10px;
+}
+.page-view.customer-detail-page .customer-basic-overview > section,
+.page-view.customer-detail-page .customer-basic-group > :first-child {
+  min-width: 0;
+}
+.page-view.customer-detail-page .customer-basic-overview .detail-card,
+.page-view.customer-detail-page
+  .customer-basic-overview
+  .customer-document-card {
+  margin-bottom: 0;
+  padding: 12px 16px;
+}
+.page-view.customer-detail-page .customer-basic-overview .detail-card > h2 {
+  margin-bottom: 6px;
+}
+.page-view.customer-detail-page #customer-profile .detail-grid,
+.page-view.customer-detail-page #customer-agreements .detail-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 14px;
+}
+.page-view.customer-detail-page #customer-profile .detail-grid > div {
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 6px;
+  padding: 7px 0;
+}
+.page-view.customer-detail-page .customer-basic-overview .history-panel {
+  margin-top: 0;
+  padding: 0 16px;
+}
+.page-view.customer-detail-page
+  .customer-basic-overview
+  .history-panel
+  summary {
+  padding: 10px 0;
+}
+.page-view.customer-detail-page
+  .customer-basic-overview
+  .customer-contact-list {
+  margin: 8px 0;
+}
+.page-view.customer-detail-page
+  .customer-basic-overview
+  .customer-contact-list
+  > li {
+  margin-top: 4px;
+  padding: 6px 10px;
+}
+.page-view.customer-detail-page .customer-basic-overview .admission-panel {
+  margin-top: 0;
+  padding: 12px 16px;
+  border-top-width: 1px;
+}
+.page-view.customer-detail-page .customer-basic-overview .admission-heading h2 {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+.page-view.customer-detail-page .customer-basic-overview .admission-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 14px;
+  margin-top: 12px;
+}
+.page-view.customer-detail-page .customer-basic-overview .admission-grid__wide {
+  grid-column: auto;
+}
+.page-view.customer-detail-page .customer-basic-overview .admission-section {
+  margin-top: 12px;
+  padding-top: 10px;
+}
+.page-view.customer-detail-page .customer-basic-overview .material-card {
+  gap: 10px;
+  padding: 7px 10px;
+}
+.page-view.customer-detail-page .customer-basic-overview .history-panel ol {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
 .page-view.customer-workspace .draft-note {
   margin: 12px 0 0;
   padding: 10px 12px;
@@ -669,7 +750,15 @@
   .page-view.customer-workspace .settlement-top-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .page-view.customer-workspace .detail-grid {
+  .page-view.customer-workspace .detail-grid,
+  .page-view.customer-detail-page #customer-profile .detail-grid,
+  .page-view.customer-detail-page #customer-agreements .detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .page-view.customer-detail-page .customer-basic-overview .admission-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .page-view.customer-workspace:not(.customer-detail-page) .detail-grid {
     grid-template-columns: 1fr;
   }
   .page-view.customer-workspace .settlement-record__facts {
@@ -735,6 +824,13 @@
   .page-view.customer-workspace .detail-grid > div {
     grid-template-columns: 90px minmax(0, 1fr);
     gap: 8px;
+  }
+  .page-view.customer-detail-page #customer-profile .detail-grid,
+  .page-view.customer-detail-page #customer-agreements .detail-grid {
+    grid-template-columns: 1fr;
+  }
+  .page-view.customer-detail-page .customer-basic-overview .admission-grid {
+    grid-template-columns: 1fr;
   }
   .page-view.customer-workspace .customer-tabs {
     gap: 0;

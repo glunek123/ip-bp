@@ -7,6 +7,9 @@ import {
   isPendingLaunch,
   isPendingFeeProof,
   isPendingCaseFees,
+  isPendingFeeCancellation,
+  isPendingFeePaymentVerification,
+  isPendingFeeRefund,
 } from './financial-pending';
 const terms = {
   side: 'CUSTOMER' as const,
@@ -98,6 +101,72 @@ describe('financial original command recovery', () => {
         caseId: 'case',
         idempotencyKey: 'batch',
         rows: [row, row],
+      }),
+    ).toBe(false);
+  });
+  it('recovers cancellation, verified payment, and each refund with exact keys and proof pairs', () => {
+    expect(
+      isPendingFeeCancellation({
+        feeId: 'fee',
+        body: {
+          expectedVersion: 3,
+          idempotencyKey: 'cancel-key',
+          reason: '撤回',
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isPendingFeeCancellation({
+        feeId: 'fee',
+        body: { expectedVersion: 3, idempotencyKey: 'cancel-key', reason: ' ' },
+      }),
+    ).toBe(false);
+    expect(
+      isPendingFeePaymentVerification({
+        feeId: 'fee',
+        body: {
+          amount: '0.00',
+          paymentDate: null,
+          proofMaterialId: null,
+          proofContentVersionId: null,
+          idempotencyKey: 'payment-key',
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isPendingFeePaymentVerification({
+        feeId: 'fee',
+        body: {
+          amount: '20.00',
+          paymentDate: null,
+          proofMaterialId: null,
+          proofContentVersionId: null,
+          idempotencyKey: 'payment-key',
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isPendingFeeRefund({
+        feeId: 'fee',
+        body: {
+          amount: '10.00',
+          refundDate: '2026-10-26',
+          proofMaterialId: 'material',
+          proofContentVersionId: 'version',
+          idempotencyKey: 'refund-key',
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isPendingFeeRefund({
+        feeId: 'fee',
+        body: {
+          amount: '10.00',
+          refundDate: '2026-10-26',
+          proofMaterialId: 'material',
+          proofContentVersionId: null,
+          idempotencyKey: 'refund-key',
+        },
       }),
     ).toBe(false);
   });

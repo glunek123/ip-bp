@@ -23,6 +23,7 @@ import {
   applyLeadWithdrawal,
   decideLeadNoEvidence,
   updateLead,
+  updateLeadProductScreenshots,
 } from './leads';
 
 const option = (value: string, label = value) => ({ value, label });
@@ -80,6 +81,7 @@ const lead = {
       unitPrice: '1.55',
       commentCount: 9,
       estimatedAmount: '4.65',
+      screenshotContentVersionIds: [],
     },
   ],
   leadScreenshotContentVersionIds: ['version-1'],
@@ -166,6 +168,7 @@ function csvLeadResult(
       unitPrice: product.unitPrice,
       commentCount: product.commentCount,
       estimatedAmount: '4.65',
+      screenshotContentVersionIds: [],
     })),
     leadScreenshotContentVersionIds: [],
     version: 1,
@@ -226,6 +229,25 @@ describe('internal lead display names', () => {
 });
 
 describe('Lead API', () => {
+  it('writes exact product screenshot versions with the current lead version', async () => {
+    http.requestJson.mockResolvedValueOnce(lead);
+    await expect(
+      updateLeadProductScreenshots('lead-1', 'product-1', {
+        expectedVersion: 3,
+        screenshotContentVersionIds: ['version-a', 'version-b'],
+      }),
+    ).resolves.toMatchObject({ id: 'lead-1' });
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/leads/lead-1/products/product-1/screenshots',
+      {
+        method: 'PUT',
+        body: {
+          expectedVersion: 3,
+          screenshotContentVersionIds: ['version-a', 'version-b'],
+        },
+      },
+    );
+  });
   it('encodes a trimmed keyword with stage and pagination and validates length before HTTP', async () => {
     http.getJson.mockResolvedValue({
       items: [],

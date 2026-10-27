@@ -212,7 +212,7 @@ const loadResources: LoadGroupResourcePage = async (request) => {
     !detail.value ||
     request.groupId !== detail.value.id
   )
-    throw new ApiError('当前无法读取办理组资料', 403, 'FORBIDDEN');
+    throw new ApiError('当前无法读取案件系列资料', 403, 'FORBIDDEN');
   const snapshot = {
     groupId: detail.value.id,
     revision: detail.value.revision,
@@ -372,7 +372,7 @@ async function loadPage(): Promise<void> {
     state.value = 'failed';
     error.value = invalidPage.value
       ? '分页参数无效，请返回案件列表重新进入。'
-      : '当前账号无法读取案件办理组。';
+      : '当前账号无法读取案件系列。';
     return;
   }
   const options = { signal: controller.signal };
@@ -395,7 +395,7 @@ async function loadPage(): Promise<void> {
       .catch(() => {
         if (current()) {
           state.value = 'failed';
-          error.value = '办理组暂时无法读取，请重试。';
+          error.value = '案件系列暂时无法读取，请重试。';
         }
       }),
   ];
@@ -410,7 +410,8 @@ async function loadPage(): Promise<void> {
         })
         .catch(() => {
           if (current())
-            detailError.value = '当前办理组不存在或不可读取，原请求仍会保留。';
+            detailError.value =
+              '当前案件系列不存在或不可读取，原请求仍会保留。';
         }),
     );
   await Promise.allSettled(tasks);
@@ -623,7 +624,7 @@ function handleConfirmed(result: CaseHandlingGroupCommandResult): void {
   createOpen.value = false;
   detailOpen.value = false;
   recoveryConfirmed.value = false;
-  message.value = '办理组操作已确认，原案归属保持完整。';
+  message.value = '案件系列操作已确认，原案归属保持完整。';
   if (route.params.id === result.id) void loadPage();
   else
     void router.push({
@@ -704,7 +705,7 @@ onBeforeUnmount(() => {
     <main :inert="createOpen || detailOpen">
       <div class="page-head">
         <div>
-          <h1>案件办理组</h1>
+          <h1>案件系列</h1>
           <p>按当前权限集中查看同一客户的源案，原案归属与历史保留。</p>
         </div>
         <div class="group-page-actions">
@@ -715,13 +716,13 @@ onBeforeUnmount(() => {
             data-test="open-create-group"
             :disabled="!!pending || entries === null || recoveryBusy"
             @click="openCreate"
-            >建立办理组</ElButton
+            >建立案件系列</ElButton
           ><ElButton data-test="refresh-groups" @click="loadPage"
             >刷新</ElButton
           >
         </div>
       </div>
-      <p v-if="state === 'loading'" role="status">正在读取办理组…</p>
+      <p v-if="state === 'loading'" role="status">正在读取案件系列…</p>
       <p v-if="error" role="alert">{{ error }}</p>
       <p v-if="detailError" role="alert">{{ detailError }}</p>
       <p v-if="message" role="status">{{ message }}</p>
@@ -731,7 +732,7 @@ onBeforeUnmount(() => {
       <ul
         v-if="state === 'ready'"
         class="handling-group-list"
-        aria-label="当前可读办理组"
+        aria-label="当前可读案件系列"
       >
         <li v-for="group in groups" :key="group.id" class="demo-card">
           <RouterLink
@@ -750,8 +751,10 @@ onBeforeUnmount(() => {
           </ul>
         </li>
       </ul>
-      <p v-if="state === 'ready' && !groups.length">当前没有可显示的办理组。</p>
-      <nav v-if="state === 'ready'" aria-label="办理组分页">
+      <p v-if="state === 'ready' && !groups.length">
+        当前没有可显示的案件系列。
+      </p>
+      <nav v-if="state === 'ready'" aria-label="案件系列分页">
         <ElButton
           data-test="previous-group-page"
           :disabled="page <= 1"
@@ -771,7 +774,7 @@ onBeforeUnmount(() => {
         data-test="group-pending"
       >
         <p>
-          有一项办理组原请求待核对。原内容与请求键已保留，当前权限由服务器重新核验。
+          有一项案件系列原请求待核对。原内容与请求键已保留，当前权限由服务器重新核验。
         </p>
         <ElButton
           v-if="pendingCreate"
@@ -838,7 +841,7 @@ onBeforeUnmount(() => {
       v-if="detailOpen && displayedDetail"
       role="dialog"
       aria-modal="true"
-      aria-label="案件办理组详情"
+      aria-label="案件系列详情"
     >
       <CaseHandlingGroupDetailPanel
         role="region"
@@ -857,7 +860,7 @@ onBeforeUnmount(() => {
         @close="closeDetail"
         @confirmed="handleConfirmed"
       />
-      <section class="demo-card" aria-label="办理组资源入口">
+      <section class="demo-card" aria-label="案件系列资源入口">
         <ElButton
           v-if="!resourcesOpen"
           data-test="open-group-resources"

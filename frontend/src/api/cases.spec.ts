@@ -90,6 +90,73 @@ function archiveDetailPayload() {
     },
   };
 }
+describe('early archive API', () => {
+  const input: casesApi.EarlyArchiveCaseInput = {
+    expectedVersion: 20,
+    idempotencyKey: 'early-archive-one',
+    archiveAt: '2026-10-13',
+    reason: '真实原因，未完成诉讼',
+  };
+  const fact: casesApi.CaseEarlyArchive = {
+    id: '90000000-0000-4000-8000-000000000006',
+    fromStage: 'WAITING_ARCHIVE',
+    fromVersion: 20,
+    toVersion: 21,
+    archiveAt: input.archiveAt,
+    reason: input.reason,
+    recordedAt: '2026-10-14T01:00:00.000Z',
+    recordedByUserId: '90000000-0000-4000-8000-000000000004',
+  };
+  it('posts the single case command and validates its exact receipt', async () => {
+    const receipt: casesApi.EarlyArchiveCaseResult = {
+      id: archiveCaseId,
+      earlyArchiveId: fact.id,
+      fromStage: fact.fromStage,
+      stage: 'ARCHIVED',
+      version: 21,
+      recordedAt: fact.recordedAt,
+    };
+    const fetch = mockJson(receipt, 201);
+    await expect(
+      casesApi.earlyArchiveCase(archiveCaseId, input),
+    ).resolves.toEqual(receipt);
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      `/api/v1/cases/${archiveCaseId}/early-archive`,
+    );
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
+    expect(fetch.mock.calls[0]?.[1]?.headers['Idempotency-Key']).toBe(
+      input.idempotencyKey,
+    );
+    mockJson({ ...receipt, version: 22 }, 201);
+    await expect(
+      casesApi.earlyArchiveCase(archiveCaseId, input),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+  it('reads the distinct early fact while keeping the old closure chain', async () => {
+    const old = closureDetailPayload();
+    const payload = {
+      ...old,
+      id: archiveCaseId,
+      stage: 'ARCHIVED',
+      version: 21,
+      canArchive: false,
+      canCorrectArchive: false,
+      canEarlyArchive: false,
+      archive: null,
+      earlyArchive: fact,
+      canRecordClosure: false,
+      canCorrectClosure: false,
+    };
+    mockJson(payload);
+    await expect(getCase(archiveCaseId)).resolves.toMatchObject({
+      stage: 'ARCHIVED',
+      earlyArchive: fact,
+      archive: null,
+      closure: old.closure,
+    });
+  });
+});
+
 describe('CA-017 fixed archive API', () => {
   it.each(['internal', 'lawyer'] as const)(
     'posts the exact body once for %s',

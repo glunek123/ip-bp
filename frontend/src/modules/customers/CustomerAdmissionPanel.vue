@@ -13,6 +13,7 @@ import {
 } from '../../api/customers';
 import { ApiError } from '../../api/http';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
+import MaterialPreviewDialog from '../../app/MaterialPreviewDialog.vue';
 import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
 import {
@@ -44,6 +45,11 @@ import {
 } from './customer-admission-pending';
 
 type SelectedFile = InstanceType<typeof globalThis.File>;
+type FilePreview = {
+  materialId: string;
+  contentVersionId: string;
+  filename: string;
+};
 
 const props = defineProps<{ customer: CustomerDetail }>();
 const emit = defineEmits<{
@@ -121,6 +127,41 @@ const compatibleOptions = computed(() =>
 const activeMaterials = computed(() =>
   materials.value.filter((material) => material.status === 'ACTIVE'),
 );
+const identityMaterials = computed(() =>
+  materials.value.filter(
+    (material) =>
+      material.category === 'CUSTOMER_IDENTITY' &&
+      (material.purpose === 'IDENTITY_FULL' ||
+        material.purpose === 'IDENTITY_FRONT' ||
+        material.purpose === 'IDENTITY_BACK'),
+  ),
+);
+const identityPurposeLabels: Partial<Record<MaterialPurpose, string>> = {
+  IDENTITY_FULL: '完整证件',
+  IDENTITY_FRONT: '人像面',
+  IDENTITY_BACK: '国徽面',
+};
+const filePreview = ref<FilePreview>();
+function closeFilePreview(): void {
+  filePreview.value = undefined;
+}
+function previewMaterial(material: OwnerMaterial): void {
+  const version = currentVersion(material);
+  if (!version || material.status !== 'ACTIVE') return;
+  filePreview.value = {
+    materialId: material.id,
+    contentVersionId: version.id,
+    filename: version.originalFilename,
+  };
+}
+function handlePreviewUnavailable(status: 403 | 404): void {
+  if (status === 403) {
+    materials.value = [];
+    materialError.value = '当前账号无权查看客户材料';
+  } else {
+    materialError.value = '文件已不存在，请刷新材料列表';
+  }
+}
 const purposeOptions = computed<
   ReadonlyArray<{ value: MaterialPurpose; label: string }>
 >(() =>
@@ -163,7 +204,10 @@ async function reloadContacts(page = contactPage.value): Promise<void> {
   }
 }
 
-onBeforeUnmount(() => contactsController?.abort());
+onBeforeUnmount(() => {
+  contactsController?.abort();
+  closeFilePreview();
+});
 
 watch(
   () => `${props.customer.id}:${props.customer.version}`,
@@ -187,6 +231,7 @@ watch(
 );
 
 function loadCustomerSnapshot(): void {
+  closeFilePreview();
   submitting.value = false;
   expectedCustomerId.value = props.customer.id;
   expectedVersion.value = props.customer.version;
@@ -888,8 +933,12 @@ loadCustomerSnapshot();
         >
       </fieldset>
 
-      <fieldset class="admission-section material-section">
-        <legend>身份证明材料</legend>
+      <fieldset
+        class="admission-section material-section"
+        :class="{ 'material-section--readonly': !canManageMaterials }"
+        :aria-labelledby="canManageMaterials ? undefined : 'admission-title'"
+      >
+        <legend v-if="canManageMaterials">身份证明材料</legend>
         <div class="upload-row">
           <label v-if="canManageMaterials">
             <span>材料用途<RequiredFieldMark /></span>
@@ -948,9 +997,9 @@ loadCustomerSnapshot();
         <p v-if="materialError" class="field-error" role="alert">
           {{ materialError }}
         </p>
-        <div v-if="materials.length" class="material-list">
+        <div v-if="identityMaterials.length" class="material-list">
           <article
-            v-for="material in materials"
+            v-for="material in identityMaterials"
             :key="material.id"
             class="material-card"
             :class="{ 'material-card--deleted': material.status === 'DELETED' }"
@@ -959,13 +1008,17 @@ loadCustomerSnapshot();
               <strong>{{
                 currentVersion(material)?.originalFilename || '材料版本不可用'
               }}</strong>
-              <small>{{
-                purposeOptions.find(
-                  (option) => option.value === material.purpose,
-                )?.label || material.purpose
-              }}</small>
+              <small>{{ identityPurposeLabels[material.purpose] }}</small>
             </div>
             <div class="material-actions">
+              <button
+                v-if="material.status === 'ACTIVE'"
+                :data-test="`preview-material-${material.id}`"
+                type="button"
+                @click="previewMaterial(material)"
+              >
+                预览
+              </button>
               <button
                 v-if="material.status === 'ACTIVE'"
                 :data-test="`download-material-${material.id}`"
@@ -1042,6 +1095,15 @@ loadCustomerSnapshot();
         </ElButton>
       </div>
     </form>
+    <MaterialPreviewDialog
+      v-if="filePreview"
+      :material-id="filePreview.materialId"
+      :content-version-id="filePreview.contentVersionId"
+      :filename="filePreview.filename"
+      :scope-key="`${customer.id}:${actorKey()}`"
+      @close="closeFilePreview"
+      @unavailable="handlePreviewUnavailable"
+    />
     <div
       v-if="pendingCommand"
       data-test="admission-pending-original"
@@ -1130,6 +1192,12 @@ loadCustomerSnapshot();
   padding: 20px 0 0;
   border: 0;
   border-top: 1px solid var(--line, #d9ddd9);
+}
+
+.admission-panel .material-section--readonly {
+  margin-top: 0;
+  padding: 0;
+  border: 0;
 }
 
 .admission-section legend {

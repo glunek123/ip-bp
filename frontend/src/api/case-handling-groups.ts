@@ -200,14 +200,10 @@ function exact(value: Record<string, unknown>, keys: string[]): boolean {
   );
 }
 function invalidInput(): ApiError {
-  return new ApiError('案件办理组请求无效', 400, 'VALIDATION_ERROR');
+  return new ApiError('案件系列请求无效', 400, 'VALIDATION_ERROR');
 }
 function invalidResponse(): ApiError {
-  return new ApiError(
-    '服务返回了无效的案件办理组数据',
-    502,
-    'INVALID_RESPONSE',
-  );
+  return new ApiError('服务返回了无效的案件系列数据', 502, 'INVALID_RESPONSE');
 }
 function text(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;

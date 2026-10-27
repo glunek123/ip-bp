@@ -13,6 +13,7 @@ import {
   type ExternalEntryOptions,
 } from '../../api/cases';
 import type { InfringementType } from '../../api/leads';
+import { labelLeadBusinessValue } from '../leads';
 import { caseStageLabels } from './case-workspace-read-model';
 
 type DefendantDraft = {
@@ -553,7 +554,7 @@ onMounted(() => void loadOptions());
                       :key="item.value"
                       :value="item.value"
                     >
-                      {{ item.label }}
+                      {{ labelLeadBusinessValue(item.value) }}
                     </option>
                   </select>
                 </label>
@@ -587,7 +588,7 @@ onMounted(() => void loadOptions());
                       :key="item.value"
                       :value="item.value"
                     >
-                      {{ item.label }}
+                      {{ labelLeadBusinessValue(item.value) }}
                     </option>
                   </select>
                 </label>
@@ -629,7 +630,7 @@ onMounted(() => void loadOptions());
                           )
                         "
                       />
-                      {{ item.label }}
+                      {{ labelLeadBusinessValue(item.value) }}
                     </label>
                   </div>
                   <p

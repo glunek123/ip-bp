@@ -15,7 +15,10 @@ import {
   caseListDisplay,
   caseListDisplaySelect,
 } from './case-list-display-read';
-import { CaseListExportInput } from './case-list-export.dto';
+import {
+  CaseListExportInput,
+  CaseSelectionExportInput,
+} from './case-list-export.dto';
 import { CaseListExportCapabilityDto } from './case-list-export-capability.dto';
 import {
   caseListOrderBy,
@@ -142,6 +145,124 @@ export class CaseListExportService {
       code: 'VALIDATION_ERROR',
       message: '案件列表导出条件无效',
     });
+  }
+
+  async exportSelection(
+    actor: ActorContext,
+    input: CaseSelectionExportInput,
+  ): Promise<{ csv: string }> {
+    if (
+      !input ||
+      typeof input !== 'object' ||
+      Array.isArray(input) ||
+      Object.keys(input).sort().join(',') !== 'ids,view' ||
+      !['mine', 'department'].includes(input.view) ||
+      !Array.isArray(input.ids) ||
+      input.ids.length < 1 ||
+      input.ids.length > maxRows ||
+      input.ids.some(
+        (id) =>
+          typeof id !== 'string' ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+            id,
+          ),
+      ) ||
+      new Set(input.ids).size !== input.ids.length
+    )
+      throw this.invalid();
+    return this.database.$transaction(
+      async (tx) => {
+        if (
+          actor.clientCustomerId !== undefined ||
+          actor.notaryOfficeId !== undefined ||
+          actor.lawyerAccountId !== undefined
+        )
+          throw new ForbiddenException({ code: 'ACTION_FORBIDDEN' });
+        const account = await tx.userAccount.findUnique({
+          where: { id: actor.userId },
+          select: { accountType: true, active: true },
+        });
+        if (account?.accountType !== 'INTERNAL' || account.active !== true)
+          throw new ForbiddenException({ code: 'ACTION_FORBIDDEN' });
+        await this.access.authorizeDepartmentAction(actor, 'case.read', tx);
+        await this.access.authorizeDepartmentAction(actor, 'case.export', tx);
+        const rows = await tx.case.findMany({
+          where: {
+            id: { in: input.ids },
+            departmentId: actor.departmentId,
+            ...(input.view === 'mine'
+              ? { responsibleUserId: actor.userId }
+              : {}),
+          },
+          select: { ...caseListDisplaySelect, businessNo: true, stage: true },
+        });
+        if (rows.length !== input.ids.length)
+          throw new ForbiddenException({
+            code: 'CASE_EXPORT_SELECTION_UNAVAILABLE',
+            message: '选中案件不可导出',
+          });
+        const byId = new Map(rows.map((row) => [row.id, row]));
+        const selected = input.ids.map((id) => byId.get(id)!);
+        const courtIds = [
+          ...new Set(
+            selected.flatMap((row) => {
+              const id = caseKnownCourtId(row);
+              return id === null ? [] : [id];
+            }),
+          ),
+        ];
+        const courts =
+          courtIds.length === 0
+            ? []
+            : await tx.filingCourt.findMany({
+                where: {
+                  departmentId: actor.departmentId,
+                  id: { in: courtIds },
+                },
+                select: { id: true, name: true },
+              });
+        const courtById = new Map(courts.map((court) => [court.id, court]));
+        const csv = caseListExportCsv(
+          selected.map((row) => {
+            const summary = caseListDisplay(
+              row,
+              courtById.get(caseKnownCourtId(row) ?? '') ?? null,
+            );
+            return {
+              businessNo: row.businessNo,
+              stage: row.stage,
+              customerName: summary.customerName,
+              rightsHolderName: summary.rightsHolderName,
+              defendants: summary.defendants.map(({ name }) => name),
+              courtName: summary.court?.name ?? null,
+              courtCaseNo: summary.courtCaseNo,
+            };
+          }),
+        );
+        await tx.auditEvent.create({
+          data: {
+            departmentId: actor.departmentId,
+            actorUserId: actor.userId,
+            internalActorUserId: actor.userId,
+            resourceType: 'case-list-export',
+            resourceId: randomUUID(),
+            action: 'case.list.exported',
+            details: {
+              scope: 'selection',
+              view: input.view,
+              ids: input.ids,
+              rowCount: selected.length,
+              columnVersion: 1,
+            },
+          },
+        });
+        return { csv };
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+        timeout: 15_000,
+      },
+    );
   }
 
   private normalize(input: CaseListExportInput): ExportFilter {
@@ -328,6 +449,7 @@ export class CaseListExportService {
             resourceId: randomUUID(),
             action: 'case.list.exported',
             details: {
+              scope: 'filter',
               filter: { ...filter },
               rowCount: rows.length,
               columnVersion: 1,

@@ -11,6 +11,7 @@ class ClientLeadProductResponseDto {
   @ApiProperty({ minimum: 0 }) commentCount!: number;
   @ApiProperty({ pattern: '^(0|[1-9]\\d{0,15})(\\.\\d{1,2})?$' })
   estimatedAmount!: string;
+  @ApiProperty({ type: [String] }) screenshotContentVersionIds!: string[];
 }
 
 export class ClientLeadReviewDecisionResponseDto {

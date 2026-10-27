@@ -274,6 +274,7 @@ describe('current visible group resource reads', () => {
       departmentId: actor.departmentId,
       caseId: { in: [visibleId] },
       deletedAt: null,
+      cancellation: { is: null },
       case: {
         is: {
           departmentId: actor.departmentId,

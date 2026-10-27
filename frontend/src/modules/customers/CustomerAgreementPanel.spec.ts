@@ -18,6 +18,12 @@ const materialApi = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(),
   uploadMaterialFile: vi.fn(),
 }));
+const previewDialogStub = {
+  props: ['materialId', 'contentVersionId', 'filename', 'scopeKey'],
+  emits: ['close', 'unavailable'],
+  template:
+    '<div data-test="preview-dialog-stub" :data-material-id="materialId" :data-version-id="contentVersionId"><button data-test="preview-denied" @click="$emit(\'unavailable\')">deny</button></div>',
+};
 const workflow = vi.hoisted(() => ({ notifyWorkflowChanged: vi.fn() }));
 vi.mock('../../app/workflow-events', () => workflow);
 vi.mock('../../api/customer-agreements-invoice', () => api);
@@ -78,6 +84,7 @@ function mountPanel(overrides: Record<string, unknown> = {}) {
       blockedByOtherMaintenance: false,
       ...overrides,
     },
+    global: { stubs: { MaterialPreviewDialog: previewDialogStub } },
   });
 }
 
@@ -91,6 +98,22 @@ async function chooseFile(wrapper: ReturnType<typeof mountPanel>) {
 }
 
 describe('CustomerAgreementPanel', () => {
+  it('clears agreement details if preview access is revoked', async () => {
+    api.getCustomerAgreement.mockResolvedValue(currentAgreement);
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper
+      .get('[data-test="agreement-preview-content-current"]')
+      .trigger('click');
+    expect(wrapper.find('[data-test="preview-dialog-stub"]').exists()).toBe(
+      true,
+    );
+    await wrapper.get('[data-test="preview-denied"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('当前协议第三版');
+    expect(wrapper.emitted('unavailable')).toHaveLength(1);
+  });
+
   it.each([403, 404])(
     'clears current, history and draft PII after upload %i while retaining recovery',
     async (status) => {
@@ -440,6 +463,15 @@ describe('CustomerAgreementPanel', () => {
       .get('[data-test="agreement-history-toggle"]')
       .trigger('click');
     await flushPromises();
+    await wrapper
+      .get('[data-test="history-preview-content-history"]')
+      .trigger('click');
+    expect(
+      wrapper.get('[data-test="preview-dialog-stub"]').attributes(),
+    ).toMatchObject({
+      'data-material-id': 'material-history',
+      'data-version-id': 'content-history',
+    });
     await wrapper
       .get('[data-test="history-download-content-history"]')
       .trigger('click');

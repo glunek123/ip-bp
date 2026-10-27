@@ -223,6 +223,7 @@ export class CaseReadService {
               currentVersion: { select: { id: true, toVersion: true } },
             },
           },
+          earlyArchive: { select: { id: true } },
           closure: {
             select: {
               id: true,
@@ -753,6 +754,18 @@ export class CaseReadService {
                   ? { teamId: item.responsibleMembership.teamId }
                   : {}),
               }))),
+          canEarlyArchive:
+            principal === 'INTERNAL' &&
+            item.stage !== 'ARCHIVED' &&
+            item.archive == null &&
+            item.earlyArchive == null &&
+            (await this.access.canAuthorizeCase(actor, 'case.archive', {
+              departmentId: actor.departmentId,
+              responsibleUserId: item.responsibleUserId,
+              ...(item.responsibleMembership.teamId
+                ? { teamId: item.responsibleMembership.teamId }
+                : {}),
+            })),
           canCorrectArchive:
             principal === 'INTERNAL' &&
             item.stage === 'ARCHIVED' &&
@@ -1063,6 +1076,7 @@ export class CaseReadService {
         },
         closure: { include: { versions: { orderBy: { fromVersion: 'asc' } } } },
         archive: { include: { versions: { orderBy: { fromVersion: 'asc' } } } },
+        earlyArchive: true,
         executionFiling: {
           select: {
             toVersion: true,
@@ -1667,7 +1681,9 @@ export class CaseReadService {
       closureRecord !== null &&
       (currentClosure === undefined ||
         closureHistory.at(-1)?.id !== currentClosure.id ||
-        (archiveRecord === null && currentClosure.toVersion !== record.version))
+        (archiveRecord === null &&
+          currentClosure.toVersion !==
+            (record.earlyArchive?.fromVersion ?? record.version)))
     )
       throw invalidSource();
     if (archiveRecord !== null) {
@@ -1715,8 +1731,38 @@ export class CaseReadService {
         prior = v.id;
       }
       if (terminal !== record.version) throw invalidSource();
-    } else if (record.stage === 'ARCHIVED' && !directArchivedRoot)
+    } else if (
+      record.stage === 'ARCHIVED' &&
+      !directArchivedRoot &&
+      record.earlyArchive == null
+    )
       throw invalidSource();
+    const earlyArchiveRecord = record.earlyArchive ?? null;
+    if (
+      earlyArchiveRecord !== null &&
+      (record.stage !== 'ARCHIVED' ||
+        archiveRecord !== null ||
+        directArchivedRoot ||
+        earlyArchiveRecord.fromStage === 'ARCHIVED' ||
+        earlyArchiveRecord.fromVersion + 1 !== earlyArchiveRecord.toVersion ||
+        earlyArchiveRecord.toVersion !== record.version ||
+        earlyArchiveRecord.caseId !== record.id ||
+        earlyArchiveRecord.departmentId !== actor.departmentId)
+    )
+      throw invalidSource();
+    const earlyArchive =
+      earlyArchiveRecord === null
+        ? null
+        : {
+            id: earlyArchiveRecord.id,
+            fromStage: earlyArchiveRecord.fromStage,
+            fromVersion: earlyArchiveRecord.fromVersion,
+            toVersion: earlyArchiveRecord.toVersion,
+            archiveAt: earlyArchiveRecord.archiveAt.toISOString().slice(0, 10),
+            reason: earlyArchiveRecord.reason,
+            recordedAt: earlyArchiveRecord.recordedAt.toISOString(),
+            recordedByUserId: earlyArchiveRecord.recordedByUserId,
+          };
     const archive =
       archiveRecord === null
         ? null
@@ -2370,6 +2416,7 @@ export class CaseReadService {
               },
             },
       archive,
+      earlyArchive,
       canArchive:
         record.stage === 'WAITING_ARCHIVE' &&
         record.archive == null &&
@@ -2382,6 +2429,18 @@ export class CaseReadService {
               ? { teamId: record.responsibleMembership.teamId }
               : {}),
           }))),
+      canEarlyArchive:
+        principal === 'INTERNAL' &&
+        record.stage !== 'ARCHIVED' &&
+        record.archive == null &&
+        record.earlyArchive == null &&
+        (await this.access.canAuthorizeCase(actor, 'case.archive', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })),
       canCorrectArchive:
         principal === 'INTERNAL' &&
         record.stage === 'ARCHIVED' &&
@@ -3468,6 +3527,7 @@ export class CaseReadService {
         canRecordClosure: detail.canRecordClosure,
         canCorrectClosure: false,
         canArchive: detail.canArchive,
+        canEarlyArchive: false,
         canCorrectArchive: false,
         archive:
           detail.archive === null
@@ -3478,6 +3538,18 @@ export class CaseReadService {
                 closureVersionId: detail.archive.closureVersionId,
                 current: archiveVersion(detail.archive.current),
                 history: detail.archive.history.map(archiveVersion),
+              },
+        earlyArchive:
+          detail.earlyArchive === null
+            ? null
+            : {
+                id: detail.earlyArchive.id,
+                fromStage: detail.earlyArchive.fromStage,
+                fromVersion: detail.earlyArchive.fromVersion,
+                toVersion: detail.earlyArchive.toVersion,
+                archiveAt: detail.earlyArchive.archiveAt,
+                reason: detail.earlyArchive.reason,
+                recordedAt: detail.earlyArchive.recordedAt,
               },
         closure:
           detail.closure === null

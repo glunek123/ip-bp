@@ -68,6 +68,7 @@ export async function readScopedCaseFeePage(
     departmentId: actor.departmentId,
     caseId: { in: [...caseIds] },
     deletedAt: null,
+    cancellation: { is: null },
     case: { is: caseScope },
   };
   const total = await tx.feeRecord.count({ where });

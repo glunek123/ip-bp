@@ -40,6 +40,7 @@ import { CustomerAccountService } from './customer-account.service';
 import { CustomerLifecycleService } from './customer-lifecycle.service';
 import { CustomerDraftLifecycleDto } from './customer-lifecycle.dto';
 import {
+  CustomerAccountCapabilitiesResponseDto,
   CustomerAccountListResponseDto,
   CustomerAccountResponseDto,
 } from './customer-account-response.dto';
@@ -163,6 +164,15 @@ export class CustomerController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.customers.get(actor, id);
+  }
+
+  @Get(':id/client-accounts/capabilities')
+  @ApiOkResponse({ type: CustomerAccountCapabilitiesResponseDto })
+  clientAccountCapabilities(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.clientAccounts.capabilities(actor, id);
   }
 
   @Get(':id/client-accounts')

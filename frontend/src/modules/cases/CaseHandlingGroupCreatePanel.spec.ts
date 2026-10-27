@@ -68,6 +68,7 @@ describe('handling group create panel', () => {
   afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
   it('cancels without issuing a command or auto-selecting cases', async () => {
     const wrapper = panel();
+    expect(wrapper.get('h2').text()).toBe('建立案件系列');
     expect(wrapper.findAll('input:checked')).toHaveLength(0);
     await wrapper.get('[data-test="close-create-group"]').trigger('click');
     expect(wrapper.emitted('close')).toHaveLength(1);

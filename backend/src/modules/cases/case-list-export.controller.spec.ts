@@ -53,6 +53,9 @@ const actor: ActorContext = {
 
 describe('case list export HTTP contract', () => {
   const exportCsv = jest.fn().mockResolvedValue({ csv: '\uFEFF"编号"\r\n' });
+  const exportSelection = jest
+    .fn()
+    .mockResolvedValue({ csv: '\uFEFF"编号"\r\n' });
   const capability = jest.fn().mockResolvedValue({ canExport: true });
   let app: INestApplication;
 
@@ -62,7 +65,7 @@ describe('case list export HTTP contract', () => {
       providers: [
         {
           provide: CaseListExportService,
-          useValue: { export: exportCsv, capability },
+          useValue: { export: exportCsv, exportSelection, capability },
         },
       ],
     })
@@ -163,5 +166,27 @@ describe('case list export HTTP contract', () => {
         .expect(400);
       expect(exportCsv).not.toHaveBeenCalled();
     }
+  });
+
+  it('accepts an explicit selection and rejects duplicate or undeclared IDs', async () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    await request(app.getHttpServer())
+      .post('/api/v1/cases/exports/selection')
+      .send({ view: 'mine', ids: [id] })
+      .expect(200);
+    expect(exportSelection).toHaveBeenCalledWith(actor, {
+      view: 'mine',
+      ids: [id],
+    });
+    expect(exportCsv).not.toHaveBeenCalled();
+    for (const body of [
+      { view: 'mine', ids: [id, id] },
+      { view: 'department', ids: [] },
+      { view: 'department', ids: [id], q: 'unrequested' },
+    ])
+      await request(app.getHttpServer())
+        .post('/api/v1/cases/exports/selection')
+        .send(body)
+        .expect(400);
   });
 });

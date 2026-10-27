@@ -1159,6 +1159,39 @@ describe('CaseReadService', () => {
       response: { code: 'CASE_NOT_FOUND' },
     });
   });
+  it('reads an early archive before litigation without inventing closure or finish', async () => {
+    const f = fixture();
+    const base = externalRecord('PENDING_MATCH');
+    f.db.case.findFirst.mockResolvedValue({
+      ...base,
+      stage: 'ARCHIVED',
+      version: 2,
+      earlyArchive: {
+        id: 'early-1',
+        caseId: base.id,
+        departmentId: actor.departmentId,
+        fromStage: 'PENDING_MATCH',
+        fromVersion: 1,
+        toVersion: 2,
+        archiveAt: new Date('2026-10-14T00:00:00Z'),
+        reason: '不再办理',
+        recordedAt: new Date('2026-10-14T01:00:00Z'),
+        recordedByUserId: actor.userId,
+      },
+    });
+    await expect(f.service.get(actor, base.id)).resolves.toMatchObject({
+      stage: 'ARCHIVED',
+      version: 2,
+      archive: null,
+      closure: null,
+      executionFinish: null,
+      earlyArchive: {
+        fromStage: 'PENDING_MATCH',
+        fromVersion: 1,
+        toVersion: 2,
+      },
+    });
+  });
   it('reads real closure and archive after a waiting-archive entry without fabricating an execution finish', async () => {
     const f = fixture();
     const closureVersion = {
@@ -1809,6 +1842,49 @@ describe('CaseReadService', () => {
     expect(archivedInternal.canRecordClosure).toBe(false);
     expect(archivedInternal.archive?.current).toMatchObject({
       recordedByUserId: actor.userId,
+    });
+    f.db.case.findFirst.mockResolvedValue({
+      ...archivedRecord,
+      archive: null,
+      earlyArchive: {
+        id: 'early-archive',
+        caseId: 'case-1',
+        departmentId: actor.departmentId,
+        fromStage: 'WAITING_ARCHIVE',
+        fromVersion: 26,
+        toVersion: 27,
+        archiveAt: new Date('2026-10-14T00:00:00Z'),
+        reason: '提前结束，不补结案',
+        recordedAt: new Date('2026-10-14T03:00:00Z'),
+        recordedByUserId: actor.userId,
+      },
+    });
+    const early = await f.service.get(actor, 'case-1');
+    expect(early.archive).toBeNull();
+    expect(early.earlyArchive).toMatchObject({
+      fromStage: 'WAITING_ARCHIVE',
+      fromVersion: 26,
+      toVersion: 27,
+      reason: '提前结束，不补结案',
+    });
+    expect(early.closure?.current.toVersion).toBe(26);
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    const earlyLawyer = await f.service.get(
+      { ...actor, lawyerAccountId: actor.userId },
+      'case-1',
+    );
+    expect(earlyLawyer.earlyArchive).toMatchObject({
+      fromStage: 'WAITING_ARCHIVE',
+      toVersion: 27,
+    });
+    expect(earlyLawyer.earlyArchive).not.toHaveProperty('recordedByUserId');
+    expect(earlyLawyer.canEarlyArchive).toBe(false);
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
     });
     f.db.case.findFirst.mockResolvedValue({
       ...archivedRecord,

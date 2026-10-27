@@ -7,6 +7,7 @@ import type { SectionAction, SectionKey } from './case-workspace-contract';
 import {
   buildCaseWorkspaceEvents,
   buildCaseWorkspaceSections,
+  caseStageLabels,
   workspaceDate,
   type LeadState,
 } from './case-workspace-read-model';
@@ -52,6 +53,43 @@ function edit(key: SectionKey): void {
 
 <template>
   <div class="case-workspace-details">
+    <section
+      v-if="item.earlyArchive"
+      class="case-workspace-section"
+      data-test="early-archive-record"
+      aria-label="提前归档记录"
+    >
+      <h2>提前归档记录</h2>
+      <dl class="case-workspace-fields">
+        <div class="case-workspace-field">
+          <dt class="case-workspace-field__label">提前归档日期</dt>
+          <dd class="case-workspace-field__value">
+            {{ workspaceDate(item.earlyArchive.archiveAt) }}
+          </dd>
+        </div>
+        <div class="case-workspace-field">
+          <dt class="case-workspace-field__label">原案件阶段</dt>
+          <dd class="case-workspace-field__value">
+            {{ caseStageLabels[item.earlyArchive.fromStage] }}
+          </dd>
+        </div>
+        <div class="case-workspace-field case-workspace-field--wide">
+          <dt class="case-workspace-field__label">提前归档原因</dt>
+          <dd class="case-workspace-field__value">
+            {{ item.earlyArchive.reason }}
+          </dd>
+        </div>
+        <div class="case-workspace-field">
+          <dt class="case-workspace-field__label">记录时间</dt>
+          <dd class="case-workspace-field__value">
+            {{ workspaceDate(item.earlyArchive.recordedAt) }}
+          </dd>
+        </div>
+      </dl>
+      <p class="case-workspace-field__help">
+        此记录表示在当前阶段提前停止案件办理并归档，不表示案件已结案或款项已登记。
+      </p>
+    </section>
     <CaseWorkspaceSection
       v-for="section in sections"
       :key="section.key"

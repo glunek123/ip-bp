@@ -140,7 +140,7 @@ beforeEach(() => {
     },
     capabilities: { create: true },
   });
-  api.listCases.mockResolvedValue({
+  const caseListResult = {
     items: [],
     total: 5,
     page: 1,
@@ -163,7 +163,18 @@ beforeEach(() => {
       WAITING_ARCHIVE: 0,
       ARCHIVED: 0,
     },
-  });
+  };
+  api.listCases.mockImplementation(
+    (_page: number, _pageSize: number, options?: { view?: string }) =>
+      Promise.resolve({
+        ...caseListResult,
+        total: options?.view === 'department' ? 19 : caseListResult.total,
+        counts:
+          options?.view === 'department'
+            ? { ...caseListResult.counts, PENDING_MATCH: 17 }
+            : caseListResult.counts,
+      }),
+  );
 });
 afterEach(() => {
   for (const wrapper of mountedShells.splice(0)) wrapper.unmount();
@@ -388,8 +399,8 @@ describe('AppShell', () => {
     expect(stages.map((link) => link.text())).toContain('待判决3');
     expect(stages).toHaveLength(10);
     expect(
-      wrapper.get('[data-test="execution-preparation-nav"]').text(),
-    ).toContain('准备执行文书3');
+      wrapper.get('[data-test="execution-preparation-stage"]').text(),
+    ).toContain('准备执行文书');
     expect(
       wrapper
         .get('[data-test="execution-preparation-stage"]')
@@ -400,7 +411,7 @@ describe('AppShell', () => {
         .get('[data-test="execution-preparation-stage"]')
         .attributes('href'),
     ).not.toContain('stage=');
-    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('19');
+    expect(wrapper.get('[data-test="case-view-mine"]').text()).toContain('19');
   });
 
   it('renders a minimal, distinct navigation for notary accounts', async () => {
@@ -421,7 +432,7 @@ describe('AppShell', () => {
     expect(wrapper.find('[data-test="lead-nav"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="notary-nav"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="customer-nav"]').exists()).toBe(false);
-    expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="case-view-mine"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="calendar-nav"]').exists()).toBe(false);
     expect(api.getCalendarSummary).not.toHaveBeenCalled();
     expect(wrapper.find('[data-test="settings-expand"]').exists()).toBe(false);
@@ -465,7 +476,7 @@ describe('AppShell', () => {
     expect(wrapper.get('[data-test="lawyer-case-nav"]').text()).toContain(
       '本人案件',
     );
-    expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="case-view-mine"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="lead-nav"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="customer-nav"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="settings-expand"]').exists()).toBe(false);
@@ -524,7 +535,10 @@ describe('AppShell', () => {
 
     expect(toolbarLabel).toBeDefined();
     expect(toolbarLabel?.element.nextElementSibling).toBe(
-      nav.get('[data-test="settlement-nav"]').element,
+      nav.get('[data-test="calendar-nav"]').element,
+    );
+    expect(nav.get('[data-test="calendar-nav"]').attributes('href')).toBe(
+      '/calendar',
     );
     expect(
       nav.get('[data-test="settlement-nav"]').element.nextElementSibling,
@@ -569,8 +583,8 @@ describe('AppShell', () => {
 
   it('shows the internal case entry without exposing it to clients', async () => {
     const { wrapper } = await mountShell();
-    expect(wrapper.get('[data-test="case-nav"]').attributes('href')).toBe(
-      '/cases',
+    expect(wrapper.get('[data-test="case-view-mine"]').attributes('href')).toBe(
+      '/cases?view=mine',
     );
     const client = {
       ...session,
@@ -580,9 +594,9 @@ describe('AppShell', () => {
       departments: [],
     };
     const clientShell = await mountShell('/client/leads', client);
-    expect(clientShell.wrapper.find('[data-test="case-nav"]').exists()).toBe(
-      false,
-    );
+    expect(
+      clientShell.wrapper.find('[data-test="case-view-mine"]').exists(),
+    ).toBe(false);
     expect(
       clientShell.wrapper
         .get('[data-test="client-case-nav"]')
@@ -599,7 +613,7 @@ describe('AppShell', () => {
       wrapper.get('[data-test="case-view-mine"]').attributes('href'),
     ).toContain('view=mine');
     expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(10);
-    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('19');
+    expect(wrapper.get('[data-test="case-view-mine"]').text()).toContain('19');
     expect(api.listCases).toHaveBeenCalledWith(1, 1, {
       signal: expect.any(AbortSignal),
       view: 'department',
@@ -620,6 +634,26 @@ describe('AppShell', () => {
       wrapper.get('[data-test="case-view-department"]').attributes('href'),
     ).toContain('stage=WAITING_COMPLAINT');
     expect(wrapper.text()).not.toContain('诉状待盖章');
+  });
+
+  it('keeps personal and department counts attached to their own sibling entries', async () => {
+    const { wrapper, router } = await mountShell('/cases?view=mine');
+    expect(wrapper.get('[data-test="case-view-mine"]').text()).toBe(
+      '我的案件19',
+    );
+    expect(wrapper.get('[data-test="case-view-department"]').text()).toBe(
+      '全部部门案件33',
+    );
+    expect(wrapper.find('[data-test="case-nav-parent"]').exists()).toBe(false);
+    await router.push('/cases?view=department&stage=PENDING_MATCH');
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="case-view-department"]').classes(),
+    ).toContain('active');
+    expect(wrapper.get('[data-test="case-stage"]').text()).toBe('案件待匹配17');
+    expect(wrapper.get('[data-test="breadcrumbs"]').text()).toContain(
+      '全部部门案件',
+    );
   });
 
   it('shows the notary office entry only when the office list is authorized', async () => {
@@ -700,19 +734,18 @@ describe('AppShell', () => {
       new ApiError('revoked', 403, 'ACTION_FORBIDDEN'),
     );
     const { wrapper, router } = await mountShell('/cases/case-1');
-    expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="case-view-mine"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="case-expand"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="案件范围与阶段"]').exists()).toBe(false);
-    expect(api.listCases).toHaveBeenCalledTimes(1);
+    expect(api.listCases).toHaveBeenCalledTimes(2);
     await router.push('/cases?view=department');
-    window.dispatchEvent(new Event(workflowChangedEvent));
     await flushPromises();
-    expect(api.listCases).toHaveBeenCalledTimes(1);
+    expect(api.listCases).toHaveBeenCalledTimes(2);
     const auth = useAuthStore();
     auth.session = { ...session, authorizationRevision: 2 };
     await flushPromises();
-    expect(api.listCases).toHaveBeenCalledTimes(2);
-    expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+    expect(api.listCases).toHaveBeenCalledTimes(4);
+    expect(wrapper.find('[data-test="case-view-mine"]').exists()).toBe(false);
   });
 
   it('keeps case navigation for an authorized read-only empty list', async () => {
@@ -720,9 +753,11 @@ describe('AppShell', () => {
     api.listCases.mockClear();
     api.listCases.mockResolvedValue({ ...base, total: 0, items: [] });
     const { wrapper } = await mountShell('/cases');
-    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('案件');
-    expect(wrapper.get('[data-test="case-view-department"]').text()).toBe(
-      '本部门全部',
+    expect(wrapper.get('[data-test="case-view-mine"]').text()).toContain(
+      '我的案件',
+    );
+    expect(wrapper.get('[data-test="case-view-department"]').text()).toContain(
+      '全部部门案件',
     );
   });
 
@@ -737,20 +772,22 @@ describe('AppShell', () => {
       api.listCases.mockClear();
       api.listCases.mockRejectedValueOnce(error);
       const { wrapper } = await mountShell('/cases');
-      expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+      expect(wrapper.find('[data-test="case-view-mine"]').exists()).toBe(false);
       expect(wrapper.get('[data-test="case-nav-error"]').text()).toContain(
         '暂时无法读取',
       );
-      expect(api.listCases).toHaveBeenCalledTimes(1);
+      expect(api.listCases).toHaveBeenCalledTimes(2);
       const leadCalls = api.listLeads.mock.calls.length;
       const notaryCalls = api.listNotaryMatters.mock.calls.length;
-      api.listCases.mockResolvedValueOnce(base);
+      api.listCases.mockResolvedValue(base);
       await wrapper.get('[data-test="case-nav-retry"]').trigger('click');
       await flushPromises();
-      expect(api.listCases).toHaveBeenCalledTimes(2);
+      expect(api.listCases).toHaveBeenCalledTimes(4);
       expect(api.listLeads).toHaveBeenCalledTimes(leadCalls);
       expect(api.listNotaryMatters).toHaveBeenCalledTimes(notaryCalls);
-      expect(wrapper.get('[data-test="case-nav"]').text()).toContain('案件');
+      expect(wrapper.get('[data-test="case-view-mine"]').text()).toContain(
+        '我的案件',
+      );
       expect(wrapper.find('[data-test="case-nav-error"]').exists()).toBe(false);
     },
   );
@@ -761,8 +798,11 @@ describe('AppShell', () => {
       new ApiError('unavailable', 500, 'INTERNAL_ERROR'),
     );
     await router.push('/cases?view=department');
+    window.dispatchEvent(new Event(workflowChangedEvent));
     await flushPromises();
-    expect(wrapper.get('[data-test="case-nav"]').text()).toBe('案件');
+    expect(wrapper.get('[data-test="case-view-mine"]').text()).toContain(
+      '我的案件',
+    );
     expect(wrapper.get('[data-test="case-nav-error"]').text()).toContain(
       '暂时无法读取',
     );
@@ -771,9 +811,10 @@ describe('AppShell', () => {
     );
     await wrapper.get('[data-test="case-nav-retry"]').trigger('click');
     await flushPromises();
-    expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="case-view-mine"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="case-nav-error"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="case-nav-retry"]').exists()).toBe(false);
+    expect(api.listCases).toHaveBeenCalledTimes(6);
     const calls = api.listCases.mock.calls.length;
     window.dispatchEvent(new Event(workflowChangedEvent));
     await flushPromises();
@@ -801,7 +842,7 @@ describe('AppShell', () => {
     expect(wrapper.get('[data-test="case-nav-error"]').text()).toContain(
       '暂时无法读取',
     );
-    expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="case-view-mine"]').exists()).toBe(false);
   });
 
   it('disables an in-flight explicit retry without starting another read', async () => {
@@ -822,11 +863,13 @@ describe('AppShell', () => {
     ).toBeDefined();
     await wrapper.get('[data-test="case-nav-retry"]').trigger('click');
     await flushPromises();
-    expect(api.listCases).toHaveBeenCalledTimes(2);
+    expect(api.listCases).toHaveBeenCalledTimes(4);
     finish(base);
     await flushPromises();
     expect(wrapper.find('[data-test="case-nav-error"]').exists()).toBe(false);
-    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('案件');
+    expect(wrapper.get('[data-test="case-view-mine"]').text()).toContain(
+      '我的案件',
+    );
   });
 
   it.each([
@@ -849,7 +892,9 @@ describe('AppShell', () => {
       expect(signal.aborted).toBe(true);
       failOld(error);
       await flushPromises();
-      expect(wrapper.get('[data-test="case-nav"]').text()).toContain('案件');
+      expect(wrapper.get('[data-test="case-view-mine"]').text()).toContain(
+        '我的案件',
+      );
       expect(wrapper.find('[data-test="case-nav-error"]').exists()).toBe(false);
     },
   );
@@ -868,9 +913,9 @@ describe('AppShell', () => {
     const current = await mountShell('/cases');
     failOld(new DOMException('aborted', 'AbortError'));
     await flushPromises();
-    expect(current.wrapper.get('[data-test="case-nav"]').text()).toContain(
-      '案件',
-    );
+    expect(
+      current.wrapper.get('[data-test="case-view-mine"]').text(),
+    ).toContain('案件');
     expect(current.wrapper.find('[data-test="case-nav-error"]').exists()).toBe(
       false,
     );
@@ -1060,7 +1105,7 @@ describe('case route context', () => {
       await flushPromises();
       expect(archivedLink().text()).toBe('已归档3');
       if (lawyer) {
-        expect(listApi).toHaveBeenLastCalledWith(
+        expect(listApi).toHaveBeenCalledWith(
           1,
           1,
           undefined,
@@ -1068,12 +1113,15 @@ describe('case route context', () => {
         );
         expect(api.listCases).not.toHaveBeenCalled();
       } else {
-        expect(listApi).toHaveBeenLastCalledWith(
+        expect(listApi).toHaveBeenCalledWith(
           1,
           1,
-          expect.objectContaining({
-            view: path.includes('department') ? 'department' : 'mine',
-          }),
+          expect.objectContaining({ view: 'mine' }),
+        );
+        expect(listApi).toHaveBeenCalledWith(
+          1,
+          1,
+          expect.objectContaining({ view: 'department' }),
         );
       }
       expect(wrapper.text()).not.toContain('已结清');
@@ -1132,7 +1180,13 @@ describe('case route context', () => {
     expect(nav.findAll('a.active')).toHaveLength(0);
     for (const view of ['mine', 'department']) {
       expect(
-        wrapper.get(`[data-test="case-view-${view}"]`).attributes('href'),
+        wrapper
+          .get(
+            view === 'mine'
+              ? '[data-test="case-view-mine"]'
+              : '[data-test="case-view-department"]',
+          )
+          .attributes('href'),
       ).toBe(`/cases?view=${view}`);
     }
     expect(
@@ -1144,10 +1198,12 @@ describe('case route context', () => {
     await flushPromises();
     expect(router.currentRoute.value.path).toBe('/cases');
     expect(router.currentRoute.value.query).toEqual({ view: 'department' });
-    expect(nav.findAll('a.active').map((link) => link.text())).toEqual([
-      '本部门全部',
-      '全部阶段19',
-    ]);
+    expect(
+      wrapper
+        .get('[aria-label="案件范围与阶段"]')
+        .findAll('a.active')
+        .map((link) => link.text()),
+    ).toEqual(['全部阶段33']);
     expect(api.listCases).toHaveBeenLastCalledWith(1, 1, {
       signal: expect.any(AbortSignal),
       view: 'department',
@@ -1218,21 +1274,27 @@ describe('case route context', () => {
       );
       const filters = { ...router.currentRoute.value.query };
       delete filters.page;
-      const nav = wrapper.get('[aria-label="案件范围与阶段"]');
       const activeStages = () =>
-        nav
+        wrapper
+          .get('[aria-label="案件范围与阶段"]')
           .findAll('a.active')
           .filter(
             (link) => !link.attributes('data-test')?.startsWith('case-view-'),
           );
       expect(activeStages()).toHaveLength(1);
-      const selectedLabel = activeStages()[0].text();
+      const selectedLabel = activeStages()[0].get('span').text();
       for (const view of ['department', 'mine']) {
-        await wrapper.get(`[data-test="case-view-${view}"]`).trigger('click');
+        await wrapper
+          .get(
+            view === 'mine'
+              ? '[data-test="case-view-mine"]'
+              : '[data-test="case-view-department"]',
+          )
+          .trigger('click');
         await flushPromises();
         expect(router.currentRoute.value.query).toEqual({ ...filters, view });
         expect(activeStages()).toHaveLength(1);
-        expect(activeStages()[0].text()).toBe(selectedLabel);
+        expect(activeStages()[0].get('span').text()).toBe(selectedLabel);
       }
       await wrapper
         .get('[data-test="execution-preparation-stage"]')
@@ -1267,7 +1329,13 @@ describe('case route context', () => {
           ),
       ).toHaveLength(0);
       for (const view of ['department', 'mine']) {
-        await wrapper.get(`[data-test="case-view-${view}"]`).trigger('click');
+        await wrapper
+          .get(
+            view === 'mine'
+              ? '[data-test="case-view-mine"]'
+              : '[data-test="case-view-department"]',
+          )
+          .trigger('click');
         await flushPromises();
         expect(router.currentRoute.value.query).toEqual({ ...filters, view });
       }
@@ -1376,12 +1444,13 @@ it.each(['/cases?view=mine', '/cases?view=department', '/lawyer/cases'])(
 it('orders the internal workflow modules while preserving other entries', async () => {
   const { wrapper } = await mountShell('/cases');
   const entries = wrapper.findAll(
-    '[data-test="lead-nav"], [data-test="notary-nav"], [data-test="case-nav"]',
+    '[data-test="lead-nav"], [data-test="notary-nav"], [data-test="case-view-mine"], [data-test="case-view-department"]',
   );
   expect(entries.map((link) => link.attributes('data-test'))).toEqual([
     'lead-nav',
     'notary-nav',
-    'case-nav',
+    'case-view-mine',
+    'case-view-department',
   ]);
 });
 describe.each([
@@ -1467,7 +1536,7 @@ describe.each([
     },
   );
 });
-it('discards stale group counters after range, authorization and user changes', async () => {
+it('keeps department counters separate from mine counts after scope changes', async () => {
   const base = await api.listCases();
   let resolveOld!: (value: unknown) => void;
   api.listCases.mockReturnValueOnce(
@@ -1492,7 +1561,7 @@ it('discards stale group counters after range, authorization and user changes', 
   resolveOld({ ...base, counts: { ...base.counts, WAITING_COMPLAINT: 99 } });
   await flushPromises();
   expect(wrapper.get('[data-test="complaint-preparation-stage"]').text()).toBe(
-    '准备起诉文书12',
+    '准备起诉文书4',
   );
   api.listCases.mockRejectedValue(
     new ApiError('revoked', 403, 'ACTION_FORBIDDEN'),
@@ -1503,13 +1572,13 @@ it('discards stale group counters after range, authorization and user changes', 
   expect(
     wrapper.find('[data-test="complaint-preparation-stage"]').exists(),
   ).toBe(false);
-  expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+  expect(wrapper.find('[data-test="case-view-mine"]').exists()).toBe(false);
   auth.session = { ...session, user: { ...session.user, id: 'user-2' } };
   await flushPromises();
   expect(
     wrapper.find('[data-test="complaint-preparation-stage"]').exists(),
   ).toBe(false);
-  expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+  expect(wrapper.find('[data-test="case-view-mine"]').exists()).toBe(false);
 });
 
 it('cannot restore internal case navigation with a late response from the revoked identity', async () => {
@@ -1531,14 +1600,16 @@ it('cannot restore internal case navigation with a late response from the revoke
   auth.session = { ...session, authorizationRevision: 2 };
   await flushPromises();
   expect(oldSignal.aborted).toBe(true);
-  expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+  expect(wrapper.find('[data-test="case-view-mine"]').exists()).toBe(false);
   resolveOld(base);
   await flushPromises();
-  expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+  expect(wrapper.find('[data-test="case-view-mine"]').exists()).toBe(false);
   api.listCases.mockResolvedValue(base);
   auth.session = { ...session, authorizationRevision: 3 };
   await flushPromises();
-  expect(wrapper.get('[data-test="case-nav"]').text()).toContain('案件');
+  expect(wrapper.get('[data-test="case-view-mine"]').text()).toContain(
+    '我的案件',
+  );
 });
 
 it('invalidates lawyer group badges on identity change and ignores the old response after revocation', async () => {

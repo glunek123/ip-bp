@@ -57,7 +57,10 @@ type ClientLeadReviewResult = {
 );
 
 const clientLeadInclude = {
-  products: { orderBy: { position: 'asc' as const } },
+  products: {
+    orderBy: { position: 'asc' as const },
+    include: { screenshots: { orderBy: { createdAt: 'asc' as const } } },
+  },
   infringements: { orderBy: { type: 'asc' as const } },
   rightsHolder: { select: { name: true } },
   reviewDecision: {
@@ -990,8 +993,18 @@ export class ClientLeadService {
         unitPrice: product.unitPrice.toFixed(2),
         commentCount: product.commentCount,
         estimatedAmount: product.estimatedAmount.toFixed(2),
+        screenshotContentVersionIds: (product.screenshots ?? []).map(
+          (screenshot) => screenshot.contentVersionId,
+        ),
       })),
-      leadScreenshotContentVersionIds: [...leadScreenshotContentVersionIds],
+      leadScreenshotContentVersionIds: leadScreenshotContentVersionIds.filter(
+        (versionId) =>
+          !lead.products.some((product) =>
+            (product.screenshots ?? []).some(
+              (screenshot) => screenshot.contentVersionId === versionId,
+            ),
+          ),
+      ),
       pushedAt: lead.pushedAt?.toISOString() ?? null,
       reviewDecision: lead.reviewDecision
         ? lead.reviewDecision.result === 'NO_INFRINGEMENT'

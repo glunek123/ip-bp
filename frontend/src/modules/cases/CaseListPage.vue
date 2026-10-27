@@ -10,6 +10,7 @@ import {
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
+  exportSelectedCasesCsv,
   exportCaseListCsv,
   getCaseListExportCapability,
   type CaseListExportInput,
@@ -53,6 +54,10 @@ import {
   type CaseListPreferenceBucket,
 } from '../../api/case-list-preference';
 import CaseListPreferencesPanel from './CaseListPreferencesPanel.vue';
+import CaseEarlyArchivePanel from './CaseEarlyArchivePanel.vue';
+import CaseBatchArchivePanel from './CaseBatchArchivePanel.vue';
+import CaseCsvImportPanel from './CaseCsvImportPanel.vue';
+import type { CaseBatchArchiveResult } from '../../api/case-batches';
 import {
   caseListQueryKey,
   caseListCaseTypes,
@@ -185,6 +190,46 @@ const canExportCsv = computed(
 );
 const exporting = ref(false);
 const exportError = ref('');
+const selectionExportError = ref('');
+const selectedCaseIds = ref<string[]>([]);
+const batchArchiveOpen = ref(false);
+const batchArchivePending = ref(false);
+const batchArchivePendingOwner = ref<string | null>(null);
+const csvImportOpen = ref(false);
+const csvImportPending = ref(false);
+const csvImportPendingOwner = ref<string | null>(null);
+const earlyArchiveTarget = ref<CaseSummary | null>(null);
+watch(
+  identity,
+  (currentIdentity) => {
+    batchArchiveOpen.value =
+      batchArchivePending.value &&
+      batchArchivePendingOwner.value === currentIdentity;
+    csvImportOpen.value =
+      csvImportPending.value && csvImportPendingOwner.value === currentIdentity;
+    earlyArchiveTarget.value = null;
+  },
+  { flush: 'sync' },
+);
+const selectedCases = computed(() =>
+  items.value.filter((item) => selectedCaseIds.value.includes(item.id)),
+);
+const allVisibleSelected = computed(
+  () =>
+    items.value.length > 0 &&
+    items.value.every((item) => selectedCaseIds.value.includes(item.id)),
+);
+function setSelectedCase(caseId: string, selected: boolean): void {
+  selectedCaseIds.value = selected
+    ? [...new Set([...selectedCaseIds.value, caseId])]
+    : selectedCaseIds.value.filter((id) => id !== caseId);
+}
+function setAllVisibleSelected(selected: boolean): void {
+  const visibleIds = new Set(items.value.map((item) => item.id));
+  selectedCaseIds.value = selected
+    ? [...new Set([...selectedCaseIds.value, ...visibleIds])]
+    : selectedCaseIds.value.filter((id) => !visibleIds.has(id));
+}
 let capabilityController: AbortController | undefined;
 let capabilityGeneration = 0;
 let exportController: AbortController | undefined;
@@ -230,6 +275,17 @@ watch(
     exportController = undefined;
     exporting.value = false;
     exportError.value = '';
+  },
+  { flush: 'sync' },
+);
+watch(
+  requestKey,
+  () => {
+    selectedCaseIds.value = [];
+    selectionExportError.value = '';
+    if (!batchArchivePending.value) batchArchiveOpen.value = false;
+    if (!csvImportPending.value) csvImportOpen.value = false;
+    earlyArchiveTarget.value = null;
   },
   { flush: 'sync' },
 );
@@ -558,6 +614,14 @@ const hiddenColumns = ref<CaseListColumn[]>([]);
 const visibleColumns = computed(() =>
   columnOrder.value.filter((column) => !hiddenColumns.value.includes(column)),
 );
+type CaseListTableColumn = CaseListColumn | 'owner' | 'rowActions' | 'origin';
+const tableColumns = computed<CaseListTableColumn[]>(() =>
+  visibleColumns.value.flatMap((column) =>
+    column === 'businessNo'
+      ? ['businessNo', 'owner', 'rowActions', 'origin']
+      : [column],
+  ),
+);
 const preferenceBucket = computed<CaseListPreferenceBucket>(
   () => stageGroup.value ?? stage.value,
 );
@@ -586,7 +650,7 @@ function applyColumnPreference(
   hiddenColumns.value = [...preference.hidden];
 }
 const columnLabels: Record<CaseListColumn, string> = {
-  businessNo: '操作／案件编号',
+  businessNo: '案件编号',
   stage: '案件进展',
   customerName: '客户',
   rightsHolderName: '权利主体',
@@ -601,7 +665,20 @@ const columnLabels: Record<CaseListColumn, string> = {
   judgmentAmount: '判决额',
   closureAmount: '结案额',
 };
-function columnClass(column: CaseListColumn) {
+const fixedColumnLabels = {
+  owner: '负责人',
+  rowActions: '操作',
+  origin: '来源',
+} as const;
+function columnLabel(column: CaseListTableColumn): string {
+  return column in fixedColumnLabels
+    ? fixedColumnLabels[column as keyof typeof fixedColumnLabels]
+    : columnLabels[column as CaseListColumn];
+}
+function columnClass(column: CaseListTableColumn) {
+  if (column === 'owner') return 'case-list-col--owner';
+  if (column === 'rowActions') return 'case-list-col--actions';
+  if (column === 'origin') return 'case-list-col--origin';
   if (
     column === 'businessNo' ||
     column === 'shopExternalId' ||
@@ -613,7 +690,10 @@ function columnClass(column: CaseListColumn) {
   if (column.endsWith('Amount')) return 'case-list-col--amount';
   return 'case-list-col--name';
 }
-function cellClass(column: CaseListColumn) {
+function cellClass(column: CaseListTableColumn) {
+  if (column === 'owner' || column === 'origin')
+    return 'business-list-cell--text';
+  if (column === 'rowActions') return 'business-list-cell--text';
   if (
     column === 'businessNo' ||
     column === 'stage' ||
@@ -635,7 +715,10 @@ function isAmountColumn(
   );
 }
 const minimumTableWidth = computed(() =>
-  visibleColumns.value.reduce((width, column) => {
+  tableColumns.value.reduce((width, column) => {
+    if (column === 'owner') return width + 170;
+    if (column === 'rowActions') return width + 330;
+    if (column === 'origin') return width + 240;
     if (
       column === 'businessNo' ||
       column === 'shopExternalId' ||
@@ -808,10 +891,61 @@ async function exportCurrentList(): Promise<void> {
     }
   }
 }
-function setView(next: CaseView) {
-  if (next === view.value) return;
-  void router.push({ query: { ...route.query, view: next, page: '1' } });
+async function exportSelectedList(): Promise<void> {
+  if (
+    !canExportCsv.value ||
+    selectedCaseIds.value.length === 0 ||
+    exporting.value
+  )
+    return;
+  const key = exportContextKey.value;
+  const generation = ++exportGeneration;
+  const ids = [...selectedCaseIds.value];
+  const controller = new AbortController();
+  exportController?.abort();
+  exportController = controller;
+  exporting.value = true;
+  selectionExportError.value = '';
+  try {
+    const result = await exportSelectedCasesCsv(
+      { view: view.value, ids },
+      { signal: controller.signal },
+    );
+    if (
+      controller.signal.aborted ||
+      generation !== exportGeneration ||
+      key !== exportContextKey.value ||
+      ids.some((id) => !selectedCaseIds.value.includes(id)) ||
+      !canExportCsv.value
+    )
+      return;
+    downloadCsv(result.blob, result.filename);
+  } catch (cause) {
+    if (
+      controller.signal.aborted ||
+      generation !== exportGeneration ||
+      key !== exportContextKey.value
+    )
+      return;
+    if (
+      cause instanceof ApiError &&
+      (cause.status === 401 || cause.status === 403)
+    ) {
+      exportCapability.value = false;
+      selectionExportError.value =
+        '当前账号已无案件导出权限，请刷新列表后重试。';
+    } else selectionExportError.value = '选中案件导出失败，请稍后重试。';
+  } finally {
+    if (generation === exportGeneration) {
+      exporting.value = false;
+      exportController = undefined;
+    }
+  }
 }
+function handleBatchArchive(result: CaseBatchArchiveResult): void {
+  if (result.items.some((item) => item.status === 'SUCCEEDED')) void load();
+}
+
 function goToPage(next: number) {
   if (
     state.value !== 'ready' ||
@@ -904,7 +1038,7 @@ onBeforeUnmount(() => {
       <div class="page-head">
         <div>
           <p class="eyebrow">业务管理系统</p>
-          <h1>案件</h1>
+          <h1>{{ view === 'mine' ? '我的案件' : '全部部门案件' }}</h1>
           <p>
             {{ view === 'mine' ? '我负责的案件' : '本部门全部案件' }} ·
             {{
@@ -918,7 +1052,7 @@ onBeforeUnmount(() => {
             }}
           </p>
         </div>
-        <div class="case-list-head-actions">
+        <div class="case-list-head-actions operation-bar">
           <RouterLink
             v-if="auth.session?.principalType === 'INTERNAL'"
             :to="{
@@ -926,10 +1060,11 @@ onBeforeUnmount(() => {
               query: { returnTo: route.fullPath },
             }"
             data-test="case-handling-groups-entry"
-            >案件办理组</RouterLink
+            >案件系列</RouterLink
           >
           <ElButton
             v-if="canExportCsv"
+            class="action-size--wide"
             :loading="exporting"
             :disabled="exporting || state !== 'ready'"
             data-test="export-current-case-list"
@@ -938,9 +1073,17 @@ onBeforeUnmount(() => {
           >
           <ElButton
             v-if="canCreateExternalEntry"
+            class="action-size--wide"
             type="primary"
             @click="router.push('/cases/external-entry')"
             >转入／补录案件</ElButton
+          >
+          <ElButton
+            v-if="canCreateExternalEntry"
+            class="action-size--wide"
+            data-test="open-case-csv-import"
+            @click="csvImportOpen = true"
+            >批量导入CSV</ElButton
           >
           <ElButton text :loading="state === 'loading'" @click="load"
             >刷新</ElButton
@@ -949,6 +1092,37 @@ onBeforeUnmount(() => {
             {{ exportError }}
           </p>
         </div>
+      </div>
+      <div
+        v-if="selectedCaseIds.length"
+        class="operation-bar case-selection-toolbar"
+      >
+        <span aria-live="polite">已选 {{ selectedCaseIds.length }} 件</span>
+        <ElButton
+          class="action-size--wide"
+          :disabled="
+            !canExportCsv || exporting || selectedCaseIds.length > 1000
+          "
+          :loading="exporting"
+          data-test="export-selected-cases"
+          @click="exportSelectedList"
+          >导出选中案件</ElButton
+        >
+        <ElButton
+          class="action-size--wide"
+          data-test="open-batch-early-archive"
+          @click="batchArchiveOpen = true"
+          >批量提前归档</ElButton
+        >
+        <ElButton
+          class="action-size--compact"
+          data-test="clear-case-selection"
+          @click="selectedCaseIds = []"
+          >清空选择</ElButton
+        >
+        <p v-if="selectionExportError" class="submit-error" role="alert">
+          {{ selectionExportError }}
+        </p>
       </div>
       <section
         v-if="recordRecoveries.length || recordRecoveryError"
@@ -991,22 +1165,6 @@ onBeforeUnmount(() => {
           >核对原办理请求</ElButton
         >
       </section>
-      <div
-        class="segmented-control business-list-toolbar"
-        role="group"
-        aria-label="案件范围"
-      >
-        <ElButton
-          :type="view === 'mine' ? 'primary' : 'default'"
-          @click="setView('mine')"
-          >我负责</ElButton
-        >
-        <ElButton
-          :type="view === 'department' ? 'primary' : 'default'"
-          @click="setView('department')"
-          >本部门全部</ElButton
-        >
-      </div>
       <CaseListPreferencesPanel
         :bucket="preferenceBucket"
         :request-generation="preferenceRequestGeneration"
@@ -1143,7 +1301,7 @@ onBeforeUnmount(() => {
             </caption>
             <colgroup>
               <col
-                v-for="column in visibleColumns"
+                v-for="column in tableColumns"
                 :key="column"
                 :class="columnClass(column)"
               />
@@ -1151,91 +1309,160 @@ onBeforeUnmount(() => {
             <thead>
               <tr>
                 <th
-                  v-for="column in visibleColumns"
+                  v-for="column in tableColumns"
                   :key="column"
                   scope="col"
-                  :class="column.endsWith('Amount') ? 'num' : undefined"
+                  :class="
+                    !['owner', 'rowActions', 'origin'].includes(column) &&
+                    column.endsWith('Amount')
+                      ? 'num'
+                      : undefined
+                  "
                 >
-                  {{ columnLabels[column] }}
+                  <label
+                    v-if="column === 'businessNo'"
+                    class="case-list-select-all"
+                  >
+                    <input
+                      type="checkbox"
+                      data-test="select-visible-cases"
+                      :checked="allVisibleSelected"
+                      :indeterminate="
+                        selectedCases.length > 0 && !allVisibleSelected
+                      "
+                      @change="
+                        setAllVisibleSelected(
+                          ($event.target as HTMLInputElement).checked,
+                        )
+                      "
+                    />
+                    <span>{{ columnLabel(column) }}</span>
+                  </label>
+                  <template v-else>{{ columnLabel(column) }}</template>
                 </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="item in items" :key="item.id">
                 <td
-                  v-for="column in visibleColumns"
+                  v-for="column in tableColumns"
                   :key="column"
                   :class="cellClass(column)"
                 >
                   <template v-if="column === 'businessNo'">
-                    <RouterLink
-                      class="mono"
-                      :to="{
-                        path: `/cases/${encodeURIComponent(item.id)}`,
-                        query: listQuery,
-                      }"
-                      >{{ item.businessNo }}</RouterLink
-                    >
-                    <div class="case-list-actions">
-                      <ElButton
-                        v-for="(action, index) in listActions(item)"
-                        :key="action.intent"
-                        :text="index !== 0"
-                        type="primary"
-                        :data-case-action="action.intent"
-                        :disabled="
-                          openingAction ||
-                          (!pendingActions.has(item.id) &&
-                            recordRecoveries.some(
-                              (recovery) => recovery.caseId === item.id,
-                            ))
+                    <div class="case-list-identity">
+                      <input
+                        type="checkbox"
+                        :aria-label="`选择案件 ${item.businessNo}`"
+                        :data-test="`select-case-${item.id}`"
+                        :checked="selectedCaseIds.includes(item.id)"
+                        @change="
+                          setSelectedCase(
+                            item.id,
+                            ($event.target as HTMLInputElement).checked,
+                          )
                         "
-                        @click="enterAction(item, action.intent)"
-                      >
-                        {{ action.label }}
-                      </ElButton>
-                      <ElButton
-                        text
-                        data-case-record-edit
-                        :disabled="
-                          openingAction ||
-                          !!recordRecoveryError ||
-                          pendingActions.has(item.id)
-                        "
-                        @click="enterRecordEditor(item)"
-                        >编辑已登记资料</ElButton
-                      >
-                      <span
-                        v-if="listActions(item).length === 0"
-                        class="field-help"
-                        >当前无可办操作</span
+                      />
+                      <RouterLink
+                        class="mono"
+                        :to="{
+                          path: `/cases/${encodeURIComponent(item.id)}`,
+                          query: listQuery,
+                        }"
+                        >{{ item.businessNo }}</RouterLink
                       >
                     </div>
-                    <details class="case-list-context">
-                      <summary :title="item.owner.displayName">
-                        负责人：{{ item.owner.displayName }}
-                      </summary>
-                      <p>负责人：{{ item.owner.displayName }}</p>
-                      <p v-if="item.sourceLead">
-                        来源线索：<span class="mono case-list-identifier">{{
-                          item.sourceLead.businessNo
-                        }}</span>
-                      </p>
-                      <p v-if="item.sourceNotaryMatter">
-                        公证事项：<span class="mono case-list-identifier">{{
-                          item.sourceNotaryMatter.businessNo
-                        }}</span>
-                      </p>
-                      <p v-if="item.origin?.kind === 'EXTERNAL_ENTRY'">
-                        案件来源：{{
-                          item.origin.entryKind === 'EXTERNAL_TRANSFER'
-                            ? '外部转入'
-                            : '历史补录'
-                        }}
-                        · {{ item.origin.stageReachedOn }}
-                      </p>
-                    </details>
                   </template>
+                  <span v-else-if="column === 'owner'">
+                    {{ item.owner.displayName }}
+                  </span>
+                  <div
+                    v-else-if="column === 'rowActions'"
+                    class="case-list-actions operation-bar"
+                  >
+                    <ElButton
+                      v-for="(action, index) in listActions(item)"
+                      :key="action.intent"
+                      :class="
+                        action.label.length > 4
+                          ? 'action-size--wide case-list-action--long'
+                          : 'action-size--compact'
+                      "
+                      :text="index !== 0"
+                      type="primary"
+                      :data-case-action="action.intent"
+                      :disabled="
+                        openingAction ||
+                        (!pendingActions.has(item.id) &&
+                          recordRecoveries.some(
+                            (recovery) => recovery.caseId === item.id,
+                          ))
+                      "
+                      @click="enterAction(item, action.intent)"
+                    >
+                      {{ action.label }}
+                    </ElButton>
+                    <ElButton
+                      v-if="
+                        item.canEarlyArchive === true &&
+                        item.stage !== 'ARCHIVED'
+                      "
+                      class="action-size--compact"
+                      data-test="open-single-early-archive"
+                      @click="earlyArchiveTarget = item"
+                      >提前归档</ElButton
+                    >
+                    <ElButton
+                      text
+                      class="action-size--compact"
+                      data-case-record-edit
+                      :disabled="
+                        openingAction ||
+                        !!recordRecoveryError ||
+                        pendingActions.has(item.id)
+                      "
+                      title="编辑已登记资料"
+                      @click="enterRecordEditor(item)"
+                      >编辑资料</ElButton
+                    >
+                    <span
+                      v-if="listActions(item).length === 0"
+                      class="field-help"
+                      >当前无可办操作</span
+                    >
+                  </div>
+                  <div
+                    v-else-if="column === 'origin'"
+                    class="case-list-context"
+                  >
+                    <p v-if="item.sourceLead">
+                      来源线索：<span class="mono case-list-identifier">{{
+                        item.sourceLead.businessNo
+                      }}</span>
+                    </p>
+                    <p v-if="item.sourceNotaryMatter">
+                      公证事项：<span class="mono case-list-identifier">{{
+                        item.sourceNotaryMatter.businessNo
+                      }}</span>
+                    </p>
+                    <p v-if="item.origin?.kind === 'EXTERNAL_ENTRY'">
+                      案件来源：{{
+                        item.origin.entryKind === 'EXTERNAL_TRANSFER'
+                          ? '外部转入'
+                          : '历史补录'
+                      }}
+                      · {{ item.origin.stageReachedOn }}
+                    </p>
+                    <span
+                      v-if="
+                        !item.sourceLead &&
+                        !item.sourceNotaryMatter &&
+                        item.origin?.kind !== 'EXTERNAL_ENTRY'
+                      "
+                      class="field-help"
+                      >未登记</span
+                    >
+                  </div>
                   <span v-else-if="column === 'stage'" class="pill">
                     {{ stageLabel(item.stage) }}
                   </span>
@@ -1403,6 +1630,44 @@ onBeforeUnmount(() => {
         />
       </template>
     </ListWorkflowDrawer>
+    <CaseEarlyArchivePanel
+      v-if="earlyArchiveTarget"
+      :item="earlyArchiveTarget"
+      :context-key="identity"
+      @close="earlyArchiveTarget = null"
+      @completed="load"
+      @access-lost="load"
+    />
+    <CaseBatchArchivePanel
+      v-if="batchArchiveOpen || batchArchivePending"
+      :open="batchArchiveOpen"
+      :items="selectedCases"
+      :context-key="requestKey"
+      :identity-key="identity"
+      @close="
+        batchArchiveOpen = false;
+        selectedCaseIds = [];
+      "
+      @completed="handleBatchArchive"
+      @access-lost="load"
+      @pending-state="
+        batchArchivePending = $event;
+        batchArchivePendingOwner = $event ? identity : null;
+      "
+    />
+    <CaseCsvImportPanel
+      v-if="csvImportOpen || csvImportPending"
+      :open="csvImportOpen"
+      :context-key="preferenceRequestGeneration"
+      :identity-key="identity"
+      @close="csvImportOpen = false"
+      @completed="load"
+      @access-lost="load"
+      @pending-state="
+        csvImportPending = $event;
+        csvImportPendingOwner = $event ? identity : null;
+      "
+    />
   </div>
 </template>
 
@@ -1414,16 +1679,42 @@ onBeforeUnmount(() => {
   gap: var(--s-1);
   white-space: normal;
 }
+.case-list-identity {
+  min-width: 180px;
+}
+.case-list-col--identity {
+  width: 220px;
+}
+.case-list-col--owner {
+  width: 170px;
+}
+.case-list-col--actions {
+  width: 330px;
+}
+.case-list-col--origin {
+  width: 240px;
+}
+.case-list-context {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-3);
+  margin-top: 0;
+}
+.case-list-context p {
+  margin: 0;
+}
 .case-list-actions :deep(.el-button + .el-button) {
   margin-left: 0;
+}
+.case-list-actions :deep(.case-list-action--long) {
+  width: auto;
+  min-width: 152px;
 }
 
 .case-list-table {
   min-width: 2600px;
-}
-
-.case-list-col--identity {
-  width: 200px;
 }
 
 .case-list-col--stage {

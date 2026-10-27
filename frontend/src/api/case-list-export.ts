@@ -32,9 +32,16 @@ export type CaseListExportFile = {
 };
 
 export type CaseListExportCapability = { canExport: boolean };
+export type CaseSelectionExportInput = {
+  view: CaseView;
+  ids: string[];
+};
 
 const exportPath = '/cases/exports/csv';
 const capabilityPath = '/cases/exports/capability';
+const selectionPath = '/cases/exports/selection';
+const uuidV4 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const allowedKeys = new Set([
   'shopName',
   'defendantName',
@@ -216,4 +223,33 @@ export async function getCaseListExportCapability(
   options: RequestOptions = {},
 ): Promise<CaseListExportCapability> {
   return decodeCapability(await getJson(capabilityPath, options));
+}
+
+export async function exportSelectedCasesCsv(
+  input: CaseSelectionExportInput,
+  options: RequestOptions = {},
+): Promise<CaseListExportFile> {
+  if (
+    !input ||
+    Object.keys(input).sort().join(',') !== 'ids,view' ||
+    (input.view !== 'mine' && input.view !== 'department') ||
+    !Array.isArray(input.ids) ||
+    input.ids.length < 1 ||
+    input.ids.length > 1000 ||
+    new Set(input.ids).size !== input.ids.length ||
+    input.ids.some((id) => typeof id !== 'string' || !uuidV4.test(id))
+  )
+    throw invalidInput();
+  const result = await postBlob(selectionPath, input, {
+    ...options,
+    retryOnCsrfInvalid: false,
+  });
+  if (
+    !(result.blob instanceof globalThis.Blob) ||
+    result.blob.size === 0 ||
+    result.filename !== 'case-selection.csv' ||
+    result.mimeType !== 'text/csv'
+  )
+    throw invalidResponse();
+  return { ...result, mimeType: 'text/csv' };
 }

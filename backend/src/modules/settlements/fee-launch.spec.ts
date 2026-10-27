@@ -24,7 +24,11 @@ function setup(rows: Row[], updateRecord?: Row) {
   const tx = {
     $queryRaw: jest.fn(async () => [{ id: 'case' }]),
     feeRecord: {
-      findMany: jest.fn().mockResolvedValue(rows),
+      findMany: jest
+        .fn()
+        .mockResolvedValue(
+          rows.map((row) => ({ ...row, version: 1, cancellation: null })),
+        ),
       findFirst: jest.fn().mockResolvedValue(updateRecord ?? rows[0] ?? null),
       updateMany: jest
         .fn()
@@ -101,6 +105,7 @@ describe('zero amount fee launch guard', () => {
         id: { in: ['fee-positive'] },
         departmentId: actor.departmentId,
         deletedAt: null,
+        cancellation: { is: null },
         status: '未发起',
         amount: { gt: new Prisma.Decimal(0) },
       },
@@ -174,6 +179,7 @@ describe('zero amount fee launch guard', () => {
         departmentId: actor.departmentId,
         version: 1,
         deletedAt: null,
+        cancellation: { is: null },
       },
       data: {
         version: { increment: 1 },
@@ -199,4 +205,21 @@ describe('zero amount fee launch guard', () => {
       }),
     );
   });
+
+  it.each(['发起', '已支付'])(
+    'rejects batch deletion of %s before changing any row',
+    async (status) => {
+      const protectedFee = { ...fee('protected-fee', '100.00'), status };
+      const f = setup([protectedFee]);
+      await expect(
+        f.service.batch(actor, 'DELETE', {
+          ids: [protectedFee.id],
+          idempotencyKey: 'protected-delete',
+        }),
+      ).rejects.toMatchObject({
+        response: { code: 'FEE_REQUIRES_CANCELLATION' },
+      });
+      expect(f.tx.feeRecord.updateMany).not.toHaveBeenCalled();
+    },
+  );
 });

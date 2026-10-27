@@ -9,6 +9,10 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { CustomerCaseEntrySourceService } from '../customers';
+import {
+  allocateCustomerDailyNumber,
+  resolveHistoricalNumber,
+} from '../business-numbering';
 import { Prisma } from '../../generated/prisma/client';
 import {
   CaseStage,
@@ -313,23 +317,42 @@ export class CaseExternalEntryService {
       },
     };
   }
-  async options(actor: ActorContext) {
-    const { account, membership } = await this.database.$transaction((tx) =>
-      this.actorMembership(tx, actor),
-    );
+  validateInput(input: CreateCaseExternalEntryDto): void {
+    this.normalize(input);
+  }
+  async options(
+    actor: ActorContext,
+    tx?: Prisma.TransactionClient,
+    allCandidates = false,
+  ) {
+    const { account, membership } = tx
+      ? await this.actorMembership(tx, actor)
+      : await this.database.$transaction((reader) =>
+          this.actorMembership(reader, actor),
+        );
     const facts = this.facts(actor, membership.teamId);
     const [canCreate, canCreateArchived] = await Promise.all([
-      this.access.canAuthorizeCase(actor, 'case.external-entry.create', facts),
-      this.access.canAuthorizeCase(actor, 'case.external-entry.archive', facts),
+      this.access.canAuthorizeCase(
+        actor,
+        'case.external-entry.create',
+        facts,
+        tx,
+      ),
+      this.access.canAuthorizeCase(
+        actor,
+        'case.external-entry.archive',
+        facts,
+        tx,
+      ),
     ]);
     const [customers, lawyers, courts] = canCreate
       ? await Promise.all([
           this.access
-            .tryBuildCustomerScope(actor, 'customer.read')
+            .tryBuildCustomerScope(actor, 'customer.read', tx)
             .then((scope) =>
-              scope === null ? [] : this.customerSource.list(actor),
+              scope === null ? [] : this.customerSource.list(actor, tx),
             ),
-          this.database.lawyerAccountBinding.findMany({
+          (tx ?? this.database).lawyerAccountBinding.findMany({
             where: {
               departmentId: actor.departmentId,
               active: true,
@@ -345,13 +368,13 @@ export class CaseExternalEntryService {
               profile: { select: { fullName: true, lawFirm: true } },
             },
             orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-            take: 500,
+            ...(allCandidates ? {} : { take: 500 }),
           }),
-          this.database.filingCourt.findMany({
+          (tx ?? this.database).filingCourt.findMany({
             where: { departmentId: actor.departmentId },
             select: { id: true, name: true },
             orderBy: { name: 'asc' },
-            take: 500,
+            ...(allCandidates ? {} : { take: 500 }),
           }),
         ])
       : [[], [], []];
@@ -388,261 +411,10 @@ export class CaseExternalEntryService {
     actor: ActorContext,
     raw: CreateCaseExternalEntryDto,
   ): Promise<CreateCaseExternalEntryResultDto> {
-    const input = this.normalize(raw);
-    const fingerprint = createHash('sha256')
-      .update(JSON.stringify({ ...input, idempotencyKey: undefined }))
-      .digest('hex');
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await this.database.$transaction(
-          async (tx) => {
-            const { membership } = await this.actorMembership(tx, actor);
-            const facts = this.facts(actor, membership.teamId);
-            await this.access.authorizeCase(
-              actor,
-              'case.external-entry.create',
-              facts,
-              tx,
-            );
-            if (input.initialStage === 'ARCHIVED')
-              await this.access.authorizeCase(
-                actor,
-                'case.external-entry.archive',
-                facts,
-                tx,
-              );
-            const prior = await tx.caseExternalEntryReceipt.findUnique({
-              where: {
-                departmentId_actorUserId_idempotencyKey: {
-                  departmentId: actor.departmentId,
-                  actorUserId: actor.userId,
-                  idempotencyKey: input.idempotencyKey,
-                },
-              },
-            });
-            if (prior !== null) {
-              if (prior.requestFingerprint !== fingerprint)
-                throw this.conflict();
-              const recordedCase = await tx.case.findFirst({
-                where: { id: prior.caseId, departmentId: actor.departmentId },
-                select: {
-                  id: true,
-                  customerId: true,
-                  rightsHolderId: true,
-                  responsibleUserId: true,
-                  responsibleMembership: { select: { teamId: true } },
-                  externalEntry: { select: { id: true, initialStage: true } },
-                },
-              });
-              if (
-                recordedCase === null ||
-                recordedCase.externalEntry === null ||
-                recordedCase.customerId !== input.customerId ||
-                recordedCase.rightsHolderId !== input.rightsHolderId ||
-                recordedCase.externalEntry.initialStage !== input.initialStage
-              )
-                throw this.forbidden();
-              const currentFacts = {
-                departmentId: actor.departmentId,
-                responsibleUserId: recordedCase.responsibleUserId,
-                ...(recordedCase.responsibleMembership.teamId === null
-                  ? {}
-                  : { teamId: recordedCase.responsibleMembership.teamId }),
-              };
-              await this.access.authorizeCase(
-                actor,
-                'case.external-entry.create',
-                currentFacts,
-                tx,
-              );
-              if (input.initialStage === 'ARCHIVED')
-                await this.access.authorizeCase(
-                  actor,
-                  'case.external-entry.archive',
-                  currentFacts,
-                  tx,
-                );
-              await this.customerSource.assertEligible(
-                tx,
-                actor,
-                recordedCase.customerId,
-                recordedCase.rightsHolderId,
-              );
-              const snapshot =
-                prior.resultSnapshot as Partial<CreateCaseExternalEntryResultDto>;
-              if (
-                snapshot.id !== prior.caseId ||
-                snapshot.entryId !== recordedCase.externalEntry.id ||
-                typeof snapshot.entryId !== 'string' ||
-                typeof snapshot.businessNo !== 'string' ||
-                !stages.includes(snapshot.stage!) ||
-                snapshot.version !== 1 ||
-                typeof snapshot.recordedAt !== 'string'
-              )
-                throw this.conflict();
-              return snapshot as CreateCaseExternalEntryResultDto;
-            }
-            await this.customerSource.assertEligible(
-              tx,
-              actor,
-              input.customerId,
-              input.rightsHolderId,
-            );
-            if (
-              input.known.courtId !== null &&
-              (await tx.filingCourt.count({
-                where: {
-                  id: input.known.courtId,
-                  departmentId: actor.departmentId,
-                },
-              })) !== 1
-            )
-              throw this.invalid();
-            if (input.lawyerAccountId !== null) {
-              const binding = await tx.lawyerAccountBinding.findFirst({
-                where: {
-                  userId: input.lawyerAccountId,
-                  profileId: input.lawyerProfileId!,
-                  departmentId: actor.departmentId,
-                  active: true,
-                  user: {
-                    accountType: 'LAWYER',
-                    active: true,
-                    localCredential: { isNot: null },
-                  },
-                },
-                select: { id: true },
-              });
-              if (binding === null) throw this.forbidden();
-            }
-            const today = this.todayShanghai();
-            const counter = await tx.caseNumberCounter.upsert({
-              where: { businessDate: new Date(`${today}T00:00:00.000Z`) },
-              create: {
-                businessDate: new Date(`${today}T00:00:00.000Z`),
-                lastValue: 1,
-              },
-              update: { lastValue: { increment: 1 } },
-            });
-            const businessNo = `CA-${today.replaceAll('-', '')}-${String(counter.lastValue).padStart(4, '0')}`;
-            const caseId = randomUUID(),
-              entryId = randomUUID(),
-              auditId = randomUUID(),
-              recordedAt = new Date();
-            await tx.case.create({
-              data: {
-                id: caseId,
-                businessNo,
-                departmentId: actor.departmentId,
-                customerId: input.customerId,
-                rightsHolderId: input.rightsHolderId,
-                responsibleUserId: actor.userId,
-                stage: input.initialStage,
-                sourceLeadId: null,
-                sourceNotaryMatterId: null,
-                certificateId: null,
-                courtCaseNo: input.known.courtCaseNo,
-              },
-            });
-            await tx.auditEvent.create({
-              data: {
-                id: auditId,
-                departmentId: actor.departmentId,
-                actorUserId: actor.userId,
-                internalActorUserId: actor.userId,
-                resourceType: 'CASE',
-                resourceId: caseId,
-                action: 'case.external-entry.created',
-                details: {
-                  entryId,
-                  entryKind: input.entryKind,
-                  initialStage: input.initialStage,
-                  stageReachedOn: input.stageReachedOn,
-                  source: input.source,
-                  reason: input.reason,
-                },
-              },
-            });
-            await tx.caseExternalEntry.create({
-              data: {
-                id: entryId,
-                caseId,
-                departmentId: actor.departmentId,
-                entryKind: input.entryKind,
-                initialStage: input.initialStage,
-                stageReachedOn: new Date(
-                  `${input.stageReachedOn}T00:00:00.000Z`,
-                ),
-                source: input.source,
-                reason: input.reason,
-                known: { ...input.known },
-                recordedByUserId: actor.userId,
-                recordedAt,
-                auditEventId: auditId,
-              },
-            });
-            if (input.defendants.length > 0)
-              await tx.caseDefendant.createMany({
-                data: input.defendants.map((party) => ({
-                  caseId,
-                  departmentId: actor.departmentId,
-                  kind: party.kind,
-                  name: party.name,
-                  idNo: party.idNo ?? null,
-                  phone: party.phone ?? null,
-                  address: party.address ?? null,
-                })),
-              });
-            if (input.lawyerProfileId !== null)
-              await tx.caseLawyerAssignment.create({
-                data: {
-                  caseId,
-                  departmentId: actor.departmentId,
-                  lawyerId: input.lawyerProfileId,
-                  role: 'PRIMARY',
-                  startedAt: recordedAt,
-                },
-              });
-            if (
-              stages.indexOf(input.initialStage) >=
-                stages.indexOf('WAITING_FORMAL_ACCEPTANCE') &&
-              input.initialStage !== 'ARCHIVED'
-            ) {
-              const round = await tx.caseTrialRound.create({
-                data: {
-                  caseId,
-                  departmentId: actor.departmentId,
-                  sequence: 1,
-                  origin: 'EXTERNAL_CURRENT',
-                  externalEntryId: entryId,
-                },
-                select: { id: true },
-              });
-              await tx.case.update({
-                where: { id: caseId },
-                data: { currentTrialRoundId: round.id },
-              });
-            }
-            const result: CreateCaseExternalEntryResultDto = {
-              id: caseId,
-              businessNo,
-              stage: input.initialStage,
-              version: 1,
-              entryId,
-              recordedAt: recordedAt.toISOString(),
-            };
-            await tx.caseExternalEntryReceipt.create({
-              data: {
-                departmentId: actor.departmentId,
-                actorUserId: actor.userId,
-                caseId,
-                idempotencyKey: input.idempotencyKey,
-                requestFingerprint: fingerprint,
-                resultSnapshot: { ...result },
-              },
-            });
-            return result;
-          },
+          (tx) => this.createInTransaction(tx, actor, raw),
           { isolationLevel: 'Serializable' },
         );
       } catch (error) {
@@ -661,5 +433,266 @@ export class CaseExternalEntryService {
       }
     }
     throw this.conflict();
+  }
+
+  async createInTransaction(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    raw: CreateCaseExternalEntryDto,
+  ): Promise<CreateCaseExternalEntryResultDto> {
+    const input = this.normalize(raw);
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify({ ...input, idempotencyKey: undefined }))
+      .digest('hex');
+    const { membership } = await this.actorMembership(tx, actor);
+    const facts = this.facts(actor, membership.teamId);
+    await this.access.authorizeCase(
+      actor,
+      'case.external-entry.create',
+      facts,
+      tx,
+    );
+    if (input.initialStage === 'ARCHIVED')
+      await this.access.authorizeCase(
+        actor,
+        'case.external-entry.archive',
+        facts,
+        tx,
+      );
+    const prior = await tx.caseExternalEntryReceipt.findUnique({
+      where: {
+        departmentId_actorUserId_idempotencyKey: {
+          departmentId: actor.departmentId,
+          actorUserId: actor.userId,
+          idempotencyKey: input.idempotencyKey,
+        },
+      },
+    });
+    if (prior !== null) {
+      if (prior.requestFingerprint !== fingerprint) throw this.conflict();
+      const recordedCase = await tx.case.findFirst({
+        where: { id: prior.caseId, departmentId: actor.departmentId },
+        select: {
+          id: true,
+          customerId: true,
+          businessNo: true,
+          rightsHolderId: true,
+          responsibleUserId: true,
+          responsibleMembership: { select: { teamId: true } },
+          externalEntry: { select: { id: true, initialStage: true } },
+        },
+      });
+      if (
+        recordedCase === null ||
+        recordedCase.externalEntry === null ||
+        recordedCase.customerId !== input.customerId ||
+        recordedCase.rightsHolderId !== input.rightsHolderId ||
+        recordedCase.externalEntry.initialStage !== input.initialStage
+      )
+        throw this.forbidden();
+      const currentFacts = {
+        departmentId: actor.departmentId,
+        responsibleUserId: recordedCase.responsibleUserId,
+        ...(recordedCase.responsibleMembership.teamId === null
+          ? {}
+          : { teamId: recordedCase.responsibleMembership.teamId }),
+      };
+      await this.access.authorizeCase(
+        actor,
+        'case.external-entry.create',
+        currentFacts,
+        tx,
+      );
+      if (input.initialStage === 'ARCHIVED')
+        await this.access.authorizeCase(
+          actor,
+          'case.external-entry.archive',
+          currentFacts,
+          tx,
+        );
+      await this.customerSource.assertEligible(
+        tx,
+        actor,
+        recordedCase.customerId,
+        recordedCase.rightsHolderId,
+      );
+      const snapshot =
+        prior.resultSnapshot as Partial<CreateCaseExternalEntryResultDto>;
+      if (
+        snapshot.id !== prior.caseId ||
+        snapshot.entryId !== recordedCase.externalEntry.id ||
+        typeof snapshot.entryId !== 'string' ||
+        typeof snapshot.businessNo !== 'string' ||
+        !stages.includes(snapshot.stage!) ||
+        snapshot.version !== 1 ||
+        typeof snapshot.recordedAt !== 'string'
+      )
+        throw this.conflict();
+      if (
+        !(await resolveHistoricalNumber(tx, {
+          entityType: 'CASE',
+          entityId: prior.caseId,
+          receiptNumber: snapshot.businessNo,
+          currentNumber: recordedCase.businessNo,
+        }))
+      )
+        throw this.conflict();
+      return {
+        ...(snapshot as CreateCaseExternalEntryResultDto),
+        businessNo: recordedCase.businessNo,
+      };
+    }
+    const businessId = await this.customerSource.assertEligible(
+      tx,
+      actor,
+      input.customerId,
+      input.rightsHolderId,
+    );
+    if (
+      input.known.courtId !== null &&
+      (await tx.filingCourt.count({
+        where: {
+          id: input.known.courtId,
+          departmentId: actor.departmentId,
+        },
+      })) !== 1
+    )
+      throw this.invalid();
+    if (input.lawyerAccountId !== null) {
+      const binding = await tx.lawyerAccountBinding.findFirst({
+        where: {
+          userId: input.lawyerAccountId,
+          profileId: input.lawyerProfileId!,
+          departmentId: actor.departmentId,
+          active: true,
+          user: {
+            accountType: 'LAWYER',
+            active: true,
+            localCredential: { isNot: null },
+          },
+        },
+        select: { id: true },
+      });
+      if (binding === null) throw this.forbidden();
+    }
+    const businessNo = await allocateCustomerDailyNumber(tx, {
+      customerId: input.customerId,
+      businessId,
+    });
+    const caseId = randomUUID(),
+      entryId = randomUUID(),
+      auditId = randomUUID(),
+      recordedAt = new Date();
+    await tx.case.create({
+      data: {
+        id: caseId,
+        businessNo,
+        departmentId: actor.departmentId,
+        customerId: input.customerId,
+        rightsHolderId: input.rightsHolderId,
+        responsibleUserId: actor.userId,
+        stage: input.initialStage,
+        sourceLeadId: null,
+        sourceNotaryMatterId: null,
+        certificateId: null,
+        courtCaseNo: input.known.courtCaseNo,
+      },
+    });
+    await tx.auditEvent.create({
+      data: {
+        id: auditId,
+        departmentId: actor.departmentId,
+        actorUserId: actor.userId,
+        internalActorUserId: actor.userId,
+        resourceType: 'CASE',
+        resourceId: caseId,
+        action: 'case.external-entry.created',
+        details: {
+          entryId,
+          entryKind: input.entryKind,
+          initialStage: input.initialStage,
+          stageReachedOn: input.stageReachedOn,
+          source: input.source,
+          reason: input.reason,
+        },
+      },
+    });
+    await tx.caseExternalEntry.create({
+      data: {
+        id: entryId,
+        caseId,
+        departmentId: actor.departmentId,
+        entryKind: input.entryKind,
+        initialStage: input.initialStage,
+        stageReachedOn: new Date(`${input.stageReachedOn}T00:00:00.000Z`),
+        source: input.source,
+        reason: input.reason,
+        known: { ...input.known },
+        recordedByUserId: actor.userId,
+        recordedAt,
+        auditEventId: auditId,
+      },
+    });
+    if (input.defendants.length > 0)
+      await tx.caseDefendant.createMany({
+        data: input.defendants.map((party) => ({
+          caseId,
+          departmentId: actor.departmentId,
+          kind: party.kind,
+          name: party.name,
+          idNo: party.idNo ?? null,
+          phone: party.phone ?? null,
+          address: party.address ?? null,
+        })),
+      });
+    if (input.lawyerProfileId !== null)
+      await tx.caseLawyerAssignment.create({
+        data: {
+          caseId,
+          departmentId: actor.departmentId,
+          lawyerId: input.lawyerProfileId,
+          role: 'PRIMARY',
+          startedAt: recordedAt,
+        },
+      });
+    if (
+      stages.indexOf(input.initialStage) >=
+        stages.indexOf('WAITING_FORMAL_ACCEPTANCE') &&
+      input.initialStage !== 'ARCHIVED'
+    ) {
+      const round = await tx.caseTrialRound.create({
+        data: {
+          caseId,
+          departmentId: actor.departmentId,
+          sequence: 1,
+          origin: 'EXTERNAL_CURRENT',
+          externalEntryId: entryId,
+        },
+        select: { id: true },
+      });
+      await tx.case.update({
+        where: { id: caseId },
+        data: { currentTrialRoundId: round.id },
+      });
+    }
+    const result: CreateCaseExternalEntryResultDto = {
+      id: caseId,
+      businessNo,
+      stage: input.initialStage,
+      version: 1,
+      entryId,
+      recordedAt: recordedAt.toISOString(),
+    };
+    await tx.caseExternalEntryReceipt.create({
+      data: {
+        departmentId: actor.departmentId,
+        actorUserId: actor.userId,
+        caseId,
+        idempotencyKey: input.idempotencyKey,
+        requestFingerprint: fingerprint,
+        resultSnapshot: { ...result },
+      },
+    });
+    return result;
   }
 }

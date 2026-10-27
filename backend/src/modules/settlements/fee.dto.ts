@@ -78,6 +78,14 @@ export class FeePageDto {
   to?: string;
 }
 
+export class CancelledFeePageDto extends FeePageDto {
+  @ApiPropertyOptional({ maxLength: 100 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  businessNo?: string;
+}
+
 export class FeeCaseOptionsDto {
   @ApiPropertyOptional({ default: 1 })
   @Type(() => Number)
@@ -168,6 +176,70 @@ export class UpdateFeeProofDto {
   @ValidateIf((_object, value) => value !== null)
   @IsUUID('4')
   contentVersionId!: string | null;
+  @ApiProperty({ maxLength: 128 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  idempotencyKey!: string;
+}
+
+export class CancelFeeDto {
+  @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
+  @ApiProperty({ maxLength: 128 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  idempotencyKey!: string;
+  @ApiProperty({ maxLength: 500 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason!: string;
+}
+
+const nonnegativeMoneyPattern =
+  /^(?:0(?:\.00)?|[1-9]\d{0,15}(?:\.\d{1,2})?|0\.(?:0[1-9]|[1-9]\d))$/u;
+
+export class VerifyCancelledFeePaymentDto {
+  @ApiProperty({ pattern: nonnegativeMoneyPattern.source })
+  @IsString()
+  @Matches(nonnegativeMoneyPattern)
+  amount!: string;
+  @ApiProperty({ type: String, format: 'date', nullable: true })
+  @ValidateIf((_object, value) => value !== null)
+  @Matches(dayPattern)
+  paymentDate!: string | null;
+  @ApiProperty({ format: 'uuid', nullable: true })
+  @ValidateIf((_object, value) => value !== null)
+  @IsUUID('4')
+  proofMaterialId!: string | null;
+  @ApiProperty({ format: 'uuid', nullable: true })
+  @ValidateIf((_object, value) => value !== null)
+  @IsUUID('4')
+  proofContentVersionId!: string | null;
+  @ApiProperty({ maxLength: 128 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  idempotencyKey!: string;
+}
+
+export class ReconcileCancelledFeeRefundDto {
+  @ApiProperty({ pattern: moneyPattern.source })
+  @IsString()
+  @Matches(moneyPattern)
+  amount!: string;
+  @ApiProperty({ type: String, format: 'date' })
+  @Matches(dayPattern)
+  refundDate!: string;
+  @ApiProperty({ format: 'uuid', nullable: true })
+  @ValidateIf((_object, value) => value !== null)
+  @IsUUID('4')
+  proofMaterialId!: string | null;
+  @ApiProperty({ format: 'uuid', nullable: true })
+  @ValidateIf((_object, value) => value !== null)
+  @IsUUID('4')
+  proofContentVersionId!: string | null;
   @ApiProperty({ maxLength: 128 })
   @IsString()
   @MinLength(1)

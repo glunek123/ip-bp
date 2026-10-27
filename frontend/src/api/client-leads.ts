@@ -34,6 +34,7 @@ export type ClientLeadProduct = {
   unitPrice: string;
   commentCount: number;
   estimatedAmount: string;
+  screenshotContentVersionIds: string[];
 };
 
 export type ClientLead = {
@@ -144,6 +145,7 @@ const productKeys = [
   'unitPrice',
   'commentCount',
   'estimatedAmount',
+  'screenshotContentVersionIds',
 ] as const;
 
 const clientLeadKeys = [
@@ -227,7 +229,13 @@ function isProduct(value: unknown, index: number): value is ClientLeadProduct {
     isMoney(value.unitPrice) &&
     Number.isInteger(value.commentCount) &&
     (value.commentCount as number) >= 0 &&
-    isMoney(value.estimatedAmount)
+    isMoney(value.estimatedAmount) &&
+    Array.isArray(value.screenshotContentVersionIds) &&
+    value.screenshotContentVersionIds.every(
+      (item) => typeof item === 'string',
+    ) &&
+    new Set(value.screenshotContentVersionIds).size ===
+      value.screenshotContentVersionIds.length
   );
 }
 
@@ -351,6 +359,10 @@ function isClientLead(value: unknown): value is ClientLead {
     Array.isArray(value.products) &&
     value.products.length >= 1 &&
     value.products.every(isProduct) &&
+    value.products.reduce(
+      (total, product) => total + product.screenshotContentVersionIds.length,
+      0,
+    ) <= 20 &&
     Array.isArray(value.leadScreenshotContentVersionIds) &&
     value.leadScreenshotContentVersionIds.every(
       (item) => typeof item === 'string',

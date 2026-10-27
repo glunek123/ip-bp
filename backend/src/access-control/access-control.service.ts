@@ -37,6 +37,7 @@ export type PermissionAction =
   | 'customer.settlement.register'
   | 'customer.settlement.correct'
   | 'customer.admit'
+  | 'customer.account.create'
   | 'lead.read'
   | 'lead.create'
   | 'lead.edit'

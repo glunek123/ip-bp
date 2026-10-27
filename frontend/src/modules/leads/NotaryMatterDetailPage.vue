@@ -42,6 +42,15 @@ const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 type DetailElement = InstanceType<typeof globalThis.HTMLElement>;
 const detailRoot = ref<DetailElement>();
 const matter = ref<NotaryMatterDetail>();
+function safeProductUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new globalThis.URL(value);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
 const correctionPanel = ref<{ canLeave: () => boolean }>();
 const correctionLocked = ref(false);
 const correctionRefreshing = ref(false);
@@ -808,7 +817,12 @@ watch(
                   <th class="num">数量</th>
                   <th class="num">单价</th>
                   <th class="num">评论数</th>
-                  <th class="num">估算额</th>
+                  <th
+                    class="num"
+                    title="单价×销量；销量为0时按评论数计算。仅用于线索评估"
+                  >
+                    计算金额
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -819,11 +833,12 @@ watch(
                   <td>
                     <strong>{{ product.title || '未命名商品' }}</strong>
                     <a
-                      v-if="product.url"
+                      v-if="safeProductUrl(product.url)"
                       class="product-link"
-                      :href="product.url"
+                      :href="safeProductUrl(product.url)!"
+                      :title="product.url ?? ''"
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       >{{ product.url }}</a
                     >
                   </td>
@@ -879,6 +894,13 @@ watch(
 
 .demo-detail-grid .mono {
   font-variant-numeric: tabular-nums;
+}
+.product-link {
+  display: block;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 section[id] {

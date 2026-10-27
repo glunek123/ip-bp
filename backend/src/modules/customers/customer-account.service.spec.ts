@@ -65,11 +65,10 @@ function setup() {
   };
   const access = { authorizeCustomer: jest.fn().mockResolvedValue(undefined) };
   const organization = {
-    loadCurrentActorGrants: jest
-      .fn()
-      .mockResolvedValue([
-        { action: 'USER_MANAGE', scope: 'DEPARTMENT', teamId: null },
-      ]),
+    loadCurrentActorGrants: jest.fn().mockResolvedValue([
+      { action: 'CUSTOMER_ACCOUNT_CREATE', scope: 'DEPARTMENT', teamId: null },
+      { action: 'USER_MANAGE', scope: 'DEPARTMENT', teamId: null },
+    ]),
   };
   const service = new CustomerAccountService(
     database as never,
@@ -117,10 +116,10 @@ describe('CustomerAccountService', () => {
     });
   });
 
-  it('rejects account management without department-wide USER_MANAGE', async () => {
+  it('rejects account creation without department-wide CUSTOMER_ACCOUNT_CREATE', async () => {
     const { service, organization, transaction } = setup();
     organization.loadCurrentActorGrants.mockResolvedValue([
-      { action: 'USER_MANAGE', scope: 'TEAM', teamId: null },
+      { action: 'USER_MANAGE', scope: 'DEPARTMENT', teamId: null },
     ]);
 
     await expect(
@@ -131,6 +130,57 @@ describe('CustomerAccountService', () => {
       }),
     ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
     expect(transaction.userAccount.create).not.toHaveBeenCalled();
+  });
+
+  it('allows creation without USER_MANAGE but keeps list and status forbidden', async () => {
+    const { service, organization, transaction } = setup();
+    organization.loadCurrentActorGrants.mockResolvedValue([
+      { action: 'CUSTOMER_ACCOUNT_CREATE', scope: 'DEPARTMENT', teamId: null },
+    ]);
+    await expect(service.capabilities(actor, customer.id)).resolves.toEqual({
+      canCreate: true,
+      canManage: false,
+    });
+    await service.create(actor, customer.id, {
+      displayName: '客户审核人',
+      username: 'client.a',
+      password: 'correct horse battery staple',
+    });
+    await expect(service.list(actor, customer.id)).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+    await expect(
+      service.setStatus(
+        actor,
+        customer.id,
+        '44444444-4444-4444-8444-444444444444',
+        false,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    expect(transaction.customerAccountBinding.update).not.toHaveBeenCalled();
+  });
+
+  it('rechecks readable customer and current grants for capabilities', async () => {
+    const { service, access, organization, database } = setup();
+    organization.loadCurrentActorGrants.mockResolvedValue([
+      { action: 'CUSTOMER_ACCOUNT_CREATE', scope: 'TEAM', teamId: null },
+      { action: 'USER_MANAGE', scope: 'TEAM', teamId: null },
+    ]);
+    await expect(service.capabilities(actor, customer.id)).resolves.toEqual({
+      canCreate: false,
+      canManage: false,
+    });
+    access.authorizeCustomer.mockRejectedValueOnce(new Error('denied'));
+    await expect(service.capabilities(actor, customer.id)).rejects.toThrow(
+      'denied',
+    );
+    expect(organization.loadCurrentActorGrants).toHaveBeenCalledTimes(1);
+    database.customer.findFirst.mockResolvedValueOnce(null);
+    await expect(
+      service.capabilities(actor, customer.id),
+    ).rejects.toMatchObject({
+      response: { code: 'RESOURCE_NOT_FOUND' },
+    });
   });
 
   it('rejects binding a client account to a customer that is no longer admitted', async () => {

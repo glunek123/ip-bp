@@ -19,7 +19,10 @@ import { ActorContext } from '../../access-control/actor-context';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { CsrfGuard } from '../../auth/csrf.guard';
-import { CaseListExportInput } from './case-list-export.dto';
+import {
+  CaseListExportInput,
+  CaseSelectionExportInput,
+} from './case-list-export.dto';
 import { CaseListExportCapabilityDto } from './case-list-export-capability.dto';
 import { CaseListExportService } from './case-list-export.service';
 
@@ -56,6 +59,28 @@ export class CaseListExportController {
     response.setHeader(
       'Content-Disposition',
       'attachment; filename="case-list.csv"',
+    );
+    response.send(csv);
+  }
+
+  @Post('selection')
+  @HttpCode(200)
+  @ApiBody({ type: CaseSelectionExportInput })
+  @ApiProduces('text/csv')
+  @ApiOkResponse({
+    description: 'UTF-8 BOM CSV attachment',
+    content: { 'text/csv': { schema: { type: 'string', format: 'binary' } } },
+  })
+  async exportSelection(
+    @CurrentActor() actor: ActorContext,
+    @Body() input: CaseSelectionExportInput,
+    @Res() response: Response,
+  ) {
+    const { csv } = await this.exports.exportSelection(actor, input);
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    response.setHeader(
+      'Content-Disposition',
+      'attachment; filename="case-selection.csv"',
     );
     response.send(csv);
   }

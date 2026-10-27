@@ -184,6 +184,149 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 describe('settlement page behavior (mounted components, not real browser)', () => {
+  it('hides both settlement pagers when the first page is the only page', async () => {
+    api.listSettlementLaunches.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 100,
+      matchingIds: [],
+      summary: {
+        launchedAmount: '0.00',
+        billedAmount: '0.00',
+        unbilledAmount: '0.00',
+        unbilledCount: 0,
+        launchCount: 0,
+        billedCount: 0,
+        invoiceAmount: null,
+        receivedAmount: null,
+        paidAmount: null,
+        cooperatingPayeeCount: 0,
+        knownLawFirmCount: 0,
+      },
+    });
+    api.listSettlementBills.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 100,
+    });
+    const wrapper = render(SettlementCenterPage);
+    await flushPromises();
+
+    expect(
+      wrapper
+        .find('.settlement-center__detail .settlement-center__pager')
+        .exists(),
+    ).toBe(false);
+    expect(
+      wrapper
+        .find('.settlement-center__bills .settlement-center__pager')
+        .exists(),
+    ).toBe(false);
+  });
+
+  it('keeps previous-page controls when page two reports a shrunken total', async () => {
+    const launchPage = await api.listSettlementLaunches();
+    const billPage = await api.listSettlementBills();
+    api.listSettlementLaunches.mockImplementation(
+      (_side: string, requestedPage: number) =>
+        Promise.resolve({
+          ...launchPage,
+          total: requestedPage === 1 ? 200 : 1,
+          page: requestedPage,
+          items: requestedPage === 1 ? launchPage.items : [],
+        }),
+    );
+    api.listSettlementBills.mockImplementation(
+      (_side: string, requestedPage: number) =>
+        Promise.resolve({
+          ...billPage,
+          total: requestedPage === 1 ? 200 : 1,
+          page: requestedPage,
+          items: requestedPage === 1 ? billPage.items : [],
+        }),
+    );
+    const wrapper = render(SettlementCenterPage);
+    await flushPromises();
+
+    await wrapper
+      .get(
+        '.settlement-center__detail .settlement-center__pager button:last-child',
+      )
+      .trigger('click');
+    await wrapper
+      .get(
+        '.settlement-center__bills .settlement-center__pager button:last-child',
+      )
+      .trigger('click');
+    await flushPromises();
+
+    const launchPager = wrapper.get(
+      '.settlement-center__detail .settlement-center__pager',
+    );
+    const billPager = wrapper.get(
+      '.settlement-center__bills .settlement-center__pager',
+    );
+    expect(launchPager.text()).toContain('2 / 1');
+    expect(launchPager.findAll('button')[0]!.attributes('disabled')).toBe(
+      undefined,
+    );
+    expect(
+      launchPager.findAll('button')[1]!.attributes('disabled'),
+    ).toBeDefined();
+    expect(billPager.text()).toContain('2 / 1');
+    expect(billPager.findAll('button')[0]!.attributes('disabled')).toBe(
+      undefined,
+    );
+    expect(
+      billPager.findAll('button')[1]!.attributes('disabled'),
+    ).toBeDefined();
+    await launchPager.get('button').trigger('click');
+    await billPager.get('button').trigger('click');
+    await flushPromises();
+    expect(api.listSettlementLaunches).toHaveBeenLastCalledWith(
+      'CUSTOMER',
+      1,
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(api.listSettlementBills).toHaveBeenLastCalledWith(
+      'CUSTOMER',
+      1,
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it('keeps settlement detail and bills distinct, with pending facts and right-aligned money', async () => {
+    const wrapper = render(SettlementCenterPage);
+    await flushPromises();
+
+    const sections = wrapper.findAll('section');
+    expect(sections.map((section) => section.classes())).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining(['settlement-center__detail']),
+        expect.arrayContaining(['settlement-center__bills']),
+      ]),
+    );
+    expect(
+      sections.findIndex((section) =>
+        section.classes().includes('settlement-center__detail'),
+      ),
+    ).toBeLessThan(
+      sections.findIndex((section) =>
+        section.classes().includes('settlement-center__bills'),
+      ),
+    );
+    expect(wrapper.get('.kpis').findAll('dd.money')).toHaveLength(5);
+    expect(wrapper.get('.kpis').text()).toContain('待财务回填');
+    expect(wrapper.get('.settlement-center__bill-create').element).toBeTruthy();
+    expect(wrapper.find('.settlement-center__bill-filters').exists()).toBe(
+      true,
+    );
+  });
+
   it('refreshes a new closure basis and recalculates without replacing the formula draft', async () => {
     const pendingBasis = structuredClone(current);
     pendingBasis.figures = {
@@ -464,7 +607,7 @@ describe('settlement page behavior (mounted components, not real browser)', () =
         '案件单号',
         '发起结算日期',
         '次数',
-        '金额',
+        '金额（元）',
       ]);
       expect(detail.getComponent(RouterLinkStub).props('to')).toBe(
         '/cases/case-uuid',
@@ -587,7 +730,7 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     await flushPromises();
     expect(wrapper.text()).toContain('2000.00');
     await wrapper.findComponent(ElCheckbox).get('input').setValue(true);
-    await wrapper.get('form').trigger('submit');
+    await wrapper.get('.settlement-center__bill-create').trigger('submit');
     await flushPromises();
     expect(api.createSettlementBill).toHaveBeenCalledWith(
       expect.objectContaining({

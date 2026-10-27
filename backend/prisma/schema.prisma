@@ -165,6 +165,7 @@ enum PermissionAction {
   CUSTOMER_SETTLEMENT_REGISTER  @map("customer.settlement.register")
   CUSTOMER_SETTLEMENT_CORRECT   @map("customer.settlement.correct")
   CUSTOMER_ADMIT               @map("customer.admit")
+  CUSTOMER_ACCOUNT_CREATE      @map("customer.account.create")
   LEAD_READ                    @map("lead.read")
   LEAD_CREATE                  @map("lead.create")
   LEAD_EDIT                    @map("lead.edit")
@@ -755,6 +756,13 @@ model UserAccount {
   executionMailingReceipts CaseExecutionMailingReceipt[] @relation("ExecutionMailingReceiptActor")
   archiveVersions CaseArchiveVersion[] @relation("ArchiveActor")
   archiveReceipts CaseArchiveReceipt[] @relation("ArchiveReceiptActor")
+  earlyArchiveFacts CaseEarlyArchive[] @relation("EarlyArchiveActor")
+  earlyArchiveReceipts CaseEarlyArchiveReceipt[] @relation("EarlyArchiveReceiptActor")
+  caseCsvImportReceipts CaseCsvImportReceipt[] @relation("CaseCsvImportActor")
+  earlyArchiveBatchReceipts CaseEarlyArchiveBatchReceipt[] @relation("EarlyArchiveBatchActor")
+  feeCancellations FeeCancellation[] @relation("FeeCancellationActor")
+  feeCancellationPayments FeeCancellationPayment[] @relation("FeeCancellationPaymentActor")
+  feeRefundReconciliations FeeRefundReconciliation[] @relation("FeeRefundReconciliationActor")
   closureVersions CaseClosureVersion[] @relation("ClosureActor")
   closureReceipts CaseClosureReceipt[] @relation("ClosureReceiptActor")
   executionFinishes CaseExecutionFinish[] @relation("ExecutionFinishActor")
@@ -845,6 +853,13 @@ model DepartmentMembership {
   settlementLaunches CaseSettlementLaunch[] @relation("SettlementLaunchInternalActor")
   settlementBills SettlementBill[] @relation("SettlementBillInternalActor")
   feeRecords FeeRecord[] @relation("FeeRecordInternalActor")
+  earlyArchiveFacts CaseEarlyArchive[] @relation("EarlyArchiveInternalActor")
+  earlyArchiveReceipts CaseEarlyArchiveReceipt[] @relation("EarlyArchiveReceiptInternalActor")
+  caseCsvImportReceipts CaseCsvImportReceipt[] @relation("CaseCsvImportInternalActor")
+  earlyArchiveBatchReceipts CaseEarlyArchiveBatchReceipt[] @relation("EarlyArchiveBatchInternalActor")
+  feeCancellations FeeCancellation[] @relation("FeeCancellationInternalActor")
+  feeCancellationPayments FeeCancellationPayment[] @relation("FeeCancellationPaymentInternalActor")
+  feeRefundReconciliations FeeRefundReconciliation[] @relation("FeeRefundReconciliationInternalActor")
   feeBatchReceipts FeeBatchReceipt[] @relation("FeeBatchReceiptInternalActor")
   executionFeedbackVersions CaseExecutionFilingFeedback[] @relation("ExecutionFeedbackInternalActor")
   executionSupplementVersions CaseExecutionFilingSupplement[] @relation("ExecutionSupplementInternalActor")
@@ -942,6 +957,7 @@ model Customer {
   caseHandlingGroups CaseHandlingGroup[]
   settlementLaunches CaseSettlementLaunch[]
   id                       String                       @id @default(uuid()) @db.Uuid
+  businessId               String?                      @unique @map("business_id") @db.VarChar(32)
   name                     String
   normalizedName           String                       @map("normalized_name")
   customerManagerName      String?                      @map("customer_manager_name") @db.VarChar(100)
@@ -996,6 +1012,7 @@ model Customer {
   maintenanceReceipts      CustomerMaintenanceReceipt[]
   leads                    Lead[]
   cases                    Case[]
+  dailyNumberCounters      CustomerDailyNumberCounter[]
   clientAccountBindings    CustomerAccountBinding[]
   leadReviewDecisions      LeadReviewDecision[]
   createdAt                DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -1370,6 +1387,9 @@ model UploadDraft {
 }
 
 model Material {
+  feeCancellationPayments FeeCancellationPayment[] @relation("FeeCancellationPaymentProofMaterial")
+  feeRefundReconciliations FeeRefundReconciliation[] @relation("FeeRefundReconciliationProofMaterial")
+  productScreenshots LeadProductScreenshot[]
   feeProofRecords FeeRecord[] @relation("FeeProofMaterial")
   evidencePaperCertificates EvidencePaperCertificate[]
   executionSupplementDocuments CaseExecutionFilingSupplementDocument[]
@@ -1397,6 +1417,9 @@ model Material {
 }
 
 model ContentVersion {
+  feeCancellationPayments FeeCancellationPayment[] @relation("FeeCancellationPaymentProofContent")
+  feeRefundReconciliations FeeRefundReconciliation[] @relation("FeeRefundReconciliationProofContent")
+  productScreenshot LeadProductScreenshot?
   feeProofRecords FeeRecord[] @relation("FeeProofContent")
   evidencePaperCertificates EvidencePaperCertificate[]
   executionSupplementUploadDraftId String? @unique @map("execution_supplement_upload_draft_id") @db.Uuid
@@ -1722,6 +1745,7 @@ model CustomerAdmissionReceipt {
 }
 
 model Lead {
+  productScreenshots LeadProductScreenshot[]
   id                     String                      @id @default(uuid()) @db.Uuid
   departmentId           String                      @map("department_id") @db.Uuid
   businessNo             String                      @unique @map("business_no") @db.VarChar(100)
@@ -1921,10 +1945,29 @@ model LeadProduct {
   estimatedAmount  Decimal               @map("estimated_amount") @db.Decimal(18, 2)
   lead             Lead                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
   notarySelections NotaryMatterProduct[]
+  screenshots      LeadProductScreenshot[]
 
   @@unique([id, leadId], map: "lead_products_id_lead_id_key")
   @@unique([leadId, position])
   @@map("lead_products")
+}
+
+model LeadProductScreenshot {
+  id               String         @id @default(uuid()) @db.Uuid
+  leadId           String         @map("lead_id") @db.Uuid
+  departmentId     String         @map("department_id") @db.Uuid
+  productId        String         @map("product_id") @db.Uuid
+  materialId       String         @map("material_id") @db.Uuid
+  contentVersionId String         @unique @map("content_version_id") @db.Uuid
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  lead             Lead           @relation(fields: [leadId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  product          LeadProduct    @relation(fields: [productId, leadId], references: [id, leadId], onDelete: Restrict, onUpdate: Restrict)
+  material         Material       @relation(fields: [materialId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  contentVersion   ContentVersion @relation(fields: [materialId, contentVersionId], references: [materialId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([leadId, departmentId])
+  @@unique([materialId, contentVersionId])
+  @@map("lead_product_screenshots")
 }
 
 model NotaryOffice {
@@ -2055,6 +2098,7 @@ model Case {
   businessNo                    String                             @unique @map("business_no") @db.VarChar(100)
   departmentId                  String                             @map("department_id") @db.Uuid
   sourceLeadId                  String?                            @map("source_lead_id") @db.Uuid
+  sourceLeadOrdinal             Int?                               @map("source_lead_ordinal")
   sourceNotaryMatterId          String?                            @unique @map("source_notary_matter_id") @db.Uuid
   certificateId                 String?                            @unique @map("certificate_id") @db.Uuid
   externalEntry                 CaseExternalEntry?
@@ -2122,6 +2166,12 @@ model Case {
   executionMailingReceipts CaseExecutionMailingReceipt[]
   archive CaseArchive?
   archiveReceipts CaseArchiveReceipt[]
+  earlyArchive CaseEarlyArchive?
+  earlyArchiveReceipts CaseEarlyArchiveReceipt[]
+  csvImportedRow CaseCsvImportedRow?
+  feeCancellations FeeCancellation[]
+  feeCancellationPayments FeeCancellationPayment[]
+  feeRefundReconciliations FeeRefundReconciliation[]
   closure CaseClosure?
   closureReceipts CaseClosureReceipt[]
   executionFinish CaseExecutionFinish?
@@ -2146,6 +2196,7 @@ model Case {
   createdAt                     DateTime                           @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([id, departmentId])
+  @@unique([sourceLeadId, sourceLeadOrdinal])
   @@unique([sourceNotaryMatterId, departmentId])
   @@unique([id, customerId, departmentId], map: "cases_handling_group_customer_key")
   @@unique([sourceNotaryMatterId, sourceLeadId, customerId, rightsHolderId, departmentId])
@@ -3670,6 +3721,34 @@ model LeadNumberCounter {
   @@map("lead_number_counters")
 }
 
+model CustomerBusinessNumberCounter {
+  singletonId Int @id @default(1) @map("singleton_id")
+  lastValue   BigInt @default(-1) @map("last_value")
+
+  @@map("customer_business_number_counters")
+}
+
+model CustomerDailyNumberCounter {
+  customerId   String @map("customer_id") @db.Uuid
+  businessDate DateTime @map("business_date") @db.Date
+  lastValue    BigInt @default(0) @map("last_value")
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@id([customerId, businessDate])
+  @@map("customer_daily_number_counters")
+}
+
+model BusinessNumberAlias {
+  entityType String @map("entity_type") @db.VarChar(16)
+  entityId   String @map("entity_id") @db.Uuid
+  oldNumber  String @map("old_number") @db.VarChar(100)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([entityType, entityId])
+  @@unique([entityType, oldNumber])
+  @@map("business_number_aliases")
+}
+
 model LeadCommandReceipt {
   id                 String               @id @default(uuid()) @db.Uuid
   departmentId       String               @map("department_id") @db.Uuid
@@ -3817,6 +3896,9 @@ model CaseHandlingGroupReceipt {
 }
 
 model AuditEvent {
+  feeCancellation FeeCancellation?
+  feeCancellationPayment FeeCancellationPayment?
+  feeRefundReconciliation FeeRefundReconciliation?
   caseHandlingGroupEvent CaseHandlingGroupEvent?
   executionFeedbackVersion CaseExecutionFilingFeedback?
   executionSupplementVersion CaseExecutionFilingSupplement?
@@ -3861,6 +3943,7 @@ model AuditEvent {
   executionConfirmations CaseExecutionConfirmation[]
   executionMailings CaseExecutionMailing[]
   archiveVersions CaseArchiveVersion[]
+  earlyArchive CaseEarlyArchive?
   closureVersions CaseClosureVersion[]
   executionFinishes CaseExecutionFinish[]
   executionFilings CaseExecutionFiling[]
@@ -4485,6 +4568,9 @@ model SettlementBillItem {
 }
 
 model FeeRecord {
+  cancellation FeeCancellation?
+  paymentVerifications FeeCancellationPayment[]
+  refundReconciliations FeeRefundReconciliation[]
   id String @id @default(uuid()) @db.Uuid
   caseId String @map("case_id") @db.Uuid
   departmentId String @map("department_id") @db.Uuid
@@ -4680,4 +4766,190 @@ model EvidenceCommandReceipt {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   @@unique([departmentId, actorUserId, idempotencyKey])
   @@map("evidence_command_receipts")
+}
+
+model CaseEarlyArchive {
+  id String @id @default(uuid()) @db.Uuid
+  caseId String @unique @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  fromStage CaseStage @map("from_stage")
+  fromVersion Int @map("from_version")
+  toVersion Int @map("to_version")
+  archiveAt DateTime @map("archive_at") @db.Date
+  reason String @db.VarChar(2000)
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  recordedByUserId String @map("recorded_by_user_id") @db.Uuid
+  auditEventId String @unique @map("audit_event_id") @db.Uuid
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor UserAccount @relation("EarlyArchiveActor", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorMembership DepartmentMembership @relation("EarlyArchiveInternalActor", fields: [recordedByUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "early_archive_actor_membership_fk")
+  auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  receipts CaseEarlyArchiveReceipt[]
+  @@unique([id, caseId, departmentId])
+  @@unique([caseId, fromVersion])
+  @@index([departmentId, recordedAt, id])
+  @@unique([caseId, departmentId])
+  @@map("case_early_archives")
+}
+
+model CaseEarlyArchiveReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  earlyArchiveId String @unique @map("early_archive_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  resultSnapshot Json @map("result_snapshot")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  earlyArchive CaseEarlyArchive @relation(fields: [earlyArchiveId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor UserAccount @relation("EarlyArchiveReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorMembership DepartmentMembership @relation("EarlyArchiveReceiptInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "early_archive_receipt_membership_fk")
+  @@unique([departmentId, actorUserId, idempotencyKey], map: "early_archive_actor_key")
+  @@index([caseId, departmentId])
+  @@map("case_early_archive_receipts")
+}
+
+model CaseCsvImportReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  fileFingerprint String @map("file_fingerprint") @db.Char(64)
+  rowNumbers Json @map("row_numbers")
+  resultSnapshot Json @map("result_snapshot")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  actor UserAccount @relation("CaseCsvImportActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorMembership DepartmentMembership @relation("CaseCsvImportInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  rows CaseCsvImportedRow[]
+
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@unique([id, departmentId, fileFingerprint])
+  @@map("case_csv_import_receipts")
+}
+
+model CaseCsvImportedRow {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  fileFingerprint String @map("file_fingerprint") @db.Char(64)
+  rowNumber Int @map("row_number")
+  caseId String @map("case_id") @db.Uuid
+  receiptId String @map("receipt_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  receipt CaseCsvImportReceipt @relation(fields: [receiptId, departmentId, fileFingerprint], references: [id, departmentId, fileFingerprint], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, fileFingerprint, rowNumber])
+  @@unique([caseId, departmentId])
+  @@index([receiptId])
+  @@map("case_csv_imported_rows")
+}
+
+model CaseEarlyArchiveBatchReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  actor UserAccount @relation("EarlyArchiveBatchActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorMembership DepartmentMembership @relation("EarlyArchiveBatchInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@map("case_early_archive_batch_receipts")
+}
+
+model FeeCancellation {
+  id String @id @default(uuid()) @db.Uuid
+  feeId String @unique @map("fee_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  originalStatus String @map("original_status") @db.VarChar(20)
+  originalAmount Decimal @map("original_amount") @db.Decimal(30, 2)
+  originalVersion Int @map("original_version")
+  reason String @db.VarChar(500)
+  actorUserId String @map("actor_user_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.VarChar(64)
+  actionEventId String @unique @map("action_event_id") @db.Uuid
+  outcome String @db.VarChar(20)
+  refundReconciliationStatus String @map("refund_reconciliation_status") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  fee FeeRecord @relation(fields: [feeId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "fee_cancellations_fee_department_fk")
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "fee_cancellations_case_department_fk")
+  actor UserAccount @relation("FeeCancellationActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fee_cancellations_actor_user_fk")
+  actorMembership DepartmentMembership @relation("FeeCancellationInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "fee_cancellations_actor_department_fk")
+  auditEvent AuditEvent @relation(fields: [actionEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  payment FeeCancellationPayment?
+  refunds FeeRefundReconciliation[]
+
+  @@unique([id, departmentId])
+  @@unique([feeId, departmentId])
+  @@unique([departmentId, actorUserId, idempotencyKey], map: "fee_cancellations_department_actor_idempotency_key")
+  @@index([departmentId, caseId, createdAt], map: "fee_cancellations_department_case_idx")
+  @@map("fee_cancellations")
+}
+
+model FeeCancellationPayment {
+  id String @id @default(uuid()) @db.Uuid
+  cancellationId String @unique @map("cancellation_id") @db.Uuid
+  feeId String @map("fee_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  amount Decimal @db.Decimal(30, 2)
+  paymentDate DateTime? @map("payment_date") @db.Date
+  proofMaterialId String? @map("proof_material_id") @db.Uuid
+  proofContentVersionId String? @map("proof_content_version_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.VarChar(64)
+  actionEventId String @unique @map("action_event_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  cancellation FeeCancellation @relation(fields: [cancellationId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  fee FeeRecord @relation(fields: [feeId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor UserAccount @relation("FeeCancellationPaymentActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorMembership DepartmentMembership @relation("FeeCancellationPaymentInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent AuditEvent @relation(fields: [actionEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  proofMaterial Material? @relation("FeeCancellationPaymentProofMaterial", fields: [proofMaterialId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  proofContentVersion ContentVersion? @relation("FeeCancellationPaymentProofContent", fields: [proofMaterialId, proofContentVersionId], references: [materialId, id], onDelete: Restrict, onUpdate: Restrict)
+  refunds FeeRefundReconciliation[]
+
+  @@unique([cancellationId, departmentId])
+  @@unique([id, cancellationId, departmentId])
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@map("fee_cancellation_payments")
+}
+
+model FeeRefundReconciliation {
+  id String @id @default(uuid()) @db.Uuid
+  cancellationId String @map("cancellation_id") @db.Uuid
+  paymentId String @map("payment_id") @db.Uuid
+  feeId String @map("fee_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  amount Decimal @db.Decimal(30, 2)
+  refundDate DateTime @map("refund_date") @db.Date
+  proofMaterialId String? @map("proof_material_id") @db.Uuid
+  proofContentVersionId String? @map("proof_content_version_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.VarChar(64)
+  actionEventId String @unique @map("action_event_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  cancellation FeeCancellation @relation(fields: [cancellationId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  payment FeeCancellationPayment @relation(fields: [paymentId, cancellationId, departmentId], references: [id, cancellationId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  fee FeeRecord @relation(fields: [feeId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor UserAccount @relation("FeeRefundReconciliationActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorMembership DepartmentMembership @relation("FeeRefundReconciliationInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent AuditEvent @relation(fields: [actionEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  proofMaterial Material? @relation("FeeRefundReconciliationProofMaterial", fields: [proofMaterialId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  proofContentVersion ContentVersion? @relation("FeeRefundReconciliationProofContent", fields: [proofMaterialId, proofContentVersionId], references: [materialId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@index([paymentId])
+  @@map("fee_refund_reconciliations")
 }

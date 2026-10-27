@@ -351,7 +351,7 @@
   overflow-y: auto;
 }
 
-@media (min-width: 1280px) {
+@media (min-width: 1024px) {
   .case-workspace-fields {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -409,7 +409,7 @@
       select,
       input:not([type='checkbox'], [type='radio'], [type='hidden'])
     ) {
-    min-height: 44px;
+    min-height: var(--app-control-height);
   }
 
   .case-workspace :is(button, a),

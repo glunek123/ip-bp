@@ -9,6 +9,7 @@ vi.mock('./http', async (importOriginal) => ({
 }));
 
 import {
+  exportSelectedCasesCsv,
   exportCaseListCsv,
   getCaseListExportCapability,
 } from './case-list-export';
@@ -174,6 +175,45 @@ describe('case list CSV export API', () => {
       },
       { retryOnCsrfInvalid: false },
     );
+  });
+
+  it('exports an explicit UUID selection with the current view', async () => {
+    const selected = file({ filename: 'case-selection.csv' });
+    http.postBlob.mockResolvedValue(selected);
+    const input = {
+      view: 'department' as const,
+      ids: [
+        '11111111-1111-4111-8111-111111111111',
+        '22222222-2222-4222-8222-222222222222',
+      ],
+    };
+    await expect(exportSelectedCasesCsv(input)).resolves.toEqual(selected);
+    expect(http.postBlob).toHaveBeenCalledExactlyOnceWith(
+      '/cases/exports/selection',
+      input,
+      { retryOnCsrfInvalid: false },
+    );
+  });
+
+  it('rejects invalid selection export IDs and bounds before requesting', async () => {
+    for (const input of [
+      { view: 'mine', ids: [] },
+      { view: 'mine', ids: ['case-1'] },
+      { view: 'other', ids: ['11111111-1111-4111-8111-111111111111'] },
+      {
+        view: 'mine',
+        ids: Array.from(
+          { length: 1001 },
+          () => '11111111-1111-4111-8111-111111111111',
+        ),
+      },
+    ])
+      await expect(
+        exportSelectedCasesCsv(input as never),
+      ).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+    expect(http.postBlob).not.toHaveBeenCalled();
   });
 
   it('forces CSRF retry off while preserving cancellation and timeout options', async () => {

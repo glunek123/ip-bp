@@ -4,6 +4,7 @@ import CustomerAccountPanel from './CustomerAccountPanel.vue';
 
 const api = vi.hoisted(() => ({
   listClientAccounts: vi.fn(),
+  getClientAccountCapabilities: vi.fn(),
   createClientAccount: vi.fn(),
   setClientAccountStatus: vi.fn(),
 }));
@@ -12,6 +13,10 @@ vi.mock('../../api/client-accounts', () => api);
 beforeEach(() => {
   vi.resetAllMocks();
   api.listClientAccounts.mockResolvedValue([]);
+  api.getClientAccountCapabilities.mockResolvedValue({
+    canCreate: true,
+    canManage: true,
+  });
 });
 
 describe('CustomerAccountPanel', () => {
@@ -100,5 +105,79 @@ describe('CustomerAccountPanel', () => {
     expect(wrapper.find('[data-test="create-client-account"]').exists()).toBe(
       false,
     );
+  });
+
+  it('creates without management access and never requests the restricted list', async () => {
+    api.getClientAccountCapabilities.mockResolvedValue({
+      canCreate: true,
+      canManage: false,
+    });
+    api.createClientAccount.mockResolvedValue({
+      id: 'user-1',
+      displayName: '客户审核人',
+      username: 'client.a',
+      accountActive: true,
+      bindingActive: true,
+      bindingVersion: 1,
+    });
+    const wrapper = mount(CustomerAccountPanel, {
+      props: { customerId: 'customer-1', admitted: true },
+    });
+    await flushPromises();
+    expect(api.listClientAccounts).not.toHaveBeenCalled();
+    await wrapper.get('input[name="clientDisplayName"]').setValue('客户审核人');
+    await wrapper.get('input[name="clientUsername"]').setValue('client.a');
+    await wrapper
+      .get('input[name="clientPassword"]')
+      .setValue('correct horse battery staple');
+    await wrapper.get('[data-test="create-client-account"]').trigger('click');
+    await flushPromises();
+    expect(api.listClientAccounts).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('已创建：客户审核人（client.a）');
+    expect(
+      (wrapper.get('input[name="clientPassword"]').element as HTMLInputElement)
+        .value,
+    ).toBe('');
+  });
+
+  it('does not show account controls without either capability', async () => {
+    api.getClientAccountCapabilities.mockResolvedValue({
+      canCreate: false,
+      canManage: false,
+    });
+    const wrapper = mount(CustomerAccountPanel, {
+      props: { customerId: 'customer-1', admitted: true },
+    });
+    await flushPromises();
+    expect(wrapper.find('[data-test="create-client-account"]').exists()).toBe(
+      false,
+    );
+    expect(api.listClientAccounts).not.toHaveBeenCalled();
+  });
+
+  it('clears old account data and ignores a late response after switching customers', async () => {
+    let resolveOld!: (value: {
+      canCreate: boolean;
+      canManage: boolean;
+    }) => void;
+    api.getClientAccountCapabilities
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOld = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ canCreate: false, canManage: false });
+    const wrapper = mount(CustomerAccountPanel, {
+      props: { customerId: 'customer-1', admitted: true },
+    });
+    await wrapper.setProps({ customerId: 'customer-2' });
+    await flushPromises();
+    resolveOld({ canCreate: true, canManage: true });
+    await flushPromises();
+    expect(wrapper.find('[data-test="create-client-account"]').exists()).toBe(
+      false,
+    );
+    expect(api.listClientAccounts).not.toHaveBeenCalled();
   });
 });

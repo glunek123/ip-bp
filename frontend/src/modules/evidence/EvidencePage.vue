@@ -94,6 +94,11 @@ const allVisibleSelected = computed(
     matchingIds.value.length > 0 &&
     matchingIds.value.every((id) => selected.value.has(id)),
 );
+const showPagination = computed(
+  () =>
+    (filter.value.page ?? 1) > 1 ||
+    (page.value !== null && page.value.total > page.value.pageSize),
+);
 
 let loadSequence = 0;
 let loadRequest: AbortController | undefined;
@@ -463,13 +468,16 @@ function paperIdentity(
         <h1>证物管理</h1>
         <p>查看证物、纸质公证书及关联案件</p>
       </div>
-      <span>{{ page ? `共 ${page.total} 件证物` : '证物数量待加载' }}</span>
-      <ElButton
-        native-type="button"
-        :disabled="dialogLoading"
-        @click="openSources"
-        >选择案件编辑证物</ElButton
-      >
+      <div class="operation-bar page-head__actions">
+        <span>{{ page ? `共 ${page.total} 件证物` : '证物数量待加载' }}</span>
+        <ElButton
+          class="action-size--wide"
+          native-type="button"
+          :disabled="dialogLoading"
+          @click="openSources"
+          >选择案件编辑证物</ElButton
+        >
+      </div>
     </header>
     <p v-if="dialogLoading && !dialog" class="message" role="status">
       正在读取所选记录…
@@ -480,8 +488,9 @@ function paperIdentity(
     <p v-if="notice && !dialog" class="message" role="status">{{ notice }}</p>
 
     <section class="filters" aria-label="证物筛选">
-      <div class="status-row">
+      <div class="operation-actions status-row" aria-label="证物状态筛选">
         <ElButton
+          class="action-size--standard"
           native-type="button"
           :class="{ active: !filter.status }"
           @click="setFilter('status', undefined)"
@@ -578,6 +587,7 @@ function paperIdentity(
           >
           <ElButton
             v-if="filter.stages?.length"
+            class="action-size--wide"
             native-type="button"
             @click="setFilter('stages', [])"
           >
@@ -588,17 +598,23 @@ function paperIdentity(
     </section>
 
     <section class="list-card">
-      <div class="actions">
-        <span>已勾选 {{ selected.size }} 件证物</span>
-        <ElButton
-          native-type="button"
-          :disabled="dialogLoading"
-          @click="openBulk"
-          >批量更改状态</ElButton
-        >
-        <ElButton native-type="button" @click="exportSelected"
-          >导出清单</ElButton
-        >
+      <div class="operation-bar actions">
+        <span class="selection-count">已勾选 {{ selected.size }} 件证物</span>
+        <div class="operation-actions">
+          <ElButton
+            class="action-size--wide"
+            native-type="button"
+            :disabled="dialogLoading"
+            @click="openBulk"
+            >批量更改状态</ElButton
+          >
+          <ElButton
+            class="action-size--standard"
+            native-type="button"
+            @click="exportSelected"
+            >导出清单</ElButton
+          >
+        </div>
       </div>
       <div class="table-wrap">
         <table>
@@ -637,19 +653,23 @@ function paperIdentity(
                 />
               </td>
               <td>
-                <ElButton
-                  native-type="button"
-                  :disabled="dialogLoading"
-                  @click="openGroup(item, 'edit')"
-                >
-                  编辑</ElButton
-                ><ElButton
-                  native-type="button"
-                  @click="openGroup(item, 'view')"
-                  :disabled="dialogLoading"
-                >
-                  查看
-                </ElButton>
+                <div class="operation-actions evidence-row-actions">
+                  <ElButton
+                    class="action-size--compact"
+                    native-type="button"
+                    :disabled="dialogLoading"
+                    @click="openGroup(item, 'edit')"
+                  >
+                    编辑</ElButton
+                  ><ElButton
+                    class="action-size--compact"
+                    native-type="button"
+                    @click="openGroup(item, 'view')"
+                    :disabled="dialogLoading"
+                  >
+                    查看
+                  </ElButton>
+                </div>
               </td>
               <td>{{ item.shopName || '—' }}</td>
               <td>{{ evidenceStageLabel(item.stage) }}</td>
@@ -676,8 +696,9 @@ function paperIdentity(
           </tbody>
         </table>
       </div>
-      <div class="pager">
+      <div v-if="showPagination" class="operation-bar pager">
         <ElButton
+          class="action-size--standard"
           native-type="button"
           :disabled="(filter.page ?? 1) <= 1"
           @click="filter = { ...filter, page: (filter.page ?? 1) - 1 }"
@@ -685,6 +706,7 @@ function paperIdentity(
           上一页</ElButton
         ><span>第 {{ filter.page ?? 1 }} 页</span
         ><ElButton
+          class="action-size--standard"
           native-type="button"
           :disabled="
             (filter.page ?? 1) * (filter.pageSize ?? 20) >= (page?.total ?? 0)
@@ -974,20 +996,42 @@ function paperIdentity(
 
 <style scoped>
 .evidence-page {
-  padding: 24px;
+  display: grid;
+  gap: var(--app-section-gap, 16px);
+  padding: 16px 20px;
   color: var(--color-ink, #0f1011);
 }
 .page-head,
-.actions,
+.page-head__actions,
 .pager {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+}
+.page-head {
+  align-items: flex-start;
+}
+.page-head__actions {
+  justify-content: flex-end;
+}
+.page-head__actions > span {
+  color: var(--color-ink-muted, #5c5e66);
+  font-size: 12px;
+  white-space: nowrap;
 }
 h1 {
   margin: 0;
   font-size: 20px;
+}
+h2 {
+  margin: 0;
+}
+.page-head p {
+  margin: 4px 0 0;
+  color: var(--color-ink-muted, #5c5e66);
+  font-size: 12px;
 }
 h2 {
   font-size: 18px;
@@ -995,28 +1039,42 @@ h2 {
 h3 {
   font-size: 14px;
 }
-.page-head p {
-  color: var(--color-ink-muted, #5c5e66);
+.filters {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-hairline, #e5e5e9);
 }
-.filters,
 .list-card {
-  margin-top: 16px;
-  padding: 16px;
-  background: var(--color-surface-1, #fff);
-  border: 1px solid var(--color-hairline, #e5e5e9);
-  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.actions {
+  justify-content: space-between;
+}
+.selection-count {
+  margin-right: auto;
+  color: var(--color-ink-muted, #5c5e66);
+  font-size: 12px;
 }
 .status-row,
-.stage-row,
 .filter-grid {
+  display: grid;
+  align-items: end;
+  gap: 8px;
+}
+.status-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: 6px;
+}
+.filter-grid {
+  grid-template-columns: repeat(5, minmax(120px, 1fr)) auto;
 }
 .stage-filter {
-  margin-bottom: 12px;
+  padding: 1px 0;
 }
 .stage-filter summary {
   width: fit-content;
@@ -1024,7 +1082,11 @@ h3 {
   color: var(--color-ink-muted, #5c5e66);
 }
 .stage-filter .stage-row {
-  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 8px;
 }
 .filter-grid label,
 .modal label {
@@ -1033,15 +1095,23 @@ h3 {
   gap: 4px;
   font-size: 12px;
 }
+.filter-grid label {
+  min-width: 0;
+  color: var(--color-ink-muted, #5c5e66);
+}
 button,
 input,
 select {
-  min-height: 32px;
+  min-height: var(--app-control-height, 32px);
   border: 1px solid var(--color-hairline-strong, #d2d2d8);
   border-radius: 6px;
   background: #fff;
   color: inherit;
   padding: 4px 8px;
+}
+.filter-grid input {
+  width: 100%;
+  min-width: 0;
 }
 button {
   cursor: pointer;
@@ -1060,28 +1130,38 @@ input[type='checkbox'] {
 }
 .table-wrap {
   overflow-x: auto;
+  min-width: 0;
 }
 table {
   width: 100%;
+  min-width: 1200px;
   border-collapse: collapse;
   white-space: nowrap;
   font-size: 12px;
 }
 th,
 td {
-  padding: 10px;
+  padding: 7px 8px;
   border-bottom: 1px solid var(--color-hairline, #e5e5e9);
   text-align: left;
 }
 th {
   background: var(--color-surface-2, #f4f4f6);
+  color: var(--color-ink-muted, #5c5e66);
+  font-weight: 550;
+  white-space: nowrap;
 }
-td button {
-  margin-right: 4px;
+.evidence-row-actions {
+  flex-wrap: nowrap;
+  gap: 4px;
 }
 .pager {
   justify-content: flex-end;
-  margin-top: 12px;
+}
+.pager > span {
+  color: var(--color-ink-muted, #5c5e66);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 .overlay {
   position: fixed;
@@ -1101,14 +1181,15 @@ td button {
   box-shadow: 0 24px 64px rgba(15, 16, 17, 0.14);
 }
 .edit-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  align-items: center;
+  align-items: end;
   margin: 8px 0;
 }
 .edit-row input {
-  flex: 1;
-  min-width: 100px;
+  width: 100%;
+  min-width: 0;
 }
 .modal footer {
   display: flex;
@@ -1122,5 +1203,53 @@ td button {
 }
 .message.error {
   color: var(--color-danger, #c4272b);
+}
+@media (max-width: 900px) {
+  .filter-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 700px) {
+  .evidence-page {
+    padding: 12px;
+  }
+  .page-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .page-head__actions {
+    justify-content: space-between;
+  }
+  .status-row {
+    flex-wrap: nowrap;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 3px;
+  }
+  .status-row :deep(.el-button) {
+    flex: 0 0 auto;
+  }
+  .filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .actions {
+    align-items: flex-start;
+  }
+  .edit-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 420px) {
+  .filter-grid,
+  .edit-row {
+    grid-template-columns: 1fr;
+  }
+  .actions {
+    flex-wrap: wrap;
+  }
+  .actions > .operation-actions {
+    flex-wrap: wrap;
+  }
 }
 </style>

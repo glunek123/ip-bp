@@ -1616,11 +1616,11 @@ describe('LeadListPage', () => {
       '平台',
       '店铺名',
       '店铺ID',
-      '商品链接',
+      '商品信息',
       '销量',
       '单价（元）',
       '评论数',
-      '销售总额（估算／元）',
+      '计算金额（元）',
       '线索发现日期',
     ]);
     expect(wrapper.get('[data-test="lead-row"] a').attributes('href')).toBe(
@@ -1727,6 +1727,22 @@ describe('LeadListPage', () => {
       'https://example.com/product-1',
     );
     expect(products.get('a').attributes('rel')).toBe('noopener noreferrer');
+    expect(products.get('.lead-product-name').attributes('title')).toBe(
+      longTitle,
+    );
+    expect(products.get('.lead-product-url').attributes('title')).toBe(
+      'https://example.com/product-1',
+    );
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    await products.get('.lead-product-copy').trigger('click');
+    await flushPromises();
+    expect(writeText).toHaveBeenCalledWith('https://example.com/product-1');
+    expect(wrapper.text()).toContain('商品链接已复制');
+    Reflect.deleteProperty(globalThis.navigator, 'clipboard');
     expect(products.text()).toContain('无有效商品链接');
     expect(products.text()).not.toContain('javascript:');
     expect(wrapper.findAll('summary')).toHaveLength(2);
@@ -1741,6 +1757,15 @@ describe('LeadListPage', () => {
     const { wrapper } = await mountWithRoute('/leads');
     expect(wrapper.get('[data-test="lead-first-unit-price"]').text()).toBe(
       '未登记',
+    );
+    expect(wrapper.get('[data-test="lead-quantity-total"]').text()).toBe(
+      '未登记',
+    );
+    expect(wrapper.get('[data-test="lead-comment-total"]').text()).toBe(
+      '未登记',
+    );
+    expect(wrapper.get('[data-test="lead-estimated-amount"]').text()).toBe(
+      '未计算',
     );
     expect(wrapper.text()).toContain('未登记商品');
     expect(wrapper.find('.lead-list-products').exists()).toBe(false);

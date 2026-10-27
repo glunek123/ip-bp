@@ -434,4 +434,30 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
     await timeline.get('.case-workspace-section__edit').trigger('click');
     expect(wrapper.emitted('edit')).toEqual([['timeline']]);
   });
+
+  it('shows an early-archive fact with its original stage and reason without implying closure or payment', async () => {
+    const item = {
+      ...caseFixture(),
+      stage: 'ARCHIVED' as const,
+      version: 2,
+      earlyArchive: {
+        id: '33333333-3333-4333-8333-333333333333',
+        fromStage: 'WAITING_HEARING' as const,
+        fromVersion: 1,
+        toVersion: 2,
+        archiveAt: '2026-10-20',
+        reason: '客户决定停止诉讼',
+        recordedAt: '2026-10-20T08:00:00.000Z',
+        recordedByUserId: '44444444-4444-4444-8444-444444444444',
+      },
+    };
+    const wrapper = mountSections();
+    await wrapper.setProps({ item });
+    const fact = wrapper.get('[data-test="early-archive-record"]');
+    expect(fact.text()).toContain('原案件阶段');
+    expect(fact.text()).toContain('待开庭');
+    expect(fact.text()).toContain('客户决定停止诉讼');
+    expect(fact.text()).toContain('不表示案件已结案或款项已登记');
+    expect(fact.text()).not.toContain('已结清');
+  });
 });

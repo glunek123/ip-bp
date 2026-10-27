@@ -88,6 +88,19 @@ function selectAllInternalPermissions(): void {
   }
 }
 
+function addDepartmentAdmissionGrants(): void {
+  for (const action of ['CUSTOMER_READ', 'CUSTOMER_ADMIT'] as const) {
+    const item = props.permissionCatalog.find(
+      (entry) => entry.action === action,
+    );
+    if (!item?.scopes.includes('DEPARTMENT')) return;
+  }
+  selected.CUSTOMER_READ = true;
+  scopes.CUSTOMER_READ = 'DEPARTMENT';
+  selected.CUSTOMER_ADMIT = true;
+  scopes.CUSTOMER_ADMIT = 'DEPARTMENT';
+}
+
 for (const item of props.permissionCatalog) {
   const existing = props.role.grants
     .filter((grant) => grant.action === item.action)
@@ -211,6 +224,12 @@ onBeforeUnmount(() => {
         :disabled="pending"
         @click="selectAllInternalPermissions"
         >选择全部内部权限</ElButton
+      >
+      <ElButton
+        data-test="add-department-admission-grants"
+        :disabled="pending"
+        @click="addDepartmentAdmissionGrants"
+        >添加部门准入代办权限</ElButton
       >
       <label class="grant-search">
         <span>查找权限</span>

@@ -74,8 +74,8 @@ describe('LeadForm', () => {
     ).toBe(true);
     expect(
       wrapper
-        .get('[data-test="screenshots-section"]')
-        .find('input[name="screenshots"]')
+        .get('[data-test="products-section"]')
+        .find('[data-test="product-screenshots-0"]')
         .exists(),
     ).toBe(true);
   });
@@ -124,8 +124,8 @@ describe('LeadForm', () => {
     expect(wrapper.text()).not.toContain('发现平台');
     expect(wrapper.text()).toContain('平台店铺ID（选填）');
     expect(wrapper.text()).toContain('销量');
-    expect(wrapper.text()).toContain('预估销售额（元）');
-    expect(wrapper.text()).toContain('销量为 0 时使用评论数');
+    expect(wrapper.text()).toContain('计算金额（元）');
+    expect(wrapper.text()).toContain('销量为 0 时改用评论数');
     expect(wrapper.text()).toContain('商品链接和商品名称至少填写一项');
     expect(
       wrapper.get('input[name="productUrl-0"]').attributes('aria-describedby'),
@@ -133,9 +133,9 @@ describe('LeadForm', () => {
     expect(
       wrapper.get('input[name="quantity-0"]').attributes('aria-describedby'),
     ).toBe('product-estimate-guidance-0');
-    expect(
-      wrapper.get('input[name="screenshots"]').attributes('aria-describedby'),
-    ).toBe('lead-screenshots-guidance');
+    expect(wrapper.find('[data-test="product-screenshots-0"]').exists()).toBe(
+      true,
+    );
     expect(
       wrapper
         .get('[data-test="product-entry-guidance-0"]')
@@ -299,7 +299,7 @@ describe('LeadForm', () => {
   it('rejects more than 20 screenshots and emits files separately from API fields', async () => {
     const wrapper = mount(LeadForm, { props: { context } });
     await fillRequired(wrapper);
-    const input = wrapper.get('input[name="screenshots"]');
+    const input = wrapper.get('[data-test="product-screenshots-0"]');
     Object.defineProperty(input.element, 'files', {
       configurable: true,
       value: Array.from(
@@ -308,7 +308,7 @@ describe('LeadForm', () => {
       ),
     });
     await input.trigger('change');
-    expect(wrapper.text()).toContain('最多选择 20 份截图');
+    expect(wrapper.text()).toContain('所有商品截图合计最多 20 份');
     await wrapper.get('form').trigger('submit');
     expect(wrapper.emitted('submit')).toBeUndefined();
 
@@ -322,7 +322,10 @@ describe('LeadForm', () => {
       string,
       unknown
     >;
-    expect(payload.screenshotFiles).toHaveLength(1);
+    expect(payload.productScreenshotFiles).toHaveLength(1);
+    expect(
+      (payload.productScreenshotFiles as Array<{ files: File[] }>)[0]?.files,
+    ).toHaveLength(1);
     expect(payload.fields).toMatchObject({
       customerId: 'customer-a',
       rightsHolderId: 'holder-a',

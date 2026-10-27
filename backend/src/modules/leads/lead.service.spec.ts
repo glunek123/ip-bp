@@ -655,44 +655,40 @@ describe('LeadService', () => {
     expect(fixture.tx.lead.create).not.toHaveBeenCalled();
   });
 
-  it('rejects sequence 1000 without creating a lead', async () => {
+  it('accepts sequence 1000 without truncation', async () => {
     const fixture = createCreateFixture();
     fixture.tx.$queryRawUnsafe.mockImplementation(async (sql: string) =>
-      sql.includes('lead_number_counters')
-        ? [{ sequence: 1000, business_date: new Date('2026-09-21') }]
-        : [
-            {
-              customer_id: validCreate().customerId,
-              cooperation_status: 'COOPERATING',
-            },
-          ],
+      sql.includes('customer_business_number_counters')
+        ? [{ last_value: 1n }]
+        : sql.includes('customer_daily_number_counters')
+          ? [{ sequence: 1000, business_date: new Date('2026-09-21') }]
+          : [
+              {
+                customer_id: validCreate().customerId,
+                cooperation_status: 'COOPERATING',
+              },
+            ],
     );
+    fixture.tx.lead.create.mockImplementation(async ({ data }) => {
+      fixture.createdLead.businessNo = data.businessNo;
+      return fixture.createdLead;
+    });
     await expect(
       fixture.service.create(actor, 'key', validCreate()),
-    ).rejects.toMatchObject({ response: { code: 'LEAD_NUMBER_EXHAUSTED' } });
-    expect(fixture.tx.lead.create).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ businessNo: '001202609211000' });
   });
 
-  it('prevents the database counter from incrementing past 999', async () => {
+  it('rejects an uninitialized customer number before allocating', async () => {
     const fixture = createCreateFixture();
-    fixture.tx.$queryRawUnsafe.mockImplementation(async (sql: string) =>
-      sql.includes('lead_number_counters')
-        ? []
-        : [
-            {
-              customer_id: validCreate().customerId,
-              cooperation_status: 'COOPERATING',
-            },
-          ],
-    );
+    fixture.tx.customer.findFirst.mockResolvedValue({
+      id: validCreate().customerId,
+      businessId: null,
+    });
     await expect(
       fixture.service.create(actor, 'key', validCreate()),
-    ).rejects.toMatchObject({ response: { code: 'LEAD_NUMBER_EXHAUSTED' } });
-    expect(fixture.tx.$queryRawUnsafe).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'WHERE "lead_number_counters"."last_value" < 999',
-      ),
-    );
+    ).rejects.toMatchObject({
+      response: { code: 'CUSTOMER_NUMBER_NOT_INITIALIZED' },
+    });
     expect(fixture.tx.lead.create).not.toHaveBeenCalled();
   });
 
@@ -1000,29 +996,29 @@ describe('LeadService', () => {
   it('uses the database-returned Shanghai business date for sequence 999', async () => {
     const fixture = createCreateFixture();
     fixture.tx.$queryRawUnsafe.mockImplementation(async (sql: string) =>
-      sql.includes('lead_number_counters')
-        ? [
-            {
-              sequence: 999,
-              business_date: new Date('2026-01-02T00:00:00.000Z'),
-            },
-          ]
-        : [
-            {
-              customer_id: validCreate().customerId,
-              cooperation_status: 'COOPERATING',
-            },
-          ],
+      sql.includes('customer_business_number_counters')
+        ? [{ last_value: 1n }]
+        : sql.includes('customer_daily_number_counters')
+          ? [
+              {
+                sequence: 999,
+                business_date: new Date('2026-01-02T00:00:00.000Z'),
+              },
+            ]
+          : [
+              {
+                customer_id: validCreate().customerId,
+                cooperation_status: 'COOPERATING',
+              },
+            ],
     );
-    fixture.tx.lead.create.mockImplementation(async ({ data }) => ({
-      ...fixture.createdLead,
-      businessNo: data.businessNo,
-      products: fixture.createdLead.products,
-      infringements: fixture.createdLead.infringements,
-    }));
+    fixture.tx.lead.create.mockImplementation(async ({ data }) => {
+      fixture.createdLead.businessNo = data.businessNo;
+      return fixture.createdLead;
+    });
     await expect(
       fixture.service.create(actor, 'key', validCreate()),
-    ).resolves.toMatchObject({ businessNo: 'LD-20260102-999' });
+    ).resolves.toMatchObject({ businessNo: '00120260102999' });
   });
 
   it('adopts and freezes screenshot facts on the reserved Lead id', async () => {
@@ -1150,7 +1146,25 @@ describe('LeadService', () => {
     await fixture.service.update(actor, fixture.current.id, validUpdate());
     expect(fixture.tx.auditEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        details: { fromVersion: 1, toVersion: 2, changedFields: [] },
+        details: expect.objectContaining({
+          fromVersion: 1,
+          toVersion: 2,
+          changedFields: [],
+          productScreenshots: {
+            before: [
+              {
+                productId: fixture.current.products[0]!.id,
+                contentVersionIds: [],
+              },
+            ],
+            after: [
+              {
+                productId: fixture.current.products[0]!.id,
+                contentVersionIds: [],
+              },
+            ],
+          },
+        }),
       }),
     });
   });
@@ -1158,14 +1172,16 @@ describe('LeadService', () => {
   it('rejects new Lead for a paused customer while preserving existing Lead edits', async () => {
     const creating = createCreateFixture();
     creating.tx.$queryRawUnsafe.mockImplementation(async (sql: string) =>
-      sql.includes('lead_number_counters')
-        ? [{ sequence: 1, business_date: new Date('2026-09-21') }]
-        : [
-            {
-              customer_id: validCreate().customerId,
-              cooperation_status: 'PAUSED',
-            },
-          ],
+      sql.includes('customer_business_number_counters')
+        ? [{ last_value: 1n }]
+        : sql.includes('customer_daily_number_counters')
+          ? [{ sequence: 1, business_date: new Date('2026-09-21') }]
+          : [
+              {
+                customer_id: validCreate().customerId,
+                cooperation_status: 'PAUSED',
+              },
+            ],
     );
     await expect(
       creating.service.create(actor, 'paused-customer', validCreate()),
@@ -1300,6 +1316,7 @@ describe('LeadService', () => {
     ['granted', 'WAITING_PUSH', true, true],
     ['read-only', 'WAITING_PUSH', false, false],
     ['wrong state', 'WAITING_REVIEW', true, false],
+    ['archived', 'ARCHIVED', true, false],
   ])(
     'reports edit capability for %s detail',
     async (_label, status, editVisible, expected) => {
@@ -1327,14 +1344,17 @@ describe('LeadService', () => {
       } as unknown as MaterialService);
 
       await expect(service.get(actor, lead.id)).resolves.toMatchObject({
-        capabilities: { edit: expected },
+        capabilities: {
+          edit: expected,
+          productScreenshotsEdit: status === 'ARCHIVED' ? false : editVisible,
+        },
       });
       expect(access.buildLeadScope).toHaveBeenNthCalledWith(
         1,
         actor,
         'lead.read',
       );
-      if (status === 'WAITING_PUSH') {
+      if (status !== 'ARCHIVED') {
         expect(access.buildLeadScope).toHaveBeenNthCalledWith(
           2,
           actor,
@@ -1678,7 +1698,7 @@ describe('LeadService', () => {
         profileStatus: 'ADMITTED',
         deletedAt: null,
       },
-      select: { id: true },
+      select: { id: true, businessId: true },
     });
   });
 
@@ -1725,6 +1745,261 @@ describe('LeadService', () => {
       },
     );
     expect(result.leadScreenshotContentVersionIds).toEqual([versionId]);
+  });
+
+  it('links a new product screenshot to its stable product and exact material version', async () => {
+    const fixture = createCreateFixture();
+    const contentVersionId = '66666666-6666-4666-8666-666666666666';
+    const materialId = '77777777-7777-4777-8777-777777777777';
+    (fixture.materials.assertAvailableVersions as jest.Mock).mockResolvedValue([
+      { materialId, contentVersionId },
+    ]);
+    await fixture.service.create(actor, 'product-shot', {
+      ...validCreate(),
+      reservedLeadId: '55555555-5555-4555-8555-555555555555',
+      products: [
+        {
+          ...validCreate().products[0]!,
+          id: '88888888-8888-4888-8888-888888888888',
+          screenshotContentVersionIds: [contentVersionId],
+        },
+      ],
+    });
+    expect(fixture.tx.leadProductScreenshot.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          productId: '88888888-8888-4888-8888-888888888888',
+          materialId,
+          contentVersionId,
+        }),
+      ],
+    });
+    expect(fixture.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'lead.created',
+        details: expect.objectContaining({
+          fromVersion: 0,
+          toVersion: 1,
+          productScreenshots: {
+            before: [],
+            after: [
+              {
+                productId: '88888888-8888-4888-8888-888888888888',
+                contentVersionIds: [contentVersionId],
+              },
+            ],
+          },
+        }),
+      }),
+    });
+  });
+
+  it('rejects an ambiguous edit without product IDs once a screenshot is linked', async () => {
+    const fixture = createUpdateFixture();
+    fixture.current.products[0]!.screenshots.push({
+      contentVersionId: '66666666-6666-4666-8666-666666666666',
+    });
+    await expect(
+      fixture.service.update(actor, fixture.current.id, validUpdate()),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects omission of an existing product screenshot collection', async () => {
+    const fixture = createUpdateFixture();
+    fixture.current.products[0]!.id = '88888888-8888-4888-8888-888888888888';
+    fixture.current.products[0]!.screenshots.push({
+      contentVersionId: '66666666-6666-4666-8666-666666666666',
+    });
+    await expect(
+      fixture.service.update(actor, fixture.current.id, {
+        ...validUpdate(),
+        products: [
+          {
+            ...validUpdate().products[0]!,
+            id: fixture.current.products[0]!.id,
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps a referenced product ID when editing its details', async () => {
+    const fixture = createUpdateFixture();
+    const productId = '88888888-8888-4888-8888-888888888888';
+    fixture.current.products[0]!.id = productId;
+    fixture.current.products[0]!.notarySelections.push({ productId });
+    await fixture.service.update(actor, fixture.current.id, {
+      ...validUpdate(),
+      products: [
+        {
+          ...validUpdate().products[0]!,
+          id: productId,
+          title: '更新商品名',
+          screenshotContentVersionIds: [],
+        },
+      ],
+    });
+    expect(fixture.tx.leadProduct.deleteMany).toHaveBeenCalledWith({
+      where: { leadId: fixture.current.id, id: { notIn: [productId] } },
+    });
+    expect(fixture.tx.leadProduct.update).toHaveBeenCalledWith({
+      where: { id: productId },
+      data: expect.objectContaining({ title: '更新商品名', position: 1 }),
+    });
+  });
+
+  it('rejects reuse of another lead product ID in an edit', async () => {
+    const fixture = createUpdateFixture();
+    const foreignProductId = '88888888-8888-4888-8888-888888888888';
+    fixture.tx.leadProduct.findMany.mockResolvedValueOnce([
+      { id: foreignProductId },
+    ]);
+    await expect(
+      fixture.service.update(actor, fixture.current.id, {
+        ...validUpdate(),
+        products: [
+          {
+            ...validUpdate().products[0]!,
+            id: foreignProductId,
+            screenshotContentVersionIds: [],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('audits removed and added products by stable ID', async () => {
+    const fixture = createUpdateFixture();
+    const newProductId = '88888888-8888-4888-8888-888888888888';
+    fixture.tx.leadProduct.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: newProductId }]);
+    await fixture.service.update(actor, fixture.current.id, {
+      ...validUpdate(),
+      products: [
+        {
+          ...validUpdate().products[0]!,
+          id: newProductId,
+          screenshotContentVersionIds: [],
+        },
+      ],
+    });
+    expect(fixture.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'lead.updated',
+        details: expect.objectContaining({
+          productScreenshots: {
+            before: [
+              {
+                productId: fixture.current.products[0]!.id,
+                contentVersionIds: [],
+              },
+            ],
+            after: [{ productId: newProductId, contentVersionIds: [] }],
+          },
+        }),
+      }),
+    });
+  });
+
+  it('replaces only the target product screenshot and increments the lead version', async () => {
+    const fixture = createUpdateFixture();
+    fixture.current.status = 'WAITING_REVIEW';
+    const contentVersionId = '66666666-6666-4666-8666-666666666666';
+    const materialId = '77777777-7777-4777-8777-777777777777';
+    (fixture.materials.assertAvailableVersions as jest.Mock).mockResolvedValue([
+      { materialId, contentVersionId },
+    ]);
+    (fixture.materials.replaceCurrentReferences as jest.Mock).mockResolvedValue(
+      {
+        afterVersionIds: [contentVersionId],
+      },
+    );
+    await fixture.service.updateProductScreenshots(
+      actor,
+      fixture.current.id,
+      fixture.current.products[0]!.id,
+      { expectedVersion: 1, screenshotContentVersionIds: [contentVersionId] },
+    );
+    expect(fixture.tx.lead.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { version: { increment: 1 } } }),
+    );
+    expect(fixture.tx.leadProductScreenshot.deleteMany).toHaveBeenCalledWith({
+      where: {
+        leadId: fixture.current.id,
+        departmentId: actor.departmentId,
+        productId: fixture.current.products[0]!.id,
+      },
+    });
+    expect(fixture.tx.leadProductScreenshot.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ materialId, contentVersionId })],
+    });
+    expect(fixture.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'lead.product-screenshots.updated',
+        details: expect.objectContaining({
+          fromVersion: 1,
+          toVersion: 2,
+          productScreenshots: {
+            before: [
+              {
+                productId: fixture.current.products[0]!.id,
+                contentVersionIds: [],
+              },
+            ],
+            after: [
+              {
+                productId: fixture.current.products[0]!.id,
+                contentVersionIds: [contentVersionId],
+              },
+            ],
+          },
+        }),
+      }),
+    });
+  });
+
+  it('rejects screenshot updates after archival', async () => {
+    const fixture = createUpdateFixture();
+    fixture.current.status = 'ARCHIVED';
+    await expect(
+      fixture.service.updateProductScreenshots(
+        actor,
+        fixture.current.id,
+        fixture.current.products[0]!.id,
+        {
+          expectedVersion: 1,
+          screenshotContentVersionIds: ['66666666-6666-4666-8666-666666666666'],
+        },
+      ),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
+    expect(fixture.materials.assertAvailableVersions).not.toHaveBeenCalled();
+  });
+
+  it('rejects a product from another lead and a stale lead version', async () => {
+    const fixture = createUpdateFixture();
+    const input = { expectedVersion: 1, screenshotContentVersionIds: [] };
+    await expect(
+      fixture.service.updateProductScreenshots(
+        actor,
+        fixture.current.id,
+        '88888888-8888-4888-8888-888888888888',
+        input,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    await expect(
+      fixture.service.updateProductScreenshots(
+        actor,
+        fixture.current.id,
+        fixture.current.products[0]!.id,
+        { ...input, expectedVersion: 2 },
+      ),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects a screenshot owned by another Lead before replacing references', async () => {
@@ -1975,6 +2250,8 @@ function createCreateFixture() {
         unitPrice: { toFixed: () => '1.55' },
         commentCount: 9,
         estimatedAmount: { toFixed: () => '4.65' },
+        screenshots: [] as Array<{ contentVersionId: string }>,
+        notarySelections: [] as Array<{ productId: string }>,
       },
     ],
     infringements: [{ type: 'TRADEMARK' }],
@@ -1983,18 +2260,21 @@ function createCreateFixture() {
   };
   const tx = {
     $queryRawUnsafe: jest.fn().mockImplementation(async (sql: string) =>
-      sql.includes('lead_number_counters')
-        ? [{ sequence: 1, business_date: new Date('2026-09-21') }]
-        : [
-            {
-              customer_id: validCreate().customerId,
-              cooperation_status: 'COOPERATING',
-            },
-          ],
+      sql.includes('customer_business_number_counters')
+        ? [{ last_value: 1n }]
+        : sql.includes('customer_daily_number_counters')
+          ? [{ sequence: 1, business_date: new Date('2026-09-21') }]
+          : [
+              {
+                customer_id: validCreate().customerId,
+                cooperation_status: 'COOPERATING',
+              },
+            ],
     ),
     customer: {
       findFirst: jest.fn().mockResolvedValue({
         id: validCreate().customerId,
+        businessId: '001',
         profileStatus: 'ADMITTED',
       }),
     },
@@ -2008,7 +2288,15 @@ function createCreateFixture() {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
     },
-    lead: { create: jest.fn().mockResolvedValue(createdLead) },
+    lead: {
+      create: jest.fn().mockImplementation(async ({ data }) => {
+        createdLead.businessNo = data.businessNo;
+        createdLead.products[0]!.id = data.products.create[0]!.id;
+        return createdLead;
+      }),
+      findUnique: jest.fn().mockResolvedValue(createdLead),
+    },
+    leadProductScreenshot: { createMany: jest.fn() },
     auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit' }) },
   };
   const transaction = jest.fn(async (callback) => callback(tx));
@@ -2073,7 +2361,14 @@ function createUpdateFixture() {
     customerRightsHolderLink: {
       findFirst: jest.fn().mockResolvedValue({ id: 'link' }),
     },
-    leadProduct: { deleteMany: jest.fn(), createMany: jest.fn() },
+    leadProduct: {
+      deleteMany: jest.fn(),
+      createMany: jest.fn(),
+      update: jest.fn(),
+      create: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([{ id: current.products[0]!.id }]),
+    },
+    leadProductScreenshot: { deleteMany: jest.fn(), createMany: jest.fn() },
     leadInfringement: { deleteMany: jest.fn(), createMany: jest.fn() },
     auditEvent: { create: jest.fn() },
   };
@@ -2097,6 +2392,7 @@ function createUpdateFixture() {
       afterVersionIds: [],
       changed: false,
     }),
+    listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
   } as unknown as MaterialService;
   return {
     service: new LeadService(database, access, materials),

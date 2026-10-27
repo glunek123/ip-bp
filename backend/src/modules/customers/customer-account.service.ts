@@ -69,6 +69,32 @@ export class CustomerAccountService {
     };
   }
 
+  async capabilities(actor: ActorContext, customerId: string) {
+    const customer = await this.customerForManagement(
+      this.database,
+      actor,
+      customerId,
+    );
+    const grants = await this.currentCustomerGrants(
+      this.database,
+      actor,
+      customer,
+    );
+    return {
+      canCreate:
+        customer.profileStatus === 'ADMITTED' &&
+        grants.some(
+          (grant) =>
+            grant.action === 'CUSTOMER_ACCOUNT_CREATE' &&
+            grant.scope === 'DEPARTMENT',
+        ),
+      canManage: grants.some(
+        (grant) =>
+          grant.action === 'USER_MANAGE' && grant.scope === 'DEPARTMENT',
+      ),
+    };
+  }
+
   async create(
     actor: ActorContext,
     customerId: string,
@@ -102,7 +128,7 @@ export class CustomerAccountService {
             actor,
             customerId,
           );
-          await this.authorizeManagement(transaction, actor, customer);
+          await this.authorizeCreation(transaction, actor, customer);
           if (customer.profileStatus !== 'ADMITTED')
             throw new ConflictException({
               code: 'CUSTOMER_NOT_ADMITTED',
@@ -294,6 +320,37 @@ export class CustomerAccountService {
     actor: ActorContext,
     customer: CustomerFacts,
   ): Promise<void> {
+    const grants = await this.currentCustomerGrants(reader, actor, customer);
+    if (
+      !grants.some(
+        (grant) =>
+          grant.action === 'USER_MANAGE' && grant.scope === 'DEPARTMENT',
+      )
+    )
+      throw this.forbidden();
+  }
+
+  private async authorizeCreation(
+    reader: Prisma.TransactionClient | DatabaseService,
+    actor: ActorContext,
+    customer: CustomerFacts,
+  ): Promise<void> {
+    const grants = await this.currentCustomerGrants(reader, actor, customer);
+    if (
+      !grants.some(
+        (grant) =>
+          grant.action === 'CUSTOMER_ACCOUNT_CREATE' &&
+          grant.scope === 'DEPARTMENT',
+      )
+    )
+      throw this.forbidden();
+  }
+
+  private async currentCustomerGrants(
+    reader: Prisma.TransactionClient | DatabaseService,
+    actor: ActorContext,
+    customer: CustomerFacts,
+  ) {
     try {
       await this.access.authorizeCustomer(
         actor,
@@ -305,17 +362,10 @@ export class CustomerAccountService {
         },
         reader,
       );
-      const grants = await this.organization.loadCurrentActorGrants(
+      return await this.organization.loadCurrentActorGrants(
         reader as Prisma.TransactionClient,
         actor,
       );
-      if (
-        !grants.some(
-          (grant) =>
-            grant.action === 'USER_MANAGE' && grant.scope === 'DEPARTMENT',
-        )
-      )
-        throw this.forbidden();
     } catch (error) {
       if (error instanceof ForbiddenException) throw this.forbidden();
       throw error;

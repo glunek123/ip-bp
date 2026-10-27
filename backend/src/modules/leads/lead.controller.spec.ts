@@ -6,11 +6,58 @@ import {
   LeadListQueryDto,
   PushLeadDto,
   UpdateLeadDto,
+  UpdateLeadProductScreenshotsDto,
 } from './lead.dto';
 import { LeadController } from './lead.controller';
 import { LeadService } from './lead.service';
 
 describe('LeadController', () => {
+  it('routes and validates a product screenshot replacement', async () => {
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    });
+    const input = {
+      expectedVersion: 3,
+      screenshotContentVersionIds: ['66666666-6666-4666-8666-666666666666'],
+    };
+    await expect(
+      pipe.transform(input, {
+        type: 'body',
+        metatype: UpdateLeadProductScreenshotsDto,
+      }),
+    ).resolves.toMatchObject(input);
+    await expect(
+      pipe.transform(
+        {
+          ...input,
+          screenshotContentVersionIds: [
+            input.screenshotContentVersionIds[0],
+            input.screenshotContentVersionIds[0],
+          ],
+        },
+        { type: 'body', metatype: UpdateLeadProductScreenshotsDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    const service = {
+      updateProductScreenshots: jest.fn().mockResolvedValue({ version: 4 }),
+    } as unknown as LeadService;
+    await expect(
+      new LeadController(service).updateProductScreenshots(
+        { userId: 'u' } as never,
+        'lead-1',
+        'product-1',
+        input,
+      ),
+    ).resolves.toEqual({ version: 4 });
+    expect(service.updateProductScreenshots).toHaveBeenCalledWith(
+      { userId: 'u' },
+      'lead-1',
+      'product-1',
+      input,
+    );
+  });
   it('passes a no-evidence decision with normalized idempotency key', async () => {
     const service = {
       decideEvidence: jest.fn().mockResolvedValue({ result: 'NO_EVIDENCE' }),

@@ -24,8 +24,10 @@ import { normalizeCustomerIdentityNumber } from './customer-identity';
 import { randomUUID } from 'node:crypto';
 import { CustomerCooperationService } from './customer-cooperation.service';
 import { CustomerAgreementInvoiceService } from './customer-agreement-invoice.service';
+import { allocateCustomerBusinessId } from '../business-numbering';
 
 export type CustomerRecord = {
+  businessId?: string | null;
   customerManagerName?: string | null;
   id: string;
   name: string;
@@ -61,6 +63,7 @@ export type CustomerRecord = {
 };
 
 export type CustomerSummary = {
+  businessId?: string | null;
   customerManagerName: string | null;
   id: string;
   name: string;
@@ -260,8 +263,10 @@ export class CustomerService {
           if (duplicateNameReason === null) throw this.nameReasonRequired();
         }
 
+        const businessId = await allocateCustomerBusinessId(transaction);
         let created = await transaction.customer.create({
           data: {
+            businessId,
             name,
             normalizedName,
             category: this.normalizeOptional(input.category),
@@ -1301,6 +1306,9 @@ export class CustomerService {
 
 export function toCustomerSummary(customer: CustomerRecord): CustomerSummary {
   return {
+    ...(customer.businessId === undefined
+      ? {}
+      : { businessId: customer.businessId }),
     customerManagerName: customer.customerManagerName ?? null,
     id: customer.id,
     name: customer.name,

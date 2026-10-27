@@ -13,3 +13,8 @@ export class CustomerAccountListResponseDto {
   @ApiProperty({ type: () => [CustomerAccountResponseDto] })
   items!: CustomerAccountResponseDto[];
 }
+
+export class CustomerAccountCapabilitiesResponseDto {
+  @ApiProperty() canCreate!: boolean;
+  @ApiProperty() canManage!: boolean;
+}

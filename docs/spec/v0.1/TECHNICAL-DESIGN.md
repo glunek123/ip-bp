@@ -1,5 +1,7 @@
 # 技术设计基线、低负担回溯、可配置授权与客户切片
 
+2026-10-26追加SD-63～65：[v6业务基线](../../superpowers/specs/2026-10-26-v6-operations-optimization.md)明确实施范围、编号补充规则、提前归档与后续财务边界，覆盖原文仅整理限制。实际增权、迁移执行、历史数据切换和部署仍单独授权；实现与验证状态仍只见开发状态及VALIDATION。
+
 2026-10-21追加SD-62：[报表首片](modules/reports.md)使用当前内部部门case.read授权及同一RepeatableRead快照，完整部门计数与归档已知标的额来源分开，十进制最终HALF_UP两位。reports通过cases窄只读出口取数，DTO明确值／无记录／无已知样本三态；capability不代替实际读取授权。无需新模型、迁移或Grant；不将Demo字段、快照导出或客户范围自动作为已实现功能。
 
 2026-10-18追加SD-61：[公证Spec](modules/notary.md)采用原事项/资料组独立revision、追加更正和effective读取，不改原Evidence/Logistics/Opening、流程version、费用及冻结材料锚；批量开箱只组织原单项Command，每项独立事务及原key未知恢复。schema/Action/API由单一Sol作者先出可编译小基线，UI按[独占安排](../../superpowers/plans/2026-10-17-next-batch-acceptance-readiness.md#7-公证最小实施契约与独占文件)消费；不建通用批次/审批平台，物理迁移仅设计编写不执行，原任务路径恢复和独立技术审查尚待完成。

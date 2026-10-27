@@ -471,6 +471,7 @@ describe('handling groups production page adapter', () => {
     resources.materials.mockResolvedValue(resourceMaterials());
     resources.download.mockResolvedValue(undefined);
     const { wrapper } = await mountGroups(`/case-handling-groups/${groupId}`);
+    expect(wrapper.text()).toContain('案件系列');
     expect(resources.materials).not.toHaveBeenCalled();
     expect(resources.fees).not.toHaveBeenCalled();
     await wrapper.get('[data-test="open-group-resources"]').trigger('click');
@@ -548,7 +549,7 @@ describe('handling groups production page adapter', () => {
     await flushPromises();
 
     expect(readPendingCaseHandlingGroups()).toEqual({});
-    expect(wrapper.text()).toContain('办理组操作已确认，原案归属保持完整。');
+    expect(wrapper.text()).toContain('案件系列操作已确认，原案归属保持完整。');
     expect(wrapper.text()).toContain('已解除');
   });
   it('maps material and ledger pagination independently and keeps source summaries outside ledger totals', async () => {

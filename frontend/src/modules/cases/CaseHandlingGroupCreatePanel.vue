@@ -120,7 +120,7 @@ async function prepare(): Promise<void> {
       return;
     }
     if (new Set(result.members.map((member) => member.customerId)).size !== 1) {
-      error.value = '只能将同一客户的案件建立办理组，整组未提交。';
+      error.value = '只能将同一客户的案件建立案件系列，整组未提交。';
       return;
     }
     prepared.value = ids.map((id) => ({
@@ -202,9 +202,9 @@ onBeforeUnmount(() => {
     class="demo-card handling-group-panel"
     role="dialog"
     aria-modal="true"
-    aria-label="建立案件办理组"
+    aria-label="建立案件系列"
   >
-    <h2>建立案件办理组</h2>
+    <h2>建立案件系列</h2>
     <p>
       明确选择同一客户2～20件案件。不同阶段的案件也可建立组；原案件的编号、阶段、材料及费用归属均保留。
     </p>
@@ -256,7 +256,7 @@ onBeforeUnmount(() => {
         data-test="confirm-create-group"
         :disabled="busy"
       />已核对原源案归属保留，确认{{
-        frozen ? '核对原请求' : '建立办理组'
+        frozen ? '核对原请求' : '建立案件系列'
       }}。</label
     >
     <p v-if="error" role="alert">{{ error }}</p>
@@ -266,7 +266,7 @@ onBeforeUnmount(() => {
       :disabled="!canSubmit"
       :loading="busy"
       @click="submit"
-      >{{ frozen ? '核对原建立请求' : '建立办理组' }}</ElButton
+      >{{ frozen ? '核对原建立请求' : '建立案件系列' }}</ElButton
     >
     <ElButton
       data-test="close-create-group"

@@ -41,6 +41,7 @@ export const internalAssignablePermissionActions = [
   'CUSTOMER_SETTLEMENT_REGISTER',
   'CUSTOMER_SETTLEMENT_CORRECT',
   'CUSTOMER_ADMIT',
+  'CUSTOMER_ACCOUNT_CREATE',
   'LEAD_READ',
   'LEAD_CREATE',
   'LEAD_EDIT',
@@ -218,6 +219,11 @@ const catalog: PermissionCatalogItem[] = [
     scopes: allScopes,
   },
   { action: 'CUSTOMER_ADMIT', label: '准入客户', scopes: allScopes },
+  {
+    action: 'CUSTOMER_ACCOUNT_CREATE',
+    label: '创建企业账号',
+    scopes: ['DEPARTMENT'],
+  },
   {
     action: 'CUSTOMER_AGREEMENT_READ',
     label: '查看客户协议',

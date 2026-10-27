@@ -4,11 +4,17 @@ import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 import { ApiError } from '../../api/http';
+import MaterialPreviewDialog from '../../app/MaterialPreviewDialog.vue';
 import { getLead, type LeadDetail } from '../../api/leads';
+import { updateLeadProductScreenshots } from '../../api/leads';
 import {
   downloadMaterialVersion,
   listOwnerMaterials,
+  uploadMaterialFile,
 } from '../../api/materials';
+import ProductScreenshotsRow, {
+  type ProductScreenshot,
+} from './ProductScreenshotsRow.vue';
 import {
   labelLeadPlatform,
   leadCaseTypeLabels,
@@ -53,7 +59,17 @@ const orderedProducts = computed(() =>
 const screenshots = ref<
   Array<{ materialId: string; versionId: string; filename: string }>
 >([]);
+const productScreenshotMetadata = ref(new Map<string, ProductScreenshot>());
+const productScreenshotBusy = ref(new Set<string>());
+const productScreenshotUncertain = ref(new Set<string>());
+const screenshotMessage = ref('');
+const selectedScreenshot = ref<{
+  materialId: string;
+  versionId: string;
+  filename: string;
+}>();
 const downloadError = ref('');
+const productLinkMessage = ref('');
 const workflowOpen = ref(false);
 const pendingCommands = ref(readPendingLeadCommands());
 const pendingPush = computed(
@@ -85,28 +101,33 @@ async function workflowCompleted(result: LeadWorkflowResult) {
     transferSuccess.value = '已创建本次公证取证批次，请打开对应事项继续办理。';
   }
 }
-const workflowGuidance = computed(() => {
+const workflowNotice = computed(() => {
   const current = lead.value;
   if (!current) return '';
   switch (current.status) {
-    case 'WAITING_PUSH':
-      return '下一步由运营核对线索后推送，客户在客户办理端的待审核线索中确认。';
     case 'WAITING_REVIEW':
-      return '下一步由客户在客户办理端的待审核线索中审核；运营在此查看客户结论，不能代客户确认。';
+      return '等待客户审核；运营不能代客户确认。';
     case 'WAITING_EVIDENCE_DECISION':
       return current.capabilities.transferToNotary
-        ? '下一步由运营选择商品、截图、公证处及用途，移交公证；也可按实际情况选择不取证归档。'
-        : '由运营核对后续安排。当前记录未提供可办理入口，请刷新核对最新记录。';
-    case 'TRANSFERRED_TO_NOTARY':
-      return '后续按每个公证取证批次分别推进。请打开对应事项查看当前阶段、下一责任人与办理入口。';
+        ? ''
+        : '当前记录未提供办理入口，请刷新核对最新记录。';
     case 'ARCHIVED':
       return current.pendingWithdrawalApplication
-        ? '线索保持归档，下一步由原客户企业在客户办理端确认撤回申请。'
-        : '线索已归档，归档结论见下方记录；本次流程已结束。';
+        ? '撤回申请待原客户企业确认。'
+        : '';
     default:
-      return '请核对当前线索记录后安排后续办理。';
+      return '';
   }
 });
+async function copyProductUrl(url: string): Promise<void> {
+  if (!safeProductUrl(url)) return;
+  try {
+    await globalThis.navigator.clipboard.writeText(url);
+    productLinkMessage.value = '商品链接已复制';
+  } catch {
+    productLinkMessage.value = '复制失败，请打开商品链接后从地址栏复制';
+  }
+}
 function formatTime(value: string): string {
   return new Date(value).toLocaleString('zh-CN', {
     timeZone: 'Asia/Shanghai',
@@ -131,6 +152,8 @@ async function load(): Promise<void> {
   state.value = 'loading';
   lead.value = undefined;
   screenshots.value = [];
+  productScreenshotMetadata.value = new Map();
+  selectedScreenshot.value = undefined;
   transferredMatter.value = undefined;
   transferSuccess.value = '';
   try {
@@ -144,6 +167,8 @@ async function load(): Promise<void> {
     )
       return;
     lead.value = current;
+    productScreenshotUncertain.value = new Set();
+    screenshotMessage.value = '';
     const materials = await listOwnerMaterials('LEAD', current.id, {
       signal: controller.signal,
     }).catch(() => null);
@@ -175,6 +200,30 @@ async function load(): Promise<void> {
           ]
         : [];
     });
+    productScreenshotMetadata.value = new Map(
+      (materials?.items ?? [])
+        .filter(
+          (material) =>
+            material.status === 'ACTIVE' &&
+            material.ownerType === 'LEAD' &&
+            material.ownerId === current.id &&
+            material.category === 'LEAD_SCREENSHOT' &&
+            material.purpose === 'LEAD_SCREENSHOT',
+        )
+        .flatMap((material) =>
+          material.contentVersions.map(
+            (version) =>
+              [
+                version.id,
+                {
+                  versionId: version.id,
+                  materialId: material.id,
+                  filename: version.originalFilename,
+                },
+              ] as const,
+          ),
+        ),
+    );
     state.value = 'ready';
   } catch (error) {
     if (
@@ -189,6 +238,120 @@ async function load(): Promise<void> {
         ? 'missing'
         : 'failed';
   }
+}
+function productScreenshotItems(ids: string[]): ProductScreenshot[] {
+  return (ids ?? []).flatMap((id) => {
+    const item = productScreenshotMetadata.value.get(id);
+    return item ? [item] : [];
+  });
+}
+async function saveProductScreenshots(
+  productId: string,
+  nextIds: string[],
+  files: Array<InstanceType<typeof globalThis.File>> = [],
+): Promise<void> {
+  const current = lead.value;
+  const product = current?.products.find((item) => item.id === productId);
+  const generation = contextGeneration;
+  if (
+    !current ||
+    !product ||
+    !current.capabilities.productScreenshotsEdit ||
+    productScreenshotBusy.value.has(productId) ||
+    productScreenshotUncertain.value.has(productId)
+  )
+    return;
+  if (
+    current.products.reduce(
+      (total, product) =>
+        total + (product.screenshotContentVersionIds?.length ?? 0),
+      0,
+    ) -
+      (product.screenshotContentVersionIds?.length ?? 0) +
+      nextIds.length +
+      files.length >
+    20
+  ) {
+    screenshotMessage.value = '所有商品截图合计最多 20 份';
+    return;
+  }
+  productScreenshotBusy.value = new Set([
+    ...productScreenshotBusy.value,
+    productId,
+  ]);
+  screenshotMessage.value = '';
+  try {
+    for (const file of files) {
+      const uploaded = await uploadMaterialFile({
+        ownerType: 'LEAD',
+        ownerId: current.id,
+        category: 'LEAD_SCREENSHOT',
+        purpose: 'LEAD_SCREENSHOT',
+        file,
+      });
+      if (
+        generation !== contextGeneration ||
+        String(route.params.id) !== current.id
+      )
+        return;
+      nextIds.push(uploaded.contentVersionId);
+    }
+    await updateLeadProductScreenshots(current.id, productId, {
+      expectedVersion: current.version,
+      screenshotContentVersionIds: nextIds,
+    });
+    if (
+      generation !== contextGeneration ||
+      String(route.params.id) !== current.id
+    )
+      return;
+    await load();
+  } catch (error) {
+    if (generation !== contextGeneration) return;
+    productScreenshotUncertain.value = new Set([
+      ...productScreenshotUncertain.value,
+      productId,
+    ]);
+    screenshotMessage.value =
+      error instanceof ApiError && error.code === 'VERSION_CONFLICT'
+        ? '线索已更新，截图未确认关联；请刷新后核对当前商品截图。'
+        : '截图关联结果未确认，请刷新核对后再操作。';
+  } finally {
+    productScreenshotBusy.value = new Set(
+      [...productScreenshotBusy.value].filter((id) => id !== productId),
+    );
+  }
+}
+function removeProductScreenshot(productId: string, versionId: string): void {
+  const product = lead.value?.products.find((item) => item.id === productId);
+  if (!product || productScreenshotUncertain.value.has(productId)) return;
+  void saveProductScreenshots(
+    productId,
+    (product.screenshotContentVersionIds ?? []).filter(
+      (id) => id !== versionId,
+    ),
+  );
+}
+function replaceProductScreenshots(
+  productId: string,
+  files: Array<InstanceType<typeof globalThis.File>>,
+): void {
+  const allowed = new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  ]);
+  if (
+    files.some(
+      (file) => !allowed.has(file.type) || file.size > 20 * 1024 * 1024,
+    )
+  ) {
+    screenshotMessage.value =
+      '截图仅支持 PDF、JPG/JPEG、PNG、WEBP，每份不超过 20MB';
+    return;
+  }
+  void saveProductScreenshots(productId, [], files);
 }
 async function downloadScreenshot(
   materialId: string,
@@ -207,6 +370,14 @@ async function downloadScreenshot(
     downloadRequests.delete(controller);
   }
 }
+function handleScreenshotUnavailable(status: 403 | 404): void {
+  selectedScreenshot.value = undefined;
+  if (status === 403) screenshots.value = [];
+  downloadError.value =
+    status === 403
+      ? '当前账号无权查看该截图，请刷新线索资料'
+      : '截图文件已不存在，请刷新线索资料';
+}
 function clearContext() {
   contextGeneration += 1;
   request?.abort();
@@ -214,6 +385,8 @@ function clearContext() {
   downloadRequests.clear();
   lead.value = undefined;
   screenshots.value = [];
+  productScreenshotMetadata.value = new Map();
+  selectedScreenshot.value = undefined;
   downloadError.value = '';
   transferredMatter.value = undefined;
   transferSuccess.value = '';
@@ -232,7 +405,7 @@ watch(
 onBeforeUnmount(clearContext);
 </script>
 <template>
-  <div class="page-view page-view--narrow">
+  <div class="page-view page-view--narrow lead-detail-page">
     <main>
       <RouterLink class="back-link" to="/leads">← 返回线索列表</RouterLink>
       <p
@@ -289,33 +462,33 @@ onBeforeUnmount(clearContext);
               :to="`/leads/${lead.id}/edit`"
               >编辑线索</RouterLink
             ><ElButton data-test="refresh" text @click="load">刷新</ElButton>
+            <ElButton
+              v-if="
+                lead.capabilities.transferToNotary ||
+                lead.capabilities.createEvidenceBatch ||
+                lead.capabilities.evidenceDecide ||
+                lead.capabilities.withdrawApply
+              "
+              data-test="open-lead-workflow"
+              type="primary"
+              @click="workflowOpen = true"
+              >{{
+                lead.capabilities.createEvidenceBatch
+                  ? '新建取证批次'
+                  : lead.capabilities.withdrawApply
+                    ? '申请撤回归档'
+                    : '确认取证安排'
+              }}</ElButton
+            >
           </div>
         </div>
-        <section class="demo-card demo-card--pad" data-test="lead-workflow">
-          <h2 class="form-section-title">流程推进</h2>
-          <p>{{ workflowGuidance }}</p>
-          <ElButton
-            v-if="
-              lead.capabilities.transferToNotary ||
-              lead.capabilities.createEvidenceBatch ||
-              lead.capabilities.evidenceDecide ||
-              lead.capabilities.withdrawApply
-            "
-            data-test="open-lead-workflow"
-            type="primary"
-            @click="workflowOpen = true"
-            >{{
-              lead.capabilities.createEvidenceBatch
-                ? '新建取证批次'
-                : lead.capabilities.withdrawApply
-                  ? '申请撤回归档'
-                  : '确认取证安排'
-            }}</ElButton
-          >
-          <a v-else-if="lead.notaryMatters.length" href="#notary-matters"
-            >查看公证取证批次</a
-          >
-        </section>
+        <p
+          v-if="workflowNotice"
+          class="field-help"
+          data-test="lead-workflow-status"
+        >
+          {{ workflowNotice }}
+        </p>
         <section class="demo-card demo-card--pad">
           <dl class="demo-detail-grid" data-test="lead-facts">
             <div>
@@ -375,7 +548,11 @@ onBeforeUnmount(clearContext);
           </dl>
         </section>
         <section class="demo-card" data-test="lead-products-table">
-          <h2 class="card-section-title">商品及估算</h2>
+          <h2 class="card-section-title">商品信息</h2>
+          <p class="field-help lead-estimate-note">
+            计算金额＝单价 × 销量；销量为 0
+            时改用评论数。仅供线索评估参考，不代表实际成交额。
+          </p>
           <div
             class="demo-table-wrap business-list-scroll"
             tabindex="0"
@@ -398,27 +575,39 @@ onBeforeUnmount(clearContext);
                   <th class="num">销量</th>
                   <th class="num">单价（元）</th>
                   <th class="num">评论数</th>
-                  <th class="num">销售总额（估算／元）</th>
+                  <th class="num">计算金额（元）</th>
+                  <th>商品截图</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="product in orderedProducts" :key="product.id">
                   <td class="business-list-cell--text">
-                    <details>
-                      <summary>{{ product.title || '未登记商品名称' }}</summary>
-                      <p>{{ product.title || '未登记商品名称' }}</p>
-                    </details>
+                    <span
+                      class="lead-product-text"
+                      :title="product.title || '未登记商品名称'"
+                      >{{ product.title || '未登记商品名称' }}</span
+                    >
                   </td>
                   <td class="business-list-cell--text">
-                    <details v-if="safeProductUrl(product.url)">
-                      <summary>查看商品链接</summary>
+                    <div
+                      v-if="safeProductUrl(product.url)"
+                      class="lead-product-link-row"
+                    >
                       <a
                         :href="safeProductUrl(product.url)!"
+                        :title="product.url ?? ''"
                         target="_blank"
                         rel="noopener noreferrer"
                         >{{ product.url }}</a
                       >
-                    </details>
+                      <button
+                        type="button"
+                        :aria-label="`复制商品链接：${product.title || '未登记商品名称'}`"
+                        @click="copyProductUrl(product.url!)"
+                      >
+                        复制
+                      </button>
+                    </div>
                     <span v-else>无有效商品链接</span>
                   </td>
                   <td class="num mono business-list-cell--number">
@@ -433,11 +622,31 @@ onBeforeUnmount(clearContext);
                   <td class="num mono business-list-cell--number">
                     {{ product.estimatedAmount }}
                   </td>
+                  <td>
+                    <ProductScreenshotsRow
+                      :items="
+                        productScreenshotItems(
+                          product.screenshotContentVersionIds ?? [],
+                        )
+                      "
+                      :can-edit="
+                        lead.capabilities.productScreenshotsEdit &&
+                        !productScreenshotUncertain.has(product.id)
+                      "
+                      :busy="productScreenshotBusy.has(product.id)"
+                      @preview="selectedScreenshot = $event"
+                      @download="
+                        downloadScreenshot($event.materialId, $event.versionId)
+                      "
+                      @remove="removeProductScreenshot(product.id, $event)"
+                      @replace="replaceProductScreenshots(product.id, $event)"
+                    />
+                  </td>
                 </tr>
               </tbody>
               <tfoot>
                 <tr data-test="lead-product-summary">
-                  <th colspan="2" scope="row">合计（估算）</th>
+                  <th colspan="3" scope="row">商品计算金额合计</th>
                   <td class="num mono business-list-cell--number">
                     {{ productSummary.quantityTotal }}
                   </td>
@@ -448,43 +657,52 @@ onBeforeUnmount(clearContext);
                   <td class="num mono business-list-cell--number">
                     {{ productSummary.estimatedAmount }}
                   </td>
+                  <td></td>
                 </tr>
               </tfoot>
             </table>
           </div>
-        </section>
-        <section
-          class="demo-card demo-card--pad lead-attachments"
-          data-test="lead-attachments"
-        >
-          <h2 class="form-section-title">截图</h2>
-          <p v-if="lead.leadScreenshotContentVersionIds.length === 0">
-            未上传截图
+          <p v-if="productLinkMessage" role="status" class="field-help">
+            {{ productLinkMessage }}
           </p>
-          <ul v-else-if="screenshots.length">
-            <li v-for="screenshot in screenshots" :key="screenshot.versionId">
-              <span>{{ screenshot.filename }}</span>
-              <ElButton
-                text
-                :data-test="`download-screenshot-${screenshot.versionId}`"
-                @click="
-                  downloadScreenshot(
-                    screenshot.materialId,
-                    screenshot.versionId,
-                  )
-                "
-                >下载</ElButton
-              >
-            </li>
-          </ul>
-          <ul v-else>
-            <li v-for="id in lead.leadScreenshotContentVersionIds" :key="id">
-              {{ id }}
-            </li>
-          </ul>
-          <p v-if="downloadError" class="field-error" role="alert">
-            {{ downloadError }}
+          <p v-if="screenshotMessage" role="status" class="field-help">
+            {{ screenshotMessage }}
           </p>
+          <div class="lead-unassigned-screenshots" data-test="lead-attachments">
+            <h3>截图（商品归属待关联）</h3>
+            <p class="field-help">
+              现有截图未记录对应商品，暂不作为某件商品的截图展示。
+            </p>
+            <p v-if="lead.leadScreenshotContentVersionIds.length === 0">
+              未上传截图
+            </p>
+            <ul v-else-if="screenshots.length">
+              <li v-for="screenshot in screenshots" :key="screenshot.versionId">
+                <span>{{ screenshot.filename }}</span>
+                <ElButton
+                  text
+                  :data-test="`preview-screenshot-${screenshot.versionId}`"
+                  @click="selectedScreenshot = screenshot"
+                  >预览</ElButton
+                >
+                <ElButton
+                  text
+                  :data-test="`download-screenshot-${screenshot.versionId}`"
+                  @click="
+                    downloadScreenshot(
+                      screenshot.materialId,
+                      screenshot.versionId,
+                    )
+                  "
+                  >下载</ElButton
+                >
+              </li>
+            </ul>
+            <p v-else role="status">截图暂时无法读取，请刷新线索资料。</p>
+            <p v-if="downloadError" class="field-error" role="alert">
+              {{ downloadError }}
+            </p>
+          </div>
         </section>
         <section
           v-if="lead.reviewDecision"
@@ -636,6 +854,15 @@ onBeforeUnmount(clearContext);
       @completed="workflowCompleted"
       @close="workflowOpen = false"
     />
+    <MaterialPreviewDialog
+      v-if="selectedScreenshot"
+      :material-id="selectedScreenshot.materialId"
+      :content-version-id="selectedScreenshot.versionId"
+      :filename="selectedScreenshot.filename"
+      :scope-key="requestScopeKey"
+      @close="selectedScreenshot = undefined"
+      @unavailable="handleScreenshotUnavailable"
+    />
   </div>
 </template>
 
@@ -645,18 +872,64 @@ onBeforeUnmount(clearContext);
   table-layout: fixed;
 }
 .lead-product-table .business-list-cell--text {
-  overflow-wrap: anywhere;
+  min-width: 0;
 }
-.lead-product-table summary {
+.lead-product-text,
+.lead-product-link-row a {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lead-product-link-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.lead-product-link-row a {
+  flex: 1 1 auto;
+}
+.lead-product-link-row button {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
   cursor: pointer;
 }
-.lead-product-table details:not([open]) summary {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
+.lead-estimate-note {
+  margin: 4px 16px 10px;
 }
-.lead-product-table a {
-  overflow-wrap: anywhere;
+.lead-detail-page .demo-detail-grid > div {
+  padding-bottom: 8px;
+}
+.lead-unassigned-screenshots {
+  margin: 8px 16px 14px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-hairline);
+}
+.lead-unassigned-screenshots h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+.lead-unassigned-screenshots p {
+  margin: 2px 0;
+}
+.lead-unassigned-screenshots ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.lead-unassigned-screenshots li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--color-hairline);
+  border-radius: 5px;
 }
 </style>

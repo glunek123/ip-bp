@@ -227,7 +227,7 @@ function bill(value: unknown): SettlementBill {
     count: number(row.count),
   };
 }
-function feeSource(value: unknown): FeeSourceRow {
+export function parseFeeSourceRow(value: unknown): FeeSourceRow {
   const row = record(value);
   const direction = row.direction;
   if (direction !== '收入' && direction !== '支出') throw invalid();
@@ -263,7 +263,7 @@ function feeSource(value: unknown): FeeSourceRow {
 }
 function fee(value: unknown): FeeRow {
   const row = record(value);
-  const source = feeSource(row);
+  const source = parseFeeSourceRow(row);
   if (row.mergeTypes === undefined && row.sourceRows === undefined)
     return source;
   const mergeTypes = list(row.mergeTypes, string);
@@ -271,7 +271,7 @@ function fee(value: unknown): FeeRow {
     const original = record(value);
     if (original.mergeTypes !== undefined || original.sourceRows !== undefined)
       throw invalid();
-    return feeSource(original);
+    return parseFeeSourceRow(original);
   });
   if (
     mergeTypes.length !== 2 ||

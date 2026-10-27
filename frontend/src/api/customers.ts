@@ -38,6 +38,7 @@ export type CreateCustomerDraftInput = {
 };
 
 export type CustomerSummary = {
+  businessId?: string | null;
   id: string;
   name: string;
   customerManagerName?: string | null;
@@ -406,6 +407,10 @@ function isCooperationStatus(
 function isCustomerSummary(value: unknown): value is CustomerSummary {
   return (
     isRecord(value) &&
+    (!Object.hasOwn(value, 'businessId') ||
+      value.businessId === null ||
+      (typeof value.businessId === 'string' &&
+        /^\d{3,}$/u.test(value.businessId))) &&
     (!Object.hasOwn(value, 'customerManagerName') ||
       isNullableString(value.customerManagerName)) &&
     typeof value.id === 'string' &&
