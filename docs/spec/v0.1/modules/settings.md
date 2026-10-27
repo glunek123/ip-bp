@@ -1,5 +1,7 @@
 # SY 模板与数据管理
 
+2026-10-27第二批补充合同（SD-66）：内部、客户、公证处和律师账号共用用户名规则，允许邮箱和自定义文字，原值与规范化值拒绝控制/常见零宽/双向控制字符；保留trim/NFKC/lowercase、规范化后3–64码点和唯一性，不回填/合并历史账号，不启用邮箱验证。前端创建、后端服务、存储CHECK及登录一致，密码/限流/会话和专属企业账号创建权限不变。实际迁移/真实账号配置另批；邮箱/自定义创建后登录、重复/非法和旧账号必须单列验收。
+
 设置页中的Demo本机重置不是正式管理功能授权。迁移、恢复和模板只保留有依据的目标约束，功能范围逐项审核。
 
 依据：[固定事实](../../../demo-reverse/v158/modules/M09-settings.md)、[候选](../../../demo-reverse/v158/modules/M09-settings-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段见[领域模型](../DOMAIN.md)，B/T/E见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-AUTHZ-01／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。REQ-SY-004的人员账号、部门成员、Team、已有角色分配以及当前部门角色模板复制／Grant编辑均已有正式API、页面与数据库型浏览器测试；其他设置能力仍按各自切片推进。
