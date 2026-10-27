@@ -7,6 +7,7 @@ export function verifyBatch2EmptyMigrationAndEpoch(): Promise<{
   tables: string[];
   epoch: number[];
   invalidTypesRejected: boolean;
+  proxyActorRejected: boolean;
   legacyExternalPreserved: boolean;
 }>;
 export function readBatch2ProxyAudit(

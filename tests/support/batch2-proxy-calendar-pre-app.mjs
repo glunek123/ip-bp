@@ -50,6 +50,7 @@ same(proxyCalendar.epoch, [0, 0, 1, 2], '187 owner epochs');
 if (
   proxyCalendar.migrationCount !== 187 ||
   proxyCalendar.invalidTypesRejected !== true ||
+  proxyCalendar.proxyActorRejected !== true ||
   proxyCalendar.legacyExternalPreserved !== true
 )
   throw new Error('186/187 result differs from its existing spec assertion');

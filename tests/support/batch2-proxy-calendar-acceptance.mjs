@@ -48,13 +48,25 @@ function quotedSchema(schema) {
   return `"${schema}"`;
 }
 
-async function expectSqlState(client, sql, parameters, code) {
+async function expectSqlState(
+  client,
+  sql,
+  parameters,
+  code,
+  constraint,
+  message,
+) {
   await client.query('SAVEPOINT batch2_expected_failure');
   try {
     await client.query(sql, parameters);
     throw new Error(`Expected SQLSTATE ${code}`);
   } catch (error) {
-    if (error.code !== code) throw error;
+    if (
+      error.code !== code ||
+      (constraint && error.constraint !== constraint) ||
+      (message && error.message !== message)
+    )
+      throw error;
   } finally {
     await client.query('ROLLBACK TO SAVEPOINT batch2_expected_failure');
     await client.query('RELEASE SAVEPOINT batch2_expected_failure');
@@ -342,7 +354,44 @@ export async function verifyBatch2EmptyMigrationAndEpoch() {
       `UPDATE lead_review_decisions SET actor_kind='INTERNAL_PROXY'
       WHERE id=$1`,
       [decisionId],
+      '55000',
+    );
+    // A fresh pushed lead isolates the 186 actor check from the immutable
+    // historical decision and from unrelated source/version constraints.
+    const actorCheckLeadId = randomUUID();
+    await client.query(
+      `INSERT INTO leads (id,department_id,business_no,customer_id,rights_holder_id,responsible_user_id,
+      status,case_type,source,platform,found_at,shop_name,need_disclose,version,pushed_at,pushed_by_user_id,updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,'WAITING_REVIEW','CIVIL','ONLINE','TAOBAO',now(),$7,false,2,now(),$6,now())`,
+      [
+        actorCheckLeadId,
+        department,
+        `${tag}-actor-check`,
+        customer,
+        holder,
+        userA,
+        tag,
+      ],
+    );
+    await expectSqlState(
+      client,
+      `INSERT INTO lead_review_decisions
+      (id,department_id,lead_id,customer_id,reviewer_user_id,customer_account_binding_id,
+       reviewer_display_name_snapshot,result,from_version,to_version,actor_kind)
+      VALUES ($1,$2,$3,$4,$5,NULL,'外部客户','INFRINGEMENT',2,3,'CLIENT')`,
+      [randomUUID(), department, actorCheckLeadId, customer, externalUser],
       '23514',
+      'lead_review_decisions_proxy_actor_check',
+    );
+    await expectSqlState(
+      client,
+      `INSERT INTO lead_review_decisions
+      (id,department_id,lead_id,customer_id,reviewer_user_id,customer_account_binding_id,
+       reviewer_display_name_snapshot,result,from_version,to_version,actor_kind,internal_actor_user_id)
+      VALUES ($1,$2,$3,$4,$5,NULL,'合成运营','INFRINGEMENT',2,3,'INTERNAL_PROXY',$6)`,
+      [randomUUID(), department, actorCheckLeadId, customer, userA, userB],
+      '23514',
+      'lead_review_decisions_proxy_actor_check',
     );
     await client.query('ROLLBACK');
     const tables = (
@@ -399,7 +448,9 @@ export async function verifyBatch2EmptyMigrationAndEpoch() {
       VALUES ($1,$2,$3,'INVALID',$4,'old','2026-10-27')`,
       [randomUUID(), department, userA, randomUUID()],
       '23514',
+      'calendar_reminder_reads_source_type_check',
     );
+    // Refund source validation runs BEFORE INSERT, ahead of its table CHECK.
     await expectSqlState(
       client,
       `INSERT INTO case_refund_applications
@@ -407,6 +458,8 @@ export async function verifyBatch2EmptyMigrationAndEpoch() {
       VALUES ($1,$2,$3,'INVALID',$4,$5,'2026-10-27')`,
       [randomUUID(), department, caseId, randomUUID(), userA],
       '23514',
+      undefined,
+      'Refund application has no current formal judgment source or invalid application date',
     );
     await expectSqlState(
       client,
@@ -415,6 +468,8 @@ export async function verifyBatch2EmptyMigrationAndEpoch() {
       VALUES ($1,$2,$3,'FIRST_INSTANCE_JUDGMENT',$4,$5,'2026-10-27')`,
       [randomUUID(), department, caseId, randomUUID(), userA],
       '23514',
+      undefined,
+      'Refund application has no current formal judgment source or invalid application date',
     );
     await client.query('ROLLBACK');
     return {
@@ -422,6 +477,7 @@ export async function verifyBatch2EmptyMigrationAndEpoch() {
       tables: tables.sort(),
       epoch: [0, 0, 1, 2],
       invalidTypesRejected: true,
+      proxyActorRejected: true,
       legacyExternalPreserved: true,
     };
   } finally {
