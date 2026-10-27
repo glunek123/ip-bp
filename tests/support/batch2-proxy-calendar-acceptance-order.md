@@ -29,17 +29,19 @@ node "$batch2Env/run.mjs" exec node tests/support/batch2-proxy-calendar-numberin
 node "$batch2Env/run.mjs" build:prepared
 ```
 
+在完整 190 个迁移落到这一个新空库后，root 只执行一次客户编号 cutover，将 `customer_business_number_counters` 单例 `last_value` 从 `-1` 初始化为 `0`。I fixture 通过正式分配器继续取号；不得在 fixture 或每次验收前重置计数器。
+
 不得从旧测试库复制 schema 或账号。P/C spec 的专用 fixture 在执行时生成随机部门、真实本地账号、已准入客户与权利主体；其余业务 ID 由正式 HTTP 创建/推送/登记取得。各套验收在对应 READY flag 下执行：
 
 ```powershell
 node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-username.spec.ts
 node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-case-consolidation.spec.ts
 $env:BATCH2_IMPORT_E2E_READY = '1'
-node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-lead-import.spec.ts
+node "$batch2Env/run.mjs" test:e2e --config tests/support/batch2-lead-import.config.ts tests/e2e/batch2-lead-import.spec.ts
 node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-proxy-calendar.spec.ts
 ```
 
-Playwright 配置在加载 spec 前启动 app，所以前置探针不能用 Playwright migration spec 代替。I 套需 `BATCH2_IMPORT_E2E_READY=1`；P/C 套需 `BATCH2_ACCEPTANCE_READY`；M/U 套需 `DEV_COR_OPS_BATCH2_READY=1`。最终 `verify` 和定向复验按 root 的整体计划执行，并在各命令后清除不再需要的临时 READY 变量。
+Playwright 配置在加载 spec 前启动 app，所以前置探针不能用 Playwright migration spec 代替。I 套必须显式使用上述独有 config，只启动覆盖图片传输的受控 Nest app；默认 config 会启动真实下载 worker，不能执行 I 套。I 套需 `BATCH2_IMPORT_E2E_READY=1`；P/C 套需 `BATCH2_ACCEPTANCE_READY`；M/U 套需 `DEV_COR_OPS_BATCH2_READY=1`。最终 `verify` 和定向复验按 root 的整体计划执行，并在各命令后清除不再需要的临时 READY 变量。
 
 wrapper 固定要求 `NODE_ENV=test`、`DEV_COR_TEST_DATABASE_PROJECT=dev-cor-ops-batch2-20261027`、完整容器 ID、`DATABASE_URL=DEV_COR_TEST_DATABASE_URL=postgresql://dev_cor_test:<隐藏密码>@127.0.0.1:15440/dev_cor_test`，并接管 3101/5174 应用端口。P/C helper 还要求 `BATCH2_ACCEPTANCE_READY=batch2-ops-20261027-approved`；U/M 要求 `DEV_COR_OPS_BATCH2_READY=1`。真实密码不写日志或命令行；`run.mjs` 从受控 `.env.test` 注入。所有 flag 只在对应命令的 PowerShell 进程内设置。
 

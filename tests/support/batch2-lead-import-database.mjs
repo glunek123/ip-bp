@@ -6,7 +6,7 @@ import { assertBatch2ImportTarget } from './batch2-lead-import-target.mjs';
 const root = process.cwd();
 const requireBackend = createRequire(resolve(root, 'backend/package.json'));
 const png = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/jS8AAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=',
   'base64',
 );
 
