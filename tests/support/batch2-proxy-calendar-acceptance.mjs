@@ -79,7 +79,8 @@ export async function verifyBatch2EmptyMigrationAndEpoch() {
     leadId,
     decisionId,
     bindingId,
-  ] = Array.from({ length: 10 }, randomUUID);
+    contactId,
+  ] = Array.from({ length: 11 }, randomUUID);
   const tag = `batch2-${schema}`;
   const seedOldExternalDecision = async () => {
     // The legacy CLIENT and its sole binding are one deferred-constraint unit.
@@ -110,11 +111,10 @@ export async function verifyBatch2EmptyMigrationAndEpoch() {
       );
       await client.query(
         `INSERT INTO customers
-      (id,name,normalized_name,department_id,responsible_user_id,profile_status,
+      (id,name,normalized_name,department_id,responsible_user_id,
        customer_type,identity_type,identity_number,normalized_identity_number,identity_validity_mode,
-       admission_contact_name,admission_contact_phone,admitted_at,ever_admitted,updated_at)
-      VALUES ($1,$2,$2,$3,$4,'ADMITTED','ENTERPRISE','BUSINESS_LICENSE',$5,$5,'LONG_TERM',
-              '合成联系人','13800138000',now(),true,now())`,
+       updated_at)
+      VALUES ($1,$2,$2,$3,$4,'ENTERPRISE','BUSINESS_LICENSE',$5,$5,'LONG_TERM',now())`,
         [
           customer,
           tag,
@@ -124,8 +124,28 @@ export async function verifyBatch2EmptyMigrationAndEpoch() {
         ],
       );
       await client.query(
+        `INSERT INTO customer_contacts
+        (id,customer_id,department_id,name,phone,origin,created_by_user_id,updated_by_user_id)
+        VALUES ($1,$2,$3,'合成联系人','13800138000','ADMISSION_FREEFORM',$4,$4)`,
+        [contactId, customer, department, userA],
+      );
+      await client.query(
+        `UPDATE customers SET profile_status='ADMITTED',admitted_at=now(),ever_admitted=true,
+        admission_contact_name='合成联系人',admission_contact_phone='13800138000',
+        compatibility_contact_id=$2,admission_contact_snapshot_name='合成联系人',
+        admission_contact_snapshot_phone='13800138000',
+        admission_contact_snapshot_source='NEW_ADMISSION',
+        admission_contact_snapshot_frozen_at=now(),version=version+1,updated_at=now()
+        WHERE id=$1`,
+        [customer, contactId],
+      );
+      await client.query(
         'INSERT INTO rights_holders (id,name,department_id,updated_at) VALUES ($1,$2,$3,now())',
         [holder, tag, department],
+      );
+      await client.query(
+        'INSERT INTO customer_rights_holder_links (id,customer_id,rights_holder_id,department_id) VALUES ($1,$2,$3,$4)',
+        [randomUUID(), customer, holder, department],
       );
       await client.query(
         `INSERT INTO customer_account_bindings (id,user_id,customer_id,department_id,updated_at)
