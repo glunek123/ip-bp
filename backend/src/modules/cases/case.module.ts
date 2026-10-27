@@ -37,6 +37,8 @@ import { CaseHandlingGroupResourceController } from './case-handling-group-resou
 import { CaseHandlingGroupResourceRead } from './case-handling-group-resource.read';
 import { CaseHandlingGroupService } from './case-handling-group.service';
 import { CaseMatchService } from './case-match.service';
+import { CaseConsolidationController } from './case-consolidation.controller';
+import { CaseConsolidationService } from './case-consolidation.service';
 import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
@@ -79,6 +81,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseExecutionFilingFollowupController,
     LawyerCaseExecutionFilingFollowupController,
     CaseReadController,
+    CaseConsolidationController,
     CaseListPreferenceController,
     CaseListExportController,
     CaseHandlingGroupController,
@@ -103,6 +106,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseCreationService,
     CaseExternalEntryService,
     CaseMatchService,
+    CaseConsolidationService,
     CaseComplaintService,
     CaseComplaintConfirmationService,
     CaseComplaintMailingService,

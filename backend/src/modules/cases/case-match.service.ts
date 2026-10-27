@@ -55,6 +55,15 @@ export class CaseMatchService {
                 version: true,
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
+                consolidationMembership: {
+                  select: {
+                    isMain: true,
+                    defendantKind: true,
+                    defendantName: true,
+                    defendantIdNo: true,
+                  },
+                },
+                defendants: { select: { kind: true, name: true, idNo: true } },
               },
             });
             if (record === null) throw this.notFound();
@@ -119,6 +128,28 @@ export class CaseMatchService {
             if (normalized.lawyerAccountId === undefined)
               throw this.validation();
             if (record.stage !== 'PENDING_MATCH') throw this.invalidState();
+            if (record.consolidationMembership?.isMain === false)
+              throw this.invalidState();
+            if (record.consolidationMembership?.isMain === true) {
+              const defendant = record.consolidationMembership;
+              if (
+                normalized.defendants.length !== 1 ||
+                normalized.defendants[0].kind !== defendant.defendantKind ||
+                normalized.defendants[0].name !== defendant.defendantName ||
+                normalized.defendants[0].idNo !== defendant.defendantIdNo
+              )
+                throw this.validation();
+              if (
+                record.defendants.some(
+                  (party) =>
+                    party.kind !== defendant.defendantKind ||
+                    party.name !== defendant.defendantName ||
+                    party.idNo !== defendant.defendantIdNo,
+                ) ||
+                record.defendants.length > 1
+              )
+                throw this.invalidState();
+            }
             const anchor = await readCaseSourceAnchor(
               tx,
               caseId,
@@ -167,13 +198,14 @@ export class CaseMatchService {
               },
             });
             if (changed.count !== 1) throw this.versionConflict();
-            await tx.caseDefendant.createMany({
-              data: normalized.defendants.map((party) => ({
-                caseId,
-                departmentId: actor.departmentId,
-                ...party,
-              })),
-            });
+            if (record.defendants.length === 0)
+              await tx.caseDefendant.createMany({
+                data: normalized.defendants.map((party) => ({
+                  caseId,
+                  departmentId: actor.departmentId,
+                  ...party,
+                })),
+              });
             const lawyer = { id: candidates[0].profileId };
             await tx.caseLawyerAssignment.create({
               data: {

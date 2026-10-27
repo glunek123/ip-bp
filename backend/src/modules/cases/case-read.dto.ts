@@ -690,6 +690,7 @@ class CaseListItemDto {
     | 'ARCHIVED';
   @ApiProperty() version!: number;
   @ApiProperty() canMatch!: boolean;
+  @ApiPropertyOptional() canConsolidate?: boolean;
   @ApiProperty() canSubmitComplaint!: boolean;
   @ApiProperty() canConfirmComplaint!: boolean;
   @ApiProperty() canMailComplaint!: boolean;

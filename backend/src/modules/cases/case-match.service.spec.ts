@@ -44,6 +44,8 @@ describe('CaseMatchService', () => {
           version: 1,
           responsibleUserId: actor.userId,
           responsibleMembership: { teamId: null },
+          consolidationMembership: null,
+          defendants: [],
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
@@ -155,6 +157,31 @@ describe('CaseMatchService', () => {
       data: expect.objectContaining({
         resultSnapshot: expect.objectContaining({ matchedOn: '2026-09-28' }),
       }),
+    });
+  });
+
+  it('rejects an independently matched merged child and binds a main case to confirmed identity', async () => {
+    const f = fixture();
+    const base = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValueOnce({
+      ...base,
+      consolidationMembership: { isMain: false },
+    });
+    await expect(f.service.match(actor, caseId, input)).rejects.toMatchObject({
+      response: { code: 'INVALID_STATE' },
+    });
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+    f.tx.case.findFirst.mockResolvedValueOnce({
+      ...base,
+      consolidationMembership: {
+        isMain: true,
+        defendantKind: 'ORGANIZATION',
+        defendantName: '被告公司',
+        defendantIdNo: '913000000000000001',
+      },
+    });
+    await expect(f.service.match(actor, caseId, input)).rejects.toMatchObject({
+      response: { code: 'VALIDATION_ERROR' },
     });
   });
 

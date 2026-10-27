@@ -36,6 +36,7 @@ import { getLead, type LeadDetail } from '../../api/leads';
 import CaseWorkspaceShell from './CaseWorkspaceShell.vue';
 import { caseListQueryKeys } from './case-list-query';
 import CaseDetailsSections from './CaseDetailsSections.vue';
+import CaseConsolidationTrace from './CaseConsolidationTrace.vue';
 import CaseWorkspaceFiles from './CaseWorkspaceFiles.vue';
 import CaseWorkspaceFees from './CaseWorkspaceFees.vue';
 import { CaseFinancePanel } from '../settlements';
@@ -1898,6 +1899,11 @@ onBeforeUnmount(() => {
         </div>
       </template>
       <template #details>
+        <CaseConsolidationTrace
+          v-if="accessVerified && state === 'ready'"
+          :case-id="item.id"
+          :context-key="identity"
+        />
         <div
           v-if="priorEditors.length > 0"
           class="case-workspace-field__help"

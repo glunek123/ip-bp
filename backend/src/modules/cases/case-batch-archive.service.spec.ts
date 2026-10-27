@@ -21,6 +21,7 @@ function harness() {
     departmentMembership: {
       findUnique: jest.fn().mockResolvedValue({ active: true, teamId: null }),
     },
+    caseConsolidationMember: { findFirst: jest.fn().mockResolvedValue(null) },
     caseEarlyArchiveBatchReceipt: {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn(),
@@ -81,6 +82,15 @@ describe('case batch early archive', () => {
         requestFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/u),
       }),
     });
+  });
+  it('rejects the whole batch before a receipt when any selected case is a merged child', async () => {
+    const f = harness();
+    f.tx.caseConsolidationMember.findFirst.mockResolvedValue({ caseId: a });
+    await expect(f.service.archive(actor, input())).rejects.toMatchObject({
+      response: { code: 'INVALID_STATE' },
+    });
+    expect(f.tx.caseEarlyArchiveBatchReceipt.create).not.toHaveBeenCalled();
+    expect(f.single.archive).not.toHaveBeenCalled();
   });
   it('reports uncertain outcomes as UNKNOWN for same-key retry', async () => {
     const f = harness();

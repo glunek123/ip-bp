@@ -20,6 +20,10 @@ import {
 } from '../../api/cases';
 import { ApiError } from '../../api/http';
 import {
+  getCaseConsolidation,
+  type ConsolidationTrace,
+} from '../../api/case-consolidation';
+import {
   downloadMaterialVersion,
   uploadMaterialFile,
 } from '../../api/materials';
@@ -43,6 +47,51 @@ const submittedAt = ref(todayShanghai());
 const mediationNo = ref('');
 const evidenceFiles = ref<CaseFile[]>([]);
 const screenshotFiles = ref<CaseFile[]>([]);
+const consolidationTrace = ref<ConsolidationTrace | null>(null);
+const sourceVersionIds = ref<string[]>([]);
+const sourceOptions = computed(() => {
+  const seen = new Set<string>();
+  return (consolidationTrace.value?.cases ?? [])
+    .filter((source) => !source.isMain)
+    .flatMap((source) =>
+      source.materials
+        .filter((material) => material.category !== 'FEE_PROOF')
+        .flatMap((material) =>
+          material.contentVersions
+            .filter((version) => {
+              if (seen.has(version.id)) return false;
+              seen.add(version.id);
+              return true;
+            })
+            .map((version) => ({
+              id: version.id,
+              name: version.originalFilename,
+              caseNo: source.businessNo,
+              category: material.category,
+            })),
+        ),
+    );
+});
+let sourceRequest: AbortController | null = null;
+watch(
+  () => [props.item.id, props.contextKey],
+  async () => {
+    sourceRequest?.abort();
+    const controller = new AbortController();
+    sourceRequest = controller;
+    consolidationTrace.value = null;
+    sourceVersionIds.value = [];
+    try {
+      const result = await getCaseConsolidation(props.item.id, {
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted) consolidationTrace.value = result;
+    } catch {
+      /* Ordinary filing remains available when source access is denied. */
+    }
+  },
+  { immediate: true },
+);
 const uploading = ref<'evidence' | 'screenshot' | null>(null);
 const uploadError = ref('');
 const error = ref('');
@@ -88,6 +137,7 @@ function clearContext() {
   mediationNo.value = '';
   evidenceFiles.value = [];
   screenshotFiles.value = [];
+  sourceVersionIds.value = [];
   uploading.value = null;
   uploadError.value = '';
   courtsError.value = '';
@@ -151,6 +201,7 @@ onDeactivated(() => {
   active = false;
   revision += 1;
   abortDownloads();
+  sourceRequest?.abort();
   submitting.value = false;
   uploading.value = null;
   courtsLoading.value = false;
@@ -162,6 +213,7 @@ onBeforeUnmount(() => {
   active = false;
   revision += 1;
   abortDownloads();
+  sourceRequest?.abort();
 });
 
 const locked = computed(
@@ -179,8 +231,9 @@ const ready = computed(
     courtId.value !== '' &&
     isBusinessDate(submittedAt.value) &&
     submittedAt.value <= todayShanghai() &&
-    evidenceFiles.value.length > 0 &&
+    evidenceFiles.value.length + sourceVersionIds.value.length > 0 &&
     evidenceFiles.value.length <= 50 &&
+    sourceVersionIds.value.length <= 50 &&
     screenshotFiles.value.length <= 10 &&
     mediationNo.value.trim().length <= 100 &&
     uploading.value === null &&
@@ -330,6 +383,9 @@ function makeInput(): SubmitCaseFilingInput {
     filingScreenshotContentVersionIds: screenshotFiles.value.map(
       (file) => file.contentVersionId,
     ),
+    ...(sourceVersionIds.value.length
+      ? { consolidationSourceContentVersionIds: [...sourceVersionIds.value] }
+      : {}),
     ...(mediationNo.value.trim()
       ? { mediationNo: mediationNo.value.trim() }
       : {}),
@@ -527,8 +583,22 @@ async function download(file: CaseFile) {
         />
       </label>
       <p class="field-help">
-        PDF、DOC、DOCX、JPG 或 PNG，单份不超过 50MB；至少 1 份，最多 50 份。
+        PDF、DOC、DOCX、JPG 或 PNG，单份不超过
+        50MB；本案上传与已合案来源至少选择 1 份。
       </p>
+      <fieldset v-if="sourceOptions.length" class="filing-source-options">
+        <legend>已合案来源材料（引用原版本，不复制文件）</legend>
+        <label v-for="source in sourceOptions" :key="source.id">
+          <input
+            v-model="sourceVersionIds"
+            type="checkbox"
+            :value="source.id"
+            :disabled="locked || unknownRequest !== null"
+            @change="editing"
+          />
+          {{ source.caseNo }} · {{ source.name }}（{{ source.category }}）
+        </label>
+      </fieldset>
       <p v-if="uploading === 'evidence'" role="status">
         正在上传起诉及证据材料…
       </p>
@@ -609,9 +679,10 @@ async function download(file: CaseFile) {
         <p>实际提交日期：{{ submittedAt }}</p>
         <p>诉调号：{{ mediationNo.trim() || '未填写' }}</p>
         <p>
-          起诉及证据材料：{{ evidenceFiles.length }} 份；立案截图：{{
-            screenshotFiles.length
+          起诉及证据材料：{{ evidenceFiles.length }} 份；合案来源引用：{{
+            sourceVersionIds.length
           }}
+          份；立案截图：{{ screenshotFiles.length }}
           份
         </p>
         <p>

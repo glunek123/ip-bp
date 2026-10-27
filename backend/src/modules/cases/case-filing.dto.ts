@@ -33,6 +33,17 @@ export class SubmitCaseFilingDto {
   @ArrayMaxSize(10)
   @IsUUID('4', { each: true })
   filingScreenshotContentVersionIds?: string[];
+  @ApiPropertyOptional({
+    type: [String],
+    format: 'uuid',
+    maxItems: 50,
+    description: '已合案从案来源的精确材料版本，仅建立立案引用',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID('4', { each: true })
+  consolidationSourceContentVersionIds?: string[];
   @ApiPropertyOptional({ minLength: 1, maxLength: 100 })
   @IsOptional()
   @IsString()

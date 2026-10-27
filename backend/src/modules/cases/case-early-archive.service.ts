@@ -73,6 +73,7 @@ export class CaseEarlyArchiveService {
                 responsibleMembership: { select: { teamId: true } },
                 archive: { select: { id: true } },
                 earlyArchive: { select: { id: true } },
+                consolidationMembership: { select: { isMain: true } },
                 externalEntry: { select: { stageReachedOn: true } },
               },
             });
@@ -173,6 +174,8 @@ export class CaseEarlyArchiveService {
             }
             if (record.version !== input.expectedVersion)
               throw fail('VERSION_CONFLICT');
+            if (record.consolidationMembership?.isMain === false)
+              throw fail('INVALID_STATE');
             if (
               record.stage === 'ARCHIVED' ||
               record.archive !== null ||

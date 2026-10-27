@@ -188,6 +188,7 @@ enum PermissionAction {
   CASE_EXTERNAL_ENTRY_CREATE   @map("case.external-entry.create")
   CASE_EXTERNAL_ENTRY_ARCHIVE  @map("case.external-entry.archive")
   CASE_MATCH                   @map("case.match")
+  CASE_CONSOLIDATE             @map("case.consolidate")
   CASE_COMPLAINT_SUBMIT        @map("case.complaint.submit")
   CASE_COMPLAINT_CONFIRM       @map("case.complaint.confirm")
   CASE_COMPLAINT_MAIL          @map("case.complaint.mail")
@@ -1387,6 +1388,7 @@ model UploadDraft {
 }
 
 model Material {
+  filingConsolidationSources CaseFilingConsolidationSource[]
   feeCancellationPayments FeeCancellationPayment[] @relation("FeeCancellationPaymentProofMaterial")
   feeRefundReconciliations FeeRefundReconciliation[] @relation("FeeRefundReconciliationProofMaterial")
   productScreenshots LeadProductScreenshot[]
@@ -1417,6 +1419,7 @@ model Material {
 }
 
 model ContentVersion {
+  filingConsolidationSources CaseFilingConsolidationSource[]
   feeCancellationPayments FeeCancellationPayment[] @relation("FeeCancellationPaymentProofContent")
   feeRefundReconciliations FeeRefundReconciliation[] @relation("FeeRefundReconciliationProofContent")
   productScreenshot LeadProductScreenshot?
@@ -2078,6 +2081,9 @@ model NotaryCertificateFee {
 
 model Case {
   handlingGroupMembers CaseHandlingGroupMember[]
+  consolidationMembership CaseConsolidationMember?
+  consolidationAsMain CaseConsolidation? @relation("CaseConsolidationMain")
+  filingConsolidationSources CaseFilingConsolidationSource[] @relation("CaseFilingConsolidationSourceCase")
   evidenceItems EvidenceItem[]
   evidencePaperCertificates EvidencePaperCertificate[]
   evidenceGroups EvidenceGroupVersion[]
@@ -2482,6 +2488,7 @@ model CaseFilingSubmission {
   recordedBy       UserAccount         @relation("CaseFilingSubmitter", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   auditEvent       AuditEvent          @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   versions         CaseFilingVersion[]
+  consolidationSources CaseFilingConsolidationSource[]
 
   @@unique([id, caseId, departmentId])
   @@unique([caseId, departmentId])
@@ -2500,6 +2507,25 @@ model CaseFilingVersion {
 
   @@id([submissionId, contentVersionId])
   @@map("case_filing_versions")
+}
+
+model CaseFilingConsolidationSource {
+  submissionId String @map("submission_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  sourceCaseId String @map("source_case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  materialId String @map("material_id") @db.Uuid
+  contentVersionId String @map("content_version_id") @db.Uuid
+  category MaterialCategory
+  submission CaseFilingSubmission @relation(fields: [submissionId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  sourceCase Case @relation("CaseFilingConsolidationSourceCase", fields: [sourceCaseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  material Material @relation(fields: [materialId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  contentVersion ContentVersion @relation(fields: [materialId, contentVersionId], references: [materialId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([submissionId, contentVersionId])
+  @@index([caseId, departmentId])
+  @@index([sourceCaseId, departmentId])
+  @@map("case_filing_consolidation_sources")
 }
 
 model CaseFilingReceipt {
@@ -3822,6 +3848,54 @@ enum AuditActorKind {
   SYSTEM
 
   @@map("audit_actor_kind")
+}
+
+model CaseConsolidation {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  mainCaseId String @unique @map("main_case_id") @db.Uuid
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  mainCase Case @relation("CaseConsolidationMain", fields: [mainCaseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  members CaseConsolidationMember[]
+  receipts CaseConsolidationReceipt[]
+
+  @@unique([id, departmentId])
+  @@unique([mainCaseId, departmentId])
+  @@map("case_consolidations")
+}
+
+model CaseConsolidationMember {
+  consolidationId String @map("consolidation_id") @db.Uuid
+  caseId String @unique @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  isMain Boolean @map("is_main")
+  originalVersion Int @map("original_version")
+  defendantKind CasePartyKind @map("defendant_kind")
+  defendantName String @map("defendant_name") @db.VarChar(200)
+  defendantIdNo String @map("defendant_id_no") @db.VarChar(100)
+  consolidation CaseConsolidation @relation(fields: [consolidationId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([consolidationId, caseId])
+  @@unique([caseId, departmentId])
+  @@index([consolidationId, isMain])
+  @@map("case_consolidation_members")
+}
+
+model CaseConsolidationReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  consolidationId String @map("consolidation_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  resultSnapshot Json @map("result_snapshot")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  consolidation CaseConsolidation @relation(fields: [consolidationId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@map("case_consolidation_receipts")
 }
 
 model CaseHandlingGroup {

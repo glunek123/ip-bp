@@ -94,6 +94,7 @@ export const permissionActionValues = [
   'CASE_GROUP_CREATE',
   'CASE_GROUP_DISSOLVE',
   'CASE_MATCH',
+  'CASE_CONSOLIDATE',
   'CASE_EXTERNAL_ENTRY_CREATE',
   'CASE_EXTERNAL_ENTRY_ARCHIVE',
   'CASE_COMPLAINT_SUBMIT',
@@ -387,6 +388,7 @@ function isPermissionCatalog(
       (item.action === 'CASE_EXTERNAL_ENTRY_ARCHIVE' &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
       ((item.action === 'CASE_MATCH' ||
+        item.action === 'CASE_CONSOLIDATE' ||
         item.action === 'CASE_EXTERNAL_ENTRY_CREATE' ||
         item.action === 'CASE_DEFENDANT_CONTACT_UPDATE' ||
         item.action === 'CASE_COMPLAINT_SUBMIT' ||

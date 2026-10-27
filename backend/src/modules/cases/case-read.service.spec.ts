@@ -1,6 +1,6 @@
 import { CaseReadService } from './case-read.service';
 import { Prisma } from '../../generated/prisma/client';
-import { caseListTextWhere } from './case-list-query';
+import { caseListMembershipWhere, caseListTextWhere } from './case-list-query';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -2496,6 +2496,7 @@ describe('CaseReadService', () => {
       expect.objectContaining({
         where: {
           departmentId: actor.departmentId,
+          ...caseListMembershipWhere(),
           responsibleUserId: actor.userId,
           stage: 'WAITING_COMPLAINT',
         },
@@ -2505,6 +2506,7 @@ describe('CaseReadService', () => {
       expect.objectContaining({
         where: {
           departmentId: actor.departmentId,
+          ...caseListMembershipWhere(),
           responsibleUserId: actor.userId,
         },
       }),
@@ -2520,6 +2522,7 @@ describe('CaseReadService', () => {
     });
     const scope = {
       departmentId: actor.departmentId,
+      ...caseListMembershipWhere(),
       responsibleUserId: actor.userId,
       ...caseListTextWhere({ q: 'CA-1', customerName: '客户' }),
     };
@@ -2564,6 +2567,7 @@ describe('CaseReadService', () => {
     );
     const base = {
       departmentId: actor.departmentId,
+      ...caseListMembershipWhere(),
       responsibleUserId: actor.userId,
       ...caseListTextWhere(query, ['keyword-court'], ['named-court']),
     };
@@ -3003,6 +3007,7 @@ describe('CaseReadService', () => {
         );
         const baseWhere = {
           departmentId: actor.departmentId,
+          ...caseListMembershipWhere(),
           ...(scope === 'mine'
             ? { responsibleUserId: actor.userId }
             : scope === 'lawyer'

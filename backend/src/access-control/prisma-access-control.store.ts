@@ -68,6 +68,7 @@ const actionMap = {
   CASE_EXTERNAL_ENTRY_CREATE: 'case.external-entry.create',
   CASE_EXTERNAL_ENTRY_ARCHIVE: 'case.external-entry.archive',
   CASE_MATCH: 'case.match',
+  CASE_CONSOLIDATE: 'case.consolidate',
   CASE_COMPLAINT_SUBMIT: 'case.complaint.submit',
   CASE_COMPLAINT_CONFIRM: 'case.complaint.confirm',
   CASE_COMPLAINT_MAIL: 'case.complaint.mail',

@@ -11,7 +11,11 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
-import { MaterialService } from '../materials';
+import { Prisma } from '../../generated/prisma/client';
+import {
+  MaterialService,
+  type ValidatedMaterialVersionFact,
+} from '../materials';
 import { readCaseSourceAnchor, isEntryStartingAt } from './case-entry-source';
 import {
   SubmitCaseFilingDto,
@@ -52,6 +56,8 @@ export class CaseFilingService {
             value.filingEvidenceContentVersionIds,
           filingScreenshotContentVersionIds:
             value.filingScreenshotContentVersionIds,
+          consolidationSourceContentVersionIds:
+            value.consolidationSourceContentVersionIds,
         }),
       )
       .digest('hex');
@@ -175,6 +181,13 @@ export class CaseFilingService {
               select: { id: true, name: true },
             });
             if (court === null) throw this.validation();
+            const consolidationSources =
+              await this.validateConsolidationSources(
+                tx,
+                actor,
+                caseId,
+                value.consolidationSourceContentVersionIds,
+              );
             const evidence = await this.materials.assertAvailableVersions(
               tx,
               actor,
@@ -183,7 +196,7 @@ export class CaseFilingService {
                 ownerId: caseId,
                 category: 'FILING_EVIDENCE',
                 contentVersionIds: value.filingEvidenceContentVersionIds,
-                minCount: 1,
+                minCount: consolidationSources.length > 0 ? 0 : 1,
                 maxCount: 50,
               },
             );
@@ -233,6 +246,8 @@ export class CaseFilingService {
                     value.filingEvidenceContentVersionIds,
                   filingScreenshotContentVersionIds:
                     value.filingScreenshotContentVersionIds,
+                  consolidationSourceContentVersionIds:
+                    value.consolidationSourceContentVersionIds,
                 },
               },
               select: { id: true },
@@ -261,6 +276,18 @@ export class CaseFilingService {
               [...evidence, ...screenshots],
               audit.id,
             );
+            if (consolidationSources.length > 0)
+              await tx.caseFilingConsolidationSource.createMany({
+                data: consolidationSources.map(({ sourceCaseId, fact }) => ({
+                  submissionId: submission.id,
+                  caseId,
+                  sourceCaseId,
+                  departmentId: actor.departmentId,
+                  materialId: fact.materialId,
+                  contentVersionId: fact.contentVersionId,
+                  category: fact.category,
+                })),
+              });
             const result: SubmitCaseFilingResponseDto = {
               id: caseId,
               stage: 'WAITING_FORMAL_ACCEPTANCE',
@@ -297,6 +324,7 @@ export class CaseFilingService {
   private normalize(input: SubmitCaseFilingDto) {
     const evidence = input.filingEvidenceContentVersionIds;
     const screenshots = input.filingScreenshotContentVersionIds ?? [];
+    const consolidation = input.consolidationSourceContentVersionIds ?? [];
     const date =
       typeof input.submittedAt === 'string' &&
       /^\d{4}-\d{2}-\d{2}$/u.test(input.submittedAt)
@@ -322,15 +350,17 @@ export class CaseFilingService {
       date.toISOString().slice(0, 10) !== input.submittedAt ||
       input.submittedAt > today ||
       !Array.isArray(evidence) ||
-      evidence.length < 1 ||
+      evidence.length + consolidation.length < 1 ||
       evidence.length > 50 ||
       !Array.isArray(screenshots) ||
       screenshots.length > 10 ||
-      [...evidence, ...screenshots].some(
+      !Array.isArray(consolidation) ||
+      consolidation.length > 50 ||
+      [...evidence, ...screenshots, ...consolidation].some(
         (id) => typeof id !== 'string' || !uuid.test(id),
       ) ||
-      new Set([...evidence, ...screenshots]).size !==
-        evidence.length + screenshots.length ||
+      new Set([...evidence, ...screenshots, ...consolidation]).size !==
+        evidence.length + screenshots.length + consolidation.length ||
       (input.mediationNo !== undefined &&
         (typeof input.mediationNo !== 'string' ||
           input.mediationNo.trim() !== input.mediationNo ||
@@ -342,7 +372,126 @@ export class CaseFilingService {
       ...input,
       mediationNo: input.mediationNo ?? null,
       filingScreenshotContentVersionIds: screenshots,
+      consolidationSourceContentVersionIds: consolidation,
     };
+  }
+
+  private async validateConsolidationSources(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    versionIds: readonly string[],
+  ): Promise<
+    Array<{ sourceCaseId: string; fact: ValidatedMaterialVersionFact }>
+  > {
+    if (versionIds.length === 0) return [];
+    const root = await tx.caseConsolidation.findFirst({
+      where: { mainCaseId: caseId, departmentId: actor.departmentId },
+      select: {
+        members: {
+          where: { isMain: false },
+          orderBy: { caseId: 'asc' },
+          select: {
+            caseId: true,
+            case: {
+              select: { sourceLeadId: true, sourceNotaryMatterId: true },
+            },
+          },
+        },
+      },
+    });
+    if (!root) throw this.validation();
+    const ownerSource = new Map<string, string>();
+    for (const member of root.members) {
+      ownerSource.set(`CASE:${member.caseId}`, member.caseId);
+      if (
+        member.case.sourceLeadId &&
+        !ownerSource.has(`LEAD:${member.case.sourceLeadId}`)
+      )
+        ownerSource.set(`LEAD:${member.case.sourceLeadId}`, member.caseId);
+      if (
+        member.case.sourceNotaryMatterId &&
+        !ownerSource.has(`NOTARY_MATTER:${member.case.sourceNotaryMatterId}`)
+      )
+        ownerSource.set(
+          `NOTARY_MATTER:${member.case.sourceNotaryMatterId}`,
+          member.caseId,
+        );
+    }
+    const materials = await tx.material.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        status: 'ACTIVE',
+        category: { not: 'FEE_PROOF' },
+        contentVersions: {
+          some: { id: { in: [...versionIds] }, status: 'AVAILABLE' },
+        },
+      },
+      select: {
+        id: true,
+        ownerType: true,
+        ownerId: true,
+        category: true,
+        contentVersions: {
+          where: { id: { in: [...versionIds] }, status: 'AVAILABLE' },
+          select: { id: true },
+        },
+      },
+    });
+    const groups = new Map<
+      string,
+      {
+        sourceCaseId: string;
+        ownerType: 'CASE' | 'LEAD' | 'NOTARY_MATTER';
+        ownerId: string;
+        category: (typeof materials)[number]['category'];
+        ids: string[];
+      }
+    >();
+    for (const material of materials) {
+      const sourceCaseId = ownerSource.get(
+        `${material.ownerType}:${material.ownerId}`,
+      );
+      if (
+        !sourceCaseId ||
+        !['CASE', 'LEAD', 'NOTARY_MATTER'].includes(material.ownerType)
+      )
+        throw this.validation();
+      const ownerType = material.ownerType as 'CASE' | 'LEAD' | 'NOTARY_MATTER';
+      const key = `${ownerType}:${material.ownerId}:${material.category}`;
+      const group = groups.get(key) ?? {
+        sourceCaseId,
+        ownerType,
+        ownerId: material.ownerId,
+        category: material.category,
+        ids: [],
+      };
+      group.ids.push(...material.contentVersions.map((version) => version.id));
+      groups.set(key, group);
+    }
+    if (
+      new Set([...groups.values()].flatMap((group) => group.ids)).size !==
+      versionIds.length
+    )
+      throw this.validation();
+    const validated: Array<{
+      sourceCaseId: string;
+      fact: ValidatedMaterialVersionFact;
+    }> = [];
+    for (const group of groups.values()) {
+      const facts = await this.materials.assertAvailableVersions(tx, actor, {
+        ownerType: group.ownerType,
+        ownerId: group.ownerId,
+        category: group.category,
+        contentVersionIds: group.ids,
+        minCount: group.ids.length,
+        maxCount: group.ids.length,
+      });
+      validated.push(
+        ...facts.map((fact) => ({ sourceCaseId: group.sourceCaseId, fact })),
+      );
+    }
+    return validated;
   }
   private validation() {
     return new BadRequestException({

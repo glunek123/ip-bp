@@ -27,6 +27,15 @@ export interface CaseListTextQuery {
   sortDirection?: CaseListSortDirection;
 }
 
+export function caseListMembershipWhere(): Prisma.CaseWhereInput {
+  return {
+    OR: [
+      { consolidationMembership: { is: null } },
+      { consolidationMembership: { is: { isMain: true } } },
+    ],
+  };
+}
+
 const literalContains = (value: string) => ({
   contains: value.replace(/[\\%_]/g, '\\$&'),
   mode: 'insensitive' as const,
@@ -47,6 +56,13 @@ export function caseListTextWhere(
     and.push({
       OR: [
         { businessNo: match },
+        {
+          consolidationAsMain: {
+            is: {
+              members: { some: { isMain: false, case: { businessNo: match } } },
+            },
+          },
+        },
         { courtCaseNo: match },
         { customer: { is: { name: match } } },
         { rightsHolder: { is: { name: match } } },

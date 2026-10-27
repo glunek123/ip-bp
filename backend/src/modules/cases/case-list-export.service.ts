@@ -25,6 +25,7 @@ import {
   caseListSortBy,
   caseListSortDirections,
   caseListDepartmentTextWhere,
+  caseListMembershipWhere,
   caseListCaseTypes,
   CaseListTextQuery,
 } from './case-list-query';
@@ -190,6 +191,7 @@ export class CaseListExportService {
           where: {
             id: { in: input.ids },
             departmentId: actor.departmentId,
+            ...caseListMembershipWhere(),
             ...(input.view === 'mine'
               ? { responsibleUserId: actor.userId }
               : {}),
@@ -361,6 +363,7 @@ export class CaseListExportService {
         );
         const where: Prisma.CaseWhereInput = {
           departmentId: actor.departmentId,
+          ...caseListMembershipWhere(),
           ...(filter.view === 'mine'
             ? { responsibleUserId: actor.userId }
             : {}),
