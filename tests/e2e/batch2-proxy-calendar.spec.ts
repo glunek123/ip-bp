@@ -287,7 +287,7 @@ test.describe.serial('Batch 2 owned proxy and calendar acceptance', () => {
     await expect(page).toHaveURL(
       new RegExp(`/calendar\\?month=${eventDate.slice(0, 7)}`, 'u'),
     );
-    await expect(page.getByText(title)).toBeVisible();
+    await expect(page.getByText(title, { exact: true })).toBeVisible();
     await page.locator('.app-reminders__toggle').click();
     await page
       .locator('.app-reminders__panel')
