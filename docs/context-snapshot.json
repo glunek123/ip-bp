@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-27T16:24:22.171Z",
+  "recordedAt": "2026-10-27T16:36:26.811Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1388,7 +1388,7 @@
     "scripts/validation-scopes.mjs": "c1189587a511d65393e7a0c9d127d139e7d971d4a4a3a4a5be2d3c72a8d7b954",
     "tests/e2e/auth.spec.ts": "fc901a7bb1b738da9e0097ddf7280112027888beed1a65906f551ae74488010d",
     "tests/e2e/batch2-case-consolidation-migration.spec.ts": "d605ba925ca64a5c524d167b15bd77ba07b7018b8113b110d908dc98620722c0",
-    "tests/e2e/batch2-case-consolidation.spec.ts": "70192f29835969ac83227b0f6e86f279eddcfa815f496be2e7a79e2bbfb6ca08",
+    "tests/e2e/batch2-case-consolidation.spec.ts": "4ca6f1ba2f9fe38c67a43f9a418a5038ef2413ed5aaec79fc4b2c24eb9477054",
     "tests/e2e/batch2-consolidated-finance.spec.ts": "1c99a3ce23354f889f339966a5563079147cee723ac128b38362174ba8b6df2d",
     "tests/e2e/batch2-lead-import-migration.spec.ts": "7524c4bb854d1f6b6f645ea006d05d226c40c902da7f55698c7db166b5ff8ffd",
     "tests/e2e/batch2-lead-import-upgrade.spec.ts": "3d878907c361f8f1307d16b11e4805a4253cf6fd7999c29450f6a90de985742f",
