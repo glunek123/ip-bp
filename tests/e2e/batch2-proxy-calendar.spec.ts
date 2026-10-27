@@ -14,10 +14,11 @@ import {
   seedBatch2ProxyCalendarActors,
   transferBatch2SyntheticCaseOwner,
 } from '../support/batch2-proxy-calendar-fixture.mjs';
+import { batch2SyntheticPdf } from '../support/batch2-synthetic-pdf.mjs';
 
 assertBatch2Admission();
 const origin = 'http://127.0.0.1:5174';
-const pdf = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n');
+const pdf = batch2SyntheticPdf('Batch2 certificate and judgment');
 const openingPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=',
   'base64',
@@ -729,7 +730,7 @@ test.describe.serial('Batch 2 owned proxy and calendar acceptance', () => {
       'CASE',
       created.id,
       'JUDGMENT',
-      Buffer.from('%PDF-1.4\ncorrected synthetic judgment\n%%EOF\n'),
+      batch2SyntheticPdf('Batch2 corrected judgment'),
     );
     const correction = await body<{ judgmentId: string; version: number }>(
       await operator.context.post(
