@@ -22,7 +22,17 @@ const { unzipSync, zipSync, strToU8 } = backend('fflate') as {
 let fixture: Awaited<ReturnType<typeof seedBatch2LeadImportFixture>>;
 
 test.setTimeout(180_000);
-test.beforeAll(async () => {
+test.beforeAll(async (fixtures, testInfo) => {
+  void fixtures;
+  const expected = resolve(
+    process.cwd(),
+    'tests/support/batch2-lead-import.config.ts',
+  );
+  if (
+    !testInfo.config.configFile ||
+    resolve(testInfo.config.configFile) !== expected
+  )
+    throw new Error('Batch-2 import requires its controlled Playwright config');
   fixture = await seedBatch2LeadImportFixture();
 });
 

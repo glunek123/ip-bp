@@ -15,7 +15,7 @@ const { allocateCustomerBusinessId } = requireBackend(
 const project = 'dev-cor-ops-batch2-20261027';
 export const syntheticImageUrl = 'https://synthetic.batch2.test/image.png';
 export const syntheticImageBytes = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/jS8AAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=',
   'base64',
 );
 
