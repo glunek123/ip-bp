@@ -244,4 +244,33 @@ describe('real case consolidation', () => {
       response: { code: 'ACTION_FORBIDDEN' },
     });
   });
+
+  it('retries wrapped PostgreSQL serialization failures and limits persistent conflicts', async () => {
+    const serialization = {
+      code: 'P2010',
+      meta: { driverAdapterError: { cause: { originalCode: '40001' } } },
+    };
+    const retried = fixture();
+    retried.database.$transaction.mockRejectedValueOnce(serialization);
+    await expect(retried.service.create(actor, input)).resolves.toMatchObject({
+      mainCaseId: secondId,
+    });
+    expect(retried.database.$transaction).toHaveBeenCalledTimes(2);
+    expect(retried.tx.caseConsolidation.create).toHaveBeenCalledTimes(1);
+
+    const exhausted = fixture();
+    exhausted.database.$transaction.mockRejectedValue(serialization);
+    await expect(exhausted.service.create(actor, input)).rejects.toMatchObject({
+      response: { code: 'VERSION_CONFLICT' },
+    });
+    expect(exhausted.database.$transaction).toHaveBeenCalledTimes(3);
+
+    const unrelated = fixture();
+    const otherError = { code: 'P2010', meta: { code: '23505' } };
+    unrelated.database.$transaction.mockRejectedValue(otherError);
+    await expect(unrelated.service.create(actor, input)).rejects.toBe(
+      otherError,
+    );
+    expect(unrelated.database.$transaction).toHaveBeenCalledTimes(1);
+  });
 });

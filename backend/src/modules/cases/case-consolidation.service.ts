@@ -444,7 +444,7 @@ export class CaseConsolidationService {
         );
       } catch (error) {
         const code = (error as { code?: unknown })?.code;
-        if (code === 'P2034' || code === '40001') {
+        if (this.isSerializationConflict(error)) {
           if (attempt < 2) continue;
           throw failure('VERSION_CONFLICT', '参与案件已被同时修改');
         }
@@ -454,6 +454,26 @@ export class CaseConsolidationService {
       }
     }
     throw failure('VERSION_CONFLICT', '参与案件已被同时修改');
+  }
+
+  private isSerializationConflict(error: unknown): boolean {
+    if (error === null || typeof error !== 'object') return false;
+    const value = error as {
+      code?: unknown;
+      cause?: unknown;
+      meta?: {
+        driverAdapterError?: {
+          cause?: { originalCode?: unknown; sqlState?: unknown };
+        };
+      };
+    };
+    return (
+      value.code === 'P2034' ||
+      value.code === '40001' ||
+      value.meta?.driverAdapterError?.cause?.originalCode === '40001' ||
+      value.meta?.driverAdapterError?.cause?.sqlState === '40001' ||
+      this.isSerializationConflict(value.cause)
+    );
   }
 
   async read(actor: ActorContext, caseId: string) {
