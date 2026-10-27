@@ -182,11 +182,14 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-async function uploadAndSelectCsv(wrapper: ReturnType<typeof mount>) {
+async function uploadAndSelectCsv(
+  wrapper: ReturnType<typeof mount>,
+  csv = validCsv,
+) {
   const fileInput = wrapper.get('[data-test="csv-file-input"]');
   Object.defineProperty(fileInput.element, 'files', {
     configurable: true,
-    value: [new globalThis.File([validCsv], 'leads.csv', { type: 'text/csv' })],
+    value: [new globalThis.File([csv], 'leads.csv', { type: 'text/csv' })],
   });
   await fileInput.trigger('change');
   await flushPromises();
@@ -757,6 +760,68 @@ describe('LeadListPage', () => {
     expect(onWorkflowChanged).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    [
+      'ambiguous operator',
+      [{ rowNumber: 2, code: 'OPERATOR_AMBIGUOUS' }],
+      '第2行运营重名，请填写唯一登录用户名',
+    ],
+    [
+      'unauthorized operator',
+      [{ rowNumber: 2, code: 'OPERATOR_NOT_AUTHORIZED' }],
+      '第2行当前账号无权为该运营导入线索',
+    ],
+    [
+      'unknown failure code',
+      [{ rowNumber: 2, code: 'SECRET_INTERNAL_NAME' }],
+      '第2行数据未通过校验',
+    ],
+    [
+      'invalid failure shape',
+      [{ rowNumber: 999, code: 'OPERATOR_AMBIGUOUS' }],
+      '导入校验未通过，请核对所选行',
+    ],
+  ])(
+    'shows a safe row error for %s and retains the preview',
+    async (_case, failures, expected) => {
+      api.listLeads.mockResolvedValue(result);
+      api.getLeadFormContext.mockResolvedValue(csvFormContext);
+      api.importLeadCsvBatch.mockRejectedValue(
+        new ApiError(
+          '敏感人员：不应出现在页面',
+          409,
+          'CSV_IMPORT_REJECTED',
+          undefined,
+          { failures },
+        ),
+      );
+      const { wrapper } = await mountWithRoute('/leads');
+      await wrapper.get('[data-test="open-csv-import"]').trigger('click');
+      await flushPromises();
+      await uploadAndSelectCsv(
+        wrapper,
+        validCsv.replace('民事,,线上', '民事,运营甲,线上'),
+      );
+      await wrapper.get('[data-test="csv-confirm-request"]').trigger('click');
+      await flushPromises();
+      const message = wrapper.get('[data-test="csv-submit-error"]').text();
+      expect(message).toContain('整批未导入');
+      expect(message).toContain(expected);
+      expect(message).not.toContain('敏感人员');
+      expect(message).not.toContain('OPERATOR_');
+      expect(message).not.toContain('SECRET_INTERNAL_NAME');
+      expect(
+        wrapper.get('[data-test="csv-row-2"] input').element,
+      ).toHaveProperty('checked', true);
+      expect(wrapper.find('[data-test="csv-success"]').exists()).toBe(false);
+      expect(api.importLeadCsvBatch).toHaveBeenCalledOnce();
+      expect(api.importLeadCsvBatch.mock.calls[0]?.[0][0]).toMatchObject({
+        rowNumber: 2,
+        operatorText: '运营甲',
+      });
+    },
+  );
+
   it('keeps an original CSV attempt when a known rejection arrives after auth changes', async () => {
     api.listLeads.mockResolvedValue(result);
     api.getLeadFormContext.mockResolvedValue(csvFormContext);
@@ -992,7 +1057,15 @@ describe('LeadListPage', () => {
     api.importLeadCsvBatch
       .mockRejectedValueOnce(new Error('original response lost'))
       .mockRejectedValueOnce(
-        new ApiError('当前范围不可访问', 409, 'CSV_IMPORT_REJECTED'),
+        new ApiError(
+          '当前范围不可访问',
+          409,
+          'CSV_IMPORT_REJECTED',
+          undefined,
+          {
+            failures: [{ rowNumber: 2, code: 'OPERATOR_AMBIGUOUS' }],
+          },
+        ),
       )
       .mockResolvedValueOnce({ items: [{}, {}] });
     const { wrapper } = await mountWithRoute('/leads');
@@ -1010,6 +1083,7 @@ describe('LeadListPage', () => {
     await wrapper.get('[data-test="recover-csv-import"]').trigger('click');
     await flushPromises();
     expect(readPendingLeadCsvImports()?.[actorIdentity]).toEqual(original);
+    expect(wrapper.text()).toContain('第2行运营重名，请填写唯一登录用户名');
     expect(api.importLeadCsvBatch).toHaveBeenCalledTimes(2);
     expect(api.listLeads).toHaveBeenCalledTimes(1);
     expect(

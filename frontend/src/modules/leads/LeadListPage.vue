@@ -525,6 +525,42 @@ function safeCsvNoWrite(cause: unknown): cause is ApiError {
       (cause.status === 409 && cause.code === 'CSV_IMPORT_REJECTED'))
   );
 }
+const csvOperatorFailureMessages: Readonly<Record<string, string>> = {
+  OPERATOR_AMBIGUOUS: '运营重名，请填写唯一登录用户名',
+  OPERATOR_NOT_FOUND: '运营未匹配到可用人员，请核对实名或用户名',
+  OPERATOR_NOT_AVAILABLE: '运营或所属团队当前不可用',
+  OPERATOR_NOT_AUTHORIZED: '当前账号无权为该运营导入线索',
+  OPERATOR_IMAGE_NOT_AUTHORIZED: '当前账号无权为该运营导入截图',
+};
+function csvNoWriteMessage(
+  cause: ApiError,
+  items: LeadCsvImportAttempt['items'],
+): string {
+  if (cause.status !== 409 || cause.code !== 'CSV_IMPORT_REJECTED')
+    return cause.message;
+  const failures = cause.details?.failures;
+  const selectedRows = new Set(items.map((item) => item.rowNumber));
+  if (!Array.isArray(failures) || failures.length < 1 || failures.length > 20)
+    return '整批未导入：导入校验未通过，请核对所选行。';
+  const messages: string[] = [];
+  for (const failure of failures) {
+    if (
+      typeof failure !== 'object' ||
+      failure === null ||
+      Array.isArray(failure) ||
+      !Number.isInteger(failure.rowNumber) ||
+      !selectedRows.has(failure.rowNumber)
+    )
+      return '整批未导入：导入校验未通过，请核对所选行。';
+    const message =
+      typeof failure.code === 'string' &&
+      Object.hasOwn(csvOperatorFailureMessages, failure.code)
+        ? csvOperatorFailureMessages[failure.code]
+        : undefined;
+    messages.push(`第${failure.rowNumber}行${message ?? '数据未通过校验'}`);
+  }
+  return `整批未导入：${messages.join('；')}。`;
+}
 function isCurrentCsvSubmission(
   attempt: LeadCsvImportAttempt,
   context: LeadCsvImportSubmissionContext,
@@ -603,7 +639,10 @@ async function submitCsvAttempt(
           kind: 'unknown',
           message: '请求未创建，但本地请求状态无法更新。',
         };
-      return { kind: 'rejected', message: cause.message };
+      return {
+        kind: 'rejected',
+        message: csvNoWriteMessage(cause, attempt.items),
+      };
     }
     return {
       kind: 'unknown',
@@ -688,7 +727,11 @@ async function recoverCsvImport(): Promise<void> {
       contextEpoch === csvContextEpoch
     ) {
       const message =
-        cause instanceof Error ? cause.message : '恢复请求结果仍未确认。';
+        cause instanceof ApiError && cause.code === 'CSV_IMPORT_REJECTED'
+          ? csvNoWriteMessage(cause, attempt.items)
+          : cause instanceof Error
+            ? cause.message
+            : '恢复请求结果仍未确认。';
       csvContextError.value = `${message} 原请求及请求键已保留。`;
     }
   } finally {
