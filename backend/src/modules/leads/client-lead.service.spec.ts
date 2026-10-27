@@ -684,13 +684,11 @@ describe('ClientLeadService.review', () => {
         userAccount: { findUnique: jest.Mock };
       }
     ).userAccount = {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          accountType: 'INTERNAL',
-          active: true,
-          displayName: '运营甲',
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        accountType: 'INTERNAL',
+        active: true,
+        displayName: '运营甲',
+      }),
     };
     const service = new ClientLeadService(
       f.database as never,
@@ -1409,13 +1407,11 @@ describe('ClientLeadService.confirmWithdrawal', () => {
         userAccount: { findUnique: jest.Mock };
       }
     ).userAccount = {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          accountType: 'INTERNAL',
-          active: true,
-          displayName: '运营甲',
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        accountType: 'INTERNAL',
+        active: true,
+        displayName: '运营甲',
+      }),
     };
     const service = new ClientLeadService(
       f.database as never,
