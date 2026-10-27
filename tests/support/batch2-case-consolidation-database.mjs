@@ -129,6 +129,7 @@ export async function prepareBatch2CaseConsolidationFixture() {
       ['lead.create', 'SELF'],
       ['lead.push', 'SELF'],
       ['lead.review.proxy', 'SELF'],
+      ['lead.evidence.decide', 'SELF'],
       ['notary.office.manage', 'DEPARTMENT'],
       ['notary.evidence.record', 'SELF'],
       ['notary.unbox.record', 'SELF'],
