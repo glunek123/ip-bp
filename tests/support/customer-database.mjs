@@ -246,7 +246,12 @@ async function resetLocalAuthE2eData() {
     await transaction.customerAdmissionReceipt.deleteMany({
       where: { departmentId },
     });
-    await transaction.uploadDraft.deleteMany({ where: { departmentId } });
+    await transaction.leadProductScreenshot.deleteMany({
+      where: { departmentId },
+    });
+    await transaction.leadImageImportTask.deleteMany({
+      where: { departmentId },
+    });
     await transaction.material.updateMany({
       where: { departmentId },
       data: { currentVersionId: null },
@@ -254,6 +259,7 @@ async function resetLocalAuthE2eData() {
     await transaction.contentVersion.deleteMany({
       where: { material: { departmentId } },
     });
+    await transaction.uploadDraft.deleteMany({ where: { departmentId } });
     await transaction.material.deleteMany({ where: { departmentId } });
     await transaction.auditEvent.deleteMany({ where: { departmentId } });
     await clearCustomerContactData(transaction, [departmentId]);
@@ -596,10 +602,13 @@ async function resetCustomerE2eData() {
     await transaction.leadCommandReceipt.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
-    await transaction.lead.deleteMany({
+    await transaction.leadProductScreenshot.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
-    await transaction.uploadDraft.deleteMany({
+    await transaction.leadImageImportTask.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.lead.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.material.updateMany({
@@ -608,6 +617,9 @@ async function resetCustomerE2eData() {
     });
     await transaction.contentVersion.deleteMany({
       where: { material: { departmentId: { in: departmentIds } } },
+    });
+    await transaction.uploadDraft.deleteMany({
+      where: { departmentId: { in: departmentIds } },
     });
     await transaction.material.deleteMany({
       where: { departmentId: { in: departmentIds } },

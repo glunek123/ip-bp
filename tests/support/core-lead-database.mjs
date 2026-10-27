@@ -715,10 +715,13 @@ async function clearDatabase() {
   await database.leadCommandReceipt.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
-  await database.lead.deleteMany({
+  await database.leadProductScreenshot.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
-  await database.uploadDraft.deleteMany({
+  await database.leadImageImportTask.deleteMany({
+    where: { departmentId: { in: departmentIds } },
+  });
+  await database.lead.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
   await database.material.updateMany({
@@ -727,6 +730,9 @@ async function clearDatabase() {
   });
   await database.contentVersion.deleteMany({
     where: { material: { departmentId: { in: departmentIds } } },
+  });
+  await database.uploadDraft.deleteMany({
+    where: { departmentId: { in: departmentIds } },
   });
   await database.material.deleteMany({
     where: { departmentId: { in: departmentIds } },

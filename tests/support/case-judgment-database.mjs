@@ -1497,11 +1497,15 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
         ids.department,
       ]);
       await client.query(
-        'DELETE FROM upload_drafts WHERE owner_type=$1 AND owner_id=$2',
+        'UPDATE materials SET current_version_id=NULL WHERE owner_type=$1 AND owner_id=$2',
         ['CASE', ids.case],
       );
       await client.query(
         'DELETE FROM content_versions WHERE material_id IN (SELECT id FROM materials WHERE owner_type=$1 AND owner_id=$2)',
+        ['CASE', ids.case],
+      );
+      await client.query(
+        'DELETE FROM upload_drafts WHERE owner_type=$1 AND owner_id=$2',
         ['CASE', ids.case],
       );
       await client.query(
