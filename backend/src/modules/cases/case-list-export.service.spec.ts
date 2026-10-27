@@ -152,11 +152,14 @@ describe('case list CSV export', () => {
 
   it('normalizes every special filter and uses the shared court mapping inside the authorized snapshot', async () => {
     const f = harness();
-    f.tx.filingCourt.findMany.mockResolvedValue([{ id: 'court' }]);
+    f.tx.filingCourt.findMany
+      .mockResolvedValueOnce([{ id: 'keyword-court' }])
+      .mockResolvedValueOnce([{ id: 'named-court' }]);
     const query = {
+      q: '北京',
       shopName: 'shop',
       defendantName: 'defendant',
-      courtName: 'court',
+      courtName: '上海',
       lawyerName: 'lawyer',
       caseType: 'CIVIL' as const,
     };
@@ -164,18 +167,18 @@ describe('case list CSV export', () => {
       view: 'department',
       ...query,
       shopName: ' shop ',
-      courtName: ' court ',
+      courtName: ' 上海 ',
     });
     expect(f.tx.case.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           departmentId: actor.departmentId,
-          ...caseListTextWhere(query, ['court']),
+          ...caseListTextWhere(query, ['keyword-court'], ['named-court']),
         },
         take: 1001,
       }),
     );
-    expect(f.tx.filingCourt.findMany).toHaveBeenCalledTimes(1);
+    expect(f.tx.filingCourt.findMany).toHaveBeenCalledTimes(2);
     expect(
       f.access.authorizeDepartmentAction.mock.invocationCallOrder[1],
     ).toBeLessThan(f.tx.filingCourt.findMany.mock.invocationCallOrder[0]!);

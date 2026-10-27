@@ -35,6 +35,7 @@ const literalContains = (value: string) => ({
 export function caseListTextWhere(
   query: CaseListTextQuery,
   knownCourtIds: readonly string[] = [],
+  courtNameIds: readonly string[] = [],
 ): Prisma.CaseWhereInput {
   const q = query.q?.trim();
   const customerName = query.customerName?.trim();
@@ -206,7 +207,7 @@ export function caseListTextWhere(
             {
               externalEntry: {
                 is: {
-                  OR: knownCourtIds.map((id) => ({
+                  OR: courtNameIds.map((id) => ({
                     known: { path: ['courtId'], equals: id },
                   })),
                 },
@@ -227,21 +228,25 @@ export async function caseListDepartmentTextWhere(
 ): Promise<Prisma.CaseWhereInput> {
   const courtName = query.courtName?.trim();
   const keyword = query.q?.trim();
-  const courts =
-    courtName || keyword
-      ? await database.filingCourt.findMany({
-          where: {
-            departmentId,
-            OR: [courtName, keyword]
-              .filter((value): value is string => Boolean(value))
-              .map((value) => ({ name: literalContains(value) })),
-          },
+  const findCourts = (name?: string) =>
+    name
+      ? database.filingCourt.findMany({
+          where: { departmentId, OR: [{ name: literalContains(name) }] },
           select: { id: true },
         })
-      : [];
+      : Promise.resolve([]);
+  const [keywordCourts, namedCourts] = await Promise.all([
+    findCourts(keyword),
+    keyword === courtName ? Promise.resolve([]) : findCourts(courtName),
+  ]);
+  const courtNameIds =
+    keyword === courtName
+      ? keywordCourts.map(({ id }) => id)
+      : namedCourts.map(({ id }) => id);
   return caseListTextWhere(
     query,
-    courts.map(({ id }) => id),
+    keywordCourts.map(({ id }) => id),
+    courtNameIds,
   );
 }
 

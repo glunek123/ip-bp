@@ -2542,7 +2542,9 @@ describe('CaseReadService', () => {
   });
   it('shares all special filters before paging across items, total and stage-independent counts', async () => {
     const f = fixture();
-    f.db.filingCourt.findMany.mockResolvedValue([{ id: 'court' }]);
+    f.db.filingCourt.findMany
+      .mockResolvedValueOnce([{ id: 'keyword-court' }])
+      .mockResolvedValueOnce([{ id: 'named-court' }]);
     const query = {
       q: 'CA',
       shopName: 'shop',
@@ -2563,7 +2565,7 @@ describe('CaseReadService', () => {
     const base = {
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
-      ...caseListTextWhere(query, ['court']),
+      ...caseListTextWhere(query, ['keyword-court'], ['named-court']),
     };
     const where = { ...base, stage: 'WAITING_HEARING' };
     expect(f.db.case.findMany).toHaveBeenCalledWith(
@@ -2575,7 +2577,7 @@ describe('CaseReadService', () => {
       where: base,
       _count: { _all: true },
     });
-    expect(f.db.filingCourt.findMany).toHaveBeenCalledTimes(1);
+    expect(f.db.filingCourt.findMany).toHaveBeenCalledTimes(2);
   });
   it('keeps the lawyer original read while rejecting the new internal query inputs', async () => {
     const f = fixture();
