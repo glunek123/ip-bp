@@ -8,6 +8,9 @@ const requireBackend = createRequire(
 );
 const { Client } = requireBackend('pg');
 const { hashPassword } = requireBackend('./dist/auth/password.js');
+const { allocateCustomerBusinessId } = requireBackend(
+  './dist/modules/business-numbering/business-numbering.service.js',
+);
 
 // Add only synthetic data in the dedicated tmpfs database. No shared fixture reset.
 export async function seedBatch2UsernameFixture() {
@@ -18,6 +21,7 @@ export async function seedBatch2UsernameFixture() {
   const adminRoleId = randomUUID();
   const userRoleId = randomUUID();
   const customerId = randomUUID();
+  const contactId = randomUUID();
   const officeId = randomUUID();
   const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
   const adminUsername = `batch2.admin.${suffix}`;
@@ -80,23 +84,42 @@ export async function seedBatch2UsernameFixture() {
       'INSERT INTO role_assignments(id,user_id,department_id,role_template_id,updated_at) VALUES($1,$2,$3,$4,now())',
       [randomUUID(), adminId, departmentId, adminRoleId],
     );
+    // Use the production allocator in this transaction. The environment owner
+    // performs the one-time empty-database cutover before this fixture runs.
+    const businessId = await allocateCustomerBusinessId({
+      $queryRawUnsafe: async (sql) => (await client.query(sql)).rows,
+    });
     await client.query(
       `INSERT INTO customers(
       id,business_id,name,normalized_name,customer_type,identity_type,identity_number,
-      normalized_identity_number,identity_validity_mode,admitted_at,profile_status,
-      admission_contact_snapshot_name,admission_contact_snapshot_phone,
-      admission_contact_snapshot_source,admission_contact_snapshot_frozen_at,
+      normalized_identity_number,identity_validity_mode,
       department_id,responsible_user_id,updated_at)
-      VALUES($1,$6,$2,$2,'ENTERPRISE','BUSINESS_LICENSE',$3,$3,'LONG_TERM',now(),
-      'ADMITTED','合成联系人','13800000000','NEW_ADMISSION',now(),$4,$5,now())`,
+      VALUES($1,$6,$2,$2,'ENTERPRISE','BUSINESS_LICENSE',$3,$3,'LONG_TERM',$4,$5,now())`,
       [
         customerId,
         `用户名验收企业-${suffix}`,
         `91310000${suffix.toUpperCase()}`,
         departmentId,
         adminId,
-        `B2U-${suffix}`,
+        businessId,
       ],
+    );
+    await client.query(
+      `INSERT INTO customer_contacts(
+      id,customer_id,department_id,name,phone,origin,created_by_user_id,updated_by_user_id)
+      VALUES($1,$2,$3,'合成联系人','13800000000','ADMISSION_FREEFORM',$4,$4)`,
+      [contactId, customerId, departmentId, adminId],
+    );
+    await client.query(
+      `UPDATE customers SET profile_status='ADMITTED',admitted_at=now(),
+      admission_contact_name='合成联系人',admission_contact_phone='13800000000',
+      compatibility_contact_id=$2,
+      admission_contact_snapshot_name='合成联系人',
+      admission_contact_snapshot_phone='13800000000',
+      admission_contact_snapshot_source='NEW_ADMISSION',
+      admission_contact_snapshot_frozen_at=now(),version=version+1,updated_at=now()
+      WHERE id=$1`,
+      [customerId, contactId],
     );
     await client.query(
       'INSERT INTO notary_offices(id,department_id,name,created_by_user_id,updated_at) VALUES($1,$2,$3,$4,now())',
