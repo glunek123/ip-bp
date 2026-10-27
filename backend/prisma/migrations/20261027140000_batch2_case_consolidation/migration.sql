@@ -112,7 +112,13 @@ CREATE TRIGGER "guard_merged_case_progress" BEFORE UPDATE OF "stage", "version" 
 CREATE FUNCTION check_case_consolidation_integrity() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE root_id UUID; root RECORD; member_count INTEGER; main_count INTEGER; mismatch_count INTEGER; receipt_count INTEGER; shop_count INTEGER;
 BEGIN
-  root_id := CASE WHEN TG_TABLE_NAME = 'case_consolidations' THEN NEW."id" ELSE NEW."consolidation_id" END;
+  IF TG_TABLE_NAME = 'case_consolidations' THEN
+    root_id := NEW."id";
+  ELSIF TG_TABLE_NAME IN ('case_consolidation_members', 'case_consolidation_receipts') THEN
+    root_id := NEW."consolidation_id";
+  ELSE
+    RAISE EXCEPTION 'unexpected consolidation integrity target' USING ERRCODE = '23514';
+  END IF;
   SELECT * INTO root FROM "case_consolidations" WHERE "id" = root_id;
   SELECT count(*), count(*) FILTER (WHERE "case_id" = root."main_case_id" AND "is_main")
     INTO member_count, main_count FROM "case_consolidation_members" WHERE "consolidation_id" = root_id;
