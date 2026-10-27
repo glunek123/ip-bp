@@ -157,35 +157,64 @@ describe('NotaryCertificateService', () => {
   it('records a scoped internal proxy as the actual issuer and source audit actor', async () => {
     const f = fixture();
     const internalActor = { ...actor, notaryOfficeId: undefined };
-    f.tx.userAccount.findUnique.mockResolvedValue({ accountType: 'INTERNAL', active: true });
-    const result = await f.service.issue(internalActor, matterId, 'proxy-key', input, true);
+    f.tx.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
+    const result = await f.service.issue(
+      internalActor,
+      matterId,
+      'proxy-key',
+      input,
+      true,
+    );
     expect(result.stage).toBe('ARCHIVED');
     expect(f.access.authorizeLead).toHaveBeenCalledWith(
-      internalActor, 'notary.certificate.issue.proxy',
-      expect.objectContaining({ departmentId: actor.departmentId, responsibleUserId: actor.userId }),
+      internalActor,
+      'notary.certificate.issue.proxy',
+      expect.objectContaining({
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      }),
       f.tx,
     );
     expect(f.tx.notaryOfficeAccountBinding.findFirst).not.toHaveBeenCalled();
-    expect(f.tx.notaryCertificate.create).toHaveBeenCalledWith({ data: expect.objectContaining({
-      actorKind: 'INTERNAL_PROXY', actorUserId: actor.userId,
-      internalActorUserId: actor.userId, notaryOfficeAccountBindingId: null,
-    }) });
-    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({
-      actorUserId: actor.userId, internalActorUserId: actor.userId,
-      notaryOfficeAccountBindingId: null,
-    }) });
-    expect(initializeNotaryEvidence).toHaveBeenCalledWith(f.tx, expect.objectContaining({
-      actorUserId: actor.userId, internalActorUserId: actor.userId,
-      notaryOfficeAccountBindingId: null,
-    }));
+    expect(f.tx.notaryCertificate.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorKind: 'INTERNAL_PROXY',
+        actorUserId: actor.userId,
+        internalActorUserId: actor.userId,
+        notaryOfficeAccountBindingId: null,
+      }),
+    });
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: actor.userId,
+        internalActorUserId: actor.userId,
+        notaryOfficeAccountBindingId: null,
+      }),
+    });
+    expect(initializeNotaryEvidence).toHaveBeenCalledWith(
+      f.tx,
+      expect.objectContaining({
+        actorUserId: actor.userId,
+        internalActorUserId: actor.userId,
+        notaryOfficeAccountBindingId: null,
+      }),
+    );
     expect(initializeNotaryFees).toHaveBeenCalledWith(f.tx, expect.any(Object));
   });
   it('rejects an internal proxy without the scoped grant before writing', async () => {
     const f = fixture();
     const internalActor = { ...actor, notaryOfficeId: undefined };
-    f.tx.userAccount.findUnique.mockResolvedValue({ accountType: 'INTERNAL', active: true });
+    f.tx.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
     f.access.authorizeLead.mockRejectedValue(new Error('denied'));
-    await expect(f.service.issue(internalActor, matterId, 'proxy-denied', input, true)).rejects.toThrow('denied');
+    await expect(
+      f.service.issue(internalActor, matterId, 'proxy-denied', input, true),
+    ).rejects.toThrow('denied');
     expect(f.tx.notaryCertificate.create).not.toHaveBeenCalled();
   });
   it('propagates initialization failure through the original transaction and never writes a success receipt', async () => {

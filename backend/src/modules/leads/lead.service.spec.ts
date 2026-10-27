@@ -2564,13 +2564,11 @@ function createPushFixture(override: Record<string, unknown> = {}) {
       findUnique: jest.fn().mockResolvedValue(updated),
     },
     userAccount: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          displayName: '运营甲',
-          accountType: 'INTERNAL',
-          active: true,
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        displayName: '运营甲',
+        accountType: 'INTERNAL',
+        active: true,
+      }),
     },
     auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit-push' }) },
   };

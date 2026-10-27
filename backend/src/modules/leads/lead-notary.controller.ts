@@ -39,7 +39,10 @@ import {
 import { LeadNotaryService } from './lead-notary.service';
 import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryCertificateService } from './notary-certificate.service';
-import { IssueNotaryCertificateDto, IssueNotaryCertificateResponseDto } from './notary-certificate.dto';
+import {
+  IssueNotaryCertificateDto,
+  IssueNotaryCertificateResponseDto,
+} from './notary-certificate.dto';
 import { NotaryOpeningReviewService } from './notary-opening-review.service';
 import { NotaryIssuanceDecisionService } from './notary-issuance-decision.service';
 import { NotaryReturnArchiveService } from './notary-return-archive.service';
@@ -144,8 +147,15 @@ export class LeadNotaryController {
     @Body() input: IssueNotaryCertificateDto,
   ) {
     const normalized = key?.trim();
-    if (normalized === undefined || normalized.length < 1 || normalized.length > 128)
-      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Idempotency-Key 必须为 1 至 128 个字符' });
+    if (
+      normalized === undefined ||
+      normalized.length < 1 ||
+      normalized.length > 128
+    )
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Idempotency-Key 必须为 1 至 128 个字符',
+      });
     return this.certificates!.issue(actor, id, normalized, input, true);
   }
 

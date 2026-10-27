@@ -510,13 +510,21 @@ export async function proxyReviewLead(
   reason?: string,
   options: RequestOptions = {},
 ): Promise<ClientLeadReviewResult> {
-  const value = await requestJson(`/leads/${encodeURIComponent(id)}/proxy-reviews`, {
-    ...options,
-    method: 'POST',
-    headers: { ...options.headers, 'Idempotency-Key': idempotencyKey },
-    body: { result, expectedVersion, ...(result === 'NO_INFRINGEMENT' ? { reason: reason?.trim() } : {}) },
-  });
-  if (!isClientLeadReviewResult(value, expectedVersion, result)) throw invalidResponse();
+  const value = await requestJson(
+    `/leads/${encodeURIComponent(id)}/proxy-reviews`,
+    {
+      ...options,
+      method: 'POST',
+      headers: { ...options.headers, 'Idempotency-Key': idempotencyKey },
+      body: {
+        result,
+        expectedVersion,
+        ...(result === 'NO_INFRINGEMENT' ? { reason: reason?.trim() } : {}),
+      },
+    },
+  );
+  if (!isClientLeadReviewResult(value, expectedVersion, result))
+    throw invalidResponse();
   return value;
 }
 
@@ -527,15 +535,26 @@ export async function proxyConfirmLeadWithdrawal(
   idempotencyKey: string,
   options: RequestOptions = {},
 ): Promise<ClientLeadWithdrawalConfirmationResult> {
-  const value = await requestJson(`/leads/${encodeURIComponent(id)}/proxy-withdrawal-confirmations`, {
-    ...options,
-    method: 'POST',
-    headers: { ...options.headers, 'Idempotency-Key': idempotencyKey },
-    body: { applicationId, expectedVersion },
-  });
-  if (!isRecord(value) || typeof value.id !== 'string' || value.applicationId !== applicationId ||
-    value.leadId !== id || value.status !== 'WAITING_REVIEW' || value.version !== expectedVersion + 1 ||
-    typeof value.confirmedByDisplayName !== 'string' || !isDateTime(value.confirmedAt)) throw invalidResponse();
+  const value = await requestJson(
+    `/leads/${encodeURIComponent(id)}/proxy-withdrawal-confirmations`,
+    {
+      ...options,
+      method: 'POST',
+      headers: { ...options.headers, 'Idempotency-Key': idempotencyKey },
+      body: { applicationId, expectedVersion },
+    },
+  );
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    value.applicationId !== applicationId ||
+    value.leadId !== id ||
+    value.status !== 'WAITING_REVIEW' ||
+    value.version !== expectedVersion + 1 ||
+    typeof value.confirmedByDisplayName !== 'string' ||
+    !isDateTime(value.confirmedAt)
+  )
+    throw invalidResponse();
   return value as ClientLeadWithdrawalConfirmationResult;
 }
 

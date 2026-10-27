@@ -18,7 +18,10 @@ import {
   type NotaryPortalCertificateInput,
   type NotaryPortalMatter,
 } from '../../api/notary-portal';
-import type { NotaryMatterDetail, RecordNotaryOpeningInput } from '../../api/notary';
+import type {
+  NotaryMatterDetail,
+  RecordNotaryOpeningInput,
+} from '../../api/notary';
 const props = defineProps<{
   detail: NotaryPortalMatter | NotaryMatterDetail;
   session: ListWorkflowSession;
@@ -30,10 +33,14 @@ const matter = computed(() => ({
   capabilities: {
     recordOpening: !props.proxy && props.detail.capabilities.recordOpening,
     issueCertificate: props.proxy
-      ? Boolean(typeof props.detail.disclosureRequired === 'boolean' &&
+      ? Boolean(
+          typeof props.detail.disclosureRequired === 'boolean' &&
           'proxyIssueCertificate' in props.detail.capabilities &&
-          props.detail.capabilities.proxyIssueCertificate)
-      : Boolean((props.detail as NotaryPortalMatter).capabilities.issueCertificate),
+          props.detail.capabilities.proxyIssueCertificate,
+        )
+      : Boolean(
+          (props.detail as NotaryPortalMatter).capabilities.issueCertificate,
+        ),
   },
 }));
 const materials = ref<OwnerMaterial[]>([]);
@@ -600,7 +607,9 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <p v-if="proxy" role="status">运营代办公证处出证；提交后记录真实运营账号、时间和结果。</p>
+  <p v-if="proxy" role="status">
+    运营代办公证处出证；提交后记录真实运营账号、时间和结果。
+  </p>
   <p>提交会推进阶段；当前服务暂不支持仅保存这些资料。已上传材料会保留。</p>
   <p v-if="message" role="alert">{{ message }}</p>
   <ElButton

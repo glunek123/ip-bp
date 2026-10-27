@@ -171,38 +171,66 @@ afterEach(() => {
 });
 describe('LeadListWorkflowPanel', () => {
   it('does not treat the same key with a changed proxy conclusion as the original request', () => {
-    const base = { identity, leadId: lead.id, expectedVersion: 2, idempotencyKey: 'same-key' };
-    const first: FrozenLeadCommand = { ...base, action: 'proxy-review', body: { expectedVersion: 2, result: 'INFRINGEMENT' } };
-    const changed: FrozenLeadCommand = { ...base, action: 'proxy-review', body: { expectedVersion: 2, result: 'NO_INFRINGEMENT', reason: '实情' } };
-    expect(sameLeadAttempt(
-      first, changed,
-    )).toBe(false);
+    const base = {
+      identity,
+      leadId: lead.id,
+      expectedVersion: 2,
+      idempotencyKey: 'same-key',
+    };
+    const first: FrozenLeadCommand = {
+      ...base,
+      action: 'proxy-review',
+      body: { expectedVersion: 2, result: 'INFRINGEMENT' },
+    };
+    const changed: FrozenLeadCommand = {
+      ...base,
+      action: 'proxy-review',
+      body: { expectedVersion: 2, result: 'NO_INFRINGEMENT', reason: '实情' },
+    };
+    expect(sameLeadAttempt(first, changed)).toBe(false);
   });
   it('keeps a conclusion form for operator proxy review and sends the original version', async () => {
-    const detail = { ...lead, status: 'WAITING_REVIEW' as const,
-      capabilities: { ...lead.capabilities, proxyReview: true } };
+    const detail = {
+      ...lead,
+      status: 'WAITING_REVIEW' as const,
+      capabilities: { ...lead.capabilities, proxyReview: true },
+    };
     api.getLead.mockResolvedValue(detail);
     client.proxyReviewLead.mockResolvedValue({});
     const { wrapper } = await mountPanel(detail);
     await wrapper.get('input[value="INFRINGEMENT"]').setValue(true);
     await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
     await flushPromises();
-    expect(client.proxyReviewLead).toHaveBeenCalledWith(lead.id, 'INFRINGEMENT', lead.version,
-      expect.any(String), undefined);
+    expect(client.proxyReviewLead).toHaveBeenCalledWith(
+      lead.id,
+      'INFRINGEMENT',
+      lead.version,
+      expect.any(String),
+      undefined,
+    );
   });
   it('requires an explicit customer intent check for operator withdrawal confirmation', async () => {
-    const detail = { ...lead, status: 'ARCHIVED' as const,
+    const detail = {
+      ...lead,
+      status: 'ARCHIVED' as const,
       capabilities: { ...lead.capabilities, proxyConfirmWithdrawal: true },
-      pendingWithdrawalApplication: { id: 'application-1' } as never };
+      pendingWithdrawalApplication: { id: 'application-1' } as never,
+    };
     api.getLead.mockResolvedValue(detail);
     client.proxyConfirmLeadWithdrawal.mockResolvedValue({});
     const { wrapper } = await mountPanel(detail);
-    expect(wrapper.get('[data-test="submit-lead-workflow"]').attributes('disabled')).toBeDefined();
+    expect(
+      wrapper.get('[data-test="submit-lead-workflow"]').attributes('disabled'),
+    ).toBeDefined();
     await wrapper.get('input[type="checkbox"]').setValue(true);
     await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
     await flushPromises();
-    expect(client.proxyConfirmLeadWithdrawal).toHaveBeenCalledWith(lead.id, 'application-1',
-      lead.version, expect.any(String));
+    expect(client.proxyConfirmLeadWithdrawal).toHaveBeenCalledWith(
+      lead.id,
+      'application-1',
+      lead.version,
+      expect.any(String),
+    );
   });
   it('requires explicit direction even when only one legal branch exists', async () => {
     const { wrapper } = await mountPanel({

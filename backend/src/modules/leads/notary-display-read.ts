@@ -330,7 +330,8 @@ export async function notaryDisplayCapabilities(
     [
       'proxyIssueCertificate',
       'notary.certificate.issue.proxy',
-      matter.stage === 'WAITING_CERTIFICATE' && matter.evidence !== null &&
+      matter.stage === 'WAITING_CERTIFICATE' &&
+        matter.evidence !== null &&
         matter.issuanceDecision?.decision === 'ISSUE',
     ],
   ] as const;

@@ -41,13 +41,11 @@ function fixture() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     userAccount: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          displayName: 'Operator',
-          accountType: 'INTERNAL',
-          active: true,
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        displayName: 'Operator',
+        accountType: 'INTERNAL',
+        active: true,
+      }),
     },
     auditEvent: { create: jest.fn().mockResolvedValue({}) },
   };

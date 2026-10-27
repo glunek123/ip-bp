@@ -79,7 +79,9 @@ export class NotaryCertificateService {
     if (
       actor.clientCustomerId !== undefined ||
       actor.lawyerAccountId !== undefined ||
-      (proxy ? actor.notaryOfficeId !== undefined : actor.notaryOfficeId === undefined)
+      (proxy
+        ? actor.notaryOfficeId !== undefined
+        : actor.notaryOfficeId === undefined)
     )
       throw this.forbidden();
     const fingerprint = createHash('sha256')
@@ -134,13 +136,25 @@ export class NotaryCertificateService {
             });
             let bindingId: string | null;
             if (proxy) {
-              if (account?.accountType !== 'INTERNAL' || !account.active || !this.access || matter.notaryOffice.status !== 'ACTIVE')
+              if (
+                account?.accountType !== 'INTERNAL' ||
+                !account.active ||
+                !this.access ||
+                matter.notaryOffice.status !== 'ACTIVE'
+              )
                 throw this.forbidden();
-              await this.access.authorizeLead(actor, 'notary.certificate.issue.proxy', {
-                departmentId: matter.departmentId,
-                responsibleUserId: matter.sourceLead.responsibleUserId,
-                ...(matter.sourceLead.teamId ? { teamId: matter.sourceLead.teamId } : {}),
-              }, tx);
+              await this.access.authorizeLead(
+                actor,
+                'notary.certificate.issue.proxy',
+                {
+                  departmentId: matter.departmentId,
+                  responsibleUserId: matter.sourceLead.responsibleUserId,
+                  ...(matter.sourceLead.teamId
+                    ? { teamId: matter.sourceLead.teamId }
+                    : {}),
+                },
+                tx,
+              );
               bindingId = null;
             } else {
               if (

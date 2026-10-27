@@ -172,9 +172,15 @@ describe('notary workflow handoff guidance', () => {
       capabilities: { proxyIssueCertificate: true },
     });
     const wrapper = await mountPage();
-    expect(wrapper.get('[data-test="notary-workflow-action"]').attributes('href')).toContain('#certificate');
-    expect(wrapper.find('#certificate [data-test="certificate-form"]').exists()).toBe(true);
-    expect(wrapper.find('[data-test="certificate-number"]').exists()).toBe(true);
+    expect(
+      wrapper.get('[data-test="notary-workflow-action"]').attributes('href'),
+    ).toContain('#certificate');
+    expect(
+      wrapper.find('#certificate [data-test="certificate-form"]').exists(),
+    ).toBe(true);
+    expect(wrapper.find('[data-test="certificate-number"]').exists()).toBe(
+      true,
+    );
   });
 
   it('prominently links only the projected exact case and removes it after lost visibility', async () => {

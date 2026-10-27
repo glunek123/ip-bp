@@ -34,8 +34,14 @@ import {
 } from './lead.dto';
 import { LeadService } from './lead.service';
 import { ClientLeadService } from './client-lead.service';
-import { ConfirmClientLeadWithdrawalDto, ReviewClientLeadDto } from './client-lead-review.dto';
-import { ClientLeadReviewResultDto, ClientLeadWithdrawalConfirmationResultDto } from './client-lead-response.dto';
+import {
+  ConfirmClientLeadWithdrawalDto,
+  ReviewClientLeadDto,
+} from './client-lead-review.dto';
+import {
+  ClientLeadReviewResultDto,
+  ClientLeadWithdrawalConfirmationResultDto,
+} from './client-lead-response.dto';
 import { LeadPushResponseDto } from './lead-push-response.dto';
 import { LeadWithdrawalApplicationResponseDto } from './lead-withdrawal-application-response.dto';
 import { LeadEvidenceDecisionResponseDto } from './lead-evidence-decision-response.dto';
@@ -45,7 +51,10 @@ import { LeadEvidenceDecisionResponseDto } from './lead-evidence-decision-respon
 @Controller('leads')
 @UseGuards(ActorContextGuard, CsrfGuard)
 export class LeadController {
-  constructor(private readonly leads: LeadService, private readonly clientLeads?: ClientLeadService) {}
+  constructor(
+    private readonly leads: LeadService,
+    private readonly clientLeads?: ClientLeadService,
+  ) {}
 
   @Get('form-context') formContext(@CurrentActor() actor: ActorContext) {
     return this.leads.formContext(actor);

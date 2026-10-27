@@ -79,26 +79,53 @@ describe('NotaryPortalWorkflowPanel', () => {
       capabilities: { recordOpening: false, proxyIssueCertificate: true },
       disclosureRequired: false,
     };
-    materials.listOwnerMaterials.mockResolvedValue({ items: [{
-      ...photo, id: 'certificate-material', category: 'NOTARY_CERTIFICATE',
-      purpose: 'NOTARY_CERTIFICATE', currentVersionId: 'certificate-v1',
-      contentVersions: [{ id: 'certificate-v1', originalFilename: 'certificate.pdf', mimeType: 'application/pdf' }],
-    }] });
+    materials.listOwnerMaterials.mockResolvedValue({
+      items: [
+        {
+          ...photo,
+          id: 'certificate-material',
+          category: 'NOTARY_CERTIFICATE',
+          purpose: 'NOTARY_CERTIFICATE',
+          currentVersionId: 'certificate-v1',
+          contentVersions: [
+            {
+              id: 'certificate-v1',
+              originalFilename: 'certificate.pdf',
+              mimeType: 'application/pdf',
+            },
+          ],
+        },
+      ],
+    });
     api.recordProxyNotaryCertificate.mockResolvedValue({});
-    const workflow = createListWorkflowContext(async () => detail, { success: vi.fn() });
-    await workflow.sync({ recordId: detail.id, actorKey: 'user-1:INTERNAL:department-1:2',
-      actionKey: 'certificate', title: '代办公证处出证' });
+    const workflow = createListWorkflowContext(async () => detail, {
+      success: vi.fn(),
+    });
+    await workflow.sync({
+      recordId: detail.id,
+      actorKey: 'user-1:INTERNAL:department-1:2',
+      actionKey: 'certificate',
+      title: '代办公证处出证',
+    });
     const session = workflow.state.value.session;
     if (!session) throw new Error('Missing session');
-    const wrapper = mount(NotaryPortalWorkflowPanel, { props: { detail: detail as never, session, proxy: true } });
+    const wrapper = mount(NotaryPortalWorkflowPanel, {
+      props: { detail: detail as never, session, proxy: true },
+    });
     await flushPromises();
     await wrapper.get('[data-test="certificate-number"]').setValue('证书-001');
     await wrapper.get('[data-test="certificate-date"]').setValue('2026-10-27');
     await wrapper.get('[data-test="certificate-submit"]').trigger('click');
     await flushPromises();
-    expect(api.recordProxyNotaryCertificate).toHaveBeenCalledWith(detail.id,
-      expect.objectContaining({ expectedVersion: 5, certificateNo: '证书-001', contentVersionIds: ['certificate-v1'] }),
-      expect.any(String));
+    expect(api.recordProxyNotaryCertificate).toHaveBeenCalledWith(
+      detail.id,
+      expect.objectContaining({
+        expectedVersion: 5,
+        certificateNo: '证书-001',
+        contentVersionIds: ['certificate-v1'],
+      }),
+      expect.any(String),
+    );
     expect(api.recordNotaryPortalCertificate).not.toHaveBeenCalled();
     expect(sessionStorage.length).toBe(0);
     workflow.dispose();

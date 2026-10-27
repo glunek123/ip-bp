@@ -94,18 +94,38 @@ function fixture() {
 describe('real notary evidence initialization', () => {
   it('keeps an internal proxy issuer on the certificate, source audit and evidence audit', async () => {
     const f = fixture();
-    const proxyFacts = { ...facts, actorUserId: 'operator-1',
-      internalActorUserId: 'operator-1', notaryOfficeAccountBindingId: null };
+    const proxyFacts = {
+      ...facts,
+      actorUserId: 'operator-1',
+      internalActorUserId: 'operator-1',
+      notaryOfficeAccountBindingId: null,
+    };
     await initializeNotaryEvidence(f.tx, proxyFacts);
-    expect(f.store.notaryCertificate.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ actorUserId: 'operator-1', internalActorUserId: 'operator-1', notaryOfficeAccountBindingId: null }),
-    }));
-    expect(f.store.auditEvent.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ actorUserId: 'operator-1', internalActorUserId: 'operator-1', notaryOfficeAccountBindingId: null }),
-    }));
-    expect(f.store.evidenceAuditEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({
-      actorUserId: 'operator-1', internalActorUserId: 'operator-1', notaryOfficeAccountBindingId: null,
-    }) });
+    expect(f.store.notaryCertificate.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          actorUserId: 'operator-1',
+          internalActorUserId: 'operator-1',
+          notaryOfficeAccountBindingId: null,
+        }),
+      }),
+    );
+    expect(f.store.auditEvent.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          actorUserId: 'operator-1',
+          internalActorUserId: 'operator-1',
+          notaryOfficeAccountBindingId: null,
+        }),
+      }),
+    );
+    expect(f.store.evidenceAuditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: 'operator-1',
+        internalActorUserId: 'operator-1',
+        notaryOfficeAccountBindingId: null,
+      }),
+    });
   });
   it('creates only source-backed ledger initial states, keeps unknown physical fields null and retains all exact versions', async () => {
     const f = fixture();

@@ -515,7 +515,9 @@ export class ClientLeadService {
     const fingerprint = createHash('sha256')
       .update(
         JSON.stringify({
-          action: proxy ? 'lead.withdraw.confirm.proxy' : CLIENT_LEAD_WITHDRAW_CONFIRM_ACTION,
+          action: proxy
+            ? 'lead.withdraw.confirm.proxy'
+            : CLIENT_LEAD_WITHDRAW_CONFIRM_ACTION,
           leadId: id,
           applicationId: input.applicationId,
           expectedVersion: input.expectedVersion,
@@ -527,7 +529,12 @@ export class ClientLeadService {
         return await this.database.$transaction(
           async (transaction) => {
             const binding = proxy
-              ? await this.assertProxyReview(actor, id, transaction, 'lead.withdraw.confirm.proxy')
+              ? await this.assertProxyReview(
+                  actor,
+                  id,
+                  transaction,
+                  'lead.withdraw.confirm.proxy',
+                )
               : await this.assertClient(actor, transaction);
             const receipt =
               await transaction.leadWithdrawalConfirmation.findUnique({
@@ -658,7 +665,12 @@ export class ClientLeadService {
         }
         if (this.isUnique(error)) {
           const binding = proxy
-            ? await this.assertProxyReview(actor, id, this.database, 'lead.withdraw.confirm.proxy')
+            ? await this.assertProxyReview(
+                actor,
+                id,
+                this.database,
+                'lead.withdraw.confirm.proxy',
+              )
             : await this.assertClient(actor);
           const receipt =
             await this.database.leadWithdrawalConfirmation.findUnique({
@@ -791,9 +803,14 @@ export class ClientLeadService {
     actor: ActorContext,
     leadId: string,
     reader: Prisma.TransactionClient,
-    action: 'lead.review.proxy' | 'lead.withdraw.confirm.proxy' = 'lead.review.proxy',
+    action:
+      'lead.review.proxy' | 'lead.withdraw.confirm.proxy' = 'lead.review.proxy',
   ): Promise<{ id: null; customerId: string; reviewerDisplayName: string }> {
-    if (actor.clientCustomerId !== undefined || actor.notaryOfficeId !== undefined || actor.lawyerAccountId !== undefined)
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
       throw this.forbidden();
     const [account, lead] = await Promise.all([
       reader.userAccount.findUnique({
@@ -802,17 +819,27 @@ export class ClientLeadService {
       }),
       reader.lead.findFirst({
         where: { id: leadId, departmentId: actor.departmentId },
-        select: { customerId: true, departmentId: true, responsibleUserId: true, teamId: true },
+        select: {
+          customerId: true,
+          departmentId: true,
+          responsibleUserId: true,
+          teamId: true,
+        },
       }),
     ]);
     if (account?.accountType !== 'INTERNAL' || !account.active || !this.access)
       throw this.forbidden();
     if (lead === null) throw this.notFound();
-    await this.access.authorizeLead(actor, action, {
-      departmentId: lead.departmentId,
-      responsibleUserId: lead.responsibleUserId,
-      ...(lead.teamId ? { teamId: lead.teamId } : {}),
-    }, reader);
+    await this.access.authorizeLead(
+      actor,
+      action,
+      {
+        departmentId: lead.departmentId,
+        responsibleUserId: lead.responsibleUserId,
+        ...(lead.teamId ? { teamId: lead.teamId } : {}),
+      },
+      reader,
+    );
     return {
       id: null,
       customerId: lead.customerId,
@@ -820,7 +847,11 @@ export class ClientLeadService {
     };
   }
 
-  private reviewReceiptWhere(actor: ActorContext, idempotencyKey: string, proxy = false) {
+  private reviewReceiptWhere(
+    actor: ActorContext,
+    idempotencyKey: string,
+    proxy = false,
+  ) {
     return {
       departmentId_actorUserId_action_idempotencyKey: {
         departmentId: actor.departmentId,

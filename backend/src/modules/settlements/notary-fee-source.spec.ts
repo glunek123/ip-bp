@@ -75,17 +75,35 @@ describe('trusted notary fee projection', () => {
     const test = setup();
     test.certificate.actorUserId = 'operator-1';
     test.certificate.notaryOfficeAccountBindingId = null as never;
-    (test.certificate as typeof test.certificate & { internalActorUserId: string }).internalActorUserId = 'operator-1';
+    (
+      test.certificate as typeof test.certificate & {
+        internalActorUserId: string;
+      }
+    ).internalActorUserId = 'operator-1';
     test.event.actorUserId = 'operator-1';
     test.event.notaryOfficeAccountBindingId = null as never;
-    (test.event as typeof test.event & { internalActorUserId: string }).internalActorUserId = 'operator-1';
+    (
+      test.event as typeof test.event & { internalActorUserId: string }
+    ).internalActorUserId = 'operator-1';
     await test.run();
-    expect(test.tx.auditEvent.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ actorUserId: 'operator-1', internalActorUserId: 'operator-1', notaryOfficeAccountBindingId: null }),
-    }));
-    expect(test.tx.auditEvent.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ actorUserId: 'operator-1', internalActorUserId: 'operator-1', notaryOfficeAccountBindingId: null }),
-    }));
+    expect(test.tx.auditEvent.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          actorUserId: 'operator-1',
+          internalActorUserId: 'operator-1',
+          notaryOfficeAccountBindingId: null,
+        }),
+      }),
+    );
+    expect(test.tx.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorUserId: 'operator-1',
+          internalActorUserId: 'operator-1',
+          notaryOfficeAccountBindingId: null,
+        }),
+      }),
+    );
   });
   it('keeps explicit zero and real dates, skips pending, and never invents an internal fee actor or payment', async () => {
     const test = setup();

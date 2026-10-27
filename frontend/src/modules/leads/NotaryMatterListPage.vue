@@ -515,14 +515,13 @@ function hasPendingRequestFor(
   const wanted = actorIdentityKey(actorKey);
   for (let index = 0; index < globalThis.sessionStorage.length; index += 1) {
     const key = globalThis.sessionStorage.key(index);
-    const prefix = actionKey === 'certificate'
-      ? 'notary-proxy-certificate-request:'
-      : 'notary-list-request:';
+    const prefix =
+      actionKey === 'certificate'
+        ? 'notary-proxy-certificate-request:'
+        : 'notary-list-request:';
     if (!key?.startsWith(prefix)) continue;
     try {
-      const tuple: unknown = JSON.parse(
-        key.slice(prefix.length),
-      );
+      const tuple: unknown = JSON.parse(key.slice(prefix.length));
       if (
         Array.isArray(tuple) &&
         tuple.length === 3 &&
