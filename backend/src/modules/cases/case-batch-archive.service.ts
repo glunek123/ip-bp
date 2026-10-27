@@ -86,6 +86,19 @@ export class CaseBatchArchiveService {
             },
             tx,
           );
+          const merged = await tx.caseConsolidationMember.findFirst({
+            where: {
+              departmentId: actor.departmentId,
+              caseId: { in: input.items.map((item) => item.id) },
+              isMain: false,
+            },
+            select: { caseId: true },
+          });
+          if (merged)
+            throw new ConflictException({
+              code: 'INVALID_STATE',
+              message: '批量归档包含已并入的从案',
+            });
           const prior = await tx.caseEarlyArchiveBatchReceipt.findUnique({
             where: { departmentId_actorUserId_idempotencyKey: key },
           });

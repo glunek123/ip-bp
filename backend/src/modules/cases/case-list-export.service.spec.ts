@@ -5,7 +5,7 @@ import { DatabaseService } from '../../database/database.service';
 import { CaseStage } from '../../generated/prisma/enums';
 import { CaseListDisplayRecord } from './case-list-display-read';
 import { CaseListExportInput } from './case-list-export.dto';
-import { caseListTextWhere } from './case-list-query';
+import { caseListMembershipWhere, caseListTextWhere } from './case-list-query';
 import {
   caseListExportCsv,
   CaseListExportService,
@@ -123,6 +123,7 @@ describe('case list CSV export', () => {
         where: {
           id: { in: [first, second] },
           departmentId: actor.departmentId,
+          ...caseListMembershipWhere(),
         },
       }),
     );
@@ -139,7 +140,7 @@ describe('case list CSV export', () => {
     });
   });
 
-  it('rejects incomplete selected scope rather than silently omitting a case', async () => {
+  it('rejects unavailable or merged-child selected IDs rather than silently omitting a case', async () => {
     const f = harness([]);
     await expect(
       f.service.exportSelection(actor, {
@@ -147,6 +148,11 @@ describe('case list CSV export', () => {
         ids: ['11111111-1111-4111-8111-111111111111'],
       }),
     ).rejects.toThrow(ForbiddenException);
+    expect(f.tx.case.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining(caseListMembershipWhere()),
+      }),
+    );
     expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
   });
 
@@ -173,6 +179,7 @@ describe('case list CSV export', () => {
       expect.objectContaining({
         where: {
           departmentId: actor.departmentId,
+          ...caseListMembershipWhere(),
           ...caseListTextWhere(query, ['keyword-court'], ['named-court']),
         },
         take: 1001,

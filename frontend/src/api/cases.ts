@@ -98,6 +98,7 @@ type CaseSummaryBase = {
   version: number;
   owner: { id: string; displayName: string };
   canMatch: boolean;
+  canConsolidate?: boolean;
   canSubmitExecution: boolean;
   canUploadDirectExecutionMaterials?: boolean;
   canConfirmExecution: boolean;
@@ -1503,7 +1504,12 @@ function summaryFields(value: unknown): boolean {
         'sourceLead',
         'sourceNotaryMatter',
       ],
-      ['origin', 'canUploadDirectExecutionMaterials', 'canEarlyArchive'],
+      [
+        'origin',
+        'canUploadDirectExecutionMaterials',
+        'canEarlyArchive',
+        'canConsolidate',
+      ],
     ) &&
     nonempty(value.id) &&
     nonempty(value.businessNo) &&
@@ -1514,6 +1520,8 @@ function summaryFields(value: unknown): boolean {
     (value.version as number) >= 1 &&
     named(value.owner, 'displayName') &&
     typeof value.canMatch === 'boolean' &&
+    (value.canConsolidate === undefined ||
+      typeof value.canConsolidate === 'boolean') &&
     typeof value.canSubmitExecution === 'boolean' &&
     (value.canUploadDirectExecutionMaterials === undefined ||
       typeof value.canUploadDirectExecutionMaterials === 'boolean') &&
@@ -2835,6 +2843,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       ],
       [
         'canEarlyArchive',
+        'canConsolidate',
         'earlyArchive',
         'recordEdits',
         'origin',
@@ -2851,6 +2860,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       version: value.version,
       owner: value.owner,
       canMatch: value.canMatch,
+      canConsolidate: value.canConsolidate,
       canSubmitExecution: value.canSubmitExecution,
       canUploadDirectExecutionMaterials:
         value.canUploadDirectExecutionMaterials,
@@ -5022,6 +5032,7 @@ export type SubmitCaseFilingInput = {
   submittedAt: string;
   filingEvidenceContentVersionIds: string[];
   filingScreenshotContentVersionIds?: string[];
+  consolidationSourceContentVersionIds?: string[];
   mediationNo?: string;
 };
 export type SubmitCaseFilingResult = {
@@ -5783,6 +5794,7 @@ export async function submitCaseFiling(
   audience: 'internal' | 'lawyer' = 'internal',
 ): Promise<SubmitCaseFilingResult> {
   const screenshots = input.filingScreenshotContentVersionIds ?? [];
+  const consolidation = input.consolidationSourceContentVersionIds ?? [];
   const mediationNo = input.mediationNo?.trim();
   if (
     !Number.isInteger(input.expectedVersion) ||
@@ -5793,8 +5805,21 @@ export async function submitCaseFiling(
     !uuidV4(input.courtId) ||
     !businessDate(input.submittedAt) ||
     input.submittedAt > todayShanghai() ||
-    !uniqueVersions(input.filingEvidenceContentVersionIds, 1, 50) ||
+    !uniqueVersions(
+      input.filingEvidenceContentVersionIds,
+      consolidation.length ? 0 : 1,
+      50,
+    ) ||
     !uniqueVersions(screenshots, 0, 10) ||
+    !uniqueVersions(consolidation, 0, 50) ||
+    new Set([
+      ...input.filingEvidenceContentVersionIds,
+      ...screenshots,
+      ...consolidation,
+    ]).size !==
+      input.filingEvidenceContentVersionIds.length +
+        screenshots.length +
+        consolidation.length ||
     (input.mediationNo !== undefined &&
       (!mediationNo || mediationNo.length > 100))
   )
@@ -5812,6 +5837,9 @@ export async function submitCaseFiling(
     ...(input.filingScreenshotContentVersionIds === undefined
       ? {}
       : { filingScreenshotContentVersionIds: screenshots }),
+    ...(input.consolidationSourceContentVersionIds === undefined
+      ? {}
+      : { consolidationSourceContentVersionIds: consolidation }),
     ...(mediationNo === undefined ? {} : { mediationNo }),
   };
   const response = await requestJson(

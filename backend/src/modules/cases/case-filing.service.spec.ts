@@ -8,6 +8,9 @@ const actor = {
 const caseId = '33333333-3333-4333-8333-333333333333';
 const courtId = '44444444-4444-4444-8444-444444444444';
 const evidenceId = '55555555-5555-4555-8555-555555555555';
+const sourceEvidenceId = '77777777-7777-4777-8777-777777777777';
+const sourceCaseId = '88888888-8888-4888-8888-888888888888';
+const sourceMaterialId = '99999999-9999-4999-8999-999999999999';
 const input = {
   expectedVersion: 5,
   idempotencyKey: 'filing-1',
@@ -74,6 +77,9 @@ describe('CaseFilingService', () => {
       caseFilingSubmission: {
         create: jest.fn().mockResolvedValue({ id: 'submission' }),
       },
+      caseConsolidation: { findFirst: jest.fn().mockResolvedValue(null) },
+      material: { findMany: jest.fn().mockResolvedValue([]) },
+      caseFilingConsolidationSource: { createMany: jest.fn() },
       auditEvent: {
         create: jest
           .fn()
@@ -154,6 +160,76 @@ describe('CaseFilingService', () => {
     expect(f.tx.caseFilingSubmission.create).toHaveBeenCalledTimes(1);
     expect(f.materials.freezeCaseFilingReferences).toHaveBeenCalledTimes(1);
     expect(f.tx.caseFilingReceipt.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains an authorized child material version by reference when filing the main case', async () => {
+    const f = fixture();
+    f.tx.caseConsolidation.findFirst.mockResolvedValue({
+      members: [
+        {
+          caseId: sourceCaseId,
+          case: { sourceLeadId: null, sourceNotaryMatterId: null },
+        },
+      ],
+    });
+    f.tx.material.findMany.mockResolvedValue([
+      {
+        id: sourceMaterialId,
+        ownerType: 'CASE',
+        ownerId: sourceCaseId,
+        category: 'FILING_EVIDENCE',
+        contentVersions: [{ id: sourceEvidenceId }],
+      },
+    ]);
+    f.materials.assertAvailableVersions.mockImplementation(
+      async (_tx: unknown, _actor: unknown, request: { ownerId: string }) =>
+        request.ownerId === sourceCaseId
+          ? [
+              {
+                materialId: sourceMaterialId,
+                contentVersionId: sourceEvidenceId,
+                category: 'FILING_EVIDENCE',
+              },
+            ]
+          : [],
+    );
+    await f.service.submit(actor, caseId, {
+      ...input,
+      filingEvidenceContentVersionIds: [],
+      consolidationSourceContentVersionIds: [sourceEvidenceId],
+    });
+    expect(f.materials.assertAvailableVersions).toHaveBeenCalledWith(
+      f.tx,
+      actor,
+      expect.objectContaining({
+        ownerType: 'CASE',
+        ownerId: sourceCaseId,
+        contentVersionIds: [sourceEvidenceId],
+      }),
+    );
+    expect(f.tx.caseFilingConsolidationSource.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          caseId,
+          sourceCaseId,
+          materialId: sourceMaterialId,
+          contentVersionId: sourceEvidenceId,
+        }),
+      ],
+    });
+  });
+
+  it('rejects a version that does not belong to a child source before filing', async () => {
+    const f = fixture();
+    f.tx.caseConsolidation.findFirst.mockResolvedValue({ members: [] });
+    await expect(
+      f.service.submit(actor, caseId, {
+        ...input,
+        filingEvidenceContentVersionIds: [],
+        consolidationSourceContentVersionIds: [sourceEvidenceId],
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
   });
 
   it('returns the same receipt without a second fact after a valid replay', async () => {

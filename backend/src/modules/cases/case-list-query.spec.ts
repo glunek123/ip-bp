@@ -2,6 +2,7 @@ import {
   caseListOrderBy,
   caseListTextWhere,
   caseListDepartmentTextWhere,
+  caseListMembershipWhere,
 } from './case-list-query';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
@@ -9,6 +10,29 @@ import { CasePageQueryDto } from './case-read.dto';
 import { CaseListExportInput } from './case-list-export.dto';
 
 describe('case list query builders', () => {
+  it('excludes merged children from work lists and routes an old child number to its main case', () => {
+    expect(caseListMembershipWhere()).toEqual({
+      OR: [
+        { consolidationMembership: { is: null } },
+        { consolidationMembership: { is: { isMain: true } } },
+      ],
+    });
+    const where = caseListTextWhere({ q: 'CHILD-001' });
+    expect((where.AND as Array<{ OR: object[] }>)[0].OR).toContainEqual({
+      consolidationAsMain: {
+        is: {
+          members: {
+            some: {
+              isMain: false,
+              case: {
+                businessNo: { contains: 'CHILD-001', mode: 'insensitive' },
+              },
+            },
+          },
+        },
+      },
+    });
+  });
   it.each(['shopName', 'defendantName', 'courtName', 'lawyerName', 'caseType'])(
     'rejects null, repeated parameters and invalid values for %s in list and CSV',
     (key) => {

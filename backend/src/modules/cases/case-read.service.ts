@@ -22,6 +22,7 @@ import {
 import {
   caseListOrderBy,
   caseListDepartmentTextWhere,
+  caseListMembershipWhere,
   CaseListTextQuery,
 } from './case-list-query';
 import {
@@ -137,6 +138,7 @@ export class CaseReadService {
       throw this.forbidden();
     const baseWhere: Prisma.CaseWhereInput = {
       departmentId: actor.departmentId,
+      ...caseListMembershipWhere(),
       ...(principal === 'LAWYER'
         ? this.lawyerWhere(actor)
         : view === 'mine'
@@ -261,6 +263,8 @@ export class CaseReadService {
           responsibleUserId: true,
           owner: { select: { id: true, displayName: true } },
           responsibleMembership: { select: { teamId: true } },
+          consolidationMembership: { select: { isMain: true } },
+          consolidationAsMain: { select: { id: true } },
           sourceLead: { select: { id: true, businessNo: true } },
           sourceNotaryMatter: { select: { id: true, businessNo: true } },
           externalEntry: {
@@ -364,7 +368,21 @@ export class CaseReadService {
           canMatch:
             principal === 'INTERNAL' &&
             item.stage === 'PENDING_MATCH' &&
+            item.consolidationMembership?.isMain !== false &&
             (await this.access.canAuthorizeCase(actor, 'case.match', {
+              departmentId: actor.departmentId,
+              responsibleUserId: item.responsibleUserId,
+              ...(item.responsibleMembership.teamId
+                ? { teamId: item.responsibleMembership.teamId }
+                : {}),
+            })),
+          canConsolidate:
+            principal === 'INTERNAL' &&
+            item.stage === 'PENDING_MATCH' &&
+            item.responsibleUserId === actor.userId &&
+            item.consolidationMembership === null &&
+            item.consolidationAsMain === null &&
+            (await this.access.canAuthorizeCase(actor, 'case.consolidate', {
               departmentId: actor.departmentId,
               responsibleUserId: item.responsibleUserId,
               ...(item.responsibleMembership.teamId
@@ -757,6 +775,7 @@ export class CaseReadService {
           canEarlyArchive:
             principal === 'INTERNAL' &&
             item.stage !== 'ARCHIVED' &&
+            item.consolidationMembership?.isMain !== false &&
             item.archive == null &&
             item.earlyArchive == null &&
             (await this.access.canAuthorizeCase(actor, 'case.archive', {
@@ -1340,6 +1359,8 @@ export class CaseReadService {
         createdAt: true,
         responsibleUserId: true,
         responsibleMembership: { select: { teamId: true } },
+        consolidationMembership: { select: { isMain: true } },
+        consolidationAsMain: { select: { id: true } },
         defendants: {
           orderBy: { createdAt: 'asc' },
           select: {
@@ -2432,6 +2453,7 @@ export class CaseReadService {
       canEarlyArchive:
         principal === 'INTERNAL' &&
         record.stage !== 'ARCHIVED' &&
+        record.consolidationMembership?.isMain !== false &&
         record.archive == null &&
         record.earlyArchive == null &&
         (await this.access.canAuthorizeCase(actor, 'case.archive', {
@@ -2774,7 +2796,21 @@ export class CaseReadService {
       canMatch:
         principal === 'INTERNAL' &&
         record.stage === 'PENDING_MATCH' &&
+        record.consolidationMembership?.isMain !== false &&
         (await this.access.canAuthorizeCase(actor, 'case.match', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })),
+      canConsolidate:
+        principal === 'INTERNAL' &&
+        record.stage === 'PENDING_MATCH' &&
+        record.responsibleUserId === actor.userId &&
+        record.consolidationMembership === null &&
+        record.consolidationAsMain === null &&
+        (await this.access.canAuthorizeCase(actor, 'case.consolidate', {
           departmentId: actor.departmentId,
           responsibleUserId: record.responsibleUserId,
           ...(record.responsibleMembership.teamId

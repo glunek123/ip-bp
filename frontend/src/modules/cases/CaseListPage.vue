@@ -56,6 +56,7 @@ import {
 import CaseListPreferencesPanel from './CaseListPreferencesPanel.vue';
 import CaseEarlyArchivePanel from './CaseEarlyArchivePanel.vue';
 import CaseBatchArchivePanel from './CaseBatchArchivePanel.vue';
+import CaseConsolidationPanel from './CaseConsolidationPanel.vue';
 import CaseCsvImportPanel from './CaseCsvImportPanel.vue';
 import type { CaseBatchArchiveResult } from '../../api/case-batches';
 import {
@@ -187,6 +188,7 @@ const exportError = ref('');
 const selectionExportError = ref('');
 const selectedCaseIds = ref<string[]>([]);
 const batchArchiveOpen = ref(false);
+const consolidationOpen = ref(false);
 const batchArchivePending = ref(false);
 const batchArchivePendingOwner = ref<string | null>(null);
 const csvImportOpen = ref(false);
@@ -202,11 +204,20 @@ watch(
     csvImportOpen.value =
       csvImportPending.value && csvImportPendingOwner.value === currentIdentity;
     earlyArchiveTarget.value = null;
+    consolidationOpen.value = false;
   },
   { flush: 'sync' },
 );
 const selectedCases = computed(() =>
   items.value.filter((item) => selectedCaseIds.value.includes(item.id)),
+);
+const canConsolidateSelection = computed(
+  () =>
+    stage.value === 'PENDING_MATCH' &&
+    selectedCaseIds.value.length >= 2 &&
+    selectedCaseIds.value.length <= 20 &&
+    selectedCases.value.length === selectedCaseIds.value.length &&
+    selectedCases.value.every((item) => item.canConsolidate === true),
 );
 const allVisibleSelected = computed(
   () =>
@@ -1044,6 +1055,13 @@ onBeforeUnmount(() => {
           >批量提前归档</ElButton
         >
         <ElButton
+          v-if="stage === 'PENDING_MATCH' && canConsolidateSelection"
+          class="action-size--wide"
+          data-test="open-case-consolidation"
+          @click="consolidationOpen = true"
+          >合并起诉</ElButton
+        >
+        <ElButton
           class="action-size--compact"
           data-test="clear-case-selection"
           @click="selectedCaseIds = []"
@@ -1512,6 +1530,17 @@ onBeforeUnmount(() => {
       @pending-state="
         batchArchivePending = $event;
         batchArchivePendingOwner = $event ? identity : null;
+      "
+    />
+    <CaseConsolidationPanel
+      v-if="consolidationOpen && canConsolidateSelection"
+      :items="selectedCases"
+      :context-key="requestKey"
+      @close="consolidationOpen = false"
+      @completed="
+        consolidationOpen = false;
+        selectedCaseIds = [];
+        load();
       "
     />
     <CaseCsvImportPanel

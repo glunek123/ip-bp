@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(97);
+    expect(result.permissionCatalog).toHaveLength(98);
     expect(result.permissionCatalog).toContainEqual(
       expect.objectContaining({
         action: 'NOTARY_RECORD_CORRECT',

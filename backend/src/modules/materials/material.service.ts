@@ -4451,13 +4451,68 @@ export class MaterialService {
         contentVersion: { select: { originalFilename: true, mimeType: true } },
       },
     });
-    return references.map((reference) => ({
+    const direct = references.map((reference) => ({
       purpose: reference.purpose,
       materialId: reference.materialId,
       contentVersionId: reference.contentVersionId,
       originalFilename: reference.contentVersion.originalFilename,
       mimeType: reference.contentVersion.mimeType,
     }));
+    const sourceReferences =
+      await this.database.caseFilingConsolidationSource.findMany({
+        where: { caseId, departmentId: actor.departmentId },
+        select: {
+          category: true,
+          materialId: true,
+          contentVersionId: true,
+          material: {
+            select: { ownerType: true, ownerId: true, status: true },
+          },
+          contentVersion: {
+            select: { originalFilename: true, mimeType: true, status: true },
+          },
+        },
+      });
+    const seen = new Set(direct.map((reference) => reference.contentVersionId));
+    for (const reference of sourceReferences) {
+      if (
+        seen.has(reference.contentVersionId) ||
+        reference.material.status !== 'ACTIVE' ||
+        reference.contentVersion.status !== 'AVAILABLE'
+      )
+        continue;
+      try {
+        await this.authorizeOwner(
+          actor,
+          reference.material.ownerType,
+          reference.material.ownerId,
+          'read',
+          this.database,
+          undefined,
+          undefined,
+          reference.category,
+        );
+      } catch (error) {
+        if (
+          error instanceof ForbiddenException ||
+          error instanceof NotFoundException
+        )
+          continue;
+        throw error;
+      }
+      seen.add(reference.contentVersionId);
+      direct.push({
+        purpose:
+          reference.category === 'FILING_SCREENSHOT'
+            ? 'FILING_SCREENSHOT'
+            : 'FILING_EVIDENCE',
+        materialId: reference.materialId,
+        contentVersionId: reference.contentVersionId,
+        originalFilename: reference.contentVersion.originalFilename,
+        mimeType: reference.contentVersion.mimeType,
+      });
+    }
+    return direct;
   }
 
   async freezeCaseAcceptanceReferences(

@@ -25,6 +25,7 @@ function fixture() {
     archive: null,
     earlyArchive: null,
     externalEntry: null,
+    consolidationMembership: null as null | { isMain: boolean },
   };
   const tx = {
     $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: caseId }]),
@@ -65,6 +66,14 @@ function fixture() {
 }
 
 describe('early archive command', () => {
+  it('rejects a merged child while preserving its original archive and finance history', async () => {
+    const f = fixture();
+    f.record.consolidationMembership = { isMain: false };
+    await expect(f.service.archive(actor, caseId, input)).rejects.toMatchObject(
+      { response: { code: 'INVALID_STATE' } },
+    );
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+  });
   it('archives any unfinished stage without creating closure or normal archive facts', async () => {
     const f = fixture();
     await expect(

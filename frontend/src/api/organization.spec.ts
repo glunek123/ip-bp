@@ -432,6 +432,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_CONSOLIDATE',
+      label: '合并起诉案件',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'CASE_EXTERNAL_ENTRY_CREATE',
       label: '外部案件转入与历史录入',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -729,6 +734,7 @@ describe('organization API', () => {
       'CASE_GROUP_CREATE',
       'CASE_GROUP_DISSOLVE',
       'CASE_MATCH',
+      'CASE_CONSOLIDATE',
       'CASE_EXTERNAL_ENTRY_CREATE',
       'CASE_EXTERNAL_ENTRY_ARCHIVE',
       'CASE_COMPLAINT_SUBMIT',
