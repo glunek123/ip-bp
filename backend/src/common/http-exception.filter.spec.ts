@@ -30,6 +30,25 @@ function render(details: unknown, code = 'CSV_IMPORT_REJECTED') {
 }
 
 describe('HttpExceptionFilter CSV import details', () => {
+  it.each([
+    'OPERATOR_NOT_FOUND',
+    'OPERATOR_AMBIGUOUS',
+    'OPERATOR_NOT_AVAILABLE',
+    'OPERATOR_NOT_AUTHORIZED',
+    'OPERATOR_IMAGE_NOT_AUTHORIZED',
+  ])(
+    'preserves the fixed operator failure code %s without extra data',
+    (code) => {
+      const details = { failures: [{ index: 0, rowNumber: 2, code }] };
+      expect(render(details)).toHaveProperty('details', details);
+      expect(
+        render({
+          failures: [{ index: 0, rowNumber: 2, code, name: 'secret' }],
+        }),
+      ).not.toHaveProperty('details');
+    },
+  );
+
   it('preserves only safe row positions and stable codes', () => {
     const details = {
       failures: [

@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, ValidationPipe } from '@nestjs/common';
 import { isDateString } from 'class-validator';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -125,6 +125,89 @@ function fixture() {
 }
 
 describe('LeadService CSV import', () => {
+  it('accepts a valid request after the real ValidationPipe creates optional DTO fields', async () => {
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: false },
+    });
+    const transformed = (await pipe.transform(
+      { items: [{ rowNumber: 2, input }] },
+      { type: 'body', metatype: LeadCsvImportDto },
+    )) as LeadCsvImportDto;
+    expect(Object.hasOwn(transformed.items[0]!.input.products[0]!, 'id')).toBe(
+      true,
+    );
+    expect(
+      Object.hasOwn(
+        transformed.items[0]!.input.products[0]!,
+        'screenshotContentVersionIds',
+      ),
+    ).toBe(true);
+    const f = fixture();
+    await expect(
+      f.service.importBatch(actor, 'dto-pipe', transformed),
+    ).resolves.toHaveProperty('items.0.rowNumber', 2);
+    expect(f.tx.lead.create).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { id: customerId },
+    { id: null },
+    { screenshotContentVersionIds: [customerId] },
+    { screenshotContentVersionIds: [] },
+    { screenshotContentVersionIds: null },
+  ])(
+    'rejects a supplied product ID or screenshot field after DTO conversion %#',
+    async (extra) => {
+      const pipe = new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: false },
+      });
+      const transformed = (await pipe.transform(
+        {
+          items: [
+            {
+              rowNumber: 2,
+              input: {
+                ...input,
+                products: [{ ...input.products[0], ...extra }],
+              },
+            },
+          ],
+        },
+        { type: 'body', metatype: LeadCsvImportDto },
+      )) as LeadCsvImportDto;
+      const f = fixture();
+      await expect(
+        f.service.importBatch(actor, 'bad-product', transformed),
+      ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+      expect(f.tx.lead.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('continues to reject unknown product fields before writing', async () => {
+    const f = fixture();
+    const malformed = {
+      items: [
+        {
+          rowNumber: 2,
+          input: {
+            ...input,
+            products: [{ ...input.products[0], injected: 'unexpected' }],
+          },
+        },
+      ],
+    };
+    await expect(
+      f.service.importBatch(actor, 'unknown', malformed),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.lead.create).not.toHaveBeenCalled();
+  });
+
   it('keeps every historical receipt guard while replacing only the owner identity rule in migration 190', () => {
     const base = readFileSync(
       join(

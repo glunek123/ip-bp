@@ -55,10 +55,11 @@ import { NotaryRecordEditService } from './notary-record-edit.service';
     CaseModule,
   ],
   controllers: [
+    // Static import routes must precede LeadController's GET /:id.
+    LeadCsvImportController,
     LeadController,
     LeadBatchPushController,
     LeadNoEvidenceBatchController,
-    LeadCsvImportController,
     LeadImageImportController,
     ClientLeadController,
     ClientNotaryOpeningReviewController,

@@ -1439,7 +1439,15 @@ export class LeadService {
             (product) =>
               !product ||
               typeof product !== 'object' ||
-              Object.keys(product).some((key) => !csvProductKeys.has(key)),
+              Object.keys(product).some(
+                (key) =>
+                  !csvProductKeys.has(key) &&
+                  !(key === 'id' && product.id === undefined) &&
+                  !(
+                    key === 'screenshotContentVersionIds' &&
+                    product.screenshotContentVersionIds === undefined
+                  ),
+              ),
           ) ||
           (item.remoteScreenshots !== undefined &&
             (!Array.isArray(item.remoteScreenshots) ||

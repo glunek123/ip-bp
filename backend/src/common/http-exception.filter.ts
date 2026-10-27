@@ -48,6 +48,11 @@ function safeDetails(value: unknown, code: string): unknown {
       'VALIDATION_ERROR',
       'CUSTOMER_NOT_COOPERATING',
       'LEAD_NUMBER_EXHAUSTED',
+      'OPERATOR_NOT_FOUND',
+      'OPERATOR_AMBIGUOUS',
+      'OPERATOR_NOT_AVAILABLE',
+      'OPERATOR_NOT_AUTHORIZED',
+      'OPERATOR_IMAGE_NOT_AUTHORIZED',
     ]);
     const failures = record.failures;
     if (
