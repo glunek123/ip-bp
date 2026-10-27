@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-27T14:43:47.569Z",
+  "recordedAt": "2026-10-27T15:04:23.485Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1016,8 +1016,8 @@
     "frontend/src/api/notary-return-archive-batch.ts": "512c3e3785b8c15dbc0ee9ab65b54a848d3137148429e186ce58a1fb5fe6c4e0",
     "frontend/src/api/notary.spec.ts": "d70e2a64fe77be703ab57bdfd5c44aad174fa205b3d7e52e772b83b6f50d6982",
     "frontend/src/api/notary.ts": "53a2e5047d52a0ff0455537377b917d10abd3cad70d7c9c42e878e606f26746b",
-    "frontend/src/api/organization.spec.ts": "628173a6af6cccbbd77eb81a8d9003221127fca120554a63c3e70b5146dddd01",
-    "frontend/src/api/organization.ts": "ed49138f8f937edd000d95b9dcc358224271946cecde3175eb3a7fe2dd79b8af",
+    "frontend/src/api/organization.spec.ts": "b81dfe2a701aac2682e7726b0a3a4805942120e8e1894ea57b67b295c4c69162",
+    "frontend/src/api/organization.ts": "b553fdfd595426f3594aa643b086cfdee5684ad909ac3f15cc048e100b042163",
     "frontend/src/api/reports-export.spec.ts": "290b2c1f3c0679c79fcf71fb2483ba0245100457950a30150a6d9ef7939ac7d2",
     "frontend/src/api/reports-export.ts": "e8688cfdff23d15cc11ed8d3c429242c3eff1c771dce2b9bd1395496d731543b",
     "frontend/src/api/reports.spec.ts": "47de3d2ef4093aedefcf4e09e57eb3fd23508595c4ef3e4d0a2a38006b564d41",
@@ -1305,7 +1305,7 @@
     "frontend/src/modules/organization/LawyerAccountsPage.vue": "e0dcead23fe657cf92b7b773bffb4e75efe435dad27e0ecebff897651baf9d7b",
     "frontend/src/modules/organization/PeopleAccessPage.spec.ts": "5150f71ee02b3e3c9223a0c334f06f9f60e8f20dff9b1c376a9a590892a3e32e",
     "frontend/src/modules/organization/PeopleAccessPage.vue": "59ef7f601248fff4fe2c0c41fdef5e3f8aef2567cafbf3e9bf215664974142e9",
-    "frontend/src/modules/organization/RoleTemplateEditor.spec.ts": "bb3edb4527d6463a54b35e94b22db64af86cf9f1dc17bcdb419c6d5678a380dc",
+    "frontend/src/modules/organization/RoleTemplateEditor.spec.ts": "5077fa06510b647764f38bd1ec5af03df01c69a175c42a327dd7376e2989a9bb",
     "frontend/src/modules/organization/RoleTemplateEditor.vue": "eb106358c33144f42a04cd36860f2767b0b21f8a1b37a1cf8408778716378db6",
     "frontend/src/modules/organization/RoleTemplatePanel.spec.ts": "565814cbb8316faac14ce4e4bdf47ad9f3ee3cbfffedf49a0e41f117544ad91b",
     "frontend/src/modules/organization/RoleTemplatePanel.vue": "9bb887aa1c77c6ef6a76da73c03e52080920644067923ee0cdacfb83a83505de",
