@@ -1295,7 +1295,7 @@ describe('LeadService', () => {
     const listResult = await service.list(actor, 1, 20);
     const detailResult = await service.get(actor, lead.id);
     expect(leadRepo.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: scope }),
+      expect.objectContaining({ where: { AND: [scope] } }),
     );
     expect(leadRepo.findFirst).toHaveBeenCalledWith({
       where: { id: lead.id, ...scope },
@@ -1390,16 +1390,16 @@ describe('LeadService', () => {
     await service.list(actor, 2, 20, 'WAITING_PUSH');
     expect(leadRepo.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { ...scope, status: 'WAITING_PUSH' },
+        where: { AND: [scope], status: 'WAITING_PUSH' },
         skip: 20,
         take: 20,
       }),
     );
     expect(leadRepo.count).toHaveBeenCalledWith({
-      where: { ...scope, status: 'WAITING_PUSH' },
+      where: { AND: [scope], status: 'WAITING_PUSH' },
     });
     expect(leadRepo.groupBy).toHaveBeenCalledWith(
-      expect.objectContaining({ where: scope }),
+      expect.objectContaining({ where: { AND: [scope] } }),
     );
   });
 
@@ -1430,11 +1430,13 @@ describe('LeadService', () => {
       status: { not: 'TRANSFERRED_TO_NOTARY' },
     };
     expect(leadRepo.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: visibleScope }),
+      expect.objectContaining({ where: { AND: [visibleScope] } }),
     );
-    expect(leadRepo.count).toHaveBeenCalledWith({ where: visibleScope });
+    expect(leadRepo.count).toHaveBeenCalledWith({
+      where: { AND: [visibleScope] },
+    });
     expect(leadRepo.groupBy).toHaveBeenCalledWith(
-      expect.objectContaining({ where: visibleScope }),
+      expect.objectContaining({ where: { AND: [visibleScope] } }),
     );
     expect(result.counts).toMatchObject({
       WAITING_PUSH: 2,
