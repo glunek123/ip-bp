@@ -211,6 +211,82 @@ describe('AuthService', () => {
     });
   });
 
+  it.each(['\nadmin', 'admin\t', 'ad\u0000min'])(
+    'rejects raw control characters in %p after credential verification',
+    async (submittedUsername) => {
+      const database = createDatabase();
+      database.transaction.localCredential.findUnique.mockResolvedValue({
+        userId,
+        username: 'admin',
+        passwordHash: await hashPassword('correct horse battery staple'),
+        user: {
+          id: userId,
+          displayName: '管理员',
+          active: true,
+          authorizationRevision: 3,
+          memberships: [{ departmentId: department.id, department }],
+        },
+      });
+      const auth = new AuthService(
+        database as never,
+        { getOrThrow: () => 'a'.repeat(64) } as unknown as ConfigService,
+      );
+
+      await expect(
+        auth.login(
+          {
+            username: submittedUsername,
+            password: 'correct horse battery staple',
+          },
+          '127.0.0.1',
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'AUTHENTICATION_FAILED' },
+      });
+      expect(
+        database.transaction.localCredential.findUnique,
+      ).toHaveBeenCalled();
+      expect(database.transaction.authSession.create).not.toHaveBeenCalled();
+      expect(
+        database.transaction.authThrottle.deleteMany,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
+  it('logs in a valid custom username through the normalized lookup', async () => {
+    const database = createDatabase();
+    database.transaction.localCredential.findUnique.mockResolvedValue({
+      userId,
+      username: '自定义 用户',
+      passwordHash: await hashPassword('correct horse battery staple'),
+      user: {
+        id: userId,
+        displayName: '管理员',
+        active: true,
+        authorizationRevision: 3,
+        memberships: [{ departmentId: department.id, department }],
+      },
+    });
+    const auth = new AuthService(
+      database as never,
+      { getOrThrow: () => 'a'.repeat(64) } as unknown as ConfigService,
+    );
+
+    await expect(
+      auth.login(
+        { username: ' 自定义 用户 ', password: 'correct horse battery staple' },
+        '127.0.0.1',
+      ),
+    ).resolves.toMatchObject({
+      view: { user: { username: '自定义 用户' } },
+    });
+    expect(
+      database.transaction.localCredential.findUnique,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { username: '自定义 用户' } }),
+    );
+  });
+
   it('creates a real session for an active enterprise-bound client account', async () => {
     const database = createDatabase();
     const customer = {

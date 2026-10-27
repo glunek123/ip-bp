@@ -12,11 +12,7 @@ import { DatabaseService } from '../database/database.service';
 import type { Prisma } from '../generated/prisma/client';
 import { createOpaqueToken, digestSource, digestToken } from './auth-token';
 import { LoginDto } from './auth.dto';
-import {
-  normalizeUsername,
-  validatePassword,
-  verifyPassword,
-} from './password';
+import { normalizeUsername, verifyPassword } from './password';
 import {
   ResolvedSession,
   SessionAuthentication,
@@ -66,10 +62,11 @@ export class AuthService {
 
   async login(input: LoginDto, source: string): Promise<LoginResult> {
     let username: string;
+    let usernameInvalid = false;
     try {
       username = normalizeUsername(input.username);
-      validatePassword(input.password);
     } catch {
+      usernameInvalid = true;
       username = input.username.trim().normalize('NFKC').toLowerCase();
     }
     const usernameDigest = digestToken(username);
@@ -121,6 +118,7 @@ export class AuthService {
         );
         if (
           credential === null ||
+          usernameInvalid ||
           !passwordMatches ||
           !credential.user.active
         ) {
