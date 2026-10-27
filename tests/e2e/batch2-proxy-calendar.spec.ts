@@ -18,9 +18,10 @@ import {
 assertBatch2Admission();
 const origin = 'http://127.0.0.1:5174';
 const pdf = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n');
-const jpeg = Buffer.from([
-  0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46,
-]);
+const openingPng = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=',
+  'base64',
+);
 type Actor = {
   context: APIRequestContext;
   headers: { 'X-CSRF-Token': string };
@@ -128,11 +129,9 @@ async function upload(
         ownerId,
         category,
         purpose: category,
-        originalFilename: `batch2-${category}-${randomUUID()}.${category === 'NOTARY_OPENING_PHOTO' ? 'jpg' : 'pdf'}`,
+        originalFilename: `batch2-${category}-${randomUUID()}.${category === 'NOTARY_OPENING_PHOTO' ? 'png' : 'pdf'}`,
         declaredMimeType:
-          category === 'NOTARY_OPENING_PHOTO'
-            ? 'image/jpeg'
-            : 'application/pdf',
+          category === 'NOTARY_OPENING_PHOTO' ? 'image/png' : 'application/pdf',
       },
     }),
     201,
@@ -506,7 +505,7 @@ test.describe.serial('Batch 2 owned proxy and calendar acceptance', () => {
         'NOTARY_MATTER',
         matter.id,
         'NOTARY_OPENING_PHOTO',
-        jpeg,
+        openingPng,
       );
       await body(
         await operator.context.post(
