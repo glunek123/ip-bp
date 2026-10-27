@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
-  ArrayMinSize,
   IsArray,
   IsInt,
   IsOptional,
@@ -21,9 +20,8 @@ export class SubmitCaseFilingDto {
   idempotencyKey!: string;
   @ApiProperty({ format: 'uuid' }) @IsUUID('4') courtId!: string;
   @ApiProperty({ format: 'date' }) @IsString() submittedAt!: string;
-  @ApiProperty({ type: [String], format: 'uuid', minItems: 1, maxItems: 50 })
+  @ApiProperty({ type: [String], format: 'uuid', minItems: 0, maxItems: 50 })
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(50)
   @IsUUID('4', { each: true })
   filingEvidenceContentVersionIds!: string[];
