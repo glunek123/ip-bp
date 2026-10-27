@@ -22,8 +22,8 @@ const { unzipSync, zipSync, strToU8 } = backend('fflate') as {
 let fixture: Awaited<ReturnType<typeof seedBatch2LeadImportFixture>>;
 
 test.setTimeout(180_000);
-test.beforeAll(async (fixtures, testInfo) => {
-  void fixtures;
+test.beforeAll(async ({ browserName }, testInfo) => {
+  void browserName;
   const expected = resolve(
     process.cwd(),
     'tests/support/batch2-lead-import.config.ts',
