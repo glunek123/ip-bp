@@ -292,16 +292,20 @@ export async function readBatch2ProxyAudit(kind, id) {
       table: 'lead_review_decisions',
       field: 'lead_id',
       binding: 'customer_account_binding_id',
+      detail: 'result::text AS result,decided_at AS occurred_at',
     },
     withdrawal: {
       table: 'lead_withdrawal_confirmations',
       field: 'application_id',
       binding: 'customer_account_binding_id',
+      detail:
+        "result_snapshot->>'status' AS result,confirmed_at AS occurred_at",
     },
     certificate: {
       table: 'notary_certificates',
       field: 'matter_id',
       binding: 'notary_office_account_binding_id',
+      detail: 'certificate_no AS result,issued_at AS occurred_at',
     },
   }[kind];
   if (!relation || !/^[0-9a-f-]{36}$/u.test(id))
@@ -319,7 +323,8 @@ export async function readBatch2ProxyAudit(kind, id) {
     return (
       await client.query(
         `SELECT actor_kind,internal_actor_user_id,${relation.binding} AS binding_id,
-      ${kind === 'certificate' ? 'actor_user_id' : kind === 'review' ? 'reviewer_user_id' : 'actor_user_id'} AS actor_user_id
+      ${kind === 'certificate' ? 'actor_user_id' : kind === 'review' ? 'reviewer_user_id' : 'actor_user_id'} AS actor_user_id,
+      ${relation.detail}
       FROM ${relation.table} WHERE ${relation.field}=$1`,
         [id],
       )
