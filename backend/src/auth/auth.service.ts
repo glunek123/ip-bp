@@ -70,6 +70,9 @@ export class AuthService {
       username = input.username.trim().normalize('NFKC').toLowerCase();
     }
     const usernameDigest = digestToken(username);
+    // The database CHECK makes an empty username impossible. Keep the original
+    // digest for throttling, but never send invalid input (including NUL) to PG.
+    const lookupUsername = usernameInvalid ? '' : username;
     const sourceDigest = digestSource(source, this.throttleSecret);
     const outcome = await this.database.$transaction(
       async (transaction): Promise<LoginTransactionOutcome> => {
@@ -96,7 +99,7 @@ export class AuthService {
           };
         }
         const credential = await transaction.localCredential.findUnique({
-          where: { username },
+          where: { username: lookupUsername },
           include: {
             user: {
               include: {

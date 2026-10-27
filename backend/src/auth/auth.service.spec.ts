@@ -212,10 +212,10 @@ describe('AuthService', () => {
   });
 
   it.each(['\nadmin', 'admin\t', 'ad\u0000min'])(
-    'rejects raw control characters in %p after credential verification',
+    'rejects raw control characters in %p after dummy password verification',
     async (submittedUsername) => {
       const database = createDatabase();
-      database.transaction.localCredential.findUnique.mockResolvedValue({
+      const existingCredential = {
         userId,
         username: 'admin',
         passwordHash: await hashPassword('correct horse battery staple'),
@@ -226,7 +226,13 @@ describe('AuthService', () => {
           authorizationRevision: 3,
           memberships: [{ departmentId: department.id, department }],
         },
-      });
+      };
+      database.transaction.localCredential.findUnique.mockImplementation(
+        ({ where }: { where: { username: string } }) =>
+          Promise.resolve(
+            where.username === 'admin' ? existingCredential : null,
+          ),
+      );
       const auth = new AuthService(
         database as never,
         { getOrThrow: () => 'a'.repeat(64) } as unknown as ConfigService,
@@ -245,7 +251,11 @@ describe('AuthService', () => {
       });
       expect(
         database.transaction.localCredential.findUnique,
-      ).toHaveBeenCalled();
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { username: '' } }),
+      );
+      expect(database.transaction.$queryRaw).toHaveBeenCalledTimes(2);
+      expect(database.transaction.$executeRaw).toHaveBeenCalledTimes(2);
       expect(database.transaction.authSession.create).not.toHaveBeenCalled();
       expect(
         database.transaction.authThrottle.deleteMany,
