@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-27T17:58:20.430Z",
+  "recordedAt": "2026-10-27T18:14:28.425Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -432,7 +432,7 @@
     "backend/src/modules/cases/case-match.dto.ts": "17e75c0e504866fc49d0df084047443b032fec72789072ec9856f7502d692416",
     "backend/src/modules/cases/case-match.service.spec.ts": "a2c2e48d8de1718ba021e9963878ab615e29bcd3cffd30d6389689d10776f3bd",
     "backend/src/modules/cases/case-match.service.ts": "1efad0aefd3776ca3f0e679adcdf1ccca7f57362190409b68cbed4c0e2d1f73d",
-    "backend/src/modules/cases/case-read.controller.spec.ts": "67d78a4508e3dc2f9cafdc99291c5e67b8d8f9f75ac9b6099055f2723a7115fd",
+    "backend/src/modules/cases/case-read.controller.spec.ts": "0cbeb223db1cd5dbbcd216e199f32d1779451c867d57bca305f05fb823f520eb",
     "backend/src/modules/cases/case-read.controller.ts": "699c89f9e851d72cde31a6e03c002efd3b9e588451eaf56ab32a9e1df910f242",
     "backend/src/modules/cases/case-read.dto.ts": "34e0fcfa6360d0ab2940b32b2769830076d86e7cc55d3f662921042ea4434f7d",
     "backend/src/modules/cases/case-read.service.spec.ts": "366f15ee442fd125432c9a74408de8ad212ffb916f10d91b3ef9aeba64bf4172",
@@ -1248,7 +1248,7 @@
     "frontend/src/modules/leads/LeadBatchPushPanel.vue": "3d735ca8bfe3d7f1717fdc6c8c9cf2d26ced2e0c42bd9563278f58e4b1e179d4",
     "frontend/src/modules/leads/LeadCsvImportPanel.spec.ts": "7b958db9ab2e2c4502f0a31e0ba2b088ff5680a270005ca6d1928c28e9d34424",
     "frontend/src/modules/leads/LeadCsvImportPanel.vue": "be89887a3d3704a7efbb62baa5caae91c6d3cafc3187c1825d649220df2eda94",
-    "frontend/src/modules/leads/LeadCsvPreviewPanel.spec.ts": "c840b2acc6c964194f2cd7a11959d2701a78c12f4558f1dcc40a573be1c23581",
+    "frontend/src/modules/leads/LeadCsvPreviewPanel.spec.ts": "69f60aa41dcc58b2bee5a230b2d3e49e67f022ed59e08e89c5354e0c88c6778b",
     "frontend/src/modules/leads/LeadCsvPreviewPanel.vue": "1972e105efc0244cc7119f878f634ea87f6dc77c24ce83b4a71b08774575cad6",
     "frontend/src/modules/leads/LeadDetailPage.spec.ts": "49ef03eac508135c86c0b26a34ad008e6d26273252bf043cca0e1ed869a311d6",
     "frontend/src/modules/leads/LeadDetailPage.vue": "0bac23dd332b539173b2cf77dd2d6284df68a3deedf4194f4ada16603c2af1cf",
