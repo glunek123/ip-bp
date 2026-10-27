@@ -54,7 +54,17 @@ export async function grantBatch2RefundLifecycleActions(fixture) {
           "INSERT INTO role_grants(id,role_template_id,action,scope) VALUES($1,$2,$3,'DEPARTMENT')",
           [randomUUID(), role[0].role_template_id, action],
         );
+      const courtId = randomUUID();
+      await client.query(
+        'INSERT INTO filing_courts(id,department_id,name) VALUES($1,$2,$3)',
+        [
+          courtId,
+          fixture.departmentId,
+          `Batch2 remand court ${fixture.suffix}`,
+        ],
+      );
       await client.query('COMMIT');
+      return { courtId };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;

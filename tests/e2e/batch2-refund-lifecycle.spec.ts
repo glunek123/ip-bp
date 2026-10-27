@@ -29,6 +29,7 @@ type SecondResult = {
 };
 let fixture: Fixture;
 let actor: Actor;
+let filingCourtId: string;
 
 function shanghaiDay(offset = 0, instant: Date | string = new Date()) {
   const value = new Intl.DateTimeFormat('en-CA', {
@@ -190,7 +191,8 @@ test.describe.serial('Batch 2 formal refund lifecycle', () => {
   test.setTimeout(300_000);
   test.beforeAll(async ({ playwright }) => {
     fixture = await seedBatch2ProxyCalendarActors();
-    await grantBatch2RefundLifecycleActions(fixture);
+    const directory = await grantBatch2RefundLifecycleActions(fixture);
+    filingCourtId = directory.courtId;
     const context = await playwright.request.newContext({ baseURL: origin });
     const login = await body<{
       principalType: string;
@@ -365,6 +367,7 @@ test.describe.serial('Batch 2 formal refund lifecycle', () => {
       'acceptance-register',
       {
         expectedVersion: second.version,
+        courtId: filingCourtId,
         acceptedAt: shanghaiDay(-4),
         courtCaseNo: `B2R-${randomUUID().slice(0, 8)}`,
         acceptanceNoticeContentVersionIds: [acceptance.contentVersionId],

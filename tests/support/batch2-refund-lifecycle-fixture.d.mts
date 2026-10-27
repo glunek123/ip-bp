@@ -3,7 +3,7 @@ export function grantBatch2RefundLifecycleActions(fixture: {
   operator: SyntheticAccount;
   departmentId: string;
   suffix: string;
-}): Promise<void>;
+}): Promise<{ courtId: string }>;
 export function readBatch2RefundLedger(
   caseId: string,
   departmentId: string,
