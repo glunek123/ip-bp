@@ -2521,37 +2521,12 @@ describe('CaseReadService', () => {
     const scope = {
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
-      AND: [
-        {
-          OR: [
-            { businessNo: { contains: 'CA-1', mode: 'insensitive' } },
-            { courtCaseNo: { contains: 'CA-1', mode: 'insensitive' } },
-            {
-              customer: {
-                is: { name: { contains: 'CA-1', mode: 'insensitive' } },
-              },
-            },
-            {
-              rightsHolder: {
-                is: { name: { contains: 'CA-1', mode: 'insensitive' } },
-              },
-            },
-            {
-              defendants: {
-                some: { name: { contains: 'CA-1', mode: 'insensitive' } },
-              },
-            },
-          ],
-        },
-        {
-          customer: { is: { name: { contains: '客户', mode: 'insensitive' } } },
-        },
-      ],
+      ...caseListTextWhere({ q: 'CA-1', customerName: '客户' }),
     };
     expect(f.db.case.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { ...scope, stage: 'WAITING_COMPLAINT' },
-        orderBy: [{ rightsHolder: { name: 'asc' } }, { id: 'asc' }],
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         skip: 20,
         take: 20,
       }),

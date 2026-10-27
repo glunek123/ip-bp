@@ -1276,7 +1276,7 @@ onBeforeUnmount(() => {
                 </div>
               </dl>
             </section>
-            <section class="customer-basic-group" aria-label="联系人与权利人">
+            <section class="customer-basic-group" aria-label="联系人与权利主体">
               <CustomerContactsPanel
                 id="customer-contacts"
                 :customer="customer"

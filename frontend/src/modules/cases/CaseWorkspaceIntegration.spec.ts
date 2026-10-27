@@ -740,25 +740,18 @@ describe('UXQ-01-C list action intents', () => {
       }),
     ).toBeNull();
   });
-  it('returns to the same case filters and sorting without detail-only query keys', async () => {
+  it('returns to the same active case filters without legacy and detail-only query keys', async () => {
     const listQuery = {
       view: 'department',
       stage: 'WAITING_JUDGMENT',
       page: '3',
       q: 'CA-1',
-      customerName: '客户甲',
-      rightsHolderName: '权利人甲',
-      courtCaseNo: '合成案号',
-      shopName: '合成店铺',
-      defendantName: '合成被告',
-      courtName: '合成法院',
-      lawyerName: '合成律师',
       caseType: 'CIVIL',
-      sortBy: 'businessNo',
-      sortDirection: 'asc',
     };
     const query = new URLSearchParams({
       ...listQuery,
+      sortBy: 'businessNo',
+      shopName: '旧店铺',
       tab: 'files',
       unrelated: 'drop',
     });

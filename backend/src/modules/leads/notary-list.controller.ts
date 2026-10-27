@@ -40,11 +40,24 @@ export class NotaryListController {
     @CurrentActor() actor: ActorContext,
     @Query() query: NotaryListQueryDto,
   ) {
+    const filters = {
+      customerId: query.customerId,
+      rightsHolderId: query.rightsHolderId,
+      shopName: query.shopName,
+    };
+    if (Object.values(filters).every((value) => value === undefined))
+      return this.listService.list(
+        actor,
+        query.page,
+        query.pageSize,
+        query.stage,
+      );
     return this.listService.list(
       actor,
       query.page,
       query.pageSize,
       query.stage,
+      filters,
     );
   }
 }

@@ -37,22 +37,8 @@ export type CaseListRouteQuery = Record<string, unknown>;
 export type ParsedCaseListQuery =
   { ok: true; value: CaseListQuery } | { ok: false; message: string };
 
-const textKeys = [
-  'shopName',
-  'defendantName',
-  'courtName',
-  'lawyerName',
-  'q',
-  'customerName',
-  'rightsHolderName',
-  'courtCaseNo',
-] as const;
-export const caseListQueryKeys = [
-  ...textKeys,
-  'caseType',
-  'sortBy',
-  'sortDirection',
-] as const;
+const textKeys = ['q'] as const;
+export const caseListQueryKeys = [...textKeys, 'caseType'] as const;
 
 function scalar(value: unknown): value is string {
   return typeof value === 'string';
@@ -79,14 +65,6 @@ export function parseCaseListQuery(
       if (!caseListCaseTypes.includes(value as LeadCaseType))
         return { ok: false, message: '案件类型无效，请调整后重试。' };
       parsed.caseType = value as LeadCaseType;
-    } else if (key === 'sortBy') {
-      if (!caseListSortFields.includes(value as CaseListSortField))
-        return { ok: false, message: '排序字段无效，请调整排序后重试。' };
-      parsed.sortBy = value as CaseListSortField;
-    } else if (key === 'sortDirection') {
-      if (value !== 'asc' && value !== 'desc')
-        return { ok: false, message: '排序方向无效，请调整排序后重试。' };
-      parsed.sortDirection = value;
     } else {
       const normalized = value.trim();
       if (backendStringLength(normalized) > 200)
@@ -105,9 +83,7 @@ export function serializeCaseListQuery(
     const value = query[key]?.trim();
     if (value) serialized[key] = value;
   }
-  if (query.sortBy) serialized.sortBy = query.sortBy;
   if (query.caseType) serialized.caseType = query.caseType;
-  if (query.sortDirection) serialized.sortDirection = query.sortDirection;
   return serialized;
 }
 

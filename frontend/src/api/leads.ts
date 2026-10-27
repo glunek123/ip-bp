@@ -851,6 +851,37 @@ export async function getLeadEditContext(
   );
 }
 
+export async function listLeadFilterOptions(
+  kind: 'customer' | 'rightsHolder',
+  q: string,
+  options: RequestOptions = {},
+  scope: {
+    view?: 'LIBRARY';
+    status?: LeadStatus;
+    context?: 'NOTARY';
+    notaryStage?: string;
+  } = {},
+): Promise<{ items: { id: string; name: string }[] }> {
+  const query = new URLSearchParams({ kind, q });
+  if (scope.view) query.set('view', scope.view);
+  if (scope.status) query.set('status', scope.status);
+  if (scope.context) query.set('context', scope.context);
+  if (scope.notaryStage) query.set('notaryStage', scope.notaryStage);
+  const result = await getJson(`/leads/filter-options?${query}`, options);
+  if (
+    !isRecord(result) ||
+    !Array.isArray(result.items) ||
+    !result.items.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.id === 'string' &&
+        typeof item.name === 'string',
+    )
+  )
+    throw invalidResponse();
+  return { items: result.items as { id: string; name: string }[] };
+}
+
 export async function listLeads(
   page = 1,
   pageSize = 20,
@@ -858,6 +889,11 @@ export async function listLeads(
   status?: LeadStatus,
   view?: 'LIBRARY',
   q?: string,
+  filters: {
+    customerId?: string;
+    rightsHolderId?: string;
+    shopName?: string;
+  } = {},
 ): Promise<LeadList> {
   if (
     q !== undefined &&
@@ -871,6 +907,10 @@ export async function listLeads(
   if (status !== undefined) query.set('status', status);
   if (view !== undefined) query.set('view', view);
   if (q?.trim()) query.set('q', q.trim());
+  if (filters.customerId) query.set('customerId', filters.customerId);
+  if (filters.rightsHolderId)
+    query.set('rightsHolderId', filters.rightsHolderId);
+  if (filters.shopName?.trim()) query.set('shopName', filters.shopName.trim());
   const data = await getJson(`/leads?${query.toString()}`, options);
   const counts = isRecord(data) ? data.counts : undefined;
   const capabilities = isRecord(data) ? data.capabilities : undefined;

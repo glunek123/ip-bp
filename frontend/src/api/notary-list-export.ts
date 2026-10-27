@@ -9,7 +9,13 @@ import type { NotaryListStage } from './notary';
 
 export type NotaryListExportScope =
   | { mode: 'SELECTED'; matterIds: string[] }
-  | { mode: 'FILTERED'; stage?: NotaryListStage };
+  | {
+      mode: 'FILTERED';
+      stage?: NotaryListStage;
+      customerId?: string;
+      rightsHolderId?: string;
+      shopName?: string;
+    };
 export type NotaryListExportPreview = { count: number; maxRows: 1000 };
 export type NotaryListExportFile = {
   blob: Blob;
@@ -49,7 +55,15 @@ function decodePreview(value: unknown): NotaryListExportPreview {
 function scopeJson(scope: NotaryListExportScope): JsonValue {
   return scope.mode === 'SELECTED'
     ? { mode: scope.mode, matterIds: scope.matterIds }
-    : { mode: scope.mode, ...(scope.stage ? { stage: scope.stage } : {}) };
+    : {
+        mode: scope.mode,
+        ...(scope.stage ? { stage: scope.stage } : {}),
+        ...(scope.customerId ? { customerId: scope.customerId } : {}),
+        ...(scope.rightsHolderId
+          ? { rightsHolderId: scope.rightsHolderId }
+          : {}),
+        ...(scope.shopName ? { shopName: scope.shopName } : {}),
+      };
 }
 
 export async function previewNotaryListExport(
@@ -76,6 +90,11 @@ export async function exportNotaryList(
       : {
           mode: 'FILTERED',
           ...(scope.stage ? { stage: scope.stage } : {}),
+          ...(scope.customerId ? { customerId: scope.customerId } : {}),
+          ...(scope.rightsHolderId
+            ? { rightsHolderId: scope.rightsHolderId }
+            : {}),
+          ...(scope.shopName ? { shopName: scope.shopName } : {}),
           expectedCount,
         };
   const result = await postBlob('/notary-matters/exports', body, options);

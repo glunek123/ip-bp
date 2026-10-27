@@ -372,7 +372,7 @@ onBeforeUnmount(() => request?.abort());
           </section>
           <dl class="demo-detail-grid" data-test="client-lead-facts">
             <div>
-              <dt>权利人</dt>
+              <dt>权利主体</dt>
               <dd>{{ lead.rightsHolderName }}</dd>
             </div>
             <div>

@@ -50,6 +50,42 @@ export function caseListTextWhere(
         { customer: { is: { name: match } } },
         { rightsHolder: { is: { name: match } } },
         { defendants: { some: { name: match } } },
+        { sourceLead: { is: { shopName: match } } },
+        {
+          externalEntry: {
+            is: {
+              known: {
+                path: ['shopName'],
+                string_contains: match.contains,
+                mode: 'insensitive',
+              },
+            },
+          },
+        },
+        { filingSubmission: { is: { courtName: match } } },
+        { acceptance: { is: { court: { is: { name: match } } } } },
+        ...(knownCourtIds.length > 0
+          ? [
+              {
+                externalEntry: {
+                  is: {
+                    OR: knownCourtIds.map((id) => ({
+                      known: { path: ['courtId'], equals: id },
+                    })),
+                  },
+                },
+              },
+            ]
+          : []),
+        {
+          lawyers: {
+            some: {
+              role: 'PRIMARY',
+              endedAt: null,
+              lawyer: { is: { fullName: match } },
+            },
+          },
+        },
       ],
     });
   }
@@ -190,12 +226,19 @@ export async function caseListDepartmentTextWhere(
   query: CaseListTextQuery,
 ): Promise<Prisma.CaseWhereInput> {
   const courtName = query.courtName?.trim();
-  const courts = courtName
-    ? await database.filingCourt.findMany({
-        where: { departmentId, name: literalContains(courtName) },
-        select: { id: true },
-      })
-    : [];
+  const keyword = query.q?.trim();
+  const courts =
+    courtName || keyword
+      ? await database.filingCourt.findMany({
+          where: {
+            departmentId,
+            OR: [courtName, keyword]
+              .filter((value): value is string => Boolean(value))
+              .map((value) => ({ name: literalContains(value) })),
+          },
+          select: { id: true },
+        })
+      : [];
   return caseListTextWhere(
     query,
     courts.map(({ id }) => id),
@@ -203,15 +246,8 @@ export async function caseListDepartmentTextWhere(
 }
 
 export function caseListOrderBy(
-  query: CaseListTextQuery,
+  _query: CaseListTextQuery,
 ): Prisma.CaseOrderByWithRelationInput[] {
-  const direction = query.sortDirection === 'asc' ? 'asc' : 'desc';
-  const field = query.sortBy ?? 'createdAt';
-  const first: Prisma.CaseOrderByWithRelationInput =
-    field === 'rightsHolderName'
-      ? { rightsHolder: { name: direction } }
-      : field === 'businessNo'
-        ? { businessNo: direction }
-        : { createdAt: direction };
-  return [first, { id: 'asc' }];
+  void _query;
+  return [{ createdAt: 'desc' }, { id: 'asc' }];
 }

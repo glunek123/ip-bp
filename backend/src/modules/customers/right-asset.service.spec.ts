@@ -34,6 +34,21 @@ describe('RightAssetService field validation', () => {
   );
   beforeEach(() => transaction.mockClear());
 
+  it('rejects a second owner text when creating an asset', async () => {
+    await expect(
+      service.create(actor, customerId, 'owner-text-key', {
+        ...base,
+        ownerText: '历史文字不应作为新输入',
+      }),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'VALIDATION_ERROR',
+        message: '新建权利资产请只关联权利主体',
+      },
+    });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it.each(['clientCustomerId', 'notaryOfficeId', 'lawyerAccountId'] as const)(
     'denies %s accounts the internal asset library before database access',
     async (identityField) => {

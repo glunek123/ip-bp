@@ -18,6 +18,7 @@ import {
   getLeadFormContext,
   importLeadCsvBatch,
   listLeads,
+  listLeadFilterOptions,
   pushLead,
   pushLeadsBatch,
   applyLeadWithdrawal,
@@ -225,6 +226,30 @@ describe('internal lead display names', () => {
     );
     expect(result).toEqual(legacy);
     expect(result).not.toHaveProperty('displayNames');
+  });
+  it('encodes scoped search choices and rejects malformed option responses', async () => {
+    http.getJson.mockResolvedValueOnce({
+      items: [{ id: 'customer-1', name: '客户甲' }],
+    });
+    await expect(
+      listLeadFilterOptions(
+        'customer',
+        '甲 &',
+        {},
+        {
+          view: 'LIBRARY',
+          status: 'WAITING_PUSH',
+        },
+      ),
+    ).resolves.toEqual({ items: [{ id: 'customer-1', name: '客户甲' }] });
+    expect(http.getJson).toHaveBeenCalledWith(
+      '/leads/filter-options?kind=customer&q=%E7%94%B2+%26&view=LIBRARY&status=WAITING_PUSH',
+      {},
+    );
+    http.getJson.mockResolvedValueOnce({ items: [{ id: 1, name: 'bad' }] });
+    await expect(
+      listLeadFilterOptions('rightsHolder', ''),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
 });
 

@@ -42,13 +42,31 @@ export function isValidExportScope(
   }
   if (input.mode === 'FILTERED') {
     if (
-      keys !== (expectedCount ? 'expectedCount,mode' : 'mode') &&
-      keys !== (expectedCount ? 'expectedCount,mode,stage' : 'mode,stage')
+      Object.keys(input).some(
+        (key) =>
+          ![
+            'mode',
+            'stage',
+            'customerId',
+            'rightsHolderId',
+            'shopName',
+            'expectedCount',
+          ].includes(key),
+      )
     )
       return false;
     return (
-      input.stage === undefined ||
-      NOTARY_LIST_STAGES.some((stage) => stage === input.stage)
+      (input.stage === undefined ||
+        NOTARY_LIST_STAGES.some((stage) => stage === input.stage)) &&
+      (input.customerId === undefined ||
+        (typeof input.customerId === 'string' &&
+          uuid.test(input.customerId))) &&
+      (input.rightsHolderId === undefined ||
+        (typeof input.rightsHolderId === 'string' &&
+          uuid.test(input.rightsHolderId))) &&
+      (input.shopName === undefined ||
+        (typeof input.shopName === 'string' &&
+          [...input.shopName.trim()].length <= 200))
     );
   }
   return false;
@@ -104,6 +122,18 @@ export class PreviewNotaryListExportDto {
     },
   })
   stage?: NotaryListStage;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  customerId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  rightsHolderId?: string;
+
+  @ApiPropertyOptional({ maxLength: 200 })
+  @IsOptional()
+  shopName?: string;
 }
 
 @ApiSchema({ description: '按已预览数量导出；当次范围变化时要求重新预览。' })

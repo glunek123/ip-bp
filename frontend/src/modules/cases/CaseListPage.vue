@@ -126,11 +126,7 @@ const parsedListQuery = computed(() => parseCaseListQuery(route.query));
 const listFilters = computed<CaseListQuery>(() =>
   parsedListQuery.value.ok ? parsedListQuery.value.value : {},
 );
-const effectiveListQuery = computed<CaseListQuery>(() => ({
-  ...listFilters.value,
-  sortBy: listFilters.value.sortBy ?? 'createdAt',
-  sortDirection: listFilters.value.sortDirection ?? 'desc',
-}));
+const effectiveListQuery = computed<CaseListQuery>(() => listFilters.value);
 const listFilterKey = computed(() => caseListQueryKey(listFilters.value));
 const rawListQueryKey = computed(() =>
   JSON.stringify(
@@ -144,8 +140,6 @@ const rawListQueryKey = computed(() =>
       'courtName',
       'lawyerName',
       'caseType',
-      'sortBy',
-      'sortDirection',
     ].map((key) => [key, route.query[key] ?? null]),
   ),
 );
@@ -300,62 +294,19 @@ const listQuery = computed(() =>
   ]),
 );
 const queryDraft = ref<{
-  shopName: string;
-  defendantName: string;
-  courtName: string;
-  lawyerName: string;
   caseType: (typeof caseListCaseTypes)[number] | '';
   q: string;
-  customerName: string;
-  rightsHolderName: string;
-  courtCaseNo: string;
-  sortBy: NonNullable<CaseListQuery['sortBy']>;
-  sortDirection: NonNullable<CaseListQuery['sortDirection']>;
 }>({
-  shopName: '',
-  defendantName: '',
-  courtName: '',
-  lawyerName: '',
   caseType: '',
   q: '',
-  customerName: '',
-  rightsHolderName: '',
-  courtCaseNo: '',
-  sortBy: 'createdAt',
-  sortDirection: 'desc',
-});
-const appliedMoreFilterCount = computed(() => {
-  const activeText = (value: unknown) =>
-    typeof value === 'string' ? value.trim().length > 0 : value !== undefined;
-  const filterCount = [
-    'shopName',
-    'defendantName',
-    'courtName',
-    'lawyerName',
-    'caseType',
-  ].filter((key) => activeText(route.query[key])).length;
-  const customSort =
-    (route.query.sortBy !== undefined && route.query.sortBy !== 'createdAt') ||
-    (route.query.sortDirection !== undefined &&
-      route.query.sortDirection !== 'desc');
-  return filterCount + Number(customSort);
 });
 watch(
   () => parsedListQuery.value,
   (parsed) => {
     if (!parsed.ok) return;
     queryDraft.value = {
-      shopName: parsed.value.shopName ?? '',
-      defendantName: parsed.value.defendantName ?? '',
-      courtName: parsed.value.courtName ?? '',
-      lawyerName: parsed.value.lawyerName ?? '',
       caseType: parsed.value.caseType ?? '',
       q: parsed.value.q ?? '',
-      customerName: parsed.value.customerName ?? '',
-      rightsHolderName: parsed.value.rightsHolderName ?? '',
-      courtCaseNo: parsed.value.courtCaseNo ?? '',
-      sortBy: parsed.value.sortBy ?? 'createdAt',
-      sortDirection: parsed.value.sortDirection ?? 'desc',
     };
   },
   { immediate: true },
@@ -371,19 +322,10 @@ function listRouteBase() {
 }
 function applyQuery() {
   const next = {
-    shopName: queryDraft.value.shopName,
-    defendantName: queryDraft.value.defendantName,
-    courtName: queryDraft.value.courtName,
-    lawyerName: queryDraft.value.lawyerName,
     ...(queryDraft.value.caseType
       ? { caseType: queryDraft.value.caseType }
       : {}),
     q: queryDraft.value.q,
-    customerName: queryDraft.value.customerName,
-    rightsHolderName: queryDraft.value.rightsHolderName,
-    courtCaseNo: queryDraft.value.courtCaseNo,
-    sortBy: queryDraft.value.sortBy,
-    sortDirection: queryDraft.value.sortDirection,
   } satisfies CaseListQuery;
   const parsed = parseCaseListQuery(next);
   if (!parsed.ok) {
@@ -394,28 +336,15 @@ function applyQuery() {
   void router.push({
     query: {
       ...listRouteBase(),
-      ...serializeCaseListQuery({
-        ...parsed.value,
-        sortBy: queryDraft.value.sortBy,
-        sortDirection: queryDraft.value.sortDirection,
-      }),
+      ...serializeCaseListQuery(parsed.value),
       page: '1',
     },
   });
 }
 function clearQuery() {
   queryDraft.value = {
-    shopName: '',
-    defendantName: '',
-    courtName: '',
-    lawyerName: '',
     caseType: '',
     q: '',
-    customerName: '',
-    rightsHolderName: '',
-    courtCaseNo: '',
-    sortBy: 'createdAt',
-    sortDirection: 'desc',
   };
   applyQuery();
 }
@@ -1176,93 +1105,23 @@ onBeforeUnmount(() => {
           <input
             v-model="queryDraft.q"
             type="search"
-            placeholder="编号、案号、客户、权利主体、被告"
+            placeholder="编号、案号、客户、权利主体、店铺、被告、法院、律师"
             data-test="case-query-keyword"
           />
         </label>
         <label>
-          <span>客户</span>
-          <input v-model="queryDraft.customerName" />
-        </label>
-        <label>
-          <span>权利主体</span>
-          <input v-model="queryDraft.rightsHolderName" />
-        </label>
-        <label>
-          <span>案号</span>
-          <input v-model="queryDraft.courtCaseNo" />
-        </label>
-        <details
-          class="case-list-more-filters"
-          data-test="case-list-more-filters"
-          :open="appliedMoreFilterCount > 0"
-        >
-          <summary>
-            更多筛选<span
-              v-if="appliedMoreFilterCount > 0"
-              data-test="case-list-more-filter-count"
-              >（已应用 {{ appliedMoreFilterCount }} 项）</span
+          <span>案件类型</span>
+          <select v-model="queryDraft.caseType" data-test="case-query-type">
+            <option value="">全部</option>
+            <option
+              v-for="value in caseListCaseTypes"
+              :key="value"
+              :value="value"
             >
-          </summary>
-          <div class="case-list-more-filters__grid">
-            <label>
-              <span>店铺名</span>
-              <input
-                v-model="queryDraft.shopName"
-                data-test="case-query-shop"
-              />
-            </label>
-            <label>
-              <span>被告</span>
-              <input
-                v-model="queryDraft.defendantName"
-                data-test="case-query-defendant"
-              />
-            </label>
-            <label>
-              <span>立案法院</span>
-              <input
-                v-model="queryDraft.courtName"
-                data-test="case-query-court"
-              />
-            </label>
-            <label>
-              <span>律师</span>
-              <input
-                v-model="queryDraft.lawyerName"
-                data-test="case-query-lawyer"
-              />
-            </label>
-            <label>
-              <span>案件类型</span>
-              <select v-model="queryDraft.caseType" data-test="case-query-type">
-                <option value="">全部</option>
-                <option
-                  v-for="value in caseListCaseTypes"
-                  :key="value"
-                  :value="value"
-                >
-                  {{ caseTypeLabels[value] }}
-                </option>
-              </select>
-            </label>
-            <label>
-              <span>排序字段</span>
-              <select v-model="queryDraft.sortBy">
-                <option value="createdAt">创建时间</option>
-                <option value="businessNo">案件编号</option>
-                <option value="rightsHolderName">权利主体</option>
-              </select>
-            </label>
-            <label>
-              <span>顺序</span>
-              <select v-model="queryDraft.sortDirection">
-                <option value="desc">降序</option>
-                <option value="asc">升序</option>
-              </select>
-            </label>
-          </div>
-        </details>
+              {{ caseTypeLabels[value] }}
+            </option>
+          </select>
+        </label>
         <div class="case-list-query-actions">
           <ElButton type="primary" native-type="submit">查询</ElButton>
           <ElButton
@@ -1777,7 +1636,7 @@ onBeforeUnmount(() => {
 
 .case-list-query {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: minmax(260px, 2fr) minmax(160px, 1fr) auto;
   align-items: end;
   gap: var(--s-3);
   margin: var(--s-4) 0;
@@ -1813,27 +1672,6 @@ onBeforeUnmount(() => {
   gap: var(--s-2);
 }
 
-.case-list-more-filters {
-  grid-column: 1 / -1;
-}
-
-.case-list-more-filters > summary {
-  cursor: pointer;
-  color: var(--color-ink-muted);
-}
-
-.case-list-more-filters__grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
-  align-items: end;
-  gap: var(--s-3);
-  margin-top: var(--s-3);
-}
-
-.case-list-query-actions {
-  grid-column: 1 / -1;
-}
-
 .case-list-head-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1846,17 +1684,13 @@ onBeforeUnmount(() => {
     grid-template-columns: repeat(2, minmax(150px, 1fr));
   }
 
-  .case-list-more-filters__grid {
-    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  .case-list-query-actions {
+    grid-column: 1 / -1;
   }
 }
 
 @media (max-width: 540px) {
   .case-list-query {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .case-list-more-filters__grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

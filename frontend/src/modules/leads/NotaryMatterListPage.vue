@@ -38,6 +38,7 @@ import { useAuthStore } from '../../stores/auth';
 import NotaryReturnArchiveBatchPanel from './NotaryReturnArchiveBatchPanel.vue';
 import NotaryBatchOpeningPanel from './NotaryBatchOpeningPanel.vue';
 import { labelLeadPlatform } from './lead-options';
+import { listLeadFilterOptions } from '../../api/leads';
 import type { CaseStage } from '../../api/cases';
 
 const stageLabels: Record<NotaryListStage, string> = {
@@ -202,6 +203,105 @@ const selectedStage = computed<NotaryListStage | undefined>(() => {
     ? (value as NotaryListStage)
     : undefined;
 });
+const customerSearch = ref('');
+const holderSearch = ref('');
+const customerOptions = ref<{ id: string; name: string }[]>([]);
+const holderOptions = ref<{ id: string; name: string }[]>([]);
+const customerOptionError = ref('');
+const holderOptionError = ref('');
+const customerDraft = ref('');
+const holderDraft = ref('');
+const shopDraft = ref('');
+let customerOptionRequest = 0;
+let holderOptionRequest = 0;
+watch(
+  () => [identity.value, selectedStage.value],
+  () => {
+    customerOptionRequest += 1;
+    holderOptionRequest += 1;
+    customerOptions.value = [];
+    holderOptions.value = [];
+    customerOptionError.value = '';
+    holderOptionError.value = '';
+    customerSearch.value = '';
+    holderSearch.value = '';
+  },
+  { flush: 'sync' },
+);
+async function searchFilterOptions(kind: 'customer' | 'rightsHolder') {
+  const generation =
+    kind === 'customer' ? ++customerOptionRequest : ++holderOptionRequest;
+  const actor = identity.value;
+  try {
+    const result = await listLeadFilterOptions(
+      kind,
+      kind === 'customer' ? customerSearch.value : holderSearch.value,
+      {},
+      {
+        context: 'NOTARY',
+        ...(selectedStage.value ? { notaryStage: selectedStage.value } : {}),
+      },
+    );
+    if (
+      actor !== identity.value ||
+      generation !==
+        (kind === 'customer' ? customerOptionRequest : holderOptionRequest)
+    )
+      return;
+    if (kind === 'customer') {
+      customerOptions.value = result.items;
+      customerOptionError.value = '';
+    } else {
+      holderOptions.value = result.items;
+      holderOptionError.value = '';
+    }
+  } catch {
+    if (
+      actor !== identity.value ||
+      generation !==
+        (kind === 'customer' ? customerOptionRequest : holderOptionRequest)
+    )
+      return;
+    if (kind === 'customer') {
+      customerOptions.value = [];
+      customerOptionError.value = '客户候选读取失败，请重试。';
+    } else {
+      holderOptions.value = [];
+      holderOptionError.value = '权利主体候选读取失败，请重试。';
+    }
+  }
+}
+watch(
+  () => [
+    route.query.customerId,
+    route.query.rightsHolderId,
+    route.query.shopName,
+  ],
+  () => {
+    customerDraft.value =
+      typeof route.query.customerId === 'string' ? route.query.customerId : '';
+    holderDraft.value =
+      typeof route.query.rightsHolderId === 'string'
+        ? route.query.rightsHolderId
+        : '';
+    shopDraft.value =
+      typeof route.query.shopName === 'string' ? route.query.shopName : '';
+  },
+  { immediate: true },
+);
+function applyFilters(clear = false) {
+  const query: Record<string, string | string[] | null | undefined> = {
+    ...route.query,
+    page: '1',
+  };
+  delete query.customerId;
+  delete query.rightsHolderId;
+  delete query.shopName;
+  if (!clear && customerDraft.value) query.customerId = customerDraft.value;
+  if (!clear && holderDraft.value) query.rightsHolderId = holderDraft.value;
+  if (!clear && shopDraft.value.trim()) query.shopName = shopDraft.value.trim();
+  void router.push({ query });
+}
 const requestedPage = computed(() => {
   const value = Array.isArray(route.query.page)
     ? route.query.page[0]
@@ -432,6 +532,9 @@ const exportScopeKey = computed(() =>
     userId: auth.session?.user.id ?? '',
     departmentId: auth.session?.department?.id ?? '',
     stage: selectedStage.value ?? null,
+    customerId: route.query.customerId ?? null,
+    rightsHolderId: route.query.rightsHolderId ?? null,
+    shopName: route.query.shopName ?? null,
     mode: exportMode.value,
     matterIds:
       exportMode.value === 'SELECTED' ? [...selectedIds.value].sort() : [],
@@ -456,9 +559,19 @@ function buildExportScope(): NotaryListExportScope | null {
     return { mode: 'SELECTED', matterIds: [...selectedIds.value] };
   }
   if (exportMode.value === 'FILTERED') {
-    return selectedStage.value
-      ? { mode: 'FILTERED', stage: selectedStage.value }
-      : { mode: 'FILTERED' };
+    return {
+      mode: 'FILTERED',
+      ...(selectedStage.value ? { stage: selectedStage.value } : {}),
+      ...(typeof route.query.customerId === 'string'
+        ? { customerId: route.query.customerId }
+        : {}),
+      ...(typeof route.query.rightsHolderId === 'string'
+        ? { rightsHolderId: route.query.rightsHolderId }
+        : {}),
+      ...(typeof route.query.shopName === 'string'
+        ? { shopName: route.query.shopName }
+        : {}),
+    };
   }
   return null;
 }
@@ -840,12 +953,31 @@ async function load(): Promise<void> {
   listRequest = controller;
   state.value = 'loading';
   try {
-    const result = await listNotaryMatters(
-      requestedPage.value,
-      20,
-      { signal: controller.signal },
-      selectedStage.value,
-    );
+    const filters = {
+      ...(typeof route.query.customerId === 'string'
+        ? { customerId: route.query.customerId }
+        : {}),
+      ...(typeof route.query.rightsHolderId === 'string'
+        ? { rightsHolderId: route.query.rightsHolderId }
+        : {}),
+      ...(typeof route.query.shopName === 'string'
+        ? { shopName: route.query.shopName }
+        : {}),
+    };
+    const result = Object.keys(filters).length
+      ? await listNotaryMatters(
+          requestedPage.value,
+          20,
+          { signal: controller.signal },
+          selectedStage.value,
+          filters,
+        )
+      : await listNotaryMatters(
+          requestedPage.value,
+          20,
+          { signal: controller.signal },
+          selectedStage.value,
+        );
     if (
       controller.signal.aborted ||
       identity.value !== scope ||
@@ -885,6 +1017,9 @@ watch(
   () => [
     route.query.page,
     route.query.stage,
+    route.query.customerId,
+    route.query.rightsHolderId,
+    route.query.shopName,
     auth.session?.user.id,
     auth.session?.department?.id,
     auth.session?.authorizationRevision,
@@ -942,6 +1077,96 @@ onBeforeUnmount(() => {
           >列设置</ElButton
         >
       </div>
+      <form
+        class="business-list-toolbar"
+        aria-label="公证事项筛选"
+        @submit.prevent="applyFilters()"
+      >
+        <label class="filter-search-select"
+          ><span>客户</span
+          ><input
+            v-model="customerSearch"
+            aria-label="搜索客户"
+            data-test="notary-customer-search"
+            @input="searchFilterOptions('customer')"
+            @focus="searchFilterOptions('customer')"
+          /><select
+            v-model="customerDraft"
+            aria-label="筛选客户"
+            data-test="notary-customer-filter"
+          >
+            <option value="">全部</option>
+            <option
+              v-if="
+                customerDraft &&
+                !customerOptions.some((item) => item.id === customerDraft)
+              "
+              :value="customerDraft"
+            >
+              已选客户
+            </option>
+            <option
+              v-for="item in customerOptions"
+              :key="item.id"
+              :value="item.id"
+            >
+              {{ item.name }}
+            </option></select
+          ><small
+            v-if="customerOptionError"
+            class="filter-option-error"
+            role="alert"
+            >{{ customerOptionError }}</small
+          ></label
+        >
+        <label class="filter-search-select"
+          ><span>权利主体</span
+          ><input
+            v-model="holderSearch"
+            aria-label="搜索权利主体"
+            data-test="notary-holder-search"
+            @input="searchFilterOptions('rightsHolder')"
+            @focus="searchFilterOptions('rightsHolder')"
+          /><select
+            v-model="holderDraft"
+            aria-label="筛选权利主体"
+            data-test="notary-holder-filter"
+          >
+            <option value="">全部</option>
+            <option
+              v-if="
+                holderDraft &&
+                !holderOptions.some((item) => item.id === holderDraft)
+              "
+              :value="holderDraft"
+            >
+              已选权利主体
+            </option>
+            <option
+              v-for="item in holderOptions"
+              :key="item.id"
+              :value="item.id"
+            >
+              {{ item.name }}
+            </option></select
+          ><small
+            v-if="holderOptionError"
+            class="filter-option-error"
+            role="alert"
+            >{{ holderOptionError }}</small
+          ></label
+        >
+        <label
+          >店铺名称<input
+            v-model="shopDraft"
+            data-test="notary-shop-filter"
+            maxlength="200"
+        /></label>
+        <ElButton native-type="submit">查询</ElButton>
+        <ElButton native-type="button" @click="applyFilters(true)"
+          >清除筛选</ElButton
+        >
+      </form>
       <section
         class="export-panel business-list-toolbar"
         aria-label="公证事项清单导出"
@@ -1424,6 +1649,25 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.filter-search-select {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(120px, 1fr);
+  gap: 4px 6px;
+  align-items: center;
+}
+.filter-search-select > span {
+  grid-column: 1 / -1;
+}
+.filter-option-error {
+  grid-column: 1 / -1;
+  color: var(--color-danger);
+}
+.filter-search-select > input,
+.filter-search-select > select {
+  min-width: 0;
+  width: 100%;
+}
+
 .demo-table.business-list-table {
   table-layout: auto;
 }

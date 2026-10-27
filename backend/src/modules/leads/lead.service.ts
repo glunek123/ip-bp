@@ -17,6 +17,7 @@ import {
   type LeadNoEvidenceBatchReceipt,
 } from '../../generated/prisma/client';
 import { isUUID } from 'class-validator';
+import { NotaryMatterStage } from '../../generated/prisma/enums';
 import {
   MaterialService,
   type MaterialTransactionClient,
@@ -368,6 +369,86 @@ export class LeadService {
     }
   }
 
+  async filterOptions(
+    actor: ActorContext,
+    kind: 'customer' | 'rightsHolder',
+    q: string,
+    view?: 'LIBRARY',
+    status?: LeadStatus,
+    context?: 'NOTARY',
+    notaryStage?: string,
+  ) {
+    if (context === 'NOTARY') {
+      if (
+        actor.clientCustomerId !== undefined ||
+        actor.notaryOfficeId !== undefined ||
+        actor.lawyerAccountId !== undefined
+      )
+        throw this.actionForbidden();
+      const account = await this.database.userAccount.findUnique({
+        where: { id: actor.userId },
+        select: { accountType: true, active: true },
+      });
+      if (account?.accountType !== 'INTERNAL' || account.active !== true)
+        throw this.actionForbidden();
+    }
+    let scope: Prisma.LeadWhereInput;
+    try {
+      scope = await this.access.buildLeadScope(actor, 'lead.read');
+    } catch (error) {
+      throw this.mapAuthorization(error);
+    }
+    const leadWhere: Prisma.LeadWhereInput = {
+      AND: [
+        scope,
+        ...(view === 'LIBRARY'
+          ? [{ status: { not: 'TRANSFERRED_TO_NOTARY' as const } }]
+          : []),
+        ...(status ? [{ status }] : []),
+        ...(context === 'NOTARY'
+          ? [
+              {
+                notaryMatters: {
+                  some: {
+                    departmentId: actor.departmentId,
+                    ...(notaryStage
+                      ? { stage: notaryStage as NotaryMatterStage }
+                      : {}),
+                  },
+                },
+              },
+            ]
+          : []),
+      ],
+    };
+    const name = q.trim()
+      ? {
+          contains: q.trim().replace(/[\\%_]/g, '\\$&'),
+          mode: 'insensitive' as const,
+        }
+      : undefined;
+    const where = {
+      departmentId: actor.departmentId,
+      leads: { some: leadWhere },
+      ...(name ? { name } : {}),
+    };
+    const rows =
+      kind === 'customer'
+        ? await this.database.customer.findMany({
+            where,
+            select: { id: true, name: true },
+            orderBy: [{ name: 'asc' }, { id: 'asc' }],
+            take: 20,
+          })
+        : await this.database.rightsHolder.findMany({
+            where,
+            select: { id: true, name: true },
+            orderBy: [{ name: 'asc' }, { id: 'asc' }],
+            take: 20,
+          });
+    return { items: rows };
+  }
+
   async list(
     actor: ActorContext,
     page: number,
@@ -375,6 +456,11 @@ export class LeadService {
     status?: LeadStatus,
     view?: 'LIBRARY',
     q?: string,
+    filters: {
+      customerId?: string;
+      rightsHolderId?: string;
+      shopName?: string;
+    } = {},
   ) {
     if (view === 'LIBRARY' && status === 'TRANSFERRED_TO_NOTARY')
       throw new BadRequestException({
@@ -398,20 +484,37 @@ export class LeadService {
           mode: 'insensitive' as const,
         }
       : undefined;
-    const visibleScope: Prisma.LeadWhereInput = match
-      ? {
-          AND: [
-            viewScope,
-            {
-              OR: [
-                { businessNo: match },
-                { shopName: match },
-                { products: { some: { title: match } } },
-              ],
-            },
-          ],
-        }
-      : viewScope;
+    const shopName = filters.shopName?.trim();
+    const visibleScope: Prisma.LeadWhereInput = {
+      AND: [
+        viewScope,
+        ...(match
+          ? [
+              {
+                OR: [
+                  { businessNo: match },
+                  { shopName: match },
+                  { products: { some: { title: match } } },
+                ],
+              },
+            ]
+          : []),
+        ...(filters.customerId ? [{ customerId: filters.customerId }] : []),
+        ...(filters.rightsHolderId
+          ? [{ rightsHolderId: filters.rightsHolderId }]
+          : []),
+        ...(shopName
+          ? [
+              {
+                shopName: {
+                  contains: shopName.replace(/[\\%_]/g, '\\$&'),
+                  mode: 'insensitive' as const,
+                },
+              },
+            ]
+          : []),
+      ],
+    };
     const itemScope =
       status === undefined ? visibleScope : { ...visibleScope, status };
     const [items, total, groups, create] = await Promise.all([

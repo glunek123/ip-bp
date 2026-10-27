@@ -844,7 +844,7 @@ onBeforeUnmount(() => {
         </p>
         <section class="demo-card demo-card--pad">
           <h2 class="form-section-title">案件信息</h2>
-          <p>权利人：{{ item.rightsHolder.name }}</p>
+          <p>权利主体：{{ item.rightsHolder.name }}</p>
           <p v-if="item.origin?.kind === 'EXTERNAL_ENTRY'">
             外部转入案件 · 阶段日期 {{ item.origin.stageReachedOn }}
           </p>

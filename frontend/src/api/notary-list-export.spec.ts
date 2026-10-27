@@ -16,6 +16,39 @@ import {
 describe('notary list export API', () => {
   beforeEach(() => vi.resetAllMocks());
 
+  it('uses identical combined filters for preview and export', async () => {
+    http.requestJson.mockResolvedValue({ count: 1, maxRows: 1000 });
+    http.postBlob.mockResolvedValue({
+      blob: new Blob(['csv']),
+      filename: 'list.csv',
+      mimeType: 'text/csv',
+    });
+    const scope = {
+      mode: 'FILTERED' as const,
+      stage: 'WAITING_RETURN' as const,
+      customerId: 'customer-1',
+      rightsHolderId: 'holder-1',
+      shopName: '店铺',
+    };
+    await previewNotaryListExport(scope);
+    await exportNotaryList(scope, 1);
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/notary-matters/exports/preview',
+      {
+        method: 'POST',
+        body: scope,
+      },
+    );
+    expect(http.postBlob).toHaveBeenCalledWith(
+      '/notary-matters/exports',
+      {
+        ...scope,
+        expectedCount: 1,
+      },
+      {},
+    );
+  });
+
   it('previews only the explicitly selected IDs', async () => {
     http.requestJson.mockResolvedValue({ count: 2, maxRows: 1000 });
     await expect(
