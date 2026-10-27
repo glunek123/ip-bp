@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-27T14:17:49.119Z",
+  "recordedAt": "2026-10-27T14:23:30.814Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1524,7 +1524,9 @@
     "tests/support/batch2-proxy-calendar-fixture.mjs": "b46dad427f8d3e9aff7e93057109b900e5d0670b255c097097c361df1d96c5cb",
     "tests/support/batch2-proxy-calendar-numbering.mjs": "05891c48e5aad8260e0eaab8c9789b6644815880717cfcaefb039afb953b35d0",
     "tests/support/batch2-proxy-calendar-numbering.spec.mjs": "0abb84cc074b5bb97d0b127e7c31aa5c323943f95ad31c8d2722ffe95110e59b",
-    "tests/support/batch2-proxy-calendar-pre-app.mjs": "5494da29951ce7e4bc86aa1e887206520085194951e50a5fb397b76249005280",
+    "tests/support/batch2-proxy-calendar-pre-app-contract.mjs": "415aa8cdfa8e01cebb0dd4772e9b6a547dafa961a2d80474286813137ade0ced",
+    "tests/support/batch2-proxy-calendar-pre-app-contract.test.mjs": "9243b44efc346a0eae9627230c97beedd3a461956bc1652dd41214e349db50c2",
+    "tests/support/batch2-proxy-calendar-pre-app.mjs": "fb3e44973b99c71989bddeb8bb7207fcc2f0592bb2bce881ee6685bd6039ae74",
     "tests/support/batch2-refund-lifecycle-fixture.mjs": "4cc271242828181eedc24474a7327f72ac8311cca285080c5a99d0b6f339019e",
     "tests/support/batch2-refund-lifecycle-run.md": "a4b34dea3a4a61ee759c896e3f0b253f6ba3a5052abcf589cb2869195de55e2a",
     "tests/support/batch2-synthetic-pdf.mjs": "d46b40545b5803b2878d3f999ca812f08eace1ae32861eada79dc3901370322b",
