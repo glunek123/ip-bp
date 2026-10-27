@@ -4,6 +4,7 @@ import {
   assertBatch2Admission,
   verifyBatch2EmptyMigrationAndEpoch,
 } from './batch2-proxy-calendar-acceptance.mjs';
+import { assertBatch2ConsolidationProbe } from './batch2-proxy-calendar-pre-app-contract.mjs';
 
 assertBatch2Admission();
 const containerId = process.env.DEV_COR_TEST_DATABASE_CONTAINER_ID;
@@ -52,17 +53,5 @@ if (
   proxyCalendar.legacyExternalPreserved !== true
 )
   throw new Error('186/187 result differs from its existing spec assertion');
-same(
-  await verifyBatch2CaseConsolidationMigration(),
-  {
-    before: 0,
-    preserved: 2,
-    tables: 4,
-    incompleteRoot: '23514',
-    childProgress: '23514',
-    immutableMember: '55000',
-    mainProgress: null,
-  },
-  '188 consolidation',
-);
+assertBatch2ConsolidationProbe(await verifyBatch2CaseConsolidationMigration());
 console.log('185, 186/187 and 188 pre-app owned-schema probes passed');
