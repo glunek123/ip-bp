@@ -141,7 +141,7 @@ onBeforeUnmount(() => request?.abort());
               <tr>
                 <th>线索编号</th>
                 <th>状态</th>
-                <th>权利人</th>
+                <th>权利主体</th>
                 <th>店铺</th>
                 <th class="num">商品数</th>
                 <th>推送时间</th>

@@ -443,7 +443,7 @@ export class CasePageQueryDto implements CaseListTextQuery {
   stageGroup?: 'COMPLAINT_PREPARATION' | 'EXECUTION_PREPARATION';
   @ApiPropertyOptional({
     maxLength: 200,
-    description: '编号、案号、客户、权利主体、被告',
+    description: '编号、案号、客户、权利主体、店铺、被告、法院、律师',
   })
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>

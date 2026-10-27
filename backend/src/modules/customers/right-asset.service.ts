@@ -253,6 +253,12 @@ export class RightAssetService {
         code: 'CUSTOMER_ACTION_FORBIDDEN',
         message: '无权执行此客户操作',
       });
+    if (
+      action === 'CREATE' &&
+      typeof (input as CreateRightAssetDto).ownerText === 'string' &&
+      (input as CreateRightAssetDto).ownerText?.trim()
+    )
+      throw this.validation('新建权利资产请只关联权利主体');
     const attachmentCommand =
       action === 'WITHDRAW'
         ? { mode: 'PRESERVE' as const }
@@ -381,7 +387,10 @@ export class RightAssetService {
         const fields =
           action === 'WITHDRAW'
             ? this.fieldsFromVersion(current?.currentVersion)
-            : (normalized as { fields: Fields }).fields;
+            : {
+                ...(normalized as { fields: Fields }).fields,
+                ownerText: current?.currentVersion?.ownerText ?? null,
+              };
         const holder = await tx.customerRightsHolderLink.findFirst({
           where: {
             customerId,
@@ -648,7 +657,7 @@ export class RightAssetService {
       number: this.optional(input.number, 200, '资产号码'),
       category: this.required(input.category, 200, '资产类别'),
       holderId: input.holderId,
-      ownerText: this.optional(input.ownerText, 200, '权利人文字'),
+      ownerText: null,
       trademarkClass: this.optional(input.trademarkClass, 100, '商标分类'),
       validFrom,
       validTo,

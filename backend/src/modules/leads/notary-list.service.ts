@@ -23,6 +23,11 @@ export class NotaryListService {
     page: number,
     pageSize: number,
     stage?: NotaryListStage,
+    filters: {
+      customerId?: string;
+      rightsHolderId?: string;
+      shopName?: string;
+    } = {},
   ) {
     if (
       actor.clientCustomerId !== undefined ||
@@ -44,9 +49,29 @@ export class NotaryListService {
       if (error instanceof ForbiddenException) throw this.forbidden();
       throw error;
     }
+    const shopName = filters.shopName?.trim();
     const baseWhere: Prisma.NotaryMatterWhereInput = {
       departmentId: actor.departmentId,
       sourceLead: leadScope,
+      ...(filters.customerId ? { customerId: filters.customerId } : {}),
+      ...(filters.rightsHolderId
+        ? { rightsHolderId: filters.rightsHolderId }
+        : {}),
+      ...(shopName
+        ? {
+            sourceLead: {
+              AND: [
+                leadScope,
+                {
+                  shopName: {
+                    contains: shopName.replace(/[\\%_]/g, '\\$&'),
+                    mode: 'insensitive',
+                  },
+                },
+              ],
+            },
+          }
+        : {}),
     };
     const itemWhere: Prisma.NotaryMatterWhereInput =
       stage === undefined ? baseWhere : { ...baseWhere, stage };

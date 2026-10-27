@@ -1186,12 +1186,21 @@ export async function listNotaryMatters(
   pageSize = 20,
   options: RequestOptions = {},
   stage?: NotaryListStage,
+  filters: {
+    customerId?: string;
+    rightsHolderId?: string;
+    shopName?: string;
+  } = {},
 ): Promise<NotaryMatterList> {
   const query = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
   });
   if (stage !== undefined) query.set('stage', stage);
+  if (filters.customerId) query.set('customerId', filters.customerId);
+  if (filters.rightsHolderId)
+    query.set('rightsHolderId', filters.rightsHolderId);
+  if (filters.shopName?.trim()) query.set('shopName', filters.shopName.trim());
   const data = await getJson(`/notary-matters?${query.toString()}`, options);
   const counts = isRecord(data) ? data.counts : undefined;
   if (

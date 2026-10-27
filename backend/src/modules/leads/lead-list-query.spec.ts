@@ -10,6 +10,64 @@ const pipe = new ValidationPipe({
 });
 
 describe('Lead search query contract', () => {
+  it('combines customer, subject, shop and keyword before pagination and counts', async () => {
+    const repo = {
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+      groupBy: jest.fn().mockResolvedValue([]),
+    };
+    const scope = { departmentId: 'department', responsibleUserId: 'user' };
+    const service = new LeadService(
+      { lead: repo } as never,
+      {
+        buildLeadScope: jest.fn().mockResolvedValue(scope),
+        canAuthorizeNewLead: jest.fn().mockResolvedValue(false),
+      } as never,
+      {} as never,
+    );
+    const actor = {
+      userId: 'user',
+      departmentId: 'department',
+      authorizationRevision: 1,
+    };
+    await service.list(actor, 2, 20, 'WAITING_PUSH', 'LIBRARY', '号', {
+      customerId: 'customer',
+      rightsHolderId: 'holder',
+      shopName: ' 店% ',
+    });
+    const base = {
+      AND: [
+        { ...scope, status: { not: 'TRANSFERRED_TO_NOTARY' } },
+        {
+          OR: [
+            { businessNo: { contains: '号', mode: 'insensitive' } },
+            { shopName: { contains: '号', mode: 'insensitive' } },
+            {
+              products: {
+                some: { title: { contains: '号', mode: 'insensitive' } },
+              },
+            },
+          ],
+        },
+        { customerId: 'customer' },
+        { rightsHolderId: 'holder' },
+        { shopName: { contains: '店\\%', mode: 'insensitive' } },
+      ],
+    };
+    expect(repo.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { ...base, status: 'WAITING_PUSH' },
+        skip: 20,
+        take: 20,
+      }),
+    );
+    expect(repo.count).toHaveBeenCalledWith({
+      where: { ...base, status: 'WAITING_PUSH' },
+    });
+    expect(repo.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: base }),
+    );
+  });
   it('passes validated search through the real list controller', async () => {
     const query = await pipe.transform(
       {

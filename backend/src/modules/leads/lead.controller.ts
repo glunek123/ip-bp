@@ -27,6 +27,7 @@ import {
   DecideLeadEvidenceDto,
   CreateLeadDto,
   LeadListQueryDto,
+  LeadFilterOptionsQueryDto,
   PushLeadDto,
   UpdateLeadDto,
   UpdateLeadProductScreenshotsDto,
@@ -49,10 +50,38 @@ export class LeadController {
   @Get('form-context') formContext(@CurrentActor() actor: ActorContext) {
     return this.leads.formContext(actor);
   }
+  @Get('filter-options') filterOptions(
+    @CurrentActor() actor: ActorContext,
+    @Query() query: LeadFilterOptionsQueryDto,
+  ) {
+    return this.leads.filterOptions(
+      actor,
+      query.kind,
+      query.q,
+      query.view,
+      query.status,
+      query.context,
+      query.notaryStage,
+    );
+  }
   @Get() list(
     @CurrentActor() actor: ActorContext,
     @Query() query: LeadListQueryDto,
   ) {
+    const filters = {
+      customerId: query.customerId,
+      rightsHolderId: query.rightsHolderId,
+      shopName: query.shopName,
+    };
+    if (Object.values(filters).every((value) => value === undefined))
+      return this.leads.list(
+        actor,
+        query.page,
+        query.pageSize,
+        query.status,
+        query.view,
+        query.q,
+      );
     return this.leads.list(
       actor,
       query.page,
@@ -60,6 +89,7 @@ export class LeadController {
       query.status,
       query.view,
       query.q,
+      filters,
     );
   }
   @Get(':id/edit-context') editContext(

@@ -201,7 +201,75 @@ export class DecideLeadEvidenceDto {
   @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
 }
 
+export class LeadFilterOptionsQueryDto {
+  @ApiProperty({ enum: ['customer', 'rightsHolder'] })
+  @IsIn(['customer', 'rightsHolder'])
+  kind!: 'customer' | 'rightsHolder';
+
+  @ApiPropertyOptional({ maxLength: 200 })
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  q = '';
+
+  @ApiPropertyOptional({ enum: ['LIBRARY'] })
+  @IsOptional()
+  @IsIn(['LIBRARY'])
+  view?: 'LIBRARY';
+
+  @ApiPropertyOptional({ enum: ['NOTARY'] })
+  @IsOptional()
+  @IsIn(['NOTARY'])
+  context?: 'NOTARY';
+
+  @ApiPropertyOptional({ enum: LEAD_STATUSES })
+  @IsOptional()
+  @IsIn(LEAD_STATUSES)
+  status?: LeadStatus;
+
+  @ApiPropertyOptional({
+    enum: [
+      'PENDING_EVIDENCE',
+      'WAITING_UNBOX',
+      'UNBOX_REVIEW',
+      'ISSUANCE_DECISION',
+      'WAITING_CERTIFICATE',
+      'WAITING_RETURN',
+      'ARCHIVED',
+    ],
+  })
+  @IsOptional()
+  @IsIn([
+    'PENDING_EVIDENCE',
+    'WAITING_UNBOX',
+    'UNBOX_REVIEW',
+    'ISSUANCE_DECISION',
+    'WAITING_CERTIFICATE',
+    'WAITING_RETURN',
+    'ARCHIVED',
+  ])
+  notaryStage?: string;
+}
+
 export class LeadListQueryDto {
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID('4')
+  customerId?: string;
+
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID('4')
+  rightsHolderId?: string;
+
+  @ApiPropertyOptional({ maxLength: 200 })
+  @Transform(trim)
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MaxLength(200)
+  shopName?: string;
+
   @ApiPropertyOptional({ maxLength: 200 })
   @Transform(trim)
   @ValidateIf((_object, value) => value !== undefined)

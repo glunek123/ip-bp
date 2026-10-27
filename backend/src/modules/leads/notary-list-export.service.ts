@@ -164,6 +164,15 @@ export class NotaryListExportService {
             : {
                 mode: scope.mode,
                 ...(scope.stage === undefined ? {} : { stage: scope.stage }),
+                ...(scope.customerId === undefined
+                  ? {}
+                  : { customerId: scope.customerId }),
+                ...(scope.rightsHolderId === undefined
+                  ? {}
+                  : { rightsHolderId: scope.rightsHolderId }),
+                ...(scope.shopName?.trim()
+                  ? { shopName: scope.shopName.trim() }
+                  : {}),
                 actualIds: rows.map((row) => row.id),
                 count: rows.length,
               };
@@ -229,6 +238,28 @@ export class NotaryListExportService {
     const where: Prisma.NotaryMatterWhereInput = {
       departmentId: actor.departmentId,
       AND: [{ sourceLead: readScope }, { sourceLead: exportScope }],
+      ...(scope.mode === 'FILTERED' && scope.customerId
+        ? { customerId: scope.customerId }
+        : {}),
+      ...(scope.mode === 'FILTERED' && scope.rightsHolderId
+        ? { rightsHolderId: scope.rightsHolderId }
+        : {}),
+      ...(scope.mode === 'FILTERED' && scope.shopName?.trim()
+        ? {
+            sourceLead: {
+              AND: [
+                readScope,
+                exportScope,
+                {
+                  shopName: {
+                    contains: scope.shopName.trim().replace(/[\\%_]/g, '\\$&'),
+                    mode: 'insensitive',
+                  },
+                },
+              ],
+            },
+          }
+        : {}),
       ...(scope.mode === 'SELECTED' ? { id: { in: scope.matterIds } } : {}),
       ...(scope.mode === 'FILTERED' && scope.stage !== undefined
         ? { stage: scope.stage }

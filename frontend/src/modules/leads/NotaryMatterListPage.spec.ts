@@ -96,6 +96,8 @@ const api = vi.hoisted(() => ({
   getNotaryMatter: vi.fn(),
   decideNotaryIssuance: vi.fn(),
 }));
+const filterApi = vi.hoisted(() => ({ listLeadFilterOptions: vi.fn() }));
+vi.mock('../../api/leads', () => filterApi);
 const batchApi = vi.hoisted(() => ({ archive: vi.fn() }));
 const workflow = vi.hoisted(() => ({ notify: vi.fn() }));
 const exportApi = vi.hoisted(() => ({ preview: vi.fn(), download: vi.fn() }));
@@ -205,6 +207,75 @@ async function mountPage(path: string) {
 afterEach(() => vi.resetAllMocks());
 
 describe('NotaryMatterListPage', () => {
+  it('combines searched customer, subject and shop with the current stage and export scope', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    filterApi.listLeadFilterOptions.mockImplementation(
+      async (kind: string) => ({
+        items:
+          kind === 'customer'
+            ? [{ id: 'customer-1', name: '客户甲' }]
+            : [{ id: 'holder-1', name: '主体甲' }],
+      }),
+    );
+    exportApi.preview.mockResolvedValue({ count: 1, maxRows: 1000 });
+    const { wrapper, router } = await mountPage(
+      '/notary-matters?stage=PENDING_EVIDENCE',
+    );
+    await wrapper.get('[data-test="notary-customer-search"]').setValue('客户');
+    await flushPromises();
+    await wrapper
+      .get('[data-test="notary-customer-filter"]')
+      .setValue('customer-1');
+    await wrapper.get('[data-test="notary-holder-search"]').setValue('主体');
+    await flushPromises();
+    await wrapper
+      .get('[data-test="notary-holder-filter"]')
+      .setValue('holder-1');
+    await wrapper.get('[data-test="notary-shop-filter"]').setValue('店铺');
+    await wrapper.get('form[aria-label="公证事项筛选"]').trigger('submit');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toMatchObject({
+      stage: 'PENDING_EVIDENCE',
+      customerId: 'customer-1',
+      rightsHolderId: 'holder-1',
+      shopName: '店铺',
+      page: '1',
+    });
+    expect(api.listNotaryMatters).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.anything(),
+      'PENDING_EVIDENCE',
+      {
+        customerId: 'customer-1',
+        rightsHolderId: 'holder-1',
+        shopName: '店铺',
+      },
+    );
+    expect(filterApi.listLeadFilterOptions).toHaveBeenCalledWith(
+      'customer',
+      '客户',
+      {},
+      {
+        context: 'NOTARY',
+        notaryStage: 'PENDING_EVIDENCE',
+      },
+    );
+    await wrapper.get('[data-test="export-open"]').trigger('click');
+    await wrapper.get('[data-test="export-mode-filtered"]').setValue(true);
+    await wrapper.get('[data-test="export-preview"]').trigger('click');
+    await flushPromises();
+    expect(exportApi.preview).toHaveBeenCalledWith(
+      {
+        mode: 'FILTERED',
+        stage: 'PENDING_EVIDENCE',
+        customerId: 'customer-1',
+        rightsHolderId: 'holder-1',
+        shopName: '店铺',
+      },
+      expect.anything(),
+    );
+  });
   it('clicks a real list action, chooses a destination and refreshes the same page/query once', async () => {
     const item = {
       ...result.items[0],
@@ -557,7 +628,7 @@ describe('NotaryMatterListPage', () => {
 
     await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
     await wrapper.get('[data-test="reason-matter-1"]').setValue('完成退货处理');
-    await wrapper.get('form').trigger('submit');
+    await wrapper.get('.return-archive-batch form').trigger('submit');
     await flushPromises();
 
     expect(batchApi.archive).toHaveBeenCalledTimes(1);
@@ -681,7 +752,7 @@ describe('NotaryMatterListPage', () => {
       await flushPromises();
       await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
       await wrapper.get('[data-test="reason-matter-1"]').setValue('原请求原因');
-      await wrapper.get('form').trigger('submit');
+      await wrapper.get('.return-archive-batch form').trigger('submit');
       await flushPromises();
       const originalCall = batchApi.archive.mock.calls[0];
       expect(
@@ -760,7 +831,7 @@ describe('NotaryMatterListPage', () => {
     await flushPromises();
     await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
     await wrapper.get('[data-test="reason-matter-1"]').setValue('原账号事实');
-    await wrapper.get('form').trigger('submit');
+    await wrapper.get('.return-archive-batch form').trigger('submit');
     const originalCall = batchApi.archive.mock.calls[0];
     auth.session = {
       ...auth.session!,
@@ -776,7 +847,7 @@ describe('NotaryMatterListPage', () => {
     await flushPromises();
     await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
     await wrapper.get('[data-test="reason-matter-1"]').setValue('新账号事实');
-    await wrapper.get('form').trigger('submit');
+    await wrapper.get('.return-archive-batch form').trigger('submit');
     await flushPromises();
     expect(batchApi.archive.mock.calls[1]).not.toEqual(originalCall);
     expect(wrapper.text()).not.toContain('原账号事实');
@@ -814,7 +885,7 @@ describe('NotaryMatterListPage', () => {
     await flushPromises();
     await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
     await wrapper.get('[data-test="reason-matter-1"]').setValue('原请求原因');
-    await wrapper.get('form').trigger('submit');
+    await wrapper.get('.return-archive-batch form').trigger('submit');
     await flushPromises();
     await wrapper.get('.return-archive-batch header button').trigger('click');
     await wrapper.get('[data-test="batch-resume"]').trigger('click');

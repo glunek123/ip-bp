@@ -309,7 +309,7 @@ describe('case list CSV export', () => {
           },
           AND: expect.any(Array),
         }),
-        orderBy: [{ rightsHolder: { name: 'asc' } }, { id: 'asc' }],
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
         take: 1001,
       }),
     );
@@ -326,8 +326,8 @@ describe('case list CSV export', () => {
           scope: 'filter',
           filter: {
             view: 'mine',
-            sortBy: 'rightsHolderName',
-            sortDirection: 'asc',
+            sortBy: 'createdAt',
+            sortDirection: 'desc',
             stageGroup: 'COMPLAINT_PREPARATION',
             q: '编号',
             rightsHolderName: '权利主体',

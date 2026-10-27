@@ -346,7 +346,7 @@ function normalizedBatchFields(row: BatchRow): RightAssetFields {
     name: row.fields.name.trim(),
     category: row.fields.category.trim(),
     number: row.fields.number?.trim() || null,
-    ownerText: row.fields.ownerText?.trim() || null,
+    ownerText: null,
     trademarkClass: row.fields.trademarkClass?.trim() || null,
     validFrom: row.fields.validFrom || null,
     validTo:
@@ -635,12 +635,6 @@ const numberText = computed({
     form.value.number = value;
   },
 });
-const ownerText = computed({
-  get: () => form.value.ownerText ?? '',
-  set: (value: string) => {
-    form.value.ownerText = value;
-  },
-});
 const trademarkClass = computed({
   get: () => form.value.trademarkClass ?? '',
   set: (value: string) => {
@@ -731,7 +725,7 @@ const changedFacts = computed(() => {
     number: '号码',
     category: '类别',
     holderId: '权利主体',
-    ownerText: '权利人文字',
+    ownerText: '历史登记文字',
     trademarkClass: '商标分类',
     validFrom: '起始日期',
     validTo: '截止日期',
@@ -1164,7 +1158,7 @@ function normalizedForm(): RightAssetFields {
     name: form.value.name.trim(),
     category: form.value.category.trim(),
     number: form.value.number?.trim() || null,
-    ownerText: form.value.ownerText?.trim() || null,
+    ownerText: mode.value === 'create' ? null : form.value.ownerText,
     trademarkClass: form.value.trademarkClass?.trim() || null,
     validFrom: form.value.validFrom || null,
     validTo:
@@ -1554,9 +1548,9 @@ onBeforeUnmount(() => {
             }}
           </dd>
         </div>
-        <div>
-          <dt>登记权利人文字</dt>
-          <dd>{{ detail.fields.ownerText || '未填写' }}</dd>
+        <div v-if="detail.fields.ownerText">
+          <dt>历史登记文字</dt>
+          <dd>{{ detail.fields.ownerText }}</dd>
         </div>
         <div>
           <dt>商标分类</dt>
@@ -1720,10 +1714,6 @@ onBeforeUnmount(() => {
             </option>
           </select></label
         >
-        <label
-          >登记权利人文字
-          <input v-model="ownerText" maxlength="200" placeholder="未确认可留空"
-        /></label>
         <label
           >商标分类
           <input
@@ -1926,11 +1916,6 @@ onBeforeUnmount(() => {
           <label
             >真实资产号码（可留空）<input
               v-model="row.fields.number"
-              maxlength="200"
-          /></label>
-          <label
-            >登记权利人文字（可留空）<input
-              v-model="row.fields.ownerText"
               maxlength="200"
           /></label>
           <label

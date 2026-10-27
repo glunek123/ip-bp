@@ -86,6 +86,35 @@ function fixture() {
 }
 
 describe('NotaryListService', () => {
+  it('uses the same scoped combination for rows, total and stage counts', async () => {
+    const { service, repo, scope } = fixture();
+    await service.list(actor, 2, 20, 'PENDING_EVIDENCE', {
+      customerId: 'customer-1',
+      rightsHolderId: 'holder-1',
+      shopName: ' 店% ',
+    });
+    const baseWhere = {
+      departmentId: actor.departmentId,
+      customerId: 'customer-1',
+      rightsHolderId: 'holder-1',
+      sourceLead: {
+        AND: [scope, { shopName: { contains: '店\\%', mode: 'insensitive' } }],
+      },
+    };
+    expect(repo.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { ...baseWhere, stage: 'PENDING_EVIDENCE' },
+        skip: 20,
+        take: 20,
+      }),
+    );
+    expect(repo.count).toHaveBeenCalledWith({
+      where: { ...baseWhere, stage: 'PENDING_EVIDENCE' },
+    });
+    expect(repo.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: baseWhere }),
+    );
+  });
   it('uses the latest effective evidence date without changing its fee summary', async () => {
     const { service, repo, matter } = fixture();
     repo.findMany.mockResolvedValue([

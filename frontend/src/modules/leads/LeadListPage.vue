@@ -8,6 +8,7 @@ import {
   importLeadCsvBatch,
   listLeads,
   pushLead,
+  listLeadFilterOptions,
   type Lead,
   type LeadBusinessResult,
   type LeadFormContext,
@@ -802,6 +803,74 @@ const totalPages = computed(() =>
   Math.max(1, Math.ceil(total.value / pageSize.value)),
 );
 const queryDraft = ref('');
+const customerSearch = ref('');
+const holderSearch = ref('');
+const customerOptions = ref<{ id: string; name: string }[]>([]);
+const holderOptions = ref<{ id: string; name: string }[]>([]);
+const customerOptionError = ref('');
+const holderOptionError = ref('');
+const customerDraft = ref('');
+const holderDraft = ref('');
+const shopDraft = ref('');
+let customerOptionRequest = 0;
+let holderOptionRequest = 0;
+watch(
+  () => [identity.value, selectedStatus.value],
+  () => {
+    customerOptionRequest += 1;
+    holderOptionRequest += 1;
+    customerOptions.value = [];
+    holderOptions.value = [];
+    customerOptionError.value = '';
+    holderOptionError.value = '';
+    customerSearch.value = '';
+    holderSearch.value = '';
+  },
+  { flush: 'sync' },
+);
+async function searchFilterOptions(kind: 'customer' | 'rightsHolder') {
+  const generation =
+    kind === 'customer' ? ++customerOptionRequest : ++holderOptionRequest;
+  const scope = identity.value;
+  try {
+    const result = await listLeadFilterOptions(
+      kind,
+      kind === 'customer' ? customerSearch.value : holderSearch.value,
+      {},
+      {
+        view: 'LIBRARY',
+        ...(selectedStatus.value ? { status: selectedStatus.value } : {}),
+      },
+    );
+    if (
+      generation !==
+        (kind === 'customer' ? customerOptionRequest : holderOptionRequest) ||
+      scope !== identity.value
+    )
+      return;
+    if (kind === 'customer') {
+      customerOptions.value = result.items;
+      customerOptionError.value = '';
+    } else {
+      holderOptions.value = result.items;
+      holderOptionError.value = '';
+    }
+  } catch {
+    if (
+      generation !==
+        (kind === 'customer' ? customerOptionRequest : holderOptionRequest) ||
+      scope !== identity.value
+    )
+      return;
+    if (kind === 'customer') {
+      customerOptions.value = [];
+      customerOptionError.value = '客户候选读取失败，请重试。';
+    } else {
+      holderOptions.value = [];
+      holderOptionError.value = '权利主体候选读取失败，请重试。';
+    }
+  }
+}
 const queryFormError = ref('');
 const queryError = computed(() => {
   const q = route.query.q;
@@ -829,9 +898,22 @@ const queryBlocked = computed(() =>
   ),
 );
 watch(
-  () => route.query.q,
+  () => [
+    route.query.q,
+    route.query.customerId,
+    route.query.rightsHolderId,
+    route.query.shopName,
+  ],
   () => {
     queryDraft.value = typeof route.query.q === 'string' ? route.query.q : '';
+    customerDraft.value =
+      typeof route.query.customerId === 'string' ? route.query.customerId : '';
+    holderDraft.value =
+      typeof route.query.rightsHolderId === 'string'
+        ? route.query.rightsHolderId
+        : '';
+    shopDraft.value =
+      typeof route.query.shopName === 'string' ? route.query.shopName : '';
     queryFormError.value = '';
   },
   { immediate: true, flush: 'sync' },
@@ -847,7 +929,13 @@ async function applyQuery(clear = false): Promise<void> {
   const query = { ...route.query };
   query.page = '1';
   delete query.q;
+  delete query.customerId;
+  delete query.rightsHolderId;
+  delete query.shopName;
   if (q) query.q = q;
+  if (!clear && customerDraft.value) query.customerId = customerDraft.value;
+  if (!clear && holderDraft.value) query.rightsHolderId = holderDraft.value;
+  if (!clear && shopDraft.value.trim()) query.shopName = shopDraft.value.trim();
   await router.push({ query });
 }
 
@@ -877,7 +965,22 @@ async function load(): Promise<void> {
       'LIBRARY',
     ] as const;
     const q = typeof route.query.q === 'string' ? route.query.q.trim() : '';
-    const result = await (q ? listLeads(...args, q) : listLeads(...args));
+    const filters = {
+      ...(typeof route.query.customerId === 'string'
+        ? { customerId: route.query.customerId }
+        : {}),
+      ...(typeof route.query.rightsHolderId === 'string'
+        ? { rightsHolderId: route.query.rightsHolderId }
+        : {}),
+      ...(typeof route.query.shopName === 'string'
+        ? { shopName: route.query.shopName }
+        : {}),
+    };
+    const result = Object.keys(filters).length
+      ? await listLeads(...args, q, filters)
+      : q
+        ? await listLeads(...args, q)
+        : await listLeads(...args);
     if (
       controller.signal.aborted ||
       scope !== identity.value ||
@@ -932,6 +1035,9 @@ watch(
     route.query.page,
     route.query.status,
     route.query.q,
+    route.query.customerId,
+    route.query.rightsHolderId,
+    route.query.shopName,
     auth.session,
     identity.value,
     authorizationGeneration.value,
@@ -1048,6 +1154,86 @@ onBeforeUnmount(() => {
             placeholder="编号／店铺／商品名称"
             :disabled="queryBlocked"
         /></label>
+        <label class="filter-search-select"
+          ><span>客户</span
+          ><input
+            v-model="customerSearch"
+            aria-label="搜索客户"
+            data-test="lead-customer-search"
+            @input="searchFilterOptions('customer')"
+            @focus="searchFilterOptions('customer')"
+          /><select
+            v-model="customerDraft"
+            aria-label="筛选客户"
+            data-test="lead-customer-filter"
+          >
+            <option value="">全部</option>
+            <option
+              v-if="
+                customerDraft &&
+                !customerOptions.some((item) => item.id === customerDraft)
+              "
+              :value="customerDraft"
+            >
+              已选客户
+            </option>
+            <option
+              v-for="item in customerOptions"
+              :key="item.id"
+              :value="item.id"
+            >
+              {{ item.name }}
+            </option></select
+          ><small
+            v-if="customerOptionError"
+            class="filter-option-error"
+            role="alert"
+            >{{ customerOptionError }}</small
+          ></label
+        >
+        <label class="filter-search-select"
+          ><span>权利主体</span
+          ><input
+            v-model="holderSearch"
+            aria-label="搜索权利主体"
+            data-test="lead-holder-search"
+            @input="searchFilterOptions('rightsHolder')"
+            @focus="searchFilterOptions('rightsHolder')"
+          /><select
+            v-model="holderDraft"
+            aria-label="筛选权利主体"
+            data-test="lead-holder-filter"
+          >
+            <option value="">全部</option>
+            <option
+              v-if="
+                holderDraft &&
+                !holderOptions.some((item) => item.id === holderDraft)
+              "
+              :value="holderDraft"
+            >
+              已选权利主体
+            </option>
+            <option
+              v-for="item in holderOptions"
+              :key="item.id"
+              :value="item.id"
+            >
+              {{ item.name }}
+            </option></select
+          ><small
+            v-if="holderOptionError"
+            class="filter-option-error"
+            role="alert"
+            >{{ holderOptionError }}</small
+          ></label
+        >
+        <label
+          >店铺名称<input
+            v-model="shopDraft"
+            data-test="lead-shop-filter"
+            maxlength="200"
+        /></label>
         <div class="lead-query-actions">
           <ElButton
             native-type="submit"
@@ -1060,7 +1246,7 @@ onBeforeUnmount(() => {
             data-test="lead-clear"
             :disabled="queryBlocked"
             @click="applyQuery(true)"
-            >清除关键词</ElButton
+            >清除筛选</ElButton
           >
         </div>
       </form>
@@ -1507,6 +1693,25 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.filter-search-select {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) minmax(120px, 1fr);
+  gap: 4px 6px;
+  align-items: center;
+}
+.filter-search-select > span {
+  grid-column: 1 / -1;
+}
+.filter-option-error {
+  grid-column: 1 / -1;
+  color: var(--color-danger);
+}
+.filter-search-select > input,
+.filter-search-select > select {
+  min-width: 0;
+  width: 100%;
+}
+
 .lead-list-table {
   min-width: 1630px;
   table-layout: fixed;

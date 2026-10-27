@@ -305,8 +305,8 @@ export class CaseListExportService {
       throw this.invalid();
     const filter: ExportFilter = {
       view: input.view ?? 'department',
-      sortBy: input.sortBy ?? 'createdAt',
-      sortDirection: input.sortDirection ?? 'desc',
+      sortBy: 'createdAt',
+      sortDirection: 'desc',
       ...(input.stage === undefined ? {} : { stage: input.stage }),
       ...(input.caseType === undefined ? {} : { caseType: input.caseType }),
       ...(input.stageGroup === undefined

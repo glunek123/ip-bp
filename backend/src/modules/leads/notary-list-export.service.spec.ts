@@ -77,6 +77,32 @@ function fixture() {
 }
 
 describe('NotaryListExportService', () => {
+  it('applies filtered customer, rights holder and literal shop conditions inside the export snapshot', async () => {
+    const { service, tx } = fixture();
+    await service.preview(actor, {
+      mode: 'FILTERED',
+      stage: 'PENDING_EVIDENCE',
+      customerId: '11111111-1111-4111-8111-111111111111',
+      rightsHolderId: '22222222-2222-4222-8222-222222222222',
+      shopName: ' 店% ',
+    });
+    expect(tx.notaryMatter.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          customerId: '11111111-1111-4111-8111-111111111111',
+          rightsHolderId: '22222222-2222-4222-8222-222222222222',
+          stage: 'PENDING_EVIDENCE',
+          sourceLead: {
+            AND: [
+              readScope,
+              exportScope,
+              { shopName: { contains: '店\\%', mode: 'insensitive' } },
+            ],
+          },
+        }),
+      }),
+    );
+  });
   it('loads unique same-department holders once and maps repeated and different holders in row order', async () => {
     const { service, tx } = fixture();
     tx.notaryMatter.findMany.mockResolvedValueOnce([

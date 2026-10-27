@@ -129,7 +129,7 @@ describe('case list query builders', () => {
     expect(filingCourt.findMany).toHaveBeenCalledWith({
       where: {
         departmentId: 'department',
-        name: { contains: '法\\%院', mode: 'insensitive' },
+        OR: [{ name: { contains: '法\\%院', mode: 'insensitive' } }],
       },
       select: { id: true },
     });
@@ -224,63 +224,50 @@ describe('case list query builders', () => {
       });
     },
   );
-  it('escapes LIKE metacharacters literally and intersects named filters', () => {
-    expect(
-      caseListTextWhere({
-        q: '  A%_\\  ',
-        customerName: '  客%户  ',
-        rightsHolderName: ' 权_利 ',
-        courtCaseNo: ' (2026)\\1 ',
-      }),
-    ).toEqual({
-      AND: [
+  it('searches the unified fields with literal text and combines exact conditions', () => {
+    const where = caseListTextWhere({ q: ' A%_\\ ', customerName: '客户' });
+    expect(where.AND).toHaveLength(2);
+    const alternatives = (where.AND as object[])[0] as { OR: object[] };
+    expect(alternatives.OR).toEqual(
+      expect.arrayContaining([
+        { businessNo: { contains: 'A\\%\\_\\\\', mode: 'insensitive' } },
         {
-          OR: [
-            { businessNo: { contains: 'A\\%\\_\\\\', mode: 'insensitive' } },
-            { courtCaseNo: { contains: 'A\\%\\_\\\\', mode: 'insensitive' } },
-            {
-              customer: {
-                is: { name: { contains: 'A\\%\\_\\\\', mode: 'insensitive' } },
-              },
-            },
-            {
-              rightsHolder: {
-                is: { name: { contains: 'A\\%\\_\\\\', mode: 'insensitive' } },
-              },
-            },
-            {
-              defendants: {
-                some: {
-                  name: { contains: 'A\\%\\_\\\\', mode: 'insensitive' },
+          sourceLead: {
+            is: { shopName: { contains: 'A\\%\\_\\\\', mode: 'insensitive' } },
+          },
+        },
+        {
+          filingSubmission: {
+            is: { courtName: { contains: 'A\\%\\_\\\\', mode: 'insensitive' } },
+          },
+        },
+        {
+          lawyers: {
+            some: {
+              role: 'PRIMARY',
+              endedAt: null,
+              lawyer: {
+                is: {
+                  fullName: { contains: 'A\\%\\_\\\\', mode: 'insensitive' },
                 },
               },
             },
-          ],
-        },
-        {
-          customer: {
-            is: { name: { contains: '客\\%户', mode: 'insensitive' } },
           },
         },
-        {
-          rightsHolder: {
-            is: { name: { contains: '权\\_利', mode: 'insensitive' } },
-          },
-        },
-        { courtCaseNo: { contains: '(2026)\\\\1', mode: 'insensitive' } },
-      ],
+      ]),
+    );
+    expect((where.AND as object[])[1]).toEqual({
+      customer: { is: { name: { contains: '客户', mode: 'insensitive' } } },
     });
     expect(caseListTextWhere({ q: ' ', customerName: '\t' })).toEqual({});
   });
 
-  it('uses database sorting with a stable id tie break', () => {
-    expect(caseListOrderBy({})).toEqual([{ createdAt: 'desc' }, { id: 'asc' }]);
+  it('always sorts newest first with a stable id tie break', () => {
+    const fixed = [{ createdAt: 'desc' }, { id: 'asc' }];
+    expect(caseListOrderBy({})).toEqual(fixed);
     expect(
       caseListOrderBy({ sortBy: 'businessNo', sortDirection: 'asc' }),
-    ).toEqual([{ businessNo: 'asc' }, { id: 'asc' }]);
-    expect(caseListOrderBy({ sortBy: 'rightsHolderName' })).toEqual([
-      { rightsHolder: { name: 'desc' } },
-      { id: 'asc' },
-    ]);
+    ).toEqual(fixed);
+    expect(caseListOrderBy({ sortBy: 'rightsHolderName' })).toEqual(fixed);
   });
 });

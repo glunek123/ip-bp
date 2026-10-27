@@ -31,6 +31,7 @@ import {
 
 const api = vi.hoisted(() => ({
   listLeads: vi.fn(),
+  listLeadFilterOptions: vi.fn(),
   getLead: vi.fn(),
   getLeadFormContext: vi.fn(),
   importLeadCsvBatch: vi.fn(),
@@ -295,6 +296,56 @@ afterEach(() => {
 });
 
 describe('LeadListPage', () => {
+  it('searches scoped customer and rights-holder choices and combines them with keyword and shop', async () => {
+    api.listLeads.mockResolvedValue(result);
+    api.listLeadFilterOptions.mockImplementation(async (kind: string) => ({
+      items:
+        kind === 'customer'
+          ? [{ id: 'customer-1', name: '客户甲' }]
+          : [{ id: 'holder-1', name: '主体甲' }],
+    }));
+    const { wrapper, router } = await mountWithRoute(
+      '/leads?status=WAITING_PUSH',
+    );
+    await wrapper.get('[data-test="lead-query"]').setValue('编号');
+    await wrapper.get('[data-test="lead-customer-search"]').setValue('客户');
+    await flushPromises();
+    await wrapper
+      .get('[data-test="lead-customer-filter"]')
+      .setValue('customer-1');
+    await wrapper.get('[data-test="lead-holder-search"]').setValue('主体');
+    await flushPromises();
+    await wrapper.get('[data-test="lead-holder-filter"]').setValue('holder-1');
+    await wrapper.get('[data-test="lead-shop-filter"]').setValue('店铺');
+    await wrapper.get('form[aria-label="线索关键词查询"]').trigger('submit');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toMatchObject({
+      q: '编号',
+      customerId: 'customer-1',
+      rightsHolderId: 'holder-1',
+      shopName: '店铺',
+      page: '1',
+    });
+    expect(api.listLeads).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.anything(),
+      'WAITING_PUSH',
+      'LIBRARY',
+      '编号',
+      {
+        customerId: 'customer-1',
+        rightsHolderId: 'holder-1',
+        shopName: '店铺',
+      },
+    );
+    expect(api.listLeadFilterOptions).toHaveBeenCalledWith(
+      'customer',
+      '客户',
+      {},
+      { view: 'LIBRARY', status: 'WAITING_PUSH' },
+    );
+  });
   it('applies and clears a keyword while preserving stage and resetting page', async () => {
     api.listLeads.mockImplementation(async (page: number) => ({
       ...result,
