@@ -9,6 +9,67 @@ const target = '20261027140000_batch2_case_consolidation';
 const requireBackend = createRequire(resolve(root, 'backend/package.json'));
 const { Client } = requireBackend('pg');
 
+export async function cleanupBatch2CaseConsolidationMigration(
+  client,
+  schema,
+  connected,
+  created,
+  primaryError,
+) {
+  const cleanupErrors = [];
+  if (connected) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    if (created) {
+      if (!/^batch2_consolidation_[a-f0-9]{32}$/u.test(schema)) {
+        cleanupErrors.push(new Error('Invalid owned consolidation schema'));
+      } else {
+        try {
+          await client.query('RESET search_path');
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+        try {
+          await client.query(`DROP SCHEMA "${schema}" CASCADE`);
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+        try {
+          const remains = (
+            await client.query(
+              'SELECT count(*)::int AS count FROM pg_namespace WHERE nspname=$1',
+              [schema],
+            )
+          ).rows[0].count;
+          if (remains !== 0)
+            throw new Error('Owned consolidation schema remains');
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+      }
+    }
+    try {
+      await client.end();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+  }
+  if (primaryError && cleanupErrors.length)
+    throw new AggregateError(
+      [primaryError, ...cleanupErrors],
+      'Consolidation migration check and cleanup failed',
+    );
+  if (primaryError) throw primaryError;
+  if (cleanupErrors.length)
+    throw new AggregateError(
+      cleanupErrors,
+      'Consolidation migration cleanup failed',
+    );
+}
+
 export async function verifyBatch2CaseConsolidationMigration() {
   const databaseUrl = assertBatch2CaseConsolidationTarget();
   const migrationRoot = resolve(root, 'backend/prisma/migrations');
@@ -19,6 +80,10 @@ export async function verifyBatch2CaseConsolidationMigration() {
     throw new Error('Batch 2 consolidation migration is missing');
   const schema = `batch2_consolidation_${randomUUID().replaceAll('-', '')}`;
   const client = new Client({ connectionString: databaseUrl });
+  let connected = false;
+  let created = false;
+  let primaryError;
+  let result;
   const query = (sql, values = []) => client.query(sql, values);
   const count = async (sql, values = []) =>
     Number((await query(sql, values)).rows[0].n);
@@ -39,14 +104,16 @@ export async function verifyBatch2CaseConsolidationMigration() {
       return error.code;
     }
   };
-  await client.connect();
   try {
+    await client.connect();
+    connected = true;
     if (
       (await query('SELECT current_database() AS name')).rows[0].name !==
       'dev_cor_test'
     )
       throw new Error('Unexpected database');
     await query(`CREATE SCHEMA "${schema}"`);
+    created = true;
     await query(`SET search_path TO "${schema}"`);
     const numberingMigration = '20261026100000_v6_business_numbering';
     await apply(names.filter((name) => name < numberingMigration));
@@ -196,7 +263,7 @@ export async function verifyBatch2CaseConsolidationMigration() {
       'UPDATE cases SET version=3 WHERE id=$1',
       [mainId],
     );
-    return {
+    result = {
       before,
       preserved,
       tables,
@@ -207,10 +274,15 @@ export async function verifyBatch2CaseConsolidationMigration() {
       immutableMember,
       mainProgress,
     };
-  } finally {
-    await query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`).catch(
-      () => undefined,
-    );
-    await client.end();
+  } catch (error) {
+    primaryError = error;
   }
+  await cleanupBatch2CaseConsolidationMigration(
+    client,
+    schema,
+    connected,
+    created,
+    primaryError,
+  );
+  return result;
 }

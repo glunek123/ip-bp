@@ -21,10 +21,30 @@ const day = () =>
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
-const pdf = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n');
-const jpeg = Buffer.from([
-  0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46,
-]);
+const pdf = (() => {
+  const parts = ['%PDF-1.4\n'];
+  const offsets = [0];
+  for (const body of [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] >>',
+  ]) {
+    offsets.push(Buffer.byteLength(parts.join(''), 'ascii'));
+    parts.push(`${offsets.length - 1} 0 obj\n${body}\nendobj\n`);
+  }
+  const startXref = Buffer.byteLength(parts.join(''), 'ascii');
+  parts.push('xref\n0 4\n0000000000 65535 f \n');
+  for (const offset of offsets.slice(1))
+    parts.push(`${String(offset).padStart(10, '0')} 00000 n \n`);
+  parts.push(
+    `trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n${startXref}\n%%EOF\n`,
+  );
+  return Buffer.from(parts.join(''), 'ascii');
+})();
+const png = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC',
+  'base64',
+);
 const json = async <T>(response: APIResponse, status: number): Promise<T> => {
   expect(response.status(), await response.text()).toBe(status);
   return response.json() as Promise<T>;
@@ -70,11 +90,9 @@ async function upload(
         ownerId,
         category,
         purpose: category,
-        originalFilename: `batch2-${category}-${randomUUID()}.${category === 'NOTARY_OPENING_PHOTO' ? 'jpg' : 'pdf'}`,
+        originalFilename: `batch2-${category}-${randomUUID()}.${category === 'NOTARY_OPENING_PHOTO' ? 'png' : 'pdf'}`,
         declaredMimeType:
-          category === 'NOTARY_OPENING_PHOTO'
-            ? 'image/jpeg'
-            : 'application/pdf',
+          category === 'NOTARY_OPENING_PHOTO' ? 'image/png' : 'application/pdf',
       },
     }),
     201,
@@ -222,7 +240,7 @@ async function createNotarySourceCase(page: Page, csrf: string) {
     'NOTARY_MATTER',
     matter.id,
     'NOTARY_OPENING_PHOTO',
-    jpeg,
+    png,
   );
   await json(
     await page.request.post(`/api/v1/notary-matters/${matter.id}/opening`, {
