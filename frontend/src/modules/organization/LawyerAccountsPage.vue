@@ -14,7 +14,7 @@ import {
   type UnboundLawyerProfile,
 } from '../../api/lawyer-accounts';
 import { useAuthStore } from '../../stores/auth';
-import { isValidUsername } from '../auth/username';
+import { isValidUsername } from '../auth';
 
 const auth = useAuthStore();
 const accounts = ref<LawyerAccount[]>([]);

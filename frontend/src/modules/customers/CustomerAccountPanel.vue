@@ -11,7 +11,7 @@ import {
   type ClientAccountCapabilities,
 } from '../../api/client-accounts';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
-import { isValidUsername } from '../auth/username';
+import { isValidUsername } from '../auth';
 
 const props = defineProps<{ customerId: string; admitted: boolean }>();
 const accounts = ref<ClientAccount[]>([]);

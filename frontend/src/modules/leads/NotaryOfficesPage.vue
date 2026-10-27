@@ -14,7 +14,7 @@ import {
   setNotaryOfficeAccountActive,
   type NotaryOfficeAccount,
 } from '../../api/notary-office-accounts';
-import { isValidUsername } from '../auth/username';
+import { isValidUsername } from '../auth';
 
 const state = ref<'loading' | 'ready' | 'forbidden' | 'failed'>('loading');
 const offices = ref<NotaryOffice[]>([]);

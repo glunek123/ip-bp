@@ -17,7 +17,7 @@ import {
   type OrganizationUser,
 } from '../../api/organization';
 import { useAuthStore } from '../../stores/auth';
-import { isValidUsername } from '../auth/username';
+import { isValidUsername } from '../auth';
 import RoleTemplatePanel from './RoleTemplatePanel.vue';
 
 const auth = useAuthStore();
