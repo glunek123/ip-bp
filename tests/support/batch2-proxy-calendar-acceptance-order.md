@@ -43,6 +43,7 @@ node "$batch2Env/run.mjs" build:prepared
 ```powershell
 node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-username.spec.ts
 node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-case-consolidation.spec.ts
+node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-consolidated-finance.spec.ts
 node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-proxy-calendar.spec.ts
 node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-refund-lifecycle.spec.ts
 # 其他默认 backend 套执行并停止后，最后运行受控图片套。
