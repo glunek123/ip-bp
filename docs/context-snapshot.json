@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-27T16:36:26.811Z",
+  "recordedAt": "2026-10-27T16:44:00.532Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -330,8 +330,8 @@
     "backend/src/modules/cases/case-consolidation.controller.spec.ts": "fa3695b046e37f46756af8028b8e3fd1d5de0f61ba63302a72e45c49cc4a84e7",
     "backend/src/modules/cases/case-consolidation.controller.ts": "8328ad5e8cffa1bb35c1444011bafcf1d10d822191b4220433a37459b959770f",
     "backend/src/modules/cases/case-consolidation.dto.ts": "828c4c2e08cac5f9ee847ad2bd429d5cb4f6f7cf1d1309670db83a8a74fddddb",
-    "backend/src/modules/cases/case-consolidation.service.spec.ts": "aaa5c9ceb5b74e577a6c4ff305d3bfea94b9294910bea370dfb3355a60ad4017",
-    "backend/src/modules/cases/case-consolidation.service.ts": "179beb1c39e5a3e59ede3fdb79b2ce32ef0a4868a73e52cddfefd756ad65ce96",
+    "backend/src/modules/cases/case-consolidation.service.spec.ts": "d8f22d59b95cf6b481785326d47fe8d27287e3e5c4085b89eedd7898b750b33b",
+    "backend/src/modules/cases/case-consolidation.service.ts": "8cfbd2de2d0bd92b900c21f394e2c3959efe9810269f3118b5282a2b22de8417",
     "backend/src/modules/cases/case-creation.service.spec.ts": "5b1449d8766759a1e344f794574976bd7ab913f32c9749a7779cba3db351d7b0",
     "backend/src/modules/cases/case-creation.service.ts": "f00ea10aed14490e8c7783d6b5b6b03d8dd54588c01def6d3fb4d7e41bb1819e",
     "backend/src/modules/cases/case-csv-format.ts": "0d041920b98204d51593123a915560734999f5a8277108f00bc03516f5485234",
