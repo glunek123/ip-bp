@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-27T15:27:53.302Z",
+  "recordedAt": "2026-10-27T15:49:29.243Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -960,7 +960,8 @@
     "frontend/src/api/calendar.ts": "fdcabc1310496823347ca92683796d255eb176e83be8bab0d1bb1fa5e8921877",
     "frontend/src/api/case-batches.spec.ts": "7425737444e99e7b249c7151d47b85cf39fbe2d5afce2df678c14a610ca85b55",
     "frontend/src/api/case-batches.ts": "6438f0c39f0e1df3e419c3e2bfbf43aa0c065980d960630d0b7502d896890e21",
-    "frontend/src/api/case-consolidation.ts": "036fdccc3de79b7031daf2370659b30765480bea9349ce1b95a089a6f8ff636b",
+    "frontend/src/api/case-consolidation.spec.ts": "a65fc4f99ab63eeaf3c3a8d2316902f734646870a215409cee295307e5d46ad6",
+    "frontend/src/api/case-consolidation.ts": "b72c17a520ddf32c63c1198cf5054e46350eb9bf74c21532beae2e1370f2e6a3",
     "frontend/src/api/case-csv-import.spec.ts": "d4bed5039a8d4a7da730d1df0bf62961d97ec845c546abdb0eeabdf5b6a0f34d",
     "frontend/src/api/case-csv-import.ts": "8c663e63d637f60c46856ddad910c773ea36a8b4c7fce58b71b43264a3ca252a",
     "frontend/src/api/case-handling-group-resources.spec.ts": "26b9d0ff33e4c9672f28c5ca9e0dace866e8581e4a09e3e0309a295fcf38196a",
