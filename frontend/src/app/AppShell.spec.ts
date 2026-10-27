@@ -222,6 +222,16 @@ async function mountShell(
         meta: { section: '客户', breadcrumbs: ['客户'] },
       },
       {
+        path: '/customers/:id',
+        component: { template: '<div />' },
+        meta: { section: '客户', breadcrumbs: ['客户', '客户详情'] },
+      },
+      {
+        path: '/calendar',
+        component: { template: '<div />' },
+        meta: { section: '日期事件', breadcrumbs: ['日期事件'] },
+      },
+      {
         path: '/cases',
         component: { template: '<div />' },
         meta: { section: '案件', breadcrumbs: ['案件'] },
@@ -365,8 +375,8 @@ describe('AppShell', () => {
     });
   });
 
-  it('keeps close separate from read and shows several due items in one top-right panel', async () => {
-    api.listDueReminders.mockResolvedValue([
+  it('automatically shows late-login items, keeps close separate from read, and does not reopen unchanged items', async () => {
+    const initialItems = [
       {
         sourceType: 'MANUAL',
         sourceId: 'm1',
@@ -391,15 +401,101 @@ describe('AppShell', () => {
         customerId: null,
         readAt: null,
       },
-    ]);
+    ];
+    api.listDueReminders.mockResolvedValue(initialItems);
     const { wrapper } = await mountShell();
     expect(wrapper.get('.app-reminders__toggle').text()).toContain('2');
-    await wrapper.get('.app-reminders__toggle').trigger('click');
+    expect(wrapper.find('.app-reminders__panel').exists()).toBe(true);
     expect(wrapper.get('.app-reminders__panel').text()).toContain('准备材料');
     await wrapper.get('.app-reminders__panel header button').trigger('click');
     expect(api.markReminderRead).not.toHaveBeenCalled();
     expect(wrapper.get('.app-reminders__toggle').text()).toContain('2');
+    window.dispatchEvent(new Event(workflowChangedEvent));
+    await flushPromises();
+    expect(wrapper.find('.app-reminders__panel').exists()).toBe(false);
+    api.listDueReminders.mockResolvedValueOnce([
+      ...initialItems,
+      {
+        sourceType: 'MANUAL',
+        sourceId: 'm2',
+        sourceEpoch: 'm2',
+        eventDate: '2026-10-27',
+        dueAt: '2026-10-27T01:00:00.000Z',
+        title: '新增事项',
+        note: null,
+        caseId: null,
+        customerId: null,
+        readAt: null,
+      },
+    ]);
+    window.dispatchEvent(new Event(workflowChangedEvent));
+    await flushPromises();
+    expect(wrapper.get('.app-reminders__panel').text()).toContain('新增事项');
   });
+
+  it('opens source pages and stops reopening an item after its persisted read state arrives', async () => {
+    const item = {
+      sourceType: 'MANUAL',
+      sourceId: 'm1',
+      sourceEpoch: 'm1',
+      eventDate: '2026-10-27',
+      dueAt: '2026-10-27T01:00:00.000Z',
+      title: '个人事项',
+      note: null,
+      caseId: null,
+      customerId: null,
+      readAt: null,
+    };
+    api.listDueReminders.mockResolvedValue([item]);
+    const { wrapper, router } = await mountShell();
+    await wrapper.get('.app-reminders__panel li button').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.fullPath).toBe('/calendar?month=2026-10');
+    api.markReminderRead.mockImplementationOnce(async () => {
+      api.listDueReminders.mockResolvedValue([
+        { ...item, readAt: '2026-10-27T02:00:00.000Z' },
+      ]);
+    });
+    await wrapper.get('.app-reminders__toggle').trigger('click');
+    await wrapper
+      .get('.app-reminders__panel li button:nth-of-type(2)')
+      .trigger('click');
+    await flushPromises();
+    expect(api.markReminderRead).toHaveBeenCalledWith(item);
+    await wrapper.get('.app-reminders__panel header button').trigger('click');
+    window.dispatchEvent(new Event(workflowChangedEvent));
+    await flushPromises();
+    expect(wrapper.find('.app-reminders__panel').exists()).toBe(false);
+  });
+
+  it.each([
+    ['case-1', null, '/cases/case-1'],
+    [null, 'customer-1', '/customers/customer-1'],
+  ])(
+    'views a business source in its existing page',
+    async (caseId, customerId, target) => {
+      api.listDueReminders.mockResolvedValue([
+        {
+          sourceType: caseId
+            ? 'FIRST_INSTANCE_HEARING'
+            : 'CUSTOMER_AGREEMENT_EXPIRY',
+          sourceId: 'source-1',
+          sourceEpoch: 'epoch-1',
+          eventDate: '2026-10-27',
+          dueAt: '2026-10-27T01:00:00.000Z',
+          title: '业务事项',
+          note: null,
+          caseId,
+          customerId,
+          readAt: null,
+        },
+      ]);
+      const { wrapper, router } = await mountShell();
+      await wrapper.get('.app-reminders__panel li button').trigger('click');
+      await flushPromises();
+      expect(router.currentRoute.value.path).toBe(target);
+    },
+  );
 
   it('ignores a delayed reminder response after identity changes', async () => {
     let resolveOld: ((value: unknown[]) => void) | undefined;

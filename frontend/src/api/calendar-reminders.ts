@@ -83,7 +83,7 @@ export async function listManualCalendar(
   options: RequestOptions = {},
 ): Promise<ManualCalendarItem[]> {
   const value = await getJson(
-    `/api/v1/calendar/personal?month=${encodeURIComponent(month)}`,
+    `/calendar/personal?month=${encodeURIComponent(month)}`,
     options,
   );
   if (!Array.isArray(value)) throw new Error('个人日历响应无效');
@@ -94,7 +94,7 @@ export async function listRefundCalendar(
   options: RequestOptions = {},
 ): Promise<RefundCalendarDate[]> {
   const value = await getJson(
-    `/api/v1/calendar/refund-dates?month=${encodeURIComponent(month)}`,
+    `/calendar/refund-dates?month=${encodeURIComponent(month)}`,
     options,
   );
   if (!Array.isArray(value)) throw new Error('判决退费日历响应无效');
@@ -118,7 +118,7 @@ export async function createManualCalendar(
   input: ManualInput,
 ): Promise<ManualCalendarItem> {
   return manual(
-    await requestJson('/api/v1/calendar/personal', {
+    await requestJson('/calendar/personal', {
       method: 'POST',
       body: input,
     }),
@@ -129,24 +129,21 @@ export async function updateManualCalendar(
   input: ManualInput,
 ): Promise<ManualCalendarItem> {
   return manual(
-    await requestJson(
-      `/api/v1/calendar/personal/${encodeURIComponent(item.id)}`,
-      {
-        method: 'PATCH',
-        body: { ...input, expectedVersion: item.version },
-      },
-    ),
+    await requestJson(`/calendar/personal/${encodeURIComponent(item.id)}`, {
+      method: 'PATCH',
+      body: { ...input, expectedVersion: item.version },
+    }),
   );
 }
 export async function listDueReminders(
   options: RequestOptions = {},
 ): Promise<DueReminder[]> {
-  const value = await getJson('/api/v1/calendar/reminders', options);
+  const value = await getJson('/calendar/reminders', options);
   if (!Array.isArray(value)) throw new Error('提醒响应无效');
   return value.map(reminder);
 }
 export async function markReminderRead(item: DueReminder): Promise<void> {
-  await requestJson('/api/v1/calendar/reminders/read', {
+  await requestJson('/calendar/reminders/read', {
     method: 'POST',
     body: {
       sourceType: item.sourceType,
@@ -166,7 +163,7 @@ export async function registerRefundApplication(
     item.sourceType !== 'SECOND_INSTANCE_RESULT'
   )
     throw new Error('不是判决待办');
-  await requestJson('/api/v1/calendar/refund-applications', {
+  await requestJson('/calendar/refund-applications', {
     method: 'POST',
     body: {
       sourceType: item.sourceType,

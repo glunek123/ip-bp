@@ -66,6 +66,15 @@ let reminderNineTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
 const unreadReminderCount = computed(
   () => dueReminders.value.filter((item) => item.readAt === null).length,
 );
+const visibleReminders = computed(() =>
+  [...dueReminders.value]
+    .sort((a, b) => Number(a.readAt !== null) - Number(b.readAt !== null))
+    .slice(0, 3),
+);
+let announcedReminderKeys = new Set<string>();
+function reminderKey(item: DueReminder): string {
+  return `${item.sourceType}:${item.sourceId}:${item.sourceEpoch}:${item.eventDate}`;
+}
 let calendarSummaryRevision = 0;
 const countRevision = ref(0);
 const expandedGroup = ref<
@@ -196,7 +205,15 @@ async function refreshReminders(): Promise<void> {
       currentIdentity === identity.value &&
       currentRevision === reminderRevision
     ) {
+      const newUnread = items.some(
+        (item) =>
+          item.readAt === null && !announcedReminderKeys.has(reminderKey(item)),
+      );
+      for (const item of items) {
+        if (item.readAt === null) announcedReminderKeys.add(reminderKey(item));
+      }
       dueReminders.value = items;
+      if (newUnread) remindersOpen.value = true;
       reminderError.value = '';
     }
   } catch {
@@ -206,6 +223,17 @@ async function refreshReminders(): Promise<void> {
     )
       reminderError.value = '提醒暂时无法读取';
   }
+}
+function viewReminder(item: DueReminder): void {
+  remindersOpen.value = false;
+  if (item.caseId)
+    void router.push(`/cases/${encodeURIComponent(item.caseId)}`);
+  else if (item.customerId)
+    void router.push(`/customers/${encodeURIComponent(item.customerId)}`);
+  else if (item.sourceType === 'MANUAL')
+    void router.push(
+      `/calendar?month=${encodeURIComponent(item.eventDate.slice(0, 7))}`,
+    );
 }
 async function readReminder(item: DueReminder): Promise<void> {
   if (reminderBusy.value) return;
@@ -270,6 +298,7 @@ watch(
   identity,
   () => {
     dueReminders.value = [];
+    announcedReminderKeys = new Set();
     refundSource.value = null;
     remindersOpen.value = false;
     void refreshReminders();
@@ -1567,12 +1596,10 @@ async function logout(): Promise<void> {
             <p v-if="reminderError" role="alert">{{ reminderError }}</p>
             <p v-if="dueReminders.length === 0">暂无到期事项</p>
             <ul v-else>
-              <li
-                v-for="item in dueReminders"
-                :key="`${item.sourceType}:${item.sourceId}:${item.sourceEpoch}:${item.eventDate}`"
-              >
+              <li v-for="item in visibleReminders" :key="reminderKey(item)">
                 <span>{{ item.title }} · {{ item.dueAt.slice(0, 10) }}</span>
                 <small v-if="item.note">{{ item.note }}</small>
+                <button type="button" @click="viewReminder(item)">查看</button>
                 <span v-if="item.readAt">已读</span>
                 <button
                   v-else
@@ -1594,6 +1621,9 @@ async function logout(): Promise<void> {
                 </button>
               </li>
             </ul>
+            <p v-if="dueReminders.length > visibleReminders.length">
+              另有 {{ dueReminders.length - visibleReminders.length }} 条提醒
+            </p>
             <div v-if="refundSource" class="app-reminders__refund">
               <strong>登记真实申请</strong>
               <label>申请日期 <input v-model="refundDate" type="date" /></label>
