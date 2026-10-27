@@ -1213,6 +1213,14 @@ export class MaterialService {
         }
         await this.database.$transaction(async (transaction) => {
           if (importFence) {
+            const lead = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              draft.ownerId,
+              actor.departmentId,
+            );
+            if (lead.length !== 1) throw this.notFound();
             const owned = await transaction.$queryRawUnsafe<
               Array<{ id: string }>
             >(

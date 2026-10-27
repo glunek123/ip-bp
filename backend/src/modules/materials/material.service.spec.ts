@@ -7007,7 +7007,11 @@ describe('import screenshot upload fence', () => {
       sha256: 'a'.repeat(64),
       detectedMimeType: 'image/png',
     });
-    fixture.transaction.$queryRawUnsafe.mockResolvedValue([]);
+    fixture.transaction.$queryRawUnsafe.mockImplementation(async (sql) =>
+      String(sql).includes('lead_image_import_tasks')
+        ? []
+        : [{ id: '55555555-5555-4555-8555-555555555555' }],
+    );
     await expect(
       fixture.service.finalizeUpload(
         actor,
