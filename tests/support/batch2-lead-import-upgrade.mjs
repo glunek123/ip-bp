@@ -181,12 +181,17 @@ async function expectSqlstate(query, expected, sql, values = []) {
   );
 }
 
-async function faultAndRetryMigration(query, source, assertRolledBack) {
+export function injectOwnedMigrationFault(source) {
   check(/\nCOMMIT;\s*$/u.test(source), 'Migration transaction footer changed');
-  const injected = source.replace(
+  return source.replace(
     /\nCOMMIT;\s*$/u,
-    "\nDO $$ BEGIN RAISE EXCEPTION 'owned migration fault' USING ERRCODE = '23514'; END $$;\nCOMMIT;",
+    () =>
+      "\nDO $$ BEGIN RAISE EXCEPTION 'owned migration fault' USING ERRCODE = '23514'; END $$;\nCOMMIT;",
   );
+}
+
+async function faultAndRetryMigration(query, source, assertRolledBack) {
+  const injected = injectOwnedMigrationFault(source);
   let failure;
   try {
     await query(injected);
@@ -194,10 +199,11 @@ async function faultAndRetryMigration(query, source, assertRolledBack) {
     failure = error;
   }
   await query('ROLLBACK');
-  check(
-    failure?.code === '23514',
-    'Migration fault did not reach the owned transaction',
-  );
+  if (failure?.code !== '23514')
+    throw new Error(
+      `Migration fault did not reach the owned transaction; SQLSTATE ${failure?.code ?? 'success'}`,
+      { cause: failure },
+    );
   await assertRolledBack();
   await query(source);
 }
