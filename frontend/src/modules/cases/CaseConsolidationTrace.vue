@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import {
   getCaseConsolidation,
+  isConsolidationId,
   type ConsolidationTrace,
 } from '../../api/case-consolidation';
 
@@ -28,7 +29,6 @@ const uniqueSources = computed(() => {
     fees: new Set(cases.flatMap((source) => source.feeRecordIds)).size,
   };
 });
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{12}$/iu;
 let request: AbortController | null = null;
 watch(
   () => [props.caseId, props.contextKey],
@@ -38,7 +38,7 @@ watch(
     request = controller;
     trace.value = null;
     error.value = '';
-    if (!uuid.test(props.caseId)) return;
+    if (!isConsolidationId(props.caseId)) return;
     try {
       const result = await getCaseConsolidation(props.caseId, {
         signal: controller.signal,

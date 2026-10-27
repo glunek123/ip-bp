@@ -92,6 +92,9 @@ export type ConsolidationTrace = {
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+export function isConsolidationId(value: string): boolean {
+  return uuid.test(value);
+}
 const bad = () => new ApiError('合案返回数据无效', 502, 'INVALID_RESPONSE');
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);

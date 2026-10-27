@@ -399,7 +399,19 @@ test.describe
     await expect(panel).toContainText(
       `主案编号：${fixture.cases[0].businessNo}`,
     );
+    const noConsolidation = await page.request.get(
+      `/api/v1/cases/${fixture.cases[0].id}/consolidation`,
+    );
+    expect(noConsolidation.status()).toBe(200);
+    expect(await noConsolidation.json()).toBeNull();
+    const createResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/v1/cases/consolidations',
+    );
     await panel.locator('[data-test="submit-consolidation"]').click();
+    const created = await createResponse;
+    expect(created.status(), await created.text()).toBe(201);
     const trace = await json<{
       caseCount: number;
       cases: Array<{ caseId: string; feeRecordIds: string[] }>;

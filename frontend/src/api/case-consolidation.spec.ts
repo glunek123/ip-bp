@@ -90,4 +90,9 @@ describe('case consolidation API identifiers', () => {
       code: 'VALIDATION_ERROR',
     });
   });
+
+  it('treats JSON null as an ordinary case with no consolidation', async () => {
+    vi.mocked(getJson).mockResolvedValue(null);
+    await expect(getCaseConsolidation(main)).resolves.toBeNull();
+  });
 });

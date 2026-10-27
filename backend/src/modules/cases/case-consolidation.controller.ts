@@ -6,6 +6,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -14,6 +15,7 @@ import {
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
 import type { ActorContext } from '../../access-control/actor-context';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
@@ -53,10 +55,11 @@ export class CaseConsolidationController {
 
   @Get(':id/consolidation')
   @ApiOkResponse()
-  read(
+  async read(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-  ) {
-    return this.consolidation.read(actor, id);
+    @Res() response: Response,
+  ): Promise<void> {
+    response.status(200).json(await this.consolidation.read(actor, id));
   }
 }
