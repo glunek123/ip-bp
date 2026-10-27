@@ -45,7 +45,12 @@ describe('LeadService', () => {
       expect.objectContaining({
         where: { id: record.id, ...scope },
         include: expect.objectContaining({
-          customer: { select: { name: true } },
+          customer: {
+            select: expect.objectContaining({
+              name: true,
+              profileStatus: true,
+            }),
+          },
           rightsHolder: { select: { name: true } },
           responsibleMembership: {
             select: { user: { select: { displayName: true } } },
@@ -961,6 +966,110 @@ describe('LeadService', () => {
     expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
   });
 
+  it('allows an unbound admitted customer only with same-lead proxy review authority', async () => {
+    const fixture = createPushFixture({
+      customer: { profileStatus: 'ADMITTED', clientAccountBindings: [] },
+    });
+    await expect(
+      fixture.service.push(actor, fixture.current.id, 'proxy-push', {
+        expectedVersion: 1,
+      }),
+    ).resolves.toMatchObject({ status: 'WAITING_REVIEW' });
+    expect(fixture.access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'lead.review.proxy',
+      {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      },
+      fixture.tx,
+    );
+  });
+
+  it('does not require proxy review authority for an actively bound customer', async () => {
+    const fixture = createPushFixture();
+    (fixture.access.authorizeLead as jest.Mock).mockImplementation(
+      async (_actor, action) => {
+        if (action === 'lead.review.proxy')
+          throw new ForbiddenException('no proxy grant');
+      },
+    );
+    await expect(
+      fixture.service.push(actor, fixture.current.id, 'bound-push', {
+        expectedVersion: 1,
+      }),
+    ).resolves.toMatchObject({ status: 'WAITING_REVIEW' });
+    expect(fixture.access.authorizeLead).not.toHaveBeenCalledWith(
+      actor,
+      'lead.review.proxy',
+      expect.anything(),
+      fixture.tx,
+    );
+  });
+
+  it('projects push capability only when an unbound lead has same-scope proxy authority', async () => {
+    const base = createCreateFixture().createdLead;
+    const record = {
+      ...base,
+      customer: {
+        name: '客户甲',
+        profileStatus: 'ADMITTED',
+        clientAccountBindings: [],
+      },
+    };
+    const access = {
+      buildLeadScope: jest
+        .fn()
+        .mockResolvedValue({ departmentId: actor.departmentId }),
+      authorizeLead: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new LeadService(
+      {
+        lead: { findFirst: jest.fn().mockResolvedValue(record) },
+        userAccount: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
+        },
+      } as unknown as DatabaseService,
+      access as unknown as AccessControlService,
+      {
+        listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as MaterialService,
+    );
+    const allowed = await service.get(actor, record.id);
+    expect(allowed.capabilities.push).toBe(true);
+    access.authorizeLead.mockImplementation(async (_actor, action) => {
+      if (action === 'lead.review.proxy')
+        throw new ForbiddenException('other scope');
+    });
+    const denied = await service.get(actor, record.id);
+    expect(denied.capabilities.push).toBe(false);
+  });
+
+  it('refuses an unbound customer when proxy review has a different scope', async () => {
+    const fixture = createPushFixture({
+      customer: { profileStatus: 'ADMITTED', clientAccountBindings: [] },
+    });
+    (fixture.access.authorizeLead as jest.Mock).mockImplementation(
+      async (_actor, action, facts) => {
+        if (
+          action === 'lead.review.proxy' &&
+          facts.responsibleUserId === actor.userId
+        )
+          throw new ForbiddenException('proxy scope mismatch');
+      },
+    );
+    await expect(
+      fixture.service.push(actor, fixture.current.id, 'no-proxy', {
+        expectedVersion: 1,
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'CLIENT_ACCOUNT_UNAVAILABLE' },
+    });
+    expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['wrong state', { status: 'WAITING_REVIEW' }, 'INVALID_STATE'],
     ['stale version', { version: 2 }, 'VERSION_CONFLICT'],
@@ -969,11 +1078,6 @@ describe('LeadService', () => {
       'customer no longer admitted',
       { customer: { profileStatus: 'DRAFT', clientAccountBindings: [] } },
       'CUSTOMER_NOT_ADMITTED',
-    ],
-    [
-      'no active client account',
-      { customer: { profileStatus: 'ADMITTED', clientAccountBindings: [] } },
-      'CLIENT_ACCOUNT_UNAVAILABLE',
     ],
   ])('rejects push when %s', async (_label, override, code) => {
     const fixture = createPushFixture(override);
@@ -2460,7 +2564,13 @@ function createPushFixture(override: Record<string, unknown> = {}) {
       findUnique: jest.fn().mockResolvedValue(updated),
     },
     userAccount: {
-      findUnique: jest.fn().mockResolvedValue({ displayName: '运营甲' }),
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({
+          displayName: '运营甲',
+          accountType: 'INTERNAL',
+          active: true,
+        }),
     },
     auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit-push' }) },
   };
