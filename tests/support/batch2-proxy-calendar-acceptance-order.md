@@ -21,7 +21,14 @@ node "$batch2Env/run.mjs" exec node tests/support/batch2-proxy-calendar-pre-app.
 
 `start.mjs` 只创建唯一新容器和候选 `.env.test`；核 ownership 收据完整 64 位容器 ID。前置 helper 会引入已编译 auth/Prisma；此时仍未启动 app。前置脚本按 185 → 186/187 → 188 顺序直接调用三个原 helper，逐项核原 spec 的结果；`DEV_COR_OPS_BATCH2_OWNED_CONTAINER_ID` 由脚本从 wrapper 已捕获的完整容器 ID 同值设置。**这一步必须先于 public 首次迁移和任何 Playwright。** 如失败，停在当前阶段排查，不能跳过。
 
-等原 I 作者的 189/190 空链/约束探针完成并经 Review 后，在同一前 app 阶段运行其精确命令；其入口尚未固定，本文件不猜命令。随后执行：
+189／190 的独有 owned-schema 探针已写成并经源码审查接受，仍须在同一前 app 阶段实际执行：
+
+```powershell
+$env:BATCH2_IMPORT_E2E_READY = '1'
+node "$batch2Env/run.mjs" exec node --input-type=module -e 'const probe = await import("./tests/support/batch2-lead-import-upgrade.mjs"); console.log(JSON.stringify(await probe.verifyBatch2LeadImportUpgrade()));'
+```
+
+探针失败须停在本阶段修复、补审和复验。所有前置探针通过后，再执行：
 
 ```powershell
 node "$batch2Env/run.mjs" db:test:migrate:deploy
@@ -36,9 +43,11 @@ node "$batch2Env/run.mjs" build:prepared
 ```powershell
 node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-username.spec.ts
 node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-case-consolidation.spec.ts
+node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-proxy-calendar.spec.ts
+node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-refund-lifecycle.spec.ts
+# 其他默认 backend 套执行并停止后，最后运行受控图片套。
 $env:BATCH2_IMPORT_E2E_READY = '1'
 node "$batch2Env/run.mjs" test:e2e --config tests/support/batch2-lead-import.config.ts tests/e2e/batch2-lead-import.spec.ts
-node "$batch2Env/run.mjs" test:e2e tests/e2e/batch2-proxy-calendar.spec.ts
 ```
 
 Playwright 配置在加载 spec 前启动 app，所以前置探针不能用 Playwright migration spec 代替。I 套必须显式使用上述独有 config，只启动覆盖图片传输的受控 Nest app；默认 config 会启动真实下载 worker，不能执行 I 套。I 套需 `BATCH2_IMPORT_E2E_READY=1`；P/C 套需 `BATCH2_ACCEPTANCE_READY`；M/U 套需 `DEV_COR_OPS_BATCH2_READY=1`。最终 `verify` 和定向复验按 root 的整体计划执行，并在各命令后清除不再需要的临时 READY 变量。
