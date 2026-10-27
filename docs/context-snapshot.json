@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-27T17:53:04.373Z",
+  "recordedAt": "2026-10-27T17:58:20.430Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -557,7 +557,7 @@
     "backend/src/modules/leads/client-lead-review.dto.ts": "b0c87273fb3d3706cdd02f3780922d9a48b94949d1d86fd96af8506a7f90dedb",
     "backend/src/modules/leads/client-lead.controller.spec.ts": "af93b3bdf3d88716fb65d4c64eec571a450aef165f7720205aa880fc2729816b",
     "backend/src/modules/leads/client-lead.controller.ts": "3e9ed2fb9e4193c0fa8ebf46a1f279a7ec208c906ff7d98f4ba669373b3a5147",
-    "backend/src/modules/leads/client-lead.service.spec.ts": "0d1209fb1ad0a27bd6a1067ca2cb23d176f3ada97b359ce3dfadb179ed394cdf",
+    "backend/src/modules/leads/client-lead.service.spec.ts": "cc5dfcd696322706d1ebdc1bbaa3b9799c9ad46e8b3e74d692c131c652699bf8",
     "backend/src/modules/leads/client-lead.service.ts": "3f7cbe7471f12f91c2e0f272374603b5f373b630a9bff2bb9711d2c3678a2b65",
     "backend/src/modules/leads/client-notary-response.dto.ts": "2e0c5b5dcb93067541ddfc8c7562c5ecd7b717400e80df8a9d23c4294206aa7c",
     "backend/src/modules/leads/client-notary.controller.ts": "29dbbf7e314932ebee4032d25699997f448b9c3dd8bfc864288f7c779cc402b7",
