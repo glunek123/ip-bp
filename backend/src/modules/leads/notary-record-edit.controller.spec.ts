@@ -15,6 +15,7 @@ import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryOpeningReviewService } from './notary-opening-review.service';
 import { NotaryIssuanceDecisionService } from './notary-issuance-decision.service';
 import { NotaryReturnArchiveService } from './notary-return-archive.service';
+import { NotaryCertificateService } from './notary-certificate.service';
 import { NotaryRecordEditController } from './notary-record-edit.controller';
 import { NotaryRecordEditService } from './notary-record-edit.service';
 import {
@@ -97,6 +98,7 @@ describe('notary record correction contract', () => {
         { provide: NotaryOpeningReviewService, useValue: {} },
         { provide: NotaryIssuanceDecisionService, useValue: {} },
         { provide: NotaryReturnArchiveService, useValue: {} },
+        { provide: NotaryCertificateService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)

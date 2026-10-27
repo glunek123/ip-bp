@@ -7,6 +7,7 @@ import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import { configureApp } from '../../common/configure-app';
 import { CalendarController } from './calendar.controller';
+import { CalendarReminderService } from './calendar-reminder.service';
 import { CalendarService } from './calendar.service';
 
 const actor = {
@@ -43,7 +44,10 @@ describe('calendar HTTP and OpenAPI contract', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [CalendarController],
-      providers: [{ provide: CalendarService, useValue: service }],
+      providers: [
+        { provide: CalendarService, useValue: service },
+        { provide: CalendarReminderService, useValue: {} },
+      ],
     })
       .overrideGuard(ActorContextGuard)
       .useValue({

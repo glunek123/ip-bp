@@ -17,6 +17,7 @@ import { NotaryListService } from './notary-list.service';
 import { NotaryOpeningReviewService } from './notary-opening-review.service';
 import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryReturnArchiveService } from './notary-return-archive.service';
+import { NotaryCertificateService } from './notary-certificate.service';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -54,6 +55,7 @@ describe('Notary list route precedence from LeadModule', () => {
         { provide: NotaryOpeningReviewService, useValue: {} },
         { provide: NotaryIssuanceDecisionService, useValue: {} },
         { provide: NotaryReturnArchiveService, useValue: {} },
+        { provide: NotaryCertificateService, useValue: {} },
         { provide: NotaryListService, useValue: {} },
         {
           provide: NotaryListPreferenceService,

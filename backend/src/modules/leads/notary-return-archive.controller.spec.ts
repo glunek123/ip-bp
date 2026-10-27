@@ -15,6 +15,7 @@ import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryOpeningReviewService } from './notary-opening-review.service';
 import { NotaryIssuanceDecisionService } from './notary-issuance-decision.service';
 import { NotaryReturnArchiveService } from './notary-return-archive.service';
+import { NotaryCertificateService } from './notary-certificate.service';
 import { ArchiveNotaryReturnDto } from './notary-return-archive.dto';
 
 describe('notary return archive HTTP contract', () => {
@@ -66,6 +67,7 @@ describe('notary return archive HTTP contract', () => {
         { provide: NotaryOpeningReviewService, useValue: {} },
         { provide: NotaryIssuanceDecisionService, useValue: {} },
         { provide: NotaryReturnArchiveService, useValue: archive },
+        { provide: NotaryCertificateService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)

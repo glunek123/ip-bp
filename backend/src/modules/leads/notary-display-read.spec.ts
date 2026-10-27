@@ -292,6 +292,7 @@ describe('notary display read', () => {
       reviewOpening: false,
       decideIssuance: false,
       archiveReturn: true,
+      proxyIssueCertificate: false,
     });
     expect(access.authorizeLead).toHaveBeenCalledWith(
       actor,
@@ -321,6 +322,54 @@ describe('notary display read', () => {
           { ...matter, issuanceDecision: { decision: 'ISSUE' } },
         )
       ).archiveReturn,
+    ).toBe(false);
+    expect(access.authorizeLead).not.toHaveBeenCalled();
+  });
+
+  it('only advertises proxy certificate issuance for an eligible matter with live authority', async () => {
+    const { access, matter } = fixture();
+    const eligible = {
+      ...matter,
+      stage: 'WAITING_CERTIFICATE' as const,
+      issuanceDecision: { decision: 'ISSUE' },
+    };
+    expect(
+      (
+        await notaryDisplayCapabilities(
+          access as unknown as AccessControlService,
+          actor,
+          eligible,
+        )
+      ).proxyIssueCertificate,
+    ).toBe(true);
+    expect(access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'notary.certificate.issue.proxy',
+      {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+        teamId: 'team',
+      },
+    );
+    access.authorizeLead.mockRejectedValue(new ForbiddenException());
+    expect(
+      (
+        await notaryDisplayCapabilities(
+          access as unknown as AccessControlService,
+          actor,
+          eligible,
+        )
+      ).proxyIssueCertificate,
+    ).toBe(false);
+    access.authorizeLead.mockClear();
+    expect(
+      (
+        await notaryDisplayCapabilities(
+          access as unknown as AccessControlService,
+          actor,
+          { ...eligible, evidence: null },
+        )
+      ).proxyIssueCertificate,
     ).toBe(false);
     expect(access.authorizeLead).not.toHaveBeenCalled();
   });

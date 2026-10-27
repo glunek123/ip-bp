@@ -345,7 +345,20 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(98);
+    expect(result.permissionCatalog).toHaveLength(102);
+    for (const action of [
+      'LEAD_REVIEW_PROXY',
+      'LEAD_WITHDRAW_CONFIRM_PROXY',
+      'NOTARY_CERTIFICATE_ISSUE_PROXY',
+      'CASE_CONSOLIDATE',
+    ]) {
+      expect(result.permissionCatalog).toContainEqual(
+        expect.objectContaining({
+          action,
+          scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+        }),
+      );
+    }
     expect(result.permissionCatalog).toContainEqual(
       expect.objectContaining({
         action: 'NOTARY_RECORD_CORRECT',
