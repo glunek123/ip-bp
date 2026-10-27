@@ -342,7 +342,7 @@ export class SettlementService {
             throw bad('INVALID_SETTLEMENT_TERMS', '律师条款不完整');
           if (
             input.lawyerMode === 'FULL_RISK' &&
-            new Prisma.Decimal(input.lawyerBaseFee).isPositive()
+            new Prisma.Decimal(input.lawyerBaseFee).gt(0)
           )
             throw bad('INVALID_SETTLEMENT_TERMS', '全风险基础费必须为 0');
           if (
