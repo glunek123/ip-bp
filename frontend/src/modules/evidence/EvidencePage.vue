@@ -1022,15 +1022,14 @@ h3 {
 }
 .stage-filter {
   display: grid;
-  grid-template-columns: minmax(260px, 520px) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 4px 10px;
-  width: fit-content;
+  gap: 4px;
+  width: min(320px, 100%);
   color: var(--color-ink-muted, #5c5e66);
   font-size: 12px;
 }
 .stage-filter small {
-  grid-column: 1 / -1;
   font-size: 11px;
 }
 .filter-grid label,
