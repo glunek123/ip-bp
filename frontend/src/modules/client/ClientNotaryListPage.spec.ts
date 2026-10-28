@@ -72,9 +72,15 @@ describe('ClientNotaryListPage', () => {
     expect(wrapper.text()).toContain('待出证');
     expect(wrapper.text()).toContain('待退货');
     expect(wrapper.get('h1.sr-only').text()).toBe('公证审核');
-    const href = wrapper.get('[data-test="client-notary-row"] a').attributes('href')!;
-    expect(new URL(href, 'http://local').pathname).toBe('/client/notary-matters/matter-1');
-    expect(new URL(href, 'http://local').searchParams.get('returnTo')).toBe('/client/notary-matters?page=2');
+    const href = wrapper
+      .get('[data-test="client-notary-row"] a')
+      .attributes('href')!;
+    expect(new URL(href, 'http://local').pathname).toBe(
+      '/client/notary-matters/matter-1',
+    );
+    expect(new URL(href, 'http://local').searchParams.get('returnTo')).toBe(
+      '/client/notary-matters?page=2',
+    );
     await wrapper.get('[data-test="client-notary-row"]').trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.path).toBe(

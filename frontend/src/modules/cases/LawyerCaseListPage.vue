@@ -228,9 +228,7 @@ onBeforeUnmount(() => {
                 @click="openCaseRow($event, item)"
               >
                 <td class="business-list-cell--nowrap">
-                  <RouterLink
-                    :to="caseLocation(item)"
-                  >
+                  <RouterLink :to="caseLocation(item)">
                     {{ item.businessNo }}
                   </RouterLink>
                 </td>

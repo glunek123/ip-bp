@@ -120,7 +120,9 @@ describe('notary portal pages', () => {
       global: { plugins: [router, createPinia()] },
     });
     await flushPromises();
-    const href = wrapper.get('[data-test="notary-portal-row"]').attributes('href')!;
+    const href = wrapper
+      .get('[data-test="notary-portal-row"]')
+      .attributes('href')!;
     expect(new URL(href, 'http://local').searchParams.get('returnTo')).toBe(
       '/notary-portal/matters?stage=ARCHIVED&page=2',
     );
@@ -150,9 +152,15 @@ describe('notary portal pages', () => {
         ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(wrapper.text()).not.toContain('客户');
-    const href = wrapper.get('[data-test="notary-portal-row"]').attributes('href')!;
-    expect(new URL(href, 'http://local').pathname).toBe('/notary-portal/matters/matter-1');
-    expect(new URL(href, 'http://local').searchParams.get('returnTo')).toBe('/notary-portal/matters');
+    const href = wrapper
+      .get('[data-test="notary-portal-row"]')
+      .attributes('href')!;
+    expect(new URL(href, 'http://local').pathname).toBe(
+      '/notary-portal/matters/matter-1',
+    );
+    expect(new URL(href, 'http://local').searchParams.get('returnTo')).toBe(
+      '/notary-portal/matters',
+    );
   });
 
   it('switches the portal queue to waiting certificate without exposing cases', async () => {

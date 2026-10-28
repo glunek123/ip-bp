@@ -212,7 +212,9 @@ describe('LawyerCaseListPage', () => {
     expect(wrapper.text()).not.toContain('本部门全部');
     const href = wrapper.get('a').attributes('href')!;
     expect(new URL(href, 'http://local').pathname).toBe('/lawyer/cases/case-1');
-    expect(new URL(href, 'http://local').searchParams.get('returnTo')).toBe('/lawyer/cases');
+    expect(new URL(href, 'http://local').searchParams.get('returnTo')).toBe(
+      '/lawyer/cases',
+    );
   });
 
   it('loads the execution preparation group without a single-stage filter', async () => {
