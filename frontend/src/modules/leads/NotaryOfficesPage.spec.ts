@@ -128,8 +128,9 @@ describe('NotaryOfficesPage', () => {
 
   it('creates a bound account and lets administrators disable it', async () => {
     const wrapper = await mountPage();
+    await wrapper.get('[data-test="select-office-office-1"]').setValue();
     await wrapper
-      .get('[data-test="office-accounts-office-1"]')
+      .get('[data-test="manage-selected-office-accounts"]')
       .trigger('click');
     await flushPromises();
     await wrapper
@@ -154,8 +155,9 @@ describe('NotaryOfficesPage', () => {
       },
     );
     expect(wrapper.text()).toContain('公证处账号已创建');
+    await wrapper.get('[data-test="select-notary-account-user-1"]').setValue();
     await wrapper
-      .find('[data-test="notary-account-row"] button')
+      .get('[data-test="toggle-selected-notary-account"]')
       .trigger('click');
     await flushPromises();
     expect(accountsApi.setNotaryOfficeAccountActive).toHaveBeenCalledWith(
@@ -164,5 +166,131 @@ describe('NotaryOfficesPage', () => {
       false,
     );
     expect(wrapper.text()).toContain('账号已停用');
+  });
+
+  it('keeps account actions bound to the selected office and account', async () => {
+    accountsApi.listNotaryOfficeAccounts.mockImplementation(
+      async (officeId: string) => [
+        {
+          id: `user-${officeId}`,
+          displayName: officeId,
+          username: officeId,
+          accountActive: true,
+          bindingActive: true,
+          bindingVersion: 1,
+        },
+      ],
+    );
+    const wrapper = await mountPage();
+    expect(
+      wrapper
+        .get('[data-test="manage-selected-office-accounts"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('[data-test="select-office-office-1"]').setValue();
+    await wrapper
+      .get('[data-test="manage-selected-office-accounts"]')
+      .trigger('click');
+    await flushPromises();
+    expect(
+      wrapper
+        .get('[data-test="toggle-selected-notary-account"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    await wrapper
+      .get('[data-test="select-notary-account-user-office-1"]')
+      .setValue();
+    await wrapper.get('[data-test="select-office-office-2"]').setValue();
+    expect(wrapper.find('[data-test="notary-office-accounts"]').exists()).toBe(
+      false,
+    );
+    await wrapper
+      .get('[data-test="manage-selected-office-accounts"]')
+      .trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('深圳市深圳公证处 · 公证处账号');
+    expect(
+      wrapper
+        .find('[data-test="select-notary-account-user-office-1"]')
+        .exists(),
+    ).toBe(false);
+    expect(
+      wrapper
+        .get('[data-test="toggle-selected-notary-account"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+  });
+
+  it('ignores a late account response after selecting another office', async () => {
+    let finishFirst!: (accounts: unknown[]) => void;
+    accountsApi.listNotaryOfficeAccounts.mockImplementation(
+      (officeId: string) =>
+        officeId === 'office-1'
+          ? new Promise((resolve) => {
+              finishFirst = resolve;
+            })
+          : Promise.resolve([]),
+    );
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="select-office-office-1"]').setValue();
+    await wrapper
+      .get('[data-test="manage-selected-office-accounts"]')
+      .trigger('click');
+    await wrapper.get('[data-test="select-office-office-2"]').setValue();
+    await wrapper
+      .get('[data-test="manage-selected-office-accounts"]')
+      .trigger('click');
+    await flushPromises();
+    finishFirst([
+      {
+        id: 'stale',
+        displayName: '旧账号',
+        username: 'stale',
+        accountActive: true,
+        bindingActive: true,
+        bindingVersion: 1,
+      },
+    ]);
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('旧账号');
+    expect(wrapper.text()).toContain('深圳市深圳公证处 · 公证处账号');
+  });
+
+  it('denies account actions when the account list is forbidden', async () => {
+    accountsApi.listNotaryOfficeAccounts.mockResolvedValueOnce([
+      {
+        id: 'user-1',
+        displayName: '办理员',
+        username: 'office.user',
+        accountActive: true,
+        bindingActive: true,
+        bindingVersion: 1,
+      },
+    ]);
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="select-office-office-1"]').setValue();
+    await wrapper
+      .get('[data-test="manage-selected-office-accounts"]')
+      .trigger('click');
+    await flushPromises();
+    accountsApi.listNotaryOfficeAccounts.mockRejectedValueOnce(
+      new ApiError('forbidden', 403, 'ACTION_FORBIDDEN'),
+    );
+    await wrapper
+      .get('[data-test="manage-selected-office-accounts"]')
+      .trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('当前账号没有维护该公证处账号的权限');
+    expect(
+      wrapper.find('[data-test="select-notary-account-user-1"]').exists(),
+    ).toBe(false);
+    expect(
+      wrapper
+        .get('[data-test="toggle-selected-notary-account"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper.find('[data-test="notary-office-account-create"]').exists(),
+    ).toBe(false);
   });
 });

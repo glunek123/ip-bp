@@ -33,6 +33,8 @@ const phone = ref('');
 const query = ref('');
 const selectedProfileId = ref('');
 const selectedAccountId = ref('');
+const selectedListedAccountId = ref('');
+const selectedBindingId = ref('');
 const resetPasswords = ref<Record<string, string>>({});
 const forbidden = ref(false);
 const accountPage = ref(1);
@@ -60,6 +62,20 @@ const canCreate = computed(
     isValidUsername(username.value) &&
     password.value.length >= 12,
 );
+const selectedListedAccount = computed(() =>
+  accounts.value.find(
+    (account) => account.id === selectedListedAccountId.value,
+  ),
+);
+const selectedBinding = computed(() => {
+  for (const account of accounts.value) {
+    const profile = account.profiles.find(
+      (profile) => profile.bindingId === selectedBindingId.value,
+    );
+    if (profile) return { account, profile };
+  }
+  return null;
+});
 
 function explain(errorValue: unknown): string {
   if (errorValue instanceof ApiError) {
@@ -77,6 +93,8 @@ function explain(errorValue: unknown): string {
 }
 
 async function refresh(): Promise<void> {
+  selectedListedAccountId.value = '';
+  selectedBindingId.value = '';
   accountRequest?.abort();
   const controller = new AbortController();
   accountRequest = controller;
@@ -97,6 +115,20 @@ async function refresh(): Promise<void> {
       return;
     accounts.value = page.items;
     accountTotal.value = page.total;
+    if (
+      !accounts.value.some(
+        (account) => account.id === selectedListedAccountId.value,
+      )
+    )
+      selectedListedAccountId.value = '';
+    if (
+      !accounts.value.some((account) =>
+        account.profiles.some(
+          (profile) => profile.bindingId === selectedBindingId.value,
+        ),
+      )
+    )
+      selectedBindingId.value = '';
   } catch (reason) {
     if (
       controller.signal.aborted ||
@@ -105,6 +137,8 @@ async function refresh(): Promise<void> {
     )
       return;
     accounts.value = [];
+    selectedListedAccountId.value = '';
+    selectedBindingId.value = '';
     accountTotal.value = 0;
     error.value = explain(reason);
     forbidden.value =
@@ -228,6 +262,7 @@ async function bind(): Promise<void> {
 }
 
 async function toggleAccount(account: LawyerAccount): Promise<void> {
+  if (saving.value || account.id !== selectedListedAccountId.value) return;
   saving.value = true;
   error.value = '';
   try {
@@ -253,6 +288,7 @@ async function toggleBinding(
   active: boolean,
   version: number,
 ): Promise<void> {
+  if (saving.value || bindingId !== selectedBindingId.value) return;
   saving.value = true;
   error.value = '';
   try {
@@ -269,6 +305,7 @@ async function toggleBinding(
 }
 
 async function reset(account: LawyerAccount): Promise<void> {
+  if (account.id !== selectedListedAccountId.value) return;
   const newPassword = resetPasswords.value[account.id] ?? '';
   if (newPassword.length < 12 || saving.value) return;
   saving.value = true;
@@ -289,7 +326,11 @@ async function reset(account: LawyerAccount): Promise<void> {
   }
 }
 
-watch(accountPage, () => void refresh());
+watch(accountPage, () => {
+  selectedListedAccountId.value = '';
+  selectedBindingId.value = '';
+  void refresh();
+});
 watch(selectedAccountId, (next, previous) => {
   if (!mounted || next === previous) return;
   void searchProfiles();
@@ -297,6 +338,8 @@ watch(selectedAccountId, (next, previous) => {
 watch(identity, (next, previous) => {
   if (!mounted || next === previous) return;
   selectedProfileId.value = '';
+  selectedListedAccountId.value = '';
+  selectedBindingId.value = '';
   query.value = '';
   profiles.value = [];
   successfulProfileSearch.value = null;
@@ -440,12 +483,81 @@ onBeforeUnmount(() => {
       </section>
       <section v-if="!forbidden" class="demo-card demo-card--pad">
         <h2 class="form-section-title">账号与档案</h2>
+        <div class="form-actions" aria-label="已选律师账号操作">
+          <span
+            >已选账号：{{
+              selectedListedAccount?.displayName ?? '未选择'
+            }}</span
+          >
+          <ElButton
+            :disabled="!selectedListedAccount || saving || loading"
+            data-test="toggle-selected-account"
+            @click="
+              selectedListedAccount && toggleAccount(selectedListedAccount)
+            "
+            >{{
+              selectedListedAccount?.active ? '停用账号' : '启用账号'
+            }}</ElButton
+          >
+          <input
+            v-model="resetPasswords[selectedListedAccountId]"
+            class="text-input"
+            type="password"
+            autocomplete="new-password"
+            minlength="12"
+            :disabled="!selectedListedAccount || saving || loading"
+            aria-label="已选账号的新密码"
+            placeholder="输入新密码（至少 12 位）"
+          />
+          <ElButton
+            :disabled="
+              !selectedListedAccount ||
+              saving ||
+              loading ||
+              (resetPasswords[selectedListedAccountId]?.length ?? 0) < 12
+            "
+            data-test="reset-selected-account"
+            @click="selectedListedAccount && reset(selectedListedAccount)"
+            >重置密码</ElButton
+          >
+        </div>
+        <div class="form-actions" aria-label="已选承办档案绑定操作">
+          <span
+            >已选绑定：{{ selectedBinding?.profile.fullName ?? '未选择' }}</span
+          >
+          <ElButton
+            :disabled="!selectedBinding || saving || loading"
+            data-test="toggle-selected-binding"
+            @click="
+              selectedBinding &&
+              toggleBinding(
+                selectedBinding.account,
+                selectedBinding.profile.bindingId,
+                selectedBinding.profile.bindingActive,
+                selectedBinding.profile.bindingVersion,
+              )
+            "
+            >{{
+              selectedBinding?.profile.bindingActive ? '停用绑定' : '启用绑定'
+            }}</ElButton
+          >
+        </div>
         <p v-if="loading">正在读取律师账号</p>
         <p v-else-if="accounts.length === 0" class="field-help">
           当前部门暂无律师账号。
         </p>
         <ul v-else class="notary-offices-list">
           <li v-for="account in accounts" :key="account.id">
+            <label
+              ><input
+                v-model="selectedListedAccountId"
+                type="radio"
+                name="selected-lawyer-account"
+                :value="account.id"
+                data-test="select-lawyer-account"
+                :disabled="saving || loading"
+              />选择账号</label
+            >
             <strong>{{ account.displayName }}（{{ account.username }}）</strong
             ><span class="pill">{{ account.active ? '启用' : '停用' }}</span>
             <p v-if="account.profiles.length === 0" class="field-help">
@@ -456,6 +568,16 @@ onBeforeUnmount(() => {
               :key="profile.bindingId"
               class="demo-form-grid"
             >
+              <label
+                ><input
+                  v-model="selectedBindingId"
+                  type="radio"
+                  name="selected-lawyer-binding"
+                  :value="profile.bindingId"
+                  data-test="select-lawyer-binding"
+                  :disabled="saving || loading"
+                />选择绑定</label
+              >
               <span
                 >{{ profile.fullName }} ·
                 {{ profile.lawFirm ?? '律所未填写' }} ·
@@ -464,43 +586,6 @@ onBeforeUnmount(() => {
               <span class="pill">{{
                 profile.bindingActive ? '绑定启用' : '绑定停用'
               }}</span>
-              <ElButton
-                text
-                :disabled="saving"
-                @click="
-                  toggleBinding(
-                    account,
-                    profile.bindingId,
-                    profile.bindingActive,
-                    profile.bindingVersion,
-                  )
-                "
-                >{{ profile.bindingActive ? '停用绑定' : '启用绑定' }}</ElButton
-              >
-            </div>
-            <div class="demo-form-grid">
-              <ElButton
-                text
-                :disabled="saving"
-                @click="toggleAccount(account)"
-                >{{ account.active ? '停用账号' : '启用账号' }}</ElButton
-              >
-              <input
-                v-model="resetPasswords[account.id]"
-                class="text-input"
-                type="password"
-                autocomplete="new-password"
-                minlength="12"
-                placeholder="输入新密码（至少 12 位）"
-              />
-              <ElButton
-                text
-                :disabled="
-                  saving || (resetPasswords[account.id]?.length ?? 0) < 12
-                "
-                @click="reset(account)"
-                >重置密码</ElButton
-              >
             </div>
           </li>
         </ul>

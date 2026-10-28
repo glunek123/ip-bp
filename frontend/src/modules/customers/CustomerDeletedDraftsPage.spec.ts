@@ -34,14 +34,22 @@ it('keeps the exact restore request after CONTACT_BUSY and retries the same key'
     items: [
       {
         id: 'customer-1',
-        name: '已删除草稿',
+        name: '草稿甲',
         version: 2,
         deletedAt: '2026-10-09T01:00:00.000Z',
         deletionReason: null,
         capabilities: { restoreDraft: true },
       },
+      {
+        id: 'customer-2',
+        name: '草稿乙',
+        version: 7,
+        deletedAt: '2026-10-09T02:00:00.000Z',
+        deletionReason: null,
+        capabilities: { restoreDraft: true },
+      },
     ],
-    total: 1,
+    total: 2,
     page: 1,
     pageSize: 20,
   });
@@ -63,13 +71,26 @@ it('keeps the exact restore request after CONTACT_BUSY and retries the same key'
   try {
     await flushPromises();
     expect(wrapper.find('main h1').exists()).toBe(false);
-    await wrapper
-      .get('[data-test="deleted-draft-row"] button')
-      .trigger('click');
+    expect(
+      wrapper.get('[data-test="deleted-draft-row"]').find('button').exists(),
+    ).toBe(false);
+    expect(
+      wrapper.get('[data-test="open-restore-confirm"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('[aria-label="选择草稿 草稿乙"]').setValue();
+    expect(
+      wrapper.get('[data-test="open-restore-confirm"]').attributes('disabled'),
+    ).toBeUndefined();
+    await wrapper.get('[data-test="open-restore-confirm"]').trigger('click');
+    expect(wrapper.get('[data-test="restore-draft-confirm"]').text()).toContain(
+      'customer-2',
+    );
     await wrapper
       .get('[data-test="restore-draft-confirm"] input')
       .setValue('原恢复原因');
-    await wrapper.get('[data-test="restore-draft-submit"]').trigger('click');
+    await wrapper
+      .get('[data-test="restore-draft-submit-confirm"]')
+      .trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('结果尚不确定');
     expect(wrapper.get('[data-test="restore-draft-submit"]').text()).toContain(
@@ -82,6 +103,11 @@ it('keeps the exact restore request after CONTACT_BUSY and retries the same key'
     expect(api.restoreCustomerDraft.mock.calls[1]).toEqual(
       api.restoreCustomerDraft.mock.calls[0],
     );
+    expect(api.restoreCustomerDraft.mock.calls[0]).toEqual([
+      'customer-2',
+      { expectedVersion: 7, reason: '原恢复原因' },
+      expect.any(String),
+    ]);
     expect(globalThis.sessionStorage.length).toBe(0);
   } finally {
     wrapper.unmount();

@@ -114,6 +114,11 @@ describe('LawyerAccountsPage', () => {
   it('uses server revision and version values for account and binding changes', async () => {
     const { wrapper } = mountPage();
     await flushPromises();
+    const accountAction = wrapper.get('[data-test="toggle-selected-account"]');
+    const bindingAction = wrapper.get('[data-test="toggle-selected-binding"]');
+    expect(accountAction.attributes('disabled')).toBeDefined();
+    expect(bindingAction.attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-test="select-lawyer-account"]').setValue();
     const buttons = wrapper.findAll('button');
     const stopAccount = buttons.find((button) => button.text() === '停用账号');
     expect(stopAccount).toBeDefined();
@@ -125,6 +130,8 @@ describe('LawyerAccountsPage', () => {
       3,
     );
 
+    expect(bindingAction.attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-test="select-lawyer-binding"]').setValue();
     const stopBinding = wrapper
       .findAll('button')
       .find((button) => button.text() === '停用绑定');
@@ -135,6 +142,121 @@ describe('LawyerAccountsPage', () => {
       'binding-1',
       false,
       2,
+    );
+    expect(wrapper.get('li').findAll('button')).toHaveLength(0);
+  });
+
+  it('keeps account and binding selections separate and resets only the selected account password', async () => {
+    api.listLawyerAccounts.mockResolvedValue({
+      items: [
+        account,
+        {
+          ...secondAccount,
+          profiles: [
+            {
+              ...account.profiles[0],
+              bindingId: 'binding-2',
+              bindingVersion: 5,
+            },
+          ],
+        },
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 20,
+    });
+    const { wrapper } = mountPage();
+    await flushPromises();
+    const accountSelections = wrapper.findAll(
+      '[data-test="select-lawyer-account"]',
+    );
+    const bindingSelections = wrapper.findAll(
+      '[data-test="select-lawyer-binding"]',
+    );
+    await accountSelections[1]!.setValue();
+    await bindingSelections[0]!.setValue();
+    await wrapper
+      .get('input[aria-label="已选账号的新密码"]')
+      .setValue('new password 123');
+    await wrapper.get('[data-test="reset-selected-account"]').trigger('click');
+    await flushPromises();
+    expect(api.resetLawyerPassword).toHaveBeenCalledWith(
+      'account-2',
+      'new password 123',
+      3,
+    );
+    expect(
+      wrapper
+        .get('[data-test="toggle-selected-binding"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.findAll('[data-test="select-lawyer-binding"]')[0]!.setValue();
+    await wrapper.get('[data-test="toggle-selected-binding"]').trigger('click');
+    await flushPromises();
+    expect(api.setLawyerBindingStatus).toHaveBeenCalledWith(
+      'account-1',
+      'binding-1',
+      false,
+      2,
+    );
+  });
+
+  it('clears both selections before a manual refresh and requires selection against fresh versions', async () => {
+    const { wrapper } = mountPage();
+    await flushPromises();
+    await wrapper.get('[data-test="select-lawyer-account"]').setValue();
+    await wrapper.get('[data-test="select-lawyer-binding"]').setValue();
+    api.listLawyerAccounts.mockResolvedValue({
+      items: [
+        {
+          ...account,
+          active: false,
+          authorizationRevision: 4,
+          profiles: [
+            { ...account.profiles[0], bindingActive: false, bindingVersion: 3 },
+          ],
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '刷新')!
+      .trigger('click');
+    expect(
+      wrapper
+        .get('[data-test="toggle-selected-account"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper
+        .get('[data-test="toggle-selected-binding"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    await flushPromises();
+    await wrapper.get('[data-test="select-lawyer-account"]').setValue();
+    await wrapper.get('[data-test="toggle-selected-account"]').trigger('click');
+    await flushPromises();
+    expect(api.setLawyerAccountStatus).toHaveBeenCalledWith(
+      'account-1',
+      true,
+      4,
+    );
+    expect(
+      wrapper
+        .get('[data-test="toggle-selected-account"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('[data-test="select-lawyer-binding"]').setValue();
+    await wrapper.get('[data-test="toggle-selected-binding"]').trigger('click');
+    await flushPromises();
+    expect(api.setLawyerBindingStatus).toHaveBeenCalledWith(
+      'account-1',
+      'binding-1',
+      true,
+      3,
     );
   });
 
