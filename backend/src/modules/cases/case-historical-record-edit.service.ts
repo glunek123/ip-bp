@@ -65,7 +65,7 @@ export class CaseHistoricalRecordEditService {
     input: CorrectHearingRecordDto,
   ): Promise<HearingRecordCorrectionResultDto> {
     this.keys(
-      input,
+      this.withOptionalCorrectionReason(input, 'reason'),
       [
         'arrangementId',
         'trialRoundId',
@@ -83,7 +83,7 @@ export class CaseHistoricalRecordEditService {
       trialRoundId: this.id(input.trialRoundId),
       expectedHearingRevision: this.revision(input.expectedHearingRevision),
       idempotencyKey: this.key(input.idempotencyKey),
-      reason: this.text(input.reason, 500),
+      reason: this.correctionText(input.reason),
       hearingAt: this.date(input.hearingAt, true, true),
     };
     return this.run(
@@ -175,7 +175,7 @@ export class CaseHistoricalRecordEditService {
     caseId: string,
     input: CorrectJudgmentRecordDto,
   ): Promise<JudgmentRecordCorrectionResultDto> {
-    this.keys(input, [
+    this.keys(this.withOptionalCorrectionReason(input, 'reason'), [
       'judgmentId',
       'trialRoundId',
       'expectedJudgmentRevision',
@@ -193,7 +193,7 @@ export class CaseHistoricalRecordEditService {
       trialRoundId: this.id(input.trialRoundId),
       expectedJudgmentRevision: this.revision(input.expectedJudgmentRevision),
       idempotencyKey: this.key(input.idempotencyKey),
-      reason: this.text(input.reason, 500),
+      reason: this.correctionText(input.reason),
       judgmentReceivedAt: this.date(input.judgmentReceivedAt, false, false)!,
       judgmentAmountState: input.judgmentAmountState,
       judgmentAmount: this.amount(
@@ -327,7 +327,7 @@ export class CaseHistoricalRecordEditService {
     caseId: string,
     input: CorrectClosureRecordDto,
   ): Promise<ClosureRecordCorrectionResultDto> {
-    this.keys(input, [
+    this.keys(this.withOptionalCorrectionReason(input, 'correctionReason'), [
       'closureId',
       'expectedClosureVersionId',
       'expectedClosureRevision',
@@ -344,7 +344,7 @@ export class CaseHistoricalRecordEditService {
       expectedClosureVersionId: this.id(input.expectedClosureVersionId),
       expectedClosureRevision: this.revision(input.expectedClosureRevision),
       idempotencyKey: this.key(input.idempotencyKey),
-      correctionReason: this.text(input.correctionReason, 500),
+      correctionReason: this.correctionText(input.correctionReason),
       closeAt: this.date(input.closeAt, true, false),
       closeAmountState: input.closeAmountState,
       closeAmt: this.amount(input.closeAmountState, input.closeAmt),
@@ -890,6 +890,21 @@ export class CaseHistoricalRecordEditService {
     )
       throw failure('VALIDATION_ERROR');
     return value.trim();
+  }
+  private correctionText(value: unknown) {
+    if (value === undefined) return '未填写';
+    if (typeof value !== 'string' || value.length > 500)
+      throw failure('VALIDATION_ERROR');
+    return value.trim() || '未填写';
+  }
+  private withOptionalCorrectionReason(value: unknown, key: string) {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      throw failure('VALIDATION_ERROR');
+    const input = value as Record<string, unknown>;
+    return {
+      ...input,
+      [key]: input[key] === undefined ? '未填写' : input[key],
+    };
   }
   private date(value: string | null, nullable: boolean, future: boolean) {
     if (value === null && nullable) return null;

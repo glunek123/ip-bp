@@ -1,13 +1,12 @@
-import { ApiProperty, OmitType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import {
   IsInt,
   IsString,
   IsUUID,
-  Matches,
   Max,
   MaxLength,
   Min,
-  MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { MailCaseExecutionDto } from './case-execution-mailing.dto';
 import { SubmitCaseExecutionFilingDto } from './case-execution-filing.dto';
@@ -26,12 +25,11 @@ export class CorrectExecutionMailingRecordDto extends OmitType(
   @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)
   expectedMailingRevision!: number;
-  @ApiProperty({ minLength: 1, maxLength: 500 })
+  @ApiPropertyOptional({ maxLength: 500 })
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString()
-  @MinLength(1)
   @MaxLength(500)
-  @Matches(/\S/u)
-  reason!: string;
+  reason?: string;
 }
 export class CorrectExecutionFilingRecordDto extends OmitType(
   SubmitCaseExecutionFilingDto,
@@ -43,12 +41,11 @@ export class CorrectExecutionFilingRecordDto extends OmitType(
   @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)
   expectedFilingRevision!: number;
-  @ApiProperty({ minLength: 1, maxLength: 500 })
+  @ApiPropertyOptional({ maxLength: 500 })
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString()
-  @MinLength(1)
   @MaxLength(500)
-  @Matches(/\S/u)
-  reason!: string;
+  reason?: string;
 }
 export class CorrectExecutionFinishRecordDto extends OmitType(
   FinishCaseExecutionDto,
@@ -60,12 +57,11 @@ export class CorrectExecutionFinishRecordDto extends OmitType(
   @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)
   expectedFinishRevision!: number;
-  @ApiProperty({ minLength: 1, maxLength: 500 })
+  @ApiPropertyOptional({ maxLength: 500 })
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString()
-  @MinLength(1)
   @MaxLength(500)
-  @Matches(/\S/u)
-  correctionReason!: string;
+  correctionReason?: string;
 }
 export class CorrectHearingRecordDto extends OmitType(SaveCaseHearingDto, [
   'expectedVersion',
@@ -77,12 +73,11 @@ export class CorrectHearingRecordDto extends OmitType(SaveCaseHearingDto, [
   @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)
   expectedHearingRevision!: number;
-  @ApiProperty({ minLength: 1, maxLength: 500 })
+  @ApiPropertyOptional({ maxLength: 500 })
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString()
-  @MinLength(1)
   @MaxLength(500)
-  @Matches(/\S/u)
-  reason!: string;
+  reason?: string;
 }
 export class CorrectJudgmentRecordDto extends OmitType(
   RegisterCaseJudgmentDto,
@@ -95,12 +90,11 @@ export class CorrectJudgmentRecordDto extends OmitType(
   @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)
   expectedJudgmentRevision!: number;
-  @ApiProperty({ minLength: 1, maxLength: 500 })
+  @ApiPropertyOptional({ maxLength: 500 })
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString()
-  @MinLength(1)
   @MaxLength(500)
-  @Matches(/\S/u)
-  reason!: string;
+  reason?: string;
 }
 export class CorrectClosureRecordDto extends OmitType(RecordCaseClosureInput, [
   'expectedVersion',
@@ -119,12 +113,11 @@ export class CorrectClosureRecordDto extends OmitType(RecordCaseClosureInput, [
   @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)
   expectedClosureRevision!: number;
-  @ApiProperty({ minLength: 1, maxLength: 500 })
+  @ApiPropertyOptional({ maxLength: 500 })
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString()
-  @MinLength(1)
   @MaxLength(500)
-  @Matches(/\S/u)
-  correctionReason!: string;
+  correctionReason?: string;
 }
 
 class RecordCorrectionResultDto {

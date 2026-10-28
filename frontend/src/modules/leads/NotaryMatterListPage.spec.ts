@@ -64,7 +64,13 @@ const businessHeaders = [
   '调查费',
   '样品费',
 ];
-const defaultHeaders = ['选择', '操作', '案件进展', ...businessHeaders];
+const defaultHeaders = [
+  '选择',
+  '操作',
+  '公证事项编号',
+  '案件进展',
+  ...businessHeaders,
+];
 function preferenceWithLegacyOrder(
   order: Array<
     'businessNo' | 'stage' | 'sourceLead' | 'notaryOffice' | 'createdAt'
@@ -402,14 +408,16 @@ describe('NotaryMatterListPage', () => {
     expect(row.get('[data-column="shopExternalId"]').text()).toBe('TB-001');
     expect(row.get('[data-column="transferredAt"]').text()).toBe('2026-09-25');
     expect(row.get('[data-column="evidenceAt"]').text()).toBe('2026-09-26');
-    expect(row.get('.notary-business-no').text()).toBe('NT-001');
-    expect(wrapper.findAll('colgroup col')).toHaveLength(17);
+    expect(row.findAll('td')[2]?.text()).toBe('NT-001');
+    expect(wrapper.findAll('colgroup col')).toHaveLength(18);
     expect(wrapper.get('.business-list-scroll').attributes('tabindex')).toBe(
       '0',
     );
-    expect(row.get('summary').attributes('aria-label')).toContain(
-      '来源权利主体',
-    );
+    expect(
+      row
+        .get('[data-column="rightsHolder"] .notary-truncate')
+        .attributes('title'),
+    ).toContain('来源权利主体');
   });
 
   it.each([
@@ -516,8 +524,8 @@ describe('NotaryMatterListPage', () => {
     ['recordEvidence', 'evidence-form', '登记取证'],
     ['recordOpening', 'opening-form', '登记开箱'],
     ['reviewOpening', 'review-form', '审核开箱'],
-    ['decideIssuance', 'issuance-form', '决定是否出证'],
-    ['archiveReturn', 'return-archive-form', '办理退货归档'],
+    ['decideIssuance', 'issuance-form', '出证决定'],
+    ['archiveReturn', 'return-archive-form', '退货归档'],
   ])(
     'names the server-authorized %s next step as an in-place button',
     async (capability, _anchor, label) => {
@@ -990,7 +998,7 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[data-column-key="rightsHolder"]').setValue(false);
     await wrapper.get('[data-test="cancel-columns"]').trigger('click');
     expect(preferenceApi.save).not.toHaveBeenCalled();
-    expect(wrapper.findAll('thead th')).toHaveLength(17);
+    expect(wrapper.findAll('thead th')).toHaveLength(18);
   });
 
   it('keeps the saved columns and draft after a save failure', async () => {
@@ -1001,7 +1009,7 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[data-column-key="rightsHolder"]').setValue(false);
     await wrapper.get('[data-test="save-columns"]').trigger('click');
     await flushPromises();
-    expect(wrapper.findAll('thead th')).toHaveLength(17);
+    expect(wrapper.findAll('thead th')).toHaveLength(18);
     expect(
       wrapper.get('[data-column-key="rightsHolder"]').element,
     ).toMatchObject({ checked: false });
@@ -1036,7 +1044,7 @@ describe('NotaryMatterListPage', () => {
     preferenceApi.get.mockRejectedValueOnce(new Error('offline'));
     const { wrapper } = await mountPage('/notary-matters');
     expect(wrapper.findAll('[data-test="matter-row"]')).toHaveLength(1);
-    expect(wrapper.findAll('thead th')).toHaveLength(17);
+    expect(wrapper.findAll('thead th')).toHaveLength(18);
     expect(
       wrapper
         .get('[data-test="column-settings-toggle"]')

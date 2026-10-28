@@ -44,6 +44,11 @@ const api = vi.hoisted(() => ({
   correctCaseJudgmentRecord: vi.fn(),
   correctCaseClosureRecord: vi.fn(),
 }));
+const routineApi = vi.hoisted(() => ({
+  getCaseRoutineProfile: vi.fn(),
+  updateCaseRoutineProfile: vi.fn(),
+}));
+vi.mock('../../api/case-routine', () => routineApi);
 vi.mock('../../api/cases', async (original) => ({
   ...(await original<typeof import('../../api/cases')>()),
   getCase: api.getCase,
@@ -1017,6 +1022,9 @@ beforeEach(() => {
   vi.resetAllMocks();
   sessionStorage.clear();
   api.getLead.mockRejectedValue(new ApiError('来源无权', 403, 'FORBIDDEN'));
+  routineApi.getCaseRoutineProfile.mockRejectedValue(
+    new ApiError('资料无权', 403, 'FORBIDDEN'),
+  );
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   api.downloadMaterialVersion.mockResolvedValue(undefined);
   api.listLawyerMatchCandidates.mockResolvedValue([]);
@@ -2745,17 +2753,116 @@ describe('UI002 real case workspace host', () => {
     expect(wrapper.text()).not.toContain('测试店铺');
     expect(wrapper.get('.case-workspace-title').text()).toBe('CA-3');
   });
-  it('opens source edit only from its actual edit capability, without expanding the section', async () => {
+  it('opens independent case editing without navigating to the source lead', async () => {
     api.getLead.mockResolvedValue(sourceLead);
+    routineApi.getCaseRoutineProfile.mockResolvedValue({
+      revision: 0,
+      canEdit: true,
+      shopName: sourceLead.shopName,
+      shopExternalId: sourceLead.shopExternalId,
+      remark: sourceLead.remark,
+      products: sourceLead.products,
+    });
     const { wrapper, router } = await render();
     const section = wrapper.get('[data-section="lead-info"]');
     await section.get('.case-workspace-section__edit').trigger('click');
     await flushPromises();
-    expect(router.currentRoute.value.path).toBe('/leads/lead-1/edit');
+    expect(router.currentRoute.value.path).toBe('/cases/case-1');
+    expect(wrapper.find('[data-test="case-routine-editor"]').exists()).toBe(
+      true,
+    );
+    await wrapper.get('[data-test="routine-cancel"]').trigger('click');
+    expect(routineApi.updateCaseRoutineProfile).not.toHaveBeenCalled();
     expect(section.get('[aria-expanded]').attributes('aria-expanded')).toBe(
       'false',
     );
     expect(api.matchCase).not.toHaveBeenCalled();
+  });
+  it('disables early archive while ordinary case data is being edited', async () => {
+    routineApi.getCaseRoutineProfile.mockResolvedValue({
+      revision: 0,
+      canEdit: true,
+      shopName: sourceLead.shopName,
+      shopExternalId: sourceLead.shopExternalId,
+      remark: sourceLead.remark,
+      products: sourceLead.products,
+    });
+    const { wrapper } = await render({ ...baseItem, canEarlyArchive: true });
+    await wrapper.get('[data-test="edit-case-routine"]').trigger('click');
+    expect(
+      wrapper
+        .get('[data-test="open-detail-early-archive"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('[data-test="routine-cancel"]').trigger('click');
+    expect(
+      wrapper
+        .get('[data-test="open-detail-early-archive"]')
+        .attributes('disabled'),
+    ).toBeUndefined();
+  });
+  it('saves case details, reloads the case profile, and never updates the source lead or workflow', async () => {
+    api.getLead.mockResolvedValue(sourceLead);
+    const original = {
+      revision: 0,
+      canEdit: true,
+      shopName: sourceLead.shopName,
+      shopExternalId: sourceLead.shopExternalId,
+      remark: sourceLead.remark,
+      products: sourceLead.products,
+    };
+    const updated = { ...original, revision: 1, shopName: '案件独立店铺' };
+    routineApi.getCaseRoutineProfile
+      .mockResolvedValueOnce(original)
+      .mockResolvedValue(updated);
+    routineApi.updateCaseRoutineProfile.mockResolvedValue(undefined);
+    const { wrapper } = await render();
+    await wrapper.get('[data-test="edit-case-routine"]').trigger('click');
+    await wrapper.get('[data-test="routine-shop"]').setValue('案件独立店铺');
+    await wrapper
+      .get('[data-test="case-routine-editor"] form')
+      .trigger('submit');
+    await flushPromises();
+    expect(routineApi.updateCaseRoutineProfile).toHaveBeenCalledWith(
+      'case-1',
+      expect.objectContaining({
+        expectedRevision: 0,
+        shopName: '案件独立店铺',
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(wrapper.find('[data-test="case-routine-editor"]').exists()).toBe(
+      false,
+    );
+    expect(sourceLead.shopName).not.toBe('案件独立店铺');
+    expect(api.matchCase).not.toHaveBeenCalled();
+    expect(api.submitComplaint).not.toHaveBeenCalled();
+  });
+  it('blocks resubmission when a successful save cannot be refreshed', async () => {
+    routineApi.getCaseRoutineProfile
+      .mockResolvedValueOnce({
+        revision: 0,
+        canEdit: true,
+        shopName: sourceLead.shopName,
+        shopExternalId: sourceLead.shopExternalId,
+        remark: sourceLead.remark,
+        products: sourceLead.products,
+      })
+      .mockRejectedValue(new ApiError('无权', 403, 'FORBIDDEN'));
+    routineApi.updateCaseRoutineProfile.mockResolvedValue(undefined);
+    const { wrapper } = await render();
+    await wrapper.get('[data-test="edit-case-routine"]').trigger('click');
+    await wrapper.get('[data-test="routine-shop"]').setValue('案件独立店铺');
+    await wrapper
+      .get('[data-test="case-routine-editor"] form')
+      .trigger('submit');
+    await flushPromises();
+    expect(wrapper.text()).toContain('资料已保存，但刷新失败');
+    await wrapper
+      .get('[data-test="case-routine-editor"] form')
+      .trigger('submit');
+    await flushPromises();
+    expect(routineApi.updateCaseRoutineProfile).toHaveBeenCalledTimes(1);
   });
   it('keeps source access denial explicit and all case edit entries controlled', async () => {
     const { wrapper } = await render();

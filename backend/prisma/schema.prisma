@@ -2057,6 +2057,7 @@ model NotaryOffice {
 }
 
 model NotaryMatter {
+  routineProfile NotaryRoutineProfile?
   evidenceItems EvidenceItem[]
   evidencePaperCertificates EvidencePaperCertificate[]
   evidenceGroups EvidenceGroupVersion[]
@@ -2147,6 +2148,7 @@ model NotaryCertificateFee {
 }
 
 model Case {
+  routineProfile CaseRoutineProfile?
   refundApplications CaseRefundApplication[]
   handlingGroupMembers CaseHandlingGroupMember[]
   consolidationMembership CaseConsolidationMember?
@@ -2285,6 +2287,37 @@ model Case {
   @@unique([currentSecondInstanceResultId, id, departmentId])
   @@unique([currentExecutionSubmissionId, id, departmentId])
   @@map("cases")
+}
+
+// Editable display values are separate from source and evidence snapshots.
+// A missing row means the current legacy projection has not been edited yet.
+model NotaryRoutineProfile {
+  matterId      String       @id @map("matter_id") @db.Uuid
+  departmentId  String       @map("department_id") @db.Uuid
+  revision      Int          @default(1)
+  shopName      String       @map("shop_name") @db.VarChar(200)
+  shopExternalId String?     @map("shop_external_id") @db.VarChar(100)
+  products      Json
+  matter        NotaryMatter @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_routine_profiles_matter_department_fkey")
+
+  @@unique([matterId, departmentId])
+  @@index([departmentId, shopName])
+  @@map("notary_routine_profiles")
+}
+
+model CaseRoutineProfile {
+  caseId        String @id @map("case_id") @db.Uuid
+  departmentId  String @map("department_id") @db.Uuid
+  revision      Int    @default(1)
+  shopName      String? @map("shop_name") @db.VarChar(200)
+  shopExternalId String? @map("shop_external_id") @db.VarChar(100)
+  remark         String?
+  products      Json
+  case          Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "case_routine_profiles_case_department_fkey")
+
+  @@unique([caseId, departmentId])
+  @@index([departmentId, shopName])
+  @@map("case_routine_profiles")
 }
 
 model CaseExternalEntry {

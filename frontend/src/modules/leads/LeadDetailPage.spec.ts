@@ -10,6 +10,7 @@ import LeadDetailPage from './LeadDetailPage.vue';
 
 const leadApi = vi.hoisted(() => ({
   getLead: vi.fn(),
+  updateLeadRoutine: vi.fn(),
   pushLead: vi.fn(),
   applyLeadWithdrawal: vi.fn(),
   decideLeadNoEvidence: vi.fn(),
@@ -248,6 +249,44 @@ async function openTransfer(wrapper: Awaited<ReturnType<typeof mountPage>>) {
   await wrapper.get('[data-test="batch-purpose"]').setValue('首批线上取证');
 }
 describe('LeadDetailPage', () => {
+  it('edits archived ordinary fields and cancels without advancing the workflow', async () => {
+    const original = {
+      ...lead,
+      status: 'ARCHIVED',
+      capabilities: {
+        ...lead.capabilities,
+        edit: false,
+        push: false,
+        routineEdit: true,
+      },
+    };
+    const updated = { ...original, version: 2, shopName: '线索新店铺' };
+    leadApi.getLead.mockResolvedValueOnce(original).mockResolvedValue(updated);
+    leadApi.updateLeadRoutine.mockResolvedValue(undefined);
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="edit-lead-routine"]').trigger('click');
+    await wrapper.get('[data-test="routine-shop"]').setValue('取消内容');
+    await wrapper.get('[data-test="routine-cancel"]').trigger('click');
+    expect(leadApi.updateLeadRoutine).not.toHaveBeenCalled();
+    await wrapper.get('[data-test="edit-lead-routine"]').trigger('click');
+    await wrapper.get('[data-test="routine-shop"]').setValue('线索新店铺');
+    await wrapper
+      .get('[data-test="lead-routine-editor"] form')
+      .trigger('submit');
+    await flushPromises();
+    expect(leadApi.updateLeadRoutine).toHaveBeenCalledWith(
+      'lead-1',
+      expect.objectContaining({
+        expectedRevision: 1,
+        shopName: '线索新店铺',
+        remark: '备注',
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(wrapper.text()).toContain('线索新店铺');
+    expect(leadApi.pushLead).not.toHaveBeenCalled();
+    expect(leadApi.decideLeadNoEvidence).not.toHaveBeenCalled();
+  });
   it('reopens a pending push after the server advanced and the drawer fresh read failed', async () => {
     const identity = 'operator-1:INTERNAL:department-1:1';
     sessionStorage.setItem(

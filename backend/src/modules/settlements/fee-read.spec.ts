@@ -45,6 +45,7 @@ function row() {
       courtCaseNo: null,
       stage: 'WAITING_ARCHIVE' as const,
       sourceLead: null,
+      routineProfile: null,
       defendants: [],
     },
   };
@@ -168,5 +169,21 @@ describe('independent scoped fee read', () => {
       projectFeeReadRow({ ...input, proofContentVersionId: null })
         .proofOriginalFilename,
     ).toBeNull();
+  });
+  it('reads the case shop independently while preserving original financial values and proof', () => {
+    const input = row();
+    const projected = projectFeeReadRow({
+      ...input,
+      case: {
+        ...input.case,
+        sourceLead: { platform: 'TAOBAO', shopName: '线索店铺' },
+        routineProfile: { shopName: '案件店铺' },
+      },
+    });
+    expect(projected).toMatchObject({
+      shopName: '案件店铺',
+      amount: '900719925474099312345.67',
+      proofContentVersionId: 'old-cv',
+    });
   });
 });

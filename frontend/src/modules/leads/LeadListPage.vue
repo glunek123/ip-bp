@@ -186,6 +186,20 @@ function actionTitle(lead: Lead): string | null {
       return null;
   }
 }
+function actionShortTitle(lead: Lead): string {
+  switch (lead.status) {
+    case 'WAITING_PUSH':
+      return '推送审核';
+    case 'WAITING_REVIEW':
+      return '代办审核';
+    case 'WAITING_EVIDENCE_DECISION':
+      return '确认取证';
+    case 'ARCHIVED':
+      return '申请撤回';
+    default:
+      return '';
+  }
+}
 async function pushDirectly(lead: Lead): Promise<void> {
   if (directPushBusy.value) return;
   const actor = identity.value;
@@ -1378,7 +1392,8 @@ onBeforeUnmount(() => {
           <table class="demo-table business-list-table lead-list-table">
             <colgroup>
               <col style="width: 52px" />
-              <col style="width: 200px" />
+              <col style="width: 160px" />
+              <col style="width: 170px" />
               <col style="width: 140px" />
               <col style="width: 100px" />
               <col style="width: 160px" />
@@ -1393,7 +1408,8 @@ onBeforeUnmount(() => {
             <thead>
               <tr>
                 <th aria-label="选择线索">选择</th>
-                <th>操作／线索编号</th>
+                <th>操作</th>
+                <th>线索编号</th>
                 <th>案件进展</th>
                 <th>平台</th>
                 <th>店铺名</th>
@@ -1446,11 +1462,12 @@ onBeforeUnmount(() => {
                     "
                   />
                 </td>
-                <td class="business-list-cell--nowrap">
+                <td class="business-list-cell--nowrap lead-row-actions">
                   <ElButton
                     v-if="actionTitle(lead)"
                     type="primary"
                     data-test="lead-quick-action"
+                    :title="actionTitle(lead) ?? ''"
                     :disabled="
                       noEvidenceLocked ||
                       directPushBusy ||
@@ -1463,7 +1480,7 @@ onBeforeUnmount(() => {
                       csvContextLoading
                     "
                     @click="openWorkflow(lead)"
-                    >{{ actionTitle(lead) }}</ElButton
+                    >{{ actionShortTitle(lead) }}</ElButton
                   >
                   <RouterLink
                     :to="`/leads/${lead.id}`"
@@ -1471,7 +1488,9 @@ onBeforeUnmount(() => {
                   >
                     详情
                   </RouterLink>
-                  <div class="mono">{{ lead.businessNo }}</div>
+                </td>
+                <td class="mono business-list-cell--nowrap">
+                  {{ lead.businessNo }}
                 </td>
                 <td class="business-list-cell--nowrap">
                   <span class="pill">{{ leadStatusLabels[lead.status] }}</span>
@@ -1481,13 +1500,18 @@ onBeforeUnmount(() => {
                 </td>
                 <td class="business-list-cell--text">
                   <details>
-                    <summary>{{ lead.shopName }}</summary>
+                    <summary :title="lead.shopName">
+                      {{ lead.shopName }}
+                    </summary>
                     <p>客户：{{ lead.displayNames.customerName }}</p>
                     <p>权利主体：{{ lead.displayNames.rightsHolderName }}</p>
                     <p>负责人：{{ lead.displayNames.responsibleUserName }}</p>
                   </details>
                 </td>
-                <td class="business-list-cell--text mono">
+                <td
+                  class="business-list-cell--text mono"
+                  :title="lead.shopExternalId || '未登记'"
+                >
                   {{ lead.shopExternalId || '未登记' }}
                 </td>
                 <td class="business-list-cell--text lead-product-cell">
@@ -1766,9 +1790,14 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
-.lead-list-table {
-  min-width: 1630px;
+.demo-table.business-list-table.lead-list-table {
+  min-width: 1500px;
   table-layout: fixed;
+  font-size: 12px;
+}
+.lead-list-table :is(th, td) {
+  height: auto;
+  padding: 7px 8px;
 }
 .lead-list-table details {
   min-width: 0;
@@ -1778,10 +1807,23 @@ onBeforeUnmount(() => {
   overflow-wrap: anywhere;
 }
 .lead-list-table details:not([open]) summary {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  display: block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   overflow: hidden;
+}
+.lead-row-actions > a {
+  margin-left: 6px;
+}
+.lead-row-actions :deep(.el-button) {
+  min-width: 80px;
+  height: 32px;
+  padding: 0 8px;
+}
+.lead-list-table td.mono.business-list-cell--text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .lead-list-table details[open] {
   white-space: normal;

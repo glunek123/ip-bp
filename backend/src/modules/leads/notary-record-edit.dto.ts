@@ -1,10 +1,11 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   Allow,
   ArrayMinSize,
   IsArray,
   IsInt,
+  IsOptional,
   IsString,
   MaxLength,
   Min,
@@ -15,13 +16,17 @@ import { NotaryLogisticsDto } from './lead-notary.dto';
 export class CorrectNotaryEvidenceDto {
   @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
   @ApiProperty({ minimum: 0 }) @IsInt() @Min(0) expectedRevision!: number;
-  @ApiProperty({ minLength: 1, maxLength: 500 })
+  @ApiPropertyOptional({
+    maxLength: 500,
+    description: '选填；未填写时记录为“未填写”',
+  })
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
+  @IsOptional()
   @IsString()
   @MaxLength(500)
-  correctionReason!: string;
+  correctionReason?: string;
   @ApiProperty({ format: 'date' }) @IsString() evidenceAt!: string;
   @ApiProperty({ type: [NotaryLogisticsDto], minItems: 1 })
   @IsArray()
@@ -34,13 +39,17 @@ export class CorrectNotaryEvidenceDto {
 export class CorrectNotaryOpeningSenderDto {
   @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
   @ApiProperty({ minimum: 0 }) @IsInt() @Min(0) expectedRevision!: number;
-  @ApiProperty({ minLength: 1, maxLength: 500 })
+  @ApiPropertyOptional({
+    maxLength: 500,
+    description: '选填；未填写时记录为“未填写”',
+  })
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value,
   )
+  @IsOptional()
   @IsString()
   @MaxLength(500)
-  correctionReason!: string;
+  correctionReason?: string;
   @ApiProperty({ type: String, nullable: true, maxLength: 200 })
   @Allow()
   senderName!: string | null;

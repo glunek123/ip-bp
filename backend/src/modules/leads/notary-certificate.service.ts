@@ -15,6 +15,7 @@ import { MaterialService } from '../materials';
 import { CaseCreationService } from '../cases';
 import { resolveHistoricalNumber } from '../business-numbering';
 import { initializeNotaryEvidence } from '../evidence';
+import { parseRoutineProducts } from '../../common/routine-business-product';
 import { initializeNotaryFees } from '../settlements';
 
 type FeeInput = { state: 'KNOWN' | 'PENDING'; amount: string | null };
@@ -113,11 +114,27 @@ export class NotaryCertificateService {
                   select: {
                     needDisclose: true,
                     shopName: true,
+                    remark: true,
+                    products: {
+                      orderBy: { position: 'asc' },
+                      select: {
+                        id: true,
+                        position: true,
+                        title: true,
+                        url: true,
+                        quantity: true,
+                        unitPrice: true,
+                        commentCount: true,
+                        estimatedAmount: true,
+                      },
+                    },
                     platform: true,
                     responsibleUserId: true,
                     teamId: true,
                   },
                 },
+                routineProfile: true,
+                selectedProducts: { select: { leadProductId: true } },
                 notaryOffice: { select: { name: true, status: true } },
                 evidence: {
                   select: {
@@ -307,6 +324,33 @@ export class NotaryCertificateService {
                 issuedAt,
               },
             );
+            if (matter.routineProfile) {
+              const selected = parseRoutineProducts(
+                matter.routineProfile.products,
+                matter.selectedProducts.map((item) => item.leadProductId),
+              );
+              const selectedById = new Map(
+                selected.map((item) => [item.id, item]),
+              );
+              const products = matter.sourceLead.products.map(
+                (item) =>
+                  selectedById.get(item.id) ?? {
+                    ...item,
+                    unitPrice: item.unitPrice.toFixed(2),
+                    estimatedAmount: item.estimatedAmount.toFixed(2),
+                  },
+              );
+              await tx.caseRoutineProfile.create({
+                data: {
+                  caseId: createdCase.id,
+                  departmentId: actor.departmentId,
+                  shopName: matter.routineProfile.shopName,
+                  shopExternalId: matter.routineProfile.shopExternalId,
+                  remark: matter.sourceLead.remark,
+                  products: products as Prisma.InputJsonArray,
+                },
+              });
+            }
             const result: CertificateResult = {
               id: matterId,
               stage: 'ARCHIVED',
@@ -371,7 +415,8 @@ export class NotaryCertificateService {
               ),
               evidenceAt: matter.evidence.evidenceAt,
               officeName: matter.notaryOffice.name,
-              shopName: matter.sourceLead.shopName,
+              shopName:
+                matter.routineProfile?.shopName ?? matter.sourceLead.shopName,
               platform: matter.sourceLead.platform,
               files,
             });

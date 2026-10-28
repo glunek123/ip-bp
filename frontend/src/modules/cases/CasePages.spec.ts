@@ -30,6 +30,7 @@ vi.mock('./CaseExecutionFinishPanel.vue', () => ({
 const api = vi.hoisted(() => ({
   listCases: vi.fn(),
   getCase: vi.fn(),
+  getCaseRoutineProfile: vi.fn(),
   getLead: vi.fn(),
   matchCase: vi.fn(),
   listLawyerMatchCandidates: vi.fn(),
@@ -51,6 +52,10 @@ const api = vi.hoisted(() => ({
   getSettlementContext: vi.fn(),
   getCaseSettlement: vi.fn(),
   listFees: vi.fn(),
+}));
+vi.mock('../../api/case-routine', () => ({
+  getCaseRoutineProfile: api.getCaseRoutineProfile,
+  updateCaseRoutineProfile: vi.fn(),
 }));
 vi.mock('../../api/settlements', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/settlements')>()),
@@ -92,6 +97,14 @@ beforeEach(() => {
       '<div v-show="modelValue" role="dialog" class="case-workspace-editors"><slot /></div>',
   };
   vi.resetAllMocks();
+  api.getCaseRoutineProfile.mockResolvedValue({
+    revision: 0,
+    canEdit: false,
+    shopName: null,
+    shopExternalId: null,
+    remark: null,
+    products: [],
+  });
   api.getSettlementContext.mockResolvedValue({
     read: false,
     termsUpdate: false,
@@ -594,9 +607,10 @@ describe('case pages', () => {
       CaseListPage,
     );
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '',
+      '操作',
       '案件编号',
       '负责人',
-      '操作',
       '来源',
       '案件进展',
       '客户',
@@ -617,17 +631,17 @@ describe('case pages', () => {
         .findAll('thead th')
         .every((cell) => cell.attributes('scope') === 'col'),
     ).toBe(true);
-    expect(wrapper.findAll('colgroup col')).toHaveLength(17);
+    expect(wrapper.findAll('colgroup col')).toHaveLength(18);
     const cells = wrapper.findAll('tbody tr td');
-    expect(cells).toHaveLength(17);
-    expect(cells[0]!.get('a').text()).toBe('CA-20261013-00001234');
-    expect(cells[0]!.get('a').attributes('href')).toBe(
+    expect(cells).toHaveLength(18);
+    expect(cells[2]!.get('a').text()).toBe('CA-20261013-00001234');
+    expect(cells[2]!.get('a').attributes('href')).toBe(
       '/cases/case%2Fencoded?view=department&stage=PENDING_MATCH',
     );
-    expect(cells[1]!.text()).toBe(ownerName);
-    expect(cells[2]!.text()).toContain('编辑资料');
-    expect(cells[3]!.text()).toContain('LD-20261013-00005678');
-    expect(cells[3]!.text()).toContain('NZ-20261013-00009012');
+    expect(cells[3]!.text()).toBe(ownerName);
+    expect(cells[1]!.findAll('[data-case-action]')).toHaveLength(1);
+    expect(cells[4]!.text()).toContain('LD-20261013-00005678');
+    expect(cells[4]!.text()).toContain('NZ-20261013-00009012');
     expect(wrapper.get('.business-list-scroll').attributes()).toMatchObject({
       role: 'region',
       tabindex: '0',
@@ -681,14 +695,19 @@ describe('case pages', () => {
       });
       const wrapper = await mountRoute('/cases', CaseListPage);
       const rows = wrapper.findAll('tbody tr');
-      expect(rows[0]!.findAll('[data-case-action]')).toHaveLength(1);
-      expect(rows[0]!.get('[data-case-action]').text()).not.toBe('办理');
-      const actionColumnIndex = wrapper
-        .findAll('thead th')
-        .findIndex((header) => header.text() === '操作');
-      expect(
-        rows[1]!.findAll('td')[actionColumnIndex]!.get('.field-help').text(),
-      ).toBe('当前无可办操作');
+      const correctionOnly = [
+        'canCorrectClosure',
+        'canCorrectHearing',
+        'canCorrectJudgment',
+        'canRevokeJudgmentNextStep',
+        'canRevokeSecondInstanceResult',
+      ].includes(capability);
+      expect(rows[0]!.findAll('[data-case-action]')).toHaveLength(
+        correctionOnly ? 0 : 1,
+      );
+      if (!correctionOnly)
+        expect(rows[0]!.get('[data-case-action]').text()).not.toBe('办理');
+      expect(rows[0]!.find('a[href^="/cases/"]').exists()).toBe(true);
       expect(rows[1]!.find('[data-case-action]').exists()).toBe(false);
       wrapper.unmount();
     },
@@ -734,9 +753,7 @@ describe('case pages', () => {
     expect(wrapper.get('[data-test="case-list"] a').attributes('href')).toBe(
       '/cases/case-21?view=department&page=2',
     );
-    expect(wrapper.get('[data-test="case-list"]').text()).toContain(
-      '匹配当事人与承办律师',
-    );
+    expect(wrapper.get('[data-test="case-list"]').text()).toContain('匹配案件');
     expect(wrapper.text()).toContain('第 2 / 2 页');
     expect(
       wrapper.get('[data-test="next-page"]').attributes('disabled'),
@@ -1007,9 +1024,9 @@ describe('case pages', () => {
     expect(wrapper.get('[data-test="case-list"]').text()).toContain('NZ-1');
     expect(wrapper.get('a[href="/cases/case-1"]').text()).toBe('CA-1');
     const cells = wrapper.findAll('[data-test="case-list"] tbody tr td');
-    expect(cells[1]!.text()).toContain('负责人');
-    expect(cells[2]!.classes()).toContain('business-list-cell--text');
-    expect(cells[3]!.text()).toContain('LD-1');
+    expect(cells[3]!.text()).toContain('负责人');
+    expect(cells[1]!.classes()).toContain('business-list-cell--text');
+    expect(cells[4]!.text()).toContain('LD-1');
     expect(wrapper.get('.case-list-head-actions').text()).toContain('案件系列');
   });
 
@@ -1050,9 +1067,7 @@ describe('case pages', () => {
       ],
     });
     const wrapper = await mountRoute('/cases', CaseListPage);
-    expect(wrapper.get('[data-test="case-list"]').text()).toContain(
-      '提交起诉材料',
-    );
+    expect(wrapper.get('[data-test="case-list"]').text()).toContain('提交起诉');
     expect(wrapper.get('[data-test="case-list"]').text()).not.toContain('只读');
   });
 
@@ -1073,9 +1088,7 @@ describe('case pages', () => {
       '/cases?stage=WAITING_EXECUTION_CONFIRMATION',
       CaseListPage,
     );
-    expect(wrapper.get('[data-test="case-list"]').text()).toContain(
-      '确认执行材料',
-    );
+    expect(wrapper.get('[data-test="case-list"]').text()).toContain('确认材料');
     expect(wrapper.get('[data-test="case-list"]').text()).not.toContain('只读');
   });
 
@@ -1178,8 +1191,8 @@ describe('case pages', () => {
     expect(rows[0]!.text()).toContain('执行材料待确认');
     expect(
       rows[0]!.get('[data-case-action="execution-submission"]').text(),
-    ).toBe('提交执行材料');
-    expect(rows[1]!.text()).toContain('当前无可办操作');
+    ).toBe('提交材料');
+    expect(rows[1]!.find('[data-case-action]').exists()).toBe(false);
   });
 
   it('shows the shared second-instance history on the internal case detail', async () => {

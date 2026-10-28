@@ -9,6 +9,7 @@ export const caseListDisplaySelect = {
   sourceLeadId: true,
   sourceNotaryMatterId: true,
   certificateId: true,
+  routineProfile: { select: { shopName: true, shopExternalId: true } },
   externalEntry: {
     select: {
       id: true,
@@ -268,8 +269,12 @@ export function caseListDisplay(
       isNormal && lead !== null
         ? {
             platform: lead.platform,
-            shopName: lead.shopName,
-            shopExternalId: lead.shopExternalId,
+            shopName: record.routineProfile
+              ? record.routineProfile.shopName
+              : lead.shopName,
+            shopExternalId: record.routineProfile
+              ? record.routineProfile.shopExternalId
+              : lead.shopExternalId,
           }
         : {
             platform:
@@ -279,18 +284,20 @@ export function caseListDisplay(
               typeof external.known.platform === 'string'
                 ? external.known.platform
                 : null,
-            shopName:
-              typeof external?.known === 'object' &&
-              external.known !== null &&
-              !Array.isArray(external.known) &&
-              typeof external.known.shopName === 'string'
+            shopName: record.routineProfile
+              ? record.routineProfile.shopName
+              : typeof external?.known === 'object' &&
+                  external.known !== null &&
+                  !Array.isArray(external.known) &&
+                  typeof external.known.shopName === 'string'
                 ? external.known.shopName
                 : null,
-            shopExternalId:
-              typeof external?.known === 'object' &&
-              external.known !== null &&
-              !Array.isArray(external.known) &&
-              typeof external.known.shopExternalId === 'string'
+            shopExternalId: record.routineProfile
+              ? record.routineProfile.shopExternalId
+              : typeof external?.known === 'object' &&
+                  external.known !== null &&
+                  !Array.isArray(external.known) &&
+                  typeof external.known.shopExternalId === 'string'
                 ? external.known.shopExternalId
                 : null,
           },

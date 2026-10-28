@@ -324,6 +324,7 @@ export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> &
       | 'WAITING_RETURN'
       | 'ARCHIVED';
     version: number;
+    routineRevision?: number;
     capabilities: {
       recordEvidence: boolean;
       recordOpening: boolean;
@@ -981,6 +982,9 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
           ))) &&
     Number.isInteger(detail.version) &&
     (detail.version as number) >= 1 &&
+    (detail.routineRevision === undefined ||
+      (Number.isInteger(detail.routineRevision) &&
+        (detail.routineRevision as number) >= 0)) &&
     (detail.stage === 'PENDING_EVIDENCE' ||
       detail.stage === 'WAITING_UNBOX' ||
       detail.stage === 'UNBOX_REVIEW' ||
@@ -1258,6 +1262,43 @@ export async function getNotaryMatter(
   );
   if (!isMatterDetail(data)) throw invalidResponse();
   return data;
+}
+
+export type RoutineBusinessEditInput = {
+  expectedRevision: number;
+  shopName: string;
+  products: Array<{
+    id: string;
+    title: string | null;
+    url: string | null;
+    quantity: number;
+    unitPrice: string;
+  }>;
+};
+
+export async function updateNotaryRoutineProfile(
+  id: string,
+  input: RoutineBusinessEditInput,
+  options: RequestOptions = {},
+): Promise<void> {
+  const result = await requestJson(
+    `/notary-matters/${encodeURIComponent(id)}/routine-profile`,
+    { method: 'PATCH', ...options, body: input },
+  );
+  if (
+    !isRecord(result) ||
+    result.revision !== input.expectedRevision + 1 ||
+    result.shopName !== input.shopName.trim() ||
+    (result.shopExternalId !== null &&
+      typeof result.shopExternalId !== 'string') ||
+    !Array.isArray(result.products) ||
+    !result.products.every(isProductSnapshot) ||
+    !sameIds(
+      input.products.map((product) => product.id),
+      result.products.map((product: LeadProduct) => product.id),
+    )
+  )
+    throw invalidResponse();
 }
 
 export async function reviewNotaryOpening(

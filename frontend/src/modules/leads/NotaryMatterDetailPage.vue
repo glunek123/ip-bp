@@ -14,6 +14,8 @@ import { useAuthStore } from '../../stores/auth';
 import { downloadMaterialVersion } from '../../api/materials';
 import {
   getNotaryMatter,
+  updateNotaryRoutineProfile,
+  type RoutineBusinessEditInput,
   type NotaryMatterDetail,
   type NotaryReturnChoice,
   type NotaryReturnAmountSummary,
@@ -21,6 +23,7 @@ import {
 import { createListWorkflowContext } from '../../app/list-workflow-context';
 import NotaryMatterWorkflowPanel from './NotaryMatterWorkflowPanel.vue';
 import NotaryRecordCorrectionPanel from './NotaryRecordCorrectionPanel.vue';
+import RoutineBusinessEditor from './RoutineBusinessEditor.vue';
 const route = useRoute();
 const auth = useAuthStore();
 const actorKey = computed(() =>
@@ -37,6 +40,11 @@ const requestScopeKey = computed(
 let contextGeneration = 0;
 let request: AbortController | undefined;
 let correctionRefreshRequest: AbortController | undefined;
+let routineRequest: AbortController | undefined;
+const routineEditing = ref(false);
+const routineSaving = ref(false);
+const routineUnknown = ref(false);
+const routineError = ref('');
 const downloadRequests = new Set<AbortController>();
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 type DetailElement = InstanceType<typeof globalThis.HTMLElement>;
@@ -278,9 +286,63 @@ const workflow = createListWorkflowContext<NotaryMatterDetail>(
 const workflowState = workflow.state;
 function canLeaveDetail() {
   return (
+    !routineSaving.value &&
     workflowState.value.requestState === 'idle' &&
     (correctionPanel.value?.canLeave() ?? true)
   );
+}
+async function saveRoutine(
+  value: Omit<RoutineBusinessEditInput, 'expectedRevision'>,
+) {
+  const current = matter.value;
+  if (
+    !current ||
+    current.routineRevision === undefined ||
+    routineSaving.value ||
+    routineUnknown.value ||
+    workflowState.value.requestState !== 'idle' ||
+    correctionLocked.value ||
+    correctionRefreshing.value
+  )
+    return;
+  const generation = contextGeneration;
+  const controller = new AbortController();
+  routineRequest = controller;
+  routineSaving.value = true;
+  routineError.value = '';
+  try {
+    await updateNotaryRoutineProfile(
+      current.id,
+      { ...value, expectedRevision: current.routineRevision },
+      { signal: controller.signal },
+    );
+    if (controller.signal.aborted || generation !== contextGeneration) return;
+    routineEditing.value = false;
+    await load();
+  } catch (error) {
+    if (controller.signal.aborted || generation !== contextGeneration) return;
+    routineUnknown.value =
+      !(error instanceof ApiError) ||
+      error.status === 0 ||
+      error.status >= 500 ||
+      error.code === 'INVALID_RESPONSE';
+    routineError.value = routineUnknown.value
+      ? '保存结果未确认，请刷新核对后再操作。'
+      : error instanceof ApiError && error.code === 'VERSION_CONFLICT'
+        ? '资料已被修改，请刷新后重新编辑。'
+        : '保存失败，请检查资料或刷新后重试。';
+  } finally {
+    if (routineRequest === controller) {
+      routineRequest = undefined;
+      routineSaving.value = false;
+    }
+  }
+}
+function refreshRoutine() {
+  routineEditing.value = false;
+  routineUnknown.value = false;
+  routineError.value = '';
+  void load();
 }
 onBeforeRouteLeave(canLeaveDetail);
 onBeforeRouteUpdate(canLeaveDetail);
@@ -360,6 +422,12 @@ watch(
 );
 function clearContext() {
   contextGeneration += 1;
+  routineRequest?.abort();
+  routineRequest = undefined;
+  routineEditing.value = false;
+  routineSaving.value = false;
+  routineUnknown.value = false;
+  routineError.value = '';
   correctionRefreshRequest?.abort();
   correctionRefreshRequest = undefined;
   correctionRefreshing.value = false;
@@ -396,6 +464,7 @@ watch(
         'return-archive-form',
         'certificate-summary',
         'certificate',
+        'notary-record-edit',
       ].includes(anchor)
     )
       return;
@@ -452,9 +521,34 @@ watch(
             <h1>{{ matter.businessNo }}</h1>
           </div>
           <ElButton
+            v-if="matter.routineRevision !== undefined"
+            data-test="edit-notary-routine"
+            :disabled="
+              routineSaving ||
+              routineUnknown ||
+              correctionLocked ||
+              correctionRefreshing ||
+              workflowState.requestState !== 'idle'
+            "
+            @click="routineEditing = true"
+            >编辑资料</ElButton
+          >
+          <RouterLink
+            v-if="
+              matter.recordEdits?.evidence?.canCorrect ||
+              matter.recordEdits?.openingSender?.canCorrect
+            "
+            class="button-link"
+            data-test="edit-notary-record"
+            :to="{ hash: '#notary-record-edit' }"
+            >更正取证资料</RouterLink
+          >
+          <ElButton
             data-test="refresh-matter"
             text
             :disabled="
+              routineEditing ||
+              routineSaving ||
               workflowState.requestState !== 'idle' ||
               (correctionPanel && !correctionPanel.canLeave())
             "
@@ -462,6 +556,28 @@ watch(
             >刷新</ElButton
           >
         </div>
+        <section
+          v-if="routineEditing"
+          class="demo-card demo-card--pad"
+          data-test="notary-routine-editor"
+        >
+          <h2 class="form-section-title">编辑公证资料</h2>
+          <RoutineBusinessEditor
+            :shop-name="matter.sourceSummary.shopName"
+            :products="matter.selectedProducts"
+            :pending="routineSaving || routineUnknown"
+            @save="saveRoutine"
+            @cancel="routineEditing = false"
+          />
+          <p v-if="routineError" role="alert" class="submit-error">
+            {{ routineError }}
+          </p>
+          <ElButton
+            v-if="routineUnknown || routineError.includes('刷新')"
+            @click="refreshRoutine"
+            >刷新核对</ElButton
+          >
+        </section>
         <section
           class="demo-card demo-card--pad"
           data-test="notary-case-summary"
@@ -661,20 +777,30 @@ watch(
           :detail="matter"
           :session="workflowState.session"
           :disabled="
-            correctionLocked || correctionRefreshing || correctionRefreshError
+            routineEditing ||
+            routineSaving ||
+            correctionLocked ||
+            correctionRefreshing ||
+            correctionRefreshError
           "
         />
-        <NotaryRecordCorrectionPanel
-          v-if="matter"
-          :key="`${matter.id}:${actorKey}`"
-          ref="correctionPanel"
-          :detail="matter"
-          :actor-key="actorKey"
-          :blocked="workflowState.requestState !== 'idle'"
-          :refreshing="correctionRefreshing || correctionRefreshError"
-          @refreshed="refreshCorrectionFacts"
-          @locking="correctionLocked = $event"
-        />
+        <div id="notary-record-edit" tabindex="-1">
+          <NotaryRecordCorrectionPanel
+            v-if="matter"
+            :key="`${matter.id}:${actorKey}`"
+            ref="correctionPanel"
+            :detail="matter"
+            :actor-key="actorKey"
+            :blocked="
+              routineEditing ||
+              routineSaving ||
+              workflowState.requestState !== 'idle'
+            "
+            :refreshing="correctionRefreshing || correctionRefreshError"
+            @refreshed="refreshCorrectionFacts"
+            @locking="correctionLocked = $event"
+          />
+        </div>
         <p
           v-if="correctionRefreshing"
           role="status"

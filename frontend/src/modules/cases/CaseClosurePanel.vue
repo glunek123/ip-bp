@@ -219,7 +219,7 @@ const ready = computed(
     (amountState.value === 'PENDING' ||
       /^\d{1,14}(?:\.\d{1,2})?$/u.test(amount.value)) &&
     (note.value === '' || validText(note.value, 2000)) &&
-    (!correcting.value || validText(correctionReason.value, 500)) &&
+    (!correcting.value || correctionReason.value.length <= 500) &&
     selected.value.length <= 10,
 );
 function isDenied(failure: unknown) {
@@ -489,7 +489,9 @@ async function submit() {
           input: {
             ...input,
             expectedClosureVersionId: props.item.closure!.current.id,
-            correctionReason: correctionReason.value,
+            correctionReason: correctionReason.value.trim()
+              ? correctionReason.value
+              : '未填写',
           },
         }
       : { command: 'RECORD', input };
@@ -672,7 +674,7 @@ function recordedTime(value: string) {
       @submit.prevent="submit"
     >
       <p v-if="correcting" class="field-help">
-        更正追加新版本，旧记录与附件仍可追溯。请填写本次更正原因。
+        更正追加新版本，旧记录与附件仍可追溯。更正原因可选填。
       </p>
       <label
         >结案日期<input
@@ -711,13 +713,12 @@ function recordedTime(value: string) {
         />
       </label>
       <label v-if="correcting"
-        >更正原因 <span aria-hidden="true">*</span
-        ><textarea
+        >更正原因（选填）
+        <textarea
           v-model="correctionReason"
           class="text-input"
           maxlength="500"
           data-test="closure-reason"
-          required
         />
       </label>
       <label

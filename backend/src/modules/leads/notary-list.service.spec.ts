@@ -86,6 +86,17 @@ function fixture() {
 }
 
 describe('NotaryListService', () => {
+  it('shows the independent shop rather than a later source-lead value', async () => {
+    const { service, repo, matter } = fixture();
+    repo.findMany.mockResolvedValue([
+      {
+        ...matter,
+        routineProfile: { shopName: '公证独立店铺', shopExternalId: null },
+      },
+    ]);
+    const result = await service.list(actor, 1, 20);
+    expect(result.items[0]?.sourceSummary.shopName).toBe('公证独立店铺');
+  });
   it('uses the same scoped combination for rows, total and stage counts', async () => {
     const { service, repo, scope } = fixture();
     await service.list(actor, 2, 20, 'PENDING_EVIDENCE', {
@@ -97,9 +108,20 @@ describe('NotaryListService', () => {
       departmentId: actor.departmentId,
       customerId: 'customer-1',
       rightsHolderId: 'holder-1',
-      sourceLead: {
-        AND: [scope, { shopName: { contains: '店\\%', mode: 'insensitive' } }],
-      },
+      sourceLead: scope,
+      OR: [
+        {
+          routineProfile: {
+            is: { shopName: { contains: '店\\%', mode: 'insensitive' } },
+          },
+        },
+        {
+          routineProfile: { is: null },
+          sourceLead: {
+            is: { shopName: { contains: '店\\%', mode: 'insensitive' } },
+          },
+        },
+      ],
     };
     expect(repo.findMany).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -670,6 +670,7 @@ export class LeadNotaryService {
       where: { id, departmentId: actor.departmentId, sourceLead: scope },
       include: {
         sourceLead: { select: NOTARY_DISPLAY_LEAD_SELECT },
+        routineProfile: true,
         notaryOffice: { select: { id: true, name: true } },
         evidence: {
           include: { logistics: { orderBy: { position: 'asc' } } },
@@ -888,6 +889,12 @@ export class LeadNotaryService {
       matter.sourceSnapshot,
       matter.selectedProducts.map((item) => item.leadProductId),
     );
+    const currentProducts = matter.routineProfile
+      ? this.selectedProductSnapshot(
+          { selectedProducts: matter.routineProfile.products },
+          matter.selectedProducts.map((item) => item.leadProductId),
+        )
+      : productSnapshot;
     const versionSnapshot = this.selectedVersionSnapshot(
       matter.sourceSnapshot,
       matter.selectedMaterials.map((item) => item.contentVersionId),
@@ -904,6 +911,7 @@ export class LeadNotaryService {
       leadVersion: matter.toLeadVersion,
       stage: matter.stage,
       version: matter.version,
+      routineRevision: matter.routineProfile?.revision ?? 0,
       disclosureRequired: matter.sourceLead.needDisclose,
       recordEdits,
       capabilities: await notaryDisplayCapabilities(
@@ -1003,7 +1011,7 @@ export class LeadNotaryService {
         id: matter.sourceLead.id,
         businessNo: matter.sourceLead.businessNo,
       },
-      selectedProducts: productSnapshot,
+      selectedProducts: currentProducts,
       selectedMaterials: versionSnapshot.map((id) => {
         const item = matter.selectedMaterials.find(
           (selection) => selection.contentVersionId === id,

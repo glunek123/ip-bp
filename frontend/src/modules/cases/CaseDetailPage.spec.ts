@@ -17,8 +17,13 @@ import * as http from '../../api/http';
 
 const api = vi.hoisted(() => ({
   getCase: vi.fn(),
+  getCaseRoutineProfile: vi.fn(),
   login: vi.fn(),
   getSession: vi.fn(),
+}));
+vi.mock('../../api/case-routine', () => ({
+  getCaseRoutineProfile: api.getCaseRoutineProfile,
+  updateCaseRoutineProfile: vi.fn(),
 }));
 vi.mock('../../api/cases', async (original) => ({
   ...(await original<typeof import('../../api/cases')>()),
@@ -99,6 +104,14 @@ beforeEach(async () => {
   setCsrfToken(session.csrfToken);
   setSessionIdentity(session.user.id);
   api.getCase.mockResolvedValue(structuredClone(detail));
+  api.getCaseRoutineProfile.mockResolvedValue({
+    revision: 0,
+    canEdit: false,
+    shopName: null,
+    shopExternalId: null,
+    remark: null,
+    products: [],
+  });
   api.getSession.mockRejectedValue(
     new ApiError('会话已失效', 401, 'UNAUTHORIZED'),
   );
@@ -169,6 +182,7 @@ it('logout UI clears the case and reaches login without any new unauthenticated 
   expect(wrapper!.find('.case-workspace').exists()).toBe(false);
   expect(wrapper!.find('#username').exists()).toBe(true);
   expect(api.getCase).toHaveBeenCalledTimes(1);
+  expect(api.getCaseRoutineProfile).toHaveBeenCalledTimes(1);
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 it('logout UI retains the signed-in case and actionable error on a failed logout then allows retry', async () => {

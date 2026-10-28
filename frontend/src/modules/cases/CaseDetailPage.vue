@@ -28,11 +28,24 @@ import {
   ref,
   watch,
 } from 'vue';
-import { RouterLink, useRoute, useRouter } from 'vue-router';
+import {
+  RouterLink,
+  useRoute,
+  useRouter,
+  onBeforeRouteLeave,
+  onBeforeRouteUpdate,
+} from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
 import { ApiError, type RequestOptions } from '../../api/http';
 import { getLead, type LeadDetail } from '../../api/leads';
+import {
+  getCaseRoutineProfile,
+  updateCaseRoutineProfile,
+  type CaseRoutineProfile,
+  type CaseRoutineEditInput,
+} from '../../api/case-routine';
+import { RoutineBusinessEditor } from '../leads/index';
 import CaseWorkspaceShell from './CaseWorkspaceShell.vue';
 import { caseListQueryKeys } from './case-list-query';
 import CaseDetailsSections from './CaseDetailsSections.vue';
@@ -163,6 +176,15 @@ watch(
 );
 const lead = ref<LeadDetail | null>(null);
 const leadState = ref<LeadState>('idle');
+const routine = ref<CaseRoutineProfile | null>(null);
+const routineEditing = ref(false);
+const routineSaving = ref(false);
+const routineUnknown = ref(false);
+const routineError = ref('');
+let routineRequest: AbortController | undefined;
+let routineReadGeneration = 0;
+onBeforeRouteLeave(() => !routineSaving.value);
+onBeforeRouteUpdate(() => !routineSaving.value);
 const drawerOpen = ref(false);
 const actionNotice = ref('');
 const editorVisible = ref(true);
@@ -342,15 +364,13 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
         : caseEditHint,
     },
     'lead-info': {
-      enabled:
-        item.value?.origin?.kind !== 'EXTERNAL_ENTRY' &&
-        leadState.value === 'ready' &&
-        lead.value?.capabilities.edit === true,
+      enabled: routine.value?.canEdit === true,
       label: '编辑',
-      hint:
-        leadState.value === 'denied'
+      hint: routine.value?.canEdit
+        ? '修改本案资料，不影响来源线索或历史证据。'
+        : leadState.value === 'denied'
           ? '无权读取来源线索；案件仍可查看。'
-          : '仅在来源线索可编辑时进入原编辑页。',
+          : '当前账号不能编辑本案资料。',
     },
     'first-instance': {
       enabled: hasCommand('first-instance'),
@@ -409,6 +429,7 @@ const timelineEvents = computed(() =>
   item.value ? buildCaseWorkspaceEvents(item.value) : [],
 );
 function openCommand(command: WorkspaceCommand, editing = false): void {
+  if (routineEditing.value || routineSaving.value) return;
   const permitted = editing
     ? [...sectionEditCommands.value, ...recordRecovery.value.commands]
     : commands.value;
@@ -431,14 +452,11 @@ function reopenPriorEditor(previous: WorkspaceCommand): void {
   drawerOpen.value = true;
 }
 function editSection(section: SectionKey): void {
+  if (routineEditing.value || routineSaving.value) return;
   if (!sectionActions.value[section].enabled) return;
   if (section === 'lead-info') {
-    if (
-      lead.value &&
-      lead.value.id === item.value?.sourceLead?.id &&
-      lead.value.capabilities.edit
-    )
-      void router.push(`/leads/${encodeURIComponent(lead.value.id)}/edit`);
+    if (routine.value?.canEdit && !drawerOpen.value && !earlyArchiveOpen.value)
+      routineEditing.value = true;
     return;
   }
   const choices = sectionEditCommands.value.filter(
@@ -514,6 +532,134 @@ const refreshing = ref(false);
 const refreshError = ref('');
 const item = ref<CaseDetail>();
 const accessVerified = ref(false);
+watch(
+  [
+    workspaceContext,
+    () => item.value?.id,
+    () => item.value?.version,
+    accessVerified,
+  ],
+  async ([contextKey, caseId, version], _prior, onCleanup) => {
+    const generation = ++routineReadGeneration;
+    const controller = new AbortController();
+    onCleanup(() => controller.abort());
+    routine.value = null;
+    if (
+      !caseId ||
+      !accessVerified.value ||
+      auth.session?.principalType !== 'INTERNAL'
+    )
+      return;
+    try {
+      const profile = await getCaseRoutineProfile(caseId, {
+        signal: controller.signal,
+      });
+      if (
+        controller.signal.aborted ||
+        generation !== routineReadGeneration ||
+        workspaceContext.value !== contextKey ||
+        item.value?.version !== version
+      )
+        return;
+      routine.value = profile;
+    } catch {
+      if (!controller.signal.aborted && generation === routineReadGeneration)
+        routineError.value = '案件当前资料暂时不可读取，请刷新重试。';
+    }
+  },
+  { flush: 'sync' },
+);
+async function saveRoutine(value: {
+  shopName: string;
+  products: CaseRoutineEditInput['products'];
+  remark?: string | null;
+}) {
+  const current = item.value;
+  const profile = routine.value;
+  if (
+    !current ||
+    !profile?.canEdit ||
+    routineSaving.value ||
+    routineUnknown.value
+  )
+    return;
+  const context = workspaceContext.value;
+  const controller = new AbortController();
+  routineRequest = controller;
+  routineSaving.value = true;
+  routineError.value = '';
+  const generation = ++routineReadGeneration;
+  let saved = false;
+  try {
+    await updateCaseRoutineProfile(
+      current.id,
+      {
+        ...value,
+        remark: value.remark ?? null,
+        expectedRevision: profile.revision,
+      },
+      { signal: controller.signal },
+    );
+    saved = true;
+    const fresh = await getCaseRoutineProfile(current.id, {
+      signal: controller.signal,
+    });
+    if (
+      controller.signal.aborted ||
+      workspaceContext.value !== context ||
+      generation !== routineReadGeneration
+    )
+      return;
+    routine.value = fresh;
+    routineEditing.value = false;
+  } catch (error) {
+    if (
+      controller.signal.aborted ||
+      workspaceContext.value !== context ||
+      generation !== routineReadGeneration
+    )
+      return;
+    routineUnknown.value =
+      saved ||
+      !(error instanceof ApiError) ||
+      error.status === 0 ||
+      error.status >= 500 ||
+      error.code === 'INVALID_RESPONSE';
+    routineError.value = routineUnknown.value
+      ? saved
+        ? '资料已保存，但刷新失败，请刷新核对后再操作。'
+        : '保存结果未确认，请刷新核对后再操作。'
+      : error instanceof ApiError && error.code === 'VERSION_CONFLICT'
+        ? '资料已被修改，请刷新后重新编辑。'
+        : '保存失败，请检查资料后重试。';
+  } finally {
+    if (routineRequest === controller) {
+      routineRequest = undefined;
+      routineSaving.value = false;
+    }
+  }
+}
+async function refreshRoutine() {
+  const current = item.value;
+  if (!current || routineSaving.value) return;
+  const context = workspaceContext.value;
+  const generation = ++routineReadGeneration;
+  try {
+    const profile = await getCaseRoutineProfile(current.id);
+    if (
+      workspaceContext.value !== context ||
+      generation !== routineReadGeneration
+    )
+      return;
+    routine.value = profile;
+    routineEditing.value = false;
+    routineUnknown.value = false;
+    routineError.value = '';
+  } catch {
+    if (generation === routineReadGeneration)
+      routineError.value = '资料读取失败，请稍后刷新核对。';
+  }
+}
 const activationRevision = ref(0);
 watch(
   [
@@ -1253,6 +1399,14 @@ async function load() {
 }
 
 function clearContext(): void {
+  routineRequest?.abort();
+  routineRequest = undefined;
+  routineReadGeneration += 1;
+  routine.value = null;
+  routineEditing.value = false;
+  routineSaving.value = false;
+  routineUnknown.value = false;
+  routineError.value = '';
   actionNotice.value = '';
   accessVerified.value = false;
   drawerOpen.value = false;
@@ -1839,11 +1993,21 @@ onBeforeUnmount(() => {
         <div class="detail-actions">
           <span class="pill">{{ stageLabel(item.stage) }}</span>
           <ElButton
+            v-if="routine?.canEdit"
+            data-test="edit-case-routine"
+            :disabled="
+              routineSaving || routineUnknown || drawerOpen || earlyArchiveOpen
+            "
+            @click="routineEditing = true"
+            >编辑资料</ElButton
+          >
+          <ElButton
             v-if="primaryCommand"
             :type="
               primaryCommand.label.startsWith('撤销') ? 'danger' : 'primary'
             "
             data-test="workspace-primary-action"
+            :disabled="routineEditing || routineSaving"
             @click="openCommand(primaryCommand)"
             >{{ primaryCommand.label }}</ElButton
           >
@@ -1852,6 +2016,7 @@ onBeforeUnmount(() => {
             class="action-size--wide"
             type="danger"
             data-test="open-detail-early-archive"
+            :disabled="routineEditing || routineSaving"
             @click="earlyArchiveOpen = true"
             >提前归档</ElButton
           >
@@ -1904,6 +2069,37 @@ onBeforeUnmount(() => {
           :case-id="item.id"
           :context-key="identity"
         />
+        <p
+          v-if="routineError && !routineEditing"
+          role="alert"
+          class="submit-error"
+        >
+          {{ routineError }}
+          <ElButton text @click="refreshRoutine">刷新核对</ElButton>
+        </p>
+        <section
+          v-if="routineEditing && routine"
+          class="demo-card demo-card--pad"
+          data-test="case-routine-editor"
+        >
+          <h2 class="form-section-title">编辑案件资料</h2>
+          <RoutineBusinessEditor
+            :shop-name="routine.shopName ?? ''"
+            :remark="routine.remark"
+            :products="routine.products"
+            :pending="routineSaving || routineUnknown"
+            @save="saveRoutine"
+            @cancel="routineEditing = false"
+          />
+          <p v-if="routineError" role="alert" class="submit-error">
+            {{ routineError }}
+          </p>
+          <ElButton
+            v-if="routineUnknown || routineError.includes('刷新')"
+            @click="refreshRoutine"
+            >刷新核对</ElButton
+          >
+        </section>
         <div
           v-if="priorEditors.length > 0"
           class="case-workspace-field__help"
@@ -1938,6 +2134,7 @@ onBeforeUnmount(() => {
           :item="item"
           :lead="lead"
           :lead-state="leadState"
+          :routine="routine"
           :actions="sectionActions"
           :context-key="workspaceContext"
           @edit="editSection"

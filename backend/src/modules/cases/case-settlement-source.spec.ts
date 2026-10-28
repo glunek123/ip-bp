@@ -1,5 +1,49 @@
 import { Prisma } from '../../generated/prisma/client';
-import { readCaseSettlementSource } from './case-settlement-source';
+import {
+  readCaseSettlementSource,
+  searchCaseSettlementSources,
+} from './case-settlement-source';
+
+it('searches and displays the independent case shop in the settlement picker', async () => {
+  const repository = {
+    count: jest.fn().mockResolvedValue(1),
+    findMany: jest.fn().mockResolvedValue([
+      {
+        id: 'case',
+        businessNo: 'CA-1',
+        courtCaseNo: null,
+        customer: { name: '客户' },
+        rightsHolder: { name: '主体' },
+        sourceLead: { shopName: '旧线索店铺' },
+        routineProfile: { shopName: '案件店铺' },
+        defendants: [],
+      },
+    ]),
+  };
+  const result = await searchCaseSettlementSources(
+    { case: repository } as never,
+    { departmentId: 'department', query: '案件', page: 1, pageSize: 20 },
+  );
+  expect(result.items[0]?.shopName).toBe('案件店铺');
+  expect(repository.findMany).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: expect.objectContaining({
+        departmentId: 'department',
+        OR: expect.arrayContaining([
+          {
+            routineProfile: {
+              is: { shopName: { contains: '案件', mode: 'insensitive' } },
+            },
+          },
+          {
+            routineProfile: { is: null },
+            sourceLead: { shopName: { contains: '案件', mode: 'insensitive' } },
+          },
+        ]),
+      }),
+    }),
+  );
+});
 
 const original = {
   id: 'closure-version',

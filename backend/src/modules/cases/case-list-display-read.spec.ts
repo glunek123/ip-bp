@@ -12,6 +12,7 @@ function fixture(): CaseListDisplayRecord {
     sourceLeadId: 'lead',
     sourceNotaryMatterId: 'matter',
     certificateId: 'certificate',
+    routineProfile: null,
     externalEntry: null,
     customer: { id: 'customer', departmentId: 'department', name: '客户' },
     rightsHolder: {
@@ -58,6 +59,15 @@ function fixture(): CaseListDisplayRecord {
   };
 }
 describe('authorized case list display', () => {
+  it('uses the case-specific current shop without changing the source lead', () => {
+    const record = fixture();
+    record.routineProfile = { shopName: '案件独立店铺', shopExternalId: null };
+    expect(caseListDisplay(record).source).toMatchObject({
+      shopName: '案件独立店铺',
+      shopExternalId: null,
+    });
+    expect(record.sourceLead?.shopName).toBe('真实店铺');
+  });
   it('reads effective amounts with exact correction sources while preserving the frozen original', () => {
     const record = fixture();
     record.currentJudgment = {

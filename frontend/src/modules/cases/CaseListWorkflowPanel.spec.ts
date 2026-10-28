@@ -814,8 +814,9 @@ describe('case list workflow session', () => {
     expect(api.listCases).toHaveBeenCalledTimes(1);
     first.wrapper.unmount();
     const second = await render();
+    expect(second.wrapper.find('[data-case-action]').exists()).toBe(false);
     await second.wrapper
-      .get('[data-case-action="choose-next-step"]')
+      .get('[aria-label="未确认的案件办理请求"] button')
       .trigger('click');
     await flushPromises();
     expect(second.wrapper.find('[data-test="retry-original"]').exists()).toBe(
@@ -878,7 +879,17 @@ describe('case list workflow session', () => {
         version: 8,
       });
     const { wrapper } = await render();
-    await wrapper.get('[data-case-action="correct-judgment"]').trigger('click');
+    // This adapter's correction entry moved to case details; retain its
+    // rejection/retry contract independently of the former row button.
+    const state: unknown = Reflect.get(
+      wrapper.getComponent(CaseListPage).vm.$,
+      'setupState',
+    );
+    if (typeof state !== 'object' || state === null)
+      throw new Error('Missing workflow setup state');
+    const enter: unknown = Reflect.get(state, 'enterAction');
+    if (typeof enter !== 'function') throw new Error('Missing workflow host');
+    enter(summary(detail), 'correct-judgment');
     await flushPromises();
     expect(wrapper.get('[data-test="judgment-date"]').element).toHaveProperty(
       'value',
@@ -1085,7 +1096,23 @@ function retainRecord(
   return { key, stored, raw: JSON.stringify(stored) };
 }
 async function openRecords(wrapper: ReturnType<typeof mount>) {
-  await wrapper.get('[data-case-record-edit]').trigger('click');
+  // The list no longer has a per-row edit button. Exercise the retained list
+  // recovery host directly; the real edit entry is covered by the case detail
+  // integration tests, and real recovery entry is tested through its toolbar.
+  const link = wrapper.get('tbody td[data-column="businessNo"] a');
+  const href = link.attributes('href');
+  if (!href) throw new Error('Missing case detail link');
+  const path = new URL(href, 'http://localhost').pathname;
+  const id = decodeURIComponent(path.slice('/cases/'.length));
+  const state: unknown = Reflect.get(
+    wrapper.getComponent(CaseListPage).vm.$,
+    'setupState',
+  );
+  if (typeof state !== 'object' || state === null)
+    throw new Error('Missing recovery setup state');
+  const enter: unknown = Reflect.get(state, 'enterRecordEditor');
+  if (typeof enter !== 'function') throw new Error('Missing recovery host');
+  enter({ id, businessNo: link.text() });
   await flushPromises();
 }
 describe('case list section record host contract', () => {
@@ -1277,9 +1304,7 @@ describe('case list section record host contract', () => {
     expect(wrapper.get('[aria-label="资料更正原请求恢复"]').text()).toContain(
       '无法核对',
     );
-    expect(
-      wrapper.get('[data-case-record-edit]').attributes('disabled'),
-    ).toBeDefined();
+    expect(wrapper.find('[data-case-record-edit]').exists()).toBe(false);
     expect(api.getCase).not.toHaveBeenCalled();
     expect(sessionStorage.getItem(retained.key)).not.toBeNull();
   });

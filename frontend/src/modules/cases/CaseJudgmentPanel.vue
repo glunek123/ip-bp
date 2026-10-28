@@ -245,7 +245,7 @@ function validAmount(state: AmountState, amount: string): boolean {
 }
 const validReason = computed(() => {
   const reason = correctionReason.value.trim();
-  return reason.length >= 1 && reason.length <= 500;
+  return reason.length <= 500;
 });
 const selectedIds = computed(() =>
   availableFiles.value
@@ -361,7 +361,7 @@ async function submit(): Promise<void> {
   if (canCorrect.value)
     await send({
       kind: 'correct',
-      input: { ...input, reason: correctionReason.value.trim() },
+      input: { ...input, reason: correctionReason.value.trim() || '未填写' },
     });
   else await send({ kind: 'register', input });
 }
@@ -618,13 +618,12 @@ function historyLabel(fact: CaseJudgmentFact): string {
       >
         <h3>受控更正</h3>
         <label>
-          <span>更正原因 <span class="required-mark">*</span></span>
+          <span>更正原因（选填）</span>
           <textarea
             v-model="correctionReason"
             data-test="judgment-correction-reason"
             maxlength="500"
             rows="3"
-            required
             :disabled="unknownRequest !== null || submitting"
           />
           <span class="field-help">必填，去除首尾空格后1～500个字符。</span>

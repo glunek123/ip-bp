@@ -10,6 +10,7 @@ import { Prisma } from '../../generated/prisma/client';
 import type { ActorContext } from '../../access-control/actor-context';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { DatabaseService } from '../../database/database.service';
+import { applyRoutineProductLabels } from '../../common/routine-business-product';
 import { MaterialService } from '../materials';
 import type {
   CreateCaseConsolidationDto,
@@ -143,6 +144,7 @@ export class CaseConsolidationService {
         consolidationMembership: { select: { consolidationId: true } },
         consolidationAsMain: { select: { id: true } },
         defendants: { select: { kind: true, name: true, idNo: true } },
+        routineProfile: { select: { shopName: true } },
         sourceLead: {
           select: {
             id: true,
@@ -164,7 +166,7 @@ export class CaseConsolidationService {
       return {
         platform: source.sourceLead.platform,
         externalId: source.sourceLead.shopExternalId?.trim() ?? '',
-        name: source.sourceLead.shopName,
+        name: source.routineProfile?.shopName ?? source.sourceLead.shopName,
       };
     const known = source.externalEntry?.known;
     if (!known || typeof known !== 'object' || Array.isArray(known))
@@ -175,7 +177,9 @@ export class CaseConsolidationService {
         typeof known.shopExternalId === 'string'
           ? known.shopExternalId.trim()
           : '',
-      name: typeof known.shopName === 'string' ? known.shopName : '',
+      name:
+        source.routineProfile?.shopName ??
+        (typeof known.shopName === 'string' ? known.shopName : ''),
     };
   }
 
@@ -524,6 +528,7 @@ export class CaseConsolidationService {
                 sourceLeadId: true,
                 sourceNotaryMatterId: true,
                 certificateId: true,
+                routineProfile: { select: { products: true } },
                 sourceLead: {
                   select: {
                     id: true,
@@ -647,7 +652,13 @@ export class CaseConsolidationService {
               ? {
                   id: source.id,
                   businessNo: source.businessNo,
-                  products: source.products.map((product) => ({
+                  products: (member.case.routineProfile
+                    ? applyRoutineProductLabels(
+                        source.products,
+                        member.case.routineProfile.products,
+                      )
+                    : source.products
+                  ).map((product) => ({
                     ...product,
                     screenshots: product.screenshots.map((screenshot) => ({
                       ...screenshot,

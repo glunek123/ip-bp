@@ -65,7 +65,15 @@ describe('case list query builders', () => {
       {
         OR: [
           {
+            routineProfile: {
+              is: {
+                shopName: { contains: 'A\\%\\_\\\\', mode: 'insensitive' },
+              },
+            },
+          },
+          {
             AND: [
+              { routineProfile: { is: null } },
               expect.objectContaining({
                 externalEntry: { is: null },
                 sourceLeadId: { not: null },
@@ -83,6 +91,7 @@ describe('case list query builders', () => {
           },
           {
             AND: [
+              { routineProfile: { is: null } },
               expect.objectContaining({
                 sourceLeadId: null,
                 sourceNotaryMatterId: null,
@@ -294,7 +303,13 @@ describe('case list query builders', () => {
       expect.arrayContaining([
         { businessNo: { contains: 'A\\%\\_\\\\', mode: 'insensitive' } },
         {
+          routineProfile: { is: null },
           sourceLead: {
+            is: { shopName: { contains: 'A\\%\\_\\\\', mode: 'insensitive' } },
+          },
+        },
+        {
+          routineProfile: {
             is: { shopName: { contains: 'A\\%\\_\\\\', mode: 'insensitive' } },
           },
         },

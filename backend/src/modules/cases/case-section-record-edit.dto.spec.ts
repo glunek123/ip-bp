@@ -156,6 +156,22 @@ describe('exact section correction HTTP contracts', () => {
     it(`${sample.dto.name} accepts its original-body revision zero`, () => {
       expect(errors(sample.body)).toEqual([]);
     });
+    it(`${sample.dto.name} allows the correction reason to be omitted`, () => {
+      const body = { ...sample.body };
+      const correctionKey =
+        sample.dto === CorrectExecutionFinishRecordDto ||
+        sample.dto === CorrectClosureRecordDto
+          ? 'correctionReason'
+          : 'reason';
+      Reflect.deleteProperty(body, correctionKey);
+      expect(errors(body)).toEqual([]);
+      expect(errors({ ...body, [correctionKey]: '' })).toEqual([]);
+      expect(
+        errors({ ...body, [correctionKey]: null }).some(
+          (error) => error.property === correctionKey,
+        ),
+      ).toBe(true);
+    });
     it(`${sample.dto.name} rejects process mutation and arbitrary fields`, () => {
       for (const key of [
         'stage',

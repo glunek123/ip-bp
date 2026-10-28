@@ -262,7 +262,7 @@ describe('CaseArchivePanel', () => {
     },
   );
 
-  it('prefills correction, requires its reason and sends full fields with exact immutable anchors', async () => {
+  it('prefills correction and sends full fields with exact immutable anchors', async () => {
     const wrapper = panel({ item: archived() });
     expect(exists(wrapper, 'form')).toBe(false);
     await control(wrapper, 'correct').trigger('click');
@@ -278,12 +278,10 @@ describe('CaseArchivePanel', () => {
       'value',
       version.archiveReason,
     );
+    expect(disabled(wrapper)).toBe(false);
+    await control(wrapper, 'correction-reason').setValue('a'.repeat(501));
     expect(disabled(wrapper)).toBe(true);
-    for (const reason of [' \n ', 'a'.repeat(501)]) {
-      await control(wrapper, 'correction-reason').setValue(reason);
-      expect(disabled(wrapper)).toBe(true);
-    }
-    await control(wrapper, 'correction-reason').setValue(' 核对真实日期 ');
+    await control(wrapper, 'correction-reason').setValue('');
     await control(wrapper, 'date').setValue('2026-10-14');
     await control(wrapper, 'type').setValue('SETTLEMENT');
     await control(wrapper, 'reason').setValue(' 更正后的归档原因 ');
@@ -296,7 +294,7 @@ describe('CaseArchivePanel', () => {
       archiveAt: '2026-10-14',
       archiveType: 'SETTLEMENT',
       archiveReason: ' 更正后的归档原因 ',
-      correctionReason: ' 核对真实日期 ',
+      correctionReason: '未填写',
     });
     expect(version.archiveReason).toBe('原归档原因');
     expect(api.archiveCase).not.toHaveBeenCalled();

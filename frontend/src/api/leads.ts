@@ -201,6 +201,7 @@ export type Lead = LeadBusinessResult & {
 export type LeadDetail = Lead & {
   capabilities: {
     edit: boolean;
+    routineEdit?: boolean;
     push: boolean;
     withdrawApply: boolean;
     evidenceDecide: boolean;
@@ -1002,6 +1003,8 @@ export async function getLead(
     !isLead(data) ||
     !isRecord(capabilities) ||
     typeof capabilities.edit !== 'boolean' ||
+    (capabilities.routineEdit !== undefined &&
+      typeof capabilities.routineEdit !== 'boolean') ||
     typeof capabilities.push !== 'boolean' ||
     typeof capabilities.withdrawApply !== 'boolean' ||
     typeof capabilities.evidenceDecide !== 'boolean' ||
@@ -1027,6 +1030,7 @@ export async function getLead(
     evidenceDecision: detail.evidenceDecision as LeadEvidenceDecision | null,
     capabilities: {
       edit: capabilities.edit,
+      routineEdit: capabilities.routineEdit === true,
       push: capabilities.push,
       withdrawApply: capabilities.withdrawApply,
       evidenceDecide: capabilities.evidenceDecide,
@@ -1399,6 +1403,57 @@ export async function updateLead(
   });
   if (!isLeadBusinessResult(data)) throw invalidResponse();
   return data;
+}
+
+export type LeadRoutineEditInput = {
+  expectedRevision: number;
+  shopName: string;
+  remark: string | null;
+  products: Array<{
+    id: string;
+    title: string | null;
+    url: string | null;
+    quantity: number;
+    unitPrice: string;
+  }>;
+};
+
+function isRoutineProductReceipt(value: unknown): boolean {
+  return (
+    isRecord(value) && isProduct({ ...value, screenshotContentVersionIds: [] })
+  );
+}
+
+export async function updateLeadRoutine(
+  id: string,
+  input: LeadRoutineEditInput,
+  options: RequestOptions = {},
+): Promise<void> {
+  const data = await requestJson(
+    `/leads/${encodeURIComponent(id)}/routine-profile`,
+    {
+      method: 'PATCH',
+      ...options,
+      body: input,
+    },
+  );
+  if (
+    !isRecord(data) ||
+    data.revision !== input.expectedRevision + 1 ||
+    data.shopName !== input.shopName.trim() ||
+    data.remark !== (input.remark?.trim() || null) ||
+    !Array.isArray(data.products) ||
+    !data.products.every(isRoutineProductReceipt) ||
+    data.products.length !== input.products.length ||
+    new Set((data.products as LeadProduct[]).map((product) => product.id))
+      .size !== data.products.length ||
+    !input.products.every((item) =>
+      (data.products as LeadProduct[]).some(
+        (product) => product.id === item.id,
+      ),
+    )
+  )
+    throw invalidResponse();
 }
 
 export async function updateLeadProductScreenshots(

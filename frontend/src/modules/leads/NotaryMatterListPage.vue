@@ -351,7 +351,8 @@ const visibleColumns = computed(() =>
 const tableWidth = computed(
   () =>
     48 +
-    200 +
+    160 +
+    170 +
     visibleColumns.value.reduce(
       (width, column) => width + columnWidth(column),
       0,
@@ -506,6 +507,13 @@ function matterActions(
   return saved
     ? [{ ...saved, label: `恢复${saved.label}请求` }]
     : actions.filter((action) => action.enabled).slice(0, 1);
+}
+function shortMatterAction(label: string): string {
+  if (label.startsWith('恢复')) return '核对请求';
+  if (label === '决定是否出证') return '出证决定';
+  if (label === '代办公证处出证') return '代办出证';
+  if (label === '办理退货归档') return '退货归档';
+  return label;
 }
 function hasPendingRequestFor(
   actorKey: string,
@@ -1342,7 +1350,7 @@ onBeforeUnmount(() => {
       >
         <div class="column-settings-fixed">
           <strong>始终显示</strong>
-          <span>选择、操作／公证事项编号、案件进展</span>
+          <span>选择、操作、公证事项编号、案件进展</span>
         </div>
         <div class="column-settings-options">
           <div
@@ -1456,7 +1464,8 @@ onBeforeUnmount(() => {
           >
             <colgroup>
               <col style="width: 48px" />
-              <col style="width: 200px" />
+              <col style="width: 160px" />
+              <col style="width: 170px" />
               <col
                 v-for="column in visibleColumns"
                 :key="column"
@@ -1488,6 +1497,7 @@ onBeforeUnmount(() => {
                   />选择
                 </th>
                 <th class="business-list-cell--nowrap">操作</th>
+                <th class="business-list-cell--nowrap">公证事项编号</th>
                 <th
                   v-for="column in visibleColumns"
                   :key="column"
@@ -1532,8 +1542,9 @@ onBeforeUnmount(() => {
                       :key="action.anchor"
                       data-test="matter-action"
                       type="primary"
+                      :title="action.label"
                       @click="openWorkflow(matter, action)"
-                      >{{ action.label }}</ElButton
+                      >{{ shortMatterAction(action.label) }}</ElButton
                     >
                     <RouterLink
                       data-test="matter-link"
@@ -1541,9 +1552,9 @@ onBeforeUnmount(() => {
                       >详情</RouterLink
                     >
                   </div>
-                  <span class="mono notary-business-no">{{
-                    matter.businessNo
-                  }}</span>
+                </td>
+                <td class="mono business-list-cell--nowrap">
+                  {{ matter.businessNo }}
                 </td>
                 <td
                   v-for="column in visibleColumns"
@@ -1558,16 +1569,21 @@ onBeforeUnmount(() => {
                   "
                 >
                   <template v-if="column === 'stage'">
-                    <span class="pill">{{ stageLabels[matter.stage] }}</span>
-                    <RouterLink
-                      v-if="matter.linkedCase"
-                      class="notary-case-link"
-                      data-test="linked-case"
-                      :to="`/cases/${matter.linkedCase.id}`"
-                      >已流转诉讼 ·
-                      {{ caseStageLabels[matter.linkedCase.stage] }}</RouterLink
-                    >
-                    <span v-else class="notary-case-link">暂无可见案件</span>
+                    <div class="notary-stage">
+                      <span class="pill">{{ stageLabels[matter.stage] }}</span>
+                      <RouterLink
+                        v-if="matter.linkedCase"
+                        class="notary-case-link"
+                        data-test="linked-case"
+                        :title="`已流转诉讼 · ${caseStageLabels[matter.linkedCase.stage]}`"
+                        :to="`/cases/${matter.linkedCase.id}`"
+                        >已流转诉讼 ·
+                        {{
+                          caseStageLabels[matter.linkedCase.stage]
+                        }}</RouterLink
+                      >
+                      <span v-else class="notary-case-link">暂无可见案件</span>
+                    </div>
                   </template>
                   <template v-else-if="column === 'sourceLead'">
                     <RouterLink
@@ -1592,22 +1608,20 @@ onBeforeUnmount(() => {
                     }}</span>
                   </template>
                   <template v-else-if="isTextColumn(column)">
-                    <details
-                      v-if="columnText(matter, column) !== '未登记'"
-                      class="notary-long-text"
-                      :style="{ maxWidth: `${columnWidth(column) - 24}px` }"
+                    <span
+                      class="notary-truncate"
+                      :title="columnText(matter, column)"
                     >
-                      <summary
-                        :aria-label="`展开${columnLabels[column]}：${columnText(matter, column)}`"
-                      >
-                        <span>{{ columnText(matter, column) }}</span>
-                      </summary>
-                      <p>{{ columnText(matter, column) }}</p>
-                    </details>
-                    <span v-else>未登记</span>
+                      {{ columnText(matter, column) }}
+                    </span>
                   </template>
                   <template v-else>
-                    <span class="mono">{{ columnText(matter, column) }}</span>
+                    <span
+                      class="mono"
+                      :class="{ 'notary-truncate': !isFeeColumn(column) }"
+                      :title="columnText(matter, column)"
+                      >{{ columnText(matter, column) }}</span
+                    >
                   </template>
                 </td>
               </tr>
@@ -1680,37 +1694,49 @@ onBeforeUnmount(() => {
 }
 
 .demo-table.business-list-table {
-  table-layout: auto;
+  table-layout: fixed;
+  font-size: 12px;
+}
+.demo-table.business-list-table :is(th, td) {
+  height: auto;
+  padding: 7px 8px;
 }
 
 .notary-actions a + a {
   margin-left: 0.75rem;
 }
+.notary-actions :deep(.el-button) {
+  min-width: 80px;
+  height: 32px;
+  padding: 0 8px;
+}
+.notary-actions a {
+  margin-left: 6px;
+}
 
-.notary-business-no,
+.notary-stage {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+.notary-stage .pill {
+  flex: 0 0 auto;
+}
 .notary-case-link {
-  display: block;
-  margin-top: 0.25rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
   white-space: nowrap;
 }
 
-.notary-long-text summary {
-  cursor: pointer;
-}
-
-.notary-long-text summary span {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+.notary-truncate {
+  display: block;
   overflow: hidden;
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
-
-.notary-long-text p {
-  margin: 0.5rem 0 0;
-  overflow-wrap: anywhere;
-  white-space: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .column-settings {

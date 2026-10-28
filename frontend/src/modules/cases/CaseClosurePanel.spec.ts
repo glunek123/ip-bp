@@ -344,7 +344,7 @@ describe('injected closure panel', () => {
     expect(disabled(wrapper)).toBe(false);
     wrapper.unmount();
   });
-  it('loads the complete current version for correction and requires the raw reason', async () => {
+  it('loads the current version and permits a correction without a reason', async () => {
     const wrapper = panel({ item: closed() });
     await control(wrapper, 'correct').trigger('click');
     await flushPromises();
@@ -354,10 +354,9 @@ describe('injected closure panel', () => {
     expect(
       (control(wrapper, 'note').element as HTMLTextAreaElement).value,
     ).toBe('原说明');
-    expect(disabled(wrapper)).toBe(true);
+    expect(disabled(wrapper)).toBe(false);
     await control(wrapper, 'reason').setValue('  ');
-    expect(disabled(wrapper)).toBe(true);
-    await control(wrapper, 'reason').setValue(' 更正日期 ');
+    expect(disabled(wrapper)).toBe(false);
     await control(wrapper, 'date').setValue('2026-10-12');
     await submit(wrapper);
     expect(api.correctClosure.mock.calls[0]?.[1]).toMatchObject({
@@ -367,7 +366,7 @@ describe('injected closure panel', () => {
       closeAt: '2026-10-12',
       closeAmt: '0.00',
       note: '原说明',
-      correctionReason: ' 更正日期 ',
+      correctionReason: '未填写',
       closeContentVersionIds: [file.contentVersionId],
     });
     expect(api.recordClosure).not.toHaveBeenCalled();

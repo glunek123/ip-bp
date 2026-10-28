@@ -112,6 +112,21 @@ function fixture() {
 }
 
 describe('notary display read', () => {
+  it('uses the matter current shop data without changing its source lead', async () => {
+    const { database, access, matter } = fixture();
+    const result = await readNotaryDisplay(
+      database as unknown as DatabaseService,
+      access as unknown as AccessControlService,
+      actor,
+      {
+        ...matter,
+        routineProfile: { shopName: '公证独立店铺', shopExternalId: null },
+      },
+    );
+    expect(result.sourceSummary.shopName).toBe('公证独立店铺');
+    expect(result.sourceSummary.shopExternalId).toBeNull();
+    expect(matter.sourceLead.shopName).toBe('同名但精确关联的店铺');
+  });
   it('keeps unrecorded evidence, opening, certificate and fees null without querying photographs', async () => {
     const { database, access, matter } = fixture();
     const result = await readNotaryDisplay(

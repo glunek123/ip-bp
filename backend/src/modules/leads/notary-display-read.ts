@@ -40,6 +40,7 @@ type DisplayMatter = {
   customerId: string;
   rightsHolderId: string;
   createdAt: Date;
+  routineProfile?: { shopName: string; shopExternalId: string | null } | null;
   sourceLead: {
     platform: LeadPlatform;
     shopName: string;
@@ -204,8 +205,12 @@ export async function readNotaryDisplay(
       customer,
       rightsHolder,
       platform: matter.sourceLead.platform,
-      shopName: matter.sourceLead.shopName,
-      shopExternalId: matter.sourceLead.shopExternalId,
+      shopName: matter.routineProfile
+        ? matter.routineProfile.shopName
+        : matter.sourceLead.shopName,
+      shopExternalId: matter.routineProfile
+        ? matter.routineProfile.shopExternalId
+        : matter.sourceLead.shopExternalId,
     },
     transferredAt: notaryTransferredDate(matter.createdAt),
     evidenceAt:

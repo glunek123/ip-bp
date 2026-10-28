@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import type { CaseDetail } from '../../api/cases';
 import type { LeadDetail } from '../../api/leads';
+import type { CaseRoutineProfile } from '../../api/case-routine';
 import CaseWorkspaceSection from './CaseWorkspaceSection.vue';
 import type { SectionAction, SectionKey } from './case-workspace-contract';
 import {
@@ -16,6 +17,7 @@ const props = defineProps<{
   item: CaseDetail;
   lead: LeadDetail | null;
   leadState: LeadState;
+  routine?: CaseRoutineProfile | null;
   actions: Record<SectionKey, SectionAction>;
   contextKey: string;
 }>();
@@ -24,7 +26,12 @@ const emit = defineEmits<{
   'view-timeline': [];
 }>();
 const sections = computed(() =>
-  buildCaseWorkspaceSections(props.item, props.lead, props.leadState),
+  buildCaseWorkspaceSections(
+    props.item,
+    props.lead,
+    props.leadState,
+    props.routine,
+  ),
 );
 const events = computed(() => buildCaseWorkspaceEvents(props.item));
 const selectedGroups = ref<Partial<Record<SectionKey, string>>>({});

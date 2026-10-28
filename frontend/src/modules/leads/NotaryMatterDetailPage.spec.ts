@@ -40,6 +40,7 @@ const sourceProjection = {
 
 const api = vi.hoisted(() => ({
   getNotaryMatter: vi.fn(),
+  updateNotaryRoutineProfile: vi.fn(),
   recordNotaryEvidence: vi.fn(),
   recordNotaryOpening: vi.fn(),
   reviewNotaryOpening: vi.fn(),
@@ -348,6 +349,73 @@ beforeEach(() => {
 });
 
 describe('NotaryMatterDetailPage', () => {
+  it('keeps workflow forms disabled while ordinary data is being edited', async () => {
+    api.getNotaryMatter.mockResolvedValue({
+      ...matter,
+      stage: 'PENDING_EVIDENCE',
+      routineRevision: 0,
+      capabilities: { recordEvidence: true },
+    });
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="edit-notary-routine"]').trigger('click');
+    expect(
+      wrapper.get('fieldset.workflow-form-scope').attributes('disabled'),
+    ).toBeDefined();
+    expect(api.recordNotaryEvidence).not.toHaveBeenCalled();
+    await wrapper.get('[data-test="routine-cancel"]').trigger('click');
+    expect(
+      wrapper.get('fieldset.workflow-form-scope').attributes('disabled'),
+    ).toBeUndefined();
+  });
+  it('edits archived ordinary data independently, cancels, and reloads after saving', async () => {
+    const original = {
+      ...matter,
+      stage: 'ARCHIVED',
+      routineRevision: 0,
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+        decideIssuance: false,
+        archiveReturn: false,
+      },
+    };
+    const changed = {
+      ...original,
+      routineRevision: 1,
+      sourceSummary: { ...original.sourceSummary, shopName: '新的公证店铺' },
+    };
+    api.getNotaryMatter
+      .mockResolvedValueOnce(original)
+      .mockResolvedValue(changed);
+    api.updateNotaryRoutineProfile.mockResolvedValue(undefined);
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="edit-notary-routine"]').trigger('click');
+    expect(
+      wrapper.get<HTMLInputElement>('[data-test="routine-shop"]').element.value,
+    ).toBe('来源店铺');
+    await wrapper.get('[data-test="routine-shop"]').setValue('不会保存');
+    await wrapper.get('[data-test="routine-cancel"]').trigger('click');
+    expect(api.updateNotaryRoutineProfile).not.toHaveBeenCalled();
+    await wrapper.get('[data-test="edit-notary-routine"]').trigger('click');
+    await wrapper.get('[data-test="routine-shop"]').setValue('新的公证店铺');
+    await wrapper
+      .get('[data-test="notary-routine-editor"] form')
+      .trigger('submit');
+    await flushPromises();
+    expect(api.updateNotaryRoutineProfile).toHaveBeenCalledWith(
+      'matter-1',
+      expect.objectContaining({
+        expectedRevision: 0,
+        shopName: '新的公证店铺',
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(wrapper.text()).toContain('新的公证店铺');
+    expect(api.recordNotaryEvidence).not.toHaveBeenCalled();
+    expect(api.recordNotaryOpening).not.toHaveBeenCalled();
+    expect(api.reviewNotaryOpening).not.toHaveBeenCalled();
+  });
   it('shows record correction history on archived details without offering a new correction', async () => {
     api.getNotaryMatter.mockResolvedValue({
       ...matter,
@@ -385,6 +453,9 @@ describe('NotaryMatterDetailPage', () => {
       wrapper.get('[data-test="notary-record-corrections"]').text(),
     ).toContain('日期录入错误');
     expect(wrapper.find('[data-test="correct-evidence"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="edit-notary-record"]').exists()).toBe(
+      false,
+    );
     wrapper.unmount();
   });
 
@@ -434,6 +505,9 @@ describe('NotaryMatterDetailPage', () => {
       new ApiError('stale', 409, 'VERSION_CONFLICT'),
     );
     const wrapper = await mountPage();
+    expect(
+      wrapper.get('[data-test="edit-notary-record"]').attributes('href'),
+    ).toContain('#notary-record-edit');
     await wrapper
       .get('[data-test="notary-record-corrections"] textarea')
       .setValue('保留冲突原因');

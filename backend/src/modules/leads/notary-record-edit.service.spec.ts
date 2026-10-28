@@ -128,6 +128,27 @@ function fixture() {
 }
 
 describe('notary record corrections', () => {
+  it.each([undefined, '', '   '])(
+    'records an omitted correction reason without changing workflow (%p)',
+    async (correctionReason) => {
+      const f = fixture();
+      const result = await f.service.correctEvidence(
+        actor,
+        matterId,
+        'optional-reason',
+        {
+          ...evidence,
+          correctionReason,
+        },
+      );
+      expect(result.kind).toBe('EVIDENCE');
+      expect(f.tx.notaryEvidenceCorrection.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ correctionReason: '未填写' }),
+      });
+      expect(f.tx.auditEvent.create).toHaveBeenCalledTimes(1);
+      expect(f.state).toMatchObject({ stage: 'UNBOX_REVIEW', version: 3 });
+    },
+  );
   it('appends a real-ID evidence revision, audit and receipt without mutating workflow or original facts', async () => {
     const f = fixture();
     const result = await f.service.correctEvidence(
@@ -244,7 +265,7 @@ describe('notary record corrections', () => {
     for (const invalid of [
       { ...input, senderName: undefined },
       { ...input, senderPhone: 123 },
-      { ...input, correctionReason: '   ' },
+      { ...input, correctionReason: 'x'.repeat(501) },
       { ...input, senderAddress: 'x'.repeat(501) },
     ]) {
       await expect(
@@ -256,6 +277,42 @@ describe('notary record corrections', () => {
         ),
       ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
     }
+  });
+
+  it('allows a scoped internal account to correct archived sender contacts without changing workflow', async () => {
+    const f = fixture();
+    f.state.stage = 'ARCHIVED';
+    const input = {
+      expectedVersion: 3,
+      expectedRevision: 0,
+      senderName: '寄件人',
+      senderPhone: '13800000000',
+      senderAddress: '新地址',
+    };
+    await f.service.correctOpeningSender(
+      actor,
+      matterId,
+      'archived-sender',
+      input,
+    );
+    expect(f.access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'lead.read',
+      expect.any(Object),
+      f.tx,
+    );
+    expect(f.tx.notaryOpeningSenderCorrection.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        senderPhone: '13800000000',
+        correctionReason: '未填写',
+      }),
+    });
+    expect(f.state).toMatchObject({ stage: 'ARCHIVED', version: 3 });
+    expect(f.tx.auditEvent.create).toHaveBeenCalledTimes(1);
+    f.access.authorizeLead.mockRejectedValue(new ForbiddenException());
+    await expect(
+      f.service.correctOpeningSender(actor, matterId, 'denied-sender', input),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
   });
 
   it('rejects stale workflow version, absent original facts, inactive actor, and lock miss before any write', async () => {

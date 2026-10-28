@@ -10,6 +10,7 @@ export const feeReadInclude = {
       businessNo: true,
       stage: true,
       courtCaseNo: true,
+      routineProfile: { select: { shopName: true } },
       sourceLead: { select: { platform: true, shopName: true } },
       defendants: { select: { name: true }, orderBy: { id: 'asc' } },
     },
@@ -27,7 +28,9 @@ export function projectFeeReadRow(row: FeeReadRow) {
     businessNo: row.case.businessNo,
     courtCaseNo: row.case.courtCaseNo,
     platform: row.case.sourceLead?.platform ?? null,
-    shopName: row.case.sourceLead?.shopName ?? null,
+    shopName: row.case.routineProfile
+      ? row.case.routineProfile.shopName
+      : (row.case.sourceLead?.shopName ?? null),
     defendantNames: row.case.defendants.map((item) => item.name),
     stage: row.case.stage,
     type: row.type,

@@ -4,6 +4,7 @@ import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { NOTARY_LIST_STAGES, NotaryListStage } from './notary-list.dto';
+import { notaryRoutineShopWhere } from './notary-routine-filter';
 import {
   NOTARY_DISPLAY_CERTIFICATE_SELECT,
   NOTARY_DISPLAY_LEAD_SELECT,
@@ -57,21 +58,7 @@ export class NotaryListService {
       ...(filters.rightsHolderId
         ? { rightsHolderId: filters.rightsHolderId }
         : {}),
-      ...(shopName
-        ? {
-            sourceLead: {
-              AND: [
-                leadScope,
-                {
-                  shopName: {
-                    contains: shopName.replace(/[\\%_]/g, '\\$&'),
-                    mode: 'insensitive',
-                  },
-                },
-              ],
-            },
-          }
-        : {}),
+      ...(shopName ? notaryRoutineShopWhere(shopName) : {}),
     };
     const itemWhere: Prisma.NotaryMatterWhereInput =
       stage === undefined ? baseWhere : { ...baseWhere, stage };
@@ -124,6 +111,7 @@ export class NotaryListService {
           },
           issuanceDecision: { select: { decision: true } },
           certificate: { select: NOTARY_DISPLAY_CERTIFICATE_SELECT },
+          routineProfile: { select: { shopName: true, shopExternalId: true } },
           sourceLead: { select: NOTARY_DISPLAY_LEAD_SELECT },
           notaryOffice: { select: { id: true, name: true } },
         },

@@ -21,7 +21,58 @@ import {
   archiveNotaryReturn,
   correctNotaryEvidence,
   correctNotaryOpeningSender,
+  updateNotaryRoutineProfile,
 } from './notary';
+
+describe('notary ordinary edits', () => {
+  it('sends a bounded profile update and checks the returned revision', async () => {
+    const product = {
+      id: 'product-1',
+      title: '商品',
+      url: 'https://example.com/p',
+      quantity: 2,
+      unitPrice: '3.00',
+      position: 1,
+      commentCount: 0,
+      estimatedAmount: '6.00',
+    };
+    const input = {
+      expectedRevision: 0,
+      shopName: '店铺',
+      products: [
+        {
+          id: product.id,
+          title: product.title,
+          url: product.url,
+          quantity: 2,
+          unitPrice: '3.00',
+        },
+      ],
+    };
+    http.requestJson.mockResolvedValueOnce({
+      revision: 1,
+      shopName: '店铺',
+      shopExternalId: null,
+      products: [product],
+    });
+    await expect(
+      updateNotaryRoutineProfile('matter-1', input),
+    ).resolves.toBeUndefined();
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/notary-matters/matter-1/routine-profile',
+      expect.objectContaining({ method: 'PATCH', body: input }),
+    );
+    http.requestJson.mockResolvedValueOnce({
+      revision: 2,
+      shopName: '店铺',
+      shopExternalId: null,
+      products: [product],
+    });
+    await expect(
+      updateNotaryRoutineProfile('matter-1', input),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+});
 
 describe('notary record corrections', () => {
   it('posts normalized evidence correction with an explicit key and signal', async () => {

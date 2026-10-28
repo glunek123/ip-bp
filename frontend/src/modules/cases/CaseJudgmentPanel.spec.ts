@@ -391,7 +391,7 @@ describe('case judgment panel', () => {
     },
   );
 
-  it('shows correction only to an authorized internal user and requires its reason', async () => {
+  it('allows an authorized user to correct without entering a reason', async () => {
     const correctable = {
       ...baseItem,
       canRegisterJudgment: false,
@@ -407,17 +407,14 @@ describe('case judgment panel', () => {
         operator.get('[data-test="judgment-correct"]')
           .element as HTMLButtonElement
       ).disabled,
-    ).toBe(true);
-    await operator
-      .get('[data-test="judgment-correction-reason"]')
-      .setValue('判决日期录入错误');
+    ).toBe(false);
     await operator.get('[data-test="judgment-correct"]').trigger('click');
     await flushPromises();
     expect(api.correctCaseJudgment).toHaveBeenCalledWith(
       'case-1',
       expect.objectContaining({
         expectedVersion: 7,
-        reason: '判决日期录入错误',
+        reason: '未填写',
         judgmentContentVersionIds: [file.contentVersionId],
       }),
     );
@@ -696,18 +693,11 @@ describe('case judgment panel', () => {
     ).toBe('42.50');
     await wrapper.get('[data-test="judgment-correct"]').trigger('click');
     await flushPromises();
-    expect(api.correctCaseJudgment).toHaveBeenCalledTimes(1);
-
-    await wrapper
-      .get('[data-test="judgment-correction-reason"]')
-      .setValue('已核对其他操作者的新事实后重新填写');
-    await wrapper.get('[data-test="judgment-correct"]').trigger('click');
-    await flushPromises();
     expect(api.correctCaseJudgment).toHaveBeenCalledTimes(2);
     expect(api.correctCaseJudgment.mock.calls[1]?.[1]).toMatchObject({
       expectedVersion: 8,
       judgmentAmount: '42.50',
-      reason: '已核对其他操作者的新事实后重新填写',
+      reason: '未填写',
     });
   });
 

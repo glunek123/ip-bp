@@ -45,6 +45,10 @@ import { NotaryPortalService } from './notary-portal.service';
 import { NotaryCertificateService } from './notary-certificate.service';
 import { NotaryRecordEditController } from './notary-record-edit.controller';
 import { NotaryRecordEditService } from './notary-record-edit.service';
+import { NotaryRoutineEditController } from './notary-routine-edit.controller';
+import { NotaryRoutineEditService } from './notary-routine-edit.service';
+import { LeadRoutineEditController } from './lead-routine-edit.controller';
+import { LeadRoutineEditService } from './lead-routine-edit.service';
 
 @Module({
   imports: [
@@ -58,6 +62,7 @@ import { NotaryRecordEditService } from './notary-record-edit.service';
     // Static import routes must precede LeadController's GET /:id.
     LeadCsvImportController,
     LeadController,
+    LeadRoutineEditController,
     LeadBatchPushController,
     LeadNoEvidenceBatchController,
     LeadImageImportController,
@@ -71,10 +76,12 @@ import { NotaryRecordEditService } from './notary-record-edit.service';
     NotaryOfficeController,
     NotaryPortalController,
     NotaryRecordEditController,
+    NotaryRoutineEditController,
   ],
   providers: [
     NotaryReportsSourceService,
     LeadService,
+    LeadRoutineEditService,
     LeadImageImportService,
     { provide: LEAD_IMAGE_DOWNLOADER, useValue: downloadLeadImage },
     ClientLeadService,
@@ -92,6 +99,7 @@ import { NotaryRecordEditService } from './notary-record-edit.service';
     NotaryPortalService,
     NotaryCertificateService,
     NotaryRecordEditService,
+    NotaryRoutineEditService,
   ],
   exports: [
     LeadService,

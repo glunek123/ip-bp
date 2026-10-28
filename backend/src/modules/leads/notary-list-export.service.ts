@@ -18,6 +18,7 @@ import {
 } from './notary-list-export.dto';
 import { NotaryListStage } from './notary-list.dto';
 import { notaryDisplayFee, notaryTransferredDate } from './notary-display-read';
+import { notaryRoutineShopWhere } from './notary-routine-filter';
 
 const exportHeader =
   '公证编号,权利主体,平台,店铺名,店铺ID,案件进展,推送日期,取证日期,发货人,发货电话,发货地址,公证费,调查费,样品费,披露费,快递公司,快递单号,公证处,公证书编号,出证日期';
@@ -120,8 +121,12 @@ export class NotaryListExportService {
                 row.businessNo,
                 holderName,
                 platformLabels[row.sourceLead.platform],
-                row.sourceLead.shopName,
-                row.sourceLead.shopExternalId ?? '',
+                row.routineProfile
+                  ? row.routineProfile.shopName
+                  : row.sourceLead.shopName,
+                (row.routineProfile
+                  ? row.routineProfile.shopExternalId
+                  : row.sourceLead.shopExternalId) ?? '',
                 stageLabels[row.stage],
                 row.sourceLead.pushedAt === null
                   ? ''
@@ -245,20 +250,7 @@ export class NotaryListExportService {
         ? { rightsHolderId: scope.rightsHolderId }
         : {}),
       ...(scope.mode === 'FILTERED' && scope.shopName?.trim()
-        ? {
-            sourceLead: {
-              AND: [
-                readScope,
-                exportScope,
-                {
-                  shopName: {
-                    contains: scope.shopName.trim().replace(/[\\%_]/g, '\\$&'),
-                    mode: 'insensitive',
-                  },
-                },
-              ],
-            },
-          }
+        ? notaryRoutineShopWhere(scope.shopName)
         : {}),
       ...(scope.mode === 'SELECTED' ? { id: { in: scope.matterIds } } : {}),
       ...(scope.mode === 'FILTERED' && scope.stage !== undefined
@@ -275,6 +267,7 @@ export class NotaryListExportService {
         stage: true,
         createdAt: true,
         rightsHolderId: true,
+        routineProfile: { select: { shopName: true, shopExternalId: true } },
         sourceLead: {
           select: {
             businessNo: true,

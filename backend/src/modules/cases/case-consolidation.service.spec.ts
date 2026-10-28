@@ -135,6 +135,18 @@ describe('real case consolidation', () => {
     expect(upper.mainCaseId).toBe(firstId);
   });
 
+  it('uses the independent case shop name while keeping protected platform and shop identity', async () => {
+    const { service, tx } = fixture();
+    tx.case.findMany.mockResolvedValueOnce(
+      sources.map((item) => ({
+        ...item,
+        routineProfile: { shopName: '案件店铺' },
+      })),
+    );
+    const result = await service.preview(actor, { members });
+    expect(JSON.stringify(result)).toContain('案件店铺');
+  });
+
   it('rejects incomplete shop identity, conflicting existing defendant and different rights holder', async () => {
     const { service, tx } = fixture();
     tx.case.findMany.mockResolvedValueOnce([

@@ -99,6 +99,7 @@ function fixture() {
     notaryCertificateFee: {
       createMany: jest.fn().mockResolvedValue({ count: 3 }),
     },
+    caseRoutineProfile: { create: jest.fn().mockResolvedValue({}) },
     contentVersion: {
       findMany: jest.fn().mockResolvedValue([
         {
@@ -154,6 +155,70 @@ function fixture() {
 }
 
 describe('NotaryCertificateService', () => {
+  it('copies edited matter data into the new case while preserving the matter profile', async () => {
+    const f = fixture();
+    const matter = await f.tx.notaryMatter.findFirst();
+    const product = {
+      id: '44444444-4444-4444-8444-444444444444',
+      position: 1,
+      title: '公证商品',
+      url: 'https://example.com/item',
+      quantity: 2,
+      unitPrice: '3.00',
+      commentCount: 1,
+      estimatedAmount: '6.00',
+    };
+    const profile = {
+      shopName: '公证新店铺',
+      shopExternalId: null,
+      products: [product],
+    };
+    f.tx.notaryMatter.findFirst.mockResolvedValue({
+      ...matter,
+      sourceLead: {
+        ...matter.sourceLead,
+        products: [
+          {
+            ...product,
+            title: '线索商品',
+            unitPrice: { toFixed: () => '3.00' },
+            estimatedAmount: { toFixed: () => '6.00' },
+          },
+          {
+            ...product,
+            id: '55555555-5555-4555-8555-555555555555',
+            position: 2,
+            title: '未选商品',
+            unitPrice: { toFixed: () => '3.00' },
+            estimatedAmount: { toFixed: () => '6.00' },
+          },
+        ],
+      },
+      routineProfile: profile,
+      selectedProducts: [{ leadProductId: product.id }],
+    });
+    await f.service.issue(actor, matterId, 'profile-case', input);
+    expect(f.tx.caseRoutineProfile.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        caseId: '88888888-8888-4888-8888-888888888888',
+        departmentId: actor.departmentId,
+        shopName: '公证新店铺',
+        shopExternalId: null,
+        products: [
+          product,
+          expect.objectContaining({
+            id: '55555555-5555-4555-8555-555555555555',
+            title: '未选商品',
+          }),
+        ],
+      }),
+    });
+    expect(initializeNotaryEvidence).toHaveBeenCalledWith(
+      f.tx,
+      expect.objectContaining({ shopName: '公证新店铺' }),
+    );
+    expect(profile.shopName).toBe('公证新店铺');
+  });
   it('records a scoped internal proxy as the actual issuer and source audit actor', async () => {
     const f = fixture();
     const internalActor = { ...actor, notaryOfficeId: undefined };

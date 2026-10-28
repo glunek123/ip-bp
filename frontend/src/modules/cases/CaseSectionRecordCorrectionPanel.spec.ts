@@ -400,6 +400,17 @@ afterEach(() => {
 });
 
 describe('exact section record corrections', () => {
+  it('allows saving a correction without a reason and labels its absence', async () => {
+    const { wrapper, submitRequest } = render('judgment');
+    await wrapper.get('[data-test="section-record-amount"]').setValue('130.25');
+    expect(wrapper.text()).toContain('本次更正原因（选填）');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(submitRequest).toHaveBeenCalledOnce();
+    expect(submitRequest.mock.calls[0]![1].input).toMatchObject({
+      reason: '未填写',
+    });
+  });
   const uploadKinds = [
     'execution-mailing',
     'execution-filing',

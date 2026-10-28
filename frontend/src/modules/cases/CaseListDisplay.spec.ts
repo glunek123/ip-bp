@@ -208,7 +208,7 @@ async function mountList(
   await router.isReady();
   const wrapper = mount(
     { components: { RouterView }, template: '<RouterView />' },
-    { global: { plugins: [pinia, router] } },
+    { attachTo: document.body, global: { plugins: [pinia, router] } },
   );
   wrappers.push(wrapper);
   await flushPromises();
@@ -493,7 +493,7 @@ describe('authorized internal case list display', () => {
     const row = wrapper.get('tbody tr');
     expect(
       row.findAll('[data-case-action]').map((button) => button.text()),
-    ).toEqual(['选择判决后续流程', '更正判决']);
+    ).toEqual(['选择后续']);
     expect(row.get('a').attributes('href')).toBe(
       '/cases/case-1?view=department&stage=WAITING_JUDGMENT&page=2',
     );
@@ -525,6 +525,7 @@ describe('authorized internal case list display', () => {
     const action = wrapper.get('[data-case-action="archive"]');
     await action.trigger('click');
     await action.trigger('click');
+    await flushPromises();
     expect(api.getCase).toHaveBeenCalledTimes(1);
     expect(router.currentRoute.value.path).toBe('/cases');
     finish({ id: 'case-1' });
@@ -553,7 +554,7 @@ describe('authorized internal case list display', () => {
     const url = new URL(String(caseRequest?.[0]), 'http://localhost');
     expect(url.searchParams.get('stage')).toBe('ARCHIVED');
     expect(url.searchParams.get('view')).toBe('department');
-    expect(wrapper.findAll('thead th')).toHaveLength(17);
+    expect(wrapper.findAll('thead th')).toHaveLength(18);
     expect(wrapper.get('tbody').text()).toContain('已归档');
     expect(wrapper.get('tbody').text()).toContain(sourceIds.closure);
     expect(wrapper.get('tbody').text()).toContain('0.00');
@@ -672,9 +673,10 @@ describe('authorized internal case list display', () => {
   it('renders fixed identity/action columns and exact business fields with selection controls', async () => {
     const { wrapper } = await mountList();
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '',
+      '操作',
       '案件编号',
       '负责人',
-      '操作',
       '来源',
       '案件进展',
       '客户',
@@ -691,23 +693,23 @@ describe('authorized internal case list display', () => {
       '结案额',
     ]);
     const cells = wrapper.findAll('tbody td');
-    expect(cells[1]!.text()).toBe('负责运营甲');
-    expect(cells[2]!.text()).toContain('编辑资料');
-    expect(cells[3]!.text()).toContain('LD-20261013-00005678');
-    expect(cells[3]!.text()).toContain('NZ-20261013-00009012');
-    expect(cells[5]!.get('summary').text()).toBe('合成客户甲有限公司');
-    expect(cells[6]!.get('summary').text()).toBe('合成权利主体乙有限公司');
-    expect(cells[7]!.text()).toBe('淘宝');
-    expect(cells[8]!.get('summary').text()).toBe(
+    expect(cells[3]!.text()).toBe('负责运营甲');
+    expect(cells[1]!.findAll('button')).toHaveLength(0);
+    expect(cells[4]!.text()).toContain('LD-20261013-00005678');
+    expect(cells[4]!.text()).toContain('NZ-20261013-00009012');
+    expect(cells[6]!.get('summary').text()).toBe('合成客户甲有限公司');
+    expect(cells[7]!.get('summary').text()).toBe('合成权利主体乙有限公司');
+    expect(cells[8]!.text()).toBe('淘宝');
+    expect(cells[9]!.get('summary').text()).toBe(
       summary().displaySummary.source.shopName,
     );
-    expect(cells[9]!.text()).toBe('TB-0000123456789');
-    expect(cells[12]!.get('summary').text()).toBe('合成人民法院');
-    expect(cells[13]!.text()).toBe('（2026）合成民初000123号');
-    expect(cells[0]!.get('a').attributes('href')).toBe(
+    expect(cells[10]!.text()).toBe('TB-0000123456789');
+    expect(cells[13]!.get('summary').text()).toBe('合成人民法院');
+    expect(cells[14]!.text()).toBe('（2026）合成民初000123号');
+    expect(cells[2]!.get('a').attributes('href')).toBe(
       '/cases/case-1?view=department&stage=WAITING_ARCHIVE',
     );
-    expect(cells[2]!.text()).toContain('当前无可办操作');
+    expect(cells[1]!.text()).not.toContain('当前无可办操作');
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(true);
     expect(wrapper.get('tbody').text()).not.toMatch(
       /批量|已结清|未结清|实收额/,
@@ -743,9 +745,9 @@ describe('authorized internal case list display', () => {
       wrapper
         .findAll('thead th')
         .map((cell) => cell.text())
-        .slice(0, 4),
-    ).toEqual(['案件编号', '负责人', '操作', '来源']);
-    expect(wrapper.findAll('thead th')).toHaveLength(16);
+        .slice(0, 5),
+    ).toEqual(['', '操作', '案件编号', '负责人', '来源']);
+    expect(wrapper.findAll('thead th')).toHaveLength(17);
     expect(
       wrapper.findAll('thead th').some((cell) => cell.text() === '客户'),
     ).toBe(false);
@@ -788,7 +790,7 @@ describe('authorized internal case list display', () => {
       expect.objectContaining({ hidden: ['customerName'] }),
       { signal: expect.any(AbortSignal) },
     );
-    expect(wrapper.findAll('thead th')).toHaveLength(16);
+    expect(wrapper.findAll('thead th')).toHaveLength(17);
     expect(
       wrapper.findAll('thead th').some((cell) => cell.text() === '客户'),
     ).toBe(false);
@@ -798,19 +800,19 @@ describe('authorized internal case list display', () => {
   it('keeps every defendant and lawyer in native keyboard-expandable details', async () => {
     const { wrapper } = await mountList();
     const cells = wrapper.findAll('tbody td');
-    expect(cells[10]!.get('summary').text()).toBe(
+    expect(cells[11]!.get('summary').text()).toBe(
       '合成被告甲有限公司、合成被告乙',
     );
-    expect(cells[10]!.findAll('li').map((item) => item.text())).toEqual([
+    expect(cells[11]!.findAll('li').map((item) => item.text())).toEqual([
       '合成被告甲有限公司',
       '合成被告乙',
     ]);
-    expect(cells[11]!.get('summary').text()).toBe('合成律师甲、合成律师乙');
-    expect(cells[11]!.findAll('li').map((item) => item.text())).toEqual([
+    expect(cells[12]!.get('summary').text()).toBe('合成律师甲、合成律师乙');
+    expect(cells[12]!.findAll('li').map((item) => item.text())).toEqual([
       '合成律师甲',
       '合成律师乙',
     ]);
-    for (const index of [5, 6, 8, 10, 11, 12]) {
+    for (const index of [6, 7, 9, 11, 12, 13]) {
       expect(cells[index]!.get('summary').element.parentElement?.tagName).toBe(
         'DETAILS',
       );
@@ -820,24 +822,24 @@ describe('authorized internal case list display', () => {
       tabindex: '0',
       'aria-label': '案件列表，可横向滚动',
     });
-    for (const index of [0, 4, 9, 13])
+    for (const index of [0, 2, 5, 10, 14])
       expect(cells[index]!.classes()).toContain('business-list-cell--nowrap');
-    for (const index of [14, 15, 16])
+    for (const index of [15, 16, 17])
       expect(cells[index]!.classes()).toContain('business-list-cell--number');
   });
 
   it('keeps high precision, pending and real zero separate with their exact sources', async () => {
     const { wrapper } = await mountList();
     const cells = wrapper.findAll('tbody td');
-    expect(cells[14]!.get('span').text()).toBe('99999999999999.99');
-    expect(cells[14]!.get('summary').text()).toBe('诉状确认');
-    expect(cells[14]!.get('p').text()).toContain(sourceIds.confirmation);
-    expect(cells[15]!.get('span').text()).toBe('待定');
-    expect(cells[15]!.get('summary').text()).toBe('一审判决');
-    expect(cells[15]!.get('p').text()).toContain(sourceIds.judgment);
-    expect(cells[16]!.get('span').text()).toBe('0.00');
-    expect(cells[16]!.get('summary').text()).toBe('结案登记');
-    expect(cells[16]!.get('p').text()).toContain(sourceIds.closure);
+    expect(cells[15]!.get('span').text()).toBe('99999999999999.99');
+    expect(cells[15]!.get('summary').text()).toBe('诉状确认');
+    expect(cells[15]!.get('p').text()).toContain(sourceIds.confirmation);
+    expect(cells[16]!.get('span').text()).toBe('待定');
+    expect(cells[16]!.get('summary').text()).toBe('一审判决');
+    expect(cells[16]!.get('p').text()).toContain(sourceIds.judgment);
+    expect(cells[17]!.get('span').text()).toBe('0.00');
+    expect(cells[17]!.get('summary').text()).toBe('结案登记');
+    expect(cells[17]!.get('p').text()).toContain(sourceIds.closure);
   });
 
   it('shows unrecorded optional fields and amounts without inventing identifiers or money', async () => {
@@ -871,11 +873,11 @@ describe('authorized internal case list display', () => {
     api.listCases.mockResolvedValue(result([item]));
     const { wrapper } = await mountList();
     const cells = wrapper.findAll('tbody td');
-    for (const index of [9, 10, 11, 12, 13, 14, 15, 16])
+    for (const index of [10, 11, 12, 13, 14, 15, 16, 17])
       expect(cells[index]!.text()).toBe('未登记');
     expect(wrapper.find('.case-list-amount-source').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('0.00');
-    expect(cells[10]!.text()).not.toContain(item.businessNo);
+    expect(cells[11]!.text()).not.toContain(item.businessNo);
   });
 
   it('uses the submitted complaint and changed second instance result sources supplied by the API', async () => {
@@ -901,12 +903,12 @@ describe('authorized internal case list display', () => {
     api.listCases.mockResolvedValue(result([item]));
     const { wrapper } = await mountList();
     const cells = wrapper.findAll('tbody td');
-    expect(cells[14]!.text()).toContain('已提交诉状');
-    expect(cells[15]!.get('span').text()).toBe('80.00');
-    expect(cells[15]!.get('summary').text()).toBe('二审结果');
-    expect(cells[15]!.text()).toContain(sourceIds.changed);
-    expect(cells[16]!.get('span').text()).toBe('待定');
-    expect(cells[16]!.text()).toContain(sourceIds.correction);
+    expect(cells[15]!.text()).toContain('已提交诉状');
+    expect(cells[16]!.get('span').text()).toBe('80.00');
+    expect(cells[16]!.get('summary').text()).toBe('二审结果');
+    expect(cells[16]!.text()).toContain(sourceIds.changed);
+    expect(cells[17]!.get('span').text()).toBe('待定');
+    expect(cells[17]!.text()).toContain(sourceIds.correction);
   });
 
   it('renders equal customer and rights-holder names in two distinct columns', async () => {
@@ -914,8 +916,8 @@ describe('authorized internal case list display', () => {
     item.displaySummary.rightsHolderName = item.displaySummary.customerName;
     api.listCases.mockResolvedValue(result([item]));
     const { wrapper } = await mountList();
-    expect(wrapper.findAll('tbody td')).toHaveLength(17);
-    expect(wrapper.findAll('tbody td')[5]!.get('summary').text()).toBe(
+    expect(wrapper.findAll('tbody td')).toHaveLength(18);
+    expect(wrapper.findAll('tbody td')[6]!.get('summary').text()).toBe(
       item.displaySummary.customerName,
     );
   });
@@ -1001,33 +1003,43 @@ describe('authorized internal case list display', () => {
     ).toBeUndefined();
   });
 
-  it('shows single-case early archive only when the row capability allows it', async () => {
-    api.listCases.mockResolvedValue(result());
-    const { wrapper } = await mountList();
-    expect(
-      wrapper.find('[data-test="open-single-early-archive"]').exists(),
-    ).toBe(false);
+  it('keeps at most one workflow action in a row, with details available through the number', async () => {
     api.listCases.mockResolvedValue(
-      result([{ ...summary(), canEarlyArchive: true }]),
+      result([
+        {
+          ...summary(),
+          canArchive: true,
+          canEarlyArchive: true,
+          canCorrectClosure: true,
+        },
+      ]),
     );
-    const refreshButton = wrapper
-      .findAll('button')
-      .find((button) => button.text().trim() === '刷新');
-    expect(refreshButton).toBeDefined();
-    await refreshButton!.trigger('click');
-    await flushPromises();
+    const { wrapper } = await mountList();
+    const row = wrapper.get('tbody tr');
+    expect(row.findAll('[data-case-action]')).toHaveLength(1);
+    expect(row.get('[data-case-action="archive"]').text()).toBe('归档案件');
+    expect(row.find('[data-test="case-more"]').exists()).toBe(false);
+    expect(row.find('[data-test="open-single-early-archive"]').exists()).toBe(
+      false,
+    );
     expect(
-      wrapper.find('[data-test="open-single-early-archive"]').exists(),
-    ).toBe(true);
-    await wrapper
-      .get('[data-test="open-single-early-archive"]')
-      .trigger('click');
-    const drawer = document.body.querySelector(
-      '.operation-drawer[aria-label="提前归档案件"]',
+      row.get('td[data-column="businessNo"] a').attributes('href'),
+    ).toContain('/cases/case-1');
+  });
+
+  it('does not show a row button when only a correction is available', async () => {
+    api.listCases.mockResolvedValue(
+      result([{ ...summary(), stage: 'ARCHIVED', canCorrectArchive: true }]),
     );
-    expect(drawer?.textContent).toContain('提前归档');
-    expect(drawer?.textContent).toContain('不会登记结案或款项');
-    expect(drawer?.querySelector('textarea')).not.toBeNull();
+    const { wrapper } = await mountList();
+    const row = wrapper.get('tbody tr');
+    expect(row.findAll('[data-case-action]')).toHaveLength(0);
+    expect(row.find('td[data-column="rowActions"] button').exists()).toBe(
+      false,
+    );
+    expect(
+      row.get('td[data-column="businessNo"] a').attributes('href'),
+    ).toContain('/cases/case-1');
   });
 
   it('exports only the applied route filters and revokes the local download URL', async () => {

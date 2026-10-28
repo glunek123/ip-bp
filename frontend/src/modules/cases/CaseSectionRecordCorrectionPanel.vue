@@ -1182,7 +1182,9 @@ function businessRequest(key: string): CaseSectionRecordRequest | null {
   const target = selected.value;
   if (!target) return null;
   const idempotencyKey = key;
-  const reason = draft.correctionReason;
+  const reason = draft.correctionReason.trim()
+    ? draft.correctionReason
+    : '未填写';
   switch (target.kind) {
     case 'execution-mailing':
       return {
@@ -1843,12 +1845,11 @@ onBeforeUnmount(() => {
           >
         </fieldset>
         <label class="field-label"
-          >本次更正原因<textarea
+          >本次更正原因（选填）<textarea
             v-model="draft.correctionReason"
             class="text-input"
             data-test="section-record-reason"
             maxlength="500"
-            required
             :disabled="!editable"
           />
         </label>

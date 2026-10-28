@@ -1,11 +1,21 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
+import {
+  RouterLink,
+  useRoute,
+  onBeforeRouteLeave,
+  onBeforeRouteUpdate,
+} from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 import { ApiError } from '../../api/http';
 import MaterialPreviewDialog from '../../app/MaterialPreviewDialog.vue';
-import { getLead, type LeadDetail } from '../../api/leads';
+import {
+  getLead,
+  updateLeadRoutine,
+  type LeadDetail,
+  type LeadRoutineEditInput,
+} from '../../api/leads';
 import { updateLeadProductScreenshots } from '../../api/leads';
 import {
   getLeadImageImports,
@@ -30,6 +40,7 @@ import {
 import { summarizeLeadProducts } from './lead-display';
 import { useAuthStore } from '../../stores/auth';
 import LeadQuickActionsPanel from './LeadQuickActionsPanel.vue';
+import RoutineBusinessEditor from './RoutineBusinessEditor.vue';
 import {
   readPendingLeadCommands,
   type LeadWorkflowResult,
@@ -46,6 +57,13 @@ const requestScopeKey = computed(
 let contextGeneration = 0;
 let refreshGeneration = 0;
 let request: AbortController | undefined;
+let routineRequest: AbortController | undefined;
+const routineEditing = ref(false);
+const routineSaving = ref(false);
+const routineUnknown = ref(false);
+const routineError = ref('');
+onBeforeRouteLeave(() => !routineSaving.value);
+onBeforeRouteUpdate(() => !routineSaving.value);
 const downloadRequests = new Set<AbortController>();
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const lead = ref<LeadDetail>();
@@ -310,6 +328,63 @@ async function load(): Promise<void> {
         : 'failed';
   }
 }
+async function saveRoutine(value: {
+  shopName: string;
+  products: LeadRoutineEditInput['products'];
+  remark?: string | null;
+}) {
+  const current = lead.value;
+  if (
+    !current ||
+    !current.capabilities.routineEdit ||
+    routineSaving.value ||
+    routineUnknown.value ||
+    workflowOpen.value
+  )
+    return;
+  const generation = contextGeneration;
+  const controller = new AbortController();
+  routineRequest = controller;
+  routineSaving.value = true;
+  routineError.value = '';
+  try {
+    await updateLeadRoutine(
+      current.id,
+      {
+        ...value,
+        remark: value.remark ?? null,
+        expectedRevision: current.version,
+      },
+      { signal: controller.signal },
+    );
+    if (controller.signal.aborted || generation !== contextGeneration) return;
+    routineEditing.value = false;
+    await load();
+  } catch (error) {
+    if (controller.signal.aborted || generation !== contextGeneration) return;
+    routineUnknown.value =
+      !(error instanceof ApiError) ||
+      error.status === 0 ||
+      error.status >= 500 ||
+      error.code === 'INVALID_RESPONSE';
+    routineError.value = routineUnknown.value
+      ? '保存结果未确认，请刷新核对后再操作。'
+      : error instanceof ApiError && error.code === 'VERSION_CONFLICT'
+        ? '资料已被修改，请刷新后重新编辑。'
+        : '保存失败，请检查资料或刷新后重试。';
+  } finally {
+    if (routineRequest === controller) {
+      routineRequest = undefined;
+      routineSaving.value = false;
+    }
+  }
+}
+function refreshRoutine() {
+  routineEditing.value = false;
+  routineUnknown.value = false;
+  routineError.value = '';
+  void load();
+}
 function productScreenshotItems(ids: string[]): ProductScreenshot[] {
   return (ids ?? []).flatMap((id) => {
     const item = productScreenshotMetadata.value.get(id);
@@ -453,6 +528,12 @@ function clearContext() {
   if (imagePoll) globalThis.clearInterval(imagePoll);
   imagePoll = undefined;
   contextGeneration += 1;
+  routineRequest?.abort();
+  routineRequest = undefined;
+  routineEditing.value = false;
+  routineSaving.value = false;
+  routineUnknown.value = false;
+  routineError.value = '';
   request?.abort();
   for (const controller of downloadRequests) controller.abort();
   downloadRequests.clear();
@@ -526,6 +607,7 @@ onBeforeUnmount(clearContext);
               v-if="lead.capabilities.push"
               type="primary"
               data-test="push-lead"
+              :disabled="routineEditing || routineSaving"
               @click="workflowOpen = true"
               >推送客户审核</ElButton
             >
@@ -534,7 +616,20 @@ onBeforeUnmount(clearContext);
               data-test="edit-lead"
               :to="`/leads/${lead.id}/edit`"
               >编辑线索</RouterLink
-            ><ElButton data-test="refresh" text @click="load">刷新</ElButton>
+            ><ElButton
+              v-if="lead.capabilities.routineEdit"
+              data-test="edit-lead-routine"
+              :disabled="routineSaving || routineUnknown || workflowOpen"
+              @click="routineEditing = true"
+              >编辑资料</ElButton
+            >
+            <ElButton
+              data-test="refresh"
+              text
+              :disabled="routineEditing || routineSaving"
+              @click="load"
+              >刷新</ElButton
+            >
             <ElButton
               v-if="
                 lead.capabilities.transferToNotary ||
@@ -544,6 +639,7 @@ onBeforeUnmount(clearContext);
               "
               data-test="open-lead-workflow"
               type="primary"
+              :disabled="routineEditing || routineSaving"
               @click="workflowOpen = true"
               >{{
                 lead.capabilities.createEvidenceBatch
@@ -555,6 +651,29 @@ onBeforeUnmount(clearContext);
             >
           </div>
         </div>
+        <section
+          v-if="routineEditing"
+          class="demo-card demo-card--pad"
+          data-test="lead-routine-editor"
+        >
+          <h2 class="form-section-title">编辑线索资料</h2>
+          <RoutineBusinessEditor
+            :shop-name="lead.shopName"
+            :remark="lead.remark"
+            :products="lead.products"
+            :pending="routineSaving || routineUnknown"
+            @save="saveRoutine"
+            @cancel="routineEditing = false"
+          />
+          <p v-if="routineError" role="alert" class="submit-error">
+            {{ routineError }}
+          </p>
+          <ElButton
+            v-if="routineUnknown || routineError.includes('刷新')"
+            @click="refreshRoutine"
+            >刷新核对</ElButton
+          >
+        </section>
         <p
           v-if="workflowNotice"
           class="field-help"

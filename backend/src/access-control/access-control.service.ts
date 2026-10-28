@@ -493,6 +493,14 @@ export class AccessControlService {
     if (facts.departmentId !== actor.departmentId) throw this.caseForbidden();
     const snapshot = await this.loadCurrentSnapshot(actor, reader);
     if (
+      action === 'case.defendant-contact.update' &&
+      facts.responsibleUserId === actor.userId &&
+      snapshot.grants.some(
+        (grant) => grant.action === 'case.read' && grant.scope === 'department',
+      )
+    )
+      return;
+    if (
       !snapshot.grants.some(
         (grant) =>
           grant.action === action && this.scopeCovers(grant, actor, facts),

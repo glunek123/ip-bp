@@ -786,6 +786,10 @@ export class LeadService {
       ...this.readView(lead, screenshotIds.get(lead.id) ?? []),
       capabilities: {
         edit,
+        routineEdit:
+          actor.clientCustomerId === undefined &&
+          actor.notaryOfficeId === undefined &&
+          actor.lawyerAccountId === undefined,
         productScreenshotsEdit,
         push,
         withdrawApply,

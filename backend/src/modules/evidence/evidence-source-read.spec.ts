@@ -17,6 +17,7 @@ const externalCase = {
   externalEntry: {
     known: { platform: 'TAOBAO', shopName: '真实外部来源店铺' },
   },
+  routineProfile: null,
   sourceLead: null,
   lawyers: [{ lawyer: { fullName: 'Lin' } }, { lawyer: { fullName: 'Chen' } }],
   hearingArrangements: [],
@@ -60,6 +61,26 @@ function fixture() {
 }
 
 describe('evidence source reads', () => {
+  it('uses the independent case shop without modifying the frozen notary source', async () => {
+    const f = fixture();
+    const original = structuredClone(notary.sourceSnapshot);
+    f.store.notaryMatter.findFirst.mockResolvedValue({
+      ...notary,
+      case: {
+        ...normalCase,
+        routineProfile: { shopName: '案件独立店铺' },
+        sourceLead: { ...normalCase.sourceLead, shopName: '修改后的线索店铺' },
+      },
+    });
+    const source = await readEvidenceSource(
+      f.reader,
+      'dept-1',
+      'NOTARY_MATTER',
+      'matter-1',
+    );
+    expect(source.case.shopName).toBe('案件独立店铺');
+    expect(notary.sourceSnapshot).toEqual(original);
+  });
   it('uses one canonical notary source for an issued matter and its transferred case, with department-scoped reads', async () => {
     const f = fixture();
     f.store.case.findFirst.mockResolvedValue(normalCase);

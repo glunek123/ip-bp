@@ -95,7 +95,7 @@ describe('notary record correction read', () => {
     });
   });
 
-  it('hides write capability after archive or authorization loss and rejects a history gap', async () => {
+  it('allows archived sender correction, preserves evidence rules, and rejects a history gap', async () => {
     const { matter, access } = fixture();
     const archived = await readNotaryRecordEdits(
       access as unknown as AccessControlService,
@@ -103,7 +103,7 @@ describe('notary record correction read', () => {
       { ...matter, stage: 'ARCHIVED' },
     );
     expect(archived.evidence?.canCorrect).toBe(false);
-    expect(archived.openingSender?.canCorrect).toBe(false);
+    expect(archived.openingSender?.canCorrect).toBe(true);
     access.authorizeLead.mockRejectedValue(new ForbiddenException());
     const revoked = await readNotaryRecordEdits(
       access as unknown as AccessControlService,

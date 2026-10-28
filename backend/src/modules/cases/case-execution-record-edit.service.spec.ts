@@ -205,6 +205,28 @@ describe.each(cases)('$method', (definition) => {
     return f.service.correctFinish(identity, caseId, body as never);
   }
 
+  it.each([undefined, '', '  '])(
+    'records an empty correction reason without changing the original case',
+    async (reason) => {
+      const reasonField =
+        definition.kind === 'FINISH' ? 'correctionReason' : 'reason';
+      const body = input();
+      Object.assign(body, { [reasonField]: reason });
+      const f = fixture();
+      const before = structuredClone(f.record);
+      await invoke(f, body);
+      expect(f.record).toEqual(before);
+      expect(f.tx[definition.corrections].create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ correctionReason: '未填写' }),
+      });
+      expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          details: expect.objectContaining({ correctionReason: '未填写' }),
+        }),
+      });
+    },
+  );
+
   it('uses one trimmed correction reason for the row, audit, and receipt fingerprint without changing the original request', async () => {
     const reasonField =
       definition.kind === 'FINISH' ? 'correctionReason' : 'reason';
@@ -241,7 +263,7 @@ describe.each(cases)('$method', (definition) => {
     expect(f.access.authorizeCase).toHaveBeenCalledTimes(2);
   });
 
-  it.each(['   ', 'x'.repeat(501)])(
+  it.each([null, 'x'.repeat(501)])(
     'keeps invalid correction reasons out of the transaction',
     async (reason) => {
       const f = fixture();

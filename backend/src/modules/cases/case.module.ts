@@ -1,4 +1,6 @@
 import { CaseArchiveService } from './case-archive.service';
+import { CaseRoutineEditController } from './case-routine-edit.controller';
+import { CaseRoutineEditService } from './case-routine-edit.service';
 import { CaseEarlyArchiveService } from './case-early-archive.service';
 import { CaseCsvImportController } from './case-csv-import.controller';
 import { CaseCsvImportService } from './case-csv-import.service';
@@ -76,6 +78,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     MaterialModule,
   ],
   controllers: [
+    CaseRoutineEditController,
     CaseCsvImportController,
     CaseBatchArchiveController,
     CaseExecutionFilingFollowupController,
@@ -92,6 +95,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     LawyerCaseController,
   ],
   providers: [
+    CaseRoutineEditService,
     CaseCsvImportService,
     CaseBatchArchiveService,
     CaseExecutionFilingFollowupService,

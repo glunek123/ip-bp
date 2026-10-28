@@ -61,6 +61,7 @@ const senderStages: NotaryMatterStage[] = [
   'ISSUANCE_DECISION',
   'WAITING_CERTIFICATE',
   'WAITING_RETURN',
+  'ARCHIVED',
 ];
 const evidenceValue = (row: {
   evidenceAt: Date;
@@ -104,9 +105,16 @@ export async function readNotaryRecordEdits(
       : { teamId: matter.sourceLead.teamId }),
   };
   let permitted = false;
+  let senderPermitted = false;
   try {
     await access.authorizeLead(actor, 'notary.record.correct', facts);
     permitted = true;
+  } catch (error) {
+    if (!(error instanceof ForbiddenException)) throw error;
+  }
+  try {
+    await access.authorizeLead(actor, 'lead.read', facts);
+    senderPermitted = true;
   } catch (error) {
     if (!(error instanceof ForbiddenException)) throw error;
   }
@@ -171,7 +179,7 @@ export async function readNotaryRecordEdits(
       originalSender === null
         ? null
         : {
-            canCorrect: permitted && senderStages.includes(matter.stage),
+            canCorrect: senderPermitted && senderStages.includes(matter.stage),
             revision: senderRows.length,
             original: originalSender,
             effective: senderHistory.at(-1)?.after ?? originalSender,

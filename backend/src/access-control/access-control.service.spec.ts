@@ -22,6 +22,47 @@ function createStore(
 }
 
 describe('AccessControlService', () => {
+  it('allows the active internal owner to edit case contact details without a separate role grant', async () => {
+    const snapshot: AccessControlSnapshot = {
+      active: true,
+      authorizationRevision: 4,
+      grants: [{ action: 'case.read', scope: 'department' }],
+    };
+    const service = new AccessControlService(createStore(snapshot));
+    const own = {
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+    };
+    await expect(
+      service.canAuthorizeCase(actor, 'case.defendant-contact.update', own),
+    ).resolves.toBe(true);
+    await expect(
+      service.canAuthorizeCase(actor, 'case.defendant-contact.update', {
+        ...own,
+        responsibleUserId: 'other',
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      service.canAuthorizeCase(actor, 'case.defendant-contact.update', {
+        ...own,
+        departmentId: 'other',
+      }),
+    ).resolves.toBe(false);
+    snapshot.grants = [];
+    await expect(
+      service.canAuthorizeCase(actor, 'case.defendant-contact.update', own),
+    ).resolves.toBe(false);
+    snapshot.grants = [{ action: 'case.read', scope: 'department' }];
+    snapshot.active = false;
+    await expect(
+      service.canAuthorizeCase(actor, 'case.defendant-contact.update', own),
+    ).resolves.toBe(false);
+    snapshot.active = true;
+    snapshot.authorizationRevision++;
+    await expect(
+      service.canAuthorizeCase(actor, 'case.defendant-contact.update', own),
+    ).resolves.toBe(false);
+  });
   describe('report permission intersections', () => {
     const cases: AccessControlSnapshot['grants'] = [
       { action: 'case.read', scope: 'department' },

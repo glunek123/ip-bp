@@ -77,6 +77,20 @@ function fixture() {
 }
 
 describe('NotaryListExportService', () => {
+  it('exports the independent current shop value', async () => {
+    const { service, tx } = fixture();
+    tx.notaryMatter.findMany.mockResolvedValueOnce([
+      {
+        ...row,
+        routineProfile: { shopName: '公证新店铺', shopExternalId: null },
+      },
+    ]);
+    const result = await service.export(actor, {
+      mode: 'FILTERED',
+      expectedCount: 1,
+    });
+    expect(result.csv).toContain('NT-001,权利主体,淘宝,公证新店铺,');
+  });
   it('applies filtered customer, rights holder and literal shop conditions inside the export snapshot', async () => {
     const { service, tx } = fixture();
     await service.preview(actor, {
@@ -92,13 +106,20 @@ describe('NotaryListExportService', () => {
           customerId: '11111111-1111-4111-8111-111111111111',
           rightsHolderId: '22222222-2222-4222-8222-222222222222',
           stage: 'PENDING_EVIDENCE',
-          sourceLead: {
-            AND: [
-              readScope,
-              exportScope,
-              { shopName: { contains: '店\\%', mode: 'insensitive' } },
-            ],
-          },
+          AND: [{ sourceLead: readScope }, { sourceLead: exportScope }],
+          OR: [
+            {
+              routineProfile: {
+                is: { shopName: { contains: '店\\%', mode: 'insensitive' } },
+              },
+            },
+            {
+              routineProfile: { is: null },
+              sourceLead: {
+                is: { shopName: { contains: '店\\%', mode: 'insensitive' } },
+              },
+            },
+          ],
         }),
       }),
     );

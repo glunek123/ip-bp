@@ -156,10 +156,14 @@ describe('notary record correction contract', () => {
         required: expect.arrayContaining([
           'expectedVersion',
           'expectedRevision',
-          'correctionReason',
           'evidenceAt',
           'logistics',
         ]),
+      });
+      expect(
+        document.components?.schemas?.CorrectNotaryEvidenceDto,
+      ).not.toMatchObject({
+        required: expect.arrayContaining(['correctionReason']),
       });
       expect(
         document.components?.schemas?.CorrectNotaryOpeningSenderDto,

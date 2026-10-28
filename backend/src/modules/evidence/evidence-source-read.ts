@@ -25,6 +25,7 @@ const caseSelect = {
   sourceNotaryMatterId: true,
   certificateId: true,
   externalEntry: { select: { known: true } },
+  routineProfile: { select: { shopName: true } },
   sourceLead: { select: { platform: true, shopName: true } },
   lawyers: {
     where: { role: 'PRIMARY', endedAt: null },
@@ -196,9 +197,10 @@ function caseProjection(record: CaseRecord) {
       platform:
         record.sourceLead?.platform ??
         jsonText(record.externalEntry?.known, 'platform'),
-      shopName:
-        record.sourceLead?.shopName ??
-        jsonText(record.externalEntry?.known, 'shopName'),
+      shopName: record.routineProfile
+        ? record.routineProfile.shopName
+        : (record.sourceLead?.shopName ??
+          jsonText(record.externalEntry?.known, 'shopName')),
       caseNo: record.courtCaseNo,
       stage: record.stage,
       lawyerName:

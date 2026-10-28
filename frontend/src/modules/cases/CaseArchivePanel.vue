@@ -183,7 +183,7 @@ const ready = computed(
     validDate(archiveAt.value) &&
     archiveTypes.some((type) => type.value === archiveType.value) &&
     validText(archiveReason.value, 2000) &&
-    (!correcting.value || validText(correctionReason.value, 500)),
+    (!correcting.value || correctionReason.value.length <= 500),
 );
 function startCorrection() {
   if (
@@ -328,7 +328,9 @@ async function submit() {
           input: {
             ...input,
             expectedArchiveVersionId: props.item.archive!.current.id,
-            correctionReason: correctionReason.value,
+            correctionReason: correctionReason.value.trim()
+              ? correctionReason.value
+              : '未填写',
           },
         }
       : { command: 'ARCHIVE', input };
@@ -526,14 +528,13 @@ function recordedTime(value: string) {
             />
           </label>
           <label v-if="correcting"
-            >更正原因 <span aria-hidden="true">*</span
-            ><textarea
+            >更正原因（选填）
+            <textarea
               v-model="correctionReason"
               class="text-input"
               maxlength="500"
               data-test="archive-correction-reason"
               :disabled="submitting"
-              required
             />
           </label>
           <ElButton

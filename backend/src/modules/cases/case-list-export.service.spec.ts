@@ -32,6 +32,7 @@ function row(id = 'case-1'): CaseListDisplayRecord & {
     sourceLeadId: 'lead',
     sourceNotaryMatterId: 'matter',
     certificateId: 'certificate',
+    routineProfile: null,
     externalEntry: null,
     customer: {
       id: 'customer',

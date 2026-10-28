@@ -1,5 +1,6 @@
 import type { CaseDetail, CaseFile, CaseStage } from '../../api/cases';
 import type { LeadDetail } from '../../api/leads';
+import type { CaseRoutineProfile } from '../../api/case-routine';
 import {
   leadCaseTypeLabels as caseTypeLabels,
   leadInfringementTypeLabels as infringementLabels,
@@ -633,6 +634,7 @@ export function buildCaseWorkspaceSections(
   item: CaseDetail,
   lead: LeadDetail | null,
   leadState: LeadState,
+  routine?: CaseRoutineProfile | null,
 ): WorkspaceSection[] {
   const events = buildCaseWorkspaceEvents(item);
   const sections: WorkspaceSection[] = [];
@@ -826,8 +828,17 @@ export function buildCaseWorkspaceSections(
                 date('当前阶段真实业务日期', item.origin.stageReachedOn),
                 date('系统记录时间', item.origin.recordedAt),
                 field('已知法院案号', item.origin.known.courtCaseNo),
-                field('已知店铺', item.origin.known.shopName),
-                field('已知店铺ID', item.origin.known.shopExternalId),
+                field(
+                  '已知店铺',
+                  routine ? routine.shopName : item.origin.known.shopName,
+                ),
+                field(
+                  '已知店铺ID',
+                  routine
+                    ? routine.shopExternalId
+                    : item.origin.known.shopExternalId,
+                ),
+                ...(routine ? [field('备注', routine.remark)] : []),
               ],
             },
           ]
@@ -863,7 +874,7 @@ export function buildCaseWorkspaceSections(
         ? [
             {
               id: 'lead',
-              title: '来源线索资料',
+              title: routine ? '案件当前资料' : '来源线索资料',
               fields: [
                 field('状态', leadStatusLabels[source.status]),
                 field('来源', leadSourceLabels[source.source]),
@@ -875,12 +886,15 @@ export function buildCaseWorkspaceSections(
                     .join('、') || null,
                 ),
                 field('平台', leadPlatformLabels[source.platform]),
-                field('店铺名称', source.shopName),
-                field('店铺外部编号', source.shopExternalId),
+                field('店铺名称', routine ? routine.shopName : source.shopName),
+                field(
+                  '店铺外部编号',
+                  routine ? routine.shopExternalId : source.shopExternalId,
+                ),
                 date('发现日期', source.foundAt),
                 field('负责人', source.displayNames.responsibleUserName),
                 field('需披露', source.needDisclose ? '是' : '否'),
-                field('备注', source.remark),
+                field('备注', routine ? routine.remark : source.remark),
                 field(
                   '来源截图',
                   source.leadScreenshotContentVersionIds.length
@@ -897,7 +911,7 @@ export function buildCaseWorkspaceSections(
                 ),
               ],
             },
-            ...source.products.map((value) => ({
+            ...(routine ? routine.products : source.products).map((value) => ({
               id: `product:${value.id}`,
               title: `商品 ${value.position}`,
               fields: [
@@ -911,11 +925,36 @@ export function buildCaseWorkspaceSections(
             })),
           ]
         : []),
+      ...(routine && !source && !isExternalEntry
+        ? [
+            {
+              id: 'case-current',
+              title: '案件当前资料',
+              fields: [
+                field('店铺名称', routine.shopName),
+                field('店铺外部编号', routine.shopExternalId),
+                field('备注', routine.remark),
+              ],
+            },
+            ...routine.products.map((value) => ({
+              id: `product:${value.id}`,
+              title: `商品 ${value.position}`,
+              fields: [
+                field('商品标题', value.title),
+                field('链接', value.url),
+                field('数量', String(value.quantity)),
+                field('单价', `${value.unitPrice} 元`),
+              ],
+            })),
+          ]
+        : []),
     ],
-    source?.capabilities.edit
-      ? '编辑进入来源线索的既有表单；受保护字段仍遵守来源状态与权限规则。来源截图仅显示引用，实物／纸证展示尚未接入。'
-      : '来源线索只读；无来源编辑能力时不能修改，也不能保存为案件副本。来源截图仅显示引用，实物／纸证展示尚未接入。',
-    source || isExternalEntry ? null : leadMessages[leadState],
+    routine
+      ? '案件资料独立保存；来源线索和已形成的证据不随本案修改。'
+      : source?.capabilities.edit
+        ? '编辑进入来源线索的既有表单；受保护字段仍遵守来源状态与权限规则。来源截图仅显示引用，实物／纸证展示尚未接入。'
+        : '来源线索只读；无来源编辑能力时不能修改，也不能保存为案件副本。来源截图仅显示引用，实物／纸证展示尚未接入。',
+    source || isExternalEntry || routine ? null : leadMessages[leadState],
   );
   const acceptanceFiles = Object.entries(item.acceptanceMaterials).flatMap(
     ([category, value]) => {

@@ -146,6 +146,36 @@ beforeEach(() => {
 });
 
 describe('NotaryRecordCorrectionPanel', () => {
+  it('allows an omitted correction reason and records it as not provided', async () => {
+    api.evidence.mockResolvedValue({
+      matterId: 'matter-1',
+      correctionId: 'correction-1',
+      kind: 'EVIDENCE',
+      revision: 1,
+      recordedAt: '2026-10-18T00:00:00Z',
+    });
+    const wrapper = mount(NotaryRecordCorrectionPanel, {
+      props: {
+        detail: detail({
+          recordEdits: {
+            ...detail().recordEdits!,
+            evidence: { ...detail().recordEdits!.evidence!, canCorrect: true },
+          },
+        }),
+        actorKey,
+      },
+    });
+    expect(wrapper.text()).toContain('更正原因（选填');
+    await wrapper.get('[data-test="correct-evidence"]').trigger('click');
+    await flushPromises();
+    expect(api.evidence).toHaveBeenCalledWith(
+      'matter-1',
+      expect.objectContaining({ correctionReason: '未填写' }),
+      expect.any(String),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    wrapper.unmount();
+  });
   it('renders history and sends a revision-bound evidence correction without fee or photo fields', async () => {
     api.evidence.mockResolvedValue({
       matterId: 'matter-1',

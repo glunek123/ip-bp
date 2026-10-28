@@ -210,7 +210,11 @@ export async function searchCaseSettlementSources(
             { courtCaseNo: contains },
             { customer: { name: contains } },
             { rightsHolder: { name: contains } },
-            { sourceLead: { shopName: contains } },
+            { routineProfile: { is: { shopName: contains } } },
+            {
+              routineProfile: { is: null },
+              sourceLead: { shopName: contains },
+            },
             { defendants: { some: { name: contains } } },
           ],
         }),
@@ -225,6 +229,7 @@ export async function searchCaseSettlementSources(
       customer: { select: { name: true } },
       rightsHolder: { select: { name: true } },
       sourceLead: { select: { shopName: true } },
+      routineProfile: { select: { shopName: true } },
       defendants: { select: { name: true }, orderBy: { id: 'asc' } },
     },
     orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
@@ -238,7 +243,9 @@ export async function searchCaseSettlementSources(
       courtCaseNo: row.courtCaseNo,
       customerName: row.customer.name,
       rightsHolderName: row.rightsHolder.name,
-      shopName: row.sourceLead?.shopName ?? null,
+      shopName: row.routineProfile
+        ? row.routineProfile.shopName
+        : (row.sourceLead?.shopName ?? null),
       defendantNames: row.defendants.map((item) => item.name),
     })),
     total,

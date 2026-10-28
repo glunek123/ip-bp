@@ -340,7 +340,6 @@ function submit(kind: Kind) {
     retryBlocked.value ||
     props.blocked ||
     props.refreshing ||
-    !reason.value.trim() ||
     reason.value.trim().length > 500 ||
     !props.detail.recordEdits
   )
@@ -364,7 +363,7 @@ function submit(kind: Kind) {
     const input = normalizeEvidence({
       expectedVersion: props.detail.version,
       expectedRevision: edits.value.evidence.revision,
-      correctionReason: reason.value,
+      correctionReason: reason.value.trim() || '未填写',
       evidenceAt: evidenceAt.value,
       logistics: rows.value.map((row) => ({
         companyState: row.companyState as 'PRESENT' | 'NONE',
@@ -383,7 +382,7 @@ function submit(kind: Kind) {
     const input: CorrectNotaryOpeningSenderInput = {
       expectedVersion: props.detail.version,
       expectedRevision: edits.value.openingSender.revision,
-      correctionReason: reason.value.trim(),
+      correctionReason: reason.value.trim() || '未填写',
       senderName: senderName.value.trim() || null,
       senderPhone: senderPhone.value.trim() || null,
       senderAddress: senderAddress.value.trim() || null,
@@ -644,7 +643,10 @@ function senderSummary(sender: {
         class="correction-form"
       >
         <label
-          >更正原因（1–500字）<textarea v-model="reason" maxlength="500" />
+          >更正原因（选填，最多500字）<textarea
+            v-model="reason"
+            maxlength="500"
+          />
         </label>
         <details v-if="edits.evidence?.canCorrect && props.detail.evidence">
           <summary>更正取证日期与物流</summary>

@@ -113,6 +113,19 @@ describe('LeadNotaryService opening review read projection', () => {
       materials as never,
     );
     const result = await service.getMatter(actor, matterId);
+    database.notaryMatter.findFirst.mockResolvedValueOnce({
+      ...record,
+      routineProfile: {
+        revision: 1,
+        shopName: '公证独立店铺',
+        shopExternalId: null,
+        products: [],
+      },
+    });
+    const independentlyEdited = await service.getMatter(actor, matterId);
+    expect(independentlyEdited.sourceSummary.shopName).toBe('公证独立店铺');
+    expect(independentlyEdited.routineRevision).toBe(1);
+    expect(record.sourceLead.shopName).toBe('精确店铺');
     expect(result.capabilities).toEqual({
       recordEvidence: false,
       recordOpening: false,

@@ -130,7 +130,9 @@ export class NotaryRecordEditService {
             try {
               await this.access.authorizeLead(
                 actor,
-                'notary.record.correct',
+                kind === 'OPENING_SENDER'
+                  ? 'lead.read'
+                  : 'notary.record.correct',
                 {
                   departmentId: matter.departmentId,
                   responsibleUserId: matter.sourceLead.responsibleUserId,
@@ -170,6 +172,7 @@ export class NotaryRecordEditService {
                     'ISSUANCE_DECISION',
                     'WAITING_CERTIFICATE',
                     'WAITING_RETURN',
+                    'ARCHIVED',
                   ].includes(matter.stage) && matter.opening !== null;
             if (!allowed)
               throw new ConflictException({
@@ -289,19 +292,19 @@ export class NotaryRecordEditService {
   private normalizeBase(input: {
     expectedVersion: number;
     expectedRevision: number;
-    correctionReason: string;
+    correctionReason?: string;
   }) {
     if (
       !Number.isInteger(input.expectedVersion) ||
       input.expectedVersion < 1 ||
       !Number.isInteger(input.expectedRevision) ||
       input.expectedRevision < 0 ||
-      typeof input.correctionReason !== 'string'
+      (input.correctionReason !== undefined &&
+        typeof input.correctionReason !== 'string')
     )
       throw this.validation();
-    const correctionReason = input.correctionReason.trim();
-    if (correctionReason.length < 1 || [...correctionReason].length > 500)
-      throw this.validation();
+    const correctionReason = input.correctionReason?.trim() || '未填写';
+    if ([...correctionReason].length > 500) throw this.validation();
     return {
       expectedVersion: input.expectedVersion,
       expectedRevision: input.expectedRevision,

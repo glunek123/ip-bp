@@ -67,8 +67,13 @@ export function caseListTextWhere(
         { customer: { is: { name: match } } },
         { rightsHolder: { is: { name: match } } },
         { defendants: { some: { name: match } } },
-        { sourceLead: { is: { shopName: match } } },
+        { routineProfile: { is: { shopName: match } } },
         {
+          routineProfile: { is: null },
+          sourceLead: { is: { shopName: match } },
+        },
+        {
+          routineProfile: { is: null },
           externalEntry: {
             is: {
               known: {
@@ -129,14 +134,17 @@ export function caseListTextWhere(
   if (shopName)
     and.push({
       OR: [
+        { routineProfile: { is: { shopName: literalContains(shopName) } } },
         {
           AND: [
+            { routineProfile: { is: null } },
             normalSource,
             { sourceLead: { is: { shopName: literalContains(shopName) } } },
           ],
         },
         {
           AND: [
+            { routineProfile: { is: null } },
             externalSource,
             {
               externalEntry: {

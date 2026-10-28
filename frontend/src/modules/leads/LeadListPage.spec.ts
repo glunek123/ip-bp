@@ -1392,7 +1392,7 @@ describe('LeadListPage', () => {
     api.pushLead.mockResolvedValue(pushResult(summary.id, 1));
     const { wrapper, router } = await mountWithRoute('/leads');
     expect(wrapper.get('[data-test="lead-quick-action"]').text()).toBe(
-      '推送给客户审核',
+      '推送审核',
     );
     await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
     await flushPromises();
@@ -1451,7 +1451,7 @@ describe('LeadListPage', () => {
       false,
     );
     expect(rows[1]!.find('[data-test="lead-quick-action"]').text()).toBe(
-      '申请撤回归档',
+      '申请撤回',
     );
     expect(rows[2]!.find('[data-test="lead-quick-action"]').exists()).toBe(
       false,
@@ -1703,7 +1703,8 @@ describe('LeadListPage', () => {
     );
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
       '选择',
-      '操作／线索编号',
+      '操作',
+      '线索编号',
       '案件进展',
       '平台',
       '店铺名',
@@ -1721,7 +1722,7 @@ describe('LeadListPage', () => {
     expect(wrapper.get('.business-list-scroll').attributes('tabindex')).toBe(
       '0',
     );
-    expect(wrapper.findAll('colgroup col')).toHaveLength(12);
+    expect(wrapper.findAll('colgroup col')).toHaveLength(13);
     expect(wrapper.text()).toContain('shop-真实-001');
     expect(wrapper.text()).toContain('主体甲');
     expect(wrapper.find('table.demo-table').exists()).toBe(true);

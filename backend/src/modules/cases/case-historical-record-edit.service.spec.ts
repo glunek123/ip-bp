@@ -259,6 +259,36 @@ describe('CaseHistoricalRecordEditService', () => {
   beforeEach(() =>
     jest.mocked(readCaseSourceAnchor).mockResolvedValue({ kind: 'NORMAL' }),
   );
+  it.each(
+    (['hearing', 'judgment', 'closure'] as const).flatMap((kind) =>
+      [undefined, '', '  '].map((reason) => ({ kind, reason })),
+    ),
+  )(
+    '$kind records an empty correction reason without changing workflow',
+    async ({ kind, reason }) => {
+      const f = fixture();
+      const original = structuredClone(f.record);
+      if (kind === 'hearing') {
+        const body = { ...hearing };
+        body.reason = reason;
+        await f.service.correctHearing(actor, caseId, body);
+      } else if (kind === 'judgment') {
+        const body = { ...judgment };
+        body.reason = reason;
+        await f.service.correctJudgment(actor, caseId, body);
+      } else {
+        const body = { ...closure };
+        body.correctionReason = reason;
+        await f.service.correctClosure(actor, caseId, body);
+      }
+      expect(f.record).toEqual(original);
+      expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          details: expect.objectContaining({ correctionReason: '未填写' }),
+        }),
+      });
+    },
+  );
   it.each(['hearing', 'judgment', 'closure'] as const)(
     '%s appends audit/fact/receipt without mutating terminal facts or case anchors',
     async (kind) => {
@@ -757,7 +787,8 @@ describe('CaseHistoricalRecordEditService', () => {
     { closeAmountState: 'PENDING', closeAmt: '0' },
     { closeAmt: '-1' },
     { closeAmt: '0.001' },
-    { correctionReason: ' ' },
+    { correctionReason: null },
+    { correctionReason: 'x'.repeat(501) },
     { note: '' },
     { idempotencyKey: ' key' },
     { closeContentVersionIds: [fileId, fileId.toUpperCase()] },

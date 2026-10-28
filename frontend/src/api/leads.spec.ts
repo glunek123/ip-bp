@@ -24,6 +24,7 @@ import {
   applyLeadWithdrawal,
   decideLeadNoEvidence,
   updateLead,
+  updateLeadRoutine,
   updateLeadProductScreenshots,
 } from './leads';
 
@@ -257,6 +258,51 @@ describe('internal lead display names', () => {
 });
 
 describe('Lead API', () => {
+  it('checks the independent edit receipt and rejects stale or malformed responses', async () => {
+    const input = {
+      expectedRevision: 1,
+      shopName: '测试店铺',
+      remark: null,
+      products: [
+        {
+          id: 'product-1',
+          title: '商品甲',
+          url: null,
+          quantity: 3,
+          unitPrice: '1.55',
+        },
+      ],
+    };
+    http.requestJson.mockResolvedValueOnce({
+      revision: 2,
+      shopName: input.shopName,
+      remark: null,
+      products: lead.products.map((product) => ({
+        id: product.id,
+        position: product.position,
+        title: product.title,
+        url: product.url,
+        quantity: product.quantity,
+        unitPrice: product.unitPrice,
+        commentCount: product.commentCount,
+        estimatedAmount: product.estimatedAmount,
+      })),
+    });
+    await expect(updateLeadRoutine('lead-1', input)).resolves.toBeUndefined();
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/leads/lead-1/routine-profile',
+      expect.objectContaining({ method: 'PATCH', body: input }),
+    );
+    http.requestJson.mockResolvedValueOnce({
+      revision: 1,
+      shopName: input.shopName,
+      remark: null,
+      products: lead.products,
+    });
+    await expect(updateLeadRoutine('lead-1', input)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
   it('writes exact product screenshot versions with the current lead version', async () => {
     http.requestJson.mockResolvedValueOnce(lead);
     await expect(
