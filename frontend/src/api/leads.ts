@@ -911,6 +911,7 @@ export async function listLeadFilterOptions(
     status?: LeadStatus;
     context?: 'NOTARY';
     notaryStage?: string;
+    selectedId?: string;
   } = {},
 ): Promise<{ items: { id: string; name: string }[] }> {
   const query = new URLSearchParams({ kind, q });
@@ -918,6 +919,7 @@ export async function listLeadFilterOptions(
   if (scope.status) query.set('status', scope.status);
   if (scope.context) query.set('context', scope.context);
   if (scope.notaryStage) query.set('notaryStage', scope.notaryStage);
+  if (scope.selectedId) query.set('selectedId', scope.selectedId);
   const result = await getJson(`/leads/filter-options?${query}`, options);
   if (
     !isRecord(result) ||

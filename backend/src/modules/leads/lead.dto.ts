@@ -202,6 +202,11 @@ export class DecideLeadEvidenceDto {
 }
 
 export class LeadFilterOptionsQueryDto {
+  @ApiPropertyOptional({ format: 'uuid' })
+  @IsOptional()
+  @IsUUID('4')
+  selectedId?: string;
+
   @ApiProperty({ enum: ['customer', 'rightsHolder'] })
   @IsIn(['customer', 'rightsHolder'])
   kind!: 'customer' | 'rightsHolder';

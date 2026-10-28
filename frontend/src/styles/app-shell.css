@@ -354,6 +354,31 @@
   color: var(--color-ink-subtle);
   font-size: 13px;
   font-weight: 550;
+  flex: none;
+}
+
+.app-list-search {
+  width: min(420px, 42vw);
+  min-width: 0;
+}
+
+.app-list-search:empty {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .app-topbar {
+    gap: 6px;
+  }
+  .app-breadcrumbs {
+    max-width: 30%;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .app-list-search {
+    flex: 1;
+    width: auto;
+  }
 }
 
 .app-breadcrumbs .current {

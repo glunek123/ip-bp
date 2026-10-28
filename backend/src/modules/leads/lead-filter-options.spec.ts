@@ -126,4 +126,45 @@ describe('lead and notary filter candidates', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(database.customer.findMany).not.toHaveBeenCalled();
   });
+
+  it('resolves a selected id only within the current department and readable notary stage', async () => {
+    const { database, service } = fixture();
+    const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    await service.filterOptions(
+      actor,
+      'customer',
+      '',
+      undefined,
+      undefined,
+      'NOTARY',
+      'PENDING_EVIDENCE',
+      id,
+    );
+    expect(database.customer.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id,
+          departmentId: actor.departmentId,
+          leads: {
+            some: {
+              AND: [
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: actor.userId,
+                },
+                {
+                  notaryMatters: {
+                    some: {
+                      departmentId: actor.departmentId,
+                      stage: 'PENDING_EVIDENCE',
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        }),
+      }),
+    );
+  });
 });

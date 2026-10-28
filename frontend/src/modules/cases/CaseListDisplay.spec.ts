@@ -275,7 +275,11 @@ describe('authorized internal case list display', () => {
     const { wrapper, router } = await mountList(
       '/cases?view=department&stage=WAITING_ARCHIVE&sortBy=businessNo&shopName=old',
     );
-    await wrapper.get('[data-test="case-query-keyword"]').setValue(' 法院甲 ');
+    await wrapper
+      .get(
+        'input[aria-label="编号、案号、客户、权利主体、店铺、被告、法院、律师"]',
+      )
+      .setValue(' 法院甲 ');
     await wrapper.get('[data-test="case-query-type"]').setValue('CIVIL');
     await wrapper.get('form[role="search"]').trigger('submit');
     await flushPromises();
@@ -363,7 +367,9 @@ describe('authorized internal case list display', () => {
     );
     const countBeforeEdit = api.listCases.mock.calls.length;
     await wrapper
-      .get('[data-test="case-query-keyword"]')
+      .get(
+        'input[aria-label="编号、案号、客户、权利主体、店铺、被告、法院、律师"]',
+      )
       .setValue('  案号甲  ');
     await wrapper.get('form[role="search"]').trigger('submit');
     await flushPromises();
@@ -446,7 +452,11 @@ describe('authorized internal case list display', () => {
     await wrapper.get('[data-case-action="archive"]').trigger('click');
     await flushPromises();
     const listCalls = api.listCases.mock.calls.length;
-    await wrapper.get('[data-test="case-query-keyword"]').setValue('不应离开');
+    await wrapper
+      .get(
+        'input[aria-label="编号、案号、客户、权利主体、店铺、被告、法院、律师"]',
+      )
+      .setValue('不应离开');
     await wrapper.get('[data-test="case-query-type"]').setValue('CRIMINAL');
     await wrapper.get('form[role="search"]').trigger('submit');
     await flushPromises();
@@ -873,11 +883,33 @@ describe('authorized internal case list display', () => {
     api.listCases.mockResolvedValue(result([item]));
     const { wrapper } = await mountList();
     const cells = wrapper.findAll('tbody td');
-    for (const index of [10, 11, 12, 13, 14, 15, 16, 17])
+    expect(cells[10]!.text()).toBe('');
+    for (const index of [11, 12, 13, 14, 15, 16, 17])
       expect(cells[index]!.text()).toBe('未登记');
     expect(wrapper.find('.case-list-amount-source').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('0.00');
     expect(cells[11]!.text()).not.toContain(item.businessNo);
+  });
+
+  it('keeps an empty shop ID blank and displays a real zero shop ID', async () => {
+    const emptyId = summary();
+    emptyId.displaySummary.source.shopExternalId = '';
+    const zeroId = {
+      ...summary(),
+      id: 'case-zero-shop-id',
+      businessNo: 'CA-20261013-00001235',
+      displaySummary: {
+        ...summary().displaySummary,
+        source: { ...summary().displaySummary.source, shopExternalId: '0' },
+      },
+    };
+    api.listCases.mockResolvedValue(result([emptyId, zeroId]));
+    const { wrapper } = await mountList();
+    const shopIdCells = wrapper
+      .findAll('tbody tr')
+      .map((row) => row.get('td[data-column="shopExternalId"]'));
+    expect(shopIdCells[0]!.text()).toBe('');
+    expect(shopIdCells[1]!.text()).toBe('0');
   });
 
   it('uses the submitted complaint and changed second instance result sources supplied by the API', async () => {
@@ -930,7 +962,9 @@ describe('authorized internal case list display', () => {
         resolveOld = resolve;
       }),
     );
-    await wrapper.get('.page-head button').trigger('click');
+    await wrapper
+      .get('.case-list-toolbar button[title="刷新案件列表"]')
+      .trigger('click');
     await flushPromises();
     expect(wrapper.text()).not.toContain('合成客户甲有限公司');
     const signal = api.listCases.mock.calls.at(-1)?.[2]?.signal;
@@ -950,7 +984,9 @@ describe('authorized internal case list display', () => {
     api.listCases.mockRejectedValueOnce(
       new ApiError('Denied', 403, 'ACTION_FORBIDDEN', 'synthetic-request'),
     );
-    await wrapper.get('.page-head button').trigger('click');
+    await wrapper
+      .get('.case-list-toolbar button[title="刷新案件列表"]')
+      .trigger('click');
     await flushPromises();
     expect(wrapper.get('[role="alert"]').text()).toContain(
       '当前账号无权读取案件',
@@ -964,7 +1000,7 @@ describe('authorized internal case list display', () => {
     exportApi.capability.mockResolvedValueOnce({ canExport: true });
     const { wrapper } = await mountList();
     expect(wrapper.get('[data-test="export-current-case-list"]').text()).toBe(
-      '导出当前筛选结果',
+      '导出筛选',
     );
     expect(
       wrapper.get('[data-test="export-current-case-list"]').classes(),
@@ -995,9 +1031,9 @@ describe('authorized internal case list display', () => {
     await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
     await router.push('/cases?view=mine&stage=WAITING_ARCHIVE&page=1');
     await flushPromises();
-    expect(wrapper.find('[data-test="export-selected-cases"]').exists()).toBe(
-      false,
-    );
+    expect(
+      wrapper.get('[data-test="export-selected-cases"]').attributes('disabled'),
+    ).toBeDefined();
     expect(
       wrapper.get('[data-test="select-case-case-1"]').attributes('checked'),
     ).toBeUndefined();
@@ -1017,7 +1053,7 @@ describe('authorized internal case list display', () => {
     const { wrapper } = await mountList();
     const row = wrapper.get('tbody tr');
     expect(row.findAll('[data-case-action]')).toHaveLength(1);
-    expect(row.get('[data-case-action="archive"]').text()).toBe('归档案件');
+    expect(row.get('[data-case-action="archive"]').text()).toBe('归档');
     expect(row.find('[data-test="case-more"]').exists()).toBe(false);
     expect(row.find('[data-test="open-single-early-archive"]').exists()).toBe(
       false,
@@ -1025,6 +1061,50 @@ describe('authorized internal case list display', () => {
     expect(
       row.get('td[data-column="businessNo"] a').attributes('href'),
     ).toContain('/cases/case-1');
+  });
+
+  it('keeps edit visible but disabled until one case owned by the current user is selected', async () => {
+    const { wrapper, router } = await mountList();
+    const editButton = wrapper.get('[data-test="edit-selected-case"]');
+    expect(editButton.attributes('disabled')).toBeDefined();
+    expect(editButton.attributes('title')).toBe('请选择本人负责的案件');
+    expect(wrapper.text()).not.toContain('更多单条操作');
+    expect(wrapper.text()).not.toContain('单条');
+    expect(wrapper.text()).not.toContain('批量操作');
+    expect(wrapper.get('[data-test="open-batch-early-archive"]').text()).toBe(
+      '批量归档',
+    );
+    expect(
+      wrapper.get('[data-test="open-batch-early-archive"]').attributes('title'),
+    ).toBe('请先勾选案件');
+
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="edit-selected-case"]').attributes('disabled'),
+    ).toBeUndefined();
+    await wrapper.get('[data-test="edit-selected-case"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/cases/case-1');
+    expect(router.currentRoute.value.query).toEqual({
+      view: 'department',
+      stage: 'WAITING_ARCHIVE',
+      edit: 'routine',
+    });
+  });
+
+  it('does not enable the list edit entry for a case owned by another user', async () => {
+    api.listCases.mockResolvedValue(
+      result([
+        { ...summary(), owner: { id: 'owner-2', displayName: '其他负责人' } },
+      ]),
+    );
+    const { wrapper } = await mountList();
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    await flushPromises();
+    const editButton = wrapper.get('[data-test="edit-selected-case"]');
+    expect(editButton.attributes('disabled')).toBeDefined();
+    expect(editButton.attributes('title')).toBe('仅可编辑本人负责的案件');
   });
 
   it('does not show a row button when only a correction is available', async () => {
@@ -1048,7 +1128,9 @@ describe('authorized internal case list display', () => {
       '/cases?view=department&stage=WAITING_ARCHIVE&q=已应用&shopName=店铺&defendantName=被告&courtName=法院&lawyerName=律师&caseType=CIVIL&sortBy=rightsHolderName&sortDirection=asc&page=1',
     );
     await wrapper
-      .get('[data-test="case-query-keyword"]')
+      .get(
+        'input[aria-label="编号、案号、客户、权利主体、店铺、被告、法院、律师"]',
+      )
       .setValue('未提交草稿');
     await wrapper.get('[data-test="case-query-type"]').setValue('CRIMINAL');
     const createObjectURL = vi.fn(() => 'blob:case-list');

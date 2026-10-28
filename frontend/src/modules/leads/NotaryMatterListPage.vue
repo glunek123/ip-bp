@@ -15,6 +15,11 @@ import type {
 import NotaryMatterWorkflowPanel from './NotaryMatterWorkflowPanel.vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
+  ElOption,
+  ElSelect,
+} from 'element-plus/es/components/select/index.mjs';
+import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
+import {
   exportNotaryList,
   previewNotaryListExport,
   type NotaryListExportScope,
@@ -216,22 +221,127 @@ const holderOptionError = ref('');
 const customerDraft = ref('');
 const holderDraft = ref('');
 const shopDraft = ref('');
+const queryDraft = ref('');
+const queryFormError = ref('');
 let customerOptionRequest = 0;
 let holderOptionRequest = 0;
+let customerResolveRequest = 0;
+let holderResolveRequest = 0;
 watch(
   () => [identity.value, selectedStage.value],
   () => {
     customerOptionRequest += 1;
     holderOptionRequest += 1;
+    customerResolveRequest += 1;
+    holderResolveRequest += 1;
     customerOptions.value = [];
     holderOptions.value = [];
     customerOptionError.value = '';
     holderOptionError.value = '';
     customerSearch.value = '';
     holderSearch.value = '';
+    if (customerDraft.value)
+      void restoreSelectedFilterOption('customer', customerDraft.value);
+    if (holderDraft.value)
+      void restoreSelectedFilterOption('rightsHolder', holderDraft.value);
   },
   { flush: 'sync' },
 );
+function selectedFilterOption(kind: 'customer' | 'rightsHolder') {
+  const id = kind === 'customer' ? customerDraft.value : holderDraft.value;
+  const options =
+    kind === 'customer' ? customerOptions.value : holderOptions.value;
+  return options.find((item) => item.id === id);
+}
+function mergeSelectedFilterOption(
+  kind: 'customer' | 'rightsHolder',
+  items: { id: string; name: string }[],
+) {
+  const selected = selectedFilterOption(kind);
+  return selected && !items.some((item) => item.id === selected.id)
+    ? [selected, ...items]
+    : items;
+}
+function updateSelectedFilterOption(
+  kind: 'customer' | 'rightsHolder',
+  items: { id: string; name: string }[],
+) {
+  if (kind === 'customer') customerOptions.value = items;
+  else holderOptions.value = items;
+}
+function filterOptionLabel(kind: 'customer' | 'rightsHolder') {
+  return kind === 'customer' ? '客户名称' : '权利主体名称';
+}
+function unavailableFilterOptionLabel(kind: 'customer' | 'rightsHolder') {
+  const subject = kind === 'customer' ? '客户' : '权利主体';
+  return selectedStage.value
+    ? `当前阶段无可见${subject}`
+    : `当前范围无可见${subject}`;
+}
+async function restoreSelectedFilterOption(
+  kind: 'customer' | 'rightsHolder',
+  selectedId: string,
+) {
+  const isCustomer = kind === 'customer';
+  const generation = isCustomer
+    ? ++customerResolveRequest
+    : ++holderResolveRequest;
+  const actor = identity.value;
+  const stage = selectedStage.value;
+  const routeKey = isCustomer ? 'customerId' : 'rightsHolderId';
+  const isCurrent = () =>
+    generation ===
+      (isCustomer ? customerResolveRequest : holderResolveRequest) &&
+    actor === identity.value &&
+    stage === selectedStage.value &&
+    (isCustomer ? customerDraft.value : holderDraft.value) === selectedId &&
+    route.query[routeKey] === selectedId;
+  const existing = selectedFilterOption(kind);
+  updateSelectedFilterOption(
+    kind,
+    mergeSelectedFilterOption(kind, [
+      {
+        id: selectedId,
+        name: existing?.name ?? `正在读取${filterOptionLabel(kind)}…`,
+      },
+    ]),
+  );
+  try {
+    const result = await listLeadFilterOptions(
+      kind,
+      '',
+      {},
+      {
+        context: 'NOTARY',
+        ...(stage ? { notaryStage: stage } : {}),
+        selectedId,
+      },
+    );
+    if (!isCurrent()) return;
+    const selected = result.items.find((item) => item.id === selectedId);
+    if (!selected) {
+      updateSelectedFilterOption(kind, [
+        { id: selectedId, name: unavailableFilterOptionLabel(kind) },
+      ]);
+      return;
+    }
+    updateSelectedFilterOption(
+      kind,
+      mergeSelectedFilterOption(kind, [selected]),
+    );
+    if (isCustomer) customerOptionError.value = '';
+    else holderOptionError.value = '';
+  } catch {
+    if (!isCurrent()) return;
+    const selected = selectedFilterOption(kind);
+    if (selected)
+      updateSelectedFilterOption(kind, [
+        { ...selected, name: `${filterOptionLabel(kind)}暂不可用` },
+      ]);
+    if (isCustomer) customerOptionError.value = '客户候选读取失败，请重试。';
+    else holderOptionError.value = '权利主体候选读取失败，请重试。';
+  }
+}
 async function searchFilterOptions(kind: 'customer' | 'rightsHolder') {
   const generation =
     kind === 'customer' ? ++customerOptionRequest : ++holderOptionRequest;
@@ -253,10 +363,16 @@ async function searchFilterOptions(kind: 'customer' | 'rightsHolder') {
     )
       return;
     if (kind === 'customer') {
-      customerOptions.value = result.items;
+      customerOptions.value = mergeSelectedFilterOption(
+        'customer',
+        result.items,
+      );
       customerOptionError.value = '';
     } else {
-      holderOptions.value = result.items;
+      holderOptions.value = mergeSelectedFilterOption(
+        'rightsHolder',
+        result.items,
+      );
       holderOptionError.value = '';
     }
   } catch {
@@ -267,33 +383,80 @@ async function searchFilterOptions(kind: 'customer' | 'rightsHolder') {
     )
       return;
     if (kind === 'customer') {
-      customerOptions.value = [];
+      customerOptions.value = customerOptions.value.filter(
+        (item) => item.id === customerDraft.value,
+      );
       customerOptionError.value = '客户候选读取失败，请重试。';
     } else {
-      holderOptions.value = [];
+      holderOptions.value = holderOptions.value.filter(
+        (item) => item.id === holderDraft.value,
+      );
       holderOptionError.value = '权利主体候选读取失败，请重试。';
     }
   }
 }
 watch(
   () => [
+    identity.value,
+    selectedStage.value,
+    route.query.q,
     route.query.customerId,
     route.query.rightsHolderId,
     route.query.shopName,
   ],
   () => {
-    customerDraft.value =
+    queryDraft.value = typeof route.query.q === 'string' ? route.query.q : '';
+    const nextCustomerId =
       typeof route.query.customerId === 'string' ? route.query.customerId : '';
-    holderDraft.value =
+    const nextHolderId =
       typeof route.query.rightsHolderId === 'string'
         ? route.query.rightsHolderId
         : '';
+    const previousCustomerId = customerDraft.value;
+    const previousHolderId = holderDraft.value;
+    customerDraft.value = nextCustomerId;
+    holderDraft.value = nextHolderId;
+    if (nextCustomerId && nextCustomerId !== previousCustomerId)
+      void restoreSelectedFilterOption('customer', nextCustomerId);
+    else if (!nextCustomerId && previousCustomerId) {
+      customerResolveRequest += 1;
+      customerOptions.value = customerOptions.value.filter(
+        (item) => item.id !== previousCustomerId,
+      );
+    }
+    if (nextHolderId && nextHolderId !== previousHolderId)
+      void restoreSelectedFilterOption('rightsHolder', nextHolderId);
+    else if (!nextHolderId && previousHolderId) {
+      holderResolveRequest += 1;
+      holderOptions.value = holderOptions.value.filter(
+        (item) => item.id !== previousHolderId,
+      );
+    }
     shopDraft.value =
       typeof route.query.shopName === 'string' ? route.query.shopName : '';
   },
   { immediate: true },
 );
 function applyFilters(clear = false) {
+  if (clear) {
+    customerOptionRequest += 1;
+    holderOptionRequest += 1;
+    customerResolveRequest += 1;
+    holderResolveRequest += 1;
+    queryDraft.value = '';
+    customerDraft.value = '';
+    holderDraft.value = '';
+    shopDraft.value = '';
+    customerSearch.value = '';
+    holderSearch.value = '';
+    queryFormError.value = '';
+  }
+  const q = clear ? '' : queryDraft.value.trim();
+  if (Array.from(q).length > 200) {
+    queryFormError.value = '关键词最多200字。';
+    return;
+  }
+  queryFormError.value = '';
   const query: Record<string, string | string[] | null | undefined> = {
     ...route.query,
     page: '1',
@@ -301,6 +464,8 @@ function applyFilters(clear = false) {
   delete query.customerId;
   delete query.rightsHolderId;
   delete query.shopName;
+  delete query.q;
+  if (q) query.q = q;
   if (!clear && customerDraft.value) query.customerId = customerDraft.value;
   if (!clear && holderDraft.value) query.rightsHolderId = holderDraft.value;
   if (!clear && shopDraft.value.trim()) query.shopName = shopDraft.value.trim();
@@ -352,7 +517,6 @@ const tableWidth = computed(
   () =>
     48 +
     160 +
-    170 +
     visibleColumns.value.reduce(
       (width, column) => width + columnWidth(column),
       0,
@@ -430,7 +594,7 @@ function columnText(
     case 'shopName':
       return matter.sourceSummary.shopName;
     case 'shopExternalId':
-      return matter.sourceSummary.shopExternalId ?? '未登记';
+      return matter.sourceSummary.shopExternalId ?? '';
     case 'transferredAt':
       return matter.transferredAt;
     case 'evidenceAt':
@@ -510,6 +674,8 @@ function matterActions(
 }
 function shortMatterAction(label: string): string {
   if (label.startsWith('恢复')) return '核对请求';
+  if (label === '登记取证') return '登记取证';
+  if (label === '审核开箱') return '审核';
   if (label === '决定是否出证') return '出证决定';
   if (label === '代办公证处出证') return '代办出证';
   if (label === '办理退货归档') return '退货归档';
@@ -551,6 +717,7 @@ const exportScopeKey = computed(() =>
     userId: auth.session?.user.id ?? '',
     departmentId: auth.session?.department?.id ?? '',
     stage: selectedStage.value ?? null,
+    q: route.query.q ?? null,
     customerId: route.query.customerId ?? null,
     rightsHolderId: route.query.rightsHolderId ?? null,
     shopName: route.query.shopName ?? null,
@@ -580,6 +747,7 @@ function buildExportScope(): NotaryListExportScope | null {
   if (exportMode.value === 'FILTERED') {
     return {
       mode: 'FILTERED',
+      ...(typeof route.query.q === 'string' ? { q: route.query.q } : {}),
       ...(selectedStage.value ? { stage: selectedStage.value } : {}),
       ...(typeof route.query.customerId === 'string'
         ? { customerId: route.query.customerId }
@@ -973,6 +1141,7 @@ async function load(): Promise<void> {
   state.value = 'loading';
   try {
     const filters = {
+      ...(typeof route.query.q === 'string' ? { q: route.query.q } : {}),
       ...(typeof route.query.customerId === 'string'
         ? { customerId: route.query.customerId }
         : {}),
@@ -1035,6 +1204,7 @@ function formatTime(value: string): string {
 watch(
   () => [
     route.query.page,
+    route.query.q,
     route.query.stage,
     route.query.customerId,
     route.query.rightsHolderId,
@@ -1084,18 +1254,11 @@ onBeforeUnmount(() => {
 <template>
   <div class="page-view business-list-page">
     <main>
-      <div class="page-head">
-        <div>
-          <h1>公证阶段</h1>
-          <p>逐个办理当前账号有权查看的公证事项。</p>
-        </div>
-        <ElButton
-          data-test="column-settings-toggle"
-          :disabled="preferenceState !== 'ready' || saving"
-          @click="settingsOpen = !settingsOpen"
-          >列设置</ElButton
-        >
-      </div>
+      <ListHeaderSearch
+        v-model="queryDraft"
+        placeholder="按公证编号、线索编号或店铺名称搜索"
+        @search="applyFilters()"
+      />
       <form
         class="business-list-toolbar"
         aria-label="公证事项筛选"
@@ -1103,34 +1266,25 @@ onBeforeUnmount(() => {
       >
         <label class="filter-search-select"
           ><span>客户</span
-          ><input
-            v-model="customerSearch"
-            aria-label="搜索客户"
-            data-test="notary-customer-search"
-            @input="searchFilterOptions('customer')"
-            @focus="searchFilterOptions('customer')"
-          /><select
+          ><ElSelect
             v-model="customerDraft"
             aria-label="筛选客户"
             data-test="notary-customer-filter"
-          >
-            <option value="">全部</option>
-            <option
-              v-if="
-                customerDraft &&
-                !customerOptions.some((item) => item.id === customerDraft)
-              "
-              :value="customerDraft"
-            >
-              已选客户
-            </option>
-            <option
+            filterable
+            remote
+            clearable
+            :remote-method="
+              (query) => {
+                customerSearch = query;
+                searchFilterOptions('customer');
+              }
+            "
+            placeholder="搜索客户"
+            ><ElOption
               v-for="item in customerOptions"
-              :key="item.id"
-              :value="item.id"
-            >
-              {{ item.name }}
-            </option></select
+              :key="`${item.id}:${item.name}`"
+              :label="item.name"
+              :value="item.id" /></ElSelect
           ><small
             v-if="customerOptionError"
             class="filter-option-error"
@@ -1140,34 +1294,25 @@ onBeforeUnmount(() => {
         >
         <label class="filter-search-select"
           ><span>权利主体</span
-          ><input
-            v-model="holderSearch"
-            aria-label="搜索权利主体"
-            data-test="notary-holder-search"
-            @input="searchFilterOptions('rightsHolder')"
-            @focus="searchFilterOptions('rightsHolder')"
-          /><select
+          ><ElSelect
             v-model="holderDraft"
             aria-label="筛选权利主体"
             data-test="notary-holder-filter"
-          >
-            <option value="">全部</option>
-            <option
-              v-if="
-                holderDraft &&
-                !holderOptions.some((item) => item.id === holderDraft)
-              "
-              :value="holderDraft"
-            >
-              已选权利主体
-            </option>
-            <option
+            filterable
+            remote
+            clearable
+            :remote-method="
+              (query) => {
+                holderSearch = query;
+                searchFilterOptions('rightsHolder');
+              }
+            "
+            placeholder="搜索权利主体"
+            ><ElOption
               v-for="item in holderOptions"
-              :key="item.id"
-              :value="item.id"
-            >
-              {{ item.name }}
-            </option></select
+              :key="`${item.id}:${item.name}`"
+              :label="item.name"
+              :value="item.id" /></ElSelect
           ><small
             v-if="holderOptionError"
             class="filter-option-error"
@@ -1182,10 +1327,14 @@ onBeforeUnmount(() => {
             maxlength="200"
         /></label>
         <ElButton native-type="submit">查询</ElButton>
-        <ElButton native-type="button" @click="applyFilters(true)"
+        <ElButton
+          native-type="button"
+          data-test="notary-clear-filters"
+          @click="applyFilters(true)"
           >清除筛选</ElButton
         >
       </form>
+      <p v-if="queryFormError" role="alert">{{ queryFormError }}</p>
       <section
         class="export-panel business-list-toolbar"
         aria-label="公证事项清单导出"
@@ -1251,6 +1400,13 @@ onBeforeUnmount(() => {
               exportMessage = '';
             "
             >批量导出</ElButton
+          >
+          <ElButton
+            class="column-settings-toggle"
+            data-test="column-settings-toggle"
+            :disabled="preferenceState !== 'ready' || saving"
+            @click="settingsOpen = !settingsOpen"
+            >列设置</ElButton
           >
         </div>
         <div v-if="exportOpen" class="export-options">
@@ -1350,7 +1506,7 @@ onBeforeUnmount(() => {
       >
         <div class="column-settings-fixed">
           <strong>始终显示</strong>
-          <span>选择、操作、公证事项编号、案件进展</span>
+          <span>选择、操作、案件进展</span>
         </div>
         <div class="column-settings-options">
           <div
@@ -1419,6 +1575,7 @@ onBeforeUnmount(() => {
         </div>
       </section>
       <p
+        v-if="preferenceMessage || preferenceState === 'failed'"
         class="column-preference-message"
         role="status"
         data-test="column-preference-status"
@@ -1465,7 +1622,6 @@ onBeforeUnmount(() => {
             <colgroup>
               <col style="width: 48px" />
               <col style="width: 160px" />
-              <col style="width: 170px" />
               <col
                 v-for="column in visibleColumns"
                 :key="column"
@@ -1497,7 +1653,6 @@ onBeforeUnmount(() => {
                   />选择
                 </th>
                 <th class="business-list-cell--nowrap">操作</th>
-                <th class="business-list-cell--nowrap">公证事项编号</th>
                 <th
                   v-for="column in visibleColumns"
                   :key="column"
@@ -1553,9 +1708,6 @@ onBeforeUnmount(() => {
                     >
                   </div>
                 </td>
-                <td class="mono business-list-cell--nowrap">
-                  {{ matter.businessNo }}
-                </td>
                 <td
                   v-for="column in visibleColumns"
                   :key="column"
@@ -1582,7 +1734,6 @@ onBeforeUnmount(() => {
                           caseStageLabels[matter.linkedCase.stage]
                         }}</RouterLink
                       >
-                      <span v-else class="notary-case-link">暂无可见案件</span>
                     </div>
                   </template>
                   <template v-else-if="column === 'sourceLead'">
@@ -1688,7 +1839,8 @@ onBeforeUnmount(() => {
   color: var(--color-danger);
 }
 .filter-search-select > input,
-.filter-search-select > select {
+.filter-search-select > select,
+.filter-search-select > :deep(.el-select) {
   min-width: 0;
   width: 100%;
 }
@@ -1743,9 +1895,9 @@ onBeforeUnmount(() => {
   margin-bottom: 1rem;
 }
 
-.export-panel {
-  margin-bottom: 1rem;
-  padding: 1rem;
+.export-panel.business-list-toolbar {
+  margin-bottom: 4px;
+  padding: 0;
 }
 
 .export-actions,
@@ -1754,6 +1906,10 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+.export-actions .column-settings-toggle {
+  margin-left: auto;
 }
 
 .export-options {

@@ -173,6 +173,34 @@ it('shows the detail early-archive entry only when the case read grants capabili
   expect(drawer?.querySelector('textarea')).not.toBeNull();
 });
 
+it('opens routine editing from the selected-case toolbar only after the server grants it', async () => {
+  api.getCaseRoutineProfile.mockResolvedValue({
+    revision: 0,
+    canEdit: true,
+    shopName: '店铺',
+    shopExternalId: null,
+    remark: null,
+    products: [],
+  });
+  await router.push('/health');
+  await router.push('/cases/case-1?edit=routine');
+  await flushPromises();
+  expect(wrapper!.find('[data-test="case-routine-editor"]').exists()).toBe(
+    true,
+  );
+  expect(router.currentRoute.value.query.edit).toBeUndefined();
+});
+
+it('does not open routine editing from a direct URL when the server denies it', async () => {
+  await router.push('/health');
+  await router.push('/cases/case-1?edit=routine');
+  await flushPromises();
+  expect(wrapper!.find('[data-test="case-routine-editor"]').exists()).toBe(
+    false,
+  );
+  expect(router.currentRoute.value.query.edit).toBeUndefined();
+});
+
 it('logout UI clears the case and reaches login without any new unauthenticated case read', async () => {
   await wrapper!.get('[data-test="logout"]').trigger('click');
   await flushPromises();

@@ -44,12 +44,14 @@ export function isValidExportScope(
     if (
       Object.keys(input).some(
         (key) =>
+          input[key] !== undefined &&
           ![
             'mode',
             'stage',
             'customerId',
             'rightsHolderId',
             'shopName',
+            'q',
             'expectedCount',
           ].includes(key),
       )
@@ -66,7 +68,9 @@ export function isValidExportScope(
           uuid.test(input.rightsHolderId))) &&
       (input.shopName === undefined ||
         (typeof input.shopName === 'string' &&
-          [...input.shopName.trim()].length <= 200))
+          [...input.shopName.trim()].length <= 200)) &&
+      (input.q === undefined ||
+        (typeof input.q === 'string' && [...input.q.trim()].length <= 200))
     );
   }
   return false;
@@ -134,6 +138,10 @@ export class PreviewNotaryListExportDto {
   @ApiPropertyOptional({ maxLength: 200 })
   @IsOptional()
   shopName?: string;
+
+  @ApiPropertyOptional({ maxLength: 200 })
+  @IsOptional()
+  q?: string;
 }
 
 @ApiSchema({ description: '按已预览数量导出；当次范围变化时要求重新预览。' })

@@ -439,6 +439,7 @@ export class LeadService {
     status?: LeadStatus,
     context?: 'NOTARY',
     notaryStage?: string,
+    selectedId?: string,
   ) {
     if (context === 'NOTARY') {
       if (
@@ -492,6 +493,7 @@ export class LeadService {
     const where = {
       departmentId: actor.departmentId,
       leads: { some: leadWhere },
+      ...(selectedId ? { id: selectedId } : {}),
       ...(name ? { name } : {}),
     };
     const rows =

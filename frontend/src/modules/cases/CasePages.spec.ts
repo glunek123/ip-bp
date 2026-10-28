@@ -864,8 +864,12 @@ describe('case pages', () => {
         `/cases?view=${view}&page=2`,
         CaseListPage,
       );
-      expect(wrapper.text()).toContain(
-        view === 'mine' ? '我的案件' : '全部部门案件',
+      expect(wrapper.find('.page-head').exists()).toBe(false);
+      expect(wrapper.vm.$route.query.view).toBe(view);
+      expect(api.listCases).toHaveBeenLastCalledWith(
+        2,
+        20,
+        expect.objectContaining({ view }),
       );
       expect(wrapper.find('[aria-label="案件范围"]').exists()).toBe(false);
       await wrapper.vm.$router.push(`/cases?view=${view}&page=1`);
@@ -1045,9 +1049,7 @@ describe('case pages', () => {
     );
     const filter = api.listCases.mock.calls.at(-1)?.[2];
     expect(filter).not.toHaveProperty('stage');
-    expect(wrapper.get('.page-head, .case-workspace-header').text()).toContain(
-      '准备执行文书',
-    );
+    expect(wrapper.vm.$route.query.stageGroup).toBe('EXECUTION_PREPARATION');
     expect(wrapper.get('a').attributes('href')).toContain(
       'stageGroup=EXECUTION_PREPARATION',
     );
@@ -1067,7 +1069,9 @@ describe('case pages', () => {
       ],
     });
     const wrapper = await mountRoute('/cases', CaseListPage);
-    expect(wrapper.get('[data-test="case-list"]').text()).toContain('提交起诉');
+    expect(wrapper.get('[data-case-action="complaint"]').text()).toBe(
+      '提交诉状',
+    );
     expect(wrapper.get('[data-test="case-list"]').text()).not.toContain('只读');
   });
 
@@ -1108,9 +1112,6 @@ describe('case pages', () => {
       '/cases?stage=WAITING_FORMAL_ACCEPTANCE',
       CaseListPage,
     );
-    expect(wrapper.get('.page-head, .case-workspace-header').text()).toContain(
-      '待正式立案',
-    );
     expect(wrapper.get('[data-test="case-list"]').text()).toContain(
       '待正式立案',
     );
@@ -1125,9 +1126,6 @@ describe('case pages', () => {
     const wrapper = await mountRoute(
       '/cases?stage=WAITING_JUDGMENT',
       CaseListPage,
-    );
-    expect(wrapper.get('.page-head, .case-workspace-header').text()).toContain(
-      '待判决',
     );
     expect(wrapper.get('[data-test="case-list"]').text()).toContain('待判决');
     expect(wrapper.text()).not.toContain('法院已判决');
@@ -1144,9 +1142,6 @@ describe('case pages', () => {
         items: [{ ...base.items[0], stage }],
       });
       const wrapper = await mountRoute(`/cases?stage=${stage}`, CaseListPage);
-      expect(
-        wrapper.get('.page-head, .case-workspace-header').text(),
-      ).toContain(label);
       expect(wrapper.get('[data-test="case-list"]').text()).toContain(label);
     }
   });
@@ -1182,9 +1177,6 @@ describe('case pages', () => {
       1,
       20,
       expect.objectContaining({ stage: 'WAITING_EXECUTION_CONFIRMATION' }),
-    );
-    expect(wrapper.get('.page-head, .case-workspace-header').text()).toContain(
-      '执行材料待确认',
     );
     const rows = wrapper.findAll('[data-test="case-list"] tbody tr');
     expect(rows).toHaveLength(2);
@@ -1404,9 +1396,9 @@ describe('case pages', () => {
         20,
         expect.objectContaining({ view, stage: 'WAITING_FILING' }),
       );
-      expect(
-        wrapper.get('.page-head, .case-workspace-header').text(),
-      ).toContain('待提交立案');
+      expect(wrapper.get('[data-test="case-list"] .pill').text()).toBe(
+        '待提交立案',
+      );
       expect(wrapper.get('[data-test="case-list"]').text()).toContain(
         `CA-FILING-${view}`,
       );
@@ -2631,9 +2623,6 @@ describe.each([
       );
       expect(api.listCases.mock.calls.at(-1)?.[2]).not.toHaveProperty('stage');
       expect(
-        wrapper.get('.page-head, .case-workspace-header').text(),
-      ).toContain(label);
-      expect(
         wrapper
           .findAll('[data-test="case-list"] .pill')
           .map((pill) => pill.text()),
@@ -2663,8 +2652,16 @@ describe.each([
         stageGroup: group,
       });
       expect(
-        wrapper.get('.page-head, .case-workspace-header').text(),
-      ).toContain(label);
+        wrapper
+          .findAll('[data-test="case-list"] .pill')
+          .map((pill) => pill.text()),
+      ).toEqual(
+        expect.arrayContaining(
+          group === 'COMPLAINT_PREPARATION'
+            ? ['待写诉状', '诉状待确认', '诉状待盖章']
+            : ['待写执行材料', '执行材料待确认', '执行材料待盖章'],
+        ),
+      );
       wrapper.unmount();
     },
   );

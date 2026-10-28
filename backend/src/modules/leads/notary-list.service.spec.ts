@@ -86,6 +86,30 @@ function fixture() {
 }
 
 describe('NotaryListService', () => {
+  it('combines literal keyword with the independent shop filter in rows, totals and counts', async () => {
+    const { service, repo } = fixture();
+    await service.list(actor, 1, 20, 'PENDING_EVIDENCE', {
+      q: ' NT_% ',
+      shopName: '店',
+    });
+    const where = repo.findMany.mock.calls[0][0].where;
+    expect(where.AND).toEqual([
+      {
+        OR: [
+          { businessNo: { contains: 'NT\\_\\%', mode: 'insensitive' } },
+          {
+            sourceLead: {
+              is: { businessNo: { contains: 'NT\\_\\%', mode: 'insensitive' } },
+            },
+          },
+          expect.objectContaining({ OR: expect.any(Array) }),
+        ],
+      },
+    ]);
+    expect(where.OR).toBeDefined();
+    expect(repo.count.mock.calls[0][0].where).toEqual(where);
+    expect(repo.groupBy.mock.calls[0][0].where.AND).toEqual(where.AND);
+  });
   it('shows the independent shop rather than a later source-lead value', async () => {
     const { service, repo, matter } = fixture();
     repo.findMany.mockResolvedValue([

@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
+import { ElSelect } from 'element-plus/es/components/select/index.mjs';
 import { workflowChangedEvent } from '../../app/workflow-events';
 import { useAuthStore } from '../../stores/auth';
 import type {
@@ -313,15 +314,17 @@ describe('LeadListPage', () => {
     const { wrapper, router } = await mountWithRoute(
       '/leads?status=WAITING_PUSH',
     );
-    await wrapper.get('[data-test="lead-query"]').setValue('编号');
-    await wrapper.get('[data-test="lead-customer-search"]').setValue('客户');
+    await wrapper.get('[role="search"] input').setValue('编号');
+    wrapper.findAllComponents(ElSelect)[0]?.vm.$props.remoteMethod?.('客户');
     await flushPromises();
-    await wrapper
-      .get('[data-test="lead-customer-filter"]')
-      .setValue('customer-1');
-    await wrapper.get('[data-test="lead-holder-search"]').setValue('主体');
+    wrapper
+      .findAllComponents(ElSelect)[0]
+      ?.vm.$emit('update:modelValue', 'customer-1');
+    wrapper.findAllComponents(ElSelect)[1]?.vm.$props.remoteMethod?.('主体');
     await flushPromises();
-    await wrapper.get('[data-test="lead-holder-filter"]').setValue('holder-1');
+    wrapper
+      .findAllComponents(ElSelect)[1]
+      ?.vm.$emit('update:modelValue', 'holder-1');
     await wrapper.get('[data-test="lead-shop-filter"]').setValue('店铺');
     await wrapper.get('form[aria-label="线索关键词查询"]').trigger('submit');
     await flushPromises();
@@ -352,6 +355,134 @@ describe('LeadListPage', () => {
       { view: 'LIBRARY', status: 'WAITING_PUSH' },
     );
   });
+  it('restores selected filter names by ID within the current library scope', async () => {
+    api.listLeads.mockResolvedValue(result);
+    api.listLeadFilterOptions.mockImplementation(
+      async (
+        kind: string,
+        _q: string,
+        _options: unknown,
+        scope: { selectedId?: string },
+      ) => ({
+        items: scope.selectedId
+          ? [
+              {
+                id: scope.selectedId,
+                name: kind === 'customer' ? '恢复客户甲' : '恢复主体甲',
+              },
+            ]
+          : [],
+      }),
+    );
+    const { wrapper } = await mountWithRoute(
+      '/leads?status=WAITING_PUSH&customerId=customer-private-id&rightsHolderId=holder-private-id',
+    );
+    await flushPromises();
+    expect(api.listLeadFilterOptions).toHaveBeenCalledWith(
+      'customer',
+      '',
+      {},
+      {
+        view: 'LIBRARY',
+        status: 'WAITING_PUSH',
+        selectedId: 'customer-private-id',
+      },
+    );
+    expect(wrapper.get('[data-test="lead-customer-filter"]').text()).toContain(
+      '恢复客户甲',
+    );
+    expect(wrapper.get('[data-test="lead-holder-filter"]').text()).toContain(
+      '恢复主体甲',
+    );
+    expect(wrapper.text()).not.toContain('customer-private-id');
+    expect(wrapper.text()).not.toContain('holder-private-id');
+    expect(api.listLeadFilterOptions).toHaveBeenCalledWith(
+      'customer',
+      '',
+      {},
+      {
+        view: 'LIBRARY',
+        status: 'WAITING_PUSH',
+        selectedId: 'customer-private-id',
+      },
+    );
+    expect(api.listLeadFilterOptions).toHaveBeenCalledWith(
+      'rightsHolder',
+      '',
+      {},
+      {
+        view: 'LIBRARY',
+        status: 'WAITING_PUSH',
+        selectedId: 'holder-private-id',
+      },
+    );
+  });
+  it('keeps a restored filter when it has no option in the newly selected status', async () => {
+    api.listLeads.mockResolvedValue(result);
+    api.listLeadFilterOptions.mockImplementation(
+      async (
+        kind: string,
+        _q: string,
+        _options: unknown,
+        scope: { selectedId?: string; status?: string },
+      ) => ({
+        items:
+          scope.status === 'WAITING_PUSH' && scope.selectedId
+            ? [{ id: scope.selectedId, name: '阶段内客户甲' }]
+            : [],
+      }),
+    );
+    const { wrapper, router } = await mountWithRoute(
+      '/leads?status=WAITING_PUSH&customerId=customer-private-id',
+    );
+    await flushPromises();
+    await router.push(
+      '/leads?status=WAITING_REVIEW&customerId=customer-private-id',
+    );
+    await flushPromises();
+    expect(router.currentRoute.value.query.customerId).toBe(
+      'customer-private-id',
+    );
+    expect(wrapper.get('[data-test="lead-customer-filter"]').text()).toContain(
+      '当前状态无可见客户',
+    );
+    expect(wrapper.text()).not.toContain('customer-private-id');
+  });
+  it('ignores a late restored-name response after the selected ID changes', async () => {
+    api.listLeads.mockResolvedValue(result);
+    let resolveOld:
+      ((value: { items: { id: string; name: string }[] }) => void) | undefined;
+    api.listLeadFilterOptions.mockImplementation(
+      async (
+        _kind: string,
+        _q: string,
+        _options: unknown,
+        scope: { selectedId?: string },
+      ) => {
+        if (scope.selectedId === 'customer-old-id')
+          return await new Promise((resolve) => {
+            resolveOld = resolve;
+          });
+        return {
+          items: scope.selectedId
+            ? [{ id: scope.selectedId, name: '新客户名称' }]
+            : [],
+        };
+      },
+    );
+    const { wrapper, router } = await mountWithRoute(
+      '/leads?customerId=customer-old-id',
+    );
+    await router.push('/leads?customerId=customer-new-id');
+    await flushPromises();
+    resolveOld?.({ items: [{ id: 'customer-old-id', name: '旧客户名称' }] });
+    await flushPromises();
+    expect(wrapper.get('[data-test="lead-customer-filter"]').text()).toContain(
+      '新客户名称',
+    );
+    expect(wrapper.text()).not.toContain('旧客户名称');
+    expect(wrapper.text()).not.toContain('customer-new-id');
+  });
   it('applies and clears a keyword while preserving stage and resetting page', async () => {
     api.listLeads.mockImplementation(async (page: number) => ({
       ...result,
@@ -361,8 +492,8 @@ describe('LeadListPage', () => {
     const { wrapper, router } = await mountWithRoute(
       '/leads?status=WAITING_PUSH&page=2',
     );
-    await wrapper.get('[data-test="lead-query"]').setValue(' 商品甲 ');
-    await wrapper.get('form[aria-label="线索关键词查询"]').trigger('submit');
+    await wrapper.get('[role="search"] input').setValue(' 商品甲 ');
+    await wrapper.get('form[role="search"]').trigger('submit');
     await flushPromises();
     expect(router.currentRoute.value.query).toEqual({
       status: 'WAITING_PUSH',
@@ -377,7 +508,9 @@ describe('LeadListPage', () => {
       'LIBRARY',
       '商品甲',
     );
-    await router.push('/leads?status=WAITING_PUSH&page=2&q=商品甲');
+    await router.push(
+      '/leads?status=WAITING_PUSH&page=2&q=商品甲&customerId=customer-1&rightsHolderId=holder-1&shopName=店铺',
+    );
     await flushPromises();
     expect(api.listLeads).toHaveBeenLastCalledWith(
       2,
@@ -386,13 +519,28 @@ describe('LeadListPage', () => {
       'WAITING_PUSH',
       'LIBRARY',
       '商品甲',
+      {
+        customerId: 'customer-1',
+        rightsHolderId: 'holder-1',
+        shopName: '店铺',
+      },
     );
     await wrapper.get('[data-test="lead-clear"]').trigger('click');
     await flushPromises();
+    expect(
+      (wrapper.get('[role="search"] input').element as HTMLInputElement).value,
+    ).toBe('');
     expect(router.currentRoute.value.query).toEqual({
       status: 'WAITING_PUSH',
       page: '1',
     });
+    expect(api.listLeads).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.anything(),
+      'WAITING_PUSH',
+      'LIBRARY',
+    );
   });
 
   it('rejects repeated keyword values and fences a late response', async () => {
@@ -507,7 +655,6 @@ describe('LeadListPage', () => {
       wrapper.get('[data-test="pending-no-evidence-batch"]').text(),
     ).toContain('原始原因');
     for (const selector of [
-      '[data-test="lead-query"]',
       '[data-test="lead-search"]',
       '[data-test="lead-clear"]',
       '[data-test="open-batch-push"]',
@@ -1391,9 +1538,7 @@ describe('LeadListPage', () => {
     api.getLead.mockResolvedValue(detail());
     api.pushLead.mockResolvedValue(pushResult(summary.id, 1));
     const { wrapper, router } = await mountWithRoute('/leads');
-    expect(wrapper.get('[data-test="lead-quick-action"]').text()).toBe(
-      '推送审核',
-    );
+    expect(wrapper.get('[data-test="lead-quick-action"]').text()).toBe('推送');
     await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
     await flushPromises();
     expect(api.getLead).toHaveBeenCalledExactlyOnceWith(summary.id);
@@ -1776,7 +1921,7 @@ describe('LeadListPage', () => {
     expect(wrapper.get('[data-test="lead-estimated-amount"]').text()).toBe(
       '9007199254740993.35',
     );
-    expect(wrapper.text()).toContain('3 件商品');
+    expect(wrapper.text()).toContain('另有 2 件商品');
   });
 
   it('makes product names accessible and only links actual HTTP(S) URLs', async () => {
@@ -1838,7 +1983,7 @@ describe('LeadListPage', () => {
     Reflect.deleteProperty(globalThis.navigator, 'clipboard');
     expect(products.text()).toContain('无有效商品链接');
     expect(products.text()).not.toContain('javascript:');
-    expect(wrapper.findAll('summary')).toHaveLength(2);
+    expect(wrapper.findAll('summary')).toHaveLength(0);
   });
 
   it('shows unrecorded products and price explicitly', async () => {
@@ -1862,6 +2007,26 @@ describe('LeadListPage', () => {
     );
     expect(wrapper.text()).toContain('未登记商品');
     expect(wrapper.find('.lead-list-products').exists()).toBe(false);
+    expect(
+      wrapper
+        .get('[data-test="lead-row"] [data-column="shopExternalId"]')
+        .text(),
+    ).toBe('');
+  });
+
+  it('renders shop ID zero and empty values without treating zero as blank', async () => {
+    api.listLeads.mockResolvedValue({
+      ...result,
+      total: 2,
+      items: [
+        { ...summary, id: 'lead-zero-shop-id', shopExternalId: '0' },
+        { ...summary, id: 'lead-empty-shop-id', shopExternalId: '' },
+      ],
+    });
+    const { wrapper } = await mountWithRoute('/leads');
+    const rows = wrapper.findAll('[data-test="lead-row"]');
+    expect(rows[0]?.find('[data-column="shopExternalId"]').text()).toBe('0');
+    expect(rows[1]?.find('[data-column="shopExternalId"]').text()).toBe('');
   });
 
   it('ignores a late response after a page or status change and hides unavailable creation', async () => {

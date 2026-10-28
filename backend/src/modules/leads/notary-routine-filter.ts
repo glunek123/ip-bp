@@ -16,3 +16,20 @@ export function notaryRoutineShopWhere(
     ],
   };
 }
+
+/** Search only the current matter, its source number and its current shop. */
+export function notaryKeywordWhere(
+  value: string,
+): Prisma.NotaryMatterWhereInput {
+  const match = {
+    contains: value.trim().replace(/[\\%_]/g, '\\$&'),
+    mode: 'insensitive' as const,
+  };
+  return {
+    OR: [
+      { businessNo: match },
+      { sourceLead: { is: { businessNo: match } } },
+      notaryRoutineShopWhere(value),
+    ],
+  };
+}

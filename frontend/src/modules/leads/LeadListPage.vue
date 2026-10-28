@@ -3,6 +3,11 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
+  ElOption,
+  ElSelect,
+} from 'element-plus/es/components/select/index.mjs';
+import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
+import {
   getLeadFormContext,
   getLead,
   importLeadCsvBatch,
@@ -189,11 +194,11 @@ function actionTitle(lead: Lead): string | null {
 function actionShortTitle(lead: Lead): string {
   switch (lead.status) {
     case 'WAITING_PUSH':
-      return '推送审核';
+      return '推送';
     case 'WAITING_REVIEW':
-      return '代办审核';
+      return '审核';
     case 'WAITING_EVIDENCE_DECISION':
-      return '确认取证';
+      return '确认';
     case 'ARCHIVED':
       return '申请撤回';
     default:
@@ -882,20 +887,123 @@ const holderDraft = ref('');
 const shopDraft = ref('');
 let customerOptionRequest = 0;
 let holderOptionRequest = 0;
+let customerResolveRequest = 0;
+let holderResolveRequest = 0;
 watch(
   () => [identity.value, selectedStatus.value],
   () => {
     customerOptionRequest += 1;
     holderOptionRequest += 1;
+    customerResolveRequest += 1;
+    holderResolveRequest += 1;
     customerOptions.value = [];
     holderOptions.value = [];
     customerOptionError.value = '';
     holderOptionError.value = '';
     customerSearch.value = '';
     holderSearch.value = '';
+    if (customerDraft.value)
+      void restoreSelectedFilterOption('customer', customerDraft.value);
+    if (holderDraft.value)
+      void restoreSelectedFilterOption('rightsHolder', holderDraft.value);
   },
   { flush: 'sync' },
 );
+function selectedFilterOption(kind: 'customer' | 'rightsHolder') {
+  const id = kind === 'customer' ? customerDraft.value : holderDraft.value;
+  const options =
+    kind === 'customer' ? customerOptions.value : holderOptions.value;
+  return options.find((item) => item.id === id);
+}
+function mergeSelectedFilterOption(
+  kind: 'customer' | 'rightsHolder',
+  items: { id: string; name: string }[],
+) {
+  const selected = selectedFilterOption(kind);
+  return selected && !items.some((item) => item.id === selected.id)
+    ? [selected, ...items]
+    : items;
+}
+function updateSelectedFilterOption(
+  kind: 'customer' | 'rightsHolder',
+  items: { id: string; name: string }[],
+) {
+  if (kind === 'customer') customerOptions.value = items;
+  else holderOptions.value = items;
+}
+function filterOptionLabel(kind: 'customer' | 'rightsHolder') {
+  return kind === 'customer' ? '客户名称' : '权利主体名称';
+}
+function unavailableFilterOptionLabel(kind: 'customer' | 'rightsHolder') {
+  const subject = kind === 'customer' ? '客户' : '权利主体';
+  return selectedStatus.value
+    ? `当前状态无可见${subject}`
+    : `当前范围无可见${subject}`;
+}
+async function restoreSelectedFilterOption(
+  kind: 'customer' | 'rightsHolder',
+  selectedId: string,
+) {
+  const isCustomer = kind === 'customer';
+  const generation = isCustomer
+    ? ++customerResolveRequest
+    : ++holderResolveRequest;
+  const actor = identity.value;
+  const status = selectedStatus.value;
+  const routeKey = isCustomer ? 'customerId' : 'rightsHolderId';
+  const isCurrent = () =>
+    generation ===
+      (isCustomer ? customerResolveRequest : holderResolveRequest) &&
+    actor === identity.value &&
+    status === selectedStatus.value &&
+    (isCustomer ? customerDraft.value : holderDraft.value) === selectedId &&
+    route.query[routeKey] === selectedId;
+  const existing = selectedFilterOption(kind);
+  updateSelectedFilterOption(
+    kind,
+    mergeSelectedFilterOption(kind, [
+      {
+        id: selectedId,
+        name: existing?.name ?? `正在读取${filterOptionLabel(kind)}…`,
+      },
+    ]),
+  );
+  try {
+    const result = await listLeadFilterOptions(
+      kind,
+      '',
+      {},
+      {
+        view: 'LIBRARY',
+        ...(status ? { status } : {}),
+        selectedId,
+      },
+    );
+    if (!isCurrent()) return;
+    const selected = result.items.find((item) => item.id === selectedId);
+    if (!selected) {
+      updateSelectedFilterOption(kind, [
+        { id: selectedId, name: unavailableFilterOptionLabel(kind) },
+      ]);
+      return;
+    }
+    updateSelectedFilterOption(
+      kind,
+      mergeSelectedFilterOption(kind, [selected]),
+    );
+    if (isCustomer) customerOptionError.value = '';
+    else holderOptionError.value = '';
+  } catch {
+    if (!isCurrent()) return;
+    const selected = selectedFilterOption(kind);
+    if (selected)
+      updateSelectedFilterOption(kind, [
+        { ...selected, name: `${filterOptionLabel(kind)}暂不可用` },
+      ]);
+    if (isCustomer) customerOptionError.value = '客户候选读取失败，请重试。';
+    else holderOptionError.value = '权利主体候选读取失败，请重试。';
+  }
+}
 async function searchFilterOptions(kind: 'customer' | 'rightsHolder') {
   const generation =
     kind === 'customer' ? ++customerOptionRequest : ++holderOptionRequest;
@@ -917,10 +1025,16 @@ async function searchFilterOptions(kind: 'customer' | 'rightsHolder') {
     )
       return;
     if (kind === 'customer') {
-      customerOptions.value = result.items;
+      customerOptions.value = mergeSelectedFilterOption(
+        'customer',
+        result.items,
+      );
       customerOptionError.value = '';
     } else {
-      holderOptions.value = result.items;
+      holderOptions.value = mergeSelectedFilterOption(
+        'rightsHolder',
+        result.items,
+      );
       holderOptionError.value = '';
     }
   } catch {
@@ -931,10 +1045,14 @@ async function searchFilterOptions(kind: 'customer' | 'rightsHolder') {
     )
       return;
     if (kind === 'customer') {
-      customerOptions.value = [];
+      customerOptions.value = customerOptions.value.filter(
+        (item) => item.id === customerDraft.value,
+      );
       customerOptionError.value = '客户候选读取失败，请重试。';
     } else {
-      holderOptions.value = [];
+      holderOptions.value = holderOptions.value.filter(
+        (item) => item.id === holderDraft.value,
+      );
       holderOptionError.value = '权利主体候选读取失败，请重试。';
     }
   }
@@ -967,6 +1085,8 @@ const queryBlocked = computed(() =>
 );
 watch(
   () => [
+    identity.value,
+    selectedStatus.value,
     route.query.q,
     route.query.customerId,
     route.query.rightsHolderId,
@@ -974,12 +1094,32 @@ watch(
   ],
   () => {
     queryDraft.value = typeof route.query.q === 'string' ? route.query.q : '';
-    customerDraft.value =
+    const nextCustomerId =
       typeof route.query.customerId === 'string' ? route.query.customerId : '';
-    holderDraft.value =
+    const nextHolderId =
       typeof route.query.rightsHolderId === 'string'
         ? route.query.rightsHolderId
         : '';
+    const previousCustomerId = customerDraft.value;
+    const previousHolderId = holderDraft.value;
+    customerDraft.value = nextCustomerId;
+    holderDraft.value = nextHolderId;
+    if (nextCustomerId && nextCustomerId !== previousCustomerId)
+      void restoreSelectedFilterOption('customer', nextCustomerId);
+    else if (!nextCustomerId && previousCustomerId) {
+      customerResolveRequest += 1;
+      customerOptions.value = customerOptions.value.filter(
+        (item) => item.id !== previousCustomerId,
+      );
+    }
+    if (nextHolderId && nextHolderId !== previousHolderId)
+      void restoreSelectedFilterOption('rightsHolder', nextHolderId);
+    else if (!nextHolderId && previousHolderId) {
+      holderResolveRequest += 1;
+      holderOptions.value = holderOptions.value.filter(
+        (item) => item.id !== previousHolderId,
+      );
+    }
     shopDraft.value =
       typeof route.query.shopName === 'string' ? route.query.shopName : '';
     queryFormError.value = '';
@@ -988,6 +1128,19 @@ watch(
 );
 async function applyQuery(clear = false): Promise<void> {
   if (queryBlocked.value) return;
+  if (clear) {
+    customerOptionRequest += 1;
+    holderOptionRequest += 1;
+    customerResolveRequest += 1;
+    holderResolveRequest += 1;
+    queryDraft.value = '';
+    customerDraft.value = '';
+    holderDraft.value = '';
+    shopDraft.value = '';
+    customerSearch.value = '';
+    holderSearch.value = '';
+    queryFormError.value = '';
+  }
   const q = clear ? '' : queryDraft.value.trim();
   if (Array.from(q).length > 200) {
     queryFormError.value = '线索关键词最多200字。';
@@ -1178,10 +1331,6 @@ onBeforeUnmount(() => {
       "
     >
       <div class="page-head business-list-toolbar">
-        <div>
-          <h1>线索库</h1>
-          <p>记录当前账号有权查看、尚未移交公证的线索。</p>
-        </div>
         <div v-if="state === 'ready' && canCreate" class="lead-create-actions">
           <RouterLink to="/leads/new" data-test="create-lead"
             ><ElButton type="primary">新建线索</ElButton></RouterLink
@@ -1209,49 +1358,37 @@ onBeforeUnmount(() => {
           >
         </div>
       </div>
+      <ListHeaderSearch
+        v-model="queryDraft"
+        placeholder="按店铺名、商品或编号搜索"
+        @search="applyQuery()"
+      />
       <form
         aria-label="线索关键词查询"
         class="business-list-toolbar"
         @submit.prevent="applyQuery()"
       >
-        <label
-          >关键词<input
-            v-model="queryDraft"
-            data-test="lead-query"
-            class="text-input"
-            placeholder="编号／店铺／商品名称"
-            :disabled="queryBlocked"
-        /></label>
         <label class="filter-search-select"
           ><span>客户</span
-          ><input
-            v-model="customerSearch"
-            aria-label="搜索客户"
-            data-test="lead-customer-search"
-            @input="searchFilterOptions('customer')"
-            @focus="searchFilterOptions('customer')"
-          /><select
+          ><ElSelect
             v-model="customerDraft"
             aria-label="筛选客户"
             data-test="lead-customer-filter"
-          >
-            <option value="">全部</option>
-            <option
-              v-if="
-                customerDraft &&
-                !customerOptions.some((item) => item.id === customerDraft)
-              "
-              :value="customerDraft"
-            >
-              已选客户
-            </option>
-            <option
+            filterable
+            remote
+            clearable
+            :remote-method="
+              (query) => {
+                customerSearch = query;
+                searchFilterOptions('customer');
+              }
+            "
+            placeholder="搜索客户"
+            ><ElOption
               v-for="item in customerOptions"
-              :key="item.id"
-              :value="item.id"
-            >
-              {{ item.name }}
-            </option></select
+              :key="`${item.id}:${item.name}`"
+              :label="item.name"
+              :value="item.id" /></ElSelect
           ><small
             v-if="customerOptionError"
             class="filter-option-error"
@@ -1261,34 +1398,25 @@ onBeforeUnmount(() => {
         >
         <label class="filter-search-select"
           ><span>权利主体</span
-          ><input
-            v-model="holderSearch"
-            aria-label="搜索权利主体"
-            data-test="lead-holder-search"
-            @input="searchFilterOptions('rightsHolder')"
-            @focus="searchFilterOptions('rightsHolder')"
-          /><select
+          ><ElSelect
             v-model="holderDraft"
             aria-label="筛选权利主体"
             data-test="lead-holder-filter"
-          >
-            <option value="">全部</option>
-            <option
-              v-if="
-                holderDraft &&
-                !holderOptions.some((item) => item.id === holderDraft)
-              "
-              :value="holderDraft"
-            >
-              已选权利主体
-            </option>
-            <option
+            filterable
+            remote
+            clearable
+            :remote-method="
+              (query) => {
+                holderSearch = query;
+                searchFilterOptions('rightsHolder');
+              }
+            "
+            placeholder="搜索权利主体"
+            ><ElOption
               v-for="item in holderOptions"
-              :key="item.id"
-              :value="item.id"
-            >
-              {{ item.name }}
-            </option></select
+              :key="`${item.id}:${item.name}`"
+              :label="item.name"
+              :value="item.id" /></ElSelect
           ><small
             v-if="holderOptionError"
             class="filter-option-error"
@@ -1499,79 +1627,80 @@ onBeforeUnmount(() => {
                   {{ labelLeadPlatform(lead.platform) }}
                 </td>
                 <td class="business-list-cell--text">
-                  <details>
-                    <summary :title="lead.shopName">
-                      {{ lead.shopName }}
-                    </summary>
-                    <p>客户：{{ lead.displayNames.customerName }}</p>
-                    <p>权利主体：{{ lead.displayNames.rightsHolderName }}</p>
-                    <p>负责人：{{ lead.displayNames.responsibleUserName }}</p>
-                  </details>
+                  <span :title="lead.shopName">{{ lead.shopName }}</span>
+                  <small class="lead-shop-context">
+                    {{ lead.displayNames.customerName }} ·
+                    {{ lead.displayNames.rightsHolderName }}
+                  </small>
                 </td>
                 <td
                   class="business-list-cell--text mono"
-                  :title="lead.shopExternalId || '未登记'"
+                  data-column="shopExternalId"
+                  :title="lead.shopExternalId ?? ''"
                 >
-                  {{ lead.shopExternalId || '未登记' }}
+                  {{ lead.shopExternalId ?? '' }}
                 </td>
                 <td class="business-list-cell--text lead-product-cell">
                   <div v-if="products.length" class="lead-list-products">
-                    <span
-                      class="lead-product-name"
-                      :title="products[0]?.title || '未登记商品名称'"
-                      >{{ products[0]?.title || '未登记商品名称' }}</span
+                    <div class="lead-product-primary">
+                      <span
+                        class="lead-product-name"
+                        :title="products[0]?.title || '未登记商品名称'"
+                        >{{ products[0]?.title || '未登记商品名称' }}</span
+                      >
+                      <a
+                        v-if="safeProductUrl(products[0]?.url ?? null)"
+                        class="lead-product-url"
+                        :href="safeProductUrl(products[0]?.url ?? null)!"
+                        :title="products[0]?.url ?? ''"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >{{ products[0]?.url }}</a
+                      >
+                      <span v-else class="lead-product-url"
+                        >无有效商品链接</span
+                      >
+                      <button
+                        v-if="safeProductUrl(products[0]?.url ?? null)"
+                        type="button"
+                        class="lead-product-copy"
+                        :aria-label="`复制商品链接：${products[0]?.title || '未登记商品名称'}`"
+                        @click="copyProductUrl(products[0]!.url!)"
+                      >
+                        复制
+                      </button>
+                    </div>
+                    <span v-if="products.length > 1"
+                      >另有 {{ products.length - 1 }} 件商品</span
                     >
-                    <a
-                      v-if="safeProductUrl(products[0]?.url ?? null)"
-                      class="lead-product-url"
-                      :href="safeProductUrl(products[0]?.url ?? null)!"
-                      :title="products[0]?.url ?? ''"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      >{{ products[0]?.url }}</a
+                    <div
+                      v-for="product in products.slice(1)"
+                      :key="product.id"
+                      class="lead-product-additional"
                     >
-                    <span v-else class="lead-product-url">无有效商品链接</span>
-                    <button
-                      v-if="safeProductUrl(products[0]?.url ?? null)"
-                      type="button"
-                      class="lead-product-copy"
-                      :aria-label="`复制商品链接：${products[0]?.title || '未登记商品名称'}`"
-                      @click="copyProductUrl(products[0]!.url!)"
-                    >
-                      复制
-                    </button>
-                    <details
-                      v-if="products.length > 1"
-                      class="lead-product-more"
-                    >
-                      <summary>{{ products.length }} 件商品</summary>
-                      <ul>
-                        <li
-                          v-for="product in products.slice(1)"
-                          :key="product.id"
-                        >
-                          <span :title="product.title || '未登记商品名称'">{{
-                            product.title || '未登记商品名称'
-                          }}</span>
-                          <a
-                            v-if="safeProductUrl(product.url)"
-                            :href="safeProductUrl(product.url)!"
-                            :title="product.url ?? ''"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            >{{ product.url }}</a
-                          >
-                          <span v-else>无有效商品链接</span>
-                          <button
-                            v-if="safeProductUrl(product.url)"
-                            type="button"
-                            @click="copyProductUrl(product.url!)"
-                          >
-                            复制
-                          </button>
-                        </li>
-                      </ul>
-                    </details>
+                      <span
+                        class="lead-product-name"
+                        :title="product.title || '未登记商品名称'"
+                        >{{ product.title || '未登记商品名称' }}</span
+                      >
+                      <a
+                        v-if="safeProductUrl(product.url)"
+                        class="lead-product-url"
+                        :href="safeProductUrl(product.url)!"
+                        :title="product.url ?? ''"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >{{ product.url }}</a
+                      >
+                      <span v-else>无有效商品链接</span>
+                      <button
+                        v-if="safeProductUrl(product.url)"
+                        type="button"
+                        @click="copyProductUrl(product.url!)"
+                      >
+                        复制
+                      </button>
+                    </div>
                   </div>
                   <span v-else>未登记商品</span>
                 </td>
@@ -1785,7 +1914,8 @@ onBeforeUnmount(() => {
   color: var(--color-danger);
 }
 .filter-search-select > input,
-.filter-search-select > select {
+.filter-search-select > select,
+.filter-search-select > :deep(.el-select) {
   min-width: 0;
   width: 100%;
 }
@@ -1798,19 +1928,6 @@ onBeforeUnmount(() => {
 .lead-list-table :is(th, td) {
   height: auto;
   padding: 7px 8px;
-}
-.lead-list-table details {
-  min-width: 0;
-}
-.lead-list-table summary {
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-.lead-list-table details:not([open]) summary {
-  display: block;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
 }
 .lead-row-actions > a {
   margin-left: 6px;
@@ -1825,11 +1942,15 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lead-list-table details[open] {
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
 .lead-list-products {
+  display: flex;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.lead-product-primary,
+.lead-product-additional {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -1845,8 +1966,7 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.lead-product-copy,
-.lead-product-more summary {
+.lead-product-copy {
   flex: 0 0 auto;
   padding: 2px 3px;
   border: 0;
@@ -1856,25 +1976,20 @@ onBeforeUnmount(() => {
   font: inherit;
   font-size: 12px;
 }
-.lead-product-more {
-  flex: 0 0 auto;
-}
-.lead-product-more ul {
-  padding-left: 12px;
-  margin: 5px 0;
-}
-.lead-product-more li {
-  display: flex;
-  gap: 5px;
-  min-width: 0;
-}
-.lead-product-more li > span,
-.lead-product-more li > a {
+.lead-shop-context {
   display: block;
-  flex: 1 1 0;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.lead-product-additional > button {
+  flex: 0 0 auto;
+  padding: 2px 3px;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
 }
 </style>

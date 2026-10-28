@@ -562,6 +562,13 @@ watch(
       )
         return;
       routine.value = profile;
+      if (route.query.edit === 'routine') {
+        if (profile.canEdit && !drawerOpen.value && !earlyArchiveOpen.value)
+          routineEditing.value = true;
+        const query = { ...route.query };
+        delete query.edit;
+        void router.replace({ query });
+      }
     } catch {
       if (!controller.signal.aborted && generation === routineReadGeneration)
         routineError.value = '案件当前资料暂时不可读取，请刷新重试。';

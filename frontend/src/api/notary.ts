@@ -1197,6 +1197,7 @@ export async function listNotaryMatters(
   options: RequestOptions = {},
   stage?: NotaryListStage,
   filters: {
+    q?: string;
     customerId?: string;
     rightsHolderId?: string;
     shopName?: string;
@@ -1207,6 +1208,7 @@ export async function listNotaryMatters(
     pageSize: String(pageSize),
   });
   if (stage !== undefined) query.set('stage', stage);
+  if (filters.q?.trim()) query.set('q', filters.q.trim());
   if (filters.customerId) query.set('customerId', filters.customerId);
   if (filters.rightsHolderId)
     query.set('rightsHolderId', filters.rightsHolderId);

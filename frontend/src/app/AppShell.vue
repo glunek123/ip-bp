@@ -1564,6 +1564,7 @@ async function logout(): Promise<void> {
             }}</span>
           </template>
         </nav>
+        <div id="module-list-search" class="app-list-search" />
         <div
           v-if="auth.session?.principalType === 'INTERNAL'"
           class="app-reminders"

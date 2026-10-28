@@ -538,6 +538,14 @@ describe('notary API', () => {
       '/notary-matters?page=2&pageSize=20&stage=PENDING_EVIDENCE',
       {},
     );
+    await listNotaryMatters(2, 20, {}, 'PENDING_EVIDENCE', {
+      q: ' NT-001 ',
+      shopName: '店铺',
+    });
+    expect(http.getJson).toHaveBeenLastCalledWith(
+      '/notary-matters?page=2&pageSize=20&stage=PENDING_EVIDENCE&q=NT-001&shopName=%E5%BA%97%E9%93%BA',
+      {},
+    );
     http.getJson.mockResolvedValueOnce({
       ...result,
       counts: { PENDING_EVIDENCE: 2 },

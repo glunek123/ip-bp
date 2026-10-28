@@ -4,7 +4,10 @@ import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { NOTARY_LIST_STAGES, NotaryListStage } from './notary-list.dto';
-import { notaryRoutineShopWhere } from './notary-routine-filter';
+import {
+  notaryKeywordWhere,
+  notaryRoutineShopWhere,
+} from './notary-routine-filter';
 import {
   NOTARY_DISPLAY_CERTIFICATE_SELECT,
   NOTARY_DISPLAY_LEAD_SELECT,
@@ -25,6 +28,7 @@ export class NotaryListService {
     pageSize: number,
     stage?: NotaryListStage,
     filters: {
+      q?: string;
       customerId?: string;
       rightsHolderId?: string;
       shopName?: string;
@@ -59,6 +63,7 @@ export class NotaryListService {
         ? { rightsHolderId: filters.rightsHolderId }
         : {}),
       ...(shopName ? notaryRoutineShopWhere(shopName) : {}),
+      ...(filters.q?.trim() ? { AND: [notaryKeywordWhere(filters.q)] } : {}),
     };
     const itemWhere: Prisma.NotaryMatterWhereInput =
       stage === undefined ? baseWhere : { ...baseWhere, stage };

@@ -77,6 +77,31 @@ function fixture() {
 }
 
 describe('NotaryListExportService', () => {
+  it('uses the same keyword predicate for filtered preview and export with scopes intact', async () => {
+    const { service, tx } = fixture();
+    const scope = { mode: 'FILTERED' as const, q: ' NT_% ', shopName: '店' };
+    await service.preview(actor, scope);
+    await service.export(actor, { ...scope, expectedCount: 1 });
+    const previewWhere = tx.notaryMatter.findMany.mock.calls[0][0].where;
+    const exportWhere = tx.notaryMatter.findMany.mock.calls[1][0].where;
+    expect(previewWhere).toEqual(exportWhere);
+    expect(previewWhere.AND).toEqual([
+      { sourceLead: readScope },
+      { sourceLead: exportScope },
+      {
+        OR: [
+          { businessNo: { contains: 'NT\\_\\%', mode: 'insensitive' } },
+          {
+            sourceLead: {
+              is: { businessNo: { contains: 'NT\\_\\%', mode: 'insensitive' } },
+            },
+          },
+          expect.objectContaining({ OR: expect.any(Array) }),
+        ],
+      },
+    ]);
+    expect(previewWhere.OR).toBeDefined();
+  });
   it('exports the independent current shop value', async () => {
     const { service, tx } = fixture();
     tx.notaryMatter.findMany.mockResolvedValueOnce([

@@ -131,6 +131,36 @@ describe('notary list export HTTP contract', () => {
     });
   });
 
+  it('accepts keyword and combined filters through the real validation pipe', async () => {
+    const scope = {
+      mode: 'FILTERED',
+      q: 'NT-001',
+      shopName: '示例店铺',
+      stage: 'PENDING_EVIDENCE',
+    };
+    await request(app.getHttpServer())
+      .post('/api/v1/notary-matters/exports/preview')
+      .send(scope)
+      .expect(200);
+    expect(preview).toHaveBeenCalledWith(actor, expect.objectContaining(scope));
+    await request(app.getHttpServer())
+      .post('/api/v1/notary-matters/exports')
+      .send({ ...scope, expectedCount: 1 })
+      .expect(200);
+    await request(app.getHttpServer())
+      .post('/api/v1/notary-matters/exports/preview')
+      .send({ ...scope, q: 'a'.repeat(201) })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/api/v1/notary-matters/exports/preview')
+      .send({ ...scope, q: '😀'.repeat(101) })
+      .expect(200);
+    await request(app.getHttpServer())
+      .post('/api/v1/notary-matters/exports/preview')
+      .send({ ...scope, q: '❤️'.repeat(150) })
+      .expect(400);
+  });
+
   it('rejects case-equivalent duplicate selected IDs on both POST routes while accepting one uppercase ID', async () => {
     const duplicate = [mixedCaseId, mixedCaseId.toUpperCase()];
     await request(app.getHttpServer())

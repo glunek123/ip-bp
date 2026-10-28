@@ -9,6 +9,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateBy,
 } from 'class-validator';
 import { LeadPlatform, CaseStage } from '../../generated/prisma/client';
 
@@ -133,6 +134,18 @@ export class NotaryListResponseDto {
 }
 
 export class NotaryListQueryDto {
+  @ApiPropertyOptional({ maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @ValidateBy({
+    name: 'notaryKeywordLength',
+    validator: {
+      validate: (value) =>
+        typeof value === 'string' && Array.from(value.trim()).length <= 200,
+    },
+  })
+  q?: string;
+
   @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()
   @IsUUID('4')

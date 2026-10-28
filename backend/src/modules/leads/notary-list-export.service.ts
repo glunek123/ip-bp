@@ -18,7 +18,10 @@ import {
 } from './notary-list-export.dto';
 import { NotaryListStage } from './notary-list.dto';
 import { notaryDisplayFee, notaryTransferredDate } from './notary-display-read';
-import { notaryRoutineShopWhere } from './notary-routine-filter';
+import {
+  notaryKeywordWhere,
+  notaryRoutineShopWhere,
+} from './notary-routine-filter';
 
 const exportHeader =
   '公证编号,权利主体,平台,店铺名,店铺ID,案件进展,推送日期,取证日期,发货人,发货电话,发货地址,公证费,调查费,样品费,披露费,快递公司,快递单号,公证处,公证书编号,出证日期';
@@ -175,6 +178,7 @@ export class NotaryListExportService {
                 ...(scope.rightsHolderId === undefined
                   ? {}
                   : { rightsHolderId: scope.rightsHolderId }),
+                ...(scope.q?.trim() ? { q: scope.q.trim() } : {}),
                 ...(scope.shopName?.trim()
                   ? { shopName: scope.shopName.trim() }
                   : {}),
@@ -242,7 +246,13 @@ export class NotaryListExportService {
     }
     const where: Prisma.NotaryMatterWhereInput = {
       departmentId: actor.departmentId,
-      AND: [{ sourceLead: readScope }, { sourceLead: exportScope }],
+      AND: [
+        { sourceLead: readScope },
+        { sourceLead: exportScope },
+        ...(scope.mode === 'FILTERED' && scope.q?.trim()
+          ? [notaryKeywordWhere(scope.q)]
+          : []),
+      ],
       ...(scope.mode === 'FILTERED' && scope.customerId
         ? { customerId: scope.customerId }
         : {}),

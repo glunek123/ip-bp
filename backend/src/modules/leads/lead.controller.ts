@@ -71,6 +71,7 @@ export class LeadController {
       query.status,
       query.context,
       query.notaryStage,
+      query.selectedId,
     );
   }
   @Get() list(

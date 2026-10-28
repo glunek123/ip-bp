@@ -11,6 +11,7 @@ export type NotaryListExportScope =
   | { mode: 'SELECTED'; matterIds: string[] }
   | {
       mode: 'FILTERED';
+      q?: string;
       stage?: NotaryListStage;
       customerId?: string;
       rightsHolderId?: string;
@@ -57,6 +58,7 @@ function scopeJson(scope: NotaryListExportScope): JsonValue {
     ? { mode: scope.mode, matterIds: scope.matterIds }
     : {
         mode: scope.mode,
+        ...(scope.q?.trim() ? { q: scope.q.trim() } : {}),
         ...(scope.stage ? { stage: scope.stage } : {}),
         ...(scope.customerId ? { customerId: scope.customerId } : {}),
         ...(scope.rightsHolderId
@@ -89,6 +91,7 @@ export async function exportNotaryList(
       ? { mode: 'SELECTED', matterIds: scope.matterIds, expectedCount }
       : {
           mode: 'FILTERED',
+          ...(scope.q?.trim() ? { q: scope.q.trim() } : {}),
           ...(scope.stage ? { stage: scope.stage } : {}),
           ...(scope.customerId ? { customerId: scope.customerId } : {}),
           ...(scope.rightsHolderId

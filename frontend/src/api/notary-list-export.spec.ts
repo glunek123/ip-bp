@@ -25,6 +25,7 @@ describe('notary list export API', () => {
     });
     const scope = {
       mode: 'FILTERED' as const,
+      q: 'NT-001',
       stage: 'WAITING_RETURN' as const,
       customerId: 'customer-1',
       rightsHolderId: 'holder-1',

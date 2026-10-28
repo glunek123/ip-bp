@@ -41,6 +41,7 @@ export class NotaryListController {
     @Query() query: NotaryListQueryDto,
   ) {
     const filters = {
+      q: query.q,
       customerId: query.customerId,
       rightsHolderId: query.rightsHolderId,
       shopName: query.shopName,

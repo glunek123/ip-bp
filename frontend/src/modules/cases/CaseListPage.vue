@@ -57,6 +57,7 @@ import CaseListPreferencesPanel from './CaseListPreferencesPanel.vue';
 import CaseBatchArchivePanel from './CaseBatchArchivePanel.vue';
 import CaseConsolidationPanel from './CaseConsolidationPanel.vue';
 import CaseCsvImportPanel from './CaseCsvImportPanel.vue';
+import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
 import type { CaseBatchArchiveResult } from '../../api/case-batches';
 import {
   caseListQueryKey,
@@ -208,6 +209,19 @@ watch(
 const selectedCases = computed(() =>
   items.value.filter((item) => selectedCaseIds.value.includes(item.id)),
 );
+const selectedCase = computed(() =>
+  selectedCaseIds.value.length === 1 && selectedCases.value.length === 1
+    ? selectedCases.value[0]
+    : null,
+);
+const selectedCaseSecondaryActions = computed(() => {
+  if (!selectedCase.value || pendingActions.value.has(selectedCase.value.id))
+    return [];
+  const primary = progressActions(selectedCase.value)[0];
+  return listActions(selectedCase.value).filter(
+    (action) => action.intent !== primary?.intent,
+  );
+});
 const canConsolidateSelection = computed(
   () =>
     stage.value === 'PENDING_MATCH' &&
@@ -412,7 +426,7 @@ function shortCaseAction(action: {
 }): string {
   const labels: Partial<Record<CaseActionIntent, string>> = {
     match: '匹配案件',
-    complaint: '提交起诉',
+    complaint: '提交诉状',
     'confirm-complaint': '确认诉状',
     'mail-complaint': '邮寄诉状',
     filing: '提交立案',
@@ -428,13 +442,37 @@ function shortCaseAction(action: {
     'execution-filing': '执行立案',
     finish: '执行结束',
     'record-closure': '登记结案',
-    archive: '归档案件',
+    archive: '归档',
   };
   return labels[action.intent] ?? action.label;
 }
 const pendingActions = ref(new Map<string, CaseActionIntent>());
 const recordRecoveries = ref<CaseListRecordRecovery[]>([]);
 const recordRecoveryError = ref('');
+const canEditSelectedCase = computed(
+  () =>
+    selectedCase.value !== null &&
+    auth.session?.principalType === 'INTERNAL' &&
+    selectedCase.value.owner.id === auth.session.user.id &&
+    !recordRecoveries.value.some(
+      (recovery) => recovery.caseId === selectedCase.value?.id,
+    ),
+);
+const editSelectedCaseTitle = computed(() => {
+  if (selectedCaseIds.value.length > 1) return '请恰选一条本人负责的案件';
+  if (!selectedCase.value) return '请选择本人负责的案件';
+  if (auth.session?.principalType !== 'INTERNAL')
+    return '当前账号不可编辑案件资料';
+  if (selectedCase.value.owner.id !== auth.session?.user.id)
+    return '仅可编辑本人负责的案件';
+  if (
+    recordRecoveries.value.some(
+      (entry) => entry.caseId === selectedCase.value?.id,
+    )
+  )
+    return '请先核对待恢复的资料更正请求';
+  return '编辑本人负责案件的已登记资料';
+});
 const pendingRecoveryActions = computed(() => [...pendingActions.value]);
 function readPendingActions() {
   const result = new Map<string, CaseActionIntent>();
@@ -500,6 +538,13 @@ function enterRecordEditor(
     title: `${item.businessNo} · 编辑已登记资料`,
   };
   drawerOpen.value = true;
+}
+function openSelectedRoutineEdit() {
+  if (!canEditSelectedCase.value || !selectedCase.value) return;
+  void router.push({
+    path: `/cases/${encodeURIComponent(selectedCase.value.id)}`,
+    query: { ...listQuery.value, edit: 'routine' },
+  });
 }
 function enterRecovery(id: string, action: CaseActionIntent) {
   if (!identity.value || openingAction.value) return;
@@ -1013,102 +1058,6 @@ onBeforeUnmount(() => {
 <template>
   <div class="page-view business-list-page">
     <main>
-      <div class="page-head">
-        <div>
-          <p class="eyebrow">业务管理系统</p>
-          <h1>{{ view === 'mine' ? '我的案件' : '全部部门案件' }}</h1>
-          <p>
-            {{ view === 'mine' ? '我负责的案件' : '本部门全部案件' }} ·
-            {{
-              stageGroup
-                ? stageGroup === 'COMPLAINT_PREPARATION'
-                  ? '准备起诉文书'
-                  : '准备执行文书'
-                : stage === 'all'
-                  ? '全部阶段'
-                  : stageLabel(stage)
-            }}
-          </p>
-        </div>
-        <div class="case-list-head-actions operation-bar">
-          <RouterLink
-            v-if="auth.session?.principalType === 'INTERNAL'"
-            :to="{
-              path: '/case-handling-groups',
-              query: { returnTo: route.fullPath },
-            }"
-            data-test="case-handling-groups-entry"
-            >案件系列</RouterLink
-          >
-          <ElButton
-            v-if="canExportCsv"
-            class="action-size--wide"
-            :loading="exporting"
-            :disabled="exporting || state !== 'ready'"
-            data-test="export-current-case-list"
-            @click="exportCurrentList"
-            >导出当前筛选结果</ElButton
-          >
-          <ElButton
-            v-if="canCreateExternalEntry"
-            class="action-size--wide"
-            type="primary"
-            @click="router.push('/cases/external-entry')"
-            >转入／补录案件</ElButton
-          >
-          <ElButton
-            v-if="canCreateExternalEntry"
-            class="action-size--wide"
-            data-test="open-case-csv-import"
-            @click="csvImportOpen = true"
-            >批量导入CSV</ElButton
-          >
-          <ElButton text :loading="state === 'loading'" @click="load"
-            >刷新</ElButton
-          >
-          <p v-if="exportError" class="submit-error" role="alert">
-            {{ exportError }}
-          </p>
-        </div>
-      </div>
-      <div
-        v-if="selectedCaseIds.length"
-        class="operation-bar case-selection-toolbar"
-      >
-        <span aria-live="polite">已选 {{ selectedCaseIds.length }} 件</span>
-        <ElButton
-          class="action-size--wide"
-          :disabled="
-            !canExportCsv || exporting || selectedCaseIds.length > 1000
-          "
-          :loading="exporting"
-          data-test="export-selected-cases"
-          @click="exportSelectedList"
-          >导出选中案件</ElButton
-        >
-        <ElButton
-          class="action-size--wide"
-          data-test="open-batch-early-archive"
-          @click="batchArchiveOpen = true"
-          >批量提前归档</ElButton
-        >
-        <ElButton
-          v-if="stage === 'PENDING_MATCH' && canConsolidateSelection"
-          class="action-size--wide"
-          data-test="open-case-consolidation"
-          @click="consolidationOpen = true"
-          >合并起诉</ElButton
-        >
-        <ElButton
-          class="action-size--compact"
-          data-test="clear-case-selection"
-          @click="selectedCaseIds = []"
-          >清空选择</ElButton
-        >
-        <p v-if="selectionExportError" class="submit-error" role="alert">
-          {{ selectionExportError }}
-        </p>
-      </div>
       <section
         v-if="recordRecoveries.length || recordRecoveryError"
         class="state-panel"
@@ -1150,21 +1099,12 @@ onBeforeUnmount(() => {
           >核对原办理请求</ElButton
         >
       </section>
-      <CaseListPreferencesPanel
-        :bucket="preferenceBucket"
-        :request-generation="preferenceRequestGeneration"
-        @change="applyColumnPreference"
-      />
-      <form class="case-list-query" role="search" @submit.prevent="applyQuery">
-        <label>
-          <span>关键词</span>
-          <input
-            v-model="queryDraft.q"
-            type="search"
-            placeholder="编号、案号、客户、权利主体、店铺、被告、法院、律师"
-            data-test="case-query-keyword"
-          />
-        </label>
+      <form class="case-list-query" @submit.prevent="applyQuery">
+        <ListHeaderSearch
+          v-model="queryDraft.q"
+          placeholder="编号、案号、客户、权利主体、店铺、被告、法院、律师"
+          @search="applyQuery"
+        />
         <label>
           <span>案件类型</span>
           <select v-model="queryDraft.caseType" data-test="case-query-type">
@@ -1188,6 +1128,138 @@ onBeforeUnmount(() => {
           >
         </div>
       </form>
+      <div
+        class="case-list-toolbar case-list-head-actions operation-bar"
+        aria-label="案件列表工具栏"
+      >
+        <span v-if="selectedCaseIds.length" aria-live="polite">
+          已选 {{ selectedCaseIds.length }} 件
+        </span>
+        <ElButton
+          v-if="canEditSelectedCase"
+          class="case-toolbar-button"
+          data-test="edit-selected-case"
+          :title="editSelectedCaseTitle"
+          @click="openSelectedRoutineEdit"
+          >编辑资料</ElButton
+        >
+        <ElButton
+          v-else
+          class="case-toolbar-button"
+          disabled
+          data-test="edit-selected-case"
+          :title="editSelectedCaseTitle"
+          >编辑资料</ElButton
+        >
+        <template v-if="selectedCase && selectedCaseSecondaryActions.length">
+          <ElButton
+            v-for="action in selectedCaseSecondaryActions"
+            :key="action.intent"
+            class="case-toolbar-action"
+            :disabled="openingAction"
+            :data-case-action="action.intent"
+            :title="action.label"
+            @click="enterAction(selectedCase, action.intent)"
+            >{{ shortCaseAction(action) }}</ElButton
+          >
+        </template>
+        <ElButton
+          class="case-toolbar-button"
+          :disabled="
+            !selectedCaseIds.length ||
+            !canExportCsv ||
+            exporting ||
+            selectedCaseIds.length > 1000
+          "
+          :loading="exporting"
+          :title="selectedCaseIds.length ? '导出选中案件' : '请先勾选案件'"
+          data-test="export-selected-cases"
+          @click="exportSelectedList"
+          >导出选中</ElButton
+        >
+        <ElButton
+          class="case-toolbar-button"
+          :disabled="!selectedCaseIds.length"
+          :title="selectedCaseIds.length ? '批量提前归档案件' : '请先勾选案件'"
+          data-test="open-batch-early-archive"
+          @click="batchArchiveOpen = true"
+          >批量归档</ElButton
+        >
+        <ElButton
+          v-if="stage === 'PENDING_MATCH'"
+          class="case-toolbar-button"
+          :disabled="!canConsolidateSelection"
+          :title="
+            canConsolidateSelection
+              ? '合并所选待匹配案件'
+              : '请选择 2 至 20 件可合案的待匹配案件'
+          "
+          data-test="open-case-consolidation"
+          @click="consolidationOpen = true"
+          >合案</ElButton
+        >
+        <ElButton
+          v-if="selectedCaseIds.length"
+          class="case-toolbar-button"
+          data-test="clear-case-selection"
+          @click="selectedCaseIds = []"
+          >清空选择</ElButton
+        >
+        <RouterLink
+          v-if="auth.session?.principalType === 'INTERNAL'"
+          :to="{
+            path: '/case-handling-groups',
+            query: { returnTo: route.fullPath },
+          }"
+          data-test="case-handling-groups-entry"
+          >案件系列</RouterLink
+        >
+        <ElButton
+          v-if="canExportCsv"
+          class="case-toolbar-button"
+          :loading="exporting"
+          :disabled="exporting || state !== 'ready'"
+          data-test="export-current-case-list"
+          @click="exportCurrentList"
+          title="导出当前筛选结果"
+          >导出筛选</ElButton
+        >
+        <ElButton
+          v-if="canCreateExternalEntry"
+          class="case-toolbar-button"
+          type="primary"
+          @click="router.push('/cases/external-entry')"
+          title="转入或补录案件"
+          >转入案件</ElButton
+        >
+        <ElButton
+          v-if="canCreateExternalEntry"
+          class="case-toolbar-button"
+          data-test="open-case-csv-import"
+          @click="csvImportOpen = true"
+          title="批量导入案件 CSV"
+          >导入</ElButton
+        >
+        <ElButton
+          class="case-toolbar-button"
+          :loading="state === 'loading'"
+          title="刷新案件列表"
+          @click="load"
+          >刷新</ElButton
+        >
+        <CaseListPreferencesPanel
+          :bucket="preferenceBucket"
+          :request-generation="preferenceRequestGeneration"
+          @change="applyColumnPreference"
+        />
+        <p
+          v-if="exportError || selectionExportError"
+          class="submit-error"
+          role="alert"
+        >
+          {{ exportError || selectionExportError }}
+        </p>
+      </div>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h2>正在读取案件</h2>
       </section>
@@ -1387,11 +1459,9 @@ onBeforeUnmount(() => {
                   <span
                     v-else-if="column === 'shopExternalId'"
                     class="mono case-list-truncate"
-                    :title="
-                      item.displaySummary.source.shopExternalId ?? '未登记'
-                    "
+                    :title="item.displaySummary.source.shopExternalId ?? ''"
                   >
-                    {{ item.displaySummary.source.shopExternalId ?? '未登记' }}
+                    {{ item.displaySummary.source.shopExternalId ?? '' }}
                   </span>
                   <details
                     v-else-if="
@@ -1701,7 +1771,8 @@ onBeforeUnmount(() => {
 
 .case-list-query {
   display: grid;
-  grid-template-columns: minmax(260px, 2fr) minmax(160px, 1fr) auto;
+  grid-template-columns: minmax(160px, 240px) auto;
+  justify-content: start;
   align-items: end;
   gap: var(--s-3);
   margin: var(--s-4) 0;
@@ -1744,13 +1815,37 @@ onBeforeUnmount(() => {
   gap: var(--s-3);
 }
 
+.case-list-toolbar {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-2);
+}
+
+.case-list-toolbar :deep(.case-list-preferences) {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.case-list-toolbar :deep(.case-toolbar-button),
+.case-list-toolbar :deep(.case-toolbar-action) {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 72px;
+  padding-inline: 10px;
+  white-space: nowrap;
+}
+
+.case-list-toolbar .submit-error {
+  flex-basis: 100%;
+  margin: 0;
+  text-align: right;
+}
+
 @media (max-width: 900px) {
   .case-list-query {
-    grid-template-columns: repeat(2, minmax(150px, 1fr));
-  }
-
-  .case-list-query-actions {
-    grid-column: 1 / -1;
+    grid-template-columns: minmax(120px, 1fr) auto;
+    justify-content: stretch;
   }
 }
 
