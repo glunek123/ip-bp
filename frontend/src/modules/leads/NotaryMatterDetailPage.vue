@@ -11,6 +11,7 @@ import { ApiError } from '../../api/http';
 import { labelLeadPlatform } from './lead-options';
 import type { CaseStage } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
+import { listReturnPath } from '../../app/list-row-navigation';
 import { downloadMaterialVersion } from '../../api/materials';
 import {
   getNotaryMatter,
@@ -25,6 +26,9 @@ import NotaryMatterWorkflowPanel from './NotaryMatterWorkflowPanel.vue';
 import NotaryRecordCorrectionPanel from './NotaryRecordCorrectionPanel.vue';
 import RoutineBusinessEditor from './RoutineBusinessEditor.vue';
 const route = useRoute();
+const returnTo = computed(() =>
+  listReturnPath(route.query.returnTo, '/notary-matters'),
+);
 const auth = useAuthStore();
 const actorKey = computed(() =>
   [
@@ -478,9 +482,7 @@ watch(
 <template>
   <div ref="detailRoot" class="page-view page-view--narrow">
     <main>
-      <RouterLink class="back-link" to="/notary-matters"
-        >← 返回公证阶段</RouterLink
-      >
+      <RouterLink class="back-link" :to="returnTo">← 返回公证阶段</RouterLink>
       <RouterLink
         v-if="matter"
         class="back-link"

@@ -323,3 +323,7 @@
     margin-left: 0;
   }
 }
+/* A business row is navigable without changing its controls or links. */
+.business-row-link { cursor: pointer; }
+.business-row-link:hover { background: var(--color-surface-2); }
+.business-row-link:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }

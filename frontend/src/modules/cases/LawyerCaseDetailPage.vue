@@ -37,6 +37,7 @@ import {
   uploadMaterialFile,
 } from '../../api/materials';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
+import { listReturnPath } from '../../app/list-row-navigation';
 import { useAuthStore } from '../../stores/auth';
 import CaseComplaintConfirmationPanel from './CaseComplaintConfirmationPanel.vue';
 import CaseComplaintMailingPanel from './CaseComplaintMailingPanel.vue';
@@ -51,6 +52,9 @@ import CaseExecutionSubmissionPanel from './CaseExecutionSubmissionPanel.vue';
 import CaseExecutionConfirmationPanel from './CaseExecutionConfirmationPanel.vue';
 
 const route = useRoute();
+const returnTo = computed(() =>
+  listReturnPath(route.query.returnTo, '/lawyer/cases'),
+);
 const auth = useAuthStore();
 const id = computed(() => String(route.params.id));
 const identity = computed(() =>
@@ -815,7 +819,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="page-view page-view--narrow">
     <main>
-      <p><RouterLink to="/lawyer/cases">返回本人案件</RouterLink></p>
+      <p><RouterLink :to="returnTo">返回本人案件</RouterLink></p>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h1>正在读取案件</h1>
       </section>
@@ -825,7 +829,7 @@ onBeforeUnmount(() => {
       >
         <h1>案件暂不可访问</h1>
         <p role="alert">{{ error }}</p>
-        <RouterLink to="/lawyer/cases">返回本人案件</RouterLink>
+        <RouterLink :to="returnTo">返回本人案件</RouterLink>
       </section>
       <template v-else-if="item">
         <div class="page-head">

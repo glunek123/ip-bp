@@ -132,9 +132,25 @@ describe('client case pages', () => {
     expect(wrapper.get('[data-test="client-case-list"]').text()).toContain(
       '被告甲',
     );
+    expect(wrapper.get('h1.sr-only').text()).toBe('企业案件');
+    expect(
+      wrapper
+        .get('.segmented-control')
+        .element.compareDocumentPosition(
+          wrapper.get('.client-case-list-toolbar').element,
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
       wrapper.get('[data-test="client-case-list"] a').attributes('href'),
     ).toBe('/client/cases/case-1');
+  });
+  it('opens a case detail when a non-link part of the row is clicked', async () => {
+    const { wrapper, router } = await mountPage(
+      '/client/cases?view=RECORDED&page=1',
+    );
+    await wrapper.get('[data-test="client-case-row"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/client/cases/case-1');
   });
   it('shows only the minimal client facts and no mailing action for a read-only case', async () => {
     const { wrapper } = await mountPage('/client/cases/case-1');

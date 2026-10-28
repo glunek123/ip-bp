@@ -250,6 +250,7 @@ onBeforeUnmount(() => activeRequest?.abort());
 <template>
   <div class="page-view customer-workspace">
     <main>
+      <h1 class="sr-only">客户管理</h1>
       <p
         v-if="maintenanceSuccessNotice"
         role="status"
@@ -257,13 +258,37 @@ onBeforeUnmount(() => activeRequest?.abort());
       >
         {{ maintenanceSuccessNotice }}
       </p>
-      <div class="section-heading">
-        <div>
-          <p class="section-kicker">客户基础</p>
-          <h1>客户管理</h1>
-          <p>先建立客户草稿，资料可在后续业务中继续补充。</p>
+      <form
+        aria-label="客户查询"
+        class="customer-list-filter-form"
+        @submit.prevent="applyQuery()"
+      >
+        <div class="customer-list-filter-fields">
+          <label class="customer-list-filter-field"
+            >关键词<input
+              v-model="keyword"
+              data-test="customer-query"
+              class="text-input"
+              placeholder="客户名／证件号／主营类目／地区"
+          /></label>
+          <label class="customer-list-filter-field"
+            >合作状态<select
+              v-model="cooperation"
+              data-test="customer-cooperation"
+              class="text-input"
+            >
+              <option value="">全部</option>
+              <option value="COOPERATING">合作中</option>
+              <option value="PAUSED">已暂停合作</option>
+              <option value="TERMINATED">已终止合作</option>
+            </select></label
+          >
         </div>
-        <div class="customer-heading-actions">
+        <div
+          class="customer-list-filter-actions"
+          aria-label="客户列表操作"
+          data-test="customer-list-toolbar"
+        >
           <RouterLink
             class="customer-action-link"
             to="/customers/deleted-drafts"
@@ -278,42 +303,16 @@ onBeforeUnmount(() => activeRequest?.abort());
           >
             新建客户
           </ElButton>
-        </div>
-      </div>
-
-      <form
-        aria-label="客户查询"
-        class="customer-heading-actions"
-        @submit.prevent="applyQuery()"
-      >
-        <label
-          >关键词<input
-            v-model="keyword"
-            data-test="customer-query"
-            class="text-input"
-            placeholder="客户名／证件号／主营类目／地区"
-        /></label>
-        <label
-          >合作状态<select
-            v-model="cooperation"
-            data-test="customer-cooperation"
-            class="text-input"
+          <ElButton native-type="submit" data-test="customer-search"
+            >查询</ElButton
           >
-            <option value="">全部</option>
-            <option value="COOPERATING">合作中</option>
-            <option value="PAUSED">已暂停合作</option>
-            <option value="TERMINATED">已终止合作</option>
-          </select></label
-        >
-        <ElButton native-type="submit" data-test="customer-search"
-          >查询</ElButton
-        >
-        <ElButton
-          native-type="button"
-          data-test="customer-clear"
-          @click="applyQuery(true)"
-          >清除筛选</ElButton
-        >
+          <ElButton
+            native-type="button"
+            data-test="customer-clear"
+            @click="applyQuery(true)"
+            >清除筛选</ElButton
+          >
+        </div>
       </form>
       <p v-if="formError || queryError" role="alert">
         {{ formError || queryError }}
@@ -425,6 +424,32 @@ onBeforeUnmount(() => activeRequest?.abort());
 </template>
 
 <style scoped>
+.customer-list-filter-form {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.customer-list-filter-fields {
+  display: grid;
+  grid-template-columns: minmax(240px, 2fr) minmax(180px, 1fr);
+  align-items: end;
+  gap: 10px;
+}
+
+.customer-list-filter-field {
+  min-width: 0;
+}
+
+.customer-list-filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  white-space: nowrap;
+}
+
 .customer-list-name {
   display: grid;
   gap: 4px;
@@ -436,5 +461,17 @@ onBeforeUnmount(() => activeRequest?.abort());
   font-size: 11px;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .customer-list-filter-fields {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 440px) {
+  .customer-list-filter-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

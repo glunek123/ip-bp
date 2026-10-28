@@ -195,7 +195,6 @@ onBeforeUnmount(() => request?.abort());
         <div class="page-head">
           <div>
             <p class="eyebrow">部门业务设置</p>
-            <h1>公证处</h1>
             <p>维护本部门可选公证处，后续移交线索时可从本部门公证处中选择。</p>
           </div>
           <ElButton

@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import { useRouter } from 'vue-router';
+import { isListRowClick, listReturnPath } from '../../app/list-row-navigation';
 import { ApiError } from '../../api/http';
 import {
   listClientNotaryMatters,
@@ -10,6 +12,7 @@ import {
 } from '../../api/client-notary';
 
 const route = useRoute();
+const router = useRouter();
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const items = ref<ClientNotaryListItem[]>([]);
 const total = ref(0);
@@ -86,6 +89,22 @@ function formatTime(value: string): string {
     hour12: false,
   });
 }
+function openNotaryRow(
+  event: InstanceType<typeof globalThis.MouseEvent>,
+  item: ClientNotaryListItem,
+): void {
+  if (!isListRowClick(event)) return;
+  void router.push(notaryLocation(item));
+}
+function notaryLocation(item: ClientNotaryListItem) {
+  return {
+    path: `/client/notary-matters/${encodeURIComponent(item.id)}`,
+    query: {
+      ...(sourceLeadId.value ? { sourceLeadId: sourceLeadId.value } : {}),
+      returnTo: listReturnPath(route.fullPath, '/client/notary-matters'),
+    },
+  };
+}
 watch(
   () => [route.query.sourceLeadId, route.query.page],
   () => void load(),
@@ -105,7 +124,9 @@ onBeforeUnmount(() => request?.abort());
       >
       <div class="page-head">
         <div>
-          <h1>{{ sourceLeadId ? '该线索的公证批次' : '公证审核' }}</h1>
+          <h1 :class="{ 'sr-only': !sourceLeadId }">
+            {{ sourceLeadId ? '该线索的公证批次' : '公证审核' }}
+          </h1>
           <p>
             {{
               sourceLeadId
@@ -149,15 +170,14 @@ onBeforeUnmount(() => request?.abort());
               <tr
                 v-for="item in items"
                 :key="item.id"
+                class="business-row-link"
                 data-test="client-notary-row"
+                @click="openNotaryRow($event, item)"
               >
                 <td>
                   <RouterLink
                     data-test="client-notary-link"
-                    :to="{
-                      path: `/client/notary-matters/${item.id}`,
-                      query: sourceLeadId ? { sourceLeadId } : {},
-                    }"
+                    :to="notaryLocation(item)"
                     >{{ item.businessNo }}</RouterLink
                   >
                 </td>

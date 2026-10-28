@@ -57,6 +57,47 @@ function mountListPage() {
 }
 
 describe('CustomerListPage', () => {
+  it('uses the breadcrumb as the page title and places all actions in the right toolbar below filters', async () => {
+    api.listCustomers.mockResolvedValue({
+      items: [summary],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      capabilities: { createDraft: true },
+    });
+    const { wrapper } = mountListPage();
+    await flushPromises();
+
+    expect(wrapper.get('h1.sr-only').text()).toBe('客户管理');
+    expect(wrapper.text()).not.toContain('先建立客户草稿');
+    expect(wrapper.get('.customer-list-filter-form').element.children[0]).toBe(
+      wrapper.get('.customer-list-filter-fields').element,
+    );
+    expect(
+      wrapper
+        .get('.customer-list-filter-fields')
+        .element.compareDocumentPosition(
+          wrapper.get('.customer-list-filter-actions').element,
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      wrapper
+        .get('.customer-list-filter-form')
+        .element.compareDocumentPosition(wrapper.get('.ledger-panel').element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      wrapper.get('[data-test="deleted-drafts-link"]').element.tagName,
+    ).toBe('A');
+    expect(wrapper.get('[data-test="create-customer"]').element.tagName).toBe(
+      'BUTTON',
+    );
+    expect(
+      wrapper.get('.customer-list-filter-actions').findAll('button'),
+    ).toHaveLength(3);
+    wrapper.unmount();
+  });
+
   it('shows business IDs and labels null or legacy IDs as pending', async () => {
     api.listCustomers.mockResolvedValue({
       items: [

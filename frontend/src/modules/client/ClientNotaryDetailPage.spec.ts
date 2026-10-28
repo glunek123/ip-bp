@@ -7,7 +7,7 @@ const api = vi.hoisted(() => ({ getClientNotaryMatter: vi.fn() }));
 vi.mock('../../api/client-notary', () => api);
 vi.mock('../../api/materials', () => ({ downloadMaterialVersion: vi.fn() }));
 
-async function mountPage() {
+async function mountPage(path = '/client/notary-matters/matter-1') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -15,7 +15,7 @@ async function mountPage() {
       { path: '/client/notary-matters', component: { template: '<div />' } },
     ],
   });
-  await router.push('/client/notary-matters/matter-1');
+  await router.push(path);
   const wrapper = mount(ClientNotaryDetailPage, {
     global: { plugins: [router] },
   });
@@ -24,6 +24,14 @@ async function mountPage() {
 }
 
 describe('ClientNotaryDetailPage issuance history', () => {
+  it('returns to the validated filtered list path from a row navigation', async () => {
+    const wrapper = await mountPage(
+      '/client/notary-matters/matter-1?returnTo=%2Fclient%2Fnotary-matters%3FsourceLeadId%3Dlead-1',
+    );
+    expect(wrapper.get('.back-link').attributes('href')).toBe(
+      '/client/notary-matters?sourceLeadId=lead-1',
+    );
+  });
   it('shows the minimal return archive summary without internal amount fields', async () => {
     api.getClientNotaryMatter.mockResolvedValue({
       id: 'matter-1',

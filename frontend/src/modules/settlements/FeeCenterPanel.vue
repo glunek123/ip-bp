@@ -42,6 +42,7 @@ import {
 } from '../../api/materials';
 import { cancelFee } from '../../api/fee-cancellations';
 import FeeCancellationHistoryPanel from './FeeCancellationHistoryPanel.vue';
+import DateRangeFilter from '../../app/DateRangeFilter.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -121,6 +122,22 @@ const tableRows = computed<Array<{ row: FeeRow; key: string; isNet: boolean }>>(
           : []),
       ];
     }),
+);
+const selectedVisibleOriginals = computed(() =>
+  tableRows.value.filter(
+    ({ row, isNet }) => !isNet && selected.value.has(row.id),
+  ),
+);
+const canCancelSelectedOriginal = computed(
+  () =>
+    props.canDelete &&
+    state.value === 'ready' &&
+    !saving.value &&
+    !unknownBatch.value &&
+    !unknownCancellation.value &&
+    pendingCancellation.value === null &&
+    selected.value.size === 1 &&
+    selectedVisibleOriginals.value.length === 1,
 );
 function toggleGroup(id: string): void {
   const next = new Set(expandedGroups.value);
@@ -366,6 +383,12 @@ async function cancelOriginalFee(row: FeeRow): Promise<void> {
   } finally {
     if (sameContext(originalIdentity)) saving.value = false;
   }
+}
+async function cancelSelectedOriginalFee(): Promise<void> {
+  if (!canCancelSelectedOriginal.value) return;
+  const selectedRow = selectedVisibleOriginals.value[0]?.row;
+  if (!selectedRow || selectedRow.sourceRows) return;
+  await cancelOriginalFee(selectedRow);
 }
 async function retryPendingCancellation(): Promise<void> {
   const original = pendingCancellation.value;
@@ -801,25 +824,26 @@ onBeforeUnmount(() => {
   <section class="fee-center">
     <header class="operation-bar fee-center__heading">
       <div>
-        <h2>费用中心</h2>
         <p>
           案件费用明细与费用中心使用同一条费用记录。发起不代表财务已接收或实际支付。
         </p>
       </div>
-      <ElButton
-        v-if="props.canCreate"
-        type="primary"
-        :disabled="saving"
-        @click="openCreate"
-        class="action-size--wide"
-        >新增费用</ElButton
-      >
+      <div class="operation-actions fee-center__heading-actions">
+        <ElButton
+          class="action-size--standard"
+          @click="showCancellations = !showCancellations"
+          >{{ showCancellations ? '返回费用列表' : '取消／作废记录' }}</ElButton
+        >
+        <ElButton
+          v-if="props.canCreate"
+          type="primary"
+          :disabled="saving"
+          @click="openCreate"
+          class="action-size--wide"
+          >新增费用</ElButton
+        >
+      </div>
     </header>
-    <ElButton
-      class="action-size--standard"
-      @click="showCancellations = !showCancellations"
-      >{{ showCancellations ? '返回费用列表' : '取消／作废记录' }}</ElButton
-    >
     <FeeCancellationHistoryPanel
       v-if="showCancellations"
       :case-id="props.caseId"
@@ -843,36 +867,45 @@ onBeforeUnmount(() => {
         aria-label="筛选费用"
         @submit.prevent="applyFilter"
       >
-        <label
-          >费用类型<ElSelect
-            v-model="filters.type"
-            clearable
-            placeholder="全部类型"
-            ><ElOption
-              v-for="type in types"
-              :key="type"
-              :value="type"
-              :label="type" /></ElSelect></label
-        ><label
-          >状态<ElSelect
-            v-model="filters.status"
-            clearable
-            placeholder="全部状态"
-            ><ElOption
-              v-for="status in [...ordinaryStatuses, ...refundStatuses]"
-              :key="status"
-              :value="status"
-              :label="status" /></ElSelect></label
-        ><label
-          >方向<ElSelect
-            v-model="filters.direction"
-            clearable
-            placeholder="全部方向"
-            ><ElOption value="支出" label="支出" /><ElOption
-              value="收入"
-              label="收入" /></ElSelect></label
-        ><label>费用日期从<ElInput v-model="filters.from" type="date" /></label
-        ><label>费用日期至<ElInput v-model="filters.to" type="date" /></label>
+        <div class="fee-center__filter-fields">
+          <label
+            >费用类型<ElSelect
+              v-model="filters.type"
+              clearable
+              placeholder="全部类型"
+              ><ElOption
+                v-for="type in types"
+                :key="type"
+                :value="type"
+                :label="type" /></ElSelect></label
+          ><label
+            >状态<ElSelect
+              v-model="filters.status"
+              clearable
+              placeholder="全部状态"
+              ><ElOption
+                v-for="status in [...ordinaryStatuses, ...refundStatuses]"
+                :key="status"
+                :value="status"
+                :label="status" /></ElSelect></label
+          ><label
+            >方向<ElSelect
+              v-model="filters.direction"
+              clearable
+              placeholder="全部方向"
+              ><ElOption value="支出" label="支出" /><ElOption
+                value="收入"
+                label="收入" /></ElSelect></label
+          ><DateRangeFilter
+            label="费用日期"
+            :start="filters.from"
+            :end="filters.to"
+            start-label="费用日期从"
+            end-label="费用日期至"
+            @update:start="filters.from = $event ?? ''"
+            @update:end="filters.to = $event ?? ''"
+          />
+        </div>
         <div class="operation-actions fee-center__filter-actions">
           <ElButton native-type="submit" class="action-size--standard"
             >查询</ElButton
@@ -904,6 +937,13 @@ onBeforeUnmount(() => {
             :disabled="saving || selected.size === 0 || unknownBatch"
             @click="batch('delete')"
             >删除</ElButton
+          >
+          <ElButton
+            v-if="props.canDelete"
+            class="action-size--standard"
+            :disabled="!canCancelSelectedOriginal"
+            @click="cancelSelectedOriginalFee"
+            >取消选中单笔费用</ElButton
           >
           <details>
             <summary>展示列</summary>
@@ -952,7 +992,6 @@ onBeforeUnmount(() => {
                 {{ columnLabels[key] }}
               </th>
               <th>凭证</th>
-              <th v-if="props.canDelete">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -1061,29 +1100,6 @@ onBeforeUnmount(() => {
                     ></template
                   >
                 </div>
-              </td>
-              <td v-if="props.canDelete">
-                <ElButton
-                  v-if="!isNet"
-                  link
-                  type="danger"
-                  :disabled="saving || unknownBatch"
-                  @click="batch('delete', [row.id])"
-                  class="action-size--wide"
-                  >移除费用</ElButton
-                ><ElButton
-                  v-if="!isNet"
-                  link
-                  type="danger"
-                  :disabled="saving || unknownBatch"
-                  @click="cancelOriginalFee(row)"
-                  class="action-size--wide"
-                  >{{
-                    unknownCancellation
-                      ? '核实取消结果／重试原请求'
-                      : '取消费用'
-                  }}</ElButton
-                >
               </td>
             </tr>
           </tbody>
@@ -1241,9 +1257,6 @@ h2,
 p {
   margin: 0;
 }
-.fee-center__heading h2 {
-  font-size: 15px;
-}
 .fee-center__heading p {
   color: var(--color-ink-muted);
   font-size: 12px;
@@ -1281,7 +1294,12 @@ small {
 }
 .fee-center__filters {
   display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr)) auto;
+  gap: 8px;
+  min-width: 0;
+}
+.fee-center__filter-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr)) minmax(180px, 1.4fr);
   align-items: end;
   gap: 8px;
   min-width: 0;
@@ -1306,7 +1324,12 @@ label {
   justify-self: end;
 }
 .fee-center__filter-actions {
+  justify-content: flex-end;
   flex-wrap: nowrap;
+}
+.fee-center__heading-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 .fee-center__toolbar {
   justify-content: space-between;
@@ -1384,16 +1407,13 @@ th {
   .fee-center__create > p {
     grid-column: 1 / -1;
   }
-  .fee-center__filters {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .fee-center__filter-actions {
-    grid-column: 1 / -1;
+  .fee-center__filter-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 420px) {
   .fee-center__create,
-  .fee-center__filters {
+  .fee-center__filter-fields {
     grid-template-columns: 1fr;
   }
   .fee-center__filter-actions,

@@ -10,6 +10,7 @@ import {
   type LawyerCaseSummary,
 } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
+import { isListRowClick, listReturnPath } from '../../app/list-row-navigation';
 
 const route = useRoute();
 const router = useRouter();
@@ -131,6 +132,19 @@ function canHandle(item: LawyerCaseSummary): boolean {
     ([name, value]) => name.startsWith('can') && value === true,
   );
 }
+function openCaseRow(
+  event: InstanceType<typeof globalThis.MouseEvent>,
+  item: LawyerCaseSummary,
+): void {
+  if (!isListRowClick(event)) return;
+  void router.push(caseLocation(item));
+}
+function caseLocation(item: LawyerCaseSummary) {
+  return {
+    path: `/lawyer/cases/${encodeURIComponent(item.id)}`,
+    query: { returnTo: listReturnPath(route.fullPath, '/lawyer/cases') },
+  };
+}
 watch(
   () => [route.query.stage, route.query.stageGroup, identity.value],
   () => {
@@ -149,10 +163,10 @@ onBeforeUnmount(() => {
 <template>
   <div class="page-view business-list-page">
     <main>
+      <h1 class="sr-only">本人案件</h1>
       <div class="page-head">
         <div>
           <p class="eyebrow">律师工作台</p>
-          <h1>本人承办案件</h1>
           <p>
             {{
               stageGroup
@@ -206,10 +220,16 @@ onBeforeUnmount(() => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in items" :key="item.id">
+              <tr
+                v-for="item in items"
+                :key="item.id"
+                class="business-row-link"
+                data-test="lawyer-case-row"
+                @click="openCaseRow($event, item)"
+              >
                 <td class="business-list-cell--nowrap">
                   <RouterLink
-                    :to="`/lawyer/cases/${encodeURIComponent(item.id)}`"
+                    :to="caseLocation(item)"
                   >
                     {{ item.businessNo }}
                   </RouterLink>

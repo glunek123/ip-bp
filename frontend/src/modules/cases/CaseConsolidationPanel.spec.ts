@@ -111,4 +111,69 @@ describe('case consolidation confirmation', () => {
     expect(wrapper.emitted('completed')).toHaveLength(1);
     wrapper.unmount();
   });
+
+  it.each([
+    'PENDING_MATCH',
+    'WAITING_COMPLAINT',
+    'WAITING_COMPLAINT_CONFIRMATION',
+    'WAITING_COMPLAINT_STAMP',
+  ] as const)('allows preview for two confirmed cases in %s', async (stage) => {
+    const wrapper = mount(CaseConsolidationPanel, {
+      props: {
+        items: items.map((item) => ({ ...item, stage })),
+        contextKey: stage,
+      },
+      global: { stubs: { RouterLink: true } },
+    });
+    await wrapper.get('input[maxlength="200"]').setValue('同一被告');
+    await wrapper.get('input[maxlength="100"]').setValue('110101200001011234');
+    for (const checkbox of wrapper.findAll(
+      '.consolidation-row input[type="checkbox"]',
+    ))
+      await checkbox.setValue(true);
+    await wrapper.get('[data-test="preview-consolidation"]').trigger('click');
+    await flushPromises();
+    expect(api.preview).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        members: expect.arrayContaining([
+          expect.objectContaining({ caseId: first }),
+        ]),
+      }),
+    );
+    wrapper.unmount();
+  });
+
+  it('never previews mixed concrete stages or a member lacking capability', async () => {
+    const wrapper = mount(CaseConsolidationPanel, {
+      props: {
+        items: [
+          { ...items[0]!, stage: 'WAITING_COMPLAINT' },
+          { ...items[1]!, stage: 'WAITING_COMPLAINT_STAMP' },
+        ],
+        contextKey: 'mixed',
+      },
+      global: { stubs: { RouterLink: true } },
+    });
+    await wrapper.get('input[maxlength="200"]').setValue('同一被告');
+    await wrapper.get('input[maxlength="100"]').setValue('110101200001011234');
+    for (const checkbox of wrapper.findAll(
+      '.consolidation-row input[type="checkbox"]',
+    ))
+      await checkbox.setValue(true);
+    expect(
+      wrapper.get('[data-test="preview-consolidation"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('[data-test="preview-consolidation"]').trigger('click');
+    expect(api.preview).not.toHaveBeenCalled();
+    await wrapper.setProps({
+      items: [
+        { ...items[0]!, stage: 'WAITING_COMPLAINT' },
+        { ...items[1]!, stage: 'WAITING_COMPLAINT', canConsolidate: false },
+      ],
+    });
+    expect(
+      wrapper.get('[data-test="preview-consolidation"]').attributes('disabled'),
+    ).toBeDefined();
+    wrapper.unmount();
+  });
 });

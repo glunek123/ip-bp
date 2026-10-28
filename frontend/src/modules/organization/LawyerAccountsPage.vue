@@ -323,7 +323,6 @@ onBeforeUnmount(() => {
       <div class="page-head">
         <div>
           <p class="eyebrow">系统设置</p>
-          <h1>律师账号</h1>
           <p>管理正式登录账号和历史承办档案绑定。</p>
         </div>
         <ElButton text :loading="loading" @click="refresh">刷新</ElButton>

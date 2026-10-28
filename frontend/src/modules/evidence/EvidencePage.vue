@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { routeLocationKey, routerKey } from 'vue-router';
+import { isListRowClick } from '../../app/list-row-navigation';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import {
+  ElOption,
+  ElSelect,
+} from 'element-plus/es/components/select/index.mjs';
 import { downloadMaterialVersion } from '../../api/materials';
 import {
   bulkEvidenceStatus,
@@ -8,7 +14,6 @@ import {
   getEvidenceGroup,
   getEvidenceItemGroup,
   getEvidenceSourceGroup,
-  listEvidenceGroups,
   listEvidence,
   matchingEvidenceIds,
   saveEvidenceGroup,
@@ -16,6 +21,7 @@ import {
   type EvidenceDraftRow,
   type EvidenceFilter,
   type EvidenceGroup,
+  type EvidenceSourceKind,
   type EvidenceItem,
   type EvidencePage as Page,
   type EvidenceStatus,
@@ -23,8 +29,6 @@ import {
   type SaveEvidenceGroup,
   type BulkEvidenceStatus,
   type EvidenceElectronicFile,
-  type EvidenceGroupSummary,
-  type EvidenceGroupPage,
 } from '../../api/evidence';
 import type { LeadPlatform } from '../../api/leads';
 import {
@@ -33,6 +37,7 @@ import {
 } from './evidence-selection';
 import { evidenceStageLabel, evidenceStages } from './evidence-stage-labels';
 import { labelLeadPlatform } from '../leads';
+import DateRangeFilter from '../../app/DateRangeFilter.vue';
 
 const statusLabels: Record<EvidenceStatus, string> = {
   UNDELIVERED: '未交付',
@@ -67,20 +72,30 @@ function provenanceLabel(value: string | null): string {
 }
 const statusKeys = Object.keys(statusLabels) as EvidenceStatus[];
 const paperKeys = Object.keys(paperLabels) as PaperStatus[];
+const route = inject(routeLocationKey, null);
+const router = inject(routerKey, null);
+const stageOptions = computed(() =>
+  evidenceStages.map((stage) => ({
+    value: stage.value,
+    label: `${stage.label} ${page.value ? (page.value.counts.stages[stage.value] ?? 0) : '—'}`,
+  })),
+);
 const filter = ref<EvidenceFilter>({ page: 1, pageSize: 20, stages: [] });
 const page = ref<Page | null>(null);
 const matchingIds = ref<string[]>([]);
 const selected = ref(new Set<string>());
+const selectedVisibleItem = computed(() =>
+  selected.value.size === 1
+    ? (page.value?.items.find((item) => selected.value.has(item.id)) ?? null)
+    : null,
+);
 const busy = ref(false);
 const saving = ref(false);
 const dialogLoading = ref(false);
 const error = ref('');
 const notice = ref('');
-const dialog = ref<'view' | 'edit' | 'bulk' | 'sources' | null>(null);
+const dialog = ref<'view' | 'edit' | 'bulk' | null>(null);
 const group = ref<EvidenceGroup | null>(null);
-const sources = ref<EvidenceGroupPage | null>(null);
-const sourceQuery = ref('');
-const sourcePage = ref(1);
 const draft = ref<EvidenceDraftRow[]>([]);
 const remark = ref('');
 const paperDraft = ref<{ id: string; status: PaperStatus }[]>([]);
@@ -101,6 +116,7 @@ const showPagination = computed(
 );
 
 let loadSequence = 0;
+let groupReadSequence = 0;
 let loadRequest: AbortController | undefined;
 async function load() {
   const sequence = ++loadSequence;
@@ -133,6 +149,7 @@ watch(filter, () => void load(), { deep: true });
 onMounted(() => void load());
 onBeforeUnmount(() => {
   ++loadSequence;
+  ++groupReadSequence;
   loadRequest?.abort();
 });
 
@@ -141,13 +158,6 @@ function setFilter<K extends keyof EvidenceFilter>(
   value: EvidenceFilter[K],
 ) {
   filter.value = { ...filter.value, page: 1, [key]: value };
-}
-
-function toggleStage(stage: string) {
-  const next = new Set(filter.value.stages);
-  if (next.has(stage)) next.delete(stage);
-  else next.add(stage);
-  setFilter('stages', [...next]);
 }
 
 function toggleOne(id: string) {
@@ -168,16 +178,31 @@ function toggleVisible() {
 }
 
 async function openGroup(item: EvidenceItem, mode: 'view' | 'edit') {
-  if (dialogLoading.value || saving.value) return;
+  if (
+    busy.value ||
+    dialogLoading.value ||
+    saving.value ||
+    !page.value?.items.some((row) => row.id === item.id)
+  )
+    return;
+  const sequence = ++groupReadSequence;
+  const listSequence = loadSequence;
   dialogLoading.value = true;
   error.value = '';
   notice.value = '';
   try {
-    prepareGroup(await getEvidenceGroup(item.groupId), mode);
+    const loaded = await getEvidenceGroup(item.groupId);
+    if (
+      sequence === groupReadSequence &&
+      listSequence === loadSequence &&
+      page.value?.items.some((row) => row.id === item.id)
+    )
+      prepareGroup(loaded, mode);
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '证物分组加载失败';
+    if (sequence === groupReadSequence)
+      error.value = cause instanceof Error ? cause.message : '证物分组加载失败';
   } finally {
-    dialogLoading.value = false;
+    if (sequence === groupReadSequence) dialogLoading.value = false;
   }
 }
 
@@ -200,54 +225,62 @@ function prepareGroup(loaded: EvidenceGroup, mode: 'view' | 'edit') {
   dialog.value = mode;
 }
 
-async function loadSources() {
-  if (dialogLoading.value) return;
-  dialogLoading.value = true;
-  error.value = '';
-  try {
-    sources.value = await listEvidenceGroups({
-      page: sourcePage.value,
-      pageSize: 20,
-      query: sourceQuery.value,
-    });
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '证物来源加载失败';
-    sources.value = null;
-  } finally {
-    dialogLoading.value = false;
-  }
-}
-
-async function openSources() {
-  if (dialogLoading.value || saving.value) return;
-  dialog.value = 'sources';
-  notice.value = '';
-  await loadSources();
-}
-
-async function changeSourcePage(delta: number) {
-  if (dialogLoading.value) return;
-  sourcePage.value += delta;
-  await loadSources();
-}
-
-async function editSource(source: EvidenceGroupSummary) {
-  if (dialogLoading.value || saving.value) return;
+async function openSourceGroup(kind: EvidenceSourceKind, sourceId: string) {
+  const sequence = ++groupReadSequence;
   dialogLoading.value = true;
   error.value = '';
   notice.value = '';
   try {
-    const loaded = source.groupId
-      ? await getEvidenceGroup(source.groupId)
-      : await getEvidenceSourceGroup(source.sourceKind, source.sourceId);
-    if (dialog.value === 'sources') prepareGroup(loaded, 'edit');
+    const loaded = await getEvidenceSourceGroup(kind, sourceId);
+    if (sequence === groupReadSequence) prepareGroup(loaded, 'edit');
   } catch (cause) {
-    if (dialog.value === 'sources')
+    if (sequence === groupReadSequence)
       error.value = cause instanceof Error ? cause.message : '证物来源加载失败';
   } finally {
-    dialogLoading.value = false;
+    if (sequence === groupReadSequence) dialogLoading.value = false;
   }
 }
+
+function closeGroupEditor() {
+  ++groupReadSequence;
+  dialogLoading.value = false;
+  dialog.value = null;
+  group.value = null;
+  draft.value = [];
+  paperDraft.value = [];
+  remark.value = '';
+  if (!route || !router) return;
+  const query = { ...route.query };
+  delete query.entrySourceKind;
+  delete query.entrySourceId;
+  void router.replace({ path: route.path, query });
+}
+
+watch(
+  () => [route?.query.entrySourceKind, route?.query.entrySourceId] as const,
+  ([kind, sourceId]) => {
+    ++groupReadSequence;
+    dialogLoading.value = false;
+    dialog.value = null;
+    group.value = null;
+    draft.value = [];
+    paperDraft.value = [];
+    remark.value = '';
+    error.value = '';
+    notice.value = '';
+    if (kind === undefined && sourceId === undefined) return;
+    if (
+      (kind !== 'CASE' && kind !== 'NOTARY_MATTER') ||
+      typeof sourceId !== 'string' ||
+      !sourceId.trim()
+    ) {
+      error.value = '证物来源参数无效';
+      return;
+    }
+    void openSourceGroup(kind as EvidenceSourceKind, sourceId);
+  },
+  { immediate: true },
+);
 
 function addDraftRow() {
   draft.value.push({
@@ -270,39 +303,54 @@ let groupAttempt: Attempt | undefined;
 let bulkAttempt: Attempt | undefined;
 
 async function saveGroup() {
-  if (saving.value || !group.value) return;
+  if (saving.value || dialog.value !== 'edit' || !group.value) return;
+  const editSequence = groupReadSequence;
   saving.value = true;
   error.value = '';
   try {
-    const beforeIds = group.value.items.map((item) => item.id);
+    const currentGroup = group.value;
+    const beforeIds = currentGroup.items.map((item) => item.id);
     const input: SaveEvidenceGroup = {
-      expectedGroupVersion: group.value.groupVersion,
+      expectedGroupVersion: currentGroup.groupVersion,
       rows: draft.value,
       ...(remark.value.trim() ? { remark: remark.value.trim() } : {}),
       paperCertificates: paperDraft.value,
     };
     const fingerprint = JSON.stringify({
-      groupId: group.value.groupId,
-      sourceKind: group.value.sourceKind,
-      sourceId: group.value.sourceId,
-      sourceVersion: group.value.sourceVersion,
+      groupId:
+        currentGroup.groupId ??
+        `${currentGroup.sourceKind}:${currentGroup.sourceId}:${currentGroup.sourceVersion}`,
       input,
     });
     if (groupAttempt?.fingerprint !== fingerprint)
       groupAttempt = { fingerprint, key: globalThis.crypto.randomUUID() };
-    const result = group.value.groupId
-      ? await saveEvidenceGroup(group.value.groupId, input, groupAttempt.key)
-      : await saveEvidenceSourceGroup(
-          group.value.sourceKind,
-          group.value.sourceId,
-          {
-            expectedGroupVersion: 0,
-            expectedSourceVersion: group.value.sourceVersion,
-            rows: draft.value,
-            ...(remark.value.trim() ? { remark: remark.value.trim() } : {}),
-          },
-          groupAttempt.key,
-        );
+    let result;
+    if (currentGroup.groupId) {
+      result = await saveEvidenceGroup(
+        currentGroup.groupId,
+        input,
+        groupAttempt.key,
+      );
+    } else {
+      if (currentGroup.items.length || currentGroup.paperCertificates.length)
+        throw new Error('该来源已有记录，但没有可编辑的组身份');
+      result = await saveEvidenceSourceGroup(
+        currentGroup.sourceKind,
+        currentGroup.sourceId,
+        {
+          expectedGroupVersion: 0,
+          expectedSourceVersion: currentGroup.sourceVersion,
+          rows: draft.value,
+          ...(remark.value.trim() ? { remark: remark.value.trim() } : {}),
+        },
+        groupAttempt.key,
+      );
+    }
+    if (editSequence !== groupReadSequence) {
+      groupAttempt = undefined;
+      await load();
+      return;
+    }
     groupAttempt = undefined;
     notice.value = result.changed ? '证物已保存' : '未做任何修改';
     selected.value = reconcileEvidenceSelection(
@@ -313,11 +361,12 @@ async function saveGroup() {
     );
     group.value = result.group;
     if (result.changed) {
-      dialog.value = null;
+      closeGroupEditor();
       await load();
     }
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : '证物保存失败';
+    if (editSequence === groupReadSequence)
+      error.value = cause instanceof Error ? cause.message : '证物保存失败';
   } finally {
     saving.value = false;
   }
@@ -463,22 +512,7 @@ function paperIdentity(
 
 <template>
   <main class="evidence-page">
-    <header class="page-head">
-      <div>
-        <h1>证物管理</h1>
-        <p>查看证物、纸质公证书及关联案件</p>
-      </div>
-      <div class="operation-bar page-head__actions">
-        <span>{{ page ? `共 ${page.total} 件证物` : '证物数量待加载' }}</span>
-        <ElButton
-          class="action-size--wide"
-          native-type="button"
-          :disabled="dialogLoading"
-          @click="openSources"
-          >选择案件编辑证物</ElButton
-        >
-      </div>
-    </header>
+    <h1 class="sr-only">证物管理</h1>
     <p v-if="dialogLoading && !dialog" class="message" role="status">
       正在读取所选记录…
     </p>
@@ -519,88 +553,84 @@ function paperIdentity(
               )
             "
         /></label>
-        <label
-          >开庭起<input
-            type="date"
-            :value="filter.hearFrom ?? ''"
-            @input="
-              setFilter('hearFrom', ($event.target as HTMLInputElement).value)
-            "
-        /></label>
-        <label
-          >开庭止<input
-            type="date"
-            :value="filter.hearTo ?? ''"
-            @input="
-              setFilter('hearTo', ($event.target as HTMLInputElement).value)
-            "
-        /></label>
-        <label
-          >结案起<input
-            type="date"
-            :value="filter.closeFrom ?? ''"
-            @input="
-              setFilter('closeFrom', ($event.target as HTMLInputElement).value)
-            "
-        /></label>
-        <label
-          >结案止<input
-            type="date"
-            :value="filter.closeTo ?? ''"
-            @input="
-              setFilter('closeTo', ($event.target as HTMLInputElement).value)
-            "
-        /></label>
-        <ElButton
-          native-type="button"
-          @click="
-            filter = {
-              ...filter,
-              hearFrom: undefined,
-              hearTo: undefined,
-              closeFrom: undefined,
-              closeTo: undefined,
-              page: 1,
-            }
-          "
-        >
-          清除时间
-        </ElButton>
+        <DateRangeFilter
+          label="开庭日期"
+          start-label="起始日期"
+          end-label="结束日期"
+          :start="filter.hearFrom ?? ''"
+          :end="filter.hearTo ?? ''"
+          @update:start="setFilter('hearFrom', $event)"
+          @update:end="setFilter('hearTo', $event)"
+        />
+        <DateRangeFilter
+          label="结案日期"
+          start-label="起始日期"
+          end-label="结束日期"
+          :start="filter.closeFrom ?? ''"
+          :end="filter.closeTo ?? ''"
+          @update:start="setFilter('closeFrom', $event)"
+          @update:end="setFilter('closeTo', $event)"
+        />
       </div>
-      <details
-        class="stage-filter"
-        :open="Boolean(filter.stages?.length)"
-        aria-label="按案件进展筛选"
-      >
-        <summary>
-          案件进展筛选 · 已选 {{ filter.stages?.length ?? 0 }} 项 ·
-          {{ page?.counts.allStageCases ?? '—' }} 案
-        </summary>
-        <div class="stage-row" aria-label="案件进展多选">
-          <label v-for="stage in evidenceStages" :key="stage.value"
-            ><input
-              type="checkbox"
-              :checked="filter.stages?.includes(stage.value)"
-              @change="toggleStage(stage.value)"
-            />{{ stage.label }}
-            {{ page ? (page.counts.stages[stage.value] ?? 0) : '—' }}</label
-          >
-          <ElButton
-            v-if="filter.stages?.length"
-            class="action-size--wide"
-            native-type="button"
-            @click="setFilter('stages', [])"
-          >
-            清除进展
-          </ElButton>
-        </div>
-      </details>
+      <label class="stage-filter">
+        <span>案件进展</span>
+        <ElSelect
+          :model-value="filter.stages ?? []"
+          multiple
+          filterable
+          clearable
+          collapse-tags
+          collapse-tags-tooltip
+          :max-collapse-tags="2"
+          :fit-input-width="true"
+          placeholder="搜索并选择案件进展"
+          aria-label="按案件进展筛选"
+          popper-class="evidence-stage-options"
+          @update:model-value="setFilter('stages', $event)"
+        >
+          <ElOption
+            v-for="stage in stageOptions"
+            :key="stage.value"
+            :label="stage.label"
+            :value="stage.value"
+          />
+        </ElSelect>
+        <small
+          >已选 {{ filter.stages?.length ?? 0 }} 项 ·
+          {{ page?.counts.allStageCases ?? '—' }} 案</small
+        >
+      </label>
     </section>
 
     <section class="list-card">
       <div class="operation-bar actions">
         <span class="selection-count">已勾选 {{ selected.size }} 件证物</span>
         <div class="operation-actions">
+          <ElButton
+            native-type="button"
+            @click="
+              filter = {
+                ...filter,
+                hearFrom: undefined,
+                hearTo: undefined,
+                closeFrom: undefined,
+                closeTo: undefined,
+                page: 1,
+              }
+            "
+            >清除时间</ElButton
+          >
+          <ElButton
+            class="action-size--compact"
+            :disabled="!selectedVisibleItem || busy || dialogLoading"
+            :title="
+              selectedVisibleItem ? '编辑所选证物' : '请在当前页选择一件证物'
+            "
+            @click="
+              selectedVisibleItem && openGroup(selectedVisibleItem, 'edit')
+            "
+            >编辑</ElButton
+          >
           <ElButton
             class="action-size--wide"
             native-type="button"
@@ -629,7 +659,6 @@ function paperIdentity(
                   @change="toggleVisible"
                 />
               </th>
-              <th>操作</th>
               <th>店铺名</th>
               <th>案件进展</th>
               <th>办案律师</th>
@@ -642,7 +671,19 @@ function paperIdentity(
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in page?.items ?? []" :key="item.id">
+            <tr
+              v-for="item in page?.items ?? []"
+              :key="item.id"
+              class="business-row-link"
+              tabindex="0"
+              :aria-label="`查看证物 ${item.displayCode ?? item.id}`"
+              @click="
+                isListRowClick($event) &&
+                !dialogLoading &&
+                openGroup(item, 'view')
+              "
+              @keydown.enter.self="!dialogLoading && openGroup(item, 'view')"
+            >
               <td>
                 <input
                   type="checkbox"
@@ -651,25 +692,6 @@ function paperIdentity(
                   :checked="selected.has(item.id)"
                   @change="toggleOne(item.id)"
                 />
-              </td>
-              <td>
-                <div class="operation-actions evidence-row-actions">
-                  <ElButton
-                    class="action-size--compact"
-                    native-type="button"
-                    :disabled="dialogLoading"
-                    @click="openGroup(item, 'edit')"
-                  >
-                    编辑</ElButton
-                  ><ElButton
-                    class="action-size--compact"
-                    native-type="button"
-                    @click="openGroup(item, 'view')"
-                    :disabled="dialogLoading"
-                  >
-                    查看
-                  </ElButton>
-                </div>
               </td>
               <td>{{ item.shopName || '—' }}</td>
               <td>{{ evidenceStageLabel(item.stage) }}</td>
@@ -682,13 +704,13 @@ function paperIdentity(
               <td>{{ item.remark || '—' }}</td>
             </tr>
             <tr v-if="!busy && page && !page.items.length">
-              <td colspan="11">没有匹配的证物，请调整筛选条件。</td>
+              <td colspan="10">没有匹配的证物，请调整筛选条件。</td>
             </tr>
             <tr v-if="busy">
-              <td colspan="11">正在加载证物…</td>
+              <td colspan="10">正在加载证物…</td>
             </tr>
             <tr v-if="!busy && !page && error">
-              <td colspan="11">
+              <td colspan="10">
                 列表未加载成功
                 <ElButton native-type="button" @click="load">重试</ElButton>
               </td>
@@ -857,88 +879,11 @@ function paperIdentity(
           <ElButton
             native-type="button"
             :disabled="saving"
-            @click="dialog = null"
+            @click="closeGroupEditor"
             >取消</ElButton
           ><ElButton native-type="button" :disabled="saving" @click="saveGroup">
             保存
           </ElButton>
-        </footer>
-      </section>
-    </div>
-    <div v-if="dialog === 'sources'" class="overlay" role="presentation">
-      <section
-        class="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="选择案件编辑证物"
-      >
-        <h2>选择案件编辑证物</h2>
-        <p v-if="dialogLoading" class="message" role="status">
-          正在读取真实来源…
-        </p>
-        <p v-if="error" class="message error" role="alert">{{ error }}</p>
-        <label
-          >搜索案件／店铺<input
-            v-model="sourceQuery"
-            placeholder="案件单号或店铺名"
-        /></label>
-        <ElButton
-          native-type="button"
-          :disabled="dialogLoading"
-          @click="
-            sourcePage = 1;
-            loadSources();
-          "
-          >搜索</ElButton
-        >
-        <table>
-          <thead>
-            <tr>
-              <th>来源单号</th>
-              <th>店铺名</th>
-              <th>证物件数</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="source in sources?.items ?? []"
-              :key="`${source.sourceKind}:${source.sourceId}`"
-            >
-              <td>{{ source.businessNo }}</td>
-              <td>{{ source.shopName || '—' }}</td>
-              <td>{{ source.activeItemCount }}</td>
-              <td>
-                <ElButton
-                  native-type="button"
-                  :disabled="dialogLoading"
-                  @click="editSource(source)"
-                  >编辑证物</ElButton
-                >
-              </td>
-            </tr>
-            <tr v-if="sources && !sources.items.length">
-              <td colspan="4">没有匹配的真实案件或已出证公证事项</td>
-            </tr>
-          </tbody>
-        </table>
-        <footer>
-          <ElButton
-            native-type="button"
-            :disabled="sourcePage <= 1 || dialogLoading"
-            @click="changeSourcePage(-1)"
-            >上一页</ElButton
-          >
-          <span>第 {{ sourcePage }} 页</span>
-          <ElButton
-            native-type="button"
-            :disabled="
-              sourcePage * 20 >= (sources?.total ?? 0) || dialogLoading
-            "
-            @click="changeSourcePage(1)"
-            >下一页</ElButton
-          >
-          <ElButton native-type="button" @click="dialog = null">关闭</ElButton>
         </footer>
       </section>
     </div>
@@ -1051,7 +996,7 @@ h3 {
   min-width: 0;
 }
 .actions {
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 .selection-count {
   margin-right: auto;
@@ -1071,22 +1016,22 @@ h3 {
   gap: 6px;
 }
 .filter-grid {
-  grid-template-columns: repeat(5, minmax(120px, 1fr)) auto;
+  grid-template-columns:
+    minmax(180px, 1fr) minmax(280px, 1.5fr) minmax(280px, 1.5fr)
+    auto;
 }
 .stage-filter {
-  padding: 1px 0;
-}
-.stage-filter summary {
-  width: fit-content;
-  cursor: pointer;
-  color: var(--color-ink-muted, #5c5e66);
-}
-.stage-filter .stage-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  grid-template-columns: minmax(260px, 520px) auto;
   align-items: center;
-  gap: 6px 12px;
-  margin-top: 8px;
+  gap: 4px 10px;
+  width: fit-content;
+  color: var(--color-ink-muted, #5c5e66);
+  font-size: 12px;
+}
+.stage-filter small {
+  grid-column: 1 / -1;
+  font-size: 11px;
 }
 .filter-grid label,
 .modal label {
@@ -1206,7 +1151,7 @@ th {
 }
 @media (max-width: 900px) {
   .filter-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (max-width: 700px) {
@@ -1232,6 +1177,10 @@ th {
   }
   .filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stage-filter {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
   }
   .actions {
     align-items: flex-start;

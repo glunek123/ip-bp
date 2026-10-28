@@ -762,12 +762,60 @@ describe('NotaryMatterListPage', () => {
     expect(wrapper.get('[data-test="matter-row"]').text()).not.toContain(
       'NT-001',
     );
-    expect(wrapper.get('[data-test="matter-link"]').attributes('href')).toBe(
-      '/notary-matters/matter-1',
-    );
+    expect(wrapper.find('[data-test="matter-link"]').exists()).toBe(false);
+    expect(
+      wrapper.get('[data-test="matter-row"] .notary-actions').findAll('a'),
+    ).toHaveLength(0);
     expect(
       wrapper.get('[data-test="source-lead-link"]').attributes('href'),
     ).toBe('/leads/lead-1');
+  });
+
+  it('keeps notary filters above its right-aligned toolbar and opens row details without stealing checkbox or link clicks', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const { wrapper, router } = await mountPage(
+      '/notary-matters?stage=PENDING_EVIDENCE&page=2&q=公证编号',
+    );
+    const filters = wrapper.get('form[aria-label="公证事项筛选"]');
+    const toolbar = wrapper.get('.export-panel');
+    const row = wrapper.get('[data-test="matter-row"]');
+    expect(
+      filters.element.compareDocumentPosition(toolbar.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      toolbar.element.compareDocumentPosition(row.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(toolbar.find('[data-test="notary-search"]').exists()).toBe(true);
+    expect(toolbar.find('[data-test="notary-clear-filters"]').exists()).toBe(
+      true,
+    );
+    expect(toolbar.find('[data-test="clear-selection"]').exists()).toBe(false);
+    expect(row.findAll('.notary-actions button').length).toBeLessThanOrEqual(1);
+    expect(row.find('.notary-actions a').exists()).toBe(false);
+    const returnPath = router.currentRoute.value.fullPath;
+    await row.get('[data-test="select-matter"]').setValue(true);
+    expect(router.currentRoute.value.path).toBe('/notary-matters');
+    await row.trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/notary-matters/matter-1');
+    expect(router.currentRoute.value.query.returnTo).toBe(returnPath);
+  });
+
+  it('opens a notary row with the keyboard and retains the list location', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const { wrapper, router } = await mountPage(
+      '/notary-matters?stage=PENDING_EVIDENCE',
+    );
+    const row = wrapper.get('[data-test="matter-row"]');
+    expect(row.attributes('tabindex')).toBe('0');
+    await row.trigger('keydown.enter');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/notary-matters/matter-1');
+    expect(router.currentRoute.value.query.returnTo).toContain(
+      'stage=PENDING_EVIDENCE',
+    );
   });
 
   it('opens the batch form for selected matters and refreshes the list after success', async () => {
@@ -1466,7 +1514,7 @@ describe('NotaryMatterListPage', () => {
     expect(wrapper.get('[data-test="selected-count"]').text()).toContain(
       '已选择 1 项',
     );
-    await wrapper.get('[data-test="clear-selection"]').trigger('click');
+    await wrapper.get('[data-test="select-matter"]').setValue(false);
     expect(wrapper.get('[data-test="selected-count"]').text()).toContain(
       '已选择 0 项',
     );

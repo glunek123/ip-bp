@@ -8,6 +8,7 @@ import {
   type ClientCaseView,
 } from '../../api/client-cases';
 import { ApiError } from '../../api/http';
+import { isListRowClick } from '../../app/list-row-navigation';
 import { useAuthStore } from '../../stores/auth';
 const route = useRoute();
 const router = useRouter();
@@ -80,6 +81,13 @@ function select(next: ClientCaseView) {
 function selectPage(next: number) {
   void router.push({ query: { ...route.query, page: String(next) } });
 }
+function openCaseRow(
+  event: InstanceType<typeof globalThis.MouseEvent>,
+  item: ClientCase,
+): void {
+  if (!isListRowClick(event)) return;
+  void router.push(`/client/cases/${encodeURIComponent(item.id)}`);
+}
 function stageLabel(stage: ClientCase['stage']) {
   if (stage === 'WAITING_COMPLAINT_STAMP') return '诉状待盖章';
   if (stage === 'WAITING_FILING') return '待提交立案';
@@ -101,17 +109,18 @@ onBeforeUnmount(() => request?.abort());
 <template>
   <div class="page-view page-view--narrow">
     <main>
+      <h1 class="sr-only">企业案件</h1>
       <div class="page-head">
         <div>
           <p class="eyebrow">企业服务</p>
-          <h1>案件</h1>
           <p>查看本企业已确认诉状的案件及邮寄办理进度。</p>
         </div>
-        <ElButton text :loading="state === 'loading'" @click="load"
-          >刷新</ElButton
-        >
       </div>
-      <div class="segmented-control" role="group" aria-label="案件状态">
+      <div
+        class="segmented-control client-case-list-filters"
+        role="group"
+        aria-label="案件状态"
+      >
         <ElButton
           :type="view === 'PENDING' ? 'primary' : 'default'"
           @click="select('PENDING')"
@@ -120,6 +129,11 @@ onBeforeUnmount(() => request?.abort());
           :type="view === 'RECORDED' ? 'primary' : 'default'"
           @click="select('RECORDED')"
           >已登记</ElButton
+        >
+      </div>
+      <div class="operation-bar client-case-list-toolbar">
+        <ElButton text :loading="state === 'loading'" @click="load"
+          >刷新</ElButton
         >
       </div>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
@@ -141,7 +155,13 @@ onBeforeUnmount(() => request?.abort());
           }}
         </p>
         <ul v-else class="notary-offices-list">
-          <li v-for="item in items" :key="item.id">
+          <li
+            v-for="item in items"
+            :key="item.id"
+            class="business-row-link"
+            data-test="client-case-row"
+            @click="openCaseRow($event, item)"
+          >
             <RouterLink :to="`/client/cases/${encodeURIComponent(item.id)}`">{{
               item.businessNo
             }}</RouterLink
@@ -176,3 +196,16 @@ onBeforeUnmount(() => request?.abort());
     </main>
   </div>
 </template>
+
+<style scoped>
+.client-case-list-filters {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.client-case-list-toolbar {
+  justify-content: flex-end;
+  margin-block: 8px 12px;
+}
+</style>

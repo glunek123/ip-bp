@@ -151,6 +151,34 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+it('keeps the case-series resource discoverable from a readable case detail', async () => {
+  const entry = wrapper!.get('[data-test="case-handling-groups-entry"]');
+  expect(entry.text()).toBe('案件系列');
+  const href = new URL(entry.attributes('href')!, 'http://local');
+  expect(href.pathname).toBe('/case-handling-groups');
+  expect(href.searchParams.get('returnTo')).toBe('/cases');
+
+  await router.push('/cases/case-1?view=department&page=2&tab=files');
+  await flushPromises();
+  const filteredHref = new URL(
+    wrapper!
+      .get('[data-test="case-handling-groups-entry"]')
+      .attributes('href')!,
+    'http://local',
+  );
+  expect(filteredHref.searchParams.get('returnTo')).toBe(
+    '/cases?view=department&page=2',
+  );
+});
+
+it('opens the evidence source editor for the case shown in the detail page', async () => {
+  const entry = wrapper!.get('[data-test="open-case-evidence-entry"]');
+  const href = new URL(entry.attributes('href')!, 'http://local');
+  expect(href.pathname).toBe('/evidence');
+  expect(href.searchParams.get('entrySourceKind')).toBe('CASE');
+  expect(href.searchParams.get('entrySourceId')).toBe(detail.id);
+});
+
 it('shows the detail early-archive entry only when the case read grants capability', async () => {
   expect(
     wrapper!.find('[data-test="open-detail-early-archive"]').exists(),

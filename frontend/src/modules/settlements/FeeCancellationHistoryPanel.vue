@@ -376,7 +376,7 @@ onBeforeUnmount(() => {
       核对状态仅描述本笔费用的人工记录，不代表案件或账单已结清。未知金额显示为待核对。
     </p>
     <form
-      class="operation-bar"
+      class="operation-bar fee-cancellation-history__filters"
       @submit.prevent="
         page = 1;
         load();
@@ -392,17 +392,22 @@ onBeforeUnmount(() => {
             v-for="v in typeList"
             :key="v"
             :value="v"
-            :label="v" /></ElSelect></label
-      ><ElButton native-type="submit">查询</ElButton
-      ><ElButton
-        @click="
-          businessNo = '';
-          type = '';
-          page = 1;
-          load();
-        "
-        >清除</ElButton
-      >
+            :label="v" /></ElSelect
+      ></label>
+      <div class="operation-actions fee-cancellation-history__filter-actions">
+        <ElButton native-type="submit" class="action-size--standard"
+          >查询</ElButton
+        ><ElButton
+          class="action-size--standard"
+          @click="
+            businessNo = '';
+            type = '';
+            page = 1;
+            load();
+          "
+          >清除</ElButton
+        >
+      </div>
     </form>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="loading">正在读取取消记录…</p>
@@ -649,6 +654,16 @@ onBeforeUnmount(() => {
 .fee-cancellation-history {
   min-width: 0;
 }
+.fee-cancellation-history__filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr)) auto;
+  align-items: end;
+  gap: var(--s-2);
+}
+.fee-cancellation-history__filter-actions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
 .fee-cancellation-history__table-scroll {
   max-width: 100%;
   overflow-x: auto;
@@ -805,6 +820,12 @@ onBeforeUnmount(() => {
   }
 }
 @media (max-width: 680px) {
+  .fee-cancellation-history__filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fee-cancellation-history__filter-actions {
+    justify-content: flex-end;
+  }
   .fee-cancellation-history__facts,
   .fee-cancellation-history__actions {
     grid-template-columns: minmax(0, 1fr);

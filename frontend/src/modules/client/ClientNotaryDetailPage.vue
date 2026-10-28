@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
+import { listReturnPath } from '../../app/list-row-navigation';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 import { ApiError } from '../../api/http';
 import {
@@ -13,6 +14,17 @@ import {
 import { downloadMaterialVersion } from '../../api/materials';
 
 const route = useRoute();
+const returnTo = computed(() => {
+  const fallback =
+    typeof route.query.sourceLeadId === 'string'
+      ? `/client/notary-matters?sourceLeadId=${encodeURIComponent(route.query.sourceLeadId)}`
+      : '/client/notary-matters';
+  const candidate = listReturnPath(
+    route.query.returnTo,
+    '/client/notary-matters',
+  );
+  return candidate === '/client/notary-matters' ? fallback : candidate;
+});
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const matter = ref<ClientNotaryMatterDetail>();
 const result = ref<'' | 'INFRINGEMENT' | 'NO_INFRINGEMENT'>('');
@@ -186,17 +198,7 @@ onBeforeUnmount(() => request?.abort());
 <template>
   <div class="page-view page-view--narrow">
     <main>
-      <RouterLink
-        class="back-link"
-        :to="{
-          path: '/client/notary-matters',
-          query:
-            typeof route.query.sourceLeadId === 'string'
-              ? { sourceLeadId: route.query.sourceLeadId }
-              : {},
-        }"
-        >← 返回公证审核</RouterLink
-      >
+      <RouterLink class="back-link" :to="returnTo">← 返回公证审核</RouterLink>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h1>正在读取公证事项</h1>
       </section>

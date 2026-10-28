@@ -271,7 +271,7 @@ afterEach(() => {
 });
 
 describe('authorized internal case list display', () => {
-  it('applies one keyword and case type, then clears old URL filters and sorting', async () => {
+  it('applies one keyword, then clears old URL filters and sorting', async () => {
     const { wrapper, router } = await mountList(
       '/cases?view=department&stage=WAITING_ARCHIVE&sortBy=businessNo&shopName=old',
     );
@@ -280,20 +280,21 @@ describe('authorized internal case list display', () => {
         'input[aria-label="编号、案号、客户、权利主体、店铺、被告、法院、律师"]',
       )
       .setValue(' 法院甲 ');
-    await wrapper.get('[data-test="case-query-type"]').setValue('CIVIL');
-    await wrapper.get('form[role="search"]').trigger('submit');
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '查询')!
+      .trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.query).toEqual({
       view: 'department',
       stage: 'WAITING_ARCHIVE',
       q: '法院甲',
-      caseType: 'CIVIL',
       page: '1',
     });
     expect(api.listCases).toHaveBeenLastCalledWith(
       1,
       20,
-      expect.objectContaining({ q: '法院甲', caseType: 'CIVIL' }),
+      expect.objectContaining({ q: '法院甲' }),
     );
     await wrapper.get('[data-test="case-query-clear"]').trigger('click');
     await flushPromises();
@@ -304,26 +305,136 @@ describe('authorized internal case list display', () => {
     });
   });
 
-  it('rejects an unknown URL case type rather than loading an unfiltered list', async () => {
-    const { wrapper } = await mountList(
+  it('removes a legacy case type URL filter before loading the supported scope', async () => {
+    const { wrapper, router } = await mountList(
       '/cases?view=department&caseType=OTHER',
     );
-    expect(api.listCases).not.toHaveBeenCalled();
-    expect(wrapper.get('[role="alert"]').text()).toContain('案件类型无效');
-  });
-  it('opens the group page with the complete original list bookmark', async () => {
-    const original =
-      '/cases?view=department&stage=WAITING_ARCHIVE&page=1&q=合成&shopName=店铺&defendantName=被告&courtName=法院&lawyerName=律师&caseType=CIVIL&sortBy=businessNo&sortDirection=asc#original';
-    const { wrapper, router } = await mountList(original);
-    const before = router.currentRoute.value.fullPath;
-    await wrapper
-      .get('[data-test="case-handling-groups-entry"]')
-      .trigger('click');
     await flushPromises();
-    expect(router.currentRoute.value.path).toBe('/case-handling-groups');
-    expect(router.currentRoute.value.query.returnTo).toBe(before);
+    expect(router.currentRoute.value.query.caseType).toBeUndefined();
+    expect(api.listCases).toHaveBeenCalled();
+    expect(api.listCases.mock.calls.at(-1)?.[2]).not.toHaveProperty('caseType');
+    expect(wrapper.find('[data-test="case-query-type"]').exists()).toBe(false);
   });
-  it('keeps the group entry behind the existing unknown workflow navigation lock', async () => {
+  it('does not restore the removed handling-group entry or source column', async () => {
+    const { wrapper } = await mountList();
+    expect(
+      wrapper.find('[data-test="case-handling-groups-entry"]').exists(),
+    ).toBe(false);
+    expect(wrapper.find('th[data-column="origin"]').exists()).toBe(false);
+    expect(wrapper.find('td[data-column="origin"]').exists()).toBe(false);
+    await wrapper.get('[data-test="open-column-settings"]').trigger('click');
+    expect(wrapper.get('[role="dialog"]').text()).not.toContain('来源');
+  });
+
+  it('shows consolidation only in pending match and complaint preparation and requires one exact stage', async () => {
+    const first = {
+      ...summary(),
+      id: 'case-1',
+      stage: 'WAITING_COMPLAINT' as const,
+      canConsolidate: true,
+    };
+    const second = {
+      ...summary(),
+      id: 'case-2',
+      businessNo: 'CA-20261013-00001235',
+      stage: 'WAITING_COMPLAINT' as const,
+      canConsolidate: true,
+    };
+    api.listCases.mockResolvedValue(result([first, second]));
+    const { wrapper, router } = await mountList(
+      '/cases?view=mine&stageGroup=COMPLAINT_PREPARATION',
+    );
+    const button = wrapper.get('[data-test="open-case-consolidation"]');
+    expect(button.text()).toBe('合并起诉');
+    expect(button.attributes('disabled')).toBeDefined();
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    await wrapper.get('[data-test="select-case-case-2"]').setValue(true);
+    expect(button.attributes('disabled')).toBeUndefined();
+    await button.trigger('click');
+    expect(wrapper.find('[aria-label="合并起诉"]').exists()).toBe(true);
+    await router.push('/cases?view=mine&stage=PENDING_MATCH');
+    await flushPromises();
+    expect(wrapper.find('[data-test="open-case-consolidation"]').exists()).toBe(
+      true,
+    );
+    await router.push('/cases?view=mine&stage=WAITING_FILING');
+    await flushPromises();
+    expect(wrapper.find('[data-test="open-case-consolidation"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it('keeps complaint-group consolidation disabled for mixed concrete stages or missing capability', async () => {
+    api.listCases.mockResolvedValue(
+      result([
+        {
+          ...summary(),
+          id: 'case-1',
+          stage: 'WAITING_COMPLAINT',
+          canConsolidate: true,
+        },
+        {
+          ...summary(),
+          id: 'case-2',
+          stage: 'WAITING_COMPLAINT_STAMP',
+          canConsolidate: true,
+        },
+      ]),
+    );
+    const { wrapper } = await mountList(
+      '/cases?view=mine&stageGroup=COMPLAINT_PREPARATION',
+    );
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    await wrapper.get('[data-test="select-case-case-2"]').setValue(true);
+    expect(
+      wrapper
+        .get('[data-test="open-case-consolidation"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    expect(wrapper.find('[aria-label="合并起诉"]').exists()).toBe(false);
+    api.listCases.mockResolvedValue(
+      result([
+        {
+          ...summary(),
+          id: 'case-1',
+          stage: 'WAITING_COMPLAINT',
+          canConsolidate: true,
+        },
+        {
+          ...summary(),
+          id: 'case-2',
+          stage: 'WAITING_COMPLAINT',
+          canConsolidate: false,
+        },
+      ]),
+    );
+    await wrapper.get('[data-test="case-query-clear"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    await wrapper.get('[data-test="select-case-case-2"]').setValue(true);
+    expect(
+      wrapper
+        .get('[data-test="open-case-consolidation"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+  });
+
+  it('navigates from ordinary row content but not from its checkbox, disclosure, or action button', async () => {
+    api.listCases.mockResolvedValue(
+      result([{ ...summary(), canArchive: true }]),
+    );
+    const { wrapper, router } = await mountList();
+    const row = wrapper.get('tbody tr');
+    await row.get('[data-test="select-case-case-1"]').setValue(true);
+    await row.get('td[data-column="claimAmount"] summary').trigger('click');
+    await row.get('[data-case-action="archive"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/cases');
+    await row.get('td[data-column="customerName"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/cases/case-1');
+  });
+  it('keeps row navigation behind the existing unknown workflow navigation lock', async () => {
     workflowTest.markUnknown = true;
     api.listCases.mockResolvedValue(
       result([{ ...summary(), canArchive: true }]),
@@ -331,9 +442,7 @@ describe('authorized internal case list display', () => {
     const { wrapper, router } = await mountList();
     await wrapper.get('[data-case-action="archive"]').trigger('click');
     await flushPromises();
-    await wrapper
-      .get('[data-test="case-handling-groups-entry"]')
-      .trigger('click');
+    await wrapper.get('tbody td[data-column="customerName"]').trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.path).toBe('/cases');
   });
@@ -457,8 +566,10 @@ describe('authorized internal case list display', () => {
         'input[aria-label="编号、案号、客户、权利主体、店铺、被告、法院、律师"]',
       )
       .setValue('不应离开');
-    await wrapper.get('[data-test="case-query-type"]').setValue('CRIMINAL');
-    await wrapper.get('form[role="search"]').trigger('submit');
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '查询')!
+      .trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.query.q).toBeUndefined();
     expect(router.currentRoute.value.query.shopName).toBeUndefined();
@@ -542,7 +653,7 @@ describe('authorized internal case list display', () => {
     await flushPromises();
   });
 
-  it('reads ARCHIVED through the fixed API, preserving the 17-column projection and source amounts', async () => {
+  it('reads ARCHIVED through the fixed API, preserving the case projection and amount sources', async () => {
     const actual =
       await vi.importActual<typeof import('../../api/cases')>(
         '../../api/cases',
@@ -564,7 +675,7 @@ describe('authorized internal case list display', () => {
     const url = new URL(String(caseRequest?.[0]), 'http://localhost');
     expect(url.searchParams.get('stage')).toBe('ARCHIVED');
     expect(url.searchParams.get('view')).toBe('department');
-    expect(wrapper.findAll('thead th')).toHaveLength(18);
+    expect(wrapper.findAll('thead th')).toHaveLength(17);
     expect(wrapper.get('tbody').text()).toContain('已归档');
     expect(wrapper.get('tbody').text()).toContain(sourceIds.closure);
     expect(wrapper.get('tbody').text()).toContain('0.00');
@@ -687,7 +798,6 @@ describe('authorized internal case list display', () => {
       '操作',
       '案件编号',
       '负责人',
-      '来源',
       '案件进展',
       '客户',
       '权利主体',
@@ -705,17 +815,16 @@ describe('authorized internal case list display', () => {
     const cells = wrapper.findAll('tbody td');
     expect(cells[3]!.text()).toBe('负责运营甲');
     expect(cells[1]!.findAll('button')).toHaveLength(0);
-    expect(cells[4]!.text()).toContain('LD-20261013-00005678');
-    expect(cells[4]!.text()).toContain('NZ-20261013-00009012');
-    expect(cells[6]!.get('summary').text()).toBe('合成客户甲有限公司');
-    expect(cells[7]!.get('summary').text()).toBe('合成权利主体乙有限公司');
-    expect(cells[8]!.text()).toBe('淘宝');
-    expect(cells[9]!.get('summary').text()).toBe(
+    expect(wrapper.find('td[data-column="origin"]').exists()).toBe(false);
+    expect(cells[5]!.get('span').text()).toBe('合成客户甲有限公司');
+    expect(cells[6]!.get('span').text()).toBe('合成权利主体乙有限公司');
+    expect(cells[7]!.text()).toBe('淘宝');
+    expect(cells[8]!.get('span').text()).toBe(
       summary().displaySummary.source.shopName,
     );
-    expect(cells[10]!.text()).toBe('TB-0000123456789');
-    expect(cells[13]!.get('summary').text()).toBe('合成人民法院');
-    expect(cells[14]!.text()).toBe('（2026）合成民初000123号');
+    expect(cells[9]!.text()).toBe('TB-0000123456789');
+    expect(cells[12]!.get('span').text()).toBe('合成人民法院');
+    expect(cells[13]!.text()).toBe('（2026）合成民初000123号');
     expect(cells[2]!.get('a').attributes('href')).toBe(
       '/cases/case-1?view=department&stage=WAITING_ARCHIVE',
     );
@@ -756,8 +865,8 @@ describe('authorized internal case list display', () => {
         .findAll('thead th')
         .map((cell) => cell.text())
         .slice(0, 5),
-    ).toEqual(['', '操作', '案件编号', '负责人', '来源']);
-    expect(wrapper.findAll('thead th')).toHaveLength(17);
+    ).toEqual(['', '操作', '案件编号', '负责人', '案件进展']);
+    expect(wrapper.findAll('thead th')).toHaveLength(16);
     expect(
       wrapper.findAll('thead th').some((cell) => cell.text() === '客户'),
     ).toBe(false);
@@ -800,31 +909,23 @@ describe('authorized internal case list display', () => {
       expect.objectContaining({ hidden: ['customerName'] }),
       { signal: expect.any(AbortSignal) },
     );
-    expect(wrapper.findAll('thead th')).toHaveLength(17);
+    expect(wrapper.findAll('thead th')).toHaveLength(16);
     expect(
       wrapper.findAll('thead th').some((cell) => cell.text() === '客户'),
     ).toBe(false);
     expect(wrapper.get('[role="status"]').text()).toContain('已保存');
   });
 
-  it('keeps every defendant and lawyer in native keyboard-expandable details', async () => {
+  it('keeps full names visible and in titles while allowing the text to open the case', async () => {
     const { wrapper } = await mountList();
     const cells = wrapper.findAll('tbody td');
-    expect(cells[11]!.get('summary').text()).toBe(
+    expect(cells[10]!.get('span').text()).toBe(
       '合成被告甲有限公司、合成被告乙',
     );
-    expect(cells[11]!.findAll('li').map((item) => item.text())).toEqual([
-      '合成被告甲有限公司',
-      '合成被告乙',
-    ]);
-    expect(cells[12]!.get('summary').text()).toBe('合成律师甲、合成律师乙');
-    expect(cells[12]!.findAll('li').map((item) => item.text())).toEqual([
-      '合成律师甲',
-      '合成律师乙',
-    ]);
-    for (const index of [6, 7, 9, 11, 12, 13]) {
-      expect(cells[index]!.get('summary').element.parentElement?.tagName).toBe(
-        'DETAILS',
+    expect(cells[11]!.get('span').text()).toBe('合成律师甲、合成律师乙');
+    for (const index of [5, 6, 8, 10, 11, 12]) {
+      expect(cells[index]!.get('span').attributes('title')).toBe(
+        cells[index]!.text(),
       );
     }
     expect(wrapper.get('.business-list-scroll').attributes()).toMatchObject({
@@ -832,24 +933,24 @@ describe('authorized internal case list display', () => {
       tabindex: '0',
       'aria-label': '案件列表，可横向滚动',
     });
-    for (const index of [0, 2, 5, 10, 14])
+    for (const index of [0, 2, 4, 9, 13])
       expect(cells[index]!.classes()).toContain('business-list-cell--nowrap');
-    for (const index of [15, 16, 17])
+    for (const index of [14, 15, 16])
       expect(cells[index]!.classes()).toContain('business-list-cell--number');
   });
 
   it('keeps high precision, pending and real zero separate with their exact sources', async () => {
     const { wrapper } = await mountList();
     const cells = wrapper.findAll('tbody td');
-    expect(cells[15]!.get('span').text()).toBe('99999999999999.99');
-    expect(cells[15]!.get('summary').text()).toBe('诉状确认');
-    expect(cells[15]!.get('p').text()).toContain(sourceIds.confirmation);
-    expect(cells[16]!.get('span').text()).toBe('待定');
-    expect(cells[16]!.get('summary').text()).toBe('一审判决');
-    expect(cells[16]!.get('p').text()).toContain(sourceIds.judgment);
-    expect(cells[17]!.get('span').text()).toBe('0.00');
-    expect(cells[17]!.get('summary').text()).toBe('结案登记');
-    expect(cells[17]!.get('p').text()).toContain(sourceIds.closure);
+    expect(cells[14]!.get('span').text()).toBe('99999999999999.99');
+    expect(cells[14]!.get('summary').text()).toBe('诉状确认');
+    expect(cells[14]!.get('p').text()).toContain(sourceIds.confirmation);
+    expect(cells[15]!.get('span').text()).toBe('待定');
+    expect(cells[15]!.get('summary').text()).toBe('一审判决');
+    expect(cells[15]!.get('p').text()).toContain(sourceIds.judgment);
+    expect(cells[16]!.get('span').text()).toBe('0.00');
+    expect(cells[16]!.get('summary').text()).toBe('结案登记');
+    expect(cells[16]!.get('p').text()).toContain(sourceIds.closure);
   });
 
   it('shows unrecorded optional fields and amounts without inventing identifiers or money', async () => {
@@ -883,12 +984,12 @@ describe('authorized internal case list display', () => {
     api.listCases.mockResolvedValue(result([item]));
     const { wrapper } = await mountList();
     const cells = wrapper.findAll('tbody td');
-    expect(cells[10]!.text()).toBe('');
-    for (const index of [11, 12, 13, 14, 15, 16, 17])
+    expect(cells[9]!.text()).toBe('');
+    for (const index of [10, 11, 12, 13, 14, 15, 16])
       expect(cells[index]!.text()).toBe('未登记');
     expect(wrapper.find('.case-list-amount-source').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('0.00');
-    expect(cells[11]!.text()).not.toContain(item.businessNo);
+    expect(cells[10]!.text()).not.toContain(item.businessNo);
   });
 
   it('keeps an empty shop ID blank and displays a real zero shop ID', async () => {
@@ -935,12 +1036,12 @@ describe('authorized internal case list display', () => {
     api.listCases.mockResolvedValue(result([item]));
     const { wrapper } = await mountList();
     const cells = wrapper.findAll('tbody td');
-    expect(cells[15]!.text()).toContain('已提交诉状');
-    expect(cells[16]!.get('span').text()).toBe('80.00');
-    expect(cells[16]!.get('summary').text()).toBe('二审结果');
-    expect(cells[16]!.text()).toContain(sourceIds.changed);
-    expect(cells[17]!.get('span').text()).toBe('待定');
-    expect(cells[17]!.text()).toContain(sourceIds.correction);
+    expect(cells[14]!.text()).toContain('已提交诉状');
+    expect(cells[15]!.get('span').text()).toBe('80.00');
+    expect(cells[15]!.get('summary').text()).toBe('二审结果');
+    expect(cells[15]!.text()).toContain(sourceIds.changed);
+    expect(cells[16]!.get('span').text()).toBe('待定');
+    expect(cells[16]!.text()).toContain(sourceIds.correction);
   });
 
   it('renders equal customer and rights-holder names in two distinct columns', async () => {
@@ -948,8 +1049,8 @@ describe('authorized internal case list display', () => {
     item.displaySummary.rightsHolderName = item.displaySummary.customerName;
     api.listCases.mockResolvedValue(result([item]));
     const { wrapper } = await mountList();
-    expect(wrapper.findAll('tbody td')).toHaveLength(18);
-    expect(wrapper.findAll('tbody td')[6]!.get('summary').text()).toBe(
+    expect(wrapper.findAll('tbody td')).toHaveLength(17);
+    expect(wrapper.findAll('tbody td')[5]!.get('span').text()).toBe(
       item.displaySummary.customerName,
     );
   });
@@ -1132,7 +1233,7 @@ describe('authorized internal case list display', () => {
         'input[aria-label="编号、案号、客户、权利主体、店铺、被告、法院、律师"]',
       )
       .setValue('未提交草稿');
-    await wrapper.get('[data-test="case-query-type"]').setValue('CRIMINAL');
+    expect(wrapper.find('[data-test="case-query-type"]').exists()).toBe(false);
     const createObjectURL = vi.fn(() => 'blob:case-list');
     const revokeObjectURL = vi.fn();
     vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
@@ -1151,7 +1252,6 @@ describe('authorized internal case list display', () => {
         view: 'department',
         stage: 'WAITING_ARCHIVE',
         q: '已应用',
-        caseType: 'CIVIL',
       },
       { signal: expect.any(AbortSignal) },
     );

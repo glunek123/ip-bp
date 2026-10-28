@@ -59,7 +59,15 @@ const valid = computed(
     rows.value.length <= 20 &&
     props.items.length === rows.value.length &&
     props.items.every(
-      (item) => item.stage === 'PENDING_MATCH' && item.canConsolidate,
+      (item) =>
+        [
+          'PENDING_MATCH',
+          'WAITING_COMPLAINT',
+          'WAITING_COMPLAINT_CONFIRMATION',
+          'WAITING_COMPLAINT_STAMP',
+        ].includes(item.stage) &&
+        item.stage === props.items[0]?.stage &&
+        item.canConsolidate,
     ) &&
     rows.value.every((row) => row.confirmed === true) &&
     Boolean(commonDefendant.value.name.trim()) &&
@@ -134,7 +142,7 @@ async function submit() {
       <ElButton @click="emit('close')">关闭</ElButton>
     </header>
     <p>
-      仅待匹配案件可合案。请逐案核对同一实际被告的类型、姓名及证件号或统一社会信用代码。
+      仅同一具体阶段的案件可合并；准备起诉阶段须由同一主办律师负责。请逐案核对实际被告身份。
     </p>
     <div class="consolidation-defendant">
       <label

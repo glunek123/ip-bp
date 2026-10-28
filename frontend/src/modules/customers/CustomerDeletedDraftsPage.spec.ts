@@ -62,6 +62,7 @@ it('keeps the exact restore request after CONTACT_BUSY and retries the same key'
   });
   try {
     await flushPromises();
+    expect(wrapper.find('main h1').exists()).toBe(false);
     await wrapper
       .get('[data-test="deleted-draft-row"] button')
       .trigger('click');

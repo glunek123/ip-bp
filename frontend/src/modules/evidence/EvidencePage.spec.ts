@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import EvidencePage from './EvidencePage.vue';
 
@@ -124,6 +125,227 @@ beforeEach(() => {
 });
 
 describe('EvidencePage', () => {
+  function sourceGroup(sourceId: string, shopName: string) {
+    return {
+      groupId: null,
+      groupVersion: 0,
+      sourceKind: 'CASE' as const,
+      sourceId,
+      sourceVersion: 7,
+      case: {
+        id: sourceId,
+        platform: 'TAOBAO',
+        shopName,
+        caseNo: `NO-${sourceId}`,
+        stage: 'WAITING_HEARING',
+        lawyerName: '办案律师',
+      },
+      items: [],
+      paperCertificates: [],
+    };
+  }
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (cause: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+  }
+  async function mountSource(sourceId: string) {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/evidence', component: EvidencePage }],
+    });
+    await router.push({
+      path: '/evidence',
+      query: { entrySourceKind: 'CASE', entrySourceId: sourceId },
+    });
+    await router.isReady();
+    const wrapper = mount(EvidencePage, { global: { plugins: [router] } });
+    return { router, wrapper };
+  }
+
+  it('opens the existing source editor from a case-detail entry and creates the first manual evidence row', async () => {
+    const source = {
+      groupId: null,
+      groupVersion: 0,
+      sourceKind: 'CASE',
+      sourceId: 'case-empty',
+      sourceVersion: 7,
+      case: {
+        id: 'case-empty',
+        platform: 'TAOBAO',
+        shopName: '空案件店铺',
+        caseNo: 'CASE-EMPTY',
+        stage: 'WAITING_HEARING',
+        lawyerName: '办案律师',
+      },
+      items: [],
+      paperCertificates: [],
+    };
+    api.getEvidenceSourceGroup.mockResolvedValue(source);
+    api.saveEvidenceSourceGroup.mockResolvedValue({
+      changed: true,
+      group: {
+        ...source,
+        groupId: 'group-new',
+        groupVersion: 1,
+        items: [
+          {
+            ...first,
+            id: 'item-new',
+            groupId: 'group-new',
+            caseId: 'case-empty',
+            displayCode: 'EV-NEW',
+            shelfLocation: 'A-01',
+            status: 'IN_STOCK',
+          },
+        ],
+      },
+    });
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/evidence', component: EvidencePage }],
+    });
+    await router.push({
+      path: '/evidence',
+      query: { entrySourceKind: 'CASE', entrySourceId: 'case-empty' },
+    });
+    await router.isReady();
+    const wrapper = mount(EvidencePage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    expect(api.getEvidenceSourceGroup).toHaveBeenCalledWith(
+      'CASE',
+      'case-empty',
+    );
+    expect(wrapper.get('[role="dialog"]').attributes('aria-label')).toBe(
+      '编辑证物',
+    );
+    expect(wrapper.text()).not.toContain('选择案件编辑证物');
+    await wrapper.get('input[aria-label="证物编号"]').setValue('EV-NEW');
+    await wrapper.get('input[aria-label="货架号"]').setValue('A-01');
+    await wrapper
+      .findAll('[role="dialog"] button')
+      .find((button) => button.text() === '保存')!
+      .trigger('click');
+    await flushPromises();
+
+    expect(api.saveEvidenceSourceGroup).toHaveBeenCalledWith(
+      'CASE',
+      'case-empty',
+      expect.objectContaining({
+        expectedSourceVersion: 7,
+        expectedGroupVersion: 0,
+        rows: [
+          expect.objectContaining({
+            displayCode: 'EV-NEW',
+            shelfLocation: 'A-01',
+            status: 'IN_STOCK',
+          }),
+        ],
+      }),
+      expect.any(String),
+    );
+    expect(router.currentRoute.value.query.entrySourceId).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('keeps a late list-group response from replacing the selected case source editor', async () => {
+    const firstGroup = await api.getEvidenceGroup();
+    const pendingListGroup = deferred<typeof firstGroup>();
+    api.getEvidenceGroup.mockReturnValue(pendingListGroup.promise);
+    api.getEvidenceSourceGroup.mockImplementation(
+      (_kind: string, sourceId: string) =>
+        Promise.resolve(
+          sourceGroup(
+            sourceId,
+            sourceId === 'case-a' ? '来源甲店铺' : '来源乙店铺',
+          ),
+        ),
+    );
+    const { router, wrapper } = await mountSource('case-a');
+    await flushPromises();
+
+    await wrapper.get('tbody tr').trigger('click');
+    expect(api.getEvidenceGroup).toHaveBeenCalledWith('case-1');
+    await router.replace({
+      path: '/evidence',
+      query: { entrySourceKind: 'CASE', entrySourceId: 'case-b' },
+    });
+    await flushPromises();
+    expect(wrapper.get('[role="dialog"]').text()).toContain('来源乙店铺');
+
+    pendingListGroup.resolve(firstGroup);
+    await flushPromises();
+
+    expect(wrapper.get('[role="dialog"]').attributes('aria-label')).toBe(
+      '编辑证物',
+    );
+    expect(wrapper.get('[role="dialog"]').text()).toContain('来源乙店铺');
+    expect(wrapper.get('[role="dialog"]').text()).not.toContain('测试店铺');
+    wrapper.unmount();
+  });
+
+  it('does not reopen a source editor when its URL is cleared before the read returns', async () => {
+    const pendingSource = deferred<ReturnType<typeof sourceGroup>>();
+    api.getEvidenceSourceGroup.mockReturnValue(pendingSource.promise);
+    const { router, wrapper } = await mountSource('case-a');
+    await flushPromises();
+    expect(api.getEvidenceSourceGroup).toHaveBeenCalledWith('CASE', 'case-a');
+
+    await router.replace('/evidence');
+    await flushPromises();
+    pendingSource.resolve(sourceGroup('case-a', '来源甲店铺'));
+    await flushPromises();
+
+    expect(router.currentRoute.value.query.entrySourceId).toBeUndefined();
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('来源甲店铺');
+    expect(api.saveEvidenceSourceGroup).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('clears the prior source editor before showing a permission error for a new source', async () => {
+    api.getEvidenceSourceGroup.mockImplementation(
+      (_kind: string, sourceId: string) =>
+        sourceId === 'case-a'
+          ? Promise.resolve(sourceGroup('case-a', '来源甲店铺'))
+          : Promise.reject(new Error('当前账号无权查看证物')),
+    );
+    const { router, wrapper } = await mountSource('case-a');
+    await flushPromises();
+    expect(wrapper.get('[role="dialog"]').text()).toContain('来源甲店铺');
+
+    await router.replace({
+      path: '/evidence',
+      query: { entrySourceKind: 'CASE', entrySourceId: 'case-b' },
+    });
+    await flushPromises();
+
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    expect(wrapper.get('[role="alert"]').text()).toBe('当前账号无权查看证物');
+    expect(wrapper.text()).not.toContain('来源甲店铺');
+    expect(api.saveEvidenceSourceGroup).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('does not open the previously selected evidence while a new filter is loading', async () => {
+    const wrapper = mount(EvidencePage);
+    await flushPromises();
+    await wrapper.get('tbody tr input[type=checkbox]').setValue(true);
+    api.listEvidence.mockImplementationOnce(() => new Promise(() => {}));
+    await wrapper.get('input[placeholder="搜索办案律师…"]').setValue('新筛选');
+    const edit = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '编辑');
+    expect(edit?.attributes('disabled')).toBeDefined();
+    await wrapper.get('tbody tr').trigger('click');
+    expect(api.getEvidenceGroup).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
   it('groups page and list actions and keeps the empty table structure available', async () => {
     api.listEvidence.mockResolvedValueOnce({
       items: [],
@@ -145,12 +367,23 @@ describe('EvidencePage', () => {
     const wrapper = mount(EvidencePage);
     await flushPromises();
 
-    expect(wrapper.find('.page-head__actions.operation-bar').exists()).toBe(
-      true,
-    );
+    expect(wrapper.get('h1.sr-only').text()).toBe('证物管理');
+    expect(wrapper.text()).not.toContain('选择案件编辑证物');
+    expect(
+      wrapper
+        .find('.filters')
+        .element.compareDocumentPosition(wrapper.find('.list-card').element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(wrapper.find('.list-card > .actions.operation-bar').exists()).toBe(
       true,
     );
+    expect(
+      wrapper
+        .find('.list-card > .actions')
+        .element.compareDocumentPosition(wrapper.find('.table-wrap').element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(wrapper.find('.table-wrap').exists()).toBe(true);
     expect(wrapper.text()).toContain('没有匹配的证物');
     expect(wrapper.find('.pager.operation-bar').exists()).toBe(false);
@@ -204,38 +437,75 @@ describe('EvidencePage', () => {
     wrapper.unmount();
   });
 
-  it('keeps all progress choices available in a collapsed multi-select filter', async () => {
+  it('searches, selects and clears the server-filtered progress multi-select', async () => {
     const wrapper = mount(EvidencePage);
     await flushPromises();
 
-    expect(wrapper.find<HTMLDetailsElement>('.stage-filter').element.open).toBe(
-      false,
-    );
-    expect(wrapper.findAll('.stage-row input[type="checkbox"]')).toHaveLength(
-      16,
-    );
-    expect(wrapper.find('.stage-filter summary').text()).toContain('已选 0 项');
-    await wrapper
-      .findAll('.stage-row label')
-      .find((label) => label.text().includes('待匹配'))!
-      .get('input')
-      .setValue(true);
+    expect(wrapper.findAll('.stage-filter .el-select')).toHaveLength(1);
+    const search = wrapper.find('.stage-filter input');
+    await search.setValue('待匹配');
+    await wrapper.find('.stage-filter .el-select__wrapper').trigger('click');
     await flushPromises();
-    expect(wrapper.find<HTMLDetailsElement>('.stage-filter').element.open).toBe(
-      true,
+    const option = document.body.querySelector<HTMLElement>(
+      '.evidence-stage-options .el-select-dropdown__item',
     );
-    expect(wrapper.find('.stage-filter summary').text()).toContain('已选 1 项');
+    expect(option?.textContent).toContain('待匹配');
+    option?.click();
+    await flushPromises();
+    expect(wrapper.find('.stage-filter').text()).toContain('已选 1 项');
     expect(api.listEvidence).toHaveBeenLastCalledWith(
       expect.objectContaining({ stages: ['PENDING_MATCH'] }),
       expect.any(Object),
     );
-    await wrapper.get('.stage-row button').trigger('click');
+    wrapper
+      .findComponent({ name: 'ElSelect' })
+      .vm.$emit('update:modelValue', []);
     await flushPromises();
-    expect(wrapper.find('.stage-filter summary').text()).toContain('已选 0 项');
+    expect(wrapper.find('.stage-filter').text()).toContain('已选 0 项');
     expect(api.listEvidence).toHaveBeenLastCalledWith(
       expect.objectContaining({ stages: [] }),
       expect.any(Object),
     );
+    wrapper.unmount();
+  });
+
+  it('sends one-sided hearing and closing dates unchanged to the server filters', async () => {
+    const wrapper = mount(EvidencePage);
+    await flushPromises();
+    const hearing = wrapper.get('[aria-label="开庭日期"]');
+    expect((hearing.element as HTMLDetailsElement).open).toBe(false);
+    await hearing.get('summary').trigger('click');
+    await hearing.findAll('input')[0]!.setValue('2026-03-04');
+    await flushPromises();
+    expect(hearing.find('summary').text()).toContain('自 2026-03-04 起');
+    expect(api.listEvidence).toHaveBeenLastCalledWith(
+      expect.objectContaining({ hearFrom: '2026-03-04' }),
+      expect.any(Object),
+    );
+
+    const closing = wrapper.get('[aria-label="结案日期"]');
+    await closing.get('summary').trigger('click');
+    await closing.findAll('input')[1]!.setValue('2026-03-31');
+    await flushPromises();
+    expect(closing.find('summary').text()).toContain('至 2026-03-31');
+    expect(api.listEvidence).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        hearFrom: '2026-03-04',
+        closeTo: '2026-03-31',
+      }),
+      expect.any(Object),
+    );
+    await hearing.get('summary').trigger('click');
+    await hearing.get('summary').trigger('click');
+    await hearing.get('.panel-actions button').trigger('click');
+    await flushPromises();
+    expect(hearing.find('summary').text()).toContain('不限日期');
+    expect(api.listEvidence).toHaveBeenLastCalledWith(
+      expect.objectContaining({ hearFrom: undefined, hearTo: undefined }),
+      expect.any(Object),
+    );
+    await hearing.get('.panel-actions button:last-child').trigger('click');
+    expect((hearing.element as HTMLDetailsElement).open).toBe(false);
     wrapper.unmount();
   });
 
@@ -307,10 +577,7 @@ describe('EvidencePage', () => {
     materials.downloadMaterialVersion.mockResolvedValue(undefined);
     const wrapper = mount(EvidencePage);
     await flushPromises();
-    await wrapper
-      .findAll('button')
-      .filter((button) => button.text() === '查看')[0]
-      .trigger('click');
+    await wrapper.get('tbody tr').trigger('click');
     await flushPromises();
     expect(wrapper.find('[role="dialog"]').text()).toContain('证书一.pdf');
     await wrapper
@@ -325,50 +592,20 @@ describe('EvidencePage', () => {
     );
     wrapper.unmount();
   });
-  it('keeps the source chooser closed when its pending group read completes after closing', async () => {
-    const existing = await api.getEvidenceGroup();
-    api.listEvidenceGroups.mockResolvedValue({
-      items: [
-        {
-          groupId: existing.groupId,
-          sourceKind: existing.sourceKind,
-          sourceId: existing.sourceId,
-          businessNo: 'NT-1',
-          shopName: '测试店铺',
-          activeItemCount: 2,
-        },
-      ],
-      total: 1,
-      page: 1,
-      pageSize: 20,
-    });
-    let finishRead: ((value: unknown) => void) | undefined;
-    api.getEvidenceGroup.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finishRead = resolve;
-        }),
-    );
+  it('keeps existing evidence editing available after removing the list-level source entry', async () => {
     const wrapper = mount(EvidencePage);
     await flushPromises();
+    expect(wrapper.text()).not.toContain('选择案件编辑证物');
+    await wrapper.get('tbody tr input[type=checkbox]').setValue(true);
     await wrapper
       .findAll('button')
-      .filter((button) => button.text() === '选择案件编辑证物')[0]
+      .find((button) => button.text() === '编辑')!
       .trigger('click');
     await flushPromises();
-    await wrapper
-      .findAll('button')
-      .filter((button) => button.text() === '编辑证物')[0]
-      .trigger('click');
-    await wrapper
-      .findAll('[role="dialog"] button')
-      .filter((button) => button.text() === '关闭')[0]
-      .trigger('click');
-    finishRead?.(existing);
-    await flushPromises();
-    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
-    expect(api.saveEvidenceGroup).not.toHaveBeenCalled();
-    expect(api.saveEvidenceSourceGroup).not.toHaveBeenCalled();
+    expect(wrapper.find('[role="dialog"]').attributes('aria-label')).toBe(
+      '编辑证物',
+    );
+    expect(api.getEvidenceGroup).toHaveBeenCalledWith('case-1');
     wrapper.unmount();
   });
   it('shows a failed load as unknown data rather than a zero-item warehouse and can retry', async () => {
@@ -377,7 +614,7 @@ describe('EvidencePage', () => {
     const wrapper = mount(EvidencePage);
     await flushPromises();
     expect(wrapper.find('[role="alert"]').text()).toBe('暂时无法读取');
-    expect(wrapper.text()).toContain('证物数量待加载');
+    expect(wrapper.text()).not.toContain('证物数量待加载');
     expect(wrapper.text()).not.toContain('没有匹配的证物');
     api.listEvidence.mockResolvedValue(loaded);
     await wrapper
@@ -385,7 +622,7 @@ describe('EvidencePage', () => {
       .filter((button) => button.text() === '重试')[0]
       .trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('共 2 件证物');
+    expect(wrapper.text()).not.toContain('共 2 件证物');
   });
   it('does not prefill a mixed empty/nonempty remark and distinguishes duplicate paper numbers', async () => {
     const existing = await api.getEvidenceGroup();
@@ -402,9 +639,10 @@ describe('EvidencePage', () => {
     });
     const wrapper = mount(EvidencePage);
     await flushPromises();
+    await wrapper.get('tbody tr input[type=checkbox]').setValue(true);
     await wrapper
       .findAll('button')
-      .filter((button) => button.text() === '编辑')[0]
+      .find((button) => button.text() === '编辑')!
       .trigger('click');
     await flushPromises();
     expect(
@@ -424,10 +662,7 @@ describe('EvidencePage', () => {
     const wrapper = mount(EvidencePage);
     await flushPromises();
     expect(wrapper.text()).toContain('N1 / N2');
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '查看')
-      ?.trigger('click');
+    await wrapper.get('tbody tr').trigger('click');
     await flushPromises();
     expect(wrapper.find('[role="dialog"]').text()).toContain('N1');
     expect(wrapper.find('[role="dialog"]').text()).toContain('N2');
@@ -447,10 +682,7 @@ describe('EvidencePage', () => {
     });
     const wrapper = mount(EvidencePage);
     await flushPromises();
-    await wrapper
-      .findAll('button')
-      .filter((button) => button.text() === '查看')[0]
-      .trigger('click');
+    await wrapper.get('tbody tr').trigger('click');
     await flushPromises();
     const dialogText = wrapper.get('[role="dialog"]').text();
     expect(dialogText).toContain('平台：淘宝');
@@ -473,10 +705,7 @@ describe('EvidencePage', () => {
       });
       const wrapper = mount(EvidencePage);
       await flushPromises();
-      await wrapper
-        .findAll('button')
-        .filter((button) => button.text() === '查看')[0]
-        .trigger('click');
+      await wrapper.get('tbody tr').trigger('click');
       await flushPromises();
       const dialogText = wrapper.get('[role="dialog"]').text();
       expect(dialogText).toContain('平台：—');
@@ -523,9 +752,10 @@ describe('EvidencePage', () => {
   it('auto-stocks a completed draft, respects a manual status choice and cancels without a write', async () => {
     const wrapper = mount(EvidencePage);
     await flushPromises();
+    await wrapper.get('tbody tr input[type=checkbox]').setValue(true);
     await wrapper
       .findAll('button')
-      .filter((button) => button.text() === '编辑')[0]
+      .find((button) => button.text() === '编辑')!
       .trigger('click');
     await flushPromises();
     const shelf = wrapper.findAll('input[aria-label="货架号"]')[0];
@@ -547,9 +777,10 @@ describe('EvidencePage', () => {
   it('reuses an unknown group-save request key and displays no-change feedback inside the dialog', async () => {
     const wrapper = mount(EvidencePage);
     await flushPromises();
+    await wrapper.get('tbody tr input[type=checkbox]').setValue(true);
     await wrapper
       .findAll('button')
-      .filter((button) => button.text() === '编辑')[0]
+      .find((button) => button.text() === '编辑')!
       .trigger('click');
     await flushPromises();
     const snapshot = api.getEvidenceGroup.mock.results[0].value;
@@ -606,93 +837,4 @@ describe('EvidencePage', () => {
       expect.any(String),
     );
   });
-
-  it.each([false, true])(
-    'opens a real empty source without a dummy item; persisted=%s',
-    async (persisted) => {
-      const empty = {
-        groupId: persisted ? 'empty-group' : null,
-        groupVersion: persisted ? 4 : 0,
-        sourceKind: 'CASE',
-        sourceId: 'case-empty',
-        sourceVersion: 9,
-        case: {
-          id: 'case-empty',
-          platform: null,
-          shopName: null,
-          caseNo: null,
-          stage: 'PENDING_MATCH',
-          lawyerName: null,
-        },
-        items: [],
-        paperCertificates: [],
-      };
-      api.listEvidenceGroups.mockResolvedValue({
-        items: [
-          {
-            ...empty,
-            caseId: 'case-empty',
-            businessNo: 'IP-EMPTY',
-            shopName: null,
-            activeItemCount: 0,
-          },
-        ],
-        total: 1,
-        page: 1,
-        pageSize: 20,
-      });
-      api.getEvidenceGroup.mockResolvedValue(empty);
-      api.getEvidenceSourceGroup.mockResolvedValue(empty);
-      api.saveEvidenceGroup.mockResolvedValue({ changed: false, group: empty });
-      api.saveEvidenceSourceGroup.mockResolvedValue({
-        changed: false,
-        group: empty,
-      });
-      const wrapper = mount(EvidencePage);
-      await flushPromises();
-      await wrapper
-        .findAll('button')
-        .filter((button) => button.text() === '选择案件编辑证物')[0]
-        .trigger('click');
-      await flushPromises();
-      await wrapper
-        .findAll('button')
-        .filter((button) => button.text() === '编辑证物')[0]
-        .trigger('click');
-      await flushPromises();
-      expect(wrapper.findAll('input[aria-label="证物编号"]')).toHaveLength(1);
-      await wrapper.find('input[aria-label="证物编号"]').setValue('NEW-EV');
-      await wrapper
-        .findAll('button')
-        .filter((button) => button.text() === '保存')[0]
-        .trigger('click');
-      await flushPromises();
-      if (persisted) {
-        expect(api.saveEvidenceGroup).toHaveBeenCalledWith(
-          'empty-group',
-          expect.objectContaining({ expectedGroupVersion: 4 }),
-          expect.any(String),
-        );
-        expect(api.saveEvidenceSourceGroup).not.toHaveBeenCalled();
-      } else {
-        expect(api.saveEvidenceSourceGroup).toHaveBeenCalledWith(
-          'CASE',
-          'case-empty',
-          {
-            expectedGroupVersion: 0,
-            expectedSourceVersion: 9,
-            rows: [
-              {
-                displayCode: 'NEW-EV',
-                shelfLocation: '',
-                status: 'UNDELIVERED',
-                manualStatus: false,
-              },
-            ],
-          },
-          expect.any(String),
-        );
-      }
-    },
-  );
 });

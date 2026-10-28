@@ -183,6 +183,7 @@ describe('PeopleAccessPage', () => {
     });
     await flushPromises();
 
+    expect(wrapper.find('h1').exists()).toBe(false);
     expect(wrapper.text()).toContain('运营甲');
     expect(wrapper.text()).toContain('商标组');
     expect(wrapper.text()).toContain('客户经办');

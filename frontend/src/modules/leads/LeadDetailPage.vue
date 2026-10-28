@@ -39,6 +39,7 @@ import {
 } from './lead-options';
 import { summarizeLeadProducts } from './lead-display';
 import { useAuthStore } from '../../stores/auth';
+import { listReturnPath } from '../../app/list-row-navigation';
 import LeadQuickActionsPanel from './LeadQuickActionsPanel.vue';
 import RoutineBusinessEditor from './RoutineBusinessEditor.vue';
 import {
@@ -46,6 +47,7 @@ import {
   type LeadWorkflowResult,
 } from './LeadListWorkflowPanel.vue';
 const route = useRoute();
+const returnTo = computed(() => listReturnPath(route.query.returnTo, '/leads'));
 const auth = useAuthStore();
 const actorKey = computed(
   () =>
@@ -561,7 +563,7 @@ onBeforeUnmount(clearContext);
 <template>
   <div class="page-view page-view--narrow lead-detail-page">
     <main>
-      <RouterLink class="back-link" to="/leads">← 返回线索列表</RouterLink>
+      <RouterLink class="back-link" :to="returnTo">← 返回线索列表</RouterLink>
       <p
         v-if="pendingPush?.leadId === String(route.params.id) && !workflowOpen"
         role="alert"

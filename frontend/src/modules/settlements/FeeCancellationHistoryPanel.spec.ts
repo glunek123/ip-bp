@@ -47,6 +47,12 @@ describe('FeeCancellationHistoryPanel', () => {
     });
     await flushPromises();
     expect(wrapper.text()).toContain('取消／作废记录');
+    expect(
+      wrapper.get('.fee-cancellation-history__filters').classes(),
+    ).toContain('operation-bar');
+    expect(
+      wrapper.get('.fee-cancellation-history__filter-actions').classes(),
+    ).toContain('operation-actions');
     expect(wrapper.text()).toContain('待核对');
     await wrapper.get('input[placeholder="输入案件编号"]').setValue('案件001');
     await wrapper.get('form').trigger('submit');

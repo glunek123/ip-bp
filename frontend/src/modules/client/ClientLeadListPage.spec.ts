@@ -62,6 +62,27 @@ beforeEach(() => {
 });
 
 describe('ClientLeadListPage', () => {
+  it('opens a detail from the row while preserving the current queue and page', async () => {
+    api.listClientLeads.mockImplementation(async (_view, page) => ({
+      items: [lead],
+      total: 100,
+      page,
+      pageSize: 20,
+    }));
+    const { wrapper, router } = await mountPage(
+      '/client/leads?view=processed&page=2',
+    );
+    await wrapper.get('[data-test="client-lead-row"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.fullPath).toBe(
+      '/client/leads/lead-1?view=processed&page=2',
+    );
+    expect(
+      wrapper.get('[data-test="client-lead-row"] a').attributes('href'),
+    ).toBe('/client/leads/lead-1?view=processed&page=2');
+    wrapper.unmount();
+  });
+
   it('labels a transferred infringement decision in the processed queue without matter data', async () => {
     api.listClientLeads.mockResolvedValueOnce({
       items: [transferredLead],
@@ -89,7 +110,7 @@ describe('ClientLeadListPage', () => {
     );
     expect(wrapper.text()).toContain('线索待审核');
     expect(wrapper.text()).toContain('主体甲');
-    expect(wrapper.text()).toContain('企业线索审核');
+    expect(wrapper.get('h1.sr-only').text()).toContain('企业线索审核');
     expect(wrapper.text()).not.toContain('Enterprise review');
     expect(
       wrapper

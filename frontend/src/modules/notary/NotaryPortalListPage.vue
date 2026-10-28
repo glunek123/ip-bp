@@ -14,6 +14,7 @@ import type {
 } from '../../app/list-workflow-context';
 import NotaryPortalWorkflowPanel from './NotaryPortalWorkflowPanel.vue';
 import { useAuthStore } from '../../stores/auth';
+import { isListRowClick, listReturnPath } from '../../app/list-row-navigation';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
@@ -181,6 +182,21 @@ function selectStage(
 function goToPage(value: number) {
   void router.push({ query: { ...route.query, page: String(value) } });
 }
+function openMatterRow(
+  event: InstanceType<typeof globalThis.MouseEvent>,
+  matter: NotaryPortalMatterSummary,
+): void {
+  if (!isListRowClick(event)) return;
+  void router.push(matterLocation(matter));
+}
+function matterLocation(matter: NotaryPortalMatterSummary) {
+  return {
+    path: `/notary-portal/matters/${encodeURIComponent(matter.id)}`,
+    query: {
+      returnTo: listReturnPath(route.fullPath, '/notary-portal/matters'),
+    },
+  };
+}
 const stageLabel = () =>
   stage.value === 'WAITING_UNBOX'
     ? '待开箱'
@@ -201,19 +217,12 @@ onBeforeUnmount(() => request?.abort());
 <template>
   <div class="page-view page-view--narrow">
     <main>
+      <h1 class="sr-only">公证事项</h1>
       <div class="page-head">
         <div>
           <p class="eyebrow">公证处办理端</p>
-          <h1>公证事项</h1>
           <p>这里只显示分派给当前公证处的办理事项。</p>
         </div>
-        <ElButton
-          data-test="refresh-notary-portal"
-          text
-          :loading="state === 'loading'"
-          @click="load"
-          >刷新</ElButton
-        >
       </div>
       <nav class="notary-portal-segments" aria-label="事项阶段">
         <button
@@ -227,6 +236,15 @@ onBeforeUnmount(() => request?.abort());
           {{ item.label }}
         </button>
       </nav>
+      <div class="operation-bar notary-portal-toolbar">
+        <ElButton
+          data-test="refresh-notary-portal"
+          text
+          :loading="state === 'loading'"
+          @click="load"
+          >刷新</ElButton
+        >
+      </div>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h2>正在读取{{ stageLabel() }}事项</h2>
       </section>
@@ -244,7 +262,13 @@ onBeforeUnmount(() => request?.abort());
           当前没有{{ stageLabel() }}事项。
         </p>
         <ul v-else class="notary-offices-list">
-          <li v-for="matter in matters" :key="matter.id">
+          <li
+            v-for="matter in matters"
+            :key="matter.id"
+            class="business-row-link"
+            data-test="notary-portal-row-item"
+            @click="openMatterRow($event, matter)"
+          >
             <ElButton
               v-if="actionFor(matter)"
               type="primary"
@@ -254,7 +278,7 @@ onBeforeUnmount(() => request?.abort());
             >
             <RouterLink
               data-test="notary-portal-row"
-              :to="`/notary-portal/matters/${encodeURIComponent(matter.id)}`"
+              :to="matterLocation(matter)"
               >{{ matter.businessNo }}</RouterLink
             >
             <span class="pill">{{
@@ -304,3 +328,16 @@ onBeforeUnmount(() => request?.abort());
     </main>
   </div>
 </template>
+
+<style scoped>
+.notary-portal-segments {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.notary-portal-toolbar {
+  justify-content: flex-end;
+  margin-block: 8px 12px;
+}
+</style>

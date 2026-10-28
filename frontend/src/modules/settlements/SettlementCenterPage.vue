@@ -19,6 +19,8 @@ import {
 } from '../../api/settlements';
 import { useAuthStore } from '../../stores/auth';
 import FeeCenterPanel from './FeeCenterPanel.vue';
+import DateRangeFilter from '../../app/DateRangeFilter.vue';
+import { isListRowClick } from '../../app/list-row-navigation';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElInput } from 'element-plus/es/components/input/index.mjs';
 import {
@@ -352,6 +354,20 @@ async function viewBill(id: string): Promise<void> {
     error.value = message(cause);
   }
 }
+function openBillRow(
+  event: InstanceType<typeof globalThis.MouseEvent>,
+  bill: SettlementBill,
+): void {
+  if (!isListRowClick(event)) return;
+  void viewBill(bill.id);
+}
+function openBillFromKeyboard(
+  event: InstanceType<typeof globalThis.KeyboardEvent>,
+  bill: SettlementBill,
+): void {
+  if (event.target !== event.currentTarget) return;
+  void viewBill(bill.id);
+}
 async function cancelBill(): Promise<void> {
   if (
     detail.value === null ||
@@ -407,8 +423,8 @@ async function cancelBill(): Promise<void> {
 
 <template>
   <main class="settlement-center">
+    <h1 class="sr-only">结算中心</h1>
     <header class="settlement-center__heading">
-      <h1>结算中心</h1>
       <p>
         发起、入单与财务实际结果分别展示。未接入财务回填时，实际收付与日期保持待定。
       </p>
@@ -536,15 +552,22 @@ async function cancelBill(): Promise<void> {
               <ElOption value="UNBILLED" label="未入账单" />
               <ElOption value="BILLED" label="已入账单" /> </ElSelect
           ></label>
-          <label>发起起日<ElInput v-model="from" type="date" /></label
-          ><label>发起止日<ElInput v-model="to" type="date" /></label>
-          <div class="operation-actions settlement-center__filter-actions">
-            <ElButton native-type="submit" class="action-size--standard"
+          <DateRangeFilter
+            label="发起日期"
+            :start="from"
+            :end="to"
+            start-label="发起起日"
+            end-label="发起止日"
+            @update:start="from = $event ?? ''"
+            @update:end="to = $event ?? ''"
+          />
+          <div class="operation-bar settlement-center__filter-actions">
+            <ElButton native-type="submit" class="action-size--compact"
               >查询</ElButton
             >
             <ElButton
               native-type="button"
-              class="action-size--wide"
+              class="action-size--compact"
               @click="clearFilter"
               >清除筛选</ElButton
             >
@@ -689,10 +712,13 @@ async function cancelBill(): Promise<void> {
                 value="ACTIVE"
                 label="已发起" /><ElOption
                 value="CANCELLED"
-                label="已撤销" /></ElSelect></label
-          ><ElButton native-type="submit" class="action-size--standard"
-            >查询账单</ElButton
-          >
+                label="已撤销" /></ElSelect
+          ></label>
+          <div class="operation-bar settlement-center__bill-filter-actions">
+            <ElButton native-type="submit" class="action-size--compact"
+              >查询账单</ElButton
+            >
+          </div>
         </form>
         <p v-if="bills.items.length === 0">暂无账单</p>
         <div v-else class="settlement-center__table">
@@ -705,24 +731,26 @@ async function cancelBill(): Promise<void> {
                 <th>条数</th>
                 <th>金额（元）</th>
                 <th>状态</th>
-                <th>操作</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="bill in bills.items" :key="bill.id">
+              <tr
+                v-for="bill in bills.items"
+                :key="bill.id"
+                class="business-row-link"
+                data-test="settlement-bill-row"
+                :aria-label="`打开账单 ${bill.billNo} 详情`"
+                tabindex="0"
+                @click="openBillRow($event, bill)"
+                @keydown.enter.prevent="openBillFromKeyboard($event, bill)"
+                @keydown.space.prevent="openBillFromKeyboard($event, bill)"
+              >
                 <td>{{ bill.billNo }}</td>
                 <td>{{ bill.billDate }}</td>
                 <td>{{ bill.payees.join('、') }}</td>
                 <td>{{ bill.count }}</td>
                 <td class="money">{{ bill.amount }}</td>
                 <td>{{ bill.cancelledAt ? '已撤销' : '已发起' }}</td>
-                <td>
-                  <ElButton
-                    class="action-size--compact"
-                    @click="viewBill(bill.id)"
-                    >查看</ElButton
-                  >
-                </td>
               </tr>
             </tbody>
           </table>
@@ -897,7 +925,9 @@ async function cancelBill(): Promise<void> {
 .settlement-center__filters,
 .settlement-center__bill-filters {
   display: grid;
-  grid-template-columns: minmax(190px, 2fr) repeat(4, minmax(100px, 1fr)) auto;
+  grid-template-columns:
+    minmax(190px, 2fr) repeat(2, minmax(130px, 1fr))
+    minmax(170px, 1.2fr) auto;
   align-items: end;
   gap: 8px;
   min-width: 0;
@@ -923,7 +953,11 @@ async function cancelBill(): Promise<void> {
   min-width: 0;
 }
 .settlement-center__filter-actions {
+  justify-self: end;
   flex-wrap: nowrap;
+}
+.settlement-center__bill-filter-actions {
+  justify-content: flex-end;
 }
 .settlement-center__selection,
 .settlement-center__note {

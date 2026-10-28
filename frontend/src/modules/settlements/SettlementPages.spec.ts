@@ -35,6 +35,11 @@ const api = vi.hoisted(() => ({
   updateFeeProof: vi.fn(),
   batchFees: vi.fn(),
 }));
+const feeCancellationApi = vi.hoisted(() => ({ cancelFee: vi.fn() }));
+vi.mock('../../api/fee-cancellations', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/fee-cancellations')>()),
+  ...feeCancellationApi,
+}));
 vi.mock('../../api/settlements', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/settlements')>()),
   ...api,
@@ -184,6 +189,44 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 describe('settlement page behavior (mounted components, not real browser)', () => {
+  it('uses one date-range filter and a compact right-side filter toolbar', async () => {
+    const wrapper = render(SettlementCenterPage);
+    await flushPromises();
+    expect(wrapper.get('h1.sr-only').text()).toBe('结算中心');
+
+    const range = wrapper.get('.settlement-center__filters .date-range');
+    expect(range.get('summary').text()).toContain('发起日期');
+    expect(range.findAll('input[type="date"]')).toHaveLength(2);
+    const dateInputs = range.findAll('input[type="date"]');
+    await dateInputs[0]!.setValue('2026-10-01');
+    await dateInputs[1]!.setValue('2026-10-31');
+    await wrapper.get('.settlement-center__filters').trigger('submit');
+    await flushPromises();
+    expect(api.listSettlementLaunches).toHaveBeenLastCalledWith(
+      'CUSTOMER',
+      1,
+      expect.anything(),
+      expect.objectContaining({ from: '2026-10-01', to: '2026-10-31' }),
+    );
+    const actions = wrapper.get('.settlement-center__filter-actions');
+    expect(actions.classes()).toContain('operation-bar');
+    expect(
+      actions
+        .findAll('button')
+        .every((item) => item.classes().includes('action-size--compact')),
+    ).toBe(true);
+
+    await range.get('.panel-actions button').trigger('click');
+    await wrapper.get('.settlement-center__filters').trigger('submit');
+    await flushPromises();
+    expect(api.listSettlementLaunches).toHaveBeenLastCalledWith(
+      'CUSTOMER',
+      1,
+      expect.anything(),
+      expect.objectContaining({ from: '', to: '' }),
+    );
+  });
+
   it('hides both settlement pagers when the first page is the only page', async () => {
     api.listSettlementLaunches.mockResolvedValue({
       items: [],
@@ -599,8 +642,13 @@ describe('settlement page behavior (mounted components, not real browser)', () =
       });
       const wrapper = render(SettlementCenterPage);
       await flushPromises();
-      await button(wrapper, '查看').trigger('click');
+      const billRow = wrapper.get('[data-test="settlement-bill-row"]');
+      await billRow.trigger('click');
       await flushPromises();
+      expect(billRow.find('button').exists()).toBe(false);
+      expect(
+        wrapper.findAll('.settlement-center__bills thead th'),
+      ).toHaveLength(6);
       const detail = wrapper.get('[aria-label="账单详情"]');
       expect(detail.findAll('th').map((cell) => cell.text())).toEqual([
         '收付方',
@@ -621,6 +669,85 @@ describe('settlement page behavior (mounted components, not real browser)', () =
       expect(detail.text()).not.toContain('case-uuid');
     },
   );
+  it.each(['Enter', ' '])(
+    'opens a bill detail from the keyboard using %s',
+    async (key) => {
+      api.listSettlementBills.mockResolvedValue({
+        items: [
+          {
+            id: 'bill-keyboard',
+            billNo: '2026101900002',
+            side: 'CUSTOMER',
+            billDate: '2026-10-19',
+            amount: '20.00',
+            note: null,
+            cancelledAt: null,
+            cancellationReason: null,
+            payees: ['客户甲'],
+            count: 1,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 100,
+      });
+      api.getSettlementBill.mockResolvedValue({
+        id: 'bill-keyboard',
+        billNo: '2026101900002',
+        side: 'CUSTOMER',
+        billDate: '2026-10-19',
+        amount: '20.00',
+        note: null,
+        cancelledAt: null,
+        cancellationReason: null,
+        payees: ['客户甲'],
+        count: 1,
+        items: [],
+      });
+      const wrapper = render(SettlementCenterPage);
+      await flushPromises();
+      const row = wrapper.get('[data-test="settlement-bill-row"]');
+      expect(row.attributes('tabindex')).toBe('0');
+      await row.trigger('keydown', { key });
+      await flushPromises();
+      expect(api.getSettlementBill).toHaveBeenCalledWith('bill-keyboard');
+      expect(wrapper.get('[aria-label="账单详情"]').text()).toContain(
+        '2026101900002',
+      );
+    },
+  );
+  it('does not open bill detail for selected text or summary totals', async () => {
+    api.listSettlementBills.mockResolvedValue({
+      items: [
+        {
+          id: 'bill-selected',
+          billNo: '2026101900003',
+          side: 'CUSTOMER',
+          billDate: '2026-10-19',
+          amount: '20.00',
+          note: null,
+          cancelledAt: null,
+          cancellationReason: null,
+          payees: ['客户甲'],
+          count: 1,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100,
+    });
+    const wrapper = render(SettlementCenterPage);
+    await flushPromises();
+    vi.spyOn(globalThis, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+      toString: () => 'selected bill number',
+    } as Selection);
+    await wrapper.get('[data-test="settlement-bill-row"]').trigger('click');
+    await wrapper.get('.kpis').trigger('click');
+    await flushPromises();
+    expect(api.getSettlementBill).not.toHaveBeenCalled();
+    expect(wrapper.find('[aria-label="账单详情"]').exists()).toBe(false);
+  });
   it('recalculates the draft immediately and saves a rounded manual value for this case only', async () => {
     const wrapper = render(CaseSettlementPanel, {
       caseId: 'case',
@@ -888,6 +1015,35 @@ describe('zero amount fee launch handling', () => {
     };
   }
 
+  it('keeps fee filters above the list and aligns actions while preserving the fee date range', async () => {
+    api.listFees.mockResolvedValue(listResult([zeroFee]));
+    const wrapper = render(FeeCenterPanel, { canCreate: true });
+    await flushPromises();
+
+    expect(wrapper.find('.fee-center__heading h2').exists()).toBe(false);
+    expect(wrapper.find('.fee-center__heading-actions').exists()).toBe(true);
+    expect(wrapper.find('.fee-center__filter-actions').classes()).toContain(
+      'operation-actions',
+    );
+    expect(
+      wrapper
+        .find('.fee-center__filters')
+        .element.compareDocumentPosition(
+          wrapper.get('.fee-center__toolbar').element,
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const range = wrapper.get('.fee-center__filters .date-range');
+    const dates = range.findAll('input[type="date"]');
+    await dates[0]!.setValue('2026-10-01');
+    await dates[1]!.setValue('2026-10-31');
+    await wrapper.get('.fee-center__filters').trigger('submit');
+    await flushPromises();
+    expect(api.listFees).toHaveBeenLastCalledWith(
+      expect.objectContaining({ from: '2026-10-01', to: '2026-10-31' }),
+      expect.anything(),
+    );
+  });
+
   it('disables batch launch and explains zero-only selection while retaining the row', async () => {
     api.listFees.mockResolvedValue(listResult([zeroFee]));
     const wrapper = render(FeeCenterPanel, { canLaunch: true });
@@ -947,75 +1103,232 @@ describe('zero amount fee launch handling', () => {
   });
 });
 
-describe('stable single fee removal', () => {
-  it.each(['single row', 'selected batch'] as const)(
-    'does not submit or persist a pending removal when cancelling %s',
-    async (entryPoint) => {
-      const confirm = vi.spyOn(globalThis, 'confirm').mockReturnValue(false);
-      const fee = {
-        id: 'cancel-fee',
-        caseId: 'case',
-        businessNo: 'CASE-CANCEL',
-        type: '诉讼费',
-        direction: '支出',
-        status: '未发起',
-        amount: '2.34',
-        feeDate: '2026-10-24',
-        source: 'manual',
-        note: null,
-        version: 1,
-        proofMaterialId: null,
-        proofContentVersionId: null,
-        proofOriginalFilename: null,
-        defendantNames: [],
-        platform: null,
-        shopName: null,
-        courtCaseNo: null,
-      };
-      api.listFees.mockResolvedValue({
-        items: [fee],
-        total: 1,
-        page: 1,
-        pageSize: 100,
-        matchingIds: [fee.id],
-        matchingSources: [fee],
-        summary: {
-          expense: '2.34',
-          income: '0.00',
-          pending: '0.00',
-          pendingCount: 0,
-        },
-      });
-      const wrapper = render(FeeCenterPanel, {
-        caseId: 'case',
-        canDelete: true,
-      });
-      await flushPromises();
-      await wrapper.get('thead input[type="checkbox"]').setValue(true);
-      const storageBefore = { ...globalThis.sessionStorage };
-      const removal = button(
-        wrapper,
-        entryPoint === 'single row' ? '移除费用' : '删除',
+describe('selected original fee cancellation', () => {
+  const fee = {
+    id: 'fee-current',
+    caseId: 'case',
+    businessNo: 'CASE-CURRENT',
+    type: '诉讼费',
+    direction: '支出',
+    status: '已支付',
+    amount: '25.00',
+    feeDate: '2026-10-24',
+    source: 'manual',
+    note: null,
+    version: 3,
+    proofMaterialId: null,
+    proofContentVersionId: null,
+    proofOriginalFilename: null,
+    defendantNames: [],
+    platform: null,
+    shopName: null,
+    courtCaseNo: null,
+  };
+  function listResult(items: (typeof fee)[], matching = items) {
+    return {
+      items,
+      total: matching.length,
+      page: 1,
+      pageSize: 1,
+      matchingIds: matching.map((row) => row.id),
+      matchingSources: matching,
+      summary: {
+        expense: '25.00',
+        income: '0.00',
+        pending: '0.00',
+        pendingCount: 0,
+      },
+    };
+  }
+  async function selectFee(wrapper: VueWrapper, row: typeof fee) {
+    const tableRow = wrapper
+      .findAll('tbody tr')
+      .find(
+        (item) =>
+          item.text().includes(row.businessNo) &&
+          item.text().includes(row.type),
       );
+    if (!tableRow) throw new Error(`missing row for ${row.businessNo}`);
+    await tableRow.get('input[type="checkbox"]').setValue(true);
+  }
 
-      await removal.trigger('click');
-      await flushPromises();
-      expect(confirm).toHaveBeenCalledTimes(1);
-      expect(confirm.mock.calls[0]?.[0]).toContain('诉讼费：2.34 元（未发起）');
-      expect(api.batchFees).not.toHaveBeenCalled();
-      expect(api.listFees).toHaveBeenCalledTimes(1);
-      expect({ ...globalThis.sessionStorage }).toEqual(storageBefore);
-      expect(wrapper.text()).toContain('已选 1 条');
-      expect(wrapper.get('tbody tr').text()).toContain('2.34');
-      expect(wrapper.text()).not.toContain('费用已移除');
+  it('cancels only one explicitly selected visible original and excludes off-page matches', async () => {
+    const confirmReason = vi
+      .spyOn(globalThis, 'prompt')
+      .mockReturnValue('核实原因');
+    const offPage = Array.from({ length: 100 }, (_, index) => ({
+      ...fee,
+      id: `fee-off-page-${index}`,
+      businessNo: `CASE-OFF-PAGE-${index}`,
+    }));
+    api.listFees.mockResolvedValue(listResult([fee], [fee, ...offPage]));
+    feeCancellationApi.cancelFee.mockResolvedValue({ outcome: 'VOIDED' });
+    const wrapper = render(FeeCenterPanel, { canDelete: true });
+    await flushPromises();
 
-      await removal.trigger('click');
-      await flushPromises();
-      expect(confirm).toHaveBeenCalledTimes(2);
-      expect(api.batchFees).not.toHaveBeenCalled();
-      expect({ ...globalThis.sessionStorage }).toEqual(storageBefore);
-    },
-  );
+    const cancel = button(wrapper, '取消选中单笔费用');
+    expect(cancel.attributes('disabled')).toBeDefined();
+    await wrapper.get('thead input[type="checkbox"]').setValue(true);
+    expect(cancel.attributes('disabled')).toBeDefined();
+    await wrapper.get('thead input[type="checkbox"]').setValue(false);
+    await selectFee(wrapper, fee);
+    expect(cancel.attributes('disabled')).toBeUndefined();
+    await cancel.trigger('click');
+    await flushPromises();
+
+    expect(confirmReason).toHaveBeenCalledTimes(1);
+    expect(feeCancellationApi.cancelFee).toHaveBeenCalledWith(
+      'fee-current',
+      expect.objectContaining({
+        expectedVersion: 3,
+        reason: '核实原因',
+        idempotencyKey: expect.any(String),
+      }),
+    );
+    expect(feeCancellationApi.cancelFee.mock.calls[0]?.[0]).toBe('fee-current');
+    expect(api.batchFees).not.toHaveBeenCalled();
+  });
+
+  it('blocks hidden off-page selections and retries an unknown cancellation with the original object and body', async () => {
+    const reason = vi.spyOn(globalThis, 'prompt').mockReturnValue('原始原因');
+    const second = { ...fee, id: 'fee-second', businessNo: 'CASE-SECOND' };
+    api.listFees
+      .mockResolvedValueOnce(listResult([fee, second], [fee, second]))
+      .mockResolvedValue(listResult([fee, second], [fee, second]));
+    feeCancellationApi.cancelFee
+      .mockRejectedValueOnce(new Error('连接中断'))
+      .mockResolvedValueOnce({ outcome: 'CANCELLED' });
+    const wrapper = render(FeeCenterPanel, { canDelete: true });
+    await flushPromises();
+
+    await selectFee(wrapper, fee);
+    const cancel = button(wrapper, '取消选中单笔费用');
+    expect(cancel.attributes('disabled')).toBeUndefined();
+    await cancel.trigger('click');
+    await flushPromises();
+    const originalCall = feeCancellationApi.cancelFee.mock.calls[0];
+    expect(originalCall?.[0]).toBe('fee-current');
+    expect(
+      wrapper
+        .findAll('[role="alert"]')
+        .some((item) => item.text().includes('取消结果尚未确认')),
+    ).toBe(true);
+
+    await wrapper
+      .findAll('tbody tr')
+      .find((item) => item.text().includes('CASE-CURRENT'))!
+      .get('input[type="checkbox"]')
+      .setValue(false);
+    await selectFee(wrapper, second);
+    expect(cancel.attributes('disabled')).toBeDefined();
+    await wrapper.get('[role="alert"] button').trigger('click');
+    await flushPromises();
+
+    expect(reason).toHaveBeenCalledTimes(1);
+    expect(feeCancellationApi.cancelFee).toHaveBeenCalledTimes(2);
+    expect(feeCancellationApi.cancelFee.mock.calls[1]).toEqual(originalCall);
+    expect(feeCancellationApi.cancelFee.mock.calls[1]?.[0]).toBe('fee-current');
+  });
+
+  it('disables cancellation for a selection retained from a previous page', async () => {
+    const pageTwo = {
+      ...fee,
+      id: 'fee-page-two',
+      businessNo: 'CASE-PAGE-TWO',
+    };
+    const matching = [fee, pageTwo];
+    const result = (items: (typeof fee)[], page: number) => ({
+      ...listResult(items, matching),
+      total: 101,
+      page,
+      pageSize: 100,
+    });
+    api.listFees.mockImplementation(({ page }: { page: number }) =>
+      Promise.resolve(result(page === 1 ? [fee] : [pageTwo], page)),
+    );
+    const wrapper = render(FeeCenterPanel, { canDelete: true });
+    await flushPromises();
+    await selectFee(wrapper, fee);
+    expect(
+      button(wrapper, '取消选中单笔费用').attributes('disabled'),
+    ).toBeUndefined();
+
+    await button(wrapper, '下一页').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('CASE-PAGE-TWO');
+    expect(wrapper.text()).toContain('已选 1 条');
+    expect(
+      button(wrapper, '取消选中单笔费用').attributes('disabled'),
+    ).toBeDefined();
+    expect(feeCancellationApi.cancelFee).not.toHaveBeenCalled();
+  });
+});
+
+describe('stable single fee removal', () => {
+  it('does not submit or persist a pending removal when cancelling the selected batch', async () => {
+    const confirm = vi.spyOn(globalThis, 'confirm').mockReturnValue(false);
+    const fee = {
+      id: 'cancel-fee',
+      caseId: 'case',
+      businessNo: 'CASE-CANCEL',
+      type: '诉讼费',
+      direction: '支出',
+      status: '未发起',
+      amount: '2.34',
+      feeDate: '2026-10-24',
+      source: 'manual',
+      note: null,
+      version: 1,
+      proofMaterialId: null,
+      proofContentVersionId: null,
+      proofOriginalFilename: null,
+      defendantNames: [],
+      platform: null,
+      shopName: null,
+      courtCaseNo: null,
+    };
+    api.listFees.mockResolvedValue({
+      items: [fee],
+      total: 1,
+      page: 1,
+      pageSize: 100,
+      matchingIds: [fee.id],
+      matchingSources: [fee],
+      summary: {
+        expense: '2.34',
+        income: '0.00',
+        pending: '0.00',
+        pendingCount: 0,
+      },
+    });
+    const wrapper = render(FeeCenterPanel, {
+      caseId: 'case',
+      canDelete: true,
+    });
+    await flushPromises();
+    await wrapper.get('thead input[type="checkbox"]').setValue(true);
+    const storageBefore = { ...globalThis.sessionStorage };
+    const removal = button(wrapper, '删除');
+
+    await removal.trigger('click');
+    await flushPromises();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0]?.[0]).toContain('诉讼费：2.34 元（未发起）');
+    expect(api.batchFees).not.toHaveBeenCalled();
+    expect(feeCancellationApi.cancelFee).not.toHaveBeenCalled();
+    expect(api.listFees).toHaveBeenCalledTimes(1);
+    expect({ ...globalThis.sessionStorage }).toEqual(storageBefore);
+    expect(wrapper.text()).toContain('已选 1 条');
+    expect(wrapper.get('tbody tr').text()).toContain('2.34');
+    expect(wrapper.text()).not.toContain('费用已移除');
+
+    await removal.trigger('click');
+    await flushPromises();
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(api.batchFees).not.toHaveBeenCalled();
+    expect({ ...globalThis.sessionStorage }).toEqual(storageBefore);
+  });
   it('makes the net read-only and confirms each real amount before sending exact original IDs', async () => {
     const confirm = vi.spyOn(globalThis, 'confirm').mockReturnValue(true);
     const sample = {
@@ -1139,14 +1452,15 @@ describe('stable single fee removal', () => {
       processedCount: 1,
       amount: '20.00',
     });
-    await button(refundRow(), '移除费用').trigger('click');
+    await refundRow().get('input[type="checkbox"]').setValue(true);
+    await button(wrapper, '删除').trigger('click');
     await flushPromises();
     expect(api.batchFees).toHaveBeenLastCalledWith(
       'delete',
       expect.objectContaining({ ids: ['refund'] }),
     );
   });
-  it('removes exactly the clicked fee while preserving other selected IDs', async () => {
+  it('deletes selected fees from the toolbar and has no row deletion action', async () => {
     vi.spyOn(globalThis, 'confirm').mockReturnValue(true);
     const fee = {
       id: 'fee-a',
@@ -1191,12 +1505,17 @@ describe('stable single fee removal', () => {
     await flushPromises();
     await wrapper.get('thead input[type="checkbox"]').setValue(true);
     expect(wrapper.text()).toContain('已选 2 条');
-    await button(wrapper, '移除费用').trigger('click');
+    expect(
+      wrapper
+        .findAll('tbody button')
+        .some((item) => item.text() === '移除费用'),
+    ).toBe(false);
+    await button(wrapper, '删除').trigger('click');
     await flushPromises();
     expect(api.batchFees).toHaveBeenCalledWith(
       'delete',
       expect.objectContaining({
-        ids: ['fee-a'],
+        ids: ['fee-a', 'fee-off-page'],
         idempotencyKey: expect.any(String),
       }),
     );

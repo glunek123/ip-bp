@@ -291,7 +291,7 @@ async function selectOpeningFile(
   await flushPromises();
 }
 
-async function mountPage() {
+async function mountPage(path = '/notary-matters/matter-1') {
   const pinia = createPinia();
   setActivePinia(pinia);
   const auth = useAuthStore();
@@ -314,7 +314,7 @@ async function mountPage() {
       { path: '/cases/:id', component: { template: '<div />' } },
     ],
   });
-  await router.push('/notary-matters/matter-1');
+  await router.push(path);
   await router.isReady();
   const wrapper = mount(NotaryMatterDetailPage, {
     global: { plugins: [router, pinia] },
@@ -349,6 +349,14 @@ beforeEach(() => {
 });
 
 describe('NotaryMatterDetailPage', () => {
+  it('returns to the validated filtered notary list path', async () => {
+    const wrapper = await mountPage(
+      '/notary-matters/matter-1?returnTo=%2Fnotary-matters%3Fstage%3DARCHIVED%26page%3D2',
+    );
+    expect(wrapper.get('.back-link').attributes('href')).toBe(
+      '/notary-matters?stage=ARCHIVED&page=2',
+    );
+  });
   it('keeps workflow forms disabled while ordinary data is being edited', async () => {
     api.getNotaryMatter.mockResolvedValue({
       ...matter,

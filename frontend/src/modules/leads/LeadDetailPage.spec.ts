@@ -126,7 +126,7 @@ const DrawerStub = defineComponent({
 });
 
 const cleanups: Array<() => void> = [];
-async function mountPage() {
+async function mountPage(path = '/leads/lead-1') {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAuthStore().session = {
@@ -148,7 +148,7 @@ async function mountPage() {
       { path: '/leads', component: { template: '<div />' } },
     ],
   });
-  await router.push('/leads/lead-1');
+  await router.push(path);
   await router.isReady();
   const wrapper = mount(
     { components: { RouterView }, template: '<RouterView />' },
@@ -249,6 +249,14 @@ async function openTransfer(wrapper: Awaited<ReturnType<typeof mountPage>>) {
   await wrapper.get('[data-test="batch-purpose"]').setValue('首批线上取证');
 }
 describe('LeadDetailPage', () => {
+  it('returns to the validated filtered lead list path', async () => {
+    const wrapper = await mountPage(
+      '/leads/lead-1?returnTo=%2Fleads%3Fstatus%3DARCHIVED%26page%3D2',
+    );
+    expect(wrapper.get('.back-link').attributes('href')).toBe(
+      '/leads?status=ARCHIVED&page=2',
+    );
+  });
   it('edits archived ordinary fields and cancels without advancing the workflow', async () => {
     const original = {
       ...lead,

@@ -28,6 +28,7 @@ import {
 import { summarizeLeadProducts } from './lead-display';
 import { useAuthStore } from '../../stores/auth';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
+import { isListRowClick, listReturnPath } from '../../app/list-row-navigation';
 import {
   readPendingLeadCommands,
   sameLeadAttempt,
@@ -1237,6 +1238,19 @@ async function goToPage(page: number): Promise<void> {
     return;
   await router.push({ query: { ...route.query, page: String(page) } });
 }
+function leadDetailLocation(lead: Lead) {
+  return {
+    path: `/leads/${encodeURIComponent(lead.id)}`,
+    query: { returnTo: listReturnPath(route.fullPath, '/leads') },
+  };
+}
+function openLeadRow(
+  event: InstanceType<typeof globalThis.MouseEvent>,
+  lead: Lead,
+): void {
+  if (!isListRowClick(event)) return;
+  void router.push(leadDetailLocation(lead));
+}
 function formatTime(value: string): string {
   return new Date(value).toLocaleDateString('sv-SE', {
     timeZone: 'Asia/Shanghai',
@@ -1330,34 +1344,7 @@ onBeforeUnmount(() => {
         noEvidenceOpen
       "
     >
-      <div class="page-head business-list-toolbar">
-        <div v-if="state === 'ready' && canCreate" class="lead-create-actions">
-          <RouterLink to="/leads/new" data-test="create-lead"
-            ><ElButton type="primary">新建线索</ElButton></RouterLink
-          >
-          <ElButton
-            data-test="open-csv-import"
-            :disabled="
-              noEvidenceLocked ||
-              auth.session?.principalType !== 'INTERNAL' ||
-              !!pendingCsvImport ||
-              pendingCsvImportBlocked ||
-              !!pendingBatch ||
-              pendingBatchBlocked ||
-              !!pendingPush ||
-              pendingStorageUnavailable ||
-              !!pendingCsvImport ||
-              pendingCsvImportBlocked ||
-              !!activeLeadId ||
-              batchActive ||
-              batchLoading ||
-              csvContextLoading
-            "
-            @click="openCsvImport"
-            >{{ csvContextLoading ? '读取导入配置…' : '导入 CSV' }}</ElButton
-          >
-        </div>
-      </div>
+      <h1 class="sr-only">线索库</h1>
       <ListHeaderSearch
         v-model="queryDraft"
         placeholder="按店铺名、商品或编号搜索"
@@ -1365,7 +1352,7 @@ onBeforeUnmount(() => {
       />
       <form
         aria-label="线索关键词查询"
-        class="business-list-toolbar"
+        class="lead-filter-grid"
         @submit.prevent="applyQuery()"
       >
         <label class="filter-search-select"
@@ -1430,32 +1417,55 @@ onBeforeUnmount(() => {
             data-test="lead-shop-filter"
             maxlength="200"
         /></label>
-        <div class="lead-query-actions">
+      </form>
+      <p v-if="queryFormError || queryError" role="alert">
+        {{ queryFormError || queryError }}
+      </p>
+      <div class="lead-list-toolbar" data-test="lead-list-toolbar">
+        <span v-if="selectedLeads.length" class="lead-selection-count">
+          {{ selectedLeads.length }} 条已选
+        </span>
+        <div class="lead-toolbar-actions">
           <ElButton
-            native-type="submit"
             data-test="lead-search"
             :disabled="queryBlocked"
+            @click="applyQuery()"
             >查询</ElButton
           >
           <ElButton
-            native-type="button"
             data-test="lead-clear"
             :disabled="queryBlocked"
             @click="applyQuery(true)"
             >清除筛选</ElButton
           >
-        </div>
-      </form>
-      <p v-if="queryFormError || queryError" role="alert">
-        {{ queryFormError || queryError }}
-      </p>
-      <section class="demo-card" aria-live="polite">
-        <div
-          v-if="state === 'ready' && selectedLeads.length"
-          class="lead-batch-toolbar"
-        >
-          <span>{{ selectedLeads.length }} 条已选</span>
+          <RouterLink
+            v-if="state === 'ready' && canCreate"
+            to="/leads/new"
+            data-test="create-lead"
+            ><ElButton type="primary">新建线索</ElButton></RouterLink
+          >
           <ElButton
+            v-if="state === 'ready' && canCreate"
+            data-test="open-csv-import"
+            :disabled="
+              noEvidenceLocked ||
+              auth.session?.principalType !== 'INTERNAL' ||
+              !!pendingCsvImport ||
+              pendingCsvImportBlocked ||
+              !!pendingBatch ||
+              pendingBatchBlocked ||
+              !!pendingPush ||
+              pendingStorageUnavailable ||
+              !!activeLeadId ||
+              batchActive ||
+              batchLoading ||
+              csvContextLoading
+            "
+            @click="openCsvImport"
+            >{{ csvContextLoading ? '读取导入配置…' : '导入 CSV' }}</ElButton
+          >
+          <ElButton
+            v-if="state === 'ready' && selectedLeads.length"
             data-test="open-batch-push"
             :disabled="
               noEvidenceLocked ||
@@ -1471,6 +1481,7 @@ onBeforeUnmount(() => {
             >批量推送</ElButton
           >
           <ElButton
+            v-if="state === 'ready' && selectedLeads.length"
             data-test="open-no-evidence-batch"
             :disabled="
               noEvidenceLocked ||
@@ -1491,6 +1502,8 @@ onBeforeUnmount(() => {
             >批量不取证归档</ElButton
           >
         </div>
+      </div>
+      <section class="demo-card" aria-live="polite">
         <div v-if="state === 'loading'" class="state-panel">
           <span class="state-index">读取中</span>
           <h2>正在读取线索</h2>
@@ -1560,6 +1573,8 @@ onBeforeUnmount(() => {
                 v-for="{ lead, summary, products } in displayItems"
                 :key="lead.id"
                 data-test="lead-row"
+                class="business-row-link"
+                @click="openLeadRow($event, lead)"
               >
                 <td>
                   <input
@@ -1610,15 +1625,14 @@ onBeforeUnmount(() => {
                     @click="openWorkflow(lead)"
                     >{{ actionShortTitle(lead) }}</ElButton
                   >
-                  <RouterLink
-                    :to="`/leads/${lead.id}`"
-                    :aria-label="`查看线索 ${lead.businessNo} 详情`"
-                  >
-                    详情
-                  </RouterLink>
                 </td>
                 <td class="mono business-list-cell--nowrap">
-                  {{ lead.businessNo }}
+                  <RouterLink
+                    data-test="lead-detail-link"
+                    :to="leadDetailLocation(lead)"
+                    :aria-label="`查看线索 ${lead.businessNo} 详情`"
+                    >{{ lead.businessNo }}</RouterLink
+                  >
                 </td>
                 <td class="business-list-cell--nowrap">
                   <span class="pill">{{ leadStatusLabels[lead.status] }}</span>
@@ -1900,6 +1914,43 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.lead-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  align-items: end;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+.lead-filter-grid > label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.lead-filter-grid > label > input {
+  width: 100%;
+  min-width: 0;
+}
+.lead-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.lead-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+.lead-selection-count {
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
 .filter-search-select {
   display: grid;
   grid-template-columns: minmax(110px, 1fr) minmax(120px, 1fr);
@@ -1928,9 +1979,6 @@ onBeforeUnmount(() => {
 .lead-list-table :is(th, td) {
   height: auto;
   padding: 7px 8px;
-}
-.lead-row-actions > a {
-  margin-left: 6px;
 }
 .lead-row-actions :deep(.el-button) {
   min-width: 80px;
@@ -1991,5 +2039,23 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font: inherit;
   font-size: 12px;
+}
+@media (max-width: 900px) {
+  .lead-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .lead-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lead-list-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .lead-toolbar-actions {
+    width: 100%;
+    margin-left: 0;
+  }
 }
 </style>

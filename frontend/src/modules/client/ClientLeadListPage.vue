@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { listClientLeads, type ClientLead } from '../../api/client-leads';
+import { isListRowClick } from '../../app/list-row-navigation';
 
 const route = useRoute();
 const router = useRouter();
@@ -81,6 +82,17 @@ async function selectView(view: 'pending' | 'processed'): Promise<void> {
   await router.push({ query: { view, page: '1' } });
 }
 
+function openLeadRow(
+  event: InstanceType<typeof globalThis.MouseEvent>,
+  lead: ClientLead,
+): void {
+  if (!isListRowClick(event)) return;
+  void router.push({
+    path: `/client/leads/${encodeURIComponent(lead.id)}`,
+    query: { view: currentView.value, page: String(requestedPage.value) },
+  });
+}
+
 function formatTime(value: string): string {
   return new Date(value).toLocaleString('zh-CN', {
     timeZone: 'Asia/Shanghai',
@@ -99,10 +111,9 @@ onBeforeUnmount(() => request?.abort());
 <template>
   <div class="page-view">
     <main>
+      <h1 class="sr-only">企业线索审核 · {{ queueTitle }}</h1>
       <div class="page-head">
         <div>
-          <span class="section-kicker">企业线索审核</span>
-          <h1>{{ queueTitle }}</h1>
           <p>在待我审核中确认结论；完成后可在已处理中回看</p>
         </div>
       </div>
@@ -151,7 +162,9 @@ onBeforeUnmount(() => request?.abort());
               <tr
                 v-for="lead in items"
                 :key="lead.id"
+                class="business-row-link"
                 data-test="client-lead-row"
+                @click="openLeadRow($event, lead)"
               >
                 <td>
                   <RouterLink
@@ -210,3 +223,12 @@ onBeforeUnmount(() => request?.abort());
     </main>
   </div>
 </template>
+
+<style scoped>
+.client-queue-tabs {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-block: 8px 12px;
+}
+</style>

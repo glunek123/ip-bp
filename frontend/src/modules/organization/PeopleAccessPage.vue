@@ -303,8 +303,6 @@ onBeforeUnmount(() => activeRequest?.abort());
     <main>
       <div class="section-heading">
         <div>
-          <p class="section-kicker">系统设置</p>
-          <h1>人员与权限</h1>
           <p>在一个页面里完成开通账号、分组和角色调整。</p>
         </div>
         <ElButton

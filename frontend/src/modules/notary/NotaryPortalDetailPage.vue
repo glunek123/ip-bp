@@ -10,8 +10,12 @@ import {
 } from '../../api/notary-portal';
 import { useAuthStore } from '../../stores/auth';
 import { createListWorkflowContext } from '../../app/list-workflow-context';
+import { listReturnPath } from '../../app/list-row-navigation';
 import NotaryPortalWorkflowPanel from './NotaryPortalWorkflowPanel.vue';
 const route = useRoute();
+const returnTo = computed(() =>
+  listReturnPath(route.query.returnTo, '/notary-portal/matters'),
+);
 const auth = useAuthStore();
 const actorKey = computed(() =>
   [
@@ -144,7 +148,7 @@ function formatTime(value: string): string {
 <template>
   <div class="page-view page-view--narrow">
     <main>
-      <p><RouterLink to="/notary-portal/matters">返回公证事项</RouterLink></p>
+      <p><RouterLink :to="returnTo">返回公证事项</RouterLink></p>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h1>正在读取事项</h1>
       </section>

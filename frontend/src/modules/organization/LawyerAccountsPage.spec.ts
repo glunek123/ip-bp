@@ -85,6 +85,7 @@ describe('LawyerAccountsPage', () => {
   it('explains account and binding effects and creates an account without echoing its password', async () => {
     const { wrapper } = mountPage();
     await flushPromises();
+    expect(wrapper.find('h1').exists()).toBe(false);
     expect(wrapper.text()).toContain('历史案件关联');
     expect(wrapper.text()).toContain('CA-44');
     expect(wrapper.text()).toContain('13900000000');

@@ -185,12 +185,6 @@ onMounted(() => {
   <div class="page-view customer-workspace">
     <main>
       <RouterLink class="back-link" to="/customers">← 返回客户列表</RouterLink>
-      <div class="section-heading">
-        <div>
-          <p class="section-kicker">客户基础</p>
-          <h1>已删除草稿</h1>
-        </div>
-      </div>
       <section class="ledger-panel" aria-live="polite">
         <div
           v-if="frozen && !items.some((item) => item.id === frozen?.customerId)"

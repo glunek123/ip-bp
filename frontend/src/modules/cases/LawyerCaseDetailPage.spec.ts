@@ -233,6 +233,19 @@ beforeEach(() => {
   });
 });
 
+it('returns to the validated filtered lawyer list path from detail', async () => {
+  const { wrapper } = await mountPage(
+    '/lawyer/cases/case-a?returnTo=%2Flawyer%2Fcases%3Fstage%3DWAITING_HEARING%26page%3D2',
+  );
+  expect(
+    wrapper
+      .findAll('a')
+      .find((link) => link.text().includes('返回本人案件'))
+      ?.attributes('href'),
+  ).toBe('/lawyer/cases?stage=WAITING_HEARING&page=2');
+  wrapper.unmount();
+});
+
 describe('LawyerCaseDetailPage', () => {
   it('renders direct execution upload-only controls with the dedicated capability', async () => {
     api.getLawyerCase.mockResolvedValue(directExecutionUploadDetail(true));

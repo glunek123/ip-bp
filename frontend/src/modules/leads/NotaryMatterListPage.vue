@@ -45,6 +45,7 @@ import NotaryBatchOpeningPanel from './NotaryBatchOpeningPanel.vue';
 import { labelLeadPlatform } from './lead-options';
 import { listLeadFilterOptions } from '../../api/leads';
 import type { CaseStage } from '../../api/cases';
+import { isListRowClick, listReturnPath } from '../../app/list-row-navigation';
 
 const stageLabels: Record<NotaryListStage, string> = {
   PENDING_EVIDENCE: '待取证',
@@ -1195,6 +1196,19 @@ async function goToPage(page: number): Promise<void> {
     return;
   await router.push({ query: { ...route.query, page: String(page) } });
 }
+function matterDetailLocation(matter: NotaryMatterListItem) {
+  return {
+    path: `/notary-matters/${encodeURIComponent(matter.id)}`,
+    query: { returnTo: listReturnPath(route.fullPath, '/notary-matters') },
+  };
+}
+function openMatterRow(
+  event: InstanceType<typeof globalThis.MouseEvent>,
+  matter: NotaryMatterListItem,
+): void {
+  if (!isListRowClick(event)) return;
+  void router.push(matterDetailLocation(matter));
+}
 function formatTime(value: string): string {
   return new Date(value).toLocaleString('zh-CN', {
     timeZone: 'Asia/Shanghai',
@@ -1254,13 +1268,14 @@ onBeforeUnmount(() => {
 <template>
   <div class="page-view business-list-page">
     <main>
+      <h1 class="sr-only">公证阶段</h1>
       <ListHeaderSearch
         v-model="queryDraft"
         placeholder="按公证编号、线索编号或店铺名称搜索"
         @search="applyFilters()"
       />
       <form
-        class="business-list-toolbar"
+        class="notary-filter-grid"
         aria-label="公证事项筛选"
         @submit.prevent="applyFilters()"
       >
@@ -1326,13 +1341,6 @@ onBeforeUnmount(() => {
             data-test="notary-shop-filter"
             maxlength="200"
         /></label>
-        <ElButton native-type="submit">查询</ElButton>
-        <ElButton
-          native-type="button"
-          data-test="notary-clear-filters"
-          @click="applyFilters(true)"
-          >清除筛选</ElButton
-        >
       </form>
       <p v-if="queryFormError" role="alert">{{ queryFormError }}</p>
       <section
@@ -1340,6 +1348,15 @@ onBeforeUnmount(() => {
         aria-label="公证事项清单导出"
       >
         <div class="export-actions">
+          <ElButton data-test="notary-search" @click="applyFilters()"
+            >查询</ElButton
+          >
+          <ElButton
+            native-type="button"
+            data-test="notary-clear-filters"
+            @click="applyFilters(true)"
+            >清除筛选</ElButton
+          >
           <span data-test="selected-count"
             >已选择 {{ selectedIds.length }} 项</span
           >
@@ -1348,14 +1365,6 @@ onBeforeUnmount(() => {
             data-test="batch-opening-summary"
             role="status"
             >{{ openingBatchSummary }}</span
-          >
-          <ElButton
-            data-test="clear-selection"
-            :disabled="
-              selectedIds.length === 0 || batchOpen || openingBatchOpen
-            "
-            @click="clearSelection"
-            >清空选择</ElButton
           >
           <ElButton
             data-test="batch-archive-open"
@@ -1672,6 +1681,14 @@ onBeforeUnmount(() => {
                 v-for="matter in items"
                 :key="matter.id"
                 data-test="matter-row"
+                class="business-row-link"
+                tabindex="0"
+                :aria-label="`查看公证事项 ${matter.businessNo}`"
+                @click="openMatterRow($event, matter)"
+                @keydown.enter.self="router.push(matterDetailLocation(matter))"
+                @keydown.space.self.prevent="
+                  router.push(matterDetailLocation(matter))
+                "
               >
                 <td class="selection-column">
                   <input
@@ -1700,11 +1717,6 @@ onBeforeUnmount(() => {
                       :title="action.label"
                       @click="openWorkflow(matter, action)"
                       >{{ shortMatterAction(action.label) }}</ElButton
-                    >
-                    <RouterLink
-                      data-test="matter-link"
-                      :to="`/notary-matters/${matter.id}`"
-                      >详情</RouterLink
                     >
                   </div>
                 </td>
@@ -1907,9 +1919,27 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 0.75rem;
 }
-
-.export-actions .column-settings-toggle {
-  margin-left: auto;
+.export-actions {
+  justify-content: flex-end;
+  width: 100%;
+}
+.notary-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  align-items: end;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+.notary-filter-grid > label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.notary-filter-grid > label > input {
+  width: 100%;
+  min-width: 0;
 }
 
 .export-options {
@@ -1943,6 +1973,16 @@ onBeforeUnmount(() => {
   display: inline-flex;
   flex: 1;
   gap: 0.5rem;
+}
+@media (max-width: 900px) {
+  .notary-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .notary-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .column-settings-actions {

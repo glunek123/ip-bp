@@ -1862,7 +1862,7 @@ describe('LeadListPage', () => {
       '线索发现日期',
     ]);
     expect(wrapper.get('[data-test="lead-row"] a').attributes('href')).toBe(
-      '/leads/lead-1',
+      '/leads/lead-1?returnTo=/leads',
     );
     expect(wrapper.get('.business-list-scroll').attributes('tabindex')).toBe(
       '0',
@@ -1871,6 +1871,41 @@ describe('LeadListPage', () => {
     expect(wrapper.text()).toContain('shop-真实-001');
     expect(wrapper.text()).toContain('主体甲');
     expect(wrapper.find('table.demo-table').exists()).toBe(true);
+  });
+
+  it('keeps filters above the right-aligned actions and opens a lead from a non-interactive row area', async () => {
+    api.listLeads.mockResolvedValue({ ...result, items: [summary], total: 1 });
+    const { wrapper, router } = await mountWithRoute(
+      '/leads?status=WAITING_PUSH&page=2&q=商品甲',
+    );
+    const filter = wrapper.get('.lead-filter-grid');
+    const toolbar = wrapper.get('[data-test="lead-list-toolbar"]');
+    const table = wrapper.get('[data-test="lead-row"]');
+    expect(
+      filter.element.compareDocumentPosition(toolbar.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      toolbar.element.compareDocumentPosition(table.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(toolbar.find('[data-test="lead-search"]').exists()).toBe(true);
+    expect(toolbar.find('[data-test="lead-clear"]').exists()).toBe(true);
+    expect(toolbar.find('[data-test="create-lead"]').exists()).toBe(true);
+    expect(toolbar.find('[data-test="open-csv-import"]').exists()).toBe(true);
+    expect(table.get('[data-test="lead-detail-link"]').text()).toBe(
+      'LD-20260921-001',
+    );
+    expect(
+      table.get('[data-test="lead-detail-link"]').attributes('aria-label'),
+    ).toBe('查看线索 LD-20260921-001 详情');
+    const returnPath = router.currentRoute.value.fullPath;
+    await table.get('input[type="checkbox"]').setValue(true);
+    expect(router.currentRoute.value.path).toBe('/leads');
+    await table.trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/leads/lead-1');
+    expect(router.currentRoute.value.query.returnTo).toBe(returnPath);
   });
 
   it('sums actual sales, comments and decimal estimates without using product count or floating point', async () => {

@@ -378,7 +378,12 @@ export class CaseReadService {
             })),
           canConsolidate:
             principal === 'INTERNAL' &&
-            item.stage === 'PENDING_MATCH' &&
+            [
+              'PENDING_MATCH',
+              'WAITING_COMPLAINT',
+              'WAITING_COMPLAINT_CONFIRMATION',
+              'WAITING_COMPLAINT_STAMP',
+            ].includes(item.stage) &&
             item.responsibleUserId === actor.userId &&
             item.consolidationMembership === null &&
             item.consolidationAsMain === null &&
@@ -2806,7 +2811,12 @@ export class CaseReadService {
         })),
       canConsolidate:
         principal === 'INTERNAL' &&
-        record.stage === 'PENDING_MATCH' &&
+        [
+          'PENDING_MATCH',
+          'WAITING_COMPLAINT',
+          'WAITING_COMPLAINT_CONFIRMATION',
+          'WAITING_COMPLAINT_STAMP',
+        ].includes(record.stage) &&
         record.responsibleUserId === actor.userId &&
         record.consolidationMembership === null &&
         record.consolidationAsMain === null &&

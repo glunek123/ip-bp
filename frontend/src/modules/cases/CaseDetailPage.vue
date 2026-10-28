@@ -150,6 +150,10 @@ const backTo = computed(() => ({
     ),
   ),
 }));
+const handlingGroupsTo = computed(() => ({
+  path: '/case-handling-groups',
+  query: { returnTo: router.resolve(backTo.value).fullPath },
+}));
 const workspaceContext = computed(() => `${id.value}:${identity.value}`);
 const activeTab = computed<WorkspaceTab>(() =>
   route.query.tab === 'files' || route.query.tab === 'fees'
@@ -2057,6 +2061,11 @@ onBeforeUnmount(() => {
             @click="load"
             >刷新</ElButton
           >
+          <RouterLink
+            :to="handlingGroupsTo"
+            data-test="case-handling-groups-entry"
+            >案件系列</RouterLink
+          >
           <ElButton
             v-for="command in recordRecovery.commands"
             :key="command.id"
@@ -2147,6 +2156,24 @@ onBeforeUnmount(() => {
           @edit="editSection"
           @view-timeline="viewTimeline"
         />
+        <section
+          class="demo-card demo-card--pad"
+          aria-label="案件证物台账"
+          data-test="case-evidence-entry"
+        >
+          <h2 class="form-section-title">案件证物台账</h2>
+          <p class="field-help">
+            从本案件详情录入或编辑证物。系统继续按证物台账权限和案件所属部门校验请求。
+          </p>
+          <RouterLink
+            :to="{
+              path: '/evidence',
+              query: { entrySourceKind: 'CASE', entrySourceId: item.id },
+            }"
+            data-test="open-case-evidence-entry"
+            >登记或编辑证物</RouterLink
+          >
+        </section>
         <CaseExecutionFilingFollowupPanel
           v-if="
             item.executionFiling ||

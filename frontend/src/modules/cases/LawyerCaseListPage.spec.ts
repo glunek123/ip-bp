@@ -126,9 +126,14 @@ describe('LawyerCaseListPage', () => {
     expect(wrapper.findAll('colgroup col')).toHaveLength(3);
     expect(wrapper.findAll('tbody tr td')).toHaveLength(3);
     expect(wrapper.get('tbody a').text()).toBe('CA-20261013-00001234');
-    expect(wrapper.get('tbody a').attributes('href')).toBe(
+    const href = wrapper.get('tbody a').attributes('href')!;
+    expect(new URL(href, 'http://local').pathname).toBe(
       '/lawyer/cases/case%2Fencoded',
     );
+    expect(new URL(href, 'http://local').searchParams.get('returnTo')).toBe(
+      '/lawyer/cases',
+    );
+    expect(wrapper.get('h1.sr-only').text()).toBe('本人案件');
     expect(wrapper.get('.business-list-scroll').attributes()).toMatchObject({
       role: 'region',
       tabindex: '0',
@@ -136,6 +141,21 @@ describe('LawyerCaseListPage', () => {
     });
     expect(wrapper.text()).not.toContain('负责人');
     expect(wrapper.text()).not.toContain('来源线索');
+    wrapper.unmount();
+  });
+
+  it('opens the detail when a non-link part of a case row is clicked', async () => {
+    const { wrapper, router } = await mountPage();
+    await wrapper.get('[data-test="lawyer-case-row"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/lawyer/cases/case-1');
+    expect(router.currentRoute.value.query.returnTo).toBe('/lawyer/cases');
+    expect(
+      new URL(
+        wrapper.get('[data-test="lawyer-case-row"] a').attributes('href')!,
+        'http://local',
+      ).searchParams.get('returnTo'),
+    ).toBe('/lawyer/cases');
     wrapper.unmount();
   });
 
@@ -190,7 +210,9 @@ describe('LawyerCaseListPage', () => {
     expect(wrapper.text()).toContain('CA-44');
     expect(wrapper.text()).toContain('待提交立案');
     expect(wrapper.text()).not.toContain('本部门全部');
-    expect(wrapper.get('a').attributes('href')).toBe('/lawyer/cases/case-1');
+    const href = wrapper.get('a').attributes('href')!;
+    expect(new URL(href, 'http://local').pathname).toBe('/lawyer/cases/case-1');
+    expect(new URL(href, 'http://local').searchParams.get('returnTo')).toBe('/lawyer/cases');
   });
 
   it('loads the execution preparation group without a single-stage filter', async () => {

@@ -25,6 +25,7 @@ const source = (caseId: string, createdAt: string) => ({
   consolidationMembership: null,
   consolidationAsMain: null,
   defendants: [],
+  lawyers: [],
   sourceLead: {
     id: id('7'),
     platform: 'TAOBAO',
@@ -176,6 +177,85 @@ describe('real case consolidation', () => {
     await expect(service.preview(actor, { members })).rejects.toMatchObject({
       response: { code: 'SOURCE_CONFLICT' },
     });
+  });
+
+  it.each([
+    'WAITING_COMPLAINT',
+    'WAITING_COMPLAINT_CONFIRMATION',
+    'WAITING_COMPLAINT_STAMP',
+  ])(
+    'previews two cases in the same complaint stage %s with one shared primary lawyer',
+    async (stage) => {
+      const { service, tx } = fixture();
+      tx.case.findMany.mockResolvedValueOnce(
+        sources.map((item) => ({
+          ...item,
+          stage,
+          lawyers: [{ lawyerId: id('8') }],
+        })),
+      );
+      await expect(service.preview(actor, { members })).resolves.toMatchObject({
+        caseCount: 2,
+      });
+    },
+  );
+
+  it('rejects mixed stages and different or missing primary lawyers before mutation', async () => {
+    const { service, tx } = fixture();
+    tx.case.findMany.mockResolvedValueOnce([
+      sources[0],
+      {
+        ...sources[1],
+        stage: 'WAITING_COMPLAINT',
+        lawyers: [{ lawyerId: id('8') }],
+      },
+    ]);
+    await expect(service.create(actor, input)).rejects.toMatchObject({
+      response: { code: 'INVALID_STATE' },
+    });
+    tx.case.findMany.mockResolvedValueOnce(
+      sources.map((item, index) => ({
+        ...item,
+        stage: 'WAITING_COMPLAINT',
+        lawyers: [{ lawyerId: id(index === 0 ? '8' : '9') }],
+      })),
+    );
+    await expect(service.create(actor, input)).rejects.toMatchObject({
+      response: { code: 'SOURCE_CONFLICT' },
+    });
+    tx.case.findMany.mockResolvedValueOnce(
+      sources.map((item, index) => ({
+        ...item,
+        stage: 'WAITING_COMPLAINT',
+        lawyers: index === 0 ? [] : [{ lawyerId: id('8') }],
+      })),
+    );
+    await expect(service.create(actor, input)).rejects.toMatchObject({
+      response: { code: 'SOURCE_CONFLICT' },
+    });
+    expect(tx.case.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps the main complaint stage and original case records when consolidating prepared complaints', async () => {
+    const { service, tx } = fixture();
+    tx.case.findMany.mockResolvedValueOnce(
+      sources.map((item) => ({
+        ...item,
+        stage: 'WAITING_COMPLAINT_CONFIRMATION',
+        lawyers: [{ lawyerId: id('8') }],
+      })),
+    );
+    await service.create(actor, input);
+    expect(tx.case.updateMany).toHaveBeenCalledTimes(2);
+    for (const call of tx.case.updateMany.mock.calls) {
+      expect(call[0]).toMatchObject({
+        where: { stage: 'WAITING_COMPLAINT_CONFIRMATION', version: 2 },
+        data: { version: { increment: 1 } },
+      });
+    }
+    expect(Object.keys(tx)).not.toContain('caseLawyerAssignment');
+    expect(Object.keys(tx)).not.toContain('caseComplaintConfirmation');
+    expect(Object.keys(tx)).not.toContain('materialContentVersion');
   });
 
   it('locks all members and records only immutable relationship, versions and audit; original financial rows stay untouched', async () => {

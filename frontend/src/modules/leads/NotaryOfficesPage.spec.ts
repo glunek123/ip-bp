@@ -64,6 +64,7 @@ beforeEach(() => {
 describe('NotaryOfficesPage', () => {
   it('lists current active offices and creates one only when allowed', async () => {
     const wrapper = await mountPage();
+    expect(wrapper.find('main h1').exists()).toBe(false);
     expect(wrapper.text()).toContain('公证处');
     expect(wrapper.text()).toContain('广州市南方公证处');
     expect(wrapper.text()).toContain('深圳市深圳公证处');

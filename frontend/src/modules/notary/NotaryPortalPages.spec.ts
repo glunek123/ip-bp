@@ -92,6 +92,47 @@ async function mountRoute(
 }
 
 describe('notary portal pages', () => {
+  it('returns to the validated filtered portal path from detail', async () => {
+    const wrapper = await mountRoute(
+      '/notary-portal/matters/matter-1?returnTo=%2Fnotary-portal%2Fmatters%3Fstage%3DARCHIVED%26page%3D2',
+      NotaryPortalDetailPage,
+    );
+    expect(
+      wrapper
+        .findAll('a')
+        .find((link) => link.text().includes('返回公证事项'))
+        ?.attributes('href'),
+    ).toBe('/notary-portal/matters?stage=ARCHIVED&page=2');
+  });
+  it('opens a matter detail from the row while keeping its link', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/notary-portal/matters', component: NotaryPortalListPage },
+        {
+          path: '/notary-portal/matters/:id',
+          component: { template: '<div />' },
+        },
+      ],
+    });
+    await router.push('/notary-portal/matters?stage=ARCHIVED&page=2');
+    const wrapper = mount(NotaryPortalListPage, {
+      global: { plugins: [router, createPinia()] },
+    });
+    await flushPromises();
+    const href = wrapper.get('[data-test="notary-portal-row"]').attributes('href')!;
+    expect(new URL(href, 'http://local').searchParams.get('returnTo')).toBe(
+      '/notary-portal/matters?stage=ARCHIVED&page=2',
+    );
+    await wrapper.get('[data-test="notary-portal-row-item"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toMatch(
+      /^\/notary-portal\/matters\//u,
+    );
+    expect(router.currentRoute.value.query.returnTo).toBe(
+      '/notary-portal/matters?stage=ARCHIVED&page=2',
+    );
+  });
   it('lists only the current portal queue with a direct detail link', async () => {
     const wrapper = await mountRoute(
       '/notary-portal/matters',
@@ -100,10 +141,18 @@ describe('notary portal pages', () => {
     expect(wrapper.get('[data-test="notary-portal-row"]').text()).toBe(
       'NZ-001',
     );
-    expect(wrapper.text()).not.toContain('客户');
+    expect(wrapper.get('h1.sr-only').text()).toBe('公证事项');
     expect(
-      wrapper.get('[data-test="notary-portal-row"]').attributes('href'),
-    ).toBe('/notary-portal/matters/matter-1');
+      wrapper
+        .get('.notary-portal-segments')
+        .element.compareDocumentPosition(
+          wrapper.get('.notary-portal-toolbar').element,
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(wrapper.text()).not.toContain('客户');
+    const href = wrapper.get('[data-test="notary-portal-row"]').attributes('href')!;
+    expect(new URL(href, 'http://local').pathname).toBe('/notary-portal/matters/matter-1');
+    expect(new URL(href, 'http://local').searchParams.get('returnTo')).toBe('/notary-portal/matters');
   });
 
   it('switches the portal queue to waiting certificate without exposing cases', async () => {

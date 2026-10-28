@@ -16,10 +16,8 @@ import {
   type CaseListExportInput,
 } from '../../api/case-list-export';
 import { useAuthStore } from '../../stores/auth';
-import {
-  labelLeadPlatform,
-  leadCaseTypeLabels as caseTypeLabels,
-} from '../leads/index';
+import { labelLeadPlatform } from '../leads/index';
+import { isListRowClick } from '../../app/list-row-navigation';
 import ListWorkflowDrawer from '../../app/ListWorkflowDrawer.vue';
 import type {
   ListWorkflowContext,
@@ -61,7 +59,6 @@ import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
 import type { CaseBatchArchiveResult } from '../../api/case-batches';
 import {
   caseListQueryKey,
-  caseListCaseTypes,
   parseCaseListQuery,
   serializeCaseListQuery,
 } from './case-list-query';
@@ -123,7 +120,19 @@ const invalidFilter = computed(
       stage.value === 'all') ||
     (route.query.stageGroup !== undefined && stageGroup.value === undefined),
 );
-const parsedListQuery = computed(() => parseCaseListQuery(route.query));
+const parsedListQuery = computed(() =>
+  parseCaseListQuery({ ...route.query, caseType: undefined }),
+);
+watch(
+  () => route.query.caseType,
+  (value) => {
+    if (value === undefined) return;
+    const query = { ...route.query };
+    delete query.caseType;
+    void router.replace({ query: { ...query, page: '1' } });
+  },
+  { immediate: true },
+);
 const listFilters = computed<CaseListQuery>(() =>
   parsedListQuery.value.ok ? parsedListQuery.value.value : {},
 );
@@ -140,7 +149,6 @@ const rawListQueryKey = computed(() =>
       'defendantName',
       'courtName',
       'lawyerName',
-      'caseType',
     ].map((key) => [key, route.query[key] ?? null]),
   ),
 );
@@ -224,11 +232,16 @@ const selectedCaseSecondaryActions = computed(() => {
 });
 const canConsolidateSelection = computed(
   () =>
-    stage.value === 'PENDING_MATCH' &&
+    (stage.value === 'PENDING_MATCH' ||
+      stageGroup.value === 'COMPLAINT_PREPARATION') &&
     selectedCaseIds.value.length >= 2 &&
     selectedCaseIds.value.length <= 20 &&
     selectedCases.value.length === selectedCaseIds.value.length &&
-    selectedCases.value.every((item) => item.canConsolidate === true),
+    selectedCases.value.every(
+      (item) =>
+        item.canConsolidate === true &&
+        item.stage === selectedCases.value[0]?.stage,
+    ),
 );
 const allVisibleSelected = computed(
   () =>
@@ -314,19 +327,12 @@ const listQuery = computed(() =>
     ...Object.entries(serializeCaseListQuery(listFilters.value)),
   ]),
 );
-const queryDraft = ref<{
-  caseType: (typeof caseListCaseTypes)[number] | '';
-  q: string;
-}>({
-  caseType: '',
-  q: '',
-});
+const queryDraft = ref({ q: '' });
 watch(
   () => parsedListQuery.value,
   (parsed) => {
     if (!parsed.ok) return;
     queryDraft.value = {
-      caseType: parsed.value.caseType ?? '',
       q: parsed.value.q ?? '',
     };
   },
@@ -343,9 +349,6 @@ function listRouteBase() {
 }
 function applyQuery() {
   const next = {
-    ...(queryDraft.value.caseType
-      ? { caseType: queryDraft.value.caseType }
-      : {}),
     q: queryDraft.value.q,
   } satisfies CaseListQuery;
   const parsed = parseCaseListQuery(next);
@@ -364,7 +367,6 @@ function applyQuery() {
 }
 function clearQuery() {
   queryDraft.value = {
-    caseType: '',
     q: '',
   };
   applyQuery();
@@ -632,13 +634,12 @@ const visibleColumns = computed(() =>
   columnOrder.value.filter((column) => !hiddenColumns.value.includes(column)),
 );
 type CaseListTableColumn =
-  CaseListColumn | 'selection' | 'owner' | 'rowActions' | 'origin';
+  CaseListColumn | 'selection' | 'owner' | 'rowActions';
 const tableColumns = computed<CaseListTableColumn[]>(() => [
   'selection',
   'rowActions',
   'businessNo',
   'owner',
-  'origin',
   ...visibleColumns.value.filter((column) => column !== 'businessNo'),
 ]);
 const preferenceBucket = computed<CaseListPreferenceBucket>(
@@ -688,7 +689,6 @@ const fixedColumnLabels = {
   selection: '选择',
   owner: '负责人',
   rowActions: '操作',
-  origin: '来源',
 } as const;
 function columnLabel(column: CaseListTableColumn): string {
   return column in fixedColumnLabels
@@ -699,7 +699,6 @@ function columnClass(column: CaseListTableColumn) {
   if (column === 'selection') return 'case-list-col--selection';
   if (column === 'owner') return 'case-list-col--owner';
   if (column === 'rowActions') return 'case-list-col--actions';
-  if (column === 'origin') return 'case-list-col--origin';
   if (
     column === 'businessNo' ||
     column === 'shopExternalId' ||
@@ -713,8 +712,7 @@ function columnClass(column: CaseListTableColumn) {
 }
 function cellClass(column: CaseListTableColumn) {
   if (column === 'selection') return 'business-list-cell--nowrap';
-  if (column === 'owner' || column === 'origin')
-    return 'business-list-cell--text';
+  if (column === 'owner') return 'business-list-cell--text';
   if (column === 'rowActions') return 'business-list-cell--text';
   if (
     column === 'businessNo' ||
@@ -741,7 +739,6 @@ const minimumTableWidth = computed(() =>
     if (column === 'selection') return width + 48;
     if (column === 'owner') return width + 120;
     if (column === 'rowActions') return width + 200;
-    if (column === 'origin') return width + 190;
     if (
       column === 'businessNo' ||
       column === 'shopExternalId' ||
@@ -1058,6 +1055,9 @@ onBeforeUnmount(() => {
 <template>
   <div class="page-view business-list-page">
     <main>
+      <h1 class="sr-only">
+        {{ view === 'department' ? '全部部门案件' : '我的案件' }}
+      </h1>
       <section
         v-if="recordRecoveries.length || recordRecoveryError"
         class="state-panel"
@@ -1099,39 +1099,19 @@ onBeforeUnmount(() => {
           >核对原办理请求</ElButton
         >
       </section>
-      <form class="case-list-query" @submit.prevent="applyQuery">
-        <ListHeaderSearch
-          v-model="queryDraft.q"
-          placeholder="编号、案号、客户、权利主体、店铺、被告、法院、律师"
-          @search="applyQuery"
-        />
-        <label>
-          <span>案件类型</span>
-          <select v-model="queryDraft.caseType" data-test="case-query-type">
-            <option value="">全部</option>
-            <option
-              v-for="value in caseListCaseTypes"
-              :key="value"
-              :value="value"
-            >
-              {{ caseTypeLabels[value] }}
-            </option>
-          </select>
-        </label>
-        <div class="case-list-query-actions">
-          <ElButton type="primary" native-type="submit">查询</ElButton>
-          <ElButton
-            native-type="button"
-            data-test="case-query-clear"
-            @click="clearQuery"
-            >清除筛选</ElButton
-          >
-        </div>
-      </form>
+      <ListHeaderSearch
+        v-model="queryDraft.q"
+        placeholder="编号、案号、客户、权利主体、店铺、被告、法院、律师"
+        @search="applyQuery"
+      />
       <div
         class="case-list-toolbar case-list-head-actions operation-bar"
         aria-label="案件列表工具栏"
       >
+        <ElButton @click="applyQuery">查询</ElButton>
+        <ElButton data-test="case-query-clear" @click="clearQuery"
+          >清除筛选</ElButton
+        >
         <span v-if="selectedCaseIds.length" aria-live="polite">
           已选 {{ selectedCaseIds.length }} 件
         </span>
@@ -1186,17 +1166,19 @@ onBeforeUnmount(() => {
           >批量归档</ElButton
         >
         <ElButton
-          v-if="stage === 'PENDING_MATCH'"
+          v-if="
+            stage === 'PENDING_MATCH' || stageGroup === 'COMPLAINT_PREPARATION'
+          "
           class="case-toolbar-button"
           :disabled="!canConsolidateSelection"
           :title="
             canConsolidateSelection
-              ? '合并所选待匹配案件'
-              : '请选择 2 至 20 件可合案的待匹配案件'
+              ? '合并所选案件'
+              : '请选择 2 至 20 件同一阶段且可合并的案件'
           "
           data-test="open-case-consolidation"
           @click="consolidationOpen = true"
-          >合案</ElButton
+          >合并起诉</ElButton
         >
         <ElButton
           v-if="selectedCaseIds.length"
@@ -1204,15 +1186,6 @@ onBeforeUnmount(() => {
           data-test="clear-case-selection"
           @click="selectedCaseIds = []"
           >清空选择</ElButton
-        >
-        <RouterLink
-          v-if="auth.session?.principalType === 'INTERNAL'"
-          :to="{
-            path: '/case-handling-groups',
-            query: { returnTo: route.fullPath },
-          }"
-          data-test="case-handling-groups-entry"
-          >案件系列</RouterLink
         >
         <ElButton
           v-if="canExportCsv"
@@ -1225,12 +1198,14 @@ onBeforeUnmount(() => {
           >导出筛选</ElButton
         >
         <ElButton
-          v-if="canCreateExternalEntry"
+          v-if="
+            canCreateExternalEntry && stage === 'PENDING_MATCH' && !stageGroup
+          "
           class="case-toolbar-button"
           type="primary"
           @click="router.push('/cases/external-entry')"
-          title="转入或补录案件"
-          >转入案件</ElButton
+          title="创建、转入或补录案件"
+          >创建案件</ElButton
         >
         <ElButton
           v-if="canCreateExternalEntry"
@@ -1301,7 +1276,7 @@ onBeforeUnmount(() => {
                   scope="col"
                   :data-column="column"
                   :class="
-                    !['owner', 'rowActions', 'origin'].includes(column) &&
+                    !['owner', 'rowActions'].includes(column) &&
                     column.endsWith('Amount')
                       ? 'num'
                       : undefined
@@ -1331,7 +1306,18 @@ onBeforeUnmount(() => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in items" :key="item.id">
+              <tr
+                v-for="item in items"
+                :key="item.id"
+                class="business-row-link"
+                @click="
+                  isListRowClick($event) &&
+                  router.push({
+                    path: `/cases/${encodeURIComponent(item.id)}`,
+                    query: listQuery,
+                  })
+                "
+              >
                 <td
                   v-for="column in tableColumns"
                   :key="column"
@@ -1392,52 +1378,17 @@ onBeforeUnmount(() => {
                       {{ shortCaseAction(action) }}
                     </ElButton>
                   </div>
-                  <div
-                    v-else-if="column === 'origin'"
-                    class="case-list-context"
-                  >
-                    <p v-if="item.sourceLead">
-                      来源线索：<span class="mono case-list-identifier">{{
-                        item.sourceLead.businessNo
-                      }}</span>
-                    </p>
-                    <p v-if="item.sourceNotaryMatter">
-                      公证事项：<span class="mono case-list-identifier">{{
-                        item.sourceNotaryMatter.businessNo
-                      }}</span>
-                    </p>
-                    <p v-if="item.origin?.kind === 'EXTERNAL_ENTRY'">
-                      案件来源：{{
-                        item.origin.entryKind === 'EXTERNAL_TRANSFER'
-                          ? '外部转入'
-                          : '历史补录'
-                      }}
-                      · {{ item.origin.stageReachedOn }}
-                    </p>
-                    <span
-                      v-if="
-                        !item.sourceLead &&
-                        !item.sourceNotaryMatter &&
-                        item.origin?.kind !== 'EXTERNAL_ENTRY'
-                      "
-                      class="field-help"
-                      >未登记</span
-                    >
-                  </div>
                   <span v-else-if="column === 'stage'" class="pill">
                     {{ stageLabel(item.stage) }}
                   </span>
-                  <details
+                  <span
                     v-else-if="
                       column === 'customerName' || column === 'rightsHolderName'
                     "
-                    class="case-list-name"
+                    class="case-list-truncate"
+                    :title="item.displaySummary[column]"
+                    >{{ item.displaySummary[column] }}</span
                   >
-                    <summary :title="item.displaySummary[column]">
-                      {{ item.displaySummary[column] }}
-                    </summary>
-                    <p>{{ item.displaySummary[column] }}</p>
-                  </details>
                   <span v-else-if="column === 'platform'">
                     {{
                       item.displaySummary.source.platform
@@ -1445,17 +1396,13 @@ onBeforeUnmount(() => {
                         : '未提供'
                     }}
                   </span>
-                  <details
+                  <span
                     v-else-if="column === 'shopName'"
-                    class="case-list-name"
+                    class="case-list-truncate"
+                    :title="item.displaySummary.source.shopName ?? '未提供'"
                   >
-                    <summary
-                      :title="item.displaySummary.source.shopName ?? '未提供'"
-                    >
-                      {{ item.displaySummary.source.shopName ?? '未提供' }}
-                    </summary>
-                    <p>{{ item.displaySummary.source.shopName ?? '未提供' }}</p>
-                  </details>
+                    {{ item.displaySummary.source.shopName ?? '未提供' }}
+                  </span>
                   <span
                     v-else-if="column === 'shopExternalId'"
                     class="mono case-list-truncate"
@@ -1463,75 +1410,43 @@ onBeforeUnmount(() => {
                   >
                     {{ item.displaySummary.source.shopExternalId ?? '' }}
                   </span>
-                  <details
-                    v-else-if="
-                      column === 'defendants' &&
-                      item.displaySummary.defendants.length
+                  <span
+                    v-else-if="column === 'defendants'"
+                    class="case-list-truncate"
+                    :title="
+                      item.displaySummary.defendants
+                        .map((entry) => entry.name)
+                        .join('、') || '未登记'
                     "
-                    class="case-list-name"
                   >
-                    <summary
-                      :title="
-                        item.displaySummary.defendants
-                          .map((defendant) => defendant.name)
-                          .join('、')
-                      "
-                    >
-                      {{
-                        item.displaySummary.defendants
-                          .map((defendant) => defendant.name)
-                          .join('、')
-                      }}
-                    </summary>
-                    <ul>
-                      <li
-                        v-for="defendant in item.displaySummary.defendants"
-                        :key="defendant.id"
-                      >
-                        {{ defendant.name }}
-                      </li>
-                    </ul>
-                  </details>
-                  <span v-else-if="column === 'defendants'">未登记</span>
-                  <details
-                    v-else-if="
-                      column === 'lawyers' && item.displaySummary.lawyers.length
+                    {{
+                      item.displaySummary.defendants
+                        .map((entry) => entry.name)
+                        .join('、') || '未登记'
+                    }}
+                  </span>
+                  <span
+                    v-else-if="column === 'lawyers'"
+                    class="case-list-truncate"
+                    :title="
+                      item.displaySummary.lawyers
+                        .map((entry) => entry.fullName)
+                        .join('、') || '未登记'
                     "
-                    class="case-list-name"
                   >
-                    <summary
-                      :title="
-                        item.displaySummary.lawyers
-                          .map((lawyer) => lawyer.fullName)
-                          .join('、')
-                      "
-                    >
-                      {{
-                        item.displaySummary.lawyers
-                          .map((lawyer) => lawyer.fullName)
-                          .join('、')
-                      }}
-                    </summary>
-                    <ul>
-                      <li
-                        v-for="lawyer in item.displaySummary.lawyers"
-                        :key="lawyer.id"
-                      >
-                        {{ lawyer.fullName }}
-                      </li>
-                    </ul>
-                  </details>
-                  <span v-else-if="column === 'lawyers'">未登记</span>
-                  <details
-                    v-else-if="column === 'court' && item.displaySummary.court"
-                    class="case-list-name"
+                    {{
+                      item.displaySummary.lawyers
+                        .map((entry) => entry.fullName)
+                        .join('、') || '未登记'
+                    }}
+                  </span>
+                  <span
+                    v-else-if="column === 'court'"
+                    class="case-list-truncate"
+                    :title="item.displaySummary.court?.name ?? '未登记'"
                   >
-                    <summary :title="item.displaySummary.court.name">
-                      {{ item.displaySummary.court.name }}
-                    </summary>
-                    <p>{{ item.displaySummary.court.name }}</p>
-                  </details>
-                  <span v-else-if="column === 'court'">未登记</span>
+                    {{ item.displaySummary.court?.name ?? '未登记' }}
+                  </span>
                   <span
                     v-else-if="column === 'courtCaseNo'"
                     class="mono case-list-truncate"
