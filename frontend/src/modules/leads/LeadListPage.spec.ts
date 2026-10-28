@@ -1869,7 +1869,13 @@ describe('LeadListPage', () => {
     );
     expect(wrapper.findAll('colgroup col')).toHaveLength(13);
     expect(wrapper.text()).toContain('shop-真实-001');
-    expect(wrapper.text()).toContain('主体甲');
+    expect(wrapper.get('[data-column="shopName"]').text()).toBe('测试店铺');
+    expect(
+      wrapper.get('[data-column="shopName"] span').attributes('title'),
+    ).toBe('测试店铺');
+    expect(wrapper.get('[data-column="shopName"]').text()).not.toContain(
+      '主体甲',
+    );
     expect(wrapper.find('table.demo-table').exists()).toBe(true);
   });
 

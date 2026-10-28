@@ -477,7 +477,9 @@ describe('EvidencePage', () => {
     await hearing.get('summary').trigger('click');
     await hearing.findAll('input')[0]!.setValue('2026-03-04');
     await flushPromises();
-    expect(hearing.find('summary').text()).toContain('自 2026-03-04 起');
+    expect(
+      hearing.findAll('.range-value').map((value) => value.text()),
+    ).toEqual(['2026-03-04', '结束日期']);
     expect(api.listEvidence).toHaveBeenLastCalledWith(
       expect.objectContaining({ hearFrom: '2026-03-04' }),
       expect.any(Object),
@@ -487,7 +489,9 @@ describe('EvidencePage', () => {
     await closing.get('summary').trigger('click');
     await closing.findAll('input')[1]!.setValue('2026-03-31');
     await flushPromises();
-    expect(closing.find('summary').text()).toContain('至 2026-03-31');
+    expect(
+      closing.findAll('.range-value').map((value) => value.text()),
+    ).toEqual(['开始日期', '2026-03-31']);
     expect(api.listEvidence).toHaveBeenLastCalledWith(
       expect.objectContaining({
         hearFrom: '2026-03-04',
@@ -499,7 +503,8 @@ describe('EvidencePage', () => {
     await hearing.get('summary').trigger('click');
     await hearing.get('.panel-actions button').trigger('click');
     await flushPromises();
-    expect(hearing.find('summary').text()).toContain('不限日期');
+    expect(hearing.find('summary').text()).toContain('开始日期');
+    expect(hearing.find('summary').text()).toContain('结束日期');
     expect(api.listEvidence).toHaveBeenLastCalledWith(
       expect.objectContaining({ hearFrom: undefined, hearTo: undefined }),
       expect.any(Object),

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElInput } from 'element-plus/es/components/input/index.mjs';
 import {
@@ -27,6 +27,7 @@ import {
   isPendingFeeRefund,
 } from './financial-pending';
 const auth = useAuthStore();
+const filterFormId = useId();
 const scope = () =>
   `${auth.session?.user.id ?? ''}:${auth.session?.department?.id ?? ''}:fee:${props.caseId ?? 'center'}`;
 const identity = computed(
@@ -376,6 +377,7 @@ onBeforeUnmount(() => {
       核对状态仅描述本笔费用的人工记录，不代表案件或账单已结清。未知金额显示为待核对。
     </p>
     <form
+      :id="filterFormId"
       class="operation-bar fee-cancellation-history__filters"
       @submit.prevent="
         page = 1;
@@ -394,21 +396,27 @@ onBeforeUnmount(() => {
             :value="v"
             :label="v" /></ElSelect
       ></label>
-      <div class="operation-actions fee-cancellation-history__filter-actions">
-        <ElButton native-type="submit" class="action-size--standard"
-          >查询</ElButton
-        ><ElButton
-          class="action-size--standard"
-          @click="
-            businessNo = '';
-            type = '';
-            page = 1;
-            load();
-          "
-          >清除</ElButton
-        >
-      </div>
     </form>
+    <div class="operation-actions fee-cancellation-history__filter-actions">
+      <ElButton
+        :form="filterFormId"
+        native-type="submit"
+        class="action-size--standard"
+        >查询</ElButton
+      >
+      <ElButton
+        native-type="button"
+        class="action-size--standard"
+        @click="
+          businessNo = '';
+          type = '';
+          page = 1;
+          load();
+        "
+        >清除</ElButton
+      >
+      <slot name="toolbar-end" />
+    </div>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="loading">正在读取取消记录…</p>
     <p v-else-if="!items.length">暂无取消／作废记录</p>
@@ -656,13 +664,14 @@ onBeforeUnmount(() => {
 }
 .fee-cancellation-history__filters {
   display: grid;
-  grid-template-columns: repeat(2, minmax(160px, 1fr)) auto;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
   align-items: end;
   gap: var(--s-2);
 }
 .fee-cancellation-history__filter-actions {
   justify-content: flex-end;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  margin: 8px 0;
 }
 .fee-cancellation-history__table-scroll {
   max-width: 100%;

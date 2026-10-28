@@ -1640,12 +1640,10 @@ onBeforeUnmount(() => {
                 <td class="business-list-cell--nowrap">
                   {{ labelLeadPlatform(lead.platform) }}
                 </td>
-                <td class="business-list-cell--text">
-                  <span :title="lead.shopName">{{ lead.shopName }}</span>
-                  <small class="lead-shop-context">
-                    {{ lead.displayNames.customerName }} ·
-                    {{ lead.displayNames.rightsHolderName }}
-                  </small>
+                <td class="business-list-cell--text" data-column="shopName">
+                  <span class="lead-shop-name" :title="lead.shopName">{{
+                    lead.shopName
+                  }}</span>
                 </td>
                 <td
                   class="business-list-cell--text mono"
@@ -2024,8 +2022,9 @@ onBeforeUnmount(() => {
   font: inherit;
   font-size: 12px;
 }
-.lead-shop-context {
+.lead-shop-name {
   display: block;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

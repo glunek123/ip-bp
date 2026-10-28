@@ -23,12 +23,8 @@ function alignPanel(event: InstanceType<typeof globalThis.Event>) {
         ? 'end'
         : 'viewport';
 }
-const displayValue = computed(() => {
-  if (props.start && props.end) return `${props.start} 至 ${props.end}`;
-  if (props.start) return `自 ${props.start} 起`;
-  if (props.end) return `至 ${props.end}`;
-  return '不限日期';
-});
+const startValue = computed(() => props.start || '开始日期');
+const endValue = computed(() => props.end || '结束日期');
 const emit = defineEmits<{
   'update:start': [value: string | undefined];
   'update:end': [value: string | undefined];
@@ -48,8 +44,10 @@ function clearRange() {
     @toggle="alignPanel"
   >
     <summary>
-      <span>{{ props.label }}</span>
-      <span class="range-value">{{ displayValue }}</span>
+      <span class="range-name">{{ props.label }}</span>
+      <span class="range-value" :title="startValue">{{ startValue }}</span>
+      <span aria-hidden="true">至</span>
+      <span class="range-value" :title="endValue">{{ endValue }}</span>
     </summary>
     <div class="range-panel" :class="`range-panel--${alignment}`">
       <label>
@@ -97,7 +95,9 @@ function clearRange() {
 }
 .date-range summary {
   display: grid;
-  gap: 2px;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
   min-height: var(--app-control-height, 32px);
   padding: 4px 9px;
   border: 1px solid var(--color-hairline-strong, #d2d2d8);
@@ -106,10 +106,21 @@ function clearRange() {
   cursor: pointer;
   color: var(--color-ink-muted, #5c5e66);
   font-size: 12px;
+  list-style: none;
+}
+.date-range summary::-webkit-details-marker {
+  display: none;
+}
+.range-name {
+  white-space: nowrap;
 }
 .range-value {
   color: var(--color-ink, #0f1011);
-  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 .range-panel {

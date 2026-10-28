@@ -209,12 +209,28 @@ describe('settlement page behavior (mounted components, not real browser)', () =
       expect.objectContaining({ from: '2026-10-01', to: '2026-10-31' }),
     );
     const actions = wrapper.get('.settlement-center__filter-actions');
-    expect(actions.classes()).toContain('operation-bar');
+    expect(actions.classes()).toContain('operation-actions');
+    expect(actions.text()).toContain('查询');
+    expect(actions.text()).toContain('清除筛选');
+    expect(actions.text()).toContain('生成账单');
     expect(
-      actions
-        .findAll('button')
-        .every((item) => item.classes().includes('action-size--compact')),
-    ).toBe(true);
+      wrapper
+        .get('.settlement-center__filters')
+        .element.compareDocumentPosition(
+          wrapper.get('.settlement-center__list-toolbar').element,
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      wrapper
+        .get('.settlement-center__list-toolbar')
+        .element.compareDocumentPosition(
+          wrapper.get('.settlement-center__table').element,
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const billForm = wrapper.get('.settlement-center__bill-create');
+    expect(button(wrapper, '生成账单').attributes('form')).toBe(
+      billForm.attributes('id'),
+    );
 
     await range.get('.panel-actions button').trigger('click');
     await wrapper.get('.settlement-center__filters').trigger('submit');
@@ -224,6 +240,29 @@ describe('settlement page behavior (mounted components, not real browser)', () =
       1,
       expect.anything(),
       expect.objectContaining({ from: '', to: '' }),
+    );
+  });
+
+  it('uses the selected records and keeps native date validation when creating a bill from the toolbar', async () => {
+    const wrapper = render(SettlementCenterPage);
+    await flushPromises();
+    await wrapper
+      .get('label[aria-label="选择 案件001 第1次"] input')
+      .setValue(true);
+    const date = input(wrapper, '账单日期');
+    await date.setValue('');
+    const submit = button(wrapper, '生成账单').element as HTMLButtonElement;
+    submit.click();
+    await flushPromises();
+    expect(api.createSettlementBill).not.toHaveBeenCalled();
+    await date.setValue('2026-10-17');
+    submit.click();
+    await flushPromises();
+    expect(api.createSettlementBill).toHaveBeenCalledWith(
+      expect.objectContaining({
+        billDate: '2026-10-17',
+        launchIds: ['launch-page-1'],
+      }),
     );
   });
 
@@ -1020,10 +1059,14 @@ describe('zero amount fee launch handling', () => {
     const wrapper = render(FeeCenterPanel, { canCreate: true });
     await flushPromises();
 
-    expect(wrapper.find('.fee-center__heading h2').exists()).toBe(false);
-    expect(wrapper.find('.fee-center__heading-actions').exists()).toBe(true);
-    expect(wrapper.find('.fee-center__filter-actions').classes()).toContain(
-      'operation-actions',
+    expect(wrapper.find('.fee-center__heading-actions').exists()).toBe(false);
+    const toolbar = wrapper.get('.fee-center__toolbar-actions');
+    expect(toolbar.text()).toContain('查询');
+    expect(toolbar.text()).toContain('清除');
+    expect(toolbar.text()).toContain('取消／作废记录');
+    expect(toolbar.text()).toContain('新增费用');
+    expect(toolbar.get('button[type="submit"]').attributes('form')).toBe(
+      wrapper.get('.fee-center__filters').attributes('id'),
     );
     expect(
       wrapper
@@ -1166,7 +1209,7 @@ describe('selected original fee cancellation', () => {
     const wrapper = render(FeeCenterPanel, { canDelete: true });
     await flushPromises();
 
-    const cancel = button(wrapper, '取消选中单笔费用');
+    const cancel = button(wrapper, '取消费用');
     expect(cancel.attributes('disabled')).toBeDefined();
     await wrapper.get('thead input[type="checkbox"]').setValue(true);
     expect(cancel.attributes('disabled')).toBeDefined();
@@ -1202,7 +1245,7 @@ describe('selected original fee cancellation', () => {
     await flushPromises();
 
     await selectFee(wrapper, fee);
-    const cancel = button(wrapper, '取消选中单笔费用');
+    const cancel = button(wrapper, '取消费用');
     expect(cancel.attributes('disabled')).toBeUndefined();
     await cancel.trigger('click');
     await flushPromises();
@@ -1249,18 +1292,14 @@ describe('selected original fee cancellation', () => {
     const wrapper = render(FeeCenterPanel, { canDelete: true });
     await flushPromises();
     await selectFee(wrapper, fee);
-    expect(
-      button(wrapper, '取消选中单笔费用').attributes('disabled'),
-    ).toBeUndefined();
+    expect(button(wrapper, '取消费用').attributes('disabled')).toBeUndefined();
 
     await button(wrapper, '下一页').trigger('click');
     await flushPromises();
 
     expect(wrapper.text()).toContain('CASE-PAGE-TWO');
     expect(wrapper.text()).toContain('已选 1 条');
-    expect(
-      button(wrapper, '取消选中单笔费用').attributes('disabled'),
-    ).toBeDefined();
+    expect(button(wrapper, '取消费用').attributes('disabled')).toBeDefined();
     expect(feeCancellationApi.cancelFee).not.toHaveBeenCalled();
   });
 });

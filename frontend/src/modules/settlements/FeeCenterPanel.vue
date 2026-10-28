@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref, useId, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElInput } from 'element-plus/es/components/input/index.mjs';
@@ -160,6 +160,7 @@ const showCaseCreate = ref(false);
 const pendingCancellation = ref<PendingFeeCancellation | null>(null);
 const unknownCancellation = ref(false);
 const showCancellations = ref(false);
+const filterFormId = useId();
 const form = reactive({
   caseId: props.caseId ?? '',
   type: '诉讼费',
@@ -822,33 +823,34 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="fee-center">
-    <header class="operation-bar fee-center__heading">
-      <div>
-        <p>
-          案件费用明细与费用中心使用同一条费用记录。发起不代表财务已接收或实际支付。
-        </p>
-      </div>
-      <div class="operation-actions fee-center__heading-actions">
+    <p class="fee-center__description">
+      案件费用明细与费用中心使用同一条费用记录。发起不代表财务已接收或实际支付。
+    </p>
+    <FeeCancellationHistoryPanel
+      v-if="showCancellations"
+      :case-id="props.caseId"
+      :can-update="props.canUpdate"
+    >
+      <template #toolbar-end>
         <ElButton
           class="action-size--standard"
-          @click="showCancellations = !showCancellations"
-          >{{ showCancellations ? '返回费用列表' : '取消／作废记录' }}</ElButton
+          title="返回费用列表"
+          @click="showCancellations = false"
+          >返回列表</ElButton
         >
         <ElButton
           v-if="props.canCreate"
           type="primary"
           :disabled="saving"
-          @click="openCreate"
-          class="action-size--wide"
+          @click="
+            showCancellations = false;
+            openCreate();
+          "
+          class="action-size--standard"
           >新增费用</ElButton
         >
-      </div>
-    </header>
-    <FeeCancellationHistoryPanel
-      v-if="showCancellations"
-      :case-id="props.caseId"
-      :can-update="props.canUpdate"
-    />
+      </template>
+    </FeeCancellationHistoryPanel>
     <template v-else>
       <div v-if="summary" class="fee-center__metrics" aria-label="费用统计">
         <div>
@@ -863,6 +865,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <form
+        :id="filterFormId"
         class="fee-center__filters"
         aria-label="筛选费用"
         @submit.prevent="applyFilter"
@@ -906,8 +909,14 @@ onBeforeUnmount(() => {
             @update:end="filters.to = $event ?? ''"
           />
         </div>
-        <div class="operation-actions fee-center__filter-actions">
-          <ElButton native-type="submit" class="action-size--standard"
+      </form>
+      <div class="operation-bar fee-center__toolbar">
+        <span>已选 {{ selected.size }} 条 · 当前筛选 {{ total }} 条</span>
+        <div class="operation-actions fee-center__toolbar-actions">
+          <ElButton
+            :form="filterFormId"
+            native-type="submit"
+            class="action-size--standard"
             >查询</ElButton
           >
           <ElButton
@@ -916,11 +925,6 @@ onBeforeUnmount(() => {
             @click="clearFilter"
             >清除</ElButton
           >
-        </div>
-      </form>
-      <div class="operation-bar fee-center__toolbar">
-        <span>已选 {{ selected.size }} 条 · 当前筛选 {{ total }} 条</span>
-        <div class="operation-actions fee-center__toolbar-actions">
           <ElButton
             v-if="props.canLaunch"
             class="action-size--standard"
@@ -942,8 +946,9 @@ onBeforeUnmount(() => {
             v-if="props.canDelete"
             class="action-size--standard"
             :disabled="!canCancelSelectedOriginal"
+            title="取消当前选中的一笔原始费用"
             @click="cancelSelectedOriginalFee"
-            >取消选中单笔费用</ElButton
+            >取消费用</ElButton
           >
           <details>
             <summary>展示列</summary>
@@ -956,6 +961,17 @@ onBeforeUnmount(() => {
               >
             </div>
           </details>
+          <ElButton class="action-size--wide" @click="showCancellations = true"
+            >取消／作废记录</ElButton
+          >
+          <ElButton
+            v-if="props.canCreate"
+            type="primary"
+            :disabled="saving"
+            @click="openCreate"
+            class="action-size--standard"
+            >新增费用</ElButton
+          >
         </div>
       </div>
       <p v-if="zeroOnlySelection" role="status">
@@ -1245,19 +1261,15 @@ onBeforeUnmount(() => {
   gap: var(--app-section-gap, 16px);
   color: var(--color-ink);
 }
-.fee-center__heading,
 .fee-center__pager {
   justify-content: space-between;
-  min-width: 0;
-}
-.fee-center__heading > div:first-child {
   min-width: 0;
 }
 h2,
 p {
   margin: 0;
 }
-.fee-center__heading p {
+.fee-center__description {
   color: var(--color-ink-muted);
   font-size: 12px;
   margin-top: 6px;
@@ -1323,14 +1335,6 @@ label {
   grid-column: 1 / -1;
   justify-self: end;
 }
-.fee-center__filter-actions {
-  justify-content: flex-end;
-  flex-wrap: nowrap;
-}
-.fee-center__heading-actions {
-  justify-content: flex-end;
-  flex-wrap: wrap;
-}
 .fee-center__toolbar {
   justify-content: space-between;
 }
@@ -1341,6 +1345,7 @@ label {
 }
 .fee-center__toolbar-actions {
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 .fee-center__columns {
   display: grid;
@@ -1416,7 +1421,6 @@ th {
   .fee-center__filter-fields {
     grid-template-columns: 1fr;
   }
-  .fee-center__filter-actions,
   .fee-center__create label:first-child,
   .fee-center__create > p,
   .fee-center__create > button {

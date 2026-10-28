@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import { ApiError } from '../../api/http';
 import {
@@ -38,6 +38,9 @@ import {
 } from './financial-pending';
 
 const tab = ref<'CUSTOMER' | 'LAWYER' | 'FEES'>('CUSTOMER');
+const filterFormId = useId();
+const billCreateFormId = useId();
+const billFilterFormId = useId();
 const auth = useAuthStore();
 const identity = computed(
   () =>
@@ -531,6 +534,7 @@ async function cancelBill(): Promise<void> {
           </div>
         </dl>
         <form
+          :id="filterFormId"
           class="settlement-center__filters"
           aria-label="筛选结算明细"
           @submit.prevent="applyFilter"
@@ -561,8 +565,47 @@ async function cancelBill(): Promise<void> {
             @update:start="from = $event ?? ''"
             @update:end="to = $event ?? ''"
           />
-          <div class="operation-bar settlement-center__filter-actions">
-            <ElButton native-type="submit" class="action-size--compact"
+        </form>
+        <form
+          v-if="capabilities.billCreate"
+          :id="billCreateFormId"
+          class="settlement-center__bill-create"
+          @submit.prevent="createBill"
+        >
+          <label
+            >账单日期
+            <ElInput
+              v-model="billDate"
+              type="date"
+              required
+              :disabled="unknownBill"
+            />
+          </label>
+          <label
+            >备注
+            <ElInput
+              v-model="billNote"
+              maxlength="500"
+              :disabled="unknownBill"
+            />
+          </label>
+        </form>
+        <p
+          v-if="capabilities.billCreate && billPreview"
+          class="settlement-center__note"
+        >
+          编号预览：{{ billPreview }}（未占号，以创建结果为准）
+        </p>
+        <div class="operation-bar settlement-center__list-toolbar">
+          <span class="settlement-center__selection">
+            明细 {{ launches.total }} 条 · 已选
+            {{ selectedCount }} 条。勾选会在切换筛选时保留。
+          </span>
+          <div class="operation-actions settlement-center__filter-actions">
+            <ElButton
+              :form="filterFormId"
+              native-type="submit"
+              class="action-size--compact"
               >查询</ElButton
             >
             <ElButton
@@ -571,12 +614,18 @@ async function cancelBill(): Promise<void> {
               @click="clearFilter"
               >清除筛选</ElButton
             >
+            <ElButton
+              v-if="capabilities.billCreate"
+              :form="billCreateFormId"
+              native-type="submit"
+              class="action-size--standard"
+              title="合并所选结算明细生成账单"
+              :disabled="saving || selectedCount === 0"
+            >
+              生成账单
+            </ElButton>
           </div>
-        </form>
-        <p class="settlement-center__selection">
-          明细 {{ launches.total }} 条 · 已选
-          {{ selectedCount }} 条。勾选会在切换筛选时保留。
-        </p>
+        </div>
         <p v-if="loading">正在加载…</p>
         <p v-else-if="visible.length === 0">当前条件下暂无结算明细</p>
         <div v-else class="settlement-center__table">
@@ -658,38 +707,6 @@ async function cancelBill(): Promise<void> {
             下一页
           </ElButton>
         </div>
-        <form
-          v-if="capabilities.billCreate"
-          class="settlement-center__bill-create"
-          @submit.prevent="createBill"
-        >
-          <label
-            >账单日期
-            <ElInput
-              v-model="billDate"
-              type="date"
-              required
-              :disabled="unknownBill" /></label
-          ><label
-            >备注
-            <ElInput
-              v-model="billNote"
-              maxlength="500"
-              :disabled="unknownBill" /></label
-          ><ElButton
-            native-type="submit"
-            class="action-size--wide"
-            :disabled="saving || selectedCount === 0"
-          >
-            合并生成账单（{{ selectedCount }} 条）
-          </ElButton>
-        </form>
-        <p
-          v-if="capabilities.billCreate && billPreview"
-          class="settlement-center__note"
-        >
-          编号预览：{{ billPreview }}（未占号，以创建结果为准）
-        </p>
         <p v-if="unknownBill" role="alert" class="settlement-center__message">
           账单创建结果尚未确认。<ElButton :disabled="saving" @click="createBill"
             >用原请求重试</ElButton
@@ -699,6 +716,7 @@ async function cancelBill(): Promise<void> {
       <section class="settlement-center__bills">
         <h2>账单</h2>
         <form
+          :id="billFilterFormId"
           class="settlement-center__bill-filters"
           @submit.prevent="
             billPage = 1;
@@ -714,12 +732,15 @@ async function cancelBill(): Promise<void> {
                 value="CANCELLED"
                 label="已撤销" /></ElSelect
           ></label>
-          <div class="operation-bar settlement-center__bill-filter-actions">
-            <ElButton native-type="submit" class="action-size--compact"
-              >查询账单</ElButton
-            >
-          </div>
         </form>
+        <div class="operation-actions settlement-center__bill-filter-actions">
+          <ElButton
+            :form="billFilterFormId"
+            native-type="submit"
+            class="action-size--compact"
+            >查询账单</ElButton
+          >
+        </div>
         <p v-if="bills.items.length === 0">暂无账单</p>
         <div v-else class="settlement-center__table">
           <table>
@@ -927,13 +948,13 @@ async function cancelBill(): Promise<void> {
   display: grid;
   grid-template-columns:
     minmax(190px, 2fr) repeat(2, minmax(130px, 1fr))
-    minmax(170px, 1.2fr) auto;
+    minmax(170px, 1.2fr);
   align-items: end;
   gap: 8px;
   min-width: 0;
 }
 .settlement-center__bill-filters {
-  grid-template-columns: minmax(210px, 2fr) minmax(140px, 1fr) auto;
+  grid-template-columns: minmax(210px, 2fr) minmax(140px, 1fr);
 }
 .settlement-center__filters label,
 .settlement-center__bill-filters label,
@@ -953,8 +974,18 @@ async function cancelBill(): Promise<void> {
   min-width: 0;
 }
 .settlement-center__filter-actions {
-  justify-self: end;
-  flex-wrap: nowrap;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.settlement-center__list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.settlement-center__list-toolbar > .settlement-center__selection {
+  margin-right: auto;
 }
 .settlement-center__bill-filter-actions {
   justify-content: flex-end;
@@ -995,7 +1026,7 @@ async function cancelBill(): Promise<void> {
 }
 .settlement-center__bill-create {
   display: grid;
-  grid-template-columns: minmax(130px, 1fr) minmax(220px, 2fr) auto;
+  grid-template-columns: minmax(130px, 1fr) minmax(220px, 2fr);
   align-items: end;
   gap: 8px;
   padding-top: 4px;
@@ -1058,9 +1089,6 @@ button:disabled {
   .settlement-center__filters {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .settlement-center__filter-actions {
-    grid-column: 1 / -1;
-  }
 }
 @media (max-width: 760px) {
   .settlement-center {
@@ -1076,10 +1104,6 @@ button:disabled {
   .settlement-center__bill-create {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .settlement-center__bill-create > button {
-    grid-column: 1 / -1;
-    justify-self: stretch;
-  }
 }
 @media (max-width: 420px) {
   .kpis {
@@ -1090,16 +1114,12 @@ button:disabled {
   .settlement-center__bill-create {
     grid-template-columns: 1fr;
   }
-  .settlement-center__filter-actions,
   .settlement-center__bill-create > .settlement-center__note,
   .settlement-center__bill-create > [role='alert'] {
     grid-column: auto;
   }
   .settlement-center__filter-actions {
     flex-wrap: wrap;
-  }
-  .settlement-center__bill-create > button {
-    grid-column: auto;
   }
 }
 </style>
