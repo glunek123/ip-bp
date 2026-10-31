@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { coreLeadFixtures } from './core-lead-database.mjs';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
+import { admitManagedWorkerDatabase } from '../../scripts/managed-e2e-worker-admission.mjs';
 
 const backendRequire = createRequire(
   resolve(process.cwd(), 'backend/package.json'),
@@ -39,10 +40,15 @@ async function withDatabase(operation) {
   const url = process.env.DATABASE_URL;
   if (process.env.NODE_ENV !== 'test' || !url)
     throw new Error('External-entry fixture requires isolated test database');
-  const database = validateIsolatedTestDatabaseUrl(url);
-  if (database.port !== 15433)
-    throw new Error('External-entry fixture requires protected port 15433');
-  const client = new Client({ connectionString: url });
+  const managed = await admitManagedWorkerDatabase({ databaseUrl: url });
+  if (managed === null) {
+    const database = validateIsolatedTestDatabaseUrl(url);
+    if (database.port !== 15433)
+      throw new Error('External-entry fixture requires protected port 15433');
+  }
+  const client = new Client({
+    connectionString: managed?.connectionString ?? url,
+  });
   await client.connect();
   try {
     const identity = (

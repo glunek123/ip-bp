@@ -823,9 +823,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="fee-center">
-    <p class="fee-center__description">
-      案件费用明细与费用中心使用同一条费用记录。发起不代表财务已接收或实际支付。
-    </p>
+    <p class="fee-center__description">发起不代表财务已接收或实际支付。</p>
     <FeeCancellationHistoryPanel
       v-if="showCancellations"
       :case-id="props.caseId"

@@ -22,6 +22,7 @@ import CaseArchivePanel from './CaseArchivePanel.vue';
 import { workflowChangedEvent } from '../../app/workflow-events';
 
 const api = vi.hoisted(() => ({
+  getCaseArchiveReadiness: vi.fn(),
   getCase: vi.fn(),
   getLead: vi.fn(),
   getLawyerCase: vi.fn(),
@@ -32,6 +33,10 @@ const api = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(),
   uploadMaterialFile: vi.fn(),
   downloadMaterialVersion: vi.fn(),
+}));
+vi.mock('../../api/case-archive-readiness', async (original) => ({
+  ...(await original<typeof import('../../api/case-archive-readiness')>()),
+  getCaseArchiveReadiness: api.getCaseArchiveReadiness,
 }));
 vi.mock('../../api/leads', () => ({ getLead: api.getLead }));
 vi.mock('../../api/cases', async (original) => ({
@@ -377,6 +382,7 @@ function archived(correction = false): CaseDetail {
     archiveAt: '2026-10-13',
     archiveType: 'EXECUTION_COLLECTED',
     archiveReason: ' 原文归档原因 ',
+    archiveNote: null,
     correctionReason: null,
     recordedAt: archiveReceipt.recordedAt,
     recordedByUserId: 'operator-1',
@@ -435,6 +441,25 @@ function deferred<T>() {
   return { promise, resolve };
 }
 async function fill(wrapper: VueWrapper) {
+  const check = wrapper.find('[data-test="archive-check"]');
+  if (check.exists()) {
+    const item = wrapper.getComponent(CaseArchivePanel).props('item');
+    api.getCaseArchiveReadiness.mockResolvedValue({
+      caseVersion: item.version,
+      closureVersionId: item.closure!.current.id,
+      checkedAt: new Date().toISOString(),
+      state: 'PASSED',
+      checks: {
+        payment: { state: 'PASSED', reason: 'CLOSURE_PAYMENT_REACHED' },
+        refund: { state: 'PASSED', reason: 'REFUND_EXPLICITLY_NOT_APPLICABLE' },
+        customer: { state: 'PASSED', reason: 'CUSTOMER_RECEIPTS_REACHED' },
+        lawyer: { state: 'PASSED', reason: 'LAWYER_INVOICES_REACHED' },
+      },
+    });
+    await check.trigger('click');
+    await flushPromises();
+  }
+
   await wrapper.get('[data-test="archive-date"]').setValue('2026-10-13');
   await wrapper
     .get('[data-test="archive-type"]')
@@ -627,6 +652,54 @@ describe('actual CA017 archive detail integration', () => {
       await flushPromises();
       expect(api.archiveCase).toHaveBeenCalledTimes(2);
       expect(api.archiveCase.mock.calls[1]![1]).toEqual(original);
+    },
+  );
+  it.each(['internal', 'lawyer'] as const)(
+    'keeps %s unknown receipts through denial, identity isolation and remount',
+    async (audience) => {
+      api.archiveCase.mockRejectedValueOnce(
+        new ApiError('unknown', 0, 'NETWORK_ERROR'),
+      );
+      const { wrapper, auth, pinia } = await open(audience);
+      await fill(wrapper);
+      await wrapper.get('[data-test="archive-form"]').trigger('submit');
+      await flushPromises();
+      const original = api.archiveCase.mock.calls[0]![1] as ArchiveCaseInput;
+      api.archiveCase.mockRejectedValueOnce(
+        new ApiError('denied', 403, 'ACTION_FORBIDDEN'),
+      );
+      const getCase = audience === 'internal' ? api.getCase : api.getLawyerCase;
+      getCase.mockRejectedValueOnce(
+        new ApiError('denied', 403, 'ACTION_FORBIDDEN'),
+      );
+      await wrapper.get('[data-test="archive-retry"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.text()).not.toContain('原文归档原因');
+      const session = auth.session!;
+      const recovery = caseArchiveSession(auth, () => '');
+      expect(recovery.pending('case-a')?.input).toEqual(original);
+      auth.session = {
+        ...session,
+        user: { ...session.user, id: 'other-actor' },
+      };
+      await flushPromises();
+      expect(recovery.pending('case-a')).toBeNull();
+      expect(wrapper.text()).not.toContain('原文归档原因');
+      auth.session = { ...session, authorizationRevision: 2 };
+      await flushPromises();
+      expect(recovery.pending('case-a')?.input).toEqual(original);
+      wrapper.unmount();
+      const restored = await open(audience, pinia);
+      expect(restored.wrapper.find('[data-test="archive-form"]').exists()).toBe(
+        false,
+      );
+      api.archiveCase.mockResolvedValueOnce(archiveReceipt);
+      await restored.wrapper
+        .get('[data-test="archive-retry"]')
+        .trigger('click');
+      await flushPromises();
+      expect(api.archiveCase.mock.calls[2]![1]).toEqual(original);
+      expect(recovery.pending('case-a')).toBeNull();
     },
   );
   it.each(['case', 'account', 'department', 'revision'] as const)(

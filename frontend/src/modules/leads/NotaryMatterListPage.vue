@@ -183,6 +183,33 @@ const selectedIds = ref<string[]>([]);
 const batchOpen = ref(false);
 const openingBatchOpen = ref(false);
 const openingBatchSummary = ref('');
+const knownSelectedMatters = computed(() =>
+  items.value.filter((matter) => selectedIds.value.includes(matter.id)),
+);
+const archiveDisabledReason = computed(() => {
+  if (!selectedIds.value.length) return '请选择事项';
+  if (selectedIds.value.length > 50) return '批量归档最多选择50项';
+  if (
+    knownSelectedMatters.value.some(
+      (matter) =>
+        matter.stage !== 'WAITING_RETURN' || !matter.capabilities.archiveReturn,
+    )
+  )
+    return '所选事项含不可退货归档项';
+  return '';
+});
+const openingDisabledReason = computed(() => {
+  if (!selectedIds.value.length) return '请选择事项';
+  const hasUnknown =
+    knownSelectedMatters.value.length < selectedIds.value.length;
+  const canOpen = knownSelectedMatters.value.some(
+    (matter) =>
+      (matter.stage === 'WAITING_UNBOX' && matter.capabilities.recordOpening) ||
+      hasPendingRequestFor(identity.value, matter.id, 'opening-form'),
+  );
+  return hasUnknown || canOpen ? '' : '所选事项无可开箱或待核实项';
+});
+
 type PendingBatch = {
   items: ArchiveNotaryReturnBatchInput[];
   key: string;
@@ -1368,8 +1395,9 @@ onBeforeUnmount(() => {
           >
           <ElButton
             data-test="batch-archive-open"
+            :title="archiveDisabledReason || '归档所选事项'"
             :disabled="
-              selectedIds.length === 0 ||
+              !!archiveDisabledReason ||
               batchOpen ||
               openingBatchOpen ||
               workflowOpen ||
@@ -1383,8 +1411,9 @@ onBeforeUnmount(() => {
           >
           <ElButton
             data-test="batch-opening-open"
+            :title="openingDisabledReason || '逐项核实并登记开箱'"
             :disabled="
-              selectedIds.length === 0 ||
+              !!openingDisabledReason ||
               batchOpen ||
               openingBatchOpen ||
               workflowOpen ||

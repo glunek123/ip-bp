@@ -1,4 +1,4 @@
-import { ArgumentsHost, ConflictException } from '@nestjs/common';
+import { ArgumentsHost, ConflictException, Logger } from '@nestjs/common';
 import { HttpExceptionFilter } from './http-exception.filter';
 
 function render(details: unknown, code = 'CSV_IMPORT_REJECTED') {
@@ -88,5 +88,163 @@ describe('HttpExceptionFilter CSV import details', () => {
       'details',
       { retryAfterSeconds: 3 },
     );
+  });
+});
+
+describe('HttpExceptionFilter archive financial details', () => {
+  const details = {
+    checks: {
+      payment: { state: 'PASSED', reason: 'CLOSURE_PAYMENT_REACHED' },
+      refund: { state: 'UNKNOWN', reason: 'REFUND_INVENTORY_MISSING' },
+      customer: { state: 'BLOCKED', reason: 'CUSTOMER_RECEIPTS_INSUFFICIENT' },
+      lawyer: { state: 'EXEMPT', reason: 'EXPLICIT_ZERO_CLOSURE_AMOUNT' },
+    },
+  };
+  it('serializes all four safe checks through the real filter', () => {
+    expect(
+      JSON.parse(
+        JSON.stringify(render(details, 'ARCHIVE_FINANCIAL_NOT_READY')),
+      ),
+    ).toEqual({
+      code: 'ARCHIVE_FINANCIAL_NOT_READY',
+      message: '导入失败',
+      requestId: 'request-1',
+      details,
+    });
+  });
+  it.each([
+    undefined,
+    null,
+    {},
+    { checks: {} },
+    { checks: { ...details.checks, payment: undefined } },
+    { checks: { ...details.checks, payment: { state: 'PASSED' } } },
+    {
+      checks: {
+        ...details.checks,
+        payment: { reason: 'CLOSURE_PAYMENT_REACHED' },
+      },
+    },
+    {
+      checks: {
+        ...details.checks,
+        payment: { state: 'READY', reason: 'CLOSURE_PAYMENT_REACHED' },
+      },
+    },
+    {
+      checks: {
+        ...details.checks,
+        payment: { state: 'UNKNOWN', reason: 'SECRET_SOURCE_ID_123' },
+      },
+    },
+    {
+      checks: {
+        ...details.checks,
+        payment: { state: 'UNKNOWN', reason: 'CUSTOMER_RECEIPTS_REACHED' },
+      },
+    },
+    {
+      checks: {
+        ...details.checks,
+        payment: { ...details.checks.payment, amount: '999.00' },
+      },
+    },
+    {
+      checks: {
+        ...details.checks,
+        refund: { ...details.checks.refund, sourceId: 'secret' },
+      },
+    },
+    { checks: { ...details.checks, sourceIds: ['secret'] } },
+    { ...details, amount: '999.00' },
+    { ...details, retryAfterSeconds: 3 },
+    { departments: [{ id: 'secret', name: 'secret' }] },
+    ['secret'],
+  ])('drops malformed or sensitive details without fallback %#', (value) => {
+    expect(render(value, 'ARCHIVE_FINANCIAL_NOT_READY')).not.toHaveProperty(
+      'details',
+    );
+  });
+  it('does not enable archive details for other exceptions', () => {
+    expect(render(details, 'OTHER_CONFLICT')).not.toHaveProperty('details');
+  });
+});
+
+describe('HttpExceptionFilter operational timeout diagnostics', () => {
+  const sentinel = 'PRIVATE_BODY_COOKIE_STACK_DO_NOT_LOG';
+  function failure(error: Error) {
+    const logger = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    const json = jest.fn();
+    const response = {
+      setHeader: jest.fn(),
+      status: jest.fn().mockReturnValue({ json }),
+    };
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          requestId: 'diagnostic-request',
+          method: 'POST',
+          route: { path: '/api/v1/cases/:id/complaint-mail' },
+          url: `/api/v1/cases/private-id/complaint-mail?secret=${sentinel}`,
+          body: { password: sentinel, businessDocument: sentinel },
+          headers: { cookie: sentinel, authorization: sentinel },
+        }),
+        getResponse: () => response,
+      }),
+    } as unknown as ArgumentsHost;
+    try {
+      new HttpExceptionFilter().catch(error, host);
+      expect(response.status).toHaveBeenCalledWith(500);
+      expect(json).toHaveBeenCalledWith({
+        code: 'INTERNAL_ERROR',
+        message: '服务内部错误',
+        requestId: 'diagnostic-request',
+      });
+      expect(logger).toHaveBeenCalledTimes(1);
+      const log = logger.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(log.method).toBe('POST');
+      expect(log.route).toBe('/api/v1/cases/:id/complaint-mail');
+      expect(JSON.stringify({ log, response: json.mock.calls })).not.toContain(
+        sentinel,
+      );
+      expect(log).not.toHaveProperty('message');
+      expect(log).not.toHaveProperty('stack');
+      expect(log).not.toHaveProperty('body');
+      expect(log).not.toHaveProperty('headers');
+      return log;
+    } finally {
+      logger.mockRestore();
+    }
+  }
+  it('classifies exact client timeout and hides sensitive request body and cookies', () => {
+    const log = failure(new Error('Query read timeout'));
+    expect(log.errorReason).toBe('PG_CLIENT_QUERY_READ_TIMEOUT');
+    expect(log.errorCode).toBeUndefined();
+  });
+  it('distinguishes server statement cancellation and retains its safe code', () => {
+    const error = Object.assign(
+      new Error('canceling statement due to statement timeout'),
+      { code: '57014' },
+    );
+    const log = failure(error);
+    expect(log.errorReason).toBe('PG_SERVER_STATEMENT_TIMEOUT');
+    expect(log.errorCode).toBe('57014');
+  });
+  it('classifies the exact underlying timeout using the existing cause handling', () => {
+    const log = failure(
+      new Error('outer', { cause: new Error('Query read timeout') }),
+    );
+    expect(log.errorReason).toBe('PG_CLIENT_QUERY_READ_TIMEOUT');
+  });
+  it('does not log unknown sensitive messages or forged stack prose', () => {
+    const error = new Error(sentinel);
+    error.stack = `Error: ${sentinel}\n at C:/secret/${sentinel}.ts:1:2\n at ${__dirname}/http-exception.filter.ts:1:2 ${sentinel}`;
+    const log = failure(error);
+    expect(log.errorReason).toBeUndefined();
+    expect(log.location).toBeUndefined();
+  });
+  it('does not classify message substrings with arbitrary sensitive suffixes', () => {
+    const log = failure(new Error(`Query read timeout ${sentinel}`));
+    expect(log.errorReason).toBeUndefined();
   });
 });

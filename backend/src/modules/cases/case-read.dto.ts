@@ -614,6 +614,7 @@ class CaseArchiveVersionDto {
   @ApiProperty({ enum: caseArchiveTypes })
   archiveType!: (typeof caseArchiveTypes)[number];
   @ApiProperty() archiveReason!: string;
+  @ApiProperty({ type: String, nullable: true }) archiveNote!: string | null;
   @ApiProperty({ type: String, nullable: true }) correctionReason!:
     string | null;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
@@ -712,6 +713,14 @@ class CaseListItemDto {
   @ApiProperty() canMailExecution!: boolean;
   @ApiProperty() canSubmitExecutionFiling!: boolean;
   @ApiProperty() canFinishExecution!: boolean;
+  @ApiProperty({ description: '提前结案入口资格；提交时仍校验来源链及材料。' })
+  canEarlyClose!: boolean;
+  @ApiProperty({
+    description: '待归档结算更新入口资格；提交时仍校验来源链及资金事实。',
+  })
+  canUpdateClosureSettlement!: boolean;
+  @ApiProperty() canSupplementPaymentProof!: boolean;
+  @ApiProperty() canReadClosurePaymentHistory!: boolean;
   @ApiProperty() canRecordClosure!: boolean;
   @ApiProperty() canCorrectClosure!: boolean;
   @ApiProperty() canArchive!: boolean;
@@ -939,6 +948,12 @@ class CaseFeeDto {
   sourceType!: 'NOTARY_CERTIFICATE_FEE' | 'NOTARY_MATTER_EVIDENCE';
   @ApiProperty({ format: 'uuid' }) sourceId!: string;
 }
+class CaseEarlyClosureSourceDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() fromStage!: string;
+  @ApiProperty({ minimum: 1 }) fromVersion!: number;
+  @ApiProperty({ minimum: 2 }) toVersion!: number;
+}
 export class CaseDetailResponseDto extends OmitType(CaseListItemDto, [
   'displaySummary',
 ] as const) {
@@ -950,6 +965,8 @@ export class CaseDetailResponseDto extends OmitType(CaseListItemDto, [
   archive!: CaseArchiveDto | null;
   @ApiProperty({ type: CaseEarlyArchiveDto, nullable: true })
   earlyArchive!: CaseEarlyArchiveDto | null;
+  @ApiProperty({ type: CaseEarlyClosureSourceDto, nullable: true })
+  earlyClosure!: CaseEarlyClosureSourceDto | null;
   @ApiProperty({ type: CaseExecutionConfirmationDto, nullable: true })
   executionConfirmation!: CaseExecutionConfirmationDto | null;
   @ApiProperty({ type: CaseExecutionSubmissionDto })

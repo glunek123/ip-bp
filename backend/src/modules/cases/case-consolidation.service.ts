@@ -30,12 +30,6 @@ type MemberInput = PreviewCaseConsolidationDto['members'][number];
 type Source = Awaited<
   ReturnType<CaseConsolidationService['readSources']>
 >[number];
-const consolidatableStages = [
-  'PENDING_MATCH',
-  'WAITING_COMPLAINT',
-  'WAITING_COMPLAINT_CONFIRMATION',
-  'WAITING_COMPLAINT_STAMP',
-] as const;
 
 @Injectable()
 export class CaseConsolidationService {
@@ -150,10 +144,6 @@ export class CaseConsolidationService {
         consolidationMembership: { select: { consolidationId: true } },
         consolidationAsMain: { select: { id: true } },
         defendants: { select: { kind: true, name: true, idNo: true } },
-        lawyers: {
-          where: { role: 'PRIMARY', endedAt: null },
-          select: { lawyerId: true },
-        },
         routineProfile: { select: { shopName: true } },
         sourceLead: {
           select: {
@@ -205,14 +195,8 @@ export class CaseConsolidationService {
     const stage = first.stage;
     if (!firstShop.platform || !firstShop.externalId)
       throw failure('SOURCE_CONFLICT', '请先补齐可核对的平台和店铺ID');
-    if (
-      !consolidatableStages.includes(
-        stage as (typeof consolidatableStages)[number],
-      )
-    )
+    if (stage !== 'PENDING_MATCH')
       throw failure('INVALID_STATE', '当前阶段不可合案');
-    const primaryLawyerId =
-      stage === 'PENDING_MATCH' ? null : first.lawyers[0]?.lawyerId;
     for (const member of members) {
       const source = byId.get(member.caseId)!;
       if (
@@ -221,13 +205,6 @@ export class CaseConsolidationService {
         source.consolidationAsMain
       )
         throw failure('INVALID_STATE', '参与案件阶段不同、不可合案或已合案');
-      if (
-        stage !== 'PENDING_MATCH' &&
-        (!primaryLawyerId ||
-          source.lawyers.length !== 1 ||
-          source.lawyers[0].lawyerId !== primaryLawyerId)
-      )
-        throw failure('SOURCE_CONFLICT', '参与案件主办律师不一致或未指定');
       if (source.version !== member.expectedVersion)
         throw failure('VERSION_CONFLICT', '参与案件版本已变化，请重新预览');
       if (

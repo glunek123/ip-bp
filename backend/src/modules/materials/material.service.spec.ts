@@ -1,4 +1,5 @@
 import { Readable } from 'node:stream';
+import { createHash } from 'node:crypto';
 import { ForbiddenException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ActorContext } from '../../access-control/actor-context';
@@ -2891,6 +2892,1096 @@ describe('MaterialService', () => {
       ),
     ).rejects.toMatchObject({ response: { code: 'MATERIAL_VERSION_INVALID' } });
   });
+  it.each(['WAITING_HEARING', 'WAITING_ARCHIVE', 'ARCHIVED'])(
+    'prepares payment proof authorization in %s without bypassing eligibility',
+    async (stage) => {
+      const f = createFixture();
+      f.db.case.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        stage,
+        responsibleUserId: actor.userId,
+        responsibleMembership: { teamId: null },
+      });
+      f.transaction.case.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        stage,
+        responsibleUserId: actor.userId,
+        responsibleMembership: { teamId: null },
+      });
+      const input = {
+        ownerType: 'CASE' as const,
+        ownerId: customerId,
+        category: 'CASE_CLOSURE_PAYMENT_PROOF' as const,
+        purpose: 'CASE_CLOSURE_PAYMENT_PROOF' as const,
+        originalFilename: 'payment.png',
+        declaredMimeType: 'image/png',
+      };
+      await expect(
+        f.service.createUploadDraft(actor, input),
+      ).resolves.toMatchObject({ category: 'CASE_CLOSURE_PAYMENT_PROOF' });
+      expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+        actor,
+        'case.read',
+        undefined,
+      );
+      if (stage === 'WAITING_HEARING')
+        expect(f.access.authorizeCase).toHaveBeenCalledWith(
+          actor,
+          'case.closure.record',
+          expect.any(Object),
+          undefined,
+        );
+      f.db.$queryRawUnsafe.mockResolvedValue([]);
+      f.db.uploadDraft.create.mockClear();
+      await expect(
+        f.service.createUploadDraft(actor, input),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      expect(f.db.uploadDraft.create).not.toHaveBeenCalled();
+      await expect(
+        f.service.createUploadDraft(
+          { ...actor, lawyerAccountId: customerId },
+          input,
+        ),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      f.db.case.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        stage,
+        responsibleUserId: customerId,
+      });
+      await expect(
+        f.service.createUploadDraft(actor, input),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    },
+  );
+  describe('payment proof current actor upload preparation', () => {
+    const proofInput = {
+      ownerType: 'CASE' as const,
+      ownerId: customerId,
+      category: 'CASE_CLOSURE_PAYMENT_PROOF' as const,
+      purpose: 'CASE_CLOSURE_PAYMENT_PROOF' as const,
+      originalFilename: 'payment.png',
+      declaredMimeType: 'image/png',
+    };
+    function setupProof(stage = 'WAITING_ARCHIVE') {
+      const f = createFixture();
+      const currentCase = {
+        departmentId: actor.departmentId,
+        stage,
+        responsibleUserId: actor.userId,
+        responsibleMembership: { teamId: null },
+      };
+      f.db.case.findFirst.mockResolvedValue(currentCase);
+      f.transaction.case.findFirst.mockResolvedValue(currentCase);
+      f.db.uploadDraft.findUnique.mockResolvedValue(
+        openDraft({ ...proofInput, customerAccountBindingId: null }),
+      );
+      f.storage.put.mockResolvedValue({
+        detectedMimeType: 'image/png',
+        sizeBytes: 8,
+        sha256: 'a'.repeat(64),
+      });
+      return f;
+    }
+    it.each(['intent', 'claim-and-finalize'])(
+      'consumes the actor lock result as supported text during proof %s',
+      async (checkpoint) => {
+        const f = setupProof();
+        f.transaction.$queryRawUnsafe.mockImplementation(async (sql) => {
+          if (String(sql).includes('lock_settlement_upload_actor_current')) {
+            expect(String(sql)).toBe(
+              'SELECT lock_settlement_upload_actor_current($1::uuid,$2::uuid,$3::uuid,$4::integer)::text',
+            );
+            return [{ lock_settlement_upload_actor_current: '' }];
+          }
+          return [{ id: customerId }];
+        });
+        if (checkpoint === 'intent')
+          await f.service.createUploadDraft(actor, proofInput);
+        else
+          await f.service.finalizeUpload(
+            actor,
+            'draft-1',
+            Readable.from('png'),
+          );
+        expect(
+          f.transaction.uploadDraft[
+            checkpoint === 'intent' ? 'create' : 'updateMany'
+          ],
+        ).toHaveBeenCalled();
+      },
+    );
+    function setupReplay() {
+      const f = setupProof();
+      f.db.uploadDraft.findUnique.mockResolvedValue(
+        openDraft({
+          ...proofInput,
+          status: 'FINALIZED',
+          expiresAt: new Date(now.getTime() - 1),
+        }),
+      );
+      const original = {
+        id: 'original-content-version',
+        materialId: 'original-material',
+        originalFilename: 'payment.png',
+        mimeType: 'image/png',
+        sizeBytes: 3n,
+        sha256: createHash('sha256').update('png').digest('hex'),
+      };
+      f.transaction.contentVersion.findFirst.mockResolvedValue(original);
+      return { ...f, original };
+    }
+    it.each([
+      'committed',
+      'concurrently referenced',
+      'rolled back',
+      'database unavailable',
+    ])(
+      'preserves proof bytes and durable cleanup ownership after an uncertain %s upload',
+      async (outcome) => {
+        const f = setupProof();
+        const failure = new Error('final transaction acknowledgement lost');
+        let committed = false;
+        let pendingKey: string | null = null;
+        let referenced = false;
+        f.transaction.uploadDraft.updateMany.mockImplementation(
+          async ({ data }) => {
+            if (typeof data.pendingStorageKey === 'string')
+              pendingKey = data.pendingStorageKey;
+            return { count: 1 };
+          },
+        );
+        f.db.$transaction
+          .mockImplementationOnce(async (callback) => callback(f.transaction))
+          .mockImplementationOnce(async (callback) => {
+            if (
+              outcome === 'committed' ||
+              outcome === 'concurrently referenced'
+            ) {
+              await callback(f.transaction);
+              committed = true;
+              // Another command can freeze the now-visible version before the
+              // uploader receives its failed COMMIT acknowledgement.
+              referenced = outcome === 'concurrently referenced';
+              pendingKey = null;
+            }
+            throw failure;
+          });
+        await expect(
+          f.service.finalizeUpload(actor, 'draft-1', Readable.from('png')),
+        ).rejects.toBe(failure);
+        expect(f.storage.put).toHaveBeenCalledTimes(1);
+        expect(f.storage.delete).not.toHaveBeenCalled();
+        expect(f.db.uploadDraft.updateMany).not.toHaveBeenCalled();
+        expect(f.db.$transaction).toHaveBeenCalledTimes(2);
+        expect(referenced).toBe(outcome === 'concurrently referenced');
+        expect(pendingKey === null).toBe(committed);
+
+        const queryRaw = jest.fn(async (sql: string) => {
+          if (outcome === 'database unavailable')
+            throw new Error('database offline');
+          // Model the two authoritative pending-key queries, including their
+          // committed-version exclusion. Successful commits are never orphans.
+          if (
+            sql.includes('pending_storage_key') &&
+            pendingKey !== null &&
+            !committed
+          ) {
+            expect(sql).toContain('NOT EXISTS');
+            expect(sql).toContain('FROM "content_versions"');
+            expect(sql).toContain('FOR UPDATE OF d');
+            // This cleanup pass models the later EXPIRED draft, not an open upload.
+            return [
+              { id: 'draft-1', storageKey: pendingKey, retainPendingKey: true },
+            ];
+          }
+          return [];
+        });
+        const cleanupTx = {
+          $queryRawUnsafe: queryRaw,
+          uploadDraft: {
+            updateMany: jest.fn(async () => {
+              return { count: 1 };
+            }),
+          },
+          contentVersion: { updateMany: jest.fn() },
+        };
+        const cleanupDb = {
+          $transaction: async (
+            callback: (tx: typeof cleanupTx) => Promise<unknown>,
+          ) => callback(cleanupTx),
+          contentVersion: cleanupTx.contentVersion,
+        };
+        const cleanup = new MaterialCleanupService(
+          cleanupDb as unknown as DatabaseService,
+          f.storage,
+          f.coordinator,
+          () => now,
+        );
+        if (outcome === 'database unavailable') {
+          await expect(cleanup.runOnce()).rejects.toThrow('database offline');
+          expect(pendingKey).not.toBeNull();
+        } else {
+          await cleanup.runOnce();
+          expect(pendingKey === null).toBe(committed);
+        }
+        if (outcome === 'rolled back') {
+          expect(f.storage.delete).toHaveBeenCalledTimes(1);
+          expect(cleanupTx.uploadDraft.updateMany).toHaveBeenCalledTimes(1);
+        } else {
+          expect(f.storage.delete).not.toHaveBeenCalled();
+          expect(cleanupTx.uploadDraft.updateMany).not.toHaveBeenCalled();
+        }
+      },
+    );
+    it('replays the exact finalized source version after expiry without reading or writing blobs', async () => {
+      const f = setupReplay();
+      const result = await f.service.finalizeUpload(
+        actor,
+        'draft-1',
+        Readable.from('png'),
+      );
+      expect(result).toEqual({
+        materialId: f.original.materialId,
+        contentVersionId: f.original.id,
+        reservedOwnerId: undefined,
+        originalFilename: 'payment.png',
+        purpose: proofInput.purpose,
+        mimeType: 'image/png',
+        sizeBytes: 3,
+        sha256: f.original.sha256,
+      });
+      expect(f.transaction.contentVersion.findFirst).toHaveBeenCalledTimes(2);
+      expect(f.transaction.contentVersion.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            sourceUploadDraftId: '44444444-4444-4444-8444-444444444444',
+            uploadedBy: actor.userId,
+            status: 'AVAILABLE',
+            material: expect.objectContaining({
+              ownerId: customerId,
+              ownerType: 'CASE',
+              departmentId: actor.departmentId,
+              status: 'ACTIVE',
+              deletedAt: null,
+            }),
+            sourceUploadDraft: {
+              is: expect.objectContaining({
+                status: 'FINALIZED',
+                actorUserId: actor.userId,
+                ownerId: customerId,
+              }),
+            },
+          }),
+        }),
+      );
+      expect(
+        JSON.stringify(f.transaction.contentVersion.findFirst.mock.calls),
+      ).not.toContain('currentVersionId');
+      expect(f.storage.health).not.toHaveBeenCalled();
+      expect(f.storage.open).not.toHaveBeenCalled();
+      expect(f.storage.put).not.toHaveBeenCalled();
+      expect(f.storage.delete).not.toHaveBeenCalled();
+      expect(f.transaction.contentVersion.create).not.toHaveBeenCalled();
+      expect(f.transaction.uploadDraft.updateMany).not.toHaveBeenCalled();
+      expect(f.transaction.material.update).not.toHaveBeenCalled();
+    });
+    it('rejects a different actor before reading the original version', async () => {
+      const f = setupReplay();
+      await expect(
+        f.service.finalizeUpload(
+          { ...actor, userId: customerId },
+          'draft-1',
+          Readable.from('png'),
+        ),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      expect(f.transaction.contentVersion.findFirst).not.toHaveBeenCalled();
+    });
+    it('rejects revoked authorization before reading metadata and after consuming the replay body', async () => {
+      const revoked = setupReplay();
+      revoked.transaction.$queryRawUnsafe.mockRejectedValue(
+        new ForbiddenException(),
+      );
+      await expect(
+        revoked.service.finalizeUpload(actor, 'draft-1', Readable.from('png')),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(
+        revoked.transaction.contentVersion.findFirst,
+      ).not.toHaveBeenCalled();
+      const f = setupReplay();
+      const body = Readable.from(
+        (async function* () {
+          yield 'png';
+          f.transaction.$queryRawUnsafe.mockRejectedValue(
+            new ForbiddenException(),
+          );
+        })(),
+      );
+      await expect(
+        f.service.finalizeUpload(actor, 'draft-1', body),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(f.transaction.contentVersion.findFirst).toHaveBeenCalledTimes(1);
+      expect(f.storage.put).not.toHaveBeenCalled();
+    });
+    it.each(['different bytes', ''])(
+      'rejects a changed replay body %p',
+      async (body) => {
+        const f = setupReplay();
+        await expect(
+          f.service.finalizeUpload(actor, 'draft-1', Readable.from(body)),
+        ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+        expect(f.storage.put).not.toHaveBeenCalled();
+      },
+    );
+    it('rejects a missing exact source version, including a version from another case', async () => {
+      const f = setupReplay();
+      f.transaction.contentVersion.findFirst.mockResolvedValue(null);
+      await expect(
+        f.service.finalizeUpload(actor, 'draft-1', Readable.from('png')),
+      ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+      expect(f.storage.put).not.toHaveBeenCalled();
+    });
+    it('rejects an oversized replay body without storing it', async () => {
+      const f = setupReplay();
+      await expect(
+        f.service.finalizeUpload(
+          actor,
+          'draft-1',
+          Readable.from(Buffer.alloc(21 * 1024 * 1024)),
+        ),
+      ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+      expect(f.transaction.contentVersion.findFirst).toHaveBeenCalledTimes(1);
+      expect(f.storage.put).not.toHaveBeenCalled();
+    });
+    it('keeps finalized uploads of other categories conflicting', async () => {
+      const f = setupReplay();
+      f.db.uploadDraft.findUnique.mockResolvedValue(
+        openDraft({ status: 'FINALIZED' }),
+      );
+      await expect(
+        f.service.finalizeUpload(actor, 'draft-1', Readable.from('png')),
+      ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+      expect(f.transaction.contentVersion.findFirst).not.toHaveBeenCalled();
+      expect(f.storage.put).not.toHaveBeenCalled();
+    });
+    it('rejects a changed original version after consuming the body', async () => {
+      const f = setupReplay();
+      f.transaction.contentVersion.findFirst
+        .mockResolvedValueOnce(f.original)
+        .mockResolvedValueOnce({ ...f.original, id: 'replacement-version' });
+      await expect(
+        f.service.finalizeUpload(actor, 'draft-1', Readable.from('png')),
+      ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+      expect(f.storage.put).not.toHaveBeenCalled();
+    });
+    it.each(['WAITING_HEARING', 'WAITING_ARCHIVE', 'ARCHIVED'])(
+      'locks current revision and rechecks eligibility before creating a draft in %s',
+      async (stage) => {
+        const f = setupProof(stage);
+        await f.service.createUploadDraft(actor, proofInput);
+        expect(f.db.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+          isolationLevel: 'Serializable',
+        });
+        expect(f.transaction.$queryRawUnsafe).toHaveBeenNthCalledWith(
+          1,
+          'SELECT lock_settlement_upload_actor_current($1::uuid,$2::uuid,$3::uuid,$4::integer)::text',
+          actor.userId,
+          actor.departmentId,
+          customerId,
+          actor.authorizationRevision,
+        );
+        expect(f.transaction.$queryRawUnsafe).toHaveBeenNthCalledWith(
+          2,
+          expect.stringContaining('case_payment_proof_upload_eligible'),
+          customerId,
+          actor.departmentId,
+          actor.userId,
+        );
+        expect(f.transaction.uploadDraft.create).toHaveBeenCalledTimes(1);
+        expect(f.db.uploadDraft.create).not.toHaveBeenCalled();
+      },
+    );
+    it('rejects a stale revision before draft creation even if initial eligibility succeeded', async () => {
+      const f = setupProof();
+      f.transaction.$queryRawUnsafe.mockRejectedValue(
+        new Error('actor stale or inactive'),
+      );
+      await expect(
+        f.service.createUploadDraft(actor, proofInput),
+      ).rejects.toThrow('actor stale or inactive');
+      expect(f.transaction.uploadDraft.create).not.toHaveBeenCalled();
+    });
+    it('rejects reassignment found after locking the actor and case', async () => {
+      const f = setupProof();
+      f.transaction.case.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        responsibleUserId: customerId,
+      });
+      await expect(
+        f.service.createUploadDraft(actor, proofInput),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      expect(f.transaction.uploadDraft.create).not.toHaveBeenCalled();
+    });
+    it('locks and rechecks eligibility at both pending claim and final material save', async () => {
+      const f = setupProof();
+      await f.service.finalizeUpload(actor, 'draft-1', Readable.from('png'));
+      expect(f.db.$transaction).toHaveBeenCalledTimes(2);
+      expect(f.db.$transaction).toHaveBeenNthCalledWith(
+        1,
+        expect.any(Function),
+        { isolationLevel: 'Serializable' },
+      );
+      expect(f.db.$transaction).toHaveBeenNthCalledWith(
+        2,
+        expect.any(Function),
+        { isolationLevel: 'Serializable' },
+      );
+      expect(
+        f.transaction.$queryRawUnsafe.mock.calls.filter(([sql]) =>
+          String(sql).includes('lock_settlement_upload_actor_current'),
+        ),
+      ).toHaveLength(2);
+      expect(
+        f.transaction.$queryRawUnsafe.mock.calls.filter(([sql]) =>
+          String(sql).includes('case_payment_proof_upload_eligible'),
+        ).length,
+      ).toBeGreaterThanOrEqual(2);
+      expect(f.db.uploadDraft.updateMany).not.toHaveBeenCalled();
+      expect(f.transaction.contentVersion.create).toHaveBeenCalledTimes(1);
+    });
+    it('limits only unfrozen exact-current proof candidates and preserves historical references', async () => {
+      const f = setupProof();
+      f.transaction.material.count.mockResolvedValue(19);
+      await f.service.finalizeUpload(actor, 'draft-1', Readable.from('png'));
+      expect(f.transaction.material.count).toHaveBeenCalledWith({
+        where: {
+          departmentId: actor.departmentId,
+          ownerType: 'CASE',
+          ownerId: customerId,
+          category: 'CASE_CLOSURE_PAYMENT_PROOF',
+          status: 'ACTIVE',
+          OR: [
+            { currentVersionId: null },
+            {
+              currentVersion: {
+                is: {
+                  materialReferences: {
+                    none: {
+                      purpose: 'CASE_CLOSURE_PAYMENT_PROOF',
+                      resourceType: {
+                        in: [
+                          'case-closure-payment-version',
+                          'case-payment-proof-supplement',
+                        ],
+                      },
+                      actionEventId: { not: null },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+      });
+      expect(f.transaction.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('pg_advisory_xact_lock'),
+        expect.any(String),
+      );
+      expect(
+        f.transaction.$executeRawUnsafe.mock.invocationCallOrder[0],
+      ).toBeLessThan(f.transaction.material.count.mock.invocationCallOrder[0]!);
+      expect(
+        f.transaction.material.count.mock.invocationCallOrder[0],
+      ).toBeLessThan(
+        f.transaction.material.create.mock.invocationCallOrder[0]!,
+      );
+      expect(f.transaction.materialReference.create).not.toHaveBeenCalled();
+      expect(f.transaction.materialReference.deleteMany).not.toHaveBeenCalled();
+      expect(f.transaction.material.updateMany).not.toHaveBeenCalled();
+      expect(f.storage.delete).not.toHaveBeenCalled();
+    });
+    it('rejects the twenty-first unfrozen candidate and retains the pending cleanup key', async () => {
+      const f = setupProof();
+      f.transaction.material.count.mockResolvedValue(20);
+      await expect(
+        f.service.finalizeUpload(actor, 'draft-1', Readable.from('png')),
+      ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+      expect(f.transaction.material.create).not.toHaveBeenCalled();
+      expect(f.transaction.contentVersion.create).not.toHaveBeenCalled();
+      expect(f.transaction.materialReference.deleteMany).not.toHaveBeenCalled();
+      expect(f.storage.delete).not.toHaveBeenCalled();
+      expect(f.db.uploadDraft.updateMany).not.toHaveBeenCalled();
+    });
+    it.each([1, 2])(
+      'rejects revoked actor at locked checkpoint %s without storing a content version',
+      async (checkpoint) => {
+        const f = setupProof();
+        let locks = 0;
+        f.transaction.$queryRawUnsafe.mockImplementation(async (sql) => {
+          if (
+            String(sql).includes('lock_settlement_upload_actor_current') &&
+            ++locks === checkpoint
+          )
+            throw new Error('actor stale or inactive');
+          return [{ id: customerId }];
+        });
+        await expect(
+          f.service.finalizeUpload(actor, 'draft-1', Readable.from('png')),
+        ).rejects.toThrow('actor stale or inactive');
+        expect(f.transaction.contentVersion.create).not.toHaveBeenCalled();
+        expect(f.storage.put).toHaveBeenCalledTimes(checkpoint - 1);
+        expect(f.storage.delete).not.toHaveBeenCalled();
+        expect(f.db.uploadDraft.updateMany).not.toHaveBeenCalled();
+      },
+    );
+    it('rejects changed eligibility at save and retains the pending cleanup key', async () => {
+      const f = setupProof();
+      f.storage.put.mockImplementation(async () => {
+        f.transaction.case.findFirst.mockResolvedValue({
+          departmentId: actor.departmentId,
+          responsibleUserId: customerId,
+        });
+        return {
+          detectedMimeType: 'image/png',
+          sizeBytes: 8,
+          sha256: 'a'.repeat(64),
+        };
+      });
+      await expect(
+        f.service.finalizeUpload(actor, 'draft-1', Readable.from('png')),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      expect(f.transaction.contentVersion.create).not.toHaveBeenCalled();
+      expect(f.storage.delete).not.toHaveBeenCalled();
+      expect(f.db.uploadDraft.updateMany).not.toHaveBeenCalled();
+    });
+  });
+  it('validates settlement target provenance before issuing genuine document facts without a department-only read grant', async () => {
+    const f = createFixture();
+    const transaction = asTransactionClient(f.transaction);
+    f.access.authorizeDepartmentAction.mockRejectedValue(
+      new ForbiddenException(),
+    );
+    f.transaction.material.findMany.mockResolvedValue([
+      {
+        id: 'document',
+        departmentId: actor.departmentId,
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'CASE_CLOSURE_DOCUMENT',
+        purpose: 'CASE_CLOSURE_DOCUMENT',
+        status: 'ACTIVE',
+        currentVersionId: 'version',
+        contentVersions: [
+          {
+            id: 'version',
+            status: 'AVAILABLE',
+            mimeType: 'application/pdf',
+            sizeBytes: 12n,
+          },
+        ],
+      },
+    ]);
+    f.transaction.$queryRawUnsafe.mockImplementation(async (sql) =>
+      String(sql).includes(
+        'SELECT d.content_version_id AS id FROM case_closure_documents',
+      )
+        ? []
+        : [{ id: 'target' }],
+    );
+    const facts = await f.service.assertSettlementUpdateDocumentVersions(
+      transaction,
+      actor,
+      customerId,
+      actor.userId,
+      ['version'],
+    );
+    await f.service.freezeCaseClosureReferences(
+      transaction,
+      actor,
+      customerId,
+      'new-closure',
+      facts,
+      'audit',
+    );
+    expect(f.transaction.caseClosureDocument.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        materialId: 'document',
+        contentVersionId: 'version',
+        closureVersionId: 'new-closure',
+      }),
+    });
+    f.transaction.$queryRawUnsafe.mockResolvedValue([]);
+    await expect(
+      f.service.assertSettlementUpdateDocumentVersions(
+        transaction,
+        actor,
+        customerId,
+        actor.userId,
+        ['version'],
+      ),
+    ).rejects.toThrow();
+  });
+  it('retains a sealed exact closure document over consecutive updates without reusing its stale upload target', async () => {
+    const f = createFixture(),
+      transaction = asTransactionClient(f.transaction);
+    f.transaction.material.findMany.mockResolvedValue([
+      {
+        id: 'document',
+        departmentId: actor.departmentId,
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'CASE_CLOSURE_DOCUMENT',
+        purpose: 'CASE_CLOSURE_DOCUMENT',
+        status: 'ACTIVE',
+        currentVersionId: 'version',
+        contentVersions: [
+          {
+            id: 'version',
+            status: 'AVAILABLE',
+            mimeType: 'application/pdf',
+            sizeBytes: 12n,
+          },
+        ],
+      },
+    ]);
+    f.transaction.$queryRawUnsafe.mockImplementation(async (sql) => {
+      if (
+        String(sql).includes('SELECT t.id FROM case_settlement_upload_targets')
+      )
+        throw new Error('stale target must not be consulted');
+      return [{ id: 'version' }];
+    });
+    for (const head of [actor.userId, actor.departmentId]) {
+      const facts = await f.service.assertSettlementUpdateDocumentVersions(
+        transaction,
+        actor,
+        customerId,
+        head,
+        ['version'],
+      );
+      await f.service.freezeCaseClosureReferences(
+        transaction,
+        actor,
+        customerId,
+        head,
+        facts,
+        'audit',
+      );
+    }
+    expect(f.transaction.caseClosureDocument.create).toHaveBeenCalledTimes(2);
+    expect(f.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "cr.result_snapshot->>'closureVersionId'=v.id::text",
+      ),
+      'version',
+      customerId,
+      actor.departmentId,
+    );
+  });
+  it.each(['cross-case', 'forged-history', 'unconsumed-target'])(
+    'does not treat %s as a sealed closure document',
+    async (scenario) => {
+      const f = createFixture(),
+        transaction = asTransactionClient(f.transaction);
+      f.transaction.$queryRawUnsafe.mockImplementation(async (sql) => {
+        const query = String(sql);
+        if (
+          query.includes(
+            'SELECT d.content_version_id AS id FROM case_closure_documents',
+          )
+        )
+          return [];
+        if (query.includes('SELECT t.id FROM case_settlement_upload_targets'))
+          return scenario === 'unconsumed-target' ? [{ id: 'target' }] : [];
+        if (query.includes('SELECT v.id FROM case_settlement_upload_targets'))
+          return [];
+        return [{ id: 'case' }];
+      });
+      await expect(
+        f.service.assertSettlementUpdateDocumentVersions(
+          transaction,
+          actor,
+          customerId,
+          actor.userId,
+          ['version'],
+        ),
+      ).rejects.toThrow();
+      expect(f.transaction.material.findMany).not.toHaveBeenCalled();
+      expect(f.transaction.caseClosureDocument.create).not.toHaveBeenCalled();
+    },
+  );
+  it('creates a dedicated bound settlement target and draft without granting ordinary correction', async () => {
+    const f = createFixture();
+    const result = await f.service.createSettlementUpdateDocumentUploadDraft(
+      actor,
+      customerId,
+      actor.userId,
+      {
+        originalFilename: 'settlement.pdf',
+        declaredMimeType: 'application/pdf',
+      },
+    );
+    expect(f.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
+      'SELECT lock_settlement_upload_actor_current($1::uuid,$2::uuid,$3::uuid,$4::integer)::text',
+      actor.userId,
+      actor.departmentId,
+      customerId,
+      actor.authorizationRevision,
+    );
+    expect(result).toHaveProperty(
+      'settlementUpdateTarget.expectedClosureVersionId',
+      actor.userId,
+    );
+    expect(f.transaction.uploadDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        settlementUpdateUploadTargetId: result.settlementUpdateTarget.id,
+        ownerId: customerId,
+        category: 'CASE_CLOSURE_DOCUMENT',
+      }),
+    });
+    expect(f.transaction.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO case_settlement_upload_targets'),
+      expect.any(String),
+      expect.any(String),
+      customerId,
+      actor.departmentId,
+      actor.userId,
+      actor.authorizationRevision,
+      actor.userId,
+    );
+    expect(f.access.authorizeCase).not.toHaveBeenCalledWith(
+      actor,
+      'case.closure.correct',
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+  it('casts the actor lock result before validating even an empty settlement document set', async () => {
+    const f = createFixture();
+    f.transaction.material.findMany.mockResolvedValue([]);
+    await expect(
+      f.service.assertSettlementUpdateDocumentVersions(
+        asTransactionClient(f.transaction),
+        actor,
+        customerId,
+        actor.userId,
+        [],
+      ),
+    ).resolves.toEqual([]);
+    expect(f.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
+      'SELECT lock_settlement_upload_actor_current($1::uuid,$2::uuid,$3::uuid,$4::integer)::text',
+      actor.userId,
+      actor.departmentId,
+      customerId,
+      actor.authorizationRevision,
+    );
+  });
+  it('propagates the existing target database gate without creating an upload draft', async () => {
+    const f = createFixture(),
+      error = new Error('target remains draft');
+    f.transaction.$executeRawUnsafe.mockRejectedValue(error);
+    await expect(
+      f.service.createSettlementUpdateDocumentUploadDraft(
+        actor,
+        customerId,
+        actor.userId,
+        {
+          originalFilename: 'settlement.pdf',
+          declaredMimeType: 'application/pdf',
+        },
+      ),
+    ).rejects.toBe(error);
+    expect(f.transaction.uploadDraft.create).not.toHaveBeenCalled();
+  });
+  it('finalizes a target-backed document through private storage and exact source upload provenance', async () => {
+    const f = createFixture();
+    const draft = openDraft({
+      ownerType: 'CASE',
+      ownerId: customerId,
+      category: 'CASE_CLOSURE_DOCUMENT',
+      purpose: 'CASE_CLOSURE_DOCUMENT',
+      settlementUpdateUploadTargetId: actor.userId,
+    });
+    f.db.uploadDraft.findUnique.mockResolvedValue(draft);
+    f.storage.put.mockResolvedValue({
+      sizeBytes: 8,
+      sha256: 'a'.repeat(64),
+      detectedMimeType: 'image/png',
+    });
+    await f.service.finalizeUpload(actor, draft.id, Readable.from('png'));
+    expect(f.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
+      'SELECT lock_settlement_upload_actor_current($1::uuid,$2::uuid,$3::uuid,$4::integer)::text',
+      actor.userId,
+      actor.departmentId,
+      customerId,
+      actor.authorizationRevision,
+    );
+    expect(f.transaction.contentVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        sourceUploadDraftId: draft.id,
+        mimeType: 'image/png',
+      }),
+    });
+    expect(f.transaction.uploadDraft.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { status: 'FINALIZED', pendingStorageKey: null },
+      }),
+    );
+  });
+  it('rechecks settlement target after storing bytes and rejects a changed source without creating a content version', async () => {
+    const f = createFixture();
+    const draft = openDraft({
+      ownerType: 'CASE',
+      ownerId: customerId,
+      category: 'CASE_CLOSURE_DOCUMENT',
+      purpose: 'CASE_CLOSURE_DOCUMENT',
+      settlementUpdateUploadTargetId: actor.userId,
+    });
+    f.db.uploadDraft.findUnique.mockResolvedValue(draft);
+    f.storage.put.mockResolvedValue({
+      sizeBytes: 8,
+      sha256: 'a'.repeat(64),
+      detectedMimeType: 'image/png',
+    });
+    let checks = 0;
+    f.transaction.$queryRawUnsafe.mockImplementation(async (sql) =>
+      String(sql).includes(
+        'SELECT d.id FROM upload_drafts d JOIN case_settlement_upload_targets',
+      ) && ++checks === 3
+        ? []
+        : [{ id: 'material-1' }],
+    );
+    await expect(
+      f.service.finalizeUpload(actor, draft.id, Readable.from('png')),
+    ).rejects.toThrow();
+    expect(f.storage.put).toHaveBeenCalled();
+    expect(f.transaction.contentVersion.create).not.toHaveBeenCalled();
+  });
+  it.each(
+    (['self', 'team', 'department'] as const).flatMap((scope) =>
+      (['case.closure.record', 'case.archive'] as const).map((action) => ({
+        scope,
+        action,
+      })),
+    ),
+  )(
+    'uses current case scope $scope and $action for early closure document preupload',
+    async ({ scope, action }) => {
+      const f = createFixture();
+      const snapshot = {
+        active: true,
+        authorizationRevision: actor.authorizationRevision,
+        membershipTeamId: 'team',
+        membershipTeamActive: true,
+        grants: [
+          { action: 'case.read' as const, scope, teamId: 'team' },
+          { action, scope: 'self' as const },
+        ],
+      };
+      const real = new AccessControlService({
+        loadSnapshot: async () => snapshot,
+      });
+      f.access.authorizeCase.mockImplementation(real.authorizeCase.bind(real));
+      f.access.authorizeDepartmentAction.mockImplementation(
+        real.authorizeDepartmentAction.bind(real),
+      );
+      f.db.case.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        stage: 'WAITING_HEARING',
+        responsibleUserId: actor.userId,
+        responsibleMembership: { teamId: 'team' },
+      });
+      const input = {
+        ownerType: 'CASE' as const,
+        ownerId: customerId,
+        category: 'CASE_CLOSURE_DOCUMENT' as const,
+        purpose: 'CASE_CLOSURE_DOCUMENT' as const,
+        originalFilename: 'closure.pdf',
+        declaredMimeType: 'application/pdf',
+      };
+      await expect(
+        f.service.createUploadDraft(actor, input),
+      ).resolves.toMatchObject({ category: 'CASE_CLOSURE_DOCUMENT' });
+      expect(f.access.authorizeCase).toHaveBeenCalledWith(
+        actor,
+        'case.read',
+        expect.objectContaining({
+          responsibleUserId: actor.userId,
+          teamId: 'team',
+        }),
+        undefined,
+      );
+      expect(f.access.authorizeDepartmentAction).not.toHaveBeenCalledWith(
+        actor,
+        'case.read',
+        expect.anything(),
+      );
+      snapshot.active = false;
+      f.db.uploadDraft.create.mockClear();
+      await expect(f.service.createUploadDraft(actor, input)).rejects.toThrow();
+      expect(f.db.uploadDraft.create).not.toHaveBeenCalled();
+      snapshot.active = true;
+      f.db.case.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        stage: 'WAITING_HEARING',
+        responsibleUserId: customerId,
+        responsibleMembership: { teamId: 'team' },
+      });
+      await expect(f.service.createUploadDraft(actor, input)).rejects.toThrow();
+      f.db.case.findFirst.mockResolvedValue({
+        departmentId: customerId,
+        stage: 'WAITING_HEARING',
+        responsibleUserId: actor.userId,
+        responsibleMembership: { teamId: 'team' },
+      });
+      await expect(f.service.createUploadDraft(actor, input)).rejects.toThrow();
+      expect(f.db.uploadDraft.create).not.toHaveBeenCalled();
+    },
+  );
+  it('allows an internal responsible actor to preupload closure documents without advancing the case', async () => {
+    const f = createFixture();
+    f.db.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'WAITING_HEARING',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    });
+    const input = {
+      ownerType: 'CASE' as const,
+      ownerId: customerId,
+      category: 'CASE_CLOSURE_DOCUMENT' as const,
+      purpose: 'CASE_CLOSURE_DOCUMENT' as const,
+      originalFilename: 'closure.pdf',
+      declaredMimeType: 'application/pdf',
+    };
+    await expect(
+      f.service.createUploadDraft(actor, input),
+    ).resolves.toMatchObject({ category: 'CASE_CLOSURE_DOCUMENT' });
+    expect(f.access.authorizeCase).toHaveBeenCalledWith(
+      actor,
+      'case.closure.record',
+      expect.objectContaining({ responsibleUserId: actor.userId }),
+      undefined,
+    );
+    expect(f.db.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('case_early_closure_upload_authorized'),
+      customerId,
+      actor.departmentId,
+      actor.userId,
+    );
+    f.db.$queryRawUnsafe.mockResolvedValue([]);
+    await expect(
+      f.service.createUploadDraft(actor, input),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    f.db.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'WAITING_HEARING',
+      responsibleUserId: customerId,
+      responsibleMembership: { teamId: null },
+    });
+    await expect(
+      f.service.createUploadDraft(actor, input),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+  });
+  it.each(['CASE_CLOSURE_DOCUMENT', 'CASE_CLOSURE_PAYMENT_PROOF'] as const)(
+    'permits archive-only early upload for %s but denies missing both actions and missing read',
+    async (category) => {
+      const f = createFixture();
+      const record = {
+        departmentId: actor.departmentId,
+        stage: 'WAITING_HEARING',
+        responsibleUserId: actor.userId,
+        responsibleMembership: { teamId: null },
+      };
+      f.db.case.findFirst.mockResolvedValue(record);
+      f.transaction.case.findFirst.mockResolvedValue(record);
+      const grants: Array<{
+        action: 'case.read' | 'case.archive';
+        scope: 'department' | 'self';
+      }> = [
+        { action: 'case.read', scope: 'department' },
+        { action: 'case.archive', scope: 'self' },
+      ];
+      const snapshot = {
+        active: true,
+        authorizationRevision: actor.authorizationRevision,
+        grants,
+      };
+      const real = new AccessControlService({
+        loadSnapshot: async () => snapshot,
+      });
+      f.access.authorizeCase.mockImplementation(real.authorizeCase.bind(real));
+      f.access.authorizeDepartmentAction.mockImplementation(
+        real.authorizeDepartmentAction.bind(real),
+      );
+      const input = {
+        ownerType: 'CASE' as const,
+        ownerId: customerId,
+        category,
+        purpose: category,
+        originalFilename:
+          category === 'CASE_CLOSURE_DOCUMENT' ? 'closure.pdf' : 'payment.png',
+        declaredMimeType:
+          category === 'CASE_CLOSURE_DOCUMENT'
+            ? 'application/pdf'
+            : 'image/png',
+      };
+      await expect(
+        f.service.createUploadDraft(actor, input),
+      ).resolves.toMatchObject({ category });
+      expect(f.access.authorizeCase).toHaveBeenCalledWith(
+        actor,
+        'case.archive',
+        expect.objectContaining({
+          departmentId: actor.departmentId,
+          responsibleUserId: actor.userId,
+        }),
+        category === 'CASE_CLOSURE_DOCUMENT' ? undefined : expect.anything(),
+      );
+      snapshot.grants.splice(1, 1);
+      await expect(
+        f.service.createUploadDraft(actor, input),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      snapshot.grants.splice(0, 1, { action: 'case.archive', scope: 'self' });
+      await expect(
+        f.service.createUploadDraft(actor, input),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    },
+  );
+  it('does not grant ordinary pending closure-document uploads to archive-only users', async () => {
+    const f = createFixture();
+    f.db.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'WAITING_ARCHIVE',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+      closure: null,
+    });
+    const real = new AccessControlService({
+      loadSnapshot: async () => ({
+        active: true,
+        authorizationRevision: actor.authorizationRevision,
+        grants: [
+          { action: 'case.read', scope: 'department' },
+          { action: 'case.archive', scope: 'self' },
+        ],
+      }),
+    });
+    f.access.authorizeCase.mockImplementation(real.authorizeCase.bind(real));
+    f.access.authorizeDepartmentAction.mockImplementation(
+      real.authorizeDepartmentAction.bind(real),
+    );
+    await expect(
+      f.service.createUploadDraft(actor, {
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'CASE_CLOSURE_DOCUMENT',
+        purpose: 'CASE_CLOSURE_DOCUMENT',
+        originalFilename: 'ordinary.pdf',
+        declaredMimeType: 'application/pdf',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(f.db.uploadDraft.create).not.toHaveBeenCalled();
+  });
   it('uploads closure documents under the correct independent action and refuses a missing exact source', async () => {
     const f = createFixture();
     const record = {
@@ -2940,6 +4031,394 @@ describe('MaterialService', () => {
       ),
     ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
   });
+  it.each([
+    'case',
+    'department',
+    'old-version',
+    'mime',
+    'transaction',
+    'partial-batch',
+  ])(
+    'rejects invalid payment screenshot %s before any links are written',
+    async (kind) => {
+      const f = createFixture();
+      const create = jest.fn();
+      const tx = Object.assign(f.transaction, {
+        caseClosurePaymentDocument: { create },
+      });
+      tx.case.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        stage: 'WAITING_ARCHIVE',
+        responsibleUserId: actor.userId,
+        responsibleMembership: { teamId: null },
+      });
+      const material = {
+        id: 'material',
+        departmentId: actor.departmentId,
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'CASE_CLOSURE_PAYMENT_PROOF',
+        purpose: 'CASE_CLOSURE_PAYMENT_PROOF',
+        status: 'ACTIVE',
+        currentVersionId: 'v1',
+        contentVersions: [
+          {
+            id: 'v1',
+            status: 'AVAILABLE',
+            mimeType: 'image/png',
+            sizeBytes: 12n,
+          },
+        ],
+      };
+      if (kind === 'case') material.ownerId = actor.userId;
+      if (kind === 'department') material.departmentId = actor.userId;
+      if (kind === 'old-version') material.currentVersionId = 'v2';
+      if (kind === 'mime')
+        material.contentVersions[0]!.mimeType = 'application/pdf';
+      tx.material.findMany.mockResolvedValue([material]);
+      const transaction = asTransactionClient(tx);
+      const run = async () => {
+        const facts = await f.service.assertAvailableVersions(
+          transaction,
+          actor,
+          {
+            ownerType: 'CASE',
+            ownerId: customerId,
+            category: 'CASE_CLOSURE_PAYMENT_PROOF',
+            contentVersionIds: ['v1'],
+          },
+        );
+        await f.service.freezeCaseClosurePaymentReferences(
+          kind === 'transaction' ? asTransactionClient({ ...tx }) : transaction,
+          actor,
+          customerId,
+          'payment-v1',
+          kind === 'partial-batch' ? [...facts, { ...facts[0]! }] : facts,
+          'audit',
+        );
+      };
+      await expect(run()).rejects.toMatchObject({
+        response: { code: 'MATERIAL_VERSION_INVALID' },
+      });
+      expect(create).not.toHaveBeenCalled();
+      expect(tx.materialReference.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it('freezes a payment proof only through exact ordinary authorization or the same-transaction initial early branch', async () => {
+    const f = createFixture(),
+      create = jest.fn().mockResolvedValue({});
+    let allowed = false;
+    const tx = Object.assign(f.transaction, {
+      caseClosurePaymentDocument: { create },
+    });
+    tx.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'WAITING_ARCHIVE',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    });
+    tx.material.findMany.mockResolvedValue([
+      {
+        id: 'material',
+        departmentId: actor.departmentId,
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'CASE_CLOSURE_PAYMENT_PROOF',
+        purpose: 'CASE_CLOSURE_PAYMENT_PROOF',
+        status: 'ACTIVE',
+        currentVersionId: 'v1',
+        contentVersions: [
+          {
+            id: 'v1',
+            status: 'AVAILABLE',
+            mimeType: 'image/png',
+            sizeBytes: 12n,
+          },
+        ],
+      },
+    ]);
+    tx.$queryRawUnsafe.mockImplementation(async (sql) =>
+      String(sql).includes('FROM "case_closure_payment_versions" p')
+        ? allowed
+          ? [{ id: 'payment-v1' }]
+          : []
+        : [{ id: customerId }],
+    );
+    const transaction = asTransactionClient(tx),
+      facts = await f.service.assertAvailableVersions(transaction, actor, {
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'CASE_CLOSURE_PAYMENT_PROOF',
+        contentVersionIds: ['v1'],
+      });
+    const freeze = () =>
+      f.service.freezeCaseClosurePaymentReferences(
+        transaction,
+        actor,
+        customerId,
+        'payment-v1',
+        facts,
+        'audit',
+      );
+    await expect(freeze()).rejects.toMatchObject({
+      response: { code: 'MATERIAL_VERSION_INVALID' },
+    });
+    expect(create).not.toHaveBeenCalled();
+    expect(tx.materialReference.create).not.toHaveBeenCalled();
+    const call = tx.$queryRawUnsafe.mock.calls.find(([sql]) =>
+      String(sql).includes('FROM "case_closure_payment_versions" p'),
+    );
+    expect(call).toBeDefined();
+    expect(call?.[0]).toContain(
+      'case_closure_actor_authorized($4::uuid,p."case_id",p."department_id",p."revision">1)',
+    );
+    expect(call?.[0]).toContain(
+      'OR (p."revision"=1 AND p."prior_version_id" IS NULL',
+    );
+    expect(call?.[0]).toContain(
+      'public.case_early_closure_initial_payment_reference_authorized(p."id",p."case_id",p."department_id",$4::uuid) IS TRUE',
+    );
+    expect(call?.[0]).toContain('FOR SHARE OF p,a,m,v');
+    expect(call?.slice(1)).toEqual([
+      'payment-v1',
+      customerId,
+      actor.departmentId,
+      actor.userId,
+      'audit',
+      'material',
+      'v1',
+    ]);
+    allowed = true;
+    await expect(freeze()).resolves.toBeUndefined();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(tx.materialReference.create).toHaveBeenCalledTimes(1);
+  });
+  it('freezes independent supplement references only for authentic exact same-transaction event links', async () => {
+    const f = createFixture();
+    const documentCreate = jest.fn().mockResolvedValue({});
+    const tx = Object.assign(f.transaction, {
+      caseClosurePaymentDocument: { create: documentCreate },
+    });
+    tx.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'WAITING_ARCHIVE',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    });
+    tx.material.findMany.mockResolvedValue([
+      {
+        id: 'material',
+        departmentId: actor.departmentId,
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'CASE_CLOSURE_PAYMENT_PROOF',
+        purpose: 'CASE_CLOSURE_PAYMENT_PROOF',
+        status: 'ACTIVE',
+        currentVersionId: 'v1',
+        contentVersions: [
+          {
+            id: 'v1',
+            status: 'AVAILABLE',
+            mimeType: 'image/png',
+            sizeBytes: 12n,
+          },
+        ],
+      },
+    ]);
+    const transaction = asTransactionClient(tx);
+    const facts = await f.service.assertAvailableVersions(transaction, actor, {
+      ownerType: 'CASE',
+      ownerId: customerId,
+      category: 'CASE_CLOSURE_PAYMENT_PROOF',
+      contentVersionIds: ['v1'],
+    });
+    const freeze = (
+      selected = facts,
+      candidateTransaction = transaction,
+      candidateActor = actor,
+      caseId = customerId,
+    ) =>
+      f.service.freezeCasePaymentProofSupplementReferencesDraft(
+        candidateTransaction,
+        candidateActor,
+        caseId,
+        'payment-v1',
+        'supplement',
+        selected,
+        'audit',
+      );
+    for (const selected of [[{ ...facts[0]! }], [facts[0]!, facts[0]!], []]) {
+      await expect(freeze(selected)).rejects.toMatchObject({
+        response: { code: 'MATERIAL_VERSION_INVALID' },
+      });
+    }
+    await expect(
+      freeze(facts, asTransactionClient({ ...tx })),
+    ).rejects.toMatchObject({ response: { code: 'MATERIAL_VERSION_INVALID' } });
+    await expect(
+      freeze(facts, transaction, { ...actor, departmentId: 'other' }),
+    ).rejects.toMatchObject({ response: { code: 'MATERIAL_VERSION_INVALID' } });
+    await expect(
+      freeze(facts, transaction, actor, 'other'),
+    ).rejects.toMatchObject({ response: { code: 'MATERIAL_VERSION_INVALID' } });
+    expect(tx.materialReference.create).not.toHaveBeenCalled();
+    for (const rows of [
+      [],
+      [{ materialId: 'wrong', contentVersionId: 'v1' }],
+      [{ materialId: 'material', contentVersionId: 'wrong' }],
+    ]) {
+      tx.$queryRawUnsafe.mockResolvedValue(rows);
+      await expect(freeze()).rejects.toMatchObject({
+        response: { code: 'MATERIAL_VERSION_INVALID' },
+      });
+    }
+    expect(tx.materialReference.create).not.toHaveBeenCalled();
+    tx.$queryRawUnsafe.mockResolvedValue([
+      { materialId: 'material', contentVersionId: 'v1' },
+    ]);
+    await freeze();
+    expect(documentCreate).not.toHaveBeenCalled();
+    expect(tx.materialReference.create).toHaveBeenCalledTimes(1);
+    expect(tx.materialReference.create).toHaveBeenCalledWith({
+      data: {
+        departmentId: actor.departmentId,
+        resourceType: 'case-payment-proof-supplement',
+        resourceId: 'supplement',
+        purpose: 'CASE_CLOSURE_PAYMENT_PROOF',
+        materialId: 'material',
+        contentVersionId: 'v1',
+        actionEventId: 'audit',
+      },
+    });
+    expect(tx.$queryRawUnsafe).toHaveBeenLastCalledWith(
+      expect.stringContaining(
+        'AND s.xmin=pg_current_xact_id()::text::xid AND d.xmin=pg_current_xact_id()::text::xid',
+      ),
+      'supplement',
+      'payment-v1',
+      customerId,
+      actor.departmentId,
+      actor.userId,
+      'audit',
+      1,
+    );
+  });
+
+  it('freezes dedicated payment screenshots only with authentic same-transaction facts and exact payment audit', async () => {
+    const f = createFixture();
+    const documentCreate = jest.fn().mockResolvedValue({});
+    const tx = Object.assign(f.transaction, {
+      caseClosurePaymentDocument: { create: documentCreate },
+    });
+    tx.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'WAITING_ARCHIVE',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    });
+    tx.material.findMany.mockResolvedValue([
+      {
+        id: 'material',
+        departmentId: actor.departmentId,
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'CASE_CLOSURE_PAYMENT_PROOF',
+        purpose: 'CASE_CLOSURE_PAYMENT_PROOF',
+        status: 'ACTIVE',
+        currentVersionId: 'v1',
+        contentVersions: [
+          {
+            id: 'v1',
+            status: 'AVAILABLE',
+            mimeType: 'image/png',
+            sizeBytes: 12n,
+          },
+        ],
+      },
+    ]);
+    const transaction = asTransactionClient(tx);
+    const facts = await f.service.assertAvailableVersions(transaction, actor, {
+      ownerType: 'CASE',
+      ownerId: customerId,
+      category: 'CASE_CLOSURE_PAYMENT_PROOF',
+      contentVersionIds: ['v1'],
+    });
+    await expect(
+      f.service.freezeCaseClosurePaymentReferences(
+        transaction,
+        actor,
+        customerId,
+        'payment-v1',
+        [{ ...facts[0]! }],
+        'audit',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'MATERIAL_VERSION_INVALID' } });
+    expect(documentCreate).not.toHaveBeenCalled();
+    await f.service.freezeCaseClosurePaymentReferences(
+      transaction,
+      actor,
+      customerId,
+      'payment-v1',
+      facts,
+      'audit',
+    );
+    expect(documentCreate).toHaveBeenCalledWith({
+      data: {
+        paymentVersionId: 'payment-v1',
+        caseId: customerId,
+        departmentId: actor.departmentId,
+        materialId: 'material',
+        contentVersionId: 'v1',
+      },
+    });
+    expect(tx.materialReference.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        resourceType: 'case-closure-payment-version',
+        resourceId: 'payment-v1',
+        purpose: 'CASE_CLOSURE_PAYMENT_PROOF',
+        actionEventId: 'audit',
+      }),
+    });
+    expect(tx.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'AND p.xmin=pg_current_xact_id()::text::xid AND a.xmin=pg_current_xact_id()::text::xid',
+      ),
+      'payment-v1',
+      customerId,
+      actor.departmentId,
+      actor.userId,
+      'audit',
+      'material',
+      'v1',
+    );
+    tx.$queryRawUnsafe.mockResolvedValue([]);
+    documentCreate.mockClear();
+    // The exact query returns no row when a matching payment/audit was created in an older transaction.
+    await expect(
+      f.service.freezeCaseClosurePaymentReferences(
+        transaction,
+        actor,
+        customerId,
+        'payment-v1',
+        facts,
+        'audit',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'MATERIAL_VERSION_INVALID' } });
+    expect(documentCreate).not.toHaveBeenCalled();
+    await expect(
+      f.service.freezeCaseClosurePaymentReferences(
+        transaction,
+        actor,
+        customerId,
+        'payment-v1',
+        facts,
+        'wrong-audit',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'MATERIAL_VERSION_INVALID' } });
+    expect(documentCreate).not.toHaveBeenCalled();
+  });
+
   it('freezes authentic closure versions and reads a particular historical version without following current bytes', async () => {
     const f = createFixture();
     f.transaction.case.findFirst.mockResolvedValue({
@@ -6874,8 +8353,11 @@ function createFixture() {
           Array<{
             id?: string;
             content_version_id?: string;
+            materialId?: string;
+            contentVersionId?: string;
             count?: number;
             consumed?: boolean;
+            lock_settlement_upload_actor_current?: string;
           }>
         >,
         unknown[]
@@ -6898,7 +8380,10 @@ function createFixture() {
         async () => 0,
       ),
     },
-    contentVersion: { create: jest.fn(async ({ data }) => data) },
+    contentVersion: {
+      create: jest.fn(async ({ data }) => data),
+      findFirst: jest.fn(),
+    },
     uploadDraft: {
       findUnique: jest.fn(),
       findFirst: uploadDraftFindFirst,

@@ -1,4 +1,4 @@
-export type ManagedTestMode = 'api' | 'ui';
+export type ManagedTestMode = 'api' | 'ui' | 'batch2-import';
 
 export interface ManagedTestLayout {
   root: string;

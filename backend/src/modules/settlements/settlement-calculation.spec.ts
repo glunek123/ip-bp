@@ -1,5 +1,7 @@
 import {
   calculateSettlement,
+  SETTLEMENT_V1,
+  SETTLEMENT_V2,
   customerPercentFromFormula,
 } from './settlement-calculation';
 
@@ -123,7 +125,7 @@ describe('Demo settlement arithmetic', () => {
     ).toMatchObject({
       customerAmount: '0.00',
       customerSource: 'MANUAL',
-      lawyerAmount: '100.00',
+      lawyerAmount: '100.20',
       lawyerSource: 'MANUAL',
     });
     expect(customerPercentFromFormula('结案金额*75.5%')).toBe('75.5');
@@ -132,4 +134,47 @@ describe('Demo settlement arithmetic', () => {
       calculateSettlement({ ...input, closureAmount: '-1' }),
     ).toThrow();
   });
+});
+
+describe('settlement calculation version compatibility', () => {
+  it('preserves V1 historical rounding and uses cents only for V2 manual overrides', () => {
+    const values = {
+      ...input,
+      customerManualAmount: '123.50',
+      lawyerManualAmount: '100.20',
+    };
+    expect(calculateSettlement(values, SETTLEMENT_V1)).toMatchObject({
+      customerAmount: '124.00',
+      lawyerAmount: '100.00',
+    });
+    expect(calculateSettlement(values, SETTLEMENT_V2)).toMatchObject({
+      customerAmount: '123.50',
+      lawyerAmount: '100.20',
+      customerAutomaticAmount: '700.00',
+      lawyerAutomaticAmount: '300.00',
+    });
+    expect(
+      calculateSettlement({
+        ...input,
+        customerManualAmount: '0.01',
+        lawyerManualAmount: '0',
+      }),
+    ).toMatchObject({
+      customerAmount: '0.01',
+      lawyerAmount: '0.00',
+      customerSource: 'MANUAL',
+      lawyerSource: 'MANUAL',
+    });
+  });
+  it.each(['-0.01', '1.001', 'NaN', '1e2'])(
+    'rejects invalid manual money %s',
+    (value) => {
+      expect(() =>
+        calculateSettlement({ ...input, customerManualAmount: value }),
+      ).toThrow('INVALID_SETTLEMENT_MONEY');
+      expect(() =>
+        calculateSettlement({ ...input, lawyerManualAmount: value }),
+      ).toThrow('INVALID_SETTLEMENT_MONEY');
+    },
+  );
 });

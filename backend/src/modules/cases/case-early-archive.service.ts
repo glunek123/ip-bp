@@ -6,7 +6,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { Prisma, type CaseStage } from '../../generated/prisma/client';
 import { AccessControlService } from '../../access-control/access-control.service';
 import type { ActorContext } from '../../access-control/actor-context';
@@ -17,7 +17,13 @@ import {
 } from './case-early-archive.dto';
 
 const fail = (code: string) => {
-  const body = { code, message: '提前归档失败' };
+  const body = {
+    code,
+    message:
+      code === 'EARLY_ARCHIVE_RETIRED'
+        ? '提前归档已停用，请通过结案办理。'
+        : '提前归档失败',
+  };
   if (code === 'VALIDATION_ERROR') return new BadRequestException(body);
   if (code === 'ACTION_FORBIDDEN') return new ForbiddenException(body);
   if (code === 'CASE_NOT_FOUND') return new NotFoundException(body);
@@ -172,91 +178,7 @@ export class CaseEarlyArchiveService {
                 recordedAt: fact.recordedAt.toISOString(),
               });
             }
-            if (record.version !== input.expectedVersion)
-              throw fail('VERSION_CONFLICT');
-            if (record.consolidationMembership?.isMain === false)
-              throw fail('INVALID_STATE');
-            if (
-              record.stage === 'ARCHIVED' ||
-              record.archive !== null ||
-              record.earlyArchive !== null ||
-              (record.externalEntry !== null &&
-                input.archiveAt <
-                  record.externalEntry.stageReachedOn
-                    .toISOString()
-                    .slice(0, 10))
-            )
-              throw fail('INVALID_STATE');
-            const earlyArchiveId = randomUUID();
-            const auditEventId = randomUUID();
-            const recordedAt = new Date();
-            await tx.auditEvent.create({
-              data: {
-                id: auditEventId,
-                departmentId: actor.departmentId,
-                actorUserId: actor.userId,
-                internalActorUserId: actor.userId,
-                resourceType: 'CASE',
-                resourceId: caseId,
-                action: 'case.early_archived',
-                details: {
-                  earlyArchiveId,
-                  fromStage: record.stage,
-                  fromVersion: record.version,
-                  toVersion: record.version + 1,
-                  archiveAt: input.archiveAt,
-                  reason: input.reason,
-                  requestFingerprint: fingerprint,
-                },
-              },
-            });
-            await tx.caseEarlyArchive.create({
-              data: {
-                id: earlyArchiveId,
-                caseId,
-                departmentId: actor.departmentId,
-                fromStage: record.stage,
-                fromVersion: record.version,
-                toVersion: record.version + 1,
-                archiveAt: new Date(input.archiveAt + 'T00:00:00.000Z'),
-                reason: input.reason,
-                recordedAt,
-                recordedByUserId: actor.userId,
-                auditEventId,
-              },
-            });
-            const updated = await tx.case.updateMany({
-              where: {
-                id: caseId,
-                departmentId: actor.departmentId,
-                stage: record.stage,
-                version: record.version,
-                archive: { is: null },
-                earlyArchive: { is: { id: earlyArchiveId } },
-              },
-              data: { stage: 'ARCHIVED', version: { increment: 1 } },
-            });
-            if (updated.count !== 1) throw fail('VERSION_CONFLICT');
-            const result: EarlyArchiveCaseResult = {
-              id: caseId,
-              earlyArchiveId,
-              fromStage: record.stage as Exclude<CaseStage, 'ARCHIVED'>,
-              stage: 'ARCHIVED',
-              version: record.version + 1,
-              recordedAt: recordedAt.toISOString(),
-            };
-            await tx.caseEarlyArchiveReceipt.create({
-              data: {
-                departmentId: actor.departmentId,
-                actorUserId: actor.userId,
-                caseId,
-                earlyArchiveId,
-                idempotencyKey: input.idempotencyKey,
-                requestFingerprint: fingerprint,
-                resultSnapshot: { ...result },
-              },
-            });
-            return result;
+            throw fail('EARLY_ARCHIVE_RETIRED');
           },
           { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
         );

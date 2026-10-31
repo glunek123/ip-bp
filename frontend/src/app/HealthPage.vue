@@ -70,7 +70,7 @@ onBeforeUnmount(() => {
     </header>
     <main>
       <div class="page-heading">
-        <p class="eyebrow">工程连接检查</p>
+        <p class="eyebrow">系统连接检查</p>
         <p class="intro">先确认连接，再开始工作。</p>
       </div>
       <section
@@ -129,16 +129,17 @@ onBeforeUnmount(() => {
             @click="checkConnection"
             >重新检查</ElButton
           >
+          <a v-if="state === 'ready'" href="/">返回系统</a>
         </footer>
         <p v-if="requestId" class="request-id">请求编号：{{ requestId }}</p>
       </section>
       <aside class="scope-note">
         <span aria-hidden="true">—</span>
-        <p>当前为工程基础页面。案件功能将在部门审核确认后逐步加入。</p>
+        <p>此页用于检查系统连接。连接恢复后，可返回系统继续办理。</p>
       </aside>
     </main>
     <footer class="page-footer">
-      <span>知产案管系统</span><span>工程准备阶段</span>
+      <span>知产案管系统</span><span>系统连接检查</span>
     </footer>
   </div>
 </template>

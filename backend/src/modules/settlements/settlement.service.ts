@@ -419,7 +419,7 @@ export class SettlementService {
     assertFinancialKey(input.idempotencyKey);
     const launchDate = parseFinancialDay(input.launchDate);
     const requested = new Prisma.Decimal(input.amount);
-    if (!requested.isPositive())
+    if (!requested.greaterThan(0))
       throw bad('INVALID_AMOUNT', '发起金额须大于 0');
     const fingerprint = financialFingerprint({
       command: 'LAUNCH',

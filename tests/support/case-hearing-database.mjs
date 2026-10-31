@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { clearTimeout, setTimeout } from 'node:timers';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
+import { admitManagedWorkerDatabase } from '../../scripts/managed-e2e-worker-admission.mjs';
 
 const root = process.cwd();
 const requireBackend = createRequire(resolve(root, 'backend/package.json'));
@@ -65,9 +66,12 @@ const coreHearingAdmin = Object.freeze({
 });
 
 async function withCoreHearingAdminDatabase(operation) {
-  validateIsolatedTestDatabaseUrl(databaseUrl);
+  const managed = await admitManagedWorkerDatabase({ databaseUrl });
+  if (managed === null) validateIsolatedTestDatabaseUrl(databaseUrl);
   const database = new PrismaClient({
-    adapter: new PrismaPg({ connectionString: databaseUrl }),
+    adapter: new PrismaPg({
+      connectionString: managed?.connectionString ?? databaseUrl,
+    }),
   });
   try {
     const rows = await database.$queryRawUnsafe(

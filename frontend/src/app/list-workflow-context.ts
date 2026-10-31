@@ -19,7 +19,10 @@ export type ListWorkflowSession = ListWorkflowReceipt & {
   isCurrent: () => boolean;
   /** Recovery admits ONLY the module's original frozen body/key, never a new command. */
   beginSubmit: (options?: { recovery?: boolean }) => boolean;
-  endSubmit: (outcome: 'failed' | 'unknown' | 'success') => boolean;
+  /** completed releases an independent command without closing this workflow. */
+  endSubmit: (
+    outcome: 'failed' | 'unknown' | 'success' | 'completed',
+  ) => boolean;
   /** Register a module-owned pending request restored before mounting this panel. */
   restoreUnknown: () => boolean;
   deny: () => void;
@@ -118,7 +121,7 @@ export function createListWorkflowContext<T extends { id: string }>(
         state.value = { ...state.value, requestState: 'submitting' };
         return true;
       },
-      endSubmit(outcome: 'failed' | 'unknown' | 'success') {
+      endSubmit(outcome: 'failed' | 'unknown' | 'success' | 'completed') {
         if (!current() || state.value.requestState !== 'submitting')
           return false;
         if (outcome === 'success') {

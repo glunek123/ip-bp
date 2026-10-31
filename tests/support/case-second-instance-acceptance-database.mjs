@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { coreLeadFixtures } from './core-lead-database.mjs';
 import { createSubmittedCaseThroughApi } from './case-complaint-confirmation-database.mjs';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
+import { admitManagedWorkerDatabase } from '../../scripts/managed-e2e-worker-admission.mjs';
 
 const requireBackend = createRequire(
   resolve(process.cwd(), 'backend/package.json'),
@@ -217,8 +218,11 @@ export async function withSecondInstanceAcceptanceDatabase(operation) {
     throw new Error(
       'Second-instance acceptance fixture requires an isolated test database',
     );
-  validateIsolatedTestDatabaseUrl(url);
-  const client = new Client({ connectionString: url });
+  const managed = await admitManagedWorkerDatabase({ databaseUrl: url });
+  if (managed === null) validateIsolatedTestDatabaseUrl(url);
+  const client = new Client({
+    connectionString: managed?.connectionString ?? url,
+  });
   await client.connect();
   try {
     const { rows } = await client.query(

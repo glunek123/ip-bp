@@ -37,7 +37,7 @@ export class CaseFeeEntryService {
       if (
         row.caseId !== input.caseId ||
         !statuses.includes(row.status) ||
-        !new Prisma.Decimal(row.amount).isPositive()
+        !new Prisma.Decimal(row.amount).greaterThan(0)
       )
         throw new BadRequestException({
           code: 'INVALID_CASE_FEE_ENTRIES',

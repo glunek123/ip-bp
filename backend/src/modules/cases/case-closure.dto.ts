@@ -66,11 +66,17 @@ export class CorrectCaseClosureInput extends RecordCaseClosureInput {
   @ApiProperty({ format: 'uuid' })
   @IsUUID('4')
   expectedClosureVersionId!: string;
-  @ApiProperty({ maxLength: 500 })
+  @ApiProperty({
+    type: String,
+    required: false,
+    nullable: true,
+    maxLength: 500,
+  })
+  @ValidateIf((_input, value) => value !== undefined && value !== null)
   @IsString()
   @MaxLength(500)
   @Matches(/\S/u)
-  correctionReason!: string;
+  correctionReason?: string | null;
 }
 export class CaseClosureResult {
   @ApiProperty({ format: 'uuid' }) id!: string;

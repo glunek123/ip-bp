@@ -1,3 +1,7 @@
+import {
+  isBatch2Current269,
+  assertBatch2Current269Target,
+} from './batch2-current-managed-target.mjs';
 import { execFileSync } from 'node:child_process';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
 
@@ -8,6 +12,7 @@ const database = 'dev_cor_test';
 const user = 'dev_cor_test';
 
 export function assertBatch2UsernameTarget() {
+  if (isBatch2Current269(process.env)) return assertBatch2Current269Target();
   const env = process.env;
   if (env.NODE_ENV !== 'test' || env.DEV_COR_OPS_BATCH2_READY !== '1')
     throw new Error('Batch2 username test environment is not READY');

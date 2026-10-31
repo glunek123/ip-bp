@@ -112,12 +112,8 @@ describe('case consolidation confirmation', () => {
     wrapper.unmount();
   });
 
-  it.each([
-    'PENDING_MATCH',
-    'WAITING_COMPLAINT',
-    'WAITING_COMPLAINT_CONFIRMATION',
-    'WAITING_COMPLAINT_STAMP',
-  ] as const)('allows preview for two confirmed cases in %s', async (stage) => {
+  it('allows preview for two confirmed pending-match cases', async () => {
+    const stage = 'PENDING_MATCH' as const;
     const wrapper = mount(CaseConsolidationPanel, {
       props: {
         items: items.map((item) => ({ ...item, stage })),
@@ -143,7 +139,7 @@ describe('case consolidation confirmation', () => {
     wrapper.unmount();
   });
 
-  it('never previews mixed concrete stages or a member lacking capability', async () => {
+  it('never previews complaint stages or a member lacking capability', async () => {
     const wrapper = mount(CaseConsolidationPanel, {
       props: {
         items: [
@@ -168,8 +164,14 @@ describe('case consolidation confirmation', () => {
     await wrapper.setProps({
       items: [
         { ...items[0]!, stage: 'WAITING_COMPLAINT' },
-        { ...items[1]!, stage: 'WAITING_COMPLAINT', canConsolidate: false },
+        { ...items[1]!, stage: 'WAITING_COMPLAINT' },
       ],
+    });
+    expect(
+      wrapper.get('[data-test="preview-consolidation"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.setProps({
+      items: [items[0]!, { ...items[1]!, canConsolidate: false }],
     });
     expect(
       wrapper.get('[data-test="preview-consolidation"]').attributes('disabled'),

@@ -3,6 +3,7 @@ import {
   ConflictException,
   InternalServerErrorException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type { AccessControlService } from '../../access-control/access-control.service';
 import type { DatabaseService } from '../../database/database.service';
 import type { CaseEarlyArchiveService } from './case-early-archive.service';
@@ -51,6 +52,21 @@ const input = () => ({
   reason: '办理结束',
   items: [{ id: a, expectedVersion: 1 }],
 });
+function historicalBatch(f: ReturnType<typeof harness>) {
+  const body = input();
+  const requestFingerprint = createHash('sha256')
+    .update(
+      JSON.stringify({
+        archiveAt: body.archiveAt,
+        reason: body.reason,
+        items: body.items,
+      }),
+    )
+    .digest('hex');
+  f.tx.caseEarlyArchiveBatchReceipt.findUnique.mockResolvedValue({
+    requestFingerprint,
+  });
+}
 
 describe('case batch early archive', () => {
   it('rejects duplicate cases before binding a batch', async () => {
@@ -62,13 +78,10 @@ describe('case batch early archive', () => {
     );
     expect(f.tx.caseEarlyArchiveBatchReceipt.create).not.toHaveBeenCalled();
   });
-  it('binds the full request and returns the single-case success receipt', async () => {
+  it('rejects a new batch without creating a receipt or changing cases', async () => {
     const f = harness();
-    const result = await f.service.archive(actor, input());
-    expect(result.items[0]).toMatchObject({
-      id: a,
-      status: 'SUCCEEDED',
-      result: { version: 2 },
+    await expect(f.service.archive(actor, input())).rejects.toMatchObject({
+      response: { code: 'EARLY_ARCHIVE_RETIRED' },
     });
     expect(f.access.authorizeCase).toHaveBeenCalledWith(
       actor,
@@ -76,12 +89,8 @@ describe('case batch early archive', () => {
       expect.any(Object),
       f.tx,
     );
-    expect(f.tx.caseEarlyArchiveBatchReceipt.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        idempotencyKey: 'batch-1',
-        requestFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/u),
-      }),
-    });
+    expect(f.tx.caseEarlyArchiveBatchReceipt.create).not.toHaveBeenCalled();
+    expect(f.single.archive).not.toHaveBeenCalled();
   });
   it('rejects the whole batch before a receipt when any selected case is a merged child', async () => {
     const f = harness();
@@ -94,16 +103,12 @@ describe('case batch early archive', () => {
   });
   it('reports uncertain outcomes as UNKNOWN for same-key retry', async () => {
     const f = harness();
+    historicalBatch(f);
     f.single.archive.mockRejectedValue(new InternalServerErrorException());
     const result = await f.service.archive(actor, input());
     expect(result.items).toEqual([
       { id: a, status: 'UNKNOWN', code: 'RESULT_UNKNOWN' },
     ]);
-    const creation = f.tx.caseEarlyArchiveBatchReceipt.create.mock
-      .calls[0][0] as { data: { requestFingerprint: string } };
-    f.tx.caseEarlyArchiveBatchReceipt.findUnique.mockResolvedValue({
-      requestFingerprint: creation.data.requestFingerprint,
-    });
     f.single.archive.mockResolvedValue({
       id: a,
       stage: 'ARCHIVED',

@@ -8,6 +8,13 @@ import {
   watch,
 } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import {
+  archiveCheckReason,
+  decodeArchiveChecks,
+  getCaseArchiveReadiness,
+  type ArchiveChecks,
+  type CaseArchiveReadiness,
+} from '../../api/case-archive-readiness';
 import { todayShanghai } from '../../api/cases';
 import { ApiError } from '../../api/http';
 
@@ -25,6 +32,7 @@ type ArchiveInput = {
   archiveAt: string;
   archiveType: ArchiveType;
   archiveReason: string;
+  archiveNote?: string | null;
 };
 type CorrectInput = ArchiveInput & {
   expectedArchiveVersionId: string;
@@ -53,6 +61,7 @@ type ArchiveVersion = {
   archiveAt: string;
   archiveType: ArchiveType;
   archiveReason: string;
+  archiveNote: string | null;
   correctionReason?: string | null;
   recordedAt: string;
   recordedByUserId?: string;
@@ -101,6 +110,7 @@ const archiveTypes: { value: ArchiveType; label: string }[] = [
 const archiveAt = ref('');
 const archiveType = ref<ArchiveType | ''>('');
 const archiveReason = ref('');
+const archiveNote = ref('');
 const correctionReason = ref('');
 const correcting = ref(false);
 const pending = ref<PendingRequest | null>(null);
@@ -110,6 +120,77 @@ const denied = ref(false);
 const conflict = ref(false);
 const projectionBlocked = ref(false);
 const error = ref('');
+const readiness = ref<CaseArchiveReadiness | null>(null);
+const latestChecks = ref<ArchiveChecks | null>(null);
+const checking = ref(false);
+const checkError = ref('');
+const checkExpired = ref(false);
+let checkSequence = 0;
+const checkRows = [
+  { key: 'payment', label: '付款结清' },
+  { key: 'refund', label: '诉讼退费' },
+  { key: 'customer', label: '客户回款' },
+  { key: 'lawyer', label: '律师开票' },
+] as const;
+const stateLabels = {
+  PASSED: '通过',
+  BLOCKED: '不足',
+  UNKNOWN: '未知',
+  EXEMPT: '免校验',
+};
+const displayedChecks = computed(
+  () => latestChecks.value ?? readiness.value?.checks,
+);
+const financialReady = computed(
+  () =>
+    !!readiness.value &&
+    !checkExpired.value &&
+    readiness.value.caseVersion === props.item.version &&
+    readiness.value.closureVersionId === props.item.closure?.current.id &&
+    readiness.value.state === 'PASSED' &&
+    !latestChecks.value,
+);
+function invalidateCheck() {
+  checkSequence += 1;
+  readiness.value = null;
+  latestChecks.value = null;
+  checking.value = false;
+  checkError.value = '';
+  checkExpired.value = false;
+}
+async function checkReadiness() {
+  if (
+    !active ||
+    !canArchive.value ||
+    denied.value ||
+    pending.value ||
+    submitting.value ||
+    checking.value
+  )
+    return;
+  const context = capture();
+  const sequence = ++checkSequence;
+  checking.value = true;
+  readiness.value = null;
+  latestChecks.value = null;
+  checkError.value = '';
+  try {
+    const result = await getCaseArchiveReadiness(context.id, !!props.lawyer);
+    if (!current(context) || sequence !== checkSequence) return;
+    readiness.value = result;
+    checkExpired.value =
+      result.caseVersion !== props.item.version ||
+      result.closureVersionId !== props.item.closure?.current.id;
+  } catch (failure) {
+    if (!current(context) || sequence !== checkSequence) return;
+    if (failure instanceof ApiError && [401, 403].includes(failure.status))
+      loseAccess();
+    else checkError.value = '归档条件核查失败，请重新核查。';
+  } finally {
+    if (current(context) && sequence === checkSequence) checking.value = false;
+  }
+}
+
 let active = true;
 let revision = 0;
 let trustedItem = props.item;
@@ -135,7 +216,7 @@ function publish(request: PendingRequest | null) {
 }
 function clearDraft() {
   archiveAt.value = archiveType.value = '';
-  archiveReason.value = correctionReason.value = '';
+  archiveReason.value = archiveNote.value = correctionReason.value = '';
   correcting.value = false;
 }
 const canArchive = computed(
@@ -178,6 +259,7 @@ function validText(value: string, limit: number) {
 const ready = computed(
   () =>
     editable.value &&
+    (correcting.value || financialReady.value) &&
     !submitting.value &&
     !pending.value &&
     validDate(archiveAt.value) &&
@@ -198,13 +280,17 @@ function startCorrection() {
   archiveAt.value = version.archiveAt;
   archiveType.value = version.archiveType;
   archiveReason.value = version.archiveReason;
+  archiveNote.value = version.archiveNote ?? '';
   correctionReason.value = '';
   correcting.value = true;
 }
-function loseAccess() {
+function loseAccess(preserveUnknown = false) {
   revision += 1;
+  invalidateCheck();
   clearDraft();
-  publish(null);
+  // A retry denial cannot resolve the earlier request; recovery owns its original key/body.
+  if (preserveUnknown) pending.value = null;
+  else publish(null);
   denied.value = true;
   submitting.value = false;
   error.value = '当前身份或权限已变化，请刷新核对。';
@@ -216,6 +302,7 @@ watch(
     if (previous && next.every((value, index) => value === previous[index]))
       return;
     revision += 1;
+    invalidateCheck();
     clearDraft();
     projectionBlocked.value =
       !!previous && next[0] === previous[0] && props.item === trustedItem;
@@ -233,6 +320,7 @@ watch(
   (item) => {
     if (item === trustedItem) return;
     trustedItem = item;
+    invalidateCheck();
     projectionBlocked.value = false;
     if (conflict.value && !pending.value && !denied.value) {
       conflict.value = false;
@@ -262,6 +350,7 @@ watch(
   (next, previous) => {
     if (next.every((value, index) => value === previous[index])) return;
     revision += 1;
+    invalidateCheck();
     submitting.value = success.value = false;
     clearDraft();
     // Preserve the original command across competing versions; ignore late responses.
@@ -284,6 +373,20 @@ watch(
   },
   { immediate: true },
 );
+watch(
+  () => [
+    props.item,
+    props.item.version,
+    props.item.closure?.current.id,
+    props.contextKey,
+    props.lawyer,
+    canArchive.value,
+  ],
+  () => {
+    void checkReadiness();
+  },
+  { immediate: true, flush: 'post' },
+);
 function cancelEdit(): void {
   if (pending.value || submitting.value) return;
   clearDraft();
@@ -292,14 +395,17 @@ function cancelEdit(): void {
 onDeactivated(() => {
   active = false;
   revision += 1;
+  invalidateCheck();
   submitting.value = false;
 });
 onActivated(() => {
   active = true;
+  if (!readiness.value) void checkReadiness();
 });
 onBeforeUnmount(() => {
   active = false;
   revision += 1;
+  invalidateCheck();
 });
 async function submit() {
   if (
@@ -311,6 +417,7 @@ async function submit() {
   )
     return;
   const context = capture();
+  const replayingUnknown = pending.value !== null;
   let request = pending.value;
   if (!request) {
     if (archiveType.value === '') return;
@@ -321,6 +428,9 @@ async function submit() {
       archiveAt: archiveAt.value,
       archiveType: archiveType.value,
       archiveReason: archiveReason.value,
+      ...(archiveNote.value.length > 0
+        ? { archiveNote: archiveNote.value }
+        : {}),
     };
     request = correcting.value
       ? {
@@ -354,7 +464,7 @@ async function submit() {
   } catch (failure) {
     if (!current(context)) return;
     if (failure instanceof ApiError && [401, 403].includes(failure.status))
-      loseAccess();
+      loseAccess(replayingUnknown);
     else if (
       !(failure instanceof ApiError) ||
       ['NETWORK_ERROR', 'TIMEOUT', 'INVALID_RESPONSE'].includes(failure.code) ||
@@ -363,7 +473,19 @@ async function submit() {
       error.value = '提交结果暂时未知。请使用原请求重试，或刷新核实记录。';
     else {
       publish(null);
-      if (failure.status === 409) {
+      if (
+        failure.status === 409 &&
+        failure.code === 'ARCHIVE_FINANCIAL_NOT_READY'
+      ) {
+        invalidateCheck();
+        try {
+          latestChecks.value = decodeArchiveChecks(failure.details?.checks);
+        } catch {
+          /* Invalid details remain blocked. */
+        }
+        error.value =
+          '归档条件未满足。已显示服务端最新核查结果，请补齐后重新核查。';
+      } else if (failure.status === 409) {
         conflict.value = true;
         clearDraft();
         error.value =
@@ -414,6 +536,9 @@ function recordedTime(value: string) {
           <p class="preserve-text">
             归档原因：{{ item.archive.current.archiveReason }}
           </p>
+          <p v-if="item.archive.current.archiveNote" class="preserve-text">
+            归档备注：{{ item.archive.current.archiveNote }}
+          </p>
           <p>结案版本：{{ item.archive.closureVersionId }}</p>
           <details data-test="archive-history">
             <summary>归档历史（{{ item.archive.history.length }}）</summary>
@@ -426,6 +551,9 @@ function recordedTime(value: string) {
                 {{ version.archiveAt }} · {{ typeLabel(version.archiveType) }}
               </p>
               <p class="preserve-text">归档原因：{{ version.archiveReason }}</p>
+              <p v-if="version.archiveNote" class="preserve-text">
+                归档备注：{{ version.archiveNote }}
+              </p>
               <p>结案版本：{{ version.closureVersionId }}</p>
               <p
                 v-if="!lawyer && version.correctionReason"
@@ -448,7 +576,46 @@ function recordedTime(value: string) {
           >
         </div>
         <p v-else data-test="archive-unrecorded">归档资料：未登记</p>
-        <p class="field-help">归档不代表款项已收齐或结清。</p>
+        <p class="field-help">款项状态以实际记录为准。</p>
+        <section
+          v-if="canArchive"
+          aria-label="归档条件核查"
+          data-test="archive-readiness"
+        >
+          <p>归档前逐项核查。正式归档时服务端仍会重新核查。</p>
+          <p v-if="readiness">
+            核查时间：{{ recordedTime(readiness.checkedAt) }}
+          </p>
+          <p v-if="checkExpired" role="status">
+            核查已过期或案件版本已变化，请重新核查。
+          </p>
+          <p v-if="checkError" role="alert">{{ checkError }}</p>
+          <ul>
+            <li
+              v-for="row in checkRows"
+              :key="row.key"
+              :data-test="`archive-check-${row.key}`"
+            >
+              {{ row.label }}：{{
+                displayedChecks
+                  ? stateLabels[displayedChecks[row.key].state]
+                  : '未知'
+              }}。
+              {{
+                displayedChecks
+                  ? archiveCheckReason(displayedChecks[row.key].reason)
+                  : '尚未核查'
+              }}
+            </li>
+          </ul>
+          <ElButton
+            data-test="archive-check"
+            :loading="checking"
+            :disabled="checking || submitting || !!pending || denied"
+            @click="checkReadiness"
+            >重新核查</ElButton
+          >
+        </section>
         <template v-if="pending">
           <p role="status">
             原请求待核实。当前案件记录不能代替本次请求的结果。
@@ -457,7 +624,8 @@ function recordedTime(value: string) {
             原{{ pending.command === 'ARCHIVE' ? '归档' : '更正' }}请求：{{
               pending.input.archiveAt
             }}；{{ typeLabel(pending.input.archiveType) }}；归档原因
-            {{ pending.input.archiveReason
+            {{ pending.input.archiveReason }}；归档备注
+            {{ pending.input.archiveNote || '未填写'
             }}<template v-if="!lawyer && pending.command === 'CORRECT'"
               >；更正原因 {{ pending.input.correctionReason }}</template
             >
@@ -525,6 +693,16 @@ function recordedTime(value: string) {
               data-test="archive-reason"
               :disabled="submitting"
               required
+            />
+          </label>
+          <label
+            >归档备注（选填）
+            <textarea
+              v-model="archiveNote"
+              class="text-input"
+              maxlength="2000"
+              data-test="archive-note"
+              :disabled="submitting"
             />
           </label>
           <label v-if="correcting"

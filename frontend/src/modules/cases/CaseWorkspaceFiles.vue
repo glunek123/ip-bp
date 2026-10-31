@@ -177,6 +177,7 @@ function materialCategoryLabel(category: OwnerMaterial['category']): string {
     EXECUTION_SUPPLEMENT: '执行补充材料',
     EXECUTION_FINISH_BASIS: '执行结束依据',
     CASE_CLOSURE_DOCUMENT: '结案材料',
+    CASE_CLOSURE_PAYMENT_PROOF: '付款截图',
     FEE_PROOF: '费用凭证',
   };
   return labels[category];

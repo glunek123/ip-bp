@@ -28,7 +28,21 @@ describe('closure input DTO', () => {
       ).toBeGreaterThan(0);
     }
   });
-  it('rejects unknown fields, duplicate versions and correction without a reason', () => {
+  it.each([undefined, null, 'real reason', 'a'.repeat(500)])(
+    'accepts optional correction reason %s',
+    (correctionReason) => {
+      expect(
+        validateSync(
+          plainToInstance(CorrectCaseClosureInput, {
+            ...input,
+            expectedClosureVersionId: input.expectedFinishId,
+            ...(correctionReason === undefined ? {} : { correctionReason }),
+          }),
+        ),
+      ).toEqual([]);
+    },
+  );
+  it('rejects unknown fields, duplicate versions and blank correction reason', () => {
     expect(
       validateSync(
         plainToInstance(RecordCaseClosureInput, { ...input, extra: true }),

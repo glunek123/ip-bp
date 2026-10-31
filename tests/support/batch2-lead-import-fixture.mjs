@@ -1,3 +1,4 @@
+import { isBatch2Current269 } from './batch2-current-managed-target.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
@@ -30,6 +31,7 @@ export function assertBatch2ImportOwnedRuntime() {
       resolve(root, '.local/private-files/test')
   )
     throw new Error('Batch-2 import requires isolated app and file paths');
+  if (isBatch2Current269()) return url;
   const id = process.env.DEV_COR_TEST_DATABASE_CONTAINER_ID;
   const [container] = JSON.parse(
     execFileSync('docker', ['inspect', id], { encoding: 'utf8' }),

@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
+import { admitManagedWorkerDatabase } from '../../scripts/managed-e2e-worker-admission.mjs';
 import { coreLeadFixtures } from './core-lead-database.mjs';
 import {
   createFinishedCaseClosureSourceThroughApi,
@@ -23,6 +24,7 @@ const archiveTables = [
   'case_archives',
   'case_archive_versions',
   'case_archive_receipts',
+  'case_archive_evidence_snapshots',
 ];
 const priorTables = [
   'case_closures',
@@ -37,7 +39,11 @@ const operator = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
 async function connect() {
   if (process.env.NODE_ENV !== 'test' || !process.env.DATABASE_URL)
     throw new Error('Archive fixtures require isolated tests');
-  validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL);
+  const managed = await admitManagedWorkerDatabase({
+    databaseUrl: process.env.DATABASE_URL,
+  });
+  if (managed === null)
+    validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL);
   if (
     resolve(process.env.PRIVATE_FILE_ROOT ?? '') !==
     resolve(process.cwd(), '.local/private-files/test')
@@ -45,7 +51,9 @@ async function connect() {
     throw new Error('Archive fixtures require isolated file root');
   const backend = createRequire(resolve(process.cwd(), 'backend/package.json'));
   const { Client } = backend('pg');
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({
+    connectionString: managed?.connectionString ?? process.env.DATABASE_URL,
+  });
   await client.connect();
   const identity = (
     await client.query(
@@ -166,13 +174,110 @@ export async function createClosedCaseArchiveSourceThroughApi(
   );
   if (response.status() !== 201)
     throw new Error('Normal prior closure registration failed');
-  const closureResult = await response.json();
+  const originalClosureResult = await response.json();
+  let closureResult = originalClosureResult;
   if (
     closureResult.stage !== 'WAITING_ARCHIVE' ||
     closureResult.version !== source.finished.version + 1
   )
     throw new Error('Prior closure receipt mismatch');
-  return { ...source, closureResult, closureInput, file };
+  if (options.realZero)
+    closureResult = await prepareZeroAmountArchiveThroughApi(
+      request,
+      source.caseId,
+      closureResult,
+      {
+        ...closureInput,
+        closeAt: new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Shanghai',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(new Date()),
+      },
+    );
+  return {
+    ...source,
+    closureResult,
+    originalClosureResult,
+    closureInput,
+    file,
+  };
+}
+export async function prepareZeroAmountArchiveThroughApi(
+  request,
+  caseId,
+  closure,
+  closureInput,
+) {
+  await setCaseClosureFixtureGrant(
+    coreLeadFixtures.roleA,
+    'case.closure.correct',
+    'TEAM',
+  );
+  const response = await request.post(
+    `/api/v1/cases/${caseId}/closure-settlement-updates`,
+    {
+      headers: operator,
+      data: {
+        expectedVersion: closure.version,
+        expectedClosureVersionId: closure.closureVersionId,
+        idempotencyKey: randomUUID(),
+        closeAt: closureInput.closeAt,
+        closeAmountState: 'KNOWN',
+        closeAmt: '0.00',
+        closeContentVersionIds: closureInput.closeContentVersionIds,
+        paymentType: 'ONE_TIME',
+        paymentRecords: [],
+        correctionReason:
+          '合成案件明确零金额并确认没有诉讼退费，保留原结案资料',
+        refund: {
+          expectedVersionId: null,
+          kind: 'DECLARE_NOT_APPLICABLE',
+          items: [],
+        },
+      },
+    },
+  );
+  if (response.status() !== 201)
+    throw new Error(
+      `Archive zero/refund declaration failed: ${await response.text()}`,
+    );
+  const updated = await response.json();
+  if (
+    updated.stage !== 'WAITING_ARCHIVE' ||
+    updated.version !== closure.version + 1 ||
+    updated.closureVersionId === closure.closureVersionId
+  )
+    throw new Error('Known-date financial update receipt mismatch');
+  const currentResponse = await request.get(`/api/v1/cases/${caseId}`, {
+    headers: operator,
+  });
+  if (currentResponse.status() !== 200)
+    throw new Error('Known-date closure read failed');
+  const current = await currentResponse.json();
+  if (
+    current.version !== updated.version ||
+    current.stage !== 'WAITING_ARCHIVE' ||
+    current.closure?.current?.id !== updated.closureVersionId ||
+    current.closure.current.closeAt !== closureInput.closeAt ||
+    current.closure.current.closeAmountState !== 'KNOWN' ||
+    current.closure.current.closeAmt !== '0.00'
+  )
+    throw new Error(
+      'Known-date zero closure was not retained in the current head',
+    );
+  return updated;
+}
+
+export async function readCaseArchiveSnapshot(caseId) {
+  const client = await connect();
+  try {
+    await assertCase(client, caseId);
+    return await snapshot(client, caseId);
+  } finally {
+    await client.end();
+  }
 }
 export async function caseArchiveSourceSnapshot(client, caseId) {
   const result = {};
@@ -216,13 +321,40 @@ export async function caseArchiveSourceSnapshot(client, caseId) {
 }
 async function snapshot(client, caseId) {
   const prior = await caseArchiveSourceSnapshot(client, caseId);
-  for (const table of archiveTables)
+  for (const table of [
+    ...archiveTables,
+    'case_closure_settlement_update_receipts',
+    'case_closure_settlement_update_payments',
+    'case_settlement_update_child_links',
+    'case_refund_inventory_versions',
+    'case_refund_inventory_items',
+    'case_refund_inventory_receipts',
+  ])
     prior[table] = (
       await client.query(
         `SELECT to_jsonb(t) AS row FROM "${table}" t WHERE case_id=$1 ORDER BY to_jsonb(t)::text`,
         [caseId],
       )
     ).rows;
+  for (const [key, query] of [
+    [
+      'refundAmounts',
+      'SELECT to_jsonb(a) AS row FROM case_refund_inventory_item_amounts a JOIN case_refund_inventory_versions v ON v.id=a.inventory_version_id WHERE v.case_id=$1 ORDER BY a.inventory_version_id,a.item_id',
+    ],
+    [
+      'snapshotPayments',
+      'SELECT to_jsonb(i) AS row FROM case_archive_snapshot_payments i JOIN case_archive_evidence_snapshots s ON s.id=i.snapshot_id WHERE s.case_id=$1 ORDER BY i.snapshot_id,i.payment_version_id',
+    ],
+    [
+      'snapshotAllocations',
+      'SELECT to_jsonb(i) AS row FROM case_archive_snapshot_allocations i JOIN case_archive_evidence_snapshots s ON s.id=i.snapshot_id WHERE s.case_id=$1 ORDER BY i.snapshot_id,i.allocation_id',
+    ],
+    [
+      'financialAudits',
+      'SELECT to_jsonb(a) AS row FROM audit_events a WHERE a.id IN (SELECT audit_event_id FROM case_refund_inventory_versions WHERE case_id=$1 UNION SELECT audit_event_id FROM case_closure_settlement_update_receipts WHERE case_id=$1) ORDER BY a.id',
+    ],
+  ])
+    prior[key] = (await client.query(query, [caseId])).rows;
   return JSON.stringify(prior);
 }
 export async function caseArchiveSqlRejection(caseId, probe) {
@@ -331,6 +463,52 @@ export async function clearCaseArchiveFixture() {
     await client.query('BEGIN');
     try {
       // Only the established 15433 synthetic fixture departments, never preview data.
+      // Guard every row before truncating this fixture's new financial closure.
+      // This runs with constraints and triggers enabled. Unknown FK dependents
+      // cause PostgreSQL to reject the TRUNCATE; there is deliberately no CASCADE.
+      const financialTables = [
+        'case_archive_evidence_snapshots',
+        'case_archive_snapshot_payments',
+        'case_archive_snapshot_allocations',
+        'case_closure_settlement_update_receipts',
+        'case_closure_settlement_update_payments',
+        'case_settlement_update_child_links',
+        'case_refund_inventory_versions',
+        'case_refund_inventory_items',
+        'case_refund_inventory_receipts',
+        'case_refund_inventory_item_amounts',
+      ];
+      const existingFinancialTables = [];
+      for (const table of financialTables) {
+        if (
+          !(
+            await client.query(
+              'SELECT to_regclass($1) IS NOT NULL AS present',
+              [table],
+            )
+          ).rows[0].present
+        )
+          continue;
+        existingFinancialTables.push(table);
+        let scope;
+        if (
+          table === 'case_archive_snapshot_payments' ||
+          table === 'case_archive_snapshot_allocations'
+        )
+          scope = `SELECT 1 FROM "${table}" i LEFT JOIN case_archive_evidence_snapshots p ON p.id=i.snapshot_id LEFT JOIN cases c ON c.id=p.case_id AND c.department_id=p.department_id WHERE c.id IS NULL OR NOT(c.department_id=ANY($1::uuid[])) LIMIT 1`;
+        else if (table === 'case_refund_inventory_item_amounts')
+          scope = `SELECT 1 FROM "${table}" i LEFT JOIN case_refund_inventory_versions p ON p.id=i.inventory_version_id LEFT JOIN cases c ON c.id=p.case_id AND c.department_id=p.department_id WHERE c.id IS NULL OR NOT(c.department_id=ANY($1::uuid[])) LIMIT 1`;
+        else
+          scope = `SELECT 1 FROM "${table}" p LEFT JOIN cases c ON c.id=p.case_id AND c.department_id=p.department_id WHERE c.id IS NULL OR NOT(c.department_id=ANY($1::uuid[])) LIMIT 1`;
+        if ((await client.query(scope, [departments])).rows.length)
+          throw new Error(
+            `Financial cleanup outside isolated synthetic cases: ${table}`,
+          );
+      }
+      if (existingFinancialTables.length)
+        await client.query(
+          `TRUNCATE TABLE ${existingFinancialTables.map((table) => `"${table}"`).join(', ')}`,
+        );
       await client.query('SET LOCAL session_replication_role=replica');
       await client.query(
         "UPDATE cases c SET version=v.to_version,stage='WAITING_ARCHIVE' FROM case_closures h JOIN case_closure_versions v ON v.id=h.current_version_id WHERE c.id=h.case_id AND c.department_id=ANY($1::uuid[]) AND EXISTS(SELECT 1 FROM case_archives a WHERE a.case_id=c.id)",

@@ -34,6 +34,7 @@ export type MaterialCategory =
   | 'EXECUTION_SUPPLEMENT'
   | 'EXECUTION_FINISH_BASIS'
   | 'CASE_CLOSURE_DOCUMENT'
+  | 'CASE_CLOSURE_PAYMENT_PROOF'
   | 'FEE_PROOF';
 
 export type MaterialPurpose =
@@ -63,6 +64,7 @@ export type MaterialPurpose =
   | 'EXECUTION_SUPPLEMENT'
   | 'EXECUTION_FINISH_BASIS'
   | 'CASE_CLOSURE_DOCUMENT'
+  | 'CASE_CLOSURE_PAYMENT_PROOF'
   | 'FEE_PROOF';
 
 export type UploadedMaterial = {
@@ -101,6 +103,7 @@ type CaseSectionRecordMaterialPurpose = Extract<
   | 'EXECUTION_FINISH_BASIS'
   | 'JUDGMENT'
   | 'CASE_CLOSURE_DOCUMENT'
+  | 'CASE_CLOSURE_PAYMENT_PROOF'
 >;
 export type CaseSectionRecordUploadedMaterial = Omit<
   UploadedMaterial,
@@ -226,6 +229,7 @@ function isCategory(value: unknown): value is MaterialCategory {
     value === 'EXECUTION_FILING_PROOF' ||
     value === 'EXECUTION_SUPPLEMENT' ||
     value === 'EXECUTION_FINISH_BASIS' ||
+    value === 'CASE_CLOSURE_PAYMENT_PROOF' ||
     value === 'CASE_CLOSURE_DOCUMENT' ||
     value === 'FEE_PROOF'
   );
@@ -258,6 +262,7 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'EXECUTION_FILING_PROOF' ||
     value === 'EXECUTION_SUPPLEMENT' ||
     value === 'EXECUTION_FINISH_BASIS' ||
+    value === 'CASE_CLOSURE_PAYMENT_PROOF' ||
     value === 'CASE_CLOSURE_DOCUMENT' ||
     value === 'FEE_PROOF'
   );

@@ -79,7 +79,7 @@ function refundProjection(
       ? 'NO_PAYMENT'
       : refunded.isZero()
         ? 'REFUND_PENDING'
-        : remaining.isPositive()
+        : remaining.greaterThan(0)
           ? 'PARTIAL_REFUND'
           : 'REFUND_RECORDED',
     remainingVerifiedPayment: remaining.toFixed(2),
@@ -376,7 +376,7 @@ export class FeeService {
     assertFinancialKey(input.idempotencyKey);
     const feeDate = parseFinancialDay(input.feeDate);
     checkStatus(input.type, input.status);
-    if (!new Prisma.Decimal(input.amount).isPositive())
+    if (!new Prisma.Decimal(input.amount).greaterThan(0))
       throw new BadRequestException({
         code: 'INVALID_FEE_AMOUNT',
         message: '费用金额须大于 0',
@@ -1106,7 +1106,7 @@ export class FeeService {
     const amount = new Prisma.Decimal(input.amount);
     if (
       !amount.isFinite() ||
-      !amount.isPositive() ||
+      !amount.greaterThan(0) ||
       amount.decimalPlaces() > 2
     )
       throw new BadRequestException({
@@ -1172,7 +1172,7 @@ export class FeeService {
           const payment = await tx.feeCancellationPayment.findUnique({
             where: { cancellationId: cancellation.id },
           });
-          if (payment === null || !payment.amount.isPositive())
+          if (payment === null || !payment.amount.greaterThan(0))
             throw new ConflictException({
               code: 'PAYMENT_NOT_VERIFIED',
               message: '请先核对原实际支付金额',

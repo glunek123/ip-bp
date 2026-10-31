@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { CaseEarlyArchiveService } from './case-early-archive.service';
 
 const id = (digit: string) =>
@@ -65,64 +66,92 @@ function fixture() {
   };
 }
 
-describe('early archive command', () => {
-  it('rejects a merged child while preserving its original archive and finance history', async () => {
-    const f = fixture();
-    f.record.consolidationMembership = { isMain: false };
-    await expect(f.service.archive(actor, caseId, input)).rejects.toMatchObject(
-      { response: { code: 'INVALID_STATE' } },
-    );
-    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
-  });
-  it('archives any unfinished stage without creating closure or normal archive facts', async () => {
-    const f = fixture();
-    await expect(
-      f.service.archive(actor, caseId, input),
-    ).resolves.toMatchObject({
-      id: caseId,
-      fromStage: 'WAITING_HEARING',
-      stage: 'ARCHIVED',
-      version: 8,
-    });
-    expect(f.access.authorizeCase).toHaveBeenCalledWith(
-      actor,
-      'case.archive',
-      expect.objectContaining({ responsibleUserId: actor.userId }),
-      f.tx,
-    );
-    expect(f.tx.caseEarlyArchive.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+function historicalReceipt(f: ReturnType<typeof fixture>) {
+  const recordedAt = new Date('2020-01-01T10:00:00.000Z');
+  const fact = {
+    id: id('4'),
+    caseId,
+    departmentId: actor.departmentId,
+    fromStage: 'WAITING_HEARING',
+    fromVersion: 7,
+    toVersion: 8,
+    archiveAt: new Date('2020-01-01T00:00:00.000Z'),
+    reason: input.reason,
+    recordedAt,
+    recordedByUserId: actor.userId,
+    auditEventId: id('5'),
+  };
+  const fingerprint = createHash('sha256')
+    .update(
+      JSON.stringify({
         caseId,
-        fromStage: 'WAITING_HEARING',
-        fromVersion: 7,
-        toVersion: 8,
+        expectedVersion: input.expectedVersion,
+        archiveAt: input.archiveAt,
         reason: input.reason,
       }),
-    });
-    expect(f.tx.case.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          stage: 'WAITING_HEARING',
-          version: 7,
-        }),
-        data: { stage: 'ARCHIVED', version: { increment: 1 } },
-      }),
-    );
-    expect(f.tx.caseEarlyArchiveReceipt.create).toHaveBeenCalledTimes(1);
-  });
-  it('rejects a stale version and an already archived case', async () => {
-    const f = fixture();
-    f.record.version = 8;
-    await expect(f.service.archive(actor, caseId, input)).rejects.toMatchObject(
-      { response: { code: 'VERSION_CONFLICT' } },
-    );
-    expect(f.tx.caseEarlyArchive.create).not.toHaveBeenCalled();
-    f.record.version = 7;
-    f.record.stage = 'ARCHIVED';
-    await expect(f.service.archive(actor, caseId, input)).rejects.toMatchObject(
-      { response: { code: 'INVALID_STATE' } },
-    );
-  });
+    )
+    .digest('hex');
+  const result = {
+    id: caseId,
+    earlyArchiveId: fact.id,
+    fromStage: fact.fromStage,
+    stage: 'ARCHIVED',
+    version: 8,
+    recordedAt: recordedAt.toISOString(),
+  };
+  const receipt = {
+    caseId,
+    departmentId: actor.departmentId,
+    actorUserId: actor.userId,
+    earlyArchiveId: fact.id,
+    requestFingerprint: fingerprint,
+    resultSnapshot: result,
+  };
+  const audit = {
+    departmentId: actor.departmentId,
+    actorKind: 'HUMAN',
+    actorUserId: actor.userId,
+    internalActorUserId: actor.userId,
+    customerAccountBindingId: null,
+    notaryOfficeAccountBindingId: null,
+    lawyerAccountBindingId: null,
+    resourceType: 'CASE',
+    resourceId: caseId,
+    action: 'case.early_archived',
+    details: {
+      earlyArchiveId: fact.id,
+      fromStage: fact.fromStage,
+      fromVersion: 7,
+      toVersion: 8,
+      archiveAt: input.archiveAt,
+      reason: input.reason,
+      requestFingerprint: fingerprint,
+    },
+  };
+  f.tx.caseEarlyArchiveReceipt.findUnique.mockResolvedValue(receipt);
+  f.tx.caseEarlyArchive.findUnique.mockResolvedValue(fact);
+  f.tx.auditEvent.findUnique.mockResolvedValue(audit);
+  f.record.stage = 'ARCHIVED';
+  f.record.version = 8;
+  f.record.earlyArchive = { id: fact.id } as never;
+  return { receipt, fact, audit, result };
+}
+
+describe('early archive command', () => {
+  it.each(['PENDING_MATCH', 'WAITING_HEARING', 'WAITING_ARCHIVE', 'ARCHIVED'])(
+    'rejects a new legacy request in %s without writes',
+    async (stage) => {
+      const f = fixture();
+      f.record.stage = stage;
+      await expect(
+        f.service.archive(actor, caseId, input),
+      ).rejects.toMatchObject({ response: { code: 'EARLY_ARCHIVE_RETIRED' } });
+      expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+      expect(f.tx.caseEarlyArchive.create).not.toHaveBeenCalled();
+      expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
+      expect(f.tx.caseEarlyArchiveReceipt.create).not.toHaveBeenCalled();
+    },
+  );
   it('checks current authorization before returning an idempotency receipt', async () => {
     const f = fixture();
     f.access.authorizeCase.mockRejectedValue(new ForbiddenException());
@@ -133,26 +162,11 @@ describe('early archive command', () => {
   });
   it('replays the same command without a second fact and rejects key reuse with different content', async () => {
     const f = fixture();
-    const result = await f.service.archive(actor, caseId, input);
-    const receipt = f.tx.caseEarlyArchiveReceipt.create.mock.calls[0]![0].data;
-    const fact = f.tx.caseEarlyArchive.create.mock.calls[0]![0].data;
-    const audit = f.tx.auditEvent.create.mock.calls[0]![0].data;
-    f.tx.caseEarlyArchiveReceipt.findUnique.mockResolvedValue(receipt);
-    f.tx.caseEarlyArchive.findUnique.mockResolvedValue(fact);
-    f.tx.auditEvent.findUnique.mockResolvedValue({
-      ...audit,
-      actorKind: 'HUMAN',
-      customerAccountBindingId: null,
-      notaryOfficeAccountBindingId: null,
-      lawyerAccountBindingId: null,
-    });
-    f.record.stage = 'ARCHIVED';
-    f.record.version = 8;
-    f.record.earlyArchive = { id: fact.id } as never;
+    const { result } = historicalReceipt(f);
     await expect(f.service.archive(actor, caseId, input)).resolves.toEqual(
       result,
     );
-    expect(f.tx.caseEarlyArchive.create).toHaveBeenCalledTimes(1);
+    expect(f.tx.caseEarlyArchive.create).not.toHaveBeenCalled();
     await expect(
       f.service.archive(actor, caseId, { ...input, reason: '另一个原因' }),
     ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
@@ -162,26 +176,11 @@ describe('early archive command', () => {
         ...input,
         idempotencyKey: 'another-key',
       }),
-    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    ).rejects.toMatchObject({ response: { code: 'EARLY_ARCHIVE_RETIRED' } });
   });
   it('rejects a replay receipt whose fact, audit or snapshot has drifted', async () => {
     const f = fixture();
-    await f.service.archive(actor, caseId, input);
-    const receipt = f.tx.caseEarlyArchiveReceipt.create.mock.calls[0]![0].data;
-    const fact = f.tx.caseEarlyArchive.create.mock.calls[0]![0].data;
-    const audit = f.tx.auditEvent.create.mock.calls[0]![0].data;
-    f.tx.caseEarlyArchiveReceipt.findUnique.mockResolvedValue(receipt);
-    f.tx.caseEarlyArchive.findUnique.mockResolvedValue(fact);
-    f.tx.auditEvent.findUnique.mockResolvedValue({
-      ...audit,
-      actorKind: 'HUMAN',
-      customerAccountBindingId: null,
-      notaryOfficeAccountBindingId: null,
-      lawyerAccountBindingId: null,
-    });
-    f.record.stage = 'ARCHIVED';
-    f.record.version = 8;
-    f.record.earlyArchive = { id: fact.id } as never;
+    const { receipt, fact, audit } = historicalReceipt(f);
     const expectInvalid = async () =>
       expect(f.service.archive(actor, caseId, input)).rejects.toMatchObject({
         response: { code: 'INVALID_RECEIPT' },
@@ -205,19 +204,6 @@ describe('early archive command', () => {
       resultSnapshot: { ...receipt.resultSnapshot, version: 9 },
     });
     await expectInvalid();
-  });
-  it('does not replace a normal archive or another early archive', async () => {
-    const f = fixture();
-    f.record.archive = { id: id('4') } as never;
-    await expect(f.service.archive(actor, caseId, input)).rejects.toMatchObject(
-      { response: { code: 'INVALID_STATE' } },
-    );
-    f.record.archive = null;
-    f.record.earlyArchive = { id: id('5') } as never;
-    await expect(f.service.archive(actor, caseId, input)).rejects.toMatchObject(
-      { response: { code: 'INVALID_STATE' } },
-    );
-    expect(f.tx.caseEarlyArchive.create).not.toHaveBeenCalled();
   });
   it('rejects external principals and future dates before touching storage', async () => {
     const f = fixture();

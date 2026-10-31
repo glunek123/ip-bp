@@ -347,9 +347,7 @@ test('list action opens the existing judgment form after fresh GET, closes and r
   await expect(
     row.getByRole('button', { name: '登记判决', exact: true }),
   ).toHaveCount(0);
-  await row
-    .getByRole('button', { name: '选择判决后续流程', exact: true })
-    .click();
+  await row.getByRole('button', { name: '选择后续', exact: true }).click();
   await expect(
     page.locator('[data-test="case-judgment-next-step-panel"]'),
   ).toBeVisible();
@@ -474,9 +472,7 @@ test('a historical second-instance list action opens the real round form', async
   const item = await createEntry(request, 'SECOND_INSTANCE');
   await login(page, '/cases?view=department&stage=SECOND_INSTANCE');
   const row = page.getByRole('row').filter({ hasText: item.businessNo });
-  await row
-    .getByRole('button', { name: '二审登记／结果', exact: true })
-    .click();
+  await row.getByRole('button', { name: '二审办理', exact: true }).click();
   await expect(
     page.locator('[data-test="second-instance-panel"]'),
   ).toBeVisible();
@@ -548,7 +544,18 @@ test('archive entry follows a real closure fact and keeps the existing guarded f
   expect(closure.status()).toBe(201);
   await login(page, '/cases?view=department&stage=WAITING_ARCHIVE&page=1');
   const row = page.getByRole('row').filter({ hasText: item.businessNo });
-  await row.getByRole('button', { name: '归档案件', exact: true }).click();
+  const selected = row.getByRole('checkbox', {
+    name: `选择案件 ${item.businessNo}`,
+    exact: true,
+  });
+  await selected.check();
+  await expect(selected).toBeChecked();
+  await expect(page.getByText('已选 1 件', { exact: true })).toBeVisible();
+  const archive = page.locator(
+    '[aria-label="案件列表工具栏"] [data-case-action="archive"]',
+  );
+  await expect(archive).toHaveCount(1);
+  await archive.click();
   await expect(page.locator('[data-test="archive-panel"]')).toBeVisible();
   await expect(page.locator('[data-test="archive-form"]')).toBeVisible();
   await expect(page.locator('[data-test="archive-submit"]')).toBeDisabled();

@@ -3,6 +3,10 @@ import { createRequire } from 'node:module';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
+import {
+  loadManagedOld150Source,
+  admitManagedOld150Source,
+} from '../../scripts/managed-e2e-old150-source.mjs';
 import { coreLeadFixtures } from './core-lead-database.mjs';
 import {
   assertNoOrphanedOldForeignKeys,
@@ -12,7 +16,9 @@ import {
 const root = process.cwd();
 const requireBackend = createRequire(resolve(root, 'backend/package.json'));
 const { Client } = requireBackend('pg');
-const old150PrismaRoot = process.env.CA018_OLD150_PRISMA_DIR;
+const managedOld150Source = loadManagedOld150Source({ root });
+const old150PrismaRoot =
+  managedOld150Source?.prismaRoot ?? process.env.CA018_OLD150_PRISMA_DIR;
 if (!old150PrismaRoot)
   throw new Error('CA018 requires the preserved old150 Prisma directory');
 const migrationRoot = resolve(old150PrismaRoot, 'migrations');
@@ -50,13 +56,14 @@ export const oldCaseMigrations = readdirSync(migrationRoot)
   .sort();
 if (
   oldCaseMigrations.length !== 150 ||
-  resolve(old150PrismaRoot) !==
-    resolve(
-      root,
-      '..',
-      'ca015-integration',
-      '.local/ca018-evidence/old150-runtime/backend/prisma',
-    )
+  (managedOld150Source === null &&
+    resolve(old150PrismaRoot) !==
+      resolve(
+        root,
+        '..',
+        'ca015-integration',
+        '.local/ca018-evidence/old150-runtime/backend/prisma',
+      ))
 )
   throw new Error(
     'CA018 migration tests require the preserved exact old150 snapshot',
@@ -68,8 +75,12 @@ export async function withCaseExternalEntryMigrationDatabase(operation) {
     throw new Error(
       'External-entry migration fixture requires isolated test database',
     );
-  validateIsolatedTestDatabaseUrl(url, { allowRandomPort: true });
-  const client = new Client({ connectionString: url });
+  const managed = await admitManagedOld150Source({ root, databaseUrl: url });
+  if (managed === null)
+    validateIsolatedTestDatabaseUrl(url, { allowRandomPort: true });
+  const client = new Client({
+    connectionString: managed?.connectionString ?? url,
+  });
   await client.connect();
   try {
     const identity = (
@@ -86,12 +97,13 @@ export async function withCaseExternalEntryMigrationDatabase(operation) {
 }
 
 export async function withOld150CompatibleCoreLeadGrants(operation) {
-  // The preserved 150-migration Prisma client cannot decode the CA018 actions.
+  // The historical 150-migration permission enum cannot contain CA018 actions.
   // This compatibility window is restricted to the fixed synthetic E2E roles.
   const url = process.env.DATABASE_URL;
   if (process.env.NODE_ENV !== 'test' || !url)
     throw new Error('Old150 grant fixture requires isolated test database');
-  if (validateIsolatedTestDatabaseUrl(url).port !== 15433)
+  const managed = await admitManagedOld150Source({ root, databaseUrl: url });
+  if (managed === null && validateIsolatedTestDatabaseUrl(url).port !== 15433)
     throw new Error('Old150 grant fixture requires test database port 15433');
 
   return withCaseExternalEntryMigrationDatabase(async (client) => {
@@ -358,6 +370,10 @@ export async function failCaseExternalEntryMigrationAtomically(
 }
 
 export async function replayOldCaseMigrations(client) {
+  await admitManagedOld150Source({
+    root,
+    databaseUrl: process.env.DATABASE_URL,
+  });
   for (const name of oldCaseMigrations) {
     const sql = readFileSync(
       resolve(migrationRoot, name, 'migration.sql'),

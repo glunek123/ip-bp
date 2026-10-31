@@ -366,7 +366,7 @@ describe('injected closure panel', () => {
       closeAt: '2026-10-12',
       closeAmt: '0.00',
       note: '原说明',
-      correctionReason: '未填写',
+      correctionReason: null,
       closeContentVersionIds: [file.contentVersionId],
     });
     expect(api.recordClosure).not.toHaveBeenCalled();

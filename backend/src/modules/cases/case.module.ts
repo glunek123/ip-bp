@@ -1,4 +1,25 @@
+import { CasePaymentCorrectionService } from './case-payment-correction.service';
+import { CaseClosurePaymentPrismaDraft } from './case-closure-payment-prisma-draft';
+import { MaterialService } from '../materials';
+import { SettlementAssessmentPostgresDraft } from '../settlements';
+import { CaseRefundInventoryPrismaDraft } from './case-refund-inventory-prisma-draft';
+import { CaseClosureCommandController } from './case-closure-command.controller';
+import { CaseClosureAmountUpdateDraftService } from './case-closure-amount-update-draft.service';
+import { CaseEarlyClosureTransactionDraftService } from './case-early-closure-transaction-draft.service';
+import { CaseClosureSettlementUpdateTransactionDraftService } from './case-closure-settlement-update-transaction-draft.service';
+import { CasePaymentProofSupplementTransactionDraftService } from './case-payment-proof-supplement-transaction-draft.service';
+import { DatabaseService } from '../../database/database.service';
+import { AccessControlService } from '../../access-control/access-control.service';
+import { OrganizationService } from '../../access-control/organization.service';
+import { ClosureActualAggregateReadDraft } from '../settlements';
+import { CaseClosureWorkspaceReadDraft } from './case-closure-workspace-read-draft';
+import { CaseClosureWorkspaceController } from './case-closure-workspace.controller';
 import { CaseArchiveService } from './case-archive.service';
+import { CaseArchiveReadinessService } from './case-archive-readiness.service';
+import {
+  CaseArchiveReadinessController,
+  LawyerCaseArchiveReadinessController,
+} from './case-archive-readiness.controller';
 import { CaseRoutineEditController } from './case-routine-edit.controller';
 import { CaseRoutineEditService } from './case-routine-edit.service';
 import { CaseEarlyArchiveService } from './case-early-archive.service';
@@ -78,6 +99,10 @@ import { LawyerCaseController } from './lawyer-case.controller';
     MaterialModule,
   ],
   controllers: [
+    CaseArchiveReadinessController,
+    LawyerCaseArchiveReadinessController,
+    CaseClosureCommandController,
+    CaseClosureWorkspaceController,
     CaseRoutineEditController,
     CaseCsvImportController,
     CaseBatchArchiveController,
@@ -95,6 +120,141 @@ import { LawyerCaseController } from './lawyer-case.controller';
     LawyerCaseController,
   ],
   providers: [
+    {
+      provide: CaseClosurePaymentPrismaDraft,
+      inject: [DatabaseService, AccessControlService, OrganizationService],
+      useFactory: (
+        db: DatabaseService,
+        access: AccessControlService,
+        org: OrganizationService,
+      ) => new CaseClosurePaymentPrismaDraft(db, access, org),
+    },
+    {
+      provide: CasePaymentCorrectionService,
+      inject: [CaseClosurePaymentPrismaDraft],
+      useFactory: (payments: CaseClosurePaymentPrismaDraft) =>
+        new CasePaymentCorrectionService(payments),
+    },
+    {
+      provide: CaseClosureAmountUpdateDraftService,
+      inject: [
+        DatabaseService,
+        AccessControlService,
+        OrganizationService,
+        SettlementAssessmentPostgresDraft,
+      ],
+      useFactory: (
+        db: DatabaseService,
+        access: AccessControlService,
+        org: OrganizationService,
+        assessments: SettlementAssessmentPostgresDraft,
+      ) =>
+        new CaseClosureAmountUpdateDraftService(db, access, org, assessments),
+    },
+    {
+      provide: CaseRefundInventoryPrismaDraft,
+      inject: [DatabaseService, OrganizationService, AccessControlService],
+      useFactory: (
+        db: DatabaseService,
+        org: OrganizationService,
+        access: AccessControlService,
+      ) => new CaseRefundInventoryPrismaDraft(db, org, access),
+    },
+    {
+      provide: SettlementAssessmentPostgresDraft,
+      inject: [DatabaseService, AccessControlService, OrganizationService],
+      useFactory: (
+        db: DatabaseService,
+        access: AccessControlService,
+        org: OrganizationService,
+      ) => new SettlementAssessmentPostgresDraft(db, access, org),
+    },
+    {
+      provide: CaseEarlyClosureTransactionDraftService,
+      inject: [
+        DatabaseService,
+        AccessControlService,
+        MaterialService,
+        OrganizationService,
+      ],
+      useFactory: (
+        db: DatabaseService,
+        access: AccessControlService,
+        materials: MaterialService,
+        org: OrganizationService,
+      ) =>
+        new CaseEarlyClosureTransactionDraftService(db, access, materials, org),
+    },
+    {
+      provide: CasePaymentProofSupplementTransactionDraftService,
+      inject: [
+        DatabaseService,
+        AccessControlService,
+        OrganizationService,
+        MaterialService,
+      ],
+      useFactory: (
+        db: DatabaseService,
+        access: AccessControlService,
+        org: OrganizationService,
+        materials: MaterialService,
+      ) =>
+        new CasePaymentProofSupplementTransactionDraftService(
+          db,
+          access,
+          org,
+          materials,
+        ),
+    },
+    {
+      provide: CaseClosureSettlementUpdateTransactionDraftService,
+      inject: [
+        DatabaseService,
+        AccessControlService,
+        OrganizationService,
+        MaterialService,
+        CaseRefundInventoryPrismaDraft,
+        SettlementAssessmentPostgresDraft,
+      ],
+      useFactory: (
+        db: DatabaseService,
+        access: AccessControlService,
+        org: OrganizationService,
+        materials: MaterialService,
+        refunds: CaseRefundInventoryPrismaDraft,
+        assessments: SettlementAssessmentPostgresDraft,
+      ) =>
+        new CaseClosureSettlementUpdateTransactionDraftService(
+          db,
+          access,
+          org,
+          materials,
+          refunds,
+          assessments,
+        ),
+    },
+    ClosureActualAggregateReadDraft,
+    {
+      provide: CaseClosureWorkspaceReadDraft,
+      inject: [
+        DatabaseService,
+        AccessControlService,
+        OrganizationService,
+        ClosureActualAggregateReadDraft,
+      ],
+      useFactory: (
+        database: DatabaseService,
+        access: AccessControlService,
+        organization: OrganizationService,
+        actual: ClosureActualAggregateReadDraft,
+      ) =>
+        new CaseClosureWorkspaceReadDraft(
+          database,
+          access,
+          organization,
+          actual,
+        ),
+    },
     CaseRoutineEditService,
     CaseCsvImportService,
     CaseBatchArchiveService,
@@ -130,6 +290,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseExecutionFinishService,
     CaseClosureService,
     CaseArchiveService,
+    CaseArchiveReadinessService,
     CaseEarlyArchiveService,
     CaseHearingSchedulerService,
     CaseHearingSignal,

@@ -60,7 +60,7 @@ export function billSelection(
     (sum, row) => sum.plus(row.amount),
     new Decimal(0),
   );
-  if (!amount.isPositive()) throw new Error('INVALID_BILL_SELECTION');
+  if (!amount.greaterThan(0)) throw new Error('INVALID_BILL_SELECTION');
   return {
     ids: [...selectedIds],
     amount: amount.toFixed(2),

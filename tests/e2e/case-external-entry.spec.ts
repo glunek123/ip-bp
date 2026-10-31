@@ -11,6 +11,8 @@ import {
 } from '../support/core-lead-database.mjs';
 import {
   createClosedCaseArchiveSourceThroughApi,
+  prepareZeroAmountArchiveThroughApi,
+  readCaseArchiveSnapshot,
   setCaseArchiveFixtureGrant,
 } from '../support/case-archive-database.mjs';
 import { prepareCaseAcceptanceFixture } from '../support/case-acceptance-database.mjs';
@@ -1337,6 +1339,7 @@ test('keeps a normally sourced notary case and its archive intact under CA018', 
   );
   const source = await createClosedCaseArchiveSourceThroughApi(request, {
     bytes: closureBytes,
+    realZero: true,
   });
   const closureFile = source.file;
   if (closureFile === null) throw new Error('Expected real closure document');
@@ -1355,6 +1358,9 @@ test('keeps a normally sourced notary case and its archive intact under CA018', 
   expect(emptyExternal.entries).toEqual([]);
   expect(emptyExternal.receipts).toEqual([]);
   const endpoint = `/api/v1/cases/${source.caseId}/archive`;
+  const closureBeforeArchive = await body<{ closure: unknown }>(
+    await request.get(`/api/v1/cases/${source.caseId}`, { headers: operator }),
+  );
   const archiveInput = {
     expectedVersion: source.closureResult.version,
     idempotencyKey: randomUUID(),
@@ -1383,6 +1389,15 @@ test('keeps a normally sourced notary case and its archive intact under CA018', 
     stage: 'ARCHIVED',
     version: source.closureResult.version + 1,
   });
+  expect(
+    (
+      await body<{ closure: unknown }>(
+        await request.get(`/api/v1/cases/${source.caseId}`, {
+          headers: operator,
+        }),
+      )
+    ).closure,
+  ).toEqual(closureBeforeArchive.closure);
   const after = await readCase(request, source.caseId);
   expect(after.origin).toMatchObject({ kind: 'NOTARY' });
   expect(after.sourceLead).not.toBeNull();
@@ -2010,13 +2025,45 @@ test('continues all four execution roots with nullable first predecessors and re
     stage: 'WAITING_ARCHIVE',
     version: 4,
   });
+  const pendingSnapshot = await readCaseArchiveSnapshot(filingRoot.id);
+  const rejectedArchive = await request.post(
+    `/api/v1/cases/${filingRoot.id}/archive`,
+    {
+      headers: operator,
+      data: {
+        expectedVersion: closure.version,
+        expectedClosureVersionId: closure.closureVersionId,
+        idempotencyKey: randomUUID(),
+        archiveAt: shanghaiToday(),
+        archiveType: 'EXECUTION_CLOSED',
+        archiveReason: '未知金额不得归档',
+      },
+    },
+  );
+  expect(rejectedArchive.status(), await rejectedArchive.text()).toBe(409);
+  expect(await rejectedArchive.json()).toMatchObject({
+    code: 'ARCHIVE_FINANCIAL_NOT_READY',
+  });
+  expect(await readCaseArchiveSnapshot(filingRoot.id)).toEqual(pendingSnapshot);
+  const readyClosure = await prepareZeroAmountArchiveThroughApi(
+    request,
+    filingRoot.id,
+    closure,
+    {
+      closeAt: shanghaiToday(),
+      closeContentVersionIds: [closureFile.contentVersionId],
+    },
+  );
+  const closureBeforeArchive = await body<{ closure: unknown }>(
+    await request.get(`/api/v1/cases/${filingRoot.id}`, { headers: operator }),
+  );
   const archived = await body<{ stage: string; version: number }>(
     await request.post(`/api/v1/cases/${filingRoot.id}/archive`, {
       headers: operator,
       data: {
-        expectedVersion: closure.version,
+        expectedVersion: readyClosure.version,
         idempotencyKey: randomUUID(),
-        expectedClosureVersionId: closure.closureVersionId,
+        expectedClosureVersionId: readyClosure.closureVersionId,
         archiveAt: shanghaiToday(),
         archiveType: 'EXECUTION_CLOSED',
         archiveReason: 'CA018 archive follows real finish and closure IDs',
@@ -2024,7 +2071,10 @@ test('continues all four execution roots with nullable first predecessors and re
     }),
     201,
   );
-  expect(archived).toMatchObject({ stage: 'ARCHIVED', version: 5 });
+  expect(archived).toMatchObject({
+    stage: 'ARCHIVED',
+    version: readyClosure.version + 1,
+  });
   await expectExactDownload(
     request,
     closureFile,
@@ -2053,6 +2103,15 @@ test('continues all four execution roots with nullable first predecessors and re
   );
   expect(downloaded.status(), await downloaded.text()).toBe(200);
   expect((await downloaded.body()).equals(submitted.bytes)).toBe(true);
+  expect(
+    (
+      await body<{ closure: unknown }>(
+        await request.get(`/api/v1/cases/${filingRoot.id}`, {
+          headers: operator,
+        }),
+      )
+    ).closure,
+  ).toEqual(closureBeforeArchive.closure);
 });
 
 test('continues a direct WAITING_ARCHIVE root with null only for its absent finish, then archives the real closure', async ({
@@ -2116,13 +2175,45 @@ test('continues a direct WAITING_ARCHIVE root with null only for its absent fini
     stage: 'WAITING_ARCHIVE',
     version: created.version + 1,
   });
+  const pendingSnapshot = await readCaseArchiveSnapshot(created.id);
+  const rejectedArchive = await request.post(
+    `/api/v1/cases/${created.id}/archive`,
+    {
+      headers: operator,
+      data: {
+        expectedVersion: closure.version,
+        expectedClosureVersionId: closure.closureVersionId,
+        idempotencyKey: randomUUID(),
+        archiveAt: shanghaiToday(),
+        archiveType: 'EXECUTION_CLOSED',
+        archiveReason: '未知金额不得归档',
+      },
+    },
+  );
+  expect(rejectedArchive.status(), await rejectedArchive.text()).toBe(409);
+  expect(await rejectedArchive.json()).toMatchObject({
+    code: 'ARCHIVE_FINANCIAL_NOT_READY',
+  });
+  expect(await readCaseArchiveSnapshot(created.id)).toEqual(pendingSnapshot);
+  const readyClosure = await prepareZeroAmountArchiveThroughApi(
+    request,
+    created.id,
+    closure,
+    {
+      closeAt: shanghaiToday(),
+      closeContentVersionIds: [document.contentVersionId],
+    },
+  );
+  const closureBeforeArchive = await body<{ closure: unknown }>(
+    await request.get(`/api/v1/cases/${created.id}`, { headers: operator }),
+  );
   const archived = await body<{ stage: string; version: number }>(
     await request.post(`/api/v1/cases/${created.id}/archive`, {
       headers: operator,
       data: {
-        expectedVersion: closure.version,
+        expectedVersion: readyClosure.version,
         idempotencyKey: randomUUID(),
-        expectedClosureVersionId: closure.closureVersionId,
+        expectedClosureVersionId: readyClosure.closureVersionId,
         archiveAt: shanghaiToday(),
         archiveType: 'EXECUTION_CLOSED',
         archiveReason: 'CA018 archive after direct-root closure',
@@ -2142,6 +2233,13 @@ test('continues a direct WAITING_ARCHIVE root with null only for its absent fini
   );
   expect(downloaded.status(), await downloaded.text()).toBe(200);
   expect((await downloaded.body()).equals(bytes)).toBe(true);
+  expect(
+    (
+      await body<{ closure: unknown }>(
+        await request.get(`/api/v1/cases/${created.id}`, { headers: operator }),
+      )
+    ).closure,
+  ).toEqual(closureBeforeArchive.closure);
 });
 
 test('continues an EXECUTING entry through real finish, closure, archive, and exact file downloads', async ({
@@ -2238,13 +2336,45 @@ test('continues an EXECUTING entry through real finish, closure, archive, and ex
     version: 3,
   });
 
+  const pendingSnapshot = await readCaseArchiveSnapshot(created.id);
+  const rejectedArchive = await request.post(
+    `/api/v1/cases/${created.id}/archive`,
+    {
+      headers: operator,
+      data: {
+        expectedVersion: closure.version,
+        expectedClosureVersionId: closure.closureVersionId,
+        idempotencyKey: randomUUID(),
+        archiveAt: shanghaiToday(),
+        archiveType: 'EXECUTION_CLOSED',
+        archiveReason: '未知金额不得归档',
+      },
+    },
+  );
+  expect(rejectedArchive.status(), await rejectedArchive.text()).toBe(409);
+  expect(await rejectedArchive.json()).toMatchObject({
+    code: 'ARCHIVE_FINANCIAL_NOT_READY',
+  });
+  expect(await readCaseArchiveSnapshot(created.id)).toEqual(pendingSnapshot);
+  const readyClosure = await prepareZeroAmountArchiveThroughApi(
+    request,
+    created.id,
+    closure,
+    {
+      closeAt: shanghaiToday(),
+      closeContentVersionIds: [closureFile.contentVersionId],
+    },
+  );
+  const closureBeforeArchive = await body<{ closure: unknown }>(
+    await request.get(`/api/v1/cases/${created.id}`, { headers: operator }),
+  );
   const archived = await body<{ stage: string; version: number }>(
     await request.post(`/api/v1/cases/${created.id}/archive`, {
       headers: operator,
       data: {
-        expectedVersion: closure.version,
+        expectedVersion: readyClosure.version,
         idempotencyKey: randomUUID(),
-        expectedClosureVersionId: closure.closureVersionId,
+        expectedClosureVersionId: readyClosure.closureVersionId,
         archiveAt: shanghaiToday(),
         archiveType: 'EXECUTION_CLOSED',
         archiveReason: '当前案件已完成真实结案资料登记',
@@ -2252,12 +2382,15 @@ test('continues an EXECUTING entry through real finish, closure, archive, and ex
     }),
     201,
   );
-  expect(archived).toMatchObject({ stage: 'ARCHIVED', version: 4 });
+  expect(archived).toMatchObject({
+    stage: 'ARCHIVED',
+    version: readyClosure.version + 1,
+  });
 
   const final = await readCase(request, created.id);
   expect(final).toMatchObject({
     stage: 'ARCHIVED',
-    version: 4,
+    version: readyClosure.version + 1,
     sourceLead: null,
     sourceNotaryMatter: null,
     certificate: null,
@@ -2278,6 +2411,13 @@ test('continues an EXECUTING entry through real finish, closure, archive, and ex
     expect(downloaded.status(), await downloaded.text()).toBe(200);
     expect((await downloaded.body()).equals(expectedBytes)).toBe(true);
   }
+  expect(
+    (
+      await body<{ closure: unknown }>(
+        await request.get(`/api/v1/cases/${created.id}`, { headers: operator }),
+      )
+    ).closure,
+  ).toEqual(closureBeforeArchive.closure);
 });
 
 test('continues a WAITING_HEARING entry with an actual hearing, system advance, judgment, and execution choice', async ({

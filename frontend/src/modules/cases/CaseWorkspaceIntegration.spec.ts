@@ -43,6 +43,7 @@ const api = vi.hoisted(() => ({
   correctCaseHearingRecord: vi.fn(),
   correctCaseJudgmentRecord: vi.fn(),
   correctCaseClosureRecord: vi.fn(),
+  getSettlementContext: vi.fn(),
 }));
 const routineApi = vi.hoisted(() => ({
   getCaseRoutineProfile: vi.fn(),
@@ -70,6 +71,10 @@ vi.mock('../../api/cases', async (original) => ({
   correctCaseClosureRecord: api.correctCaseClosureRecord,
 }));
 vi.mock('../../api/leads', () => ({ getLead: api.getLead }));
+vi.mock('../../api/settlements', async (original) => ({
+  ...(await original<typeof import('../../api/settlements')>()),
+  getSettlementContext: api.getSettlementContext,
+}));
 vi.mock('../../api/materials', async (original) => ({
   ...(await original<typeof import('../../api/materials')>()),
   listOwnerMaterials: api.listOwnerMaterials,
@@ -1029,6 +1034,18 @@ beforeEach(() => {
   api.downloadMaterialVersion.mockResolvedValue(undefined);
   api.listLawyerMatchCandidates.mockResolvedValue([]);
   api.listFilingCourts.mockResolvedValue([]);
+  api.getSettlementContext.mockResolvedValue({
+    read: false,
+    termsUpdate: false,
+    launch: false,
+    billCreate: false,
+    billCancel: false,
+    feeRead: false,
+    feeCreate: false,
+    feeUpdate: false,
+    feeLaunch: false,
+    feeDelete: false,
+  });
 });
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
@@ -2580,7 +2597,15 @@ describe('UI002 real case workspace host', () => {
     expect(
       wrapper.get('.case-workspace-fees[role="tabpanel"]').isVisible(),
     ).toBe(true);
-    expect(wrapper.text()).toContain('尚未登记案件收付明细');
+    expect(wrapper.get('[data-test="case-payments"]').text()).toBe(
+      '本区展示来源费用与案件金额事实；未展示实际结算不代表未登记或已结清。',
+    );
+    expect(wrapper.text()).not.toContain('NETWORK_ERROR');
+    expect(wrapper.text()).not.toContain('无法连接服务');
+    expect(wrapper.get('[data-test="amount-closure"]').text()).toContain(
+      '未登记',
+    );
+    expect(api.getSettlementContext).toHaveBeenCalledTimes(1);
     expect(api.getCase).toHaveBeenCalledTimes(1);
     expect(api.submitComplaint).not.toHaveBeenCalled();
   });
@@ -2778,7 +2803,7 @@ describe('UI002 real case workspace host', () => {
     );
     expect(api.matchCase).not.toHaveBeenCalled();
   });
-  it('disables early archive while ordinary case data is being edited', async () => {
+  it('keeps routine editing available without the retired early archive action', async () => {
     routineApi.getCaseRoutineProfile.mockResolvedValue({
       revision: 0,
       canEdit: true,
@@ -2788,18 +2813,17 @@ describe('UI002 real case workspace host', () => {
       products: sourceLead.products,
     });
     const { wrapper } = await render({ ...baseItem, canEarlyArchive: true });
+    expect(
+      wrapper.find('[data-test="open-detail-early-archive"]').exists(),
+    ).toBe(false);
     await wrapper.get('[data-test="edit-case-routine"]').trigger('click');
-    expect(
-      wrapper
-        .get('[data-test="open-detail-early-archive"]')
-        .attributes('disabled'),
-    ).toBeDefined();
+    expect(wrapper.find('[data-test="case-routine-editor"]').exists()).toBe(
+      true,
+    );
     await wrapper.get('[data-test="routine-cancel"]').trigger('click');
-    expect(
-      wrapper
-        .get('[data-test="open-detail-early-archive"]')
-        .attributes('disabled'),
-    ).toBeUndefined();
+    expect(wrapper.find('[data-test="case-routine-editor"]').exists()).toBe(
+      false,
+    );
   });
   it('saves case details, reloads the case profile, and never updates the source lead or workflow', async () => {
     api.getLead.mockResolvedValue(sourceLead);

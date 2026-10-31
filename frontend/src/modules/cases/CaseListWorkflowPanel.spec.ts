@@ -13,6 +13,16 @@ import { ApiError } from '../../api/http';
 import { workflowChangedEvent } from '../../app/workflow-events';
 import { useAuthStore } from '../../stores/auth';
 import CaseListPage from './CaseListPage.vue';
+import CaseEarlyClosurePanel from './CaseEarlyClosurePanel.vue';
+import CaseClosureSettlementUpdatePanel from './CaseClosureSettlementUpdatePanel.vue';
+import CaseClosureSettlementUpdateForm from './CaseClosureSettlementUpdateForm.vue';
+import CasePaymentProofWorkspacePanel from './CasePaymentProofWorkspacePanel.vue';
+import CasePaymentProofSupplementPanel from './CasePaymentProofSupplementPanel.vue';
+import CaseEarlyClosureForm, {
+  type EarlyClosureDraft,
+} from './CaseEarlyClosureForm.vue';
+import { readEarlyClosureRecovery } from './case-early-closure-recovery';
+import { updateCaseClosureSettlement } from '../../api/case-closure-commands';
 import {
   decodeCaseListRequest,
   readCaseListRecordRecoveries,
@@ -41,6 +51,35 @@ const api = vi.hoisted(() => ({
   submitComplaint: vi.fn(),
   matchCase: vi.fn(),
   listLawyerMatchCandidates: vi.fn(),
+  archiveCase: vi.fn(),
+}));
+const archiveReadiness = vi.hoisted(() => ({
+  getCaseArchiveReadiness: vi.fn(),
+}));
+vi.mock('../../api/case-archive-readiness', async (original) => ({
+  ...(await original<typeof import('../../api/case-archive-readiness')>()),
+  ...archiveReadiness,
+}));
+const closureCommands = vi.hoisted(() => ({
+  recordCaseEarlyClosure: vi.fn(),
+  updateCaseClosureSettlement: vi.fn(),
+  supplementCasePaymentProof: vi.fn(),
+}));
+const proofUploads = vi.hoisted(() => ({
+  preparePaymentProofUpload: vi.fn(),
+  finalizePaymentProofUpload: vi.fn(),
+}));
+vi.mock('../../api/payment-proof-upload', () => proofUploads);
+const closureWorkspace = vi.hoisted(() => ({
+  getCaseClosureWorkspace: vi.fn(),
+}));
+vi.mock('../../api/case-closure-workspace', async (original) => ({
+  ...(await original<typeof import('../../api/case-closure-workspace')>()),
+  ...closureWorkspace,
+}));
+vi.mock('../../api/case-closure-commands', async (original) => ({
+  ...(await original<typeof import('../../api/case-closure-commands')>()),
+  ...closureCommands,
 }));
 vi.mock('../../api/cases', async (original) => ({
   ...(await original<typeof import('../../api/cases')>()),
@@ -524,6 +563,454 @@ afterEach(() => {
 });
 
 describe('case list workflow session', () => {
+  it('reads and automatically prechecks each selected archive separately without copying its reason', async () => {
+    const first = {
+      ...recordFixture(),
+      id: crypto.randomUUID(),
+      stage: 'WAITING_ARCHIVE' as const,
+      canArchive: true,
+    };
+    const second = {
+      ...structuredClone(first),
+      id: crypto.randomUUID(),
+      businessNo: 'CA-SECOND',
+      version: first.version + 2,
+    };
+    const details = [first, second];
+    api.listCases.mockResolvedValue(
+      list(
+        details.map((detail) => ({
+          ...summary(detail),
+          canChooseJudgmentNextStep: false,
+        })),
+      ),
+    );
+    api.getCase.mockImplementation(async (id: string) =>
+      details.find((detail) => detail.id === id),
+    );
+    archiveReadiness.getCaseArchiveReadiness.mockImplementation(
+      async (id: string) => {
+        const detail = details.find((entry) => entry.id === id)!;
+        return {
+          caseVersion: detail.version,
+          closureVersionId: detail.closure!.current.id,
+          checkedAt: new Date().toISOString(),
+          state: 'PASSED',
+          checks: {
+            payment: { state: 'PASSED', reason: 'CLOSURE_PAYMENT_REACHED' },
+            refund: {
+              state: 'PASSED',
+              reason: 'REFUND_EXPLICITLY_NOT_APPLICABLE',
+            },
+            customer: { state: 'PASSED', reason: 'CUSTOMER_RECEIPTS_REACHED' },
+            lawyer: { state: 'PASSED', reason: 'LAWYER_INVOICES_REACHED' },
+          },
+        };
+      },
+    );
+    api.archiveCase.mockImplementation(async (id: string) => {
+      const detail = details.find((entry) => entry.id === id)!;
+      return {
+        id,
+        archiveId: uid(141),
+        archiveVersionId: uid(142),
+        closureId: detail.closure!.id,
+        closureVersionId: detail.closure!.current.id,
+        stage: 'ARCHIVED',
+        version: detail.version + 1,
+        recordedAt: '2026-10-30T00:00:00Z',
+      };
+    });
+    const { wrapper } = await render();
+    for (const detail of details)
+      await wrapper
+        .get(`[data-test="select-case-${detail.id}"]`)
+        .setValue(true);
+    await wrapper.get('[data-test="archive-selected-cases"]').trigger('click');
+    await flushPromises();
+    expect(
+      archiveReadiness.getCaseArchiveReadiness,
+    ).toHaveBeenCalledExactlyOnceWith(first.id, false);
+    await wrapper.get('[data-test="archive-date"]').setValue('2026-10-29');
+    await wrapper.get('[data-test="archive-type"]').setValue('SETTLEMENT');
+    await wrapper
+      .get('[data-test="archive-reason"]')
+      .setValue('第一案独立原因');
+    await wrapper.get('[data-test="archive-form"]').trigger('submit');
+    await flushPromises();
+    expect(api.archiveCase).toHaveBeenCalledTimes(1);
+    expect(archiveReadiness.getCaseArchiveReadiness).toHaveBeenCalledTimes(1);
+    expect(api.archiveCase).toHaveBeenLastCalledWith(
+      first.id,
+      expect.objectContaining({
+        expectedVersion: first.version,
+        archiveReason: '第一案独立原因',
+      }),
+    );
+    await wrapper.get('[data-test="next-archive-case"]').trigger('click');
+    await flushPromises();
+    expect(api.getCase).toHaveBeenLastCalledWith(second.id, {
+      signal: expect.any(AbortSignal),
+    });
+    expect(archiveReadiness.getCaseArchiveReadiness).toHaveBeenLastCalledWith(
+      second.id,
+      false,
+    );
+    expect(
+      (
+        wrapper.get('[data-test="archive-reason"]')
+          .element as HTMLTextAreaElement
+      ).value,
+    ).toBe('');
+    await wrapper.get('[data-test="archive-date"]').setValue('2026-10-30');
+    await wrapper.get('[data-test="archive-type"]').setValue('MEDIATION');
+    await wrapper
+      .get('[data-test="archive-reason"]')
+      .setValue('第二案单独核对原因');
+    await wrapper.get('[data-test="archive-form"]').trigger('submit');
+    await flushPromises();
+    expect(api.archiveCase).toHaveBeenCalledTimes(2);
+    expect(api.archiveCase).toHaveBeenLastCalledWith(
+      second.id,
+      expect.objectContaining({
+        expectedVersion: second.version,
+        archiveReason: '第二案单独核对原因',
+      }),
+    );
+    expect(wrapper.find('[data-test="next-archive-case"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it.each(['capability', 'owner'] as const)(
+    'denies screenshot supplement after a fresh detail %s change',
+    async (change) => {
+      const detail: CaseDetail = {
+        ...baseItem,
+        id: crypto.randomUUID(),
+        stage: 'ARCHIVED',
+        canSupplementPaymentProof: true,
+      };
+      api.listCases.mockResolvedValue(
+        list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
+      );
+      api.getCase.mockResolvedValue(
+        change === 'owner'
+          ? { ...detail, owner: { id: 'other', displayName: '其他运营' } }
+          : { ...detail, canSupplementPaymentProof: false },
+      );
+      const { wrapper } = await render();
+      await wrapper
+        .get(`[data-test="select-case-${detail.id}"]`)
+        .setValue(true);
+      await wrapper.get('[data-case-action="payment-proof"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.text()).toContain('该操作当前不可办理');
+      expect(
+        wrapper.findComponent(CasePaymentProofWorkspacePanel).exists(),
+      ).toBe(false);
+      expect(closureWorkspace.getCaseClosureWorkspace).not.toHaveBeenCalled();
+      expect(closureCommands.supplementCasePaymentProof).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['WAITING_ARCHIVE', 'ARCHIVED'] as const)(
+    'supplements one payment through the real %s list host without advancing its stage',
+    async (stage) => {
+      const detail: CaseDetail = {
+        ...baseItem,
+        id: crypto.randomUUID(),
+        stage,
+        canSupplementPaymentProof: true,
+        canUpdateClosureSettlement: stage === 'WAITING_ARCHIVE',
+      };
+      api.getCase.mockResolvedValue(detail);
+      api.listCases.mockResolvedValue(
+        list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
+      );
+      const paymentId = uid(121);
+      closureWorkspace.getCaseClosureWorkspace.mockResolvedValue({
+        caseId: detail.id,
+        caseVersion: 7,
+        stage,
+        closure: { versionId: uid(122) },
+        effectivePayments: [
+          {
+            paymentId,
+            versionId: uid(123),
+            paidOn: '2026-10-29',
+            amount: '10.01',
+            payer: '甲',
+            payee: '乙',
+            documents: [],
+          },
+        ],
+      });
+      proofUploads.preparePaymentProofUpload.mockResolvedValue({
+        draftId: uid(124),
+      });
+      proofUploads.finalizePaymentProofUpload.mockResolvedValue(uid(125));
+      closureCommands.supplementCasePaymentProof
+        .mockRejectedValueOnce(new ApiError('unknown', 0, 'NETWORK_ERROR'))
+        .mockResolvedValueOnce({ id: uid(126) });
+      const { wrapper, router } = await render();
+      expect(
+        wrapper
+          .get('tbody tr')
+          .find('[data-case-action="payment-proof"]')
+          .exists(),
+      ).toBe(false);
+      await wrapper
+        .get(`[data-test="select-case-${detail.id}"]`)
+        .setValue(true);
+      await wrapper.get('[data-case-action="payment-proof"]').trigger('click');
+      await flushPromises();
+      const workspace = wrapper.getComponent(CasePaymentProofWorkspacePanel);
+      expect(workspace.props('actorKey')).toBe(
+        'user-1:INTERNAL:department-1:1',
+      );
+      expect(workspace.props('actorKey')).toBe(
+        workspace.props('session')?.context.actorKey,
+      );
+      expect(
+        wrapper.findComponent(CaseClosureSettlementUpdatePanel).exists(),
+      ).toBe(false);
+      await workspace
+        .get(`[data-test="supplement-${paymentId}"]`)
+        .trigger('click');
+      const proof = workspace.getComponent(CasePaymentProofSupplementPanel);
+      const file = new File(['image'], 'proof.png', { type: 'image/png' });
+      Object.defineProperty(proof.get('input[type=file]').element, 'files', {
+        value: [file],
+        configurable: true,
+      });
+      await proof.get('input[type=file]').trigger('change');
+      await proof.get('form').trigger('submit');
+      await flushPromises();
+      expect(
+        proofUploads.preparePaymentProofUpload,
+      ).toHaveBeenCalledExactlyOnceWith(
+        {
+          actorKey: 'user-1:INTERNAL:department-1:1',
+          caseId: detail.id,
+          expectedVersion: 7,
+        },
+        file,
+      );
+      expect(closureCommands.supplementCasePaymentProof).toHaveBeenCalledTimes(
+        1,
+      );
+      const original =
+        closureCommands.supplementCasePaymentProof.mock.calls[0]![1];
+      expect(original).toEqual(
+        expect.objectContaining({
+          paymentId,
+          expectedPaymentVersionId: uid(123),
+          expectedClosureVersionId: uid(122),
+          contentVersionIds: [uid(125)],
+        }),
+      );
+      expect(workflowCanLeave(wrapper)).toBe(false);
+      await router.push('/other');
+      await flushPromises();
+      expect(router.currentRoute.value.path).toBe('/cases');
+      await proof.get('[data-test="retry"]').trigger('click');
+      await flushPromises();
+      expect(
+        closureCommands.supplementCasePaymentProof.mock.calls[1]![1],
+      ).toEqual(original);
+      expect(proofUploads.preparePaymentProofUpload).toHaveBeenCalledTimes(1);
+      expect(proofUploads.finalizePaymentProofUpload).toHaveBeenCalledTimes(1);
+      expect(
+        closureCommands.updateCaseClosureSettlement,
+      ).not.toHaveBeenCalled();
+      expect(
+        wrapper.findComponent(CasePaymentProofWorkspacePanel).exists(),
+      ).toBe(true);
+      expect(workflowCanLeave(wrapper)).toBe(true);
+      expect(api.getCase).toHaveBeenCalledTimes(1);
+      expect(api.listCases).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('submits settlement updates through the real list host with the full session identity', async () => {
+    const detail: CaseDetail = {
+      ...baseItem,
+      id: crypto.randomUUID(),
+      stage: 'WAITING_ARCHIVE',
+      canUpdateClosureSettlement: true,
+    };
+    api.getCase.mockResolvedValue(detail);
+    api.listCases.mockResolvedValue(
+      list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
+    );
+    closureWorkspace.getCaseClosureWorkspace.mockResolvedValue({
+      stage: 'WAITING_ARCHIVE',
+      caseVersion: 7,
+      actualRegistrationLawyers: [],
+      closure: {
+        versionId: uid(92),
+        closeOn: '2026-10-29',
+        amountState: 'KNOWN',
+        amount: '100.01',
+        paymentType: 'INSTALLMENTS',
+      },
+      documents: [{ materialId: uid(93), contentVersionId: uid(94) }],
+      effectivePayments: [
+        {
+          paymentId: uid(95),
+          versionId: uid(96),
+          paidOn: '2026-10-28',
+          amount: '1.01',
+          payer: '甲',
+          payee: '乙',
+          documents: [],
+        },
+      ],
+      refund: { versionId: uid(97), declaration: 'COMPLETE', items: [] },
+      assessment: {
+        versionId: uid(98),
+        termsVersion: 2,
+        declaration: 'APPLICABLE',
+        customerAmount: '30.01',
+        lawyerAmount: null,
+      },
+    });
+    closureCommands.updateCaseClosureSettlement.mockResolvedValue({
+      id: detail.id,
+    });
+    const { wrapper } = await render();
+    await wrapper
+      .get('[data-case-action="settlement-update"]')
+      .trigger('click');
+    await flushPromises();
+    const panel = wrapper.getComponent(CaseClosureSettlementUpdatePanel);
+    expect(panel.props('actorKey')).toBe('user-1:INTERNAL:department-1:1');
+    expect(panel.props('actorKey')).toBe(
+      panel.props('session')?.context.actorKey,
+    );
+    expect(panel.props('actorKey')).not.toBe('INTERNAL:user-1:department-1');
+    expect(updateCaseClosureSettlement).toBe(
+      closureCommands.updateCaseClosureSettlement,
+    );
+    const form = panel.getComponent(CaseClosureSettlementUpdateForm);
+    await form.get('form').trigger('submit');
+    await flushPromises();
+    expect(form.emitted('draft'), panel.text()).toHaveLength(1);
+    expect(
+      closureCommands.updateCaseClosureSettlement,
+    ).toHaveBeenCalledExactlyOnceWith(
+      detail.id,
+      expect.objectContaining({
+        expectedVersion: 7,
+        expectedClosureVersionId: uid(92),
+        closeAmt: '100.01',
+      }),
+    );
+    expect(
+      wrapper.findComponent(CaseClosureSettlementUpdatePanel).exists(),
+    ).toBe(false);
+  });
+
+  it('submits closure through the real list host with the session identity and isolates an authorization revision change', async () => {
+    const detail: CaseDetail = {
+      ...baseItem,
+      id: crypto.randomUUID(),
+      stage: 'PENDING_MATCH',
+      canEarlyClose: true,
+    };
+    api.getCase.mockResolvedValue(detail);
+    api.listCases.mockResolvedValue(
+      list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
+    );
+    closureCommands.recordCaseEarlyClosure.mockRejectedValueOnce(
+      new ApiError('unknown', 0, 'NETWORK_ERROR'),
+    );
+    const { wrapper, auth } = await render();
+    const recordKey = 'INTERNAL:user-1:department-1';
+    const originalKey = 'user-1:INTERNAL:department-1:1';
+    const open = async () => {
+      await wrapper
+        .get(`[data-test="select-case-${detail.id}"]`)
+        .setValue(true);
+      await wrapper.get('[data-test="close-selected-cases"]').trigger('click');
+      await flushPromises();
+    };
+    const draft: EarlyClosureDraft = {
+      closeAt: '2026-10-29',
+      closeAmountState: 'KNOWN',
+      closeAmt: '12.50',
+      closeDocuments: [],
+      paymentType: 'ONE_TIME',
+      paymentRecords: [
+        {
+          id: 'local',
+          paymentDate: '2026-10-29',
+          amount: '12.50',
+          payer: '甲',
+          payee: '乙',
+        },
+      ],
+    };
+    await open();
+    const original = wrapper.getComponent(CaseEarlyClosurePanel);
+    expect(original.props('actorKey')).toBe(originalKey);
+    expect(original.props('actorKey')).not.toBe(recordKey);
+    expect(original.props('session')?.context.actorKey).toBe(originalKey);
+    original.getComponent(CaseEarlyClosureForm).vm.$emit('submit', draft);
+    await flushPromises();
+    expect(closureCommands.recordCaseEarlyClosure).toHaveBeenCalledTimes(1);
+    expect(closureCommands.recordCaseEarlyClosure).toHaveBeenLastCalledWith(
+      detail.id,
+      expect.objectContaining({
+        expectedStage: 'PENDING_MATCH',
+        closeAmt: '12.50',
+        expectedVersion: 7,
+      }),
+    );
+    const originalRequest =
+      closureCommands.recordCaseEarlyClosure.mock.calls[0]![1];
+    expect(readEarlyClosureRecovery(originalKey, detail.id)?.input).toEqual(
+      originalRequest,
+    );
+    expect(readEarlyClosureRecovery(recordKey, detail.id)).toBeNull();
+    expect(workflowCanLeave(wrapper)).toBe(false);
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    const callsBeforeReopen = api.getCase.mock.calls.length;
+    await open();
+    const next = wrapper.getComponent(CaseEarlyClosurePanel);
+    const nextKey = 'user-1:INTERNAL:department-1:2';
+    expect(next.props('actorKey')).toBe(nextKey);
+    expect(next.find('[data-test="retry"]').exists()).toBe(false);
+    expect(readEarlyClosureRecovery(nextKey, detail.id)).toBeNull();
+    expect(api.getCase).toHaveBeenCalledTimes(callsBeforeReopen + 1);
+    closureCommands.recordCaseEarlyClosure.mockResolvedValueOnce({
+      id: detail.id,
+      earlyClosureId: uid(81),
+      closureId: uid(82),
+      closureVersionId: uid(83),
+      stage: 'WAITING_ARCHIVE',
+      version: 8,
+      recordedAt: '2026-10-29T00:00:00Z',
+    });
+    next
+      .getComponent(CaseEarlyClosureForm)
+      .vm.$emit('submit', { ...draft, closeAmt: '13.50' });
+    await flushPromises();
+    expect(closureCommands.recordCaseEarlyClosure).toHaveBeenCalledTimes(2);
+    expect(
+      closureCommands.recordCaseEarlyClosure.mock.calls[1]![1].idempotencyKey,
+    ).not.toBe(originalRequest.idempotencyKey);
+    expect(readEarlyClosureRecovery(originalKey, detail.id)?.status).toBe(
+      'unknown',
+    );
+    expect(readEarlyClosureRecovery(nextKey, detail.id)?.status).toBe(
+      'confirmed',
+    );
+    expect(wrapper.findComponent(CaseEarlyClosurePanel).exists()).toBe(false);
+  });
+
   it('broadcasts one workflow update before successful finish closes its adapter session', async () => {
     const detail = executionDetail();
     api.getCase.mockResolvedValue(detail);
@@ -1037,6 +1524,44 @@ describe('case list workflow session', () => {
         },
       }),
     ).toBeNull();
+  });
+  it('restores archive requests with an optional note, including legacy and null values', () => {
+    const envelope = {
+      version: 1,
+      actor: 'actor',
+      caseId: 'case-1',
+      action: 'archive',
+      command: {
+        kind: 'archive',
+        input: {
+          expectedVersion: 7,
+          idempotencyKey: 'original',
+          expectedClosureVersionId: 'closure-version-1',
+          archiveAt: '2026-10-13',
+          archiveType: 'SETTLEMENT',
+          archiveReason: '已和解',
+        },
+      },
+    };
+    expect(decodeCaseListRequest(envelope)).toEqual(envelope);
+    for (const archiveNote of [null, '', '补充资料已核对']) {
+      const withNote = {
+        ...envelope,
+        command: {
+          ...envelope.command,
+          input: { ...envelope.command.input, archiveNote },
+        },
+      };
+      expect(decodeCaseListRequest(withNote)).toEqual(withNote);
+    }
+    const malformed = {
+      ...envelope,
+      command: {
+        ...envelope.command,
+        input: { ...envelope.command.input, archiveNote: 42 },
+      },
+    };
+    expect(decodeCaseListRequest(malformed)).toBeNull();
   });
 });
 

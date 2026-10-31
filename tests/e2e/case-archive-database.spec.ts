@@ -9,6 +9,8 @@ import {
   caseArchiveSqlRejection,
   clearCaseArchiveFixture,
   createClosedCaseArchiveSourceThroughApi,
+  prepareZeroAmountArchiveThroughApi,
+  readCaseArchiveSnapshot,
   setCaseArchiveFixtureGrant,
   withCaseArchiveFault,
 } from '../support/case-archive-database.mjs';
@@ -162,6 +164,37 @@ test('archive rechecks independent scope and revoked original keys, keeps old Cl
       })
     ).status(),
   ).toBe(409);
+  const pendingSnapshot = await readCaseArchiveSnapshot(source.caseId);
+  const rejectedArchive = await request.post(
+    `/api/v1/cases/${source.caseId}/archive`,
+    {
+      headers: operator,
+      data: {
+        expectedVersion: source.closureResult.version,
+        expectedClosureVersionId: source.closureResult.closureVersionId,
+        idempotencyKey: randomUUID(),
+        archiveAt: today(),
+        archiveType: 'EXECUTION_COLLECTED',
+        archiveReason: '未知金额不得归档',
+      },
+    },
+  );
+  expect(rejectedArchive.status(), await rejectedArchive.text()).toBe(409);
+  expect(await rejectedArchive.json()).toMatchObject({
+    code: 'ARCHIVE_FINANCIAL_NOT_READY',
+  });
+  expect(await readCaseArchiveSnapshot(source.caseId)).toEqual(pendingSnapshot);
+  source.closureResult = await prepareZeroAmountArchiveThroughApi(
+    request,
+    source.caseId,
+    source.closureResult,
+    { ...source.closureInput, closeAt: today() },
+  );
+  input.expectedVersion = source.closureResult.version;
+  input.expectedClosureVersionId = source.closureResult.closureVersionId;
+  const closureBeforeArchive = await data<{ closure: unknown }>(
+    await request.get(`/api/v1/cases/${source.caseId}`, { headers: operator }),
+  );
   const archived = await data<Receipt>(
     await request.post(endpoint, { headers: operator, data: input }),
     201,
@@ -258,9 +291,9 @@ test('archive rechecks independent scope and revoked original keys, keeps old Cl
     closure: {
       current: {
         id: string;
-        closeAt: null;
+        closeAt: string;
         closeAmountState: string;
-        closeAmt: null;
+        closeAmt: string;
       };
     };
   }>(
@@ -282,12 +315,13 @@ test('archive rechecks independent scope and revoked original keys, keeps old Cl
     closure: {
       current: {
         id: source.closureResult.closureVersionId,
-        closeAt: null,
-        closeAmountState: 'PENDING',
-        closeAmt: null,
+        closeAt: today(),
+        closeAmountState: 'KNOWN',
+        closeAmt: '0.00',
       },
     },
   });
+  expect(detail.closure).toEqual(closureBeforeArchive.closure);
   expect(detail.archive.history).toHaveLength(2);
   expect(
     await data(
@@ -297,7 +331,7 @@ test('archive rechecks independent scope and revoked original keys, keeps old Cl
       }),
       201,
     ),
-  ).toEqual(source.closureResult);
+  ).toEqual(source.originalClosureResult);
   expect(
     await data(
       await request.post(`/api/v1/cases/${source.caseId}/execution-finish`, {
@@ -361,6 +395,9 @@ test('each reached archive and correction write fault rolls back head, history, 
     archiveType: 'SETTLEMENT',
     archiveReason: '真实归档原因，与收款独立',
   };
+  const closureBeforeArchive = await data<{ closure: unknown }>(
+    await request.get(`/api/v1/cases/${source.caseId}`, { headers: operator }),
+  );
   const endpoint = `/api/v1/cases/${source.caseId}/archive`;
   const post = () => request.post(endpoint, { headers: operator, data: input });
   for (const phase of [
@@ -425,10 +462,12 @@ test('each reached archive and correction write fault rolls back head, history, 
   );
   expect((await correct()).status()).toBe(403);
   const retained = await data<{
+    closure: unknown;
     archive: { history: unknown[]; current: { id: string } };
   }>(
     await request.get(`/api/v1/cases/${source.caseId}`, { headers: operator }),
   );
+  expect(retained.closure).toEqual(closureBeforeArchive.closure);
   expect(retained.archive.history).toHaveLength(2);
   expect(retained.archive.current.id).toBe(corrected.archiveVersionId);
 });
@@ -482,7 +521,7 @@ test('archive requires exact registered current closure and accepts the six clas
     }),
     201,
   );
-  const current = await data<{ version: number; closureVersionId: string }>(
+  let current = await data<{ version: number; closureVersionId: string }>(
     await request.post(`/api/v1/cases/${source.caseId}/closure-correction`, {
       headers: operator,
       data: {
@@ -508,6 +547,29 @@ test('archive requires exact registered current closure and accepts the six clas
       })
     ).status(),
   ).toBe(409);
+  const pendingSnapshot = await readCaseArchiveSnapshot(source.caseId);
+  const rejectedArchive = await request.post(endpoint, {
+    headers: operator,
+    data: {
+      ...input,
+      expectedVersion: current.version,
+      expectedClosureVersionId: current.closureVersionId,
+    },
+  });
+  expect(rejectedArchive.status(), await rejectedArchive.text()).toBe(409);
+  expect(await rejectedArchive.json()).toMatchObject({
+    code: 'ARCHIVE_FINANCIAL_NOT_READY',
+  });
+  expect(await readCaseArchiveSnapshot(source.caseId)).toEqual(pendingSnapshot);
+  current = await prepareZeroAmountArchiveThroughApi(
+    request,
+    source.caseId,
+    current,
+    { ...closureInput, closeAt: today() },
+  );
+  const closureBeforeArchive = await data<{ closure: unknown }>(
+    await request.get(`/api/v1/cases/${source.caseId}`, { headers: operator }),
+  );
   let receipt = await data<Receipt>(
     await request.post(endpoint, {
       headers: operator,
@@ -552,15 +614,16 @@ test('archive requires exact registered current closure and accepts the six clas
   const detail = await data<{
     archive: { history: unknown[] };
     closure: {
-      current: { id: string; closeAmountState: string; closeAmt: null };
+      current: { id: string; closeAmountState: string; closeAmt: string };
     };
   }>(
     await request.get(`/api/v1/cases/${source.caseId}`, { headers: operator }),
   );
+  expect(detail.closure).toEqual(closureBeforeArchive.closure);
   expect(detail.archive.history).toHaveLength(6);
   expect(detail.closure.current).toMatchObject({
     id: current.closureVersionId,
-    closeAmountState: 'PENDING',
-    closeAmt: null,
+    closeAmountState: 'KNOWN',
+    closeAmt: '0.00',
   });
 });

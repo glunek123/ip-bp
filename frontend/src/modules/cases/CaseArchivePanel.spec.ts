@@ -1,7 +1,13 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getCaseArchiveReadiness } from '../../api/case-archive-readiness';
 import { ApiError } from '../../api/http';
 import CaseArchivePanel from './CaseArchivePanel.vue';
+
+vi.mock('../../api/case-archive-readiness', async (original) => ({
+  ...(await original<typeof import('../../api/case-archive-readiness')>()),
+  getCaseArchiveReadiness: vi.fn(),
+}));
 
 vi.mock('../../api/cases', async (original) => ({
   ...(await original<typeof import('../../api/cases')>()),
@@ -51,6 +57,7 @@ const version: Version = {
   archiveAt: '2026-10-13',
   archiveType: 'EXECUTION_CLOSED',
   archiveReason: '原归档原因',
+  archiveNote: null,
   correctionReason: null,
   recordedAt: result.recordedAt,
   recordedByUserId: 'operator-1',
@@ -77,6 +84,18 @@ const api = {
 };
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(getCaseArchiveReadiness).mockResolvedValue({
+    caseVersion: 11,
+    closureVersionId: 'closure-version-1',
+    checkedAt: new Date().toISOString(),
+    state: 'PASSED',
+    checks: {
+      payment: { state: 'PASSED', reason: 'CLOSURE_PAYMENT_REACHED' },
+      refund: { state: 'PASSED', reason: 'REFUND_EXPLICITLY_NOT_APPLICABLE' },
+      customer: { state: 'PASSED', reason: 'CUSTOMER_RECEIPTS_REACHED' },
+      lawyer: { state: 'PASSED', reason: 'LAWYER_INVOICES_REACHED' },
+    },
+  });
   api.archiveCase.mockResolvedValue(result);
   api.correctArchive.mockResolvedValue({
     ...result,
@@ -106,6 +125,17 @@ function disabled(wrapper: Panel) {
   return control(wrapper, 'submit').attributes('disabled') !== undefined;
 }
 async function fill(wrapper: Panel, type = 'EXECUTION_CLOSED') {
+  await flushPromises();
+  if (exists(wrapper, 'check')) {
+    vi.mocked(getCaseArchiveReadiness).mockResolvedValueOnce({
+      ...(await vi.mocked(getCaseArchiveReadiness).getMockImplementation()!(
+        'case-1',
+      )),
+      caseVersion: wrapper.props('item').version,
+    });
+    await control(wrapper, 'check').trigger('click');
+    await flushPromises();
+  }
   await control(wrapper, 'date').setValue('2026-10-13');
   await control(wrapper, 'type').setValue(type);
   await control(wrapper, 'reason').setValue(' 原归档原因\n保留空白 ');
@@ -129,6 +159,116 @@ function deferred<T>() {
 }
 
 describe('CaseArchivePanel', () => {
+  it('blocks safely when automatic readiness read is denied', async () => {
+    vi.mocked(getCaseArchiveReadiness).mockRejectedValueOnce(
+      new ApiError('denied', 403, 'ACTION_FORBIDDEN'),
+    );
+    const wrapper = panel();
+    await flushPromises();
+    expect(exists(wrapper, 'form')).toBe(false);
+    expect(exists(wrapper, 'retry')).toBe(false);
+    expect(api.archiveCase).not.toHaveBeenCalled();
+    expect(control(wrapper, 'error').text()).toContain('权限已变化');
+  });
+
+  it.each(['BLOCKED', 'UNKNOWN'] as const)(
+    'prevents archive for %s and renders latest conflict checks',
+    async (state) => {
+      const wrapper = panel();
+      await fill(wrapper);
+      const passed = await vi
+        .mocked(getCaseArchiveReadiness)
+        .getMockImplementation()!('case-1');
+      const checks = {
+        ...passed.checks,
+        customer: { state, reason: 'CUSTOMER_RECEIPTS_INSUFFICIENT' },
+      };
+      api.archiveCase.mockRejectedValueOnce(
+        new ApiError('未满足', 409, 'ARCHIVE_FINANCIAL_NOT_READY', undefined, {
+          checks,
+        }),
+      );
+      await submit(wrapper);
+      expect(control(wrapper, 'check-customer').text()).toContain(
+        '实际客户回款不足',
+      );
+      expect(disabled(wrapper)).toBe(true);
+      expect(exists(wrapper, 'retry')).toBe(false);
+      vi.mocked(getCaseArchiveReadiness).mockResolvedValueOnce({
+        ...passed,
+        state,
+        checks,
+      });
+      await control(wrapper, 'check').trigger('click');
+      await flushPromises();
+      expect(disabled(wrapper)).toBe(true);
+      await submit(wrapper);
+      expect(api.archiveCase).toHaveBeenCalledTimes(1);
+    },
+  );
+  it('automatically reads again after the case projection is refreshed', async () => {
+    const wrapper = panel();
+    await fill(wrapper);
+    const passed = await vi
+      .mocked(getCaseArchiveReadiness)
+      .getMockImplementation()!('case-1');
+    const response = deferred<typeof passed>();
+    vi.mocked(getCaseArchiveReadiness).mockReturnValueOnce(response.promise);
+    await wrapper.setProps({ item: { ...item } });
+    expect(disabled(wrapper)).toBe(true);
+    expect(getCaseArchiveReadiness).toHaveBeenCalledTimes(3);
+    response.resolve(passed);
+    await flushPromises();
+    expect(disabled(wrapper)).toBe(false);
+  });
+  it('loads automatically and blocks new archives while the result is unknown', async () => {
+    const passed = await vi
+      .mocked(getCaseArchiveReadiness)
+      .getMockImplementation()!('case-1');
+    const response = deferred<typeof passed>();
+    vi.mocked(getCaseArchiveReadiness).mockReturnValueOnce(response.promise);
+    const wrapper = panel();
+    await control(wrapper, 'date').setValue('2026-10-13');
+    await control(wrapper, 'type').setValue('EXECUTION_CLOSED');
+    await control(wrapper, 'reason').setValue('归档原因');
+    expect(getCaseArchiveReadiness).toHaveBeenCalledExactlyOnceWith(
+      'case-1',
+      false,
+    );
+    expect(disabled(wrapper)).toBe(true);
+    await submit(wrapper);
+    expect(api.archiveCase).not.toHaveBeenCalled();
+    response.resolve(passed);
+    await flushPromises();
+    expect(disabled(wrapper)).toBe(false);
+    expect(control(wrapper, 'check-customer').text()).toContain(
+      '实际客户回款已足额',
+    );
+  });
+  it('blocks unknown results and ignores late checks after identity changes', async () => {
+    const response =
+      deferred<Awaited<ReturnType<typeof getCaseArchiveReadiness>>>();
+    vi.mocked(getCaseArchiveReadiness).mockReturnValue(response.promise);
+    const wrapper = panel();
+    await control(wrapper, 'check').trigger('click');
+    await wrapper.setProps({ contextKey: 'OTHER:user' });
+    response.resolve({
+      caseVersion: 11,
+      closureVersionId: 'closure-version-1',
+      checkedAt: new Date().toISOString(),
+      state: 'PASSED',
+      checks: {
+        payment: { state: 'PASSED', reason: 'CLOSURE_PAYMENT_REACHED' },
+        refund: { state: 'EXEMPT', reason: 'EXPLICIT_ZERO_CLOSURE_AMOUNT' },
+        customer: { state: 'EXEMPT', reason: 'EXPLICIT_ZERO_CLOSURE_AMOUNT' },
+        lawyer: { state: 'EXEMPT', reason: 'EXPLICIT_ZERO_CLOSURE_AMOUNT' },
+      },
+    });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('有效付款已达到结案金额');
+    expect(api.archiveCase).not.toHaveBeenCalled();
+  });
+
   it('opens a section correction with existing archive fields and cancels without a write', async () => {
     const source = archived();
     const wrapper = panel({ item: source, editOnly: true, editRequest: 1 });
@@ -170,13 +310,26 @@ describe('CaseArchivePanel', () => {
     expect(source.stage).toBe('ARCHIVED');
     wrapper.unmount();
   });
+  it('submits an optional note and displays the saved note in current and history', async () => {
+    const wrapper = panel();
+    await fill(wrapper);
+    await control(wrapper, 'note').setValue('回款材料已核对');
+    await submit(wrapper);
+    expect(api.archiveCase).toHaveBeenCalledWith(
+      item.id,
+      expect.objectContaining({ archiveNote: '回款材料已核对' }),
+    );
+    const noted = { ...version, archiveNote: '回款材料已核对' };
+    await wrapper.setProps({ item: archived(noted) });
+    expect(wrapper.text()).toContain('归档备注：回款材料已核对');
+  });
   it('starts with no default date/type, a single archive action and no finance/files controls', async () => {
     const wrapper = panel();
     expect(control(wrapper, 'date').element).toHaveProperty('value', '');
     expect(control(wrapper, 'type').element).toHaveProperty('value', '');
     expect(disabled(wrapper)).toBe(true);
     expect(wrapper.find('input[type=file]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('归档不代表款项已收齐或结清');
+    expect(wrapper.text()).toContain('款项状态以实际记录为准');
     await fill(wrapper);
     await submit(wrapper);
     expect(api.archiveCase).toHaveBeenCalledExactlyOnceWith(item.id, {
@@ -381,6 +534,35 @@ describe('CaseArchivePanel', () => {
     );
   });
 
+  it('shows the exact pending note, including when a correction clears it', async () => {
+    const withNote: Pending = {
+      command: 'ARCHIVE',
+      input: { ...original.input, archiveNote: ' 补充备注 ' },
+    };
+    const first = panel({ pendingRequest: withNote, item: archived() });
+    expect(control(first, 'pending-summary').element.textContent).toContain(
+      ' 补充备注 ',
+    );
+    await retry(first);
+    expect(api.archiveCase.mock.calls.at(-1)?.[1]).toEqual(withNote.input);
+
+    const cleared: Pending = {
+      command: 'CORRECT',
+      input: {
+        ...original.input,
+        archiveNote: '',
+        expectedArchiveVersionId: version.id,
+        correctionReason: '更正',
+      },
+    };
+    const second = panel({ pendingRequest: cleared, item: archived() });
+    expect(control(second, 'pending-summary').element.textContent).toContain(
+      '归档备注 未填写',
+    );
+    await retry(second);
+    expect(api.correctArchive.mock.calls.at(-1)?.[1]).toEqual(cleared.input);
+  });
+
   it('restores and retries an unknown correction using its original archive/closure/version anchors', async () => {
     const correction: Pending = {
       command: 'CORRECT',
@@ -462,7 +644,7 @@ describe('CaseArchivePanel', () => {
   });
 
   it.each([401, 403])(
-    'clears all sensitive state and blocks retry after %s',
+    'hides unknown original request after %s and retains recovery for remount',
     async (status) => {
       api.archiveCase.mockRejectedValueOnce(
         new ApiError('denied', status, 'FORBIDDEN'),
@@ -473,13 +655,55 @@ describe('CaseArchivePanel', () => {
       expect(exists(wrapper, 'retry')).toBe(false);
       expect(exists(wrapper, 'form')).toBe(false);
       expect(wrapper.text()).not.toContain(original.input.archiveReason);
-      expect(wrapper.emitted('pending-change')?.at(-1)).toEqual([null]);
+      expect(wrapper.emitted('pending-change')?.at(-1)).toEqual([original]);
       await wrapper.setProps({
         pendingRequest: { ...original },
         item: archived(),
       });
       expect(exists(wrapper, 'retry')).toBe(false);
       expect(wrapper.emitted('changed')).toBeUndefined();
+    },
+  );
+
+  it('preserves an unknown original key across retry denial and a same-identity remount', async () => {
+    let recovery: Pending | null = null;
+    const wrapper = panel({
+      'onPending-change': (request) => {
+        recovery = request;
+      },
+    });
+    api.archiveCase.mockRejectedValueOnce(
+      new ApiError('network', 0, 'NETWORK_ERROR'),
+    );
+    await fill(wrapper);
+    await submit(wrapper);
+    const sent = { ...api.archiveCase.mock.calls[0]![1] };
+    api.archiveCase.mockRejectedValueOnce(
+      new ApiError('denied', 403, 'FORBIDDEN'),
+    );
+    await retry(wrapper);
+    expect(recovery).toEqual({ command: 'ARCHIVE', input: sent });
+    expect(exists(wrapper, 'retry')).toBe(false);
+    expect(exists(wrapper, 'form')).toBe(false);
+    expect(wrapper.text()).not.toContain(sent.archiveReason);
+    wrapper.unmount();
+    const restored = panel({ pendingRequest: recovery });
+    await retry(restored);
+    expect(api.archiveCase.mock.calls[2]).toEqual([item.id, sent]);
+    expect(restored.emitted('changed')).toEqual([[result]]);
+  });
+  it.each([401, 403])(
+    'clears a definite first denial %s without preserving a command',
+    async (status) => {
+      const wrapper = panel();
+      await fill(wrapper);
+      api.archiveCase.mockRejectedValueOnce(
+        new ApiError('denied', status, 'FORBIDDEN'),
+      );
+      await submit(wrapper);
+      expect(wrapper.emitted('pending-change')?.at(-1)).toEqual([null]);
+      expect(exists(wrapper, 'retry')).toBe(false);
+      expect(exists(wrapper, 'form')).toBe(false);
     },
   );
 

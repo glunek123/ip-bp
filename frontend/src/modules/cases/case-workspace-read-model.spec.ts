@@ -778,6 +778,7 @@ describe('case workspace read model', () => {
       archiveAt: '2026-10-01',
       archiveType: 'EXECUTION_CLOSED',
       archiveReason: '归档原因',
+      archiveNote: null,
       correctionReason: null,
       recordedAt,
       recordedByUserId: 'user-1',

@@ -24,6 +24,7 @@ const versionId = '55555555-5555-4555-8555-555555555555';
 
 describe('MaterialController', () => {
   const createUploadDraft = jest.fn();
+  const createSettlementUpdateDocumentUploadDraft = jest.fn();
   const finalizeUpload = jest.fn();
   const listOwnerMaterials = jest.fn();
   const openVersion = jest.fn();
@@ -47,6 +48,7 @@ describe('MaterialController', () => {
           provide: MaterialService,
           useValue: {
             createUploadDraft,
+            createSettlementUpdateDocumentUploadDraft,
             finalizeUpload,
             listOwnerMaterials,
             openVersion,
@@ -64,6 +66,89 @@ describe('MaterialController', () => {
 
   afterAll(async () => app?.close());
   beforeEach(() => jest.clearAllMocks());
+  it('routes settlement document metadata with the exact closure version', async () => {
+    const result = {
+      id: draftId,
+      settlementUpdateTarget: {
+        id: materialId,
+        expectedClosureVersionId: versionId,
+      },
+    };
+    createSettlementUpdateDocumentUploadDraft.mockResolvedValue(result);
+    const response = await request(app.getHttpServer())
+      .post(
+        `/api/v1/materials/cases/${materialId}/settlement-update-document-upload-drafts`,
+      )
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        expectedClosureVersionId: versionId,
+        originalFilename: ' 结算.pdf ',
+        declaredMimeType: ' application/pdf ',
+      })
+      .expect(201);
+    expect(response.body).toEqual(result);
+    expect(createSettlementUpdateDocumentUploadDraft).toHaveBeenCalledWith(
+      actor,
+      materialId,
+      versionId,
+      { originalFilename: '结算.pdf', declaredMimeType: 'application/pdf' },
+    );
+  });
+
+  it.each([
+    {
+      expectedClosureVersionId: 'invalid',
+      originalFilename: '结算.pdf',
+      declaredMimeType: 'application/pdf',
+    },
+    {
+      expectedClosureVersionId: versionId,
+      originalFilename: ' ',
+      declaredMimeType: 'application/pdf',
+    },
+    {
+      expectedClosureVersionId: versionId,
+      originalFilename: '结算.pdf',
+      declaredMimeType: ' ',
+    },
+    {
+      expectedClosureVersionId: versionId,
+      originalFilename: '结算.pdf',
+      declaredMimeType: 'application/pdf',
+      actorUserId: actor.userId,
+    },
+  ])('rejects invalid or forged settlement upload metadata', async (input) => {
+    await request(app.getHttpServer())
+      .post(
+        `/api/v1/materials/cases/${materialId}/settlement-update-document-upload-drafts`,
+      )
+      .set('Authorization', 'Bearer allowed-token')
+      .send(input)
+      .expect(400);
+    expect(createSettlementUpdateDocumentUploadDraft).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid case IDs and unauthenticated settlement uploads', async () => {
+    const input = {
+      expectedClosureVersionId: versionId,
+      originalFilename: '结算.pdf',
+      declaredMimeType: 'application/pdf',
+    };
+    await request(app.getHttpServer())
+      .post(
+        '/api/v1/materials/cases/invalid/settlement-update-document-upload-drafts',
+      )
+      .set('Authorization', 'Bearer allowed-token')
+      .send(input)
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(
+        `/api/v1/materials/cases/${materialId}/settlement-update-document-upload-drafts`,
+      )
+      .send(input)
+      .expect(401);
+    expect(createSettlementUpdateDocumentUploadDraft).not.toHaveBeenCalled();
+  });
   it('accepts the closure category and purpose through the existing upload endpoint', async () => {
     createUploadDraft.mockResolvedValue({
       id: draftId,

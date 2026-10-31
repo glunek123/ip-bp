@@ -1,3 +1,7 @@
+import {
+  isBatch2Current269,
+  assertBatch2Current269Target,
+} from './batch2-current-managed-target.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -11,6 +15,11 @@ const databaseName = 'dev_cor_test';
 const finalMigration = '20261027130000_batch2_calendar_reminders';
 
 export function assertBatch2Admission(environment = process.env) {
+  if (isBatch2Current269(environment))
+    return {
+      databaseUrl: assertBatch2Current269Target(environment),
+      databaseName,
+    };
   if (
     environment.NODE_ENV !== 'test' ||
     environment.BATCH2_ACCEPTANCE_READY !== 'batch2-ops-20261027-approved' ||

@@ -688,7 +688,15 @@ describe('case pages', () => {
       api.listCases.mockResolvedValue({
         ...base,
         items: [
-          { ...base.items[0], ...denied, [capability]: true },
+          {
+            ...base.items[0],
+            ...denied,
+            ...(capability === 'canRecordClosure' ||
+            capability === 'canCorrectClosure'
+              ? { stage: 'WAITING_ARCHIVE' as const }
+              : {}),
+            [capability]: true,
+          },
           { ...base.items[0], ...denied, id: 'readonly-case' },
         ],
       });

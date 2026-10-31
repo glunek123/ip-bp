@@ -20,6 +20,8 @@ import {
 import {
   clearCaseArchiveFixture,
   createClosedCaseArchiveSourceThroughApi,
+  prepareZeroAmountArchiveThroughApi,
+  readCaseArchiveSnapshot,
   setCaseArchiveFixtureGrant,
 } from '../support/case-archive-database.mjs';
 import { clearCaseClosureFixture } from '../support/case-closure-database.mjs';
@@ -381,7 +383,7 @@ test('internal case workspace keeps eight closed sections, real file bytes and p
   expect(after.archive).toBeNull();
 });
 
-test('normal operator archives pending amount and unknown closure date, appends reason history, keeps exact bytes and exposes only client stage', async ({
+test('normal operator rejects pending amount then completes a known closure date and archives explicit zero, appends reason history, keeps exact bytes and exposes only client stage', async ({
   page,
   request,
 }) => {
@@ -398,6 +400,38 @@ test('normal operator archives pending amount and unknown closure date, appends 
     coreLeadFixtures.roleA,
     'case.archive.correct',
     'TEAM',
+  );
+  const pending = await read(request, source.caseId);
+  expect(pending.closure.current).toMatchObject({
+    closeAt: null,
+    closeAmountState: 'PENDING',
+    closeAmt: null,
+  });
+  const pendingSnapshot = await readCaseArchiveSnapshot(source.caseId);
+  const rejectedArchive = await request.post(
+    `/api/v1/cases/${source.caseId}/archive`,
+    {
+      headers: operator,
+      data: {
+        expectedVersion: source.closureResult.version,
+        expectedClosureVersionId: source.closureResult.closureVersionId,
+        idempotencyKey: randomUUID(),
+        archiveAt: today(),
+        archiveType: 'EXECUTION_COLLECTED',
+        archiveReason: '未知金额不得归档',
+      },
+    },
+  );
+  expect(rejectedArchive.status(), await rejectedArchive.text()).toBe(409);
+  expect(await rejectedArchive.json()).toMatchObject({
+    code: 'ARCHIVE_FINANCIAL_NOT_READY',
+  });
+  expect(await readCaseArchiveSnapshot(source.caseId)).toEqual(pendingSnapshot);
+  source.closureResult = await prepareZeroAmountArchiveThroughApi(
+    request,
+    source.caseId,
+    source.closureResult,
+    { ...source.closureInput, closeAt: today() },
   );
   const before = await read(request, source.caseId);
   expect(before.archive).toBeNull();
@@ -424,7 +458,7 @@ test('normal operator archives pending amount and unknown closure date, appends 
     .selectOption('EXECUTION_COLLECTED');
   await panel
     .locator('[data-test="archive-reason"]')
-    .fill('业务已办完；结案额待定，实际款项未登记。');
+    .fill('业务已办完；明确零金额且无诉讼退费。');
   const first = page.waitForResponse(
     (r) =>
       r.request().method() === 'POST' &&
@@ -438,7 +472,7 @@ test('normal operator archives pending amount and unknown closure date, appends 
     expectedClosureVersionId: source.closureResult.closureVersionId,
     archiveAt: today(),
     archiveType: 'EXECUTION_COLLECTED',
-    archiveReason: '业务已办完；结案额待定，实际款项未登记。',
+    archiveReason: '业务已办完；明确零金额且无诉讼退费。',
   });
   expect(archived).toMatchObject({
     id: source.caseId,
@@ -467,7 +501,7 @@ test('normal operator archives pending amount and unknown closure date, appends 
   await page.reload();
   await revealCaseWorkspaceSection(page, 'closure-info');
   await expect(page.locator('[data-section="closure-info"]')).toContainText(
-    '待确认',
+    today(),
   );
   const sectionEdit = page.locator(
     '[data-section="closure-info"] .case-workspace-section__edit',
@@ -595,7 +629,7 @@ test('normal operator archives pending amount and unknown closure date, appends 
     '合成验收：执行程序已实际结束',
   );
   await expect(page.locator('[data-section="closure-info"]')).toContainText(
-    '待确认',
+    today(),
   );
   await expect(page.locator('[data-section="closure-info"]')).toContainText(
     '执行终本',
@@ -648,7 +682,7 @@ test('normal operator archives pending amount and unknown closure date, appends 
       id: string;
       stage: string;
       displaySummary: {
-        closureAmount: { state: string; amount: null; sourceId: string };
+        closureAmount: { state: string; amount: string; sourceId: string };
       };
     }>;
     counts: { ARCHIVED: number };
@@ -663,8 +697,8 @@ test('normal operator archives pending amount and unknown closure date, appends 
     stage: 'ARCHIVED',
     displaySummary: {
       closureAmount: {
-        state: 'PENDING',
-        amount: null,
+        state: 'KNOWN',
+        amount: '0.00',
         sourceId: source.closureResult.closureVersionId,
       },
     },
@@ -729,6 +763,7 @@ test('current primary lawyer archives real zero and exact old file, cannot corre
     realZero: true,
     bytes,
   });
+  const closureBeforeArchive = await read(request, source.caseId);
   const csrf = await signIn(
     page,
     `/lawyer/cases/${source.caseId}`,
@@ -758,11 +793,16 @@ test('current primary lawyer archives real zero and exact old file, cannot corre
   const original = posted.request().postDataJSON() as Record<string, unknown>;
   const archived = await data<Receipt>(posted, 201);
   const detail = await read(page.request, source.caseId, true);
+  expect(detail.closure).toEqual(closureBeforeArchive.closure);
   expect(detail).toMatchObject({
     stage: 'ARCHIVED',
     canCorrectArchive: false,
     closure: {
-      current: { closeAt: null, closeAmountState: 'KNOWN', closeAmt: '0.00' },
+      current: {
+        closeAt: today(),
+        closeAmountState: 'KNOWN',
+        closeAmt: '0.00',
+      },
     },
   });
   expect(detail.archive?.current).not.toHaveProperty('correctionReason');
@@ -823,12 +863,15 @@ test('lost archive success retains the original body through refresh and SPA rem
   request,
 }) => {
   test.setTimeout(180_000);
-  const source = await createClosedCaseArchiveSourceThroughApi(request);
+  const source = await createClosedCaseArchiveSourceThroughApi(request, {
+    realZero: true,
+  });
   await setCaseArchiveFixtureGrant(
     coreLeadFixtures.roleA,
     'case.archive',
     'TEAM',
   );
+  const closureBeforeArchive = await read(request, source.caseId);
   await signIn(
     page,
     `/cases/${source.caseId}`,
@@ -892,6 +935,7 @@ test('lost archive success retains the original body through refresh and SPA rem
   expect(requests).toHaveLength(2);
   expect(requests[1]).toEqual(original);
   const detail = await read(request, source.caseId);
+  expect(detail.closure).toEqual(closureBeforeArchive.closure);
   expect(detail.archive?.history).toHaveLength(1);
   expect(detail.archive?.current.id).toBe(receipt?.archiveVersionId);
   await expect(panel.locator('[data-test="archive-retry"]')).toHaveCount(0);

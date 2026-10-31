@@ -24,13 +24,18 @@ export function createManagedTestRuntime(root, mode) {
       'The managed test runtime requires an absolute project root',
     );
   }
-  if (mode !== 'api' && mode !== 'ui') {
-    throw new Error('The managed test runtime mode must be api or ui');
+  if (mode !== 'api' && mode !== 'ui' && mode !== 'batch2-import') {
+    throw new Error(
+      'The managed test runtime mode must be api, ui or batch2-import',
+    );
   }
   const cwd = resolve(root);
   const origin = mode === 'api' ? backendOrigin : frontendOrigin;
   const backendServer = {
-    command: backendCommand,
+    command:
+      mode === 'batch2-import'
+        ? 'node tests/support/batch2-lead-import-app.mjs'
+        : backendCommand,
     cwd,
     url: `${backendOrigin}/api/v1/health`,
     reuseExistingServer: false,
@@ -65,8 +70,10 @@ export function planManagedTestRuntime(layout) {
       'The managed test runtime requires the absolute project cwd',
     );
   }
-  if (mode !== 'api' && mode !== 'ui') {
-    throw new Error('The managed test runtime mode must be api or ui');
+  if (mode !== 'api' && mode !== 'ui' && mode !== 'batch2-import') {
+    throw new Error(
+      'The managed test runtime mode must be api, ui or batch2-import',
+    );
   }
   const expectedOrigin = mode === 'api' ? backendOrigin : frontendOrigin;
   if (origin !== expectedOrigin || baseURL !== expectedOrigin) {

@@ -818,10 +818,172 @@ describe('NotaryMatterListPage', () => {
     );
   });
 
+  it.each([
+    ['ARCHIVED', false, false],
+    ['WAITING_RETURN', false, false],
+    ['WAITING_RETURN', true, false],
+    ['WAITING_UNBOX', false, false],
+    ['WAITING_UNBOX', false, true],
+  ] as const)(
+    'gates batch actions from known %s capabilities %s/%s',
+    async (stage, archiveReturn, recordOpening) => {
+      api.listNotaryMatters.mockResolvedValue({
+        ...result,
+        items: [
+          {
+            ...result.items[0],
+            stage,
+            capabilities: {
+              ...sourceProjection.capabilities,
+              archiveReturn,
+              recordOpening,
+            },
+          },
+        ],
+      });
+      const { wrapper } = await mountPage('/notary-matters');
+      await wrapper.get('[data-test="select-matter"]').setValue(true);
+      expect(
+        wrapper
+          .get('[data-test="batch-archive-open"]')
+          .attributes('disabled') !== undefined,
+      ).toBe(!(stage === 'WAITING_RETURN' && archiveReturn));
+      expect(
+        wrapper
+          .get('[data-test="batch-opening-open"]')
+          .attributes('disabled') !== undefined,
+      ).toBe(!(stage === 'WAITING_UNBOX' && recordOpening));
+      expect(api.getNotaryMatter).not.toHaveBeenCalled();
+      expect(batchApi.archive).not.toHaveBeenCalled();
+      wrapper.unmount();
+    },
+  );
+
+  it('allows mixed opening selections but rejects mixed archive selections', async () => {
+    api.listNotaryMatters.mockResolvedValue({
+      ...result,
+      total: 2,
+      items: [
+        { ...result.items[0], stage: 'ARCHIVED' },
+        {
+          ...result.items[0],
+          id: 'matter-2',
+          stage: 'WAITING_UNBOX',
+          capabilities: {
+            ...sourceProjection.capabilities,
+            recordOpening: true,
+          },
+        },
+      ],
+    });
+    const { wrapper } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="select-page"]').setValue(true);
+    expect(
+      wrapper.get('[data-test="batch-opening-open"]').attributes('disabled'),
+    ).toBeUndefined();
+    expect(
+      wrapper.get('[data-test="batch-archive-open"]').attributes('disabled'),
+    ).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it('preserves an old-revision pending opening entry after its stage advances', async () => {
+    api.listNotaryMatters.mockResolvedValue({
+      ...result,
+      items: [{ ...result.items[0], stage: 'ARCHIVED' }],
+    });
+    const key = `notary-list-request:${JSON.stringify(['user-1:INTERNAL:department-1:0', 'matter-1', 'opening-form'])}`;
+    sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        command: {
+          kind: 'opening',
+          input: { expectedVersion: 1, contentVersionIds: ['photo-v1'] },
+        },
+        key: 'original-opening-key',
+      }),
+    );
+    const { wrapper } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    expect(
+      wrapper.get('[data-test="batch-opening-open"]').attributes('disabled'),
+    ).toBeUndefined();
+    expect(
+      wrapper.get('[data-test="batch-archive-open"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(sessionStorage.getItem(key)).toContain('original-opening-key');
+    wrapper.unmount();
+    sessionStorage.removeItem(key);
+  });
+
+  it('limits archive to 50 while preserving selected export and opening', async () => {
+    api.listNotaryMatters.mockResolvedValue({
+      ...result,
+      total: 51,
+      items: Array.from({ length: 51 }, (_, index) => ({
+        ...result.items[0],
+        id: `matter-${index}`,
+        stage: 'WAITING_RETURN',
+        capabilities: { ...sourceProjection.capabilities, archiveReturn: true },
+      })),
+    });
+    const { wrapper } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="select-page"]').setValue(true);
+    expect(wrapper.get('[data-test="selected-count"]').text()).toContain('51');
+    expect(
+      wrapper.get('[data-test="batch-archive-open"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper.get('[data-test="batch-archive-open"]').attributes('title'),
+    ).toContain('50');
+    expect(
+      wrapper.get('[data-test="export-open"]').attributes('disabled'),
+    ).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('leaves off-page selected eligibility to the existing preflight without discarding selection', async () => {
+    api.listNotaryMatters
+      .mockResolvedValueOnce({ ...result, total: 21 })
+      .mockResolvedValue({
+        ...result,
+        page: 2,
+        total: 21,
+        items: [{ ...result.items[0], id: 'other-page-matter' }],
+      });
+    const { wrapper } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    expect(
+      wrapper.get('[data-test="batch-archive-open"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('[data-test="next-page"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-test="selected-count"]').text()).toContain(
+      '1 项',
+    );
+    expect(
+      wrapper.get('[data-test="batch-archive-open"]').attributes('disabled'),
+    ).toBeUndefined();
+    expect(
+      wrapper.get('[data-test="batch-opening-open"]').attributes('disabled'),
+    ).toBeUndefined();
+    expect(api.getNotaryMatter).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it('opens the batch form for selected matters and refreshes the list after success', async () => {
     const waiting = {
       ...result,
-      items: [{ ...result.items[0], stage: 'WAITING_RETURN' }],
+      items: [
+        {
+          ...result.items[0],
+          stage: 'WAITING_RETURN',
+          capabilities: {
+            ...sourceProjection.capabilities,
+            archiveReturn: true,
+          },
+        },
+      ],
       counts: { ...result.counts, WAITING_RETURN: 1 },
     };
     api.listNotaryMatters.mockResolvedValue(waiting);
@@ -858,7 +1020,16 @@ describe('NotaryMatterListPage', () => {
   it('opens the separate per-matter unboxing workflow from the existing selection', async () => {
     api.listNotaryMatters.mockResolvedValue({
       ...result,
-      items: [{ ...result.items[0], stage: 'WAITING_UNBOX' }],
+      items: [
+        {
+          ...result.items[0],
+          stage: 'WAITING_UNBOX',
+          capabilities: {
+            ...sourceProjection.capabilities,
+            recordOpening: true,
+          },
+        },
+      ],
     });
     const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
     await wrapper.get('[data-test="select-matter"]').setValue(true);
@@ -881,10 +1052,21 @@ describe('NotaryMatterListPage', () => {
       id: 'matter-2',
       businessNo: 'NT-002',
       stage: 'WAITING_UNBOX' as const,
+      capabilities: { ...sourceProjection.capabilities, recordOpening: true },
     };
     api.listNotaryMatters.mockResolvedValue({
       ...result,
-      items: [{ ...result.items[0], stage: 'WAITING_UNBOX' }, second],
+      items: [
+        {
+          ...result.items[0],
+          stage: 'WAITING_UNBOX',
+          capabilities: {
+            ...sourceProjection.capabilities,
+            recordOpening: true,
+          },
+        },
+        second,
+      ],
       total: 2,
     });
     const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
@@ -903,7 +1085,16 @@ describe('NotaryMatterListPage', () => {
   it('shows a recoverable action when the pending request uses the same actor at an older authorization revision', async () => {
     api.listNotaryMatters.mockResolvedValue({
       ...result,
-      items: [{ ...result.items[0], stage: 'WAITING_UNBOX' }],
+      items: [
+        {
+          ...result.items[0],
+          stage: 'WAITING_UNBOX',
+          capabilities: {
+            ...sourceProjection.capabilities,
+            recordOpening: true,
+          },
+        },
+      ],
     });
     api.getNotaryMatter.mockResolvedValue({
       id: 'matter-1',
@@ -944,7 +1135,16 @@ describe('NotaryMatterListPage', () => {
     async (change) => {
       const waiting = {
         ...result,
-        items: [{ ...result.items[0], stage: 'WAITING_RETURN' }],
+        items: [
+          {
+            ...result.items[0],
+            stage: 'WAITING_RETURN',
+            capabilities: {
+              ...sourceProjection.capabilities,
+              archiveReturn: true,
+            },
+          },
+        ],
         counts: { ...result.counts, WAITING_RETURN: 1 },
       };
       api.listNotaryMatters.mockResolvedValue(waiting);
@@ -1020,7 +1220,16 @@ describe('NotaryMatterListPage', () => {
   it('keeps a changed-scope in-flight result unresolved and allows a new scoped batch', async () => {
     const waiting = {
       ...result,
-      items: [{ ...result.items[0], stage: 'WAITING_RETURN' }],
+      items: [
+        {
+          ...result.items[0],
+          stage: 'WAITING_RETURN',
+          capabilities: {
+            ...sourceProjection.capabilities,
+            archiveReturn: true,
+          },
+        },
+      ],
       counts: { ...result.counts, WAITING_RETURN: 1 },
     };
     api.listNotaryMatters.mockResolvedValue(waiting);
@@ -1079,7 +1288,16 @@ describe('NotaryMatterListPage', () => {
   it('clears a restored request after a deterministic rejection so facts can be reloaded', async () => {
     const waiting = {
       ...result,
-      items: [{ ...result.items[0], stage: 'WAITING_RETURN' }],
+      items: [
+        {
+          ...result.items[0],
+          stage: 'WAITING_RETURN',
+          capabilities: {
+            ...sourceProjection.capabilities,
+            archiveReturn: true,
+          },
+        },
+      ],
       counts: { ...result.counts, WAITING_RETURN: 1 },
     };
     api.listNotaryMatters.mockResolvedValue(waiting);

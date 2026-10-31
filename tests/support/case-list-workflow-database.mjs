@@ -1,3 +1,7 @@
+import {
+  isBatch2Current269,
+  assertBatch2Current269Target,
+} from './batch2-current-managed-target.mjs';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
@@ -13,6 +17,10 @@ const approvedContainerId =
 // Admission is deliberately narrower than the shared random-port validator.
 // This suite may add synthetic actors only to the one approved UI003 instance.
 export function assertCaseListWorkflowTarget(environment) {
+  if (isBatch2Current269(environment)) {
+    assertBatch2Current269Target(environment);
+    return;
+  }
   if (
     environment.NODE_ENV !== 'test' ||
     environment.DEV_COR_TEST_DATABASE_PROJECT !== 'dev-cor-ui003-r2' ||

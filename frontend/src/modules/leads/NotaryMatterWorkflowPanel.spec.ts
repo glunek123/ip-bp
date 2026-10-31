@@ -84,7 +84,9 @@ async function open(
   current = detail(),
   actionKey = 'issuance-form',
   actorKey = 'user-1:INTERNAL:dept-1:7',
-  onEndSubmit?: (outcome: 'failed' | 'unknown' | 'success') => void,
+  onEndSubmit?: (
+    outcome: 'failed' | 'unknown' | 'success' | 'completed',
+  ) => void,
 ) {
   const success = vi.fn();
   const workflow = createListWorkflowContext(async () => current, { success });
@@ -99,7 +101,7 @@ async function open(
   const panelSession = onEndSubmit
     ? {
         ...session,
-        endSubmit(outcome: 'failed' | 'unknown' | 'success') {
+        endSubmit(outcome: 'failed' | 'unknown' | 'success' | 'completed') {
           onEndSubmit(outcome);
           return session.endSubmit(outcome);
         },

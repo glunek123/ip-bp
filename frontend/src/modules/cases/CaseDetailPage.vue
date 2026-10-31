@@ -5,7 +5,6 @@ import CaseExecutionFilingFollowupPanel from './CaseExecutionFilingFollowupPanel
 import CaseExecutionFinishPanel from './CaseExecutionFinishPanel.vue';
 import CaseClosurePanel from './CaseClosurePanel.vue';
 import CaseArchivePanel from './CaseArchivePanel.vue';
-import CaseEarlyArchivePanel from './CaseEarlyArchivePanel.vue';
 import {
   parseCaseActionIntent,
   primaryCaseAction,
@@ -160,7 +159,9 @@ const activeTab = computed<WorkspaceTab>(() =>
     ? route.query.tab
     : 'details',
 );
+const caseFees = ref<InstanceType<typeof CaseWorkspaceFees> | null>(null);
 function selectTab(tab: WorkspaceTab): void {
+  if (caseFees.value?.canLeave() === false) return;
   if (String(route.params.id) !== id.value) return;
   void router.replace({ path: route.path, query: { ...route.query, tab } });
 }
@@ -187,8 +188,12 @@ const routineUnknown = ref(false);
 const routineError = ref('');
 let routineRequest: AbortController | undefined;
 let routineReadGeneration = 0;
-onBeforeRouteLeave(() => !routineSaving.value);
-onBeforeRouteUpdate(() => !routineSaving.value);
+onBeforeRouteLeave(
+  () => !routineSaving.value && caseFees.value?.canLeave() !== false,
+);
+onBeforeRouteUpdate(
+  () => !routineSaving.value && caseFees.value?.canLeave() !== false,
+);
 const drawerOpen = ref(false);
 const actionNotice = ref('');
 const editorVisible = ref(true);
@@ -459,7 +464,7 @@ function editSection(section: SectionKey): void {
   if (routineEditing.value || routineSaving.value) return;
   if (!sectionActions.value[section].enabled) return;
   if (section === 'lead-info') {
-    if (routine.value?.canEdit && !drawerOpen.value && !earlyArchiveOpen.value)
+    if (routine.value?.canEdit && !drawerOpen.value)
       routineEditing.value = true;
     return;
   }
@@ -567,8 +572,7 @@ watch(
         return;
       routine.value = profile;
       if (route.query.edit === 'routine') {
-        if (profile.canEdit && !drawerOpen.value && !earlyArchiveOpen.value)
-          routineEditing.value = true;
+        if (profile.canEdit && !drawerOpen.value) routineEditing.value = true;
         const query = { ...route.query };
         delete query.edit;
         void router.replace({ query });
@@ -958,13 +962,11 @@ const finishCallbacks = computed(() => {
   };
 });
 
-const archiveSession = caseArchiveSession(auth, () => identity.value);
-const earlyArchiveOpen = ref(false);
-function handleEarlyArchiveChanged(): void {
-  earlyArchiveOpen.value = false;
-  notifyWorkflowChanged();
-  void load();
-}
+const archiveSession = caseArchiveSession(
+  auth,
+  () => identity.value,
+  () => secondInstanceActorKey.value,
+);
 const archivePending = computed(() => archiveSession.pending(id.value));
 const archiveCallbacks = computed(() => {
   const caseId = item.value?.id ?? id.value;
@@ -1026,6 +1028,25 @@ const archiveCallbacks = computed(() => {
           );
         return result;
       } catch (reason) {
+        if (
+          current() &&
+          (!(reason instanceof ApiError) ||
+            ['NETWORK_ERROR', 'TIMEOUT', 'INVALID_RESPONSE'].includes(
+              reason.code,
+            ) ||
+            reason.status >= 500)
+        )
+          archiveSession.retainUnknown(caseId, { command: 'ARCHIVE', input });
+        if (
+          current() &&
+          reason instanceof ApiError &&
+          ![401, 403].includes(reason.status) &&
+          !['NETWORK_ERROR', 'TIMEOUT', 'INVALID_RESPONSE'].includes(
+            reason.code,
+          ) &&
+          reason.status < 500
+        )
+          archiveSession.resolveUnknown(caseId);
         return denied(reason);
       }
     },
@@ -1052,11 +1073,31 @@ const archiveCallbacks = computed(() => {
           );
         return result;
       } catch (reason) {
+        if (
+          current() &&
+          (!(reason instanceof ApiError) ||
+            ['NETWORK_ERROR', 'TIMEOUT', 'INVALID_RESPONSE'].includes(
+              reason.code,
+            ) ||
+            reason.status >= 500)
+        )
+          archiveSession.retainUnknown(caseId, { command: 'CORRECT', input });
+        if (
+          current() &&
+          reason instanceof ApiError &&
+          ![401, 403].includes(reason.status) &&
+          !['NETWORK_ERROR', 'TIMEOUT', 'INVALID_RESPONSE'].includes(
+            reason.code,
+          ) &&
+          reason.status < 500
+        )
+          archiveSession.resolveUnknown(caseId);
         return denied(reason);
       }
     },
     changed: (result: CaseArchiveResult) => {
       if (!current() || result.id !== caseId) return;
+      archiveSession.resolveUnknown(caseId);
       archiveSession.setPending(caseId, null);
       if (archiveSession.markChanged(result.archiveVersionId)) {
         notifyWorkflowChanged();
@@ -2006,9 +2047,7 @@ onBeforeUnmount(() => {
           <ElButton
             v-if="routine?.canEdit"
             data-test="edit-case-routine"
-            :disabled="
-              routineSaving || routineUnknown || drawerOpen || earlyArchiveOpen
-            "
+            :disabled="routineSaving || routineUnknown || drawerOpen"
             @click="routineEditing = true"
             >编辑资料</ElButton
           >
@@ -2021,15 +2060,6 @@ onBeforeUnmount(() => {
             :disabled="routineEditing || routineSaving"
             @click="openCommand(primaryCommand)"
             >{{ primaryCommand.label }}</ElButton
-          >
-          <ElButton
-            v-if="item.canEarlyArchive === true && item.stage !== 'ARCHIVED'"
-            class="action-size--wide"
-            type="danger"
-            data-test="open-detail-early-archive"
-            :disabled="routineEditing || routineSaving"
-            @click="earlyArchiveOpen = true"
-            >提前归档</ElButton
           >
           <details
             v-if="moreCommands.length > 0"
@@ -2137,9 +2167,14 @@ onBeforeUnmount(() => {
           data-test="case-read-only"
           class="case-workspace-field__help"
         >
-          可以查看案件和下载获准材料；当前账号不能办理此案。{{
-            item.stage === 'WAITING_COMPLAINT' ? '匹配已完成。' : ''
-          }}
+          <template v-if="item.stage === 'ARCHIVED'"
+            >案件已归档；普通资料和费用操作可从对应入口办理。</template
+          >
+          <template v-else
+            >可以查看案件和下载获准材料；当前账号不能办理此案。{{
+              item.stage === 'WAITING_COMPLAINT' ? '匹配已完成。' : ''
+            }}</template
+          >
         </p>
         <p v-if="refreshing" role="status">正在刷新案件详情…</p>
         <p v-if="refreshError" class="submit-error" role="alert">
@@ -2196,7 +2231,14 @@ onBeforeUnmount(() => {
         />
       </template>
       <template #fees
-        ><CaseWorkspaceFees :item="item" /><CaseFinancePanel
+        ><CaseWorkspaceFees
+          ref="caseFees"
+          :item="item"
+          :actor-key="identity"
+          :actor-user-id="auth.session?.user.id"
+          :actual-enabled="
+            activeTab === 'fees' && accessVerified && state === 'ready'
+          " /><CaseFinancePanel
           v-if="activeTab === 'fees' && accessVerified && state === 'ready'"
           :key="workspaceContext"
           :case-id="item.id"
@@ -2778,14 +2820,6 @@ onBeforeUnmount(() => {
         </ElDrawer>
       </template>
     </CaseWorkspaceShell>
-    <CaseEarlyArchivePanel
-      v-if="earlyArchiveOpen && item"
-      :item="item"
-      :context-key="identity"
-      @close="earlyArchiveOpen = false"
-      @completed="handleEarlyArchiveChanged"
-      @access-lost="load"
-    />
   </div>
 </template>
 

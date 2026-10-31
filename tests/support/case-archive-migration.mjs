@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
+import { admitManagedWorkerDatabase } from '../../scripts/managed-e2e-worker-admission.mjs';
 import {
   assertNoOrphanedOldForeignKeys,
   copyOldTables,
@@ -12,13 +13,17 @@ import { caseArchiveSourceSnapshot } from './case-archive-database.mjs';
 
 const root = process.cwd();
 const directory = resolve(root, 'backend/prisma/migrations');
-const allNames = readdirSync(directory)
+const availableNames = readdirSync(directory)
   .filter((n) => /^\d{14}_/u.test(n))
   .sort();
 const suffix = [
   '20261014090000_add_case_archive_enums',
   '20261014090100_guard_case_archive',
 ];
+// Preserve the exact CA017 historical 144 + 2 input on later full chains.
+const archiveBoundary = availableNames.indexOf(suffix[1]);
+if (archiveBoundary < 0) throw new Error('Missing case archive boundary');
+const allNames = availableNames.slice(0, archiveBoundary + 1);
 const quote = (n) => `"${n.replaceAll('"', '""')}"`;
 const sql = (n) => readFileSync(resolve(directory, n, 'migration.sql'), 'utf8');
 const archiveActions = new Set(['case.archive', 'case.archive.correct']);
@@ -72,7 +77,12 @@ async function replay(client, names) {
 export async function verifyCaseArchiveMigration(caseId) {
   if (process.env.NODE_ENV !== 'test')
     throw new Error('Archive migration requires isolated tests');
-  validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL);
+  const managed = await admitManagedWorkerDatabase({
+    root,
+    databaseUrl: process.env.DATABASE_URL,
+  });
+  if (managed === null)
+    validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL);
   if (
     allNames.length !== 146 ||
     allNames.at(-2) !== suffix[0] ||
@@ -83,7 +93,9 @@ export async function verifyCaseArchiveMigration(caseId) {
     );
   const backend = createRequire(resolve(root, 'backend/package.json'));
   const { Client } = backend('pg');
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({
+    connectionString: managed?.connectionString ?? process.env.DATABASE_URL,
+  });
   await client.connect();
   const schemas = [
     `ca017_empty_${randomUUID().replaceAll('-', '')}`,

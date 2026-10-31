@@ -75,7 +75,9 @@ export class CaseClosureService {
           closeAmt: input.closeAmt,
           note: input.note,
           correctionReason:
-            'correctionReason' in input ? input.correctionReason : null,
+            'correctionReason' in input
+              ? (input.correctionReason ?? null)
+              : null,
           closeContentVersionIds: input.closeContentVersionIds,
         }),
       )
@@ -330,7 +332,9 @@ export class CaseClosureService {
                       : new Prisma.Decimal(input.closeAmt).toFixed(2),
                   note: input.note,
                   correctionReason:
-                    'correctionReason' in input ? input.correctionReason : null,
+                    'correctionReason' in input
+                      ? (input.correctionReason ?? null)
+                      : null,
                   closeContentVersionIds: input.closeContentVersionIds,
                 },
               },
@@ -367,7 +371,9 @@ export class CaseClosureService {
                 closeAmt: input.closeAmt,
                 note: input.note,
                 correctionReason:
-                  'correctionReason' in input ? input.correctionReason : null,
+                  'correctionReason' in input
+                    ? (input.correctionReason ?? null)
+                    : null,
                 recordedAt,
                 recordedByUserId: actor.userId,
                 auditEventId,
@@ -495,7 +501,7 @@ export class CaseClosureService {
       !input ||
       typeof input !== 'object' ||
       Array.isArray(input) ||
-      Object.keys(input).length !== keys.length ||
+      keys.some((key) => key !== 'correctionReason' && !(key in input)) ||
       Object.keys(input).some((key) => !keys.includes(key)) ||
       !Number.isSafeInteger(input.expectedVersion) ||
       input.expectedVersion < 1 ||
@@ -531,10 +537,12 @@ export class CaseClosureService {
         (!('expectedClosureVersionId' in input) ||
           typeof input.expectedClosureVersionId !== 'string' ||
           !uuid.test(input.expectedClosureVersionId) ||
-          !('correctionReason' in input) ||
-          typeof input.correctionReason !== 'string' ||
-          !/\S/u.test(input.correctionReason) ||
-          input.correctionReason.length > 500))
+          ('correctionReason' in input &&
+            input.correctionReason !== undefined &&
+            input.correctionReason !== null &&
+            (typeof input.correctionReason !== 'string' ||
+              !/\S/u.test(input.correctionReason) ||
+              input.correctionReason.length > 500))))
     )
       throw failure('VALIDATION_ERROR');
     if (input.closeAt !== null) {

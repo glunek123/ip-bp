@@ -22,6 +22,30 @@ function deferred<T>() {
 }
 
 describe('list workflow context', () => {
+  it('completes independent commands without closing or notifying outer success', async () => {
+    const success = vi.fn();
+    const closed = vi.fn();
+    const workflow = createListWorkflowContext(
+      async () => ({ id: context.recordId }),
+      { success, closed },
+    );
+    await workflow.sync(context);
+    const session = workflow.state.value.session!;
+    expect(session.endSubmit('completed')).toBe(false);
+    expect(session.beginSubmit()).toBe(true);
+    expect(session.endSubmit('completed')).toBe(true);
+    expect(session.endSubmit('completed')).toBe(false);
+    expect(workflow.state.value.requestState).toBe('idle');
+    expect(workflow.state.value.session).toBe(session);
+    expect(workflow.state.value.status).toBe('ready');
+    expect(success).not.toHaveBeenCalled();
+    expect(closed).not.toHaveBeenCalled();
+    expect(session.beginSubmit()).toBe(true);
+    expect(session.endSubmit('success')).toBe(true);
+    expect(success).toHaveBeenCalledTimes(1);
+    expect(closed).toHaveBeenCalledTimes(1);
+    expect(session.endSubmit('completed')).toBe(false);
+  });
   it('cancels its GET on close and ignores a loader that does not respect abort', async () => {
     const pending = deferred<{ id: string }>();
     let signal: AbortSignal | undefined;

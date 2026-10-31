@@ -1,3 +1,4 @@
+import { isBatch2Current269 } from './batch2-current-managed-target.mjs';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
@@ -46,6 +47,7 @@ export async function grantBatch2RefundLifecycleActions(fixture) {
       'case.acceptance.register',
       'case.hearing.schedule',
       'case.archive',
+      ...(isBatch2Current269() ? ['case.closure.correct'] : []),
     ];
     await client.query('BEGIN');
     try {
@@ -222,4 +224,27 @@ export async function verifyBatch2RefundBoundaryAndRead(fixture, source) {
   } finally {
     await database.$disconnect();
   }
+}
+
+// Read authoritative financial facts, never turn calendar applications into payments.
+export async function readBatch2Current269ArchiveFinance(caseId, departmentId) {
+  if (!isBatch2Current269())
+    throw new Error('Current 269 financial read requires its owned scope');
+  return withOwnedDatabase(async (client) => {
+    const { rows } = await client.query(
+      `
+      SELECT i.declaration, s.closure_amount::text, s.readiness,
+        s.refund_readiness, s.payment_readiness, s.customer_readiness, s.lawyer_readiness,
+        s.refund_inventory_version_id,
+        (SELECT count(*)::integer FROM case_refund_inventory_items t WHERE t.inventory_version_id=i.id) AS refund_items
+      FROM case_archives a
+      JOIN case_archive_evidence_snapshots s ON s.archive_version_id=a.current_version_id AND s.case_id=a.case_id AND s.department_id=a.department_id
+      JOIN case_refund_inventory_versions i ON i.id=s.refund_inventory_version_id AND i.case_id=s.case_id AND i.department_id=s.department_id
+      WHERE a.case_id=$1 AND a.department_id=$2`,
+      [caseId, departmentId],
+    );
+    if (rows.length !== 1)
+      throw new Error('Exact current archive financial snapshot missing');
+    return rows[0];
+  });
 }

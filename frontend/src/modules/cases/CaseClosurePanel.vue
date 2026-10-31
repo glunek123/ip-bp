@@ -23,7 +23,7 @@ type RecordInput = {
 };
 type CorrectInput = RecordInput & {
   expectedClosureVersionId: string;
-  correctionReason: string;
+  correctionReason?: string | null;
 };
 type PendingRequest =
   | { command: 'RECORD'; input: RecordInput }
@@ -491,7 +491,7 @@ async function submit() {
             expectedClosureVersionId: props.item.closure!.current.id,
             correctionReason: correctionReason.value.trim()
               ? correctionReason.value
-              : '未填写',
+              : null,
           },
         }
       : { command: 'RECORD', input };

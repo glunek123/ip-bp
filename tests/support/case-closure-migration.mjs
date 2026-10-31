@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
+import { admitManagedWorkerDatabase } from '../../scripts/managed-e2e-worker-admission.mjs';
 import {
   assertNoOrphanedOldForeignKeys,
   copyOldTables,
@@ -158,11 +159,19 @@ async function replay(client, names) {
 export async function verifyCaseClosureMigration(caseId) {
   if (process.env.NODE_ENV !== 'test')
     throw new Error('Closure migration requires isolated tests');
-  validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL, {
-    allowRandomPort: true,
+  const managed = await admitManagedWorkerDatabase({
+    root,
+    databaseUrl: process.env.DATABASE_URL,
   });
-  if (new URL(process.env.DATABASE_URL).port !== '15433')
-    throw new Error('Closure migration requires the fixed 15433 test database');
+  if (managed === null) {
+    validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL, {
+      allowRandomPort: true,
+    });
+    if (new URL(process.env.DATABASE_URL).port !== '15433')
+      throw new Error(
+        'Closure migration requires the fixed 15433 test database',
+      );
+  }
   if (
     resolve(process.env.PRIVATE_FILE_ROOT ?? '') !==
     resolve(root, '.local/private-files/test')
@@ -178,7 +187,9 @@ export async function verifyCaseClosureMigration(caseId) {
     throw new Error('Expected exact 142 + 2 closure migration chain');
   const requireBackend = createRequire(resolve(root, 'backend/package.json'));
   const { Client } = requireBackend('pg');
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({
+    connectionString: managed?.connectionString ?? process.env.DATABASE_URL,
+  });
   const schemas = [
     `ca016_empty_${randomUUID().replaceAll('-', '')}`,
     `ca016_upgrade_${randomUUID().replaceAll('-', '')}`,

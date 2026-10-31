@@ -1,3 +1,4 @@
+import { assertBatch2LeadImportAdmission } from './scripts/batch2-lead-import-admission.mjs';
 import { defineConfig, devices } from '@playwright/test';
 import { assertSectionRecordUiConfigAdmission } from './scripts/case-section-record-ui-admission.mjs';
 import {
@@ -7,7 +8,13 @@ import {
 
 // Global setup/webServer runs before spec loading, so spec guards are too late.
 assertSectionRecordUiConfigAdmission(__dirname, process.argv.slice(2));
-const runtime = createManagedTestRuntime(__dirname, 'ui');
+const selectionArgs = process.argv.slice(2);
+if (selectionArgs[0] === 'test') selectionArgs.shift();
+const importRuntime = assertBatch2LeadImportAdmission(__dirname, selectionArgs);
+const runtime = createManagedTestRuntime(
+  __dirname,
+  importRuntime ? 'batch2-import' : 'ui',
+);
 planManagedTestRuntime(runtime);
 
 export default defineConfig({

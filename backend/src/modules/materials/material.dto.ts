@@ -47,6 +47,7 @@ export const materialCategories = [
   'EXECUTION_SUPPLEMENT',
   'EXECUTION_FINISH_BASIS',
   'CASE_CLOSURE_DOCUMENT',
+  'CASE_CLOSURE_PAYMENT_PROOF',
   'FEE_PROOF',
 ] as const;
 export type MaterialCategoryValue = (typeof materialCategories)[number];
@@ -77,6 +78,7 @@ export const materialPurposes = [
   'EXECUTION_SUPPLEMENT',
   'EXECUTION_FINISH_BASIS',
   'CASE_CLOSURE_DOCUMENT',
+  'CASE_CLOSURE_PAYMENT_PROOF',
   'FEE_PROOF',
 ] as const;
 export type MaterialPurposeValue = (typeof materialPurposes)[number];
@@ -103,6 +105,26 @@ export class CreateUploadDraftDto {
   @ApiProperty({ enum: materialPurposes })
   @IsIn(materialPurposes)
   purpose!: MaterialPurposeValue;
+
+  @ApiProperty({ maxLength: 200 })
+  @Transform(trim)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  originalFilename!: string;
+
+  @ApiProperty({ maxLength: 100 })
+  @Transform(trim)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  declaredMimeType!: string;
+}
+
+export class CreateSettlementUpdateDocumentUploadDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID('4')
+  expectedClosureVersionId!: string;
 
   @ApiProperty({ maxLength: 200 })
   @Transform(trim)

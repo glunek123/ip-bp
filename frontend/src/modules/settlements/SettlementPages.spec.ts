@@ -193,6 +193,8 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     const wrapper = render(SettlementCenterPage);
     await flushPromises();
     expect(wrapper.get('h1.sr-only').text()).toBe('结算中心');
+    expect(wrapper.find('.settlement-center__heading').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('未接入财务回填');
 
     const range = wrapper.get('.settlement-center__filters .date-range');
     expect(range.get('summary').text()).toContain('发起日期');
@@ -1060,6 +1062,10 @@ describe('zero amount fee launch handling', () => {
     await flushPromises();
 
     expect(wrapper.find('.fee-center__heading-actions').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('使用同一条费用记录');
+    expect(wrapper.get('.fee-center__description').text()).toBe(
+      '发起不代表财务已接收或实际支付。',
+    );
     const toolbar = wrapper.get('.fee-center__toolbar-actions');
     expect(toolbar.text()).toContain('查询');
     expect(toolbar.text()).toContain('清除');

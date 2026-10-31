@@ -229,6 +229,94 @@ describe('fee cancellation', () => {
       remainingVerifiedPayment: '70.00',
     });
   });
+  it.each([
+    {
+      paid: '6.00',
+      refunds: ['2.00', '3.00', '1.00'],
+      status: 'REFUND_RECORDED',
+      remaining: '0.00',
+    },
+    {
+      paid: '6.00',
+      refunds: ['2.00', '3.00'],
+      status: 'PARTIAL_REFUND',
+      remaining: '1.00',
+    },
+    { paid: '6.00', refunds: [], status: 'REFUND_PENDING', remaining: '6.00' },
+    { paid: '0.00', refunds: [], status: 'NO_PAYMENT', remaining: '0.00' },
+  ])(
+    'projects public history and cancellation list for $status',
+    async ({ paid, refunds, status, remaining }) => {
+      const f = fixture('已支付');
+      f.feeFindFirst.mockResolvedValue({
+        ...f.fee,
+        type: '诉讼费',
+        direction: '支出',
+        feeDate: new Date('2026-10-26T00:00:00.000Z'),
+        source: 'manual',
+        note: null,
+        case: {
+          businessNo: 'CA-1',
+          courtCaseNo: null,
+          stage: '一审',
+          sourceLead: null,
+          defendants: [],
+        },
+        proofContentVersion: { originalFilename: 'original.pdf' },
+        cancellation: {
+          id: 'cancellation',
+          outcome: 'VOIDED',
+          originalStatus: '已支付',
+          originalAmount: new Prisma.Decimal('100.00'),
+          originalVersion: 3,
+          reason: '重复登记',
+          actorUserId: actor.userId,
+          createdAt: new Date('2026-10-26T00:00:00.000Z'),
+          refundReconciliationStatus: 'PENDING',
+        },
+      });
+      f.paymentFindUnique.mockResolvedValue({
+        id: 'payment',
+        amount: new Prisma.Decimal(paid),
+        paymentDate: new Date('2026-10-20T00:00:00.000Z'),
+        proofMaterialId: null,
+        proofContentVersionId: null,
+        actorUserId: actor.userId,
+        createdAt: new Date('2026-10-26T00:00:00.000Z'),
+      });
+      f.refundFindMany.mockResolvedValue(
+        refunds.map((amount, index) => ({
+          id: `refund-${index}`,
+          amount: new Prisma.Decimal(amount),
+          refundDate: new Date('2026-10-26T00:00:00.000Z'),
+          proofMaterialId: null,
+          proofContentVersionId: null,
+          actorUserId: actor.userId,
+          createdAt: new Date('2026-10-26T00:00:00.000Z'),
+        })),
+      );
+      await expect(f.service.history(actor, 'fee')).resolves.toMatchObject({
+        cancellation: { reconciliationStatus: status },
+        remainingVerifiedPayment: remaining,
+      });
+      const row = await f.feeFindFirst();
+      f.feeFindMany.mockResolvedValue([
+        {
+          ...row,
+          cancellation: {
+            ...row.cancellation,
+            payment: await f.paymentFindUnique(),
+            refunds: await f.refundFindMany(),
+          },
+        },
+      ]);
+      await expect(
+        f.service.listCancellations(actor, { page: 1, pageSize: 20 }),
+      ).resolves.toMatchObject({
+        items: [{ cancellation: { reconciliationStatus: status } }],
+      });
+    },
+  );
   it('voids a paid fee while preserving original money, payment status and proof', async () => {
     const f = fixture('已支付');
     await expect(
@@ -371,6 +459,29 @@ describe('fee cancellation', () => {
     ).toBeLessThan(
       f.tx.feeCancellationPayment.create.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it('rejects a zero verified payment before refund aggregate or insertion', async () => {
+    const f = fixture('已支付');
+    f.tx.feeCancellation.findUnique.mockResolvedValue({
+      id: 'cancellation',
+      outcome: 'VOIDED',
+    });
+    f.tx.feeCancellationPayment.findUnique.mockResolvedValue({
+      id: 'payment',
+      amount: new Prisma.Decimal('0.00'),
+    });
+    await expect(
+      f.service.reconcileCancelledRefund(actor, 'fee', {
+        amount: '0.01',
+        refundDate: '2026-10-26',
+        proofMaterialId: null,
+        proofContentVersionId: null,
+        idempotencyKey: 'zero-paid-refund',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'PAYMENT_NOT_VERIFIED' } });
+    expect(f.tx.feeRefundReconciliation.aggregate).not.toHaveBeenCalled();
+    expect(f.tx.feeRefundReconciliation.create).not.toHaveBeenCalled();
   });
 
   it('supports partial refunds up to the verified real payment', async () => {

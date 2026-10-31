@@ -7,6 +7,12 @@ const Decimal = Prisma.Decimal.clone({
 const moneyPattern = /^(0|[1-9]\d{0,15})(?:\.\d{1,2})?$/u;
 const percentPattern = /^(?:100(?:\.0{1,16})?|\d{1,2}(?:\.\d{1,16})?)$/u;
 
+export const SETTLEMENT_V1 = 'settlement-calculation-v1-whole-yuan-half-up';
+export const SETTLEMENT_V2 =
+  'settlement-calculation-v2-manual-cents-auto-whole-yuan-half-up';
+export type SettlementCalculationRuleVersion =
+  typeof SETTLEMENT_V1 | typeof SETTLEMENT_V2;
+
 export type SettlementSide = 'CUSTOMER' | 'LAWYER';
 export type LawyerSettlementMode = 'FULL_RISK' | 'HALF_RISK' | 'FIXED_FEE';
 
@@ -61,7 +67,14 @@ export function customerPercentFromFormula(formula: string): string {
 
 export function calculateSettlement(
   input: SettlementCalculationInput,
+  ruleVersion: SettlementCalculationRuleVersion = SETTLEMENT_V2,
 ): SettlementCalculationResult {
+  if (ruleVersion !== SETTLEMENT_V1 && ruleVersion !== SETTLEMENT_V2)
+    throw new Error('INVALID_SETTLEMENT_RULE_VERSION');
+  const manualMoney = (value: string) =>
+    ruleVersion === SETTLEMENT_V1
+      ? roundedMoney(money(value))
+      : money(value).toFixed(2);
   if (
     (input.closureAmountState === 'KNOWN') !==
     (input.closureAmount !== null)
@@ -111,11 +124,11 @@ export function calculateSettlement(
     input.customerManualAmount === undefined ||
     input.customerManualAmount === null
       ? null
-      : roundedMoney(money(input.customerManualAmount));
+      : manualMoney(input.customerManualAmount);
   const lawyerManual =
     input.lawyerManualAmount === undefined || input.lawyerManualAmount === null
       ? null
-      : roundedMoney(money(input.lawyerManualAmount));
+      : manualMoney(input.lawyerManualAmount);
 
   return {
     basis: basis?.toFixed(2) ?? null,

@@ -427,11 +427,6 @@ async function cancelBill(): Promise<void> {
 <template>
   <main class="settlement-center">
     <h1 class="sr-only">结算中心</h1>
-    <header class="settlement-center__heading">
-      <p>
-        发起、入单与财务实际结果分别展示。未接入财务回填时，实际收付与日期保持待定。
-      </p>
-    </header>
     <div
       role="tablist"
       aria-label="结算中心页签"
@@ -868,24 +863,11 @@ async function cancelBill(): Promise<void> {
   padding: 16px 20px;
   color: var(--color-ink);
 }
-.settlement-center__heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 4px 16px;
-}
-.settlement-center__heading h1,
-.settlement-center__heading p,
 .settlement-center__detail h2,
 .settlement-center__bills h2,
 .settlement-center__bill-detail h2 {
   margin: 0;
 }
-.settlement-center__heading h1 {
-  font-size: 20px;
-}
-.settlement-center__heading p,
 .settlement-center__note {
   color: var(--color-ink-muted);
   font-size: 12px;

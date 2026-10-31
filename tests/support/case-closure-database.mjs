@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
+import { admitManagedWorkerDatabase } from '../../scripts/managed-e2e-worker-admission.mjs';
 import { coreLeadFixtures } from './core-lead-database.mjs';
 import { createCaseExecutionFilingSourceThroughApi } from './case-execution-filing-database.mjs';
 
@@ -27,7 +28,11 @@ async function connect() {
   if (process.env.NODE_ENV !== 'test' || !process.env.DATABASE_URL)
     throw new Error('Closure fixtures require the isolated test runtime');
   // These probes are deliberately fixed to backend/.env.test (15433), never 15436.
-  validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL);
+  const managed = await admitManagedWorkerDatabase({
+    databaseUrl: process.env.DATABASE_URL,
+  });
+  if (managed === null)
+    validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL);
   if (
     resolve(process.env.PRIVATE_FILE_ROOT ?? '') !==
     resolve(process.cwd(), '.local/private-files/test')
@@ -35,7 +40,9 @@ async function connect() {
     throw new Error('Closure fixtures require the isolated test file root');
   const backend = createRequire(resolve(process.cwd(), 'backend/package.json'));
   const { Client } = backend('pg');
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const client = new Client({
+    connectionString: managed?.connectionString ?? process.env.DATABASE_URL,
+  });
   await client.connect();
   const identity = (
     await client.query(

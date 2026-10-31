@@ -288,6 +288,69 @@ describe('closure commands', () => {
       }),
     });
   });
+  it.each([undefined, null])(
+    'appends an audited correction with optional reason %s and replays equivalent null input',
+    async (correctionReason) => {
+      const f = fixture();
+      f.record.closure = {
+        id: id('b'),
+        finishId: id('a'),
+        currentVersionId: id('c'),
+        currentVersion: { id: id('c'), toVersion: 25 },
+      };
+      const correction = {
+        ...input,
+        expectedClosureVersionId: id('c'),
+        ...(correctionReason === undefined ? {} : { correctionReason }),
+      };
+      const result = await f.service.correct(actor, caseId, correction);
+      expect(f.tx.caseClosureVersion.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          kind: 'CORRECT',
+          priorVersionId: id('c'),
+          correctionReason: null,
+        }),
+      });
+      expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          details: expect.objectContaining({ correctionReason: null }),
+        }),
+      });
+      const receipt = f.tx.caseClosureReceipt.create.mock.calls[0]![0].data;
+      f.tx.caseClosureReceipt.findUnique.mockResolvedValue(receipt);
+      expect(
+        await f.service.correct(actor, caseId, {
+          ...correction,
+          correctionReason: null,
+        }),
+      ).toEqual(result);
+      expect(f.tx.caseClosureVersion.create).toHaveBeenCalledTimes(1);
+      await expect(
+        f.service.correct(actor, caseId, {
+          ...correction,
+          correctionReason: 'changed',
+        }),
+      ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+      f.access.authorizeCase.mockRejectedValue(new ForbiddenException());
+      await expect(
+        f.service.correct(actor, caseId, correction),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    },
+  );
+  it.each(['', '  ', 'a'.repeat(501), 123])(
+    'rejects invalid supplied correction reasons',
+    async (correctionReason) => {
+      const f = fixture();
+      await expect(
+        f.service.correct(actor, caseId, {
+          ...input,
+          expectedClosureVersionId: id('c'),
+          correctionReason,
+        } as never),
+      ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+      expect(f.database.$transaction).not.toHaveBeenCalled();
+    },
+  );
   it('keeps original receipt replay before the new independent edit barrier', async () => {
     const f = fixture();
     const result = await f.service.record(actor, caseId, input);

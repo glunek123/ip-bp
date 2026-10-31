@@ -68,6 +68,7 @@ function archiveDetailPayload() {
     archiveAt: archiveInput.archiveAt,
     archiveType: archiveInput.archiveType,
     archiveReason: archiveInput.archiveReason,
+    archiveNote: null,
     correctionReason: null,
     recordedAt: archiveReceipt.recordedAt,
     recordedByUserId: '90000000-0000-4000-8000-000000000004',
@@ -107,31 +108,6 @@ describe('early archive API', () => {
     recordedAt: '2026-10-14T01:00:00.000Z',
     recordedByUserId: '90000000-0000-4000-8000-000000000004',
   };
-  it('posts the single case command and validates its exact receipt', async () => {
-    const receipt: casesApi.EarlyArchiveCaseResult = {
-      id: archiveCaseId,
-      earlyArchiveId: fact.id,
-      fromStage: fact.fromStage,
-      stage: 'ARCHIVED',
-      version: 21,
-      recordedAt: fact.recordedAt,
-    };
-    const fetch = mockJson(receipt, 201);
-    await expect(
-      casesApi.earlyArchiveCase(archiveCaseId, input),
-    ).resolves.toEqual(receipt);
-    expect(fetch.mock.calls[0]?.[0]).toBe(
-      `/api/v1/cases/${archiveCaseId}/early-archive`,
-    );
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
-    expect(fetch.mock.calls[0]?.[1]?.headers['Idempotency-Key']).toBe(
-      input.idempotencyKey,
-    );
-    mockJson({ ...receipt, version: 22 }, 201);
-    await expect(
-      casesApi.earlyArchiveCase(archiveCaseId, input),
-    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
-  });
   it('reads the distinct early fact while keeping the old closure chain', async () => {
     const old = closureDetailPayload();
     const payload = {
@@ -177,6 +153,12 @@ describe('CA-017 fixed archive API', () => {
       );
     },
   );
+  it('includes a supplied archive note while preserving the no-note request shape', async () => {
+    const fetch = mockJson(archiveReceipt, 201);
+    const input = { ...archiveInput, archiveNote: '已核对补充资料' };
+    await casesApi.archiveCase(archiveCaseId, input);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
+  });
   it.each([
     'VOIDED',
     'SETTLEMENT',
@@ -1908,6 +1890,7 @@ describe('CA-018 strict source-aware execution read boundary', () => {
       archiveAt: '2026-10-10',
       archiveType: 'EXECUTION_CLOSED',
       archiveReason: '真实材料归档',
+      archiveNote: null,
       correctionReason: null,
       recordedAt: '2026-10-10T05:00:00.000Z',
       recordedByUserId: id(155),
@@ -1939,6 +1922,115 @@ describe('CA-018 strict source-aware execution read boundary', () => {
 });
 
 describe('cases API', () => {
+  const closureCapabilityCounts = Object.fromEntries(
+    [
+      'PENDING_MATCH',
+      'WAITING_COMPLAINT',
+      'WAITING_COMPLAINT_CONFIRMATION',
+      'WAITING_COMPLAINT_STAMP',
+      'WAITING_FILING',
+      'WAITING_FORMAL_ACCEPTANCE',
+      'WAITING_HEARING',
+      'WAITING_JUDGMENT',
+      'SECOND_INSTANCE',
+      'WAITING_EXECUTION_DOCUMENTS',
+      'WAITING_EXECUTION_CONFIRMATION',
+      'WAITING_EXECUTION_STAMP',
+      'WAITING_EXECUTION_FILING',
+      'EXECUTING',
+      'WAITING_ARCHIVE',
+      'ARCHIVED',
+    ].map((stage) => [stage, 0]),
+  );
+  it('preserves new closure capabilities in list and detail responses', async () => {
+    const capabilities = {
+      canEarlyClose: true,
+      canUpdateClosureSettlement: false,
+      canSupplementPaymentProof: false,
+      canReadClosurePaymentHistory: false,
+    };
+    mockJson({
+      items: [{ ...summary, ...capabilities }],
+      counts: closureCapabilityCounts,
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    await expect(listCases()).resolves.toMatchObject({ items: [capabilities] });
+    mockJson({ ...detail, ...capabilities });
+    await expect(getCase(detail.id)).resolves.toMatchObject(capabilities);
+    const waiting = {
+      ...closureDetailPayload(),
+      canEarlyClose: false,
+      canUpdateClosureSettlement: true,
+      canSupplementPaymentProof: true,
+      canReadClosurePaymentHistory: true,
+    };
+    mockJson(waiting);
+    await expect(getCase(waiting.id)).resolves.toMatchObject({
+      canEarlyClose: false,
+      canUpdateClosureSettlement: true,
+    });
+  });
+  it('keeps omitted capabilities absent for older services without granting authorization', async () => {
+    mockJson(detail);
+    const result = await getCase(detail.id);
+    expect(result.canEarlyClose).toBeUndefined();
+    expect(result.canUpdateClosureSettlement).toBeUndefined();
+    expect(result.canSupplementPaymentProof).toBeUndefined();
+    mockJson({
+      items: [summary],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      counts: closureCapabilityCounts,
+    });
+    const page = await listCases();
+    expect(page.items[0].canEarlyClose).toBeUndefined();
+    expect(page.items[0].canUpdateClosureSettlement).toBeUndefined();
+  });
+  it.each([
+    { canEarlyClose: 'true' },
+    { canEarlyClose: null },
+    { canSupplementPaymentProof: 1 },
+    { canSupplementPaymentProof: null },
+    { canReadClosurePaymentHistory: 1 },
+    { canReadClosurePaymentHistory: null },
+    { canReadClosurePaymentHistory: true },
+    { canSupplementPaymentProof: true },
+    { canUpdateClosureSettlement: 1 },
+    { canUpdateClosureSettlement: null },
+    { canUpdateClosureSettlement: true },
+  ])(
+    'rejects invalid closure capability values and stages',
+    async (capabilities) => {
+      mockJson({ ...detail, ...capabilities });
+      await expect(getCase(detail.id)).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+      mockJson({
+        items: [{ ...summary, ...capabilities }],
+        counts: closureCapabilityCounts,
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      });
+      await expect(listCases()).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    },
+  );
+  it('rejects early closure permission once the case is waiting for archive', async () => {
+    const waiting = {
+      ...closureDetailPayload(),
+      canEarlyClose: true,
+      canUpdateClosureSettlement: false,
+    };
+    mockJson(waiting);
+    await expect(getCase(waiting.id)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
   it('decodes optional record-edit projections and rejects broken revision chains', async () => {
     const acceptanceId = '90000000-0000-4000-8000-000000000021';
     const defendantId = '90000000-0000-4000-8000-000000000011';
@@ -4547,6 +4639,33 @@ describe('cases API', () => {
       createdAt: '2026-09-28T00:00:00.000Z',
     };
     mockJson({ items: [item], total: 1, page: 1, pageSize: 20, counts });
+    for (const capability of [
+      'canEarlyClose',
+      'canUpdateClosureSettlement',
+      'canSupplementPaymentProof',
+    ]) {
+      mockJson({
+        items: [{ ...item, [capability]: false }],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+        counts,
+      });
+      await expect(listLawyerCases()).resolves.toMatchObject({
+        items: [{ [capability]: false }],
+      });
+      mockJson({
+        items: [{ ...item, [capability]: true }],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+        counts,
+      });
+      await expect(listLawyerCases()).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+    mockJson({ items: [item], total: 1, page: 1, pageSize: 20, counts });
     await expect(listLawyerCases()).resolves.toMatchObject({
       items: [
         {
@@ -6394,6 +6513,19 @@ describe('CA-016 closure and list display contract', () => {
       );
     },
   );
+  it.each([undefined, null])(
+    'submits optional correction reason %s without a placeholder',
+    async (correctionReason) => {
+      const input = {
+        ...closureInput,
+        expectedClosureVersionId: closureReceipt.closureVersionId,
+        ...(correctionReason === undefined ? {} : { correctionReason }),
+      };
+      const fetch = mockJson(closureReceipt, 201);
+      await casesApi.correctCaseClosure('case-1', input);
+      expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
+    },
+  );
   it('preserves real zero, whitespace and attachment order and requires the correction anchor/reason', async () => {
     const input = {
       ...closureInput,
@@ -6526,6 +6658,18 @@ describe('CA-016 closure and list display contract', () => {
     await expect(getCase('case-1')).resolves.toMatchObject({
       closure: { current: { closeAmt: '0.00' } },
     });
+    const noReason = { ...corrected, correctionReason: null };
+    mockJson({
+      ...correction,
+      closure: {
+        ...correction.closure,
+        current: noReason,
+        history: [payload.closure.current, noReason],
+      },
+    });
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      closure: { current: { correctionReason: null } },
+    });
     for (const invalid of [
       { ...correction.closure, current: { ...corrected, note: 'tampered' } },
       { ...correction.closure, history: [corrected, payload.closure.current] },
@@ -6538,6 +6682,78 @@ describe('CA-016 closure and list display contract', () => {
       { ...correction.closure, current: { ...corrected, closeAmt: '0' } },
     ]) {
       mockJson({ ...correction, closure: invalid });
+      await expect(getCase('case-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+  it('accepts only a linked early closure source and rejects forged or crossed chains', async () => {
+    const base = closureDetailPayload();
+    const first = { ...base.closure.current, finishId: null };
+    const earlyClosure = {
+      id: '80000000-0000-4000-8000-000000000205',
+      fromStage: 'EXECUTING',
+      fromVersion: 18,
+      toVersion: 19,
+    };
+    const payload = {
+      ...base,
+      executionFinish: null,
+      earlyClosure,
+      closure: {
+        ...base.closure,
+        finishId: null,
+        current: first,
+        history: [first],
+      },
+    };
+    mockJson(payload);
+    await expect(getCase('case-1')).resolves.toMatchObject({ earlyClosure });
+    const corrected = {
+      ...first,
+      id: '80000000-0000-4000-8000-000000000204',
+      kind: 'CORRECT',
+      priorVersionId: first.id,
+      fromVersion: 20,
+      toVersion: 21,
+    };
+    const chained = {
+      ...payload,
+      version: 21,
+      closure: {
+        ...payload.closure,
+        current: corrected,
+        history: [first, corrected],
+      },
+    };
+    mockJson(chained);
+    await expect(getCase('case-1')).resolves.toMatchObject({ earlyClosure });
+    for (const invalid of [
+      { ...payload, earlyClosure: null },
+      {
+        ...payload,
+        earlyClosure: { ...earlyClosure, fromStage: 'WAITING_ARCHIVE' },
+      },
+      { ...payload, earlyClosure: { ...earlyClosure, toVersion: 18 } },
+      {
+        ...payload,
+        earlyClosure: { ...earlyClosure, fromVersion: 17, toVersion: 18 },
+      },
+      { ...payload, executionFinish: base.executionFinish },
+      {
+        ...chained,
+        closure: {
+          ...chained.closure,
+          current: { ...corrected, fromVersion: 19 },
+          history: [first, { ...corrected, fromVersion: 19 }],
+        },
+      },
+      {
+        ...payload,
+        closure: { ...payload.closure, finishId: base.executionFinish.id },
+      },
+    ]) {
+      mockJson(invalid);
       await expect(getCase('case-1')).rejects.toMatchObject({
         code: 'INVALID_RESPONSE',
       });

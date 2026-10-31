@@ -1,3 +1,4 @@
+import { isBatch2Current269 } from '../support/batch2-current-managed-target.mjs';
 import { randomUUID } from 'node:crypto';
 import {
   expect,
@@ -9,6 +10,7 @@ import { assertBatch2Admission } from '../support/batch2-proxy-calendar-acceptan
 import { seedBatch2ProxyCalendarActors } from '../support/batch2-proxy-calendar-fixture.mjs';
 import {
   grantBatch2RefundLifecycleActions,
+  readBatch2Current269ArchiveFinance,
   readBatch2RefundLedger,
   readBatch2RoundRevokedAt,
   verifyBatch2RefundBoundaryAndRead,
@@ -187,6 +189,94 @@ async function refundDates(sourceId: string, recordedAt: string) {
   return { dueDate, source: dates.find((item) => item.sourceId === sourceId) };
 }
 
+// Calendar application facts are independent of the explicit financial declaration.
+async function closeAndArchiveCurrent269(
+  current: Case,
+  replacement: SecondResult,
+) {
+  const retired = await actor.context.post(
+    `/api/v1/cases/${current.id}/early-archive`,
+    {
+      headers: headers(),
+      data: {
+        expectedVersion: replacement.version,
+        idempotencyKey: randomUUID(),
+        archiveAt: shanghaiDay(),
+        reason: '合成旧入口退役反例',
+      },
+    },
+  );
+  expect(retired.status(), await retired.text()).toBe(409);
+  expect(await retired.json()).toMatchObject({ code: 'EARLY_ARCHIVE_RETIRED' });
+  const unchanged = await body<{ version: number; stage: string }>(
+    await actor.context.get(`/api/v1/cases/${current.id}`),
+    200,
+  );
+  expect(unchanged).toMatchObject({
+    version: replacement.version,
+    stage: 'WAITING_EXECUTION_DOCUMENTS',
+  });
+  const values = {
+    closeAt: shanghaiDay(),
+    closeAmountState: 'KNOWN',
+    closeAmt: '0',
+    closeContentVersionIds: [],
+    paymentType: 'ONE_TIME',
+    paymentRecords: [],
+  };
+  const closed = await post<{
+    version: number;
+    stage: string;
+    closureVersionId: string;
+  }>(current.id, 'early-closure', {
+    ...values,
+    expectedVersion: replacement.version,
+    expectedStage: 'WAITING_EXECUTION_DOCUMENTS',
+  });
+  expect(closed.stage).toBe('WAITING_ARCHIVE');
+  expect(closed.version).toBe(replacement.version + 1);
+  const declared = await post<{
+    version: number;
+    stage: string;
+    closureVersionId: string;
+    refundInventoryVersionId: string;
+  }>(current.id, 'closure-settlement-updates', {
+    ...values,
+    expectedVersion: closed.version,
+    expectedClosureVersionId: closed.closureVersionId,
+    correctionReason: '合成案件明确确认无适用诉讼退费，不将日历申请视作回款',
+    refund: {
+      expectedVersionId: null,
+      kind: 'DECLARE_NOT_APPLICABLE',
+      items: [],
+    },
+  });
+  expect(declared.stage).toBe('WAITING_ARCHIVE');
+  expect(declared.version).toBe(closed.version + 1);
+  expect(declared.refundInventoryVersionId).toEqual(expect.any(String));
+  const archived = await post<{ stage: string }>(current.id, 'archive', {
+    expectedVersion: declared.version,
+    expectedClosureVersionId: declared.closureVersionId,
+    archiveAt: shanghaiDay(),
+    archiveType: 'VOIDED',
+    archiveReason: '合成提前结案后正式归档',
+  });
+  expect(archived.stage).toBe('ARCHIVED');
+  expect(
+    await readBatch2Current269ArchiveFinance(current.id, fixture.departmentId),
+  ).toMatchObject({
+    declaration: 'NOT_APPLICABLE',
+    closure_amount: '0.00',
+    readiness: 'PASSED',
+    refund_readiness: 'PASSED',
+    payment_readiness: 'EXEMPT',
+    customer_readiness: 'EXEMPT',
+    lawyer_readiness: 'EXEMPT',
+    refund_inventory_version_id: declared.refundInventoryVersionId,
+    refund_items: 0,
+  });
+}
+
 test.describe.serial('Batch 2 formal refund lifecycle', () => {
   test.setTimeout(300_000);
   test.beforeAll(async ({ playwright }) => {
@@ -266,16 +356,20 @@ test.describe.serial('Batch 2 formal refund lifecycle', () => {
       persisted: 1,
       afterRead: expect.any(String),
     });
-    const archived = await post<{ version: number; stage: string }>(
-      current.id,
-      'early-archive',
-      {
-        expectedVersion: replacement.version,
-        archiveAt: shanghaiDay(),
-        reason: '合成提前归档，保留独立财务待办',
-      },
-    );
-    expect(archived.stage).toBe('ARCHIVED');
+    if (isBatch2Current269()) {
+      await closeAndArchiveCurrent269(current, replacement);
+    } else {
+      const archived = await post<{ version: number; stage: string }>(
+        current.id,
+        'early-archive',
+        {
+          expectedVersion: replacement.version,
+          archiveAt: shanghaiDay(),
+          reason: '合成提前归档，保留独立财务待办',
+        },
+      );
+      expect(archived.stage).toBe('ARCHIVED');
+    }
     expect(
       (await refundDates(replacement.resultId, replacement.recordedAt)).source,
     ).toMatchObject({ applied: false });

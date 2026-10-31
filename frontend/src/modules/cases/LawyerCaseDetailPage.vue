@@ -269,7 +269,11 @@ const finishCallbacks = computed(() => {
   };
 });
 
-const archiveSession = caseArchiveSession(auth, () => identity.value);
+const archiveSession = caseArchiveSession(
+  auth,
+  () => identity.value,
+  () => secondInstanceActorKey.value,
+);
 const archivePending = computed(() => archiveSession.pending(id.value));
 const archiveCallbacks = computed(() => {
   const caseId = item.value?.id ?? id.value;
@@ -329,6 +333,25 @@ const archiveCallbacks = computed(() => {
           );
         return result;
       } catch (reason) {
+        if (
+          current() &&
+          (!(reason instanceof ApiError) ||
+            ['NETWORK_ERROR', 'TIMEOUT', 'INVALID_RESPONSE'].includes(
+              reason.code,
+            ) ||
+            reason.status >= 500)
+        )
+          archiveSession.retainUnknown(caseId, { command: 'ARCHIVE', input });
+        if (
+          current() &&
+          reason instanceof ApiError &&
+          ![401, 403].includes(reason.status) &&
+          !['NETWORK_ERROR', 'TIMEOUT', 'INVALID_RESPONSE'].includes(
+            reason.code,
+          ) &&
+          reason.status < 500
+        )
+          archiveSession.resolveUnknown(caseId);
         return denied(reason);
       }
     },
@@ -337,6 +360,7 @@ const archiveCallbacks = computed(() => {
     },
     changed: (result: CaseArchiveResult) => {
       if (!current() || result.id !== caseId) return;
+      archiveSession.resolveUnknown(caseId);
       archiveSession.setPending(caseId, null);
       if (archiveSession.markChanged(result.archiveVersionId)) {
         notifyWorkflowChanged();

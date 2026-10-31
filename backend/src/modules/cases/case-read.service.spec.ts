@@ -1,6 +1,8 @@
 import { CaseReadService } from './case-read.service';
 import { Prisma } from '../../generated/prisma/client';
 import { caseListMembershipWhere, caseListTextWhere } from './case-list-query';
+import * as caseEntrySource from './case-entry-source';
+import * as executionSource from './case-execution-source';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -60,6 +62,7 @@ function displaySource(leadId: string, matterId: string) {
 describe('CaseReadService', () => {
   function fixture() {
     const db = {
+      caseClosurePaymentVersion: { findMany: jest.fn().mockResolvedValue([]) },
       caseExecutionFilingFeedback: {
         findMany: jest.fn().mockResolvedValue([]),
       },
@@ -990,6 +993,230 @@ describe('CaseReadService', () => {
       });
     },
   );
+  it.each([
+    ['PENDING_MATCH', true],
+    ['WAITING_HEARING', true],
+    ['EXECUTING', true],
+    ['WAITING_ARCHIVE', false],
+    ['ARCHIVED', false],
+  ])(
+    'projects early closure eligibility for %s in list and detail',
+    async (stage, allowed) => {
+      const f = fixture();
+      const record = externalRecord(stage);
+      f.db.case.findMany.mockResolvedValue([record]);
+      f.db.case.findFirst.mockResolvedValue(record);
+      for (const value of [
+        await f.service.get(actor, record.id),
+        (await f.service.list(actor, 1, 20)).items[0],
+      ])
+        expect(value).toMatchObject({ canEarlyClose: allowed });
+    },
+  );
+
+  it.each([
+    'case.read',
+    'neither-early-action',
+    'other-owner',
+    'child',
+    'finished',
+    'closed',
+    'early-closed',
+    'early-archived',
+    'archived',
+    'lawyer',
+  ])('denies early closure eligibility when %s blocks it', async (reason) => {
+    const f = fixture();
+    const record = {
+      ...externalRecord('WAITING_HEARING'),
+      consolidationMembership: null as { isMain: boolean } | null,
+      executionFinish: null as { id: string } | null,
+      closure: null as { id: string; versions: never[] } | null,
+      earlyClosure: null as { id: string } | null,
+      earlyArchive: null as { id: string } | null,
+      archive: null as { id: string; versions: never[] } | null,
+    };
+    if (reason === 'other-owner') record.responsibleUserId = 'other';
+    if (reason === 'child') record.consolidationMembership = { isMain: false };
+    if (reason === 'finished') record.executionFinish = { id: 'finish' };
+    if (reason === 'closed') record.closure = { id: 'closure', versions: [] };
+    if (reason === 'early-closed') record.earlyClosure = { id: 'early' };
+    if (reason === 'early-archived') record.earlyArchive = { id: 'early' };
+    if (reason === 'archived') record.archive = { id: 'archive', versions: [] };
+    if (reason === 'lawyer')
+      f.db.userAccount.findUnique.mockResolvedValue({
+        accountType: 'LAWYER',
+        active: true,
+      });
+    const currentActor =
+      reason === 'lawyer' ? { ...actor, lawyerAccountId: actor.userId } : actor;
+    f.access.canAuthorizeCase.mockImplementation(async (_actor, action) =>
+      reason === 'neither-early-action'
+        ? !['case.closure.record', 'case.archive'].includes(action)
+        : action !== reason,
+    );
+    f.db.case.findMany.mockResolvedValue([record]);
+    // Malformed historical records are sufficient for list projection; detail has separate history invariants.
+    expect((await f.service.list(currentActor, 1, 20)).items[0]).toMatchObject({
+      canEarlyClose: false,
+    });
+  });
+
+  it.each([
+    'allowed',
+    'case.read',
+    'other-owner',
+    'child',
+    'stale',
+    'missing',
+    'archived',
+    'lawyer',
+  ])('projects settlement update eligibility: %s', async (reason) => {
+    const f = fixture();
+    const record = {
+      ...externalRecord(reason === 'archived' ? 'ARCHIVED' : 'WAITING_ARCHIVE'),
+      consolidationMembership: reason === 'child' ? { isMain: false } : null,
+      closure:
+        reason === 'missing'
+          ? null
+          : {
+              id: 'closure',
+              currentVersion: {
+                id: 'version',
+                toVersion: reason === 'stale' ? 0 : 1,
+                closeAmountState: 'KNOWN',
+                closeAmt: new Prisma.Decimal('100.00'),
+              },
+            },
+    };
+    if (reason === 'other-owner') record.responsibleUserId = 'other';
+    if (reason === 'lawyer')
+      f.db.userAccount.findUnique.mockResolvedValue({
+        accountType: 'LAWYER',
+        active: true,
+      });
+    const currentActor =
+      reason === 'lawyer' ? { ...actor, lawyerAccountId: actor.userId } : actor;
+    f.access.canAuthorizeCase.mockImplementation(
+      async (_actor, action) => action !== reason,
+    );
+    f.db.caseClosurePaymentVersion.findMany.mockResolvedValue([
+      { caseId: record.id, paymentId: 'p1', revision: 1, state: 'ACTIVE' },
+    ]);
+    f.db.case.findMany.mockResolvedValue([record]);
+    expect((await f.service.list(currentActor, 1, 20)).items[0]).toMatchObject({
+      canSupplementPaymentProof: [
+        'allowed',
+        'child',
+        'stale',
+        'archived',
+      ].includes(reason),
+      canUpdateClosureSettlement: reason === 'allowed',
+    });
+    if (reason === 'allowed')
+      expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+        canArchive: true,
+      });
+  });
+
+  it('batches payment heads for the current page without reviving void payments', async () => {
+    const f = fixture();
+    const base = {
+      ...externalRecord('ARCHIVED'),
+      closure: {
+        id: 'closure',
+        currentVersion: {
+          id: 'version',
+          toVersion: 0,
+          closeAmountState: 'KNOWN',
+          closeAmt: new Prisma.Decimal('100.00'),
+        },
+      },
+    };
+    f.db.case.findMany.mockResolvedValue([
+      ...['a', 'b', 'c'].map((id) => ({
+        ...base,
+        id,
+        externalEntry: { ...base.externalEntry, caseId: id },
+      })),
+      {
+        ...base,
+        id: 'other-owner',
+        externalEntry: { ...base.externalEntry, caseId: 'other-owner' },
+        responsibleUserId: 'other',
+      },
+    ]);
+    f.db.caseClosurePaymentVersion.findMany.mockResolvedValue([
+      { caseId: 'a', paymentId: 'same', revision: 2, state: 'VOID' },
+      { caseId: 'b', paymentId: 'same', revision: 2, state: 'ACTIVE' },
+      { caseId: 'a', paymentId: 'same', revision: 1, state: 'ACTIVE' },
+      { caseId: 'c', paymentId: 'first', revision: 1, state: 'VOID' },
+      { caseId: 'c', paymentId: 'second', revision: 1, state: 'ACTIVE' },
+    ]);
+    const page = await f.service.list(actor, 1, 20);
+    expect(page.items.map((item) => item.canSupplementPaymentProof)).toEqual([
+      false,
+      true,
+      true,
+      false,
+    ]);
+    expect(page.items.map((item) => item.canReadClosurePaymentHistory)).toEqual(
+      [true, true, true, false],
+    );
+    expect(f.db.caseClosurePaymentVersion.findMany).toHaveBeenCalledTimes(1);
+    expect(f.db.caseClosurePaymentVersion.findMany).toHaveBeenCalledWith({
+      where: {
+        caseId: { in: ['a', 'b', 'c'] },
+        departmentId: actor.departmentId,
+      },
+      select: { caseId: true, paymentId: true, revision: true, state: true },
+      orderBy: { revision: 'desc' },
+    });
+  });
+
+  it('does not query payment versions when the page has no eligible candidates', async () => {
+    const f = fixture();
+    f.db.case.findMany.mockResolvedValue([externalRecord('WAITING_HEARING')]);
+    await f.service.list(actor, 1, 20);
+    expect(f.db.caseClosurePaymentVersion.findMany).not.toHaveBeenCalled();
+  });
+
+  it('does not advertise the retired early-archive command in list or detail', async () => {
+    const f = fixture();
+    const record = externalRecord('WAITING_HEARING');
+    f.db.case.findMany.mockResolvedValue([record]);
+    f.db.case.findFirst.mockResolvedValue(record);
+    expect(await f.service.get(actor, record.id)).toMatchObject({
+      canEarlyArchive: false,
+    });
+    expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+      canEarlyArchive: false,
+    });
+  });
+  it.each([
+    ['PENDING_MATCH', true],
+    ['WAITING_COMPLAINT', false],
+    ['WAITING_COMPLAINT_CONFIRMATION', false],
+    ['WAITING_COMPLAINT_STAMP', false],
+  ])(
+    'advertises consolidation only at pending match in list and detail: %s',
+    async (stage, allowed) => {
+      const f = fixture();
+      const record = {
+        ...externalRecord(stage),
+        consolidationMembership: null,
+        consolidationAsMain: null,
+      };
+      f.db.case.findMany.mockResolvedValue([record]);
+      f.db.case.findFirst.mockResolvedValue(record);
+      expect(await f.service.get(actor, record.id)).toMatchObject({
+        canConsolidate: allowed,
+      });
+      expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+        canConsolidate: allowed,
+      });
+    },
+  );
   it('exposes direct confirmation material upload separately from submit and confirm rights', async () => {
     const f = fixture();
     const record = externalRecord('WAITING_EXECUTION_CONFIRMATION');
@@ -1258,6 +1485,90 @@ describe('CaseReadService', () => {
     await expect(f.service.get(actor, record.id)).rejects.toMatchObject({
       response: { code: 'CASE_NOT_FOUND' },
     });
+  });
+  it('projects only a verified early closure root and rejects mismatched closure versions', async () => {
+    const f = fixture();
+    const record = {
+      ...externalRecord('PENDING_MATCH'),
+      stage: 'WAITING_ARCHIVE',
+      version: 3,
+      earlyClosure: { id: 'early' },
+      closure: {
+        id: 'closure',
+        finishId: null,
+        externalEntryId: null,
+        earlyClosureId: 'early',
+        currentVersionId: 'version',
+        versions: [
+          {
+            id: 'version',
+            kind: 'REGISTER',
+            priorVersionId: null,
+            finishId: null,
+            earlyClosureId: 'early',
+            externalEntryId: null,
+            fromVersion: 2,
+            toVersion: 3,
+            closeAt: new Date('2026-10-03T00:00:00Z'),
+            closeAmountState: 'KNOWN',
+            closeAmt: new Prisma.Decimal('0'),
+            note: null,
+            correctionReason: null,
+            recordedAt: new Date('2026-10-03T00:00:00Z'),
+            recordedByUserId: actor.userId,
+          },
+        ],
+      },
+    };
+    f.db.case.findFirst.mockResolvedValue(record);
+    const source = {
+      kind: 'EXTERNAL_ENTRY' as const,
+      entryId: record.externalEntry.id,
+      initialStage: 'PENDING_MATCH' as const,
+      stageReachedOn: '2026-10-01',
+      known: record.externalEntry.known,
+    };
+    const anchor = jest
+      .spyOn(caseEntrySource, 'readCaseSourceAnchor')
+      .mockResolvedValue(source);
+    const verified = jest
+      .spyOn(executionSource, 'assertExecutionSourceChain')
+      .mockImplementation(
+        async () =>
+          ({
+            id: 'early',
+            caseId: record.id,
+            departmentId: actor.departmentId,
+            fromStage: 'PENDING_MATCH',
+            fromVersion: 1,
+            toVersion: 2,
+          }) as never,
+      );
+    try {
+      await expect(f.service.get(actor, record.id)).resolves.toMatchObject({
+        earlyClosure: {
+          id: 'early',
+          fromStage: 'PENDING_MATCH',
+          fromVersion: 1,
+          toVersion: 2,
+        },
+      });
+      expect(anchor).toHaveBeenCalled();
+      expect(verified).toHaveBeenCalledWith(
+        expect.anything(),
+        record.id,
+        actor.departmentId,
+        source,
+        true,
+      );
+      record.closure.versions[0]!.earlyClosureId = 'wrong';
+      await expect(f.service.get(actor, record.id)).rejects.toMatchObject({
+        response: { code: 'CASE_NOT_FOUND' },
+      });
+    } finally {
+      anchor.mockRestore();
+      verified.mockRestore();
+    }
   });
   it('provides direct second-instance acceptance coordinates without an invented appeal and restricts lawyer origin metadata', async () => {
     const f = fixture();
@@ -1762,6 +2073,26 @@ describe('CaseReadService', () => {
       closeAmt: '0.00',
       recordedByUserId: actor.userId,
     });
+    expect(closedInternal.canUpdateClosureSettlement).toBe(true);
+    expect(closedInternal.canSupplementPaymentProof).toBe(false);
+    expect(closedInternal.canReadClosurePaymentHistory).toBe(false);
+    f.db.caseClosurePaymentVersion.findMany.mockResolvedValue([
+      { paymentId: 'p1', revision: 2, state: 'REVOKED' },
+      { paymentId: 'p1', revision: 1, state: 'ACTIVE' },
+    ]);
+    expect(
+      (await f.service.get(actor, 'case-1')).canSupplementPaymentProof,
+    ).toBe(false);
+    expect(
+      (await f.service.get(actor, 'case-1')).canReadClosurePaymentHistory,
+    ).toBe(true);
+    f.db.caseClosurePaymentVersion.findMany.mockResolvedValue([
+      { paymentId: 'p1', revision: 1, state: 'ACTIVE' },
+    ]);
+    expect(
+      (await f.service.get(actor, 'case-1')).canSupplementPaymentProof,
+    ).toBe(true);
+    expect(closedInternal.canEarlyClose).toBe(false);
     expect(closedInternal.canRecordClosure).toBe(false);
     expect(closedInternal.canCorrectClosure).toBe(true);
     f.db.userAccount.findUnique.mockResolvedValue({
@@ -1772,6 +2103,10 @@ describe('CaseReadService', () => {
       { ...actor, lawyerAccountId: actor.userId },
       'case-1',
     );
+    expect(closedLawyer.canUpdateClosureSettlement).toBe(false);
+    expect(closedLawyer.canSupplementPaymentProof).toBe(false);
+    expect(closedLawyer.canReadClosurePaymentHistory).toBe(false);
+    expect(closedLawyer.canEarlyClose).toBe(false);
     expect(closedLawyer.canCorrectClosure).toBe(false);
     expect(closedLawyer.closure?.current).not.toHaveProperty(
       'recordedByUserId',
@@ -1839,6 +2174,7 @@ describe('CaseReadService', () => {
     });
     const archivedInternal = await f.service.get(actor, 'case-1');
     expect(archivedInternal.canCorrectArchive).toBe(true);
+    expect(archivedInternal.canSupplementPaymentProof).toBe(true);
     expect(archivedInternal.canRecordClosure).toBe(false);
     expect(archivedInternal.archive?.current).toMatchObject({
       recordedByUserId: actor.userId,
@@ -3103,5 +3439,37 @@ describe('CaseReadService', () => {
       expect(f.db.case.count).not.toHaveBeenCalled();
       expect(f.db.case.groupBy).not.toHaveBeenCalled();
     });
+  });
+  describe('confirmed early permission OR capability', () => {
+    it.each([
+      { closure: true, archive: false, read: true, expected: true },
+      { closure: false, archive: true, read: true, expected: true },
+      { closure: true, archive: true, read: true, expected: true },
+      { closure: false, archive: false, read: true, expected: false },
+      { closure: false, archive: true, read: false, expected: false },
+    ])(
+      'projects $closure/$archive with read=$read consistently in list and detail',
+      async ({ closure, archive, read, expected }) => {
+        const f = fixture(),
+          record = externalRecord('WAITING_HEARING');
+        f.access.canAuthorizeCase.mockImplementation(async (_actor, action) =>
+          action === 'case.read'
+            ? read
+            : action === 'case.closure.record'
+              ? closure
+              : action === 'case.archive'
+                ? archive
+                : true,
+        );
+        f.db.case.findMany.mockResolvedValue([record]);
+        f.db.case.findFirst.mockResolvedValue(record);
+        expect(await f.service.get(actor, record.id)).toMatchObject({
+          canEarlyClose: expected,
+        });
+        expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+          canEarlyClose: expected,
+        });
+      },
+    );
   });
 });

@@ -153,6 +153,7 @@ const archiveFields = {
     'EXECUTION_CLOSED',
   ),
   archiveReason: string,
+  archiveNote: optional(nullable(string)),
 };
 const common = {
   expectedVersion: (value: unknown) =>
@@ -358,6 +359,10 @@ import CaseExecutionFilingPanel from './CaseExecutionFilingPanel.vue';
 import CaseExecutionFinishPanel from './CaseExecutionFinishPanel.vue';
 import CaseClosurePanel from './CaseClosurePanel.vue';
 import CaseArchivePanel from './CaseArchivePanel.vue';
+import CaseEarlyClosurePanel from './CaseEarlyClosurePanel.vue';
+import CaseClosureSettlementUpdatePanel from './CaseClosureSettlementUpdatePanel.vue';
+import CasePaymentProofWorkspacePanel from './CasePaymentProofWorkspacePanel.vue';
+import { resolveCaseListActions } from './case-workspace-actions';
 import CaseSectionRecordCorrectionPanel from './CaseSectionRecordCorrectionPanel.vue';
 import {
   resolveCaseSectionEdits,
@@ -373,6 +378,7 @@ const props = defineProps<{
   item: api.CaseDetail;
   action: CaseListAction;
   recordActorKey?: string;
+  actorUserId?: string;
   recordRecovery?: CaseListRecordRecovery | null;
   session: ListWorkflowSession;
   requestState: ListWorkflowRequestState;
@@ -380,10 +386,16 @@ const props = defineProps<{
 const item = shallowRef(props.item);
 const ownedSession = props.session;
 const detailRequest = new AbortController();
-const allowed = computed(() =>
-  resolveCaseDetailActions(item.value).some(
-    (action) => action.intent === props.action,
-  ),
+const allowed = computed(
+  () =>
+    ((props.action !== 'early-closure' && props.action !== 'payment-proof') ||
+      item.value.owner.id === props.actorUserId) &&
+    (props.action === 'early-closure' ||
+    props.action === 'settlement-update' ||
+    props.action === 'payment-proof'
+      ? resolveCaseListActions(item.value)
+      : resolveCaseDetailActions(item.value)
+    ).some((action) => action.intent === props.action),
 );
 const storageKey = `case-list-workflow:v1:${encodeURIComponent(props.session.context.actorKey)}:${encodeURIComponent(item.value.id)}`;
 const pending = shallowRef<StoredRequest | null>(null);
@@ -1293,8 +1305,44 @@ async function complaint() {
     <p v-if="!recordMode && !allowed && !pending" role="alert">
       该操作当前不可办理，请重新读取资料并核对权限及阶段。
     </p>
+    <CaseEarlyClosurePanel
+      v-if="
+        action === 'early-closure' &&
+        allowed &&
+        !storageBlocked &&
+        item.stage !== 'WAITING_ARCHIVE' &&
+        item.stage !== 'ARCHIVED'
+      "
+      :actor-key="actorKey"
+      :case-id="item.id"
+      :stage="item.stage"
+      :version="item.version"
+      :session="session"
+      @cancel="emit('cancel')"
+    />
+    <CaseClosureSettlementUpdatePanel
+      v-else-if="action === 'settlement-update' && allowed && !storageBlocked"
+      :actor-key="actorKey"
+      :case-id="item.id"
+      :session="session"
+      @cancel="emit('cancel')"
+    />
+    <CasePaymentProofWorkspacePanel
+      v-else-if="action === 'payment-proof' && allowed && !storageBlocked"
+      :actor-key="actorKey"
+      :case-id="item.id"
+      :session="session"
+      @cancel="emit('cancel')"
+    />
     <fieldset
-      v-if="!recordMode && !storageBlocked && allowed"
+      v-if="
+        !recordMode &&
+        !storageBlocked &&
+        allowed &&
+        action !== 'early-closure' &&
+        action !== 'settlement-update' &&
+        action !== 'payment-proof'
+      "
       class="workflow-form-scope"
       :disabled="busy || !!pending"
       :inert="busy || !!pending"

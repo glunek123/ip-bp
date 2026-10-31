@@ -34,6 +34,85 @@ function safeCode(value: unknown): string | undefined {
 }
 
 function safeDetails(value: unknown, code: string): unknown {
+  if (code === 'ARCHIVE_FINANCIAL_NOT_READY') {
+    const record = asRecord(value);
+    const checks = asRecord(record.checks);
+    // These are fixed codes emitted by the archive financial reviewers. Never
+    // accept arbitrary reason text, amounts or source identifiers here.
+    const settlementReasons = [
+      'EXPLICIT_ZERO_CLOSURE_AMOUNT',
+      'SOURCE_SCOPE_UNAUTHORIZED',
+      'CLOSURE_SOURCE_MISSING',
+      'ASSESSMENT_MISSING',
+      'SETTLEMENT_DECLARATION_UNKNOWN',
+      'ASSESSMENT_SOURCE_STALE',
+      'ASSESSMENT_RULE_UNSUPPORTED',
+      'ASSESSMENT_INPUTS_CHANGED',
+      'SETTLEMENT_EXPLICITLY_NOT_APPLICABLE',
+      'INVALID_NOT_APPLICABLE_AMOUNTS',
+      'INVALID_SETTLEMENT_CALCULATION',
+      'ASSESSMENT_RESULT_UNVERIFIED',
+      'ALLOCATION_ID_CONFLICT',
+      'INVALID_ALLOCATION_AMOUNT',
+      'SETTLEMENT_AMOUNT_OR_ZERO_EVIDENCE_UNKNOWN',
+      'SQL_SETTLEMENT_RULE_UNVERIFIED',
+    ];
+    const allowedReasons: Record<string, readonly string[]> = {
+      payment: [
+        'EXPLICIT_ZERO_CLOSURE_AMOUNT',
+        'CLOSURE_AMOUNT_UNKNOWN',
+        'PAYMENT_TYPE_UNKNOWN',
+        'ONE_TIME_MULTIPLE_EFFECTIVE_PAYMENTS',
+        'CLOSURE_PAYMENT_REACHED',
+        'CLOSURE_PAYMENT_INCOMPLETE',
+      ],
+      refund: [
+        'EXPLICIT_ZERO_CLOSURE_AMOUNT',
+        'SOURCE_SCOPE_UNAUTHORIZED',
+        'REFUND_INVENTORY_MISSING',
+        'INVALID_REFUND_INVENTORY',
+        'REFUND_EXPLICITLY_NOT_APPLICABLE',
+        'REFUND_ITEMS_NOT_RECEIVED_OR_COSTED',
+        'ALL_REFUND_ITEMS_RECEIVED_OR_COSTED',
+        'REFUND_COMPLETENESS_UNCONFIRMED',
+        'REFUND_ITEM_STATUS_UNKNOWN',
+      ],
+      customer: [
+        ...settlementReasons,
+        'CUSTOMER_RECEIPTS_REACHED',
+        'CUSTOMER_RECEIPTS_INSUFFICIENT',
+      ],
+      lawyer: [
+        ...settlementReasons,
+        'LAWYER_INVOICES_REACHED',
+        'LAWYER_INVOICES_INSUFFICIENT',
+      ],
+    };
+    const names = Object.keys(allowedReasons);
+    if (
+      Object.keys(record).length !== 1 ||
+      Object.keys(checks).length !== names.length ||
+      !names.every((name) => {
+        const item = asRecord(checks[name]);
+        return (
+          Object.keys(item).length === 2 &&
+          typeof item.state === 'string' &&
+          ['PASSED', 'BLOCKED', 'UNKNOWN', 'EXEMPT'].includes(item.state) &&
+          typeof item.reason === 'string' &&
+          allowedReasons[name].includes(item.reason)
+        );
+      })
+    )
+      return undefined;
+    return {
+      checks: Object.fromEntries(
+        names.map((name) => {
+          const item = asRecord(checks[name]);
+          return [name, { state: item.state, reason: item.reason }];
+        }),
+      ),
+    };
+  }
   if (code === 'CSV_IMPORT_REJECTED') {
     const record = asRecord(value);
     if (
@@ -123,6 +202,16 @@ function safeDetails(value: unknown, code: string): unknown {
   return undefined;
 }
 
+// Fixed operational reasons only: never log arbitrary message/stack/body/credentials.
+function safeErrorReason(value: unknown): string | undefined {
+  if (!(value instanceof Error)) return undefined;
+  if (value.message === 'Query read timeout')
+    return 'PG_CLIENT_QUERY_READ_TIMEOUT';
+  if (value.message === 'canceling statement due to statement timeout')
+    return 'PG_SERVER_STATEMENT_TIMEOUT';
+  return undefined;
+}
+
 function diagnosticFields(exception: unknown) {
   const cause =
     exception instanceof Error && exception.cause ? exception.cause : exception;
@@ -143,6 +232,7 @@ function diagnosticFields(exception: unknown) {
       cause instanceof Error && knownTypes.includes(cause.name)
         ? cause.name
         : 'UnknownError',
+    errorReason: safeErrorReason(cause),
     errorCode: safeCode(record.code),
     databaseErrorCode:
       safeCode(meta.code) ?? safeCode(adapterCause.originalCode),

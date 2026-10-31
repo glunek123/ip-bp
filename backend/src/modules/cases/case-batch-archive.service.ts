@@ -110,8 +110,9 @@ export class CaseBatchArchiveService {
               });
             return;
           }
-          await tx.caseEarlyArchiveBatchReceipt.create({
-            data: { ...key, requestFingerprint },
+          throw new ConflictException({
+            code: 'EARLY_ARCHIVE_RETIRED',
+            message: '提前归档已停用，请通过结案办理。',
           });
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },

@@ -17,3 +17,8 @@ export {
   searchCaseSettlementSources,
 } from './case-settlement-source';
 export type { CaseSettlementSource } from './case-settlement-source';
+export type {
+  SettlementUpdateAssessmentInput,
+  SettlementTermsChange,
+} from './case-closure-settlement-update.dto';
+export type { ClosureActualAggregateReadPort } from './case-closure-workspace-read-draft';

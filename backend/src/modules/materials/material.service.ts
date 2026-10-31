@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { assertSettlementUploadContentTarget } from './settlement-upload-target-draft';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -208,6 +209,7 @@ export type MaterialReferenceReader = MaterialAuthorizationReader &
   AccessControlSnapshotReader &
   Pick<MaterialTransactionClient, 'materialReference'>;
 const allowedMimeTypes = {
+  CASE_CLOSURE_PAYMENT_PROOF: new Set(['image/jpeg', 'image/png']),
   FEE_PROOF: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   CUSTOMER_IDENTITY: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   CUSTOMER_RIGHT_EVIDENCE: new Set([
@@ -288,6 +290,7 @@ const allowedMimeTypes = {
 
 @Injectable()
 export class MaterialService {
+  private readonly settlementValidationInputs = new WeakSet<object>();
   private readonly clock: () => Date;
   private readonly validatedVersionFacts = new WeakMap<
     ValidatedMaterialVersionFact,
@@ -413,6 +416,131 @@ export class MaterialService {
       current.pendingStorageKey !== pendingStorageKey
     )
       throw this.versionConflict();
+  }
+
+  /** The route is registered, but the settlement target gate remains closed. */
+  async createSettlementUpdateDocumentUploadDraft(
+    actor: ActorContext,
+    caseId: string,
+    expectedClosureVersionId: string,
+    file: Readonly<{ originalFilename: string; declaredMimeType: string }>,
+  ) {
+    if (!this.isInternalMaterialActor(actor)) throw this.forbidden();
+    const uuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+    if (!uuid.test(caseId) || !uuid.test(expectedClosureVersionId))
+      throw this.validationError();
+    caseId = caseId.toLowerCase();
+    expectedClosureVersionId = expectedClosureVersionId.toLowerCase();
+    const originalFilename = this.normalizeFilename(file.originalFilename),
+      declaredMimeType = normalizeMimeType(file.declaredMimeType);
+    if (
+      !isMimeAllowedForPurpose(
+        'CASE_CLOSURE_DOCUMENT',
+        'CASE_CLOSURE_DOCUMENT',
+        declaredMimeType,
+      )
+    )
+      throw this.invalidVersion();
+    return this.database.$transaction(
+      async (tx) => {
+        await tx.$queryRawUnsafe(
+          'SELECT lock_settlement_upload_actor_current($1::uuid,$2::uuid,$3::uuid,$4::integer)::text',
+          actor.userId,
+          actor.departmentId,
+          caseId,
+          actor.authorizationRevision,
+        );
+        const eligible = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+          'SELECT id FROM cases WHERE id=$1::uuid AND settlement_update_document_upload_eligible($2::uuid,id,$3::uuid,$4::uuid,$5::integer)',
+          caseId,
+          actor.userId,
+          actor.departmentId,
+          expectedClosureVersionId,
+          actor.authorizationRevision,
+        );
+        if (eligible.length !== 1) throw this.forbidden();
+        const targetId = randomUUID(),
+          draftId = randomUUID(),
+          createdAt = this.clock();
+        await tx.$executeRawUnsafe(
+          `INSERT INTO case_settlement_upload_targets(id,upload_draft_id,case_id,department_id,actor_user_id,authorization_revision,expected_closure_version_id,purpose)
+       VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::integer,$7::uuid,'CLOSURE_SETTLEMENT_UPDATE_DOCUMENT')`,
+          targetId,
+          draftId,
+          caseId,
+          actor.departmentId,
+          actor.userId,
+          actor.authorizationRevision,
+          expectedClosureVersionId,
+        );
+        const draft = await tx.uploadDraft.create({
+          data: {
+            id: draftId,
+            departmentId: actor.departmentId,
+            actorUserId: actor.userId,
+            internalActorUserId: actor.userId,
+            ownerType: 'CASE',
+            ownerId: caseId,
+            category: 'CASE_CLOSURE_DOCUMENT',
+            purpose: 'CASE_CLOSURE_DOCUMENT',
+            originalFilename,
+            declaredMimeType,
+            createdAt,
+            expiresAt: new Date(createdAt.getTime() + DAY_MS),
+            settlementUpdateUploadTargetId: targetId,
+          },
+        });
+        return {
+          id: draft.id,
+          ownerType: 'CASE' as const,
+          ownerId: caseId,
+          category: 'CASE_CLOSURE_DOCUMENT' as const,
+          purpose: 'CASE_CLOSURE_DOCUMENT',
+          originalFilename,
+          declaredMimeType,
+          expiresAt: draft.expiresAt.toISOString(),
+          settlementUpdateTarget: { id: targetId, expectedClosureVersionId },
+        };
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  }
+
+  private async validateSettlementUpdateUploadDraft(
+    tx: MaterialTransactionClient,
+    actor: ActorContext,
+    draft: UploadDraft,
+    pendingKey: string | null,
+  ): Promise<void> {
+    if (
+      !this.isInternalMaterialActor(actor) ||
+      !draft.settlementUpdateUploadTargetId
+    )
+      throw this.forbidden();
+    await tx.$queryRawUnsafe(
+      'SELECT lock_settlement_upload_actor_current($1::uuid,$2::uuid,$3::uuid,$4::integer)::text',
+      actor.userId,
+      actor.departmentId,
+      draft.ownerId,
+      actor.authorizationRevision,
+    );
+    const exact = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT d.id FROM upload_drafts d JOIN case_settlement_upload_targets t ON t.id=d.settlement_update_upload_target_id
+      WHERE d.id=$1::uuid AND t.upload_draft_id=d.id AND t.case_id=d.owner_id AND t.department_id=d.department_id AND t.actor_user_id=d.actor_user_id
+      AND t.id=$2::uuid AND t.authorization_revision=$3::integer AND d.department_id=$4::uuid AND d.actor_user_id=$5::uuid
+      AND d.owner_type='CASE' AND d.category='CASE_CLOSURE_DOCUMENT' AND d.purpose='CASE_CLOSURE_DOCUMENT'
+      AND d.status='OPEN' AND d.expires_at>CURRENT_TIMESTAMP AND d.pending_storage_key IS NOT DISTINCT FROM $6::text
+      AND settlement_update_document_upload_eligible($5::uuid,t.case_id,t.department_id,t.expected_closure_version_id,$3::integer)
+      FOR SHARE OF t,d`,
+      draft.id,
+      draft.settlementUpdateUploadTargetId,
+      actor.authorizationRevision,
+      actor.departmentId,
+      actor.userId,
+      pendingKey,
+    );
+    if (exact.length !== 1) throw this.versionConflict();
   }
 
   async createCaseSectionRecordUploadDraft(
@@ -954,16 +1082,47 @@ export class MaterialService {
       expiresAt,
     };
     const draft =
-      input.ownerType === 'CUSTOMER'
-        ? await this.database.$transaction(async (transaction) => {
-            if (input.category === 'CUSTOMER_AGREEMENT') {
-              if (!this.organization)
-                throw new Error('OrganizationService unavailable');
-              await lockCustomerActorFacts(
+      input.category === 'CASE_CLOSURE_PAYMENT_PROOF'
+        ? await this.database.$transaction(
+            async (transaction) => {
+              await this.lockPaymentProofUploadActor(
                 transaction,
-                this.organization,
                 actor,
+                ownerId,
               );
+              return transaction.uploadDraft.create({ data: draftData });
+            },
+            { isolationLevel: 'Serializable' },
+          )
+        : input.ownerType === 'CUSTOMER'
+          ? await this.database.$transaction(async (transaction) => {
+              if (input.category === 'CUSTOMER_AGREEMENT') {
+                if (!this.organization)
+                  throw new Error('OrganizationService unavailable');
+                await lockCustomerActorFacts(
+                  transaction,
+                  this.organization,
+                  actor,
+                );
+                await this.authorizeOwner(
+                  actor,
+                  'CUSTOMER',
+                  ownerId,
+                  'write',
+                  transaction,
+                  transaction,
+                  undefined,
+                  input.category,
+                );
+              }
+              const locked = await transaction.$queryRawUnsafe<
+                Array<{ id: string }>
+              >(
+                'SELECT "id" FROM "customers" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+                ownerId,
+                actor.departmentId,
+              );
+              if (locked.length !== 1) throw this.notFound();
               await this.authorizeOwner(
                 actor,
                 'CUSTOMER',
@@ -974,46 +1133,27 @@ export class MaterialService {
                 undefined,
                 input.category,
               );
-            }
-            const locked = await transaction.$queryRawUnsafe<
-              Array<{ id: string }>
-            >(
-              'SELECT "id" FROM "customers" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
-              ownerId,
-              actor.departmentId,
-            );
-            if (locked.length !== 1) throw this.notFound();
-            await this.authorizeOwner(
-              actor,
-              'CUSTOMER',
-              ownerId,
-              'write',
-              transaction,
-              transaction,
-              undefined,
-              input.category,
-            );
-            return transaction.uploadDraft.create({ data: draftData });
-          })
-        : input.category === 'FEE_PROOF'
-          ? await this.database.$transaction(
-              async (transaction) => {
-                await this.lockFeeMaterialActor(transaction, actor);
-                await this.authorizeOwner(
-                  actor,
-                  'CASE',
-                  ownerId,
-                  'write',
-                  transaction,
-                  transaction,
-                  undefined,
-                  'FEE_PROOF',
-                );
-                return transaction.uploadDraft.create({ data: draftData });
-              },
-              { isolationLevel: 'Serializable' },
-            )
-          : await this.database.uploadDraft.create({ data: draftData });
+              return transaction.uploadDraft.create({ data: draftData });
+            })
+          : input.category === 'FEE_PROOF'
+            ? await this.database.$transaction(
+                async (transaction) => {
+                  await this.lockFeeMaterialActor(transaction, actor);
+                  await this.authorizeOwner(
+                    actor,
+                    'CASE',
+                    ownerId,
+                    'write',
+                    transaction,
+                    transaction,
+                    undefined,
+                    'FEE_PROOF',
+                  );
+                  return transaction.uploadDraft.create({ data: draftData });
+                },
+                { isolationLevel: 'Serializable' },
+              )
+            : await this.database.uploadDraft.create({ data: draftData });
     return {
       id: draft.id,
       ownerType: draft.ownerType,
@@ -1044,6 +1184,8 @@ export class MaterialService {
       where: { id: draftId },
     });
     if (draft === null) throw this.notFound();
+    const settlementTarget = draft.settlementUpdateUploadTargetId ?? null;
+    const paymentProof = draft.category === 'CASE_CLOSURE_PAYMENT_PROOF';
     const recordTarget = this.sectionRecordUploadTarget(draft);
     const supplementTarget = this.executionSupplementUploadTarget(draft);
     if (
@@ -1052,10 +1194,20 @@ export class MaterialService {
     ) {
       throw this.forbidden();
     }
+    if (paymentProof && draft.status === 'FINALIZED') {
+      this.assertCategoryPurposeMatrix(draft);
+      return this.replayPaymentProofUpload(actor, draft, source);
+    }
     if (draft.status !== 'OPEN' || draft.expiresAt <= this.clock()) {
       throw this.versionConflict();
     }
     this.assertCategoryPurposeMatrix(draft);
+    if (settlementTarget !== null)
+      await this.database.$transaction(
+        (tx) =>
+          this.validateSettlementUpdateUploadDraft(tx, actor, draft, null),
+        { isolationLevel: 'Serializable' },
+      );
     if (
       actor.notaryOfficeId !== undefined &&
       draft.notaryOfficeAccountBindingId === null
@@ -1108,7 +1260,11 @@ export class MaterialService {
         draft.category,
       );
     } else if (draft.ownerType === 'CASE') {
-      if (recordTarget === undefined && supplementTarget === undefined)
+      if (
+        recordTarget === undefined &&
+        supplementTarget === undefined &&
+        settlementTarget === null
+      )
         await this.authorizeOwner(
           actor,
           'CASE',
@@ -1180,20 +1336,46 @@ export class MaterialService {
           data: { pendingStorageKey: storageKey },
         };
         const claimed =
-          recordTarget === undefined && supplementTarget === undefined
+          recordTarget === undefined &&
+          supplementTarget === undefined &&
+          settlementTarget === null &&
+          !paymentProof
             ? await this.database.uploadDraft.updateMany(claimInput)
-            : await this.database.$transaction(async (tx) => {
-                if (supplementTarget !== undefined)
-                  await this.validateExecutionSupplementUploadDraft(
-                    tx,
-                    actor,
-                    draft,
-                    null,
-                  );
-                else
-                  await this.validateSectionUploadDraft(tx, actor, draft, null);
-                return tx.uploadDraft.updateMany(claimInput);
-              });
+            : await this.database.$transaction(
+                async (tx) => {
+                  if (paymentProof)
+                    await this.lockPaymentProofUploadActor(
+                      tx,
+                      actor,
+                      draft.ownerId,
+                    );
+                  else if (settlementTarget !== null)
+                    await this.validateSettlementUpdateUploadDraft(
+                      tx,
+                      actor,
+                      draft,
+                      null,
+                    );
+                  else if (supplementTarget !== undefined)
+                    await this.validateExecutionSupplementUploadDraft(
+                      tx,
+                      actor,
+                      draft,
+                      null,
+                    );
+                  else
+                    await this.validateSectionUploadDraft(
+                      tx,
+                      actor,
+                      draft,
+                      null,
+                    );
+                  return tx.uploadDraft.updateMany(claimInput);
+                },
+                settlementTarget !== null || paymentProof
+                  ? { isolationLevel: 'Serializable' }
+                  : undefined,
+              );
         if (claimed.count !== 1) throw this.versionConflict();
         pendingClaimed = true;
         const blob = await this.storage.put(
@@ -1211,41 +1393,74 @@ export class MaterialService {
         ) {
           throw this.invalidVersion();
         }
-        await this.database.$transaction(async (transaction) => {
-          if (importFence) {
-            const lead = await transaction.$queryRawUnsafe<
-              Array<{ id: string }>
-            >(
-              'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
-              draft.ownerId,
-              actor.departmentId,
-            );
-            if (lead.length !== 1) throw this.notFound();
-            const owned = await transaction.$queryRawUnsafe<
-              Array<{ id: string }>
-            >(
-              'SELECT "id" FROM "lead_image_import_tasks" WHERE "id" = $1::uuid AND "upload_draft_id" = $2::uuid AND "status" = $3 AND "generation" = $4 AND "attempt_count" = $5 AND "url_sha256" = $6 AND COALESCE("retry_actor_user_id", "actor_user_id") = $7::uuid AND "lease_until" > CURRENT_TIMESTAMP FOR UPDATE',
-              importFence.taskId,
-              draftId,
-              'LEASED',
-              importFence.generation,
-              importFence.attemptCount,
-              importFence.urlSha256,
-              actor.userId,
-            );
-            if (owned.length !== 1) throw this.versionConflict();
-          }
-          if (draft.category === 'FEE_PROOF')
-            await this.lockFeeMaterialActor(transaction, actor);
-          if (draft.ownerType === 'CUSTOMER') {
-            if (draft.category === 'CUSTOMER_AGREEMENT') {
-              if (!this.organization)
-                throw new Error('OrganizationService unavailable');
-              await lockCustomerActorFacts(
+        await this.database.$transaction(
+          async (transaction) => {
+            if (paymentProof)
+              await this.lockPaymentProofUploadActor(
                 transaction,
-                this.organization,
                 actor,
+                draft.ownerId,
               );
+            if (settlementTarget !== null)
+              await this.validateSettlementUpdateUploadDraft(
+                transaction,
+                actor,
+                draft,
+                storageKey,
+              );
+            if (importFence) {
+              const lead = await transaction.$queryRawUnsafe<
+                Array<{ id: string }>
+              >(
+                'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+                draft.ownerId,
+                actor.departmentId,
+              );
+              if (lead.length !== 1) throw this.notFound();
+              const owned = await transaction.$queryRawUnsafe<
+                Array<{ id: string }>
+              >(
+                'SELECT "id" FROM "lead_image_import_tasks" WHERE "id" = $1::uuid AND "upload_draft_id" = $2::uuid AND "status" = $3 AND "generation" = $4 AND "attempt_count" = $5 AND "url_sha256" = $6 AND COALESCE("retry_actor_user_id", "actor_user_id") = $7::uuid AND "lease_until" > CURRENT_TIMESTAMP FOR UPDATE',
+                importFence.taskId,
+                draftId,
+                'LEASED',
+                importFence.generation,
+                importFence.attemptCount,
+                importFence.urlSha256,
+                actor.userId,
+              );
+              if (owned.length !== 1) throw this.versionConflict();
+            }
+            if (draft.category === 'FEE_PROOF')
+              await this.lockFeeMaterialActor(transaction, actor);
+            if (draft.ownerType === 'CUSTOMER') {
+              if (draft.category === 'CUSTOMER_AGREEMENT') {
+                if (!this.organization)
+                  throw new Error('OrganizationService unavailable');
+                await lockCustomerActorFacts(
+                  transaction,
+                  this.organization,
+                  actor,
+                );
+                await this.authorizeOwner(
+                  actor,
+                  'CUSTOMER',
+                  draft.ownerId,
+                  'write',
+                  transaction,
+                  transaction,
+                  undefined,
+                  draft.category,
+                );
+              }
+              const locked = await transaction.$queryRawUnsafe<
+                Array<{ id: string }>
+              >(
+                'SELECT "id" FROM "customers" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+                draft.ownerId,
+                actor.departmentId,
+              );
+              if (locked.length !== 1) throw this.notFound();
               await this.authorizeOwner(
                 actor,
                 'CUSTOMER',
@@ -1257,52 +1472,75 @@ export class MaterialService {
                 draft.category,
               );
             }
-            const locked = await transaction.$queryRawUnsafe<
-              Array<{ id: string }>
-            >(
-              'SELECT "id" FROM "customers" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
-              draft.ownerId,
-              actor.departmentId,
-            );
-            if (locked.length !== 1) throw this.notFound();
-            await this.authorizeOwner(
-              actor,
-              'CUSTOMER',
-              draft.ownerId,
-              'write',
-              transaction,
-              transaction,
-              undefined,
-              draft.category,
-            );
-          }
-          if (draft.ownerType === 'CASE') {
-            const locked = await transaction.$queryRawUnsafe<
-              Array<{ id: string }>
-            >(
-              'SELECT "id" FROM "cases" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
-              draft.ownerId,
-              actor.departmentId,
-            );
-            if (locked.length !== 1) throw this.notFound();
-            if (supplementTarget !== undefined) {
-              await this.validateExecutionSupplementUploadDraft(
-                transaction,
-                actor,
-                draft,
-                storageKey,
+            if (draft.ownerType === 'CASE') {
+              const locked = await transaction.$queryRawUnsafe<
+                Array<{ id: string }>
+              >(
+                'SELECT "id" FROM "cases" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+                draft.ownerId,
+                actor.departmentId,
               );
-            } else if (recordTarget !== undefined) {
-              await this.validateSectionUploadDraft(
-                transaction,
-                actor,
-                draft,
-                storageKey,
+              if (locked.length !== 1) throw this.notFound();
+              if (settlementTarget !== null) {
+                /* already reauthorized in this transaction */
+              } else if (supplementTarget !== undefined) {
+                await this.validateExecutionSupplementUploadDraft(
+                  transaction,
+                  actor,
+                  draft,
+                  storageKey,
+                );
+              } else if (recordTarget !== undefined) {
+                await this.validateSectionUploadDraft(
+                  transaction,
+                  actor,
+                  draft,
+                  storageKey,
+                );
+              } else
+                await this.authorizeOwner(
+                  actor,
+                  'CASE',
+                  draft.ownerId,
+                  'write',
+                  transaction,
+                  transaction,
+                  undefined,
+                  draft.category,
+                );
+              if (actor.lawyerAccountId !== undefined) {
+                const bindingId = await currentLawyerBindingId(
+                  transaction,
+                  actor,
+                  draft.ownerId,
+                  true,
+                );
+                if (bindingId !== draft.lawyerAccountBindingId)
+                  throw this.forbidden();
+              }
+            }
+            if (draft.ownerType === 'LEAD') {
+              if (!this.isInternalMaterialActor(actor)) throw this.forbidden();
+              const locked = await transaction.$queryRawUnsafe<
+                Array<{ id: string }>
+              >(
+                'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+                draft.ownerId,
+                actor.departmentId,
               );
-            } else
+              if (locked.length !== 1) throw this.notFound();
+              const account = await transaction.userAccount.findUnique({
+                where: { id: actor.userId },
+                select: { active: true, accountType: true },
+              });
+              if (
+                account?.active !== true ||
+                account.accountType !== 'INTERNAL'
+              )
+                throw this.forbidden();
               await this.authorizeOwner(
                 actor,
-                'CASE',
+                'LEAD',
                 draft.ownerId,
                 'write',
                 transaction,
@@ -1310,213 +1548,210 @@ export class MaterialService {
                 undefined,
                 draft.category,
               );
-            if (actor.lawyerAccountId !== undefined) {
-              const bindingId = await currentLawyerBindingId(
-                transaction,
-                actor,
-                draft.ownerId,
-                true,
-              );
-              if (bindingId !== draft.lawyerAccountBindingId)
-                throw this.forbidden();
             }
-          }
-          if (draft.ownerType === 'LEAD') {
-            if (!this.isInternalMaterialActor(actor)) throw this.forbidden();
-            const locked = await transaction.$queryRawUnsafe<
-              Array<{ id: string }>
-            >(
-              'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
-              draft.ownerId,
-              actor.departmentId,
+            if (actor.notaryOfficeId !== undefined) {
+              const locked = await transaction.$queryRawUnsafe<
+                Array<{ id: string }>
+              >(
+                'SELECT "id" FROM "notary_matters" WHERE "id" = $1::uuid AND "department_id" = $2::uuid AND "notary_office_id" = $3::uuid FOR UPDATE',
+                draft.ownerId,
+                actor.departmentId,
+                actor.notaryOfficeId,
+              );
+              if (locked.length !== 1) throw this.notFound();
+              await this.authorizeOwner(
+                actor,
+                draft.ownerType,
+                draft.ownerId,
+                'write',
+                transaction,
+                transaction,
+                undefined,
+                draft.category,
+              );
+              const binding =
+                await transaction.notaryOfficeAccountBinding.findFirst({
+                  where: {
+                    id: draft.notaryOfficeAccountBindingId ?? undefined,
+                    userId: actor.userId,
+                    departmentId: actor.departmentId,
+                    notaryOfficeId: actor.notaryOfficeId,
+                    active: true,
+                    notaryOffice: { status: 'ACTIVE' },
+                    user: { active: true, accountType: 'NOTARY' },
+                  },
+                  select: { id: true },
+                });
+              if (binding === null) throw this.forbidden();
+            }
+            await transaction.$executeRawUnsafe(
+              'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+              ownerQuotaKey(draft),
             );
-            if (locked.length !== 1) throw this.notFound();
-            const account = await transaction.userAccount.findUnique({
-              where: { id: actor.userId },
-              select: { active: true, accountType: true },
-            });
-            if (account?.active !== true || account.accountType !== 'INTERNAL')
-              throw this.forbidden();
-            await this.authorizeOwner(
-              actor,
-              'LEAD',
-              draft.ownerId,
-              'write',
-              transaction,
-              transaction,
-              undefined,
-              draft.category,
-            );
-          }
-          if (actor.notaryOfficeId !== undefined) {
-            const locked = await transaction.$queryRawUnsafe<
-              Array<{ id: string }>
-            >(
-              'SELECT "id" FROM "notary_matters" WHERE "id" = $1::uuid AND "department_id" = $2::uuid AND "notary_office_id" = $3::uuid FOR UPDATE',
-              draft.ownerId,
-              actor.departmentId,
-              actor.notaryOfficeId,
-            );
-            if (locked.length !== 1) throw this.notFound();
-            await this.authorizeOwner(
-              actor,
-              draft.ownerType,
-              draft.ownerId,
-              'write',
-              transaction,
-              transaction,
-              undefined,
-              draft.category,
-            );
-            const binding =
-              await transaction.notaryOfficeAccountBinding.findFirst({
-                where: {
-                  id: draft.notaryOfficeAccountBindingId ?? undefined,
-                  userId: actor.userId,
-                  departmentId: actor.departmentId,
-                  notaryOfficeId: actor.notaryOfficeId,
-                  active: true,
-                  notaryOffice: { status: 'ACTIVE' },
-                  user: { active: true, accountType: 'NOTARY' },
-                },
-                select: { id: true },
-              });
-            if (binding === null) throw this.forbidden();
-          }
-          await transaction.$executeRawUnsafe(
-            'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-            ownerQuotaKey(draft),
-          );
-          const dedicatedPendingPool =
-            recordTarget !== undefined &&
-            [
-              'EXECUTION_FILING_PROOF',
-              'EXECUTION_FINISH_BASIS',
-              'CASE_CLOSURE_DOCUMENT',
-            ].includes(draft.category);
-          const activeCount =
-            supplementTarget !== undefined
-              ? await this.executionSupplementPendingCount(
-                  transaction,
-                  actor,
-                  draft,
-                )
-              : dedicatedPendingPool
-                ? await this.sectionUploadPendingCount(
+            const dedicatedPendingPool =
+              recordTarget !== undefined &&
+              [
+                'EXECUTION_FILING_PROOF',
+                'EXECUTION_FINISH_BASIS',
+                'CASE_CLOSURE_DOCUMENT',
+              ].includes(draft.category);
+            const activeCount =
+              supplementTarget !== undefined
+                ? await this.executionSupplementPendingCount(
                     transaction,
                     actor,
                     draft,
                   )
-                : await transaction.material.count({
-                    where: {
-                      departmentId: actor.departmentId,
-                      ownerType: draft.ownerType,
-                      ownerId: draft.ownerId,
-                      category: draft.category,
-                      status: 'ACTIVE',
-                      ...(draft.category === 'FEE_PROOF'
-                        ? { references: { none: { purpose: 'FEE_PROOF' } } }
-                        : {}),
-                      ...(draft.category === 'MAIL_RECEIPT'
-                        ? {
-                            currentVersion: {
-                              is: {
-                                materialReferences: {
-                                  none: {
-                                    purpose: 'MAIL_RECEIPT',
-                                    actionEventId: { not: null },
-                                  },
-                                },
-                              },
-                            },
-                          }
-                        : draft.category === 'JUDGMENT'
+                : dedicatedPendingPool
+                  ? await this.sectionUploadPendingCount(
+                      transaction,
+                      actor,
+                      draft,
+                    )
+                  : await transaction.material.count({
+                      where: {
+                        departmentId: actor.departmentId,
+                        ownerType: draft.ownerType,
+                        ownerId: draft.ownerId,
+                        category: draft.category,
+                        status: 'ACTIVE',
+                        ...(draft.category === 'FEE_PROOF'
+                          ? { references: { none: { purpose: 'FEE_PROOF' } } }
+                          : {}),
+                        ...(paymentProof
                           ? {
-                              contentVersions: {
-                                none: {
-                                  OR: [
-                                    { caseJudgmentVersions: { some: {} } },
-                                    { judgmentRecordDocuments: { some: {} } },
-                                  ],
-                                },
-                              },
-                            }
-                          : draft.category === 'CUSTOMER_RIGHT_EVIDENCE'
-                            ? {
-                                currentVersion: {
-                                  is: {
-                                    materialReferences: {
-                                      none: { assetVersionId: { not: null } },
+                              // The 20-file pool limits unfinished candidates.
+                              // Exact frozen evidence remains immutable history,
+                              // including evidence of corrected/voided payments.
+                              OR: [
+                                { currentVersionId: null },
+                                {
+                                  currentVersion: {
+                                    is: {
+                                      materialReferences: {
+                                        none: {
+                                          purpose: 'CASE_CLOSURE_PAYMENT_PROOF',
+                                          resourceType: {
+                                            in: [
+                                              'case-closure-payment-version',
+                                              'case-payment-proof-supplement',
+                                            ],
+                                          },
+                                          actionEventId: { not: null },
+                                        },
+                                      },
                                     },
                                   },
                                 },
+                              ],
+                            }
+                          : {}),
+                        ...(draft.category === 'MAIL_RECEIPT'
+                          ? {
+                              currentVersion: {
+                                is: {
+                                  materialReferences: {
+                                    none: {
+                                      purpose: 'MAIL_RECEIPT',
+                                      actionEventId: { not: null },
+                                    },
+                                  },
+                                },
+                              },
+                            }
+                          : draft.category === 'JUDGMENT'
+                            ? {
+                                contentVersions: {
+                                  none: {
+                                    OR: [
+                                      { caseJudgmentVersions: { some: {} } },
+                                      { judgmentRecordDocuments: { some: {} } },
+                                    ],
+                                  },
+                                },
                               }
-                            : draft.category === 'CUSTOMER_AGREEMENT'
+                            : draft.category === 'CUSTOMER_RIGHT_EVIDENCE'
                               ? {
                                   currentVersion: {
                                     is: {
                                       materialReferences: {
-                                        none: { purpose: 'CUSTOMER_AGREEMENT' },
+                                        none: { assetVersionId: { not: null } },
                                       },
                                     },
                                   },
                                 }
-                              : {}),
-                    },
-                  });
-          if (activeCount >= materialLimit(draft.category)) {
-            throw this.validationError();
-          }
-          await transaction.material.create({
-            data: {
-              id: materialId,
-              departmentId: actor.departmentId,
-              ownerType: draft.ownerType,
-              ownerId: draft.ownerId,
-              category: draft.category,
-              purpose: draft.purpose,
-            },
-          });
-          await transaction.contentVersion.create({
-            data: {
-              id: contentVersionId,
-              materialId,
-              storageKey,
-              originalFilename,
-              mimeType: blob.detectedMimeType,
-              sizeBytes: BigInt(blob.sizeBytes),
-              sha256: blob.sha256,
-              uploadedBy: actor.userId,
-              sourceUploadDraftId: draft.id,
-              ...(recordTarget === undefined
-                ? {}
-                : { caseSectionRecordUploadDraftId: draft.id }),
-              ...(supplementTarget === undefined
-                ? {}
-                : { executionSupplementUploadDraftId: draft.id }),
-            },
-          });
-          await transaction.material.update({
-            where: { id: materialId },
-            data: { currentVersionId: contentVersionId },
-          });
-          const finalized = await transaction.uploadDraft.updateMany({
-            where: {
-              id: draft.id,
-              departmentId: actor.departmentId,
-              actorUserId: actor.userId,
-              ownerType: draft.ownerType,
-              ownerId: draft.ownerId,
-              category: draft.category,
-              purpose: draft.purpose,
-              status: 'OPEN',
-              expiresAt: { gt: this.clock() },
-              pendingStorageKey: storageKey,
-            },
-            data: { status: 'FINALIZED', pendingStorageKey: null },
-          });
-          if (finalized.count !== 1) throw this.versionConflict();
-        });
+                              : draft.category === 'CUSTOMER_AGREEMENT'
+                                ? {
+                                    currentVersion: {
+                                      is: {
+                                        materialReferences: {
+                                          none: {
+                                            purpose: 'CUSTOMER_AGREEMENT',
+                                          },
+                                        },
+                                      },
+                                    },
+                                  }
+                                : {}),
+                      },
+                    });
+            if (activeCount >= materialLimit(draft.category)) {
+              throw this.validationError();
+            }
+            await transaction.material.create({
+              data: {
+                id: materialId,
+                departmentId: actor.departmentId,
+                ownerType: draft.ownerType,
+                ownerId: draft.ownerId,
+                category: draft.category,
+                purpose: draft.purpose,
+              },
+            });
+            await transaction.contentVersion.create({
+              data: {
+                id: contentVersionId,
+                materialId,
+                storageKey,
+                originalFilename,
+                mimeType: blob.detectedMimeType,
+                sizeBytes: BigInt(blob.sizeBytes),
+                sha256: blob.sha256,
+                uploadedBy: actor.userId,
+                sourceUploadDraftId: draft.id,
+                ...(recordTarget === undefined
+                  ? {}
+                  : { caseSectionRecordUploadDraftId: draft.id }),
+                ...(supplementTarget === undefined
+                  ? {}
+                  : { executionSupplementUploadDraftId: draft.id }),
+              },
+            });
+            await transaction.material.update({
+              where: { id: materialId },
+              data: { currentVersionId: contentVersionId },
+            });
+            const finalized = await transaction.uploadDraft.updateMany({
+              where: {
+                id: draft.id,
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                ownerType: draft.ownerType,
+                ownerId: draft.ownerId,
+                category: draft.category,
+                purpose: draft.purpose,
+                status: 'OPEN',
+                expiresAt: { gt: this.clock() },
+                pendingStorageKey: storageKey,
+              },
+              data: { status: 'FINALIZED', pendingStorageKey: null },
+            });
+            if (finalized.count !== 1) throw this.versionConflict();
+          },
+          settlementTarget !== null || paymentProof
+            ? { isolationLevel: 'Serializable' }
+            : undefined,
+        );
         return {
           materialId,
           contentVersionId,
@@ -1536,7 +1771,11 @@ export class MaterialService {
         };
       } catch (error) {
         let storageIsClean = false;
-        if (pendingClaimed) {
+        // A payment-proof COMMIT can succeed while its acknowledgement fails.
+        // Never compensate that uncertain outcome by deleting its evidence.
+        // A rolled-back upload retains its durable pending key; cleanup locks
+        // the draft and rechecks that no committed content version owns the key.
+        if (pendingClaimed && !paymentProof) {
           try {
             await this.storage.delete(storageKey);
             storageIsClean = true;
@@ -1544,7 +1783,7 @@ export class MaterialService {
             // Keep the durable pending key for the cleanup service to retry.
           }
         }
-        if (pendingClaimed && storageIsClean) {
+        if (pendingClaimed && storageIsClean && !paymentProof) {
           await this.database.uploadDraft
             .updateMany({
               where: { id: draft.id, pendingStorageKey: storageKey },
@@ -1559,6 +1798,170 @@ export class MaterialService {
         throw error;
       }
     });
+  }
+
+  private async replayPaymentProofUpload(
+    actor: ActorContext,
+    draft: UploadDraft,
+    source: NodeJS.ReadableStream,
+  ) {
+    const readOriginal = () =>
+      this.database.$transaction(
+        async (tx) => {
+          await this.lockPaymentProofUploadActor(tx, actor, draft.ownerId);
+          const original = await tx.contentVersion.findFirst({
+            where: {
+              sourceUploadDraftId: draft.id,
+              uploadedBy: actor.userId,
+              status: 'AVAILABLE',
+              sourceUploadDraft: {
+                is: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  ownerType: 'CASE',
+                  ownerId: draft.ownerId,
+                  category: 'CASE_CLOSURE_PAYMENT_PROOF',
+                  purpose: 'CASE_CLOSURE_PAYMENT_PROOF',
+                  status: 'FINALIZED',
+                  pendingStorageKey: null,
+                },
+              },
+              material: {
+                departmentId: actor.departmentId,
+                ownerType: 'CASE',
+                ownerId: draft.ownerId,
+                category: 'CASE_CLOSURE_PAYMENT_PROOF',
+                purpose: 'CASE_CLOSURE_PAYMENT_PROOF',
+                status: 'ACTIVE',
+                deletedAt: null,
+              },
+            },
+            select: {
+              id: true,
+              materialId: true,
+              originalFilename: true,
+              mimeType: true,
+              sizeBytes: true,
+              sha256: true,
+            },
+          });
+          if (original === null) throw this.versionConflict();
+          return original;
+        },
+        { isolationLevel: 'Serializable' },
+      );
+    const original = await readOriginal();
+    const hash = createHash('sha256');
+    let sizeBytes = 0;
+    for await (const chunk of source) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      sizeBytes += bytes.length;
+      if (sizeBytes > materialFileLimit(draft.category))
+        throw this.versionConflict();
+      hash.update(bytes);
+    }
+    const sha256 = hash.digest('hex');
+    if (BigInt(sizeBytes) !== original.sizeBytes || sha256 !== original.sha256)
+      throw this.versionConflict();
+    // Recheck current authorization after consuming the body, without holding
+    // database locks while waiting for a potentially slow upload stream.
+    const current = await readOriginal();
+    if (
+      current.id !== original.id ||
+      current.materialId !== original.materialId ||
+      current.sizeBytes !== original.sizeBytes ||
+      current.sha256 !== original.sha256 ||
+      current.originalFilename !== original.originalFilename ||
+      current.mimeType !== original.mimeType
+    )
+      throw this.versionConflict();
+    return {
+      materialId: original.materialId,
+      contentVersionId: original.id,
+      reservedOwnerId: undefined,
+      originalFilename: original.originalFilename,
+      purpose: draft.purpose,
+      mimeType: original.mimeType,
+      sizeBytes,
+      sha256,
+    };
+  }
+
+  /** Internal whole-command entry; never accepts a request-supplied authorization bypass. */
+  async assertSettlementUpdateDocumentVersions(
+    tx: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    expectedClosureVersionId: string,
+    contentVersionIds: readonly string[],
+  ) {
+    if (!this.isInternalMaterialActor(actor)) throw this.forbidden();
+    await tx.$queryRawUnsafe(
+      'SELECT lock_settlement_upload_actor_current($1::uuid,$2::uuid,$3::uuid,$4::integer)::text',
+      actor.userId,
+      actor.departmentId,
+      caseId,
+      actor.authorizationRevision,
+    );
+    const eligible = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+      'SELECT id FROM cases WHERE id=$1::uuid AND settlement_update_document_upload_eligible($2::uuid,id,$3::uuid,$4::uuid,$5::integer)',
+      caseId,
+      actor.userId,
+      actor.departmentId,
+      expectedClosureVersionId,
+      actor.authorizationRevision,
+    );
+    if (eligible.length !== 1) throw this.forbidden();
+    for (const contentVersionId of contentVersionIds) {
+      // A sealed historical closure reference survives the original upload target/version.
+      // Current actor/case/expected head authorization has already been checked above.
+      const retained = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT d.content_version_id AS id FROM case_closure_documents d
+        JOIN case_closure_versions v ON v.id=d.closure_version_id AND v.case_id=d.case_id AND v.department_id=d.department_id
+        JOIN case_closures h ON h.id=v.closure_id AND h.case_id=v.case_id AND h.department_id=v.department_id
+        JOIN material_references r ON r.material_id=d.material_id AND r.content_version_id=d.content_version_id
+         AND r.department_id=d.department_id AND r.resource_type='case' AND r.resource_id=d.case_id
+         AND r.purpose='CASE_CLOSURE_DOCUMENT' AND r.asset_version_id IS NULL AND r.action_event_id=v.audit_event_id
+        JOIN audit_events a ON a.id=v.audit_event_id AND a.department_id=d.department_id AND a.resource_type='CASE' AND a.resource_id=d.case_id
+         AND a.action=CASE WHEN v.kind='REGISTER' THEN 'case.closure.recorded' ELSE 'case.closure.corrected' END
+         AND a.actor_kind='HUMAN' AND a.actor_user_id=v.recorded_by_user_id
+         AND a.details->>'closureId'=h.id::text AND a.details->>'closureVersionId'=v.id::text
+         AND jsonb_typeof(a.details->'closeContentVersionIds')='array' AND (a.details->'closeContentVersionIds') ? d.content_version_id::text
+        JOIN case_closure_receipts cr ON cr.case_id=v.case_id AND cr.department_id=v.department_id AND cr.actor_user_id=v.recorded_by_user_id
+         AND cr.result_snapshot->>'closureVersionId'=v.id::text AND cr.command::text=CASE WHEN v.kind='REGISTER' THEN 'RECORD' ELSE 'CORRECT' END
+        WHERE d.content_version_id=$1::uuid AND d.case_id=$2::uuid AND d.department_id=$3::uuid
+        FOR SHARE OF d,v,h,r,a,cr`,
+        contentVersionId,
+        caseId,
+        actor.departmentId,
+      );
+      if (retained.length > 0) continue;
+      const targets = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT t.id FROM case_settlement_upload_targets t JOIN content_versions v ON v.source_upload_draft_id=t.upload_draft_id WHERE v.id=$1::uuid`,
+        contentVersionId,
+      );
+      if (targets.length !== 1) throw this.invalidVersion();
+      await assertSettlementUploadContentTarget(tx, actor, {
+        targetId: targets[0]!.id,
+        caseId,
+        expectedClosureVersionId,
+        contentVersionId,
+      });
+    }
+    const input: AssertAvailableVersionsInput = {
+      ownerType: 'CASE',
+      ownerId: caseId,
+      category: 'CASE_CLOSURE_DOCUMENT',
+      contentVersionIds: [...contentVersionIds],
+      minCount: 0,
+      maxCount: 10,
+    };
+    this.settlementValidationInputs.add(input);
+    try {
+      return await this.assertAvailableVersions(tx, actor, input);
+    } finally {
+      this.settlementValidationInputs.delete(input);
+    }
   }
 
   async assertAvailableVersions(
@@ -1625,7 +2028,10 @@ export class MaterialService {
       throw this.invalidVersion();
     }
 
-    if (input.executionSupplementTarget === undefined)
+    if (
+      input.executionSupplementTarget === undefined &&
+      !this.settlementValidationInputs.has(input)
+    )
       await this.authorizeOwner(
         actor,
         input.ownerType,
@@ -3007,6 +3413,40 @@ export class MaterialService {
       actor.clientCustomerId === undefined &&
       actor.notaryOfficeId === undefined &&
       actor.lawyerAccountId === undefined
+    );
+  }
+
+  /** Preparation only: the 0600 upload gate remains closed. Lock current
+   * organization/actor facts before the case, then recheck proof eligibility.
+   * The reused lock function checks revision and case.read without imposing
+   * settlement stage or target requirements. Call only in Serializable scope. */
+  private async lockPaymentProofUploadActor(
+    tx: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+  ): Promise<void> {
+    if (
+      !this.isInternalMaterialActor(actor) ||
+      !Number.isSafeInteger(actor.authorizationRevision) ||
+      actor.authorizationRevision < 0
+    )
+      throw this.forbidden();
+    await tx.$queryRawUnsafe(
+      'SELECT lock_settlement_upload_actor_current($1::uuid,$2::uuid,$3::uuid,$4::integer)::text',
+      actor.userId,
+      actor.departmentId,
+      caseId,
+      actor.authorizationRevision,
+    );
+    await this.authorizeOwner(
+      actor,
+      'CASE',
+      caseId,
+      'write',
+      tx,
+      tx,
+      undefined,
+      'CASE_CLOSURE_PAYMENT_PROOF',
     );
   }
 
@@ -5058,6 +5498,227 @@ export class MaterialService {
     }
   }
 
+  // Internal evidence-only draft. Promise<void> is never a payment-validation receipt.
+  // An empty list means no screenshot links are needed; it does not validate payment,
+  // its audit, amount, authorization or persistence. The command must validate those separately.
+  // Upload and payment persistence gates remain enabled.
+  async freezeCaseClosurePaymentReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    paymentVersionId: string,
+    facts: readonly ValidatedMaterialVersionFact[],
+    actionEventId: string,
+  ): Promise<void> {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
+      throw this.forbidden();
+    // Validate the complete batch before writing any links.
+    const selected = facts.map((fact) => {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        validation.firstUploadTarget !== undefined ||
+        validation.executionSupplementTarget !== undefined ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
+        canonical.category !== 'CASE_CLOSURE_PAYMENT_PROOF' ||
+        canonical.purpose !== 'CASE_CLOSURE_PAYMENT_PROOF' ||
+        !allowedMimeTypes.CASE_CLOSURE_PAYMENT_PROOF.has(canonical.mimeType) ||
+        canonical.sizeBytes <= 0n ||
+        canonical.sizeBytes >
+          BigInt(materialFileLimit('CASE_CLOSURE_PAYMENT_PROOF'))
+      )
+        throw this.invalidVersion();
+      return canonical;
+    });
+    if (
+      new Set(selected.map((fact) => fact.contentVersionId)).size !==
+      selected.length
+    )
+      throw this.invalidVersion();
+    for (const fact of selected) {
+      const exact = await transaction.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT p."id" FROM "case_closure_payment_versions" p
+         JOIN "audit_events" a ON a."id"=p."audit_event_id"
+         JOIN "materials" m ON m."id"=$6::uuid AND m."department_id"=p."department_id"
+         JOIN "content_versions" v ON v."material_id"=m."id" AND v."id"=$7::uuid
+         WHERE p."id"=$1::uuid AND p."case_id"=$2::uuid AND p."department_id"=$3::uuid
+          AND p."recorded_by_user_id"=$4::uuid AND p."audit_event_id"=$5::uuid AND p."state"='ACTIVE'
+          AND p.xmin=pg_current_xact_id()::text::xid AND a.xmin=pg_current_xact_id()::text::xid
+          AND a."resource_type"='CASE_CLOSURE_PAYMENT_VERSION' AND a."resource_id"=p."id"
+          AND a."department_id"=p."department_id" AND a."actor_kind"='HUMAN'
+          AND a."actor_user_id"=p."recorded_by_user_id" AND a."internal_actor_user_id"=p."recorded_by_user_id"
+          AND a."customer_account_binding_id" IS NULL AND a."notary_office_account_binding_id" IS NULL AND a."lawyer_account_binding_id" IS NULL
+          AND a."action"=CASE WHEN p."revision"=1 THEN 'CASE_CLOSURE_PAYMENT_RECORD' ELSE 'CASE_CLOSURE_PAYMENT_CORRECT' END
+          AND (case_closure_actor_authorized($4::uuid,p."case_id",p."department_id",p."revision">1)
+           OR (p."revision"=1 AND p."prior_version_id" IS NULL
+            AND public.case_early_closure_initial_payment_reference_authorized(p."id",p."case_id",p."department_id",$4::uuid) IS TRUE))
+          AND m."owner_type"='CASE' AND m."owner_id"=p."case_id" AND m."status"='ACTIVE' AND m."deleted_at" IS NULL
+          AND m."category"::text='CASE_CLOSURE_PAYMENT_PROOF' AND m."purpose"='CASE_CLOSURE_PAYMENT_PROOF'
+          AND m."current_version_id"=v."id" AND v."status"='AVAILABLE'
+          AND v."mime_type" IN ('image/jpeg','image/png') AND v."size_bytes" BETWEEN 1 AND 20971520
+         FOR SHARE OF p,a,m,v`,
+        paymentVersionId,
+        caseId,
+        actor.departmentId,
+        actor.userId,
+        actionEventId,
+        fact.materialId,
+        fact.contentVersionId,
+      );
+      if (exact.length !== 1) throw this.invalidVersion();
+    }
+    for (const fact of selected) {
+      await transaction.caseClosurePaymentDocument.create({
+        data: {
+          paymentVersionId,
+          caseId,
+          departmentId: actor.departmentId,
+          materialId: fact.materialId,
+          contentVersionId: fact.contentVersionId,
+        },
+      });
+      await transaction.materialReference.create({
+        data: {
+          departmentId: actor.departmentId,
+          resourceType: 'case-closure-payment-version',
+          resourceId: paymentVersionId,
+          purpose: 'CASE_CLOSURE_PAYMENT_PROOF',
+          materialId: fact.materialId,
+          contentVersionId: fact.contentVersionId,
+          actionEventId,
+        },
+      });
+    }
+  }
+
+  // Internal supplement claim; never appends original payment documents.
+  async freezeCasePaymentProofSupplementReferencesDraft(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    paymentVersionId: string,
+    supplementId: string,
+    facts: readonly ValidatedMaterialVersionFact[],
+    actionEventId: string,
+  ): Promise<void> {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
+      throw this.forbidden();
+    // Validate the complete batch before writing any links.
+    const selected = facts.map((fact) => {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        validation.firstUploadTarget !== undefined ||
+        validation.executionSupplementTarget !== undefined ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
+        canonical.category !== 'CASE_CLOSURE_PAYMENT_PROOF' ||
+        canonical.purpose !== 'CASE_CLOSURE_PAYMENT_PROOF' ||
+        !allowedMimeTypes.CASE_CLOSURE_PAYMENT_PROOF.has(canonical.mimeType) ||
+        canonical.sizeBytes <= 0n ||
+        canonical.sizeBytes >
+          BigInt(materialFileLimit('CASE_CLOSURE_PAYMENT_PROOF'))
+      )
+        throw this.invalidVersion();
+      return canonical;
+    });
+    if (selected.length < 1 || selected.length > 10)
+      throw this.invalidVersion();
+    if (
+      new Set(selected.map((fact) => fact.contentVersionId)).size !==
+      selected.length
+    )
+      throw this.invalidVersion();
+    // Verify the entire already-persisted event/link set before writing references.
+    // The 303300 final guard remains responsible for the immutable response/audit
+    // envelope; 303500 independently enforces reference provenance at insertion.
+    const exact = await transaction.$queryRawUnsafe<
+      Array<{ materialId: string; contentVersionId: string }>
+    >(
+      `SELECT d.material_id AS "materialId",d.content_version_id AS "contentVersionId"
+       FROM case_payment_proof_supplements s
+       JOIN case_payment_proof_supplement_documents d ON d.supplement_id=s.id
+        AND d.payment_version_id=s.payment_version_id AND d.case_id=s.case_id AND d.department_id=s.department_id
+       JOIN case_closure_payment_versions p ON p.id=s.payment_version_id AND p.payment_id=s.payment_id
+        AND p.case_id=s.case_id AND p.department_id=s.department_id
+       JOIN cases c ON c.id=s.case_id AND c.department_id=s.department_id
+       JOIN case_closures h ON h.case_id=c.id AND h.department_id=c.department_id
+       JOIN audit_events a ON a.id=s.audit_event_id
+       JOIN materials m ON m.id=d.material_id AND m.department_id=s.department_id
+       JOIN content_versions v ON v.id=d.content_version_id AND v.material_id=m.id
+       WHERE s.id=$1::uuid AND s.payment_version_id=$2::uuid AND s.case_id=$3::uuid
+        AND s.department_id=$4::uuid AND s.actor_user_id=$5::uuid AND s.audit_event_id=$6::uuid
+        AND s.xmin=pg_current_xact_id()::text::xid AND d.xmin=pg_current_xact_id()::text::xid
+        AND a.xmin=pg_current_xact_id()::text::xid
+        AND a.department_id=s.department_id AND a.resource_type='CASE_PAYMENT_PROOF_SUPPLEMENT'
+        AND a.resource_id=s.id AND a.action='CASE_PAYMENT_PROOF_SUPPLEMENTED' AND a.actor_kind='HUMAN'
+        AND a.actor_user_id=s.actor_user_id AND a.internal_actor_user_id=s.actor_user_id
+        AND a.customer_account_binding_id IS NULL AND a.lawyer_account_binding_id IS NULL
+        AND a.notary_office_account_binding_id IS NULL
+        AND p.state='ACTIVE' AND NOT EXISTS(SELECT 1 FROM case_closure_payment_versions n WHERE n.prior_version_id=p.id)
+        AND c.stage::text=s.stage AND s.stage IN ('WAITING_ARCHIVE','ARCHIVED')
+        AND h.current_version_id=s.expected_closure_version_id
+        AND case_payment_proof_upload_eligible(s.actor_user_id,s.case_id,s.department_id)
+        AND cardinality(s.content_version_ids)=$7::integer
+        AND d.content_version_id=ANY(s.content_version_ids)
+        AND m.owner_type='CASE' AND m.owner_id=s.case_id AND m.status='ACTIVE' AND m.deleted_at IS NULL
+        AND m.category::text='CASE_CLOSURE_PAYMENT_PROOF' AND m.purpose='CASE_CLOSURE_PAYMENT_PROOF'
+        AND m.current_version_id=v.id AND v.status='AVAILABLE'
+        AND v.mime_type IN ('image/png','image/jpeg') AND v.size_bytes BETWEEN 1 AND 20971520
+        AND NOT EXISTS(SELECT 1 FROM case_closure_payment_documents original
+         WHERE original.payment_version_id=s.payment_version_id AND original.content_version_id=d.content_version_id)
+        AND NOT EXISTS(SELECT 1 FROM material_references r
+         WHERE r.resource_type='case-payment-proof-supplement' AND r.resource_id=s.id)
+       FOR SHARE OF s,d,p,c,h,a,m,v`,
+      supplementId,
+      paymentVersionId,
+      caseId,
+      actor.departmentId,
+      actor.userId,
+      actionEventId,
+      selected.length,
+    );
+    if (
+      exact.length !== selected.length ||
+      new Set(exact.map((row) => row.contentVersionId)).size !== exact.length ||
+      selected.some(
+        (fact) =>
+          !exact.some(
+            (row) =>
+              row.materialId === fact.materialId &&
+              row.contentVersionId === fact.contentVersionId,
+          ),
+      )
+    )
+      throw this.invalidVersion();
+    for (const fact of selected) {
+      await transaction.materialReference.create({
+        data: {
+          departmentId: actor.departmentId,
+          resourceType: 'case-payment-proof-supplement',
+          resourceId: supplementId,
+          purpose: 'CASE_CLOSURE_PAYMENT_PROOF',
+          materialId: fact.materialId,
+          contentVersionId: fact.contentVersionId,
+          actionEventId,
+        },
+      });
+    }
+  }
+
   async freezeCaseClosureReferences(
     transaction: MaterialTransactionClient,
     actor: ActorContext,
@@ -5457,6 +6118,81 @@ export class MaterialService {
     >,
     notaryCategory?: MaterialCategoryValue,
   ): Promise<void> {
+    // Authorization preparation only: the 0600 database gate still rejects payment proof uploads.
+    if (notaryCategory === 'CASE_CLOSURE_PAYMENT_PROOF') {
+      if (
+        ownerType !== 'CASE' ||
+        actor.clientCustomerId !== undefined ||
+        actor.notaryOfficeId !== undefined ||
+        actor.lawyerAccountId !== undefined
+      )
+        throw this.forbidden();
+      if (operation === 'write') {
+        const record = await reader.case.findFirst({
+          where: { id: ownerId, departmentId: actor.departmentId },
+          select: {
+            departmentId: true,
+            stage: true,
+            responsibleUserId: true,
+            responsibleMembership: { select: { teamId: true } },
+          },
+        });
+        if (
+          !record ||
+          record.responsibleUserId !== actor.userId ||
+          record.departmentId !== actor.departmentId
+        )
+          throw this.forbidden();
+        const allowed = await reader.$queryRawUnsafe<Array<{ id: string }>>(
+          `SELECT "id" FROM "cases" WHERE "id"=$1::uuid AND "department_id"=$2::uuid
+           AND case_payment_proof_upload_eligible($3::uuid,"id","department_id")`,
+          ownerId,
+          actor.departmentId,
+          actor.userId,
+        );
+        if (allowed.length !== 1) throw this.forbidden();
+        if (!['WAITING_ARCHIVE', 'ARCHIVED'].includes(record.stage))
+          await this.withMaterialAuthorization(async () => {
+            try {
+              await this.accessControl.authorizeCase(
+                actor,
+                'case.closure.record',
+                {
+                  departmentId: record.departmentId,
+                  responsibleUserId: record.responsibleUserId,
+                  ...(record.responsibleMembership?.teamId
+                    ? { teamId: record.responsibleMembership.teamId }
+                    : {}),
+                },
+                snapshotReader,
+              );
+            } catch (error) {
+              if (!(error instanceof ForbiddenException)) throw error;
+              await this.accessControl.authorizeCase(
+                actor,
+                'case.archive',
+                {
+                  departmentId: record.departmentId,
+                  responsibleUserId: record.responsibleUserId,
+                  ...(record.responsibleMembership?.teamId
+                    ? { teamId: record.responsibleMembership.teamId }
+                    : {}),
+                },
+                snapshotReader,
+              );
+            }
+          });
+      }
+      await this.authorizeOwner(
+        actor,
+        ownerType,
+        ownerId,
+        'read',
+        reader,
+        snapshotReader,
+      );
+      return;
+    }
     if (notaryCategory === 'FEE_PROOF') {
       if (ownerType !== 'CASE' || !this.isInternalMaterialActor(actor))
         throw this.forbidden();
@@ -5493,6 +6229,93 @@ export class MaterialService {
       )
         throw this.forbidden();
       if (operation === 'write' && notaryCategory === 'CASE_CLOSURE_DOCUMENT') {
+        const pending = await reader.case.findFirst({
+          where: { id: ownerId, departmentId: actor.departmentId },
+          select: {
+            stage: true,
+            departmentId: true,
+            responsibleUserId: true,
+            responsibleMembership: { select: { teamId: true } },
+          },
+        });
+        if (
+          pending &&
+          [
+            'PENDING_MATCH',
+            'WAITING_COMPLAINT',
+            'WAITING_COMPLAINT_CONFIRMATION',
+            'WAITING_COMPLAINT_STAMP',
+            'WAITING_FILING',
+            'WAITING_FORMAL_ACCEPTANCE',
+            'WAITING_HEARING',
+            'WAITING_JUDGMENT',
+            'SECOND_INSTANCE',
+            'WAITING_EXECUTION_DOCUMENTS',
+            'WAITING_EXECUTION_CONFIRMATION',
+            'WAITING_EXECUTION_STAMP',
+            'WAITING_EXECUTION_FILING',
+            'EXECUTING',
+          ].includes(pending.stage)
+        ) {
+          if (
+            actor.lawyerAccountId !== undefined ||
+            pending.departmentId !== actor.departmentId ||
+            pending.responsibleUserId !== actor.userId
+          )
+            throw this.forbidden();
+          const allowed = await reader.$queryRawUnsafe<Array<{ id: string }>>(
+            `SELECT "id" FROM "cases" WHERE "id"=$1::uuid AND "department_id"=$2::uuid
+             AND case_early_closure_upload_authorized($3::uuid,"id","department_id")`,
+            ownerId,
+            actor.departmentId,
+            actor.userId,
+          );
+          if (allowed.length !== 1) throw this.forbidden();
+          await this.withMaterialAuthorization(async () => {
+            await this.accessControl.authorizeCase(
+              actor,
+              'case.read',
+              {
+                departmentId: pending.departmentId,
+                responsibleUserId: pending.responsibleUserId,
+                ...(pending.responsibleMembership?.teamId
+                  ? { teamId: pending.responsibleMembership.teamId }
+                  : {}),
+              },
+              snapshotReader,
+            );
+            try {
+              await this.accessControl.authorizeCase(
+                actor,
+                'case.closure.record',
+                {
+                  departmentId: pending.departmentId,
+                  responsibleUserId: pending.responsibleUserId,
+                  ...(pending.responsibleMembership?.teamId
+                    ? { teamId: pending.responsibleMembership.teamId }
+                    : {}),
+                },
+                snapshotReader,
+              );
+            } catch (error) {
+              if (!(error instanceof ForbiddenException)) throw error;
+              await this.accessControl.authorizeCase(
+                actor,
+                'case.archive',
+                {
+                  departmentId: pending.departmentId,
+                  responsibleUserId: pending.responsibleUserId,
+                  ...(pending.responsibleMembership?.teamId
+                    ? { teamId: pending.responsibleMembership.teamId }
+                    : {}),
+                },
+                snapshotReader,
+              );
+            }
+          });
+          return;
+        }
+
         const source = await reader.$queryRawUnsafe<Array<{ id: string }>>(
           `SELECT c."id" FROM "cases" c JOIN "case_execution_finishes" f ON f."case_id"=c."id" AND f."department_id"=c."department_id"
            LEFT JOIN "case_closures" h ON h."case_id"=c."id" AND h."department_id"=c."department_id"
@@ -6499,7 +7322,8 @@ export class MaterialService {
           input.category === 'EXECUTION_FILING_PROOF' ||
           input.category === 'EXECUTION_SUPPLEMENT' ||
           input.category === 'EXECUTION_FINISH_BASIS' ||
-          input.category === 'CASE_CLOSURE_DOCUMENT') &&
+          input.category === 'CASE_CLOSURE_DOCUMENT' ||
+          input.category === 'CASE_CLOSURE_PAYMENT_PROOF') &&
         input.purpose === input.category) ||
       (input.ownerType === 'CASE' &&
         input.category === 'FEE_PROOF' &&
@@ -6627,6 +7451,7 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'EXECUTION_FILING_PROOF' ||
     value === 'EXECUTION_SUPPLEMENT' ||
     value === 'EXECUTION_FINISH_BASIS' ||
+    value === 'CASE_CLOSURE_PAYMENT_PROOF' ||
     value === 'CASE_CLOSURE_DOCUMENT' ||
     value === 'FEE_PROOF'
   ) {

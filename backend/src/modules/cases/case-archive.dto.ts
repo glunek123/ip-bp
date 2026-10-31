@@ -1,10 +1,11 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsDateString,
   IsIn,
   IsInt,
   IsString,
   IsUUID,
+  IsOptional,
   Matches,
   Max,
   MaxLength,
@@ -47,6 +48,11 @@ export class ArchiveCaseInput {
   @MaxLength(2000)
   @Matches(/\S/u)
   archiveReason!: string;
+  @ApiPropertyOptional({ maxLength: 2000, nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  archiveNote?: string | null;
 }
 export class CorrectCaseArchiveInput extends ArchiveCaseInput {
   @ApiProperty({ format: 'uuid' })

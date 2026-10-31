@@ -11,6 +11,12 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
+import { OrganizationService } from '../../access-control/organization.service';
+import { isDatabaseTransactionConflict } from '../../common/database-transaction-conflict';
+import {
+  lockArchiveCaseScopeDraft,
+  prepareArchiveFinancialDraft,
+} from './case-archive-scope-lock-draft';
 import { readCaseSourceAnchor } from './case-entry-source';
 import { assertExecutionSourceChain } from './case-execution-source';
 import {
@@ -35,6 +41,7 @@ export class CaseArchiveService {
   constructor(
     private readonly database: DatabaseService,
     private readonly access: AccessControlService,
+    private readonly organization: OrganizationService,
   ) {}
 
   archive(actor: ActorContext, caseId: string, input: ArchiveCaseInput) {
@@ -51,36 +58,44 @@ export class CaseArchiveService {
     command: 'ARCHIVE' | 'CORRECT',
   ): Promise<CaseArchiveResult> {
     this.validate(input, command);
+    const archiveNote =
+      typeof input.archiveNote === 'string' && input.archiveNote.length > 0
+        ? input.archiveNote
+        : null;
     if (
       actor.clientCustomerId !== undefined ||
       actor.notaryOfficeId !== undefined
     )
       throw failure('ACTION_FORBIDDEN');
+    const fingerprintPayload = {
+      caseId,
+      command,
+      expectedVersion: input.expectedVersion,
+      expectedClosureVersionId: input.expectedClosureVersionId,
+      expectedArchiveVersionId:
+        'expectedArchiveVersionId' in input
+          ? input.expectedArchiveVersionId
+          : null,
+      archiveAt: input.archiveAt,
+      archiveType: input.archiveType,
+      archiveReason: input.archiveReason,
+      ...(typeof input.archiveNote === 'string' && input.archiveNote.length > 0
+        ? { archiveNote: input.archiveNote }
+        : {}),
+      correctionReason:
+        'correctionReason' in input ? input.correctionReason : null,
+    };
     const fingerprint = createHash('sha256')
-      .update(
-        JSON.stringify({
-          caseId,
-          command,
-          expectedVersion: input.expectedVersion,
-          expectedClosureVersionId: input.expectedClosureVersionId,
-          expectedArchiveVersionId:
-            'expectedArchiveVersionId' in input
-              ? input.expectedArchiveVersionId
-              : null,
-          archiveAt: input.archiveAt,
-          archiveType: input.archiveType,
-          archiveReason: input.archiveReason,
-          correctionReason:
-            'correctionReason' in input ? input.correctionReason : null,
-        }),
-      )
+      .update(JSON.stringify(fingerprintPayload))
       .digest('hex');
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await this.database.$transaction(
           async (tx) => {
             const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>(
-              'SELECT "id" FROM "cases" WHERE "id"=$1::uuid AND "department_id"=$2::uuid FOR UPDATE',
+              command === 'ARCHIVE'
+                ? 'SELECT "id" FROM "cases" WHERE "id"=$1::uuid AND "department_id"=$2::uuid'
+                : 'SELECT "id" FROM "cases" WHERE "id"=$1::uuid AND "department_id"=$2::uuid FOR UPDATE',
               caseId,
               actor.departmentId,
             );
@@ -162,6 +177,8 @@ export class CaseArchiveService {
                   select: {
                     id: true,
                     finishId: true,
+                    earlyClosureId: true,
+                    externalEntryId: true,
                     currentVersionId: true,
                     currentVersion: { select: { id: true, toVersion: true } },
                     versions: {
@@ -169,6 +186,8 @@ export class CaseArchiveService {
                       select: {
                         id: true,
                         finishId: true,
+                        earlyClosureId: true,
+                        externalEntryId: true,
                         priorVersionId: true,
                         kind: true,
                         fromVersion: true,
@@ -191,7 +210,7 @@ export class CaseArchiveService {
                 tx,
                 actor,
                 caseId,
-                true,
+                false,
               );
             else if (
               account.accountType === 'INTERNAL' &&
@@ -229,6 +248,10 @@ export class CaseArchiveService {
               },
             });
             if (priorReceipt !== null) {
+              if (lawyerBindingId !== undefined) {
+                await this.organization.lockDepartment(tx, actor.departmentId);
+                await currentLawyerBindingId(tx, actor, caseId, true);
+              }
               if (
                 priorReceipt.caseId !== caseId ||
                 priorReceipt.requestFingerprint !== fingerprint
@@ -238,16 +261,32 @@ export class CaseArchiveService {
             }
             if (record.version !== input.expectedVersion)
               throw failure('VERSION_CONFLICT');
+            // Initial ARCHIVE discovery above takes no case row lock. New writes
+            // now lock the complete source scope in sorted order; historical
+            // receipt replay and CORRECT retain their original behavior.
+            const financialScope =
+              command === 'ARCHIVE'
+                ? await lockArchiveCaseScopeDraft(
+                    tx,
+                    actor,
+                    caseId,
+                    this.access,
+                    this.organization,
+                  )
+                : null;
+            if (financialScope?.lawyerBindingId !== undefined)
+              lawyerBindingId = financialScope.lawyerBindingId;
             const source = await readCaseSourceAnchor(
               tx,
               caseId,
               actor.departmentId,
             );
-            await assertExecutionSourceChain(
+            const earlyRoot = await assertExecutionSourceChain(
               tx,
               caseId,
               actor.departmentId,
               source,
+              (record.closure?.earlyClosureId ?? null) !== null,
             );
             const finish = record.executionFinish;
             const closure = record.closure;
@@ -277,6 +316,7 @@ export class CaseArchiveService {
             const firstClosureVersion = closure.versions[0];
             if (
               finish === null &&
+              earlyRoot === null &&
               (source.kind !== 'EXTERNAL_ENTRY' ||
                 source.initialStage !== 'WAITING_ARCHIVE' ||
                 firstClosureVersion === undefined ||
@@ -284,11 +324,17 @@ export class CaseArchiveService {
             )
               throw failure('INVALID_STATE');
             let terminal =
-              finish?.toVersion ?? firstClosureVersion?.fromVersion ?? 0;
+              finish?.toVersion ??
+              earlyRoot?.toVersion ??
+              firstClosureVersion?.fromVersion ??
+              0;
             let prior: string | null = null;
             for (const v of closure.versions) {
               if (
                 v.finishId !== (finish?.id ?? null) ||
+                (earlyRoot !== null &&
+                  (v.earlyClosureId !== earlyRoot.id ||
+                    (v.externalEntryId ?? null) !== null)) ||
                 v.fromVersion !== terminal ||
                 v.toVersion !== terminal + 1 ||
                 v.priorVersionId !== prior ||
@@ -322,6 +368,22 @@ export class CaseArchiveService {
                 (prior === null || prior !== archive.currentVersionId))
             )
               throw failure('INVALID_STATE');
+            const financial = financialScope
+              ? await prepareArchiveFinancialDraft(tx, actor, financialScope)
+              : null;
+            if (financial && financial.state !== 'PASSED')
+              throw new ConflictException({
+                code: 'ARCHIVE_FINANCIAL_NOT_READY',
+                message: '归档条件未满足，请逐项核查资金状态',
+                details: {
+                  checks: {
+                    payment: financial.payment,
+                    refund: financial.refund,
+                    customer: financial.customer,
+                    lawyer: financial.lawyer,
+                  },
+                },
+              });
             const archiveId = archive?.id ?? randomUUID();
             const archiveVersionId = randomUUID();
             const auditEventId = randomUUID();
@@ -352,6 +414,7 @@ export class CaseArchiveService {
                   archiveAt: input.archiveAt,
                   archiveType: input.archiveType,
                   archiveReason: input.archiveReason,
+                  archiveNote,
                   correctionReason:
                     'correctionReason' in input ? input.correctionReason : null,
                 },
@@ -381,6 +444,7 @@ export class CaseArchiveService {
                 archiveAt: new Date(input.archiveAt + 'T00:00:00.000Z'),
                 archiveType: input.archiveType,
                 archiveReason: input.archiveReason,
+                archiveNote,
                 correctionReason:
                   'correctionReason' in input ? input.correctionReason : null,
                 recordedAt,
@@ -388,6 +452,13 @@ export class CaseArchiveService {
                 auditEventId,
               },
             });
+            // Freeze the verified financial sources in the same transaction as
+            // the archive version, so a failure rolls back the entire command.
+            if (financial)
+              await financial.persist(
+                archiveVersionId,
+                input.expectedClosureVersionId,
+              );
             const updated = await tx.case.updateMany({
               where: {
                 id: caseId,
@@ -458,7 +529,7 @@ export class CaseArchiveService {
           { isolationLevel: 'Serializable' },
         );
       } catch (cause) {
-        if (this.hasCode(cause, 'P2034') || this.hasCode(cause, '40001')) {
+        if (isDatabaseTransactionConflict(cause)) {
           if (attempt < 2) continue;
           throw failure('VERSION_CONFLICT');
         }
@@ -503,6 +574,7 @@ export class CaseArchiveService {
       'archiveAt',
       'archiveType',
       'archiveReason',
+      ...(Object.hasOwn(input ?? {}, 'archiveNote') ? ['archiveNote'] : []),
       ...(command === 'CORRECT'
         ? ['expectedArchiveVersionId', 'correctionReason']
         : []),
@@ -532,6 +604,10 @@ export class CaseArchiveService {
       typeof input.archiveReason !== 'string' ||
       !/\S/u.test(input.archiveReason) ||
       input.archiveReason.length > 2000 ||
+      (input.archiveNote !== undefined &&
+        input.archiveNote !== null &&
+        (typeof input.archiveNote !== 'string' ||
+          input.archiveNote.length > 2000)) ||
       (command === 'CORRECT' &&
         (!('expectedArchiveVersionId' in input) ||
           typeof input.expectedArchiveVersionId !== 'string' ||

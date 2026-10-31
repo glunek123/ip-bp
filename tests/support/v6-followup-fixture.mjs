@@ -1,3 +1,7 @@
+import {
+  isBatch2Current269,
+  assertBatch2Current269Target,
+} from './batch2-current-managed-target.mjs';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -22,6 +26,17 @@ export function v6MigrationSql(name) {
 }
 
 function assertBoundTestTarget() {
+  // Current target is only transport admission. The 184 source epoch below
+  // remains frozen; callers must not label this a public-269 product proof.
+  if (isBatch2Current269()) {
+    assertBatch2Current269Target();
+    if (
+      v6FollowupMigrations.length !== 184 ||
+      v6FollowupMigrations.at(-1) !== finalMigration
+    )
+      throw new Error('v6 follow-up migration chain changed');
+    return;
+  }
   if (process.env.NODE_ENV !== 'test')
     throw new Error('v6 follow-up tests require test mode');
   const url = process.env.DATABASE_URL;

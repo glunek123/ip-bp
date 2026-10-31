@@ -1,10 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import type { CaseDetail } from '../../api/cases';
 import { resolveCaseSectionEdits } from './case-workspace-section-edits';
+it('keeps the readable payment-history entry after all effective payments are voided', () => {
+  const actions = resolveCaseListActions({
+    ...baseItem,
+    stage: 'ARCHIVED',
+    canSupplementPaymentProof: false,
+    canReadClosurePaymentHistory: true,
+  });
+  expect(actions.find((a) => a.intent === 'payment-proof')).toMatchObject({
+    label: '付款记录',
+  });
+  expect(
+    resolveCaseListActions({
+      ...baseItem,
+      stage: 'ARCHIVED',
+      canSupplementPaymentProof: false,
+      canReadClosurePaymentHistory: false,
+    }).some((a) => a.intent === 'payment-proof'),
+  ).toBe(false);
+});
 import {
   parseCaseActionIntent,
   primaryCaseAction,
   resolveCaseDetailActions,
+  resolveCaseListActions,
 } from './case-workspace-actions';
 
 const baseItem: CaseDetail = {
@@ -398,11 +418,46 @@ describe('case workspace action resolution', () => {
         archiveAt: '2026-10-01',
         archiveType: 'EXECUTION_CLOSED',
         archiveReason: '合成原因',
+        archiveNote: null,
         correctionReason: null,
         recordedAt: '2026-10-01T00:00:00Z',
         recordedByUserId: 'user-1',
       },
     };
     expect(intents(item)).toEqual(['correct-archive']);
+  });
+});
+
+describe('closure list actions', () => {
+  it('uses explicit capabilities and limits closure and archive to their stages', () => {
+    const item = {
+      ...baseItem,
+      canEarlyClose: true,
+      canUpdateClosureSettlement: true,
+      canArchive: true,
+    };
+    expect(resolveCaseListActions(item).map((a) => a.intent)).toContain(
+      'early-closure',
+    );
+    expect(resolveCaseListActions(item).map((a) => a.intent)).not.toContain(
+      'archive',
+    );
+    item.stage = 'WAITING_ARCHIVE';
+    expect(resolveCaseListActions(item).map((a) => a.intent)).toEqual([
+      'settlement-update',
+      'archive',
+    ]);
+    item.stage = 'ARCHIVED';
+    expect(resolveCaseListActions(item).map((a) => a.intent)).not.toContain(
+      'early-closure',
+    );
+    expect(resolveCaseListActions(item).map((a) => a.intent)).not.toContain(
+      'settlement-update',
+    );
+    item.stage = 'PENDING_MATCH';
+    item.canEarlyClose = false;
+    expect(resolveCaseListActions(item).map((a) => a.intent)).not.toContain(
+      'early-closure',
+    );
   });
 });

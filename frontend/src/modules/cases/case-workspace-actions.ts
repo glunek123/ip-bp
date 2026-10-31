@@ -29,6 +29,9 @@ const actionIntents = [
   'correct-archive',
   'defendant-contact-update',
   'acceptance-correction',
+  'early-closure',
+  'settlement-update',
+  'payment-proof',
 ] as const;
 export type CaseActionIntent = (typeof actionIntents)[number];
 export type CaseWorkspaceAction = {
@@ -38,6 +41,21 @@ export type CaseWorkspaceAction = {
   intent: CaseActionIntent;
 };
 const actionDefinitions = {
+  'payment-proof': {
+    id: 'payment-proof',
+    section: 'closure-info',
+    label: '付款记录',
+  },
+  'early-closure': {
+    id: 'early-closure',
+    section: 'closure-info',
+    label: '结案',
+  },
+  'settlement-update': {
+    id: 'settlement-update',
+    section: 'closure-info',
+    label: '结算更新',
+  },
   match: {
     id: 'match',
     section: 'case-info',
@@ -177,7 +195,7 @@ function actionForIntent(intent: CaseActionIntent): CaseWorkspaceAction {
 }
 type CaseActionCapabilities = Pick<
   CaseSummary,
-  Extract<keyof CaseSummary, `can${string}`> | 'origin'
+  Extract<keyof CaseSummary, `can${string}`> | 'origin' | 'stage'
 >;
 
 export function parseCaseActionIntent(
@@ -419,6 +437,12 @@ export function resolveCaseListActions(
   const add = (enabled: boolean | undefined, intent: CaseActionIntent) => {
     if (enabled === true) result.push(actionForIntent(intent));
   };
+  add(
+    (current.stage === 'WAITING_ARCHIVE' || current.stage === 'ARCHIVED') &&
+      (current.canReadClosurePaymentHistory ||
+        current.canSupplementPaymentProof),
+    'payment-proof',
+  );
   add(current.canMatch, 'match');
   add(current.canSubmitComplaint, 'complaint');
   add(current.canConfirmComplaint, 'confirm-complaint');
@@ -452,9 +476,29 @@ export function resolveCaseListActions(
   add(current.canMailExecution, 'execution-mailing');
   add(current.canSubmitExecutionFiling, 'execution-filing');
   add(current.canFinishExecution, 'finish');
-  add(current.canRecordClosure, 'record-closure');
-  add(current.canCorrectClosure, 'correct-closure');
-  add(current.canArchive, 'archive');
+  add(
+    current.stage !== 'WAITING_ARCHIVE' &&
+      current.stage !== 'ARCHIVED' &&
+      current.canEarlyClose,
+    'early-closure',
+  );
+  add(
+    current.stage === 'WAITING_ARCHIVE' && current.canUpdateClosureSettlement,
+    'settlement-update',
+  );
+  add(
+    current.stage === 'WAITING_ARCHIVE' &&
+      !current.canUpdateClosureSettlement &&
+      current.canRecordClosure,
+    'record-closure',
+  );
+  add(
+    current.stage === 'WAITING_ARCHIVE' &&
+      !current.canUpdateClosureSettlement &&
+      current.canCorrectClosure,
+    'correct-closure',
+  );
+  add(current.stage === 'WAITING_ARCHIVE' && current.canArchive, 'archive');
   add(current.canCorrectArchive, 'correct-archive');
   return result;
 }

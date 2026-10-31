@@ -14,6 +14,11 @@ import { pinia } from '../../app/pinia';
 import { router } from '../../app/router';
 import App from '../../app/App.vue';
 import * as http from '../../api/http';
+import ActualPanel from './CaseSettlementActualPanel.vue';
+const actualWorkspaceRead = vi.hoisted(() => vi.fn());
+vi.mock('../../api/case-closure-workspace', () => ({
+  getCaseClosureWorkspace: actualWorkspaceRead,
+}));
 
 const api = vi.hoisted(() => ({
   getCase: vi.fn(),
@@ -179,26 +184,19 @@ it('opens the evidence source editor for the case shown in the detail page', asy
   expect(href.searchParams.get('entrySourceId')).toBe(detail.id);
 });
 
-it('shows the detail early-archive entry only when the case read grants capability', async () => {
-  expect(
-    wrapper!.find('[data-test="open-detail-early-archive"]').exists(),
-  ).toBe(false);
+it('does not expose the retired early-archive action even with a legacy capability', async () => {
   api.getCase.mockResolvedValue({
     ...structuredClone(detail),
     canEarlyArchive: true,
   });
   await wrapper!.get('[data-test="case-refresh"]').trigger('click');
   await flushPromises();
-  await wrapper!
-    .get('[data-test="open-detail-early-archive"]')
-    .trigger('click');
-  await flushPromises();
-  const drawer = document.body.querySelector(
-    '.operation-drawer[aria-label="提前归档案件"]',
-  );
-  expect(drawer?.textContent).toContain('提前归档');
-  expect(drawer?.textContent).toContain('不会登记结案或款项');
-  expect(drawer?.querySelector('textarea')).not.toBeNull();
+  expect(
+    wrapper!.find('[data-test="open-detail-early-archive"]').exists(),
+  ).toBe(false);
+  expect(
+    wrapper!.find('[data-test="case-handling-groups-entry"]').exists(),
+  ).toBe(true);
 });
 
 it('opens routine editing from the selected-case toolbar only after the server grants it', async () => {
@@ -470,3 +468,47 @@ const detail: CaseDetail = {
   executionFiling: null,
   executionFinish: null,
 };
+
+it.each(['submitting', 'unknown'] as const)(
+  'blocks tab and route leave for archived actual %s using the existing workflow session',
+  async (state) => {
+    await router.push('/health');
+    api.getCase.mockResolvedValue({ ...detail, stage: 'ARCHIVED' });
+    actualWorkspaceRead.mockResolvedValue({
+      caseId: detail.id,
+      stage: 'ARCHIVED',
+      actualRegistrationLawyers: [],
+      actual: {
+        connection: 'CONNECTED',
+        scope: 'CASE',
+        customerReceiptState: 'RECORDED',
+        lawyerInvoiceState: 'RECORDED',
+        customerReceivedAmount: '12.34',
+        lawyerInvoicedAmount: '4.56',
+      },
+    });
+    await router.push('/cases/case-1?tab=fees');
+    await flushPromises();
+    expect(wrapper!.get('[data-test="case-read-only"]').text()).toContain(
+      '案件已归档；普通资料和费用操作可从对应入口办理。',
+    );
+    expect(wrapper!.get('[data-test="case-read-only"]').text()).not.toContain(
+      '当前账号不能办理此案',
+    );
+    const actual = wrapper!.getComponent(ActualPanel);
+    const actualSession = actual.props('session');
+    expect(actualSession?.beginSubmit()).toBe(true);
+    if (state === 'unknown')
+      expect(actualSession?.endSubmit('unknown')).toBe(true);
+    await router.push('/cases/case-1?tab=details');
+    await flushPromises();
+    expect(router.currentRoute.value.query.tab).toBe('fees');
+    await router.push('/health');
+    expect(router.currentRoute.value.path).toBe('/cases/case-1');
+    if (state === 'unknown')
+      expect(actualSession?.beginSubmit({ recovery: true })).toBe(true);
+    expect(actualSession?.endSubmit('completed')).toBe(true);
+    await router.push('/health');
+    expect(router.currentRoute.value.path).toBe('/health');
+  },
+);

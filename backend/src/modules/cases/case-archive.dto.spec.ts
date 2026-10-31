@@ -43,6 +43,24 @@ describe('archive DTO', () => {
       ).length,
     ).toBeGreaterThan(0);
   });
+  it('accepts an optional archive note and enforces its length', () => {
+    expect(
+      validateSync(
+        plainToInstance(ArchiveCaseInput, {
+          ...input,
+          archiveNote: '补充说明',
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      validateSync(
+        plainToInstance(ArchiveCaseInput, {
+          ...input,
+          archiveNote: 'x'.repeat(2001),
+        }),
+      ).length,
+    ).toBeGreaterThan(0);
+  });
   it('requires the exact prior archive and nonblank correction reason', () => {
     expect(
       validateSync(

@@ -22,6 +22,7 @@ import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import {
   CreateUploadDraftDto,
+  CreateSettlementUpdateDocumentUploadDto,
   MaterialListQueryDto,
   MaterialVersionQueryDto,
   OwnerMaterialListDto,
@@ -42,6 +43,23 @@ export class MaterialController {
     @Body() input: CreateUploadDraftDto,
   ) {
     return this.materials.createUploadDraft(actor, input);
+  }
+
+  @Post('cases/:caseId/settlement-update-document-upload-drafts')
+  createSettlementUpdateDocumentUploadDraft(
+    @CurrentActor() actor: ActorContext,
+    @Param('caseId', new ParseUUIDPipe({ version: '4' })) caseId: string,
+    @Body() input: CreateSettlementUpdateDocumentUploadDto,
+  ) {
+    return this.materials.createSettlementUpdateDocumentUploadDraft(
+      actor,
+      caseId,
+      input.expectedClosureVersionId,
+      {
+        originalFilename: input.originalFilename,
+        declaredMimeType: input.declaredMimeType,
+      },
+    );
   }
 
   @Put('upload-drafts/:id/content')

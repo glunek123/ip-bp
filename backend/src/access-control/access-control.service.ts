@@ -447,6 +447,7 @@ export class AccessControlService {
   async authorizeCase(
     actor: ActorContext,
     action:
+      | 'case.read'
       | 'case.group.create'
       | 'case.group.dissolve'
       | 'case.match'
@@ -512,6 +513,7 @@ export class AccessControlService {
   async canAuthorizeCase(
     actor: ActorContext,
     action:
+      | 'case.read'
       | 'case.group.create'
       | 'case.group.dissolve'
       | 'case.match'

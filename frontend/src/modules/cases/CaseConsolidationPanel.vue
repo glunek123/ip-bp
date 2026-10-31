@@ -60,12 +60,7 @@ const valid = computed(
     props.items.length === rows.value.length &&
     props.items.every(
       (item) =>
-        [
-          'PENDING_MATCH',
-          'WAITING_COMPLAINT',
-          'WAITING_COMPLAINT_CONFIRMATION',
-          'WAITING_COMPLAINT_STAMP',
-        ].includes(item.stage) &&
+        item.stage === 'PENDING_MATCH' &&
         item.stage === props.items[0]?.stage &&
         item.canConsolidate,
     ) &&
@@ -141,9 +136,7 @@ async function submit() {
       <h3>合并起诉</h3>
       <ElButton @click="emit('close')">关闭</ElButton>
     </header>
-    <p>
-      仅同一具体阶段的案件可合并；准备起诉阶段须由同一主办律师负责。请逐案核对实际被告身份。
-    </p>
+    <p>仅案件待匹配阶段可合并，请逐案核对实际被告身份。</p>
     <div class="consolidation-defendant">
       <label
         >被告类型<select v-model="commonDefendant.kind" @change="changed">

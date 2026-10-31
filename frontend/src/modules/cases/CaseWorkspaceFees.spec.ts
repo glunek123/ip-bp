@@ -1,5 +1,18 @@
-import { mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it } from 'vitest';
+import { mount, flushPromises } from '@vue/test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../api/http';
+import ActualPanel from './CaseSettlementActualPanel.vue';
+const actualMocks = vi.hoisted(() => ({ read: vi.fn(), register: vi.fn() }));
+vi.mock('../../api/case-closure-workspace', () => ({
+  getCaseClosureWorkspace: actualMocks.read,
+}));
+vi.mock('../../api/settlement-actual-registration', () => ({
+  registerCaseSettlementActual: actualMocks.register,
+}));
+beforeEach(() => {
+  actualMocks.read.mockReset();
+  actualMocks.register.mockReset();
+});
 import type { CaseDetail } from '../../api/cases';
 import CaseWorkspaceFees from './CaseWorkspaceFees.vue';
 
@@ -351,6 +364,7 @@ describe('CaseWorkspaceFees', () => {
         archiveAt: '2026-10-14',
         archiveType: 'EXECUTION_COLLECTED',
         archiveReason: '全部结清',
+        archiveNote: null,
         correctionReason: null,
         recordedAt: '2026-10-14T00:00:00Z',
         recordedByUserId: 'u',
@@ -358,7 +372,7 @@ describe('CaseWorkspaceFees', () => {
     };
     const wrapper = render(item);
     expect(wrapper.get('[data-test="case-payments"]').text()).toContain(
-      '尚未登记案件收付明细',
+      '未展示实际结算不代表未登记或已结清',
     );
     expect(wrapper.text()).not.toContain('全部结清');
     expect(wrapper.text()).not.toContain('EXECUTION_COLLECTED');
@@ -382,5 +396,179 @@ describe('CaseWorkspaceFees', () => {
     expect(wrapper.text()).not.toContain('123.45');
     expect(wrapper.text()).not.toContain('old-private-source');
     expect(wrapper.text()).toContain('未登记');
+  });
+});
+
+const actualCaseId = '10000000-0000-4000-8000-000000000001';
+let actualSequence = 0;
+function actualWorkspace(
+  caseId = actualCaseId,
+  stage = 'ARCHIVED',
+  customerAmount = '12.34',
+) {
+  return {
+    caseId,
+    stage,
+    actualRegistrationLawyers: [],
+    actual: {
+      connection: 'CONNECTED',
+      scope: 'CASE',
+      customerReceiptState: 'RECORDED',
+      lawyerInvoiceState: 'RECORDED',
+      customerReceivedAmount: customerAmount,
+      lawyerInvoicedAmount: '4.56',
+    },
+  };
+}
+async function renderActual(
+  stage: 'ARCHIVED' | 'WAITING_ARCHIVE' = 'ARCHIVED',
+  actorKey = `actual-fees-${++actualSequence}`,
+) {
+  const item = structuredClone(baseItem);
+  item.id = actualCaseId;
+  item.stage = stage;
+  const wrapper = mount(CaseWorkspaceFees, {
+    props: { item, actorKey, actorUserId: item.owner.id, actualEnabled: true },
+  });
+  wrappers.push(wrapper);
+  await flushPromises();
+  return wrapper;
+}
+async function submitActual(wrapper: Awaited<ReturnType<typeof renderActual>>) {
+  await wrapper.get('[data-test="open-actual"]').trigger('click');
+  const panel = wrapper.getComponent(ActualPanel);
+  await panel.get('[data-test="side"]').setValue('CUSTOMER');
+  await panel.get('[data-test="amount"]').setValue('1.00');
+  await panel.get('[data-test="occurred-on"]').setValue('2026-01-01');
+  await panel.get('form').trigger('submit');
+  await flushPromises();
+}
+describe('actual finance in existing case fees', () => {
+  it.each(['WAITING_ARCHIVE', 'ARCHIVED'] as const)(
+    'shows real totals and reuses the exact actual panel in %s',
+    async (stage) => {
+      actualMocks.read.mockResolvedValue(actualWorkspace(actualCaseId, stage));
+      const wrapper = await renderActual(stage);
+      expect(wrapper.get('[data-test="actual-customer"]').text()).toContain(
+        '12.34',
+      );
+      expect(wrapper.get('[data-test="actual-lawyer"]').text()).toContain(
+        '4.56',
+      );
+      expect(wrapper.text()).not.toContain('尚未登记案件收付明细');
+      expect(wrapper.vm.canLeave()).toBe(true);
+      await wrapper.get('[data-test="open-actual"]').trigger('click');
+      expect(wrapper.getComponent(ActualPanel).props()).toMatchObject({
+        caseId: actualCaseId,
+        actualRegistrationLawyers: [],
+      });
+      expect(actualMocks.register).not.toHaveBeenCalled();
+    },
+  );
+  it('does not read or offer registration for another stage or non-owner', async () => {
+    const item = structuredClone(baseItem);
+    const wrapper = mount(CaseWorkspaceFees, {
+      props: {
+        item,
+        actorKey: 'not-owner',
+        actorUserId: 'different-user',
+        actualEnabled: true,
+      },
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    expect(actualMocks.read).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-test="open-actual"]').exists()).toBe(false);
+    item.stage = 'ARCHIVED';
+    await wrapper.setProps({ item: { ...item } });
+    await flushPromises();
+    expect(actualMocks.read).not.toHaveBeenCalled();
+    expect(wrapper.findComponent(ActualPanel).exists()).toBe(false);
+  });
+  it('keeps a denied workspace distinct from no actual records', async () => {
+    actualMocks.read.mockRejectedValue(
+      new ApiError('forbidden', 403, 'CASE_ACTION_FORBIDDEN'),
+    );
+    const wrapper = await renderActual();
+    expect(wrapper.find('[data-test="open-actual"]').exists()).toBe(false);
+    expect(wrapper.findComponent(ActualPanel).exists()).toBe(false);
+    expect(wrapper.text()).toContain('无法读取授权实际结算汇总');
+  });
+  it('retains original body and key across unknown request remount and only refreshes after confirmed recovery', async () => {
+    const actorKey = `unknown-actual-fees-${++actualSequence}`;
+    actualMocks.read.mockResolvedValue(actualWorkspace());
+    actualMocks.register.mockRejectedValueOnce(new Error('lost'));
+    const wrapper = await renderActual('ARCHIVED', actorKey);
+    await submitActual(wrapper);
+    const original = actualMocks.register.mock.calls[0]![0];
+    expect(wrapper.vm.canLeave()).toBe(false);
+    wrapper.unmount();
+    actualMocks.register.mockResolvedValueOnce({
+      id: 'fact',
+      amount: '1.00',
+      allocatedAmount: '1.00',
+      allocationId: 'allocation',
+    });
+    const restored = await renderActual('ARCHIVED', actorKey);
+    expect(restored.vm.canLeave()).toBe(false);
+    expect(restored.get('[data-test="retry"]').isVisible()).toBe(true);
+    actualMocks.read.mockResolvedValueOnce(
+      actualWorkspace(actualCaseId, 'ARCHIVED', '13.34'),
+    );
+    await restored.get('[data-test="retry"]').trigger('click');
+    await flushPromises();
+    expect(actualMocks.register).toHaveBeenCalledTimes(2);
+    expect(actualMocks.register.mock.calls[1]![0]).toEqual(original);
+    expect(restored.vm.canLeave()).toBe(true);
+    expect(restored.get('[data-test="actual-customer"]').text()).toContain(
+      '13.34',
+    );
+  });
+  it('blocks duplicate registration if the authorized refresh fails after save', async () => {
+    actualMocks.read.mockResolvedValueOnce(actualWorkspace());
+    actualMocks.register.mockResolvedValueOnce({
+      id: 'fact',
+      amount: '1.00',
+      allocatedAmount: '1.00',
+      allocationId: 'allocation',
+    });
+    const wrapper = await renderActual();
+    actualMocks.read.mockRejectedValueOnce(
+      new ApiError('revoked', 403, 'CASE_ACTION_FORBIDDEN'),
+    );
+    await submitActual(wrapper);
+    expect(wrapper.text()).toContain('实际登记已确认，但汇总读取失败');
+    expect(wrapper.find('[data-test="open-actual"]').exists()).toBe(false);
+    expect(wrapper.findComponent(ActualPanel).exists()).toBe(false);
+    actualMocks.read.mockResolvedValueOnce(actualWorkspace());
+    await wrapper.get('[data-test="refresh-actual"]').trigger('click');
+    await flushPromises();
+    expect(actualMocks.register).toHaveBeenCalledTimes(1);
+    expect(wrapper.find('[data-test="open-actual"]').exists()).toBe(true);
+  });
+  it('ignores a late owner-workspace read after identity and case change', async () => {
+    let finish:
+      ((value: ReturnType<typeof actualWorkspace>) => void) | undefined;
+    actualMocks.read.mockReturnValueOnce(
+      new Promise<ReturnType<typeof actualWorkspace>>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const wrapper = await renderActual();
+    const nextCase = '20000000-0000-4000-8000-000000000002';
+    actualMocks.read.mockResolvedValue(
+      actualWorkspace(nextCase, 'ARCHIVED', '99.00'),
+    );
+    await wrapper.setProps({
+      item: { ...wrapper.props('item'), id: nextCase },
+      actorKey: 'new-actor',
+    });
+    await flushPromises();
+    finish?.(actualWorkspace());
+    await flushPromises();
+    expect(wrapper.get('[data-test="actual-customer"]').text()).toContain(
+      '99.00',
+    );
+    expect(wrapper.getComponent(ActualPanel).props('caseId')).toBe(nextCase);
   });
 });

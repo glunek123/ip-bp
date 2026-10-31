@@ -1,4 +1,9 @@
+import {
+  isBatch2Current269,
+  assertBatch2Current269Target,
+} from './batch2-current-managed-target.mjs';
 export function assertBatch2ImportTarget() {
+  if (isBatch2Current269(process.env)) return assertBatch2Current269Target();
   if (
     process.env.NODE_ENV !== 'test' ||
     process.env.BATCH2_IMPORT_E2E_READY !== '1'

@@ -30,3 +30,18 @@ export function verifyBatch2RefundBoundaryAndRead(
   persisted: number;
   afterRead: string | null;
 }>;
+
+export function readBatch2Current269ArchiveFinance(
+  caseId: string,
+  departmentId: string,
+): Promise<{
+  declaration: 'UNKNOWN' | 'COMPLETE' | 'NOT_APPLICABLE';
+  closure_amount: string | null;
+  readiness: 'UNKNOWN' | 'PASSED' | 'BLOCKED' | 'EXEMPT';
+  refund_readiness: 'UNKNOWN' | 'PASSED' | 'BLOCKED' | 'EXEMPT';
+  payment_readiness: 'UNKNOWN' | 'PASSED' | 'BLOCKED' | 'EXEMPT';
+  customer_readiness: 'UNKNOWN' | 'PASSED' | 'BLOCKED' | 'EXEMPT';
+  lawyer_readiness: 'UNKNOWN' | 'PASSED' | 'BLOCKED' | 'EXEMPT';
+  refund_inventory_version_id: string;
+  refund_items: number;
+}>;

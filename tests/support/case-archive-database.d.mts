@@ -5,10 +5,12 @@ export type CaseArchiveSource = CaseClosureSource & {
     id: string;
     closureId: string;
     closureVersionId: string;
-    finishId: string;
     stage: 'WAITING_ARCHIVE';
     version: number;
     recordedAt: string;
+  };
+  originalClosureResult: CaseArchiveSource['closureResult'] & {
+    finishId: string;
   };
   closureInput: {
     expectedVersion: number;
@@ -58,3 +60,11 @@ export function withCaseArchiveFault(
   phase: 'audit' | 'head' | 'version' | 'case' | 'receipt',
   command: () => Promise<APIResponse>,
 ): Promise<{ status: number; reached: boolean; unchanged: boolean }>;
+
+export function prepareZeroAmountArchiveThroughApi(
+  request: APIRequestContext,
+  caseId: string,
+  closure: { version: number; closureVersionId: string },
+  closureInput: { closeAt: string; closeContentVersionIds: string[] },
+): Promise<CaseArchiveSource['closureResult']>;
+export function readCaseArchiveSnapshot(caseId: string): Promise<string>;

@@ -1,8 +1,91 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import { ApiError } from '../../api/http';
+import { getCaseClosureWorkspace } from '../../api/case-closure-workspace';
+import { createListWorkflowContext } from '../../app/list-workflow-context';
+import ActualPanel from './CaseSettlementActualPanel.vue';
 import type { CaseDetail } from '../../api/cases';
 
-const props = defineProps<{ item: CaseDetail }>();
+const props = defineProps<{
+  item: CaseDetail;
+  actorKey?: string;
+  actorUserId?: string;
+  actualEnabled?: boolean;
+}>();
+const actualOpen = ref(false);
+const savedRefresh = ref(false);
+const eligible = computed(
+  () =>
+    props.actualEnabled === true &&
+    !!props.actorKey &&
+    props.actorUserId === props.item.owner.id &&
+    ['WAITING_ARCHIVE', 'ARCHIVED'].includes(props.item.stage),
+);
+const context = () => ({
+  recordId: props.item.id,
+  actorKey: props.actorKey ?? '',
+  actionKey: 'settlement-actual',
+  title: '实际回款与律师开票',
+});
+const actualWorkflow = createListWorkflowContext(
+  async ({ context: target, signal }) => {
+    const workspace = await getCaseClosureWorkspace(target.recordId, {
+      signal,
+    });
+    if (!['WAITING_ARCHIVE', 'ARCHIVED'].includes(workspace.stage))
+      throw new ApiError(
+        '当前阶段不能在此登记实际结算',
+        409,
+        'ACTUAL_STAGE_UNAVAILABLE',
+      );
+    return { id: workspace.caseId, workspace };
+  },
+);
+const actualState = actualWorkflow.state;
+const actual = computed(() =>
+  actualState.value.status === 'ready'
+    ? actualState.value.detail?.workspace.actual
+    : undefined,
+);
+const actualVisible = computed(
+  () => actualOpen.value || actualState.value.requestState !== 'idle',
+);
+watch(
+  () => [
+    props.actorKey,
+    props.actorUserId,
+    props.item.id,
+    props.item.stage,
+    props.item.owner.id,
+    props.actualEnabled,
+  ],
+  () => {
+    actualOpen.value = false;
+    savedRefresh.value = false;
+    void actualWorkflow.sync(eligible.value ? context() : null);
+  },
+  { immediate: true, flush: 'sync' },
+);
+onBeforeUnmount(actualWorkflow.dispose);
+async function refreshActual(registered = false) {
+  if (!eligible.value || !actualWorkflow.canLeave()) return;
+  savedRefresh.value = registered;
+  await actualWorkflow.sync(context());
+}
+function toggleActual() {
+  if (
+    !eligible.value ||
+    actualState.value.status !== 'ready' ||
+    !actualWorkflow.canLeave()
+  )
+    return;
+  actualOpen.value = !actualOpen.value;
+}
+function closeActual() {
+  if (actualWorkflow.canLeave()) actualOpen.value = false;
+}
+defineExpose({ canLeave: actualWorkflow.canLeave });
 type AmountRow = {
   key: string;
   label: string;
@@ -164,7 +247,73 @@ function displayAmount(row: AmountRow): string {
     </dl>
     <h2>案件收付明细</h2>
     <p data-test="case-payments">
-      尚未登记案件收付明细。当前数据未提供本案实收、实付或结清状态。
+      本区展示来源费用与案件金额事实；未展示实际结算不代表未登记或已结清。
     </p>
+    <section
+      v-if="eligible"
+      aria-label="实际回款与律师开票"
+      data-test="actual-finance"
+    >
+      <h2>实际回款与律师开票</h2>
+      <p v-if="actualState.status === 'loading'" role="status">
+        正在读取授权实际结算汇总…
+      </p>
+      <template v-else-if="actualState.status === 'ready' && actual">
+        <p data-test="actual-customer">
+          客户实际回款：{{
+            actual.customerReceiptState === 'RECORDED'
+              ? actual.customerReceivedAmount + ' 元'
+              : '未知（无可用登记汇总）'
+          }}
+        </p>
+        <p data-test="actual-lawyer">
+          律师实际开票：{{
+            actual.lawyerInvoiceState === 'RECORDED'
+              ? actual.lawyerInvoicedAmount + ' 元'
+              : '未知（无可用登记汇总）'
+          }}
+        </p>
+        <p>
+          以上按{{
+            actual.scope === 'CONSOLIDATION' ? '主案来源分配' : '本案分配'
+          }}展示，不代替应结金额或结清核验。
+        </p>
+        <ElButton
+          data-test="open-actual"
+          :disabled="actualState.requestState !== 'idle'"
+          @click="toggleActual"
+          >{{
+            actualVisible ? '收起实际登记' : '登记实际回款／律师开票'
+          }}</ElButton
+        >
+        <ActualPanel
+          v-if="actualState.session && actualState.detail"
+          v-show="actualVisible"
+          :actor-key="actorKey ?? ''"
+          :case-id="item.id"
+          :actual-registration-lawyers="
+            actualState.detail.workspace.actualRegistrationLawyers
+          "
+          :session="actualState.session"
+          @registered="refreshActual(true)"
+          @cancel="closeActual"
+        />
+      </template>
+      <p
+        v-else-if="
+          actualState.status === 'denied' || actualState.status === 'error'
+        "
+        role="alert"
+      >
+        {{
+          savedRefresh
+            ? '实际登记已确认，但汇总读取失败，请重试读取，勿重复登记。'
+            : '无法读取授权实际结算汇总，请核对权限后重试。'
+        }}
+        <ElButton data-test="refresh-actual" @click="refreshActual()"
+          >重新读取实际汇总</ElButton
+        >
+      </p>
+    </section>
   </section>
 </template>

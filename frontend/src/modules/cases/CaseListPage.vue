@@ -52,11 +52,9 @@ import {
   type CaseListPreferenceBucket,
 } from '../../api/case-list-preference';
 import CaseListPreferencesPanel from './CaseListPreferencesPanel.vue';
-import CaseBatchArchivePanel from './CaseBatchArchivePanel.vue';
 import CaseConsolidationPanel from './CaseConsolidationPanel.vue';
 import CaseCsvImportPanel from './CaseCsvImportPanel.vue';
 import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
-import type { CaseBatchArchiveResult } from '../../api/case-batches';
 import {
   caseListQueryKey,
   parseCaseListQuery,
@@ -195,19 +193,13 @@ const exporting = ref(false);
 const exportError = ref('');
 const selectionExportError = ref('');
 const selectedCaseIds = ref<string[]>([]);
-const batchArchiveOpen = ref(false);
 const consolidationOpen = ref(false);
-const batchArchivePending = ref(false);
-const batchArchivePendingOwner = ref<string | null>(null);
 const csvImportOpen = ref(false);
 const csvImportPending = ref(false);
 const csvImportPendingOwner = ref<string | null>(null);
 watch(
   identity,
   (currentIdentity) => {
-    batchArchiveOpen.value =
-      batchArchivePending.value &&
-      batchArchivePendingOwner.value === currentIdentity;
     csvImportOpen.value =
       csvImportPending.value && csvImportPendingOwner.value === currentIdentity;
     consolidationOpen.value = false;
@@ -227,13 +219,70 @@ const selectedCaseSecondaryActions = computed(() => {
     return [];
   const primary = progressActions(selectedCase.value)[0];
   return listActions(selectedCase.value).filter(
-    (action) => action.intent !== primary?.intent,
+    (action) =>
+      action.intent !== primary?.intent && action.intent !== 'early-closure',
   );
 });
+const closureQueue = ref<CaseSummary[]>([]);
+const archiveQueue = ref<CaseSummary[]>([]);
+const canArchiveSelection = computed(
+  () =>
+    selectedCases.value.length > 1 &&
+    selectedCases.value.length === selectedCaseIds.value.length &&
+    selectedCases.value.every(
+      (item) =>
+        item.stage === 'WAITING_ARCHIVE' &&
+        !pendingActions.value.has(item.id) &&
+        !recordRecoveries.value.some((entry) => entry.caseId === item.id) &&
+        listActions(item).some((action) => action.intent === 'archive'),
+    ),
+);
+function startArchiveSelection() {
+  if (!canArchiveSelection.value || openingAction.value) return;
+  archiveQueue.value = [
+    ...new Map(selectedCases.value.map((item) => [item.id, item])).values(),
+  ];
+  nextArchiveCase();
+}
+function nextArchiveCase() {
+  const item = archiveQueue.value[0];
+  if (item && !openingAction.value) enterAction(item, 'archive');
+}
+const canCloseSelection = computed(
+  () =>
+    selectedCases.value.length > 0 &&
+    selectedCases.value.length === selectedCaseIds.value.length &&
+    selectedCases.value.every((item) =>
+      listActions(item).some((action) => action.intent === 'early-closure'),
+    ),
+);
+function startClosureSelection() {
+  if (!canCloseSelection.value || openingAction.value) return;
+  closureQueue.value = [
+    ...new Map(selectedCases.value.map((item) => [item.id, item])).values(),
+  ];
+  nextClosureCase();
+}
+function nextClosureCase() {
+  const item = closureQueue.value[0];
+  if (item && !openingAction.value) enterAction(item, 'early-closure');
+}
+function workflowSucceeded() {
+  if (
+    selectedAction.value === 'early-closure' &&
+    closureQueue.value[0]?.id === workflowContext.value?.recordId
+  )
+    closureQueue.value = closureQueue.value.slice(1);
+  if (
+    selectedAction.value === 'archive' &&
+    archiveQueue.value[0]?.id === workflowContext.value?.recordId
+  )
+    archiveQueue.value = archiveQueue.value.slice(1);
+  void load();
+}
 const canConsolidateSelection = computed(
   () =>
-    (stage.value === 'PENDING_MATCH' ||
-      stageGroup.value === 'COMPLAINT_PREPARATION') &&
+    stage.value === 'PENDING_MATCH' &&
     selectedCaseIds.value.length >= 2 &&
     selectedCaseIds.value.length <= 20 &&
     selectedCases.value.length === selectedCaseIds.value.length &&
@@ -312,7 +361,6 @@ watch(
   () => {
     selectedCaseIds.value = [];
     selectionExportError.value = '';
-    if (!batchArchivePending.value) batchArchiveOpen.value = false;
     if (!csvImportPending.value) csvImportOpen.value = false;
   },
   { flush: 'sync' },
@@ -390,7 +438,13 @@ function stageLabel(value: CaseSummary['stage']): string {
   return '待开庭';
 }
 function listActions(item: CaseSummary) {
-  const actions = resolveCaseListActions(item);
+  const actions = resolveCaseListActions(item).filter(
+    (action) =>
+      (action.intent !== 'early-closure' &&
+        action.intent !== 'payment-proof') ||
+      (auth.session?.principalType === 'INTERNAL' &&
+        item.owner.id === auth.session.user.id),
+  );
   const primary =
     actions.find((action) => action.intent === 'choose-next-step') ??
     primaryCaseAction(item.stage, actions);
@@ -399,6 +453,7 @@ function listActions(item: CaseSummary) {
     : actions;
 }
 const secondaryCaseIntents = new Set<CaseActionIntent>([
+  'payment-proof',
   'correct-archive',
   'correct-closure',
   'correct-judgment',
@@ -419,7 +474,12 @@ function isSecondaryCaseAction(
 function progressActions(item: CaseSummary) {
   if (pendingActions.value.has(item.id)) return [];
   return listActions(item)
-    .filter((action) => !isSecondaryCaseAction(item, action))
+    .filter(
+      (action) =>
+        !isSecondaryCaseAction(item, action) &&
+        action.intent !== 'early-closure' &&
+        action.intent !== 'archive',
+    )
     .slice(0, 1);
 }
 function shortCaseAction(action: {
@@ -610,7 +670,15 @@ function leaveWorkflow() {
 }
 onBeforeRouteLeave(leaveWorkflow);
 onBeforeRouteUpdate(leaveWorkflow);
-watch([identity, sessionGeneration], closeWorkflow, { flush: 'sync' });
+watch(
+  [identity, sessionGeneration],
+  () => {
+    closureQueue.value = [];
+    archiveQueue.value = [];
+    closeWorkflow();
+  },
+  { flush: 'sync' },
+);
 const caseListColumnOrder = [
   'businessNo',
   'stage',
@@ -962,10 +1030,6 @@ async function exportSelectedList(): Promise<void> {
     }
   }
 }
-function handleBatchArchive(result: CaseBatchArchiveResult): void {
-  if (result.items.some((item) => item.status === 'SUCCEEDED')) void load();
-}
-
 function goToPage(next: number) {
   if (
     state.value !== 'ready' ||
@@ -1144,6 +1208,36 @@ onBeforeUnmount(() => {
           >
         </template>
         <ElButton
+          v-if="canCloseSelection"
+          data-test="close-selected-cases"
+          data-case-action="early-closure"
+          :disabled="openingAction"
+          @click="startClosureSelection"
+          >结案</ElButton
+        >
+        <ElButton
+          v-if="closureQueue.length && !drawerOpen"
+          data-test="next-closure-case"
+          :disabled="openingAction"
+          @click="nextClosureCase"
+          >继续逐案结案（剩余 {{ closureQueue.length }} 件）</ElButton
+        >
+        <ElButton
+          v-if="canArchiveSelection"
+          data-test="archive-selected-cases"
+          data-case-action="archive"
+          :disabled="openingAction"
+          @click="startArchiveSelection"
+          >归档</ElButton
+        >
+        <ElButton
+          v-if="archiveQueue.length && !drawerOpen"
+          data-test="next-archive-case"
+          :disabled="openingAction"
+          @click="nextArchiveCase"
+          >继续逐案归档（剩余 {{ archiveQueue.length }} 件）</ElButton
+        >
+        <ElButton
           class="case-toolbar-button"
           :disabled="
             !selectedCaseIds.length ||
@@ -1152,29 +1246,31 @@ onBeforeUnmount(() => {
             selectedCaseIds.length > 1000
           "
           :loading="exporting"
-          :title="selectedCaseIds.length ? '导出选中案件' : '请先勾选案件'"
+          :title="
+            !selectedCaseIds.length
+              ? '请先勾选案件'
+              : !exportCapability
+                ? '暂不可导出，请稍后重试或核对权限'
+                : !exportInput
+                  ? '请先修正筛选条件'
+                  : selectedCaseIds.length > 1000
+                    ? '每次最多导出 1000 件案件'
+                    : exporting
+                      ? '正在导出，请稍候'
+                      : '导出选中案件'
+          "
           data-test="export-selected-cases"
           @click="exportSelectedList"
           >导出选中</ElButton
         >
         <ElButton
-          class="case-toolbar-button"
-          :disabled="!selectedCaseIds.length"
-          :title="selectedCaseIds.length ? '批量提前归档案件' : '请先勾选案件'"
-          data-test="open-batch-early-archive"
-          @click="batchArchiveOpen = true"
-          >批量归档</ElButton
-        >
-        <ElButton
-          v-if="
-            stage === 'PENDING_MATCH' || stageGroup === 'COMPLAINT_PREPARATION'
-          "
+          v-if="stage === 'PENDING_MATCH'"
           class="case-toolbar-button"
           :disabled="!canConsolidateSelection"
           :title="
             canConsolidateSelection
               ? '合并所选案件'
-              : '请选择 2 至 20 件同一阶段且可合并的案件'
+              : '请选择 2 至 20 件待匹配且可合并的案件'
           "
           data-test="open-case-consolidation"
           @click="consolidationOpen = true"
@@ -1510,7 +1606,7 @@ onBeforeUnmount(() => {
       v-model="drawerOpen"
       :context="workflowContext"
       :load-detail="loadWorkflow"
-      @success="load"
+      @success="workflowSucceeded"
       @closed="readPendingActions"
     >
       <template #default="{ detail, session, requestState }">
@@ -1521,28 +1617,12 @@ onBeforeUnmount(() => {
           :session="session"
           :request-state="requestState"
           :record-actor-key="recordActorKey"
+          :actor-user-id="auth.session?.user.id"
           :record-recovery="selectedRecordRecovery"
           @cancel="drawer?.requestClose()"
         />
       </template>
     </ListWorkflowDrawer>
-    <CaseBatchArchivePanel
-      v-if="batchArchiveOpen || batchArchivePending"
-      :open="batchArchiveOpen"
-      :items="selectedCases"
-      :context-key="requestKey"
-      :identity-key="identity"
-      @close="
-        batchArchiveOpen = false;
-        selectedCaseIds = [];
-      "
-      @completed="handleBatchArchive"
-      @access-lost="load"
-      @pending-state="
-        batchArchivePending = $event;
-        batchArchivePendingOwner = $event ? identity : null;
-      "
-    />
     <CaseConsolidationPanel
       v-if="consolidationOpen && canConsolidateSelection"
       :items="selectedCases"

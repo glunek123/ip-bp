@@ -50,11 +50,13 @@ vi.mock('./CaseListWorkflowPanel.vue', async (original) => ({
   ...(await original<typeof import('./CaseListWorkflowPanel.vue')>()),
   default: {
     props: ['item', 'action', 'session'],
+    emits: ['cancel'],
+    data: () => ({ reason: '' }),
     mounted(this: { session: { restoreUnknown: () => void } }) {
       if (workflowTest.markUnknown) this.session.restoreUnknown();
     },
     template:
-      '<div data-test="workflow-panel">{{ item.id }} {{ action }}</div>',
+      '<div data-test="workflow-panel">{{ item.id }} {{ action }}<input data-test="workflow-reason" v-model="reason"><button data-test="workflow-success" @click="session.beginSubmit() && session.endSubmit(\'success\')">完成</button><button data-test="workflow-failed" @click="session.beginSubmit() && session.endSubmit(\'failed\')">失败</button><button data-test="workflow-cancel" @click="$emit(\'cancel\')">取消</button></div>',
   },
 }));
 const sourceIds = {
@@ -326,23 +328,23 @@ describe('authorized internal case list display', () => {
     expect(wrapper.get('[role="dialog"]').text()).not.toContain('来源');
   });
 
-  it('shows consolidation only in pending match and complaint preparation and requires one exact stage', async () => {
+  it('shows consolidation only in pending match and requires pending-match cases', async () => {
     const first = {
       ...summary(),
       id: 'case-1',
-      stage: 'WAITING_COMPLAINT' as const,
+      stage: 'PENDING_MATCH' as const,
       canConsolidate: true,
     };
     const second = {
       ...summary(),
       id: 'case-2',
       businessNo: 'CA-20261013-00001235',
-      stage: 'WAITING_COMPLAINT' as const,
+      stage: 'PENDING_MATCH' as const,
       canConsolidate: true,
     };
     api.listCases.mockResolvedValue(result([first, second]));
     const { wrapper, router } = await mountList(
-      '/cases?view=mine&stageGroup=COMPLAINT_PREPARATION',
+      '/cases?view=mine&stage=PENDING_MATCH',
     );
     const button = wrapper.get('[data-test="open-case-consolidation"]');
     expect(button.text()).toBe('合并起诉');
@@ -352,10 +354,10 @@ describe('authorized internal case list display', () => {
     expect(button.attributes('disabled')).toBeUndefined();
     await button.trigger('click');
     expect(wrapper.find('[aria-label="合并起诉"]').exists()).toBe(true);
-    await router.push('/cases?view=mine&stage=PENDING_MATCH');
+    await router.push('/cases?view=mine&stageGroup=COMPLAINT_PREPARATION');
     await flushPromises();
     expect(wrapper.find('[data-test="open-case-consolidation"]').exists()).toBe(
-      true,
+      false,
     );
     await router.push('/cases?view=mine&stage=WAITING_FILING');
     await flushPromises();
@@ -364,7 +366,7 @@ describe('authorized internal case list display', () => {
     );
   });
 
-  it('keeps complaint-group consolidation disabled for mixed concrete stages or missing capability', async () => {
+  it('hides complaint-group consolidation even when selected cases advertise capability', async () => {
     api.listCases.mockResolvedValue(
       result([
         {
@@ -381,34 +383,34 @@ describe('authorized internal case list display', () => {
         },
       ]),
     );
-    const { wrapper } = await mountList(
+    const { wrapper, router } = await mountList(
       '/cases?view=mine&stageGroup=COMPLAINT_PREPARATION',
     );
     await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
     await wrapper.get('[data-test="select-case-case-2"]').setValue(true);
-    expect(
-      wrapper
-        .get('[data-test="open-case-consolidation"]')
-        .attributes('disabled'),
-    ).toBeDefined();
+    expect(wrapper.find('[data-test="open-case-consolidation"]').exists()).toBe(
+      false,
+    );
     expect(wrapper.find('[aria-label="合并起诉"]').exists()).toBe(false);
     api.listCases.mockResolvedValue(
       result([
         {
           ...summary(),
           id: 'case-1',
-          stage: 'WAITING_COMPLAINT',
+          stage: 'PENDING_MATCH',
           canConsolidate: true,
         },
         {
           ...summary(),
           id: 'case-2',
-          stage: 'WAITING_COMPLAINT',
+          stage: 'PENDING_MATCH',
           canConsolidate: false,
         },
       ]),
     );
     await wrapper.get('[data-test="case-query-clear"]').trigger('click');
+    await flushPromises();
+    await router.push('/cases?view=mine&stage=PENDING_MATCH');
     await flushPromises();
     await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
     await wrapper.get('[data-test="select-case-case-2"]').setValue(true);
@@ -427,7 +429,8 @@ describe('authorized internal case list display', () => {
     const row = wrapper.get('tbody tr');
     await row.get('[data-test="select-case-case-1"]').setValue(true);
     await row.get('td[data-column="claimAmount"] summary').trigger('click');
-    await row.get('[data-case-action="archive"]').trigger('click');
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    await wrapper.get('[data-case-action="archive"]').trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.path).toBe('/cases');
     await row.get('td[data-column="customerName"]').trigger('click');
@@ -440,6 +443,7 @@ describe('authorized internal case list display', () => {
       result([{ ...summary(), canArchive: true }]),
     );
     const { wrapper, router } = await mountList();
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
     await wrapper.get('[data-case-action="archive"]').trigger('click');
     await flushPromises();
     await wrapper.get('tbody td[data-column="customerName"]').trigger('click');
@@ -558,6 +562,7 @@ describe('authorized internal case list display', () => {
       result([{ ...summary(), canArchive: true }]),
     );
     const { wrapper, router } = await mountList();
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
     await wrapper.get('[data-case-action="archive"]').trigger('click');
     await flushPromises();
     const listCalls = api.listCases.mock.calls.length;
@@ -643,6 +648,7 @@ describe('authorized internal case list display', () => {
     });
     api.getCase.mockReturnValueOnce(loading);
     const { wrapper, router } = await mountList();
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
     const action = wrapper.get('[data-case-action="archive"]');
     await action.trigger('click');
     await action.trigger('click');
@@ -1140,6 +1146,256 @@ describe('authorized internal case list display', () => {
     ).toBeUndefined();
   });
 
+  it.each([
+    ['WAITING_ARCHIVE', true, 'owner-1', true],
+    ['ARCHIVED', true, 'owner-1', true],
+    ['EXECUTING', true, 'owner-1', false],
+    ['ARCHIVED', false, 'owner-1', false],
+    ['ARCHIVED', true, 'other-owner', false],
+  ] as const)(
+    'offers payment proof only as an authorized owner toolbar action (%s, %s, %s)',
+    async (stage, capability, owner, visible) => {
+      api.listCases.mockResolvedValue(
+        result([
+          {
+            ...summary(),
+            stage,
+            canSupplementPaymentProof: capability,
+            owner: { id: owner, displayName: '负责运营' },
+            canUpdateClosureSettlement: true,
+          },
+        ]),
+      );
+      const { wrapper } = await mountList();
+      expect(
+        wrapper
+          .get('tbody tr')
+          .find('[data-case-action="payment-proof"]')
+          .exists(),
+      ).toBe(false);
+      if (stage === 'ARCHIVED')
+        expect(
+          wrapper
+            .get('tbody tr')
+            .find('[data-case-action="settlement-update"]')
+            .exists(),
+        ).toBe(false);
+      await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+      expect(wrapper.find('[data-case-action="payment-proof"]').exists()).toBe(
+        visible,
+      );
+    },
+  );
+
+  it('archives selected independent cases with a fresh form per case and explicit continuation', async () => {
+    const first = { ...summary(), canArchive: true };
+    const second = { ...first, id: 'case-2', businessNo: 'CA-2' };
+    api.listCases.mockResolvedValue(result([first, second]));
+    api.getCase.mockImplementation(async (id: string) => ({ id }));
+    const { wrapper, auth } = await mountList();
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    expect(wrapper.findAll('[data-case-action="archive"]')).toHaveLength(1);
+    expect(wrapper.find('[data-test="archive-selected-cases"]').exists()).toBe(
+      false,
+    );
+    await wrapper.get('[data-test="select-case-case-2"]').setValue(true);
+    expect(wrapper.findAll('[data-case-action="archive"]')).toHaveLength(1);
+    await wrapper.get('[data-test="archive-selected-cases"]').trigger('click');
+    await flushPromises();
+    const reason = document.querySelector(
+      '[data-test="workflow-reason"]',
+    ) as HTMLInputElement;
+    reason.value = '第一案独立归档原因';
+    reason.dispatchEvent(new Event('input', { bubbles: true }));
+    (
+      document.querySelector(
+        '[data-test="workflow-failed"]',
+      ) as HTMLButtonElement
+    ).click();
+    await flushPromises();
+    expect(api.getCase).toHaveBeenCalledTimes(1);
+    expect(wrapper.find('[data-test="next-archive-case"]').exists()).toBe(
+      false,
+    );
+    (
+      document.querySelector(
+        '[data-test="workflow-cancel"]',
+      ) as HTMLButtonElement
+    ).click();
+    await flushPromises();
+    expect(wrapper.get('[data-test="next-archive-case"]').text()).toContain(
+      '剩余 2 件',
+    );
+    await wrapper.get('[data-test="next-archive-case"]').trigger('click');
+    await flushPromises();
+    expect(api.getCase).toHaveBeenLastCalledWith('case-1', {
+      signal: expect.any(AbortSignal),
+    });
+    expect(
+      (
+        document.querySelector(
+          '[data-test="workflow-reason"]',
+        ) as HTMLInputElement
+      ).value,
+    ).toBe('');
+    (
+      document.querySelector(
+        '[data-test="workflow-success"]',
+      ) as HTMLButtonElement
+    ).click();
+    await flushPromises();
+    expect(api.getCase.mock.calls.every(([id]) => id === 'case-1')).toBe(true);
+    expect(wrapper.get('[data-test="next-archive-case"]').text()).toContain(
+      '剩余 1 件',
+    );
+    await wrapper.get('[data-test="next-archive-case"]').trigger('click');
+    await flushPromises();
+    expect(api.getCase).toHaveBeenLastCalledWith('case-2', {
+      signal: expect.any(AbortSignal),
+    });
+    expect(
+      (
+        document.querySelector(
+          '[data-test="workflow-reason"]',
+        ) as HTMLInputElement
+      ).value,
+    ).toBe('');
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    expect(wrapper.find('[data-test="next-archive-case"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it('does not advance an archive queue while its result is unknown', async () => {
+    workflowTest.markUnknown = true;
+    const first = { ...summary(), canArchive: true };
+    api.listCases.mockResolvedValue(
+      result([first, { ...first, id: 'case-2' }]),
+    );
+    const { wrapper } = await mountList();
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    await wrapper.get('[data-test="select-case-case-2"]').setValue(true);
+    await wrapper.get('[data-test="archive-selected-cases"]').trigger('click');
+    await flushPromises();
+    expect(api.getCase).toHaveBeenCalledTimes(1);
+    expect(wrapper.find('[data-test="next-archive-case"]').exists()).toBe(
+      false,
+    );
+    expect(
+      wrapper
+        .get('[data-test="archive-selected-cases"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+  });
+
+  it.each([false, true])(
+    'does not queue an archive selection with an unauthorized or nonwaiting case (%s)',
+    async (wrongStage) => {
+      const first = { ...summary(), canArchive: true };
+      const second = {
+        ...first,
+        id: 'case-2',
+        canArchive: wrongStage,
+        stage: wrongStage
+          ? ('ARCHIVED' as const)
+          : ('WAITING_ARCHIVE' as const),
+      };
+      api.listCases.mockResolvedValue(result([first, second]));
+      const { wrapper } = await mountList();
+      await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+      await wrapper.get('[data-test="select-case-case-2"]').setValue(true);
+      expect(
+        wrapper.find('[data-test="archive-selected-cases"]').exists(),
+      ).toBe(false);
+    },
+  );
+
+  it('handles selected closures one case at a time with a fresh detail read and explicit continuation', async () => {
+    const first = {
+      ...summary(),
+      stage: 'PENDING_MATCH' as const,
+      canEarlyClose: true,
+      canMatch: true,
+    };
+    const second = { ...first, id: 'case-2', businessNo: 'CA-2' };
+    api.listCases.mockResolvedValue(result([first, second]));
+    api.getCase.mockImplementation(async (id: string) => ({ id }));
+    const { wrapper } = await mountList('/cases?view=mine&stage=PENDING_MATCH');
+    expect(
+      wrapper
+        .get('tbody tr')
+        .find('[data-case-action="early-closure"]')
+        .exists(),
+    ).toBe(false);
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    await wrapper.get('[data-test="select-case-case-2"]').setValue(true);
+    await wrapper.get('[data-test="close-selected-cases"]').trigger('click');
+    await flushPromises();
+    expect(api.getCase).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain('case-1 early-closure');
+    (
+      document.querySelector(
+        '[data-test="workflow-success"]',
+      ) as HTMLButtonElement
+    ).click();
+    await flushPromises();
+    expect(api.getCase).toHaveBeenCalledTimes(1);
+    await wrapper.get('[data-test="next-closure-case"]').trigger('click');
+    await flushPromises();
+    expect(api.getCase).toHaveBeenLastCalledWith('case-2', {
+      signal: expect.any(AbortSignal),
+    });
+    expect(document.body.textContent).toContain('case-2 early-closure');
+  });
+
+  it('keeps an unknown closure on its own case and does not expose the next case', async () => {
+    workflowTest.markUnknown = true;
+    const first = {
+      ...summary(),
+      stage: 'EXECUTING' as const,
+      canEarlyClose: true,
+    };
+    api.listCases.mockResolvedValue(
+      result([first, { ...first, id: 'case-2' }]),
+    );
+    const { wrapper } = await mountList('/cases?view=mine&stage=EXECUTING');
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    await wrapper.get('[data-test="select-case-case-2"]').setValue(true);
+    await wrapper.get('[data-test="close-selected-cases"]').trigger('click');
+    await flushPromises();
+    expect(api.getCase).toHaveBeenCalledTimes(1);
+    expect(wrapper.find('[data-test="next-closure-case"]').exists()).toBe(
+      false,
+    );
+    expect(
+      wrapper.get('[data-test="close-selected-cases"]').attributes('disabled'),
+    ).toBeDefined();
+  });
+
+  it('does not offer closure for another owner or without the explicit capability', async () => {
+    api.listCases.mockResolvedValue(
+      result([
+        {
+          ...summary(),
+          stage: 'EXECUTING',
+          canEarlyClose: true,
+          owner: { id: 'other', displayName: '其他运营' },
+        },
+      ]),
+    );
+    const { wrapper } = await mountList(
+      '/cases?view=department&stage=EXECUTING',
+    );
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    expect(wrapper.find('[data-test="close-selected-cases"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-case-action="early-closure"]').exists()).toBe(
+      false,
+    );
+  });
+
   it('keeps at most one workflow action in a row, with details available through the number', async () => {
     api.listCases.mockResolvedValue(
       result([
@@ -1148,13 +1404,19 @@ describe('authorized internal case list display', () => {
           canArchive: true,
           canEarlyArchive: true,
           canCorrectClosure: true,
+          canUpdateClosureSettlement: true,
         },
       ]),
     );
     const { wrapper } = await mountList();
     const row = wrapper.get('tbody tr');
     expect(row.findAll('[data-case-action]')).toHaveLength(1);
-    expect(row.get('[data-case-action="archive"]').text()).toBe('归档');
+    expect(row.get('[data-case-action="settlement-update"]').text()).toBe(
+      '结算更新',
+    );
+    expect(row.find('[data-case-action="archive"]').exists()).toBe(false);
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    expect(wrapper.get('[data-case-action="archive"]').text()).toBe('归档');
     expect(row.find('[data-test="case-more"]').exists()).toBe(false);
     expect(row.find('[data-test="open-single-early-archive"]').exists()).toBe(
       false,
@@ -1172,12 +1434,9 @@ describe('authorized internal case list display', () => {
     expect(wrapper.text()).not.toContain('更多单条操作');
     expect(wrapper.text()).not.toContain('单条');
     expect(wrapper.text()).not.toContain('批量操作');
-    expect(wrapper.get('[data-test="open-batch-early-archive"]').text()).toBe(
-      '批量归档',
-    );
     expect(
-      wrapper.get('[data-test="open-batch-early-archive"]').attributes('title'),
-    ).toBe('请先勾选案件');
+      wrapper.find('[data-test="open-batch-early-archive"]').exists(),
+    ).toBe(false);
 
     await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
     await flushPromises();
@@ -1221,6 +1480,19 @@ describe('authorized internal case list display', () => {
     expect(
       row.get('td[data-column="businessNo"] a').attributes('href'),
     ).toContain('/cases/case-1');
+  });
+
+  it('explains disabled selected export without granting export permission', async () => {
+    exportApi.capability.mockResolvedValue({ canExport: false });
+    const { wrapper } = await mountList();
+    const button = wrapper.get('[data-test="export-selected-cases"]');
+    expect(button.attributes('title')).toBe('请先勾选案件');
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    await flushPromises();
+    expect(button.attributes('disabled')).toBeDefined();
+    expect(button.attributes('title')).toBe('暂不可导出，请稍后重试或核对权限');
+    await button.trigger('click');
+    expect(exportApi.exportSelection).not.toHaveBeenCalled();
   });
 
   it('exports only the applied route filters and revokes the local download URL', async () => {

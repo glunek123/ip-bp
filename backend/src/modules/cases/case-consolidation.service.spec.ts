@@ -1,5 +1,6 @@
 import { CaseConsolidationService } from './case-consolidation.service';
 import { ForbiddenException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type { CreateCaseConsolidationDto } from './case-consolidation.dto';
 
 const id = (digit: string) =>
@@ -25,7 +26,6 @@ const source = (caseId: string, createdAt: string) => ({
   consolidationMembership: null,
   consolidationAsMain: null,
   defendants: [],
-  lawyers: [],
   sourceLead: {
     id: id('7'),
     platform: 'TAOBAO',
@@ -184,7 +184,7 @@ describe('real case consolidation', () => {
     'WAITING_COMPLAINT_CONFIRMATION',
     'WAITING_COMPLAINT_STAMP',
   ])(
-    'previews two cases in the same complaint stage %s with one shared primary lawyer',
+    'rejects new consolidation in complaint stage %s even with one shared primary lawyer',
     async (stage) => {
       const { service, tx } = fixture();
       tx.case.findMany.mockResolvedValueOnce(
@@ -194,13 +194,13 @@ describe('real case consolidation', () => {
           lawyers: [{ lawyerId: id('8') }],
         })),
       );
-      await expect(service.preview(actor, { members })).resolves.toMatchObject({
-        caseCount: 2,
+      await expect(service.preview(actor, { members })).rejects.toMatchObject({
+        response: { code: 'INVALID_STATE' },
       });
     },
   );
 
-  it('rejects mixed stages and different or missing primary lawyers before mutation', async () => {
+  it('rejects mixed stages and complaint-stage sources before mutation', async () => {
     const { service, tx } = fixture();
     tx.case.findMany.mockResolvedValueOnce([
       sources[0],
@@ -221,7 +221,7 @@ describe('real case consolidation', () => {
       })),
     );
     await expect(service.create(actor, input)).rejects.toMatchObject({
-      response: { code: 'SOURCE_CONFLICT' },
+      response: { code: 'INVALID_STATE' },
     });
     tx.case.findMany.mockResolvedValueOnce(
       sources.map((item, index) => ({
@@ -231,12 +231,12 @@ describe('real case consolidation', () => {
       })),
     );
     await expect(service.create(actor, input)).rejects.toMatchObject({
-      response: { code: 'SOURCE_CONFLICT' },
+      response: { code: 'INVALID_STATE' },
     });
     expect(tx.case.updateMany).not.toHaveBeenCalled();
   });
 
-  it('keeps the main complaint stage and original case records when consolidating prepared complaints', async () => {
+  it('does not write a new consolidation for prepared complaints', async () => {
     const { service, tx } = fixture();
     tx.case.findMany.mockResolvedValueOnce(
       sources.map((item) => ({
@@ -245,17 +245,41 @@ describe('real case consolidation', () => {
         lawyers: [{ lawyerId: id('8') }],
       })),
     );
-    await service.create(actor, input);
-    expect(tx.case.updateMany).toHaveBeenCalledTimes(2);
-    for (const call of tx.case.updateMany.mock.calls) {
-      expect(call[0]).toMatchObject({
-        where: { stage: 'WAITING_COMPLAINT_CONFIRMATION', version: 2 },
-        data: { version: { increment: 1 } },
-      });
-    }
+    await expect(service.create(actor, input)).rejects.toMatchObject({
+      response: { code: 'INVALID_STATE' },
+    });
+    expect(tx.case.updateMany).not.toHaveBeenCalled();
+    expect(tx.caseConsolidation.create).not.toHaveBeenCalled();
     expect(Object.keys(tx)).not.toContain('caseLawyerAssignment');
     expect(Object.keys(tx)).not.toContain('caseComplaintConfirmation');
     expect(Object.keys(tx)).not.toContain('materialContentVersion');
+  });
+
+  it('returns an existing receipt after a historic consolidation reaches complaint preparation', async () => {
+    const { service, tx } = fixture();
+    const historicResult = {
+      id: id('9'),
+      mainCaseId: secondId,
+      mainBusinessNo: sources[1].businessNo,
+      caseCount: 2,
+      caseIds: [firstId, secondId],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    tx.case.findMany.mockResolvedValueOnce(
+      sources.map((item) => ({
+        ...item,
+        stage: 'WAITING_COMPLAINT',
+        consolidationMembership: { consolidationId: historicResult.id },
+      })),
+    );
+    tx.caseConsolidationReceipt.findUnique.mockResolvedValueOnce({
+      requestFingerprint: createHash('sha256')
+        .update(JSON.stringify({ members, mainCaseId: secondId }))
+        .digest('hex'),
+      resultSnapshot: historicResult,
+    });
+    await expect(service.create(actor, input)).resolves.toEqual(historicResult);
+    expect(tx.case.updateMany).not.toHaveBeenCalled();
   });
 
   it('locks all members and records only immutable relationship, versions and audit; original financial rows stay untouched', async () => {

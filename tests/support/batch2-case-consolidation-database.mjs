@@ -1,3 +1,7 @@
+import {
+  isBatch2Current269,
+  assertBatch2Current269Target,
+} from './batch2-current-managed-target.mjs';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
@@ -9,6 +13,7 @@ const requireBackend = createRequire(
 const { Client } = requireBackend('pg');
 
 export function assertBatch2CaseConsolidationTarget() {
+  if (isBatch2Current269(process.env)) return assertBatch2Current269Target();
   if (
     process.env.NODE_ENV !== 'test' ||
     process.env.DEV_COR_TEST_DATABASE_PROJECT !==

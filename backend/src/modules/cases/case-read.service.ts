@@ -1,3 +1,6 @@
+import { isEarlyClosureSourceStage } from './case-early-closure.dto';
+import { readCaseSourceAnchor } from './case-entry-source';
+import { assertExecutionSourceChain } from './case-execution-source';
 import {
   BadRequestException,
   ForbiddenException,
@@ -40,6 +43,36 @@ export class CaseReadService {
     private readonly access: AccessControlService,
     private readonly materials: MaterialService,
   ) {}
+
+  private async hasPaymentHistory(
+    actor: ActorContext,
+    caseId: string,
+  ): Promise<boolean> {
+    const versions = await this.database.caseClosurePaymentVersion.findMany({
+      where: { caseId, departmentId: actor.departmentId },
+      select: { id: true },
+      take: 1,
+    });
+    return versions.length > 0;
+  }
+
+  private async hasActivePayment(
+    actor: ActorContext,
+    caseId: string,
+  ): Promise<boolean> {
+    const versions = await this.database.caseClosurePaymentVersion.findMany({
+      where: { caseId, departmentId: actor.departmentId },
+      select: { paymentId: true, revision: true, state: true },
+      orderBy: { revision: 'desc' },
+    });
+    const seen = new Set<string>();
+    for (const version of versions) {
+      if (seen.has(version.paymentId)) continue;
+      seen.add(version.paymentId);
+      if (version.state === 'ACTIVE') return true;
+    }
+    return false;
+  }
 
   private async scope(actor: ActorContext): Promise<'INTERNAL' | 'LAWYER'> {
     if (
@@ -226,6 +259,7 @@ export class CaseReadService {
             },
           },
           earlyArchive: { select: { id: true } },
+          earlyClosure: { select: { id: true } },
           closure: {
             select: {
               id: true,
@@ -326,6 +360,46 @@ export class CaseReadService {
         ),
       ]),
     );
+    const proofCandidates = await Promise.all(
+      items.map(async (item) =>
+        principal === 'INTERNAL' &&
+        item.responsibleUserId === actor.userId &&
+        ['WAITING_ARCHIVE', 'ARCHIVED'].includes(item.stage) &&
+        !!item.closure?.currentVersion?.id &&
+        (await this.access.canAuthorizeCase(actor, 'case.read', {
+          departmentId: actor.departmentId,
+          responsibleUserId: item.responsibleUserId,
+          ...(item.responsibleMembership.teamId
+            ? { teamId: item.responsibleMembership.teamId }
+            : {}),
+        }))
+          ? item.id
+          : null,
+      ),
+    );
+    const candidateIds = proofCandidates.filter((id) => id !== null);
+    const casesWithActivePayment = new Set<string>();
+    const casesWithPaymentHistory = new Set<string>();
+    if (candidateIds.length > 0) {
+      const versions = await this.database.caseClosurePaymentVersion.findMany({
+        where: {
+          caseId: { in: candidateIds },
+          departmentId: actor.departmentId,
+        },
+        select: { caseId: true, paymentId: true, revision: true, state: true },
+        orderBy: { revision: 'desc' },
+      });
+      const seen = new Map<string, Set<string>>();
+      for (const version of versions) {
+        casesWithPaymentHistory.add(version.caseId);
+        const payments = seen.get(version.caseId) ?? new Set<string>();
+        if (payments.has(version.paymentId)) continue;
+        payments.add(version.paymentId);
+        seen.set(version.caseId, payments);
+        if (version.state === 'ACTIVE')
+          casesWithActivePayment.add(version.caseId);
+      }
+    }
     return {
       items: await Promise.all(
         items.map(async (item) => ({
@@ -378,12 +452,7 @@ export class CaseReadService {
             })),
           canConsolidate:
             principal === 'INTERNAL' &&
-            [
-              'PENDING_MATCH',
-              'WAITING_COMPLAINT',
-              'WAITING_COMPLAINT_CONFIRMATION',
-              'WAITING_COMPLAINT_STAMP',
-            ].includes(item.stage) &&
+            item.stage === 'PENDING_MATCH' &&
             item.responsibleUserId === actor.userId &&
             item.consolidationMembership === null &&
             item.consolidationAsMain === null &&
@@ -765,6 +834,53 @@ export class CaseReadService {
                     : {}),
                 },
               ))),
+          // Entry eligibility only; commands recheck source chains and financial evidence.
+          canEarlyClose:
+            principal === 'INTERNAL' &&
+            item.responsibleUserId === actor.userId &&
+            item.consolidationMembership?.isMain !== false &&
+            isEarlyClosureSourceStage(item.stage) &&
+            item.earlyClosure == null &&
+            item.earlyArchive == null &&
+            item.closure == null &&
+            item.archive == null &&
+            item.executionFinish == null &&
+            (await this.access.canAuthorizeCase(actor, 'case.read', {
+              departmentId: actor.departmentId,
+              responsibleUserId: item.responsibleUserId,
+              ...(item.responsibleMembership.teamId
+                ? { teamId: item.responsibleMembership.teamId }
+                : {}),
+            })) &&
+            ((await this.access.canAuthorizeCase(actor, 'case.closure.record', {
+              departmentId: actor.departmentId,
+              responsibleUserId: item.responsibleUserId,
+              ...(item.responsibleMembership.teamId
+                ? { teamId: item.responsibleMembership.teamId }
+                : {}),
+            })) ||
+              (await this.access.canAuthorizeCase(actor, 'case.archive', {
+                departmentId: actor.departmentId,
+                responsibleUserId: item.responsibleUserId,
+                ...(item.responsibleMembership.teamId
+                  ? { teamId: item.responsibleMembership.teamId }
+                  : {}),
+              }))),
+          canSupplementPaymentProof: casesWithActivePayment.has(item.id),
+          canReadClosurePaymentHistory: casesWithPaymentHistory.has(item.id),
+          canUpdateClosureSettlement:
+            principal === 'INTERNAL' &&
+            item.responsibleUserId === actor.userId &&
+            item.consolidationMembership?.isMain !== false &&
+            item.stage === 'WAITING_ARCHIVE' &&
+            item.closure?.currentVersion?.toVersion === item.version &&
+            (await this.access.canAuthorizeCase(actor, 'case.read', {
+              departmentId: actor.departmentId,
+              responsibleUserId: item.responsibleUserId,
+              ...(item.responsibleMembership.teamId
+                ? { teamId: item.responsibleMembership.teamId }
+                : {}),
+            })),
           canArchive:
             item.stage === 'WAITING_ARCHIVE' &&
             item.archive == null &&
@@ -777,19 +893,7 @@ export class CaseReadService {
                   ? { teamId: item.responsibleMembership.teamId }
                   : {}),
               }))),
-          canEarlyArchive:
-            principal === 'INTERNAL' &&
-            item.stage !== 'ARCHIVED' &&
-            item.consolidationMembership?.isMain !== false &&
-            item.archive == null &&
-            item.earlyArchive == null &&
-            (await this.access.canAuthorizeCase(actor, 'case.archive', {
-              departmentId: actor.departmentId,
-              responsibleUserId: item.responsibleUserId,
-              ...(item.responsibleMembership.teamId
-                ? { teamId: item.responsibleMembership.teamId }
-                : {}),
-            })),
+          canEarlyArchive: false,
           canCorrectArchive:
             principal === 'INTERNAL' &&
             item.stage === 'ARCHIVED' &&
@@ -1101,6 +1205,7 @@ export class CaseReadService {
         closure: { include: { versions: { orderBy: { fromVersion: 'asc' } } } },
         archive: { include: { versions: { orderBy: { fromVersion: 'asc' } } } },
         earlyArchive: true,
+        earlyClosure: { select: { id: true } },
         executionFiling: {
           select: {
             toVersion: true,
@@ -1456,6 +1561,54 @@ export class CaseReadService {
     const snapshot = await this.database.$transaction(
       async (transaction) => {
         const record = await transaction.case.findFirst(detailQuery);
+        let earlyClosure = null;
+        if (
+          record?.earlyClosure != null ||
+          record?.closure?.earlyClosureId != null
+        ) {
+          if (
+            !record?.earlyClosure ||
+            record.closure?.earlyClosureId !== record.earlyClosure.id
+          )
+            throw new NotFoundException({
+              code: 'CASE_NOT_FOUND',
+              message: '案件结案来源不完整',
+            });
+          const source = await readCaseSourceAnchor(
+            transaction,
+            id,
+            actor.departmentId,
+          );
+          const verified = await assertExecutionSourceChain(
+            transaction,
+            id,
+            actor.departmentId,
+            source,
+            true,
+          );
+          if (
+            !verified ||
+            verified.id !== record.earlyClosure.id ||
+            record.closure.versions.length === 0 ||
+            record.closure.versions.some(
+              (v) =>
+                v.earlyClosureId !== verified.id ||
+                v.finishId !== null ||
+                v.externalEntryId !== null,
+            ) ||
+            record.closure.versions[0]?.fromVersion !== verified.toVersion
+          )
+            throw new NotFoundException({
+              code: 'CASE_NOT_FOUND',
+              message: '案件结案来源不完整',
+            });
+          earlyClosure = {
+            id: verified.id,
+            fromStage: verified.fromStage,
+            fromVersion: verified.fromVersion,
+            toVersion: verified.toVersion,
+          };
+        }
         const judgmentMaterials =
           record === null
             ? []
@@ -1554,6 +1707,7 @@ export class CaseReadService {
               ]);
         return {
           record,
+          earlyClosure,
           judgmentMaterials,
           executionMaterials,
           executionFeedbacks,
@@ -1564,6 +1718,7 @@ export class CaseReadService {
     );
     const {
       record,
+      earlyClosure,
       judgmentMaterials,
       executionMaterials,
       executionFeedbacks,
@@ -1664,6 +1819,7 @@ export class CaseReadService {
         archiveAt: v.archiveAt.toISOString().slice(0, 10),
         archiveType: v.archiveType,
         archiveReason: v.archiveReason,
+        archiveNote: v.archiveNote ?? null,
         correctionReason: v.correctionReason,
         recordedAt: v.recordedAt.toISOString(),
         recordedByUserId: v.recordedByUserId,
@@ -1718,6 +1874,7 @@ export class CaseReadService {
         closureRecord === null ||
         currentClosure === undefined ||
         (record.executionFinish == null &&
+          earlyClosure === null &&
           (!directClosureWithoutFinish ||
             closureHistory[0]?.fromVersion !== 1)) ||
         archiveRecord.closureId !== closureRecord.id ||
@@ -2443,6 +2600,78 @@ export class CaseReadService {
             },
       archive,
       earlyArchive,
+      earlyClosure,
+      // Entry eligibility only; commands recheck source chains and financial evidence.
+      canEarlyClose:
+        principal === 'INTERNAL' &&
+        record.responsibleUserId === actor.userId &&
+        record.consolidationMembership?.isMain !== false &&
+        isEarlyClosureSourceStage(record.stage) &&
+        record.earlyClosure == null &&
+        record.earlyArchive == null &&
+        record.closure == null &&
+        record.archive == null &&
+        record.executionFinish == null &&
+        (await this.access.canAuthorizeCase(actor, 'case.read', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })) &&
+        ((await this.access.canAuthorizeCase(actor, 'case.closure.record', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })) ||
+          (await this.access.canAuthorizeCase(actor, 'case.archive', {
+            departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          }))),
+      canSupplementPaymentProof:
+        principal === 'INTERNAL' &&
+        record.responsibleUserId === actor.userId &&
+        ['WAITING_ARCHIVE', 'ARCHIVED'].includes(record.stage) &&
+        !!closure?.current.id &&
+        (await this.access.canAuthorizeCase(actor, 'case.read', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })) &&
+        (await this.hasActivePayment(actor, record.id)),
+      canReadClosurePaymentHistory:
+        principal === 'INTERNAL' &&
+        record.responsibleUserId === actor.userId &&
+        ['WAITING_ARCHIVE', 'ARCHIVED'].includes(record.stage) &&
+        !!closure?.current.id &&
+        (await this.access.canAuthorizeCase(actor, 'case.read', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })) &&
+        (await this.hasPaymentHistory(actor, record.id)),
+      canUpdateClosureSettlement:
+        principal === 'INTERNAL' &&
+        record.responsibleUserId === actor.userId &&
+        record.consolidationMembership?.isMain !== false &&
+        record.stage === 'WAITING_ARCHIVE' &&
+        closure?.current.toVersion === record.version &&
+        (await this.access.canAuthorizeCase(actor, 'case.read', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })),
       canArchive:
         record.stage === 'WAITING_ARCHIVE' &&
         record.archive == null &&
@@ -2455,19 +2684,7 @@ export class CaseReadService {
               ? { teamId: record.responsibleMembership.teamId }
               : {}),
           }))),
-      canEarlyArchive:
-        principal === 'INTERNAL' &&
-        record.stage !== 'ARCHIVED' &&
-        record.consolidationMembership?.isMain !== false &&
-        record.archive == null &&
-        record.earlyArchive == null &&
-        (await this.access.canAuthorizeCase(actor, 'case.archive', {
-          departmentId: actor.departmentId,
-          responsibleUserId: record.responsibleUserId,
-          ...(record.responsibleMembership.teamId
-            ? { teamId: record.responsibleMembership.teamId }
-            : {}),
-        })),
+      canEarlyArchive: false,
       canCorrectArchive:
         principal === 'INTERNAL' &&
         record.stage === 'ARCHIVED' &&
@@ -2811,12 +3028,7 @@ export class CaseReadService {
         })),
       canConsolidate:
         principal === 'INTERNAL' &&
-        [
-          'PENDING_MATCH',
-          'WAITING_COMPLAINT',
-          'WAITING_COMPLAINT_CONFIRMATION',
-          'WAITING_COMPLAINT_STAMP',
-        ].includes(record.stage) &&
+        record.stage === 'PENDING_MATCH' &&
         record.responsibleUserId === actor.userId &&
         record.consolidationMembership === null &&
         record.consolidationAsMain === null &&
@@ -3509,6 +3721,7 @@ export class CaseReadService {
         archiveAt: v.archiveAt,
         archiveType: v.archiveType,
         archiveReason: v.archiveReason,
+        archiveNote: v.archiveNote ?? null,
         recordedAt: v.recordedAt,
       });
       const closureVersion = (
@@ -3570,6 +3783,10 @@ export class CaseReadService {
         canMailExecution: detail.canMailExecution,
         canSubmitExecutionFiling: detail.canSubmitExecutionFiling,
         canFinishExecution: detail.canFinishExecution,
+        canEarlyClose: false,
+        canUpdateClosureSettlement: false,
+        canSupplementPaymentProof: false,
+        canReadClosurePaymentHistory: false,
         canRecordClosure: detail.canRecordClosure,
         canCorrectClosure: false,
         canArchive: detail.canArchive,
@@ -3597,6 +3814,7 @@ export class CaseReadService {
                 reason: detail.earlyArchive.reason,
                 recordedAt: detail.earlyArchive.recordedAt,
               },
+        earlyClosure: detail.earlyClosure,
         closure:
           detail.closure === null
             ? null
