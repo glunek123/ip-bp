@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-02T08:59:19.658Z",
+  "recordedAt": "2026-11-02T13:52:53.380Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1893,7 +1893,7 @@
     "tests/support/case-section-record-ui-database.mjs": "c371ad4cec4b562b388452a195a2ceba4e389262a2ec5ae272b52808515afff1",
     "tests/support/case-section-record-upload-database.mjs": "4c193627aeaa4a8f9a916b044ee21235c7b709f821e8982852cf47a08d5678c8",
     "tests/support/case-workspace-browser.ts": "a4a57b944c53211a1b7329887991be50238e7faf4d73f538d0c3da89be977d7f",
-    "tests/support/core-lead-database.mjs": "42042fed023df89171224c12e1477a1114df6bdf707dce9e2b3679e896b41142",
+    "tests/support/core-lead-database.mjs": "e10b2f1966c87dff716ca0c708ee08eb7c80bec2319bd1e735f43de14f78fadf",
     "tests/support/customer-agreement-migration.mjs": "fba0e36a824756e2e8f4987d54f28853847e404c47c1b8b39b9bb8133728e787",
     "tests/support/customer-contact-migration.mjs": "ee251909b652a303fe2d9d37da823a0bbf3382b33875b3ae8edc446dd05ecf35",
     "tests/support/customer-cooperation-lock.mjs": "85208e349d1f2bb15d32ad08fc092f5e666d24cb9c8ab782465c4275c6de7838",

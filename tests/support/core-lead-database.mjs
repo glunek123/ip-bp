@@ -23,6 +23,10 @@ const { MaterialStorageKeyCoordinator } = requireFromBackend(
   './dist/modules/materials/material-storage-key-coordinator.js',
 );
 const { hashPassword } = requireFromBackend('./dist/auth/password.js');
+const { allocateCustomerBusinessId, assertReadyCustomerBusinessId } =
+  requireFromBackend(
+    './dist/modules/business-numbering/business-numbering.service.js',
+  );
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) throw new Error('DATABASE_URL is required');
@@ -899,6 +903,13 @@ export async function resetCoreLeadE2eData() {
 }
 
 export async function seedCoreLeadE2eData({ reuseExisting = false } = {}) {
+  const numbering = await database.$queryRawUnsafe(
+    'SELECT last_value FROM customer_business_number_counters WHERE singleton_id=1',
+  );
+  if (numbering.length !== 1 || BigInt(numbering[0].last_value) < 0n)
+    throw new Error(
+      'Root-owned empty-database numbering initialization is required',
+    );
   const resolvedOperatorPasswordHash = await operatorPasswordHash;
   const resolvedSelfPasswordHash = await selfPasswordHash;
   await database.department.createMany({
@@ -1022,6 +1033,11 @@ export async function seedCoreLeadE2eData({ reuseExisting = false } = {}) {
       },
       {
         roleTemplateId: coreLeadFixtures.roleA,
+        action: 'CUSTOMER_ACCOUNT_CREATE',
+        scope: 'DEPARTMENT',
+      },
+      {
+        roleTemplateId: coreLeadFixtures.roleA,
         action: 'LAWYER_ACCOUNT_MANAGE',
         scope: 'DEPARTMENT',
       },
@@ -1079,43 +1095,56 @@ export async function seedCoreLeadE2eData({ reuseExisting = false } = {}) {
     await database.roleAssignment.create({ data: assignment });
   }
   await database.$transaction(async (transaction) => {
-    await transaction.customer.createMany({
-      skipDuplicates: reuseExisting,
-      data: [
-        {
-          id: coreLeadFixtures.draftCustomer,
-          departmentId: coreLeadFixtures.departmentA,
-          responsibleUserId: coreLeadFixtures.userA,
-          teamId: coreLeadFixtures.teamA,
-          name: '待准入客户',
-          normalizedName: '待准入客户',
-        },
-        admittedCustomer(
-          coreLeadFixtures.admittedCustomer,
-          coreLeadFixtures.departmentA,
-          coreLeadFixtures.userA,
-          coreLeadFixtures.teamA,
-          '已准入客户',
-          'COREA001',
-        ),
-        admittedCustomer(
-          coreLeadFixtures.foreignCustomer,
-          coreLeadFixtures.departmentB,
-          coreLeadFixtures.userB,
-          null,
-          '外部门客户',
-          'COREB001',
-        ),
-        admittedCustomer(
-          coreLeadFixtures.selfCustomer,
-          coreLeadFixtures.departmentA,
-          coreLeadFixtures.userSelf,
-          coreLeadFixtures.teamSelf,
-          '本人范围客户',
-          'CORESELF1',
-        ),
-      ],
-    });
+    const customers = [
+      {
+        id: coreLeadFixtures.draftCustomer,
+        departmentId: coreLeadFixtures.departmentA,
+        responsibleUserId: coreLeadFixtures.userA,
+        teamId: coreLeadFixtures.teamA,
+        name: '待准入客户',
+        normalizedName: '待准入客户',
+      },
+      admittedCustomer(
+        coreLeadFixtures.admittedCustomer,
+        coreLeadFixtures.departmentA,
+        coreLeadFixtures.userA,
+        coreLeadFixtures.teamA,
+        '已准入客户',
+        'COREA001',
+      ),
+      admittedCustomer(
+        coreLeadFixtures.foreignCustomer,
+        coreLeadFixtures.departmentB,
+        coreLeadFixtures.userB,
+        null,
+        '外部门客户',
+        'COREB001',
+      ),
+      admittedCustomer(
+        coreLeadFixtures.selfCustomer,
+        coreLeadFixtures.departmentA,
+        coreLeadFixtures.userSelf,
+        coreLeadFixtures.teamSelf,
+        '本人范围客户',
+        'CORESELF1',
+      ),
+    ];
+    for (const customer of customers) {
+      const existing = reuseExisting
+        ? await transaction.customer.findUnique({
+            where: { id: customer.id },
+            select: { businessId: true },
+          })
+        : null;
+      if (existing) {
+        await assertReadyCustomerBusinessId(transaction, existing.businessId);
+        continue;
+      }
+      const businessId = await allocateCustomerBusinessId(transaction);
+      await transaction.customer.create({
+        data: { ...customer, businessId },
+      });
+    }
     for (const customerId of [
       coreLeadFixtures.admittedCustomer,
       coreLeadFixtures.foreignCustomer,
