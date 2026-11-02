@@ -442,14 +442,17 @@ for (const [label, mutate] of [
 function parentCandidateFixture() {
   const { m, plan } = fixture();
   const current = {
-    ...structuredClone(m.candidate),
+    ...globalThis.structuredClone(m.candidate),
     gitHead: '1'.repeat(40),
     migrations: Array.from({ length: 269 }, (_, i) => ({
       name: `migration-${i}`,
       sha256: 'f'.repeat(64),
     })),
   };
-  const schema = { ...structuredClone(current), gitHead: '2'.repeat(40) };
+  const schema = {
+    ...globalThis.structuredClone(current),
+    gitHead: '2'.repeat(40),
+  };
   const candidateHash = (value) => hash(JSON.stringify(value));
   const parent = {
     purpose: 'CODE_CANDIDATE_ONLY',
@@ -463,7 +466,7 @@ function parentCandidateFixture() {
     parentInstalledManifestSha256: 'b'.repeat(64),
   };
   Object.assign(plan, {
-    frozen: structuredClone(current),
+    frozen: globalThis.structuredClone(current),
     currentCodeCandidateSha256: candidateHash(current),
     schemaCandidateSha256: candidateHash(schema),
     codeResourceView: {
@@ -474,7 +477,7 @@ function parentCandidateFixture() {
     parentInstalledManifestSha256: parent.parentInstalledManifestSha256,
   });
   Object.assign(m, {
-    candidate: structuredClone(current),
+    candidate: globalThis.structuredClone(current),
     candidateSha256: candidateHash(current),
     parentManifestPath: plan.codeResourceView.manifestPath,
     parentManifestSha256: plan.codeResourceView.manifestSha256,
@@ -488,7 +491,7 @@ test('strict CODE_ONLY parent binds current code while retaining historical sche
 test('legacy parent still requires the original candidate', () => {
   const { m } = parentCandidateFixture();
   validateManagedE2eParentCandidate(
-    { candidate: structuredClone(m.candidate) },
+    { candidate: globalThis.structuredClone(m.candidate) },
     {},
     m,
   );
@@ -519,7 +522,7 @@ for (const [name, mutate] of Object.entries({
   downgrade: ({ parent, m }) => {
     parent.purpose = 'legacy';
     parent.codeOnly = false;
-    parent.candidate = structuredClone(m.candidate);
+    parent.candidate = globalThis.structuredClone(m.candidate);
   },
 }))
   test(`CODE_ONLY rejects ${name}`, () => {

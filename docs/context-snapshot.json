@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-02T04:00:21.129Z",
+  "recordedAt": "2026-11-02T05:57:42.708Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1654,7 +1654,7 @@
     "scripts/local-lock.mjs": "6f5001af92692a4cf2493fc86f435454c56e842da69a45a485f33206a1fbc59c",
     "scripts/local-lock.test.mjs": "b115529a8cc6c1b533f4f8bfa26bb23574d3f3aafb42abdc8b0bb29d0779e283",
     "scripts/managed-e2e-admission.mjs": "deb980668ef9b9b7a6ecca9a67dd760bcb2c2fc0170541f1cf4932078fa80510",
-    "scripts/managed-e2e-admission.test.mjs": "26e3bc335a6a15e2027552744d4ab5f712a781435c4347e60af1147f91fd16ba",
+    "scripts/managed-e2e-admission.test.mjs": "1d7d4bc5305393189d612ec83ca6e141ef879cb4d3c0160def49bb5afe61091c",
     "scripts/managed-e2e-generic-callbacks.test.mjs": "a2f0018f83483a7d796ab21d4386f29d643e89d88994921e1a138d377d4ab22b",
     "scripts/managed-e2e-old150-source.mjs": "3cfc455ed0873b6e204ca2dbc1fa6bf40bdfa5a05eba6e10f906e8ac47f55eea",
     "scripts/managed-e2e-old150-source.test.mjs": "be35ddcb7d279606a0a38a97369df5d9e10351cc8f39ddadebe32fb00c16a8f2",
