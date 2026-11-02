@@ -189,9 +189,9 @@ test('the root config directly consumes the same factory fragment it validates a
       },
     },
     './scripts/batch2-lead-import-admission.mjs': {
-      assertBatch2LeadImportAdmission(projectRoot, args) {
+      assertBatch2LeadImportConfigAdmission(projectRoot, args) {
         assert.equal(projectRoot, root);
-        assert.deepEqual(Array.from(args), []);
+        assert.deepEqual(Array.from(args), ['test']);
         events.push('batch2-admit');
         return false;
       },

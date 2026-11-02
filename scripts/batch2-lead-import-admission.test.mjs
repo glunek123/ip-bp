@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
-import { test } from 'vitest';
-import { assertBatch2LeadImportAdmission } from './batch2-lead-import-admission.mjs';
+import { dirname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
+import { test, vi } from 'vitest';
+import {
+  assertBatch2LeadImportAdmission,
+  assertBatch2LeadImportConfigAdmission,
+} from './batch2-lead-import-admission.mjs';
 import { runE2e } from './run-e2e.mjs';
 
 const root = process.cwd();
@@ -82,6 +86,76 @@ test.each([
 );
 const importFile = 'tests/e2e/batch2-lead-import.spec.ts';
 const config = 'tests/support/batch2-lead-import.config.ts';
+const playwrightRequire = createRequire(
+  createRequire(resolve(root, 'package.json')).resolve(
+    '@playwright/test/package.json',
+  ),
+);
+const playwrightRoot = dirname(
+  playwrightRequire.resolve('playwright/package.json'),
+);
+
+test.each(['worker/workerProcessEntry.js', 'loader/loaderProcessEntry.js'])(
+  'config replay requires the installed %s and live IPC',
+  (entry) => {
+    try {
+      vi.stubGlobal('process', {
+        ...process,
+        argv: [process.execPath, resolve(playwrightRoot, 'lib', entry)],
+        connected: true,
+        send() {},
+      });
+      assert.equal(assertBatch2LeadImportConfigAdmission(root, []), false);
+      process.connected = false;
+      assert.throws(() => assertBatch2LeadImportConfigAdmission(root, []));
+      process.connected = true;
+      process.send = undefined;
+      assert.throws(() => assertBatch2LeadImportConfigAdmission(root, []));
+      process.send = () => {};
+      process.argv[1] = resolve(root, 'fake-playwright', 'lib', entry);
+      assert.throws(() => assertBatch2LeadImportConfigAdmission(root, []));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);
+
+test('config CLI keeps fixed selection admission and environment flags cannot grant replay', () => {
+  try {
+    vi.stubEnv('TEST_WORKER_INDEX', '0');
+    vi.stubEnv('DEV_COR_BATCH2_IMPORT_ALLOW', '1');
+    assert.throws(() => assertBatch2LeadImportConfigAdmission(root, []));
+    assert.throws(() => assertBatch2LeadImportConfigAdmission(root, ['test']));
+    assert.throws(() =>
+      assertBatch2LeadImportConfigAdmission(root, ['test', importFile]),
+    );
+    assert.throws(() =>
+      assertBatch2LeadImportConfigAdmission(root, ['--list']),
+    );
+    assert.equal(
+      assertBatch2LeadImportConfigAdmission(root, [
+        'test',
+        'tests/e2e/auth.spec.ts',
+      ]),
+      false,
+    );
+    assert.equal(
+      assertBatch2LeadImportConfigAdmission(root, ['test', '--list']),
+      false,
+    );
+    assert.doesNotThrow(() =>
+      assertBatch2LeadImportConfigAdmission(root, [
+        'test',
+        '--config',
+        config,
+        importFile,
+      ]),
+    );
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
 const rejects = (args) =>
   assert.throws(
     () => assertBatch2LeadImportAdmission(root, args),
@@ -170,9 +244,18 @@ test('admission survives the root config CommonJS transformation and keeps selec
       'Discovery must not capture an environment or validate a database target',
     );
   };
+  const configProcess = {
+    ...process,
+    argv: [
+      process.execPath,
+      resolve(playwrightRoot, 'lib/worker/workerProcessEntry.js'),
+    ],
+    connected: true,
+    send() {},
+  };
   vm.runInNewContext(output, {
     exports,
-    process,
+    process: configProcess,
     require(name) {
       if (name === './test-environment.mjs')
         return { captureTestEnvironment: unexpected };
@@ -202,5 +285,18 @@ test('admission survives the root config CommonJS transformation and keeps selec
       config,
       importFile,
     ]),
+  );
+  assert.equal(exports.assertBatch2LeadImportConfigAdmission(root, []), false);
+  configProcess.connected = false;
+  assert.throws(() => exports.assertBatch2LeadImportConfigAdmission(root, []));
+  assert.throws(() =>
+    exports.assertBatch2LeadImportConfigAdmission(root, ['test', importFile]),
+  );
+  assert.equal(
+    exports.assertBatch2LeadImportConfigAdmission(root, [
+      'test',
+      'tests/e2e/auth.spec.ts',
+    ]),
+    false,
   );
 });

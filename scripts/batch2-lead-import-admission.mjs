@@ -4,12 +4,41 @@ import {
   assertBatch2Current269Target,
 } from '../tests/support/batch2-current-managed-target.mjs';
 import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 function controlledConfigRequired() {
   return new Error(
     'Batch-2 lead import requires --config tests/support/batch2-lead-import.config.ts before Playwright starts',
   );
+}
+
+export function assertBatch2LeadImportConfigAdmission(root, argv) {
+  // Only installed framework IPC children replay an already admitted config.
+  // They have no CLI file filters or global setup/webServer lifecycle to admit.
+  if (process.connected === true && typeof process.send === 'function') {
+    let playwrightRoot;
+    try {
+      const require = createRequire(resolve(root, 'package.json'));
+      const playwrightRequire = createRequire(
+        require.resolve('@playwright/test/package.json'),
+      );
+      playwrightRoot = dirname(
+        playwrightRequire.resolve('playwright/package.json'),
+      );
+    } catch {
+      throw controlledConfigRequired();
+    }
+    const entry = process.argv[1] && resolve(process.argv[1]);
+    if (
+      [
+        resolve(playwrightRoot, 'lib/worker/workerProcessEntry.js'),
+        resolve(playwrightRoot, 'lib/loader/loaderProcessEntry.js'),
+      ].includes(entry)
+    )
+      return false;
+  }
+  if (argv[0] !== 'test') throw controlledConfigRequired();
+  return assertBatch2LeadImportAdmission(root, argv.slice(1));
 }
 
 // Parse Playwright's own test options and file filters before environment
