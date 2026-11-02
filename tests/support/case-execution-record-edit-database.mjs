@@ -1,7 +1,10 @@
+import assert from 'node:assert/strict';
+import { getCallSites } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { setTimeout as nextPoll } from 'node:timers/promises';
 import {
   captureTestEnvironment,
@@ -12,7 +15,16 @@ import {
 const requireBackend = createRequire(
   resolve(process.cwd(), 'backend/package.json'),
 );
-const root = resolve(import.meta.dirname, '../..');
+const moduleScriptName = getCallSites(1, { sourceMap: false })[0]?.scriptName;
+assert.ok(
+  typeof moduleScriptName === 'string' &&
+    (moduleScriptName.startsWith('file:') || isAbsolute(moduleScriptName)),
+  'Actual module location required',
+);
+const modulePath = moduleScriptName.startsWith('file:')
+  ? fileURLToPath(moduleScriptName)
+  : moduleScriptName;
+const root = resolve(dirname(modulePath), '../..');
 const prefix = 'execution-record-edit:';
 const ownedActors = new Map();
 const ownedCases = new Set();

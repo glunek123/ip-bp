@@ -15,6 +15,7 @@ import {
   readCaseArchiveSnapshot,
   setCaseArchiveFixtureGrant,
 } from '../support/case-archive-database.mjs';
+import { setCaseClosureFixtureGrant } from '../support/case-closure-database.mjs';
 import { prepareCaseAcceptanceFixture } from '../support/case-acceptance-database.mjs';
 import { prepareCaseFilingFixture } from '../support/case-filing-database.mjs';
 import { allowOtherEnterpriseAccountSetup } from '../support/case-complaint-mailing-database.mjs';
@@ -2050,7 +2051,7 @@ test('continues all four execution roots with nullable first predecessors and re
     filingRoot.id,
     closure,
     {
-      closeAt: shanghaiToday(),
+      closeAt: null,
       closeContentVersionIds: [closureFile.contentVersionId],
     },
   );
@@ -3512,4 +3513,258 @@ test('enforces strict body, internal-only scope, and authorization before receip
     lawyerCannotCreateInternally.status(),
     await lawyerCannotCreateInternally.text(),
   ).toBe(403);
+});
+
+test('archives known positive money with a pending closure date only after actual synthetic payments are complete', async ({
+  request,
+}) => {
+  await setCaseClosureFixtureGrant(
+    coreLeadFixtures.roleA,
+    'case.closure.correct',
+    'TEAM',
+  );
+  const created = await createEntry(request, input('WAITING_ARCHIVE'));
+  const bytes = Buffer.from(
+    '%PDF-1.7\nCA018 pending-date positive-money original document\n%%EOF\n',
+  );
+  const document = await uploadCaseFile(
+    request,
+    created.id,
+    'CASE_CLOSURE_DOCUMENT',
+    bytes,
+  );
+  type ClosureResult = {
+    closureVersionId: string;
+    version: number;
+    stage: string;
+  };
+  type Workspace = {
+    caseVersion: number;
+    closure: {
+      versionId: string;
+      closeOn: string | null;
+      amount: string | null;
+      paymentType: string;
+    };
+    assessment: {
+      versionId: string | null;
+      termsVersion: number | null;
+      declaration: string;
+      matchesCurrent: boolean | null;
+    };
+    refund: { versionId: string | null };
+    effectivePayments: Array<{ amount: string }>;
+  };
+  const readWorkspace = () =>
+    request
+      .get(`/api/v1/cases/${created.id}/closure-workspace`, {
+        headers: operator,
+      })
+      .then((response) => body<Workspace>(response));
+  const original = await body<ClosureResult>(
+    await request.post(`/api/v1/cases/${created.id}/closure`, {
+      headers: operator,
+      data: {
+        expectedVersion: created.version,
+        expectedFinishId: null,
+        idempotencyKey: randomUUID(),
+        closeAt: null,
+        closeAmountState: 'KNOWN',
+        closeAmt: '12.34',
+        note: 'Synthetic positive-money pending-date regression',
+        closeContentVersionIds: [document.contentVersionId],
+      },
+    }),
+    201,
+  );
+  const originalFacts = await caseExternalEntrySnapshot(created.id);
+  expect(originalFacts.closureVersions).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: original.closureVersionId,
+        close_at: null,
+        close_amount_state: 'KNOWN',
+        close_amt: 12.34,
+      }),
+    ]),
+  );
+  const initialWorkspace = await readWorkspace();
+  expect(initialWorkspace.closure).toMatchObject({
+    closeOn: null,
+    amount: '12.34',
+  });
+  // A new external root has no settlement terms or assessment. Do not infer a current
+  // terms version from a stale assessment on a reused case.
+  expect(initialWorkspace.assessment).toMatchObject({
+    versionId: null,
+    termsVersion: null,
+  });
+  const firstInput = {
+    expectedVersion: original.version,
+    expectedClosureVersionId: original.closureVersionId,
+    idempotencyKey: randomUUID(),
+    closeAt: null,
+    closeAmountState: 'KNOWN',
+    closeAmt: '12.34',
+    closeContentVersionIds: [document.contentVersionId],
+    paymentType: 'INSTALLMENTS',
+    paymentRecords: [
+      {
+        paidOn: shanghaiToday(),
+        amount: '4.00',
+        payer: '合成付款人',
+        payee: '合成收款人',
+        screenshotContentVersionId: null,
+      },
+    ],
+    refund: {
+      expectedVersionId: initialWorkspace.refund.versionId,
+      kind: 'DECLARE_NOT_APPLICABLE',
+      items: [],
+    },
+    settlement: {
+      expectedAssessmentVersionId: initialWorkspace.assessment.versionId,
+      expectedTermsVersion: initialWorkspace.assessment.termsVersion,
+      declaration: 'NOT_APPLICABLE',
+    },
+  };
+  const updateUrl = `/api/v1/cases/${created.id}/closure-settlement-updates`;
+  const first = await body<ClosureResult>(
+    await request.post(updateUrl, { headers: operator, data: firstInput }),
+    201,
+  );
+  const partial = await readWorkspace();
+  expect(partial.closure).toMatchObject({
+    closeOn: null,
+    amount: '12.34',
+    paymentType: 'INSTALLMENTS',
+  });
+  expect(partial.effectivePayments.map((payment) => payment.amount)).toEqual([
+    '4.00',
+  ]);
+  expect(partial.assessment).toMatchObject({
+    declaration: 'NOT_APPLICABLE',
+    matchesCurrent: true,
+  });
+  const archiveUrl = `/api/v1/cases/${created.id}/archive`;
+  const partialArchiveInput = {
+    expectedVersion: first.version,
+    expectedClosureVersionId: first.closureVersionId,
+    idempotencyKey: randomUUID(),
+    archiveAt: shanghaiToday(),
+    archiveType: 'EXECUTION_COLLECTED',
+    archiveReason: '合成日期待定正金额必须实际付清',
+  };
+  const beforeReject = await readCaseArchiveSnapshot(created.id);
+  const rejected = await request.post(archiveUrl, {
+    headers: operator,
+    data: partialArchiveInput,
+  });
+  expect(rejected.status(), await rejected.text()).toBe(409);
+  expect(await rejected.json()).toMatchObject({
+    code: 'ARCHIVE_FINANCIAL_NOT_READY',
+    details: {
+      checks: {
+        payment: { state: 'BLOCKED', reason: 'CLOSURE_PAYMENT_INCOMPLETE' },
+        refund: { state: 'PASSED' },
+        customer: { state: 'PASSED' },
+        lawyer: { state: 'PASSED' },
+      },
+    },
+  });
+  expect(await readCaseArchiveSnapshot(created.id)).toEqual(beforeReject);
+  const secondInput = {
+    ...firstInput,
+    expectedVersion: first.version,
+    expectedClosureVersionId: first.closureVersionId,
+    idempotencyKey: randomUUID(),
+    paymentRecords: [
+      {
+        paidOn: shanghaiToday(),
+        amount: '8.34',
+        payer: '合成付款人',
+        payee: '合成收款人',
+        screenshotContentVersionId: null,
+      },
+    ],
+    refund: {
+      expectedVersionId: partial.refund.versionId,
+      kind: 'DECLARE_NOT_APPLICABLE',
+      items: [],
+    },
+    settlement: {
+      expectedAssessmentVersionId: partial.assessment.versionId,
+      expectedTermsVersion: partial.assessment.termsVersion,
+      declaration: 'NOT_APPLICABLE',
+    },
+  };
+  const ready = await body<ClosureResult>(
+    await request.post(updateUrl, { headers: operator, data: secondInput }),
+    201,
+  );
+  const complete = await readWorkspace();
+  expect(complete.closure).toMatchObject({
+    versionId: ready.closureVersionId,
+    closeOn: null,
+    amount: '12.34',
+  });
+  expect(
+    complete.effectivePayments.map((payment) => payment.amount).sort(),
+  ).toEqual(['4.00', '8.34']);
+  expect(complete.assessment).toMatchObject({
+    declaration: 'NOT_APPLICABLE',
+    matchesCurrent: true,
+  });
+  const beforeArchive = await caseExternalEntrySnapshot(created.id);
+  expect(beforeArchive.closureVersions).toHaveLength(3);
+  for (const version of originalFacts.closureVersions)
+    expect(beforeArchive.closureVersions).toContainEqual(version);
+  for (const reference of originalFacts.closureDocuments)
+    expect(beforeArchive.closureDocuments).toContainEqual(reference);
+  expect(
+    beforeArchive.closureVersions.every((version) => version.close_at === null),
+  ).toBe(true);
+  const archiveInput = {
+    ...partialArchiveInput,
+    expectedVersion: ready.version,
+    expectedClosureVersionId: ready.closureVersionId,
+    idempotencyKey: randomUUID(),
+  };
+  const archived = await body<{ stage: string; version: number }>(
+    await request.post(archiveUrl, { headers: operator, data: archiveInput }),
+    201,
+  );
+  expect(archived).toMatchObject({
+    stage: 'ARCHIVED',
+    version: ready.version + 1,
+  });
+  const sealed = await readCaseArchiveSnapshot(created.id);
+  expect(
+    await body(
+      await request.post(updateUrl, { headers: operator, data: secondInput }),
+      201,
+    ),
+  ).toEqual(ready);
+  expect(
+    await body(
+      await request.post(archiveUrl, { headers: operator, data: archiveInput }),
+      201,
+    ),
+  ).toEqual(archived);
+  expect(await readCaseArchiveSnapshot(created.id)).toEqual(sealed);
+  const afterArchive = await caseExternalEntrySnapshot(created.id);
+  expect(afterArchive.closureVersions).toEqual(beforeArchive.closureVersions);
+  expect(afterArchive.closureDocuments).toEqual(beforeArchive.closureDocuments);
+  expect(afterArchive.entries).toEqual(originalFacts.entries);
+  expect(afterArchive.archiveFacts).toHaveLength(1);
+  expect(afterArchive.archiveVersions).toHaveLength(1);
+  expect(afterArchive.archiveReceipts).toHaveLength(1);
+  const current = await body<{
+    closure: { current: { closeAt: string | null; closeAmt: string } };
+  }>(await request.get(`/api/v1/cases/${created.id}`, { headers: operator }));
+  expect(current.closure.current).toMatchObject({
+    closeAt: null,
+    closeAmt: '12.34',
+  });
+  await expectExactDownload(request, document, bytes);
 });

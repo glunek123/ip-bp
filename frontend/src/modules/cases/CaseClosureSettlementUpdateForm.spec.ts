@@ -457,3 +457,16 @@ describe('refund per-item amounts', () => {
     wrapper.unmount();
   });
 });
+
+it('saves known money with a pending closure date without creating payment facts', async () => {
+  const wrapper = mount(Form, {
+    props: { source: { ...source, closeAt: '', closeAmt: '12.34' } },
+  });
+  await wrapper.get('form').trigger('submit');
+  expect(wrapper.emitted('draft')?.[0]?.[0]).toMatchObject({
+    closeAt: null,
+    closeAmountState: 'KNOWN',
+    closeAmt: '12.34',
+    paymentRecords: [],
+  });
+});

@@ -153,7 +153,7 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
       validateSync(input, { whitelist: true, forbidNonWhitelisted: true })
         .length ||
       input.expectedVersion > 2147483646 ||
-      input.closeAt > today ||
+      (input.closeAt !== null && input.closeAt > today) ||
       input.paymentRecords.some((p) => p.paidOn > today)
     )
       throw new BadRequestException({ code: 'VALIDATION_ERROR' });
@@ -459,7 +459,8 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
                 v.fromVersion !== input.expectedVersion ||
                 v.toVersion !== input.expectedVersion + 1 ||
                 v.priorVersionId !== input.expectedClosureVersionId ||
-                v.closeAt?.toISOString().slice(0, 10) !== input.closeAt ||
+                (v.closeAt?.toISOString().slice(0, 10) ?? null) !==
+                  input.closeAt ||
                 v.closeAmountState !== input.closeAmountState ||
                 (v.closeAmt?.toFixed(2) ?? null) !==
                   (input.closeAmt === null
@@ -797,6 +798,7 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
                       source.initialStage !== 'WAITING_ARCHIVE' ||
                       h.externalEntryId !== source.entryId)))) ||
               (source.kind === 'EXTERNAL_ENTRY' &&
+                input.closeAt !== null &&
                 input.closeAt < source.stageReachedOn)
             )
               return fail('INVALID_STATE');
@@ -911,7 +913,10 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
                 priorVersionId: prior.id,
                 fromVersion: c.version,
                 toVersion: c.version + 1,
-                closeAt: new Date(input.closeAt + 'T00:00:00Z'),
+                closeAt:
+                  input.closeAt === null
+                    ? null
+                    : new Date(input.closeAt + 'T00:00:00Z'),
                 closeAmountState: input.closeAmountState,
                 closeAmt: input.closeAmt,
                 paymentType: input.paymentType,

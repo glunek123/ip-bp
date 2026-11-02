@@ -188,6 +188,14 @@ test('the root config directly consumes the same factory fragment it validates a
         events.push('admit');
       },
     },
+    './scripts/batch2-lead-import-admission.mjs': {
+      assertBatch2LeadImportAdmission(projectRoot, args) {
+        assert.equal(projectRoot, root);
+        assert.deepEqual(Array.from(args), []);
+        events.push('batch2-admit');
+        return false;
+      },
+    },
     './scripts/managed-test-runtime.mjs': {
       createManagedTestRuntime(projectRoot, mode) {
         events.push('factory');
@@ -223,7 +231,13 @@ test('the root config directly consumes the same factory fragment it validates a
     },
   );
   const config = exports.default;
-  assert.deepEqual(events, ['admit', 'factory', 'plan', 'config']);
+  assert.deepEqual(events, [
+    'admit',
+    'batch2-admit',
+    'factory',
+    'plan',
+    'config',
+  ]);
   assert.equal(config.webServer, fragment.webServer);
   assert.equal(config.use.baseURL, fragment.baseURL);
   assert.equal(fragment.mode, 'ui');

@@ -10,9 +10,19 @@ import {
   readdirSync,
   existsSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { getCallSites } from 'node:util';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+const moduleScriptName = getCallSites(1, { sourceMap: false })[0]?.scriptName;
+assert.ok(
+  typeof moduleScriptName === 'string' &&
+    (moduleScriptName.startsWith('file:') || isAbsolute(moduleScriptName)),
+  'Actual module location required',
+);
+const modulePath = moduleScriptName.startsWith('file:')
+  ? fileURLToPath(moduleScriptName)
+  : moduleScriptName;
 const project = 'dev-cor-closure-flow-20261030';
 const imageId =
   'sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0';
@@ -355,6 +365,57 @@ export function validateManagedE2eLedger(ledger, migrations) {
     assert.equal(row.checksum, migrations[i].sha256);
   }
 }
+/** Pure parent binding validator; physical and database admission remain mandatory. */
+export function validateManagedE2eParentCandidate(parent, plan, m) {
+  const codeOnly =
+    parent.purpose === 'CODE_CANDIDATE_ONLY' ||
+    parent.state === 'CODE_EXPECTATION_NOT_INSTALLED_DATABASE' ||
+    ['codeOnly', 'currentCodeCandidate', 'currentCodeCandidateSha256'].some(
+      (field) => Object.hasOwn(parent, field),
+    ) ||
+    ['codeResourceView', 'currentCodeCandidateSha256'].some((field) =>
+      Object.hasOwn(plan, field),
+    );
+  if (!codeOnly) {
+    assert.deepEqual(parent.candidate, m.candidate);
+    return;
+  }
+  assert.equal(parent.purpose, 'CODE_CANDIDATE_ONLY');
+  assert.equal(parent.codeOnly, true);
+  assert.equal(parent.state, 'CODE_EXPECTATION_NOT_INSTALLED_DATABASE');
+  assert.equal(
+    resolve(m.parentManifestPath),
+    resolve(plan.codeResourceView.manifestPath),
+  );
+  assert.equal(m.parentManifestSha256, plan.codeResourceView.manifestSha256);
+  digest(parent.currentCodeCandidateSha256);
+  assert.equal(
+    sha(JSON.stringify(parent.currentCodeCandidate)),
+    parent.currentCodeCandidateSha256,
+  );
+  assert.equal(
+    parent.currentCodeCandidateSha256,
+    plan.currentCodeCandidateSha256,
+  );
+  assert.deepEqual(parent.currentCodeCandidate, plan.frozen);
+  assert.deepEqual(parent.currentCodeCandidate, m.candidate);
+  assert.equal(parent.candidate.migrations.length, 269);
+  digest(plan.schemaCandidateSha256);
+  assert.equal(parent.artifactCandidateSha256, plan.schemaCandidateSha256);
+  assert.equal(
+    sha(JSON.stringify(parent.candidate)),
+    plan.schemaCandidateSha256,
+  );
+  digest(parent.parentInstalledManifestSha256);
+  assert.equal(
+    parent.parentInstalledManifestPath,
+    plan.parentInstalledManifestPath,
+  );
+  assert.equal(
+    parent.parentInstalledManifestSha256,
+    plan.parentInstalledManifestSha256,
+  );
+}
 /** Reads and closes its own connection. No callbacks or write-capable client are exposed. */
 export async function admitManagedE2e({
   root,
@@ -368,10 +429,7 @@ export async function admitManagedE2e({
     resolve(manifestPath),
     join(m.directory, 'managed-e2e-admission.json'),
   );
-  assert.equal(
-    sha(regular(fileURLToPath(import.meta.url))),
-    m.admissionModuleSha256,
-  );
+  assert.equal(sha(regular(modulePath)), m.admissionModuleSha256);
   const parentManifest = boundJson(
       m.parentManifestPath,
       m.parentManifestSha256,
@@ -383,7 +441,7 @@ export async function admitManagedE2e({
   assert.equal(parentManifest.containerId, m.parentContainerId);
   assert.equal(parentManifest.networkId, m.networkId);
   assert.equal(parentManifest.privateRoot, m.parentPrivateRoot);
-  assert.deepEqual(parentManifest.candidate, m.candidate);
+  validateManagedE2eParentCandidate(parentManifest, plan, m);
   validateManagedE2eIdentityManifest(role, m);
   const verifyResources = () =>
     validateManagedE2eResources(

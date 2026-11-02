@@ -7,6 +7,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import {
   validateManagedE2eTuple,
+  validateManagedE2eParentCandidate,
   validateManagedE2eResources,
   validateManagedE2eIdentityManifest,
   admitManagedE2e,
@@ -436,3 +437,154 @@ for (const [label, mutate] of [
     mutate(f);
     assert.throws(() => check(f));
   });
+
+// Synthetic protocol fixtures only: no workstation manifest or private evidence.
+function parentCandidateFixture() {
+  const { m, plan } = fixture();
+  const current = {
+    ...structuredClone(m.candidate),
+    gitHead: '1'.repeat(40),
+    migrations: Array.from({ length: 269 }, (_, i) => ({
+      name: `migration-${i}`,
+      sha256: 'f'.repeat(64),
+    })),
+  };
+  const schema = { ...structuredClone(current), gitHead: '2'.repeat(40) };
+  const candidateHash = (value) => hash(JSON.stringify(value));
+  const parent = {
+    purpose: 'CODE_CANDIDATE_ONLY',
+    codeOnly: true,
+    state: 'CODE_EXPECTATION_NOT_INSTALLED_DATABASE',
+    candidate: schema,
+    artifactCandidateSha256: candidateHash(schema),
+    currentCodeCandidate: current,
+    currentCodeCandidateSha256: candidateHash(current),
+    parentInstalledManifestPath: join(m.parentPrivateRoot, 'installed.json'),
+    parentInstalledManifestSha256: 'b'.repeat(64),
+  };
+  Object.assign(plan, {
+    frozen: structuredClone(current),
+    currentCodeCandidateSha256: candidateHash(current),
+    schemaCandidateSha256: candidateHash(schema),
+    codeResourceView: {
+      manifestPath: join(m.directory, 'view.json'),
+      manifestSha256: 'c'.repeat(64),
+    },
+    parentInstalledManifestPath: parent.parentInstalledManifestPath,
+    parentInstalledManifestSha256: parent.parentInstalledManifestSha256,
+  });
+  Object.assign(m, {
+    candidate: structuredClone(current),
+    candidateSha256: candidateHash(current),
+    parentManifestPath: plan.codeResourceView.manifestPath,
+    parentManifestSha256: plan.codeResourceView.manifestSha256,
+  });
+  return { parent, plan, m };
+}
+test('strict CODE_ONLY parent binds current code while retaining historical schema', () => {
+  const { parent, plan, m } = parentCandidateFixture();
+  validateManagedE2eParentCandidate(parent, plan, m);
+});
+test('legacy parent still requires the original candidate', () => {
+  const { m } = parentCandidateFixture();
+  validateManagedE2eParentCandidate(
+    { candidate: structuredClone(m.candidate) },
+    {},
+    m,
+  );
+  assert.throws(() =>
+    validateManagedE2eParentCandidate({ candidate: { wrong: true } }, {}, m),
+  );
+});
+for (const [name, mutate] of Object.entries({
+  wrongCurrent: ({ parent }) => (parent.currentCodeCandidate.gitHead = 'wrong'),
+  wrongCurrentHash: ({ parent }) =>
+    (parent.currentCodeCandidateSha256 = 'd'.repeat(64)),
+  wrongPlanCurrent: ({ plan }) => (plan.frozen.gitHead = 'wrong'),
+  wrongManifestCurrent: ({ m }) => (m.candidate.gitHead = 'wrong'),
+  wrongSchema: ({ parent }) => (parent.candidate.gitHead = 'wrong'),
+  wrongSchemaHash: ({ plan }) => (plan.schemaCandidateSha256 = 'd'.repeat(64)),
+  wrongArtifactHash: ({ parent }) =>
+    (parent.artifactCandidateSha256 = 'd'.repeat(64)),
+  wrongSchemaCount: ({ parent }) => parent.candidate.migrations.pop(),
+  wrongPurpose: ({ parent }) => (parent.purpose = 'legacy'),
+  wrongState: ({ parent }) => (parent.state = 'INSTALLED'),
+  wrongCodeOnly: ({ parent }) => (parent.codeOnly = false),
+  wrongViewPath: ({ m }) => (m.parentManifestPath = 'other.json'),
+  wrongViewHash: ({ m }) => (m.parentManifestSha256 = 'd'.repeat(64)),
+  wrongInstalledPath: ({ parent }) =>
+    (parent.parentInstalledManifestPath = 'other.json'),
+  wrongInstalledHash: ({ parent }) =>
+    (parent.parentInstalledManifestSha256 = 'd'.repeat(64)),
+  downgrade: ({ parent, m }) => {
+    parent.purpose = 'legacy';
+    parent.codeOnly = false;
+    parent.candidate = structuredClone(m.candidate);
+  },
+}))
+  test(`CODE_ONLY rejects ${name}`, () => {
+    const f = parentCandidateFixture();
+    mutate(f);
+    assert.throws(() =>
+      validateManagedE2eParentCandidate(f.parent, f.plan, f.m),
+    );
+  });
+
+for (const field of [
+  'codeOnly',
+  'currentCodeCandidate',
+  'currentCodeCandidateSha256',
+]) {
+  for (const value of [undefined, false, 'partial'])
+    test(`own parent marker ${field}=${String(value)} rejects legacy downgrade`, () => {
+      const candidate = { gitHead: 'same' };
+      assert.throws(() =>
+        validateManagedE2eParentCandidate(
+          { candidate, [field]: value },
+          {},
+          { candidate },
+        ),
+      );
+    });
+}
+for (const field of ['codeResourceView', 'currentCodeCandidateSha256']) {
+  for (const value of [undefined, {}, 'partial'])
+    test(`own plan marker ${field}=${String(value)} rejects legacy downgrade`, () => {
+      const candidate = { gitHead: 'same' };
+      assert.throws(() =>
+        validateManagedE2eParentCandidate(
+          { candidate },
+          { [field]: value },
+          { candidate },
+        ),
+      );
+    });
+}
+test('legacy plan shape retains original candidate comparison', () => {
+  const candidate = { gitHead: 'same' },
+    plan = {
+      state: 'PREPARED_NOT_EXECUTED',
+      frozen: candidate,
+      parentRunId: 'legacy',
+      parentContainerId: 'legacy',
+    };
+  validateManagedE2eParentCandidate({ candidate }, plan, { candidate });
+  assert.throws(() =>
+    validateManagedE2eParentCandidate(
+      { candidate: { gitHead: 'other' } },
+      plan,
+      { candidate },
+    ),
+  );
+});
+
+test('partial current hash cannot downgrade to legacy equality', () => {
+  const candidate = { gitHead: 'same' };
+  assert.throws(() =>
+    validateManagedE2eParentCandidate(
+      { candidate, currentCodeCandidateSha256: 'a'.repeat(64) },
+      {},
+      { candidate },
+    ),
+  );
+});

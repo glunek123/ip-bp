@@ -288,3 +288,9 @@ it('explicit zero does not authorize court cost conversion and incomplete invent
     }).length,
   ).toBeGreaterThan(0);
 });
+
+it('preserves an explicit pending date independently from known money', () => {
+  expect(errors({ ...base, closeAt: null, closeAmt: '12.34' })).toEqual([]);
+  for (const closeAt of [undefined, '', '2026-02-30', 'pending'])
+    expect(errors({ ...base, closeAt }).length).toBeGreaterThan(0);
+});

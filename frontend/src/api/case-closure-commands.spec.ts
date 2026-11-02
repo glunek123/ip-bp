@@ -391,3 +391,15 @@ it('rejects malformed refund amount before any request', async () => {
     expect(fetch).not.toHaveBeenCalled();
   }
 });
+
+it('sends explicit null closure date while preserving exact money', async () => {
+  const fetch = respond(updateResult());
+  await updateCaseClosureSettlement(caseId, {
+    ...update(),
+    closeAt: null,
+  } as unknown as UpdateClosureSettlementInput);
+  expect(JSON.parse(fetch.mock.calls[0]![1]!.body as string)).toMatchObject({
+    closeAt: null,
+    closeAmt: '100.01',
+  });
+});

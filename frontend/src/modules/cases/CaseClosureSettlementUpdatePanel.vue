@@ -427,7 +427,6 @@ const source = computed<SettlementUpdateSource | null>(() => {
     !w ||
     w.stage !== 'WAITING_ARCHIVE' ||
     !w.closure.versionId ||
-    !w.closure.closeOn ||
     !paymentType ||
     (w.closure.amountState === 'UNKNOWN' && !confirmedUnknownAmount.value)
   )

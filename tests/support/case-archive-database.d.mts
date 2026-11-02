@@ -65,6 +65,6 @@ export function prepareZeroAmountArchiveThroughApi(
   request: APIRequestContext,
   caseId: string,
   closure: { version: number; closureVersionId: string },
-  closureInput: { closeAt: string; closeContentVersionIds: string[] },
+  closureInput: { closeAt: string | null; closeContentVersionIds: string[] },
 ): Promise<CaseArchiveSource['closureResult']>;
 export function readCaseArchiveSnapshot(caseId: string): Promise<string>;

@@ -44,7 +44,7 @@ export type SettlementUpdateSource = {
   customerAmount?: string | null;
   lawyerAmount?: string | null;
   expectedClosureVersionId: string;
-  closeAt: string;
+  closeAt: string | null;
   closeAmt: string | null;
   paymentType: ClosurePaymentType;
   documents: { id: string; name: string }[];
@@ -62,7 +62,7 @@ const emit = defineEmits<{
       refund?: RefundCommand;
       settlement?: SettlementCommand;
       expectedClosureVersionId: string;
-      closeAt: string;
+      closeAt: string | null;
       closeAmt: string | null;
       closeAmountState: 'KNOWN' | 'PENDING';
       paymentType: ClosurePaymentType;
@@ -77,7 +77,7 @@ const emit = defineEmits<{
     },
   ];
 }>();
-const closeAt = ref(props.source.closeAt);
+const closeAt = ref(props.source.closeAt ?? '');
 const amount = ref(props.source.closeAmt ?? '');
 const unknown = ref(props.source.closeAmt === null);
 const paymentType = ref(props.source.paymentType);
@@ -152,7 +152,7 @@ watch(
       amount: source.customerAmount ?? null,
     };
     lawyerEdit.value = { mode: 'KEEP', amount: source.lawyerAmount ?? null };
-    closeAt.value = source.closeAt;
+    closeAt.value = source.closeAt ?? '';
     amount.value = source.closeAmt ?? '';
     unknown.value = source.closeAmt === null;
     paymentType.value = source.paymentType;
@@ -198,7 +198,7 @@ function submit() {
     return;
   }
   if (
-    !date(closeAt.value) ||
+    (closeAt.value !== '' && !date(closeAt.value)) ||
     (!unknown.value && !money.test(amount.value)) ||
     !records.value.every(validPayment) ||
     (paymentType.value === 'ONE_TIME' &&
@@ -306,7 +306,7 @@ function submit() {
         }
       : {}),
     expectedClosureVersionId: props.source.expectedClosureVersionId,
-    closeAt: closeAt.value,
+    closeAt: closeAt.value || null,
     closeAmt: unknown.value ? null : amount.value,
     closeAmountState: unknown.value ? 'PENDING' : 'KNOWN',
     paymentType: paymentType.value,
@@ -331,7 +331,10 @@ function submit() {
       }}
     </p>
     <label
-      >结案日期<input v-model="closeAt" type="date" data-test="date"
+      >结案日期（可留空待确认）<input
+        v-model="closeAt"
+        type="date"
+        data-test="date"
     /></label>
     <label
       ><input

@@ -6,13 +6,6 @@ import {
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 
-const require = createRequire(import.meta.url);
-const playwrightRequire = createRequire(
-  require.resolve('@playwright/test/package.json'),
-);
-const { program } = playwrightRequire('playwright/lib/program');
-const { suiteUtils } = playwrightRequire('playwright/lib/common');
-
 function controlledConfigRequired() {
   return new Error(
     'Batch-2 lead import requires --config tests/support/batch2-lead-import.config.ts before Playwright starts',
@@ -24,6 +17,13 @@ function controlledConfigRequired() {
 export function assertBatch2LeadImportAdmission(root, args) {
   let selection;
   try {
+    const require = createRequire(resolve(root, 'package.json'));
+    const playwrightRequire = createRequire(
+      require.resolve('@playwright/test/package.json'),
+    );
+    const { program } = playwrightRequire('playwright/lib/program');
+    const { suiteUtils } = playwrightRequire('playwright/lib/common');
+
     const original = program.commands.find(
       (command) => command.name() === 'test',
     );

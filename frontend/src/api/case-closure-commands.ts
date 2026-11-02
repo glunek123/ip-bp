@@ -55,8 +55,9 @@ export type SettlementAssessmentInput = {
 };
 export type UpdateClosureSettlementInput = Omit<
   RecordEarlyClosureInput,
-  'expectedStage'
+  'expectedStage' | 'closeAt'
 > & {
+  closeAt: string | null;
   expectedClosureVersionId: string;
   correctionReason?: string | null;
   refund?: SettlementRefundInput;
@@ -443,7 +444,7 @@ export async function updateCaseClosureSettlement(
   if (
     !shape(
       input,
-      { ...base, expectedClosureVersionId: uuid },
+      { ...base, closeAt: nullable(day), expectedClosureVersionId: uuid },
       {
         correctionReason: nullable(string(500)),
         refund,

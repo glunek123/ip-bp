@@ -1604,3 +1604,20 @@ it('forwards saved refund amounts and preserves the exact amount/body/key after 
   expect(save.mock.calls[1]![1]).toEqual(original);
   wrapper.unmount();
 });
+
+it('opens settlement editing for a pending date and preserves null in the request', async () => {
+  read.mockResolvedValue({
+    ...fixture(),
+    closure: { ...fixture().closure, closeOn: null },
+  });
+  const wrapper = await setup('pending-date-owner');
+  const form = wrapper.getComponent(Form);
+  expect(form.props('source').closeAt).toBeNull();
+  await form.get('form').trigger('submit');
+  await flushPromises();
+  expect(save.mock.calls[0]?.[1]).toMatchObject({
+    closeAt: null,
+    closeAmt: '100.01',
+  });
+  wrapper.unmount();
+});

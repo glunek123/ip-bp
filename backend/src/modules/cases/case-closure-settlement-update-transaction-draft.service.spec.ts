@@ -795,3 +795,27 @@ it.each(['lock', 'projection'] as const)(
     expect(f.tx.$executeRawUnsafe).not.toHaveBeenCalled();
   },
 );
+
+it('writes and replays a new null-date version without inventing a date or changing money', async () => {
+  const f = fixture();
+  const input = {
+    ...value(),
+    closeAt: null,
+  } as unknown as UpdateClosureSettlementInput;
+  const result = await f.service.update(actor, caseId, input);
+  f.replay();
+  expect(await f.service.update(actor, caseId, input)).toEqual(result);
+  expect(f.tx.caseClosureVersion.create).toHaveBeenCalledTimes(1);
+  expect(f.tx.caseClosureVersion.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({ closeAt: null, closeAmt: '10.00' }),
+    }),
+  );
+  expect(f.tx.auditEvent.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({
+        details: expect.objectContaining({ closeAt: null }),
+      }),
+    }),
+  );
+});

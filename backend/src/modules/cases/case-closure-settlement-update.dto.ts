@@ -1,9 +1,10 @@
-import { OmitType } from '@nestjs/swagger';
+import { ApiProperty, OmitType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayUnique,
   IsArray,
   IsDefined,
+  IsDateString,
   IsIn,
   IsInt,
   Min,
@@ -154,8 +155,14 @@ export class SettlementUpdateAssessmentInput {
  */
 export class UpdateClosureSettlementInput extends OmitType(
   RecordEarlyClosureInput,
-  ['expectedStage'] as const,
+  ['expectedStage', 'closeAt'] as const,
 ) {
+  @ApiProperty({ type: String, nullable: true, format: 'date' })
+  @ValidateIf((_o, value) => value !== null)
+  @IsDateString({ strict: true })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/u)
+  closeAt!: string | null;
+
   @IsUUID('4') expectedClosureVersionId!: string;
   @IsOptional() @IsString() @MaxLength(500) @Matches(/\S/u) correctionReason?:
     string | null;
