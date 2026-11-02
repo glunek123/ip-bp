@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { Client, Pool, PoolConfig } from 'pg';
+import { Client, defaults, Pool, PoolConfig } from 'pg';
 import { DatabaseService } from './database.service';
 
 // Observe the actual adapter constructor while returning the real adapter.
@@ -83,40 +83,78 @@ describe('DatabaseService acknowledgement budget', () => {
     expect(connect).not.toHaveBeenCalled();
   });
 
-  it('keeps server and connection caps while allowing bounded acknowledgement margin', () => {
+  it('keeps server and connection caps without a client acknowledgement timer', () => {
     const config = actualPoolConfig();
     expect(config.statement_timeout).toBe(3000);
     expect(config.connectionTimeoutMillis).toBe(3000);
     expect(config.max).toBe(5);
     if (typeof config.statement_timeout !== 'number')
       throw new Error('Numeric server statement deadline required');
-    expect(config.query_timeout).toBeGreaterThan(config.statement_timeout);
-    expect(config.query_timeout).toBeLessThanOrEqual(5000);
+    expect(config.query_timeout).toBe(0);
+    expect(defaults.query_timeout).toBe(false);
   });
 
-  it('the installed pg client still waits at the server deadline and then times out within its client budget', async () => {
+  it('accepts delayed COMMIT acknowledgements without a pg client timer', async () => {
     const config = actualPoolConfig();
-    const serverBudget = config.statement_timeout;
-    const clientBudget = config.query_timeout;
-    if (typeof serverBudget !== 'number' || typeof clientBudget !== 'number')
-      throw new Error('Numeric bounded deadlines required');
     jest.useFakeTimers();
     fakeTimers = true;
     const client = new Client(config);
     queuedClients.push(client);
     let failure: unknown;
-    // Never connect: this exercises pg's real query-timeout queue and callback,
-    // without dispatching SQL or opening a network connection.
-    const completion = client.query('SELECT 1').catch((error: unknown) => {
-      failure = error;
-    });
-    await jest.advanceTimersByTimeAsync(serverBudget);
+    let command: string | undefined;
+    // No connection or fake server: hold the real pg Query callback past the
+    // previous client budget, then deliver its protocol acknowledgement locally.
+    const completion = client.query('COMMIT').then(
+      (result) => {
+        command = result.command;
+      },
+      (error: unknown) => {
+        failure = error;
+      },
+    );
+    await jest.advanceTimersByTimeAsync(5250);
     expect(failure).toBeUndefined();
-    await jest.advanceTimersByTimeAsync(clientBudget - serverBudget);
+    expect(command).toBeUndefined();
+    const queue: unknown = Reflect.get(client, '_queryQueue');
+    if (!Array.isArray(queue) || queue.length !== 1)
+      throw new Error('Expected one real queued pg query without a connection');
+    const query: unknown = queue.shift();
+    if (typeof query !== 'object' || query === null)
+      throw new Error('Expected the real pg Query object');
+    const completed: unknown = Reflect.get(query, 'handleCommandComplete');
+    const ready: unknown = Reflect.get(query, 'handleReadyForQuery');
+    if (typeof completed !== 'function' || typeof ready !== 'function')
+      throw new Error('Installed pg protocol acknowledgement methods changed');
+    Reflect.apply(completed, query, [{ text: 'COMMIT' }, {}]);
+    Reflect.apply(ready, query, [{}]);
     await completion;
-    expect(failure).toBeInstanceOf(Error);
-    expect(failure).toHaveProperty('message', 'Query read timeout');
+    expect(command).toBe('COMMIT');
+    expect(failure).toBeUndefined();
     expect(connect).not.toHaveBeenCalled();
+  });
+
+  it('ignores PGQUERY environment timers with the installed pg defaults unchanged', () => {
+    const names = ['PGQUERY_TIMEOUT', 'PGQUERYTIMEOUT'] as const;
+    const previous = names.map((name) => process.env[name]);
+    try {
+      for (const name of names) process.env[name] = '1';
+      const config = actualPoolConfig();
+      expect(config.query_timeout).toBe(0);
+      expect(defaults.query_timeout).toBe(false);
+      const client = new Client(config);
+      queuedClients.push(client);
+      const parameters: unknown = Reflect.get(client, 'connectionParameters');
+      if (typeof parameters !== 'object' || parameters === null)
+        throw new Error('Installed pg connection parameters unavailable');
+      expect(Reflect.get(parameters, 'query_timeout')).toBe(false);
+      expect(connect).not.toHaveBeenCalled();
+    } finally {
+      for (const [index, name] of names.entries()) {
+        const value = previous[index];
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
   });
 
   it('does not raise the installed Prisma interactive transaction defaults', () => {
