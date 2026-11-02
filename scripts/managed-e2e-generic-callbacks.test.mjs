@@ -39,6 +39,36 @@ vi.mock('node:module', async (original) => {
         if (name === 'pg') return { Client: offline.pg };
         if (name === './dist/generated/prisma/client.js')
           return { PrismaClient: offline.prisma };
+        if (name === '@prisma/adapter-pg')
+          return {
+            PrismaPg: function () {
+              offline.events.push('pg-adapter-constructor');
+            },
+          };
+        // Hearing's generic callback uses only Prisma. Do not load its unrelated
+        // compiled business services; accidentally invoking one must still fail.
+        const hearingBusinessExports = {
+          './dist/access-control/access-control.service.js':
+            'AccessControlService',
+          './dist/access-control/prisma-access-control.store.js':
+            'PrismaAccessControlStore',
+          './dist/modules/cases/case-hearing.service.js': 'CaseHearingService',
+          './dist/modules/cases/case-hearing-scheduler.service.js':
+            'CaseHearingSchedulerService',
+          './dist/modules/cases/case-hearing-signal.js': 'CaseHearingSignal',
+          './dist/modules/cases/case-read.service.js': 'CaseReadService',
+          './dist/auth/password.js': 'hashPassword',
+          './dist/access-control/permission-catalog.js':
+            'internalAssignablePermissionActions',
+        };
+        if (Object.hasOwn(hearingBusinessExports, name))
+          return {
+            [hearingBusinessExports[name]]() {
+              throw new Error(
+                `Unexpected business dependency in generic callback: ${name}`,
+              );
+            },
+          };
         return native(name);
       };
       return Object.assign(wrapped, native);

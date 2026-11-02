@@ -330,7 +330,7 @@ test('uses one environment snapshot and one shared-resource lock', () => {
   let captures = 0;
   let released = 0;
   let spawned;
-  const status = runE2e('C:/repo', ['tests/e2e/auth.spec.ts'], {
+  const status = runE2e(process.cwd(), ['tests/e2e/auth.spec.ts'], {
     pnpmVersion: '11.27.0',
     captureEnvironment: () => {
       captures += 1;
@@ -384,7 +384,7 @@ test('starts no child when environment or lock preconditions fail', () => {
   let spawnCalls = 0;
   assert.throws(
     () =>
-      runE2e('C:/repo', ['tests/e2e/auth.spec.ts'], {
+      runE2e(process.cwd(), ['tests/e2e/auth.spec.ts'], {
         pnpmVersion: '11.27.0',
         captureEnvironment: () => {
           throw new Error('environment rejected');
@@ -397,7 +397,7 @@ test('starts no child when environment or lock preconditions fail', () => {
   );
   assert.throws(
     () =>
-      runE2e('C:/repo', ['tests/e2e/auth.spec.ts'], {
+      runE2e(process.cwd(), ['tests/e2e/auth.spec.ts'], {
         pnpmVersion: '11.27.0',
         captureEnvironment: () => environment,
         acquireLock: () => {
