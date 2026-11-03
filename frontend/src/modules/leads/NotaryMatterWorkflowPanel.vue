@@ -101,6 +101,15 @@ const allowedOpeningPhotoTypes = new Set([
 ]);
 const maxOpeningPhotoSize = 20 * 1024 * 1024;
 
+function normalizeKnownSampleFee(): void {
+  if (sampleFeeState.value !== 'KNOWN') return;
+  const match = /^(0|[1-9]\d{0,15})(?:\.(\d{0,2}))?$/u.exec(
+    sampleFeeAmount.value,
+  );
+  if (!match) return;
+  sampleFeeAmount.value = `${match[1]}.${(match[2] ?? '').padEnd(2, '0')}`;
+}
+
 function openingPhotoDraftsFromMaterials(
   items: OwnerMaterial[],
   selectedContentVersionIds: ReadonlySet<string>,
@@ -502,6 +511,9 @@ async function submitReturnArchive(): Promise<void> {
 }
 
 async function submitEvidence(): Promise<void> {
+  // A recovered request is immutable. Only normalize fresh form input before
+  // its first validation and before its idempotency key/body are created.
+  if (!pending) normalizeKnownSampleFee();
   evidenceErrors.value = [];
   evidenceError.value = '';
   evidenceSuccess.value = '';
@@ -1506,6 +1518,7 @@ onBeforeUnmount(() => {
           <input
             v-model="sampleFeeAmount"
             data-test="sample-fee-amount"
+            @blur="!pending && normalizeKnownSampleFee()"
             inputmode="decimal"
             placeholder="0.00"
             required

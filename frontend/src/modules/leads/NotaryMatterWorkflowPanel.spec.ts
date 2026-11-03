@@ -149,6 +149,160 @@ beforeEach(() => {
   globalThis.sessionStorage.clear();
 });
 describe('NotaryMatterWorkflowPanel request ownership', () => {
+  it.each([
+    ['111', '111.00'],
+    ['111.1', '111.10'],
+  ])('formats known sample fees on blur (%s)', async (value, expected) => {
+    const { wrapper } = await open(detail('PENDING_EVIDENCE'), 'evidence-form');
+    await wrapper.get('[data-test="sample-fee-state"]').setValue('KNOWN');
+    const amountInput = wrapper.get<HTMLInputElement>(
+      '[data-test="sample-fee-amount"]',
+    );
+    await amountInput.setValue(value);
+    await amountInput.trigger('blur');
+    expect(amountInput.element.value).toBe(expected);
+    wrapper.unmount();
+  });
+  it('normalizes a known sample fee before submit and sends the canonical amount', async () => {
+    api.recordNotaryEvidence.mockReturnValue(new Promise<void>(() => {}));
+    const { wrapper } = await open(detail('PENDING_EVIDENCE'), 'evidence-form');
+    await wrapper.get('[data-test="evidence-date"]').setValue('2026-11-03');
+    await wrapper.get('[data-test="sample-fee-state"]').setValue('KNOWN');
+    await wrapper.get('[data-test="sample-fee-amount"]').setValue('111.1');
+    await wrapper
+      .get('[data-test="logistics-company-state-0"]')
+      .setValue('NONE');
+    await wrapper
+      .get('[data-test="logistics-tracking-state-0"]')
+      .setValue('NONE');
+    await wrapper.get('[data-test="record-evidence"]').trigger('submit');
+    expect(api.recordNotaryEvidence).toHaveBeenCalledTimes(1);
+    expect(api.recordNotaryEvidence.mock.calls[0]?.[1]).toMatchObject({
+      sampleFeeState: 'KNOWN',
+      sampleFeeAmount: '111.10',
+      expectedVersion: 5,
+    });
+    const stored = JSON.parse(
+      globalThis.sessionStorage.getItem(
+        'notary-list-request:' +
+          JSON.stringify([
+            'user-1:INTERNAL:dept-1',
+            'matter-1',
+            'evidence-form',
+          ]),
+      ) ?? 'null',
+    );
+    expect(stored.command.input.sampleFeeAmount).toBe('111.10');
+    wrapper.unmount();
+  });
+  it.each(['-1', '111.123'])('rejects invalid sample fee %s', async (value) => {
+    const { wrapper } = await open(detail('PENDING_EVIDENCE'), 'evidence-form');
+    await wrapper.get('[data-test="evidence-date"]').setValue('2026-11-03');
+    await wrapper.get('[data-test="sample-fee-state"]').setValue('KNOWN');
+    await wrapper.get('[data-test="sample-fee-amount"]').setValue(value);
+    await wrapper
+      .get('[data-test="logistics-company-state-0"]')
+      .setValue('NONE');
+    await wrapper
+      .get('[data-test="logistics-tracking-state-0"]')
+      .setValue('NONE');
+    await wrapper.get('[data-test="record-evidence"]').trigger('submit');
+    expect(api.recordNotaryEvidence).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain(
+      '已知样品费用请输入非负且保留两位小数的金额',
+    );
+    expect(
+      wrapper.get<HTMLInputElement>('[data-test="sample-fee-amount"]').element
+        .value,
+    ).toBe(value);
+    wrapper.unmount();
+  });
+  it('keeps an empty known amount invalid and omits the amount for pending fees', async () => {
+    const known = await open(detail('PENDING_EVIDENCE'), 'evidence-form');
+    await known.wrapper
+      .get('[data-test="evidence-date"]')
+      .setValue('2026-11-03');
+    await known.wrapper.get('[data-test="sample-fee-state"]').setValue('KNOWN');
+    await known.wrapper
+      .get('[data-test="logistics-company-state-0"]')
+      .setValue('NONE');
+    await known.wrapper
+      .get('[data-test="logistics-tracking-state-0"]')
+      .setValue('NONE');
+    await known.wrapper.get('[data-test="record-evidence"]').trigger('submit');
+    expect(api.recordNotaryEvidence).not.toHaveBeenCalled();
+    expect(
+      known.wrapper.get<HTMLInputElement>('[data-test="sample-fee-amount"]')
+        .element.value,
+    ).toBe('');
+    known.wrapper.unmount();
+
+    const pending = await open(detail('PENDING_EVIDENCE'), 'evidence-form');
+    await pending.wrapper
+      .get('[data-test="evidence-date"]')
+      .setValue('2026-11-03');
+    await pending.wrapper
+      .get('[data-test="sample-fee-state"]')
+      .setValue('PENDING');
+    await pending.wrapper
+      .get('[data-test="logistics-company-state-0"]')
+      .setValue('NONE');
+    await pending.wrapper
+      .get('[data-test="logistics-tracking-state-0"]')
+      .setValue('NONE');
+    await pending.wrapper
+      .get('[data-test="record-evidence"]')
+      .trigger('submit');
+    expect(api.recordNotaryEvidence.mock.calls[0]?.[1]).toMatchObject({
+      sampleFeeState: 'PENDING',
+    });
+    expect(api.recordNotaryEvidence.mock.calls[0]?.[1]).not.toHaveProperty(
+      'sampleFeeAmount',
+    );
+    pending.wrapper.unmount();
+  });
+  it('retries the original unknown evidence body and key unchanged', async () => {
+    api.recordNotaryEvidence.mockReturnValue(new Promise<void>(() => {}));
+    const frozen = {
+      command: {
+        kind: 'evidence',
+        input: {
+          evidenceAt: '2026-11-03',
+          sampleFeeState: 'KNOWN',
+          sampleFeeAmount: '111.10',
+          logistics: [
+            {
+              companyState: 'NONE',
+              companyValue: null,
+              trackingState: 'NONE',
+              trackingValue: null,
+            },
+          ],
+          expectedVersion: 5,
+        },
+      },
+      key: 'original-evidence-key',
+    };
+    const storageKey =
+      'notary-list-request:' +
+      JSON.stringify(['user-1:INTERNAL:dept-1', 'matter-1', 'evidence-form']);
+    const serialized = JSON.stringify(frozen);
+    globalThis.sessionStorage.setItem(storageKey, serialized);
+    const { wrapper } = await open(detail('PENDING_EVIDENCE'), 'evidence-form');
+    const amountInput = wrapper.get<HTMLInputElement>(
+      '[data-test="sample-fee-amount"]',
+    );
+    expect(amountInput.element.value).toBe('111.10');
+    await amountInput.trigger('blur');
+    await wrapper.get('[data-test="notary-workflow-retry"]').trigger('click');
+    expect(api.recordNotaryEvidence).toHaveBeenCalledWith(
+      'matter-1',
+      frozen.command.input,
+      frozen.key,
+    );
+    expect(globalThis.sessionStorage.getItem(storageKey)).toBe(serialized);
+    wrapper.unmount();
+  });
   it('shows the exact frozen opening material inside the list review form', async () => {
     const current = detail('UNBOX_REVIEW');
     current.opening = {
