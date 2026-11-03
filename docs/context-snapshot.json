@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-03T09:47:17.539Z",
+  "recordedAt": "2026-11-03T10:05:36.802Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -309,7 +309,7 @@
     "backend/src/access-control/organization.controller.spec.ts": "2d4f1dbe57c7fb4b031bb1b83f01a6de203006a5f0cae6dc6c74a1d48962bcef",
     "backend/src/access-control/organization.controller.ts": "886176f6c48418e1a64545e78fcf85a751bda6920b55a3242a8351c4c8e4a02b",
     "backend/src/access-control/organization.dto.ts": "fc96cd60e339e7a14a6b149b5ad869aba1b0837a0284250f0b90b40eee9906ea",
-    "backend/src/access-control/organization.service.spec.ts": "01a1a3befeceedec2b8b4293cdb5e3adcaf16825ccc49bdb4b3b85ec72a336d2",
+    "backend/src/access-control/organization.service.spec.ts": "40b6ed98088ecf9f42c78f6da25c3064f98c5bc101e4e15505d4385ffb203346",
     "backend/src/access-control/organization.service.ts": "2d81fb835ce32eacbb8f07034a6c9c14bbcca0cd3b48210b3b8e070845910489",
     "backend/src/access-control/permission-catalog.spec.ts": "d8842d6a59b5ae36b73914bd3bc01774eb729cc6dc1f45e830b928566eab22c8",
     "backend/src/access-control/permission-catalog.ts": "61c860b94c99f660434d58949a296ede6193757a29042b609b41b4344f28e1d4",
