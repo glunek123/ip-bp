@@ -15,7 +15,7 @@ import { MaterialService } from '../materials';
 import { RecordNotaryOpeningDto } from './lead-notary.dto';
 
 type OpeningPhoto = { materialId: string; contentVersionId: string };
-type OpeningResult = {
+export type OpeningResult = {
   id: string;
   stage: 'UNBOX_REVIEW';
   version: number;
@@ -43,9 +43,28 @@ export class NotaryOpeningService {
     idempotencyKey: string,
     input: RecordNotaryOpeningDto,
   ): Promise<OpeningResult> {
+    return this.recordWithAdoption(actor, matterId, idempotencyKey, input);
+  }
+
+  /** The adoption hook executes only after replay, scope, state and version checks. */
+  async recordWithAdoption(
+    actor: ActorContext,
+    matterId: string,
+    idempotencyKey: string,
+    input: RecordNotaryOpeningDto,
+    adopt?: (tx: Prisma.TransactionClient) => Promise<void>,
+    receiptAction = 'opening.record',
+    receiptContext?: string,
+  ): Promise<OpeningResult> {
     const normalized = this.normalize(input);
     const fingerprint = createHash('sha256')
-      .update(JSON.stringify({ matterId, ...normalized }))
+      .update(
+        JSON.stringify({
+          matterId,
+          ...normalized,
+          ...(receiptContext ? { receiptContext } : {}),
+        }),
+      )
       .digest('hex');
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       try {
@@ -124,7 +143,7 @@ export class NotaryOpeningService {
                 departmentId_actorUserId_action_idempotencyKey: {
                   departmentId: actor.departmentId,
                   actorUserId: actor.userId,
-                  action: 'opening.record',
+                  action: receiptAction,
                   idempotencyKey,
                 },
               },
@@ -138,6 +157,7 @@ export class NotaryOpeningService {
               });
             if (matter.version !== normalized.expectedVersion)
               throw this.versionConflict();
+            if (adopt) await adopt(tx);
             const facts = await this.materials.assertAvailableVersions(
               tx,
               actor,
@@ -229,7 +249,7 @@ export class NotaryOpeningService {
                 ...(notaryOfficeAccountBindingId === undefined
                   ? {}
                   : { notaryOfficeAccountBindingId }),
-                action: 'opening.record',
+                action: receiptAction,
                 idempotencyKey,
                 requestFingerprint: fingerprint,
                 resultMatterId: matterId,

@@ -734,6 +734,7 @@ model UserAccount {
   reviewedLeadDecisions            LeadReviewDecision[]              @relation("LeadReviewDecisionReviewer")
   evidenceDecisions                LeadEvidenceDecision[]            @relation("LeadEvidenceDecisionActor")
   proxyEvidenceConfirmations       LeadProxyEvidenceConfirmation[]   @relation("LeadProxyEvidenceConfirmationActor")
+  openingImportBatches             NotaryOpeningImportBatch[]        @relation("NotaryOpeningImportActor")
   createdNotaryOffices             NotaryOffice[]                    @relation("NotaryOfficeCreator")
   createdNotaryMatters             NotaryMatter[]                    @relation("NotaryMatterCreator")
   recordedNotaryEvidence           NotaryMatterEvidence[]            @relation("NotaryEvidenceRecorder")
@@ -925,6 +926,7 @@ model DepartmentMembership {
   proxyNotaryCertificates           NotaryCertificate[]             @relation("ProxyNotaryCertificateActor")
   evidenceDecisions                LeadEvidenceDecision[]
   proxyEvidenceConfirmations       LeadProxyEvidenceConfirmation[]
+  openingImportBatches             NotaryOpeningImportBatch[]
   createdAt                        DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                        DateTime                          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -2141,6 +2143,7 @@ model NotaryMatter {
   case                  Case?
   openingReviewReceipts NotaryOpeningReviewReceipt[]
   commandReceipts       NotaryMatterCommandReceipt[]
+  openingImportSelections NotaryOpeningImportItem[]
   createdAt             DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([id, sourceLeadId], map: "notary_matters_id_lead_key")
@@ -3751,6 +3754,71 @@ model NotaryMatterOpening {
 
   @@unique([matterId, departmentId], map: "notary_matter_opening_matter_department_key")
   @@map("notary_matter_opening")
+}
+
+model NotaryOpeningImportBatch {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  departmentId       String                    @map("department_id") @db.Uuid
+  actorUserId        String                    @map("actor_user_id") @db.Uuid
+  idempotencyKey     String                    @map("idempotency_key") @db.VarChar(128)
+  zipSha256          String                    @map("zip_sha256") @db.Char(64)
+  status             String                    @default("READY") @db.VarChar(16)
+  recognitionMode    String                    @default("DISABLED") @map("recognition_mode") @db.VarChar(16)
+  expiresAt          DateTime                  @map("expires_at") @db.Timestamptz(3)
+  createdAt          DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  actorMembership    DepartmentMembership     @relation(fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_opening_import_batches_actor_department_fkey")
+  actor              UserAccount               @relation("NotaryOpeningImportActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  items              NotaryOpeningImportItem[]
+
+  @@unique([id, departmentId])
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@index([expiresAt, status])
+  @@map("notary_opening_import_batches")
+}
+
+model NotaryOpeningImportItem {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  batchId            String                     @map("batch_id") @db.Uuid
+  departmentId       String                     @map("department_id") @db.Uuid
+  position           Int
+  folderName         String                     @map("folder_name") @db.VarChar(200)
+  revision           Int                        @default(1)
+  status             String                     @default("READY") @db.VarChar(16)
+  trackingCandidate  String?                    @map("tracking_candidate") @db.VarChar(100)
+  trackingNo         String?                    @map("tracking_no") @db.VarChar(100)
+  recognitionStatus  String                     @default("DISABLED") @map("recognition_status") @db.VarChar(16)
+  senderCandidate    Json?                      @map("sender_candidate")
+  matchStatus        String                     @default("UNMATCHED") @map("match_status") @db.VarChar(16)
+  suggestedMatterId  String?                    @map("suggested_matter_id") @db.Uuid
+  selectedMatterId   String?                    @map("selected_matter_id") @db.Uuid
+  confirmedKey       String?                    @map("confirmed_key") @db.VarChar(128)
+  batch              NotaryOpeningImportBatch   @relation(fields: [batchId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  selectedMatter     NotaryMatter?              @relation(fields: [selectedMatterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  photos             NotaryOpeningImportPhoto[]
+
+  @@unique([batchId, position])
+  @@unique([batchId, folderName])
+  @@unique([id, batchId, departmentId])
+  @@index([departmentId, selectedMatterId, status])
+  @@map("notary_opening_import_items")
+}
+
+model NotaryOpeningImportPhoto {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  itemId             String                     @map("item_id") @db.Uuid
+  batchId            String                     @map("batch_id") @db.Uuid
+  departmentId       String                     @map("department_id") @db.Uuid
+  filename           String                     @db.VarChar(200)
+  storageKey         String                     @unique @map("storage_key") @db.VarChar(500)
+  materialId         String                     @unique @map("material_id") @db.Uuid
+  contentVersionId   String                     @unique @map("content_version_id") @db.Uuid
+  mimeType           String                     @map("mime_type") @db.VarChar(100)
+  sizeBytes          Int                        @map("size_bytes")
+  sha256             String                     @db.Char(64)
+  item               NotaryOpeningImportItem    @relation(fields: [itemId, batchId, departmentId], references: [id, batchId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([itemId, filename])
+  @@map("notary_opening_import_photos")
 }
 
 model NotaryOpeningReviewDecision {

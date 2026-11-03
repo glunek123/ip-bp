@@ -85,6 +85,42 @@ function fixture() {
 }
 
 describe('NotaryOpeningService record', () => {
+  it('runs import adoption within the opening transaction after state checks and before material validation', async () => {
+    const f = fixture();
+    const adopt = jest.fn().mockResolvedValue(undefined);
+    f.materials.assertAvailableVersions.mockImplementation(async () => {
+      expect(adopt).toHaveBeenCalledWith(f.tx);
+      return [f.fact];
+    });
+    await f.service.recordWithAdoption(
+      actor,
+      matterId,
+      'import-1',
+      command,
+      adopt,
+      'opening.import.confirm',
+    );
+    expect(f.tx.notaryMatterCommandReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: 'opening.import.confirm' }),
+    });
+    const stale = fixture();
+    stale.tx.notaryMatter.findFirst.mockResolvedValueOnce({
+      ...stale.matter,
+      version: 3,
+    });
+    const lateAdopt = jest.fn();
+    await expect(
+      stale.service.recordWithAdoption(
+        actor,
+        matterId,
+        'import-2',
+        command,
+        lateAdopt,
+        'opening.import.confirm',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    expect(lateAdopt).not.toHaveBeenCalled();
+  });
   it('atomically records actual photos and advances exactly one stage', async () => {
     const f = fixture();
     const result = await f.service.record(
@@ -178,6 +214,44 @@ describe('NotaryOpeningService record', () => {
       }),
     ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
     expect(f.tx.notaryMatter.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('binds imported receipt to the original item revision context', async () => {
+    const f = fixture();
+    const first = await f.service.recordWithAdoption(
+      actor,
+      matterId,
+      'import-key',
+      command,
+      jest.fn(),
+      'opening.import.confirm',
+      'batch:item:1',
+    );
+    f.tx.notaryMatterCommandReceipt.findUnique.mockResolvedValue(
+      f.tx.notaryMatterCommandReceipt.create.mock.calls[0][0].data,
+    );
+    await expect(
+      f.service.recordWithAdoption(
+        actor,
+        matterId,
+        'import-key',
+        command,
+        jest.fn(),
+        'opening.import.confirm',
+        'batch:item:1',
+      ),
+    ).resolves.toEqual(first);
+    await expect(
+      f.service.recordWithAdoption(
+        actor,
+        matterId,
+        'import-key',
+        command,
+        jest.fn(),
+        'opening.import.confirm',
+        'batch:item:2',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
   });
 
   it('rejects a stale version and does not issue a receipt if audit fails', async () => {

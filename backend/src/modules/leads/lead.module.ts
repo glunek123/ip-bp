@@ -29,6 +29,9 @@ import {
 } from './lead-notary.controller';
 import { LeadNotaryService } from './lead-notary.service';
 import { NotaryOpeningService } from './notary-opening.service';
+import { NotaryOpeningImportController } from './notary-opening-import.controller';
+import { NotaryOpeningImportService } from './notary-opening-import.service';
+import { NotaryOpeningRecognition } from './notary-opening-recognition';
 import { NotaryOpeningReviewService } from './notary-opening-review.service';
 import { NotaryIssuanceDecisionService } from './notary-issuance-decision.service';
 import { NotaryReturnArchiveService } from './notary-return-archive.service';
@@ -72,6 +75,7 @@ import { LeadRoutineEditService } from './lead-routine-edit.service';
     NotaryListController,
     NotaryListExportController,
     NotaryReturnArchiveBatchController,
+    NotaryOpeningImportController,
     LeadNotaryController,
     NotaryOfficeController,
     NotaryPortalController,
@@ -88,6 +92,8 @@ import { LeadRoutineEditService } from './lead-routine-edit.service';
     ClientNotaryService,
     LeadNotaryService,
     NotaryOpeningService,
+    NotaryOpeningImportService,
+    NotaryOpeningRecognition,
     NotaryOpeningReviewService,
     NotaryIssuanceDecisionService,
     NotaryReturnArchiveService,

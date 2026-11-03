@@ -51,6 +51,16 @@ declare const VALIDATED_MATERIAL_VERSION: unique symbol;
 
 export type MaterialTransactionClient = Prisma.TransactionClient;
 
+export type StagedOpeningPhoto = Readonly<{
+  materialId: string;
+  contentVersionId: string;
+  storageKey: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+}>;
+
 export type CaseSectionRecordKind =
   | 'EXECUTION_MAILING'
   | 'EXECUTION_FILING'
@@ -1961,6 +1971,52 @@ export class MaterialService {
       return await this.assertAvailableVersions(tx, actor, input);
     } finally {
       this.settlementValidationInputs.delete(input);
+    }
+  }
+
+  /** Adopt already stored private opening photos into formal material rows in the caller's transaction. */
+  async adoptStagedOpeningPhotos(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    matterId: string,
+    photos: readonly StagedOpeningPhoto[],
+  ): Promise<void> {
+    if (photos.length < 1 || photos.length > 50) throw this.invalidVersion();
+    for (const photo of photos) {
+      if (
+        !photo.storageKey.startsWith(`${actor.departmentId}/opening-import/`) ||
+        !['image/jpeg', 'image/png', 'image/webp'].includes(photo.mimeType) ||
+        photo.sizeBytes < 1 ||
+        photo.sizeBytes > 20 * 1024 * 1024 ||
+        !/^[0-9a-f]{64}$/.test(photo.sha256)
+      )
+        throw this.invalidVersion();
+      await transaction.material.create({
+        data: {
+          id: photo.materialId,
+          departmentId: actor.departmentId,
+          ownerType: 'NOTARY_MATTER',
+          ownerId: matterId,
+          category: 'NOTARY_OPENING_PHOTO',
+          purpose: 'NOTARY_OPENING_PHOTO',
+        },
+      });
+      await transaction.contentVersion.create({
+        data: {
+          id: photo.contentVersionId,
+          materialId: photo.materialId,
+          storageKey: photo.storageKey,
+          originalFilename: photo.filename,
+          mimeType: photo.mimeType,
+          sizeBytes: BigInt(photo.sizeBytes),
+          sha256: photo.sha256,
+          uploadedBy: actor.userId,
+        },
+      });
+      await transaction.material.update({
+        where: { id: photo.materialId },
+        data: { currentVersionId: photo.contentVersionId },
+      });
     }
   }
 
