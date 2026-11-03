@@ -61,6 +61,14 @@ const activeEligiblePage = computed(() =>
     ? (props.eligibleMatterPages?.[activeItem.value.id] ?? null)
     : null,
 );
+const suggestedMatter = computed(() => {
+  const suggestionId = activeItem.value?.suggestedMatterId;
+  return suggestionId
+    ? (activeEligiblePage.value?.items.find(
+        (matter) => matter.id === suggestionId,
+      ) ?? null)
+    : null;
+});
 const uploadLocked = computed(
   () => props.uploadState !== 'IDLE' || props.panelBusy,
 );
@@ -467,9 +475,11 @@ watch(
               }}
             </p>
             <p v-if="activeItem.suggestedMatterId" class="field-help">
-              系统建议事项编号：{{
-                activeItem.suggestedMatterId
-              }}。该建议尚未选择或绑定。
+              <template v-if="suggestedMatter">
+                系统建议候选：{{ suggestedMatter.businessNo }}。
+              </template>
+              <template v-else> 系统有建议，请按当前单号检索核对。 </template>
+              该建议尚未选择或绑定。
             </p>
           </section>
 

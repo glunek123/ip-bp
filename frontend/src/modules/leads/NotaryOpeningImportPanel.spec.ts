@@ -72,7 +72,42 @@ describe('NotaryOpeningImportPanel', () => {
           .element as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+    expect(wrapper.text()).toContain('系统建议候选：NT-001');
+    expect(wrapper.text()).not.toContain('matter-1');
     expect(wrapper.text()).toContain('该建议尚未选择或绑定');
+  });
+
+  it('does not expose an internal suggestion ID when the candidate is outside the current result page', () => {
+    const wrapper = mount(NotaryOpeningImportPanel, {
+      props: {
+        batch: {
+          id: 'batch-1',
+          status: 'READY',
+          expiresAt: '2026-11-04T00:00:00.000Z',
+          recognitionMode: 'MOCK',
+          items: [item],
+        },
+        uploadState: 'IDLE',
+        eligibleMatterPages: {
+          'item-1': {
+            items: [
+              {
+                id: 'another-matter',
+                businessNo: 'NT-002',
+                version: 2,
+                trackingNo: null,
+              },
+            ],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+          },
+        },
+      },
+    });
+
+    expect(wrapper.text()).toContain('系统有建议，请按当前单号检索核对');
+    expect(wrapper.text()).not.toContain('matter-1');
   });
 
   it('keeps manual work available when recognition is disabled', () => {
