@@ -240,7 +240,7 @@ export class NotaryOpeningImportService {
             filename: photo.filename,
             mimeType: photo.mimeType as
               'image/jpeg' | 'image/png' | 'image/webp',
-            bytes: photo.bytes,
+            bytes: new Uint8Array(photo.bytes),
           })),
         });
         const photos = [];
