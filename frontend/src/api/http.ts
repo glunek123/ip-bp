@@ -172,6 +172,18 @@ export function requestBinary(
   );
 }
 
+export function postFormData(
+  path: string,
+  body: FormData,
+  options: RequestOptions = {},
+): Promise<unknown> {
+  return executeRequest(
+    path,
+    { ...options, method: 'POST', body, headers: { Accept: 'application/json', ...options.headers } },
+    parseJsonSuccess,
+  );
+}
+
 export function postTypedBinary(
   path: string,
   body: Blob,
