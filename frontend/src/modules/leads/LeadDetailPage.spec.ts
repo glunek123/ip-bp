@@ -479,9 +479,7 @@ describe('LeadDetailPage', () => {
     expect(facts.text()).toContain('店铺名');
     expect(facts.text()).toContain('店铺 ID');
     expect(facts.text()).toContain('SHOP-42');
-    expect(wrapper.get('[data-test="push-record"]').text()).toContain(
-      '推送于',
-    );
+    expect(wrapper.get('[data-test="push-record"]').text()).toContain('推送于');
     expect(wrapper.text()).toContain('商品甲');
     expect(wrapper.text()).toContain('6.00');
     expect(wrapper.text()).toContain('侵权截图.png');
@@ -603,9 +601,9 @@ describe('LeadDetailPage', () => {
     const record = wrapper.get('[data-test="customer-evidence-confirmation"]');
     expect(record.text()).toContain('未记录客户决定；决定日期未记录。');
     expect(record.text()).not.toContain('2026-09-22');
-    expect(wrapper.get('[data-test="evidence-decision-record"]').text()).toContain(
-      '运营不取证归档记录',
-    );
+    expect(
+      wrapper.get('[data-test="evidence-decision-record"]').text(),
+    ).toContain('运营不取证归档记录');
   });
 
   it('renders proxy evidence choices in history without relabeling withdrawal confirmation', async () => {

@@ -613,7 +613,9 @@ watch(
           data-test="notary-source-facts"
         >
           <h2 class="form-section-title">来源线索事实</h2>
-          <p v-if="matter.detailFacts.source.snapshotState === 'UNKNOWN_LEGACY'">
+          <p
+            v-if="matter.detailFacts.source.snapshotState === 'UNKNOWN_LEGACY'"
+          >
             旧记录缺少完整的转入来源快照；未能确认的字段显示为未记录。
           </p>
           <dl class="demo-detail-grid notary-facts-grid">
@@ -682,7 +684,10 @@ watch(
             <div>
               <dt>负责人（当前姓名）</dt>
               <dd>
-                {{ matter.detailFacts.source.responsibleOperator.name || '当前姓名不可用' }}
+                {{
+                  matter.detailFacts.source.responsibleOperator.name ||
+                  '当前姓名不可用'
+                }}
               </dd>
             </div>
             <div>
@@ -710,7 +715,10 @@ watch(
               <dd>{{ matter.detailFacts.source.remark.value || '未填写' }}</dd>
             </div>
           </dl>
-          <section class="lead-attachments" data-test="source-snapshot-materials">
+          <section
+            class="lead-attachments"
+            data-test="source-snapshot-materials"
+          >
             <h3>转入时截图</h3>
             <p v-if="matter.detailFacts.source.screenshots.length === 0">
               转入时未选择截图。
@@ -724,7 +732,9 @@ watch(
                 <ElButton
                   text
                   :data-test="`download-source-snapshot-${photo.contentVersionId}`"
-                  @click="downloadMaterial(photo.materialId, photo.contentVersionId)"
+                  @click="
+                    downloadMaterial(photo.materialId, photo.contentVersionId)
+                  "
                   >下载</ElButton
                 >
               </li>
@@ -747,7 +757,11 @@ watch(
                   : matter.detailFacts.leadReview.actorDisplayName
               }}
             </p>
-            <p>决定时间：{{ formatTime(matter.detailFacts.leadReview.decidedAt) }}</p>
+            <p>
+              决定时间：{{
+                formatTime(matter.detailFacts.leadReview.decidedAt)
+              }}
+            </p>
             <p v-if="matter.detailFacts.leadReview.reason">
               原因：{{ matter.detailFacts.leadReview.reason }}
             </p>
@@ -769,7 +783,9 @@ watch(
                   : '公证出证归档'
             }}
           </p>
-          <p>归档时间：{{ formatTime(matter.detailFacts.archive.occurredAt) }}</p>
+          <p>
+            归档时间：{{ formatTime(matter.detailFacts.archive.occurredAt) }}
+          </p>
         </section>
         <section
           class="demo-card demo-card--pad notary-fact-card"

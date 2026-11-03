@@ -18,29 +18,25 @@ function setup() {
   const tx = {
     $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: leadId }]),
     lead: {
-      findFirst: jest
-        .fn()
-        .mockResolvedValue({
-          id: leadId,
-          customerId,
-          departmentId: actor.departmentId,
-          responsibleUserId: actor.userId,
-          teamId: null,
-          status: 'WAITING_EVIDENCE_DECISION',
-          version: 3,
-          activeReviewDecisionId: reviewId,
-          reviewDecision: { id: reviewId, result: 'INFRINGEMENT' },
-        }),
+      findFirst: jest.fn().mockResolvedValue({
+        id: leadId,
+        customerId,
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+        teamId: null,
+        status: 'WAITING_EVIDENCE_DECISION',
+        version: 3,
+        activeReviewDecisionId: reviewId,
+        reviewDecision: { id: reviewId, result: 'INFRINGEMENT' },
+      }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     userAccount: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          displayName: '运营甲',
-          accountType: 'INTERNAL',
-          active: true,
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        displayName: '运营甲',
+        accountType: 'INTERNAL',
+        active: true,
+      }),
     },
     leadCommandReceipt: {
       findUnique: jest.fn().mockResolvedValue(null),

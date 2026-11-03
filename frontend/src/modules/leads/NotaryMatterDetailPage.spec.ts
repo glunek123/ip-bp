@@ -414,9 +414,9 @@ describe('NotaryMatterDetailPage', () => {
     expect(facts).toContain('转入店铺名');
     expect(facts).toContain('SHOP-CURRENT');
     expect(facts).toContain('需要披露');
-    expect(wrapper.get('[data-test="source-snapshot-materials"]').text()).toContain(
-      '转入截图.png',
-    );
+    expect(
+      wrapper.get('[data-test="source-snapshot-materials"]').text(),
+    ).toContain('转入截图.png');
     const reviews = wrapper.get('[data-test="source-lead-review-record"]');
     expect(reviews.text()).toContain('未记录客户决定；决定日期未记录。');
     const fees = wrapper.get('[data-test="notary-fee-summary"]').text();
@@ -425,9 +425,9 @@ describe('NotaryMatterDetailPage', () => {
     expect(fees).toContain('已知费用小计');
     expect(fees).toContain('0.00 元');
     expect(fees).toContain('尚未完整确认');
-    expect(wrapper.get('[data-test="notary-matter-products"]').text()).toContain(
-      '金额来自转入时快照。',
-    );
+    expect(
+      wrapper.get('[data-test="notary-matter-products"]').text(),
+    ).toContain('金额来自转入时快照。');
   });
   it('labels a proxy source review and archived source outcome without mixing the opening review', async () => {
     api.getNotaryMatter.mockResolvedValueOnce({
@@ -462,9 +462,9 @@ describe('NotaryMatterDetailPage', () => {
     expect(wrapper.get('[data-test="source-archive-record"]').text()).toContain(
       '退货归档',
     );
-    expect(wrapper.get('[data-test="notary-matter-products"]').text()).toContain(
-      '金额来自当前公证资料。',
-    );
+    expect(
+      wrapper.get('[data-test="notary-matter-products"]').text(),
+    ).toContain('金额来自当前公证资料。');
     const fees = wrapper.get('[data-test="notary-fee-summary"]').text();
     expect(fees).toContain('4.00 元');
     expect(fees).toContain('10.00 元');

@@ -1091,11 +1091,11 @@ onBeforeUnmount(clearContext);
                   ? '客户审核'
                   : item.kind === 'WITHDRAWAL_APPLICATION'
                     ? '撤回申请'
-                  : item.kind === 'CUSTOMER_EVIDENCE_CONFIRMATION'
-                    ? '客户取证选择（运营代办）'
-                    : item.kind === 'EVIDENCE_DECISION'
-                      ? '运营不取证归档'
-                      : '客户确认撤回'
+                    : item.kind === 'CUSTOMER_EVIDENCE_CONFIRMATION'
+                      ? '客户取证选择（运营代办）'
+                      : item.kind === 'EVIDENCE_DECISION'
+                        ? '运营不取证归档'
+                        : '客户确认撤回'
               }}
               · {{ formatTime(item.occurredAt) }}
               <span v-if="item.reviewerDisplayName">
