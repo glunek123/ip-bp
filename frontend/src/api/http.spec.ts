@@ -30,10 +30,28 @@ describe('HTTP boundary', () => {
     setCsrfToken('csrf-one');
     const body = new FormData();
     body.append('file', new Blob(['zip']), 'opening.zip');
-    const fetch = vi.fn().mockResolvedValue(new Response('{"id":"ok"}', { status: 200 }));
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(new Response('{"id":"ok"}', { status: 200 }));
     vi.stubGlobal('fetch', fetch);
-    await expect(postFormData('/notary-opening-imports', body, { headers: { 'Idempotency-Key': 'key-one' } })).resolves.toEqual({ id: 'ok' });
-    expect(fetch).toHaveBeenCalledWith('/api/v1/notary-opening-imports', expect.objectContaining({ method: 'POST', body, credentials: 'same-origin', headers: { Accept: 'application/json', 'Idempotency-Key': 'key-one', 'X-CSRF-Token': 'csrf-one' } }));
+    await expect(
+      postFormData('/notary-opening-imports', body, {
+        headers: { 'Idempotency-Key': 'key-one' },
+      }),
+    ).resolves.toEqual({ id: 'ok' });
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/notary-opening-imports',
+      expect.objectContaining({
+        method: 'POST',
+        body,
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Idempotency-Key': 'key-one',
+          'X-CSRF-Token': 'csrf-one',
+        },
+      }),
+    );
   });
   it('sends a raw Blob through the shared authenticated request boundary', async () => {
     const body = new Blob(['real-file-bytes'], { type: 'application/pdf' });

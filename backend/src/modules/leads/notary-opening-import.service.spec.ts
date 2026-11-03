@@ -91,24 +91,20 @@ function fixture(status = 'READY', expiresAt = new Date(Date.now() + 60_000)) {
   };
   const blobs = {
     open: jest.fn(),
-    put: jest
-      .fn()
-      .mockResolvedValue({
-        detectedMimeType: 'image/png',
-        sizeBytes: 13,
-        sha256: 'a'.repeat(64),
-      }),
+    put: jest.fn().mockResolvedValue({
+      detectedMimeType: 'image/png',
+      sizeBytes: 13,
+      sha256: 'a'.repeat(64),
+    }),
     delete: jest.fn(),
   };
   const recognition = {
     mode: 'MOCK',
-    recognize: jest
-      .fn()
-      .mockResolvedValue({
-        status: 'SUCCEEDED',
-        trackingCandidate: 'MOCK20261103001',
-        senderCandidate: null,
-      }),
+    recognize: jest.fn().mockResolvedValue({
+      status: 'SUCCEEDED',
+      trackingCandidate: 'MOCK20261103001',
+      senderCandidate: null,
+    }),
   };
   const materials = {
     adoptStagedOpeningPhotos: jest.fn().mockResolvedValue(undefined),

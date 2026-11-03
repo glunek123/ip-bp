@@ -179,7 +179,12 @@ export function postFormData(
 ): Promise<unknown> {
   return executeRequest(
     path,
-    { ...options, method: 'POST', body, headers: { Accept: 'application/json', ...options.headers } },
+    {
+      ...options,
+      method: 'POST',
+      body,
+      headers: { Accept: 'application/json', ...options.headers },
+    },
     parseJsonSuccess,
   );
 }
