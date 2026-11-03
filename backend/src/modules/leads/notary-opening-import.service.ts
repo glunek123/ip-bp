@@ -69,6 +69,72 @@ export class NotaryOpeningImportService {
     return this.access.buildLeadScope(actor, 'notary.unbox.record', reader);
   }
 
+  private async matchingMatterIds(
+    actor: ActorContext,
+    scope: Prisma.LeadWhereInput,
+    trackingNos: readonly string[],
+  ): Promise<Map<string, string[]>> {
+    const found = new Map<string, string[]>();
+    if (!trackingNos.length) return found;
+    const matches = await this.db.notaryMatter.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        stage: 'WAITING_UNBOX',
+        sourceLead: scope,
+        OR: [
+          {
+            evidence: {
+              logistics: {
+                some: {
+                  trackingState: 'PRESENT',
+                  trackingValue: { in: [...trackingNos] },
+                },
+              },
+            },
+          },
+          {
+            evidenceCorrections: {
+              some: {
+                logistics: {
+                  some: {
+                    trackingState: 'PRESENT',
+                    trackingValue: { in: [...trackingNos] },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        evidence: {
+          select: { logistics: { select: { trackingValue: true } } },
+        },
+        evidenceCorrections: {
+          orderBy: { revision: 'desc' },
+          take: 1,
+          select: { logistics: { select: { trackingValue: true } } },
+        },
+      },
+    });
+    for (const trackingNo of trackingNos) {
+      found.set(
+        trackingNo,
+        matches
+          .filter((matter) =>
+            (
+              matter.evidenceCorrections[0]?.logistics ??
+              matter.evidence?.logistics ??
+              []
+            ).some((entry) => entry.trackingValue === trackingNo),
+          )
+          .map((matter) => matter.id),
+      );
+    }
+    return found;
+  }
+
   private view(batch: Awaited<ReturnType<NotaryOpeningImportService['load']>>) {
     return {
       id: batch.id,
@@ -208,50 +274,7 @@ export class NotaryOpeningImportService {
       const trackingNos = planned
         .map((item) => item.recognized.trackingCandidate)
         .filter((v): v is string => !!v);
-      const matches = trackingNos.length
-        ? await this.db.notaryMatter.findMany({
-            where: {
-              departmentId: actor.departmentId,
-              stage: 'WAITING_UNBOX',
-              sourceLead: scope,
-              OR: [
-                {
-                  evidence: {
-                    logistics: {
-                      some: {
-                        trackingState: 'PRESENT',
-                        trackingValue: { in: trackingNos },
-                      },
-                    },
-                  },
-                },
-                {
-                  evidenceCorrections: {
-                    some: {
-                      logistics: {
-                        some: {
-                          trackingState: 'PRESENT',
-                          trackingValue: { in: trackingNos },
-                        },
-                      },
-                    },
-                  },
-                },
-              ],
-            },
-            select: {
-              id: true,
-              evidence: {
-                select: { logistics: { select: { trackingValue: true } } },
-              },
-              evidenceCorrections: {
-                orderBy: { revision: 'desc' },
-                take: 1,
-                select: { logistics: { select: { trackingValue: true } } },
-              },
-            },
-          })
-        : [];
+      const matches = await this.matchingMatterIds(actor, scope, trackingNos);
       const counts = new Map<string, number>();
       for (const t of trackingNos) counts.set(t, (counts.get(t) ?? 0) + 1);
       await this.db.notaryOpeningImportBatch.create({
@@ -267,13 +290,7 @@ export class NotaryOpeningImportService {
             create: planned.map((item) => {
               const trackingNo = item.recognized.trackingCandidate;
               const candidates = trackingNo
-                ? matches.filter((matter) =>
-                    (
-                      matter.evidenceCorrections[0]?.logistics ??
-                      matter.evidence?.logistics ??
-                      []
-                    ).some((entry) => entry.trackingValue === trackingNo),
-                  )
+                ? (matches.get(trackingNo) ?? [])
                 : [];
               const conflict =
                 !!trackingNo && (counts.get(trackingNo) ?? 0) > 1;
@@ -295,7 +312,7 @@ export class NotaryOpeningImportService {
                       ? 'AMBIGUOUS'
                       : 'UNMATCHED',
                 suggestedMatterId:
-                  conflict || candidates.length !== 1 ? null : candidates[0].id,
+                  conflict || candidates.length !== 1 ? null : candidates[0],
                 status: conflict ? 'CONFLICT' : 'READY',
                 photos: {
                   create: item.photos.map((photo) => ({
@@ -456,6 +473,13 @@ export class NotaryOpeningImportService {
       )
     )
       throw reject('DUPLICATE_TRACKING');
+    const candidates = trackingNo
+      ? ((
+          await this.matchingMatterIds(actor, await this.scope(actor), [
+            trackingNo,
+          ])
+        ).get(trackingNo) ?? [])
+      : [];
     let changed: { count: number };
     try {
       changed = await this.db.notaryOpeningImportItem.updateMany({
@@ -471,8 +495,13 @@ export class NotaryOpeningImportService {
           selectedMatterId: input.selectedMatterId,
           revision: { increment: 1 },
           status: 'READY',
-          matchStatus: input.selectedMatterId ? 'SUGGESTED' : 'UNMATCHED',
-          suggestedMatterId: input.selectedMatterId,
+          matchStatus:
+            candidates.length === 1
+              ? 'SUGGESTED'
+              : candidates.length > 1
+                ? 'AMBIGUOUS'
+                : 'UNMATCHED',
+          suggestedMatterId: candidates.length === 1 ? candidates[0] : null,
         },
       });
     } catch (error) {

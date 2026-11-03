@@ -56,6 +56,13 @@ function fixture(status = 'READY', expiresAt = new Date(Date.now() + 60_000)) {
         .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
     },
     notaryOpeningImportBatch: { findFirst: jest.fn().mockResolvedValue(batch) },
+    notaryOpeningImportItem: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    notaryMatter: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue({ id: matterId }),
+    },
   };
   const access = {
     buildLeadScope: jest
@@ -168,5 +175,51 @@ describe('opening import confirmation', () => {
     await expect(
       revoked.service.confirm(actor, batchId, itemId, 'key', input),
     ).rejects.toThrow('revoked');
+  });
+});
+
+describe('opening import manual tracking correction', () => {
+  it('re-matches current scoped logistics without changing the raw candidate', async () => {
+    const f = fixture();
+    f.item.selectedMatterId = null as never;
+    f.item.matchStatus = 'UNMATCHED';
+    f.db.notaryMatter.findMany.mockResolvedValue([
+      {
+        id: matterId,
+        evidence: { logistics: [{ trackingValue: 'MOCK20261103001' }] },
+        evidenceCorrections: [],
+      },
+    ]);
+    f.db.notaryOpeningImportItem.updateMany.mockImplementation(
+      async ({
+        data,
+      }: {
+        data: { matchStatus: string; suggestedMatterId: string };
+      }) => {
+        f.item.matchStatus = data.matchStatus;
+        f.item.suggestedMatterId = data.suggestedMatterId;
+        f.item.trackingNo = 'MOCK20261103001' as never;
+        f.item.revision += 1;
+        return { count: 1 };
+      },
+    );
+    const result = await f.service.patch(actor, batchId, itemId, {
+      trackingNo: 'MOCK20261103001',
+      selectedMatterId: null,
+      expectedRevision: 1,
+    });
+    expect(result).toMatchObject({
+      matchStatus: 'SUGGESTED',
+      suggestedMatterId: matterId,
+      trackingCandidate: null,
+    });
+    expect(f.db.notaryMatter.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          stage: 'WAITING_UNBOX',
+          sourceLead: { departmentId: actor.departmentId },
+        }),
+      }),
+    );
   });
 });

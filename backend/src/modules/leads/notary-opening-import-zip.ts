@@ -66,7 +66,7 @@ export function parseOpeningImportZip(bytes: Buffer): ImportFolder[] {
     const name = bytes
       .subarray(offset + 46, offset + 46 + nameLength)
       .toString('utf8');
-    const folded = name.toLocaleLowerCase('en-US');
+    const folded = name.normalize('NFC').toLocaleLowerCase('en-US');
     if (
       !name ||
       name.includes('\\') ||

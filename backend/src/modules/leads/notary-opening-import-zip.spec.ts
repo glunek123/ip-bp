@@ -27,6 +27,11 @@ describe('opening import ZIP boundary', () => {
     expect(() =>
       parseOpeningImportZip(archive({ 'parcel/a.jpg': png })),
     ).toThrow();
+    expect(() =>
+      parseOpeningImportZip(
+        archive({ 'parcel/é.png': png, 'parcel/e\u0301.png': png }),
+      ),
+    ).toThrow();
   });
   it('rejects more than 100 actual files before inflation', () => {
     const files = Object.fromEntries(
