@@ -8,7 +8,12 @@ import {
 } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
-import { labelLeadPlatform } from './lead-options';
+import {
+  labelLeadPlatform,
+  leadCaseTypeLabels,
+  leadInfringementTypeLabels,
+  leadSourceLabels,
+} from './lead-options';
 import type { CaseStage } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
 import { listReturnPath } from '../../app/list-row-navigation';
@@ -480,7 +485,7 @@ watch(
 );
 </script>
 <template>
-  <div ref="detailRoot" class="page-view page-view--narrow">
+  <div ref="detailRoot" class="page-view notary-matter-detail-page">
     <main>
       <RouterLink class="back-link" :to="returnTo">← 返回公证阶段</RouterLink>
       <RouterLink
@@ -603,35 +608,203 @@ watch(
           <p v-else>暂无可见案件</p>
         </section>
         <section
-          class="demo-card demo-card--pad"
-          data-test="notary-matter-detail"
+          v-if="matter.detailFacts"
+          class="demo-card demo-card--pad notary-fact-card"
+          data-test="notary-source-facts"
         >
-          <h2 class="form-section-title">批次信息</h2>
-          <dl class="demo-detail-grid">
+          <h2 class="form-section-title">来源线索事实</h2>
+          <p v-if="matter.detailFacts.source.snapshotState === 'UNKNOWN_LEGACY'">
+            旧记录缺少完整的转入来源快照；未能确认的字段显示为未记录。
+          </p>
+          <dl class="demo-detail-grid notary-facts-grid">
             <div>
-              <dt>客户</dt>
-              <dd>{{ matter.sourceSummary.customer.name }}</dd>
-            </div>
-            <div>
-              <dt>权利主体</dt>
-              <dd>{{ matter.sourceSummary.rightsHolder.name }}</dd>
-            </div>
-            <div>
-              <dt>平台</dt>
-              <dd>{{ labelLeadPlatform(matter.sourceSummary.platform) }}</dd>
-            </div>
-            <div>
-              <dt>店铺名</dt>
-              <dd>{{ matter.sourceSummary.shopName }}</dd>
-            </div>
-            <div>
-              <dt>店铺ID</dt>
-              <dd class="mono">
-                {{ matter.sourceSummary.shopExternalId ?? '未登记' }}
+              <dt>案件类型（转入快照）</dt>
+              <dd>
+                {{
+                  matter.detailFacts.source.caseType
+                    ? leadCaseTypeLabels[matter.detailFacts.source.caseType]
+                    : '未记录'
+                }}
               </dd>
             </div>
             <div>
-              <dt>推送日期</dt>
+              <dt>来源（转入快照）</dt>
+              <dd>
+                {{
+                  matter.detailFacts.source.source
+                    ? leadSourceLabels[matter.detailFacts.source.source]
+                    : '未记录'
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>平台（转入快照）</dt>
+              <dd>
+                {{
+                  matter.detailFacts.source.platform
+                    ? labelLeadPlatform(matter.detailFacts.source.platform)
+                    : '未记录'
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>店铺名（转入快照）</dt>
+              <dd>{{ matter.detailFacts.source.shopName || '未记录' }}</dd>
+            </div>
+            <div>
+              <dt>店铺 ID（当前线索资料）</dt>
+              <dd class="mono">
+                {{ matter.detailFacts.source.shopExternalId.value || '未登记' }}
+              </dd>
+            </div>
+            <div>
+              <dt>披露标记（当前线索资料）</dt>
+              <dd>
+                {{
+                  matter.detailFacts.source.needDisclose.value === null
+                    ? '未记录'
+                    : matter.detailFacts.source.needDisclose.value
+                      ? '需要披露'
+                      : '无需披露'
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>发现时间（转入快照）</dt>
+              <dd class="mono">
+                {{
+                  matter.detailFacts.source.foundAt
+                    ? formatTime(matter.detailFacts.source.foundAt)
+                    : '未记录'
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>负责人（当前姓名）</dt>
+              <dd>
+                {{ matter.detailFacts.source.responsibleOperator.name || '当前姓名不可用' }}
+              </dd>
+            </div>
+            <div>
+              <dt>推送客户审核时间</dt>
+              <dd class="mono">
+                {{
+                  matter.detailFacts.source.leadPushedAt
+                    ? formatTime(matter.detailFacts.source.leadPushedAt)
+                    : '未记录'
+                }}
+              </dd>
+            </div>
+            <div class="detail-grid__wide">
+              <dt>侵权类型（当前线索资料）</dt>
+              <dd>
+                {{
+                  matter.detailFacts.source.infringements.values
+                    .map((value) => leadInfringementTypeLabels[value])
+                    .join('、') || '未登记'
+                }}
+              </dd>
+            </div>
+            <div class="detail-grid__wide">
+              <dt>备注（当前线索资料）</dt>
+              <dd>{{ matter.detailFacts.source.remark.value || '未填写' }}</dd>
+            </div>
+          </dl>
+          <section class="lead-attachments" data-test="source-snapshot-materials">
+            <h3>转入时截图</h3>
+            <p v-if="matter.detailFacts.source.screenshots.length === 0">
+              转入时未选择截图。
+            </p>
+            <ul v-else>
+              <li
+                v-for="photo in matter.detailFacts.source.screenshots"
+                :key="photo.contentVersionId"
+              >
+                {{ photo.originalFilename }}
+                <ElButton
+                  text
+                  :data-test="`download-source-snapshot-${photo.contentVersionId}`"
+                  @click="downloadMaterial(photo.materialId, photo.contentVersionId)"
+                  >下载</ElButton
+                >
+              </li>
+            </ul>
+          </section>
+        </section>
+        <section
+          v-if="matter.detailFacts"
+          class="demo-card demo-card--pad"
+          data-test="source-lead-review-record"
+        >
+          <h2 class="form-section-title">来源线索客户审核</h2>
+          <template v-if="matter.detailFacts.leadReview.state === 'KNOWN'">
+            <p>审核结论：确认侵权</p>
+            <p>
+              决定人：
+              {{
+                matter.detailFacts.leadReview.actorKind === 'INTERNAL_PROXY'
+                  ? `运营代办（客户决定） · ${matter.detailFacts.leadReview.actorDisplayName}`
+                  : matter.detailFacts.leadReview.actorDisplayName
+              }}
+            </p>
+            <p>决定时间：{{ formatTime(matter.detailFacts.leadReview.decidedAt) }}</p>
+            <p v-if="matter.detailFacts.leadReview.reason">
+              原因：{{ matter.detailFacts.leadReview.reason }}
+            </p>
+          </template>
+          <p v-else>未记录客户决定；决定日期未记录。</p>
+        </section>
+        <section
+          v-if="matter.detailFacts?.archive"
+          class="demo-card demo-card--pad"
+          data-test="source-archive-record"
+        >
+          <h2 class="form-section-title">来源流程归档记录</h2>
+          <p>
+            归档类型：{{
+              matter.detailFacts.archive.kind === 'OPENING_NO_INFRINGEMENT'
+                ? '开箱判定不侵权'
+                : matter.detailFacts.archive.kind === 'RETURN'
+                  ? '退货归档'
+                  : '公证出证归档'
+            }}
+          </p>
+          <p>归档时间：{{ formatTime(matter.detailFacts.archive.occurredAt) }}</p>
+        </section>
+        <section
+          class="demo-card demo-card--pad notary-fact-card"
+          data-test="notary-matter-detail"
+        >
+          <h2 class="form-section-title">批次信息</h2>
+          <dl class="demo-detail-grid notary-facts-grid">
+            <div>
+              <dt>客户（当前姓名）</dt>
+              <dd>{{ matter.sourceSummary.customer.name }}</dd>
+            </div>
+            <div>
+              <dt>权利主体（当前姓名）</dt>
+              <dd>{{ matter.sourceSummary.rightsHolder.name }}</dd>
+            </div>
+            <div>
+              <dt>平台（当前线索资料）</dt>
+              <dd>{{ labelLeadPlatform(matter.sourceSummary.platform) }}</dd>
+            </div>
+            <div>
+              <dt>店铺名（当前线索资料）</dt>
+              <dd>{{ matter.sourceSummary.shopName }}</dd>
+            </div>
+            <div>
+              <dt>店铺 ID（当前线索资料）</dt>
+              <dd class="mono">
+                {{
+                  matter.detailFacts?.source.shopExternalId.value ??
+                  matter.sourceSummary.shopExternalId ??
+                  '未登记'
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>移交时间</dt>
               <dd class="mono">{{ matter.transferredAt }}</dd>
             </div>
             <div>
@@ -707,6 +880,28 @@ watch(
             <div>
               <dt>样品费</dt>
               <dd class="mono">{{ feeLabel(matter.fees.sample) }}</dd>
+            </div>
+            <div v-if="matter.detailFacts">
+              <dt>披露费</dt>
+              <dd class="mono">
+                {{ feeLabel(matter.detailFacts.feeTotals.disclosure) }}
+              </dd>
+            </div>
+            <div v-if="matter.detailFacts">
+              <dt>已知费用小计</dt>
+              <dd class="mono">
+                {{ matter.detailFacts.feeTotals.knownSubtotal }} 元
+              </dd>
+            </div>
+            <div v-if="matter.detailFacts">
+              <dt>已确认总额</dt>
+              <dd class="mono">
+                {{
+                  matter.detailFacts.feeTotals.confirmedTotal === null
+                    ? '尚未完整确认'
+                    : `${matter.detailFacts.feeTotals.confirmedTotal} 元`
+                }}
+              </dd>
             </div>
           </dl>
         </section>
@@ -946,6 +1141,18 @@ watch(
         </section>
         <section class="demo-card" data-test="notary-matter-products">
           <h2 class="card-section-title">本批次商品</h2>
+          <p class="field-help notary-estimate-note">
+            商品评估金额沿用线索估算公式，仅供评估参考，不代表实际成交额。
+            {{
+              matter.detailFacts?.productEstimate.provenance ===
+              'CURRENT_NOTARY_ROUTINE'
+                ? '金额来自当前公证资料。'
+                : matter.detailFacts?.productEstimate.provenance ===
+                    'TRANSFER_SNAPSHOT'
+                  ? '金额来自转入时快照。'
+                  : '金额来源未记录。'
+            }}
+          </p>
           <div class="demo-table-wrap">
             <table class="demo-table">
               <thead>
@@ -958,7 +1165,7 @@ watch(
                     class="num"
                     title="单价×销量；销量为0时按评论数计算。仅用于线索评估"
                   >
-                    计算金额
+                    评估金额（元）
                   </th>
                 </tr>
               </thead>
@@ -992,7 +1199,7 @@ watch(
           class="demo-card demo-card--pad lead-attachments"
           data-test="notary-matter-materials"
         >
-          <h2 class="form-section-title">本批次截图</h2>
+          <h2 class="form-section-title">本批次截图（转入快照）</h2>
           <p v-if="matter.selectedMaterials.length === 0">本批次未选择截图。</p>
           <ul v-else>
             <li
@@ -1042,5 +1249,27 @@ watch(
 
 section[id] {
   scroll-margin-top: 1rem;
+}
+.notary-matter-detail-page {
+  max-width: none;
+}
+.notary-matter-detail-page .notary-facts-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.notary-matter-detail-page .notary-fact-card {
+  container-type: inline-size;
+}
+@container (min-width: 680px) {
+  .notary-matter-detail-page .notary-facts-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@container (max-width: 479px) {
+  .notary-matter-detail-page .notary-facts-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.notary-estimate-note {
+  margin: 4px 16px 10px;
 }
 </style>

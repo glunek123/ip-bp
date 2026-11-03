@@ -41,6 +41,8 @@ import { summarizeLeadProducts } from './lead-display';
 import { useAuthStore } from '../../stores/auth';
 import { listReturnPath } from '../../app/list-row-navigation';
 import LeadQuickActionsPanel from './LeadQuickActionsPanel.vue';
+import ProxyLeadEvidencePanel from './ProxyLeadEvidencePanel.vue';
+import { hasPendingProxyLeadEvidence } from './lead-proxy-evidence-recovery';
 import RoutineBusinessEditor from './RoutineBusinessEditor.vue';
 import {
   readPendingLeadCommands,
@@ -683,8 +685,18 @@ onBeforeUnmount(clearContext);
         >
           {{ workflowNotice }}
         </p>
-        <section class="demo-card demo-card--pad">
-          <dl class="demo-detail-grid" data-test="lead-facts">
+        <ProxyLeadEvidencePanel
+          v-if="
+            lead.capabilities.proxyConfirmEvidence ||
+            hasPendingProxyLeadEvidence(actorKey, lead.id)
+          "
+          :lead-id="lead.id"
+          :identity="actorKey"
+          :detail="lead"
+          @completed="load"
+        />
+        <section class="demo-card demo-card--pad lead-facts-card">
+          <dl class="demo-detail-grid lead-facts-grid" data-test="lead-facts">
             <div>
               <dt>客户</dt>
               <dd>{{ customerName }}</dd>
@@ -698,24 +710,24 @@ onBeforeUnmount(clearContext);
               <dd>{{ leadCaseTypeLabels[lead.caseType] }}</dd>
             </div>
             <div>
-              <dt>来源／平台</dt>
-              <dd>
-                {{ leadSourceLabels[lead.source] }} ·
-                {{ labelLeadPlatform(lead.platform) }}
-              </dd>
+              <dt>来源</dt>
+              <dd>{{ leadSourceLabels[lead.source] }}</dd>
+            </div>
+            <div>
+              <dt>平台</dt>
+              <dd>{{ labelLeadPlatform(lead.platform) }}</dd>
             </div>
             <div>
               <dt>负责人</dt>
               <dd>{{ lead.displayNames.responsibleUserName }}</dd>
             </div>
             <div>
-              <dt>店铺</dt>
-              <dd>
-                {{ lead.shopName
-                }}<small v-if="lead.shopExternalId">
-                  · {{ lead.shopExternalId }}</small
-                >
-              </dd>
+              <dt>店铺名</dt>
+              <dd>{{ lead.shopName || '未登记' }}</dd>
+            </div>
+            <div>
+              <dt>店铺 ID</dt>
+              <dd class="mono">{{ lead.shopExternalId || '未登记' }}</dd>
             </div>
             <div>
               <dt>发现时间</dt>
@@ -974,6 +986,49 @@ onBeforeUnmount(clearContext);
           </dl>
         </section>
         <section
+          v-if="
+            lead.customerEvidenceConfirmation ||
+            lead.evidenceDecision ||
+            lead.status === 'TRANSFERRED_TO_NOTARY' ||
+            lead.notaryMatters.length > 0
+          "
+          class="demo-card demo-card--pad"
+          data-test="customer-evidence-confirmation"
+        >
+          <h2 class="form-section-title">客户取证选择</h2>
+          <template v-if="lead.customerEvidenceConfirmation">
+            <p>
+              选择：{{
+                lead.customerEvidenceConfirmation.result === 'EVIDENCE'
+                  ? '同意取证'
+                  : '选择不取证'
+              }}
+            </p>
+            <p>
+              决定人：
+              {{
+                lead.customerEvidenceConfirmation.actorKind === 'INTERNAL_PROXY'
+                  ? `运营代办（客户决定） · ${lead.customerEvidenceConfirmation.actorDisplayName}`
+                  : lead.customerEvidenceConfirmation.actorDisplayName
+              }}
+            </p>
+            <p>
+              决定时间：{{
+                formatTime(lead.customerEvidenceConfirmation.decidedAt)
+              }}
+            </p>
+            <p
+              v-if="
+                lead.customerEvidenceConfirmation.result === 'NO_EVIDENCE' &&
+                lead.customerEvidenceConfirmation.reason
+              "
+            >
+              原因：{{ lead.customerEvidenceConfirmation.reason }}
+            </p>
+          </template>
+          <p v-else>未记录客户决定；决定日期未记录。</p>
+        </section>
+        <section
           v-if="lead.evidenceDecision"
           class="demo-card demo-card--pad"
           data-test="evidence-decision-record"
@@ -1133,6 +1188,22 @@ onBeforeUnmount(clearContext);
 }
 .lead-detail-page .demo-detail-grid > div {
   padding-bottom: 8px;
+}
+.lead-facts-card {
+  container-type: inline-size;
+}
+.lead-facts-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@container (min-width: 680px) {
+  .lead-facts-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@container (max-width: 479px) {
+  .lead-facts-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .lead-unassigned-screenshots {
   margin: 8px 16px 14px;

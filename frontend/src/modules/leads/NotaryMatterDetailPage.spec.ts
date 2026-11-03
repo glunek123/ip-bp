@@ -26,6 +26,51 @@ const sourceProjection = {
     investigation: { state: 'UNRECORDED', amount: null },
     sample: { state: 'UNRECORDED', amount: null },
   },
+  detailFacts: {
+    source: {
+      snapshotState: 'KNOWN',
+      snapshotFields: 'TRANSFER_SNAPSHOT',
+      caseType: 'CIVIL',
+      source: 'ONLINE',
+      foundAt: '2026-09-20T00:00:00Z',
+      platform: 'TAOBAO',
+      shopName: '转入店铺名',
+      shopExternalId: { value: 'SHOP-CURRENT', provenance: 'CURRENT_LEAD' },
+      needDisclose: { value: true, provenance: 'CURRENT_LEAD' },
+      responsibleOperator: {
+        id: 'operator-current',
+        name: '当前运营姓名',
+        provenance: 'CURRENT_NAME',
+      },
+      infringements: {
+        values: ['TRADEMARK'],
+        provenance: 'CURRENT_LEAD',
+      },
+      remark: { value: '当前线索备注', provenance: 'CURRENT_LEAD' },
+      leadPushedAt: '2026-09-21T00:00:00Z',
+      screenshots: [
+        {
+          materialId: 'source-screenshot-1',
+          contentVersionId: 'source-version-1',
+          originalFilename: '转入截图.png',
+          mimeType: 'image/png',
+        },
+      ],
+      screenshotProvenance: 'TRANSFER_SNAPSHOT',
+    },
+    leadReview: { state: 'UNKNOWN_LEGACY' },
+    archive: null,
+    productEstimate: {
+      amount: '9.00',
+      label: 'ESTIMATE',
+      provenance: 'TRANSFER_SNAPSHOT',
+    },
+    feeTotals: {
+      disclosure: { state: 'UNRECORDED', amount: null },
+      knownSubtotal: '0.00',
+      confirmedTotal: null,
+    },
+  },
 } satisfies Pick<
   NotaryMatterDetail,
   | 'sourceSummary'
@@ -35,6 +80,7 @@ const sourceProjection = {
   | 'certificateSummary'
   | 'linkedCase'
   | 'fees'
+  | 'detailFacts'
   | 'certificateFiles'
 >;
 
@@ -356,6 +402,72 @@ describe('NotaryMatterDetailPage', () => {
     expect(wrapper.get('.back-link').attributes('href')).toBe(
       '/notary-matters?stage=ARCHIVED&page=2',
     );
+  });
+  it('separates transfer snapshots from current lead facts and preserves pending money state', async () => {
+    const wrapper = await mountPage();
+    const facts = wrapper.get('[data-test="notary-source-facts"]').text();
+    expect(facts).toContain('案件类型（转入快照）');
+    expect(facts).toContain('民事');
+    expect(facts).toContain('负责人（当前姓名）');
+    expect(facts).toContain('当前运营姓名');
+    expect(facts).toContain('当前线索备注');
+    expect(facts).toContain('转入店铺名');
+    expect(facts).toContain('SHOP-CURRENT');
+    expect(facts).toContain('需要披露');
+    expect(wrapper.get('[data-test="source-snapshot-materials"]').text()).toContain(
+      '转入截图.png',
+    );
+    const reviews = wrapper.get('[data-test="source-lead-review-record"]');
+    expect(reviews.text()).toContain('未记录客户决定；决定日期未记录。');
+    const fees = wrapper.get('[data-test="notary-fee-summary"]').text();
+    expect(fees).toContain('披露费');
+    expect(fees).toContain('未登记');
+    expect(fees).toContain('已知费用小计');
+    expect(fees).toContain('0.00 元');
+    expect(fees).toContain('尚未完整确认');
+    expect(wrapper.get('[data-test="notary-matter-products"]').text()).toContain(
+      '金额来自转入时快照。',
+    );
+  });
+  it('labels a proxy source review and archived source outcome without mixing the opening review', async () => {
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      detailFacts: {
+        ...sourceProjection.detailFacts,
+        leadReview: {
+          state: 'KNOWN',
+          result: 'INFRINGEMENT',
+          actorKind: 'INTERNAL_PROXY',
+          actorDisplayName: '运营代办人',
+          decidedAt: '2026-09-22T04:00:00Z',
+          reason: null,
+        },
+        archive: { kind: 'RETURN', occurredAt: '2026-10-01T04:00:00Z' },
+        productEstimate: {
+          amount: '12.00',
+          label: 'ESTIMATE',
+          provenance: 'CURRENT_NOTARY_ROUTINE',
+        },
+        feeTotals: {
+          disclosure: { state: 'KNOWN', amount: '4.00' },
+          knownSubtotal: '10.00',
+          confirmedTotal: '10.00',
+        },
+      },
+    } as NotaryMatterDetail);
+    const wrapper = await mountPage();
+    const review = wrapper.get('[data-test="source-lead-review-record"]');
+    expect(review.text()).toContain('运营代办（客户决定）');
+    expect(review.text()).toContain('运营代办人');
+    expect(wrapper.get('[data-test="source-archive-record"]').text()).toContain(
+      '退货归档',
+    );
+    expect(wrapper.get('[data-test="notary-matter-products"]').text()).toContain(
+      '金额来自当前公证资料。',
+    );
+    const fees = wrapper.get('[data-test="notary-fee-summary"]').text();
+    expect(fees).toContain('4.00 元');
+    expect(fees).toContain('10.00 元');
   });
   it('keeps workflow forms disabled while ordinary data is being edited', async () => {
     api.getNotaryMatter.mockResolvedValue({
@@ -1074,7 +1186,7 @@ describe('NotaryMatterDetailPage', () => {
       '来源权利主体',
       '来源店铺',
       '淘宝',
-      'TB-001',
+      'SHOP-CURRENT',
       '2026-09-24',
     ])
       expect(summary.text()).toContain(value);
@@ -1083,7 +1195,14 @@ describe('NotaryMatterDetailPage', () => {
         .get('[data-test="notary-fee-summary"]')
         .findAll('dd')
         .map((cell) => cell.text()),
-    ).toEqual(['未登记', '未登记', '未登记']);
+    ).toEqual([
+      '未登记',
+      '未登记',
+      '未登记',
+      '未登记',
+      '0.00 元',
+      '尚未完整确认',
+    ]);
     expect(wrapper.get('[data-test="notary-case-summary"]').text()).toContain(
       '暂无可见案件',
     );
@@ -1144,7 +1263,14 @@ describe('NotaryMatterDetailPage', () => {
           .get('[data-test="notary-fee-summary"]')
           .findAll('dd')
           .map((cell) => cell.text()),
-      ).toEqual(['0.00 元', '待定', '12345678901234.56 元']);
+      ).toEqual([
+        '0.00 元',
+        '待定',
+        '12345678901234.56 元',
+        '未登记',
+        '0.00 元',
+        '尚未完整确认',
+      ]);
       expect(
         wrapper.get('[data-test="notary-certificate-summary"]').text(),
       ).toContain('本事项已出证归档');

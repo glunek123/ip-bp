@@ -88,11 +88,13 @@ const lead = {
     evidenceDecide: false,
     transferToNotary: false,
     createEvidenceBatch: false,
+    proxyConfirmEvidence: false,
     productScreenshotsEdit: false,
   },
   notaryMatters: [],
   pendingWithdrawalApplication: null,
   evidenceDecision: null,
+  customerEvidenceConfirmation: null,
   history: [],
   departmentId: 'd',
   responsibleUserId: 'u',
@@ -456,6 +458,12 @@ describe('LeadDetailPage', () => {
   });
 
   it('renders real detail fields, record information and push action', async () => {
+    leadApi.getLead.mockResolvedValueOnce({
+      ...lead,
+      shopExternalId: 'SHOP-42',
+      pushedAt: '2026-09-22T04:00:00Z',
+      pushedByDisplayName: '运营甲',
+    });
     const wrapper = await mountPage();
     expect(wrapper.text()).toContain('权利主体');
     expect(wrapper.text()).toContain('案件类型');
@@ -465,6 +473,15 @@ describe('LeadDetailPage', () => {
     expect(wrapper.text()).toContain('客户甲');
     expect(wrapper.text()).toContain('主体甲');
     expect(wrapper.text()).toContain('测试店铺');
+    const facts = wrapper.get('[data-test="lead-facts"]');
+    expect(facts.text()).toContain('来源');
+    expect(facts.text()).toContain('平台');
+    expect(facts.text()).toContain('店铺名');
+    expect(facts.text()).toContain('店铺 ID');
+    expect(facts.text()).toContain('SHOP-42');
+    expect(wrapper.get('[data-test="push-record"]').text()).toContain(
+      '推送于',
+    );
     expect(wrapper.text()).toContain('商品甲');
     expect(wrapper.text()).toContain('6.00');
     expect(wrapper.text()).toContain('侵权截图.png');
@@ -498,6 +515,22 @@ describe('LeadDetailPage', () => {
     expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
   });
 
+  it('shows the proxy customer choice panel only when the server grants it', async () => {
+    const wrapper = await mountPage();
+    expect(wrapper.find('[data-test="proxy-evidence-open"]').exists()).toBe(
+      false,
+    );
+    leadApi.getLead.mockResolvedValueOnce({
+      ...lead,
+      capabilities: { ...lead.capabilities, proxyConfirmEvidence: true },
+    });
+    await wrapper.get('[data-test="refresh"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="proxy-evidence-open"]').exists()).toBe(
+      true,
+    );
+  });
+
   it('shows only authorized names even when master data cannot be read', async () => {
     customerApi.getCustomer.mockRejectedValue(
       new ApiError('禁止读取', 403, 'FORBIDDEN'),
@@ -525,6 +558,54 @@ describe('LeadDetailPage', () => {
     );
     expect(customerApi.getCustomer).not.toHaveBeenCalled();
     expect(holderApi.getCustomerRightsHolder).not.toHaveBeenCalled();
+  });
+
+  it('labels proxy evidence choice as an operations proxy and keeps it separate from review', async () => {
+    leadApi.getLead.mockResolvedValueOnce({
+      ...lead,
+      customerEvidenceConfirmation: {
+        id: 'evidence-choice-1',
+        result: 'EVIDENCE',
+        actorKind: 'INTERNAL_PROXY',
+        actorDisplayName: '运营甲',
+        decidedAt: '2026-09-22T04:00:00Z',
+        reason: null,
+      },
+      reviewDecision: null,
+    });
+    const wrapper = await mountPage();
+    const record = wrapper.get('[data-test="customer-evidence-confirmation"]');
+    expect(record.text()).toContain('同意取证');
+    expect(record.text()).toContain('运营代办（客户决定）');
+    expect(record.text()).toContain('运营甲');
+    expect(record.text()).toContain('决定时间');
+    expect(wrapper.find('[data-test="client-review-record"]').exists()).toBe(
+      false,
+    );
+    expect(notaryApi.createNotaryMatter).not.toHaveBeenCalled();
+  });
+
+  it('does not infer a customer choice or date from an old operator archive', async () => {
+    leadApi.getLead.mockResolvedValueOnce({
+      ...lead,
+      status: 'ARCHIVED',
+      evidenceDecision: {
+        result: 'NO_EVIDENCE',
+        reason: '旧运营归档',
+        decidedAt: '2026-09-22T04:00:00Z',
+        decidedByDisplayName: '运营甲',
+        archiveType: 'NO_EVIDENCE',
+        archivedAt: '2026-09-22T04:00:00Z',
+      },
+      customerEvidenceConfirmation: null,
+    });
+    const wrapper = await mountPage();
+    const record = wrapper.get('[data-test="customer-evidence-confirmation"]');
+    expect(record.text()).toContain('未记录客户决定；决定日期未记录。');
+    expect(record.text()).not.toContain('2026-09-22');
+    expect(wrapper.get('[data-test="evidence-decision-record"]').text()).toContain(
+      '运营不取证归档记录',
+    );
   });
 
   it('keeps transferred source read-only and displays exact product totals and safe links', async () => {
