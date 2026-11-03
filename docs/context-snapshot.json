@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-03T08:05:09.451Z",
+  "recordedAt": "2026-11-03T08:16:10.121Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1524,8 +1524,8 @@
     "frontend/src/modules/leads/LeadCsvImportPanel.vue": "be89887a3d3704a7efbb62baa5caae91c6d3cafc3187c1825d649220df2eda94",
     "frontend/src/modules/leads/LeadCsvPreviewPanel.spec.ts": "69f60aa41dcc58b2bee5a230b2d3e49e67f022ed59e08e89c5354e0c88c6778b",
     "frontend/src/modules/leads/LeadCsvPreviewPanel.vue": "1972e105efc0244cc7119f878f634ea87f6dc77c24ce83b4a71b08774575cad6",
-    "frontend/src/modules/leads/LeadDetailPage.spec.ts": "94e0d7b8cfabeea2e1a03665f95646ed4d2604a4e2838404d8bfebf6945e7d1c",
-    "frontend/src/modules/leads/LeadDetailPage.vue": "ee2eee7f5ad7bd185ea259bbad4fc2322371183344b8cb9caec0b7c93e09d032",
+    "frontend/src/modules/leads/LeadDetailPage.spec.ts": "08f23abffc22748febd94b993d560dbb42008bf99a70c30f14c160c976dd8294",
+    "frontend/src/modules/leads/LeadDetailPage.vue": "09f95f3de6617ffa9b677e5039ac34a12e68af786cca42f48e3de0de97e4734f",
     "frontend/src/modules/leads/LeadEditPage.spec.ts": "7970f602e8aee9a224bb0927c643f1a96fda08779994cecbcb4ccef7006a6735",
     "frontend/src/modules/leads/LeadEditPage.vue": "13a5138e56a4a138645fd21de497f2796bc14357806f15def5d4fbc5c8932d8e",
     "frontend/src/modules/leads/LeadForm.spec.ts": "2d02f95c09426d34a03f16c8dc55eea05be982adbd06d00a65c3aa885560f3e9",
