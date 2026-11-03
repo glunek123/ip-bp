@@ -43,6 +43,7 @@ import {
 } from './lead.constants';
 import {
   ApplyLeadWithdrawalDto,
+  ConfirmProxyLeadEvidenceDto,
   DecideLeadEvidenceDto,
   CreateLeadCommand,
   PushLeadDto,
@@ -156,6 +157,20 @@ const leadDetailInclude = {
           toVersion: true,
         },
       },
+    },
+  },
+  proxyEvidenceConfirmations: {
+    orderBy: [{ decidedAt: 'asc' as const }, { id: 'asc' as const }],
+    select: {
+      id: true,
+      originalReviewDecisionId: true,
+      result: true,
+      reason: true,
+      actorKind: true,
+      actorDisplayNameSnapshot: true,
+      decidedAt: true,
+      fromVersion: true,
+      toVersion: true,
     },
   },
 } satisfies Prisma.LeadInclude;
@@ -319,6 +334,18 @@ type LeadEvidenceDecisionResponse = {
   decidedAt: string;
   archiveType: 'NO_EVIDENCE';
   archivedAt: string;
+};
+
+type ProxyEvidenceConfirmationResponse = {
+  id: string;
+  leadId: string;
+  status: 'WAITING_EVIDENCE_DECISION' | 'ARCHIVED';
+  version: number;
+  result: 'EVIDENCE' | 'NO_EVIDENCE';
+  actorKind: 'INTERNAL_PROXY';
+  actorDisplayName: string;
+  decidedAt: string;
+  reason: string | null;
 };
 
 type EvidenceDecisionLead = {
@@ -703,6 +730,7 @@ export class LeadService {
       evidenceDecide,
       createEvidenceBatch,
       proxyReview,
+      proxyConfirmEvidence,
     ] = await Promise.all([
       this.currentScreenshotIds(actor, [lead.id]),
       this.canEdit(actor, lead),
@@ -712,6 +740,10 @@ export class LeadService {
       this.canCreateEvidenceBatch(actor, lead),
       lead.status === 'WAITING_REVIEW' && lead.activeReviewDecisionId === null
         ? this.canProxyAction(actor, lead, 'lead.review.proxy')
+        : Promise.resolve(false),
+      lead.status === 'WAITING_EVIDENCE_DECISION' &&
+      lead.reviewDecision?.result === 'INFRINGEMENT'
+        ? this.canProxyAction(actor, lead, 'lead.evidence.confirm.proxy')
         : Promise.resolve(false),
     ]);
     const productScreenshotsEdit =
@@ -727,7 +759,24 @@ export class LeadService {
     const proxyConfirmWithdrawal =
       pending !== undefined &&
       (await this.canProxyAction(actor, lead, 'lead.withdraw.confirm.proxy'));
+    const currentConfirmation = [...(lead.proxyEvidenceConfirmations ?? [])]
+      .reverse()
+      .find(
+        (confirmation) =>
+          confirmation.originalReviewDecisionId === lead.activeReviewDecisionId,
+      );
     const history = [
+      ...(lead.proxyEvidenceConfirmations ?? []).map((confirmation) => ({
+        kind: 'CUSTOMER_EVIDENCE_CONFIRMATION' as const,
+        id: confirmation.id,
+        fromVersion: confirmation.fromVersion,
+        toVersion: confirmation.toVersion,
+        result: confirmation.result,
+        reason: confirmation.reason,
+        actorKind: 'INTERNAL_PROXY' as const,
+        actorDisplayName: confirmation.actorDisplayNameSnapshot,
+        occurredAt: confirmation.decidedAt.toISOString(),
+      })),
       ...(lead.evidenceDecision === null || lead.evidenceDecision === undefined
         ? []
         : [
@@ -801,8 +850,20 @@ export class LeadService {
         transferToNotary: evidenceDecide,
         createEvidenceBatch,
         proxyReview,
+        proxyConfirmEvidence,
         proxyConfirmWithdrawal,
       },
+      customerEvidenceConfirmation:
+        currentConfirmation === undefined
+          ? null
+          : {
+              id: currentConfirmation.id,
+              result: currentConfirmation.result,
+              actorKind: 'INTERNAL_PROXY' as const,
+              actorDisplayName: currentConfirmation.actorDisplayNameSnapshot,
+              decidedAt: currentConfirmation.decidedAt.toISOString(),
+              reason: currentConfirmation.reason,
+            },
       notaryMatters: lead.notaryMatters.map((matter) => ({
         id: matter.id,
         businessNo: matter.businessNo,
@@ -869,7 +930,10 @@ export class LeadService {
   private async canProxyAction(
     actor: ActorContext,
     lead: LeadDetailRecord,
-    action: 'lead.review.proxy' | 'lead.withdraw.confirm.proxy',
+    action:
+      | 'lead.review.proxy'
+      | 'lead.withdraw.confirm.proxy'
+      | 'lead.evidence.confirm.proxy',
   ): Promise<boolean> {
     if (
       actor.clientCustomerId !== undefined ||
@@ -3373,25 +3437,17 @@ export class LeadService {
       archiveType: 'NO_EVIDENCE',
       archivedAt: decidedAt.toISOString(),
     };
-    await transaction.leadEvidenceDecision.create({
-      data: {
-        id: evidenceDecisionId,
-        originalReviewDecisionId: current.activeReviewDecisionId!,
-        originalReviewResult: 'INFRINGEMENT',
-        leadId: id,
-        customerId: current.customerId,
-        departmentId: current.departmentId,
-        actorUserId: actor.userId,
-        actorDisplayNameSnapshot: displayName,
-        result: 'NO_EVIDENCE',
-        reason,
-        archiveType: 'NO_EVIDENCE',
-        decidedAt,
-        archivedAt: decidedAt,
-        fromVersion: expectedVersion,
-        toVersion: result.version,
-      },
-    });
+    await this.writeNoEvidenceArchiveFact(
+      transaction,
+      actor,
+      current,
+      id,
+      evidenceDecisionId,
+      expectedVersion,
+      reason,
+      displayName,
+      decidedAt,
+    );
     await transaction.auditEvent.create({
       data: {
         departmentId: actor.departmentId,
@@ -3426,6 +3482,263 @@ export class LeadService {
       },
     });
     return result;
+  }
+
+  private async writeNoEvidenceArchiveFact(
+    transaction: Prisma.TransactionClient,
+    actor: ActorContext,
+    current: EvidenceDecisionLead,
+    leadId: string,
+    factId: string,
+    fromVersion: number,
+    reason: string,
+    displayName: string,
+    decidedAt: Date,
+  ): Promise<void> {
+    await transaction.leadEvidenceDecision.create({
+      data: {
+        id: factId,
+        originalReviewDecisionId: current.activeReviewDecisionId!,
+        originalReviewResult: 'INFRINGEMENT',
+        leadId,
+        customerId: current.customerId,
+        departmentId: current.departmentId,
+        actorUserId: actor.userId,
+        actorDisplayNameSnapshot: displayName,
+        result: 'NO_EVIDENCE',
+        reason,
+        archiveType: 'NO_EVIDENCE',
+        decidedAt,
+        archivedAt: decidedAt,
+        fromVersion,
+        toVersion: fromVersion + 1,
+      },
+    });
+  }
+
+  async confirmProxyEvidence(
+    actor: ActorContext,
+    id: string,
+    idempotencyKey: string,
+    input: ConfirmProxyLeadEvidenceDto,
+  ): Promise<ProxyEvidenceConfirmationResponse> {
+    if (
+      (input.result !== 'EVIDENCE' && input.result !== 'NO_EVIDENCE') ||
+      !Number.isInteger(input.expectedVersion) ||
+      input.expectedVersion < 1 ||
+      input.expectedVersion > 2147483646 ||
+      (input.result === 'EVIDENCE' && input.reason !== undefined) ||
+      (input.result === 'NO_EVIDENCE' && typeof input.reason !== 'string')
+    )
+      throw this.validation();
+    const reason = input.result === 'NO_EVIDENCE' ? input.reason!.trim() : null;
+    if (
+      reason !== null &&
+      (Array.from(reason).length < 1 || Array.from(reason).length > 5000)
+    )
+      throw this.validation();
+    const fingerprint = this.fingerprint({
+      leadId: id,
+      result: input.result,
+      reason,
+      expectedVersion: input.expectedVersion,
+    });
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (transaction) => {
+            const locked = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              id,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            const current = await transaction.lead.findFirst({
+              where: { id, departmentId: actor.departmentId },
+              include: {
+                reviewDecision: { select: { id: true, result: true } },
+              },
+            });
+            if (current === null) throw this.notFound();
+            const actorAccount = await transaction.userAccount.findUnique({
+              where: { id: actor.userId },
+              select: { displayName: true, accountType: true, active: true },
+            });
+            if (
+              actor.clientCustomerId !== undefined ||
+              actor.notaryOfficeId !== undefined ||
+              actor.lawyerAccountId !== undefined ||
+              actorAccount?.accountType !== 'INTERNAL' ||
+              !actorAccount.active
+            )
+              throw this.actionForbidden();
+            try {
+              await this.access.authorizeLead(
+                actor,
+                'lead.evidence.confirm.proxy',
+                {
+                  departmentId: current.departmentId,
+                  responsibleUserId: current.responsibleUserId,
+                  ...(current.teamId === null
+                    ? {}
+                    : { teamId: current.teamId }),
+                },
+                transaction,
+              );
+            } catch (error) {
+              throw this.mapAuthorization(error);
+            }
+            const prior = await transaction.leadCommandReceipt.findUnique({
+              where: this.receiptWhere(
+                actor,
+                'evidence_confirm_proxy',
+                idempotencyKey,
+              ),
+            });
+            if (prior !== null) {
+              if (
+                prior.requestFingerprint !== fingerprint ||
+                prior.resultLeadId !== id
+              )
+                throw this.idempotencyConflict();
+              const snapshot = prior.resultSnapshot;
+              if (
+                !snapshot ||
+                typeof snapshot !== 'object' ||
+                Array.isArray(snapshot)
+              )
+                throw this.corruptReceipt();
+              const result = snapshot as Record<string, unknown>;
+              if (
+                typeof result.id !== 'string' ||
+                result.leadId !== id ||
+                result.version !== prior.resultLeadVersion ||
+                result.result !== input.result ||
+                result.actorKind !== 'INTERNAL_PROXY' ||
+                typeof result.actorDisplayName !== 'string' ||
+                typeof result.decidedAt !== 'string' ||
+                result.reason !== reason ||
+                result.status !==
+                  (input.result === 'NO_EVIDENCE'
+                    ? 'ARCHIVED'
+                    : 'WAITING_EVIDENCE_DECISION')
+              )
+                throw this.corruptReceipt();
+              return result as ProxyEvidenceConfirmationResponse;
+            }
+            this.assertEvidenceDecisionState(current, input.expectedVersion);
+            const changed = await transaction.lead.updateMany({
+              where: {
+                id,
+                departmentId: actor.departmentId,
+                version: input.expectedVersion,
+                status: 'WAITING_EVIDENCE_DECISION',
+                activeReviewDecisionId: current.activeReviewDecisionId,
+              },
+              data: {
+                ...(input.result === 'NO_EVIDENCE'
+                  ? { status: 'ARCHIVED' as const }
+                  : {}),
+                version: { increment: 1 },
+              },
+            });
+            if (changed.count !== 1) throw this.versionConflict();
+            const confirmationId = randomUUID();
+            const decidedAt = new Date();
+            const result: ProxyEvidenceConfirmationResponse = {
+              id: confirmationId,
+              leadId: id,
+              status:
+                input.result === 'NO_EVIDENCE'
+                  ? 'ARCHIVED'
+                  : 'WAITING_EVIDENCE_DECISION',
+              version: input.expectedVersion + 1,
+              result: input.result,
+              actorKind: 'INTERNAL_PROXY',
+              actorDisplayName: actorAccount.displayName,
+              decidedAt: decidedAt.toISOString(),
+              reason,
+            };
+            await transaction.leadProxyEvidenceConfirmation.create({
+              data: {
+                id: confirmationId,
+                originalReviewDecisionId: current.activeReviewDecisionId!,
+                originalReviewResult: 'INFRINGEMENT',
+                leadId: id,
+                customerId: current.customerId,
+                departmentId: current.departmentId,
+                actorUserId: actor.userId,
+                actorKind: 'INTERNAL_PROXY',
+                actorDisplayNameSnapshot: actorAccount.displayName,
+                result: input.result,
+                reason,
+                decidedAt,
+                fromVersion: input.expectedVersion,
+                toVersion: result.version,
+              },
+            });
+            if (input.result === 'NO_EVIDENCE') {
+              await this.writeNoEvidenceArchiveFact(
+                transaction,
+                actor,
+                current,
+                id,
+                randomUUID(),
+                input.expectedVersion,
+                reason!,
+                actorAccount.displayName,
+                decidedAt,
+              );
+            }
+            await transaction.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                resourceType: 'lead',
+                resourceId: id,
+                action: 'lead.evidence_confirmed_proxy',
+                details: {
+                  confirmationId,
+                  originalReviewDecisionId: current.activeReviewDecisionId,
+                  customerId: current.customerId,
+                  actorKind: 'INTERNAL_PROXY',
+                  result: input.result,
+                  fromVersion: input.expectedVersion,
+                  toVersion: result.version,
+                },
+              },
+            });
+            await transaction.leadCommandReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                action: 'evidence_confirm_proxy',
+                idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultLeadId: id,
+                resultLeadVersion: result.version,
+                resultSnapshot: result,
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.versionConflict();
+        }
+        if (this.isUnique(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.evidenceInvalidState();
+        }
+        throw this.mapAuthorization(error);
+      }
+    }
+    throw this.versionConflict();
   }
 
   async decideEvidence(

@@ -201,6 +201,23 @@ export class DecideLeadEvidenceDto {
   @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
 }
 
+export class ConfirmProxyLeadEvidenceDto {
+  @ApiProperty({ enum: ['EVIDENCE', 'NO_EVIDENCE'] })
+  @IsIn(['EVIDENCE', 'NO_EVIDENCE'])
+  result!: 'EVIDENCE' | 'NO_EVIDENCE';
+
+  @ApiPropertyOptional({ maxLength: 5000 })
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @ApiProperty({ minimum: 1, maximum: 2147483646 })
+  @IsInt()
+  @Min(1)
+  @Max(2147483646)
+  expectedVersion!: number;
+}
+
 export class LeadFilterOptionsQueryDto {
   @ApiPropertyOptional({ format: 'uuid' })
   @IsOptional()

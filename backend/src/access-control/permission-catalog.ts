@@ -48,6 +48,7 @@ export const internalAssignablePermissionActions = [
   'LEAD_PUSH',
   'LEAD_WITHDRAW_APPLY',
   'LEAD_EVIDENCE_DECIDE',
+  'LEAD_EVIDENCE_CONFIRM_PROXY',
   'LEAD_REVIEW_PROXY',
   'LEAD_WITHDRAW_CONFIRM_PROXY',
   'NOTARY_EVIDENCE_RECORD',
@@ -264,6 +265,11 @@ const catalog: PermissionCatalogItem[] = [
   {
     action: 'LEAD_EVIDENCE_DECIDE',
     label: '确认取证或不取证',
+    scopes: allScopes,
+  },
+  {
+    action: 'LEAD_EVIDENCE_CONFIRM_PROXY',
+    label: '代客户确认取证选择',
     scopes: allScopes,
   },
   { action: 'LEAD_REVIEW_PROXY', label: '代客户审核线索', scopes: allScopes },

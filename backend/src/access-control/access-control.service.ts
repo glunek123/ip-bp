@@ -44,6 +44,7 @@ export type PermissionAction =
   | 'lead.push'
   | 'lead.withdraw.apply'
   | 'lead.evidence.decide'
+  | 'lead.evidence.confirm.proxy'
   | 'lead.review.proxy'
   | 'lead.withdraw.confirm.proxy'
   | 'notary.evidence.record'

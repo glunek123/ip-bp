@@ -185,6 +185,78 @@ describe('LeadService', () => {
       ]),
     );
   });
+  it('shows only the latest confirmation for the active review while retaining all history', async () => {
+    const base = createCreateFixture().createdLead;
+    const activeReviewDecisionId = '55555555-5555-4555-8555-555555555555';
+    const confirmations = [
+      {
+        id: 'old',
+        originalReviewDecisionId: 'other-review',
+        result: 'NO_EVIDENCE',
+        reason: '原记录',
+        actorKind: 'INTERNAL_PROXY',
+        actorDisplayNameSnapshot: '甲',
+        decidedAt: new Date('2026-09-20T01:00:00Z'),
+        fromVersion: 1,
+        toVersion: 2,
+      },
+      {
+        id: 'current-1',
+        originalReviewDecisionId: activeReviewDecisionId,
+        result: 'EVIDENCE',
+        reason: null,
+        actorKind: 'INTERNAL_PROXY',
+        actorDisplayNameSnapshot: '乙',
+        decidedAt: new Date('2026-09-21T01:00:00Z'),
+        fromVersion: 3,
+        toVersion: 4,
+      },
+      {
+        id: 'current-2',
+        originalReviewDecisionId: activeReviewDecisionId,
+        result: 'NO_EVIDENCE',
+        reason: '客户意见',
+        actorKind: 'INTERNAL_PROXY',
+        actorDisplayNameSnapshot: '丙',
+        decidedAt: new Date('2026-09-22T01:00:00Z'),
+        fromVersion: 4,
+        toVersion: 5,
+      },
+    ];
+    const record = {
+      ...base,
+      status: 'ARCHIVED',
+      activeReviewDecisionId,
+      proxyEvidenceConfirmations: confirmations,
+    };
+    const service = new LeadService(
+      {
+        lead: { findFirst: jest.fn().mockResolvedValue(record) },
+      } as unknown as DatabaseService,
+      {
+        buildLeadScope: jest
+          .fn()
+          .mockResolvedValue({ departmentId: actor.departmentId }),
+        authorizeLead: jest.fn(),
+      } as unknown as AccessControlService,
+      {
+        listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as MaterialService,
+    );
+    const result = await service.get(actor, record.id);
+    expect(result.customerEvidenceConfirmation).toMatchObject({
+      id: 'current-2',
+      result: 'NO_EVIDENCE',
+      actorKind: 'INTERNAL_PROXY',
+      reason: '客户意见',
+    });
+    expect(
+      result.history.filter(
+        (item) => item.kind === 'CUSTOMER_EVIDENCE_CONFIRMATION',
+      ),
+    ).toHaveLength(3);
+  });
+
   it('projects the immutable customer review decision for operations', async () => {
     const fixture = createCreateFixture();
     const decisionLead = {
@@ -1585,6 +1657,8 @@ describe('LeadService', () => {
         {
           OR: [
             { businessNo: match },
+            { customer: { is: { name: match } } },
+            { rightsHolder: { is: { name: match } } },
             { shopName: match },
             { products: { some: { title: match } } },
           ],

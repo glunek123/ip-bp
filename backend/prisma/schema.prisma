@@ -172,6 +172,7 @@ enum PermissionAction {
   LEAD_PUSH                    @map("lead.push")
   LEAD_WITHDRAW_APPLY          @map("lead.withdraw.apply")
   LEAD_EVIDENCE_DECIDE         @map("lead.evidence.decide")
+  LEAD_EVIDENCE_CONFIRM_PROXY  @map("lead.evidence.confirm.proxy")
   LEAD_REVIEW_PROXY           @map("lead.review.proxy")
   LEAD_WITHDRAW_CONFIRM_PROXY @map("lead.withdraw.confirm.proxy")
   NOTARY_EVIDENCE_RECORD       @map("notary.evidence.record")
@@ -555,6 +556,13 @@ enum LeadEvidenceResult {
   @@map("lead_evidence_result")
 }
 
+enum LeadProxyEvidenceResult {
+  EVIDENCE
+  NO_EVIDENCE
+
+  @@map("lead_proxy_evidence_result")
+}
+
 enum LeadCaseType {
   CIVIL
   CRIMINAL
@@ -725,6 +733,7 @@ model UserAccount {
   pushedLeads                      Lead[]                            @relation("LeadPushedBy")
   reviewedLeadDecisions            LeadReviewDecision[]              @relation("LeadReviewDecisionReviewer")
   evidenceDecisions                LeadEvidenceDecision[]            @relation("LeadEvidenceDecisionActor")
+  proxyEvidenceConfirmations       LeadProxyEvidenceConfirmation[]   @relation("LeadProxyEvidenceConfirmationActor")
   createdNotaryOffices             NotaryOffice[]                    @relation("NotaryOfficeCreator")
   createdNotaryMatters             NotaryMatter[]                    @relation("NotaryMatterCreator")
   recordedNotaryEvidence           NotaryMatterEvidence[]            @relation("NotaryEvidenceRecorder")
@@ -915,6 +924,7 @@ model DepartmentMembership {
   proxyWithdrawalConfirmations      LeadWithdrawalConfirmation[]     @relation("ProxyWithdrawalConfirmationActor")
   proxyNotaryCertificates           NotaryCertificate[]             @relation("ProxyNotaryCertificateActor")
   evidenceDecisions                LeadEvidenceDecision[]
+  proxyEvidenceConfirmations       LeadProxyEvidenceConfirmation[]
   createdAt                        DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                        DateTime                          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -1811,6 +1821,7 @@ model Lead {
   reviewDecisions        LeadReviewDecision[]        @relation("LeadReviewHistory")
   withdrawalApplications LeadWithdrawalApplication[]
   evidenceDecision       LeadEvidenceDecision?
+  proxyEvidenceConfirmations LeadProxyEvidenceConfirmation[]
   notaryMatters          NotaryMatter[]
   cases                  Case[]
   clientReviewReceipts   ClientLeadReviewReceipt[]
@@ -1854,6 +1865,7 @@ model LeadReviewDecision {
   receipt                     ClientLeadReviewReceipt?
   withdrawalApplication       LeadWithdrawalApplication?
   evidenceArchive             LeadEvidenceDecision?
+  proxyEvidenceConfirmations LeadProxyEvidenceConfirmation[]
 
   @@unique([leadId, fromVersion], map: "lead_review_decisions_lead_id_from_version_key")
   @@unique([id, leadId, customerId, departmentId], map: "lead_review_decisions_active_identity_key")
@@ -1890,6 +1902,32 @@ model LeadEvidenceDecision {
   @@unique([originalReviewDecisionId, leadId, customerId, departmentId, originalReviewResult], map: "lead_evidence_decisions_review_result_identity_key")
   @@index([departmentId, customerId, decidedAt])
   @@map("lead_evidence_decisions")
+}
+
+model LeadProxyEvidenceConfirmation {
+  id                       String               @id @default(uuid()) @db.Uuid
+  originalReviewDecisionId String               @map("original_review_decision_id") @db.Uuid
+  originalReviewResult     LeadReviewResult     @default(INFRINGEMENT) @map("original_review_result")
+  leadId                   String               @map("lead_id") @db.Uuid
+  customerId               String               @map("customer_id") @db.Uuid
+  departmentId             String               @map("department_id") @db.Uuid
+  actorUserId              String               @map("actor_user_id") @db.Uuid
+  actorKind                String               @default("INTERNAL_PROXY") @map("actor_kind") @db.VarChar(20)
+  actorDisplayNameSnapshot String               @map("actor_display_name_snapshot")
+  result                   LeadProxyEvidenceResult
+  reason                   String?              @db.Text
+  decidedAt                DateTime             @default(now()) @map("decided_at") @db.Timestamptz(3)
+  fromVersion              Int                  @map("from_version")
+  toVersion                Int                  @map("to_version")
+  lead                     Lead                 @relation(fields: [leadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_proxy_evidence_confirmations_lead_identity_fkey")
+  originalReviewDecision   LeadReviewDecision   @relation(fields: [originalReviewDecisionId, leadId, customerId, departmentId, originalReviewResult], references: [id, leadId, customerId, departmentId, result], onDelete: Restrict, onUpdate: Restrict, map: "lead_proxy_evidence_confirmations_review_identity_fkey")
+  actor                    UserAccount          @relation("LeadProxyEvidenceConfirmationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorMembership          DepartmentMembership @relation(fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_proxy_evidence_confirmations_actor_membership_fkey")
+
+  @@unique([leadId, fromVersion], map: "lead_proxy_evidence_confirmations_lead_version_key")
+  @@index([originalReviewDecisionId, decidedAt])
+  @@index([departmentId, customerId, decidedAt])
+  @@map("lead_proxy_evidence_confirmations")
 }
 
 model LeadWithdrawalApplication {

@@ -23,6 +23,7 @@ import {
   pushLeadsBatch,
   applyLeadWithdrawal,
   decideLeadNoEvidence,
+  confirmProxyLeadEvidence,
   updateLead,
   updateLeadRoutine,
   updateLeadProductScreenshots,
@@ -258,6 +259,58 @@ describe('internal lead display names', () => {
 });
 
 describe('Lead API', () => {
+  it('decodes current proxy confirmation separately and sends the exact proxy command', async () => {
+    const confirmation = {
+      id: 'confirmation-1',
+      result: 'EVIDENCE',
+      actorKind: 'INTERNAL_PROXY',
+      actorDisplayName: '运营甲',
+      decidedAt: '2026-11-03T04:00:00.000Z',
+      reason: null,
+    };
+    http.getJson.mockResolvedValueOnce({
+      ...lead,
+      status: 'WAITING_EVIDENCE_DECISION',
+      customerEvidenceConfirmation: confirmation,
+      capabilities: { ...lead.capabilities, proxyConfirmEvidence: true },
+      history: [
+        {
+          kind: 'CUSTOMER_EVIDENCE_CONFIRMATION',
+          id: confirmation.id,
+          fromVersion: 1,
+          toVersion: 2,
+          result: 'EVIDENCE',
+          reason: null,
+          actorKind: 'INTERNAL_PROXY',
+          actorDisplayName: '运营甲',
+          occurredAt: confirmation.decidedAt,
+        },
+      ],
+    });
+    await expect(getLead('lead-1')).resolves.toMatchObject({
+      customerEvidenceConfirmation: confirmation,
+      capabilities: { proxyConfirmEvidence: true },
+    });
+    const response = {
+      ...confirmation,
+      leadId: 'lead-1',
+      status: 'WAITING_EVIDENCE_DECISION',
+      version: 2,
+    };
+    http.requestJson.mockResolvedValueOnce(response);
+    await expect(
+      confirmProxyLeadEvidence('lead-1', 'EVIDENCE', 1, 'proxy-key'),
+    ).resolves.toEqual(response);
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/leads/lead-1/proxy-evidence-confirmations',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'proxy-key' },
+        body: { result: 'EVIDENCE', expectedVersion: 1 },
+      },
+    );
+  });
+
   it('checks the independent edit receipt and rejects stale or malformed responses', async () => {
     const input = {
       expectedRevision: 1,

@@ -155,6 +155,14 @@ export type LeadEvidenceDecision = {
   archiveType: 'NO_EVIDENCE';
   archivedAt: string;
 };
+export type LeadCustomerEvidenceConfirmation = {
+  id: string;
+  result: 'EVIDENCE' | 'NO_EVIDENCE';
+  actorKind: 'INTERNAL_PROXY';
+  actorDisplayName: string;
+  decidedAt: string;
+  reason: string | null;
+};
 export type LeadBusinessResult = {
   id: string;
   businessNo: string;
@@ -208,10 +216,12 @@ export type LeadDetail = Lead & {
     transferToNotary: boolean;
     createEvidenceBatch: boolean;
     proxyReview?: boolean;
+    proxyConfirmEvidence?: boolean;
     proxyConfirmWithdrawal?: boolean;
     productScreenshotsEdit?: boolean;
   };
   evidenceDecision: LeadEvidenceDecision | null;
+  customerEvidenceConfirmation?: LeadCustomerEvidenceConfirmation | null;
   pendingWithdrawalApplication: LeadWithdrawalApplication | null;
   history: LeadHistory[];
   notaryMatters: NotaryMatterSummary[];
@@ -235,7 +245,8 @@ export type LeadHistory = {
     | 'REVIEW_DECISION'
     | 'WITHDRAWAL_APPLICATION'
     | 'WITHDRAWAL_CONFIRMATION'
-    | 'EVIDENCE_DECISION';
+    | 'EVIDENCE_DECISION'
+    | 'CUSTOMER_EVIDENCE_CONFIRMATION';
   id: string;
   fromVersion: number;
   toVersion: number;
@@ -244,6 +255,8 @@ export type LeadHistory = {
   reason?: string | null;
   reviewerDisplayName?: string;
   decidedByDisplayName?: string;
+  actorKind?: 'INTERNAL_PROXY';
+  actorDisplayName?: string;
   applicantDisplayName?: string;
   applicationId?: string;
   archiveType?: string | null;
@@ -270,6 +283,12 @@ export type LeadEvidenceDecisionResult = {
   archiveType: 'NO_EVIDENCE';
   archivedAt: string;
 };
+export type LeadProxyEvidenceConfirmationResult =
+  LeadCustomerEvidenceConfirmation & {
+    leadId: string;
+    status: 'WAITING_EVIDENCE_DECISION' | 'ARCHIVED';
+    version: number;
+  };
 export type LeadPushResult = {
   id: string;
   businessNo: string;
@@ -453,6 +472,23 @@ function isEvidenceDecision(value: unknown): value is LeadEvidenceDecision {
     isDateTime(value.decidedAt) &&
     value.archiveType === 'NO_EVIDENCE' &&
     isDateTime(value.archivedAt)
+  );
+}
+function isCustomerEvidenceConfirmation(
+  value: unknown,
+): value is LeadCustomerEvidenceConfirmation {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    (value.result === 'EVIDENCE' || value.result === 'NO_EVIDENCE') &&
+    value.actorKind === 'INTERNAL_PROXY' &&
+    typeof value.actorDisplayName === 'string' &&
+    isDateTime(value.decidedAt) &&
+    (value.result === 'EVIDENCE'
+      ? value.reason === null
+      : typeof value.reason === 'string' &&
+        value.reason.trim().length > 0 &&
+        [...value.reason].length <= 5000)
   );
 }
 function isLeadBusinessResult(value: unknown): value is LeadBusinessResult {
@@ -1014,12 +1050,17 @@ export async function getLead(
     typeof capabilities.createEvidenceBatch !== 'boolean' ||
     (capabilities.proxyReview !== undefined &&
       typeof capabilities.proxyReview !== 'boolean') ||
+    (capabilities.proxyConfirmEvidence !== undefined &&
+      typeof capabilities.proxyConfirmEvidence !== 'boolean') ||
     (capabilities.proxyConfirmWithdrawal !== undefined &&
       typeof capabilities.proxyConfirmWithdrawal !== 'boolean') ||
     (capabilities.productScreenshotsEdit !== undefined &&
       typeof capabilities.productScreenshotsEdit !== 'boolean') ||
     (detail.evidenceDecision !== null &&
       !isEvidenceDecision(detail.evidenceDecision)) ||
+    (detail.customerEvidenceConfirmation !== undefined &&
+      detail.customerEvidenceConfirmation !== null &&
+      !isCustomerEvidenceConfirmation(detail.customerEvidenceConfirmation)) ||
     !isNotaryMatterSummaries(detail.notaryMatters) ||
     !isLeadHistory(history) ||
     !isPendingWithdrawalApplication(pendingWithdrawalApplication)
@@ -1030,6 +1071,8 @@ export async function getLead(
     pendingWithdrawalApplication,
     history,
     evidenceDecision: detail.evidenceDecision as LeadEvidenceDecision | null,
+    customerEvidenceConfirmation: (detail.customerEvidenceConfirmation ??
+      null) as LeadCustomerEvidenceConfirmation | null,
     capabilities: {
       edit: capabilities.edit,
       routineEdit: capabilities.routineEdit === true,
@@ -1039,6 +1082,7 @@ export async function getLead(
       transferToNotary: capabilities.transferToNotary,
       createEvidenceBatch: capabilities.createEvidenceBatch,
       proxyReview: capabilities.proxyReview === true,
+      proxyConfirmEvidence: capabilities.proxyConfirmEvidence === true,
       proxyConfirmWithdrawal: capabilities.proxyConfirmWithdrawal === true,
       productScreenshotsEdit: capabilities.productScreenshotsEdit === true,
     },
@@ -1088,7 +1132,8 @@ function isLeadHistory(value: unknown): value is LeadHistory[] {
         (item.kind === 'REVIEW_DECISION' ||
           item.kind === 'WITHDRAWAL_APPLICATION' ||
           item.kind === 'WITHDRAWAL_CONFIRMATION' ||
-          item.kind === 'EVIDENCE_DECISION') &&
+          item.kind === 'EVIDENCE_DECISION' ||
+          item.kind === 'CUSTOMER_EVIDENCE_CONFIRMATION') &&
         typeof item.id === 'string' &&
         Number.isInteger(item.fromVersion) &&
         Number.isInteger(item.toVersion) &&
@@ -1111,6 +1156,14 @@ function isLeadHistory(value: unknown): value is LeadHistory[] {
             typeof item.decidedByDisplayName === 'string' &&
             item.archiveType === 'NO_EVIDENCE' &&
             isDateTime(item.archivedAt))) &&
+        (item.kind !== 'CUSTOMER_EVIDENCE_CONFIRMATION' ||
+          ((item.result === 'EVIDENCE' || item.result === 'NO_EVIDENCE') &&
+            item.actorKind === 'INTERNAL_PROXY' &&
+            typeof item.actorDisplayName === 'string' &&
+            (item.result === 'EVIDENCE'
+              ? item.reason === null
+              : typeof item.reason === 'string' &&
+                item.reason.trim().length > 0))) &&
         (item.applicationId === undefined ||
           typeof item.applicationId === 'string'),
     )
@@ -1144,6 +1197,41 @@ export async function applyLeadWithdrawal(
   )
     throw invalidResponse();
   return data as LeadWithdrawalApplicationResult;
+}
+
+export async function confirmProxyLeadEvidence(
+  id: string,
+  result: 'EVIDENCE' | 'NO_EVIDENCE',
+  expectedVersion: number,
+  idempotencyKey: string,
+  reason?: string,
+): Promise<LeadProxyEvidenceConfirmationResult> {
+  const normalizedReason =
+    result === 'NO_EVIDENCE' ? reason?.trim() : undefined;
+  const data = await requestJson(
+    `/leads/${encodeURIComponent(id)}/proxy-evidence-confirmations`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: {
+        result,
+        expectedVersion,
+        ...(normalizedReason === undefined ? {} : { reason: normalizedReason }),
+      },
+    },
+  );
+  if (
+    !isRecord(data) ||
+    !isCustomerEvidenceConfirmation(data) ||
+    data.leadId !== id ||
+    data.version !== expectedVersion + 1 ||
+    data.result !== result ||
+    data.status !==
+      (result === 'NO_EVIDENCE' ? 'ARCHIVED' : 'WAITING_EVIDENCE_DECISION') ||
+    data.reason !== (normalizedReason ?? null)
+  )
+    throw invalidResponse();
+  return data as LeadProxyEvidenceConfirmationResult;
 }
 
 export async function decideLeadNoEvidence(

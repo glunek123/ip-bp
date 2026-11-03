@@ -24,6 +24,7 @@ import { ActorContext } from '../../access-control/actor-context';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import {
   ApplyLeadWithdrawalDto,
+  ConfirmProxyLeadEvidenceDto,
   DecideLeadEvidenceDto,
   CreateLeadDto,
   LeadListQueryDto,
@@ -45,6 +46,7 @@ import {
 import { LeadPushResponseDto } from './lead-push-response.dto';
 import { LeadWithdrawalApplicationResponseDto } from './lead-withdrawal-application-response.dto';
 import { LeadEvidenceDecisionResponseDto } from './lead-evidence-decision-response.dto';
+import { LeadProxyEvidenceConfirmationResponseDto } from './lead-proxy-evidence-confirmation-response.dto';
 
 @ApiTags('leads')
 @ApiBearerAuth()
@@ -228,6 +230,23 @@ export class LeadController {
     @Body() input: DecideLeadEvidenceDto,
   ) {
     return this.leads.decideEvidence(
+      actor,
+      id,
+      this.requireIdempotencyKey(idempotencyKey),
+      input,
+    );
+  }
+
+  @Post(':id/proxy-evidence-confirmations')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiCreatedResponse({ type: LeadProxyEvidenceConfirmationResponseDto })
+  confirmProxyEvidence(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() input: ConfirmProxyLeadEvidenceDto,
+  ) {
+    return this.leads.confirmProxyEvidence(
       actor,
       id,
       this.requireIdempotencyKey(idempotencyKey),

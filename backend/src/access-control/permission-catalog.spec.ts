@@ -2,6 +2,19 @@ import {
   internalAssignablePermissionActions,
   permissionCatalog,
 } from './permission-catalog';
+
+it('assigns proxy customer evidence confirmation only through its independent scoped action', () => {
+  expect(internalAssignablePermissionActions).toContain(
+    'LEAD_EVIDENCE_CONFIRM_PROXY',
+  );
+  expect(
+    permissionCatalog.filter(
+      (entry) => entry.action === 'LEAD_EVIDENCE_CONFIRM_PROXY',
+    ),
+  ).toEqual([
+    expect.objectContaining({ scopes: ['SELF', 'TEAM', 'DEPARTMENT'] }),
+  ]);
+});
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

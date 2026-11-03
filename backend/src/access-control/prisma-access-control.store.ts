@@ -52,6 +52,7 @@ const actionMap = {
   LEAD_PUSH: 'lead.push',
   LEAD_WITHDRAW_APPLY: 'lead.withdraw.apply',
   LEAD_EVIDENCE_DECIDE: 'lead.evidence.decide',
+  LEAD_EVIDENCE_CONFIRM_PROXY: 'lead.evidence.confirm.proxy',
   LEAD_REVIEW_PROXY: 'lead.review.proxy',
   LEAD_WITHDRAW_CONFIRM_PROXY: 'lead.withdraw.confirm.proxy',
   NOTARY_EVIDENCE_RECORD: 'notary.evidence.record',

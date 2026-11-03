@@ -1,6 +1,7 @@
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import {
   ApplyLeadWithdrawalDto,
+  ConfirmProxyLeadEvidenceDto,
   DecideLeadEvidenceDto,
   CreateLeadDto,
   LeadListQueryDto,
@@ -12,6 +13,62 @@ import { LeadController } from './lead.controller';
 import { LeadService } from './lead.service';
 
 describe('LeadController', () => {
+  it('validates and routes proxy customer evidence confirmation with a required request key', async () => {
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    });
+    const input = {
+      result: 'NO_EVIDENCE',
+      reason: '不取证',
+      expectedVersion: 3,
+    };
+    await expect(
+      pipe.transform(input, {
+        type: 'body',
+        metatype: ConfirmProxyLeadEvidenceDto,
+      }),
+    ).resolves.toMatchObject(input);
+    await expect(
+      pipe.transform(
+        { ...input, extra: true },
+        { type: 'body', metatype: ConfirmProxyLeadEvidenceDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      pipe.transform(
+        { ...input, expectedVersion: 2147483647 },
+        { type: 'body', metatype: ConfirmProxyLeadEvidenceDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    const service = {
+      confirmProxyEvidence: jest.fn().mockResolvedValue({ id: 'confirmation' }),
+    } as unknown as LeadService;
+    const controller = new LeadController(service);
+    await expect(
+      controller.confirmProxyEvidence(
+        { userId: 'actor' } as never,
+        'lead-1',
+        ' key ',
+        input as ConfirmProxyLeadEvidenceDto,
+      ),
+    ).resolves.toEqual({ id: 'confirmation' });
+    expect(service.confirmProxyEvidence).toHaveBeenCalledWith(
+      { userId: 'actor' },
+      'lead-1',
+      'key',
+      input,
+    );
+    expect(() =>
+      controller.confirmProxyEvidence(
+        { userId: 'actor' } as never,
+        'lead-1',
+        '',
+        input as ConfirmProxyLeadEvidenceDto,
+      ),
+    ).toThrow(BadRequestException);
+  });
   it('routes and validates a product screenshot replacement', async () => {
     const pipe = new ValidationPipe({
       whitelist: true,
