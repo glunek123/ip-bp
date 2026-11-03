@@ -53,7 +53,10 @@ export async function patchNotaryOpeningImportItem(batchId: string, itemId: stri
 }
 export async function confirmNotaryOpeningImportItem(batchId: string, itemId: string, key: string, input: OpeningImportConfirmInput, options: RequestOptions = {}): Promise<OpeningImportConfirmResult> {
   const value = await requestJson(`/notary-opening-imports/${encodeURIComponent(batchId)}/items/${encodeURIComponent(itemId)}/confirm`, { ...options, method: 'POST', headers: { ...options.headers, 'Idempotency-Key': key }, body: input });
-  if (!object(value) || value.itemId !== itemId || !object(value.opening) || value.opening.id !== input.matterId || value.opening.stage !== 'UNBOX_REVIEW' || !integer(value.opening.version) || !object(value.opening.opening) || !Array.isArray(value.opening.opening.photos) || value.opening.opening.photos.length < 1) throw bad();
+  if (!object(value) || value.itemId !== itemId || !object(value.opening) || value.opening.id !== input.matterId || value.opening.stage !== 'UNBOX_REVIEW' || value.opening.version !== input.expectedVersion + 1 || !object(value.opening.opening)) throw bad();
+  const record = value.opening.opening;
+  if (!textOrNull(record.senderName) || !textOrNull(record.senderPhone) || !textOrNull(record.senderAddress) || typeof record.recordedAt !== 'string' || !Number.isFinite(Date.parse(record.recordedAt)) || typeof record.recordedByUserId !== 'string' || !Array.isArray(record.photos) || record.photos.length < 1 || record.photos.length > 50 || !record.photos.every((photo: unknown) => object(photo) && typeof photo.materialId === 'string' && typeof photo.contentVersionId === 'string')) throw bad();
+  if (record.senderName !== (input.senderName ?? null) || record.senderPhone !== (input.senderPhone ?? null) || record.senderAddress !== (input.senderAddress ?? null)) throw bad();
   return value as OpeningImportConfirmResult;
 }
 export function notaryOpeningImportPhotoUrl(batchId: string, photoId: string): string { return `/api/v1/notary-opening-imports/${encodeURIComponent(batchId)}/photos/${encodeURIComponent(photoId)}`; }
