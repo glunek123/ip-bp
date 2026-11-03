@@ -608,6 +608,20 @@ describe('LeadDetailPage', () => {
     );
   });
 
+  it('shows an unrecorded customer choice while a newly reviewed lead awaits its evidence decision', async () => {
+    leadApi.getLead.mockResolvedValueOnce({
+      ...waiting,
+      customerEvidenceConfirmation: null,
+      evidenceDecision: null,
+      notaryMatters: [],
+    });
+    const wrapper = await mountPage();
+    const record = wrapper.get('[data-test="customer-evidence-confirmation"]');
+    expect(record.text()).toContain('未记录客户决定；决定日期未记录。');
+    expect(record.text()).not.toContain('运营甲');
+    expect(record.text()).not.toContain('2026-09-22');
+  });
+
   it('keeps transferred source read-only and displays exact product totals and safe links', async () => {
     const longTitle = '完整商品名称'.repeat(50);
     leadApi.getLead.mockResolvedValue({

@@ -989,6 +989,7 @@ onBeforeUnmount(clearContext);
           v-if="
             lead.customerEvidenceConfirmation ||
             lead.evidenceDecision ||
+            lead.status === 'WAITING_EVIDENCE_DECISION' ||
             lead.status === 'TRANSFERRED_TO_NOTARY' ||
             lead.notaryMatters.length > 0
           "
