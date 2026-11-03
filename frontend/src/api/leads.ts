@@ -1223,6 +1223,9 @@ export async function confirmProxyLeadEvidence(
   if (
     !isRecord(data) ||
     !isCustomerEvidenceConfirmation(data) ||
+    !('leadId' in data) ||
+    !('version' in data) ||
+    !('status' in data) ||
     data.leadId !== id ||
     data.version !== expectedVersion + 1 ||
     data.result !== result ||

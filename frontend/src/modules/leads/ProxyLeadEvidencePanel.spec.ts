@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LeadDetail } from '../../api/leads';
+import { ApiError } from '../../api/http';
 import ProxyLeadEvidencePanel from './ProxyLeadEvidencePanel.vue';
 import { hasPendingProxyLeadEvidence } from './lead-proxy-evidence-recovery';
 
@@ -91,6 +92,30 @@ describe('ProxyLeadEvidencePanel', () => {
     finish({ result: 'EVIDENCE' });
     await flushPromises();
     expect(wrapper.emitted('completed')).toBeUndefined();
+    expect(hasPendingProxyLeadEvidence(identity, id)).toBe(true);
+  });
+  it('clears a definitively rejected first request while retaining unknown 500 responses', async () => {
+    api.confirmProxyLeadEvidence.mockRejectedValueOnce(
+      new ApiError('stale', 409, 'VERSION_CONFLICT'),
+    );
+    const wrapper = mountPanel();
+    await wrapper.find('[data-test="proxy-evidence-open"]').trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-test="proxy-evidence-submit"]').trigger('click');
+    await flushPromises();
+    expect(hasPendingProxyLeadEvidence(identity, id)).toBe(false);
+    expect(wrapper.text()).toContain('明确拒绝');
+    wrapper.unmount();
+    api.confirmProxyLeadEvidence.mockRejectedValueOnce(
+      new ApiError('unknown', 500, 'INTERNAL_ERROR'),
+    );
+    const retryPanel = mountPanel();
+    await retryPanel.find('[data-test="proxy-evidence-open"]').trigger('click');
+    await flushPromises();
+    await retryPanel
+      .find('[data-test="proxy-evidence-submit"]')
+      .trigger('click');
+    await flushPromises();
     expect(hasPendingProxyLeadEvidence(identity, id)).toBe(true);
   });
 });

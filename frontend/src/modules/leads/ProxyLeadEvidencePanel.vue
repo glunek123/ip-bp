@@ -7,6 +7,7 @@ import {
   type LeadDetail,
 } from '../../api/leads';
 import { createListWorkflowContext } from '../../app/list-workflow-context';
+import { ApiError } from '../../api/http';
 
 type Choice = 'EVIDENCE' | 'NO_EVIDENCE';
 type Frozen = {
@@ -188,8 +189,19 @@ async function submit() {
     session.endSubmit('success');
     open.value = false;
     emit('completed');
-  } catch {
+  } catch (error) {
     if (!current(g, identity, leadId) || !session.isCurrent()) return;
+    if (
+      !recovery &&
+      error instanceof ApiError &&
+      [400, 401, 403, 404, 409].includes(error.status) &&
+      savePending(null, identity, leadId)
+    ) {
+      pending.value = null;
+      session.endSubmit('failed');
+      message.value = '请求已明确拒绝，没有写入确认。请刷新线索后重新选择。';
+      return;
+    }
     session.endSubmit('unknown');
     message.value = '结果尚未确认。只能使用原请求和原键核对；不要发起新选择。';
   }
