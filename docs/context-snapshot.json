@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-03T09:08:53.198Z",
+  "recordedAt": "2026-11-03T09:17:41.903Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -851,8 +851,8 @@
     "backend/src/modules/leads/notary-opening-import-zip.spec.ts": "0e212d349f4b1cf8530f982f4163f1bf66816dce10add5de5cc01c82cc088113",
     "backend/src/modules/leads/notary-opening-import-zip.ts": "b9900ab6454dc959d245a3ac621c6ae0875eecf2ec8093edc4ceb2a7df28b64a",
     "backend/src/modules/leads/notary-opening-import.controller.ts": "511afd70e0a043eae457930708a52597ffae48b4e399f3e00bf9425953714a96",
-    "backend/src/modules/leads/notary-opening-import.service.spec.ts": "053974b97f105a86d085ce562e6303731fdb322039b1db43ab9e34481257a731",
-    "backend/src/modules/leads/notary-opening-import.service.ts": "93131acd5bd7f572a1230ce17bb55893ecb51e209004cd09c7b61782c6f6ef0c",
+    "backend/src/modules/leads/notary-opening-import.service.spec.ts": "5d2ce06ac5d50720a46c731a3c73281b436126b97d70e616b9223a5ab46495da",
+    "backend/src/modules/leads/notary-opening-import.service.ts": "96a5ecf2872d5c3fa035690fd6088235c8ee29b972145e654b7a1de1593ca764",
     "backend/src/modules/leads/notary-opening-recognition.ts": "8dd0dd752b4ea86443e250c81a200edc945de6832e8de01578f8998d4d8893c8",
     "backend/src/modules/leads/notary-opening-review-read.ts": "fff3cb181a34245cb4dd6ffef82a5c001bc7430802b5d55c3ff17696bcc65710",
     "backend/src/modules/leads/notary-opening-review.controller.spec.ts": "65646feb56b2103f786960fceaa269f35d77fcbea1bb8afa3364b277affb6d70",
