@@ -345,9 +345,10 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(102);
+    expect(result.permissionCatalog).toHaveLength(103);
     for (const action of [
       'LEAD_REVIEW_PROXY',
+      'LEAD_EVIDENCE_CONFIRM_PROXY',
       'LEAD_WITHDRAW_CONFIRM_PROXY',
       'NOTARY_CERTIFICATE_ISSUE_PROXY',
       'CASE_CONSOLIDATE',
