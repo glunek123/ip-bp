@@ -409,6 +409,12 @@ describe('NotaryMatterListPage', () => {
     expect(row.findAll('td')[1]?.text()).toContain('待取证');
     expect(row.text()).not.toContain('NT-001');
     expect(wrapper.findAll('colgroup col')).toHaveLength(16);
+    expect(
+      wrapper.findAll('thead th').map((cell) => cell.text()),
+    ).not.toContain('操作');
+    expect(wrapper.findAll('colgroup col')[0]?.attributes('style')).toBe(
+      'width: 80px;',
+    );
     expect(wrapper.get('.business-list-scroll').attributes('tabindex')).toBe(
       '0',
     );
@@ -567,12 +573,36 @@ describe('NotaryMatterListPage', () => {
       });
       const { wrapper } = await mountPage('/notary-matters');
       expect(wrapper.findAll('[data-test="matter-action"]')).toHaveLength(1);
+      const headers = wrapper.findAll('thead th');
+      expect(headers[1]?.text()).toBe('操作');
+      expect(wrapper.findAll('colgroup col')[1]?.attributes('style')).toBe(
+        'width: 88px;',
+      );
+      expect(
+        wrapper.get('[data-test="matter-row"]').findAll('td'),
+      ).toHaveLength(headers.length);
       expect(
         wrapper.get('[data-test="matter-action"]').attributes('href'),
       ).toBeUndefined();
       expect(wrapper.get('[data-test="matter-action"]').text()).toBe(label);
     },
   );
+
+  it('keeps the recovery action label and title in the compact operation column', async () => {
+    const identity = 'user-1:INTERNAL:department-1:1';
+    globalThis.sessionStorage.setItem(
+      `notary-list-request:${JSON.stringify([identity, 'matter-1', 'opening-form'])}`,
+      JSON.stringify({ request: 'preserved' }),
+    );
+    api.listNotaryMatters.mockResolvedValue(result);
+    const { wrapper } = await mountPage('/notary-matters');
+    const action = wrapper.get('[data-test="matter-action"]');
+    expect(action.text()).toBe('核对请求');
+    expect(action.attributes('title')).toBe('恢复登记开箱请求');
+    expect(wrapper.findAll('colgroup col')[1]?.attributes('style')).toBe(
+      'width: 88px;',
+    );
+  });
 
   it('keeps the transfer hint when no stage is selected', async () => {
     api.listNotaryMatters.mockResolvedValue({ ...result, items: [], total: 0 });
@@ -1253,6 +1283,10 @@ describe('NotaryMatterListPage', () => {
       'ARCHIVED',
     );
     expect(wrapper.get('[data-test="matter-row"]').text()).toContain('已归档');
+    expect(
+      wrapper.findAll('thead th').map((cell) => cell.text()),
+    ).not.toContain('操作');
+    expect(wrapper.findAll('colgroup col')).toHaveLength(16);
   });
 
   it('opens optional settings and keeps selection, operations and progress rules fixed', async () => {

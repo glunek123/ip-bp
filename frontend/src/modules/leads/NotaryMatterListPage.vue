@@ -344,7 +344,7 @@ const tableWidth = computed(
 const hasMatterActions = computed(() =>
   items.value.some((matter) => matterActions(matter).length > 0),
 );
-const actionColumnWidth = computed(() => (hasMatterActions.value ? 160 : 0));
+const actionColumnWidth = computed(() => (hasMatterActions.value ? 88 : 0));
 const caseStageLabels: Record<CaseStage, string> = {
   PENDING_MATCH: '待匹配',
   WAITING_COMPLAINT: '待写诉状',
@@ -1652,7 +1652,7 @@ onBeforeUnmount(() => {
   margin-left: 0.75rem;
 }
 .notary-actions :deep(.el-button) {
-  min-width: 56px;
+  min-width: 64px;
   height: 32px;
   padding: 0 8px;
 }
