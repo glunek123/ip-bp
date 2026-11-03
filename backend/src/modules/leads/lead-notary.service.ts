@@ -19,6 +19,7 @@ import {
   readNotaryDisplay,
 } from './notary-display-read';
 import { openingReviewMatchesStage } from './notary-opening-review-read';
+import { readNotaryDetailFacts } from './notary-detail-read';
 import { readNotaryRecordEdits } from './notary-record-edit-read';
 import {
   CreateNotaryOfficeDto,
@@ -669,7 +670,19 @@ export class LeadNotaryService {
     const matter = await this.database.notaryMatter.findFirst({
       where: { id, departmentId: actor.departmentId, sourceLead: scope },
       include: {
-        sourceLead: { select: NOTARY_DISPLAY_LEAD_SELECT },
+        sourceLead: {
+          select: {
+            ...NOTARY_DISPLAY_LEAD_SELECT,
+            customerId: true,
+            departmentId: true,
+            pushedAt: true,
+            remark: true,
+            infringements: { select: { type: true }, orderBy: { type: 'asc' } },
+            responsibleMembership: {
+              select: { user: { select: { displayName: true } } },
+            },
+          },
+        },
         routineProfile: true,
         notaryOffice: { select: { id: true, name: true } },
         evidence: {
@@ -903,6 +916,65 @@ export class LeadNotaryService {
       openingReferences.map((reference) => reference.contentVersionId),
     ).size;
     const recordEdits = await readNotaryRecordEdits(this.access, actor, matter);
+    const display = await readNotaryDisplay(
+      this.database,
+      this.access,
+      actor,
+      matter,
+      frozenPhotoCount,
+    );
+    const selectedMaterials = versionSnapshot.map((id) => {
+      const item = matter.selectedMaterials.find(
+        (selection) => selection.contentVersionId === id,
+      );
+      if (item === undefined) throw this.corruptReceipt();
+      return {
+        materialId: item.materialId,
+        contentVersionId: item.contentVersionId,
+        originalFilename: item.contentVersion.originalFilename,
+        mimeType: item.contentVersion.mimeType,
+      };
+    });
+    const sourceSnapshot = matter.sourceSnapshot;
+    const originalReviewId =
+      sourceSnapshot !== null &&
+      typeof sourceSnapshot === 'object' &&
+      !Array.isArray(sourceSnapshot) &&
+      typeof sourceSnapshot.activeReviewDecisionId === 'string'
+        ? sourceSnapshot.activeReviewDecisionId
+        : null;
+    const originalReview =
+      originalReviewId === null
+        ? null
+        : await this.database.leadReviewDecision.findFirst({
+            where: {
+              id: originalReviewId,
+              leadId: matter.sourceLeadId,
+              customerId: matter.customerId,
+              departmentId: actor.departmentId,
+            },
+            select: {
+              id: true,
+              leadId: true,
+              customerId: true,
+              departmentId: true,
+              result: true,
+              actorKind: true,
+              reviewerDisplayNameSnapshot: true,
+              decidedAt: true,
+              reason: true,
+            },
+          });
+    const detailFacts = readNotaryDetailFacts({
+      snapshot: sourceSnapshot,
+      sourceLead: matter.sourceLead,
+      matter,
+      review: originalReview,
+      products: currentProducts,
+      routineRevision: matter.routineProfile?.revision ?? 0,
+      screenshots: selectedMaterials,
+      fees: display.fees,
+    });
     return {
       id: matter.id,
       businessNo: matter.businessNo,
@@ -920,13 +992,8 @@ export class LeadNotaryService {
         matter,
         frozenPhotoCount,
       ),
-      ...(await readNotaryDisplay(
-        this.database,
-        this.access,
-        actor,
-        matter,
-        frozenPhotoCount,
-      )),
+      ...display,
+      detailFacts,
       certificateFiles:
         matter.certificate == null
           ? []
@@ -1012,18 +1079,7 @@ export class LeadNotaryService {
         businessNo: matter.sourceLead.businessNo,
       },
       selectedProducts: currentProducts,
-      selectedMaterials: versionSnapshot.map((id) => {
-        const item = matter.selectedMaterials.find(
-          (selection) => selection.contentVersionId === id,
-        );
-        if (item === undefined) throw this.corruptReceipt();
-        return {
-          materialId: item.materialId,
-          contentVersionId: item.contentVersionId,
-          originalFilename: item.contentVersion.originalFilename,
-          mimeType: item.contentVersion.mimeType,
-        };
-      }),
+      selectedMaterials,
     };
   }
 

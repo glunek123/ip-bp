@@ -67,6 +67,19 @@ describe('LeadNotaryService opening review read projection', () => {
           .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
       },
       notaryMatter: { findFirst: jest.fn().mockResolvedValue(record) },
+      leadReviewDecision: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'original-review',
+          leadId,
+          customerId: 'customer-1',
+          departmentId: actor.departmentId,
+          result: 'INFRINGEMENT',
+          actorKind: 'INTERNAL_PROXY',
+          reviewerDisplayNameSnapshot: '原客户代表',
+          decidedAt: new Date('2026-09-23T01:00:00Z'),
+          reason: null,
+        }),
+      },
       materialReference: {
         findMany: jest.fn().mockResolvedValue([
           {
@@ -113,6 +126,37 @@ describe('LeadNotaryService opening review read projection', () => {
       materials as never,
     );
     const result = await service.getMatter(actor, matterId);
+    database.notaryMatter.findFirst.mockResolvedValueOnce({
+      ...record,
+      sourceSnapshot: {
+        ...record.sourceSnapshot,
+        activeReviewDecisionId: 'original-review',
+      },
+    });
+    const withOriginalReview = await service.getMatter(actor, matterId);
+    expect(withOriginalReview.detailFacts.leadReview).toMatchObject({
+      state: 'KNOWN',
+      actorKind: 'INTERNAL_PROXY',
+      actorDisplayName: '原客户代表',
+    });
+    expect(database.leadReviewDecision.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'original-review',
+        leadId,
+        customerId: 'customer-1',
+        departmentId: actor.departmentId,
+      },
+      select: expect.any(Object),
+    });
+    expect(database.notaryMatter.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: matterId,
+          departmentId: actor.departmentId,
+          sourceLead: {},
+        },
+      }),
+    );
     database.notaryMatter.findFirst.mockResolvedValueOnce({
       ...record,
       routineProfile: {
