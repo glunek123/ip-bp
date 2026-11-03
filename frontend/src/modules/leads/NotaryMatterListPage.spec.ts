@@ -96,6 +96,27 @@ const api = vi.hoisted(() => ({
   getNotaryMatter: vi.fn(),
   decideNotaryIssuance: vi.fn(),
 }));
+const openingImportApi = vi.hoisted(() => ({
+  confirmNotaryOpeningImportItem: vi.fn(),
+  getNotaryOpeningImport: vi.fn(),
+  getNotaryOpeningImportByKey: vi.fn(),
+  listNotaryOpeningImportEligibleMatters: vi.fn(),
+  notaryOpeningImportPhotoUrl: vi.fn(),
+  patchNotaryOpeningImportItem: vi.fn(),
+  uploadNotaryOpeningImport: vi.fn(),
+}));
+const openingImportRecovery = vi.hoisted(() => ({
+  clearActiveOpeningImportBatch: vi.fn(),
+  clearPendingOpeningImportConfirm: vi.fn(),
+  clearPendingOpeningImportUpload: vi.fn(),
+  fingerprintOpeningImportZip: vi.fn(async () => 'a'.repeat(64)),
+  getActiveOpeningImportBatch: vi.fn(),
+  getPendingOpeningImportConfirms: vi.fn(),
+  getPendingOpeningImportUpload: vi.fn(),
+  saveActiveOpeningImportBatch: vi.fn(),
+  savePendingOpeningImportConfirm: vi.fn(),
+  savePendingOpeningImportUpload: vi.fn(),
+}));
 const filterApi = vi.hoisted(() => ({ listLeadFilterOptions: vi.fn() }));
 vi.mock('../../api/leads', () => filterApi);
 const batchApi = vi.hoisted(() => ({ archive: vi.fn() }));
@@ -111,6 +132,8 @@ vi.mock('../../api/notary', async (importOriginal) => ({
 vi.mock('../../api/notary-return-archive-batch', () => ({
   archiveNotaryReturnBatch: batchApi.archive,
 }));
+vi.mock('../../api/notary-opening-import', () => openingImportApi);
+vi.mock('./notary-opening-import-recovery', () => openingImportRecovery);
 vi.mock('../../app/workflow-events', () => ({
   notifyWorkflowChanged: workflow.notify,
 }));
@@ -167,6 +190,9 @@ async function mountPage(path: string) {
   auth.restored = true;
   if (!preferenceApi.get.getMockImplementation())
     preferenceApi.get.mockResolvedValue(defaultNotaryListPreference);
+  openingImportRecovery.getActiveOpeningImportBatch.mockReturnValue(null);
+  openingImportRecovery.getPendingOpeningImportConfirms.mockReturnValue([]);
+  openingImportRecovery.getPendingOpeningImportUpload.mockReturnValue(null);
   preferenceApi.save.mockImplementation((preference) =>
     Promise.resolve(preference),
   );
@@ -207,9 +233,313 @@ async function mountPage(path: string) {
 afterEach(() => {
   vi.resetAllMocks();
   globalThis.sessionStorage.clear();
+  globalThis.localStorage.clear();
 });
 
 describe('NotaryMatterListPage', () => {
+  it('keeps the existing per-item opening action and adds a separate ZIP import entry', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const { wrapper } = await mountPage('/notary-matters');
+
+    expect(wrapper.get('[data-test="batch-opening-open"]').text()).toContain(
+      '逐项批量开箱',
+    );
+    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.html()).toContain('data-test="opening-import-panel"');
+    expect(wrapper.html()).toContain('data-test="opening-import-upload"');
+  });
+
+  it('restores the scoped saved batch when the ZIP entry is reopened', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const batch = {
+      id: '00000000-0000-4000-8000-000000000001',
+      status: 'READY',
+      expiresAt: '2026-11-04T00:00:00.000Z',
+      recognitionMode: 'DISABLED',
+      items: [
+        {
+          id: '00000000-0000-4000-8000-000000000002',
+          folderName: '目录 1',
+          revision: 1,
+          status: 'READY',
+          trackingCandidate: null,
+          trackingNo: null,
+          recognitionStatus: 'DISABLED',
+          senderCandidate: null,
+          matchStatus: 'UNMATCHED',
+          suggestedMatterId: null,
+          selectedMatterId: null,
+          photos: [
+            {
+              id: '00000000-0000-4000-8000-000000000003',
+              filename: '证据.jpg',
+              mimeType: 'image/jpeg',
+              sizeBytes: 1024,
+            },
+          ],
+        },
+      ],
+    };
+    openingImportApi.getNotaryOpeningImport.mockResolvedValue(batch);
+    const { wrapper } = await mountPage('/notary-matters');
+    openingImportRecovery.getActiveOpeningImportBatch.mockReturnValue(batch.id);
+
+    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await flushPromises();
+
+    expect(openingImportApi.getNotaryOpeningImport).toHaveBeenCalledWith(
+      batch.id,
+    );
+    expect(wrapper.html()).toContain('目录 1');
+    expect(
+      openingImportRecovery.saveActiveOpeningImportBatch,
+    ).toHaveBeenCalledWith('department-1:user-1', batch.id);
+  });
+
+  it('stores the fingerprint and original key before starting a new ZIP upload', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const batch = {
+      id: '00000000-0000-4000-8000-000000000011',
+      status: 'READY',
+      expiresAt: '2026-11-04T00:00:00.000Z',
+      recognitionMode: 'DISABLED',
+      items: [
+        {
+          id: '00000000-0000-4000-8000-000000000012',
+          folderName: '目录 1',
+          revision: 1,
+          status: 'READY',
+          trackingCandidate: null,
+          trackingNo: null,
+          recognitionStatus: 'DISABLED',
+          senderCandidate: null,
+          matchStatus: 'UNMATCHED',
+          suggestedMatterId: null,
+          selectedMatterId: null,
+          photos: [
+            {
+              id: '00000000-0000-4000-8000-000000000013',
+              filename: '证据.jpg',
+              mimeType: 'image/jpeg',
+              sizeBytes: 1024,
+            },
+          ],
+        },
+      ],
+    };
+    openingImportApi.uploadNotaryOpeningImport.mockResolvedValue(batch);
+    const { wrapper } = await mountPage('/notary-matters');
+
+    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    const fileInput = wrapper.get('[data-test="opening-import-file"]');
+    Object.defineProperty(fileInput.element, 'files', {
+      configurable: true,
+      value: [new File(['ok'], 'evidence.zip', { type: 'application/zip' })],
+    });
+    await fileInput.trigger('change');
+    await wrapper.get('[data-test="opening-import-start"]').trigger('click');
+    await flushPromises();
+
+    expect(
+      openingImportRecovery.savePendingOpeningImportUpload,
+    ).toHaveBeenCalledWith(
+      'department-1:user-1',
+      expect.objectContaining({
+        sha256: 'a'.repeat(64),
+        filename: 'evidence.zip',
+      }),
+    );
+    expect(openingImportApi.uploadNotaryOpeningImport).toHaveBeenCalledWith(
+      expect.any(File),
+      expect.any(String),
+    );
+    expect(
+      openingImportRecovery.savePendingOpeningImportUpload.mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      openingImportApi.uploadNotaryOpeningImport.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('checks upload by original key before reuploading the same ZIP after a 404', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    openingImportApi.getNotaryOpeningImportByKey.mockRejectedValue(
+      new ApiError('not found', 404, 'NOT_FOUND'),
+    );
+    openingImportApi.uploadNotaryOpeningImport.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000001',
+      status: 'READY',
+      expiresAt: '2026-11-04T00:00:00.000Z',
+      recognitionMode: 'DISABLED',
+      items: [
+        {
+          id: '00000000-0000-4000-8000-000000000002',
+          folderName: '目录 1',
+          revision: 1,
+          status: 'READY',
+          trackingCandidate: null,
+          trackingNo: null,
+          recognitionStatus: 'DISABLED',
+          senderCandidate: null,
+          matchStatus: 'UNMATCHED',
+          suggestedMatterId: null,
+          selectedMatterId: null,
+          photos: [
+            {
+              id: '00000000-0000-4000-8000-000000000003',
+              filename: '证据.jpg',
+              mimeType: 'image/jpeg',
+              sizeBytes: 1024,
+            },
+          ],
+        },
+      ],
+    });
+    const { wrapper } = await mountPage('/notary-matters');
+    openingImportRecovery.getPendingOpeningImportUpload.mockReturnValue({
+      key: 'original-upload-key',
+      sha256: 'a'.repeat(64),
+      filename: 'evidence.zip',
+      sizeBytes: 2,
+    });
+
+    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    const fileInput = wrapper.get('[data-test="opening-import-file"]');
+    Object.defineProperty(fileInput.element, 'files', {
+      configurable: true,
+      value: [new File(['ok'], 'evidence.zip', { type: 'application/zip' })],
+    });
+    await fileInput.trigger('change');
+    await wrapper
+      .get('[data-test="opening-import-recover-upload"]')
+      .trigger('click');
+    await flushPromises();
+
+    expect(openingImportApi.getNotaryOpeningImportByKey).toHaveBeenCalledWith(
+      'original-upload-key',
+    );
+    expect(openingImportApi.uploadNotaryOpeningImport).toHaveBeenCalledWith(
+      expect.any(File),
+      'original-upload-key',
+    );
+    expect(
+      openingImportApi.getNotaryOpeningImportByKey.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      openingImportApi.uploadNotaryOpeningImport.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('retries an unknown item confirmation with the original key and body', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const batchId = '00000000-0000-4000-8000-000000000021';
+    const itemId = '00000000-0000-4000-8000-000000000022';
+    const matterId = '00000000-0000-4000-8000-000000000023';
+    const batch = {
+      id: batchId,
+      status: 'READY',
+      expiresAt: '2026-11-04T00:00:00.000Z',
+      recognitionMode: 'DISABLED',
+      items: [
+        {
+          id: itemId,
+          folderName: '目录 1',
+          revision: 1,
+          status: 'READY',
+          trackingCandidate: null,
+          trackingNo: null,
+          recognitionStatus: 'DISABLED',
+          senderCandidate: null,
+          matchStatus: 'UNMATCHED',
+          suggestedMatterId: null,
+          selectedMatterId: null,
+          photos: [
+            {
+              id: '00000000-0000-4000-8000-000000000024',
+              filename: '证据.jpg',
+              mimeType: 'image/jpeg',
+              sizeBytes: 1024,
+            },
+          ],
+        },
+      ],
+    };
+    openingImportApi.getNotaryOpeningImport.mockResolvedValue(batch);
+    openingImportApi.listNotaryOpeningImportEligibleMatters.mockResolvedValue({
+      items: [
+        {
+          id: matterId,
+          businessNo: 'NT-001',
+          version: 3,
+          trackingNo: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    openingImportApi.patchNotaryOpeningImportItem.mockResolvedValue({
+      ...batch.items[0],
+      revision: 2,
+      selectedMatterId: matterId,
+    });
+    openingImportApi.confirmNotaryOpeningImportItem
+      .mockRejectedValueOnce(new ApiError('unknown', 500, 'SERVER_ERROR'))
+      .mockResolvedValueOnce({});
+    const { wrapper } = await mountPage('/notary-matters');
+    openingImportRecovery.getActiveOpeningImportBatch.mockReturnValue(batchId);
+
+    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await flushPromises();
+    await wrapper
+      .get(`[data-test="opening-import-search-${itemId}"]`)
+      .setValue('NT-001');
+    await flushPromises();
+    await wrapper
+      .get(`[data-test="opening-import-select-matter-${matterId}"]`)
+      .setValue();
+    await wrapper
+      .get('[data-test="opening-import-save-item"]')
+      .trigger('click');
+    await flushPromises();
+    await wrapper
+      .get('[data-test="opening-import-confirm-item"]')
+      .trigger('click');
+    await flushPromises();
+
+    expect(wrapper.html()).toContain(
+      'data-test="opening-import-retry-confirm"',
+    );
+    expect(
+      openingImportRecovery.savePendingOpeningImportConfirm,
+    ).toHaveBeenCalledOnce();
+    const [firstBatchId, firstItemId, firstKey, firstBody] =
+      openingImportApi.confirmNotaryOpeningImportItem.mock.calls[0];
+    openingImportRecovery.getPendingOpeningImportConfirms.mockReturnValue([
+      {
+        batchId: firstBatchId,
+        itemId: firstItemId,
+        key: firstKey,
+        input: firstBody,
+      },
+    ]);
+    await wrapper
+      .get('[data-test="opening-import-retry-confirm"]')
+      .trigger('click');
+    await flushPromises();
+    const [retryBatchId, retryItemId, retryKey, retryBody] =
+      openingImportApi.confirmNotaryOpeningImportItem.mock.calls[1];
+    expect([retryBatchId, retryItemId, retryKey, retryBody]).toEqual([
+      firstBatchId,
+      firstItemId,
+      firstKey,
+      firstBody,
+    ]);
+    expect(
+      openingImportRecovery.clearPendingOpeningImportConfirm,
+    ).toHaveBeenCalledWith('department-1:user-1', batchId, itemId, firstKey);
+  });
+
   it('uses one search and keeps legacy filters visible, removable and aligned with filtered export', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     exportApi.preview.mockResolvedValue({ count: 1, maxRows: 1000 });

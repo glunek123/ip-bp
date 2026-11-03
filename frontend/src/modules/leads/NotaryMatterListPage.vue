@@ -38,6 +38,34 @@ import {
 import { useAuthStore } from '../../stores/auth';
 import NotaryReturnArchiveBatchPanel from './NotaryReturnArchiveBatchPanel.vue';
 import NotaryBatchOpeningPanel from './NotaryBatchOpeningPanel.vue';
+import NotaryOpeningImportPanel from './NotaryOpeningImportPanel.vue';
+import {
+  confirmNotaryOpeningImportItem,
+  getNotaryOpeningImport,
+  getNotaryOpeningImportByKey,
+  listNotaryOpeningImportEligibleMatters,
+  notaryOpeningImportPhotoUrl,
+  patchNotaryOpeningImportItem,
+  uploadNotaryOpeningImport,
+  type OpeningImportBatch,
+  type OpeningImportEligiblePage,
+  type OpeningImportItem,
+} from '../../api/notary-opening-import';
+import { ApiError } from '../../api/http';
+import {
+  clearActiveOpeningImportBatch,
+  clearPendingOpeningImportConfirm,
+  clearPendingOpeningImportUpload,
+  fingerprintOpeningImportZip,
+  getActiveOpeningImportBatch,
+  getPendingOpeningImportConfirms,
+  getPendingOpeningImportUpload,
+  saveActiveOpeningImportBatch,
+  savePendingOpeningImportConfirm,
+  savePendingOpeningImportUpload,
+  type PendingOpeningImportConfirm,
+  type PendingOpeningImportUpload,
+} from './notary-opening-import-recovery';
 import { labelLeadPlatform } from './lead-options';
 import type { CaseStage } from '../../api/cases';
 import { isListRowClick, listReturnPath } from '../../app/list-row-navigation';
@@ -58,6 +86,9 @@ const identity = computed(
   () =>
     `${auth.session?.user.id ?? ''}:${auth.session?.principalType ?? ''}:${auth.session?.department?.id ?? ''}:${auth.session?.authorizationRevision ?? ''}`,
 );
+const openingImportIdentity = computed(
+  () => `${auth.session?.department?.id ?? ''}:${auth.session?.user.id ?? ''}`,
+);
 function actorIdentityKey(actorKey: string): string {
   return actorKey.split(':').slice(0, 3).join(':');
 }
@@ -66,6 +97,23 @@ const workflowOpen = ref(false);
 const workflowContext = ref<ListWorkflowContext | null>(null);
 const workflowDrawer = ref<{ canLeave: () => boolean }>();
 const openingBatchPanel = ref<{ canLeave: () => boolean }>();
+const openingImportPanel = ref<{ canLeave: () => boolean }>();
+const openingImportOpen = ref(false);
+const openingImportBatch = ref<OpeningImportBatch | null>(null);
+const openingImportResumeBatchId = ref<string | null>(null);
+const openingImportUploadState = ref<'IDLE' | 'UPLOADING' | 'UNKNOWN'>('IDLE');
+const openingImportError = ref('');
+const openingImportBusy = ref(false);
+const openingImportBusyItemId = ref<string | null>(null);
+const openingImportUnknownConfirmIds = ref<string[]>([]);
+const openingImportItemErrors = ref<Record<string, string>>({});
+const openingImportEligiblePages = ref<
+  Record<string, OpeningImportEligiblePage>
+>({});
+const openingImportPhotoSources = ref<Record<string, string>>({});
+const openingImportPhotoErrors = ref<Record<string, string>>({});
+const openingImportRecoveryUnavailable = ref(false);
+const openingImportEligibleRequestVersions = new Map<string, number>();
 function loadWorkflowDetail({ context, signal }: ListWorkflowLoad) {
   return getNotaryMatter(context.recordId, { signal });
 }
@@ -73,7 +121,8 @@ function openWorkflow(
   matter: NotaryMatterListItem,
   action: { label: string; anchor: string },
 ) {
-  if (batchOpen.value || openingBatchOpen.value) return;
+  if (batchOpen.value || openingBatchOpen.value || openingImportOpen.value)
+    return;
   if (workflowDrawer.value && !workflowDrawer.value.canLeave()) return;
   workflowContext.value = {
     recordId: matter.id,
@@ -133,16 +182,506 @@ function pendingRequests(): ListWorkflowContext[] {
   return requests;
 }
 function resumeWorkflow(context: ListWorkflowContext) {
-  if (batchOpen.value || openingBatchOpen.value) return;
+  if (batchOpen.value || openingBatchOpen.value || openingImportOpen.value)
+    return;
   if (workflowDrawer.value && !workflowDrawer.value.canLeave()) return;
   workflowContext.value = context;
   workflowOpen.value = true;
 }
 
+function openingImportStillCurrent(actor: string): boolean {
+  return openingImportIdentity.value === actor;
+}
+
+function syncOpeningImportPending(actor = openingImportIdentity.value): void {
+  try {
+    openingImportRecoveryUnavailable.value = false;
+    const pendingUpload = getPendingOpeningImportUpload(actor);
+    openingImportUploadState.value = pendingUpload ? 'UNKNOWN' : 'IDLE';
+    const batchId = openingImportBatch.value?.id;
+    openingImportUnknownConfirmIds.value = batchId
+      ? getPendingOpeningImportConfirms(actor)
+          .filter((pending) => pending.batchId === batchId)
+          .map((pending) => pending.itemId)
+      : [];
+  } catch {
+    openingImportRecoveryUnavailable.value = true;
+    openingImportUploadState.value = 'UNKNOWN';
+    openingImportError.value =
+      '恢复状态不可用。系统已阻止新的上传或确认，请恢复当前浏览器会话后重试。';
+  }
+}
+
+async function loadOpeningImportBatch(batchId: string): Promise<void> {
+  const actor = openingImportIdentity.value;
+  openingImportResumeBatchId.value = batchId;
+  openingImportBusy.value = true;
+  openingImportError.value = '';
+  let fetched = false;
+  try {
+    const batch = await getNotaryOpeningImport(batchId);
+    if (!openingImportStillCurrent(actor)) return;
+    fetched = true;
+    openingImportBatch.value = batch;
+    saveActiveOpeningImportBatch(actor, batch.id);
+    openingImportResumeBatchId.value = null;
+    openingImportRecoveryUnavailable.value = false;
+    syncOpeningImportPending(actor);
+  } catch (error) {
+    if (!openingImportStillCurrent(actor)) return;
+    if (fetched) openingImportRecoveryUnavailable.value = true;
+    openingImportError.value =
+      error instanceof ApiError && [401, 403, 404].includes(error.status)
+        ? '当前账号无法读取此导入批次。请核对账号权限后重试。'
+        : '读取批次失败。原批次编号已保留，可稍后重试。';
+  } finally {
+    if (openingImportStillCurrent(actor)) openingImportBusy.value = false;
+  }
+}
+
+async function openOpeningImport(): Promise<void> {
+  if (workflowDrawer.value && !workflowDrawer.value.canLeave()) return;
+  if (openingBatchPanel.value && !openingBatchPanel.value.canLeave()) return;
+  workflowOpen.value = false;
+  workflowContext.value = null;
+  openingBatchOpen.value = false;
+  openingImportOpen.value = true;
+  openingImportError.value = '';
+  openingImportBatch.value = null;
+  openingImportResumeBatchId.value = null;
+  syncOpeningImportPending();
+  try {
+    const pendingUpload = getPendingOpeningImportUpload(
+      openingImportIdentity.value,
+    );
+    if (pendingUpload) return;
+    const pendingConfirm = getPendingOpeningImportConfirms(
+      openingImportIdentity.value,
+    )[0];
+    const activeBatchId =
+      pendingConfirm?.batchId ??
+      getActiveOpeningImportBatch(openingImportIdentity.value);
+    if (activeBatchId) await loadOpeningImportBatch(activeBatchId);
+  } catch {
+    openingImportRecoveryUnavailable.value = true;
+    openingImportError.value =
+      '恢复状态不可用。系统已阻止新的上传或确认，请恢复当前浏览器会话后重试。';
+    openingImportUploadState.value = 'UNKNOWN';
+  }
+}
+
+function closeOpeningImport(): void {
+  if (openingImportPanel.value && !openingImportPanel.value.canLeave()) return;
+  openingImportOpen.value = false;
+}
+
+function acceptOpeningImportBatch(
+  actor: string,
+  batch: OpeningImportBatch,
+  uploadKey?: string,
+): void {
+  if (!openingImportStillCurrent(actor)) return;
+  saveActiveOpeningImportBatch(actor, batch.id);
+  if (uploadKey) clearPendingOpeningImportUpload(actor, uploadKey);
+  openingImportBatch.value = batch;
+  openingImportResumeBatchId.value = null;
+  openingImportPhotoSources.value = {};
+  openingImportPhotoErrors.value = {};
+  openingImportRecoveryUnavailable.value = false;
+  openingImportUploadState.value = 'IDLE';
+  openingImportError.value = '';
+  syncOpeningImportPending(actor);
+}
+
+async function uploadOpeningImport(file: File): Promise<void> {
+  if (openingImportUploadState.value !== 'IDLE' || openingImportBusy.value)
+    return;
+  const actor = openingImportIdentity.value;
+  try {
+    if (getPendingOpeningImportConfirms(actor).length) {
+      openingImportError.value =
+        '仍有未核实的确认请求。请先恢复原批次并核实请求。';
+      return;
+    }
+  } catch {
+    openingImportRecoveryUnavailable.value = true;
+    openingImportError.value = '无法核对恢复状态。系统没有开始新的上传。';
+    return;
+  }
+  const key = globalThis.crypto.randomUUID();
+  let pendingSaved = false;
+  openingImportBusy.value = true;
+  openingImportError.value = '';
+  try {
+    const sha256 = await fingerprintOpeningImportZip(file);
+    if (!openingImportStillCurrent(actor)) return;
+    savePendingOpeningImportUpload(actor, {
+      key,
+      sha256,
+      filename: file.name,
+      sizeBytes: file.size,
+    });
+    pendingSaved = true;
+    openingImportUploadState.value = 'UPLOADING';
+    const batch = await uploadNotaryOpeningImport(file, key);
+    acceptOpeningImportBatch(actor, batch, key);
+  } catch (error) {
+    if (!openingImportStillCurrent(actor)) return;
+    if (!pendingSaved) {
+      openingImportUploadState.value = 'IDLE';
+      openingImportError.value = '无法准备原上传请求。请检查文件并重试。';
+    } else if (
+      error instanceof ApiError &&
+      error.status >= 400 &&
+      error.status < 500 &&
+      error.status !== 409
+    ) {
+      clearPendingOpeningImportUpload(actor, key);
+      openingImportUploadState.value = 'IDLE';
+      openingImportError.value = error.message;
+    } else {
+      openingImportUploadState.value = 'UNKNOWN';
+      openingImportError.value =
+        '上传结果未知。请核实原请求；系统会先按原键查询，不会生成新键重传。';
+    }
+  } finally {
+    if (openingImportStillCurrent(actor)) openingImportBusy.value = false;
+  }
+}
+
+async function recoverOpeningImportUpload(file?: File | null): Promise<void> {
+  const actor = openingImportIdentity.value;
+  let pending: PendingOpeningImportUpload | null;
+  try {
+    pending = getPendingOpeningImportUpload(actor);
+    openingImportRecoveryUnavailable.value = false;
+  } catch {
+    openingImportRecoveryUnavailable.value = true;
+    openingImportError.value = '无法读取原上传请求。系统不会新建上传请求。';
+    return;
+  }
+  if (!pending || openingImportBusy.value) return;
+  openingImportBusy.value = true;
+  openingImportError.value = '';
+  try {
+    try {
+      const batch = await getNotaryOpeningImportByKey(pending.key);
+      acceptOpeningImportBatch(actor, batch, pending.key);
+      return;
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 404) throw error;
+    }
+    if (!file) {
+      openingImportError.value = `原键暂未找到批次。请重新选择原文件“${pending.filename}”后再次核实。`;
+      return;
+    }
+    const sha256 = await fingerprintOpeningImportZip(file);
+    if (sha256 !== pending.sha256) {
+      openingImportError.value =
+        '所选 ZIP 与原上传文件内容不同。为保护原请求，系统没有重新上传。';
+      return;
+    }
+    openingImportUploadState.value = 'UPLOADING';
+    const batch = await uploadNotaryOpeningImport(file, pending.key);
+    acceptOpeningImportBatch(actor, batch, pending.key);
+  } catch (error) {
+    if (!openingImportStillCurrent(actor)) return;
+    openingImportUploadState.value = 'UNKNOWN';
+    openingImportError.value =
+      error instanceof ApiError && [401, 403].includes(error.status)
+        ? '当前账号无权核实此上传请求；原请求键仍已保留。'
+        : '核实结果仍未知。原文件、请求键和恢复状态均已保留。';
+  } finally {
+    if (openingImportStillCurrent(actor)) openingImportBusy.value = false;
+  }
+}
+
+async function refreshOpeningImportBatch(): Promise<void> {
+  const batchId =
+    openingImportBatch.value?.id ?? openingImportResumeBatchId.value;
+  if (batchId) await loadOpeningImportBatch(batchId);
+}
+
+function startNewOpeningImport(): void {
+  if (openingImportUnknownConfirmIds.value.length) return;
+  try {
+    if (getPendingOpeningImportConfirms(openingImportIdentity.value).length) {
+      openingImportError.value =
+        '仍有未核实的确认请求。请先核实原请求，再创建新批次。';
+      return;
+    }
+  } catch {
+    openingImportRecoveryUnavailable.value = true;
+    openingImportError.value = '无法核对恢复状态。系统没有切换到新批次。';
+    return;
+  }
+  try {
+    clearActiveOpeningImportBatch(openingImportIdentity.value);
+  } catch {
+    openingImportError.value = '无法安全更新恢复状态。系统没有切换到新批次。';
+    return;
+  }
+  openingImportBatch.value = null;
+  openingImportResumeBatchId.value = null;
+  openingImportEligiblePages.value = {};
+  openingImportPhotoSources.value = {};
+  openingImportPhotoErrors.value = {};
+  openingImportItemErrors.value = {};
+  openingImportError.value = '';
+  try {
+    openingImportUploadState.value = getPendingOpeningImportUpload(
+      openingImportIdentity.value,
+    )
+      ? 'UNKNOWN'
+      : 'IDLE';
+  } catch {
+    openingImportUploadState.value = 'UNKNOWN';
+    openingImportError.value = '恢复状态不可用。系统已阻止新上传。';
+  }
+}
+
+async function searchOpeningImportMatters(
+  itemId: string,
+  query: string,
+  page: number,
+): Promise<void> {
+  const batchId = openingImportBatch.value?.id;
+  const actor = openingImportIdentity.value;
+  if (!batchId) return;
+  const requestVersion =
+    (openingImportEligibleRequestVersions.get(itemId) ?? 0) + 1;
+  openingImportEligibleRequestVersions.set(itemId, requestVersion);
+  try {
+    const result = await listNotaryOpeningImportEligibleMatters(
+      batchId,
+      query,
+      page,
+      20,
+    );
+    if (
+      !openingImportStillCurrent(actor) ||
+      openingImportBatch.value?.id !== batchId ||
+      openingImportEligibleRequestVersions.get(itemId) !== requestVersion
+    )
+      return;
+    openingImportEligiblePages.value = {
+      ...openingImportEligiblePages.value,
+      [itemId]: result,
+    };
+  } catch {
+    if (
+      openingImportStillCurrent(actor) &&
+      openingImportEligibleRequestVersions.get(itemId) === requestVersion
+    )
+      openingImportItemErrors.value = {
+        ...openingImportItemErrors.value,
+        [itemId]: '读取有权办理的待开箱事项失败。请稍后重试。',
+      };
+  }
+}
+
+function loadOpeningImportPhoto(batchId: string, photoId: string): void {
+  if (openingImportBatch.value?.id !== batchId) return;
+  const nextErrors = { ...openingImportPhotoErrors.value };
+  delete nextErrors[photoId];
+  openingImportPhotoErrors.value = nextErrors;
+  openingImportPhotoSources.value = {
+    ...openingImportPhotoSources.value,
+    [photoId]: notaryOpeningImportPhotoUrl(batchId, photoId),
+  };
+}
+
+function failOpeningImportPhoto(photoId: string): void {
+  const nextSources = { ...openingImportPhotoSources.value };
+  delete nextSources[photoId];
+  openingImportPhotoSources.value = nextSources;
+  openingImportPhotoErrors.value = {
+    ...openingImportPhotoErrors.value,
+    [photoId]: '当前账号无法读取此照片，或照片暂时不可用。',
+  };
+}
+
+async function saveOpeningImportItem(
+  itemId: string,
+  input: { trackingNo: string | null; selectedMatterId: string | null },
+): Promise<void> {
+  const batch = openingImportBatch.value;
+  const item = batch?.items.find((candidate) => candidate.id === itemId);
+  if (!batch || !item || openingImportBusyItemId.value) return;
+  const actor = openingImportIdentity.value;
+  openingImportBusyItemId.value = itemId;
+  openingImportItemErrors.value = {
+    ...openingImportItemErrors.value,
+    [itemId]: '',
+  };
+  try {
+    const updated = await patchNotaryOpeningImportItem(batch.id, itemId, {
+      ...input,
+      expectedRevision: item.revision,
+    });
+    if (!openingImportStillCurrent(actor)) return;
+    replaceOpeningImportItem(updated);
+  } catch (error) {
+    if (!openingImportStillCurrent(actor)) return;
+    openingImportItemErrors.value = {
+      ...openingImportItemErrors.value,
+      [itemId]:
+        error instanceof ApiError && error.status === 409
+          ? '批次内容已变化，正在刷新最新状态。请核对后再确认。'
+          : '保存人工核对失败。已刷新批次，请核对最新内容。',
+    };
+    await loadOpeningImportBatch(batch.id);
+  } finally {
+    if (openingImportStillCurrent(actor)) openingImportBusyItemId.value = null;
+  }
+}
+
+function replaceOpeningImportItem(updated: OpeningImportItem): void {
+  if (!openingImportBatch.value) return;
+  openingImportBatch.value = {
+    ...openingImportBatch.value,
+    items: openingImportBatch.value.items.map((item) =>
+      item.id === updated.id ? updated : item,
+    ),
+  };
+}
+
+async function confirmOpeningImportItem(
+  itemId: string,
+  sender: { name?: string; phone?: string; address?: string },
+): Promise<void> {
+  const batch = openingImportBatch.value;
+  const item = batch?.items.find((candidate) => candidate.id === itemId);
+  const page = openingImportEligiblePages.value[itemId];
+  const matter = page?.items.find(
+    (candidate) => candidate.id === item?.selectedMatterId,
+  );
+  if (!batch || !item || !matter || openingImportBusyItemId.value) {
+    openingImportItemErrors.value = {
+      ...openingImportItemErrors.value,
+      [itemId]: '请先搜索并选择一个当前有权办理的待开箱事项。',
+    };
+    return;
+  }
+  const actor = openingImportIdentity.value;
+  const key = globalThis.crypto.randomUUID();
+  const input = {
+    matterId: matter.id,
+    expectedVersion: matter.version,
+    expectedRevision: item.revision,
+    ...(sender.name ? { senderName: sender.name } : {}),
+    ...(sender.phone ? { senderPhone: sender.phone } : {}),
+    ...(sender.address ? { senderAddress: sender.address } : {}),
+  };
+  try {
+    savePendingOpeningImportConfirm(actor, {
+      batchId: batch.id,
+      itemId,
+      key,
+      input,
+    });
+  } catch {
+    openingImportItemErrors.value = {
+      ...openingImportItemErrors.value,
+      [itemId]:
+        '无法安全保存恢复请求。系统没有发送确认，请检查当前浏览器会话。',
+    };
+    return;
+  }
+  openingImportUnknownConfirmIds.value = [
+    ...new Set([...openingImportUnknownConfirmIds.value, itemId]),
+  ];
+  await sendOpeningImportConfirmation(actor, batch.id, itemId, key, input);
+}
+
+async function sendOpeningImportConfirmation(
+  actor: string,
+  batchId: string,
+  itemId: string,
+  key: string,
+  input: Parameters<typeof confirmNotaryOpeningImportItem>[3],
+): Promise<void> {
+  openingImportBusyItemId.value = itemId;
+  openingImportItemErrors.value = {
+    ...openingImportItemErrors.value,
+    [itemId]: '',
+  };
+  try {
+    await confirmNotaryOpeningImportItem(batchId, itemId, key, input);
+    if (!openingImportStillCurrent(actor)) return;
+    clearPendingOpeningImportConfirm(actor, batchId, itemId, key);
+    openingImportUnknownConfirmIds.value =
+      openingImportUnknownConfirmIds.value.filter((id) => id !== itemId);
+    openingImportBatch.value = null;
+    await loadOpeningImportBatch(batchId);
+    void load();
+  } catch (error) {
+    if (!openingImportStillCurrent(actor)) return;
+    const isUnknown =
+      !(error instanceof ApiError) ||
+      error.status < 400 ||
+      error.status >= 500 ||
+      error.status === 408 ||
+      error.status === 429;
+    if (isUnknown) {
+      openingImportItemErrors.value = {
+        ...openingImportItemErrors.value,
+        [itemId]:
+          '确认结果未知。系统保留了原请求内容和请求键，请使用原请求核实。',
+      };
+    } else {
+      clearPendingOpeningImportConfirm(actor, batchId, itemId, key);
+      openingImportUnknownConfirmIds.value =
+        openingImportUnknownConfirmIds.value.filter((id) => id !== itemId);
+      openingImportItemErrors.value = {
+        ...openingImportItemErrors.value,
+        [itemId]: error.message || '确认未完成。请核对批次和事项状态后再操作。',
+      };
+      await loadOpeningImportBatch(batchId);
+    }
+  } finally {
+    if (openingImportStillCurrent(actor)) openingImportBusyItemId.value = null;
+  }
+}
+
+async function retryOpeningImportConfirmation(itemId: string): Promise<void> {
+  const actor = openingImportIdentity.value;
+  let pending: PendingOpeningImportConfirm | undefined;
+  try {
+    pending = getPendingOpeningImportConfirms(actor).find(
+      (candidate) =>
+        candidate.batchId === openingImportBatch.value?.id &&
+        candidate.itemId === itemId,
+    );
+  } catch {
+    openingImportRecoveryUnavailable.value = true;
+    openingImportItemErrors.value = {
+      ...openingImportItemErrors.value,
+      [itemId]: '无法读取原确认请求。系统没有发送新的确认。',
+    };
+    return;
+  }
+  if (!pending) {
+    openingImportItemErrors.value = {
+      ...openingImportItemErrors.value,
+      [itemId]: '找不到原确认请求。为避免重复登记，请刷新批次并人工核对。',
+    };
+    return;
+  }
+  await sendOpeningImportConfirmation(
+    actor,
+    pending.batchId,
+    pending.itemId,
+    pending.key,
+    pending.input,
+  );
+}
+
 function canLeaveWorkflow() {
   return (
     (workflowDrawer.value?.canLeave() ?? true) &&
-    (openingBatchPanel.value?.canLeave() ?? true)
+    (openingBatchPanel.value?.canLeave() ?? true) &&
+    (openingImportPanel.value?.canLeave() ?? true)
   );
 }
 onBeforeRouteLeave(canLeaveWorkflow);
@@ -153,6 +692,7 @@ watch(
     workflowOpen.value = false;
     workflowContext.value = null;
     openingBatchOpen.value = false;
+    openingImportOpen.value = false;
   },
   { flush: 'sync' },
 );
@@ -1188,6 +1728,18 @@ onBeforeUnmount(() => {
             >逐项批量开箱</ElButton
           >
           <ElButton
+            data-test="zip-opening-import-open"
+            :disabled="
+              batchOpen ||
+              openingBatchOpen ||
+              openingImportOpen ||
+              workflowOpen ||
+              !!pendingBatchForScope
+            "
+            @click="openOpeningImport"
+            >ZIP 批量开箱</ElButton
+          >
+          <ElButton
             v-if="pendingBatchForScope && !batchOpen"
             data-test="batch-resume"
             @click="resumeBatch"
@@ -1301,6 +1853,36 @@ onBeforeUnmount(() => {
         :actor-key="identity"
         @close="closeOpeningBatch"
         @completed="completeOpeningBatch"
+      />
+      <NotaryOpeningImportPanel
+        v-if="openingImportOpen"
+        ref="openingImportPanel"
+        :batch="openingImportBatch"
+        :resume-batch-id="openingImportResumeBatchId"
+        :upload-state="openingImportUploadState"
+        :upload-error="openingImportError"
+        :busy-item-id="openingImportBusyItemId"
+        :unknown-confirm-item-ids="openingImportUnknownConfirmIds"
+        :item-errors="openingImportItemErrors"
+        :eligible-matter-pages="openingImportEligiblePages"
+        :photo-sources="openingImportPhotoSources"
+        :photo-errors="openingImportPhotoErrors"
+        :panel-busy="
+          openingImportBusy ||
+          !!openingImportBusyItemId ||
+          openingImportRecoveryUnavailable
+        "
+        @close="closeOpeningImport"
+        @upload="uploadOpeningImport"
+        @recover-upload="recoverOpeningImportUpload"
+        @start-new-import="startNewOpeningImport"
+        @refresh-batch="refreshOpeningImportBatch"
+        @search-eligible-matters="searchOpeningImportMatters"
+        @load-photo="loadOpeningImportPhoto"
+        @photo-failed="failOpeningImportPhoto"
+        @save-manual-item="saveOpeningImportItem"
+        @confirm-item="confirmOpeningImportItem"
+        @retry-unknown-item="retryOpeningImportConfirmation"
       />
       <section
         v-if="settingsOpen"
