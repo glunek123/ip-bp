@@ -759,12 +759,16 @@ export class LeadService {
     const proxyConfirmWithdrawal =
       pending !== undefined &&
       (await this.canProxyAction(actor, lead, 'lead.withdraw.confirm.proxy'));
-    const currentConfirmation = [...(lead.proxyEvidenceConfirmations ?? [])]
-      .reverse()
-      .find(
+    const currentConfirmation = (lead.proxyEvidenceConfirmations ?? [])
+      .filter(
         (confirmation) =>
           confirmation.originalReviewDecisionId === lead.activeReviewDecisionId,
-      );
+      )
+      .sort(
+        (left, right) =>
+          right.fromVersion - left.fromVersion ||
+          right.toVersion - left.toVersion,
+      )[0];
     const history = [
       ...(lead.proxyEvidenceConfirmations ?? []).map((confirmation) => ({
         kind: 'CUSTOMER_EVIDENCE_CONFIRMATION' as const,

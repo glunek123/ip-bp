@@ -185,7 +185,7 @@ describe('LeadService', () => {
       ]),
     );
   });
-  it('shows only the latest confirmation for the active review while retaining all history', async () => {
+  it('uses the highest version for the active review when confirmation timestamps tie', async () => {
     const base = createCreateFixture().createdLead;
     const activeReviewDecisionId = '55555555-5555-4555-8555-555555555555';
     const confirmations = [
@@ -201,7 +201,18 @@ describe('LeadService', () => {
         toVersion: 2,
       },
       {
-        id: 'current-1',
+        id: 'current-a',
+        originalReviewDecisionId: activeReviewDecisionId,
+        result: 'NO_EVIDENCE',
+        reason: '客户意见',
+        actorKind: 'INTERNAL_PROXY',
+        actorDisplayNameSnapshot: '丙',
+        decidedAt: new Date('2026-09-21T01:00:00Z'),
+        fromVersion: 4,
+        toVersion: 5,
+      },
+      {
+        id: 'current-z',
         originalReviewDecisionId: activeReviewDecisionId,
         result: 'EVIDENCE',
         reason: null,
@@ -210,17 +221,6 @@ describe('LeadService', () => {
         decidedAt: new Date('2026-09-21T01:00:00Z'),
         fromVersion: 3,
         toVersion: 4,
-      },
-      {
-        id: 'current-2',
-        originalReviewDecisionId: activeReviewDecisionId,
-        result: 'NO_EVIDENCE',
-        reason: '客户意见',
-        actorKind: 'INTERNAL_PROXY',
-        actorDisplayNameSnapshot: '丙',
-        decidedAt: new Date('2026-09-22T01:00:00Z'),
-        fromVersion: 4,
-        toVersion: 5,
       },
     ];
     const record = {
@@ -245,7 +245,7 @@ describe('LeadService', () => {
     );
     const result = await service.get(actor, record.id);
     expect(result.customerEvidenceConfirmation).toMatchObject({
-      id: 'current-2',
+      id: 'current-a',
       result: 'NO_EVIDENCE',
       actorKind: 'INTERNAL_PROXY',
       reason: '客户意见',
