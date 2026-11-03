@@ -31,7 +31,10 @@ import { LeadNotaryService } from './lead-notary.service';
 import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryOpeningImportController } from './notary-opening-import.controller';
 import { NotaryOpeningImportService } from './notary-opening-import.service';
-import { NotaryOpeningRecognition } from './notary-opening-recognition';
+import {
+  NOTARY_OPENING_RECOGNITION,
+  NotaryOpeningRecognition,
+} from './notary-opening-recognition';
 import { NotaryOpeningReviewService } from './notary-opening-review.service';
 import { NotaryIssuanceDecisionService } from './notary-issuance-decision.service';
 import { NotaryReturnArchiveService } from './notary-return-archive.service';
@@ -93,7 +96,7 @@ import { LeadRoutineEditService } from './lead-routine-edit.service';
     LeadNotaryService,
     NotaryOpeningService,
     NotaryOpeningImportService,
-    NotaryOpeningRecognition,
+    { provide: NOTARY_OPENING_RECOGNITION, useClass: NotaryOpeningRecognition },
     NotaryOpeningReviewService,
     NotaryIssuanceDecisionService,
     NotaryReturnArchiveService,

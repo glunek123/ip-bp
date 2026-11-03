@@ -1,4 +1,5 @@
 import { NotaryOpeningImportService } from './notary-opening-import.service';
+import { zipSync } from 'fflate';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -55,7 +56,11 @@ function fixture(status = 'READY', expiresAt = new Date(Date.now() + 60_000)) {
         .fn()
         .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
     },
-    notaryOpeningImportBatch: { findFirst: jest.fn().mockResolvedValue(batch) },
+    notaryOpeningImportBatch: {
+      findFirst: jest.fn().mockResolvedValue(batch),
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({}),
+    },
     notaryOpeningImportItem: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
@@ -84,7 +89,27 @@ function fixture(status = 'READY', expiresAt = new Date(Date.now() + 60_000)) {
       },
     }),
   };
-  const blobs = { open: jest.fn() };
+  const blobs = {
+    open: jest.fn(),
+    put: jest
+      .fn()
+      .mockResolvedValue({
+        detectedMimeType: 'image/png',
+        sizeBytes: 13,
+        sha256: 'a'.repeat(64),
+      }),
+    delete: jest.fn(),
+  };
+  const recognition = {
+    mode: 'MOCK',
+    recognize: jest
+      .fn()
+      .mockResolvedValue({
+        status: 'SUCCEEDED',
+        trackingCandidate: 'MOCK20261103001',
+        senderCandidate: null,
+      }),
+  };
   const materials = {
     adoptStagedOpeningPhotos: jest.fn().mockResolvedValue(undefined),
   };
@@ -92,11 +117,11 @@ function fixture(status = 'READY', expiresAt = new Date(Date.now() + 60_000)) {
     db as never,
     access as never,
     opening as never,
-    { mode: 'DISABLED' } as never,
+    recognition as never,
     materials as never,
     blobs as never,
   );
-  return { service, db, access, opening, blobs, batch, item };
+  return { service, db, access, opening, blobs, recognition, batch, item };
 }
 describe('opening import confirmation', () => {
   const input = { matterId, expectedVersion: 2, expectedRevision: 1 };
@@ -175,6 +200,30 @@ describe('opening import confirmation', () => {
     await expect(
       revoked.service.confirm(actor, batchId, itemId, 'key', input),
     ).rejects.toThrow('revoked');
+  });
+});
+
+describe('opening import recognition boundary', () => {
+  it('passes validated image bytes to the async provider before persisting a batch', async () => {
+    const f = fixture();
+    const png = Uint8Array.from([
+      137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0, 1,
+    ]);
+    const zip = Buffer.from(
+      zipSync({ 'parcel/MOCK20261103001.png': png }, { level: 0 }),
+    );
+    jest.spyOn(f.service, 'get').mockResolvedValue({ id: batchId } as never);
+    await f.service.upload(actor, 'upload-key', zip);
+    expect(f.recognition.recognize).toHaveBeenCalledWith({
+      photos: [
+        {
+          filename: 'MOCK20261103001.png',
+          mimeType: 'image/png',
+          bytes: Buffer.from(png),
+        },
+      ],
+    });
+    expect(f.db.notaryOpeningImportBatch.create).toHaveBeenCalled();
   });
 });
 

@@ -18,7 +18,10 @@ import {
   MaterialService,
 } from '../materials';
 import { NotaryOpeningService } from './notary-opening.service';
-import { NotaryOpeningRecognition } from './notary-opening-recognition';
+import {
+  NOTARY_OPENING_RECOGNITION,
+  type OpeningRecognitionProvider,
+} from './notary-opening-recognition';
 import { parseOpeningImportZip } from './notary-opening-import-zip';
 
 const reject = (code: string) => new ConflictException({ code });
@@ -49,7 +52,8 @@ export class NotaryOpeningImportService {
     private readonly db: DatabaseService,
     private readonly access: AccessControlService,
     private readonly opening: NotaryOpeningService,
-    private readonly recognition: NotaryOpeningRecognition,
+    @Inject(NOTARY_OPENING_RECOGNITION)
+    private readonly recognition: OpeningRecognitionProvider,
     private readonly materials: MaterialService,
     @Inject(PRIVATE_BLOB_STORAGE) private readonly blobs: PrivateBlobStorage,
   ) {}
@@ -231,9 +235,14 @@ export class NotaryOpeningImportService {
     try {
       for (const [index, folder] of folders.entries()) {
         const itemId = randomUUID();
-        const recognized = this.recognition.recognize(
-          folder.photos.map((p) => p.filename),
-        );
+        const recognized = await this.recognition.recognize({
+          photos: folder.photos.map((photo) => ({
+            filename: photo.filename,
+            mimeType: photo.mimeType as
+              'image/jpeg' | 'image/png' | 'image/webp',
+            bytes: photo.bytes,
+          })),
+        });
         const photos = [];
         for (const photo of folder.photos) {
           const materialId = randomUUID();

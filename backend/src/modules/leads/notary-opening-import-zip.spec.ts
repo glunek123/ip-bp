@@ -41,13 +41,21 @@ describe('opening import ZIP boundary', () => {
   });
 });
 describe('local recognition adapter', () => {
-  it('keeps disabled mode free of candidate claims', () => {
+  it('keeps disabled mode free of candidate claims', async () => {
     const prior = process.env.NOTARY_OPENING_RECOGNITION_MODE;
     delete process.env.NOTARY_OPENING_RECOGNITION_MODE;
     try {
-      expect(
-        new NotaryOpeningRecognition().recognize(['MOCK20261103001.png']),
-      ).toEqual({
+      await expect(
+        new NotaryOpeningRecognition().recognize({
+          photos: [
+            {
+              filename: 'MOCK20261103001.png',
+              mimeType: 'image/png',
+              bytes: png,
+            },
+          ],
+        }),
+      ).resolves.toEqual({
         status: 'DISABLED',
         trackingCandidate: null,
         senderCandidate: null,
@@ -58,13 +66,21 @@ describe('local recognition adapter', () => {
       else process.env.NOTARY_OPENING_RECOGNITION_MODE = prior;
     }
   });
-  it('uses an explicit synthetic filename in MOCK mode', () => {
+  it('uses an explicit synthetic filename in MOCK mode', async () => {
     const prior = process.env.NOTARY_OPENING_RECOGNITION_MODE;
     process.env.NOTARY_OPENING_RECOGNITION_MODE = 'mock';
     try {
-      expect(
-        new NotaryOpeningRecognition().recognize(['MOCK20261103001.png']),
-      ).toMatchObject({
+      await expect(
+        new NotaryOpeningRecognition().recognize({
+          photos: [
+            {
+              filename: 'MOCK20261103001.png',
+              mimeType: 'image/png',
+              bytes: png,
+            },
+          ],
+        }),
+      ).resolves.toMatchObject({
         status: 'SUCCEEDED',
         trackingCandidate: 'MOCK20261103001',
       });
