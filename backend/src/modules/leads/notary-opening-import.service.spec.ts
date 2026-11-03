@@ -220,6 +220,11 @@ describe('opening import recognition boundary', () => {
       ],
     });
     expect(f.db.notaryOpeningImportBatch.create).toHaveBeenCalled();
+    const data = f.db.notaryOpeningImportBatch.create.mock.calls[0][0].data;
+    const nestedItem = data.items.create[0];
+    expect(nestedItem).not.toHaveProperty('departmentId');
+    expect(nestedItem.photos.create[0]).not.toHaveProperty('batchId');
+    expect(nestedItem.photos.create[0]).not.toHaveProperty('departmentId');
   });
 });
 

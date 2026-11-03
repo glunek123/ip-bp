@@ -305,7 +305,6 @@ export class NotaryOpeningImportService {
                 !!trackingNo && (counts.get(trackingNo) ?? 0) > 1;
               return {
                 id: item.id,
-                departmentId: actor.departmentId,
                 position: item.position,
                 folderName: item.folderName,
                 trackingCandidate: trackingNo,
@@ -324,11 +323,7 @@ export class NotaryOpeningImportService {
                   conflict || candidates.length !== 1 ? null : candidates[0],
                 status: conflict ? 'CONFLICT' : 'READY',
                 photos: {
-                  create: item.photos.map((photo) => ({
-                    ...photo,
-                    batchId,
-                    departmentId: actor.departmentId,
-                  })),
+                  create: item.photos.map((photo) => ({ ...photo })),
                 },
               };
             }),
