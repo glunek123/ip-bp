@@ -1091,6 +1091,8 @@ onBeforeUnmount(clearContext);
                   ? '客户审核'
                   : item.kind === 'WITHDRAWAL_APPLICATION'
                     ? '撤回申请'
+                  : item.kind === 'CUSTOMER_EVIDENCE_CONFIRMATION'
+                    ? '客户取证选择（运营代办）'
                     : item.kind === 'EVIDENCE_DECISION'
                       ? '运营不取证归档'
                       : '客户确认撤回'
@@ -1102,16 +1104,28 @@ onBeforeUnmount(clearContext);
               <span v-if="item.applicantDisplayName">
                 · {{ item.applicantDisplayName }}</span
               >
+              <span
+                v-if="
+                  item.kind === 'CUSTOMER_EVIDENCE_CONFIRMATION' &&
+                  item.actorDisplayName
+                "
+              >
+                · 代办人 {{ item.actorDisplayName }}</span
+              >
               <span v-if="item.result">
                 ·
                 {{
-                  item.result === 'NO_INFRINGEMENT'
-                    ? '判定不侵权'
-                    : item.result === 'INFRINGEMENT'
-                      ? '确认侵权'
-                      : item.result === 'NO_EVIDENCE'
-                        ? '不取证并归档'
-                        : item.result
+                  item.kind === 'CUSTOMER_EVIDENCE_CONFIRMATION'
+                    ? item.result === 'EVIDENCE'
+                      ? '同意取证'
+                      : '不取证'
+                    : item.result === 'NO_INFRINGEMENT'
+                      ? '判定不侵权'
+                      : item.result === 'INFRINGEMENT'
+                        ? '确认侵权'
+                        : item.result === 'NO_EVIDENCE'
+                          ? '不取证并归档'
+                          : item.result
                 }}</span
               >
               <span v-if="item.reason"> · {{ item.reason }}</span>

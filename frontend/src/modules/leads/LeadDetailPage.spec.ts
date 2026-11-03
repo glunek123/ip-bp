@@ -608,6 +608,53 @@ describe('LeadDetailPage', () => {
     );
   });
 
+  it('renders proxy evidence choices in history without relabeling withdrawal confirmation', async () => {
+    leadApi.getLead.mockResolvedValueOnce({
+      ...lead,
+      history: [
+        {
+          kind: 'CUSTOMER_EVIDENCE_CONFIRMATION',
+          id: 'proxy-evidence-1',
+          fromVersion: 3,
+          toVersion: 4,
+          result: 'EVIDENCE',
+          reason: null,
+          actorKind: 'INTERNAL_PROXY',
+          actorDisplayName: '运营代办人',
+          occurredAt: '2026-10-15T00:00:00Z',
+        },
+        {
+          kind: 'CUSTOMER_EVIDENCE_CONFIRMATION',
+          id: 'proxy-evidence-2',
+          fromVersion: 4,
+          toVersion: 5,
+          result: 'NO_EVIDENCE',
+          reason: '客户确认暂不取证',
+          actorKind: 'INTERNAL_PROXY',
+          actorDisplayName: '运营代办人',
+          occurredAt: '2026-10-16T00:00:00Z',
+        },
+        {
+          kind: 'WITHDRAWAL_CONFIRMATION',
+          id: 'withdrawal-confirmation-1',
+          applicationId: 'withdrawal-1',
+          fromVersion: 5,
+          toVersion: 6,
+          occurredAt: '2026-10-17T00:00:00Z',
+        },
+      ],
+    });
+    const wrapper = await mountPage();
+    const history = wrapper.get('[data-test="withdrawal-history"]');
+    expect(history.text()).toContain('客户取证选择（运营代办）');
+    expect(history.text()).toContain('同意取证');
+    expect(history.text()).toContain('不取证');
+    expect(history.text()).toContain('运营代办人');
+    expect(history.text()).toContain('客户确认暂不取证');
+    expect(history.text()).toContain('08:00:00');
+    expect(history.text()).toContain('客户确认撤回');
+  });
+
   it('shows an unrecorded customer choice while a newly reviewed lead awaits its evidence decision', async () => {
     leadApi.getLead.mockResolvedValueOnce({
       ...waiting,
