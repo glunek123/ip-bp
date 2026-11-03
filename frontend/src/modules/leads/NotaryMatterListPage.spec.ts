@@ -121,6 +121,7 @@ const openingImportRecovery = vi.hoisted(() => ({
   getActiveOpeningImportBatch: vi.fn(),
   getPendingOpeningImportConfirms: vi.fn(),
   getPendingOpeningImportUpload: vi.fn(),
+  persistOpeningImportRecovery: vi.fn(),
   saveActiveOpeningImportBatch: vi.fn(),
   savePendingOpeningImportConfirm: vi.fn(),
   savePendingOpeningImportUpload: vi.fn(),
@@ -182,6 +183,16 @@ const result = {
 };
 
 async function mountPage(path: string) {
+  Object.defineProperty(navigator, 'locks', {
+    configurable: true,
+    value: {
+      request: (
+        _name: string,
+        _options: unknown,
+        callback: (lock: object) => Promise<void>,
+      ) => callback({ name: 'test-lock' }),
+    },
+  });
   setActivePinia(createPinia());
   const auth = useAuthStore();
   auth.session = {
@@ -245,6 +256,104 @@ afterEach(() => {
 });
 
 describe('NotaryMatterListPage', () => {
+  it('reads a typed batch ID through the existing guarded GET and keeps denial generic', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const { wrapper } = await mountPage('/notary-matters');
+    const batchId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    openingImportApi.getNotaryOpeningImport.mockRejectedValue(
+      new ApiError('private backend detail', 403, 'FORBIDDEN'),
+    );
+    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await wrapper
+      .get('[data-test="opening-import-batch-id"]')
+      .setValue(batchId);
+    await wrapper
+      .get('[data-test="opening-import-resume-by-id"]')
+      .trigger('click');
+    await flushPromises();
+    expect(openingImportApi.getNotaryOpeningImport).toHaveBeenCalledWith(
+      batchId,
+    );
+    expect(
+      openingImportRecovery.saveActiveOpeningImportBatch,
+    ).not.toHaveBeenCalled();
+    expect(openingImportApi.uploadNotaryOpeningImport).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('当前账号无法读取此导入批次');
+    expect(wrapper.text()).not.toContain('private backend detail');
+  });
+  it('does not replace an unknown original upload when another batch is read by ID', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const batchId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    openingImportRecovery.getPendingOpeningImportUpload.mockReturnValue({
+      key: 'original-upload-key',
+      sha256: 'a'.repeat(64),
+      filename: 'original.zip',
+      sizeBytes: 123,
+    });
+    openingImportApi.getNotaryOpeningImport.mockResolvedValue({
+      id: batchId,
+      status: 'READY',
+      expiresAt: '2026-11-04T00:00:00.000Z',
+      recognitionMode: 'DISABLED',
+      items: [],
+    });
+    const { wrapper } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await wrapper
+      .get('[data-test="opening-import-batch-id"]')
+      .setValue(batchId);
+    await wrapper
+      .get('[data-test="opening-import-resume-by-id"]')
+      .trigger('click');
+    await flushPromises();
+    expect(openingImportApi.getNotaryOpeningImport).toHaveBeenCalledWith(
+      batchId,
+    );
+    expect(
+      openingImportRecovery.clearPendingOpeningImportUpload,
+    ).not.toHaveBeenCalled();
+    expect(openingImportApi.uploadNotaryOpeningImport).not.toHaveBeenCalled();
+  });
+  it('lets a second window read a batch without writing its recovery pointer', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const batchId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    openingImportApi.getNotaryOpeningImport.mockResolvedValue({
+      id: batchId,
+      status: 'READY',
+      expiresAt: '2026-11-04T00:00:00.000Z',
+      recognitionMode: 'DISABLED',
+      items: [],
+    });
+    const { wrapper } = await mountPage('/notary-matters');
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      value: {
+        request: (
+          _name: string,
+          _options: unknown,
+          callback: (lock: null) => Promise<void>,
+        ) => callback(null),
+      },
+    });
+    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await wrapper
+      .get('[data-test="opening-import-batch-id"]')
+      .setValue(batchId);
+    await wrapper
+      .get('[data-test="opening-import-resume-by-id"]')
+      .trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('当前窗口仅可核对批次事实');
+    expect(
+      openingImportRecovery.persistOpeningImportRecovery,
+    ).not.toHaveBeenCalled();
+    expect(
+      openingImportRecovery.saveActiveOpeningImportBatch,
+    ).not.toHaveBeenCalled();
+    expect(openingImportApi.getNotaryOpeningImport).toHaveBeenCalledWith(
+      batchId,
+    );
+  });
   it('keeps the existing per-item opening action and adds a separate ZIP import entry', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     const { wrapper } = await mountPage('/notary-matters');
@@ -1144,6 +1253,15 @@ describe('NotaryMatterListPage', () => {
       '0 项',
     );
     expect(api.listNotaryMatters).toHaveBeenCalledTimes(listCallsBeforeClear);
+    expect(
+      openingImportRecovery.clearActiveOpeningImportBatch,
+    ).not.toHaveBeenCalled();
+    expect(
+      openingImportRecovery.clearPendingOpeningImportConfirm,
+    ).not.toHaveBeenCalled();
+    expect(
+      openingImportRecovery.clearPendingOpeningImportUpload,
+    ).not.toHaveBeenCalled();
     expect(wrapper.findAll('[data-test="clear-selection"]')).toHaveLength(0);
     expect(router.currentRoute.value.path).toBe('/notary-matters');
     await row.trigger('click');

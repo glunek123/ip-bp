@@ -23,6 +23,7 @@ const props = defineProps<{
   photoSources?: Record<string, string>;
   photoErrors?: Record<string, string>;
   panelBusy?: boolean;
+  writeLocked?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -31,6 +32,7 @@ const emit = defineEmits<{
   recoverUpload: [file: InstanceType<typeof globalThis.File> | null];
   startNewImport: [];
   refreshBatch: [];
+  resumeBatchById: [batchId: string];
   searchEligibleMatters: [itemId: string, query: string, page: number];
   loadPhoto: [batchId: string, photoId: string];
   photoFailed: [photoId: string];
@@ -47,6 +49,7 @@ const emit = defineEmits<{
 
 const fileInput = ref<InstanceType<typeof globalThis.HTMLInputElement>>();
 const selectedFile = ref<InstanceType<typeof globalThis.File> | null>(null);
+const enteredBatchId = ref('');
 const activeItemId = ref<string | null>(null);
 const trackingDrafts = ref<Record<string, string>>({});
 const matterDrafts = ref<Record<string, string>>({});
@@ -70,7 +73,7 @@ const suggestedMatter = computed(() => {
     : null;
 });
 const uploadLocked = computed(
-  () => props.uploadState !== 'IDLE' || props.panelBusy,
+  () => props.uploadState !== 'IDLE' || props.panelBusy || props.writeLocked,
 );
 const canStartNewImport = computed(
   () =>
@@ -79,7 +82,8 @@ const canStartNewImport = computed(
       props.batch.items.every((item) => item.status === 'COMMITTED')) &&
     props.uploadState === 'IDLE' &&
     !props.unknownConfirmItemIds?.length &&
-    !props.panelBusy,
+    !props.panelBusy &&
+    !props.writeLocked,
 );
 
 function canLeave(): boolean {
@@ -275,6 +279,20 @@ watch(
         >
       </template>
       <template v-else>
+        <label for="opening-import-batch-id">已有批次编号</label>
+        <input
+          id="opening-import-batch-id"
+          v-model.trim="enteredBatchId"
+          data-test="opening-import-batch-id"
+          :disabled="panelBusy"
+          placeholder="填写完整批次编号"
+        />
+        <ElButton
+          data-test="opening-import-resume-by-id"
+          :disabled="panelBusy || !enteredBatchId"
+          @click="emit('resumeBatchById', enteredBatchId)"
+          >读取已有批次</ElButton
+        >
         <label for="opening-import-zip">选择 ZIP 文件</label>
         <input
           id="opening-import-zip"
@@ -295,6 +313,13 @@ watch(
         {{ uploadError }}
       </p>
       <p
+        v-if="writeLocked"
+        role="status"
+        data-test="opening-import-other-window"
+      >
+        当前窗口仅可读取已有批次。请回到原办理窗口，或在支持安全办理的浏览器中重新打开。
+      </p>
+      <p
         v-if="uploadState === 'UNKNOWN'"
         role="alert"
         data-test="opening-import-upload-unknown"
@@ -306,7 +331,7 @@ watch(
         <ElButton
           v-if="uploadState === 'UNKNOWN'"
           data-test="opening-import-recover-upload"
-          :disabled="panelBusy"
+          :disabled="panelBusy || writeLocked"
           @click="emit('recoverUpload', selectedFile)"
           >核实原上传请求</ElButton
         >
@@ -347,6 +372,13 @@ watch(
         </p>
       </div>
       <p
+        v-if="batch.status !== 'READY'"
+        role="status"
+        data-test="opening-import-read-only"
+      >
+        此批次仅供核对已有结果；不能继续保存或确认新事项。结果未知的原请求仍须按原请求核实。
+      </p>
+      <p
         v-if="batch.recognitionMode === 'MOCK'"
         class="opening-import-mock-warning"
         role="status"
@@ -360,7 +392,24 @@ watch(
       <p v-if="uploadError" class="field-error" role="alert">
         {{ uploadError }}
       </p>
+      <p
+        v-if="writeLocked"
+        role="status"
+        data-test="opening-import-other-window"
+      >
+        当前窗口仅可核对批次事实；请回到原办理窗口继续操作。
+      </p>
+      <p v-if="uploadState === 'UNKNOWN'" role="alert">
+        原上传请求尚未核实。此批次可只读核对；请先核实原上传请求，再办理新事项。
+      </p>
       <div class="opening-import-actions">
+        <ElButton
+          v-if="uploadState === 'UNKNOWN'"
+          data-test="opening-import-recover-upload"
+          :disabled="panelBusy || writeLocked"
+          @click="emit('recoverUpload', null)"
+          >核实原上传请求</ElButton
+        >
         <ElButton
           text
           data-test="opening-import-refresh"
@@ -490,6 +539,8 @@ watch(
                 v-model="trackingDrafts[activeItem.id]"
                 :disabled="
                   activeItem.status === 'COMMITTED' ||
+                  batch.status !== 'READY' ||
+                  writeLocked ||
                   activeItem.id === busyItemId ||
                   unknownConfirmItemIds?.includes(activeItem.id)
                 "
@@ -531,6 +582,8 @@ watch(
                 :value="matter.id"
                 :disabled="
                   activeItem.status === 'COMMITTED' ||
+                  batch.status !== 'READY' ||
+                  writeLocked ||
                   activeItem.id === busyItemId ||
                   unknownConfirmItemIds?.includes(activeItem.id)
                 "
@@ -552,6 +605,8 @@ watch(
                 v-model="senderDrafts[activeItem.id].name"
                 :disabled="
                   activeItem.status === 'COMMITTED' ||
+                  batch.status !== 'READY' ||
+                  writeLocked ||
                   activeItem.id === busyItemId ||
                   unknownConfirmItemIds?.includes(activeItem.id)
                 "
@@ -564,6 +619,8 @@ watch(
                 v-model="senderDrafts[activeItem.id].phone"
                 :disabled="
                   activeItem.status === 'COMMITTED' ||
+                  batch.status !== 'READY' ||
+                  writeLocked ||
                   activeItem.id === busyItemId ||
                   unknownConfirmItemIds?.includes(activeItem.id)
                 "
@@ -576,6 +633,8 @@ watch(
                 v-model="senderDrafts[activeItem.id].address"
                 :disabled="
                   activeItem.status === 'COMMITTED' ||
+                  batch.status !== 'READY' ||
+                  writeLocked ||
                   activeItem.id === busyItemId ||
                   unknownConfirmItemIds?.includes(activeItem.id)
                 "
@@ -589,6 +648,9 @@ watch(
               data-test="opening-import-save-item"
               :disabled="
                 activeItem.status === 'COMMITTED' ||
+                batch.status !== 'READY' ||
+                writeLocked ||
+                uploadState !== 'IDLE' ||
                 activeItem.id === busyItemId ||
                 unknownConfirmItemIds?.includes(activeItem.id) ||
                 !itemIsDirty(activeItem)
@@ -600,7 +662,7 @@ watch(
               v-if="unknownConfirmItemIds?.includes(activeItem.id)"
               type="primary"
               data-test="opening-import-retry-confirm"
-              :disabled="activeItem.id === busyItemId"
+              :disabled="writeLocked || activeItem.id === busyItemId"
               @click="emit('retryUnknownItem', activeItem.id)"
               >按原请求核实此项</ElButton
             >
@@ -610,6 +672,9 @@ watch(
               data-test="opening-import-confirm-item"
               :disabled="
                 activeItem.status === 'CONFLICT' ||
+                batch.status !== 'READY' ||
+                writeLocked ||
+                uploadState !== 'IDLE' ||
                 activeItem.id === busyItemId ||
                 itemIsDirty(activeItem) ||
                 !activeItem.selectedMatterId

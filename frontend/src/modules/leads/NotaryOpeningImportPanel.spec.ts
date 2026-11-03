@@ -25,6 +25,46 @@ const item = {
 };
 
 describe('NotaryOpeningImportPanel', () => {
+  it('offers explicit recovery of an existing batch without uploading', async () => {
+    const wrapper = mount(NotaryOpeningImportPanel, {
+      props: { batch: null, uploadState: 'IDLE' },
+    });
+    await wrapper
+      .get('[data-test="opening-import-batch-id"]')
+      .setValue('batch-1');
+    await wrapper
+      .get('[data-test="opening-import-resume-by-id"]')
+      .trigger('click');
+    expect(wrapper.emitted('resumeBatchById')).toEqual([['batch-1']]);
+    expect(wrapper.emitted('upload')).toBeUndefined();
+  });
+  it('keeps a manually read batch read only while the original upload is unknown', () => {
+    const wrapper = mount(NotaryOpeningImportPanel, {
+      props: {
+        batch: {
+          id: 'batch-1',
+          status: 'READY',
+          expiresAt: '2026-11-04T00:00:00.000Z',
+          recognitionMode: 'DISABLED',
+          items: [{ ...item, selectedMatterId: 'matter-1' }],
+        },
+        uploadState: 'UNKNOWN',
+      },
+    });
+    expect(
+      (
+        wrapper.get('[data-test="opening-import-confirm-item"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        wrapper.get('[data-test="opening-import-save-item"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(wrapper.text()).toContain('原上传请求尚未核实');
+  });
   it('labels mock recognition and never selects its suggested matter automatically', () => {
     const wrapper = mount(NotaryOpeningImportPanel, {
       props: {

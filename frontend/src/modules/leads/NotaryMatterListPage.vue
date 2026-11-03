@@ -60,6 +60,7 @@ import {
   getActiveOpeningImportBatch,
   getPendingOpeningImportConfirms,
   getPendingOpeningImportUpload,
+  persistOpeningImportRecovery,
   saveActiveOpeningImportBatch,
   savePendingOpeningImportConfirm,
   savePendingOpeningImportUpload,
@@ -113,6 +114,59 @@ const openingImportEligiblePages = ref<
 const openingImportPhotoSources = ref<Record<string, string>>({});
 const openingImportPhotoErrors = ref<Record<string, string>>({});
 const openingImportRecoveryUnavailable = ref(false);
+const openingImportWriteLocked = ref(true);
+let releaseOpeningImportLock: (() => void) | null = null;
+function releaseImportLock(): void {
+  releaseOpeningImportLock?.();
+  releaseOpeningImportLock = null;
+  openingImportWriteLocked.value = true;
+}
+async function acquireImportLock(actor: string): Promise<void> {
+  releaseImportLock();
+  if (!globalThis.navigator.locks?.request) {
+    openingImportError.value = '此浏览器无法安全办理批量开箱。可只读核对批次。';
+    return;
+  }
+  let report: (acquired: boolean) => void = () => undefined;
+  const acquired = new Promise<boolean>((resolve) => {
+    report = resolve;
+  });
+  void globalThis.navigator.locks
+    .request(
+      `notary-opening-import:${actor}`,
+      { ifAvailable: true },
+      async (lock) => {
+        if (!lock) {
+          report(false);
+          return;
+        }
+        await new Promise<void>((resolve) => {
+          releaseOpeningImportLock = resolve;
+          report(true);
+        });
+      },
+    )
+    .catch(() => report(false));
+  const held = await acquired;
+  if (
+    openingImportOpen.value &&
+    openingImportIdentity.value === actor &&
+    held
+  ) {
+    try {
+      persistOpeningImportRecovery(actor);
+      openingImportWriteLocked.value = false;
+    } catch {
+      releaseImportLock();
+      openingImportRecoveryUnavailable.value = true;
+      openingImportError.value =
+        '恢复记录冲突或损坏。系统已阻止新的办理，请先核对原请求。';
+    }
+  } else if (held) releaseImportLock();
+  if (!held && openingImportOpen.value && openingImportIdentity.value === actor)
+    openingImportError.value =
+      '此账号的批量开箱正在另一窗口办理。当前窗口仅可读取核对。';
+}
 const openingImportEligibleRequestVersions = new Map<string, number>();
 function loadWorkflowDetail({ context, signal }: ListWorkflowLoad) {
   return getNotaryMatter(context.recordId, { signal });
@@ -229,7 +283,8 @@ async function loadOpeningImportBatch(batchId: string): Promise<void> {
     if (!openingImportStillCurrent(actor, fullIdentity)) return;
     fetched = true;
     openingImportBatch.value = batch;
-    saveActiveOpeningImportBatch(actor, batch.id);
+    if (!openingImportWriteLocked.value)
+      saveActiveOpeningImportBatch(actor, batch.id);
     openingImportResumeBatchId.value = null;
     openingImportRecoveryUnavailable.value = false;
     syncOpeningImportPending(actor);
@@ -253,6 +308,7 @@ async function openOpeningImport(): Promise<void> {
   workflowContext.value = null;
   openingBatchOpen.value = false;
   openingImportOpen.value = true;
+  void acquireImportLock(openingImportIdentity.value);
   openingImportError.value = '';
   openingImportBatch.value = null;
   openingImportResumeBatchId.value = null;
@@ -280,6 +336,7 @@ async function openOpeningImport(): Promise<void> {
 function closeOpeningImport(): void {
   if (openingImportPanel.value && !openingImportPanel.value.canLeave()) return;
   openingImportOpen.value = false;
+  releaseImportLock();
 }
 
 function acceptOpeningImportBatch(
@@ -288,7 +345,11 @@ function acceptOpeningImportBatch(
   batch: OpeningImportBatch,
   uploadKey?: string,
 ): void {
-  if (!openingImportStillCurrent(actor, fullIdentity)) return;
+  if (
+    openingImportWriteLocked.value ||
+    !openingImportStillCurrent(actor, fullIdentity)
+  )
+    return;
   saveActiveOpeningImportBatch(actor, batch.id);
   if (uploadKey) clearPendingOpeningImportUpload(actor, uploadKey);
   openingImportBatch.value = batch;
@@ -304,7 +365,11 @@ function acceptOpeningImportBatch(
 async function uploadOpeningImport(
   file: InstanceType<typeof globalThis.File>,
 ): Promise<void> {
-  if (openingImportUploadState.value !== 'IDLE' || openingImportBusy.value)
+  if (
+    openingImportWriteLocked.value ||
+    openingImportUploadState.value !== 'IDLE' ||
+    openingImportBusy.value
+  )
     return;
   const actor = openingImportIdentity.value;
   const fullIdentity = identity.value;
@@ -364,6 +429,7 @@ async function uploadOpeningImport(
 async function recoverOpeningImportUpload(
   file?: InstanceType<typeof globalThis.File> | null,
 ): Promise<void> {
+  if (openingImportWriteLocked.value) return;
   const actor = openingImportIdentity.value;
   const fullIdentity = identity.value;
   let pending: PendingOpeningImportUpload | null;
@@ -420,7 +486,22 @@ async function refreshOpeningImportBatch(): Promise<void> {
   if (batchId) await loadOpeningImportBatch(batchId);
 }
 
+async function resumeOpeningImportBatchById(batchId: string): Promise<void> {
+  if (openingImportBatch.value || openingImportBusy.value) return;
+  const normalized = batchId.trim();
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      normalized,
+    )
+  ) {
+    openingImportError.value = '请填写完整有效的批次编号。';
+    return;
+  }
+  await loadOpeningImportBatch(normalized);
+}
+
 function startNewOpeningImport(): void {
+  if (openingImportWriteLocked.value) return;
   if (openingImportUnknownConfirmIds.value.length) return;
   try {
     if (getPendingOpeningImportConfirms(openingImportIdentity.value).length) {
@@ -526,7 +607,15 @@ async function saveOpeningImportItem(
 ): Promise<void> {
   const batch = openingImportBatch.value;
   const item = batch?.items.find((candidate) => candidate.id === itemId);
-  if (!batch || !item || openingImportBusyItemId.value) return;
+  if (
+    openingImportWriteLocked.value ||
+    openingImportUploadState.value !== 'IDLE' ||
+    !batch ||
+    batch.status !== 'READY' ||
+    !item ||
+    openingImportBusyItemId.value
+  )
+    return;
   const actor = openingImportIdentity.value;
   const fullIdentity = identity.value;
   openingImportBusyItemId.value = itemId;
@@ -577,7 +666,15 @@ async function confirmOpeningImportItem(
   const matter = page?.items.find(
     (candidate) => candidate.id === item?.selectedMatterId,
   );
-  if (!batch || !item || !matter || openingImportBusyItemId.value) {
+  if (
+    openingImportWriteLocked.value ||
+    openingImportUploadState.value !== 'IDLE' ||
+    !batch ||
+    batch.status !== 'READY' ||
+    !item ||
+    !matter ||
+    openingImportBusyItemId.value
+  ) {
     openingImportItemErrors.value = {
       ...openingImportItemErrors.value,
       [itemId]: '请先搜索并选择一个当前有权办理的待开箱事项。',
@@ -610,7 +707,11 @@ async function confirmOpeningImportItem(
     };
     return;
   }
-  if (!openingImportStillCurrent(actor, fullIdentity)) return;
+  if (
+    openingImportWriteLocked.value ||
+    !openingImportStillCurrent(actor, fullIdentity)
+  )
+    return;
   openingImportUnknownConfirmIds.value = [
     ...new Set([...openingImportUnknownConfirmIds.value, itemId]),
   ];
@@ -634,7 +735,11 @@ async function sendOpeningImportConfirmation(
   input: Parameters<typeof confirmNotaryOpeningImportItem>[3],
   recovery: boolean,
 ): Promise<void> {
-  if (!openingImportStillCurrent(actor, fullIdentity)) return;
+  if (
+    openingImportWriteLocked.value ||
+    !openingImportStillCurrent(actor, fullIdentity)
+  )
+    return;
   openingImportBusyItemId.value = itemId;
   openingImportItemErrors.value = {
     ...openingImportItemErrors.value,
@@ -642,7 +747,11 @@ async function sendOpeningImportConfirmation(
   };
   try {
     await confirmNotaryOpeningImportItem(batchId, itemId, key, input);
-    if (!openingImportStillCurrent(actor, fullIdentity)) return;
+    if (
+      openingImportWriteLocked.value ||
+      !openingImportStillCurrent(actor, fullIdentity)
+    )
+      return;
     clearPendingOpeningImportConfirm(actor, batchId, itemId, key);
     openingImportUnknownConfirmIds.value =
       openingImportUnknownConfirmIds.value.filter((id) => id !== itemId);
@@ -650,7 +759,11 @@ async function sendOpeningImportConfirmation(
     await loadOpeningImportBatch(batchId);
     void load();
   } catch (error) {
-    if (!openingImportStillCurrent(actor, fullIdentity)) return;
+    if (
+      openingImportWriteLocked.value ||
+      !openingImportStillCurrent(actor, fullIdentity)
+    )
+      return;
     const isUnknown =
       recovery ||
       !(error instanceof ApiError) ||
@@ -732,6 +845,7 @@ watch(
     workflowContext.value = null;
     openingBatchOpen.value = false;
     openingImportOpen.value = false;
+    releaseImportLock();
     openingImportBatch.value = null;
     if (nextIdentity !== previousIdentity) {
       openingImportBusy.value = false;
@@ -1673,6 +1787,7 @@ watch(identity, () => void loadPreference(auth.session?.user.id), {
   immediate: true,
 });
 onBeforeUnmount(() => {
+  releaseImportLock();
   listRequest?.abort();
   preferenceRequest?.abort();
   saveRequest?.abort();
@@ -1910,6 +2025,7 @@ onBeforeUnmount(() => {
         :resume-batch-id="openingImportResumeBatchId"
         :upload-state="openingImportUploadState"
         :upload-error="openingImportError"
+        :write-locked="openingImportWriteLocked"
         :busy-item-id="openingImportBusyItemId"
         :unknown-confirm-item-ids="openingImportUnknownConfirmIds"
         :item-errors="openingImportItemErrors"
@@ -1926,6 +2042,7 @@ onBeforeUnmount(() => {
         @recover-upload="recoverOpeningImportUpload"
         @start-new-import="startNewOpeningImport"
         @refresh-batch="refreshOpeningImportBatch"
+        @resume-batch-by-id="resumeOpeningImportBatchById"
         @search-eligible-matters="searchOpeningImportMatters"
         @load-photo="loadOpeningImportPhoto"
         @photo-failed="failOpeningImportPhoto"

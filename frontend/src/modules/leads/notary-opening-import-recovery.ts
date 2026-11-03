@@ -24,9 +24,9 @@ const empty = (): State => ({
   confirms: [],
 });
 const storage = (): Storage => {
-  if (typeof sessionStorage === 'undefined')
+  if (typeof localStorage === 'undefined')
     throw new Error('Opening import recovery storage unavailable');
-  return sessionStorage;
+  return localStorage;
 };
 const slot = (identity: string) =>
   `${prefix}${identity.split(':').slice(0, 3).join(':')}`;
@@ -39,8 +39,11 @@ const uuid = (value: unknown): value is string =>
   );
 const positive = (value: unknown): value is number =>
   Number.isSafeInteger(value) && (value as number) >= 1;
+const onlyKeys = (value: Record<string, unknown>, keys: string[]) =>
+  Object.keys(value).every((key) => keys.includes(key));
 const uploadValid = (value: unknown): value is PendingOpeningImportUpload =>
   object(value) &&
+  onlyKeys(value, ['key', 'sha256', 'filename', 'sizeBytes']) &&
   typeof value.key === 'string' &&
   value.key.length > 0 &&
   value.key.length <= 128 &&
@@ -63,6 +66,15 @@ const confirmValid = (value: unknown): value is PendingOpeningImportConfirm => {
     return false;
   const input = value.input;
   return (
+    onlyKeys(value, ['batchId', 'itemId', 'key', 'input']) &&
+    onlyKeys(input, [
+      'matterId',
+      'expectedVersion',
+      'expectedRevision',
+      'senderName',
+      'senderPhone',
+      'senderAddress',
+    ]) &&
     uuid(input.matterId) &&
     positive(input.expectedVersion) &&
     positive(input.expectedRevision) &&
@@ -71,27 +83,68 @@ const confirmValid = (value: unknown): value is PendingOpeningImportConfirm => {
     )
   );
 };
+function parseState(raw: string): State {
+  const value: unknown = JSON.parse(raw);
+  if (
+    !object(value) ||
+    !onlyKeys(value, ['activeBatchId', 'upload', 'confirms']) ||
+    !['activeBatchId', 'upload', 'confirms'].every((key) => key in value) ||
+    (value.activeBatchId !== null && !uuid(value.activeBatchId)) ||
+    (value.upload !== null && !uploadValid(value.upload)) ||
+    !Array.isArray(value.confirms) ||
+    !value.confirms.every(confirmValid)
+  )
+    throw new Error('Invalid opening import recovery state');
+  const confirms = value.confirms as PendingOpeningImportConfirm[];
+  if (
+    confirms.some((item, index) =>
+      confirms
+        .slice(index + 1)
+        .some(
+          (other) =>
+            other.batchId === item.batchId && other.itemId === item.itemId,
+        ),
+    )
+  )
+    throw new Error('Duplicate opening import recovery command');
+  return {
+    activeBatchId: value.activeBatchId as string | null,
+    upload: value.upload as PendingOpeningImportUpload | null,
+    confirms,
+  };
+}
+function pendingConflict(local: State, legacy: State): boolean {
+  if (
+    legacy.upload &&
+    JSON.stringify(local.upload) !== JSON.stringify(legacy.upload)
+  )
+    return true;
+  return legacy.confirms.some(
+    (item) =>
+      !local.confirms.some(
+        (current) =>
+          current.batchId === item.batchId &&
+          current.itemId === item.itemId &&
+          current.key === item.key &&
+          JSON.stringify(current.input) === JSON.stringify(item.input),
+      ),
+  );
+}
 function read(identity: string): State {
   if (!identity) throw new Error('Opening import identity required');
   try {
     const raw = storage().getItem(slot(identity));
-    if (raw === null) return empty();
-    const value: unknown = JSON.parse(raw);
-    if (!object(value))
-      throw new Error('Invalid opening import recovery state');
-    const state = value;
-    if (
-      (state.activeBatchId !== null && !uuid(state.activeBatchId)) ||
-      (state.upload !== null && !uploadValid(state.upload)) ||
-      !Array.isArray(state.confirms) ||
-      !state.confirms.every(confirmValid)
-    )
-      throw new Error('Invalid opening import recovery state');
-    return {
-      activeBatchId: state.activeBatchId as string | null,
-      upload: state.upload as PendingOpeningImportUpload | null,
-      confirms: state.confirms as PendingOpeningImportConfirm[],
-    };
+    const legacyRaw =
+      typeof sessionStorage === 'undefined'
+        ? null
+        : sessionStorage.getItem(slot(identity));
+    if (raw === null && legacyRaw === null) return empty();
+    const result = parseState(raw ?? legacyRaw!);
+    if (legacyRaw !== null) {
+      if (raw !== null && pendingConflict(result, parseState(legacyRaw)))
+        throw new Error('Conflicting opening import recovery commands');
+    }
+    return result;
   } catch {
     throw new Error('Opening import recovery state unavailable');
   }
@@ -99,6 +152,11 @@ function read(identity: string): State {
 function write(identity: string, state: State): void {
   if (!identity) throw new Error('Opening import identity required');
   storage().setItem(slot(identity), JSON.stringify(state));
+  if (typeof sessionStorage !== 'undefined')
+    sessionStorage.removeItem(slot(identity));
+}
+export function persistOpeningImportRecovery(identity: string): void {
+  write(identity, read(identity));
 }
 export function getActiveOpeningImportBatch(identity: string): string | null {
   return read(identity).activeBatchId;
@@ -128,6 +186,8 @@ export function savePendingOpeningImportUpload(
 ): void {
   if (!uploadValid(upload)) throw new Error('Invalid pending upload');
   const state = read(identity);
+  if (state.upload && JSON.stringify(state.upload) !== JSON.stringify(upload))
+    throw new Error('Original upload request is still pending');
   state.upload = upload;
   write(identity, state);
 }
@@ -152,6 +212,18 @@ export function savePendingOpeningImportConfirm(
 ): void {
   if (!confirmValid(pending)) throw new Error('Invalid pending confirmation');
   const state = read(identity);
+  const existing = state.confirms.find(
+    (item) =>
+      item.batchId === pending.batchId && item.itemId === pending.itemId,
+  );
+  if (existing) {
+    if (
+      existing.key !== pending.key ||
+      JSON.stringify(existing.input) !== JSON.stringify(pending.input)
+    )
+      throw new Error('Original confirmation request is still pending');
+    return;
+  }
   state.confirms = state.confirms.filter(
     (item) =>
       item.batchId !== pending.batchId || item.itemId !== pending.itemId,
