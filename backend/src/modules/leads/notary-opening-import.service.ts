@@ -190,7 +190,41 @@ export class NotaryOpeningImportService {
   }
 
   async get(actor: ActorContext, batchId: string) {
-    return this.view(await this.load(actor, batchId));
+    const batch = await this.load(actor, batchId);
+    const view = this.view(batch);
+    const targetIds = [
+      ...new Set(
+        batch.items
+          .filter((item) => item.status !== 'COMMITTED')
+          .flatMap((item) => [item.suggestedMatterId, item.selectedMatterId])
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    if (targetIds.length === 0) return view;
+    const scope = await this.scope(actor);
+    const visible = new Set(
+      (
+        await this.db.notaryMatter.findMany({
+          where: {
+            id: { in: targetIds },
+            departmentId: actor.departmentId,
+            stage: 'WAITING_UNBOX',
+            sourceLead: scope,
+          },
+          select: { id: true },
+        })
+      ).map((matter) => matter.id),
+    );
+    for (const item of view.items) {
+      if (item.status === 'COMMITTED') continue;
+      if (item.suggestedMatterId && !visible.has(item.suggestedMatterId)) {
+        item.suggestedMatterId = null;
+        if (item.matchStatus === 'SUGGESTED') item.matchStatus = 'UNMATCHED';
+      }
+      if (item.selectedMatterId && !visible.has(item.selectedMatterId))
+        item.selectedMatterId = null;
+    }
+    return view;
   }
 
   async byKey(actor: ActorContext, key: string) {

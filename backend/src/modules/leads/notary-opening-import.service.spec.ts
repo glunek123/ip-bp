@@ -199,6 +199,62 @@ describe('opening import confirmation', () => {
   });
 });
 
+describe('opening import read projection', () => {
+  it('masks now unauthorized uncommitted target IDs on GET and by-key without altering stored facts', async () => {
+    const f = fixture();
+    f.access.buildLeadScope.mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+    });
+    f.db.notaryOpeningImportBatch.findUnique.mockResolvedValue({ id: batchId });
+    const detail = await f.service.get(actor, batchId);
+    expect(detail.items[0]).toMatchObject({
+      suggestedMatterId: null,
+      selectedMatterId: null,
+      matchStatus: 'UNMATCHED',
+    });
+    expect(f.db.notaryMatter.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: [matterId] },
+        departmentId: actor.departmentId,
+        stage: 'WAITING_UNBOX',
+        sourceLead: {
+          departmentId: actor.departmentId,
+          responsibleUserId: actor.userId,
+        },
+      },
+      select: { id: true },
+    });
+    const recovered = await f.service.byKey(actor, 'original-key');
+    expect(recovered.items[0]).toMatchObject({
+      suggestedMatterId: null,
+      selectedMatterId: null,
+    });
+    expect(f.item).toMatchObject({
+      suggestedMatterId: matterId,
+      selectedMatterId: matterId,
+      matchStatus: 'SUGGESTED',
+      revision: 1,
+    });
+  });
+  it('retains authorized suggestions and committed historical IDs', async () => {
+    const f = fixture();
+    f.db.notaryMatter.findMany.mockResolvedValue([{ id: matterId }]);
+    expect((await f.service.get(actor, batchId)).items[0]).toMatchObject({
+      suggestedMatterId: matterId,
+      selectedMatterId: matterId,
+      matchStatus: 'SUGGESTED',
+    });
+    f.item.status = 'COMMITTED';
+    f.db.notaryMatter.findMany.mockClear();
+    expect((await f.service.get(actor, batchId)).items[0]).toMatchObject({
+      suggestedMatterId: matterId,
+      selectedMatterId: matterId,
+    });
+    expect(f.db.notaryMatter.findMany).not.toHaveBeenCalled();
+  });
+});
+
 describe('opening import recognition boundary', () => {
   it('passes validated image bytes to the async provider before persisting a batch', async () => {
     const f = fixture();
