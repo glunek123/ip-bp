@@ -5,6 +5,7 @@ import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { NOTARY_LIST_STAGES, NotaryListStage } from './notary-list.dto';
 import {
+  matchingNotaryRightsHolderIds,
   notaryKeywordWhere,
   notaryRoutineShopWhere,
 } from './notary-routine-filter';
@@ -55,6 +56,14 @@ export class NotaryListService {
       throw error;
     }
     const shopName = filters.shopName?.trim();
+    const keyword = filters.q?.trim();
+    const matchingRightsHolderIds = keyword
+      ? await matchingNotaryRightsHolderIds(
+          this.database,
+          actor.departmentId,
+          keyword,
+        )
+      : [];
     const baseWhere: Prisma.NotaryMatterWhereInput = {
       departmentId: actor.departmentId,
       sourceLead: leadScope,
@@ -63,7 +72,9 @@ export class NotaryListService {
         ? { rightsHolderId: filters.rightsHolderId }
         : {}),
       ...(shopName ? notaryRoutineShopWhere(shopName) : {}),
-      ...(filters.q?.trim() ? { AND: [notaryKeywordWhere(filters.q)] } : {}),
+      ...(keyword
+        ? { AND: [notaryKeywordWhere(keyword, matchingRightsHolderIds)] }
+        : {}),
     };
     const itemWhere: Prisma.NotaryMatterWhereInput =
       stage === undefined ? baseWhere : { ...baseWhere, stage };

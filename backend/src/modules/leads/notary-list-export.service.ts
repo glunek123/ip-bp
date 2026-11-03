@@ -19,6 +19,7 @@ import {
 import { NotaryListStage } from './notary-list.dto';
 import { notaryDisplayFee, notaryTransferredDate } from './notary-display-read';
 import {
+  matchingNotaryRightsHolderIds,
   notaryKeywordWhere,
   notaryRoutineShopWhere,
 } from './notary-routine-filter';
@@ -244,13 +245,17 @@ export class NotaryListExportService {
       if (error instanceof ForbiddenException) throw this.forbidden();
       throw error;
     }
+    const keyword = scope.mode === 'FILTERED' ? scope.q?.trim() : undefined;
+    const matchingRightsHolderIds = keyword
+      ? await matchingNotaryRightsHolderIds(tx, actor.departmentId, keyword)
+      : [];
     const where: Prisma.NotaryMatterWhereInput = {
       departmentId: actor.departmentId,
       AND: [
         { sourceLead: readScope },
         { sourceLead: exportScope },
-        ...(scope.mode === 'FILTERED' && scope.q?.trim()
-          ? [notaryKeywordWhere(scope.q)]
+        ...(keyword
+          ? [notaryKeywordWhere(keyword, matchingRightsHolderIds)]
           : []),
       ],
       ...(scope.mode === 'FILTERED' && scope.customerId

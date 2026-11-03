@@ -557,6 +557,8 @@ export class LeadService {
               {
                 OR: [
                   { businessNo: match },
+                  { customer: { is: { name: match } } },
+                  { rightsHolder: { is: { name: match } } },
                   { shopName: match },
                   { products: { some: { title: match } } },
                 ],

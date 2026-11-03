@@ -61,6 +61,9 @@ function fixture() {
       .fn()
       .mockRejectedValue(new ForbiddenException()),
   };
+  const matchingHolders = jest
+    .fn()
+    .mockResolvedValue([{ id: 'rights-holder-1' }]);
   const service = new NotaryListService(
     {
       notaryMatter: repo,
@@ -70,6 +73,7 @@ function fixture() {
           .mockResolvedValue({ id: 'customer-1', name: '客户' }),
       },
       rightsHolder: {
+        findMany: matchingHolders,
         findFirst: jest
           .fn()
           .mockResolvedValue({ id: 'rights-holder-1', name: '主体' }),
@@ -82,12 +86,12 @@ function fixture() {
     } as unknown as DatabaseService,
     access as unknown as AccessControlService,
   );
-  return { service, repo, access, scope, matter };
+  return { service, repo, access, scope, matter, matchingHolders };
 }
 
 describe('NotaryListService', () => {
   it('combines literal keyword with the independent shop filter in rows, totals and counts', async () => {
-    const { service, repo } = fixture();
+    const { service, repo, matchingHolders } = fixture();
     await service.list(actor, 1, 20, 'PENDING_EVIDENCE', {
       q: ' NT_% ',
       shopName: '店',
@@ -99,6 +103,16 @@ describe('NotaryListService', () => {
           { businessNo: { contains: 'NT\\_\\%', mode: 'insensitive' } },
           {
             sourceLead: {
+              is: {
+                customer: {
+                  is: { name: { contains: 'NT\\_\\%', mode: 'insensitive' } },
+                },
+              },
+            },
+          },
+          { rightsHolderId: { in: ['rights-holder-1'] } },
+          {
+            sourceLead: {
               is: { businessNo: { contains: 'NT\\_\\%', mode: 'insensitive' } },
             },
           },
@@ -107,6 +121,13 @@ describe('NotaryListService', () => {
       },
     ]);
     expect(where.OR).toBeDefined();
+    expect(matchingHolders).toHaveBeenCalledWith({
+      where: {
+        departmentId: actor.departmentId,
+        name: { contains: 'NT\\_\\%', mode: 'insensitive' },
+      },
+      select: { id: true },
+    });
     expect(repo.count.mock.calls[0][0].where).toEqual(where);
     expect(repo.groupBy.mock.calls[0][0].where.AND).toEqual(where.AND);
   });

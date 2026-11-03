@@ -93,6 +93,16 @@ describe('NotaryListExportService', () => {
           { businessNo: { contains: 'NT\\_\\%', mode: 'insensitive' } },
           {
             sourceLead: {
+              is: {
+                customer: {
+                  is: { name: { contains: 'NT\\_\\%', mode: 'insensitive' } },
+                },
+              },
+            },
+          },
+          { rightsHolderId: { in: ['holder-1'] } },
+          {
+            sourceLead: {
               is: { businessNo: { contains: 'NT\\_\\%', mode: 'insensitive' } },
             },
           },
@@ -101,6 +111,13 @@ describe('NotaryListExportService', () => {
       },
     ]);
     expect(previewWhere.OR).toBeDefined();
+    expect(tx.rightsHolder.findMany).toHaveBeenNthCalledWith(1, {
+      where: {
+        departmentId: actor.departmentId,
+        name: { contains: 'NT\\_\\%', mode: 'insensitive' },
+      },
+      select: { id: true },
+    });
   });
   it('exports the independent current shop value', async () => {
     const { service, tx } = fixture();
@@ -367,6 +384,7 @@ describe('NotaryListExportService', () => {
         orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       }),
     );
+    expect(tx.rightsHolder.findMany).not.toHaveBeenCalled();
     expect(tx.auditEvent.create).not.toHaveBeenCalled();
     expect(database.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: 'Serializable',

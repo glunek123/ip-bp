@@ -41,6 +41,16 @@ describe('Lead search query contract', () => {
         {
           OR: [
             { businessNo: { contains: '号', mode: 'insensitive' } },
+            {
+              customer: {
+                is: { name: { contains: '号', mode: 'insensitive' } },
+              },
+            },
+            {
+              rightsHolder: {
+                is: { name: { contains: '号', mode: 'insensitive' } },
+              },
+            },
             { shopName: { contains: '号', mode: 'insensitive' } },
             {
               products: {
@@ -67,6 +77,49 @@ describe('Lead search query contract', () => {
     expect(repo.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({ where: base }),
     );
+  });
+  it('treats wildcard characters literally in all keyword branches', async () => {
+    const repo = {
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+      groupBy: jest.fn().mockResolvedValue([]),
+    };
+    const service = new LeadService(
+      { lead: repo } as never,
+      {
+        buildLeadScope: jest.fn().mockResolvedValue({ departmentId: 'd' }),
+        canAuthorizeNewLead: jest.fn().mockResolvedValue(false),
+      } as never,
+      {} as never,
+    );
+    await service.list(
+      { userId: 'u', departmentId: 'd', authorizationRevision: 1 },
+      1,
+      20,
+      undefined,
+      undefined,
+      ' 名_% ',
+    );
+    const branches = repo.findMany.mock.calls[0][0].where.AND[1].OR;
+    expect(branches).toEqual([
+      { businessNo: { contains: '名\\_\\%', mode: 'insensitive' } },
+      {
+        customer: {
+          is: { name: { contains: '名\\_\\%', mode: 'insensitive' } },
+        },
+      },
+      {
+        rightsHolder: {
+          is: { name: { contains: '名\\_\\%', mode: 'insensitive' } },
+        },
+      },
+      { shopName: { contains: '名\\_\\%', mode: 'insensitive' } },
+      {
+        products: {
+          some: { title: { contains: '名\\_\\%', mode: 'insensitive' } },
+        },
+      },
+    ]);
   });
   it('passes validated search through the real list controller', async () => {
     const query = await pipe.transform(
