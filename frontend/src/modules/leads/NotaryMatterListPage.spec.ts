@@ -65,6 +65,14 @@ const businessHeaders = [
   '样品费',
 ];
 const defaultHeaders = ['选择', '案件进展', ...businessHeaders];
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
 function preferenceWithLegacyOrder(
   order: Array<
     'businessNo' | 'stage' | 'sourceLead' | 'notaryOffice' | 'createdAt'
@@ -297,6 +305,96 @@ describe('NotaryMatterListPage', () => {
     ).toHaveBeenCalledWith('department-1:user-1', batch.id);
   });
 
+  it('ignores late eligible-matter results after the authorization revision changes', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const batchId = '00000000-0000-4000-8000-000000000031';
+    const itemId = '00000000-0000-4000-8000-000000000032';
+    const batch = {
+      id: batchId,
+      status: 'READY',
+      expiresAt: '2026-11-04T00:00:00.000Z',
+      recognitionMode: 'DISABLED',
+      items: [
+        {
+          id: itemId,
+          folderName: '目录 1',
+          revision: 1,
+          status: 'READY',
+          trackingCandidate: null,
+          trackingNo: null,
+          recognitionStatus: 'DISABLED',
+          senderCandidate: null,
+          matchStatus: 'UNMATCHED',
+          suggestedMatterId: null,
+          selectedMatterId: null,
+          photos: [
+            {
+              id: '00000000-0000-4000-8000-000000000033',
+              filename: '证据.jpg',
+              mimeType: 'image/jpeg',
+              sizeBytes: 1024,
+            },
+          ],
+        },
+      ],
+    };
+    const delayedOldScope = deferred<{
+      items: Array<{
+        id: string;
+        businessNo: string;
+        version: number;
+        trackingNo: string | null;
+      }>;
+      total: number;
+      page: number;
+      pageSize: number;
+    }>();
+    const delayedNewScope = deferred<{
+      items: Array<{
+        id: string;
+        businessNo: string;
+        version: number;
+        trackingNo: string | null;
+      }>;
+      total: number;
+      page: number;
+      pageSize: number;
+    }>();
+    openingImportApi.getNotaryOpeningImport.mockResolvedValue(batch);
+    openingImportApi.listNotaryOpeningImportEligibleMatters
+      .mockReturnValueOnce(delayedOldScope.promise)
+      .mockReturnValueOnce(delayedNewScope.promise);
+    const { wrapper, auth } = await mountPage('/notary-matters');
+    openingImportRecovery.getActiveOpeningImportBatch.mockReturnValue(batchId);
+
+    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await flushPromises();
+    expect(
+      openingImportApi.listNotaryOpeningImportEligibleMatters,
+    ).toHaveBeenCalledTimes(1);
+    auth.session!.authorizationRevision += 1;
+    delayedOldScope.resolve({
+      items: [
+        {
+          id: '00000000-0000-4000-8000-000000000034',
+          businessNo: 'STALE-PRIVILEGE-CANDIDATE',
+          version: 1,
+          trackingNo: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.html()).not.toContain('STALE-PRIVILEGE-CANDIDATE');
+    delayedNewScope.resolve({ items: [], total: 0, page: 1, pageSize: 20 });
+    await flushPromises();
+  });
+
   it('stores the fingerprint and original key before starting a new ZIP upload', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     const batch = {
@@ -430,7 +528,7 @@ describe('NotaryMatterListPage', () => {
     );
   });
 
-  it('retries an unknown item confirmation with the original key and body', async () => {
+  it('keeps the original item confirmation after an unknown retry returns 403', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     const batchId = '00000000-0000-4000-8000-000000000021';
     const itemId = '00000000-0000-4000-8000-000000000022';
@@ -485,8 +583,14 @@ describe('NotaryMatterListPage', () => {
     });
     openingImportApi.confirmNotaryOpeningImportItem
       .mockRejectedValueOnce(new ApiError('unknown', 500, 'SERVER_ERROR'))
-      .mockResolvedValueOnce({});
-    const { wrapper } = await mountPage('/notary-matters');
+      .mockRejectedValueOnce(
+        new ApiError('permission revoked', 403, 'FORBIDDEN'),
+      );
+    const lateReceipt = deferred<unknown>();
+    openingImportApi.confirmNotaryOpeningImportItem.mockReturnValueOnce(
+      lateReceipt.promise,
+    );
+    const { wrapper, auth } = await mountPage('/notary-matters');
     openingImportRecovery.getActiveOpeningImportBatch.mockReturnValue(batchId);
 
     await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
@@ -537,7 +641,16 @@ describe('NotaryMatterListPage', () => {
     ]);
     expect(
       openingImportRecovery.clearPendingOpeningImportConfirm,
-    ).toHaveBeenCalledWith('department-1:user-1', batchId, itemId, firstKey);
+    ).not.toHaveBeenCalled();
+    await wrapper
+      .get('[data-test="opening-import-retry-confirm"]')
+      .trigger('click');
+    auth.session!.authorizationRevision += 1;
+    lateReceipt.resolve({});
+    await flushPromises();
+    expect(
+      openingImportRecovery.clearPendingOpeningImportConfirm,
+    ).not.toHaveBeenCalled();
   });
 
   it('uses one search and keeps legacy filters visible, removable and aligned with filtered export', async () => {

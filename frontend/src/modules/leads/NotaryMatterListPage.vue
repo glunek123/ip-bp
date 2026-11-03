@@ -189,8 +189,13 @@ function resumeWorkflow(context: ListWorkflowContext) {
   workflowOpen.value = true;
 }
 
-function openingImportStillCurrent(actor: string): boolean {
-  return openingImportIdentity.value === actor;
+function openingImportStillCurrent(
+  actor: string,
+  fullIdentity: string,
+): boolean {
+  return (
+    openingImportIdentity.value === actor && identity.value === fullIdentity
+  );
 }
 
 function syncOpeningImportPending(actor = openingImportIdentity.value): void {
@@ -214,13 +219,14 @@ function syncOpeningImportPending(actor = openingImportIdentity.value): void {
 
 async function loadOpeningImportBatch(batchId: string): Promise<void> {
   const actor = openingImportIdentity.value;
+  const fullIdentity = identity.value;
   openingImportResumeBatchId.value = batchId;
   openingImportBusy.value = true;
   openingImportError.value = '';
   let fetched = false;
   try {
     const batch = await getNotaryOpeningImport(batchId);
-    if (!openingImportStillCurrent(actor)) return;
+    if (!openingImportStillCurrent(actor, fullIdentity)) return;
     fetched = true;
     openingImportBatch.value = batch;
     saveActiveOpeningImportBatch(actor, batch.id);
@@ -228,14 +234,15 @@ async function loadOpeningImportBatch(batchId: string): Promise<void> {
     openingImportRecoveryUnavailable.value = false;
     syncOpeningImportPending(actor);
   } catch (error) {
-    if (!openingImportStillCurrent(actor)) return;
+    if (!openingImportStillCurrent(actor, fullIdentity)) return;
     if (fetched) openingImportRecoveryUnavailable.value = true;
     openingImportError.value =
       error instanceof ApiError && [401, 403, 404].includes(error.status)
         ? '当前账号无法读取此导入批次。请核对账号权限后重试。'
         : '读取批次失败。原批次编号已保留，可稍后重试。';
   } finally {
-    if (openingImportStillCurrent(actor)) openingImportBusy.value = false;
+    if (openingImportStillCurrent(actor, fullIdentity))
+      openingImportBusy.value = false;
   }
 }
 
@@ -277,10 +284,11 @@ function closeOpeningImport(): void {
 
 function acceptOpeningImportBatch(
   actor: string,
+  fullIdentity: string,
   batch: OpeningImportBatch,
   uploadKey?: string,
 ): void {
-  if (!openingImportStillCurrent(actor)) return;
+  if (!openingImportStillCurrent(actor, fullIdentity)) return;
   saveActiveOpeningImportBatch(actor, batch.id);
   if (uploadKey) clearPendingOpeningImportUpload(actor, uploadKey);
   openingImportBatch.value = batch;
@@ -293,10 +301,13 @@ function acceptOpeningImportBatch(
   syncOpeningImportPending(actor);
 }
 
-async function uploadOpeningImport(file: File): Promise<void> {
+async function uploadOpeningImport(
+  file: InstanceType<typeof globalThis.File>,
+): Promise<void> {
   if (openingImportUploadState.value !== 'IDLE' || openingImportBusy.value)
     return;
   const actor = openingImportIdentity.value;
+  const fullIdentity = identity.value;
   try {
     if (getPendingOpeningImportConfirms(actor).length) {
       openingImportError.value =
@@ -314,7 +325,7 @@ async function uploadOpeningImport(file: File): Promise<void> {
   openingImportError.value = '';
   try {
     const sha256 = await fingerprintOpeningImportZip(file);
-    if (!openingImportStillCurrent(actor)) return;
+    if (!openingImportStillCurrent(actor, fullIdentity)) return;
     savePendingOpeningImportUpload(actor, {
       key,
       sha256,
@@ -324,9 +335,9 @@ async function uploadOpeningImport(file: File): Promise<void> {
     pendingSaved = true;
     openingImportUploadState.value = 'UPLOADING';
     const batch = await uploadNotaryOpeningImport(file, key);
-    acceptOpeningImportBatch(actor, batch, key);
+    acceptOpeningImportBatch(actor, fullIdentity, batch, key);
   } catch (error) {
-    if (!openingImportStillCurrent(actor)) return;
+    if (!openingImportStillCurrent(actor, fullIdentity)) return;
     if (!pendingSaved) {
       openingImportUploadState.value = 'IDLE';
       openingImportError.value = '无法准备原上传请求。请检查文件并重试。';
@@ -345,12 +356,16 @@ async function uploadOpeningImport(file: File): Promise<void> {
         '上传结果未知。请核实原请求；系统会先按原键查询，不会生成新键重传。';
     }
   } finally {
-    if (openingImportStillCurrent(actor)) openingImportBusy.value = false;
+    if (openingImportStillCurrent(actor, fullIdentity))
+      openingImportBusy.value = false;
   }
 }
 
-async function recoverOpeningImportUpload(file?: File | null): Promise<void> {
+async function recoverOpeningImportUpload(
+  file?: InstanceType<typeof globalThis.File> | null,
+): Promise<void> {
   const actor = openingImportIdentity.value;
+  const fullIdentity = identity.value;
   let pending: PendingOpeningImportUpload | null;
   try {
     pending = getPendingOpeningImportUpload(actor);
@@ -366,16 +381,18 @@ async function recoverOpeningImportUpload(file?: File | null): Promise<void> {
   try {
     try {
       const batch = await getNotaryOpeningImportByKey(pending.key);
-      acceptOpeningImportBatch(actor, batch, pending.key);
+      acceptOpeningImportBatch(actor, fullIdentity, batch, pending.key);
       return;
     } catch (error) {
       if (!(error instanceof ApiError) || error.status !== 404) throw error;
     }
+    if (!openingImportStillCurrent(actor, fullIdentity)) return;
     if (!file) {
       openingImportError.value = `原键暂未找到批次。请重新选择原文件“${pending.filename}”后再次核实。`;
       return;
     }
     const sha256 = await fingerprintOpeningImportZip(file);
+    if (!openingImportStillCurrent(actor, fullIdentity)) return;
     if (sha256 !== pending.sha256) {
       openingImportError.value =
         '所选 ZIP 与原上传文件内容不同。为保护原请求，系统没有重新上传。';
@@ -383,16 +400,17 @@ async function recoverOpeningImportUpload(file?: File | null): Promise<void> {
     }
     openingImportUploadState.value = 'UPLOADING';
     const batch = await uploadNotaryOpeningImport(file, pending.key);
-    acceptOpeningImportBatch(actor, batch, pending.key);
+    acceptOpeningImportBatch(actor, fullIdentity, batch, pending.key);
   } catch (error) {
-    if (!openingImportStillCurrent(actor)) return;
+    if (!openingImportStillCurrent(actor, fullIdentity)) return;
     openingImportUploadState.value = 'UNKNOWN';
     openingImportError.value =
       error instanceof ApiError && [401, 403].includes(error.status)
         ? '当前账号无权核实此上传请求；原请求键仍已保留。'
         : '核实结果仍未知。原文件、请求键和恢复状态均已保留。';
   } finally {
-    if (openingImportStillCurrent(actor)) openingImportBusy.value = false;
+    if (openingImportStillCurrent(actor, fullIdentity))
+      openingImportBusy.value = false;
   }
 }
 
@@ -447,6 +465,7 @@ async function searchOpeningImportMatters(
 ): Promise<void> {
   const batchId = openingImportBatch.value?.id;
   const actor = openingImportIdentity.value;
+  const fullIdentity = identity.value;
   if (!batchId) return;
   const requestVersion =
     (openingImportEligibleRequestVersions.get(itemId) ?? 0) + 1;
@@ -459,7 +478,7 @@ async function searchOpeningImportMatters(
       20,
     );
     if (
-      !openingImportStillCurrent(actor) ||
+      !openingImportStillCurrent(actor, fullIdentity) ||
       openingImportBatch.value?.id !== batchId ||
       openingImportEligibleRequestVersions.get(itemId) !== requestVersion
     )
@@ -470,7 +489,7 @@ async function searchOpeningImportMatters(
     };
   } catch {
     if (
-      openingImportStillCurrent(actor) &&
+      openingImportStillCurrent(actor, fullIdentity) &&
       openingImportEligibleRequestVersions.get(itemId) === requestVersion
     )
       openingImportItemErrors.value = {
@@ -509,6 +528,7 @@ async function saveOpeningImportItem(
   const item = batch?.items.find((candidate) => candidate.id === itemId);
   if (!batch || !item || openingImportBusyItemId.value) return;
   const actor = openingImportIdentity.value;
+  const fullIdentity = identity.value;
   openingImportBusyItemId.value = itemId;
   openingImportItemErrors.value = {
     ...openingImportItemErrors.value,
@@ -519,10 +539,10 @@ async function saveOpeningImportItem(
       ...input,
       expectedRevision: item.revision,
     });
-    if (!openingImportStillCurrent(actor)) return;
+    if (!openingImportStillCurrent(actor, fullIdentity)) return;
     replaceOpeningImportItem(updated);
   } catch (error) {
-    if (!openingImportStillCurrent(actor)) return;
+    if (!openingImportStillCurrent(actor, fullIdentity)) return;
     openingImportItemErrors.value = {
       ...openingImportItemErrors.value,
       [itemId]:
@@ -532,7 +552,8 @@ async function saveOpeningImportItem(
     };
     await loadOpeningImportBatch(batch.id);
   } finally {
-    if (openingImportStillCurrent(actor)) openingImportBusyItemId.value = null;
+    if (openingImportStillCurrent(actor, fullIdentity))
+      openingImportBusyItemId.value = null;
   }
 }
 
@@ -564,6 +585,7 @@ async function confirmOpeningImportItem(
     return;
   }
   const actor = openingImportIdentity.value;
+  const fullIdentity = identity.value;
   const key = globalThis.crypto.randomUUID();
   const input = {
     matterId: matter.id,
@@ -588,19 +610,31 @@ async function confirmOpeningImportItem(
     };
     return;
   }
+  if (!openingImportStillCurrent(actor, fullIdentity)) return;
   openingImportUnknownConfirmIds.value = [
     ...new Set([...openingImportUnknownConfirmIds.value, itemId]),
   ];
-  await sendOpeningImportConfirmation(actor, batch.id, itemId, key, input);
+  await sendOpeningImportConfirmation(
+    actor,
+    fullIdentity,
+    batch.id,
+    itemId,
+    key,
+    input,
+    false,
+  );
 }
 
 async function sendOpeningImportConfirmation(
   actor: string,
+  fullIdentity: string,
   batchId: string,
   itemId: string,
   key: string,
   input: Parameters<typeof confirmNotaryOpeningImportItem>[3],
+  recovery: boolean,
 ): Promise<void> {
+  if (!openingImportStillCurrent(actor, fullIdentity)) return;
   openingImportBusyItemId.value = itemId;
   openingImportItemErrors.value = {
     ...openingImportItemErrors.value,
@@ -608,7 +642,7 @@ async function sendOpeningImportConfirmation(
   };
   try {
     await confirmNotaryOpeningImportItem(batchId, itemId, key, input);
-    if (!openingImportStillCurrent(actor)) return;
+    if (!openingImportStillCurrent(actor, fullIdentity)) return;
     clearPendingOpeningImportConfirm(actor, batchId, itemId, key);
     openingImportUnknownConfirmIds.value =
       openingImportUnknownConfirmIds.value.filter((id) => id !== itemId);
@@ -616,8 +650,9 @@ async function sendOpeningImportConfirmation(
     await loadOpeningImportBatch(batchId);
     void load();
   } catch (error) {
-    if (!openingImportStillCurrent(actor)) return;
+    if (!openingImportStillCurrent(actor, fullIdentity)) return;
     const isUnknown =
+      recovery ||
       !(error instanceof ApiError) ||
       error.status < 400 ||
       error.status >= 500 ||
@@ -640,12 +675,14 @@ async function sendOpeningImportConfirmation(
       await loadOpeningImportBatch(batchId);
     }
   } finally {
-    if (openingImportStillCurrent(actor)) openingImportBusyItemId.value = null;
+    if (openingImportStillCurrent(actor, fullIdentity))
+      openingImportBusyItemId.value = null;
   }
 }
 
 async function retryOpeningImportConfirmation(itemId: string): Promise<void> {
   const actor = openingImportIdentity.value;
+  const fullIdentity = identity.value;
   let pending: PendingOpeningImportConfirm | undefined;
   try {
     pending = getPendingOpeningImportConfirms(actor).find(
@@ -670,10 +707,12 @@ async function retryOpeningImportConfirmation(itemId: string): Promise<void> {
   }
   await sendOpeningImportConfirmation(
     actor,
+    fullIdentity,
     pending.batchId,
     pending.itemId,
     pending.key,
     pending.input,
+    true,
   );
 }
 
@@ -688,11 +727,21 @@ onBeforeRouteLeave(canLeaveWorkflow);
 onBeforeRouteUpdate(canLeaveWorkflow);
 watch(
   [identity, () => route.fullPath],
-  () => {
+  ([nextIdentity], [previousIdentity]) => {
     workflowOpen.value = false;
     workflowContext.value = null;
     openingBatchOpen.value = false;
     openingImportOpen.value = false;
+    openingImportBatch.value = null;
+    if (nextIdentity !== previousIdentity) {
+      openingImportBusy.value = false;
+      openingImportBusyItemId.value = null;
+      openingImportRecoveryUnavailable.value = false;
+      openingImportEligiblePages.value = {};
+      openingImportPhotoSources.value = {};
+      openingImportPhotoErrors.value = {};
+      openingImportItemErrors.value = {};
+    }
   },
   { flush: 'sync' },
 );

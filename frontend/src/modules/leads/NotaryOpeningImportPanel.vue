@@ -27,8 +27,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: [];
-  upload: [file: File];
-  recoverUpload: [file: File | null];
+  upload: [file: InstanceType<typeof globalThis.File>];
+  recoverUpload: [file: InstanceType<typeof globalThis.File> | null];
   startNewImport: [];
   refreshBatch: [];
   searchEligibleMatters: [itemId: string, query: string, page: number];
@@ -45,8 +45,8 @@ const emit = defineEmits<{
   retryUnknownItem: [itemId: string];
 }>();
 
-const fileInput = ref<HTMLInputElement>();
-const selectedFile = ref<File | null>(null);
+const fileInput = ref<InstanceType<typeof globalThis.HTMLInputElement>>();
+const selectedFile = ref<InstanceType<typeof globalThis.File> | null>(null);
 const activeItemId = ref<string | null>(null);
 const trackingDrafts = ref<Record<string, string>>({});
 const matterDrafts = ref<Record<string, string>>({});
@@ -155,9 +155,9 @@ function requestUpload(): void {
   emit('upload', file);
 }
 
-function chooseFile(event: Event): void {
+function chooseFile(event: globalThis.Event): void {
   const target = event.target;
-  if (!(target instanceof HTMLInputElement)) return;
+  if (!(target instanceof globalThis.HTMLInputElement)) return;
   selectedFile.value = target.files?.[0] ?? null;
 }
 
@@ -207,9 +207,10 @@ watch(
   () => {
     const items = batchItems.value;
     for (const item of items) initItemDrafts(item);
-    if (!items.some((item) => item.id === activeItemId.value))
-      activeItemId.value = items[0]?.id ?? null;
-    if (!activeItemId.value && items[0]) selectItem(items[0]);
+    if (!items.some((item) => item.id === activeItemId.value)) {
+      if (items[0]) selectItem(items[0]);
+      else activeItemId.value = null;
+    }
   },
   { immediate: true },
 );
