@@ -9,7 +9,6 @@ import {
   Patch,
   Post,
   Query,
-  Req,
   Res,
   UploadedFile,
   UseGuards,
