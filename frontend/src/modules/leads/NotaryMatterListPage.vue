@@ -14,10 +14,6 @@ import type {
 } from '../../app/list-workflow-context';
 import NotaryMatterWorkflowPanel from './NotaryMatterWorkflowPanel.vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
-import {
-  ElOption,
-  ElSelect,
-} from 'element-plus/es/components/select/index.mjs';
 import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
 import {
   exportNotaryList,
@@ -43,7 +39,6 @@ import { useAuthStore } from '../../stores/auth';
 import NotaryReturnArchiveBatchPanel from './NotaryReturnArchiveBatchPanel.vue';
 import NotaryBatchOpeningPanel from './NotaryBatchOpeningPanel.vue';
 import { labelLeadPlatform } from './lead-options';
-import { listLeadFilterOptions } from '../../api/leads';
 import type { CaseStage } from '../../api/cases';
 import { isListRowClick, listReturnPath } from '../../app/list-row-navigation';
 
@@ -240,243 +235,18 @@ const selectedStage = computed<NotaryListStage | undefined>(() => {
     ? (value as NotaryListStage)
     : undefined;
 });
-const customerSearch = ref('');
-const holderSearch = ref('');
-const customerOptions = ref<{ id: string; name: string }[]>([]);
-const holderOptions = ref<{ id: string; name: string }[]>([]);
-const customerOptionError = ref('');
-const holderOptionError = ref('');
-const customerDraft = ref('');
-const holderDraft = ref('');
-const shopDraft = ref('');
 const queryDraft = ref('');
 const queryFormError = ref('');
-let customerOptionRequest = 0;
-let holderOptionRequest = 0;
-let customerResolveRequest = 0;
-let holderResolveRequest = 0;
 watch(
-  () => [identity.value, selectedStage.value],
-  () => {
-    customerOptionRequest += 1;
-    holderOptionRequest += 1;
-    customerResolveRequest += 1;
-    holderResolveRequest += 1;
-    customerOptions.value = [];
-    holderOptions.value = [];
-    customerOptionError.value = '';
-    holderOptionError.value = '';
-    customerSearch.value = '';
-    holderSearch.value = '';
-    if (customerDraft.value)
-      void restoreSelectedFilterOption('customer', customerDraft.value);
-    if (holderDraft.value)
-      void restoreSelectedFilterOption('rightsHolder', holderDraft.value);
-  },
-  { flush: 'sync' },
-);
-function selectedFilterOption(kind: 'customer' | 'rightsHolder') {
-  const id = kind === 'customer' ? customerDraft.value : holderDraft.value;
-  const options =
-    kind === 'customer' ? customerOptions.value : holderOptions.value;
-  return options.find((item) => item.id === id);
-}
-function mergeSelectedFilterOption(
-  kind: 'customer' | 'rightsHolder',
-  items: { id: string; name: string }[],
-) {
-  const selected = selectedFilterOption(kind);
-  return selected && !items.some((item) => item.id === selected.id)
-    ? [selected, ...items]
-    : items;
-}
-function updateSelectedFilterOption(
-  kind: 'customer' | 'rightsHolder',
-  items: { id: string; name: string }[],
-) {
-  if (kind === 'customer') customerOptions.value = items;
-  else holderOptions.value = items;
-}
-function filterOptionLabel(kind: 'customer' | 'rightsHolder') {
-  return kind === 'customer' ? '客户名称' : '权利主体名称';
-}
-function unavailableFilterOptionLabel(kind: 'customer' | 'rightsHolder') {
-  const subject = kind === 'customer' ? '客户' : '权利主体';
-  return selectedStage.value
-    ? `当前阶段无可见${subject}`
-    : `当前范围无可见${subject}`;
-}
-async function restoreSelectedFilterOption(
-  kind: 'customer' | 'rightsHolder',
-  selectedId: string,
-) {
-  const isCustomer = kind === 'customer';
-  const generation = isCustomer
-    ? ++customerResolveRequest
-    : ++holderResolveRequest;
-  const actor = identity.value;
-  const stage = selectedStage.value;
-  const routeKey = isCustomer ? 'customerId' : 'rightsHolderId';
-  const isCurrent = () =>
-    generation ===
-      (isCustomer ? customerResolveRequest : holderResolveRequest) &&
-    actor === identity.value &&
-    stage === selectedStage.value &&
-    (isCustomer ? customerDraft.value : holderDraft.value) === selectedId &&
-    route.query[routeKey] === selectedId;
-  const existing = selectedFilterOption(kind);
-  updateSelectedFilterOption(
-    kind,
-    mergeSelectedFilterOption(kind, [
-      {
-        id: selectedId,
-        name: existing?.name ?? `正在读取${filterOptionLabel(kind)}…`,
-      },
-    ]),
-  );
-  try {
-    const result = await listLeadFilterOptions(
-      kind,
-      '',
-      {},
-      {
-        context: 'NOTARY',
-        ...(stage ? { notaryStage: stage } : {}),
-        selectedId,
-      },
-    );
-    if (!isCurrent()) return;
-    const selected = result.items.find((item) => item.id === selectedId);
-    if (!selected) {
-      updateSelectedFilterOption(kind, [
-        { id: selectedId, name: unavailableFilterOptionLabel(kind) },
-      ]);
-      return;
-    }
-    updateSelectedFilterOption(
-      kind,
-      mergeSelectedFilterOption(kind, [selected]),
-    );
-    if (isCustomer) customerOptionError.value = '';
-    else holderOptionError.value = '';
-  } catch {
-    if (!isCurrent()) return;
-    const selected = selectedFilterOption(kind);
-    if (selected)
-      updateSelectedFilterOption(kind, [
-        { ...selected, name: `${filterOptionLabel(kind)}暂不可用` },
-      ]);
-    if (isCustomer) customerOptionError.value = '客户候选读取失败，请重试。';
-    else holderOptionError.value = '权利主体候选读取失败，请重试。';
-  }
-}
-async function searchFilterOptions(kind: 'customer' | 'rightsHolder') {
-  const generation =
-    kind === 'customer' ? ++customerOptionRequest : ++holderOptionRequest;
-  const actor = identity.value;
-  try {
-    const result = await listLeadFilterOptions(
-      kind,
-      kind === 'customer' ? customerSearch.value : holderSearch.value,
-      {},
-      {
-        context: 'NOTARY',
-        ...(selectedStage.value ? { notaryStage: selectedStage.value } : {}),
-      },
-    );
-    if (
-      actor !== identity.value ||
-      generation !==
-        (kind === 'customer' ? customerOptionRequest : holderOptionRequest)
-    )
-      return;
-    if (kind === 'customer') {
-      customerOptions.value = mergeSelectedFilterOption(
-        'customer',
-        result.items,
-      );
-      customerOptionError.value = '';
-    } else {
-      holderOptions.value = mergeSelectedFilterOption(
-        'rightsHolder',
-        result.items,
-      );
-      holderOptionError.value = '';
-    }
-  } catch {
-    if (
-      actor !== identity.value ||
-      generation !==
-        (kind === 'customer' ? customerOptionRequest : holderOptionRequest)
-    )
-      return;
-    if (kind === 'customer') {
-      customerOptions.value = customerOptions.value.filter(
-        (item) => item.id === customerDraft.value,
-      );
-      customerOptionError.value = '客户候选读取失败，请重试。';
-    } else {
-      holderOptions.value = holderOptions.value.filter(
-        (item) => item.id === holderDraft.value,
-      );
-      holderOptionError.value = '权利主体候选读取失败，请重试。';
-    }
-  }
-}
-watch(
-  () => [
-    identity.value,
-    selectedStage.value,
-    route.query.q,
-    route.query.customerId,
-    route.query.rightsHolderId,
-    route.query.shopName,
-  ],
+  () => [identity.value, selectedStage.value, route.query.q],
   () => {
     queryDraft.value = typeof route.query.q === 'string' ? route.query.q : '';
-    const nextCustomerId =
-      typeof route.query.customerId === 'string' ? route.query.customerId : '';
-    const nextHolderId =
-      typeof route.query.rightsHolderId === 'string'
-        ? route.query.rightsHolderId
-        : '';
-    const previousCustomerId = customerDraft.value;
-    const previousHolderId = holderDraft.value;
-    customerDraft.value = nextCustomerId;
-    holderDraft.value = nextHolderId;
-    if (nextCustomerId && nextCustomerId !== previousCustomerId)
-      void restoreSelectedFilterOption('customer', nextCustomerId);
-    else if (!nextCustomerId && previousCustomerId) {
-      customerResolveRequest += 1;
-      customerOptions.value = customerOptions.value.filter(
-        (item) => item.id !== previousCustomerId,
-      );
-    }
-    if (nextHolderId && nextHolderId !== previousHolderId)
-      void restoreSelectedFilterOption('rightsHolder', nextHolderId);
-    else if (!nextHolderId && previousHolderId) {
-      holderResolveRequest += 1;
-      holderOptions.value = holderOptions.value.filter(
-        (item) => item.id !== previousHolderId,
-      );
-    }
-    shopDraft.value =
-      typeof route.query.shopName === 'string' ? route.query.shopName : '';
   },
   { immediate: true },
 );
 function applyFilters(clear = false) {
   if (clear) {
-    customerOptionRequest += 1;
-    holderOptionRequest += 1;
-    customerResolveRequest += 1;
-    holderResolveRequest += 1;
     queryDraft.value = '';
-    customerDraft.value = '';
-    holderDraft.value = '';
-    shopDraft.value = '';
-    customerSearch.value = '';
-    holderSearch.value = '';
     queryFormError.value = '';
   }
   const q = clear ? '' : queryDraft.value.trim();
@@ -489,15 +259,36 @@ function applyFilters(clear = false) {
     ...route.query,
     page: '1',
   };
-  delete query.customerId;
-  delete query.rightsHolderId;
-  delete query.shopName;
+  if (clear) {
+    delete query.customerId;
+    delete query.rightsHolderId;
+    delete query.shopName;
+  }
   delete query.q;
   if (q) query.q = q;
-  if (!clear && customerDraft.value) query.customerId = customerDraft.value;
-  if (!clear && holderDraft.value) query.rightsHolderId = holderDraft.value;
-  if (!clear && shopDraft.value.trim()) query.shopName = shopDraft.value.trim();
   void router.push({ query });
+}
+const legacyFilters = computed(() => [
+  ...(typeof route.query.customerId === 'string'
+    ? [{ key: 'customerId', label: '客户', value: route.query.customerId }]
+    : []),
+  ...(typeof route.query.rightsHolderId === 'string'
+    ? [
+        {
+          key: 'rightsHolderId',
+          label: '权利主体',
+          value: route.query.rightsHolderId,
+        },
+      ]
+    : []),
+  ...(typeof route.query.shopName === 'string'
+    ? [{ key: 'shopName', label: '店铺名', value: route.query.shopName }]
+    : []),
+]);
+async function removeLegacyFilter(key: string): Promise<void> {
+  const query = { ...route.query, page: '1' };
+  Reflect.deleteProperty(query, key);
+  await router.push({ query });
 }
 const requestedPage = computed(() => {
   const value = Array.isArray(route.query.page)
@@ -543,13 +334,17 @@ const visibleColumns = computed(() =>
 );
 const tableWidth = computed(
   () =>
-    48 +
-    160 +
+    80 +
+    actionColumnWidth.value +
     visibleColumns.value.reduce(
       (width, column) => width + columnWidth(column),
       0,
     ),
 );
+const hasMatterActions = computed(() =>
+  items.value.some((matter) => matterActions(matter).length > 0),
+);
+const actionColumnWidth = computed(() => (hasMatterActions.value ? 160 : 0));
 const caseStageLabels: Record<CaseStage, string> = {
   PENDING_MATCH: '待匹配',
   WAITING_COMPLAINT: '待写诉状',
@@ -789,6 +584,10 @@ function buildExportScope(): NotaryListExportScope | null {
     };
   }
   return null;
+}
+
+function clearSelectionOnly(): void {
+  selectedIds.value = [];
 }
 
 function invalidateExport(): void {
@@ -1298,91 +1097,57 @@ onBeforeUnmount(() => {
       <h1 class="sr-only">公证阶段</h1>
       <ListHeaderSearch
         v-model="queryDraft"
-        placeholder="按公证编号、线索编号或店铺名称搜索"
+        placeholder="按客户、权利主体、店铺名、公证编号或线索编号搜索"
         @search="applyFilters()"
       />
-      <form
-        class="notary-filter-grid"
-        aria-label="公证事项筛选"
-        @submit.prevent="applyFilters()"
+      <div
+        v-if="legacyFilters.length"
+        class="legacy-filter-chips"
+        aria-label="旧链接中的筛选条件"
       >
-        <label class="filter-search-select"
-          ><span>客户</span
-          ><ElSelect
-            v-model="customerDraft"
-            aria-label="筛选客户"
-            data-test="notary-customer-filter"
-            filterable
-            remote
-            clearable
-            :remote-method="
-              (query) => {
-                customerSearch = query;
-                searchFilterOptions('customer');
-              }
-            "
-            placeholder="搜索客户"
-            ><ElOption
-              v-for="item in customerOptions"
-              :key="`${item.id}:${item.name}`"
-              :label="item.name"
-              :value="item.id" /></ElSelect
-          ><small
-            v-if="customerOptionError"
-            class="filter-option-error"
-            role="alert"
-            >{{ customerOptionError }}</small
-          ></label
+        <span>旧链接筛选条件：</span>
+        <span
+          v-for="filter in legacyFilters"
+          :key="filter.key"
+          class="legacy-filter-chip"
+          data-test="legacy-filter-chip"
         >
-        <label class="filter-search-select"
-          ><span>权利主体</span
-          ><ElSelect
-            v-model="holderDraft"
-            aria-label="筛选权利主体"
-            data-test="notary-holder-filter"
-            filterable
-            remote
-            clearable
-            :remote-method="
-              (query) => {
-                holderSearch = query;
-                searchFilterOptions('rightsHolder');
-              }
-            "
-            placeholder="搜索权利主体"
-            ><ElOption
-              v-for="item in holderOptions"
-              :key="`${item.id}:${item.name}`"
-              :label="item.name"
-              :value="item.id" /></ElSelect
-          ><small
-            v-if="holderOptionError"
-            class="filter-option-error"
-            role="alert"
-            >{{ holderOptionError }}</small
-          ></label
-        >
-        <label
-          >店铺名称<input
-            v-model="shopDraft"
-            data-test="notary-shop-filter"
-            maxlength="200"
-        /></label>
-      </form>
+          {{ filter.label }}：{{ filter.value }}
+          <button
+            type="button"
+            :aria-label="`移除${filter.label}条件`"
+            @click="removeLegacyFilter(filter.key)"
+          >
+            ×
+          </button>
+        </span>
+      </div>
       <p v-if="queryFormError" role="alert">{{ queryFormError }}</p>
       <section
         class="export-panel business-list-toolbar"
         aria-label="公证事项清单导出"
       >
         <div class="export-actions">
-          <ElButton data-test="notary-search" @click="applyFilters()"
-            >查询</ElButton
-          >
           <ElButton
             native-type="button"
             data-test="notary-clear-filters"
             @click="applyFilters(true)"
             >清除筛选</ElButton
+          >
+          <ElButton
+            v-if="selectedIds.length > 0"
+            data-test="clear-selection"
+            :disabled="
+              batchOpen ||
+              openingBatchOpen ||
+              !!pendingBatchForScope ||
+              workflowOpen ||
+              exportLoading ||
+              exportOpen ||
+              !!exportPreview
+            "
+            @click="clearSelectionOnly"
+            >清除选择</ElButton
           >
           <span data-test="selected-count"
             >已选择 {{ selectedIds.length }} 项</span
@@ -1544,7 +1309,7 @@ onBeforeUnmount(() => {
       >
         <div class="column-settings-fixed">
           <strong>始终显示</strong>
-          <span>选择、操作、案件进展</span>
+          <span>选择、操作（有可办理项时显示）、案件进展</span>
         </div>
         <div class="column-settings-options">
           <div
@@ -1658,8 +1423,11 @@ onBeforeUnmount(() => {
             :style="{ minWidth: `${tableWidth}px` }"
           >
             <colgroup>
-              <col style="width: 48px" />
-              <col style="width: 160px" />
+              <col style="width: 80px" />
+              <col
+                v-if="hasMatterActions"
+                :style="{ width: `${actionColumnWidth}px` }"
+              />
               <col
                 v-for="column in visibleColumns"
                 :key="column"
@@ -1690,7 +1458,9 @@ onBeforeUnmount(() => {
                     "
                   />选择
                 </th>
-                <th class="business-list-cell--nowrap">操作</th>
+                <th v-if="hasMatterActions" class="business-list-cell--nowrap">
+                  操作
+                </th>
                 <th
                   v-for="column in visibleColumns"
                   :key="column"
@@ -1736,7 +1506,10 @@ onBeforeUnmount(() => {
                     "
                   />
                 </td>
-                <td class="business-list-cell--nowrap notary-actions">
+                <td
+                  v-if="hasMatterActions"
+                  class="business-list-cell--nowrap notary-actions"
+                >
                   <div>
                     <ElButton
                       v-for="action in matterActions(matter)"
@@ -1866,26 +1639,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.filter-search-select {
-  display: grid;
-  grid-template-columns: minmax(110px, 1fr) minmax(120px, 1fr);
-  gap: 4px 6px;
-  align-items: center;
-}
-.filter-search-select > span {
-  grid-column: 1 / -1;
-}
-.filter-option-error {
-  grid-column: 1 / -1;
-  color: var(--color-danger);
-}
-.filter-search-select > input,
-.filter-search-select > select,
-.filter-search-select > :deep(.el-select) {
-  min-width: 0;
-  width: 100%;
-}
-
 .demo-table.business-list-table {
   table-layout: fixed;
   font-size: 12px;
@@ -1899,7 +1652,7 @@ onBeforeUnmount(() => {
   margin-left: 0.75rem;
 }
 .notary-actions :deep(.el-button) {
-  min-width: 80px;
+  min-width: 56px;
   height: 32px;
   padding: 0 8px;
 }
@@ -1952,25 +1705,6 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
   width: 100%;
 }
-.notary-filter-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  align-items: end;
-  gap: 8px 12px;
-  margin-bottom: 12px;
-}
-.notary-filter-grid > label {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  color: var(--color-ink-muted);
-  font-size: 12px;
-}
-.notary-filter-grid > label > input {
-  width: 100%;
-  min-width: 0;
-}
-
 .export-options {
   align-items: flex-start;
   flex-direction: column;
@@ -2003,17 +1737,6 @@ onBeforeUnmount(() => {
   flex: 1;
   gap: 0.5rem;
 }
-@media (max-width: 900px) {
-  .notary-filter-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-@media (max-width: 600px) {
-  .notary-filter-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 .column-settings-actions {
   margin-top: 1rem;
 }

@@ -2,7 +2,6 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import { ElSelect } from 'element-plus/es/components/select/index.mjs';
 import { useAuthStore } from '../../stores/auth';
 import { ApiError } from '../../api/http';
 import NotaryMatterListPage from './NotaryMatterListPage.vue';
@@ -65,7 +64,7 @@ const businessHeaders = [
   '调查费',
   '样品费',
 ];
-const defaultHeaders = ['选择', '操作', '案件进展', ...businessHeaders];
+const defaultHeaders = ['选择', '案件进展', ...businessHeaders];
 function preferenceWithLegacyOrder(
   order: Array<
     'businessNo' | 'stage' | 'sourceLead' | 'notaryOffice' | 'createdAt'
@@ -205,44 +204,40 @@ async function mountPage(path: string) {
   return { wrapper, router, auth };
 }
 
-afterEach(() => vi.resetAllMocks());
+afterEach(() => {
+  vi.resetAllMocks();
+  globalThis.sessionStorage.clear();
+});
 
 describe('NotaryMatterListPage', () => {
-  it('combines searched customer, subject and shop with the current stage and export scope', async () => {
+  it('uses one search and keeps legacy filters visible, removable and aligned with filtered export', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
-    filterApi.listLeadFilterOptions.mockImplementation(
-      async (kind: string) => ({
-        items:
-          kind === 'customer'
-            ? [{ id: 'customer-1', name: '客户甲' }]
-            : [{ id: 'holder-1', name: '主体甲' }],
-      }),
-    );
     exportApi.preview.mockResolvedValue({ count: 1, maxRows: 1000 });
     const { wrapper, router } = await mountPage(
-      '/notary-matters?stage=PENDING_EVIDENCE',
+      '/notary-matters?stage=PENDING_EVIDENCE&page=2&q=旧词&customerId=customer-private-id&rightsHolderId=holder-private-id&shopName=旧店铺',
     );
-    await wrapper.get('[role="search"] input').setValue('公证编号');
-    wrapper.findAllComponents(ElSelect)[0]?.vm.$props.remoteMethod?.('客户');
-    await flushPromises();
-    wrapper
-      .findAllComponents(ElSelect)[0]
-      ?.vm.$emit('update:modelValue', 'customer-1');
-    wrapper.findAllComponents(ElSelect)[1]?.vm.$props.remoteMethod?.('主体');
-    await flushPromises();
-    wrapper
-      .findAllComponents(ElSelect)[1]
-      ?.vm.$emit('update:modelValue', 'holder-1');
-    await wrapper.get('[data-test="notary-shop-filter"]').setValue('店铺');
+    expect(wrapper.findAll('[role="search"] input')).toHaveLength(1);
+    expect(wrapper.find('[data-test="notary-customer-filter"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="notary-holder-filter"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="notary-shop-filter"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="notary-search"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-test="legacy-filter-chip"]')).toHaveLength(3);
+    await wrapper.get('[role="search"] input').setValue('新关键词');
     await wrapper.get('form[role="search"]').trigger('submit');
     await flushPromises();
     expect(router.currentRoute.value.query).toMatchObject({
       stage: 'PENDING_EVIDENCE',
-      q: '公证编号',
-      customerId: 'customer-1',
-      rightsHolderId: 'holder-1',
-      shopName: '店铺',
       page: '1',
+      q: '新关键词',
+      customerId: 'customer-private-id',
+      rightsHolderId: 'holder-private-id',
+      shopName: '旧店铺',
     });
     expect(api.listNotaryMatters).toHaveBeenLastCalledWith(
       1,
@@ -250,19 +245,10 @@ describe('NotaryMatterListPage', () => {
       expect.anything(),
       'PENDING_EVIDENCE',
       {
-        q: '公证编号',
-        customerId: 'customer-1',
-        rightsHolderId: 'holder-1',
-        shopName: '店铺',
-      },
-    );
-    expect(filterApi.listLeadFilterOptions).toHaveBeenCalledWith(
-      'customer',
-      '客户',
-      {},
-      {
-        context: 'NOTARY',
-        notaryStage: 'PENDING_EVIDENCE',
+        q: '新关键词',
+        customerId: 'customer-private-id',
+        rightsHolderId: 'holder-private-id',
+        shopName: '旧店铺',
       },
     );
     await wrapper.get('[data-test="export-open"]').trigger('click');
@@ -273,146 +259,26 @@ describe('NotaryMatterListPage', () => {
       {
         mode: 'FILTERED',
         stage: 'PENDING_EVIDENCE',
-        q: '公证编号',
-        customerId: 'customer-1',
-        rightsHolderId: 'holder-1',
-        shopName: '店铺',
+        q: '新关键词',
+        customerId: 'customer-private-id',
+        rightsHolderId: 'holder-private-id',
+        shopName: '旧店铺',
       },
       expect.anything(),
     );
+    await wrapper.get('[aria-label="移除客户条件"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.query.customerId).toBeUndefined();
+    expect(router.currentRoute.value.query.rightsHolderId).toBe(
+      'holder-private-id',
+    );
+    expect(filterApi.listLeadFilterOptions).not.toHaveBeenCalled();
     await wrapper.get('[data-test="notary-clear-filters"]').trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.query).toEqual({
       stage: 'PENDING_EVIDENCE',
       page: '1',
     });
-    expect(api.listNotaryMatters).toHaveBeenLastCalledWith(
-      1,
-      20,
-      expect.anything(),
-      'PENDING_EVIDENCE',
-    );
-    expect(
-      (wrapper.get('[role="search"] input').element as HTMLInputElement).value,
-    ).toBe('');
-  });
-  it('restores selected filter names by ID within the current notary stage', async () => {
-    api.listNotaryMatters.mockResolvedValue(result);
-    filterApi.listLeadFilterOptions.mockImplementation(
-      async (
-        kind: string,
-        _q: string,
-        _options: unknown,
-        scope: { selectedId?: string },
-      ) => ({
-        items: scope.selectedId
-          ? [
-              {
-                id: scope.selectedId,
-                name: kind === 'customer' ? '恢复客户甲' : '恢复主体甲',
-              },
-            ]
-          : [],
-      }),
-    );
-    const { wrapper } = await mountPage(
-      '/notary-matters?stage=PENDING_EVIDENCE&customerId=customer-private-id&rightsHolderId=holder-private-id',
-    );
-    await flushPromises();
-    expect(
-      wrapper.get('[data-test="notary-customer-filter"]').text(),
-    ).toContain('恢复客户甲');
-    expect(wrapper.get('[data-test="notary-holder-filter"]').text()).toContain(
-      '恢复主体甲',
-    );
-    expect(wrapper.text()).not.toContain('customer-private-id');
-    expect(wrapper.text()).not.toContain('holder-private-id');
-    expect(filterApi.listLeadFilterOptions).toHaveBeenCalledWith(
-      'customer',
-      '',
-      {},
-      {
-        context: 'NOTARY',
-        notaryStage: 'PENDING_EVIDENCE',
-        selectedId: 'customer-private-id',
-      },
-    );
-    expect(filterApi.listLeadFilterOptions).toHaveBeenCalledWith(
-      'rightsHolder',
-      '',
-      {},
-      {
-        context: 'NOTARY',
-        notaryStage: 'PENDING_EVIDENCE',
-        selectedId: 'holder-private-id',
-      },
-    );
-  });
-  it('keeps a restored filter when it has no option in the newly selected stage', async () => {
-    api.listNotaryMatters.mockResolvedValue(result);
-    filterApi.listLeadFilterOptions.mockImplementation(
-      async (
-        _kind: string,
-        _q: string,
-        _options: unknown,
-        scope: { selectedId?: string; notaryStage?: string },
-      ) => ({
-        items:
-          scope.notaryStage === 'PENDING_EVIDENCE' && scope.selectedId
-            ? [{ id: scope.selectedId, name: '阶段内客户甲' }]
-            : [],
-      }),
-    );
-    const { wrapper, router } = await mountPage(
-      '/notary-matters?stage=PENDING_EVIDENCE&customerId=customer-private-id',
-    );
-    await flushPromises();
-    await router.push(
-      '/notary-matters?stage=WAITING_UNBOX&customerId=customer-private-id',
-    );
-    await flushPromises();
-    expect(router.currentRoute.value.query.customerId).toBe(
-      'customer-private-id',
-    );
-    expect(
-      wrapper.get('[data-test="notary-customer-filter"]').text(),
-    ).toContain('当前阶段无可见客户');
-    expect(wrapper.text()).not.toContain('customer-private-id');
-  });
-  it('ignores a late restored-name response after the selected ID changes', async () => {
-    api.listNotaryMatters.mockResolvedValue(result);
-    let resolveOld:
-      ((value: { items: { id: string; name: string }[] }) => void) | undefined;
-    filterApi.listLeadFilterOptions.mockImplementation(
-      async (
-        _kind: string,
-        _q: string,
-        _options: unknown,
-        scope: { selectedId?: string },
-      ) => {
-        if (scope.selectedId === 'customer-old-id')
-          return await new Promise((resolve) => {
-            resolveOld = resolve;
-          });
-        return {
-          items: scope.selectedId
-            ? [{ id: scope.selectedId, name: '新客户名称' }]
-            : [],
-        };
-      },
-    );
-    const { wrapper, router } = await mountPage(
-      '/notary-matters?customerId=customer-old-id',
-    );
-    await router.push('/notary-matters?customerId=customer-new-id');
-    await flushPromises();
-    resolveOld?.({ items: [{ id: 'customer-old-id', name: '旧客户名称' }] });
-    await flushPromises();
-    expect(
-      wrapper.get('[data-test="notary-customer-filter"]').text(),
-    ).toContain('新客户名称');
-    expect(wrapper.text()).not.toContain('旧客户名称');
-    expect(wrapper.text()).not.toContain('customer-new-id');
   });
   it('clicks a real list action, chooses a destination and refreshes the same page/query once', async () => {
     const item = {
@@ -516,7 +382,7 @@ describe('NotaryMatterListPage', () => {
     wrapper.unmount();
   });
 
-  it('renders the seventeen Demo columns from the exact source and preserves business dates', async () => {
+  it('renders compact columns when no row has an operation and preserves business dates', async () => {
     api.listNotaryMatters.mockResolvedValue({
       ...result,
       items: [
@@ -540,9 +406,9 @@ describe('NotaryMatterListPage', () => {
     expect(row.get('[data-column="shopExternalId"]').text()).toBe('TB-001');
     expect(row.get('[data-column="transferredAt"]').text()).toBe('2026-09-25');
     expect(row.get('[data-column="evidenceAt"]').text()).toBe('2026-09-26');
-    expect(row.findAll('td')[2]?.text()).toContain('待取证');
+    expect(row.findAll('td')[1]?.text()).toContain('待取证');
     expect(row.text()).not.toContain('NT-001');
-    expect(wrapper.findAll('colgroup col')).toHaveLength(17);
+    expect(wrapper.findAll('colgroup col')).toHaveLength(16);
     expect(wrapper.get('.business-list-scroll').attributes('tabindex')).toBe(
       '0',
     );
@@ -764,8 +630,9 @@ describe('NotaryMatterListPage', () => {
     );
     expect(wrapper.find('[data-test="matter-link"]').exists()).toBe(false);
     expect(
-      wrapper.get('[data-test="matter-row"] .notary-actions').findAll('a'),
-    ).toHaveLength(0);
+      wrapper.find('[data-test="matter-row"] .notary-actions').exists(),
+    ).toBe(false);
+    expect(wrapper.find('thead th').text()).not.toContain('操作');
     expect(
       wrapper.get('[data-test="source-lead-link"]').attributes('href'),
     ).toBe('/leads/lead-1');
@@ -776,18 +643,19 @@ describe('NotaryMatterListPage', () => {
     const { wrapper, router } = await mountPage(
       '/notary-matters?stage=PENDING_EVIDENCE&page=2&q=公证编号',
     );
-    const filters = wrapper.get('form[aria-label="公证事项筛选"]');
     const toolbar = wrapper.get('.export-panel');
     const row = wrapper.get('[data-test="matter-row"]');
     expect(
-      filters.element.compareDocumentPosition(toolbar.element) &
+      wrapper
+        .get('[role="search"]')
+        .element.compareDocumentPosition(toolbar.element) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
       toolbar.element.compareDocumentPosition(row.element) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(toolbar.find('[data-test="notary-search"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="notary-search"]').exists()).toBe(false);
     expect(toolbar.find('[data-test="notary-clear-filters"]').exists()).toBe(
       true,
     );
@@ -796,6 +664,14 @@ describe('NotaryMatterListPage', () => {
     expect(row.find('.notary-actions a').exists()).toBe(false);
     const returnPath = router.currentRoute.value.fullPath;
     await row.get('[data-test="select-matter"]').setValue(true);
+    expect(wrapper.findAll('[data-test="clear-selection"]')).toHaveLength(1);
+    const listCallsBeforeClear = api.listNotaryMatters.mock.calls.length;
+    await wrapper.get('[data-test="clear-selection"]').trigger('click');
+    expect(wrapper.get('[data-test="selected-count"]').text()).toContain(
+      '0 项',
+    );
+    expect(api.listNotaryMatters).toHaveBeenCalledTimes(listCallsBeforeClear);
+    expect(wrapper.findAll('[data-test="clear-selection"]')).toHaveLength(0);
     expect(router.currentRoute.value.path).toBe('/notary-matters');
     await row.trigger('click');
     await flushPromises();
@@ -1379,7 +1255,7 @@ describe('NotaryMatterListPage', () => {
     expect(wrapper.get('[data-test="matter-row"]').text()).toContain('已归档');
   });
 
-  it('opens all seventeen optional settings and keeps selection, operations and progress fixed', async () => {
+  it('opens optional settings and keeps selection, operations and progress rules fixed', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     const { wrapper } = await mountPage('/notary-matters');
     await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
@@ -1424,7 +1300,7 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[data-column-key="rightsHolder"]').setValue(false);
     await wrapper.get('[data-test="cancel-columns"]').trigger('click');
     expect(preferenceApi.save).not.toHaveBeenCalled();
-    expect(wrapper.findAll('thead th')).toHaveLength(17);
+    expect(wrapper.findAll('thead th')).toHaveLength(16);
   });
 
   it('keeps the saved columns and draft after a save failure', async () => {
@@ -1435,7 +1311,7 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[data-column-key="rightsHolder"]').setValue(false);
     await wrapper.get('[data-test="save-columns"]').trigger('click');
     await flushPromises();
-    expect(wrapper.findAll('thead th')).toHaveLength(17);
+    expect(wrapper.findAll('thead th')).toHaveLength(16);
     expect(
       wrapper.get('[data-column-key="rightsHolder"]').element,
     ).toMatchObject({ checked: false });
@@ -1470,7 +1346,7 @@ describe('NotaryMatterListPage', () => {
     preferenceApi.get.mockRejectedValueOnce(new Error('offline'));
     const { wrapper } = await mountPage('/notary-matters');
     expect(wrapper.findAll('[data-test="matter-row"]')).toHaveLength(1);
-    expect(wrapper.findAll('thead th')).toHaveLength(17);
+    expect(wrapper.findAll('thead th')).toHaveLength(16);
     expect(
       wrapper
         .get('[data-test="column-settings-toggle"]')
@@ -1636,6 +1512,12 @@ describe('NotaryMatterListPage', () => {
     await flushPromises();
     await wrapper.get('[data-test="select-matter"]').setValue(true);
     expect(wrapper.text()).toContain('已选择 2 项');
+    const listCallsBeforeClear = api.listNotaryMatters.mock.calls.length;
+    await wrapper.get('[data-test="clear-selection"]').trigger('click');
+    expect(wrapper.text()).toContain('已选择 0 项');
+    expect(api.listNotaryMatters).toHaveBeenCalledTimes(listCallsBeforeClear);
+    expect(wrapper.findAll('[data-test="clear-selection"]')).toHaveLength(0);
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
     await router.push({ query: { stage: 'WAITING_RETURN' } });
     await flushPromises();
     expect(wrapper.text()).toContain('已选择 0 项');
