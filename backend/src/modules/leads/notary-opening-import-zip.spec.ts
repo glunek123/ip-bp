@@ -27,6 +27,17 @@ describe('opening import ZIP boundary', () => {
     expect(() =>
       parseOpeningImportZip(archive({ 'parcel/a.jpg': png })),
     ).toThrow();
+    try {
+      parseOpeningImportZip(
+        archive({ 'parcel/bad.png': Uint8Array.from([1, 2, 3, 4]) }),
+      );
+      throw new Error('Expected bad signature rejection');
+    } catch (error) {
+      expect(error).toMatchObject({
+        status: 400,
+        response: { code: 'INVALID_ZIP' },
+      });
+    }
     expect(() =>
       parseOpeningImportZip(
         archive({ 'parcel/é.png': png, 'parcel/e\u0301.png': png }),

@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { unzipSync } from 'fflate';
-import { detectMimeType } from '../materials';
+import { BlobValidationError, detectMimeType } from '../materials';
 
 export type ImportFolder = {
   name: string;
@@ -138,7 +138,13 @@ export function parseOpeningImportZip(bytes: Buffer): ImportFolder[] {
       actualTotal > 100 * 1024 * 1024
     )
       throw invalid();
-    const mimeType = detectMimeType(photo.subarray(0, 12));
+    let mimeType: string;
+    try {
+      mimeType = detectMimeType(photo.subarray(0, 12));
+    } catch (error) {
+      if (error instanceof BlobValidationError) throw invalid();
+      throw error;
+    }
     const extension = parts[1].split('.').pop()?.toLowerCase();
     if (
       !['image/jpeg', 'image/png', 'image/webp'].includes(mimeType) ||

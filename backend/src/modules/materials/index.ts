@@ -1,6 +1,7 @@
 export { MaterialModule } from './material.module';
 export { MaterialService } from './material.service';
 export { PRIVATE_BLOB_STORAGE } from './private-blob-storage';
+export { BlobValidationError } from './private-blob-storage';
 export type { PrivateBlobStorage } from './private-blob-storage';
 export { detectMimeType } from './file-signature';
 export type { StagedOpeningPhoto } from './material.service';
