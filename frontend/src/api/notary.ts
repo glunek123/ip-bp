@@ -363,6 +363,10 @@ export type NotaryDetailFacts = {
     caseType: LeadCaseType | null;
     source: LeadSource | null;
     foundAt: string | null;
+    platform: LeadPlatform | null;
+    shopName: string | null;
+    shopExternalId: { value: string | null; provenance: 'CURRENT_LEAD' };
+    needDisclose: { value: boolean | null; provenance: 'CURRENT_LEAD' };
     responsibleOperator: {
       id: string;
       name: string | null;
@@ -1044,6 +1048,22 @@ function isDetailFacts(value: unknown): value is NotaryDetailFacts {
     'PORTRAIT_RIGHT',
     'OTHER',
   ];
+  const platforms: readonly LeadPlatform[] = [
+    'TAOBAO',
+    'TMALL',
+    'PINDUODUO',
+    'JD',
+    'DOUYIN',
+    'ALIBABA_1688',
+    'XIAOHONGSHU',
+    'KUAISHOU',
+    'XIANYU',
+    'WECHAT',
+    'MEITUAN',
+    'DIANPING',
+    'MAP',
+    'OTHER',
+  ];
   if (
     !isRecord(source) ||
     !exactKeys(source, [
@@ -1052,6 +1072,10 @@ function isDetailFacts(value: unknown): value is NotaryDetailFacts {
       'caseType',
       'source',
       'foundAt',
+      'platform',
+      'shopName',
+      'shopExternalId',
+      'needDisclose',
       'responsibleOperator',
       'infringements',
       'remark',
@@ -1070,10 +1094,25 @@ function isDetailFacts(value: unknown): value is NotaryDetailFacts {
     (source.foundAt !== null &&
       (typeof source.foundAt !== 'string' ||
         Number.isNaN(Date.parse(source.foundAt)))) ||
+    (source.platform !== null &&
+      !platforms.some((item) => item === source.platform)) ||
+    (source.shopName !== null && !nonBlank(source.shopName)) ||
+    !isRecord(source.shopExternalId) ||
+    !exactKeys(source.shopExternalId, ['value', 'provenance']) ||
+    (source.shopExternalId.value !== null &&
+      typeof source.shopExternalId.value !== 'string') ||
+    source.shopExternalId.provenance !== 'CURRENT_LEAD' ||
+    !isRecord(source.needDisclose) ||
+    !exactKeys(source.needDisclose, ['value', 'provenance']) ||
+    (source.needDisclose.value !== null &&
+      typeof source.needDisclose.value !== 'boolean') ||
+    source.needDisclose.provenance !== 'CURRENT_LEAD' ||
     (source.snapshotState === 'KNOWN' &&
       (source.caseType === null ||
         source.source === null ||
-        source.foundAt === null)) ||
+        source.foundAt === null ||
+        source.platform === null ||
+        source.shopName === null)) ||
     !isRecord(source.responsibleOperator) ||
     !exactKeys(source.responsibleOperator, ['id', 'name', 'provenance']) ||
     !nonBlank(source.responsibleOperator.id) ||

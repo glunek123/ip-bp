@@ -279,6 +279,10 @@ describe('notary operational display contract', () => {
           caseType: 'CIVIL',
           source: 'ONLINE',
           foundAt: matter.createdAt,
+          platform: 'TAOBAO',
+          shopName: '原店铺',
+          shopExternalId: { value: null, provenance: 'CURRENT_LEAD' },
+          needDisclose: { value: false, provenance: 'CURRENT_LEAD' },
           responsibleOperator: {
             id: 'operator-1',
             name: '当前运营',
