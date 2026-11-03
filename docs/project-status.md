@@ -1,3 +1,17 @@
+# 2026-11-03 用户关机暂停：断点已保存，等待“继续”
+
+用户明确要求暂停并保存断点。程序／构建候选为 `0ad43ae86e77c556a5ef70d54a11ba06cb471d93`，分支 `codex/ops-batch-a-20261103`，工作树仍为 `C:\Users\97830\.codex\worktrees\ops-batch-a-20261103\dev_cor`。本段及对应快照只记录暂停，不改变程序。原待部署候选 `de4b600ba7471c7180408accdfa19c48134d74c8` 和原包 SHA256 `1b5ede7d4f6133330a78d22e9bb7e3d0679182295d820ce227cdc66aef1e0f5f` 再核未变；未推送、合并或部署。
+
+B 已通过专项验收。C 已实现，克隆库 OID185042 已正式271迁移；真实 ZIP 原键恢复、预览前零正式材料、单组页面成功、人工改号重匹配、部分冲突、真实晚失败回滚及原命令成功／重放已验。当前批次 `fff4a1cc-185d-4c0e-b847-eae7eb1dd8da` 为3项COMMITTED（unique、partial-failure、manual-correction），3项READY（duplicate、recognition-failed、no-match）。不能把尚未操作的3项写成页面通过。
+
+工程结果：正式 `pnpm verify` 保留exit1记录（`.local/ops-bc/abc-verify-stable.log`）；前端3970／工具421通过，后端初轮4276／4279通过。旧权限数102断言已按唯一新增 `LEAD_EVIDENCE_CONFIRM_PROXY` 修为103，组织服务35／35补测通过；另两项旧迁移因默认`.env.test`入口不适用于获批环境，已由独立审查核对同SQL／断言的克隆库强身份适配探针exit0，公共目录／账本／226表数据摘要不变。不得表述为原verify单次全绿。最后仅后端该测试及快照变化，其他未变输入结果复用；双构建通过，见 `.local/ops-bc/abc-catalog-focused.log`、`abc-build-complete.log`。C源码独立审查问题已关闭，但最终功能／组合签收仍待页面复验。
+
+暂停时5174／3101、5175／3102、5176／3103本轮应用服务均已停止并核对无监听。Docker合成数据库及数据卷保留。完整私有断点 `.local/ops-bc/PAUSE-20261103.json`；已另存受限权限的关机恢复目录 `C:\Users\97830\.codex\local-recovery\ops-bc-20261103-shutdown-private`，含当前源码归档、B/C数据库一致快照、私有材料与原证据。数据库备份SHA256 `83a7466a7a6ad25a6ca754ca7eff5bd5ad72dded18cae452dc2792e87e2ab6a9`。该目录含本机合成凭据，**不是交付包，不得推送或外发**。
+
+恢复时只读核实当前Git差异、原CID／新库OID185042和271迁移、材料根及已保存请求；只用当前分支，不取D盘旧工作树。已有构建绑定在 `.local/ops-bc/c-build-runtime-binding-final.json`；旧launcher固定旧HEAD且有stop标记，不直接重启。核实暂停文档之外无程序漂移后，用现有 `prepare-runtime.cjs` 创建新后缀的本机运行绑定，继续localhost5176／API3103、同一克隆库和MOCK模式。若身份不符先只读排查，不重置或改守卫。
+
+剩余必要任务：①完成最终构建上的3项人工指定／页面验证和A/B/C受影响复验；②先通过页面给duplicate选择真实可办目标，再执行只读范围收窄投影探针（输入 `.local/ops-bc/c-read-projection-input.json`，模板在worker `.local/ops-bc/probe-c-read-projection.cjs`，尚未运行）；③整理C永久证据与最终独立签收，报告拟推送分支、main目标及版本／风险，等用户确认再推送合并。已完成的回滚探针输入对应事项现已COMMITTED，不重跑该写入生成探针；只能按保存的原body/key核对。批次有效期至2026-11-04 17:21（北京时间），过期先查事实，不改库延长。真实模型／真实面单仍不启用，物理暂存清理策略仍列后续确认。
+
 # 2026-11-03 B 专项通过，C 开始：不推送、不合并、不部署
 
 B 专项候选 `61ade7c6187ce52e4f7f92ab96363c1e06bed17f` 已通过真实API、数据库回滚／重放／权限、正式270项迁移及详情页面验证，独立审查 ACCEPTED，未关闭C0/I0/M0；准确版本复用与未验证项见[验证记录](spec/v0.1/VALIDATION.md)。永久证据 `C:\Users\97830\.codex\acceptance\ops-batch-b-20261103-61ade7c6`，摘要SHA256 `c090f4804faf2c6321b147b18047f08ee91f64fbf496ceddc3712f3c8b43e2ef`。B/C预览 `http://localhost:5176`，API3103，新合成库OID185042／270迁移，独立私有材料；运行绑定以 `.local/ops-bc/b-build-runtime-binding-verified.json` 为准。原库不变，原5174保留。
