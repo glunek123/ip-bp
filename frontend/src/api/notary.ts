@@ -1,5 +1,11 @@
 import { ApiError, getJson, requestJson, type RequestOptions } from './http';
-import type { LeadPlatform, LeadProduct } from './leads';
+import type {
+  InfringementType,
+  LeadCaseType,
+  LeadPlatform,
+  LeadProduct,
+  LeadSource,
+} from './leads';
 import type { CaseStage } from './cases';
 
 export type NotaryOffice = {
@@ -313,6 +319,7 @@ export type RecordNotaryEvidenceResult = {
 
 export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> &
   NotaryMatterDisplay & {
+    detailFacts?: NotaryDetailFacts;
     disclosureRequired?: boolean;
     certificateFiles: NotaryCertificateFile[];
     stage:
@@ -348,6 +355,50 @@ export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> &
       mimeType: string;
     }>;
   };
+
+export type NotaryDetailFacts = {
+  source: {
+    snapshotState: 'KNOWN' | 'UNKNOWN_LEGACY';
+    snapshotFields: 'TRANSFER_SNAPSHOT';
+    caseType: LeadCaseType | null;
+    source: LeadSource | null;
+    foundAt: string | null;
+    responsibleOperator: {
+      id: string;
+      name: string | null;
+      provenance: 'CURRENT_NAME';
+    };
+    infringements: { values: InfringementType[]; provenance: 'CURRENT_LEAD' };
+    remark: { value: string | null; provenance: 'CURRENT_LEAD' };
+    leadPushedAt: string | null;
+    screenshots: NotaryOpeningPhoto[];
+    screenshotProvenance: 'TRANSFER_SNAPSHOT';
+  };
+  leadReview:
+    | { state: 'UNKNOWN_LEGACY' }
+    | {
+        state: 'KNOWN';
+        result: 'INFRINGEMENT';
+        actorKind: 'CLIENT' | 'INTERNAL_PROXY';
+        actorDisplayName: string;
+        decidedAt: string;
+        reason: string | null;
+      };
+  archive: null | {
+    kind: 'OPENING_NO_INFRINGEMENT' | 'RETURN' | 'CERTIFICATE';
+    occurredAt: string;
+  };
+  productEstimate: {
+    amount: string;
+    label: 'ESTIMATE';
+    provenance: 'TRANSFER_SNAPSHOT' | 'CURRENT_NOTARY_ROUTINE';
+  };
+  feeTotals: {
+    disclosure: NotaryDisplayFee;
+    knownSubtotal: string;
+    confirmedTotal: string | null;
+  };
+};
 
 function isLogistics(value: unknown): value is NotaryEvidenceLogistics {
   return (
@@ -954,6 +1005,196 @@ function sameIds(left: unknown, right: string[]): boolean {
   );
 }
 
+function isDetailFacts(value: unknown): value is NotaryDetailFacts {
+  if (
+    !isRecord(value) ||
+    !exactKeys(value, [
+      'source',
+      'leadReview',
+      'archive',
+      'productEstimate',
+      'feeTotals',
+    ])
+  )
+    return false;
+  const source = value.source;
+  const review = value.leadReview;
+  const archive = value.archive;
+  const estimate = value.productEstimate;
+  const totals = value.feeTotals;
+  const caseTypes: readonly LeadCaseType[] = [
+    'CIVIL',
+    'CRIMINAL',
+    'ADMINISTRATIVE',
+    'INVESTIGATION',
+    'NOTARIZATION',
+    'HEARING_REPRESENTATION',
+  ];
+  const infringementTypes: readonly InfringementType[] = [
+    'TRADEMARK',
+    'SOFTWARE_COPYRIGHT',
+    'ART_COPYRIGHT',
+    'AUDIOVISUAL_COPYRIGHT',
+    'TEXT_COPYRIGHT',
+    'INVENTION_PATENT',
+    'DESIGN_PATENT',
+    'UTILITY_MODEL_PATENT',
+    'UNFAIR_COMPETITION',
+    'NETWORK_DISSEMINATION',
+    'PORTRAIT_RIGHT',
+    'OTHER',
+  ];
+  if (
+    !isRecord(source) ||
+    !exactKeys(source, [
+      'snapshotState',
+      'snapshotFields',
+      'caseType',
+      'source',
+      'foundAt',
+      'responsibleOperator',
+      'infringements',
+      'remark',
+      'leadPushedAt',
+      'screenshots',
+      'screenshotProvenance',
+    ]) ||
+    (source.snapshotState !== 'KNOWN' &&
+      source.snapshotState !== 'UNKNOWN_LEGACY') ||
+    source.snapshotFields !== 'TRANSFER_SNAPSHOT' ||
+    (source.caseType !== null &&
+      !caseTypes.some((item) => item === source.caseType)) ||
+    (source.source !== null &&
+      source.source !== 'ONLINE' &&
+      source.source !== 'OFFLINE') ||
+    (source.foundAt !== null &&
+      (typeof source.foundAt !== 'string' ||
+        Number.isNaN(Date.parse(source.foundAt)))) ||
+    (source.snapshotState === 'KNOWN' &&
+      (source.caseType === null ||
+        source.source === null ||
+        source.foundAt === null)) ||
+    !isRecord(source.responsibleOperator) ||
+    !exactKeys(source.responsibleOperator, ['id', 'name', 'provenance']) ||
+    !nonBlank(source.responsibleOperator.id) ||
+    (source.responsibleOperator.name !== null &&
+      !nonBlank(source.responsibleOperator.name)) ||
+    source.responsibleOperator.provenance !== 'CURRENT_NAME' ||
+    !isRecord(source.infringements) ||
+    !exactKeys(source.infringements, ['values', 'provenance']) ||
+    !Array.isArray(source.infringements.values) ||
+    !source.infringements.values.every((item) =>
+      infringementTypes.some((type) => type === item),
+    ) ||
+    source.infringements.provenance !== 'CURRENT_LEAD' ||
+    !isRecord(source.remark) ||
+    !exactKeys(source.remark, ['value', 'provenance']) ||
+    (source.remark.value !== null && typeof source.remark.value !== 'string') ||
+    source.remark.provenance !== 'CURRENT_LEAD' ||
+    (source.leadPushedAt !== null &&
+      (typeof source.leadPushedAt !== 'string' ||
+        Number.isNaN(Date.parse(source.leadPushedAt)))) ||
+    !Array.isArray(source.screenshots) ||
+    !source.screenshots.every(
+      (item) =>
+        isRecord(item) &&
+        exactKeys(item, [
+          'materialId',
+          'contentVersionId',
+          'originalFilename',
+          'mimeType',
+        ]) &&
+        nonBlank(item.materialId) &&
+        nonBlank(item.contentVersionId) &&
+        typeof item.originalFilename === 'string' &&
+        typeof item.mimeType === 'string',
+    ) ||
+    source.screenshotProvenance !== 'TRANSFER_SNAPSHOT' ||
+    !isRecord(review) ||
+    (review.state === 'UNKNOWN_LEGACY'
+      ? !exactKeys(review, ['state'])
+      : review.state !== 'KNOWN' ||
+        !exactKeys(review, [
+          'state',
+          'result',
+          'actorKind',
+          'actorDisplayName',
+          'decidedAt',
+          'reason',
+        ]) ||
+        review.result !== 'INFRINGEMENT' ||
+        (review.actorKind !== 'CLIENT' &&
+          review.actorKind !== 'INTERNAL_PROXY') ||
+        !nonBlank(review.actorDisplayName) ||
+        typeof review.decidedAt !== 'string' ||
+        Number.isNaN(Date.parse(review.decidedAt)) ||
+        (review.reason !== null && typeof review.reason !== 'string')) ||
+    (archive !== null &&
+      (!isRecord(archive) ||
+        !exactKeys(archive, ['kind', 'occurredAt']) ||
+        !['OPENING_NO_INFRINGEMENT', 'RETURN', 'CERTIFICATE'].includes(
+          String(archive.kind),
+        ) ||
+        typeof archive.occurredAt !== 'string' ||
+        Number.isNaN(Date.parse(archive.occurredAt)))) ||
+    !isRecord(estimate) ||
+    !exactKeys(estimate, ['amount', 'label', 'provenance']) ||
+    !isMoney(estimate.amount) ||
+    estimate.label !== 'ESTIMATE' ||
+    (estimate.provenance !== 'TRANSFER_SNAPSHOT' &&
+      estimate.provenance !== 'CURRENT_NOTARY_ROUTINE') ||
+    !isRecord(totals) ||
+    !exactKeys(totals, ['disclosure', 'knownSubtotal', 'confirmedTotal']) ||
+    !isDisplayFee(totals.disclosure) ||
+    !isMoney(totals.knownSubtotal) ||
+    (totals.confirmedTotal !== null && !isMoney(totals.confirmedTotal))
+  )
+    return false;
+  return true;
+}
+
+function detailFactsMatch(value: Record<string, unknown>): boolean {
+  if (value.detailFacts === undefined) return true;
+  if (
+    !isDetailFacts(value.detailFacts) ||
+    !isRecord(value.fees) ||
+    !Array.isArray(value.selectedMaterials)
+  )
+    return false;
+  const facts = value.detailFacts;
+  const selectedMaterials = value.selectedMaterials as unknown[];
+  const fees = [
+    value.fees.notary,
+    value.fees.investigation,
+    value.fees.sample,
+    facts.feeTotals.disclosure,
+  ];
+  if (!fees.every(isDisplayFee)) return false;
+  const subtotal = fees.reduce(
+    (sum, fee) =>
+      sum + (fee.state === 'KNOWN' ? BigInt(fee.amount.replace('.', '')) : 0n),
+    0n,
+  );
+  const displayed = `${subtotal / 100n}.${(subtotal % 100n).toString().padStart(2, '0')}`;
+  return (
+    facts.feeTotals.knownSubtotal === displayed &&
+    facts.feeTotals.confirmedTotal ===
+      (fees.every((fee) => fee.state === 'KNOWN') ? displayed : null) &&
+    facts.source.screenshots.length === selectedMaterials.length &&
+    facts.source.screenshots.every((screenshot) =>
+      selectedMaterials.some(
+        (material) =>
+          isRecord(material) &&
+          material.contentVersionId === screenshot.contentVersionId &&
+          material.materialId === screenshot.materialId,
+      ),
+    ) &&
+    (value.stage === 'ARCHIVED'
+      ? facts.archive !== null
+      : facts.archive === null)
+  );
+}
+
 function isMatterDetail(value: unknown): value is NotaryMatterDetail {
   if (
     !isRecord(value) ||
@@ -968,6 +1209,7 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
   const selectedContentVersionIds = detail.selectedContentVersionIds;
   return (
     isNotaryDisplay(detail) &&
+    detailFactsMatch(detail) &&
     Array.isArray(detail.certificateFiles) &&
     detail.certificateFiles.every(isCertificateFile) &&
     (detail.certificateSummary === null

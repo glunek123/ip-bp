@@ -248,6 +248,100 @@ function displayItem() {
 }
 
 describe('notary operational display contract', () => {
+  it('decodes optional detail facts and rejects an invented fee total or review actor', async () => {
+    const detail = {
+      ...matter,
+      sourceLead: { id: 'lead-1', businessNo: 'LD-001' },
+      selectedProducts: [
+        {
+          id: 'product-1',
+          position: 1,
+          title: '商品',
+          url: null,
+          quantity: 1,
+          unitPrice: '1.00',
+          commentCount: 0,
+          estimatedAmount: '1.00',
+        },
+      ],
+      selectedMaterials: [
+        {
+          materialId: 'material-1',
+          contentVersionId: 'content-1',
+          originalFilename: '截图.png',
+          mimeType: 'image/png',
+        },
+      ],
+      detailFacts: {
+        source: {
+          snapshotState: 'KNOWN',
+          snapshotFields: 'TRANSFER_SNAPSHOT',
+          caseType: 'CIVIL',
+          source: 'ONLINE',
+          foundAt: matter.createdAt,
+          responsibleOperator: {
+            id: 'operator-1',
+            name: '当前运营',
+            provenance: 'CURRENT_NAME',
+          },
+          infringements: { values: ['TRADEMARK'], provenance: 'CURRENT_LEAD' },
+          remark: { value: null, provenance: 'CURRENT_LEAD' },
+          leadPushedAt: matter.createdAt,
+          screenshots: [
+            {
+              materialId: 'material-1',
+              contentVersionId: 'content-1',
+              originalFilename: '截图.png',
+              mimeType: 'image/png',
+            },
+          ],
+          screenshotProvenance: 'TRANSFER_SNAPSHOT',
+        },
+        leadReview: {
+          state: 'KNOWN',
+          result: 'INFRINGEMENT',
+          actorKind: 'INTERNAL_PROXY',
+          actorDisplayName: '客户代表',
+          decidedAt: matter.createdAt,
+          reason: null,
+        },
+        archive: null,
+        productEstimate: {
+          amount: '1.00',
+          label: 'ESTIMATE',
+          provenance: 'TRANSFER_SNAPSHOT',
+        },
+        feeTotals: {
+          disclosure: { state: 'UNRECORDED', amount: null },
+          knownSubtotal: '0.00',
+          confirmedTotal: null,
+        },
+      },
+    };
+    http.getJson.mockResolvedValue(detail);
+    await expect(getNotaryMatter('matter-1')).resolves.toEqual(detail);
+    http.getJson.mockResolvedValue({
+      ...detail,
+      detailFacts: {
+        ...detail.detailFacts,
+        leadReview: { ...detail.detailFacts.leadReview, actorKind: 'UNKNOWN' },
+      },
+    });
+    await expect(getNotaryMatter('matter-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    http.getJson.mockResolvedValue({
+      ...detail,
+      detailFacts: {
+        ...detail.detailFacts,
+        feeTotals: { ...detail.detailFacts.feeTotals, confirmedTotal: 0 },
+      },
+    });
+    await expect(getNotaryMatter('matter-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
   it.each([
     { state: 'UNRECORDED', amount: null },
     { state: 'PENDING', amount: null },
