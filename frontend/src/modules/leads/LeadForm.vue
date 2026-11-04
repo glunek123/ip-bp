@@ -78,7 +78,8 @@ const infringementTypes = ref<InfringementType[]>([
 ]);
 const source = ref<LeadSource | ''>(initial?.source ?? '');
 const platform = ref<LeadPlatform | ''>(initial?.platform ?? '');
-const foundAt = ref(toLocalDateTime(initial?.foundAt));
+const initialFoundAtInput = toLocalDateTime(initial?.foundAt);
+const foundAt = ref(initialFoundAtInput);
 const shopName = ref(initial?.shopName ?? '');
 const shopExternalId = ref(initial?.shopExternalId ?? '');
 const needDisclose = ref<boolean | null>(initial?.needDisclose ?? null);
@@ -300,7 +301,10 @@ async function submit(): Promise<void> {
       infringementTypes: [...infringementTypes.value],
       source: source.value as LeadSource,
       platform: platform.value as LeadPlatform,
-      foundAt: new Date(foundAt.value).toISOString(),
+      foundAt:
+        initial?.foundAt && foundAt.value === initialFoundAtInput
+          ? initial.foundAt
+          : new Date(foundAt.value).toISOString(),
       shopName: shopName.value.trim(),
       ...(shopExternalId.value.trim()
         ? { shopExternalId: shopExternalId.value.trim() }

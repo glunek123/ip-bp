@@ -296,6 +296,53 @@ describe('LeadForm', () => {
     expect(wrapper.emitted('dirty')).toHaveLength(dirtyCountBeforeAdd + 2);
   });
 
+  it.each([
+    {
+      label: 'keeps the original seconds and milliseconds when unchanged',
+      editTime: false,
+      expectedFoundAt: '2026-09-21T04:00:23.425Z',
+    },
+    {
+      label: 'saves a deliberately changed minute from the input',
+      editTime: true,
+      expectedFoundAt: new Date('2026-09-21T12:01').toISOString(),
+    },
+  ])('$label', async ({ editTime, expectedFoundAt }) => {
+    const wrapper = mount(LeadForm, {
+      props: {
+        context,
+        initialValue: {
+          customerId: 'customer-a',
+          rightsHolderId: 'holder-a',
+          caseType: 'CIVIL',
+          infringementTypes: ['TRADEMARK'],
+          source: 'ONLINE',
+          platform: 'TAOBAO',
+          foundAt: '2026-09-21T04:00:23.425Z',
+          shopName: '测试店铺',
+          products: [
+            {
+              id: 'product-existing',
+              title: '商品甲',
+              quantity: 3,
+              unitPrice: '0.10',
+              commentCount: 9,
+            },
+          ],
+          needDisclose: false,
+        },
+      },
+    });
+    if (editTime)
+      await wrapper.get('input[name="foundAt"]').setValue('2026-09-21T12:01');
+    await wrapper.get('form').trigger('submit');
+
+    const submission = wrapper.emitted('submit')?.[0]?.[0] as
+      { fields: { foundAt: string } } | undefined;
+    expect(submission?.fields.foundAt).toBe(expectedFoundAt);
+    wrapper.unmount();
+  });
+
   it('rejects more than 20 screenshots and emits files separately from API fields', async () => {
     const wrapper = mount(LeadForm, { props: { context } });
     await fillRequired(wrapper);
