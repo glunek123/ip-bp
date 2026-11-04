@@ -1804,6 +1804,7 @@ describe('LeadService', () => {
           rightsHolders: [{ id: 'holder-1', name: '主体甲' }],
         },
       ],
+      operators: [],
       dictionaries: { caseTypes: CASE_TYPE_OPTIONS },
     });
     expect(access.buildLeadScope).toHaveBeenCalledWith(actor, 'lead.edit');
@@ -2045,6 +2046,10 @@ describe('LeadService', () => {
     });
     expect(fixture.tx.leadProduct.deleteMany).toHaveBeenCalledWith({
       where: { leadId: fixture.current.id, id: { notIn: [productId] } },
+    });
+    expect(fixture.tx.leadProduct.update).toHaveBeenNthCalledWith(1, {
+      where: { id: productId },
+      data: { position: 2 },
     });
     expect(fixture.tx.leadProduct.update).toHaveBeenCalledWith({
       where: { id: productId },

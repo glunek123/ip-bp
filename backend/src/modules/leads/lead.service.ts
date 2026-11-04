@@ -701,6 +701,7 @@ export class LeadService {
           rightsHolders: [holder],
         },
       ],
+      operators: [],
       dictionaries: {
         caseTypes: CASE_TYPE_OPTIONS,
         infringementTypes: INFRINGEMENT_TYPE_OPTIONS,
@@ -2059,12 +2060,20 @@ export class LeadService {
             await transaction.leadProduct.deleteMany({
               where: { leadId: id, id: { notIn: [...nextIds] } },
             });
-            for (const [index, product] of current.products.entries()) {
+            const occupiedPositions = new Set(
+              current.products.map((product) => product.position),
+            );
+            // Keep temporary positions positive and outside the final ordering.
+            let temporaryPosition = normalized.products.length + 1;
+            for (const product of current.products) {
               if (!nextIds.has(product.id)) continue;
+              while (occupiedPositions.has(temporaryPosition))
+                temporaryPosition++;
               await transaction.leadProduct.update({
                 where: { id: product.id },
-                data: { position: -(index + 1) },
+                data: { position: temporaryPosition },
               });
+              temporaryPosition++;
             }
             await transaction.leadInfringement.deleteMany({
               where: { leadId: id },
