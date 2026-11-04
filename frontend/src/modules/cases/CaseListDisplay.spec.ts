@@ -1537,7 +1537,7 @@ describe('authorized internal case list display', () => {
     api.listCases.mockResolvedValue(result([first, second]));
     api.getCase.mockResolvedValue({ id: first.id });
     const path = '/cases?view=mine&stageGroup=COMPLAINT_PREPARATION';
-    const { wrapper } = await mountList(path);
+    const { wrapper, router } = await mountList(path);
     await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
     await wrapper
       .get('[data-test="start-complaint-batch-complaint"]')
@@ -1574,6 +1574,21 @@ describe('authorized internal case list display', () => {
       )!,
     ) as { entries: { status: string }[] };
     expect(stored.entries[0]?.status).toBe('succeeded');
+    await router.push('/cases?view=mine&stage=PENDING_MATCH');
+    await flushPromises();
+    expect(wrapper.find('[data-test="complaint-batch-queue"]').exists()).toBe(
+      false,
+    );
+    expect(
+      sessionStorage.getItem(
+        'case-list-complaint-batch:v1:owner-1%3AINTERNAL%3Adepartment-1%3A1',
+      ),
+    ).not.toBeNull();
+    await router.push('/cases?view=mine&stage=WAITING_COMPLAINT');
+    await flushPromises();
+    expect(wrapper.get('[data-test="complaint-batch-queue"]').text()).toContain(
+      '已成功',
+    );
   });
 
   it('shows mixed stage and capability blockers and offers explicit continuation after cancel', async () => {
@@ -1590,7 +1605,7 @@ describe('authorized internal case list display', () => {
       canSubmitComplaint: false,
     };
     api.listCases.mockResolvedValue(result([eligible, blocked]));
-    const { wrapper } = await mountList(
+    const { wrapper, router } = await mountList(
       '/cases?view=mine&stageGroup=COMPLAINT_PREPARATION',
     );
     await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
@@ -1607,6 +1622,14 @@ describe('authorized internal case list display', () => {
     expect(
       wrapper.find('[data-test="continue-complaint-batch-case-2"]').exists(),
     ).toBe(false);
+    await router.push('/cases?view=mine&stage=WAITING_FILING');
+    await flushPromises();
+    expect(wrapper.find('[data-test="complaint-batch-queue"]').exists()).toBe(
+      true,
+    );
+    expect(
+      wrapper.find('[data-test="continue-complaint-batch-case-1"]').exists(),
+    ).toBe(true);
     await wrapper
       .get('[data-test="continue-complaint-batch-case-1"]')
       .trigger('click');

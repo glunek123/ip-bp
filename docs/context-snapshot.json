@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-04T17:29:13.153Z",
+  "recordedAt": "2026-11-04T17:41:34.794Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1432,8 +1432,8 @@
     "frontend/src/modules/cases/CaseJudgmentPanel.vue": "3e47fb16009d67d8f9ed21faaca3f1585a53b9599193469016a56672da0ea27a",
     "frontend/src/modules/cases/CaseLawyerAssignmentBatchPanel.spec.ts": "97dc5255557ce64c84a924e843ed2e3e2a8a838e577b6569c0ee65c8a7d8f5f3",
     "frontend/src/modules/cases/CaseLawyerAssignmentBatchPanel.vue": "28608e6ca01b211a04f740304c5838564a89406600dd57773a0e246c3741be53",
-    "frontend/src/modules/cases/CaseListDisplay.spec.ts": "775c3a30ef228f18554dd0d9c498d7e1ce07b9def6de9db7aa7a0002ec267b91",
-    "frontend/src/modules/cases/CaseListPage.vue": "f0f7c7803b3b5aed0742d5b9b478d19a8d4af63b9d995d4bbb24db720d3c2d66",
+    "frontend/src/modules/cases/CaseListDisplay.spec.ts": "9df4c5618fef4de4a4646cbc0798b69df746ea803816ac929b6d7ffaed9e7cb6",
+    "frontend/src/modules/cases/CaseListPage.vue": "c92aba5b6d4d5ef48fdcdb274c1a5e46ba263dbbc7586f1d54f3ee105155560b",
     "frontend/src/modules/cases/CaseListPreferencesPanel.spec.ts": "b5da81157ef8a55a52323a03130eb489518fe2346b5a0d92bf1c8af180006dd5",
     "frontend/src/modules/cases/CaseListPreferencesPanel.vue": "808ef34890d24a356a21973bbce10958e9d5902d0deab32efc6375b291b4ec46",
     "frontend/src/modules/cases/CaseListWorkflowPanel.spec.ts": "e84c20b93f1f5788ddde53f0030b8a082c241f1a456ad51a91f400b5ed4cc07b",

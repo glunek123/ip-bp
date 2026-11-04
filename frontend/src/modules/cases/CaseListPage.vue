@@ -334,6 +334,15 @@ const complaintBatchAvailable = computed(
       'WAITING_COMPLAINT_STAMP',
     ].includes(stage.value),
 );
+const complaintBatchQueueVisible = computed(
+  () =>
+    !!complaintBatchStorageError.value ||
+    (!!complaintBatchQueue.value &&
+      (complaintBatchAvailable.value ||
+        complaintBatchQueue.value.entries.some(
+          (entry) => entry.status !== 'succeeded',
+        ))),
+);
 type CaseListBatchPanel = 'assignment' | 'filing' | 'complaint-export';
 const activeBatchPanel = ref<CaseListBatchPanel | null>(null);
 const batchPanelCases = shallowRef<CaseSummary[]>([]);
@@ -1940,7 +1949,7 @@ onBeforeUnmount(() => {
         />
       </section>
       <section
-        v-if="complaintBatchQueue || complaintBatchStorageError"
+        v-if="complaintBatchQueueVisible"
         class="state-panel complaint-batch-queue"
         aria-label="批量诉状逐案队列"
         data-test="complaint-batch-queue"
@@ -2487,7 +2496,18 @@ onBeforeUnmount(() => {
 .complaint-batch-queue ul {
   display: grid;
   gap: var(--s-2);
+  margin: var(--s-2) 0 0;
   padding-left: 1.25rem;
+}
+.complaint-batch-queue {
+  padding: var(--s-3);
+  text-align: left;
+}
+.complaint-batch-queue h2 {
+  margin: 0 0 var(--s-2);
+}
+.complaint-batch-queue p {
+  margin-bottom: var(--s-2);
 }
 .complaint-batch-queue li {
   display: flex;
