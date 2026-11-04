@@ -859,8 +859,8 @@ async function cancelBill(): Promise<void> {
 <style scoped>
 .settlement-center {
   display: grid;
-  gap: var(--app-section-gap, 16px);
-  padding: 16px 20px;
+  gap: 12px;
+  padding: 12px 16px;
   color: var(--color-ink);
 }
 .settlement-center__detail h2,
@@ -874,13 +874,13 @@ async function cancelBill(): Promise<void> {
 }
 .settlement-center__tabs {
   border-bottom: 1px solid var(--color-hairline);
-  padding-bottom: 8px;
+  padding-bottom: 6px;
 }
 .settlement-center__detail,
 .settlement-center__bills,
 .settlement-center__bill-detail {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
 }
 .settlement-center__detail > h2,
@@ -892,21 +892,21 @@ async function cancelBill(): Promise<void> {
 .settlement-center__bills,
 .settlement-center__bill-detail {
   border-top: 1px solid var(--color-hairline);
-  padding-top: var(--app-section-gap, 16px);
+  padding-top: 12px;
 }
 .kpis {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: var(--app-detail-gap, 12px);
+  gap: 8px;
   margin: 0;
 }
 .kpis > div {
   display: grid;
   align-content: start;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
-  min-height: 82px;
-  padding: 10px 12px;
+  min-height: 68px;
+  padding: 8px 10px;
   background: var(--color-surface-1);
 }
 .kpis dt {
@@ -916,7 +916,7 @@ async function cancelBill(): Promise<void> {
 .kpis dd {
   min-width: 0;
   margin: 0;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
@@ -929,10 +929,10 @@ async function cancelBill(): Promise<void> {
 .settlement-center__bill-filters {
   display: grid;
   grid-template-columns:
-    minmax(190px, 2fr) repeat(2, minmax(130px, 1fr))
-    minmax(170px, 1.2fr);
+    minmax(180px, 1.7fr) repeat(2, minmax(120px, 1fr))
+    minmax(160px, 1.2fr);
   align-items: end;
-  gap: 8px;
+  gap: 6px 8px;
   min-width: 0;
 }
 .settlement-center__bill-filters {
@@ -958,12 +958,13 @@ async function cancelBill(): Promise<void> {
 .settlement-center__filter-actions {
   justify-content: flex-end;
   flex-wrap: wrap;
+  gap: 6px;
 }
 .settlement-center__list-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px 10px;
   flex-wrap: wrap;
 }
 .settlement-center__list-toolbar > .settlement-center__selection {
@@ -971,6 +972,7 @@ async function cancelBill(): Promise<void> {
 }
 .settlement-center__bill-filter-actions {
   justify-content: flex-end;
+  margin-top: -4px;
 }
 .settlement-center__selection,
 .settlement-center__note {
@@ -986,6 +988,7 @@ async function cancelBill(): Promise<void> {
 }
 .settlement-center__table table {
   min-width: 960px;
+  font-size: 13px;
 }
 .settlement-center__table th {
   color: var(--color-ink-muted);
@@ -995,7 +998,7 @@ async function cancelBill(): Promise<void> {
 }
 .settlement-center__table td,
 .settlement-center__table th {
-  padding: 8px 10px;
+  padding: 6px 8px;
 }
 .settlement-center__table .money {
   text-align: right;
@@ -1003,15 +1006,15 @@ async function cancelBill(): Promise<void> {
   white-space: nowrap;
 }
 .settlement-center__pager {
-  justify-content: flex-end;
+  justify-content: center;
   gap: 8px;
 }
 .settlement-center__bill-create {
   display: grid;
   grid-template-columns: minmax(130px, 1fr) minmax(220px, 2fr);
   align-items: end;
-  gap: 8px;
-  padding-top: 4px;
+  gap: 6px 8px;
+  padding-top: 0;
 }
 .settlement-center__bill-create > .settlement-center__note,
 .settlement-center__bill-create > [role='alert'] {
@@ -1031,10 +1034,13 @@ async function cancelBill(): Promise<void> {
   display: flex;
   align-items: end;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px 8px;
 }
 .settlement-center__bill-detail > form label {
   flex: 1 1 240px;
+}
+.settlement-center__bill-detail .settlement-center__table table {
+  min-width: 760px;
 }
 .settlement-center__bill-detail > [role='alert'] {
   color: var(--color-danger);
@@ -1074,7 +1080,7 @@ button:disabled {
 }
 @media (max-width: 760px) {
   .settlement-center {
-    padding: 12px;
+    padding: 10px 12px;
   }
   .kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1085,6 +1091,12 @@ button:disabled {
   }
   .settlement-center__bill-create {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .settlement-center__list-toolbar {
+    align-items: flex-start;
+  }
+  .settlement-center__filter-actions {
+    justify-content: flex-start;
   }
 }
 @media (max-width: 420px) {
@@ -1102,6 +1114,46 @@ button:disabled {
   }
   .settlement-center__filter-actions {
     flex-wrap: wrap;
+  }
+}
+
+/* Keep the shared fee panel compact only while it is hosted by this page. */
+.settlement-center :deep(.fee-center) {
+  gap: 10px;
+}
+.settlement-center :deep(.fee-center__metrics) {
+  gap: 8px;
+}
+.settlement-center :deep(.fee-center__metrics > div) {
+  min-height: 68px;
+  padding: 8px 10px;
+}
+.settlement-center :deep(.fee-center__metrics strong) {
+  font-size: 15px;
+}
+.settlement-center :deep(.fee-center__filter-fields) {
+  gap: 6px 8px;
+}
+.settlement-center :deep(.fee-center__toolbar),
+.settlement-center :deep(.fee-center__toolbar-actions) {
+  gap: 6px 8px;
+}
+.settlement-center :deep(.fee-center__table table) {
+  font-size: 13px;
+}
+.settlement-center :deep(.fee-center__table th),
+.settlement-center :deep(.fee-center__table td) {
+  padding: 6px 8px;
+}
+.settlement-center :deep(.fee-center__pager) {
+  justify-content: center;
+}
+.settlement-center :deep(.fee-center__create) {
+  gap: 8px;
+}
+@media (max-width: 760px) {
+  .settlement-center :deep(.fee-center__toolbar) {
+    align-items: flex-start;
   }
 }
 </style>
