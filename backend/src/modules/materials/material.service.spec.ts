@@ -3312,6 +3312,9 @@ describe('MaterialService', () => {
     });
     it('rejects reassignment found after locking the actor and case', async () => {
       const f = setupProof();
+      f.access.authorizeDepartmentAction.mockRejectedValue(
+        new ForbiddenException(),
+      );
       f.transaction.case.findFirst.mockResolvedValue({
         departmentId: actor.departmentId,
         responsibleUserId: customerId,
@@ -3320,6 +3323,25 @@ describe('MaterialService', () => {
         f.service.createUploadDraft(actor, proofInput),
       ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
       expect(f.transaction.uploadDraft.create).not.toHaveBeenCalled();
+    });
+    it('accepts another owner only through the settlement department action', async () => {
+      const f = setupProof();
+      f.transaction.case.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        stage: 'WAITING_ARCHIVE',
+        responsibleUserId: customerId,
+        responsibleMembership: { teamId: null },
+      });
+      await expect(
+        f.service.createUploadDraft(actor, proofInput),
+      ).resolves.toMatchObject({
+        category: 'CASE_CLOSURE_PAYMENT_PROOF',
+      });
+      expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+        actor,
+        'case.closure.settlement.update',
+        f.transaction,
+      );
     });
     it('locks and rechecks eligibility at both pending claim and final material save', async () => {
       const f = setupProof();
@@ -3435,6 +3457,9 @@ describe('MaterialService', () => {
     );
     it('rejects changed eligibility at save and retains the pending cleanup key', async () => {
       const f = setupProof();
+      f.access.authorizeDepartmentAction.mockRejectedValue(
+        new ForbiddenException(),
+      );
       f.storage.put.mockImplementation(async () => {
         f.transaction.case.findFirst.mockResolvedValue({
           departmentId: actor.departmentId,

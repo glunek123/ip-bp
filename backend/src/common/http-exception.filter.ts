@@ -34,6 +34,55 @@ function safeCode(value: unknown): string | undefined {
 }
 
 function safeDetails(value: unknown, code: string): unknown {
+  if (code === 'CASE_EXPORT_EMPTY') {
+    const record = asRecord(value);
+    const uuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+    const reasons = [
+      'CASE_UNAVAILABLE',
+      'VERSION_UNAVAILABLE',
+      'SIZE_LIMIT',
+      'FILE_UNAVAILABLE',
+    ];
+    if (
+      Object.keys(record).length !== 1 ||
+      !Array.isArray(record.files) ||
+      record.files.length < 1 ||
+      record.files.length > 100 ||
+      !record.files.every((value: unknown) => {
+        const file = asRecord(value);
+        return (
+          Object.keys(file).length === 5 &&
+          typeof file.caseId === 'string' &&
+          uuid.test(file.caseId) &&
+          typeof file.materialId === 'string' &&
+          uuid.test(file.materialId) &&
+          typeof file.contentVersionId === 'string' &&
+          uuid.test(file.contentVersionId) &&
+          (file.filename === null ||
+            (typeof file.filename === 'string' &&
+              file.filename.length > 0 &&
+              file.filename.length <= 512 &&
+              !/\p{Cc}/u.test(file.filename))) &&
+          typeof file.reason === 'string' &&
+          reasons.includes(file.reason)
+        );
+      })
+    )
+      return undefined;
+    return {
+      files: record.files.map((value: unknown) => {
+        const file = asRecord(value);
+        return {
+          caseId: file.caseId,
+          materialId: file.materialId,
+          contentVersionId: file.contentVersionId,
+          filename: file.filename,
+          reason: file.reason,
+        };
+      }),
+    };
+  }
   if (code === 'ARCHIVE_FINANCIAL_NOT_READY') {
     const record = asRecord(value);
     const checks = asRecord(record.checks);

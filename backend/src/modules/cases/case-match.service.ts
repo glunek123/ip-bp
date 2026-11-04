@@ -163,13 +163,55 @@ export class CaseMatchService {
               throw this.invalidState();
             if (record.version !== normalized.expectedVersion)
               throw this.versionConflict();
+            const assignments = await tx.caseLawyerAssignment.findMany({
+              where: { caseId, departmentId: actor.departmentId },
+              select: {
+                id: true,
+                role: true,
+                endedAt: true,
+                lawyerId: true,
+                lawyer: {
+                  select: {
+                    accountBinding: {
+                      select: { userId: true, departmentId: true },
+                    },
+                  },
+                },
+              },
+            });
+            if (
+              assignments.length > 1 ||
+              assignments.some(
+                (assignment) =>
+                  assignment.role !== 'PRIMARY' ||
+                  assignment.endedAt !== null ||
+                  assignment.lawyer.accountBinding?.departmentId !==
+                    actor.departmentId,
+              )
+            )
+              throw this.invalidState();
+            const assigned = assignments[0];
+            if (
+              assigned &&
+              (assigned.lawyer.accountBinding?.userId !==
+                normalized.lawyerAccountId ||
+                (normalized.lawyerProfileId !== undefined &&
+                  assigned.lawyerId !== normalized.lawyerProfileId))
+            )
+              throw new ConflictException({
+                code: 'LAWYER_ALREADY_ASSIGNED',
+                message: '本案已分配其他律师，不能在匹配时改派',
+              });
             const candidates = await tx.lawyerAccountBinding.findMany({
               where: {
                 userId: normalized.lawyerAccountId,
                 departmentId: actor.departmentId,
                 active: true,
-                ...(normalized.lawyerProfileId
-                  ? { profileId: normalized.lawyerProfileId }
+                ...(assigned?.lawyerId || normalized.lawyerProfileId
+                  ? {
+                      profileId:
+                        assigned?.lawyerId ?? normalized.lawyerProfileId,
+                    }
                   : {}),
                 user: {
                   accountType: 'LAWYER',
@@ -207,15 +249,16 @@ export class CaseMatchService {
                 })),
               });
             const lawyer = { id: candidates[0].profileId };
-            await tx.caseLawyerAssignment.create({
-              data: {
-                caseId,
-                departmentId: actor.departmentId,
-                lawyerId: lawyer.id,
-                role: 'PRIMARY',
-                startedAt: matchedAt,
-              },
-            });
+            if (!assigned)
+              await tx.caseLawyerAssignment.create({
+                data: {
+                  caseId,
+                  departmentId: actor.departmentId,
+                  lawyerId: lawyer.id,
+                  role: 'PRIMARY',
+                  startedAt: matchedAt,
+                },
+              });
             const result: MatchCaseResponseDto = {
               id: caseId,
               stage: 'WAITING_COMPLAINT',

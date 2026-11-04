@@ -217,6 +217,34 @@ it('opens routine editing from the selected-case toolbar only after the server g
   expect(router.currentRoute.value.query.edit).toBeUndefined();
 });
 
+it('shows payment history from the case detail when the list toolbar is unavailable', async () => {
+  api.getCase.mockResolvedValue({
+    ...structuredClone(detail),
+    stage: 'WAITING_ARCHIVE',
+    canReadClosurePaymentHistory: true,
+    canSupplementPaymentProof: true,
+  });
+  await wrapper!.get('[data-test="case-refresh"]').trigger('click');
+  await flushPromises();
+  expect(wrapper!.find('[data-test="case-additional-actions"]').exists()).toBe(
+    true,
+  );
+  expect(
+    wrapper!
+      .find(
+        '[data-test="case-additional-actions"] [data-case-action="payment-proof"]',
+      )
+      .exists(),
+  ).toBe(true);
+  expect(
+    wrapper!
+      .find(
+        '[data-test="case-additional-actions"] [data-case-action="settlement-update"]',
+      )
+      .exists(),
+  ).toBe(false);
+});
+
 it('does not open routine editing from a direct URL when the server denies it', async () => {
   await router.push('/health');
   await router.push('/cases/case-1?edit=routine');

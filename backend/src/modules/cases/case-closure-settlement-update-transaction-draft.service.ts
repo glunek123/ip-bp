@@ -291,25 +291,63 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
             if (!c) return fail('CASE_NOT_FOUND');
             if (c.consolidationMembership?.isMain === false)
               throw new ForbiddenException({ code: 'ACTION_FORBIDDEN' });
-            // Financial child commands currently require the responsible actor.
-            // A closure-only correction uses the ordinary case-scoped grant.
-            if (
-              c.responsibleUserId !== actor.userId &&
-              (input.paymentRecords.length > 0 ||
-                input.refund !== undefined ||
-                input.settlement !== undefined)
-            )
-              throw new ForbiddenException({ code: 'ACTION_FORBIDDEN' });
-            // This composite command always creates a closure correction. The
-            // owner's default amount-edit capability does not grant correction.
-            if (
+            const hasFinancialChange =
               input.paymentRecords.length > 0 ||
               input.refund !== undefined ||
-              input.settlement !== undefined
-            )
+              input.settlement !== undefined;
+            // The proxy action is confined to this financial command. It does
+            // not authorize the standalone closure-correction endpoint.
+            if (c.responsibleUserId !== actor.userId) {
+              if (hasFinancialChange) {
+                await this.access.authorizeCase(
+                  actor,
+                  'case.read',
+                  {
+                    departmentId: actor.departmentId,
+                    responsibleUserId: c.responsibleUserId,
+                    ...(c.responsibleMembership.teamId
+                      ? { teamId: c.responsibleMembership.teamId }
+                      : {}),
+                  },
+                  tx,
+                );
+                await this.access.authorizeDepartmentAction(
+                  actor,
+                  'case.closure.settlement.update',
+                  tx,
+                );
+              } else {
+                await this.access.authorizeCase(
+                  actor,
+                  'case.closure.correct',
+                  {
+                    departmentId: actor.departmentId,
+                    responsibleUserId: c.responsibleUserId,
+                    ...(c.responsibleMembership.teamId
+                      ? { teamId: c.responsibleMembership.teamId }
+                      : {}),
+                  },
+                  tx,
+                );
+              }
+            } else {
+              // Preserve the owner's existing correction and read gates.
+              if (hasFinancialChange)
+                await this.access.authorizeCase(
+                  actor,
+                  'case.read',
+                  {
+                    departmentId: actor.departmentId,
+                    responsibleUserId: c.responsibleUserId,
+                    ...(c.responsibleMembership.teamId
+                      ? { teamId: c.responsibleMembership.teamId }
+                      : {}),
+                  },
+                  tx,
+                );
               await this.access.authorizeCase(
                 actor,
-                'case.read',
+                'case.closure.correct',
                 {
                   departmentId: actor.departmentId,
                   responsibleUserId: c.responsibleUserId,
@@ -319,18 +357,7 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
                 },
                 tx,
               );
-            await this.access.authorizeCase(
-              actor,
-              'case.closure.correct',
-              {
-                departmentId: actor.departmentId,
-                responsibleUserId: c.responsibleUserId,
-                ...(c.responsibleMembership.teamId
-                  ? { teamId: c.responsibleMembership.teamId }
-                  : {}),
-              },
-              tx,
-            );
+            }
             const receipt =
               await tx.caseClosureSettlementUpdateReceipt.findUnique({
                 where: {
@@ -774,6 +801,38 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
               return fail('VERSION_CONFLICT');
             const h = c.closure,
               prior = h.currentVersion!;
+            if (c.responsibleUserId !== actor.userId && hasFinancialChange) {
+              const priorDocuments = await tx.caseClosureDocument.findMany({
+                where: {
+                  closureVersionId: prior.id,
+                  caseId,
+                  departmentId: actor.departmentId,
+                },
+                select: { contentVersionId: true },
+              });
+              if (
+                (prior.closeAt?.toISOString().slice(0, 10) ?? null) !==
+                  input.closeAt ||
+                !same(
+                  priorDocuments
+                    .map((document) => document.contentVersionId)
+                    .sort(),
+                  [...input.closeContentVersionIds].sort(),
+                )
+              )
+                await this.access.authorizeCase(
+                  actor,
+                  'case.closure.correct',
+                  {
+                    departmentId: actor.departmentId,
+                    responsibleUserId: c.responsibleUserId,
+                    ...(c.responsibleMembership.teamId
+                      ? { teamId: c.responsibleMembership.teamId }
+                      : {}),
+                  },
+                  tx,
+                );
+            }
             const source = await readCaseSourceAnchor(
               tx,
               caseId,
@@ -1179,6 +1238,23 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
                   position,
                   paymentVersionId,
                   auditEventId: paymentAudits[position]!,
+                },
+              });
+            if (c.responsibleUserId !== actor.userId && hasFinancialChange)
+              await tx.auditEvent.create({
+                data: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  internalActorUserId: actor.userId,
+                  resourceType: 'CASE',
+                  resourceId: caseId,
+                  action: 'case.proxy.applied',
+                  details: {
+                    responsibleUserId: c.responsibleUserId,
+                    action: 'case.closure.settlement.update',
+                    scope: 'DEPARTMENT',
+                    requestFingerprint: fingerprint,
+                  },
                 },
               });
             await tx.$executeRawUnsafe('SET CONSTRAINTS ALL IMMEDIATE');

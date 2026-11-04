@@ -6193,12 +6193,19 @@ export class MaterialService {
             responsibleMembership: { select: { teamId: true } },
           },
         });
-        if (
-          !record ||
-          record.responsibleUserId !== actor.userId ||
-          record.departmentId !== actor.departmentId
-        )
+        if (!record || record.departmentId !== actor.departmentId)
           throw this.forbidden();
+        if (
+          record.responsibleUserId !== actor.userId &&
+          ['WAITING_ARCHIVE', 'ARCHIVED'].includes(record.stage)
+        )
+          await this.withMaterialAuthorization(() =>
+            this.accessControl.authorizeDepartmentAction(
+              actor,
+              'case.closure.settlement.update',
+              snapshotReader,
+            ),
+          );
         const allowed = await reader.$queryRawUnsafe<Array<{ id: string }>>(
           `SELECT "id" FROM "cases" WHERE "id"=$1::uuid AND "department_id"=$2::uuid
            AND case_payment_proof_upload_eligible($3::uuid,"id","department_id")`,
@@ -6209,6 +6216,8 @@ export class MaterialService {
         if (allowed.length !== 1) throw this.forbidden();
         if (!['WAITING_ARCHIVE', 'ARCHIVED'].includes(record.stage))
           await this.withMaterialAuthorization(async () => {
+            let action: 'case.closure.record' | 'case.archive' =
+              'case.closure.record';
             try {
               await this.accessControl.authorizeCase(
                 actor,
@@ -6224,6 +6233,7 @@ export class MaterialService {
               );
             } catch (error) {
               if (!(error instanceof ForbiddenException)) throw error;
+              action = 'case.archive';
               await this.accessControl.authorizeCase(
                 actor,
                 'case.archive',
@@ -6237,6 +6247,25 @@ export class MaterialService {
                 snapshotReader,
               );
             }
+            if (record.responsibleUserId !== actor.userId)
+              try {
+                await this.accessControl.authorizeDepartmentAction(
+                  actor,
+                  action,
+                  snapshotReader,
+                );
+              } catch (error) {
+                if (
+                  !(error instanceof ForbiddenException) ||
+                  action === 'case.archive'
+                )
+                  throw error;
+                await this.accessControl.authorizeDepartmentAction(
+                  actor,
+                  'case.archive',
+                  snapshotReader,
+                );
+              }
           });
       }
       await this.authorizeOwner(
@@ -6315,8 +6344,7 @@ export class MaterialService {
         ) {
           if (
             actor.lawyerAccountId !== undefined ||
-            pending.departmentId !== actor.departmentId ||
-            pending.responsibleUserId !== actor.userId
+            pending.departmentId !== actor.departmentId
           )
             throw this.forbidden();
           const allowed = await reader.$queryRawUnsafe<Array<{ id: string }>>(
@@ -6340,6 +6368,8 @@ export class MaterialService {
               },
               snapshotReader,
             );
+            let action: 'case.closure.record' | 'case.archive' =
+              'case.closure.record';
             try {
               await this.accessControl.authorizeCase(
                 actor,
@@ -6355,6 +6385,7 @@ export class MaterialService {
               );
             } catch (error) {
               if (!(error instanceof ForbiddenException)) throw error;
+              action = 'case.archive';
               await this.accessControl.authorizeCase(
                 actor,
                 'case.archive',
@@ -6368,6 +6399,25 @@ export class MaterialService {
                 snapshotReader,
               );
             }
+            if (pending.responsibleUserId !== actor.userId)
+              try {
+                await this.accessControl.authorizeDepartmentAction(
+                  actor,
+                  action,
+                  snapshotReader,
+                );
+              } catch (error) {
+                if (
+                  !(error instanceof ForbiddenException) ||
+                  action === 'case.archive'
+                )
+                  throw error;
+                await this.accessControl.authorizeDepartmentAction(
+                  actor,
+                  'case.archive',
+                  snapshotReader,
+                );
+              }
           });
           return;
         }

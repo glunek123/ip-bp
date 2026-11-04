@@ -1324,6 +1324,7 @@ async function complaint() {
       v-else-if="action === 'settlement-update' && allowed && !storageBlocked"
       :actor-key="actorKey"
       :case-id="item.id"
+      :can-correct-closure="item.canCorrectClosure"
       :session="session"
       @cancel="emit('cancel')"
     />

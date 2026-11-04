@@ -1,4 +1,5 @@
 import { Prisma } from '../../generated/prisma/client';
+import { ForbiddenException } from '@nestjs/common';
 import { CaseRoutineEditService } from './case-routine-edit.service';
 
 const actor = {
@@ -67,7 +68,11 @@ function fixture() {
     $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) => fn(tx)),
   };
   const access = {
-    authorizeDepartmentAction: jest.fn().mockResolvedValue(undefined),
+    authorizeDepartmentAction: jest.fn(
+      async (_actor: unknown, action: string) => {
+        if (action === 'case.routine.edit') throw new ForbiddenException();
+      },
+    ),
   };
   return {
     record,
@@ -79,7 +84,7 @@ function fixture() {
 }
 
 describe('case routine editing', () => {
-  it('returns the current values and makes only the owner editable', async () => {
+  it('returns the current values and requires a separate grant for a colleague', async () => {
     const f = fixture();
     await expect(f.service.get(actor, caseId)).resolves.toMatchObject({
       revision: 0,
@@ -179,6 +184,40 @@ describe('case routine editing', () => {
       external.service.update(actor, caseId, input),
     ).rejects.toBeDefined();
     expect(external.tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+  it('allows a department-authorized colleague and audits the actual actor and owner', async () => {
+    const f = fixture();
+    const ownerId = '10000000-0000-4000-8000-000000000099';
+    f.tx.case.findFirst.mockResolvedValue({
+      ...f.record,
+      responsibleUserId: ownerId,
+    });
+    f.access.authorizeDepartmentAction.mockImplementation(async () => {});
+    await expect(f.service.get(actor, caseId)).resolves.toMatchObject({
+      canEdit: true,
+    });
+    await expect(f.service.update(actor, caseId, input)).resolves.toMatchObject(
+      {
+        revision: 1,
+      },
+    );
+    expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+      actor,
+      'case.routine.edit',
+      f.tx,
+    );
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: actor.userId,
+        details: expect.objectContaining({
+          proxyAuthorization: {
+            responsibleUserId: ownerId,
+            action: 'case.routine.edit',
+            scope: 'DEPARTMENT',
+          },
+        }),
+      }),
+    });
   });
   it('rejects changed product identities and stale versions', async () => {
     for (const body of [

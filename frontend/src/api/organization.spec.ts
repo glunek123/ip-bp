@@ -452,6 +452,21 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_LAWYER_ASSIGN',
+      label: '分配案件律师',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_ROUTINE_EDIT',
+      label: '编辑案件常规资料',
+      scopes: ['DEPARTMENT'],
+    },
+    {
+      action: 'CASE_CLOSURE_SETTLEMENT_UPDATE',
+      label: '更新结案结算资料',
+      scopes: ['DEPARTMENT'],
+    },
+    {
       action: 'CASE_CONSOLIDATE',
       label: '合并起诉案件',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -758,6 +773,9 @@ describe('organization API', () => {
       'CASE_GROUP_CREATE',
       'CASE_GROUP_DISSOLVE',
       'CASE_MATCH',
+      'CASE_LAWYER_ASSIGN',
+      'CASE_ROUTINE_EDIT',
+      'CASE_CLOSURE_SETTLEMENT_UPDATE',
       'CASE_CONSOLIDATE',
       'CASE_EXTERNAL_ENTRY_CREATE',
       'CASE_EXTERNAL_ENTRY_ARCHIVE',
@@ -1340,15 +1358,21 @@ describe('organization API', () => {
           ? { ...item, scopes: ['SELF', 'TEAM', 'DEPARTMENT'] }
           : item.action === 'CASE_MATCH'
             ? { ...item, scopes: ['SELF'] }
-            : item.action === 'CASE_COMPLAINT_SUBMIT'
+            : item.action === 'CASE_LAWYER_ASSIGN'
               ? { ...item, scopes: ['TEAM', 'DEPARTMENT'] }
-              : item.action === 'CASE_COMPLAINT_CONFIRM'
-                ? { ...item, scopes: ['TEAM', 'DEPARTMENT'] }
-                : item.action === 'CASE_COMPLAINT_MAIL'
+              : item.action === 'CASE_ROUTINE_EDIT'
+                ? { ...item, scopes: ['SELF', 'TEAM', 'DEPARTMENT'] }
+                : item.action === 'CASE_CLOSURE_SETTLEMENT_UPDATE'
                   ? { ...item, scopes: ['TEAM', 'DEPARTMENT'] }
-                  : item.action === 'CASE_FILING_SUBMIT'
+                  : item.action === 'CASE_COMPLAINT_SUBMIT'
                     ? { ...item, scopes: ['TEAM', 'DEPARTMENT'] }
-                    : item,
+                    : item.action === 'CASE_COMPLAINT_CONFIRM'
+                      ? { ...item, scopes: ['TEAM', 'DEPARTMENT'] }
+                      : item.action === 'CASE_COMPLAINT_MAIL'
+                        ? { ...item, scopes: ['TEAM', 'DEPARTMENT'] }
+                        : item.action === 'CASE_FILING_SUBMIT'
+                          ? { ...item, scopes: ['TEAM', 'DEPARTMENT'] }
+                          : item,
       ),
     },
   ])('rejects sensitive or invalid management shapes %#', async (body) => {

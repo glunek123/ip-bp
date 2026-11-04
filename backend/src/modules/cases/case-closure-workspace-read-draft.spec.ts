@@ -71,7 +71,12 @@ function fixture(actualAggregate?: ClosureActualAggregateReadPort) {
     async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
   );
   const database = { $transaction: transaction } as unknown as DatabaseService;
-  const access = { authorizeCase: jest.fn().mockResolvedValue(undefined) };
+  const access = {
+    authorizeCase: jest.fn().mockResolvedValue(undefined),
+    authorizeDepartmentAction: jest.fn(async (): Promise<void> => {
+      throw new ForbiddenException();
+    }),
+  };
   const service = new CaseClosureWorkspaceReadDraft(
     database,
     access,
@@ -580,7 +585,7 @@ describe('owner-only closure workspace read', () => {
       ForbiddenException,
     );
   });
-  it('rejects another owner even with department read grants', async () => {
+  it('rejects another owner without the settlement proxy grant', async () => {
     const f = fixture();
     f.tx.case.findFirst.mockResolvedValue({
       version: 1,
@@ -590,7 +595,24 @@ describe('owner-only closure workspace read', () => {
     await expect(f.service.read(actor, caseId)).rejects.toThrow(
       ForbiddenException,
     );
-    expect(f.access.authorizeCase).not.toHaveBeenCalled();
+    expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+      actor,
+      'case.closure.settlement.update',
+      f.tx,
+    );
+  });
+  it('allows another owner only with the settlement proxy grant', async () => {
+    const f = fixture();
+    f.tx.case.findFirst.mockResolvedValue({
+      version: 1,
+      stage: 'WAITING_ARCHIVE',
+      responsibleUserId: 'other',
+    });
+    f.access.authorizeDepartmentAction.mockResolvedValue(undefined);
+    await expect(f.service.read(actor, caseId)).resolves.toMatchObject({
+      caseId,
+      stage: 'WAITING_ARCHIVE',
+    });
   });
   it('propagates case.read denial and never queries business facts', async () => {
     const f = fixture();

@@ -17,6 +17,7 @@ import {
 import CaseSectionRecordCorrectionPanel, {
   readCaseSectionRecordRequests,
 } from './CaseSectionRecordCorrectionPanel.vue';
+import CaseAdditionalActions from './CaseAdditionalActions.vue';
 
 import {
   computed,
@@ -188,13 +189,22 @@ const routineUnknown = ref(false);
 const routineError = ref('');
 let routineRequest: AbortController | undefined;
 let routineReadGeneration = 0;
-onBeforeRouteLeave(
-  () => !routineSaving.value && caseFees.value?.canLeave() !== false,
-);
-onBeforeRouteUpdate(
-  () => !routineSaving.value && caseFees.value?.canLeave() !== false,
-);
+const additionalActions = ref<{
+  canLeave: () => boolean;
+  isBusy: () => boolean;
+} | null>(null);
+function canLeaveCaseDetail() {
+  return (
+    !routineSaving.value &&
+    caseFees.value?.canLeave() !== false &&
+    additionalActions.value?.canLeave() !== false
+  );
+}
+onBeforeRouteLeave(canLeaveCaseDetail);
+onBeforeRouteUpdate(canLeaveCaseDetail);
 const drawerOpen = ref(false);
+const closureBridgeRegistrationActive = ref(false);
+const closureRegistrationSucceeded = ref(false);
 const actionNotice = ref('');
 const editorVisible = ref(true);
 const editorSection = ref<SectionKey>('case-info');
@@ -443,6 +453,13 @@ function openCommand(command: WorkspaceCommand, editing = false): void {
     ? [...sectionEditCommands.value, ...recordRecovery.value.commands]
     : commands.value;
   if (!permitted.some((entry) => entry.id === command.id)) return;
+  if (
+    !editing &&
+    command.id === 'closure' &&
+    item.value?.stage === 'WAITING_ARCHIVE' &&
+    !item.value.closure
+  )
+    closureBridgeRegistrationActive.value = true;
   sectionEditing.value = editing;
   if (editing) editRequest.value += 1;
   timelineView.value = false;
@@ -504,7 +521,15 @@ function recordEditAccessLost(): void {
   void load();
 }
 function closeRecordEdit(): void {
+  if (!closureRegistrationSucceeded.value)
+    closureBridgeRegistrationActive.value = false;
   drawerOpen.value = false;
+}
+
+function handleAdditionalActionSuccess(action: string) {
+  if (action === 'record-closure' && item.value?.stage === 'WAITING_ARCHIVE')
+    closureRegistrationSucceeded.value = true;
+  void load();
 }
 function openUpload(): void {
   const stage = item.value?.stage;
@@ -541,6 +566,26 @@ const refreshing = ref(false);
 const refreshError = ref('');
 const item = ref<CaseDetail>();
 const accessVerified = ref(false);
+const additionalActionBusy = computed(
+  () => additionalActions.value?.isBusy() === true,
+);
+const additionalActionDisabled = computed(
+  () =>
+    drawerOpen.value ||
+    routineEditing.value ||
+    routineSaving.value ||
+    routineUnknown.value ||
+    caseFees.value?.canLeave() === false ||
+    additionalActionBusy.value,
+);
+watch(
+  [id, identity],
+  () => {
+    closureBridgeRegistrationActive.value = false;
+    closureRegistrationSucceeded.value = false;
+  },
+  { flush: 'sync' },
+);
 watch(
   [
     workspaceContext,
@@ -1266,8 +1311,17 @@ const closureCallbacks = computed(() => {
     },
     changed: (result: CaseClosureResult) => {
       if (!current() || result.id !== caseId) return;
+      const completesClosureBridge =
+        closureBridgeRegistrationActive.value &&
+        item.value?.stage === 'WAITING_ARCHIVE' &&
+        !item.value.closure;
       closureSession.setPending(caseId, null);
       if (closureSession.markChanged(result.closureVersionId)) {
+        if (completesClosureBridge) {
+          closureBridgeRegistrationActive.value = false;
+          closureRegistrationSucceeded.value = true;
+          drawerOpen.value = false;
+        }
         notifyWorkflowChanged();
         void load();
       }
@@ -2047,7 +2101,12 @@ onBeforeUnmount(() => {
           <ElButton
             v-if="routine?.canEdit"
             data-test="edit-case-routine"
-            :disabled="routineSaving || routineUnknown || drawerOpen"
+            :disabled="
+              routineSaving ||
+              routineUnknown ||
+              drawerOpen ||
+              additionalActionBusy
+            "
             @click="routineEditing = true"
             >编辑资料</ElButton
           >
@@ -2057,7 +2116,7 @@ onBeforeUnmount(() => {
               primaryCommand.label.startsWith('撤销') ? 'danger' : 'primary'
             "
             data-test="workspace-primary-action"
-            :disabled="routineEditing || routineSaving"
+            :disabled="routineEditing || routineSaving || additionalActionBusy"
             @click="openCommand(primaryCommand)"
             >{{ primaryCommand.label }}</ElButton
           >
@@ -2071,6 +2130,9 @@ onBeforeUnmount(() => {
               :key="command.id"
               :type="command.label.startsWith('撤销') ? 'danger' : 'default'"
               plain
+              :disabled="
+                routineEditing || routineSaving || additionalActionBusy
+              "
               :data-command="command.id"
               @click="openCommand(command)"
               >{{ command.label }}</ElButton
@@ -2080,6 +2142,7 @@ onBeforeUnmount(() => {
             v-for="command in recordRegistrationCommands"
             :key="command.id"
             plain
+            :disabled="routineEditing || routineSaving || additionalActionBusy"
             data-test="workspace-record-registration"
             @click="openCommand(command)"
             >登记二审受理信息</ElButton
@@ -2088,6 +2151,7 @@ onBeforeUnmount(() => {
             plain
             data-test="case-refresh"
             :loading="refreshing"
+            :disabled="additionalActionBusy"
             @click="load"
             >刷新</ElButton
           >
@@ -2107,6 +2171,20 @@ onBeforeUnmount(() => {
           <p v-if="recordRecovery.error" role="alert">
             {{ recordRecovery.error }}
           </p>
+          <CaseAdditionalActions
+            v-if="item"
+            :key="`${item.id}:${identity}`"
+            ref="additionalActions"
+            :item="item"
+            :identity="identity"
+            :actor-user-id="auth.session?.user.id"
+            :disabled="additionalActionDisabled"
+            :closure-registration-succeeded="closureRegistrationSucceeded"
+            @success="handleAdditionalActionSuccess"
+            @closure-recorded="closureRegistrationSucceeded = true"
+            @continue-closure-settlement="closureRegistrationSucceeded = false"
+            @refresh="load"
+          />
         </div>
       </template>
       <template #details>

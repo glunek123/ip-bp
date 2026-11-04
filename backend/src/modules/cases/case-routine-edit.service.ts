@@ -101,6 +101,23 @@ export class CaseRoutineEditService {
     private readonly access: AccessControlService,
   ) {}
 
+  private async canEditAnotherOwner(
+    actor: ActorContext,
+    reader: Prisma.TransactionClient,
+  ): Promise<boolean> {
+    try {
+      await this.access.authorizeDepartmentAction(
+        actor,
+        'case.routine.edit',
+        reader,
+      );
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
+
   async get(actor: ActorContext, caseId: string) {
     if (actor.clientCustomerId || actor.notaryOfficeId || actor.lawyerAccountId)
       throw this.forbidden();
@@ -120,7 +137,9 @@ export class CaseRoutineEditService {
         if (!item) throw this.notFound();
         return {
           revision: item.routineProfile?.revision ?? 0,
-          canEdit: item.responsibleUserId === actor.userId,
+          canEdit:
+            item.responsibleUserId === actor.userId ||
+            (await this.canEditAnotherOwner(actor, tx)),
           ...currentRoutine(item),
         };
       },
@@ -170,7 +189,13 @@ export class CaseRoutineEditService {
               select: caseRoutineSelect,
             });
             if (!item) throw this.notFound();
-            if (item.responsibleUserId !== actor.userId) throw this.forbidden();
+            if (item.responsibleUserId !== actor.userId) {
+              await this.access.authorizeDepartmentAction(
+                actor,
+                'case.routine.edit',
+                tx,
+              );
+            }
             const revision = item.routineProfile?.revision ?? 0;
             if (revision !== dto.expectedRevision) throw this.conflict();
             const before = currentRoutine(item);
@@ -213,6 +238,15 @@ export class CaseRoutineEditService {
                   toRevision: revision + 1,
                   before,
                   after,
+                  ...(item.responsibleUserId === actor.userId
+                    ? {}
+                    : {
+                        proxyAuthorization: {
+                          responsibleUserId: item.responsibleUserId,
+                          action: 'case.routine.edit',
+                          scope: 'DEPARTMENT',
+                        },
+                      }),
                 },
               },
             });

@@ -35,8 +35,23 @@ const props = defineProps<{
   item: CaseWorkflowItem;
   contextKey: string;
   lawyer?: boolean;
+  prepareOnly?: boolean;
+  preparedInput?: SubmitCaseFilingInput;
+  preparedEvidenceFiles?: CaseFile[];
+  preparedScreenshotFiles?: CaseFile[];
 }>();
-const emit = defineEmits<{ changed: []; refresh: [] }>();
+const emit = defineEmits<{
+  changed: [];
+  refresh: [];
+  prepared: [
+    input: SubmitCaseFilingInput,
+    details: {
+      courtName: string;
+      evidenceFiles: CaseFile[];
+      screenshotFiles: CaseFile[];
+    },
+  ];
+}>();
 
 const courts = ref<FilingCourt[]>([]);
 const courtsLoading = ref(false);
@@ -148,6 +163,16 @@ function clearContext() {
   unknownRequest.value = null;
   requestFingerprint = '';
   requestKey = '';
+  if (props.prepareOnly && props.preparedInput) {
+    courtId.value = props.preparedInput.courtId;
+    submittedAt.value = props.preparedInput.submittedAt;
+    mediationNo.value = props.preparedInput.mediationNo ?? '';
+    sourceVersionIds.value = [
+      ...(props.preparedInput.consolidationSourceContentVersionIds ?? []),
+    ];
+    evidenceFiles.value = [...(props.preparedEvidenceFiles ?? [])];
+    screenshotFiles.value = [...(props.preparedScreenshotFiles ?? [])];
+  }
 }
 async function loadCourts() {
   if (!active || !props.item.canSubmitFiling) return;
@@ -462,6 +487,16 @@ async function submit() {
     if (isCurrent(context)) submitting.value = false;
   }
 }
+function prepare() {
+  if (!props.prepareOnly || !ready.value) return;
+  emit('prepared', makeInput(), {
+    courtName:
+      courts.value.find((court) => court.id === courtId.value)?.name ?? '',
+    evidenceFiles: [...evidenceFiles.value],
+    screenshotFiles: [...screenshotFiles.value],
+  });
+  review.value = false;
+}
 async function download(file: CaseFile) {
   const context = captureContext();
   const controller = new AbortController();
@@ -689,6 +724,15 @@ async function download(file: CaseFile) {
           提交后案件进入“待正式立案”；所选材料版本和法院名称将固定保存，已确认金额不会改变。
         </p>
         <ElButton
+          v-if="prepareOnly"
+          type="primary"
+          :disabled="!ready"
+          data-test="filing-prepare"
+          @click="prepare"
+          >保存本案资料</ElButton
+        >
+        <ElButton
+          v-else
           type="primary"
           :loading="submitting"
           :disabled="submitting || !ready"

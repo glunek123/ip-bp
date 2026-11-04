@@ -180,6 +180,64 @@ describe('current effective payment totals', () => {
   });
 });
 describe('settlement update isolated draft', () => {
+  it('keeps closure facts read-only while still allowing financial corrections', async () => {
+    const settlementSource: SettlementUpdateSource = {
+      ...source,
+      closeAt: '2026-10-29',
+      settlement: {
+        expectedAssessmentVersionId: 'assessment-version',
+        expectedTermsVersion: 2,
+        declaration: 'APPLICABLE',
+        customerAmount: { mode: 'KEEP' },
+        lawyerAmount: { mode: 'KEEP' },
+      },
+    };
+    const wrapper = mount(Form, {
+      props: { source: settlementSource, canCorrectClosure: false },
+    });
+    expect(
+      wrapper.get('[data-test="closure-correction-readonly"]').text(),
+    ).toContain('需要原结案更正权限');
+    expect(
+      wrapper.get('[data-test="date"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper.get('[aria-label="补充结案文书"]').attributes('disabled'),
+    ).toBeDefined();
+
+    await wrapper.get('[data-test="date"]').setValue('2026-11-03');
+    const input = wrapper.get('[aria-label="补充结案文书"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['new'], 'new-closure.pdf')],
+    });
+    await input.trigger('change');
+    await wrapper.get('[aria-label="customer-mode"]').setValue('MANUAL');
+    await wrapper.get('[aria-label="customer-amount"]').setValue('40.25');
+    await wrapper.get('form').trigger('submit');
+
+    expect(wrapper.emitted('draft')?.[0]?.[0]).toMatchObject({
+      closeAt: '2026-10-29',
+      newDocuments: [],
+      settlement: {
+        customerAmount: { mode: 'MANUAL', amount: '40.25' },
+      },
+    });
+  });
+
+  it('keeps closure facts editable when the optional permission prop is omitted', async () => {
+    const wrapper = mount(Form, { props: { source } });
+    expect(
+      wrapper.find('[data-test="closure-correction-readonly"]').exists(),
+    ).toBe(false);
+    expect(
+      wrapper.get('[data-test="date"]').attributes('disabled'),
+    ).toBeUndefined();
+    expect(
+      wrapper.get('[aria-label="补充结案文书"]').attributes('disabled'),
+    ).toBeUndefined();
+  });
+
   it('lets the user remove new documents and blocks exceeding the combined limit before submission', async () => {
     const wrapper = mount(Form, { props: { source } });
     const input = wrapper.get('[aria-label="补充结案文书"]');

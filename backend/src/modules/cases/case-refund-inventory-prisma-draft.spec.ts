@@ -20,6 +20,88 @@ const source = readFileSync(
   'utf8',
 );
 describe('unregistered refund Prisma transaction draft static boundaries', () => {
+  it('limits nonowner refund work to a verified parent composition and department grant', async () => {
+    const actor = {
+      userId: 'aaaaaaaa-0000-0000-0000-000000000001',
+      departmentId: 'aaaaaaaa-0000-0000-0000-000000000002',
+      authorizationRevision: 1,
+    };
+    const caseId = 'aaaaaaaa-0000-0000-0000-000000000004';
+    const command = {
+      kind: 'CONFIRM_COMPLETE' as const,
+      caseId,
+      expectedVersionId: 'aaaaaaaa-0000-0000-0000-000000000005',
+    };
+    const grants: AccessControlSnapshot['grants'] = [
+      { action: 'case.read', scope: 'department' },
+      { action: 'case.closure.settlement.update', scope: 'department' },
+    ];
+    const access = new AccessControlService({
+      loadSnapshot: jest.fn().mockImplementation(async () => ({
+        active: true,
+        authorizationRevision: 1,
+        membershipTeamId: null,
+        membershipTeamActive: false,
+        grants,
+      })),
+    });
+    const receiptReached = new Error('RECEIPT_LOOKUP');
+    const query = jest
+      .fn()
+      .mockImplementation((parts: TemplateStringsArray) => {
+        const sql = parts.join('');
+        if (sql.includes('FROM case_refund_inventory_receipts'))
+          throw receiptReached;
+        if (sql.includes('SELECT active,account_type'))
+          return [
+            {
+              active: true,
+              account_type: 'INTERNAL',
+              authorization_revision: 1,
+            },
+          ];
+        if (sql.includes('SELECT m.active'))
+          return [{ active: true, team_id: null }];
+        if (sql.includes('SELECT id,responsible_user_id FROM cases'))
+          return [{ id: caseId, responsible_user_id: 'other-owner' }];
+        return [];
+      });
+    const db = { $queryRaw: query } as unknown as Prisma.TransactionClient;
+    const adapter = new CaseRefundInventoryPrismaDraft(
+      { $transaction: jest.fn() },
+      { lockDepartment: jest.fn() } as unknown as OrganizationService,
+      access,
+    );
+    const parent = createRefundCompositionContext(db, {
+      fingerprint: 'a'.repeat(64),
+      idempotencyKey: 'parent-key',
+      caseId,
+      actorUserId: actor.userId,
+      departmentId: actor.departmentId,
+    });
+    await expect(
+      adapter.executeInTransaction(db, actor, command, 'child'),
+    ).rejects.not.toBe(receiptReached);
+    await expect(
+      adapter.executeInTransaction(
+        db,
+        actor,
+        command,
+        parent.idempotencyKey,
+        parent.context,
+      ),
+    ).rejects.toBe(receiptReached);
+    grants.pop();
+    await expect(
+      adapter.executeInTransaction(
+        db,
+        actor,
+        command,
+        parent.idempotencyKey,
+        parent.context,
+      ),
+    ).rejects.not.toBe(receiptReached);
+  });
   it.each(['self', 'team', 'department', 'revoked'] as const)(
     'checks current %s case scope before looking up an old key',
     async (scope) => {
@@ -65,7 +147,8 @@ describe('unregistered refund Prisma transaction draft static boundaries', () =>
             ];
           if (sql.includes('SELECT m.active'))
             return [{ active: true, team_id: teamId }];
-          if (sql.includes('SELECT id FROM cases')) return [{ id: 'case' }];
+          if (sql.includes('SELECT id,responsible_user_id FROM cases'))
+            return [{ id: 'case', responsible_user_id: actor.userId }];
           return [];
         });
       const db = { $queryRaw: query } as unknown as Prisma.TransactionClient;
@@ -250,9 +333,7 @@ describe('unregistered refund Prisma transaction draft static boundaries', () =>
       'user.authorization_revision !== actor.authorizationRevision',
     );
     expect(source).toContain("user.account_type !== 'INTERNAL'");
-    expect(source).toContain(
-      'responsible_user_id=${actor.userId}::uuid FOR UPDATE',
-    );
+    expect(source).toContain("if (!composition) fail('ACTION_FORBIDDEN')");
     expect(source.indexOf('await authorize();')).toBeLessThan(
       source.indexOf('const receipts ='),
     );
@@ -325,7 +406,8 @@ function amountAdapterFixture(
       ];
     if (sql.includes('SELECT m.active'))
       return [{ active: true, team_id: null }];
-    if (sql.includes('SELECT id FROM cases')) return [{ id: 'case' }];
+    if (sql.includes('SELECT id,responsible_user_id FROM cases'))
+      return [{ id: 'case', responsible_user_id: actor.userId }];
     if (sql.includes('SELECT clock_timestamp'))
       return [{ recorded_at: new Date('2026-10-31T00:00:00.000Z') }];
     if (

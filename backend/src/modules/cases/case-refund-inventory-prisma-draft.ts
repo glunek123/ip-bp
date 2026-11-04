@@ -305,15 +305,23 @@ export class CaseRefundInventoryPrismaDraft {
       >`SELECT m.active,CASE WHEN t.status='ACTIVE' THEN m.team_id ELSE NULL END AS team_id FROM department_memberships m LEFT JOIN teams t ON t.id=m.team_id AND t.department_id=m.department_id WHERE m.user_id=${actor.userId}::uuid AND m.department_id=${actor.departmentId}::uuid FOR UPDATE OF m`;
       if (!members[0]?.active) fail('ACTION_FORBIDDEN');
       const cases = await db.$queryRaw<
-        { id: string }[]
-      >`SELECT id FROM cases WHERE id=${command.caseId}::uuid AND department_id=${actor.departmentId}::uuid AND responsible_user_id=${actor.userId}::uuid FOR UPDATE`;
+        { id: string; responsible_user_id: string }[]
+      >`SELECT id,responsible_user_id FROM cases WHERE id=${command.caseId}::uuid AND department_id=${actor.departmentId}::uuid FOR UPDATE`;
       if (cases.length !== 1) fail('ACTION_FORBIDDEN');
+      if (cases[0].responsible_user_id !== actor.userId) {
+        if (!composition) fail('ACTION_FORBIDDEN');
+        await this.access.authorizeDepartmentAction(
+          actor,
+          'case.closure.settlement.update',
+          db,
+        );
+      }
       await this.access.authorizeCase(
         actor,
         'case.read',
         {
           departmentId: actor.departmentId,
-          responsibleUserId: actor.userId,
+          responsibleUserId: cases[0].responsible_user_id,
           ...(members[0].team_id ? { teamId: members[0].team_id } : {}),
         },
         db,

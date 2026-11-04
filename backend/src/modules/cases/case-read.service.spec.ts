@@ -1,4 +1,5 @@
 import { CaseReadService } from './case-read.service';
+import { ForbiddenException } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { caseListMembershipWhere, caseListTextWhere } from './case-list-query';
 import * as caseEntrySource from './case-entry-source';
@@ -90,7 +91,11 @@ describe('CaseReadService', () => {
     };
     const access = {
       buildLeadScope: jest.fn(),
-      authorizeDepartmentAction: jest.fn().mockResolvedValue(undefined),
+      authorizeDepartmentAction: jest.fn(
+        async (_actor: unknown, action: string) => {
+          if (action !== 'case.read') throw new ForbiddenException();
+        },
+      ),
       canAuthorizeLead: jest.fn().mockResolvedValue(false),
       buildCaseScope: jest
         .fn()

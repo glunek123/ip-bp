@@ -81,6 +81,76 @@ async function chooseFile(
 }
 
 describe('case filing panel', () => {
+  it('prepares an input without submitting in prepareOnly mode', async () => {
+    const wrapper = mount(CaseFilingPanel, {
+      props: { item: baseItem, contextKey: 'batch:case-1', prepareOnly: true },
+      global: { plugins: [createPinia()] },
+    });
+    await flushPromises();
+    await chooseFile(
+      wrapper,
+      '[data-test="filing-evidence-input"]',
+      new File(['evidence'], '起诉状.pdf', { type: 'application/pdf' }),
+    );
+    await wrapper.get('[data-test="filing-review"]').trigger('click');
+    await wrapper.get('[data-test="filing-prepare"]').trigger('click');
+    expect(wrapper.emitted('prepared')?.[0]?.[0]).toMatchObject({
+      expectedVersion: 5,
+      courtId: court.id,
+      submittedAt: '2026-10-03',
+    });
+    expect(api.submitCaseFiling).not.toHaveBeenCalled();
+  });
+
+  it('restores a saved preparation when returning to the same case', async () => {
+    const wrapper = mount(CaseFilingPanel, {
+      props: {
+        item: baseItem,
+        contextKey: 'batch:return',
+        prepareOnly: true,
+        preparedInput: {
+          expectedVersion: 5,
+          idempotencyKey: 'original-key',
+          courtId: court.id,
+          submittedAt: '2026-10-02',
+          mediationNo: '诉调-1',
+          filingEvidenceContentVersionIds: [
+            '22222222-2222-4222-8222-222222222222',
+          ],
+        },
+        preparedEvidenceFiles: [
+          {
+            materialId: '11111111-1111-4111-8111-111111111111',
+            contentVersionId: '22222222-2222-4222-8222-222222222222',
+            originalFilename: '已选诉状.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
+        preparedScreenshotFiles: [],
+      },
+      global: { plugins: [createPinia()] },
+    });
+    await flushPromises();
+    expect(
+      (
+        wrapper.get('[data-test="filing-submitted-at"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe('2026-10-02');
+    expect(
+      (
+        wrapper.get('[data-test="filing-mediation-no"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe('诉调-1');
+    expect(wrapper.text()).toContain('已选诉状.pdf');
+    await wrapper.get('[data-test="filing-review"]').trigger('click');
+    expect(
+      (wrapper.get('[data-test="filing-prepare"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
   it('aborts a pending evidence download when the case changes', async () => {
     let finishDownload!: () => void;
     api.downloadMaterialVersion.mockReturnValueOnce(

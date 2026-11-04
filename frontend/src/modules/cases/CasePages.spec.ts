@@ -786,9 +786,9 @@ describe('case pages', () => {
       20,
       expect.objectContaining({ stage: 'WAITING_COMPLAINT' }),
     );
+    await wrapper.get('[data-test="open-case-filters"]').trigger('click');
     await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '刷新')!
+      .get('[data-test="refresh-case-list-in-filters"]')
       .trigger('click');
     await flushPromises();
     expect(api.listCases.mock.calls.at(-1)?.[0]).toBe(2);
@@ -850,9 +850,9 @@ describe('case pages', () => {
     api.listCases
       .mockResolvedValueOnce({ ...base, items: [], total: 20, page: 2 })
       .mockResolvedValueOnce({ ...base, total: 20, page: 1 });
+    await wrapper.get('[data-test="open-case-filters"]').trigger('click');
     await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '刷新')!
+      .get('[data-test="refresh-case-list-in-filters"]')
       .trigger('click');
     await flushPromises();
     expect(wrapper.vm.$route.query.page).toBe('1');
@@ -1970,9 +1970,9 @@ describe('case pages', () => {
         );
       const { wrapper } = await mountRoutedDetail('/cases/case-a');
 
+      await wrapper.get('[data-test="open-case-filters"]').trigger('click');
       await wrapper
-        .findAll('button')
-        .find((button) => button.text() === '刷新')!
+        .get('[data-test="refresh-case-list-in-filters"]')
         .trigger('click');
       await flushPromises();
 
@@ -2642,9 +2642,9 @@ describe.each([
             : ['待写执行材料', '执行材料待确认', '执行材料待盖章'],
         ),
       );
+      await wrapper.get('[data-test="open-case-filters"]').trigger('click');
       await wrapper
-        .findAll('button')
-        .find((button) => button.text() === '刷新')!
+        .get('[data-test="refresh-case-list-in-filters"]')
         .trigger('click');
       await flushPromises();
       expect(api.listCases).toHaveBeenLastCalledWith(

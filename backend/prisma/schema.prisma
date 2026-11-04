@@ -192,6 +192,9 @@ enum PermissionAction {
   CASE_EXTERNAL_ENTRY_CREATE   @map("case.external-entry.create")
   CASE_EXTERNAL_ENTRY_ARCHIVE  @map("case.external-entry.archive")
   CASE_MATCH                   @map("case.match")
+  CASE_LAWYER_ASSIGN           @map("case.lawyer.assign")
+  CASE_ROUTINE_EDIT            @map("case.routine.edit")
+  CASE_CLOSURE_SETTLEMENT_UPDATE @map("case.closure.settlement.update")
   CASE_CONSOLIDATE             @map("case.consolidate")
   CASE_COMPLAINT_SUBMIT        @map("case.complaint.submit")
   CASE_COMPLAINT_CONFIRM       @map("case.complaint.confirm")
@@ -2241,6 +2244,7 @@ model Case {
   defendants                    CaseDefendant[]
   lawyers                       CaseLawyerAssignment[]
   matchReceipts                 CaseMatchReceipt[]
+  lawyerAssignmentReceipts      CaseLawyerAssignmentReceipt[]
   complaintReceipts             CaseComplaintReceipt[]
   complaintConfirmation         CaseComplaintConfirmation?
   complaintConfirmationReceipts CaseComplaintConfirmationReceipt[]
@@ -2583,6 +2587,21 @@ model CaseMatchReceipt {
 
   @@unique([departmentId, actorUserId, idempotencyKey])
   @@map("case_match_receipts")
+}
+
+model CaseLawyerAssignmentReceipt {
+  id                 String   @id @default(uuid()) @db.Uuid
+  departmentId       String   @map("department_id") @db.Uuid
+  actorUserId        String   @map("actor_user_id") @db.Uuid
+  caseId             String   @map("case_id") @db.Uuid
+  idempotencyKey     String   @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String   @map("request_fingerprint") @db.Char(64)
+  resultSnapshot     Json     @map("result_snapshot")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case               Case     @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@map("case_lawyer_assignment_receipts")
 }
 
 model CaseComplaintReceipt {

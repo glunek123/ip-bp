@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import {
   RouterLink,
   onBeforeRouteLeave,
@@ -42,6 +42,7 @@ import {
   type CaseStageGroup,
   type CaseStageFilter,
   type CaseSummary,
+  type CaseDetail,
   type CaseView,
   type CaseListQuery,
 } from '../../api/cases';
@@ -54,7 +55,17 @@ import {
 import CaseListPreferencesPanel from './CaseListPreferencesPanel.vue';
 import CaseConsolidationPanel from './CaseConsolidationPanel.vue';
 import CaseCsvImportPanel from './CaseCsvImportPanel.vue';
+import CaseComplaintExportPanel from './CaseComplaintExportPanel.vue';
+import CaseFilingBatchPanel from './CaseFilingBatchPanel.vue';
+import CaseLawyerAssignmentBatchPanel from './CaseLawyerAssignmentBatchPanel.vue';
 import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
+import {
+  filingActorIdentity,
+  readFilingBatchState,
+} from './case-filing-batch-recovery';
+import type { FilingBatchRead } from './case-filing-batch-recovery';
+import { readLawyerAssignmentBatch } from './case-lawyer-assignment-batch-recovery';
+import type { LawyerAssignmentBatchRead } from './case-lawyer-assignment-batch-recovery';
 import {
   caseListQueryKey,
   parseCaseListQuery,
@@ -195,6 +206,208 @@ const selectionExportError = ref('');
 const selectedCaseIds = ref<string[]>([]);
 const consolidationOpen = ref(false);
 const csvImportOpen = ref(false);
+const filtersOpen = ref(false);
+type ComplaintBatchAction =
+  'complaint' | 'confirm-complaint' | 'mail-complaint';
+type ComplaintBatchEntry = {
+  caseId: string;
+  businessNo: string;
+  action: ComplaintBatchAction;
+  status: 'pending' | 'ineligible' | 'succeeded' | 'skipped';
+  reason: string;
+};
+type ComplaintBatchQueue = {
+  version: 1;
+  actor: string;
+  action: ComplaintBatchAction;
+  entries: ComplaintBatchEntry[];
+};
+const complaintBatchQueue = ref<ComplaintBatchQueue>();
+const complaintBatchStorageError = ref('');
+const complaintBatchKey = (actor: string) =>
+  `case-list-complaint-batch:v1:${encodeURIComponent(actor)}`;
+function isComplaintBatchAction(value: unknown): value is ComplaintBatchAction {
+  return (
+    value === 'complaint' ||
+    value === 'confirm-complaint' ||
+    value === 'mail-complaint'
+  );
+}
+function restoreComplaintBatchQueue() {
+  complaintBatchQueue.value = undefined;
+  complaintBatchStorageError.value = '';
+  if (!identity.value) return;
+  try {
+    const raw = globalThis.sessionStorage.getItem(
+      complaintBatchKey(identity.value),
+    );
+    if (raw === null) return;
+    const value: unknown = JSON.parse(raw);
+    if (
+      typeof value !== 'object' ||
+      value === null ||
+      !('version' in value) ||
+      value.version !== 1 ||
+      !('actor' in value) ||
+      value.actor !== identity.value ||
+      !('action' in value) ||
+      !isComplaintBatchAction(value.action) ||
+      !('entries' in value) ||
+      !Array.isArray(value.entries) ||
+      value.entries.length > 1000
+    )
+      throw new Error('Invalid complaint batch queue');
+    const entries: ComplaintBatchEntry[] = [];
+    const seen = new Set<string>();
+    for (const entry of value.entries) {
+      if (
+        typeof entry !== 'object' ||
+        entry === null ||
+        !('caseId' in entry) ||
+        typeof entry.caseId !== 'string' ||
+        !entry.caseId ||
+        seen.has(entry.caseId) ||
+        !('businessNo' in entry) ||
+        typeof entry.businessNo !== 'string' ||
+        !('action' in entry) ||
+        entry.action !== value.action ||
+        !('status' in entry) ||
+        !['pending', 'ineligible', 'succeeded', 'skipped'].includes(
+          String(entry.status),
+        ) ||
+        !('reason' in entry) ||
+        typeof entry.reason !== 'string'
+      )
+        throw new Error('Invalid complaint batch entry');
+      seen.add(entry.caseId);
+      entries.push({
+        caseId: entry.caseId,
+        businessNo: entry.businessNo,
+        action: value.action,
+        status: entry.status as ComplaintBatchEntry['status'],
+        reason: entry.reason,
+      });
+    }
+    if (!entries.length) throw new Error('Empty complaint batch queue');
+    complaintBatchQueue.value = {
+      version: 1,
+      actor: identity.value,
+      action: value.action,
+      entries,
+    };
+  } catch {
+    complaintBatchStorageError.value =
+      '批量诉状队列记录无法核对。为避免重复提交，当前不会创建新队列或发送新请求。';
+  }
+}
+function persistComplaintBatchQueue() {
+  const queue = complaintBatchQueue.value;
+  if (
+    !queue ||
+    queue.actor !== identity.value ||
+    complaintBatchStorageError.value
+  )
+    return false;
+  try {
+    globalThis.sessionStorage.setItem(
+      complaintBatchKey(queue.actor),
+      JSON.stringify(queue),
+    );
+    return true;
+  } catch {
+    complaintBatchStorageError.value =
+      '批量诉状队列无法安全保存。为避免重复提交，请先保留当前会话并核对原请求。';
+    return false;
+  }
+}
+const complaintQueueHasPending = computed(() =>
+  complaintBatchQueue.value?.entries.some(
+    (entry) => entry.status === 'pending',
+  ),
+);
+const complaintBatchAvailable = computed(
+  () =>
+    stageGroup.value === 'COMPLAINT_PREPARATION' ||
+    [
+      'WAITING_COMPLAINT',
+      'WAITING_COMPLAINT_CONFIRMATION',
+      'WAITING_COMPLAINT_STAMP',
+    ].includes(stage.value),
+);
+type CaseListBatchPanel = 'assignment' | 'filing' | 'complaint-export';
+const activeBatchPanel = ref<CaseListBatchPanel | null>(null);
+const batchPanelCases = shallowRef<CaseSummary[]>([]);
+const batchPanelActorKey = ref('');
+const batchPanelNavigationError = ref('');
+const filingRecovery = ref<FilingBatchRead>({ state: 'missing' });
+const assignmentRecovery = ref<LawyerAssignmentBatchRead>({ state: 'missing' });
+const canStartBatchFromSelection = computed(
+  () =>
+    identity.value !== '' &&
+    auth.session?.principalType === 'INTERNAL' &&
+    selectedCaseIds.value.length >= 1 &&
+    selectedCaseIds.value.length <= 20 &&
+    selectedCases.value.length === selectedCaseIds.value.length,
+);
+function refreshCaseBatchRecovery() {
+  const actor =
+    auth.session?.principalType === 'INTERNAL'
+      ? filingActorIdentity(identity.value)
+      : null;
+  if (!actor) {
+    filingRecovery.value = { state: 'missing' };
+    assignmentRecovery.value = { state: 'missing' };
+    return;
+  }
+  filingRecovery.value = readFilingBatchState(actor);
+  assignmentRecovery.value = readLawyerAssignmentBatch(actor);
+}
+const filingBatchNeedsRecovery = computed(() =>
+  filingRecovery.value.state === 'blocked'
+    ? true
+    : filingRecovery.value.state === 'valid' &&
+      filingRecovery.value.batch.items.some(
+        (item) => item.state !== 'COMMITTED',
+      ),
+);
+const assignmentBatchNeedsRecovery = computed(() =>
+  assignmentRecovery.value.state === 'blocked'
+    ? true
+    : assignmentRecovery.value.state === 'valid' &&
+      assignmentRecovery.value.batch.items.some(
+        (item) => !['ASSIGNED', 'NO_CHANGE', 'SKIPPED'].includes(item.state),
+      ),
+);
+function openBatchPanel(panel: CaseListBatchPanel, restoring = false): void {
+  if (activeBatchPanel.value || !identity.value) return;
+  if (restoring) batchPanelCases.value = [];
+  else {
+    if (!canStartBatchFromSelection.value) return;
+    batchPanelCases.value = [...selectedCases.value];
+  }
+  batchPanelActorKey.value = identity.value;
+  batchPanelNavigationError.value = '';
+  activeBatchPanel.value = panel;
+}
+function closeBatchPanel(): void {
+  activeBatchPanel.value = null;
+  batchPanelCases.value = [];
+  batchPanelActorKey.value = '';
+  batchPanelNavigationError.value = '';
+  refreshCaseBatchRecovery();
+}
+function openFilingBatchRecovery(): void {
+  if (filingBatchNeedsRecovery.value) openBatchPanel('filing', true);
+}
+function openAssignmentBatchRecovery(): void {
+  if (assignmentBatchNeedsRecovery.value) openBatchPanel('assignment', true);
+}
+function batchPanelChanged(): void {
+  refreshCaseBatchRecovery();
+  void load();
+}
+watch(identity, refreshCaseBatchRecovery, { immediate: true, flush: 'sync' });
+watch(identity, restoreComplaintBatchQueue, { immediate: true, flush: 'sync' });
 const csvImportPending = ref(false);
 const csvImportPendingOwner = ref<string | null>(null);
 watch(
@@ -209,25 +422,11 @@ watch(
 const selectedCases = computed(() =>
   items.value.filter((item) => selectedCaseIds.value.includes(item.id)),
 );
-const selectedCase = computed(() =>
-  selectedCaseIds.value.length === 1 && selectedCases.value.length === 1
-    ? selectedCases.value[0]
-    : null,
-);
-const selectedCaseSecondaryActions = computed(() => {
-  if (!selectedCase.value || pendingActions.value.has(selectedCase.value.id))
-    return [];
-  const primary = progressActions(selectedCase.value)[0];
-  return listActions(selectedCase.value).filter(
-    (action) =>
-      action.intent !== primary?.intent && action.intent !== 'early-closure',
-  );
-});
 const closureQueue = ref<CaseSummary[]>([]);
 const archiveQueue = ref<CaseSummary[]>([]);
 const canArchiveSelection = computed(
   () =>
-    selectedCases.value.length > 1 &&
+    selectedCases.value.length > 0 &&
     selectedCases.value.length === selectedCaseIds.value.length &&
     selectedCases.value.every(
       (item) =>
@@ -256,6 +455,21 @@ const canCloseSelection = computed(
       listActions(item).some((action) => action.intent === 'early-closure'),
     ),
 );
+const closureSelectionTitle = computed(() => {
+  if (!selectedCaseIds.value.length) return '请先勾选可结案的案件';
+  if (selectedCases.value.length !== selectedCaseIds.value.length)
+    return '所选案件不在当前页，无法核对全部结案权限';
+  if (!canCloseSelection.value) return '所选案件当前不具备结案权限或阶段不符';
+  return '逐案核对并办理结案';
+});
+const archiveSelectionTitle = computed(() => {
+  if (!selectedCaseIds.value.length) return '请先勾选待归档案件';
+  if (selectedCases.value.length !== selectedCaseIds.value.length)
+    return '所选案件不在当前页，无法核对全部归档权限';
+  if (!canArchiveSelection.value)
+    return '请只选择当前页中有归档权限且尚未归档的案件';
+  return '逐案核对并正式归档';
+});
 function startClosureSelection() {
   if (!canCloseSelection.value || openingAction.value) return;
   closureQueue.value = [
@@ -267,7 +481,131 @@ function nextClosureCase() {
   const item = closureQueue.value[0];
   if (item && !openingAction.value) enterAction(item, 'early-closure');
 }
+function startComplaintBatch(action: ComplaintBatchAction) {
+  if (
+    !identity.value ||
+    !selectedCaseIds.value.length ||
+    selectedCaseIds.value.length > 1000 ||
+    state.value !== 'ready' ||
+    openingAction.value ||
+    complaintBatchStorageError.value ||
+    complaintQueueHasPending.value
+  )
+    return;
+  const byId = new Map(items.value.map((item) => [item.id, item]));
+  const entries = selectedCaseIds.value.map((caseId) => {
+    const item = byId.get(caseId);
+    if (!item)
+      return {
+        caseId,
+        businessNo: `案件 ${caseId}`,
+        action,
+        status: 'ineligible' as const,
+        reason: '当前列表未包含此案件，无法核对阶段和办理权限。',
+      };
+    if (pendingActions.value.has(caseId))
+      return {
+        caseId,
+        businessNo: item.businessNo,
+        action,
+        status: 'pending' as const,
+        reason: '有尚未确认的原办理请求，必须先核对原请求。',
+      };
+    if (recordRecoveries.value.some((entry) => entry.caseId === caseId))
+      return {
+        caseId,
+        businessNo: item.businessNo,
+        action,
+        status: 'ineligible' as const,
+        reason: '请先核对本案待恢复的资料更正请求。',
+      };
+    if (!listActions(item).some((entry) => entry.intent === action))
+      return {
+        caseId,
+        businessNo: item.businessNo,
+        action,
+        status: 'ineligible' as const,
+        reason: '案件阶段或服务端权限不符合此项诉状办理。',
+      };
+    return {
+      caseId,
+      businessNo: item.businessNo,
+      action,
+      status: 'pending' as const,
+      reason: '',
+    };
+  });
+  complaintBatchQueue.value = {
+    version: 1,
+    actor: identity.value,
+    action,
+    entries,
+  };
+  persistComplaintBatchQueue();
+}
+function complaintBatchStatus(entry: ComplaintBatchEntry) {
+  if (entry.status === 'succeeded') return '已成功';
+  if (entry.status === 'skipped') return '已跳过';
+  if (entry.status === 'ineligible') return '条件不符';
+  if (hasUnresolvedOriginalRequest(entry.caseId)) return '待核对原请求';
+  return '待办理';
+}
+function openComplaintBatchEntry(entry: ComplaintBatchEntry) {
+  const queue = complaintBatchQueue.value;
+  if (
+    !queue ||
+    queue.actor !== identity.value ||
+    complaintBatchStorageError.value ||
+    entry.status !== 'pending' ||
+    openingAction.value
+  )
+    return;
+  const originalAction = pendingActions.value.get(entry.caseId);
+  if (originalAction) {
+    enterRecovery(entry.caseId, originalAction);
+    return;
+  }
+  selectedAction.value = entry.action;
+  selectedRecordRecovery.value = null;
+  workflowContext.value = {
+    recordId: entry.caseId,
+    actorKey: queue.actor,
+    actionKey: entry.action,
+    title: `${entry.businessNo} · ${shortCaseAction({ intent: entry.action, label: entry.action })}`,
+  };
+  drawerOpen.value = true;
+}
+function skipComplaintBatchEntry(entry: ComplaintBatchEntry) {
+  const queue = complaintBatchQueue.value;
+  if (
+    !queue ||
+    queue.actor !== identity.value ||
+    complaintBatchStorageError.value ||
+    drawerOpen.value ||
+    entry.status !== 'pending' ||
+    hasUnresolvedOriginalRequest(entry.caseId)
+  )
+    return;
+  entry.status = 'skipped';
+  entry.reason = '';
+  persistComplaintBatchQueue();
+}
+function complaintBatchActionLabel(action: ComplaintBatchAction) {
+  if (action === 'complaint') return '上传诉状';
+  if (action === 'confirm-complaint') return '确认诉状';
+  return '登记邮寄';
+}
+function complaintBatchEntryReason(entry: ComplaintBatchEntry) {
+  if (hasUnresolvedOriginalRequest(entry.caseId))
+    return '存在未确认的原请求。请打开并核对原请求，不能跳过。';
+  if (entry.status === 'pending' && !entry.reason)
+    return '符合当前列表条件；打开后将重新读取案件并核对服务端权限。';
+  return entry.reason;
+}
 function workflowSucceeded() {
+  const completedAction = selectedAction.value;
+  const completedId = workflowContext.value?.recordId;
+  const completedCase = items.value.find((item) => item.id === completedId);
   if (
     selectedAction.value === 'early-closure' &&
     closureQueue.value[0]?.id === workflowContext.value?.recordId
@@ -278,7 +616,80 @@ function workflowSucceeded() {
     archiveQueue.value[0]?.id === workflowContext.value?.recordId
   )
     archiveQueue.value = archiveQueue.value.slice(1);
+  const complaintQueue = complaintBatchQueue.value;
+  const complaintEntry = complaintQueue?.entries.find(
+    (entry) => entry.caseId === completedId && entry.status === 'pending',
+  );
+  if (
+    complaintQueue?.actor === identity.value &&
+    selectedAction.value === complaintQueue.action &&
+    complaintEntry
+  ) {
+    complaintEntry.status = 'succeeded';
+    complaintEntry.reason = '';
+    persistComplaintBatchQueue();
+  }
+  if (
+    completedAction === 'record-closure' &&
+    completedCase?.stage === 'WAITING_ARCHIVE' &&
+    completedId
+  )
+    void verifyClosureBridge(completedId, identity.value);
   void load();
+}
+const closureBridge = ref<{
+  caseId: string;
+  actor: string;
+  status: 'checking' | 'ready' | 'denied' | 'unconfirmed';
+  detail?: CaseDetail;
+}>();
+let closureBridgeController: AbortController | undefined;
+async function verifyClosureBridge(caseId: string, actor: string) {
+  closureBridgeController?.abort();
+  const controller = new AbortController();
+  closureBridgeController = controller;
+  closureBridge.value = { caseId, actor, status: 'checking' };
+  try {
+    const detail = await getCase(caseId, { signal: controller.signal });
+    if (
+      controller.signal.aborted ||
+      identity.value !== actor ||
+      detail.id !== caseId
+    )
+      return;
+    if (detail.stage !== 'WAITING_ARCHIVE' || !detail.closure) {
+      closureBridge.value = { caseId, actor, status: 'unconfirmed' };
+      return;
+    }
+    if (detail.canUpdateClosureSettlement !== true) {
+      closureBridge.value = { caseId, actor, status: 'denied' };
+      return;
+    }
+    closureBridge.value = { caseId, actor, status: 'ready', detail };
+  } catch {
+    if (!controller.signal.aborted && identity.value === actor)
+      closureBridge.value = { caseId, actor, status: 'unconfirmed' };
+  }
+}
+function continueClosureSettlement() {
+  const bridge = closureBridge.value;
+  if (
+    !bridge ||
+    bridge.actor !== identity.value ||
+    bridge.status !== 'ready' ||
+    !bridge.detail
+  )
+    return;
+  selectedAction.value = 'settlement-update';
+  selectedRecordRecovery.value = null;
+  workflowContext.value = {
+    recordId: bridge.caseId,
+    actorKey: identity.value,
+    actionKey: 'settlement-update',
+    title: `${bridge.detail.businessNo} · 结算更新`,
+  };
+  drawerOpen.value = true;
+  closureBridge.value = undefined;
 }
 const canConsolidateSelection = computed(
   () =>
@@ -375,14 +786,36 @@ const listQuery = computed(() =>
     ...Object.entries(serializeCaseListQuery(listFilters.value)),
   ]),
 );
-const queryDraft = ref({ q: '' });
+type CaseListQueryDraft = Required<
+  Pick<
+    CaseListQuery,
+    | 'q'
+    | 'customerName'
+    | 'rightsHolderName'
+    | 'courtCaseNo'
+    | 'shopName'
+    | 'defendantName'
+    | 'courtName'
+    | 'lawyerName'
+  >
+> &
+  Pick<CaseListQuery, 'caseType' | 'sortBy' | 'sortDirection'>;
+const emptyQueryDraft = (): CaseListQueryDraft => ({
+  q: '',
+  customerName: '',
+  rightsHolderName: '',
+  courtCaseNo: '',
+  shopName: '',
+  defendantName: '',
+  courtName: '',
+  lawyerName: '',
+});
+const queryDraft = ref<CaseListQueryDraft>(emptyQueryDraft());
 watch(
   () => parsedListQuery.value,
   (parsed) => {
     if (!parsed.ok) return;
-    queryDraft.value = {
-      q: parsed.value.q ?? '',
-    };
+    queryDraft.value = { ...emptyQueryDraft(), ...parsed.value };
   },
   { immediate: true },
 );
@@ -396,9 +829,7 @@ function listRouteBase() {
   );
 }
 function applyQuery() {
-  const next = {
-    q: queryDraft.value.q,
-  } satisfies CaseListQuery;
+  const next = { ...queryDraft.value } satisfies CaseListQuery;
   const parsed = parseCaseListQuery(next);
   if (!parsed.ok) {
     error.value = parsed.message;
@@ -412,11 +843,10 @@ function applyQuery() {
       page: '1',
     },
   });
+  filtersOpen.value = false;
 }
 function clearQuery() {
-  queryDraft.value = {
-    q: '',
-  };
+  queryDraft.value = emptyQueryDraft();
   applyQuery();
 }
 function stageLabel(value: CaseSummary['stage']): string {
@@ -438,13 +868,7 @@ function stageLabel(value: CaseSummary['stage']): string {
   return '待开庭';
 }
 function listActions(item: CaseSummary) {
-  const actions = resolveCaseListActions(item).filter(
-    (action) =>
-      (action.intent !== 'early-closure' &&
-        action.intent !== 'payment-proof') ||
-      (auth.session?.principalType === 'INTERNAL' &&
-        item.owner.id === auth.session.user.id),
-  );
+  const actions = resolveCaseListActions(item);
   const primary =
     actions.find((action) => action.intent === 'choose-next-step') ??
     primaryCaseAction(item.stage, actions);
@@ -482,10 +906,15 @@ function progressActions(item: CaseSummary) {
     )
     .slice(0, 1);
 }
-function shortCaseAction(action: {
-  intent: CaseActionIntent;
-  label: string;
-}): string {
+function shortCaseAction(
+  action: {
+    intent: CaseActionIntent;
+    label: string;
+  },
+  item?: Pick<CaseSummary, 'stage'>,
+): string {
+  if (item?.stage === 'WAITING_ARCHIVE' && action.intent === 'record-closure')
+    return '结算更新';
   const labels: Partial<Record<CaseActionIntent, string>> = {
     match: '匹配案件',
     complaint: '提交诉状',
@@ -508,44 +937,33 @@ function shortCaseAction(action: {
   };
   return labels[action.intent] ?? action.label;
 }
+function caseActionTitle(
+  item: CaseSummary,
+  action: { intent: CaseActionIntent; label: string },
+): string {
+  if (item.stage === 'WAITING_ARCHIVE' && action.intent === 'record-closure')
+    return '缺少结案资料。请先登记；登记后需重新读取并由你明确继续结算更新。';
+  return action.label;
+}
 const pendingActions = ref(new Map<string, CaseActionIntent>());
+const pendingRecoveryBlockedCaseIds = ref(new Set<string>());
+const pendingRecoveryStorageBlocked = ref(false);
 const recordRecoveries = ref<CaseListRecordRecovery[]>([]);
 const recordRecoveryError = ref('');
-const canEditSelectedCase = computed(
-  () =>
-    selectedCase.value !== null &&
-    auth.session?.principalType === 'INTERNAL' &&
-    selectedCase.value.owner.id === auth.session.user.id &&
-    !recordRecoveries.value.some(
-      (recovery) => recovery.caseId === selectedCase.value?.id,
-    ),
-);
-const editSelectedCaseTitle = computed(() => {
-  if (selectedCaseIds.value.length > 1) return '请恰选一条本人负责的案件';
-  if (!selectedCase.value) return '请选择本人负责的案件';
-  if (auth.session?.principalType !== 'INTERNAL')
-    return '当前账号不可编辑案件资料';
-  if (selectedCase.value.owner.id !== auth.session?.user.id)
-    return '仅可编辑本人负责的案件';
-  if (
-    recordRecoveries.value.some(
-      (entry) => entry.caseId === selectedCase.value?.id,
-    )
-  )
-    return '请先核对待恢复的资料更正请求';
-  return '编辑本人负责案件的已登记资料';
-});
 const pendingRecoveryActions = computed(() => [...pendingActions.value]);
 function readPendingActions() {
   const result = new Map<string, CaseActionIntent>();
+  const blockedCaseIds = new Set<string>();
+  pendingRecoveryStorageBlocked.value = false;
   const prefix = `case-list-workflow:v1:${encodeURIComponent(identity.value)}:`;
   try {
     for (let index = 0; index < globalThis.sessionStorage.length; index += 1) {
+      let key: string | null = null;
       try {
-        const key = globalThis.sessionStorage.key(index);
+        key = globalThis.sessionStorage.key(index);
         if (!key?.startsWith(prefix)) continue;
         const raw = globalThis.sessionStorage.getItem(key);
-        if (!raw) continue;
+        if (!raw) throw new Error('Missing workflow recovery record');
         const value: unknown = JSON.parse(raw);
         const pending = decodeCaseListRequest(value);
         if (
@@ -554,14 +972,24 @@ function readPendingActions() {
           key === `${prefix}${encodeURIComponent(pending.caseId)}`
         )
           result.set(pending.caseId, pending.action);
+        else throw new Error('Invalid workflow recovery record');
       } catch {
-        /* Opening a fresh detail still fails closed if storage is inaccessible. */
+        if (key?.startsWith(prefix)) {
+          try {
+            const caseId = decodeURIComponent(key.slice(prefix.length));
+            if (caseId) blockedCaseIds.add(caseId);
+          } catch {
+            pendingRecoveryStorageBlocked.value = true;
+          }
+        }
       }
     }
   } catch {
     /* Storage restrictions must not prevent reading the case list. */
+    pendingRecoveryStorageBlocked.value = true;
   }
   pendingActions.value = result;
+  pendingRecoveryBlockedCaseIds.value = blockedCaseIds;
   try {
     recordRecoveries.value = readCaseListRecordRecoveries(recordActorKey.value);
     recordRecoveryError.value = '';
@@ -570,6 +998,13 @@ function readPendingActions() {
     recordRecoveryError.value =
       '无法核对资料更正的原请求恢复记录。请保留当前会话并联系管理员，尚未发送新更正请求。';
   }
+}
+function hasUnresolvedOriginalRequest(caseId: string) {
+  return (
+    pendingRecoveryStorageBlocked.value ||
+    pendingActions.value.has(caseId) ||
+    pendingRecoveryBlockedCaseIds.value.has(caseId)
+  );
 }
 function enterRecordEditor(
   item: Pick<CaseSummary, 'id' | 'businessNo'>,
@@ -600,13 +1035,6 @@ function enterRecordEditor(
     title: `${item.businessNo} · 编辑已登记资料`,
   };
   drawerOpen.value = true;
-}
-function openSelectedRoutineEdit() {
-  if (!canEditSelectedCase.value || !selectedCase.value) return;
-  void router.push({
-    path: `/cases/${encodeURIComponent(selectedCase.value.id)}`,
-    query: { ...listQuery.value, edit: 'routine' },
-  });
 }
 function enterRecovery(id: string, action: CaseActionIntent) {
   if (!identity.value || openingAction.value) return;
@@ -668,14 +1096,30 @@ function leaveWorkflow() {
   closeWorkflow();
   return true;
 }
-onBeforeRouteLeave(leaveWorkflow);
-onBeforeRouteUpdate(leaveWorkflow);
+function leaveCaseListRoute() {
+  if (activeBatchPanel.value && batchPanelActorKey.value === identity.value) {
+    batchPanelNavigationError.value =
+      '请先关闭批量办理面板，再离开案件列表或修改筛选条件。';
+    return false;
+  }
+  if (activeBatchPanel.value) closeBatchPanel();
+  return leaveWorkflow();
+}
+onBeforeRouteLeave(leaveCaseListRoute);
+onBeforeRouteUpdate(leaveCaseListRoute);
 watch(
   [identity, sessionGeneration],
   () => {
     closureQueue.value = [];
     archiveQueue.value = [];
+    closureBridgeController?.abort();
+    closureBridgeController = undefined;
+    closureBridge.value = undefined;
     closeWorkflow();
+    if (activeBatchPanel.value) closeBatchPanel();
+    selectedCaseIds.value = [];
+    refreshCaseBatchRecovery();
+    restoreComplaintBatchQueue();
   },
   { flush: 'sync' },
 );
@@ -1107,6 +1551,7 @@ watch(
 );
 onBeforeUnmount(() => {
   request?.abort();
+  closureBridgeController?.abort();
   capabilityGeneration += 1;
   capabilityController?.abort();
   capabilityController = undefined;
@@ -1163,6 +1608,40 @@ onBeforeUnmount(() => {
           >核对原办理请求</ElButton
         >
       </section>
+      <section
+        v-if="closureBridge && closureBridge.actor === identity"
+        class="state-panel"
+        aria-label="继续结算更新"
+        data-test="closure-settlement-bridge"
+      >
+        <p v-if="closureBridge.status === 'checking'" role="status">
+          结案资料已登记，正在重新读取最新资料和权限。
+        </p>
+        <template v-else-if="closureBridge.status === 'ready'">
+          <p>最新资料已确认。结算更新不会自动提交；请明确选择下一步。</p>
+          <ElButton
+            type="primary"
+            data-test="continue-closure-settlement"
+            @click="continueClosureSettlement"
+            >继续结算更新</ElButton
+          >
+        </template>
+        <p v-else-if="closureBridge.status === 'denied'" role="alert">
+          结案资料已登记，但当前账号没有更新结算的权限。请联系有权限的负责人。
+        </p>
+        <template v-else>
+          <p role="alert">
+            结案资料已提交，但最新资料或阶段尚未确认。请重新读取后核对；不会自动提交结算。
+          </p>
+          <ElButton
+            data-test="retry-closure-settlement-read"
+            @click="
+              verifyClosureBridge(closureBridge.caseId, closureBridge.actor)
+            "
+            >重新读取</ElButton
+          >
+        </template>
+      </section>
       <ListHeaderSearch
         v-model="queryDraft.q"
         placeholder="编号、案号、客户、权利主体、店铺、被告、法院、律师"
@@ -1170,63 +1649,106 @@ onBeforeUnmount(() => {
       />
       <div
         class="case-list-toolbar case-list-head-actions operation-bar"
+        :class="{
+          'case-list-toolbar--matching': stage === 'PENDING_MATCH',
+          'case-list-toolbar--filing': stage === 'WAITING_FILING',
+          'case-list-toolbar--archive': stage === 'WAITING_ARCHIVE',
+          'case-list-toolbar--archived': stage === 'ARCHIVED',
+          'case-list-toolbar--general': ![
+            'PENDING_MATCH',
+            'WAITING_FILING',
+            'WAITING_ARCHIVE',
+            'ARCHIVED',
+          ].includes(stage),
+        }"
         aria-label="案件列表工具栏"
       >
-        <ElButton @click="applyQuery">查询</ElButton>
-        <ElButton data-test="case-query-clear" @click="clearQuery"
-          >清除筛选</ElButton
-        >
         <span v-if="selectedCaseIds.length" aria-live="polite">
           已选 {{ selectedCaseIds.length }} 件
+          <ElButton
+            text
+            data-test="clear-case-selection"
+            @click="selectedCaseIds = []"
+            >清空选择</ElButton
+          >
         </span>
         <ElButton
-          v-if="canEditSelectedCase"
-          class="case-toolbar-button"
-          data-test="edit-selected-case"
-          :title="editSelectedCaseTitle"
-          @click="openSelectedRoutineEdit"
-          >编辑资料</ElButton
+          v-if="stage === 'PENDING_MATCH' && !stageGroup"
+          :disabled="!canStartBatchFromSelection || !!activeBatchPanel"
+          :title="
+            canStartBatchFromSelection
+              ? '只处理明确勾选的案件；逐案读取分配权限'
+              : selectedCaseIds.length > 20
+                ? '每批最多选择20件案件'
+                : '请先勾选1至20件当前列表中的案件'
+          "
+          data-test="case-lawyer-assignment-batch-open"
+          @click="openBatchPanel('assignment')"
+          >批量分配律师</ElButton
         >
         <ElButton
-          v-else
-          class="case-toolbar-button"
-          disabled
-          data-test="edit-selected-case"
-          :title="editSelectedCaseTitle"
-          >编辑资料</ElButton
+          v-if="stage === 'WAITING_FILING' && !stageGroup"
+          :disabled="!canStartBatchFromSelection || !!activeBatchPanel"
+          :title="
+            canStartBatchFromSelection
+              ? '只处理明确勾选的案件；逐案读取立案权限和材料要求'
+              : selectedCaseIds.length > 20
+                ? '每批最多选择20件案件'
+                : '请先勾选1至20件当前列表中的案件'
+          "
+          data-test="case-filing-batch-open"
+          @click="openBatchPanel('filing')"
+          >批量立案</ElButton
         >
-        <template v-if="selectedCase && selectedCaseSecondaryActions.length">
+        <template v-if="complaintBatchAvailable">
           <ElButton
-            v-for="action in selectedCaseSecondaryActions"
-            :key="action.intent"
-            class="case-toolbar-action"
-            :disabled="openingAction"
-            :data-case-action="action.intent"
-            :title="action.label"
-            @click="enterAction(selectedCase, action.intent)"
-            >{{ shortCaseAction(action) }}</ElButton
+            v-for="action in [
+              'complaint',
+              'confirm-complaint',
+              'mail-complaint',
+            ] as const"
+            :key="action"
+            :disabled="
+              !identity ||
+              !selectedCaseIds.length ||
+              selectedCaseIds.length > 1000 ||
+              state !== 'ready' ||
+              openingAction ||
+              !!complaintBatchStorageError ||
+              complaintQueueHasPending
+            "
+            :title="
+              complaintQueueHasPending
+                ? '请先继续或跳过当前队列中可跳过的案件'
+                : selectedCaseIds.length
+                  ? '只处理明确勾选的案件；逐案重新核对阶段和服务端权限'
+                  : '请先勾选案件'
+            "
+            :data-test="`start-complaint-batch-${action}`"
+            @click="startComplaintBatch(action)"
+          >
+            批量{{ complaintBatchActionLabel(action) }}
+          </ElButton>
+          <ElButton
+            :disabled="!canStartBatchFromSelection || !!activeBatchPanel"
+            :title="
+              canStartBatchFromSelection
+                ? '只预览和导出明确勾选的案件'
+                : selectedCaseIds.length > 20
+                  ? '每批最多选择20件案件'
+                  : '请先勾选1至20件当前列表中的案件'
+            "
+            data-test="case-complaint-export-open"
+            @click="openBatchPanel('complaint-export')"
+            >批量导出诉状</ElButton
           >
         </template>
         <ElButton
-          v-if="canCloseSelection"
-          data-test="close-selected-cases"
-          data-case-action="early-closure"
-          :disabled="openingAction"
-          @click="startClosureSelection"
-          >结案</ElButton
-        >
-        <ElButton
-          v-if="closureQueue.length && !drawerOpen"
-          data-test="next-closure-case"
-          :disabled="openingAction"
-          @click="nextClosureCase"
-          >继续逐案结案（剩余 {{ closureQueue.length }} 件）</ElButton
-        >
-        <ElButton
-          v-if="canArchiveSelection"
+          v-if="stage === 'WAITING_ARCHIVE'"
           data-test="archive-selected-cases"
           data-case-action="archive"
-          :disabled="openingAction"
+          :disabled="openingAction || !canArchiveSelection"
+          :title="archiveSelectionTitle"
           @click="startArchiveSelection"
           >归档</ElButton
         >
@@ -1238,34 +1760,84 @@ onBeforeUnmount(() => {
           >继续逐案归档（剩余 {{ archiveQueue.length }} 件）</ElButton
         >
         <ElButton
-          class="case-toolbar-button"
-          :disabled="
-            !selectedCaseIds.length ||
-            !canExportCsv ||
-            exporting ||
-            selectedCaseIds.length > 1000
-          "
-          :loading="exporting"
-          :title="
-            !selectedCaseIds.length
-              ? '请先勾选案件'
-              : !exportCapability
-                ? '暂不可导出，请稍后重试或核对权限'
-                : !exportInput
-                  ? '请先修正筛选条件'
-                  : selectedCaseIds.length > 1000
-                    ? '每次最多导出 1000 件案件'
-                    : exporting
-                      ? '正在导出，请稍候'
-                      : '导出选中案件'
-          "
-          data-test="export-selected-cases"
-          @click="exportSelectedList"
-          >导出选中</ElButton
+          v-if="stage !== 'WAITING_ARCHIVE' && stage !== 'ARCHIVED'"
+          data-test="close-selected-cases"
+          data-case-action="early-closure"
+          :disabled="openingAction || !canCloseSelection"
+          :title="closureSelectionTitle"
+          @click="startClosureSelection"
+          >结案</ElButton
         >
         <ElButton
+          v-if="closureQueue.length && !drawerOpen"
+          data-test="next-closure-case"
+          :disabled="openingAction"
+          @click="nextClosureCase"
+          >继续逐案结案（剩余 {{ closureQueue.length }} 件）</ElButton
+        >
+        <details class="case-list-toolbar-menu" data-test="case-export-menu">
+          <summary>导出</summary>
+          <div class="case-list-toolbar-menu__items">
+            <ElButton
+              v-if="canExportCsv"
+              :loading="exporting"
+              :disabled="exporting || state !== 'ready'"
+              data-test="export-current-case-list"
+              @click="exportCurrentList"
+              >导出筛选结果</ElButton
+            >
+            <ElButton
+              :disabled="
+                !selectedCaseIds.length ||
+                !canExportCsv ||
+                exporting ||
+                selectedCaseIds.length > 1000
+              "
+              :loading="exporting"
+              :title="
+                !selectedCaseIds.length
+                  ? '请先勾选案件'
+                  : !exportCapability
+                    ? '暂不可导出，请稍后重试或核对权限'
+                    : !exportInput
+                      ? '请先修正筛选条件'
+                      : selectedCaseIds.length > 1000
+                        ? '每次最多导出 1000 件案件'
+                        : exporting
+                          ? '正在导出，请稍候'
+                          : '导出选中案件'
+              "
+              data-test="export-selected-cases"
+              @click="exportSelectedList"
+              >导出选中案件</ElButton
+            >
+          </div>
+        </details>
+        <details
+          v-if="
+            canCreateExternalEntry && stage === 'PENDING_MATCH' && !stageGroup
+          "
+          class="case-list-toolbar-menu"
+          data-test="case-create-menu"
+        >
+          <summary>创建案件</summary>
+          <div class="case-list-toolbar-menu__items">
+            <ElButton
+              type="primary"
+              data-test="create-case-entry"
+              @click="router.push('/cases/external-entry')"
+              title="创建、转入或补录案件"
+              >创建案件</ElButton
+            >
+            <ElButton
+              data-test="open-case-csv-import"
+              @click="csvImportOpen = true"
+              >CSV 导入</ElButton
+            >
+          </div>
+        </details>
+        <ElButton
           v-if="stage === 'PENDING_MATCH'"
-          class="case-toolbar-button"
           :disabled="!canConsolidateSelection"
           :title="
             canConsolidateSelection
@@ -1277,52 +1849,17 @@ onBeforeUnmount(() => {
           >合并起诉</ElButton
         >
         <ElButton
-          v-if="selectedCaseIds.length"
-          class="case-toolbar-button"
-          data-test="clear-case-selection"
-          @click="selectedCaseIds = []"
-          >清空选择</ElButton
+          data-test="open-case-filters"
+          @click="filtersOpen = !filtersOpen"
+          >筛选</ElButton
         >
-        <ElButton
-          v-if="canExportCsv"
-          class="case-toolbar-button"
-          :loading="exporting"
-          :disabled="exporting || state !== 'ready'"
-          data-test="export-current-case-list"
-          @click="exportCurrentList"
-          title="导出当前筛选结果"
-          >导出筛选</ElButton
-        >
-        <ElButton
-          v-if="
-            canCreateExternalEntry && stage === 'PENDING_MATCH' && !stageGroup
-          "
-          class="case-toolbar-button"
-          type="primary"
-          @click="router.push('/cases/external-entry')"
-          title="创建、转入或补录案件"
-          >创建案件</ElButton
-        >
-        <ElButton
-          v-if="canCreateExternalEntry"
-          class="case-toolbar-button"
-          data-test="open-case-csv-import"
-          @click="csvImportOpen = true"
-          title="批量导入案件 CSV"
-          >导入</ElButton
-        >
-        <ElButton
-          class="case-toolbar-button"
-          :loading="state === 'loading'"
-          title="刷新案件列表"
-          @click="load"
-          >刷新</ElButton
-        >
-        <CaseListPreferencesPanel
-          :bucket="preferenceBucket"
-          :request-generation="preferenceRequestGeneration"
-          @change="applyColumnPreference"
-        />
+        <div class="case-list-toolbar-preferences">
+          <CaseListPreferencesPanel
+            :bucket="preferenceBucket"
+            :request-generation="preferenceRequestGeneration"
+            @change="applyColumnPreference"
+          />
+        </div>
         <p
           v-if="exportError || selectionExportError"
           class="submit-error"
@@ -1331,6 +1868,212 @@ onBeforeUnmount(() => {
           {{ exportError || selectionExportError }}
         </p>
       </div>
+      <section
+        v-if="filingBatchNeedsRecovery || assignmentBatchNeedsRecovery"
+        class="state-panel case-batch-recovery"
+        aria-live="polite"
+        data-test="case-batch-recovery"
+      >
+        <p
+          v-if="filingBatchNeedsRecovery"
+          data-test="filing-batch-recovery-status"
+        >
+          {{
+            filingRecovery.state === 'blocked'
+              ? '原立案批次记录无法核对；恢复面板会保持只读并保留原记录。'
+              : '存在尚未完成的原立案批次；恢复入口不受当前筛选和勾选影响。'
+          }}
+        </p>
+        <ElButton
+          v-if="filingBatchNeedsRecovery"
+          :disabled="!!activeBatchPanel"
+          data-test="resume-filing-batch"
+          @click="openFilingBatchRecovery"
+          >恢复原立案批次</ElButton
+        >
+        <p
+          v-if="assignmentBatchNeedsRecovery"
+          data-test="assignment-batch-recovery-status"
+        >
+          {{
+            assignmentRecovery.state === 'blocked'
+              ? '原律师分配批次记录无法核对；恢复面板会保持只读并保留原记录。'
+              : '存在尚未完成的原律师分配批次；恢复入口不受当前筛选和勾选影响。'
+          }}
+        </p>
+        <ElButton
+          v-if="assignmentBatchNeedsRecovery"
+          :disabled="!!activeBatchPanel"
+          data-test="resume-assignment-batch"
+          @click="openAssignmentBatchRecovery"
+          >恢复原律师分配批次</ElButton
+        >
+      </section>
+      <section
+        v-if="activeBatchPanel"
+        class="case-batch-panel-host"
+        data-test="case-batch-panel-host"
+      >
+        <p v-if="batchPanelNavigationError" role="alert">
+          {{ batchPanelNavigationError }}
+        </p>
+        <CaseLawyerAssignmentBatchPanel
+          v-if="activeBatchPanel === 'assignment'"
+          :selected-cases="batchPanelCases"
+          :actor-key="batchPanelActorKey"
+          @changed="batchPanelChanged"
+          @close="closeBatchPanel"
+        />
+        <CaseFilingBatchPanel
+          v-else-if="activeBatchPanel === 'filing'"
+          :selected-cases="batchPanelCases"
+          :actor-key="batchPanelActorKey"
+          @changed="batchPanelChanged"
+          @close="closeBatchPanel"
+        />
+        <CaseComplaintExportPanel
+          v-else
+          :selected-cases="batchPanelCases"
+          :actor-key="batchPanelActorKey"
+          @changed="batchPanelChanged"
+          @close="closeBatchPanel"
+        />
+      </section>
+      <section
+        v-if="complaintBatchQueue || complaintBatchStorageError"
+        class="state-panel complaint-batch-queue"
+        aria-label="批量诉状逐案队列"
+        data-test="complaint-batch-queue"
+      >
+        <h2>批量诉状逐案办理</h2>
+        <p v-if="complaintBatchStorageError" role="alert">
+          {{ complaintBatchStorageError }}
+        </p>
+        <template v-else-if="complaintBatchQueue">
+          <p>
+            {{
+              complaintBatchActionLabel(complaintBatchQueue.action)
+            }}：逐案提交，
+            {{
+              complaintBatchQueue.entries.filter(
+                (entry) => entry.status === 'succeeded',
+              ).length
+            }}
+            件已成功；每案材料和日期分别填写。
+          </p>
+          <ul>
+            <li
+              v-for="entry in complaintBatchQueue.entries"
+              :key="entry.caseId"
+              :data-test="`complaint-batch-entry-${entry.caseId}`"
+            >
+              <span
+                >{{ entry.businessNo }} —
+                {{ complaintBatchStatus(entry) }}</span
+              >
+              <span v-if="complaintBatchEntryReason(entry)">
+                {{ complaintBatchEntryReason(entry) }}
+              </span>
+              <ElButton
+                v-if="entry.status === 'pending'"
+                :disabled="
+                  !identity ||
+                  complaintBatchQueue.actor !== identity ||
+                  !!complaintBatchStorageError ||
+                  openingAction
+                "
+                :data-test="`continue-complaint-batch-${entry.caseId}`"
+                @click="openComplaintBatchEntry(entry)"
+              >
+                {{
+                  hasUnresolvedOriginalRequest(entry.caseId)
+                    ? '核对原请求'
+                    : '继续逐案办理'
+                }}
+              </ElButton>
+              <ElButton
+                v-if="
+                  entry.status === 'pending' &&
+                  !hasUnresolvedOriginalRequest(entry.caseId)
+                "
+                :disabled="drawerOpen || !!complaintBatchStorageError"
+                :data-test="`skip-complaint-batch-${entry.caseId}`"
+                @click="skipComplaintBatchEntry(entry)"
+                >跳过此案</ElButton
+              >
+            </li>
+          </ul>
+        </template>
+      </section>
+      <section
+        v-if="filtersOpen"
+        class="case-list-filters state-panel"
+        aria-label="案件列表筛选"
+        data-test="case-list-filters"
+      >
+        <h2>筛选案件</h2>
+        <div class="case-list-filters__grid">
+          <label
+            >客户<input
+              v-model="queryDraft.customerName"
+              data-test="filter-customerName"
+          /></label>
+          <label
+            >权利主体<input
+              v-model="queryDraft.rightsHolderName"
+              data-test="filter-rightsHolderName"
+          /></label>
+          <label
+            >案号<input
+              v-model="queryDraft.courtCaseNo"
+              data-test="filter-courtCaseNo"
+          /></label>
+          <label
+            >店铺<input
+              v-model="queryDraft.shopName"
+              data-test="filter-shopName"
+          /></label>
+          <label
+            >被告<input
+              v-model="queryDraft.defendantName"
+              data-test="filter-defendantName"
+          /></label>
+          <label
+            >法院<input
+              v-model="queryDraft.courtName"
+              data-test="filter-courtName"
+          /></label>
+          <label
+            >律师<input
+              v-model="queryDraft.lawyerName"
+              data-test="filter-lawyerName"
+          /></label>
+          <label
+            >关键词<input
+              v-model="queryDraft.q"
+              data-test="filter-q"
+              @keydown.enter.prevent="applyQuery"
+          /></label>
+        </div>
+        <div class="operation-bar">
+          <ElButton
+            type="primary"
+            data-test="apply-case-filters"
+            @click="applyQuery"
+            >应用筛选</ElButton
+          >
+          <ElButton data-test="case-query-clear" @click="clearQuery"
+            >清除筛选</ElButton
+          >
+          <ElButton
+            :loading="state === 'loading'"
+            data-test="refresh-case-list-in-filters"
+            @click="load"
+            >刷新</ElButton
+          >
+          <ElButton @click="filtersOpen = false">关闭</ElButton>
+        </div>
+      </section>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h2>正在读取案件</h2>
       </section>
@@ -1460,7 +2203,7 @@ onBeforeUnmount(() => {
                       :key="action.intent"
                       class="case-list-progress"
                       type="primary"
-                      :title="action.label"
+                      :title="caseActionTitle(item, action)"
                       :data-case-action="action.intent"
                       :disabled="
                         openingAction ||
@@ -1471,7 +2214,7 @@ onBeforeUnmount(() => {
                       "
                       @click="enterAction(item, action.intent)"
                     >
-                      {{ shortCaseAction(action) }}
+                      {{ shortCaseAction(action, item) }}
                     </ElButton>
                   </div>
                   <span v-else-if="column === 'stage'" class="pill">
@@ -1651,6 +2394,107 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.case-list-toolbar--matching .case-list-toolbar-preferences,
+.case-list-toolbar--filing .case-list-toolbar-preferences,
+.case-list-toolbar--archived .case-list-toolbar-preferences,
+.case-list-toolbar--archive [data-test='archive-selected-cases'] {
+  order: 1;
+}
+.case-list-toolbar--matching [data-test='open-case-filters'],
+.case-list-toolbar--filing [data-test='open-case-filters'],
+.case-list-toolbar--archived [data-test='open-case-filters'],
+.case-list-toolbar--archive [data-test='export-current-case-list'] {
+  order: 2;
+}
+.case-list-toolbar--matching [data-test='case-export-menu'],
+.case-list-toolbar--filing [data-test='case-export-menu'],
+.case-list-toolbar--archived [data-test='case-export-menu'],
+.case-list-toolbar--archive [data-test='case-export-menu'],
+.case-list-toolbar--archive [data-test='open-case-filters'] {
+  order: 3;
+}
+.case-list-toolbar--matching [data-case-action='early-closure'],
+.case-list-toolbar--filing [data-case-action='early-closure'],
+.case-list-toolbar--general [data-case-action='early-closure'],
+.case-list-toolbar--general [data-test='case-export-menu'] {
+  order: 1;
+}
+.case-list-toolbar--matching [data-case-action='early-closure'],
+.case-list-toolbar--matching [data-test='create-case-entry'],
+.case-list-toolbar--matching [data-test='case-create-menu'],
+.case-list-toolbar--matching [data-test='open-case-consolidation'] {
+  order: 4;
+}
+.case-list-toolbar--general [data-test='open-case-filters'],
+.case-list-toolbar--archive [data-test='open-case-filters'] {
+  order: 3;
+}
+.case-list-toolbar--general .case-list-toolbar-preferences,
+.case-list-toolbar--archive .case-list-toolbar-preferences {
+  order: 4;
+}
+.case-list-toolbar--matching .case-list-toolbar-preferences,
+.case-list-toolbar--filing .case-list-toolbar-preferences,
+.case-list-toolbar--archived .case-list-toolbar-preferences {
+  order: 1;
+}
+.case-list-toolbar--general [data-test='open-case-filters'] {
+  order: 3;
+}
+.case-list-toolbar-menu {
+  position: relative;
+}
+.case-list-toolbar-menu > summary {
+  cursor: pointer;
+  list-style: none;
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--el-border-radius-base);
+  padding: 6px 12px;
+  background: var(--el-bg-color);
+}
+.case-list-toolbar-menu__items {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  right: 0;
+  display: grid;
+  min-width: max-content;
+  gap: var(--s-1);
+  padding: var(--s-2);
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-bg-color);
+  box-shadow: var(--el-box-shadow-light);
+}
+.case-list-filters__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--s-2) var(--s-3);
+  margin: var(--s-3) 0;
+}
+.case-list-filters__grid label {
+  display: grid;
+  gap: var(--s-1);
+}
+.case-list-filters__grid input {
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--s-2);
+}
+.case-list-filters .operation-bar {
+  flex-wrap: wrap;
+}
+.complaint-batch-queue ul {
+  display: grid;
+  gap: var(--s-2);
+  padding-left: 1.25rem;
+}
+.complaint-batch-queue li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+}
 .case-list-actions {
   display: flex;
   flex-wrap: nowrap;
@@ -1835,6 +2679,55 @@ onBeforeUnmount(() => {
   flex-basis: 100%;
   margin: 0;
   text-align: right;
+}
+
+.case-list-toolbar--matching .case-list-toolbar-preferences,
+.case-list-toolbar--filing .case-list-toolbar-preferences {
+  order: 1;
+}
+.case-list-toolbar--matching [data-test='open-case-filters'],
+.case-list-toolbar--filing [data-test='open-case-filters'] {
+  order: 2;
+}
+.case-list-toolbar--matching [data-test='case-lawyer-assignment-batch-open'],
+.case-list-toolbar--filing [data-test='case-filing-batch-open'] {
+  order: 3;
+}
+.case-list-toolbar--matching [data-test='case-export-menu'],
+.case-list-toolbar--filing [data-test='case-export-menu'] {
+  order: 4;
+}
+.case-list-toolbar--matching [data-case-action='early-closure'],
+.case-list-toolbar--filing [data-case-action='early-closure'] {
+  order: 5;
+}
+.case-list-toolbar--matching [data-test='case-create-menu'] {
+  order: 6;
+}
+.case-list-toolbar--matching [data-test='open-case-consolidation'] {
+  order: 7;
+}
+.case-list-toolbar--general [data-test='case-complaint-export-open'] {
+  order: 4;
+}
+.case-batch-panel-host {
+  display: grid;
+  gap: var(--s-2);
+  margin: var(--s-3) 0;
+}
+.case-batch-panel-host > p {
+  margin: 0;
+}
+.case-batch-recovery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin: var(--s-3) 0;
+}
+.case-batch-recovery p {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 @media (max-width: 900px) {

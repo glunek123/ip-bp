@@ -251,7 +251,12 @@ export function postBlob(
   path: string,
   body: JsonValue,
   options: RequestOptions = {},
-): Promise<{ blob: Blob; filename: string; mimeType: string }> {
+): Promise<{
+  blob: Blob;
+  filename: string;
+  mimeType: string;
+  responseHeaders: Headers;
+}> {
   return executeRequest(
     path,
     {
@@ -284,6 +289,7 @@ export function postBlob(
           response.headers.get('Content-Disposition'),
         ),
         mimeType,
+        responseHeaders: response.headers,
       };
     },
   );

@@ -74,6 +74,7 @@ function fixture() {
     currentVersion: {
       id: priorId,
       toVersion: 6,
+      closeAt: new Date('2026-01-01T00:00:00.000Z'),
       earlyClosureId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
       finishId: null,
       externalEntryId: null,
@@ -324,12 +325,57 @@ describe('atomic settlement update transaction draft (mock database only)', () =
     expect(f.tx.caseClosureVersion.create).not.toHaveBeenCalled();
     expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
   });
-  it('denies another responsible operator before writing facts', async () => {
+  it('denies another responsible operator without the financial proxy grant', async () => {
     const f = fixture();
     f.current.responsibleUserId = docId;
+    f.access.authorizeDepartmentAction.mockRejectedValue(
+      new Error('missing department grant'),
+    );
     await expect(f.service.update(actor, caseId, value())).rejects.toThrow();
     expect(f.tx.caseClosureVersion.create).not.toHaveBeenCalled();
   });
+  it('allows the financial composite for a colleague with the independent department grant', async () => {
+    const f = fixture();
+    f.current.responsibleUserId = docId;
+    await expect(
+      f.service.update(actor, caseId, value()),
+    ).resolves.toMatchObject({
+      stage: 'WAITING_ARCHIVE',
+    });
+    expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+      actor,
+      'case.closure.settlement.update',
+      f.tx,
+    );
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'case.proxy.applied',
+        details: expect.objectContaining({
+          responsibleUserId: docId,
+          scope: 'DEPARTMENT',
+        }),
+      }),
+    });
+  });
+  it.each([
+    ['date', { closeAt: '2026-01-02' }],
+    ['closure documents', { closeContentVersionIds: [] }],
+  ])(
+    'requires the original correction grant when a financial proxy changes %s',
+    async (_label, changed) => {
+      const f = fixture();
+      f.current.responsibleUserId = docId;
+      f.access.authorizeCase.mockImplementation(async (_actor, action) => {
+        if (action === 'case.closure.correct')
+          throw new Error('no correction grant');
+      });
+      await expect(
+        f.service.update(actor, caseId, { ...value(), ...changed }),
+      ).rejects.toThrow('no correction grant');
+      expect(f.tx.caseClosureVersion.create).not.toHaveBeenCalled();
+      expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
+    },
+  );
   it('allows a non-owner with case-scoped correction permission to correct closure alone', async () => {
     const f = fixture(),
       input = value();
@@ -345,6 +391,27 @@ describe('atomic settlement update transaction draft (mock database only)', () =
       f.tx,
     );
     expect(f.tx.caseClosureVersion.create).toHaveBeenCalledTimes(1);
+  });
+  it('does not turn the financial proxy grant into a closure-only correction grant', async () => {
+    const f = fixture();
+    const input = value();
+    f.current.responsibleUserId = docId;
+    input.paymentRecords = [];
+    delete input.refund;
+    delete input.settlement;
+    f.access.authorizeCase.mockImplementation(async (_actor, action) => {
+      if (action === 'case.closure.correct')
+        throw new Error('no correction grant');
+    });
+    await expect(f.service.update(actor, caseId, input)).rejects.toThrow(
+      'no correction grant',
+    );
+    expect(f.access.authorizeDepartmentAction).not.toHaveBeenCalledWith(
+      actor,
+      'case.closure.settlement.update',
+      f.tx,
+    );
+    expect(f.tx.caseClosureVersion.create).not.toHaveBeenCalled();
   });
   it('saves both manual amounts to cents once and assesses the new locked terms version without a financial grant', async () => {
     const f = fixture(),

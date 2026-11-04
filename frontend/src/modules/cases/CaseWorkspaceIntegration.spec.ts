@@ -757,6 +757,7 @@ describe('UXQ-01-C list action intents', () => {
       page: '3',
       q: 'CA-1',
       caseType: 'CIVIL',
+      shopName: '旧店铺',
     };
     const query = new URLSearchParams({
       ...listQuery,

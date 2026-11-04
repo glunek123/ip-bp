@@ -131,6 +131,7 @@ export const prismaModelOwners = Object.freeze({
   LawyerAccountBinding: 'cases',
   CaseLawyerAssignment: 'cases',
   CaseMatchReceipt: 'cases',
+  CaseLawyerAssignmentReceipt: 'cases',
   CaseComplaintReceipt: 'cases',
   CaseComplaintConfirmation: 'cases',
   CaseComplaintConfirmationReceipt: 'cases',
