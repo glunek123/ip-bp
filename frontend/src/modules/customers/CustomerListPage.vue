@@ -4,6 +4,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
+import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
 import { listCustomers, type CustomerSummary } from '../../api/customers';
 import { ApiError } from '../../api/http';
 import { pinia } from '../../app/pinia';
@@ -248,7 +249,7 @@ onBeforeUnmount(() => activeRequest?.abort());
 </script>
 
 <template>
-  <div class="page-view customer-workspace">
+  <div class="page-view customer-workspace customer-list-page">
     <main>
       <h1 class="sr-only">客户管理</h1>
       <p
@@ -258,19 +259,17 @@ onBeforeUnmount(() => activeRequest?.abort());
       >
         {{ maintenanceSuccessNotice }}
       </p>
+      <ListHeaderSearch
+        v-model="keyword"
+        placeholder="客户名／证件号／主营类目／地区"
+        @search="applyQuery()"
+      />
       <form
         aria-label="客户查询"
         class="customer-list-filter-form"
         @submit.prevent="applyQuery()"
       >
         <div class="customer-list-filter-fields">
-          <label class="customer-list-filter-field"
-            >关键词<input
-              v-model="keyword"
-              data-test="customer-query"
-              class="text-input"
-              placeholder="客户名／证件号／主营类目／地区"
-          /></label>
           <label class="customer-list-filter-field"
             >合作状态<select
               v-model="cooperation"
@@ -387,15 +386,15 @@ onBeforeUnmount(() => activeRequest?.abort());
         </div>
       </section>
       <nav v-if="state === 'ready'" aria-label="客户分页">
-        <span data-test="customer-total"
-          >共 {{ total }} 条 · 第 {{ currentPage }} / {{ totalPages }} 页 ·
-          每页20条</span
-        >
         <ElButton
           data-test="customer-prev"
           :disabled="currentPage <= 1"
           @click="goToPage(currentPage - 1)"
           >上一页</ElButton
+        >
+        <span data-test="customer-total"
+          >共 {{ total }} 条 · 第 {{ currentPage }} / {{ totalPages }} 页 ·
+          每页20条</span
         >
         <ElButton
           data-test="customer-next"
@@ -424,21 +423,45 @@ onBeforeUnmount(() => activeRequest?.abort());
 </template>
 
 <style scoped>
+.customer-list-page {
+  font-size: 13px;
+}
+
+.customer-list-page :deep(.el-button) {
+  height: var(--app-control-height);
+  min-height: var(--app-control-height);
+}
+
 .customer-list-filter-form {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .customer-list-filter-fields {
-  display: grid;
-  grid-template-columns: minmax(240px, 2fr) minmax(180px, 1fr);
-  align-items: end;
-  gap: 10px;
+  display: flex;
+  align-items: center;
+  min-width: 180px;
 }
 
-.customer-list-filter-field {
-  min-width: 0;
+.customer-list-page .customer-list-filter-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  white-space: nowrap;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+
+.customer-list-page .customer-list-filter-field select {
+  width: 180px;
+  flex: 0 0 180px;
+  height: var(--app-control-height);
+  min-height: var(--app-control-height);
+  padding-block: 4px;
+  font-size: 13px;
 }
 
 .customer-list-filter-actions {
@@ -447,7 +470,51 @@ onBeforeUnmount(() => activeRequest?.abort());
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+  margin-left: auto;
   white-space: nowrap;
+}
+
+.customer-list-page .list-head,
+.customer-list-page .customer-row {
+  grid-template-columns: minmax(0, 1fr) 220px 170px;
+  padding: 10px 18px;
+  gap: 16px;
+}
+
+.customer-list-page .list-head {
+  padding-block: 8px;
+  background: var(--color-surface-2);
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+
+.customer-list-page .customer-row {
+  min-height: 58px;
+}
+
+.customer-list-page .customer-row strong {
+  font-size: 13px;
+}
+
+.customer-list-page .status-chip {
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.customer-list-page .customer-row time {
+  font-size: 12px;
+}
+
+.customer-list-page nav[aria-label='客户分页'] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--color-hairline);
+  color: var(--color-ink-muted);
+  font-size: 12px;
 }
 
 .customer-list-name {
@@ -463,15 +530,43 @@ onBeforeUnmount(() => activeRequest?.abort());
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 600px) {
   .customer-list-filter-fields {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    flex: 1 1 100%;
   }
-}
 
-@media (max-width: 440px) {
-  .customer-list-filter-fields {
-    grid-template-columns: minmax(0, 1fr);
+  .customer-list-filter-field {
+    width: 100%;
+  }
+
+  .customer-list-filter-form {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .customer-list-filter-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .customer-list-page .list-head,
+  .customer-list-page .customer-row {
+    grid-template-columns: minmax(0, 1fr) 1fr;
+    padding: 10px 14px;
+    gap: 10px;
+  }
+
+  .customer-list-page .list-head > :last-child {
+    display: none;
+  }
+
+  .customer-list-page .customer-row time {
+    grid-column: 1 / -1;
+  }
+
+  .customer-list-page nav[aria-label='客户分页'] {
+    gap: 8px;
+    padding-inline: 8px;
   }
 }
 </style>

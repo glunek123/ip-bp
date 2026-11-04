@@ -511,7 +511,7 @@ function paperIdentity(
 </script>
 
 <template>
-  <main class="evidence-page">
+  <main class="page-view business-list-page evidence-page">
     <h1 class="sr-only">证物管理</h1>
     <p v-if="dialogLoading && !dialog" class="message" role="status">
       正在读取所选记录…
@@ -571,35 +571,35 @@ function paperIdentity(
           @update:start="setFilter('closeFrom', $event)"
           @update:end="setFilter('closeTo', $event)"
         />
+        <div class="stage-filter" role="group" aria-label="案件进展">
+          <span>案件进展</span>
+          <ElSelect
+            :model-value="filter.stages ?? []"
+            multiple
+            filterable
+            clearable
+            collapse-tags
+            collapse-tags-tooltip
+            :max-collapse-tags="2"
+            :fit-input-width="true"
+            placeholder="搜索并选择案件进展"
+            aria-label="按案件进展筛选"
+            popper-class="evidence-stage-options"
+            @update:model-value="setFilter('stages', $event)"
+          >
+            <ElOption
+              v-for="stage in stageOptions"
+              :key="stage.value"
+              :label="stage.label"
+              :value="stage.value"
+            />
+          </ElSelect>
+          <small
+            >已选 {{ filter.stages?.length ?? 0 }} 项 ·
+            {{ page?.counts.allStageCases ?? '—' }} 案</small
+          >
+        </div>
       </div>
-      <label class="stage-filter">
-        <span>案件进展</span>
-        <ElSelect
-          :model-value="filter.stages ?? []"
-          multiple
-          filterable
-          clearable
-          collapse-tags
-          collapse-tags-tooltip
-          :max-collapse-tags="2"
-          :fit-input-width="true"
-          placeholder="搜索并选择案件进展"
-          aria-label="按案件进展筛选"
-          popper-class="evidence-stage-options"
-          @update:model-value="setFilter('stages', $event)"
-        >
-          <ElOption
-            v-for="stage in stageOptions"
-            :key="stage.value"
-            :label="stage.label"
-            :value="stage.value"
-          />
-        </ElSelect>
-        <small
-          >已选 {{ filter.stages?.length ?? 0 }} 项 ·
-          {{ page?.counts.allStageCases ?? '—' }} 案</small
-        >
-      </label>
     </section>
 
     <section class="list-card">
@@ -646,8 +646,8 @@ function paperIdentity(
           >
         </div>
       </div>
-      <div class="table-wrap">
-        <table>
+      <div class="table-wrap business-list-scroll" tabindex="0">
+        <table class="demo-table business-list-table">
           <thead>
             <tr>
               <th>
@@ -753,55 +753,59 @@ function paperIdentity(
         aria-label="查看证物与公证书"
       >
         <h2>证物与公证书</h2>
-        <p v-if="error" class="message error" role="alert">{{ error }}</p>
-        <a
-          v-if="group.case.id"
-          :href="`/cases/${encodeURIComponent(group.case.id)}`"
-          >查看关联案件</a
-        >
-        <p>
-          平台：{{ platformLabel(group.case.platform) }} · 店铺名：{{
-            group.case.shopName || '—'
-          }}
-          · 案号：{{ group.case.caseNo || '—' }}
-        </p>
-        <p>
-          案件进展：{{ evidenceStageLabel(group.case.stage) }} · 办案律师：{{
-            group.case.lawyerName || '—'
-          }}
-        </p>
-        <h3>证物（{{ group.items.length }}）</h3>
-        <ul>
-          <li v-for="item in group.items" :key="item.id">
-            {{ item.displayCode || '—' }} · {{ item.shelfLocation || '—' }} ·
-            {{ statusLabels[item.status] }} · {{ item.remark || '—' }}
-            <p>
-              名称：{{ item.name || '—' }} · 类型：{{ item.kind || '—' }} ·
-              采集日期：{{ item.collectedOn || '—' }} · 保管人：{{
-                item.keeperName || '—'
-              }}
-            </p>
-            <p>来源：{{ provenanceLabel(item.provenance) }}</p>
-          </li>
-        </ul>
-        <p v-if="!group.items.length">该案件暂无证物</p>
-        <h3>纸质公证书（{{ group.paperCertificates.length }}）</h3>
-        <ul>
-          <li v-for="paper in group.paperCertificates" :key="paper.id">
-            {{ paperIdentity(paper.id, group.paperCertificates) }} ·
-            {{ paperLabels[paper.status] }} · {{ paper.issuedOn || '—' }} ·
-            {{ paper.officeName || '—' }}
-            <ElButton
-              v-for="file in paper.electronicFiles"
-              :key="`${file.materialId}:${file.contentVersionId}`"
-              native-type="button"
-              @click="downloadPaperVersion(file)"
-              >下载 {{ file.filename }}</ElButton
-            >
-          </li>
-        </ul>
-        <p v-if="!group.paperCertificates.length">暂无纸质公证书</p>
-        <ElButton native-type="button" @click="dialog = null">关闭</ElButton>
+        <div class="modal-body">
+          <p v-if="error" class="message error" role="alert">{{ error }}</p>
+          <a
+            v-if="group.case.id"
+            :href="`/cases/${encodeURIComponent(group.case.id)}`"
+            >查看关联案件</a
+          >
+          <p>
+            平台：{{ platformLabel(group.case.platform) }} · 店铺名：{{
+              group.case.shopName || '—'
+            }}
+            · 案号：{{ group.case.caseNo || '—' }}
+          </p>
+          <p>
+            案件进展：{{ evidenceStageLabel(group.case.stage) }} · 办案律师：{{
+              group.case.lawyerName || '—'
+            }}
+          </p>
+          <h3>证物（{{ group.items.length }}）</h3>
+          <ul>
+            <li v-for="item in group.items" :key="item.id">
+              {{ item.displayCode || '—' }} · {{ item.shelfLocation || '—' }} ·
+              {{ statusLabels[item.status] }} · {{ item.remark || '—' }}
+              <p>
+                名称：{{ item.name || '—' }} · 类型：{{ item.kind || '—' }} ·
+                采集日期：{{ item.collectedOn || '—' }} · 保管人：{{
+                  item.keeperName || '—'
+                }}
+              </p>
+              <p>来源：{{ provenanceLabel(item.provenance) }}</p>
+            </li>
+          </ul>
+          <p v-if="!group.items.length">该案件暂无证物</p>
+          <h3>纸质公证书（{{ group.paperCertificates.length }}）</h3>
+          <ul>
+            <li v-for="paper in group.paperCertificates" :key="paper.id">
+              {{ paperIdentity(paper.id, group.paperCertificates) }} ·
+              {{ paperLabels[paper.status] }} · {{ paper.issuedOn || '—' }} ·
+              {{ paper.officeName || '—' }}
+              <ElButton
+                v-for="file in paper.electronicFiles"
+                :key="`${file.materialId}:${file.contentVersionId}`"
+                native-type="button"
+                @click="downloadPaperVersion(file)"
+                >下载 {{ file.filename }}</ElButton
+              >
+            </li>
+          </ul>
+          <p v-if="!group.paperCertificates.length">暂无纸质公证书</p>
+        </div>
+        <footer>
+          <ElButton native-type="button" @click="dialog = null">关闭</ElButton>
+        </footer>
       </section>
       <section
         v-else-if="dialog === 'edit'"
@@ -811,70 +815,76 @@ function paperIdentity(
         aria-label="编辑证物"
       >
         <h2>编辑证物</h2>
-        <p v-if="error" class="message error" role="alert">{{ error }}</p>
-        <p v-if="notice" class="message" role="status">{{ notice }}</p>
-        <p>
-          {{ group.case.shopName || '—' }} · {{ group.case.caseNo || '—' }} ·
-          {{ evidenceStageLabel(group.case.stage) }} ·
-          {{ group.case.lawyerName || '—' }}
-        </p>
-        <label
-          >备注<input
-            v-model="remark"
-            :disabled="saving"
-            placeholder="证物备注"
-        /></label>
-        <h3>纸质公证书</h3>
-        <div v-for="paper in paperDraft" :key="paper.id" class="edit-row">
-          <span>{{ paperIdentity(paper.id, group.paperCertificates) }}</span
-          ><select v-model="paper.status" :disabled="saving">
-            <option v-for="status in paperKeys" :key="status" :value="status">
-              {{ paperLabels[status] }}
-            </option>
-          </select>
-        </div>
-        <h3>证物（{{ draft.length }}）</h3>
-        <div
-          v-for="(row, index) in draft"
-          :key="row.id ?? `new-${index}`"
-          class="edit-row"
-        >
-          <input
-            v-model="row.displayCode"
-            :disabled="saving"
-            aria-label="证物编号"
-            placeholder="证物编号"
-            @input="fillDraftRow(row)"
-          />
-          <input
-            v-model="row.shelfLocation"
-            :disabled="saving"
-            aria-label="货架号"
-            placeholder="货架号"
-            @input="fillDraftRow(row)"
-          />
-          <select
-            v-model="row.status"
-            :disabled="saving"
-            aria-label="证物状态"
-            @change="row.manualStatus = true"
+        <div class="modal-body">
+          <p v-if="error" class="message error" role="alert">{{ error }}</p>
+          <p v-if="notice" class="message" role="status">{{ notice }}</p>
+          <p>
+            {{ group.case.shopName || '—' }} · {{ group.case.caseNo || '—' }} ·
+            {{ evidenceStageLabel(group.case.stage) }} ·
+            {{ group.case.lawyerName || '—' }}
+          </p>
+          <label
+            >备注<input
+              v-model="remark"
+              :disabled="saving"
+              placeholder="证物备注"
+          /></label>
+          <h3>纸质公证书</h3>
+          <div v-for="paper in paperDraft" :key="paper.id" class="edit-row">
+            <span>{{ paperIdentity(paper.id, group.paperCertificates) }}</span
+            ><select v-model="paper.status" :disabled="saving">
+              <option v-for="status in paperKeys" :key="status" :value="status">
+                {{ paperLabels[status] }}
+              </option>
+            </select>
+          </div>
+          <h3>证物（{{ draft.length }}）</h3>
+          <div
+            v-for="(row, index) in draft"
+            :key="row.id ?? `new-${index}`"
+            class="edit-row"
           >
-            <option v-for="status in statusKeys" :key="status" :value="status">
-              {{ statusLabels[status] }}
-            </option>
-          </select>
-          <ElButton
-            native-type="button"
-            :aria-label="`移除第 ${index + 1} 行`"
-            :disabled="saving"
-            @click="draft.splice(index, 1)"
+            <input
+              v-model="row.displayCode"
+              :disabled="saving"
+              aria-label="证物编号"
+              placeholder="证物编号"
+              @input="fillDraftRow(row)"
+            />
+            <input
+              v-model="row.shelfLocation"
+              :disabled="saving"
+              aria-label="货架号"
+              placeholder="货架号"
+              @input="fillDraftRow(row)"
+            />
+            <select
+              v-model="row.status"
+              :disabled="saving"
+              aria-label="证物状态"
+              @change="row.manualStatus = true"
+            >
+              <option
+                v-for="status in statusKeys"
+                :key="status"
+                :value="status"
+              >
+                {{ statusLabels[status] }}
+              </option>
+            </select>
+            <ElButton
+              native-type="button"
+              :aria-label="`移除第 ${index + 1} 行`"
+              :disabled="saving"
+              @click="draft.splice(index, 1)"
+            >
+              移除
+            </ElButton>
+          </div>
+          <ElButton native-type="button" :disabled="saving" @click="addDraftRow"
+            >+ 添加证物</ElButton
           >
-            移除
-          </ElButton>
         </div>
-        <ElButton native-type="button" :disabled="saving" @click="addDraftRow"
-          >+ 添加证物</ElButton
-        >
         <footer>
           <ElButton
             native-type="button"
@@ -895,35 +905,41 @@ function paperIdentity(
         aria-label="批量更改状态"
       >
         <h2>批量更改状态 · {{ selected.size }} 件证物</h2>
-        <p v-if="error" class="message error" role="alert">{{ error }}</p>
-        <p v-if="notice" class="message" role="status">{{ notice }}</p>
-        <label
-          >证物状态<select v-model="bulkEvidence" :disabled="saving">
-            <option value="">不修改</option>
-            <option v-for="status in statusKeys" :key="status" :value="status">
-              {{ statusLabels[status] }}
-            </option>
-          </select></label
-        >
-        <label
-          >纸质公证书状态<select v-model="bulkPaper" :disabled="saving">
-            <option value="">不修改</option>
-            <option v-for="status in paperKeys" :key="status" :value="status">
-              {{ paperLabels[status] }}
-            </option>
-          </select></label
-        >
-        <fieldset v-if="bulkPaper">
-          <legend>明确选择要修改的纸质公证书</legend>
-          <label v-for="paper in bulkPapers" :key="paper.id"
-            ><input
-              v-model="paper.selected"
-              :disabled="saving"
-              type="checkbox"
-            />{{ paperIdentity(paper.id, bulkPapers) }}</label
+        <div class="modal-body">
+          <p v-if="error" class="message error" role="alert">{{ error }}</p>
+          <p v-if="notice" class="message" role="status">{{ notice }}</p>
+          <label
+            >证物状态<select v-model="bulkEvidence" :disabled="saving">
+              <option value="">不修改</option>
+              <option
+                v-for="status in statusKeys"
+                :key="status"
+                :value="status"
+              >
+                {{ statusLabels[status] }}
+              </option>
+            </select></label
           >
-          <p v-if="!bulkPapers.length">所选证物没有关联纸质公证书</p>
-        </fieldset>
+          <label
+            >纸质公证书状态<select v-model="bulkPaper" :disabled="saving">
+              <option value="">不修改</option>
+              <option v-for="status in paperKeys" :key="status" :value="status">
+                {{ paperLabels[status] }}
+              </option>
+            </select></label
+          >
+          <fieldset v-if="bulkPaper">
+            <legend>明确选择要修改的纸质公证书</legend>
+            <label v-for="paper in bulkPapers" :key="paper.id"
+              ><input
+                v-model="paper.selected"
+                :disabled="saving"
+                type="checkbox"
+              />{{ paperIdentity(paper.id, bulkPapers) }}</label
+            >
+            <p v-if="!bulkPapers.length">所选证物没有关联纸质公证书</p>
+          </fieldset>
+        </div>
         <footer>
           <ElButton
             native-type="button"
@@ -942,8 +958,8 @@ function paperIdentity(
 <style scoped>
 .evidence-page {
   display: grid;
-  gap: var(--app-section-gap, 16px);
-  padding: 16px 20px;
+  gap: 12px;
+  padding: 20px 24px 32px;
   color: var(--color-ink, #0f1011);
 }
 .page-head,
@@ -986,24 +1002,33 @@ h3 {
 }
 .filters {
   display: grid;
-  gap: 10px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--color-hairline, #e5e5e9);
+  gap: 8px;
 }
 .list-card {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
-.actions {
+.operation-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
+}
+.operation-actions {
+  display: flex;
+  align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .selection-count {
   margin-right: auto;
   color: var(--color-ink-muted, #5c5e66);
   font-size: 12px;
 }
-.status-row,
 .filter-grid {
   display: grid;
   align-items: end;
@@ -1013,24 +1038,31 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
 }
 .filter-grid {
-  grid-template-columns:
-    minmax(180px, 1fr) minmax(280px, 1.5fr) minmax(280px, 1.5fr)
-    auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .stage-filter {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 4px;
-  width: min(320px, 100%);
+  min-width: 0;
   color: var(--color-ink-muted, #5c5e66);
   font-size: 12px;
 }
 .stage-filter small {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
   font-size: 11px;
+}
+.stage-filter :deep(.el-select) {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: 100%;
 }
 .filter-grid label,
 .modal label {
@@ -1073,26 +1105,33 @@ input[type='checkbox'] {
   min-height: auto;
 }
 .table-wrap {
+  width: 100%;
   overflow-x: auto;
   min-width: 0;
+  overscroll-behavior-x: contain;
 }
-table {
+.business-list-table {
   width: 100%;
   min-width: 1200px;
+  table-layout: auto;
   border-collapse: collapse;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.5;
 }
-th,
-td {
-  padding: 7px 8px;
+.business-list-table th,
+.business-list-table td {
+  height: 44px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--color-hairline, #e5e5e9);
   text-align: left;
+  vertical-align: middle;
 }
-th {
+.business-list-table th {
   background: var(--color-surface-2, #f4f4f6);
   color: var(--color-ink-muted, #5c5e66);
   font-weight: 550;
+  font-size: 12px;
   white-space: nowrap;
 }
 .evidence-row-actions {
@@ -1101,6 +1140,9 @@ th {
 }
 .pager {
   justify-content: flex-end;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--color-hairline, #e5e5e9);
 }
 .pager > span {
   color: var(--color-ink-muted, #5c5e66);
@@ -1116,13 +1158,24 @@ th {
   z-index: 200;
 }
 .modal {
+  display: flex;
+  flex-direction: column;
   width: min(900px, 94vw);
   max-height: 90vh;
-  overflow: auto;
-  padding: 24px;
+  overflow: hidden;
   border-radius: 10px;
   background: #fff;
   box-shadow: 0 24px 64px rgba(15, 16, 17, 0.14);
+}
+.modal > h2 {
+  flex: 0 0 auto;
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid var(--color-hairline, #e5e5e9);
+}
+.modal-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 24px;
 }
 .edit-row {
   display: grid;
@@ -1136,10 +1189,12 @@ th {
   min-width: 0;
 }
 .modal footer {
+  flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 20px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--color-hairline, #e5e5e9);
 }
 .message {
   padding: 8px;
@@ -1152,10 +1207,13 @@ th {
   .filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .edit-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 @media (max-width: 700px) {
   .evidence-page {
-    padding: 12px;
+    padding: 16px 12px 24px;
   }
   .page-head {
     flex-direction: column;
@@ -1177,15 +1235,15 @@ th {
   .filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .stage-filter {
-    grid-template-columns: minmax(0, 1fr);
-    width: 100%;
-  }
-  .actions {
+  .operation-bar {
     align-items: flex-start;
   }
-  .edit-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .operation-bar.actions {
+    flex-direction: column;
+  }
+  .operation-bar.actions .operation-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 @media (max-width: 420px) {
@@ -1193,11 +1251,25 @@ th {
   .edit-row {
     grid-template-columns: 1fr;
   }
-  .actions {
-    flex-wrap: wrap;
+  .stage-filter {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
-  .actions > .operation-actions {
-    flex-wrap: wrap;
+  .operation-bar.actions .operation-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .operation-bar.actions :deep(.el-button) {
+    min-width: 0;
+    width: 100%;
+  }
+  .modal-body {
+    padding: 14px 16px;
+  }
+  .modal > h2 {
+    padding: 16px;
+  }
+  .modal footer {
+    padding: 10px 16px;
   }
 }
 </style>
