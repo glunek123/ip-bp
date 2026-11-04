@@ -14,15 +14,15 @@ const sql = readFileSync(
 );
 
 it.each([
-  'CASE_LAWYER_ASSIGN',
-  'CASE_ROUTINE_EDIT',
-  'CASE_CLOSURE_SETTLEMENT_UPDATE',
+  ['CASE_LAWYER_ASSIGN', ['SELF', 'TEAM', 'DEPARTMENT']],
+  ['CASE_ROUTINE_EDIT', ['DEPARTMENT']],
+  ['CASE_CLOSURE_SETTLEMENT_UPDATE', ['DEPARTMENT']],
 ] as const)(
-  'adds %s independently with all internal scopes and no automatic grant',
-  (action) => {
+  'adds %s independently with its approved scopes and no automatic grant',
+  (action, scopes) => {
     expect(internalAssignablePermissionActions).toContain(action);
     expect(permissionCatalog.filter((item) => item.action === action)).toEqual([
-      expect.objectContaining({ scopes: ['SELF', 'TEAM', 'DEPARTMENT'] }),
+      expect.objectContaining({ scopes }),
     ]);
     expect(sql).not.toMatch(/INSERT\s+INTO\s+"role_grants"/iu);
     expect(sql).not.toMatch(/UPDATE\s+"role_grants"/iu);

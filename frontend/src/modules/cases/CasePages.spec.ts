@@ -1970,12 +1970,13 @@ describe('case pages', () => {
         );
       const { wrapper } = await mountRoutedDetail('/cases/case-a');
 
-      await wrapper.get('[data-test="open-case-filters"]').trigger('click');
-      await wrapper
-        .get('[data-test="refresh-case-list-in-filters"]')
-        .trigger('click');
+      await wrapper.get('[data-test="case-refresh"]').trigger('click');
       await flushPromises();
 
+      expect(api.getCase).toHaveBeenCalledTimes(2);
+      expect(wrapper.get('h1').text()).toBe(
+        status === 403 ? '案件暂时无法读取' : '案件不存在或已不可访问',
+      );
       expect(wrapper.text()).not.toContain('CA-case-a');
       expect(
         wrapper.find('[data-test="complaint-confirmation-panel"]').exists(),

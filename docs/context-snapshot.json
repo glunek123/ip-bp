@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-04T17:17:19.866Z",
+  "recordedAt": "2026-11-04T17:29:13.153Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -591,7 +591,7 @@
     "backend/src/modules/cases/case-judgment.service.spec.ts": "c12ac64ea00294ad4f93acd420fcce97412d6d2a074cdd6812b3d9e9280c194e",
     "backend/src/modules/cases/case-judgment.service.ts": "b063fdfbdfdbfe81d387aaf92dfe5e6d908d26f78248778134bdee8157a96bc0",
     "backend/src/modules/cases/case-key-details.ts": "0c28f21c3307d922fcd5d355491daa2f838d45ca3cd5517c8573194618505827",
-    "backend/src/modules/cases/case-lawyer-assignment-migration.spec.ts": "29d7d52e76cd1c470743240cbf0ed88b2ba51c946fa7ba7b8ef9c27e965cd809",
+    "backend/src/modules/cases/case-lawyer-assignment-migration.spec.ts": "55bc4168ece3969faedaff942b0801b65a5dd4913b741896ded5a88b39f55e1f",
     "backend/src/modules/cases/case-lawyer-assignment.controller.ts": "44a511a360bed656e78a37bd8d1bc0928662bc5c856f01bbcd9f2ab088e2950f",
     "backend/src/modules/cases/case-lawyer-assignment.dto.ts": "92472d23879e8c3df68093c49eac28abe212238687dca77ef2b7ec39aab30433",
     "backend/src/modules/cases/case-lawyer-assignment.service.spec.ts": "7326a99e238969743af3b005c5764ed631b22575f5ace4faef5cae233dc19662",
@@ -1438,7 +1438,7 @@
     "frontend/src/modules/cases/CaseListPreferencesPanel.vue": "808ef34890d24a356a21973bbce10958e9d5902d0deab32efc6375b291b4ec46",
     "frontend/src/modules/cases/CaseListWorkflowPanel.spec.ts": "e84c20b93f1f5788ddde53f0030b8a082c241f1a456ad51a91f400b5ed4cc07b",
     "frontend/src/modules/cases/CaseListWorkflowPanel.vue": "5790afb309c09350eb394998e825dc1320fce312481420cc0398587aa2d616e7",
-    "frontend/src/modules/cases/CasePages.spec.ts": "af8aee2ac93e289cdf9ecf54c91ca81dc19b3ffb0c009cedbdbd79a673f99beb",
+    "frontend/src/modules/cases/CasePages.spec.ts": "ef7f56f1e76df01840a6950f61b00759173ceb553d59c8a51b42b78d51dcbefc",
     "frontend/src/modules/cases/CasePaymentCorrectionPanel.spec.ts": "982713528b3587ec3ca44077e8b4d2c08a0618fa8f00c3f1ec30639e6034a946",
     "frontend/src/modules/cases/CasePaymentCorrectionPanel.vue": "6ac8e865c69db88a63348075d500a330d8c0e8801b1a3d77ed99931f8864140a",
     "frontend/src/modules/cases/CasePaymentProofSupplementPanel.spec.ts": "9d78a0dbead5cc1bdf1c545053969d5aa712c0a2e80cd2708bae724927e072c7",
