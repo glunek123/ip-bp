@@ -343,11 +343,12 @@ function openEvent(event: CalendarEvent): void {
 
 <style scoped>
 .calendar-month {
+  min-width: 0;
   overflow: hidden;
   color: var(--color-ink);
   background: var(--color-surface-1);
   border: 1px solid var(--color-hairline);
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .calendar-toolbar {
@@ -355,8 +356,16 @@ function openEvent(event: CalendarEvent): void {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s-3);
-  padding: var(--s-4);
+  gap: 6px 8px;
+  padding: 8px 10px;
+}
+.calendar-toolbar nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.calendar-toolbar :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 
 .calendar-toolbar h2 {
@@ -366,7 +375,7 @@ function openEvent(event: CalendarEvent): void {
 
 .calendar-state {
   margin: 0;
-  padding: var(--s-4);
+  padding: 10px;
   color: var(--color-ink-muted);
 }
 
@@ -375,6 +384,7 @@ function openEvent(event: CalendarEvent): void {
 }
 
 .calendar-scroll {
+  max-width: 100%;
   overflow-x: auto;
 }
 
@@ -387,15 +397,15 @@ function openEvent(event: CalendarEvent): void {
 
 .calendar-grid th {
   padding: var(--s-2);
-  color: var(--color-ink-subtle);
+  color: var(--color-ink-muted);
   background: var(--color-surface-2);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .calendar-grid td {
-  height: 108px;
-  padding: var(--s-2);
+  height: 96px;
+  padding: 6px;
   vertical-align: top;
   border: 1px solid var(--color-hairline);
 }
@@ -460,9 +470,9 @@ function openEvent(event: CalendarEvent): void {
 .calendar-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s-4);
+  gap: 6px 12px;
   margin: 0;
-  padding: var(--s-4);
+  padding: 8px 10px;
   list-style: none;
   color: var(--color-ink-muted);
   font-size: 12px;

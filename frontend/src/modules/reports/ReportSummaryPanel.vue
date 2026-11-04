@@ -159,7 +159,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .report-summary {
-  padding: var(--s-5);
+  min-width: 0;
+  padding: 12px;
   border: 1px solid var(--color-hairline);
   background: var(--color-surface-1);
 }
@@ -168,25 +169,28 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s-3);
+  gap: 6px 8px;
 }
 .report-summary h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 14px;
   color: var(--color-ink);
+}
+.report-summary > p {
+  margin: 8px 0 0;
 }
 .report-value {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--s-2);
+  gap: 6px;
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
-  font-size: 1.75rem;
+  font-size: 20px;
 }
 .report-currency {
-  font-size: 0.875rem;
+  font-size: 12px;
   color: var(--color-ink-muted);
 }
 </style>

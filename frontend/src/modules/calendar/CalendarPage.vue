@@ -398,18 +398,50 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.page-view {
+  padding: 12px 16px;
+  font-size: 13px;
+}
+.page-view > main {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.page-head {
+  gap: 8px 12px;
+  margin: 0;
+}
+.page-head h1 {
+  font-size: 20px;
+}
+.page-head p:last-child {
+  margin: 4px 0 0;
+}
+.page-head > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.page-head :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
 .calendar-personal,
 .calendar-personal-form {
-  margin-top: 16px;
-  padding: 16px;
+  min-width: 0;
+  padding: 12px;
   border: 1px solid var(--color-hairline);
-  border-radius: 10px;
+  border-radius: 6px;
   background: var(--color-surface-1);
 }
 .calendar-personal h2,
 .calendar-personal-form h2 {
-  margin: 0 0 12px;
-  font-size: 16px;
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.calendar-personal > p {
+  margin: 0;
+  color: var(--color-ink-muted);
 }
 .calendar-personal ul {
   list-style: none;
@@ -420,14 +452,23 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 6px 8px;
   padding: 8px 0;
   border-top: 1px solid var(--color-hairline);
 }
 .calendar-personal-form {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   max-width: 520px;
+}
+.calendar-personal-form > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.calendar-personal-form :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 .calendar-personal-form label {
   display: grid;
@@ -441,5 +482,18 @@ onBeforeUnmount(() => {
   border: 1px solid var(--color-hairline);
   border-radius: 6px;
   font: inherit;
+}
+.calendar-personal-form input {
+  min-height: var(--app-control-height);
+  padding-block: 4px;
+}
+.calendar-personal-form textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+@media (max-width: 760px) {
+  .page-view {
+    padding: 10px 12px;
+  }
 }
 </style>

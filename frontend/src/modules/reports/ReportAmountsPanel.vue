@@ -201,45 +201,46 @@ const rows = computed(() => {
 .report-amounts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-4);
+  gap: 12px;
 }
 .report-amounts--partial {
   display: contents;
 }
 .amount-card {
   min-width: 0;
-  padding: var(--s-5);
+  padding: 12px;
   border: 1px solid var(--color-hairline);
   background: var(--color-surface-1);
 }
 .amount-card h2 {
-  margin: 0 0 var(--s-4);
-  font-size: 1rem;
+  margin: 0 0 8px;
+  font-size: 14px;
   color: var(--color-ink);
 }
 .amount-value {
-  font: 600 1.5rem var(--font-mono);
+  font: 600 20px var(--font-mono);
+  margin: 8px 0 0;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 .amount-unit {
-  font-size: 0.875rem;
+  font-size: 12px;
   font-weight: 400;
 }
 .amount-note,
 .bucket-boundary {
   color: var(--color-ink-muted);
-  font-size: 0.875rem;
+  font-size: 12px;
 }
 .amount-note {
-  margin-block: var(--s-3) 0;
+  margin: 8px 0 0;
 }
 .amount-buckets {
   grid-column: 1 / -1;
 }
 .bucket-list {
   display: grid;
-  gap: var(--s-3);
+  gap: 8px;
   list-style: none;
   padding: 0;
   margin: 0;
@@ -247,7 +248,8 @@ const rows = computed(() => {
 .bucket-row {
   display: flex;
   justify-content: space-between;
-  gap: var(--s-3);
+  gap: 8px;
+  font-size: 13px;
 }
 .bucket-count {
   font-family: var(--font-mono);
@@ -255,7 +257,7 @@ const rows = computed(() => {
 }
 .bucket-track {
   height: 5px;
-  margin-block: var(--s-2);
+  margin-block: 4px;
   background: var(--color-surface-2);
 }
 .bucket-track span {
