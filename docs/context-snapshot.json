@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-05T07:21:30.708Z",
+  "recordedAt": "2026-11-05T08:48:06.237Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -553,7 +553,8 @@
     "backend/src/modules/cases/case-external-entry.service.ts": "ae651b6bfc17581539686b103368a1b078c636de845a4c9fcd0dbfad870afd34",
     "backend/src/modules/cases/case-external-prehearing-empty-judgment-draft.spec.ts": "8f37376998ed810302d3c9b7b9f808ffa99ebc909133e64a29abdbb7179cf67c",
     "backend/src/modules/cases/case-external-prehearing-formal-round.spec.ts": "7261233a0b60133548b0ff4cdba81d3577a4b80f2f2b8259d4d2e0eadaaab8f8",
-    "backend/src/modules/cases/case-file-catalog.controller.ts": "ddb021b75789102ccb3016f66fc01235ceae5b4fb001d1bcbf8ef58def3d885c",
+    "backend/src/modules/cases/case-file-catalog.controller.spec.ts": "41c3401a0c7eb950eea13f30ee8eb3dfbe36032347e666d378872d01a9773e74",
+    "backend/src/modules/cases/case-file-catalog.controller.ts": "87e5910b2d6cec75ec3564b5ee2c09cc103fcb142b4ac4113131f61fbfcb25ad",
     "backend/src/modules/cases/case-file-catalog.service.spec.ts": "5fa8dee1732342b3f605ad39312b139e3dce1768c5f42784ef030bd456f64c55",
     "backend/src/modules/cases/case-file-catalog.service.ts": "09c85bb3efd38355beace9fbf49ca498d6e73bdedf9301c54dfb0022420b936f",
     "backend/src/modules/cases/case-filing.dto.spec.ts": "bcdc039fe1e74b48e6d4707ec714be7cc38ede38c606e2e14be9619a4ce94341",

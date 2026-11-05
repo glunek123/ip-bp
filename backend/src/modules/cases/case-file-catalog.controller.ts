@@ -69,7 +69,19 @@ export class CaseFileCatalogController {
       'attachment; filename="case-files.zip"',
     );
     response.setHeader('Cache-Control', 'private, no-store');
-    response.setHeader('X-Case-Export-Result', JSON.stringify(result.results));
+    response.setHeader(
+      'X-Case-Export-Result',
+      JSON.stringify(
+        result.results.map(
+          ({ materialId, contentVersionId, status, reason }) => ({
+            materialId,
+            contentVersionId,
+            status,
+            reason,
+          }),
+        ),
+      ),
+    );
     response.send(result.bytes);
   }
 }
