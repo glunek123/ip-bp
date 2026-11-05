@@ -27,6 +27,7 @@ export const coreLeadFixtures: Readonly<{
 }>;
 
 export function resetCoreLeadE2eData(): Promise<void>;
+export function countCaseFixtureFees(caseId: string): Promise<number>;
 export function seedCoreLeadE2eData(options?: {
   reuseExisting?: boolean;
 }): Promise<void>;
