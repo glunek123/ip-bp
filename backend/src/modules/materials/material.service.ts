@@ -219,6 +219,26 @@ export type MaterialReferenceReader = MaterialAuthorizationReader &
   AccessControlSnapshotReader &
   Pick<MaterialTransactionClient, 'materialReference'>;
 const allowedMimeTypes = {
+  CASE_PRESERVATION_DOCUMENT: new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+  ]),
+  CASE_COURT_DISCLOSURE_ATTACHMENT: new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+  ]),
+  CASE_RECORD_RETRIEVAL_DOCUMENT: new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+  ]),
+  EXECUTION_FORMAL_DOCUMENT: new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+  ]),
   CASE_CLOSURE_PAYMENT_PROOF: new Set(['image/jpeg', 'image/png']),
   FEE_PROOF: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   CUSTOMER_IDENTITY: new Set(['application/pdf', 'image/jpeg', 'image/png']),
@@ -297,6 +317,12 @@ const allowedMimeTypes = {
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   ]),
 } as const;
+const caseSupplementCategories = new Set<MaterialCategoryValue>([
+  'CASE_PRESERVATION_DOCUMENT',
+  'CASE_COURT_DISCLOSURE_ATTACHMENT',
+  'CASE_RECORD_RETRIEVAL_DOCUMENT',
+  'EXECUTION_FORMAL_DOCUMENT',
+]);
 
 @Injectable()
 export class MaterialService {
@@ -1072,6 +1098,9 @@ export class MaterialService {
     }
 
     const draftData = {
+      ...(input.caseSupplementReason === undefined
+        ? {}
+        : { caseSupplementReason: input.caseSupplementReason.trim() }),
       departmentId: actor.departmentId,
       actorUserId: actor.userId,
       ...(notaryOfficeAccountBindingId === undefined
@@ -6174,6 +6203,36 @@ export class MaterialService {
     >,
     notaryCategory?: MaterialCategoryValue,
   ): Promise<void> {
+    if (
+      ownerType === 'CASE' &&
+      (notaryCategory === 'CASE_PRESERVATION_DOCUMENT' ||
+        notaryCategory === 'CASE_COURT_DISCLOSURE_ATTACHMENT' ||
+        notaryCategory === 'CASE_RECORD_RETRIEVAL_DOCUMENT' ||
+        notaryCategory === 'EXECUTION_FORMAL_DOCUMENT')
+    ) {
+      if (!this.isInternalMaterialActor(actor)) throw this.forbidden();
+      const record = await reader.case.findFirst({
+        where: { id: ownerId, departmentId: actor.departmentId },
+        select: { responsibleUserId: true },
+      });
+      if (!record) throw this.notFound();
+      await this.withMaterialAuthorization(() =>
+        this.accessControl.authorizeDepartmentAction(
+          actor,
+          'case.read',
+          snapshotReader,
+        ),
+      );
+      if (operation === 'write' && record.responsibleUserId !== actor.userId)
+        await this.withMaterialAuthorization(() =>
+          this.accessControl.authorizeDepartmentAction(
+            actor,
+            'case.routine.edit',
+            snapshotReader,
+          ),
+        );
+      return;
+    }
     // Authorization preparation only: the 0600 database gate still rejects payment proof uploads.
     if (notaryCategory === 'CASE_CLOSURE_PAYMENT_PROOF') {
       if (
@@ -7390,7 +7449,15 @@ export class MaterialService {
     ownerType: MaterialOwnerTypeValue;
     category: keyof typeof allowedMimeTypes;
     purpose: string;
+    caseSupplementReason?: string | null;
   }): void {
+    if (caseSupplementCategories.has(input.category)) {
+      if (
+        !input.caseSupplementReason?.trim() ||
+        input.caseSupplementReason.length > 1000
+      )
+        throw this.validationError();
+    } else if (input.caseSupplementReason != null) throw this.validationError();
     const valid =
       (input.ownerType === 'CUSTOMER' &&
         input.category === 'CUSTOMER_IDENTITY' &&
@@ -7429,7 +7496,11 @@ export class MaterialService {
           input.category === 'EXECUTION_SUPPLEMENT' ||
           input.category === 'EXECUTION_FINISH_BASIS' ||
           input.category === 'CASE_CLOSURE_DOCUMENT' ||
-          input.category === 'CASE_CLOSURE_PAYMENT_PROOF') &&
+          input.category === 'CASE_CLOSURE_PAYMENT_PROOF' ||
+          input.category === 'CASE_PRESERVATION_DOCUMENT' ||
+          input.category === 'CASE_COURT_DISCLOSURE_ATTACHMENT' ||
+          input.category === 'CASE_RECORD_RETRIEVAL_DOCUMENT' ||
+          input.category === 'EXECUTION_FORMAL_DOCUMENT') &&
         input.purpose === input.category) ||
       (input.ownerType === 'CASE' &&
         input.category === 'FEE_PROOF' &&
@@ -7559,6 +7630,10 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'EXECUTION_FINISH_BASIS' ||
     value === 'CASE_CLOSURE_PAYMENT_PROOF' ||
     value === 'CASE_CLOSURE_DOCUMENT' ||
+    value === 'CASE_PRESERVATION_DOCUMENT' ||
+    value === 'CASE_COURT_DISCLOSURE_ATTACHMENT' ||
+    value === 'CASE_RECORD_RETRIEVAL_DOCUMENT' ||
+    value === 'EXECUTION_FORMAL_DOCUMENT' ||
     value === 'FEE_PROOF'
   ) {
     return value;

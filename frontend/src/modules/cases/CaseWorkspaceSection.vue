@@ -10,13 +10,13 @@ const props = defineProps<{
   actionLabel?: string;
 }>();
 const emit = defineEmits<{ edit: [sectionKey: SectionKey] }>();
-const expanded = ref(false);
+const expanded = ref(true);
 const id = useId();
 
 watch(
   () => props.contextKey,
   () => {
-    expanded.value = false;
+    expanded.value = true;
   },
   { flush: 'sync' },
 );

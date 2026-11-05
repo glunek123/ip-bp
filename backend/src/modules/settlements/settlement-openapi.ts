@@ -248,6 +248,14 @@ export const settlementResponses = {
       }),
     },
   ),
+  caseFeeStatistics: object({
+    caseId: uuid,
+    scope: { type: 'string', enum: ['CASE_ACTIVE_SOURCE_RECORDS'] },
+    recordCount: count,
+    proofRecordCount: count,
+    proofVersionCount: count,
+    noteRecordCount: count,
+  }),
   cancelledFees: page(
     object({
       ...feeSourceFields,

@@ -534,6 +534,7 @@ async function clearDatabase() {
     'case_filing_receipts',
     'case_acceptances',
     'case_trial_rounds',
+    'case_supplement_entries',
     'customer_draft_lifecycle_facts',
     'customer_draft_lifecycle_receipts',
     'customer_maintenance_facts',
@@ -592,6 +593,9 @@ async function clearDatabase() {
       data: { currentAcceptanceId: null, currentTrialRoundId: null },
     });
     await transaction.caseAcceptance.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseSupplementEntry.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.caseTrialRound.deleteMany({

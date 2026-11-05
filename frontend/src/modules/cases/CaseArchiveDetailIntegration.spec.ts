@@ -33,6 +33,8 @@ const api = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(),
   uploadMaterialFile: vi.fn(),
   downloadMaterialVersion: vi.fn(),
+  listCaseFileCatalog: vi.fn(),
+  exportCaseFiles: vi.fn(),
 }));
 vi.mock('../../api/case-archive-readiness', async (original) => ({
   ...(await original<typeof import('../../api/case-archive-readiness')>()),
@@ -53,6 +55,10 @@ vi.mock('../../api/materials', async (original) => ({
   listOwnerMaterials: api.listOwnerMaterials,
   uploadMaterialFile: api.uploadMaterialFile,
   downloadMaterialVersion: api.downloadMaterialVersion,
+}));
+vi.mock('../../api/case-files', () => ({
+  listCaseFileCatalog: api.listCaseFileCatalog,
+  exportCaseFiles: api.exportCaseFiles,
 }));
 
 const finishId = '80000000-0000-4000-8000-000000000191';
@@ -332,6 +338,7 @@ async function open(
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  api.listCaseFileCatalog.mockImplementation(() => new Promise(() => {}));
   api.getCase.mockResolvedValue(ready());
   api.getLawyerCase.mockResolvedValue(lawyerReady());
   api.getLead.mockRejectedValue(new ApiError('来源不可读', 403, 'FORBIDDEN'));
@@ -535,7 +542,11 @@ describe('actual CA017 archive detail integration', () => {
         );
         if (audience === 'internal') {
           await wrapper.get('[data-workspace-tab="files"]').trigger('click');
-          await wrapper.get('.case-workspace-files button').trigger('click');
+          await wrapper
+            .get(
+              `.case-workspace-files button[aria-label="下载 ${file.originalFilename} 版本 ${file.contentVersionId}"]`,
+            )
+            .trigger('click');
         } else {
           await closure
             .get('[data-test="closure-history"]')

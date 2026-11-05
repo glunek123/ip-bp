@@ -230,6 +230,42 @@ describe('MaterialService', () => {
       );
       return f;
     }
+    it('requires and retains a reason before creating a supplemental case document draft', async () => {
+      const f = uploadSetup();
+      f.db.case.findFirst.mockResolvedValue({
+        id: customerId,
+        responsibleUserId: actor.userId,
+      });
+      const input = {
+        ownerType: 'CASE' as const,
+        ownerId: customerId,
+        category: 'CASE_PRESERVATION_DOCUMENT' as const,
+        purpose: 'CASE_PRESERVATION_DOCUMENT' as const,
+        originalFilename: '保全文书.pdf',
+        declaredMimeType: 'application/pdf',
+      };
+      await expect(
+        f.service.createUploadDraft(actor, input),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(f.db.uploadDraft.create).not.toHaveBeenCalled();
+      await f.service.createUploadDraft(actor, {
+        ...input,
+        caseSupplementReason: '收到保全文书',
+      });
+      expect(f.db.uploadDraft.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            category: 'CASE_PRESERVATION_DOCUMENT',
+            caseSupplementReason: '收到保全文书',
+          }),
+        }),
+      );
+      expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+        actor,
+        'case.read',
+        undefined,
+      );
+    });
     it('uses current fee.update inside the draft transaction without requiring case.read', async () => {
       const f = uploadSetup();
       await f.service.createUploadDraft(actor, {

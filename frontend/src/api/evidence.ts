@@ -335,10 +335,12 @@ export async function getEvidenceItemGroup(
 export async function getEvidenceSourceGroup(
   kind: EvidenceSourceKind,
   sourceId: string,
+  options: RequestOptions = {},
 ): Promise<EvidenceGroup> {
   return parseGroup(
     await getJson(
       `/evidence/sources/${kind}/${encodeURIComponent(sourceId)}/group`,
+      options,
     ),
   );
 }

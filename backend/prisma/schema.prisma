@@ -370,6 +370,10 @@ enum MaterialCategory {
   CASE_CLOSURE_DOCUMENT
   CASE_CLOSURE_PAYMENT_PROOF
   FEE_PROOF
+  CASE_PRESERVATION_DOCUMENT
+  CASE_COURT_DISCLOSURE_ATTACHMENT
+  CASE_RECORD_RETRIEVAL_DOCUMENT
+  EXECUTION_FORMAL_DOCUMENT
 
   @@map("material_category")
 }
@@ -1379,6 +1383,7 @@ model RightsHolderCommandReceipt {
 }
 
 model UploadDraft {
+  caseSupplementReason String? @map("case_supplement_reason") @db.VarChar(1000)
   settlementUpdateUploadTargetId String? @map("settlement_update_upload_target_id") @db.Uuid
     leadImageImportTask LeadImageImportTask? @relation("LeadImageImportUploadDraft")
     sourceContentVersion ContentVersion? @relation("SourceUploadDraft")
@@ -2200,6 +2205,7 @@ model NotaryCertificateFee {
 }
 
 model Case {
+  supplementEntries CaseSupplementEntry[]
   settlementActualAllocations CaseSettlementActualAllocation[]
   originatedSettlementActualFacts SettlementActualFact[]
   routineProfile CaseRoutineProfile?
@@ -2344,6 +2350,53 @@ model Case {
   @@unique([currentSecondInstanceResultId, id, departmentId])
   @@unique([currentExecutionSubmissionId, id, departmentId])
   @@map("cases")
+}
+
+enum CaseSupplementKind {
+  COURT_PREPAYMENT_NOTICE
+  COURT_DISCLOSURE
+  RECORD_RETRIEVAL_DOCUMENT
+  PRESERVATION_DOCUMENT
+  EXECUTION_FORMAL_ACCEPTANCE
+  REFUND_SOURCE_LINK
+  MANUAL_ANNOTATION
+
+  @@map("case_supplement_kind")
+}
+
+model CaseSupplementEntry {
+  id String @id @default(uuid()) @db.Uuid
+  priorEntryId String? @unique @map("prior_entry_id") @db.Uuid
+  priorEntry CaseSupplementEntry? @relation("CaseSupplementCorrections", fields: [priorEntryId, caseId, departmentId, kind], references: [id, caseId, departmentId, kind], onDelete: Restrict, onUpdate: Restrict)
+  corrections CaseSupplementEntry[] @relation("CaseSupplementCorrections")
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  kind CaseSupplementKind
+  trialRoundId String? @map("trial_round_id") @db.Uuid
+  trialRound CaseTrialRound? @relation(fields: [trialRoundId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  amount Decimal? @db.Decimal(16, 2)
+  text String? @db.Text
+  eventDate DateTime? @map("event_date") @db.Date
+  courtCaseNo String? @map("court_case_no") @db.VarChar(100)
+  sourceType String? @map("source_type") @db.VarChar(40)
+  sourceId String? @map("source_id") @db.Uuid
+  inventoryVersionId String? @map("inventory_version_id") @db.Uuid
+  inventoryItemId String? @map("inventory_item_id") @db.Uuid
+  materialId String? @map("material_id") @db.Uuid
+  contentVersionId String? @map("content_version_id") @db.Uuid
+  reason String @db.VarChar(1000)
+  recordedByUserId String @map("recorded_by_user_id") @db.Uuid
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  auditEventId String @unique @map("audit_event_id") @db.Uuid
+  auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, caseId, departmentId, kind])
+  @@unique([departmentId, recordedByUserId, idempotencyKey])
+  @@index([caseId, departmentId, recordedAt, id])
+  @@map("case_supplement_entries")
 }
 
 // An actual receipt/invoice is independent of launching or cancelling a bill.
@@ -2494,6 +2547,7 @@ model CaseExternalEntryReceipt {
 }
 
 model CaseTrialRound {
+  supplementEntries CaseSupplementEntry[]
   externalEntryId String? @map("external_entry_id") @db.Uuid
   origin CaseTrialRoundOrigin @default(NORMAL)
   id             String           @id @default(uuid()) @db.Uuid
@@ -4339,6 +4393,7 @@ model CaseHandlingGroupReceipt {
 }
 
 model AuditEvent {
+  caseSupplementEntry CaseSupplementEntry?
   feeCancellation FeeCancellation?
   feeCancellationPayment FeeCancellationPayment?
   feeRefundReconciliation FeeRefundReconciliation?

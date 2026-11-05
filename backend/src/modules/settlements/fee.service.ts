@@ -39,6 +39,7 @@ import {
   ordinaryFeeStatuses,
   refundFeeStatuses,
   UpdateFeeProofDto,
+  CaseFeeStatisticsDto,
 } from './fee.dto';
 
 function checkStatus(type: string, status: string): void {
@@ -199,6 +200,40 @@ export class FeeService {
         amount: row.amount,
         status: row.status,
       })),
+    };
+  }
+
+  async caseStatistics(actor: ActorContext, query: CaseFeeStatisticsDto) {
+    await this.access.authorizeDepartmentAction(actor, 'fee.read');
+    const rows = await this.database.feeRecord.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        caseId: query.caseId,
+        deletedAt: null,
+        cancellation: { is: null },
+      },
+      select: {
+        note: true,
+        proofMaterialId: true,
+        proofContentVersionId: true,
+      },
+    });
+    const proofs = rows.filter(
+      (row) =>
+        row.proofMaterialId !== null && row.proofContentVersionId !== null,
+    );
+    return {
+      caseId: query.caseId,
+      scope: 'CASE_ACTIVE_SOURCE_RECORDS' as const,
+      recordCount: rows.length,
+      proofRecordCount: proofs.length,
+      proofVersionCount: new Set(
+        proofs.map(
+          (row) => `${row.proofMaterialId}:${row.proofContentVersionId}`,
+        ),
+      ).size,
+      noteRecordCount: rows.filter((row) => (row.note?.trim().length ?? 0) > 0)
+        .length,
     };
   }
 

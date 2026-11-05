@@ -1,4 +1,8 @@
 import { CasePaymentCorrectionService } from './case-payment-correction.service';
+import { CaseSupplementController } from './case-supplement.controller';
+import { CaseSupplementService } from './case-supplement.service';
+import { CaseFileCatalogController } from './case-file-catalog.controller';
+import { CaseFileCatalogService } from './case-file-catalog.service';
 import { CaseClosurePaymentPrismaDraft } from './case-closure-payment-prisma-draft';
 import { MaterialService } from '../materials';
 import { SettlementAssessmentPostgresDraft } from '../settlements';
@@ -103,6 +107,8 @@ import { LawyerCaseController } from './lawyer-case.controller';
     MaterialModule,
   ],
   controllers: [
+    CaseSupplementController,
+    CaseFileCatalogController,
     CaseArchiveReadinessController,
     LawyerCaseArchiveReadinessController,
     CaseClosureCommandController,
@@ -126,6 +132,8 @@ import { LawyerCaseController } from './lawyer-case.controller';
     LawyerCaseController,
   ],
   providers: [
+    CaseSupplementService,
+    CaseFileCatalogService,
     {
       provide: CaseClosurePaymentPrismaDraft,
       inject: [DatabaseService, AccessControlService, OrganizationService],

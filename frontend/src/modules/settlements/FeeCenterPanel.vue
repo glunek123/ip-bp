@@ -43,6 +43,10 @@ import {
 import { cancelFee } from '../../api/fee-cancellations';
 import FeeCancellationHistoryPanel from './FeeCancellationHistoryPanel.vue';
 import DateRangeFilter from '../../app/DateRangeFilter.vue';
+import {
+  getCaseFeeStatistics,
+  type CaseFeeStatistics,
+} from '../../api/case-fee-statistics';
 
 const props = withDefaults(
   defineProps<{
@@ -151,6 +155,26 @@ const summary = ref<{
   pending: string;
   pendingCount: number;
 } | null>(null);
+const caseStatistics = ref<CaseFeeStatistics | null>(null);
+const caseStatisticsError = ref(false);
+let statisticsRequest: AbortController | null = null;
+let statisticsRevision = 0;
+async function loadCaseStatistics(): Promise<void> {
+  const expected = ++statisticsRevision;
+  statisticsRequest?.abort();
+  caseStatistics.value = null;
+  caseStatisticsError.value = false;
+  if (!props.caseId) return;
+  statisticsRequest = new AbortController();
+  try {
+    const result = await getCaseFeeStatistics(props.caseId, {
+      signal: statisticsRequest.signal,
+    });
+    if (expected === statisticsRevision) caseStatistics.value = result;
+  } catch {
+    if (expected === statisticsRevision) caseStatisticsError.value = true;
+  }
+}
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const saving = ref(false);
 const error = ref('');
@@ -177,16 +201,19 @@ const caseTotal = ref(0);
 const caseLoading = ref(false);
 const columns = reactive({
   type: true,
-  direction: true,
+  direction: !props.caseId,
   amount: true,
   status: true,
-  date: true,
-  platform: true,
-  shop: true,
-  defendant: true,
-  case: true,
+  date: !props.caseId,
+  platform: !props.caseId,
+  shop: !props.caseId,
+  defendant: !props.caseId,
+  case: !props.caseId,
   note: true,
 });
+const columnsStorageKey = computed(() =>
+  props.caseId ? 'dev-cor.case-fee-columns.v1' : 'dev-cor.fee-columns.v1',
+);
 const columnLabels = {
   type: '费用类型',
   direction: '方向',
@@ -204,7 +231,7 @@ const columnKeys = Object.keys(columnLabels) as Array<
 >;
 try {
   const saved: unknown = JSON.parse(
-    globalThis.localStorage.getItem('dev-cor.fee-columns.v1') ?? 'null',
+    globalThis.localStorage.getItem(columnsStorageKey.value) ?? 'null',
   );
   if (saved !== null && typeof saved === 'object' && !Array.isArray(saved))
     for (const key of columnKeys)
@@ -216,7 +243,7 @@ try {
 watch(columns, () => {
   try {
     globalThis.localStorage.setItem(
-      'dev-cor.fee-columns.v1',
+      columnsStorageKey.value,
       JSON.stringify(columns),
     );
   } catch {
@@ -511,6 +538,7 @@ async function load(): Promise<void> {
 watch(
   [identity, () => props.caseId],
   async () => {
+    void loadCaseStatistics();
     selected.value = new Set();
     selectionSources.clear();
     expandedGroups.value = new Set();
@@ -815,6 +843,8 @@ async function setNote(row: FeeRow, value: unknown): Promise<void> {
 }
 onBeforeUnmount(() => {
   active = false;
+  statisticsRevision += 1;
+  statisticsRequest?.abort();
   requestRevision += 1;
   caseRevision += 1;
   request?.abort();
@@ -862,6 +892,21 @@ onBeforeUnmount(() => {
           ><small>{{ summary.pendingCount }} 笔已发起支出</small>
         </div>
       </div>
+      <p
+        v-if="props.caseId && caseStatistics"
+        data-test="case-fee-record-statistics"
+      >
+        本案有效费用 {{ caseStatistics.recordCount }} 笔；已关联凭证
+        {{ caseStatistics.proofRecordCount }} 笔（{{
+          caseStatistics.proofVersionCount
+        }}
+        个材料版本），有备注
+        {{ caseStatistics.noteRecordCount }}
+        笔。关联凭证表示材料关联，不代表银行实付。
+      </p>
+      <p v-else-if="props.caseId && caseStatisticsError" role="status">
+        未能取得本案全案费用记录统计；下方费用列表仍按原权限和筛选规则展示。
+      </p>
       <form
         :id="filterFormId"
         class="fee-center__filters"

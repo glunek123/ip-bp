@@ -35,7 +35,11 @@ export type MaterialCategory =
   | 'EXECUTION_FINISH_BASIS'
   | 'CASE_CLOSURE_DOCUMENT'
   | 'CASE_CLOSURE_PAYMENT_PROOF'
-  | 'FEE_PROOF';
+  | 'FEE_PROOF'
+  | 'CASE_PRESERVATION_DOCUMENT'
+  | 'CASE_COURT_DISCLOSURE_ATTACHMENT'
+  | 'CASE_RECORD_RETRIEVAL_DOCUMENT'
+  | 'EXECUTION_FORMAL_DOCUMENT';
 
 export type MaterialPurpose =
   | 'IDENTITY_FULL'
@@ -65,7 +69,11 @@ export type MaterialPurpose =
   | 'EXECUTION_FINISH_BASIS'
   | 'CASE_CLOSURE_DOCUMENT'
   | 'CASE_CLOSURE_PAYMENT_PROOF'
-  | 'FEE_PROOF';
+  | 'FEE_PROOF'
+  | 'CASE_PRESERVATION_DOCUMENT'
+  | 'CASE_COURT_DISCLOSURE_ATTACHMENT'
+  | 'CASE_RECORD_RETRIEVAL_DOCUMENT'
+  | 'EXECUTION_FORMAL_DOCUMENT';
 
 export type UploadedMaterial = {
   materialId: string;
@@ -153,6 +161,7 @@ export type OwnerMaterial = {
 };
 
 export type UploadMaterialFileInput = {
+  caseSupplementReason?: string;
   ownerType: Extract<
     MaterialOwnerType,
     'CUSTOMER' | 'LEAD_DRAFT' | 'LEAD' | 'NOTARY_MATTER' | 'CASE'
@@ -231,7 +240,11 @@ function isCategory(value: unknown): value is MaterialCategory {
     value === 'EXECUTION_FINISH_BASIS' ||
     value === 'CASE_CLOSURE_PAYMENT_PROOF' ||
     value === 'CASE_CLOSURE_DOCUMENT' ||
-    value === 'FEE_PROOF'
+    value === 'FEE_PROOF' ||
+    value === 'CASE_PRESERVATION_DOCUMENT' ||
+    value === 'CASE_COURT_DISCLOSURE_ATTACHMENT' ||
+    value === 'CASE_RECORD_RETRIEVAL_DOCUMENT' ||
+    value === 'EXECUTION_FORMAL_DOCUMENT'
   );
 }
 
@@ -264,7 +277,11 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'EXECUTION_FINISH_BASIS' ||
     value === 'CASE_CLOSURE_PAYMENT_PROOF' ||
     value === 'CASE_CLOSURE_DOCUMENT' ||
-    value === 'FEE_PROOF'
+    value === 'FEE_PROOF' ||
+    value === 'CASE_PRESERVATION_DOCUMENT' ||
+    value === 'CASE_COURT_DISCLOSURE_ATTACHMENT' ||
+    value === 'CASE_RECORD_RETRIEVAL_DOCUMENT' ||
+    value === 'EXECUTION_FORMAL_DOCUMENT'
   );
 }
 
@@ -474,7 +491,11 @@ export async function uploadMaterialFile(
       input.category === 'SECOND_INSTANCE_JUDGMENT' ||
       input.category === 'EXECUTION_FINISH_BASIS' ||
       input.category === 'CASE_CLOSURE_DOCUMENT' ||
-      input.category === 'FEE_PROOF'
+      input.category === 'FEE_PROOF' ||
+      input.category === 'CASE_PRESERVATION_DOCUMENT' ||
+      input.category === 'CASE_COURT_DISCLOSURE_ATTACHMENT' ||
+      input.category === 'CASE_RECORD_RETRIEVAL_DOCUMENT' ||
+      input.category === 'EXECUTION_FORMAL_DOCUMENT'
     ) {
       const types = new Map([
         ['.pdf', 'application/pdf'],
@@ -588,6 +609,9 @@ export async function uploadMaterialFile(
       purpose: input.purpose,
       originalFilename,
       declaredMimeType: input.file.type,
+      ...(input.caseSupplementReason === undefined
+        ? {}
+        : { caseSupplementReason: input.caseSupplementReason }),
     },
   });
   if (

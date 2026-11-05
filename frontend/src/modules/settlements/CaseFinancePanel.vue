@@ -9,10 +9,13 @@ import {
 import { useAuthStore } from '../../stores/auth';
 import CaseSettlementPanel from './CaseSettlementPanel.vue';
 import FeeCenterPanel from './FeeCenterPanel.vue';
+import type { CaseActualSummary } from './case-actual-summary';
 
 const props = defineProps<{
   caseId: string;
   closureVersionId?: string | null;
+  layout?: 'default' | 'case-detail';
+  actualSummary?: CaseActualSummary;
 }>();
 const auth = useAuthStore();
 const identity = computed(
@@ -48,20 +51,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="case-finance-panel">
+  <div
+    class="case-finance-panel"
+    :class="{
+      'case-finance-panel--case-detail': props.layout === 'case-detail',
+    }"
+  >
     <p v-if="error" role="alert">
       {{ error }} <ElButton @click="load">重新读取</ElButton>
     </p>
     <p v-else-if="!context">正在读取结算与费用权限…</p>
     <template v-else>
-      <CaseSettlementPanel
-        v-if="context.read"
-        :key="`settlement:${identity}:${caseId}`"
-        :case-id="caseId"
-        :closure-version-id="props.closureVersionId"
-        :can-update="context.termsUpdate"
-        :can-launch="context.launch"
-      />
       <FeeCenterPanel
         v-if="context.feeRead"
         :key="`fee:${identity}:${caseId}`"
@@ -70,6 +70,24 @@ onBeforeUnmount(() => {
         :can-update="context.feeUpdate"
         :can-launch="context.feeLaunch"
         :can-delete="context.feeDelete"
+      />
+      <CaseSettlementPanel
+        v-if="context.read && props.layout === 'case-detail'"
+        :key="`settlement:${identity}:${caseId}`"
+        :case-id="caseId"
+        :closure-version-id="props.closureVersionId"
+        :can-update="context.termsUpdate"
+        :can-launch="context.launch"
+        show-both-summaries
+        :actual-summary="props.actualSummary"
+      />
+      <CaseSettlementPanel
+        v-else-if="context.read"
+        :key="`settlement:${identity}:${caseId}`"
+        :case-id="caseId"
+        :closure-version-id="props.closureVersionId"
+        :can-update="context.termsUpdate"
+        :can-launch="context.launch"
       />
       <p v-if="!context.read && !context.feeRead">
         当前账号未获结算与费用中心读取权限。
@@ -85,5 +103,16 @@ onBeforeUnmount(() => {
   margin-top: 20px;
   padding-top: var(--app-section-gap, 16px);
   border-top: 1px solid var(--color-hairline);
+}
+.case-finance-panel--case-detail {
+  grid-template-columns: minmax(0, 1fr);
+}
+.case-finance-panel--case-detail > p {
+  grid-column: 1 / -1;
+}
+@media (max-width: 767px) {
+  .case-finance-panel--case-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

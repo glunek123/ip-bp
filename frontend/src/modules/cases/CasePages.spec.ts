@@ -52,6 +52,8 @@ const api = vi.hoisted(() => ({
   getSettlementContext: vi.fn(),
   getCaseSettlement: vi.fn(),
   listFees: vi.fn(),
+  listCaseFileCatalog: vi.fn(),
+  exportCaseFiles: vi.fn(),
 }));
 vi.mock('../../api/case-routine', () => ({
   getCaseRoutineProfile: api.getCaseRoutineProfile,
@@ -89,6 +91,10 @@ vi.mock('../../api/materials', () => ({
   uploadMaterialFile: api.uploadMaterialFile,
   listOwnerMaterials: api.listOwnerMaterials,
 }));
+vi.mock('../../api/case-files', () => ({
+  listCaseFileCatalog: api.listCaseFileCatalog,
+  exportCaseFiles: api.exportCaseFiles,
+}));
 
 beforeEach(() => {
   config.global.stubs.ElDrawer = {
@@ -97,6 +103,7 @@ beforeEach(() => {
       '<div v-show="modelValue" role="dialog" class="case-workspace-editors"><slot /></div>',
   };
   vi.resetAllMocks();
+  api.listCaseFileCatalog.mockImplementation(() => new Promise(() => {}));
   api.getCaseRoutineProfile.mockResolvedValue({
     revision: 0,
     canEdit: false,

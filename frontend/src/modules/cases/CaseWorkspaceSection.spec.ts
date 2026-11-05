@@ -32,17 +32,17 @@ function mountSection(
 }
 
 describe('CaseWorkspaceSection', () => {
-  it('starts collapsed with independent accessible toggle, action and tools', () => {
+  it('starts expanded with independent accessible toggle, action and tools', () => {
     const wrapper = mountSection();
     const toggle = wrapper.get('.case-workspace-section__toggle');
     const body = wrapper.get('.case-workspace-section__body');
     expect(toggle.attributes('type')).toBe('button');
-    expect(toggle.attributes('aria-expanded')).toBe('false');
+    expect(toggle.attributes('aria-expanded')).toBe('true');
     expect(toggle.attributes('aria-controls')).toBe(body.attributes('id'));
     expect(body.attributes('role')).toBe('region');
     expect(body.attributes('aria-labelledby')).toBe(toggle.attributes('id'));
     expect(wrapper.find('.case-workspace-section__body').exists()).toBe(true);
-    expect(body.isVisible()).toBe(false);
+    expect(body.isVisible()).toBe(true);
     expect(
       wrapper.get('.case-workspace-section__edit').attributes('aria-label'),
     ).toBe('案件信息：编辑');
@@ -75,12 +75,13 @@ describe('CaseWorkspaceSection', () => {
     await input.setValue('retained-body-and-key');
     const toggle = wrapper.get('.case-workspace-section__toggle');
     await toggle.trigger('click');
-    expect(toggle.attributes('aria-expanded')).toBe('true');
-    expect(input.isVisible()).toBe(true);
-    await toggle.trigger('click');
+    expect(toggle.attributes('aria-expanded')).toBe('false');
     expect(input.isVisible()).toBe(false);
     await toggle.trigger('click');
+    expect(toggle.attributes('aria-expanded')).toBe('true');
+    expect(input.isVisible()).toBe(true);
     expect(wrapper.getComponent(Probe).vm).toBe(instance);
+    expect(toggle.attributes('aria-expanded')).toBe('true');
     expect(input.element.value).toBe('retained-body-and-key');
     expect(unmounted).not.toHaveBeenCalled();
   });
@@ -94,7 +95,7 @@ describe('CaseWorkspaceSection', () => {
       wrapper
         .get('.case-workspace-section__toggle')
         .attributes('aria-expanded'),
-    ).toBe('false');
+    ).toBe('true');
     await wrapper.get('.case-workspace-section__toggle').trigger('click');
     await wrapper.get('.case-workspace-section__edit').trigger('click');
     expect(wrapper.emitted('edit')).toEqual([['case-info'], ['case-info']]);
@@ -102,7 +103,7 @@ describe('CaseWorkspaceSection', () => {
       wrapper
         .get('.case-workspace-section__toggle')
         .attributes('aria-expanded'),
-    ).toBe('true');
+    ).toBe('false');
   });
 
   it('disables editing with an accessible local reason and guards dispatched clicks', async () => {
@@ -122,12 +123,14 @@ describe('CaseWorkspaceSection', () => {
     );
     const hint = wrapper.get(`#${edit.attributes('aria-describedby')}`);
     expect(hint.text()).toBe('本栏没有可办理的登记命令，只读');
-    expect(hint.isVisible()).toBe(false);
+    expect(hint.isVisible()).toBe(true);
     edit.element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(wrapper.emitted('edit')).toBeUndefined();
     await wrapper.get('.case-workspace-section__toggle').trigger('click');
-    expect(wrapper.get('.case-workspace-section__body').isVisible()).toBe(true);
-    expect(hint.isVisible()).toBe(true);
+    expect(wrapper.get('.case-workspace-section__body').isVisible()).toBe(
+      false,
+    );
+    expect(hint.isVisible()).toBe(false);
   });
 
   it('uses the explicit timeline label without manufacturing a generic action', async () => {
@@ -151,16 +154,16 @@ describe('CaseWorkspaceSection', () => {
       title: '刷新后的案件信息',
       action: { ...action, hint: '使用已有表单' },
     });
-    expect(toggle.attributes('aria-expanded')).toBe('true');
+    expect(toggle.attributes('aria-expanded')).toBe('false');
     for (const contextKey of [
       'case-2/user-1/revision-1',
       'case-2/user-2/revision-1',
       'case-2/user-2/revision-2',
     ]) {
       await wrapper.setProps({ contextKey });
-      expect(toggle.attributes('aria-expanded')).toBe('false');
+      expect(toggle.attributes('aria-expanded')).toBe('true');
       expect(wrapper.get('.case-workspace-section__body').isVisible()).toBe(
-        false,
+        true,
       );
       expect(wrapper.emitted('edit')).toBeUndefined();
       await toggle.trigger('click');
@@ -206,14 +209,14 @@ describe('CaseWorkspaceSection', () => {
     ).toEqual(sections.map((section) => section.key));
     const toggles = wrapper.findAll('.case-workspace-section__toggle');
     expect(toggles.map((toggle) => toggle.attributes('aria-expanded'))).toEqual(
-      Array(7).fill('false'),
+      Array(7).fill('true'),
     );
     const ids = wrapper.findAll('[id]').map((node) => node.attributes('id'));
     expect(new Set(ids).size).toBe(ids.length);
     await toggles[0]?.trigger('click');
     await toggles[6]?.trigger('click');
     expect(toggles.map((toggle) => toggle.attributes('aria-expanded'))).toEqual(
-      ['true', 'false', 'false', 'false', 'false', 'false', 'true'],
+      ['false', 'true', 'true', 'true', 'true', 'true', 'false'],
     );
   });
 });

@@ -40,6 +40,12 @@ export const refundFeeStatuses = ['退原告', '退律所'] as const;
 const moneyPattern = /^(?:[1-9]\d{0,15}(?:\.\d{1,2})?|0\.(?:0[1-9]|[1-9]\d))$/u;
 const dayPattern = /^\d{4}-\d{2}-\d{2}$/u;
 
+export class CaseFeeStatisticsDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  @IsUUID('4')
+  caseId!: string;
+}
+
 export class FeePageDto {
   @ApiPropertyOptional({ type: String, format: 'uuid' })
   @IsOptional()
