@@ -179,9 +179,9 @@ describe('CustomerListPage', () => {
     await flushPromises();
     expect(router.currentRoute.value.query.page).toBe('2');
     expect(wrapper.text()).toContain('第2页客户');
-    await wrapper.get('[data-test="customer-query"]').setValue(' 证件甲 ');
+    await wrapper.get('.list-header-search input').setValue(' 证件甲 ');
     await wrapper.get('[data-test="customer-cooperation"]').setValue('PAUSED');
-    await wrapper.get('form').trigger('submit');
+    await wrapper.get('[aria-label="客户查询"]').trigger('submit');
     await flushPromises();
     expect(router.currentRoute.value.query).toMatchObject({
       q: '证件甲',
@@ -201,6 +201,20 @@ describe('CustomerListPage', () => {
       20,
       expect.anything(),
       { q: '证件甲', cooperationStatus: 'PAUSED' },
+    );
+    await wrapper
+      .get('.list-header-search button[aria-label="清空关键词"]')
+      .trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toEqual({
+      cooperationStatus: 'PAUSED',
+      page: '1',
+    });
+    expect(api.listCustomers).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.anything(),
+      { cooperationStatus: 'PAUSED' },
     );
     await wrapper.get('[data-test="customer-clear"]').trigger('click');
     await flushPromises();

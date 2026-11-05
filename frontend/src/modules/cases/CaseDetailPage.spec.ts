@@ -15,9 +15,55 @@ import { router } from '../../app/router';
 import App from '../../app/App.vue';
 import * as http from '../../api/http';
 import ActualPanel from './CaseSettlementActualPanel.vue';
+import CaseDetailsSections from './CaseDetailsSections.vue';
 const actualWorkspaceRead = vi.hoisted(() => vi.fn());
+const closureWorkspaceFixture = {
+  readPurpose: 'DISPLAY_ONLY',
+  caseId: 'case-1',
+  caseVersion: 1,
+  stage: 'PENDING_MATCH',
+  actualRegistrationLawyers: [],
+  closure: {
+    versionId: null,
+    closeOn: null,
+    amountState: 'UNKNOWN',
+    amount: null,
+    paymentType: 'UNKNOWN',
+  },
+  effectivePayments: [],
+  documents: [],
+  refund: {
+    versionId: null,
+    revision: null,
+    declaration: 'UNKNOWN',
+    items: [],
+  },
+  assessment: {
+    versionId: null,
+    revision: null,
+    closureVersionId: null,
+    termsVersion: null,
+    declaration: 'UNKNOWN',
+    matchesCurrent: null,
+    customerAmount: null,
+    lawyerAmount: null,
+  },
+  actual: {
+    connection: 'NOT_CONNECTED',
+    scope: null,
+    customerReceiptState: 'UNKNOWN',
+    lawyerInvoiceState: 'UNKNOWN',
+    customerReceivedAmount: null,
+    lawyerInvoicedAmount: null,
+  },
+};
 vi.mock('../../api/case-closure-workspace', () => ({
   getCaseClosureWorkspace: actualWorkspaceRead,
+}));
+vi.mock('../../api/case-supplements', () => ({
+  getCaseSupplementalWorkspace: vi.fn(async () => {
+    throw new ApiError('补录无权', 403, 'FORBIDDEN');
+  }),
 }));
 
 const api = vi.hoisted(() => ({
@@ -52,6 +98,24 @@ vi.mock('../../api/materials', async (original) => ({
   ...(await original<typeof import('../../api/materials')>()),
   listOwnerMaterials: vi.fn(async () => ({ items: [], total: 0 })),
 }));
+vi.mock('../../api/case-files', () => ({
+  listCaseFileCatalog: vi.fn(async (caseId: string) => ({
+    caseId,
+    businessNo: 'CA-1',
+    groups: Array.from({ length: 16 }, (_, index) => ({
+      id: `group-${index}`,
+      name: `分组${index}`,
+      files: [],
+    })),
+    otherFiles: [],
+    limits: { maxFiles: 20, maxBytes: 1000000 },
+  })),
+  exportCaseFiles: vi.fn(async () => ({
+    blob: new Blob(),
+    filename: 'files.zip',
+    results: [],
+  })),
+}));
 vi.mock('../../api/calendar', () => ({
   getCalendarSummary: vi.fn(async () => ({
     metrics: { next30: { count: 0 } },
@@ -76,11 +140,16 @@ vi.mock('../../api/notary', async (original) => ({
 vi.mock('../../api/settlements', async (original) => ({
   ...(await original<typeof import('../../api/settlements')>()),
   getSettlementContext: vi.fn(async () => ({ read: false, feeRead: false })),
-  getCaseSettlement: vi.fn(async () => null),
+  getCaseSettlement: vi.fn(async () => {
+    throw new ApiError('结算无权', 403, 'FORBIDDEN');
+  }),
   listFees: vi.fn(async () => ({ items: [], total: 0 })),
 }));
 vi.mock('../../api/evidence', () => ({
   listEvidence: vi.fn(async () => ({ items: [], total: 0 })),
+  getEvidenceSourceGroup: vi.fn(async () => {
+    throw new ApiError('证物无权', 403, 'FORBIDDEN');
+  }),
 }));
 vi.mock('../../api/reports', () => ({
   getReportsCapability: vi.fn(async () => ({ canRead: false })),
@@ -109,6 +178,9 @@ beforeEach(async () => {
   setCsrfToken(session.csrfToken);
   setSessionIdentity(session.user.id);
   api.getCase.mockResolvedValue(structuredClone(detail));
+  actualWorkspaceRead.mockResolvedValue(
+    structuredClone(closureWorkspaceFixture),
+  );
   api.getCaseRoutineProfile.mockResolvedValue({
     revision: 0,
     canEdit: false,
@@ -154,6 +226,22 @@ afterEach(async () => {
   await router.push('/health');
   await flushPromises();
   vi.unstubAllGlobals();
+});
+
+it('keeps the supplement recovery actor stable while the authorization context advances', async () => {
+  const before = wrapper!.getComponent(CaseDetailsSections);
+  expect(before.props('supplementActorKey')).toBe(
+    'INTERNAL:user-1:department-1',
+  );
+  expect(before.props('contextKey')).toContain(':1');
+  const auth = useAuthStore(pinia);
+  auth.session = { ...auth.session!, authorizationRevision: 2 };
+  await flushPromises();
+  const after = wrapper!.getComponent(CaseDetailsSections);
+  expect(after.props('supplementActorKey')).toBe(
+    'INTERNAL:user-1:department-1',
+  );
+  expect(after.props('contextKey')).toContain(':2');
 });
 
 it('keeps the case-series resource discoverable from a readable case detail', async () => {
@@ -215,6 +303,34 @@ it('opens routine editing from the selected-case toolbar only after the server g
     true,
   );
   expect(router.currentRoute.value.query.edit).toBeUndefined();
+});
+
+it('shows payment history from the case detail when the list toolbar is unavailable', async () => {
+  api.getCase.mockResolvedValue({
+    ...structuredClone(detail),
+    stage: 'WAITING_ARCHIVE',
+    canReadClosurePaymentHistory: true,
+    canSupplementPaymentProof: true,
+  });
+  await wrapper!.get('[data-test="case-refresh"]').trigger('click');
+  await flushPromises();
+  expect(wrapper!.find('[data-test="case-additional-actions"]').exists()).toBe(
+    true,
+  );
+  expect(
+    wrapper!
+      .find(
+        '[data-test="case-additional-actions"] [data-case-action="payment-proof"]',
+      )
+      .exists(),
+  ).toBe(true);
+  expect(
+    wrapper!
+      .find(
+        '[data-test="case-additional-actions"] [data-case-action="settlement-update"]',
+      )
+      .exists(),
+  ).toBe(false);
 });
 
 it('does not open routine editing from a direct URL when the server denies it', async () => {
@@ -475,6 +591,7 @@ it.each(['submitting', 'unknown'] as const)(
     await router.push('/health');
     api.getCase.mockResolvedValue({ ...detail, stage: 'ARCHIVED' });
     actualWorkspaceRead.mockResolvedValue({
+      ...closureWorkspaceFixture,
       caseId: detail.id,
       stage: 'ARCHIVED',
       actualRegistrationLawyers: [],

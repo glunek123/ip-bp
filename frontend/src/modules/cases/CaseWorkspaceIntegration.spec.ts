@@ -44,6 +44,8 @@ const api = vi.hoisted(() => ({
   correctCaseJudgmentRecord: vi.fn(),
   correctCaseClosureRecord: vi.fn(),
   getSettlementContext: vi.fn(),
+  listCaseFileCatalog: vi.fn(),
+  exportCaseFiles: vi.fn(),
 }));
 const routineApi = vi.hoisted(() => ({
   getCaseRoutineProfile: vi.fn(),
@@ -80,6 +82,10 @@ vi.mock('../../api/materials', async (original) => ({
   listOwnerMaterials: api.listOwnerMaterials,
   downloadMaterialVersion: api.downloadMaterialVersion,
   uploadMaterialFile: api.uploadMaterialFile,
+}));
+vi.mock('../../api/case-files', () => ({
+  listCaseFileCatalog: api.listCaseFileCatalog,
+  exportCaseFiles: api.exportCaseFiles,
 }));
 const baseItem: CaseDetail = {
   id: 'case-1',
@@ -757,6 +763,7 @@ describe('UXQ-01-C list action intents', () => {
       page: '3',
       q: 'CA-1',
       caseType: 'CIVIL',
+      shopName: '旧店铺',
     };
     const query = new URLSearchParams({
       ...listQuery,
@@ -1031,6 +1038,7 @@ beforeEach(() => {
     new ApiError('资料无权', 403, 'FORBIDDEN'),
   );
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
+  api.listCaseFileCatalog.mockImplementation(() => new Promise(() => {}));
   api.downloadMaterialVersion.mockResolvedValue(undefined);
   api.listLawyerMatchCandidates.mockResolvedValue([]);
   api.listFilingCourts.mockResolvedValue([]);
@@ -1249,9 +1257,9 @@ describe('UI002 real case workspace host', () => {
         if (other !== own)
           expect(fresh.recordEdits![other]).toEqual(before.recordEdits![other]);
       }
-      await wrapper
-        .get(`[data-section="${section}"] .case-workspace-section__toggle`)
-        .trigger('click');
+      wrapper
+        .get(`[data-section="${section}"] .case-workspace-extra-groups`)
+        .element.setAttribute('open', '');
       const groups = wrapper
         .get(`[data-section="${section}"]`)
         .findAll('.case-workspace-group');
@@ -2233,30 +2241,29 @@ describe('UI002 real case workspace host', () => {
         getComputedStyle(drawer.closest('.el-overlay')!).display === 'none',
     ).toBe(true);
   });
-  it('cancels a material listing on departure and reloads only after return GET authorizes the case', async () => {
+  it('cancels the file catalog on departure and reloads only after return GET authorizes the case', async () => {
     const item = structuredClone(baseItem);
-    const pending = deferred<{ items: []; total: number }>();
-    api.listOwnerMaterials
-      .mockReturnValueOnce(pending.promise)
-      .mockResolvedValue({ items: [], total: 0 });
+    const pending = deferred<unknown>();
+    api.listCaseFileCatalog.mockReturnValueOnce(pending.promise);
     const { wrapper, router } = await renderSpa(item);
     await tab(wrapper, 'files');
-    const signal: AbortSignal = api.listOwnerMaterials.mock.calls[0]![2].signal;
+    const signal: AbortSignal =
+      api.listCaseFileCatalog.mock.calls[0]![1].signal;
     expect(signal.aborted).toBe(false);
     await router.push('/calendar');
     await flushPromises();
     expect(signal.aborted).toBe(true);
-    expect(api.listOwnerMaterials).toHaveBeenCalledTimes(1);
-    pending.resolve({ items: [], total: 0 });
+    expect(api.listCaseFileCatalog).toHaveBeenCalledTimes(1);
+    pending.resolve({});
     await flushPromises();
     const authorized = deferred<CaseDetail>();
     api.getCase.mockReturnValueOnce(authorized.promise);
     await router.push('/cases/case-1');
     await flushPromises();
-    expect(api.listOwnerMaterials).toHaveBeenCalledTimes(1);
+    expect(api.listCaseFileCatalog).toHaveBeenCalledTimes(1);
     authorized.resolve(item);
     await flushPromises();
-    expect(api.listOwnerMaterials).toHaveBeenCalledTimes(2);
+    expect(api.listCaseFileCatalog).toHaveBeenCalledTimes(2);
   });
   it('does not list old complaint versions on an inactive authorization change and reads after return GET', async () => {
     const item = structuredClone(baseItem);
@@ -2324,6 +2331,76 @@ describe('UI002 real case workspace host', () => {
     expect(api.listOwnerMaterials.mock.calls.length).toBeGreaterThan(
       beforeRevision,
     );
+  });
+  it('aborts source material reads across authorization revision and case switch without showing late versions', async () => {
+    const oldLead = deferred<{ items: unknown[]; total: number }>();
+    const oldNotary = deferred<{ items: unknown[]; total: number }>();
+    api.listOwnerMaterials.mockImplementation(
+      (ownerType: string, ownerId: string) => {
+        if (ownerType === 'LEAD' && ownerId === 'lead-1')
+          return oldLead.promise;
+        if (ownerType === 'NOTARY_MATTER' && ownerId === 'matter-1')
+          return oldNotary.promise;
+        return Promise.resolve({ items: [], total: 0 });
+      },
+    );
+    const { wrapper, router, auth } = await renderSpa(
+      structuredClone(baseItem),
+    );
+    const oldCalls = api.listOwnerMaterials.mock.calls.filter(
+      ([ownerType]) => ownerType === 'LEAD' || ownerType === 'NOTARY_MATTER',
+    );
+    expect(oldCalls.map(([ownerType]) => ownerType)).toEqual([
+      'LEAD',
+      'NOTARY_MATTER',
+    ]);
+    const oldSignals = oldCalls.map((call) => call[2].signal as AbortSignal);
+    const staleParent = deferred<CaseDetail>();
+    api.getCase.mockReturnValue(staleParent.promise);
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    expect(oldSignals.every((signal) => signal.aborted)).toBe(true);
+    expect(
+      api.listOwnerMaterials.mock.calls.map((call) => [call[0], call[1]]),
+    ).toEqual([
+      ['LEAD', 'lead-1'],
+      ['NOTARY_MATTER', 'matter-1'],
+    ]);
+    const next = {
+      ...baseItem,
+      id: 'case-2',
+      businessNo: 'CA-2',
+      sourceLead: { id: 'lead-2', businessNo: 'LD-2' },
+      sourceNotaryMatter: { id: 'matter-2', businessNo: 'NZ-2' },
+    };
+    api.getCase.mockResolvedValue(next);
+    await router.push('/cases/case-2');
+    await flushPromises();
+    oldLead.resolve({ items: [], total: 0 });
+    oldNotary.resolve({
+      items: [
+        {
+          id: 'old-material',
+          category: 'NOTARY_OPENING_PHOTO',
+          status: 'ACTIVE',
+          contentVersions: [
+            {
+              id: 'old-version',
+              originalFilename: '旧案开箱照片.png',
+              status: 'AVAILABLE',
+            },
+          ],
+        },
+      ],
+      total: 1,
+    });
+    staleParent.resolve(structuredClone(baseItem));
+    await flushPromises();
+    expect(wrapper.get('.case-workspace-title').text()).toBe('CA-2');
+    expect(wrapper.text()).not.toContain('旧案开箱照片.png');
+    expect(
+      api.listOwnerMaterials.mock.calls.slice(2).map((call) => call[1]),
+    ).toEqual(['lead-2', 'matter-2']);
   });
   it('reloads filing courts after an interrupted read and authorized SPA return', async () => {
     const item = structuredClone(baseItem);
@@ -2471,7 +2548,7 @@ describe('UI002 real case workspace host', () => {
       wrapper
         .get('[data-section="first-instance"] [aria-expanded]')
         .attributes('aria-expanded'),
-    ).toBe('false');
+    ).toBe('true');
     const form = wrapper.getComponent(CaseComplaintSubmissionForm);
     await form.get('input[inputmode="decimal"]').setValue('12.30');
     await form.get('[data-test="submit-complaint"]').trigger('click');
@@ -2560,7 +2637,7 @@ describe('UI002 real case workspace host', () => {
     expect(api.matchCase.mock.calls[1]).toEqual(['case-1', original]);
     expect(original.expectedVersion).toBe(7);
   });
-  it('connects all three actual subpages, defaults eight sections closed, and filters the return query', async () => {
+  it('connects all three actual subpages, defaults eight sections open, and filters the return query', async () => {
     const { wrapper, router } = await render(
       undefined,
       '/cases/case-1?view=department&page=2&stage=WAITING_JUDGMENT&tab=files&customerId=other',
@@ -2583,8 +2660,8 @@ describe('UI002 real case workspace host', () => {
     ]);
     expect(
       wrapper
-        .findAll('[aria-expanded]')
-        .every((button) => button.attributes('aria-expanded') === 'false'),
+        .findAll('.case-workspace-section__toggle')
+        .every((button) => button.attributes('aria-expanded') === 'true'),
     ).toBe(true);
     expect(wrapper.get('a').attributes('href')).toBe(
       '/cases?view=department&page=2&stage=WAITING_JUDGMENT',
@@ -2638,13 +2715,13 @@ describe('UI002 real case workspace host', () => {
       wrapper
         .get('[data-section="case-info"] [aria-expanded]')
         .attributes('aria-expanded'),
-    ).toBe('true');
+    ).toBe('false');
     auth.session = { ...auth.session!, authorizationRevision: 2 };
     await flushPromises();
     expect(
       wrapper
-        .findAll('[aria-expanded]')
-        .every((button) => button.attributes('aria-expanded') === 'false'),
+        .findAll('.case-workspace-section__toggle')
+        .every((button) => button.attributes('aria-expanded') === 'true'),
     ).toBe(true);
     await wrapper
       .get('[data-section="case-info"] [aria-expanded]')
@@ -2659,8 +2736,8 @@ describe('UI002 real case workspace host', () => {
     expect(wrapper.get('.case-workspace-title').text()).toBe('CA-2');
     expect(
       wrapper
-        .findAll('[aria-expanded]')
-        .every((button) => button.attributes('aria-expanded') === 'false'),
+        .findAll('.case-workspace-section__toggle')
+        .every((button) => button.attributes('aria-expanded') === 'true'),
     ).toBe(true);
   });
   it.each([403, 404])(
@@ -2694,7 +2771,7 @@ describe('UI002 real case workspace host', () => {
     },
   );
   it('treats a denied material pool as a local failure while keeping authorized precise files', async () => {
-    api.listOwnerMaterials.mockRejectedValue(
+    api.listCaseFileCatalog.mockRejectedValue(
       new ApiError('材料无权', 403, 'FORBIDDEN'),
     );
     const item = structuredClone(baseItem);
@@ -2799,7 +2876,7 @@ describe('UI002 real case workspace host', () => {
     await wrapper.get('[data-test="routine-cancel"]').trigger('click');
     expect(routineApi.updateCaseRoutineProfile).not.toHaveBeenCalled();
     expect(section.get('[aria-expanded]').attributes('aria-expanded')).toBe(
-      'false',
+      'true',
     );
     expect(api.matchCase).not.toHaveBeenCalled();
   });

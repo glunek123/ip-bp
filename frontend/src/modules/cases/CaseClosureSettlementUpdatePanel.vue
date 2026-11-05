@@ -59,11 +59,15 @@ import {
   finalizePaymentProofUpload,
 } from '../../api/payment-proof-upload';
 import type { ListWorkflowSession } from '../../app/list-workflow-context';
-const props = defineProps<{
-  actorKey: string;
-  caseId: string;
-  session?: ListWorkflowSession;
-}>();
+const props = withDefaults(
+  defineProps<{
+    actorKey: string;
+    caseId: string;
+    canCorrectClosure?: boolean;
+    session?: ListWorkflowSession;
+  }>(),
+  { canCorrectClosure: true },
+);
 const emit = defineEmits<{
   done: [result: ClosureSettlementUpdateResult | ClosureAmountUpdateResult];
   cancel: [];
@@ -878,7 +882,12 @@ async function abandonPreparation() {
         proofSourceChanged
       "
     >
-      <Form :source="source" @draft="submit" @cancel="close">
+      <Form
+        :source="source"
+        :can-correct-closure="props.canCorrectClosure"
+        @draft="submit"
+        @cancel="close"
+      >
         <template #payment-proof="{ payment }">
           <ElButton
             type="default"

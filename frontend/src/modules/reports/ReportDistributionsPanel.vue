@@ -177,22 +177,22 @@ const sections = computed(() => {
 .report-distributions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-4);
+  gap: 12px;
 }
 .distribution-card {
   min-width: 0;
-  padding: var(--s-5);
+  padding: 12px;
   border: 1px solid var(--color-hairline);
   background: var(--color-surface-1);
 }
 .distribution-card h2 {
-  margin: 0 0 var(--s-4);
-  font-size: 1rem;
+  margin: 0 0 8px;
+  font-size: 14px;
   color: var(--color-ink);
 }
 .distribution-list {
   display: grid;
-  gap: var(--s-3);
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -201,7 +201,8 @@ const sections = computed(() => {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--s-3);
+  gap: 8px;
+  font-size: 13px;
 }
 .distribution-label {
   min-width: 0;
@@ -214,7 +215,7 @@ const sections = computed(() => {
 }
 .distribution-track {
   height: 5px;
-  margin-top: var(--s-2);
+  margin-top: 4px;
   background: var(--color-surface-2);
 }
 .distribution-track span {
@@ -223,9 +224,9 @@ const sections = computed(() => {
   background: var(--color-primary);
 }
 .distribution-note {
-  margin-block: var(--s-3) 0;
+  margin: 8px 0 0;
   color: var(--color-ink-muted);
-  font-size: 0.875rem;
+  font-size: 12px;
 }
 @media (max-width: 640px) {
   .report-distributions {

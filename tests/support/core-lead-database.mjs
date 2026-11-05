@@ -221,6 +221,9 @@ const actionNames = Object.freeze({
   'notary.issuance.decide': 'NOTARY_ISSUANCE_DECIDE',
   'notary.return.archive': 'NOTARY_RETURN_ARCHIVE',
   'case.read': 'CASE_READ',
+  'case.lawyer.assign': 'CASE_LAWYER_ASSIGN',
+  'case.routine.edit': 'CASE_ROUTINE_EDIT',
+  'case.closure.settlement.update': 'CASE_CLOSURE_SETTLEMENT_UPDATE',
   'case.match': 'CASE_MATCH',
   'case.complaint.submit': 'CASE_COMPLAINT_SUBMIT',
   'case.complaint.confirm': 'CASE_COMPLAINT_CONFIRM',
@@ -531,6 +534,7 @@ async function clearDatabase() {
     'case_filing_receipts',
     'case_acceptances',
     'case_trial_rounds',
+    'case_supplement_entries',
     'customer_draft_lifecycle_facts',
     'customer_draft_lifecycle_receipts',
     'customer_maintenance_facts',
@@ -589,6 +593,9 @@ async function clearDatabase() {
       data: { currentAcceptanceId: null, currentTrialRoundId: null },
     });
     await transaction.caseAcceptance.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseSupplementEntry.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.caseTrialRound.deleteMany({

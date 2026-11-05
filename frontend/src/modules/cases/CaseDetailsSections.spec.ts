@@ -1,8 +1,24 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import type { CaseDetail } from '../../api/cases';
+import type { CaseClosureWorkspace } from '../../api/case-closure-workspace';
+import type { CaseSupplementWorkspace } from '../../api/case-supplements';
+import { ApiError } from '../../api/http';
 import CaseDetailsSections from './CaseDetailsSections.vue';
+import CaseSupplementalWorkspacePanel from './CaseSupplementalWorkspacePanel.vue';
 import type { SectionAction, SectionKey } from './case-workspace-contract';
+import { setPendingCaseSupplement } from './case-supplement-pending';
+
+const downloadVersion = vi.hoisted(() => vi.fn());
+const supplementApi = vi.hoisted(() => ({ create: vi.fn(), request: vi.fn() }));
+vi.mock('../../api/materials', () => ({
+  downloadMaterialVersion: downloadVersion,
+}));
+vi.mock('../../api/case-supplements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/case-supplements')>()),
+  createCaseSupplement: supplementApi.create,
+  getCaseSupplementRequest: supplementApi.request,
+}));
 
 function caseFixture(): CaseDetail {
   return {
@@ -167,7 +183,13 @@ function actions(): Record<SectionKey, SectionAction> {
   };
 }
 const wrappers: VueWrapper[] = [];
-afterEach(() => wrappers.splice(0).forEach((wrapper) => wrapper.unmount()));
+afterEach(() => {
+  wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
+  downloadVersion.mockReset();
+  supplementApi.create.mockReset();
+  supplementApi.request.mockReset();
+  localStorage.clear();
+});
 function mountSections() {
   const wrapper = mount(CaseDetailsSections, {
     attachTo: document.body,
@@ -177,6 +199,7 @@ function mountSections() {
       leadState: 'idle',
       actions: actions(),
       contextKey: 'case-1:user-1:revision-1',
+      supplementActorKey: 'INTERNAL:user-1:department-1',
     },
   });
   wrappers.push(wrapper);
@@ -184,12 +207,76 @@ function mountSections() {
 }
 
 describe('CaseDetailsSections with the real A2 section shell', () => {
+  it('reopens an unknown supplement under the same actor after an authorization revision and resends its original body', async () => {
+    const actorKey = 'INTERNAL:user-1:department-1';
+    const original = {
+      kind: 'MANUAL_ANNOTATION' as const,
+      reason: '原附记原因',
+      text: '原附记内容',
+      idempotencyKey: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    };
+    setPendingCaseSupplement({ actorKey, caseId: 'case-1', input: original });
+    supplementApi.request.mockRejectedValue(
+      new ApiError('请求结果未知', 404, 'NOT_FOUND'),
+    );
+    supplementApi.create.mockResolvedValue({ id: 'recorded' });
+    const workspace: CaseSupplementWorkspace = {
+      canEdit: true,
+      entries: [],
+      recorders: [],
+      sources: {
+        executionFiling: null,
+        trialRounds: [],
+        judgments: [],
+        secondResults: [],
+        refundItems: [],
+        materials: [],
+      },
+    };
+    const wrapper = mountSections();
+    await wrapper.setProps({ supplementWorkspace: workspace });
+    const reopen = async () => {
+      await wrapper
+        .get(
+          '[data-section="timeline"] .case-workspace-supplement-actions button',
+        )
+        .trigger('click');
+      await flushPromises();
+    };
+    await reopen();
+    expect(supplementApi.request).toHaveBeenLastCalledWith(
+      'case-1',
+      original.idempotencyKey,
+    );
+    expect(supplementApi.create).not.toHaveBeenCalled();
+    await wrapper.setProps({ contextKey: 'case-1:user-1:revision-2' });
+    expect(wrapper.findComponent(CaseSupplementalWorkspacePanel).exists()).toBe(
+      false,
+    );
+    await reopen();
+    expect(supplementApi.request).toHaveBeenCalledTimes(2);
+    expect(supplementApi.request).toHaveBeenLastCalledWith(
+      'case-1',
+      original.idempotencyKey,
+    );
+    expect(supplementApi.create).not.toHaveBeenCalled();
+    await wrapper
+      .getComponent(CaseSupplementalWorkspacePanel)
+      .findAll('button')
+      .find((button) => button.text() === '追加记录')!
+      .trigger('click');
+    await flushPromises();
+    expect(supplementApi.create).toHaveBeenCalledTimes(1);
+    expect(supplementApi.create).toHaveBeenCalledWith('case-1', original);
+  });
   it('keeps selected groups distinct from real stage and puts technical IDs behind explicit details', async () => {
     const wrapper = mountSections();
     const item = executionFixture();
     await wrapper.setProps({ item });
     const section = wrapper.get('[data-section="execution"]');
-    await section.get('.case-workspace-section__toggle').trigger('click');
+    section
+      .get('.case-workspace-extra-groups')
+      .element.setAttribute('open', '');
     const buttons = section.findAll('.case-workspace-group-nav button');
     expect(buttons.map((button) => button.text())).toEqual([
       '执行材料提交',
@@ -246,7 +333,9 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
   it('shows one selected information group, retains it on refresh and resets it on identity changes', async () => {
     const wrapper = mountSections();
     const section = wrapper.get('[data-section="case-info"]');
-    await section.get('.case-workspace-section__toggle').trigger('click');
+    section
+      .get('.case-workspace-extra-groups')
+      .element.setAttribute('open', '');
     const buttons = section.findAll('.case-workspace-group-nav button');
     expect(buttons).toHaveLength(2);
     await buttons[1]!.trigger('click');
@@ -264,9 +353,9 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
       section
         .get('.case-workspace-section__toggle')
         .attributes('aria-expanded'),
-    ).toBe('false');
+    ).toBe('true');
   });
-  it('renders eight sections in order, all closed, with readable labels, values and helpers', () => {
+  it('renders eight sections in order, expanded, with readable labels, values and helpers', () => {
     const wrapper = mountSections();
     expect(
       wrapper
@@ -277,20 +366,30 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
       wrapper
         .findAll('.case-workspace-section__toggle')
         .map((button) => button.attributes('aria-expanded')),
-    ).toEqual(keys.map(() => 'false'));
+    ).toEqual(keys.map(() => 'true'));
     expect(
       wrapper
         .findAll('.case-workspace-section__body')
-        .every((body) => !body.isVisible()),
+        .every((body) => body.isVisible()),
     ).toBe(true);
     const caseBody = wrapper.get('[data-section="case-info"]');
-    expect(caseBody.get('.case-workspace-field__label').text()).toBe(
-      '案件单号',
+    expect(
+      caseBody
+        .get('.case-workspace-main-summary .case-workspace-field__label')
+        .text(),
+    ).toBe('客户');
+    expect(caseBody.get('.case-workspace-main-summary').text()).toContain(
+      'CA-1',
     );
-    expect(caseBody.get('.case-workspace-field__value').text()).toBe('CA-1');
     expect(caseBody.text()).toContain('未登记');
     expect(caseBody.text()).toContain('实际匹配日期');
     expect(caseBody.text()).toContain('未记录');
+    expect(
+      wrapper
+        .get('[data-section="judgment"]')
+        .findAll('.case-workspace-summary-group h3')
+        .map((heading) => heading.text()),
+    ).toEqual(['一审判决信息', '二审判决信息', '历史审级与退费归属']);
     expect(wrapper.find('input, select, textarea, form').exists()).toBe(false);
     expect(wrapper.find('button button').exists()).toBe(false);
     expect(
@@ -310,7 +409,7 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
       caseSection
         .get('.case-workspace-section__toggle')
         .attributes('aria-expanded'),
-    ).toBe('false');
+    ).toBe('true');
     const leadSection = wrapper.get('[data-section="lead-info"]');
     expect(
       leadSection.get('.case-workspace-section__edit').attributes('disabled'),
@@ -330,19 +429,19 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
       item: { ...caseFixture(), businessNo: 'CA-1-refreshed' },
     });
     expect(caseSection.get('.case-workspace-section__body').isVisible()).toBe(
-      true,
+      false,
     );
     expect(leadSection.get('.case-workspace-section__body').isVisible()).toBe(
-      true,
+      false,
     );
     expect(
       wrapper
         .get('[data-section="execution"] .case-workspace-section__body')
         .isVisible(),
-    ).toBe(false);
+    ).toBe(true);
     await caseSection.get('.case-workspace-section__toggle').trigger('click');
     expect(leadSection.get('.case-workspace-section__body').isVisible()).toBe(
-      true,
+      false,
     );
     await wrapper.setProps({
       contextKey: 'case-2:user-1:revision-1',
@@ -351,7 +450,7 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
     expect(
       wrapper
         .findAll('.case-workspace-section__body')
-        .every((body) => !body.isVisible()),
+        .every((body) => body.isVisible()),
     ).toBe(true);
     expect(wrapper.text()).not.toContain('CA-1');
     await leadSection.get('.case-workspace-section__toggle').trigger('click');
@@ -367,7 +466,7 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
       },
     });
     expect(leadSection.get('.case-workspace-section__body').isVisible()).toBe(
-      false,
+      true,
     );
     expect(
       caseSection.get('.case-workspace-section__edit').attributes('disabled'),
@@ -415,7 +514,7 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
       timeline
         .get('.case-workspace-section__toggle')
         .attributes('aria-expanded'),
-    ).toBe('false');
+    ).toBe('true');
     await timeline.get('.case-workspace-section__toggle').trigger('click');
     expect(timeline.get('.case-workspace-timeline').text()).toContain(
       '案件创建',
@@ -453,11 +552,93 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
     };
     const wrapper = mountSections();
     await wrapper.setProps({ item });
-    const fact = wrapper.get('[data-test="early-archive-record"]');
+    const fact = wrapper.get(
+      '[data-section="case-info"] .case-workspace-extra-groups',
+    );
     expect(fact.text()).toContain('原案件阶段');
     expect(fact.text()).toContain('待开庭');
     expect(fact.text()).toContain('客户决定停止诉讼');
     expect(fact.text()).toContain('不表示案件已结案或款项已登记');
     expect(fact.text()).not.toContain('已结清');
+  });
+
+  it('renders six effective payment columns and downloads the exact receipt version with identity cancellation', async () => {
+    const closureWorkspace = {
+      readPurpose: 'DISPLAY_ONLY',
+      caseId: 'case-1',
+      caseVersion: 1,
+      stage: 'PENDING_MATCH',
+      actualRegistrationLawyers: [],
+      closure: {
+        versionId: null,
+        closeOn: null,
+        amountState: 'UNKNOWN',
+        amount: null,
+        paymentType: 'UNKNOWN',
+      },
+      effectivePayments: [
+        {
+          versionId: 'payment-version-1',
+          paymentId: 'payment-1',
+          revision: 1,
+          paidOn: '2026-10-03',
+          amount: '125.50',
+          payer: '付款方甲',
+          payee: '收款方乙',
+          documents: [
+            { materialId: 'receipt-material', contentVersionId: 'receipt-v2' },
+          ],
+        },
+      ],
+      documents: [],
+      refund: {
+        versionId: null,
+        revision: null,
+        declaration: 'UNKNOWN',
+        items: [],
+      },
+      assessment: {
+        versionId: null,
+        revision: null,
+        closureVersionId: null,
+        termsVersion: null,
+        declaration: 'UNKNOWN',
+        matchesCurrent: null,
+        customerAmount: null,
+        lawyerAmount: null,
+      },
+      actual: {
+        connection: 'NOT_CONNECTED',
+        scope: null,
+        customerReceiptState: 'UNKNOWN',
+        lawyerInvoiceState: 'UNKNOWN',
+        customerReceivedAmount: null,
+        lawyerInvoicedAmount: null,
+      },
+    } as CaseClosureWorkspace;
+    downloadVersion.mockReturnValue(new Promise<void>(() => {}));
+    const wrapper = mountSections();
+    await wrapper.setProps({ closureWorkspace, closureReadState: 'ready' });
+    const table = wrapper.get('[data-test="workspace-effective-payments"]');
+    expect(table.findAll('th').map((cell) => cell.text())).toEqual([
+      '序号',
+      '付款日期',
+      '付款金额',
+      '付款人',
+      '收款人',
+      '收款截图',
+    ]);
+    expect(table.text()).toContain('付款方甲');
+    expect(table.text()).toContain('收款方乙');
+    await table.get('tbody button').trigger('click');
+    expect(downloadVersion).toHaveBeenCalledWith(
+      'receipt-material',
+      'receipt-v2',
+      expect.any(AbortSignal),
+    );
+    const signal = downloadVersion.mock.calls[0]![2] as AbortSignal;
+    expect(signal.aborted).toBe(false);
+    await wrapper.setProps({ contextKey: 'case-1:user-2:revision-1' });
+    expect(signal.aborted).toBe(true);
   });
 });

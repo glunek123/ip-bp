@@ -126,8 +126,6 @@ export class CasePaymentProofSupplementTransactionDraftService {
               include: { responsibleMembership: true, closure: true },
             });
             if (!c) return fail('CASE_NOT_FOUND');
-            if (c.responsibleUserId !== actor.userId)
-              throw new ForbiddenException({ code: 'ACTION_FORBIDDEN' });
             await this.access.authorizeCase(
               actor,
               'case.read',
@@ -140,6 +138,12 @@ export class CasePaymentProofSupplementTransactionDraftService {
               },
               tx,
             );
+            if (c.responsibleUserId !== actor.userId)
+              await this.access.authorizeDepartmentAction(
+                actor,
+                'case.closure.settlement.update',
+                tx,
+              );
             // Replay checks immutable evidence only; later payment corrections, heads and
             // material availability must not rewrite or invalidate the original response.
             const receipts = await tx.$queryRawUnsafe<StoredSupplement[]>(
@@ -347,6 +351,23 @@ export class CasePaymentProofSupplementTransactionDraftService {
               facts,
               auditEventId,
             );
+            if (c.responsibleUserId !== actor.userId)
+              await tx.auditEvent.create({
+                data: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  internalActorUserId: actor.userId,
+                  resourceType: 'CASE',
+                  resourceId: caseId,
+                  action: 'case.proxy.applied',
+                  details: {
+                    responsibleUserId: c.responsibleUserId,
+                    action: 'case.closure.settlement.update',
+                    scope: 'DEPARTMENT',
+                    requestFingerprint: fingerprint,
+                  },
+                },
+              });
             await tx.$executeRawUnsafe('SET CONSTRAINTS ALL IMMEDIATE');
             return result;
           },

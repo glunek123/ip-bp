@@ -16,8 +16,6 @@ import CaseListPage from './CaseListPage.vue';
 import CaseEarlyClosurePanel from './CaseEarlyClosurePanel.vue';
 import CaseClosureSettlementUpdatePanel from './CaseClosureSettlementUpdatePanel.vue';
 import CaseClosureSettlementUpdateForm from './CaseClosureSettlementUpdateForm.vue';
-import CasePaymentProofWorkspacePanel from './CasePaymentProofWorkspacePanel.vue';
-import CasePaymentProofSupplementPanel from './CasePaymentProofSupplementPanel.vue';
 import CaseEarlyClosureForm, {
   type EarlyClosureDraft,
 } from './CaseEarlyClosureForm.vue';
@@ -63,13 +61,7 @@ vi.mock('../../api/case-archive-readiness', async (original) => ({
 const closureCommands = vi.hoisted(() => ({
   recordCaseEarlyClosure: vi.fn(),
   updateCaseClosureSettlement: vi.fn(),
-  supplementCasePaymentProof: vi.fn(),
 }));
-const proofUploads = vi.hoisted(() => ({
-  preparePaymentProofUpload: vi.fn(),
-  finalizePaymentProofUpload: vi.fn(),
-}));
-vi.mock('../../api/payment-proof-upload', () => proofUploads);
 const closureWorkspace = vi.hoisted(() => ({
   getCaseClosureWorkspace: vi.fn(),
 }));
@@ -459,7 +451,10 @@ function workflowCanLeave(wrapper: ReturnType<typeof mount>): boolean {
     throw new Error('Workflow canLeave returns boolean');
   return result;
 }
-async function render(recordPanel?: Component) {
+async function render(
+  recordPanel?: Component,
+  initialUrl = '/cases?view=department&stage=WAITING_JUDGMENT&page=2',
+) {
   const pinia = createPinia();
   const auth = useAuthStore(pinia);
   auth.session = {
@@ -481,7 +476,7 @@ async function render(recordPanel?: Component) {
       { path: '/other', component: { template: '<p>other</p>' } },
     ],
   });
-  await router.push('/cases?view=department&stage=WAITING_JUDGMENT&page=2');
+  await router.push(initialUrl);
   await router.isReady();
   const wrapper = mount(RouterView, {
     global: {
@@ -621,7 +616,10 @@ describe('case list workflow session', () => {
         recordedAt: '2026-10-30T00:00:00Z',
       };
     });
-    const { wrapper } = await render();
+    const { wrapper } = await render(
+      undefined,
+      '/cases?view=department&stage=WAITING_ARCHIVE&page=2',
+    );
     for (const detail of details)
       await wrapper
         .get(`[data-test="select-case-${detail.id}"]`)
@@ -682,163 +680,13 @@ describe('case list workflow session', () => {
     );
   });
 
-  it.each(['capability', 'owner'] as const)(
-    'denies screenshot supplement after a fresh detail %s change',
-    async (change) => {
-      const detail: CaseDetail = {
-        ...baseItem,
-        id: crypto.randomUUID(),
-        stage: 'ARCHIVED',
-        canSupplementPaymentProof: true,
-      };
-      api.listCases.mockResolvedValue(
-        list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
-      );
-      api.getCase.mockResolvedValue(
-        change === 'owner'
-          ? { ...detail, owner: { id: 'other', displayName: '其他运营' } }
-          : { ...detail, canSupplementPaymentProof: false },
-      );
-      const { wrapper } = await render();
-      await wrapper
-        .get(`[data-test="select-case-${detail.id}"]`)
-        .setValue(true);
-      await wrapper.get('[data-case-action="payment-proof"]').trigger('click');
-      await flushPromises();
-      expect(wrapper.text()).toContain('该操作当前不可办理');
-      expect(
-        wrapper.findComponent(CasePaymentProofWorkspacePanel).exists(),
-      ).toBe(false);
-      expect(closureWorkspace.getCaseClosureWorkspace).not.toHaveBeenCalled();
-      expect(closureCommands.supplementCasePaymentProof).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each(['WAITING_ARCHIVE', 'ARCHIVED'] as const)(
-    'supplements one payment through the real %s list host without advancing its stage',
-    async (stage) => {
-      const detail: CaseDetail = {
-        ...baseItem,
-        id: crypto.randomUUID(),
-        stage,
-        canSupplementPaymentProof: true,
-        canUpdateClosureSettlement: stage === 'WAITING_ARCHIVE',
-      };
-      api.getCase.mockResolvedValue(detail);
-      api.listCases.mockResolvedValue(
-        list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
-      );
-      const paymentId = uid(121);
-      closureWorkspace.getCaseClosureWorkspace.mockResolvedValue({
-        caseId: detail.id,
-        caseVersion: 7,
-        stage,
-        closure: { versionId: uid(122) },
-        effectivePayments: [
-          {
-            paymentId,
-            versionId: uid(123),
-            paidOn: '2026-10-29',
-            amount: '10.01',
-            payer: '甲',
-            payee: '乙',
-            documents: [],
-          },
-        ],
-      });
-      proofUploads.preparePaymentProofUpload.mockResolvedValue({
-        draftId: uid(124),
-      });
-      proofUploads.finalizePaymentProofUpload.mockResolvedValue(uid(125));
-      closureCommands.supplementCasePaymentProof
-        .mockRejectedValueOnce(new ApiError('unknown', 0, 'NETWORK_ERROR'))
-        .mockResolvedValueOnce({ id: uid(126) });
-      const { wrapper, router } = await render();
-      expect(
-        wrapper
-          .get('tbody tr')
-          .find('[data-case-action="payment-proof"]')
-          .exists(),
-      ).toBe(false);
-      await wrapper
-        .get(`[data-test="select-case-${detail.id}"]`)
-        .setValue(true);
-      await wrapper.get('[data-case-action="payment-proof"]').trigger('click');
-      await flushPromises();
-      const workspace = wrapper.getComponent(CasePaymentProofWorkspacePanel);
-      expect(workspace.props('actorKey')).toBe(
-        'user-1:INTERNAL:department-1:1',
-      );
-      expect(workspace.props('actorKey')).toBe(
-        workspace.props('session')?.context.actorKey,
-      );
-      expect(
-        wrapper.findComponent(CaseClosureSettlementUpdatePanel).exists(),
-      ).toBe(false);
-      await workspace
-        .get(`[data-test="supplement-${paymentId}"]`)
-        .trigger('click');
-      const proof = workspace.getComponent(CasePaymentProofSupplementPanel);
-      const file = new File(['image'], 'proof.png', { type: 'image/png' });
-      Object.defineProperty(proof.get('input[type=file]').element, 'files', {
-        value: [file],
-        configurable: true,
-      });
-      await proof.get('input[type=file]').trigger('change');
-      await proof.get('form').trigger('submit');
-      await flushPromises();
-      expect(
-        proofUploads.preparePaymentProofUpload,
-      ).toHaveBeenCalledExactlyOnceWith(
-        {
-          actorKey: 'user-1:INTERNAL:department-1:1',
-          caseId: detail.id,
-          expectedVersion: 7,
-        },
-        file,
-      );
-      expect(closureCommands.supplementCasePaymentProof).toHaveBeenCalledTimes(
-        1,
-      );
-      const original =
-        closureCommands.supplementCasePaymentProof.mock.calls[0]![1];
-      expect(original).toEqual(
-        expect.objectContaining({
-          paymentId,
-          expectedPaymentVersionId: uid(123),
-          expectedClosureVersionId: uid(122),
-          contentVersionIds: [uid(125)],
-        }),
-      );
-      expect(workflowCanLeave(wrapper)).toBe(false);
-      await router.push('/other');
-      await flushPromises();
-      expect(router.currentRoute.value.path).toBe('/cases');
-      await proof.get('[data-test="retry"]').trigger('click');
-      await flushPromises();
-      expect(
-        closureCommands.supplementCasePaymentProof.mock.calls[1]![1],
-      ).toEqual(original);
-      expect(proofUploads.preparePaymentProofUpload).toHaveBeenCalledTimes(1);
-      expect(proofUploads.finalizePaymentProofUpload).toHaveBeenCalledTimes(1);
-      expect(
-        closureCommands.updateCaseClosureSettlement,
-      ).not.toHaveBeenCalled();
-      expect(
-        wrapper.findComponent(CasePaymentProofWorkspacePanel).exists(),
-      ).toBe(true);
-      expect(workflowCanLeave(wrapper)).toBe(true);
-      expect(api.getCase).toHaveBeenCalledTimes(1);
-      expect(api.listCases).toHaveBeenCalledTimes(1);
-    },
-  );
-
   it('submits settlement updates through the real list host with the full session identity', async () => {
     const detail: CaseDetail = {
       ...baseItem,
       id: crypto.randomUUID(),
       stage: 'WAITING_ARCHIVE',
       canUpdateClosureSettlement: true,
+      canCorrectClosure: true,
     };
     api.getCase.mockResolvedValue(detail);
     api.listCases.mockResolvedValue(
@@ -885,6 +733,7 @@ describe('case list workflow session', () => {
       .trigger('click');
     await flushPromises();
     const panel = wrapper.getComponent(CaseClosureSettlementUpdatePanel);
+    expect(panel.props('canCorrectClosure')).toBe(true);
     expect(panel.props('actorKey')).toBe('user-1:INTERNAL:department-1:1');
     expect(panel.props('actorKey')).toBe(
       panel.props('session')?.context.actorKey,
@@ -910,6 +759,62 @@ describe('case list workflow session', () => {
     expect(
       wrapper.findComponent(CaseClosureSettlementUpdatePanel).exists(),
     ).toBe(false);
+  });
+
+  it('keeps closure date and documents read-only for a settlement-only actor', async () => {
+    const detail: CaseDetail = {
+      ...baseItem,
+      id: crypto.randomUUID(),
+      stage: 'WAITING_ARCHIVE',
+      canUpdateClosureSettlement: true,
+      canCorrectClosure: false,
+    };
+    api.getCase.mockResolvedValue(detail);
+    api.listCases.mockResolvedValue(
+      list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
+    );
+    closureWorkspace.getCaseClosureWorkspace.mockResolvedValue({
+      stage: 'WAITING_ARCHIVE',
+      caseVersion: 7,
+      actualRegistrationLawyers: [],
+      actual: null,
+      closure: {
+        versionId: uid(92),
+        closeOn: '2026-10-29',
+        amountState: 'KNOWN',
+        amount: '100.01',
+        paymentType: 'INSTALLMENTS',
+      },
+      documents: [{ materialId: uid(93), contentVersionId: uid(94) }],
+      effectivePayments: [],
+      refund: { versionId: uid(97), declaration: 'COMPLETE', items: [] },
+      assessment: {
+        versionId: uid(98),
+        termsVersion: 2,
+        declaration: 'APPLICABLE',
+        customerAmount: '30.01',
+        lawyerAmount: null,
+      },
+    });
+    const { wrapper } = await render(
+      undefined,
+      '/cases?view=department&stage=WAITING_ARCHIVE',
+    );
+    await wrapper
+      .get('[data-case-action="settlement-update"]')
+      .trigger('click');
+    await flushPromises();
+    const panel = wrapper.getComponent(CaseClosureSettlementUpdatePanel);
+    expect(panel.props('canCorrectClosure')).toBe(false);
+    const form = panel.getComponent(CaseClosureSettlementUpdateForm);
+    expect(form.get('[data-test="date"]').attributes('disabled')).toBeDefined();
+    expect(
+      form.get('[aria-label="补充结案文书"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(form.text()).toContain('历史材料，保留');
+    expect(
+      form.get('[data-test="amount"]').attributes('disabled'),
+    ).toBeUndefined();
   });
 
   it('submits closure through the real list host with the session identity and isolates an authorization revision change', async () => {
@@ -1301,7 +1206,9 @@ describe('case list workflow session', () => {
     expect(api.listCases).toHaveBeenCalledTimes(1);
     first.wrapper.unmount();
     const second = await render();
-    expect(second.wrapper.find('[data-case-action]').exists()).toBe(false);
+    expect(
+      second.wrapper.find('.case-list-actions [data-case-action]').exists(),
+    ).toBe(false);
     await second.wrapper
       .get('[aria-label="未确认的案件办理请求"] button')
       .trigger('click');

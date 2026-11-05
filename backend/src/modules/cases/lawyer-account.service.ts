@@ -439,24 +439,26 @@ export class LawyerAccountService {
     const record = await this.database.case.findFirst({
       where: { id: caseId, departmentId: actor.departmentId },
       select: {
+        stage: true,
         departmentId: true,
         responsibleUserId: true,
         responsibleMembership: { select: { teamId: true } },
       },
     });
     if (record === null) throw this.notFound();
-    try {
-      await this.access.authorizeCase(actor, 'case.match', {
-        departmentId: record.departmentId,
-        responsibleUserId: record.responsibleUserId,
-        ...(record.responsibleMembership.teamId
-          ? { teamId: record.responsibleMembership.teamId }
-          : {}),
-      });
-    } catch (error) {
-      if (error instanceof ForbiddenException) throw this.forbidden();
-      throw error;
-    }
+    if (record.stage !== 'PENDING_MATCH') throw this.notFound();
+    const facts = {
+      departmentId: record.departmentId,
+      responsibleUserId: record.responsibleUserId,
+      ...(record.responsibleMembership.teamId
+        ? { teamId: record.responsibleMembership.teamId }
+        : {}),
+    };
+    if (
+      !(await this.access.canAuthorizeCase(actor, 'case.match', facts)) &&
+      !(await this.access.canAuthorizeCase(actor, 'case.lawyer.assign', facts))
+    )
+      throw this.forbidden();
   }
 
   private async findManagedUser(

@@ -90,6 +90,30 @@ describe('HttpExceptionFilter CSV import details', () => {
     );
   });
 });
+describe('HttpExceptionFilter complaint export failures', () => {
+  const file = {
+    caseId: '11111111-1111-4111-8111-111111111111',
+    materialId: '22222222-2222-4222-8222-222222222222',
+    contentVersionId: '33333333-3333-4333-8333-333333333333',
+    filename: '诉状.pdf',
+    reason: 'FILE_UNAVAILABLE',
+  };
+  it('keeps only the five approved fields per failed file', () => {
+    expect(render({ files: [file] }, 'CASE_EXPORT_EMPTY')).toHaveProperty(
+      'details',
+      { files: [file] },
+    );
+    expect(
+      render({ files: [{ ...file, secret: 'hidden' }] }, 'CASE_EXPORT_EMPTY'),
+    ).not.toHaveProperty('details');
+    expect(
+      render(
+        { files: [{ ...file, reason: 'RAW_EXCEPTION' }] },
+        'CASE_EXPORT_EMPTY',
+      ),
+    ).not.toHaveProperty('details');
+  });
+});
 
 describe('HttpExceptionFilter archive financial details', () => {
   const details = {

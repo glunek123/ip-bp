@@ -113,6 +113,7 @@ export class SettlementAssessmentPostgresDraft {
     tx: Prisma.TransactionClient,
     actor: ActorContext,
     caseId: string,
+    allowProxy: boolean,
   ) {
     if (actor.clientCustomerId || actor.notaryOfficeId || actor.lawyerAccountId)
       throw new Error('ACTION_FORBIDDEN');
@@ -135,8 +136,14 @@ export class SettlementAssessmentPostgresDraft {
         WHERE m.user_id=cases.responsible_user_id AND m.department_id=cases.department_id) AS team_id FROM cases
       WHERE id=${caseId}::uuid AND department_id=${actor.departmentId}::uuid FOR UPDATE`;
     if (cases.length !== 1) throw new Error('CASE_NOT_FOUND');
-    if (cases[0].responsible_user_id !== actor.userId)
-      throw new Error('ACTION_FORBIDDEN');
+    if (cases[0].responsible_user_id !== actor.userId) {
+      if (!allowProxy) throw new Error('ACTION_FORBIDDEN');
+      await this.access.authorizeDepartmentAction(
+        actor,
+        'case.closure.settlement.update',
+        tx,
+      );
+    }
     await this.access.authorizeCase(
       actor,
       'case.read',
@@ -288,7 +295,7 @@ export class SettlementAssessmentPostgresDraft {
         )
         .digest('hex');
     // Current authorization precedes receipt lookup even for exact retries.
-    await this.authorize(tx, actor, command.caseId);
+    await this.authorize(tx, actor, command.caseId, composition !== undefined);
     const receipts = await tx.$queryRaw<
       Array<{
         case_id: string;

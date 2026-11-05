@@ -36,6 +36,16 @@ const api = vi.hoisted(() => ({
   batchFees: vi.fn(),
 }));
 const feeCancellationApi = vi.hoisted(() => ({ cancelFee: vi.fn() }));
+vi.mock('../../api/case-fee-statistics', () => ({
+  getCaseFeeStatistics: vi.fn(async (caseId: string) => ({
+    caseId,
+    scope: 'CASE_ACTIVE_SOURCE_RECORDS',
+    recordCount: 1,
+    proofRecordCount: 0,
+    proofVersionCount: 0,
+    noteRecordCount: 0,
+  })),
+}));
 vi.mock('../../api/fee-cancellations', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/fee-cancellations')>()),
   ...feeCancellationApi,
@@ -458,6 +468,91 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     expect(
       (input(wrapper, '客户结算金额').element as HTMLInputElement).value,
     ).toBe('1.00');
+  });
+
+  it('shows both settlement summaries while keeping full edit and launch controls collapsed in case detail', async () => {
+    const detail = structuredClone(current);
+    detail.launches = [
+      {
+        id: 'launch-c',
+        caseId: 'case',
+        customerId: 'customer',
+        lawyerId: null,
+        side: 'CUSTOMER',
+        nth: 1,
+        launchDate: '2026-11-01',
+        amount: '70.00',
+        billId: 'bill-c',
+        note: null,
+      },
+      {
+        id: 'launch-l',
+        caseId: 'case',
+        customerId: null,
+        lawyerId: 'lawyer',
+        side: 'LAWYER',
+        nth: 1,
+        launchDate: '2026-11-02',
+        amount: '30.00',
+        billId: null,
+        note: null,
+      },
+    ];
+    api.getCaseSettlement.mockResolvedValue(detail);
+    const wrapper = render(CaseSettlementPanel, {
+      caseId: 'case',
+      canUpdate: true,
+      canLaunch: true,
+      showBothSummaries: true,
+      actualSummary: {
+        state: 'READY',
+        customerReceiptState: 'RECORDED',
+        customerReceivedAmount: '45.00',
+        lawyerInvoiceState: 'UNKNOWN',
+        lawyerInvoicedAmount: null,
+        scope: 'CASE',
+      },
+    });
+    await flushPromises();
+    expect(
+      wrapper.findAll('.case-settlement__summary-pair > section'),
+    ).toHaveLength(2);
+    expect(wrapper.get('[aria-label="客户结算摘要"]').text()).toContain(
+      '已关联账单 1 张',
+    );
+    expect(wrapper.get('[aria-label="律师结算摘要"]').text()).toContain(
+      '最近真实发起：2026-11-02',
+    );
+    expect(wrapper.get('[aria-label="客户结算摘要"]').text()).toContain(
+      '客户实际收款：45.00 元；客户开票：未记录',
+    );
+    expect(wrapper.get('[aria-label="律师结算摘要"]').text()).toContain(
+      '律师开票：未记录；律师实付：未记录',
+    );
+    await wrapper.setProps({
+      actualSummary: {
+        state: 'READY',
+        customerReceiptState: 'RECORDED',
+        customerReceivedAmount: '45.00',
+        lawyerInvoiceState: 'RECORDED',
+        lawyerInvoicedAmount: '30.00',
+        scope: 'CONSOLIDATION',
+      },
+    });
+    expect(wrapper.get('[aria-label="客户结算摘要"]').text()).toContain(
+      '45.00 元（主案来源分配）',
+    );
+    expect(wrapper.get('[aria-label="律师结算摘要"]').text()).toContain(
+      '30.00 元（主案来源分配）',
+    );
+    expect(
+      wrapper.find('.case-settlement__operations').attributes('open'),
+    ).toBeUndefined();
+    expect(wrapper.find('input').isVisible()).toBe(false);
+    await wrapper
+      .get('.case-settlement__operations > summary')
+      .trigger('click');
+    expect(input(wrapper, '结算条件').isVisible()).toBe(true);
   });
 
   it('keeps an explicit manual amount when the closure basis refreshes', async () => {
@@ -989,6 +1084,10 @@ describe('case fee entry and same-source note editing', () => {
         fee.version = 3;
         return { id: 'fee-a', version: 3 };
       },
+    );
+    localStorage.setItem(
+      'dev-cor.case-fee-columns.v1',
+      JSON.stringify({ platform: true }),
     );
     const wrapper = render(FeeCenterPanel, { caseId: 'case', canUpdate: true });
     await flushPromises();

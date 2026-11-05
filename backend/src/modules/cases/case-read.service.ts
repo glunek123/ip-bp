@@ -44,6 +44,20 @@ export class CaseReadService {
     private readonly materials: MaterialService,
   ) {}
 
+  private async canDepartmentAction(
+    actor: ActorContext,
+    action:
+      'case.closure.record' | 'case.archive' | 'case.closure.settlement.update',
+  ): Promise<boolean> {
+    try {
+      await this.access.authorizeDepartmentAction(actor, action);
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
+
   private async hasPaymentHistory(
     actor: ActorContext,
     caseId: string,
@@ -363,7 +377,11 @@ export class CaseReadService {
     const proofCandidates = await Promise.all(
       items.map(async (item) =>
         principal === 'INTERNAL' &&
-        item.responsibleUserId === actor.userId &&
+        (item.responsibleUserId === actor.userId ||
+          (await this.canDepartmentAction(
+            actor,
+            'case.closure.settlement.update',
+          ))) &&
         ['WAITING_ARCHIVE', 'ARCHIVED'].includes(item.stage) &&
         !!item.closure?.currentVersion?.id &&
         (await this.access.canAuthorizeCase(actor, 'case.read', {
@@ -837,7 +855,9 @@ export class CaseReadService {
           // Entry eligibility only; commands recheck source chains and financial evidence.
           canEarlyClose:
             principal === 'INTERNAL' &&
-            item.responsibleUserId === actor.userId &&
+            (item.responsibleUserId === actor.userId ||
+              (await this.canDepartmentAction(actor, 'case.closure.record')) ||
+              (await this.canDepartmentAction(actor, 'case.archive'))) &&
             item.consolidationMembership?.isMain !== false &&
             isEarlyClosureSourceStage(item.stage) &&
             item.earlyClosure == null &&
@@ -870,7 +890,11 @@ export class CaseReadService {
           canReadClosurePaymentHistory: casesWithPaymentHistory.has(item.id),
           canUpdateClosureSettlement:
             principal === 'INTERNAL' &&
-            item.responsibleUserId === actor.userId &&
+            (item.responsibleUserId === actor.userId ||
+              (await this.canDepartmentAction(
+                actor,
+                'case.closure.settlement.update',
+              ))) &&
             item.consolidationMembership?.isMain !== false &&
             item.stage === 'WAITING_ARCHIVE' &&
             item.closure?.currentVersion?.toVersion === item.version &&
@@ -2604,7 +2628,9 @@ export class CaseReadService {
       // Entry eligibility only; commands recheck source chains and financial evidence.
       canEarlyClose:
         principal === 'INTERNAL' &&
-        record.responsibleUserId === actor.userId &&
+        (record.responsibleUserId === actor.userId ||
+          (await this.canDepartmentAction(actor, 'case.closure.record')) ||
+          (await this.canDepartmentAction(actor, 'case.archive'))) &&
         record.consolidationMembership?.isMain !== false &&
         isEarlyClosureSourceStage(record.stage) &&
         record.earlyClosure == null &&
@@ -2635,7 +2661,11 @@ export class CaseReadService {
           }))),
       canSupplementPaymentProof:
         principal === 'INTERNAL' &&
-        record.responsibleUserId === actor.userId &&
+        (record.responsibleUserId === actor.userId ||
+          (await this.canDepartmentAction(
+            actor,
+            'case.closure.settlement.update',
+          ))) &&
         ['WAITING_ARCHIVE', 'ARCHIVED'].includes(record.stage) &&
         !!closure?.current.id &&
         (await this.access.canAuthorizeCase(actor, 'case.read', {
@@ -2648,7 +2678,11 @@ export class CaseReadService {
         (await this.hasActivePayment(actor, record.id)),
       canReadClosurePaymentHistory:
         principal === 'INTERNAL' &&
-        record.responsibleUserId === actor.userId &&
+        (record.responsibleUserId === actor.userId ||
+          (await this.canDepartmentAction(
+            actor,
+            'case.closure.settlement.update',
+          ))) &&
         ['WAITING_ARCHIVE', 'ARCHIVED'].includes(record.stage) &&
         !!closure?.current.id &&
         (await this.access.canAuthorizeCase(actor, 'case.read', {
@@ -2661,7 +2695,11 @@ export class CaseReadService {
         (await this.hasPaymentHistory(actor, record.id)),
       canUpdateClosureSettlement:
         principal === 'INTERNAL' &&
-        record.responsibleUserId === actor.userId &&
+        (record.responsibleUserId === actor.userId ||
+          (await this.canDepartmentAction(
+            actor,
+            'case.closure.settlement.update',
+          ))) &&
         record.consolidationMembership?.isMain !== false &&
         record.stage === 'WAITING_ARCHIVE' &&
         closure?.current.toVersion === record.version &&

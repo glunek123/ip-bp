@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CaseDetail } from '../../api/cases';
 import { ApiError } from '../../api/http';
+import * as http from '../../api/http';
 import type { OwnerMaterial } from '../../api/materials';
 import CaseWorkspaceFiles from './CaseWorkspaceFiles.vue';
 
@@ -158,6 +159,206 @@ afterEach(() => {
 });
 
 describe('CaseWorkspaceFiles', () => {
+  it('exports an expanded other-material selection once', async () => {
+    const extra = {
+      materialId: 'extra',
+      contentVersionId: 'old',
+      originalFilename: '历史.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1,
+      groupId: 'OTHER',
+      isCurrent: false,
+      labels: ['历史版本'],
+    };
+    const exportSelected = vi.fn().mockResolvedValue({
+      blob: new Blob(['zip']),
+      filename: 'files.zip',
+      results: [
+        { materialId: 'extra', contentVersionId: 'old', status: 'SUCCESS' },
+      ],
+    });
+    const wrapper = mount(CaseWorkspaceFiles, {
+      props: {
+        item: structuredClone(baseItem),
+        contextKey: 'case-1:actor',
+        listCaseMaterials: vi.fn(),
+        downloadVersion: vi.fn(),
+        listFileCatalog: vi.fn().mockResolvedValue({
+          caseId: baseItem.id,
+          businessNo: 'CA-1',
+          groups: Array.from({ length: 16 }, (_, i) => ({
+            id: `g${i}`,
+            name: `类别${i}`,
+            files: [],
+          })),
+          otherFiles: [extra],
+          limits: { maxFiles: 100, maxBytes: 1000 },
+        }),
+        exportSelected,
+      },
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="case-file-version-count"]').text(),
+    ).toContain('共 1 个材料版本');
+    await wrapper.get('.case-file-other summary').trigger('click');
+    await wrapper.get('.case-file-other input[type="checkbox"]').setValue(true);
+    const createUrl = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValue('blob:test');
+    const revokeUrl = vi
+      .spyOn(URL, 'revokeObjectURL')
+      .mockImplementation(() => undefined);
+    await wrapper.get('[data-test="export-selected-files"]').trigger('click');
+    await flushPromises();
+    expect(exportSelected).toHaveBeenCalledWith(baseItem.id, [
+      { materialId: 'extra', contentVersionId: 'old' },
+    ]);
+    createUrl.mockRestore();
+    revokeUrl.mockRestore();
+  });
+
+  it('does not open a stale preview after changing identity', async () => {
+    const pending = deferred<{
+      blob: Blob;
+      filename: string;
+      mimeType: string;
+    }>();
+    const getBlob = vi.spyOn(http, 'getBlob').mockReturnValue(pending.promise);
+    const tab = { opener: null, location: { href: '' }, close: vi.fn() };
+    const open = vi
+      .spyOn(window, 'open')
+      .mockReturnValue(tab as unknown as Window);
+    const createUrl = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValue('blob:stale');
+    const file = {
+      materialId: 'm1',
+      contentVersionId: 'v1',
+      originalFilename: 'a.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1,
+      groupId: 'COMPLAINT',
+      isCurrent: true,
+      labels: [],
+    };
+    const wrapper = mount(CaseWorkspaceFiles, {
+      props: {
+        item: structuredClone(baseItem),
+        contextKey: 'case-1:actor-old',
+        listCaseMaterials: vi.fn(),
+        downloadVersion: vi.fn(),
+        listFileCatalog: vi.fn().mockResolvedValue({
+          caseId: baseItem.id,
+          businessNo: 'CA-1',
+          groups: [
+            { id: 'COMPLAINT', name: '起诉状', files: [file] },
+            ...Array.from({ length: 15 }, (_, i) => ({
+              id: `g${i}`,
+              name: `类别${i}`,
+              files: [],
+            })),
+          ],
+          otherFiles: [],
+          limits: { maxFiles: 100, maxBytes: 1000 },
+        }),
+      },
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    await wrapper
+      .get('[data-test="file-group-COMPLAINT"] button')
+      .trigger('click');
+    expect(getBlob).toHaveBeenCalledWith(expect.any(String), {
+      signal: expect.any(AbortSignal),
+    });
+    await wrapper.setProps({ contextKey: 'case-1:actor-new' });
+    pending.resolve({
+      blob: new Blob(['old']),
+      filename: 'a.pdf',
+      mimeType: 'application/pdf',
+    });
+    await flushPromises();
+    expect(tab.close).toHaveBeenCalled();
+    expect(tab.location.href).toBe('');
+    expect(createUrl).not.toHaveBeenCalled();
+    getBlob.mockRestore();
+    open.mockRestore();
+    createUrl.mockRestore();
+  });
+  it('shows the fixed groups and exports only explicitly selected versions', async () => {
+    const first = {
+      materialId: 'm1',
+      contentVersionId: 'v1',
+      originalFilename: '同名.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 10,
+      groupId: 'COMPLAINT',
+      isCurrent: false,
+      labels: ['已确认诉状'],
+    };
+    const second = {
+      ...first,
+      contentVersionId: 'v2',
+      isCurrent: true,
+      labels: ['当前版本'],
+    };
+    const listFileCatalog = vi.fn().mockResolvedValue({
+      caseId: baseItem.id,
+      businessNo: baseItem.businessNo,
+      groups: Array.from({ length: 16 }, (_, index) => ({
+        id: index === 2 ? 'COMPLAINT' : `GROUP_${index}`,
+        name: index === 2 ? '起诉状' : `类别${index}`,
+        files: index === 2 ? [first, second] : [],
+      })),
+      otherFiles: [],
+      limits: { maxFiles: 100, maxBytes: 104857600 },
+    });
+    const exportSelected = vi.fn().mockResolvedValue({
+      blob: new Blob(['zip']),
+      filename: 'case-files.zip',
+      results: [
+        { materialId: 'm1', contentVersionId: 'v1', status: 'SUCCESS' },
+      ],
+    });
+    const wrapper = mount(CaseWorkspaceFiles, {
+      props: {
+        item: structuredClone(baseItem),
+        contextKey: 'case-1:actor-1',
+        listCaseMaterials: vi.fn(),
+        downloadVersion: vi.fn(),
+        listFileCatalog,
+        exportSelected,
+      },
+    });
+    wrappers.push(wrapper);
+    await flushPromises();
+    expect(wrapper.findAll('.case-file-group')).toHaveLength(16);
+    expect(
+      wrapper.get('[data-test="export-selected-files"]').attributes('disabled'),
+    ).toBeDefined();
+    const checks = wrapper.findAll(
+      '[data-test="file-group-COMPLAINT"] input[type="checkbox"]',
+    );
+    await checks[0]!.setValue(true);
+    expect(wrapper.get('[data-test="export-selected-files"]').text()).toContain(
+      '1',
+    );
+    const createUrl = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValue('blob:test');
+    const revokeUrl = vi
+      .spyOn(URL, 'revokeObjectURL')
+      .mockImplementation(() => undefined);
+    await wrapper.get('[data-test="export-selected-files"]').trigger('click');
+    await flushPromises();
+    expect(exportSelected).toHaveBeenCalledWith(baseItem.id, [
+      { materialId: 'm1', contentVersionId: 'v1' },
+    ]);
+    createUrl.mockRestore();
+    revokeUrl.mockRestore();
+  });
   it('deduplicates exact versions while retaining source and history, and downloads the frozen version', async () => {
     const item = structuredClone(baseItem);
     item.certificate.files = [file()];

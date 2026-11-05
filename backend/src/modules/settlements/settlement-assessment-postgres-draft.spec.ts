@@ -96,6 +96,44 @@ function setup(snapshot?: AccessControlSnapshot) {
 
 describe('unregistered PostgreSQL assessment adapter (transaction doubles only)', () => {
   beforeEach(() => jest.clearAllMocks());
+  it('keeps standalone assessment owner-only while allowing the composed department action', async () => {
+    const snapshot: AccessControlSnapshot = {
+      active: true,
+      authorizationRevision: actor.authorizationRevision,
+      grants: [
+        { action: 'case.read', scope: 'department' },
+        { action: 'case.closure.settlement.update', scope: 'department' },
+      ],
+    };
+    const f = setup(snapshot);
+    f.state.owner = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+    await expect(f.service.execute(actor, command)).rejects.toThrow(
+      'ACTION_FORBIDDEN',
+    );
+    const composition = createAssessmentCompositionContext({
+      requestFingerprint: 'c'.repeat(64),
+      parentIdempotencyKey: 'proxy-parent',
+      expectedAssessmentVersionId: null,
+      expectedTermsVersion: 3,
+    });
+    await expect(
+      f.service.executeInTransaction(
+        f.tx as unknown as Prisma.TransactionClient,
+        actor,
+        command,
+        composition,
+      ),
+    ).resolves.toMatchObject({ caseId: command.caseId });
+    snapshot.grants = [{ action: 'case.read', scope: 'department' }];
+    await expect(
+      f.service.executeInTransaction(
+        f.tx as unknown as Prisma.TransactionClient,
+        actor,
+        command,
+        composition,
+      ),
+    ).rejects.toThrow();
+  });
   it.each(['self', 'team', 'department'] as const)(
     'accepts %s case-read scope for standalone and composed assessment and denies replay after revocation',
     async (scope) => {

@@ -158,6 +158,28 @@ describe('HTTP boundary', () => {
     });
   });
 
+  it('exposes response headers from a POST download without changing its blob fields', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response('zip-bytes', {
+          headers: {
+            'Content-Type': 'application/zip',
+            'X-Case-Export-Result': '[{"successCount":1}]',
+          },
+        }),
+      ),
+    );
+    const result = await postBlob('/cases/complaint-export/download', {
+      selections: [],
+    });
+    expect(result.mimeType).toBe('application/zip');
+    expect(result.blob).toBeInstanceOf(Blob);
+    expect(result.responseHeaders.get('X-Case-Export-Result')).toBe(
+      '[{"successCount":1}]',
+    );
+  });
+
   it('posts JSON through the shared boundary and does not retry a CSRF failure', async () => {
     const fetch = vi
       .fn()

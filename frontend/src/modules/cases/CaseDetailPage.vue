@@ -17,6 +17,7 @@ import {
 import CaseSectionRecordCorrectionPanel, {
   readCaseSectionRecordRequests,
 } from './CaseSectionRecordCorrectionPanel.vue';
+import CaseAdditionalActions from './CaseAdditionalActions.vue';
 
 import {
   computed,
@@ -50,8 +51,20 @@ import { caseListQueryKeys } from './case-list-query';
 import CaseDetailsSections from './CaseDetailsSections.vue';
 import CaseConsolidationTrace from './CaseConsolidationTrace.vue';
 import CaseWorkspaceFiles from './CaseWorkspaceFiles.vue';
+import { listCaseFileCatalog, exportCaseFiles } from '../../api/case-files';
+import {
+  getCaseClosureWorkspace,
+  type CaseClosureWorkspace,
+} from '../../api/case-closure-workspace';
+import {
+  getCaseSupplementalWorkspace,
+  type CaseSupplementWorkspace,
+} from '../../api/case-supplements';
+import { getEvidenceSourceGroup, type EvidenceGroup } from '../../api/evidence';
+import { getCaseSettlement, type CaseSettlement } from '../../api/settlements';
 import CaseWorkspaceFees from './CaseWorkspaceFees.vue';
 import { CaseFinancePanel } from '../settlements';
+import type { CaseActualSummary } from '../settlements';
 import type {
   SectionKey,
   SectionAction,
@@ -97,6 +110,7 @@ import {
   listOwnerMaterials,
   uploadMaterialFile,
   type MaterialCategory,
+  type OwnerMaterial,
 } from '../../api/materials';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 import { useAuthStore } from '../../stores/auth';
@@ -160,6 +174,7 @@ const activeTab = computed<WorkspaceTab>(() =>
     : 'details',
 );
 const caseFees = ref<InstanceType<typeof CaseWorkspaceFees> | null>(null);
+const actualSummary = ref<CaseActualSummary>({ state: 'UNAVAILABLE' });
 function selectTab(tab: WorkspaceTab): void {
   if (caseFees.value?.canLeave() === false) return;
   if (String(route.params.id) !== id.value) return;
@@ -181,6 +196,19 @@ watch(
 );
 const lead = ref<LeadDetail | null>(null);
 const leadState = ref<LeadState>('idle');
+const closureWorkspace = ref<CaseClosureWorkspace | null>(null);
+const supplementWorkspace = ref<CaseSupplementWorkspace | null>(null);
+const evidenceGroup = ref<EvidenceGroup | null>(null);
+const settlementWorkspace = ref<CaseSettlement | null>(null);
+const leadMaterials = ref<OwnerMaterial[] | null>(null);
+const notaryMaterials = ref<OwnerMaterial[] | null>(null);
+const closureReadState = ref<LeadState>('idle');
+const supplementReadState = ref<LeadState>('idle');
+const evidenceReadState = ref<LeadState>('idle');
+const settlementReadState = ref<LeadState>('idle');
+const leadMaterialState = ref<LeadState>('idle');
+const notaryMaterialState = ref<LeadState>('idle');
+const detailSourcesRevision = ref(0);
 const routine = ref<CaseRoutineProfile | null>(null);
 const routineEditing = ref(false);
 const routineSaving = ref(false);
@@ -188,13 +216,22 @@ const routineUnknown = ref(false);
 const routineError = ref('');
 let routineRequest: AbortController | undefined;
 let routineReadGeneration = 0;
-onBeforeRouteLeave(
-  () => !routineSaving.value && caseFees.value?.canLeave() !== false,
-);
-onBeforeRouteUpdate(
-  () => !routineSaving.value && caseFees.value?.canLeave() !== false,
-);
+const additionalActions = ref<{
+  canLeave: () => boolean;
+  isBusy: () => boolean;
+} | null>(null);
+function canLeaveCaseDetail() {
+  return (
+    !routineSaving.value &&
+    caseFees.value?.canLeave() !== false &&
+    additionalActions.value?.canLeave() !== false
+  );
+}
+onBeforeRouteLeave(canLeaveCaseDetail);
+onBeforeRouteUpdate(canLeaveCaseDetail);
 const drawerOpen = ref(false);
+const closureBridgeRegistrationActive = ref(false);
+const closureRegistrationSucceeded = ref(false);
 const actionNotice = ref('');
 const editorVisible = ref(true);
 const editorSection = ref<SectionKey>('case-info');
@@ -435,7 +472,9 @@ const moreCommands = computed(() =>
   ),
 );
 const timelineEvents = computed(() =>
-  item.value ? buildCaseWorkspaceEvents(item.value) : [],
+  item.value
+    ? buildCaseWorkspaceEvents(item.value, supplementWorkspace.value)
+    : [],
 );
 function openCommand(command: WorkspaceCommand, editing = false): void {
   if (routineEditing.value || routineSaving.value) return;
@@ -443,6 +482,13 @@ function openCommand(command: WorkspaceCommand, editing = false): void {
     ? [...sectionEditCommands.value, ...recordRecovery.value.commands]
     : commands.value;
   if (!permitted.some((entry) => entry.id === command.id)) return;
+  if (
+    !editing &&
+    command.id === 'closure' &&
+    item.value?.stage === 'WAITING_ARCHIVE' &&
+    !item.value.closure
+  )
+    closureBridgeRegistrationActive.value = true;
   sectionEditing.value = editing;
   if (editing) editRequest.value += 1;
   timelineView.value = false;
@@ -504,7 +550,15 @@ function recordEditAccessLost(): void {
   void load();
 }
 function closeRecordEdit(): void {
+  if (!closureRegistrationSucceeded.value)
+    closureBridgeRegistrationActive.value = false;
   drawerOpen.value = false;
+}
+
+function handleAdditionalActionSuccess(action: string) {
+  if (action === 'record-closure' && item.value?.stage === 'WAITING_ARCHIVE')
+    closureRegistrationSucceeded.value = true;
+  void load();
 }
 function openUpload(): void {
   const stage = item.value?.stage;
@@ -541,6 +595,113 @@ const refreshing = ref(false);
 const refreshError = ref('');
 const item = ref<CaseDetail>();
 const accessVerified = ref(false);
+const authorizedContext = ref<string | null>(null);
+const additionalActionBusy = computed(
+  () => additionalActions.value?.isBusy() === true,
+);
+const additionalActionDisabled = computed(
+  () =>
+    drawerOpen.value ||
+    routineEditing.value ||
+    routineSaving.value ||
+    routineUnknown.value ||
+    caseFees.value?.canLeave() === false ||
+    additionalActionBusy.value,
+);
+watch(
+  [id, identity],
+  () => {
+    closureBridgeRegistrationActive.value = false;
+    closureRegistrationSucceeded.value = false;
+  },
+  { flush: 'sync' },
+);
+watch(
+  [
+    activeTab,
+    workspaceContext,
+    () => item.value?.version,
+    () => item.value?.sourceLead?.id,
+    () => item.value?.sourceNotaryMatter?.id,
+    accessVerified,
+  ],
+  async (
+    [tab, contextKey, version, leadId, notaryId, verified],
+    _prior,
+    onCleanup,
+  ) => {
+    const controller = new AbortController();
+    onCleanup(() => controller.abort());
+    leadMaterials.value = null;
+    notaryMaterials.value = null;
+    leadMaterialState.value = 'idle';
+    notaryMaterialState.value = 'idle';
+    if (
+      tab !== 'details' ||
+      !verified ||
+      authorizedContext.value !== contextKey ||
+      version === undefined ||
+      !active
+    )
+      return;
+    const current = () =>
+      !controller.signal.aborted &&
+      active &&
+      workspaceContext.value === contextKey &&
+      item.value?.version === version &&
+      activeTab.value === 'details';
+    const read = async (
+      ownerType: 'LEAD' | 'NOTARY_MATTER',
+      ownerId: string,
+      setItems: (items: OwnerMaterial[]) => void,
+      setState: (state: LeadState) => void,
+    ) => {
+      setState('loading');
+      try {
+        const result = await listOwnerMaterials(ownerType, ownerId, {
+          signal: controller.signal,
+        });
+        if (!current()) return;
+        setItems(result.items);
+        setState('ready');
+      } catch (error) {
+        if (!current()) return;
+        setState(
+          error instanceof ApiError && [401, 403, 404].includes(error.status)
+            ? 'denied'
+            : 'failed',
+        );
+      }
+    };
+    await Promise.all([
+      leadId
+        ? read(
+            'LEAD',
+            leadId,
+            (items) => {
+              leadMaterials.value = items;
+            },
+            (state) => {
+              leadMaterialState.value = state;
+            },
+          )
+        : Promise.resolve(),
+      notaryId
+        ? read(
+            'NOTARY_MATTER',
+            notaryId,
+            (items) => {
+              notaryMaterials.value = items;
+            },
+            (state) => {
+              notaryMaterialState.value = state;
+            },
+          )
+        : Promise.resolve(),
+    ]);
+  },
+  { flush: 'sync' },
+);
 watch(
   [
     workspaceContext,
@@ -556,6 +717,7 @@ watch(
     if (
       !caseId ||
       !accessVerified.value ||
+      authorizedContext.value !== contextKey ||
       auth.session?.principalType !== 'INTERNAL'
     )
       return;
@@ -678,6 +840,90 @@ async function refreshRoutine() {
 const activationRevision = ref(0);
 watch(
   [
+    activeTab,
+    workspaceContext,
+    () => item.value?.version,
+    accessVerified,
+    detailSourcesRevision,
+  ],
+  async ([tab, contextKey, version, verified], _prior, onCleanup) => {
+    const controller = new AbortController();
+    onCleanup(() => controller.abort());
+    closureWorkspace.value = null;
+    supplementWorkspace.value = null;
+    evidenceGroup.value = null;
+    settlementWorkspace.value = null;
+    closureReadState.value = 'idle';
+    supplementReadState.value = 'idle';
+    evidenceReadState.value = 'idle';
+    settlementReadState.value = 'idle';
+    if (
+      tab !== 'details' ||
+      !verified ||
+      authorizedContext.value !== contextKey ||
+      version === undefined ||
+      !active
+    )
+      return;
+    const current = () =>
+      !controller.signal.aborted &&
+      active &&
+      activeTab.value === 'details' &&
+      workspaceContext.value === contextKey &&
+      item.value?.version === version;
+    closureReadState.value = 'loading';
+    supplementReadState.value = 'loading';
+    evidenceReadState.value = 'loading';
+    settlementReadState.value = 'loading';
+    const [closureResult, supplementResult, evidenceResult, settlementResult] =
+      await Promise.allSettled([
+        getCaseClosureWorkspace(id.value, { signal: controller.signal }),
+        getCaseSupplementalWorkspace(id.value, { signal: controller.signal }),
+        getEvidenceSourceGroup('CASE', id.value, { signal: controller.signal }),
+        getCaseSettlement(id.value, { signal: controller.signal }),
+      ]);
+    if (!current()) return;
+    if (closureResult.status === 'fulfilled') {
+      closureWorkspace.value = closureResult.value;
+      closureReadState.value = 'ready';
+    } else
+      closureReadState.value =
+        closureResult.reason instanceof ApiError &&
+        [401, 403, 404].includes(closureResult.reason.status)
+          ? 'denied'
+          : 'failed';
+    if (supplementResult.status === 'fulfilled') {
+      supplementWorkspace.value = supplementResult.value;
+      supplementReadState.value = 'ready';
+    } else
+      supplementReadState.value =
+        supplementResult.reason instanceof ApiError &&
+        [401, 403, 404].includes(supplementResult.reason.status)
+          ? 'denied'
+          : 'failed';
+    if (evidenceResult.status === 'fulfilled') {
+      evidenceGroup.value = evidenceResult.value;
+      evidenceReadState.value = 'ready';
+    } else
+      evidenceReadState.value =
+        evidenceResult.reason instanceof ApiError &&
+        [401, 403, 404].includes(evidenceResult.reason.status)
+          ? 'denied'
+          : 'failed';
+    if (settlementResult.status === 'fulfilled') {
+      settlementWorkspace.value = settlementResult.value;
+      settlementReadState.value = 'ready';
+    } else
+      settlementReadState.value =
+        settlementResult.reason instanceof ApiError &&
+        [401, 403, 404].includes(settlementResult.reason.status)
+          ? 'denied'
+          : 'failed';
+  },
+  { flush: 'sync' },
+);
+watch(
+  [
     workspaceContext,
     () => item.value?.sourceLead?.id,
     () => item.value?.version,
@@ -688,7 +934,12 @@ watch(
     onCleanup(() => controller.abort());
     lead.value = null;
     leadState.value = leadId ? 'loading' : 'idle';
-    if (!leadId || !accessVerified.value) return;
+    if (
+      !leadId ||
+      !accessVerified.value ||
+      authorizedContext.value !== contextKey
+    )
+      return;
     try {
       const result = await getLead(leadId, { signal: controller.signal });
       if (
@@ -1266,8 +1517,17 @@ const closureCallbacks = computed(() => {
     },
     changed: (result: CaseClosureResult) => {
       if (!current() || result.id !== caseId) return;
+      const completesClosureBridge =
+        closureBridgeRegistrationActive.value &&
+        item.value?.stage === 'WAITING_ARCHIVE' &&
+        !item.value.closure;
       closureSession.setPending(caseId, null);
       if (closureSession.markChanged(result.closureVersionId)) {
+        if (completesClosureBridge) {
+          closureBridgeRegistrationActive.value = false;
+          closureRegistrationSucceeded.value = true;
+          drawerOpen.value = false;
+        }
         notifyWorkflowChanged();
         void load();
       }
@@ -1310,6 +1570,7 @@ async function load() {
     const result = await getCase(targetId, { signal: controller.signal });
     if (!isCurrentRead()) return;
     item.value = result;
+    authorizedContext.value = `${targetId}:${targetIdentity}`;
     if (!accessVerified.value) activationRevision.value += 1;
     accessVerified.value = true;
     if (
@@ -1461,12 +1722,26 @@ function clearContext(): void {
   routineError.value = '';
   actionNotice.value = '';
   accessVerified.value = false;
+  authorizedContext.value = null;
   drawerOpen.value = false;
   openedCommands.value = new Set();
   openedCommandEntries.value = new Map();
   selectedCommand.value = '';
   lead.value = null;
   leadState.value = 'idle';
+  closureWorkspace.value = null;
+  supplementWorkspace.value = null;
+  evidenceGroup.value = null;
+  settlementWorkspace.value = null;
+  leadMaterials.value = null;
+  notaryMaterials.value = null;
+  closureReadState.value = 'idle';
+  supplementReadState.value = 'idle';
+  evidenceReadState.value = 'idle';
+  settlementReadState.value = 'idle';
+  leadMaterialState.value = 'idle';
+  notaryMaterialState.value = 'idle';
+  actualSummary.value = { state: 'UNAVAILABLE' };
   item.value = undefined;
   state.value = 'loading';
   refreshing.value = false;
@@ -2047,7 +2322,12 @@ onBeforeUnmount(() => {
           <ElButton
             v-if="routine?.canEdit"
             data-test="edit-case-routine"
-            :disabled="routineSaving || routineUnknown || drawerOpen"
+            :disabled="
+              routineSaving ||
+              routineUnknown ||
+              drawerOpen ||
+              additionalActionBusy
+            "
             @click="routineEditing = true"
             >编辑资料</ElButton
           >
@@ -2057,7 +2337,7 @@ onBeforeUnmount(() => {
               primaryCommand.label.startsWith('撤销') ? 'danger' : 'primary'
             "
             data-test="workspace-primary-action"
-            :disabled="routineEditing || routineSaving"
+            :disabled="routineEditing || routineSaving || additionalActionBusy"
             @click="openCommand(primaryCommand)"
             >{{ primaryCommand.label }}</ElButton
           >
@@ -2071,6 +2351,9 @@ onBeforeUnmount(() => {
               :key="command.id"
               :type="command.label.startsWith('撤销') ? 'danger' : 'default'"
               plain
+              :disabled="
+                routineEditing || routineSaving || additionalActionBusy
+              "
               :data-command="command.id"
               @click="openCommand(command)"
               >{{ command.label }}</ElButton
@@ -2080,6 +2363,7 @@ onBeforeUnmount(() => {
             v-for="command in recordRegistrationCommands"
             :key="command.id"
             plain
+            :disabled="routineEditing || routineSaving || additionalActionBusy"
             data-test="workspace-record-registration"
             @click="openCommand(command)"
             >登记二审受理信息</ElButton
@@ -2088,6 +2372,7 @@ onBeforeUnmount(() => {
             plain
             data-test="case-refresh"
             :loading="refreshing"
+            :disabled="additionalActionBusy"
             @click="load"
             >刷新</ElButton
           >
@@ -2107,6 +2392,20 @@ onBeforeUnmount(() => {
           <p v-if="recordRecovery.error" role="alert">
             {{ recordRecovery.error }}
           </p>
+          <CaseAdditionalActions
+            v-if="item"
+            :key="`${item.id}:${identity}`"
+            ref="additionalActions"
+            :item="item"
+            :identity="identity"
+            :actor-user-id="auth.session?.user.id"
+            :disabled="additionalActionDisabled"
+            :closure-registration-succeeded="closureRegistrationSucceeded"
+            @success="handleAdditionalActionSuccess"
+            @closure-recorded="closureRegistrationSucceeded = true"
+            @continue-closure-settlement="closureRegistrationSucceeded = false"
+            @refresh="load"
+          />
         </div>
       </template>
       <template #details>
@@ -2186,10 +2485,25 @@ onBeforeUnmount(() => {
           :lead="lead"
           :lead-state="leadState"
           :routine="routine"
+          :closure-workspace="closureWorkspace"
+          :supplement-workspace="supplementWorkspace"
+          :evidence-group="evidenceGroup"
+          :settlement-workspace="settlementWorkspace"
+          :lead-materials="leadMaterials"
+          :notary-materials="notaryMaterials"
+          :closure-read-state="closureReadState"
+          :supplement-read-state="supplementReadState"
+          :evidence-read-state="evidenceReadState"
+          :settlement-read-state="settlementReadState"
+          :lead-material-state="leadMaterialState"
+          :notary-material-state="notaryMaterialState"
           :actions="sectionActions"
           :context-key="workspaceContext"
+          :supplement-actor-key="secondInstanceActorKey"
           @edit="editSection"
           @view-timeline="viewTimeline"
+          @supplement-changed="detailSourcesRevision += 1"
+          @open-files="selectTab('files')"
         />
         <section
           class="demo-card demo-card--pad"
@@ -2225,24 +2539,29 @@ onBeforeUnmount(() => {
         <CaseWorkspaceFiles
           :item="item"
           :context-key="`${workspaceContext}:${item.version}:${activationRevision}`"
+          :list-file-catalog="listCaseFileCatalog"
+          :export-selected="exportCaseFiles"
           :list-case-materials="listCaseMaterials"
           :download-version="downloadMaterialVersion"
           @open-upload="openUpload"
         />
       </template>
       <template #fees
-        ><CaseWorkspaceFees
+        ><CaseFinancePanel
+          v-if="activeTab === 'fees' && accessVerified && state === 'ready'"
+          :key="workspaceContext"
+          :case-id="item.id"
+          :closure-version-id="item.closure?.current.id ?? null"
+          :actual-summary="actualSummary"
+          layout="case-detail" /><CaseWorkspaceFees
           ref="caseFees"
           :item="item"
           :actor-key="identity"
           :actor-user-id="auth.session?.user.id"
           :actual-enabled="
             activeTab === 'fees' && accessVerified && state === 'ready'
-          " /><CaseFinancePanel
-          v-if="activeTab === 'fees' && accessVerified && state === 'ready'"
-          :key="workspaceContext"
-          :case-id="item.id"
-          :closure-version-id="item.closure?.current.id ?? null"
+          "
+          @actual-summary="actualSummary = $event"
       /></template>
       <template #editors>
         <ElDrawer

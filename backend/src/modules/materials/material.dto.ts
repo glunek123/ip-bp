@@ -49,6 +49,10 @@ export const materialCategories = [
   'CASE_CLOSURE_DOCUMENT',
   'CASE_CLOSURE_PAYMENT_PROOF',
   'FEE_PROOF',
+  'CASE_PRESERVATION_DOCUMENT',
+  'CASE_COURT_DISCLOSURE_ATTACHMENT',
+  'CASE_RECORD_RETRIEVAL_DOCUMENT',
+  'EXECUTION_FORMAL_DOCUMENT',
 ] as const;
 export type MaterialCategoryValue = (typeof materialCategories)[number];
 export const materialPurposes = [
@@ -80,10 +84,24 @@ export const materialPurposes = [
   'CASE_CLOSURE_DOCUMENT',
   'CASE_CLOSURE_PAYMENT_PROOF',
   'FEE_PROOF',
+  'CASE_PRESERVATION_DOCUMENT',
+  'CASE_COURT_DISCLOSURE_ATTACHMENT',
+  'CASE_RECORD_RETRIEVAL_DOCUMENT',
+  'EXECUTION_FORMAL_DOCUMENT',
 ] as const;
 export type MaterialPurposeValue = (typeof materialPurposes)[number];
 
 export class CreateUploadDraftDto {
+  @ApiPropertyOptional({
+    maxLength: 1000,
+    description: 'Required for case supplemental document categories',
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @Transform(trim)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1000)
+  caseSupplementReason?: string;
   @ApiProperty({
     enum: ['CUSTOMER', 'LEAD_DRAFT', 'LEAD', 'NOTARY_MATTER', 'CASE'],
   })

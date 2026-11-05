@@ -30,6 +30,7 @@ import {
   FeePageDto,
   UpdateFeeDto,
   UpdateFeeProofDto,
+  CaseFeeStatisticsDto,
 } from './fee.dto';
 import { FeeService } from './fee.service';
 import { settlementResponses } from './settlement-openapi';
@@ -45,6 +46,15 @@ export class FeeController {
   @ApiOkResponse({ schema: settlementResponses.fees })
   list(@CurrentActor() actor: ActorContext, @Query() query: FeePageDto) {
     return this.service.list(actor, query);
+  }
+
+  @Get('statistics')
+  @ApiOkResponse({ schema: settlementResponses.caseFeeStatistics })
+  caseStatistics(
+    @CurrentActor() actor: ActorContext,
+    @Query() query: CaseFeeStatisticsDto,
+  ) {
+    return this.service.caseStatistics(actor, query);
   }
 
   @Post()

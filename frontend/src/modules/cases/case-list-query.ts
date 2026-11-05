@@ -37,7 +37,16 @@ export type CaseListRouteQuery = Record<string, unknown>;
 export type ParsedCaseListQuery =
   { ok: true; value: CaseListQuery } | { ok: false; message: string };
 
-const textKeys = ['q'] as const;
+const textKeys = [
+  'q',
+  'customerName',
+  'rightsHolderName',
+  'courtCaseNo',
+  'shopName',
+  'defendantName',
+  'courtName',
+  'lawyerName',
+] as const;
 export const caseListQueryKeys = [...textKeys, 'caseType'] as const;
 
 function scalar(value: unknown): value is string {

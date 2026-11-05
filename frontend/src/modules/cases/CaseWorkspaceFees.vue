@@ -6,6 +6,7 @@ import { getCaseClosureWorkspace } from '../../api/case-closure-workspace';
 import { createListWorkflowContext } from '../../app/list-workflow-context';
 import ActualPanel from './CaseSettlementActualPanel.vue';
 import type { CaseDetail } from '../../api/cases';
+import type { CaseActualSummary } from '../settlements';
 
 const props = defineProps<{
   item: CaseDetail;
@@ -13,6 +14,7 @@ const props = defineProps<{
   actorUserId?: string;
   actualEnabled?: boolean;
 }>();
+const emit = defineEmits<{ 'actual-summary': [summary: CaseActualSummary] }>();
 const actualOpen = ref(false);
 const savedRefresh = ref(false);
 const eligible = computed(
@@ -50,6 +52,31 @@ const actual = computed(() =>
 );
 const actualVisible = computed(
   () => actualOpen.value || actualState.value.requestState !== 'idle',
+);
+watch(
+  [eligible, actualState, actual],
+  () => {
+    const state = actualState.value.status;
+    if (!eligible.value) {
+      emit('actual-summary', { state: 'UNAVAILABLE' });
+    } else if (state === 'loading') {
+      emit('actual-summary', { state: 'LOADING' });
+    } else if (state === 'denied') {
+      emit('actual-summary', { state: 'DENIED' });
+    } else if (state === 'error') {
+      emit('actual-summary', { state: 'ERROR' });
+    } else if (state === 'ready' && actual.value) {
+      emit('actual-summary', {
+        state: 'READY',
+        customerReceiptState: actual.value.customerReceiptState,
+        customerReceivedAmount: actual.value.customerReceivedAmount,
+        lawyerInvoiceState: actual.value.lawyerInvoiceState,
+        lawyerInvoicedAmount: actual.value.lawyerInvoicedAmount,
+        scope: actual.value.scope,
+      });
+    }
+  },
+  { immediate: true, flush: 'sync' },
 );
 watch(
   () => [
@@ -206,45 +233,48 @@ function displayAmount(row: AmountRow): string {
 
 <template>
   <section class="case-workspace-fees" aria-label="费用管理">
-    <h2>来源费用</h2>
-    <dl class="case-workspace-fields">
-      <div v-for="row in sourceFees" :key="row.key" data-test="source-fee">
-        <dt class="case-workspace-field__label">{{ row.label }}</dt>
-        <dd class="case-workspace-field__value">
-          {{ displayAmount(row) }}
-        </dd>
-        <dd class="case-workspace-field__help">来源：{{ row.source }}</dd>
-        <dd v-if="row.sourceId" class="case-workspace-field__help">
-          <details data-test="fee-source-details">
-            <summary>来源详情</summary>
-            <p>来源标识：{{ row.sourceId }}</p>
-          </details>
-        </dd>
-      </div>
-    </dl>
-    <h2>案件金额事实</h2>
-    <p class="case-workspace-field__help">
-      诉状请求、裁判及结案金额按各自来源展示，不代表本案实际收款或付款。
-    </p>
-    <dl class="case-workspace-fields">
-      <div
-        v-for="row in amounts"
-        :key="row.key"
-        :data-test="`amount-${row.key}`"
-      >
-        <dt class="case-workspace-field__label">{{ row.label }}</dt>
-        <dd class="case-workspace-field__value">
-          {{ displayAmount(row) }}
-        </dd>
-        <dd class="case-workspace-field__help">来源：{{ row.source }}</dd>
-        <dd v-if="row.sourceId" class="case-workspace-field__help">
-          <details data-test="fee-source-details">
-            <summary>来源详情</summary>
-            <p>来源标识：{{ row.sourceId }}</p>
-          </details>
-        </dd>
-      </div>
-    </dl>
+    <details class="case-workspace-fees__history">
+      <summary>金额来源与历史</summary>
+      <h2>来源费用</h2>
+      <dl class="case-workspace-fields">
+        <div v-for="row in sourceFees" :key="row.key" data-test="source-fee">
+          <dt class="case-workspace-field__label">{{ row.label }}</dt>
+          <dd class="case-workspace-field__value">
+            {{ displayAmount(row) }}
+          </dd>
+          <dd class="case-workspace-field__help">来源：{{ row.source }}</dd>
+          <dd v-if="row.sourceId" class="case-workspace-field__help">
+            <details data-test="fee-source-details">
+              <summary>来源详情</summary>
+              <p>来源标识：{{ row.sourceId }}</p>
+            </details>
+          </dd>
+        </div>
+      </dl>
+      <h2>案件金额事实</h2>
+      <p class="case-workspace-field__help">
+        诉状请求、裁判及结案金额按各自来源展示，不代表本案实际收款或付款。
+      </p>
+      <dl class="case-workspace-fields">
+        <div
+          v-for="row in amounts"
+          :key="row.key"
+          :data-test="`amount-${row.key}`"
+        >
+          <dt class="case-workspace-field__label">{{ row.label }}</dt>
+          <dd class="case-workspace-field__value">
+            {{ displayAmount(row) }}
+          </dd>
+          <dd class="case-workspace-field__help">来源：{{ row.source }}</dd>
+          <dd v-if="row.sourceId" class="case-workspace-field__help">
+            <details data-test="fee-source-details">
+              <summary>来源详情</summary>
+              <p>来源标识：{{ row.sourceId }}</p>
+            </details>
+          </dd>
+        </div>
+      </dl>
+    </details>
     <h2>案件收付明细</h2>
     <p data-test="case-payments">
       本区展示来源费用与案件金额事实；未展示实际结算不代表未登记或已结清。

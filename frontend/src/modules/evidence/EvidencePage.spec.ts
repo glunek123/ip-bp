@@ -406,6 +406,23 @@ describe('EvidencePage', () => {
     wrapper.unmount();
   });
 
+  it('keeps checkbox selection isolated from row opening and preserves Enter', async () => {
+    const wrapper = mount(EvidencePage);
+    await flushPromises();
+
+    await wrapper.get('input[aria-label="选择证物 EV-A"]').setValue(true);
+    expect(api.getEvidenceGroup).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('已勾选 1 件证物');
+
+    await wrapper.get('tbody tr').trigger('keydown.enter');
+    await flushPromises();
+    expect(api.getEvidenceGroup).toHaveBeenCalledWith('case-1');
+    expect(wrapper.get('[role="dialog"]').attributes('aria-label')).toBe(
+      '查看证物与公证书',
+    );
+    wrapper.unmount();
+  });
+
   it('keeps a previous-page path when page two reports a shrunken total', async () => {
     api.listEvidence.mockImplementation(
       (requestedFilter: { page?: number }) => {

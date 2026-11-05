@@ -1,4 +1,8 @@
 import { CasePaymentCorrectionService } from './case-payment-correction.service';
+import { CaseSupplementController } from './case-supplement.controller';
+import { CaseSupplementService } from './case-supplement.service';
+import { CaseFileCatalogController } from './case-file-catalog.controller';
+import { CaseFileCatalogService } from './case-file-catalog.service';
 import { CaseClosurePaymentPrismaDraft } from './case-closure-payment-prisma-draft';
 import { MaterialService } from '../materials';
 import { SettlementAssessmentPostgresDraft } from '../settlements';
@@ -60,6 +64,10 @@ import { CaseHandlingGroupResourceController } from './case-handling-group-resou
 import { CaseHandlingGroupResourceRead } from './case-handling-group-resource.read';
 import { CaseHandlingGroupService } from './case-handling-group.service';
 import { CaseMatchService } from './case-match.service';
+import { CaseLawyerAssignmentController } from './case-lawyer-assignment.controller';
+import { CaseLawyerAssignmentService } from './case-lawyer-assignment.service';
+import { CaseComplaintExportController } from './case-complaint-export.controller';
+import { CaseComplaintExportService } from './case-complaint-export.service';
 import { CaseConsolidationController } from './case-consolidation.controller';
 import { CaseConsolidationService } from './case-consolidation.service';
 import { CaseComplaintService } from './case-complaint.service';
@@ -99,6 +107,8 @@ import { LawyerCaseController } from './lawyer-case.controller';
     MaterialModule,
   ],
   controllers: [
+    CaseSupplementController,
+    CaseFileCatalogController,
     CaseArchiveReadinessController,
     LawyerCaseArchiveReadinessController,
     CaseClosureCommandController,
@@ -109,6 +119,8 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseExecutionFilingFollowupController,
     LawyerCaseExecutionFilingFollowupController,
     CaseReadController,
+    CaseLawyerAssignmentController,
+    CaseComplaintExportController,
     CaseConsolidationController,
     CaseListPreferenceController,
     CaseListExportController,
@@ -120,6 +132,8 @@ import { LawyerCaseController } from './lawyer-case.controller';
     LawyerCaseController,
   ],
   providers: [
+    CaseSupplementService,
+    CaseFileCatalogService,
     {
       provide: CaseClosurePaymentPrismaDraft,
       inject: [DatabaseService, AccessControlService, OrganizationService],
@@ -270,6 +284,8 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseCreationService,
     CaseExternalEntryService,
     CaseMatchService,
+    CaseLawyerAssignmentService,
+    CaseComplaintExportService,
     CaseConsolidationService,
     CaseComplaintService,
     CaseComplaintConfirmationService,

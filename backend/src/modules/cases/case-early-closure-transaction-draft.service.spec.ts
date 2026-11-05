@@ -827,8 +827,11 @@ describe('early closure confirmed permission OR', () => {
       expect(f.tx.case.updateMany).not.toHaveBeenCalled();
     },
   );
-  it('keeps same-department ownership mandatory even if archive grant is broad', async () => {
+  it('requires a department-scoped action for another owner', async () => {
     const f = fixture();
+    f.access.authorizeDepartmentAction.mockRejectedValue(
+      new ForbiddenException(),
+    );
     f.tx.case.findFirst.mockResolvedValue({
       stage: 'WAITING_HEARING',
       version: 4,
@@ -839,8 +842,64 @@ describe('early closure confirmed permission OR', () => {
     await expect(f.service.record(actor, caseId, input)).rejects.toBeInstanceOf(
       ForbiddenException,
     );
-    expect(f.access.authorizeCase).not.toHaveBeenCalled();
+    expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+      actor,
+      'case.closure.record',
+      f.tx,
+    );
     expect(f.tx.caseEarlyClosure.create).not.toHaveBeenCalled();
+  });
+  it('allows a colleague with department closure authorization and records proxy audit', async () => {
+    const f = fixture();
+    f.tx.case.findFirst.mockResolvedValue({
+      stage: 'WAITING_HEARING',
+      version: 4,
+      responsibleUserId: 'another-user',
+      responsibleMembership: { teamId: null },
+      consolidationMembership: null,
+    });
+    await expect(f.service.record(actor, caseId, input)).resolves.toMatchObject(
+      {
+        stage: 'WAITING_ARCHIVE',
+      },
+    );
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'case.proxy.applied',
+        actorUserId: actor.userId,
+        details: expect.objectContaining({
+          responsibleUserId: 'another-user',
+          action: 'case.closure.record',
+          scope: 'DEPARTMENT',
+        }),
+      }),
+    });
+  });
+  it('uses department archive when a narrower closure grant cannot proxy', async () => {
+    const f = fixture();
+    f.tx.case.findFirst.mockResolvedValue({
+      stage: 'WAITING_HEARING',
+      version: 4,
+      responsibleUserId: 'another-user',
+      responsibleMembership: { teamId: null },
+      consolidationMembership: null,
+    });
+    f.access.authorizeDepartmentAction.mockImplementation(
+      async (_actor, action) => {
+        if (action === 'case.closure.record') throw new ForbiddenException();
+      },
+    );
+    await expect(f.service.record(actor, caseId, input)).resolves.toMatchObject(
+      {
+        stage: 'WAITING_ARCHIVE',
+      },
+    );
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'case.proxy.applied',
+        details: expect.objectContaining({ action: 'case.archive' }),
+      }),
+    });
   });
   it('keeps the department-scoped locked lookup; no cross-department permission fallback', async () => {
     const f = fixture();

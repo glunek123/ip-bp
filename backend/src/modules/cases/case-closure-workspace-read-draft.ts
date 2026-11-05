@@ -85,7 +85,10 @@ function latestChain<
 export class CaseClosureWorkspaceReadDraft {
   constructor(
     private readonly database: Pick<DatabaseService, '$transaction'>,
-    private readonly access: Pick<AccessControlService, 'authorizeCase'>,
+    private readonly access: Pick<
+      AccessControlService,
+      'authorizeCase' | 'authorizeDepartmentAction'
+    >,
     private readonly organization: OrganizationService,
     private readonly actualAggregate?: ClosureActualAggregateReadPort,
   ) {}
@@ -144,7 +147,6 @@ export class CaseClosureWorkspaceReadDraft {
           select: { version: true, stage: true, responsibleUserId: true },
         });
         if (!record) throw new NotFoundException({ code: 'CASE_NOT_FOUND' });
-        if (record.responsibleUserId !== actor.userId) throw forbidden();
         await this.access.authorizeCase(
           actor,
           'case.read',
@@ -155,6 +157,12 @@ export class CaseClosureWorkspaceReadDraft {
           },
           tx,
         );
+        if (record.responsibleUserId !== actor.userId)
+          await this.access.authorizeDepartmentAction(
+            actor,
+            'case.closure.settlement.update',
+            tx,
+          );
 
         // Current-case options only. Consolidation aggregates must never expose
         // source-case parties, and historical ended assignments are not eligible.

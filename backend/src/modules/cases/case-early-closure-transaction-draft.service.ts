@@ -167,8 +167,6 @@ export class CaseEarlyClosureTransactionDraftService {
               },
             });
             if (!c) return reject('CASE_NOT_FOUND');
-            if (c.responsibleUserId !== actor.userId)
-              throw new ForbiddenException({ code: 'ACTION_FORBIDDEN' });
             await this.access.authorizeCase(
               actor,
               'case.read',
@@ -181,10 +179,16 @@ export class CaseEarlyClosureTransactionDraftService {
               },
               tx,
             );
-            try {
-              await this.access.authorizeCase(
+            let earlyClosureAction: 'case.closure.record' | 'case.archive' =
+              'case.closure.record';
+            const authorizeEarlyAction = async (
+              action: 'case.closure.record' | 'case.archive',
+            ) => {
+              if (c.responsibleUserId !== actor.userId)
+                return this.access.authorizeDepartmentAction(actor, action, tx);
+              return this.access.authorizeCase(
                 actor,
-                'case.closure.record',
+                action,
                 {
                   departmentId: actor.departmentId,
                   responsibleUserId: c.responsibleUserId,
@@ -194,20 +198,13 @@ export class CaseEarlyClosureTransactionDraftService {
                 },
                 tx,
               );
+            };
+            try {
+              await authorizeEarlyAction('case.closure.record');
             } catch (error) {
               if (!(error instanceof ForbiddenException)) throw error;
-              await this.access.authorizeCase(
-                actor,
-                'case.archive',
-                {
-                  departmentId: actor.departmentId,
-                  responsibleUserId: c.responsibleUserId,
-                  ...(c.responsibleMembership.teamId
-                    ? { teamId: c.responsibleMembership.teamId }
-                    : {}),
-                },
-                tx,
-              );
+              earlyClosureAction = 'case.archive';
+              await authorizeEarlyAction('case.archive');
             }
             const receipt = await tx.caseEarlyClosureReceipt.findUnique({
               where: {
@@ -896,6 +893,23 @@ export class CaseEarlyClosureTransactionDraftService {
                 resultSnapshot: finalSnapshot,
               },
             });
+            if (c.responsibleUserId !== actor.userId)
+              await tx.auditEvent.create({
+                data: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  internalActorUserId: actor.userId,
+                  resourceType: 'CASE',
+                  resourceId: caseId,
+                  action: 'case.proxy.applied',
+                  details: {
+                    responsibleUserId: c.responsibleUserId,
+                    action: earlyClosureAction,
+                    scope: 'DEPARTMENT',
+                    requestFingerprint: fingerprint,
+                  },
+                },
+              });
             await tx.$executeRawUnsafe('SET CONSTRAINTS ALL IMMEDIATE');
             return {
               id: caseId,

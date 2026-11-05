@@ -53,7 +53,14 @@ export type SettlementUpdateSource = {
     receiptIds: string[];
   })[];
 };
-const props = defineProps<{ source: SettlementUpdateSource }>();
+const props = withDefaults(
+  defineProps<{
+    source: SettlementUpdateSource;
+    canCorrectClosure?: boolean;
+  }>(),
+  { canCorrectClosure: true },
+);
+const canEditClosureFacts = computed(() => props.canCorrectClosure !== false);
 const emit = defineEmits<{
   cancel: [];
   draft: [
@@ -192,8 +199,15 @@ function files(event: globalThis.Event): globalThis.File[] {
   input.value = '';
   return selected;
 }
+function addDocuments(event: globalThis.Event) {
+  if (!canEditClosureFacts.value) return;
+  documents.value.push(...files(event));
+}
 function submit() {
-  if (props.source.documents.length + documents.value.length > 10) {
+  if (
+    canEditClosureFacts.value &&
+    props.source.documents.length + documents.value.length > 10
+  ) {
     error.value = '结案文书最多保留 10 份，请移除多选的新文书。';
     return;
   }
@@ -306,13 +320,15 @@ function submit() {
         }
       : {}),
     expectedClosureVersionId: props.source.expectedClosureVersionId,
-    closeAt: closeAt.value || null,
+    closeAt: canEditClosureFacts.value
+      ? closeAt.value || null
+      : props.source.closeAt,
     closeAmt: unknown.value ? null : amount.value,
     closeAmountState: unknown.value ? 'PENDING' : 'KNOWN',
     paymentType: paymentType.value,
     paymentRecords: records.value.map((r) => ({ ...r })),
     preservedDocumentIds: props.source.documents.map((d) => d.id),
-    newDocuments: [...documents.value],
+    newDocuments: canEditClosureFacts.value ? [...documents.value] : [],
     existingPaymentVersions: props.source.payments.map((p) => p.versionId),
     receiptAdditions: receipts.value.map((r) => ({
       paymentVersionId: r.paymentVersionId,
@@ -325,6 +341,9 @@ function submit() {
   <form class="settlement-update" @submit.prevent="submit">
     <h2>结算更新</h2>
     <p>案件保持待归档。结案文书和付款截图可后补；请以保存结果为准。</p>
+    <p v-if="!canEditClosureFacts" data-test="closure-correction-readonly">
+      结案日期和结案文书只读；更正这两项需要原结案更正权限。其他结算和付款办理仍可继续。
+    </p>
     <p>
       当前结案日期：{{ source.closeAt || '待确认' }}；当前结案金额：{{
         source.closeAmt === null ? '待确认' : source.closeAmt
@@ -334,6 +353,7 @@ function submit() {
       >结案日期（可留空待确认）<input
         v-model="closeAt"
         type="date"
+        :disabled="!canEditClosureFacts"
         data-test="date"
     /></label>
     <label
@@ -356,11 +376,13 @@ function submit() {
       type="file"
       multiple
       aria-label="补充结案文书"
-      @change="documents.push(...files($event))"
+      :disabled="!canEditClosureFacts"
+      @change="addDocuments($event)"
     />
     <p v-for="(document, index) in documents" :key="index">
       {{ document.name }}
       <button
+        v-if="canEditClosureFacts"
         type="button"
         :data-test="`remove-document-${index}`"
         @click="documents.splice(index, 1)"

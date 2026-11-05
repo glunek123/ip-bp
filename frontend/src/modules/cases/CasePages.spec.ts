@@ -52,6 +52,8 @@ const api = vi.hoisted(() => ({
   getSettlementContext: vi.fn(),
   getCaseSettlement: vi.fn(),
   listFees: vi.fn(),
+  listCaseFileCatalog: vi.fn(),
+  exportCaseFiles: vi.fn(),
 }));
 vi.mock('../../api/case-routine', () => ({
   getCaseRoutineProfile: api.getCaseRoutineProfile,
@@ -89,6 +91,10 @@ vi.mock('../../api/materials', () => ({
   uploadMaterialFile: api.uploadMaterialFile,
   listOwnerMaterials: api.listOwnerMaterials,
 }));
+vi.mock('../../api/case-files', () => ({
+  listCaseFileCatalog: api.listCaseFileCatalog,
+  exportCaseFiles: api.exportCaseFiles,
+}));
 
 beforeEach(() => {
   config.global.stubs.ElDrawer = {
@@ -97,6 +103,7 @@ beforeEach(() => {
       '<div v-show="modelValue" role="dialog" class="case-workspace-editors"><slot /></div>',
   };
   vi.resetAllMocks();
+  api.listCaseFileCatalog.mockImplementation(() => new Promise(() => {}));
   api.getCaseRoutineProfile.mockResolvedValue({
     revision: 0,
     canEdit: false,
@@ -786,9 +793,9 @@ describe('case pages', () => {
       20,
       expect.objectContaining({ stage: 'WAITING_COMPLAINT' }),
     );
+    await wrapper.get('[data-test="open-case-filters"]').trigger('click');
     await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '刷新')!
+      .get('[data-test="refresh-case-list-in-filters"]')
       .trigger('click');
     await flushPromises();
     expect(api.listCases.mock.calls.at(-1)?.[0]).toBe(2);
@@ -850,9 +857,9 @@ describe('case pages', () => {
     api.listCases
       .mockResolvedValueOnce({ ...base, items: [], total: 20, page: 2 })
       .mockResolvedValueOnce({ ...base, total: 20, page: 1 });
+    await wrapper.get('[data-test="open-case-filters"]').trigger('click');
     await wrapper
-      .findAll('button')
-      .find((button) => button.text() === '刷新')!
+      .get('[data-test="refresh-case-list-in-filters"]')
       .trigger('click');
     await flushPromises();
     expect(wrapper.vm.$route.query.page).toBe('1');
@@ -1970,12 +1977,13 @@ describe('case pages', () => {
         );
       const { wrapper } = await mountRoutedDetail('/cases/case-a');
 
-      await wrapper
-        .findAll('button')
-        .find((button) => button.text() === '刷新')!
-        .trigger('click');
+      await wrapper.get('[data-test="case-refresh"]').trigger('click');
       await flushPromises();
 
+      expect(api.getCase).toHaveBeenCalledTimes(2);
+      expect(wrapper.get('h1').text()).toBe(
+        status === 403 ? '案件暂时无法读取' : '案件不存在或已不可访问',
+      );
       expect(wrapper.text()).not.toContain('CA-case-a');
       expect(
         wrapper.find('[data-test="complaint-confirmation-panel"]').exists(),
@@ -2642,9 +2650,9 @@ describe.each([
             : ['待写执行材料', '执行材料待确认', '执行材料待盖章'],
         ),
       );
+      await wrapper.get('[data-test="open-case-filters"]').trigger('click');
       await wrapper
-        .findAll('button')
-        .find((button) => button.text() === '刷新')!
+        .get('[data-test="refresh-case-list-in-filters"]')
         .trigger('click');
       await flushPromises();
       expect(api.listCases).toHaveBeenLastCalledWith(

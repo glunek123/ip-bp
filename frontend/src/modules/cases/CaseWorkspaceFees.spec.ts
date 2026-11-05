@@ -173,7 +173,7 @@ function second(): NonNullable<CaseDetail['secondInstance']['currentResult']> {
 }
 
 describe('CaseWorkspaceFees', () => {
-  it('distinguishes known zero, pending, and missing source fee categories without summing', () => {
+  it('distinguishes known zero, pending, and missing source fee categories without summing', async () => {
     const item = structuredClone(baseItem);
     item.fees = [
       {
@@ -199,6 +199,9 @@ describe('CaseWorkspaceFees', () => {
       },
     ];
     const wrapper = render(item);
+    await wrapper
+      .get('.case-workspace-fees__history > summary')
+      .trigger('click');
     const rows = wrapper.findAll('[data-test="source-fee"]');
     expect(rows).toHaveLength(4);
     expect(rows[0]!.text()).toContain('¥ 0.00');
@@ -377,7 +380,9 @@ describe('CaseWorkspaceFees', () => {
     expect(wrapper.text()).not.toContain('全部结清');
     expect(wrapper.text()).not.toContain('EXECUTION_COLLECTED');
     expect(wrapper.find('button, input, form').exists()).toBe(false);
-    expect(wrapper.emitted()).toEqual({});
+    expect(wrapper.emitted('actual-summary')?.at(-1)).toEqual([
+      { state: 'UNAVAILABLE' },
+    ]);
   });
 
   it('updates all facts on case replacement without retaining previous fees', async () => {

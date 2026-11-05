@@ -9,8 +9,14 @@ import {
 } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import type { CaseDetail, CaseFile } from '../../api/cases';
-import { ApiError, type RequestOptions } from '../../api/http';
+import { ApiError, getBlob, type RequestOptions } from '../../api/http';
 import type { OwnerMaterial } from '../../api/materials';
+import type {
+  FileCatalog,
+  FileExportResult,
+  FileSelection,
+  CatalogFile,
+} from '../../api/case-files';
 
 const props = defineProps<{
   item: CaseDetail;
@@ -24,6 +30,19 @@ const props = defineProps<{
     contentVersionId: string,
     signal?: globalThis.AbortSignal,
   ) => Promise<void>;
+  listFileCatalog?: (
+    caseId: string,
+    options?: RequestOptions,
+  ) => Promise<FileCatalog>;
+  exportSelected?: (
+    caseId: string,
+    selections: FileSelection[],
+    options?: RequestOptions,
+  ) => Promise<{
+    blob: globalThis.Blob;
+    filename: string;
+    results: FileExportResult[];
+  }>;
 }>();
 const emit = defineEmits<{ 'open-upload': [] }>();
 type FileRow = CaseFile & {
@@ -33,6 +52,11 @@ type FileRow = CaseFile & {
   technicalSources: string[];
 };
 const pool = ref<OwnerMaterial[]>([]);
+const catalog = ref<FileCatalog | null>(null);
+const selected = ref(new Set<string>());
+const exporting = ref(false);
+const exportMessage = ref('');
+const showOther = ref(false);
 const loadState = ref<'loading' | 'ready' | 'denied' | 'failed'>('loading');
 const downloadMessage = ref('');
 const invalidFiles = ref(new Set<string>());
@@ -41,9 +65,186 @@ let revision = 0;
 let active = true;
 let loadController: AbortController | undefined;
 const downloadControllers = new Map<string, AbortController>();
+const previewRequests = new Map<AbortController, globalThis.Window | null>();
 
 function fileKey(file: CaseFile): string {
   return JSON.stringify([file.materialId, file.contentVersionId]);
+}
+function catalogFileKey(file: FileSelection): string {
+  return JSON.stringify([file.materialId, file.contentVersionId]);
+}
+const catalogVersionCount = computed(
+  () =>
+    new Set(
+      [
+        ...(catalog.value?.groups.flatMap((group) => group.files) ?? []),
+        ...(catalog.value?.otherFiles ?? []),
+      ]
+        .map(catalogFileKey)
+        .filter((key) => !invalidFiles.value.has(key)),
+    ).size,
+);
+const visibleCatalogFiles = computed(() =>
+  [
+    ...(catalog.value?.groups.flatMap((group) => group.files) ?? []),
+    ...(showOther.value ? (catalog.value?.otherFiles ?? []) : []),
+  ].filter((file) => !invalidFiles.value.has(catalogFileKey(file))),
+);
+function availableGroupFiles(files: CatalogFile[]): CatalogFile[] {
+  return files.filter((file) => !invalidFiles.value.has(catalogFileKey(file)));
+}
+function onOtherToggle(event: globalThis.Event): void {
+  showOther.value = (event.target as globalThis.HTMLDetailsElement).open;
+}
+const allVisibleSelected = computed(
+  () =>
+    visibleCatalogFiles.value.length > 0 &&
+    visibleCatalogFiles.value.every((file) =>
+      selected.value.has(catalogFileKey(file)),
+    ),
+);
+function toggleFile(file: FileSelection): void {
+  const next = new Set(selected.value);
+  const key = catalogFileKey(file);
+  if (next.has(key)) next.delete(key);
+  else next.add(key);
+  selected.value = next;
+}
+function toggleAllVisible(): void {
+  const next = new Set(selected.value);
+  for (const file of visibleCatalogFiles.value) {
+    const key = catalogFileKey(file);
+    if (allVisibleSelected.value) next.delete(key);
+    else next.add(key);
+  }
+  selected.value = next;
+}
+function catalogFileLabel(file: CatalogFile): string {
+  const detail = rows.value.find(
+    (row) =>
+      row.materialId === file.materialId &&
+      row.contentVersionId === file.contentVersionId,
+  );
+  const matches = (candidate: CaseFile) =>
+    candidate.materialId === file.materialId &&
+    candidate.contentVersionId === file.contentVersionId;
+  const roundLabels = [
+    ...[props.item.judgment.current, ...props.item.judgment.history]
+      .filter((fact) => fact?.files.some(matches))
+      .map((fact) => `一审轮次 ${fact!.trialRoundId}`),
+    ...props.item.secondInstance.progresses
+      .filter((progress) =>
+        [...progress.documentFiles, ...progress.serviceFiles].some(matches),
+      )
+      .map((progress) => `二审轮次 ${progress.trialRoundId}`),
+    ...props.item.secondInstance.results
+      .filter((result) => result.files.some(matches))
+      .map((result) => `二审轮次 ${result.trialRoundId}`),
+  ];
+  const labels = [...file.labels, ...(detail?.sources ?? []), ...roundLabels];
+  return `${file.originalFilename} · ${[...new Set(labels)].join(' / ')} · ${file.contentVersionId}`;
+}
+async function exportFiles(): Promise<void> {
+  if (!props.exportSelected || !catalog.value || exporting.value) return;
+  const files = [
+    ...new Map(
+      [
+        ...catalog.value.groups.flatMap((group) => group.files),
+        ...catalog.value.otherFiles,
+      ].map((file) => [catalogFileKey(file), file]),
+    ).values(),
+  ];
+  const selections = files
+    .filter((file) => selected.value.has(catalogFileKey(file)))
+    .map((file) => ({
+      materialId: file.materialId,
+      contentVersionId: file.contentVersionId,
+    }));
+  if (!selections.length) return;
+  exporting.value = true;
+  exportMessage.value = '';
+  const currentRevision = revision;
+  const caseId = props.item.id;
+  try {
+    const result = await props.exportSelected(caseId, selections);
+    if (currentRevision !== revision || caseId !== props.item.id) return;
+    const url = globalThis.URL.createObjectURL(result.blob);
+    try {
+      const link = globalThis.document.createElement('a');
+      link.href = url;
+      link.download = result.filename || 'case-files.zip';
+      link.click();
+      link.remove();
+    } finally {
+      globalThis.URL.revokeObjectURL(url);
+    }
+    const failed = result.results.filter(
+      (item) => item.status === 'FAILED',
+    ).length;
+    exportMessage.value = failed
+      ? `已生成 ZIP；${failed} 个文件失败，详情见包内 manifest.json。`
+      : `已生成 ${result.results.length} 个文件的 ZIP。`;
+  } catch (error) {
+    if (currentRevision !== revision || caseId !== props.item.id) return;
+    exportMessage.value =
+      error instanceof ApiError && error.code === 'CASE_EXPORT_EMPTY'
+        ? '所选文件均不可导出，请刷新目录。'
+        : '导出失败，请重试。';
+  } finally {
+    if (currentRevision === revision) exporting.value = false;
+  }
+}
+async function preview(file: CatalogFile): Promise<void> {
+  if (
+    !['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(
+      file.mimeType,
+    )
+  )
+    return;
+  if (!active) return;
+  const currentRevision = revision;
+  const caseId = props.item.id;
+  const contextKey = props.contextKey;
+  const controller = new AbortController();
+  const tab = globalThis.window.open('', '_blank');
+  previewRequests.set(controller, tab);
+  try {
+    const response = await getBlob(
+      `/materials/${encodeURIComponent(file.materialId)}/versions/${encodeURIComponent(file.contentVersionId)}/content`,
+      { signal: controller.signal },
+    );
+    if (
+      !active ||
+      controller.signal.aborted ||
+      currentRevision !== revision ||
+      caseId !== props.item.id ||
+      contextKey !== props.contextKey
+    ) {
+      tab?.close();
+      return;
+    }
+    const url = globalThis.URL.createObjectURL(response.blob);
+    if (tab) {
+      tab.opener = null;
+      tab.location.href = url;
+    }
+    globalThis.window.setTimeout(
+      () => globalThis.URL.revokeObjectURL(url),
+      60_000,
+    );
+  } catch {
+    tab?.close();
+    if (
+      active &&
+      !controller.signal.aborted &&
+      currentRevision === revision &&
+      caseId === props.item.id &&
+      contextKey === props.contextKey
+    )
+      downloadMessage.value = '预览失败，请重试。';
+  } finally {
+    previewRequests.delete(controller);
+  }
 }
 const rows = computed(() => {
   const files = new Map<string, FileRow>();
@@ -179,6 +380,10 @@ function materialCategoryLabel(category: OwnerMaterial['category']): string {
     CASE_CLOSURE_DOCUMENT: '结案材料',
     CASE_CLOSURE_PAYMENT_PROOF: '付款截图',
     FEE_PROOF: '费用凭证',
+    CASE_PRESERVATION_DOCUMENT: '保全文书',
+    CASE_COURT_DISCLOSURE_ATTACHMENT: '披露数据附件',
+    CASE_RECORD_RETRIEVAL_DOCUMENT: '调档文书',
+    EXECUTION_FORMAL_DOCUMENT: '执行文书',
   };
   return labels[category];
 }
@@ -309,13 +514,19 @@ async function load(): Promise<void> {
     caseId === props.item.id &&
     contextKey === props.contextKey;
   pool.value = [];
+  catalog.value = null;
   loadState.value = 'loading';
   try {
-    const result = await props.listCaseMaterials(caseId, {
-      signal: controller.signal,
-    });
+    const result = props.listFileCatalog
+      ? await props.listFileCatalog(caseId, {
+          signal: controller.signal,
+        })
+      : await props.listCaseMaterials(caseId, {
+          signal: controller.signal,
+        });
     if (!isCurrent()) return;
-    pool.value = result.items;
+    if ('groups' in result) catalog.value = result;
+    else pool.value = result.items;
     loadState.value = 'ready';
   } catch (error) {
     if (!isCurrent()) return;
@@ -330,6 +541,11 @@ function cancel(): void {
   loadController?.abort();
   for (const controller of downloadControllers.values()) controller.abort();
   downloadControllers.clear();
+  for (const [controller, tab] of previewRequests) {
+    controller.abort();
+    tab?.close();
+  }
+  previewRequests.clear();
   downloading.value = new Set();
 }
 watch(
@@ -337,7 +553,11 @@ watch(
   () => {
     cancel();
     pool.value = [];
+    catalog.value = null;
+    selected.value = new Set();
+    exportMessage.value = '';
     invalidFiles.value = new Set();
+    showOther.value = false;
     downloadMessage.value = '';
     void load();
   },
@@ -352,19 +572,16 @@ onActivated(() => {
   active = true;
 });
 
-async function download(row: FileRow): Promise<void> {
-  if (
-    !active ||
-    downloading.value.has(row.key) ||
-    invalidFiles.value.has(row.key)
-  )
+async function download(row: FileRow | CatalogFile): Promise<void> {
+  const key = fileKey(row);
+  if (!active || downloading.value.has(key) || invalidFiles.value.has(key))
     return;
   const currentRevision = revision;
   const caseId = props.item.id;
   const contextKey = props.contextKey;
   const controller = new AbortController();
-  downloadControllers.set(row.key, controller);
-  downloading.value.add(row.key);
+  downloadControllers.set(key, controller);
+  downloading.value.add(key);
   downloadMessage.value = '';
   try {
     await props.downloadVersion(
@@ -382,17 +599,20 @@ async function download(row: FileRow): Promise<void> {
     )
       return;
     if (error instanceof ApiError && [403, 404].includes(error.status)) {
-      invalidFiles.value.add(row.key);
+      invalidFiles.value.add(key);
+      const next = new Set(selected.value);
+      next.delete(key);
+      selected.value = next;
       downloadMessage.value =
         '该文件版本已不可访问，已移除失效引用。其他文件仍可查看。';
     } else downloadMessage.value = '文件下载失败，请重试。';
   } finally {
     if (
       currentRevision === revision &&
-      downloadControllers.get(row.key) === controller
+      downloadControllers.get(key) === controller
     ) {
-      downloadControllers.delete(row.key);
-      downloading.value.delete(row.key);
+      downloadControllers.delete(key);
+      downloading.value.delete(key);
     }
   }
 }
@@ -420,10 +640,111 @@ async function download(row: FileRow): Promise<void> {
       >重新加载材料</ElButton
     >
     <p v-if="downloadMessage" role="alert">{{ downloadMessage }}</p>
-    <p v-if="rows.length === 0 && loadState === 'ready' && !downloadMessage">
+    <template v-if="catalog">
+      <p data-test="case-file-version-count">
+        本案可读文件共
+        {{ catalogVersionCount }}
+        个材料版本（含其他材料与历史，按材料和版本去重）。
+      </p>
+      <div class="case-file-actions">
+        <label
+          ><input
+            type="checkbox"
+            data-test="select-all-files"
+            :checked="allVisibleSelected"
+            :disabled="!visibleCatalogFiles.length"
+            @change="toggleAllVisible"
+          />全选当前显示的文件版本</label
+        >
+        <ElButton
+          data-test="export-selected-files"
+          :loading="exporting"
+          :disabled="selected.size === 0 || !exportSelected"
+          @click="exportFiles"
+          >批量下载 ZIP（{{ selected.size }}）</ElButton
+        >
+      </div>
+      <p v-if="exportMessage" role="status">{{ exportMessage }}</p>
+      <div class="case-file-groups">
+        <section
+          v-for="group in catalog.groups"
+          :key="group.id"
+          class="case-file-group"
+          :data-test="`file-group-${group.id}`"
+        >
+          <h3>{{ group.name }}</h3>
+          <p
+            v-if="!availableGroupFiles(group.files).length"
+            class="case-workspace-field__help"
+          >
+            未记录／未接入
+          </p>
+          <ul v-else>
+            <li
+              v-for="file in availableGroupFiles(group.files)"
+              :key="catalogFileKey(file)"
+            >
+              <label
+                ><input
+                  type="checkbox"
+                  :checked="selected.has(catalogFileKey(file))"
+                  @change="toggleFile(file)"
+                />{{ catalogFileLabel(file) }}</label
+              >
+              <span class="case-file-buttons">
+                <ElButton
+                  v-if="
+                    [
+                      'application/pdf',
+                      'image/png',
+                      'image/jpeg',
+                      'image/webp',
+                    ].includes(file.mimeType)
+                  "
+                  size="small"
+                  @click="preview(file)"
+                  >预览</ElButton
+                >
+                <ElButton size="small" @click="download(file)">下载</ElButton>
+              </span>
+            </li>
+          </ul>
+        </section>
+      </div>
+      <details
+        v-if="catalog.otherFiles.length"
+        class="case-file-other"
+        @toggle="onOtherToggle"
+      >
+        <summary>其他材料与历史（{{ catalog.otherFiles.length }}）</summary>
+        <ul>
+          <li
+            v-for="file in availableGroupFiles(catalog.otherFiles)"
+            :key="catalogFileKey(file)"
+          >
+            <label
+              ><input
+                type="checkbox"
+                :checked="selected.has(catalogFileKey(file))"
+                @change="toggleFile(file)"
+              />{{ catalogFileLabel(file) }} · {{ file.groupId }}</label
+            >
+            <ElButton size="small" @click="download(file)">下载</ElButton>
+          </li>
+        </ul>
+      </details>
+    </template>
+    <p
+      v-if="
+        !catalog &&
+        rows.length === 0 &&
+        loadState === 'ready' &&
+        !downloadMessage
+      "
+    >
       尚未登记文件
     </p>
-    <ul v-if="rows.length" class="case-workspace-fields">
+    <ul v-if="!catalog && rows.length" class="case-workspace-fields">
       <li v-for="row in rows" :key="row.key" data-test="workspace-file">
         <span class="case-workspace-field__value">{{
           row.originalFilename
@@ -458,3 +779,57 @@ async function download(row: FileRow): Promise<void> {
     </ul>
   </section>
 </template>
+
+<style scoped>
+.case-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+.case-file-groups {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+.case-file-group {
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  padding: 10px;
+  min-width: 0;
+}
+.case-file-group h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.case-file-group ul,
+.case-file-other ul {
+  padding-left: 0;
+  margin: 0;
+  list-style: none;
+}
+.case-file-group li,
+.case-file-other li {
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+.case-file-buttons {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+.case-file-other {
+  margin-top: 14px;
+}
+@media (max-width: 1100px) {
+  .case-file-groups {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 700px) {
+  .case-file-groups {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
+}
+</style>

@@ -62,7 +62,10 @@ describe('CaseMatchService', () => {
       lawyerAccountBinding: {
         findMany: jest.fn().mockResolvedValue([{ profileId: lawyerProfileId }]),
       },
-      caseLawyerAssignment: { create: jest.fn().mockResolvedValue({}) },
+      caseLawyerAssignment: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: jest.fn().mockResolvedValue({}),
+      },
       auditEvent: { create: jest.fn().mockResolvedValue({}) },
     };
     const db = {
@@ -158,6 +161,50 @@ describe('CaseMatchService', () => {
         resultSnapshot: expect.objectContaining({ matchedOn: '2026-09-28' }),
       }),
     });
+  });
+
+  it('reuses an already assigned primary lawyer during formal matching', async () => {
+    const f = fixture();
+    f.tx.caseLawyerAssignment.findMany.mockResolvedValue([
+      {
+        id: '66666666-6666-4666-8666-666666666666',
+        role: 'PRIMARY',
+        endedAt: null,
+        lawyerId: lawyerProfileId,
+        lawyer: {
+          accountBinding: {
+            userId: lawyerAccountId,
+            departmentId: actor.departmentId,
+          },
+        },
+      },
+    ]);
+    const result = await f.service.match(actor, caseId, input);
+    expect(result.stage).toBe('WAITING_COMPLAINT');
+    expect(f.tx.caseLawyerAssignment.create).not.toHaveBeenCalled();
+    expect(f.tx.case.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects selecting another lawyer during formal matching', async () => {
+    const f = fixture();
+    f.tx.caseLawyerAssignment.findMany.mockResolvedValue([
+      {
+        id: '66666666-6666-4666-8666-666666666666',
+        role: 'PRIMARY',
+        endedAt: null,
+        lawyerId: lawyerProfileId,
+        lawyer: {
+          accountBinding: {
+            userId: '77777777-7777-4777-8777-777777777777',
+            departmentId: actor.departmentId,
+          },
+        },
+      },
+    ]);
+    await expect(f.service.match(actor, caseId, input)).rejects.toMatchObject({
+      response: { code: 'LAWYER_ALREADY_ASSIGNED' },
+    });
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects an independently matched merged child and binds a main case to confirmed identity', async () => {

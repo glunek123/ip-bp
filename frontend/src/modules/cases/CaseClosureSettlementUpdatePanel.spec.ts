@@ -90,8 +90,14 @@ beforeEach(() => {
   read.mockReset();
   read.mockResolvedValue(fixture());
 });
-async function setup(actorKey: string) {
-  const wrapper = mount(Panel, { props: { actorKey, caseId } });
+async function setup(actorKey: string, canCorrectClosure?: boolean) {
+  const wrapper = mount(Panel, {
+    props: {
+      actorKey,
+      caseId,
+      ...(canCorrectClosure === undefined ? {} : { canCorrectClosure }),
+    },
+  });
   await flushPromises();
   return wrapper;
 }
@@ -1510,7 +1516,7 @@ describe('settlement update panel safety', () => {
     const original = save.mock.calls[0]?.[1];
     expect(wrapper.text()).toContain('保存结果未确认');
     wrapper.unmount();
-    wrapper = await setup('recovery');
+    wrapper = await setup('recovery', false);
     expect(wrapper.find('form').exists()).toBe(false);
     let resolve!: (value: unknown) => void;
     save.mockImplementationOnce(

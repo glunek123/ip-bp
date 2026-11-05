@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { CaseDetail, CaseFile } from '../../api/cases';
 import type { LeadDetail } from '../../api/leads';
+import type { CaseSupplementWorkspace } from '../../api/case-supplements';
+import type { CaseClosureWorkspace } from '../../api/case-closure-workspace';
+import type { CaseSettlement } from '../../api/settlements';
+import type { OwnerMaterial } from '../../api/materials';
 import {
   buildCaseWorkspaceEvents,
   buildCaseWorkspaceSections,
@@ -155,6 +159,557 @@ const file: CaseFile = {
 const recordedAt = '2026-10-02T00:00:00Z';
 
 describe('case workspace read model', () => {
+  it('shows only the lead referenced screenshot version with an exact download target', () => {
+    const lead = leadFixture();
+    lead.leadScreenshotContentVersionIds = ['v1'];
+    const material: OwnerMaterial = {
+      id: 'm1',
+      ownerType: 'LEAD',
+      ownerId: 'lead-1',
+      category: 'LEAD_SCREENSHOT',
+      purpose: 'LEAD_SCREENSHOT',
+      currentVersionId: 'v2',
+      status: 'ACTIVE',
+      version: 2,
+      deletedAt: null,
+      createdAt: recordedAt,
+      updatedAt: recordedAt,
+      contentVersions: ['v1', 'v2'].map((id) => ({
+        id,
+        materialId: 'm1',
+        originalFilename: `${id}.png`,
+        mimeType: 'image/png',
+        sizeBytes: 10,
+        sha256: 'a'.repeat(64),
+        status: 'AVAILABLE' as const,
+        createdAt: recordedAt,
+      })),
+    };
+    const summary = buildCaseWorkspaceSections(
+      caseFixture(),
+      lead,
+      'ready',
+      undefined,
+      undefined,
+      undefined,
+      'idle',
+      'idle',
+      undefined,
+      'idle',
+      [material],
+      undefined,
+      'ready',
+    ).find((entry) => entry.key === 'lead-info')!.summary;
+    const screenshot = summary.find((field) => field.label === '侵权截图');
+    expect(screenshot?.value).toBe('v1.png');
+    expect(screenshot?.fileVersions).toEqual([
+      { materialId: 'm1', contentVersionId: 'v1', filename: 'v1.png' },
+    ]);
+  });
+  it('counts effective payment facts and keeps unknown company receipts distinct from zero', () => {
+    const workspace: CaseClosureWorkspace = {
+      readPurpose: 'DISPLAY_ONLY',
+      caseId: 'case-1',
+      caseVersion: 1,
+      stage: 'WAITING_ARCHIVE',
+      actualRegistrationLawyers: [],
+      closure: {
+        versionId: null,
+        closeOn: null,
+        amountState: 'UNKNOWN',
+        amount: null,
+        paymentType: 'INSTALLMENTS',
+      },
+      effectivePayments: [
+        {
+          versionId: 'v1',
+          paymentId: 'p1',
+          revision: 1,
+          paidOn: '2026-10-01',
+          amount: '120.00',
+          payer: '甲',
+          payee: '乙',
+          documents: [],
+        },
+        {
+          versionId: 'v2',
+          paymentId: 'p2',
+          revision: 1,
+          paidOn: '2026-10-02',
+          amount: '80.00',
+          payer: '甲',
+          payee: '乙',
+          documents: [],
+        },
+      ],
+      documents: [],
+      refund: {
+        versionId: null,
+        revision: null,
+        declaration: 'UNKNOWN',
+        items: [],
+      },
+      assessment: {
+        versionId: null,
+        revision: null,
+        closureVersionId: null,
+        termsVersion: null,
+        declaration: 'UNKNOWN',
+        matchesCurrent: null,
+        customerAmount: null,
+        lawyerAmount: null,
+      },
+      actual: {
+        connection: 'NOT_CONNECTED',
+        scope: null,
+        customerReceiptState: 'UNKNOWN',
+        customerReceivedAmount: null,
+        lawyerInvoiceState: 'UNKNOWN',
+        lawyerInvoicedAmount: null,
+      },
+    };
+    const summary = buildCaseWorkspaceSections(
+      caseFixture(),
+      null,
+      'idle',
+      undefined,
+      workspace,
+      undefined,
+      'ready',
+    ).find((entry) => entry.key === 'closure-info')!.summary;
+    expect(
+      summary.find((field) => field.label === '有效付款记录数')?.value,
+    ).toBe('2');
+    expect(summary.find((field) => field.label === '有效付款合计')?.value).toBe(
+      '200.00 元',
+    );
+    expect(
+      summary.find((field) => field.label === '已回款（公司登记）')?.value,
+    ).toBe('待核实／未登记');
+    workspace.effectivePayments[0]!.amount = '99999999999999.99';
+    workspace.effectivePayments[1]!.amount = '0.01';
+    const large = buildCaseWorkspaceSections(
+      caseFixture(),
+      null,
+      'idle',
+      undefined,
+      workspace,
+      undefined,
+      'ready',
+    ).find((entry) => entry.key === 'closure-info')!.summary;
+    expect(large.find((field) => field.label === '有效付款合计')?.value).toBe(
+      '100000000000000.00 元',
+    );
+  });
+  it('separates refund inventory, company-received marks, converted costs and unattributed history', () => {
+    const item = caseFixture();
+    item.judgment.current = {
+      id: 'judgment-1',
+      trialRoundId: 'round-1',
+      kind: 'REGISTER',
+      priorFactId: null,
+      judgmentReceivedAt: '2026-10-01',
+      judgmentAmountState: 'KNOWN',
+      judgmentAmount: '100.00',
+      paidLitigationFeeState: 'PENDING',
+      paidLitigationFee: null,
+      fromVersion: 1,
+      toVersion: 2,
+      recordedAt,
+      files: [],
+    };
+    const refundItems: CaseClosureWorkspace['refund']['items'] = [
+      {
+        itemId: 'received',
+        party: 'COURT',
+        status: 'RECEIVED',
+        description: '法院退费',
+        amount: '10.00',
+      },
+      {
+        itemId: 'settled',
+        party: 'COURT',
+        status: 'SETTLED',
+        description: '已结算未收',
+        amount: '20.00',
+      },
+      {
+        itemId: 'cost',
+        party: 'DEFENDANT',
+        status: 'CONVERTED_TO_COST',
+        description: '抵成本',
+        amount: '5.00',
+      },
+      {
+        itemId: 'legacy',
+        party: 'COURT',
+        status: 'PENDING',
+        description: '旧项未归属',
+        amount: null,
+      },
+    ];
+    const closure: CaseClosureWorkspace = {
+      readPurpose: 'DISPLAY_ONLY',
+      caseId: 'case-1',
+      caseVersion: 1,
+      stage: 'WAITING_ARCHIVE',
+      actualRegistrationLawyers: [],
+      closure: {
+        versionId: null,
+        closeOn: null,
+        amountState: 'UNKNOWN',
+        amount: null,
+        paymentType: 'UNKNOWN',
+      },
+      effectivePayments: [],
+      documents: [],
+      refund: {
+        versionId: 'refund-v1',
+        revision: 1,
+        declaration: 'COMPLETE',
+        items: refundItems,
+      },
+      assessment: {
+        versionId: null,
+        revision: null,
+        closureVersionId: null,
+        termsVersion: null,
+        declaration: 'UNKNOWN',
+        matchesCurrent: null,
+        customerAmount: null,
+        lawyerAmount: null,
+      },
+      actual: {
+        connection: 'CONNECTED',
+        scope: 'CONSOLIDATION',
+        customerReceiptState: 'RECORDED',
+        customerReceivedAmount: '9.00',
+        lawyerInvoiceState: 'UNKNOWN',
+        lawyerInvoicedAmount: null,
+      },
+    };
+    const link = (
+      inventoryItemId: string,
+    ): CaseSupplementWorkspace['entries'][number] => ({
+      id: `link-${inventoryItemId}`,
+      priorEntryId: null,
+      kind: 'REFUND_SOURCE_LINK',
+      trialRoundId: null,
+      amount: null,
+      text: null,
+      eventDate: null,
+      courtCaseNo: null,
+      sourceType: 'JUDGMENT',
+      sourceId: 'judgment-1',
+      inventoryVersionId: 'refund-v1',
+      inventoryItemId,
+      materialId: null,
+      contentVersionId: null,
+      reason: '核对归属',
+      recordedByUserId: 'u1',
+      recordedAt,
+    });
+    const supplements: CaseSupplementWorkspace = {
+      canEdit: true,
+      entries: [link('received'), link('settled'), link('cost')],
+      recorders: [],
+      sources: {
+        executionFiling: null,
+        trialRounds: [],
+        judgments: [],
+        secondResults: [],
+        refundItems: [],
+        materials: [],
+      },
+    };
+    const summary = buildCaseWorkspaceSections(
+      item,
+      null,
+      'idle',
+      undefined,
+      closure,
+      supplements,
+      'ready',
+      'ready',
+    ).find((section) => section.key === 'judgment')!.summary;
+    const value = (label: string) =>
+      summary.find((field) => field.label === label)?.value;
+    expect(value('一审／应退清单金额')).toBe('35.00 元');
+    expect(value('一审／已标记公司收到（清单状态）金额')).toBe('10.00 元');
+    expect(value('一审／已标记公司收到（清单状态）笔数')).toBe('1');
+    expect(value('一审／转作成本')).toBe('5.00 元');
+    expect(value('一审／退费清单明细')).toContain(
+      '已结算，未标记公司收到／20.00 元',
+    );
+    expect(value('历史审级未标明／清单金额')).toBe(
+      '已知小计 0.00 元；1 笔金额待定',
+    );
+    expect(value('历史审级未标明／清单明细')).toContain('旧项未归属');
+    const closureSummary = buildCaseWorkspaceSections(
+      item,
+      null,
+      'idle',
+      undefined,
+      closure,
+      supplements,
+      'ready',
+      'ready',
+    ).find((section) => section.key === 'closure-info')!.summary;
+    expect(
+      closureSummary.find((field) => field.label === '已回款（公司登记）')
+        ?.value,
+    ).toBe('9.00 元（主案来源分配范围）');
+    expect(
+      closureSummary.find((field) => field.label === '结算状态')?.value,
+    ).toBe('结算评估状态待核；发起及实际收付分别核对');
+    const settlementStatus = () =>
+      buildCaseWorkspaceSections(
+        item,
+        null,
+        'idle',
+        undefined,
+        closure,
+        supplements,
+        'ready',
+        'ready',
+      )
+        .find((section) => section.key === 'closure-info')!
+        .summary.find((field) => field.label === '结算状态')?.value;
+    closure.assessment.declaration = 'NOT_APPLICABLE';
+    closure.assessment.matchesCurrent = false;
+    expect(settlementStatus()).toBe(
+      '结算评估与当前结案版本不一致（原声明：不适用）；发起及实际收付分别核对',
+    );
+    closure.assessment.declaration = 'UNKNOWN';
+    expect(settlementStatus()).toBe(
+      '结算评估与当前结案版本不一致（原声明：状态待核）；发起及实际收付分别核对',
+    );
+  });
+  it('shows authorized settlement mode and launch facts without asserting payment or closeout', () => {
+    const settlement: CaseSettlement = {
+      caseId: 'case-1',
+      businessNo: 'CA-1',
+      stage: 'WAITING_ARCHIVE',
+      customer: { id: 'customer-1', name: '客户甲' },
+      lawyers: [],
+      termsVersion: 2,
+      terms: {
+        customerFormula: '结案金额 × 70%',
+        lawyerMode: 'HALF_RISK',
+        lawyerBaseFee: '100.00',
+        lawyerSplitPercent: '30',
+        customerManualAmount: null,
+        lawyerManualAmount: null,
+      },
+      figures: {
+        basis: null,
+        customerPercent: null,
+        customerAutomaticAmount: null,
+        customerAmount: null,
+        customerSource: 'AUTOMATIC',
+        lawyerAutomaticAmount: null,
+        lawyerAmount: null,
+        lawyerSource: 'AUTOMATIC',
+      },
+      customerBalance: {
+        launched: '100.00',
+        remaining: null,
+        overLaunched: false,
+      },
+      lawyerBalance: { launched: '0.00', remaining: null, overLaunched: false },
+      launches: [
+        {
+          id: 'launch-1',
+          caseId: 'case-1',
+          side: 'CUSTOMER',
+          nth: 1,
+          amount: '100.00',
+          launchDate: '2026-10-01',
+          note: null,
+          billId: null,
+          customerId: 'customer-1',
+          lawyerId: null,
+        },
+      ],
+    };
+    const sections = buildCaseWorkspaceSections(
+      caseFixture(),
+      null,
+      'idle',
+      undefined,
+      undefined,
+      undefined,
+      'denied',
+      'denied',
+      undefined,
+      'denied',
+      undefined,
+      undefined,
+      'idle',
+      'idle',
+      settlement,
+      'ready',
+    );
+    const summary = sections.find(
+      (section) => section.key === 'closure-info',
+    )!.summary;
+    const value = (label: string) =>
+      summary.find((field) => field.label === label)?.value;
+    expect(value('律师结算模式')).toBe('半风险');
+    expect(value('客户结算公式')).toBe('结案金额 × 70%');
+    expect(value('客户结算发起')).toContain('1 笔发起，合计 100.00 元');
+    expect(value('律师结算发起')).toBe('未发起');
+    expect(value('结算状态')).toBe('无权读取结案结算来源');
+    expect(value('结算状态')).not.toContain('已结清');
+    expect(value('律师付款结清')).toBe('未记录（尚无实际付款登记来源）');
+    expect(value('律师开票（公司登记）')).toBe('实际开票来源暂不可读取');
+    expect(value('退费清单核查')).toBe('退费清单暂不可读取');
+  });
+  it('uses saved routine null without restoring an old lead shop ID', () => {
+    const lead = leadFixture();
+    lead.shopExternalId = '旧来源ID';
+    const section = buildCaseWorkspaceSections(caseFixture(), lead, 'ready', {
+      revision: 2,
+      canEdit: true,
+      shopName: '案件当前店铺',
+      shopExternalId: null,
+      remark: null,
+      products: [],
+    }).find((entry) => entry.key === 'lead-info')!;
+    expect(
+      section.summary.find((entry) => entry.label === '店铺ID')?.value,
+    ).toBe('未登记');
+    expect(
+      section.summary.find((entry) => entry.label === '店铺名')?.value,
+    ).toBe('案件当前店铺');
+  });
+
+  it('keeps submitted court, formal court and mediation number separate, and identifies unconfirmed claim', () => {
+    const item = caseFixture();
+    item.filingSubmission = {
+      court: { id: 'court-submitted', name: '提交法院' },
+      submittedAt: '2026-10-01',
+      recordedAt,
+      recordedByUserId: 'u1',
+      mediationNo: 'MED-1',
+      evidenceFiles: [],
+      screenshotFiles: [],
+    };
+    item.acceptance = {
+      id: 'accepted-1',
+      trialRoundId: 'round-1',
+      acceptedAt: '2026-10-05',
+      courtCaseNo: 'CN-1',
+      recordedAt,
+      court: null,
+      files: [],
+    };
+    item.complaint = {
+      amountState: 'KNOWN',
+      amount: '100.00',
+      pendingReason: null,
+      submittedAt: recordedAt,
+      submittedByUserId: 'u1',
+      complaintFiles: [],
+      authorizationFiles: [],
+    };
+    const summary = buildCaseWorkspaceSections(item, null, 'idle').find(
+      (entry) => entry.key === 'first-instance',
+    )!.summary;
+    expect(summary.find((entry) => entry.label === '立案法院')?.value).toBe(
+      '未登记',
+    );
+    expect(
+      summary.find((entry) => entry.label === '诉调号／立案编号')?.value,
+    ).toBe('MED-1');
+    expect(summary.find((entry) => entry.label === '案号')?.value).toBe('CN-1');
+    expect(
+      summary.find((entry) => entry.label === '标的额（原诉请，未确认）')
+        ?.value,
+    ).toBe('100.00 元');
+  });
+
+  it('uses the active supplement head and flags multiple current notice candidates', () => {
+    const item = caseFixture();
+    const entry = (
+      id: string,
+      priorEntryId: string | null,
+      amount: string,
+    ): CaseSupplementWorkspace['entries'][number] => ({
+      id,
+      priorEntryId,
+      kind: 'COURT_PREPAYMENT_NOTICE',
+      trialRoundId: 'round-1',
+      amount,
+      text: null,
+      eventDate: null,
+      courtCaseNo: null,
+      sourceType: null,
+      sourceId: null,
+      inventoryVersionId: null,
+      inventoryItemId: null,
+      materialId: null,
+      contentVersionId: null,
+      reason: '补录',
+      recordedByUserId: 'u1',
+      recordedAt,
+    });
+    const workspace: CaseSupplementWorkspace = {
+      canEdit: true,
+      entries: [entry('old', null, '10.00'), entry('new', 'old', '20.00')],
+      recorders: [{ id: 'u1', displayName: '操作人甲' }],
+      sources: {
+        executionFiling: null,
+        trialRounds: [
+          { id: 'round-1', sequence: 1 },
+          { id: 'round-2', sequence: 2 },
+        ],
+        judgments: [],
+        secondResults: [],
+        refundItems: [],
+        materials: [],
+      },
+    };
+    const summary = () =>
+      buildCaseWorkspaceSections(
+        item,
+        null,
+        'idle',
+        undefined,
+        undefined,
+        workspace,
+        'idle',
+        'ready',
+      ).find((section) => section.key === 'first-instance')!.summary;
+    expect(
+      summary().find((field) => field.label === '预缴诉讼费')?.value,
+    ).toContain('20.00');
+    expect(
+      buildCaseWorkspaceEvents(item, workspace).find(
+        (event) => event.id === 'new',
+      )?.fields,
+    ).toContainEqual(
+      expect.objectContaining({ label: '记录人', value: '操作人甲' }),
+    );
+    workspace.entries.push(entry('parallel', null, '30.00'));
+    expect(summary().find((field) => field.label === '预缴诉讼费')?.value).toBe(
+      '多份当前补录，需逐条核对',
+    );
+    workspace.entries = [
+      { ...entry('old-round', null, '90.00'), trialRoundId: 'round-2' },
+    ];
+    expect(summary().find((field) => field.label === '预缴诉讼费')?.value).toBe(
+      '未登记',
+    );
+    item.secondInstance.currentTrialRoundId = 'round-2';
+    expect(
+      summary().find((field) => field.label === '预缴诉讼费')?.value,
+    ).toContain('90.00');
+    workspace.entries.push(entry('first-round', null, '50.00'));
+    expect(
+      summary().find((field) => field.label === '预缴诉讼费')?.value,
+    ).toContain('90.00');
+  });
   it('keeps exact screenshot versions in technical details and shows an honest reference count', () => {
     const lead = leadFixture();
     lead.leadScreenshotContentVersionIds = [

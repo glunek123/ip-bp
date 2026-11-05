@@ -1,4 +1,5 @@
 import type { DatabaseService } from '../../database/database.service';
+import { ForbiddenException } from '@nestjs/common';
 import type { AccessControlService } from '../../access-control/access-control.service';
 import type { OrganizationService } from '../../access-control/organization.service';
 import type { MaterialService } from '../materials';
@@ -65,7 +66,12 @@ function fixture() {
       return fn(tx);
     },
   );
-  const access = { authorizeCase: jest.fn(async () => undefined) };
+  const access = {
+    authorizeCase: jest.fn(async () => undefined),
+    authorizeDepartmentAction: jest.fn(async (): Promise<void> => {
+      throw new ForbiddenException({ code: 'ACTION_FORBIDDEN' });
+    }),
+  };
   const materials = {
     assertAvailableVersions: jest.fn(
       async (

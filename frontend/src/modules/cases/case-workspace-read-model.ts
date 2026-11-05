@@ -1,6 +1,11 @@
 import type { CaseDetail, CaseFile, CaseStage } from '../../api/cases';
 import type { LeadDetail } from '../../api/leads';
 import type { CaseRoutineProfile } from '../../api/case-routine';
+import type { CaseClosureWorkspace } from '../../api/case-closure-workspace';
+import type { CaseSupplementWorkspace } from '../../api/case-supplements';
+import type { EvidenceGroup } from '../../api/evidence';
+import type { OwnerMaterial } from '../../api/materials';
+import type { CaseSettlement } from '../../api/settlements';
 import {
   leadCaseTypeLabels as caseTypeLabels,
   leadInfringementTypeLabels as infringementLabels,
@@ -18,6 +23,11 @@ export type WorkspaceField = {
   wide?: boolean;
   technical?: boolean;
   versionId?: string;
+  fileVersions?: Array<{
+    materialId: string;
+    contentVersionId: string;
+    filename: string;
+  }>;
 };
 export type WorkspaceGroup = {
   id: string;
@@ -29,6 +39,7 @@ export type WorkspaceSection = {
   key: SectionKey;
   title: string;
   groups: WorkspaceGroup[];
+  summary: WorkspaceField[];
   message: string | null;
   help: string;
 };
@@ -114,6 +125,13 @@ function money(
     state === 'PENDING' ? '待确认' : value === null ? '未登记' : `${value} 元`,
   );
 }
+function sumMoney(values: readonly string[]): string {
+  const cents = values.reduce((sum, value) => {
+    const [units, fraction] = value.split('.');
+    return sum + BigInt(units!) * 100n + BigInt(fraction!);
+  }, 0n);
+  return `${cents / 100n}.${(cents % 100n).toString().padStart(2, '0')} 元`;
+}
 function files(label: string, items: readonly CaseFile[]): WorkspaceField[] {
   if (items.length === 0) return [field(label, null)];
   return items.map((item) => ({
@@ -122,7 +140,12 @@ function files(label: string, items: readonly CaseFile[]): WorkspaceField[] {
   }));
 }
 function actor(id: string | undefined): WorkspaceField[] {
-  return id ? [{ ...field('记录人标识', id), technical: true }] : [];
+  return id
+    ? [
+        field('记录人', '姓名未提供；真实账号标识见关联详情'),
+        { ...field('记录人标识', id), technical: true },
+      ]
+    : [];
 }
 function uniqueById<T extends { id: string }>(
   history: readonly T[],
@@ -142,7 +165,10 @@ function trialRoundName(item: CaseDetail, trialRoundId: string): string {
 }
 
 // Only CaseDetail facts feed this view. No audit mutation, API reads or clock fallback.
-export function buildCaseWorkspaceEvents(item: CaseDetail): WorkspaceEvent[] {
+export function buildCaseWorkspaceEvents(
+  item: CaseDetail,
+  supplementWorkspace?: CaseSupplementWorkspace | null,
+): WorkspaceEvent[] {
   const events: WorkspaceEvent[] = [];
   function add(
     source: string,
@@ -577,6 +603,38 @@ export function buildCaseWorkspaceEvents(item: CaseDetail): WorkspaceEvent[] {
           ...actor(value.recordedByUserId),
         ],
       );
+  for (const entry of supplementWorkspace?.entries ?? [])
+    add(
+      'supplement',
+      entry.id,
+      entry.kind === 'MANUAL_ANNOTATION' ? '人工附记' : '案件补录',
+      entry.eventDate,
+      entry.recordedAt,
+      [
+        field('补录类型', entry.kind),
+        field('说明', entry.text),
+        field('原因', entry.reason),
+        field('关联来源', entry.sourceId),
+        field('材料版本标识', entry.contentVersionId),
+        ...actor(entry.recordedByUserId),
+      ],
+    );
+  const recorderNames = new Map(
+    supplementWorkspace?.recorders.map((person) => [
+      person.id,
+      person.displayName,
+    ]) ?? [],
+  );
+  for (const event of events) {
+    const recorderId = event.fields.find(
+      (value) => value.label === '记录人标识',
+    )?.value;
+    if (!recorderId) continue;
+    const recorder = event.fields.find((value) => value.label === '记录人');
+    if (recorder)
+      recorder.value =
+        recorderNames.get(recorderId) ?? '姓名未记录；真实账号标识见关联详情';
+  }
   return events.sort((left, right) => {
     const byTime =
       (left.recordedAt === null ? Infinity : Date.parse(left.recordedAt)) -
@@ -635,8 +693,20 @@ export function buildCaseWorkspaceSections(
   lead: LeadDetail | null,
   leadState: LeadState,
   routine?: CaseRoutineProfile | null,
+  closureWorkspace?: CaseClosureWorkspace | null,
+  supplementWorkspace?: CaseSupplementWorkspace | null,
+  closureReadState: LeadState = 'idle',
+  supplementReadState: LeadState = 'idle',
+  evidenceGroup?: EvidenceGroup | null,
+  evidenceReadState: LeadState = 'idle',
+  leadMaterials?: OwnerMaterial[] | null,
+  notaryMaterials?: OwnerMaterial[] | null,
+  leadMaterialState: LeadState = 'idle',
+  notaryMaterialState: LeadState = 'idle',
+  settlementWorkspace?: CaseSettlement | null,
+  settlementReadState: LeadState = 'idle',
 ): WorkspaceSection[] {
-  const events = buildCaseWorkspaceEvents(item);
+  const events = buildCaseWorkspaceEvents(item, supplementWorkspace);
   const sections: WorkspaceSection[] = [];
   function section(
     key: SectionKey,
@@ -649,6 +719,7 @@ export function buildCaseWorkspaceSections(
       key,
       title,
       groups,
+      summary: [],
       help,
       message:
         message ??
@@ -789,6 +860,27 @@ export function buildCaseWorkspaceSections(
             ]
           : [field('归档状态', '未归档')],
       },
+      ...(item.earlyArchive
+        ? [
+            {
+              id: 'early-archive',
+              title: '提前归档记录',
+              fields: [
+                date('提前归档日期', item.earlyArchive.archiveAt),
+                field(
+                  '原案件阶段',
+                  caseStageLabels[item.earlyArchive.fromStage],
+                ),
+                field('提前归档原因', item.earlyArchive.reason),
+                date('记录时间', item.earlyArchive.recordedAt),
+                field(
+                  '说明',
+                  '提前停止办理并归档，不表示案件已结案或款项已登记',
+                ),
+              ],
+            },
+          ]
+        : []),
     ],
     '编号、客户、权利主体、阶段及负责人只读；匹配、结案和归档仅通过已有业务命令登记或更正。',
   );
@@ -1180,5 +1272,736 @@ export function buildCaseWorkspaceSections(
     '仅展示本案已返回的事实；业务日期与记录时间分开，不补日期或操作人，不支持通用新增、编辑或删除审计记录。',
     events.length ? null : '尚无可读记录',
   );
+  const byKey = new Map(sections.map((value) => [value.key, value]));
+  const setSummary = (key: SectionKey, values: WorkspaceField[]) => {
+    byKey.get(key)!.summary = values;
+  };
+  const filenames = (items: readonly CaseFile[]) =>
+    items.length
+      ? items.map((value) => value.originalFilename).join('、')
+      : null;
+  const priorSupplementIds = new Set(
+    supplementWorkspace?.entries
+      .map((entry) => entry.priorEntryId)
+      .filter((id): id is string => id !== null) ?? [],
+  );
+  const supplementHeads = (
+    kind: NonNullable<CaseSupplementWorkspace>['entries'][number]['kind'],
+    trialRoundId?: string | null,
+    sourceId?: string | null,
+  ) =>
+    supplementWorkspace?.entries.filter(
+      (entry) =>
+        entry.kind === kind &&
+        !priorSupplementIds.has(entry.id) &&
+        (trialRoundId === undefined || entry.trialRoundId === trialRoundId) &&
+        (sourceId === undefined || entry.sourceId === sourceId),
+    ) ?? [];
+  const supplement = (
+    kind: NonNullable<CaseSupplementWorkspace>['entries'][number]['kind'],
+    trialRoundId?: string | null,
+    sourceId?: string | null,
+  ) => {
+    const heads = supplementHeads(kind, trialRoundId, sourceId);
+    return heads.length === 1 ? heads[0]! : null;
+  };
+  const supplementFiles = (
+    kind: NonNullable<CaseSupplementWorkspace>['entries'][number]['kind'],
+    trialRoundId?: string | null,
+    sourceId?: string | null,
+  ) => {
+    const names = supplementHeads(kind, trialRoundId, sourceId).flatMap(
+      (entry) => {
+        if (!entry.materialId || !entry.contentVersionId) return [];
+        const source = supplementWorkspace?.sources.materials.find(
+          (file) =>
+            file.materialId === entry.materialId &&
+            file.contentVersionId === entry.contentVersionId,
+        );
+        return [source?.filename ?? `文件版本 ${entry.contentVersionId}`];
+      },
+    );
+    return names.join('、') || null;
+  };
+  const supplementValue = (value: string | null | undefined, candidates = 0) =>
+    value ??
+    (candidates > 1
+      ? '多份当前补录，需逐条核对'
+      : supplementReadState === 'ready'
+        ? null
+        : '补录来源暂不可读取');
+  const closureValue = (value: string | null | undefined) =>
+    value ?? (closureReadState === 'ready' ? null : '结案财务来源暂不可读取');
+  const sourceUnavailable =
+    item.sourceLead && !isExternalEntry && !source
+      ? leadMessages[leadState]
+      : '未记录';
+  const externalKnown =
+    item.origin?.kind === 'EXTERNAL_ENTRY' ? item.origin.known : null;
+  const sourceVersions = (
+    materials: OwnerMaterial[] | null | undefined,
+    category: OwnerMaterial['category'],
+    allowedIds?: readonly string[],
+  ) =>
+    (materials ?? [])
+      .filter(
+        (material) =>
+          material.category === category && material.status === 'ACTIVE',
+      )
+      .flatMap((material) =>
+        material.contentVersions
+          .filter(
+            (version) =>
+              version.status === 'AVAILABLE' &&
+              (!allowedIds || allowedIds.includes(version.id)),
+          )
+          .map((version) => ({
+            materialId: material.id,
+            contentVersionId: version.id,
+            filename: version.originalFilename,
+          })),
+      );
+  const screenshotVersions = sourceVersions(
+    leadMaterials,
+    'LEAD_SCREENSHOT',
+    source?.leadScreenshotContentVersionIds ?? [],
+  );
+  const openingVersions = sourceVersions(
+    notaryMaterials,
+    'NOTARY_OPENING_PHOTO',
+  );
+  setSummary('case-info', [
+    field('客户', item.customer.name),
+    field('权利主体', item.rightsHolder.name),
+    field(
+      '被告',
+      item.defendants.map((value) => value.name).join('、') || null,
+    ),
+    field(
+      '侵权类型',
+      source
+        ? source.infringementTypes
+            .map((value) => infringementLabels[value])
+            .join('、')
+        : isExternalEntry
+          ? (externalKnown?.infringementTypes
+              ?.map((value) => infringementLabels[value])
+              .join('、') ?? null)
+          : sourceUnavailable,
+    ),
+    field(
+      '案件类型',
+      source
+        ? caseTypeLabels[source.caseType]
+        : isExternalEntry
+          ? externalKnown?.caseType
+            ? caseTypeLabels[externalKnown.caseType]
+            : null
+          : sourceUnavailable,
+    ),
+    field('运营', item.owner.displayName),
+    field('案件单号', item.businessNo),
+    field('案件进展', caseStageLabels[item.stage]),
+    date('归档日期', item.archive?.current.archiveAt ?? null),
+    field(
+      '归档类型',
+      item.archive ? archiveLabels[item.archive.current.archiveType] : null,
+    ),
+    field('归档原因', item.archive?.current.archiveReason ?? null),
+  ]);
+  setSummary('lead-info', [
+    field(
+      '平台',
+      source
+        ? leadPlatformLabels[source.platform]
+        : isExternalEntry
+          ? externalKnown?.platform
+            ? leadPlatformLabels[externalKnown.platform]
+            : null
+          : sourceUnavailable,
+    ),
+    field(
+      '店铺名',
+      routine
+        ? routine.shopName
+        : (source?.shopName ?? externalKnown?.shopName ?? sourceUnavailable),
+    ),
+    field(
+      '店铺ID',
+      routine
+        ? routine.shopExternalId
+        : (source?.shopExternalId ??
+            externalKnown?.shopExternalId ??
+            sourceUnavailable),
+    ),
+    {
+      ...field(
+        '侵权截图',
+        screenshotVersions.length
+          ? screenshotVersions.map((value) => value.filename).join('、')
+          : source?.leadScreenshotContentVersionIds.length
+            ? '来源版本引用暂不可核验'
+            : leadMaterialState === 'ready'
+              ? null
+              : sourceUnavailable,
+        '按来源线索精确版本与原材料权限读取',
+      ),
+      fileVersions: screenshotVersions,
+    },
+    {
+      ...field(
+        '开箱照片',
+        openingVersions.length
+          ? openingVersions.map((value) => value.filename).join('、')
+          : notaryMaterialState === 'ready'
+            ? null
+            : item.sourceNotaryMatter
+              ? '公证开箱来源暂不可读取'
+              : null,
+        '公证来源可读版本；不作为本案入案冻结版本',
+      ),
+      fileVersions: openingVersions,
+    },
+    field('公证书编号', item.certificate?.certificateNo ?? null),
+    field('公证书', filenames(item.certificate?.files ?? [])),
+    field('披露文件', filenames(item.certificate?.disclosureFiles ?? [])),
+    field(
+      '证物表／证物编号',
+      evidenceGroup
+        ? evidenceGroup.items
+            .map((value) => value.displayCode ?? '未编证物号')
+            .join('、') || '未登记'
+        : evidenceReadState === 'ready'
+          ? '未登记'
+          : '证物台账暂不可读取',
+    ),
+    field(
+      '证物表／货架号',
+      evidenceGroup
+        ? evidenceGroup.items
+            .map((value) => value.shelfLocation ?? '未登记货架')
+            .join('、') || '未登记'
+        : evidenceReadState === 'ready'
+          ? '未登记'
+          : '证物台账暂不可读取',
+    ),
+    field(
+      '证物表／证物状态',
+      evidenceGroup
+        ? evidenceGroup.items.map((value) => value.status).join('、') ||
+            '未登记'
+        : evidenceReadState === 'ready'
+          ? '未登记'
+          : '证物台账暂不可读取',
+    ),
+  ]);
+  const currentAcceptance = item.acceptance;
+  const currentHearing = item.hearing.currentArrangement;
+  const currentRoundId =
+    item.secondInstance.currentTrialRoundId ??
+    item.acceptance?.trialRoundId ??
+    item.hearing.currentArrangement?.trialRoundId ??
+    supplementWorkspace?.sources.trialRounds.find(
+      (round) => round.sequence === 1,
+    )?.id ??
+    null;
+  const prepayment = supplement('COURT_PREPAYMENT_NOTICE', currentRoundId);
+  const disclosure = supplement('COURT_DISCLOSURE', currentRoundId);
+  setSummary('first-instance', [
+    field(
+      '办案律师',
+      item.lawyers.map((value) => value.fullName).join('、') || null,
+    ),
+    field(
+      '立案法院',
+      currentAcceptance
+        ? (currentAcceptance.court?.name ?? null)
+        : (item.filingSubmission?.court.name ?? null),
+      currentAcceptance
+        ? '正式受理记录中的法院'
+        : '提交立案记录中的法院，正式受理法院尚未登记',
+    ),
+    field('立案截图', filenames(item.filingSubmission?.screenshotFiles ?? [])),
+    field(
+      '诉调号／立案编号',
+      item.filingSubmission?.mediationNo ?? null,
+      '仅取提交立案的诉调号；正式法院案号另列',
+    ),
+    date('提交立案日期', item.filingSubmission?.submittedAt ?? null),
+    date('正式立案日期', currentAcceptance?.acceptedAt ?? null),
+    date('开庭日期', currentHearing?.hearingAt ?? null),
+    field('开庭地点', currentHearing?.hearingPlace ?? null),
+    field(
+      '送达文书',
+      filenames([
+        ...item.acceptanceMaterials.SERVICE_DOCUMENT.frozen,
+        ...item.acceptanceMaterials.SERVICE_DOCUMENT.later,
+      ]),
+    ),
+    field(
+      '案号',
+      currentAcceptance ? currentAcceptance.courtCaseNo : item.courtCaseNo,
+    ),
+    field(
+      '立案受理通知书',
+      filenames([
+        ...item.acceptanceMaterials.ACCEPTANCE_NOTICE.frozen,
+        ...item.acceptanceMaterials.ACCEPTANCE_NOTICE.later,
+      ]),
+    ),
+    field(
+      '预缴诉讼费',
+      supplementValue(
+        prepayment?.amount
+          ? `${prepayment.amount} 元（通知金额，非实缴）`
+          : null,
+        supplementHeads('COURT_PREPAYMENT_NOTICE', currentRoundId).length,
+      ),
+    ),
+    field('承办法官', currentHearing?.judgeName ?? null),
+    item.complaintConfirmation
+      ? money(
+          '标的额（已确认诉请）',
+          item.complaintConfirmation.amountState,
+          item.complaintConfirmation.amount,
+        )
+      : item.complaint
+        ? money(
+            '标的额（原诉请，未确认）',
+            item.complaint.amountState,
+            item.complaint.amount,
+          )
+        : field('标的额', null),
+    field(
+      '披露数据',
+      supplementValue(
+        disclosure?.text,
+        supplementHeads('COURT_DISCLOSURE', currentRoundId).length,
+      ),
+    ),
+    field(
+      '披露数据附件',
+      supplementValue(supplementFiles('COURT_DISCLOSURE', currentRoundId)),
+    ),
+    field(
+      '调档文件',
+      supplementValue(supplementFiles('RECORD_RETRIEVAL_DOCUMENT', null)),
+    ),
+    field(
+      '保全文书',
+      supplementValue(supplementFiles('PRESERVATION_DOCUMENT', null)),
+    ),
+    field(
+      '起诉状',
+      item.complaintConfirmation?.complaintFile?.originalFilename ??
+        filenames(item.complaint?.complaintFiles ?? []),
+    ),
+  ]);
+  const secondProgress = item.secondInstance.currentProgress;
+  setSummary('second-instance', [
+    field(
+      '二审进展',
+      item.stage === 'SECOND_INSTANCE'
+        ? '二审办理阶段'
+        : secondProgress
+          ? '有二审办理记录'
+          : null,
+    ),
+    field('二审办理', secondProgress ? '已登记办理记录' : null),
+    field(
+      '二审裁判结果',
+      item.secondInstance.currentResult
+        ? ({ REMAND: '发回重审', CHANGE: '改判', AFFIRM: '维持原判' } as const)[
+            item.secondInstance.currentResult.result
+          ]
+        : null,
+    ),
+    field('二审文书', filenames(secondProgress?.documentFiles ?? [])),
+    date('二审开庭日期', secondProgress?.hearingAt ?? null),
+    field('二审开庭地点', secondProgress?.hearingPlace ?? null),
+    field('二审送达文书', filenames(secondProgress?.serviceFiles ?? [])),
+    field('二审法官', secondProgress?.judgeName ?? null),
+  ]);
+  const firstJudgment = item.judgment.current;
+  const secondJudgment = item.secondInstance.currentResult;
+  const refundLinks = supplementHeads('REFUND_SOURCE_LINK');
+  const refundItems = closureWorkspace?.refund.items ?? [];
+  const sourcedRefunds = (
+    sourceType: 'JUDGMENT' | 'SECOND_INSTANCE_RESULT',
+    sourceId: string | undefined,
+  ) => {
+    const keys = new Set(
+      refundLinks
+        .filter(
+          (entry) =>
+            entry.sourceType === sourceType &&
+            entry.sourceId === sourceId &&
+            entry.inventoryVersionId === closureWorkspace?.refund.versionId,
+        )
+        .map((entry) => entry.inventoryItemId),
+    );
+    return refundItems.filter((entry) => keys.has(entry.itemId));
+  };
+  const firstRefunds = sourcedRefunds('JUDGMENT', firstJudgment?.id);
+  const secondRefunds = sourcedRefunds(
+    'SECOND_INSTANCE_RESULT',
+    secondJudgment?.id,
+  );
+  const refundTotal = (items: typeof refundItems) => {
+    if (!items.length) return '未关联';
+    const unknown = items.filter((entry) => entry.amount === null).length;
+    const known = sumMoney(
+      items.flatMap((entry) => (entry.amount === null ? [] : [entry.amount])),
+    );
+    return unknown ? `已知小计 ${known}；${unknown} 笔金额待定` : known;
+  };
+  const refundPartyLabels = { COURT: '法院', DEFENDANT: '被告' } as const;
+  const refundStatusLabels = {
+    UNKNOWN: '状态待定',
+    PENDING: '待办理',
+    SUBMITTED: '已提交',
+    RETURNED_UNSETTLED: '已退回未结算',
+    SETTLED: '已结算，未标记公司收到',
+    RECEIVED: '已标记公司收到',
+    CONVERTED_TO_COST: '转作成本',
+  } as const;
+  const refundDetails = (items: typeof refundItems) =>
+    items
+      .map(
+        (entry) =>
+          `${refundPartyLabels[entry.party]}／${refundStatusLabels[entry.status]}／${entry.amount === null ? '金额待定' : `${entry.amount} 元`}／${entry.description}`,
+      )
+      .join('；') || '未关联';
+  const attributedRefundIds = new Set(
+    [...firstRefunds, ...secondRefunds].map((entry) => entry.itemId),
+  );
+  const unattributedRefunds = refundItems.filter(
+    (entry) => !attributedRefundIds.has(entry.itemId),
+  );
+  setSummary('judgment', [
+    date('一审／收到判决日期', firstJudgment?.judgmentReceivedAt ?? null),
+    firstJudgment
+      ? money(
+          '一审／判决金额',
+          firstJudgment.judgmentAmountState,
+          firstJudgment.judgmentAmount,
+        )
+      : field('一审／判决金额', null),
+    field('一审／判决书', filenames(firstJudgment?.files ?? [])),
+    firstJudgment
+      ? money(
+          '一审／实缴诉讼费',
+          firstJudgment.paidLitigationFeeState,
+          firstJudgment.paidLitigationFee,
+        )
+      : field('一审／实缴诉讼费', null),
+    date('二审／判决收到日期', secondJudgment?.resultReceivedAt ?? null),
+    secondJudgment
+      ? money(
+          '二审／实缴诉讼费',
+          secondJudgment.paidLitigationFeeState,
+          secondJudgment.paidLitigationFee,
+        )
+      : field('二审／实缴诉讼费', null),
+    field(
+      '二审／判决书',
+      filenames(secondJudgment?.files ?? []),
+      '二审结果可能为裁定，文件名称按原记录保留',
+    ),
+    field(
+      '一审／应退清单金额',
+      closureWorkspace && supplementWorkspace
+        ? refundTotal(firstRefunds)
+        : '退费来源暂不可读取',
+    ),
+    field(
+      '一审／应退清单笔数',
+      closureWorkspace && supplementWorkspace
+        ? String(firstRefunds.length)
+        : '退费来源暂不可读取',
+    ),
+    field(
+      '一审／已标记公司收到（清单状态）金额',
+      closureWorkspace && supplementWorkspace
+        ? refundTotal(
+            firstRefunds.filter((entry) => entry.status === 'RECEIVED'),
+          )
+        : '退费来源暂不可读取',
+    ),
+    field(
+      '一审／已标记公司收到（清单状态）笔数',
+      closureWorkspace && supplementWorkspace
+        ? String(
+            firstRefunds.filter((entry) => entry.status === 'RECEIVED').length,
+          )
+        : '退费来源暂不可读取',
+    ),
+    field(
+      '一审／转作成本',
+      closureWorkspace && supplementWorkspace
+        ? refundTotal(
+            firstRefunds.filter(
+              (entry) => entry.status === 'CONVERTED_TO_COST',
+            ),
+          )
+        : '退费来源暂不可读取',
+    ),
+    field(
+      '一审／退费清单明细',
+      closureWorkspace && supplementWorkspace
+        ? refundDetails(firstRefunds)
+        : '退费来源暂不可读取',
+    ),
+    field(
+      '二审／应退清单金额',
+      closureWorkspace && supplementWorkspace
+        ? refundTotal(secondRefunds)
+        : '退费来源暂不可读取',
+    ),
+    field(
+      '二审／应退清单笔数',
+      closureWorkspace && supplementWorkspace
+        ? String(secondRefunds.length)
+        : '退费来源暂不可读取',
+    ),
+    field(
+      '二审／已标记公司收到（清单状态）金额',
+      closureWorkspace && supplementWorkspace
+        ? refundTotal(
+            secondRefunds.filter((entry) => entry.status === 'RECEIVED'),
+          )
+        : '退费来源暂不可读取',
+    ),
+    field(
+      '二审／已标记公司收到（清单状态）笔数',
+      closureWorkspace && supplementWorkspace
+        ? String(
+            secondRefunds.filter((entry) => entry.status === 'RECEIVED').length,
+          )
+        : '退费来源暂不可读取',
+    ),
+    field(
+      '二审／转作成本',
+      closureWorkspace && supplementWorkspace
+        ? refundTotal(
+            secondRefunds.filter(
+              (entry) => entry.status === 'CONVERTED_TO_COST',
+            ),
+          )
+        : '退费来源暂不可读取',
+    ),
+    field(
+      '二审／退费清单明细',
+      closureWorkspace && supplementWorkspace
+        ? refundDetails(secondRefunds)
+        : '退费来源暂不可读取',
+    ),
+    field(
+      '诉讼退费来源',
+      !supplementWorkspace
+        ? '退费归属来源暂不可读取'
+        : refundLinks.length
+          ? `${refundLinks.length} 条精确来源关联`
+          : closureWorkspace
+            ? '未关联判决来源'
+            : '退费来源暂不可读取',
+    ),
+    field(
+      '历史审级未标明／清单金额',
+      closureWorkspace && supplementWorkspace
+        ? refundTotal(unattributedRefunds)
+        : '退费归属来源暂不可读取',
+    ),
+    field(
+      '历史审级未标明／清单明细',
+      closureWorkspace && supplementWorkspace
+        ? refundDetails(unattributedRefunds)
+        : '退费归属来源暂不可读取',
+    ),
+  ]);
+  const formalExecution = supplement(
+    'EXECUTION_FORMAL_ACCEPTANCE',
+    undefined,
+    item.executionFiling?.id ?? '__missing__',
+  );
+  setSummary('execution', [
+    date('执行立案日期', item.executionFiling?.submittedAt ?? null),
+    field(
+      '执行立案截图',
+      filenames(item.executionFiling?.files ?? []),
+      '原执行申请凭证可包含 PDF',
+    ),
+    field(
+      '执行正式立案日期',
+      supplementValue(
+        formalExecution?.eventDate,
+        supplementHeads(
+          'EXECUTION_FORMAL_ACCEPTANCE',
+          undefined,
+          item.executionFiling?.id ?? '__missing__',
+        ).length,
+      ),
+    ),
+    field(
+      '执行案号',
+      supplementValue(
+        formalExecution?.courtCaseNo,
+        supplementHeads(
+          'EXECUTION_FORMAL_ACCEPTANCE',
+          undefined,
+          item.executionFiling?.id ?? '__missing__',
+        ).length,
+      ),
+    ),
+    field(
+      '执行文书',
+      supplementValue(
+        supplementFiles(
+          'EXECUTION_FORMAL_ACCEPTANCE',
+          undefined,
+          item.executionFiling?.id ?? '__missing__',
+        ),
+      ),
+    ),
+  ]);
+  const payments = closureWorkspace?.effectivePayments ?? [];
+  const paymentTotal = sumMoney(payments.map((value) => value.amount));
+  const settlementValue = (value: string | null | undefined) =>
+    value ??
+    (settlementReadState === 'ready'
+      ? '未登记'
+      : settlementReadState === 'denied'
+        ? '无权读取结算来源'
+        : settlementReadState === 'loading'
+          ? '正在读取结算来源'
+          : '结算来源暂不可读取');
+  const lawyerMode = settlementWorkspace?.terms?.lawyerMode;
+  const lawyerModeLabels = {
+    FULL_RISK: '全风险',
+    HALF_RISK: '半风险',
+    FIXED_FEE: '固定费用',
+  } as const;
+  const settlementLaunches = (side: 'CUSTOMER' | 'LAWYER') =>
+    settlementWorkspace?.launches.filter((launch) => launch.side === side) ??
+    [];
+  const launchStatus = (side: 'CUSTOMER' | 'LAWYER') => {
+    if (!settlementWorkspace) return settlementValue(null);
+    const launches = settlementLaunches(side);
+    return launches.length
+      ? `${launches.length} 笔发起，合计 ${sumMoney(launches.map((launch) => launch.amount))}；发起不表示实收或实付`
+      : '未发起';
+  };
+  const actualScope =
+    closureWorkspace?.actual.scope === 'CONSOLIDATION'
+      ? '（主案来源分配范围）'
+      : '';
+  const assessmentDeclarationLabels = {
+    APPLICABLE: '适用',
+    NOT_APPLICABLE: '不适用',
+    UNKNOWN: '状态待核',
+  } as const;
+  const settlementReviewStatus = !closureWorkspace
+    ? closureReadState === 'denied'
+      ? '无权读取结案结算来源'
+      : '结案结算来源暂不可读取'
+    : closureWorkspace.assessment.matchesCurrent === false
+      ? `结算评估与当前结案版本不一致（原声明：${assessmentDeclarationLabels[closureWorkspace.assessment.declaration]}）；发起及实际收付分别核对`
+      : closureWorkspace.assessment.declaration === 'UNKNOWN'
+        ? '结算评估状态待核；发起及实际收付分别核对'
+        : closureWorkspace.assessment.declaration === 'NOT_APPLICABLE'
+          ? '结算评估声明不适用；发起及实际收付分别核对'
+          : closureWorkspace.assessment.matchesCurrent === true
+            ? '结算评估关联当前结案版本；发起及实际收付分别核对'
+            : '结算评估版本匹配待核；发起及实际收付分别核对';
+  setSummary('closure-info', [
+    date('结案日期', item.closure?.current.closeAt ?? null),
+    item.closure
+      ? money(
+          '结案金额',
+          item.closure.current.closeAmountState,
+          item.closure.current.closeAmt,
+        )
+      : field('结案金额', null),
+    field(
+      '已回款（公司登记）',
+      closureWorkspace?.actual.customerReceiptState === 'RECORDED'
+        ? `${closureWorkspace.actual.customerReceivedAmount} 元${actualScope}`
+        : closureWorkspace
+          ? '待核实／未登记'
+          : '实际回款来源暂不可读取',
+    ),
+    field(
+      '付款类型',
+      closureValue(
+        closureWorkspace?.closure.paymentType === 'ONE_TIME'
+          ? '一次付清'
+          : closureWorkspace?.closure.paymentType === 'INSTALLMENTS'
+            ? '分期付款'
+            : null,
+      ),
+    ),
+    field(
+      '客户结算金额',
+      closureValue(
+        closureWorkspace?.assessment.customerAmount
+          ? `${closureWorkspace.assessment.customerAmount} 元`
+          : null,
+      ),
+    ),
+    field(
+      '结算条件',
+      closureWorkspace?.assessment.declaration === 'APPLICABLE'
+        ? '适用已登记条款'
+        : closureWorkspace?.assessment.declaration === 'NOT_APPLICABLE'
+          ? '不适用'
+          : null,
+    ),
+    field(
+      '律师结算金额',
+      closureValue(
+        closureWorkspace?.assessment.lawyerAmount
+          ? `${closureWorkspace.assessment.lawyerAmount} 元`
+          : null,
+      ),
+    ),
+    field(
+      '客户结算公式',
+      settlementValue(settlementWorkspace?.terms?.customerFormula),
+    ),
+    field(
+      '律师结算模式',
+      settlementValue(lawyerMode ? lawyerModeLabels[lawyerMode] : null),
+    ),
+    field('客户结算发起', launchStatus('CUSTOMER')),
+    field('律师结算发起', launchStatus('LAWYER')),
+    field('结算状态', settlementReviewStatus),
+    field(
+      '律师开票（公司登记）',
+      closureWorkspace?.actual.lawyerInvoiceState === 'RECORDED'
+        ? `${closureWorkspace.actual.lawyerInvoicedAmount} 元${actualScope}`
+        : closureWorkspace
+          ? '待核实／未登记'
+          : '实际开票来源暂不可读取',
+    ),
+    field('律师付款结清', '未记录（尚无实际付款登记来源）'),
+    field(
+      '退费清单核查',
+      closureWorkspace
+        ? closureWorkspace.refund.declaration === 'COMPLETE'
+          ? '清单已声明完整；各项状态和公司收款标记见判决区'
+          : closureWorkspace.refund.declaration === 'NOT_APPLICABLE'
+            ? '清单声明不适用'
+            : '清单状态待核；各项状态和公司收款标记见判决区'
+        : '退费清单暂不可读取',
+    ),
+    field(
+      '有效付款记录数',
+      closureWorkspace ? String(payments.length) : '付款记录暂不可读取',
+    ),
+    field(
+      '有效付款合计',
+      closureWorkspace ? paymentTotal : '付款记录暂不可读取',
+    ),
+  ]);
   return sections;
 }

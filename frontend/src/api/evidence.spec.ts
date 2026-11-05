@@ -63,6 +63,13 @@ describe('evidence API', () => {
     );
     expect(http.getJson).toHaveBeenCalledWith(
       '/evidence/sources/CASE/case-new/group',
+      {},
+    );
+    const signal = new AbortController().signal;
+    await getEvidenceSourceGroup('CASE', 'case-new', { signal });
+    expect(http.getJson).toHaveBeenLastCalledWith(
+      '/evidence/sources/CASE/case-new/group',
+      { signal },
     );
     expect(http.requestJson).not.toHaveBeenCalled();
   });

@@ -76,21 +76,24 @@ function displayCount(metric: CalendarMetric | undefined): string {
 .calendar-statistics-cards {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: var(--s-4);
-  margin: 0 0 var(--s-4);
+  gap: 8px;
+  margin: 0 0 8px;
 }
 .calendar-statistics-cards > div {
-  padding: var(--s-4);
+  min-width: 0;
+  min-height: 68px;
+  padding: 8px 10px;
   border: 1px solid var(--color-hairline);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--color-surface-1);
 }
 .calendar-statistics-cards dt {
+  font-size: 12px;
   color: var(--color-ink-muted);
 }
 .calendar-statistics-cards dd {
-  margin: var(--s-3) 0 0;
-  font: 600 24px/1.3 var(--font-mono);
+  margin: 4px 0 0;
+  font: 600 18px/1.35 var(--font-mono);
   color: var(--color-ink);
   overflow-wrap: anywhere;
 }

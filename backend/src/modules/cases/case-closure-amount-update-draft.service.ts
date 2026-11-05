@@ -128,10 +128,7 @@ export class CaseClosureAmountUpdateDraftService {
               },
             });
             if (!c) throw new NotFoundException({ code: 'CASE_NOT_FOUND' });
-            if (
-              c.responsibleUserId !== actor.userId ||
-              c.consolidationMembership?.isMain === false
-            )
+            if (c.consolidationMembership?.isMain === false)
               throw new ForbiddenException({ code: 'ACTION_FORBIDDEN' });
             await this.access.authorizeCase(
               actor,
@@ -145,6 +142,12 @@ export class CaseClosureAmountUpdateDraftService {
               },
               tx,
             );
+            if (c.responsibleUserId !== actor.userId)
+              await this.access.authorizeDepartmentAction(
+                actor,
+                'case.closure.settlement.update',
+                tx,
+              );
             const receipts = await tx.$queryRawUnsafe<Receipt[]>(
               `SELECT r.case_id,r.request_fingerprint,r.closure_version_id,r.terms_version,
             r.assessment_version_id,r.audit_event_id,r.result_snapshot,
@@ -288,6 +291,23 @@ export class CaseClosureAmountUpdateDraftService {
               result.change.auditEventId,
               JSON.stringify(result),
             );
+            if (c.responsibleUserId !== actor.userId)
+              await tx.auditEvent.create({
+                data: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  internalActorUserId: actor.userId,
+                  resourceType: 'CASE',
+                  resourceId: caseId,
+                  action: 'case.proxy.applied',
+                  details: {
+                    responsibleUserId: c.responsibleUserId,
+                    action: 'case.closure.settlement.update',
+                    scope: 'DEPARTMENT',
+                    requestFingerprint: fingerprint,
+                  },
+                },
+              });
             await tx.$executeRawUnsafe('SET CONSTRAINTS ALL IMMEDIATE');
             return result;
           },

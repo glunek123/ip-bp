@@ -404,10 +404,56 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.reports-page {
+  display: grid;
+  gap: 12px;
+  padding: 12px 16px;
+  font-size: 13px;
+}
+.reports-page > .page-head {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
+  margin: 0;
+}
+.reports-page h1 {
+  margin: 0;
+  font-size: 20px;
+}
+.reports-subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+.reports-view-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.reports-view-picker select {
+  min-height: var(--app-control-height);
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 13px;
+}
+.reports-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 8px;
+  margin-left: auto;
+}
+.reports-export p {
+  flex-basis: 100%;
+  text-align: right;
+}
 .reports-kpis,
 .reports-distributions {
   display: grid;
-  gap: var(--s-4);
+  gap: 12px;
 }
 .reports-kpis {
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -416,14 +462,19 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .reports-card {
-  padding: var(--s-5);
+  min-width: 0;
+  padding: 12px;
   border: 1px solid var(--color-hairline);
   background: var(--color-surface-1);
 }
 .reports-card h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 14px;
   color: var(--color-ink);
+}
+.reports-card p {
+  margin: 8px 0 0;
+  font-size: 13px;
 }
 .reports-card p,
 .reports-subtitle,
@@ -432,28 +483,37 @@ onBeforeUnmount(() => {
   color: var(--color-ink-muted);
 }
 .reports-definition {
-  margin-block: var(--s-4);
+  margin: 0;
+  font-size: 12px;
 }
 .reports-definition summary {
   width: fit-content;
   cursor: pointer;
 }
 .reports-definition p {
-  margin-block: var(--s-2);
+  margin: 6px 0 0;
 }
 .reports-export p {
-  margin-block: var(--s-2) 0;
-  font-size: 0.875rem;
+  margin: 0;
+  font-size: 12px;
 }
 @media (max-width: 1100px) {
   .reports-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+@media (max-width: 760px) {
+  .reports-page {
+    padding: 10px 12px;
+  }
+}
 @media (max-width: 640px) {
   .reports-kpis,
   .reports-distributions {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .reports-export {
+    margin-left: 0;
   }
 }
 </style>

@@ -19,6 +19,7 @@ import {
 import { todayShanghai } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
 import { previewSettlement, roundManualSettlement } from './settlement-preview';
+import type { CaseActualSummary } from './case-actual-summary';
 import {
   loadFinancialPending,
   storeFinancialPending,
@@ -32,6 +33,8 @@ const props = withDefaults(
     closureVersionId?: string | null;
     canUpdate?: boolean;
     canLaunch?: boolean;
+    showBothSummaries?: boolean;
+    actualSummary?: CaseActualSummary;
   }>(),
   { canUpdate: false, canLaunch: false },
 );
@@ -110,6 +113,38 @@ const manual = computed(() => {
     return true;
   }
 });
+function actualText(kind: 'customer' | 'lawyer'): string {
+  const summary = props.actualSummary;
+  if (!summary) return '未取得授权实际登记';
+  if (summary.state === 'READY') {
+    const scope = summary.scope === 'CONSOLIDATION' ? '（主案来源分配）' : '';
+    if (kind === 'customer')
+      return summary.customerReceiptState === 'RECORDED'
+        ? `${summary.customerReceivedAmount} 元${scope}`
+        : '未记录';
+    return summary.lawyerInvoiceState === 'RECORDED'
+      ? `${summary.lawyerInvoicedAmount} 元${scope}`
+      : '未记录';
+  }
+  return {
+    UNAVAILABLE: '未取得授权实际登记',
+    LOADING: '正在读取',
+    DENIED: '无权读取',
+    ERROR: '读取失败',
+  }[summary.state];
+}
+function settlementCondition(summarySide: SettlementSide): string {
+  const terms = detail.value?.terms;
+  if (!terms) return '未记录';
+  if (summarySide === 'CUSTOMER') return terms.customerFormula ?? '未记录';
+  if (!terms.lawyerMode) return '未记录';
+  const label = {
+    FULL_RISK: '全风险',
+    HALF_RISK: '半风险',
+    FIXED_FEE: '固定费用',
+  }[terms.lawyerMode];
+  return `${label} · 基础费 ${terms.lawyerBaseFee ?? '待定'} 元 · 分成 ${terms.lawyerSplitPercent ?? '待定'}%`;
+}
 function message(cause: unknown): string {
   return cause instanceof ApiError
     ? cause.message
@@ -372,175 +407,239 @@ async function launch(): Promise<void> {
       <p class="case-settlement__identity">
         {{ detail.businessNo }} · {{ detail.customer.name }}
       </p>
-      <div class="operation-bar" role="tablist" aria-label="结算侧别">
-        <ElButton
-          role="tab"
-          class="action-size--standard"
-          :aria-selected="side === 'CUSTOMER'"
-          :disabled="uncertain || saving"
-          @click="side = 'CUSTOMER'"
-          >客户结算</ElButton
-        ><ElButton
-          role="tab"
-          class="action-size--standard"
-          :aria-selected="side === 'LAWYER'"
-          :disabled="uncertain || saving"
-          @click="side = 'LAWYER'"
-          >律师结算</ElButton
+      <div v-if="props.showBothSummaries" class="case-settlement__summary-pair">
+        <section
+          v-for="summarySide in ['CUSTOMER', 'LAWYER'] as const"
+          :key="summarySide"
+          :aria-label="
+            summarySide === 'CUSTOMER' ? '客户结算摘要' : '律师结算摘要'
+          "
         >
+          <h3>{{ summarySide === 'CUSTOMER' ? '客户结算' : '律师结算' }}</h3>
+          <p>
+            已发起
+            {{
+              detail.launches.filter((row) => row.side === summarySide).length
+            }}
+            次；已关联账单
+            {{
+              new Set(
+                detail.launches
+                  .filter(
+                    (row) => row.side === summarySide && row.billId !== null,
+                  )
+                  .map((row) => row.billId),
+              ).size
+            }}
+            张。
+          </p>
+          <p>
+            结算金额：{{
+              summarySide === 'CUSTOMER'
+                ? (detail.figures.customerAmount ?? '待定')
+                : (detail.figures.lawyerAmount ?? '待定')
+            }}
+            元
+          </p>
+          <p>结算条件：{{ settlementCondition(summarySide) }}</p>
+          <p>
+            最近真实发起：{{
+              detail.launches
+                .filter((row) => row.side === summarySide)
+                .sort((a, b) => b.launchDate.localeCompare(a.launchDate))[0]
+                ?.launchDate ?? '未记录'
+            }}
+          </p>
+          <p>
+            {{
+              summarySide === 'CUSTOMER'
+                ? `客户实际收款：${actualText('customer')}；客户开票：未记录`
+                : `律师开票：${actualText('lawyer')}；律师实付：未记录`
+            }}
+          </p>
+        </section>
       </div>
-      <div class="case-settlement__summary">
-        <p>
-          结案基数：{{ detail.figures.basis ?? '待定' }} 元；当前保存金额：{{
-            amount ?? '待定'
-          }}
-          元。
-        </p>
-        <p>
-          已发起：{{ balance?.launched }} 元；可发起余额：{{
-            balance?.remaining ?? '待定'
-          }}
-          元。
-        </p>
-      </div>
-      <p v-if="balance?.overLaunched" role="alert">
-        当前保存金额低于历史已发起额。历史记录保留，当前不能继续发起。
-      </p>
-      <form
-        v-if="props.canUpdate"
-        class="case-settlement__form case-settlement__terms"
-        @submit.prevent="saveTerms"
+      <details
+        class="case-settlement__operations"
+        :open="!props.showBothSummaries"
       >
-        <label v-if="side === 'CUSTOMER'"
-          >结算条件<ElInput
-            v-model="formula"
+        <summary>编辑条件、发起结算与查看完整历史</summary>
+        <div class="operation-bar" role="tablist" aria-label="结算侧别">
+          <ElButton
+            role="tab"
+            class="action-size--standard"
+            :aria-selected="side === 'CUSTOMER'"
             :disabled="uncertain || saving"
-            placeholder="客户结算金额=结案金额×70%"
-        /></label>
-        <template v-else>
-          <label
-            >律师结算模式<ElSelect
-              v-model="mode"
+            @click="side = 'CUSTOMER'"
+            >客户结算</ElButton
+          ><ElButton
+            role="tab"
+            class="action-size--standard"
+            :aria-selected="side === 'LAWYER'"
+            :disabled="uncertain || saving"
+            @click="side = 'LAWYER'"
+            >律师结算</ElButton
+          >
+        </div>
+        <div class="case-settlement__summary">
+          <p>
+            结案基数：{{ detail.figures.basis ?? '待定' }} 元；当前保存金额：{{
+              amount ?? '待定'
+            }}
+            元。
+          </p>
+          <p>
+            已发起：{{ balance?.launched }} 元；可发起余额：{{
+              balance?.remaining ?? '待定'
+            }}
+            元。
+          </p>
+        </div>
+        <p v-if="balance?.overLaunched" role="alert">
+          当前保存金额低于历史已发起额。历史记录保留，当前不能继续发起。
+        </p>
+        <form
+          v-if="props.canUpdate"
+          class="case-settlement__form case-settlement__terms"
+          @submit.prevent="saveTerms"
+        >
+          <label v-if="side === 'CUSTOMER'"
+            >结算条件<ElInput
+              v-model="formula"
               :disabled="uncertain || saving"
-              ><ElOption value="FULL_RISK" label="全风险" /><ElOption
-                value="HALF_RISK"
-                label="半风险" /><ElOption
-                value="FIXED_FEE"
-                label="固定费用" /></ElSelect
+              placeholder="客户结算金额=结案金额×70%"
+          /></label>
+          <template v-else>
+            <label
+              >律师结算模式<ElSelect
+                v-model="mode"
+                :disabled="uncertain || saving"
+                ><ElOption value="FULL_RISK" label="全风险" /><ElOption
+                  value="HALF_RISK"
+                  label="半风险" /><ElOption
+                  value="FIXED_FEE"
+                  label="固定费用" /></ElSelect
+            ></label>
+            <label
+              >基础费（元）<ElInput
+                v-model="baseFee"
+                inputmode="decimal"
+                :disabled="mode === 'FULL_RISK' || uncertain || saving"
+            /></label>
+            <label
+              >分成比例（%）<ElInput
+                v-model="split"
+                inputmode="decimal"
+                :disabled="mode === 'FIXED_FEE' || uncertain || saving"
+            /></label>
+          </template>
+          <label
+            >{{ side === 'CUSTOMER' ? '客户' : '律师' }}结算金额（元）<ElInput
+              v-model="draftAmount"
+              inputmode="decimal"
+              :disabled="uncertain || saving"
+              placeholder="待定，可手工填写"
+          /></label>
+          <p v-if="preview.error" role="alert">{{ preview.error }}</p>
+          <p v-else>
+            试算金额：{{ preview.amount ?? '待定' }} 元；{{
+              manual ? '将按手工调整值保存' : '按公式自动计算'
+            }}。修改条款后自动重新试算。
+          </p>
+          <ElButton
+            native-type="submit"
+            class="action-size--wide"
+            :disabled="saving || unknownLaunch || !!preview.error"
+            >{{
+              unknownTerms ? '用原请求重试保存' : '保存本案结算条件'
+            }}</ElButton
+          >
+        </form>
+        <form
+          v-if="canLaunch || unknownLaunch"
+          class="case-settlement__form case-settlement__launch"
+          @submit.prevent="launch"
+        >
+          <h3>
+            发起第 {{ nextNth }} 次{{
+              side === 'CUSTOMER' ? '客户' : '律师'
+            }}结算
+          </h3>
+          <label v-if="side === 'LAWYER'"
+            >结算律师<ElSelect
+              v-model="lawyerId"
+              :disabled="uncertain || saving"
+              ><ElOption
+                v-for="lawyer in detail.lawyers"
+                :key="lawyer.id"
+                :value="lawyer.id"
+                :label="
+                  lawyer.name + (lawyer.firm ? ' / ' + lawyer.firm : '')
+                " /></ElSelect
           ></label>
           <label
-            >基础费（元）<ElInput
-              v-model="baseFee"
+            >本次金额（元）<ElInput
+              v-model="launchAmount"
               inputmode="decimal"
-              :disabled="mode === 'FULL_RISK' || uncertain || saving"
+              :disabled="uncertain || saving" /></label
+          ><label
+            >发起日期<ElInput
+              v-model="launchDate"
+              type="date"
+              :disabled="uncertain || saving" /></label
+          ><label
+            >备注<ElInput
+              v-model="launchNote"
+              :maxlength="500"
+              :disabled="uncertain || saving"
           /></label>
-          <label
-            >分成比例（%）<ElInput
-              v-model="split"
-              inputmode="decimal"
-              :disabled="mode === 'FIXED_FEE' || uncertain || saving"
-          /></label>
-        </template>
-        <label
-          >{{ side === 'CUSTOMER' ? '客户' : '律师' }}结算金额（元）<ElInput
-            v-model="draftAmount"
-            inputmode="decimal"
-            :disabled="uncertain || saving"
-            placeholder="待定，可手工填写"
-        /></label>
-        <p v-if="preview.error" role="alert">{{ preview.error }}</p>
-        <p v-else>
-          试算金额：{{ preview.amount ?? '待定' }} 元；{{
-            manual ? '将按手工调整值保存' : '按公式自动计算'
-          }}。修改条款后自动重新试算。
+          <ElButton
+            native-type="submit"
+            class="action-size--wide"
+            :disabled="
+              saving || unknownTerms || (side === 'LAWYER' && !lawyerId)
+            "
+            >{{ unknownLaunch ? '用原请求重试发起' : '发起结算' }}</ElButton
+          >
+        </form>
+        <p v-else-if="!props.canLaunch">当前账号没有发起结算权限。</p>
+        <p v-else-if="detail.stage !== 'WAITING_ARCHIVE'">
+          当前案件阶段不可发起结算。
         </p>
-        <ElButton
-          native-type="submit"
-          class="action-size--wide"
-          :disabled="saving || unknownLaunch || !!preview.error"
-          >{{
-            unknownTerms ? '用原请求重试保存' : '保存本案结算条件'
-          }}</ElButton
-        >
-      </form>
-      <form
-        v-if="canLaunch || unknownLaunch"
-        class="case-settlement__form case-settlement__launch"
-        @submit.prevent="launch"
-      >
-        <h3>
-          发起第 {{ nextNth }} 次{{ side === 'CUSTOMER' ? '客户' : '律师' }}结算
-        </h3>
-        <label v-if="side === 'LAWYER'"
-          >结算律师<ElSelect v-model="lawyerId" :disabled="uncertain || saving"
-            ><ElOption
-              v-for="lawyer in detail.lawyers"
-              :key="lawyer.id"
-              :value="lawyer.id"
-              :label="
-                lawyer.name + (lawyer.firm ? ' / ' + lawyer.firm : '')
-              " /></ElSelect
-        ></label>
-        <label
-          >本次金额（元）<ElInput
-            v-model="launchAmount"
-            inputmode="decimal"
-            :disabled="uncertain || saving" /></label
-        ><label
-          >发起日期<ElInput
-            v-model="launchDate"
-            type="date"
-            :disabled="uncertain || saving" /></label
-        ><label
-          >备注<ElInput
-            v-model="launchNote"
-            :maxlength="500"
-            :disabled="uncertain || saving"
-        /></label>
-        <ElButton
-          native-type="submit"
-          class="action-size--wide"
-          :disabled="saving || unknownTerms || (side === 'LAWYER' && !lawyerId)"
-          >{{ unknownLaunch ? '用原请求重试发起' : '发起结算' }}</ElButton
-        >
-      </form>
-      <p v-else-if="!props.canLaunch">当前账号没有发起结算权限。</p>
-      <p v-else-if="detail.stage !== 'WAITING_ARCHIVE'">
-        当前案件阶段不可发起结算。
-      </p>
-      <p v-else-if="side === 'LAWYER' && detail.lawyers.length === 0">
-        当前案件没有有效主办律师，请先完成律师匹配。
-      </p>
-      <p v-else>结算条件待补全，或当前余额已发起完毕。</p>
-      <p v-if="uncertain" role="alert">
-        操作结果尚未确认。请使用原请求重试，核对结果后继续编辑。
-      </p>
-      <p v-if="error" role="alert">{{ error }}</p>
-      <p v-if="notice" role="status">{{ notice }}</p>
-      <h3>发起记录</h3>
-      <p v-if="sideLaunches.length === 0">暂无发起记录</p>
-      <div v-else class="case-settlement__table">
-        <table>
-          <thead>
-            <tr>
-              <th>次数</th>
-              <th>发起日期</th>
-              <th>金额（元）</th>
-              <th>账单</th>
-              <th>备注</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in sideLaunches" :key="row.id">
-              <td>{{ row.nth }}</td>
-              <td>{{ row.launchDate }}</td>
-              <td class="money">{{ row.amount }}</td>
-              <td>{{ row.billId ? '已入单' : '未入单' }}</td>
-              <td>{{ row.note ?? '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        <p v-else-if="side === 'LAWYER' && detail.lawyers.length === 0">
+          当前案件没有有效主办律师，请先完成律师匹配。
+        </p>
+        <p v-else>结算条件待补全，或当前余额已发起完毕。</p>
+        <p v-if="uncertain" role="alert">
+          操作结果尚未确认。请使用原请求重试，核对结果后继续编辑。
+        </p>
+        <p v-if="error" role="alert">{{ error }}</p>
+        <p v-if="notice" role="status">{{ notice }}</p>
+        <h3>发起记录</h3>
+        <p v-if="sideLaunches.length === 0">暂无发起记录</p>
+        <div v-else class="case-settlement__table">
+          <table>
+            <thead>
+              <tr>
+                <th>次数</th>
+                <th>发起日期</th>
+                <th>金额（元）</th>
+                <th>账单</th>
+                <th>备注</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in sideLaunches" :key="row.id">
+                <td>{{ row.nth }}</td>
+                <td>{{ row.launchDate }}</td>
+                <td class="money">{{ row.amount }}</td>
+                <td>{{ row.billId ? '已入单' : '未入单' }}</td>
+                <td>{{ row.note ?? '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
     </template>
   </section>
 </template>
@@ -551,6 +650,36 @@ async function launch(): Promise<void> {
   min-width: 0;
   padding: 0;
   color: var(--color-ink);
+}
+.case-settlement__summary-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.case-settlement__summary-pair > section {
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-hairline);
+}
+.case-settlement__summary-pair h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.case-settlement__summary-pair p {
+  margin: 0;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--color-hairline);
+  overflow-wrap: anywhere;
+}
+.case-settlement__operations > summary {
+  cursor: pointer;
+  color: var(--color-primary);
+  padding: 8px 0;
+}
+@media (max-width: 767px) {
+  .case-settlement__summary-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .case-settlement__heading {
   display: flex;
