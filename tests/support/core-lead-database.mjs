@@ -533,8 +533,16 @@ async function clearDatabase() {
     'case_filing_versions',
     'case_filing_receipts',
     'case_acceptances',
+    'case_acceptance_receipts',
+    'case_acceptance_versions',
     'case_trial_rounds',
     'case_supplement_entries',
+    'fee_records',
+    'evidence_audit_events',
+    'evidence_command_receipts',
+    'evidence_items',
+    'evidence_paper_certificates',
+    'evidence_group_versions',
     'customer_draft_lifecycle_facts',
     'customer_draft_lifecycle_receipts',
     'customer_maintenance_facts',
@@ -592,6 +600,12 @@ async function clearDatabase() {
       where: { departmentId: { in: departmentIds } },
       data: { currentAcceptanceId: null, currentTrialRoundId: null },
     });
+    await transaction.caseAcceptanceReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseAcceptanceVersion.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
     await transaction.caseAcceptance.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
@@ -599,6 +613,24 @@ async function clearDatabase() {
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.caseTrialRound.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.feeRecord.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.evidenceCommandReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.evidenceAuditEvent.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.evidenceItem.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.evidencePaperCertificate.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.evidenceGroupVersion.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.case.deleteMany({
@@ -748,8 +780,22 @@ async function clearDatabase() {
   await database.material.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
-  await database.auditEvent.deleteMany({
-    where: { departmentId: { in: departmentIds } },
+  await database.$transaction(async (transaction) => {
+    const guards = [
+      'financial_audit_receipt_immutable',
+      'case_acceptance_audit_immutable',
+    ];
+    for (const guard of guards)
+      await transaction.$executeRawUnsafe(
+        `ALTER TABLE "audit_events" DISABLE TRIGGER "${guard}"`,
+      );
+    await transaction.auditEvent.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    for (const guard of [...guards].reverse())
+      await transaction.$executeRawUnsafe(
+        `ALTER TABLE "audit_events" ENABLE TRIGGER "${guard}"`,
+      );
   });
   await database.rightsHolderCommandReceipt.deleteMany({
     where: { departmentId: { in: departmentIds } },
@@ -822,6 +868,9 @@ async function clearDatabase() {
     });
     await transaction.customerContact.deleteMany({
       where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerDailyNumberCounter.deleteMany({
+      where: { customer: { departmentId: { in: departmentIds } } },
     });
     await transaction.$executeRawUnsafe(
       'ALTER TABLE "customer_contact_command_receipts" ENABLE TRIGGER USER',
@@ -907,6 +956,17 @@ export async function resetCoreLeadE2eData() {
   await clearDatabase();
   await clearPrivateBytes();
   await seedCoreLeadE2eData();
+}
+
+export async function countCaseFixtureFees(caseId) {
+  return database.feeRecord.count({
+    where: {
+      caseId,
+      departmentId: {
+        in: [coreLeadFixtures.departmentA, coreLeadFixtures.departmentB],
+      },
+    },
+  });
 }
 
 export async function seedCoreLeadE2eData({ reuseExisting = false } = {}) {

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import {
+  countCaseFixtureFees,
   coreLeadFixtures,
   resetCoreLeadE2eData,
 } from '../support/core-lead-database.mjs';
@@ -301,4 +302,11 @@ test('supplement notice is round-bound, append-only and idempotent without chang
       linked: true,
     }),
   );
+  await test.step('preparation repeats after API-created automatic fees', async () => {
+    expect(await countCaseFixtureFees(source.caseId)).toBeGreaterThan(0);
+    await resetCoreLeadE2eData();
+    expect(await countCaseFixtureFees(source.caseId)).toBe(0);
+    const removed = await request.get(casePath, { headers: owner });
+    expect(removed.status()).toBe(404);
+  });
 });

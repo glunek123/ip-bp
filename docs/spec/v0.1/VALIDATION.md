@@ -1,3 +1,15 @@
+# 2026-11-05 定向补录 E2E 准备修复
+
+基线main `4a29d24e`，独立修复分支 `codex/fix-case-supplement-e2e-20261105`；只改CORE测试夹具、其类型声明及补录E2E回归，生产源码、279项正式迁移和原手测环境不变。本节更新下方历史“清理受阻”的指定用例状态，保留原失败，不追认整套E2E通过。
+
+- **RED**：新增“来源链真实API产生自动费用后再次准备”断言，原补录断言均执行后，在再次reset时复现费用外键错误。随后核对并补齐同链受理回执／版本、证物依赖、受保护审计及客户每日编号的清理；各次中间失败、trace及一次未匹配用例的选择错误均保留，未计为通过。
+- **最终实际通过**：`pnpm test:e2e tests/e2e/case-supplement-workspace.spec.ts --reporter=line`，1 passed（18.2s），含来源轮次绑定、同key重放、异body409、错误轮次400、跨部门拒绝、阶段／版本／归档不变、上传原因及精确材料关联，以及费用大于0后重新准备至0和旧案404。证据 `verified.log`、`verified-result.json`。
+- **相邻实际通过**：`pnpm test:e2e tests/e2e/case-filing-database.spec.ts --grep "formal API source chain files one case" --reporter=line`，1 passed（13.9s）；验证共用准备helper的真实立案来源链及精确材料不泄露。证据 `filing-verified.log`、`filing-verified-result.json`。
+- **相关静态与审查**：3个改动文件Lint、根测试TypeScript、格式检查通过；helper后续修改补定向Lint／格式，未变化类型输入复用。独立只读审查Spec／Quality ACCEPTED、C0/I0/M0；审查结论与实际运行分开记录，未跑8000多项全套。
+- **环境与保护**：仅启动原标准测试容器，核对 `127.0.0.1:15433/dev_cor_test`／OID16384。该tmpfs库重启后实际0表，先恢复279项正式迁移，再在确认0客户／0案件／0账号及编号-1后做基础设施初始化；没有重建原手测库。清理仍限原两夹具部门；审计只在事务内临时禁用 `financial_audit_receipt_immutable` 与 `case_acceptance_audit_immutable` 两枚，结束恢复。后核67个相关触发器均O、279项迁移checksum与源码一致、原194份验收文件哈希未变，原手测容器未启动。证据 `empty-test-initialization.json`、`postflight.json`。
+
+全部新证据位于本机 `.local/case-supplement-e2e-fix-20261105/`；修复尚未推送或合入main。当前实际补录与立案链未发现新业务缺陷，未改业务实现；整套数据库E2E及其他阶段不因这2项通过而自动标绿。不完整合成PDF仍是旧样本限制，未在本轮改写。
+
 # 2026-11-05 main 集成核验
 
 用户已确认本批结果并授权推送、合并，暂不部署。[PR #1](https://github.com/glunek123/ip-bp/pull/1) 采用保留提交历史的merge方式完成；原main `08139d224328ebb745e09b44476c8c9dd6d95114`、候选 `845b6955346cc2bc6e24349f702af3e37be6e8f9`、合并提交 `ef90a308c05f5e5be0485b443469dd6faba7d2a9`。合并tree `835951b680b7e4048f9d450ec9788defb385ba33` 与候选相同，没有新代码组合或冲突；11项原提交及全部既有优化保留。其后只补记实际集成状态和快照，不改变代码、测试、迁移、权限或运行输入。
