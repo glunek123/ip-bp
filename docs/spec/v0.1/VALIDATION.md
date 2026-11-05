@@ -8,7 +8,7 @@
 - **相关静态与审查**：3个改动文件Lint、根测试TypeScript、格式检查通过；helper后续修改补定向Lint／格式，未变化类型输入复用。独立只读审查Spec／Quality ACCEPTED、C0/I0/M0；审查结论与实际运行分开记录，未跑8000多项全套。
 - **环境与保护**：仅启动原标准测试容器，核对 `127.0.0.1:15433/dev_cor_test`／OID16384。该tmpfs库重启后实际0表，先恢复279项正式迁移，再在确认0客户／0案件／0账号及编号-1后做基础设施初始化；没有重建原手测库。清理仍限原两夹具部门；审计只在事务内临时禁用 `financial_audit_receipt_immutable` 与 `case_acceptance_audit_immutable` 两枚，结束恢复。后核67个相关触发器均O、279项迁移checksum与源码一致、原194份验收文件哈希未变，原手测容器未启动。证据 `empty-test-initialization.json`、`postflight.json`。
 
-全部新证据位于本机 `.local/case-supplement-e2e-fix-20261105/`；修复尚未推送或合入main。当前实际补录与立案链未发现新业务缺陷，未改业务实现；整套数据库E2E及其他阶段不因这2项通过而自动标绿。不完整合成PDF仍是旧样本限制，未在本轮改写。
+全部新证据位于本机 `.local/case-supplement-e2e-fix-20261105/`。修复候选 `86c8ee0678af63ec766705986419424271e2b14c` 已经 [PR #2](https://github.com/glunek123/ip-bp/pull/2) 合并，提交 `b91223b87936e48e13e4e13d3d4aa55893d51faa` 的tree `01e39836e91be9a3550fd528a875ec7c953fb099` 与候选相同；之后仅补记集成状态及快照。远端CodeRabbit仍为SKIPPED，不算新增审查通过，本节审查结论来自实际独立只读审查。当前实际补录与立案链未发现新业务缺陷，未改业务实现；整套数据库E2E及其他阶段不因这2项通过而自动标绿。不完整合成PDF仍是旧样本限制，未在本轮改写。未部署。
 
 # 2026-11-05 main 集成核验
 
