@@ -247,12 +247,17 @@ END; $$;
 CREATE FUNCTION validate_litigation_refund_command() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE p case_litigation_refund_commands%ROWTYPE; v case_refund_inventory_versions%ROWTYPE;
  prior case_refund_inventory_versions%ROWTYPE; prior_count bigint; next_count bigint;
- m case_litigation_refund_item_meta%ROWTYPE;
+ m case_litigation_refund_item_meta%ROWTYPE; target_item case_refund_inventory_items%ROWTYPE;
+ target_amount numeric(16,2);
 BEGIN
  SELECT * INTO p FROM case_litigation_refund_commands WHERE id=NEW.id;
  SELECT * INTO v FROM case_refund_inventory_versions WHERE id=p.inventory_version_id;
  SELECT * INTO prior FROM case_refund_inventory_versions WHERE id=p.prior_version_id;
  SELECT * INTO m FROM case_litigation_refund_item_meta WHERE inventory_version_id=v.id AND item_id=p.item_id;
+ SELECT * INTO target_item FROM case_refund_inventory_items
+  WHERE inventory_version_id=v.id AND item_id=p.item_id;
+ SELECT amount INTO target_amount FROM case_refund_inventory_item_amounts
+  WHERE inventory_version_id=v.id AND item_id=p.item_id;
  IF v.id IS NULL
   OR NOT EXISTS (SELECT 1 FROM case_litigation_refund_commands x
       WHERE x.id=p.id AND x.xmin=pg_current_xact_id()::text::xid)
@@ -275,6 +280,22 @@ BEGIN
   OR p.result_snapshot#>>'{item,itemId}' IS DISTINCT FROM p.item_id::text
   OR p.result_snapshot#>>'{item,inventoryVersionId}' IS DISTINCT FROM v.id::text
  THEN RAISE EXCEPTION 'litigation refund command is incomplete' USING ERRCODE='23514'; END IF;
+ -- The replayed row must seal the exact persisted financial fact. Display
+ -- labels may be refreshed by later case edits; they are not money evidence.
+ IF target_item.item_id IS NULL
+  OR p.result_snapshot#>>'{item,caseId}' IS DISTINCT FROM p.case_id::text
+  OR p.result_snapshot#>>'{item,party}' IS DISTINCT FROM target_item.party
+  OR p.result_snapshot#>>'{item,status}' IS DISTINCT FROM target_item.status
+  OR p.result_snapshot#>>'{item,description}' IS DISTINCT FROM target_item.description
+  OR p.result_snapshot#>>'{item,amount}' IS DISTINCT FROM target_amount::text
+  OR p.result_snapshot#>>'{item,remark}' IS DISTINCT FROM m.remark
+  OR (m.source_type IS NULL AND jsonb_typeof(p.result_snapshot#>'{item,source}') IS DISTINCT FROM 'null')
+  OR (m.source_type IS NOT NULL AND (
+    jsonb_typeof(p.result_snapshot#>'{item,source}') IS DISTINCT FROM 'object'
+    OR p.result_snapshot#>>'{item,source,type}' IS DISTINCT FROM m.source_type
+    OR p.result_snapshot#>>'{item,source,id}' IS DISTINCT FROM m.source_id::text
+    OR p.result_snapshot#>>'{item,source,trialRoundId}' IS DISTINCT FROM m.trial_round_id::text))
+ THEN RAISE EXCEPTION 'litigation refund replay differs from persisted item' USING ERRCODE='23514'; END IF;
  SELECT count(*) INTO next_count FROM case_refund_inventory_items WHERE inventory_version_id=v.id;
  SELECT count(*) INTO prior_count FROM case_refund_inventory_items WHERE inventory_version_id=prior.id;
  IF p.kind='REGISTER' AND (next_count<>prior_count+1 OR

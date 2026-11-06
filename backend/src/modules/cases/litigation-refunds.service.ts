@@ -210,7 +210,7 @@ export class LitigationRefundsService {
 
   private async can(
     actor: ActorContext,
-    action: 'case.refund.record' | 'case.refund.follow',
+    action: 'case.read' | 'case.refund.record' | 'case.refund.follow',
     record: { responsibleUserId: string; departmentId: string },
     tx: Prisma.TransactionClient,
   ): Promise<boolean> {
@@ -225,7 +225,6 @@ export class LitigationRefundsService {
 
   private async readAuthority(actor: ActorContext, tx: Prisma.TransactionClient) {
     await this.internal(actor, tx);
-    await this.access.authorizeDepartmentAction(actor, 'case.read', tx);
     await this.access.authorizeDepartmentAction(actor, 'case.refund.read', tx);
   }
 
@@ -241,8 +240,9 @@ export class LitigationRefundsService {
           throw caught;
         }
       };
-      const read = (await capability('case.read')) && (await capability('case.refund.read'));
       const facts = { responsibleUserId: actor.userId, departmentId: actor.departmentId };
+      const read = (await capability('case.refund.read')) &&
+        (await this.can(actor, 'case.read', facts, tx));
       return {
         read,
         record: read && (await this.can(actor, 'case.refund.record', facts, tx)),
@@ -305,12 +305,8 @@ export class LitigationRefundsService {
           FROM chain child
           JOIN case_refund_inventory_versions parent ON parent.id=child.prior_version_id
           JOIN case_refund_inventory_items i ON i.inventory_version_id=parent.id
-            AND i.item_id=${item.itemId}::uuid AND i.party=${item.party}
-            AND i.description=${item.description}
-          LEFT JOIN case_refund_inventory_item_amounts a
-            ON a.inventory_version_id=parent.id AND a.item_id=i.item_id
+            AND i.item_id=${item.itemId}::uuid
           WHERE parent.case_id=${caseId}::uuid AND parent.department_id=${actor.departmentId}::uuid
-            AND a.amount IS NOT DISTINCT FROM ${item.amount}::numeric
         )
         SELECT m.source_type AS "sourceType",m.source_id AS "sourceId",
           m.trial_round_id AS "trialRoundId",m.remark
@@ -334,12 +330,8 @@ export class LitigationRefundsService {
           FROM chain child
           JOIN case_refund_inventory_versions parent ON parent.id=child.prior_version_id
           JOIN case_refund_inventory_items i ON i.inventory_version_id=parent.id
-            AND i.item_id=${item.itemId}::uuid AND i.party=${item.party}
-            AND i.description=${item.description}
-          LEFT JOIN case_refund_inventory_item_amounts a
-            ON a.inventory_version_id=parent.id AND a.item_id=i.item_id
+            AND i.item_id=${item.itemId}::uuid
           WHERE parent.case_id=${caseId}::uuid AND parent.department_id=${actor.departmentId}::uuid
-            AND a.amount IS NOT DISTINCT FROM ${item.amount}::numeric
         )
         SELECT s.source_type AS "sourceType",s.source_id AS "sourceId"
         FROM case_supplement_entries s
@@ -444,6 +436,8 @@ export class LitigationRefundsService {
         ORDER BY case_id`;
       const rows: LitigationRefundRow[] = [];
       for (const headRef of heads) {
+        const record = await this.details(tx, actor, headRef.caseId);
+        if (!(await this.can(actor, 'case.read', record, tx))) continue;
         const workspace = await this.workspaceInTransaction(tx, actor, headRef.caseId);
         rows.push(...workspace.items);
       }
