@@ -800,7 +800,7 @@ onMounted(initialize);
   display: grid;
   gap: 4px;
 }
-.refund-panel__filters input,
+.refund-panel__filters input:not([type='checkbox']),
 .refund-panel__filters select,
 .refund-panel__modal select,
 .refund-panel__modal textarea {
@@ -834,8 +834,10 @@ onMounted(initialize);
   top: calc(100% + 4px);
   right: 0;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   min-width: 150px;
+  max-height: 296px;
+  overflow-y: auto;
   padding: 8px;
   border: 1px solid #dcdfe6;
   border-radius: 4px;
@@ -847,6 +849,18 @@ onMounted(initialize);
   align-items: center;
   gap: 6px;
   white-space: nowrap;
+}
+.refund-panel__columns input[type='checkbox'] {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  min-height: 16px;
+  flex: 0 0 16px;
+  padding: 0;
+}
+.refund-panel__columns button {
+  min-height: 28px;
+  padding: 3px 8px;
 }
 .refund-panel__filtered-total {
   margin: 0;
