@@ -1040,7 +1040,9 @@ test('enforces refund access scope and rolls back a failed command commit before
   ).toEqual(selfStorageBefore);
 
   const deniedFollow = {
-    expectedInventoryVersionId: sameDepartmentWorkspace.inventoryVersionId,
+    // Use a valid UUID so this negative probe reaches case-scope authorization
+    // before inventory-head comparison; no successful inventory write is made.
+    expectedInventoryVersionId: randomUUID(),
     status: 'SUBMITTED',
     remark: '非本人案件不得跟进',
     reason: 'SELF范围拒绝测试',
