@@ -87,7 +87,7 @@ const error = ref('');
 const notice = ref('');
 const selected = ref(new Set<string>());
 const modalRow = ref<RefundRow | null>(null);
-const modalOverlay = ref<HTMLElement | null>(null);
+const modalOverlay = ref<globalThis.HTMLElement | null>(null);
 const modalStatus = ref<RefundStatus>('UNKNOWN');
 const courtRefund = computed(() => modalRow.value?.party === 'COURT');
 const selectableStatuses = computed(() =>
@@ -159,7 +159,7 @@ async function load(): Promise<void> {
     if (
       current === loadRevision &&
       currentIdentity === identity.value &&
-      !(cause instanceof DOMException && cause.name === 'AbortError')
+      !(cause instanceof globalThis.DOMException && cause.name === 'AbortError')
     )
       error.value = message(cause);
   } finally {
@@ -240,8 +240,10 @@ function clearFilters(): void {
 }
 function togglePageSelection(checked: boolean): void {
   const next = new Set(selected.value);
-  for (const key of visibleKeys.value)
-    checked ? next.add(key) : next.delete(key);
+  for (const key of visibleKeys.value) {
+    if (checked) next.add(key);
+    else next.delete(key);
+  }
   selected.value = next;
 }
 function restoreDefaultColumns(): void {
@@ -383,12 +385,12 @@ async function exportAll(): Promise<void> {
   try {
     const file = await exportLitigationRefunds({ ...filters });
     if (requestIdentity !== identity.value) return;
-    const url = URL.createObjectURL(file.blob);
-    const link = document.createElement('a');
+    const url = globalThis.URL.createObjectURL(file.blob);
+    const link = globalThis.document.createElement('a');
     link.href = url;
     link.download = file.filename || '诉讼退费.xlsx';
     link.click();
-    URL.revokeObjectURL(url);
+    globalThis.URL.revokeObjectURL(url);
   } catch (cause) {
     if (requestIdentity === identity.value) error.value = message(cause);
   }
