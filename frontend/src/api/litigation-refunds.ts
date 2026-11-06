@@ -7,7 +7,7 @@ export const refundStatuses = [
   'RETURNED_UNSETTLED',
   'SETTLED',
   'RECEIVED',
-  'CANCELLED',
+  'CONVERTED_TO_COST',
 ] as const;
 export type RefundStatus = (typeof refundStatuses)[number];
 export type RefundParty = 'COURT' | 'DEFENDANT';

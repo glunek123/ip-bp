@@ -44,5 +44,7 @@ describe('litigation refunds API', () => {
   it('exposes the seven supported states', () => {
     expect(refundStatuses).toHaveLength(7);
     expect(refundStatuses).toContain('UNKNOWN');
+    expect(refundStatuses).toContain('CONVERTED_TO_COST');
+    expect(refundStatuses).not.toContain('CANCELLED');
   });
 });
