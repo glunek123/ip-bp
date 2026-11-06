@@ -17,6 +17,7 @@ import * as http from '../../api/http';
 import ActualPanel from './CaseSettlementActualPanel.vue';
 import CaseDetailsSections from './CaseDetailsSections.vue';
 const actualWorkspaceRead = vi.hoisted(() => vi.fn());
+const refundWorkspaceRead = vi.hoisted(() => vi.fn());
 const closureWorkspaceFixture = {
   readPurpose: 'DISPLAY_ONLY',
   caseId: 'case-1',
@@ -64,6 +65,12 @@ vi.mock('../../api/case-supplements', () => ({
   getCaseSupplementalWorkspace: vi.fn(async () => {
     throw new ApiError('补录无权', 403, 'FORBIDDEN');
   }),
+}));
+vi.mock('../../api/litigation-refunds', () => ({
+  getLitigationRefundWorkspace: refundWorkspaceRead,
+  getLitigationRefundRequest: vi.fn(),
+  recordLitigationRefund: vi.fn(),
+  correctLitigationRefund: vi.fn(),
 }));
 
 const api = vi.hoisted(() => ({
@@ -181,6 +188,22 @@ beforeEach(async () => {
   actualWorkspaceRead.mockResolvedValue(
     structuredClone(closureWorkspaceFixture),
   );
+  refundWorkspaceRead.mockResolvedValue({
+    caseId: 'case-1',
+    inventoryVersionId: null,
+    canRecord: true,
+    canFollow: false,
+    sources: [
+      {
+        type: 'JUDGMENT',
+        id: 'judgment-1',
+        trialRoundId: 'round-1',
+        label: '一审判决',
+        courtNo: null,
+      },
+    ],
+    items: [],
+  });
   api.getCaseRoutineProfile.mockResolvedValue({
     revision: 0,
     canEdit: false,
@@ -226,6 +249,14 @@ afterEach(async () => {
   await router.push('/health');
   await flushPromises();
   vi.unstubAllGlobals();
+});
+
+it('shows the case-local refund registration entry after the ordinary case read succeeds', async () => {
+  expect(wrapper!.find('[data-test="case-litigation-refunds"]').exists()).toBe(true);
+  expect(wrapper!.get('[data-test="refund-register-open"]').text()).toBe(
+    '登记退费事项',
+  );
+  expect(refundWorkspaceRead).toHaveBeenCalledWith('case-1');
 });
 
 it('keeps the supplement recovery actor stable while the authorization context advances', async () => {

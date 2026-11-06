@@ -51,6 +51,7 @@ import { caseListQueryKeys } from './case-list-query';
 import CaseDetailsSections from './CaseDetailsSections.vue';
 import CaseConsolidationTrace from './CaseConsolidationTrace.vue';
 import CaseWorkspaceFiles from './CaseWorkspaceFiles.vue';
+import CaseLitigationRefundPanel from './CaseLitigationRefundPanel.vue';
 import { listCaseFileCatalog, exportCaseFiles } from '../../api/case-files';
 import {
   getCaseClosureWorkspace,
@@ -2504,6 +2505,13 @@ onBeforeUnmount(() => {
           @view-timeline="viewTimeline"
           @supplement-changed="detailSourcesRevision += 1"
           @open-files="selectTab('files')"
+        />
+        <CaseLitigationRefundPanel
+          v-if="accessVerified && state === 'ready'"
+          :actor-key="secondInstanceActorKey"
+          :case-id="item.id"
+          :refresh-key="`${item.version}:${identity}:${detailSourcesRevision}`"
+          @refresh="detailSourcesRevision += 1"
         />
         <section
           class="demo-card demo-card--pad"
