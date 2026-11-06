@@ -8,7 +8,11 @@
 - **额外准备限制**：两项owner兼容回归初次均未到业务：律师用例的 `case.export` fixture映射缺失，最小补齐后该纵向用例已通过；旧标准补录用例的reset无法清理代理专项留下的完整执行／结案链（next-step外键），保留为BLOCKED，未改共享清理器或削弱原断言。本人附记的当前真实API证据覆盖本次新增授权边界，原轮次／材料reason／阶段不变断言仍以4eab前次1通过18.2s的未变输入证据为基线，不称本次标准补录命令通过。完整数据库E2E仍未运行。
 - **保护与交付边界**：旧194份验收文件哈希全部一致；无跟踪文件删除，不用D盘旧源码／旧包。当前新增验证只在标准隔离合成测试库，原手测库未启动。真实模型保持mock；旧无效合成PDF保留，不计预览通过。本节为本地受控UAT准备证据，目标数据库克隆／正式迁移、精确授权、切换与发布后页面核对须另有执行回执，不以本节替代。
 
-本轮证据 `.local/uat-explicit-proxy-20261106/`：`static.log`／`static-final.log`、`build.log`／`backend-final-build.log`、`migration-postflight.json`、`proxy-e2e.log`／`proxy-retest.log`／`targeted-final.log`、`owner-e2e.log`、`old-evidence-preserved.json`。目录含后续私有部署元数据，不整体公开上传。
+实际程序候选固定为 `5e3343b8f5eed006ed33cde1cdf1199ad7d01764`，源码独立终审Spec／Quality ACCEPTED、C0/I0/M0。新包SHA256 `951cc1a5a99380a61302c2df2338504e965cd83bbdc16953a4594de82ee330a9`，Linux后端1208／前端3个构建文件逐字节一致。目标测试环境完成225张旧表备份恢复、克隆271→281及精确角色演练、正式迁移／3SELF授权与切换，程序、资产及正式账本同候选；原96保留，trial7SELF，marker0／新增proxy匹配0。授权后旧表仅3项IAM表预期变化，其余222张摘要不变，配置hash不变。
+
+发布后zhichan真实浏览器使用原合成线索 `3208591c-1bb9-4039-adbe-3fe0abecb383`，1次PATCH200，保存／刷新回显相同；独立PG读验版本4→5、审计4→5、总线索36、商品摘要及发现时间原值不变。原合成案件详情、16类五列文件、费用与双栏结算加载完成后核验；后者0业务写，相关接口200、可见alert0，空费用与未知结算正确保留。最初把未加载费用截图、隐藏草稿公式校验误作失败已保留原证据，未改产品或跳过可见错误检查。各浏览器会话正式logout204。切换后观察5xx0，备份SHA仍通过。最终实际部署独立审查ACCEPTED、C0/I0/M0。只有本段记录和对应快照在程序候选之后追加，按非执行性收口核对差异，不改程序／迁移或冒称完整Release门禁。
+
+本轮证据 `.local/uat-explicit-proxy-20261106/`：`static.log`／`static-final.log`、`build.log`／`backend-final-build.log`、`migration-postflight.json`、`proxy-e2e.log`／`proxy-retest.log`／`targeted-final.log`、`owner-e2e.log`、`old-evidence-preserved.json`；执行证据 `stage.log`、`pre-execute.log`、`deploy.log`、`postflight-before-ui.json`、`ui-smoke.json`、`ui-postflight.json`、`ui-fee-readonly.json`及1280×720截图。目录含私有部署元数据，不整体公开上传。
 
 # 2026-11-05 定向补录 E2E 准备修复
 
