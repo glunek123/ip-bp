@@ -138,9 +138,10 @@ export class SettlementAssessmentPostgresDraft {
     if (cases.length !== 1) throw new Error('CASE_NOT_FOUND');
     if (cases[0].responsible_user_id !== actor.userId) {
       if (!allowProxy) throw new Error('ACTION_FORBIDDEN');
-      await this.access.authorizeDepartmentAction(
+      await this.access.authorizeDepartmentProxyAction(
         actor,
         'case.closure.settlement.update',
+        { departmentId: actor.departmentId },
         tx,
       );
     }

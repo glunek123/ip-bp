@@ -311,9 +311,10 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
                   },
                   tx,
                 );
-                await this.access.authorizeDepartmentAction(
+                await this.access.authorizeDepartmentProxyAction(
                   actor,
                   'case.closure.settlement.update',
+                  { departmentId: actor.departmentId },
                   tx,
                 );
               } else {

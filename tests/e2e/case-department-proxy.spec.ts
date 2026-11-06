@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { expect, test, type APIResponse } from '@playwright/test';
@@ -38,6 +39,68 @@ async function body<T>(response: APIResponse, status: number): Promise<T> {
 }
 
 test.afterAll(disconnectCustomerTestDatabase);
+
+test('department proxy migration rejects a changed predecessor and rolls back', async () => {
+  validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL);
+  const migration = (name: string) =>
+    readFileSync(
+      resolve(
+        process.cwd(),
+        'backend/prisma/migrations',
+        name,
+        'migration.sql',
+      ),
+      'utf8',
+    );
+  const predecessor = migration(
+    '20261104162000_case_department_proxy_guard_plan',
+  )
+    .split(
+      'CREATE OR REPLACE FUNCTION public.case_department_proxy_action_authorized(',
+    )[1]!
+    .split('COMMIT;')[0]!;
+  const candidate = migration(
+    '20261106011000_require_explicit_case_department_proxy',
+  )
+    .replace(/^BEGIN;/u, '')
+    .replace(/COMMIT;\s*$/u, '');
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const hash = async () =>
+    (
+      await client.query(
+        `SELECT encode(sha256(convert_to(p.prosrc,'UTF8')),'hex') AS hash
+       FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+       WHERE n.nspname='public' AND p.proname='case_department_proxy_action_authorized'`,
+      )
+    ).rows[0]!.hash as string;
+  await client.connect();
+  try {
+    const original = await hash();
+    await client.query('BEGIN');
+    await client.query(
+      `CREATE OR REPLACE FUNCTION public.case_department_proxy_action_authorized(${predecessor}`,
+    );
+    await client.query(candidate);
+    expect(await hash()).toBe(original);
+    await client.query('ROLLBACK');
+    expect(await hash()).toBe(original);
+
+    await client.query('BEGIN');
+    await client.query(
+      `CREATE OR REPLACE FUNCTION public.case_department_proxy_action_authorized(${predecessor.replace(
+        'g.action=target_action',
+        "g.action='case.read'",
+      )}`,
+    );
+    await expect(client.query(candidate)).rejects.toMatchObject({
+      code: '23514',
+    });
+    await client.query('ROLLBACK');
+    expect(await hash()).toBe(original);
+  } finally {
+    await client.end();
+  }
+});
 
 test('department proxy settlement is scoped, revocable, and cannot correct closure alone', async ({
   request,
@@ -110,6 +173,38 @@ test('department proxy settlement is scoped, revocable, and cannot correct closu
     coreLeadFixtures.roleSelf,
     'case.routine.edit',
     'DEPARTMENT',
+  );
+  expect(
+    (
+      await body<{ canEdit: boolean }>(
+        await request.get(routineUrl, { headers: colleague }),
+        200,
+      )
+    ).canEdit,
+  ).toBe(false);
+  const supplementUrl = `/api/v1/cases/${source.caseId}/supplemental-workspace`;
+  const annotation = {
+    kind: 'MANUAL_ANNOTATION',
+    text: '合成同部门代办附记',
+    reason: '核对显式代办授权',
+    idempotencyKey: randomUUID(),
+  };
+  expect(
+    (
+      await request.post(supplementUrl, {
+        headers: colleague,
+        data: annotation,
+      })
+    ).status(),
+  ).toBe(403);
+  await setRoleGrant(
+    coreLeadFixtures.roleSelf,
+    'case.department.proxy',
+    'DEPARTMENT',
+  );
+  await body(
+    await request.post(supplementUrl, { headers: colleague, data: annotation }),
+    201,
   );
   expect(
     (
@@ -315,6 +410,22 @@ test('department proxy settlement is scoped, revocable, and cannot correct closu
       })
     ).status(),
   ).toBe(403);
+  await setRoleGrant(
+    coreLeadFixtures.roleSelf,
+    'case.closure.settlement.update',
+    'DEPARTMENT',
+  );
+  await setRoleGrant(
+    coreLeadFixtures.roleSelf,
+    'case.department.proxy',
+    'DEPARTMENT',
+    false,
+  );
+  expect(
+    (
+      await request.post(endpoint, { headers: colleague, data: command })
+    ).status(),
+  ).toBe(403);
   expect(
     (
       await request.get(`/api/v1/cases/${source.caseId}`, { headers: foreign })
@@ -369,7 +480,41 @@ test('department proxy early closure retains first payment and proof upload need
     }),
     201,
   );
+  const supplementUrl = `/api/v1/cases/${created.id}/supplemental-workspace`;
+  const ownerNote = {
+    kind: 'MANUAL_ANNOTATION',
+    text: '负责人合成附记',
+    reason: '确认本人路径保持可办',
+    idempotencyKey: randomUUID(),
+  };
+  const firstNote = await body<{ id: string }>(
+    await request.post(supplementUrl, { headers: owner, data: ownerNote }),
+    201,
+  );
+  const replayNote = await body<{ id: string }>(
+    await request.post(supplementUrl, { headers: owner, data: ownerNote }),
+    201,
+  );
+  expect(replayNote.id).toBe(firstNote.id);
+  const ownerWorkspace = await body<{ entries: Array<{ id: string }> }>(
+    await request.get(supplementUrl, { headers: owner }),
+    200,
+  );
+  expect(
+    ownerWorkspace.entries.filter((entry) => entry.id === firstNote.id),
+  ).toHaveLength(1);
   await setRoleGrant(coreLeadFixtures.roleSelf, 'case.read', 'DEPARTMENT');
+  await setRoleGrant(
+    coreLeadFixtures.roleSelf,
+    'case.department.proxy',
+    'DEPARTMENT',
+  );
+  await setRoleGrant(
+    coreLeadFixtures.roleSelf,
+    'case.closure.settlement.update',
+    'DEPARTMENT',
+    false,
+  );
   await setCaseClosureFixtureGrant(
     coreLeadFixtures.roleSelf,
     'case.closure.record',
@@ -606,6 +751,11 @@ test('department proxy closes an independent normal pending-match source', async
   test.setTimeout(120_000);
   await seedCoreLeadE2eData({ reuseExisting: true });
   await setRoleGrant(coreLeadFixtures.roleSelf, 'case.read', 'DEPARTMENT');
+  await setRoleGrant(
+    coreLeadFixtures.roleSelf,
+    'case.department.proxy',
+    'DEPARTMENT',
+  );
   await setCaseClosureFixtureGrant(
     coreLeadFixtures.roleSelf,
     'case.closure.record',
@@ -652,6 +802,11 @@ test('department proxy early closure rolls back when the closure receipt insert 
     true,
   );
   await setRoleGrant(coreLeadFixtures.roleSelf, 'case.read', 'DEPARTMENT');
+  await setRoleGrant(
+    coreLeadFixtures.roleSelf,
+    'case.department.proxy',
+    'DEPARTMENT',
+  );
   await setCaseClosureFixtureGrant(
     coreLeadFixtures.roleSelf,
     'case.closure.record',
@@ -769,6 +924,11 @@ test('department proxy can preupload an early closure document only with the dep
     201,
   );
   await setRoleGrant(coreLeadFixtures.roleSelf, 'case.read', 'DEPARTMENT');
+  await setRoleGrant(
+    coreLeadFixtures.roleSelf,
+    'case.department.proxy',
+    'DEPARTMENT',
+  );
   await setCaseClosureFixtureGrant(
     coreLeadFixtures.roleSelf,
     'case.closure.record',
@@ -843,6 +1003,11 @@ test('database closure field guard rejects a revoked correction grant without to
     'TEAM',
   );
   await setRoleGrant(coreLeadFixtures.roleSelf, 'case.read', 'DEPARTMENT');
+  await setRoleGrant(
+    coreLeadFixtures.roleSelf,
+    'case.department.proxy',
+    'DEPARTMENT',
+  );
   await setRoleGrant(
     coreLeadFixtures.roleSelf,
     'case.closure.settlement.update',

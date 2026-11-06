@@ -193,6 +193,7 @@ enum PermissionAction {
   CASE_EXTERNAL_ENTRY_ARCHIVE  @map("case.external-entry.archive")
   CASE_MATCH                   @map("case.match")
   CASE_LAWYER_ASSIGN           @map("case.lawyer.assign")
+  CASE_DEPARTMENT_PROXY         @map("case.department.proxy")
   CASE_ROUTINE_EDIT            @map("case.routine.edit")
   CASE_CLOSURE_SETTLEMENT_UPDATE @map("case.closure.settlement.update")
   CASE_CONSOLIDATE             @map("case.consolidate")

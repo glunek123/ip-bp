@@ -139,9 +139,10 @@ export class CasePaymentProofSupplementTransactionDraftService {
               tx,
             );
             if (c.responsibleUserId !== actor.userId)
-              await this.access.authorizeDepartmentAction(
+              await this.access.authorizeDepartmentProxyAction(
                 actor,
                 'case.closure.settlement.update',
+                { departmentId: actor.departmentId },
                 tx,
               );
             // Replay checks immutable evidence only; later payment corrections, heads and

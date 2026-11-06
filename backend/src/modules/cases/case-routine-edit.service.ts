@@ -106,9 +106,10 @@ export class CaseRoutineEditService {
     reader: Prisma.TransactionClient,
   ): Promise<boolean> {
     try {
-      await this.access.authorizeDepartmentAction(
+      await this.access.authorizeDepartmentProxyAction(
         actor,
         'case.routine.edit',
+        { departmentId: actor.departmentId },
         reader,
       );
       return true;
@@ -190,9 +191,10 @@ export class CaseRoutineEditService {
             });
             if (!item) throw this.notFound();
             if (item.responsibleUserId !== actor.userId) {
-              await this.access.authorizeDepartmentAction(
+              await this.access.authorizeDepartmentProxyAction(
                 actor,
                 'case.routine.edit',
+                { departmentId: actor.departmentId },
                 tx,
               );
             }

@@ -73,6 +73,7 @@ const actionMap = {
   CASE_EXTERNAL_ENTRY_ARCHIVE: 'case.external-entry.archive',
   CASE_MATCH: 'case.match',
   CASE_LAWYER_ASSIGN: 'case.lawyer.assign',
+  CASE_DEPARTMENT_PROXY: 'case.department.proxy',
   CASE_ROUTINE_EDIT: 'case.routine.edit',
   CASE_CLOSURE_SETTLEMENT_UPDATE: 'case.closure.settlement.update',
   CASE_CONSOLIDATE: 'case.consolidate',

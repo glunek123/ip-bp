@@ -59,7 +59,10 @@ function fixture() {
     caseLawyerAssignment: tx.caseLawyerAssignment,
     $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) => fn(tx)),
   };
-  const access = { authorizeCase: jest.fn().mockResolvedValue(undefined) };
+  const access = {
+    authorizeCase: jest.fn().mockResolvedValue(undefined),
+    authorizeDepartmentProxyAction: jest.fn().mockResolvedValue(undefined),
+  };
   return {
     tx,
     access,
@@ -88,6 +91,31 @@ const assignment = {
 };
 
 describe('CaseLawyerAssignmentService', () => {
+  it('denies another owner without explicit proxy before capability or assignment writes', async () => {
+    const f = fixture();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...(await f.tx.case.findFirst()),
+      responsibleUserId: 'another-owner',
+    });
+    f.access.authorizeDepartmentProxyAction.mockRejectedValue(
+      new ForbiddenException(),
+    );
+    await expect(f.service.capability(actor, caseId)).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+    await expect(f.service.assign(actor, caseId, input)).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+    expect(f.access.authorizeDepartmentProxyAction).toHaveBeenCalledWith(
+      actor,
+      'case.lawyer.assign',
+      expect.objectContaining({ responsibleUserId: 'another-owner' }),
+      f.tx,
+    );
+    expect(f.tx.caseLawyerAssignment.create).not.toHaveBeenCalled();
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+    expect(f.tx.caseLawyerAssignmentReceipt.create).not.toHaveBeenCalled();
+  });
   it('exposes capability only after both read and independent assign authorization', async () => {
     const f = fixture();
     const result = await f.service.capability(actor, caseId);

@@ -79,9 +79,10 @@ export class CaseSupplementService {
     let canEdit = item.responsibleUserId === actor.userId;
     if (!canEdit) {
       try {
-        await this.access.authorizeDepartmentAction(
+        await this.access.authorizeDepartmentProxyAction(
           actor,
           'case.routine.edit',
+          { departmentId: actor.departmentId },
           tx,
         );
         canEdit = true;

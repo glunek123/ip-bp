@@ -22,6 +22,65 @@ function createStore(
 }
 
 describe('AccessControlService', () => {
+  it('requires explicit department proxy and the action grant for another owner', async () => {
+    const snapshot: AccessControlSnapshot = {
+      active: true,
+      authorizationRevision: 4,
+      grants: [
+        { action: 'case.closure.record', scope: 'department' },
+        { action: 'case.archive', scope: 'department' },
+      ],
+    };
+    const service = new AccessControlService(createStore(snapshot));
+    const other = {
+      departmentId: actor.departmentId,
+      responsibleUserId: 'other',
+    };
+    await expect(
+      service.canAuthorizeCase(actor, 'case.closure.record', other),
+    ).resolves.toBe(true);
+    await expect(
+      service.canAuthorizeDepartmentProxyAction(
+        actor,
+        'case.closure.record',
+        other,
+      ),
+    ).resolves.toBe(false);
+    snapshot.grants.push({
+      action: 'case.department.proxy',
+      scope: 'department',
+    });
+    await expect(
+      service.canAuthorizeDepartmentProxyAction(
+        actor,
+        'case.closure.record',
+        other,
+      ),
+    ).resolves.toBe(true);
+    snapshot.grants = snapshot.grants.filter(
+      (grant) => grant.action !== 'case.closure.record',
+    );
+    await expect(
+      service.canAuthorizeDepartmentProxyAction(
+        actor,
+        'case.closure.record',
+        other,
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      service.canAuthorizeDepartmentProxyAction(actor, 'case.archive', {
+        ...other,
+        departmentId: 'elsewhere',
+      }),
+    ).resolves.toBe(false);
+    snapshot.grants = [{ action: 'case.closure.record', scope: 'self' }];
+    await expect(
+      service.canAuthorizeCase(actor, 'case.closure.record', {
+        ...other,
+        responsibleUserId: actor.userId,
+      }),
+    ).resolves.toBe(true);
+  });
   it('allows the active internal owner to edit case contact details without a separate role grant', async () => {
     const snapshot: AccessControlSnapshot = {
       active: true,

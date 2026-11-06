@@ -119,6 +119,7 @@ function fixture() {
   const access = {
     authorizeCase: jest.fn().mockResolvedValue(undefined),
     authorizeDepartmentAction: jest.fn().mockResolvedValue(undefined),
+    authorizeDepartmentProxyAction: jest.fn().mockResolvedValue(undefined),
   };
   const materials = {
     assertAvailableVersions: jest.fn().mockResolvedValue([]),
@@ -829,7 +830,7 @@ describe('early closure confirmed permission OR', () => {
   );
   it('requires a department-scoped action for another owner', async () => {
     const f = fixture();
-    f.access.authorizeDepartmentAction.mockRejectedValue(
+    f.access.authorizeDepartmentProxyAction.mockRejectedValue(
       new ForbiddenException(),
     );
     f.tx.case.findFirst.mockResolvedValue({
@@ -842,9 +843,10 @@ describe('early closure confirmed permission OR', () => {
     await expect(f.service.record(actor, caseId, input)).rejects.toBeInstanceOf(
       ForbiddenException,
     );
-    expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+    expect(f.access.authorizeDepartmentProxyAction).toHaveBeenCalledWith(
       actor,
       'case.closure.record',
+      { departmentId: actor.departmentId },
       f.tx,
     );
     expect(f.tx.caseEarlyClosure.create).not.toHaveBeenCalled();
@@ -884,7 +886,7 @@ describe('early closure confirmed permission OR', () => {
       responsibleMembership: { teamId: null },
       consolidationMembership: null,
     });
-    f.access.authorizeDepartmentAction.mockImplementation(
+    f.access.authorizeDepartmentProxyAction.mockImplementation(
       async (_actor, action) => {
         if (action === 'case.closure.record') throw new ForbiddenException();
       },

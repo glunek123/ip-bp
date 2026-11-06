@@ -15,8 +15,8 @@ const sql = readFileSync(
 
 it.each([
   ['CASE_LAWYER_ASSIGN', ['SELF', 'TEAM', 'DEPARTMENT']],
-  ['CASE_ROUTINE_EDIT', ['DEPARTMENT']],
-  ['CASE_CLOSURE_SETTLEMENT_UPDATE', ['DEPARTMENT']],
+  ['CASE_ROUTINE_EDIT', ['SELF', 'DEPARTMENT']],
+  ['CASE_CLOSURE_SETTLEMENT_UPDATE', ['SELF', 'DEPARTMENT']],
 ] as const)(
   'adds %s independently with its approved scopes and no automatic grant',
   (action, scopes) => {

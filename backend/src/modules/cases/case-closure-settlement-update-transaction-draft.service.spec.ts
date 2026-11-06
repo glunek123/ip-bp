@@ -146,6 +146,7 @@ function fixture() {
     );
   const access = {
     authorizeDepartmentAction: jest.fn(),
+    authorizeDepartmentProxyAction: jest.fn(),
     authorizeCase: jest.fn(),
   };
   const materials = {
@@ -328,7 +329,7 @@ describe('atomic settlement update transaction draft (mock database only)', () =
   it('denies another responsible operator without the financial proxy grant', async () => {
     const f = fixture();
     f.current.responsibleUserId = docId;
-    f.access.authorizeDepartmentAction.mockRejectedValue(
+    f.access.authorizeDepartmentProxyAction.mockRejectedValue(
       new Error('missing department grant'),
     );
     await expect(f.service.update(actor, caseId, value())).rejects.toThrow();
@@ -342,9 +343,10 @@ describe('atomic settlement update transaction draft (mock database only)', () =
     ).resolves.toMatchObject({
       stage: 'WAITING_ARCHIVE',
     });
-    expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+    expect(f.access.authorizeDepartmentProxyAction).toHaveBeenCalledWith(
       actor,
       'case.closure.settlement.update',
+      { departmentId: actor.departmentId },
       f.tx,
     );
     expect(f.tx.auditEvent.create).toHaveBeenCalledWith({

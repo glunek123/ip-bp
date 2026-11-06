@@ -3348,12 +3348,14 @@ describe('MaterialService', () => {
     });
     it('rejects reassignment found after locking the actor and case', async () => {
       const f = setupProof();
-      f.access.authorizeDepartmentAction.mockRejectedValue(
+      f.access.authorizeDepartmentProxyAction.mockRejectedValue(
         new ForbiddenException(),
       );
       f.transaction.case.findFirst.mockResolvedValue({
         departmentId: actor.departmentId,
+        stage: 'WAITING_ARCHIVE',
         responsibleUserId: customerId,
+        responsibleMembership: { teamId: null },
       });
       await expect(
         f.service.createUploadDraft(actor, proofInput),
@@ -3373,9 +3375,10 @@ describe('MaterialService', () => {
       ).resolves.toMatchObject({
         category: 'CASE_CLOSURE_PAYMENT_PROOF',
       });
-      expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+      expect(f.access.authorizeDepartmentProxyAction).toHaveBeenCalledWith(
         actor,
         'case.closure.settlement.update',
+        { departmentId: actor.departmentId },
         f.transaction,
       );
     });
@@ -8512,6 +8515,7 @@ function createFixture() {
     authorizeCustomer: jest.fn(),
     buildLeadScope: jest.fn(),
     authorizeDepartmentAction: jest.fn(),
+    authorizeDepartmentProxyAction: jest.fn(),
     authorizeLead: jest.fn(),
     authorizeCase: jest.fn(),
     canAuthorizeCase: jest.fn(async () => true),

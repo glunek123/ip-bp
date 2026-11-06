@@ -64,6 +64,12 @@ export class CaseLawyerAssignmentService {
     try {
       await this.access.authorizeCase(actor, 'case.read', facts);
       await this.access.authorizeCase(actor, 'case.lawyer.assign', facts);
+      if (record.responsibleUserId !== actor.userId)
+        await this.access.authorizeDepartmentProxyAction(
+          actor,
+          'case.lawyer.assign',
+          facts,
+        );
     } catch (error) {
       if (error instanceof ForbiddenException) throw this.forbidden();
       throw error;
@@ -209,6 +215,16 @@ export class CaseLawyerAssignmentService {
                 },
                 tx,
               );
+              if (record.responsibleUserId !== actor.userId)
+                await this.access.authorizeDepartmentProxyAction(
+                  actor,
+                  'case.lawyer.assign',
+                  {
+                    departmentId: record.departmentId,
+                    responsibleUserId: record.responsibleUserId,
+                  },
+                  tx,
+                );
             } catch (error) {
               if (error instanceof ForbiddenException) throw this.forbidden();
               throw error;

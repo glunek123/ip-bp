@@ -185,7 +185,12 @@ export class CaseEarlyClosureTransactionDraftService {
               action: 'case.closure.record' | 'case.archive',
             ) => {
               if (c.responsibleUserId !== actor.userId)
-                return this.access.authorizeDepartmentAction(actor, action, tx);
+                return this.access.authorizeDepartmentProxyAction(
+                  actor,
+                  action,
+                  { departmentId: actor.departmentId },
+                  tx,
+                );
               return this.access.authorizeCase(
                 actor,
                 action,

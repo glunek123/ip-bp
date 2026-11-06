@@ -99,6 +99,7 @@ export const permissionActionValues = [
   'CASE_GROUP_DISSOLVE',
   'CASE_MATCH',
   'CASE_LAWYER_ASSIGN',
+  'CASE_DEPARTMENT_PROXY',
   'CASE_ROUTINE_EDIT',
   'CASE_CLOSURE_SETTLEMENT_UPDATE',
   'CASE_CONSOLIDATE',
@@ -394,9 +395,13 @@ function isPermissionCatalog(
       (demoDepartmentActions.has(item.action as PermissionAction) &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
       ((item.action === 'CASE_EXTERNAL_ENTRY_ARCHIVE' ||
-        item.action === 'CASE_ROUTINE_EDIT' ||
-        item.action === 'CASE_CLOSURE_SETTLEMENT_UPDATE') &&
+        item.action === 'CASE_DEPARTMENT_PROXY') &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
+      ((item.action === 'CASE_ROUTINE_EDIT' ||
+        item.action === 'CASE_CLOSURE_SETTLEMENT_UPDATE') &&
+        (item.scopes.length !== 2 ||
+          item.scopes[0] !== 'SELF' ||
+          item.scopes[1] !== 'DEPARTMENT')) ||
       ((item.action === 'CASE_MATCH' ||
         item.action === 'CASE_LAWYER_ASSIGN' ||
         item.action === 'CASE_CONSOLIDATE' ||

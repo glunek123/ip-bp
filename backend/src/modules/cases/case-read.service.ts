@@ -50,7 +50,9 @@ export class CaseReadService {
       'case.closure.record' | 'case.archive' | 'case.closure.settlement.update',
   ): Promise<boolean> {
     try {
-      await this.access.authorizeDepartmentAction(actor, action);
+      await this.access.authorizeDepartmentProxyAction(actor, action, {
+        departmentId: actor.departmentId,
+      });
       return true;
     } catch (error) {
       if (error instanceof ForbiddenException) return false;

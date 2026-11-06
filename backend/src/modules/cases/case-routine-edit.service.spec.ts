@@ -73,6 +73,9 @@ function fixture() {
         if (action === 'case.routine.edit') throw new ForbiddenException();
       },
     ),
+    authorizeDepartmentProxyAction: jest.fn(async (): Promise<void> => {
+      throw new ForbiddenException();
+    }),
   };
   return {
     record,
@@ -192,7 +195,7 @@ describe('case routine editing', () => {
       ...f.record,
       responsibleUserId: ownerId,
     });
-    f.access.authorizeDepartmentAction.mockImplementation(async () => {});
+    f.access.authorizeDepartmentProxyAction.mockImplementation(async () => {});
     await expect(f.service.get(actor, caseId)).resolves.toMatchObject({
       canEdit: true,
     });
@@ -201,9 +204,10 @@ describe('case routine editing', () => {
         revision: 1,
       },
     );
-    expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+    expect(f.access.authorizeDepartmentProxyAction).toHaveBeenCalledWith(
       actor,
       'case.routine.edit',
+      { departmentId: actor.departmentId },
       f.tx,
     );
     expect(f.tx.auditEvent.create).toHaveBeenCalledWith({

@@ -310,9 +310,10 @@ export class CaseRefundInventoryPrismaDraft {
       if (cases.length !== 1) fail('ACTION_FORBIDDEN');
       if (cases[0].responsible_user_id !== actor.userId) {
         if (!composition) fail('ACTION_FORBIDDEN');
-        await this.access.authorizeDepartmentAction(
+        await this.access.authorizeDepartmentProxyAction(
           actor,
           'case.closure.settlement.update',
+          { departmentId: actor.departmentId },
           db,
         );
       }

@@ -76,6 +76,9 @@ function fixture(actualAggregate?: ClosureActualAggregateReadPort) {
     authorizeDepartmentAction: jest.fn(async (): Promise<void> => {
       throw new ForbiddenException();
     }),
+    authorizeDepartmentProxyAction: jest.fn(async (): Promise<void> => {
+      throw new ForbiddenException();
+    }),
   };
   const service = new CaseClosureWorkspaceReadDraft(
     database,
@@ -595,9 +598,10 @@ describe('owner-only closure workspace read', () => {
     await expect(f.service.read(actor, caseId)).rejects.toThrow(
       ForbiddenException,
     );
-    expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+    expect(f.access.authorizeDepartmentProxyAction).toHaveBeenCalledWith(
       actor,
       'case.closure.settlement.update',
+      { departmentId: actor.departmentId },
       f.tx,
     );
   });
@@ -608,7 +612,7 @@ describe('owner-only closure workspace read', () => {
       stage: 'WAITING_ARCHIVE',
       responsibleUserId: 'other',
     });
-    f.access.authorizeDepartmentAction.mockResolvedValue(undefined);
+    f.access.authorizeDepartmentProxyAction.mockResolvedValue(undefined);
     await expect(f.service.read(actor, caseId)).resolves.toMatchObject({
       caseId,
       stage: 'WAITING_ARCHIVE',

@@ -65,6 +65,7 @@ export type PermissionAction =
   | 'case.external-entry.archive'
   | 'case.match'
   | 'case.lawyer.assign'
+  | 'case.department.proxy'
   | 'case.routine.edit'
   | 'case.closure.settlement.update'
   | 'case.consolidate'
@@ -216,6 +217,42 @@ export class AccessControlService {
       )
     )
       throw this.forbidden();
+  }
+
+  async authorizeDepartmentProxyAction(
+    actor: ActorContext,
+    action: PermissionAction,
+    facts: CaseResourceFacts,
+    reader?: AccessControlSnapshotReader,
+  ): Promise<void> {
+    if (facts.departmentId !== actor.departmentId) throw this.caseForbidden();
+    const snapshot = await this.loadCurrentSnapshot(actor, reader);
+    if (
+      !snapshot.grants.some(
+        (grant) =>
+          grant.action === 'case.department.proxy' &&
+          grant.scope === 'department',
+      ) ||
+      !snapshot.grants.some(
+        (grant) => grant.action === action && grant.scope === 'department',
+      )
+    )
+      throw this.caseForbidden();
+  }
+
+  async canAuthorizeDepartmentProxyAction(
+    actor: ActorContext,
+    action: PermissionAction,
+    facts: CaseResourceFacts,
+    reader?: AccessControlSnapshotReader,
+  ): Promise<boolean> {
+    try {
+      await this.authorizeDepartmentProxyAction(actor, action, facts, reader);
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
   }
 
   async reportAccessViews(

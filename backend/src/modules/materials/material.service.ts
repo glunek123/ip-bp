@@ -6225,9 +6225,10 @@ export class MaterialService {
       );
       if (operation === 'write' && record.responsibleUserId !== actor.userId)
         await this.withMaterialAuthorization(() =>
-          this.accessControl.authorizeDepartmentAction(
+          this.accessControl.authorizeDepartmentProxyAction(
             actor,
             'case.routine.edit',
+            { departmentId: actor.departmentId },
             snapshotReader,
           ),
         );
@@ -6259,9 +6260,10 @@ export class MaterialService {
           ['WAITING_ARCHIVE', 'ARCHIVED'].includes(record.stage)
         )
           await this.withMaterialAuthorization(() =>
-            this.accessControl.authorizeDepartmentAction(
+            this.accessControl.authorizeDepartmentProxyAction(
               actor,
               'case.closure.settlement.update',
+              { departmentId: actor.departmentId },
               snapshotReader,
             ),
           );
@@ -6308,9 +6310,10 @@ export class MaterialService {
             }
             if (record.responsibleUserId !== actor.userId)
               try {
-                await this.accessControl.authorizeDepartmentAction(
+                await this.accessControl.authorizeDepartmentProxyAction(
                   actor,
                   action,
+                  { departmentId: actor.departmentId },
                   snapshotReader,
                 );
               } catch (error) {
@@ -6319,9 +6322,10 @@ export class MaterialService {
                   action === 'case.archive'
                 )
                   throw error;
-                await this.accessControl.authorizeDepartmentAction(
+                await this.accessControl.authorizeDepartmentProxyAction(
                   actor,
                   'case.archive',
+                  { departmentId: actor.departmentId },
                   snapshotReader,
                 );
               }
@@ -6460,9 +6464,10 @@ export class MaterialService {
             }
             if (pending.responsibleUserId !== actor.userId)
               try {
-                await this.accessControl.authorizeDepartmentAction(
+                await this.accessControl.authorizeDepartmentProxyAction(
                   actor,
                   action,
+                  { departmentId: actor.departmentId },
                   snapshotReader,
                 );
               } catch (error) {
@@ -6471,9 +6476,10 @@ export class MaterialService {
                   action === 'case.archive'
                 )
                   throw error;
-                await this.accessControl.authorizeDepartmentAction(
+                await this.accessControl.authorizeDepartmentProxyAction(
                   actor,
                   'case.archive',
+                  { departmentId: actor.departmentId },
                   snapshotReader,
                 );
               }

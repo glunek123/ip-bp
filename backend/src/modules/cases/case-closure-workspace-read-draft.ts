@@ -87,7 +87,7 @@ export class CaseClosureWorkspaceReadDraft {
     private readonly database: Pick<DatabaseService, '$transaction'>,
     private readonly access: Pick<
       AccessControlService,
-      'authorizeCase' | 'authorizeDepartmentAction'
+      'authorizeCase' | 'authorizeDepartmentProxyAction'
     >,
     private readonly organization: OrganizationService,
     private readonly actualAggregate?: ClosureActualAggregateReadPort,
@@ -158,9 +158,10 @@ export class CaseClosureWorkspaceReadDraft {
           tx,
         );
         if (record.responsibleUserId !== actor.userId)
-          await this.access.authorizeDepartmentAction(
+          await this.access.authorizeDepartmentProxyAction(
             actor,
             'case.closure.settlement.update',
+            { departmentId: actor.departmentId },
             tx,
           );
 

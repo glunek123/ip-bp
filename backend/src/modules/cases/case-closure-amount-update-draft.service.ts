@@ -143,9 +143,10 @@ export class CaseClosureAmountUpdateDraftService {
               tx,
             );
             if (c.responsibleUserId !== actor.userId)
-              await this.access.authorizeDepartmentAction(
+              await this.access.authorizeDepartmentProxyAction(
                 actor,
                 'case.closure.settlement.update',
+                { departmentId: actor.departmentId },
                 tx,
               );
             const receipts = await tx.$queryRawUnsafe<Receipt[]>(
