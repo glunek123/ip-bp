@@ -1873,7 +1873,7 @@ describe('settlement center navigation', () => {
     api.getSettlementContext.mockRejectedValue(new ApiError('denied', 403, 'ACTION_FORBIDDEN'));
     api.getLitigationRefundCapabilities.mockResolvedValue({ read: true, record: false, follow: false, export: false });
     const { wrapper } = await mountShell();
-    expect(wrapper.get('[data-test="settlement-nav"]').attributes('href')).toBe('/settlements');
+    expect(wrapper.get('[data-test="settlement-nav"]').attributes('href')).toBe('/settlements?tab=refunds');
   });
 });
 

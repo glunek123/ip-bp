@@ -1405,7 +1405,7 @@ async function logout(): Promise<void> {
           class="app-nav__item"
           :class="{ active: route.path === '/settlements' }"
           data-test="settlement-nav"
-          to="/settlements"
+          :to="canViewSettlements ? '/settlements' : { path: '/settlements', query: { tab: 'refunds' } }"
           @click="closeDrawer"
           ><span>结算中心</span></RouterLink
         >

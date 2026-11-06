@@ -104,10 +104,32 @@ describe('LitigationRefundPanel', () => {
     await flushPromises();
     await wrapper.get('tbody tr button').trigger('click');
     await flushPromises();
-    expect(wrapper.get('dialog').attributes('open')).toBeDefined();
-    const costOption = wrapper.get('dialog').find('option[value="CONVERTED_TO_COST"]');
+    const dialog = wrapper.get('[role="dialog"]');
+    expect(dialog.attributes('aria-modal')).toBe('true');
+    expect(dialog.text()).toContain('（2025）京01号');
+    expect(dialog.text()).toContain('原告甲');
+    expect(dialog.text()).toContain('被告乙');
+    expect(dialog.text()).toContain('法院退费');
+    const costOption = dialog.find('option[value="CONVERTED_TO_COST"]');
     expect(costOption.exists()).toBe(false);
   });
+
+  it.each(['cancel', 'close', 'backdrop', 'escape'] as const)(
+    'closes the follow-up dialog by %s without submitting',
+    async (action) => {
+      const wrapper = render();
+      await flushPromises();
+      await wrapper.get('tbody tr button').trigger('click');
+      const overlay = wrapper.get('[role="dialog"]');
+      if (action === 'cancel') await wrapper.get('.refund-panel__modal .refund-panel__actions button[type="button"]').trigger('click');
+      if (action === 'close') await wrapper.get('[aria-label="关闭跟进对话框"]').trigger('click');
+      if (action === 'backdrop') await overlay.trigger('click');
+      if (action === 'escape') await overlay.trigger('keydown', { key: 'Escape' });
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+      expect(api.followUpLitigationRefund).not.toHaveBeenCalled();
+      wrapper.unmount();
+    },
+  );
 
   it('formats large decimal amounts without floating-point rounding', async () => {
     api.listLitigationRefunds.mockResolvedValueOnce({
@@ -129,7 +151,7 @@ describe('LitigationRefundPanel', () => {
     const wrapper = render();
     await flushPromises();
     await wrapper.get('tbody tr button').trigger('click');
-    await wrapper.get('dialog form').trigger('submit');
+    await wrapper.get('.refund-panel__modal').trigger('submit');
     await flushPromises();
     const keyA = 'litigation-refund-follow-pending:user-a:dept-1';
     const keyB = 'litigation-refund-follow-pending:user-b:dept-1';
@@ -148,7 +170,7 @@ describe('LitigationRefundPanel', () => {
     const wrapper = render();
     await flushPromises();
     await wrapper.get('tbody tr button').trigger('click');
-    await wrapper.get('dialog form').trigger('submit');
+    await wrapper.get('.refund-panel__modal').trigger('submit');
     await flushPromises();
     expect(wrapper.get('[role="alert"]').text()).toContain('版本已变化');
     expect(wrapper.get('[role="alert"]').text()).not.toContain('结果未知');
@@ -165,7 +187,7 @@ describe('LitigationRefundPanel', () => {
     const wrapper = render();
     await flushPromises();
     await wrapper.get('tbody tr button').trigger('click');
-    await wrapper.get('dialog form').trigger('submit');
+    await wrapper.get('.refund-panel__modal').trigger('submit');
     await flushPromises();
     const key = 'litigation-refund-follow-pending:user-a:dept-1';
     const original = sessionStorage.getItem(key);
@@ -188,7 +210,7 @@ describe('LitigationRefundPanel', () => {
     const wrapper = render();
     await flushPromises();
     await wrapper.get('tbody tr button').trigger('click');
-    await wrapper.get('dialog form').trigger('submit');
+    await wrapper.get('.refund-panel__modal').trigger('submit');
     await flushPromises();
     const key = 'litigation-refund-follow-pending:user-a:dept-1';
     const savedBody = sessionStorage.getItem(key);

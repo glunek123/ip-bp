@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ApiError } from '../../api/http';
 import {
   cancelSettlementBill,
@@ -39,6 +39,19 @@ import {
 } from './financial-pending';
 
 const tab = ref<'CUSTOMER' | 'LAWYER' | 'FEES' | 'REFUNDS'>('CUSTOMER');
+const route = useRoute();
+const router = useRouter();
+if (route.query.tab === 'refunds') tab.value = 'REFUNDS';
+watch(tab, (value) => {
+  const query = { ...route.query };
+  if (value === 'REFUNDS') query.tab = 'refunds';
+  else delete query.tab;
+  void router.replace({ query });
+});
+watch(() => route.query.tab, (value) => {
+  if (value === 'refunds') tab.value = 'REFUNDS';
+  else if (tab.value === 'REFUNDS') tab.value = 'CUSTOMER';
+});
 const filterFormId = useId();
 const billCreateFormId = useId();
 const billFilterFormId = useId();
@@ -229,7 +242,7 @@ async function initialize(): Promise<void> {
     const next = await getSettlementContext({ signal: request.signal });
     if (expected !== revision) return;
     capabilities.value = next;
-    if (!next.read && next.feeRead) tab.value = 'FEES';
+    if (!next.read && next.feeRead && tab.value !== 'REFUNDS') tab.value = 'FEES';
     if (next.read && !next.feeRead && tab.value === 'FEES')
       tab.value = 'CUSTOMER';
     if (!next.read && !next.feeRead)
@@ -463,15 +476,19 @@ async function cancelBill(): Promise<void> {
       <ElButton
         role="tab"
         class="action-size--wide"
+        :disabled="unknownBill || unknownCancel"
         :aria-selected="tab === 'REFUNDS'"
         @click="tab = 'REFUNDS'"
       >
         诉讼退费
       </ElButton>
     </div>
-    <LitigationRefundPanel v-if="tab === 'REFUNDS'" />
-    <p v-if="tab !== 'REFUNDS' && !capabilities && !error">正在读取结算中心权限…</p>
-    <p v-else-if="tab !== 'REFUNDS' && !capabilities" role="alert">{{ error }}</p>
+    <template v-if="tab === 'REFUNDS'">
+      <LitigationRefundPanel />
+    </template>
+    <template v-else>
+    <p v-if="!capabilities && !error">正在读取结算中心权限…</p>
+    <p v-else-if="!capabilities" role="alert">{{ error }}</p>
     <FeeCenterPanel
       v-else-if="tab === 'FEES' && capabilities?.feeRead"
       :can-create="capabilities?.feeCreate ?? false"
@@ -860,9 +877,10 @@ async function cancelBill(): Promise<void> {
         <ElButton @click="detail = null">关闭</ElButton>
       </section>
     </template>
-    <p v-if="tab !== 'REFUNDS' && !capabilities?.read" role="alert">
+    <p v-else role="alert">
       {{ error || '当前账号未获结算与费用中心读取权限' }}
     </p>
+    </template>
   </main>
 </template>
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import {
   ApiError,
 } from '../../api/http';
@@ -52,6 +52,7 @@ const error = ref('');
 const notice = ref('');
 const selected = ref(new Set<string>());
 const modalRow = ref<RefundRow | null>(null);
+const modalOverlay = ref<HTMLElement | null>(null);
 const modalStatus = ref<RefundStatus>('UNKNOWN');
 const courtRefund = computed(() => modalRow.value?.party === 'COURT');
 const selectableStatuses = computed(() => courtRefund.value
@@ -144,7 +145,9 @@ function openFollow(row: RefundRow): void {
   modalStatus.value = row.status;
   remark.value = row.remark ?? '';
   reason.value = '';
+  void nextTick(() => modalOverlay.value?.focus());
 }
+function closeFollow(): void { if (!saving.value) modalRow.value = null; }
 function allowedStatus(row: RefundRow | null, status: RefundStatus): boolean {
   return row === null || !(row.party === 'COURT' && status === 'CONVERTED_TO_COST');
 }
@@ -302,15 +305,15 @@ onMounted(initialize);
               <td><input type="checkbox" :aria-label="`选择${row.caseNo}`" :checked="selected.has(rowKey(row))" @change="selected.has(rowKey(row)) ? selected.delete(rowKey(row)) : selected.add(rowKey(row))" /></td>
               <td><button v-if="row.canFollow && capabilities.follow" type="button" :disabled="!!pending" @click="openFollow(row)">跟进</button><span v-else>—</span></td>
               <td v-for="column in columnDefinitions" v-show="columnVisibility[column.key]" :key="column.key">
-                <template v-if="column.key === 'caseNo'">{{ row.caseNo }}</template>
-                <template v-else-if="column.key === 'plaintiff'">{{ row.plaintiff }}</template>
-                <template v-else-if="column.key === 'defendant'">{{ row.defendant }}</template>
-                <template v-else-if="column.key === 'courtNo'">{{ row.courtNo ?? '—' }}</template>
-                <template v-else-if="column.key === 'lawyer'">{{ row.lawyer ?? '—' }}</template>
-                <template v-else-if="column.key === 'party'">{{ row.party === 'COURT' ? '法院退费' : '被告径付' }}</template>
-                <template v-else-if="column.key === 'amount'">{{ row.amount === null ? '金额待定' : formatMoney(row.amount) }}</template>
-                <template v-else-if="column.key === 'status'">{{ labels[row.status] }}</template>
-                <template v-else>{{ row.remark ?? '—' }}</template>
+                <template v-if="column.key === 'caseNo'"><span :title="row.caseNo">{{ row.caseNo }}</span></template>
+                <template v-else-if="column.key === 'plaintiff'"><span :title="row.plaintiff">{{ row.plaintiff }}</span></template>
+                <template v-else-if="column.key === 'defendant'"><span :title="row.defendant">{{ row.defendant }}</span></template>
+                <template v-else-if="column.key === 'courtNo'"><span :title="row.courtNo ?? ''">{{ row.courtNo ?? '—' }}</span></template>
+                <template v-else-if="column.key === 'lawyer'"><span :title="row.lawyer ?? ''">{{ row.lawyer ?? '—' }}</span></template>
+                <template v-else-if="column.key === 'party'"><span :title="row.party === 'COURT' ? '法院退费' : '被告径付'">{{ row.party === 'COURT' ? '法院退费' : '被告径付' }}</span></template>
+                <template v-else-if="column.key === 'amount'"><span :title="row.amount === null ? '金额待定' : formatMoney(row.amount)">{{ row.amount === null ? '金额待定' : formatMoney(row.amount) }}</span></template>
+                <template v-else-if="column.key === 'status'"><span :title="labels[row.status]">{{ labels[row.status] }}</span></template>
+                <template v-else><span :title="row.remark ?? ''">{{ row.remark ?? '—' }}</span></template>
               </td>
             </tr>
             <tr v-if="!loading && !result?.items.length"><td :colspan="2 + columnDefinitions.filter((column) => columnVisibility[column.key]).length">没有符合条件的退费记录</td></tr>
@@ -322,16 +325,24 @@ onMounted(initialize);
     </template>
     <p v-else-if="capabilities && !capabilities.read">当前账号没有诉讼退费查看权限。</p>
     <p v-else-if="!error">正在读取诉讼退费权限…</p>
-    <dialog :open="!!modalRow" aria-labelledby="refund-follow-title" class="refund-panel__modal">
-      <form @submit.prevent="saveFollow">
-        <h3 id="refund-follow-title">诉讼退费跟进</h3>
-        <p>{{ modalRow?.caseNo }} · {{ modalRow?.description }}</p>
-        <label>状态<select v-model="modalStatus"><option v-for="status in selectableStatuses" :key="status" :value="status">{{ labels[status] }}</option></select></label>
+    <div v-if="modalRow" ref="modalOverlay" class="refund-panel__backdrop" role="dialog" aria-modal="true" aria-labelledby="refund-follow-title" tabindex="-1" @click.self="closeFollow" @keydown.esc.stop.prevent="closeFollow">
+      <form class="refund-panel__modal" @click.stop @submit.prevent="saveFollow">
+        <div class="refund-panel__modal-heading"><h3 id="refund-follow-title">诉讼退费跟进</h3><button type="button" aria-label="关闭跟进对话框" :disabled="saving" @click="closeFollow">×</button></div>
+        <dl class="refund-panel__readonly">
+          <div><dt>案件单号</dt><dd :title="modalRow.caseNo">{{ modalRow.caseNo }}</dd></div>
+          <div><dt>法院案号</dt><dd :title="modalRow.courtNo ?? ''">{{ modalRow.courtNo ?? '待核对' }}</dd></div>
+          <div><dt>原告</dt><dd :title="modalRow.plaintiff">{{ modalRow.plaintiff }}</dd></div>
+          <div><dt>被告</dt><dd :title="modalRow.defendant">{{ modalRow.defendant }}</dd></div>
+          <div><dt>退费方式</dt><dd>{{ modalRow.party === 'COURT' ? '法院退费' : '被告径付' }}</dd></div>
+          <div><dt>应退金额</dt><dd>{{ modalRow.amount === null ? '金额待定' : formatMoney(modalRow.amount) }}</dd></div>
+          <div class="refund-panel__description"><dt>原事项说明</dt><dd :title="modalRow.description">{{ modalRow.description }}</dd></div>
+        </dl>
+        <label>退费状态<select v-model="modalStatus"><option v-for="status in selectableStatuses" :key="status" :value="status">{{ labels[status] }}</option></select></label>
         <label>跟进备注<textarea v-model="remark" rows="3" /></label>
         <label v-if="modalRow?.archived">更正原因（归档案件必填）<textarea v-model="reason" rows="3" required /></label>
-        <div class="refund-panel__actions"><button type="submit" :disabled="saving || (!!modalRow?.archived && !reason.trim())">保存跟进</button><button type="button" :disabled="saving || !!pending" @click="modalRow = null">取消</button></div>
+        <div class="refund-panel__actions"><button type="submit" :disabled="saving || (!!modalRow.archived && !reason.trim())">保存跟进</button><button type="button" :disabled="saving" @click="closeFollow">取消</button></div>
       </form>
-    </dialog>
+    </div>
   </section>
 </template>
 
@@ -351,9 +362,10 @@ onMounted(initialize);
 .refund-panel__filters label, .refund-panel__modal label { display: grid; gap: 4px; }
 .refund-panel__filters input, .refund-panel__filters select, .refund-panel__modal select, .refund-panel__modal textarea { min-height: 32px; width: 100%; border: 1px solid #dcdfe6; border-radius: 4px; padding: 4px 8px; box-sizing: border-box; }
 .refund-panel__actions { grid-column: 1 / -1; }
+.refund-panel__actions { position: relative; }
 .refund-panel__columns { position: relative; }
 .refund-panel__columns summary { min-height: 32px; padding: 4px 12px; border: 1px solid #c0c4cc; border-radius: 4px; cursor: pointer; list-style: none; }
-.refund-panel__columns[open] { display: grid; gap: 8px; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px; background: white; }
+.refund-panel__columns[open] { position: absolute; z-index: 4; top: calc(100% + 4px); right: 0; display: grid; gap: 8px; min-width: 150px; padding: 8px; border: 1px solid #dcdfe6; border-radius: 4px; background: white; box-shadow: 0 4px 14px #0002; }
 .refund-panel__columns label { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .refund-panel__filtered-total { margin: 0; font-weight: 600; }
 .refund-panel__filtered-total span { color: #606266; font-weight: 400; }
@@ -364,8 +376,15 @@ onMounted(initialize);
 .refund-panel th { background: #f5f7fa; }
 .refund-panel__paging { justify-content: flex-end; }
 .refund-panel__recovery { display: flex; gap: 8px; align-items: center; padding: 10px; background: #fdf6ec; }
-.refund-panel__modal { position: fixed; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: min(520px, calc(100vw - 32px)); margin: 0; padding: 20px; border: 1px solid #dcdfe6; border-radius: 6px; box-shadow: 0 8px 30px #0002; }
-.refund-panel__modal:not([open]) { display: none; }
+.refund-panel__backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 16px; background: #0006; }
+.refund-panel__modal { display: grid; gap: 12px; width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: auto; margin: 0; padding: 20px; border: 1px solid #dcdfe6; border-radius: 6px; background: white; box-shadow: 0 8px 30px #0002; }
+.refund-panel__modal-heading { display: flex; justify-content: space-between; align-items: center; }
+.refund-panel__modal-heading h3 { margin: 0; }
+.refund-panel__readonly { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 0; }
+.refund-panel__readonly > div { min-width: 0; }
+.refund-panel__readonly dt { color: #606266; font-size: 12px; }
+.refund-panel__readonly dd { overflow: hidden; margin: 2px 0 0; text-overflow: ellipsis; white-space: nowrap; }
+.refund-panel__description { grid-column: 1 / -1; }
 .refund-panel__modal form { display: grid; gap: 12px; }
 @media (max-width: 800px) { .refund-panel__summary { grid-template-columns: 1fr; } .refund-panel__filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>
