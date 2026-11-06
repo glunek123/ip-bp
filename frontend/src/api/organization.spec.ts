@@ -676,10 +676,26 @@ const context = {
       label: '管理角色模板',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
-    { action: 'CASE_REFUND_READ', label: '查看诉讼退费', scopes: ['DEPARTMENT'] },
-    { action: 'CASE_REFUND_RECORD', label: '登记诉讼退费', scopes: ['SELF', 'DEPARTMENT'] },
-    { action: 'CASE_REFUND_FOLLOW', label: '跟进诉讼退费', scopes: ['SELF', 'DEPARTMENT'] },
-    { action: 'CASE_REFUND_EXPORT', label: '导出诉讼退费', scopes: ['DEPARTMENT'] },
+    {
+      action: 'CASE_REFUND_READ',
+      label: '查看诉讼退费',
+      scopes: ['DEPARTMENT'],
+    },
+    {
+      action: 'CASE_REFUND_RECORD',
+      label: '登记诉讼退费',
+      scopes: ['SELF', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_REFUND_FOLLOW',
+      label: '跟进诉讼退费',
+      scopes: ['SELF', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_REFUND_EXPORT',
+      label: '导出诉讼退费',
+      scopes: ['DEPARTMENT'],
+    },
   ],
 };
 
@@ -693,10 +709,17 @@ describe('organization API', () => {
       { action: 'CASE_REFUND_FOLLOW', scope: 'DEPARTMENT' },
       { action: 'CASE_REFUND_EXPORT', scope: 'DEPARTMENT' },
     ];
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      ...context,
-      roles: [{ ...context.roles[0], grants: refundGrants }],
-    }))));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ...context,
+            roles: [{ ...context.roles[0], grants: refundGrants }],
+          }),
+        ),
+      ),
+    );
     await expect(getOrganizationManagementContext()).resolves.toMatchObject({
       roles: [{ grants: refundGrants }],
     });
@@ -706,11 +729,20 @@ describe('organization API', () => {
       { action: 'CASE_REFUND_RECORD', scope: 'TEAM' },
       { action: 'CASE_REFUND_FOLLOW', scope: 'TEAM' },
     ]) {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
-        ...context,
-        roles: [{ ...context.roles[0], grants: [invalid] }],
-      }))));
-      await expect(getOrganizationManagementContext()).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              ...context,
+              roles: [{ ...context.roles[0], grants: [invalid] }],
+            }),
+          ),
+        ),
+      );
+      await expect(getOrganizationManagementContext()).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
     }
   });
   it('accepts the two scoped case judgment grants in the permission catalog', async () => {

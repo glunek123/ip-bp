@@ -1,4 +1,10 @@
-import { ApiError, getBlob, getJson, requestJson, type RequestOptions } from './http';
+import {
+  ApiError,
+  getBlob,
+  getJson,
+  requestJson,
+  type RequestOptions,
+} from './http';
 
 export const refundStatuses = [
   'UNKNOWN',
@@ -115,35 +121,73 @@ function isRecord(value: unknown): value is RecordValue {
 function exact(value: RecordValue, keys: readonly string[]): boolean {
   const actual = Object.keys(value).sort();
   const expected = [...keys].sort();
-  return actual.length === expected.length && actual.every((key, i) => key === expected[i]);
+  return (
+    actual.length === expected.length &&
+    actual.every((key, i) => key === expected[i])
+  );
 }
 function nullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
 function isStatus(value: unknown): value is RefundStatus {
-  return typeof value === 'string' && (refundStatuses as readonly string[]).includes(value);
+  return (
+    typeof value === 'string' &&
+    (refundStatuses as readonly string[]).includes(value)
+  );
 }
 function isSource(value: unknown): value is RefundSource {
-  return isRecord(value) && exact(value, ['type', 'id', 'trialRoundId', 'label', 'valid']) &&
+  return (
+    isRecord(value) &&
+    exact(value, ['type', 'id', 'trialRoundId', 'label', 'valid']) &&
     (value.type === 'JUDGMENT' || value.type === 'SECOND_INSTANCE_RESULT') &&
-    typeof value.id === 'string' && typeof value.trialRoundId === 'string' &&
-    typeof value.label === 'string' && typeof value.valid === 'boolean';
+    typeof value.id === 'string' &&
+    typeof value.trialRoundId === 'string' &&
+    typeof value.label === 'string' &&
+    typeof value.valid === 'boolean'
+  );
 }
 function isRow(value: unknown): value is RefundRow {
-  return isRecord(value) && exact(value, [
-    'caseId', 'itemId', 'inventoryVersionId', 'caseNo', 'plaintiff', 'defendant',
-    'courtNo', 'lawyer', 'party', 'amount', 'status', 'description', 'remark',
-    'archived', 'archiveStatus', 'canFollow', 'canRecord', 'source',
-  ]) && typeof value.caseId === 'string' && typeof value.itemId === 'string' &&
-    typeof value.inventoryVersionId === 'string' && typeof value.caseNo === 'string' &&
-    typeof value.plaintiff === 'string' && typeof value.defendant === 'string' &&
-    nullableString(value.courtNo) && nullableString(value.lawyer) &&
+  return (
+    isRecord(value) &&
+    exact(value, [
+      'caseId',
+      'itemId',
+      'inventoryVersionId',
+      'caseNo',
+      'plaintiff',
+      'defendant',
+      'courtNo',
+      'lawyer',
+      'party',
+      'amount',
+      'status',
+      'description',
+      'remark',
+      'archived',
+      'archiveStatus',
+      'canFollow',
+      'canRecord',
+      'source',
+    ]) &&
+    typeof value.caseId === 'string' &&
+    typeof value.itemId === 'string' &&
+    typeof value.inventoryVersionId === 'string' &&
+    typeof value.caseNo === 'string' &&
+    typeof value.plaintiff === 'string' &&
+    typeof value.defendant === 'string' &&
+    nullableString(value.courtNo) &&
+    nullableString(value.lawyer) &&
     (value.party === 'COURT' || value.party === 'DEFENDANT') &&
-    nullableString(value.amount) && isStatus(value.status) && typeof value.description === 'string' &&
-    nullableString(value.remark) && typeof value.archived === 'boolean' &&
+    nullableString(value.amount) &&
+    isStatus(value.status) &&
+    typeof value.description === 'string' &&
+    nullableString(value.remark) &&
+    typeof value.archived === 'boolean' &&
     (value.archiveStatus === null || isStatus(value.archiveStatus)) &&
-    typeof value.canFollow === 'boolean' && typeof value.canRecord === 'boolean' &&
-    (value.source === null || isSource(value.source));
+    typeof value.canFollow === 'boolean' &&
+    typeof value.canRecord === 'boolean' &&
+    (value.source === null || isSource(value.source))
+  );
 }
 function invalidResponse(): ApiError {
   return new ApiError('服务返回了无效的诉讼退费数据', 200, 'INVALID_RESPONSE');
@@ -163,61 +207,179 @@ function queryString(query: RefundListQuery, paged: boolean): string {
   return result ? `?${result}` : '';
 }
 function isSummary(value: unknown): value is RefundSummary {
-  return isRecord(value) && exact(value, ['unrefundedAmount', 'unrefundedCount', 'pendingSettlementAmount', 'filteredAmount', 'unknownAmountCount']) &&
-    typeof value.unrefundedAmount === 'string' && Number.isInteger(value.unrefundedCount) &&
-    typeof value.pendingSettlementAmount === 'string' && typeof value.filteredAmount === 'string' &&
-    Number.isInteger(value.unknownAmountCount) && Number(value.unknownAmountCount) >= 0;
+  return (
+    isRecord(value) &&
+    exact(value, [
+      'unrefundedAmount',
+      'unrefundedCount',
+      'pendingSettlementAmount',
+      'filteredAmount',
+      'unknownAmountCount',
+    ]) &&
+    typeof value.unrefundedAmount === 'string' &&
+    Number.isInteger(value.unrefundedCount) &&
+    typeof value.pendingSettlementAmount === 'string' &&
+    typeof value.filteredAmount === 'string' &&
+    Number.isInteger(value.unknownAmountCount) &&
+    Number(value.unknownAmountCount) >= 0
+  );
 }
 function parseList(value: unknown): RefundList {
-  if (!isRecord(value) || !exact(value, ['items', 'total', 'page', 'pageSize', 'summary', 'asOf']) ||
-    !Array.isArray(value.items) || !value.items.every(isRow) || !Number.isInteger(value.total) ||
-    !Number.isInteger(value.page) || !Number.isInteger(value.pageSize) || !isSummary(value.summary) ||
-    typeof value.asOf !== 'string') throw invalidResponse();
+  if (
+    !isRecord(value) ||
+    !exact(value, ['items', 'total', 'page', 'pageSize', 'summary', 'asOf']) ||
+    !Array.isArray(value.items) ||
+    !value.items.every(isRow) ||
+    !Number.isInteger(value.total) ||
+    !Number.isInteger(value.page) ||
+    !Number.isInteger(value.pageSize) ||
+    !isSummary(value.summary) ||
+    typeof value.asOf !== 'string'
+  )
+    throw invalidResponse();
   return value as unknown as RefundList;
 }
 
-export async function getLitigationRefundCapabilities(options: RequestOptions = {}): Promise<RefundCapabilities> {
+export async function getLitigationRefundCapabilities(
+  options: RequestOptions = {},
+): Promise<RefundCapabilities> {
   const value = await getJson('/cases/litigation-refunds/context', options);
-  if (!isRecord(value) || !exact(value, ['read', 'record', 'follow', 'export']) ||
-    !['read', 'record', 'follow', 'export'].every((key) => typeof value[key] === 'boolean')) throw invalidResponse();
+  if (
+    !isRecord(value) ||
+    !exact(value, ['read', 'record', 'follow', 'export']) ||
+    !['read', 'record', 'follow', 'export'].every(
+      (key) => typeof value[key] === 'boolean',
+    )
+  )
+    throw invalidResponse();
   return value as unknown as RefundCapabilities;
 }
-export async function listLitigationRefunds(query: RefundListQuery = {}, options: RequestOptions = {}): Promise<RefundList> {
-  return parseList(await getJson(`/cases/litigation-refunds${queryString(query, true)}`, options));
+export async function listLitigationRefunds(
+  query: RefundListQuery = {},
+  options: RequestOptions = {},
+): Promise<RefundList> {
+  return parseList(
+    await getJson(
+      `/cases/litigation-refunds${queryString(query, true)}`,
+      options,
+    ),
+  );
 }
-export async function getLitigationRefundWorkspace(caseId: string, options: RequestOptions = {}): Promise<RefundWorkspace> {
-  const value = await getJson(`/cases/litigation-refunds/${encodeURIComponent(caseId)}/workspace`, options);
-  if (!isRecord(value) || !exact(value, ['caseId', 'inventoryVersionId', 'canRecord', 'canFollow', 'sources', 'items']) ||
-    typeof value.caseId !== 'string' || !nullableString(value.inventoryVersionId) ||
-    typeof value.canRecord !== 'boolean' || typeof value.canFollow !== 'boolean' ||
-    !Array.isArray(value.sources) || !value.sources.every((row) => isRecord(row) && exact(row, ['type', 'id', 'trialRoundId', 'label', 'courtNo']) &&
-      (row.type === 'JUDGMENT' || row.type === 'SECOND_INSTANCE_RESULT') && typeof row.id === 'string' &&
-      typeof row.trialRoundId === 'string' && typeof row.label === 'string' && nullableString(row.courtNo)) ||
-    !Array.isArray(value.items) || !value.items.every(isRow)) throw invalidResponse();
+export async function getLitigationRefundWorkspace(
+  caseId: string,
+  options: RequestOptions = {},
+): Promise<RefundWorkspace> {
+  const value = await getJson(
+    `/cases/litigation-refunds/${encodeURIComponent(caseId)}/workspace`,
+    options,
+  );
+  if (
+    !isRecord(value) ||
+    !exact(value, [
+      'caseId',
+      'inventoryVersionId',
+      'canRecord',
+      'canFollow',
+      'sources',
+      'items',
+    ]) ||
+    typeof value.caseId !== 'string' ||
+    !nullableString(value.inventoryVersionId) ||
+    typeof value.canRecord !== 'boolean' ||
+    typeof value.canFollow !== 'boolean' ||
+    !Array.isArray(value.sources) ||
+    !value.sources.every(
+      (row) =>
+        isRecord(row) &&
+        exact(row, ['type', 'id', 'trialRoundId', 'label', 'courtNo']) &&
+        (row.type === 'JUDGMENT' || row.type === 'SECOND_INSTANCE_RESULT') &&
+        typeof row.id === 'string' &&
+        typeof row.trialRoundId === 'string' &&
+        typeof row.label === 'string' &&
+        nullableString(row.courtNo),
+    ) ||
+    !Array.isArray(value.items) ||
+    !value.items.every(isRow)
+  )
+    throw invalidResponse();
   return value as unknown as RefundWorkspace;
 }
-export async function getLitigationRefund(caseId: string, itemId: string, options: RequestOptions = {}): Promise<RefundRow> {
-  const value = await getJson(`/cases/litigation-refunds/${encodeURIComponent(caseId)}/items/${encodeURIComponent(itemId)}`, options);
+export async function getLitigationRefund(
+  caseId: string,
+  itemId: string,
+  options: RequestOptions = {},
+): Promise<RefundRow> {
+  const value = await getJson(
+    `/cases/litigation-refunds/${encodeURIComponent(caseId)}/items/${encodeURIComponent(itemId)}`,
+    options,
+  );
   if (!isRow(value)) throw invalidResponse();
   return value;
 }
-export async function recordLitigationRefund(caseId: string, input: RefundRecordInput): Promise<RefundCommandResult> {
-  return parseCommand(await requestJson(`/cases/litigation-refunds/${encodeURIComponent(caseId)}/items`, { method: 'POST', body: input }));
+export async function recordLitigationRefund(
+  caseId: string,
+  input: RefundRecordInput,
+): Promise<RefundCommandResult> {
+  return parseCommand(
+    await requestJson(
+      `/cases/litigation-refunds/${encodeURIComponent(caseId)}/items`,
+      { method: 'POST', body: input },
+    ),
+  );
 }
-export async function correctLitigationRefund(caseId: string, itemId: string, input: RefundCorrectionInput): Promise<RefundCommandResult> {
-  return parseCommand(await requestJson(`/cases/litigation-refunds/${encodeURIComponent(caseId)}/items/${encodeURIComponent(itemId)}/corrections`, { method: 'POST', body: input }));
+export async function correctLitigationRefund(
+  caseId: string,
+  itemId: string,
+  input: RefundCorrectionInput,
+): Promise<RefundCommandResult> {
+  return parseCommand(
+    await requestJson(
+      `/cases/litigation-refunds/${encodeURIComponent(caseId)}/items/${encodeURIComponent(itemId)}/corrections`,
+      { method: 'POST', body: input },
+    ),
+  );
 }
-export async function followUpLitigationRefund(caseId: string, itemId: string, input: RefundFollowUpInput): Promise<RefundCommandResult> {
-  return parseCommand(await requestJson(`/cases/litigation-refunds/${encodeURIComponent(caseId)}/items/${encodeURIComponent(itemId)}/follow-up`, { method: 'PATCH', body: input }));
+export async function followUpLitigationRefund(
+  caseId: string,
+  itemId: string,
+  input: RefundFollowUpInput,
+): Promise<RefundCommandResult> {
+  return parseCommand(
+    await requestJson(
+      `/cases/litigation-refunds/${encodeURIComponent(caseId)}/items/${encodeURIComponent(itemId)}/follow-up`,
+      { method: 'PATCH', body: input },
+    ),
+  );
 }
 function parseCommand(value: unknown): RefundCommandResult {
-  if (!isRecord(value) || !exact(value, ['commandId', 'inventoryVersionId', 'item']) ||
-    typeof value.commandId !== 'string' || typeof value.inventoryVersionId !== 'string' || !isRow(value.item)) throw invalidResponse();
+  if (
+    !isRecord(value) ||
+    !exact(value, ['commandId', 'inventoryVersionId', 'item']) ||
+    typeof value.commandId !== 'string' ||
+    typeof value.inventoryVersionId !== 'string' ||
+    !isRow(value.item)
+  )
+    throw invalidResponse();
   return value as unknown as RefundCommandResult;
 }
-export async function getLitigationRefundRequest(caseId: string, key: string, options: RequestOptions = {}): Promise<RefundCommandResult> {
-  return parseCommand(await getJson(`/cases/litigation-refunds/${encodeURIComponent(caseId)}/requests/${encodeURIComponent(key)}`, options));
+export async function getLitigationRefundRequest(
+  caseId: string,
+  key: string,
+  options: RequestOptions = {},
+): Promise<RefundCommandResult> {
+  return parseCommand(
+    await getJson(
+      `/cases/litigation-refunds/${encodeURIComponent(caseId)}/requests/${encodeURIComponent(key)}`,
+      options,
+    ),
+  );
 }
-export function exportLitigationRefunds(query: RefundListQuery = {}, options: RequestOptions = {}) {
-  return getBlob(`/cases/litigation-refunds/export${queryString(query, false)}`, options);
+export function exportLitigationRefunds(
+  query: RefundListQuery = {},
+  options: RequestOptions = {},
+) {
+  return getBlob(
+    `/cases/litigation-refunds/export${queryString(query, false)}`,
+    options,
+  );
 }
