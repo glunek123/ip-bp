@@ -6,6 +6,7 @@ import type { CaseSupplementWorkspace } from '../../api/case-supplements';
 import type { EvidenceGroup } from '../../api/evidence';
 import type { OwnerMaterial } from '../../api/materials';
 import type { CaseSettlement } from '../../api/settlements';
+import type { RefundWorkspace } from '../../api/litigation-refunds';
 import {
   leadCaseTypeLabels as caseTypeLabels,
   leadInfringementTypeLabels as infringementLabels,
@@ -705,6 +706,7 @@ export function buildCaseWorkspaceSections(
   notaryMaterialState: LeadState = 'idle',
   settlementWorkspace?: CaseSettlement | null,
   settlementReadState: LeadState = 'idle',
+  refundWorkspace?: RefundWorkspace | null,
 ): WorkspaceSection[] {
   const events = buildCaseWorkspaceEvents(item, supplementWorkspace);
   const sections: WorkspaceSection[] = [];
@@ -1624,29 +1626,132 @@ export function buildCaseWorkspaceSections(
   ]);
   const firstJudgment = item.judgment.current;
   const secondJudgment = item.secondInstance.currentResult;
+  const judgmentFactsById = new Map(
+    [...item.judgment.history, ...(firstJudgment ? [firstJudgment] : [])].map(
+      (fact) => [fact.id, fact],
+    ),
+  );
+  const currentJudgmentSourceRounds = new Map<string, string>();
+  const visitedJudgmentFacts = new Set<string>();
+  let currentJudgmentFact = firstJudgment;
+  while (
+    currentJudgmentFact &&
+    !visitedJudgmentFacts.has(currentJudgmentFact.id)
+  ) {
+    visitedJudgmentFacts.add(currentJudgmentFact.id);
+    currentJudgmentSourceRounds.set(
+      currentJudgmentFact.id,
+      currentJudgmentFact.trialRoundId,
+    );
+    if (
+      currentJudgmentFact.kind === 'REGISTER' ||
+      currentJudgmentFact.priorFactId === null
+    )
+      break;
+    const priorFact = judgmentFactsById.get(currentJudgmentFact.priorFactId);
+    if (
+      !priorFact ||
+      priorFact.trialRoundId !== currentJudgmentFact.trialRoundId
+    )
+      break;
+    currentJudgmentFact = priorFact;
+  }
   const refundLinks = supplementHeads('REFUND_SOURCE_LINK');
-  const refundItems = closureWorkspace?.refund.items ?? [];
+  const hasCurrentRefundProjection =
+    refundWorkspace?.caseId === item.id &&
+    (refundWorkspace.inventoryVersionId === null
+      ? refundWorkspace.items.length === 0
+      : refundWorkspace.items.every(
+          (row) =>
+            row.caseId === item.id &&
+            row.inventoryVersionId === refundWorkspace.inventoryVersionId,
+        ));
+  const currentRefundRows = new Map(
+    (refundWorkspace?.items ?? [])
+      .filter(
+        (row) =>
+          hasCurrentRefundProjection &&
+          row.caseId === item.id &&
+          row.inventoryVersionId === refundWorkspace?.inventoryVersionId,
+      )
+      .map((row) => [row.itemId, row]),
+  );
+  const refundItems: CaseClosureWorkspace['refund']['items'] =
+    hasCurrentRefundProjection
+      ? [...currentRefundRows.values()].map((row) => ({
+          itemId: row.itemId,
+          party: row.party,
+          status: row.status,
+          description: row.description,
+          amount: row.amount,
+        }))
+      : (closureWorkspace?.refund.items ?? []);
+  const sourceForRefund = (itemId: string) => {
+    if (hasCurrentRefundProjection) {
+      const currentRow = currentRefundRows.get(itemId);
+      if (!currentRow) return null;
+      const source = currentRow.source;
+      return source
+        ? {
+            type: source.type,
+            id: source.id,
+            trialRoundId: source.trialRoundId,
+            label: source.label,
+            valid: source.valid,
+          }
+        : null;
+    }
+    const legacyLink = refundLinks.find(
+      (entry) =>
+        entry.inventoryItemId === itemId &&
+        entry.inventoryVersionId === closureWorkspace?.refund.versionId &&
+        (entry.sourceType === 'JUDGMENT' ||
+          entry.sourceType === 'SECOND_INSTANCE_RESULT') &&
+        entry.sourceId !== null,
+    );
+    if (
+      !legacyLink ||
+      (legacyLink.sourceType !== 'JUDGMENT' &&
+        legacyLink.sourceType !== 'SECOND_INSTANCE_RESULT') ||
+      legacyLink.sourceId === null
+    )
+      return null;
+    return {
+      type: legacyLink.sourceType,
+      id: legacyLink.sourceId,
+      trialRoundId: null,
+      label: null,
+      valid: true,
+    };
+  };
   const sourcedRefunds = (
     sourceType: 'JUDGMENT' | 'SECOND_INSTANCE_RESULT',
-    sourceId: string | undefined,
   ) => {
-    const keys = new Set(
-      refundLinks
-        .filter(
-          (entry) =>
-            entry.sourceType === sourceType &&
-            entry.sourceId === sourceId &&
-            entry.inventoryVersionId === closureWorkspace?.refund.versionId,
-        )
-        .map((entry) => entry.inventoryItemId),
-    );
-    return refundItems.filter((entry) => keys.has(entry.itemId));
+    return refundItems.filter((entry) => {
+      const source = sourceForRefund(entry.itemId);
+      if (!source?.valid || source.type !== sourceType) return false;
+      if (sourceType === 'JUDGMENT') {
+        const currentRoundId = currentJudgmentSourceRounds.get(source.id);
+        return (
+          currentRoundId !== undefined &&
+          (source.trialRoundId === null ||
+            source.trialRoundId === currentRoundId)
+        );
+      }
+      const recordedResult =
+        item.secondInstance.results.find((result) => result.id === source.id) ??
+        (secondJudgment?.id === source.id ? secondJudgment : undefined);
+      return (
+        secondJudgment !== null &&
+        recordedResult?.trialRoundId === secondJudgment.trialRoundId &&
+        source.id === secondJudgment.id &&
+        (source.trialRoundId === null ||
+          source.trialRoundId === secondJudgment.trialRoundId)
+      );
+    });
   };
-  const firstRefunds = sourcedRefunds('JUDGMENT', firstJudgment?.id);
-  const secondRefunds = sourcedRefunds(
-    'SECOND_INSTANCE_RESULT',
-    secondJudgment?.id,
-  );
+  const firstRefunds = sourcedRefunds('JUDGMENT');
+  const secondRefunds = sourcedRefunds('SECOND_INSTANCE_RESULT');
   const refundTotal = (items: typeof refundItems) => {
     if (!items.length) return '未关联';
     const unknown = items.filter((entry) => entry.amount === null).length;
@@ -1657,20 +1762,26 @@ export function buildCaseWorkspaceSections(
   };
   const refundPartyLabels = { COURT: '法院', DEFENDANT: '被告' } as const;
   const refundStatusLabels = {
-    UNKNOWN: '状态待定',
-    PENDING: '待办理',
+    UNKNOWN: '待确认',
+    PENDING: '待退',
     SUBMITTED: '已提交',
     RETURNED_UNSETTLED: '已退回未结算',
-    SETTLED: '已结算，未标记公司收到',
-    RECEIVED: '已标记公司收到',
-    CONVERTED_TO_COST: '转作成本',
+    SETTLED: '客户已收公司未收',
+    RECEIVED: '公司已收',
+    CONVERTED_TO_COST: '转成本',
   } as const;
   const refundDetails = (items: typeof refundItems) =>
     items
-      .map(
-        (entry) =>
-          `${refundPartyLabels[entry.party]}／${refundStatusLabels[entry.status]}／${entry.amount === null ? '金额待定' : `${entry.amount} 元`}／${entry.description}`,
-      )
+      .map((entry) => {
+        const projectedRow = currentRefundRows.get(entry.itemId);
+        const sourceText =
+          projectedRow === undefined
+            ? ''
+            : projectedRow.source === null
+              ? '／来源未关联'
+              : `／${projectedRow.source.valid ? '来源：' : '来源已失效：'}${projectedRow.source.label}`;
+        return `${refundPartyLabels[entry.party]}／${refundStatusLabels[entry.status]}／${entry.amount === null ? '金额待定' : `${entry.amount} 元`}／${entry.description}${sourceText}`;
+      })
       .join('；') || '未关联';
   const attributedRefundIds = new Set(
     [...firstRefunds, ...secondRefunds].map((entry) => entry.itemId),
@@ -1678,6 +1789,15 @@ export function buildCaseWorkspaceSections(
   const unattributedRefunds = refundItems.filter(
     (entry) => !attributedRefundIds.has(entry.itemId),
   );
+  const refundDataReady =
+    hasCurrentRefundProjection ||
+    Boolean(closureWorkspace && supplementWorkspace);
+  const projectedSourceRows = [...currentRefundRows.values()].filter(
+    (row) => row.source !== null,
+  );
+  const invalidProjectedSourceCount = projectedSourceRows.filter(
+    (row) => row.source?.valid === false,
+  ).length;
   setSummary('judgment', [
     date('一审／收到判决日期', firstJudgment?.judgmentReceivedAt ?? null),
     firstJudgment
@@ -1710,19 +1830,15 @@ export function buildCaseWorkspaceSections(
     ),
     field(
       '一审／应退清单金额',
-      closureWorkspace && supplementWorkspace
-        ? refundTotal(firstRefunds)
-        : '退费来源暂不可读取',
+      refundDataReady ? refundTotal(firstRefunds) : '退费来源暂不可读取',
     ),
     field(
       '一审／应退清单笔数',
-      closureWorkspace && supplementWorkspace
-        ? String(firstRefunds.length)
-        : '退费来源暂不可读取',
+      refundDataReady ? String(firstRefunds.length) : '退费来源暂不可读取',
     ),
     field(
       '一审／已标记公司收到（清单状态）金额',
-      closureWorkspace && supplementWorkspace
+      refundDataReady
         ? refundTotal(
             firstRefunds.filter((entry) => entry.status === 'RECEIVED'),
           )
@@ -1730,7 +1846,7 @@ export function buildCaseWorkspaceSections(
     ),
     field(
       '一审／已标记公司收到（清单状态）笔数',
-      closureWorkspace && supplementWorkspace
+      refundDataReady
         ? String(
             firstRefunds.filter((entry) => entry.status === 'RECEIVED').length,
           )
@@ -1738,7 +1854,7 @@ export function buildCaseWorkspaceSections(
     ),
     field(
       '一审／转作成本',
-      closureWorkspace && supplementWorkspace
+      refundDataReady
         ? refundTotal(
             firstRefunds.filter(
               (entry) => entry.status === 'CONVERTED_TO_COST',
@@ -1748,25 +1864,19 @@ export function buildCaseWorkspaceSections(
     ),
     field(
       '一审／退费清单明细',
-      closureWorkspace && supplementWorkspace
-        ? refundDetails(firstRefunds)
-        : '退费来源暂不可读取',
+      refundDataReady ? refundDetails(firstRefunds) : '退费来源暂不可读取',
     ),
     field(
       '二审／应退清单金额',
-      closureWorkspace && supplementWorkspace
-        ? refundTotal(secondRefunds)
-        : '退费来源暂不可读取',
+      refundDataReady ? refundTotal(secondRefunds) : '退费来源暂不可读取',
     ),
     field(
       '二审／应退清单笔数',
-      closureWorkspace && supplementWorkspace
-        ? String(secondRefunds.length)
-        : '退费来源暂不可读取',
+      refundDataReady ? String(secondRefunds.length) : '退费来源暂不可读取',
     ),
     field(
       '二审／已标记公司收到（清单状态）金额',
-      closureWorkspace && supplementWorkspace
+      refundDataReady
         ? refundTotal(
             secondRefunds.filter((entry) => entry.status === 'RECEIVED'),
           )
@@ -1774,7 +1884,7 @@ export function buildCaseWorkspaceSections(
     ),
     field(
       '二审／已标记公司收到（清单状态）笔数',
-      closureWorkspace && supplementWorkspace
+      refundDataReady
         ? String(
             secondRefunds.filter((entry) => entry.status === 'RECEIVED').length,
           )
@@ -1782,7 +1892,7 @@ export function buildCaseWorkspaceSections(
     ),
     field(
       '二审／转作成本',
-      closureWorkspace && supplementWorkspace
+      refundDataReady
         ? refundTotal(
             secondRefunds.filter(
               (entry) => entry.status === 'CONVERTED_TO_COST',
@@ -1792,29 +1902,31 @@ export function buildCaseWorkspaceSections(
     ),
     field(
       '二审／退费清单明细',
-      closureWorkspace && supplementWorkspace
-        ? refundDetails(secondRefunds)
-        : '退费来源暂不可读取',
+      refundDataReady ? refundDetails(secondRefunds) : '退费来源暂不可读取',
     ),
     field(
       '诉讼退费来源',
-      !supplementWorkspace
-        ? '退费归属来源暂不可读取'
-        : refundLinks.length
-          ? `${refundLinks.length} 条精确来源关联`
-          : closureWorkspace
-            ? '未关联判决来源'
-            : '退费来源暂不可读取',
+      hasCurrentRefundProjection
+        ? projectedSourceRows.length
+          ? `${projectedSourceRows.length} 条服务端来源关联${invalidProjectedSourceCount ? `；${invalidProjectedSourceCount} 条来源已失效` : ''}`
+          : '当前没有来源关联'
+        : !supplementWorkspace
+          ? '退费归属来源暂不可读取'
+          : refundLinks.length
+            ? `${refundLinks.length} 条精确来源关联`
+            : closureWorkspace
+              ? '未关联判决来源'
+              : '退费来源暂不可读取',
     ),
     field(
       '历史审级未标明／清单金额',
-      closureWorkspace && supplementWorkspace
+      refundDataReady
         ? refundTotal(unattributedRefunds)
         : '退费归属来源暂不可读取',
     ),
     field(
       '历史审级未标明／清单明细',
-      closureWorkspace && supplementWorkspace
+      refundDataReady
         ? refundDetails(unattributedRefunds)
         : '退费归属来源暂不可读取',
     ),

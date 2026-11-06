@@ -10,6 +10,7 @@ import type {
 } from '../../api/case-supplements';
 import type { EvidenceGroup } from '../../api/evidence';
 import type { CaseSettlement } from '../../api/settlements';
+import type { RefundWorkspace } from '../../api/litigation-refunds';
 import {
   downloadMaterialVersion,
   type OwnerMaterial,
@@ -34,6 +35,7 @@ const props = defineProps<{
   supplementWorkspace?: CaseSupplementWorkspace | null;
   evidenceGroup?: EvidenceGroup | null;
   settlementWorkspace?: CaseSettlement | null;
+  refundWorkspace?: RefundWorkspace | null;
   leadMaterials?: OwnerMaterial[] | null;
   notaryMaterials?: OwnerMaterial[] | null;
   closureReadState?: LeadState;
@@ -70,6 +72,7 @@ const sections = computed(() =>
     props.notaryMaterialState,
     props.settlementWorkspace,
     props.settlementReadState,
+    props.refundWorkspace,
   ),
 );
 const events = computed(() =>

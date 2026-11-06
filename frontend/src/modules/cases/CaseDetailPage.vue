@@ -63,6 +63,7 @@ import {
 } from '../../api/case-supplements';
 import { getEvidenceSourceGroup, type EvidenceGroup } from '../../api/evidence';
 import { getCaseSettlement, type CaseSettlement } from '../../api/settlements';
+import type { RefundWorkspace } from '../../api/litigation-refunds';
 import CaseWorkspaceFees from './CaseWorkspaceFees.vue';
 import { CaseFinancePanel } from '../settlements';
 import type { CaseActualSummary } from '../settlements';
@@ -199,6 +200,7 @@ const lead = ref<LeadDetail | null>(null);
 const leadState = ref<LeadState>('idle');
 const closureWorkspace = ref<CaseClosureWorkspace | null>(null);
 const supplementWorkspace = ref<CaseSupplementWorkspace | null>(null);
+const refundWorkspace = ref<RefundWorkspace | null>(null);
 const evidenceGroup = ref<EvidenceGroup | null>(null);
 const settlementWorkspace = ref<CaseSettlement | null>(null);
 const leadMaterials = ref<OwnerMaterial[] | null>(null);
@@ -1732,6 +1734,7 @@ function clearContext(): void {
   leadState.value = 'idle';
   closureWorkspace.value = null;
   supplementWorkspace.value = null;
+  refundWorkspace.value = null;
   evidenceGroup.value = null;
   settlementWorkspace.value = null;
   leadMaterials.value = null;
@@ -2488,6 +2491,7 @@ onBeforeUnmount(() => {
           :routine="routine"
           :closure-workspace="closureWorkspace"
           :supplement-workspace="supplementWorkspace"
+          :refund-workspace="refundWorkspace"
           :evidence-group="evidenceGroup"
           :settlement-workspace="settlementWorkspace"
           :lead-materials="leadMaterials"
@@ -2512,6 +2516,7 @@ onBeforeUnmount(() => {
           :case-id="item.id"
           :refresh-key="`${item.version}:${identity}:${detailSourcesRevision}`"
           @refresh="detailSourcesRevision += 1"
+          @workspace-loaded="refundWorkspace = $event"
         />
         <section
           class="demo-card demo-card--pad"

@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import type { CaseDetail } from '../../api/cases';
 import type { CaseClosureWorkspace } from '../../api/case-closure-workspace';
 import type { CaseSupplementWorkspace } from '../../api/case-supplements';
+import type { RefundWorkspace } from '../../api/litigation-refunds';
 import { ApiError } from '../../api/http';
 import CaseDetailsSections from './CaseDetailsSections.vue';
 import CaseSupplementalWorkspacePanel from './CaseSupplementalWorkspacePanel.vue';
@@ -207,6 +208,45 @@ function mountSections() {
 }
 
 describe('CaseDetailsSections with the real A2 section shell', () => {
+  it('uses a readable current refund workspace when the legacy closure workspace is unavailable', async () => {
+    const wrapper = mountSections();
+    const refundWorkspace: RefundWorkspace = {
+      caseId: 'case-1',
+      inventoryVersionId: 'inventory-1',
+      canRecord: false,
+      canFollow: false,
+      sources: [],
+      items: [
+        {
+          caseId: 'case-1',
+          itemId: 'refund-1',
+          inventoryVersionId: 'inventory-1',
+          caseNo: 'CA-1',
+          plaintiff: '原告',
+          defendant: '被告',
+          courtNo: null,
+          lawyer: null,
+          party: 'COURT',
+          amount: '41.00',
+          status: 'PENDING',
+          description: '判决后登记事项',
+          remark: null,
+          archived: false,
+          archiveStatus: null,
+          canFollow: false,
+          canRecord: false,
+          source: null,
+        },
+      ],
+    };
+    await wrapper.setProps({ closureReadState: 'failed', refundWorkspace });
+    const judgment = wrapper.get('[data-section="judgment"]').text();
+    expect(judgment).toContain('41.00 元');
+    expect(judgment).toContain('判决后登记事项');
+    expect(judgment).toContain('来源未关联');
+    expect(judgment).toContain('当前没有来源关联');
+  });
+
   it('reopens an unknown supplement under the same actor after an authorization revision and resends its original body', async () => {
     const actorKey = 'INTERNAL:user-1:department-1';
     const original = {

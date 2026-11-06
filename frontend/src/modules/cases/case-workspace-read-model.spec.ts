@@ -4,6 +4,7 @@ import type { LeadDetail } from '../../api/leads';
 import type { CaseSupplementWorkspace } from '../../api/case-supplements';
 import type { CaseClosureWorkspace } from '../../api/case-closure-workspace';
 import type { CaseSettlement } from '../../api/settlements';
+import type { RefundRow, RefundWorkspace } from '../../api/litigation-refunds';
 import type { OwnerMaterial } from '../../api/materials';
 import {
   buildCaseWorkspaceEvents,
@@ -438,9 +439,7 @@ describe('case workspace read model', () => {
     expect(value('一审／已标记公司收到（清单状态）金额')).toBe('10.00 元');
     expect(value('一审／已标记公司收到（清单状态）笔数')).toBe('1');
     expect(value('一审／转作成本')).toBe('5.00 元');
-    expect(value('一审／退费清单明细')).toContain(
-      '已结算，未标记公司收到／20.00 元',
-    );
+    expect(value('一审／退费清单明细')).toContain('客户已收公司未收／20.00 元');
     expect(value('历史审级未标明／清单金额')).toBe(
       '已知小计 0.00 元；1 笔金额待定',
     );
@@ -484,6 +483,209 @@ describe('case workspace read model', () => {
     expect(settlementStatus()).toBe(
       '结算评估与当前结案版本不一致（原声明：状态待核）；发起及实际收付分别核对',
     );
+  });
+  it('uses exact current server rows, preserves corrected judgment source chains, and marks invalid sources', () => {
+    const item = caseFixture();
+    const registered = {
+      id: 'judgment-registered',
+      trialRoundId: 'round-1',
+      kind: 'REGISTER' as const,
+      priorFactId: null,
+      judgmentReceivedAt: '2026-10-01',
+      judgmentAmountState: 'KNOWN' as const,
+      judgmentAmount: '100.00',
+      paidLitigationFeeState: 'PENDING' as const,
+      paidLitigationFee: null,
+      fromVersion: 1,
+      toVersion: 2,
+      recordedAt,
+      files: [],
+    };
+    item.judgment.history = [registered];
+    item.judgment.current = {
+      ...registered,
+      id: 'judgment-corrected',
+      kind: 'CORRECT',
+      priorFactId: registered.id,
+      fromVersion: 2,
+      toVersion: 3,
+      reason: '更正判决数据',
+    };
+    const refundItems: CaseClosureWorkspace['refund']['items'] = [
+      {
+        itemId: 'refund-1',
+        party: 'COURT',
+        status: 'PENDING',
+        description: '一审诉讼费退费',
+        amount: '100.00',
+      },
+    ];
+    const closure: CaseClosureWorkspace = {
+      readPurpose: 'DISPLAY_ONLY',
+      caseId: 'case-1',
+      caseVersion: 1,
+      stage: 'PENDING_MATCH',
+      actualRegistrationLawyers: [],
+      closure: {
+        versionId: null,
+        closeOn: null,
+        amountState: 'UNKNOWN',
+        amount: null,
+        paymentType: 'UNKNOWN',
+      },
+      effectivePayments: [],
+      documents: [],
+      refund: {
+        versionId: 'inventory-current',
+        revision: 2,
+        declaration: 'COMPLETE',
+        items: refundItems,
+      },
+      assessment: {
+        versionId: null,
+        revision: null,
+        closureVersionId: null,
+        termsVersion: null,
+        declaration: 'UNKNOWN',
+        matchesCurrent: null,
+        customerAmount: null,
+        lawyerAmount: null,
+      },
+      actual: {
+        connection: 'NOT_CONNECTED',
+        scope: null,
+        customerReceiptState: 'UNKNOWN',
+        customerReceivedAmount: null,
+        lawyerInvoiceState: 'UNKNOWN',
+        lawyerInvoicedAmount: null,
+      },
+    };
+    const staleLink: CaseSupplementWorkspace['entries'][number] = {
+      id: 'stale-link',
+      priorEntryId: null,
+      kind: 'REFUND_SOURCE_LINK',
+      trialRoundId: null,
+      amount: null,
+      text: null,
+      eventDate: null,
+      courtCaseNo: null,
+      sourceType: 'JUDGMENT',
+      sourceId: registered.id,
+      inventoryVersionId: 'inventory-previous',
+      inventoryItemId: 'refund-1',
+      materialId: null,
+      contentVersionId: null,
+      reason: '原版本来源关联',
+      recordedByUserId: 'operator-1',
+      recordedAt,
+    };
+    const supplements: CaseSupplementWorkspace = {
+      canEdit: false,
+      entries: [staleLink],
+      recorders: [],
+      sources: {
+        executionFiling: null,
+        trialRounds: [],
+        judgments: [],
+        secondResults: [],
+        refundItems: [],
+        materials: [],
+      },
+    };
+    const serverRow: RefundRow = {
+      caseId: 'case-1',
+      itemId: 'refund-1',
+      inventoryVersionId: 'inventory-current',
+      caseNo: '（2026）知民初1号',
+      plaintiff: '原告',
+      defendant: '被告',
+      courtNo: null,
+      lawyer: null,
+      party: 'COURT',
+      amount: '100.00',
+      status: 'PENDING',
+      description: '一审诉讼费退费',
+      remark: null,
+      archived: false,
+      archiveStatus: null,
+      canFollow: false,
+      canRecord: true,
+      source: {
+        type: 'JUDGMENT',
+        id: registered.id,
+        trialRoundId: 'round-1',
+        label: '一审原登记判决',
+        valid: true,
+      },
+    };
+    const serverWorkspace: RefundWorkspace = {
+      caseId: 'case-1',
+      inventoryVersionId: 'inventory-current',
+      canRecord: true,
+      canFollow: false,
+      sources: [],
+      items: [serverRow],
+    };
+    const sections = (projection: RefundWorkspace | null) =>
+      buildCaseWorkspaceSections(
+        item,
+        null,
+        'idle',
+        undefined,
+        closure,
+        supplements,
+        'failed',
+        'ready',
+        undefined,
+        'idle',
+        undefined,
+        undefined,
+        'idle',
+        'idle',
+        undefined,
+        'idle',
+        projection,
+      ).find((section) => section.key === 'judgment')!.summary;
+    const value = (fields: ReturnType<typeof sections>, label: string) =>
+      fields.find((field) => field.label === label)?.value;
+
+    const current = sections(serverWorkspace);
+    expect(value(current, '一审／应退清单金额')).toBe('100.00 元');
+    expect(value(current, '一审／应退清单笔数')).toBe('1');
+    expect(value(current, '一审／退费清单明细')).toContain(
+      '来源：一审原登记判决',
+    );
+
+    const invalid = sections({
+      ...serverWorkspace,
+      items: [{ ...serverRow, source: { ...serverRow.source!, valid: false } }],
+    });
+    expect(value(invalid, '一审／应退清单金额')).toBe('未关联');
+    expect(value(invalid, '历史审级未标明／清单明细')).toContain(
+      '来源已失效：一审原登记判决',
+    );
+
+    const wrongRound = sections({
+      ...serverWorkspace,
+      items: [
+        {
+          ...serverRow,
+          source: { ...serverRow.source!, trialRoundId: 'round-2' },
+        },
+      ],
+    });
+    expect(value(wrongRound, '一审／应退清单笔数')).toBe('0');
+    expect(value(wrongRound, '历史审级未标明／清单明细')).toContain(
+      '来源：一审原登记判决',
+    );
+
+    const wrongCase = sections({
+      ...serverWorkspace,
+      caseId: 'case-2',
+      items: [{ ...serverRow, caseId: 'case-2' }],
+    });
+    expect(value(wrongCase, '一审／应退清单笔数')).toBe('0');
+    expect(value(wrongCase, '历史审级未标明／清单金额')).toBe('100.00 元');
   });
   it('shows authorized settlement mode and launch facts without asserting payment or closeout', () => {
     const settlement: CaseSettlement = {

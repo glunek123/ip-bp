@@ -252,10 +252,18 @@ afterEach(async () => {
 });
 
 it('shows the case-local refund registration entry after the ordinary case read succeeds', async () => {
-  expect(wrapper!.find('[data-test="case-litigation-refunds"]').exists()).toBe(true);
+  expect(wrapper!.find('[data-test="case-litigation-refunds"]').exists()).toBe(
+    true,
+  );
   expect(wrapper!.get('[data-test="refund-register-open"]').text()).toBe(
     '登记退费事项',
   );
+  expect(
+    wrapper!.getComponent(CaseDetailsSections).props('refundWorkspace'),
+  ).toMatchObject({
+    caseId: 'case-1',
+    inventoryVersionId: null,
+  });
   expect(refundWorkspaceRead).toHaveBeenCalledWith('case-1');
 });
 
