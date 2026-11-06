@@ -1319,7 +1319,8 @@ test('requires a reason for archived refund follow-up and preserves the formal a
   );
   expect(earlyClosure).toMatchObject({
     stage: 'WAITING_ARCHIVE',
-    version: source.judgment.version + 1,
+    // Early closure records both the closure command and its closure version.
+    version: source.judgment.version + 2,
   });
 
   const settlementInput = {
