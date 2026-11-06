@@ -102,7 +102,10 @@ beforeEach(() => {
     item: row,
   });
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe('LitigationRefundPanel', () => {
   it('shows unknown amounts distinctly and keeps the ninth data column as case number', async () => {
@@ -151,11 +154,15 @@ describe('LitigationRefundPanel', () => {
   });
 
   it('filters on the server, resets page selection, and exports all filtered matches', async () => {
+    vi.useFakeTimers();
     const wrapper = render();
     await flushPromises();
     await wrapper.get('input[aria-label="选择案件001"]').setValue(true);
     await wrapper.get('input[type="search"]').setValue('原告甲');
-    await wrapper.get('form').trigger('submit');
+    expect(api.listLitigationRefunds).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(249);
+    expect(api.listLitigationRefunds).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
     await flushPromises();
     expect(api.listLitigationRefunds).toHaveBeenLastCalledWith(
       expect.objectContaining({ plaintiff: '原告甲', page: 1, pageSize: 20 }),
@@ -167,6 +174,10 @@ describe('LitigationRefundPanel', () => {
           .element as HTMLInputElement
       ).checked,
     ).toBe(false);
+    api.listLitigationRefunds.mockClear();
+    await wrapper.get('.refund-panel__filters select').setValue('RECEIVED');
+    await flushPromises();
+    expect(api.listLitigationRefunds).toHaveBeenCalledTimes(1);
     const exportButton = wrapper
       .findAll('button')
       .find((button) => button.text().includes('导出全部筛选结果'));
@@ -178,6 +189,51 @@ describe('LitigationRefundPanel', () => {
     );
     const exportedQuery = api.exportLitigationRefunds.mock.calls[0]?.[0];
     expect(exportedQuery).not.toHaveProperty('page');
+  });
+
+  it('marks partial current-page selection and keeps pending recovery through clearing filters', async () => {
+    const pendingValue = {
+      ownerScope: 'user-a:dept-1',
+      caseId: 'case-1',
+      itemId: 'item-1',
+      body: {
+        expectedInventoryVersionId: 'inv-1',
+        status: 'UNKNOWN',
+        remark: null,
+        reason: null,
+        idempotencyKey: 'original-key',
+      },
+    };
+    sessionStorage.setItem(
+      'litigation-refund-follow-pending:user-a:dept-1',
+      JSON.stringify(pendingValue),
+    );
+    api.listLitigationRefunds.mockResolvedValueOnce({
+      ...structuredClone(response),
+      items: [row, { ...row, itemId: 'item-2', caseNo: '案件002' }],
+    });
+    const wrapper = render();
+    await flushPromises();
+    const firstRowCheck = wrapper.get('input[aria-label="选择案件001"]');
+    await firstRowCheck.setValue(true);
+    expect(
+      firstRowCheck.element
+        .closest('tr')
+        ?.classList.contains('refund-panel__row--selected'),
+    ).toBe(true);
+    const pageCheck = wrapper.get('input[aria-label="选择本页记录"]')
+      .element as HTMLInputElement;
+    expect(pageCheck.indeterminate).toBe(true);
+    const clearButton = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '重置筛选');
+    if (!clearButton) throw new Error('reset filter action missing');
+    await clearButton.trigger('click');
+    await flushPromises();
+    expect(
+      sessionStorage.getItem('litigation-refund-follow-pending:user-a:dept-1'),
+    ).toBe(JSON.stringify(pendingValue));
+    expect(wrapper.find('.refund-panel__recovery').exists()).toBe(true);
   });
 
   it('does not offer the cost status for a court refund', async () => {

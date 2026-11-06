@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from 'vue';
 import { ApiError } from '../../api/http';
 import {
   exportLitigationRefunds,
@@ -79,6 +87,8 @@ const filters = reactive({
   lawyer: '',
   status: '' as RefundStatus | '',
 });
+let suppressFilterWatch = false;
+let suppressPageLoad = false;
 const capabilities = ref<RefundCapabilities | null>(null);
 const result = ref<RefundList | null>(null);
 const page = ref(1);
@@ -120,6 +130,11 @@ const allVisibleSelected = computed(
   () =>
     visibleKeys.value.length > 0 &&
     visibleKeys.value.every((key) => selected.value.has(key)),
+);
+const someVisibleSelected = computed(
+  () =>
+    visibleKeys.value.some((key) => selected.value.has(key)) &&
+    !allVisibleSelected.value,
 );
 const unknownMessage = computed(() =>
   result.value && result.value.summary.unknownAmountCount > 0
@@ -221,12 +236,8 @@ function storePending(value: PendingRequest | null, scope: string): void {
     globalThis.sessionStorage.setItem(pendingKey(scope), JSON.stringify(value));
   else globalThis.sessionStorage.removeItem(pendingKey(scope));
 }
-function applyFilters(): void {
-  page.value = 1;
-  selected.value.clear();
-  void load();
-}
 function clearFilters(): void {
+  suppressFilterWatch = true;
   Object.assign(filters, {
     plaintiff: '',
     defendant: '',
@@ -234,10 +245,42 @@ function clearFilters(): void {
     lawyer: '',
     status: '',
   });
+  suppressFilterWatch = false;
+  if (filterTimer !== undefined) globalThis.clearTimeout(filterTimer);
+  filterTimer = undefined;
+  suppressPageLoad = true;
   page.value = 1;
+  suppressPageLoad = false;
   selected.value.clear();
   void load();
 }
+let filterTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
+function scheduleTextFilter(): void {
+  if (suppressFilterWatch) return;
+  suppressPageLoad = true;
+  page.value = 1;
+  suppressPageLoad = false;
+  selected.value.clear();
+  if (filterTimer !== undefined) globalThis.clearTimeout(filterTimer);
+  filterTimer = globalThis.setTimeout(() => {
+    filterTimer = undefined;
+    void load();
+  }, 250);
+}
+function applyStatusFilter(): void {
+  if (suppressFilterWatch) return;
+  suppressPageLoad = true;
+  page.value = 1;
+  suppressPageLoad = false;
+  selected.value.clear();
+  void load();
+}
+watch(
+  () => [filters.plaintiff, filters.defendant, filters.courtNo, filters.lawyer],
+  scheduleTextFilter,
+  { flush: 'sync' },
+);
+watch(() => filters.status, applyStatusFilter, { flush: 'sync' });
 function togglePageSelection(checked: boolean): void {
   const next = new Set(selected.value);
   for (const key of visibleKeys.value) {
@@ -395,11 +438,17 @@ async function exportAll(): Promise<void> {
     if (requestIdentity === identity.value) error.value = message(cause);
   }
 }
-watch(page, () => {
-  selected.value.clear();
-  void load();
-});
+watch(
+  page,
+  () => {
+    selected.value.clear();
+    if (!suppressPageLoad) void load();
+  },
+  { flush: 'sync' },
+);
 watch(identity, () => {
+  if (filterTimer !== undefined) globalThis.clearTimeout(filterTimer);
+  filterTimer = undefined;
   capabilities.value = null;
   result.value = null;
   selected.value.clear();
@@ -409,6 +458,9 @@ watch(identity, () => {
   void initialize();
 });
 onMounted(initialize);
+onBeforeUnmount(() => {
+  if (filterTimer !== undefined) globalThis.clearTimeout(filterTimer);
+});
 </script>
 
 <template>
@@ -444,7 +496,7 @@ onMounted(initialize);
           }}</strong>
         </div>
       </div>
-      <form class="refund-panel__filters" @submit.prevent="applyFilters">
+      <div class="refund-panel__filters">
         <label>原告<input v-model="filters.plaintiff" type="search" /></label>
         <label>被告<input v-model="filters.defendant" type="search" /></label>
         <label>法院案号<input v-model="filters.courtNo" type="search" /></label>
@@ -462,8 +514,7 @@ onMounted(initialize);
           </select></label
         >
         <div class="refund-panel__actions">
-          <button type="submit">筛选</button
-          ><button type="button" @click="clearFilters">重置筛选</button
+          <button type="button" @click="clearFilters">重置筛选</button
           ><button v-if="capabilities.export" type="button" @click="exportAll">
             导出全部筛选结果
           </button>
@@ -480,7 +531,7 @@ onMounted(initialize);
             </button>
           </details>
         </div>
-      </form>
+      </div>
       <p class="refund-panel__export-note">
         金额格式：千分位，两位小数。{{
           unknownMessage
@@ -497,9 +548,10 @@ onMounted(initialize);
                   aria-label="选择本页记录"
                   type="checkbox"
                   :checked="allVisibleSelected"
+                  :indeterminate="someVisibleSelected"
                   @change="
                     togglePageSelection(
-                      ($event.target as HTMLInputElement).checked,
+                      ($event.target as globalThis.HTMLInputElement).checked,
                     )
                   "
                 />
@@ -515,7 +567,13 @@ onMounted(initialize);
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in result?.items ?? []" :key="rowKey(row)">
+            <tr
+              v-for="row in result?.items ?? []"
+              :key="rowKey(row)"
+              :class="{
+                'refund-panel__row--selected': selected.has(rowKey(row)),
+              }"
+            >
               <td>
                 <input
                   type="checkbox"
@@ -889,6 +947,9 @@ onMounted(initialize);
   padding: 8px;
   border-bottom: 1px solid #ebeef5;
   text-align: left;
+}
+.refund-panel__row--selected {
+  background: #ecf5ff;
 }
 .refund-panel th {
   background: #f5f7fa;
