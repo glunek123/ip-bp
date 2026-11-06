@@ -1287,7 +1287,7 @@ test('requires a reason for archived refund follow-up and preserves the formal a
     timeZone: 'Asia/Shanghai',
   }).format(new Date());
   const earlyClosureInput = {
-    expectedVersion: source.created.version,
+    expectedVersion: source.judgment.version,
     expectedStage: 'WAITING_JUDGMENT',
     idempotencyKey: randomUUID(),
     closeAt: today,
@@ -1319,7 +1319,7 @@ test('requires a reason for archived refund follow-up and preserves the formal a
   );
   expect(earlyClosure).toMatchObject({
     stage: 'WAITING_ARCHIVE',
-    version: source.created.version + 1,
+    version: source.judgment.version + 1,
   });
 
   const settlementInput = {
