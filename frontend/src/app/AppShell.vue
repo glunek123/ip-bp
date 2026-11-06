@@ -12,6 +12,7 @@ import {
   type DueReminder,
 } from '../api/calendar-reminders';
 import { getSettlementContext } from '../api/settlements';
+import { getLitigationRefundCapabilities } from '../api/litigation-refunds';
 import { listEvidence } from '../api/evidence';
 import { getReportsCapability } from '../api/reports';
 import { listCases, type CaseStage, type CaseStageGroup } from '../api/cases';
@@ -468,6 +469,11 @@ const {
   const context = await getSettlementContext({ signal });
   return context.read || context.feeRead;
 }, '结算导航暂时无法读取，请重试。');
+const {
+  visible: canViewLitigationRefunds,
+} = createReadNavigation(async (signal) => {
+  return (await getLitigationRefundCapabilities({ signal })).read;
+}, '诉讼退费导航暂时无法读取，请重试。');
 const {
   visible: canViewEvidence,
   error: evidenceReadError,
@@ -1395,7 +1401,7 @@ async function logout(): Promise<void> {
           >
         </div>
         <RouterLink
-          v-if="!isClient && canViewSettlements"
+          v-if="!isClient && (canViewSettlements || canViewLitigationRefunds)"
           class="app-nav__item"
           :class="{ active: route.path === '/settlements' }"
           data-test="settlement-nav"

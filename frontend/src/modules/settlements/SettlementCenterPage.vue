@@ -19,6 +19,7 @@ import {
 } from '../../api/settlements';
 import { useAuthStore } from '../../stores/auth';
 import FeeCenterPanel from './FeeCenterPanel.vue';
+import LitigationRefundPanel from './LitigationRefundPanel.vue';
 import DateRangeFilter from '../../app/DateRangeFilter.vue';
 import { isListRowClick } from '../../app/list-row-navigation';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
@@ -37,7 +38,7 @@ import {
   isPendingCancel,
 } from './financial-pending';
 
-const tab = ref<'CUSTOMER' | 'LAWYER' | 'FEES'>('CUSTOMER');
+const tab = ref<'CUSTOMER' | 'LAWYER' | 'FEES' | 'REFUNDS'>('CUSTOMER');
 const filterFormId = useId();
 const billCreateFormId = useId();
 const billFilterFormId = useId();
@@ -459,17 +460,26 @@ async function cancelBill(): Promise<void> {
       >
         费用中心
       </ElButton>
+      <ElButton
+        role="tab"
+        class="action-size--wide"
+        :aria-selected="tab === 'REFUNDS'"
+        @click="tab = 'REFUNDS'"
+      >
+        诉讼退费
+      </ElButton>
     </div>
-    <p v-if="!capabilities && !error">正在读取结算中心权限…</p>
-    <p v-else-if="!capabilities" role="alert">{{ error }}</p>
+    <LitigationRefundPanel v-if="tab === 'REFUNDS'" />
+    <p v-if="tab !== 'REFUNDS' && !capabilities && !error">正在读取结算中心权限…</p>
+    <p v-else-if="tab !== 'REFUNDS' && !capabilities" role="alert">{{ error }}</p>
     <FeeCenterPanel
-      v-else-if="tab === 'FEES' && capabilities.feeRead"
-      :can-create="capabilities.feeCreate"
-      :can-update="capabilities.feeUpdate"
-      :can-launch="capabilities.feeLaunch"
-      :can-delete="capabilities.feeDelete"
+      v-else-if="tab === 'FEES' && capabilities?.feeRead"
+      :can-create="capabilities?.feeCreate ?? false"
+      :can-update="capabilities?.feeUpdate ?? false"
+      :can-launch="capabilities?.feeLaunch ?? false"
+      :can-delete="capabilities?.feeDelete ?? false"
     />
-    <template v-else-if="capabilities.read">
+    <template v-else-if="capabilities?.read">
       <p v-if="error" role="alert" class="settlement-center__message">
         {{ error }}
         <ElButton class="action-size--standard" @click="load">刷新</ElButton>
@@ -850,7 +860,7 @@ async function cancelBill(): Promise<void> {
         <ElButton @click="detail = null">关闭</ElButton>
       </section>
     </template>
-    <p v-else role="alert">
+    <p v-if="tab !== 'REFUNDS' && !capabilities?.read" role="alert">
       {{ error || '当前账号未获结算与费用中心读取权限' }}
     </p>
   </main>

@@ -26,6 +26,7 @@ const api = vi.hoisted(() => ({
   markReminderRead: vi.fn(),
   registerRefundApplication: vi.fn(),
   getSettlementContext: vi.fn(),
+  getLitigationRefundCapabilities: vi.fn(),
   listEvidence: vi.fn(),
   reportsCapability: vi.fn(),
   logout: vi.fn(),
@@ -36,6 +37,10 @@ vi.mock('../api/reports', () => ({
 }));
 vi.mock('../api/settlements', () => ({
   getSettlementContext: api.getSettlementContext,
+}));
+vi.mock('../api/litigation-refunds', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/litigation-refunds')>()),
+  getLitigationRefundCapabilities: api.getLitigationRefundCapabilities,
 }));
 vi.mock('../api/evidence', () => ({ listEvidence: api.listEvidence }));
 vi.mock('../api/auth', async (importOriginal) => ({
@@ -84,6 +89,7 @@ beforeEach(() => {
   api.listDueReminders.mockResolvedValue([]);
   api.reportsCapability.mockResolvedValue({ canRead: false });
   api.getSettlementContext.mockResolvedValue({ read: false, feeRead: false });
+  api.getLitigationRefundCapabilities.mockResolvedValue({ read: false, record: false, follow: false, export: false });
   api.listEvidence.mockRejectedValue(
     new ApiError('denied', 403, 'ACTION_FORBIDDEN'),
   );
@@ -1862,6 +1868,12 @@ describe('settlement center navigation', () => {
   it('keeps the entry hidden without either read capability', async () => {
     const { wrapper } = await mountShell();
     expect(wrapper.find('[data-test="settlement-nav"]').exists()).toBe(false);
+  });
+  it('shows the settlements route from refund read capability when settlement context is denied', async () => {
+    api.getSettlementContext.mockRejectedValue(new ApiError('denied', 403, 'ACTION_FORBIDDEN'));
+    api.getLitigationRefundCapabilities.mockResolvedValue({ read: true, record: false, follow: false, export: false });
+    const { wrapper } = await mountShell();
+    expect(wrapper.get('[data-test="settlement-nav"]').attributes('href')).toBe('/settlements');
   });
 });
 
