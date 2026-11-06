@@ -403,6 +403,50 @@ async function uploadJudgment(
   return { bytes, file };
 }
 
+async function uploadSecondInstanceJudgment(
+  request: APIRequestContext,
+  caseId: string,
+  testInfo: TestAttachments,
+) {
+  const bytes = batch2SyntheticPdf('litigation-refund-second-instance-result');
+  const draftInput = {
+    ownerType: 'CASE',
+    ownerId: caseId,
+    category: 'SECOND_INSTANCE_JUDGMENT',
+    purpose: 'SECOND_INSTANCE_JUDGMENT',
+    originalFilename: '合成退费来源二审判决书.pdf',
+    declaredMimeType: 'application/pdf',
+  };
+  await attachRequest(
+    testInfo,
+    `second-instance-upload-draft-${caseId}.json`,
+    'POST',
+    '/api/v1/materials/upload-drafts',
+    draftInput,
+  );
+  const draft = await responseJson<{ id: string }>(
+    await request.post('/api/v1/materials/upload-drafts', {
+      headers: operator,
+      data: draftInput,
+    }),
+    201,
+  );
+  await testInfo.attach(`second-instance-file-${caseId}.pdf`, {
+    body: bytes,
+    contentType: 'application/pdf',
+  });
+  const file = await responseJson<{
+    materialId: string;
+    contentVersionId: string;
+  }>(
+    await request.put(`/api/v1/materials/upload-drafts/${draft.id}/content`, {
+      headers: { ...operator, 'Content-Type': 'application/octet-stream' },
+      data: bytes,
+    }),
+  );
+  return { bytes, file };
+}
+
 async function createJudgedCase(
   request: APIRequestContext,
   testInfo: TestAttachments,
@@ -1589,4 +1633,404 @@ test('requires a reason for archived refund follow-up and preserves the formal a
     'case_closure_payment_versions',
   ])
     expect(archiveAfterFollow[key]).toEqual(archiveBeforeFollow[key]);
+});
+
+test('keeps first and second instance refund sources linked to their real judgments', async ({
+  request,
+}, testInfo) => {
+  test.setTimeout(180_000);
+  await seedCoreLeadE2eData({ reuseExisting: true });
+  await enableSyntheticGrants();
+  for (const action of [
+    'case.judgment.next_step',
+    'case.second_instance.save',
+    'case.second_instance.result',
+  ] as const)
+    await setCaseExternalEntryWorkflowGrant(
+      coreLeadFixtures.roleA,
+      action,
+      true,
+    );
+
+  const sourceCase = await createJudgedCase(request, testInfo, {
+    headers: operator,
+    customerId: coreLeadFixtures.admittedCustomer,
+    rightsHolderId: coreLeadFixtures.holder,
+    label: 'two-trial-round-sources',
+  });
+  const nextStepInput = {
+    expectedVersion: sourceCase.judgment.version,
+    idempotencyKey: randomUUID(),
+    judgmentId: sourceCase.judgment.judgmentId,
+    next: 'APPEAL',
+    plaintiffAppeals: true,
+    defendantIds: [] as string[],
+  };
+  const nextStepUrl = `/api/v1/cases/${sourceCase.created.id}/judgment-next-step`;
+  await attachRequest(
+    testInfo,
+    'appeal-next-step.json',
+    'POST',
+    nextStepUrl,
+    nextStepInput,
+  );
+  const nextStep = await responseJson<{
+    stage: string;
+    version: number;
+    choiceId: string;
+  }>(
+    await request.post(nextStepUrl, {
+      headers: operator,
+      data: nextStepInput,
+    }),
+    201,
+  );
+  expect(nextStep.stage).toBe('SECOND_INSTANCE');
+
+  const appealCase = await responseJson<{
+    stage: string;
+    version: number;
+    secondInstance: { currentTrialRoundId: string | null };
+  }>(
+    await request.get(`/api/v1/cases/${sourceCase.created.id}`, {
+      headers: operator,
+    }),
+  );
+  const trialRoundId = appealCase.secondInstance.currentTrialRoundId;
+  expect(trialRoundId).toEqual(expect.any(String));
+  if (!trialRoundId) throw new Error('Appeal trial round is missing');
+  const progress = {
+    hearingAt: null,
+    hearingPlace: null,
+    judgeName: null,
+    documentContentVersionIds: [] as string[],
+    serviceContentVersionIds: [] as string[],
+  };
+  const progressInput = {
+    expectedVersion: appealCase.version,
+    idempotencyKey: randomUUID(),
+    trialRoundId,
+    choiceId: nextStep.choiceId,
+    expectedProgressId: null,
+    progress,
+  };
+  const progressUrl = `/api/v1/cases/${sourceCase.created.id}/second-instance-save`;
+  await attachRequest(
+    testInfo,
+    'second-instance-progress.json',
+    'POST',
+    progressUrl,
+    progressInput,
+  );
+  const savedProgress = await responseJson<{
+    stage: string;
+    version: number;
+    progressId: string | null;
+  }>(
+    await request.post(progressUrl, {
+      headers: operator,
+      data: progressInput,
+    }),
+    201,
+  );
+  expect(savedProgress.stage).toBe('SECOND_INSTANCE');
+
+  const secondJudgmentFile = await uploadSecondInstanceJudgment(
+    request,
+    sourceCase.created.id,
+    testInfo,
+  );
+  const resultInput = {
+    expectedVersion: savedProgress.version,
+    idempotencyKey: randomUUID(),
+    trialRoundId,
+    choiceId: nextStep.choiceId,
+    expectedProgressId: savedProgress.progressId,
+    progress,
+    result: 'AFFIRM',
+    resultReceivedAt: new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+    }).format(new Date()),
+    judgmentContentVersionIds: [secondJudgmentFile.file.contentVersionId],
+    paidLitigationFee: { state: 'PENDING', amount: null },
+  };
+  const resultUrl = `/api/v1/cases/${sourceCase.created.id}/second-instance-result`;
+  await attachRequest(
+    testInfo,
+    'second-instance-result.json',
+    'POST',
+    resultUrl,
+    resultInput,
+  );
+  const secondResult = await responseJson<{
+    resultId: string;
+    version: number;
+    stage: string;
+  }>(
+    await request.post(resultUrl, {
+      headers: operator,
+      data: resultInput,
+    }),
+    201,
+  );
+  expect(secondResult.stage).toBe('WAITING_EXECUTION_DOCUMENTS');
+
+  const workspaceAfterResult = await responseJson<RefundWorkspace>(
+    await request.get(
+      `/api/v1/cases/litigation-refunds/${sourceCase.created.id}/workspace`,
+      { headers: operator },
+    ),
+  );
+  const firstSource = workspaceAfterResult.sources.find(
+    (row) =>
+      row.type === 'JUDGMENT' && row.id === sourceCase.judgment.judgmentId,
+  );
+  const secondSource = workspaceAfterResult.sources.find(
+    (row) =>
+      row.type === 'SECOND_INSTANCE_RESULT' && row.id === secondResult.resultId,
+  );
+  expect(firstSource).toMatchObject({
+    type: 'JUDGMENT',
+    id: sourceCase.judgment.judgmentId,
+    trialRoundId: sourceCase.source.trialRoundId,
+  });
+  expect(secondSource).toMatchObject({
+    type: 'SECOND_INSTANCE_RESULT',
+    id: secondResult.resultId,
+    trialRoundId,
+  });
+  if (!firstSource || !secondSource)
+    throw new Error('Both authoritative source rows must be present');
+
+  const registerUrl = `/api/v1/cases/litigation-refunds/${sourceCase.created.id}/items`;
+  const firstItemId = randomUUID();
+  const firstRegister = {
+    itemId: firstItemId,
+    expectedInventoryVersionId: workspaceAfterResult.inventoryVersionId,
+    sourceType: firstSource.type,
+    sourceId: firstSource.id,
+    party: 'COURT',
+    amount: '10.01',
+    description: '一审判决来源的合成退费项目',
+    reason: '使用服务器提供的一审判决来源登记',
+    idempotencyKey: randomUUID(),
+  };
+  await attachRequest(
+    testInfo,
+    'first-instance-refund-register.json',
+    'POST',
+    registerUrl,
+    firstRegister,
+  );
+  const firstRegistered = await sendCommand<RefundCommand>(
+    request,
+    'POST',
+    registerUrl,
+    firstRegister,
+    sourceCase.created.id,
+    firstRegister.idempotencyKey,
+  );
+  expect(firstRegistered.item).toMatchObject({
+    itemId: firstItemId,
+    amount: '10.01',
+    source: {
+      type: 'JUDGMENT',
+      id: sourceCase.judgment.judgmentId,
+      trialRoundId: sourceCase.source.trialRoundId,
+      valid: true,
+    },
+  });
+
+  const secondItemId = randomUUID();
+  const secondRegister = {
+    itemId: secondItemId,
+    expectedInventoryVersionId: firstRegistered.inventoryVersionId,
+    sourceType: secondSource.type,
+    sourceId: secondSource.id,
+    party: 'COURT',
+    amount: '20.02',
+    description: '二审结果来源的合成退费项目',
+    reason: '使用服务器提供的二审结果来源登记',
+    idempotencyKey: randomUUID(),
+  };
+  await attachRequest(
+    testInfo,
+    'second-instance-refund-register.json',
+    'POST',
+    registerUrl,
+    secondRegister,
+  );
+  const secondRegistered = await sendCommand<RefundCommand>(
+    request,
+    'POST',
+    registerUrl,
+    secondRegister,
+    sourceCase.created.id,
+    secondRegister.idempotencyKey,
+  );
+  expect(secondRegistered.item).toMatchObject({
+    itemId: secondItemId,
+    amount: '20.02',
+    source: {
+      type: 'SECOND_INSTANCE_RESULT',
+      id: secondResult.resultId,
+      trialRoundId,
+      valid: true,
+    },
+  });
+
+  const beforeInvalidSource = await refundStorageFacts(
+    sourceCase.created.id,
+    '__cross-trial-source-probe__',
+  );
+  const invalidSourceInput = {
+    itemId: randomUUID(),
+    expectedInventoryVersionId: secondRegistered.inventoryVersionId,
+    sourceType: 'SECOND_INSTANCE_RESULT',
+    sourceId: sourceCase.judgment.judgmentId,
+    party: 'COURT',
+    amount: '99.99',
+    description: '来源类型与事实 ID 不匹配的合成项目',
+    reason: '验证服务端拒绝错误的来源类型和 ID 组合',
+    idempotencyKey: randomUUID(),
+  };
+  await attachRequest(
+    testInfo,
+    'mismatched-source-rejection.json',
+    'POST',
+    registerUrl,
+    invalidSourceInput,
+  );
+  const invalidSourceResponse = await request.post(registerUrl, {
+    headers: operator,
+    data: invalidSourceInput,
+  });
+  expect(
+    invalidSourceResponse.status(),
+    await invalidSourceResponse.text(),
+  ).toBe(400);
+  expect(await invalidSourceResponse.json()).toMatchObject({
+    code: 'INVALID_REFUND_SOURCE',
+  });
+  expect(
+    await refundStorageFacts(
+      sourceCase.created.id,
+      '__cross-trial-source-probe__',
+    ),
+  ).toEqual(beforeInvalidSource);
+
+  const firstFollowUrl = `/api/v1/cases/litigation-refunds/${sourceCase.created.id}/items/${firstItemId}/follow-up`;
+  const firstFollow = {
+    expectedInventoryVersionId: secondRegistered.inventoryVersionId,
+    status: 'SUBMITTED',
+    remark: '一审事项已提交退款申请（合成）',
+    reason: '记录一审来源事项已提交',
+    idempotencyKey: randomUUID(),
+  };
+  await attachRequest(
+    testInfo,
+    'first-instance-refund-follow-up.json',
+    'PATCH',
+    firstFollowUrl,
+    firstFollow,
+  );
+  const firstFollowed = await sendCommand<RefundCommand>(
+    request,
+    'PATCH',
+    firstFollowUrl,
+    firstFollow,
+    sourceCase.created.id,
+    firstFollow.idempotencyKey,
+  );
+  expect(firstFollowed.item).toMatchObject({
+    itemId: firstItemId,
+    status: 'SUBMITTED',
+    amount: '10.01',
+    remark: firstFollow.remark,
+    source: {
+      type: 'JUDGMENT',
+      id: sourceCase.judgment.judgmentId,
+      trialRoundId: sourceCase.source.trialRoundId,
+      valid: true,
+    },
+  });
+  const afterFirstFollowFacts = await commandFacts(sourceCase.created.id);
+  const firstReplay = await responseJson<RefundCommand>(
+    await request.patch(firstFollowUrl, {
+      headers: operator,
+      data: firstFollow,
+    }),
+  );
+  expect(firstReplay).toEqual(firstFollowed);
+  expect(await commandFacts(sourceCase.created.id)).toEqual(
+    afterFirstFollowFacts,
+  );
+
+  const secondFollowUrl = `/api/v1/cases/litigation-refunds/${sourceCase.created.id}/items/${secondItemId}/follow-up`;
+  const secondFollow = {
+    expectedInventoryVersionId: firstFollowed.inventoryVersionId,
+    status: 'RETURNED_UNSETTLED',
+    remark: '二审事项已退回，仍未结算（合成）',
+    reason: '记录二审来源事项退回未结算',
+    idempotencyKey: randomUUID(),
+  };
+  await attachRequest(
+    testInfo,
+    'second-instance-refund-follow-up.json',
+    'PATCH',
+    secondFollowUrl,
+    secondFollow,
+  );
+  const secondFollowed = await sendCommand<RefundCommand>(
+    request,
+    'PATCH',
+    secondFollowUrl,
+    secondFollow,
+    sourceCase.created.id,
+    secondFollow.idempotencyKey,
+  );
+  expect(secondFollowed.item).toMatchObject({
+    itemId: secondItemId,
+    status: 'RETURNED_UNSETTLED',
+    amount: '20.02',
+    remark: secondFollow.remark,
+    source: {
+      type: 'SECOND_INSTANCE_RESULT',
+      id: secondResult.resultId,
+      trialRoundId,
+      valid: true,
+    },
+  });
+  const finalWorkspace = await responseJson<RefundWorkspace>(
+    await request.get(
+      `/api/v1/cases/litigation-refunds/${sourceCase.created.id}/workspace`,
+      { headers: operator },
+    ),
+  );
+  expect(finalWorkspace.items).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        itemId: firstItemId,
+        status: 'SUBMITTED',
+        amount: '10.01',
+        remark: firstFollow.remark,
+        source: expect.objectContaining({
+          type: 'JUDGMENT',
+          id: sourceCase.judgment.judgmentId,
+          trialRoundId: sourceCase.source.trialRoundId,
+        }),
+      }),
+      expect.objectContaining({
+        itemId: secondItemId,
+        status: 'RETURNED_UNSETTLED',
+        amount: '20.02',
+        remark: secondFollow.remark,
+        source: expect.objectContaining({
+          type: 'SECOND_INSTANCE_RESULT',
+          id: secondResult.resultId,
+          trialRoundId,
+        }),
+      }),
+    ]),
+  );
 });
