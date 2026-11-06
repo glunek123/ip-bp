@@ -1,5 +1,7 @@
 # 功能开发路线图
 
+Current 为 **CORE-OPS-005：结算中心诉讼退费第四板块**，用户已批准实施，集成分支 `codex/litigation-refunds-20261106`，基线main `550f2b48`／程序 `5e3343b8`。先完成原退费库存上的独立登记／跟进及权限，再集成案件入口和第四板块，最后统一验证迁移、真实业务、原三板块和页面。范围及接口见[实施合同](superpowers/plans/2026-11-06-litigation-refunds.md)。Next 为完成验收后报告，推送、合入main和部署仍需另行确认；不自动修改真实账号权限。以下旧Current／Next保留各时点历史。
+
 当前后续：按用户要求修复CORE-OPS-004定向补录E2E的准备流程，正式补录用例及相邻立案来源链各1项通过；原清理阻塞就该指定范围关闭。修复 `86c8ee06` 已沿用本批授权经 [PR #2](https://github.com/glunek123/ip-bp/pull/2) 合入main（`b91223b8`），只改测试夹具／回归，业务源码与main原 `4a29d24e` 相同，未部署；原失败和证据保留，整套数据库E2E未重跑。下一步由用户决定后续开发或部署计划，详见[验证记录](spec/v0.1/VALIDATION.md)。下方为此前已合入main的事实。
 
 Current 为 **CORE-OPS-004：案件详情、文件及费用对齐已获用户确认并合入main**；此前工具栏三批和CORE-OPS-003一并保留。[PR #1](https://github.com/glunek123/ip-bp/pull/1) 合并提交 `ef90a308` 的tree与验收候选 `845b6955` 相同，未引入额外代码组合。实现、七类真实API及必要工程／页面验证完成，获权ZIP、部门代办及有效PDF呈现补验通过；不完整合成PDF、旧数据库E2E清理阻塞及远端CodeRabbit跳过如实记录。新增合同见 [案件 Spec](spec/v0.1/modules/cases.md#案件详情补充资料合同2026-11-05)，范围见 [实施计划](superpowers/plans/2026-11-05-case-detail-alignment.md)。Next 由用户决定后续开发或另行部署计划，本轮暂不部署。以下 CORE-OPS-003 完成记录和更早 Current／Next 均按原日期保留，不替代本段；全部既有优化和验收证据继续保留。
