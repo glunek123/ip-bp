@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import {
@@ -14,34 +13,18 @@ import {
 } from '../support/case-external-entry-database.mjs';
 import { batch2SyntheticPdf } from '../support/batch2-synthetic-pdf.mjs';
 
-type ManagedDatabase = { connectionString: string } | null;
-async function admitManagedDatabase(
-  databaseUrl: string,
-): Promise<ManagedDatabase> {
-  const module = (await import(
-    pathToFileURL(
-      resolve(process.cwd(), 'scripts/managed-e2e-worker-admission.mjs'),
-    ).href
-  )) as {
-    admitManagedWorkerDatabase(input: {
-      databaseUrl: string;
-    }): Promise<ManagedDatabase>;
-  };
-  return module.admitManagedWorkerDatabase({ databaseUrl });
-}
-async function validateTestDatabase(databaseUrl: string): Promise<void> {
-  const module = (await import(
-    pathToFileURL(resolve(process.cwd(), 'scripts/test-environment.mjs')).href
-  )) as {
-    validateIsolatedTestDatabaseUrl(url: string): unknown;
-  };
-  module.validateIsolatedTestDatabaseUrl(databaseUrl);
-}
-
 const operator = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
 const backendRequire = createRequire(
   resolve(process.cwd(), 'backend/package.json'),
 );
+const validateBrowserTestDatabaseUrl = (
+  backendRequire('../scripts/test-environment.mjs') as {
+    validateBrowserTestDatabaseUrl(
+      databaseUrl: string,
+      root: string,
+    ): { connectionString: string };
+  }
+).validateBrowserTestDatabaseUrl;
 type DatabaseClient = {
   connect(): Promise<void>;
   end(): Promise<void>;
@@ -113,10 +96,9 @@ async function isolatedClient(): Promise<DatabaseClient> {
     throw new Error(
       'Litigation refund fixture requires the isolated test database',
     );
-  const managed = await admitManagedDatabase(databaseUrl);
-  if (managed === null) await validateTestDatabase(databaseUrl);
+  const validated = validateBrowserTestDatabaseUrl(databaseUrl, process.cwd());
   const client = new PgClient({
-    connectionString: managed?.connectionString ?? databaseUrl,
+    connectionString: validated.connectionString,
   });
   await client.connect();
   const identity = (
