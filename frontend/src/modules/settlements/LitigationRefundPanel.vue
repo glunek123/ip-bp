@@ -21,8 +21,8 @@ const labels: Record<RefundStatus, string> = {
   PENDING: '待退',
   SUBMITTED: '已提交',
   RETURNED_UNSETTLED: '已退未结算',
-  SETTLED: '已结算',
-  RECEIVED: '已回款',
+  SETTLED: '客户已收，公司未收',
+  RECEIVED: '公司已收',
   CONVERTED_TO_COST: '转成本',
 };
 type RefundColumn =
@@ -270,7 +270,7 @@ function makeKey(): string {
 }
 async function saveFollow(): Promise<void> {
   const row = modalRow.value;
-  if (!row || saving.value) return;
+  if (!row || saving.value || pending.value) return;
   if (!allowedStatus(row, modalStatus.value)) return;
   if (row.archived && !reason.value.trim()) return;
   const scope = ownerScope.value;
@@ -717,7 +717,9 @@ onMounted(initialize);
         <div class="refund-panel__actions">
           <button
             type="submit"
-            :disabled="saving || (!!modalRow.archived && !reason.trim())"
+            :disabled="
+              saving || !!pending || (!!modalRow.archived && !reason.trim())
+            "
           >
             保存跟进</button
           ><button type="button" :disabled="saving" @click="closeFollow">

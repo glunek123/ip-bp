@@ -1472,6 +1472,7 @@ describe('settlement center litigation refunds tab', () => {
     );
   });
   it('keeps the refunds tab behind an unresolved original bill request', async () => {
+    api.route.query = { tab: 'refunds' };
     storeFinancialPending('::center', 'bill', {
       side: 'CUSTOMER',
       billDate: '2026-11-06',
@@ -1484,6 +1485,8 @@ describe('settlement center litigation refunds tab', () => {
       '客户结算',
     );
     expect(button(wrapper, '诉讼退费').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[role="alert"]').text()).toContain('查询并恢复该请求');
+    expect(api.getLitigationRefundCapabilities).not.toHaveBeenCalled();
   });
   it('keeps the fee-only route free of the settlement denial message', async () => {
     api.getSettlementContext.mockResolvedValue({

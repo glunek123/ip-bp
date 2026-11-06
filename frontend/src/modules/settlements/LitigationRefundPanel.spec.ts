@@ -277,6 +277,29 @@ describe('LitigationRefundPanel', () => {
     ).toBeNull();
   });
 
+  it('does not create a second key or send another save after an unknown result', async () => {
+    api.followUpLitigationRefund.mockRejectedValueOnce(
+      new ApiError('服务器错误', 500, 'INTERNAL_ERROR'),
+    );
+    const wrapper = render();
+    await flushPromises();
+    await wrapper.get('tbody tr button').trigger('click');
+    await wrapper.get('.refund-panel__modal').trigger('submit');
+    await flushPromises();
+    const key = 'litigation-refund-follow-pending:user-a:dept-1';
+    const original = sessionStorage.getItem(key);
+    expect(original).toContain('idempotencyKey');
+    expect(
+      wrapper
+        .get('.refund-panel__modal button[type="submit"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('.refund-panel__modal').trigger('submit');
+    await flushPromises();
+    expect(api.followUpLitigationRefund).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem(key)).toBe(original);
+  });
+
   it('preserves the original body and key when recovery is denied or conflicts', async () => {
     api.followUpLitigationRefund
       .mockRejectedValueOnce(new ApiError('连接超时', 0, 'NETWORK_ERROR'))

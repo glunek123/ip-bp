@@ -41,7 +41,6 @@ import {
 const tab = ref<'CUSTOMER' | 'LAWYER' | 'FEES' | 'REFUNDS'>('CUSTOMER');
 const route = useRoute();
 const router = useRouter();
-if (route.query.tab === 'refunds') tab.value = 'REFUNDS';
 watch(tab, (value) => {
   const query = { ...route.query };
   if (value === 'REFUNDS') query.tab = 'refunds';
@@ -51,8 +50,19 @@ watch(tab, (value) => {
 watch(
   () => route.query.tab,
   (value) => {
-    if (value === 'refunds') tab.value = 'REFUNDS';
-    else if (tab.value === 'REFUNDS') tab.value = 'CUSTOMER';
+    if (value === 'refunds') {
+      if (
+        hasPendingFinancialRecovery() ||
+        unknownBill.value ||
+        unknownCancel.value
+      ) {
+        refundRouteBlocked.value = true;
+        tab.value = 'CUSTOMER';
+      } else {
+        refundRouteBlocked.value = false;
+        tab.value = 'REFUNDS';
+      }
+    } else if (tab.value === 'REFUNDS') tab.value = 'CUSTOMER';
   },
 );
 const filterFormId = useId();
@@ -67,6 +77,23 @@ const pendingScope = computed(
   () =>
     `${auth.session?.user.id ?? ''}:${auth.session?.department?.id ?? ''}:center`,
 );
+const refundRouteBlocked = ref(false);
+function hasPendingFinancialRecovery(): boolean {
+  try {
+    return (
+      loadFinancialPending(pendingScope.value, 'bill', isPendingBill) !==
+        null ||
+      loadFinancialPending(pendingScope.value, 'cancel', isPendingCancel) !==
+        null
+    );
+  } catch {
+    return true;
+  }
+}
+if (route.query.tab === 'refunds') {
+  if (hasPendingFinancialRecovery()) refundRouteBlocked.value = true;
+  else tab.value = 'REFUNDS';
+}
 let detailRevision = 0;
 const capabilities = ref<SettlementCapabilities | null>(null);
 let revision = 0;
@@ -263,6 +290,10 @@ async function initialize(): Promise<void> {
     );
     unknownBill.value = pendingBill !== null;
     unknownCancel.value = pendingCancel !== null;
+    if (tab.value === 'REFUNDS' && (unknownBill.value || unknownCancel.value)) {
+      refundRouteBlocked.value = true;
+      tab.value = 'CUSTOMER';
+    }
     if (pendingBill && next.read) {
       tab.value = pendingBill.side;
       selected.value = new Set(pendingBill.launchIds);
@@ -506,6 +537,13 @@ async function cancelBill(): Promise<void> {
           <ElButton class="action-size--standard" @click="load">刷新</ElButton>
         </p>
         <p v-if="notice" role="status">{{ notice }}</p>
+        <p
+          v-if="refundRouteBlocked"
+          role="alert"
+          class="settlement-center__message"
+        >
+          有尚未确认的原结算请求。请先查询并恢复该请求，再进入诉讼退费。
+        </p>
         <section class="settlement-center__detail">
           <h2>{{ tab === 'CUSTOMER' ? '客户' : '律师' }}结算明细</h2>
           <dl v-if="summary" class="kpis">
