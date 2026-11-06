@@ -6,11 +6,17 @@ import { expect, test, type APIRequestContext } from '@playwright/test';
 import {
   coreLeadFixtures,
   seedCoreLeadE2eData,
+  setRoleGrant,
 } from '../support/core-lead-database.mjs';
 import {
   setCaseExternalEntryGrant,
   setCaseExternalEntryWorkflowGrant,
 } from '../support/case-external-entry-database.mjs';
+import { setCaseClosureFixtureGrant } from '../support/case-closure-database.mjs';
+import {
+  readCaseArchiveSnapshot,
+  setCaseArchiveFixtureGrant,
+} from '../support/case-archive-database.mjs';
 import { batch2SyntheticPdf } from '../support/batch2-synthetic-pdf.mjs';
 import { withLitigationRefundCommitFault } from '../support/litigation-refund-fault.mjs';
 
@@ -71,6 +77,10 @@ type RefundRow = {
   description: string;
   remark: string | null;
   source: RefundSource | null;
+  archived: boolean;
+  archiveStatus: string | null;
+  canFollow: boolean;
+  canRecord: boolean;
 };
 type RefundWorkspace = {
   caseId: string;
@@ -1172,4 +1182,411 @@ test('enforces refund access scope and rolls back a failed command commit before
     version: operatorCase.judgment.version,
     judgment: { current: { id: operatorCase.judgment.judgmentId } },
   });
+});
+
+test('requires a reason for archived refund follow-up and preserves the formal archive snapshot', async ({
+  request,
+}, testInfo) => {
+  test.setTimeout(180_000);
+  await seedCoreLeadE2eData({ reuseExisting: true });
+  await setCaseExternalEntryGrant(
+    coreLeadFixtures.roleA,
+    'case.external-entry.create',
+    'SELF',
+    true,
+  );
+  await setCaseExternalEntryWorkflowGrant(
+    coreLeadFixtures.roleA,
+    'case.judgment.register',
+    true,
+  );
+  await setCaseClosureFixtureGrant(
+    coreLeadFixtures.roleA,
+    'case.closure.record',
+    'TEAM',
+  );
+  await setRoleGrant(
+    coreLeadFixtures.roleA,
+    'case.closure.settlement.update',
+    'TEAM',
+  );
+  await setCaseArchiveFixtureGrant(
+    coreLeadFixtures.roleA,
+    'case.archive',
+    'TEAM',
+  );
+  const grants: Array<{
+    action: RefundPermission;
+    scope: GrantScope;
+    id: string;
+  }> = [];
+  for (const [action, scope] of [
+    ['case.refund.read', 'DEPARTMENT'],
+    ['case.refund.record', 'SELF'],
+    ['case.refund.follow', 'SELF'],
+  ] as const) {
+    grants.push({
+      action,
+      scope,
+      id: await appendRefundGrant(
+        coreLeadFixtures.roleA,
+        coreLeadFixtures.departmentA,
+        coreLeadFixtures.userA,
+        action,
+        scope,
+      ),
+    });
+  }
+  await testInfo.attach('refund-archive-grant-identities.json', {
+    body: JSON.stringify(grants, null, 2),
+    contentType: 'application/json',
+  });
+
+  const source = await createJudgedCase(request, testInfo, {
+    headers: operator,
+    customerId: coreLeadFixtures.admittedCustomer,
+    rightsHolderId: coreLeadFixtures.holder,
+    label: 'archive-follow-up',
+  });
+  const itemId = randomUUID();
+  const registerKey = randomUUID();
+  const registerInput = {
+    itemId,
+    expectedInventoryVersionId: source.workspace.inventoryVersionId,
+    sourceType: source.source.type,
+    sourceId: source.source.id,
+    party: 'COURT',
+    amount: '0.00',
+    description: '法院应退金额为零的合成退费记录',
+    reason: '合成案件确认已登记判决来源及零金额事项',
+    idempotencyKey: registerKey,
+  };
+  const registerUrl = `/api/v1/cases/litigation-refunds/${source.created.id}/items`;
+  await attachRequest(
+    testInfo,
+    'archive-case-refund-register.json',
+    'POST',
+    registerUrl,
+    registerInput,
+  );
+  const registered = await sendCommand<RefundCommand>(
+    request,
+    'POST',
+    registerUrl,
+    registerInput,
+    source.created.id,
+    registerKey,
+  );
+  expect(registered.item).toMatchObject({
+    itemId,
+    amount: '0.00',
+    status: 'PENDING',
+  });
+
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+  }).format(new Date());
+  const earlyClosureInput = {
+    expectedVersion: source.created.version,
+    expectedStage: 'WAITING_JUDGMENT',
+    idempotencyKey: randomUUID(),
+    closeAt: today,
+    closeAmountState: 'KNOWN',
+    closeAmt: '0.00',
+    closeContentVersionIds: [] as string[],
+    paymentType: 'ONE_TIME',
+    paymentRecords: [] as Array<Record<string, never>>,
+  };
+  const earlyClosureUrl = `/api/v1/cases/${source.created.id}/early-closure`;
+  await attachRequest(
+    testInfo,
+    'early-closure-request.json',
+    'POST',
+    earlyClosureUrl,
+    earlyClosureInput,
+  );
+  const earlyClosure = await responseJson<{
+    version: number;
+    stage: string;
+    closureVersionId: string;
+    earlyClosureId: string;
+  }>(
+    await request.post(earlyClosureUrl, {
+      headers: operator,
+      data: earlyClosureInput,
+    }),
+    201,
+  );
+  expect(earlyClosure).toMatchObject({
+    stage: 'WAITING_ARCHIVE',
+    version: source.created.version + 1,
+  });
+
+  const settlementInput = {
+    expectedVersion: earlyClosure.version,
+    expectedClosureVersionId: earlyClosure.closureVersionId,
+    idempotencyKey: randomUUID(),
+    closeAt: today,
+    closeAmountState: 'KNOWN',
+    closeAmt: '0.00',
+    closeContentVersionIds: [],
+    correctionReason: '合成案件按服务端判决来源确认零金额并结清归档条件',
+    paymentType: 'ONE_TIME',
+    paymentRecords: [] as Array<Record<string, never>>,
+    refund: {
+      expectedVersionId: registered.inventoryVersionId,
+      kind: 'CONFIRM_COMPLETE',
+    },
+    settlement: {
+      expectedAssessmentVersionId: null,
+      expectedTermsVersion: null,
+      declaration: 'NOT_APPLICABLE',
+    },
+  };
+  const settlementUrl = `/api/v1/cases/${source.created.id}/closure-settlement-updates`;
+  await attachRequest(
+    testInfo,
+    'closure-settlement-update-request.json',
+    'POST',
+    settlementUrl,
+    settlementInput,
+  );
+  const settlement = await responseJson<{
+    version: number;
+    stage: string;
+    closureVersionId: string;
+    refundInventoryVersionId: string | null;
+  }>(
+    await request.post(settlementUrl, {
+      headers: operator,
+      data: settlementInput,
+    }),
+    201,
+  );
+  expect(settlement).toMatchObject({
+    stage: 'WAITING_ARCHIVE',
+    version: earlyClosure.version + 1,
+  });
+  expect(settlement.refundInventoryVersionId).toEqual(expect.any(String));
+
+  const snapshotBeforeArchive = JSON.parse(
+    await readCaseArchiveSnapshot(source.created.id),
+  ) as Record<string, unknown>;
+  expect(snapshotBeforeArchive.case_archives).toEqual([]);
+  expect(snapshotBeforeArchive.case_archive_evidence_snapshots).toEqual([]);
+  const archiveInput = {
+    expectedVersion: settlement.version,
+    expectedClosureVersionId: settlement.closureVersionId,
+    idempotencyKey: randomUUID(),
+    archiveAt: today,
+    archiveType: 'VOIDED',
+    archiveReason: '合成案件零金额提前结案后按正式流程归档',
+  };
+  const archiveUrl = `/api/v1/cases/${source.created.id}/archive`;
+  await attachRequest(
+    testInfo,
+    'formal-archive-request.json',
+    'POST',
+    archiveUrl,
+    archiveInput,
+  );
+  const archive = await responseJson<{
+    stage: string;
+    version: number;
+    archiveVersionId: string;
+  }>(
+    await request.post(archiveUrl, { headers: operator, data: archiveInput }),
+    201,
+  );
+  expect(archive).toMatchObject({
+    stage: 'ARCHIVED',
+    version: settlement.version + 1,
+  });
+  const archivedCase = await responseJson<{
+    stage: string;
+    version: number;
+    closure: unknown;
+  }>(
+    await request.get(`/api/v1/cases/${source.created.id}`, {
+      headers: operator,
+    }),
+  );
+  const archiveSnapshot = JSON.parse(
+    await readCaseArchiveSnapshot(source.created.id),
+  ) as Record<string, unknown>;
+  const evidenceRows =
+    archiveSnapshot.case_archive_evidence_snapshots as Array<{
+      row: Record<string, unknown>;
+    }>;
+  expect(evidenceRows).toHaveLength(1);
+  expect(evidenceRows[0]?.row).toMatchObject({
+    archive_version_id: archive.archiveVersionId,
+    refund_inventory_version_id: settlement.refundInventoryVersionId,
+  });
+
+  const archivedWorkspace = await responseJson<RefundWorkspace>(
+    await request.get(
+      `/api/v1/cases/litigation-refunds/${source.created.id}/workspace`,
+      { headers: operator },
+    ),
+  );
+  expect(archivedWorkspace.items).toHaveLength(1);
+  const archivedItem = archivedWorkspace.items[0];
+  expect(archivedItem).toMatchObject({
+    itemId,
+    amount: '0.00',
+    status: 'PENDING',
+    archived: true,
+    archiveStatus: 'PENDING',
+    canFollow: true,
+    source: {
+      type: source.source.type,
+      id: source.source.id,
+      trialRoundId: source.source.trialRoundId,
+      valid: true,
+    },
+  });
+  if (!archivedItem) throw new Error('Archived refund item is missing');
+
+  const archiveFollowUrl = `/api/v1/cases/litigation-refunds/${source.created.id}/items/${itemId}/follow-up`;
+  const missingReason = {
+    expectedInventoryVersionId: archivedWorkspace.inventoryVersionId,
+    status: 'SUBMITTED',
+    remark: '归档后尝试更正跟进状态（合成）',
+    reason: null,
+    idempotencyKey: randomUUID(),
+  };
+  await attachRequest(
+    testInfo,
+    'archived-follow-up-missing-reason.json',
+    'PATCH',
+    archiveFollowUrl,
+    missingReason,
+  );
+  const financialBeforeFollow = await sqlFacts(source.created.id);
+  const refundBeforeFollow = await refundStorageFacts(
+    source.created.id,
+    '__archived-follow-up-probe__',
+  );
+  const archiveBeforeFollow = JSON.parse(
+    await readCaseArchiveSnapshot(source.created.id),
+  ) as Record<string, unknown>;
+  const missingReasonResponse = await request.patch(archiveFollowUrl, {
+    headers: operator,
+    data: missingReason,
+  });
+  expect(
+    missingReasonResponse.status(),
+    await missingReasonResponse.text(),
+  ).toBe(400);
+  expect(await missingReasonResponse.json()).toMatchObject({
+    code: 'REFUND_ARCHIVED_REASON_REQUIRED',
+  });
+  expect(
+    await refundStorageFacts(source.created.id, '__archived-follow-up-probe__'),
+  ).toEqual(refundBeforeFollow);
+
+  const submittedFollow = {
+    ...missingReason,
+    reason: '归档后补充正式申请已提交的事实',
+    idempotencyKey: randomUUID(),
+  };
+  await attachRequest(
+    testInfo,
+    'archived-follow-up-submitted.json',
+    'PATCH',
+    archiveFollowUrl,
+    submittedFollow,
+  );
+  const submitted = await responseJson<RefundCommand>(
+    await request.patch(archiveFollowUrl, {
+      headers: operator,
+      data: submittedFollow,
+    }),
+  );
+  expect(submitted.item).toMatchObject({
+    itemId,
+    status: 'SUBMITTED',
+    remark: submittedFollow.remark,
+    amount: '0.00',
+  });
+  const revertedFollow = {
+    ...submittedFollow,
+    expectedInventoryVersionId: submitted.inventoryVersionId,
+    status: 'PENDING',
+    remark: '归档后按新情况恢复为待办理',
+    reason: '提交后发现法院尚未受理，恢复待办理状态',
+    idempotencyKey: randomUUID(),
+  };
+  await attachRequest(
+    testInfo,
+    'archived-follow-up-reverted.json',
+    'PATCH',
+    archiveFollowUrl,
+    revertedFollow,
+  );
+  const reverted = await responseJson<RefundCommand>(
+    await request.patch(archiveFollowUrl, {
+      headers: operator,
+      data: revertedFollow,
+    }),
+  );
+  expect(reverted.item).toMatchObject({
+    itemId,
+    status: 'PENDING',
+    remark: revertedFollow.remark,
+    amount: '0.00',
+  });
+
+  const finalCase = await responseJson<{
+    stage: string;
+    version: number;
+    closure: unknown;
+    archive: { current: { id: string; closureVersionId: string } };
+  }>(
+    await request.get(`/api/v1/cases/${source.created.id}`, {
+      headers: operator,
+    }),
+  );
+  expect(finalCase).toMatchObject({
+    stage: 'ARCHIVED',
+    version: archive.version,
+    archive: {
+      current: {
+        id: archive.archiveVersionId,
+        closureVersionId: settlement.closureVersionId,
+      },
+    },
+  });
+  expect(finalCase.closure).toEqual(archivedCase.closure);
+  expect(await sqlFacts(source.created.id)).toEqual(financialBeforeFollow);
+  const finalWorkspace = await responseJson<RefundWorkspace>(
+    await request.get(
+      `/api/v1/cases/litigation-refunds/${source.created.id}/workspace`,
+      { headers: operator },
+    ),
+  );
+  expect(finalWorkspace.inventoryVersionId).toBe(reverted.inventoryVersionId);
+  expect(finalWorkspace.items[0]).toMatchObject({
+    itemId,
+    status: 'PENDING',
+    archiveStatus: 'PENDING',
+    archived: true,
+    remark: revertedFollow.remark,
+  });
+  const archiveAfterFollow = JSON.parse(
+    await readCaseArchiveSnapshot(source.created.id),
+  ) as Record<string, unknown>;
+  for (const key of [
+    'case_archives',
+    'case_archive_versions',
+    'case_archive_receipts',
+    'case_archive_evidence_snapshots',
+    'case_archive_snapshot_payments',
+    'case_archive_snapshot_allocations',
+    'case_closures',
+    'case_closure_versions',
+    'case_closure_payment_versions',
+  ])
+    expect(archiveAfterFollow[key]).toEqual(archiveBeforeFollow[key]);
 });
