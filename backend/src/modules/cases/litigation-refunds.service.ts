@@ -67,7 +67,10 @@ type Item = RefundInventoryItem & {
   trialRoundId: string | null;
   remark: string | null;
 };
-type SourceMeta = Pick<Item, 'sourceType' | 'sourceId' | 'trialRoundId' | 'remark'>;
+type SourceMeta = Pick<
+  Item,
+  'sourceType' | 'sourceId' | 'trialRoundId' | 'remark'
+>;
 
 const caseInclude = {
   rightsHolder: { select: { name: true } },
@@ -89,11 +92,21 @@ const caseInclude = {
     },
   },
   secondInstanceAcceptanceChanges: {
-    select: { choiceId: true, trialRoundId: true, courtCaseNo: true, toRevision: true },
+    select: {
+      choiceId: true,
+      trialRoundId: true,
+      courtCaseNo: true,
+      toRevision: true,
+    },
     orderBy: { toRevision: 'desc' },
   },
   judgmentFacts: {
-    select: { id: true, kind: true, trialRoundId: true, judgmentReceivedAt: true },
+    select: {
+      id: true,
+      kind: true,
+      trialRoundId: true,
+      judgmentReceivedAt: true,
+    },
   },
   secondInstanceResults: {
     select: {
@@ -121,14 +134,21 @@ function sourceFor(
   if (sourceType === 'JUDGMENT') {
     const fact = record.judgmentFacts.find((row) => row.id === sourceId);
     if (!fact) return null;
-    const round = record.trialRounds.find((row) => row.id === fact.trialRoundId);
-    const acceptance = record.acceptances.find((row) => row.trialRoundId === fact.trialRoundId);
+    const round = record.trialRounds.find(
+      (row) => row.id === fact.trialRoundId,
+    );
+    const acceptance = record.acceptances.find(
+      (row) => row.trialRoundId === fact.trialRoundId,
+    );
     return {
       type: sourceType,
       id: fact.id,
       trialRoundId: fact.trialRoundId,
       label: `第${round?.sequence ?? '?'}轮一审判决 · ${fact.judgmentReceivedAt.toISOString().slice(0, 10)}`,
-      courtNo: acceptance?.corrections[0]?.courtCaseNo ?? acceptance?.courtCaseNo ?? null,
+      courtNo:
+        acceptance?.corrections[0]?.courtCaseNo ??
+        acceptance?.courtCaseNo ??
+        null,
       valid: fact.kind === 'REGISTER' && round?.revokedAt === null,
     };
   }
@@ -136,7 +156,8 @@ function sourceFor(
   if (!fact) return null;
   const round = record.trialRounds.find((row) => row.id === fact.trialRoundId);
   const acceptance = record.secondInstanceAcceptanceChanges.find(
-    (row) => row.trialRoundId === fact.trialRoundId && row.choiceId === fact.choiceId,
+    (row) =>
+      row.trialRoundId === fact.trialRoundId && row.choiceId === fact.choiceId,
   );
   return {
     type: sourceType,
@@ -199,13 +220,18 @@ export class LitigationRefundsService {
   ) {}
 
   private async internal(actor: ActorContext, tx: Prisma.TransactionClient) {
-    if (actor.clientCustomerId || actor.lawyerAccountId || actor.notaryOfficeId) throw denied();
+    if (actor.clientCustomerId || actor.lawyerAccountId || actor.notaryOfficeId)
+      throw denied();
     const account = await tx.userAccount.findUnique({
       where: { id: actor.userId },
       select: { active: true, accountType: true, authorizationRevision: true },
     });
-    if (!account?.active || account.accountType !== 'INTERNAL' ||
-        account.authorizationRevision !== actor.authorizationRevision) throw denied();
+    if (
+      !account?.active ||
+      account.accountType !== 'INTERNAL' ||
+      account.authorizationRevision !== actor.authorizationRevision
+    )
+      throw denied();
   }
 
   private async can(
@@ -223,7 +249,10 @@ export class LitigationRefundsService {
     }
   }
 
-  private async readAuthority(actor: ActorContext, tx: Prisma.TransactionClient) {
+  private async readAuthority(
+    actor: ActorContext,
+    tx: Prisma.TransactionClient,
+  ) {
     await this.internal(actor, tx);
     await this.access.authorizeDepartmentAction(actor, 'case.refund.read', tx);
   }
@@ -231,7 +260,9 @@ export class LitigationRefundsService {
   async context(actor: ActorContext) {
     return this.db.$transaction(async (tx) => {
       await this.internal(actor, tx);
-      const capability = async (action: 'case.read' | 'case.refund.read' | 'case.refund.export') => {
+      const capability = async (
+        action: 'case.read' | 'case.refund.read' | 'case.refund.export',
+      ) => {
         try {
           await this.access.authorizeDepartmentAction(actor, action, tx);
           return true;
@@ -240,19 +271,29 @@ export class LitigationRefundsService {
           throw caught;
         }
       };
-      const facts = { responsibleUserId: actor.userId, departmentId: actor.departmentId };
-      const read = (await capability('case.refund.read')) &&
+      const facts = {
+        responsibleUserId: actor.userId,
+        departmentId: actor.departmentId,
+      };
+      const read =
+        (await capability('case.refund.read')) &&
         (await this.can(actor, 'case.read', facts, tx));
       return {
         read,
-        record: read && (await this.can(actor, 'case.refund.record', facts, tx)),
-        follow: read && (await this.can(actor, 'case.refund.follow', facts, tx)),
+        record:
+          read && (await this.can(actor, 'case.refund.record', facts, tx)),
+        follow:
+          read && (await this.can(actor, 'case.refund.follow', facts, tx)),
         export: read && (await capability('case.refund.export')),
       };
     });
   }
 
-  private async details(tx: Prisma.TransactionClient, actor: ActorContext, caseId: string) {
+  private async details(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    caseId: string,
+  ) {
     const record = await tx.case.findFirst({
       where: { id: caseId, departmentId: actor.departmentId },
       include: caseInclude,
@@ -261,7 +302,11 @@ export class LitigationRefundsService {
     return record;
   }
 
-  private async latest(tx: Prisma.TransactionClient, actor: ActorContext, caseId: string) {
+  private async latest(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    caseId: string,
+  ) {
     const heads = await tx.$queryRaw<Head[]>`
       SELECT id AS "versionId", prior_version_id AS "priorVersionId", revision, declaration
       FROM case_refund_inventory_versions
@@ -317,7 +362,9 @@ export class LitigationRefundsService {
         Object.assign(item, ancestorMeta[0]);
         continue;
       }
-      const links = await tx.$queryRaw<{ sourceType: string; sourceId: string }[]>`
+      const links = await tx.$queryRaw<
+        { sourceType: string; sourceId: string }[]
+      >`
         WITH RECURSIVE chain AS (
           SELECT v.id,v.prior_version_id
           FROM case_refund_inventory_versions v
@@ -341,9 +388,11 @@ export class LitigationRefundsService {
           AND NOT EXISTS (SELECT 1 FROM case_supplement_entries correction
             WHERE correction.prior_entry_id=s.id)
         ORDER BY s.recorded_at DESC,s.id DESC`;
-      if (links.length === 1 &&
-          (links[0]!.sourceType === 'JUDGMENT' ||
-            links[0]!.sourceType === 'SECOND_INSTANCE_RESULT')) {
+      if (
+        links.length === 1 &&
+        (links[0]!.sourceType === 'JUDGMENT' ||
+          links[0]!.sourceType === 'SECOND_INSTANCE_RESULT')
+      ) {
         item.sourceType = links[0]!.sourceType;
         item.sourceId = links[0]!.sourceId;
       }
@@ -362,7 +411,9 @@ export class LitigationRefundsService {
         AND department_id=${actor.departmentId}::uuid
       ORDER BY captured_at DESC,id DESC LIMIT 1`;
     if (!versions[0]?.versionId) return new Map();
-    const rows = await tx.$queryRaw<{ itemId: string; status: LitigationRefundStatus }[]>`
+    const rows = await tx.$queryRaw<
+      { itemId: string; status: LitigationRefundStatus }[]
+    >`
       SELECT item_id AS "itemId",status FROM case_refund_inventory_items
       WHERE inventory_version_id=${versions[0].versionId}::uuid`;
     return new Map(rows.map((row) => [row.itemId, row.status]));
@@ -381,13 +432,17 @@ export class LitigationRefundsService {
       this.archiveStatuses(tx, actor, caseId),
     ]);
     const entries = await this.items(tx, actor, caseId, head);
-    const canRecord = record.stage !== 'ARCHIVED' &&
+    const canRecord =
+      record.stage !== 'ARCHIVED' &&
       (await this.can(actor, 'case.refund.record', record, tx));
     const canFollow = await this.can(actor, 'case.refund.follow', record, tx);
     const sources: Source[] = [
-      ...record.judgmentFacts.map((fact) => sourceFor(record, 'JUDGMENT', fact.id)),
+      ...record.judgmentFacts.map((fact) =>
+        sourceFor(record, 'JUDGMENT', fact.id),
+      ),
       ...record.secondInstanceResults.map((fact) =>
-        sourceFor(record, 'SECOND_INSTANCE_RESULT', fact.id)),
+        sourceFor(record, 'SECOND_INSTANCE_RESULT', fact.id),
+      ),
     ].filter((source): source is Source => source?.valid === true);
     return {
       caseId,
@@ -402,7 +457,9 @@ export class LitigationRefundsService {
         courtNo: source.courtNo,
       })),
       items: head
-        ? entries.map((item) => project(record, head, item, archived, canRecord, canFollow))
+        ? entries.map((item) =>
+            project(record, head, item, archived, canRecord, canFollow),
+          )
         : [],
     };
   }
@@ -421,12 +478,23 @@ export class LitigationRefundsService {
     return row;
   }
 
-  async list(actor: ActorContext, query: LitigationRefundListQuery, forExport = false) {
-    return this.db.$transaction(async (tx) => {
-      await this.readAuthority(actor, tx);
-      if (forExport)
-        await this.access.authorizeDepartmentAction(actor, 'case.refund.export', tx);
-      const heads = await tx.$queryRaw<{ caseId: string; versionId: string }[]>`
+  async list(
+    actor: ActorContext,
+    query: LitigationRefundListQuery,
+    forExport = false,
+  ) {
+    return this.db.$transaction(
+      async (tx) => {
+        await this.readAuthority(actor, tx);
+        if (forExport)
+          await this.access.authorizeDepartmentAction(
+            actor,
+            'case.refund.export',
+            tx,
+          );
+        const heads = await tx.$queryRaw<
+          { caseId: string; versionId: string }[]
+        >`
         SELECT case_id AS "caseId",id AS "versionId"
         FROM case_refund_inventory_versions v
         WHERE department_id=${actor.departmentId}::uuid
@@ -434,49 +502,92 @@ export class LitigationRefundsService {
             WHERE newer.case_id=v.case_id AND newer.department_id=v.department_id
               AND newer.revision>v.revision)
         ORDER BY case_id`;
-      const rows: LitigationRefundRow[] = [];
-      for (const headRef of heads) {
-        const record = await this.details(tx, actor, headRef.caseId);
-        if (!(await this.can(actor, 'case.read', record, tx))) continue;
-        const workspace = await this.workspaceInTransaction(tx, actor, headRef.caseId);
-        rows.push(...workspace.items);
-      }
-      const includes = (value: string | null, term: string | undefined) =>
-        !term?.trim() || (value ?? '').toLocaleLowerCase().includes(term.trim().toLocaleLowerCase());
-      const matching = rows
-        .filter((row) =>
-          includes(row.plaintiff, query.plaintiff) &&
-          includes(row.defendant, query.defendant) &&
-          includes(row.courtNo, query.courtNo) &&
-          includes(row.lawyer, query.lawyer) &&
-          (!query.status || row.status === query.status))
-        .sort((a, b) => a.caseNo.localeCompare(b.caseNo) || a.itemId.localeCompare(b.itemId));
-      const Decimal = Prisma.Decimal.clone({ precision: 36 });
-      const sum = (selected: LitigationRefundRow[]) =>
-        selected.reduce((total, row) => total.plus(row.amount ?? 0), new Decimal(0)).toFixed(2);
-      const summary = {
-        unrefundedAmount: sum(matching.filter((row) => ['PENDING', 'SUBMITTED'].includes(row.status))),
-        unrefundedCount: matching.filter((row) => ['PENDING', 'SUBMITTED'].includes(row.status)).length,
-        pendingSettlementAmount: sum(matching.filter((row) => row.status === 'RETURNED_UNSETTLED')),
-        filteredAmount: sum(matching),
-        unknownAmountCount: matching.filter((row) => row.amount === null).length,
-      };
-      const time = await tx.$queryRaw<{ asOf: Date }[]>`SELECT transaction_timestamp() AS "asOf"`;
-      if (forExport && matching.length > 20000)
-        throw new BadRequestException({ code: 'REFUND_EXPORT_TOO_LARGE' });
-      return {
-        items: forExport ? matching : matching.slice((query.page - 1) * query.pageSize, query.page * query.pageSize),
-        total: matching.length,
-        page: query.page,
-        pageSize: query.pageSize,
-        summary,
-        asOf: time[0]!.asOf.toISOString(),
-      };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+        const rows: LitigationRefundRow[] = [];
+        for (const headRef of heads) {
+          const record = await this.details(tx, actor, headRef.caseId);
+          if (!(await this.can(actor, 'case.read', record, tx))) continue;
+          const workspace = await this.workspaceInTransaction(
+            tx,
+            actor,
+            headRef.caseId,
+          );
+          rows.push(...workspace.items);
+        }
+        const includes = (value: string | null, term: string | undefined) =>
+          !term?.trim() ||
+          (value ?? '')
+            .toLocaleLowerCase()
+            .includes(term.trim().toLocaleLowerCase());
+        const matching = rows
+          .filter(
+            (row) =>
+              includes(row.plaintiff, query.plaintiff) &&
+              includes(row.defendant, query.defendant) &&
+              includes(row.courtNo, query.courtNo) &&
+              includes(row.lawyer, query.lawyer) &&
+              (!query.status || row.status === query.status),
+          )
+          .sort(
+            (a, b) =>
+              a.caseNo.localeCompare(b.caseNo) ||
+              a.itemId.localeCompare(b.itemId),
+          );
+        const Decimal = Prisma.Decimal.clone({ precision: 36 });
+        const sum = (selected: LitigationRefundRow[]) =>
+          selected
+            .reduce((total, row) => total.plus(row.amount ?? 0), new Decimal(0))
+            .toFixed(2);
+        const summary = {
+          unrefundedAmount: sum(
+            matching.filter((row) =>
+              ['PENDING', 'SUBMITTED'].includes(row.status),
+            ),
+          ),
+          unrefundedCount: matching.filter((row) =>
+            ['PENDING', 'SUBMITTED'].includes(row.status),
+          ).length,
+          pendingSettlementAmount: sum(
+            matching.filter((row) => row.status === 'RETURNED_UNSETTLED'),
+          ),
+          filteredAmount: sum(matching),
+          unknownAmountCount: matching.filter((row) => row.amount === null)
+            .length,
+        };
+        const time = await tx.$queryRaw<
+          { asOf: Date }[]
+        >`SELECT transaction_timestamp() AS "asOf"`;
+        if (forExport && matching.length > 20000)
+          throw new BadRequestException({ code: 'REFUND_EXPORT_TOO_LARGE' });
+        return {
+          items: forExport
+            ? matching
+            : matching.slice(
+                (query.page - 1) * query.pageSize,
+                query.page * query.pageSize,
+              ),
+          total: matching.length,
+          page: query.page,
+          pageSize: query.pageSize,
+          summary,
+          asOf: time[0]!.asOf.toISOString(),
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
   }
 
-  register(actor: ActorContext, caseId: string, input: RegisterLitigationRefundInput) {
-    return this.write(actor, uuid(caseId), uuid(input.itemId), 'REGISTER', input);
+  register(
+    actor: ActorContext,
+    caseId: string,
+    input: RegisterLitigationRefundInput,
+  ) {
+    return this.write(
+      actor,
+      uuid(caseId),
+      uuid(input.itemId),
+      'REGISTER',
+      input,
+    );
   }
 
   correct(
@@ -502,7 +613,9 @@ export class LitigationRefundsService {
       await this.readAuthority(actor, tx);
       const record = await this.details(tx, actor, uuid(caseId));
       await this.access.authorizeCase(actor, 'case.read', record, tx);
-      const rows = await tx.$queryRaw<{ kind: 'REGISTER' | 'CORRECT' | 'FOLLOW'; resultSnapshot: unknown }[]>`
+      const rows = await tx.$queryRaw<
+        { kind: 'REGISTER' | 'CORRECT' | 'FOLLOW'; resultSnapshot: unknown }[]
+      >`
         SELECT kind,result_snapshot AS "resultSnapshot"
         FROM case_litigation_refund_commands
         WHERE case_id=${uuid(caseId)}::uuid AND department_id=${actor.departmentId}::uuid
@@ -510,7 +623,8 @@ export class LitigationRefundsService {
         LIMIT 1`;
       const prior = rows[0];
       if (!prior) throw missing();
-      const action = prior.kind === 'FOLLOW' ? 'case.refund.follow' : 'case.refund.record';
+      const action =
+        prior.kind === 'FOLLOW' ? 'case.refund.follow' : 'case.refund.record';
       await this.access.authorizeCase(actor, action, record, tx);
       return prior.resultSnapshot;
     });
@@ -521,7 +635,10 @@ export class LitigationRefundsService {
     caseId: string,
     itemId: string,
     kind: 'REGISTER' | 'CORRECT' | 'FOLLOW',
-    input: RegisterLitigationRefundInput | CorrectLitigationRefundInput | FollowLitigationRefundInput,
+    input:
+      | RegisterLitigationRefundInput
+      | CorrectLitigationRefundInput
+      | FollowLitigationRefundInput,
   ) {
     const key = input.idempotencyKey;
     const expected = input.expectedInventoryVersionId;
@@ -529,143 +646,193 @@ export class LitigationRefundsService {
       kind === 'FOLLOW'
         ? {
             status: (input as FollowLitigationRefundInput).status,
-            remark: (input as FollowLitigationRefundInput).remark?.trim() || null,
-            reason: (input as FollowLitigationRefundInput).reason?.trim() || null,
+            remark:
+              (input as FollowLitigationRefundInput).remark?.trim() || null,
+            reason:
+              (input as FollowLitigationRefundInput).reason?.trim() || null,
           }
         : {
             sourceType: (input as RegisterLitigationRefundInput).sourceType,
             sourceId: uuid((input as RegisterLitigationRefundInput).sourceId),
             party: (input as RegisterLitigationRefundInput).party,
-            amount: normalizeRefundAmount((input as RegisterLitigationRefundInput).amount),
-            description: (input as RegisterLitigationRefundInput).description.trim(),
+            amount: normalizeRefundAmount(
+              (input as RegisterLitigationRefundInput).amount,
+            ),
+            description: (
+              input as RegisterLitigationRefundInput
+            ).description.trim(),
             reason: (input as RegisterLitigationRefundInput).reason.trim(),
           };
     const requestFingerprint = fingerprint([
-      'LITIGATION_REFUND_V1', kind, caseId, itemId, expected, normalized,
+      'LITIGATION_REFUND_V1',
+      kind,
+      caseId,
+      itemId,
+      expected,
+      normalized,
     ]);
     try {
-      return await this.db.$transaction(async (tx) => {
-        await lockCustomerActorFacts(tx, this.organization, actor);
-        await this.internal(actor, tx);
-        const locks = await tx.$queryRaw<{ id: string }[]>`
+      return await this.db.$transaction(
+        async (tx) => {
+          await lockCustomerActorFacts(tx, this.organization, actor);
+          await this.internal(actor, tx);
+          const locks = await tx.$queryRaw<{ id: string }[]>`
           SELECT id FROM cases WHERE id=${caseId}::uuid
             AND department_id=${actor.departmentId}::uuid FOR UPDATE`;
-        if (locks.length !== 1) throw missing();
-        const record = await this.details(tx, actor, caseId);
-        const action = kind === 'FOLLOW' ? 'case.refund.follow' : 'case.refund.record';
-        await this.access.authorizeCase(actor, 'case.read', record, tx);
-        await this.access.authorizeCase(actor, action, record, tx);
-        if (record.stage === 'ARCHIVED' && kind !== 'FOLLOW')
-          throw error('REFUND_ARCHIVED_REGISTRATION_CLOSED');
+          if (locks.length !== 1) throw missing();
+          const record = await this.details(tx, actor, caseId);
+          const action =
+            kind === 'FOLLOW' ? 'case.refund.follow' : 'case.refund.record';
+          await this.access.authorizeCase(actor, 'case.read', record, tx);
+          await this.access.authorizeCase(actor, action, record, tx);
+          if (record.stage === 'ARCHIVED' && kind !== 'FOLLOW')
+            throw error('REFUND_ARCHIVED_REGISTRATION_CLOSED');
 
-        const prior = await tx.$queryRaw<{ requestFingerprint: string; resultSnapshot: unknown }[]>`
+          const prior = await tx.$queryRaw<
+            { requestFingerprint: string; resultSnapshot: unknown }[]
+          >`
           SELECT request_fingerprint AS "requestFingerprint",
             result_snapshot AS "resultSnapshot"
           FROM case_litigation_refund_commands
           WHERE department_id=${actor.departmentId}::uuid
             AND actor_user_id=${actor.userId}::uuid AND idempotency_key=${key}
           LIMIT 1`;
-        if (prior[0]) {
-          if (prior[0].requestFingerprint !== requestFingerprint)
-            throw error('IDEMPOTENCY_CONFLICT');
-          return prior[0].resultSnapshot;
-        }
+          if (prior[0]) {
+            if (prior[0].requestFingerprint !== requestFingerprint)
+              throw error('IDEMPOTENCY_CONFLICT');
+            return prior[0].resultSnapshot;
+          }
 
-        const head = await this.latest(tx, actor, caseId);
-        if ((head?.versionId ?? null) !== expected)
-          throw error('REFUND_INVENTORY_CHANGED');
-        const oldItems = await this.items(tx, actor, caseId, head);
-        const current = oldItems.find((item) => item.itemId === itemId);
-        if (kind === 'REGISTER') {
-          if (current) throw error('REFUND_ITEM_EXISTS');
-          const reused = await tx.$queryRaw<{ id: string }[]>`
+          const head = await this.latest(tx, actor, caseId);
+          if ((head?.versionId ?? null) !== expected)
+            throw error('REFUND_INVENTORY_CHANGED');
+          const oldItems = await this.items(tx, actor, caseId, head);
+          const current = oldItems.find((item) => item.itemId === itemId);
+          if (kind === 'REGISTER') {
+            if (current) throw error('REFUND_ITEM_EXISTS');
+            const reused = await tx.$queryRaw<{ id: string }[]>`
             SELECT item_id AS id FROM case_refund_inventory_items
             WHERE case_id=${caseId}::uuid AND department_id=${actor.departmentId}::uuid
               AND item_id=${itemId}::uuid LIMIT 1`;
-          if (reused.length) throw error('REFUND_ITEM_ID_REUSED');
-        } else if (!current) throw missing();
-        if (record.stage === 'ARCHIVED' && kind === 'FOLLOW' &&
-            !(input as FollowLitigationRefundInput).reason?.trim())
-          throw new BadRequestException({ code: 'REFUND_ARCHIVED_REASON_REQUIRED' });
+            if (reused.length) throw error('REFUND_ITEM_ID_REUSED');
+          } else if (!current) throw missing();
+          if (
+            record.stage === 'ARCHIVED' &&
+            kind === 'FOLLOW' &&
+            !(input as FollowLitigationRefundInput).reason?.trim()
+          )
+            throw new BadRequestException({
+              code: 'REFUND_ARCHIVED_REASON_REQUIRED',
+            });
 
-        let changed: Item;
-        if (kind === 'FOLLOW') {
-          const follow = input as FollowLitigationRefundInput;
-          changed = {
-            ...current!,
-            status: follow.status,
-            remark: follow.remark?.trim() || null,
+          let changed: Item;
+          if (kind === 'FOLLOW') {
+            const follow = input as FollowLitigationRefundInput;
+            changed = {
+              ...current!,
+              status: follow.status,
+              remark: follow.remark?.trim() || null,
+            };
+          } else {
+            const registration = input as RegisterLitigationRefundInput;
+            const source = sourceFor(
+              record,
+              registration.sourceType,
+              uuid(registration.sourceId),
+            );
+            if (!source?.valid) throw error('REFUND_SOURCE_NOT_EFFECTIVE');
+            changed = {
+              itemId,
+              party: registration.party,
+              status: current?.status ?? 'PENDING',
+              description: registration.description.trim(),
+              amount: normalizeRefundAmount(registration.amount),
+              sourceType: source.type,
+              sourceId: source.id,
+              trialRoundId: source.trialRoundId,
+              remark: current?.remark ?? null,
+            };
+          }
+          const nextItems =
+            kind === 'REGISTER'
+              ? [...oldItems, changed]
+              : oldItems.map((item) =>
+                  item.itemId === itemId ? changed : item,
+                );
+          const previous: RefundInventorySnapshot | null = head
+            ? {
+                id: head.versionId,
+                caseId,
+                departmentId: actor.departmentId,
+                revision: head.revision,
+                declaration: head.declaration,
+                items: oldItems,
+              }
+            : null;
+          const planned = planRefundInventoryDraft(previous, {
+            caseId,
+            expectedVersionId: head?.versionId ?? null,
+            kind: 'RECORD',
+            items: nextItems,
+          });
+          const commandId = randomUUID();
+          const versionId = randomUUID();
+          const auditEventId = randomUUID();
+          const timestamp = await tx.$queryRaw<
+            { now: Date }[]
+          >`SELECT clock_timestamp() AS now`;
+          const recordedAt = timestamp[0]!.now;
+          const newHead: Head = {
+            versionId,
+            priorVersionId: head?.versionId ?? null,
+            revision: (head?.revision ?? 0) + 1,
+            declaration: planned.declaration,
           };
-        } else {
-          const registration = input as RegisterLitigationRefundInput;
-          const source = sourceFor(record, registration.sourceType, uuid(registration.sourceId));
-          if (!source?.valid) throw error('REFUND_SOURCE_NOT_EFFECTIVE');
-          changed = {
-            itemId,
-            party: registration.party,
-            status: current?.status ?? 'PENDING',
-            description: registration.description.trim(),
-            amount: normalizeRefundAmount(registration.amount),
-            sourceType: source.type,
-            sourceId: source.id,
-            trialRoundId: source.trialRoundId,
-            remark: current?.remark ?? null,
+          const archive = await this.archiveStatuses(tx, actor, caseId);
+          const canRecord =
+            record.stage !== 'ARCHIVED' &&
+            (await this.can(actor, 'case.refund.record', record, tx));
+          const canFollow = await this.can(
+            actor,
+            'case.refund.follow',
+            record,
+            tx,
+          );
+          const row = project(
+            record,
+            newHead,
+            changed,
+            archive,
+            canRecord,
+            canFollow,
+          );
+          const result = {
+            commandId,
+            inventoryVersionId: versionId,
+            item: row,
           };
-        }
-        const nextItems = kind === 'REGISTER'
-          ? [...oldItems, changed]
-          : oldItems.map((item) => item.itemId === itemId ? changed : item);
-        const previous: RefundInventorySnapshot | null = head
-          ? {
-              id: head.versionId,
-              caseId,
+          const reason = (normalized as { reason: string | null }).reason;
+
+          await tx.auditEvent.create({
+            data: {
+              id: auditEventId,
               departmentId: actor.departmentId,
-              revision: head.revision,
-              declaration: head.declaration,
-              items: oldItems,
-            }
-          : null;
-        const planned = planRefundInventoryDraft(previous, {
-          caseId, expectedVersionId: head?.versionId ?? null, kind: 'RECORD', items: nextItems,
-        });
-        const commandId = randomUUID();
-        const versionId = randomUUID();
-        const auditEventId = randomUUID();
-        const timestamp = await tx.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
-        const recordedAt = timestamp[0]!.now;
-        const newHead: Head = {
-          versionId, priorVersionId: head?.versionId ?? null,
-          revision: (head?.revision ?? 0) + 1,
-          declaration: planned.declaration,
-        };
-        const archive = await this.archiveStatuses(tx, actor, caseId);
-        const canRecord = record.stage !== 'ARCHIVED' &&
-          (await this.can(actor, 'case.refund.record', record, tx));
-        const canFollow = await this.can(actor, 'case.refund.follow', record, tx);
-        const row = project(record, newHead, changed, archive, canRecord, canFollow);
-        const result = { commandId, inventoryVersionId: versionId, item: row };
-        const reason = (normalized as { reason: string | null }).reason;
-
-        await tx.auditEvent.create({
-          data: {
-            id: auditEventId,
-            departmentId: actor.departmentId,
-            actorKind: 'HUMAN',
-            actorUserId: actor.userId,
-            internalActorUserId: actor.userId,
-            resourceType: 'CASE_REFUND_INVENTORY_VERSION',
-            resourceId: versionId,
-            action: 'CASE_REFUND_INVENTORY_RECORD',
-            details: {
-              requestFingerprint,
-              authorizationRevision: actor.authorizationRevision,
-              commandId,
-              kind,
-              reason,
+              actorKind: 'HUMAN',
+              actorUserId: actor.userId,
+              internalActorUserId: actor.userId,
+              resourceType: 'CASE_REFUND_INVENTORY_VERSION',
+              resourceId: versionId,
+              action: 'CASE_REFUND_INVENTORY_RECORD',
+              details: {
+                requestFingerprint,
+                authorizationRevision: actor.authorizationRevision,
+                commandId,
+                kind,
+                reason,
+              },
             },
-          },
-        });
-        await tx.$executeRaw`
+          });
+          await tx.$executeRaw`
           INSERT INTO case_litigation_refund_commands(
             id,case_id,department_id,actor_user_id,item_id,kind,prior_version_id,
             inventory_version_id,reason,idempotency_key,request_fingerprint,
@@ -674,49 +841,54 @@ export class LitigationRefundsService {
             ${actor.userId}::uuid,${itemId}::uuid,${kind},${head?.versionId ?? null}::uuid,
             ${versionId}::uuid,${reason},${key},${requestFingerprint},
             ${JSON.stringify(result)}::jsonb,${recordedAt})`;
-        await tx.$executeRaw`
+          await tx.$executeRaw`
           INSERT INTO case_refund_inventory_versions(
             id,case_id,department_id,revision,prior_version_id,declaration,
             recorded_by_user_id,recorded_at,audit_event_id)
           VALUES (${versionId}::uuid,${caseId}::uuid,${actor.departmentId}::uuid,
             ${newHead.revision},${head?.versionId ?? null}::uuid,${newHead.declaration},
             ${actor.userId}::uuid,${recordedAt},${auditEventId}::uuid)`;
-        for (const item of nextItems) {
-          const info: SourceMeta = item.itemId === itemId
-            ? changed
-            : {
-                sourceType: item.sourceType,
-                sourceId: item.sourceId,
-                trialRoundId: item.trialRoundId,
-                remark: item.remark,
-              };
-          if (info.sourceType && info.sourceId && !info.trialRoundId) {
-            const source = sourceFor(record, info.sourceType, info.sourceId);
-            info.trialRoundId = source?.trialRoundId ?? null;
-          }
-          if (!info.trialRoundId) {
-            info.sourceType = null;
-            info.sourceId = null;
-          }
-          await tx.$executeRaw`
+          for (const item of nextItems) {
+            const info: SourceMeta =
+              item.itemId === itemId
+                ? changed
+                : {
+                    sourceType: item.sourceType,
+                    sourceId: item.sourceId,
+                    trialRoundId: item.trialRoundId,
+                    remark: item.remark,
+                  };
+            if (info.sourceType && info.sourceId && !info.trialRoundId) {
+              const source = sourceFor(record, info.sourceType, info.sourceId);
+              info.trialRoundId = source?.trialRoundId ?? null;
+            }
+            if (!info.trialRoundId) {
+              info.sourceType = null;
+              info.sourceId = null;
+            }
+            await tx.$executeRaw`
             INSERT INTO case_refund_inventory_items(
               inventory_version_id,item_id,case_id,department_id,party,status,description)
             VALUES (${versionId}::uuid,${item.itemId}::uuid,${caseId}::uuid,
               ${actor.departmentId}::uuid,${item.party},${item.status},${item.description})`;
-          await tx.$executeRaw`
+            await tx.$executeRaw`
             INSERT INTO case_refund_inventory_item_amounts(inventory_version_id,item_id,amount)
             VALUES (${versionId}::uuid,${item.itemId}::uuid,${normalizeRefundAmount(item.amount)}::numeric)`;
-          await tx.$executeRaw`
+            await tx.$executeRaw`
             INSERT INTO case_litigation_refund_item_meta(
               inventory_version_id,item_id,source_type,source_id,trial_round_id,remark)
             VALUES (${versionId}::uuid,${item.itemId}::uuid,${info.sourceType},
               ${info.sourceId}::uuid,${info.trialRoundId}::uuid,${info.remark})`;
-        }
-        return result;
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+          }
+          return result;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
     } catch (caught) {
-      if (caught instanceof Prisma.PrismaClientKnownRequestError &&
-          ['P2002', 'P2034'].includes(caught.code))
+      if (
+        caught instanceof Prisma.PrismaClientKnownRequestError &&
+        ['P2002', 'P2034'].includes(caught.code)
+      )
         throw error('REFUND_INVENTORY_CHANGED');
       throw caught;
     }

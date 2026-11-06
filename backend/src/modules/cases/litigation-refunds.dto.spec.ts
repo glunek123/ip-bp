@@ -26,12 +26,16 @@ const base = {
 
 describe('litigation refund request contract', () => {
   it('accepts an explicit unknown amount and null first version', () => {
-    expect(valid(RegisterLitigationRefundInput, { ...base, itemId: id })).toEqual([]);
+    expect(
+      valid(RegisterLitigationRefundInput, { ...base, itemId: id }),
+    ).toEqual([]);
   });
 
   it('takes correction identity from the URL and rejects extra JSON fields', () => {
     expect(valid(CorrectLitigationRefundInput, base)).toEqual([]);
-    expect(valid(CorrectLitigationRefundInput, { ...base, itemId: id })).not.toEqual([]);
+    expect(
+      valid(CorrectLitigationRefundInput, { ...base, itemId: id }),
+    ).not.toEqual([]);
   });
 
   it('requires a real version and one of the seven persisted states', () => {
@@ -43,9 +47,14 @@ describe('litigation refund request contract', () => {
       idempotencyKey: 'follow-1',
     };
     expect(valid(FollowLitigationRefundInput, follow)).toEqual([]);
-    expect(valid(FollowLitigationRefundInput, { ...follow, status: 'CANCELLED' })).not.toEqual([]);
-    expect(valid(FollowLitigationRefundInput, {
-      ...follow, expectedInventoryVersionId: null,
-    })).not.toEqual([]);
+    expect(
+      valid(FollowLitigationRefundInput, { ...follow, status: 'CANCELLED' }),
+    ).not.toEqual([]);
+    expect(
+      valid(FollowLitigationRefundInput, {
+        ...follow,
+        expectedInventoryVersionId: null,
+      }),
+    ).not.toEqual([]);
   });
 });

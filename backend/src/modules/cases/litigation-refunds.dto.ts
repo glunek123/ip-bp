@@ -42,7 +42,9 @@ export class RegisterLitigationRefundInput {
     name: 'nullableInventoryVersion',
     validator: {
       validate(value: unknown) {
-        return value === null || (typeof value === 'string' && isUUID(value, '4'));
+        return (
+          value === null || (typeof value === 'string' && isUUID(value, '4'))
+        );
       },
     },
   })
@@ -55,16 +57,20 @@ export class RegisterLitigationRefundInput {
     name: 'knownOrUnknownRefundAmount',
     validator: {
       validate(value: unknown) {
-        return value === null ||
+        return (
+          value === null ||
           (typeof value === 'string' &&
-            /^(?:0|[1-9]\d{0,13})(?:\.\d{1,2})?$/u.test(value));
+            /^(?:0|[1-9]\d{0,13})(?:\.\d{1,2})?$/u.test(value))
+        );
       },
     },
   })
   amount!: string | null;
   @IsString() @MaxLength(1000) @Matches(/\S/u) description!: string;
   @IsString() @MaxLength(1000) @Matches(/\S/u) reason!: string;
-  @IsString() @MaxLength(128) @Matches(/^\S(?:[\s\S]{0,126}\S)?$/u)
+  @IsString()
+  @MaxLength(128)
+  @Matches(/^\S(?:[\s\S]{0,126}\S)?$/u)
   idempotencyKey!: string;
 }
 
@@ -80,7 +86,9 @@ export class FollowLitigationRefundInput {
     name: 'nullableRefundRemark',
     validator: {
       validate(value: unknown) {
-        return value === null || (typeof value === 'string' && value.length <= 1000);
+        return (
+          value === null || (typeof value === 'string' && value.length <= 1000)
+        );
       },
     },
   })
@@ -89,11 +97,15 @@ export class FollowLitigationRefundInput {
     name: 'nullableRefundReason',
     validator: {
       validate(value: unknown) {
-        return value === null || (typeof value === 'string' && value.length <= 1000);
+        return (
+          value === null || (typeof value === 'string' && value.length <= 1000)
+        );
       },
     },
   })
   reason!: string | null;
-  @IsString() @MaxLength(128) @Matches(/^\S(?:[\s\S]{0,126}\S)?$/u)
+  @IsString()
+  @MaxLength(128)
+  @Matches(/^\S(?:[\s\S]{0,126}\S)?$/u)
   idempotencyKey!: string;
 }

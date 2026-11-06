@@ -398,9 +398,21 @@ const catalog: PermissionCatalogItem[] = [
     scopes: allScopes,
   },
   { action: 'CASE_REFUND_READ', label: '查看诉讼退费', scopes: ['DEPARTMENT'] },
-  { action: 'CASE_REFUND_RECORD', label: '登记诉讼退费事项', scopes: ['SELF', 'DEPARTMENT'] },
-  { action: 'CASE_REFUND_FOLLOW', label: '跟进诉讼退费', scopes: ['SELF', 'DEPARTMENT'] },
-  { action: 'CASE_REFUND_EXPORT', label: '导出诉讼退费', scopes: ['DEPARTMENT'] },
+  {
+    action: 'CASE_REFUND_RECORD',
+    label: '登记诉讼退费事项',
+    scopes: ['SELF', 'DEPARTMENT'],
+  },
+  {
+    action: 'CASE_REFUND_FOLLOW',
+    label: '跟进诉讼退费',
+    scopes: ['SELF', 'DEPARTMENT'],
+  },
+  {
+    action: 'CASE_REFUND_EXPORT',
+    label: '导出诉讼退费',
+    scopes: ['DEPARTMENT'],
+  },
   { action: 'CASE_JUDGMENT_CORRECT', label: '更正一审判决', scopes: allScopes },
   {
     action: 'CASE_JUDGMENT_NEXT_STEP',

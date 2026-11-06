@@ -44,8 +44,12 @@ export class LitigationRefundsController {
   }
 
   @Get('export')
-  @ApiProduces('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-  @ApiOkResponse({ description: 'Filtered litigation refunds, nine XLSX columns' })
+  @ApiProduces(
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  )
+  @ApiOkResponse({
+    description: 'Filtered litigation refunds, nine XLSX columns',
+  })
   async export(
     @CurrentActor() actor: ActorContext,
     @Query() query: LitigationRefundListQuery,
@@ -53,8 +57,14 @@ export class LitigationRefundsController {
   ) {
     const result = await this.refunds.list(actor, query, true);
     const bytes = createLitigationRefundWorkbook(result.items);
-    response.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    response.setHeader('Content-Disposition', "attachment; filename*=UTF-8''%E8%AF%89%E8%AE%BC%E9%80%80%E8%B4%B9.xlsx");
+    response.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    response.setHeader(
+      'Content-Disposition',
+      "attachment; filename*=UTF-8''%E8%AF%89%E8%AE%BC%E9%80%80%E8%B4%B9.xlsx",
+    );
     response.send(Buffer.from(bytes));
   }
 
