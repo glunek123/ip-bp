@@ -6,7 +6,6 @@ import { expect, test, type APIRequestContext } from '@playwright/test';
 import {
   coreLeadFixtures,
   seedCoreLeadE2eData,
-  setRoleGrant,
 } from '../support/core-lead-database.mjs';
 import {
   setCaseExternalEntryGrant,
@@ -1205,9 +1204,9 @@ test('requires a reason for archived refund follow-up and preserves the formal a
     'case.closure.record',
     'TEAM',
   );
-  await setRoleGrant(
+  await setCaseClosureFixtureGrant(
     coreLeadFixtures.roleA,
-    'case.closure.settlement.update',
+    'case.closure.correct',
     'SELF',
   );
   await setCaseArchiveFixtureGrant(
