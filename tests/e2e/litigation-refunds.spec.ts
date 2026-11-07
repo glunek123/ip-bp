@@ -13,11 +13,11 @@ import {
 } from '../support/case-external-entry-database.mjs';
 import { setCaseClosureFixtureGrant } from '../support/case-closure-database.mjs';
 import {
-  createClosedCaseArchiveSourceThroughApi,
   readCaseArchiveSnapshot,
   setCaseArchiveFixtureGrant,
 } from '../support/case-archive-database.mjs';
 import { batch2SyntheticPdf } from '../support/batch2-synthetic-pdf.mjs';
+import { createCaseExecutionFilingSourceThroughApi } from '../support/case-execution-filing-database.mjs';
 import { withLitigationRefundCommitFault } from '../support/litigation-refund-fault.mjs';
 
 const operator = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
@@ -1235,6 +1235,11 @@ test('requires a reason for archived refund follow-up and preserves the formal a
   await seedCoreLeadE2eData({ reuseExisting: true });
   await setCaseClosureFixtureGrant(
     coreLeadFixtures.roleA,
+    'case.closure.record',
+    'SELF',
+  );
+  await setCaseClosureFixtureGrant(
+    coreLeadFixtures.roleA,
     'case.closure.correct',
     'SELF',
   );
@@ -1270,7 +1275,24 @@ test('requires a reason for archived refund follow-up and preserves the formal a
     contentType: 'application/json',
   });
 
-  const archiveSource = await createClosedCaseArchiveSourceThroughApi(request);
+  const archiveSource = await createCaseExecutionFilingSourceThroughApi(
+    request,
+    {
+      onComplaintSubmitted: async () => {
+        for (const action of [
+          'case.judgment.register',
+          'case.judgment.next_step',
+          'case.execution.submit',
+        ] as const)
+          await setCaseClosureFixtureGrant(
+            coreLeadFixtures.roleA,
+            action,
+            'TEAM',
+          );
+      },
+    },
+  );
+  expect(archiveSource.stage).toBe('EXECUTING');
   const refundWorkspace = await responseJson<RefundWorkspace>(
     await request.get(
       `/api/v1/cases/litigation-refunds/${archiveSource.caseId}/workspace`,
@@ -1287,7 +1309,6 @@ test('requires a reason for archived refund follow-up and preserves the formal a
     created: { id: archiveSource.caseId },
     workspace: refundWorkspace,
     source: judgmentSource,
-    closureResult: archiveSource.closureResult,
   };
   const itemId = randomUUID();
   const registerKey = randomUUID();
@@ -1327,9 +1348,46 @@ test('requires a reason for archived refund follow-up and preserves the formal a
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
   }).format(new Date());
+  const executionCase = await responseJson<{ stage: string; version: number }>(
+    await request.get(`/api/v1/cases/${source.created.id}`, {
+      headers: operator,
+    }),
+  );
+  expect(executionCase.stage).toBe('EXECUTING');
+  const earlyClosureInput = {
+    expectedVersion: executionCase.version,
+    expectedStage: executionCase.stage,
+    idempotencyKey: randomUUID(),
+    closeAt: today,
+    closeAmountState: 'KNOWN',
+    closeAmt: '0.00',
+    closeContentVersionIds: [] as string[],
+    paymentType: 'ONE_TIME',
+    paymentRecords: [] as Array<Record<string, never>>,
+  };
+  const earlyClosureUrl = `/api/v1/cases/${source.created.id}/early-closure`;
+  await attachRequest(
+    testInfo,
+    'early-closure-request.json',
+    'POST',
+    earlyClosureUrl,
+    earlyClosureInput,
+  );
+  const earlyClosure = await responseJson<{
+    version: number;
+    stage: string;
+    closureVersionId: string;
+  }>(
+    await request.post(earlyClosureUrl, {
+      headers: operator,
+      data: earlyClosureInput,
+    }),
+    201,
+  );
+  expect(earlyClosure.stage).toBe('WAITING_ARCHIVE');
   const settlementInput = {
-    expectedVersion: source.closureResult.version,
-    expectedClosureVersionId: source.closureResult.closureVersionId,
+    expectedVersion: earlyClosure.version,
+    expectedClosureVersionId: earlyClosure.closureVersionId,
     idempotencyKey: randomUUID(),
     closeAt: today,
     closeAmountState: 'KNOWN',
@@ -1370,7 +1428,7 @@ test('requires a reason for archived refund follow-up and preserves the formal a
   );
   expect(settlement).toMatchObject({
     stage: 'WAITING_ARCHIVE',
-    version: source.closureResult.version + 1,
+    version: earlyClosure.version + 1,
   });
   expect(settlement.refundInventoryVersionId).toEqual(expect.any(String));
 
@@ -1385,7 +1443,7 @@ test('requires a reason for archived refund follow-up and preserves the formal a
     idempotencyKey: randomUUID(),
     archiveAt: today,
     archiveType: 'VOIDED',
-    archiveReason: '合成案件按正式结案流程归档',
+    archiveReason: '合成案件从执行阶段提前结案后正式归档',
   };
   const archiveUrl = `/api/v1/cases/${source.created.id}/archive`;
   await attachRequest(
