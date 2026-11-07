@@ -191,6 +191,89 @@ describe('LitigationRefundPanel', () => {
     expect(exportedQuery).not.toHaveProperty('page');
   });
 
+  it('hides stale rows and prevents export until the debounced filter result arrives', async () => {
+    vi.useFakeTimers();
+    let resolveOldRequest: ((value: typeof response) => void) | undefined;
+    let resolveFilteredRequest: ((value: typeof response) => void) | undefined;
+    api.listLitigationRefunds
+      .mockResolvedValueOnce(structuredClone(response))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOldRequest = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFilteredRequest = resolve;
+          }),
+      );
+
+    const wrapper = render();
+    await flushPromises();
+    await wrapper.get('.refund-panel__heading button').trigger('click');
+    expect(api.listLitigationRefunds).toHaveBeenCalledTimes(2);
+
+    await wrapper.get('input[type="search"]').setValue('新原告');
+    expect(wrapper.find('tbody tr').exists()).toBe(false);
+    expect(wrapper.text()).toContain('正在读取退费记录');
+    const exportButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('导出全部筛选结果'));
+    if (!exportButton) throw new Error('export action missing');
+    expect(exportButton.attributes('disabled')).toBeDefined();
+    await exportButton.trigger('click');
+    expect(api.exportLitigationRefunds).not.toHaveBeenCalled();
+
+    resolveOldRequest?.({
+      ...structuredClone(response),
+      items: [{ ...row, caseNo: '旧筛选结果' }],
+    });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('旧筛选结果');
+    expect(wrapper.find('tbody tr').exists()).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(250);
+    expect(api.listLitigationRefunds).toHaveBeenCalledTimes(3);
+    expect(api.listLitigationRefunds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ plaintiff: '新原告', page: 1, pageSize: 20 }),
+      expect.anything(),
+    );
+    resolveFilteredRequest?.({
+      ...structuredClone(response),
+      items: [{ ...row, caseNo: '新筛选结果' }],
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain('新筛选结果');
+    expect(
+      wrapper
+        .findAll('button')
+        .find((button) => button.text().includes('导出全部筛选结果'))
+        ?.attributes('disabled'),
+    ).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('cancels the pending text filter when a status filter starts an immediate request', async () => {
+    vi.useFakeTimers();
+    const wrapper = render();
+    await flushPromises();
+
+    await wrapper.get('input[type="search"]').setValue('原告甲');
+    await wrapper.get('.refund-panel__filters select').setValue('RECEIVED');
+    await flushPromises();
+    expect(api.listLitigationRefunds).toHaveBeenCalledTimes(2);
+    expect(api.listLitigationRefunds).toHaveBeenLastCalledWith(
+      expect.objectContaining({ plaintiff: '原告甲', status: 'RECEIVED' }),
+      expect.anything(),
+    );
+
+    await vi.advanceTimersByTimeAsync(250);
+    expect(api.listLitigationRefunds).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
   it('marks partial current-page selection and keeps pending recovery through clearing filters', async () => {
     const pendingValue = {
       ownerScope: 'user-a:dept-1',

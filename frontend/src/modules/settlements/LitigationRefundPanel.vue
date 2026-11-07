@@ -152,10 +152,13 @@ function message(cause: unknown): string {
   return cause instanceof ApiError ? cause.message : '请求失败，请重试';
 }
 async function load(): Promise<void> {
+  if (filterTimer !== undefined) globalThis.clearTimeout(filterTimer);
+  filterTimer = undefined;
   const current = ++loadRevision;
   const currentIdentity = identity.value;
   requestController?.abort();
   requestController = new AbortController();
+  result.value = null;
   loading.value = true;
   error.value = '';
   try {
@@ -261,6 +264,12 @@ function scheduleTextFilter(): void {
   page.value = 1;
   suppressPageLoad = false;
   selected.value.clear();
+  loadRevision += 1;
+  requestController?.abort();
+  requestController = null;
+  result.value = null;
+  loading.value = true;
+  error.value = '';
   if (filterTimer !== undefined) globalThis.clearTimeout(filterTimer);
   filterTimer = globalThis.setTimeout(() => {
     filterTimer = undefined;
@@ -269,6 +278,8 @@ function scheduleTextFilter(): void {
 }
 function applyStatusFilter(): void {
   if (suppressFilterWatch) return;
+  if (filterTimer !== undefined) globalThis.clearTimeout(filterTimer);
+  filterTimer = undefined;
   suppressPageLoad = true;
   page.value = 1;
   suppressPageLoad = false;
@@ -423,7 +434,7 @@ async function retryOriginal(): Promise<void> {
   }
 }
 async function exportAll(): Promise<void> {
-  if (!capabilities.value?.export) return;
+  if (!capabilities.value?.export || loading.value || !result.value) return;
   const requestIdentity = identity.value;
   try {
     const file = await exportLitigationRefunds({ ...filters });
@@ -515,7 +526,12 @@ onBeforeUnmount(() => {
         >
         <div class="refund-panel__actions">
           <button type="button" @click="clearFilters">重置筛选</button
-          ><button v-if="capabilities.export" type="button" @click="exportAll">
+          ><button
+            v-if="capabilities.export"
+            type="button"
+            :disabled="loading || !result"
+            @click="exportAll"
+          >
             导出全部筛选结果
           </button>
           <details class="refund-panel__columns">
@@ -533,9 +549,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <p class="refund-panel__export-note">
-        金额格式：千分位，两位小数。{{
-          unknownMessage
-        }}
+        金额格式：千分位，两位小数。{{ unknownMessage }}
         导出范围为当前筛选条件下全部有权记录，不受勾选和当前页影响。
       </p>
       <p v-if="loading" role="status">正在读取退费记录…</p>
