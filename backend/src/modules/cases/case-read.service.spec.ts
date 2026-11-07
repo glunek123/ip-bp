@@ -1,6 +1,7 @@
 import { CaseReadService } from './case-read.service';
 import { ForbiddenException } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
+import type { AccessControlService } from '../../access-control/access-control.service';
 import { caseListMembershipWhere, caseListTextWhere } from './case-list-query';
 import * as caseEntrySource from './case-entry-source';
 import * as executionSource from './case-execution-source';
@@ -96,7 +97,9 @@ describe('CaseReadService', () => {
           if (action !== 'case.read') throw new ForbiddenException();
         },
       ),
-      authorizeDepartmentProxyAction: jest.fn(async () => {
+      authorizeDepartmentProxyAction: jest.fn<
+        AccessControlService['authorizeDepartmentProxyAction']
+      >(async () => {
         throw new ForbiddenException();
       }),
       canAuthorizeLead: jest.fn().mockResolvedValue(false),
