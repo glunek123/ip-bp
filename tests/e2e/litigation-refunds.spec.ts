@@ -1208,7 +1208,7 @@ test('requires a reason for archived refund follow-up and preserves the formal a
   await setRoleGrant(
     coreLeadFixtures.roleA,
     'case.closure.settlement.update',
-    'TEAM',
+    'SELF',
   );
   await setCaseArchiveFixtureGrant(
     coreLeadFixtures.roleA,
