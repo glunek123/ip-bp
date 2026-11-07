@@ -1908,9 +1908,9 @@ test('keeps first and second instance refund sources linked to their real judgme
   expect(
     invalidSourceResponse.status(),
     await invalidSourceResponse.text(),
-  ).toBe(400);
+  ).toBe(409);
   expect(await invalidSourceResponse.json()).toMatchObject({
-    code: 'INVALID_REFUND_SOURCE',
+    code: 'REFUND_SOURCE_NOT_EFFECTIVE',
   });
   expect(
     await refundStorageFacts(
@@ -1927,22 +1927,112 @@ test('keeps first and second instance refund sources linked to their real judgme
     reason: '记录一审来源事项已提交',
     idempotencyKey: randomUUID(),
   };
+  const secondFollowUrl = `/api/v1/cases/litigation-refunds/${sourceCase.created.id}/items/${secondItemId}/follow-up`;
+  const secondFollow = {
+    expectedInventoryVersionId: secondRegistered.inventoryVersionId,
+    status: 'RETURNED_UNSETTLED',
+    remark: '二审事项已退回，仍未结算（合成）',
+    reason: '记录二审来源事项退回未结算',
+    idempotencyKey: randomUUID(),
+  };
+  await Promise.all([
+    attachRequest(
+      testInfo,
+      'first-instance-refund-follow-up.json',
+      'PATCH',
+      firstFollowUrl,
+      firstFollow,
+    ),
+    attachRequest(
+      testInfo,
+      'second-instance-refund-follow-up.json',
+      'PATCH',
+      secondFollowUrl,
+      secondFollow,
+    ),
+  ]);
+  const [firstResponse, secondResponse] = await Promise.all([
+    request.patch(firstFollowUrl, { headers: operator, data: firstFollow }),
+    request.patch(secondFollowUrl, { headers: operator, data: secondFollow }),
+  ]);
+  const [firstText, secondText] = await Promise.all([
+    firstResponse.text(),
+    secondResponse.text(),
+  ]);
+  const firstStatus = firstResponse.status();
+  const secondStatus = secondResponse.status();
+  expect([firstStatus, secondStatus].sort()).toEqual([200, 409]);
+  const firstBody = JSON.parse(firstText) as RefundCommand | { code: string };
+  const secondBody = JSON.parse(secondText) as RefundCommand | { code: string };
+  const firstFollowed =
+    firstStatus === 200 ? (firstBody as RefundCommand) : null;
+  const secondConflict = secondStatus === 409 ? secondBody : firstBody;
+  expect(secondConflict).toMatchObject({ code: 'REFUND_INVENTORY_CHANGED' });
+  const conflictKey =
+    firstStatus === 409
+      ? firstFollow.idempotencyKey
+      : secondFollow.idempotencyKey;
+  const conflictReceipt = await request.get(
+    `/api/v1/cases/litigation-refunds/${sourceCase.created.id}/requests/${encodeURIComponent(conflictKey)}`,
+    { headers: operator },
+  );
+  expect(conflictReceipt.status()).toBe(404);
+  expect(await commandFacts(sourceCase.created.id)).toEqual({
+    commands: 3,
+    registrations: 2,
+    follow_ups: 1,
+  });
+
+  const concurrentWinner = firstFollowed ?? (secondBody as RefundCommand);
+  const afterConcurrentWorkspace = await responseJson<RefundWorkspace>(
+    await request.get(
+      `/api/v1/cases/litigation-refunds/${sourceCase.created.id}/workspace`,
+      { headers: operator },
+    ),
+  );
+  expect(afterConcurrentWorkspace.items).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        itemId: firstItemId,
+        status: firstStatus === 200 ? 'SUBMITTED' : 'PENDING',
+      }),
+      expect.objectContaining({
+        itemId: secondItemId,
+        status: secondStatus === 200 ? 'RETURNED_UNSETTLED' : 'PENDING',
+      }),
+    ]),
+  );
+  const retryInput =
+    firstStatus === 409
+      ? {
+          ...firstFollow,
+          expectedInventoryVersionId: concurrentWinner.inventoryVersionId,
+          idempotencyKey: randomUUID(),
+        }
+      : {
+          ...secondFollow,
+          expectedInventoryVersionId: concurrentWinner.inventoryVersionId,
+          idempotencyKey: randomUUID(),
+        };
+  const retryUrl = firstStatus === 409 ? firstFollowUrl : secondFollowUrl;
   await attachRequest(
     testInfo,
-    'first-instance-refund-follow-up.json',
+    'known-conflict-refund-follow-up-retry.json',
     'PATCH',
-    firstFollowUrl,
-    firstFollow,
+    retryUrl,
+    retryInput,
   );
-  const firstFollowed = await sendCommand<RefundCommand>(
+  const retried = await sendCommand<RefundCommand>(
     request,
     'PATCH',
-    firstFollowUrl,
-    firstFollow,
+    retryUrl,
+    retryInput,
     sourceCase.created.id,
-    firstFollow.idempotencyKey,
+    retryInput.idempotencyKey,
   );
-  expect(firstFollowed.item).toMatchObject({
+  const firstFollowedFinal = firstFollowed ?? retried;
+  const secondFollowedFinal = firstStatus === 409 ? concurrentWinner : retried;
+  expect(firstFollowedFinal.item).toMatchObject({
     itemId: firstItemId,
     status: 'SUBMITTED',
     amount: '10.01',
@@ -1954,42 +2044,7 @@ test('keeps first and second instance refund sources linked to their real judgme
       valid: true,
     },
   });
-  const afterFirstFollowFacts = await commandFacts(sourceCase.created.id);
-  const firstReplay = await responseJson<RefundCommand>(
-    await request.patch(firstFollowUrl, {
-      headers: operator,
-      data: firstFollow,
-    }),
-  );
-  expect(firstReplay).toEqual(firstFollowed);
-  expect(await commandFacts(sourceCase.created.id)).toEqual(
-    afterFirstFollowFacts,
-  );
-
-  const secondFollowUrl = `/api/v1/cases/litigation-refunds/${sourceCase.created.id}/items/${secondItemId}/follow-up`;
-  const secondFollow = {
-    expectedInventoryVersionId: firstFollowed.inventoryVersionId,
-    status: 'RETURNED_UNSETTLED',
-    remark: '二审事项已退回，仍未结算（合成）',
-    reason: '记录二审来源事项退回未结算',
-    idempotencyKey: randomUUID(),
-  };
-  await attachRequest(
-    testInfo,
-    'second-instance-refund-follow-up.json',
-    'PATCH',
-    secondFollowUrl,
-    secondFollow,
-  );
-  const secondFollowed = await sendCommand<RefundCommand>(
-    request,
-    'PATCH',
-    secondFollowUrl,
-    secondFollow,
-    sourceCase.created.id,
-    secondFollow.idempotencyKey,
-  );
-  expect(secondFollowed.item).toMatchObject({
+  expect(secondFollowedFinal.item).toMatchObject({
     itemId: secondItemId,
     status: 'RETURNED_UNSETTLED',
     amount: '20.02',
@@ -2000,6 +2055,30 @@ test('keeps first and second instance refund sources linked to their real judgme
       trialRoundId,
       valid: true,
     },
+  });
+  const successfulFollowUrl =
+    firstStatus === 200 ? firstFollowUrl : secondFollowUrl;
+  const successfulFollowInput =
+    firstStatus === 200 ? firstFollow : secondFollow;
+  const successfulFollowSnapshot = concurrentWinner;
+  const successfulReplay = await responseJson<RefundCommand>(
+    await request.patch(successfulFollowUrl, {
+      headers: operator,
+      data: successfulFollowInput,
+    }),
+  );
+  expect(successfulReplay).toEqual(successfulFollowSnapshot);
+  const retriedReplay = await responseJson<RefundCommand>(
+    await request.patch(retryUrl, {
+      headers: operator,
+      data: retryInput,
+    }),
+  );
+  expect(retriedReplay).toEqual(retried);
+  expect(await commandFacts(sourceCase.created.id)).toEqual({
+    commands: 4,
+    registrations: 2,
+    follow_ups: 2,
   });
   const finalWorkspace = await responseJson<RefundWorkspace>(
     await request.get(
@@ -2033,4 +2112,28 @@ test('keeps first and second instance refund sources linked to their real judgme
       }),
     ]),
   );
+  const pageOne = await responseJson<{
+    items: RefundRow[];
+    page: number;
+    pageSize: number;
+    total: number;
+    summary: { unrefundedCount: number; unknownAmountCount: number };
+  }>(
+    await request.get(
+      `/api/v1/cases/litigation-refunds?defendant=${encodeURIComponent(defendant)}&page=1&pageSize=1`,
+      { headers: operator },
+    ),
+  );
+  const pageTwo = await responseJson<typeof pageOne>(
+    await request.get(
+      `/api/v1/cases/litigation-refunds?defendant=${encodeURIComponent(defendant)}&page=2&pageSize=1`,
+      { headers: operator },
+    ),
+  );
+  expect(pageOne).toMatchObject({ page: 1, pageSize: 1, total: 2 });
+  expect(pageTwo).toMatchObject({ page: 2, pageSize: 1, total: 2 });
+  expect(pageOne.items).toHaveLength(1);
+  expect(pageTwo.items).toHaveLength(1);
+  expect(pageOne.items[0].itemId).not.toBe(pageTwo.items[0].itemId);
+  expect(pageTwo.summary).toEqual(pageOne.summary);
 });
