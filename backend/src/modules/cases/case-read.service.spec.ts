@@ -98,7 +98,8 @@ describe('CaseReadService', () => {
         },
       ),
       authorizeDepartmentProxyAction: jest.fn<
-        AccessControlService['authorizeDepartmentProxyAction']
+        ReturnType<AccessControlService['authorizeDepartmentProxyAction']>,
+        Parameters<AccessControlService['authorizeDepartmentProxyAction']>
       >(async () => {
         throw new ForbiddenException();
       }),
