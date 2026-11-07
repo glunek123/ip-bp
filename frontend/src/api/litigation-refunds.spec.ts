@@ -82,16 +82,14 @@ describe('litigation refunds API', () => {
   it('exports the server filtered set without pagination or selection parameters', async () => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response('xlsx', {
-            headers: {
-              'Content-Type':
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            },
-          }),
-        ),
+      vi.fn().mockResolvedValue(
+        new Response('xlsx', {
+          headers: {
+            'Content-Type':
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          },
+        }),
+      ),
     );
     await exportLitigationRefunds({
       plaintiff: '甲',

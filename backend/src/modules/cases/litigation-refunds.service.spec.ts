@@ -70,13 +70,11 @@ function fixture(
   };
   const tx = {
     userAccount: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          active: true,
-          accountType: 'INTERNAL',
-          authorizationRevision: 1,
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        active: true,
+        accountType: 'INTERNAL',
+        authorizationRevision: 1,
+      }),
     },
     case: {
       findFirst: jest
