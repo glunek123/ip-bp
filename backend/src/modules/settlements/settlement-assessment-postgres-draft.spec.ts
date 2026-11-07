@@ -123,7 +123,9 @@ describe('unregistered PostgreSQL assessment adapter (transaction doubles only)'
         command,
         composition,
       ),
-    ).rejects.toThrow('CASE_ACTION_FORBIDDEN');
+    ).rejects.toMatchObject({
+      response: { code: 'CASE_ACTION_FORBIDDEN' },
+    });
     snapshot.grants.push({
       action: 'case.department.proxy',
       scope: 'department',

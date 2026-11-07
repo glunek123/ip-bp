@@ -90,7 +90,9 @@ describe('unregistered refund Prisma transaction draft static boundaries', () =>
         parent.idempotencyKey,
         parent.context,
       ),
-    ).rejects.toThrow('CASE_ACTION_FORBIDDEN');
+    ).rejects.toMatchObject({
+      response: { code: 'CASE_ACTION_FORBIDDEN' },
+    });
     grants.push({ action: 'case.department.proxy', scope: 'department' });
     await expect(
       adapter.executeInTransaction(
