@@ -71,6 +71,9 @@ function fixture() {
     authorizeDepartmentAction: jest.fn(async (): Promise<void> => {
       throw new ForbiddenException({ code: 'ACTION_FORBIDDEN' });
     }),
+    authorizeDepartmentProxyAction: jest.fn(async (): Promise<void> => {
+      throw new ForbiddenException({ code: 'ACTION_FORBIDDEN' });
+    }),
   };
   const materials = {
     assertAvailableVersions: jest.fn(
