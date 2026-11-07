@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaseDetail, CaseFile } from '../../api/cases';
 import type { LeadDetail } from '../../api/leads';
+import type { RefundWorkspace } from '../../api/litigation-refunds';
 import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
 import { createListWorkflowContext } from '../../app/list-workflow-context';
@@ -44,6 +45,7 @@ const api = vi.hoisted(() => ({
   correctCaseJudgmentRecord: vi.fn(),
   correctCaseClosureRecord: vi.fn(),
   getSettlementContext: vi.fn(),
+  getLitigationRefundWorkspace: vi.fn(),
   listCaseFileCatalog: vi.fn(),
   exportCaseFiles: vi.fn(),
 }));
@@ -52,6 +54,10 @@ const routineApi = vi.hoisted(() => ({
   updateCaseRoutineProfile: vi.fn(),
 }));
 vi.mock('../../api/case-routine', () => routineApi);
+vi.mock('../../api/litigation-refunds', async (original) => ({
+  ...(await original<typeof import('../../api/litigation-refunds')>()),
+  getLitigationRefundWorkspace: api.getLitigationRefundWorkspace,
+}));
 vi.mock('../../api/cases', async (original) => ({
   ...(await original<typeof import('../../api/cases')>()),
   getCase: api.getCase,
@@ -1033,6 +1039,16 @@ it.each([
 beforeEach(() => {
   vi.resetAllMocks();
   sessionStorage.clear();
+  api.getLitigationRefundWorkspace.mockImplementation(
+    async (caseId: string): Promise<RefundWorkspace> => ({
+      caseId,
+      inventoryVersionId: null,
+      canRecord: false,
+      canFollow: false,
+      sources: [],
+      items: [],
+    }),
+  );
   api.getLead.mockRejectedValue(new ApiError('来源无权', 403, 'FORBIDDEN'));
   routineApi.getCaseRoutineProfile.mockRejectedValue(
     new ApiError('资料无权', 403, 'FORBIDDEN'),
@@ -2684,6 +2700,7 @@ describe('UI002 real case workspace host', () => {
     );
     expect(api.getSettlementContext).toHaveBeenCalledTimes(1);
     expect(api.getCase).toHaveBeenCalledTimes(1);
+    expect(api.getLitigationRefundWorkspace).toHaveBeenCalledWith('case-1');
     expect(api.submitComplaint).not.toHaveBeenCalled();
   });
   it('normalizes invalid tabs and connects keyboard navigation without a write', async () => {

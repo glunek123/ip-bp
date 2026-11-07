@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
 import type { CaseDetail, CaseSummary } from '../../api/cases';
+import type { RefundWorkspace } from '../../api/litigation-refunds';
 import { useAuthStore } from '../../stores/auth';
 import CaseListPage from './CaseListPage.vue';
 import CaseDetailPage from './CaseDetailPage.vue';
@@ -51,6 +52,7 @@ const api = vi.hoisted(() => ({
   revokeCaseJudgmentNextStep: vi.fn(),
   getSettlementContext: vi.fn(),
   getCaseSettlement: vi.fn(),
+  getLitigationRefundWorkspace: vi.fn(),
   listFees: vi.fn(),
   listCaseFileCatalog: vi.fn(),
   exportCaseFiles: vi.fn(),
@@ -66,6 +68,10 @@ vi.mock('../../api/settlements', async (importOriginal) => ({
   listFees: api.listFees,
 }));
 vi.mock('../../api/leads', () => ({ getLead: api.getLead }));
+vi.mock('../../api/litigation-refunds', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/litigation-refunds')>()),
+  getLitigationRefundWorkspace: api.getLitigationRefundWorkspace,
+}));
 vi.mock('../../api/cases', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/cases')>()),
   listCases: api.listCases,
@@ -103,6 +109,16 @@ beforeEach(() => {
       '<div v-show="modelValue" role="dialog" class="case-workspace-editors"><slot /></div>',
   };
   vi.resetAllMocks();
+  api.getLitigationRefundWorkspace.mockImplementation(
+    async (caseId: string): Promise<RefundWorkspace> => ({
+      caseId,
+      inventoryVersionId: null,
+      canRecord: false,
+      canFollow: false,
+      sources: [],
+      items: [],
+    }),
+  );
   api.listCaseFileCatalog.mockImplementation(() => new Promise(() => {}));
   api.getCaseRoutineProfile.mockResolvedValue({
     revision: 0,
@@ -2218,6 +2234,8 @@ describe('case pages', () => {
 
     expect(wrapper.text()).toContain('CA-case-b');
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(api.getLitigationRefundWorkspace).toHaveBeenCalledWith('case-a');
+    expect(api.getLitigationRefundWorkspace).toHaveBeenCalledWith('case-b');
   });
 });
 
