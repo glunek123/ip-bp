@@ -2120,13 +2120,13 @@ test('keeps first and second instance refund sources linked to their real judgme
     summary: { unrefundedCount: number; unknownAmountCount: number };
   }>(
     await request.get(
-      `/api/v1/cases/litigation-refunds?defendant=${encodeURIComponent(defendant)}&page=1&pageSize=1`,
+      `/api/v1/cases/litigation-refunds?defendant=${encodeURIComponent(sourceCase.defendant)}&page=1&pageSize=1`,
       { headers: operator },
     ),
   );
   const pageTwo = await responseJson<typeof pageOne>(
     await request.get(
-      `/api/v1/cases/litigation-refunds?defendant=${encodeURIComponent(defendant)}&page=2&pageSize=1`,
+      `/api/v1/cases/litigation-refunds?defendant=${encodeURIComponent(sourceCase.defendant)}&page=2&pageSize=1`,
       { headers: operator },
     ),
   );
