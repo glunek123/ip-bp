@@ -96,6 +96,9 @@ describe('CaseReadService', () => {
           if (action !== 'case.read') throw new ForbiddenException();
         },
       ),
+      authorizeDepartmentProxyAction: jest.fn(async () => {
+        throw new ForbiddenException();
+      }),
       canAuthorizeLead: jest.fn().mockResolvedValue(false),
       buildCaseScope: jest
         .fn()
@@ -3465,6 +3468,16 @@ describe('CaseReadService', () => {
               : action === 'case.archive'
                 ? archive
                 : true,
+        );
+        f.access.authorizeDepartmentProxyAction.mockImplementation(
+          async (_actor, action) => {
+            if (
+              (action === 'case.closure.record' && closure) ||
+              (action === 'case.archive' && archive)
+            )
+              return;
+            throw new ForbiddenException();
+          },
         );
         f.db.case.findMany.mockResolvedValue([record]);
         f.db.case.findFirst.mockResolvedValue(record);
