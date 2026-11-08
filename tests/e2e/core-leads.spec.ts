@@ -1095,17 +1095,29 @@ test('operator creates, refreshes, views, and edits a waiting-push lead', async 
   await page.locator('input[name="unitPrice-0"]').fill('1.50');
   await page.locator('input[name="commentCount-0"]').fill('3');
   await expect(page.locator('[data-test="estimate-0"]')).toContainText('3.00');
-  await page.locator('input[name="screenshots"]').setInputFiles({
+  await page.locator('[data-test="product-screenshots-0"]').setInputFiles({
     name: 'lead.jpg',
     mimeType: 'image/jpeg',
     buffer: jpegBytes,
   });
+  await expect(page.getByText(/本次新增\s*1\s*份/u)).toBeVisible();
   await page.getByRole('button', { name: '创建线索' }).click();
-  await expect(page.getByRole('heading', { name: /^LD-/u })).toBeVisible();
+  await expect(page).toHaveURL(/\/leads\/[0-9a-f-]{36}$/u);
   await expect(page.getByText('浏览器店铺', { exact: true })).toBeVisible();
-  await expect(page.getByText('lead.jpg')).toBeVisible();
+  const productScreenshots = page
+    .getByRole('row', { name: /浏览器商品/u })
+    .locator('[data-test="product-screenshots-row"]');
+  await expect(
+    productScreenshots.getByText('lead.jpg', { exact: true }),
+  ).toBeVisible();
   const id = page.url().split('/').at(-1)!;
   await page.reload();
+  const facts = page.locator('[data-test="lead-facts"]');
+  await expect(facts).toContainText('已准入客户');
+  await expect(facts).toContainText('核心权利主体');
+  await expect(
+    productScreenshots.getByText('lead.jpg', { exact: true }),
+  ).toBeVisible();
   await page.locator('[data-test="edit-lead"]').click();
   await page.getByLabel('店铺名称').fill('浏览器店铺已修改');
   await page.getByRole('button', { name: '保存修改' }).click();
@@ -1117,6 +1129,8 @@ test('operator creates, refreshes, views, and edits a waiting-push lead', async 
   await expect(getLead(id)).resolves.toMatchObject({
     version: 2,
     shopName: '浏览器店铺已修改',
+    customerId: coreLeadFixtures.admittedCustomer,
+    rightsHolderId: coreLeadFixtures.holder,
   });
 });
 
