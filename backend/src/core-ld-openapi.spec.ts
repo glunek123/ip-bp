@@ -1170,7 +1170,15 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       document.components?.schemas?.ClientLeadHistoryResponseDto,
     ).toMatchObject({
       properties: {
-        archiveType: { enum: ['NO_INFRINGEMENT', 'NO_EVIDENCE'] },
+        archiveType: {
+          enum: [
+            'NO_INFRINGEMENT',
+            'LINK_REMOVED',
+            'NO_INFRINGEMENT_INFORMATION',
+            'NO_EVIDENCE',
+          ],
+        },
+        archiveDate: { format: 'date', nullable: true },
       },
     });
     expect(

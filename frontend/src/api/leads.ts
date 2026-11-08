@@ -1,4 +1,9 @@
 import { ApiError, getJson, requestJson, type RequestOptions } from './http';
+import {
+  isLeadArchiveDate,
+  isLeadNoEvidenceArchiveType,
+  type LeadNoEvidenceArchiveType,
+} from './lead-decisions';
 import { notaryListStages, type NotaryListStage } from './notary';
 
 export type LeadCaseType =
@@ -146,14 +151,16 @@ export type LeadReviewDecision =
       decidedAt: string;
       archiveType: 'NO_INFRINGEMENT';
       archivedAt: string;
+      archiveDate?: string | null;
     };
 export type LeadEvidenceDecision = {
   result: 'NO_EVIDENCE';
   reason: string;
   decidedAt: string;
   decidedByDisplayName: string;
-  archiveType: 'NO_EVIDENCE';
+  archiveType: LeadNoEvidenceArchiveType;
   archivedAt: string;
+  archiveDate?: string | null;
 };
 export type LeadCustomerEvidenceConfirmation = {
   id: string;
@@ -212,6 +219,7 @@ export type LeadDetail = Lead & {
     routineEdit?: boolean;
     push: boolean;
     withdrawApply: boolean;
+    revive?: boolean;
     evidenceDecide: boolean;
     transferToNotary: boolean;
     createEvidenceBatch: boolean;
@@ -231,7 +239,7 @@ export type NotaryMatterSummary = {
   businessNo: string;
   stage: NotaryListStage;
   notaryOfficeName: string;
-  batchPurpose: string;
+  batchPurpose: string | null;
   createdAt: string;
 };
 export type LeadWithdrawalApplication = {
@@ -260,6 +268,7 @@ export type LeadHistory = {
   applicantDisplayName?: string;
   applicationId?: string;
   archiveType?: string | null;
+  archiveDate?: string | null;
   archivedAt?: string | null;
 };
 export type LeadWithdrawalApplicationResult = {
@@ -280,8 +289,9 @@ export type LeadEvidenceDecisionResult = {
   reason: string;
   decidedByDisplayName: string;
   decidedAt: string;
-  archiveType: 'NO_EVIDENCE';
+  archiveType: LeadNoEvidenceArchiveType;
   archivedAt: string;
+  archiveDate?: string | null;
 };
 export type LeadProxyEvidenceConfirmationResult =
   LeadCustomerEvidenceConfirmation & {
@@ -430,7 +440,7 @@ function isReviewDecision(value: unknown): value is LeadReviewDecision {
   )
     return true;
   return (
-    keys.length === 6 &&
+    keys.length === (Object.hasOwn(value, 'archiveDate') ? 7 : 6) &&
     keys.every((key) =>
       [
         'result',
@@ -439,6 +449,7 @@ function isReviewDecision(value: unknown): value is LeadReviewDecision {
         'decidedAt',
         'archiveType',
         'archivedAt',
+        'archiveDate',
       ].includes(key),
     ) &&
     value.result === 'NO_INFRINGEMENT' &&
@@ -448,7 +459,8 @@ function isReviewDecision(value: unknown): value is LeadReviewDecision {
     typeof value.reviewerDisplayName === 'string' &&
     isDateTime(value.decidedAt) &&
     value.archiveType === 'NO_INFRINGEMENT' &&
-    isDateTime(value.archivedAt)
+    isDateTime(value.archivedAt) &&
+    isLeadArchiveDate(value.archiveDate)
   );
 }
 function isEvidenceDecision(value: unknown): value is LeadEvidenceDecision {
@@ -462,16 +474,20 @@ function isEvidenceDecision(value: unknown): value is LeadEvidenceDecision {
   ];
   return (
     isRecord(value) &&
-    Object.keys(value).length === keys.length &&
-    Object.keys(value).every((key) => keys.includes(key)) &&
+    Object.keys(value).length ===
+      keys.length + Number(Object.hasOwn(value, 'archiveDate')) &&
+    Object.keys(value).every(
+      (key) => keys.includes(key) || key === 'archiveDate',
+    ) &&
     value.result === 'NO_EVIDENCE' &&
     typeof value.reason === 'string' &&
     value.reason.trim().length > 0 &&
     [...value.reason].length <= 5000 &&
     typeof value.decidedByDisplayName === 'string' &&
     isDateTime(value.decidedAt) &&
-    value.archiveType === 'NO_EVIDENCE' &&
-    isDateTime(value.archivedAt)
+    isLeadNoEvidenceArchiveType(value.archiveType) &&
+    isDateTime(value.archivedAt) &&
+    isLeadArchiveDate(value.archiveDate)
   );
 }
 function isCustomerEvidenceConfirmation(
@@ -1045,6 +1061,8 @@ export async function getLead(
       typeof capabilities.routineEdit !== 'boolean') ||
     typeof capabilities.push !== 'boolean' ||
     typeof capabilities.withdrawApply !== 'boolean' ||
+    (capabilities.revive !== undefined &&
+      typeof capabilities.revive !== 'boolean') ||
     typeof capabilities.evidenceDecide !== 'boolean' ||
     typeof capabilities.transferToNotary !== 'boolean' ||
     typeof capabilities.createEvidenceBatch !== 'boolean' ||
@@ -1078,6 +1096,9 @@ export async function getLead(
       routineEdit: capabilities.routineEdit === true,
       push: capabilities.push,
       withdrawApply: capabilities.withdrawApply,
+      ...(capabilities.revive === undefined
+        ? {}
+        : { revive: capabilities.revive }),
       evidenceDecide: capabilities.evidenceDecide,
       transferToNotary: capabilities.transferToNotary,
       createEvidenceBatch: capabilities.createEvidenceBatch,
@@ -1102,7 +1123,7 @@ function isNotaryMatterSummaries(
         typeof item.businessNo === 'string' &&
         member(notaryListStages, item.stage) &&
         typeof item.notaryOfficeName === 'string' &&
-        typeof item.batchPurpose === 'string' &&
+        isNullableString(item.batchPurpose) &&
         isDateTime(item.createdAt),
     )
   );
@@ -1154,8 +1175,9 @@ function isLeadHistory(value: unknown): value is LeadHistory[] {
             item.reason.trim().length > 0 &&
             [...item.reason].length <= 5000 &&
             typeof item.decidedByDisplayName === 'string' &&
-            item.archiveType === 'NO_EVIDENCE' &&
+            isLeadNoEvidenceArchiveType(item.archiveType) &&
             isDateTime(item.archivedAt))) &&
+        isLeadArchiveDate(item.archiveDate) &&
         (item.kind !== 'CUSTOMER_EVIDENCE_CONFIRMATION' ||
           ((item.result === 'EVIDENCE' || item.result === 'NO_EVIDENCE') &&
             item.actorKind === 'INTERNAL_PROXY' &&

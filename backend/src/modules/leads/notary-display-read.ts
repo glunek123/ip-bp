@@ -268,7 +268,7 @@ export async function readNotaryDisplay(
 type CapabilityMatter = {
   departmentId: string;
   stage: NotaryMatterStage;
-  evidenceMode: string;
+  evidenceMode: string | null;
   sourceLead: { responsibleUserId: string; teamId: string | null };
   evidence: object | null;
   opening: object | null;
@@ -303,8 +303,7 @@ export async function notaryDisplayCapabilities(
     [
       'recordEvidence',
       'notary.evidence.record',
-      matter.stage === 'PENDING_EVIDENCE' &&
-        matter.evidenceMode === 'ONLINE_PURCHASE',
+      matter.stage === 'PENDING_EVIDENCE',
     ],
     [
       'recordOpening',

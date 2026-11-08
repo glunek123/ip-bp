@@ -10,6 +10,8 @@ vi.mock('./http', async (importOriginal) => ({
 
 import {
   createNotaryMatter,
+  confirmNotaryHandoff,
+  confirmNotaryHandoffBatch,
   createNotaryOffice,
   getNotaryMatter,
   listNotaryOffices,
@@ -1067,6 +1069,39 @@ describe('notary API', () => {
         'retry-key',
       ),
     ).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('confirms one or several matters with null mode and purpose', async () => {
+    const automatic = { ...matter, evidenceMode: null, batchPurpose: null };
+    http.requestJson.mockResolvedValueOnce(automatic);
+    await expect(
+      confirmNotaryHandoff(
+        'lead-1',
+        {
+          notaryOfficeId: 'office-1',
+          expectedVersion: 3,
+        },
+        'key-1',
+      ),
+    ).resolves.toEqual(automatic);
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/leads/lead-1/notary-matters/confirm',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'key-1' },
+        body: { notaryOfficeId: 'office-1', expectedVersion: 3 },
+      },
+    );
+    http.requestJson.mockResolvedValueOnce({ items: [automatic] });
+    await expect(
+      confirmNotaryHandoffBatch(
+        {
+          notaryOfficeId: 'office-1',
+          items: [{ leadId: 'lead-1', expectedVersion: 3 }],
+        },
+        'key-2',
+      ),
+    ).resolves.toEqual({ items: [automatic] });
   });
 
   it('loads a persisted matter with selected snapshots and the source lead link', async () => {

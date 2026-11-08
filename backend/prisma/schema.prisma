@@ -554,6 +554,8 @@ enum LeadReviewResult {
 enum LeadArchiveType {
   NO_INFRINGEMENT
   NO_EVIDENCE
+  LINK_REMOVED
+  NO_INFRINGEMENT_INFORMATION
 
   @@map("lead_archive_type")
 }
@@ -1831,7 +1833,9 @@ model Lead {
   reviewDecision         LeadReviewDecision?         @relation("LeadActiveReviewDecision", fields: [activeReviewDecisionId, id, customerId, departmentId], references: [id, leadId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "leads_active_review_decision_identity_fkey")
   reviewDecisions        LeadReviewDecision[]        @relation("LeadReviewHistory")
   withdrawalApplications LeadWithdrawalApplication[]
-  evidenceDecision       LeadEvidenceDecision?
+  activeEvidenceDecisionId String?                   @unique(map: "leads_active_evidence_decision_id_key") @map("active_evidence_decision_id") @db.Uuid
+  evidenceDecision       LeadEvidenceDecision?       @relation("LeadActiveEvidenceDecision", fields: [activeEvidenceDecisionId, id, customerId, departmentId], references: [id, leadId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "leads_active_evidence_decision_identity_fkey")
+  evidenceDecisions      LeadEvidenceDecision[]      @relation("LeadEvidenceHistory")
   proxyEvidenceConfirmations LeadProxyEvidenceConfirmation[]
   notaryMatters          NotaryMatter[]
   cases                  Case[]
@@ -1842,6 +1846,7 @@ model Lead {
   @@unique([id, departmentId])
   @@unique([id, customerId, departmentId], map: "leads_review_identity_key")
   @@unique([activeReviewDecisionId, id, customerId, departmentId], map: "leads_active_review_decision_identity_key")
+  @@unique([activeEvidenceDecisionId, id, customerId, departmentId], map: "leads_active_evidence_decision_identity_key")
   @@unique([departmentId, creationChannel, externalSourceRef])
   @@index([departmentId, status, updatedAt, id])
   @@index([responsibleUserId])
@@ -1863,6 +1868,7 @@ model LeadReviewDecision {
   reason                      String?                    @db.Text
   archiveType                 LeadArchiveType?           @map("archive_type")
   archivedAt                  DateTime?                  @map("archived_at") @db.Timestamptz(3)
+  archiveDate                 DateTime?                  @map("archive_date") @db.Date
   decidedAt                   DateTime                   @default(now()) @map("decided_at") @db.Timestamptz(3)
   fromVersion                 Int                        @map("from_version")
   toVersion                   Int                        @map("to_version")
@@ -1891,7 +1897,7 @@ model LeadEvidenceDecision {
   id                       String               @id @default(uuid()) @db.Uuid
   originalReviewDecisionId String               @unique @map("original_review_decision_id") @db.Uuid
   originalReviewResult     LeadReviewResult     @default(INFRINGEMENT) @map("original_review_result")
-  leadId                   String               @unique @map("lead_id") @db.Uuid
+  leadId                   String               @map("lead_id") @db.Uuid
   customerId               String               @map("customer_id") @db.Uuid
   departmentId             String               @map("department_id") @db.Uuid
   actorUserId              String               @map("actor_user_id") @db.Uuid
@@ -1901,14 +1907,17 @@ model LeadEvidenceDecision {
   archiveType              LeadArchiveType      @map("archive_type")
   decidedAt                DateTime             @default(now()) @map("decided_at") @db.Timestamptz(3)
   archivedAt               DateTime             @map("archived_at") @db.Timestamptz(3)
+  archiveDate                 DateTime?                  @map("archive_date") @db.Date
   fromVersion              Int                  @map("from_version")
   toVersion                Int                  @map("to_version")
-  lead                     Lead                 @relation(fields: [leadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_evidence_decisions_lead_identity_fkey")
+  lead                     Lead                 @relation("LeadEvidenceHistory", fields: [leadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_evidence_decisions_lead_identity_fkey")
+  activeForLead            Lead?                @relation("LeadActiveEvidenceDecision")
   originalReviewDecision   LeadReviewDecision   @relation(fields: [originalReviewDecisionId, leadId, customerId, departmentId, originalReviewResult], references: [id, leadId, customerId, departmentId, result], onDelete: Restrict, onUpdate: Restrict, map: "lead_evidence_decisions_review_identity_fkey")
   actor                    UserAccount          @relation("LeadEvidenceDecisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
   actorMembership          DepartmentMembership @relation(fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_evidence_decisions_actor_membership_fkey")
 
-  @@unique([leadId, customerId, departmentId], map: "lead_evidence_decisions_lead_identity_key")
+  @@index([leadId, customerId, departmentId], map: "lead_evidence_decisions_lead_identity_idx")
+  @@unique([id, leadId, customerId, departmentId], map: "lead_evidence_decisions_active_identity_key")
   @@unique([originalReviewDecisionId, leadId, customerId, departmentId], map: "lead_evidence_decisions_review_identity_key")
   @@unique([originalReviewDecisionId, leadId, customerId, departmentId, originalReviewResult], map: "lead_evidence_decisions_review_result_identity_key")
   @@index([departmentId, customerId, decidedAt])
@@ -2129,8 +2138,8 @@ model NotaryMatter {
   notaryOfficeId        String                       @map("notary_office_id") @db.Uuid
   stage                 NotaryMatterStage            @default(PENDING_EVIDENCE)
   version               Int                          @default(1)
-  evidenceMode          NotaryEvidenceMode           @map("evidence_mode")
-  batchPurpose          String                       @map("batch_purpose") @db.VarChar(500)
+  evidenceMode          NotaryEvidenceMode?          @map("evidence_mode")
+  batchPurpose          String?                      @map("batch_purpose") @db.VarChar(500)
   sourceSnapshot        Json                         @map("source_snapshot")
   createdByUserId       String                       @map("created_by_user_id") @db.Uuid
   fromLeadVersion       Int                          @map("from_lead_version")

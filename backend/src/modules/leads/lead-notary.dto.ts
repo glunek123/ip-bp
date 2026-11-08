@@ -4,6 +4,7 @@ import {
   IsArray,
   ArrayMinSize,
   ArrayMaxSize,
+  ArrayUnique,
   IsBoolean,
   IsIn,
   IsInt,
@@ -60,6 +61,47 @@ export class TransferLeadToNotaryDto {
   @IsOptional()
   @IsBoolean()
   createNewBatch?: boolean;
+}
+
+export class ConfirmNotaryHandoffDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID('4')
+  notaryOfficeId!: string;
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+}
+
+export class ConfirmNotaryHandoffItemDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID('4')
+  leadId!: string;
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+}
+
+export class ConfirmNotaryHandoffBatchDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID('4')
+  notaryOfficeId!: string;
+
+  @ApiProperty({
+    type: [ConfirmNotaryHandoffItemDto],
+    minItems: 1,
+    maxItems: 20,
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(20)
+  @ArrayUnique((item: ConfirmNotaryHandoffItemDto) => item.leadId)
+  @ValidateNested({ each: true })
+  @Type(() => ConfirmNotaryHandoffItemDto)
+  items!: ConfirmNotaryHandoffItemDto[];
 }
 
 export class NotaryLogisticsDto {

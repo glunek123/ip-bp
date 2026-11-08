@@ -48,6 +48,7 @@ const lead = {
   infringements: [{ type: 'TRADEMARK' }],
   rightsHolder: { name: '权利主体甲' },
   reviewDecision: null,
+  evidenceDecisions: [],
 };
 
 const processedLead = {
@@ -147,6 +148,7 @@ describe('ClientLeadService', () => {
       decidedAt: '2026-09-24T05:00:00.000Z',
       archiveType: 'NO_EVIDENCE',
       archivedAt: '2026-09-24T05:00:00.000Z',
+      archiveDate: null,
     });
     expect(JSON.stringify(detail)).not.toContain('internal-actor-id');
   });
@@ -187,7 +189,12 @@ describe('ClientLeadService', () => {
         where: expect.objectContaining({
           OR: expect.arrayContaining([
             expect.objectContaining({
-              withdrawalApplications: { some: { confirmation: { is: null } } },
+              withdrawalApplications: {
+                some: {
+                  confirmation: { is: null },
+                  originalDecision: { activeForLead: { isNot: null } },
+                },
+              },
             }),
           ]),
         }),
@@ -209,7 +216,12 @@ describe('ClientLeadService', () => {
         where: expect.objectContaining({
           OR: expect.arrayContaining([
             expect.objectContaining({
-              withdrawalApplications: { none: { confirmation: { is: null } } },
+              withdrawalApplications: {
+                none: {
+                  confirmation: { is: null },
+                  originalDecision: { activeForLead: { isNot: null } },
+                },
+              },
             }),
           ]),
         }),
@@ -288,7 +300,12 @@ describe('ClientLeadService', () => {
                   archivedAt: { not: null },
                 },
               },
-              withdrawalApplications: { some: { confirmation: { is: null } } },
+              withdrawalApplications: {
+                some: {
+                  confirmation: { is: null },
+                  originalDecision: { activeForLead: { isNot: null } },
+                },
+              },
             },
           ],
           pushedAt: { not: null },
@@ -341,7 +358,12 @@ describe('ClientLeadService', () => {
             },
             {
               status: 'ARCHIVED',
-              withdrawalApplications: { none: { confirmation: { is: null } } },
+              withdrawalApplications: {
+                none: {
+                  confirmation: { is: null },
+                  originalDecision: { activeForLead: { isNot: null } },
+                },
+              },
               reviewDecision: {
                 is: {
                   result: 'NO_INFRINGEMENT',
@@ -361,6 +383,7 @@ describe('ClientLeadService', () => {
               reason: true,
               archiveType: true,
               archivedAt: true,
+              archiveDate: true,
               reviewerDisplayNameSnapshot: true,
               decidedAt: true,
             },
@@ -415,6 +438,7 @@ describe('ClientLeadService', () => {
       decidedAt: '2026-09-22T03:00:00.000Z',
       archiveType: 'NO_INFRINGEMENT',
       archivedAt: '2026-09-22T03:00:00.000Z',
+      archiveDate: null,
     });
     expect(JSON.stringify(result.items[0])).not.toContain('operator-secret');
     expect(JSON.stringify(result.items[0])).not.toContain('reviewer-secret');

@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -7,6 +7,9 @@ import {
   IsArray,
   IsInt,
   IsString,
+  IsOptional,
+  IsIn,
+  Matches,
   IsUUID,
   Max,
   Min,
@@ -24,13 +27,14 @@ export class LeadNoEvidenceBatchItemDto {
   @Max(2147483646)
   expectedVersion!: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     minLength: 1,
     maxLength: 5000,
     description: 'Trimmed Unicode reason; length is counted in code points',
   })
+  @IsOptional()
   @IsString()
-  reason!: string;
+  reason?: string;
 }
 
 export class LeadNoEvidenceBatchDto {
@@ -48,4 +52,21 @@ export class LeadNoEvidenceBatchDto {
   @ValidateNested({ each: true })
   @Type(() => LeadNoEvidenceBatchItemDto)
   items!: LeadNoEvidenceBatchItemDto[];
+
+  @ApiPropertyOptional({ maxLength: 5000 })
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @ApiPropertyOptional({
+    enum: ['LINK_REMOVED', 'NO_INFRINGEMENT_INFORMATION', 'NO_EVIDENCE'],
+  })
+  @IsOptional()
+  @IsIn(['LINK_REMOVED', 'NO_INFRINGEMENT_INFORMATION', 'NO_EVIDENCE'])
+  archiveType?: 'LINK_REMOVED' | 'NO_INFRINGEMENT_INFORMATION' | 'NO_EVIDENCE';
+
+  @ApiPropertyOptional({ format: 'date' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  archiveDate?: string;
 }

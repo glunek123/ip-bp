@@ -865,7 +865,7 @@ watch(
               <dt>公证处</dt>
               <dd>{{ matter.notaryOffice.name }}</dd>
             </div>
-            <div>
+            <div v-if="matter.evidenceMode">
               <dt>办理方式</dt>
               <dd>线上购买</dd>
             </div>
@@ -873,7 +873,7 @@ watch(
               <dt>创建时间</dt>
               <dd class="mono">{{ formatTime(matter.createdAt) }}</dd>
             </div>
-            <div class="detail-grid__wide">
+            <div v-if="matter.batchPurpose" class="detail-grid__wide">
               <dt>本批次用途</dt>
               <dd>{{ matter.batchPurpose }}</dd>
             </div>

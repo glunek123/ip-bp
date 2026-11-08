@@ -30,6 +30,7 @@ import {
   LeadListQueryDto,
   LeadFilterOptionsQueryDto,
   PushLeadDto,
+  ReviveLeadDto,
   UpdateLeadDto,
   UpdateLeadProductScreenshotsDto,
 } from './lead.dto';
@@ -37,6 +38,7 @@ import { LeadService } from './lead.service';
 import { ClientLeadService } from './client-lead.service';
 import {
   ConfirmClientLeadWithdrawalDto,
+  BatchProxyReviewDto,
   ReviewClientLeadDto,
 } from './client-lead-review.dto';
 import {
@@ -185,6 +187,20 @@ export class LeadController {
     );
   }
 
+  @Post('batch-proxy-reviews')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  batchProxyReview(
+    @CurrentActor() actor: ActorContext,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() input: BatchProxyReviewDto,
+  ) {
+    return this.clientLeads!.batchProxyReview(
+      actor,
+      this.requireIdempotencyKey(idempotencyKey),
+      input,
+    );
+  }
+
   @Post(':id/proxy-withdrawal-confirmations')
   @ApiHeader({ name: 'Idempotency-Key', required: true })
   @ApiCreatedResponse({ type: ClientLeadWithdrawalConfirmationResultDto })
@@ -213,6 +229,22 @@ export class LeadController {
     @Body() input: ApplyLeadWithdrawalDto,
   ) {
     return this.leads.applyWithdrawal(
+      actor,
+      id,
+      this.requireIdempotencyKey(idempotencyKey),
+      input,
+    );
+  }
+
+  @Post(':id/revive')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  revive(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() input: ReviveLeadDto,
+  ) {
+    return this.leads.revive(
       actor,
       id,
       this.requireIdempotencyKey(idempotencyKey),

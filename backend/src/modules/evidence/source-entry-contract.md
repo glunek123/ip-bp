@@ -5,7 +5,7 @@
 ## 已核实的源码事实
 
 - Demo `toEvidenceFromNotary`／`toNotaryDocFromNotary`（app.js 10372–10402）在实际出证动作中生成一条未交付证物和一条未出纸质证台账；不是列表读取时生成。
-- 正式 `NotaryCertificateService.issue` 已在同一个 Serializable 事务内创建 `NotaryCertificate`、真实 `Case`、出证审计及冻结材料引用。它要求实际 `NotaryMatterEvidence`，证物模式目前只允许 `ONLINE_PURCHASE`。
+- 正式 `NotaryCertificateService.issue` 已在同一个 Serializable 事务内创建 `NotaryCertificate`、真实 `Case`、出证审计及冻结材料引用。它要求实际 `NotaryMatterEvidence`。2026-11-08 首批线索移交可以不预设取证方式；待取证办理按真实取证和物流记录推进，历史已登记方式继续保留。
 - 正式一次出证可引用 1–10 个电子文件。因此纸本一本与电子文件一个不是同义关系，不能按 `.find` 或取第一份文件关联。
 - 已移除最后一件后，组身份必须继续存在。只保留 `:itemId/group` 入口无法再次编辑合法空组。
 

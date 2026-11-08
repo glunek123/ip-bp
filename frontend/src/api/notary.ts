@@ -110,8 +110,8 @@ export type NotaryMatterResult = {
   notaryOffice: { id: string; name: string };
   selectedProductIds: string[];
   selectedContentVersionIds: string[];
-  evidenceMode: 'ONLINE_PURCHASE';
-  batchPurpose: string;
+  evidenceMode: 'ONLINE_PURCHASE' | null;
+  batchPurpose: string | null;
   createdAt: string;
 };
 
@@ -968,10 +968,11 @@ function isMatterResult(value: unknown): value is NotaryMatterResult {
     value.selectedContentVersionIds.every((id) => typeof id === 'string') &&
     new Set(value.selectedContentVersionIds).size ===
       value.selectedContentVersionIds.length &&
-    value.evidenceMode === 'ONLINE_PURCHASE' &&
-    typeof value.batchPurpose === 'string' &&
-    value.batchPurpose.trim().length > 0 &&
-    [...value.batchPurpose].length <= 500 &&
+    (value.evidenceMode === 'ONLINE_PURCHASE' || value.evidenceMode === null) &&
+    (value.batchPurpose === null ||
+      (typeof value.batchPurpose === 'string' &&
+        value.batchPurpose.trim().length > 0 &&
+        [...value.batchPurpose].length <= 500)) &&
     typeof value.createdAt === 'string' &&
     !Number.isNaN(Date.parse(value.createdAt))
   );
@@ -1987,4 +1988,62 @@ export async function createNotaryMatter(
   )
     throw invalidResponse();
   return data;
+}
+
+export type ConfirmNotaryHandoffItem = {
+  leadId: string;
+  expectedVersion: number;
+};
+
+export async function confirmNotaryHandoff(
+  leadId: string,
+  input: { notaryOfficeId: string; expectedVersion: number },
+  idempotencyKey: string,
+): Promise<NotaryMatterResult> {
+  const data = await requestJson(
+    `/leads/${encodeURIComponent(leadId)}/notary-matters/confirm`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: input,
+    },
+  );
+  if (
+    !isMatterResult(data) ||
+    data.leadId !== leadId ||
+    data.leadVersion !== input.expectedVersion + 1 ||
+    data.evidenceMode !== null ||
+    data.batchPurpose !== null
+  )
+    throw invalidResponse();
+  return data;
+}
+
+export async function confirmNotaryHandoffBatch(
+  input: { notaryOfficeId: string; items: ConfirmNotaryHandoffItem[] },
+  idempotencyKey: string,
+): Promise<{ items: NotaryMatterResult[] }> {
+  const data = await requestJson('/leads/notary-matters/batch-confirm', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: input,
+  });
+  if (
+    !isRecord(data) ||
+    !Array.isArray(data.items) ||
+    data.items.length !== input.items.length ||
+    !data.items.every(
+      (item) =>
+        isMatterResult(item) &&
+        item.evidenceMode === null &&
+        item.batchPurpose === null &&
+        input.items.some(
+          (source) =>
+            source.leadId === item.leadId &&
+            source.expectedVersion + 1 === item.leadVersion,
+        ),
+    )
+  )
+    throw invalidResponse();
+  return data as { items: NotaryMatterResult[] };
 }

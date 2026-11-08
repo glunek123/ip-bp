@@ -259,7 +259,7 @@ function validate(): boolean {
   if (!source.value) errors.source = '请选择线索来源';
   if (!platform.value) errors.platform = '请选择平台';
   if (!foundAt.value || Number.isNaN(new Date(foundAt.value).getTime()))
-    errors.foundAt = '请选择发现时间';
+    errors.foundAt = '请选择线索发现日期';
   if (!shopName.value.trim()) errors.shopName = '请输入店铺名称';
   if (needDisclose.value === null)
     errors.needDisclose = '请选择是否申请披露店铺经营者信息';
@@ -404,7 +404,7 @@ async function submit(): Promise<void> {
           }}</small>
         </label>
         <label>
-          <span>发现时间<RequiredFieldMark /></span>
+          <span>线索发现日期<RequiredFieldMark /></span>
           <input
             v-model="foundAt"
             name="foundAt"
@@ -591,7 +591,7 @@ async function submit(): Promise<void> {
             ></label
           >
           <p class="estimate-preview mono" :data-test="`estimate-${index}`">
-            计算金额（元） {{ estimate(product) }}
+            销售额（元） {{ estimate(product) }}
           </p>
           <label>
             <span>商品截图</span>
@@ -615,7 +615,7 @@ async function submit(): Promise<void> {
             :id="`product-estimate-guidance-${index}`"
             class="field-guidance product-estimate-guidance"
           >
-            计算金额＝单价 × 销量；销量为 0
+            销售额＝单价 × 销量；销量为 0
             时改用评论数。此金额仅供线索评估参考，不代表实际成交额。
           </p>
         </div>

@@ -10,6 +10,7 @@ type Product = {
   unitPrice: string;
 };
 const props = defineProps<{
+  section?: 'all' | 'base' | 'products';
   shopName: string;
   products: readonly Product[];
   pending: boolean;
@@ -44,22 +45,22 @@ function validUrl(value: string) {
 const valid = computed(() => {
   const name = shopName.value.trim();
   return (
-    name.length > 0 &&
-    name.length <= 200 &&
-    products.value.every((item) => {
-      const qty = Number(item.quantity);
-      return (
-        item.title.trim().length <= 200 &&
-        item.url.trim().length <= 2048 &&
-        (item.title.trim().length > 0 || item.url.trim().length > 0) &&
-        validUrl(item.url.trim()) &&
-        /^\d+$/u.test(item.quantity) &&
-        Number.isSafeInteger(qty) &&
-        qty >= 0 &&
-        qty <= 2147483647 &&
-        /^(0|[1-9]\d{0,15})(\.\d{1,2})?$/u.test(item.unitPrice)
-      );
-    })
+    (props.section === 'products' || (name.length > 0 && name.length <= 200)) &&
+    (props.section === 'base' ||
+      products.value.every((item) => {
+        const qty = Number(item.quantity);
+        return (
+          item.title.trim().length <= 200 &&
+          item.url.trim().length <= 2048 &&
+          (item.title.trim().length > 0 || item.url.trim().length > 0) &&
+          validUrl(item.url.trim()) &&
+          /^\d+$/u.test(item.quantity) &&
+          Number.isSafeInteger(qty) &&
+          qty >= 0 &&
+          qty <= 2147483647 &&
+          /^(0|[1-9]\d{0,15})(\.\d{1,2})?$/u.test(item.unitPrice)
+        );
+      }))
   );
 });
 function submit() {
@@ -70,14 +71,18 @@ function submit() {
   }
   error.value = '';
   emit('save', {
-    shopName: shopName.value.trim(),
-    products: products.value.map((item) => ({
-      id: item.id,
-      title: item.title.trim() || null,
-      url: item.url.trim() || null,
-      quantity: Number(item.quantity),
-      unitPrice: item.unitPrice,
-    })),
+    shopName:
+      props.section === 'products' ? props.shopName : shopName.value.trim(),
+    products:
+      props.section === 'base'
+        ? [...props.products]
+        : products.value.map((item) => ({
+            id: item.id,
+            title: item.title.trim() || null,
+            url: item.url.trim() || null,
+            quantity: Number(item.quantity),
+            unitPrice: item.unitPrice,
+          })),
     ...(props.remark !== undefined
       ? { remark: remark.value.trim() || null }
       : {}),
@@ -87,7 +92,7 @@ function submit() {
 
 <template>
   <form class="routine-editor" @submit.prevent="submit">
-    <label class="routine-field">
+    <label v-if="props.section !== 'products'" class="routine-field">
       店铺名称
       <input
         v-model="shopName"
@@ -97,7 +102,10 @@ function submit() {
         :disabled="pending"
       />
     </label>
-    <label v-if="props.remark !== undefined" class="routine-field">
+    <label
+      v-if="props.remark !== undefined && props.section !== 'products'"
+      class="routine-field"
+    >
       备注
       <textarea
         v-model="remark"
@@ -107,44 +115,46 @@ function submit() {
         :disabled="pending"
       />
     </label>
-    <fieldset
-      v-for="(product, index) in products"
-      :key="product.id"
-      class="routine-product"
-      :disabled="pending"
-    >
-      <legend>商品 {{ index + 1 }}</legend>
-      <div class="routine-grid">
-        <label class="routine-field"
-          >商品名称<input
-            v-model="product.title"
-            class="text-input"
-            data-test="routine-product-title"
-            maxlength="200"
-        /></label>
-        <label class="routine-field"
-          >商品链接<input
-            v-model="product.url"
-            class="text-input"
-            data-test="routine-product-url"
-            maxlength="2048"
-        /></label>
-        <label class="routine-field"
-          >数量<input
-            v-model="product.quantity"
-            class="text-input"
-            data-test="routine-product-quantity"
-            inputmode="numeric"
-        /></label>
-        <label class="routine-field"
-          >单价<input
-            v-model="product.unitPrice"
-            class="text-input"
-            data-test="routine-product-price"
-            inputmode="decimal"
-        /></label>
-      </div>
-    </fieldset>
+    <template v-if="props.section !== 'base'">
+      <fieldset
+        v-for="(product, index) in products"
+        :key="product.id"
+        class="routine-product"
+        :disabled="pending"
+      >
+        <legend>商品 {{ index + 1 }}</legend>
+        <div class="routine-grid">
+          <label class="routine-field"
+            >商品名称<input
+              v-model="product.title"
+              class="text-input"
+              data-test="routine-product-title"
+              maxlength="200"
+          /></label>
+          <label class="routine-field"
+            >商品链接<input
+              v-model="product.url"
+              class="text-input"
+              data-test="routine-product-url"
+              maxlength="2048"
+          /></label>
+          <label class="routine-field"
+            >数量<input
+              v-model="product.quantity"
+              class="text-input"
+              data-test="routine-product-quantity"
+              inputmode="numeric"
+          /></label>
+          <label class="routine-field"
+            >单价<input
+              v-model="product.unitPrice"
+              class="text-input"
+              data-test="routine-product-price"
+              inputmode="decimal"
+          /></label>
+        </div>
+      </fieldset>
+    </template>
     <p v-if="error" role="alert" class="submit-error">{{ error }}</p>
     <div class="routine-actions">
       <ElButton native-type="submit" type="primary" :loading="pending"

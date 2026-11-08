@@ -11,6 +11,40 @@ const product = {
 };
 
 describe('ordinary business editor', () => {
+  it('shows only base fields in base mode and cancels without emitting a save', async () => {
+    const wrapper = mount(RoutineBusinessEditor, {
+      props: {
+        section: 'base',
+        shopName: '原店铺',
+        remark: '原备注',
+        products: [product],
+        pending: false,
+      },
+    });
+    expect(wrapper.find('[data-test="routine-product-title"]').exists()).toBe(
+      false,
+    );
+    await wrapper.get('[data-test="routine-shop"]').setValue('新店铺');
+    await wrapper.get('[data-test="routine-cancel"]').trigger('click');
+    expect(wrapper.emitted('cancel')).toHaveLength(1);
+    expect(wrapper.emitted('save')).toBeUndefined();
+  });
+
+  it('shows only products in product mode', async () => {
+    const wrapper = mount(RoutineBusinessEditor, {
+      props: {
+        section: 'products',
+        shopName: '原店铺',
+        products: [product],
+        pending: false,
+      },
+    });
+    expect(wrapper.find('[data-test="routine-shop"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="routine-product-title"]').exists()).toBe(
+      true,
+    );
+  });
+
   it('starts with current values, saves only editable fields, and does not modify its inputs', async () => {
     const wrapper = mount(RoutineBusinessEditor, {
       props: { shopName: '原店铺', products: [product], pending: false },

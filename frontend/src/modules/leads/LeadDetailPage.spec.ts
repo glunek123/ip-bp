@@ -29,16 +29,33 @@ const previewDialogStub = {
   template:
     '<div data-test="preview-dialog-stub" :data-material-id="materialId" :data-version-id="contentVersionId" />',
 };
+const decisionPanelStub = defineComponent({
+  props: ['kind'],
+  emits: ['close', 'completed'],
+  template:
+    '<section data-test="decision-panel-stub" :data-kind="kind"><button data-test="decision-panel-close" @click="$emit(\'close\')">关闭</button></section>',
+});
 const notaryApi = vi.hoisted(() => ({
   listNotaryOffices: vi.fn(),
   createNotaryOffice: vi.fn(),
   createNotaryMatter: vi.fn(),
+}));
+const leadDecisionApi = vi.hoisted(() => ({
+  leadArchiveTypeLabels: {
+    LINK_REMOVED: '链接下架',
+    NO_INFRINGEMENT_INFORMATION: '无侵权信息',
+    NO_EVIDENCE: '不取证',
+  },
+  leadBusinessDate: (value: string | null) => value?.slice(0, 10) ?? '—',
+  postLeadDecision: vi.fn(),
+  reviveLead: vi.fn(),
 }));
 vi.mock('../../api/leads', () => leadApi);
 vi.mock('../../api/customers', () => customerApi);
 vi.mock('../../api/rights-holders', () => holderApi);
 vi.mock('../../api/materials', () => materialApi);
 vi.mock('../../api/notary', () => notaryApi);
+vi.mock('../../api/lead-decisions', () => leadDecisionApi);
 
 const lead = {
   id: 'lead-1',
@@ -160,6 +177,7 @@ async function mountPage(path = '/leads/lead-1') {
         stubs: {
           ElDrawer: DrawerStub,
           MaterialPreviewDialog: previewDialogStub,
+          LeadDecisionPanel: decisionPanelStub,
         },
       },
     },
@@ -259,6 +277,37 @@ describe('LeadDetailPage', () => {
       '/leads?status=ARCHIVED&page=2',
     );
   });
+  it('opens review and confirmation cards only in their workflow states', async () => {
+    leadApi.getLead
+      .mockResolvedValueOnce({
+        ...lead,
+        status: 'WAITING_REVIEW',
+        capabilities: { ...lead.capabilities, proxyReview: true },
+      })
+      .mockResolvedValueOnce({
+        ...lead,
+        status: 'WAITING_EVIDENCE_DECISION',
+        capabilities: { ...lead.capabilities, transferToNotary: true },
+      });
+    const reviewPage = await mountPage();
+    expect(reviewPage.find('[data-test="confirm-lead"]').exists()).toBe(false);
+    await reviewPage.get('[data-test="review-lead"]').trigger('click');
+    expect(
+      reviewPage
+        .get('[data-test="decision-panel-stub"]')
+        .attributes('data-kind'),
+    ).toBe('review');
+    await reviewPage.get('[data-test="decision-panel-close"]').trigger('click');
+
+    const confirmPage = await mountPage();
+    expect(confirmPage.find('[data-test="review-lead"]').exists()).toBe(false);
+    await confirmPage.get('[data-test="confirm-lead"]').trigger('click');
+    expect(
+      confirmPage
+        .get('[data-test="decision-panel-stub"]')
+        .attributes('data-kind'),
+    ).toBe('confirm');
+  });
   it('edits archived ordinary fields and cancels without advancing the workflow', async () => {
     const original = {
       ...lead,
@@ -274,15 +323,13 @@ describe('LeadDetailPage', () => {
     leadApi.getLead.mockResolvedValueOnce(original).mockResolvedValue(updated);
     leadApi.updateLeadRoutine.mockResolvedValue(undefined);
     const wrapper = await mountPage();
-    await wrapper.get('[data-test="edit-lead-routine"]').trigger('click');
+    await wrapper.get('[data-test="edit-lead-base-card"]').trigger('click');
     await wrapper.get('[data-test="routine-shop"]').setValue('取消内容');
     await wrapper.get('[data-test="routine-cancel"]').trigger('click');
     expect(leadApi.updateLeadRoutine).not.toHaveBeenCalled();
-    await wrapper.get('[data-test="edit-lead-routine"]').trigger('click');
+    await wrapper.get('[data-test="edit-lead-base-card"]').trigger('click');
     await wrapper.get('[data-test="routine-shop"]').setValue('线索新店铺');
-    await wrapper
-      .get('[data-test="lead-routine-editor"] form')
-      .trigger('submit');
+    await wrapper.get('.lead-facts-card form').trigger('submit');
     await flushPromises();
     expect(leadApi.updateLeadRoutine).toHaveBeenCalledWith(
       'lead-1',
@@ -296,6 +343,31 @@ describe('LeadDetailPage', () => {
     expect(wrapper.text()).toContain('线索新店铺');
     expect(leadApi.pushLead).not.toHaveBeenCalled();
     expect(leadApi.decideLeadNoEvidence).not.toHaveBeenCalled();
+  });
+  it('edits product details without overwriting base information', async () => {
+    leadApi.getLead.mockResolvedValue({
+      ...lead,
+      capabilities: { ...lead.capabilities, routineEdit: true },
+    });
+    leadApi.updateLeadRoutine.mockResolvedValue(undefined);
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="edit-lead-products-card"]').trigger('click');
+    await wrapper.get('[data-test="routine-product-title"]').setValue('新商品');
+    await wrapper
+      .get('[data-test="lead-products-table"] form')
+      .trigger('submit');
+    await flushPromises();
+    expect(leadApi.updateLeadRoutine).toHaveBeenCalledWith(
+      'lead-1',
+      expect.objectContaining({
+        shopName: '测试店铺',
+        remark: '备注',
+        products: [
+          expect.objectContaining({ id: 'p', title: '新商品', quantity: 2 }),
+        ],
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
   it('reopens a pending push after the server advanced and the drawer fresh read failed', async () => {
     const identity = 'operator-1:INTERNAL:department-1:1';
@@ -432,8 +504,8 @@ describe('LeadDetailPage', () => {
       '侵权截图.png',
     );
     expect(wrapper.find('[data-test="lead-workflow"]').exists()).toBe(false);
-    expect(wrapper.get('[data-test="lead-products-table"]').text()).toContain(
-      '商品归属待关联',
+    expect(wrapper.get('[data-test="lead-attachments"]').text()).toContain(
+      '历史截图',
     );
     await wrapper
       .get('[data-test="preview-screenshot-version-1"]')
@@ -720,7 +792,7 @@ describe('LeadDetailPage', () => {
       '销量',
       '单价（元）',
       '评论数',
-      '计算金额（元）',
+      '销售额（元）',
       '商品截图',
     ]);
     expect(table.get('tbody tr').text()).toContain('评论估算商品');
@@ -736,7 +808,7 @@ describe('LeadDetailPage', () => {
         .get('[data-test="lead-product-summary"]')
         .findAll('td')
         .map((cell) => cell.text()),
-    ).toEqual(['2', '—', '10', '9007199254740993.32', '']);
+    ).toEqual(['9007199254740993.32', '']);
   });
 
   it('uploads and associates a product screenshot only when the server capability is true', async () => {
@@ -830,7 +902,7 @@ describe('LeadDetailPage', () => {
     expect(wrapper.text()).toContain('线索待确认');
     const record = wrapper.get('[data-test="client-review-record"]');
     expect(record.text()).toContain('客户审核记录');
-    expect(record.text()).toContain('确认侵权');
+    expect(record.text()).toContain('审核结果侵权');
     expect(record.text()).toContain('企业审核员');
     expect(record.text()).toContain('2026');
     expect(record.text()).not.toContain('reviewer-uuid');
@@ -840,7 +912,7 @@ describe('LeadDetailPage', () => {
     expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
   });
 
-  it('shows archived no-infringement reason and archive time without an operator review action', async () => {
+  it('shows archived no-infringement reason and archive date without an operator review action', async () => {
     leadApi.getLead.mockResolvedValue({
       ...lead,
       status: 'ARCHIVED',
@@ -860,9 +932,9 @@ describe('LeadDetailPage', () => {
     });
     const wrapper = await mountPage();
     const record = wrapper.get('[data-test="client-review-record"]');
-    expect(record.text()).toContain('判定不侵权并归档');
+    expect(record.text()).toContain('审核结果不侵权');
     expect(record.text()).toContain('经核对未使用我司标识');
-    expect(record.text()).toContain('归档时间');
+    expect(record.text()).toContain('归档日期');
     expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
   });
@@ -1061,7 +1133,7 @@ describe('LeadDetailPage', () => {
       false,
     );
   });
-  it('reuses withdrawal form and retains archived status plus the returned pending application', async () => {
+  it('revives an archived lead directly and refreshes its workflow state', async () => {
     const archived: LeadDetail = {
       ...lead,
       status: 'ARCHIVED',
@@ -1070,40 +1142,44 @@ describe('LeadDetailPage', () => {
         edit: false,
         push: false,
         withdrawApply: true,
+        revive: true,
       },
     };
-    leadApi.getLead.mockResolvedValue(archived);
-    leadApi.applyLeadWithdrawal.mockImplementationOnce(async () => {
-      leadApi.getLead.mockResolvedValue({
+    leadApi.getLead
+      .mockResolvedValueOnce(archived)
+      .mockResolvedValueOnce(archived)
+      .mockResolvedValue({
         ...archived,
+        status: 'WAITING_PUSH',
         version: 2,
-        capabilities: { ...archived.capabilities, withdrawApply: false },
-        pendingWithdrawalApplication: {
-          id: 'application-1',
-          reason: '客户结论误录',
-          appliedAt: '2026-10-15T00:00:00Z',
-          applicantDisplayName: '运营甲',
+        capabilities: {
+          ...archived.capabilities,
+          revive: false,
+          withdrawApply: false,
+          push: true,
         },
+        history: [
+          {
+            kind: 'REVIEW_DECISION',
+            id: 'review-1',
+            fromVersion: 1,
+            toVersion: 2,
+            occurredAt: '2026-10-15T00:00:00Z',
+          },
+        ],
       });
-      return { status: 'ARCHIVED' };
-    });
+    leadDecisionApi.reviveLead.mockResolvedValue(undefined);
     const wrapper = await mountPage();
-    await wrapper.get('[data-test="open-lead-workflow"]').trigger('click');
+    await wrapper.get('[data-test="revive-lead"]').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('只有原客户企业确认后才回到待审核');
-    await wrapper
-      .get('[data-test="withdrawal-reason"]')
-      .setValue('客户结论误录');
-    await wrapper.get('[data-test="submit-lead-workflow"]').trigger('click');
-    await flushPromises();
-    expect(leadApi.applyLeadWithdrawal).toHaveBeenCalledExactlyOnceWith(
+    expect(leadDecisionApi.reviveLead).toHaveBeenCalledExactlyOnceWith(
       lead.id,
-      '客户结论误录',
       1,
       expect.any(String),
     );
-    expect(wrapper.get('[data-test="withdrawal-pending"]').text()).toContain(
-      '线索仍保持归档',
+    expect(wrapper.text()).toContain('待推送');
+    expect(wrapper.find('[data-test="withdrawal-history"]').exists()).toBe(
+      true,
     );
   });
   it('cancels a push drawer without a command and uses the shared form for a confirmed push', async () => {

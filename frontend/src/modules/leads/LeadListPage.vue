@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
@@ -15,6 +15,9 @@ import {
   type LeadStatus,
 } from '../../api/leads';
 import { ApiError } from '../../api/http';
+import { leadBusinessDate, reviveLead } from '../../api/lead-decisions';
+import LeadDecisionPanel from './LeadDecisionPanel.vue';
+import { readPendingLeadDecision } from './lead-decision-recovery';
 import {
   labelLeadPlatform,
   leadStatusCards,
@@ -171,18 +174,115 @@ const selectedLeads = computed(() =>
     .filter((lead): lead is Lead => !!lead),
 );
 const activeTitle = ref('线索下一步');
+const decision = ref<{
+  kind: 'review' | 'confirm';
+  leads: Pick<Lead, 'id' | 'businessNo'>[];
+  bulk: boolean;
+}>();
+const pendingDecision = shallowRef(readPendingLeadDecision(identity.value));
+const reviveBusy = ref(false);
+const reviveError = ref('');
+let revival: { id: string; version: number; key: string } | undefined;
+const decisionBusy = computed(() => !!decision.value || reviveBusy.value);
+const batchStage = computed(() => {
+  const first = selectedLeads.value[0]?.status;
+  return selectedLeads.value.every((lead) => lead.status === first)
+    ? first
+    : undefined;
+});
+
+async function revive(lead: Lead) {
+  const actor = identity.value;
+  const recovering = !!revival;
+  reviveBusy.value = true;
+  reviveError.value = '';
+  try {
+    if (!revival) {
+      const latest = await getLead(lead.id);
+      if (identity.value !== actor) return;
+      if (!latest.capabilities.revive) {
+        reviveError.value = '当前线索状态或办理权限不允许复活。';
+        return;
+      }
+      revival = {
+        id: lead.id,
+        version: latest.version,
+        key: globalThis.crypto.randomUUID(),
+      };
+    }
+    await reviveLead(revival.id, revival.version, revival.key);
+    if (identity.value !== actor) return;
+    revival = undefined;
+    notifyWorkflowChanged();
+    void load();
+  } catch (failure) {
+    if (identity.value !== actor) return;
+    if (
+      !recovering &&
+      failure instanceof ApiError &&
+      failure.status >= 400 &&
+      failure.status < 500
+    ) {
+      revival = undefined;
+      reviveError.value = failure.message;
+    } else {
+      reviveError.value = revival
+        ? '复活结果未确认，请再次点击同一线索的复活按钮核对。'
+        : '无法读取最新线索。';
+    }
+  } finally {
+    reviveBusy.value = false;
+  }
+}
+
+function canSubmitDecision(): boolean {
+  const single = readPendingLeadCommands();
+  const pushes = readPendingLeadBatchPush();
+  const archives = readPendingLeadNoEvidenceBatches();
+  const csv = readPendingLeadCsvImports();
+  const actor = batchIdentity.value;
+  return (
+    auth.session?.principalType === 'INTERNAL' &&
+    single !== null &&
+    !Object.keys(single).some(
+      (key) => key === actor || key.startsWith(actor + ':'),
+    ) &&
+    pushes !== null &&
+    !pushes[actor] &&
+    archives !== null &&
+    !archives[actor] &&
+    csv !== null &&
+    !csv[actor]
+  );
+}
+
+function closeDecision() {
+  decision.value = undefined;
+  pendingDecision.value = readPendingLeadDecision(identity.value);
+}
+function completeDecision() {
+  closeDecision();
+  selectedIds.value = [];
+  notifyWorkflowChanged();
+  void load();
+}
+
+watch(identity, () => {
+  closeDecision();
+  revival = undefined;
+  reviveError.value = '';
+});
+
 function actionTitle(lead: Lead): string | null {
   switch (lead.status) {
     case 'WAITING_PUSH':
       return '推送给客户审核';
     case 'WAITING_REVIEW':
-      return '代办客户审核';
+      return '审核';
     case 'WAITING_EVIDENCE_DECISION':
-      return '确认取证安排';
+      return '确认';
     case 'ARCHIVED':
-      return lead.reviewDecision?.result === 'NO_INFRINGEMENT'
-        ? '申请撤回归档'
-        : null;
+      return lead.reviewDecision ? '复活' : null;
     default:
       return null;
   }
@@ -196,7 +296,7 @@ function actionShortTitle(lead: Lead): string {
     case 'WAITING_EVIDENCE_DECISION':
       return '确认';
     case 'ARCHIVED':
-      return '申请撤回';
+      return '复活';
     default:
       return '';
   }
@@ -262,6 +362,9 @@ async function pushDirectly(lead: Lead): Promise<void> {
 }
 function openWorkflow(lead: Lead) {
   if (
+    decisionBusy.value ||
+    !!pendingDecision.value ||
+    (revival && revival.id !== lead.id) ||
     directPushBusy.value ||
     noEvidenceLocked.value ||
     pendingPush.value ||
@@ -278,8 +381,18 @@ function openWorkflow(lead: Lead) {
     void pushDirectly(lead);
     return;
   }
-  activeTitle.value = actionTitle(lead) ?? '线索下一步';
-  activeLeadId.value = lead.id;
+  if (
+    lead.status === 'WAITING_REVIEW' ||
+    lead.status === 'WAITING_EVIDENCE_DECISION'
+  ) {
+    decision.value = {
+      kind: lead.status === 'WAITING_REVIEW' ? 'review' : 'confirm',
+      leads: [lead],
+      bulk: false,
+    };
+  } else if (lead.status === 'ARCHIVED') {
+    void revive(lead);
+  }
 }
 function savePendingPush(): void {
   pendingPushes.value = readPendingLeadCommands();
@@ -314,6 +427,7 @@ function handlePushSucceeded(attempt: FrozenLeadPush): void {
 }
 function toggleSelected(lead: Lead, checked: boolean) {
   if (
+    decisionBusy.value ||
     noEvidenceLocked.value ||
     batchActive.value ||
     pendingBatch.value ||
@@ -1043,11 +1157,6 @@ function openLeadRow(
   if (!isListRowClick(event)) return;
   void router.push(leadDetailLocation(lead));
 }
-function formatTime(value: string): string {
-  return new Date(value).toLocaleDateString('sv-SE', {
-    timeZone: 'Asia/Shanghai',
-  });
-}
 function safeProductUrl(value: string | null): string | null {
   if (!value) return null;
   try {
@@ -1212,9 +1321,11 @@ onBeforeUnmount(() => {
             >{{ csvContextLoading ? '读取导入配置…' : '导入 CSV' }}</ElButton
           >
           <ElButton
-            v-if="state === 'ready' && selectedLeads.length"
+            v-if="state === 'ready' && batchStage === 'WAITING_PUSH'"
             data-test="open-batch-push"
             :disabled="
+              decisionBusy ||
+              !!pendingDecision ||
               noEvidenceLocked ||
               !!pendingPush ||
               pendingBatchBlocked ||
@@ -1228,9 +1339,15 @@ onBeforeUnmount(() => {
             >批量推送</ElButton
           >
           <ElButton
-            v-if="state === 'ready' && selectedLeads.length"
-            data-test="open-no-evidence-batch"
+            v-if="
+              state === 'ready' &&
+              (batchStage === 'WAITING_REVIEW' ||
+                batchStage === 'WAITING_EVIDENCE_DECISION')
+            "
+            data-test="open-batch-decision"
             :disabled="
+              decisionBusy ||
+              !!pendingDecision ||
               noEvidenceLocked ||
               singleBlocksNoEvidence ||
               !!activeLeadId ||
@@ -1245,12 +1362,21 @@ onBeforeUnmount(() => {
               csvRecoveryBusy ||
               auth.session?.principalType !== 'INTERNAL'
             "
-            @click="openNoEvidenceBatch()"
-            >批量不取证归档</ElButton
+            @click="
+              decision = {
+                kind: batchStage === 'WAITING_REVIEW' ? 'review' : 'confirm',
+                leads: [...selectedLeads],
+                bulk: true,
+              }
+            "
+            >{{
+              batchStage === 'WAITING_REVIEW' ? '批量审核' : '批量确认'
+            }}</ElButton
           >
         </div>
       </div>
       <section class="demo-card" aria-live="polite">
+        <p v-if="reviveError" role="alert">{{ reviveError }}</p>
         <div v-if="state === 'loading'" class="state-panel">
           <span class="state-index">读取中</span>
           <h2>正在读取线索</h2>
@@ -1297,7 +1423,7 @@ onBeforeUnmount(() => {
               <tr>
                 <th aria-label="选择线索">选择</th>
                 <th>操作</th>
-                <th>线索编号</th>
+                <th>案件单号</th>
                 <th>案件进展</th>
                 <th>平台</th>
                 <th>店铺名</th>
@@ -1310,7 +1436,7 @@ onBeforeUnmount(() => {
                   class="num"
                   title="单价×销量；销量为0时按评论数计算。仅用于线索评估，不代表实际成交额"
                 >
-                  计算金额（元）
+                  销售额（元）
                 </th>
                 <th>线索发现日期</th>
               </tr>
@@ -1327,12 +1453,15 @@ onBeforeUnmount(() => {
                   <input
                     v-if="
                       lead.status === 'WAITING_PUSH' ||
+                      lead.status === 'WAITING_REVIEW' ||
                       lead.status === 'WAITING_EVIDENCE_DECISION'
                     "
                     type="checkbox"
                     :aria-label="`选择 ${lead.businessNo}`"
                     :checked="selectedIds.includes(lead.id)"
                     :disabled="
+                      decisionBusy ||
+                      !!pendingDecision ||
                       noEvidenceLocked ||
                       directPushBusy ||
                       batchActive ||
@@ -1359,6 +1488,8 @@ onBeforeUnmount(() => {
                     data-test="lead-quick-action"
                     :title="actionTitle(lead) ?? ''"
                     :disabled="
+                      decisionBusy ||
+                      !!pendingDecision ||
                       noEvidenceLocked ||
                       directPushBusy ||
                       !!pendingPush ||
@@ -1488,7 +1619,7 @@ onBeforeUnmount(() => {
                   {{ products.length ? summary.estimatedAmount : '未计算' }}
                 </td>
                 <td class="mono business-list-cell--nowrap">
-                  {{ formatTime(lead.foundAt) }}
+                  {{ leadBusinessDate(lead.foundAt) }}
                 </td>
               </tr>
             </tbody>
@@ -1619,6 +1750,21 @@ onBeforeUnmount(() => {
       @pending="recordNoEvidencePending"
       @succeeded="finishNoEvidenceBatch"
       @close="noEvidenceOpen = false"
+    />
+    <p v-if="pendingDecision && !decision" role="status">
+      有一笔线索办理待核对。
+      <ElButton @click="decision = pendingDecision">核对未确认的办理</ElButton>
+    </p>
+    <LeadDecisionPanel
+      v-if="decision"
+      :key="identity"
+      :identity="identity"
+      :leads="decision.leads"
+      :kind="decision.kind"
+      :bulk="decision.bulk"
+      :before-submit="canSubmitDecision"
+      @close="closeDecision"
+      @completed="completeDecision"
     />
     <LeadQuickActionsPanel
       v-if="activeLeadId"
