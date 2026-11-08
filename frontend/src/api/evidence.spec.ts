@@ -162,6 +162,7 @@ describe('evidence API', () => {
     http.requestJson.mockResolvedValue({
       changedEvidence: 1,
       changedPaperCertificates: 1,
+      changedRemarks: 0,
     });
     await bulkEvidenceStatus(
       {

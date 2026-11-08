@@ -17,6 +17,7 @@ import {
   MaxLength,
   Min,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { CaseStage } from '../../generated/prisma/enums';
@@ -168,6 +169,30 @@ export class BulkEvidenceStatusDto {
   @IsOptional()
   @IsIn(PAPER_STATUSES)
   paperStatus?: (typeof PAPER_STATUSES)[number];
+
+  @ApiPropertyOptional({ type: () => [EvidenceBulkRemarkDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => EvidenceBulkRemarkDto)
+  remarks?: EvidenceBulkRemarkDto[];
+}
+
+export class EvidenceBulkRemarkDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  id!: string;
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+
+  @ApiProperty({ type: String, nullable: true, maxLength: 1000 })
+  @ValidateIf((entry: EvidenceBulkRemarkDto) => entry.remark !== null)
+  @IsString()
+  @MaxLength(1000)
+  remark!: string | null;
 }
 
 export class ExportEvidenceDto {

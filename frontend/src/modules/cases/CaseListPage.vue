@@ -1574,7 +1574,7 @@ onBeforeUnmount(() => {
   <div class="page-view business-list-page">
     <main>
       <h1 class="sr-only">
-        {{ view === 'department' ? '全部部门案件' : '我的案件' }}
+        {{ view === 'department' ? '部门案件' : '我的案件' }}
       </h1>
       <section
         v-if="recordRecoveries.length || recordRecoveryError"

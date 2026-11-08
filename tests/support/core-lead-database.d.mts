@@ -26,6 +26,7 @@ export const coreLeadFixtures: Readonly<{
   selfPassword: string;
 }>;
 
+export function clearCoreLeadE2eData(): Promise<void>;
 export function resetCoreLeadE2eData(): Promise<void>;
 export function countCaseFixtureFees(caseId: string): Promise<number>;
 export function seedCoreLeadE2eData(options?: {

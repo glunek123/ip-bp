@@ -2,6 +2,7 @@ import {
   CustomerRightAssetAction,
   CustomerRightAssetType,
   CustomerRightAssetValidityMode,
+  CustomerRightAssetStatus,
 } from '../../generated/prisma/enums';
 
 export type RightAssetVersionView = {
@@ -12,8 +13,10 @@ export type RightAssetVersionView = {
   name: string;
   number: string | null;
   category: string;
-  holderId: string;
+  holderId: string | null;
   ownerText: string | null;
+  registrationDate: string | null;
+  status: CustomerRightAssetStatus | null;
   trademarkClass: string | null;
   validFrom: string | null;
   validTo: string | null;

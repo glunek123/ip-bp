@@ -507,7 +507,7 @@ const breadcrumbs = computed(() =>
           isCaseRoute.value && index === 0
             ? selectedCaseView.value === 'mine'
               ? '我的案件'
-              : '全部部门案件'
+              : '部门案件'
             : item,
         )
     : [],
@@ -1251,7 +1251,7 @@ async function logout(): Promise<void> {
             data-case-view="department"
             :to="{ path: '/cases', query: { ...caseViewQuery('department') } }"
             @click="closeDrawer"
-            ><span>全部部门案件</span
+            ><span>部门案件</span
             ><span
               v-if="caseTotal('department') !== null"
               class="app-nav__badge"
@@ -1264,7 +1264,7 @@ async function logout(): Promise<void> {
             type="button"
             data-test="case-expand-department"
             :aria-expanded="expandedGroup === 'department-cases'"
-            aria-label="展开或收起全部部门案件阶段"
+            aria-label="展开或收起部门案件阶段"
             @click="
               expandedGroup =
                 expandedGroup === 'department-cases' ? null : 'department-cases'

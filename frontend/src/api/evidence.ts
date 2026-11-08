@@ -12,6 +12,7 @@ export type EvidenceElectronicFile = {
 
 export type EvidenceItem = {
   id: string;
+  version: number;
   caseId: string | null;
   groupId: string;
   displayCode: string | null;
@@ -131,6 +132,7 @@ export type BulkEvidenceStatus = {
   paperCertificateIds: string[];
   evidenceStatus?: EvidenceStatus;
   paperStatus?: PaperStatus;
+  remarks?: { id: string; expectedVersion: number; remark: string | null }[];
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -203,6 +205,7 @@ function parseItem(value: unknown): EvidenceItem {
   const row = record(value);
   return {
     id: text(row.id),
+    version: count(row.version),
     caseId: nullableText(row.caseId),
     groupId: text(row.groupId),
     displayCode: nullableText(row.displayCode),
@@ -413,7 +416,11 @@ export async function saveEvidenceSourceGroup(
 export async function bulkEvidenceStatus(
   input: BulkEvidenceStatus,
   idempotencyKey: string,
-): Promise<{ changedEvidence: number; changedPaperCertificates: number }> {
+): Promise<{
+  changedEvidence: number;
+  changedPaperCertificates: number;
+  changedRemarks: number;
+}> {
   const result = record(
     await requestJson('/evidence/bulk-status', {
       method: 'POST',
@@ -424,6 +431,7 @@ export async function bulkEvidenceStatus(
   return {
     changedEvidence: count(result.changedEvidence),
     changedPaperCertificates: count(result.changedPaperCertificates),
+    changedRemarks: count(result.changedRemarks),
   };
 }
 

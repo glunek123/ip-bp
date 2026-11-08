@@ -8,6 +8,7 @@ import {
   ElSelect,
 } from 'element-plus/es/components/select/index.mjs';
 import { downloadMaterialVersion } from '../../api/materials';
+import { ApiError } from '../../api/http';
 import {
   bulkEvidenceStatus,
   exportSelectedEvidence,
@@ -103,6 +104,16 @@ const bulkEvidence = ref<EvidenceStatus | ''>('');
 const bulkPaper = ref<PaperStatus | ''>('');
 const bulkPapers = ref<
   { id: string; number: string | null; selected: boolean }[]
+>([]);
+const bulkRemarks = ref<
+  {
+    id: string;
+    displayCode: string | null;
+    expectedVersion: number;
+    original: string | null;
+    value: string;
+    edited: boolean;
+  }[]
 >([]);
 const allVisibleSelected = computed(
   () =>
@@ -372,6 +383,43 @@ async function saveGroup() {
   }
 }
 
+const bulkConflict = ref(false);
+
+function readBulkRemarks(ids: string[], groups: EvidenceGroup[]) {
+  return groups.map((entry, index) => {
+    const item = entry.items.find((row) => row.id === ids[index]);
+    if (!item) throw new Error('所选证物已不可用，请重新选择。');
+    return {
+      id: item.id,
+      displayCode: item.displayCode || item.name || item.shopName,
+      expectedVersion: item.version,
+      original: item.remark,
+      value: item.remark ?? '',
+      edited: false,
+    };
+  });
+}
+
+async function refreshBulkRemarks() {
+  if (dialogLoading.value || saving.value) return;
+  dialogLoading.value = true;
+  try {
+    const ids = bulkRemarks.value.map((row) => row.id);
+    const groups = await Promise.all(ids.map((id) => getEvidenceItemGroup(id)));
+    bulkRemarks.value = readBulkRemarks(ids, groups).map((row, index) => {
+      const draft = bulkRemarks.value[index];
+      return draft?.edited ? { ...row, value: draft.value, edited: true } : row;
+    });
+    bulkConflict.value = false;
+    error.value = '';
+    notice.value = '已刷新原备注，保留了您的修改。请核对后再保存。';
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '证物备注刷新失败';
+  } finally {
+    dialogLoading.value = false;
+  }
+}
+
 async function openBulk() {
   if (dialogLoading.value || saving.value) return;
   if (!selected.value.size) {
@@ -384,6 +432,8 @@ async function openBulk() {
   try {
     const ids = [...selected.value];
     const groups = await Promise.all(ids.map((id) => getEvidenceItemGroup(id)));
+    bulkRemarks.value = readBulkRemarks(ids, groups);
+    bulkConflict.value = false;
     const papers = new Map<
       string,
       { id: string; number: string | null; selected: boolean }
@@ -409,9 +459,16 @@ async function openBulk() {
 }
 
 async function saveBulk() {
-  if (saving.value) return;
-  if (!bulkEvidence.value && !bulkPaper.value) {
-    notice.value = '没有要更改的状态';
+  if (saving.value || dialogLoading.value || bulkConflict.value) return;
+  const remarks = bulkRemarks.value
+    .filter((row) => row.edited)
+    .map((row) => ({
+      id: row.id,
+      expectedVersion: row.expectedVersion,
+      remark: row.value.trim() || null,
+    }));
+  if (!bulkEvidence.value && !bulkPaper.value && !remarks.length) {
+    notice.value = '没有要更改的状态或备注';
     return;
   }
   const paperIds = bulkPapers.value
@@ -429,19 +486,27 @@ async function saveBulk() {
       paperCertificateIds: paperIds,
       ...(bulkEvidence.value ? { evidenceStatus: bulkEvidence.value } : {}),
       ...(bulkPaper.value ? { paperStatus: bulkPaper.value } : {}),
+      ...(remarks.length ? { remarks } : {}),
     };
     const fingerprint = JSON.stringify(input);
     if (bulkAttempt?.fingerprint !== fingerprint)
       bulkAttempt = { fingerprint, key: globalThis.crypto.randomUUID() };
     const result = await bulkEvidenceStatus(input, bulkAttempt.key);
     bulkAttempt = undefined;
-    const count = result.changedEvidence + result.changedPaperCertificates;
-    notice.value = count ? `已更新 ${count} 条状态` : '没有变化';
+    const count =
+      result.changedEvidence +
+      result.changedPaperCertificates +
+      result.changedRemarks;
+    notice.value = count
+      ? `已更新 ${result.changedEvidence} 件证物状态、${result.changedPaperCertificates} 件纸质证状态、${result.changedRemarks} 条备注`
+      : '没有变化';
     if (count) {
       dialog.value = null;
       await load();
     }
   } catch (cause) {
+    bulkConflict.value =
+      cause instanceof ApiError && cause.code === 'EVIDENCE_VERSION_CONFLICT';
     error.value = cause instanceof Error ? cause.message : '批量更改失败';
   } finally {
     saving.value = false;
@@ -553,24 +618,6 @@ function paperIdentity(
               )
             "
         /></label>
-        <DateRangeFilter
-          label="开庭日期"
-          start-label="起始日期"
-          end-label="结束日期"
-          :start="filter.hearFrom ?? ''"
-          :end="filter.hearTo ?? ''"
-          @update:start="setFilter('hearFrom', $event)"
-          @update:end="setFilter('hearTo', $event)"
-        />
-        <DateRangeFilter
-          label="结案日期"
-          start-label="起始日期"
-          end-label="结束日期"
-          :start="filter.closeFrom ?? ''"
-          :end="filter.closeTo ?? ''"
-          @update:start="setFilter('closeFrom', $event)"
-          @update:end="setFilter('closeTo', $event)"
-        />
         <div class="stage-filter" role="group" aria-label="案件进展">
           <span>案件进展</span>
           <ElSelect
@@ -599,6 +646,24 @@ function paperIdentity(
             {{ page?.counts.allStageCases ?? '—' }} 案</small
           >
         </div>
+        <DateRangeFilter
+          label="开庭日期"
+          start-label="起始日期"
+          end-label="结束日期"
+          :start="filter.hearFrom ?? ''"
+          :end="filter.hearTo ?? ''"
+          @update:start="setFilter('hearFrom', $event)"
+          @update:end="setFilter('hearTo', $event)"
+        />
+        <DateRangeFilter
+          label="结案日期"
+          start-label="起始日期"
+          end-label="结束日期"
+          :start="filter.closeFrom ?? ''"
+          :end="filter.closeTo ?? ''"
+          @update:start="setFilter('closeFrom', $event)"
+          @update:end="setFilter('closeTo', $event)"
+        />
       </div>
     </section>
 
@@ -744,6 +809,7 @@ function paperIdentity(
       v-if="(dialog === 'view' || dialog === 'edit') && group"
       class="overlay"
       role="presentation"
+      @click.self="dialog === 'view' && closeGroupEditor()"
     >
       <section
         v-if="dialog === 'view'"
@@ -908,6 +974,14 @@ function paperIdentity(
         <div class="modal-body">
           <p v-if="error" class="message error" role="alert">{{ error }}</p>
           <p v-if="notice" class="message" role="status">{{ notice }}</p>
+          <ElButton
+            v-if="bulkConflict"
+            native-type="button"
+            :disabled="dialogLoading"
+            @click="refreshBulkRemarks"
+          >
+            刷新原备注
+          </ElButton>
           <label
             >证物状态<select v-model="bulkEvidence" :disabled="saving">
               <option value="">不修改</option>
@@ -939,6 +1013,22 @@ function paperIdentity(
             >
             <p v-if="!bulkPapers.length">所选证物没有关联纸质公证书</p>
           </fieldset>
+          <fieldset>
+            <legend>所选证物备注</legend>
+            <label v-for="row in bulkRemarks" :key="row.id">
+              {{ row.displayCode || row.id }}（原备注：{{
+                row.original || '无'
+              }}）
+              <textarea
+                v-model="row.value"
+                :aria-label="`修改 ${row.displayCode || row.id} 的备注`"
+                :disabled="saving"
+                maxlength="1000"
+                @input="row.edited = true"
+              />
+            </label>
+            <p>清空备注框并保存可清除该条备注。</p>
+          </fieldset>
         </div>
         <footer>
           <ElButton
@@ -946,7 +1036,11 @@ function paperIdentity(
             :disabled="saving"
             @click="dialog = null"
             >取消</ElButton
-          ><ElButton native-type="button" :disabled="saving" @click="saveBulk">
+          ><ElButton
+            native-type="button"
+            :disabled="saving || dialogLoading || bulkConflict"
+            @click="saveBulk"
+          >
             保存
           </ElButton>
         </footer>

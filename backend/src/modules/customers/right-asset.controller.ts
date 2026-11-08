@@ -36,7 +36,13 @@ export class RightAssetController {
     @Param('customerId', new ParseUUIDPipe()) customerId: string,
     @Query() query: RightAssetListQueryDto,
   ) {
-    return this.assets.list(actor, customerId, query.page, query.pageSize);
+    return this.assets.list(
+      actor,
+      customerId,
+      query.page,
+      query.pageSize,
+      query.view,
+    );
   }
 
   @Post()

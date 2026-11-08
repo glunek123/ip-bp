@@ -479,7 +479,7 @@ async function clearPrivateBytes() {
   await mkdir(privateFileRoot, { recursive: true });
 }
 
-async function clearDatabase() {
+export async function clearCoreLeadE2eData() {
   if (process.env.NODE_ENV !== 'test') {
     throw new Error('Core lead reset requires NODE_ENV=test');
   }
@@ -538,6 +538,8 @@ async function clearDatabase() {
     'case_acceptance_receipts',
     'case_acceptance_versions',
     'case_trial_rounds',
+    'case_external_entries',
+    'case_external_entry_receipts',
     'case_supplement_entries',
     'fee_records',
     'evidence_audit_events',
@@ -633,6 +635,12 @@ async function clearDatabase() {
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.evidenceGroupVersion.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseExternalEntryReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseExternalEntry.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.case.deleteMany({
@@ -955,7 +963,7 @@ function admittedCustomer(id, departmentId, userId, teamId, name, identity) {
 }
 
 export async function resetCoreLeadE2eData() {
-  await clearDatabase();
+  await clearCoreLeadE2eData();
   await clearPrivateBytes();
   await seedCoreLeadE2eData();
 }

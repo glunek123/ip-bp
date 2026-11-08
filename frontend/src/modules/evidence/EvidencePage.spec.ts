@@ -31,6 +31,7 @@ afterEach(() => {
 
 const first = {
   id: 'item-a',
+  version: 1,
   caseId: 'case-1',
   groupId: 'case-1',
   displayCode: 'EV-A',
@@ -834,6 +835,7 @@ describe('EvidencePage', () => {
     api.bulkEvidenceStatus.mockResolvedValue({
       changedEvidence: 0,
       changedPaperCertificates: 1,
+      changedRemarks: 0,
     });
     const wrapper = mount(EvidencePage);
     await flushPromises();
@@ -858,5 +860,80 @@ describe('EvidencePage', () => {
       },
       expect.any(String),
     );
+  });
+
+  it('edits only an explicitly changed remark and keeps inputs after a conflict', async () => {
+    api.getEvidenceGroup.mockResolvedValue({
+      groupId: 'case-1',
+      groupVersion: 1,
+      sourceKind: 'CASE',
+      sourceId: 'case-1',
+      sourceVersion: 1,
+      case: {
+        id: 'case-1',
+        platform: null,
+        shopName: null,
+        caseNo: null,
+        stage: null,
+        lawyerName: null,
+      },
+      items: [{ ...first, remark: '原备注' }, second],
+      paperCertificates: [],
+    });
+    api.bulkEvidenceStatus.mockRejectedValue(new Error('证物或原请求已经变化'));
+    const wrapper = mount(EvidencePage);
+    await flushPromises();
+    await wrapper.find('input[aria-label="选择证物 EV-A"]').setValue(true);
+    await wrapper.find('input[aria-label="选择证物 EV-B"]').setValue(true);
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '批量更改状态')!
+      .trigger('click');
+    await flushPromises();
+    const remarks = wrapper.findAll('[role="dialog"] textarea');
+    expect((remarks[0]!.element as HTMLTextAreaElement).value).toBe('原备注');
+    await remarks[0]!.setValue('');
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '保存')!
+      .trigger('click');
+    await flushPromises();
+    expect(api.bulkEvidenceStatus).toHaveBeenCalledWith(
+      {
+        evidenceIds: ['item-a', 'item-b'],
+        paperCertificateIds: [],
+        remarks: [{ id: 'item-a', expectedVersion: 1, remark: null }],
+      },
+      expect.any(String),
+    );
+    expect(wrapper.find('[role="dialog"] [role="alert"]').text()).toContain(
+      '已经变化',
+    );
+    expect(
+      (
+        wrapper.findAll('[role="dialog"] textarea')[0]!
+          .element as HTMLTextAreaElement
+      ).value,
+    ).toBe('');
+  });
+
+  it('closes a read-only detail by its mask but keeps the edit dialog open', async () => {
+    const wrapper = mount(EvidencePage);
+    await flushPromises();
+    await wrapper.get('tbody tr').trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.find('[role="dialog"][aria-label="查看证物与公证书"]').exists(),
+    ).toBe(true);
+    await wrapper.get('.overlay').trigger('click');
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    await wrapper.get('tbody tr input[type=checkbox]').setValue(true);
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '编辑')!
+      .trigger('click');
+    await flushPromises();
+    await wrapper.get('.overlay').trigger('click');
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
   });
 });

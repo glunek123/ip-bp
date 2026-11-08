@@ -803,7 +803,7 @@ describe('AppShell', () => {
       '我的案件19',
     );
     expect(wrapper.get('[data-test="case-view-department"]').text()).toBe(
-      '全部部门案件33',
+      '部门案件33',
     );
     expect(wrapper.find('[data-test="case-nav-parent"]').exists()).toBe(false);
     await router.push('/cases?view=department&stage=PENDING_MATCH');
@@ -813,7 +813,7 @@ describe('AppShell', () => {
     ).toContain('active');
     expect(wrapper.get('[data-test="case-stage"]').text()).toBe('案件待匹配17');
     expect(wrapper.get('[data-test="breadcrumbs"]').text()).toContain(
-      '全部部门案件',
+      '部门案件',
     );
   });
 
@@ -918,7 +918,7 @@ describe('AppShell', () => {
       '我的案件',
     );
     expect(wrapper.get('[data-test="case-view-department"]').text()).toContain(
-      '全部部门案件',
+      '部门案件',
     );
   });
 

@@ -62,7 +62,11 @@ type Action =
   | 'evidence.bulk-status'
   | 'evidence.export';
 type GroupResult = { changed: boolean; group: EvidenceGroupView };
-type BulkResult = { changedEvidence: number; changedPaperCertificates: number };
+type BulkResult = {
+  changedEvidence: number;
+  changedPaperCertificates: number;
+  changedRemarks: number;
+};
 const missing = () =>
   new NotFoundException({
     code: 'EVIDENCE_NOT_FOUND',
@@ -944,75 +948,39 @@ export class EvidenceService {
     key: string,
     input: BulkEvidenceStatusDto,
   ): Promise<BulkResult> {
-    return this.command(actor, 'evidence.bulk-status', key, async (tx) => {
-      let [items, papers] = await Promise.all([
-        tx.evidenceItem.findMany({
-          where: {
-            id: { in: input.evidenceIds },
-            departmentId: actor.departmentId,
-          },
-        }),
-        tx.evidencePaperCertificate.findMany({
-          where: {
-            id: { in: input.paperCertificateIds },
-            departmentId: actor.departmentId,
-          },
-        }),
-      ]);
-      if (
-        !input.evidenceIds.length ||
-        items.length !== input.evidenceIds.length ||
-        papers.length !== input.paperCertificateIds.length
-      )
-        throw missing();
-      const selectedGroups = new Set(items.map((item) => item.groupId));
-      if (papers.some((paper) => !selectedGroups.has(paper.groupId)))
-        throw invalid('纸质公证书必须属于所选证物关联组');
-      const groups = [];
-      // Same source/group lock order as group saves and issuance initialization.
-      for (const id of [...selectedGroups].sort())
-        groups.push(await this.lockedGroup(tx, actor, id));
-      const fingerprint = evidenceCommandFingerprint(
-        'BULK_STATUS',
-        null,
-        input,
-      );
-      const prior = await this.prior(
-        tx,
-        actor,
-        key,
-        'BULK_STATUS',
-        fingerprint,
-      );
-      if (prior !== null) {
+    const changesStatus = Boolean(input.evidenceStatus || input.paperStatus);
+    const changesRemark = Boolean(input.remarks?.length);
+    if (!changesStatus && !changesRemark)
+      throw invalid('请填写要更改的状态或备注');
+    return this.command(
+      actor,
+      changesStatus ? 'evidence.bulk-status' : 'evidence.edit',
+      key,
+      async (tx) => {
+        if (changesStatus && changesRemark)
+          await this.authorize(tx, actor, 'evidence.edit');
         if (
-          !prior ||
-          typeof prior !== 'object' ||
-          Array.isArray(prior) ||
-          typeof prior.changedEvidence !== 'number' ||
-          typeof prior.changedPaperCertificates !== 'number'
+          input.remarks?.some(
+            (entry) =>
+              !entry ||
+              !Number.isInteger(entry.expectedVersion) ||
+              entry.expectedVersion < 1 ||
+              (entry.remark !== null &&
+                (typeof entry.remark !== 'string' ||
+                  entry.remark.length > 1000)),
+          )
         )
-          throw new InternalServerErrorException({
-            code: 'INVALID_EVIDENCE_RECEIPT',
-            message: '证物原请求回执不完整',
-          });
-        return {
-          changedEvidence: prior.changedEvidence,
-          changedPaperCertificates: prior.changedPaperCertificates,
-        };
-      }
-      if (
-        items.some((item) => item.removedAt !== null) ||
-        papers.some((paper) => paper.removedAt !== null)
-      )
-        throw missing();
-      let alignmentChanged = false;
-      for (const entry of groups) {
-        if (await this.alignCase(tx, actor, entry.group, entry.source))
-          alignmentChanged = true;
-      }
-      if (alignmentChanged)
-        [items, papers] = await Promise.all([
+          throw invalid('证物备注或版本无效');
+        if (
+          new Set(input.remarks?.map((entry) => entry.id)).size !==
+          (input.remarks?.length ?? 0)
+        )
+          throw invalid('证物备注不能重复选择');
+        if (
+          input.remarks?.some((entry) => !input.evidenceIds.includes(entry.id))
+        )
+          throw invalid('备注只能修改已选证物');
+        let [items, papers] = await Promise.all([
           tx.evidenceItem.findMany({
             where: {
               id: { in: input.evidenceIds },
@@ -1026,69 +994,182 @@ export class EvidenceService {
             },
           }),
         ]);
-      const plan = planEvidenceBulkStatus(items, papers, input);
-      const affected = new Set([
-        ...plan.items.map(
-          (next) => items.find((item) => item.id === next.id)!.groupId,
-        ),
-        ...plan.papers.map(
-          (next) => papers.find((paper) => paper.id === next.id)!.groupId,
-        ),
-      ]);
-      for (const id of affected)
-        await tx.evidenceGroupVersion.update({
-          where: { id },
-          data: { version: { increment: 1 } },
-        });
-      for (const next of plan.items) {
-        const before = items.find((item) => item.id === next.id)!;
-        const after = await tx.evidenceItem.update({
-          where: { id: next.id },
-          data: {
-            status: next.status,
-            version: { increment: 1 },
-            updatedByUserId: actor.userId,
-          },
-        });
-        await this.audit(
+        if (
+          !input.evidenceIds.length ||
+          items.length !== input.evidenceIds.length ||
+          papers.length !== input.paperCertificateIds.length
+        )
+          throw missing();
+        const selectedGroups = new Set(items.map((item) => item.groupId));
+        if (papers.some((paper) => !selectedGroups.has(paper.groupId)))
+          throw invalid('纸质公证书必须属于所选证物关联组');
+        const groups = [];
+        // Same source/group lock order as group saves and issuance initialization.
+        for (const id of [...selectedGroups].sort())
+          groups.push(await this.lockedGroup(tx, actor, id));
+        const fingerprint = evidenceCommandFingerprint(
+          'BULK_STATUS',
+          null,
+          input,
+        );
+        const prior = await this.prior(
           tx,
           actor,
-          before.groupId,
-          'BULK_ITEM_STATUS',
-          before,
-          after,
-          after.id,
+          key,
+          'BULK_STATUS',
+          fingerprint,
         );
-      }
-      for (const next of plan.papers) {
-        const before = papers.find((paper) => paper.id === next.id)!;
-        const after = await tx.evidencePaperCertificate.update({
-          where: { id: next.id },
-          data: {
-            status: next.status,
-            version: { increment: 1 },
-            updatedByUserId: actor.userId,
-          },
+        if (prior !== null) {
+          if (
+            !prior ||
+            typeof prior !== 'object' ||
+            Array.isArray(prior) ||
+            typeof prior.changedEvidence !== 'number' ||
+            typeof prior.changedPaperCertificates !== 'number'
+          )
+            throw new InternalServerErrorException({
+              code: 'INVALID_EVIDENCE_RECEIPT',
+              message: '证物原请求回执不完整',
+            });
+          return {
+            changedEvidence: prior.changedEvidence,
+            changedPaperCertificates: prior.changedPaperCertificates,
+            changedRemarks:
+              typeof prior.changedRemarks === 'number'
+                ? prior.changedRemarks
+                : 0,
+          };
+        }
+        if (
+          items.some((item) => item.removedAt !== null) ||
+          papers.some((paper) => paper.removedAt !== null)
+        )
+          throw missing();
+        let alignmentChanged = false;
+        for (const entry of groups) {
+          if (await this.alignCase(tx, actor, entry.group, entry.source))
+            alignmentChanged = true;
+        }
+        if (alignmentChanged)
+          [items, papers] = await Promise.all([
+            tx.evidenceItem.findMany({
+              where: {
+                id: { in: input.evidenceIds },
+                departmentId: actor.departmentId,
+              },
+            }),
+            tx.evidencePaperCertificate.findMany({
+              where: {
+                id: { in: input.paperCertificateIds },
+                departmentId: actor.departmentId,
+              },
+            }),
+          ]);
+        const remarkChanges = (input.remarks ?? []).flatMap((edit) => {
+          const original = items.find((item) => item.id === edit.id)!;
+          if (original.version !== edit.expectedVersion) throw conflict();
+          const remark = edit.remark?.trim() || null;
+          return original.remark === remark ? [] : [{ id: edit.id, remark }];
         });
-        await this.audit(
-          tx,
-          actor,
-          before.groupId,
-          'BULK_PAPER_STATUS',
-          before,
-          after,
-          undefined,
-          after.id,
-        );
-      }
-      const result = {
-        changedEvidence: plan.items.length,
-        changedPaperCertificates: plan.papers.length,
-      };
-      if (affected.size || alignmentChanged)
-        await this.receipt(tx, actor, key, 'BULK_STATUS', fingerprint, result);
-      return result;
-    });
+        const plan = planEvidenceBulkStatus(items, papers, input);
+        const affected = new Set([
+          ...plan.items.map(
+            (next) => items.find((item) => item.id === next.id)!.groupId,
+          ),
+          ...plan.papers.map(
+            (next) => papers.find((paper) => paper.id === next.id)!.groupId,
+          ),
+          ...remarkChanges.map(
+            (next) => items.find((item) => item.id === next.id)!.groupId,
+          ),
+        ]);
+        for (const id of affected)
+          await tx.evidenceGroupVersion.update({
+            where: { id },
+            data: { version: { increment: 1 } },
+          });
+        for (const next of plan.items) {
+          const before = items.find((item) => item.id === next.id)!;
+          const remark = remarkChanges.find((change) => change.id === next.id);
+          const after = await tx.evidenceItem.update({
+            where: { id: next.id },
+            data: {
+              status: next.status,
+              ...(remark ? { remark: remark.remark } : {}),
+              version: { increment: 1 },
+              updatedByUserId: actor.userId,
+            },
+          });
+          await this.audit(
+            tx,
+            actor,
+            before.groupId,
+            'BULK_ITEM_STATUS',
+            before,
+            after,
+            after.id,
+          );
+        }
+        for (const next of remarkChanges.filter(
+          (change) => !plan.items.some((item) => item.id === change.id),
+        )) {
+          const before = items.find((item) => item.id === next.id)!;
+          const after = await tx.evidenceItem.update({
+            where: { id: next.id },
+            data: {
+              remark: next.remark,
+              version: { increment: 1 },
+              updatedByUserId: actor.userId,
+            },
+          });
+          await this.audit(
+            tx,
+            actor,
+            before.groupId,
+            'BULK_ITEM_STATUS',
+            before,
+            after,
+            after.id,
+          );
+        }
+        for (const next of plan.papers) {
+          const before = papers.find((paper) => paper.id === next.id)!;
+          const after = await tx.evidencePaperCertificate.update({
+            where: { id: next.id },
+            data: {
+              status: next.status,
+              version: { increment: 1 },
+              updatedByUserId: actor.userId,
+            },
+          });
+          await this.audit(
+            tx,
+            actor,
+            before.groupId,
+            'BULK_PAPER_STATUS',
+            before,
+            after,
+            undefined,
+            after.id,
+          );
+        }
+        const result = {
+          changedEvidence: plan.items.length,
+          changedPaperCertificates: plan.papers.length,
+          changedRemarks: remarkChanges.length,
+        };
+        if (affected.size || alignmentChanged)
+          await this.receipt(
+            tx,
+            actor,
+            key,
+            'BULK_STATUS',
+            fingerprint,
+            result,
+          );
+        return result;
+      },
+    );
   }
 
   async export(actor: ActorContext, input: ExportEvidenceDto) {
