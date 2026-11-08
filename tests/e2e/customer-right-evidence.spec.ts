@@ -200,7 +200,9 @@ test('CU003 real password session uploads, freezes revisions and downloads exact
   );
   expect(await historicalDownload.body()).toEqual(firstBytes);
 
-  await row.getByRole('button', { name: /撤下|×/u }).click();
+  const actions = row.getByRole('cell').last();
+  await expect(actions.getByRole('button')).toHaveText(['编辑', '删除']);
+  await actions.getByRole('button', { name: '删除', exact: true }).click();
   await page.getByLabel('撤下原因').fill('历史证明仍需留存');
   await page.getByRole('button', { name: '确认撤下' }).click();
   await expect(row).toHaveCount(0);

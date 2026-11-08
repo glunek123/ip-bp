@@ -1546,12 +1546,6 @@ onBeforeUnmount(() => {
               <td>{{ statusLabel(asset.fields.status) }}</td>
               <td>
                 <ElButton
-                  native-type="button"
-                  link
-                  @click="openDetail(asset.assetId)"
-                  >详情 / 历史</ElButton
-                >
-                <ElButton
                   v-if="canEdit && !asset.withdrawn"
                   native-type="button"
                   link
@@ -1566,9 +1560,8 @@ onBeforeUnmount(() => {
                   link
                   :disabled="ordinaryWritesBlocked || saving || writeDenied"
                   :data-test="`right-asset-withdraw-${asset.assetId}`"
-                  aria-label="撤下资产"
                   @click="openWithdrawFor(asset.assetId)"
-                  >× 撤下</ElButton
+                  >删除</ElButton
                 >
               </td>
             </tr>
@@ -2159,7 +2152,8 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 .right-assets-panel__list td:nth-child(7),
-.right-assets-panel__list td:nth-child(8) {
+.right-assets-panel__list td:nth-child(8),
+.right-assets-panel__list td:last-child {
   white-space: nowrap;
 }
 .right-assets-panel__form label {
