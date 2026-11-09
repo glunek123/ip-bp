@@ -16,6 +16,7 @@ export type ReminderSourceType =
   | 'MANUAL'
   | 'FIRST_INSTANCE_HEARING'
   | 'SECOND_INSTANCE_HEARING'
+  | 'CASE_PAYMENT_DUE'
   | 'CUSTOMER_AGREEMENT_EXPIRY'
   | 'FIRST_INSTANCE_JUDGMENT'
   | 'SECOND_INSTANCE_RESULT';
@@ -165,13 +166,15 @@ export class CalendarReminderService {
         sourceEpoch: item.ownerEpoch,
         eventDate: item.date,
         title:
-          item.sourceType === 'FIRST_INSTANCE_HEARING'
-            ? '一审开庭'
-            : item.sourceType === 'SECOND_INSTANCE_HEARING'
-              ? '二审开庭'
-              : item.sourceType === 'FIRST_INSTANCE_JUDGMENT'
-                ? '一审判决退费待核'
-                : '二审判决退费待核',
+          item.sourceType === 'CASE_PAYMENT_DUE'
+            ? '缴费截止'
+            : item.sourceType === 'FIRST_INSTANCE_HEARING'
+              ? '一审开庭'
+              : item.sourceType === 'SECOND_INSTANCE_HEARING'
+                ? '二审开庭'
+                : item.sourceType === 'FIRST_INSTANCE_JUDGMENT'
+                  ? '一审判决退费待核'
+                  : '二审判决退费待核',
         note: item.businessNo,
         caseId: item.caseId,
         customerId: null,

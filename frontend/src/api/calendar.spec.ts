@@ -207,12 +207,12 @@ describe('calendar API', () => {
       },
     ],
     [
-      'pay cannot be available',
+      'pay cannot be forbidden',
       {
         ...summary,
         metrics: {
           ...summary.metrics,
-          pay: { state: 'AVAILABLE', count: 0, nearestDate: null },
+          pay: { state: 'FORBIDDEN', count: null, nearestDate: null },
         },
       },
     ],

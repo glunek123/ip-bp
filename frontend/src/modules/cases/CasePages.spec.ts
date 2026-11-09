@@ -34,6 +34,7 @@ const api = vi.hoisted(() => ({
   getCaseRoutineProfile: vi.fn(),
   getLead: vi.fn(),
   matchCase: vi.fn(),
+  prepareCaseDefendants: vi.fn(),
   listLawyerMatchCandidates: vi.fn(),
   submitComplaint: vi.fn(),
   finishCaseExecution: vi.fn(),
@@ -77,6 +78,7 @@ vi.mock('../../api/cases', async (importOriginal) => ({
   listCases: api.listCases,
   getCase: api.getCase,
   matchCase: api.matchCase,
+  prepareCaseDefendants: api.prepareCaseDefendants,
   listLawyerMatchCandidates: api.listLawyerMatchCandidates,
   submitComplaint: api.submitComplaint,
   finishCaseExecution: api.finishCaseExecution,
@@ -232,6 +234,7 @@ beforeEach(() => {
     },
   });
   api.listLawyerMatchCandidates.mockResolvedValue([]);
+  api.prepareCaseDefendants.mockResolvedValue(undefined);
   api.getCase.mockResolvedValue({
     id: 'case-1',
     businessNo: 'CA-1',
@@ -598,8 +601,6 @@ async function openWorkspaceCommands(wrapper: ReturnType<typeof mount>) {
 }
 
 async function createUnknownConfirmation(wrapper: ReturnType<typeof mount>) {
-  await wrapper.get('[data-test="confirm-disclose-false"]').setValue(true);
-  await wrapper.get('[data-test="confirmation-review"]').trigger('click');
   await wrapper.get('[data-test="confirmation-submit"]').trigger('click');
   await flushPromises();
   return api.confirmCaseComplaint.mock.calls[0];
@@ -645,8 +646,8 @@ describe('case pages', () => {
       '法院',
       '案号',
       '标的额',
-      '判决额',
-      '结案额',
+      '判决金额',
+      '结案金额',
     ]);
     expect(
       wrapper
@@ -727,7 +728,6 @@ describe('case pages', () => {
       const rows = wrapper.findAll('tbody tr');
       const correctionOnly = [
         'canCorrectClosure',
-        'canCorrectHearing',
         'canCorrectJudgment',
         'canRevokeJudgmentNextStep',
         'canRevokeSecondInstanceResult',
@@ -735,6 +735,10 @@ describe('case pages', () => {
       expect(rows[0]!.findAll('[data-case-action]')).toHaveLength(
         correctionOnly ? 0 : 1,
       );
+      if (capability === 'canCorrectHearing')
+        expect(rows[0]!.get('[data-case-action]').text()).toBe(
+          '补录／更正开庭日期',
+        );
       if (!correctionOnly)
         expect(rows[0]!.get('[data-case-action]').text()).not.toBe('办理');
       expect(rows[0]!.find('a[href^="/cases/"]').exists()).toBe(true);
@@ -783,7 +787,7 @@ describe('case pages', () => {
     expect(wrapper.get('[data-test="case-list"] a').attributes('href')).toBe(
       '/cases/case-21?view=department&page=2',
     );
-    expect(wrapper.get('[data-test="case-list"]').text()).toContain('匹配案件');
+    expect(wrapper.get('[data-test="case-list"]').text()).toContain('补充被告');
     expect(wrapper.text()).toContain('第 2 / 2 页');
     expect(
       wrapper.get('[data-test="next-page"]').attributes('disabled'),
@@ -1053,10 +1057,14 @@ describe('case pages', () => {
   });
 
   it('keeps source identities out of the list and links to the internal read-only detail', async () => {
-    const wrapper = await mountRoute('/cases', CaseListPage, true);
+    const wrapper = await mountRoute(
+      '/cases?view=department',
+      CaseListPage,
+      true,
+    );
     expect(wrapper.get('[data-test="case-list"]').text()).not.toContain('LD-1');
     expect(wrapper.get('[data-test="case-list"]').text()).not.toContain('NZ-1');
-    expect(wrapper.get('a[href="/cases/case-1"]').text()).toBe('CA-1');
+    expect(wrapper.get('a[href^="/cases/case-1"]').text()).toBe('CA-1');
     const cells = wrapper.findAll('[data-test="case-list"] tbody tr td');
     expect(cells[3]!.text()).toContain('负责人');
     expect(cells[1]!.classes()).toContain('business-list-cell--text');
@@ -1560,14 +1568,15 @@ describe('case pages', () => {
     api.matchCase.mockResolvedValue(undefined);
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
     const eventSpy = vi.spyOn(window, 'dispatchEvent');
-    api.getCase.mockResolvedValueOnce({
+    const preparedDetail = {
       ...confirmationDetail('case-1'),
+      origin: { kind: 'NOTARY' },
       id: 'case-1',
       businessNo: 'CA-1',
-      stage: 'WAITING_COMPLAINT',
+      stage: 'PENDING_MATCH',
       createdAt: '2026-09-28T00:00:00Z',
       version: 2,
-      canMatch: false,
+      canMatch: true,
       canRecordClosure: false,
       canCorrectClosure: false,
       canArchive: false,
@@ -1598,20 +1607,12 @@ describe('case pages', () => {
           idNo: null,
           phone: null,
           address: null,
+          legalRepresentative: null,
         },
       ],
-      lawyers: [
-        {
-          id: 'case-lawyer-1',
-          fullName: '律师甲',
-          lawFirm: '甲律所',
-          phone: '13900000000',
-          role: 'PRIMARY',
-          assignedAt: '2026-09-29T01:00:00Z',
-        },
-      ],
-      matchedAt: '2026-09-29T01:00:00Z',
-      matchedOn: '2026-09-28',
+      lawyers: [],
+      matchedAt: null,
+      matchedOn: null,
       canSaveSecondInstance: false,
       canRegisterSecondInstanceResult: false,
       canRevokeSecondInstanceResult: false,
@@ -1631,27 +1632,65 @@ describe('case pages', () => {
         results: [],
         revocations: [],
       },
-    });
+    } satisfies CaseDetail;
+    const matchedDetail = {
+      ...preparedDetail,
+      stage: 'WAITING_COMPLAINT' as const,
+      version: preparedDetail.version + 1,
+      canMatch: false,
+      lawyers: [
+        {
+          id: 'case-lawyer-1',
+          fullName: '律师甲',
+          lawFirm: '甲律所',
+          phone: '13900000000',
+          role: 'PRIMARY' as const,
+          assignedAt: '2026-09-29T01:00:00Z',
+        },
+      ],
+      matchedAt: '2026-09-29T01:00:00Z',
+      matchedOn: '2026-09-28',
+    } satisfies CaseDetail;
+    api.getCase
+      .mockResolvedValueOnce(preparedDetail)
+      .mockResolvedValueOnce(matchedDetail);
     const form = wrapper.get('[data-test="case-match-form"]');
+    await form.findAll('input')[0]!.setValue('被告甲');
+    await form
+      .findAll('button')
+      .find((button) => button.text() === '保存被告')!
+      .trigger('click');
+    await flushPromises();
+    expect(api.prepareCaseDefendants).toHaveBeenCalledWith(
+      'case-1',
+      expect.objectContaining({
+        defendants: [
+          expect.objectContaining({ name: '被告甲', kind: 'PERSON' }),
+        ],
+      }),
+    );
+    const lawyerForm = wrapper.get('[data-test="case-match-form"]');
+    expect(lawyerForm.text()).toContain('输入姓名搜索');
     expect(
-      (form.get('input[type="date"]').element as HTMLInputElement).value,
+      (lawyerForm.get('input[type="date"]').element as HTMLInputElement).value,
     ).toBe('2026-09-29');
-    await form.get('input[type="date"]').setValue('2026-09-28');
-    await form.findAll('input')[1]!.setValue('被告甲');
-    const lawyerOption = form
+    await lawyerForm.get('input[type="date"]').setValue('2026-09-28');
+    await lawyerForm.find('input:not([type="date"])').setValue('律师甲');
+    await flushPromises();
+    const lawyerOption = lawyerForm
       .findAll('option')
       .find((option) => option.text().includes('律师甲（lawyer.a）'))!;
     expect(lawyerOption).toBeDefined();
     await lawyerOption.setValue();
-    await wrapper
-      .findAll('[data-test="case-match-form"] button')
-      .find((button) => button.text().includes('确认匹配'))!
+    await lawyerForm
+      .findAll('button')
+      .find((button) => button.text().includes('匹配律师'))!
       .trigger('click');
     await flushPromises();
     expect(api.matchCase).toHaveBeenCalledWith(
       'case-1',
       expect.objectContaining({
-        expectedVersion: 1,
+        expectedVersion: 2,
         defendants: [
           expect.objectContaining({ name: '被告甲', kind: 'PERSON' }),
         ],
@@ -1660,10 +1699,14 @@ describe('case pages', () => {
         matchedOn: '2026-09-28',
       }),
     );
-    expect(api.listLawyerMatchCandidates).toHaveBeenCalledWith('case-1', '', {
-      signal: expect.any(AbortSignal),
-    });
-    expect(api.getCase).toHaveBeenCalledTimes(2);
+    expect(api.listLawyerMatchCandidates).toHaveBeenCalledWith(
+      'case-1',
+      '律师甲',
+      {
+        signal: expect.any(AbortSignal),
+      },
+    );
+    expect(api.getCase).toHaveBeenCalledTimes(3);
     expect(wrapper.text()).toContain('案件匹配已完成');
     expect(wrapper.get('.page-head, .case-workspace-header').text()).toContain(
       '待写诉状',
@@ -1883,15 +1926,13 @@ describe('case pages', () => {
     });
     const { wrapper } = await mountRoutedDetail('/cases/case-a');
 
-    await wrapper.get('[data-test="confirm-disclose-false"]').setValue(true);
-    await wrapper.get('[data-test="confirmation-review"]').trigger('click');
     await wrapper.get('[data-test="confirmation-submit"]').trigger('click');
     await flushPromises();
 
     expect(wrapper.text()).toContain(
       '确认已成功，正在同步案件详情；暂不可再次确认。',
     );
-    expect(wrapper.find('[data-test="confirmation-review"]').exists()).toBe(
+    expect(wrapper.find('[data-test="confirmation-submit"]').exists()).toBe(
       false,
     );
     expect(wrapper.find('[data-test="confirmation-form"]').exists()).toBe(
@@ -1900,7 +1941,7 @@ describe('case pages', () => {
     expect(api.confirmCaseComplaint).toHaveBeenCalledTimes(1);
     resolveRefresh(confirmationDetail('case-a'));
     await flushPromises();
-    expect(wrapper.find('[data-test="confirmation-review"]').exists()).toBe(
+    expect(wrapper.find('[data-test="confirmation-submit"]').exists()).toBe(
       false,
     );
     expect(api.confirmCaseComplaint).toHaveBeenCalledTimes(1);
@@ -1923,8 +1964,6 @@ describe('case pages', () => {
     });
     const { wrapper } = await mountRoutedDetail('/cases/case-a');
 
-    await wrapper.get('[data-test="confirm-disclose-false"]').setValue(true);
-    await wrapper.get('[data-test="confirmation-review"]').trigger('click');
     await wrapper.get('[data-test="confirmation-submit"]').trigger('click');
     await flushPromises();
 
@@ -1932,21 +1971,19 @@ describe('case pages', () => {
       '确认已成功，正在同步案件详情；暂不可再次确认。',
     );
     expect(wrapper.text()).toContain('详情读取失败');
-    expect(wrapper.find('[data-test="confirmation-review"]').exists()).toBe(
+    expect(wrapper.find('[data-test="confirmation-submit"]').exists()).toBe(
       false,
     );
     expect(api.confirmCaseComplaint).toHaveBeenCalledTimes(1);
 
-    await wrapper
-      .get('[data-test="confirmation-success-check"]')
-      .trigger('click');
+    await wrapper.get('[data-test="case-refresh"]').trigger('click');
     await flushPromises();
 
     expect(wrapper.text()).toContain('诉状确认记录');
     expect(
       wrapper.find('[data-test="confirmed-complaint-record"]').exists(),
     ).toBe(true);
-    expect(wrapper.find('[data-test="confirmation-review"]').exists()).toBe(
+    expect(wrapper.find('[data-test="confirmation-submit"]').exists()).toBe(
       false,
     );
     expect(api.confirmCaseComplaint).toHaveBeenCalledTimes(1);
@@ -2185,6 +2222,17 @@ describe('case pages', () => {
       ...confirmationDetail('case-a'),
       stage: 'PENDING_MATCH' as const,
       canMatch: true,
+      defendants: [
+        {
+          id: 'defendant-a',
+          kind: 'PERSON' as const,
+          name: '被告甲',
+          idNo: null,
+          phone: null,
+          address: null,
+          legalRepresentative: null,
+        },
+      ],
     };
     const caseB = {
       ...confirmationDetail('case-b'),
@@ -2192,16 +2240,28 @@ describe('case pages', () => {
       canMatch: true,
     };
     api.getCase.mockResolvedValueOnce(caseA).mockResolvedValueOnce(caseB);
+    api.listLawyerMatchCandidates.mockResolvedValue([
+      {
+        lawyerAccountId: 'lawyer-account-1',
+        username: 'lawyer.a',
+        displayName: '律师甲',
+        lawyerProfileId: 'lawyer-profile-1',
+      },
+    ]);
     api.matchCase.mockReturnValueOnce(
       new Promise((resolve) => (resolveMatch = resolve)),
     );
     const { wrapper, router } = await mountRoutedDetail('/cases/case-a');
-    const form = wrapper.get('[data-test="case-match-form"]');
-    await form.findAll('input')[1]!.setValue('被告甲');
-    await form.findAll('input')[5]!.setValue('律师甲');
-    await form
+    const lawyerForm = wrapper.get('[data-test="case-match-form"]');
+    await lawyerForm.find('input:not([type="date"])').setValue('律师甲');
+    await flushPromises();
+    await lawyerForm
+      .findAll('option')
+      .find((option) => option.text().includes('律师甲（lawyer.a）'))!
+      .setValue();
+    await lawyerForm
       .findAll('button')
-      .find((button) => button.text().includes('确认匹配并进入待写诉状'))!
+      .find((button) => button.text() === '匹配律师')!
       .trigger('click');
 
     await router.push('/cases/case-b');

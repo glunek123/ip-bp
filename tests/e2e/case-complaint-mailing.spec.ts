@@ -11,6 +11,10 @@ import {
   clearCaseComplaintMailingFixture,
   prepareCaseComplaintMailingFixture,
 } from '../support/case-complaint-mailing-database.mjs';
+import {
+  closeCaseWorkspaceDrawer,
+  openCaseWorkspaceCommand,
+} from '../support/case-workspace-browser';
 
 async function loginWithPassword(
   page: Page,
@@ -57,7 +61,110 @@ test.afterEach(async () => {
   await clearCaseComplaintMailingFixture();
 });
 
-test('real password sessions read confirmed files, upload a receipt, mail the case and retain facts after relogin', async ({
+test('operator confirms and mails with date and remark while preserving an empty receipt list', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(300_000);
+  const seeded = await createSubmittedCaseThroughApi(request);
+  await loginWithPassword(
+    page,
+    coreLeadFixtures.operatorUsername,
+    coreLeadFixtures.operatorPassword,
+    '/cases',
+  );
+  await page.goto(`/cases/${seeded.caseId}`);
+  await page.locator('[data-test="workspace-primary-action"]').click();
+  await expect(page.locator('[data-test="confirmation-form"]')).toBeVisible();
+  await expect(page.locator('[data-test="confirmation-amount"]')).toHaveValue(
+    /\d/u,
+  );
+  await page.locator('[data-test="confirmation-submit"]').click();
+  await expect(page.locator('.detail-actions .pill')).toHaveText('诉状待盖章');
+  await closeCaseWorkspaceDrawer(page);
+  await openCaseWorkspaceCommand(
+    page,
+    'mail-complaint',
+    '[data-test="complaint-mailing-panel"]',
+  );
+  const panel = page.locator('[data-test="complaint-mailing-panel"]');
+  await panel.locator('[data-test="complaint-mail-remark"]').fill('按约定邮寄');
+  await expect(panel.locator('input[type="file"]')).toHaveCount(0);
+  await panel.getByRole('button', { name: '核对邮寄信息' }).click();
+  await page.screenshot({
+    path: '.local/case-workflow-acceptance/complaint-mailing.png',
+  });
+  await panel.locator('[data-test="mailing-submit"]').click();
+  await expect(page.locator('.detail-actions .pill')).toHaveText('待提交立案');
+  await page.reload();
+  const detail = await page.request.get(`/api/v1/cases/${seeded.caseId}`);
+  expect(detail.status(), await detail.text()).toBe(200);
+  expect(await detail.json()).toMatchObject({
+    stage: 'WAITING_FILING',
+    complaintMailing: { remark: '按约定邮寄', receiptFiles: [] },
+  });
+});
+
+test.use({ testIdAttribute: 'data-test' });
+
+test('batch mailing applies the same date and remark to each selected case', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(90_000);
+  const first = await createSubmittedCaseThroughApi(request);
+  const second = await createSubmittedCaseThroughApi(request);
+  const caseIds = [first.caseId, second.caseId];
+  await loginWithPassword(
+    page,
+    coreLeadFixtures.operatorUsername,
+    coreLeadFixtures.operatorPassword,
+    '/cases',
+  );
+  for (const caseId of caseIds) {
+    await page.goto(`/cases/${caseId}`);
+    await page
+      .locator('[data-test="workspace-primary-action"]')
+      .click({ timeout: 10_000 });
+    await expect(page.locator('[data-test="confirmation-form"]')).toBeVisible();
+    await page
+      .locator('[data-test="confirmation-submit"]')
+      .click({ timeout: 10_000 });
+    await expect(page.locator('.detail-actions .pill')).toHaveText(
+      '诉状待盖章',
+    );
+  }
+  await page.goto('/cases?view=mine&stage=WAITING_COMPLAINT_STAMP');
+  for (const caseId of caseIds) {
+    await page.getByTestId(`select-case-${caseId}`).check({ timeout: 10_000 });
+  }
+  await page.getByTestId('start-complaint-batch-mail-complaint').click();
+  const date = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+  }).format(new Date());
+  const remark = '同批诉状分别邮寄';
+  await page.getByTestId('batch-mail-date').fill(date);
+  await page.getByTestId('batch-mail-remark').fill(remark);
+  for (const caseId of caseIds) {
+    await page.getByTestId(`continue-complaint-batch-${caseId}`).click();
+    await expect(page.getByTestId('complaint-mail-remark')).toHaveValue(remark);
+    await page.getByRole('button', { name: '核对邮寄信息' }).click();
+    await page.getByTestId('mailing-submit').click();
+    await expect(
+      page.getByTestId(`complaint-batch-entry-${caseId}`),
+    ).toContainText('已成功');
+  }
+  await page.reload();
+  for (const caseId of caseIds) {
+    const detail = await page.request.get(`/api/v1/cases/${caseId}`);
+    expect(detail.status(), await detail.text()).toBe(200);
+    expect(await detail.json()).toMatchObject({
+      stage: 'WAITING_FILING',
+      complaintMailing: { mailedAt: date, remark, receiptFiles: [] },
+    });
+  }
+});
+test('real password sessions preserve downloads for a legacy mailing receipt after relogin', async ({
   page,
   request,
 }) => {
@@ -90,14 +197,14 @@ test('real password sessions read confirmed files, upload a receipt, mail the ca
     '/cases',
   );
   await page.goto(`/cases/${seeded.caseId}`);
-  await expect(page.locator('.page-head .pill')).toHaveText('诉状待确认');
-  await page.locator('[data-test^="complaint-version-"]').first().check();
-  await page.locator('[data-test="confirm-disclose-false"]').check();
-  await page.locator('[data-test="confirmation-review"]').click();
-  await expect(page.getByRole('dialog')).toContainText('确认后进入诉状待盖章');
+  await expect(page.locator('.detail-actions .pill')).toHaveText('诉状待确认');
+  await page.locator('[data-test="workspace-primary-action"]').click();
+  await expect(page.locator('[data-test="confirmation-form"]')).toBeVisible();
   await page.locator('[data-test="confirmation-submit"]').click();
-  await expect(page.locator('.page-head .pill')).toHaveText('诉状待盖章');
+  await expect(page.locator('.detail-actions .pill')).toHaveText('诉状待盖章');
+  await closeCaseWorkspaceDrawer(page);
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/login/u);
 
   await loginWithPassword(page, username, password, '/client/leads');
   await page.goto('/client/cases');
@@ -122,31 +229,57 @@ test('real password sessions read confirmed files, upload a receipt, mail the ca
     expect(filePath).not.toBeNull();
     expect(await readFile(filePath!)).toEqual(expectedBytes);
   }
-  await page
-    .locator('[data-test="complaint-mailing-panel"] input[type="file"]')
-    .setInputFiles({
-      name: '真实邮寄凭证.pdf',
-      mimeType: 'application/pdf',
-      buffer: receiptBytes,
-    });
-  await expect(page.locator('[data-test="mailing-submit"]')).toHaveCount(0);
-  await page.getByRole('button', { name: '核对邮寄信息' }).click();
-  await page.locator('[data-test="mailing-submit"]').click();
-  await expect(page.locator('.page-head .pill')).toHaveText('待提交立案');
-  await expect(
-    page.locator('[data-test="complaint-mailing-panel"]'),
-  ).toContainText('邮寄登记记录');
+  const api = page.request;
+  const casePath = `/api/v1/client/cases/${seeded.caseId}`;
+  const session = await api.get('/api/v1/auth/session');
+  expect(session.status()).toBe(200);
+  const headers = {
+    Origin: new URL(page.url()).origin,
+    'X-CSRF-Token': (await session.json()).csrfToken as string,
+  };
+  const draft = await api.post('/api/v1/materials/upload-drafts', {
+    headers,
+    data: {
+      ownerType: 'CASE',
+      ownerId: seeded.caseId,
+      category: 'MAIL_RECEIPT',
+      purpose: 'MAIL_RECEIPT',
+      originalFilename: '真实邮寄凭证.pdf',
+      declaredMimeType: 'application/pdf',
+    },
+  });
+  expect(draft.status(), await draft.text()).toBe(201);
+  const stored = await api.put(
+    `/api/v1/materials/upload-drafts/${(await draft.json()).id}/content`,
+    {
+      headers: { ...headers, 'Content-Type': 'application/octet-stream' },
+      data: receiptBytes,
+    },
+  );
+  expect(stored.status(), await stored.text()).toBe(200);
+  const legacyMail = await api.post(`${casePath}/complaint-mail`, {
+    headers,
+    data: {
+      expectedVersion: (await (await api.get(casePath)).json()).version,
+      idempotencyKey: randomUUID(),
+      mailedAt: new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Shanghai',
+      }).format(new Date()),
+      mailReceiptContentVersionIds: [(await stored.json()).contentVersionId],
+    },
+  });
+  expect(legacyMail.status(), await legacyMail.text()).toBe(201);
   await page.reload();
-  await expect(page.locator('.page-head .pill')).toHaveText('待提交立案');
   await expect(
     page.locator('[data-test="complaint-mailing-panel"]'),
   ).toContainText('真实邮寄凭证.pdf');
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/login/u);
   await loginWithPassword(page, username, password, '/client/leads');
   await page.goto(`/client/cases/${seeded.caseId}`);
   await expect(
     page.locator('[data-test="complaint-mailing-panel"]'),
-  ).toContainText('实际邮寄日');
+  ).toContainText('邮寄日期');
   await expect(page.locator('[data-test="mailing-submit"]')).toHaveCount(0);
   const receiptDownload = page
     .locator('[data-test="complaint-mailing-panel"]')
@@ -183,13 +316,13 @@ test('authorized operator can mail a case, same-department colleague stays read-
     '/cases',
   );
   await page.goto(`/cases/${seeded.caseId}`);
-  await page.locator('[data-test^="complaint-version-"]').first().check();
-  await page.locator('[data-test="confirm-disclose-false"]').check();
-  await page.locator('[data-test="confirmation-review"]').click();
+  await page.locator('[data-test="workspace-primary-action"]').click();
+  await expect(page.locator('[data-test="confirmation-form"]')).toBeVisible();
   await page.locator('[data-test="confirmation-submit"]').click();
-  await expect(page.locator('.page-head .pill')).toHaveText('诉状待盖章');
+  await expect(page.locator('.detail-actions .pill')).toHaveText('诉状待盖章');
 
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/login/u);
   await loginWithPassword(
     page,
     coreLeadFixtures.selfUsername,
@@ -220,6 +353,7 @@ test('authorized operator can mail a case, same-department colleague stays read-
   );
 
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/login/u);
   await loginWithPassword(
     page,
     coreLeadFixtures.operatorUsername,
@@ -227,17 +361,14 @@ test('authorized operator can mail a case, same-department colleague stays read-
     '/cases',
   );
   await page.goto(`/cases/${seeded.caseId}`);
-  await expect(page.locator('.page-head .pill')).toHaveText('诉状待盖章');
+  await expect(page.locator('.detail-actions .pill')).toHaveText('诉状待盖章');
+  await page.locator('[data-test="workspace-primary-action"]').click();
   await page
-    .locator('[data-test="complaint-mailing-panel"] input[type="file"]')
-    .setInputFiles({
-      name: '运营邮寄凭证.pdf',
-      mimeType: 'application/pdf',
-      buffer: Buffer.from('%PDF-1.4\n运营邮寄凭证\n%%EOF\n'),
-    });
+    .locator('[data-test="complaint-mail-remark"]')
+    .fill('运营登记邮寄');
   await page.getByRole('button', { name: '核对邮寄信息' }).click();
   await page.locator('[data-test="mailing-submit"]').click();
-  await expect(page.locator('.page-head .pill')).toHaveText('待提交立案');
+  await expect(page.locator('.detail-actions .pill')).toHaveText('待提交立案');
   await page.goto('/cases?view=department');
   const filingStageLink = page
     .locator('[data-test="case-stage"]')
@@ -252,6 +383,7 @@ test('authorized operator can mail a case, same-department colleague stays read-
     page.locator(`[data-test="case-list"] a[href^="/cases/${seeded.caseId}"]`),
   ).toHaveCount(1);
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/login/u);
 
   await loginWithPassword(page, username, password, '/client/leads');
   await page.goto(`/client/cases/${seeded.caseId}`);

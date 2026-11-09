@@ -26,6 +26,10 @@ import {
   clearCaseAcceptanceFixture,
   prepareCaseAcceptanceFixture,
 } from '../support/case-acceptance-database.mjs';
+import {
+  closeCaseWorkspaceDrawer,
+  openCaseWorkspaceCommand,
+} from '../support/case-workspace-browser';
 
 const operatorAuth = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
 const pdfBytes = Buffer.from(
@@ -205,6 +209,7 @@ test('operator and assigned lawyer register through real browser sessions; clien
   browser,
 }) => {
   test.setTimeout(300_000);
+  await page.setViewportSize({ width: 1440, height: 1120 });
   const operatorCase = await waitingFormal(request, false);
   await login(
     page,
@@ -213,14 +218,19 @@ test('operator and assigned lawyer register through real browser sessions; clien
     personnelAdmin.password,
   );
   await page.goto('/settings/people-access');
-  await expect(page.getByRole('heading', { name: '人员与权限' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '角色模板' })).toBeVisible();
   const firstRoleEditor = page.locator('[data-test^="edit-role-"]').first();
   await expect(firstRoleEditor).toBeVisible();
   await firstRoleEditor.click();
   await expect(
     page.locator('[data-test="grant-CASE_ACCEPTANCE_REGISTER"]'),
   ).toBeVisible();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: '取消', exact: true })
+    .click();
   await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login/u);
 
   await login(
     page,
@@ -230,6 +240,11 @@ test('operator and assigned lawyer register through real browser sessions; clien
   );
 
   await page.goto(`/cases/${operatorCase.caseId}`);
+  await openCaseWorkspaceCommand(
+    page,
+    'acceptance',
+    '[data-test="case-acceptance-panel"]',
+  );
   const panel = page.locator('[data-test="case-acceptance-panel"]');
   await expect(panel).toBeVisible();
   const uploadDetailRefresh = page.waitForResponse(
@@ -257,6 +272,38 @@ test('operator and assigned lawyer register through real browser sessions; clien
   await panel
     .locator('[data-test="acceptance-court-case-no"]')
     .fill(operatorCourtCaseNo);
+  const due = today();
+  await panel.getByLabel('缴费截止日期').fill(due);
+  await panel.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(panel).toContainText('已保存草稿');
+  const draftDetail = await page.request.get(
+    `/api/v1/cases/${operatorCase.caseId}`,
+  );
+  await expectStatus(draftDetail, 200);
+  expect(await draftDetail.json()).toMatchObject({
+    stage: 'WAITING_FORMAL_ACCEPTANCE',
+    acceptance: null,
+  });
+  const calendarPath = `/api/v1/calendar?month=${due.slice(0, 7)}`;
+  const draftCalendar = await page.request.get(calendarPath);
+  await expectStatus(draftCalendar, 200);
+  expect((await draftCalendar.json()).events).not.toContainEqual(
+    expect.objectContaining({ caseId: operatorCase.caseId, type: 'pay' }),
+  );
+  await page.reload();
+  await openCaseWorkspaceCommand(
+    page,
+    'acceptance',
+    '[data-test="case-acceptance-panel"]',
+  );
+  await expect(panel.getByLabel('缴费截止日期')).toHaveValue(due);
+  await expect(
+    panel.locator('[data-test="acceptance-court-case-no"]'),
+  ).toHaveValue(operatorCourtCaseNo);
+  await expect(panel.locator('input[type="checkbox"]')).toBeChecked();
+  await page.screenshot({
+    path: '.local/case-workflow-acceptance/formal-acceptance.png',
+  });
   const detailRefresh = page.waitForResponse(
     (response) =>
       response.request().method() === 'GET' &&
@@ -264,26 +311,92 @@ test('operator and assigned lawyer register through real browser sessions; clien
         `/api/v1/cases/${operatorCase.caseId}`,
     { timeout: 10_000 },
   );
-  const registerButton = panel.getByRole('button', { name: '登记正式立案' });
+  const registerButton = panel.locator('[data-test="acceptance-register"]');
   await expect(registerButton).toBeEnabled();
   await registerButton.click();
   const refreshedDetail = await detailRefresh;
   await expectStatus(refreshedDetail, 200);
-  expect(await refreshedDetail.json()).toMatchObject({
+  const acceptedDetail = await refreshedDetail.json();
+  expect(acceptedDetail).toMatchObject({
     stage: 'WAITING_HEARING',
     acceptance: { courtCaseNo: operatorCourtCaseNo },
   });
-  await expect(page.locator('.page-head .pill')).toHaveText('待开庭');
+  await expect(page.locator('.detail-actions .pill')).toHaveText('待开庭');
   await expect(
     panel.locator('[data-test="case-acceptance-record"]'),
   ).toContainText(operatorCourtCaseNo);
   await expect(panel).toContainText(operatorCourtCaseNo);
   await expect(panel).toContainText('受理时冻结的版本');
+  const acceptedCalendar = await page.request.get(calendarPath);
+  await expectStatus(acceptedCalendar, 200);
+  expect((await acceptedCalendar.json()).events).toContainEqual(
+    expect.objectContaining({
+      caseId: operatorCase.caseId,
+      type: 'pay',
+      sourceType: 'CASE_PAYMENT_DUE',
+      date: due,
+    }),
+  );
+  const operatorSession = await page.request.get('/api/v1/auth/session');
+  await expectStatus(operatorSession, 200);
+  const csrf = (await operatorSession.json()).csrfToken as string;
+  const correctionPath = `/api/v1/cases/${operatorCase.caseId}/acceptance-correction`;
+  const movedDate = new Date(Date.parse(due) + 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const correction = {
+    acceptanceId: acceptedDetail.acceptance.id as string,
+    acceptedAt: today(),
+    courtCaseNo: operatorCourtCaseNo,
+    reason: '隔离验收缴费截止日期更正',
+  };
+  for (const [expectedAcceptanceRevision, paymentDueAt] of [
+    [0, movedDate],
+    [1, null],
+  ] as const) {
+    const changed = await page.request.post(correctionPath, {
+      headers: { Origin: new URL(page.url()).origin, 'X-CSRF-Token': csrf },
+      data: {
+        ...correction,
+        expectedAcceptanceRevision,
+        paymentDueAt,
+        idempotencyKey: randomUUID(),
+      },
+    });
+    await expectStatus(changed, 201);
+    const view = await page.request.get(
+      `/api/v1/calendar?month=${movedDate.slice(0, 7)}`,
+    );
+    await expectStatus(view, 200);
+    const deadlines = (await view.json()).events.filter(
+      (event: { caseId: string; type: string }) =>
+        event.caseId === operatorCase.caseId && event.type === 'pay',
+    );
+    expect(deadlines.map((event: { date: string }) => event.date)).toEqual(
+      paymentDueAt ? [paymentDueAt] : [],
+    );
+    const priorMonth = await page.request.get(calendarPath);
+    await expectStatus(priorMonth, 200);
+    expect((await priorMonth.json()).events).not.toContainEqual(
+      expect.objectContaining({
+        caseId: operatorCase.caseId,
+        date: due,
+        type: 'pay',
+      }),
+    );
+  }
   await page.reload();
+  await openCaseWorkspaceCommand(
+    page,
+    'acceptance',
+    '[data-test="case-acceptance-panel"]',
+  );
   await expect(
     page.locator('[data-test="case-acceptance-record"]'),
   ).toContainText(operatorCourtCaseNo);
+  await closeCaseWorkspaceDrawer(page);
   await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login/u);
   await login(
     page,
     '/cases',
@@ -291,6 +404,11 @@ test('operator and assigned lawyer register through real browser sessions; clien
     coreLeadFixtures.operatorPassword,
   );
   await page.goto(`/cases/${operatorCase.caseId}`);
+  await openCaseWorkspaceCommand(
+    page,
+    'acceptance',
+    '[data-test="case-acceptance-panel"]',
+  );
   const operatorPanel = page.locator('[data-test="case-acceptance-panel"]');
   expect(
     await downloadMaterialBytes(page, operatorPanel, '浏览器受理通知书.pdf'),
@@ -346,7 +464,7 @@ test('operator and assigned lawyer register through real browser sessions; clien
     await lawyerPanel
       .locator('[data-test="acceptance-court-case-no"]')
       .fill(`（2026）乙0202民初${randomUUID().slice(0, 6)}号`);
-    await lawyerPanel.getByRole('button', { name: '登记正式立案' }).click();
+    await lawyerPanel.locator('[data-test="acceptance-register"]').click();
     await expect(
       lawyerPanel.locator('[data-test="case-acceptance-record"]'),
     ).toBeVisible();

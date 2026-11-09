@@ -60,6 +60,47 @@ describe('CaseListPreferenceService', () => {
     });
   });
 
+  it('defaults mine to hide owner and stores it under a separate view bucket', async () => {
+    const { db, service } = fixture();
+    expect(await service.get(actor, 'all', 'mine')).toEqual({
+      order: [...caseListColumns],
+      hidden: ['owner'],
+    });
+    expect(db.caseListPreference.findUnique).toHaveBeenCalledWith({
+      where: {
+        userId_departmentId_bucket: {
+          userId: actor.userId,
+          departmentId: actor.departmentId,
+          bucket: 'mine-all',
+        },
+      },
+      select: { columnOrder: true, hiddenColumns: true },
+    });
+  });
+
+  it('saves owner visibility for mine without changing the department bucket', async () => {
+    const { db, service } = fixture();
+    const saved = await service.put(
+      actor,
+      'all',
+      { order: [...caseListColumns], hidden: [] },
+      'mine',
+    );
+    expect(saved.hidden).toEqual([]);
+    expect(db.caseListPreference.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId_departmentId_bucket: {
+            userId: actor.userId,
+            departmentId: actor.departmentId,
+            bucket: 'mine-all',
+          },
+        },
+        create: expect.objectContaining({ bucket: 'mine-all' }),
+      }),
+    );
+  });
+
   it('fully replaces the current bucket without a business write', async () => {
     const { db, service } = fixture();
     const order = [...caseListColumns];

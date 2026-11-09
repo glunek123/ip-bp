@@ -175,25 +175,23 @@ describe('CaseComplaintConfirmationService', () => {
     );
   });
 
-  it('requires a change note for a new version or changed amount fact', async () => {
+  it('records changed amount facts without requiring an extra form field', async () => {
     const f = fixture();
     f.materials.listSubmittedCaseComplaintVersionIds.mockResolvedValue([]);
-    await expect(f.service.confirm(actor, caseId, input)).rejects.toMatchObject(
-      { response: { code: 'VALIDATION_ERROR' } },
-    );
-    f.materials.listSubmittedCaseComplaintVersionIds.mockResolvedValue([
-      complaintId,
-    ]);
     await expect(
       f.service.confirm(actor, caseId, { ...input, amount: '124.00' }),
-    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
-    await expect(
-      f.service.confirm(actor, caseId, {
-        ...input,
-        amount: '124.00',
-        changeNote: '核实后调整金额',
-      }),
     ).resolves.toMatchObject({ version: 4 });
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          details: expect.objectContaining({
+            priorAmount: '123.45',
+            amount: '124.00',
+            changed: true,
+          }),
+        }),
+      }),
+    );
   });
 
   it.each([

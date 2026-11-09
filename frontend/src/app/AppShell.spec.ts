@@ -564,7 +564,7 @@ describe('AppShell', () => {
   });
   it('adds one formal acceptance stage link with its current count', async () => {
     const { wrapper } = await mountShell();
-    await wrapper.get('[data-test="case-expand"]').trigger('click');
+    await wrapper.get('[data-test="case-view-mine"]').trigger('click');
     const stages = wrapper.findAll('[data-test="case-stage"]');
     expect(stages.map((link) => link.text())).toContain('待正式立案2');
     expect(stages.map((link) => link.text())).toContain('待开庭1');
@@ -810,11 +810,11 @@ describe('AppShell', () => {
 
   it('keeps personal and department counts attached to their own sibling entries', async () => {
     const { wrapper, router } = await mountShell('/cases?view=mine');
-    expect(wrapper.get('[data-test="case-view-mine"]').text()).toBe(
+    expect(wrapper.get('[data-test="case-view-mine"]').text()).toContain(
       '我的案件19',
     );
-    expect(wrapper.get('[data-test="case-view-department"]').text()).toBe(
-      '全部部门案件33',
+    expect(wrapper.get('[data-test="case-view-department"]').text()).toContain(
+      '部门案件33',
     );
     expect(wrapper.find('[data-test="case-nav-parent"]').exists()).toBe(false);
     await router.push('/cases?view=department&stage=PENDING_MATCH');
@@ -824,8 +824,20 @@ describe('AppShell', () => {
     ).toContain('active');
     expect(wrapper.get('[data-test="case-stage"]').text()).toBe('案件待匹配17');
     expect(wrapper.get('[data-test="breadcrumbs"]').text()).toContain(
-      '全部部门案件',
+      '部门案件',
     );
+  });
+
+  it('expands and collapses department stages from the full navigation row', async () => {
+    const { wrapper } = await mountShell('/cases?view=department');
+    const departmentRow = wrapper.get('[data-test="case-view-department"]');
+    expect(departmentRow.attributes('aria-expanded')).toBe('true');
+    await departmentRow.trigger('click');
+    expect(departmentRow.attributes('aria-expanded')).toBe('false');
+    expect(wrapper.find('[aria-label="案件范围与阶段"]').exists()).toBe(false);
+    await departmentRow.trigger('click');
+    expect(departmentRow.attributes('aria-expanded')).toBe('true');
+    expect(wrapper.find('[aria-label="案件范围与阶段"]').exists()).toBe(true);
   });
 
   it('shows the notary office entry only when the office list is authorized', async () => {
@@ -907,7 +919,7 @@ describe('AppShell', () => {
     );
     const { wrapper, router } = await mountShell('/cases/case-1');
     expect(wrapper.find('[data-test="case-view-mine"]').exists()).toBe(false);
-    expect(wrapper.find('[data-test="case-expand"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="case-view-mine"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="案件范围与阶段"]').exists()).toBe(false);
     expect(api.listCases).toHaveBeenCalledTimes(2);
     await router.push('/cases?view=department');
@@ -929,7 +941,7 @@ describe('AppShell', () => {
       '我的案件',
     );
     expect(wrapper.get('[data-test="case-view-department"]').text()).toContain(
-      '全部部门案件',
+      '部门案件',
     );
   });
 
@@ -1347,7 +1359,7 @@ describe('case route context', () => {
     '/customers?stage=WAITING_HEARING&view=department&page=3',
   ])('drops foreign case filters when entering cases from %s', async (path) => {
     const { wrapper, router } = await mountShell(path);
-    await wrapper.get('[data-test="case-expand"]').trigger('click');
+    await wrapper.get('[data-test="case-view-mine"]').trigger('click');
     const nav = wrapper.get('[aria-label="案件范围与阶段"]');
     expect(nav.findAll('a.active')).toHaveLength(0);
     for (const view of ['mine', 'department']) {

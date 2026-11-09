@@ -344,7 +344,7 @@ onBeforeUnmount(() => {
         />
       </label>
       <label
-        >缴费截止日（选填）<input
+        >缴费截止日期（选填）<input
           v-model="paymentDueAt"
           type="date"
           :disabled="submitting || unknownRequest !== null"

@@ -30,6 +30,20 @@ describe('case list preference API', () => {
     );
   });
 
+  it('keeps mine view preferences separate from department preferences', async () => {
+    const expected = {
+      ...structuredClone(defaultCaseListPreference),
+      hidden: ['owner'],
+    };
+    const fetchMock = mockJson(expected);
+    await expect(
+      getCaseListPreference('all', undefined, 'mine'),
+    ).resolves.toEqual(expected);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases/list-preferences/all?view=mine',
+    );
+  });
+
   it('PUTs a complete preference with request options and returns decoded server state', async () => {
     const preference: CaseListPreference = {
       order: [...defaultCaseListPreference.order].reverse().reverse(),
@@ -53,6 +67,17 @@ describe('case list preference API', () => {
     expect(
       new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('X-Test'),
     ).toBe('request-option');
+  });
+
+  it('accepts owner visibility as a hidden-only preference', async () => {
+    const preference: CaseListPreference = {
+      ...structuredClone(defaultCaseListPreference),
+      hidden: ['owner'],
+    };
+    mockJson(preference);
+    await expect(saveCaseListPreference('all', preference)).resolves.toEqual(
+      preference,
+    );
   });
 
   it('snapshots the preference body before the caller can mutate its arrays', async () => {

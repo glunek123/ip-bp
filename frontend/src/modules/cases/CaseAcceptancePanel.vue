@@ -10,6 +10,7 @@ import {
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   registerCaseAcceptance,
+  caseAcceptanceDraft,
   listFilingCourts,
   todayShanghai,
   type AcceptanceMaterials,
@@ -67,6 +68,11 @@ const uploadError = ref<Record<Category, string>>({
 const error = ref('');
 const success = ref('');
 const submitting = ref(false);
+const draftLoading = ref(false);
+const draftSaving = ref(false);
+const savedVersion = ref<number | null>(null);
+const draftBusy = computed(() => draftLoading.value || draftSaving.value);
+const audience = computed(() => (props.lawyer ? 'lawyer' : 'internal'));
 const unknownRequest = ref<RegisterCaseAcceptanceInput | null>(null);
 let requestFingerprint = '';
 let requestKey = '';
@@ -111,6 +117,9 @@ function clearContext(): void {
   error.value = '';
   success.value = '';
   submitting.value = false;
+  draftLoading.value = false;
+  draftSaving.value = false;
+  savedVersion.value = null;
   unknownRequest.value = null;
   requestFingerprint = '';
   requestKey = '';
@@ -196,6 +205,34 @@ const canRegister = computed(
     props.item.canRegisterAcceptance &&
     props.item.acceptance === null,
 );
+watch(
+  [() => props.item.id, () => props.contextKey, canRegister],
+  async ([id, , allowed]) => {
+    if (!allowed) return;
+    const context = captureContext();
+    draftLoading.value = true;
+    try {
+      const { draft, version } = await caseAcceptanceDraft(id, audience.value);
+      if (!isCurrent(context) || !draft) return;
+      savedVersion.value = version;
+      acceptedAt.value = draft.acceptedAt ?? '';
+      paymentDueAt.value = draft.paymentDueAt ?? '';
+      courtCaseNo.value = draft.courtCaseNo ?? '';
+      courtId.value = draft.courtId ?? '';
+      selected.value = new Set([
+        ...draft.acceptanceNoticeContentVersionIds,
+        ...draft.paymentListContentVersionIds,
+        ...draft.serviceDocumentContentVersionIds,
+      ]);
+    } catch {
+      if (isCurrent(context))
+        error.value = '无法读取正式立案草稿，请刷新后核对。';
+    } finally {
+      if (isCurrent(context)) draftLoading.value = false;
+    }
+  },
+  { immediate: true },
+);
 const canUpload = computed(
   () =>
     props.item.canUploadAcceptanceMaterials &&
@@ -240,6 +277,7 @@ function validBusinessDate(value: string): boolean {
 const ready = computed(
   () =>
     canRegister.value &&
+    !draftBusy.value &&
     validBusinessDate(acceptedAt.value) &&
     acceptedAt.value <= todayShanghai() &&
     acceptedAt.value >= minimumAcceptedAt.value &&
@@ -264,7 +302,7 @@ function selectedIds(category: Category): string[] {
 }
 function makeInput(): RegisterCaseAcceptanceInput {
   const input: RegisterCaseAcceptanceInput = {
-    expectedVersion: props.item.version,
+    expectedVersion: savedVersion.value ?? props.item.version,
     idempotencyKey: requestKey || (requestKey = makeKey()),
     paymentDueAt: paymentDueAt.value || null,
     acceptedAt: acceptedAt.value,
@@ -348,6 +386,46 @@ async function register(input: RegisterCaseAcceptanceInput): Promise<void> {
     if (isCurrent(context)) submitting.value = false;
   }
 }
+async function saveDraft(): Promise<void> {
+  if (
+    !canRegister.value ||
+    draftBusy.value ||
+    submitting.value ||
+    uploading.value ||
+    unknownRequest.value
+  )
+    return;
+  const context = captureContext();
+  draftSaving.value = true;
+  error.value = '';
+  success.value = '';
+  try {
+    const result = await caseAcceptanceDraft(context.caseId, audience.value, {
+      expectedVersion: savedVersion.value ?? props.item.version,
+      ...(acceptedAt.value ? { acceptedAt: acceptedAt.value } : {}),
+      paymentDueAt: paymentDueAt.value || null,
+      ...(courtCaseNo.value.trim()
+        ? { courtCaseNo: courtCaseNo.value.trim() }
+        : {}),
+      ...(needsCourt.value && courtId.value ? { courtId: courtId.value } : {}),
+      acceptanceNoticeContentVersionIds: selectedIds('ACCEPTANCE_NOTICE'),
+      paymentListContentVersionIds: selectedIds('PAYMENT_LIST'),
+      serviceDocumentContentVersionIds: selectedIds('SERVICE_DOCUMENT'),
+    });
+    if (!isCurrent(context)) return;
+    savedVersion.value = result.version;
+    success.value = '已保存草稿，案件仍在待正式立案。';
+  } catch (reason) {
+    if (isCurrent(context))
+      error.value =
+        reason instanceof ApiError
+          ? reason.message
+          : '草稿保存失败，请刷新后核对。';
+  } finally {
+    if (isCurrent(context)) draftSaving.value = false;
+  }
+}
+
 async function submit(): Promise<void> {
   if (!ready.value) return;
   await register(makeInput());
@@ -449,7 +527,7 @@ async function download(file: CaseFile): Promise<void> {
 
     <form v-if="canRegister" class="form-stack" @submit.prevent="submit">
       <label>
-        <span>受理日期 <span class="required-mark">*</span></span>
+        <span>立案受理日期 <span class="required-mark">*</span></span>
         <input
           v-model="acceptedAt"
           data-test="acceptance-accepted-at"
@@ -457,7 +535,7 @@ async function download(file: CaseFile): Promise<void> {
           required
           :min="minimumAcceptedAt"
           :max="todayShanghai()"
-          :disabled="unknownRequest !== null || submitting"
+          :disabled="unknownRequest !== null || submitting || draftBusy"
           @input="
             error = '';
             success = '';
@@ -465,10 +543,10 @@ async function download(file: CaseFile): Promise<void> {
         />
       </label>
       <label
-        >缴费截止日（选填）<input
+        >缴费截止日期<input
           v-model="paymentDueAt"
           type="date"
-          :disabled="submitting"
+          :disabled="submitting || draftBusy"
       /></label>
       <label>
         <span>法院案号 <span class="required-mark">*</span></span>
@@ -477,7 +555,7 @@ async function download(file: CaseFile): Promise<void> {
           data-test="acceptance-court-case-no"
           maxlength="100"
           required
-          :disabled="unknownRequest !== null || submitting"
+          :disabled="unknownRequest !== null || submitting || draftBusy"
           @input="
             error = '';
             success = '';
@@ -490,7 +568,9 @@ async function download(file: CaseFile): Promise<void> {
           v-model="courtId"
           data-test="acceptance-court-id"
           required
-          :disabled="courtsLoading || unknownRequest !== null || submitting"
+          :disabled="
+            courtsLoading || unknownRequest !== null || submitting || draftBusy
+          "
           @change="
             error = '';
             success = '';
@@ -503,15 +583,6 @@ async function download(file: CaseFile): Promise<void> {
         </select>
         <span v-if="courtsLoading" class="field-help">正在读取可选法院…</span>
       </label>
-      <ElButton
-        type="primary"
-        native-type="submit"
-        data-test="acceptance-register"
-        :disabled="!ready"
-        :loading="submitting"
-        @click="submit"
-        >登记正式立案</ElButton
-      >
     </form>
 
     <p v-else-if="item.acceptance" data-test="case-acceptance-record">
@@ -538,7 +609,7 @@ async function download(file: CaseFile): Promise<void> {
       type="primary"
       data-test="acceptance-retry"
       :loading="submitting"
-      :disabled="submitting"
+      :disabled="submitting || draftBusy"
       @click="retry"
       >使用相同请求重试</ElButton
     >
@@ -561,7 +632,7 @@ async function download(file: CaseFile): Promise<void> {
               <input
                 type="checkbox"
                 :checked="selected.has(file.contentVersionId)"
-                :disabled="unknownRequest !== null || submitting"
+                :disabled="unknownRequest !== null || submitting || draftBusy"
                 @change="
                   selected.has(file.contentVersionId)
                     ? selected.delete(file.contentVersionId)
@@ -601,6 +672,8 @@ async function download(file: CaseFile): Promise<void> {
             multiple
             :disabled="
               uploading !== null ||
+              draftBusy ||
+              submitting ||
               unknownRequest !== null ||
               activeMaterialCount(category.value) >= 10
             "
@@ -615,5 +688,33 @@ async function download(file: CaseFile): Promise<void> {
         </p>
       </section>
     </div>
+    <div v-if="canRegister" class="operation-bar acceptance-actions">
+      <ElButton
+        type="primary"
+        data-test="acceptance-register"
+        :disabled="!ready"
+        :loading="submitting"
+        @click="submit"
+        >提交</ElButton
+      >
+      <ElButton
+        data-test="acceptance-save"
+        :disabled="
+          draftBusy ||
+          submitting ||
+          uploading !== null ||
+          unknownRequest !== null
+        "
+        :loading="draftSaving"
+        @click="saveDraft"
+        >保存</ElButton
+      >
+    </div>
   </section>
 </template>
+
+<style scoped>
+.acceptance-actions {
+  justify-content: flex-end;
+}
+</style>

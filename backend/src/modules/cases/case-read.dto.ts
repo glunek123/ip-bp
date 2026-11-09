@@ -63,7 +63,8 @@ class CaseComplaintConfirmationSummaryDto {
   @ApiProperty({ type: String, nullable: true }) amount!: string | null;
   @ApiProperty({ type: String, nullable: true }) pendingReason!: string | null;
   @ApiProperty({ type: String, nullable: true }) changeNote!: string | null;
-  @ApiProperty() confirmDisclose!: boolean;
+  @ApiProperty({ type: Boolean, nullable: true }) confirmDisclose!:
+    boolean | null;
   @ApiProperty({ format: 'date-time' }) confirmedAt!: string;
   @ApiProperty({ format: 'uuid' }) confirmedByUserId!: string;
   @ApiProperty({ type: CaseCertificateFileDto, nullable: true })
@@ -71,6 +72,7 @@ class CaseComplaintConfirmationSummaryDto {
 }
 class CaseComplaintMailingSummaryDto {
   @ApiProperty({ format: 'date' }) mailedAt!: string;
+  @ApiProperty({ type: String, nullable: true }) remark!: string | null;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
   @ApiProperty({ format: 'uuid' }) recordedByUserId!: string;
   @ApiProperty({ enum: ['INTERNAL', 'CLIENT', 'LAWYER'] }) actorType!:
@@ -88,6 +90,7 @@ class CaseFilingSubmissionSummaryDto {
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
   @ApiProperty({ format: 'uuid' }) recordedByUserId!: string;
   @ApiProperty({ type: String, nullable: true }) mediationNo!: string | null;
+  @ApiProperty({ type: String, nullable: true }) claimAmount!: string | null;
   @ApiProperty({ type: [CaseCertificateFileDto] })
   evidenceFiles!: CaseCertificateFileDto[];
   @ApiProperty({ type: [CaseCertificateFileDto] })
@@ -841,6 +844,8 @@ class CaseDefendantDto {
   @ApiProperty({ type: String, nullable: true }) idNo!: string | null;
   @ApiProperty({ type: String, nullable: true }) phone!: string | null;
   @ApiProperty({ type: String, nullable: true }) address!: string | null;
+  @ApiProperty({ type: String, nullable: true }) legalRepresentative!:
+    string | null;
 }
 class CaseDefendantContactChangeDto {
   @ApiProperty({ format: 'uuid' }) id!: string;

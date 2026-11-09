@@ -26,6 +26,48 @@ const caseRow = {
 };
 
 describe('CaseCalendarSourceService', () => {
+  it('projects the corrected payment due date and removes it when cleared', async () => {
+    const { service, database } = fixture('INTERNAL');
+    const acceptance = {
+      id: 'acceptance-1',
+      paymentDueAt: new Date('2026-10-13T00:00:00.000Z'),
+      corrections: [
+        { paymentDueAt: new Date('2026-10-20T00:00:00.000Z') as Date | null },
+      ],
+    };
+    database.case.findMany.mockResolvedValue([
+      {
+        ...caseRow,
+        acceptance,
+        currentHearingArrangement: null,
+        responsibilityEpoch: 1,
+        judgmentFacts: [],
+        secondInstanceResults: [],
+      },
+    ]);
+    expect(await service.list(actor)).toContainEqual(
+      expect.objectContaining({
+        sourceType: 'CASE_PAYMENT_DUE',
+        sourceId: acceptance.id,
+        date: '2026-10-20',
+      }),
+    );
+    expect(await service.listOwnedReminders(actor)).toContainEqual(
+      expect.objectContaining({
+        sourceType: 'CASE_PAYMENT_DUE',
+        sourceId: acceptance.id,
+        date: '2026-10-20',
+      }),
+    );
+    acceptance.corrections[0]!.paymentDueAt = null;
+    expect(await service.list(actor)).not.toContainEqual(
+      expect.objectContaining({ sourceType: 'CASE_PAYMENT_DUE' }),
+    );
+    expect(await service.listOwnedReminders(actor)).not.toContainEqual(
+      expect.objectContaining({ sourceType: 'CASE_PAYMENT_DUE' }),
+    );
+  });
+
   it('uses a corrected hearing date for client calendar without exposing internal metadata', async () => {
     const { service, database } = fixture('CLIENT');
     database.case.findMany.mockResolvedValue([

@@ -23,6 +23,7 @@ import {
   rejectCaseComplaintReceiptWrites,
   rejectAuditWrites,
   resetCoreLeadE2eData,
+  seedHistoricalCaseDefendants,
   setInternalAccountActive,
   setRoleGrant,
   verifyCaseComplaintMigration,
@@ -173,14 +174,19 @@ async function matchCaseThroughBrowser(
   await expect(form).toBeVisible();
   await form.getByLabel('主体类型').selectOption('ORGANIZATION');
   await form.getByLabel('名称').fill('杭州起诉材料验收公司');
-  await form.getByLabel('按姓名或用户名搜索').fill(lawyerAccount.username);
+  await form.getByRole('button', { name: '保存被告' }).click();
+  await expect(form.getByRole('heading', { name: '匹配律师' })).toBeVisible();
+  await form.getByLabel('输入姓名搜索').fill(lawyerAccount.displayName);
   await expect(form.getByLabel('账号')).toContainText(
     `${lawyerAccount.displayName}（${lawyerAccount.username}）`,
   );
   await form.getByLabel('账号').selectOption({
     label: `${lawyerAccount.displayName}（${lawyerAccount.username}）`,
   });
-  await page.getByRole('button', { name: '确认匹配并进入待写诉状' }).click();
+  await page.screenshot({
+    path: '.local/case-workflow-acceptance/match-lawyer.png',
+  });
+  await page.getByRole('button', { name: '匹配律师', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('待写诉状');
   await expect(
     page.locator('.case-workspace-editors[role="dialog"]'),
@@ -244,6 +250,7 @@ async function createPendingMatchCase(
     leadId: string,
     leadInput: Record<string, unknown>,
   ) => Promise<void>,
+  shopExternalId?: string,
 ) {
   const username = `case-client-${randomUUID().slice(0, 8)}`;
   const password = 'client correct horse battery';
@@ -270,6 +277,7 @@ async function createPendingMatchCase(
     source: 'ONLINE',
     platform: 'TAOBAO',
     foundAt: '2026-09-21T02:30:00.000Z',
+    ...(shopExternalId ? { shopExternalId } : {}),
     shopName: `案件验收店铺-${randomUUID().slice(0, 8)}`,
     needDisclose: false,
     products: [
@@ -506,6 +514,9 @@ function submitComplaint(
 
 async function createReadyComplaintCase(request: APIRequestContext) {
   const { caseId } = await createPendingMatchCase(request);
+  await seedHistoricalCaseDefendants(caseId, [
+    { kind: 'ORGANIZATION', name: '起诉材料并发验收公司' },
+  ]);
   const matched = await matchCase(request, caseId, {
     expectedVersion: 1,
     idempotencyKey: randomUUID(),
@@ -827,6 +838,90 @@ test('complaint submit rolls back failed audit and receipt, then serializes comp
   expect([401, 403]).toContain(revokedReplay.status());
 });
 
+test('synthetic consolidation keeps both source cases and matches only the prepared main case', async ({
+  request,
+}) => {
+  test.setTimeout(120_000);
+  await setRoleGrant(coreLeadFixtures.roleA, 'case.consolidate', 'SELF');
+  const shopExternalId = `consolidation-${randomUUID()}`;
+  const first = await createPendingMatchCase(
+    request,
+    undefined,
+    shopExternalId,
+  );
+  const second = await createPendingMatchCase(
+    request,
+    undefined,
+    shopExternalId,
+  );
+  const defendant = {
+    kind: 'PERSON',
+    name: '隔离验收合并被告',
+    idNo: '110101200001011234',
+  };
+  const consolidated = await request.post('/api/v1/cases/consolidations', {
+    headers: authorizationA,
+    data: {
+      mainCaseId: first.caseId,
+      idempotencyKey: randomUUID(),
+      members: [first.caseId, second.caseId].map((caseId) => ({
+        caseId,
+        expectedVersion: 1,
+        confirmed: true,
+        defendant,
+      })),
+    },
+  });
+  expect(consolidated.status(), await consolidated.text()).toBe(201);
+  const lawyer = await createLawyerAccountThroughApi(request, {
+    fullName: '隔离验收合并律师',
+  });
+  const match = (caseId: string, expectedVersion: number) =>
+    request.post(`/api/v1/cases/${caseId}/match`, {
+      headers: authorizationA,
+      data: {
+        expectedVersion,
+        idempotencyKey: randomUUID(),
+        matchedOn: '2026-09-28',
+        defendants: [defendant],
+        lawyerAccountId: lawyer.id,
+      },
+    });
+  expect((await match(second.caseId, 2)).status()).toBe(409);
+  expect((await match(first.caseId, 2)).status()).toBe(409);
+  const prepared = await request.post(
+    `/api/v1/cases/${first.caseId}/defendants/prepare`,
+    {
+      headers: authorizationA,
+      data: {
+        expectedVersion: 2,
+        idempotencyKey: randomUUID(),
+        defendants: [defendant],
+      },
+    },
+  );
+  expect(prepared.status(), await prepared.text()).toBe(201);
+  const matched = await match(first.caseId, 3);
+  expect(matched.status(), await matched.text()).toBe(201);
+  expect(await matched.json()).toMatchObject({
+    stage: 'WAITING_COMPLAINT',
+    version: 4,
+  });
+  const detail = await request.get(
+    `/api/v1/cases/${first.caseId}/consolidation`,
+    {
+      headers: authorizationA,
+    },
+  );
+  expect(detail.status(), await detail.text()).toBe(200);
+  expect(await detail.json()).toMatchObject({
+    caseCount: 2,
+    cases: expect.arrayContaining([
+      expect.objectContaining({ caseId: first.caseId }),
+      expect.objectContaining({ caseId: second.caseId }),
+    ]),
+  });
+});
 test('an operator matches a real notary case and the result survives refresh', async ({
   page,
   request,
@@ -869,46 +964,40 @@ test('an operator matches a real notary case and the result survives refresh', a
   const form = page.locator('[data-test="case-match-form"]');
   await form.getByLabel('主体类型').selectOption('ORGANIZATION');
   await form.getByLabel('名称').fill('杭州真实匹配测试公司');
+  await form.getByLabel('法定代表人').fill('周立');
   await form.getByLabel('身份证号（选填）').fill('91330000MATCH001');
   await form.getByLabel('电话（选填）').first().fill('05710000000');
   await form.getByLabel('地址（选填）').fill('浙江省杭州市');
-  await form.getByLabel('按姓名或用户名搜索').fill(lawyerAccount.username);
+  await form.getByRole('button', { name: '保存被告' }).click();
+  await expect(form.getByRole('heading', { name: '匹配律师' })).toBeVisible();
+  await form.getByLabel('输入姓名搜索').fill(lawyerAccount.displayName);
   await expect(form.getByLabel('账号')).toContainText(
     `${lawyerAccount.displayName}（${lawyerAccount.username}）`,
   );
   await form.getByLabel('账号').selectOption({
     label: `${lawyerAccount.displayName}（${lawyerAccount.username}）`,
   });
-  await expect(form.getByLabel('实际匹配日期')).not.toHaveValue('');
-  await form.getByLabel('实际匹配日期').fill('2026-09-28');
-  await form.getByLabel('电话（选填）').last().fill('05719999999');
-  await page.getByRole('button', { name: '确认匹配并进入待写诉状' }).click();
+  await expect(form.getByLabel('委案日期')).not.toHaveValue('');
+  await form.getByLabel('委案日期').fill('2026-09-28');
+  await page.screenshot({
+    path: '.local/case-workflow-acceptance/match-lawyer.png',
+  });
+  await page.getByRole('button', { name: '匹配律师', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('待写诉状');
   await expect(page.locator('[data-test="case-match-form"]')).toHaveCount(0);
   await page.reload();
   await revealCaseWorkspaceSection(page, 'case-info');
   await expect(
     page
-      .locator('[data-section="case-info"] .case-workspace-group:visible')
-      .getByText('杭州真实匹配测试公司', { exact: true }),
+      .getByRole('region', { name: '案件信息', exact: true })
+      .getByRole('definition')
+      .filter({ hasText: '杭州真实匹配测试公司' }),
   ).toBeVisible();
   await expect(
     page
-      .locator('[data-section="case-info"] .case-workspace-field')
-      .filter({ has: page.getByText('实际匹配日期', { exact: true }) }),
-  ).toContainText('2026-09-28');
-  await expect(page.getByText('匹配记录时间', { exact: true })).toBeVisible();
-  await page
-    .locator('[data-section="case-info"] .case-workspace-group-nav button')
-    .filter({ hasText: '当前承办律师' })
-    .click();
-  await expect(
-    page.getByRole('heading', { name: '当前承办律师', exact: true }),
-  ).toBeVisible();
-  await expect(
-    page
-      .locator('[data-section="case-info"] .case-workspace-group:visible')
-      .getByText('张律师', { exact: true }),
+      .getByRole('region', { name: '一审信息', exact: true })
+      .getByRole('definition')
+      .filter({ hasText: '张律师' }),
   ).toBeVisible();
   const detail = await request.get(`/api/v1/cases/${caseId}`, {
     headers: authorizationA,
@@ -917,12 +1006,13 @@ test('an operator matches a real notary case and the result survives refresh', a
   expect(await detail.json()).toMatchObject({
     id: caseId,
     stage: 'WAITING_COMPLAINT',
-    version: 2,
+    version: 3,
     defendants: [
       {
         kind: 'ORGANIZATION',
         name: '杭州真实匹配测试公司',
         idNo: '91330000MATCH001',
+        legalRepresentative: '周立',
       },
     ],
     lawyers: [{ fullName: '张律师', lawFirm: null, role: 'PRIMARY' }],
@@ -964,12 +1054,16 @@ test('UI002 normal operator explicitly replays original matching and complaint r
   const matchForm = page.locator('[data-test="case-match-form"]');
   await matchForm.getByLabel('主体类型').selectOption('ORGANIZATION');
   await matchForm.getByLabel('名称').fill('真实原请求恢复验收公司');
-  await matchForm.getByLabel('按姓名或用户名搜索').fill(lawyer.username);
+  await matchForm.getByRole('button', { name: '保存被告' }).click();
+  await expect(
+    matchForm.getByRole('heading', { name: '匹配律师' }),
+  ).toBeVisible();
+  await matchForm.getByLabel('输入姓名搜索').fill(lawyer.username);
   await expect(matchForm.getByLabel('账号')).toContainText(lawyer.username);
   await matchForm
     .getByLabel('账号')
     .selectOption({ label: `${lawyer.displayName}（${lawyer.username}）` });
-  await matchForm.getByLabel('实际匹配日期').fill('2026-10-01');
+  await matchForm.getByLabel('委案日期').fill('2026-10-01');
 
   async function commitLoseAndReplay(
     command: 'match' | 'complaint',
@@ -1043,7 +1137,7 @@ test('UI002 normal operator explicitly replays original matching and complaint r
     ).not.toBeVisible();
   }
   await commitLoseAndReplay('match', 'match', () =>
-    matchForm.getByRole('button', { name: '确认匹配并进入待写诉状' }).click(),
+    matchForm.getByRole('button', { name: '匹配律师', exact: true }).click(),
   );
   await openCaseWorkspaceCommand(
     page,
@@ -1081,7 +1175,7 @@ test('UI002 normal operator explicitly replays original matching and complaint r
   expect(response.status()).toBe(200);
   expect(await response.json()).toMatchObject({
     stage: 'WAITING_COMPLAINT_CONFIRMATION',
-    version: 3,
+    version: 4,
     matchedOn: '2026-10-01',
     complaint: {
       amountState: 'KNOWN',
@@ -1181,6 +1275,7 @@ test('case match rejects stale writes, serializes concurrent writes, and preserv
       phone: '05718888888',
     },
   };
+  await seedHistoricalCaseDefendants(caseId, firstInput.defendants);
   const future = await matchCase(request, caseId, {
     ...firstInput,
     matchedOn: '2999-01-01',
@@ -1196,7 +1291,6 @@ test('case match rejects stale writes, serializes concurrent writes, and preserv
   const secondInput: MatchInput = {
     ...firstInput,
     idempotencyKey: randomUUID(),
-    defendants: [{ kind: 'ORGANIZATION', name: '并发公司' }],
   };
   const concurrent = await Promise.all([
     matchCase(request, caseId, firstInput),
@@ -1236,6 +1330,7 @@ test('pre-date matched case and success receipt remain readable and exactly repl
     defendants: [{ kind: 'PERSON', name: '升级前当事人' }],
     lawyer: { fullName: '升级前律师', lawFirm: '旧律所' },
   };
+  await seedHistoricalCaseDefendants(caseId, original.defendants);
   const created = await matchCase(request, caseId, original);
   expect(created.status(), await created.text()).toBe(201);
   const { matchedOn: originalDate, ...legacyRequest } = original;
@@ -1335,6 +1430,7 @@ test('audit and receipt failures roll back the match and permit retry after reco
       defendants: [{ kind: 'PERSON', name: '赵某' }],
       lawyer: { fullName: '周律师', lawFirm: '滨江律师事务所' },
     };
+    await seedHistoricalCaseDefendants(caseId, input.defendants);
     await inject();
     const failed = await matchCase(request, caseId, input);
     expect(failed.status()).toBeGreaterThanOrEqual(500);
@@ -1346,7 +1442,7 @@ test('audit and receipt failures roll back the match and permit retry after reco
       stage: 'PENDING_MATCH',
       version: 1,
       matchedOn: null,
-      defendants: [],
+      defendants: [expect.objectContaining({ name: '赵某' })],
       lawyers: [],
     });
     await allowInjectedFailures();

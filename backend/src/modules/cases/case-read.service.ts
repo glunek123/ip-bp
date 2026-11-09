@@ -1091,6 +1091,7 @@ export class CaseReadService {
         complaintMailing: {
           select: {
             mailedAt: true,
+            remark: true,
             recordedAt: true,
             recordedByUserId: true,
             actorType: true,
@@ -1104,6 +1105,7 @@ export class CaseReadService {
             recordedAt: true,
             recordedByUserId: true,
             mediationNo: true,
+            claimAmount: true,
           },
         },
         acceptance: {
@@ -1498,7 +1500,7 @@ export class CaseReadService {
         consolidationMembership: { select: { isMain: true } },
         consolidationAsMain: { select: { id: true } },
         defendants: {
-          orderBy: { createdAt: 'asc' },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           select: {
             id: true,
             kind: true,
@@ -1506,6 +1508,7 @@ export class CaseReadService {
             idNo: true,
             phone: true,
             address: true,
+            legalRepresentative: true,
             contactRevision: true,
             contactChanges: {
               orderBy: { toRevision: 'asc' },
@@ -2940,6 +2943,7 @@ export class CaseReadService {
         idNo: defendant.idNo,
         phone: defendant.phone,
         address: defendant.address,
+        legalRepresentative: defendant.legalRepresentative,
       })),
       ...(principal === 'INTERNAL'
         ? {
@@ -3506,6 +3510,7 @@ export class CaseReadService {
               mailedAt: record.complaintMailing.mailedAt
                 .toISOString()
                 .slice(0, 10),
+              remark: record.complaintMailing.remark,
               recordedAt: record.complaintMailing.recordedAt.toISOString(),
               recordedByUserId: record.complaintMailing.recordedByUserId,
               actorType: record.complaintMailing.actorType,
@@ -3530,6 +3535,8 @@ export class CaseReadService {
               recordedAt: record.filingSubmission.recordedAt.toISOString(),
               recordedByUserId: record.filingSubmission.recordedByUserId,
               mediationNo: record.filingSubmission.mediationNo,
+              claimAmount:
+                record.filingSubmission.claimAmount?.toFixed(2) ?? null,
               evidenceFiles: filingFiles
                 .filter((ref) => ref.purpose === 'FILING_EVIDENCE')
                 .map(file),
@@ -3913,6 +3920,7 @@ export class CaseReadService {
             ? null
             : {
                 mailedAt: detail.complaintMailing.mailedAt,
+                remark: detail.complaintMailing.remark,
                 recordedAt: detail.complaintMailing.recordedAt,
                 actorType: detail.complaintMailing.actorType,
                 receiptFiles: detail.complaintMailing.receiptFiles,
@@ -3925,6 +3933,7 @@ export class CaseReadService {
                 submittedAt: detail.filingSubmission.submittedAt,
                 recordedAt: detail.filingSubmission.recordedAt,
                 mediationNo: detail.filingSubmission.mediationNo,
+                claimAmount: detail.filingSubmission.claimAmount,
                 evidenceFiles: detail.filingSubmission.evidenceFiles,
                 screenshotFiles: detail.filingSubmission.screenshotFiles,
               },
@@ -3936,6 +3945,7 @@ export class CaseReadService {
                 trialRoundId: detail.acceptance.trialRoundId,
                 court: detail.acceptance.court,
                 acceptedAt: detail.acceptance.acceptedAt,
+                paymentDueAt: detail.acceptance.paymentDueAt,
                 courtCaseNo: detail.acceptance.courtCaseNo,
                 recordedAt: detail.acceptance.recordedAt,
                 files: detail.acceptance.files,

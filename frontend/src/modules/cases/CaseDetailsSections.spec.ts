@@ -422,7 +422,7 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
       'CA-1',
     );
     expect(caseBody.text()).toContain('未登记');
-    expect(caseBody.text()).toContain('实际匹配日期');
+    expect(caseBody.text()).toContain('委案日期');
     expect(caseBody.text()).toContain('未记录');
     expect(
       wrapper

@@ -52,6 +52,7 @@ import {
   ForbiddenException,
   Get,
   Post,
+  Put,
   Param,
   ParseUUIDPipe,
   Query,
@@ -79,7 +80,12 @@ import {
   CreateCaseExternalEntryResultDto,
 } from './case-external-entry.dto';
 import { CaseMatchService } from './case-match.service';
-import { MatchCaseDto, MatchCaseResponseDto } from './case-match.dto';
+import {
+  MatchCaseDto,
+  MatchCaseResponseDto,
+  PrepareCaseDefendantsDto,
+  PrepareCaseDefendantsResponseDto,
+} from './case-match.dto';
 import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
@@ -133,6 +139,8 @@ import {
 import {
   RegisterCaseAcceptanceDto,
   RegisterCaseAcceptanceResponseDto,
+  CaseAcceptanceDraftResponseDto,
+  SaveCaseAcceptanceDraftDto,
 } from './case-acceptance.dto';
 import { FilingCourtService } from './filing-court.service';
 import {
@@ -474,6 +482,16 @@ export class CaseReadController {
     return this.matching.match(actor, id, body);
   }
 
+  @Post(':id/defendants/prepare')
+  @ApiOkResponse({ type: PrepareCaseDefendantsResponseDto })
+  prepareDefendants(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: PrepareCaseDefendantsDto,
+  ) {
+    return this.matching.prepareDefendants(actor, id, body);
+  }
+
   @Post(':id/complaint-submit')
   @ApiOkResponse({ type: SubmitCaseComplaintResponseDto })
   submitComplaint(
@@ -539,6 +557,25 @@ export class CaseReadController {
     @Body() body: SubmitCaseFilingDto,
   ) {
     return this.filing.submit(actor, id, body);
+  }
+
+  @Get(':id/acceptance-draft')
+  @ApiOkResponse({ type: CaseAcceptanceDraftResponseDto })
+  readAcceptanceDraft(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.acceptance.draft(actor, id);
+  }
+
+  @Put(':id/acceptance-draft')
+  @ApiOkResponse({ type: CaseAcceptanceDraftResponseDto })
+  saveAcceptanceDraft(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: SaveCaseAcceptanceDraftDto,
+  ) {
+    return this.acceptance.draft(actor, id, body);
   }
 
   @Post(':id/acceptance-register')

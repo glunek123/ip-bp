@@ -630,6 +630,41 @@ export class LitigationRefundsService {
     });
   }
 
+  lockJudgmentActor(tx: Prisma.TransactionClient, actor: ActorContext) {
+    return lockCustomerActorFacts(tx, this.organization, actor);
+  }
+
+  async registerJudgmentRefunds(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    sourceId: string,
+    rows: { party: 'COURT' | 'DEFENDANT'; amount: string }[],
+  ) {
+    for (const row of rows) {
+      const head = await this.latest(tx, actor, caseId);
+      const itemId = randomUUID();
+      await this.write(
+        actor,
+        caseId,
+        itemId,
+        'REGISTER',
+        {
+          itemId,
+          idempotencyKey: randomUUID(),
+          expectedInventoryVersionId: head?.versionId ?? null,
+          sourceId,
+          sourceType: 'JUDGMENT',
+          party: row.party,
+          amount: row.amount,
+          description: '判决更新登记应退金额',
+          reason: '随判决资料提交',
+        },
+        tx,
+      );
+    }
+  }
+
   private async write(
     actor: ActorContext,
     caseId: string,
@@ -639,6 +674,7 @@ export class LitigationRefundsService {
       | RegisterLitigationRefundInput
       | CorrectLitigationRefundInput
       | FollowLitigationRefundInput,
+    transaction?: Prisma.TransactionClient,
   ) {
     const key = input.idempotencyKey;
     const expected = input.expectedInventoryVersionId;
@@ -671,219 +707,214 @@ export class LitigationRefundsService {
       expected,
       normalized,
     ]);
-    try {
-      return await this.db.$transaction(
-        async (tx) => {
-          await lockCustomerActorFacts(tx, this.organization, actor);
-          await this.internal(actor, tx);
-          const locks = await tx.$queryRaw<{ id: string }[]>`
-          SELECT id FROM cases WHERE id=${caseId}::uuid
-            AND department_id=${actor.departmentId}::uuid FOR UPDATE`;
-          if (locks.length !== 1) throw missing();
-          const record = await this.details(tx, actor, caseId);
-          const action =
-            kind === 'FOLLOW' ? 'case.refund.follow' : 'case.refund.record';
-          await this.access.authorizeCase(actor, 'case.read', record, tx);
-          await this.access.authorizeCase(actor, action, record, tx);
-          if (record.stage === 'ARCHIVED' && kind !== 'FOLLOW')
-            throw error('REFUND_ARCHIVED_REGISTRATION_CLOSED');
+    const execute = async (tx: Prisma.TransactionClient) => {
+      if (!transaction)
+        await lockCustomerActorFacts(tx, this.organization, actor);
+      await this.internal(actor, tx);
+      const locks = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM cases WHERE id=${caseId}::uuid
+      AND department_id=${actor.departmentId}::uuid FOR UPDATE`;
+      if (locks.length !== 1) throw missing();
+      const record = await this.details(tx, actor, caseId);
+      const action =
+        kind === 'FOLLOW' ? 'case.refund.follow' : 'case.refund.record';
+      await this.access.authorizeCase(actor, 'case.read', record, tx);
+      await this.access.authorizeCase(actor, action, record, tx);
+      if (record.stage === 'ARCHIVED' && kind !== 'FOLLOW')
+        throw error('REFUND_ARCHIVED_REGISTRATION_CLOSED');
 
-          const prior = await tx.$queryRaw<
-            { requestFingerprint: string; resultSnapshot: unknown }[]
-          >`
-          SELECT request_fingerprint AS "requestFingerprint",
-            result_snapshot AS "resultSnapshot"
-          FROM case_litigation_refund_commands
-          WHERE department_id=${actor.departmentId}::uuid
-            AND actor_user_id=${actor.userId}::uuid AND idempotency_key=${key}
-          LIMIT 1`;
-          if (prior[0]) {
-            if (prior[0].requestFingerprint !== requestFingerprint)
-              throw error('IDEMPOTENCY_CONFLICT');
-            return prior[0].resultSnapshot;
-          }
+      const prior = await tx.$queryRaw<
+        { requestFingerprint: string; resultSnapshot: unknown }[]
+      >`
+    SELECT request_fingerprint AS "requestFingerprint",
+      result_snapshot AS "resultSnapshot"
+    FROM case_litigation_refund_commands
+    WHERE department_id=${actor.departmentId}::uuid
+      AND actor_user_id=${actor.userId}::uuid AND idempotency_key=${key}
+    LIMIT 1`;
+      if (prior[0]) {
+        if (prior[0].requestFingerprint !== requestFingerprint)
+          throw error('IDEMPOTENCY_CONFLICT');
+        return prior[0].resultSnapshot;
+      }
 
-          const head = await this.latest(tx, actor, caseId);
-          if ((head?.versionId ?? null) !== expected)
-            throw error('REFUND_INVENTORY_CHANGED');
-          const oldItems = await this.items(tx, actor, caseId, head);
-          const current = oldItems.find((item) => item.itemId === itemId);
-          if (kind === 'REGISTER') {
-            if (current) throw error('REFUND_ITEM_EXISTS');
-            const reused = await tx.$queryRaw<{ id: string }[]>`
-            SELECT item_id AS id FROM case_refund_inventory_items
-            WHERE case_id=${caseId}::uuid AND department_id=${actor.departmentId}::uuid
-              AND item_id=${itemId}::uuid LIMIT 1`;
-            if (reused.length) throw error('REFUND_ITEM_ID_REUSED');
-          } else if (!current) throw missing();
-          if (
-            record.stage === 'ARCHIVED' &&
-            kind === 'FOLLOW' &&
-            !(input as FollowLitigationRefundInput).reason?.trim()
-          )
-            throw new BadRequestException({
-              code: 'REFUND_ARCHIVED_REASON_REQUIRED',
-            });
+      const head = await this.latest(tx, actor, caseId);
+      if ((head?.versionId ?? null) !== expected)
+        throw error('REFUND_INVENTORY_CHANGED');
+      const oldItems = await this.items(tx, actor, caseId, head);
+      const current = oldItems.find((item) => item.itemId === itemId);
+      if (kind === 'REGISTER') {
+        if (current) throw error('REFUND_ITEM_EXISTS');
+        const reused = await tx.$queryRaw<{ id: string }[]>`
+      SELECT item_id AS id FROM case_refund_inventory_items
+      WHERE case_id=${caseId}::uuid AND department_id=${actor.departmentId}::uuid
+        AND item_id=${itemId}::uuid LIMIT 1`;
+        if (reused.length) throw error('REFUND_ITEM_ID_REUSED');
+      } else if (!current) throw missing();
+      if (
+        record.stage === 'ARCHIVED' &&
+        kind === 'FOLLOW' &&
+        !(input as FollowLitigationRefundInput).reason?.trim()
+      )
+        throw new BadRequestException({
+          code: 'REFUND_ARCHIVED_REASON_REQUIRED',
+        });
 
-          let changed: Item;
-          if (kind === 'FOLLOW') {
-            const follow = input as FollowLitigationRefundInput;
-            changed = {
-              ...current!,
-              status: follow.status,
-              remark: follow.remark?.trim() || null,
-            };
-          } else {
-            const registration = input as RegisterLitigationRefundInput;
-            const source = sourceFor(
-              record,
-              registration.sourceType,
-              uuid(registration.sourceId),
-            );
-            if (!source?.valid) throw error('REFUND_SOURCE_NOT_EFFECTIVE');
-            changed = {
-              itemId,
-              party: registration.party,
-              status: current?.status ?? 'PENDING',
-              description: registration.description.trim(),
-              amount: normalizeRefundAmount(registration.amount),
-              sourceType: source.type,
-              sourceId: source.id,
-              trialRoundId: source.trialRoundId,
-              remark: current?.remark ?? null,
-            };
-          }
-          const nextItems =
-            kind === 'REGISTER'
-              ? [...oldItems, changed]
-              : oldItems.map((item) =>
-                  item.itemId === itemId ? changed : item,
-                );
-          const previous: RefundInventorySnapshot | null = head
-            ? {
-                id: head.versionId,
-                caseId,
-                departmentId: actor.departmentId,
-                revision: head.revision,
-                declaration: head.declaration,
-                items: oldItems,
-              }
-            : null;
-          const planned = planRefundInventoryDraft(previous, {
+      let changed: Item;
+      if (kind === 'FOLLOW') {
+        const follow = input as FollowLitigationRefundInput;
+        changed = {
+          ...current!,
+          status: follow.status,
+          remark: follow.remark?.trim() || null,
+        };
+      } else {
+        const registration = input as RegisterLitigationRefundInput;
+        const source = sourceFor(
+          record,
+          registration.sourceType,
+          uuid(registration.sourceId),
+        );
+        if (!source?.valid) throw error('REFUND_SOURCE_NOT_EFFECTIVE');
+        changed = {
+          itemId,
+          party: registration.party,
+          status: current?.status ?? 'PENDING',
+          description: registration.description.trim(),
+          amount: normalizeRefundAmount(registration.amount),
+          sourceType: source.type,
+          sourceId: source.id,
+          trialRoundId: source.trialRoundId,
+          remark: current?.remark ?? null,
+        };
+      }
+      const nextItems =
+        kind === 'REGISTER'
+          ? [...oldItems, changed]
+          : oldItems.map((item) => (item.itemId === itemId ? changed : item));
+      const previous: RefundInventorySnapshot | null = head
+        ? {
+            id: head.versionId,
             caseId,
-            expectedVersionId: head?.versionId ?? null,
-            kind: 'RECORD',
-            items: nextItems,
-          });
-          const commandId = randomUUID();
-          const versionId = randomUUID();
-          const auditEventId = randomUUID();
-          const timestamp = await tx.$queryRaw<
-            { now: Date }[]
-          >`SELECT clock_timestamp() AS now`;
-          const recordedAt = timestamp[0]!.now;
-          const newHead: Head = {
-            versionId,
-            priorVersionId: head?.versionId ?? null,
-            revision: (head?.revision ?? 0) + 1,
-            declaration: planned.declaration,
-          };
-          const archive = await this.archiveStatuses(tx, actor, caseId);
-          const canRecord =
-            record.stage !== 'ARCHIVED' &&
-            (await this.can(actor, 'case.refund.record', record, tx));
-          const canFollow = await this.can(
-            actor,
-            'case.refund.follow',
-            record,
-            tx,
-          );
-          const row = project(
-            record,
-            newHead,
-            changed,
-            archive,
-            canRecord,
-            canFollow,
-          );
-          const result = {
-            commandId,
-            inventoryVersionId: versionId,
-            item: row,
-          };
-          const reason = (normalized as { reason: string | null }).reason;
-
-          await tx.auditEvent.create({
-            data: {
-              id: auditEventId,
-              departmentId: actor.departmentId,
-              actorKind: 'HUMAN',
-              actorUserId: actor.userId,
-              internalActorUserId: actor.userId,
-              resourceType: 'CASE_REFUND_INVENTORY_VERSION',
-              resourceId: versionId,
-              action: 'CASE_REFUND_INVENTORY_RECORD',
-              details: {
-                requestFingerprint,
-                authorizationRevision: actor.authorizationRevision,
-                commandId,
-                kind,
-                reason,
-              },
-            },
-          });
-          await tx.$executeRaw`
-          INSERT INTO case_litigation_refund_commands(
-            id,case_id,department_id,actor_user_id,item_id,kind,prior_version_id,
-            inventory_version_id,reason,idempotency_key,request_fingerprint,
-            result_snapshot,recorded_at)
-          VALUES (${commandId}::uuid,${caseId}::uuid,${actor.departmentId}::uuid,
-            ${actor.userId}::uuid,${itemId}::uuid,${kind},${head?.versionId ?? null}::uuid,
-            ${versionId}::uuid,${reason},${key},${requestFingerprint},
-            ${JSON.stringify(result)}::jsonb,${recordedAt})`;
-          await tx.$executeRaw`
-          INSERT INTO case_refund_inventory_versions(
-            id,case_id,department_id,revision,prior_version_id,declaration,
-            recorded_by_user_id,recorded_at,audit_event_id)
-          VALUES (${versionId}::uuid,${caseId}::uuid,${actor.departmentId}::uuid,
-            ${newHead.revision},${head?.versionId ?? null}::uuid,${newHead.declaration},
-            ${actor.userId}::uuid,${recordedAt},${auditEventId}::uuid)`;
-          for (const item of nextItems) {
-            const info: SourceMeta =
-              item.itemId === itemId
-                ? changed
-                : {
-                    sourceType: item.sourceType,
-                    sourceId: item.sourceId,
-                    trialRoundId: item.trialRoundId,
-                    remark: item.remark,
-                  };
-            if (info.sourceType && info.sourceId && !info.trialRoundId) {
-              const source = sourceFor(record, info.sourceType, info.sourceId);
-              info.trialRoundId = source?.trialRoundId ?? null;
-            }
-            if (!info.trialRoundId) {
-              info.sourceType = null;
-              info.sourceId = null;
-            }
-            await tx.$executeRaw`
-            INSERT INTO case_refund_inventory_items(
-              inventory_version_id,item_id,case_id,department_id,party,status,description)
-            VALUES (${versionId}::uuid,${item.itemId}::uuid,${caseId}::uuid,
-              ${actor.departmentId}::uuid,${item.party},${item.status},${item.description})`;
-            await tx.$executeRaw`
-            INSERT INTO case_refund_inventory_item_amounts(inventory_version_id,item_id,amount)
-            VALUES (${versionId}::uuid,${item.itemId}::uuid,${normalizeRefundAmount(item.amount)}::numeric)`;
-            await tx.$executeRaw`
-            INSERT INTO case_litigation_refund_item_meta(
-              inventory_version_id,item_id,source_type,source_id,trial_round_id,remark)
-            VALUES (${versionId}::uuid,${item.itemId}::uuid,${info.sourceType},
-              ${info.sourceId}::uuid,${info.trialRoundId}::uuid,${info.remark})`;
+            departmentId: actor.departmentId,
+            revision: head.revision,
+            declaration: head.declaration,
+            items: oldItems,
           }
-          return result;
-        },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        : null;
+      const planned = planRefundInventoryDraft(previous, {
+        caseId,
+        expectedVersionId: head?.versionId ?? null,
+        kind: 'RECORD',
+        items: nextItems,
+      });
+      const commandId = randomUUID();
+      const versionId = randomUUID();
+      const auditEventId = randomUUID();
+      const timestamp = await tx.$queryRaw<
+        { now: Date }[]
+      >`SELECT clock_timestamp() AS now`;
+      const recordedAt = timestamp[0]!.now;
+      const newHead: Head = {
+        versionId,
+        priorVersionId: head?.versionId ?? null,
+        revision: (head?.revision ?? 0) + 1,
+        declaration: planned.declaration,
+      };
+      const archive = await this.archiveStatuses(tx, actor, caseId);
+      const canRecord =
+        record.stage !== 'ARCHIVED' &&
+        (await this.can(actor, 'case.refund.record', record, tx));
+      const canFollow = await this.can(actor, 'case.refund.follow', record, tx);
+      const row = project(
+        record,
+        newHead,
+        changed,
+        archive,
+        canRecord,
+        canFollow,
       );
+      const result = {
+        commandId,
+        inventoryVersionId: versionId,
+        item: row,
+      };
+      const reason = (normalized as { reason: string | null }).reason;
+
+      await tx.auditEvent.create({
+        data: {
+          id: auditEventId,
+          departmentId: actor.departmentId,
+          actorKind: 'HUMAN',
+          actorUserId: actor.userId,
+          internalActorUserId: actor.userId,
+          resourceType: 'CASE_REFUND_INVENTORY_VERSION',
+          resourceId: versionId,
+          action: 'CASE_REFUND_INVENTORY_RECORD',
+          details: {
+            requestFingerprint,
+            authorizationRevision: actor.authorizationRevision,
+            commandId,
+            kind,
+            reason,
+          },
+        },
+      });
+      await tx.$executeRaw`
+    INSERT INTO case_litigation_refund_commands(
+      id,case_id,department_id,actor_user_id,item_id,kind,prior_version_id,
+      inventory_version_id,reason,idempotency_key,request_fingerprint,
+      result_snapshot,recorded_at)
+    VALUES (${commandId}::uuid,${caseId}::uuid,${actor.departmentId}::uuid,
+      ${actor.userId}::uuid,${itemId}::uuid,${kind},${head?.versionId ?? null}::uuid,
+      ${versionId}::uuid,${reason},${key},${requestFingerprint},
+      ${JSON.stringify(result)}::jsonb,${recordedAt})`;
+      await tx.$executeRaw`
+    INSERT INTO case_refund_inventory_versions(
+      id,case_id,department_id,revision,prior_version_id,declaration,
+      recorded_by_user_id,recorded_at,audit_event_id)
+    VALUES (${versionId}::uuid,${caseId}::uuid,${actor.departmentId}::uuid,
+      ${newHead.revision},${head?.versionId ?? null}::uuid,${newHead.declaration},
+      ${actor.userId}::uuid,${recordedAt},${auditEventId}::uuid)`;
+      for (const item of nextItems) {
+        const info: SourceMeta =
+          item.itemId === itemId
+            ? changed
+            : {
+                sourceType: item.sourceType,
+                sourceId: item.sourceId,
+                trialRoundId: item.trialRoundId,
+                remark: item.remark,
+              };
+        if (info.sourceType && info.sourceId && !info.trialRoundId) {
+          const source = sourceFor(record, info.sourceType, info.sourceId);
+          info.trialRoundId = source?.trialRoundId ?? null;
+        }
+        if (!info.trialRoundId) {
+          info.sourceType = null;
+          info.sourceId = null;
+        }
+        await tx.$executeRaw`
+      INSERT INTO case_refund_inventory_items(
+        inventory_version_id,item_id,case_id,department_id,party,status,description)
+      VALUES (${versionId}::uuid,${item.itemId}::uuid,${caseId}::uuid,
+        ${actor.departmentId}::uuid,${item.party},${item.status},${item.description})`;
+        await tx.$executeRaw`
+      INSERT INTO case_refund_inventory_item_amounts(inventory_version_id,item_id,amount)
+      VALUES (${versionId}::uuid,${item.itemId}::uuid,${normalizeRefundAmount(item.amount)}::numeric)`;
+        await tx.$executeRaw`
+      INSERT INTO case_litigation_refund_item_meta(
+        inventory_version_id,item_id,source_type,source_id,trial_round_id,remark)
+      VALUES (${versionId}::uuid,${item.itemId}::uuid,${info.sourceType},
+        ${info.sourceId}::uuid,${info.trialRoundId}::uuid,${info.remark})`;
+      }
+      return result;
+    };
+    if (transaction) return execute(transaction);
+    try {
+      return await this.db.$transaction(execute, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
     } catch (caught) {
       if (
         caught instanceof Prisma.PrismaClientKnownRequestError &&

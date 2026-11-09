@@ -8,9 +8,7 @@ import { workflowChangedEvent } from '../../app/workflow-events';
 const api = vi.hoisted(() => ({
   mailCaseComplaint: vi.fn(),
   mailClientCaseComplaint: vi.fn(),
-  uploadMaterialFile: vi.fn(),
   downloadMaterialVersion: vi.fn(),
-  listOwnerMaterials: vi.fn(),
   todayShanghai: vi.fn(() => '2026-10-03'),
 }));
 vi.mock('../../api/cases', async (importOriginal) => ({
@@ -22,9 +20,7 @@ vi.mock('../../api/client-cases', () => ({
   mailClientCaseComplaint: api.mailClientCaseComplaint,
 }));
 vi.mock('../../api/materials', () => ({
-  uploadMaterialFile: api.uploadMaterialFile,
   downloadMaterialVersion: api.downloadMaterialVersion,
-  listOwnerMaterials: api.listOwnerMaterials,
 }));
 const item = {
   id: 'case-1',
@@ -32,7 +28,6 @@ const item = {
   version: 4,
   canMailComplaint: true,
   complaintMailing: null,
-  pendingReceiptFiles: [],
 };
 let testPinia = createPinia();
 beforeEach(() => {
@@ -40,16 +35,7 @@ beforeEach(() => {
   testPinia = createPinia();
   setActivePinia(testPinia);
   api.todayShanghai.mockReturnValue('2026-10-03');
-  api.uploadMaterialFile.mockImplementation(
-    async ({ file }: { file: File }) => ({
-      materialId: `material-${file.name}`,
-      contentVersionId: `version-${file.name}`,
-      originalFilename: file.name,
-      mimeType: file.type,
-    }),
-  );
   api.mailCaseComplaint.mockResolvedValue({});
-  api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
 });
 function mountPanel(
   props: InstanceType<typeof CaseComplaintMailingPanel>['$props'],
@@ -79,6 +65,7 @@ describe('complaint mailing panel', () => {
         ...item,
         complaintMailing: {
           mailedAt: '2026-10-02',
+          remark: null,
           recordedAt: '2026-10-03T01:00:00Z',
           receiptFiles: [receipt],
         },
@@ -98,32 +85,25 @@ describe('complaint mailing panel', () => {
     await flushPromises();
   });
 
-  it('requires an explicitly uploaded receipt and valid non-future date before review', async () => {
+  it('accepts an optional remark without requiring a receipt, but rejects a future date', async () => {
     const wrapper = mountPanel({ item });
+    expect(wrapper.find('input[type="file"]').exists()).toBe(false);
     const review = wrapper.get('button');
-    expect((review.element as HTMLButtonElement).disabled).toBe(true);
+    expect((review.element as HTMLButtonElement).disabled).toBe(false);
     await wrapper.get('input[type="date"]').setValue('2026-10-04');
-    await wrapper.get('input[type="file"]').setValue('');
     expect((review.element as HTMLButtonElement).disabled).toBe(true);
     await wrapper.get('input[type="date"]').setValue('2026-10-03');
-    await wrapper.get('input[type="file"]').setValue('');
-    expect((review.element as HTMLButtonElement).disabled).toBe(true);
+    await wrapper.get('[data-test="complaint-mail-remark"]').setValue('寄出');
+    expect((review.element as HTMLButtonElement).disabled).toBe(false);
   });
   it('keeps the exact request key and contents after an unknown result', async () => {
     api.mailCaseComplaint
       .mockRejectedValueOnce(new ApiError('timeout', 0, 'TIMEOUT'))
       .mockResolvedValueOnce({});
     const wrapper = mountPanel({ item });
-    const input = wrapper.get('input[type="file"]');
-    const file = new File(['pdf'], 'receipt.pdf', { type: 'application/pdf' });
-    await wrapper.get('input[type="date"]').setValue('2026-10-03');
-    // Use the native file input setter so the upload path receives a real browser File object.
-    Object.defineProperty(input.element, 'files', {
-      configurable: true,
-      value: [file],
-    });
-    await input.trigger('change');
-    await flushPromises();
+    await wrapper
+      .get('[data-test="complaint-mail-remark"]')
+      .setValue('寄出说明');
     await wrapper
       .findAll('button')
       .find((button) => button.text().includes('核对邮寄信息'))!
@@ -146,94 +126,6 @@ describe('complaint mailing panel', () => {
     expect(api.mailCaseComplaint).toHaveBeenCalledTimes(2);
     expect(api.mailCaseComplaint.mock.calls[1]).toEqual(first);
   });
-  it('keeps an uploaded reviewed snapshot retryable when same-case lookup finishes late', async () => {
-    let finishLookup!: (value: {
-      items: Array<Record<string, unknown>>;
-      total: number;
-    }) => void;
-    api.listOwnerMaterials.mockReturnValueOnce(
-      new Promise((resolve) => {
-        finishLookup = resolve;
-      }),
-    );
-    api.mailCaseComplaint
-      .mockRejectedValueOnce(new ApiError('timeout', 0, 'TIMEOUT'))
-      .mockResolvedValueOnce({});
-    const wrapper = mountPanel({ item });
-    const input = wrapper.get('input[type="file"]');
-    Object.defineProperty(input.element, 'files', {
-      configurable: true,
-      value: [new File(['pdf'], 'reviewed.pdf', { type: 'application/pdf' })],
-    });
-    await input.trigger('change');
-    await flushPromises();
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('核对邮寄信息'))!
-      .trigger('click');
-    await wrapper.get('[data-test="mailing-submit"]').trigger('click');
-    await flushPromises();
-    const originalRequest = api.mailCaseComplaint.mock.calls[0];
-
-    finishLookup({ items: [], total: 0 });
-    await flushPromises();
-
-    expect(wrapper.text()).toContain('reviewed.pdf');
-    expect(wrapper.get('[data-test="mailing-submit"]').element).toMatchObject({
-      disabled: false,
-    });
-    await wrapper.get('[data-test="mailing-submit"]').trigger('click');
-    await flushPromises();
-    expect(api.mailCaseComplaint.mock.calls[1]).toEqual(originalRequest);
-  });
-  it('does not replace a receipt selected for review when same-case lookup finishes late', async () => {
-    let finishLookup!: (value: {
-      items: Array<Record<string, unknown>>;
-      total: number;
-    }) => void;
-    api.listOwnerMaterials.mockReturnValueOnce(
-      new Promise((resolve) => {
-        finishLookup = resolve;
-      }),
-    );
-    const wrapper = mountPanel({ item });
-    const input = wrapper.get('input[type="file"]');
-    Object.defineProperty(input.element, 'files', {
-      configurable: true,
-      value: [new File(['pdf'], 'reviewed.pdf', { type: 'application/pdf' })],
-    });
-    await input.trigger('change');
-    await flushPromises();
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('核对邮寄信息'))!
-      .trigger('click');
-    finishLookup({
-      items: [
-        {
-          id: 'saved-material',
-          category: 'MAIL_RECEIPT',
-          status: 'ACTIVE',
-          contentVersions: [
-            {
-              id: 'saved-version',
-              status: 'AVAILABLE',
-              originalFilename: 'later.pdf',
-              mimeType: 'application/pdf',
-            },
-          ],
-        },
-      ],
-      total: 1,
-    });
-    await flushPromises();
-    await wrapper.get('[data-test="mailing-submit"]').trigger('click');
-    await flushPromises();
-
-    expect(api.mailCaseComplaint.mock.calls[0]?.[1]).toMatchObject({
-      mailReceiptContentVersionIds: ['version-reviewed.pdf'],
-    });
-  });
   it('renders completed mailing as read-only facts without an upload control', () => {
     const wrapper = mountPanel({
       item: {
@@ -242,6 +134,7 @@ describe('complaint mailing panel', () => {
         canMailComplaint: false,
         complaintMailing: {
           mailedAt: '2026-10-02',
+          remark: null,
           recordedAt: '2026-10-03T01:00:00Z',
           receiptFiles: [
             {
@@ -258,182 +151,6 @@ describe('complaint mailing panel', () => {
     expect(wrapper.find('input[type="file"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="mailing-submit"]').exists()).toBe(false);
   });
-  it('requires an explicit choice when multiple saved receipt versions are available', () => {
-    const wrapper = mountPanel({
-      client: true,
-      item: {
-        ...item,
-        pendingReceiptFiles: [
-          {
-            materialId: 'm-1',
-            contentVersionId: 'v-1',
-            originalFilename: 'a.pdf',
-            mimeType: 'application/pdf',
-          },
-          {
-            materialId: 'm-2',
-            contentVersionId: 'v-2',
-            originalFilename: 'b.pdf',
-            mimeType: 'application/pdf',
-          },
-        ],
-      },
-    });
-    expect(wrapper.findAll('[data-test="receipt-choice"]')).toHaveLength(2);
-    expect(
-      wrapper.findAll<HTMLInputElement>('[data-test="receipt-choice"]:checked'),
-    ).toHaveLength(0);
-  });
-  it('automatically selects the only saved receipt version', () => {
-    const wrapper = mountPanel({
-      client: true,
-      item: {
-        ...item,
-        pendingReceiptFiles: [
-          {
-            materialId: 'm-1',
-            contentVersionId: 'v-1',
-            originalFilename: 'only.pdf',
-            mimeType: 'application/pdf',
-          },
-        ],
-      },
-    });
-    expect(wrapper.findAll('[data-test="receipt-choice"]')).toHaveLength(0);
-    expect(
-      (
-        wrapper
-          .findAll('button')
-          .find((button) => button.text().includes('核对邮寄信息'))!
-          .element as HTMLButtonElement
-      ).disabled,
-    ).toBe(false);
-  });
-  it('ignores a saved-file lookup that finishes after switching cases', async () => {
-    let finish!: (value: {
-      items: Array<Record<string, unknown>>;
-      total: number;
-    }) => void;
-    api.listOwnerMaterials.mockReturnValueOnce(
-      new Promise((resolve) => {
-        finish = resolve;
-      }),
-    );
-    const wrapper = mountPanel({ item });
-    await wrapper.setProps({ item: { ...item, id: 'case-2', version: 1 } });
-    await flushPromises();
-    finish({
-      items: [
-        {
-          id: 'm-old',
-          category: 'MAIL_RECEIPT',
-          status: 'ACTIVE',
-          contentVersions: [
-            {
-              id: 'v-old',
-              status: 'AVAILABLE',
-              originalFilename: 'old-case.pdf',
-              mimeType: 'application/pdf',
-            },
-          ],
-        },
-      ],
-      total: 1,
-    });
-    await flushPromises();
-    expect(wrapper.text()).not.toContain('old-case.pdf');
-  });
-  it('does not attach an upload result to the next case after switching cases', async () => {
-    let finish!: (value: {
-      materialId: string;
-      contentVersionId: string;
-      originalFilename: string;
-      mimeType: string;
-    }) => void;
-    api.uploadMaterialFile.mockReturnValueOnce(
-      new Promise((resolve) => {
-        finish = resolve;
-      }),
-    );
-    const wrapper = mountPanel({ item });
-    const input = wrapper.get('input[type="file"]');
-    Object.defineProperty(input.element, 'files', {
-      configurable: true,
-      value: [new File(['pdf'], 'old-upload.pdf', { type: 'application/pdf' })],
-    });
-    await input.trigger('change');
-    await wrapper.setProps({ item: { ...item, id: 'case-2', version: 1 } });
-    finish({
-      materialId: 'm-old',
-      contentVersionId: 'v-old',
-      originalFilename: 'old-upload.pdf',
-      mimeType: 'application/pdf',
-    });
-    await flushPromises();
-    expect(wrapper.text()).not.toContain('old-upload.pdf');
-  });
-  it('resets upload busy state and ignores an old upload rejection after switching cases', async () => {
-    let rejectUpload!: (reason: Error) => void;
-    api.uploadMaterialFile.mockReturnValueOnce(
-      new Promise((_, reject) => {
-        rejectUpload = reject;
-      }),
-    );
-    const wrapper = mountPanel({ item });
-    const input = wrapper.get('input[type="file"]');
-    Object.defineProperty(input.element, 'files', {
-      configurable: true,
-      value: [new File(['pdf'], 'old-upload.pdf', { type: 'application/pdf' })],
-    });
-    await input.trigger('change');
-    await wrapper.setProps({ item: { ...item, id: 'case-2', version: 1 } });
-    expect(
-      (wrapper.get('input[type="file"]').element as HTMLInputElement).disabled,
-    ).toBe(false);
-    rejectUpload(new Error('old request rejected'));
-    await flushPromises();
-    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
-    expect(wrapper.text()).not.toContain('正在上传凭证');
-  });
-  it('does not start remaining uploads or emit after unmount during a multi-file upload', async () => {
-    let finishFirst!: (value: {
-      materialId: string;
-      contentVersionId: string;
-      originalFilename: string;
-      mimeType: string;
-    }) => void;
-    api.uploadMaterialFile.mockReturnValueOnce(
-      new Promise((resolve) => {
-        finishFirst = resolve;
-      }),
-    );
-    const dispatch = vi.spyOn(window, 'dispatchEvent');
-    const wrapper = mountPanel({ item });
-    const input = wrapper.get('input[type="file"]');
-    Object.defineProperty(input.element, 'files', {
-      configurable: true,
-      value: [
-        new File(['one'], 'one.pdf', { type: 'application/pdf' }),
-        new File(['two'], 'two.pdf', { type: 'application/pdf' }),
-      ],
-    });
-    await input.trigger('change');
-    expect(api.uploadMaterialFile).toHaveBeenCalledTimes(1);
-    wrapper.unmount();
-    finishFirst({
-      materialId: 'm-1',
-      contentVersionId: 'v-1',
-      originalFilename: 'one.pdf',
-      mimeType: 'application/pdf',
-    });
-    await flushPromises();
-    expect(api.uploadMaterialFile).toHaveBeenCalledTimes(1);
-    expect(
-      dispatch.mock.calls.some(
-        ([event]) => event.type === workflowChangedEvent,
-      ),
-    ).toBe(false);
-  });
   it('does not expose a late download error in the next case context', async () => {
     let rejectDownload!: (reason: Error) => void;
     api.downloadMaterialVersion.mockReturnValueOnce(
@@ -446,6 +163,7 @@ describe('complaint mailing panel', () => {
         ...item,
         complaintMailing: {
           mailedAt: '2026-10-02',
+          remark: null,
           recordedAt: '2026-10-03T01:00:00Z',
           receiptFiles: [
             {
@@ -477,17 +195,7 @@ describe('complaint mailing panel', () => {
     const dispatch = vi.spyOn(window, 'dispatchEvent');
     const wrapper = mountPanel({
       client: true,
-      item: {
-        ...item,
-        pendingReceiptFiles: [
-          {
-            materialId: 'm-1',
-            contentVersionId: 'v-1',
-            originalFilename: 'receipt.pdf',
-            mimeType: 'application/pdf',
-          },
-        ],
-      },
+      item,
     });
     await wrapper
       .findAll('button')
@@ -518,17 +226,7 @@ describe('complaint mailing panel', () => {
     } as never;
     const wrapper = mountPanel({
       client: true,
-      item: {
-        ...item,
-        pendingReceiptFiles: [
-          {
-            materialId: 'm-1',
-            contentVersionId: 'v-1',
-            originalFilename: 'receipt.pdf',
-            mimeType: 'application/pdf',
-          },
-        ],
-      },
+      item,
     });
     await flushPromises();
     await wrapper

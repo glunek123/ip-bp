@@ -181,8 +181,6 @@ export class CaseComplaintConfirmationService {
               record.complaintAmountState !== normalized.amountState ||
               priorAmount !== normalized.amount ||
               record.complaintPendingReason !== normalized.pendingReason;
-            if (changed && !directEntry && normalized.changeNote === null)
-              throw this.validation();
             const confirmedAt = new Date();
             const updated = await tx.case.updateMany({
               where: {
@@ -215,8 +213,12 @@ export class CaseComplaintConfirmationService {
                   amountState: normalized.amountState,
                   amount: normalized.amount,
                   pendingReason: normalized.pendingReason,
+                  priorAmountState: record.complaintAmountState,
+                  priorAmount,
+                  priorPendingReason: record.complaintPendingReason,
+                  changed,
                   changeNote: normalized.changeNote,
-                  confirmDisclose: normalized.confirmDisclose,
+                  confirmDisclose: normalized.confirmDisclose ?? null,
                 },
               },
               select: { id: true },
@@ -240,7 +242,7 @@ export class CaseComplaintConfirmationService {
                 amount: normalized.amount,
                 pendingReason: normalized.pendingReason,
                 changeNote: normalized.changeNote,
-                confirmDisclose: normalized.confirmDisclose,
+                confirmDisclose: normalized.confirmDisclose ?? null,
                 confirmedByUserId: actor.userId,
                 confirmedAt,
                 auditEventId: audit.id,
@@ -294,7 +296,9 @@ export class CaseComplaintConfirmationService {
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
         input.confirmedComplaintContentVersionId,
       ) ||
-      typeof input.confirmDisclose !== 'boolean' ||
+      (input.confirmDisclose !== undefined &&
+        input.confirmDisclose !== null &&
+        typeof input.confirmDisclose !== 'boolean') ||
       (input.changeNote !== undefined &&
         input.changeNote !== null &&
         (typeof input.changeNote !== 'string' ||

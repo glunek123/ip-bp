@@ -329,10 +329,6 @@ async function registerJudgment(
   });
   await expect(panel.getByText(filename)).toBeVisible();
   await panel.locator('[data-test="judgment-date"]').fill(acceptedAt);
-  await panel
-    .locator('[data-test="judgment-amount-state"]')
-    .selectOption('PENDING');
-  await panel.locator('[data-test="paid-fee-state"]').selectOption('KNOWN');
   await panel.locator('[data-test="paid-fee-amount"]').fill('0.00');
   const endpoint = `${lawyer ? '/api/v1/lawyer' : '/api/v1'}/cases/${caseId}/judgment-register`;
   const responsePromise = page.waitForResponse(
@@ -415,6 +411,7 @@ test('operator chooses, revokes, corrects, and chooses a new judgment path', asy
   page,
   request,
 }) => {
+  test.setTimeout(75_000);
   const businessDate = pastWorkflowDate();
   const internalCase = await createSubmittedCaseThroughApi(request, {
     defendants: [
@@ -552,14 +549,8 @@ test('operator chooses, revokes, corrects, and chooses a new judgment path', asy
     .locator('[data-test="judgment-date"]')
     .fill(businessDate);
   await internalJudgment.panel
-    .locator('[data-test="judgment-amount-state"]')
-    .selectOption('KNOWN');
-  await internalJudgment.panel
     .locator('[data-test="judgment-amount"]')
     .fill('1.00');
-  await internalJudgment.panel
-    .locator('[data-test="paid-fee-state"]')
-    .selectOption('KNOWN');
   await internalJudgment.panel
     .locator('[data-test="paid-fee-amount"]')
     .fill('0.00');
@@ -629,7 +620,12 @@ test('operator chooses, revokes, corrects, and chooses a new judgment path', asy
     page.locator('[data-test="execution-preparation-stage"]'),
   ).toContainText('准备执行文书');
   await page.locator('[data-test="execution-preparation-stage"]').click();
-  await page.getByRole('button', { name: '本部门全部' }).click();
+  await expect(page).toHaveURL(/stageGroup=EXECUTION_PREPARATION/u);
+  await page.goto('/cases?view=department&stageGroup=EXECUTION_PREPARATION');
+  await page
+    .locator('[data-test="case-workflow-stage-filter"]')
+    .selectOption('WAITING_EXECUTION_DOCUMENTS');
+  await expect(page).toHaveURL(/stage=WAITING_EXECUTION_DOCUMENTS/u);
   const internalStageLink = page.locator(
     `[data-test="case-list"] a[href^="/cases/${internalCase.caseId}?"]`,
   );

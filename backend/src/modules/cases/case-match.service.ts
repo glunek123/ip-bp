@@ -10,7 +10,12 @@ import { createHash } from 'node:crypto';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
-import { MatchCaseDto, MatchCaseResponseDto } from './case-match.dto';
+import {
+  MatchCaseDto,
+  MatchCaseResponseDto,
+  PrepareCaseDefendantsDto,
+  PrepareCaseDefendantsResponseDto,
+} from './case-match.dto';
 import { readCaseSourceAnchor } from './case-entry-source';
 
 @Injectable()
@@ -19,6 +24,218 @@ export class CaseMatchService {
     private readonly database: DatabaseService,
     private readonly access: AccessControlService,
   ) {}
+
+  async prepareDefendants(
+    actor: ActorContext,
+    caseId: string,
+    input: PrepareCaseDefendantsDto,
+  ): Promise<PrepareCaseDefendantsResponseDto> {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined
+    )
+      throw this.forbidden();
+    if (
+      !Number.isInteger(input.expectedVersion) ||
+      input.expectedVersion < 1 ||
+      !input.idempotencyKey ||
+      input.idempotencyKey.length > 128 ||
+      !Array.isArray(input.defendants) ||
+      input.defendants.length < 1 ||
+      input.defendants.length > 20
+    )
+      throw this.validation();
+    const defendants = input.defendants.map((party) => {
+      if (
+        !['PERSON', 'ORGANIZATION'].includes(party.kind) ||
+        !party.name?.trim() ||
+        party.name.trim() !== party.name ||
+        party.name.length > 200 ||
+        (party.legalRepresentative && party.kind !== 'ORGANIZATION')
+      )
+        throw this.validation();
+      return {
+        kind: party.kind,
+        name: party.name,
+        idNo: party.idNo?.trim() || null,
+        phone: party.phone?.trim() || null,
+        address: party.address?.trim() || null,
+        legalRepresentative: party.legalRepresentative?.trim() || null,
+      };
+    });
+    const fingerprint = createHash('sha256')
+      .update(
+        JSON.stringify({
+          caseId,
+          expectedVersion: input.expectedVersion,
+          defendants,
+        }),
+      )
+      .digest('hex');
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (tx) => {
+            const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+              'SELECT "id" FROM "cases" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              caseId,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            const record = await tx.case.findFirst({
+              where: { id: caseId, departmentId: actor.departmentId },
+              select: {
+                stage: true,
+                version: true,
+                departmentId: true,
+                responsibleUserId: true,
+                responsibleMembership: { select: { teamId: true } },
+                defendants: { select: { id: true } },
+                consolidationMembership: {
+                  select: {
+                    isMain: true,
+                    defendantKind: true,
+                    defendantName: true,
+                    defendantIdNo: true,
+                  },
+                },
+              },
+            });
+            if (!record) throw this.notFound();
+            const account = await tx.userAccount.findUnique({
+              where: { id: actor.userId },
+              select: { accountType: true, active: true },
+            });
+            if (account?.accountType !== 'INTERNAL' || !account.active)
+              throw this.forbidden();
+            try {
+              await this.access.authorizeCase(
+                actor,
+                'case.match',
+                {
+                  departmentId: record.departmentId,
+                  responsibleUserId: record.responsibleUserId,
+                  ...(record.responsibleMembership.teamId
+                    ? { teamId: record.responsibleMembership.teamId }
+                    : {}),
+                },
+                tx,
+              );
+            } catch (error) {
+              if (error instanceof ForbiddenException) throw this.forbidden();
+              throw error;
+            }
+            const prior = await tx.caseDefendantPreparationReceipt.findUnique({
+              where: {
+                departmentId_actorUserId_idempotencyKey: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  idempotencyKey: input.idempotencyKey,
+                },
+              },
+            });
+            if (prior) {
+              if (
+                prior.caseId !== caseId ||
+                prior.requestFingerprint !== fingerprint
+              )
+                throw this.idempotencyConflict();
+              return prior.resultSnapshot as unknown as PrepareCaseDefendantsResponseDto;
+            }
+            if (
+              record.stage !== 'PENDING_MATCH' ||
+              record.consolidationMembership?.isMain === false
+            )
+              throw this.invalidState();
+            if (record.defendants.length > 0)
+              throw new ConflictException({
+                code: 'DEFENDANTS_ALREADY_PREPARED',
+                message: '本案已有被告，请刷新后匹配律师',
+              });
+            if (record.version !== input.expectedVersion)
+              throw this.versionConflict();
+            const consolidated = record.consolidationMembership;
+            if (
+              consolidated &&
+              (defendants.length !== 1 ||
+                defendants[0].kind !== consolidated.defendantKind ||
+                defendants[0].name !== consolidated.defendantName ||
+                defendants[0].idNo !== consolidated.defendantIdNo)
+            )
+              throw this.validation();
+            await tx.caseDefendant.createMany({
+              data: defendants.map((party) => ({
+                caseId,
+                departmentId: actor.departmentId,
+                kind: party.kind,
+                name: party.name,
+                idNo: party.idNo,
+                phone: party.phone,
+                address: party.address,
+                legalRepresentative: party.legalRepresentative,
+              })),
+            });
+            const updated = await tx.case.updateMany({
+              where: {
+                id: caseId,
+                departmentId: actor.departmentId,
+                stage: 'PENDING_MATCH',
+                version: input.expectedVersion,
+              },
+              data: { version: { increment: 1 } },
+            });
+            if (updated.count !== 1) throw this.versionConflict();
+            const result: PrepareCaseDefendantsResponseDto = {
+              id: caseId,
+              stage: 'PENDING_MATCH',
+              version: input.expectedVersion + 1,
+              defendantCount: defendants.length,
+            };
+            await tx.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                internalActorUserId: actor.userId,
+                resourceType: 'CASE',
+                resourceId: caseId,
+                action: 'case.defendants.prepared',
+                details: {
+                  fromVersion: input.expectedVersion,
+                  toVersion: result.version,
+                  defendantCount: defendants.length,
+                },
+              },
+            });
+            await tx.caseDefendantPreparationReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                caseId,
+                idempotencyKey: input.idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultSnapshot: {
+                  id: result.id,
+                  stage: result.stage,
+                  version: result.version,
+                  defendantCount: result.defendantCount,
+                },
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error)) {
+          if (attempt < 2) continue;
+          throw this.versionConflict();
+        }
+        if (this.isUnique(error)) throw this.idempotencyConflict();
+        throw error;
+      }
+    }
+    throw this.versionConflict();
+  }
 
   async match(
     actor: ActorContext,
@@ -63,7 +280,10 @@ export class CaseMatchService {
                     defendantIdNo: true,
                   },
                 },
-                defendants: { select: { kind: true, name: true, idNo: true } },
+                defendants: {
+                  orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+                  select: { kind: true, name: true, idNo: true },
+                },
               },
             });
             if (record === null) throw this.notFound();
@@ -130,6 +350,21 @@ export class CaseMatchService {
             if (record.stage !== 'PENDING_MATCH') throw this.invalidState();
             if (record.consolidationMembership?.isMain === false)
               throw this.invalidState();
+            if (record.defendants.length === 0)
+              throw new ConflictException({
+                code: 'DEFENDANTS_NOT_PREPARED',
+                message: '请先补充被告，再匹配律师',
+              });
+            if (
+              record.defendants.length !== normalized.defendants.length ||
+              record.defendants.some(
+                (party, index) =>
+                  party.kind !== normalized.defendants[index].kind ||
+                  party.name !== normalized.defendants[index].name ||
+                  party.idNo !== (normalized.defendants[index].idNo ?? null),
+              )
+            )
+              throw this.validation();
             if (record.consolidationMembership?.isMain === true) {
               const defendant = record.consolidationMembership;
               if (
@@ -240,14 +475,6 @@ export class CaseMatchService {
               },
             });
             if (changed.count !== 1) throw this.versionConflict();
-            if (record.defendants.length === 0)
-              await tx.caseDefendant.createMany({
-                data: normalized.defendants.map((party) => ({
-                  caseId,
-                  departmentId: actor.departmentId,
-                  ...party,
-                })),
-              });
             const lawyer = { id: candidates[0].profileId };
             if (!assigned)
               await tx.caseLawyerAssignment.create({
@@ -365,6 +592,7 @@ export class CaseMatchService {
         idNo: clean(party.idNo, 100, false),
         phone: clean(party.phone, 100, false),
         address: clean(party.address, 500, false),
+        legalRepresentative: clean(party.legalRepresentative, 200, false),
       };
     });
     if (

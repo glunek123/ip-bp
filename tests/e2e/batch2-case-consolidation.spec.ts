@@ -483,11 +483,31 @@ test.describe
     expect((await rejected.json()).code).toBe('INVALID_STATE');
     const mainId = fixture.cases[0].id;
     const commandHeaders = () => ({ 'X-CSRF-Token': csrf });
+    const prepared = await json<{
+      stage: string;
+      version: number;
+      defendantCount: number;
+    }>(
+      await page.request.post(`/api/v1/cases/${mainId}/defendants/prepare`, {
+        headers: commandHeaders(),
+        data: {
+          expectedVersion: 2,
+          idempotencyKey: randomUUID(),
+          defendants: [defendant],
+        },
+      }),
+      201,
+    );
+    expect(prepared).toMatchObject({
+      stage: 'PENDING_MATCH',
+      version: 3,
+      defendantCount: 1,
+    });
     const matched = await json<{ stage: string; version: number }>(
       await page.request.post(`/api/v1/cases/${mainId}/match`, {
         headers: commandHeaders(),
         data: {
-          expectedVersion: 2,
+          expectedVersion: prepared.version,
           idempotencyKey: randomUUID(),
           matchedOn: day(),
           defendants: [defendant],

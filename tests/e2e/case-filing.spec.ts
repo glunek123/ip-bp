@@ -132,9 +132,7 @@ test('operator records a real court and files through the browser with exact fro
   await loginOperator(page);
   await page.goto(`/cases/${source.caseId}`);
   await expect(page.locator('[data-test="case-filing-panel"]')).toBeVisible();
-  await expect(
-    page.getByText('本部门还没有可选法院，请在下方录入真实法院名称。'),
-  ).toBeVisible();
+  await page.getByText('补录法院', { exact: true }).click();
 
   const courtName = `浏览器真实法院-${randomUUID().slice(0, 8)}`;
   await page.locator('[data-test="filing-court-name"]').fill(courtName);
@@ -158,7 +156,7 @@ test('operator records a real court and files through the browser with exact fro
   await expect(
     page.locator('[data-test="filing-review-summary"]'),
   ).toContainText(courtName);
-  await page.getByRole('button', { name: '确认提交并进入待正式立案' }).click();
+  await page.locator('[data-test="filing-submit"]').click();
   await expect(page.getByText('待正式立案', { exact: true })).toBeVisible();
   await expect(page.locator('[data-test="case-filing-panel"]')).toHaveCount(0);
   await expect(page.locator('[data-test="case-filing-record"]')).toContainText(
@@ -281,4 +279,54 @@ test('operator records a real court and files through the browser with exact fro
   } finally {
     await clientContext.close();
   }
+});
+
+test('filing card saves a revised claim amount without optional evidence', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(60_000);
+  const source = await waitingFilingCase(request);
+  await loginOperator(page);
+  await page.goto('/cases?view=mine&stage=WAITING_FILING');
+  const row = page.getByRole('row').filter({
+    has: page.locator(`a[href^="/cases/${source.caseId}"]`),
+  });
+  await row
+    .getByRole('button', { name: '提交立案', exact: true })
+    .click({ timeout: 10_000 });
+  const panel = page.locator('[data-test="case-filing-panel"]');
+  await expect(panel).toBeVisible();
+  await panel.getByText('补录法院', { exact: true }).click();
+  await panel.locator('[data-test="filing-court-name"]').fill('合成立案法院');
+  await panel.locator('[data-test="filing-court-create"]').click();
+  await expect(panel.locator('[data-test="filing-court-fixed"]')).toBeVisible();
+  await panel.locator('[data-test="filing-submitted-at"]').fill(dateShanghai());
+  await panel.locator('[data-test="filing-claim-amount"]').fill('360.75');
+  await panel
+    .locator('[data-test="filing-mediation-no"]')
+    .fill('合成立案编号-01');
+  await page.screenshot({
+    path: '.local/case-workflow-acceptance/filing-submit.png',
+  });
+  await panel.locator('[data-test="filing-review"]').click();
+  const response = page.waitForResponse(
+    (result) =>
+      result.request().method() === 'POST' &&
+      new URL(result.url()).pathname ===
+        `/api/v1/cases/${source.caseId}/filing-submit`,
+  );
+  await panel.locator('[data-test="filing-submit"]').click();
+  await expectStatus(await response, 201);
+  const detail = await page.request.get(`/api/v1/cases/${source.caseId}`);
+  await expectStatus(detail, 200);
+  expect(await detail.json()).toMatchObject({
+    stage: 'WAITING_FORMAL_ACCEPTANCE',
+    complaintConfirmation: { amount: '123.45' },
+    filingSubmission: {
+      claimAmount: '360.75',
+      evidenceFiles: [],
+      screenshotFiles: [],
+    },
+  });
 });

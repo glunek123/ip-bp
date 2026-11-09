@@ -253,16 +253,9 @@ test('password sessions confirm an exact revision, download real bytes and keep 
     '',
   );
   await page.locator('[data-test="confirmation-amount"]').fill('223.45');
-  await expect(page.locator('[data-test="change-note"]')).toHaveAttribute(
-    'required',
-    '',
-  );
-  await page
-    .locator('[data-test="change-note"]')
-    .fill('按客户确认的修订诉状及金额办理');
-  await page.locator('[data-test="confirm-disclose-true"]').check();
-  await page.locator('[data-test="confirmation-review"]').click();
-  await expect(page.getByRole('dialog')).toContainText('确认后进入诉状待盖章');
+  await expect(
+    page.locator('[data-test="confirmation-form"] input[readonly]'),
+  ).toHaveCount(2);
   await page.locator('[data-test="confirmation-submit"]').click();
   await expect(page.locator('.page-head .pill')).toHaveText('诉状待盖章');
   await expect(

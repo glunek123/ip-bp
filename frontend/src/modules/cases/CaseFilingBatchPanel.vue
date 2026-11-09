@@ -310,6 +310,7 @@ function filingFactsAgree(
   return (
     fact.court.id === input.courtId &&
     fact.submittedAt === input.submittedAt &&
+    (fact.claimAmount ?? null) === (input.claimAmount ?? null) &&
     (fact.mediationNo ?? '') === (input.mediationNo ?? '') &&
     sameVersions(
       fact.evidenceFiles.map((file) => file.contentVersionId),
@@ -577,7 +578,8 @@ onBeforeUnmount(() => {
           }}。
           <template v-if="row.saved">
             法院 {{ row.saved.courtName }}；提交日期
-            {{ row.saved.input.submittedAt }}；诉调号
+            {{ row.saved.input.submittedAt }}；标的额
+            {{ row.saved.input.claimAmount ?? '沿用原值' }}；诉调号
             {{ row.saved.input.mediationNo ?? '未填写' }}； 起诉材料
             {{
               row.saved.evidenceFiles

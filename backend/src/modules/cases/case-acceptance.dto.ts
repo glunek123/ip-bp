@@ -1,4 +1,9 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  OmitType,
+  PartialType,
+} from '@nestjs/swagger';
 import {
   ArrayMaxSize,
   IsArray,
@@ -59,6 +64,34 @@ export class RegisterCaseAcceptanceDto {
   @ArrayMaxSize(10)
   @IsUUID('4', { each: true })
   serviceDocumentContentVersionIds?: string[];
+}
+
+export class SaveCaseAcceptanceDraftDto extends PartialType(
+  OmitType(RegisterCaseAcceptanceDto, [
+    'expectedVersion',
+    'idempotencyKey',
+  ] as const),
+) {
+  @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
+}
+
+class CaseAcceptanceDraftFieldsDto {
+  @ApiProperty({ type: String, format: 'date', nullable: true })
+  acceptedAt!: string | null;
+  @ApiPropertyOptional({ type: String, format: 'date', nullable: true })
+  paymentDueAt?: string | null;
+  @ApiProperty({ type: String, nullable: true }) courtCaseNo!: string | null;
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  courtId!: string | null;
+  @ApiProperty({ type: [String] }) acceptanceNoticeContentVersionIds!: string[];
+  @ApiProperty({ type: [String] }) paymentListContentVersionIds!: string[];
+  @ApiProperty({ type: [String] }) serviceDocumentContentVersionIds!: string[];
+}
+
+export class CaseAcceptanceDraftResponseDto {
+  @ApiProperty({ type: CaseAcceptanceDraftFieldsDto, nullable: true })
+  draft!: CaseAcceptanceDraftFieldsDto | null;
+  @ApiProperty() version!: number;
 }
 
 export class RegisterCaseAcceptanceResponseDto {

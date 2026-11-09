@@ -794,6 +794,7 @@ describe('case workspace read model', () => {
       recordedAt,
       recordedByUserId: 'u1',
       mediationNo: 'MED-1',
+      claimAmount: null,
       evidenceFiles: [],
       screenshotFiles: [],
     };
@@ -1036,7 +1037,7 @@ describe('case workspace read model', () => {
       value: '未登记',
     });
     expect(sections[0]?.groups[0]?.fields).toContainEqual({
-      label: '实际匹配日期',
+      label: '委案日期',
       value: '未记录',
     });
     expect(sections[2]?.message).toBe('尚未登记相关资料');
@@ -1156,6 +1157,7 @@ describe('case workspace read model', () => {
     };
     item.complaintMailing = {
       mailedAt: '2026-09-30',
+      remark: null,
       recordedAt,
       recordedByUserId: 'user-1',
       actorType: 'INTERNAL',
@@ -1167,6 +1169,7 @@ describe('case workspace read model', () => {
       recordedAt,
       recordedByUserId: 'user-1',
       mediationNo: null,
+      claimAmount: null,
       evidenceFiles: [file],
       screenshotFiles: [],
     };
@@ -1633,6 +1636,7 @@ describe('case workspace read model', () => {
         idNo: null,
         phone: '222',
         address: '新地址',
+        legalRepresentative: null,
       },
     ];
     const acceptance = {

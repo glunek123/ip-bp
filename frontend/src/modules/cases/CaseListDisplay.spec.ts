@@ -830,6 +830,7 @@ describe('authorized internal case list display', () => {
     const item: CaseSummary = {
       ...summary(),
       stage: 'WAITING_JUDGMENT',
+      canRegisterJudgment: true,
       canCorrectJudgment: true,
       canChooseJudgmentNextStep: true,
     };
@@ -840,7 +841,7 @@ describe('authorized internal case list display', () => {
     const row = wrapper.get('tbody tr');
     expect(
       row.findAll('[data-case-action]').map((button) => button.text()),
-    ).toEqual(['选择后续']);
+    ).toEqual(['判决更新', '二审抉择']);
     expect(row.get('a').attributes('href')).toBe(
       '/cases/case-1?view=department&stage=WAITING_JUDGMENT&page=2',
     );
@@ -856,7 +857,26 @@ describe('authorized internal case list display', () => {
     expect(api.getCase).toHaveBeenCalledWith('case-1', {
       signal: expect.any(AbortSignal),
     });
-    expect(document.body.textContent).toContain('选择判决后续流程');
+    expect(document.body.textContent).toContain('二审抉择');
+  });
+
+  it('keeps a permitted hearing-date correction in the quick action list', async () => {
+    api.listCases.mockResolvedValue(
+      result([
+        {
+          ...summary(),
+          stage: 'WAITING_HEARING',
+          canScheduleHearing: false,
+          canCorrectHearing: true,
+        },
+      ]),
+    );
+    const { wrapper } = await mountList(
+      '/cases?view=department&stage=WAITING_HEARING',
+    );
+    expect(wrapper.get('[data-case-action="hearing"]').text()).toBe(
+      '补录／更正开庭日期',
+    );
   });
 
   it('ignores repeated clicks while the selected action detail is loading', async () => {
@@ -1036,8 +1056,8 @@ describe('authorized internal case list display', () => {
       '法院',
       '案号',
       '标的额',
-      '判决额',
-      '结案额',
+      '判决金额',
+      '结案金额',
     ]);
     const cells = wrapper.findAll('tbody td');
     expect(cells[3]!.text()).toBe('负责运营甲');
@@ -1084,9 +1104,13 @@ describe('authorized internal case list display', () => {
       hidden: ['customerName'],
     });
     const { wrapper } = await mountList();
-    expect(preferenceApi.get).toHaveBeenCalledWith('WAITING_ARCHIVE', {
-      signal: expect.any(AbortSignal),
-    });
+    expect(preferenceApi.get).toHaveBeenCalledWith(
+      'WAITING_ARCHIVE',
+      {
+        signal: expect.any(AbortSignal),
+      },
+      'department',
+    );
     expect(
       wrapper
         .findAll('thead th')
@@ -1097,6 +1121,99 @@ describe('authorized internal case list display', () => {
     expect(
       wrapper.findAll('thead th').some((cell) => cell.text() === '客户'),
     ).toBe(false);
+  });
+
+  it('hides the owner by default in mine view and can show it from that view preference', async () => {
+    preferenceApi.get.mockResolvedValueOnce({
+      order: [
+        'businessNo',
+        'stage',
+        'customerName',
+        'rightsHolderName',
+        'platform',
+        'shopName',
+        'shopExternalId',
+        'defendants',
+        'lawyers',
+        'court',
+        'courtCaseNo',
+        'claimAmount',
+        'judgmentAmount',
+        'closureAmount',
+      ],
+      hidden: ['owner'],
+    });
+    preferenceApi.save.mockResolvedValueOnce({
+      order: [
+        'businessNo',
+        'stage',
+        'customerName',
+        'rightsHolderName',
+        'platform',
+        'shopName',
+        'shopExternalId',
+        'defendants',
+        'lawyers',
+        'court',
+        'courtCaseNo',
+        'claimAmount',
+        'judgmentAmount',
+        'closureAmount',
+      ],
+      hidden: [],
+    });
+    const { wrapper } = await mountList(
+      '/cases?view=mine&stage=WAITING_ARCHIVE',
+    );
+    expect(wrapper.find('th[data-column="owner"]').exists()).toBe(false);
+    await wrapper.get('[data-test="open-column-settings"]').trigger('click');
+    const ownerRow = wrapper
+      .findAll('[role="dialog"] li')
+      .find((row) => row.text().includes('负责人'))!;
+    expect((ownerRow.get('input').element as HTMLInputElement).checked).toBe(
+      false,
+    );
+    await ownerRow.get('input').setValue(true);
+    await wrapper
+      .findAll('[role="dialog"] button')
+      .find((button) => button.text() === '保存')!
+      .trigger('click');
+    await flushPromises();
+    expect(preferenceApi.get).toHaveBeenCalledWith(
+      'WAITING_ARCHIVE',
+      { signal: expect.any(AbortSignal) },
+      'mine',
+    );
+    expect(preferenceApi.save).toHaveBeenCalledWith(
+      'WAITING_ARCHIVE',
+      expect.objectContaining({ hidden: [] }),
+      { signal: expect.any(AbortSignal) },
+      'mine',
+    );
+    expect(wrapper.find('th[data-column="owner"]').exists()).toBe(true);
+  });
+
+  it('filters within complaint and execution preparation groups using real stages', async () => {
+    const { wrapper, router } = await mountList(
+      '/cases?view=mine&stageGroup=COMPLAINT_PREPARATION',
+    );
+    const filter = wrapper.get('[data-test="case-workflow-stage-filter"]');
+    expect(filter.findAll('option').map((option) => option.text())).toEqual([
+      '全部进展',
+      '待写诉状',
+      '诉状待确认',
+      '诉状待盖章',
+    ]);
+    await filter.setValue('WAITING_COMPLAINT_CONFIRMATION');
+    await flushPromises();
+    expect(router.currentRoute.value.query).toMatchObject({
+      view: 'mine',
+      stage: 'WAITING_COMPLAINT_CONFIRMATION',
+    });
+    expect(router.currentRoute.value.query.stageGroup).toBeUndefined();
+    expect(api.listCases.mock.calls.at(-1)?.[2]?.stage).toBe(
+      'WAITING_COMPLAINT_CONFIRMATION',
+    );
   });
 
   it('persists panel edits through PUT and updates the visible table only after confirmation', async () => {
@@ -1135,6 +1252,7 @@ describe('authorized internal case list display', () => {
       'WAITING_ARCHIVE',
       expect.objectContaining({ hidden: ['customerName'] }),
       { signal: expect.any(AbortSignal) },
+      'department',
     );
     expect(wrapper.findAll('thead th')).toHaveLength(16);
     expect(

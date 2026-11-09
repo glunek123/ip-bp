@@ -47,6 +47,7 @@ export type ClientCaseDetail = ClientCase & {
   pendingReceiptFiles: CaseFile[];
   complaintMailing: {
     mailedAt: string;
+    remark: string | null;
     recordedAt: string;
     receiptFiles: CaseFile[];
   } | null;
@@ -203,10 +204,13 @@ function validDetail(value: unknown, id: string): value is ClientCaseDetail {
       (record(value.complaintMailing) &&
         exact(value.complaintMailing, [
           'mailedAt',
+          'remark',
           'recordedAt',
           'receiptFiles',
         ]) &&
         typeof value.complaintMailing.mailedAt === 'string' &&
+        (value.complaintMailing.remark === null ||
+          typeof value.complaintMailing.remark === 'string') &&
         typeof value.complaintMailing.recordedAt === 'string' &&
         Array.isArray(value.complaintMailing.receiptFiles) &&
         value.complaintMailing.receiptFiles.every(validFile)))

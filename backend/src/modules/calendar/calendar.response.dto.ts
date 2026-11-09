@@ -52,13 +52,15 @@ class CalendarDateEventDto {
     enum: [
       'FIRST_INSTANCE_HEARING',
       'SECOND_INSTANCE_HEARING',
+      'CASE_PAYMENT_DUE',
       'CUSTOMER_AGREEMENT_EXPIRY',
     ],
   })
   sourceType!: string;
   @ApiProperty() sourceId!: string;
   @ApiProperty({ example: '2026-10-13' }) date!: string;
-  @ApiProperty({ enum: ['court', 'contract'] }) type!: 'court' | 'contract';
+  @ApiProperty({ enum: ['court', 'contract', 'pay'] }) type!:
+    'court' | 'contract' | 'pay';
   @ApiProperty() title!: string;
   @ApiProperty({ type: String, nullable: true }) sub!: string | null;
   @ApiProperty({ type: String, nullable: true }) caseId!: string | null;

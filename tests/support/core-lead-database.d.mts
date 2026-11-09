@@ -153,6 +153,18 @@ export function countNotaryCertificateReceipts(
   matterId: string,
 ): Promise<number>;
 export function countCasesForMatter(matterId: string): Promise<number>;
+export function seedHistoricalCaseDefendants(
+  caseId: string,
+  defendants: ReadonlyArray<{
+    kind: string;
+    name: string;
+    idNo?: string;
+    phone?: string;
+    address?: string;
+    legalRepresentative?: string;
+  }>,
+): Promise<void>;
+
 export function emulatePreDateCaseMatch(
   caseId: string,
   legacyFingerprint: string,

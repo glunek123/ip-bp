@@ -40,6 +40,7 @@ const defendants: CaseDefendant[] = [
     idNo: null,
     phone: null,
     address: null,
+    legalRepresentative: null,
   },
   {
     id: '70000000-0000-4000-8000-000000000004',
@@ -48,6 +49,7 @@ const defendants: CaseDefendant[] = [
     idNo: null,
     phone: null,
     address: null,
+    legalRepresentative: null,
   },
 ];
 const item = {

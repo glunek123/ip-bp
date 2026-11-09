@@ -223,7 +223,7 @@ describe('CaseComplaintMailingService', () => {
   it.each([
     { ...input, mailedAt: tomorrowInShanghai() },
     { ...input, mailedAt: '2026-02-30' },
-    { ...input, mailReceiptContentVersionIds: [] },
+    { ...input, remark: ' ' },
     { ...input, mailReceiptContentVersionIds: [receiptId, receiptId] },
     { ...input, expectedVersion: 0 },
   ])('rejects invalid request before a transaction', async (bad) => {
@@ -232,5 +232,25 @@ describe('CaseComplaintMailingService', () => {
       response: { code: 'VALIDATION_ERROR' },
     });
     expect(f.database.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('records an optional remark without freezing a receipt when none was supplied', async () => {
+    const f = fixture();
+    f.materials.assertAvailableVersions.mockResolvedValue([]);
+    await f.service.mail(actor, caseId, {
+      ...input,
+      remark: '邮寄备注',
+      mailReceiptContentVersionIds: [],
+    });
+    expect(f.tx.caseComplaintMailing.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ remark: '邮寄备注' }),
+      }),
+    );
+    expect(f.materials.assertAvailableVersions).toHaveBeenCalledWith(
+      f.tx,
+      actor,
+      expect.objectContaining({ contentVersionIds: [], minCount: 0 }),
+    );
   });
 });

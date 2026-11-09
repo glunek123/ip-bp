@@ -52,6 +52,9 @@ function validInput(value: unknown): value is SubmitCaseFilingInput {
     uuid.test(item.courtId) &&
     typeof item.submittedAt === 'string' &&
     /^\d{4}-\d{2}-\d{2}$/u.test(item.submittedAt) &&
+    (item.claimAmount === undefined ||
+      (typeof item.claimAmount === 'string' &&
+        /^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u.test(item.claimAmount))) &&
     Array.isArray(item.filingEvidenceContentVersionIds) &&
     item.filingEvidenceContentVersionIds.every(
       (id) => typeof id === 'string' && uuid.test(id),

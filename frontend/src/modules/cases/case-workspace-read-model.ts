@@ -288,7 +288,14 @@ export function buildCaseWorkspaceEvents(
         money('确认诉请金额', value.amountState, value.amount),
         field('待确认原因', value.pendingReason),
         field('变更说明', value.changeNote),
-        field('披露确认', value.confirmDisclose ? '是' : '否'),
+        field(
+          '披露确认',
+          value.confirmDisclose === null
+            ? '未确认'
+            : value.confirmDisclose
+              ? '是'
+              : '否',
+        ),
         ...files('确认诉状', value.complaintFile ? [value.complaintFile] : []),
         ...actor(value.confirmedByUserId),
       ],
@@ -303,6 +310,7 @@ export function buildCaseWorkspaceEvents(
       value.mailedAt,
       value.recordedAt,
       [
+        field('邮寄备注', value.remark),
         ...files('邮寄回执', value.receiptFiles),
         ...actor(value.recordedByUserId),
       ],
@@ -313,6 +321,7 @@ export function buildCaseWorkspaceEvents(
     add('filing', item.id, '法院提交', value.submittedAt, value.recordedAt, [
       field('法院', value.court.name),
       field('诉调号', value.mediationNo),
+      field('标的额', value.claimAmount),
       ...files('提交证据', value.evidenceFiles),
       ...files('提交截图', value.screenshotFiles),
       ...actor(value.recordedByUserId),
@@ -811,7 +820,7 @@ export function buildCaseWorkspaceSections(
           ),
           field('当前阶段', caseStageLabels[item.stage]),
           date('创建时间', item.createdAt),
-          date('实际匹配日期', item.matchedOn),
+          date('委案日期', item.matchedOn),
           date('匹配记录时间', item.matchedAt),
           field('来源公证业务号', item.sourceNotaryMatter?.businessNo ?? null),
           ...(item.origin?.kind === 'EXTERNAL_ENTRY'
@@ -832,7 +841,10 @@ export function buildCaseWorkspaceSections(
         title: '被告',
         fields: [
           field('姓名／名称', value.name),
-          field('类型', value.kind === 'PERSON' ? '自然人' : '组织'),
+          field('类型', value.kind === 'PERSON' ? '自然人' : '法人／个体'),
+          ...(value.kind === 'ORGANIZATION'
+            ? [field('法定代表人', value.legalRepresentative)]
+            : []),
           field('证件号', value.idNo),
           field('电话', value.phone),
           field('地址', value.address),
@@ -1561,19 +1573,21 @@ export function buildCaseWorkspaceSections(
       ),
     ),
     field('承办法官', currentHearing?.judgeName ?? null),
-    item.complaintConfirmation
-      ? money(
-          '标的额（已确认诉请）',
-          item.complaintConfirmation.amountState,
-          item.complaintConfirmation.amount,
-        )
-      : item.complaint
+    item.filingSubmission?.claimAmount != null
+      ? money('标的额', 'KNOWN', item.filingSubmission.claimAmount)
+      : item.complaintConfirmation
         ? money(
-            '标的额（原诉请，未确认）',
-            item.complaint.amountState,
-            item.complaint.amount,
+            '标的额（已确认诉请）',
+            item.complaintConfirmation.amountState,
+            item.complaintConfirmation.amount,
           )
-        : field('标的额', null),
+        : item.complaint
+          ? money(
+              '标的额（原诉请，未确认）',
+              item.complaint.amountState,
+              item.complaint.amount,
+            )
+          : field('标的额', null),
     field(
       '披露数据',
       supplementValue(

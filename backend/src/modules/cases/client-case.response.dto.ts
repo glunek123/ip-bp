@@ -77,6 +77,7 @@ export class ClientCaseListResponseDto {
 
 export class ClientCaseMailingDto {
   @ApiProperty({ format: 'date' }) mailedAt!: string;
+  @ApiProperty({ nullable: true }) remark!: string | null;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
   @ApiProperty({ type: [ClientCaseFileDto] })
   receiptFiles!: ClientCaseFileDto[];

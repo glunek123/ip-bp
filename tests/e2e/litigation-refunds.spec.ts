@@ -54,7 +54,12 @@ type HttpResponse = {
   json(): Promise<unknown>;
   body(): Promise<Buffer>;
 };
-type EntryCreated = { id: string; stage: string; version: number };
+type EntryCreated = {
+  id: string;
+  businessNo: string;
+  stage: string;
+  version: number;
+};
 type CaseDetail = {
   id: string;
   stage: string;
@@ -448,15 +453,17 @@ async function uploadSecondInstanceJudgment(
   return { bytes, file };
 }
 
-async function createJudgedCase(
+type JudgmentFixture = {
+  headers: typeof operator;
+  customerId: string;
+  rightsHolderId: string;
+  label: string;
+};
+
+async function createReadyJudgmentCase(
   request: APIRequestContext,
   testInfo: TestAttachments,
-  options: {
-    headers: typeof operator;
-    customerId: string;
-    rightsHolderId: string;
-    label: string;
-  },
+  options: JudgmentFixture,
 ) {
   const defendant = `RF-${randomUUID()} ${options.label}`;
   const entryInput = {
@@ -498,6 +505,19 @@ async function createJudgedCase(
       data: entryInput,
     }),
     201,
+  );
+  return { created, defendant, date: entryInput.stageReachedOn };
+}
+
+async function createJudgedCase(
+  request: APIRequestContext,
+  testInfo: TestAttachments,
+  options: JudgmentFixture,
+) {
+  const { created, defendant } = await createReadyJudgmentCase(
+    request,
+    testInfo,
+    options,
   );
   const { file } = await uploadJudgment(
     request,
@@ -578,6 +598,103 @@ async function sendCommand<T extends RefundCommand>(
   }
   return responseJson<T>(response, method === 'PATCH' ? 200 : 201);
 }
+
+test('judgment card records multiple pending refunds atomically and replays the same receipt', async ({
+  page,
+  request,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1120 });
+  await seedCoreLeadE2eData({ reuseExisting: true });
+  await enableSyntheticGrants();
+  const { created, date } = await createReadyJudgmentCase(request, testInfo, {
+    headers: operator,
+    customerId: coreLeadFixtures.admittedCustomer,
+    rightsHolderId: coreLeadFixtures.holder,
+    label: '判决更新卡片',
+  });
+  await page.goto('/cases?view=mine&stage=WAITING_JUDGMENT');
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page
+    .getByRole('row')
+    .filter({ hasText: created.businessNo })
+    .getByRole('button', { name: '判决更新', exact: true })
+    .click();
+  const panel = page.locator('[data-test="case-judgment-panel"]');
+  await expect(panel).toBeVisible();
+  await panel.locator('[data-test="judgment-date"]').fill(date);
+  await panel.locator('[data-test="paid-fee-amount"]').fill('0');
+  const add = panel.getByRole('button', { name: '+ 增加一笔退费' });
+  await add.click();
+  await panel.getByLabel('第1笔退费金额').fill('800.25');
+  await add.click();
+  await panel.getByLabel('第2笔退费方').selectOption('DEFENDANT');
+  await panel.getByLabel('第2笔退费金额').fill('12.75');
+  await add.click();
+  await panel.getByLabel('第3笔退费金额').fill('22');
+  await panel.getByRole('button', { name: '删除', exact: true }).last().click();
+  await expect(panel).toContainText('813.00');
+  await panel.locator('[data-test="judgment-file-input"]').setInputFiles({
+    name: '合成判决更新.pdf',
+    mimeType: 'application/pdf',
+    buffer: batch2SyntheticPdf('judgment-update-multi-refund'),
+  });
+  const submit = panel.getByRole('button', { name: '提交', exact: true });
+  await expect(submit).toBeEnabled();
+  await page.screenshot({
+    path: '.local/case-workflow-acceptance/judgment-update.png',
+  });
+  const path = `/api/v1/cases/${created.id}/judgment-register`;
+  const sent = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === path,
+  );
+  await submit.click();
+  const response = await sent;
+  const judgment = await responseJson<{ judgmentId: string }>(response, 201);
+  const body = response.request().postDataJSON();
+  expect(body).toMatchObject({
+    judgmentAmount: null,
+    paidLitigationFee: '0',
+    refunds: [
+      { party: 'COURT', amount: '800.25' },
+      { party: 'DEFENDANT', amount: '12.75' },
+    ],
+  });
+  const replay = await responseJson(
+    await request.post(path, { headers: operator, data: body }),
+    201,
+  );
+  expect(replay).toEqual(judgment);
+  const workspace = await responseJson<RefundWorkspace>(
+    await request.get(
+      `/api/v1/cases/litigation-refunds/${created.id}/workspace`,
+      { headers: operator },
+    ),
+  );
+  expect(workspace.items).toHaveLength(2);
+  expect(workspace.items).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        source: expect.objectContaining({ id: judgment.judgmentId }),
+        amount: '800.25',
+        status: 'PENDING',
+      }),
+      expect.objectContaining({
+        source: expect.objectContaining({ id: judgment.judgmentId }),
+        amount: '12.75',
+        status: 'PENDING',
+      }),
+    ]),
+  );
+  expect(await sqlFacts(created.id)).toMatchObject({
+    case_version: 2,
+    fee_records: 0,
+    payment_versions: 0,
+  });
+});
 
 test('registers and follows two litigation refunds from the current judgment without closing the case', async ({
   request,

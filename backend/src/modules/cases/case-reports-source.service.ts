@@ -33,6 +33,7 @@ const select = {
   complaintAmountState: true,
   complaintAmount: true,
   complaintConfirmation: { select: { amountState: true, amount: true } },
+  filingSubmission: { select: { claimAmount: true } },
 } satisfies Prisma.CaseSelect;
 type Row = Prisma.CaseGetPayload<{ select: typeof select }>;
 const centerSelect = {
@@ -82,6 +83,7 @@ const centerSelect = {
       departmentId: true,
       courtId: true,
       courtName: true,
+      claimAmount: true,
     },
   },
 } satisfies Prisma.CaseSelect;
@@ -244,6 +246,17 @@ function distributionSource(
 // Matches the effective claim precedence in caseListDisplay. Keep this narrow
 // query within the cases owner; reports never queries another module's tables.
 function claim(row: Row): CaseReportAmount {
+  const filingAmount = row.filingSubmission?.claimAmount;
+  if (filingAmount !== null && filingAmount !== undefined) {
+    if (
+      filingAmount.isFinite() &&
+      filingAmount.gte(0) &&
+      filingAmount.decimalPlaces() <= 2 &&
+      filingAmount.lte('99999999999999.99')
+    )
+      return { state: 'KNOWN', amount: filingAmount.toFixed(2) };
+    throw invalidSource();
+  }
   const confirmation = row.complaintConfirmation;
   if (confirmation === null && row.complaintSubmittedAt === null) {
     if (row.complaintAmountState !== null || row.complaintAmount !== null)

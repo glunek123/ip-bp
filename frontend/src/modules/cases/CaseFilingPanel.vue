@@ -59,6 +59,13 @@ const courtsError = ref('');
 const courtName = ref('');
 const courtId = ref('');
 const submittedAt = ref(todayShanghai());
+const claimAmount = ref('');
+const originalClaimAmount = computed(() => {
+  const confirmation = props.item.complaintConfirmation;
+  return (
+    (confirmation ? confirmation.amount : props.item.complaint?.amount) ?? ''
+  );
+});
 const mediationNo = ref('');
 const evidenceFiles = ref<CaseFile[]>([]);
 const screenshotFiles = ref<CaseFile[]>([]);
@@ -149,6 +156,7 @@ function clearContext() {
   courtName.value = '';
   courtId.value = '';
   submittedAt.value = todayShanghai();
+  claimAmount.value = originalClaimAmount.value;
   mediationNo.value = '';
   evidenceFiles.value = [];
   screenshotFiles.value = [];
@@ -166,6 +174,7 @@ function clearContext() {
   if (props.prepareOnly && props.preparedInput) {
     courtId.value = props.preparedInput.courtId;
     submittedAt.value = props.preparedInput.submittedAt;
+    claimAmount.value = props.preparedInput.claimAmount ?? claimAmount.value;
     mediationNo.value = props.preparedInput.mediationNo ?? '';
     sourceVersionIds.value = [
       ...(props.preparedInput.consolidationSourceContentVersionIds ?? []),
@@ -256,7 +265,8 @@ const ready = computed(
     courtId.value !== '' &&
     isBusinessDate(submittedAt.value) &&
     submittedAt.value <= todayShanghai() &&
-    evidenceFiles.value.length + sourceVersionIds.value.length > 0 &&
+    (claimAmount.value === '' ||
+      /^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u.test(claimAmount.value)) &&
     evidenceFiles.value.length <= 50 &&
     sourceVersionIds.value.length <= 50 &&
     screenshotFiles.value.length <= 10 &&
@@ -402,6 +412,10 @@ function makeInput(): SubmitCaseFilingInput {
     idempotencyKey: requestKey || (requestKey = key()),
     courtId: courtId.value,
     submittedAt: submittedAt.value,
+    ...(claimAmount.value !== '' &&
+    claimAmount.value !== originalClaimAmount.value
+      ? { claimAmount: claimAmount.value }
+      : {}),
     filingEvidenceContentVersionIds: evidenceFiles.value.map(
       (file) => file.contentVersionId,
     ),
@@ -525,171 +539,186 @@ async function download(file: CaseFile) {
         (item.canSubmitFiling && item.stage === 'WAITING_FILING')
       "
     >
-      <p class="field-help">
-        请确认真实法院、实际提交日期和本次材料。确认后案件将进入“待正式立案”，系统会保存法院、日期、诉调号及所选文件版本；已确认金额保持不变。
-      </p>
       <p v-if="courtsLoading" role="status">正在读取本部门法院…</p>
       <p v-if="courtsError" role="alert" class="submit-error">
         {{ courtsError }}
         <ElButton text @click="loadCourts">重新读取法院</ElButton>
       </p>
-      <label v-if="courts.length > 0">
-        法院 <span aria-hidden="true">*</span>
-        <select
-          v-model="courtId"
-          class="text-input"
-          required
-          :aria-required="true"
-          :disabled="locked || unknownRequest !== null"
-          :data-test="
-            courts.length === 1 ? 'filing-court-fixed' : 'filing-court-select'
-          "
-          @change="editing"
-        >
-          <option v-if="courts.length > 1" value="">请选择法院</option>
-          <option v-for="court in courts" :key="court.id" :value="court.id">
-            {{ court.name }}
-          </option>
-        </select>
-      </label>
-      <p v-else-if="!courtsLoading" class="field-help">
-        本部门还没有可选法院，请在下方录入真实法院名称。
-      </p>
-      <div v-if="!locked && unknownRequest === null" class="demo-form-grid">
-        <label>
-          登记本部门真实法院
-          <input
-            v-model="courtName"
+      <div class="filing-fields">
+        <label v-if="courts.length > 0" class="filing-fields__court">
+          立案法院 <span aria-hidden="true">*</span>
+          <select
+            v-model="courtId"
             class="text-input"
-            maxlength="200"
-            autocomplete="organization"
-            data-test="filing-court-name"
+            required
+            :aria-required="true"
+            :disabled="locked || unknownRequest !== null"
+            :data-test="
+              courts.length === 1 ? 'filing-court-fixed' : 'filing-court-select'
+            "
+            @change="editing"
+          >
+            <option v-if="courts.length > 1" value="">请选择法院</option>
+            <option v-for="court in courts" :key="court.id" :value="court.id">
+              {{ court.name }}
+            </option>
+          </select>
+        </label>
+        <details
+          v-if="!locked && unknownRequest === null"
+          class="filing-fields__court-extra"
+        >
+          <summary>补录法院</summary>
+          <div class="demo-form-grid">
+            <label>
+              法院名称
+              <input
+                v-model="courtName"
+                class="text-input"
+                maxlength="200"
+                autocomplete="organization"
+                data-test="filing-court-name"
+                @input="editing"
+              />
+            </label>
+            <ElButton
+              text
+              :disabled="courtsLoading || courtName.trim().length === 0"
+              data-test="filing-court-create"
+              @click="addCourt"
+              >登记法院</ElButton
+            >
+          </div>
+        </details>
+        <label class="filing-fields__date">
+          提交立案日期 <span aria-hidden="true">*</span>
+          <input
+            v-model="submittedAt"
+            type="date"
+            class="text-input"
+            :max="todayShanghai()"
+            required
+            :aria-required="true"
+            :disabled="locked || unknownRequest !== null"
+            data-test="filing-submitted-at"
             @input="editing"
           />
         </label>
-        <ElButton
-          text
-          :disabled="courtsLoading || courtName.trim().length === 0"
-          data-test="filing-court-create"
-          @click="addCourt"
-          >登记法院</ElButton
-        >
-      </div>
-      <label>
-        实际提交日期 <span aria-hidden="true">*</span>
-        <input
-          v-model="submittedAt"
-          type="date"
-          class="text-input"
-          :max="todayShanghai()"
-          required
-          :aria-required="true"
-          :disabled="locked || unknownRequest !== null"
-          data-test="filing-submitted-at"
-          @input="editing"
-        />
-      </label>
-      <label>
-        诉调号（选填）
-        <input
-          v-model="mediationNo"
-          class="text-input"
-          maxlength="100"
-          :disabled="locked || unknownRequest !== null"
-          data-test="filing-mediation-no"
-          @input="editing"
-        />
-      </label>
-      <label>
-        起诉及证据材料 <span aria-hidden="true">*</span>
-        <input
-          type="file"
-          class="text-input"
-          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
-          multiple
-          :disabled="
-            locked ||
-            unknownRequest !== null ||
-            uploading !== null ||
-            evidenceFiles.length >= 50
-          "
-          data-test="filing-evidence-input"
-          @change="uploadFiles($event, 'FILING_EVIDENCE')"
-        />
-      </label>
-      <p class="field-help">
-        PDF、DOC、DOCX、JPG 或 PNG，单份不超过
-        50MB；本案上传与已合案来源至少选择 1 份。
-      </p>
-      <fieldset v-if="sourceOptions.length" class="filing-source-options">
-        <legend>已合案来源材料（引用原版本，不复制文件）</legend>
-        <label v-for="source in sourceOptions" :key="source.id">
+        <label class="filing-fields__amount"
+          >标的额（元）
           <input
-            v-model="sourceVersionIds"
-            type="checkbox"
-            :value="source.id"
+            v-model="claimAmount"
+            class="text-input"
+            inputmode="decimal"
+            data-test="filing-claim-amount"
+            placeholder="留空沿用原标的额"
             :disabled="locked || unknownRequest !== null"
-            @change="editing"
+            @input="editing"
           />
-          {{ source.caseNo }} · {{ source.name }}（{{ source.category }}）
         </label>
-      </fieldset>
-      <p v-if="uploading === 'evidence'" role="status">
-        正在上传起诉及证据材料…
-      </p>
-      <ul>
-        <li v-for="file in evidenceFiles" :key="file.contentVersionId">
-          {{ file.originalFilename }}（{{ file.mimeType }}）
-          <ElButton text @click="download(file)">下载</ElButton>
-          <ElButton
-            v-if="unknownRequest === null"
-            text
-            @click="
-              evidenceFiles = evidenceFiles.filter(
-                (entry) => entry.contentVersionId !== file.contentVersionId,
-              );
-              editing();
-            "
-            >移除</ElButton
-          >
-        </li>
-      </ul>
-      <label>
-        立案截图（选填）
-        <input
-          type="file"
-          class="text-input"
-          accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-          multiple
-          :disabled="
-            locked ||
-            unknownRequest !== null ||
-            uploading !== null ||
-            screenshotFiles.length >= 10
-          "
-          data-test="filing-screenshot-input"
-          @change="uploadFiles($event, 'FILING_SCREENSHOT')"
-        />
-      </label>
-      <p class="field-help">PDF、JPG 或 PNG，单份不超过 20MB；最多 10 份。</p>
-      <p v-if="uploading === 'screenshot'" role="status">正在上传立案截图…</p>
-      <ul>
-        <li v-for="file in screenshotFiles" :key="file.contentVersionId">
-          {{ file.originalFilename }}（{{ file.mimeType }}）
-          <ElButton text @click="download(file)">下载</ElButton>
-          <ElButton
-            v-if="unknownRequest === null"
-            text
-            @click="
-              screenshotFiles = screenshotFiles.filter(
-                (entry) => entry.contentVersionId !== file.contentVersionId,
-              );
-              editing();
-            "
-            >移除</ElButton
-          >
-        </li>
-      </ul>
+        <label class="filing-fields__mediation">
+          诉调号／立案编号
+          <input
+            v-model="mediationNo"
+            class="text-input"
+            maxlength="100"
+            :disabled="locked || unknownRequest !== null"
+            data-test="filing-mediation-no"
+            @input="editing"
+          />
+        </label>
+        <div class="filing-fields__evidence">
+          <label>
+            证据材料
+            <input
+              type="file"
+              class="text-input"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
+              multiple
+              :disabled="
+                locked ||
+                unknownRequest !== null ||
+                uploading !== null ||
+                evidenceFiles.length >= 50
+              "
+              data-test="filing-evidence-input"
+              @change="uploadFiles($event, 'FILING_EVIDENCE')"
+            />
+          </label>
+          <fieldset v-if="sourceOptions.length" class="filing-source-options">
+            <legend>已合案来源材料（引用原版本，不复制文件）</legend>
+            <label v-for="source in sourceOptions" :key="source.id">
+              <input
+                v-model="sourceVersionIds"
+                type="checkbox"
+                :value="source.id"
+                :disabled="locked || unknownRequest !== null"
+                @change="editing"
+              />
+              {{ source.caseNo }} · {{ source.name }}（{{ source.category }}）
+            </label>
+          </fieldset>
+          <p v-if="uploading === 'evidence'" role="status">
+            正在上传起诉及证据材料…
+          </p>
+          <ul>
+            <li v-for="file in evidenceFiles" :key="file.contentVersionId">
+              {{ file.originalFilename }}（{{ file.mimeType }}）
+              <ElButton text @click="download(file)">下载</ElButton>
+              <ElButton
+                v-if="unknownRequest === null"
+                text
+                @click="
+                  evidenceFiles = evidenceFiles.filter(
+                    (entry) => entry.contentVersionId !== file.contentVersionId,
+                  );
+                  editing();
+                "
+                >移除</ElButton
+              >
+            </li>
+          </ul>
+        </div>
+        <div class="filing-fields__screenshot">
+          <label>
+            立案截图
+            <input
+              type="file"
+              class="text-input"
+              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+              multiple
+              :disabled="
+                locked ||
+                unknownRequest !== null ||
+                uploading !== null ||
+                screenshotFiles.length >= 10
+              "
+              data-test="filing-screenshot-input"
+              @change="uploadFiles($event, 'FILING_SCREENSHOT')"
+            />
+          </label>
+          <p v-if="uploading === 'screenshot'" role="status">
+            正在上传立案截图…
+          </p>
+          <ul>
+            <li v-for="file in screenshotFiles" :key="file.contentVersionId">
+              {{ file.originalFilename }}（{{ file.mimeType }}）
+              <ElButton text @click="download(file)">下载</ElButton>
+              <ElButton
+                v-if="unknownRequest === null"
+                text
+                @click="
+                  screenshotFiles = screenshotFiles.filter(
+                    (entry) => entry.contentVersionId !== file.contentVersionId,
+                  );
+                  editing();
+                "
+                >移除</ElButton
+              >
+            </li>
+          </ul>
+        </div>
+      </div>
       <p v-if="uploadError" role="alert" class="submit-error">
         {{ uploadError }}
       </p>
@@ -711,7 +740,8 @@ async function download(file: CaseFile) {
       >
         <h3>提交内容核对</h3>
         <p>法院：{{ courts.find((court) => court.id === courtId)?.name }}</p>
-        <p>实际提交日期：{{ submittedAt }}</p>
+        <p>提交立案日期：{{ submittedAt }}</p>
+        <p>标的额：{{ claimAmount || originalClaimAmount || '未确认' }}</p>
         <p>诉调号：{{ mediationNo.trim() || '未填写' }}</p>
         <p>
           起诉及证据材料：{{ evidenceFiles.length }} 份；合案来源引用：{{
@@ -719,9 +749,6 @@ async function download(file: CaseFile) {
           }}
           份；立案截图：{{ screenshotFiles.length }}
           份
-        </p>
-        <p>
-          提交后案件进入“待正式立案”；所选材料版本和法院名称将固定保存，已确认金额不会改变。
         </p>
         <ElButton
           v-if="prepareOnly"
@@ -738,7 +765,7 @@ async function download(file: CaseFile) {
           :disabled="submitting || !ready"
           data-test="filing-submit"
           @click="submit"
-          >确认提交并进入待正式立案</ElButton
+          >提交</ElButton
         >
       </section>
       <template v-if="unknownRequest !== null">
@@ -763,3 +790,44 @@ async function download(file: CaseFile) {
     </p>
   </section>
 </template>
+
+<style scoped>
+.filing-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.25rem;
+}
+.filing-fields > * {
+  min-width: 0;
+}
+.filing-fields__court {
+  order: 1;
+}
+.filing-fields__date {
+  order: 2;
+}
+.filing-fields__amount {
+  order: 3;
+}
+.filing-fields__screenshot {
+  order: 4;
+}
+.filing-fields__mediation {
+  order: 5;
+}
+.filing-fields__evidence {
+  order: 6;
+}
+.filing-fields__court-extra {
+  order: 7;
+  grid-column: 1 / -1;
+}
+@media (max-width: 680px) {
+  .filing-fields {
+    grid-template-columns: 1fr;
+  }
+  .filing-fields__court-extra {
+    grid-column: 1;
+  }
+}
+</style>

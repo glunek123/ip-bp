@@ -19,6 +19,8 @@ export type CaseListOptionalColumn = Exclude<
   CaseListColumn,
   'businessNo' | 'stage'
 >;
+export type CaseListHiddenColumn = CaseListOptionalColumn | 'owner';
+export type CaseListPreferenceView = 'mine' | 'department';
 export type CaseListPreferenceBucket =
   | 'all'
   | 'PENDING_MATCH'
@@ -41,7 +43,7 @@ export type CaseListPreferenceBucket =
   | 'EXECUTION_PREPARATION';
 export type CaseListPreference = {
   order: CaseListColumn[];
-  hidden: CaseListOptionalColumn[];
+  hidden: CaseListHiddenColumn[];
 };
 
 const fixedColumns = ['businessNo', 'stage'] as const;
@@ -60,6 +62,7 @@ const optionalColumns: CaseListOptionalColumn[] = [
   'closureAmount',
 ];
 const columns: CaseListColumn[] = [...fixedColumns, ...optionalColumns];
+const hiddenColumns: CaseListHiddenColumn[] = [...optionalColumns, 'owner'];
 const buckets: CaseListPreferenceBucket[] = [
   'all',
   'PENDING_MATCH',
@@ -121,7 +124,7 @@ function decodePreference(
     candidate.order[1] !== fixedColumns[1] ||
     !Array.isArray(candidate.hidden) ||
     !candidate.hidden.every((column) =>
-      optionalColumns.includes(column as CaseListOptionalColumn),
+      hiddenColumns.includes(column as CaseListHiddenColumn),
     ) ||
     new Set(candidate.hidden).size !== candidate.hidden.length
   )
@@ -134,30 +137,37 @@ function decodePreference(
     );
   return {
     order: [...candidate.order] as CaseListColumn[],
-    hidden: [...candidate.hidden] as CaseListOptionalColumn[],
+    hidden: [...candidate.hidden] as CaseListHiddenColumn[],
   };
 }
 
-function preferencePath(bucket: CaseListPreferenceBucket): string {
+function preferencePath(
+  bucket: CaseListPreferenceBucket,
+  view: CaseListPreferenceView,
+): string {
   if (!buckets.includes(bucket)) throw invalid();
-  return `/cases/list-preferences/${encodeURIComponent(bucket)}`;
+  return `/cases/list-preferences/${encodeURIComponent(bucket)}${
+    view === 'mine' ? '?view=mine' : ''
+  }`;
 }
 
 export async function getCaseListPreference(
   bucket: CaseListPreferenceBucket,
   options?: RequestOptions,
+  view: CaseListPreferenceView = 'department',
 ): Promise<CaseListPreference> {
-  return decodePreference(await getJson(preferencePath(bucket), options));
+  return decodePreference(await getJson(preferencePath(bucket, view), options));
 }
 
 export async function saveCaseListPreference(
   bucket: CaseListPreferenceBucket,
   preference: CaseListPreference,
   options?: RequestOptions,
+  view: CaseListPreferenceView = 'department',
 ): Promise<CaseListPreference> {
   const body = decodePreference(preference, 'VALIDATION_ERROR');
   return decodePreference(
-    await requestJson(preferencePath(bucket), {
+    await requestJson(preferencePath(bucket, view), {
       ...options,
       method: 'PUT',
       body,

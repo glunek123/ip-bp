@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { coreLeadFixtures, getLead } from './core-lead-database.mjs';
+import {
+  coreLeadFixtures,
+  getLead,
+  seedHistoricalCaseDefendants,
+} from './core-lead-database.mjs';
 import { createLawyerAccountThroughApi } from './case-lawyer-account.mjs';
 
 const auth = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
@@ -271,6 +275,10 @@ export async function createSubmittedCaseThroughApi(request, options = {}) {
   const lawyer = await createLawyerAccountThroughApi(request, {
     fullName: '诉状确认律师',
   });
+  const defendants = options.defendants ?? [
+    { kind: 'ORGANIZATION', name: '诉状确认被告公司' },
+  ];
+  await seedHistoricalCaseDefendants(caseId, defendants);
   const matchKey = randomUUID();
   await body(
     await request.post(`/api/v1/cases/${caseId}/match`, {
@@ -279,9 +287,7 @@ export async function createSubmittedCaseThroughApi(request, options = {}) {
         expectedVersion: 1,
         idempotencyKey: matchKey,
         matchedOn: '2026-09-28',
-        defendants: options.defendants ?? [
-          { kind: 'ORGANIZATION', name: '诉状确认被告公司' },
-        ],
+        defendants,
         lawyerAccountId: lawyer.id,
       },
     }),

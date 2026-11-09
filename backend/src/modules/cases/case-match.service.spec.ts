@@ -45,7 +45,7 @@ describe('CaseMatchService', () => {
           responsibleUserId: actor.userId,
           responsibleMembership: { teamId: null },
           consolidationMembership: null,
-          defendants: [],
+          defendants: [{ kind: 'ORGANIZATION', name: '被告公司', idNo: null }],
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
@@ -55,6 +55,10 @@ describe('CaseMatchService', () => {
           .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
       },
       caseMatchReceipt: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({}),
+      },
+      caseDefendantPreparationReceipt: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({}),
       },
@@ -96,7 +100,99 @@ describe('CaseMatchService', () => {
     expect(f.tx.case.updateMany).not.toHaveBeenCalled();
   });
 
-  it('atomically advances version and persists a defendant, real lawyer profile, assignment, audit and receipt', async () => {
+  it('requires a saved defendant before matching a lawyer', async () => {
+    const f = fixture();
+    const record = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValueOnce({ ...record, defendants: [] });
+    await expect(f.service.match(actor, caseId, input)).rejects.toMatchObject({
+      response: { code: 'DEFENDANTS_NOT_PREPARED' },
+    });
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+    expect(f.tx.caseLawyerAssignment.create).not.toHaveBeenCalled();
+  });
+
+  it('saves a corporate defendant and legal representative before matching, with its own audit and receipt', async () => {
+    const f = fixture();
+    const record = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValueOnce({ ...record, defendants: [] });
+    const request = {
+      expectedVersion: 1,
+      idempotencyKey: 'prepare-1',
+      defendants: [
+        {
+          kind: 'ORGANIZATION' as const,
+          name: '被告公司',
+          legalRepresentative: '王某',
+        },
+      ],
+    };
+    await expect(
+      f.service.prepareDefendants(actor, caseId, request),
+    ).resolves.toEqual({
+      id: caseId,
+      stage: 'PENDING_MATCH',
+      version: 2,
+      defendantCount: 1,
+    });
+    expect(f.tx.caseDefendant.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          name: '被告公司',
+          legalRepresentative: '王某',
+        }),
+      ],
+    });
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: 'case.defendants.prepared' }),
+    });
+    expect(f.tx.caseDefendantPreparationReceipt.create).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(f.tx.caseLawyerAssignment.create).not.toHaveBeenCalled();
+  });
+
+  it('replays the original defendant preparation after a successful write without adding another row', async () => {
+    const f = fixture();
+    const request = {
+      expectedVersion: 1,
+      idempotencyKey: 'prepare-1',
+      defendants: [{ kind: 'PERSON' as const, name: '张某' }],
+    };
+    const fingerprint = createHash('sha256')
+      .update(
+        JSON.stringify({
+          caseId,
+          expectedVersion: 1,
+          defendants: [
+            {
+              kind: 'PERSON',
+              name: '张某',
+              idNo: null,
+              phone: null,
+              address: null,
+              legalRepresentative: null,
+            },
+          ],
+        }),
+      )
+      .digest('hex');
+    f.tx.caseDefendantPreparationReceipt.findUnique.mockResolvedValue({
+      caseId,
+      requestFingerprint: fingerprint,
+      resultSnapshot: {
+        id: caseId,
+        stage: 'PENDING_MATCH',
+        version: 2,
+        defendantCount: 1,
+      },
+    });
+    await expect(
+      f.service.prepareDefendants(actor, caseId, request),
+    ).resolves.toMatchObject({ version: 2 });
+    expect(f.tx.caseDefendant.createMany).not.toHaveBeenCalled();
+  });
+
+  it('matches a previously saved defendant and persists the real lawyer, assignment, audit and receipt', async () => {
     const f = fixture();
     const result = await f.service.match(actor, caseId, input);
     expect(result).toMatchObject({
@@ -121,16 +217,7 @@ describe('CaseMatchService', () => {
         }),
       }),
     );
-    expect(f.tx.caseDefendant.createMany).toHaveBeenCalledWith({
-      data: [
-        {
-          caseId,
-          departmentId: actor.departmentId,
-          kind: 'ORGANIZATION',
-          name: '被告公司',
-        },
-      ],
-    });
+    expect(f.tx.caseDefendant.createMany).not.toHaveBeenCalled();
     expect(f.tx.lawyerAccountBinding.findMany).toHaveBeenCalledWith({
       where: expect.objectContaining({
         userId: lawyerAccountId,

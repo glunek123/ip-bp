@@ -35,6 +35,7 @@ export async function readCaseSettlementSource(
       complaintConfirmation: {
         select: { id: true, amountState: true, amount: true },
       },
+      filingSubmission: { select: { claimAmount: true } },
       customer: { select: { id: true, departmentId: true, name: true } },
       lawyers: {
         where: { role: 'PRIMARY', endedAt: null },
@@ -152,14 +153,16 @@ export async function readCaseSettlementSource(
     };
   }
   const claim =
-    row.complaintConfirmation !== null
-      ? amount(
-          row.complaintConfirmation.amountState,
-          row.complaintConfirmation.amount,
-        )
-      : row.complaintAmountState === null
-        ? null
-        : amount(row.complaintAmountState, row.complaintAmount);
+    row.filingSubmission?.claimAmount != null
+      ? amount('KNOWN', row.filingSubmission.claimAmount)
+      : row.complaintConfirmation !== null
+        ? amount(
+            row.complaintConfirmation.amountState,
+            row.complaintConfirmation.amount,
+          )
+        : row.complaintAmountState === null
+          ? null
+          : amount(row.complaintAmountState, row.complaintAmount);
   if (
     row.complaintAmountState === null &&
     row.complaintAmount !== null &&

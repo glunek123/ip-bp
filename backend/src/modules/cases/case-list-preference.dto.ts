@@ -28,6 +28,11 @@ export type CaseListColumn = (typeof caseListColumns)[number];
 export const caseListOptionalColumns = caseListColumns.slice(
   2,
 ) as readonly CaseListColumn[];
+export const caseListHiddenColumns = [
+  ...caseListOptionalColumns,
+  'owner',
+] as const;
+export type CaseListHiddenColumn = (typeof caseListHiddenColumns)[number];
 
 export const caseListPreferenceBuckets = [
   'all',
@@ -71,18 +76,18 @@ export class SaveCaseListPreferenceDto {
   @fixedColumnsFirst
   order!: CaseListColumn[];
 
-  @ApiProperty({ enum: caseListOptionalColumns, isArray: true })
+  @ApiProperty({ enum: caseListHiddenColumns, isArray: true })
   @IsArray()
-  @ArrayMaxSize(12)
+  @ArrayMaxSize(13)
   @ArrayUnique()
-  @IsIn(caseListOptionalColumns, { each: true })
-  hidden!: CaseListColumn[];
+  @IsIn(caseListHiddenColumns, { each: true })
+  hidden!: CaseListHiddenColumn[];
 }
 
 export class CaseListPreferenceResponseDto {
   @ApiProperty({ enum: caseListColumns, isArray: true })
   order!: CaseListColumn[];
 
-  @ApiProperty({ enum: caseListOptionalColumns, isArray: true })
-  hidden!: CaseListColumn[];
+  @ApiProperty({ enum: caseListHiddenColumns, isArray: true })
+  hidden!: CaseListHiddenColumn[];
 }

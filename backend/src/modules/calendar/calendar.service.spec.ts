@@ -46,8 +46,8 @@ describe('CalendarService', () => {
     });
     expect(summary.metrics.court.count).toBe(1);
     expect(summary.metrics.pay).toEqual({
-      state: 'NOT_CONNECTED',
-      count: null,
+      state: 'AVAILABLE',
+      count: 0,
       nearestDate: null,
     });
   });

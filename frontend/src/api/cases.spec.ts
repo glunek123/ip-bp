@@ -16,6 +16,7 @@ import {
   mailCaseComplaint,
   mailCaseExecution,
   matchCase,
+  prepareCaseDefendants,
   submitCaseFiling,
   submitCaseExecutionFiling,
   submitComplaint,
@@ -514,6 +515,7 @@ const detail = {
       idNo: null,
       phone: null,
       address: null,
+      legalRepresentative: null,
     },
   ],
   lawyers: [
@@ -2132,6 +2134,7 @@ describe('cases API', () => {
           idNo: null,
           phone: '123',
           address: 'Street',
+          legalRepresentative: null,
         },
       ],
       acceptance,
@@ -4801,6 +4804,7 @@ describe('cases API', () => {
         recordedAt: '2026-10-03T03:00:00Z',
         recordedByUserId: '70000000-0000-4000-8000-000000000012',
         mediationNo: null,
+        claimAmount: null,
         evidenceFiles: [
           {
             materialId: '70000000-0000-4000-8000-000000000013',
@@ -4857,6 +4861,7 @@ describe('cases API', () => {
       stage: 'WAITING_FILING',
       complaintMailing: {
         mailedAt: '2026-10-04',
+        remark: null,
         recordedAt: '2026-10-04T02:00:00Z',
         recordedByUserId: 'lawyer-user-1',
         actorType: 'LAWYER',
@@ -5047,6 +5052,28 @@ describe('cases API', () => {
     });
   });
 
+  it('prepares the defendant before matching and keeps the corporate representative', async () => {
+    const fetchMock = mockJson({
+      id: 'case-1',
+      stage: 'PENDING_MATCH',
+      version: 4,
+      defendantCount: 1,
+    });
+    await prepareCaseDefendants('case-1', {
+      expectedVersion: 3,
+      idempotencyKey: 'prepare-1',
+      defendants: [
+        { kind: 'ORGANIZATION', name: '被告公司', legalRepresentative: '王某' },
+      ],
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/cases/case-1/defendants/prepare');
+    expect(new Headers(init.headers).get('Idempotency-Key')).toBe('prepare-1');
+    expect(JSON.parse(String(init.body)).defendants).toEqual([
+      { kind: 'ORGANIZATION', name: '被告公司', legalRepresentative: '王某' },
+    ]);
+  });
+
   it('matches a case to a lawyer account and forwards the selected profile id', async () => {
     const fetchMock = mockJson({
       id: 'case-1',
@@ -5094,6 +5121,7 @@ describe('cases API', () => {
 
   it('strictly decodes the narrow lawyer projection without internal fields', async () => {
     const lawyerDetail = {
+      earlyClosure: null,
       id: 'case-1',
       businessNo: 'CA-1',
       stage: 'WAITING_COMPLAINT',

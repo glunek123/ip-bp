@@ -29,6 +29,7 @@ const api = vi.hoisted(() => ({
   downloadMaterialVersion: vi.fn(),
   submitComplaint: vi.fn(),
   matchCase: vi.fn(),
+  caseAcceptanceDraft: vi.fn(),
   listLawyerMatchCandidates: vi.fn(),
   scheduleCaseHearing: vi.fn(),
   correctCaseHearing: vi.fn(),
@@ -63,6 +64,7 @@ vi.mock('../../api/cases', async (original) => ({
   getCase: api.getCase,
   submitComplaint: api.submitComplaint,
   matchCase: api.matchCase,
+  caseAcceptanceDraft: api.caseAcceptanceDraft,
   listLawyerMatchCandidates: api.listLawyerMatchCandidates,
   scheduleCaseHearing: api.scheduleCaseHearing,
   correctCaseHearing: api.correctCaseHearing,
@@ -598,6 +600,7 @@ describe('UXQ-01-C list action intents', () => {
         recordedAt: '2026-10-03T03:00:00Z',
         recordedByUserId: 'user-1',
         mediationNo: null,
+        claimAmount: null,
         evidenceFiles: [],
         screenshotFiles: [],
       };
@@ -985,6 +988,7 @@ it.each([
         idNo: null,
         phone: '100',
         address: 'Address',
+        legalRepresentative: null,
       },
     ];
     item.acceptances = [
@@ -1057,6 +1061,10 @@ beforeEach(() => {
   api.listCaseFileCatalog.mockImplementation(() => new Promise(() => {}));
   api.downloadMaterialVersion.mockResolvedValue(undefined);
   api.listLawyerMatchCandidates.mockResolvedValue([]);
+  api.caseAcceptanceDraft.mockResolvedValue({
+    version: baseItem.version,
+    draft: null,
+  });
   api.listFilingCourts.mockResolvedValue([]);
   api.getSettlementContext.mockResolvedValue({
     read: false,
@@ -1481,6 +1489,7 @@ describe('UI002 real case workspace host', () => {
         idNo: null,
         phone: '100',
         address: '原地址',
+        legalRepresentative: null,
       },
     ];
     item.recordEdits = {
@@ -1804,6 +1813,17 @@ describe('UI002 real case workspace host', () => {
     const item = structuredClone(baseItem);
     item.stage = 'PENDING_MATCH';
     item.canMatch = true;
+    item.defendants = [
+      {
+        id: 'defendant-1',
+        kind: 'PERSON',
+        name: 'Defendant',
+        idNo: null,
+        phone: null,
+        address: null,
+        legalRepresentative: null,
+      },
+    ];
     api.listLawyerMatchCandidates.mockResolvedValue([
       {
         lawyerAccountId: 'account-1',
@@ -1829,14 +1849,16 @@ describe('UI002 real case workspace host', () => {
     await wrapper
       .get('[data-test="workspace-primary-action"]')
       .trigger('click');
-    await wrapper
+    await flushPromises();
+    const firstLawyer = wrapper
       .get('[data-test="case-match-form"]')
-      .findAll('input')[1]!
-      .setValue('Defendant');
+      .find('select');
+    (firstLawyer.element as HTMLSelectElement).selectedIndex = 1;
+    await firstLawyer.trigger('change');
     await wrapper
       .get('[data-test="case-match-form"]')
       .findAll('button')
-      .find((button) => button.text().includes('确认匹配'))!
+      .find((button) => button.text().includes('匹配律师'))!
       .trigger('click');
     await flushPromises();
     expect(api.matchCase).toHaveBeenCalledTimes(1);
@@ -1932,6 +1954,17 @@ describe('UI002 real case workspace host', () => {
     const item = structuredClone(baseItem);
     item.stage = 'PENDING_MATCH';
     item.canMatch = true;
+    item.defendants = [
+      {
+        id: 'defendant-1',
+        kind: 'PERSON',
+        name: 'Defendant',
+        idNo: null,
+        phone: null,
+        address: null,
+        legalRepresentative: null,
+      },
+    ];
     api.listLawyerMatchCandidates.mockResolvedValue([
       {
         lawyerAccountId: 'lawyer-account',
@@ -1952,14 +1985,16 @@ describe('UI002 real case workspace host', () => {
     await wrapper
       .get('[data-test="workspace-primary-action"]')
       .trigger('click');
-    await wrapper
+    await flushPromises();
+    const firstLawyer = wrapper
       .get('[data-test="case-match-form"]')
-      .findAll('input')[1]!
-      .setValue('Defendant');
+      .find('select');
+    (firstLawyer.element as HTMLSelectElement).selectedIndex = 1;
+    await firstLawyer.trigger('change');
     await wrapper
       .get('[data-test="case-match-form"]')
       .findAll('button')
-      .find((button) => button.text().includes('确认匹配'))!
+      .find((button) => button.text().includes('匹配律师'))!
       .trigger('click');
     const original = JSON.parse(
       JSON.stringify(api.matchCase.mock.calls[0]![1]),
@@ -1972,7 +2007,10 @@ describe('UI002 real case workspace host', () => {
     expect(wrapper.text()).not.toContain('CA-1');
     late.resolve(undefined);
     await flushPromises();
-    expect(wrapper.text()).not.toContain('Defendant');
+    expect(wrapper.text()).not.toContain('案件匹配已完成');
+    expect(wrapper.find('[data-test="match-retry-original"]').exists()).toBe(
+      false,
+    );
     await router.push('/cases');
     await router.push('/cases/case-1');
     await flushPromises();
@@ -1988,6 +2026,17 @@ describe('UI002 real case workspace host', () => {
     const item = structuredClone(baseItem);
     item.stage = 'PENDING_MATCH';
     item.canMatch = true;
+    item.defendants = [
+      {
+        id: 'defendant-1',
+        kind: 'PERSON',
+        name: 'Defendant',
+        idNo: null,
+        phone: null,
+        address: null,
+        legalRepresentative: null,
+      },
+    ];
     api.listLawyerMatchCandidates.mockResolvedValue([
       {
         lawyerAccountId: 'account-1',
@@ -2161,6 +2210,7 @@ describe('UI002 real case workspace host', () => {
       recordedAt: '2026-10-03T03:00:00Z',
       recordedByUserId: 'user-1',
       mediationNo: null,
+      claimAmount: null,
       evidenceFiles: [],
       screenshotFiles: [],
     };
@@ -2613,6 +2663,17 @@ describe('UI002 real case workspace host', () => {
     const item = structuredClone(baseItem);
     item.stage = 'PENDING_MATCH';
     item.canMatch = true;
+    item.defendants = [
+      {
+        id: 'defendant-1',
+        kind: 'PERSON',
+        name: '真实被告',
+        idNo: null,
+        phone: null,
+        address: null,
+        legalRepresentative: null,
+      },
+    ];
     api.listLawyerMatchCandidates.mockResolvedValue([
       {
         lawyerAccountId: 'lawyer-account',
@@ -2629,10 +2690,12 @@ describe('UI002 real case workspace host', () => {
       .trigger('click');
     await flushPromises();
     const form = wrapper.get('[data-test="case-match-form"]');
-    await form.findAll('input')[1]!.setValue('真实被告');
+    const firstLawyer = form.find('select');
+    (firstLawyer.element as HTMLSelectElement).selectedIndex = 1;
+    await firstLawyer.trigger('change');
     await form
       .findAll('button')
-      .find((button) => button.text().includes('确认匹配'))!
+      .find((button) => button.text().includes('匹配律师'))!
       .trigger('click');
     const original = JSON.parse(
       JSON.stringify(api.matchCase.mock.calls[0]![1]),

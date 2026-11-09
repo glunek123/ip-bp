@@ -47,7 +47,9 @@ export const caseListDisplaySelect = {
     select: { lawyer: { select: { id: true, fullName: true } } },
     orderBy: { id: 'asc' },
   },
-  filingSubmission: { select: { courtId: true, courtName: true } },
+  filingSubmission: {
+    select: { id: true, courtId: true, courtName: true, claimAmount: true },
+  },
   acceptance: { select: { court: { select: { id: true, name: true } } } },
   courtCaseNo: true,
   complaintSubmittedAt: true,
@@ -106,6 +108,7 @@ export type CaseListDisplayRecord = Prisma.CaseGetPayload<{
 export type CaseAmountSource =
   | 'COMPLAINT_CONFIRMATION'
   | 'COMPLAINT_SUBMISSION'
+  | 'FILING_SUBMISSION'
   | 'FIRST_INSTANCE_JUDGMENT'
   | 'FIRST_INSTANCE_JUDGMENT_RECORD_CORRECTION'
   | 'SECOND_INSTANCE_RESULT'
@@ -197,21 +200,29 @@ export function caseListDisplay(
       message: '案件摘要来源不完整',
     });
   const confirmation = record.complaintConfirmation;
-  const claimAmount = confirmation
-    ? amount(
-        confirmation.amountState,
-        confirmation.amount,
-        'COMPLAINT_CONFIRMATION',
-        confirmation.id,
-      )
-    : record.complaintSubmittedAt
+  const claimAmount =
+    record.filingSubmission?.claimAmount != null
       ? amount(
-          record.complaintAmountState,
-          record.complaintAmount,
-          'COMPLAINT_SUBMISSION',
-          record.id,
+          'KNOWN',
+          record.filingSubmission.claimAmount,
+          'FILING_SUBMISSION',
+          record.filingSubmission.id,
         )
-      : unrecorded();
+      : confirmation
+        ? amount(
+            confirmation.amountState,
+            confirmation.amount,
+            'COMPLAINT_CONFIRMATION',
+            confirmation.id,
+          )
+        : record.complaintSubmittedAt
+          ? amount(
+              record.complaintAmountState,
+              record.complaintAmount,
+              'COMPLAINT_SUBMISSION',
+              record.id,
+            )
+          : unrecorded();
   const judgment = record.currentJudgment;
   const judgmentCorrection = judgment?.recordCorrections?.[0];
   const second = record.currentSecondInstanceResult;

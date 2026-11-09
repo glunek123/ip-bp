@@ -92,6 +92,10 @@ describe('CaseJudgmentService', () => {
         database as never,
         access as never,
         materials as never,
+        {
+          lockJudgmentActor: jest.fn(),
+          registerJudgmentRefunds: jest.fn(),
+        } as never,
       ),
     };
   }

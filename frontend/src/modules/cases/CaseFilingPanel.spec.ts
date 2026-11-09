@@ -180,7 +180,7 @@ describe('case filing panel', () => {
     expect(wrapper.text()).not.toContain('文件下载失败');
   });
 
-  it('automatically selects a single court and requires date and evidence before review', async () => {
+  it('automatically selects a single court and permits optional evidence before review', async () => {
     const wrapper = mountPanel();
     await flushPromises();
     expect(wrapper.get('h2.form-section-title').text()).toBe('提交立案');
@@ -191,7 +191,7 @@ describe('case filing panel', () => {
       value: court.id,
     });
     const review = wrapper.get('[data-test="filing-review"]');
-    expect((review.element as HTMLButtonElement).disabled).toBe(true);
+    expect((review.element as HTMLButtonElement).disabled).toBe(false);
     await chooseFile(
       wrapper,
       '[data-test="filing-evidence-input"]',

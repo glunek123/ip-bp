@@ -3,10 +3,11 @@ export type CalendarDateEvent = {
   sourceType:
     | 'FIRST_INSTANCE_HEARING'
     | 'SECOND_INSTANCE_HEARING'
+    | 'CASE_PAYMENT_DUE'
     | 'CUSTOMER_AGREEMENT_EXPIRY';
   sourceId: string;
   date: string;
-  type: 'court' | 'contract';
+  type: 'court' | 'contract' | 'pay';
   title: string;
   sub: string | null;
   caseId: string | null;

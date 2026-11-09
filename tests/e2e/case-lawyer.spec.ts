@@ -86,14 +86,14 @@ async function matchCaseInUi(
   await expect(form).toBeVisible();
   const subjectType = form.getByLabel('主体类型');
   const defendantInput = form.getByLabel('名称');
-  const lawyerSearch = form.getByLabel('按姓名或用户名搜索');
-  const matchedOn = form.getByLabel('实际匹配日期');
   await expect(subjectType).toBeVisible();
   await expect(defendantInput).toBeVisible();
-  await expect(lawyerSearch).toBeVisible();
-  await expect(matchedOn).toBeVisible();
   await subjectType.selectOption('ORGANIZATION');
   await defendantInput.fill(defendantName);
+  await form.getByRole('button', { name: '保存被告' }).click();
+  await expect(form.getByRole('heading', { name: '匹配律师' })).toBeVisible();
+  const lawyerSearch = form.getByLabel('输入姓名搜索');
+  const matchedOn = form.getByLabel('委案日期');
   await lawyerSearch.fill(lawyer.username);
   const lawyerSelect = form.getByLabel('账号');
   const optionLabel = lawyer.displayName + '（' + lawyer.username + '）';
@@ -101,7 +101,7 @@ async function matchCaseInUi(
   await lawyerSelect.selectOption({ label: optionLabel });
   await matchedOn.fill(dateShanghai());
   const matchButton = page.getByRole('button', {
-    name: '确认匹配并进入待写诉状',
+    name: '匹配律师',
   });
   await expect(matchButton).toBeVisible();
   await matchButton.click();
