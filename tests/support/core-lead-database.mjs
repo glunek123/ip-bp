@@ -208,6 +208,7 @@ const allActions = [
   'LEAD_WITHDRAW_APPLY',
 ];
 const actionNames = Object.freeze({
+  'fee.read': 'FEE_READ',
   'customer.read': 'CUSTOMER_READ',
   'customer.admit': 'CUSTOMER_ADMIT',
   'lead.read': 'LEAD_READ',
@@ -635,6 +636,9 @@ async function clearDatabase() {
     await transaction.evidenceGroupVersion.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
+    await transaction.caseRoutineProfile.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
     await transaction.case.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
@@ -685,6 +689,12 @@ async function clearDatabase() {
     });
     await transaction.notaryMatterMaterial.deleteMany({
       where: { matter: { departmentId: { in: departmentIds } } },
+    });
+    await transaction.notaryMatterCost.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryRoutineProfile.deleteMany({
+      where: { departmentId: { in: departmentIds } },
     });
     await transaction.notaryMatter.deleteMany({
       where: { departmentId: { in: departmentIds } },
@@ -1861,6 +1871,21 @@ export function countNotaryReturnReceipts(matterId) {
   });
 }
 
+export function readNotaryWorkflowFees(matterId) {
+  return database.feeRecord.findMany({
+    where: { notaryMatterId: matterId },
+    orderBy: { type: 'asc' },
+    select: {
+      id: true,
+      caseId: true,
+      type: true,
+      status: true,
+      direction: true,
+      amount: true,
+    },
+  });
+}
+
 export function countNotaryCertificates(matterId) {
   return database.notaryCertificate.count({ where: { matterId } });
 }
@@ -2134,7 +2159,7 @@ export function removeLeadProducts(leadId) {
   return database.leadProduct.deleteMany({ where: { leadId } });
 }
 
-export function setGrant(action, enabled) {
+export function setGrant(action, enabled, scope = 'TEAM') {
   const prismaAction = actionNames[action];
   if (prismaAction === undefined) throw new Error('Unsupported fixture action');
   if (enabled) {
@@ -2143,7 +2168,7 @@ export function setGrant(action, enabled) {
         {
           roleTemplateId: coreLeadFixtures.roleA,
           action: prismaAction,
-          scope: 'TEAM',
+          scope,
         },
       ],
       skipDuplicates: true,

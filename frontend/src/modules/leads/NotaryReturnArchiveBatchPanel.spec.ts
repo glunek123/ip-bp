@@ -19,21 +19,27 @@ vi.mock('../../app/workflow-events', () => ({
 
 import NotaryReturnArchiveBatchPanel from './NotaryReturnArchiveBatchPanel.vue';
 
-const detail = (id: string, fee: string | null = '10.00') => ({
+const detail = (
+  id: string,
+  fee: string | null = '10.00',
+  stage = 'WAITING_RETURN',
+) => ({
   id,
-  stage: 'WAITING_RETURN',
+  stage,
   version: 5,
   capabilities: {
     recordEvidence: false,
     recordOpening: false,
     reviewOpening: false,
     decideIssuance: false,
-    archiveReturn: true,
+    archiveReturn: stage === 'WAITING_RETURN',
+    archiveMatter: stage !== 'ARCHIVED',
   },
   evidence: {
     sampleFeeState: fee ? 'KNOWN' : 'PENDING',
     sampleFeeAmount: fee,
   },
+  fees: { notary: { state: 'KNOWN', amount: '10.00' } },
   issuanceDecision: { decision: 'NO_ISSUE' },
   businessNo: `NT-${id}`,
 });
@@ -56,28 +62,44 @@ function prepareAuth() {
   return auth;
 }
 
-async function mountPanel(ids = ['matter-1', 'matter-2']) {
+async function mountPanel(
+  ids = ['matter-1', 'matter-2'],
+  stage = 'WAITING_RETURN',
+) {
   const auth = prepareAuth();
   api.get.mockImplementation((id: string) =>
-    Promise.resolve(detail(id, id === 'matter-1' ? '10.00' : null)),
+    Promise.resolve(detail(id, id === 'matter-1' ? '10.00' : null, stage)),
   );
   const wrapper = mount(NotaryReturnArchiveBatchPanel, {
-    props: { matterIds: ids, scopeKey: 'user-1:department-1:WAITING_RETURN' },
+    props: {
+      matterIds: ids,
+      scopeKey: `user-1:department-1:${stage}`,
+    },
   });
   await flushPromises();
   return { wrapper, auth };
 }
 
+async function fillArchive(
+  wrapper: ReturnType<typeof mount>,
+  id: string,
+  type = 'NO_EVIDENCE',
+  reason = `归档 ${id}`,
+  notaryFee = '120.00',
+  sampleFee = '35.00',
+) {
+  await wrapper.get(`[data-test="notary-fee-${id}"]`).setValue(notaryFee);
+  await wrapper.get(`[data-test="sample-fee-${id}"]`).setValue(sampleFee);
+  await wrapper.get(`[data-test="archive-type-${id}"]`).setValue(type);
+  await wrapper.get(`[data-test="reason-${id}"]`).setValue(reason);
+}
+
 afterEach(() => vi.resetAllMocks());
 
 describe('NotaryReturnArchiveBatchPanel', () => {
-  it('reads every selected matter and shows its own known or pending fee', async () => {
+  it('reads each selected matter and requires its own fees, date, type, and reason', async () => {
     const { wrapper } = await mountPanel();
     expect(api.get).toHaveBeenCalledTimes(2);
-    expect(api.get).toHaveBeenCalledWith(
-      'matter-1',
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
     expect(wrapper.text()).toContain('NT-matter-1');
     expect(wrapper.text()).toContain('样品费事实：10.00 元');
     expect(wrapper.text()).toContain('样品费事实：待定');
@@ -85,376 +107,198 @@ describe('NotaryReturnArchiveBatchPanel', () => {
     expect(
       wrapper.get('[data-test="batch-submit"]').attributes('disabled'),
     ).toBeDefined();
+    expect(wrapper.find('[data-test="archive-date-matter-1"]').exists()).toBe(
+      true,
+    );
   });
 
-  it('fills only blank reasons and leaves every copied reason editable', async () => {
+  it('fills blank reasons while keeping each matter editable', async () => {
     const { wrapper } = await mountPanel();
-    const shared = wrapper.get('[data-test="shared-reason"]');
-    await shared.setValue('  共用退货原因  ');
-    await wrapper
-      .get('[data-test="reason-matter-1"]')
-      .setValue('已有的逐项原因');
+    await wrapper.get('[data-test="reason-matter-1"]').setValue('已填写原因');
+    await wrapper.get('[data-test="shared-reason"]').setValue('共用原因');
     await wrapper.get('[data-test="fill-blank-reasons"]').trigger('click');
     expect(
       (
         wrapper.get('[data-test="reason-matter-1"]')
           .element as HTMLTextAreaElement
       ).value,
-    ).toBe('已有的逐项原因');
+    ).toBe('已填写原因');
     expect(
       (
         wrapper.get('[data-test="reason-matter-2"]')
           .element as HTMLTextAreaElement
       ).value,
-    ).toBe('共用退货原因');
-    expect(
-      wrapper.get('[data-test="shared-reason-filled-count"]').text(),
-    ).toContain('已填入 1 项');
-
-    await shared.setValue('');
-    expect(wrapper.find('[data-test="shared-reason-error"]').exists()).toBe(
-      false,
-    );
+    ).toBe('共用原因');
+    await wrapper.get('[data-test="reason-matter-2"]').setValue('逐项改写');
     expect(
       (
         wrapper.get('[data-test="reason-matter-2"]')
           .element as HTMLTextAreaElement
       ).value,
-    ).toBe('共用退货原因');
-    await shared.setValue('共用退货原因');
-    await wrapper.get('[data-test="reason-matter-2"]').setValue('之后逐项编辑');
-    await wrapper.get('[data-test="reason-matter-1"]').setValue('');
-    await wrapper.get('[data-test="fill-blank-reasons"]').trigger('click');
-    expect(
-      (
-        wrapper.get('[data-test="reason-matter-1"]')
-          .element as HTMLTextAreaElement
-      ).value,
-    ).toBe('共用退货原因');
-    expect(
-      (
-        wrapper.get('[data-test="reason-matter-2"]')
-          .element as HTMLTextAreaElement
-      ).value,
-    ).toBe('之后逐项编辑');
-    expect(
-      wrapper.get('[data-test="shared-reason-filled-count"]').text(),
-    ).toContain('已填入 1 项');
+    ).toBe('逐项改写');
   });
 
-  it('requires a nonblank shared reason and enforces the Unicode codepoint limit', async () => {
-    const { wrapper } = await mountPanel(['matter-1']);
-    expect(wrapper.find('[data-test="shared-reason-error"]').exists()).toBe(
-      false,
+  it('aborts detail reads when the stage changes or the panel closes', async () => {
+    const signals: AbortSignal[] = [];
+    api.get.mockImplementation(
+      (_id: string, options: { signal: AbortSignal }) => {
+        signals.push(options.signal);
+        return new Promise(() => undefined);
+      },
     );
-    expect(
-      wrapper.get('[data-test="fill-blank-reasons"]').attributes('disabled'),
-    ).toBeDefined();
-    await wrapper.get('[data-test="shared-reason"]').setValue('   ');
-    expect(wrapper.get('[data-test="shared-reason-error"]').text()).toContain(
-      '非空白',
-    );
-    expect(
-      wrapper.get('[data-test="fill-blank-reasons"]').attributes('disabled'),
-    ).toBeDefined();
-    await wrapper.get('[data-test="shared-reason"]').setValue('');
-    expect(wrapper.find('[data-test="shared-reason-error"]').exists()).toBe(
-      false,
-    );
-    await wrapper.get('[data-test="reason-matter-1"]').setValue('逐项原因');
-    await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
-    api.archive.mockRejectedValueOnce(new TypeError('network disconnected'));
-    await wrapper.get('form').trigger('submit');
+    prepareAuth();
+    const wrapper = mount(NotaryReturnArchiveBatchPanel, {
+      props: {
+        matterIds: ['matter-1'],
+        scopeKey: 'user-1:department-1:WAITING_RETURN',
+      },
+    });
     await flushPromises();
-    expect(api.archive).toHaveBeenCalledTimes(1);
-    expect(api.archive.mock.calls[0]?.[0]).toEqual([
-      expect.objectContaining({ archiveReason: '逐项原因' }),
-    ]);
+    await wrapper.setProps({
+      scopeKey: 'user-1:department-1:ISSUANCE_DECISION',
+    });
+    expect(signals[0]?.aborted).toBe(true);
+    wrapper.unmount();
+    expect(signals[1]?.aborted).toBe(true);
   });
 
-  it('blocks shared reasons above the Unicode codepoint limit', async () => {
-    const { wrapper } = await mountPanel(['matter-1']);
-    await wrapper
-      .get('[data-test="shared-reason"]')
-      .setValue('😀'.repeat(5001));
-    expect(wrapper.get('[data-test="shared-reason-error"]').text()).toContain(
-      '5000 个 Unicode 码点',
-    );
-    expect(
-      wrapper.get('[data-test="fill-blank-reasons"]').attributes('disabled'),
-    ).toBeDefined();
-  });
-
-  it('freezes and explicitly retries an unknown result with the same body and key', async () => {
-    api.archive
-      .mockRejectedValueOnce(new TypeError('network disconnected'))
-      .mockResolvedValueOnce({ batchId: 'batch-1', items: [] });
+  it('keeps each matter fee and archive fact separate in the request', async () => {
     const { wrapper } = await mountPanel();
-    for (const id of ['matter-1', 'matter-2']) {
-      await wrapper.get(`[data-test="choice-${id}"]`).setValue('KEEP');
-      await wrapper.get(`[data-test="reason-${id}"]`).setValue(`保留${id}`);
-    }
-    await wrapper.get('form').trigger('submit');
+    await fillArchive(
+      wrapper,
+      'matter-1',
+      'LINK_REMOVED',
+      '链接已下架',
+      '120.00',
+      '35.00',
+    );
+    await fillArchive(
+      wrapper,
+      'matter-2',
+      'RECEIVED_KEEP',
+      '实际收货留存',
+      '230.00',
+      '48.00',
+    );
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(wrapper.text()).toContain('结果尚未确认');
-    expect(
-      wrapper
-        .get('[data-test="reason-matter-1"]')
-        .element.closest('fieldset')
-        ?.hasAttribute('disabled'),
-    ).toBe(true);
-    expect(
-      wrapper.get('[data-test="fill-blank-reasons"]').attributes('disabled'),
-    ).toBeDefined();
-    await wrapper
-      .get('[data-test="shared-reason"]')
-      .setValue('不应改动冻结内容');
-    await wrapper.get('[data-test="fill-blank-reasons"]').trigger('click');
-    const [firstItems, firstKey] = api.archive.mock.calls[0] as [
-      unknown,
+
+    const [items] = api.archive.mock.calls[0] as [
+      Array<Record<string, unknown>>,
       string,
     ];
-    await wrapper.get('[data-test="batch-retry"]').trigger('click');
-    await flushPromises();
-    expect(api.archive).toHaveBeenCalledTimes(2);
-    expect(api.archive.mock.calls[1]).toEqual([firstItems, firstKey]);
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      matterId: 'matter-1',
+      returnChoice: 'KEEP',
+      archiveType: 'LINK_REMOVED',
+      archiveReason: '链接已下架',
+      notaryFeeAmount: '120.00',
+      sampleFeeAmount: '35.00',
+      expectedVersion: 5,
+    });
+    expect(items[1]).toMatchObject({
+      matterId: 'matter-2',
+      returnChoice: 'KEEP',
+      archiveType: 'RECEIVED_KEEP',
+      archiveReason: '实际收货留存',
+      notaryFeeAmount: '230.00',
+      sampleFeeAmount: '48.00',
+      expectedVersion: 5,
+    });
+    expect(items[0]?.archiveDate).toMatch(/^\d{4}-\d{2}-\d{2}$/u);
     expect(workflow.notify).toHaveBeenCalledTimes(1);
     expect(wrapper.emitted('completed')).toHaveLength(1);
   });
 
-  it.each([400, 403, 404, 409])(
-    'keeps deterministic HTTP %i rejections outside the unknown retry path',
-    async (status) => {
-      api.archive.mockRejectedValue(
-        new ApiError('拒绝', status, 'VERSION_CONFLICT'),
-      );
-      const { wrapper } = await mountPanel(['matter-1']);
-      await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
-      await wrapper.get('[data-test="reason-matter-1"]').setValue('完成');
-      await wrapper.get('form').trigger('submit');
-      await flushPromises();
-      expect(wrapper.text()).toContain('请重新读取事项后再提交');
-      expect(wrapper.find('[data-test="batch-retry"]').exists()).toBe(false);
-      expect(workflow.notify).not.toHaveBeenCalled();
-    },
-  );
-
-  it('submits distinct per-matter amounts, payees, and pending freight facts', async () => {
-    api.archive.mockRejectedValueOnce(new TypeError('network disconnected'));
-    const { wrapper } = await mountPanel();
-    await wrapper.get('[data-test="choice-matter-1"]').setValue('RETURN');
-    await wrapper.get('[data-test="refund-state-matter-1"]').setValue('KNOWN');
-    await wrapper.get('[data-test="refund-amount-matter-1"]').setValue('55.25');
+  it('records the applicable refund separately and does not invent freight for refund-only', async () => {
+    const { wrapper } = await mountPanel(['matter-1']);
+    await fillArchive(
+      wrapper,
+      'matter-1',
+      'NOT_SHIPPED_REFUND_ONLY',
+      '未发货退款',
+    );
+    await wrapper.get('[data-test="refund-amount-matter-1"]').setValue('20');
     await wrapper
       .get('[data-test="refund-party-matter-1"]')
       .setValue('MERCHANT');
-    await wrapper
-      .get('[data-test="freight-state-matter-1"]')
-      .setValue('PENDING');
-    await wrapper.get('[data-test="reason-matter-1"]').setValue('退回样品');
-    await wrapper.get('[data-test="choice-matter-2"]').setValue('REFUND_ONLY');
-    await wrapper.get('[data-test="refund-state-matter-2"]').setValue('KNOWN');
-    await wrapper.get('[data-test="refund-amount-matter-2"]').setValue('60.00');
-    await wrapper.get('[data-test="refund-party-matter-2"]').setValue('OTHER');
-    await wrapper
-      .get('[data-test="refund-party-name-matter-2"]')
-      .setValue('客户乙');
-    await wrapper.get('[data-test="reason-matter-2"]').setValue('仅退款');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(api.archive.mock.calls[0]?.[0]).toEqual([
-      {
-        matterId: 'matter-1',
-        returnChoice: 'RETURN',
-        refund: { state: 'KNOWN', amount: '55.25', partyKind: 'MERCHANT' },
-        freight: { state: 'PENDING' },
-        archiveReason: '退回样品',
-        expectedVersion: 5,
-      },
-      {
-        matterId: 'matter-2',
-        returnChoice: 'REFUND_ONLY',
-        refund: {
-          state: 'KNOWN',
-          amount: '60.00',
-          partyKind: 'OTHER',
-          partyName: '客户乙',
-        },
-        archiveReason: '仅退款',
-        expectedVersion: 5,
-      },
-    ]);
-    expect(workflow.notify).not.toHaveBeenCalled();
+    const [items] = api.archive.mock.calls[0] as [
+      Array<Record<string, unknown>>,
+      string,
+    ];
+    expect(items[0]).toMatchObject({
+      returnChoice: 'REFUND_ONLY',
+      refund: { state: 'KNOWN', amount: '20.00', partyKind: 'MERCHANT' },
+    });
+    expect(items[0]).not.toHaveProperty('freight');
   });
 
-  it('requires each applicable amount state and does not prefill a zero amount', async () => {
+  it('does not submit a partial batch when an item fails validation', async () => {
     const { wrapper } = await mountPanel(['matter-1']);
-    await wrapper.get('[data-test="choice-matter-1"]').setValue('RETURN');
-    expect(
-      (
-        wrapper.get('[data-test="refund-state-matter-1"]')
-          .element as HTMLSelectElement
-      ).value,
-    ).toBe('');
-    expect(wrapper.text()).toContain('请选择退款金额状态');
-    await wrapper.get('[data-test="refund-state-matter-1"]').setValue('KNOWN');
-    expect(
-      wrapper.get('[data-test="refund-amount-matter-1"]').element,
-    ).toHaveProperty('value', '');
-    expect(
-      wrapper.get('[data-test="batch-submit"]').attributes('disabled'),
-    ).toBeDefined();
-    await wrapper.get('[data-test="reason-matter-1"]').setValue('退回');
+    await wrapper.get('[data-test="notary-fee-matter-1"]').setValue('');
+    await wrapper.get('[data-test="sample-fee-matter-1"]').setValue('');
+    await wrapper
+      .get('[data-test="archive-type-matter-1"]')
+      .setValue('NO_EVIDENCE');
+    await wrapper.get('[data-test="reason-matter-1"]').setValue('归档原因');
     await wrapper.get('form').trigger('submit');
     expect(api.archive).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain('退款金额请输入非负且保留两位小数的金额');
-    expect(wrapper.text()).toContain('请选择运费状态');
+    expect(wrapper.text()).toContain('请输入有效公证费');
+    expect(wrapper.text()).toContain('请输入有效样品费');
   });
 
-  it('blocks an empty selection, a selection above 50, and an item without archive capability', async () => {
-    api.get.mockClear();
-    const emptySelection = await mountPanel([]);
-    expect(emptySelection.wrapper.text()).toContain('选择1至50项');
-    expect(api.get).not.toHaveBeenCalled();
-    emptySelection.wrapper.unmount();
-
-    const tooMany = await mountPanel(
-      Array.from({ length: 51 }, (_, i) => `id-${i}`),
+  it('submits early archive without a return choice', async () => {
+    const { wrapper } = await mountPanel(['matter-1'], 'ISSUANCE_DECISION');
+    await fillArchive(
+      wrapper,
+      'matter-1',
+      'NO_INFRINGEMENT_INFORMATION',
+      '复核后归档',
     );
-    expect(tooMany.wrapper.text()).toContain('最多归档50项');
-    expect(api.get).not.toHaveBeenCalled();
-    tooMany.wrapper.unmount();
-
-    api.get.mockResolvedValueOnce({
-      ...detail('matter-1'),
-      capabilities: {
-        ...detail('matter-1').capabilities,
-        archiveReturn: false,
-      },
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    const [items] = api.archive.mock.calls[0] as [
+      Array<Record<string, unknown>>,
+      string,
+    ];
+    expect(items[0]).toMatchObject({
+      matterId: 'matter-1',
+      archiveType: 'NO_INFRINGEMENT_INFORMATION',
+      archiveReason: '复核后归档',
     });
-    const unavailable = await mountPanel(['matter-1']);
-    expect(unavailable.wrapper.text()).toContain('无权归档');
-    expect(
-      unavailable.wrapper.find('[data-test="batch-submit"]').exists(),
-    ).toBe(false);
-    expect(api.archive).not.toHaveBeenCalled();
+    expect(items[0]).not.toHaveProperty('returnChoice');
   });
 
-  it('aborts detail reads on unmount and discards reads from a changed stage', async () => {
-    prepareAuth();
-    let resolveFirst!: (value: ReturnType<typeof detail>) => void;
-    let resolveSecond!: (value: ReturnType<typeof detail>) => void;
-    api.get
-      .mockImplementationOnce(
-        () => new Promise((resolve) => (resolveFirst = resolve)),
-      )
-      .mockImplementationOnce(
-        () => new Promise((resolve) => (resolveSecond = resolve)),
-      );
-    const wrapper = mount(NotaryReturnArchiveBatchPanel, {
-      props: {
-        matterIds: ['matter-1'],
-        scopeKey: 'user-1:department-1:WAITING_RETURN',
-      },
-    });
-    const firstSignal = (api.get.mock.calls[0]?.[1] as { signal: AbortSignal })
-      .signal;
-    await wrapper.setProps({
-      matterIds: ['matter-2'],
-      scopeKey: 'user-1:department-1:ARCHIVED',
-    });
-    expect(firstSignal.aborted).toBe(true);
-    resolveSecond(detail('matter-2'));
-    await flushPromises();
-    resolveFirst(detail('matter-1'));
-    await flushPromises();
-    expect(wrapper.text()).toContain('NT-matter-2');
-    expect(wrapper.text()).not.toContain('NT-matter-1');
-    wrapper.unmount();
-
-    api.get.mockImplementationOnce(
-      () => new Promise((resolve) => (resolveFirst = resolve)),
-    );
-    const removed = mount(NotaryReturnArchiveBatchPanel, {
-      props: {
-        matterIds: ['matter-3'],
-        scopeKey: 'user-1:department-1:WAITING_RETURN',
-      },
-    });
-    const unmountSignal = (
-      api.get.mock.calls.at(-1)?.[1] as { signal: AbortSignal }
-    ).signal;
-    removed.unmount();
-    expect(unmountSignal.aborted).toBe(true);
-    resolveFirst(detail('matter-3'));
-    await flushPromises();
-  });
-
-  it.each([
-    ['user-2:department-1:WAITING_RETURN', '账号变化'],
-    ['user-1:department-2:WAITING_RETURN', '部门变化'],
-    ['user-1:department-1:ARCHIVED', '阶段变化'],
-  ])('aborts and discards detail reads after %s', async (nextScope) => {
-    prepareAuth();
-    let resolveFirst!: (value: ReturnType<typeof detail>) => void;
-    let resolveSecond!: (value: ReturnType<typeof detail>) => void;
-    api.get
-      .mockImplementationOnce(
-        () => new Promise((resolve) => (resolveFirst = resolve)),
-      )
-      .mockImplementationOnce(
-        () => new Promise((resolve) => (resolveSecond = resolve)),
-      );
-    const wrapper = mount(NotaryReturnArchiveBatchPanel, {
-      props: {
-        matterIds: ['matter-1'],
-        scopeKey: 'user-1:department-1:WAITING_RETURN',
-      },
-    });
-    const staleSignal = (api.get.mock.calls[0]?.[1] as { signal: AbortSignal })
-      .signal;
-    await wrapper.setProps({ scopeKey: nextScope });
-    expect(staleSignal.aborted).toBe(true);
-    resolveSecond(detail('matter-1'));
-    await flushPromises();
-    resolveFirst(detail('matter-1'));
-    await flushPromises();
-    expect(wrapper.find('[data-test="batch-submit"]').exists()).toBe(true);
-    wrapper.unmount();
-  });
-
-  it('keeps a server 500 result unknown for explicit same-key retry', async () => {
-    api.archive.mockRejectedValueOnce(
-      new ApiError('内部错误', 500, 'INTERNAL_ERROR'),
-    );
+  it('freezes an unknown result and retries the same body and idempotency key', async () => {
+    api.archive
+      .mockRejectedValueOnce(new TypeError('network disconnected'))
+      .mockResolvedValueOnce({ batchId: 'batch-1', items: [] });
     const { wrapper } = await mountPanel(['matter-1']);
-    await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
-    await wrapper.get('[data-test="reason-matter-1"]').setValue('完成');
+    await fillArchive(wrapper, 'matter-1');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(wrapper.text()).toContain('结果尚未确认');
-    expect(wrapper.find('[data-test="batch-retry"]').exists()).toBe(true);
-    expect(workflow.notify).not.toHaveBeenCalled();
+    const firstCall = api.archive.mock.calls[0];
+    await wrapper.get('[data-test="batch-retry"]').trigger('click');
+    await flushPromises();
+    expect(api.archive).toHaveBeenCalledTimes(2);
+    expect(api.archive.mock.calls[1]).toEqual(firstCall);
+    expect(workflow.notify).toHaveBeenCalledTimes(1);
   });
 
-  it('drops a late successful submission after the identity or stage changes', async () => {
-    let resolveArchive!: (value: { batchId: string; items: [] }) => void;
-    api.archive.mockImplementation(
-      () => new Promise((resolve) => (resolveArchive = resolve)),
+  it('keeps deterministic business rejections outside the unknown retry path', async () => {
+    api.archive.mockRejectedValueOnce(
+      new ApiError('事项已变化', 409, 'VERSION_CONFLICT'),
     );
     const { wrapper } = await mountPanel(['matter-1']);
-    await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
-    await wrapper.get('[data-test="reason-matter-1"]').setValue('完成');
+    await fillArchive(wrapper, 'matter-1');
     await wrapper.get('form').trigger('submit');
-    expect(api.archive).toHaveBeenCalledTimes(1);
-    await wrapper.setProps({ scopeKey: 'user-2:department-2:WAITING_RETURN' });
-    resolveArchive({ batchId: 'batch-1', items: [] });
     await flushPromises();
+    expect(wrapper.text()).toContain('整批未保存，请重新读取事项后修正');
+    expect(wrapper.find('[data-test="batch-retry"]').exists()).toBe(false);
     expect(workflow.notify).not.toHaveBeenCalled();
-    expect(wrapper.emitted('completed')).toBeUndefined();
-    expect(
-      wrapper.get('[data-test="batch-retry"]').attributes('disabled'),
-    ).toBeDefined();
   });
 });

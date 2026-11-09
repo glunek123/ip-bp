@@ -306,6 +306,7 @@ describe('notary display read', () => {
       recordOpening: false,
       reviewOpening: false,
       decideIssuance: false,
+      archiveMatter: true,
       archiveReturn: true,
       proxyIssueCertificate: false,
     });
@@ -338,7 +339,11 @@ describe('notary display read', () => {
         )
       ).archiveReturn,
     ).toBe(false);
-    expect(access.authorizeLead).not.toHaveBeenCalled();
+    expect(access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'notary.return.archive',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+    );
   });
 
   it('only advertises proxy certificate issuance for an eligible matter with live authority', async () => {
@@ -386,7 +391,11 @@ describe('notary display read', () => {
         )
       ).proxyIssueCertificate,
     ).toBe(false);
-    expect(access.authorizeLead).not.toHaveBeenCalled();
+    expect(access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'notary.return.archive',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+    );
   });
 
   it.each([
@@ -405,9 +414,10 @@ describe('notary display read', () => {
         { ...matter, stage },
         1,
       );
-      expect(Object.values(result).filter(Boolean)).toHaveLength(1);
+      expect(Object.values(result).filter(Boolean)).toHaveLength(2);
       expect(result[key]).toBe(true);
-      expect(access.authorizeLead).toHaveBeenCalledTimes(1);
+      expect(result.archiveMatter).toBe(true);
+      expect(access.authorizeLead).toHaveBeenCalledTimes(2);
       expect(access.authorizeLead).toHaveBeenCalledWith(
         actor,
         action,
@@ -436,7 +446,11 @@ describe('notary display read', () => {
         )
       ).reviewOpening,
     ).toBe(false);
-    expect(access.authorizeLead).not.toHaveBeenCalled();
+    expect(access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'notary.return.archive',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+    );
   });
 
   it('does not advertise review after all committed photos have become unavailable', async () => {
@@ -448,7 +462,11 @@ describe('notary display read', () => {
       0,
     );
     expect(unavailable.reviewOpening).toBe(false);
-    expect(access.authorizeLead).not.toHaveBeenCalled();
+    expect(access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'notary.return.archive',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+    );
     const available = await notaryDisplayCapabilities(
       access as unknown as AccessControlService,
       actor,
@@ -466,6 +484,10 @@ describe('notary display read', () => {
       { ...matter, stage: 'WAITING_RETURN', evidence: null },
     );
     expect(result.archiveReturn).toBe(false);
-    expect(access.authorizeLead).not.toHaveBeenCalled();
+    expect(access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'notary.return.archive',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+    );
   });
 });

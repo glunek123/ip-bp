@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
+import MaterialPreviewDialog from '../../app/MaterialPreviewDialog.vue';
+import NotaryOpeningPhotoGallery from './NotaryOpeningPhotoGallery.vue';
 import { NotaryPortalWorkflowPanel } from '../notary';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 import type { ListWorkflowSession } from '../../app/list-workflow-context';
@@ -19,6 +21,7 @@ import {
   reviewNotaryOpening,
   decideNotaryIssuance,
   archiveNotaryReturn,
+  saveNotaryEvidenceDraft,
   type NotaryMatterDetail,
   type NotaryReturnAmountInput,
   type NotaryReturnChoice,
@@ -34,16 +37,55 @@ const emit = defineEmits<{ failed: [message: string] }>();
 const matter = computed(() => props.detail);
 let contextGeneration = 0;
 let openingPostController: AbortController | undefined;
-const downloadRequests = new Set<AbortController>();
 const downloadError = ref('');
+const openingDownloads = new Set<AbortController>();
+async function downloadOpeningPhoto(photo: {
+  materialId: string;
+  contentVersionId: string;
+}): Promise<void> {
+  downloadError.value = '';
+  const controller = new AbortController();
+  openingDownloads.add(controller);
+  try {
+    await downloadMaterialVersion(
+      photo.materialId,
+      photo.contentVersionId,
+      controller.signal,
+    );
+  } catch {
+    if (!controller.signal.aborted)
+      downloadError.value = '附件下载失败，请稍后重试';
+  } finally {
+    openingDownloads.delete(controller);
+  }
+}
+const previewPhoto = ref<{
+  materialId: string;
+  contentVersionId: string;
+  filename: string;
+} | null>(null);
 let openingMaterialsRequest: AbortController | undefined;
 let nextOpeningPhotoLocalId = 1;
-const evidenceDate = ref('');
-const sampleFeeState = ref('');
-const sampleFeeAmount = ref('');
-const logisticsRows = ref([
-  { companyState: '', companyValue: '', trackingState: '', trackingValue: '' },
-]);
+const initialEvidenceDraft = props.detail.evidenceDraft;
+const evidenceDate = ref(initialEvidenceDraft?.evidenceAt ?? '');
+const evidenceShopName = ref(
+  initialEvidenceDraft?.shopName ?? props.detail.sourceSummary.shopName,
+);
+const sampleFeeAmount = ref(initialEvidenceDraft?.sampleFeeAmount ?? '');
+const logisticsRows = ref(
+  initialEvidenceDraft?.logistics.length
+    ? initialEvidenceDraft.logistics.map((row) => ({
+        companyValue: row.companyValue ?? '',
+        trackingValue: row.trackingValue ?? '',
+      }))
+    : [{ companyValue: '', trackingValue: '' }],
+);
+const savedEvidenceDraft = ref({
+  shopName: evidenceShopName.value,
+  evidenceAt: evidenceDate.value,
+  sampleFeeAmount: sampleFeeAmount.value,
+  logistics: logisticsRows.value.map((row) => ({ ...row })),
+});
 const evidenceErrors = ref<string[]>([]);
 const evidenceError = ref('');
 const evidenceSuccess = ref('');
@@ -91,6 +133,8 @@ const freightPartyKind = ref('');
 const freightPartyName = ref('');
 const returnArchiveError = ref('');
 const returnArchiveSuccess = ref('');
+const savingEvidenceDraft = ref(false);
+const evidenceDraftSaved = ref('');
 const submittingReturnArchive = computed(() => busy.value);
 const deletingOpeningMaterialId = ref<string | null>(null);
 const refreshingOpeningPhotos = ref(false);
@@ -102,7 +146,6 @@ const allowedOpeningPhotoTypes = new Set([
 const maxOpeningPhotoSize = 20 * 1024 * 1024;
 
 function normalizeKnownSampleFee(): void {
-  if (sampleFeeState.value !== 'KNOWN') return;
   const match = /^(0|[1-9]\d{0,15})(?:\.(\d{0,2}))?$/u.exec(
     sampleFeeAmount.value,
   );
@@ -347,12 +390,7 @@ function readReturnAmount(
   return { state: 'KNOWN', amount };
 }
 function addLogisticsRow(): void {
-  logisticsRows.value.push({
-    companyState: '',
-    companyValue: '',
-    trackingState: '',
-    trackingValue: '',
-  });
+  logisticsRows.value.push({ companyValue: '', trackingValue: '' });
 }
 function removeLogisticsRow(index: number): void {
   if (logisticsRows.value.length > 1) logisticsRows.value.splice(index, 1);
@@ -416,17 +454,13 @@ async function submitOpeningReview(): Promise<void> {
     reviewError.value = '请选择审核结论';
     return;
   }
-  if (reviewResult.value === 'NO_INFRINGEMENT' && !reason) {
-    reviewError.value = '请填写不侵权原因';
-    return;
-  }
-  if ((reviewResult.value === 'NO_INFRINGEMENT' ? reason : '').length > 2000) {
-    reviewError.value = '不侵权原因不能超过 2000 字';
+  if (reason.length > 2000) {
+    reviewError.value = '开箱备注不能超过 2000 字';
     return;
   }
   const input = {
     result: reviewResult.value,
-    ...(reviewResult.value === 'NO_INFRINGEMENT' ? { reason } : {}),
+    ...(reason ? { reason } : {}),
     expectedVersion: current.version,
   } as const;
   await execute({ kind: 'review', input });
@@ -448,6 +482,7 @@ async function submitIssuanceDecision(): Promise<void> {
   }
   const input = {
     decision: issuanceChoice.value,
+    openingRemark: openingRemark.value.trim() || null,
     expectedVersion: current.version,
   } as const;
   await execute({ kind: 'issuance', input });
@@ -458,13 +493,30 @@ async function submitReturnArchive(): Promise<void> {
   returnArchiveSuccess.value = '';
   const current = matter.value;
   if (
-    !current?.capabilities.archiveReturn ||
-    current.stage !== 'WAITING_RETURN' ||
+    !(
+      current &&
+      ((current.stage === 'WAITING_RETURN' &&
+        current.capabilities.archiveReturn) ||
+        (current.stage !== 'WAITING_RETURN' &&
+          current.capabilities.archiveMatter))
+    ) ||
     submittingReturnArchive.value
   )
     return;
-  if (!returnChoice.value) {
-    returnArchiveError.value = '请选择办理方式';
+  const type = archiveType.value;
+  if (!type) {
+    returnArchiveError.value = '请选择归档类型';
+    return;
+  }
+  if (current.stage === 'WAITING_RETURN' && !returnRequired.value) {
+    returnArchiveError.value = '请选择是否需要退货';
+    return;
+  }
+  if (
+    current.stage === 'WAITING_RETURN' &&
+    (returnRequired.value === 'YES') !== (type === 'RECEIVED_RETURN_REFUND')
+  ) {
+    returnArchiveError.value = '归档类型与是否需要退货不匹配';
     return;
   }
   const normalizedReason = returnReason.value.trim();
@@ -478,10 +530,32 @@ async function submitReturnArchive(): Promise<void> {
   }
   let refund: NotaryReturnAmountInput | undefined;
   let freight: NotaryReturnAmountInput | undefined;
-  if (returnChoice.value === 'RETURN' || returnChoice.value === 'REFUND_ONLY') {
+  const returnChoice: NotaryReturnChoice | undefined =
+    type === 'NOT_SHIPPED_REFUND_ONLY'
+      ? 'REFUND_ONLY'
+      : type === 'RECEIVED_RETURN_REFUND'
+        ? 'RETURN'
+        : type === 'RECEIVED_KEEP'
+          ? 'KEEP'
+          : current.stage === 'WAITING_RETURN'
+            ? 'KEEP'
+            : undefined;
+  if (!/^(0|[1-9]\d{0,15})\.\d{2}$/u.test(notaryFeeAmount.value)) {
+    returnArchiveError.value = '请输入有效公证费';
+    return;
+  }
+  if (
+    current.stage !== 'WAITING_RETURN' &&
+    (!/^\d{4}-\d{2}-\d{2}$/u.test(archiveDate.value) ||
+      !/^(0|[1-9]\d{0,15})\.\d{2}$/u.test(archiveSampleFeeAmount.value))
+  ) {
+    returnArchiveError.value = '提前归档请填写有效归档日期和样品费';
+    return;
+  }
+  if (type === 'RECEIVED_RETURN_REFUND' || type === 'NOT_SHIPPED_REFUND_ONLY') {
     const parsed = readReturnAmount(
       '退款',
-      refundState.value,
+      'KNOWN',
       refundAmount.value,
       refundPartyKind.value,
       refundPartyName.value,
@@ -489,10 +563,10 @@ async function submitReturnArchive(): Promise<void> {
     if (!parsed) return;
     refund = parsed;
   }
-  if (returnChoice.value === 'RETURN') {
+  if (type === 'RECEIVED_RETURN_REFUND') {
     const parsed = readReturnAmount(
       '退货运费',
-      freightState.value,
+      'KNOWN',
       freightAmount.value,
       freightPartyKind.value,
       freightPartyName.value,
@@ -501,9 +575,17 @@ async function submitReturnArchive(): Promise<void> {
     freight = parsed;
   }
   const input = {
-    returnChoice: returnChoice.value,
+    ...(returnChoice ? { returnChoice } : {}),
     ...(refund ? { refund } : {}),
     ...(freight ? { freight } : {}),
+    notaryFeeAmount: notaryFeeAmount.value,
+    ...(current.stage !== 'WAITING_RETURN'
+      ? {
+          archiveDate: archiveDate.value,
+          sampleFeeAmount: archiveSampleFeeAmount.value,
+        }
+      : {}),
+    archiveType: type,
     archiveReason: normalizedReason,
     expectedVersion: current.version,
   } as const;
@@ -519,21 +601,8 @@ async function submitEvidence(): Promise<void> {
   evidenceSuccess.value = '';
   const errors: string[] = [];
   if (!evidenceDate.value) errors.push('请选择取证日期');
-  if (!sampleFeeState.value) errors.push('请选择样品费用状态');
-  if (
-    sampleFeeState.value === 'KNOWN' &&
-    !/^(0|[1-9]\d{0,15})\.\d{2}$/u.test(sampleFeeAmount.value)
-  )
-    errors.push('已知样品费用请输入非负且保留两位小数的金额');
-  if (logisticsRows.value.length < 1) errors.push('至少登记一条物流信息');
-  logisticsRows.value.forEach((row, index) => {
-    if (!row.companyState) errors.push(`第${index + 1}条请选择快递公司状态`);
-    else if (row.companyState === 'PRESENT' && !row.companyValue.trim())
-      errors.push(`第${index + 1}条请填写快递公司`);
-    if (!row.trackingState) errors.push(`第${index + 1}条请选择快递单号状态`);
-    else if (row.trackingState === 'PRESENT' && !row.trackingValue.trim())
-      errors.push(`第${index + 1}条请填写快递单号`);
-  });
+  if (!/^(0|[1-9]\d{0,15})\.\d{2}$/u.test(sampleFeeAmount.value))
+    errors.push('请输入样品费，最多保留两位小数');
   evidenceErrors.value = errors;
   if (
     errors.length ||
@@ -543,28 +612,114 @@ async function submitEvidence(): Promise<void> {
     return;
 
   const current = matter.value;
-  const feeInput =
-    sampleFeeState.value === 'KNOWN'
-      ? {
-          sampleFeeState: 'KNOWN' as const,
-          sampleFeeAmount: sampleFeeAmount.value,
-        }
-      : { sampleFeeState: 'PENDING' as const };
+  const feeInput = {
+    sampleFeeState: 'KNOWN' as const,
+    sampleFeeAmount: sampleFeeAmount.value,
+  };
   const input: RecordNotaryEvidenceInput = {
+    ...(evidenceShopName.value.trim() !== current.sourceSummary.shopName
+      ? {
+          shopName: evidenceShopName.value.trim(),
+          expectedRoutineRevision: current.routineRevision ?? 0,
+        }
+      : {}),
     evidenceAt: evidenceDate.value,
     ...feeInput,
-    logistics: logisticsRows.value.map((row) => ({
-      companyState: row.companyState as 'PRESENT' | 'NONE',
-      companyValue:
-        row.companyState === 'PRESENT' ? row.companyValue.trim() : null,
-      trackingState: row.trackingState as 'PRESENT' | 'NONE',
-      trackingValue:
-        row.trackingState === 'PRESENT' ? row.trackingValue.trim() : null,
+    logistics: (logisticsRows.value.length
+      ? logisticsRows.value
+      : [{ companyValue: '', trackingValue: '' }]
+    ).map((row) => ({
+      companyState: row.companyValue.trim()
+        ? ('PRESENT' as const)
+        : ('NONE' as const),
+      companyValue: row.companyValue.trim() || null,
+      trackingState: row.trackingValue.trim()
+        ? ('PRESENT' as const)
+        : ('NONE' as const),
+      trackingValue: row.trackingValue.trim() || null,
     })),
     expectedVersion: current.version,
   };
   await execute({ kind: 'evidence', input });
 }
+
+async function saveEvidenceDraft(): Promise<void> {
+  const current = matter.value;
+  if (
+    !current?.capabilities.recordEvidence ||
+    current.stage !== 'PENDING_EVIDENCE' ||
+    savingEvidenceDraft.value
+  )
+    return;
+  savingEvidenceDraft.value = true;
+  evidenceError.value = '';
+  evidenceDraftSaved.value = '';
+  try {
+    const saved = await saveNotaryEvidenceDraft(current.id, {
+      shopName: evidenceShopName.value.trim() || null,
+      evidenceAt: evidenceDate.value || null,
+      sampleFeeAmount: sampleFeeAmount.value.trim() || null,
+      logistics: logisticsRows.value
+        .filter((row) => row.companyValue.trim() || row.trackingValue.trim())
+        .map((row) => ({
+          companyState: row.companyValue.trim() ? 'PRESENT' : 'NONE',
+          companyValue: row.companyValue.trim() || null,
+          trackingState: row.trackingValue.trim() ? 'PRESENT' : 'NONE',
+          trackingValue: row.trackingValue.trim() || null,
+        })),
+      expectedVersion: current.version,
+    });
+    savedEvidenceDraft.value = {
+      shopName: saved.evidenceDraft.shopName ?? current.sourceSummary.shopName,
+      evidenceAt: saved.evidenceDraft.evidenceAt ?? '',
+      sampleFeeAmount: saved.evidenceDraft.sampleFeeAmount ?? '',
+      logistics: saved.evidenceDraft.logistics.map((row) => ({
+        companyValue: row.companyValue ?? '',
+        trackingValue: row.trackingValue ?? '',
+      })),
+    };
+    evidenceDraftSaved.value = '草稿已保存';
+    notifyWorkflowChanged();
+  } catch (error) {
+    evidenceError.value =
+      error instanceof ApiError ? error.message : '草稿保存失败，请刷新后重试';
+  } finally {
+    savingEvidenceDraft.value = false;
+  }
+}
+
+function cancelEvidenceEdits(): void {
+  evidenceShopName.value = savedEvidenceDraft.value.shopName;
+  evidenceDate.value = savedEvidenceDraft.value.evidenceAt;
+  sampleFeeAmount.value = savedEvidenceDraft.value.sampleFeeAmount;
+  logisticsRows.value = savedEvidenceDraft.value.logistics.map((row) => ({
+    ...row,
+  }));
+  if (!logisticsRows.value.length)
+    logisticsRows.value = [{ companyValue: '', trackingValue: '' }];
+  evidenceErrors.value = [];
+  evidenceError.value = '';
+  evidenceDraftSaved.value = '';
+}
+
+const openingRemark = ref(
+  props.detail.issuanceDecision?.openingRemark ??
+    props.detail.reviewDecision?.reason ??
+    '',
+);
+const archiveType = ref<'' | import('../../api/notary').NotaryArchiveType>('');
+const returnRequired = ref<'' | 'YES' | 'NO'>('');
+const notaryFeeAmount = ref(
+  props.detail.fees.notary.state === 'KNOWN'
+    ? props.detail.fees.notary.amount
+    : '',
+);
+const archiveDate = ref(new Date().toLocaleDateString('en-CA'));
+const archiveSampleFeeAmount = ref(
+  props.detail.evidence?.sampleFeeState === 'KNOWN'
+    ? (props.detail.evidence.sampleFeeAmount ?? '')
+    : '',
+);
 
 type Command =
   | { kind: 'opening'; input: RecordNotaryOpeningInput }
@@ -584,53 +739,8 @@ const locked = computed(() => busy.value || unknown.value || blocked.value);
 const storageKey = `notary-list-request:${JSON.stringify([actorIdentityKey(props.session.context.actorKey), props.detail.id, props.session.context.actionKey])}`;
 let pendingStorageKey: string | null = null;
 let pending: Pending | null = null;
-const reviewSubmitLabel = computed(() =>
-  reviewResult.value === 'INFRINGEMENT'
-    ? '确认侵权并进入开箱待确认'
-    : reviewResult.value === 'NO_INFRINGEMENT'
-      ? '判定不侵权并归档'
-      : '请选择审核结论',
-);
-const issuanceSubmitLabel = computed(() =>
-  issuanceChoice.value === 'ISSUE'
-    ? '确认出证并进入待出证'
-    : issuanceChoice.value === 'NO_ISSUE'
-      ? '确认不出证并进入待退货'
-      : '请选择出证方向',
-);
-const returnSubmitLabel = computed(() =>
-  returnChoice.value === 'RETURN'
-    ? '登记退货退款并归档'
-    : returnChoice.value === 'KEEP'
-      ? '登记保留商品并归档'
-      : returnChoice.value === 'REFUND_ONLY'
-        ? '登记仅退款并归档'
-        : '请选择办理方式',
-);
-
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-async function downloadFrozenPhoto(
-  materialId: string,
-  contentVersionId: string,
-): Promise<void> {
-  if (!props.session.isCurrent()) return;
-  const controller = new AbortController();
-  downloadRequests.add(controller);
-  downloadError.value = '';
-  try {
-    await downloadMaterialVersion(
-      materialId,
-      contentVersionId,
-      controller.signal,
-    );
-  } catch {
-    if (!controller.signal.aborted && props.session.isCurrent())
-      downloadError.value = '照片下载失败，请稍后重试。';
-  } finally {
-    downloadRequests.delete(controller);
-  }
 }
 function stringIds(value: unknown): value is string[] {
   return (
@@ -680,18 +790,25 @@ function validPending(value: unknown): value is Pending {
       return (
         input.result === 'INFRINGEMENT' ||
         (input.result === 'NO_INFRINGEMENT' &&
-          typeof input.reason === 'string' &&
-          input.reason.trim().length > 0)
+          (input.reason === undefined || typeof input.reason === 'string'))
       );
     case 'issuance':
-      return input.decision === 'ISSUE' || input.decision === 'NO_ISSUE';
+      return (
+        (input.decision === 'ISSUE' || input.decision === 'NO_ISSUE') &&
+        (input.openingRemark === undefined ||
+          input.openingRemark === null ||
+          typeof input.openingRemark === 'string')
+      );
     case 'return':
       return (
         typeof input.archiveReason === 'string' &&
         input.archiveReason.trim().length > 0 &&
-        ((input.returnChoice === 'KEEP' &&
-          input.refund === undefined &&
-          input.freight === undefined) ||
+        ((input.archiveType !== undefined &&
+          input.returnChoice === undefined &&
+          input.notaryFeeAmount !== undefined) ||
+          (input.returnChoice === 'KEEP' &&
+            input.refund === undefined &&
+            input.freight === undefined) ||
           (input.returnChoice === 'REFUND_ONLY' &&
             amount(input.refund) &&
             input.freight === undefined) ||
@@ -746,13 +863,21 @@ const currentAction = computed<Command['kind'] | null>(() => {
     current.capabilities.decideIssuance
   )
     return 'issuance';
-  if (current.stage === 'WAITING_RETURN' && current.capabilities.archiveReturn)
-    return 'return';
   if (
     current.stage === 'PENDING_EVIDENCE' &&
     current.capabilities.recordEvidence
   )
     return 'evidence';
+  if (
+    (requestedAction.value === 'return' &&
+      current.stage === 'WAITING_RETURN' &&
+      current.capabilities.archiveReturn) ||
+    (requestedAction.value === 'return' &&
+      current.stage !== 'WAITING_RETURN' &&
+      current.stage !== 'ARCHIVED' &&
+      current.capabilities.archiveMatter)
+  )
+    return 'return';
   return null;
 });
 const formAvailable = computed(
@@ -945,8 +1070,9 @@ try {
         break;
       case 'evidence':
         evidenceDate.value = decoded.command.input.evidenceAt;
-        sampleFeeState.value = decoded.command.input.sampleFeeState;
         sampleFeeAmount.value = decoded.command.input.sampleFeeAmount ?? '';
+        evidenceShopName.value =
+          decoded.command.input.shopName ?? evidenceShopName.value;
         logisticsRows.value = decoded.command.input.logistics.map((row) => ({
           ...row,
           companyValue: row.companyValue ?? '',
@@ -955,7 +1081,7 @@ try {
         break;
       case 'return': {
         const input = decoded.command.input;
-        returnChoice.value = input.returnChoice;
+        returnChoice.value = input.returnChoice ?? '';
         returnReason.value = input.archiveReason;
         if (input.refund) {
           refundState.value = input.refund.state;
@@ -1007,11 +1133,11 @@ if (
 )
   void refreshOpeningPhotos(props.detail.id);
 onBeforeUnmount(() => {
+  for (const controller of openingDownloads) controller.abort();
   contextGeneration += 1;
   openingPostController?.abort();
   openingPostController = undefined;
   openingMaterialsRequest?.abort();
-  for (const controller of downloadRequests) controller.abort();
 });
 </script>
 <template>
@@ -1062,42 +1188,44 @@ onBeforeUnmount(() => {
         </dl>
       </li>
     </ul>
+    <p>店铺名：{{ matter.sourceSummary.shopName }}</p>
   </section>
   <section
-    v-if="matter.opening"
+    v-if="
+      matter.opening &&
+      matter.stage !== 'UNBOX_REVIEW' &&
+      matter.stage !== 'ISSUANCE_DECISION'
+    "
     class="workflow-card"
     aria-label="本事项已提交开箱资料"
     data-test="workflow-saved-opening"
   >
-    <h2>已提交的开箱材料</h2>
-    <dl class="workflow-facts">
-      <div>
-        <dt>寄件人</dt>
-        <dd>{{ matter.opening.senderName ?? '未登记' }}</dd>
-      </div>
-      <div>
-        <dt>电话</dt>
-        <dd>{{ matter.opening.senderPhone ?? '未登记' }}</dd>
-      </div>
-      <div class="workflow-facts__wide">
-        <dt>地址</dt>
-        <dd>{{ matter.opening.senderAddress ?? '未登记' }}</dd>
-      </div>
-    </dl>
-    <ul class="workflow-files">
-      <li v-for="photo in matter.opening.photos" :key="photo.contentVersionId">
-        <span class="workflow-files__name">{{ photo.originalFilename }}</span
-        ><ElButton
-          text
-          :data-test="`workflow-download-photo-${photo.contentVersionId}`"
-          @click="downloadFrozenPhoto(photo.materialId, photo.contentVersionId)"
-          >下载照片</ElButton
-        >
-      </li>
-    </ul>
-    <p v-if="downloadError" role="alert">{{ downloadError }}</p>
+    <h2>开箱照片</h2>
+    <p>店铺名：{{ matter.sourceSummary.shopName }}</p>
+    <NotaryOpeningPhotoGallery
+      :photos="matter.opening.photos"
+      :scope-key="`${session.context.actorKey}:${matter.id}`"
+      @download="downloadOpeningPhoto"
+      @preview="
+        (photo) =>
+          (previewPhoto = {
+            materialId: photo.materialId,
+            contentVersionId: photo.contentVersionId,
+            filename: photo.originalFilename,
+          })
+      "
+    />
   </section>
   <p v-if="message" role="alert">{{ message }}</p>
+  <p v-if="downloadError" role="alert">{{ downloadError }}</p>
+  <MaterialPreviewDialog
+    v-if="previewPhoto"
+    :material-id="previewPhoto.materialId"
+    :content-version-id="previewPhoto.contentVersionId"
+    :filename="previewPhoto.filename"
+    :scope-key="`${session.context.actorKey}:${matter.id}`"
+    @close="previewPhoto = null"
+  />
   <ElButton
     v-if="unknown"
     data-test="notary-workflow-retry"
@@ -1283,72 +1411,143 @@ onBeforeUnmount(() => {
 
     <section
       v-if="
-        matter.capabilities.archiveReturn && matter.stage === 'WAITING_RETURN'
+        (matter.capabilities.archiveReturn &&
+          matter.stage === 'WAITING_RETURN') ||
+        (matter.capabilities.archiveMatter && matter.stage !== 'ARCHIVED')
       "
       class="demo-card demo-card--pad workflow-card"
       data-test="return-archive-form"
       id="return-archive-form"
       tabindex="-1"
     >
-      <h2 class="form-section-title">办理退货归档</h2>
-      <p>提交后事项将不可逆地归档；本操作不会发起付款。</p>
+      <h2 class="form-section-title">
+        {{ matter.stage === 'WAITING_RETURN' ? '退货处理' : '提前归档' }}
+      </h2>
+      <p>店铺名：{{ matter.sourceSummary.shopName }}</p>
+      <p>
+        样品费：{{
+          matter.evidence?.sampleFeeState === 'KNOWN'
+            ? `${matter.evidence.sampleFeeAmount} 元`
+            : '待定'
+        }}
+      </p>
       <form @submit.prevent="submitReturnArchive">
-        <fieldset>
-          <legend>选择办理方式<RequiredFieldMark /></legend>
-          <label>
-            <input
-              v-model="returnChoice"
-              data-test="return-archive-return"
-              type="radio"
-              name="return-choice"
-              value="RETURN"
+        <label
+          v-if="matter.stage === 'WAITING_RETURN'"
+          class="field-label"
+          for="notary-return-required"
+          >是否需要退货 <RequiredFieldMark
+        /></label>
+        <select
+          v-if="matter.stage === 'WAITING_RETURN'"
+          v-model="returnRequired"
+          id="notary-return-required"
+          data-test="return-required"
+          required
+          :disabled="submittingReturnArchive || locked"
+          @change="archiveType = ''"
+        >
+          <option value="">请选择</option>
+          <option value="YES">是</option>
+          <option value="NO">否</option>
+        </select>
+        <label
+          >公证费（元）<RequiredFieldMark />
+          <input
+            v-model="notaryFeeAmount"
+            data-test="return-notary-fee"
+            inputmode="decimal"
+            required
+            :disabled="submittingReturnArchive || locked"
+          />
+        </label>
+        <label
+          >归档类型<RequiredFieldMark />
+          <select
+            v-model="archiveType"
+            data-test="return-archive-type"
+            required
+            :disabled="submittingReturnArchive || locked"
+          >
+            <option value="">请选择</option>
+            <option
+              v-if="
+                matter.stage !== 'WAITING_RETURN' || returnRequired === 'NO'
+              "
+              value="LINK_REMOVED"
+            >
+              链接下架
+            </option>
+            <option
+              v-if="
+                matter.stage !== 'WAITING_RETURN' || returnRequired === 'NO'
+              "
+              value="NO_INFRINGEMENT_INFORMATION"
+            >
+              无侵权信息
+            </option>
+            <option
+              v-if="
+                matter.stage !== 'WAITING_RETURN' || returnRequired === 'NO'
+              "
+              value="NO_EVIDENCE"
+            >
+              不取证
+            </option>
+            <option
+              v-if="
+                matter.stage === 'WAITING_RETURN' && returnRequired === 'NO'
+              "
+              value="NOT_SHIPPED_REFUND_ONLY"
+            >
+              不发货-仅退款
+            </option>
+            <option
+              v-if="
+                matter.stage === 'WAITING_RETURN' && returnRequired === 'NO'
+              "
+              value="RECEIVED_KEEP"
+            >
+              收到货-不退货
+            </option>
+            <option
+              v-if="
+                matter.stage === 'WAITING_RETURN' && returnRequired === 'YES'
+              "
+              value="RECEIVED_RETURN_REFUND"
+            >
+              收到货-退货退款
+            </option>
+          </select>
+        </label>
+        <template v-if="matter.stage !== 'WAITING_RETURN'">
+          <label
+            >归档日期<RequiredFieldMark /><input
+              v-model="archiveDate"
+              type="date"
+              data-test="single-archive-date"
+              required
               :disabled="submittingReturnArchive || locked"
-            />
-            收到货后办理退货和退款
-          </label>
-          <label>
-            <input
-              v-model="returnChoice"
-              data-test="return-archive-keep"
-              type="radio"
-              name="return-choice"
-              value="KEEP"
+          /></label>
+          <label
+            >样品费（元）<RequiredFieldMark /><input
+              v-model="archiveSampleFeeAmount"
+              inputmode="decimal"
+              data-test="single-archive-sample-fee"
+              required
               :disabled="submittingReturnArchive || locked"
-            />
-            收到货后保留商品，不退款
-          </label>
-          <label>
-            <input
-              v-model="returnChoice"
-              data-test="return-archive-refund-only"
-              type="radio"
-              name="return-choice"
-              value="REFUND_ONLY"
-              :disabled="submittingReturnArchive || locked"
-            />
-            不寄回商品，只办理退款
-          </label>
-        </fieldset>
+          /></label>
+        </template>
         <template
-          v-if="returnChoice === 'RETURN' || returnChoice === 'REFUND_ONLY'"
+          v-if="
+            archiveType === 'RECEIVED_RETURN_REFUND' ||
+            archiveType === 'NOT_SHIPPED_REFUND_ONLY'
+          "
         >
           <fieldset data-test="return-refund-fields">
-            <legend>退款金额<RequiredFieldMark /></legend>
+            <legend>样品费退款（元）<RequiredFieldMark /></legend>
             <label
-              >退款状态<RequiredFieldMark />
-              <select
-                v-model="refundState"
-                data-test="return-refund-state"
-                required
-                :disabled="submittingReturnArchive || locked"
-              >
-                <option value="">请选择</option>
-                <option value="KNOWN">已知</option>
-                <option value="PENDING">待定</option>
-              </select>
-            </label>
-            <label v-if="refundState === 'KNOWN'"
-              >退款金额（元）<RequiredFieldMark />
+              >退款金额（元）
               <input
                 v-model="refundAmount"
                 data-test="return-refund-amount"
@@ -1358,10 +1557,8 @@ onBeforeUnmount(() => {
                 :disabled="submittingReturnArchive || locked"
               />
             </label>
-            <p>金额为 0.00 时无需选择收款方；待定不会记为 0 元。</p>
-            <template
-              v-if="refundState === 'KNOWN' && Number(refundAmount) > 0"
-            >
+            <p>金额为 0.00 时无需选择收款方。</p>
+            <template v-if="Number(refundAmount) > 0">
               <label
                 >退款收款方<RequiredFieldMark />
                 <select
@@ -1390,24 +1587,11 @@ onBeforeUnmount(() => {
           </fieldset>
         </template>
         <fieldset
-          v-if="returnChoice === 'RETURN'"
+          v-if="archiveType === 'RECEIVED_RETURN_REFUND'"
           data-test="return-freight-fields"
         >
           <legend>退货运费<RequiredFieldMark /></legend>
           <label
-            >运费状态<RequiredFieldMark />
-            <select
-              v-model="freightState"
-              data-test="return-freight-state"
-              required
-              :disabled="submittingReturnArchive || locked"
-            >
-              <option value="">请选择</option>
-              <option value="KNOWN">已知</option>
-              <option value="PENDING">待定</option>
-            </select>
-          </label>
-          <label v-if="freightState === 'KNOWN'"
             >运费金额（元）<RequiredFieldMark />
             <input
               v-model="freightAmount"
@@ -1418,10 +1602,8 @@ onBeforeUnmount(() => {
               :disabled="submittingReturnArchive || locked"
             />
           </label>
-          <p>金额为 0.00 时无需选择承担方；待定不会记为 0 元。</p>
-          <template
-            v-if="freightState === 'KNOWN' && Number(freightAmount) > 0"
-          >
+          <p>金额为 0.00 时无需选择承担方。</p>
+          <template v-if="Number(freightAmount) > 0">
             <label
               >运费承担方<RequiredFieldMark />
               <select
@@ -1475,7 +1657,7 @@ onBeforeUnmount(() => {
             native-type="submit"
             :loading="submittingReturnArchive"
             :disabled="submittingReturnArchive || (locked && !unknown)"
-            >{{ returnSubmitLabel }}</ElButton
+            >提交归档</ElButton
           >
         </div>
       </form>
@@ -1490,9 +1672,16 @@ onBeforeUnmount(() => {
       id="evidence-form"
       tabindex="-1"
     >
-      <h2 class="form-section-title">登记取证物流</h2>
-      <p>提交后事项将进入待开箱。</p>
+      <h2 class="form-section-title">填写取证信息</h2>
       <form data-test="record-evidence" @submit.prevent="submitEvidence">
+        <label
+          >店铺名
+          <input
+            v-model="evidenceShopName"
+            data-test="evidence-shop-name"
+            required
+          />
+        </label>
         <label
           >取证日期<RequiredFieldMark />
           <input
@@ -1502,19 +1691,7 @@ onBeforeUnmount(() => {
             required
         /></label>
         <label
-          >样品费用状态<RequiredFieldMark />
-          <select
-            v-model="sampleFeeState"
-            data-test="sample-fee-state"
-            required
-          >
-            <option value="">请选择</option>
-            <option value="KNOWN">已知</option>
-            <option value="PENDING">待定</option>
-          </select>
-        </label>
-        <label v-if="sampleFeeState === 'KNOWN'"
-          >样品费用（元）<RequiredFieldMark />
+          >样品费（元）<RequiredFieldMark />
           <input
             v-model="sampleFeeAmount"
             data-test="sample-fee-amount"
@@ -1523,48 +1700,24 @@ onBeforeUnmount(() => {
             placeholder="0.00"
             required
         /></label>
-        <fieldset v-for="(row, index) in logisticsRows" :key="index">
+        <fieldset
+          v-for="(row, index) in logisticsRows"
+          :key="index"
+          class="workflow-logistics-entry"
+        >
           <legend>物流 {{ index + 1 }}</legend>
           <label
-            >快递公司状态<RequiredFieldMark />
-            <select
-              v-model="row.companyState"
-              :data-test="`logistics-company-state-${index}`"
-              required
-            >
-              <option value="">请选择</option>
-              <option value="PRESENT">有</option>
-              <option value="NONE">无</option>
-            </select>
-          </label>
-          <label v-if="row.companyState === 'PRESENT'"
-            >快递公司<RequiredFieldMark />
+            >快递公司
             <input
               v-model="row.companyValue"
               :data-test="`logistics-company-value-${index}`"
-              required
           /></label>
-          <p v-if="row.companyState === 'NONE'">未登记快递公司</p>
           <label
-            >快递单号状态<RequiredFieldMark />
-            <select
-              v-model="row.trackingState"
-              :data-test="`logistics-tracking-state-${index}`"
-              required
-            >
-              <option value="">请选择</option>
-              <option value="PRESENT">有</option>
-              <option value="NONE">无</option>
-            </select>
-          </label>
-          <label v-if="row.trackingState === 'PRESENT'"
-            >快递单号<RequiredFieldMark />
+            >快递单号
             <input
               v-model="row.trackingValue"
               :data-test="`logistics-tracking-value-${index}`"
-              required
           /></label>
-          <p v-if="row.trackingState === 'NONE'">未登记快递单号</p>
           <button
             v-if="logisticsRows.length > 1"
             type="button"
@@ -1583,14 +1736,28 @@ onBeforeUnmount(() => {
         <p v-if="evidenceSuccess" role="status">{{ evidenceSuccess }}</p>
         <div class="workflow-actions">
           <ElButton
+            data-test="evidence-cancel"
+            :disabled="savingEvidenceDraft || submittingEvidence"
+            @click="cancelEvidenceEdits"
+            >取消</ElButton
+          >
+          <ElButton
+            data-test="evidence-save-draft"
+            :loading="savingEvidenceDraft"
+            :disabled="savingEvidenceDraft || submittingEvidence"
+            @click="saveEvidenceDraft"
+            >保存</ElButton
+          >
+          <ElButton
             type="primary"
             data-test="record-evidence-submit"
             native-type="submit"
             :loading="submittingEvidence"
             :disabled="submittingEvidence"
-            >登记并进入待开箱</ElButton
+            >提交</ElButton
           >
         </div>
+        <p v-if="evidenceDraftSaved" role="status">{{ evidenceDraftSaved }}</p>
       </form>
     </section>
     <section
@@ -1603,11 +1770,25 @@ onBeforeUnmount(() => {
       tabindex="-1"
     >
       <h2 class="form-section-title">开箱审核</h2>
-      <p>请选择本批次的审核结论。</p>
+      <p>店铺名：{{ matter.sourceSummary.shopName }}</p>
+      <NotaryOpeningPhotoGallery
+        :photos="matter.opening?.photos ?? []"
+        :scope-key="`${session.context.actorKey}:${matter.id}`"
+        @download="downloadOpeningPhoto"
+        @preview="
+          (photo) =>
+            (previewPhoto = {
+              materialId: photo.materialId,
+              contentVersionId: photo.contentVersionId,
+              filename: photo.originalFilename,
+            })
+        "
+      />
       <form
         data-test="opening-review-form"
         @submit.prevent="submitOpeningReview"
       >
+        <label class="field-label">审核结果 <RequiredFieldMark /></label>
         <fieldset class="workflow-choices">
           <legend class="sr-only">审核结论</legend>
           <label class="workflow-choice">
@@ -1619,12 +1800,7 @@ onBeforeUnmount(() => {
               value="INFRINGEMENT"
               :disabled="submittingReview || locked"
             />
-            <span
-              ><strong>确认侵权</strong
-              ><small
-                >确认侵权后进入开箱待确认，由运营决定是否出证。</small
-              ></span
-            >
+            <span><strong>侵权</strong></span>
           </label>
           <label class="workflow-choice">
             <input
@@ -1635,19 +1811,15 @@ onBeforeUnmount(() => {
               value="NO_INFRINGEMENT"
               :disabled="submittingReview || locked"
             />
-            <span
-              ><strong>判定不侵权</strong
-              ><small>不侵权将立即归档，普通入口不能撤回。</small></span
-            >
+            <span><strong>不侵权</strong></span>
           </label>
         </fieldset>
         <label v-if="reviewResult === 'NO_INFRINGEMENT'">
-          不侵权原因<RequiredFieldMark />
+          开箱备注
           <textarea
             v-model="reviewReason"
             data-test="opening-review-reason"
             maxlength="2000"
-            required
             :disabled="submittingReview || locked"
           />
         </label>
@@ -1667,7 +1839,7 @@ onBeforeUnmount(() => {
             native-type="submit"
             :loading="submittingReview"
             :disabled="submittingReview || (locked && !unknown)"
-            >{{ reviewSubmitLabel }}</ElButton
+            >提交</ElButton
           >
         </div>
       </form>
@@ -1682,8 +1854,53 @@ onBeforeUnmount(() => {
       id="issuance-form"
       tabindex="-1"
     >
-      <h2 class="form-section-title">是否出证</h2>
-      <p>选择 出证 → 待出证，或 不出证 → 待退货。决定保存后不可修改。</p>
+      <h2 class="form-section-title">审核</h2>
+      <dl class="workflow-facts">
+        <div>
+          <dt>店铺名</dt>
+          <dd>{{ matter.sourceSummary.shopName }}</dd>
+        </div>
+        <div>
+          <dt>审核结果</dt>
+          <dd>
+            {{
+              matter.reviewDecision?.result === 'INFRINGEMENT'
+                ? '侵权'
+                : '不侵权'
+            }}
+          </dd>
+        </div>
+        <div>
+          <dt>样品费</dt>
+          <dd>
+            {{
+              matter.evidence?.sampleFeeState === 'KNOWN'
+                ? `${matter.evidence.sampleFeeAmount} 元`
+                : '待定'
+            }}
+          </dd>
+        </div>
+      </dl>
+      <NotaryOpeningPhotoGallery
+        :photos="matter.opening?.photos ?? []"
+        :scope-key="`${session.context.actorKey}:${matter.id}`"
+        @download="downloadOpeningPhoto"
+        @preview="
+          (photo) =>
+            (previewPhoto = {
+              materialId: photo.materialId,
+              contentVersionId: photo.contentVersionId,
+              filename: photo.originalFilename,
+            })
+        "
+      />
+      <label
+        >开箱备注<textarea
+          v-model="openingRemark"
+          data-test="opening-decision-remark"
+          maxlength="2000"
+        />
+      </label>
       <form @submit.prevent="submitIssuanceDecision">
         <fieldset class="workflow-choices">
           <legend class="sr-only">是否出证</legend>
@@ -1695,7 +1912,7 @@ onBeforeUnmount(() => {
               name="issuance-decision"
               value="ISSUE"
               :disabled="submittingIssuance || locked"
-            />出证 → 待出证</label
+            />出证</label
           >
           <label class="workflow-choice"
             ><input
@@ -1705,7 +1922,7 @@ onBeforeUnmount(() => {
               name="issuance-decision"
               value="NO_ISSUE"
               :disabled="submittingIssuance || locked"
-            />不出证 → 待退货</label
+            />不出证</label
           >
         </fieldset>
         <p v-if="issuanceError" class="field-error" role="alert">
@@ -1719,13 +1936,33 @@ onBeforeUnmount(() => {
             native-type="submit"
             :loading="submittingIssuance"
             :disabled="submittingIssuance || (locked && !unknown)"
-            >{{ issuanceSubmitLabel }}</ElButton
+            >审核</ElButton
           >
         </div>
       </form>
     </section>
   </fieldset>
-  <p class="workflow-note">
-    本表单提交会推进阶段；当前服务暂不支持仅保存这些资料。已上传材料会保留。
-  </p>
 </template>
+
+<style scoped>
+.workflow-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.workflow-choice {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+}
+.workflow-logistics-entry {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  .workflow-logistics-entry {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

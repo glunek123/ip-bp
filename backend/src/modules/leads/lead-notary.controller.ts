@@ -27,6 +27,9 @@ import { CsrfGuard } from '../../auth/csrf.guard';
 import {
   CreateNotaryOfficeDto,
   RecordNotaryEvidenceDto,
+  SaveNotaryEvidenceDraftDto,
+  NotaryEvidenceDraftDto,
+  NotaryEvidenceDraftResponseDto,
   RecordNotaryOpeningDto,
   ReviewNotaryOpeningDto,
   NotaryOpeningReviewResponseDto,
@@ -177,7 +180,7 @@ export class LeadNotaryController {
   }
 
   @Get('notary-matters/:id')
-  @ApiExtraModels(NotaryRecordEditsResponseDto)
+  @ApiExtraModels(NotaryRecordEditsResponseDto, NotaryEvidenceDraftDto)
   @ApiOkResponse({
     description: '公证事项详情；recordEdits 为内部资料更正历史',
     schema: {
@@ -185,6 +188,7 @@ export class LeadNotaryController {
       additionalProperties: true,
       properties: {
         recordEdits: { $ref: getSchemaPath(NotaryRecordEditsResponseDto) },
+        evidenceDraft: { $ref: getSchemaPath(NotaryEvidenceDraftDto) },
       },
     },
   })
@@ -193,6 +197,16 @@ export class LeadNotaryController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.notary.getMatter(actor, id);
+  }
+
+  @Patch('notary-matters/:id/evidence-draft')
+  @ApiOkResponse({ type: NotaryEvidenceDraftResponseDto })
+  saveEvidenceDraft(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() input: SaveNotaryEvidenceDraftDto,
+  ) {
+    return this.notary.saveEvidenceDraft(actor, id, input);
   }
 
   @Post('notary-matters/:id/evidence')

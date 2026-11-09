@@ -115,6 +115,10 @@ describe('NotaryPortalWorkflowPanel', () => {
     await flushPromises();
     await wrapper.get('[data-test="certificate-number"]').setValue('证书-001');
     await wrapper.get('[data-test="certificate-date"]').setValue('2026-10-27');
+    await wrapper
+      .get('[data-test="certificate-sample-fee"]')
+      .setValue('356.00');
+    await wrapper.get('[data-test="fee-notary-amount"]').setValue('1200.00');
     await wrapper.get('[data-test="certificate-submit"]').trigger('click');
     await flushPromises();
     expect(api.recordProxyNotaryCertificate).toHaveBeenCalledWith(
@@ -122,6 +126,7 @@ describe('NotaryPortalWorkflowPanel', () => {
       expect.objectContaining({
         expectedVersion: 5,
         certificateNo: '证书-001',
+        sampleFeeAmount: '356.00',
         contentVersionIds: ['certificate-v1'],
       }),
       expect.any(String),

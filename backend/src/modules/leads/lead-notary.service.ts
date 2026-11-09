@@ -12,6 +12,7 @@ import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { isFrozenOpeningPhotoVersion, MaterialService } from '../materials';
+import { syncNotaryMatterCost } from '../settlements';
 import {
   NOTARY_DISPLAY_CERTIFICATE_SELECT,
   NOTARY_DISPLAY_LEAD_SELECT,
@@ -24,6 +25,7 @@ import { readNotaryRecordEdits } from './notary-record-edit-read';
 import {
   CreateNotaryOfficeDto,
   RecordNotaryEvidenceDto,
+  SaveNotaryEvidenceDraftDto,
   SetNotaryOfficeStatusDto,
   TransferLeadToNotaryDto,
 } from './lead-notary.dto';
@@ -489,6 +491,128 @@ export class LeadNotaryService {
     throw this.versionConflict();
   }
 
+  async saveEvidenceDraft(
+    actor: ActorContext,
+    matterId: string,
+    input: SaveNotaryEvidenceDraftDto,
+  ) {
+    const evidenceDraft = {
+      shopName: input.shopName?.trim() || null,
+      evidenceAt: input.evidenceAt ?? null,
+      sampleFeeAmount: input.sampleFeeAmount ?? null,
+      logistics: this.normalizeLogistics(input.logistics),
+    };
+    if (evidenceDraft.evidenceAt !== null)
+      this.evidenceDate(evidenceDraft.evidenceAt);
+    if (evidenceDraft.sampleFeeAmount !== null)
+      this.evidenceAmount(evidenceDraft.sampleFeeAmount);
+    return this.database.$transaction(async (tx) => {
+      await this.assertInternal(actor, tx);
+      const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        'SELECT "id" FROM "notary_matters" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+        matterId,
+        actor.departmentId,
+      );
+      if (locked.length !== 1) throw this.notFound();
+      const scope = await this.access.buildLeadScope(
+        actor,
+        'notary.evidence.record',
+        tx,
+      );
+      const matter = await tx.notaryMatter.findFirst({
+        where: {
+          id: matterId,
+          departmentId: actor.departmentId,
+          sourceLead: scope,
+        },
+        select: { stage: true, version: true },
+      });
+      if (matter === null) throw this.notFound();
+      if (
+        matter.stage !== 'PENDING_EVIDENCE' ||
+        matter.version !== input.expectedVersion
+      )
+        throw this.matterVersionConflict();
+      await tx.notaryEvidenceDraft.upsert({
+        where: {
+          matterId_actorUserId: { matterId, actorUserId: actor.userId },
+        },
+        create: {
+          matterId,
+          departmentId: actor.departmentId,
+          actorUserId: actor.userId,
+          matterVersion: matter.version,
+          payload: evidenceDraft,
+        },
+        update: { matterVersion: matter.version, payload: evidenceDraft },
+      });
+      return { id: matterId, version: matter.version, evidenceDraft };
+    });
+  }
+
+  private async updateEvidenceShopName(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    matterId: string,
+    shopName: string,
+    expectedRevision: number,
+  ) {
+    const scope = await this.access.buildLeadScope(actor, 'lead.read', tx);
+    const matter = await tx.notaryMatter.findFirst({
+      where: {
+        id: matterId,
+        departmentId: actor.departmentId,
+        sourceLead: scope,
+      },
+      select: {
+        sourceSnapshot: true,
+        sourceLead: { select: { shopName: true, shopExternalId: true } },
+        routineProfile: true,
+        selectedProducts: { select: { leadProductId: true } },
+      },
+    });
+    if (matter === null) throw this.notFound();
+    const profile = matter.routineProfile;
+    const before = profile?.shopName ?? matter.sourceLead.shopName;
+    if (before === shopName) return;
+    if ((profile?.revision ?? 0) !== expectedRevision)
+      throw this.matterVersionConflict();
+    if (profile === null) {
+      await tx.notaryRoutineProfile.create({
+        data: {
+          matterId,
+          departmentId: actor.departmentId,
+          shopName,
+          shopExternalId: matter.sourceLead.shopExternalId,
+          products: this.selectedProductSnapshot(
+            matter.sourceSnapshot,
+            matter.selectedProducts.map((item) => item.leadProductId),
+          ),
+        },
+      });
+    } else {
+      await tx.notaryRoutineProfile.update({
+        where: { matterId },
+        data: { shopName, revision: { increment: 1 } },
+      });
+    }
+    await tx.auditEvent.create({
+      data: {
+        departmentId: actor.departmentId,
+        actorUserId: actor.userId,
+        resourceType: 'notary_matter',
+        resourceId: matterId,
+        action: 'notary.routine.updated',
+        details: {
+          fromRevision: expectedRevision,
+          toRevision: expectedRevision + 1,
+          before: { shopName: before },
+          after: { shopName },
+        },
+      },
+    });
+  }
+
   async recordEvidence(
     actor: ActorContext,
     matterId: string,
@@ -548,16 +672,21 @@ export class LeadNotaryService {
             });
             if (receipt !== null)
               return this.evidenceReceiptResult(receipt, fingerprint, matterId);
-            if (
-              matter.stage !== 'PENDING_EVIDENCE' ||
-              matter.evidenceMode !== 'ONLINE_PURCHASE'
-            )
+            if (matter.stage !== 'PENDING_EVIDENCE')
               throw new ConflictException({
                 code: 'INVALID_STATE',
                 message: '该公证事项当前不能登记取证物流',
               });
             if (matter.version !== input.expectedVersion)
               throw this.matterVersionConflict();
+            if (normalized.shopName !== undefined)
+              await this.updateEvidenceShopName(
+                tx,
+                actor,
+                matterId,
+                normalized.shopName,
+                input.expectedRoutineRevision ?? 0,
+              );
             const changed = await tx.notaryMatter.updateMany({
               where: {
                 id: matterId,
@@ -607,7 +736,7 @@ export class LeadNotaryService {
                 logistics,
               },
             };
-            await tx.auditEvent.create({
+            const event = await tx.auditEvent.create({
               data: {
                 departmentId: actor.departmentId,
                 actorUserId: actor.userId,
@@ -625,6 +754,18 @@ export class LeadNotaryService {
                   logisticsIds: logistics.map((row) => row.id),
                 },
               },
+            });
+            await syncNotaryMatterCost(tx, {
+              departmentId: actor.departmentId,
+              matterId,
+              category: 'SAMPLE',
+              state: normalized.sampleFeeState,
+              amount: normalized.sampleFeeAmount,
+              feeDate: normalized.evidenceDate,
+              sourceActionEventId: event.id,
+            });
+            await tx.notaryEvidenceDraft.deleteMany({
+              where: { matterId, actorUserId: actor.userId },
             });
             await tx.notaryMatterCommandReceipt.create({
               data: {
@@ -684,6 +825,8 @@ export class LeadNotaryService {
           },
         },
         routineProfile: true,
+        evidenceDrafts: { where: { actorUserId: actor.userId }, take: 1 },
+        costs: true,
         notaryOffice: { select: { id: true, name: true } },
         evidence: {
           include: { logistics: { orderBy: { position: 'asc' } } },
@@ -707,6 +850,7 @@ export class LeadNotaryService {
         issuanceDecision: {
           select: {
             decision: true,
+            openingRemark: true,
             actorDisplayNameSnapshot: true,
             decidedAt: true,
           },
@@ -715,6 +859,11 @@ export class LeadNotaryService {
         returnArchive: {
           select: {
             returnChoice: true,
+            fromStage: true,
+            archiveType: true,
+            archiveDate: true,
+            notaryFeeAmount: true,
+            sampleFeeAmount: true,
             archiveReason: true,
             archivedAt: true,
             actorDisplayNameSnapshot: true,
@@ -744,28 +893,34 @@ export class LeadNotaryService {
       },
     });
     if (matter === null) throw this.notFound();
+    const earlyArchive =
+      matter.stage === 'ARCHIVED' &&
+      matter.returnArchive?.fromStage != null &&
+      matter.returnArchive.fromStage !== 'WAITING_RETURN';
     if (matter.stage === 'WAITING_UNBOX' && matter.evidence === null)
       throw this.corruptReceipt();
     if (
+      !earlyArchive &&
       matter.stage !== 'PENDING_EVIDENCE' &&
       matter.stage !== 'WAITING_UNBOX' &&
       matter.opening === null
     )
       throw this.corruptReceipt();
     if (
+      !earlyArchive &&
       !openingReviewMatchesStage(matter.stage, matter.openingReviewDecision) &&
       !(
         matter.stage === 'ARCHIVED' &&
-        matter.openingReviewDecision?.result === 'INFRINGEMENT' &&
-        matter.openingReviewDecision.reason === null &&
+        matter.openingReviewDecision != null &&
         matter.openingReviewDecision.archivedAt === null
       )
     )
       throw this.corruptReceipt();
     const isOpeningArchive =
       matter.stage === 'ARCHIVED' &&
-      matter.openingReviewDecision?.result === 'NO_INFRINGEMENT';
+      matter.openingReviewDecision?.archivedAt != null;
     const isIssuedArchive =
+      !earlyArchive &&
       matter.stage === 'ARCHIVED' &&
       matter.issuanceDecision?.decision === 'ISSUE';
     const isReturnArchive =
@@ -783,7 +938,8 @@ export class LeadNotaryService {
       (matter.stage === 'ARCHIVED' &&
         !isOpeningArchive &&
         !isIssuedArchive &&
-        !isReturnArchive) ||
+        !isReturnArchive &&
+        !earlyArchive) ||
       (isOpeningArchive &&
         ((matter.issuanceDecision !== null &&
           matter.issuanceDecision !== undefined) ||
@@ -802,7 +958,7 @@ export class LeadNotaryService {
     let freight = null;
     if (isReturnArchive && archive != null) {
       if (
-        !['RETURN', 'KEEP', 'REFUND_ONLY'].includes(archive.returnChoice) ||
+        archive.returnChoice === null ||
         !archive.archiveReason.trim() ||
         archive.archiveReason.trim() !== archive.archiveReason ||
         Array.from(archive.archiveReason).length > 5000 ||
@@ -975,6 +1131,10 @@ export class LeadNotaryService {
       screenshots: selectedMaterials,
       fees: display.fees,
     });
+    const evidenceDraft = matter.evidenceDrafts?.[0];
+    const effectiveSample = matter.costs?.find(
+      (item) => item.category === 'SAMPLE',
+    );
     return {
       id: matter.id,
       businessNo: matter.businessNo,
@@ -984,6 +1144,10 @@ export class LeadNotaryService {
       stage: matter.stage,
       version: matter.version,
       routineRevision: matter.routineProfile?.revision ?? 0,
+      ...(matter.stage === 'PENDING_EVIDENCE' &&
+      evidenceDraft?.matterVersion === matter.version
+        ? { evidenceDraft: evidenceDraft.payload }
+        : {}),
       disclosureRequired: matter.sourceLead.needDisclose,
       recordEdits,
       capabilities: await notaryDisplayCapabilities(
@@ -1007,6 +1171,18 @@ export class LeadNotaryService {
           ? null
           : {
               returnChoice: archive.returnChoice,
+              ...(archive.archiveType != null
+                ? {
+                    archiveType: archive.archiveType,
+                    archiveDate: archive.archiveDate
+                      ?.toISOString()
+                      .slice(0, 10),
+                    notaryFeeAmount:
+                      archive.notaryFeeAmount?.toFixed(2) ?? null,
+                    sampleFeeAmount:
+                      archive.sampleFeeAmount?.toFixed(2) ?? null,
+                  }
+                : {}),
               archiveReason: archive.archiveReason,
               archivedAt: archive.archivedAt.toISOString(),
               actorDisplayName: archive.actorDisplayNameSnapshot,
@@ -1018,6 +1194,7 @@ export class LeadNotaryService {
           ? null
           : {
               decision: matter.issuanceDecision.decision,
+              openingRemark: matter.issuanceDecision.openingRemark ?? null,
               actorDisplayName:
                 matter.issuanceDecision.actorDisplayNameSnapshot,
               decidedAt: matter.issuanceDecision.decidedAt.toISOString(),
@@ -1061,9 +1238,13 @@ export class LeadNotaryService {
               evidenceAt:
                 recordEdits.evidence?.effective.evidenceAt ??
                 matter.evidence.evidenceAt.toISOString().slice(0, 10),
-              sampleFeeState: matter.evidence.sampleFeeState,
+              sampleFeeState:
+                effectiveSample?.state ?? matter.evidence.sampleFeeState,
               sampleFeeAmount:
-                matter.evidence.sampleFeeAmount?.toFixed(2) ?? null,
+                (effectiveSample
+                  ? effectiveSample.amount
+                  : matter.evidence.sampleFeeAmount
+                )?.toFixed(2) ?? null,
               recordedAt: matter.evidence.recordedAt.toISOString(),
               recordedByUserId: matter.evidence.recordedByUserId,
               logistics: recordEdits.evidence?.effective.logistics ?? [],
@@ -1086,34 +1267,75 @@ export class LeadNotaryService {
   private normalizeEvidence(input: RecordNotaryEvidenceDto) {
     if (
       typeof input.evidenceAt !== 'string' ||
-      !/^\d{4}-\d{2}-\d{2}$/u.test(input.evidenceAt) ||
       !Number.isInteger(input.expectedVersion) ||
       input.expectedVersion < 1 ||
       !Array.isArray(input.logistics) ||
       input.logistics.length < 1
     )
       throw this.validation();
-    const evidenceDate = new Date(`${input.evidenceAt}T00:00:00.000Z`);
-    if (
-      Number.isNaN(evidenceDate.getTime()) ||
-      evidenceDate.toISOString().slice(0, 10) !== input.evidenceAt
-    )
-      throw this.validation();
+    const evidenceDate = this.evidenceDate(input.evidenceAt);
     if (input.sampleFeeState !== 'KNOWN' && input.sampleFeeState !== 'PENDING')
       throw this.validation();
     let sampleFeeAmount: string | null;
     if (input.sampleFeeState === 'KNOWN') {
-      if (
-        typeof input.sampleFeeAmount !== 'string' ||
-        !/^(0|[1-9]\d{0,15})\.\d{2}$/u.test(input.sampleFeeAmount)
-      )
-        throw this.validation();
-      sampleFeeAmount = input.sampleFeeAmount;
+      if (typeof input.sampleFeeAmount !== 'string') throw this.validation();
+      sampleFeeAmount = this.evidenceAmount(input.sampleFeeAmount);
     } else {
       if (input.sampleFeeAmount !== null && input.sampleFeeAmount !== undefined)
         throw this.validation();
       sampleFeeAmount = null;
     }
+    const logistics = this.normalizeLogistics(input.logistics);
+    const shopName = input.shopName?.trim();
+    if (input.shopName !== undefined && (!shopName || shopName.length > 200))
+      throw this.validation();
+    if (
+      input.expectedRoutineRevision !== undefined &&
+      (!Number.isInteger(input.expectedRoutineRevision) ||
+        input.expectedRoutineRevision < 0 ||
+        shopName === undefined)
+    )
+      throw this.validation();
+    return {
+      evidenceAt: input.evidenceAt,
+      evidenceDate,
+      sampleFeeState: input.sampleFeeState,
+      sampleFeeAmount,
+      logistics,
+      shopName,
+      fingerprint: {
+        evidenceAt: input.evidenceAt,
+        sampleFeeState: input.sampleFeeState,
+        sampleFeeAmount,
+        logistics,
+        expectedVersion: input.expectedVersion,
+        ...(shopName === undefined
+          ? {}
+          : {
+              shopName,
+              expectedRoutineRevision: input.expectedRoutineRevision ?? 0,
+            }),
+      },
+    };
+  }
+
+  private evidenceDate(value: string) {
+    if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) throw this.validation();
+    const date = new Date(value + 'T00:00:00.000Z');
+    if (
+      Number.isNaN(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== value
+    )
+      throw this.validation();
+    return date;
+  }
+
+  private evidenceAmount(value: string) {
+    if (!/^(0|[1-9]\d{0,15})\.\d{2}$/u.test(value)) throw this.validation();
+    return value;
+  }
+
+  private normalizeLogistics(rows: RecordNotaryEvidenceDto['logistics']) {
     const field = (
       state: unknown,
       value: unknown,
@@ -1130,7 +1352,7 @@ export class LeadNotaryService {
         throw this.validation();
       return { state, value: trimmed };
     };
-    const logistics = input.logistics.map((row) => {
+    return rows.map((row) => {
       if (row === null || typeof row !== 'object') throw this.validation();
       const company = field(row.companyState, row.companyValue, 200);
       const tracking = field(row.trackingState, row.trackingValue, 100);
@@ -1141,20 +1363,6 @@ export class LeadNotaryService {
         trackingValue: tracking.value,
       };
     });
-    return {
-      evidenceAt: input.evidenceAt,
-      evidenceDate,
-      sampleFeeState: input.sampleFeeState,
-      sampleFeeAmount,
-      logistics,
-      fingerprint: {
-        evidenceAt: input.evidenceAt,
-        sampleFeeState: input.sampleFeeState,
-        sampleFeeAmount,
-        logistics,
-        expectedVersion: input.expectedVersion,
-      },
-    };
   }
 
   private evidenceReceiptResult(

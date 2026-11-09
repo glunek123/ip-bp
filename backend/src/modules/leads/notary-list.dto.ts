@@ -89,6 +89,7 @@ class NotaryDisplayCapabilitiesDto {
   @ApiProperty() reviewOpening!: boolean;
   @ApiProperty() decideIssuance!: boolean;
   @ApiProperty() archiveReturn!: boolean;
+  @ApiProperty() archiveMatter!: boolean;
 }
 
 class NotaryListItemDto {

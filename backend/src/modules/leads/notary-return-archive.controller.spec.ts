@@ -102,11 +102,13 @@ describe('notary return archive HTTP contract', () => {
       expect(
         document.components?.schemas?.ArchiveNotaryReturnDto,
       ).toMatchObject({
-        required: expect.arrayContaining([
-          'returnChoice',
-          'archiveReason',
-          'expectedVersion',
-        ]),
+        required: expect.arrayContaining(['archiveReason', 'expectedVersion']),
+        properties: {
+          archiveType: { type: 'string' },
+          archiveDate: { type: 'string', format: 'date' },
+          notaryFeeAmount: { type: 'string' },
+          sampleFeeAmount: { type: 'string' },
+        },
       });
       expect(
         document.components?.schemas?.NotaryReturnArchiveSummaryDto,

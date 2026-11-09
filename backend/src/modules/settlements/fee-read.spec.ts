@@ -21,6 +21,7 @@ function row() {
   return {
     id: 'fee',
     caseId: 'visible-case',
+    notaryMatterId: null,
     departmentId: actor.departmentId,
     type: '样品费',
     direction: '支出',
@@ -48,6 +49,7 @@ function row() {
       routineProfile: null,
       defendants: [],
     },
+    notaryMatter: null,
   };
 }
 function fixture() {

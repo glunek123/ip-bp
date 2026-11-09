@@ -14,6 +14,7 @@ import { Prisma } from '../../generated/prisma/client';
 
 type DecisionInput = {
   decision: 'ISSUE' | 'NO_ISSUE';
+  openingRemark?: string | null;
   expectedVersion: number;
 };
 type DecisionResult = {
@@ -22,6 +23,7 @@ type DecisionResult = {
   version: number;
   issuanceDecision: {
     decision: DecisionInput['decision'];
+    openingRemark: string | null;
     actorDisplayName: string;
     decidedAt: string;
   };
@@ -47,6 +49,10 @@ export class NotaryIssuanceDecisionService {
       idempotencyKey.length < 1 ||
       idempotencyKey.length > 128 ||
       (input.decision !== 'ISSUE' && input.decision !== 'NO_ISSUE') ||
+      (input.openingRemark !== undefined &&
+        input.openingRemark !== null &&
+        (typeof input.openingRemark !== 'string' ||
+          input.openingRemark.trim().length > 2000)) ||
       !Number.isInteger(input.expectedVersion) ||
       input.expectedVersion < 1
     )
@@ -62,6 +68,9 @@ export class NotaryIssuanceDecisionService {
           matterId,
           decision: input.decision,
           expectedVersion: input.expectedVersion,
+          ...(input.openingRemark !== undefined
+            ? { openingRemark: input.openingRemark?.trim() || null }
+            : {}),
         }),
       )
       .digest('hex');
@@ -136,8 +145,6 @@ export class NotaryIssuanceDecisionService {
             if (
               matter.stage !== 'ISSUANCE_DECISION' ||
               review === null ||
-              review.result !== 'INFRINGEMENT' ||
-              review.reason !== null ||
               review.archivedAt !== null
             )
               throw this.invalidState();
@@ -164,7 +171,11 @@ export class NotaryIssuanceDecisionService {
                 matterId,
                 departmentId: matter.departmentId,
                 openingReviewDecisionId: review.id,
-                openingReviewResult: 'INFRINGEMENT',
+                openingReviewResult: review.result,
+                openingRemark:
+                  input.openingRemark === undefined
+                    ? review.reason
+                    : input.openingRemark?.trim() || null,
                 actorUserId: actor.userId,
                 actorDisplayNameSnapshot: actorDisplayName,
                 decision: input.decision,
@@ -179,6 +190,7 @@ export class NotaryIssuanceDecisionService {
               version: input.expectedVersion + 1,
               issuanceDecision: {
                 decision: input.decision,
+                openingRemark: decision.openingRemark,
                 actorDisplayName,
                 decidedAt: decision.decidedAt.toISOString(),
               },
@@ -275,8 +287,10 @@ export class NotaryIssuanceDecisionService {
       throw this.corruptReceipt();
     const detail = summary as Record<string, unknown>;
     if (
-      Object.keys(detail).sort().join() !==
-        'actorDisplayName,decidedAt,decision' ||
+      (Object.keys(detail).sort().join() !==
+        'actorDisplayName,decidedAt,decision' &&
+        Object.keys(detail).sort().join() !==
+          'actorDisplayName,decidedAt,decision,openingRemark') ||
       (detail.decision !== 'ISSUE' && detail.decision !== 'NO_ISSUE') ||
       result.stage !==
         (detail.decision === 'ISSUE'
@@ -286,7 +300,13 @@ export class NotaryIssuanceDecisionService {
       detail.actorDisplayName.trim() !== detail.actorDisplayName ||
       detail.actorDisplayName.length < 1 ||
       typeof detail.decidedAt !== 'string' ||
-      !this.isIsoDate(detail.decidedAt)
+      !this.isIsoDate(detail.decidedAt) ||
+      (Object.hasOwn(detail, 'openingRemark') &&
+        detail.openingRemark !== null &&
+        (typeof detail.openingRemark !== 'string' ||
+          detail.openingRemark.trim() !== detail.openingRemark ||
+          detail.openingRemark.length < 1 ||
+          detail.openingRemark.length > 2000))
     )
       throw this.corruptReceipt();
     const stored = await tx.notaryIssuanceDecision.findUnique({
@@ -295,6 +315,7 @@ export class NotaryIssuanceDecisionService {
         departmentId: true,
         actorUserId: true,
         decision: true,
+        openingRemark: true,
         actorDisplayNameSnapshot: true,
         decidedAt: true,
         fromVersion: true,
@@ -306,6 +327,8 @@ export class NotaryIssuanceDecisionService {
       stored.departmentId !== receipt.departmentId ||
       stored.actorUserId !== receipt.actorUserId ||
       stored.decision !== detail.decision ||
+      (Object.hasOwn(detail, 'openingRemark') &&
+        stored.openingRemark !== detail.openingRemark) ||
       stored.actorDisplayNameSnapshot !== detail.actorDisplayName ||
       stored.decidedAt.toISOString() !== detail.decidedAt ||
       stored.toVersion !== result.version ||

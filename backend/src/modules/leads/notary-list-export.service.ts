@@ -139,15 +139,18 @@ export class NotaryListExportService {
                 sender?.senderName ?? '',
                 sender?.senderPhone ?? '',
                 sender?.senderAddress ?? '',
-                fee('NOTARY'),
+                notaryDisplayFee(
+                  row.costs?.find((item) => item.category === 'NOTARY'),
+                ).amount ?? fee('NOTARY'),
                 fee('INVESTIGATION'),
                 notaryDisplayFee(
-                  row.evidence === null
-                    ? null
-                    : {
-                        state: row.evidence.sampleFeeState,
-                        amount: row.evidence.sampleFeeAmount,
-                      },
+                  row.costs?.find((item) => item.category === 'SAMPLE') ??
+                    (row.evidence === null
+                      ? null
+                      : {
+                          state: row.evidence.sampleFeeState,
+                          amount: row.evidence.sampleFeeAmount,
+                        }),
                 ).amount ?? '',
                 fee('DISCLOSURE'),
                 logistics.map((item) => item.companyValue ?? '').join('\n'),
@@ -306,6 +309,7 @@ export class NotaryListExportService {
           take: 1,
           select: { senderName: true, senderPhone: true, senderAddress: true },
         },
+        costs: true,
         certificate: {
           select: {
             certificateNo: true,

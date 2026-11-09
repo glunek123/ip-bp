@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 class NotaryPortalListItemDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -68,6 +68,8 @@ class NotaryPortalCertificateDto {
   @ApiProperty({ format: 'date' }) certificateDate!: string;
   @ApiProperty({ format: 'date-time' }) issuedAt!: string;
   @ApiProperty() needDisclose!: boolean;
+  @ApiPropertyOptional() disclosureInfo?: string;
+  @ApiPropertyOptional() sampleFeeAmount?: string;
   @ApiProperty({ type: [NotaryPortalPhotoDto] }) files!: NotaryPortalPhotoDto[];
   @ApiProperty({ type: [NotaryPortalPhotoDto] })
   disclosureFiles!: NotaryPortalPhotoDto[];

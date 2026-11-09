@@ -55,7 +55,7 @@ export function readNotaryDetailFacts(input: {
       archivedAt: Date | null;
     } | null;
     issuanceDecision: { decision: string } | null;
-    returnArchive: { archivedAt: Date } | null;
+    returnArchive: { archivedAt: Date; fromStage?: string | null } | null;
     certificate: {
       issuedAt: Date;
       fees: CertificateFee[];
@@ -159,12 +159,20 @@ export function readNotaryDetailFacts(input: {
     0n,
   );
   let archive: {
-    kind: 'OPENING_NO_INFRINGEMENT' | 'RETURN' | 'CERTIFICATE';
+    kind: 'OPENING_NO_INFRINGEMENT' | 'RETURN' | 'CERTIFICATE' | 'EARLY';
     occurredAt: string;
   } | null = null;
   if (matter.stage === 'ARCHIVED') {
-    if (matter.openingReviewDecision?.result === 'NO_INFRINGEMENT') {
-      if (!matter.openingReviewDecision.archivedAt) corrupt();
+    if (
+      matter.returnArchive?.fromStage !== null &&
+      matter.returnArchive?.fromStage !== undefined &&
+      matter.returnArchive.fromStage !== 'WAITING_RETURN'
+    ) {
+      archive = {
+        kind: 'EARLY',
+        occurredAt: matter.returnArchive.archivedAt.toISOString(),
+      };
+    } else if (matter.openingReviewDecision?.archivedAt) {
       archive = {
         kind: 'OPENING_NO_INFRINGEMENT',
         occurredAt: matter.openingReviewDecision.archivedAt.toISOString(),

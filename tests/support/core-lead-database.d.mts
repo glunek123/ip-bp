@@ -147,6 +147,16 @@ export function getNotarySampleFee(matterId: string): Promise<{
 } | null>;
 export function countNotaryReturnAudits(matterId: string): Promise<number>;
 export function countNotaryReturnReceipts(matterId: string): Promise<number>;
+export function readNotaryWorkflowFees(matterId: string): Promise<
+  Array<{
+    id: string;
+    caseId: string | null;
+    type: string;
+    status: string;
+    direction: string;
+    amount: { toFixed(digits: number): string };
+  }>
+>;
 export function countNotaryCertificates(matterId: string): Promise<number>;
 export function countNotaryCertificateAudits(matterId: string): Promise<number>;
 export function countNotaryCertificateReceipts(
@@ -263,7 +273,11 @@ export function setClientUserActive(
   customerId: string,
   active: boolean,
 ): Promise<unknown>;
-export function setGrant(action: string, enabled: boolean): Promise<unknown>;
+export function setGrant(
+  action: string,
+  enabled: boolean,
+  scope?: 'TEAM' | 'DEPARTMENT',
+): Promise<unknown>;
 export function setRoleGrant(
   roleTemplateId: string,
   action: string,

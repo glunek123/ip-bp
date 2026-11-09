@@ -17,7 +17,8 @@ export type ClientNotaryIssuanceDecision = {
   decidedAt: string;
 };
 export type ClientNotaryReturnArchive = {
-  returnChoice: 'RETURN' | 'KEEP' | 'REFUND_ONLY';
+  returnChoice: 'RETURN' | 'KEEP' | 'REFUND_ONLY' | null;
+  fromStage: string | null;
   archiveReason: string;
   archivedAt: string;
 };
@@ -128,30 +129,17 @@ function decisionMatchesStage(
 ): boolean {
   if (stage === 'UNBOX_REVIEW') return decision === null;
   if (stage === 'ISSUANCE_DECISION')
-    return (
-      decision?.result === 'INFRINGEMENT' &&
-      decision.reason === null &&
-      decision.archivedAt === null
-    );
+    return decision !== null && decision.archivedAt === null;
   if (stage === 'WAITING_CERTIFICATE' || stage === 'WAITING_RETURN')
-    return (
-      decision?.result === 'INFRINGEMENT' &&
-      decision.reason === null &&
-      decision.archivedAt === null
-    );
+    return decision !== null && decision.archivedAt === null;
+  if (returnArchive?.fromStage && returnArchive.fromStage !== 'WAITING_RETURN')
+    return decision === null || decision.archivedAt === null;
   if (returnArchive)
     return (
-      stage === 'ARCHIVED' &&
-      decision?.result === 'INFRINGEMENT' &&
-      decision.reason === null &&
-      decision.archivedAt === null
+      stage === 'ARCHIVED' && decision !== null && decision.archivedAt === null
     );
   if (stage === 'ARCHIVED' && issuanceDecision?.decision === 'ISSUE')
-    return (
-      decision?.result === 'INFRINGEMENT' &&
-      decision.reason === null &&
-      decision.archivedAt === null
-    );
+    return decision !== null && decision.archivedAt === null;
   return (
     decision?.result === 'NO_INFRINGEMENT' &&
     decision.reason !== null &&
@@ -165,6 +153,12 @@ function issuanceDecisionMatchesStage(
 ): boolean {
   if (stage === 'WAITING_CERTIFICATE') return decision?.decision === 'ISSUE';
   if (stage === 'WAITING_RETURN') return decision?.decision === 'NO_ISSUE';
+  if (
+    stage === 'ARCHIVED' &&
+    returnArchive?.fromStage &&
+    returnArchive.fromStage !== 'WAITING_RETURN'
+  )
+    return true;
   if (stage === 'ARCHIVED' && returnArchive)
     return decision?.decision === 'NO_ISSUE';
   if (stage === 'ARCHIVED')
@@ -177,8 +171,17 @@ function isClientReturnArchive(
 ): value is ClientNotaryReturnArchive {
   return (
     isRecord(value) &&
-    exactKeys(value, ['returnChoice', 'archiveReason', 'archivedAt']) &&
-    ['RETURN', 'KEEP', 'REFUND_ONLY'].includes(value.returnChoice as string) &&
+    exactKeys(value, [
+      'returnChoice',
+      'fromStage',
+      'archiveReason',
+      'archivedAt',
+    ]) &&
+    (value.returnChoice === null ||
+      ['RETURN', 'KEEP', 'REFUND_ONLY'].includes(
+        value.returnChoice as string,
+      )) &&
+    (value.fromStage === null || typeof value.fromStage === 'string') &&
     typeof value.archiveReason === 'string' &&
     value.archiveReason.trim().length > 0 &&
     isTime(value.archivedAt)
@@ -329,13 +332,12 @@ function isReviewResponse(
     value.reviewDecision.result === input.result &&
     value.reviewDecision.reason ===
       (input.result === 'NO_INFRINGEMENT'
-        ? (input.reason?.trim() ?? '')
+        ? input.reason?.trim() || null
         : null) &&
     (value.stage === 'ARCHIVED'
       ? input.result === 'NO_INFRINGEMENT' &&
         value.reviewDecision.archivedAt === value.reviewDecision.decidedAt
-      : input.result === 'INFRINGEMENT' &&
-        value.reviewDecision.archivedAt === null)
+      : value.reviewDecision.archivedAt === null)
   );
 }
 
@@ -393,7 +395,9 @@ export async function reviewClientNotaryOpening(
     !Number.isInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
     (input.result !== 'INFRINGEMENT' && input.result !== 'NO_INFRINGEMENT') ||
-    (input.result === 'NO_INFRINGEMENT' && (!reason || reason.length > 2000)) ||
+    (input.result === 'NO_INFRINGEMENT' &&
+      reason !== undefined &&
+      reason.length > 2000) ||
     idempotencyKey.trim().length === 0
   )
     throw new ApiError('开箱审核信息无效', 400, 'VALIDATION_ERROR');

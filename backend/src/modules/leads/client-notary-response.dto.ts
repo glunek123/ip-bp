@@ -71,8 +71,9 @@ class ClientNotaryIssuanceDecisionDto {
 }
 
 class ClientNotaryReturnArchiveDto {
-  @ApiProperty({ enum: ['RETURN', 'KEEP', 'REFUND_ONLY'] })
-  returnChoice!: string;
+  @ApiProperty({ enum: ['RETURN', 'KEEP', 'REFUND_ONLY'], nullable: true })
+  returnChoice!: string | null;
+  @ApiProperty({ nullable: true }) fromStage!: string | null;
   @ApiProperty() archiveReason!: string;
   @ApiProperty({ format: 'date-time' }) archivedAt!: string;
 }

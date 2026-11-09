@@ -880,6 +880,7 @@ const saving = ref(false);
 const selectedIds = ref<string[]>([]);
 const batchOpen = ref(false);
 const openingBatchOpen = ref(false);
+const batchOpeningChoiceOpen = ref(false);
 const openingBatchSummary = ref('');
 const knownSelectedMatters = computed(() =>
   items.value.filter((matter) => selectedIds.value.includes(matter.id)),
@@ -890,7 +891,10 @@ const archiveDisabledReason = computed(() => {
   if (
     knownSelectedMatters.value.some(
       (matter) =>
-        matter.stage !== 'WAITING_RETURN' || !matter.capabilities.archiveReturn,
+        matter.stage === 'ARCHIVED' ||
+        (matter.stage === 'WAITING_RETURN'
+          ? !matter.capabilities.archiveReturn
+          : !matter.capabilities.archiveMatter),
     )
   )
     return '所选事项含不可退货归档项';
@@ -1028,11 +1032,13 @@ const optionalColumns = computed(() =>
   draftOrder.value.filter(isOptionalColumn),
 );
 const visibleColumns = computed(() =>
-  savedPreference.value.order.filter(
+  (settingsOpen.value ? draftOrder.value : savedPreference.value.order).filter(
     (column) =>
       column !== 'businessNo' &&
       (!isOptionalColumn(column) ||
-        !savedPreference.value.hidden.includes(column)),
+        !(
+          settingsOpen.value ? draftHidden.value : savedPreference.value.hidden
+        ).includes(column)),
   ),
 );
 const tableWidth = computed(
@@ -1770,6 +1776,7 @@ watch(
   ],
   () => {
     selectedIds.value = [];
+    batchOpeningChoiceOpen.value = false;
     closeBatch();
     invalidateExport();
     exportOpen.value = false;
@@ -1879,20 +1886,9 @@ onBeforeUnmount(() => {
             >批量归档</ElButton
           >
           <ElButton
+            v-if="selectedStage === 'WAITING_UNBOX'"
             data-test="batch-opening-open"
-            :title="openingDisabledReason || '逐项核实并登记开箱'"
-            :disabled="
-              !!openingDisabledReason ||
-              batchOpen ||
-              openingBatchOpen ||
-              workflowOpen ||
-              !!pendingBatchForScope
-            "
-            @click="openingBatchOpen = true"
-            >逐项批量开箱</ElButton
-          >
-          <ElButton
-            data-test="zip-opening-import-open"
+            title="选择逐项开箱或导入 ZIP"
             :disabled="
               batchOpen ||
               openingBatchOpen ||
@@ -1900,9 +1896,33 @@ onBeforeUnmount(() => {
               workflowOpen ||
               !!pendingBatchForScope
             "
-            @click="openOpeningImport"
-            >ZIP 批量开箱</ElButton
+            @click="batchOpeningChoiceOpen = !batchOpeningChoiceOpen"
+            >批量开箱</ElButton
           >
+          <div
+            v-if="selectedStage === 'WAITING_UNBOX' && batchOpeningChoiceOpen"
+            class="opening-batch-choice"
+            data-test="batch-opening-choice"
+          >
+            <ElButton
+              data-test="batch-opening-items"
+              :disabled="!!openingDisabledReason"
+              :title="openingDisabledReason"
+              @click="
+                batchOpeningChoiceOpen = false;
+                openingBatchOpen = true;
+              "
+              >逐项开箱</ElButton
+            >
+            <ElButton
+              data-test="batch-opening-zip"
+              @click="
+                batchOpeningChoiceOpen = false;
+                openOpeningImport();
+              "
+              >ZIP 开箱</ElButton
+            >
+          </div>
           <ElButton
             v-if="pendingBatchForScope && !batchOpen"
             data-test="batch-resume"
@@ -2260,7 +2280,9 @@ onBeforeUnmount(() => {
                 >
                   <div>
                     <ElButton
-                      v-for="action in matterActions(matter)"
+                      v-for="action in matter.stage === 'ARCHIVED'
+                        ? []
+                        : matterActions(matter)"
                       :key="action.anchor"
                       data-test="matter-action"
                       type="primary"
@@ -2434,7 +2456,22 @@ onBeforeUnmount(() => {
 }
 
 .column-settings {
-  margin-bottom: 1rem;
+  background: var(--el-bg-color, white);
+  border: 1px solid var(--el-border-color, #dcdfe6);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  max-height: calc(100vh - 110px);
+  overflow-y: auto;
+  position: fixed;
+  right: 16px;
+  top: 90px;
+  width: min(330px, calc(100vw - 32px));
+  z-index: 100;
+}
+
+.opening-batch-choice {
+  display: inline-flex;
+  gap: 0.5rem;
 }
 
 .export-panel.business-list-toolbar {

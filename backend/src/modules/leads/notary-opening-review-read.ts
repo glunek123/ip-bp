@@ -27,8 +27,14 @@ export function openingReviewMatchesStage(
     stage === 'WAITING_RETURN'
   )
     return (
-      decision.result === 'INFRINGEMENT' &&
-      decision.reason === null &&
+      (decision.result === 'INFRINGEMENT' ||
+        decision.result === 'NO_INFRINGEMENT') &&
+      (decision.result === 'INFRINGEMENT'
+        ? decision.reason === null
+        : decision.reason === null ||
+          (decision.reason.trim() === decision.reason &&
+            decision.reason.length >= 1 &&
+            decision.reason.length <= 2000)) &&
       decision.archivedAt === null
     );
   return (

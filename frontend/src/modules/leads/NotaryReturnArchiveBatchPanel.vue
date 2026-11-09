@@ -6,6 +6,7 @@ import {
   type NotaryReturnAmountInput,
   type NotaryReturnChoice,
   type NotaryReturnPartyKind,
+  type NotaryArchiveType,
 } from '../../api/notary';
 import {
   archiveNotaryReturnBatch,
@@ -14,7 +15,7 @@ import {
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 type AmountDraft = {
-  state: '' | 'KNOWN' | 'PENDING';
+  state: '' | 'KNOWN';
   amount: string;
   partyKind: '' | NotaryReturnPartyKind;
   partyName: string;
@@ -22,10 +23,14 @@ type AmountDraft = {
 type MatterDraft = {
   id: string;
   businessNo: string;
+  stage: string;
   version: number;
   sampleFeeState: 'KNOWN' | 'PENDING';
   sampleFeeAmount: string | null;
-  choice: '' | NotaryReturnChoice;
+  archiveType: '' | NotaryArchiveType;
+  archiveDate: string;
+  notaryFeeAmount: string;
+  sampleFeeAmountDraft: string;
   reason: string;
   refund: AmountDraft;
   freight: AmountDraft;
@@ -106,14 +111,12 @@ const canSubmit = computed(
 );
 
 function emptyAmount(): AmountDraft {
-  return { state: '', amount: '', partyKind: '', partyName: '' };
+  return { state: 'KNOWN', amount: '', partyKind: '', partyName: '' };
 }
 
 function validateAmount(amount: AmountDraft, label: string): string[] {
-  if (!amount.state) return [`请选择${label}状态`];
-  if (amount.state === 'PENDING') return [];
-  if (!/^(0|[1-9]\d{0,15})\.\d{2}$/u.test(amount.amount))
-    return [`${label}请输入非负且保留两位小数的金额`];
+  if (!/^(0|[1-9]\d{0,15})(\.\d{1,2})?$/u.test(amount.amount))
+    return [`${label}请输入非负金额，最多保留两位小数`];
   if (Number(amount.amount) === 0)
     return amount.partyKind || amount.partyName.trim()
       ? [`${label}为零时不需要填写收付方`]
@@ -126,24 +129,41 @@ function validateAmount(amount: AmountDraft, label: string): string[] {
   return [];
 }
 
+function normalizedAmount(value: string): string {
+  return Number(value).toFixed(2);
+}
+
 function validateDraft(draft: MatterDraft): string[] {
   const errors: string[] = [];
-  if (!draft.choice) errors.push('请选择归档处理方式');
+  if (!draft.archiveType) errors.push('请选择归档类型');
+  if (
+    draft.stage !== 'WAITING_RETURN' &&
+    [
+      'NOT_SHIPPED_REFUND_ONLY',
+      'RECEIVED_KEEP',
+      'RECEIVED_RETURN_REFUND',
+    ].includes(draft.archiveType)
+  )
+    errors.push('当前阶段不能选择退货处理类型');
+  if (!draft.archiveDate) errors.push('请填写归档日期');
+  if (!/^(0|[1-9]\d{0,15})(\.\d{1,2})?$/u.test(draft.notaryFeeAmount))
+    errors.push('请输入有效公证费');
+  if (!/^(0|[1-9]\d{0,15})(\.\d{1,2})?$/u.test(draft.sampleFeeAmountDraft))
+    errors.push('请输入有效样品费');
   if (!draft.reason.trim()) errors.push('请填写归档原因');
   if ([...draft.reason.trim()].length > 5000)
     errors.push('归档原因不能超过5000字');
-  if (draft.choice === 'RETURN') {
+  if (draft.archiveType === 'RECEIVED_RETURN_REFUND') {
     errors.push(...validateAmount(draft.refund, '退款金额'));
     errors.push(...validateAmount(draft.freight, '运费'));
-  } else if (draft.choice === 'REFUND_ONLY') {
+  } else if (draft.archiveType === 'NOT_SHIPPED_REFUND_ONLY') {
     errors.push(...validateAmount(draft.refund, '退款金额'));
   }
   return errors;
 }
 
 function amountInput(draft: AmountDraft): NotaryReturnAmountInput {
-  if (draft.state === 'PENDING') return { state: 'PENDING' };
-  const amount = draft.amount.trim();
+  const amount = normalizedAmount(draft.amount.trim());
   if (Number(amount) === 0) return { state: 'KNOWN', amount };
   const partyKind = draft.partyKind as NotaryReturnPartyKind;
   return {
@@ -155,14 +175,33 @@ function amountInput(draft: AmountDraft): NotaryReturnAmountInput {
 }
 
 function buildItem(draft: MatterDraft): ArchiveNotaryReturnBatchInput {
-  const choice = draft.choice as NotaryReturnChoice;
+  const type = draft.archiveType as NotaryArchiveType;
+  const choice: NotaryReturnChoice | undefined =
+    draft.stage !== 'WAITING_RETURN'
+      ? undefined
+      : type === 'RECEIVED_RETURN_REFUND'
+        ? 'RETURN'
+        : type === 'NOT_SHIPPED_REFUND_ONLY'
+          ? 'REFUND_ONLY'
+          : type === 'RECEIVED_KEEP' ||
+              type === 'LINK_REMOVED' ||
+              type === 'NO_INFRINGEMENT_INFORMATION' ||
+              type === 'NO_EVIDENCE'
+            ? 'KEEP'
+            : undefined;
   return {
     matterId: draft.id,
-    returnChoice: choice,
-    ...(choice === 'RETURN' || choice === 'REFUND_ONLY'
+    ...(choice ? { returnChoice: choice } : {}),
+    ...(type === 'RECEIVED_RETURN_REFUND' || type === 'NOT_SHIPPED_REFUND_ONLY'
       ? { refund: amountInput(draft.refund) }
       : {}),
-    ...(choice === 'RETURN' ? { freight: amountInput(draft.freight) } : {}),
+    ...(type === 'RECEIVED_RETURN_REFUND'
+      ? { freight: amountInput(draft.freight) }
+      : {}),
+    archiveType: type,
+    archiveDate: draft.archiveDate,
+    notaryFeeAmount: normalizedAmount(draft.notaryFeeAmount),
+    sampleFeeAmount: normalizedAmount(draft.sampleFeeAmountDraft),
     archiveReason: draft.reason.trim(),
     expectedVersion: draft.version,
   };
@@ -211,9 +250,10 @@ async function loadDetails(): Promise<void> {
     const invalid = details.some(
       (matter, index) =>
         matter.id !== matterIds[index] ||
-        matter.stage !== 'WAITING_RETURN' ||
-        !matter.capabilities.archiveReturn ||
-        matter.issuanceDecision?.decision !== 'NO_ISSUE',
+        matter.stage === 'ARCHIVED' ||
+        (matter.stage === 'WAITING_RETURN'
+          ? !matter.capabilities.archiveReturn
+          : !matter.capabilities.archiveMatter),
     );
     if (invalid) {
       state.value = 'failed';
@@ -224,17 +264,25 @@ async function loadDetails(): Promise<void> {
     drafts.value = details.map((matter) => ({
       id: matter.id,
       businessNo: matter.businessNo,
+      stage: matter.stage,
       version: matter.version,
       sampleFeeState: matter.evidence?.sampleFeeState ?? 'PENDING',
       sampleFeeAmount: matter.evidence?.sampleFeeAmount ?? null,
-      choice: '',
+      archiveType: '',
+      archiveDate: new Date().toLocaleDateString('en-CA'),
+      notaryFeeAmount:
+        matter.fees.notary.state === 'KNOWN' ? matter.fees.notary.amount : '',
+      sampleFeeAmountDraft:
+        matter.evidence?.sampleFeeState === 'KNOWN'
+          ? (matter.evidence.sampleFeeAmount ?? '')
+          : '',
       reason: '',
       refund: emptyAmount(),
       freight: emptyAmount(),
     }));
     loadedScopeKey.value = props.scopeKey;
     state.value = 'ready';
-    message.value = '请逐项确认处理方式、适用金额、收付方及归档原因。';
+    message.value = '请逐项填写费用、归档日期、归档类型和原因。';
   } catch (error) {
     if (controller.signal.aborted || generation !== readGeneration) return;
     state.value = 'failed';
@@ -285,7 +333,7 @@ async function submitFrozen(): Promise<void> {
       frozenKey.value = '';
       frozenScope.value = '';
       state.value = 'failed';
-      message.value = '提交被拒绝，请重新读取事项后再提交。';
+      message.value = `${error.message} 整批未保存，请重新读取事项后修正。`;
       return;
     }
     message.value =
@@ -334,7 +382,9 @@ onBeforeUnmount(() => {
     <header>
       <div>
         <h2>批量退货归档</h2>
-        <p>逐项记录本次实际处理。原样品费用仅作参考，不会被改动。</p>
+        <p>
+          费用逐案记录，原有历史保留；退款金额表示应退金额，不代表已实际退款。
+        </p>
       </div>
       <button type="button" @click="emit('close')">返回列表</button>
     </header>
@@ -424,114 +474,118 @@ onBeforeUnmount(() => {
           >
           <span v-else>待定</span>（仅供核对）
         </p>
+        <label
+          >公证费 <span aria-hidden="true">*</span
+          ><input
+            v-model="draft.notaryFeeAmount"
+            :data-test="`notary-fee-${draft.id}`"
+            inputmode="decimal"
+            required
+        /></label>
+        <label
+          >样品费 <span aria-hidden="true">*</span
+          ><input
+            v-model="draft.sampleFeeAmountDraft"
+            :data-test="`sample-fee-${draft.id}`"
+            inputmode="decimal"
+            required
+        /></label>
+        <label
+          >归档日期 <span aria-hidden="true">*</span
+          ><input
+            v-model="draft.archiveDate"
+            :data-test="`archive-date-${draft.id}`"
+            type="date"
+            required
+        /></label>
         <label>
-          归档处理方式 <span aria-hidden="true">*</span>
+          归档类型 <span aria-hidden="true">*</span>
           <select
-            v-model="draft.choice"
-            :data-test="`choice-${draft.id}`"
+            v-model="draft.archiveType"
+            :data-test="`archive-type-${draft.id}`"
             required
           >
             <option value="">请选择</option>
-            <option value="RETURN">退回样品</option>
-            <option value="KEEP">保留样品</option>
-            <option value="REFUND_ONLY">仅退款</option>
+            <option value="LINK_REMOVED">链接下架</option>
+            <option value="NO_INFRINGEMENT_INFORMATION">无侵权信息</option>
+            <option value="NO_EVIDENCE">不取证</option>
+            <option value="NOT_SHIPPED_REFUND_ONLY">不发货-仅退款</option>
+            <option value="RECEIVED_KEEP">收到货-不退货</option>
+            <option value="RECEIVED_RETURN_REFUND">收到货-退货退款</option>
           </select>
         </label>
-        <div v-if="draft.choice === 'RETURN' || draft.choice === 'REFUND_ONLY'">
-          <label>
-            退款金额状态 <span aria-hidden="true">*</span>
+        <div
+          v-if="
+            draft.archiveType === 'RECEIVED_RETURN_REFUND' ||
+            draft.archiveType === 'NOT_SHIPPED_REFUND_ONLY'
+          "
+        >
+          <label
+            >退款金额 <span aria-hidden="true">*</span>
+            <input
+              v-model="draft.refund.amount"
+              :data-test="`refund-amount-${draft.id}`"
+              inputmode="decimal"
+              placeholder="例如 0.00"
+              required
+            />
+          </label>
+          <label v-if="Number(draft.refund.amount) > 0"
+            >退款收付方 <span aria-hidden="true">*</span>
             <select
-              v-model="draft.refund.state"
-              :data-test="`refund-state-${draft.id}`"
+              v-model="draft.refund.partyKind"
+              :data-test="`refund-party-${draft.id}`"
               required
             >
               <option value="">请选择</option>
-              <option value="KNOWN">已知</option>
-              <option value="PENDING">待定</option>
+              <option value="CUSTOMER">客户</option>
+              <option value="FIRM">律所</option>
+              <option value="MERCHANT">商家</option>
+              <option value="OTHER">其他</option>
             </select>
           </label>
-          <template v-if="draft.refund.state === 'KNOWN'">
-            <label
-              >退款事实金额 <span aria-hidden="true">*</span>
-              <input
-                v-model="draft.refund.amount"
-                :data-test="`refund-amount-${draft.id}`"
-                inputmode="decimal"
-                placeholder="例如 0.00"
-                required
-              />
-            </label>
-            <label v-if="Number(draft.refund.amount) > 0"
-              >退款收付方 <span aria-hidden="true">*</span>
-              <select
-                v-model="draft.refund.partyKind"
-                :data-test="`refund-party-${draft.id}`"
-                required
-              >
-                <option value="">请选择</option>
-                <option value="CUSTOMER">客户</option>
-                <option value="FIRM">律所</option>
-                <option value="MERCHANT">商家</option>
-                <option value="OTHER">其他</option>
-              </select>
-            </label>
-            <label v-if="draft.refund.partyKind === 'OTHER'"
-              >退款收付方名称 <span aria-hidden="true">*</span>
-              <input
-                v-model="draft.refund.partyName"
-                :data-test="`refund-party-name-${draft.id}`"
-                required
-              />
-            </label>
-          </template>
+          <label v-if="draft.refund.partyKind === 'OTHER'"
+            >退款收付方名称 <span aria-hidden="true">*</span>
+            <input
+              v-model="draft.refund.partyName"
+              :data-test="`refund-party-name-${draft.id}`"
+              required
+            />
+          </label>
         </div>
-        <div v-if="draft.choice === 'RETURN'">
-          <label>
-            运费状态 <span aria-hidden="true">*</span>
+        <div v-if="draft.archiveType === 'RECEIVED_RETURN_REFUND'">
+          <label
+            >退货运费金额 <span aria-hidden="true">*</span>
+            <input
+              v-model="draft.freight.amount"
+              :data-test="`freight-amount-${draft.id}`"
+              inputmode="decimal"
+              placeholder="例如 0.00"
+              required
+            />
+          </label>
+          <label v-if="Number(draft.freight.amount) > 0"
+            >运费收付方 <span aria-hidden="true">*</span>
             <select
-              v-model="draft.freight.state"
-              :data-test="`freight-state-${draft.id}`"
+              v-model="draft.freight.partyKind"
+              :data-test="`freight-party-${draft.id}`"
               required
             >
               <option value="">请选择</option>
-              <option value="KNOWN">已知</option>
-              <option value="PENDING">待定</option>
+              <option value="CUSTOMER">客户</option>
+              <option value="FIRM">律所</option>
+              <option value="MERCHANT">商家</option>
+              <option value="OTHER">其他</option>
             </select>
           </label>
-          <template v-if="draft.freight.state === 'KNOWN'">
-            <label
-              >运费事实金额 <span aria-hidden="true">*</span>
-              <input
-                v-model="draft.freight.amount"
-                :data-test="`freight-amount-${draft.id}`"
-                inputmode="decimal"
-                placeholder="例如 0.00"
-                required
-              />
-            </label>
-            <label v-if="Number(draft.freight.amount) > 0"
-              >运费收付方 <span aria-hidden="true">*</span>
-              <select
-                v-model="draft.freight.partyKind"
-                :data-test="`freight-party-${draft.id}`"
-                required
-              >
-                <option value="">请选择</option>
-                <option value="CUSTOMER">客户</option>
-                <option value="FIRM">律所</option>
-                <option value="MERCHANT">商家</option>
-                <option value="OTHER">其他</option>
-              </select>
-            </label>
-            <label v-if="draft.freight.partyKind === 'OTHER'"
-              >运费收付方名称 <span aria-hidden="true">*</span>
-              <input
-                v-model="draft.freight.partyName"
-                :data-test="`freight-party-name-${draft.id}`"
-                required
-              />
-            </label>
-          </template>
+          <label v-if="draft.freight.partyKind === 'OTHER'"
+            >运费收付方名称 <span aria-hidden="true">*</span>
+            <input
+              v-model="draft.freight.partyName"
+              :data-test="`freight-party-name-${draft.id}`"
+              required
+            />
+          </label>
         </div>
         <label>
           归档原因 <span aria-hidden="true">*</span>

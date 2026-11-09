@@ -15,6 +15,14 @@ export const feeReadInclude = {
       defendants: { select: { name: true }, orderBy: { id: 'asc' } },
     },
   },
+  notaryMatter: {
+    select: {
+      businessNo: true,
+      stage: true,
+      sourceLead: { select: { platform: true, shopName: true } },
+      routineProfile: { select: { shopName: true } },
+    },
+  },
 } satisfies Prisma.FeeRecordInclude;
 
 type FeeReadRow = Prisma.FeeRecordGetPayload<{
@@ -25,14 +33,21 @@ export function projectFeeReadRow(row: FeeReadRow) {
   return {
     id: row.id,
     caseId: row.caseId,
-    businessNo: row.case.businessNo,
-    courtCaseNo: row.case.courtCaseNo,
-    platform: row.case.sourceLead?.platform ?? null,
-    shopName: row.case.routineProfile
-      ? row.case.routineProfile.shopName
-      : (row.case.sourceLead?.shopName ?? null),
-    defendantNames: row.case.defendants.map((item) => item.name),
-    stage: row.case.stage,
+    notaryMatterId: row.notaryMatterId,
+    businessNo: row.case?.businessNo ?? row.notaryMatter?.businessNo ?? '',
+    courtCaseNo: row.case?.courtCaseNo ?? null,
+    platform:
+      row.case?.sourceLead?.platform ??
+      row.notaryMatter?.sourceLead.platform ??
+      null,
+    shopName:
+      row.case?.routineProfile?.shopName ??
+      row.case?.sourceLead?.shopName ??
+      row.notaryMatter?.routineProfile?.shopName ??
+      row.notaryMatter?.sourceLead.shopName ??
+      null,
+    defendantNames: row.case?.defendants.map((item) => item.name) ?? [],
+    stage: row.case?.stage ?? row.notaryMatter?.stage ?? '',
     type: row.type,
     direction: row.direction as '收入' | '支出',
     status: row.status,
@@ -87,6 +102,7 @@ export async function readScopedCaseFeePage(
     ledger: {
       items: rows.map((row) => ({
         ...projectFeeReadRow(row),
+        caseId: row.caseId!,
         sourceKind: row.sourceKind,
         sourceId: row.sourceId,
       })),

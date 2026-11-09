@@ -151,6 +151,7 @@ describe('ClientNotaryService', () => {
           choice === 'NO_ISSUE'
             ? {
                 returnChoice: 'KEEP',
+                fromStage: null,
                 archiveReason: codePointReason,
                 archivedAt: new Date('2026-09-28T03:00:00Z'),
                 actorUserId: 'private-actor',
@@ -170,6 +171,7 @@ describe('ClientNotaryService', () => {
         choice === 'NO_ISSUE'
           ? {
               returnChoice: 'KEEP',
+              fromStage: null,
               archiveReason: codePointReason,
               archivedAt: '2026-09-28T03:00:00.000Z',
             }
@@ -185,6 +187,84 @@ describe('ClientNotaryService', () => {
         ).toBeDefined();
     },
   );
+
+  it.each([
+    ['UNBOX_REVIEW', null, null],
+    ['ISSUANCE_DECISION', 'NO_INFRINGEMENT', null],
+    ['WAITING_CERTIFICATE', 'NO_INFRINGEMENT', 'ISSUE'],
+  ] as const)(
+    'reads an early archive from %s with its actual upstream facts',
+    async (fromStage, reviewResult, issuanceChoice) => {
+      const { service, database } = fixture();
+      const archived = {
+        ...matter,
+        stage: 'ARCHIVED',
+        openingReviewDecision:
+          reviewResult === null
+            ? null
+            : {
+                result: reviewResult,
+                reason: null,
+                archivedAt: null,
+                decidedAt: new Date('2026-09-28T02:00:00Z'),
+                actorKind: 'INTERNAL',
+                actorDisplayNameSnapshot: '运营',
+              },
+        issuanceDecision:
+          issuanceChoice === null
+            ? null
+            : { decision: issuanceChoice, decidedAt: new Date() },
+        certificate: null,
+        returnArchive: {
+          returnChoice: null,
+          fromStage,
+          archiveReason: '提前归档',
+          archivedAt: new Date('2026-09-28T03:00:00Z'),
+          fromVersion: 2,
+          toVersion: 3,
+          amounts: [],
+        },
+      };
+      database.notaryMatter.findFirst.mockResolvedValue(archived);
+      database.notaryMatter.findMany.mockResolvedValue([archived]);
+      expect((await service.get(actor, matterId)).returnArchive).toEqual({
+        returnChoice: null,
+        fromStage,
+        archiveReason: '提前归档',
+        archivedAt: '2026-09-28T03:00:00.000Z',
+      });
+      expect((await service.list(actor, 1, 20, 'lead-1')).items[0].stage).toBe(
+        'ARCHIVED',
+      );
+    },
+  );
+
+  it('hides an early archive with a fabricated second review', async () => {
+    const { service, database } = fixture();
+    const archived = {
+      ...matter,
+      stage: 'ARCHIVED',
+      openingReviewDecision: null,
+      issuanceDecision: { decision: 'ISSUE', decidedAt: new Date() },
+      returnArchive: {
+        returnChoice: null,
+        fromStage: 'UNBOX_REVIEW',
+        archiveReason: '提前归档',
+        archivedAt: new Date(),
+        fromVersion: 2,
+        toVersion: 3,
+        amounts: [],
+      },
+    };
+    database.notaryMatter.findFirst.mockResolvedValue(archived);
+    database.notaryMatter.findMany.mockResolvedValue([archived]);
+    await expect(service.get(actor, matterId)).rejects.toMatchObject({
+      response: { code: 'RESOURCE_NOT_FOUND' },
+    });
+    await expect(service.list(actor, 1, 20, 'lead-1')).rejects.toMatchObject({
+      response: { code: 'RESOURCE_NOT_FOUND' },
+    });
+  });
 
   it('hides a conflicting certificate on a return archive', async () => {
     const { service, database } = fixture();
@@ -301,6 +381,7 @@ describe('ClientNotaryService', () => {
       certificate: null,
       returnArchive: {
         returnChoice: 'RETURN',
+        fromStage: null,
         archiveReason: '退货',
         archivedAt: new Date('2026-09-28T03:00:00Z'),
         fromVersion: 2,
@@ -329,6 +410,7 @@ describe('ClientNotaryService', () => {
     database.notaryMatter.findMany.mockResolvedValue([archived]);
     expect((await service.get(actor, matterId)).returnArchive).toEqual({
       returnChoice: 'RETURN',
+      fromStage: null,
       archiveReason: '退货',
       archivedAt: '2026-09-28T03:00:00.000Z',
     });
@@ -339,7 +421,7 @@ describe('ClientNotaryService', () => {
       Object.keys(
         (await service.get(actor, matterId)).returnArchive ?? {},
       ).sort(),
-    ).toEqual(['archiveReason', 'archivedAt', 'returnChoice']);
+    ).toEqual(['archiveReason', 'archivedAt', 'fromStage', 'returnChoice']);
   });
 
   it('rejects a waiting stage whose immutable issuance fact names the opposite choice', async () => {
@@ -424,11 +506,11 @@ describe('ClientNotaryService', () => {
 
   it.each([
     [
-      'infringement stage with no-infringement decision',
+      'reviewed stage with an archive time',
       'ISSUANCE_DECISION',
       'NO_INFRINGEMENT',
       '不侵权',
-      null,
+      new Date('2026-09-28T01:00:00Z'),
     ],
     [
       'archive stage with infringement decision',

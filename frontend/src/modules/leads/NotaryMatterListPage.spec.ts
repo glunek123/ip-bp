@@ -249,6 +249,20 @@ async function mountPage(path: string) {
   return { wrapper, router, auth };
 }
 
+type ListWrapper = Awaited<ReturnType<typeof mountPage>>['wrapper'];
+
+async function openBatchOpening(wrapper: ListWrapper, mode: 'items' | 'zip') {
+  await wrapper.get('[data-test="batch-opening-open"]').trigger('click');
+  await wrapper.get(`[data-test="batch-opening-${mode}"]`).trigger('click');
+}
+
+async function fillArchiveRow(wrapper: ListWrapper, id: string) {
+  await wrapper
+    .get(`[data-test="archive-type-${id}"]`)
+    .setValue('RECEIVED_KEEP');
+  await wrapper.get(`[data-test="notary-fee-${id}"]`).setValue('15.00');
+}
+
 afterEach(() => {
   vi.resetAllMocks();
   globalThis.sessionStorage.clear();
@@ -258,12 +272,12 @@ afterEach(() => {
 describe('NotaryMatterListPage', () => {
   it('reads a typed batch ID through the existing guarded GET and keeps denial generic', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
-    const { wrapper } = await mountPage('/notary-matters');
+    const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
     const batchId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     openingImportApi.getNotaryOpeningImport.mockRejectedValue(
       new ApiError('private backend detail', 403, 'FORBIDDEN'),
     );
-    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await openBatchOpening(wrapper, 'zip');
     await wrapper
       .get('[data-test="opening-import-batch-id"]')
       .setValue(batchId);
@@ -297,8 +311,8 @@ describe('NotaryMatterListPage', () => {
       recognitionMode: 'DISABLED',
       items: [],
     });
-    const { wrapper } = await mountPage('/notary-matters');
-    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
+    await openBatchOpening(wrapper, 'zip');
     await wrapper
       .get('[data-test="opening-import-batch-id"]')
       .setValue(batchId);
@@ -324,7 +338,7 @@ describe('NotaryMatterListPage', () => {
       recognitionMode: 'DISABLED',
       items: [],
     });
-    const { wrapper } = await mountPage('/notary-matters');
+    const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
     Object.defineProperty(navigator, 'locks', {
       configurable: true,
       value: {
@@ -335,7 +349,7 @@ describe('NotaryMatterListPage', () => {
         ) => callback(null),
       },
     });
-    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await openBatchOpening(wrapper, 'zip');
     await wrapper
       .get('[data-test="opening-import-batch-id"]')
       .setValue(batchId);
@@ -354,14 +368,14 @@ describe('NotaryMatterListPage', () => {
       batchId,
     );
   });
-  it('keeps the existing per-item opening action and adds a separate ZIP import entry', async () => {
+  it('offers ZIP without selection through the single opening entry', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
-    const { wrapper } = await mountPage('/notary-matters');
+    const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
 
     expect(wrapper.get('[data-test="batch-opening-open"]').text()).toContain(
-      '逐项批量开箱',
+      '批量开箱',
     );
-    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await openBatchOpening(wrapper, 'zip');
     await flushPromises();
     expect(wrapper.html()).toContain('data-test="opening-import-panel"');
     expect(wrapper.html()).toContain('data-test="opening-import-upload"');
@@ -399,10 +413,10 @@ describe('NotaryMatterListPage', () => {
       ],
     };
     openingImportApi.getNotaryOpeningImport.mockResolvedValue(batch);
-    const { wrapper } = await mountPage('/notary-matters');
+    const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
     openingImportRecovery.getActiveOpeningImportBatch.mockReturnValue(batch.id);
 
-    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await openBatchOpening(wrapper, 'zip');
     await flushPromises();
 
     expect(openingImportApi.getNotaryOpeningImport).toHaveBeenCalledWith(
@@ -473,10 +487,12 @@ describe('NotaryMatterListPage', () => {
     openingImportApi.listNotaryOpeningImportEligibleMatters
       .mockReturnValueOnce(delayedOldScope.promise)
       .mockReturnValueOnce(delayedNewScope.promise);
-    const { wrapper, auth } = await mountPage('/notary-matters');
+    const { wrapper, auth } = await mountPage(
+      '/notary-matters?stage=WAITING_UNBOX',
+    );
     openingImportRecovery.getActiveOpeningImportBatch.mockReturnValue(batchId);
 
-    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await openBatchOpening(wrapper, 'zip');
     await flushPromises();
     expect(
       openingImportApi.listNotaryOpeningImportEligibleMatters,
@@ -497,7 +513,7 @@ describe('NotaryMatterListPage', () => {
     });
     await flushPromises();
 
-    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await openBatchOpening(wrapper, 'zip');
     await flushPromises();
     expect(wrapper.html()).not.toContain('STALE-PRIVILEGE-CANDIDATE');
     delayedNewScope.resolve({ items: [], total: 0, page: 1, pageSize: 20 });
@@ -536,9 +552,9 @@ describe('NotaryMatterListPage', () => {
       ],
     };
     openingImportApi.uploadNotaryOpeningImport.mockResolvedValue(batch);
-    const { wrapper } = await mountPage('/notary-matters');
+    const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
 
-    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await openBatchOpening(wrapper, 'zip');
     const fileInput = wrapper.get('[data-test="opening-import-file"]');
     Object.defineProperty(fileInput.element, 'files', {
       configurable: true,
@@ -603,7 +619,7 @@ describe('NotaryMatterListPage', () => {
         },
       ],
     });
-    const { wrapper } = await mountPage('/notary-matters');
+    const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
     openingImportRecovery.getPendingOpeningImportUpload.mockReturnValue({
       key: 'original-upload-key',
       sha256: 'a'.repeat(64),
@@ -611,7 +627,7 @@ describe('NotaryMatterListPage', () => {
       sizeBytes: 2,
     });
 
-    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await openBatchOpening(wrapper, 'zip');
     const fileInput = wrapper.get('[data-test="opening-import-file"]');
     Object.defineProperty(fileInput.element, 'files', {
       configurable: true,
@@ -699,10 +715,12 @@ describe('NotaryMatterListPage', () => {
     openingImportApi.confirmNotaryOpeningImportItem.mockReturnValueOnce(
       lateReceipt.promise,
     );
-    const { wrapper, auth } = await mountPage('/notary-matters');
+    const { wrapper, auth } = await mountPage(
+      '/notary-matters?stage=WAITING_UNBOX',
+    );
     openingImportRecovery.getActiveOpeningImportBatch.mockReturnValue(batchId);
 
-    await wrapper.get('[data-test="zip-opening-import-open"]').trigger('click');
+    await openBatchOpening(wrapper, 'zip');
     await flushPromises();
     await wrapper
       .get(`[data-test="opening-import-search-${itemId}"]`)
@@ -877,7 +895,7 @@ describe('NotaryMatterListPage', () => {
     await flushPromises();
     expect(api.decideNotaryIssuance).toHaveBeenCalledWith(
       'matter-1',
-      { decision: 'NO_ISSUE', expectedVersion: 5 },
+      { decision: 'NO_ISSUE', expectedVersion: 5, openingRemark: null },
       expect.any(String),
     );
     expect(api.listNotaryMatters).toHaveBeenCalledTimes(2);
@@ -1308,25 +1326,34 @@ describe('NotaryMatterListPage', () => {
           },
         ],
       });
-      const { wrapper } = await mountPage('/notary-matters');
+      const { wrapper } = await mountPage(`/notary-matters?stage=${stage}`);
       await wrapper.get('[data-test="select-matter"]').setValue(true);
       expect(
         wrapper
           .get('[data-test="batch-archive-open"]')
           .attributes('disabled') !== undefined,
       ).toBe(!(stage === 'WAITING_RETURN' && archiveReturn));
-      expect(
-        wrapper
-          .get('[data-test="batch-opening-open"]')
-          .attributes('disabled') !== undefined,
-      ).toBe(!(stage === 'WAITING_UNBOX' && recordOpening));
+      expect(wrapper.find('[data-test="batch-opening-open"]').exists()).toBe(
+        stage === 'WAITING_UNBOX',
+      );
+      if (stage === 'WAITING_UNBOX') {
+        await wrapper.get('[data-test="batch-opening-open"]').trigger('click');
+        expect(
+          wrapper
+            .get('[data-test="batch-opening-items"]')
+            .attributes('disabled') !== undefined,
+        ).toBe(!recordOpening);
+        expect(
+          wrapper.get('[data-test="batch-opening-zip"]').attributes('disabled'),
+        ).toBeUndefined();
+      }
       expect(api.getNotaryMatter).not.toHaveBeenCalled();
       expect(batchApi.archive).not.toHaveBeenCalled();
       wrapper.unmount();
     },
   );
 
-  it('allows mixed opening selections but rejects mixed archive selections', async () => {
+  it('hides opening outside the unbox stage and rejects mixed archive selections', async () => {
     api.listNotaryMatters.mockResolvedValue({
       ...result,
       total: 2,
@@ -1345,9 +1372,9 @@ describe('NotaryMatterListPage', () => {
     });
     const { wrapper } = await mountPage('/notary-matters');
     await wrapper.get('[data-test="select-page"]').setValue(true);
-    expect(
-      wrapper.get('[data-test="batch-opening-open"]').attributes('disabled'),
-    ).toBeUndefined();
+    expect(wrapper.find('[data-test="batch-opening-open"]').exists()).toBe(
+      false,
+    );
     expect(
       wrapper.get('[data-test="batch-archive-open"]').attributes('disabled'),
     ).toBeDefined();
@@ -1372,9 +1399,9 @@ describe('NotaryMatterListPage', () => {
     );
     const { wrapper } = await mountPage('/notary-matters');
     await wrapper.get('[data-test="select-matter"]').setValue(true);
-    expect(
-      wrapper.get('[data-test="batch-opening-open"]').attributes('disabled'),
-    ).toBeUndefined();
+    expect(wrapper.find('[data-test="batch-opening-open"]').exists()).toBe(
+      false,
+    );
     expect(
       wrapper.get('[data-test="batch-archive-open"]').attributes('disabled'),
     ).toBeDefined();
@@ -1418,7 +1445,7 @@ describe('NotaryMatterListPage', () => {
         total: 21,
         items: [{ ...result.items[0], id: 'other-page-matter' }],
       });
-    const { wrapper } = await mountPage('/notary-matters');
+    const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
     await wrapper.get('[data-test="select-matter"]').setValue(true);
     expect(
       wrapper.get('[data-test="batch-archive-open"]').attributes('disabled'),
@@ -1455,6 +1482,7 @@ describe('NotaryMatterListPage', () => {
     };
     api.listNotaryMatters.mockResolvedValue(waiting);
     api.getNotaryMatter.mockResolvedValue({
+      ...sourceProjection,
       id: 'matter-1',
       businessNo: 'NT-001',
       stage: 'WAITING_RETURN',
@@ -1469,9 +1497,11 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[data-test="select-matter"]').setValue(true);
     await wrapper.get('[data-test="batch-archive-open"]').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('样品费事实：10.00 元');
+    expect(
+      wrapper.get('[data-test="sample-fee-matter-1"]').element,
+    ).toMatchObject({ value: '10.00' });
 
-    await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
+    await fillArchiveRow(wrapper, 'matter-1');
     await wrapper.get('[data-test="reason-matter-1"]').setValue('完成退货处理');
     await wrapper.get('.return-archive-batch form').trigger('submit');
     await flushPromises();
@@ -1500,7 +1530,7 @@ describe('NotaryMatterListPage', () => {
     });
     const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
     await wrapper.get('[data-test="select-matter"]').setValue(true);
-    await wrapper.get('[data-test="batch-opening-open"]').trigger('click');
+    await openBatchOpening(wrapper, 'items');
     await flushPromises();
     expect(wrapper.find('[data-test="batch-opening-panel"]').exists()).toBe(
       true,
@@ -1538,7 +1568,7 @@ describe('NotaryMatterListPage', () => {
     });
     const { wrapper } = await mountPage('/notary-matters?stage=WAITING_UNBOX');
     await wrapper.get('[data-test="select-page"]').setValue(true);
-    await wrapper.get('[data-test="batch-opening-open"]').trigger('click');
+    await openBatchOpening(wrapper, 'items');
     await wrapper.get('[data-test="batch-opening-close"]').trigger('click');
     await flushPromises();
     expect(wrapper.get('[data-test="selected-count"]').text()).toContain(
@@ -1564,6 +1594,7 @@ describe('NotaryMatterListPage', () => {
       ],
     });
     api.getNotaryMatter.mockResolvedValue({
+      ...sourceProjection,
       id: 'matter-1',
       businessNo: 'NT-001',
       stage: 'WAITING_UNBOX',
@@ -1616,6 +1647,7 @@ describe('NotaryMatterListPage', () => {
       };
       api.listNotaryMatters.mockResolvedValue(waiting);
       api.getNotaryMatter.mockResolvedValue({
+        ...sourceProjection,
         id: 'matter-1',
         businessNo: 'NT-001',
         stage: 'WAITING_RETURN',
@@ -1633,7 +1665,7 @@ describe('NotaryMatterListPage', () => {
       await wrapper.get('[data-test="select-matter"]').setValue(true);
       await wrapper.get('[data-test="batch-archive-open"]').trigger('click');
       await flushPromises();
-      await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
+      await fillArchiveRow(wrapper, 'matter-1');
       await wrapper.get('[data-test="reason-matter-1"]').setValue('原请求原因');
       await wrapper.get('.return-archive-batch form').trigger('submit');
       await flushPromises();
@@ -1701,6 +1733,7 @@ describe('NotaryMatterListPage', () => {
     };
     api.listNotaryMatters.mockResolvedValue(waiting);
     api.getNotaryMatter.mockResolvedValue({
+      ...sourceProjection,
       id: 'matter-1',
       businessNo: 'NT-001',
       stage: 'WAITING_RETURN',
@@ -1721,7 +1754,7 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[data-test="select-matter"]').setValue(true);
     await wrapper.get('[data-test="batch-archive-open"]').trigger('click');
     await flushPromises();
-    await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
+    await fillArchiveRow(wrapper, 'matter-1');
     await wrapper.get('[data-test="reason-matter-1"]').setValue('原账号事实');
     await wrapper.get('.return-archive-batch form').trigger('submit');
     const originalCall = batchApi.archive.mock.calls[0];
@@ -1737,7 +1770,7 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[data-test="select-matter"]').setValue(true);
     await wrapper.get('[data-test="batch-archive-open"]').trigger('click');
     await flushPromises();
-    await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
+    await fillArchiveRow(wrapper, 'matter-1');
     await wrapper.get('[data-test="reason-matter-1"]').setValue('新账号事实');
     await wrapper.get('.return-archive-batch form').trigger('submit');
     await flushPromises();
@@ -1769,6 +1802,7 @@ describe('NotaryMatterListPage', () => {
     };
     api.listNotaryMatters.mockResolvedValue(waiting);
     api.getNotaryMatter.mockResolvedValue({
+      ...sourceProjection,
       id: 'matter-1',
       businessNo: 'NT-001',
       stage: 'WAITING_RETURN',
@@ -1784,7 +1818,7 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[data-test="select-matter"]').setValue(true);
     await wrapper.get('[data-test="batch-archive-open"]').trigger('click');
     await flushPromises();
-    await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
+    await fillArchiveRow(wrapper, 'matter-1');
     await wrapper.get('[data-test="reason-matter-1"]').setValue('原请求原因');
     await wrapper.get('.return-archive-batch form').trigger('submit');
     await flushPromises();
@@ -1792,7 +1826,7 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[data-test="batch-resume"]').trigger('click');
     await wrapper.get('[data-test="batch-retry"]').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('请重新读取事项后再提交');
+    expect(wrapper.text()).toContain('整批未保存，请重新读取事项后修正');
     expect(wrapper.find('[data-test="batch-resume"]').exists()).toBe(false);
     await wrapper.get('.return-archive-batch header button').trigger('click');
     expect(
@@ -1863,14 +1897,14 @@ describe('NotaryMatterListPage', () => {
     expect(wrapper.find('[data-column-key="stage"]').exists()).toBe(false);
   });
 
-  it('applies a reordered and hidden business column only after saving', async () => {
+  it('previews column changes and persists them after saving', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     const { wrapper } = await mountPage('/notary-matters');
     await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
     await wrapper.get('[data-column-key="rightsHolder"]').setValue(false);
     await wrapper.get('[aria-label="上移平台"]').trigger('click');
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual(
-      defaultHeaders,
+      defaultHeaders.filter((header) => header !== '权利主体'),
     );
     await wrapper.get('[data-test="save-columns"]').trigger('click');
     await flushPromises();
@@ -1906,7 +1940,7 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[data-column-key="rightsHolder"]').setValue(false);
     await wrapper.get('[data-test="save-columns"]').trigger('click');
     await flushPromises();
-    expect(wrapper.findAll('thead th')).toHaveLength(16);
+    expect(wrapper.findAll('thead th')).toHaveLength(15);
     expect(
       wrapper.get('[data-column-key="rightsHolder"]').element,
     ).toMatchObject({ checked: false });

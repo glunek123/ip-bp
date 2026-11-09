@@ -385,6 +385,7 @@ describe('NotaryReturnArchiveService', () => {
         openingReviewDecision: {
           ...fixture().matter.openingReviewDecision,
           result: 'NO_INFRINGEMENT',
+          archivedAt: new Date('2026-09-29T00:00:00Z'),
         },
       },
       { evidence: null },

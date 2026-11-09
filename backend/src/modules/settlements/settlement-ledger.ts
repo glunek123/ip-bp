@@ -74,6 +74,7 @@ export function feeSummary(
     direction: '收入' | '支出';
     amount: string;
     status: string;
+    sourceKind?: string | null;
   }[],
 ): { expense: string; income: string; pending: string; pendingCount: number } {
   let expense = new Decimal(0);
@@ -81,6 +82,12 @@ export function feeSummary(
   let pending = new Decimal(0);
   let pendingCount = 0;
   for (const row of rows) {
+    if (
+      row.sourceKind === 'NOTARY_MATTER_RETURN' &&
+      row.type === '样品费退款' &&
+      row.status !== '已支付'
+    )
+      continue;
     if (row.direction === '收入') income = income.plus(row.amount);
     else {
       expense = expense.plus(row.amount);
@@ -100,12 +107,14 @@ export function feeSummary(
 
 export interface FeeDisplayRow {
   id: string;
-  caseId: string;
+  caseId: string | null;
+  notaryMatterId?: string | null;
   type: string;
   amount: string;
   direction: '收入' | '支出';
   status: string;
   feeDate: string;
+  sourceKind?: string | null;
   mergeTypes?: readonly string[];
 }
 
@@ -114,16 +123,22 @@ export function mergeSampleFees<T extends FeeDisplayRow>(
   rows: readonly T[],
 ): Array<T & { mergeTypes?: readonly string[] }> {
   const groups = new Map<string, T[]>();
-  for (const row of rows)
-    groups.set(row.caseId, [...(groups.get(row.caseId) ?? []), row]);
+  for (const row of rows) {
+    const owner = row.caseId ?? row.notaryMatterId ?? row.id;
+    groups.set(owner, [...(groups.get(owner) ?? []), row]);
+  }
   const merged = new Map<
     string,
     (T & { mergeTypes: readonly string[] }) | null
   >();
   const drop = new Set<string>();
-  for (const [caseId, group] of groups) {
+  for (const [owner, group] of groups) {
     const pair = group.filter(
-      (row) => row.type === '样品费' || row.type === '样品费退款',
+      (row) =>
+        row.type === '样品费' ||
+        (row.type === '样品费退款' &&
+          (row.sourceKind !== 'NOTARY_MATTER_RETURN' ||
+            row.status === '已支付')),
     );
     const firstSample = pair.find((row) => row.type === '样品费');
     if (
@@ -138,7 +153,7 @@ export function mergeSampleFees<T extends FeeDisplayRow>(
     );
     for (const row of pair) drop.add(row.id);
     merged.set(
-      caseId,
+      owner,
       difference.isZero()
         ? null
         : {
@@ -156,9 +171,10 @@ export function mergeSampleFees<T extends FeeDisplayRow>(
       output.push(row);
       continue;
     }
-    if (emitted.has(row.caseId)) continue;
-    emitted.add(row.caseId);
-    const net = merged.get(row.caseId);
+    const owner = row.caseId ?? row.notaryMatterId ?? row.id;
+    if (emitted.has(owner)) continue;
+    emitted.add(owner);
+    const net = merged.get(owner);
     if (net !== null && net !== undefined) output.push(net);
   }
   return output;

@@ -13,7 +13,30 @@ import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { ArchiveNotaryReturnDto } from './notary-return-archive.dto';
 
-type Choice = ArchiveNotaryReturnDto['returnChoice'];
+import { syncNotaryMatterCost, syncNotaryReturnFees } from '../settlements';
+import {
+  NOTARY_ARCHIVE_TYPES,
+  type NotaryArchiveType,
+} from './notary-return-archive.dto';
+
+type Choice = NonNullable<ArchiveNotaryReturnDto['returnChoice']>;
+type ArchiveFields = {
+  archiveType: NotaryArchiveType;
+  archiveDate?: string;
+  notaryFeeAmount: string;
+  sampleFeeAmount?: string;
+};
+const returnChoices: Partial<Record<NotaryArchiveType, Choice>> = {
+  NOT_SHIPPED_REFUND_ONLY: 'REFUND_ONLY',
+  RECEIVED_KEEP: 'KEEP',
+  RECEIVED_RETURN_REFUND: 'RETURN',
+};
+const businessDay = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
 type AmountInput = NonNullable<ArchiveNotaryReturnDto['refund']>;
 type AmountSummary = {
   state: 'KNOWN' | 'PENDING';
@@ -22,7 +45,8 @@ type AmountSummary = {
   partyName: string | null;
 };
 type Normalized = {
-  returnChoice: Choice;
+  returnChoice: Choice | null;
+  archiveFields?: ArchiveFields;
   refund: AmountSummary | null;
   freight: AmountSummary | null;
   archiveReason: string;
@@ -32,7 +56,11 @@ export type ReturnArchiveResult = {
   id: string;
   stage: 'ARCHIVED';
   version: number;
-  returnArchive: Omit<Normalized, 'expectedVersion'> & {
+  returnArchive: Omit<Normalized, 'expectedVersion' | 'archiveFields'> & {
+    archiveType?: NotaryArchiveType;
+    archiveDate?: string;
+    notaryFeeAmount?: string;
+    sampleFeeAmount?: string | null;
     archivedAt: string;
     actorDisplayName: string;
   };
@@ -219,9 +247,14 @@ export class NotaryReturnArchiveService {
           select: { result: true, reason: true, archivedAt: true },
         },
         issuanceDecision: { select: { id: true, decision: true } },
+        costs: {
+          where: { category: 'SAMPLE' },
+          select: { amount: true, feeDate: true },
+        },
         evidence: {
           select: {
             matterId: true,
+            evidenceAt: true,
             sampleFeeState: true,
             sampleFeeAmount: true,
           },
@@ -229,13 +262,19 @@ export class NotaryReturnArchiveService {
       },
     });
     if (matter === null) throw this.notFound();
+    const isReturn = matter.stage === 'WAITING_RETURN';
+    const fields = normalized.archiveFields;
     if (
-      matter.stage !== 'WAITING_RETURN' ||
-      matter.openingReviewDecision?.result !== 'INFRINGEMENT' ||
-      matter.openingReviewDecision.reason !== null ||
-      matter.openingReviewDecision.archivedAt !== null ||
-      matter.issuanceDecision?.decision !== 'NO_ISSUE' ||
-      matter.evidence === null
+      matter.stage === 'ARCHIVED' ||
+      (isReturn
+        ? normalized.returnChoice === null ||
+          matter.openingReviewDecision === null ||
+          matter.openingReviewDecision.archivedAt !== null ||
+          matter.issuanceDecision?.decision !== 'NO_ISSUE' ||
+          matter.evidence === null
+        : normalized.returnChoice !== null ||
+          fields?.archiveDate === undefined ||
+          fields.sampleFeeAmount === undefined)
     )
       throw this.invalidState();
     if (matter.version !== normalized.expectedVersion)
@@ -245,10 +284,11 @@ export class NotaryReturnArchiveService {
       normalized.refund.amount !== null &&
       new Prisma.Decimal(normalized.refund.amount).gt(0)
     ) {
-      if (
-        matter.evidence.sampleFeeState !== 'KNOWN' ||
-        matter.evidence.sampleFeeAmount === null
-      )
+      const sampleAmount =
+        fields?.sampleFeeAmount ??
+        matter.costs?.[0]?.amount ??
+        matter.evidence?.sampleFeeAmount;
+      if (sampleAmount == null || matter.evidence === null)
         throw this.originalAmountUnknown();
       const previous = await tx.notaryReturnAmount.findMany({
         where: {
@@ -263,29 +303,43 @@ export class NotaryReturnArchiveService {
         (sum, row) => sum.plus(row.amount ?? 0),
         new Prisma.Decimal(normalized.refund.amount),
       );
-      if (total.gt(matter.evidence.sampleFeeAmount))
-        throw this.refundExceeded();
+      if (total.gt(sampleAmount)) throw this.refundExceeded();
     }
     const changed = await tx.notaryMatter.updateMany({
       where: {
         id: matterId,
         departmentId: matter.departmentId,
-        stage: 'WAITING_RETURN',
+        stage: matter.stage,
         version: normalized.expectedVersion,
       },
       data: { stage: 'ARCHIVED', version: normalized.expectedVersion + 1 },
     });
     if (changed.count !== 1) throw this.versionConflict();
+    const archivedAt = new Date();
+    const archiveDate =
+      fields && (fields.archiveDate ?? businessDay.format(archivedAt));
+    const archiveFacts =
+      fields && archiveDate
+        ? {
+            fromStage: matter.stage,
+            archiveType: fields.archiveType,
+            archiveDate: new Date(archiveDate + 'T00:00:00.000Z'),
+            notaryFeeAmount: fields.notaryFeeAmount,
+            sampleFeeAmount: fields.sampleFeeAmount ?? null,
+          }
+        : undefined;
     const archive = await tx.notaryReturnArchive.create({
       data: {
         matterId,
         departmentId: matter.departmentId,
-        issuanceDecisionId: matter.issuanceDecision.id,
+        issuanceDecisionId: isReturn ? matter.issuanceDecision?.id : null,
+        ...(isReturn ? {} : { issuanceDecisionChoice: null }),
+        ...archiveFacts,
         actorUserId: actor.userId,
         actorDisplayNameSnapshot: actorDisplayName,
         returnChoice: normalized.returnChoice,
         archiveReason: normalized.archiveReason,
-        archivedAt: new Date(),
+        archivedAt,
         fromVersion: normalized.expectedVersion,
         toVersion: normalized.expectedVersion + 1,
       },
@@ -294,7 +348,7 @@ export class NotaryReturnArchiveService {
       ['REFUND', normalized.refund],
       ['FREIGHT', normalized.freight],
     ] as const) {
-      if (amount === null) continue;
+      if (amount === null || normalized.returnChoice === null) continue;
       await tx.notaryReturnAmount.create({
         data: {
           archiveId: archive.id,
@@ -307,7 +361,7 @@ export class NotaryReturnArchiveService {
           partyKind: amount.partyKind,
           partyName: amount.partyName,
           sourceEvidenceMatterId:
-            kind === 'REFUND' ? matter.evidence.matterId : null,
+            kind === 'REFUND' ? matter.evidence?.matterId : null,
         },
       });
     }
@@ -317,6 +371,14 @@ export class NotaryReturnArchiveService {
       version: normalized.expectedVersion + 1,
       returnArchive: {
         returnChoice: normalized.returnChoice,
+        ...(archiveFacts && archiveDate
+          ? {
+              archiveType: archiveFacts.archiveType,
+              archiveDate,
+              notaryFeeAmount: archiveFacts.notaryFeeAmount,
+              sampleFeeAmount: archiveFacts.sampleFeeAmount,
+            }
+          : {}),
         archiveReason: normalized.archiveReason,
         archivedAt: archive.archivedAt.toISOString(),
         actorDisplayName,
@@ -324,7 +386,7 @@ export class NotaryReturnArchiveService {
         freight: normalized.freight,
       },
     };
-    await tx.auditEvent.create({
+    const event = await tx.auditEvent.create({
       data: {
         departmentId: matter.departmentId,
         actorUserId: actor.userId,
@@ -340,6 +402,37 @@ export class NotaryReturnArchiveService {
         },
       },
     });
+    if (archiveFacts) {
+      await syncNotaryMatterCost(tx, {
+        departmentId: matter.departmentId,
+        matterId,
+        category: 'NOTARY',
+        state: 'KNOWN',
+        amount: archiveFacts.notaryFeeAmount,
+        feeDate: archiveFacts.archiveDate,
+        sourceActionEventId: event.id,
+      });
+      if (archiveFacts.sampleFeeAmount !== null)
+        await syncNotaryMatterCost(tx, {
+          departmentId: matter.departmentId,
+          matterId,
+          category: 'SAMPLE',
+          state: 'KNOWN',
+          amount: archiveFacts.sampleFeeAmount,
+          feeDate:
+            matter.costs?.[0]?.feeDate ??
+            matter.evidence?.evidenceAt ??
+            archiveFacts.archiveDate,
+          sourceActionEventId: event.id,
+        });
+      if (isReturn)
+        await syncNotaryReturnFees(tx, {
+          departmentId: matter.departmentId,
+          matterId,
+          archiveId: archive.id,
+          sourceActionEventId: event.id,
+        });
+    }
     return result;
   }
 
@@ -348,22 +441,71 @@ export class NotaryReturnArchiveService {
       input === null ||
       typeof input !== 'object' ||
       Array.isArray(input) ||
-      ![
-        'archiveReason,expectedVersion,returnChoice',
-        'archiveReason,expectedVersion,refund,returnChoice',
-        'archiveReason,expectedVersion,freight,refund,returnChoice',
-      ].includes(keys(input)) ||
-      !['RETURN', 'KEEP', 'REFUND_ONLY'].includes(input.returnChoice) ||
+      Object.keys(input).some(
+        (key) =>
+          ![
+            'archiveReason',
+            'expectedVersion',
+            'returnChoice',
+            'refund',
+            'freight',
+            'archiveType',
+            'archiveDate',
+            'notaryFeeAmount',
+            'sampleFeeAmount',
+          ].includes(key),
+      ) ||
+      (input.returnChoice !== undefined &&
+        !['RETURN', 'KEEP', 'REFUND_ONLY'].includes(input.returnChoice)) ||
       !Number.isInteger(input.expectedVersion) ||
       input.expectedVersion < 1 ||
       typeof input.archiveReason !== 'string'
+    )
+      throw this.validation();
+    const { archiveType, archiveDate, notaryFeeAmount, sampleFeeAmount } =
+      input;
+    const modern =
+      archiveType !== undefined ||
+      archiveDate !== undefined ||
+      notaryFeeAmount !== undefined ||
+      sampleFeeAmount !== undefined;
+    let archiveFields: ArchiveFields | undefined;
+    if (modern) {
+      if (
+        archiveType === undefined ||
+        !NOTARY_ARCHIVE_TYPES.includes(archiveType) ||
+        typeof notaryFeeAmount !== 'string' ||
+        !AMOUNT.test(notaryFeeAmount) ||
+        (sampleFeeAmount !== undefined &&
+          (typeof sampleFeeAmount !== 'string' ||
+            !AMOUNT.test(sampleFeeAmount))) ||
+        (archiveDate !== undefined && !this.isBusinessDate(archiveDate)) ||
+        (input.returnChoice === undefined
+          ? returnChoices[archiveType] !== undefined ||
+            archiveDate === undefined ||
+            sampleFeeAmount === undefined
+          : input.returnChoice !== (returnChoices[archiveType] ?? 'KEEP'))
+      )
+        throw this.validation();
+      archiveFields = {
+        archiveType,
+        archiveDate,
+        notaryFeeAmount,
+        sampleFeeAmount,
+      };
+    } else if (input.returnChoice === undefined) {
+      throw this.validation();
+    }
+    if (
+      modern &&
+      (input.refund?.state === 'PENDING' || input.freight?.state === 'PENDING')
     )
       throw this.validation();
     const archiveReason = input.archiveReason.trim();
     if (!archiveReason || Array.from(archiveReason).length > 5000)
       throw this.validation();
     if (
-      (input.returnChoice === 'KEEP' &&
+      ((input.returnChoice === 'KEEP' || input.returnChoice === undefined) &&
         (input.refund !== undefined || input.freight !== undefined)) ||
       (input.returnChoice === 'REFUND_ONLY' &&
         (input.refund === undefined || input.freight !== undefined)) ||
@@ -372,7 +514,8 @@ export class NotaryReturnArchiveService {
     )
       throw this.validation();
     return {
-      returnChoice: input.returnChoice,
+      returnChoice: input.returnChoice ?? null,
+      ...(archiveFields ? { archiveFields } : {}),
       refund:
         input.refund === undefined ? null : this.normalizeAmount(input.refund),
       freight:
@@ -489,8 +632,10 @@ export class NotaryReturnArchiveService {
       throw this.corruptReceipt();
     const detail = summary as Record<string, unknown>;
     if (
-      keys(detail) !==
-        'actorDisplayName,archiveReason,archivedAt,freight,refund,returnChoice' ||
+      ![
+        'actorDisplayName,archiveReason,archivedAt,freight,refund,returnChoice',
+        'actorDisplayName,archiveDate,archiveReason,archiveType,archivedAt,freight,notaryFeeAmount,refund,returnChoice,sampleFeeAmount',
+      ].includes(keys(detail)) ||
       typeof detail.actorDisplayName !== 'string' ||
       !detail.actorDisplayName.trim() ||
       typeof detail.archivedAt !== 'string' ||
@@ -506,6 +651,10 @@ export class NotaryReturnArchiveService {
         returnChoice: true,
         archiveReason: true,
         archivedAt: true,
+        archiveDate: true,
+        archiveType: true,
+        notaryFeeAmount: true,
+        sampleFeeAmount: true,
         fromVersion: true,
         toVersion: true,
         amounts: {
@@ -528,6 +677,12 @@ export class NotaryReturnArchiveService {
       stored.returnChoice !== detail.returnChoice ||
       stored.archiveReason !== detail.archiveReason ||
       stored.archivedAt.toISOString() !== detail.archivedAt ||
+      (stored.archiveType ?? undefined) !== detail.archiveType ||
+      stored.archiveDate?.toISOString().slice(0, 10) !== detail.archiveDate ||
+      stored.notaryFeeAmount?.toFixed(2) !== detail.notaryFeeAmount ||
+      (stored.archiveType
+        ? (stored.sampleFeeAmount?.toFixed(2) ?? null)
+        : undefined) !== detail.sampleFeeAmount ||
       stored.toVersion !== result.version ||
       stored.fromVersion !== receipt.resultMatterVersion - 1
     )
@@ -581,6 +736,14 @@ export class NotaryReturnArchiveService {
       stored.amount === value.amount &&
       stored.partyKind === value.partyKind &&
       stored.partyName === value.partyName
+    );
+  }
+
+  private isBusinessDate(value: string) {
+    return (
+      typeof value === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/u.test(value) &&
+      this.isIsoDate(value + 'T00:00:00.000Z')
     );
   }
 

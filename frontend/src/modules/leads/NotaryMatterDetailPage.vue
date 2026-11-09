@@ -18,6 +18,8 @@ import type { CaseStage } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
 import { listReturnPath } from '../../app/list-row-navigation';
 import { downloadMaterialVersion } from '../../api/materials';
+import MaterialPreviewDialog from '../../app/MaterialPreviewDialog.vue';
+import NotaryOpeningPhotoGallery from './NotaryOpeningPhotoGallery.vue';
 import {
   getNotaryMatter,
   updateNotaryRoutineProfile,
@@ -59,6 +61,11 @@ const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 type DetailElement = InstanceType<typeof globalThis.HTMLElement>;
 const detailRoot = ref<DetailElement>();
 const matter = ref<NotaryMatterDetail>();
+const openingPhotoPreview = ref<{
+  materialId: string;
+  contentVersionId: string;
+  filename: string;
+} | null>(null);
 function safeProductUrl(value: string | null): string | null {
   if (!value) return null;
   try {
@@ -168,12 +175,27 @@ function formatTime(value: string): string {
   });
 }
 
-function returnChoiceLabel(choice: NotaryReturnChoice): string {
+function returnChoiceLabel(choice: NotaryReturnChoice | null): string {
+  if (!choice) return '';
   return choice === 'RETURN'
     ? '退货并退款'
     : choice === 'KEEP'
       ? '保留商品，不退款'
       : '不寄回商品，只退款';
+}
+function archiveTypeLabel(type: string | null | undefined): string {
+  return (
+    (
+      {
+        LINK_REMOVED: '链接下架',
+        NO_INFRINGEMENT_INFORMATION: '无侵权信息',
+        NO_EVIDENCE: '不取证',
+        NOT_SHIPPED_REFUND_ONLY: '不发货-仅退款',
+        RECEIVED_KEEP: '收到货-不退货',
+        RECEIVED_RETURN_REFUND: '收到货-退货退款',
+      } as Record<string, string>
+    )[type ?? ''] ?? ''
+  );
 }
 
 function returnPartyLabel(kind: string | null): string {
@@ -486,7 +508,41 @@ watch(
 </script>
 <template>
   <div ref="detailRoot" class="page-view notary-matter-detail-page">
-    <main>
+    <main v-if="route.hash === '#saved-opening' && matter">
+      <RouterLink class="back-link" :to="returnTo">← 返回公证阶段</RouterLink>
+      <section
+        class="demo-card demo-card--pad"
+        data-test="saved-opening-photo-detail"
+      >
+        <h1>开箱照片</h1>
+        <p>店铺名：{{ matter.sourceSummary.shopName }}</p>
+        <NotaryOpeningPhotoGallery
+          :photos="matter.opening?.photos ?? []"
+          :scope-key="requestScopeKey"
+          @download="
+            (photo) =>
+              downloadMaterial(photo.materialId, photo.contentVersionId)
+          "
+          @preview="
+            (photo) =>
+              (openingPhotoPreview = {
+                materialId: photo.materialId,
+                contentVersionId: photo.contentVersionId,
+                filename: photo.originalFilename,
+              })
+          "
+        />
+      </section>
+      <MaterialPreviewDialog
+        v-if="openingPhotoPreview"
+        :material-id="openingPhotoPreview.materialId"
+        :content-version-id="openingPhotoPreview.contentVersionId"
+        :filename="openingPhotoPreview.filename"
+        :scope-key="requestScopeKey"
+        @close="openingPhotoPreview = null"
+      />
+    </main>
+    <main v-else>
       <RouterLink class="back-link" :to="returnTo">← 返回公证阶段</RouterLink>
       <RouterLink
         v-if="matter"
@@ -955,6 +1011,14 @@ watch(
                   {{ matter.certificateSummary.needDisclose ? '是' : '否' }}
                 </dd>
               </div>
+              <div v-if="matter.certificateSummary.disclosureInfo">
+                <dt>披露信息</dt>
+                <dd>{{ matter.certificateSummary.disclosureInfo }}</dd>
+              </div>
+              <div v-if="matter.fees.sample.state === 'KNOWN'">
+                <dt>样品费</dt>
+                <dd>{{ matter.fees.sample.amount }} 元</dd>
+              </div>
             </dl>
             <p v-if="matter.stage === 'ARCHIVED'">本事项已出证归档。</p>
           </template>
@@ -1042,26 +1106,31 @@ watch(
           data-test="saved-opening"
         >
           <h2 class="form-section-title">开箱记录</h2>
-          <p>寄件人：{{ matter.opening.senderName || '未登记' }}</p>
-          <p>电话：{{ matter.opening.senderPhone || '未登记' }}</p>
-          <p>地址：{{ matter.opening.senderAddress || '未登记' }}</p>
-          <p>登记时间：{{ formatTime(matter.opening.recordedAt) }}</p>
-          <ul>
-            <li
-              v-for="photo in matter.opening.photos"
-              :key="photo.contentVersionId"
-            >
-              {{ photo.originalFilename }}
-              <ElButton
-                text
-                :data-test="`download-opening-photo-${photo.contentVersionId}`"
-                @click="
-                  downloadMaterial(photo.materialId, photo.contentVersionId)
-                "
-                >下载照片</ElButton
-              >
-            </li>
-          </ul>
+          <p>店铺名：{{ matter.sourceSummary.shopName }}</p>
+          <NotaryOpeningPhotoGallery
+            :photos="matter.opening.photos"
+            :scope-key="requestScopeKey"
+            @download="
+              (photo) =>
+                downloadMaterial(photo.materialId, photo.contentVersionId)
+            "
+            @preview="
+              (photo) =>
+                (openingPhotoPreview = {
+                  materialId: photo.materialId,
+                  contentVersionId: photo.contentVersionId,
+                  filename: photo.originalFilename,
+                })
+            "
+          />
+          <MaterialPreviewDialog
+            v-if="openingPhotoPreview"
+            :material-id="openingPhotoPreview.materialId"
+            :content-version-id="openingPhotoPreview.contentVersionId"
+            :filename="openingPhotoPreview.filename"
+            :scope-key="requestScopeKey"
+            @close="openingPhotoPreview = null"
+          />
           <p v-if="downloadError" class="field-error" role="alert">
             {{ downloadError }}
           </p>
@@ -1117,9 +1186,21 @@ watch(
           class="demo-card demo-card--pad"
           data-test="return-archive-record"
         >
-          <h2 class="form-section-title">退货归档记录</h2>
-          <p>
+          <h2 class="form-section-title">归档记录</h2>
+          <p v-if="matter.returnArchive.returnChoice">
             办理方式：{{ returnChoiceLabel(matter.returnArchive.returnChoice) }}
+          </p>
+          <p v-if="matter.returnArchive.archiveType">
+            归档类型：{{ archiveTypeLabel(matter.returnArchive.archiveType) }}
+          </p>
+          <p v-if="matter.returnArchive.archiveDate">
+            归档日期：{{ matter.returnArchive.archiveDate }}
+          </p>
+          <p v-if="matter.returnArchive.notaryFeeAmount !== undefined">
+            公证费：{{ matter.returnArchive.notaryFeeAmount ?? '—' }} 元
+          </p>
+          <p v-if="matter.returnArchive.sampleFeeAmount !== undefined">
+            样品费：{{ matter.returnArchive.sampleFeeAmount ?? '—' }} 元
           </p>
           <p>归档原因：{{ matter.returnArchive.archiveReason }}</p>
           <p>归档人：{{ matter.returnArchive.actorDisplayName }}</p>

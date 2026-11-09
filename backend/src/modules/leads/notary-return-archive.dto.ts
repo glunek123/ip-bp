@@ -11,6 +11,16 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+export const NOTARY_ARCHIVE_TYPES = [
+  'LINK_REMOVED',
+  'NO_INFRINGEMENT_INFORMATION',
+  'NO_EVIDENCE',
+  'NOT_SHIPPED_REFUND_ONLY',
+  'RECEIVED_KEEP',
+  'RECEIVED_RETURN_REFUND',
+] as const;
+export type NotaryArchiveType = (typeof NOTARY_ARCHIVE_TYPES)[number];
+
 const AMOUNT = /^(0|[1-9]\d{0,15})\.\d{2}$/u;
 
 export class NotaryReturnAmountInputDto {
@@ -36,9 +46,30 @@ export class NotaryReturnAmountInputDto {
 }
 
 export class ArchiveNotaryReturnDto {
-  @ApiProperty({ enum: ['RETURN', 'KEEP', 'REFUND_ONLY'] })
+  @ApiPropertyOptional({ enum: ['RETURN', 'KEEP', 'REFUND_ONLY'] })
+  @IsOptional()
   @IsIn(['RETURN', 'KEEP', 'REFUND_ONLY'])
-  returnChoice!: 'RETURN' | 'KEEP' | 'REFUND_ONLY';
+  returnChoice?: 'RETURN' | 'KEEP' | 'REFUND_ONLY';
+
+  @ApiPropertyOptional({ enum: NOTARY_ARCHIVE_TYPES })
+  @IsOptional()
+  @IsIn(NOTARY_ARCHIVE_TYPES)
+  archiveType?: NotaryArchiveType;
+
+  @ApiPropertyOptional({ format: 'date' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/u)
+  archiveDate?: string;
+
+  @ApiPropertyOptional({ pattern: AMOUNT.source })
+  @IsOptional()
+  @Matches(AMOUNT)
+  notaryFeeAmount?: string;
+
+  @ApiPropertyOptional({ pattern: AMOUNT.source })
+  @IsOptional()
+  @Matches(AMOUNT)
+  sampleFeeAmount?: string;
 
   @ApiPropertyOptional({ type: NotaryReturnAmountInputDto })
   @IsOptional()
@@ -75,8 +106,16 @@ export class NotaryReturnAmountSummaryDto {
 }
 
 export class NotaryReturnArchiveSummaryDto {
-  @ApiProperty({ enum: ['RETURN', 'KEEP', 'REFUND_ONLY'] })
-  returnChoice!: ArchiveNotaryReturnDto['returnChoice'];
+  @ApiProperty({ enum: ['RETURN', 'KEEP', 'REFUND_ONLY'], nullable: true })
+  returnChoice!: NonNullable<ArchiveNotaryReturnDto['returnChoice']> | null;
+  @ApiPropertyOptional({ enum: NOTARY_ARCHIVE_TYPES })
+  archiveType?: NotaryArchiveType;
+  @ApiPropertyOptional({ format: 'date' })
+  archiveDate?: string;
+  @ApiPropertyOptional()
+  notaryFeeAmount?: string;
+  @ApiPropertyOptional({ nullable: true })
+  sampleFeeAmount?: string | null;
   @ApiProperty() archiveReason!: string;
   @ApiProperty({ format: 'date-time' }) archivedAt!: string;
   @ApiProperty() actorDisplayName!: string;

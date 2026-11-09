@@ -18,6 +18,7 @@ function setup() {
     fromVersion: 4,
     toVersion: 5,
     certificateDate: date,
+    sampleFeeAmount: null,
     fees: [
       { category: 'NOTARY', state: 'KNOWN', amount: new Prisma.Decimal(0) },
       { category: 'INVESTIGATION', state: 'PENDING', amount: null },
@@ -49,8 +50,20 @@ function setup() {
   };
   const tx = {
     notaryCertificate: { findFirst: jest.fn().mockResolvedValue(certificate) },
+    notaryMatter: {
+      findFirst: jest.fn().mockResolvedValue({ case: { id: facts.caseId } }),
+    },
+    notaryMatterCost: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({}),
+      update: jest.fn().mockResolvedValue({}),
+    },
+    case: { findFirst: jest.fn().mockResolvedValue({ id: facts.caseId }) },
     feeRecord: {
       findUnique: jest.fn().mockResolvedValue(null),
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockResolvedValue({}),
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({
         id: 'fee',
         ...data,
@@ -112,18 +125,16 @@ describe('trusted notary fee projection', () => {
       ([input]) => input.data,
     );
     expect(rows.map((row) => row.sourceId)).toEqual([
-      'certificate:NOTARY',
-      'certificate:DISCLOSURE',
       'matter:sample',
+      'matter:notary',
+      'certificate:DISCLOSURE',
     ]);
-    expect((rows[0].amount as Prisma.Decimal).toFixed(2)).toBe('0.00');
+    expect((rows[1].amount as Prisma.Decimal).toFixed(2)).toBe('0.00');
     for (const row of rows)
       expect(row).toMatchObject({
         source: 'auto',
         status: '未发起',
         feeDate: date,
-        actorUserId: null,
-        idempotencyKey: null,
       });
     expect(test.tx.auditEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -133,6 +144,26 @@ describe('trusted notary fee projection', () => {
         }),
       }),
     );
+  });
+
+  it('preserves a pending historical sample cost when certificate has no sample override', async () => {
+    const test = setup();
+    test.certificate.sampleFeeAmount = undefined as never;
+    test.certificate.matter.evidence.sampleFeeState = 'PENDING';
+    test.certificate.matter.evidence.sampleFeeAmount = null as never;
+    await expect(test.run()).resolves.toEqual({ createdCount: 2 });
+    expect(test.tx.notaryMatterCost.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          category: 'SAMPLE',
+          state: 'PENDING',
+          amount: null,
+        }),
+      }),
+    );
+    expect(
+      test.tx.feeRecord.create.mock.calls.map(([input]) => input.data.sourceId),
+    ).toEqual(['matter:notary', 'certificate:DISCLOSURE']);
   });
 
   it('requires a real issued case before touching fees', async () => {
@@ -169,15 +200,19 @@ describe('trusted notary fee projection', () => {
       }) => {
         const key = where.departmentId_sourceKind_sourceId.sourceId;
         return {
+          id: 'existing-fee',
           caseId: facts.caseId,
+          notaryMatterId: facts.matterId,
           source: 'auto',
-          type: key.endsWith('NOTARY')
+          direction: '支出',
+          status: '未发起',
+          type: key.endsWith('notary')
             ? '公证费'
             : key.endsWith('DISCLOSURE')
               ? '披露费'
               : '样品费',
           amount: new Prisma.Decimal(
-            key.endsWith('NOTARY')
+            key.endsWith('notary')
               ? 0
               : key.endsWith('DISCLOSURE')
                 ? '25.30'
@@ -195,7 +230,10 @@ describe('trusted notary fee projection', () => {
 
   it('rejects a stable source identity already attached to another case', async () => {
     const test = setup();
-    test.tx.feeRecord.findUnique.mockResolvedValue({ caseId: 'another-case' });
+    test.tx.feeRecord.findUnique.mockResolvedValue({
+      caseId: 'another-case',
+      notaryMatterId: 'another-matter',
+    });
     await expect(test.run()).rejects.toMatchObject({
       response: { code: 'FEE_SOURCE_INVALID' },
     });

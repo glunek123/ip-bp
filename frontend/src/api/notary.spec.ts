@@ -833,7 +833,7 @@ describe('notary API', () => {
   it('submits an explicit opening result with expected version and idempotency key', async () => {
     const result = {
       id: 'matter-1',
-      stage: 'ARCHIVED',
+      stage: 'ISSUANCE_DECISION',
       version: 6,
       reviewDecision: {
         result: 'NO_INFRINGEMENT',
@@ -841,7 +841,7 @@ describe('notary API', () => {
         actorKind: 'INTERNAL',
         actorDisplayName: '运营甲',
         decidedAt: '2026-09-24T03:00:00.000Z',
-        archivedAt: '2026-09-24T03:00:00.000Z',
+        archivedAt: null,
       },
     };
     http.requestJson.mockResolvedValue(result);
@@ -868,13 +868,20 @@ describe('notary API', () => {
         },
       },
     );
+    http.requestJson.mockResolvedValueOnce({
+      ...result,
+      reviewDecision: { ...result.reviewDecision, reason: null },
+    });
     await expect(
       reviewNotaryOpening(
         'matter-1',
         { result: 'NO_INFRINGEMENT', reason: ' ', expectedVersion: 5 },
         'key-2',
       ),
-    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    ).resolves.toEqual({
+      ...result,
+      reviewDecision: { ...result.reviewDecision, reason: null },
+    });
     http.requestJson.mockResolvedValueOnce({
       ...result,
       reviewDecision: { ...result.reviewDecision, actorKind: 'CLIENT' },
