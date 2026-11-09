@@ -20,7 +20,7 @@ const source = readFileSync(
   'utf8',
 );
 describe('unregistered refund Prisma transaction draft static boundaries', () => {
-  it('limits nonowner refund work to a verified parent composition and department grant', async () => {
+  it('requires a verified parent composition, proxy marker, and department action grant', async () => {
     const actor = {
       userId: 'aaaaaaaa-0000-0000-0000-000000000001',
       departmentId: 'aaaaaaaa-0000-0000-0000-000000000002',
@@ -90,8 +90,25 @@ describe('unregistered refund Prisma transaction draft static boundaries', () =>
         parent.idempotencyKey,
         parent.context,
       ),
+    ).rejects.toMatchObject({
+      response: { code: 'CASE_ACTION_FORBIDDEN' },
+    });
+    grants.push({ action: 'case.department.proxy', scope: 'department' });
+    await expect(
+      adapter.executeInTransaction(
+        db,
+        actor,
+        command,
+        parent.idempotencyKey,
+        parent.context,
+      ),
     ).rejects.toBe(receiptReached);
-    grants.pop();
+    grants.splice(
+      grants.findIndex(
+        (grant) => grant.action === 'case.closure.settlement.update',
+      ),
+      1,
+    );
     await expect(
       adapter.executeInTransaction(
         db,

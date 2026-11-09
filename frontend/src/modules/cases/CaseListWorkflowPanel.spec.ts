@@ -1289,7 +1289,6 @@ describe('case list workflow session', () => {
       'value',
       '2026-10-01',
     );
-    await wrapper.get('[data-test="judgment-amount-state"]').setValue('KNOWN');
     await wrapper.get('[data-test="judgment-amount"]').setValue('42.50');
     await wrapper
       .get('[data-test="judgment-correction-reason"]')

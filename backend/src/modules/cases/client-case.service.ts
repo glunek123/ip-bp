@@ -154,7 +154,9 @@ export class ClientCaseService {
             amount: true,
           },
         },
-        complaintMailing: { select: { mailedAt: true, recordedAt: true } },
+        complaintMailing: {
+          select: { mailedAt: true, remark: true, recordedAt: true },
+        },
         executionConfirmation: { select: { id: true } },
         executionMailing: {
           select: { id: true, mailedAt: true, recordedAt: true },
@@ -271,6 +273,7 @@ export class ClientCaseService {
               mailedAt: record.complaintMailing.mailedAt
                 .toISOString()
                 .slice(0, 10),
+              remark: record.complaintMailing.remark,
               recordedAt: record.complaintMailing.recordedAt.toISOString(),
               receiptFiles: complaintMailingFiles,
             },

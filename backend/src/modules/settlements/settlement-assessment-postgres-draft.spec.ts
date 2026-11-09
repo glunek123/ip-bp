@@ -123,8 +123,25 @@ describe('unregistered PostgreSQL assessment adapter (transaction doubles only)'
         command,
         composition,
       ),
+    ).rejects.toMatchObject({
+      response: { code: 'CASE_ACTION_FORBIDDEN' },
+    });
+    snapshot.grants.push({
+      action: 'case.department.proxy',
+      scope: 'department',
+    });
+    await expect(
+      f.service.executeInTransaction(
+        f.tx as unknown as Prisma.TransactionClient,
+        actor,
+        command,
+        composition,
+      ),
     ).resolves.toMatchObject({ caseId: command.caseId });
-    snapshot.grants = [{ action: 'case.read', scope: 'department' }];
+    snapshot.grants = [
+      { action: 'case.read', scope: 'department' },
+      { action: 'case.department.proxy', scope: 'department' },
+    ];
     await expect(
       f.service.executeInTransaction(
         f.tx as unknown as Prisma.TransactionClient,

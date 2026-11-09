@@ -14,6 +14,7 @@ import { DatabaseService } from '../../database/database.service';
 import { isEntryStartingAt, readCaseSourceAnchor } from './case-entry-source';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
+import { LitigationRefundsService } from './litigation-refunds.service';
 import {
   CaseJudgmentCommandResultDto,
   CorrectCaseJudgmentDto,
@@ -30,6 +31,7 @@ export class CaseJudgmentService {
     private readonly database: DatabaseService,
     private readonly access: AccessControlService,
     private readonly materials: MaterialService,
+    private readonly refunds: LitigationRefundsService,
   ) {}
 
   register(
@@ -62,6 +64,8 @@ export class CaseJudgmentService {
       try {
         return await this.database.$transaction(
           async (tx) => {
+            if (value.refunds?.length)
+              await this.refunds.lockJudgmentActor(tx, actor);
             const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>(
               'SELECT "id" FROM "cases" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
               caseId,
@@ -357,6 +361,28 @@ export class CaseJudgmentService {
               },
             });
             if (updated.count !== 1) throw this.versionConflict();
+            if (value.refunds?.length) {
+              const source =
+                action === 'REGISTER'
+                  ? { id: judgmentId }
+                  : await tx.caseJudgmentFact.findFirstOrThrow({
+                      where: {
+                        caseId,
+                        departmentId: actor.departmentId,
+                        trialRoundId: record.currentTrialRoundId!,
+                        kind: 'REGISTER',
+                      },
+                      orderBy: { recordedAt: 'asc' },
+                      select: { id: true },
+                    });
+              await this.refunds.registerJudgmentRefunds(
+                tx,
+                actor,
+                caseId,
+                source.id,
+                value.refunds,
+              );
+            }
             const result: CaseJudgmentCommandResultDto = {
               id: caseId,
               stage: 'WAITING_JUDGMENT',
@@ -441,6 +467,14 @@ export class CaseJudgmentService {
       input.paidLitigationFeeState,
       input.paidLitigationFee,
     );
+    const refunds = input.refunds?.length
+      ? input.refunds.map((row) => {
+          const amount = this.amount('KNOWN', row.amount);
+          if (amount === null || !['COURT', 'DEFENDANT'].includes(row.party))
+            throw this.validation();
+          return { party: row.party, amount };
+        })
+      : undefined;
     return {
       expectedVersion: input.expectedVersion,
       idempotencyKey: input.idempotencyKey,
@@ -449,6 +483,7 @@ export class CaseJudgmentService {
       judgmentAmount,
       paidLitigationFeeState: input.paidLitigationFeeState,
       paidLitigationFee,
+      ...(refunds === undefined ? {} : { refunds }),
       judgmentContentVersionIds: [...ids].sort(),
       reason,
     };

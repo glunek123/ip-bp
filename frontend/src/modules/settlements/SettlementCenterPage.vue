@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ApiError } from '../../api/http';
 import {
   cancelSettlementBill,
@@ -19,6 +19,7 @@ import {
 } from '../../api/settlements';
 import { useAuthStore } from '../../stores/auth';
 import FeeCenterPanel from './FeeCenterPanel.vue';
+import LitigationRefundPanel from './LitigationRefundPanel.vue';
 import DateRangeFilter from '../../app/DateRangeFilter.vue';
 import { isListRowClick } from '../../app/list-row-navigation';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
@@ -37,7 +38,33 @@ import {
   isPendingCancel,
 } from './financial-pending';
 
-const tab = ref<'CUSTOMER' | 'LAWYER' | 'FEES'>('CUSTOMER');
+const tab = ref<'CUSTOMER' | 'LAWYER' | 'FEES' | 'REFUNDS'>('CUSTOMER');
+const route = useRoute();
+const router = useRouter();
+watch(tab, (value) => {
+  const query = { ...route.query };
+  if (value === 'REFUNDS') query.tab = 'refunds';
+  else delete query.tab;
+  void router.replace({ query });
+});
+watch(
+  () => route.query.tab,
+  (value) => {
+    if (value === 'refunds') {
+      if (
+        hasPendingFinancialRecovery() ||
+        unknownBill.value ||
+        unknownCancel.value
+      ) {
+        refundRouteBlocked.value = true;
+        tab.value = 'CUSTOMER';
+      } else {
+        refundRouteBlocked.value = false;
+        tab.value = 'REFUNDS';
+      }
+    } else if (tab.value === 'REFUNDS') tab.value = 'CUSTOMER';
+  },
+);
 const filterFormId = useId();
 const billCreateFormId = useId();
 const billFilterFormId = useId();
@@ -50,6 +77,23 @@ const pendingScope = computed(
   () =>
     `${auth.session?.user.id ?? ''}:${auth.session?.department?.id ?? ''}:center`,
 );
+const refundRouteBlocked = ref(false);
+function hasPendingFinancialRecovery(): boolean {
+  try {
+    return (
+      loadFinancialPending(pendingScope.value, 'bill', isPendingBill) !==
+        null ||
+      loadFinancialPending(pendingScope.value, 'cancel', isPendingCancel) !==
+        null
+    );
+  } catch {
+    return true;
+  }
+}
+if (route.query.tab === 'refunds') {
+  if (hasPendingFinancialRecovery()) refundRouteBlocked.value = true;
+  else tab.value = 'REFUNDS';
+}
 let detailRevision = 0;
 const capabilities = ref<SettlementCapabilities | null>(null);
 let revision = 0;
@@ -228,7 +272,8 @@ async function initialize(): Promise<void> {
     const next = await getSettlementContext({ signal: request.signal });
     if (expected !== revision) return;
     capabilities.value = next;
-    if (!next.read && next.feeRead) tab.value = 'FEES';
+    if (!next.read && next.feeRead && tab.value !== 'REFUNDS')
+      tab.value = 'FEES';
     if (next.read && !next.feeRead && tab.value === 'FEES')
       tab.value = 'CUSTOMER';
     if (!next.read && !next.feeRead)
@@ -245,6 +290,10 @@ async function initialize(): Promise<void> {
     );
     unknownBill.value = pendingBill !== null;
     unknownCancel.value = pendingCancel !== null;
+    if (tab.value === 'REFUNDS' && (unknownBill.value || unknownCancel.value)) {
+      refundRouteBlocked.value = true;
+      tab.value = 'CUSTOMER';
+    }
     if (pendingBill && next.read) {
       tab.value = pendingBill.side;
       selected.value = new Set(pendingBill.launchIds);
@@ -459,400 +508,426 @@ async function cancelBill(): Promise<void> {
       >
         费用中心
       </ElButton>
+      <ElButton
+        role="tab"
+        class="action-size--wide"
+        :disabled="unknownBill || unknownCancel"
+        :aria-selected="tab === 'REFUNDS'"
+        @click="tab = 'REFUNDS'"
+      >
+        诉讼退费
+      </ElButton>
     </div>
-    <p v-if="!capabilities && !error">正在读取结算中心权限…</p>
-    <p v-else-if="!capabilities" role="alert">{{ error }}</p>
-    <FeeCenterPanel
-      v-else-if="tab === 'FEES' && capabilities.feeRead"
-      :can-create="capabilities.feeCreate"
-      :can-update="capabilities.feeUpdate"
-      :can-launch="capabilities.feeLaunch"
-      :can-delete="capabilities.feeDelete"
-    />
-    <template v-else-if="capabilities.read">
-      <p v-if="error" role="alert" class="settlement-center__message">
-        {{ error }}
-        <ElButton class="action-size--standard" @click="load">刷新</ElButton>
-      </p>
-      <p v-if="notice" role="status">{{ notice }}</p>
-      <section class="settlement-center__detail">
-        <h2>{{ tab === 'CUSTOMER' ? '客户' : '律师' }}结算明细</h2>
-        <dl v-if="summary" class="kpis">
-          <div>
-            <dt>发起金额</dt>
-            <dd class="money">{{ summary.launchedAmount }} 元</dd>
-          </div>
-          <div>
-            <dt>已入单金额</dt>
-            <dd class="money">{{ summary.billedAmount }} 元</dd>
-          </div>
-          <div>
-            <dt>未入单金额</dt>
-            <dd class="money">
-              {{ summary.unbilledAmount }} 元 · {{ summary.unbilledCount }} 条
-            </dd>
-          </div>
-          <div>
-            <dt>{{ side === 'CUSTOMER' ? '已开票金额' : '已开票待付' }}</dt>
-            <dd class="money">
-              {{ summary.invoiceAmount ?? '待财务回填'
-              }}<span v-if="summary.invoiceAmount !== null"> 元</span>
-            </dd>
-          </div>
-          <div>
-            <dt>{{ side === 'CUSTOMER' ? '实际回款' : '实际打款' }}</dt>
-            <dd class="money">
-              {{
-                (side === 'CUSTOMER'
-                  ? summary.receivedAmount
-                  : summary.paidAmount) ?? '待财务回填'
-              }}<span
-                v-if="
+    <template v-if="tab === 'REFUNDS'">
+      <LitigationRefundPanel />
+    </template>
+    <template v-else>
+      <p v-if="!capabilities && !error">正在读取结算中心权限…</p>
+      <p v-else-if="!capabilities" role="alert">{{ error }}</p>
+      <FeeCenterPanel
+        v-else-if="tab === 'FEES' && capabilities?.feeRead"
+        :can-create="capabilities?.feeCreate ?? false"
+        :can-update="capabilities?.feeUpdate ?? false"
+        :can-launch="capabilities?.feeLaunch ?? false"
+        :can-delete="capabilities?.feeDelete ?? false"
+      />
+      <template v-else-if="capabilities?.read">
+        <p v-if="error" role="alert" class="settlement-center__message">
+          {{ error }}
+          <ElButton class="action-size--standard" @click="load">刷新</ElButton>
+        </p>
+        <p v-if="notice" role="status">{{ notice }}</p>
+        <p
+          v-if="refundRouteBlocked"
+          role="alert"
+          class="settlement-center__message"
+        >
+          有尚未确认的原结算请求。请先查询并恢复该请求，再进入诉讼退费。
+        </p>
+        <section class="settlement-center__detail">
+          <h2>{{ tab === 'CUSTOMER' ? '客户' : '律师' }}结算明细</h2>
+          <dl v-if="summary" class="kpis">
+            <div>
+              <dt>发起金额</dt>
+              <dd class="money">{{ summary.launchedAmount }} 元</dd>
+            </div>
+            <div>
+              <dt>已入单金额</dt>
+              <dd class="money">{{ summary.billedAmount }} 元</dd>
+            </div>
+            <div>
+              <dt>未入单金额</dt>
+              <dd class="money">
+                {{ summary.unbilledAmount }} 元 · {{ summary.unbilledCount }} 条
+              </dd>
+            </div>
+            <div>
+              <dt>{{ side === 'CUSTOMER' ? '已开票金额' : '已开票待付' }}</dt>
+              <dd class="money">
+                {{ summary.invoiceAmount ?? '待财务回填'
+                }}<span v-if="summary.invoiceAmount !== null"> 元</span>
+              </dd>
+            </div>
+            <div>
+              <dt>{{ side === 'CUSTOMER' ? '实际回款' : '实际打款' }}</dt>
+              <dd class="money">
+                {{
                   (side === 'CUSTOMER'
                     ? summary.receivedAmount
-                    : summary.paidAmount) !== null
-                "
-              >
-                元</span
-              >
-            </dd>
-          </div>
-          <div>
-            <dt>{{ side === 'CUSTOMER' ? '合作客户' : '合作律师' }}</dt>
-            <dd>
-              {{ summary.cooperatingPayeeCount }}
-              {{ side === 'CUSTOMER' ? '家' : '位'
-              }}<span v-if="side === 'LAWYER'">
-                · {{ summary.knownLawFirmCount }} 家已知律所</span
-              >
-            </dd>
-          </div>
-        </dl>
-        <form
-          :id="filterFormId"
-          class="settlement-center__filters"
-          aria-label="筛选结算明细"
-          @submit.prevent="applyFilter"
-        >
-          <label
-            >查询案件／主体 <ElInput v-model="keyword" placeholder="案号或名称"
-          /></label>
-          <label
-            >案件阶段
-            <ElSelect v-model="stage">
-              <ElOption value="" label="全部阶段" />
-              <ElOption value="WAITING_ARCHIVE" label="待归档" />
-              <ElOption value="ARCHIVED" label="已归档" /> </ElSelect
-          ></label>
-          <label
-            >入单状态
-            <ElSelect v-model="billState">
-              <ElOption value="" label="全部" />
-              <ElOption value="UNBILLED" label="未入账单" />
-              <ElOption value="BILLED" label="已入账单" /> </ElSelect
-          ></label>
-          <DateRangeFilter
-            label="发起日期"
-            :start="from"
-            :end="to"
-            start-label="发起起日"
-            end-label="发起止日"
-            @update:start="from = $event ?? ''"
-            @update:end="to = $event ?? ''"
-          />
-        </form>
-        <form
-          v-if="capabilities.billCreate"
-          :id="billCreateFormId"
-          class="settlement-center__bill-create"
-          @submit.prevent="createBill"
-        >
-          <label
-            >账单日期
-            <ElInput
-              v-model="billDate"
-              type="date"
-              required
-              :disabled="unknownBill"
+                    : summary.paidAmount) ?? '待财务回填'
+                }}<span
+                  v-if="
+                    (side === 'CUSTOMER'
+                      ? summary.receivedAmount
+                      : summary.paidAmount) !== null
+                  "
+                >
+                  元</span
+                >
+              </dd>
+            </div>
+            <div>
+              <dt>{{ side === 'CUSTOMER' ? '合作客户' : '合作律师' }}</dt>
+              <dd>
+                {{ summary.cooperatingPayeeCount }}
+                {{ side === 'CUSTOMER' ? '家' : '位'
+                }}<span v-if="side === 'LAWYER'">
+                  · {{ summary.knownLawFirmCount }} 家已知律所</span
+                >
+              </dd>
+            </div>
+          </dl>
+          <form
+            :id="filterFormId"
+            class="settlement-center__filters"
+            aria-label="筛选结算明细"
+            @submit.prevent="applyFilter"
+          >
+            <label
+              >查询案件／主体
+              <ElInput v-model="keyword" placeholder="案号或名称"
+            /></label>
+            <label
+              >案件阶段
+              <ElSelect v-model="stage">
+                <ElOption value="" label="全部阶段" />
+                <ElOption value="WAITING_ARCHIVE" label="待归档" />
+                <ElOption value="ARCHIVED" label="已归档" /> </ElSelect
+            ></label>
+            <label
+              >入单状态
+              <ElSelect v-model="billState">
+                <ElOption value="" label="全部" />
+                <ElOption value="UNBILLED" label="未入账单" />
+                <ElOption value="BILLED" label="已入账单" /> </ElSelect
+            ></label>
+            <DateRangeFilter
+              label="发起日期"
+              :start="from"
+              :end="to"
+              start-label="发起起日"
+              end-label="发起止日"
+              @update:start="from = $event ?? ''"
+              @update:end="to = $event ?? ''"
             />
-          </label>
-          <label
-            >备注
-            <ElInput
-              v-model="billNote"
-              maxlength="500"
-              :disabled="unknownBill"
-            />
-          </label>
-        </form>
-        <p
-          v-if="capabilities.billCreate && billPreview"
-          class="settlement-center__note"
-        >
-          编号预览：{{ billPreview }}（未占号，以创建结果为准）
-        </p>
-        <div class="operation-bar settlement-center__list-toolbar">
-          <span class="settlement-center__selection">
-            明细 {{ launches.total }} 条 · 已选
-            {{ selectedCount }} 条。勾选会在切换筛选时保留。
-          </span>
-          <div class="operation-actions settlement-center__filter-actions">
+          </form>
+          <form
+            v-if="capabilities.billCreate"
+            :id="billCreateFormId"
+            class="settlement-center__bill-create"
+            @submit.prevent="createBill"
+          >
+            <label
+              >账单日期
+              <ElInput
+                v-model="billDate"
+                type="date"
+                required
+                :disabled="unknownBill"
+              />
+            </label>
+            <label
+              >备注
+              <ElInput
+                v-model="billNote"
+                maxlength="500"
+                :disabled="unknownBill"
+              />
+            </label>
+          </form>
+          <p
+            v-if="capabilities.billCreate && billPreview"
+            class="settlement-center__note"
+          >
+            编号预览：{{ billPreview }}（未占号，以创建结果为准）
+          </p>
+          <div class="operation-bar settlement-center__list-toolbar">
+            <span class="settlement-center__selection">
+              明细 {{ launches.total }} 条 · 已选
+              {{ selectedCount }} 条。勾选会在切换筛选时保留。
+            </span>
+            <div class="operation-actions settlement-center__filter-actions">
+              <ElButton
+                :form="filterFormId"
+                native-type="submit"
+                class="action-size--compact"
+                >查询</ElButton
+              >
+              <ElButton
+                native-type="button"
+                class="action-size--compact"
+                @click="clearFilter"
+                >清除筛选</ElButton
+              >
+              <ElButton
+                v-if="capabilities.billCreate"
+                :form="billCreateFormId"
+                native-type="submit"
+                class="action-size--standard"
+                title="合并所选结算明细生成账单"
+                :disabled="saving || selectedCount === 0"
+              >
+                生成账单
+              </ElButton>
+            </div>
+          </div>
+          <p v-if="loading">正在加载…</p>
+          <p v-else-if="visible.length === 0">当前条件下暂无结算明细</p>
+          <div v-else class="settlement-center__table">
+            <table>
+              <thead>
+                <tr>
+                  <th>
+                    <ElCheckbox
+                      aria-label="全选当前可入单明细"
+                      :model-value="allSelected"
+                      :disabled="unknownBill"
+                      @change="toggleAll"
+                    />
+                  </th>
+                  <th>发起日期</th>
+                  <th>收付方</th>
+                  <th>案件</th>
+                  <th>次数</th>
+                  <th>金额（元）</th>
+                  <th>入单</th>
+                  <th v-if="side === 'CUSTOMER'">已开票</th>
+                  <th>{{ side === 'CUSTOMER' ? '实际回款' : '实际打款' }}</th>
+                  <th>{{ side === 'CUSTOMER' ? '回款日期' : '打款日期' }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in visible" :key="row.id">
+                  <td>
+                    <ElCheckbox
+                      :aria-label="`选择 ${row.businessNo} 第${row.nth}次`"
+                      :model-value="selected.has(row.id)"
+                      :disabled="row.billId !== null || unknownBill"
+                      @change="toggle(row.id)"
+                    />
+                  </td>
+                  <td>{{ row.launchDate }}</td>
+                  <td>
+                    {{ row.payeeName ?? '—'
+                    }}{{ row.lawFirm ? ` / ${row.lawFirm}` : '' }}
+                  </td>
+                  <td>
+                    <RouterLink :to="`/cases/${row.caseId}`">{{
+                      row.businessNo
+                    }}</RouterLink>
+                  </td>
+                  <td>{{ row.nth }}</td>
+                  <td class="money">{{ row.amount }}</td>
+                  <td>{{ row.billId ? '已入单' : '未入单' }}</td>
+                  <td v-if="side === 'CUSTOMER'">
+                    {{ row.invoiceAmount ?? '—' }}
+                  </td>
+                  <td>
+                    {{
+                      (side === 'CUSTOMER'
+                        ? row.receivedAmount
+                        : row.paidAmount) ?? '—'
+                    }}
+                  </td>
+                  <td>{{ row.actualPaymentDate ?? '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div
+            v-if="showLaunchPagination"
+            class="operation-bar settlement-center__pager"
+          >
             <ElButton
-              :form="filterFormId"
-              native-type="submit"
-              class="action-size--compact"
-              >查询</ElButton
-            >
-            <ElButton
-              native-type="button"
-              class="action-size--compact"
-              @click="clearFilter"
-              >清除筛选</ElButton
-            >
-            <ElButton
-              v-if="capabilities.billCreate"
-              :form="billCreateFormId"
-              native-type="submit"
               class="action-size--standard"
-              title="合并所选结算明细生成账单"
-              :disabled="saving || selectedCount === 0"
+              :disabled="page <= 1"
+              @click="page -= 1"
+              >上一页</ElButton
+            ><span>{{ page }} / {{ pageCount }}</span
+            ><ElButton
+              class="action-size--standard"
+              :disabled="page >= pageCount"
+              @click="page += 1"
             >
-              生成账单
+              下一页
             </ElButton>
           </div>
-        </div>
-        <p v-if="loading">正在加载…</p>
-        <p v-else-if="visible.length === 0">当前条件下暂无结算明细</p>
-        <div v-else class="settlement-center__table">
-          <table>
-            <thead>
-              <tr>
-                <th>
-                  <ElCheckbox
-                    aria-label="全选当前可入单明细"
-                    :model-value="allSelected"
-                    :disabled="unknownBill"
-                    @change="toggleAll"
-                  />
-                </th>
-                <th>发起日期</th>
-                <th>收付方</th>
-                <th>案件</th>
-                <th>次数</th>
-                <th>金额（元）</th>
-                <th>入单</th>
-                <th v-if="side === 'CUSTOMER'">已开票</th>
-                <th>{{ side === 'CUSTOMER' ? '实际回款' : '实际打款' }}</th>
-                <th>{{ side === 'CUSTOMER' ? '回款日期' : '打款日期' }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in visible" :key="row.id">
-                <td>
-                  <ElCheckbox
-                    :aria-label="`选择 ${row.businessNo} 第${row.nth}次`"
-                    :model-value="selected.has(row.id)"
-                    :disabled="row.billId !== null || unknownBill"
-                    @change="toggle(row.id)"
-                  />
-                </td>
-                <td>{{ row.launchDate }}</td>
-                <td>
-                  {{ row.payeeName ?? '—'
-                  }}{{ row.lawFirm ? ` / ${row.lawFirm}` : '' }}
-                </td>
-                <td>
-                  <RouterLink :to="`/cases/${row.caseId}`">{{
-                    row.businessNo
-                  }}</RouterLink>
-                </td>
-                <td>{{ row.nth }}</td>
-                <td class="money">{{ row.amount }}</td>
-                <td>{{ row.billId ? '已入单' : '未入单' }}</td>
-                <td v-if="side === 'CUSTOMER'">
-                  {{ row.invoiceAmount ?? '—' }}
-                </td>
-                <td>
-                  {{
-                    (side === 'CUSTOMER'
-                      ? row.receivedAmount
-                      : row.paidAmount) ?? '—'
-                  }}
-                </td>
-                <td>{{ row.actualPaymentDate ?? '—' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div
-          v-if="showLaunchPagination"
-          class="operation-bar settlement-center__pager"
+          <p v-if="unknownBill" role="alert" class="settlement-center__message">
+            账单创建结果尚未确认。<ElButton
+              :disabled="saving"
+              @click="createBill"
+              >用原请求重试</ElButton
+            >
+          </p>
+        </section>
+        <section class="settlement-center__bills">
+          <h2>账单</h2>
+          <form
+            :id="billFilterFormId"
+            class="settlement-center__bill-filters"
+            @submit.prevent="
+              billPage = 1;
+              load();
+            "
+          >
+            <label>账单号／收付方<ElInput v-model="billQuery" /></label
+            ><label
+              >账单状态<ElSelect v-model="billHistory"
+                ><ElOption value="" label="全部" /><ElOption
+                  value="ACTIVE"
+                  label="已发起" /><ElOption
+                  value="CANCELLED"
+                  label="已撤销" /></ElSelect
+            ></label>
+          </form>
+          <div class="operation-actions settlement-center__bill-filter-actions">
+            <ElButton
+              :form="billFilterFormId"
+              native-type="submit"
+              class="action-size--compact"
+              >查询账单</ElButton
+            >
+          </div>
+          <p v-if="bills.items.length === 0">暂无账单</p>
+          <div v-else class="settlement-center__table">
+            <table>
+              <thead>
+                <tr>
+                  <th>编号</th>
+                  <th>账单日期</th>
+                  <th>收付方</th>
+                  <th>条数</th>
+                  <th>金额（元）</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="bill in bills.items"
+                  :key="bill.id"
+                  class="business-row-link"
+                  data-test="settlement-bill-row"
+                  :aria-label="`打开账单 ${bill.billNo} 详情`"
+                  tabindex="0"
+                  @click="openBillRow($event, bill)"
+                  @keydown.enter.prevent="openBillFromKeyboard($event, bill)"
+                  @keydown.space.prevent="openBillFromKeyboard($event, bill)"
+                >
+                  <td>{{ bill.billNo }}</td>
+                  <td>{{ bill.billDate }}</td>
+                  <td>{{ bill.payees.join('、') }}</td>
+                  <td>{{ bill.count }}</td>
+                  <td class="money">{{ bill.amount }}</td>
+                  <td>{{ bill.cancelledAt ? '已撤销' : '已发起' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div
+            v-if="showBillPagination"
+            class="operation-bar settlement-center__pager"
+          >
+            <ElButton
+              class="action-size--wide"
+              :disabled="billPage <= 1"
+              @click="billPage -= 1"
+              >上一页账单</ElButton
+            ><span>{{ billPage }} / {{ billPageCount }}</span
+            ><ElButton
+              class="action-size--wide"
+              :disabled="billPage >= billPageCount"
+              @click="billPage += 1"
+              >下一页账单</ElButton
+            >
+          </div>
+        </section>
+        <section
+          v-if="detail"
+          class="settlement-center__bill-detail"
+          aria-label="账单详情"
         >
-          <ElButton
-            class="action-size--standard"
-            :disabled="page <= 1"
-            @click="page -= 1"
-            >上一页</ElButton
-          ><span>{{ page }} / {{ pageCount }}</span
-          ><ElButton
-            class="action-size--standard"
-            :disabled="page >= pageCount"
-            @click="page += 1"
+          <h2>账单 {{ detail.billNo }}</h2>
+          <p>
+            {{ detail.billDate }} · {{ detail.amount }} 元 ·
+            {{ detail.cancelledAt ? '已撤销' : '已发起' }}
+          </p>
+          <p v-if="detail.cancellationReason">
+            撤销原因：{{ detail.cancellationReason }}
+          </p>
+          <p v-if="detail.note">备注：{{ detail.note }}</p>
+          <div class="settlement-center__table">
+            <table>
+              <thead>
+                <tr>
+                  <th>收付方</th>
+                  <th>案件单号</th>
+                  <th>发起结算日期</th>
+                  <th>次数</th>
+                  <th>金额（元）</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in detail.items" :key="item.id">
+                  <td>{{ item.payeeName }}</td>
+                  <td>
+                    <RouterLink :to="`/cases/${item.caseId}`">{{
+                      item.caseBusinessNo ?? '历史信息未提供'
+                    }}</RouterLink>
+                  </td>
+                  <td>{{ item.launchDate ?? '历史信息未提供' }}</td>
+                  <td>{{ item.nth }}</td>
+                  <td class="money">{{ item.amount }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <form
+            v-if="!detail.cancelledAt && capabilities.billCancel"
+            class="operation-bar settlement-center__bill-cancel"
+            @submit.prevent="cancelBill"
           >
-            下一页
-          </ElButton>
-        </div>
-        <p v-if="unknownBill" role="alert" class="settlement-center__message">
-          账单创建结果尚未确认。<ElButton :disabled="saving" @click="createBill"
-            >用原请求重试</ElButton
-          >
-        </p>
-      </section>
-      <section class="settlement-center__bills">
-        <h2>账单</h2>
-        <form
-          :id="billFilterFormId"
-          class="settlement-center__bill-filters"
-          @submit.prevent="
-            billPage = 1;
-            load();
-          "
-        >
-          <label>账单号／收付方<ElInput v-model="billQuery" /></label
-          ><label
-            >账单状态<ElSelect v-model="billHistory"
-              ><ElOption value="" label="全部" /><ElOption
-                value="ACTIVE"
-                label="已发起" /><ElOption
-                value="CANCELLED"
-                label="已撤销" /></ElSelect
-          ></label>
-        </form>
-        <div class="operation-actions settlement-center__bill-filter-actions">
-          <ElButton
-            :form="billFilterFormId"
-            native-type="submit"
-            class="action-size--compact"
-            >查询账单</ElButton
-          >
-        </div>
-        <p v-if="bills.items.length === 0">暂无账单</p>
-        <div v-else class="settlement-center__table">
-          <table>
-            <thead>
-              <tr>
-                <th>编号</th>
-                <th>账单日期</th>
-                <th>收付方</th>
-                <th>条数</th>
-                <th>金额（元）</th>
-                <th>状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="bill in bills.items"
-                :key="bill.id"
-                class="business-row-link"
-                data-test="settlement-bill-row"
-                :aria-label="`打开账单 ${bill.billNo} 详情`"
-                tabindex="0"
-                @click="openBillRow($event, bill)"
-                @keydown.enter.prevent="openBillFromKeyboard($event, bill)"
-                @keydown.space.prevent="openBillFromKeyboard($event, bill)"
-              >
-                <td>{{ bill.billNo }}</td>
-                <td>{{ bill.billDate }}</td>
-                <td>{{ bill.payees.join('、') }}</td>
-                <td>{{ bill.count }}</td>
-                <td class="money">{{ bill.amount }}</td>
-                <td>{{ bill.cancelledAt ? '已撤销' : '已发起' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div
-          v-if="showBillPagination"
-          class="operation-bar settlement-center__pager"
-        >
-          <ElButton
-            class="action-size--wide"
-            :disabled="billPage <= 1"
-            @click="billPage -= 1"
-            >上一页账单</ElButton
-          ><span>{{ billPage }} / {{ billPageCount }}</span
-          ><ElButton
-            class="action-size--wide"
-            :disabled="billPage >= billPageCount"
-            @click="billPage += 1"
-            >下一页账单</ElButton
-          >
-        </div>
-      </section>
-      <section
-        v-if="detail"
-        class="settlement-center__bill-detail"
-        aria-label="账单详情"
-      >
-        <h2>账单 {{ detail.billNo }}</h2>
-        <p>
-          {{ detail.billDate }} · {{ detail.amount }} 元 ·
-          {{ detail.cancelledAt ? '已撤销' : '已发起' }}
-        </p>
-        <p v-if="detail.cancellationReason">
-          撤销原因：{{ detail.cancellationReason }}
-        </p>
-        <p v-if="detail.note">备注：{{ detail.note }}</p>
-        <div class="settlement-center__table">
-          <table>
-            <thead>
-              <tr>
-                <th>收付方</th>
-                <th>案件单号</th>
-                <th>发起结算日期</th>
-                <th>次数</th>
-                <th>金额（元）</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in detail.items" :key="item.id">
-                <td>{{ item.payeeName }}</td>
-                <td>
-                  <RouterLink :to="`/cases/${item.caseId}`">{{
-                    item.caseBusinessNo ?? '历史信息未提供'
-                  }}</RouterLink>
-                </td>
-                <td>{{ item.launchDate ?? '历史信息未提供' }}</td>
-                <td>{{ item.nth }}</td>
-                <td class="money">{{ item.amount }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <form
-          v-if="!detail.cancelledAt && capabilities.billCancel"
-          class="operation-bar settlement-center__bill-cancel"
-          @submit.prevent="cancelBill"
-        >
-          <label
-            >撤销说明（可选）
-            <ElInput
-              v-model="cancelReason"
-              maxlength="500"
-              :disabled="unknownCancel" /></label
-          ><ElButton native-type="submit" :disabled="saving">撤销账单</ElButton>
-        </form>
-        <p v-if="unknownCancel" role="alert">
-          撤销结果尚未确认。<ElButton :disabled="saving" @click="cancelBill"
-            >用原请求重试撤销</ElButton
-          >
-        </p>
-        <ElButton @click="detail = null">关闭</ElButton>
-      </section>
+            <label
+              >撤销说明（可选）
+              <ElInput
+                v-model="cancelReason"
+                maxlength="500"
+                :disabled="unknownCancel" /></label
+            ><ElButton native-type="submit" :disabled="saving"
+              >撤销账单</ElButton
+            >
+          </form>
+          <p v-if="unknownCancel" role="alert">
+            撤销结果尚未确认。<ElButton :disabled="saving" @click="cancelBill"
+              >用原请求重试撤销</ElButton
+            >
+          </p>
+          <ElButton @click="detail = null">关闭</ElButton>
+        </section>
+      </template>
+      <p v-else role="alert">
+        {{ error || '当前账号未获结算与费用中心读取权限' }}
+      </p>
     </template>
-    <p v-else role="alert">
-      {{ error || '当前账号未获结算与费用中心读取权限' }}
-    </p>
   </main>
 </template>
 

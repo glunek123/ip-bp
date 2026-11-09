@@ -20,6 +20,7 @@ import {
   type RegisterCaseJudgmentInput,
 } from '../../api/cases';
 import { ApiError } from '../../api/http';
+import { getLitigationRefundWorkspace } from '../../api/litigation-refunds';
 import {
   downloadMaterialVersion,
   uploadMaterialFile,
@@ -41,7 +42,6 @@ type PanelItem = Omit<
   >,
   'judgmentNextStep'
 > & { judgmentNextStep?: CaseDetail['judgmentNextStep'] };
-type AmountState = 'KNOWN' | 'PENDING' | '';
 type Command =
   | { kind: 'register'; input: RegisterCaseJudgmentInput }
   | { kind: 'correct'; input: CorrectCaseJudgmentInput };
@@ -56,9 +56,26 @@ const props = defineProps<{
 const emit = defineEmits<{ changed: []; refresh: []; cancel: [] }>();
 
 const judgmentReceivedAt = ref('');
-const judgmentAmountState = ref<AmountState>('');
+type RefundRow = { key: number; party: 'COURT' | 'DEFENDANT'; amount: string };
+const refundRows = ref<RefundRow[]>([]);
+const canRecordRefund = ref(false);
+let nextRefundKey = 0;
+const amountFormat = /^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u;
+const refundTotal = computed(() => {
+  const cents = refundRows.value.reduce((sum, row) => {
+    const value = row.amount.trim();
+    if (!amountFormat.test(value)) return sum;
+    const [whole, fractional = ''] = value.split('.');
+    return sum + BigInt(whole!) * 100n + BigInt(fractional.padEnd(2, '0'));
+  }, 0n);
+  return (
+    (cents / 100n).toLocaleString('zh-CN') +
+    '.' +
+    (cents % 100n).toString().padStart(2, '0')
+  );
+});
 const judgmentAmount = ref('');
-const paidLitigationFeeState = ref<AmountState>('');
+
 const paidLitigationFee = ref('');
 const correctionReason = ref('');
 const selectedFiles = ref(new Set<string>());
@@ -110,9 +127,9 @@ function resetContext(
   const acceptedFeedback = success.value;
   const current = props.item.judgment.current;
   judgmentReceivedAt.value = current?.judgmentReceivedAt ?? '';
-  judgmentAmountState.value = current?.judgmentAmountState ?? '';
+  refundRows.value = [];
+  canRecordRefund.value = false;
   judgmentAmount.value = current?.judgmentAmount ?? '';
-  paidLitigationFeeState.value = current?.paidLitigationFeeState ?? '';
   paidLitigationFee.value = current?.paidLitigationFee ?? '';
   correctionReason.value = '';
   uploadedFiles.value = [];
@@ -237,12 +254,24 @@ function validDate(value: string): boolean {
     value >= judgmentDateMinimum.value
   );
 }
-function validAmount(state: AmountState, amount: string): boolean {
-  if (state === 'PENDING') return true;
-  return (
-    state === 'KNOWN' && /^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u.test(amount.trim())
-  );
+function validAmount(amount: string): boolean {
+  const value = amount.trim();
+  return !value || amountFormat.test(value);
 }
+watch(
+  [() => props.item.id, () => props.contextKey, canEdit],
+  async ([id, , allowed]) => {
+    if (!allowed || props.lawyer) return;
+    const context = captureContext();
+    try {
+      const workspace = await getLitigationRefundWorkspace(id);
+      if (isCurrent(context)) canRecordRefund.value = workspace.canRecord;
+    } catch {
+      if (isCurrent(context)) canRecordRefund.value = false;
+    }
+  },
+  { immediate: true },
+);
 const validReason = computed(() => {
   const reason = correctionReason.value.trim();
   return reason.length <= 500;
@@ -256,8 +285,13 @@ const ready = computed(
   () =>
     canEdit.value &&
     validDate(judgmentReceivedAt.value) &&
-    validAmount(judgmentAmountState.value, judgmentAmount.value) &&
-    validAmount(paidLitigationFeeState.value, paidLitigationFee.value) &&
+    validAmount(judgmentAmount.value) &&
+    validAmount(paidLitigationFee.value) &&
+    (!refundRows.value.length ||
+      (canRecordRefund.value &&
+        refundRows.value.every((row) =>
+          amountFormat.test(row.amount.trim()),
+        ))) &&
     selectedIds.value.length >= 1 &&
     selectedIds.value.length <= 10 &&
     (!canCorrect.value || validReason.value) &&
@@ -275,16 +309,20 @@ function makeInput(): RegisterCaseJudgmentInput {
     expectedVersion: props.item.version,
     idempotencyKey: makeKey(),
     judgmentReceivedAt: judgmentReceivedAt.value,
-    judgmentAmountState: judgmentAmountState.value as 'KNOWN' | 'PENDING',
-    judgmentAmount:
-      judgmentAmountState.value === 'KNOWN'
-        ? judgmentAmount.value.trim()
-        : null,
-    paidLitigationFeeState: paidLitigationFeeState.value as 'KNOWN' | 'PENDING',
-    paidLitigationFee:
-      paidLitigationFeeState.value === 'KNOWN'
-        ? paidLitigationFee.value.trim()
-        : null,
+    judgmentAmountState: judgmentAmount.value.trim() ? 'KNOWN' : 'PENDING',
+    judgmentAmount: judgmentAmount.value.trim() || null,
+    paidLitigationFeeState: paidLitigationFee.value.trim()
+      ? 'KNOWN'
+      : 'PENDING',
+    paidLitigationFee: paidLitigationFee.value.trim() || null,
+    ...(refundRows.value.length
+      ? {
+          refunds: refundRows.value.map(({ party, amount }) => ({
+            party,
+            amount: amount.trim(),
+          })),
+        }
+      : {}),
     judgmentContentVersionIds: selectedIds.value,
   };
 }
@@ -490,78 +528,100 @@ function historyLabel(fact: CaseJudgmentFact): string {
       登记后案件仍为待判决；更正不改变阶段。本页只记录事实，不会发起支付。登记不代表判决生效、结算完成或已执行。
     </p>
     <form v-if="canEdit" class="form-stack" @submit.prevent="submit">
-      <label>
-        <span>收到判决日期 <span class="required-mark">*</span></span>
-        <input
-          v-model="judgmentReceivedAt"
-          data-test="judgment-date"
-          type="date"
-          required
-          :min="judgmentDateMinimum"
-          :max="todayShanghai()"
-          :disabled="unknownRequest !== null || submitting"
-          @input="
-            error = '';
-            success = '';
+      <div class="judgment-fields">
+        <label>
+          <span>收到判决日期 <span class="required-mark">*</span></span>
+          <input
+            v-model="judgmentReceivedAt"
+            data-test="judgment-date"
+            type="date"
+            required
+            :min="judgmentDateMinimum"
+            :max="todayShanghai()"
+            :disabled="unknownRequest !== null || submitting"
+            @input="
+              error = '';
+              success = '';
+            "
+          />
+        </label>
+        <label>
+          <span>判决金额（元）</span>
+          <input
+            v-model="judgmentAmount"
+            data-test="judgment-amount"
+            type="text"
+            inputmode="decimal"
+            maxlength="17"
+            :disabled="unknownRequest !== null || submitting"
+          />
+        </label>
+        <label>
+          <span>实缴诉讼费（元）</span>
+          <input
+            v-model="paidLitigationFee"
+            data-test="paid-fee-amount"
+            type="text"
+            inputmode="decimal"
+            maxlength="17"
+            :disabled="unknownRequest !== null || submitting"
+          />
+        </label>
+      </div>
+
+      <fieldset
+        v-if="canRecordRefund"
+        class="form-stack"
+        data-test="judgment-refunds"
+      >
+        <legend>诉讼退费（可多笔）</legend>
+        <div
+          v-for="(row, index) in refundRows"
+          :key="row.key"
+          class="judgment-refund-row"
+        >
+          <select
+            v-model="row.party"
+            :aria-label="'第' + (index + 1) + '笔退费方'"
+            :disabled="unknownRequest !== null || submitting"
+          >
+            <option value="COURT">法院</option>
+            <option value="DEFENDANT">被告</option>
+          </select>
+          <input
+            v-model="row.amount"
+            :aria-label="'第' + (index + 1) + '笔退费金额'"
+            placeholder="退费金额（元）"
+            inputmode="decimal"
+            maxlength="17"
+            :disabled="unknownRequest !== null || submitting"
+          />
+          <span>待退</span>
+          <ElButton
+            text
+            :disabled="unknownRequest !== null || submitting"
+            @click="refundRows.splice(index, 1)"
+            >删除</ElButton
+          >
+        </div>
+        <ElButton
+          :disabled="
+            refundRows.length >= 20 || unknownRequest !== null || submitting
           "
-        />
-      </label>
-      <label>
-        <span>判决金额状态 <span class="required-mark">*</span></span>
-        <select
-          v-model="judgmentAmountState"
-          data-test="judgment-amount-state"
-          required
-          :disabled="unknownRequest !== null || submitting"
+          @click="
+            refundRows.push({
+              key: nextRefundKey++,
+              party: 'COURT',
+              amount: '',
+            })
+          "
         >
-          <option disabled value="">请选择</option>
-          <option value="KNOWN">已知金额</option>
-          <option value="PENDING">待定</option>
-        </select>
-      </label>
-      <label v-if="judgmentAmountState === 'KNOWN'">
-        <span>判决金额（元） <span class="required-mark">*</span></span>
-        <input
-          v-model="judgmentAmount"
-          data-test="judgment-amount"
-          type="text"
-          inputmode="decimal"
-          maxlength="17"
-          required
-          :disabled="unknownRequest !== null || submitting"
-        />
-      </label>
-      <p v-else-if="judgmentAmountState === 'PENDING'" class="field-help">
-        判决金额待定；系统会保存空值，不会按0元登记。
-      </p>
-      <label>
-        <span>实缴诉讼费状态 <span class="required-mark">*</span></span>
-        <select
-          v-model="paidLitigationFeeState"
-          data-test="paid-fee-state"
-          required
-          :disabled="unknownRequest !== null || submitting"
-        >
-          <option disabled value="">请选择</option>
-          <option value="KNOWN">已知金额</option>
-          <option value="PENDING">待定</option>
-        </select>
-      </label>
-      <label v-if="paidLitigationFeeState === 'KNOWN'">
-        <span>实缴诉讼费（元） <span class="required-mark">*</span></span>
-        <input
-          v-model="paidLitigationFee"
-          data-test="paid-fee-amount"
-          type="text"
-          inputmode="decimal"
-          maxlength="17"
-          required
-          :disabled="unknownRequest !== null || submitting"
-        />
-      </label>
-      <p v-else-if="paidLitigationFeeState === 'PENDING'" class="field-help">
-        实缴诉讼费待定；系统会保存空值，不会按0元登记。
-      </p>
+          + 增加一笔退费
+        </ElButton>
+        <p>
+          退费合计 <strong>¥ {{ refundTotal }}</strong>
+        </p>
+      </fieldset>
 
       <fieldset class="form-stack">
         <legend>判决书 <span class="required-mark">*</span></legend>
@@ -626,7 +686,7 @@ function historyLabel(fact: CaseJudgmentFact): string {
             rows="3"
             :disabled="unknownRequest !== null || submitting"
           />
-          <span class="field-help">必填，去除首尾空格后1～500个字符。</span>
+          <span class="field-help">填写时最多500个字符。</span>
         </label>
       </section>
       <section
@@ -639,8 +699,8 @@ function historyLabel(fact: CaseJudgmentFact): string {
         <p>
           判决金额：{{
             displayAmount(
-              judgmentAmountState as 'KNOWN' | 'PENDING',
-              judgmentAmountState === 'KNOWN' ? judgmentAmount.trim() : null,
+              judgmentAmount.trim() ? 'KNOWN' : 'PENDING',
+              judgmentAmount.trim() || null,
             )
           }}
           元
@@ -648,10 +708,8 @@ function historyLabel(fact: CaseJudgmentFact): string {
         <p>
           实缴诉讼费：{{
             displayAmount(
-              paidLitigationFeeState as 'KNOWN' | 'PENDING',
-              paidLitigationFeeState === 'KNOWN'
-                ? paidLitigationFee.trim()
-                : null,
+              paidLitigationFee.trim() ? 'KNOWN' : 'PENDING',
+              paidLitigationFee.trim() || null,
             )
           }}
           元
@@ -676,7 +734,7 @@ function historyLabel(fact: CaseJudgmentFact): string {
         :disabled="!ready"
         :loading="submitting"
         @click="submit"
-        >提交更正</ElButton
+        >提交</ElButton
       >
       <ElButton
         v-else
@@ -686,7 +744,7 @@ function historyLabel(fact: CaseJudgmentFact): string {
         :disabled="!ready"
         :loading="submitting"
         @click="submit"
-        >登记一审判决</ElButton
+        >提交</ElButton
       >
       <ElButton
         v-if="editOnly"
@@ -775,3 +833,17 @@ function historyLabel(fact: CaseJudgmentFact): string {
     </details>
   </section>
 </template>
+
+<style scoped>
+.judgment-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: var(--s-3);
+}
+.judgment-refund-row {
+  display: grid;
+  grid-template-columns: minmax(5rem, 1fr) minmax(5rem, 1fr) auto auto;
+  align-items: center;
+  gap: var(--s-2);
+}
+</style>

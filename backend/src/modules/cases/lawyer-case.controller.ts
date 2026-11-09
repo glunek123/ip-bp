@@ -25,6 +25,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -60,7 +61,11 @@ import {
 import { ChooseJudgmentNextStepDto } from './case-judgment-next-step.dto';
 import { RegisterCaseJudgmentDto } from './case-judgment.dto';
 import { SaveCaseHearingDto } from './case-hearing.dto';
-import { RegisterCaseAcceptanceDto } from './case-acceptance.dto';
+import {
+  CaseAcceptanceDraftResponseDto,
+  RegisterCaseAcceptanceDto,
+  SaveCaseAcceptanceDraftDto,
+} from './case-acceptance.dto';
 import { FilingCourtService } from './filing-court.service';
 import { SubmitCaseComplaintDto } from './case-complaint.dto';
 import { ConfirmCaseComplaintDto } from './case-complaint-confirmation.dto';
@@ -258,6 +263,25 @@ export class LawyerCaseController {
   ) {
     this.lawyer(actor);
     return this.filing.submit(actor, id, body);
+  }
+
+  @Get(':id/acceptance-draft')
+  @ApiOkResponse({ type: CaseAcceptanceDraftResponseDto })
+  readAcceptanceDraft(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.acceptance.draft(actor, id);
+  }
+
+  @Put(':id/acceptance-draft')
+  @ApiOkResponse({ type: CaseAcceptanceDraftResponseDto })
+  saveAcceptanceDraft(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: SaveCaseAcceptanceDraftDto,
+  ) {
+    return this.acceptance.draft(actor, id, body);
   }
 
   @Post(':id/acceptance-register')

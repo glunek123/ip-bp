@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(107);
+    expect(result.permissionCatalog).toHaveLength(111);
     for (const action of [
       'LEAD_REVIEW_PROXY',
       'LEAD_EVIDENCE_CONFIRM_PROXY',
@@ -366,6 +366,16 @@ describe('OrganizationService management context', () => {
         scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
       }),
     );
+    for (const [action, label, scopes] of [
+      ['CASE_REFUND_READ', '查看诉讼退费', ['DEPARTMENT']],
+      ['CASE_REFUND_RECORD', '登记诉讼退费事项', ['SELF', 'DEPARTMENT']],
+      ['CASE_REFUND_FOLLOW', '跟进诉讼退费', ['SELF', 'DEPARTMENT']],
+      ['CASE_REFUND_EXPORT', '导出诉讼退费', ['DEPARTMENT']],
+    ]) {
+      expect(result.permissionCatalog).toContainEqual(
+        expect.objectContaining({ action, label, scopes }),
+      );
+    }
     for (const [action, label] of [
       ['CASE_EXECUTION_FEEDBACK_RECORD', '登记执行法院反馈'],
       ['CASE_EXECUTION_FEEDBACK_CORRECT', '更正执行法院反馈'],

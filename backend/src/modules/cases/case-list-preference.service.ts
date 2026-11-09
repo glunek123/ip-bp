@@ -4,8 +4,10 @@ import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import {
   caseListColumns,
+  caseListHiddenColumns,
   caseListOptionalColumns,
   CaseListColumn,
+  CaseListHiddenColumn,
   CaseListPreferenceBucket,
   CaseListPreferenceResponseDto,
   SaveCaseListPreferenceDto,
@@ -28,9 +30,9 @@ export function normalizeCaseListPreference(
     if (column) optional.add(column);
   }
   for (const column of caseListOptionalColumns) optional.add(column);
-  const hidden = new Set<CaseListColumn>();
+  const hidden = new Set<CaseListHiddenColumn>();
   for (const value of stored.hiddenColumns ?? []) {
-    const column = caseListOptionalColumns.find(
+    const column = caseListHiddenColumns.find(
       (candidate) => candidate === value,
     );
     if (column) hidden.add(column);
@@ -51,39 +53,45 @@ export class CaseListPreferenceService {
   async get(
     actor: ActorContext,
     bucket: CaseListPreferenceBucket,
+    view: 'mine' | 'department' = 'department',
   ): Promise<CaseListPreferenceResponseDto> {
     await this.authorize(actor);
+    const preferenceBucket = view === 'mine' ? `mine-${bucket}` : bucket;
     const stored = await this.database.caseListPreference.findUnique({
       where: {
         userId_departmentId_bucket: {
           userId: actor.userId,
           departmentId: actor.departmentId,
-          bucket,
+          bucket: preferenceBucket,
         },
       },
       select: { columnOrder: true, hiddenColumns: true },
     });
-    return normalizeCaseListPreference(stored);
+    const preference = normalizeCaseListPreference(stored);
+    if (view === 'mine' && stored === null) preference.hidden = ['owner'];
+    return preference;
   }
 
   async put(
     actor: ActorContext,
     bucket: CaseListPreferenceBucket,
     preference: SaveCaseListPreferenceDto,
+    view: 'mine' | 'department' = 'department',
   ): Promise<CaseListPreferenceResponseDto> {
     await this.authorize(actor);
+    const preferenceBucket = view === 'mine' ? `mine-${bucket}` : bucket;
     const stored = await this.database.caseListPreference.upsert({
       where: {
         userId_departmentId_bucket: {
           userId: actor.userId,
           departmentId: actor.departmentId,
-          bucket,
+          bucket: preferenceBucket,
         },
       },
       create: {
         userId: actor.userId,
         departmentId: actor.departmentId,
-        bucket,
+        bucket: preferenceBucket,
         columnOrder: preference.order,
         hiddenColumns: preference.hidden,
       },

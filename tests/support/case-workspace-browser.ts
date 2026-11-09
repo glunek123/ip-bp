@@ -28,6 +28,9 @@ export async function openCaseWorkspaceCommand(
 ): Promise<void> {
   if (!new URL(page.url()).pathname.startsWith('/cases/')) return;
   await expect(page.locator('.case-workspace').first()).toBeVisible();
+  const reminders = page.getByRole('region', { name: '到期提醒' });
+  if (await reminders.isVisible())
+    await reminders.getByRole('button', { name: '关闭', exact: true }).click();
   if (await page.locator(panelSelector).isVisible()) {
     await expectWorkspaceDrawer(page);
     return;

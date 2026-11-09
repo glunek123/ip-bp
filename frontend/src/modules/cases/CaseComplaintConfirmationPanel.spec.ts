@@ -245,8 +245,8 @@ describe('CaseComplaintConfirmationPanel', () => {
     expect(
       wrapper.get('[data-test="confirmation-amount"]').element,
     ).toHaveProperty('value', '123.45');
-    expect(wrapper.text()).toContain('诉状待确认→诉状待盖章');
-    expect(wrapper.text()).toContain('原提交版本、金额和回执不会覆盖');
+    expect(wrapper.text()).toContain('权利主体');
+    expect(wrapper.text()).toContain('被告');
   });
 
   it('shows a pending-stage download failure and clears it after a successful retry', async () => {
@@ -257,18 +257,16 @@ describe('CaseComplaintConfirmationPanel', () => {
 
     await wrapper.get('.confirmation-version button').trigger('click');
     await flushPromises();
-    expect(
-      wrapper.get('[data-test="confirmation-download-error"]').text(),
-    ).toContain('附件下载失败');
+    expect(wrapper.get('details [role="alert"]').text()).toContain(
+      '附件下载失败',
+    );
 
     await wrapper.get('.confirmation-version button').trigger('click');
     await flushPromises();
-    expect(
-      wrapper.find('[data-test="confirmation-download-error"]').exists(),
-    ).toBe(false);
+    expect(wrapper.find('details [role="alert"]').exists()).toBe(false);
   });
 
-  it('requires an explicit version when more than one exact version is available', async () => {
+  it('keeps the submitted version selected when a later revision is available', async () => {
     api.listOwnerMaterials.mockResolvedValueOnce({
       items: [
         material([
@@ -285,14 +283,14 @@ describe('CaseComplaintConfirmationPanel', () => {
     const { wrapper } = await mountPanel();
     expect(
       wrapper.get('[data-test="complaint-version-complaint-v1"]').element,
-    ).toHaveProperty('checked', false);
+    ).toHaveProperty('checked', true);
     expect(
       wrapper.get('[data-test="complaint-version-complaint-v2"]').element,
     ).toHaveProperty('checked', false);
-    expect(wrapper.text()).toContain('请选择本次确认的诉状版本');
+    expect(wrapper.text()).toContain('诉状材料与版本');
   });
 
-  it('requires a change note for revised version and amount and records disclose choice', async () => {
+  it('accepts an edited amount and explicitly selected revision without extra fields', async () => {
     api.listOwnerMaterials.mockResolvedValueOnce({
       items: [
         material([
@@ -311,14 +309,6 @@ describe('CaseComplaintConfirmationPanel', () => {
       .get('[data-test="complaint-version-complaint-v2"]')
       .setValue(true);
     await wrapper.get('[data-test="confirmation-amount"]').setValue('200.00');
-    await wrapper.get('[data-test="confirm-disclose-false"]').setValue(true);
-    expect(
-      wrapper.get('[data-test="change-note"]').attributes('required'),
-    ).toBeDefined();
-    await wrapper
-      .get('[data-test="change-note"]')
-      .setValue('按客户修订版及补充金额确认');
-    await wrapper.get('[data-test="confirmation-review"]').trigger('click');
     await wrapper.get('[data-test="confirmation-submit"]').trigger('click');
     await flushPromises();
     expect(api.confirmCaseComplaint).toHaveBeenCalledWith(
@@ -328,7 +318,6 @@ describe('CaseComplaintConfirmationPanel', () => {
         confirmedComplaintContentVersionId: 'complaint-v2',
         amountState: 'KNOWN',
         amount: '200.00',
-        changeNote: '按客户修订版及补充金额确认',
         confirmDisclose: false,
       }),
     );
@@ -345,13 +334,9 @@ describe('CaseComplaintConfirmationPanel', () => {
       },
     } as CaseDetail;
     const { wrapper } = await mountPanel(pending);
-    expect(wrapper.find('[data-test="confirmation-amount"]').exists()).toBe(
-      false,
-    );
-    expect(wrapper.get('[data-test="pending-reason"]').element).toHaveProperty(
-      'value',
-      '客户尚未提供金额资料',
-    );
+    expect(
+      wrapper.get('[data-test="confirmation-amount"]').element,
+    ).toHaveProperty('value', '');
   });
 
   it('retries an unknown confirmation with the original body and idempotency key', async () => {
@@ -364,8 +349,6 @@ describe('CaseComplaintConfirmationPanel', () => {
         confirmedAt: '2026-10-02T02:00:00Z',
       });
     const { wrapper } = await mountPanel();
-    await wrapper.get('[data-test="confirm-disclose-false"]').setValue(true);
-    await wrapper.get('[data-test="confirmation-review"]').trigger('click');
     await wrapper.get('[data-test="confirmation-submit"]').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('结果暂时未知');
@@ -385,8 +368,6 @@ describe('CaseComplaintConfirmationPanel', () => {
       new Promise((resolve) => (resolveRequest = resolve)),
     );
     const { wrapper } = await mountPanel();
-    await wrapper.get('[data-test="confirm-disclose-false"]').setValue(true);
-    await wrapper.get('[data-test="confirmation-review"]').trigger('click');
     await wrapper.get('[data-test="confirmation-submit"]').trigger('click');
     wrapper.unmount();
     resolveRequest({
@@ -405,8 +386,6 @@ describe('CaseComplaintConfirmationPanel', () => {
       new Promise((resolve) => (resolveRequest = resolve)),
     );
     const { wrapper } = await mountPanel();
-    await wrapper.get('[data-test="confirm-disclose-false"]').setValue(true);
-    await wrapper.get('[data-test="confirmation-review"]').trigger('click');
     await wrapper.get('[data-test="confirmation-submit"]').trigger('click');
     await wrapper.setProps({ item: { ...detail, id: 'case-2' } as CaseDetail });
     resolveRequest({
@@ -426,8 +405,6 @@ describe('CaseComplaintConfirmationPanel', () => {
       new Promise((resolve) => (resolveRequest = resolve)),
     );
     const { wrapper, auth } = await mountPanel();
-    await wrapper.get('[data-test="confirm-disclose-false"]').setValue(true);
-    await wrapper.get('[data-test="confirmation-review"]').trigger('click');
     await wrapper.get('[data-test="confirmation-submit"]').trigger('click');
     auth.session = {
       ...auth.session!,

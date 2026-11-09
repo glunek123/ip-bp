@@ -285,8 +285,10 @@ describe('authorized case list display', () => {
     });
     record.acceptance = { court: { id: 'actual-court', name: '真实受理法院' } };
     record.filingSubmission = {
+      id: 'submission-id',
       courtId: 'submitted-court',
       courtName: '立案提交快照法院',
+      claimAmount: null,
     };
     expect(caseListDisplay(record).court).toEqual({
       id: 'actual-court',

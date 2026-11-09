@@ -292,7 +292,7 @@ describe('case judgment panel', () => {
     wrapper.unmount();
   });
 
-  it('requires explicit amount states and auto-selects the only available judgment file', async () => {
+  it('keeps empty and zero amounts distinct and auto-selects the only available judgment file', async () => {
     const wrapper = mountPanel();
     expect(wrapper.text()).toContain('收到判决日期');
     expect(wrapper.text()).toContain('判决金额');
@@ -314,9 +314,7 @@ describe('case judgment panel', () => {
     ).toBe(true);
 
     await wrapper.get('[data-test="judgment-date"]').setValue('2026-10-07');
-    await wrapper.get('[data-test="judgment-amount-state"]').setValue('KNOWN');
     await wrapper.get('[data-test="judgment-amount"]').setValue('0.00');
-    await wrapper.get('[data-test="paid-fee-state"]').setValue('PENDING');
     expect(
       (
         wrapper.get('[data-test="judgment-submit"]')
@@ -367,10 +365,6 @@ describe('case judgment panel', () => {
         });
       const wrapper = mountPanel();
       await wrapper.get('[data-test="judgment-date"]').setValue('2026-10-07');
-      await wrapper
-        .get('[data-test="judgment-amount-state"]')
-        .setValue('PENDING');
-      await wrapper.get('[data-test="paid-fee-state"]').setValue('KNOWN');
       await wrapper.get('[data-test="paid-fee-amount"]').setValue('12.30');
       await wrapper.get('[data-test="judgment-submit"]').trigger('click');
       await flushPromises();
@@ -434,10 +428,6 @@ describe('case judgment panel', () => {
     );
     const wrapper = mountPanel();
     await wrapper.get('[data-test="judgment-date"]').setValue('2026-10-07');
-    await wrapper
-      .get('[data-test="judgment-amount-state"]')
-      .setValue('PENDING');
-    await wrapper.get('[data-test="paid-fee-state"]').setValue('PENDING');
     await wrapper.get('[data-test="judgment-submit"]').trigger('click');
     const nextCase = {
       ...baseItem,
@@ -704,10 +694,6 @@ describe('case judgment panel', () => {
   it('keeps the accepted-command feedback when its refreshed case has a newer version', async () => {
     const wrapper = mountPanel();
     await wrapper.get('[data-test="judgment-date"]').setValue('2026-10-07');
-    await wrapper
-      .get('[data-test="judgment-amount-state"]')
-      .setValue('PENDING');
-    await wrapper.get('[data-test="paid-fee-state"]').setValue('PENDING');
     await wrapper.get('[data-test="judgment-submit"]').trigger('click');
     await flushPromises();
     expect(wrapper.get('[role="status"]').text()).toContain('判决命令已受理');
@@ -791,10 +777,6 @@ describe('case judgment panel', () => {
     );
     const wrapper = mountPanel();
     await wrapper.get('[data-test="judgment-date"]').setValue('2026-10-07');
-    await wrapper
-      .get('[data-test="judgment-amount-state"]')
-      .setValue('PENDING');
-    await wrapper.get('[data-test="paid-fee-state"]').setValue('PENDING');
     await wrapper.get('[data-test="judgment-submit"]').trigger('click');
     await flushPromises();
 
@@ -827,10 +809,6 @@ describe('case judgment panel', () => {
     );
     const forbidden = mountPanel();
     await forbidden.get('[data-test="judgment-date"]').setValue('2026-10-07');
-    await forbidden
-      .get('[data-test="judgment-amount-state"]')
-      .setValue('PENDING');
-    await forbidden.get('[data-test="paid-fee-state"]').setValue('PENDING');
     await forbidden.get('[data-test="judgment-submit"]').trigger('click');
     await flushPromises();
     expect(forbidden.get('[role="alert"]').text()).toContain('无权');
@@ -841,8 +819,6 @@ describe('case judgment panel', () => {
     );
     const stale = mountPanel();
     await stale.get('[data-test="judgment-date"]').setValue('2026-10-07');
-    await stale.get('[data-test="judgment-amount-state"]').setValue('PENDING');
-    await stale.get('[data-test="paid-fee-state"]').setValue('PENDING');
     await stale.get('[data-test="judgment-submit"]').trigger('click');
     await flushPromises();
     expect(stale.emitted('refresh')).toHaveLength(1);

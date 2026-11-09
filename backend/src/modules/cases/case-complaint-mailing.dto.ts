@@ -1,10 +1,10 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
-  ArrayMinSize,
   IsArray,
   IsDateString,
   IsInt,
+  IsOptional,
   IsString,
   IsUUID,
   MaxLength,
@@ -20,9 +20,13 @@ export class MailCaseComplaintDto {
   @MaxLength(128)
   idempotencyKey!: string;
   @ApiProperty({ format: 'date' }) @IsDateString() mailedAt!: string;
-  @ApiProperty({ type: [String], format: 'uuid', minItems: 1, maxItems: 10 })
+  @ApiPropertyOptional({ maxLength: 1000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  remark?: string;
+  @ApiProperty({ type: [String], format: 'uuid', maxItems: 10 })
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(10)
   @IsUUID('4', { each: true })
   mailReceiptContentVersionIds!: string[];

@@ -176,12 +176,12 @@ function assertStableCalendar(view: Snapshot) {
   expect(
     view.events.every((event) => event.date.startsWith(`${view.month}-`)),
   ).toBe(true);
-  for (const name of ['pay', 'other'] as const)
-    expect(view.metrics[name]).toEqual({
-      state: 'NOT_CONNECTED',
-      count: null,
-      nearestDate: null,
-    });
+  expect(view.metrics.pay.state).toBe('AVAILABLE');
+  expect(view.metrics.other).toEqual({
+    state: 'NOT_CONNECTED',
+    count: null,
+    nearestDate: null,
+  });
 }
 
 test.beforeEach(async () => {

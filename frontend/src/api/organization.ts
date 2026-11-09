@@ -117,6 +117,10 @@ export const permissionActionValues = [
   'CASE_HEARING_CORRECT',
   'CASE_JUDGMENT_REGISTER',
   'CASE_REFUND_APPLICATION_RECORD',
+  'CASE_REFUND_READ',
+  'CASE_REFUND_RECORD',
+  'CASE_REFUND_FOLLOW',
+  'CASE_REFUND_EXPORT',
   'CASE_JUDGMENT_CORRECT',
   'CASE_JUDGMENT_NEXT_STEP',
   'CASE_JUDGMENT_NEXT_STEP_REVOKE',
@@ -152,6 +156,16 @@ export type PermissionAction = (typeof permissionActionValues)[number];
 const reportActions = new Set<PermissionAction>([
   'REPORT_AMOUNT_READ',
   'REPORT_EXPORT',
+]);
+const refundDepartmentOnlyActions = new Set<PermissionAction>([
+  'CASE_REFUND_READ',
+  'CASE_REFUND_EXPORT',
+]);
+const refundNoTeamActions = new Set<PermissionAction>([
+  'CASE_REFUND_READ',
+  'CASE_REFUND_RECORD',
+  'CASE_REFUND_FOLLOW',
+  'CASE_REFUND_EXPORT',
 ]);
 const demoDepartmentActions = new Set<PermissionAction>([
   'EVIDENCE_READ',
@@ -348,7 +362,11 @@ function isGrant(value: unknown): value is OrganizationGrant {
     ((!demoDepartmentActions.has(value.action as PermissionAction) &&
       value.action !== 'CASE_EXTERNAL_ENTRY_ARCHIVE' &&
       value.action !== 'CASE_EXPORT') ||
-      value.scope === 'DEPARTMENT')
+      value.scope === 'DEPARTMENT') &&
+    (!refundDepartmentOnlyActions.has(value.action as PermissionAction) ||
+      value.scope === 'DEPARTMENT') &&
+    (!refundNoTeamActions.has(value.action as PermissionAction) ||
+      value.scope !== 'TEAM')
   );
 }
 

@@ -1,4 +1,6 @@
 import { CasePaymentCorrectionService } from './case-payment-correction.service';
+import { LitigationRefundsController } from './litigation-refunds.controller';
+import { LitigationRefundsService } from './litigation-refunds.service';
 import { CaseSupplementController } from './case-supplement.controller';
 import { CaseSupplementService } from './case-supplement.service';
 import { CaseFileCatalogController } from './case-file-catalog.controller';
@@ -107,6 +109,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     MaterialModule,
   ],
   controllers: [
+    LitigationRefundsController,
     CaseSupplementController,
     CaseFileCatalogController,
     CaseArchiveReadinessController,
@@ -132,6 +135,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     LawyerCaseController,
   ],
   providers: [
+    LitigationRefundsService,
     CaseSupplementService,
     CaseFileCatalogService,
     {

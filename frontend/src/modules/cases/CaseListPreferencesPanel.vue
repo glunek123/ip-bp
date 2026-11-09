@@ -6,12 +6,14 @@ import {
   getCaseListPreference,
   saveCaseListPreference,
   type CaseListColumn,
+  type CaseListHiddenColumn,
   type CaseListOptionalColumn,
   type CaseListPreference,
   type CaseListPreferenceBucket,
+  type CaseListPreferenceView,
 } from '../../api/case-list-preference';
 
-const columnLabels: Record<CaseListColumn, string> = {
+const columnLabels: Record<CaseListColumn | 'owner', string> = {
   businessNo: '操作／案件编号',
   stage: '案件进展',
   customerName: '客户',
@@ -24,14 +26,19 @@ const columnLabels: Record<CaseListColumn, string> = {
   court: '法院',
   courtCaseNo: '案号',
   claimAmount: '标的额',
-  judgmentAmount: '判决额',
-  closureAmount: '结案额',
+  judgmentAmount: '判决金额',
+  closureAmount: '结案金额',
+  owner: '负责人',
 };
 
-const props = defineProps<{
-  bucket: CaseListPreferenceBucket;
-  requestGeneration: string | number;
-}>();
+const props = withDefaults(
+  defineProps<{
+    bucket: CaseListPreferenceBucket;
+    view?: CaseListPreferenceView;
+    requestGeneration: string | number;
+  }>(),
+  { view: 'department' },
+);
 const emit = defineEmits<{
   change: [
     bucket: CaseListPreferenceBucket,
@@ -52,12 +59,21 @@ const draft = ref<CaseListPreference>({
   order: [...defaultCaseListPreference.order],
   hidden: [],
 });
-const requestKey = computed(() => `${props.requestGeneration}:${props.bucket}`);
+const requestKey = computed(
+  () => `${props.requestGeneration}:${props.view}:${props.bucket}`,
+);
 let generation = 0;
 let request: AbortController | undefined;
 
 function copy(value: CaseListPreference): CaseListPreference {
   return { order: [...value.order], hidden: [...value.hidden] };
+}
+
+function defaultForView(): CaseListPreference {
+  return {
+    order: [...defaultCaseListPreference.order],
+    hidden: props.view === 'mine' ? ['owner'] : [],
+  };
 }
 
 function isCurrent(token: number, key: string) {
@@ -74,12 +90,16 @@ async function fetchPreference() {
   const key = requestKey.value;
   loading.value = true;
   status.value = '正在读取列设置';
-  saved.value = copy(defaultCaseListPreference);
-  draft.value = copy(defaultCaseListPreference);
+  saved.value = defaultForView();
+  draft.value = defaultForView();
   try {
-    const result = await getCaseListPreference(props.bucket, {
-      signal: controller.signal,
-    });
+    const result = await getCaseListPreference(
+      props.bucket,
+      {
+        signal: controller.signal,
+      },
+      props.view,
+    );
     if (controller.signal.aborted || !isCurrent(token, key)) return;
     saved.value = copy(result);
     draft.value = copy(result);
@@ -87,8 +107,8 @@ async function fetchPreference() {
     status.value = '';
   } catch {
     if (controller.signal.aborted || !isCurrent(token, key)) return;
-    saved.value = copy(defaultCaseListPreference);
-    draft.value = copy(defaultCaseListPreference);
+    saved.value = defaultForView();
+    draft.value = defaultForView();
     status.value = '列设置未确认，当前显示默认列';
   } finally {
     if (isCurrent(token, key)) loading.value = false;
@@ -108,10 +128,10 @@ function cancel() {
 }
 
 function resetDraft() {
-  draft.value = copy(defaultCaseListPreference);
+  draft.value = defaultForView();
 }
 
-function toggleColumn(column: CaseListOptionalColumn) {
+function toggleColumn(column: CaseListHiddenColumn) {
   draft.value.hidden = draft.value.hidden.includes(column)
     ? draft.value.hidden.filter((entry) => entry !== column)
     : [...draft.value.hidden, column];
@@ -138,9 +158,14 @@ async function saveDraft() {
   saving.value = true;
   status.value = '保存结果未确认';
   try {
-    const result = await saveCaseListPreference(bucket, snapshot, {
-      signal: controller.signal,
-    });
+    const result = await saveCaseListPreference(
+      bucket,
+      snapshot,
+      {
+        signal: controller.signal,
+      },
+      props.view,
+    );
     if (controller.signal.aborted || !isCurrent(token, key)) return;
     saved.value = copy(result);
     draft.value = copy(result);
@@ -171,58 +196,76 @@ onBeforeUnmount(() => {
     </div>
     <div
       v-if="isOpen"
-      class="case-list-preferences__dialog"
-      role="dialog"
-      aria-modal="true"
-      aria-label="案件列设置"
+      class="case-list-preferences__backdrop"
+      data-test="column-settings-backdrop"
+      @click.self="cancel"
     >
-      <h2>案件列设置</h2>
-      <p class="field-help">
-        当前流程：{{ bucket }}。前两列固定显示；其他列可隐藏或调整顺序。
-      </p>
-      <ol>
-        <li v-for="column in draft.order" :key="column">
-          <span>{{ columnLabels[column] }}</span>
-          <template v-if="column === 'businessNo' || column === 'stage'">
-            <span class="field-help">固定</span>
-          </template>
-          <template v-else>
+      <section
+        class="case-list-preferences__dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="案件列设置"
+      >
+        <h2>案件列设置</h2>
+        <p class="field-help">案件编号和案件进展固定显示，其他列可设置。</p>
+        <ol>
+          <li v-for="column in draft.order" :key="column">
+            <span>{{ columnLabels[column] }}</span>
+            <template v-if="column === 'businessNo' || column === 'stage'">
+              <span class="field-help">固定</span>
+            </template>
+            <template v-else>
+              <label>
+                <input
+                  type="checkbox"
+                  :checked="!draft.hidden.includes(column)"
+                  @change="toggleColumn(column)"
+                />
+                显示
+              </label>
+              <ElButton
+                text
+                :disabled="draft.order.indexOf(column) === 2"
+                :aria-label="`${columnLabels[column]}上移`"
+                @click="move(column, -1)"
+                >上移</ElButton
+              >
+              <ElButton
+                text
+                :disabled="
+                  draft.order.indexOf(column) === draft.order.length - 1
+                "
+                :aria-label="`${columnLabels[column]}下移`"
+                @click="move(column, 1)"
+                >下移</ElButton
+              >
+            </template>
+          </li>
+          <li>
+            <span>{{ columnLabels.owner }}</span>
             <label>
               <input
                 type="checkbox"
-                :checked="!draft.hidden.includes(column)"
-                @change="toggleColumn(column)"
+                :checked="!draft.hidden.includes('owner')"
+                @change="toggleColumn('owner')"
               />
               显示
             </label>
-            <ElButton
-              text
-              :disabled="draft.order.indexOf(column) === 2"
-              :aria-label="`${columnLabels[column]}上移`"
-              @click="move(column, -1)"
-              >上移</ElButton
-            >
-            <ElButton
-              text
-              :disabled="draft.order.indexOf(column) === draft.order.length - 1"
-              :aria-label="`${columnLabels[column]}下移`"
-              @click="move(column, 1)"
-              >下移</ElButton
-            >
-          </template>
-        </li>
-      </ol>
-      <div class="case-list-preferences__actions">
-        <ElButton text @click="resetDraft">恢复默认</ElButton>
-        <ElButton text @click="cancel">取消</ElButton>
-        <ElButton
-          type="primary"
-          :loading="saving"
-          :disabled="loading || saving"
-          @click="saveDraft"
-          >保存</ElButton
-        >
-      </div>
+            <span></span><span></span>
+          </li>
+        </ol>
+        <div class="case-list-preferences__actions">
+          <ElButton text @click="resetDraft">恢复默认</ElButton>
+          <ElButton text @click="cancel">取消</ElButton>
+          <ElButton
+            type="primary"
+            :loading="saving"
+            :disabled="loading || saving"
+            @click="saveDraft"
+            >保存</ElButton
+          >
+        </div>
+      </section>
     </div>
   </section>
 </template>
@@ -239,15 +282,23 @@ onBeforeUnmount(() => {
   color: var(--color-ink-muted);
   font-size: 12px;
 }
-.case-list-preferences__dialog {
+.case-list-preferences__backdrop {
   position: fixed;
   z-index: var(--z-modal);
-  inset: 50% auto auto 50%;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(15 23 42 / 24%);
+}
+.case-list-preferences__dialog {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: min(620px, calc(100vw - 32px));
   max-height: min(80vh, 720px);
-  overflow: auto;
+  overflow: hidden;
   padding: var(--s-5);
-  transform: translate(-50%, -50%);
   background: var(--color-surface-1);
   border: 1px solid var(--color-hairline);
   border-radius: 10px;
@@ -259,6 +310,8 @@ onBeforeUnmount(() => {
 .case-list-preferences ol {
   display: grid;
   gap: var(--s-2);
+  min-height: 0;
+  overflow: auto;
   padding: 0;
   list-style: none;
 }
@@ -273,5 +326,7 @@ onBeforeUnmount(() => {
 .case-list-preferences__actions {
   justify-content: flex-end;
   margin-top: var(--s-4);
+  padding-top: var(--s-2);
+  background: var(--color-surface-1);
 }
 </style>

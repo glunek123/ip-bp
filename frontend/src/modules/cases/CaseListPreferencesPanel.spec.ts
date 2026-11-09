@@ -76,6 +76,7 @@ describe('CaseListPreferencesPanel', () => {
       'all',
       expect.objectContaining({ hidden: [] }),
       { signal: expect.any(AbortSignal) },
+      'department',
     );
     expect(api.save.mock.calls[0]?.[1].order.slice(2, 4)).toEqual([
       'rightsHolderName',
@@ -117,12 +118,22 @@ describe('CaseListPreferencesPanel', () => {
     await flushPromises();
     await wrapper.setProps({ bucket: 'WAITING_ARCHIVE' });
     await flushPromises();
-    expect(api.get).toHaveBeenNthCalledWith(1, 'all', {
-      signal: expect.any(AbortSignal),
-    });
-    expect(api.get).toHaveBeenNthCalledWith(2, 'WAITING_ARCHIVE', {
-      signal: expect.any(AbortSignal),
-    });
+    expect(api.get).toHaveBeenNthCalledWith(
+      1,
+      'all',
+      {
+        signal: expect.any(AbortSignal),
+      },
+      'department',
+    );
+    expect(api.get).toHaveBeenNthCalledWith(
+      2,
+      'WAITING_ARCHIVE',
+      {
+        signal: expect.any(AbortSignal),
+      },
+      'department',
+    );
   });
 
   it('allows a new-bucket save while the old PUT is pending and ignores its late success', async () => {
@@ -148,11 +159,40 @@ describe('CaseListPreferencesPanel', () => {
       'ARCHIVED',
       expect.any(Object),
       { signal: expect.any(AbortSignal) },
+      'department',
     );
     expect(wrapper.get('[role="status"]').text()).toBe('已保存');
     finishOldSave({ ...defaults, hidden: ['customerName'] });
     await flushPromises();
     expect(wrapper.get('[role="status"]').text()).toBe('已保存');
+  });
+
+  it('shows owner as a view-scoped option and closes without saving outside click', async () => {
+    api.get.mockResolvedValueOnce({ ...defaults, hidden: ['owner'] });
+    const wrapper = mount(CaseListPreferencesPanel, {
+      props: {
+        bucket: 'all',
+        view: 'mine',
+        requestGeneration: 'session-1',
+      },
+    });
+    await flushPromises();
+    expect(api.get).toHaveBeenCalledWith(
+      'all',
+      { signal: expect.any(AbortSignal) },
+      'mine',
+    );
+    await wrapper.get('[data-test="open-column-settings"]').trigger('click');
+    const ownerCheckbox = wrapper
+      .findAll('li')
+      .find((item) => item.text().includes('负责人'))!
+      .get('input');
+    expect((ownerCheckbox.element as HTMLInputElement).checked).toBe(false);
+    await wrapper
+      .get('[data-test="column-settings-backdrop"]')
+      .trigger('click');
+    expect(api.save).not.toHaveBeenCalled();
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
   });
 
   it('aborts outstanding GET and PUT requests when the panel unmounts', async () => {

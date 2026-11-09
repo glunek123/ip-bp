@@ -52,20 +52,27 @@ function courtEvent(fact: CaseCalendarFact): CalendarDateEvent {
     sourceType: fact.sourceType,
     sourceId: fact.sourceId,
     date: fact.date,
-    type: 'court',
+    type: fact.sourceType === 'CASE_PAYMENT_DUE' ? 'pay' : 'court',
     title:
-      fact.sourceType === 'FIRST_INSTANCE_HEARING' ? '一审开庭' : '二审开庭',
+      fact.sourceType === 'CASE_PAYMENT_DUE'
+        ? '缴费截止'
+        : fact.sourceType === 'FIRST_INSTANCE_HEARING'
+          ? '一审开庭'
+          : '二审开庭',
     sub: fact.businessNo,
     caseId: fact.caseId,
     customerId: null,
-    courtDetails: {
-      party: fact.party,
-      defendant: fact.defendant,
-      reason: null,
-      time: null,
-      place: fact.place,
-      judge: fact.judge,
-    },
+    courtDetails:
+      fact.sourceType === 'CASE_PAYMENT_DUE'
+        ? null
+        : {
+            party: fact.party,
+            defendant: fact.defendant,
+            reason: null,
+            time: null,
+            place: fact.place,
+            judge: fact.judge,
+          },
     caseDetails: null,
   };
 }
@@ -103,6 +110,8 @@ export function summarizeCalendar(
   today: string,
 ): CalendarSummary {
   const through = addDays(today, 30);
+  const hearings = court.filter((event) => event.type === 'court');
+  const payments = court.filter((event) => event.type === 'pay');
   const visible = uniqueEvents([...court, ...(contract ?? [])]);
   const next30 = visible.filter(
     (event) => event.date >= today && event.date <= through,
@@ -113,8 +122,8 @@ export function summarizeCalendar(
     window: { from: today, through },
     metrics: {
       next30: metric(next30, today),
-      court: metric(uniqueEvents(court), today),
-      pay: notConnected,
+      court: metric(uniqueEvents(hearings), today),
+      pay: metric(uniqueEvents(payments), today),
       contract:
         contract === null ? forbidden : metric(uniqueEvents(contract), today),
       other: notConnected,

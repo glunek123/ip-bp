@@ -5,7 +5,8 @@ import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 
 export type CaseCalendarFact = {
-  sourceType: 'FIRST_INSTANCE_HEARING' | 'SECOND_INSTANCE_HEARING';
+  sourceType:
+    'FIRST_INSTANCE_HEARING' | 'SECOND_INSTANCE_HEARING' | 'CASE_PAYMENT_DUE';
   sourceId: string;
   date: string;
   caseId: string;
@@ -20,6 +21,7 @@ export type CaseOwnedReminderFact = {
   sourceType:
     | 'FIRST_INSTANCE_HEARING'
     | 'SECOND_INSTANCE_HEARING'
+    | 'CASE_PAYMENT_DUE'
     | 'FIRST_INSTANCE_JUDGMENT'
     | 'SECOND_INSTANCE_RESULT';
   sourceId: string;
@@ -31,6 +33,13 @@ export type CaseOwnedReminderFact = {
 
 type Principal = 'INTERNAL' | 'LAWYER' | 'CLIENT';
 const calendarDate = (value: Date): string => value.toISOString().slice(0, 10);
+function effectivePaymentDue(acceptance: {
+  paymentDueAt: Date | null;
+  corrections: { paymentDueAt: Date | null }[];
+}): Date | null {
+  const latest = acceptance.corrections[0];
+  return latest ? latest.paymentDueAt : acceptance.paymentDueAt;
+}
 const forbidden = () =>
   new ForbiddenException({
     code: 'ACTION_FORBIDDEN',
@@ -152,6 +161,22 @@ export class CaseCalendarSourceService {
           },
         },
         { currentSecondInstanceProgress: { is: { hearingAt: { not: null } } } },
+        ...(principal === 'INTERNAL'
+          ? [
+              {
+                acceptance: {
+                  is: {
+                    OR: [
+                      { paymentDueAt: { not: null } },
+                      {
+                        corrections: { some: { paymentDueAt: { not: null } } },
+                      },
+                    ],
+                  },
+                },
+              },
+            ]
+          : []),
       ],
     };
   }
@@ -162,6 +187,17 @@ export class CaseCalendarSourceService {
       select: {
         id: true,
         businessNo: true,
+        acceptance: {
+          select: {
+            id: true,
+            paymentDueAt: true,
+            corrections: {
+              orderBy: { toRevision: 'desc' },
+              take: 1,
+              select: { paymentDueAt: true },
+            },
+          },
+        },
         rightsHolder: { select: { name: true } },
         defendants: { orderBy: { id: 'asc' }, select: { name: true } },
         currentHearingArrangement: {
@@ -200,6 +236,17 @@ export class CaseCalendarSourceService {
         defendant:
           item.defendants.map((entry) => entry.name).join('、') || null,
       };
+      const acceptance = item.acceptance;
+      const due = acceptance && effectivePaymentDue(acceptance);
+      if (principal === 'INTERNAL' && acceptance && due)
+        facts.push({
+          ...common,
+          sourceType: 'CASE_PAYMENT_DUE',
+          sourceId: acceptance.id,
+          date: calendarDate(due),
+          place: null,
+          judge: null,
+        });
       const first = item.currentHearingArrangement;
       const correction = first?.recordCorrections?.[0];
       const firstDate =
@@ -269,6 +316,17 @@ export class CaseCalendarSourceService {
           id: true,
           responsibilityEpoch: true,
           businessNo: true,
+          acceptance: {
+            select: {
+              id: true,
+              paymentDueAt: true,
+              corrections: {
+                orderBy: { toRevision: 'desc' },
+                take: 1,
+                select: { paymentDueAt: true },
+              },
+            },
+          },
           currentHearingArrangement: {
             select: {
               id: true,
@@ -311,6 +369,10 @@ export class CaseCalendarSourceService {
             businessNo: item.businessNo,
             ownerEpoch: `${item.id}:${item.responsibilityEpoch}`,
           });
+        const acceptance = item.acceptance;
+        const due = acceptance && effectivePaymentDue(acceptance);
+        if (acceptance && due)
+          add('CASE_PAYMENT_DUE', acceptance.id, calendarDate(due));
         const first = item.currentHearingArrangement;
         const corrected = first?.recordCorrections[0];
         const firstDate =

@@ -6,6 +6,7 @@ import {
   onBeforeRouteUpdate,
   useRoute,
   useRouter,
+  type LocationQueryRaw,
 } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
@@ -39,6 +40,8 @@ import {
   getExternalEntryOptions,
   getCase,
   listCases,
+  todayShanghai,
+  type CaseStage,
   type CaseStageGroup,
   type CaseStageFilter,
   type CaseSummary,
@@ -48,11 +51,13 @@ import {
 } from '../../api/cases';
 import {
   defaultCaseListPreference,
+  type CaseListHiddenColumn,
   type CaseListColumn,
   type CaseListPreference,
   type CaseListPreferenceBucket,
 } from '../../api/case-list-preference';
 import CaseListPreferencesPanel from './CaseListPreferencesPanel.vue';
+import { caseStageLabels } from './case-workspace-read-model';
 import CaseConsolidationPanel from './CaseConsolidationPanel.vue';
 import CaseCsvImportPanel from './CaseCsvImportPanel.vue';
 import CaseComplaintExportPanel from './CaseComplaintExportPanel.vue';
@@ -223,6 +228,8 @@ type ComplaintBatchQueue = {
   entries: ComplaintBatchEntry[];
 };
 const complaintBatchQueue = ref<ComplaintBatchQueue>();
+const batchMailAt = ref(todayShanghai());
+const batchMailRemark = ref('');
 const complaintBatchStorageError = ref('');
 const complaintBatchKey = (actor: string) =>
   `case-list-complaint-batch:v1:${encodeURIComponent(actor)}`;
@@ -879,6 +886,13 @@ function stageLabel(value: CaseSummary['stage']): string {
 function listActions(item: CaseSummary) {
   const actions = resolveCaseListActions(item);
   const primary =
+    (item.stage === 'WAITING_JUDGMENT'
+      ? actions.find(
+          (action) =>
+            action.intent === 'register-judgment' ||
+            action.intent === 'correct-judgment',
+        )
+      : undefined) ??
     actions.find((action) => action.intent === 'choose-next-step') ??
     primaryCaseAction(item.stage, actions);
   return primary
@@ -895,45 +909,42 @@ const secondaryCaseIntents = new Set<CaseActionIntent>([
   'defendant-contact-update',
   'acceptance-correction',
 ]);
-function isSecondaryCaseAction(
-  item: CaseSummary,
-  action: { intent: CaseActionIntent },
-) {
-  return (
-    secondaryCaseIntents.has(action.intent) ||
-    (action.intent === 'hearing' && !item.canScheduleHearing)
-  );
+function isSecondaryCaseAction(action: { intent: CaseActionIntent }) {
+  return secondaryCaseIntents.has(action.intent);
 }
 function progressActions(item: CaseSummary) {
   if (pendingActions.value.has(item.id)) return [];
   return listActions(item)
     .filter(
       (action) =>
-        !isSecondaryCaseAction(item, action) &&
+        !isSecondaryCaseAction(action) &&
         action.intent !== 'early-closure' &&
         action.intent !== 'archive',
     )
-    .slice(0, 1);
+    .slice(0, item.stage === 'WAITING_JUDGMENT' ? 2 : 1);
 }
 function shortCaseAction(
   action: {
     intent: CaseActionIntent;
     label: string;
   },
-  item?: Pick<CaseSummary, 'stage'>,
+  item?: Pick<CaseSummary, 'stage' | 'displaySummary'>,
 ): string {
+  if (action.intent === 'match')
+    return item?.displaySummary.defendants.length ? '匹配律师' : '补充被告';
   if (item?.stage === 'WAITING_ARCHIVE' && action.intent === 'record-closure')
     return '结算更新';
   const labels: Partial<Record<CaseActionIntent, string>> = {
-    match: '匹配案件',
+    match: '匹配律师',
     complaint: '提交诉状',
     'confirm-complaint': '确认诉状',
     'mail-complaint': '邮寄诉状',
     filing: '提交立案',
     acceptance: '正式立案',
-    hearing: '登记开庭',
-    'register-judgment': '登记判决',
-    'choose-next-step': '选择后续',
+    hearing: '补录／更正开庭日期',
+    'register-judgment': '判决更新',
+    'correct-judgment': '判决更新',
+    'choose-next-step': '二审抉择',
     'second-instance': '二审办理',
     'execution-upload': '上传材料',
     'execution-submission': '提交材料',
@@ -1150,17 +1161,22 @@ const caseListColumnOrder = [
 ] as const;
 type CaseListAmountColumn = 'claimAmount' | 'judgmentAmount' | 'closureAmount';
 const columnOrder = ref<CaseListColumn[]>([...caseListColumnOrder]);
-const hiddenColumns = ref<CaseListColumn[]>([]);
-const visibleColumns = computed(() =>
-  columnOrder.value.filter((column) => !hiddenColumns.value.includes(column)),
+const hiddenColumns = ref<CaseListHiddenColumn[]>(
+  view.value === 'mine' ? ['owner'] : [],
 );
+const visibleColumns = computed(() =>
+  columnOrder.value.filter(
+    (column) => !hiddenColumns.value.some((hidden) => hidden === column),
+  ),
+);
+const ownerVisible = computed(() => !hiddenColumns.value.includes('owner'));
 type CaseListTableColumn =
   CaseListColumn | 'selection' | 'owner' | 'rowActions';
 const tableColumns = computed<CaseListTableColumn[]>(() => [
   'selection',
   'rowActions',
   'businessNo',
-  'owner',
+  ...(ownerVisible.value ? ['owner' as const] : []),
   ...visibleColumns.value.filter((column) => column !== 'businessNo'),
 ]);
 const preferenceBucket = computed<CaseListPreferenceBucket>(
@@ -1169,11 +1185,49 @@ const preferenceBucket = computed<CaseListPreferenceBucket>(
 const preferenceRequestGeneration = computed(
   () => `${sessionGeneration.value}:${identity.value}`,
 );
+const workflowStages: Record<CaseStageGroup, readonly CaseStage[]> = {
+  COMPLAINT_PREPARATION: [
+    'WAITING_COMPLAINT',
+    'WAITING_COMPLAINT_CONFIRMATION',
+    'WAITING_COMPLAINT_STAMP',
+  ],
+  EXECUTION_PREPARATION: [
+    'WAITING_EXECUTION_DOCUMENTS',
+    'WAITING_EXECUTION_CONFIRMATION',
+    'WAITING_EXECUTION_STAMP',
+  ],
+};
+const workflowStageGroup = computed(() => {
+  if (stageGroup.value) return stageGroup.value;
+  const selected = stage.value;
+  return selected === 'all'
+    ? undefined
+    : (Object.keys(workflowStages) as CaseStageGroup[]).find((group) =>
+        workflowStages[group].includes(selected),
+      );
+});
+const workflowStageOptions = computed(() =>
+  workflowStageGroup.value ? workflowStages[workflowStageGroup.value] : [],
+);
+function filterWorkflowStage(selected: string) {
+  const group = workflowStageGroup.value;
+  if (!group) return;
+  const query: LocationQueryRaw = { ...route.query, page: '1' };
+  if (selected) {
+    delete query.stageGroup;
+    query.stage = selected;
+  } else {
+    delete query.stage;
+    query.stageGroup = group;
+  }
+  void router.push({ query });
+}
 watch(
-  [preferenceBucket, sessionGeneration, identity],
+  [preferenceBucket, sessionGeneration, identity, view],
   () => {
     columnOrder.value = [...defaultCaseListPreference.order];
-    hiddenColumns.value = [...defaultCaseListPreference.hidden];
+    hiddenColumns.value =
+      view.value === 'mine' ? ['owner'] : [...defaultCaseListPreference.hidden];
   },
   { immediate: true, flush: 'sync' },
 );
@@ -1203,8 +1257,8 @@ const columnLabels: Record<CaseListColumn, string> = {
   court: '法院',
   courtCaseNo: '案号',
   claimAmount: '标的额',
-  judgmentAmount: '判决额',
-  closureAmount: '结案额',
+  judgmentAmount: '判决金额',
+  closureAmount: '结案金额',
 };
 const fixedColumnLabels = {
   selection: '选择',
@@ -1574,7 +1628,7 @@ onBeforeUnmount(() => {
   <div class="page-view business-list-page">
     <main>
       <h1 class="sr-only">
-        {{ view === 'department' ? '全部部门案件' : '我的案件' }}
+        {{ view === 'department' ? '部门案件' : '我的案件' }}
       </h1>
       <section
         v-if="recordRecoveries.length || recordRecoveryError"
@@ -1672,6 +1726,25 @@ onBeforeUnmount(() => {
         }"
         aria-label="案件列表工具栏"
       >
+        <label v-if="workflowStageGroup" class="case-list-stage-filter">
+          <span>案件进展</span>
+          <select
+            data-test="case-workflow-stage-filter"
+            :value="stage === 'all' ? '' : stage"
+            @change="
+              filterWorkflowStage(($event.target as HTMLSelectElement).value)
+            "
+          >
+            <option value="">全部进展</option>
+            <option
+              v-for="option in workflowStageOptions"
+              :key="option"
+              :value="option"
+            >
+              {{ caseStageLabels[option] }}
+            </option>
+          </select>
+        </label>
         <span v-if="selectedCaseIds.length" aria-live="polite">
           已选 {{ selectedCaseIds.length }} 件
           <ElButton
@@ -1865,6 +1938,7 @@ onBeforeUnmount(() => {
         <div class="case-list-toolbar-preferences">
           <CaseListPreferencesPanel
             :bucket="preferenceBucket"
+            :view="view"
             :request-generation="preferenceRequestGeneration"
             @change="applyColumnPreference"
           />
@@ -1959,6 +2033,26 @@ onBeforeUnmount(() => {
           {{ complaintBatchStorageError }}
         </p>
         <template v-else-if="complaintBatchQueue">
+          <div
+            v-if="complaintBatchQueue.action === 'mail-complaint'"
+            class="demo-form-grid"
+          >
+            <label
+              >本批邮寄日期<input
+                v-model="batchMailAt"
+                type="date"
+                class="text-input"
+                :max="todayShanghai()"
+                data-test="batch-mail-date"
+            /></label>
+            <label
+              >本批邮寄备注<input
+                v-model="batchMailRemark"
+                class="text-input"
+                maxlength="1000"
+                data-test="batch-mail-remark"
+            /></label>
+          </div>
           <p>
             {{
               complaintBatchActionLabel(complaintBatchQueue.action)
@@ -1968,7 +2062,7 @@ onBeforeUnmount(() => {
                 (entry) => entry.status === 'succeeded',
               ).length
             }}
-            件已成功；每案材料和日期分别填写。
+            件已成功；逐案核对权限和结果。
           </p>
           <ul>
             <li
@@ -2371,6 +2465,11 @@ onBeforeUnmount(() => {
           :record-actor-key="recordActorKey"
           :actor-user-id="auth.session?.user.id"
           :record-recovery="selectedRecordRecovery"
+          :batch-mail-defaults="
+            complaintBatchQueue?.action === 'mail-complaint'
+              ? { mailedAt: batchMailAt, remark: batchMailRemark }
+              : undefined
+          "
           @cancel="drawer?.requestClose()"
         />
       </template>
@@ -2452,6 +2551,23 @@ onBeforeUnmount(() => {
 }
 .case-list-toolbar-menu {
   position: relative;
+}
+.case-list-stage-filter {
+  display: grid;
+  gap: 2px;
+  min-width: 170px;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  text-align: left;
+}
+.case-list-stage-filter select {
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--el-border-color);
+  border-radius: var(--el-border-radius-base);
+  background: var(--el-bg-color);
+  color: var(--color-ink);
 }
 .case-list-toolbar-menu > summary {
   cursor: pointer;

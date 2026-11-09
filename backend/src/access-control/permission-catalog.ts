@@ -84,6 +84,10 @@ export const internalAssignablePermissionActions = [
   'CASE_HEARING_CORRECT',
   'CASE_JUDGMENT_REGISTER',
   'CASE_REFUND_APPLICATION_RECORD',
+  'CASE_REFUND_READ',
+  'CASE_REFUND_RECORD',
+  'CASE_REFUND_FOLLOW',
+  'CASE_REFUND_EXPORT',
   'CASE_JUDGMENT_CORRECT',
   'CASE_JUDGMENT_NEXT_STEP',
   'CASE_JUDGMENT_NEXT_STEP_REVOKE',
@@ -392,6 +396,22 @@ const catalog: PermissionCatalogItem[] = [
     action: 'CASE_REFUND_APPLICATION_RECORD',
     label: '登记判决退费已申请',
     scopes: allScopes,
+  },
+  { action: 'CASE_REFUND_READ', label: '查看诉讼退费', scopes: ['DEPARTMENT'] },
+  {
+    action: 'CASE_REFUND_RECORD',
+    label: '登记诉讼退费事项',
+    scopes: ['SELF', 'DEPARTMENT'],
+  },
+  {
+    action: 'CASE_REFUND_FOLLOW',
+    label: '跟进诉讼退费',
+    scopes: ['SELF', 'DEPARTMENT'],
+  },
+  {
+    action: 'CASE_REFUND_EXPORT',
+    label: '导出诉讼退费',
+    scopes: ['DEPARTMENT'],
   },
   { action: 'CASE_JUDGMENT_CORRECT', label: '更正一审判决', scopes: allScopes },
   {

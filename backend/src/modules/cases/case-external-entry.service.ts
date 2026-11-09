@@ -207,7 +207,15 @@ export class CaseExternalEntryService {
         part.name.length < 1 ||
         part.name.length > 200 ||
         Object.keys(part).some(
-          (key) => !['kind', 'name', 'idNo', 'phone', 'address'].includes(key),
+          (key) =>
+            ![
+              'kind',
+              'name',
+              'idNo',
+              'phone',
+              'address',
+              'legalRepresentative',
+            ].includes(key),
         )
       )
         throw this.invalid();
@@ -215,6 +223,7 @@ export class CaseExternalEntryService {
         [part.idNo, 100],
         [part.phone, 100],
         [part.address, 500],
+        [part.legalRepresentative, 200],
       ] as const)
         if (
           value !== undefined &&
@@ -224,6 +233,8 @@ export class CaseExternalEntryService {
             value.length > max)
         )
           throw this.invalid();
+      if (part.kind === 'PERSON' && part.legalRepresentative !== undefined)
+        throw this.invalid();
     }
     if (
       known.courtId !== null &&
@@ -301,6 +312,9 @@ export class CaseExternalEntryService {
         idNo: part.idNo ?? null,
         phone: part.phone ?? null,
         address: part.address ?? null,
+        ...(part.legalRepresentative !== undefined
+          ? { legalRepresentative: part.legalRepresentative }
+          : {}),
       })),
       lawyerAccountId: input.lawyerAccountId,
       lawyerProfileId: input.lawyerProfileId,
@@ -643,6 +657,7 @@ export class CaseExternalEntryService {
           idNo: party.idNo ?? null,
           phone: party.phone ?? null,
           address: party.address ?? null,
+          legalRepresentative: party.legalRepresentative ?? null,
         })),
       });
     if (input.lawyerProfileId !== null)

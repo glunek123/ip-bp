@@ -24,10 +24,11 @@ export type CalendarDateEvent = {
   sourceType:
     | 'FIRST_INSTANCE_HEARING'
     | 'SECOND_INSTANCE_HEARING'
+    | 'CASE_PAYMENT_DUE'
     | 'CUSTOMER_AGREEMENT_EXPIRY';
   sourceId: string;
   date: string;
-  type: 'court' | 'contract';
+  type: 'court' | 'contract' | 'pay';
   title: string;
   sub: string | null;
   caseId: string | null;
@@ -221,7 +222,7 @@ function isSummary(value: unknown): value is CalendarSummary {
     (contractMetric.state === 'AVAILABLE' ||
       contractMetric.state === 'FORBIDDEN') &&
     isMetric(payMetric) &&
-    payMetric.state === 'NOT_CONNECTED' &&
+    (payMetric.state === 'NOT_CONNECTED' || payMetric.state === 'AVAILABLE') &&
     isMetric(otherMetric) &&
     otherMetric.state === 'NOT_CONNECTED'
   );
@@ -279,6 +280,16 @@ function isCalendarEvent(value: unknown): value is CalendarDateEvent {
       value.eventKey === `${value.sourceType}:${value.sourceId}`
     );
   }
+  if (value.sourceType === 'CASE_PAYMENT_DUE')
+    return (
+      value.type === 'pay' &&
+      value.caseId !== null &&
+      value.customerId === null &&
+      value.courtDetails === null &&
+      value.caseDetails === null &&
+      value.eventKey === `${value.sourceType}:${value.sourceId}`
+    );
+
   return (
     value.sourceType === 'CUSTOMER_AGREEMENT_EXPIRY' &&
     value.type === 'contract' &&

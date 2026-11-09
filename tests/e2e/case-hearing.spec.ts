@@ -274,7 +274,7 @@ async function registerAcceptance(
       detail.acceptance?.acceptedAt === acceptedAt
     );
   });
-  await panel.getByRole('button', { name: '登记正式立案' }).click();
+  await panel.locator('[data-test="acceptance-register"]').click();
   const [registered, refreshed] = await Promise.all([
     acceptanceResponse,
     detailRefresh,
@@ -285,7 +285,7 @@ async function registerAcceptance(
     stage: 'WAITING_HEARING',
     acceptance: { acceptedAt },
   });
-  await expect(page.locator('.case-workspace .pill')).toHaveText('待开庭');
+  await expect(page.locator('.detail-actions .pill')).toHaveText('待开庭');
 }
 
 type HearingDetailPayload = {
@@ -357,7 +357,7 @@ async function runHearingCommand(
   if (audience === 'lawyer')
     await expect(page.locator('.page-head')).toContainText(visibleStage);
   else
-    await expect(page.locator('.case-workspace .pill')).toHaveText(
+    await expect(page.locator('.detail-actions .pill')).toHaveText(
       visibleStage,
     );
   return latest;
@@ -533,6 +533,14 @@ test('formal role grants control overdue hearing registration and correction in 
   );
   await expectStatus(accountProbe, 201);
   await registerAcceptance(page, primary.caseId, acceptedAt, '第一案');
+  await page.goto('/cases?view=mine&stage=WAITING_HEARING');
+  const quickRow = page
+    .getByRole('row')
+    .filter({ has: page.locator(`a[href^="/cases/${primary.caseId}"]`) });
+  await quickRow
+    .getByRole('button', { name: '补录／更正开庭日期', exact: true })
+    .click({ timeout: 10_000 });
+  await expect(page.locator('[data-test="case-hearing-panel"]')).toBeVisible();
   await page.goto(`/cases/${primary.caseId}`);
   await openCaseWorkspaceCommand(
     page,
@@ -565,7 +573,7 @@ test('formal role grants control overdue hearing registration and correction in 
     'hearing',
     '[data-test="case-hearing-panel"]',
   );
-  await expect(page.locator('.case-workspace .pill')).toHaveText('待开庭');
+  await expect(page.locator('.detail-actions .pill')).toHaveText('待开庭');
   await expect(hearingPanel).toContainText('登记开庭安排');
   await expect(hearingPanel).toContainText('系统自动推进至待判决');
   await expect(hearingPanel).toContainText('人工更正安排');
@@ -582,7 +590,7 @@ test('formal role grants control overdue hearing registration and correction in 
     coreLeadFixtures.selfPassword,
   );
   await page.goto(`/cases/${primary.caseId}`);
-  await expect(page.locator('.case-workspace .pill')).toHaveText('待判决');
+  await expect(page.locator('.detail-actions .pill')).toHaveText('待判决');
   await expect(
     page.locator('[data-test="hearing-correction-form"]'),
   ).toHaveCount(0);
@@ -769,7 +777,7 @@ test('formal role grants control overdue hearing registration and correction in 
     'hearing',
     '[data-test="case-hearing-panel"]',
   );
-  await expect(page.locator('.case-workspace .pill')).toHaveText('待判决');
+  await expect(page.locator('.detail-actions .pill')).toHaveText('待判决');
   await page.locator('[data-test="hearing-date"]').fill(acceptedAt);
   await page
     .locator('[data-test="hearing-correction-reason"]')

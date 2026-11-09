@@ -51,6 +51,9 @@ export class CaseFilingService {
           expectedVersion: value.expectedVersion,
           courtId: value.courtId,
           submittedAt: value.submittedAt,
+          ...(value.claimAmount === undefined
+            ? {}
+            : { claimAmount: value.claimAmount }),
           mediationNo: value.mediationNo,
           filingEvidenceContentVersionIds:
             value.filingEvidenceContentVersionIds,
@@ -196,7 +199,7 @@ export class CaseFilingService {
                 ownerId: caseId,
                 category: 'FILING_EVIDENCE',
                 contentVersionIds: value.filingEvidenceContentVersionIds,
-                minCount: consolidationSources.length > 0 ? 0 : 1,
+                minCount: 0,
                 maxCount: 50,
               },
             );
@@ -242,6 +245,7 @@ export class CaseFilingService {
                   courtId: court.id,
                   submittedAt: value.submittedAt,
                   mediationNo: value.mediationNo,
+                  claimAmount: value.claimAmount ?? null,
                   filingEvidenceContentVersionIds:
                     value.filingEvidenceContentVersionIds,
                   filingScreenshotContentVersionIds:
@@ -264,6 +268,10 @@ export class CaseFilingService {
                 recordedAt,
                 recordedByUserId: actor.userId,
                 mediationNo: value.mediationNo,
+                claimAmount:
+                  value.claimAmount === undefined
+                    ? null
+                    : new Prisma.Decimal(value.claimAmount),
                 auditEventId: audit.id,
               },
               select: { id: true },
@@ -350,8 +358,10 @@ export class CaseFilingService {
       date.toISOString().slice(0, 10) !== input.submittedAt ||
       input.submittedAt > today ||
       !Array.isArray(evidence) ||
-      evidence.length + consolidation.length < 1 ||
       evidence.length > 50 ||
+      (input.claimAmount !== undefined &&
+        (typeof input.claimAmount !== 'string' ||
+          !/^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u.test(input.claimAmount))) ||
       !Array.isArray(screenshots) ||
       screenshots.length > 10 ||
       !Array.isArray(consolidation) ||

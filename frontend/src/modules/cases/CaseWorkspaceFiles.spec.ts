@@ -487,6 +487,7 @@ describe('CaseWorkspaceFiles', () => {
     };
     item.complaintMailing = {
       mailedAt: '2026-10-03',
+      remark: null,
       recordedAt: '2026-10-03T00:00:00Z',
       recordedByUserId: 'u',
       actorType: 'INTERNAL',
@@ -498,6 +499,7 @@ describe('CaseWorkspaceFiles', () => {
       recordedAt: '2026-10-04T00:00:00Z',
       recordedByUserId: 'u',
       mediationNo: null,
+      claimAmount: null,
       evidenceFiles: [file('filing')],
       screenshotFiles: [file('shot')],
     };

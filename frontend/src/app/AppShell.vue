@@ -12,6 +12,7 @@ import {
   type DueReminder,
 } from '../api/calendar-reminders';
 import { getSettlementContext } from '../api/settlements';
+import { getLitigationRefundCapabilities } from '../api/litigation-refunds';
 import { listEvidence } from '../api/evidence';
 import { getReportsCapability } from '../api/reports';
 import { listCases, type CaseStage, type CaseStageGroup } from '../api/cases';
@@ -468,6 +469,12 @@ const {
   const context = await getSettlementContext({ signal });
   return context.read || context.feeRead;
 }, '结算导航暂时无法读取，请重试。');
+const { visible: canViewLitigationRefunds } = createReadNavigation(
+  async (signal) => {
+    return (await getLitigationRefundCapabilities({ signal })).read;
+  },
+  '诉讼退费导航暂时无法读取，请重试。',
+);
 const {
   visible: canViewEvidence,
   error: evidenceReadError,
@@ -507,7 +514,7 @@ const breadcrumbs = computed(() =>
           isCaseRoute.value && index === 0
             ? selectedCaseView.value === 'mine'
               ? '我的案件'
-              : '全部部门案件'
+              : '部门案件'
             : item,
         )
     : [],
@@ -857,6 +864,10 @@ onBeforeUnmount(() =>
 function closeDrawer(): void {
   drawerOpen.value = false;
 }
+function toggleCaseGroup(group: 'cases' | 'department-cases'): void {
+  expandedGroup.value = expandedGroup.value === group ? null : group;
+  closeDrawer();
+}
 
 async function logout(): Promise<void> {
   if (loggingOut.value) return;
@@ -1152,35 +1163,18 @@ async function logout(): Promise<void> {
             :class="{ active: isCaseRoute && selectedCaseView === 'mine' }"
             data-test="case-view-mine"
             data-case-view="mine"
+            :aria-expanded="expandedGroup === 'cases'"
             :to="{ path: '/cases', query: { ...caseViewQuery('mine') } }"
-            @click="closeDrawer"
+            @click="toggleCaseGroup('cases')"
           >
             <span>我的案件</span
             ><span v-if="caseTotal('mine') !== null" class="app-nav__badge">{{
               caseTotal('mine')
+            }}</span
+            ><span class="app-nav__chevron" aria-hidden="true">{{
+              expandedGroup === 'cases' ? '⌄' : '›'
             }}</span>
           </RouterLink>
-          <button
-            class="app-nav__expand"
-            type="button"
-            data-test="case-expand"
-            :aria-expanded="
-              expandedGroup === 'cases' && selectedCaseView === 'mine'
-            "
-            aria-label="展开或收起我的案件阶段"
-            @click="
-              expandedGroup =
-                expandedGroup === 'cases' && selectedCaseView === 'mine'
-                  ? null
-                  : 'cases'
-            "
-          >
-            {{
-              expandedGroup === 'cases' && selectedCaseView === 'mine'
-                ? '⌄'
-                : '›'
-            }}
-          </button>
         </div>
         <div
           v-if="
@@ -1248,30 +1242,19 @@ async function logout(): Promise<void> {
               active: isCaseRoute && selectedCaseView === 'department',
             }"
             data-test="case-view-department"
+            :aria-expanded="expandedGroup === 'department-cases'"
             data-case-view="department"
             :to="{ path: '/cases', query: { ...caseViewQuery('department') } }"
-            @click="closeDrawer"
-            ><span>全部部门案件</span
+            @click="toggleCaseGroup('department-cases')"
+            ><span>部门案件</span
             ><span
               v-if="caseTotal('department') !== null"
               class="app-nav__badge"
               >{{ caseTotal('department') }}</span
-            ></RouterLink
+            ><span class="app-nav__chevron" aria-hidden="true">{{
+              expandedGroup === 'department-cases' ? '⌄' : '›'
+            }}</span></RouterLink
           >
-          <button
-            v-if="canViewCases"
-            class="app-nav__expand"
-            type="button"
-            data-test="case-expand-department"
-            :aria-expanded="expandedGroup === 'department-cases'"
-            aria-label="展开或收起全部部门案件阶段"
-            @click="
-              expandedGroup =
-                expandedGroup === 'department-cases' ? null : 'department-cases'
-            "
-          >
-            {{ expandedGroup === 'department-cases' ? '⌄' : '›' }}
-          </button>
         </div>
         <div
           v-if="
@@ -1395,11 +1378,15 @@ async function logout(): Promise<void> {
           >
         </div>
         <RouterLink
-          v-if="!isClient && canViewSettlements"
+          v-if="!isClient && (canViewSettlements || canViewLitigationRefunds)"
           class="app-nav__item"
           :class="{ active: route.path === '/settlements' }"
           data-test="settlement-nav"
-          to="/settlements"
+          :to="
+            canViewSettlements
+              ? '/settlements'
+              : { path: '/settlements', query: { tab: 'refunds' } }
+          "
           @click="closeDrawer"
           ><span>结算中心</span></RouterLink
         >

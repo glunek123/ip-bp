@@ -48,6 +48,7 @@ export function readCaseListRecordRecoveries(
 }
 
 type Inputs = {
+  'prepare-defendants': api.PrepareCaseDefendantsInput;
   match: api.MatchCaseInput;
   complaint: api.SubmitComplaintInput;
   confirmation: api.ConfirmCaseComplaintInput;
@@ -132,6 +133,20 @@ const judgmentFields = {
   paidLitigationFeeState: oneOf('KNOWN', 'PENDING'),
   paidLitigationFee: nullable(string),
   judgmentContentVersionIds: strings,
+  refunds: optional(
+    (value) =>
+      Array.isArray(value) &&
+      value.length <= 20 &&
+      value.every(
+        (row: unknown) =>
+          typeof row === 'object' &&
+          row !== null &&
+          'party' in row &&
+          (row.party === 'COURT' || row.party === 'DEFENDANT') &&
+          'amount' in row &&
+          typeof row.amount === 'string',
+      ),
+  ),
 };
 const closureFields = {
   expectedFinishId: nullable(string),
@@ -173,10 +188,27 @@ const schema = {
           idNo: optional(string),
           phone: optional(string),
           address: optional(string),
+          legalRepresentative: optional(string),
         }),
       ),
     lawyerAccountId: string,
     lawyerProfileId: optional(string),
+  },
+  'prepare-defendants': {
+    defendants: (value: unknown) =>
+      Array.isArray(value) &&
+      value.length > 0 &&
+      value.length <= 20 &&
+      value.every(
+        shape({
+          kind: oneOf('PERSON', 'ORGANIZATION'),
+          name: string,
+          idNo: optional(string),
+          phone: optional(string),
+          address: optional(string),
+          legalRepresentative: optional(string),
+        }),
+      ),
   },
   complaint: {
     amountState: oneOf('KNOWN', 'PENDING'),
@@ -191,12 +223,17 @@ const schema = {
     amount: nullable(string),
     pendingReason: nullable(string),
     changeNote: optional(string),
-    confirmDisclose: boolean,
+    confirmDisclose: optional(nullable(boolean)),
   },
-  mailing: { mailedAt: string, mailReceiptContentVersionIds: strings },
+  mailing: {
+    mailedAt: string,
+    remark: optional(string),
+    mailReceiptContentVersionIds: strings,
+  },
   filing: {
     courtId: string,
     submittedAt: string,
+    claimAmount: optional(string),
     filingEvidenceContentVersionIds: strings,
     filingScreenshotContentVersionIds: optional(strings),
     mediationNo: optional(string),
@@ -329,7 +366,14 @@ export function decodeCaseListRequest(value: unknown): StoredRequest | null {
 </script>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  ref,
+  shallowRef,
+  watch,
+} from 'vue';
 import { ApiError } from '../../api/http';
 import type {
   ListWorkflowSession,
@@ -376,6 +420,7 @@ import {
 
 const props = defineProps<{
   item: api.CaseDetail;
+  batchMailDefaults?: { mailedAt: string; remark: string };
   action: CaseListAction;
   recordActorKey?: string;
   actorUserId?: string;
@@ -649,6 +694,8 @@ function unknown(reason: unknown) {
 }
 async function transport(id: string, request: CaseListRequest) {
   switch (request.kind) {
+    case 'prepare-defendants':
+      return api.prepareCaseDefendants(id, request.input);
     case 'match':
       return api.matchCase(id, request.input);
     case 'complaint':
@@ -1003,19 +1050,43 @@ function loadCandidates() {
         candidatesError.value = '律师候选暂时无法读取，请重新读取资料。';
     });
 }
-if (props.action === 'match' && allowed.value && !pending.value)
+watch(lawyerQuery, () => loadCandidates());
+if (
+  props.action === 'match' &&
+  allowed.value &&
+  !pending.value &&
+  item.value.defendants.length
+)
   loadCandidates();
+async function prepareDefendants() {
+  if (defendants.value.some((entry) => !entry.name.trim())) {
+    error.value = '请填写每位被告的名称。';
+    return;
+  }
+  try {
+    await send({
+      kind: 'prepare-defendants',
+      input: {
+        expectedVersion: item.value.version,
+        idempotencyKey: globalThis.crypto.randomUUID(),
+        defendants: defendants.value.map((entry) => ({ ...entry })),
+      },
+    });
+  } catch {
+    /* shown above */
+  }
+}
 async function match() {
   const selected = candidates.value.find(
     (entry) => entry.lawyerAccountId === lawyer.value,
   );
   if (
     !selected ||
-    defendants.value.some((entry) => !entry.name.trim()) ||
+    item.value.defendants.length === 0 ||
     !matchedOn.value ||
     matchedOn.value > api.todayShanghai()
   ) {
-    error.value = '请填写真实匹配日期、每位被告名称并选择承办律师。';
+    error.value = '请填写真实委案日期并选择承办律师。';
     return;
   }
   try {
@@ -1025,7 +1096,16 @@ async function match() {
         expectedVersion: item.value.version,
         idempotencyKey: globalThis.crypto.randomUUID(),
         matchedOn: matchedOn.value,
-        defendants: defendants.value.map((entry) => ({ ...entry })),
+        defendants: item.value.defendants.map((entry) => ({
+          kind: entry.kind,
+          name: entry.name,
+          ...(entry.idNo ? { idNo: entry.idNo } : {}),
+          ...(entry.phone ? { phone: entry.phone } : {}),
+          ...(entry.address ? { address: entry.address } : {}),
+          ...(entry.legalRepresentative
+            ? { legalRepresentative: entry.legalRepresentative }
+            : {}),
+        })),
         lawyerAccountId: selected.lawyerAccountId,
         lawyerProfileId: selected.lawyerProfileId,
       },
@@ -1375,44 +1455,51 @@ async function complaint() {
       <form
         v-if="action === 'match'"
         data-test="case-match-form"
-        @submit.prevent="match"
+        @submit.prevent="item.defendants.length ? match() : prepareDefendants()"
       >
-        <p>匹配当事人与承办律师，提交后进入待写诉状。</p>
-        <label
-          >实际匹配日期<input
+        <h3>{{ item.defendants.length ? '匹配律师' : '补充被告' }}</h3>
+        <label v-if="item.defendants.length"
+          >委案日期<input
             v-model="matchedOn"
             type="date"
             :max="api.todayShanghai()"
             required
         /></label>
-        <div v-for="(defendant, index) in defendants" :key="index">
-          <label
-            >被告类型<select v-model="defendant.kind">
-              <option value="PERSON">自然人</option>
-              <option value="ORGANIZATION">组织</option>
-            </select></label
-          >
-          <label>被告名称<input v-model="defendant.name" required /></label>
-          <label>证件号码<input v-model="defendant.idNo" /></label>
-          <label>电话<input v-model="defendant.phone" /></label>
-          <label>地址<input v-model="defendant.address" /></label>
-          <button
-            v-if="defendants.length > 1"
-            type="button"
-            @click="defendants.splice(index, 1)"
-          >
-            移除被告
-          </button>
-        </div>
+        <template v-if="!item.defendants.length">
+          <div v-for="(defendant, index) in defendants" :key="index">
+            <label
+              >被告类型<select v-model="defendant.kind">
+                <option value="PERSON">自然人</option>
+                <option value="ORGANIZATION">法人／个体</option>
+              </select></label
+            >
+            <label>被告名称<input v-model="defendant.name" required /></label>
+            <label>证件号码<input v-model="defendant.idNo" /></label>
+            <label>电话<input v-model="defendant.phone" /></label>
+            <label>地址<input v-model="defendant.address" /></label>
+            <label v-if="defendant.kind === 'ORGANIZATION'"
+              >法定代表人<input v-model="defendant.legalRepresentative"
+            /></label>
+            <button
+              v-if="defendants.length > 1"
+              type="button"
+              @click="defendants.splice(index, 1)"
+            >
+              移除被告
+            </button>
+          </div>
+        </template>
         <button
+          v-if="!item.defendants.length"
           type="button"
           @click="defendants.push({ kind: 'PERSON', name: '' })"
         >
           添加被告
         </button>
-        <label>查找律师<input v-model="lawyerQuery" /></label>
-        <button type="button" @click="loadCandidates">查询律师账号</button>
-        <label
+        <label v-if="item.defendants.length"
+          >输入姓名搜索承办律师<input v-model="lawyerQuery"
+        /></label>
+        <label v-if="item.defendants.length"
           >承办律师<select v-model="lawyer" required>
             <option value="" disabled>请选择律师</option>
             <option
@@ -1425,7 +1512,9 @@ async function complaint() {
           </select></label
         >
         <p v-if="candidatesError" role="alert">{{ candidatesError }}</p>
-        <button type="submit">保存匹配并进入待写诉状</button>
+        <button type="submit">
+          {{ item.defendants.length ? '匹配律师' : '保存被告' }}
+        </button>
       </form>
       <CaseComplaintSubmissionForm
         v-else-if="action === 'complaint' && complaintAmountChoice"
@@ -1468,6 +1557,7 @@ async function complaint() {
       <CaseComplaintMailingPanel
         v-else-if="action === 'mail-complaint'"
         :item="item"
+        :batch-defaults="batchMailDefaults"
         :submit-command="(input) => send({ kind: 'mailing', input })"
         @refresh="refresh"
       />

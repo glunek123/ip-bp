@@ -51,6 +51,7 @@ import { caseListQueryKeys } from './case-list-query';
 import CaseDetailsSections from './CaseDetailsSections.vue';
 import CaseConsolidationTrace from './CaseConsolidationTrace.vue';
 import CaseWorkspaceFiles from './CaseWorkspaceFiles.vue';
+import CaseLitigationRefundPanel from './CaseLitigationRefundPanel.vue';
 import { listCaseFileCatalog, exportCaseFiles } from '../../api/case-files';
 import {
   getCaseClosureWorkspace,
@@ -62,6 +63,7 @@ import {
 } from '../../api/case-supplements';
 import { getEvidenceSourceGroup, type EvidenceGroup } from '../../api/evidence';
 import { getCaseSettlement, type CaseSettlement } from '../../api/settlements';
+import type { RefundWorkspace } from '../../api/litigation-refunds';
 import CaseWorkspaceFees from './CaseWorkspaceFees.vue';
 import { CaseFinancePanel } from '../settlements';
 import type { CaseActualSummary } from '../settlements';
@@ -96,12 +98,14 @@ import {
   type FinishCaseExecutionResult,
   getCase,
   matchCase,
+  prepareCaseDefendants,
   listLawyerMatchCandidates,
   submitComplaint,
   todayShanghai,
   type CaseFile,
   type CaseDetail,
   type MatchCaseInput,
+  type PrepareCaseDefendantsInput,
   type SubmitComplaintInput,
   type LawyerMatchCandidate,
 } from '../../api/cases';
@@ -198,6 +202,7 @@ const lead = ref<LeadDetail | null>(null);
 const leadState = ref<LeadState>('idle');
 const closureWorkspace = ref<CaseClosureWorkspace | null>(null);
 const supplementWorkspace = ref<CaseSupplementWorkspace | null>(null);
+const refundWorkspace = ref<RefundWorkspace | null>(null);
 const evidenceGroup = ref<EvidenceGroup | null>(null);
 const settlementWorkspace = ref<CaseSettlement | null>(null);
 const leadMaterials = ref<OwnerMaterial[] | null>(null);
@@ -984,6 +989,7 @@ const complaintSuccess = ref('');
 const complaintSubmitting = ref(false);
 const complaintUnknown = ref<SubmitComplaintInput | null>(null);
 const matchUnknown = ref<MatchCaseInput | null>(null);
+const prepareUnknown = ref<PrepareCaseDefendantsInput | null>(null);
 let complaintFingerprint = '';
 let complaintIdempotencyKey = '';
 type DefendantDraft = {
@@ -992,9 +998,17 @@ type DefendantDraft = {
   idNo: string;
   phone: string;
   address: string;
+  legalRepresentative: string;
 };
 const defendants = ref<DefendantDraft[]>([
-  { kind: 'PERSON', name: '', idNo: '', phone: '', address: '' },
+  {
+    kind: 'PERSON',
+    name: '',
+    idNo: '',
+    phone: '',
+    address: '',
+    legalRepresentative: '',
+  },
 ]);
 const lawyerQuery = ref('');
 const lawyerCandidates = ref<LawyerMatchCandidate[]>([]);
@@ -1731,6 +1745,7 @@ function clearContext(): void {
   leadState.value = 'idle';
   closureWorkspace.value = null;
   supplementWorkspace.value = null;
+  refundWorkspace.value = null;
   evidenceGroup.value = null;
   settlementWorkspace.value = null;
   leadMaterials.value = null;
@@ -1763,10 +1778,18 @@ function clearContext(): void {
   complaintSubmitting.value = false;
   complaintUnknown.value = null;
   matchUnknown.value = null;
+  prepareUnknown.value = null;
   complaintFingerprint = '';
   complaintIdempotencyKey = '';
   defendants.value = [
-    { kind: 'PERSON', name: '', idNo: '', phone: '', address: '' },
+    {
+      kind: 'PERSON',
+      name: '',
+      idNo: '',
+      phone: '',
+      address: '',
+      legalRepresentative: '',
+    },
   ];
   lawyerQuery.value = '';
   lawyerCandidates.value = [];
@@ -1844,10 +1867,9 @@ watch(
       );
       if (!current || controller.signal.aborted) return;
       lawyerCandidates.value = candidates;
-      selectedLawyer.value =
-        candidates.find(
-          (candidate) => candidate.lawyerAccountId === selectedAccountId,
-        ) ?? (candidates.length === 1 ? candidates[0] : undefined);
+      selectedLawyer.value = candidates.find(
+        (candidate) => candidate.lawyerAccountId === selectedAccountId,
+      );
     } catch (reason) {
       if (current && !controller.signal.aborted)
         lawyerCandidatesError.value =
@@ -1868,6 +1890,7 @@ function addDefendant() {
     idNo: '',
     phone: '',
     address: '',
+    legalRepresentative: '',
   });
 }
 function stageLabel(stage: CaseDetail['stage']): string {
@@ -2102,6 +2125,67 @@ async function submitComplaintMaterials() {
     if (isCurrentOperation(context, false)) complaintSubmitting.value = false;
   }
 }
+async function submitPrepareDefendants() {
+  const current = item.value;
+  if (
+    !current ||
+    current.stage !== 'PENDING_MATCH' ||
+    !current.canMatch ||
+    current.defendants.length ||
+    submitting.value
+  )
+    return;
+  matchError.value = '';
+  if (
+    !prepareUnknown.value &&
+    defendants.value.some(({ name }) => !name.trim())
+  ) {
+    matchError.value = '请填写每位被告的名称。';
+    return;
+  }
+  const input: PrepareCaseDefendantsInput = prepareUnknown.value ?? {
+    expectedVersion: current.version,
+    idempotencyKey: makeKey(),
+    defendants: defendants.value.map((entry) => ({ ...entry })),
+  };
+  prepareUnknown.value = input;
+  submitting.value = true;
+  const context = operationContext();
+  try {
+    await prepareCaseDefendants(current.id, input);
+    if (!isCurrentOperation(context)) return;
+    const fresh = await readCommandDetail(context);
+    if (!isCurrentOperation(context)) return;
+    item.value = fresh;
+    if (fresh.defendants.length === input.defendants.length) {
+      prepareUnknown.value = null;
+      matchSuccess.value = '被告已保存，可以匹配律师。';
+      notifyWorkflowChanged();
+    }
+  } catch (reason) {
+    if (!isCurrentOperation(context)) return;
+    if (
+      reason instanceof ApiError &&
+      reason.status > 0 &&
+      reason.status < 500
+    ) {
+      prepareUnknown.value = null;
+      if (
+        reason.code === 'VERSION_CONFLICT' ||
+        reason.code === 'DEFENDANTS_ALREADY_PREPARED'
+      ) {
+        const fresh = await readCommandDetail(context);
+        if (isCurrentOperation(context)) item.value = fresh;
+      }
+    }
+    matchError.value =
+      reason instanceof ApiError
+        ? reason.message
+        : '被告保存结果未确认，请重试原请求。';
+  } finally {
+    if (isCurrentOperation(context, false)) submitting.value = false;
+  }
+}
 async function submitMatch() {
   const current = item.value;
   if (
@@ -2113,11 +2197,8 @@ async function submitMatch() {
     return;
   matchError.value = '';
   matchSuccess.value = '';
-  if (
-    !matchUnknown.value &&
-    defendants.value.some(({ name }) => !name.trim())
-  ) {
-    matchError.value = '请填写每位被告的名称。';
+  if (!matchUnknown.value && current.defendants.length === 0) {
+    matchError.value = '请先补充被告。';
     return;
   }
   if (!matchUnknown.value && !selectedLawyer.value) {
@@ -2129,20 +2210,21 @@ async function submitMatch() {
     !matchUnknown.value &&
     (!matchedOn.value || matchedOn.value > todayShanghai())
   ) {
-    matchError.value = '请选择真实的实际匹配日期，不能晚于今天。';
+    matchError.value = '请选择真实的委案日期，不能晚于今天。';
     return;
   }
   const input: MatchCaseInput = matchUnknown.value ?? {
     expectedVersion: current.version,
     idempotencyKey: '',
     matchedOn: matchedOn.value,
-    defendants: defendants.value.map(
-      ({ kind, name, idNo, phone, address }) => ({
+    defendants: current.defendants.map(
+      ({ kind, name, idNo, phone, address, legalRepresentative }) => ({
         kind,
         name,
-        idNo,
-        phone,
-        address,
+        idNo: idNo ?? undefined,
+        phone: phone ?? undefined,
+        address: address ?? undefined,
+        legalRepresentative: legalRepresentative ?? undefined,
       }),
     ),
     lawyerAccountId: selectedLawyer.value?.lawyerAccountId ?? '',
@@ -2487,6 +2569,7 @@ onBeforeUnmount(() => {
           :routine="routine"
           :closure-workspace="closureWorkspace"
           :supplement-workspace="supplementWorkspace"
+          :refund-workspace="refundWorkspace"
           :evidence-group="evidenceGroup"
           :settlement-workspace="settlementWorkspace"
           :lead-materials="leadMaterials"
@@ -2504,6 +2587,14 @@ onBeforeUnmount(() => {
           @view-timeline="viewTimeline"
           @supplement-changed="detailSourcesRevision += 1"
           @open-files="selectTab('files')"
+        />
+        <CaseLitigationRefundPanel
+          v-if="accessVerified && state === 'ready'"
+          :actor-key="secondInstanceActorKey"
+          :case-id="item.id"
+          :refresh-key="`${item.version}:${identity}:${detailSourcesRevision}`"
+          @refresh="detailSourcesRevision += 1"
+          @workspace-loaded="refundWorkspace = $event"
         />
         <section
           class="demo-card demo-card--pad"
@@ -2671,7 +2762,6 @@ onBeforeUnmount(() => {
           >
             <CaseComplaintMailingPanel
               :item="item"
-              :read-revision="activationRevision"
               @changed="load"
               @refresh="load"
             />
@@ -2934,16 +3024,18 @@ onBeforeUnmount(() => {
             class="demo-card demo-card--pad"
             data-test="case-match-form"
             :inert="
-              !!matchUnknown || item.stage !== 'PENDING_MATCH' || !item.canMatch
+              !!matchUnknown ||
+              !!prepareUnknown ||
+              item.stage !== 'PENDING_MATCH' ||
+              !item.canMatch
             "
           >
-            <h2 class="form-section-title">匹配当事人与承办律师</h2>
-            <p class="field-help">
-              提交后将保存全部被告和主办律师，并把案件推进到“待写诉状”。上述信息与阶段变更会一并保存。
-            </p>
-            <div class="demo-form-grid">
+            <h2 class="form-section-title">
+              {{ item.defendants.length ? '匹配律师' : '补充被告' }}
+            </h2>
+            <div v-if="item.defendants.length" class="demo-form-grid">
               <label
-                >实际匹配日期 <span aria-hidden="true">*</span
+                >委案日期 <span aria-hidden="true">*</span
                 ><input
                   v-model="matchedOn"
                   type="date"
@@ -2956,59 +3048,67 @@ onBeforeUnmount(() => {
                 默认今天；补录时可改为真实的过去日期。系统会另记本次登记时间。
               </p>
             </div>
-            <div
-              v-for="(defendant, index) in defendants"
-              :key="index"
-              class="demo-form-grid"
-            >
-              <h3>被告 {{ index + 1 }}</h3>
-              <label
-                >主体类型
-                <select v-model="defendant.kind" class="text-input">
-                  <option value="PERSON">自然人</option>
-                  <option value="ORGANIZATION">组织</option>
-                </select></label
+            <template v-if="!item.defendants.length">
+              <div
+                v-for="(defendant, index) in defendants"
+                :key="index"
+                class="demo-form-grid"
               >
-              <label
-                >名称 <span aria-hidden="true">*</span
-                ><input
-                  v-model="defendant.name"
-                  class="text-input"
-                  required
-                  :aria-required="true"
-              /></label>
-              <label
-                >身份证号（选填）<input
-                  v-model="defendant.idNo"
-                  class="text-input"
-              /></label>
-              <label
-                >电话（选填）<input
-                  v-model="defendant.phone"
-                  class="text-input"
-              /></label>
-              <label
-                >地址（选填）<input
-                  v-model="defendant.address"
-                  class="text-input"
-              /></label>
-              <ElButton
-                v-if="defendants.length > 1"
-                text
-                @click="removeDefendant(index)"
-                >移除此被告</ElButton
-              >
-            </div>
+                <h3>被告 {{ index + 1 }}</h3>
+                <label
+                  >主体类型
+                  <select v-model="defendant.kind" class="text-input">
+                    <option value="PERSON">自然人</option>
+                    <option value="ORGANIZATION">法人／个体</option>
+                  </select></label
+                >
+                <label
+                  >名称 <span aria-hidden="true">*</span
+                  ><input
+                    v-model="defendant.name"
+                    class="text-input"
+                    required
+                    :aria-required="true"
+                /></label>
+                <label
+                  >身份证号（选填）<input
+                    v-model="defendant.idNo"
+                    class="text-input"
+                /></label>
+                <label
+                  >电话（选填）<input
+                    v-model="defendant.phone"
+                    class="text-input"
+                /></label>
+                <label
+                  >地址（选填）<input
+                    v-model="defendant.address"
+                    class="text-input"
+                /></label>
+                <label v-if="defendant.kind === 'ORGANIZATION'"
+                  >法定代表人<input
+                    v-model="defendant.legalRepresentative"
+                    class="text-input"
+                /></label>
+                <ElButton
+                  v-if="defendants.length > 1"
+                  text
+                  @click="removeDefendant(index)"
+                  >移除此被告</ElButton
+                >
+              </div>
+            </template>
             <ElButton
+              v-if="!item.defendants.length"
               text
               :disabled="defendants.length >= 20"
               @click="addDefendant"
               >添加被告（最多 20 位）</ElButton
             >
-            <div class="demo-form-grid">
-              <h3>主办律师账号</h3>
+            <div v-if="item.defendants.length" class="demo-form-grid">
+              <h3>承办律师</h3>
               <label
-                >按姓名或用户名搜索<input
+                >输入姓名搜索<input
                   v-model="lawyerQuery"
                   class="text-input"
                   autocomplete="off"
@@ -3049,21 +3149,35 @@ onBeforeUnmount(() => {
               >
                 没有有效律师账号候选。请联系有权限的管理员先创建律师账号。
               </p>
-              <p v-else-if="lawyerCandidates.length === 1" class="field-help">
-                已自动选择唯一候选账号。
-              </p>
             </div>
             <p v-if="matchError" class="submit-error" role="alert">
               {{ matchError }}
             </p>
             <ElButton
+              v-if="!item.defendants.length"
+              type="primary"
+              :loading="submitting"
+              :disabled="submitting"
+              @click="submitPrepareDefendants"
+              >保存被告</ElButton
+            >
+            <ElButton
+              v-else
               type="primary"
               :loading="submitting"
               :disabled="submitting"
               @click="submitMatch"
-              >确认匹配并进入待写诉状</ElButton
+              >匹配律师</ElButton
             >
           </section>
+          <ElButton
+            v-if="
+              prepareUnknown && !timelineView && selectedCommand === 'match'
+            "
+            :disabled="submitting"
+            @click="submitPrepareDefendants"
+            >重试保存被告原请求</ElButton
+          >
           <ElButton
             v-if="matchUnknown && !timelineView && selectedCommand === 'match'"
             :disabled="submitting"
@@ -3075,7 +3189,7 @@ onBeforeUnmount(() => {
             v-if="matchUnknown && !timelineView && selectedCommand === 'match'"
             class="field-help"
           >
-            原请求：案件版本 {{ matchUnknown.expectedVersion }}；实际匹配日期
+            原请求：案件版本 {{ matchUnknown.expectedVersion }}；委案日期
             {{ matchUnknown.matchedOn }}；被告
             {{
               matchUnknown.defendants.map((entry) => entry.name).join('、')

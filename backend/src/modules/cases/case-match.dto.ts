@@ -39,6 +39,34 @@ export class CaseMatchDefendantDto {
   @IsString()
   @MaxLength(500)
   address?: string;
+  @ApiPropertyOptional({ maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  legalRepresentative?: string;
+}
+
+export class PrepareCaseDefendantsDto {
+  @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
+  @ApiProperty({ minLength: 1, maxLength: 128 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  idempotencyKey!: string;
+  @ApiProperty({ type: [CaseMatchDefendantDto], minItems: 1, maxItems: 20 })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => CaseMatchDefendantDto)
+  defendants!: CaseMatchDefendantDto[];
+}
+
+export class PrepareCaseDefendantsResponseDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ enum: ['PENDING_MATCH'] }) stage!: 'PENDING_MATCH';
+  @ApiProperty() version!: number;
+  @ApiProperty() defendantCount!: number;
 }
 
 export class CaseMatchLawyerDto {

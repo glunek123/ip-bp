@@ -14,6 +14,7 @@ import {
   ElSelect,
 } from 'element-plus/es/components/select/index.mjs';
 import { ApiError } from '../../api/http';
+import { storeFinancialPending } from './financial-pending';
 import type {
   CaseSettlement,
   SettlementCapabilities,
@@ -34,6 +35,13 @@ const api = vi.hoisted(() => ({
   updateFee: vi.fn(),
   updateFeeProof: vi.fn(),
   batchFees: vi.fn(),
+  getLitigationRefundCapabilities: vi.fn(),
+  listLitigationRefunds: vi.fn(),
+  exportLitigationRefunds: vi.fn(),
+  followUpLitigationRefund: vi.fn(),
+  getLitigationRefundRequest: vi.fn(),
+  route: { query: {} as Record<string, unknown> },
+  routerReplace: vi.fn(),
 }));
 const feeCancellationApi = vi.hoisted(() => ({ cancelFee: vi.fn() }));
 vi.mock('../../api/case-fee-statistics', () => ({
@@ -53,6 +61,19 @@ vi.mock('../../api/fee-cancellations', async (importOriginal) => ({
 vi.mock('../../api/settlements', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/settlements')>()),
   ...api,
+}));
+vi.mock('../../api/litigation-refunds', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/litigation-refunds')>()),
+  getLitigationRefundCapabilities: api.getLitigationRefundCapabilities,
+  listLitigationRefunds: api.listLitigationRefunds,
+  exportLitigationRefunds: api.exportLitigationRefunds,
+  followUpLitigationRefund: api.followUpLitigationRefund,
+  getLitigationRefundRequest: api.getLitigationRefundRequest,
+}));
+vi.mock('vue-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('vue-router')>()),
+  useRoute: () => api.route,
+  useRouter: () => ({ replace: api.routerReplace }),
 }));
 import CaseSettlementPanel from './CaseSettlementPanel.vue';
 import SettlementCenterPage from './SettlementCenterPage.vue';
@@ -132,6 +153,7 @@ beforeEach(() => {
   globalThis.sessionStorage.clear();
   setActivePinia(createPinia());
   vi.resetAllMocks();
+  api.route.query = {};
   api.getCaseSettlement.mockResolvedValue(structuredClone(current));
   api.updateCaseSettlementTerms.mockResolvedValue({
     caseId: 'case',
@@ -143,6 +165,26 @@ beforeEach(() => {
     amount: '70.00',
   });
   api.getSettlementContext.mockResolvedValue({ ...capabilities });
+  api.getLitigationRefundCapabilities.mockResolvedValue({
+    read: true,
+    record: false,
+    follow: false,
+    export: false,
+  });
+  api.listLitigationRefunds.mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 20,
+    summary: {
+      unrefundedAmount: '0.00',
+      unrefundedCount: 0,
+      pendingSettlementAmount: '0.00',
+      filteredAmount: '0.00',
+      unknownAmountCount: 0,
+    },
+    asOf: '2026-11-06T00:00:00.000Z',
+  });
   api.previewSettlementBillNumber.mockResolvedValue('2026101700001');
   api.listSettlementLaunches.mockResolvedValue({
     items: [
@@ -1406,6 +1448,99 @@ describe('selected original fee cancellation', () => {
     expect(wrapper.text()).toContain('已选 1 条');
     expect(button(wrapper, '取消费用').attributes('disabled')).toBeDefined();
     expect(feeCancellationApi.cancelFee).not.toHaveBeenCalled();
+  });
+});
+
+describe('settlement center litigation refunds tab', () => {
+  it('opens refunds from the route query and keeps the old settlement content isolated', async () => {
+    api.route.query = { tab: 'refunds' };
+    const wrapper = render(SettlementCenterPage);
+    await flushPromises();
+    expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe(
+      '诉讼退费',
+    );
+    expect(wrapper.text()).not.toContain('客户结算明细');
+    expect(wrapper.text()).not.toContain('账单历史');
+    await button(wrapper, '客户结算').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('客户结算明细');
+    await button(wrapper, '诉讼退费').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('客户结算明细');
+    expect(api.routerReplace).toHaveBeenCalledWith(
+      expect.objectContaining({ query: { tab: 'refunds' } }),
+    );
+  });
+  it('keeps the refunds tab behind an unresolved original bill request', async () => {
+    api.route.query = { tab: 'refunds' };
+    storeFinancialPending('::center', 'bill', {
+      side: 'CUSTOMER',
+      billDate: '2026-11-06',
+      launchIds: ['launch-1'],
+      idempotencyKey: 'bill-key',
+    });
+    const wrapper = render(SettlementCenterPage);
+    await flushPromises();
+    expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe(
+      '客户结算',
+    );
+    expect(button(wrapper, '诉讼退费').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[role="alert"]').text()).toContain('查询并恢复该请求');
+    expect(api.getLitigationRefundCapabilities).not.toHaveBeenCalled();
+  });
+  it('keeps the fee-only route free of the settlement denial message', async () => {
+    api.getSettlementContext.mockResolvedValue({
+      ...capabilities,
+      read: false,
+      feeRead: true,
+    });
+    api.listFees.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    });
+    const wrapper = render(SettlementCenterPage);
+    await flushPromises();
+    expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe(
+      '费用中心',
+    );
+    expect(
+      wrapper.findAll('[role="alert"]').map((item) => item.text()),
+    ).not.toContain('当前账号未获结算与费用中心读取权限');
+  });
+  it('loads the refund panel independently when the settlement context fails', async () => {
+    api.getSettlementContext.mockRejectedValue(
+      new ApiError('settlement unavailable', 503, 'HTTP_ERROR'),
+    );
+    const wrapper = render(SettlementCenterPage);
+    await flushPromises();
+    await button(wrapper, '诉讼退费').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('诉讼退费');
+    expect(api.getLitigationRefundCapabilities).toHaveBeenCalled();
+    expect(api.listLitigationRefunds).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 1, pageSize: 20 }),
+      expect.anything(),
+    );
+    expect(wrapper.text()).not.toContain('settlement unavailable');
+  });
+  it('keeps the original settlement tabs usable when only refund context fails', async () => {
+    api.getLitigationRefundCapabilities.mockRejectedValue(
+      new ApiError('refund unavailable', 503, 'HTTP_ERROR'),
+    );
+    const wrapper = render(SettlementCenterPage);
+    await flushPromises();
+    await button(wrapper, '诉讼退费').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      'refund unavailable',
+    );
+    await button(wrapper, '客户结算').trigger('click');
+    expect(wrapper.text()).toContain('客户结算明细');
+    expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toBe(
+      '客户结算',
+    );
   });
 });
 

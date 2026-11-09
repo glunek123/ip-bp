@@ -5,6 +5,7 @@ import {
   IsIn,
   IsInt,
   IsString,
+  IsOptional,
   IsUUID,
   MaxLength,
   Min,
@@ -30,7 +31,10 @@ export class ConfirmCaseComplaintDto {
   @ApiPropertyOptional({ type: String, maxLength: 500, nullable: true })
   @Allow()
   changeNote?: string | null;
-  @ApiProperty() @IsBoolean() confirmDisclose!: boolean;
+  @ApiPropertyOptional({ type: Boolean, nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  confirmDisclose?: boolean | null;
 }
 
 export class ConfirmCaseComplaintResponseDto {

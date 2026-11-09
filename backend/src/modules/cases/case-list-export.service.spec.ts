@@ -65,7 +65,12 @@ function row(id = 'case-1'): CaseListDisplayRecord & {
       { id: 'defendant-2', name: '被告二' },
     ],
     lawyers: [],
-    filingSubmission: { courtId: 'court', courtName: '法院' },
+    filingSubmission: {
+      id: 'submission-id',
+      courtId: 'court',
+      courtName: '法院',
+      claimAmount: null,
+    },
     acceptance: null,
     courtCaseNo: '案号',
     complaintSubmittedAt: null,

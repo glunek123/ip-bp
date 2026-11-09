@@ -12,11 +12,13 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
+import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
 import { readCaseSourceAnchor, isEntryStartingAt } from './case-entry-source';
 import {
   RegisterCaseAcceptanceDto,
   RegisterCaseAcceptanceResponseDto,
+  SaveCaseAcceptanceDraftDto,
 } from './case-acceptance.dto';
 
 const uuid =
@@ -34,6 +36,150 @@ export class CaseAcceptanceService {
     private readonly access: AccessControlService,
     private readonly materials: MaterialService,
   ) {}
+
+  private async authorize(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    record: {
+      id: string;
+      departmentId: string;
+      responsibleUserId: string;
+      responsibleMembership: { teamId: string | null };
+    },
+  ) {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined
+    )
+      throw this.forbidden();
+    const account = await tx.userAccount.findUnique({
+      where: { id: actor.userId },
+      select: { accountType: true, active: true },
+    });
+    if (!account?.active) throw this.forbidden();
+    let lawyerBindingId: string | undefined;
+    if (account.accountType === 'LAWYER')
+      lawyerBindingId = await currentLawyerBindingId(
+        tx,
+        actor,
+        record.id,
+        true,
+      );
+    else if (
+      account.accountType === 'INTERNAL' &&
+      actor.lawyerAccountId === undefined
+    )
+      try {
+        await this.access.authorizeCase(
+          actor,
+          'case.acceptance.register',
+          {
+            departmentId: record.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          },
+          tx,
+        );
+      } catch (error) {
+        if (error instanceof ForbiddenException) throw this.forbidden();
+        throw error;
+      }
+    else throw this.forbidden();
+    return lawyerBindingId;
+  }
+
+  async draft(
+    actor: ActorContext,
+    caseId: string,
+    input?: SaveCaseAcceptanceDraftDto,
+  ) {
+    return this.database.$transaction(async (tx) => {
+      if (input) {
+        const rows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM cases
+          WHERE id = ${caseId}::uuid AND department_id = ${actor.departmentId}::uuid
+          FOR UPDATE`;
+        if (rows.length !== 1) throw this.notFound();
+      }
+      const record = await tx.case.findFirst({
+        where: { id: caseId, departmentId: actor.departmentId },
+        select: {
+          id: true,
+          departmentId: true,
+          version: true,
+          stage: true,
+          currentAcceptanceId: true,
+          responsibleUserId: true,
+          responsibleMembership: { select: { teamId: true } },
+          acceptanceDraft: true,
+        },
+      });
+      if (!record) throw this.notFound();
+      await this.authorize(tx, actor, record);
+      if (
+        record.stage !== 'WAITING_FORMAL_ACCEPTANCE' ||
+        record.currentAcceptanceId
+      )
+        throw this.invalidState();
+      if (!input)
+        return { draft: record.acceptanceDraft, version: record.version };
+      if (input.expectedVersion !== record.version)
+        throw this.versionConflict();
+      if (input.acceptedAt) {
+        const date = new Date(`${input.acceptedAt}T00:00:00.000Z`);
+        if (
+          Number.isNaN(date.getTime()) ||
+          date.toISOString().slice(0, 10) !== input.acceptedAt ||
+          input.acceptedAt >
+            new Intl.DateTimeFormat('en-CA', {
+              timeZone: 'Asia/Shanghai',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+            }).format(new Date())
+        )
+          throw this.validation();
+      }
+      if (
+        input.courtId &&
+        !(await tx.filingCourt.count({
+          where: { id: input.courtId, departmentId: actor.departmentId },
+        }))
+      )
+        throw this.validation();
+      for (const [category, property] of categories) {
+        const ids = input[property] ?? [];
+        if (ids.length)
+          await this.materials.assertAvailableVersions(tx, actor, {
+            ownerType: 'CASE',
+            ownerId: caseId,
+            category,
+            contentVersionIds: ids,
+            minCount: 0,
+            maxCount: 10,
+          });
+      }
+      const draft = {
+        acceptedAt: input.acceptedAt || null,
+        ...keyDetailDate(input),
+        courtCaseNo: input.courtCaseNo?.trim() || null,
+        courtId: input.courtId ?? null,
+        acceptanceNoticeContentVersionIds:
+          input.acceptanceNoticeContentVersionIds ?? [],
+        paymentListContentVersionIds: input.paymentListContentVersionIds ?? [],
+        serviceDocumentContentVersionIds:
+          input.serviceDocumentContentVersionIds ?? [],
+      };
+      const result = await tx.case.update({
+        where: { id: caseId },
+        data: { acceptanceDraft: draft, version: { increment: 1 } },
+        select: { version: true },
+      });
+      return { draft, version: result.version };
+    });
+  }
 
   async register(
     actor: ActorContext,
@@ -88,41 +234,7 @@ export class CaseAcceptanceService {
               },
             });
             if (record === null) throw this.notFound();
-            const account = await tx.userAccount.findUnique({
-              where: { id: actor.userId },
-              select: { accountType: true, active: true },
-            });
-            if (!account?.active) throw this.forbidden();
-            let lawyerBindingId: string | undefined;
-            if (account.accountType === 'LAWYER')
-              lawyerBindingId = await currentLawyerBindingId(
-                tx,
-                actor,
-                caseId,
-                true,
-              );
-            else if (
-              account.accountType === 'INTERNAL' &&
-              actor.lawyerAccountId === undefined
-            )
-              try {
-                await this.access.authorizeCase(
-                  actor,
-                  'case.acceptance.register',
-                  {
-                    departmentId: record.departmentId,
-                    responsibleUserId: record.responsibleUserId,
-                    ...(record.responsibleMembership.teamId
-                      ? { teamId: record.responsibleMembership.teamId }
-                      : {}),
-                  },
-                  tx,
-                );
-              } catch (error) {
-                if (error instanceof ForbiddenException) throw this.forbidden();
-                throw error;
-              }
-            else throw this.forbidden();
+            const lawyerBindingId = await this.authorize(tx, actor, record);
             const prior = await tx.caseAcceptanceReceipt.findUnique({
               where: {
                 departmentId_actorUserId_idempotencyKey: {
@@ -266,6 +378,7 @@ export class CaseAcceptanceService {
               data: {
                 stage: 'WAITING_HEARING',
                 courtCaseNo: value.courtCaseNo,
+                acceptanceDraft: Prisma.DbNull,
                 currentTrialRoundId: trialRoundId,
                 version: { increment: 1 },
               },

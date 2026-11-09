@@ -40,6 +40,9 @@ export class CaseComplaintMailingService {
           expectedVersion: normalized.expectedVersion,
           mailedAt: normalized.mailedAt,
           mailReceiptContentVersionIds: normalized.mailReceiptContentVersionIds,
+          ...(normalized.remark === undefined
+            ? {}
+            : { remark: normalized.remark }),
         }),
       )
       .digest('hex');
@@ -184,7 +187,7 @@ export class CaseComplaintMailingService {
                 ownerId: caseId,
                 category: 'MAIL_RECEIPT',
                 contentVersionIds: normalized.mailReceiptContentVersionIds,
-                minCount: 1,
+                minCount: 0,
                 maxCount: 10,
               },
             );
@@ -221,6 +224,7 @@ export class CaseComplaintMailingService {
                   mailedAt: normalized.mailedAt,
                   mailReceiptContentVersionIds:
                     normalized.mailReceiptContentVersionIds,
+                  remark: normalized.remark ?? null,
                   actorType:
                     lawyerBindingId !== undefined
                       ? 'LAWYER'
@@ -238,6 +242,7 @@ export class CaseComplaintMailingService {
                 departmentId: actor.departmentId,
                 caseId,
                 mailedAt: new Date(`${normalized.mailedAt}T00:00:00.000Z`),
+                remark: normalized.remark ?? null,
                 recordedAt,
                 recordedByUserId: actor.userId,
                 actorType:
@@ -305,8 +310,11 @@ export class CaseComplaintMailingService {
       typeof input.mailedAt !== 'string' ||
       !/^\d{4}-\d{2}-\d{2}$/u.test(input.mailedAt) ||
       !Array.isArray(versions) ||
-      versions.length < 1 ||
       versions.length > 10 ||
+      (input.remark !== undefined &&
+        (typeof input.remark !== 'string' ||
+          input.remark.trim() !== input.remark ||
+          input.remark.length > 1000)) ||
       new Set(versions).size !== versions.length ||
       versions.some(
         (id) =>

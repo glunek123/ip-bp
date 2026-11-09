@@ -59,7 +59,7 @@ const actionDefinitions = {
   match: {
     id: 'match',
     section: 'case-info',
-    label: '匹配当事人与承办律师',
+    label: '补充被告／匹配律师',
   },
   complaint: {
     id: 'complaint',
@@ -89,22 +89,22 @@ const actionDefinitions = {
   hearing: {
     id: 'hearing',
     section: 'first-instance',
-    label: '开庭登记／更正',
+    label: '补录／更正开庭日期',
   },
   'register-judgment': {
     id: 'judgment',
     section: 'judgment',
-    label: '登记判决',
+    label: '判决更新',
   },
   'correct-judgment': {
     id: 'judgment',
     section: 'judgment',
-    label: '更正判决',
+    label: '判决更新',
   },
   'choose-next-step': {
     id: 'next-step',
     section: 'judgment',
-    label: '选择判决后续流程',
+    label: '二审抉择',
   },
   'revoke-next-step': {
     id: 'next-step',

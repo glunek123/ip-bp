@@ -1,10 +1,12 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsIn,
   IsInt,
+  IsOptional,
   IsString,
   IsUUID,
   Matches,
@@ -12,7 +14,19 @@ import {
   Min,
   MinLength,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
+
+export class CaseJudgmentRefundDto {
+  @ApiProperty({ enum: ['COURT', 'DEFENDANT'] })
+  @IsIn(['COURT', 'DEFENDANT'])
+  party!: 'COURT' | 'DEFENDANT';
+
+  @ApiProperty({ type: String })
+  @IsString()
+  @Matches(/^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u)
+  amount!: string;
+}
 
 export class RegisterCaseJudgmentDto {
   @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
@@ -45,6 +59,14 @@ export class RegisterCaseJudgmentDto {
   @ArrayMaxSize(10)
   @IsUUID('4', { each: true })
   judgmentContentVersionIds!: string[];
+
+  @ApiPropertyOptional({ type: [CaseJudgmentRefundDto], maxItems: 20 })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => CaseJudgmentRefundDto)
+  refunds?: CaseJudgmentRefundDto[];
 }
 
 export class CorrectCaseJudgmentDto extends RegisterCaseJudgmentDto {

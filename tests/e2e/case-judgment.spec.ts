@@ -489,11 +489,7 @@ test('operator registers, corrects, and downloads immutable judgment facts', asy
   for (const filename of frozenFilenames)
     await panel.getByLabel(filename).check();
   await panel.locator('[data-test="judgment-date"]').fill(acceptedAt);
-  await panel
-    .locator('[data-test="judgment-amount-state"]')
-    .selectOption('KNOWN');
   await panel.locator('[data-test="judgment-amount"]').fill('0.00');
-  await panel.locator('[data-test="paid-fee-state"]').selectOption('PENDING');
   await expect(
     panel.locator('[data-test="judgment-review-summary"]'),
   ).toContainText('判决金额：已知 0.00 元');
@@ -562,7 +558,6 @@ test('operator registers, corrects, and downloads immutable judgment facts', asy
     panel.locator('[data-test="judgment-review-summary"]'),
   ).toContainText('更正后案件仍为待判决');
   await panel.locator('[data-test="judgment-amount"]').fill('42.50');
-  await panel.locator('[data-test="paid-fee-state"]').selectOption('KNOWN');
   await panel.locator('[data-test="paid-fee-amount"]').fill('8.00');
   const correction = page.waitForResponse(
     (response) =>
@@ -756,12 +751,6 @@ test('primary lawyer registers through a real session; clients see no judgment m
       });
     await expect(lawyerPanel.getByText(lawyerFilename)).toBeVisible();
     await lawyerPanel.locator('[data-test="judgment-date"]').fill(acceptedAt);
-    await lawyerPanel
-      .locator('[data-test="judgment-amount-state"]')
-      .selectOption('PENDING');
-    await lawyerPanel
-      .locator('[data-test="paid-fee-state"]')
-      .selectOption('KNOWN');
     await lawyerPanel.locator('[data-test="paid-fee-amount"]').fill('0.00');
     const lawyerRegister = lawyerPage.waitForResponse(
       (response) =>

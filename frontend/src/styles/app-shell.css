@@ -140,6 +140,10 @@
   font-size: 14px;
 }
 
+.app-nav__group .app-nav__item .app-nav__chevron {
+  margin-left: 8px;
+}
+
 .app-nav__group + .app-subnav {
   margin-bottom: 2px;
 }

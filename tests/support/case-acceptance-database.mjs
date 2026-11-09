@@ -69,8 +69,8 @@ export async function prepareCaseAcceptanceFixture() {
   await clearCaseAcceptanceFault();
   await withClient(async (client) => {
     await client.query(
-      "INSERT INTO role_grants(id,role_template_id,action,scope) VALUES ($1,$2,'case.acceptance.register','TEAM') ON CONFLICT (role_template_id,action,scope) DO NOTHING",
-      [randomUUID(), coreLeadFixtures.roleA],
+      "INSERT INTO role_grants(id,role_template_id,action,scope) VALUES ($1,$2,'case.acceptance.register','TEAM'),($3,$2,'case.acceptance.correct','SELF') ON CONFLICT (role_template_id,action,scope) DO NOTHING",
+      [randomUUID(), coreLeadFixtures.roleA, randomUUID()],
     );
   });
 }
@@ -119,6 +119,8 @@ export async function clearCaseAcceptanceFixture() {
         [departments],
       );
       const tables = [
+        'case_record_edit_receipts',
+        'case_acceptance_corrections',
         'case_acceptance_receipts',
         'case_acceptance_versions',
         'case_acceptances',
@@ -133,11 +135,16 @@ export async function clearCaseAcceptanceFixture() {
       );
       for (const table of tables)
         await client.query(`ALTER TABLE "${table}" DISABLE TRIGGER USER`);
-      for (const table of tables)
+      for (const table of tables) {
+        const command =
+          table === 'case_record_edit_receipts'
+            ? " AND command = 'ACCEPTANCE_CORRECTION'"
+            : '';
         await client.query(
-          `DELETE FROM "${table}" WHERE department_id = ANY($1::uuid[])`,
+          `DELETE FROM "${table}" WHERE department_id = ANY($1::uuid[])${command}`,
           [departments],
         );
+      }
       await client.query('SET CONSTRAINTS ALL IMMEDIATE');
       for (const table of tables)
         await client.query(`ALTER TABLE "${table}" ENABLE TRIGGER USER`);

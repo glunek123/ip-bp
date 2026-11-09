@@ -222,6 +222,7 @@ const actionNames = Object.freeze({
   'notary.return.archive': 'NOTARY_RETURN_ARCHIVE',
   'case.read': 'CASE_READ',
   'case.export': 'CASE_EXPORT',
+  'case.consolidate': 'CASE_CONSOLIDATE',
   'case.lawyer.assign': 'CASE_LAWYER_ASSIGN',
   'case.department.proxy': 'CASE_DEPARTMENT_PROXY',
   'case.routine.edit': 'CASE_ROUTINE_EDIT',
@@ -598,6 +599,9 @@ async function clearDatabase() {
     await transaction.caseDefendant.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
+    await transaction.caseDefendantPreparationReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
     await transaction.case.updateMany({
       where: { departmentId: { in: departmentIds } },
       data: { currentAcceptanceId: null, currentTrialRoundId: null },
@@ -968,6 +972,38 @@ export async function countCaseFixtureFees(caseId) {
         in: [coreLeadFixtures.departmentA, coreLeadFixtures.departmentB],
       },
     },
+  });
+}
+
+export async function seedHistoricalCaseDefendants(caseId, defendants) {
+  const record = await database.case.findUniqueOrThrow({
+    where: { id: caseId },
+    select: {
+      departmentId: true,
+      stage: true,
+      version: true,
+      defendants: { select: { id: true } },
+    },
+  });
+  if (
+    record.stage !== 'PENDING_MATCH' ||
+    record.version !== 1 ||
+    record.defendants.length
+  )
+    throw new Error(
+      'Historical defendant fixture expected a new pending match',
+    );
+  await database.caseDefendant.createMany({
+    data: defendants.map((party) => ({
+      caseId,
+      departmentId: record.departmentId,
+      kind: party.kind,
+      name: party.name,
+      idNo: party.idNo ?? null,
+      phone: party.phone ?? null,
+      address: party.address ?? null,
+      legalRepresentative: party.legalRepresentative ?? null,
+    })),
   });
 }
 

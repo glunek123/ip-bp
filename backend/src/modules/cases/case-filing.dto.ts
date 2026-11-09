@@ -20,6 +20,13 @@ export class SubmitCaseFilingDto {
   idempotencyKey!: string;
   @ApiProperty({ format: 'uuid' }) @IsUUID('4') courtId!: string;
   @ApiProperty({ format: 'date' }) @IsString() submittedAt!: string;
+  @ApiPropertyOptional({
+    type: String,
+    description: '本次更新的标的额；不传则沿用当前金额',
+  })
+  @IsOptional()
+  @IsString()
+  claimAmount?: string;
   @ApiProperty({ type: [String], format: 'uuid', minItems: 0, maxItems: 50 })
   @IsArray()
   @ArrayMaxSize(50)

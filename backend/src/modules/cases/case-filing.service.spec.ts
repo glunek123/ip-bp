@@ -162,6 +162,32 @@ describe('CaseFilingService', () => {
     expect(f.tx.caseFilingReceipt.create).toHaveBeenCalledTimes(1);
   });
 
+  it('stores an optional amount change and permits filing before evidence arrives', async () => {
+    const f = fixture();
+    f.materials.assertAvailableVersions.mockResolvedValue([]);
+    await f.service.submit(actor, caseId, {
+      ...input,
+      claimAmount: '0.00',
+      filingEvidenceContentVersionIds: [],
+    });
+    expect(f.tx.caseFilingSubmission.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          claimAmount: expect.objectContaining({}),
+        }),
+      }),
+    );
+    expect(f.materials.assertAvailableVersions).toHaveBeenCalledWith(
+      f.tx,
+      actor,
+      expect.objectContaining({
+        category: 'FILING_EVIDENCE',
+        minCount: 0,
+        contentVersionIds: [],
+      }),
+    );
+  });
+
   it('retains an authorized child material version by reference when filing the main case', async () => {
     const f = fixture();
     f.tx.caseConsolidation.findFirst.mockResolvedValue({
@@ -283,11 +309,7 @@ describe('CaseFilingService', () => {
   it.each([
     { ...input, submittedAt: futureDateInShanghai() },
     { ...input, submittedAt: '2026-02-30' },
-    {
-      ...input,
-      filingEvidenceContentVersionIds: [],
-      consolidationSourceContentVersionIds: [],
-    },
+    { ...input, claimAmount: '-1' },
     {
       ...input,
       filingEvidenceContentVersionIds: Array.from(

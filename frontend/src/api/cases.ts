@@ -185,6 +185,7 @@ export type CaseDefendant = {
   idNo: string | null;
   phone: string | null;
   address: string | null;
+  legalRepresentative: string | null;
 };
 export type DefendantContactEdit = {
   defendantId: string;
@@ -592,7 +593,7 @@ export type CaseDisplaySummary = {
   court: { id: string; name: string } | null;
   courtCaseNo: string | null;
   claimAmount: CaseDisplayAmount<
-    'COMPLAINT_CONFIRMATION' | 'COMPLAINT_SUBMISSION'
+    'COMPLAINT_CONFIRMATION' | 'COMPLAINT_SUBMISSION' | 'FILING_SUBMISSION'
   >;
   judgmentAmount: CaseDisplayAmount<
     | 'FIRST_INSTANCE_JUDGMENT'
@@ -861,11 +862,13 @@ export type CaseFilingSubmission = {
   recordedAt: string;
   recordedByUserId: string;
   mediationNo: string | null;
+  claimAmount: string | null;
   evidenceFiles: CaseFile[];
   screenshotFiles: CaseFile[];
 };
 export type CaseComplaintMailing = {
   mailedAt: string;
+  remark: string | null;
   recordedAt: string;
   recordedByUserId: string;
   actorType: 'INTERNAL' | 'CLIENT' | 'LAWYER';
@@ -886,7 +889,7 @@ export type ComplaintConfirmation = {
   amount: string | null;
   pendingReason: string | null;
   changeNote: string | null;
-  confirmDisclose: boolean;
+  confirmDisclose: boolean | null;
   confirmedAt: string;
   confirmedByUserId: string;
   complaintFile: CaseFile | null;
@@ -928,10 +931,15 @@ export type MatchCaseInput = {
     idNo?: string;
     phone?: string;
     address?: string;
+    legalRepresentative?: string;
   }>;
   lawyerAccountId: string;
   lawyerProfileId?: string;
 };
+export type PrepareCaseDefendantsInput = Pick<
+  MatchCaseInput,
+  'expectedVersion' | 'idempotencyKey' | 'defendants'
+>;
 export type CaseWorkflowItem = {
   id: string;
   stage: CaseStage;
@@ -961,12 +969,13 @@ export type CaseWorkflowItem = {
     amount: string | null;
     pendingReason: string | null;
     changeNote: string | null;
-    confirmDisclose: boolean;
+    confirmDisclose: boolean | null;
     confirmedAt: string;
     complaintFile: CaseFile | null;
   } | null;
   complaintMailing: {
     mailedAt: string;
+    remark: string | null;
     recordedAt: string;
     receiptFiles: CaseFile[];
   } | null;
@@ -1040,6 +1049,7 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     > | null;
     complaintMailing: {
       mailedAt: string;
+      remark: string | null;
       recordedAt: string;
       actorType: 'INTERNAL' | 'CLIENT' | 'LAWYER';
       receiptFiles: CaseFile[];
@@ -1066,6 +1076,7 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     closure: LawyerCaseClosure | null;
     archive: LawyerCaseArchive | null;
     earlyArchive?: LawyerCaseEarlyArchive | null;
+    earlyClosure?: CaseDetail['earlyClosure'];
   };
 export type LawyerCaseOrigin =
   | { kind: 'NOTARY' }
@@ -1289,12 +1300,13 @@ export type ConfirmCaseComplaintInput = {
   amount: string | null;
   pendingReason: string | null;
   changeNote?: string;
-  confirmDisclose: boolean;
+  confirmDisclose?: boolean | null;
 };
 export type MailCaseComplaintInput = {
   expectedVersion: number;
   idempotencyKey: string;
   mailedAt: string;
+  remark?: string;
   mailReceiptContentVersionIds: string[];
 };
 
@@ -1671,6 +1683,7 @@ function displaySummary(
     displayAmount(value.claimAmount, [
       'COMPLAINT_CONFIRMATION',
       'COMPLAINT_SUBMISSION',
+      'FILING_SUBMISSION',
     ]) &&
     displayAmount(value.judgmentAmount, [
       'FIRST_INSTANCE_JUDGMENT',
@@ -2381,8 +2394,7 @@ function executionSourceMatches(
   if (
     early !== undefined &&
     early !== null &&
-    (!internal ||
-      !record(early) ||
+    (!record(early) ||
       !exact(early, ['id', 'fromStage', 'fromVersion', 'toVersion']) ||
       !uuidV4(early.id) ||
       !validStage(early.fromStage) ||
@@ -2741,11 +2753,19 @@ function validAcceptanceMaterials(
 function defendant(value: unknown): value is CaseDefendant {
   return (
     record(value) &&
-    exact(value, ['id', 'kind', 'name', 'idNo', 'phone', 'address']) &&
+    exact(value, [
+      'id',
+      'kind',
+      'name',
+      'idNo',
+      'phone',
+      'address',
+      'legalRepresentative',
+    ]) &&
     nonempty(value.id) &&
     (value.kind === 'PERSON' || value.kind === 'ORGANIZATION') &&
     nonempty(value.name) &&
-    [value.idNo, value.phone, value.address].every(
+    [value.idNo, value.phone, value.address, value.legalRepresentative].every(
       (field) => field === null || typeof field === 'string',
     )
   );
@@ -4406,6 +4426,7 @@ function validCaseFilingSubmission(
       'recordedAt',
       'recordedByUserId',
       'mediationNo',
+      'claimAmount',
       'evidenceFiles',
       'screenshotFiles',
     ]) &&
@@ -4419,8 +4440,10 @@ function validCaseFilingSubmission(
       (typeof value.mediationNo === 'string' &&
         value.mediationNo.length >= 1 &&
         value.mediationNo.length <= 100)) &&
+    (value.claimAmount === null ||
+      (typeof value.claimAmount === 'string' &&
+        /^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u.test(value.claimAmount))) &&
     Array.isArray(value.evidenceFiles) &&
-    value.evidenceFiles.length >= 1 &&
     value.evidenceFiles.length <= 50 &&
     value.evidenceFiles.every(caseFile) &&
     Array.isArray(value.screenshotFiles) &&
@@ -4435,12 +4458,15 @@ function validCaseComplaintMailing(
     record(value) &&
     exact(value, [
       'mailedAt',
+      'remark',
       'recordedAt',
       'recordedByUserId',
       'actorType',
       'receiptFiles',
     ]) &&
     businessDate(value.mailedAt) &&
+    (value.remark === null ||
+      (typeof value.remark === 'string' && value.remark.length <= 1000)) &&
     typeof value.recordedAt === 'string' &&
     !Number.isNaN(Date.parse(value.recordedAt)) &&
     nonempty(value.recordedByUserId) &&
@@ -4448,7 +4474,6 @@ function validCaseComplaintMailing(
       value.actorType === 'CLIENT' ||
       value.actorType === 'LAWYER') &&
     Array.isArray(value.receiptFiles) &&
-    value.receiptFiles.length > 0 &&
     value.receiptFiles.every(caseFile)
   );
 }
@@ -4508,7 +4533,8 @@ function validComplaintConfirmation(
       (typeof value.changeNote === 'string' &&
         value.changeNote.trim().length >= 1 &&
         value.changeNote.length <= 500)) &&
-    typeof value.confirmDisclose === 'boolean' &&
+    (value.confirmDisclose === null ||
+      typeof value.confirmDisclose === 'boolean') &&
     typeof value.confirmedAt === 'string' &&
     !Number.isNaN(Date.parse(value.confirmedAt)) &&
     nonempty(value.confirmedByUserId) &&
@@ -4688,7 +4714,8 @@ function lawyerComplaintConfirmation(value: unknown): boolean {
       (typeof value.changeNote === 'string' &&
         value.changeNote.trim().length > 0 &&
         value.changeNote.length <= 500)) &&
-    typeof value.confirmDisclose === 'boolean' &&
+    (value.confirmDisclose === null ||
+      typeof value.confirmDisclose === 'boolean') &&
     typeof value.confirmedAt === 'string' &&
     !Number.isNaN(Date.parse(value.confirmedAt)) &&
     (value.complaintFile === null || caseFile(value.complaintFile))
@@ -4697,15 +4724,22 @@ function lawyerComplaintConfirmation(value: unknown): boolean {
 function lawyerMailing(value: unknown): boolean {
   return (
     record(value) &&
-    exact(value, ['mailedAt', 'recordedAt', 'actorType', 'receiptFiles']) &&
+    exact(value, [
+      'mailedAt',
+      'remark',
+      'recordedAt',
+      'actorType',
+      'receiptFiles',
+    ]) &&
     businessDate(value.mailedAt) &&
+    (value.remark === null ||
+      (typeof value.remark === 'string' && value.remark.length <= 1000)) &&
     typeof value.recordedAt === 'string' &&
     !Number.isNaN(Date.parse(value.recordedAt)) &&
     (value.actorType === 'INTERNAL' ||
       value.actorType === 'CLIENT' ||
       value.actorType === 'LAWYER') &&
     Array.isArray(value.receiptFiles) &&
-    value.receiptFiles.length > 0 &&
     value.receiptFiles.every(caseFile)
   );
 }
@@ -4717,6 +4751,7 @@ function lawyerFiling(value: unknown): boolean {
       'submittedAt',
       'recordedAt',
       'mediationNo',
+      'claimAmount',
       'evidenceFiles',
       'screenshotFiles',
     ]) &&
@@ -4728,8 +4763,10 @@ function lawyerFiling(value: unknown): boolean {
       (typeof value.mediationNo === 'string' &&
         value.mediationNo.length > 0 &&
         value.mediationNo.length <= 100)) &&
+    (value.claimAmount === null ||
+      (typeof value.claimAmount === 'string' &&
+        /^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u.test(value.claimAmount))) &&
     Array.isArray(value.evidenceFiles) &&
-    value.evidenceFiles.length > 0 &&
     value.evidenceFiles.every(caseFile) &&
     Array.isArray(value.screenshotFiles) &&
     value.screenshotFiles.every(caseFile)
@@ -4879,6 +4916,7 @@ export async function getLawyerCase(
         'canSupplementPaymentProof',
         'canReadClosurePaymentHistory',
         'earlyArchive',
+        'earlyClosure',
         'canUploadDirectExecutionMaterials',
         'executionFilingFollowups',
       ],
@@ -5160,6 +5198,7 @@ export type SubmitCaseFilingInput = {
   idempotencyKey: string;
   courtId: string;
   submittedAt: string;
+  claimAmount?: string;
   filingEvidenceContentVersionIds: string[];
   filingScreenshotContentVersionIds?: string[];
   consolidationSourceContentVersionIds?: string[];
@@ -5218,6 +5257,7 @@ export type RegisterCaseJudgmentInput = {
   paidLitigationFeeState: 'KNOWN' | 'PENDING';
   paidLitigationFee: string | null;
   judgmentContentVersionIds: string[];
+  refunds?: { party: 'COURT' | 'DEFENDANT'; amount: string }[];
 };
 export type CorrectCaseJudgmentInput = RegisterCaseJudgmentInput & {
   reason: string;
@@ -5935,11 +5975,7 @@ export async function submitCaseFiling(
     !uuidV4(input.courtId) ||
     !businessDate(input.submittedAt) ||
     input.submittedAt > todayShanghai() ||
-    !uniqueVersions(
-      input.filingEvidenceContentVersionIds,
-      consolidation.length ? 0 : 1,
-      50,
-    ) ||
+    !uniqueVersions(input.filingEvidenceContentVersionIds, 0, 50) ||
     !uniqueVersions(screenshots, 0, 10) ||
     !uniqueVersions(consolidation, 0, 50) ||
     new Set([
@@ -5951,7 +5987,9 @@ export async function submitCaseFiling(
         screenshots.length +
         consolidation.length ||
     (input.mediationNo !== undefined &&
-      (!mediationNo || mediationNo.length > 100))
+      (!mediationNo || mediationNo.length > 100)) ||
+    (input.claimAmount !== undefined &&
+      !/^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u.test(input.claimAmount))
   )
     throw new ApiError(
       '提交立案信息无效，请检查日期、法院和材料。',
@@ -5963,6 +6001,9 @@ export async function submitCaseFiling(
     idempotencyKey: input.idempotencyKey,
     courtId: input.courtId,
     submittedAt: input.submittedAt,
+    ...(input.claimAmount === undefined
+      ? {}
+      : { claimAmount: input.claimAmount }),
     filingEvidenceContentVersionIds: input.filingEvidenceContentVersionIds,
     ...(input.filingScreenshotContentVersionIds === undefined
       ? {}
@@ -5992,6 +6033,59 @@ export async function submitCaseFiling(
   )
     throw invalidResponse();
   return response as SubmitCaseFilingResult;
+}
+
+type CaseAcceptanceDraftInput = Omit<
+  Partial<RegisterCaseAcceptanceInput>,
+  'expectedVersion' | 'idempotencyKey'
+> & { expectedVersion: number };
+
+type CaseAcceptanceDraft = {
+  acceptedAt: string | null;
+  paymentDueAt?: string | null;
+  courtCaseNo: string | null;
+  courtId: string | null;
+  acceptanceNoticeContentVersionIds: string[];
+  paymentListContentVersionIds: string[];
+  serviceDocumentContentVersionIds: string[];
+};
+
+export async function caseAcceptanceDraft(
+  id: string,
+  audience: 'internal' | 'lawyer',
+  input?: CaseAcceptanceDraftInput,
+): Promise<{ version: number; draft: CaseAcceptanceDraft | null }> {
+  const path = `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/acceptance-draft`;
+  const response = input
+    ? await requestJson(path, { method: 'PUT', body: input })
+    : await getJson(path);
+  if (
+    !record(response) ||
+    typeof response.version !== 'number' ||
+    !Number.isInteger(response.version) ||
+    response.version < 1
+  )
+    throw invalidResponse();
+  const draft = response.draft;
+  if (
+    draft !== null &&
+    (!record(draft) ||
+      (draft.acceptedAt !== null && !businessDate(draft.acceptedAt)) ||
+      !optionalPayment(draft) ||
+      (draft.courtCaseNo !== null && typeof draft.courtCaseNo !== 'string') ||
+      (draft.courtId !== null && !uuidV4(draft.courtId)) ||
+      !Array.isArray(draft.acceptanceNoticeContentVersionIds) ||
+      !uniqueVersions(draft.acceptanceNoticeContentVersionIds, 0, 10) ||
+      !Array.isArray(draft.paymentListContentVersionIds) ||
+      !uniqueVersions(draft.paymentListContentVersionIds, 0, 10) ||
+      !Array.isArray(draft.serviceDocumentContentVersionIds) ||
+      !uniqueVersions(draft.serviceDocumentContentVersionIds, 0, 10))
+  )
+    throw invalidResponse();
+  return {
+    version: response.version,
+    draft: draft as CaseAcceptanceDraft | null,
+  };
 }
 
 export async function registerCaseAcceptance(
@@ -6094,8 +6188,9 @@ export async function mailCaseComplaint(
     input.idempotencyKey.length > 128 ||
     !businessDate(input.mailedAt) ||
     input.mailedAt > todayShanghai() ||
-    input.mailReceiptContentVersionIds.length < 1 ||
     input.mailReceiptContentVersionIds.length > 10 ||
+    (input.remark !== undefined &&
+      (input.remark.length > 1000 || input.remark.trim() !== input.remark)) ||
     new Set(input.mailReceiptContentVersionIds).size !==
       input.mailReceiptContentVersionIds.length ||
     input.mailReceiptContentVersionIds.some((versionId) => !nonempty(versionId))
@@ -7025,6 +7120,50 @@ export async function saveSecondInstanceAcceptance(
   return response as SaveSecondInstanceAcceptanceResult;
 }
 
+export async function prepareCaseDefendants(
+  id: string,
+  input: PrepareCaseDefendantsInput,
+): Promise<void> {
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !input.idempotencyKey ||
+    input.defendants.length < 1 ||
+    input.defendants.length > 20 ||
+    input.defendants.some((entry) => !entry.name.trim())
+  )
+    throw new ApiError('被告信息无效', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/defendants/prepare`,
+    {
+      ...writeRequestOptions(input.idempotencyKey, {}),
+      method: 'POST',
+      body: {
+        expectedVersion: input.expectedVersion,
+        idempotencyKey: input.idempotencyKey,
+        defendants: input.defendants.map((entry) => ({
+          kind: entry.kind,
+          name: entry.name.trim(),
+          ...(entry.idNo?.trim() ? { idNo: entry.idNo.trim() } : {}),
+          ...(entry.phone?.trim() ? { phone: entry.phone.trim() } : {}),
+          ...(entry.address?.trim() ? { address: entry.address.trim() } : {}),
+          ...(entry.legalRepresentative?.trim()
+            ? { legalRepresentative: entry.legalRepresentative.trim() }
+            : {}),
+        })),
+      },
+    },
+  );
+  if (
+    !record(response) ||
+    response.id !== id ||
+    response.stage !== 'PENDING_MATCH' ||
+    response.version !== input.expectedVersion + 1 ||
+    response.defendantCount !== input.defendants.length
+  )
+    throw invalidResponse();
+}
+
 export async function matchCase(
   id: string,
   input: MatchCaseInput,
@@ -7034,12 +7173,15 @@ export async function matchCase(
     idempotencyKey: input.idempotencyKey,
     matchedOn: input.matchedOn,
     defendants: input.defendants.map(
-      ({ kind, name, idNo, phone, address }) => ({
+      ({ kind, name, idNo, phone, address, legalRepresentative }) => ({
         kind,
         name: name.trim(),
         ...(idNo?.trim() ? { idNo: idNo.trim() } : {}),
         ...(phone?.trim() ? { phone: phone.trim() } : {}),
         ...(address?.trim() ? { address: address.trim() } : {}),
+        ...(legalRepresentative?.trim()
+          ? { legalRepresentative: legalRepresentative.trim() }
+          : {}),
       }),
     ),
     lawyerAccountId: input.lawyerAccountId.trim(),
@@ -7297,7 +7439,9 @@ export async function confirmCaseComplaint(
     !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
       input.confirmedComplaintContentVersionId,
     ) ||
-    typeof input.confirmDisclose !== 'boolean' ||
+    (input.confirmDisclose !== undefined &&
+      input.confirmDisclose !== null &&
+      typeof input.confirmDisclose !== 'boolean') ||
     (input.amountState === 'KNOWN'
       ? input.amount === null ||
         !/^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u.test(input.amount) ||

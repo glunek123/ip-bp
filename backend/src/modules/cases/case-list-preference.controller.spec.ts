@@ -80,7 +80,11 @@ describe('case list preference routes', () => {
     await request(app.getHttpServer())
       .get('/api/v1/cases/list-preferences/all')
       .expect(200);
-    expect(preferences.get).toHaveBeenCalledWith(actor, 'all');
+    expect(preferences.get).toHaveBeenCalledWith(actor, 'all', 'department');
+    await request(app.getHttpServer())
+      .get('/api/v1/cases/list-preferences/all?view=mine')
+      .expect(200);
+    expect(preferences.get).toHaveBeenCalledWith(actor, 'all', 'mine');
     const body = { order: [...caseListColumns], hidden: ['court'] };
     await request(app.getHttpServer())
       .put('/api/v1/cases/list-preferences/WAITING_HEARING')
@@ -90,6 +94,7 @@ describe('case list preference routes', () => {
       actor,
       'WAITING_HEARING',
       body,
+      'department',
     );
   });
 
@@ -98,6 +103,9 @@ describe('case list preference routes', () => {
     const path = '/api/v1/cases/list-preferences/all';
     await request(app.getHttpServer())
       .get('/api/v1/cases/list-preferences/unknown')
+      .expect(400);
+    await request(app.getHttpServer())
+      .get('/api/v1/cases/list-preferences/all?view=unsupported')
       .expect(400);
     const valid = { order: [...caseListColumns], hidden: [] };
     const invalid = [

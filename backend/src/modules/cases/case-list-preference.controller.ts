@@ -1,11 +1,20 @@
-import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Put,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiProperty,
+  ApiPropertyOptional,
   ApiTags,
 } from '@nestjs/swagger';
-import { IsIn } from 'class-validator';
+import { IsIn, IsOptional } from 'class-validator';
 import { ActorContext } from '../../access-control/actor-context';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
@@ -24,6 +33,13 @@ class CaseListPreferenceBucketParamDto {
   bucket!: CaseListPreferenceBucket;
 }
 
+class CaseListPreferenceViewQueryDto {
+  @ApiPropertyOptional({ enum: ['mine', 'department'] })
+  @IsOptional()
+  @IsIn(['mine', 'department'])
+  view?: 'mine' | 'department';
+}
+
 @ApiTags('cases')
 @ApiBearerAuth()
 @Controller('cases/list-preferences')
@@ -36,8 +52,13 @@ export class CaseListPreferenceController {
   get(
     @CurrentActor() actor: ActorContext,
     @Param() params: CaseListPreferenceBucketParamDto,
+    @Query() query: CaseListPreferenceViewQueryDto,
   ) {
-    return this.preferences.get(actor, params.bucket);
+    return this.preferences.get(
+      actor,
+      params.bucket,
+      query.view ?? 'department',
+    );
   }
 
   @Put(':bucket')
@@ -46,7 +67,13 @@ export class CaseListPreferenceController {
     @CurrentActor() actor: ActorContext,
     @Param() params: CaseListPreferenceBucketParamDto,
     @Body() preference: SaveCaseListPreferenceDto,
+    @Query() query: CaseListPreferenceViewQueryDto,
   ) {
-    return this.preferences.put(actor, params.bucket, preference);
+    return this.preferences.put(
+      actor,
+      params.bucket,
+      preference,
+      query.view ?? 'department',
+    );
   }
 }

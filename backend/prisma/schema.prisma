@@ -208,6 +208,10 @@ enum PermissionAction {
   CASE_HEARING_CORRECT         @map("case.hearing.correct")
   CASE_JUDGMENT_REGISTER       @map("case.judgment.register")
   CASE_REFUND_APPLICATION_RECORD @map("case.refund.application.record")
+  CASE_REFUND_READ @map("case.refund.read")
+  CASE_REFUND_RECORD @map("case.refund.record")
+  CASE_REFUND_FOLLOW @map("case.refund.follow")
+  CASE_REFUND_EXPORT @map("case.refund.export")
   CASE_JUDGMENT_CORRECT        @map("case.judgment.correct")
   CASE_JUDGMENT_NEXT_STEP      @map("case.judgment.next_step")
   CASE_JUDGMENT_NEXT_STEP_REVOKE @map("case.judgment.next_step.revoke")
@@ -2251,6 +2255,7 @@ model Case {
   defendants                    CaseDefendant[]
   lawyers                       CaseLawyerAssignment[]
   matchReceipts                 CaseMatchReceipt[]
+  defendantPreparationReceipts  CaseDefendantPreparationReceipt[]
   lawyerAssignmentReceipts      CaseLawyerAssignmentReceipt[]
   complaintReceipts             CaseComplaintReceipt[]
   complaintConfirmation         CaseComplaintConfirmation?
@@ -2267,6 +2272,7 @@ model Case {
   trialRounds                   CaseTrialRound[]                  @relation("CaseTrialRounds")
   currentTrialRoundId           String?                           @map("current_trial_round_id") @db.Uuid
   currentTrialRound             CaseTrialRound?                   @relation("CaseCurrentTrialRound", fields: [currentTrialRoundId, id, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  acceptanceDraft               Json?                             @map("acceptance_draft")
   currentAcceptanceId           String?                           @map("current_acceptance_id") @db.Uuid
   acceptance                    CaseAcceptance?                   @relation("CaseCurrentAcceptance", fields: [currentAcceptanceId, id, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   currentHearingArrangementId   String?                            @map("current_hearing_arrangement_id") @db.Uuid
@@ -2584,6 +2590,7 @@ model CaseDefendant {
   idNo         String?       @map("id_no") @db.VarChar(100)
   phone        String?       @db.VarChar(100)
   address      String?       @db.VarChar(500)
+  legalRepresentative String? @map("legal_representative") @db.VarChar(200)
   contactRevision Int        @default(0) @map("contact_revision")
   contactChanges CaseDefendantContactChange[]
   createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -2644,6 +2651,21 @@ model CaseMatchReceipt {
   @@map("case_match_receipts")
 }
 
+model CaseDefendantPreparationReceipt {
+  id                 String   @id @default(uuid()) @db.Uuid
+  departmentId       String   @map("department_id") @db.Uuid
+  actorUserId        String   @map("actor_user_id") @db.Uuid
+  caseId             String   @map("case_id") @db.Uuid
+  idempotencyKey     String   @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String   @map("request_fingerprint") @db.Char(64)
+  resultSnapshot     Json     @map("result_snapshot")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case               Case     @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@map("case_defendant_preparation_receipts")
+}
+
 model CaseLawyerAssignmentReceipt {
   id                 String   @id @default(uuid()) @db.Uuid
   departmentId       String   @map("department_id") @db.Uuid
@@ -2684,7 +2706,7 @@ model CaseComplaintConfirmation {
   amount                             Decimal?                 @db.Decimal(16, 2)
   pendingReason                      String?                  @map("pending_reason") @db.VarChar(500)
   changeNote                         String?                  @map("change_note") @db.VarChar(500)
-  confirmDisclose                    Boolean                  @map("confirm_disclose")
+  confirmDisclose                    Boolean?                 @map("confirm_disclose")
   confirmedByUserId                  String                   @map("confirmed_by_user_id") @db.Uuid
   confirmedAt                        DateTime                 @map("confirmed_at") @db.Timestamptz(3)
   auditEventId                       String                   @unique @map("audit_event_id") @db.Uuid
@@ -2718,6 +2740,7 @@ model CaseComplaintMailing {
   departmentId             String                        @map("department_id") @db.Uuid
   caseId                   String                        @unique @map("case_id") @db.Uuid
   mailedAt                 DateTime                      @map("mailed_at") @db.Date
+  remark                   String?                       @db.VarChar(1000)
   recordedAt               DateTime                      @default(now()) @map("recorded_at") @db.Timestamptz(3)
   recordedByUserId         String                        @map("recorded_by_user_id") @db.Uuid
   actorType                UserAccountType               @map("actor_type")
@@ -2789,6 +2812,7 @@ model CaseFilingSubmission {
   recordedAt       DateTime            @default(now()) @map("recorded_at") @db.Timestamptz(3)
   recordedByUserId String              @map("recorded_by_user_id") @db.Uuid
   mediationNo      String?             @map("mediation_no") @db.VarChar(100)
+  claimAmount      Decimal?            @map("claim_amount") @db.Decimal(16, 2)
   auditEventId     String              @unique @map("audit_event_id") @db.Uuid
   case             Case                @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
   court            FilingCourt         @relation(fields: [courtId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)

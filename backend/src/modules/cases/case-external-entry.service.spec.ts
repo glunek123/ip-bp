@@ -62,6 +62,24 @@ describe('CaseExternalEntryService input boundary', () => {
     expect(() => service['normalize'](input)).toThrow(BadRequestException);
   });
 
+  it('keeps historical external-entry defendant requests without a representative unchanged', () => {
+    const input = validInput();
+    input.initialStage = 'WAITING_COMPLAINT';
+    input.defendants = [{ kind: 'PERSON', name: '历史被告' }];
+    input.lawyerAccountId = id;
+    input.lawyerProfileId = id;
+    const normalized = service['normalize'](input);
+    expect(normalized.defendants).toEqual([
+      {
+        kind: 'PERSON',
+        name: '历史被告',
+        idNo: null,
+        phone: null,
+        address: null,
+      },
+    ]);
+  });
+
   it('rechecks current customer eligibility before returning a prior receipt', async () => {
     const input = validInput();
     const normalized = service['normalize'](input);

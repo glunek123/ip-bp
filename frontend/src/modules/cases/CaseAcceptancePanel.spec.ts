@@ -7,6 +7,7 @@ import CaseAcceptancePanel from './CaseAcceptancePanel.vue';
 
 const api = vi.hoisted(() => ({
   registerCaseAcceptance: vi.fn(),
+  caseAcceptanceDraft: vi.fn(),
   listFilingCourts: vi.fn(),
   todayShanghai: vi.fn(() => '2026-10-06'),
   uploadMaterialFile: vi.fn(),
@@ -15,6 +16,7 @@ const api = vi.hoisted(() => ({
 vi.mock('../../api/cases', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/cases')>()),
   registerCaseAcceptance: api.registerCaseAcceptance,
+  caseAcceptanceDraft: api.caseAcceptanceDraft,
   listFilingCourts: api.listFilingCourts,
   todayShanghai: api.todayShanghai,
 }));
@@ -82,6 +84,10 @@ beforeEach(() => {
   window.addEventListener(workflowChangedEvent, recordWorkflowRefresh);
   vi.resetAllMocks();
   api.todayShanghai.mockReturnValue('2026-10-06');
+  api.caseAcceptanceDraft.mockResolvedValue({
+    version: baseItem.version,
+    draft: null,
+  });
   api.listFilingCourts.mockResolvedValue([
     { id: '80000000-0000-4000-8000-000000000041', name: '真实受理法院' },
   ]);
@@ -129,6 +135,7 @@ async function chooseFile(
 describe('case acceptance panel', () => {
   it('requires the actual date and court case number but allows registration without optional files', async () => {
     const wrapper = mountPanel();
+    await flushPromises();
     expect(wrapper.text()).toContain('受理日期');
     expect(wrapper.text()).toContain('法院案号');
     expect(wrapper.text()).toContain('可后补');
