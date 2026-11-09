@@ -754,7 +754,7 @@ onBeforeUnmount(() => {
       <h2>线索信息</h2>
       <dl class="workflow-facts">
         <div>
-          <dt>线索编号</dt>
+          <dt>案件单号</dt>
           <dd>{{ detail.businessNo }}</dd>
         </div>
         <div>
@@ -909,7 +909,7 @@ onBeforeUnmount(() => {
           运营将以本人身份代办客户审核。请核对真实结论；系统记录代办人、时间和结果。
         </p>
         <fieldset :disabled="locked">
-          <legend>客户审核结论<RequiredFieldMark /></legend>
+          <legend>审核结果<RequiredFieldMark /></legend>
           <label
             ><input
               v-model="proxyResult"
@@ -926,7 +926,7 @@ onBeforeUnmount(() => {
           >
         </fieldset>
         <label v-if="proxyResult === 'NO_INFRINGEMENT'" class="field-label"
-          >不侵权原因<RequiredFieldMark />
+          >归档原因<RequiredFieldMark />
           <textarea
             v-model="reason"
             class="text-area"
@@ -954,7 +954,7 @@ onBeforeUnmount(() => {
           }}
         </p>
         <label class="field-label"
-          >{{ action === 'withdraw' ? '撤回原因' : '不取证原因'
+          >{{ action === 'withdraw' ? '撤回原因' : '归档原因'
           }}<RequiredFieldMark /><textarea
             v-model="reason"
             class="text-area"

@@ -44,6 +44,12 @@ import LeadQuickActionsPanel from './LeadQuickActionsPanel.vue';
 import ProxyLeadEvidencePanel from './ProxyLeadEvidencePanel.vue';
 import { hasPendingProxyLeadEvidence } from './lead-proxy-evidence-recovery';
 import RoutineBusinessEditor from './RoutineBusinessEditor.vue';
+import LeadDecisionPanel from './LeadDecisionPanel.vue';
+import { reviveLead } from '../../api/lead-decisions';
+import {
+  leadArchiveTypeLabels,
+  leadBusinessDate,
+} from '../../api/lead-decisions';
 import {
   readPendingLeadCommands,
   type LeadWorkflowResult,
@@ -62,7 +68,11 @@ let contextGeneration = 0;
 let refreshGeneration = 0;
 let request: AbortController | undefined;
 let routineRequest: AbortController | undefined;
-const routineEditing = ref(false);
+const routineEditing = ref<'base' | 'products' | null>(null);
+const decisionOpen = ref<'review' | 'confirm' | null>(null);
+const reviveBusy = ref(false);
+const reviveError = ref('');
+let reviveAttempt: { id: string; version: number; key: string } | undefined;
 const routineSaving = ref(false);
 const routineUnknown = ref(false);
 const routineError = ref('');
@@ -159,6 +169,55 @@ async function workflowCompleted(result: LeadWorkflowResult) {
   ) {
     transferredMatter.value = result.matter;
     transferSuccess.value = '已创建本次公证取证批次，请打开对应事项继续办理。';
+  }
+}
+async function reviveArchivedLead() {
+  const current = lead.value;
+  if (!current?.capabilities.revive || reviveBusy.value) return;
+  const generation = contextGeneration;
+  const actor = actorKey.value;
+  reviveBusy.value = true;
+  reviveError.value = '';
+  try {
+    if (!reviveAttempt) {
+      const latest = await getLead(current.id);
+      if (generation !== contextGeneration || actor !== actorKey.value) return;
+      if (!latest.capabilities.revive) {
+        reviveError.value = '线索状态或权限已变化，请刷新核对。';
+        return;
+      }
+      reviveAttempt = {
+        id: latest.id,
+        version: latest.version,
+        key: globalThis.crypto.randomUUID(),
+      };
+    }
+    await reviveLead(
+      reviveAttempt.id,
+      reviveAttempt.version,
+      reviveAttempt.key,
+    );
+    if (generation !== contextGeneration || actor !== actorKey.value) return;
+    reviveAttempt = undefined;
+    notifyWorkflowChanged();
+    await load();
+  } catch (error) {
+    if (generation !== contextGeneration || actor !== actorKey.value) return;
+    const definitelyRejected =
+      error instanceof ApiError &&
+      error.status >= 400 &&
+      error.status < 500 &&
+      error.status !== 408 &&
+      error.code !== 'INVALID_RESPONSE';
+    if (definitelyRejected) {
+      reviveAttempt = undefined;
+      reviveError.value = error.message;
+      void load();
+    } else {
+      reviveError.value = '复活结果未确认；请重试或刷新核对。';
+    }
+  } finally {
+    reviveBusy.value = false;
   }
 }
 const workflowNotice = computed(() => {
@@ -332,21 +391,26 @@ async function load(): Promise<void> {
         : 'failed';
   }
 }
-async function saveRoutine(value: {
-  shopName: string;
-  products: LeadRoutineEditInput['products'];
-  remark?: string | null;
-}) {
+async function saveRoutine(
+  section: 'base' | 'products',
+  value: {
+    shopName: string;
+    products: LeadRoutineEditInput['products'];
+    remark?: string | null;
+  },
+) {
   const current = lead.value;
   if (
     !current ||
     !current.capabilities.routineEdit ||
     routineSaving.value ||
     routineUnknown.value ||
-    workflowOpen.value
+    workflowOpen.value ||
+    decisionOpen.value
   )
     return;
   const generation = contextGeneration;
+  const unchanged = current;
   const controller = new AbortController();
   routineRequest = controller;
   routineSaving.value = true;
@@ -355,14 +419,24 @@ async function saveRoutine(value: {
     await updateLeadRoutine(
       current.id,
       {
-        ...value,
-        remark: value.remark ?? null,
+        shopName: section === 'base' ? value.shopName : unchanged.shopName,
+        remark: section === 'base' ? (value.remark ?? null) : unchanged.remark,
+        products:
+          section === 'products'
+            ? value.products
+            : unchanged.products.map((product) => ({
+                id: product.id,
+                title: product.title,
+                url: product.url,
+                quantity: product.quantity,
+                unitPrice: product.unitPrice,
+              })),
         expectedRevision: current.version,
       },
       { signal: controller.signal },
     );
     if (controller.signal.aborted || generation !== contextGeneration) return;
-    routineEditing.value = false;
+    routineEditing.value = null;
     await load();
   } catch (error) {
     if (controller.signal.aborted || generation !== contextGeneration) return;
@@ -384,9 +458,11 @@ async function saveRoutine(value: {
   }
 }
 function refreshRoutine() {
-  routineEditing.value = false;
+  routineEditing.value = null;
   routineUnknown.value = false;
   routineError.value = '';
+  reviveAttempt = undefined;
+  reviveError.value = '';
   void load();
 }
 function productScreenshotItems(ids: string[]): ProductScreenshot[] {
@@ -534,7 +610,7 @@ function clearContext() {
   contextGeneration += 1;
   routineRequest?.abort();
   routineRequest = undefined;
-  routineEditing.value = false;
+  routineEditing.value = null;
   routineSaving.value = false;
   routineUnknown.value = false;
   routineError.value = '';
@@ -611,7 +687,7 @@ onBeforeUnmount(clearContext);
               v-if="lead.capabilities.push"
               type="primary"
               data-test="push-lead"
-              :disabled="routineEditing || routineSaving"
+              :disabled="Boolean(routineEditing) || routineSaving"
               @click="workflowOpen = true"
               >推送客户审核</ElButton
             >
@@ -620,17 +696,42 @@ onBeforeUnmount(clearContext);
               data-test="edit-lead"
               :to="`/leads/${lead.id}/edit`"
               >编辑线索</RouterLink
-            ><ElButton
-              v-if="lead.capabilities.routineEdit"
-              data-test="edit-lead-routine"
-              :disabled="routineSaving || routineUnknown || workflowOpen"
-              @click="routineEditing = true"
-              >编辑资料</ElButton
+            >
+            <ElButton
+              v-if="
+                lead.status === 'WAITING_REVIEW' &&
+                lead.capabilities.proxyReview
+              "
+              data-test="review-lead"
+              type="primary"
+              :disabled="Boolean(routineEditing) || routineSaving"
+              @click="decisionOpen = 'review'"
+              >审核</ElButton
+            >
+            <ElButton
+              v-if="
+                lead.status === 'WAITING_EVIDENCE_DECISION' &&
+                (lead.capabilities.evidenceDecide ||
+                  lead.capabilities.transferToNotary)
+              "
+              data-test="confirm-lead"
+              type="primary"
+              :disabled="Boolean(routineEditing) || routineSaving"
+              @click="decisionOpen = 'confirm'"
+              >确认</ElButton
+            >
+            <ElButton
+              v-if="lead.status === 'ARCHIVED' && lead.capabilities.revive"
+              data-test="revive-lead"
+              :loading="reviveBusy"
+              :disabled="Boolean(routineEditing) || routineSaving"
+              @click="reviveArchivedLead"
+              >复活</ElButton
             >
             <ElButton
               data-test="refresh"
               text
-              :disabled="routineEditing || routineSaving"
+              :disabled="Boolean(routineEditing) || routineSaving"
               @click="load"
               >刷新</ElButton
             >
@@ -639,45 +740,23 @@ onBeforeUnmount(clearContext);
                 lead.capabilities.transferToNotary ||
                 lead.capabilities.createEvidenceBatch ||
                 lead.capabilities.evidenceDecide ||
-                lead.capabilities.withdrawApply
+                (lead.capabilities.withdrawApply && lead.status !== 'ARCHIVED')
               "
               data-test="open-lead-workflow"
               type="primary"
-              :disabled="routineEditing || routineSaving"
+              :disabled="Boolean(routineEditing) || routineSaving"
               @click="workflowOpen = true"
               >{{
                 lead.capabilities.createEvidenceBatch
                   ? '新建取证批次'
-                  : lead.capabilities.withdrawApply
+                  : lead.capabilities.withdrawApply &&
+                      lead.status !== 'ARCHIVED'
                     ? '申请撤回归档'
                     : '确认取证安排'
               }}</ElButton
             >
           </div>
         </div>
-        <section
-          v-if="routineEditing"
-          class="demo-card demo-card--pad"
-          data-test="lead-routine-editor"
-        >
-          <h2 class="form-section-title">编辑线索资料</h2>
-          <RoutineBusinessEditor
-            :shop-name="lead.shopName"
-            :remark="lead.remark"
-            :products="lead.products"
-            :pending="routineSaving || routineUnknown"
-            @save="saveRoutine"
-            @cancel="routineEditing = false"
-          />
-          <p v-if="routineError" role="alert" class="submit-error">
-            {{ routineError }}
-          </p>
-          <ElButton
-            v-if="routineUnknown || routineError.includes('刷新')"
-            @click="refreshRoutine"
-            >刷新核对</ElButton
-          >
-        </section>
         <p
           v-if="workflowNotice"
           class="field-help"
@@ -685,6 +764,21 @@ onBeforeUnmount(clearContext);
         >
           {{ workflowNotice }}
         </p>
+        <p v-if="reviveError" role="alert" class="submit-error">
+          {{ reviveError }}
+        </p>
+        <LeadDecisionPanel
+          v-if="decisionOpen"
+          :leads="[lead]"
+          :identity="actorKey"
+          :kind="decisionOpen"
+          @close="decisionOpen = null"
+          @completed="
+            decisionOpen = null;
+            notifyWorkflowChanged();
+            load();
+          "
+        />
         <ProxyLeadEvidencePanel
           v-if="
             lead.capabilities.proxyConfirmEvidence ||
@@ -696,7 +790,51 @@ onBeforeUnmount(clearContext);
           @completed="load"
         />
         <section class="demo-card demo-card--pad lead-facts-card">
-          <dl class="demo-detail-grid lead-facts-grid" data-test="lead-facts">
+          <div class="lead-card-heading">
+            <h2 class="form-section-title">基础信息</h2>
+            <ElButton
+              v-if="lead.capabilities.routineEdit"
+              data-test="edit-lead-base-card"
+              :disabled="
+                routineSaving ||
+                routineUnknown ||
+                workflowOpen ||
+                Boolean(decisionOpen)
+              "
+              @click="routineEditing = 'base'"
+              >编辑</ElButton
+            >
+          </div>
+          <RoutineBusinessEditor
+            v-if="routineEditing === 'base'"
+            section="base"
+            :shop-name="lead.shopName"
+            :remark="lead.remark"
+            :products="lead.products"
+            :pending="routineSaving || routineUnknown"
+            @save="saveRoutine('base', $event)"
+            @cancel="routineEditing = null"
+          />
+          <p
+            v-if="routineEditing === 'base' && routineError"
+            role="alert"
+            class="submit-error"
+          >
+            {{ routineError }}
+          </p>
+          <ElButton
+            v-if="
+              routineEditing === 'base' &&
+              (routineUnknown || routineError.includes('刷新'))
+            "
+            @click="refreshRoutine"
+            >刷新核对</ElButton
+          >
+          <dl
+            v-if="routineEditing !== 'base'"
+            class="demo-detail-grid lead-facts-grid"
+            data-test="lead-facts"
+          >
             <div>
               <dt>客户</dt>
               <dd>{{ customerName }}</dd>
@@ -718,7 +856,7 @@ onBeforeUnmount(clearContext);
               <dd>{{ labelLeadPlatform(lead.platform) }}</dd>
             </div>
             <div>
-              <dt>负责人</dt>
+              <dt>运营</dt>
               <dd>{{ lead.displayNames.responsibleUserName }}</dd>
             </div>
             <div>
@@ -730,8 +868,8 @@ onBeforeUnmount(clearContext);
               <dd class="mono">{{ lead.shopExternalId || '未登记' }}</dd>
             </div>
             <div>
-              <dt>发现时间</dt>
-              <dd class="mono">{{ formatTime(lead.foundAt) }}</dd>
+              <dt>线索发现日期</dt>
+              <dd class="mono">{{ leadBusinessDate(lead.foundAt) }}</dd>
             </div>
             <div>
               <dt>侵权类型</dt>
@@ -754,12 +892,47 @@ onBeforeUnmount(clearContext);
           </dl>
         </section>
         <section class="demo-card" data-test="lead-products-table">
-          <h2 class="card-section-title">商品信息</h2>
-          <p class="field-help lead-estimate-note">
-            计算金额＝单价 × 销量；销量为 0
-            时改用评论数。仅供线索评估参考，不代表实际成交额。
+          <div class="lead-card-heading">
+            <h2 class="card-section-title">商品信息</h2>
+            <ElButton
+              v-if="lead.capabilities.routineEdit"
+              data-test="edit-lead-products-card"
+              :disabled="
+                routineSaving ||
+                routineUnknown ||
+                workflowOpen ||
+                Boolean(decisionOpen)
+              "
+              @click="routineEditing = 'products'"
+              >编辑</ElButton
+            >
+          </div>
+          <RoutineBusinessEditor
+            v-if="routineEditing === 'products'"
+            section="products"
+            :shop-name="lead.shopName"
+            :products="lead.products"
+            :pending="routineSaving || routineUnknown"
+            @save="saveRoutine('products', $event)"
+            @cancel="routineEditing = null"
+          />
+          <p
+            v-if="routineEditing === 'products' && routineError"
+            role="alert"
+            class="submit-error"
+          >
+            {{ routineError }}
           </p>
+          <ElButton
+            v-if="
+              routineEditing === 'products' &&
+              (routineUnknown || routineError.includes('刷新'))
+            "
+            @click="refreshRoutine"
+            >刷新核对</ElButton
+          >
           <div
+            v-if="routineEditing !== 'products'"
             class="demo-table-wrap business-list-scroll"
             tabindex="0"
             role="region"
@@ -781,7 +954,7 @@ onBeforeUnmount(clearContext);
                   <th class="num">销量</th>
                   <th class="num">单价（元）</th>
                   <th class="num">评论数</th>
-                  <th class="num">计算金额（元）</th>
+                  <th class="num">销售额（元）</th>
                   <th>商品截图</th>
                 </tr>
               </thead>
@@ -887,14 +1060,7 @@ onBeforeUnmount(clearContext);
               </tbody>
               <tfoot>
                 <tr data-test="lead-product-summary">
-                  <th colspan="3" scope="row">商品计算金额合计</th>
-                  <td class="num mono business-list-cell--number">
-                    {{ productSummary.quantityTotal }}
-                  </td>
-                  <td class="num mono business-list-cell--number">—</td>
-                  <td class="num mono business-list-cell--number">
-                    {{ productSummary.commentTotal }}
-                  </td>
+                  <th colspan="5" scope="row">销售总额</th>
                   <td class="num mono business-list-cell--number">
                     {{ productSummary.estimatedAmount }}
                   </td>
@@ -910,15 +1076,13 @@ onBeforeUnmount(clearContext);
             {{ screenshotMessage }}
           </p>
           <p v-if="imageTaskError" role="alert">{{ imageTaskError }}</p>
-          <div class="lead-unassigned-screenshots" data-test="lead-attachments">
-            <h3>截图（商品归属待关联）</h3>
-            <p class="field-help">
-              现有截图未记录对应商品，暂不作为某件商品的截图展示。
-            </p>
-            <p v-if="lead.leadScreenshotContentVersionIds.length === 0">
-              未上传截图
-            </p>
-            <ul v-else-if="screenshots.length">
+          <div
+            v-if="lead.leadScreenshotContentVersionIds.length > 0"
+            class="lead-unassigned-screenshots"
+            data-test="lead-attachments"
+          >
+            <h3>历史截图</h3>
+            <ul v-if="screenshots.length">
               <li v-for="screenshot in screenshots" :key="screenshot.versionId">
                 <span>{{ screenshot.filename }}</span>
                 <ElButton
@@ -954,17 +1118,17 @@ onBeforeUnmount(clearContext);
           <h2 class="form-section-title">客户审核记录</h2>
           <dl class="demo-detail-grid">
             <div>
-              <dt>审核结论</dt>
+              <dt>审核结果</dt>
               <dd>
                 {{
                   lead.reviewDecision.result === 'INFRINGEMENT'
-                    ? '确认侵权'
-                    : '判定不侵权并归档'
+                    ? '侵权'
+                    : '不侵权'
                 }}
               </dd>
             </div>
             <div v-if="lead.reviewDecision.result === 'NO_INFRINGEMENT'">
-              <dt>不侵权原因</dt>
+              <dt>归档原因</dt>
               <dd>{{ lead.reviewDecision.reason }}</dd>
             </div>
             <div>
@@ -972,9 +1136,14 @@ onBeforeUnmount(clearContext);
               <dd>{{ lead.reviewDecision.reviewerDisplayName }}</dd>
             </div>
             <div v-if="lead.reviewDecision.result === 'NO_INFRINGEMENT'">
-              <dt>归档时间</dt>
+              <dt>归档日期</dt>
               <dd class="mono">
-                {{ formatTime(lead.reviewDecision.archivedAt) }}
+                {{
+                  leadBusinessDate(
+                    lead.reviewDecision.archiveDate ??
+                      lead.reviewDecision.archivedAt,
+                  )
+                }}
               </dd>
             </div>
             <div>
@@ -1038,8 +1207,20 @@ onBeforeUnmount(clearContext);
           <p>决定：不取证并归档</p>
           <p>操作人：{{ lead.evidenceDecision.decidedByDisplayName }}</p>
           <p>决定时间：{{ formatTime(lead.evidenceDecision.decidedAt) }}</p>
-          <p>原因：{{ lead.evidenceDecision.reason }}</p>
-          <p>归档时间：{{ formatTime(lead.evidenceDecision.archivedAt) }}</p>
+          <p>归档原因：{{ lead.evidenceDecision.reason }}</p>
+          <p>
+            归档类型：{{
+              leadArchiveTypeLabels[lead.evidenceDecision.archiveType]
+            }}
+          </p>
+          <p>
+            归档日期：{{
+              leadBusinessDate(
+                lead.evidenceDecision.archiveDate ??
+                  lead.evidenceDecision.archivedAt,
+              )
+            }}
+          </p>
         </section>
         <section
           v-if="lead.notaryMatters.length"
@@ -1128,7 +1309,28 @@ onBeforeUnmount(clearContext);
                           : item.result
                 }}</span
               >
-              <span v-if="item.reason"> · {{ item.reason }}</span>
+              <span v-if="item.archiveType">
+                · 归档类型
+                {{
+                  Object.hasOwn(leadArchiveTypeLabels, item.archiveType)
+                    ? leadArchiveTypeLabels[
+                        item.archiveType as keyof typeof leadArchiveTypeLabels
+                      ]
+                    : item.archiveType
+                }}</span
+              >
+              <span v-if="item.archiveDate">
+                · 归档日期 {{ leadBusinessDate(item.archiveDate) }}</span
+              >
+              <span v-if="item.reason">
+                ·
+                {{
+                  item.kind === 'REVIEW_DECISION' ||
+                  item.kind === 'EVIDENCE_DECISION'
+                    ? '归档原因：'
+                    : '原因：'
+                }}{{ item.reason }}</span
+              >
             </li>
           </ol>
         </section>
@@ -1203,6 +1405,16 @@ onBeforeUnmount(clearContext);
 }
 .lead-detail-page .demo-detail-grid > div {
   padding-bottom: 8px;
+}
+.lead-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 0;
+}
+.lead-card-heading h2 {
+  margin: 0;
 }
 .lead-facts-card {
   container-type: inline-size;

@@ -198,7 +198,25 @@ export class DecideLeadEvidenceDto {
   })
   @IsString()
   reason!: string;
+  @ApiPropertyOptional({
+    enum: ['LINK_REMOVED', 'NO_INFRINGEMENT_INFORMATION', 'NO_EVIDENCE'],
+  })
+  @IsOptional()
+  @IsIn(['LINK_REMOVED', 'NO_INFRINGEMENT_INFORMATION', 'NO_EVIDENCE'])
+  archiveType?: 'LINK_REMOVED' | 'NO_INFRINGEMENT_INFORMATION' | 'NO_EVIDENCE';
+  @ApiPropertyOptional({ format: 'date' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  archiveDate?: string;
   @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
+}
+
+export class ReviveLeadDto {
+  @ApiProperty({ minimum: 1, maximum: 2147483646 })
+  @IsInt()
+  @Min(1)
+  @Max(2147483646)
+  expectedVersion!: number;
 }
 
 export class ConfirmProxyLeadEvidenceDto {
@@ -210,6 +228,18 @@ export class ConfirmProxyLeadEvidenceDto {
   @IsOptional()
   @IsString()
   reason?: string;
+
+  @ApiPropertyOptional({
+    enum: ['LINK_REMOVED', 'NO_INFRINGEMENT_INFORMATION', 'NO_EVIDENCE'],
+  })
+  @IsOptional()
+  @IsIn(['LINK_REMOVED', 'NO_INFRINGEMENT_INFORMATION', 'NO_EVIDENCE'])
+  archiveType?: 'LINK_REMOVED' | 'NO_INFRINGEMENT_INFORMATION' | 'NO_EVIDENCE';
+
+  @ApiPropertyOptional({ format: 'date' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  archiveDate?: string;
 
   @ApiProperty({ minimum: 1, maximum: 2147483646 })
   @IsInt()

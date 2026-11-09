@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class LeadEvidenceDecisionResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -9,6 +9,10 @@ export class LeadEvidenceDecisionResponseDto {
   @ApiProperty({ maxLength: 5000 }) reason!: string;
   @ApiProperty() decidedByDisplayName!: string;
   @ApiProperty({ format: 'date-time' }) decidedAt!: string;
-  @ApiProperty({ enum: ['NO_EVIDENCE'] }) archiveType!: 'NO_EVIDENCE';
+  @ApiProperty({
+    enum: ['LINK_REMOVED', 'NO_INFRINGEMENT_INFORMATION', 'NO_EVIDENCE'],
+  })
+  archiveType!: 'LINK_REMOVED' | 'NO_INFRINGEMENT_INFORMATION' | 'NO_EVIDENCE';
   @ApiProperty({ format: 'date-time' }) archivedAt!: string;
+  @ApiPropertyOptional({ format: 'date' }) archiveDate?: string;
 }

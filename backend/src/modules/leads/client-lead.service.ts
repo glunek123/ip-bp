@@ -15,9 +15,11 @@ import type { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
 import type {
   ClientLeadView,
+  BatchProxyReviewDto,
   ConfirmClientLeadWithdrawalDto,
   ReviewClientLeadDto,
 } from './client-lead-review.dto';
+import { parseArchiveDate } from './lead-archive-date';
 
 const CLIENT_LEAD_REVIEW_ACTION =
   'client.lead.review' satisfies PermissionAction;
@@ -53,6 +55,7 @@ type ClientLeadReviewResult = {
         decidedAt: string;
         archiveType: 'NO_INFRINGEMENT';
         archivedAt: string;
+        archiveDate?: string;
       };
     }
 );
@@ -70,6 +73,7 @@ const clientLeadInclude = {
       reason: true,
       archiveType: true,
       archivedAt: true,
+      archiveDate: true,
       reviewerDisplayNameSnapshot: true,
       decidedAt: true,
     },
@@ -83,6 +87,7 @@ const clientLeadInclude = {
       decidedAt: true,
       archiveType: true,
       archivedAt: true,
+      archiveDate: true,
       fromVersion: true,
       toVersion: true,
     },
@@ -117,7 +122,22 @@ const clientLeadDetailInclude = {
       reason: true,
       archiveType: true,
       archivedAt: true,
+      archiveDate: true,
       reviewerDisplayNameSnapshot: true,
+      decidedAt: true,
+      fromVersion: true,
+      toVersion: true,
+    },
+  },
+  evidenceDecisions: {
+    select: {
+      id: true,
+      result: true,
+      reason: true,
+      archiveType: true,
+      archiveDate: true,
+      archivedAt: true,
+      actorDisplayNameSnapshot: true,
       decidedAt: true,
       fromVersion: true,
       toVersion: true,
@@ -179,7 +199,10 @@ export class ClientLeadService {
                   },
                 },
                 withdrawalApplications: {
-                  some: { confirmation: { is: null } },
+                  some: {
+                    confirmation: { is: null },
+                    originalDecision: { activeForLead: { isNot: null } },
+                  },
                 },
               },
             ],
@@ -201,7 +224,10 @@ export class ClientLeadService {
               {
                 status: 'ARCHIVED' as const,
                 withdrawalApplications: {
-                  none: { confirmation: { is: null } },
+                  none: {
+                    confirmation: { is: null },
+                    originalDecision: { activeForLead: { isNot: null } },
+                  },
                 },
                 reviewDecision: {
                   is: {
@@ -289,7 +315,12 @@ export class ClientLeadService {
     input: ReviewClientLeadDto,
     proxy = false,
   ): Promise<ClientLeadReviewResult> {
+    const archiveDate = input.archiveDate
+      ? parseArchiveDate(input.archiveDate)
+      : null;
     if (
+      (input.archiveDate !== undefined && archiveDate === null) ||
+      (input.result === 'INFRINGEMENT' && input.archiveDate !== undefined) ||
       (input.result === 'NO_INFRINGEMENT' &&
         (typeof input.reason !== 'string' ||
           [...input.reason.trim()].length < 1 ||
@@ -311,6 +342,9 @@ export class ClientLeadService {
             leadId: id,
             result: input.result,
             reason: input.reason!.trim(),
+            ...(input.archiveDate === undefined
+              ? {}
+              : { archiveDate: input.archiveDate }),
             expectedVersion: input.expectedVersion,
           };
     const fingerprint = createHash('sha256')
@@ -418,6 +452,7 @@ export class ClientLeadService {
                       reason: input.reason!.trim(),
                       archiveType: 'NO_INFRINGEMENT' as const,
                       archivedAt: decidedAt,
+                      ...(archiveDate === null ? {} : { archiveDate }),
                     }
                   : {}),
               },
@@ -453,6 +488,9 @@ export class ClientLeadService {
                       ...decisionSnapshot,
                       archiveType: 'NO_INFRINGEMENT',
                       archivedAt: decidedAt.toISOString(),
+                      ...(archiveDate === null
+                        ? {}
+                        : { archiveDate: input.archiveDate }),
                     },
                   };
             await transaction.clientLeadReviewReceipt.create({
@@ -497,6 +535,259 @@ export class ClientLeadService {
             );
             return this.reviewReceiptResult(receipt, fingerprint, id);
           }
+          throw this.versionConflict();
+        }
+        throw error;
+      }
+    }
+    throw this.versionConflict();
+  }
+
+  async batchProxyReview(
+    actor: ActorContext,
+    idempotencyKey: string,
+    input: BatchProxyReviewDto,
+  ): Promise<{ items: ClientLeadReviewResult[] }> {
+    const items = input.items;
+    const reason = input.reason?.trim();
+    const archiveDate = input.archiveDate
+      ? parseArchiveDate(input.archiveDate)
+      : null;
+    if (
+      !Array.isArray(items) ||
+      items.length < 1 ||
+      items.length > 20 ||
+      new Set(items.map((item) => item.leadId.toLowerCase())).size !==
+        items.length ||
+      items.some(
+        (item) =>
+          !Number.isInteger(item.expectedVersion) || item.expectedVersion < 1,
+      ) ||
+      (input.result === 'INFRINGEMENT' &&
+        (reason !== undefined || input.archiveDate !== undefined)) ||
+      (input.result === 'NO_INFRINGEMENT' &&
+        (reason === undefined ||
+          [...reason].length < 1 ||
+          [...reason].length > 5000 ||
+          archiveDate === null)) ||
+      (input.archiveDate !== undefined && archiveDate === null)
+    )
+      throw new BadRequestException({ code: 'VALIDATION_ERROR' });
+    const fingerprint = createHash('sha256')
+      .update(
+        JSON.stringify({
+          action: 'lead.batch-proxy-review',
+          items,
+          result: input.result,
+          ...(reason === undefined ? {} : { reason }),
+          ...(input.archiveDate === undefined
+            ? {}
+            : { archiveDate: input.archiveDate }),
+        }),
+      )
+      .digest('hex');
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (tx) => {
+            const ids = items.map((item) => item.leadId).sort();
+            const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+              'SELECT "id" FROM "leads" WHERE "department_id" = $1::uuid AND "id" = ANY($2::uuid[]) ORDER BY "id"::text FOR UPDATE',
+              actor.departmentId,
+              ids,
+            );
+            if (locked.length !== ids.length) throw this.notFound();
+            const bindings = new Map<
+              string,
+              Awaited<ReturnType<ClientLeadService['assertProxyReview']>>
+            >();
+            for (const [index, item] of items.entries()) {
+              try {
+                bindings.set(
+                  item.leadId,
+                  await this.assertProxyReview(actor, item.leadId, tx),
+                );
+              } catch (error) {
+                if (
+                  !(error instanceof ForbiddenException) &&
+                  !(error instanceof NotFoundException)
+                )
+                  throw error;
+                throw new ConflictException({
+                  code: 'BATCH_REVIEW_REJECTED',
+                  message: `第${index + 1}条线索当前不可办理`,
+                  details: { failures: [{ index, code: 'NOT_AVAILABLE' }] },
+                });
+              }
+            }
+            const prior = await tx.leadCommandReceipt.findUnique({
+              where: {
+                departmentId_actorUserId_action_idempotencyKey: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  action: 'batch_proxy_review',
+                  idempotencyKey,
+                },
+              },
+            });
+            if (prior) {
+              if (prior.requestFingerprint !== fingerprint)
+                throw this.idempotencyConflict();
+              return prior.resultSnapshot as {
+                items: ClientLeadReviewResult[];
+              };
+            }
+            const results: ClientLeadReviewResult[] = [];
+            const batchId = randomUUID();
+            for (const [index, item] of items.entries()) {
+              const binding = bindings.get(item.leadId)!;
+              const current = await tx.lead.findFirst({
+                where: {
+                  id: item.leadId,
+                  departmentId: actor.departmentId,
+                  customerId: binding.customerId,
+                },
+                select: {
+                  businessNo: true,
+                  status: true,
+                  version: true,
+                  activeReviewDecisionId: true,
+                  pushedAt: true,
+                  pushedByUserId: true,
+                },
+              });
+              if (
+                current === null ||
+                current.status !== 'WAITING_REVIEW' ||
+                current.activeReviewDecisionId !== null ||
+                current.pushedAt === null ||
+                current.pushedByUserId === null
+              )
+                throw new ConflictException({
+                  code: 'BATCH_REVIEW_REJECTED',
+                  message: `第${index + 1}条线索不在待审核状态`,
+                  details: { failures: [{ index, code: 'INVALID_STATE' }] },
+                });
+              if (current.version !== item.expectedVersion)
+                throw new ConflictException({
+                  code: 'BATCH_REVIEW_REJECTED',
+                  message: `第${index + 1}条线索版本已变化`,
+                  details: { failures: [{ index, code: 'VERSION_CONFLICT' }] },
+                });
+              const decidedAt = new Date();
+              const decision = await tx.leadReviewDecision.create({
+                data: {
+                  departmentId: actor.departmentId,
+                  leadId: item.leadId,
+                  customerId: binding.customerId,
+                  reviewerUserId: actor.userId,
+                  customerAccountBindingId: null,
+                  actorKind: 'INTERNAL_PROXY',
+                  internalActorUserId: actor.userId,
+                  reviewerDisplayNameSnapshot: binding.reviewerDisplayName,
+                  result: input.result,
+                  fromVersion: item.expectedVersion,
+                  toVersion: item.expectedVersion + 1,
+                  decidedAt,
+                  ...(input.result === 'NO_INFRINGEMENT'
+                    ? {
+                        reason: reason!,
+                        archiveType: 'NO_INFRINGEMENT' as const,
+                        archivedAt: decidedAt,
+                        ...(archiveDate === null ? {} : { archiveDate }),
+                      }
+                    : {}),
+                },
+              });
+              await tx.lead.update({
+                where: { id: item.leadId },
+                data: {
+                  status:
+                    input.result === 'INFRINGEMENT'
+                      ? 'WAITING_EVIDENCE_DECISION'
+                      : 'ARCHIVED',
+                  version: { increment: 1 },
+                  activeReviewDecisionId: decision.id,
+                },
+              });
+              const reviewDecision =
+                input.result === 'INFRINGEMENT'
+                  ? {
+                      result: 'INFRINGEMENT' as const,
+                      reviewerDisplayName: binding.reviewerDisplayName,
+                      decidedAt: decidedAt.toISOString(),
+                    }
+                  : {
+                      result: 'NO_INFRINGEMENT' as const,
+                      reason: reason!,
+                      reviewerDisplayName: binding.reviewerDisplayName,
+                      decidedAt: decidedAt.toISOString(),
+                      archiveType: 'NO_INFRINGEMENT' as const,
+                      archivedAt: decidedAt.toISOString(),
+                      ...(input.archiveDate === undefined
+                        ? {}
+                        : { archiveDate: input.archiveDate }),
+                    };
+              const result = {
+                id: item.leadId,
+                businessNo: current.businessNo,
+                status:
+                  input.result === 'INFRINGEMENT'
+                    ? ('WAITING_EVIDENCE_DECISION' as const)
+                    : ('ARCHIVED' as const),
+                version: item.expectedVersion + 1,
+                reviewDecision,
+              } as ClientLeadReviewResult;
+              await tx.clientLeadReviewReceipt.create({
+                data: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  customerAccountBindingId: null,
+                  actorKind: 'INTERNAL_PROXY',
+                  internalActorUserId: actor.userId,
+                  action: 'lead.review.proxy',
+                  idempotencyKey: `batch-proxy-review:${batchId}:${index}`,
+                  requestFingerprint: createHash('sha256')
+                    .update(
+                      JSON.stringify({
+                        leadId: item.leadId,
+                        result: input.result,
+                        ...(reason === undefined ? {} : { reason }),
+                        ...(input.archiveDate === undefined
+                          ? {}
+                          : { archiveDate: input.archiveDate }),
+                        expectedVersion: item.expectedVersion,
+                      }),
+                    )
+                    .digest('hex'),
+                  resultLeadId: item.leadId,
+                  resultLeadVersion: result.version,
+                  reviewDecisionId: decision.id,
+                  resultSnapshot: result,
+                },
+              });
+              results.push(result);
+            }
+            const response = { items: results };
+            await tx.leadCommandReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                action: 'batch_proxy_review',
+                idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultLeadId: items[0].leadId,
+                resultLeadVersion: results[0].version,
+                resultSnapshot: response,
+              },
+            });
+            return response;
+          },
+          { isolationLevel: 'Serializable', timeout: 15_000 },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error) || this.isUnique(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
           throw this.versionConflict();
         }
         throw error;
@@ -991,24 +1282,20 @@ export class ClientLeadService {
     const history =
       detail && 'reviewDecisions' in lead
         ? [
-            ...(lead.evidenceDecision === null ||
-            lead.evidenceDecision === undefined
-              ? []
-              : [
-                  {
-                    kind: 'EVIDENCE_DECISION' as const,
-                    id: lead.evidenceDecision.id,
-                    fromVersion: lead.evidenceDecision.fromVersion,
-                    toVersion: lead.evidenceDecision.toVersion,
-                    result: lead.evidenceDecision.result,
-                    reason: lead.evidenceDecision.reason,
-                    archiveType: lead.evidenceDecision.archiveType,
-                    archivedAt: lead.evidenceDecision.archivedAt.toISOString(),
-                    decidedByDisplayName:
-                      lead.evidenceDecision.actorDisplayNameSnapshot,
-                    occurredAt: lead.evidenceDecision.decidedAt.toISOString(),
-                  },
-                ]),
+            ...lead.evidenceDecisions.map((decision) => ({
+              kind: 'EVIDENCE_DECISION' as const,
+              id: decision.id,
+              fromVersion: decision.fromVersion,
+              toVersion: decision.toVersion,
+              result: decision.result,
+              reason: decision.reason,
+              archiveType: decision.archiveType,
+              archiveDate:
+                decision.archiveDate?.toISOString().slice(0, 10) ?? null,
+              archivedAt: decision.archivedAt.toISOString(),
+              decidedByDisplayName: decision.actorDisplayNameSnapshot,
+              occurredAt: decision.decidedAt.toISOString(),
+            })),
             ...lead.reviewDecisions.map((decision) => ({
               kind: 'REVIEW_DECISION' as const,
               id: decision.id,
@@ -1017,6 +1304,8 @@ export class ClientLeadService {
               result: decision.result,
               reason: decision.reason,
               archiveType: decision.archiveType,
+              archiveDate:
+                decision.archiveDate?.toISOString().slice(0, 10) ?? null,
               archivedAt: decision.archivedAt?.toISOString() ?? null,
               reviewerDisplayName: decision.reviewerDisplayNameSnapshot,
               occurredAt: decision.decidedAt.toISOString(),
@@ -1098,6 +1387,9 @@ export class ClientLeadService {
               decidedAt: lead.reviewDecision.decidedAt.toISOString(),
               archiveType: lead.reviewDecision.archiveType,
               archivedAt: lead.reviewDecision.archivedAt?.toISOString() ?? null,
+              archiveDate:
+                lead.reviewDecision.archiveDate?.toISOString().slice(0, 10) ??
+                null,
             }
           : {
               result: 'INFRINGEMENT' as const,
@@ -1115,6 +1407,9 @@ export class ClientLeadService {
             decidedAt: lead.evidenceDecision.decidedAt.toISOString(),
             archiveType: lead.evidenceDecision.archiveType,
             archivedAt: lead.evidenceDecision.archivedAt.toISOString(),
+            archiveDate:
+              lead.evidenceDecision.archiveDate?.toISOString().slice(0, 10) ??
+              null,
           }
         : null,
       pendingWithdrawalApplication:

@@ -171,6 +171,19 @@ function pendingCsvImport(
     ],
   };
 }
+function pendingNoEvidenceBatch(
+  reason = '原始原因',
+  idempotencyKey = 'original-no-evidence',
+) {
+  const identity = 'operator-1:INTERNAL:department-1';
+  return {
+    identity,
+    idempotencyKey,
+    input: {
+      items: [{ leadId: batchSummary.id, expectedVersion: 1, reason }],
+    },
+  };
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -253,6 +266,29 @@ const DrawerStub = defineComponent({
         : null;
   },
 });
+const DecisionPanelStub = defineComponent({
+  props: {
+    leads: { type: Array as PropType<Lead[]>, required: true },
+    kind: { type: String, required: true },
+    bulk: { type: Boolean, default: false },
+  },
+  setup(props, { emit }) {
+    return () =>
+      h(
+        'section',
+        {
+          'data-test': 'decision-panel-stub',
+          'data-kind': props.kind,
+          'data-bulk': String(props.bulk),
+          'data-lead-ids': props.leads.map((lead) => lead.id).join(','),
+        },
+        [
+          h('button', { onClick: () => emit('close') }, '关闭'),
+          h('button', { onClick: () => emit('completed') }, '完成'),
+        ],
+      );
+  },
+});
 
 const cleanups: Array<() => void> = [];
 async function mountWithRoute(path: string) {
@@ -284,7 +320,12 @@ async function mountWithRoute(path: string) {
   await router.isReady();
   const wrapper = mount(
     { components: { RouterView }, template: '<RouterView />' },
-    { global: { plugins: [pinia, router], stubs: { ElDrawer: DrawerStub } } },
+    {
+      global: {
+        plugins: [pinia, router],
+        stubs: { ElDrawer: DrawerStub, LeadDecisionPanel: DecisionPanelStub },
+      },
+    },
   );
   cleanups.push(() => wrapper.unmount());
   await flushPromises();
@@ -463,7 +504,7 @@ describe('LeadListPage', () => {
     await flushPromises();
     expect(wrapper.text()).not.toContain('线索关键词无效');
   });
-  it('freshly checks selected no-evidence leads, submits one batch and preserves list filter', async () => {
+  it('opens bulk confirmation for the selected leads and preserves the list filter', async () => {
     const selected: Lead = {
       ...batchSummary,
       status: 'WAITING_EVIDENCE_DECISION',
@@ -474,54 +515,25 @@ describe('LeadListPage', () => {
       },
     };
     api.listLeads.mockResolvedValue({ ...result, items: [selected], total: 1 });
-    api.getLead.mockResolvedValue(
-      detail({
-        ...selected,
-        version: 4,
-        capabilities: { ...detail().capabilities, evidenceDecide: true },
-      }),
-    );
-    api.decideNoEvidenceBatch.mockResolvedValue({ items: [] });
-    const { wrapper } = await mountWithRoute(
+    const { wrapper, router } = await mountWithRoute(
       '/leads?status=WAITING_EVIDENCE_DECISION&page=1',
     );
     await wrapper.get('input[type="checkbox"]').setValue(true);
-    await wrapper.get('[data-test="open-no-evidence-batch"]').trigger('click');
-    await flushPromises();
-    expect(api.getLead).toHaveBeenCalledExactlyOnceWith(selected.id, {
-      signal: expect.any(AbortSignal),
+    await wrapper.get('[data-test="open-batch-decision"]').trigger('click');
+    const panel = wrapper.get('[data-test="decision-panel-stub"]');
+    expect(panel.attributes('data-kind')).toBe('confirm');
+    expect(panel.attributes('data-bulk')).toBe('true');
+    expect(panel.attributes('data-lead-ids')).toBe(selected.id);
+    expect(api.decideNoEvidenceBatch).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.query).toMatchObject({
+      status: 'WAITING_EVIDENCE_DECISION',
+      page: '1',
     });
-    expect(wrapper.text()).toContain('客户甲');
-    await wrapper
-      .get('[data-test="no-evidence-reason-0"]')
-      .setValue(' 原始原因 ');
-    await wrapper.get('[data-test="no-evidence-confirm"]').setValue(true);
-    await wrapper.get('[data-test="no-evidence-submit"]').trigger('click');
-    await flushPromises();
-    expect(api.decideNoEvidenceBatch).toHaveBeenCalledExactlyOnceWith(
-      {
-        items: [
-          { leadId: selected.id, expectedVersion: 4, reason: ' 原始原因 ' },
-        ],
-      },
-      expect.objectContaining({
-        headers: { 'Idempotency-Key': expect.any(String) },
-      }),
-    );
-    expect(api.listLeads).toHaveBeenLastCalledWith(
-      1,
-      20,
-      expect.anything(),
-      'WAITING_EVIDENCE_DECISION',
-      'LIBRARY',
-    );
-    expect(readPendingLeadNoEvidenceBatches()).toEqual({});
-    expect(wrapper.find('[data-test="no-evidence-submit"]').exists()).toBe(
-      false,
-    );
   });
 
-  it('blocks all other write entries after an unknown no-evidence batch', async () => {
+  it('blocks other write entries while a legacy no-evidence request is unresolved', async () => {
+    const pending = pendingNoEvidenceBatch();
+    savePendingLeadNoEvidenceBatches({ [pending.identity]: pending });
     api.listLeads.mockResolvedValue({
       ...result,
       items: [batchSummary],
@@ -541,10 +553,10 @@ describe('LeadListPage', () => {
     );
     api.decideNoEvidenceBatch.mockRejectedValue(new Error('unknown'));
     const { wrapper } = await mountWithRoute('/leads');
-    await wrapper.get('input[type="checkbox"]').setValue(true);
-    await wrapper.get('[data-test="open-no-evidence-batch"]').trigger('click');
+    await wrapper
+      .get('[data-test="recover-no-evidence-batch"]')
+      .trigger('click');
     await flushPromises();
-    await wrapper.get('[data-test="no-evidence-reason-0"]').setValue('原因');
     await wrapper.get('[data-test="no-evidence-confirm"]').setValue(true);
     await wrapper.get('[data-test="no-evidence-submit"]').trigger('click');
     await flushPromises();
@@ -554,12 +566,15 @@ describe('LeadListPage', () => {
     ).toContain('原始原因');
     for (const selector of [
       '[data-test="lead-clear"]',
-      '[data-test="open-batch-push"]',
       '[data-test="open-csv-import"]',
       '[data-test="lead-quick-action"]',
       'input[type="checkbox"]',
     ])
       expect(wrapper.get(selector).attributes('disabled')).toBeDefined();
+    expect(wrapper.find('[data-test="open-batch-push"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="open-batch-decision"]').exists()).toBe(
+      false,
+    );
     expect(api.pushLeadsBatch).not.toHaveBeenCalled();
     expect(api.importLeadCsvBatch).not.toHaveBeenCalled();
   });
@@ -608,9 +623,11 @@ describe('LeadListPage', () => {
   });
 
   it('keeps late no-evidence success pending after hash-only navigation', async () => {
+    const pending = pendingNoEvidenceBatch();
+    savePendingLeadNoEvidenceBatches({ [pending.identity]: pending });
     api.listLeads.mockResolvedValue({
       ...result,
-      items: [batchSummary],
+      items: [{ ...batchSummary, status: 'WAITING_REVIEW' }],
       total: 1,
     });
     api.getLead.mockResolvedValue(
@@ -628,10 +645,10 @@ describe('LeadListPage', () => {
     const post = deferred<unknown>();
     api.decideNoEvidenceBatch.mockReturnValue(post.promise);
     const { wrapper, router } = await mountWithRoute('/leads');
-    await wrapper.get('input[type="checkbox"]').setValue(true);
-    await wrapper.get('[data-test="open-no-evidence-batch"]').trigger('click');
+    await wrapper
+      .get('[data-test="recover-no-evidence-batch"]')
+      .trigger('click');
     await flushPromises();
-    await wrapper.get('[data-test="no-evidence-reason-0"]').setValue('原因');
     await wrapper.get('[data-test="no-evidence-confirm"]').setValue(true);
     await wrapper.get('[data-test="no-evidence-submit"]').trigger('click');
     const signal = api.decideNoEvidenceBatch.mock.calls[0]![1].signal;
@@ -646,7 +663,9 @@ describe('LeadListPage', () => {
       readPendingLeadNoEvidenceBatches()?.['operator-1:INTERNAL:department-1'],
     ).toBeDefined();
   });
-  it('blocks a prepared no-evidence batch if another CSV request becomes pending before submit', async () => {
+  it('blocks a recovered no-evidence batch if another CSV request is pending', async () => {
+    const pending = pendingNoEvidenceBatch();
+    savePendingLeadNoEvidenceBatches({ [pending.identity]: pending });
     api.listLeads.mockResolvedValue({
       ...result,
       items: [batchSummary],
@@ -665,17 +684,19 @@ describe('LeadListPage', () => {
       }),
     );
     const { wrapper } = await mountWithRoute('/leads');
-    await wrapper.get('input[type="checkbox"]').setValue(true);
-    await wrapper.get('[data-test="open-no-evidence-batch"]').trigger('click');
+    await wrapper
+      .get('[data-test="recover-no-evidence-batch"]')
+      .trigger('click');
     await flushPromises();
-    await wrapper.get('[data-test="no-evidence-reason-0"]').setValue('原因');
     await wrapper.get('[data-test="no-evidence-confirm"]').setValue(true);
     const csv = pendingCsvImport();
     savePendingLeadCsvImports({ [csv.actorIdentity]: csv });
     await wrapper.get('[data-test="no-evidence-submit"]').trigger('click');
     await flushPromises();
     expect(api.decideNoEvidenceBatch).not.toHaveBeenCalled();
-    expect(readPendingLeadNoEvidenceBatches()).toEqual({});
+    expect(readPendingLeadNoEvidenceBatches()).toEqual({
+      [pending.identity]: pending,
+    });
     expect(wrapper.text()).toContain('批次未发送');
   });
   it('does not create a no-evidence batch around an old authorization revision single pending request', async () => {
@@ -695,17 +716,15 @@ describe('LeadListPage', () => {
     );
     api.listLeads.mockResolvedValue({
       ...result,
-      items: [batchSummary],
+      items: [{ ...batchSummary, status: 'WAITING_REVIEW' }],
       total: 1,
     });
     const { wrapper } = await mountWithRoute('/leads');
     await wrapper.get('input[type="checkbox"]').setValue(true);
     expect(
-      wrapper
-        .get('[data-test="open-no-evidence-batch"]')
-        .attributes('disabled'),
+      wrapper.get('[data-test="open-batch-decision"]').attributes('disabled'),
     ).toBeDefined();
-    await wrapper.get('[data-test="open-no-evidence-batch"]').trigger('click');
+    await wrapper.get('[data-test="open-batch-decision"]').trigger('click');
     expect(api.getLead).not.toHaveBeenCalled();
     expect(api.decideNoEvidenceBatch).not.toHaveBeenCalled();
   });
@@ -1448,7 +1467,7 @@ describe('LeadListPage', () => {
       false,
     );
   });
-  it('shows withdrawal only for archived leads with a current no-infringement decision', async () => {
+  it('shows revive for archived leads with a review record and hides it without one', async () => {
     const noEvidenceArchive = {
       ...summary,
       id: 'lead-no-evidence',
@@ -1489,11 +1508,11 @@ describe('LeadListPage', () => {
     const { wrapper } = await mountWithRoute('/leads?status=ARCHIVED');
     const rows = wrapper.findAll('[data-test="lead-row"]');
     expect(rows).toHaveLength(3);
-    expect(rows[0]!.find('[data-test="lead-quick-action"]').exists()).toBe(
-      false,
+    expect(rows[0]!.find('[data-test="lead-quick-action"]').text()).toBe(
+      '复活',
     );
     expect(rows[1]!.find('[data-test="lead-quick-action"]').text()).toBe(
-      '申请撤回',
+      '复活',
     );
     expect(rows[2]!.find('[data-test="lead-quick-action"]').exists()).toBe(
       false,
@@ -1746,7 +1765,7 @@ describe('LeadListPage', () => {
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
       '选择',
       '操作',
-      '线索编号',
+      '案件单号',
       '案件进展',
       '平台',
       '店铺名',
@@ -1755,7 +1774,7 @@ describe('LeadListPage', () => {
       '销量',
       '单价（元）',
       '评论数',
-      '计算金额（元）',
+      '销售额（元）',
       '线索发现日期',
     ]);
     expect(wrapper.get('[data-test="lead-row"] a').attributes('href')).toBe(

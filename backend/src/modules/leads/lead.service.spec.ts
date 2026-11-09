@@ -18,6 +18,82 @@ const actor: ActorContext = {
 };
 
 describe('LeadService', () => {
+  it('revives an archive for a scoped operator and replays after current pointers clear', async () => {
+    const current = {
+      id: '55555555-5555-4555-8555-555555555555',
+      businessNo: 'LD-20260921-001',
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+      customerId: '33333333-3333-4333-8333-333333333333',
+      status: 'ARCHIVED',
+      version: 4,
+      activeReviewDecisionId: '66666666-6666-4666-8666-666666666666' as
+        string | null,
+      activeEvidenceDecisionId: null,
+      reviewDecision: { result: 'NO_INFRINGEMENT' } as {
+        result: string;
+      } | null,
+      pushedAt: new Date(),
+      pushedByUserId: actor.userId as string | null,
+    };
+    let receipt: {
+      resultSnapshot: unknown;
+      requestFingerprint: string;
+      resultLeadId: string;
+    } | null = null;
+    const tx = {
+      $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: current.id }]),
+      userAccount: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
+      },
+      lead: {
+        findFirst: jest.fn(async () => current),
+        updateMany: jest.fn(async () => {
+          current.status = 'WAITING_PUSH';
+          current.version += 1;
+          current.activeReviewDecisionId = null;
+          current.reviewDecision = null;
+          current.pushedAt = null as never;
+          current.pushedByUserId = null;
+          return { count: 1 };
+        }),
+      },
+      leadCommandReceipt: {
+        findUnique: jest.fn(async () => receipt),
+        create: jest.fn(async ({ data }: { data: typeof receipt }) => {
+          receipt = data;
+          return data;
+        }),
+      },
+      auditEvent: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const access = {
+      authorizeLead: jest.fn(async (_actor: ActorContext, action: string) => {
+        if (action !== 'lead.withdraw.apply') throw new ForbiddenException();
+      }),
+    };
+    const service = new LeadService(
+      {
+        $transaction: async (run: (client: typeof tx) => Promise<unknown>) =>
+          run(tx),
+      } as never,
+      access as never,
+      {} as never,
+    );
+    const first = await service.revive(actor, current.id, 'revive-key', {
+      expectedVersion: 4,
+    });
+    expect(first).toMatchObject({ status: 'WAITING_PUSH', version: 5 });
+    await expect(
+      service.revive(actor, current.id, 'revive-key', { expectedVersion: 4 }),
+    ).resolves.toEqual(first);
+    expect(tx.lead.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.auditEvent.create).toHaveBeenCalledTimes(1);
+  });
+
   it('projects only the current names of the exact scoped source relations', async () => {
     const record = createCreateFixture().createdLead;
     const findFirst = jest.fn().mockResolvedValue(record);
@@ -131,6 +207,17 @@ describe('LeadService', () => {
   );
   it('projects no-evidence archive fact and capability on internal detail', async () => {
     const base = createCreateFixture().createdLead;
+    const decision = {
+      id: '66666666-6666-4666-8666-666666666666',
+      result: 'NO_EVIDENCE',
+      reason: '无法继续取证',
+      actorDisplayNameSnapshot: '运营原名',
+      decidedAt: new Date('2026-09-24T02:00:00Z'),
+      archiveType: 'NO_EVIDENCE',
+      archivedAt: new Date('2026-09-24T02:00:00Z'),
+      fromVersion: 3,
+      toVersion: 4,
+    };
     const record = {
       ...base,
       status: 'ARCHIVED',
@@ -140,17 +227,8 @@ describe('LeadService', () => {
         reviewerDisplayNameSnapshot: '客户审核员',
         decidedAt: new Date('2026-09-24T01:00:00Z'),
       },
-      evidenceDecision: {
-        id: '66666666-6666-4666-8666-666666666666',
-        result: 'NO_EVIDENCE',
-        reason: '无法继续取证',
-        actorDisplayNameSnapshot: '运营原名',
-        decidedAt: new Date('2026-09-24T02:00:00Z'),
-        archiveType: 'NO_EVIDENCE',
-        archivedAt: new Date('2026-09-24T02:00:00Z'),
-        fromVersion: 3,
-        toVersion: 4,
-      },
+      evidenceDecision: decision,
+      evidenceDecisions: [decision],
     };
     const service = new LeadService(
       {
@@ -174,6 +252,7 @@ describe('LeadService', () => {
       decidedAt: '2026-09-24T02:00:00.000Z',
       archiveType: 'NO_EVIDENCE',
       archivedAt: '2026-09-24T02:00:00.000Z',
+      archiveDate: null,
     });
     expect(result.capabilities.evidenceDecide).toBe(false);
     expect(result.history).toEqual(
@@ -410,6 +489,7 @@ describe('LeadService', () => {
       decidedAt: '2026-09-22T03:00:00.000Z',
       archiveType: 'NO_INFRINGEMENT',
       archivedAt: '2026-09-22T03:00:00.000Z',
+      archiveDate: null,
     });
     expect(JSON.stringify(result.reviewDecision)).not.toContain(
       'reviewer-secret',
@@ -2463,6 +2543,7 @@ function createCreateFixture() {
     ],
     infringements: [{ type: 'TRADEMARK' }],
     reviewDecision: null,
+    evidenceDecisions: [],
     notaryMatters: [],
   };
   const tx = {

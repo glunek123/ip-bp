@@ -1,4 +1,9 @@
 import { ApiError, getJson, requestJson, type RequestOptions } from './http';
+import {
+  isLeadArchiveDate,
+  isLeadNoEvidenceArchiveType,
+  type LeadNoEvidenceArchiveType,
+} from './lead-decisions';
 
 export type ClientLeadView = 'PENDING' | 'PROCESSED';
 
@@ -15,14 +20,16 @@ export type ClientLeadReviewDecision =
       decidedAt: string;
       archiveType: 'NO_INFRINGEMENT';
       archivedAt: string;
+      archiveDate?: string | null;
     };
 export type ClientLeadEvidenceDecision = {
   result: 'NO_EVIDENCE';
   reason: string;
   decidedAt: string;
   decidedByDisplayName: string;
-  archiveType: 'NO_EVIDENCE';
+  archiveType: LeadNoEvidenceArchiveType;
   archivedAt: string;
+  archiveDate?: string | null;
 };
 
 export type ClientLeadProduct = {
@@ -86,6 +93,7 @@ export type ClientLeadHistory = {
   applicantDisplayName?: string;
   applicationId?: string;
   archiveType?: string | null;
+  archiveDate?: string | null;
   archivedAt?: string | null;
 };
 
@@ -252,7 +260,8 @@ function isClientReviewDecision(
   )
     return true;
   return (
-    hasExactKeys(value, noInfringementDecisionKeys) &&
+    (hasExactKeys(value, noInfringementDecisionKeys) ||
+      hasExactKeys(value, [...noInfringementDecisionKeys, 'archiveDate'])) &&
     value.result === 'NO_INFRINGEMENT' &&
     typeof value.reason === 'string' &&
     value.reason.trim().length > 0 &&
@@ -260,7 +269,8 @@ function isClientReviewDecision(
     typeof value.reviewerDisplayName === 'string' &&
     isDateTime(value.decidedAt) &&
     value.archiveType === 'NO_INFRINGEMENT' &&
-    isDateTime(value.archivedAt)
+    isDateTime(value.archivedAt) &&
+    isLeadArchiveDate(value.archiveDate)
   );
 }
 
@@ -269,15 +279,17 @@ function isClientEvidenceDecision(
 ): value is ClientLeadEvidenceDecision {
   return (
     isRecord(value) &&
-    hasExactKeys(value, evidenceDecisionKeys) &&
+    (hasExactKeys(value, evidenceDecisionKeys) ||
+      hasExactKeys(value, [...evidenceDecisionKeys, 'archiveDate'])) &&
     value.result === 'NO_EVIDENCE' &&
     typeof value.reason === 'string' &&
     value.reason.trim().length > 0 &&
     [...value.reason].length <= 5000 &&
     typeof value.decidedByDisplayName === 'string' &&
     isDateTime(value.decidedAt) &&
-    value.archiveType === 'NO_EVIDENCE' &&
-    isDateTime(value.archivedAt)
+    isLeadNoEvidenceArchiveType(value.archiveType) &&
+    isDateTime(value.archivedAt) &&
+    isLeadArchiveDate(value.archiveDate)
   );
 }
 
@@ -326,8 +338,9 @@ function isClientHistory(value: unknown): value is ClientLeadHistory[] {
             item.reason.trim().length > 0 &&
             [...item.reason].length <= 5000 &&
             typeof item.decidedByDisplayName === 'string' &&
-            item.archiveType === 'NO_EVIDENCE' &&
+            isLeadNoEvidenceArchiveType(item.archiveType) &&
             isDateTime(item.archivedAt))) &&
+        isLeadArchiveDate(item.archiveDate) &&
         (item.applicationId === undefined ||
           typeof item.applicationId === 'string'),
     )

@@ -255,7 +255,7 @@ onBeforeUnmount(() => {
           {{ lead.shopName }}
         </p>
         <label
-          >不取证原因<textarea
+          >归档原因<textarea
             v-model="reasons[index]"
             :disabled="busy || !!frozen"
             :data-test="`no-evidence-reason-${index}`"

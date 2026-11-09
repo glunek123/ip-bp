@@ -23,6 +23,8 @@ import { readNotaryDetailFacts } from './notary-detail-read';
 import { readNotaryRecordEdits } from './notary-record-edit-read';
 import {
   CreateNotaryOfficeDto,
+  ConfirmNotaryHandoffDto,
+  ConfirmNotaryHandoffBatchDto,
   RecordNotaryEvidenceDto,
   SetNotaryOfficeStatusDto,
   TransferLeadToNotaryDto,
@@ -40,8 +42,8 @@ type TransferResult = {
   notaryOffice: { id: string; name: string };
   selectedProductIds: string[];
   selectedContentVersionIds: string[];
-  evidenceMode: 'ONLINE_PURCHASE';
-  batchPurpose: string;
+  evidenceMode: 'ONLINE_PURCHASE' | null;
+  batchPurpose: string | null;
   createdAt: string;
 };
 
@@ -489,6 +491,327 @@ export class LeadNotaryService {
     throw this.versionConflict();
   }
 
+  async confirm(
+    actor: ActorContext,
+    leadId: string,
+    key: string,
+    input: ConfirmNotaryHandoffDto,
+  ): Promise<TransferResult> {
+    const result = await this.confirmBatch(actor, key, {
+      notaryOfficeId: input.notaryOfficeId,
+      items: [{ leadId, expectedVersion: input.expectedVersion }],
+    });
+    return result.items[0];
+  }
+
+  async confirmBatch(
+    actor: ActorContext,
+    key: string,
+    input: ConfirmNotaryHandoffBatchDto,
+  ): Promise<{ items: TransferResult[] }> {
+    if (
+      !Array.isArray(input.items) ||
+      input.items.length < 1 ||
+      input.items.length > 20 ||
+      input.items.some(
+        (item) =>
+          !Number.isInteger(item.expectedVersion) || item.expectedVersion < 1,
+      ) ||
+      new Set(input.items.map((item) => item.leadId)).size !==
+        input.items.length
+    )
+      throw this.validation();
+    const items = [...input.items].sort((a, b) =>
+      a.leadId.localeCompare(b.leadId),
+    );
+    const fingerprint = this.fingerprint({
+      items,
+      notaryOfficeId: input.notaryOfficeId,
+    });
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (tx) => {
+            await this.assertInternal(actor, tx);
+            for (const item of items) {
+              const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+                'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+                item.leadId,
+                actor.departmentId,
+              );
+              if (locked.length !== 1) throw this.notFound();
+            }
+            const leads = await tx.lead.findMany({
+              where: {
+                id: { in: items.map((item) => item.leadId) },
+                departmentId: actor.departmentId,
+              },
+              include: {
+                products: {
+                  orderBy: { position: 'asc' },
+                  include: { screenshots: true },
+                },
+                customer: { select: { profileStatus: true } },
+                reviewDecision: { select: { id: true, result: true } },
+                evidenceDecision: { select: { id: true } },
+              },
+            });
+            if (leads.length !== items.length) throw this.notFound();
+            const byId = new Map(leads.map((lead) => [lead.id, lead]));
+            for (const item of items) {
+              const lead = byId.get(item.leadId)!;
+              try {
+                await this.access.authorizeLead(
+                  actor,
+                  'lead.evidence.decide',
+                  {
+                    departmentId: lead.departmentId,
+                    responsibleUserId: lead.responsibleUserId,
+                    ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
+                  },
+                  tx,
+                );
+              } catch (error) {
+                throw this.mapAuthorization(error);
+              }
+            }
+            const prior = await tx.leadCommandReceipt.findUnique({
+              where: {
+                departmentId_actorUserId_action_idempotencyKey: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  action: 'notary_handoff_auto',
+                  idempotencyKey: key,
+                },
+              },
+            });
+            if (prior !== null) {
+              if (
+                prior.requestFingerprint !== fingerprint ||
+                prior.resultLeadId !== items[0].leadId
+              )
+                throw new ConflictException({
+                  code: 'IDEMPOTENCY_CONFLICT',
+                  message: '该 Idempotency-Key 已用于不同请求',
+                });
+              return prior.resultSnapshot as { items: TransferResult[] };
+            }
+            const office = await tx.notaryOffice.findFirst({
+              where: {
+                id: input.notaryOfficeId,
+                departmentId: actor.departmentId,
+                status: 'ACTIVE',
+              },
+              select: { id: true, name: true },
+            });
+            if (office === null) throw this.officeUnavailable();
+            const lockedOffice = await tx.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "notary_offices" WHERE "id" = $1::uuid AND "department_id" = $2::uuid AND "status" = \'ACTIVE\' FOR SHARE',
+              office.id,
+              actor.departmentId,
+            );
+            if (lockedOffice.length !== 1) throw this.officeUnavailable();
+            const results: TransferResult[] = [];
+            for (const item of items) {
+              const lead = byId.get(item.leadId)!;
+              if (
+                lead.status !== 'WAITING_EVIDENCE_DECISION' ||
+                lead.activeReviewDecisionId === null ||
+                lead.reviewDecision?.id !== lead.activeReviewDecisionId ||
+                lead.reviewDecision.result !== 'INFRINGEMENT' ||
+                lead.evidenceDecision !== null
+              )
+                throw this.invalidState(lead.businessNo);
+              if (lead.version !== item.expectedVersion)
+                throw this.versionConflict(lead.businessNo);
+              if (lead.customer.profileStatus !== 'ADMITTED')
+                throw this.customerNotAdmitted(lead.businessNo);
+              if (lead.products.length < 1)
+                throw this.invalidSelection(lead.businessNo);
+              const selectedProductIds = lead.products.map(
+                (product) => product.id,
+              );
+              const selectedContentVersionIds = lead.products.flatMap(
+                (product) =>
+                  product.screenshots.map(
+                    (screenshot) => screenshot.contentVersionId,
+                  ),
+              );
+              const currentVersionIds =
+                await this.materials.listCurrentReferenceVersionIds(
+                  tx,
+                  actor,
+                  {
+                    resourceType: 'lead',
+                    resourceId: lead.id,
+                    purpose: 'LEAD_SCREENSHOT',
+                  },
+                  'lead.evidence.decide',
+                );
+              if (
+                selectedContentVersionIds.some(
+                  (id) => !currentVersionIds.includes(id),
+                )
+              )
+                throw this.invalidSelection(lead.businessNo);
+              const materialFacts =
+                selectedContentVersionIds.length === 0
+                  ? []
+                  : await this.materials.assertAvailableVersions(tx, actor, {
+                      ownerType: 'LEAD',
+                      ownerId: lead.id,
+                      category: 'LEAD_SCREENSHOT',
+                      contentVersionIds: selectedContentVersionIds,
+                      minCount: 0,
+                      maxCount: 20,
+                      leadAction: 'lead.evidence.decide',
+                    });
+              const changed = await tx.lead.updateMany({
+                where: {
+                  id: lead.id,
+                  departmentId: actor.departmentId,
+                  status: 'WAITING_EVIDENCE_DECISION',
+                  version: item.expectedVersion,
+                  activeReviewDecisionId: lead.activeReviewDecisionId,
+                },
+                data: {
+                  status: 'TRANSFERRED_TO_NOTARY',
+                  version: { increment: 1 },
+                },
+              });
+              if (changed.count !== 1)
+                throw this.versionConflict(lead.businessNo);
+              const businessNo = await this.allocateBusinessNo(tx);
+              const matterId = randomUUID();
+              const createdAt = new Date();
+              const sourceSnapshot: Prisma.InputJsonObject = {
+                sourceLeadId: lead.id,
+                sourceLeadBusinessNo: lead.businessNo,
+                activeReviewDecisionId: lead.activeReviewDecisionId,
+                customerId: lead.customerId,
+                rightsHolderId: lead.rightsHolderId,
+                responsibleUserId: lead.responsibleUserId,
+                shopName: lead.shopName,
+                caseType: lead.caseType,
+                source: lead.source,
+                platform: lead.platform,
+                foundAt: lead.foundAt.toISOString(),
+                selectedProducts: lead.products.map((product) => ({
+                  id: product.id,
+                  position: product.position,
+                  title: product.title,
+                  url: product.url,
+                  quantity: product.quantity,
+                  unitPrice: product.unitPrice.toFixed(2),
+                  commentCount: product.commentCount,
+                  estimatedAmount: product.estimatedAmount.toFixed(2),
+                })),
+                selectedContentVersionIds,
+              };
+              await tx.notaryMatter.create({
+                data: {
+                  id: matterId,
+                  businessNo,
+                  departmentId: actor.departmentId,
+                  sourceType: 'LEAD',
+                  sourceLeadId: lead.id,
+                  customerId: lead.customerId,
+                  rightsHolderId: lead.rightsHolderId,
+                  responsibleUserId: lead.responsibleUserId,
+                  notaryOfficeId: office.id,
+                  stage: 'PENDING_EVIDENCE',
+                  version: 1,
+                  evidenceMode: null,
+                  batchPurpose: null,
+                  sourceSnapshot,
+                  createdByUserId: actor.userId,
+                  fromLeadVersion: item.expectedVersion,
+                  toLeadVersion: item.expectedVersion + 1,
+                  createdAt,
+                },
+              });
+              await tx.notaryMatterProduct.createMany({
+                data: selectedProductIds.map((productId) => ({
+                  notaryMatterId: matterId,
+                  sourceLeadId: lead.id,
+                  leadProductId: productId,
+                })),
+              });
+              if (materialFacts.length > 0)
+                await tx.notaryMatterMaterial.createMany({
+                  data: materialFacts.map((fact) => ({
+                    notaryMatterId: matterId,
+                    departmentId: actor.departmentId,
+                    materialId: fact.materialId,
+                    contentVersionId: fact.contentVersionId,
+                  })),
+                });
+              const result: TransferResult = {
+                id: matterId,
+                businessNo,
+                leadId: lead.id,
+                leadStatus: 'TRANSFERRED_TO_NOTARY',
+                leadVersion: item.expectedVersion + 1,
+                stage: 'PENDING_EVIDENCE',
+                notaryOffice: office,
+                selectedProductIds,
+                selectedContentVersionIds,
+                evidenceMode: null,
+                batchPurpose: null,
+                createdAt: createdAt.toISOString(),
+              };
+              results.push(result);
+              await tx.auditEvent.create({
+                data: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  resourceType: 'lead',
+                  resourceId: lead.id,
+                  action: 'lead.transferred_to_notary',
+                  details: {
+                    notaryMatterId: matterId,
+                    businessNo,
+                    fromVersion: item.expectedVersion,
+                    toVersion: result.leadVersion,
+                    selectedProductIds,
+                    selectedContentVersionIds,
+                    notaryOfficeId: office.id,
+                    evidenceMode: null,
+                    batchPurpose: null,
+                  },
+                },
+              });
+            }
+            const response = { items: results };
+            await tx.leadCommandReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                action: 'notary_handoff_auto',
+                idempotencyKey: key,
+                requestFingerprint: fingerprint,
+                resultLeadId: items[0].leadId,
+                resultLeadVersion: results[0].leadVersion,
+                resultSnapshot: response,
+              },
+            });
+            return response;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error) || this.isUnique(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.versionConflict();
+        }
+        throw this.mapAuthorization(error);
+      }
+    }
+    throw this.versionConflict();
+  }
+
   async recordEvidence(
     actor: ActorContext,
     matterId: string,
@@ -548,10 +871,7 @@ export class LeadNotaryService {
             });
             if (receipt !== null)
               return this.evidenceReceiptResult(receipt, fingerprint, matterId);
-            if (
-              matter.stage !== 'PENDING_EVIDENCE' ||
-              matter.evidenceMode !== 'ONLINE_PURCHASE'
-            )
+            if (matter.stage !== 'PENDING_EVIDENCE')
               throw new ConflictException({
                 code: 'INVALID_STATE',
                 message: '该公证事项当前不能登记取证物流',
@@ -1428,16 +1748,16 @@ export class LeadNotaryService {
       message: '资源不存在或不可访问',
     });
   }
-  private invalidState() {
+  private invalidState(leadBusinessNo?: string) {
     return new ConflictException({
       code: 'INVALID_STATE',
-      message: '线索当前状态不允许新建取证批次',
+      message: `${leadBusinessNo ? `${leadBusinessNo}：` : ''}线索当前状态不允许新建取证批次`,
     });
   }
-  private versionConflict() {
+  private versionConflict(leadBusinessNo?: string) {
     return new ConflictException({
       code: 'VERSION_CONFLICT',
-      message: '线索已更新，请重新加载',
+      message: `${leadBusinessNo ? `${leadBusinessNo}：` : ''}线索已更新，请重新加载`,
     });
   }
   private matterVersionConflict() {
@@ -1446,16 +1766,16 @@ export class LeadNotaryService {
       message: '公证事项已更新，请重新加载',
     });
   }
-  private customerNotAdmitted() {
+  private customerNotAdmitted(leadBusinessNo?: string) {
     return new ConflictException({
       code: 'CUSTOMER_NOT_ADMITTED',
-      message: '客户已不处于准入状态',
+      message: `${leadBusinessNo ? `${leadBusinessNo}：` : ''}客户已不处于准入状态`,
     });
   }
-  private invalidSelection() {
+  private invalidSelection(leadBusinessNo?: string) {
     return new ConflictException({
       code: 'INVALID_SELECTION',
-      message: '所选商品或材料不属于当前线索的有效内容',
+      message: `${leadBusinessNo ? `${leadBusinessNo}：` : ''}所选商品或材料不属于当前线索的有效内容`,
     });
   }
   private officeUnavailable() {

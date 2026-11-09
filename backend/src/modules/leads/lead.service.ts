@@ -47,16 +47,19 @@ import {
   DecideLeadEvidenceDto,
   CreateLeadCommand,
   PushLeadDto,
+  ReviveLeadDto,
   UpdateLeadDto,
   UpdateLeadProductScreenshotsDto,
 } from './lead.dto';
 import { LeadBatchPushDto } from './lead-batch-push.dto';
-import {
-  LeadNoEvidenceBatchDto,
-  LeadNoEvidenceBatchItemDto,
-} from './lead-no-evidence-batch.dto';
+import { LeadNoEvidenceBatchDto } from './lead-no-evidence-batch.dto';
 import { LeadNoEvidenceBatchResponseDto } from './lead-no-evidence-batch-response.dto';
 import { LeadCsvImportDto, LeadCsvImportInputDto } from './lead-csv-import.dto';
+import {
+  NO_EVIDENCE_ARCHIVE_TYPES,
+  type NoEvidenceArchiveType,
+  parseArchiveDate,
+} from './lead-archive-date';
 
 const MAX_SERIALIZABLE_ATTEMPTS = 3;
 const leadInclude = {
@@ -75,6 +78,7 @@ const leadInclude = {
       reason: true,
       archiveType: true,
       archivedAt: true,
+      archiveDate: true,
       reviewerDisplayNameSnapshot: true,
       decidedAt: true,
     },
@@ -88,6 +92,7 @@ const leadInclude = {
       decidedAt: true,
       archiveType: true,
       archivedAt: true,
+      archiveDate: true,
       fromVersion: true,
       toVersion: true,
     },
@@ -134,7 +139,22 @@ const leadDetailInclude = {
       reason: true,
       archiveType: true,
       archivedAt: true,
+      archiveDate: true,
       reviewerDisplayNameSnapshot: true,
+      decidedAt: true,
+      fromVersion: true,
+      toVersion: true,
+    },
+  },
+  evidenceDecisions: {
+    select: {
+      id: true,
+      result: true,
+      reason: true,
+      archiveType: true,
+      archiveDate: true,
+      archivedAt: true,
+      actorDisplayNameSnapshot: true,
       decidedAt: true,
       fromVersion: true,
       toVersion: true,
@@ -228,6 +248,7 @@ type LeadResponse = {
         decidedAt: string;
         archiveType: 'NO_INFRINGEMENT';
         archivedAt: string;
+        archiveDate?: string | null;
       }
     | null;
   evidenceDecision: {
@@ -235,8 +256,9 @@ type LeadResponse = {
     reason: string;
     decidedByDisplayName: string;
     decidedAt: string;
-    archiveType: 'NO_EVIDENCE';
+    archiveType: NoEvidenceArchiveType;
     archivedAt: string;
+    archiveDate?: string | null;
   } | null;
   createdAt: string;
   updatedAt: string;
@@ -332,8 +354,17 @@ type LeadEvidenceDecisionResponse = {
   reason: string;
   decidedByDisplayName: string;
   decidedAt: string;
-  archiveType: 'NO_EVIDENCE';
+  archiveType: NoEvidenceArchiveType;
   archivedAt: string;
+  archiveDate?: string;
+};
+
+type NormalizedNoEvidenceBatchItem = {
+  leadId: string;
+  expectedVersion: number;
+  reason: string;
+  archiveType?: NoEvidenceArchiveType;
+  archiveDate?: string;
 };
 
 type ProxyEvidenceConfirmationResponse = {
@@ -346,6 +377,8 @@ type ProxyEvidenceConfirmationResponse = {
   actorDisplayName: string;
   decidedAt: string;
   reason: string | null;
+  archiveType?: NoEvidenceArchiveType;
+  archiveDate?: string;
 };
 
 type EvidenceDecisionLead = {
@@ -732,6 +765,7 @@ export class LeadService {
       createEvidenceBatch,
       proxyReview,
       proxyConfirmEvidence,
+      revive,
     ] = await Promise.all([
       this.currentScreenshotIds(actor, [lead.id]),
       this.canEdit(actor, lead),
@@ -746,6 +780,7 @@ export class LeadService {
       lead.reviewDecision?.result === 'INFRINGEMENT'
         ? this.canProxyAction(actor, lead, 'lead.evidence.confirm.proxy')
         : Promise.resolve(false),
+      this.canRevive(actor, lead),
     ]);
     const productScreenshotsEdit =
       lead.status === 'WAITING_PUSH'
@@ -782,23 +817,19 @@ export class LeadService {
         actorDisplayName: confirmation.actorDisplayNameSnapshot,
         occurredAt: confirmation.decidedAt.toISOString(),
       })),
-      ...(lead.evidenceDecision === null || lead.evidenceDecision === undefined
-        ? []
-        : [
-            {
-              kind: 'EVIDENCE_DECISION' as const,
-              id: lead.evidenceDecision.id,
-              fromVersion: lead.evidenceDecision.fromVersion,
-              toVersion: lead.evidenceDecision.toVersion,
-              result: lead.evidenceDecision.result,
-              reason: lead.evidenceDecision.reason,
-              archiveType: lead.evidenceDecision.archiveType,
-              archivedAt: lead.evidenceDecision.archivedAt.toISOString(),
-              decidedByDisplayName:
-                lead.evidenceDecision.actorDisplayNameSnapshot,
-              occurredAt: lead.evidenceDecision.decidedAt.toISOString(),
-            },
-          ]),
+      ...lead.evidenceDecisions.map((decision) => ({
+        kind: 'EVIDENCE_DECISION' as const,
+        id: decision.id,
+        fromVersion: decision.fromVersion,
+        toVersion: decision.toVersion,
+        result: decision.result,
+        reason: decision.reason,
+        archiveType: decision.archiveType,
+        archiveDate: decision.archiveDate?.toISOString().slice(0, 10) ?? null,
+        archivedAt: decision.archivedAt.toISOString(),
+        decidedByDisplayName: decision.actorDisplayNameSnapshot,
+        occurredAt: decision.decidedAt.toISOString(),
+      })),
       ...(lead.reviewDecisions ?? []).map((decision) => ({
         kind: 'REVIEW_DECISION' as const,
         id: decision.id,
@@ -807,6 +838,7 @@ export class LeadService {
         result: decision.result,
         reason: decision.reason,
         archiveType: decision.archiveType,
+        archiveDate: decision.archiveDate?.toISOString().slice(0, 10) ?? null,
         archivedAt: decision.archivedAt?.toISOString() ?? null,
         reviewerDisplayName: decision.reviewerDisplayNameSnapshot,
         occurredAt: decision.decidedAt.toISOString(),
@@ -857,6 +889,7 @@ export class LeadService {
         proxyReview,
         proxyConfirmEvidence,
         proxyConfirmWithdrawal,
+        revive,
       },
       customerEvidenceConfirmation:
         currentConfirmation === undefined
@@ -930,6 +963,89 @@ export class LeadService {
       if (error instanceof ForbiddenException) return false;
       throw error;
     }
+  }
+
+  private async canRevive(
+    actor: ActorContext,
+    lead: LeadDetailRecord,
+  ): Promise<boolean> {
+    if (
+      lead.status !== 'ARCHIVED' ||
+      lead.activeReviewDecisionId === null ||
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
+      return false;
+    const actions = [
+      'lead.push',
+      'lead.review.proxy',
+      'lead.withdraw.apply',
+      'lead.evidence.decide',
+      'lead.evidence.confirm.proxy',
+    ] as const;
+    for (const action of actions) {
+      try {
+        await this.access.authorizeLead(actor, action, {
+          departmentId: lead.departmentId,
+          responsibleUserId: lead.responsibleUserId,
+          ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
+        });
+        return true;
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+      }
+    }
+    return false;
+  }
+
+  private async authorizeRevive(
+    actor: ActorContext,
+    lead: {
+      departmentId: string;
+      responsibleUserId: string;
+      teamId: string | null;
+      reviewDecision: { result: string } | null;
+    },
+    reader: Prisma.TransactionClient,
+  ): Promise<void> {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
+      throw this.actionForbidden();
+    const account = await reader.userAccount.findUnique({
+      where: { id: actor.userId },
+      select: { accountType: true, active: true },
+    });
+    if (account?.accountType !== 'INTERNAL' || !account.active)
+      throw this.actionForbidden();
+    const actions = [
+      'lead.push',
+      'lead.review.proxy',
+      'lead.withdraw.apply',
+      'lead.evidence.decide',
+      'lead.evidence.confirm.proxy',
+    ] as const;
+    for (const action of actions) {
+      try {
+        await this.access.authorizeLead(
+          actor,
+          action,
+          {
+            departmentId: lead.departmentId,
+            responsibleUserId: lead.responsibleUserId,
+            ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
+          },
+          reader,
+        );
+        return;
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+      }
+    }
+    throw this.actionForbidden();
   }
 
   private async canProxyAction(
@@ -3127,6 +3243,124 @@ export class LeadService {
     throw this.versionConflict();
   }
 
+  async revive(
+    actor: ActorContext,
+    id: string,
+    idempotencyKey: string,
+    input: ReviveLeadDto,
+  ) {
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1)
+      throw this.validation();
+    const fingerprint = this.fingerprint({
+      leadId: id,
+      expectedVersion: input.expectedVersion,
+    });
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (tx) => {
+            const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+              'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              id,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            const current = await tx.lead.findFirst({
+              where: { id, departmentId: actor.departmentId },
+              include: {
+                reviewDecision: { select: { result: true } },
+              },
+            });
+            if (current === null) throw this.notFound();
+            await this.authorizeRevive(actor, current, tx);
+            const prior = await tx.leadCommandReceipt.findUnique({
+              where: this.receiptWhere(actor, 'revive', idempotencyKey),
+            });
+            if (prior !== null) {
+              if (
+                prior.requestFingerprint !== fingerprint ||
+                prior.resultLeadId !== id
+              )
+                throw this.idempotencyConflict();
+              return prior.resultSnapshot;
+            }
+            if (
+              current.status !== 'ARCHIVED' ||
+              current.activeReviewDecisionId === null ||
+              (current.reviewDecision?.result !== 'NO_INFRINGEMENT' &&
+                current.activeEvidenceDecisionId === null)
+            )
+              throw this.withdrawalInvalidState();
+            if (current.version !== input.expectedVersion)
+              throw this.versionConflict();
+            const changed = await tx.lead.updateMany({
+              where: {
+                id,
+                departmentId: actor.departmentId,
+                version: input.expectedVersion,
+                status: 'ARCHIVED',
+                activeReviewDecisionId: current.activeReviewDecisionId,
+              },
+              data: {
+                status: 'WAITING_PUSH',
+                activeReviewDecisionId: null,
+                activeEvidenceDecisionId: null,
+                pushedAt: null,
+                pushedByUserId: null,
+                version: { increment: 1 },
+              },
+            });
+            if (changed.count !== 1) throw this.versionConflict();
+            const revivedAt = new Date();
+            const result = {
+              id,
+              businessNo: current.businessNo,
+              status: 'WAITING_PUSH' as const,
+              version: input.expectedVersion + 1,
+              revivedAt: revivedAt.toISOString(),
+            };
+            await tx.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                resourceType: 'lead',
+                resourceId: id,
+                action: 'lead.revived',
+                details: {
+                  originalReviewDecisionId: current.activeReviewDecisionId,
+                  originalEvidenceDecisionId: current.activeEvidenceDecisionId,
+                  fromVersion: input.expectedVersion,
+                  toVersion: result.version,
+                },
+              },
+            });
+            await tx.leadCommandReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                action: 'revive',
+                idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultLeadId: id,
+                resultLeadVersion: result.version,
+                resultSnapshot: result,
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.versionConflict();
+        }
+        throw this.mapAuthorization(error);
+      }
+    }
+    throw this.versionConflict();
+  }
+
   async decideNoEvidenceBatch(
     actor: ActorContext,
     idempotencyKey: string,
@@ -3139,6 +3373,7 @@ export class LeadService {
     )
       throw this.validation();
     const items = this.noEvidenceBatchItems(input);
+    const sharedInput = input.reason !== undefined;
     const fingerprint = this.fingerprint({
       action: 'lead.batch-no-evidence',
       items,
@@ -3193,22 +3428,32 @@ export class LeadService {
             const byId = new Map(
               loaded.map((lead) => [lead.id.toLowerCase(), lead]),
             );
-            for (const item of targets) {
+            for (const [index, item] of targets.entries()) {
               const current = byId.get(item.leadId);
               if (!current || current.departmentId !== actor.departmentId)
                 throw this.notFound();
-              await this.access.authorizeLead(
-                actor,
-                'lead.evidence.decide',
-                {
-                  departmentId: current.departmentId,
-                  responsibleUserId: current.responsibleUserId,
-                  ...(current.teamId === null
-                    ? {}
-                    : { teamId: current.teamId }),
-                },
-                tx,
-              );
+              try {
+                await this.access.authorizeLead(
+                  actor,
+                  'lead.evidence.decide',
+                  {
+                    departmentId: current.departmentId,
+                    responsibleUserId: current.responsibleUserId,
+                    ...(current.teamId === null
+                      ? {}
+                      : { teamId: current.teamId }),
+                  },
+                  tx,
+                );
+              } catch (error) {
+                if (!sharedInput || !(error instanceof ForbiddenException))
+                  throw error;
+                throw new ConflictException({
+                  code: 'BATCH_NO_EVIDENCE_REJECTED',
+                  message: `第${index + 1}条线索当前不可办理`,
+                  details: { failures: [{ index, code: 'NOT_AVAILABLE' }] },
+                });
+              }
             }
             if (prior)
               return this.noEvidenceBatchSnapshot(
@@ -3218,11 +3463,23 @@ export class LeadService {
                 targets,
                 fingerprint,
               );
-            for (const item of items)
-              this.assertEvidenceDecisionState(
-                byId.get(item.leadId)!,
-                item.expectedVersion,
-              );
+            for (const [index, item] of items.entries()) {
+              try {
+                this.assertEvidenceDecisionState(
+                  byId.get(item.leadId)!,
+                  item.expectedVersion,
+                );
+              } catch (error) {
+                if (!sharedInput) throw error;
+                throw new ConflictException({
+                  code: 'BATCH_NO_EVIDENCE_REJECTED',
+                  message: `第${index + 1}条线索状态或版本已变化`,
+                  details: {
+                    failures: [{ index, code: 'INVALID_STATE_OR_VERSION' }],
+                  },
+                });
+              }
+            }
             const batchId = randomUUID();
             const results: LeadEvidenceDecisionResponse[] = [];
             for (const [index, item] of items.entries()) {
@@ -3237,6 +3494,8 @@ export class LeadService {
                   item.expectedVersion,
                   item.reason,
                   actorAccount.displayName,
+                  item.archiveType,
+                  item.archiveDate,
                 ),
               );
             }
@@ -3267,16 +3526,37 @@ export class LeadService {
     throw this.versionConflict();
   }
 
-  private noEvidenceBatchItems(input: unknown): LeadNoEvidenceBatchItemDto[] {
+  private noEvidenceBatchItems(
+    input: unknown,
+  ): NormalizedNoEvidenceBatchItem[] {
     if (
       !input ||
       typeof input !== 'object' ||
       Array.isArray(input) ||
-      Object.keys(input).length !== 1 ||
       !('items' in input) ||
       !Array.isArray(input.items) ||
       input.items.length < 1 ||
       input.items.length > 20
+    )
+      throw this.validation();
+    const shared = input as Record<string, unknown>;
+    const hasShared = shared.reason !== undefined;
+    if (
+      Object.keys(shared).some(
+        (key) =>
+          !['items', 'reason', 'archiveType', 'archiveDate'].includes(key),
+      ) ||
+      (hasShared &&
+        (shared.archiveType === undefined ||
+          shared.archiveDate === undefined)) ||
+      (hasShared && typeof shared.reason !== 'string') ||
+      (shared.archiveType !== undefined &&
+        !NO_EVIDENCE_ARCHIVE_TYPES.includes(
+          shared.archiveType as NoEvidenceArchiveType,
+        )) ||
+      (shared.archiveDate !== undefined &&
+        (typeof shared.archiveDate !== 'string' ||
+          parseArchiveDate(shared.archiveDate) === null))
     )
       throw this.validation();
     const items = input.items.map((value: unknown) => {
@@ -3284,23 +3564,54 @@ export class LeadService {
         throw this.validation();
       const item = value as Record<string, unknown>;
       if (
-        Object.keys(item).length !== 3 ||
+        Object.keys(item).some(
+          (key) =>
+            ![
+              'leadId',
+              'expectedVersion',
+              'reason',
+              'archiveType',
+              'archiveDate',
+            ].includes(key),
+        ) ||
         typeof item.leadId !== 'string' ||
         !isUUID(item.leadId) ||
         typeof item.expectedVersion !== 'number' ||
         !Number.isInteger(item.expectedVersion) ||
         item.expectedVersion < 1 ||
         item.expectedVersion > 2147483646 ||
-        typeof item.reason !== 'string'
+        (hasShared
+          ? item.reason !== undefined
+          : typeof item.reason !== 'string') ||
+        (item.archiveType !== undefined &&
+          !NO_EVIDENCE_ARCHIVE_TYPES.includes(
+            item.archiveType as NoEvidenceArchiveType,
+          )) ||
+        (item.archiveDate !== undefined &&
+          (typeof item.archiveDate !== 'string' ||
+            parseArchiveDate(item.archiveDate) === null))
       )
         throw this.validation();
-      const reason = item.reason.trim();
+      const reason = (
+        hasShared ? (shared.reason as string) : (item.reason as string)
+      ).trim();
       if (Array.from(reason).length < 1 || Array.from(reason).length > 5000)
         throw this.validation();
       return {
         leadId: item.leadId.toLowerCase(),
         expectedVersion: item.expectedVersion,
         reason,
+        ...(shared.archiveType === undefined && item.archiveType === undefined
+          ? {}
+          : {
+              archiveType: (shared.archiveType ??
+                item.archiveType) as NoEvidenceArchiveType,
+            }),
+        ...(shared.archiveDate === undefined && item.archiveDate === undefined
+          ? {}
+          : {
+              archiveDate: (shared.archiveDate ?? item.archiveDate) as string,
+            }),
       };
     });
     if (new Set(items.map(({ leadId }) => leadId)).size !== items.length)
@@ -3316,7 +3627,7 @@ export class LeadService {
     tx: Prisma.TransactionClient,
     actor: ActorContext,
     receipt: LeadNoEvidenceBatchReceipt,
-    items: LeadNoEvidenceBatchItemDto[],
+    items: NormalizedNoEvidenceBatchItem[],
     fingerprint: string,
   ): Promise<LeadNoEvidenceBatchResponseDto> {
     if (
@@ -3355,6 +3666,12 @@ export class LeadService {
         result: 'NO_EVIDENCE',
         reason: item.reason,
         expectedVersion: item.expectedVersion,
+        ...(item.archiveType === undefined
+          ? {}
+          : { archiveType: item.archiveType }),
+        ...(item.archiveDate === undefined
+          ? {}
+          : { archiveDate: item.archiveDate }),
       });
       if (
         typed.requestFingerprint !== itemFingerprint ||
@@ -3378,11 +3695,16 @@ export class LeadService {
         'decidedAt',
         'archiveType',
         'archivedAt',
-      ] as const;
+        ...(item.archiveDate === undefined ? [] : ['archiveDate']),
+      ] as Array<keyof LeadEvidenceDecisionResponse>;
       if (
-        Object.keys(original).length !== 10 ||
+        Object.keys(original).length !== resultKeys.length ||
         !isUUID(original.id) ||
         original.reason !== item.reason ||
+        (item.archiveType !== undefined &&
+          original.archiveType !== item.archiveType) ||
+        (item.archiveDate !== undefined &&
+          original.archiveDate !== item.archiveDate) ||
         original.version !== item.expectedVersion + 1 ||
         Number.isNaN(Date.parse(original.decidedAt)) ||
         new Date(original.decidedAt).toISOString() !== original.decidedAt ||
@@ -3423,6 +3745,8 @@ export class LeadService {
     expectedVersion: number,
     reason: string,
     displayName: string,
+    archiveType?: NoEvidenceArchiveType,
+    archiveDate?: string,
   ): Promise<LeadEvidenceDecisionResponse> {
     this.assertEvidenceDecisionState(current, expectedVersion);
     const changed = await transaction.lead.updateMany({
@@ -3438,6 +3762,12 @@ export class LeadService {
     if (changed.count !== 1) throw this.versionConflict();
     const evidenceDecisionId = randomUUID();
     const decidedAt = new Date();
+    const parsedArchiveDate = archiveDate
+      ? parseArchiveDate(archiveDate)
+      : null;
+    if (archiveDate !== undefined && parsedArchiveDate === null)
+      throw this.validation();
+    const effectiveArchiveType = archiveType ?? 'NO_EVIDENCE';
     const result: LeadEvidenceDecisionResponse = {
       id: evidenceDecisionId,
       leadId: id,
@@ -3447,8 +3777,9 @@ export class LeadService {
       reason,
       decidedByDisplayName: displayName,
       decidedAt: decidedAt.toISOString(),
-      archiveType: 'NO_EVIDENCE',
+      archiveType: effectiveArchiveType,
       archivedAt: decidedAt.toISOString(),
+      ...(archiveDate === undefined ? {} : { archiveDate }),
     };
     await this.writeNoEvidenceArchiveFact(
       transaction,
@@ -3460,6 +3791,8 @@ export class LeadService {
       reason,
       displayName,
       decidedAt,
+      effectiveArchiveType,
+      parsedArchiveDate,
     );
     await transaction.auditEvent.create({
       data: {
@@ -3488,6 +3821,8 @@ export class LeadService {
           result: 'NO_EVIDENCE',
           reason,
           expectedVersion,
+          ...(archiveType === undefined ? {} : { archiveType }),
+          ...(archiveDate === undefined ? {} : { archiveDate }),
         }),
         resultLeadId: id,
         resultLeadVersion: result.version,
@@ -3507,6 +3842,8 @@ export class LeadService {
     reason: string,
     displayName: string,
     decidedAt: Date,
+    archiveType: NoEvidenceArchiveType = 'NO_EVIDENCE',
+    archiveDate: Date | null = null,
   ): Promise<void> {
     await transaction.leadEvidenceDecision.create({
       data: {
@@ -3520,12 +3857,17 @@ export class LeadService {
         actorDisplayNameSnapshot: displayName,
         result: 'NO_EVIDENCE',
         reason,
-        archiveType: 'NO_EVIDENCE',
+        archiveType,
+        ...(archiveDate === null ? {} : { archiveDate }),
         decidedAt,
         archivedAt: decidedAt,
         fromVersion,
         toVersion: fromVersion + 1,
       },
+    });
+    await transaction.lead.update({
+      where: { id: leadId },
+      data: { activeEvidenceDecisionId: factId },
     });
   }
 
@@ -3537,6 +3879,12 @@ export class LeadService {
   ): Promise<ProxyEvidenceConfirmationResponse> {
     if (
       (input.result !== 'EVIDENCE' && input.result !== 'NO_EVIDENCE') ||
+      (input.archiveType !== undefined &&
+        !NO_EVIDENCE_ARCHIVE_TYPES.includes(input.archiveType)) ||
+      (input.archiveDate !== undefined &&
+        parseArchiveDate(input.archiveDate) === null) ||
+      (input.result === 'EVIDENCE' &&
+        (input.archiveType !== undefined || input.archiveDate !== undefined)) ||
       !Number.isInteger(input.expectedVersion) ||
       input.expectedVersion < 1 ||
       input.expectedVersion > 2147483646 ||
@@ -3555,6 +3903,12 @@ export class LeadService {
       result: input.result,
       reason,
       expectedVersion: input.expectedVersion,
+      ...(input.archiveType === undefined
+        ? {}
+        : { archiveType: input.archiveType }),
+      ...(input.archiveDate === undefined
+        ? {}
+        : { archiveDate: input.archiveDate }),
     });
     for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
       try {
@@ -3673,6 +4027,12 @@ export class LeadService {
               actorDisplayName: actorAccount.displayName,
               decidedAt: decidedAt.toISOString(),
               reason,
+              ...(input.result === 'NO_EVIDENCE' && input.archiveType
+                ? { archiveType: input.archiveType }
+                : {}),
+              ...(input.result === 'NO_EVIDENCE' && input.archiveDate
+                ? { archiveDate: input.archiveDate }
+                : {}),
             };
             await transaction.leadProxyEvidenceConfirmation.create({
               data: {
@@ -3703,6 +4063,8 @@ export class LeadService {
                 reason!,
                 actorAccount.displayName,
                 decidedAt,
+                input.archiveType,
+                input.archiveDate ? parseArchiveDate(input.archiveDate) : null,
               );
             }
             await transaction.auditEvent.create({
@@ -3763,6 +4125,13 @@ export class LeadService {
     if (input.result !== 'NO_EVIDENCE' || typeof input.reason !== 'string')
       throw this.validation();
     const reason = input.reason.trim();
+    if (
+      (input.archiveType !== undefined &&
+        !NO_EVIDENCE_ARCHIVE_TYPES.includes(input.archiveType)) ||
+      (input.archiveDate !== undefined &&
+        parseArchiveDate(input.archiveDate) === null)
+    )
+      throw this.validation();
     if (Array.from(reason).length < 1 || Array.from(reason).length > 5000)
       throw this.validation();
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1)
@@ -3772,6 +4141,12 @@ export class LeadService {
       result: input.result,
       reason,
       expectedVersion: input.expectedVersion,
+      ...(input.archiveType === undefined
+        ? {}
+        : { archiveType: input.archiveType }),
+      ...(input.archiveDate === undefined
+        ? {}
+        : { archiveDate: input.archiveDate }),
     });
     for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
       try {
@@ -3832,6 +4207,8 @@ export class LeadService {
               input.expectedVersion,
               reason,
               actorAccount.displayName,
+              input.archiveType,
+              input.archiveDate,
             );
           },
           { isolationLevel: 'Serializable' },
@@ -3878,7 +4255,12 @@ export class LeadService {
       typeof result.reason !== 'string' ||
       typeof result.decidedByDisplayName !== 'string' ||
       typeof result.decidedAt !== 'string' ||
-      result.archiveType !== 'NO_EVIDENCE' ||
+      !NO_EVIDENCE_ARCHIVE_TYPES.includes(
+        result.archiveType as NoEvidenceArchiveType,
+      ) ||
+      (result.archiveDate !== undefined &&
+        (typeof result.archiveDate !== 'string' ||
+          parseArchiveDate(result.archiveDate) === null)) ||
       result.archivedAt !== result.decidedAt
     )
       throw this.corruptReceipt();
@@ -4220,6 +4602,9 @@ export class LeadService {
               decidedAt: record.reviewDecision.decidedAt.toISOString(),
               archiveType: 'NO_INFRINGEMENT',
               archivedAt: record.reviewDecision.archivedAt!.toISOString(),
+              archiveDate:
+                record.reviewDecision.archiveDate?.toISOString().slice(0, 10) ??
+                null,
             }
           : {
               result: 'INFRINGEMENT',
@@ -4235,8 +4620,12 @@ export class LeadService {
             decidedByDisplayName:
               record.evidenceDecision.actorDisplayNameSnapshot,
             decidedAt: record.evidenceDecision.decidedAt.toISOString(),
-            archiveType: 'NO_EVIDENCE',
+            archiveType: record.evidenceDecision
+              .archiveType as NoEvidenceArchiveType,
             archivedAt: record.evidenceDecision.archivedAt.toISOString(),
+            archiveDate:
+              record.evidenceDecision.archiveDate?.toISOString().slice(0, 10) ??
+              null,
           }
         : null,
       createdAt: record.createdAt.toISOString(),

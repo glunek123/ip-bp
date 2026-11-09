@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {
+  leadArchiveTypeLabels,
+  leadBusinessDate,
+} from '../../api/lead-decisions';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
@@ -393,8 +397,8 @@ onBeforeUnmount(() => request?.abort());
               </dd>
             </div>
             <div>
-              <dt>发现时间</dt>
-              <dd class="mono">{{ formatTime(lead.foundAt) }}</dd>
+              <dt>线索发现日期</dt>
+              <dd class="mono">{{ leadBusinessDate(lead.foundAt) }}</dd>
             </div>
             <div>
               <dt>侵权类型</dt>
@@ -468,8 +472,18 @@ onBeforeUnmount(() => request?.abort());
             <p>运营决定：不取证并归档</p>
             <p>处理人：{{ lead.evidenceDecision.decidedByDisplayName }}</p>
             <p>处理时间：{{ formatTime(lead.evidenceDecision.decidedAt) }}</p>
-            <p>不取证原因：{{ lead.evidenceDecision.reason }}</p>
-            <p>归档时间：{{ formatTime(lead.evidenceDecision.archivedAt) }}</p>
+            <p>
+              归档类型：{{
+                leadArchiveTypeLabels[lead.evidenceDecision.archiveType]
+              }}
+            </p>
+            <p>归档原因：{{ lead.evidenceDecision.reason }}</p>
+            <p>
+              归档日期：{{
+                lead.evidenceDecision.archiveDate ??
+                leadBusinessDate(lead.evidenceDecision.archivedAt)
+              }}
+            </p>
           </section>
           <template v-if="lead.reviewDecision">
             <section
@@ -478,14 +492,14 @@ onBeforeUnmount(() => request?.abort());
             >
               <h2 class="form-section-title">客户审核记录</h2>
               <p>
-                审核结论：{{
+                审核结果：{{
                   lead.reviewDecision.result === 'INFRINGEMENT'
                     ? '确认侵权'
                     : '判定不侵权并归档'
                 }}
               </p>
               <p v-if="lead.reviewDecision.result === 'NO_INFRINGEMENT'">
-                不侵权原因：{{ lead.reviewDecision.reason }}
+                归档原因：{{ lead.reviewDecision.reason }}
               </p>
               <p>审核人：{{ lead.reviewDecision.reviewerDisplayName }}</p>
               <p>审核时间：{{ formatTime(lead.reviewDecision.decidedAt) }}</p>
@@ -506,7 +520,10 @@ onBeforeUnmount(() => request?.abort());
                 运营已将线索移交公证流程；此页面仍只展示本企业线索信息。
               </p>
               <p v-if="lead.reviewDecision.result === 'NO_INFRINGEMENT'">
-                归档时间：{{ formatTime(lead.reviewDecision.archivedAt) }}
+                归档日期：{{
+                  lead.reviewDecision.archiveDate ??
+                  leadBusinessDate(lead.reviewDecision.archivedAt)
+                }}
               </p>
             </section>
           </template>
@@ -533,7 +550,7 @@ onBeforeUnmount(() => request?.abort());
               <label
                 class="field-label field-label--spaced"
                 for="no-infringement-reason"
-                >不侵权原因<RequiredFieldMark
+                >归档原因<RequiredFieldMark
               /></label>
               <textarea
                 id="no-infringement-reason"
@@ -563,7 +580,7 @@ onBeforeUnmount(() => request?.abort());
                 data-test="no-infringement-reason-error"
                 role="alert"
               >
-                不侵权原因最多为 5000 个 Unicode 码点，目前为
+                归档原因最多为 5000 个 Unicode 码点，目前为
                 {{ noInfringementReasonLength }}
                 个；已保留输入，请删减后再提交。
               </p>
@@ -598,7 +615,7 @@ onBeforeUnmount(() => request?.abort());
             {{ reviewError }}
           </p>
           <p v-if="!lead.reviewDecision">
-            当前可查看线索内容；如需补充或反馈，请联系负责运营。
+            当前可查看线索内容；如需补充或反馈，请联系运营。
           </p>
           <section
             v-if="lead.history?.length"

@@ -34,6 +34,8 @@ import {
   NotaryIssuanceDecisionResponseDto,
   SetNotaryOfficeStatusDto,
   TransferLeadToNotaryDto,
+  ConfirmNotaryHandoffDto,
+  ConfirmNotaryHandoffBatchDto,
   NotaryRecordEditsResponseDto,
 } from './lead-notary.dto';
 import { LeadNotaryService } from './lead-notary.service';
@@ -174,6 +176,33 @@ export class LeadNotaryController {
         message: 'Idempotency-Key 必须为 1 至 128 个字符',
       });
     return this.notary.transfer(actor, id, key, input);
+  }
+
+  @Post('leads/:id/notary-matters/confirm')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  confirm(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') header: string | undefined,
+    @Body() input: ConfirmNotaryHandoffDto,
+  ) {
+    const key = header?.trim();
+    if (!key || key.length > 128)
+      throw new BadRequestException({ code: 'VALIDATION_ERROR' });
+    return this.notary.confirm(actor, id, key, input);
+  }
+
+  @Post('leads/notary-matters/batch-confirm')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  confirmBatch(
+    @CurrentActor() actor: ActorContext,
+    @Headers('idempotency-key') header: string | undefined,
+    @Body() input: ConfirmNotaryHandoffBatchDto,
+  ) {
+    const key = header?.trim();
+    if (!key || key.length > 128)
+      throw new BadRequestException({ code: 'VALIDATION_ERROR' });
+    return this.notary.confirmBatch(actor, key, input);
   }
 
   @Get('notary-matters/:id')

@@ -690,7 +690,7 @@ describe('ClientLeadDetailPage', () => {
     leadApi.getClientLead.mockResolvedValue(processedLead);
     const wrapper = await mountPage();
     const record = wrapper.get('[data-test="client-review-record"]');
-    expect(record.text()).toContain('审核结论：确认侵权');
+    expect(record.text()).toContain('审核结果：确认侵权');
     expect(record.text()).toContain('审核人：企业审核员');
     expect(record.text()).toContain('2026/9/22 11:00:00');
     expect(record.text()).toContain('下一步：等待运营确认是否取证');

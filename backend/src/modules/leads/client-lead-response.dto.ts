@@ -23,6 +23,8 @@ export class ClientLeadReviewDecisionResponseDto {
   @ApiPropertyOptional({ enum: ['NO_INFRINGEMENT'] })
   archiveType?: 'NO_INFRINGEMENT';
   @ApiPropertyOptional({ format: 'date-time' }) archivedAt?: string;
+  @ApiPropertyOptional({ format: 'date', nullable: true }) archiveDate?:
+    string | null;
 }
 
 export class ClientLeadEvidenceDecisionResponseDto {
@@ -30,8 +32,13 @@ export class ClientLeadEvidenceDecisionResponseDto {
   @ApiProperty({ maxLength: 5000 }) reason!: string;
   @ApiProperty() decidedByDisplayName!: string;
   @ApiProperty({ format: 'date-time' }) decidedAt!: string;
-  @ApiProperty({ enum: ['NO_EVIDENCE'] }) archiveType!: 'NO_EVIDENCE';
+  @ApiProperty({
+    enum: ['LINK_REMOVED', 'NO_INFRINGEMENT_INFORMATION', 'NO_EVIDENCE'],
+  })
+  archiveType!: 'LINK_REMOVED' | 'NO_INFRINGEMENT_INFORMATION' | 'NO_EVIDENCE';
   @ApiProperty({ format: 'date-time' }) archivedAt!: string;
+  @ApiPropertyOptional({ format: 'date', nullable: true }) archiveDate?:
+    string | null;
 }
 
 class ClientLeadCapabilitiesResponseDto {
@@ -67,11 +74,23 @@ export class ClientLeadHistoryResponseDto {
   @ApiPropertyOptional() decidedByDisplayName?: string;
   @ApiPropertyOptional({ format: 'uuid' }) applicationId?: string;
   @ApiPropertyOptional({
-    enum: ['NO_INFRINGEMENT', 'NO_EVIDENCE'],
+    enum: [
+      'NO_INFRINGEMENT',
+      'LINK_REMOVED',
+      'NO_INFRINGEMENT_INFORMATION',
+      'NO_EVIDENCE',
+    ],
     nullable: true,
   })
-  archiveType?: 'NO_INFRINGEMENT' | 'NO_EVIDENCE' | null;
+  archiveType?:
+    | 'NO_INFRINGEMENT'
+    | 'LINK_REMOVED'
+    | 'NO_INFRINGEMENT_INFORMATION'
+    | 'NO_EVIDENCE'
+    | null;
   @ApiPropertyOptional({ format: 'date-time', nullable: true }) archivedAt?:
+    string | null;
+  @ApiPropertyOptional({ format: 'date', nullable: true }) archiveDate?:
     string | null;
 }
 

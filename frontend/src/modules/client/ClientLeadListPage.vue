@@ -150,7 +150,7 @@ onBeforeUnmount(() => request?.abort());
           <table class="demo-table">
             <thead>
               <tr>
-                <th>线索编号</th>
+                <th>案件单号</th>
                 <th>状态</th>
                 <th>权利主体</th>
                 <th>店铺</th>

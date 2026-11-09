@@ -11,6 +11,7 @@ import {
   MaxLength,
   Min,
   Validate,
+  ValidateNested,
   ValidationArguments,
   ValidatorConstraint,
   ValidatorConstraintInterface,
@@ -65,10 +66,48 @@ export class ReviewClientLeadDto {
   @Matches(/^[\s\S]{1,5000}$/u)
   reason?: string;
 
+  @ApiPropertyOptional({ format: 'date', description: 'Business archive date' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  archiveDate?: string;
+
   @ApiProperty({ minimum: 1 })
   @IsInt()
   @Min(1)
   expectedVersion!: number;
+}
+
+export class BatchProxyReviewItemDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  leadId!: string;
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+}
+
+export class BatchProxyReviewDto {
+  @ApiProperty({ type: [BatchProxyReviewItemDto] })
+  @ValidateNested({ each: true })
+  @Type(() => BatchProxyReviewItemDto)
+  items!: BatchProxyReviewItemDto[];
+
+  @ApiProperty({ enum: ['INFRINGEMENT', 'NO_INFRINGEMENT'] })
+  @IsIn(['INFRINGEMENT', 'NO_INFRINGEMENT'])
+  result!: 'INFRINGEMENT' | 'NO_INFRINGEMENT';
+
+  @ApiPropertyOptional({ maxLength: 5000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  reason?: string;
+
+  @ApiPropertyOptional({ format: 'date' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  archiveDate?: string;
 }
 
 export class ConfirmClientLeadWithdrawalDto {

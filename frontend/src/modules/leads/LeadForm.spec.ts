@@ -124,7 +124,7 @@ describe('LeadForm', () => {
     expect(wrapper.text()).not.toContain('发现平台');
     expect(wrapper.text()).toContain('平台店铺ID（选填）');
     expect(wrapper.text()).toContain('销量');
-    expect(wrapper.text()).toContain('计算金额（元）');
+    expect(wrapper.text()).toContain('销售额（元）');
     expect(wrapper.text()).toContain('销量为 0 时改用评论数');
     expect(wrapper.text()).toContain('商品链接和商品名称至少填写一项');
     expect(

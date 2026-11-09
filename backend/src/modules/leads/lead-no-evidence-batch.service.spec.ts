@@ -45,6 +45,7 @@ type Lead = {
   status: string;
   version: number;
   activeReviewDecisionId: string | null;
+  activeEvidenceDecisionId: string | null;
   reviewDecision: { id: string; result: string } | null;
 };
 type State = {
@@ -66,6 +67,7 @@ function fixture() {
       status: 'WAITING_EVIDENCE_DECISION',
       version: 3,
       activeReviewDecisionId: `${index}decision`,
+      activeEvidenceDecisionId: null,
       reviewDecision: { id: `${index}decision`, result: 'INFRINGEMENT' },
     })),
     facts: [],
@@ -130,6 +132,19 @@ function fixture() {
           lead.status = 'ARCHIVED';
           lead.version += 1;
           return { count: 1 };
+        },
+      ),
+      update: jest.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: { id: string };
+          data: { activeEvidenceDecisionId: string };
+        }) => {
+          const lead = current().leads.find((item) => item.id === where.id)!;
+          lead.activeEvidenceDecisionId = data.activeEvidenceDecisionId;
+          return lead;
         },
       ),
     },
@@ -246,6 +261,55 @@ function fixture() {
 }
 
 describe('LeadService atomic no evidence batch', () => {
+  it('stores one shared archive type and business date while keeping each lead decision', async () => {
+    const f = fixture();
+    const result = await f.service.decideNoEvidenceBatch(actor, 'shared-date', {
+      items: ids.map((leadId) => ({ leadId, expectedVersion: 3 })),
+      reason: '不取证归档',
+      archiveType: 'LINK_REMOVED',
+      archiveDate: '2026-11-07',
+    });
+    expect(result.items).toHaveLength(2);
+    expect(result.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          archiveType: 'LINK_REMOVED',
+          archiveDate: '2026-11-07',
+        }),
+      ]),
+    );
+    expect(f.state().facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          archiveType: 'LINK_REMOVED',
+          archiveDate: new Date('2026-11-07T00:00:00.000Z'),
+        }),
+      ]),
+    );
+    expect(f.state().leads.every((lead) => lead.activeEvidenceDecisionId)).toBe(
+      true,
+    );
+    await expect(
+      f.service.decideNoEvidenceBatch(actor, 'shared-date', {
+        items: ids.map((leadId) => ({ leadId, expectedVersion: 3 })),
+        reason: '不取证归档',
+        archiveType: 'LINK_REMOVED',
+        archiveDate: '2026-11-07',
+      }),
+    ).resolves.toEqual(result);
+  });
+
+  it('requires archive type and business date for the new shared input', async () => {
+    const f = fixture();
+    await expect(
+      f.service.decideNoEvidenceBatch(actor, 'missing-date', {
+        items: ids.map((leadId) => ({ leadId, expectedVersion: 3 })),
+        reason: '不取证归档',
+        archiveType: 'NO_EVIDENCE',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+  });
+
   it('accepts the largest incrementable INTEGER version and returns its safe successor', async () => {
     const f = fixture();
     f.state().leads[0]!.version = 2147483646;
@@ -444,7 +508,7 @@ describe('LeadService atomic no evidence batch', () => {
     const receipt = f.state().batches[0]!;
     receipt.originalRequest = {
       items: [...input.items].map((item) => ({
-        reason: item.reason.trim(),
+        reason: item.reason!.trim(),
         expectedVersion: item.expectedVersion,
         leadId: item.leadId.toLowerCase(),
       })),

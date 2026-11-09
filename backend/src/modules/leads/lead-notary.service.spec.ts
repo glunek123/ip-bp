@@ -592,6 +592,7 @@ function fixture(status = 'WAITING_EVIDENCE_DECISION') {
         unitPrice: { toFixed: () => '10.00' },
         commentCount: 0,
         estimatedAmount: { toFixed: () => '10.00' },
+        screenshots: [],
       },
     ],
     caseType: 'CIVIL',
@@ -612,6 +613,7 @@ function fixture(status = 'WAITING_EVIDENCE_DECISION') {
       ),
     lead: {
       findFirst: jest.fn().mockResolvedValue(lead),
+      findMany: jest.fn().mockResolvedValue([lead]),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     userAccount: {
@@ -864,6 +866,58 @@ describe('LeadNotaryService transfer', () => {
       f.service.transfer(actor, leadId, 'key', command),
     ).rejects.toThrow('audit write failed');
     expect(f.tx.leadCommandReceipt.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('LeadNotaryService automatic confirmation handoff', () => {
+  it('includes associated current screenshots and stores no invented mode or purpose', async () => {
+    const { service, tx, lead, materials } = fixture();
+    const screenshotId = '99999999-9999-4999-8999-999999999999';
+    lead.products[0].screenshots = [
+      { contentVersionId: screenshotId },
+    ] as never;
+    materials.listCurrentReferenceVersionIds.mockResolvedValue([screenshotId]);
+    materials.assertAvailableVersions.mockResolvedValue([
+      { materialId: 'material-1', contentVersionId: screenshotId },
+    ]);
+    const result = await service.confirm(actor, leadId, 'auto-1', {
+      notaryOfficeId: officeId,
+      expectedVersion: 3,
+    });
+    expect(result).toMatchObject({
+      evidenceMode: null,
+      batchPurpose: null,
+      selectedProductIds: [productId],
+      selectedContentVersionIds: [screenshotId],
+    });
+    expect(tx.notaryMatter.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        evidenceMode: null,
+        batchPurpose: null,
+      }),
+    });
+    expect(tx.notaryMatterMaterial.createMany).toHaveBeenCalled();
+  });
+
+  it('rejects a changed idempotency key request without another matter', async () => {
+    const { service, tx } = fixture();
+    const input = { notaryOfficeId: officeId, expectedVersion: 3 };
+    const result = await service.confirm(actor, leadId, 'auto-2', input);
+    expect(result.leadId).toBe(leadId);
+    tx.leadCommandReceipt.findUnique.mockResolvedValue(
+      tx.leadCommandReceipt.create.mock.calls[0][0].data,
+    );
+    tx.notaryMatter.create.mockClear();
+    await expect(
+      service.confirm(actor, leadId, 'auto-2', input),
+    ).resolves.toEqual(result);
+    await expect(
+      service.confirm(actor, leadId, 'auto-2', {
+        ...input,
+        expectedVersion: 4,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+    expect(tx.notaryMatter.create).not.toHaveBeenCalled();
   });
 });
 

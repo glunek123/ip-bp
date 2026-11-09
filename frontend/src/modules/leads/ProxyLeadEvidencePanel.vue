@@ -261,7 +261,7 @@ onBeforeUnmount(() => {
           />确认不取证并归档</label
         >
         <label v-if="choice === 'NO_EVIDENCE'"
-          >不取证原因
+          >归档原因
           <textarea
             v-model="reason"
             data-test="proxy-evidence-reason"
