@@ -6,8 +6,6 @@ import { ElPagination } from 'element-plus/es/components/pagination/index.mjs';
 import 'element-plus/theme-chalk/el-pagination.css';
 import {
   createCustomerRightsHolder,
-  findLinkableRightsHolders,
-  linkCustomerRightsHolder,
   listCustomerRightsHolders,
   type CreateRightsHolderInput,
   type RightsHolderSummary,
@@ -31,10 +29,9 @@ const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const holders = ref<RightsHolderSummary[]>([]);
 const holdersTotal = ref(0);
 const holdersPage = ref(1);
-const capabilities = ref({ create: false, link: false });
+const capabilities = ref({ create: false });
 const writeDenied = ref(false);
 const createOpen = ref(false);
-const linkOpen = ref(false);
 const name = ref('');
 const credit = ref('');
 const address = ref('');
@@ -42,31 +39,14 @@ const legalRepresentative = ref('');
 const duty = ref('');
 const nameError = ref('');
 const createError = ref('');
-const linkError = ref('');
 const versionConflict = ref(false);
 const saving = ref(false);
-const linkableState = ref<'loading' | 'ready' | 'failed'>('loading');
-const linkable = ref<RightsHolderSummary[]>([]);
-const linkableTotal = ref(0);
-const linkablePage = ref(1);
-const query = ref('');
-const selectedHolderId = ref('');
 let activeRequest: AbortController | undefined;
 let createRetry: { signature: string; key: string } | undefined;
-let linkRetry: { signature: string; key: string } | undefined;
 let formIntentGeneration = 0;
-let linkableRequestGeneration = 0;
 
 const canCreate = computed(
   () => props.canEdit && !writeDenied.value && capabilities.value.create,
-);
-const canLink = computed(
-  () => props.canEdit && !writeDenied.value && capabilities.value.link,
-);
-const hasVisibleSelection = computed(
-  () =>
-    selectedHolderId.value.length > 0 &&
-    linkable.value.some((holder) => holder.id === selectedHolderId.value),
 );
 
 function optional(value: string): string | undefined {
@@ -113,11 +93,8 @@ async function load(page = holdersPage.value): Promise<void> {
 
 function openCreate(): void {
   formIntentGeneration += 1;
-  linkableRequestGeneration += 1;
   saving.value = false;
   createRetry = undefined;
-  linkRetry = undefined;
-  linkOpen.value = false;
   createOpen.value = true;
   nameError.value = '';
   createError.value = '';
@@ -134,21 +111,14 @@ function closeCreate(): void {
 function denyWrites(): void {
   writeDenied.value = true;
   closeCreate();
-  closeLink();
 }
 
 function isApiError(error: unknown, code: string): boolean {
   return error instanceof ApiError && error.code === code;
 }
 
-function isCurrentFormIntent(
-  generation: number,
-  kind: 'create' | 'link',
-): boolean {
-  return (
-    generation === formIntentGeneration &&
-    (kind === 'create' ? createOpen.value : linkOpen.value)
-  );
+function isCurrentFormIntent(generation: number): boolean {
+  return generation === formIntentGeneration && createOpen.value;
 }
 
 function createPayload(): CreateRightsHolderInput {
@@ -181,7 +151,7 @@ async function submitCreate(): Promise<void> {
       input,
       key,
     );
-    if (!isCurrentFormIntent(intentGeneration, 'create')) return;
+    if (!isCurrentFormIntent(intentGeneration)) return;
     createRetry = undefined;
     createOpen.value = false;
     name.value = '';
@@ -193,7 +163,7 @@ async function submitCreate(): Promise<void> {
     holdersPage.value = 1;
     await load(1);
   } catch (error) {
-    if (!isCurrentFormIntent(intentGeneration, 'create')) return;
+    if (!isCurrentFormIntent(intentGeneration)) return;
     if (isApiError(error, 'CUSTOMER_ACTION_FORBIDDEN')) {
       denyWrites();
     } else if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
@@ -216,103 +186,6 @@ async function submitCreate(): Promise<void> {
   }
 }
 
-async function loadLinkable(page = 1): Promise<void> {
-  const requestGeneration = ++linkableRequestGeneration;
-  linkableState.value = 'loading';
-  linkError.value = '';
-  selectedHolderId.value = '';
-  try {
-    const result = await findLinkableRightsHolders(props.customerId, {
-      query: optional(query.value),
-      page,
-      pageSize: 20,
-    });
-    if (requestGeneration !== linkableRequestGeneration || !linkOpen.value)
-      return;
-    linkable.value = result.items;
-    linkableTotal.value = result.total;
-    linkablePage.value = result.page;
-    linkableState.value = 'ready';
-  } catch (error) {
-    if (requestGeneration !== linkableRequestGeneration || !linkOpen.value)
-      return;
-    if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
-      emit('customer-not-found', props.customerId);
-    } else {
-      linkableState.value = 'failed';
-    }
-  }
-}
-
-function openLink(): void {
-  formIntentGeneration += 1;
-  saving.value = false;
-  createRetry = undefined;
-  linkRetry = undefined;
-  createOpen.value = false;
-  linkOpen.value = true;
-  versionConflict.value = false;
-  void loadLinkable();
-}
-
-function closeLink(): void {
-  formIntentGeneration += 1;
-  linkableRequestGeneration += 1;
-  saving.value = false;
-  linkRetry = undefined;
-  linkOpen.value = false;
-}
-
-async function submitLink(): Promise<void> {
-  if (saving.value || !hasVisibleSelection.value) return;
-  linkError.value = '';
-  versionConflict.value = false;
-  const input = {
-    expectedCustomerVersion: props.customerVersion,
-    rightsHolderId: selectedHolderId.value,
-  };
-  const signature = JSON.stringify(input);
-  const key = commandKey(linkRetry, signature);
-  const intentGeneration = formIntentGeneration;
-  saving.value = true;
-  try {
-    const result = await linkCustomerRightsHolder(props.customerId, input, key);
-    if (!isCurrentFormIntent(intentGeneration, 'link')) return;
-    linkRetry = undefined;
-    linkOpen.value = false;
-    emit('version-updated', props.customerId, result.customerVersion);
-    holdersPage.value = 1;
-    await load(1);
-  } catch (error) {
-    if (!isCurrentFormIntent(intentGeneration, 'link')) return;
-    if (isApiError(error, 'CUSTOMER_ACTION_FORBIDDEN')) {
-      denyWrites();
-    } else if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
-      linkRetry = undefined;
-      emit('customer-not-found', props.customerId);
-    } else if (isApiError(error, 'RIGHTS_HOLDER_ALREADY_LINKED')) {
-      linkRetry = undefined;
-      await Promise.all([load(1), loadLinkable(1)]);
-      if (!isCurrentFormIntent(intentGeneration, 'link')) return;
-      linkError.value = '该权利主体已关联，列表已刷新';
-    } else {
-      linkRetry = { signature, key };
-    }
-    if (isApiError(error, 'CUSTOMER_VERSION_CONFLICT')) {
-      versionConflict.value = true;
-      linkError.value = '客户资料已被他人更新，请先刷新客户版本再重试';
-    } else if (
-      !isApiError(error, 'CUSTOMER_ACTION_FORBIDDEN') &&
-      !isApiError(error, 'CUSTOMER_NOT_FOUND') &&
-      !isApiError(error, 'RIGHTS_HOLDER_ALREADY_LINKED')
-    ) {
-      linkError.value = '权利主体关联失败，请稍后重试';
-    }
-  } finally {
-    if (intentGeneration === formIntentGeneration) saving.value = false;
-  }
-}
-
 function requestRefresh(): void {
   emit('refresh-requested', props.customerId);
 }
@@ -323,14 +196,12 @@ watch(
     formIntentGeneration += 1;
     saving.value = false;
     createRetry = undefined;
-    linkRetry = undefined;
     versionConflict.value = false;
   },
 );
 onMounted(() => void load());
 onBeforeUnmount(() => {
   formIntentGeneration += 1;
-  linkableRequestGeneration += 1;
   activeRequest?.abort();
 });
 </script>
@@ -346,16 +217,9 @@ onBeforeUnmount(() => {
         <h2 id="rights-holder-title">权利主体</h2>
         <p class="field-guidance">知识产权实际所属方，可与当前客户企业不同。</p>
       </div>
-      <div v-if="canCreate || canLink" class="detail-actions">
-        <ElButton
-          v-if="canCreate"
-          data-test="open-create-holder"
-          @click="openCreate"
-        >
+      <div v-if="canCreate" class="detail-actions">
+        <ElButton data-test="open-create-holder" @click="openCreate">
           新建权利主体
-        </ElButton>
-        <ElButton v-if="canLink" data-test="open-link-holder" @click="openLink">
-          关联已有权利主体
         </ElButton>
       </div>
     </div>
@@ -366,16 +230,36 @@ onBeforeUnmount(() => {
       <ElButton data-test="reload-holders" @click="load()">重新加载</ElButton>
     </div>
     <p v-else-if="holders.length === 0">尚未关联权利主体。</p>
-    <ul v-else class="duplicate-list">
-      <li v-for="holder in holders" :key="holder.id">
-        <span>{{ holder.name }}</span>
-        <RouterLink
-          :to="`/customers/${customerId}/rights-holders/${holder.id}`"
-        >
-          查看详情
-        </RouterLink>
-      </li>
-    </ul>
+    <div v-else class="holder-table-wrap">
+      <table class="holder-table">
+        <thead>
+          <tr>
+            <th scope="col">权利主体</th>
+            <th scope="col">统一社会信用代码</th>
+            <th scope="col">住所地</th>
+            <th scope="col">法定代表人</th>
+            <th scope="col">职务</th>
+            <th scope="col">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="holder in holders" :key="holder.id">
+            <td>{{ holder.name }}</td>
+            <td>{{ holder.credit || '—' }}</td>
+            <td>{{ holder.address || '—' }}</td>
+            <td>{{ holder.legalRepresentative || '—' }}</td>
+            <td>{{ holder.duty || '—' }}</td>
+            <td>
+              <RouterLink
+                :to="`/customers/${customerId}/rights-holders/${holder.id}`"
+              >
+                查看详情
+              </RouterLink>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     <ElPagination
       v-if="state === 'ready' && holdersTotal > pageSize"
       data-test="holder-pagination"
@@ -474,73 +358,30 @@ onBeforeUnmount(() => {
         </ElButton>
       </div>
     </section>
-
-    <section
-      v-if="linkOpen"
-      class="form-section"
-      role="dialog"
-      aria-label="关联已有权利主体"
-    >
-      <h3>关联已有权利主体</h3>
-      <label class="field-label" for="holder-query">按名称搜索</label>
-      <input
-        id="holder-query"
-        v-model="query"
-        name="query"
-        class="text-input"
-        maxlength="200"
-      />
-      <ElButton data-test="search-linkable" @click="loadLinkable(1)"
-        >搜索</ElButton
-      >
-      <p v-if="linkableState === 'loading'">正在读取可关联主体……</p>
-      <div v-else-if="linkableState === 'failed'">
-        <p>可关联主体暂时无法加载。</p>
-        <ElButton @click="loadLinkable(linkablePage)">重新加载</ElButton>
-      </div>
-      <p v-else-if="linkable.length === 0">没有可关联的权利主体。</p>
-      <template v-else>
-        <label v-for="holder in linkable" :key="holder.id" class="field-label">
-          <input
-            v-model="selectedHolderId"
-            type="radio"
-            name="rightsHolderId"
-            :value="holder.id"
-          />
-          {{ holder.name }}
-        </label>
-      </template>
-      <ElPagination
-        v-if="linkableState === 'ready' && linkableTotal > pageSize"
-        data-test="linkable-pagination"
-        layout="prev, pager, next"
-        :current-page="linkablePage"
-        :page-size="pageSize"
-        :total="linkableTotal"
-        @current-change="loadLinkable"
-      />
-      <p v-if="linkError" class="submit-error" role="alert">{{ linkError }}</p>
-      <ElButton
-        v-if="versionConflict"
-        data-test="refresh-customer-version"
-        @click="requestRefresh"
-      >
-        刷新客户版本
-      </ElButton>
-      <div class="form-actions">
-        <ElButton data-test="cancel-link-holder" @click="closeLink"
-          >取消</ElButton
-        >
-        <ElButton
-          data-test="submit-link-holder"
-          type="primary"
-          :loading="saving"
-          :disabled="saving || !hasVisibleSelection"
-          @click="submitLink"
-        >
-          确认关联
-        </ElButton>
-      </div>
-    </section>
   </section>
 </template>
+
+<style scoped>
+.holder-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.holder-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.holder-table th,
+.holder-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  text-align: left;
+  vertical-align: top;
+}
+
+.holder-table th {
+  white-space: nowrap;
+}
+</style>

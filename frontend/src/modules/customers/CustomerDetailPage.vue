@@ -21,7 +21,7 @@ import CustomerContactsPanel from './CustomerContactsPanel.vue';
 import CustomerAgreementPanel from './CustomerAgreementPanel.vue';
 import CustomerSettlementsPanel from './CustomerSettlementsPanel.vue';
 import CustomerEditPage from './CustomerEditPage.vue';
-import { labelCustomerType, labelIdentityType } from './customer-labels';
+import { labelCustomerType } from './customer-labels';
 import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
 import {
@@ -58,6 +58,7 @@ const state = ref<'loading' | 'ready' | 'missing' | 'failed' | 'unavailable'>(
 const customer = ref<CustomerDetail>();
 const activeTab = ref<'basic' | 'assets' | 'settlements'>('basic');
 const editOpen = ref(false);
+const admissionOpen = ref(false);
 const editForm = ref<{
   requestClose: (done?: () => void) => void;
 }>();
@@ -774,7 +775,13 @@ async function acceptAdmission(
       currentProjectionStale.value = false;
     }
   } catch {
-    admissionRefreshFailed.value = true;
+    if (
+      sourceActorKey === actorKey.value &&
+      isCurrentRequest(customerId, controller)
+    ) {
+      admissionRefreshFailed.value = true;
+      admissionOpen.value = false;
+    }
   } finally {
     requests.delete(controller);
   }
@@ -933,6 +940,7 @@ watch(
   () => `${String(route.params.id)}:${actorKey.value}`,
   () => {
     editOpen.value = false;
+    admissionOpen.value = false;
     viewGeneration += 1;
     abortRequests();
     restorePending(String(route.params.id));
@@ -1204,7 +1212,17 @@ onBeforeUnmount(() => {
             data-test="customer-basic-overview"
           >
             <section id="customer-profile" class="ledger-panel detail-card">
-              <h2>客户资料</h2>
+              <div class="section-heading">
+                <h2>客户资料</h2>
+                <ElButton
+                  v-if="!sharedWriteBlocked"
+                  id="customer-admission"
+                  data-test="open-customer-admission"
+                  @click="admissionOpen = true"
+                >
+                  客户准入
+                </ElButton>
+              </div>
               <dl class="detail-grid">
                 <div>
                   <dt>客户ID</dt>
@@ -1217,7 +1235,7 @@ onBeforeUnmount(() => {
                   <dd>{{ profileLabel(customer.profileStatus) }}</dd>
                 </div>
                 <div>
-                  <dt>客户类别</dt>
+                  <dt>主营类目</dt>
                   <dd>{{ customer.category || '未填写' }}</dd>
                 </div>
                 <div>
@@ -1231,44 +1249,8 @@ onBeforeUnmount(() => {
                   <dd>{{ labelCustomerType(customer.customerType) }}</dd>
                 </div>
                 <div>
-                  <dt>身份证明类型</dt>
-                  <dd>{{ labelIdentityType(customer.identityType) }}</dd>
-                </div>
-                <div>
-                  <dt>证件号码</dt>
-                  <dd>{{ customer.identityNumber || '未填写' }}</dd>
-                </div>
-                <div>
-                  <dt>签发国家／地区</dt>
-                  <dd>{{ customer.issuingCountryOrRegion || '未填写' }}</dd>
-                </div>
-                <div>
-                  <dt>证件有效期</dt>
-                  <dd>
-                    {{
-                      customer.identityValidityMode === 'LONG_TERM'
-                        ? '长期有效'
-                        : customer.identityValidityMode === 'NOT_STATED'
-                          ? '证件未注明'
-                          : customer.identityValidTo || '未填写'
-                    }}
-                  </dd>
-                </div>
-                <div>
                   <dt>所属地区</dt>
                   <dd>{{ customer.region || '未填写' }}</dd>
-                </div>
-                <div>
-                  <dt>准入联系人</dt>
-                  <dd>{{ customer.admissionContactName || '未填写' }}</dd>
-                </div>
-                <div>
-                  <dt>联系人电话</dt>
-                  <dd>{{ customer.admissionContactPhone || '未填写' }}</dd>
-                </div>
-                <div>
-                  <dt>联系人邮箱</dt>
-                  <dd>{{ customer.admissionContactEmail || '未填写' }}</dd>
                 </div>
                 <div>
                   <dt>最近更新</dt>
@@ -1303,16 +1285,6 @@ onBeforeUnmount(() => {
                 @version-updated="updateCustomerVersion"
                 @refresh-requested="refreshCustomerVersion"
                 @customer-not-found="returnToCustomerList"
-              />
-            </section>
-            <section class="customer-basic-group" aria-label="准入与身份">
-              <CustomerAdmissionPanel
-                v-if="!sharedWriteBlocked"
-                id="customer-admission"
-                :customer="customer"
-                @admitted="acceptAdmission"
-                @customer-refreshed="acceptAdmissionRefresh"
-                @customer-not-found="returnFromAdmission"
               />
             </section>
             <section class="customer-basic-group" aria-label="企业账号">
@@ -1444,6 +1416,20 @@ onBeforeUnmount(() => {
             @command-confirmed="refreshAfterSettlementCommand"
           />
         </section>
+        <ElDrawer
+          v-model="admissionOpen"
+          title="客户准入"
+          size="min(900px, 100vw)"
+          append-to-body
+        >
+          <CustomerAdmissionPanel
+            v-if="!sharedWriteBlocked"
+            :customer="customer"
+            @admitted="acceptAdmission"
+            @customer-refreshed="acceptAdmissionRefresh"
+            @customer-not-found="returnFromAdmission"
+          />
+        </ElDrawer>
         <ElDrawer
           v-model="editOpen"
           title="编辑客户资料"

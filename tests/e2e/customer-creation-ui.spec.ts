@@ -10,7 +10,7 @@ test.afterAll(async () => disconnectCustomerTestDatabase());
 
 test('customer creation drawer saves complete cooperation terms without a file and supports adding it later', async ({
   page,
-}) => {
+}, testInfo) => {
   await resetCustomerE2eData();
   const credentials = await resetLocalAuthE2eData();
   const roleId = '30000000-0000-4000-8000-000000000010';
@@ -50,9 +50,21 @@ test('customer creation drawer saves complete cooperation terms without a file a
   await drawer.getByLabel('区域', { exact: true }).selectOption('华东');
   await drawer.getByLabel('客户经理', { exact: true }).fill('合成经理');
   await drawer.getByLabel('合作协议名称', { exact: true }).fill('首版合作协议');
-  await drawer
-    .getByLabel('结算方式', { exact: true })
-    .selectOption('月结 · 30 天');
+  const settlementOptions = ['现结', '月结', '季度结算', '半年度结算'];
+  const modeOptions = ['全风险', '半风险', '固定费用'];
+  await expect(
+    drawer
+      .getByLabel('结算方式', { exact: true })
+      .locator('option')
+      .filter({ hasNotText: '未填写' }),
+  ).toHaveText(settlementOptions);
+  await expect(
+    drawer
+      .getByLabel('合作模式', { exact: true })
+      .locator('option')
+      .filter({ hasNotText: '未填写' }),
+  ).toHaveText(modeOptions);
+  await drawer.getByLabel('结算方式', { exact: true }).selectOption('月结');
   await drawer.getByLabel('合作模式', { exact: true }).selectOption('全风险');
   await drawer
     .getByLabel('结算条件（公式）', { exact: true })
@@ -81,7 +93,7 @@ test('customer creation drawer saves complete cooperation terms without a file a
       )
       .toBe(true);
     await page.screenshot({
-      path: `.local/customer-v1-db/new-customer-${name}.png`,
+      path: testInfo.outputPath(`new-customer-${name}.png`),
       fullPage: true,
     });
   }
@@ -109,8 +121,14 @@ test('customer creation drawer saves complete cooperation terms without a file a
     page.getByRole('heading', { name: '首版完整建档客户', exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText('91330100MA2ABC1234X', { exact: true }),
-  ).toBeVisible();
+    page
+      .locator('#customer-profile')
+      .getByText('91330100MA2ABC1234X', { exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: '编辑资料' }).click();
+  const edit = page.getByRole('dialog', { name: '编辑客户资料' });
+  await expect(edit.getByLabel('证件号码')).toHaveValue('91330100MA2ABC1234X');
+  await edit.getByRole('button', { name: '取消', exact: true }).click();
   const agreement = page.locator('[data-test="agreement-panel"]');
   await expect(
     agreement.getByText('首版合作协议', { exact: true }),
@@ -127,6 +145,27 @@ test('customer creation drawer saves complete cooperation terms without a file a
   ).toBeVisible();
 
   await agreement.locator('[data-test="agreement-edit"]').click();
+  await expect(
+    agreement
+      .getByLabel('结算方式', { exact: true })
+      .locator('option')
+      .filter({ hasNotText: '未填写' }),
+  ).toHaveText(settlementOptions);
+  await expect(
+    agreement
+      .getByLabel('合作模式', { exact: true })
+      .locator('option')
+      .filter({ hasNotText: '未填写' }),
+  ).toHaveText(modeOptions);
+  await expect(agreement.getByLabel('结算方式', { exact: true })).toHaveValue(
+    '月结',
+  );
+  await expect(agreement.getByLabel('合作模式', { exact: true })).toHaveValue(
+    '全风险',
+  );
+  await agreement.screenshot({
+    path: testInfo.outputPath('agreement-edit.png'),
+  });
   await expect(agreement.getByLabel('结算条件（公式）')).toHaveValue(
     '客户结算金额=结案金额*70%',
   );

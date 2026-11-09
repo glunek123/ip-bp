@@ -139,53 +139,90 @@ test.afterAll(async () => {
   await disconnectCustomerTestDatabase();
 });
 
-test('rights holder browser reuses the same stable identity from two customers', async ({
+test('rights holder browser displays linked holder details without a link entry', async ({
   page,
-}) => {
+  request,
+}, testInfo) => {
   await configureBearerBrowser(page);
-  for (const name of ['主体客户 A', '主体客户 B']) {
-    await page.goto('/customers/new');
-    await page.getByLabel('客户名称').fill(name);
-    await page.getByRole('button', { name: '保存草稿' }).click();
-    await expect(
-      page.getByRole('heading', { name, exact: true }),
-    ).toBeVisible();
-  }
-  const customerA = await findCustomerId(e2eFixtures.departmentA, '主体客户 A');
-  const customerB = await findCustomerId(e2eFixtures.departmentA, '主体客户 B');
-  await page.goto(`/customers/${customerA}`);
-  await page.getByRole('button', { name: '新建权利人', exact: true }).click();
-  await page.getByRole('button', { name: '创建并关联' }).click();
-  await expect(page.getByText('请填写权利人名称')).toBeVisible();
-  await page.getByLabel('权利人名称').fill('共享权利主体 H');
-  await page.getByRole('button', { name: '创建并关联' }).click();
-  await page.getByRole('link', { name: '查看详情', exact: true }).click();
-  await expect(
-    page.getByRole('heading', { name: '共享权利主体 H' }),
-  ).toBeVisible();
-  const holderId = page.url().split('/').at(-1);
-  expect(holderId).toMatch(/^[0-9a-f-]{36}$/);
-  await expect(page).toHaveURL(
-    `/customers/${customerA}/rights-holders/${holderId}`,
-  );
-  await expect(
-    page.getByRole('button', { name: /编辑|删除|解除|默认/ }),
-  ).toHaveCount(0);
+  const customerA = await createRightsCustomer(request, '主体客户 A');
+  const customerB = await createRightsCustomer(request, '主体客户 B');
+  const created = await createHolder(request, customerA, {
+    name: '共享权利主体 H',
+    credit: '91310000TEST001',
+    address: '上海市浦东新区测试路 1 号',
+    legalRepresentative: '张三',
+    duty: '执行董事',
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const { holder } = (await created.json()) as HolderResult;
+  const linked = await linkHolder(request, customerB, holder.id);
+  expect(linked.status(), await linked.text()).toBe(201);
+
   await page.goto(`/customers/${customerB}`);
-  await page.getByRole('button', { name: '关联已有权利人' }).click();
-  await page.getByLabel('共享权利主体 H', { exact: true }).check();
-  await page.getByRole('button', { name: '确认关联' }).click();
-  await page.getByRole('link', { name: '查看详情', exact: true }).click();
+  const table = page.getByRole('table');
+  await expect(table.getByRole('columnheader')).toHaveText([
+    '权利主体',
+    '统一社会信用代码',
+    '住所地',
+    '法定代表人',
+    '职务',
+    '操作',
+  ]);
+  const row = table.getByRole('row', { name: /共享权利主体 H/ });
+  await expect(row.getByRole('cell')).toHaveText([
+    '共享权利主体 H',
+    '91310000TEST001',
+    '上海市浦东新区测试路 1 号',
+    '张三',
+    '执行董事',
+    '查看详情',
+  ]);
+  await expect(page.getByRole('button', { name: /关联已有/ })).toHaveCount(0);
+  await table.screenshot({ path: testInfo.outputPath('rights-holders.png') });
+  await row.getByRole('link', { name: '查看详情', exact: true }).click();
+  const holderId = page.url().split('/').at(-1);
+  expect(holderId).toBe(holder.id);
   await expect(page).toHaveURL(
     `/customers/${customerB}/rights-holders/${holderId}`,
   );
-  await expect(page.getByText('主体客户 A', { exact: true })).toHaveCount(0);
-  await expect(getCustomerById(customerA)).resolves.toMatchObject({
-    version: 2,
-  });
-  await expect(getCustomerById(customerB)).resolves.toMatchObject({
-    version: 2,
-  });
+  await expect(
+    page.getByRole('heading', { name: '共享权利主体 H' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /编辑|删除|解除|默认/ }),
+  ).toHaveCount(0);
+
+  await page.goto('/customers/' + customerB);
+  await page.getByRole('button', { name: '新建权利主体' }).click();
+  const editor = page.getByRole('dialog', { name: '新建权利主体' });
+  await editor.getByLabel('权利主体名称').fill('浏览器新建主体');
+  const creation = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().endsWith('/customers/' + customerB + '/rights-holders'),
+  );
+  await editor.getByRole('button', { name: '创建并关联' }).click();
+  const result = await creation;
+  expect(result.status()).toBe(201);
+  await expect(
+    table.getByRole('row', { name: /浏览器新建主体/u }),
+  ).toBeVisible();
+  let version = ((await result.json()) as HolderResult).customerVersion;
+  for (let index = 1; index <= 19; index++) {
+    const response = await createHolder(request, customerB, {
+      expectedCustomerVersion: version,
+      name: '分页测试主体 ' + index,
+    });
+    expect(response.status(), await response.text()).toBe(201);
+    version = ((await response.json()) as HolderResult).customerVersion;
+  }
+  await page.reload();
+  await expect(table.locator('tbody tr')).toHaveCount(20);
+  await page.locator('[data-test="holder-pagination"] .btn-next').click();
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await expect(
+    table.getByRole('row', { name: /共享权利主体 H/u }),
+  ).toBeVisible();
 });
 
 test('rights holder validation rejects empty names but permits duplicate names and credits', async ({
