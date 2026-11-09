@@ -986,9 +986,7 @@ test('a late actual contact read from customer A cannot populate customer B', as
     await page.getByRole('button', { name: '新建客户', exact: true }).click();
     await page.getByLabel('客户名称').fill(customerName!);
     await page.getByRole('button', { name: '保存草稿' }).click();
-    await expect(
-      page.getByRole('link', { name: customerName! }),
-    ).toBeVisible();
+    await expect(page.getByRole('link', { name: customerName! })).toBeVisible();
     await page.getByRole('link', { name: customerName! }).click();
     await expect(
       page.getByRole('heading', { name: customerName! }),

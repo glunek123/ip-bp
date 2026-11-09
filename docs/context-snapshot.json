@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-09T06:19:19.931Z",
+  "recordedAt": "2026-11-09T06:23:01.617Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1548,7 +1548,7 @@
     "frontend/src/modules/client/ClientCaseListPage.vue": "c2024fee94dd469b40c024f1baecaeaabf604170ade49b62a0c0f00b777c1c0a",
     "frontend/src/modules/client/ClientCasePages.spec.ts": "4b701cd8046815aae1fd784163a153d0bd8c7b4b51a101f08aeac49460e3d59f",
     "frontend/src/modules/client/ClientLeadDetailPage.spec.ts": "c6ab326dbc718707bd5d03f695b9f194df76b8ac41c328dfcee33e278e1c28e3",
-    "frontend/src/modules/client/ClientLeadDetailPage.vue": "55fa5658ad08a1e5c13c94f386f63b3c5f35a310d49482c534b9d49013ea4911",
+    "frontend/src/modules/client/ClientLeadDetailPage.vue": "6b9cf65fd019b1d062a60a965f96fb3d823c9b8c7e3c547861d6a6a59d8f4576",
     "frontend/src/modules/client/ClientLeadListPage.spec.ts": "1537867c4a219175e1bbaf21067008cd62db17f70173a600235036c1fe89e819",
     "frontend/src/modules/client/ClientLeadListPage.vue": "63679c470456ef4a48f3ceebf802a632e277ca68203cad8df600217f7b5e2cc4",
     "frontend/src/modules/client/ClientNotaryDetailPage.spec.ts": "cebe77e93a286e9bf2a5848d54f271d727b109a933c2ec126fa4c02130b203e4",
@@ -1886,7 +1886,7 @@
     "tests/e2e/customer-agreement-invoice.spec.ts": "755c76aef6e9f10f5330f785dc82b62e2d8c65c669ddcdc998c2c4be42a4d12b",
     "tests/e2e/customer-agreement-migration.spec.ts": "8ac8886ca028c01a042f9a4d06ab5817642927fa3ebbf3e67b0e99ec85fb2da3",
     "tests/e2e/customer-contacts-database.spec.ts": "199ec4579824261ef9c2310a182e3bfbce006fc61b16b23aa76bb1c0a23b89bf",
-    "tests/e2e/customer-contacts.spec.ts": "a1a2f7a005349133bd8415d8cc32e7b7e5e152ecb137af27eb138b19093d4b5e",
+    "tests/e2e/customer-contacts.spec.ts": "c0dea6085d95612e61440a701e557bb7423cef22f47f77c5c744bb782f4bf0da",
     "tests/e2e/customer-cooperation-fixture.spec.ts": "a80a92388591670c2bf1d13bf061e6d100786d8e01b87bde58ee77d3771a97ad",
     "tests/e2e/customer-cooperation.spec.ts": "f47ffe3c3db1221bbbd3c2375edb631608d45e1a0666df00355031dbe191bd89",
     "tests/e2e/customer-creation-migration.spec.ts": "dca9013bc1e26df3703463d92b59116a1fa37bed2c4b037cf31b0bae06943ac5",

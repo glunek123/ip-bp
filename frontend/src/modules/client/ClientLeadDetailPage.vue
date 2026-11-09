@@ -257,8 +257,8 @@ async function load(): Promise<void> {
     if (controller.signal.aborted) return;
     const allowed = new Set([
       ...current.leadScreenshotContentVersionIds,
-      ...current.products.flatMap((product) =>
-        product.screenshotContentVersionIds ?? [],
+      ...current.products.flatMap(
+        (product) => product.screenshotContentVersionIds ?? [],
       ),
     ]);
     screenshots.value = materials.items.flatMap((material) =>
