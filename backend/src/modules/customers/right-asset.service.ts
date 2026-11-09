@@ -18,6 +18,7 @@ import type {
   CustomerRightAssetAction,
   CustomerRightAssetType,
   CustomerRightAssetValidityMode,
+  CustomerRightAssetStatus,
 } from '../../generated/prisma/enums';
 import {
   CreateRightAssetDto,
@@ -37,8 +38,10 @@ type Fields = {
   name: string;
   number: string | null;
   category: string;
-  holderId: string;
+  holderId: string | null;
   ownerText: string | null;
+  registrationDate: Date | null;
+  status: CustomerRightAssetStatus | null;
   trademarkClass: string | null;
   validFrom: Date | null;
   validTo: Date | null;
@@ -124,6 +127,7 @@ export class RightAssetService {
     customerId: string,
     page: number,
     pageSize: number,
+    view?: 'active' | 'withdrawn',
   ) {
     if (this.isExternal(actor))
       throw this.notFound('CUSTOMER_NOT_FOUND', '客户不存在或不可访问');
@@ -147,7 +151,12 @@ export class RightAssetService {
         where: { id: customerId, ...editScope, deletedAt: null },
         select: { id: true },
       }));
-    const where = { customerId, departmentId: actor.departmentId };
+    const where = {
+      customerId,
+      departmentId: actor.departmentId,
+      ...(view === 'active' ? { withdrawn: false } : {}),
+      ...(view === 'withdrawn' ? { withdrawn: true } : {}),
+    };
     const [rows, total] = await this.database.$transaction([
       this.database.customerRightAsset.findMany({
         where,
@@ -253,12 +262,6 @@ export class RightAssetService {
         code: 'CUSTOMER_ACTION_FORBIDDEN',
         message: '无权执行此客户操作',
       });
-    if (
-      action === 'CREATE' &&
-      typeof (input as CreateRightAssetDto).ownerText === 'string' &&
-      (input as CreateRightAssetDto).ownerText?.trim()
-    )
-      throw this.validation('新建权利资产请只关联权利主体');
     const attachmentCommand =
       action === 'WITHDRAW'
         ? { mode: 'PRESERVE' as const }
@@ -297,23 +300,49 @@ export class RightAssetService {
                     .expectedAssetVersion,
                 }
               : {}),
-            fields: this.normalizeFields(input as RightAssetFieldsDto),
+            fields: this.normalizeFields(
+              input as RightAssetFieldsDto,
+              action === 'REVISE',
+            ),
           };
-    const fingerprint = createHash('sha256')
-      .update(
-        JSON.stringify({
-          action,
-          customerId,
-          assetId: assetId ?? null,
-          ...(action !== 'WITHDRAW' &&
-          'contentVersionIds' in input &&
-          input.contentVersionIds !== undefined
-            ? { attachmentCommand }
-            : {}),
-          ...normalized,
-        }),
-      )
-      .digest('hex');
+    const fingerprintPayload = {
+      action,
+      customerId,
+      assetId: assetId ?? null,
+      ...(action !== 'WITHDRAW' &&
+      'contentVersionIds' in input &&
+      input.contentVersionIds !== undefined
+        ? { attachmentCommand }
+        : {}),
+      ...normalized,
+    };
+    const hash = (value: object) =>
+      createHash('sha256').update(JSON.stringify(value)).digest('hex');
+    const fingerprint = hash(
+      action === 'REVISE'
+        ? { contractVersion: 2, ...fingerprintPayload }
+        : fingerprintPayload,
+    );
+    const legacyExactFingerprint =
+      action === 'REVISE' &&
+      (input as ReviseRightAssetDto).registrationDate === undefined &&
+      (input as ReviseRightAssetDto).status === undefined
+        ? hash(fingerprintPayload)
+        : undefined;
+    // Earlier revisions accepted ownerText but always fingerprinted it as null.
+    const legacyRevisionFingerprint =
+      action === 'REVISE' &&
+      (input as ReviseRightAssetDto).ownerText !== undefined &&
+      (input as ReviseRightAssetDto).registrationDate === undefined &&
+      (input as ReviseRightAssetDto).status === undefined
+        ? hash({
+            ...fingerprintPayload,
+            fields: {
+              ...(normalized as { fields: object }).fields,
+              ownerText: null,
+            },
+          })
+        : undefined;
     try {
       return await this.database.$transaction(async (tx) => {
         const locked = await tx.$queryRaw<Array<{ id: string }>>`
@@ -349,6 +378,8 @@ export class RightAssetService {
             fingerprint,
             customerId,
             assetId,
+            legacyExactFingerprint,
+            legacyRevisionFingerprint,
           );
 
         const current =
@@ -387,23 +418,25 @@ export class RightAssetService {
         const fields =
           action === 'WITHDRAW'
             ? this.fieldsFromVersion(current?.currentVersion)
-            : {
-                ...(normalized as { fields: Fields }).fields,
-                ownerText: current?.currentVersion?.ownerText ?? null,
-              };
-        const holder = await tx.customerRightsHolderLink.findFirst({
-          where: {
-            customerId,
-            rightsHolderId: fields.holderId,
-            departmentId: actor.departmentId,
-          },
-          select: { id: true },
-        });
-        if (!holder)
-          throw this.notFound(
-            'RIGHTS_HOLDER_NOT_FOUND',
-            '权利主体未关联当前客户',
-          );
+            : this.resolveFields(
+                input as RightAssetFieldsDto,
+                current?.currentVersion,
+              );
+        if (fields.holderId) {
+          const holder = await tx.customerRightsHolderLink.findFirst({
+            where: {
+              customerId,
+              rightsHolderId: fields.holderId,
+              departmentId: actor.departmentId,
+            },
+            select: { id: true },
+          });
+          if (!holder)
+            throw this.notFound(
+              'RIGHTS_HOLDER_NOT_FOUND',
+              '权利主体未关联当前客户',
+            );
+        }
 
         const selectedEvidenceIds =
           attachmentCommand.mode === 'SET'
@@ -595,6 +628,8 @@ export class RightAssetService {
         fingerprint,
         customerId,
         assetId,
+        legacyExactFingerprint,
+        legacyRevisionFingerprint,
       );
     }
   }
@@ -605,8 +640,14 @@ export class RightAssetService {
     fingerprint: string,
     customerId: string,
     assetId: string | undefined,
+    legacyExactFingerprint?: string,
+    legacyRevisionFingerprint?: string,
   ): Promise<RightAssetCommandResult> {
-    if (receipt.requestFingerprint !== fingerprint)
+    if (
+      receipt.requestFingerprint !== fingerprint &&
+      receipt.requestFingerprint !== legacyExactFingerprint &&
+      receipt.requestFingerprint !== legacyRevisionFingerprint
+    )
       throw this.conflict(
         'IDEMPOTENCY_CONFLICT',
         '该 Idempotency-Key 已用于不同请求',
@@ -642,12 +683,17 @@ export class RightAssetService {
     };
   }
 
-  private normalizeFields(input: RightAssetFieldsDto): Fields {
+  private normalizeFields(input: RightAssetFieldsDto, revision = false) {
     const validFrom = this.date(input.validFrom, '起始日期');
     const validTo = this.date(input.validTo, '截止日期');
-    if (input.validityMode === 'FIXED' && !validTo)
+    const validityMode = input.validityMode ?? (validTo ? 'FIXED' : 'UNKNOWN');
+    if (
+      (!revision || input.validTo !== undefined) &&
+      validityMode === 'FIXED' &&
+      !validTo
+    )
       throw this.validation('固定期限必须填写真实截止日期');
-    if (input.validityMode !== 'FIXED' && validTo)
+    if (validityMode !== 'FIXED' && validTo)
       throw this.validation('长期或未知期限不能填写截止日期');
     if (validFrom && validTo && validFrom > validTo)
       throw this.validation('起始日期不能晚于截止日期');
@@ -656,12 +702,93 @@ export class RightAssetService {
       name: this.required(input.name, 200, '资产名称'),
       number: this.optional(input.number, 200, '资产号码'),
       category: this.required(input.category, 200, '资产类别'),
-      holderId: input.holderId,
-      ownerText: null,
+      holderId: input.holderId ?? null,
+      ownerText:
+        input.ownerText === undefined
+          ? null
+          : this.optional(input.ownerText, 200, '权利人'),
       trademarkClass: this.optional(input.trademarkClass, 100, '商标分类'),
       validFrom,
       validTo,
-      validityMode: input.validityMode,
+      validityMode,
+      ...(input.registrationDate !== undefined
+        ? { registrationDate: this.date(input.registrationDate, '注册日期') }
+        : {}),
+      ...(input.status !== undefined ? { status: input.status } : {}),
+    };
+  }
+
+  private resolveFields(
+    input: RightAssetFieldsDto,
+    current?: VersionRecord | null,
+  ): Fields {
+    const normalized = this.normalizeFields(
+      input,
+      current !== undefined && current !== null,
+    );
+    const validTo =
+      input.validTo === undefined
+        ? (current?.validTo ?? null)
+        : normalized.validTo;
+    const validFrom =
+      input.validFrom === undefined
+        ? (current?.validFrom ?? null)
+        : normalized.validFrom;
+    const registrationDate =
+      input.registrationDate === undefined
+        ? (current?.registrationDate ?? null)
+        : this.date(input.registrationDate, '注册日期');
+    const expiryUnchanged =
+      current !== undefined &&
+      current !== null &&
+      validTo?.getTime() === current.validTo?.getTime();
+    const validityMode =
+      input.validityMode !== undefined
+        ? input.validityMode
+        : input.validTo === undefined || expiryUnchanged
+          ? (current?.validityMode ?? normalized.validityMode)
+          : validTo
+            ? 'FIXED'
+            : 'UNKNOWN';
+    if (validityMode === 'FIXED' && !validTo)
+      throw this.validation('固定期限必须填写真实截止日期');
+    if (validityMode !== 'FIXED' && validTo)
+      throw this.validation('长期或未知期限不能填写截止日期');
+    if (validFrom && validTo && validFrom > validTo)
+      throw this.validation('起始日期不能晚于截止日期');
+    if (registrationDate && validTo && registrationDate > validTo)
+      throw this.validation('注册日期不能晚于截止日期');
+    const holderId =
+      input.holderId === undefined
+        ? (current?.holderId ?? null)
+        : normalized.holderId;
+    if (current?.holderId && input.holderId === null)
+      throw this.validation('已有正式权利主体不能在修订时解除关联');
+    const ownerText =
+      input.ownerText === undefined
+        ? (current?.ownerText ?? null)
+        : normalized.ownerText;
+    if (!holderId && !ownerText)
+      throw this.validation('未关联权利主体时必须填写权利人');
+    if (!current && input.status == null)
+      throw this.validation('新建权利资产必须填写有效状态');
+    return {
+      type: normalized.type,
+      name: normalized.name,
+      number: normalized.number,
+      category: normalized.category,
+      holderId,
+      ownerText,
+      registrationDate,
+      status:
+        input.status === undefined ? (current?.status ?? null) : input.status,
+      trademarkClass:
+        input.trademarkClass === undefined
+          ? (current?.trademarkClass ?? null)
+          : normalized.trademarkClass,
+      validFrom,
+      validTo,
+      validityMode,
     };
   }
 
@@ -700,6 +827,8 @@ export class RightAssetService {
       category: version.category,
       holderId: version.holderId,
       ownerText: version.ownerText,
+      registrationDate: version.registrationDate,
+      status: version.status,
       trademarkClass: version.trademarkClass,
       validFrom: version.validFrom,
       validTo: version.validTo,
@@ -718,6 +847,9 @@ export class RightAssetService {
       category: row.category,
       holderId: row.holderId,
       ownerText: row.ownerText,
+      registrationDate:
+        row.registrationDate?.toISOString().slice(0, 10) ?? null,
+      status: row.status,
       trademarkClass: row.trademarkClass,
       validFrom: row.validFrom?.toISOString().slice(0, 10) ?? null,
       validTo: row.validTo?.toISOString().slice(0, 10) ?? null,

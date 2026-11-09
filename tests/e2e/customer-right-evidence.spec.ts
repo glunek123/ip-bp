@@ -103,8 +103,8 @@ test.afterAll(async () => {
 test('CU003 real password session uploads, freezes revisions and downloads exact historical bytes', async ({
   request,
   page,
-}) => {
-  const { customerId, holderId } = await createCustomerWithHolder(request);
+}, testInfo) => {
+  const { customerId } = await createCustomerWithHolder(request);
   await setRightAssetWithdrawGrant(e2eFixtures.roleA, true);
   await page.goto(`/customers/${customerId}`);
   await expect(page).toHaveURL(/\/login\?returnTo=/);
@@ -117,9 +117,10 @@ test('CU003 real password session uploads, freezes revisions and downloads exact
   expect(session.status()).toBe(200);
   expect((await session.json()).csrfToken).toMatch(/\S+/);
   await page.getByRole('button', { name: '登记权利资产' }).click();
-  await page.getByLabel('资产名称').fill('CU003 私有证明商标');
-  await page.getByLabel('资产类别').fill('商标权');
-  await page.getByLabel('权利主体').selectOption(holderId);
+  await page.getByLabel('名称', { exact: true }).fill('CU003 私有证明商标');
+  await page.getByLabel('类别', { exact: true }).fill('商标权');
+  await page.getByLabel('权利人').fill('合成权利人');
+  await page.getByRole('combobox', { name: /状态/u }).selectOption('INVALID');
   await page.getByLabel('选择权属证明文件').setInputFiles({
     name: 'first-proof.pdf',
     mimeType: 'application/pdf',
@@ -127,7 +128,10 @@ test('CU003 real password session uploads, freezes revisions and downloads exact
   });
   await page.getByRole('button', { name: '上传证明' }).click();
   await expect(page.getByText('上传成功，尚未登记')).toBeVisible();
-  await page.getByRole('button', { name: '确认保存' }).click();
+  await page
+    .locator('form.right-assets-panel__form')
+    .getByRole('button', { name: /保存/u })
+    .click();
   await expect(
     page.getByRole('region', { name: '权利资产详情' }),
   ).toContainText('first-proof.pdf');
@@ -148,7 +152,18 @@ test('CU003 real password session uploads, freezes revisions and downloads exact
     contentVersionId: string;
   };
 
-  await page.getByRole('button', { name: '修订字段' }).click();
+  const row = page
+    .locator('.right-assets-panel__list')
+    .getByRole('row', { name: /CU003 私有证明商标/u });
+  await row.getByRole('button', { name: /上传/u }).click();
+  const editor = page.locator('form.right-assets-panel__form');
+  await expect(editor.getByLabel(/first-proof\.pdf/u)).toBeChecked();
+  await editor.getByLabel('名称', { exact: true }).fill('取消后不得保存');
+  await editor.getByLabel(/first-proof\.pdf/u).uncheck();
+  await editor.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(row).toContainText('CU003 私有证明商标');
+  await row.getByRole('button', { name: /上传/u }).click();
+  await expect(editor.getByLabel(/first-proof\.pdf/u)).toBeChecked();
   await page.getByLabel('选择权属证明文件').setInputFiles({
     name: 'second-proof.pdf',
     mimeType: 'application/pdf',
@@ -157,7 +172,18 @@ test('CU003 real password session uploads, freezes revisions and downloads exact
   await page.getByRole('button', { name: '上传证明' }).click();
   await expect(page.getByText('上传成功，尚未登记')).toBeVisible();
   await page.getByLabel(/first-proof\.pdf/).uncheck();
-  await page.getByRole('button', { name: '确认保存' }).click();
+  await page.setViewportSize({ width: 1440, height: 1080 });
+  await editor.evaluate((element) =>
+    element.scrollIntoView({ block: 'center' }),
+  );
+  await editor.screenshot({
+    path: testInfo.outputPath('right-asset-edit-files.png'),
+    animations: 'disabled',
+  });
+  await page
+    .locator('form.right-assets-panel__form')
+    .getByRole('button', { name: /保存/u })
+    .click();
   await expect(
     page.getByRole('region', { name: '权利资产详情' }),
   ).toContainText('second-proof.pdf');
@@ -174,10 +200,20 @@ test('CU003 real password session uploads, freezes revisions and downloads exact
   );
   expect(await historicalDownload.body()).toEqual(firstBytes);
 
-  await page.getByRole('button', { name: '撤下资产' }).click();
+  const actions = row.getByRole('cell').last();
+  await expect(actions.getByRole('button')).toHaveText(['编辑', '删除']);
+  await actions.getByRole('button', { name: '删除', exact: true }).click();
   await page.getByLabel('撤下原因').fill('历史证明仍需留存');
   await page.getByRole('button', { name: '确认撤下' }).click();
-  await expect(page.getByText('已撤下')).toBeVisible();
+  await expect(row).toHaveCount(0);
+  await page.getByRole('button', { name: '已撤下', exact: true }).click();
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: 'CU003 私有证明商标' }).click();
+  await expect(page.getByText('历史版本 · 3 条')).toBeVisible();
+  await page.locator('.right-assets-panel__list').screenshot({
+    path: testInfo.outputPath('right-asset-withdrawn.png'),
+    animations: 'disabled',
+  });
   const afterWithdraw = await page.request.get(
     `/api/v1/materials/${firstProof.materialId}/versions/${firstProof.contentVersionId}/content`,
   );
@@ -189,7 +225,7 @@ test('CU003 batch needs explicit selection and advances parent version only for 
   request,
   page,
 }) => {
-  const { customerId, holderId } = await createCustomerWithHolder(request);
+  const { customerId } = await createCustomerWithHolder(request);
   await page.goto(`/customers/${customerId}`);
   await page.getByLabel('用户名').fill(credentials.username);
   await page.getByLabel('密码').fill(credentials.password);
@@ -210,9 +246,12 @@ test('CU003 batch needs explicit selection and advances parent version only for 
   const rows = batch.locator('.right-assets-panel__batch-row');
   for (const index of [0, 2]) {
     const row = rows.nth(index);
-    await row.getByLabel('资产名称').fill(`CU003 批量 ${index + 1}`);
-    await row.getByLabel('资产类别').fill('商标权');
-    await row.getByLabel('权利主体').selectOption(holderId);
+    await row
+      .getByLabel('名称', { exact: true })
+      .fill(`CU003 批量 ${index + 1}`);
+    await row.getByLabel('类别', { exact: true }).fill('商标权');
+    await row.getByLabel('权利人').fill('合成批量权利人');
+    await row.getByRole('combobox', { name: /状态/u }).selectOption('VALID');
     await row.getByLabel(`第 ${index + 1} 行证明文件`).setInputFiles({
       name: `batch-${index + 1}.pdf`,
       mimeType: 'application/pdf',
@@ -222,8 +261,9 @@ test('CU003 batch needs explicit selection and advances parent version only for 
     await expect(row).toContainText('上传成功，尚未登记');
   }
   const invalid = rows.nth(1);
-  await invalid.getByLabel('资产名称').fill('CU003 未完成行');
-  await invalid.getByLabel('权利主体').selectOption(holderId);
+  await invalid.getByLabel('名称', { exact: true }).fill('CU003 未完成行');
+  await invalid.getByLabel('类别', { exact: true }).fill('商标权');
+  await invalid.getByLabel('权利人').fill('合成批量权利人');
   for (let index = 0; index < 3; index++)
     await rows.nth(index).getByLabel('选择此行登记').check();
   await batch.getByRole('button', { name: '确认登记' }).click();
@@ -336,6 +376,7 @@ test('CU003 exact proof validation, customer scope and atomic attach use live Po
     validFrom: null,
     validTo: null,
     validityMode: 'UNKNOWN',
+    status: 'VALID',
   };
   const foreignAttach = await request.post(
     `/api/v1/customers/${customerId}/right-assets`,
@@ -484,6 +525,7 @@ test('CU003 SELF can upload own proof while admit-only cannot upload a team proo
         validFrom: null,
         validTo: null,
         validityMode: 'UNKNOWN',
+        status: 'VALID',
         expectedCustomerVersion: 2,
         contentVersionIds: [selfVersion],
       },
@@ -513,7 +555,7 @@ test('CU003 SELF can upload own proof while admit-only cannot upload a team proo
   expect(proofDraft.status()).toBe(403);
 });
 
-test('CU003 omitted legacy fingerprint replays old evidence after current attachments change', async ({
+test('CU003 omitted attachment fingerprint replays original evidence after current attachments change', async ({
   request,
 }) => {
   const { customerId, holderId } = await createCustomerWithHolder(request);
@@ -528,6 +570,7 @@ test('CU003 omitted legacy fingerprint replays old evidence after current attach
     validFrom: null,
     validTo: null,
     validityMode: 'UNKNOWN',
+    status: 'VALID',
     expectedCustomerVersion: 2,
   };
   const key = randomUUID();
@@ -549,6 +592,7 @@ test('CU003 omitted legacy fingerprint replays old evidence after current attach
           validFrom: null,
           validTo: null,
           validityMode: body.validityMode,
+          status: body.status,
         },
       }),
     )

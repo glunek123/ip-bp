@@ -314,6 +314,13 @@ enum CustomerRightAssetValidityMode {
   @@map("customer_right_asset_validity_mode")
 }
 
+enum CustomerRightAssetStatus {
+  VALID
+  INVALID
+
+  @@map("customer_right_asset_status")
+}
+
 enum CustomerRightAssetAction {
   CREATE
   REVISE
@@ -1288,14 +1295,14 @@ model CustomerRightAsset {
   id               String                       @id @default(uuid()) @db.Uuid
   customerId       String                       @map("customer_id") @db.Uuid
   departmentId     String                       @map("department_id") @db.Uuid
-  holderId         String                       @map("holder_id") @db.Uuid
+  holderId         String?                      @map("holder_id") @db.Uuid
   version          Int                          @default(1)
   withdrawn        Boolean                      @default(false)
   currentVersionId String?                      @map("current_version_id") @db.Uuid
   createdAt        DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
   customer         Customer                     @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
-  holderLink       CustomerRightsHolderLink     @relation(fields: [customerId, holderId, departmentId], references: [customerId, rightsHolderId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  holderLink       CustomerRightsHolderLink?    @relation(fields: [customerId, holderId, departmentId], references: [customerId, rightsHolderId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   currentVersion   CustomerRightAssetVersion?   @relation("RightAssetCurrentVersion", fields: [currentVersionId, id, customerId, departmentId], references: [id, assetId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   versions         CustomerRightAssetVersion[]  @relation("RightAssetVersions")
   receipts         CustomerRightAssetReceipt[]
@@ -1317,8 +1324,10 @@ model CustomerRightAssetVersion {
   name             String                              @db.VarChar(200)
   number           String?                             @db.VarChar(200)
   category         String                              @db.VarChar(200)
-  holderId         String                              @map("holder_id") @db.Uuid
+  holderId         String?                             @map("holder_id") @db.Uuid
   ownerText        String?                             @map("owner_text") @db.VarChar(200)
+  registrationDate DateTime?                           @map("registration_date") @db.Date
+  status           CustomerRightAssetStatus?
   trademarkClass   String?                             @map("trademark_class") @db.VarChar(100)
   validFrom        DateTime?                           @map("valid_from") @db.Date
   validTo          DateTime?                           @map("valid_to") @db.Date
@@ -1331,7 +1340,7 @@ model CustomerRightAssetVersion {
   asset            CustomerRightAsset                 @relation("RightAssetVersions", fields: [assetId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   currentFor       CustomerRightAsset?                @relation("RightAssetCurrentVersion")
   customer         Customer                           @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
-  holderLink       CustomerRightsHolderLink           @relation(fields: [customerId, holderId, departmentId], references: [customerId, rightsHolderId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  holderLink       CustomerRightsHolderLink?          @relation(fields: [customerId, holderId, departmentId], references: [customerId, rightsHolderId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   actor            UserAccount                        @relation("RightAssetVersionActor", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   auditEvent       AuditEvent                          @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   receipts         CustomerRightAssetReceipt[]

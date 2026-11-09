@@ -18,6 +18,8 @@ const version = {
   category: '商标权',
   holderId: 'holder-1',
   ownerText: null,
+  registrationDate: '2026-10-08',
+  status: 'VALID',
   trademarkClass: '25',
   validFrom: null,
   validTo: null,
@@ -40,12 +42,10 @@ const fields = {
   name: '测试商标',
   number: null,
   category: '商标权',
-  holderId: 'holder-1',
-  ownerText: null,
-  trademarkClass: '25',
-  validFrom: null,
+  ownerText: '主体甲',
+  registrationDate: '2026-10-08',
   validTo: null,
-  validityMode: 'UNKNOWN' as const,
+  status: 'VALID' as const,
 };
 
 function respond(body: unknown): ReturnType<typeof vi.fn> {
@@ -76,6 +76,35 @@ describe('right asset API', () => {
     await expect(getRightAsset('customer-1', 'asset-1')).resolves.toMatchObject(
       { history: [version] },
     );
+  });
+
+  it('requests the selected in-use or withdrawn list view', async () => {
+    const fetch = respond({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      capabilities: { create: true },
+    });
+    await listRightAssets('customer-1', 2, 20, {}, 'withdrawn');
+    expect(fetch.mock.calls[0][0]).toContain(
+      'page=2&pageSize=20&view=withdrawn',
+    );
+  });
+
+  it('omits the view query for the default list request', async () => {
+    const fetch = respond({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      capabilities: { create: true },
+    });
+    await listRightAssets('customer-1');
+    expect(fetch.mock.calls[0][0]).toContain(
+      '/customers/customer-1/right-assets?page=1&pageSize=20',
+    );
+    expect(fetch.mock.calls[0][0]).not.toContain('view=');
   });
 
   it('rejects leaked relationships and malformed versions', async () => {
@@ -137,5 +166,15 @@ describe('right asset API', () => {
     expect(fetch.mock.calls[2][0]).toContain(
       '/customers/customer-1/right-assets/asset-1/withdraw',
     );
+    const createBody = JSON.parse(String(fetch.mock.calls[0][1].body));
+    expect(createBody).toMatchObject({
+      ownerText: '主体甲',
+      registrationDate: '2026-10-08',
+      status: 'VALID',
+    });
+    expect(createBody).not.toHaveProperty('holderId');
+    expect(createBody).not.toHaveProperty('trademarkClass');
+    expect(createBody).not.toHaveProperty('validFrom');
+    expect(createBody).not.toHaveProperty('validityMode');
   });
 });

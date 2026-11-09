@@ -70,6 +70,9 @@ export class EvidenceItemResponseDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
 
+  @ApiProperty({ minimum: 1 })
+  version!: number;
+
   @ApiProperty({ type: String, nullable: true })
   caseId!: string | null;
 
@@ -245,6 +248,9 @@ export class EvidenceBulkResponseDto {
 
   @ApiProperty({ minimum: 0 })
   changedPaperCertificates!: number;
+
+  @ApiProperty({ minimum: 0 })
+  changedRemarks!: number;
 }
 
 export class EvidenceExportResponseDto {

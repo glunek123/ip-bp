@@ -127,6 +127,7 @@ export function projectEvidenceGroup(
     items:
       group?.items.map((item) => ({
         id: item.id,
+        version: item.version,
         groupId: group.id,
         caseId: source.case.id,
         displayCode: item.displayCode,

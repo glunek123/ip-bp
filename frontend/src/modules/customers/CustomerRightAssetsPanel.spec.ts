@@ -34,6 +34,8 @@ const fields = {
   category: '商标权',
   holderId: holder.id,
   ownerText: null,
+  registrationDate: null,
+  status: 'VALID',
   trademarkClass: null,
   validFrom: null,
   validTo: null,
@@ -100,13 +102,133 @@ function setup(items = [asset], recoverySnapshot?: RightAssetRecoverySnapshot) {
 afterEach(() => vi.resetAllMocks());
 
 describe('CustomerRightAssetsPanel', () => {
+  it('shows the ten requested columns and opens the existing revision workflow at files', async () => {
+    const wrapper = setup();
+    await flushPromises();
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '类型',
+      '权属文件',
+      '注册号 / 申请号',
+      '名称',
+      '类别',
+      '权利人',
+      '注册日期',
+      '有效期至',
+      '状态',
+      '操作',
+    ]);
+    expect(wrapper.text()).not.toContain('商标分类');
+    expect(wrapper.text()).not.toContain('期限模式');
+    await wrapper
+      .get('[data-test="right-asset-file-asset-1"]')
+      .trigger('click');
+    await flushPromises();
+    expect(api.getRightAsset).toHaveBeenCalledWith(
+      'customer-1',
+      'asset-1',
+      expect.any(Object),
+    );
+    expect(wrapper.get('form h3').text()).toBe('编辑权利资产');
+    expect(
+      wrapper.find('section[aria-label="权属文件上传与选择"]').exists(),
+    ).toBe(true);
+  });
+
+  it('sends manual holder text and mandatory status without legacy fields or an expiry', async () => {
+    const wrapper = setup([]);
+    await flushPromises();
+    await wrapper.get('.right-assets-panel__header button').trigger('click');
+    await wrapper.get('input[required]').setValue('无固定期限商标');
+    await wrapper.findAll('input')[2]!.setValue('商标权');
+    await wrapper
+      .findAll('label')
+      .find((label) => label.text().includes('手填权利人'))!
+      .get('input')
+      .setValue('主体甲');
+    await wrapper
+      .findAll('select')
+      .find((select) => select.find('option[value="INVALID"]').exists())!
+      .setValue('VALID');
+    api.createRightAsset.mockResolvedValueOnce({
+      ...asset,
+      customerVersion: 3,
+    });
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    const body = api.createRightAsset.mock.calls[0][1];
+    expect(body).toMatchObject({
+      ownerText: '主体甲',
+      registrationDate: null,
+      status: 'VALID',
+      validTo: null,
+    });
+    expect(body).not.toHaveProperty('holderId');
+    expect(body).not.toHaveProperty('trademarkClass');
+    expect(body).not.toHaveProperty('validFrom');
+    expect(body).not.toHaveProperty('validityMode');
+  });
+
+  it('requires an explicit status for new assets and batch rows', async () => {
+    const wrapper = setup([]);
+    await flushPromises();
+    await wrapper.get('.right-assets-panel__header button').trigger('click');
+    const createStatus = wrapper
+      .findAll('select')
+      .find((select) => select.find('option[value="INVALID"]').exists())!;
+    expect(createStatus.element).toHaveProperty('value', '');
+    expect(createStatus.attributes('required')).toBeDefined();
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '取消')!
+      .trigger('click');
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '批量上传权属')!
+      .trigger('click');
+    const batch = wrapper.get('section[aria-label="批量上传权属"]');
+    const batchStatus = batch
+      .findAll('select')
+      .find((select) => select.find('option[value="INVALID"]').exists())!;
+    expect(batchStatus.element).toHaveProperty('value', '');
+    expect(batchStatus.attributes('required')).toBeDefined();
+  });
+
+  it('omits an unregistered historical status when revising another field', async () => {
+    const wrapper = setup();
+    await flushPromises();
+    api.getRightAsset.mockResolvedValueOnce({
+      ...asset,
+      fields: { ...fields, status: null },
+      history: [{ ...fields, status: null }],
+      capabilities: { revise: true, withdraw: false },
+    });
+    await wrapper
+      .get('[data-test="right-asset-edit-asset-1"]')
+      .trigger('click');
+    await flushPromises();
+    const status = wrapper
+      .findAll('select')
+      .find((select) => select.find('option[value="INVALID"]').exists())!;
+    expect(status.attributes('required')).toBeUndefined();
+    await wrapper.get('input[placeholder="未知可留空"]').setValue('变更号码');
+    api.reviseRightAsset.mockResolvedValueOnce({
+      ...asset,
+      customerVersion: 3,
+    });
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.reviseRightAsset).toHaveBeenCalledTimes(1);
+    expect(api.reviseRightAsset.mock.calls[0][2]).not.toHaveProperty('status');
+  });
+
   it('restores the exact unknown command after an authorized remount', async () => {
     const first = setup([]);
     await flushPromises();
     await first.get('.right-assets-panel__header button').trigger('click');
     await first.get('input[required]').setValue('原始商标');
     await first.findAll('input')[2]!.setValue('商标权');
-    await first.get('select[required]').setValue(holder.id);
+    await first.get('select[required]').setValue('VALID');
     api.createRightAsset.mockRejectedValueOnce(new Error('response lost'));
     await first.get('form').trigger('submit');
     await flushPromises();
@@ -267,7 +389,7 @@ describe('CustomerRightAssetsPanel', () => {
     await wrapper.get('.right-assets-panel__header button').trigger('click');
     await wrapper.get('input[required]').setValue('原始商标');
     await wrapper.findAll('input')[2]!.setValue('商标权');
-    await wrapper.get('select[required]').setValue(holder.id);
+    await wrapper.get('select[required]').setValue('VALID');
     api.createRightAsset.mockRejectedValueOnce(new Error('response lost'));
     await wrapper.get('form').trigger('submit');
     await flushPromises();
@@ -366,7 +488,7 @@ describe('CustomerRightAssetsPanel', () => {
         .findAll('input[maxlength="200"]')[0]!
         .setValue(`成功行 ${index}`);
       await row.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
-      await row.findAll('select')[1]!.setValue(holder.id);
+      await row.findAll('select')[1]!.setValue('VALID');
       const input = row.get('input[type="file"]');
       Object.defineProperty(input.element, 'files', {
         configurable: true,
@@ -399,7 +521,7 @@ describe('CustomerRightAssetsPanel', () => {
     const eleventh = rows()[0]!;
     await eleventh.findAll('input[maxlength="200"]')[0]!.setValue('第十一行');
     await eleventh.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
-    await eleventh.findAll('select')[1]!.setValue(holder.id);
+    await eleventh.findAll('select')[1]!.setValue('VALID');
     const input = eleventh.get('input[type="file"]');
     Object.defineProperty(input.element, 'files', {
       configurable: true,
@@ -443,7 +565,7 @@ describe('CustomerRightAssetsPanel', () => {
     const first = rows()[0]!;
     await first.findAll('input[maxlength="200"]')[0]!.setValue('成功草稿');
     await first.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
-    await first.findAll('select')[1]!.setValue(holder.id);
+    await first.findAll('select')[1]!.setValue('VALID');
     const input = first.get('input[type="file"]');
     Object.defineProperty(input.element, 'files', {
       configurable: true,
@@ -538,7 +660,7 @@ describe('CustomerRightAssetsPanel', () => {
     await input.trigger('change');
     await row.findAll('input[maxlength="200"]')[0]!.setValue('登记证明');
     await row.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
-    await row.findAll('select')[1]!.setValue(holder.id);
+    await row.findAll('select')[1]!.setValue('VALID');
     await row.get('input[type="checkbox"]').setValue(true);
     api.createRightAsset.mockResolvedValueOnce({
       ...asset,
@@ -635,7 +757,7 @@ describe('CustomerRightAssetsPanel', () => {
       .trigger('click');
     await row.findAll('input[maxlength="200"]')[0]!.setValue('恢复登记');
     await row.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
-    await row.findAll('select')[1]!.setValue(holder.id);
+    await row.findAll('select')[1]!.setValue('VALID');
     await row.get('input[type="checkbox"]').setValue(true);
     api.createRightAsset.mockResolvedValueOnce({
       ...asset,
@@ -652,12 +774,13 @@ describe('CustomerRightAssetsPanel', () => {
       'version-recovered',
     ]);
   });
-  it('shows unknown term without claiming present legal validity and retains history', async () => {
+  it('shows registered status and retains the historical detail', async () => {
     const wrapper = setup();
     await flushPromises();
     await wrapper.get('.right-assets-panel__list button').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('截止日期未知，未核验法律效力');
+    expect(wrapper.text()).toContain('状态有效');
+    expect(wrapper.text()).toContain('有效期至未登记');
     expect(wrapper.text()).toContain('历史版本 · 1 条');
   });
 
@@ -670,7 +793,7 @@ describe('CustomerRightAssetsPanel', () => {
     await wrapper.get('.right-assets-panel__header button').trigger('click');
     await wrapper.get('input[required]').setValue('新商标');
     await wrapper.findAll('input')[2]!.setValue('商标权');
-    await wrapper.get('select[required]').setValue(holder.id);
+    await wrapper.get('select[required]').setValue('VALID');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(wrapper.text()).toContain('请求结果未知');
@@ -707,7 +830,7 @@ describe('CustomerRightAssetsPanel', () => {
     await wrapper.get('.right-assets-panel__header button').trigger('click');
     await wrapper.get('input[required]').setValue('已提交商标');
     await wrapper.findAll('input')[2]!.setValue('商标权');
-    await wrapper.get('select[required]').setValue(holder.id);
+    await wrapper.get('select[required]').setValue('VALID');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     const retry = () =>
@@ -764,7 +887,7 @@ describe('CustomerRightAssetsPanel', () => {
       await row.find('input[maxlength="200"]').setValue(`批量资产 ${index}`);
       await row.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
       await row.find('select').setValue('TRADEMARK');
-      await row.findAll('select')[1]!.setValue(holder.id);
+      await row.findAll('select')[1]!.setValue('VALID');
       const input = row.get('input[type="file"]');
       Object.defineProperty(input.element, 'files', {
         configurable: true,
@@ -875,7 +998,7 @@ describe('CustomerRightAssetsPanel', () => {
         .findAll('input[maxlength="200"]')[0]!
         .setValue(`冲突行 ${index}`);
       await row.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
-      await row.findAll('select')[1]!.setValue(holder.id);
+      await row.findAll('select')[1]!.setValue('VALID');
       const input = row.get('input[type="file"]');
       Object.defineProperty(input.element, 'files', {
         configurable: true,
@@ -948,7 +1071,7 @@ describe('CustomerRightAssetsPanel', () => {
     await wrapper.get('.right-assets-panel__header button').trigger('click');
     await wrapper.get('input[required]').setValue('新商标');
     await wrapper.findAll('input')[2]!.setValue('商标权');
-    await wrapper.get('select[required]').setValue(holder.id);
+    await wrapper.get('select[required]').setValue('VALID');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(wrapper.get('input[required]').element).toHaveProperty(
@@ -1102,7 +1225,7 @@ describe('CustomerRightAssetsPanel', () => {
       await wrapper.get('.right-assets-panel__header button').trigger('click');
       await wrapper.get('input[required]').setValue('原始商标');
       await wrapper.findAll('input')[2]!.setValue('商标权');
-      await wrapper.get('select[required]').setValue(holder.id);
+      await wrapper.get('select[required]').setValue('VALID');
       await wrapper.get('form').trigger('submit');
       await flushPromises();
       await wrapper.setProps({ customerVersion: 9 });
@@ -1256,7 +1379,7 @@ describe('CustomerRightAssetsPanel', () => {
     await wrapper.get('.right-assets-panel__header button').trigger('click');
     await wrapper.get('input[required]').setValue('已登记商标');
     await wrapper.findAll('input')[2]!.setValue('商标权');
-    await wrapper.get('select[required]').setValue(holder.id);
+    await wrapper.get('select[required]').setValue('VALID');
     api.createRightAsset.mockResolvedValueOnce({
       ...asset,
       customerVersion: 3,

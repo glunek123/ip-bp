@@ -534,7 +534,11 @@ describe('EvidenceService real Prisma command orchestration', () => {
         evidenceStatus: 'DESTROYED',
         paperStatus: 'MAILED_TO_LAWYER',
       }),
-    ).resolves.toEqual({ changedEvidence: 2, changedPaperCertificates: 1 });
+    ).resolves.toEqual({
+      changedEvidence: 2,
+      changedPaperCertificates: 1,
+      changedRemarks: 0,
+    });
     expect(f.tx.evidenceGroupVersion.update).toHaveBeenCalledTimes(1);
     expect(f.tx.evidencePaperCertificate.update).toHaveBeenCalledWith({
       where: { id: 'paper-2' },
@@ -572,5 +576,101 @@ describe('EvidenceService real Prisma command orchestration', () => {
       'evidence.export',
       f.tx,
     );
+  });
+
+  it('clears one selected remark with edit permission and preserves the status count', async () => {
+    const f = fixture();
+    f.tx.evidenceItem.update.mockResolvedValue({
+      ...item,
+      remark: null,
+      version: 2,
+    });
+    await expect(
+      f.service.bulkStatus(actor, 'remark-key', {
+        evidenceIds: [item.id],
+        paperCertificateIds: [],
+        remarks: [{ id: item.id, expectedVersion: 1, remark: '  ' }],
+      }),
+    ).resolves.toEqual({
+      changedEvidence: 0,
+      changedPaperCertificates: 0,
+      changedRemarks: 1,
+    });
+    expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+      actor,
+      'evidence.edit',
+      f.tx,
+    );
+    expect(f.access.authorizeDepartmentAction).not.toHaveBeenCalledWith(
+      actor,
+      'evidence.bulk-status',
+      f.tx,
+    );
+    expect(f.tx.evidenceItem.update).toHaveBeenCalledWith({
+      where: { id: item.id },
+      data: {
+        remark: null,
+        version: { increment: 1 },
+        updatedByUserId: actor.userId,
+      },
+    });
+  });
+
+  it('rejects a stale remark version before any status or paper write', async () => {
+    const f = fixture();
+    await expect(
+      f.service.bulkStatus(actor, 'stale-key', {
+        evidenceIds: [item.id],
+        paperCertificateIds: [],
+        evidenceStatus: 'DESTROYED',
+        remarks: [{ id: item.id, expectedVersion: 2, remark: 'new' }],
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'EVIDENCE_VERSION_CONFLICT' },
+    });
+    expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+      actor,
+      'evidence.bulk-status',
+      f.tx,
+    );
+    expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+      actor,
+      'evidence.edit',
+      f.tx,
+    );
+    expect(f.tx.evidenceItem.update).not.toHaveBeenCalled();
+    expect(f.tx.evidenceCommandReceipt.create).not.toHaveBeenCalled();
+  });
+
+  it('requires edit permission for a combined status and remark request', async () => {
+    const f = fixture();
+    f.access.authorizeDepartmentAction.mockImplementation(
+      async (_actor, action) => {
+        if (action === 'evidence.edit') throw new ForbiddenException();
+      },
+    );
+    await expect(
+      f.service.bulkStatus(actor, 'no-edit', {
+        evidenceIds: [item.id],
+        paperCertificateIds: [],
+        evidenceStatus: 'DESTROYED',
+        remarks: [{ id: item.id, expectedVersion: 1, remark: 'new' }],
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(f.tx.evidenceItem.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate or unselected remark targets', async () => {
+    const f = fixture();
+    const edit = { id: item.id, expectedVersion: 1, remark: 'new' };
+    for (const remarks of [[edit, edit], [{ ...edit, id: 'other' }]])
+      await expect(
+        f.service.bulkStatus(actor, 'invalid-key', {
+          evidenceIds: [item.id],
+          paperCertificateIds: [],
+          remarks,
+        }),
+      ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.evidenceItem.update).not.toHaveBeenCalled();
   });
 });

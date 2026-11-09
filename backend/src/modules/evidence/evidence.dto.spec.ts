@@ -88,4 +88,29 @@ describe('Evidence DTO boundary', () => {
       ),
     ).not.toHaveLength(0);
   });
+
+  it('accepts explicit null remark clearing and rejects malformed remark edits', () => {
+    const base = { evidenceIds: [itemId], paperCertificateIds: [] };
+    expect(
+      validateSync(
+        plainToInstance(BulkEvidenceStatusDto, {
+          ...base,
+          remarks: [{ id: itemId, expectedVersion: 1, remark: null }],
+        }),
+      ),
+    ).toHaveLength(0);
+    for (const edit of [
+      { id: itemId, expectedVersion: 0, remark: 'x' },
+      { id: itemId, expectedVersion: 1, remark: 'x'.repeat(1001) },
+      { id: itemId, expectedVersion: 1 },
+    ])
+      expect(
+        validateSync(
+          plainToInstance(BulkEvidenceStatusDto, {
+            ...base,
+            remarks: [edit],
+          }),
+        ),
+      ).not.toHaveLength(0);
+  });
 });

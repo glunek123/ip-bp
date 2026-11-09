@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError } from '../../api/http';
 import { getCustomer } from '../../api/customers';
 import {
@@ -23,6 +23,7 @@ import {
   type RightAssetDetail,
   type RightAssetFields,
   type RightAssetSummary,
+  type RightAssetStatus,
   type RightAssetType,
   type WriteRightAssetInput,
 } from '../../api/right-assets';
@@ -61,6 +62,7 @@ const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<RightAssetSummary[]>([]);
 const total = ref(0);
 const page = ref(1);
+const listView = ref<'active' | 'withdrawn'>('active');
 const canCreate = ref(false);
 const holders = ref<RightsHolderSummary[]>([]);
 const holderLoading = ref(false);
@@ -70,6 +72,10 @@ const selectedEvidenceIds = ref<string[]>([]);
 const uploadFile = ref<globalThis.File>();
 const uploading = ref(false);
 const uploadMessage = ref('');
+const evidenceSection = ref<{
+  scrollIntoView?: (options?: { block: 'center' }) => void;
+  focus: () => void;
+}>();
 type BatchRow = {
   id: string;
   selected: boolean;
@@ -176,6 +182,8 @@ function emptyFields(): RightAssetFields {
     category: '',
     holderId: '',
     ownerText: null,
+    registrationDate: null,
+    status: null,
     trademarkClass: null,
     validFrom: null,
     validTo: null,
@@ -340,17 +348,16 @@ function adoptBatchEvidence(
   row.registrationStatus = 'draft';
   row.error = `已人工选用证明 ${proof.originalFilename}；尚未登记。`;
 }
-function normalizedBatchFields(row: BatchRow): RightAssetFields {
+function normalizedBatchFields(row: BatchRow) {
   return {
-    ...row.fields,
+    type: row.fields.type,
     name: row.fields.name.trim(),
-    category: row.fields.category.trim(),
     number: row.fields.number?.trim() || null,
-    ownerText: null,
-    trademarkClass: row.fields.trademarkClass?.trim() || null,
-    validFrom: row.fields.validFrom || null,
-    validTo:
-      row.fields.validityMode === 'FIXED' ? row.fields.validTo || null : null,
+    category: row.fields.category.trim(),
+    ownerText: row.fields.ownerText?.trim() || null,
+    registrationDate: row.fields.registrationDate || null,
+    validTo: row.fields.validTo || null,
+    status: row.fields.status,
   };
 }
 async function submitBatch(): Promise<void> {
@@ -385,33 +392,28 @@ async function executeBatch(recoverUnknown = false): Promise<void> {
       if (ownGeneration !== generation) return;
       const wasUnknown = row.registrationStatus === 'unknown';
       const fields = normalizedBatchFields(row);
-      if (
-        !fields.name ||
-        !fields.category ||
-        !fields.holderId ||
-        (fields.validityMode === 'FIXED' && !fields.validTo) ||
-        !row.uploaded
-      ) {
+      if (!fields.name || !fields.category || !fields.status || !row.uploaded) {
         row.registrationStatus = 'failed';
-        row.error =
-          '请上传真实证明并填写类型、名称、类别、关联主体及真实期限。';
+        row.error = '请上传真实证明并填写类型、名称、类别和状态。';
         continue;
       }
-      if (!row.pending)
-        row.pending = {
+      const pendingRow =
+        row.pending ??
+        (row.pending = {
           body: {
             ...fields,
+            status: fields.status,
             expectedCustomerVersion: nextVersion,
             contentVersionIds: [row.uploaded.contentVersionId],
           },
           key: globalThis.crypto.randomUUID(),
-        };
+        });
       row.registrationStatus = 'registering';
       try {
         const result = await createRightAsset(
           props.customerId,
-          row.pending.body,
-          row.pending.key,
+          pendingRow.body,
+          pendingRow.key,
         );
         if (ownGeneration !== generation) return;
         row.registrationStatus = 'registered';
@@ -635,24 +637,22 @@ const numberText = computed({
     form.value.number = value;
   },
 });
-const trademarkClass = computed({
-  get: () => form.value.trademarkClass ?? '',
-  set: (value: string) => {
-    form.value.trademarkClass = value;
-  },
-});
-const validFrom = computed({
-  get: () => form.value.validFrom ?? '',
-  set: (value: string) => {
-    form.value.validFrom = value;
-  },
-});
 const validTo = computed({
   get: () => form.value.validTo ?? '',
   set: (value: string) => {
     form.value.validTo = value;
   },
 });
+const registrationDate = computed({
+  get: () => form.value.registrationDate ?? '',
+  set: (value: string) => {
+    form.value.registrationDate = value || null;
+  },
+});
+const statusLabels: Record<RightAssetStatus, string> = {
+  VALID: '有效',
+  INVALID: '无效',
+};
 
 const typeLabels: Record<RightAssetType, string> = {
   TRADEMARK: '商标',
@@ -662,23 +662,19 @@ const typeLabels: Record<RightAssetType, string> = {
   AUTHORIZATION: '授权书',
   OTHER: '其他',
 };
-function todayShanghai(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-}
 function termLabel(fields: RightAssetFields): string {
-  if (fields.validFrom && fields.validFrom > todayShanghai())
-    return `登记起始日未到：${fields.validFrom}`;
-  if (fields.validityMode === 'LONG_TERM')
-    return '人工登记为长期，未核验法律效力';
-  if (fields.validityMode === 'UNKNOWN') return '截止日期未知，未核验法律效力';
-  if (fields.validTo && fields.validTo < todayShanghai())
-    return `登记截止日已过：${fields.validTo}；未核验法律效力`;
-  return `登记截止日：${fields.validTo ?? '未知'}；未核验法律效力`;
+  return fields.validTo || '未登记';
+}
+function statusLabel(status: RightAssetStatus | null): string {
+  return status ? statusLabels[status] : '未登记';
+}
+function ownerLabel(fields: RightAssetFields): string {
+  return (
+    fields.ownerText?.trim() ||
+    holders.value.find((holder) => holder.id === fields.holderId)?.name ||
+    fields.holderId ||
+    '未登记'
+  );
 }
 function message(error: unknown): string {
   return error instanceof ApiError
@@ -724,12 +720,10 @@ const changedFacts = computed(() => {
     name: '名称',
     number: '号码',
     category: '类别',
-    holderId: '权利主体',
-    ownerText: '历史登记文字',
-    trademarkClass: '商标分类',
-    validFrom: '起始日期',
-    validTo: '截止日期',
-    validityMode: '期限模式',
+    ownerText: '权利人',
+    registrationDate: '注册日期',
+    validTo: '有效期至',
+    status: '状态',
   };
   return (Object.keys(labels) as (keyof RightAssetFields)[])
     .filter(
@@ -749,15 +743,24 @@ async function load(nextPage = page.value): Promise<void> {
   state.value = 'loading';
   try {
     const [assets, allHolders, materials] = await Promise.all([
-      listRightAssets(props.customerId, nextPage, 20, {
-        signal: controller.signal,
-      }),
+      listRightAssets(
+        props.customerId,
+        nextPage,
+        20,
+        { signal: controller.signal },
+        listView.value,
+      ),
       loadHolders(props.customerId, controller.signal),
       listOwnerMaterials('CUSTOMER', props.customerId, {
         signal: controller.signal,
       }),
     ]);
     if (controller.signal.aborted || ownGeneration !== generation) return;
+    const lastPage = Math.max(1, Math.ceil(assets.total / 20));
+    if (assets.items.length === 0 && nextPage > lastPage) {
+      await load(lastPage);
+      return;
+    }
     items.value = assets.items;
     total.value = assets.total;
     page.value = assets.page;
@@ -778,6 +781,12 @@ async function load(nextPage = page.value): Promise<void> {
       emit('customer-not-found', props.customerId);
     state.value = 'failed';
   }
+}
+function changeListView(view: 'active' | 'withdrawn'): void {
+  if (listView.value === view) return;
+  listView.value = view;
+  page.value = 1;
+  void load(1);
 }
 async function loadHolders(
   customerId: string,
@@ -891,6 +900,8 @@ function openRevise(): void {
   if (
     ordinaryWritesBlocked.value ||
     !detail.value ||
+    !detail.value.capabilities.revise ||
+    detail.value.withdrawn ||
     unknownOutcome.value ||
     saving.value
   )
@@ -904,6 +915,8 @@ function openRevise(): void {
     category: fields.category,
     holderId: fields.holderId,
     ownerText: fields.ownerText,
+    registrationDate: fields.registrationDate,
+    status: fields.status,
     trademarkClass: fields.trademarkClass,
     validFrom: fields.validFrom,
     validTo: fields.validTo,
@@ -924,6 +937,23 @@ function openRevise(): void {
   conflict.value = false;
   conflictDetailReady.value = false;
   confirmedCustomerVersion.value = undefined;
+}
+async function openFileEditor(assetId: string): Promise<void> {
+  const found = await openDetail(assetId);
+  if (!found || !detail.value?.capabilities.revise || detail.value.withdrawn)
+    return;
+  openRevise();
+  await nextTick();
+  evidenceSection.value?.scrollIntoView?.({ block: 'center' });
+  evidenceSection.value?.focus();
+}
+async function openEditFor(assetId: string): Promise<void> {
+  if (!(await openDetail(assetId))) return;
+  openRevise();
+}
+async function openWithdrawFor(assetId: string): Promise<void> {
+  if (!(await openDetail(assetId))) return;
+  openWithdraw();
 }
 function openWithdraw(): void {
   if (
@@ -1152,17 +1182,16 @@ async function refreshAfterConflict(): Promise<void> {
   conflict.value = false;
   errorMessage.value = '请核对最新事实与原草稿，再次明确提交。';
 }
-function normalizedForm(): RightAssetFields {
+function normalizedForm() {
   return {
-    ...form.value,
+    type: form.value.type,
     name: form.value.name.trim(),
-    category: form.value.category.trim(),
     number: form.value.number?.trim() || null,
-    ownerText: mode.value === 'create' ? null : form.value.ownerText,
-    trademarkClass: form.value.trademarkClass?.trim() || null,
-    validFrom: form.value.validFrom || null,
-    validTo:
-      form.value.validityMode === 'FIXED' ? form.value.validTo || null : null,
+    category: form.value.category.trim(),
+    ownerText: form.value.ownerText?.trim() || null,
+    registrationDate: form.value.registrationDate || null,
+    ...(form.value.status ? { status: form.value.status } : {}),
+    validTo: form.value.validTo || null,
   };
 }
 async function submit(): Promise<void> {
@@ -1180,10 +1209,9 @@ async function submit(): Promise<void> {
   if (
     !fields.name ||
     !fields.category ||
-    !fields.holderId ||
-    (fields.validityMode === 'FIXED' && !fields.validTo)
+    (mode.value === 'create' && !fields.status)
   ) {
-    errorMessage.value = '请填写名称、类别、权利主体及固定期限的真实截止日期。';
+    errorMessage.value = '请填写名称、类别和状态。';
     return;
   }
   const customerId = props.customerId;
@@ -1196,6 +1224,7 @@ async function submit(): Promise<void> {
           customerId,
           body: {
             ...fields,
+            status: fields.status!,
             expectedCustomerVersion: effectiveCustomerVersion(),
             contentVersionIds: [...selectedEvidenceIds.value],
           },
@@ -1207,6 +1236,7 @@ async function submit(): Promise<void> {
           assetId: selected!.assetId,
           body: {
             ...fields,
+            ...(fields.status ? { status: fields.status } : {}),
             expectedCustomerVersion: effectiveCustomerVersion(),
             expectedAssetVersion: selected!.version,
             contentVersionIds: [...selectedEvidenceIds.value],
@@ -1442,17 +1472,35 @@ onBeforeUnmount(() => {
       <ElButton native-type="button" @click="load()">重试读取</ElButton>
     </div>
     <template v-else>
+      <nav aria-label="权利资产视图">
+        <ElButton
+          native-type="button"
+          :type="listView === 'active' ? 'primary' : 'default'"
+          @click="changeListView('active')"
+          >在用</ElButton
+        >
+        <ElButton
+          native-type="button"
+          :type="listView === 'withdrawn' ? 'primary' : 'default'"
+          @click="changeListView('withdrawn')"
+          >已撤下</ElButton
+        >
+      </nav>
       <p v-if="items.length === 0">暂无人工登记的权利资产。</p>
       <div v-else class="customer-table-scroll">
         <table class="right-assets-panel__list customer-asset-table">
           <thead>
             <tr>
               <th scope="col">类型</th>
-              <th scope="col">资产名称</th>
-              <th scope="col">注册号 / 登记号</th>
+              <th scope="col">权属文件</th>
+              <th scope="col">注册号 / 申请号</th>
+              <th scope="col">名称</th>
               <th scope="col">类别</th>
-              <th scope="col">权利主体</th>
-              <th scope="col">期限 / 状态</th>
+              <th scope="col">权利人</th>
+              <th scope="col">注册日期</th>
+              <th scope="col">有效期至</th>
+              <th scope="col">状态</th>
+              <th scope="col">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -1466,6 +1514,24 @@ onBeforeUnmount(() => {
                 <ElButton
                   native-type="button"
                   link
+                  :data-test="`right-asset-file-${asset.assetId}`"
+                  :disabled="
+                    saving || unknownOutcome || !canEdit || asset.withdrawn
+                  "
+                  @click="openFileEditor(asset.assetId)"
+                >
+                  {{
+                    asset.fields.evidence.length
+                      ? `查看 / 上传 (${asset.fields.evidence.length})`
+                      : '上传权属文件'
+                  }}
+                </ElButton>
+              </td>
+              <td>{{ asset.fields.number || '未登记' }}</td>
+              <td>
+                <ElButton
+                  native-type="button"
+                  link
                   type="primary"
                   :disabled="saving || unknownOutcome"
                   @click="openDetail(asset.assetId)"
@@ -1473,16 +1539,30 @@ onBeforeUnmount(() => {
                   {{ asset.fields.name }}
                 </ElButton>
               </td>
-              <td>{{ asset.fields.number || '未知' }}</td>
               <td>{{ asset.fields.category || '未填写' }}</td>
+              <td>{{ ownerLabel(asset.fields) }}</td>
+              <td>{{ asset.fields.registrationDate || '未登记' }}</td>
+              <td>{{ termLabel(asset.fields) }}</td>
+              <td>{{ statusLabel(asset.fields.status) }}</td>
               <td>
-                {{
-                  holders.find((holder) => holder.id === asset.fields.holderId)
-                    ?.name || asset.fields.holderId
-                }}
-              </td>
-              <td>
-                {{ asset.withdrawn ? '已撤下' : termLabel(asset.fields) }}
+                <ElButton
+                  v-if="canEdit && !asset.withdrawn"
+                  native-type="button"
+                  link
+                  :disabled="ordinaryWritesBlocked || saving || writeDenied"
+                  :data-test="`right-asset-edit-${asset.assetId}`"
+                  @click="openEditFor(asset.assetId)"
+                  >编辑</ElButton
+                >
+                <ElButton
+                  v-if="!asset.withdrawn"
+                  native-type="button"
+                  link
+                  :disabled="ordinaryWritesBlocked || saving || writeDenied"
+                  :data-test="`right-asset-withdraw-${asset.assetId}`"
+                  @click="openWithdrawFor(asset.assetId)"
+                  >删除</ElButton
+                >
               </td>
             </tr>
           </tbody>
@@ -1540,25 +1620,28 @@ onBeforeUnmount(() => {
           <dd>{{ detail.fields.number || '未知' }}</dd>
         </div>
         <div>
-          <dt>权利主体</dt>
-          <dd>
-            {{
-              holders.find((holder) => holder.id === detail?.fields.holderId)
-                ?.name || detail.fields.holderId
-            }}
-          </dd>
+          <dt>权利人</dt>
+          <dd>{{ ownerLabel(detail.fields) }}</dd>
+        </div>
+        <div v-if="detail.fields.validFrom">
+          <dt>历史起始日期</dt>
+          <dd>{{ detail.fields.validFrom }}</dd>
         </div>
         <div v-if="detail.fields.ownerText">
-          <dt>历史登记文字</dt>
+          <dt>权利人登记文字</dt>
           <dd>{{ detail.fields.ownerText }}</dd>
         </div>
         <div>
-          <dt>商标分类</dt>
-          <dd>{{ detail.fields.trademarkClass || '未填写' }}</dd>
+          <dt>注册日期</dt>
+          <dd>{{ detail.fields.registrationDate || '未登记' }}</dd>
         </div>
         <div>
-          <dt>期限</dt>
+          <dt>有效期至</dt>
           <dd>{{ termLabel(detail.fields) }}</dd>
+        </div>
+        <div>
+          <dt>状态</dt>
+          <dd>{{ statusLabel(detail.fields.status) }}</dd>
         </div>
       </dl>
       <p>识别状态：未识别，请人工填写</p>
@@ -1634,8 +1717,10 @@ onBeforeUnmount(() => {
                   ? '修订'
                   : '撤下'
             }}
-            · {{ version.name }} · {{ version.number || '号码未知' }} ·
-            {{ termLabel(version) }}
+            · {{ version.name }} · {{ version.number || '号码未知' }} · 注册日期
+            {{ version.registrationDate || '未登记' }} · 历史起始日期
+            {{ version.validFrom || '未登记' }} · 有效期至
+            {{ termLabel(version) }} · {{ statusLabel(version.status) }}
             <span v-if="version.withdrawReason">
               · 原因：{{ version.withdrawReason }}</span
             >
@@ -1665,7 +1750,16 @@ onBeforeUnmount(() => {
       class="right-assets-panel__form"
       @submit.prevent="submit"
     >
-      <h3>{{ mode === 'create' ? '登记权利资产' : '修订权利资产' }}</h3>
+      <header class="right-assets-panel__form-header">
+        <h3>{{ mode === 'create' ? '登记权利资产' : '编辑权利资产' }}</h3>
+        <ElButton
+          native-type="button"
+          :disabled="ordinaryWritesBlocked || saving"
+          data-test="right-asset-close-editor"
+          @click="cancelDraft"
+          >关闭</ElButton
+        >
+      </header>
       <p v-if="mode === 'revise' && draftOrigin && detail">
         草稿来源：客户第 {{ draftOrigin.customerVersion }} 版、资产第
         {{ draftOrigin.assetVersion }} 版；最新客户第
@@ -1680,7 +1774,7 @@ onBeforeUnmount(() => {
       </p>
       <fieldset :disabled="ordinaryWritesBlocked || saving">
         <label
-          >资产类型
+          >类型
           <select v-model="form.type">
             <option
               v-for="(label, value) in typeLabels"
@@ -1692,50 +1786,38 @@ onBeforeUnmount(() => {
           </select></label
         >
         <label
-          >资产名称 <input v-model="form.name" maxlength="200" required
+          >名称 <input v-model="form.name" maxlength="200" required
         /></label>
         <label
-          >资产号码
+          >注册号 / 申请号
           <input v-model="numberText" maxlength="200" placeholder="未知可留空"
         /></label>
         <label
-          >资产类别 <input v-model="form.category" maxlength="200" required
+          >类别 <input v-model="form.category" maxlength="200" required
         /></label>
         <label
-          >权利主体
-          <select v-model="form.holderId" required>
-            <option value="">请选择当前客户关联的主体</option>
-            <option
-              v-for="holder in holders"
-              :key="holder.id"
-              :value="holder.id"
-            >
-              {{ holder.name }}
-            </option>
+          >手填权利人 <input v-model="form.ownerText" maxlength="200" />
+        </label>
+        <label
+          >注册日期 <input v-model="registrationDate" type="date" />
+        </label>
+        <label>有效期至 <input v-model="validTo" type="date" /></label>
+        <label
+          >状态
+          <select v-model="form.status" :required="mode === 'create'">
+            <option value="">请选择状态</option>
+            <option value="VALID">有效</option>
+            <option value="INVALID">无效</option>
           </select></label
         >
-        <label
-          >商标分类
-          <input
-            v-model="trademarkClass"
-            maxlength="100"
-            placeholder="不适用可留空"
-        /></label>
-        <label>起始日期 <input v-model="validFrom" type="date" /></label>
-        <label
-          >期限模式
-          <select v-model="form.validityMode">
-            <option value="UNKNOWN">未知</option>
-            <option value="LONG_TERM">明确长期</option>
-            <option value="FIXED">固定截止日期</option>
-          </select></label
-        >
-        <label v-if="form.validityMode === 'FIXED'"
-          >截止日期 <input v-model="validTo" type="date" required
-        /></label>
-        <p>只填写已知事实；不会根据文件名或空白日期推断有效状态。</p>
+        <p>只填写已知事实；空白有效期表示未登记。</p>
       </fieldset>
-      <section aria-label="权属证明上传与选择">
+      <section
+        ref="evidenceSection"
+        aria-label="权属文件上传与选择"
+        tabindex="-1"
+      >
+        <h4>权属文件</h4>
         <p>未识别，请人工填写。上传文件与确认登记是两个独立步骤。</p>
         <input
           type="file"
@@ -1885,7 +1967,7 @@ onBeforeUnmount(() => {
           "
         >
           <label
-            >资产类型<select v-model="row.fields.type">
+            >类型<select v-model="row.fields.type">
               <option
                 v-for="(label, value) in typeLabels"
                 :key="value"
@@ -1895,44 +1977,29 @@ onBeforeUnmount(() => {
               </option>
             </select></label
           >
+          <label>名称<input v-model="row.fields.name" maxlength="200" /></label>
           <label
-            >资产名称<input v-model="row.fields.name" maxlength="200"
+            >类别<input v-model="row.fields.category" maxlength="200"
           /></label>
           <label
-            >资产类别<input v-model="row.fields.category" maxlength="200"
+            >手填权利人<input v-model="row.fields.ownerText" maxlength="200"
           /></label>
           <label
-            >权利主体<select v-model="row.fields.holderId">
-              <option value="">请选择当前客户关联的主体</option>
-              <option
-                v-for="holder in holders"
-                :key="holder.id"
-                :value="holder.id"
-              >
-                {{ holder.name }}
-              </option>
+            >注册号 / 申请号<input v-model="row.fields.number" maxlength="200"
+          /></label>
+          <label
+            >注册日期<input v-model="row.fields.registrationDate" type="date"
+          /></label>
+          <label
+            >有效期至<input v-model="row.fields.validTo" type="date"
+          /></label>
+          <label
+            >状态<select v-model="row.fields.status" required>
+              <option value="">请选择状态</option>
+              <option value="VALID">有效</option>
+              <option value="INVALID">无效</option>
             </select></label
           >
-          <label
-            >真实资产号码（可留空）<input
-              v-model="row.fields.number"
-              maxlength="200"
-          /></label>
-          <label
-            >起始日期（可留空）<input
-              v-model="row.fields.validFrom"
-              type="date"
-          /></label>
-          <label
-            >期限模式<select v-model="row.fields.validityMode">
-              <option value="UNKNOWN">未知</option>
-              <option value="LONG_TERM">明确长期</option>
-              <option value="FIXED">固定截止日期</option>
-            </select></label
-          >
-          <label v-if="row.fields.validityMode === 'FIXED'"
-            >真实截止日期<input v-model="row.fields.validTo" type="date"
-          /></label>
           <input
             type="file"
             accept=".pdf,.jpg,.jpeg,.png"
@@ -2074,6 +2141,20 @@ onBeforeUnmount(() => {
 .right-assets-panel__form {
   display: grid;
   gap: var(--s-3);
+}
+.right-assets-panel__form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.right-assets-panel__form-header h3 {
+  margin: 0;
+}
+.right-assets-panel__list td:nth-child(7),
+.right-assets-panel__list td:nth-child(8),
+.right-assets-panel__list td:last-child {
+  white-space: nowrap;
 }
 .right-assets-panel__form label {
   display: grid;

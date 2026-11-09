@@ -64,6 +64,7 @@ function fields(holderId: string) {
     validFrom: null,
     validTo: null,
     validityMode: 'UNKNOWN',
+    status: 'VALID',
   };
 }
 function create(
@@ -121,57 +122,98 @@ test.afterAll(async () => {
   await disconnectCustomerTestDatabase();
 });
 
-test('CU002 browser registers unknown facts, revises, refreshes immutable history and withdraws with separate grant', async ({
+test('CU002 browser registers text-only asset and preserves an existing formal holder', async ({
   request,
   page,
-}) => {
+}, testInfo) => {
   const { customerId, holderId } = await createCustomerAndHolder(request);
   await setRightAssetWithdrawGrant(e2eFixtures.roleA, true);
+  const path = '/api/v1/customers/' + customerId + '/right-assets';
+  const linked = await request.post(path, {
+    headers: { ...authA, 'Idempotency-Key': randomUUID() },
+    data: {
+      ...fields(holderId),
+      name: '已有正式关联',
+      validFrom: '2020-03-14',
+      validityMode: 'LONG_TERM',
+      expectedCustomerVersion: 2,
+    },
+  });
+  await status(linked, 201);
+  const linkedId = (await linked.json()).assetId;
   await configureBearerBrowser(page);
-  await page.goto(`/customers/${customerId}`);
+  await page.goto('/customers/' + customerId);
   await page.getByRole('tab', { name: '权利资产' }).click();
-  await expect(page.getByText('暂无人工登记的权利资产。')).toBeVisible();
-  await page.getByRole('button', { name: '登记权利资产' }).click();
-  await page.getByLabel('资产名称').fill('CU002 测试商标');
-  await page.getByLabel('资产类别').fill('商标权');
-  await page.getByLabel('权利主体').selectOption(holderId);
-  await page.getByLabel('商标分类').fill('25');
-  await page.getByRole('button', { name: '确认保存' }).click();
-  await expect(
-    page.getByRole('region', { name: '权利资产详情' }),
-  ).toContainText('截止日期未知，未核验法律效力');
-  await page.getByRole('button', { name: '修订字段' }).click();
-  await page.getByLabel('资产号码').fill('真实登记号-01');
-  await page.getByRole('button', { name: '确认保存' }).click();
-  await page.reload();
-  await page.getByRole('tab', { name: '权利资产' }).click();
-  await page.getByRole('button', { name: 'CU002 测试商标' }).click();
-  await expect(
-    page.getByRole('region', { name: '权利资产详情' }),
-  ).toContainText('真实登记号-01');
-  await expect(page.getByText('历史版本 · 2 条')).toBeVisible();
-  await page.getByText('历史版本 · 2 条').click();
-  await expect(page.getByText('号码未知')).toBeVisible();
-  await page.getByRole('button', { name: '撤下资产' }).click();
-  await page.getByLabel('撤下原因').fill('登记范围调整');
-  await page.getByRole('button', { name: '确认撤下' }).click();
-  await expect(page.getByText('已撤下')).toBeVisible();
-  const detail = await request.get(
-    `/api/v1/customers/${customerId}/right-assets/${await listAssetId(request, customerId)}`,
-    { headers: authA },
-  );
+  const table = page.locator('.right-assets-panel__list');
+  await expect(table.getByRole('columnheader')).toHaveText([
+    '类型',
+    '权属文件',
+    '注册号 / 申请号',
+    '名称',
+    '类别',
+    '权利人',
+    '注册日期',
+    '有效期至',
+    '状态',
+    '操作',
+  ]);
+  const oldRow = table.getByRole('row', { name: /已有正式关联/u });
+  await expect(oldRow).not.toContainText('2020-03-14');
+  await expect(oldRow).toContainText('CU002 Holder');
+  await oldRow.getByRole('button', { name: '编辑', exact: true }).click();
+  const form = page.locator('form.right-assets-panel__form');
+  await form.getByLabel('权利人').fill('只改版本上的登记文字');
+  await form.getByRole('button', { name: /保存/u }).click();
+  await expect(oldRow).toContainText('只改版本上的登记文字');
+  const detail = await request.get(path + '/' + linkedId, { headers: authA });
   await status(detail, 200);
-  expect((await detail.json()).history).toHaveLength(3);
-});
+  expect((await detail.json()).fields).toMatchObject({
+    holderId,
+    ownerText: '只改版本上的登记文字',
+    validFrom: '2020-03-14',
+    registrationDate: null,
+    trademarkClass: '25',
+    validityMode: 'LONG_TERM',
+  });
 
-async function listAssetId(request: APIRequestContext, customerId: string) {
-  const response = await request.get(
-    `/api/v1/customers/${customerId}/right-assets`,
-    { headers: authA },
+  await page.getByRole('button', { name: '登记权利资产' }).click();
+  await form.getByLabel('名称', { exact: true }).fill('手填权利人资产');
+  await form.getByLabel('类别', { exact: true }).fill('商标权');
+  await form.getByLabel('权利人').fill('手填权利人甲');
+  await form.getByLabel('注册日期').fill('2021-05-06');
+  const statusSelect = form.getByRole('combobox', { name: /状态/u });
+  await expect(statusSelect).toHaveValue('');
+  await expect(statusSelect).toHaveAttribute('required');
+  await statusSelect.selectOption('VALID');
+  await expect(form.getByLabel('有效期至')).toHaveValue('');
+  await form.screenshot({
+    path: testInfo.outputPath('right-asset-register.png'),
+    animations: 'disabled',
+  });
+  await form.getByRole('button', { name: /保存/u }).click();
+  const row = table.getByRole('row', { name: /手填权利人资产/u });
+  await expect(row).toContainText('手填权利人甲');
+  await expect(row).toContainText('2021-05-06');
+  await expect(row.getByRole('cell').nth(8)).toHaveText('有效');
+  const assets = await request.get(path + '?view=active', { headers: authA });
+  await status(assets, 200);
+  const created = (await assets.json()).items.find(
+    (item: { fields: { name: string } }) =>
+      item.fields.name === '手填权利人资产',
   );
-  await status(response, 200);
-  return (await response.json()).items[0].assetId as string;
-}
+  expect(created.fields).toMatchObject({
+    holderId: null,
+    ownerText: '手填权利人甲',
+    validFrom: null,
+    registrationDate: '2021-05-06',
+    validTo: null,
+    status: 'VALID',
+  });
+  await table.screenshot({
+    path: testInfo.outputPath('right-asset-table.png'),
+    animations: 'disabled',
+  });
+});
 
 test('CU002 scopes, replay, collision, concurrent CAS, revoke and DB guards', async ({
   request,

@@ -29,6 +29,7 @@ export const rightAssetValidityModes = [
   'LONG_TERM',
   'UNKNOWN',
 ] as const;
+export const rightAssetStatuses = ['VALID', 'INVALID'] as const;
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
 
@@ -58,9 +59,10 @@ export class RightAssetFieldsDto {
   @MaxLength(200)
   category!: string;
 
-  @ApiProperty({ format: 'uuid' })
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @ValidateIf((_object, value) => value !== null && value !== undefined)
   @IsUUID('4')
-  holderId!: string;
+  holderId?: string | null;
 
   @ApiPropertyOptional({ nullable: true, maxLength: 200 })
   @Transform(trim)
@@ -68,6 +70,17 @@ export class RightAssetFieldsDto {
   @IsString()
   @MaxLength(200)
   ownerText?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, pattern: '^\\d{4}-\\d{2}-\\d{2}$' })
+  @ValidateIf((_object, value) => value !== null && value !== undefined)
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  registrationDate?: string | null;
+
+  @ApiPropertyOptional({ enum: rightAssetStatuses, nullable: true })
+  @ValidateIf((_object, value) => value !== null && value !== undefined)
+  @IsEnum(rightAssetStatuses)
+  status?: (typeof rightAssetStatuses)[number] | null;
 
   @ApiPropertyOptional({ nullable: true, maxLength: 100 })
   @Transform(trim)
@@ -88,9 +101,10 @@ export class RightAssetFieldsDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   validTo?: string | null;
 
-  @ApiProperty({ enum: rightAssetValidityModes })
+  @ApiPropertyOptional({ enum: rightAssetValidityModes })
+  @ValidateIf((_object, value) => value !== undefined)
   @IsEnum(rightAssetValidityModes)
-  validityMode!: (typeof rightAssetValidityModes)[number];
+  validityMode?: (typeof rightAssetValidityModes)[number];
 }
 
 export class CreateRightAssetDto extends RightAssetFieldsDto {
@@ -141,6 +155,10 @@ export class WithdrawRightAssetDto {
 }
 
 export class RightAssetListQueryDto {
+  @ApiPropertyOptional({ enum: ['active', 'withdrawn'] })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsEnum(['active', 'withdrawn'])
+  view?: 'active' | 'withdrawn';
   @ApiPropertyOptional({ default: 1, minimum: 1 })
   @Type(() => Number)
   @IsInt()

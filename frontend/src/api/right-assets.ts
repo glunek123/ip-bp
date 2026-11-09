@@ -10,19 +10,34 @@ export const rightAssetTypes = [
 ] as const;
 export type RightAssetType = (typeof rightAssetTypes)[number];
 export type RightAssetValidityMode = 'FIXED' | 'LONG_TERM' | 'UNKNOWN';
+export type RightAssetStatus = 'VALID' | 'INVALID';
 export type RightAssetAction = 'CREATE' | 'REVISE' | 'WITHDRAW';
 export type RightAssetFields = {
   type: RightAssetType;
   name: string;
   number: string | null;
   category: string;
-  holderId: string;
+  holderId: string | null;
   ownerText: string | null;
+  registrationDate: string | null;
+  validTo: string | null;
+  status: RightAssetStatus | null;
+  /** Legacy fields stay readable for historical detail only. */
   trademarkClass: string | null;
   validFrom: string | null;
-  validTo: string | null;
   validityMode: RightAssetValidityMode;
 };
+export type RightAssetWriteFields = Pick<
+  RightAssetFields,
+  | 'type'
+  | 'name'
+  | 'number'
+  | 'category'
+  | 'ownerText'
+  | 'registrationDate'
+  | 'validTo'
+  | 'status'
+>;
 export type RightAssetVersion = RightAssetFields & {
   id: string;
   version: number;
@@ -61,11 +76,13 @@ export type RightAssetList = {
 export type RightAssetCommandResult = RightAssetSummary & {
   customerVersion: number;
 };
-export type WriteRightAssetInput = RightAssetFields & {
+export type WriteRightAssetInput = Omit<RightAssetWriteFields, 'status'> & {
+  status: RightAssetStatus;
   expectedCustomerVersion: number;
   contentVersionIds?: string[];
 };
-export type ReviseRightAssetInput = WriteRightAssetInput & {
+export type ReviseRightAssetInput = Omit<WriteRightAssetInput, 'status'> & {
+  status?: RightAssetStatus | null;
   expectedAssetVersion: number;
 };
 export type WithdrawRightAssetInput = {
@@ -97,6 +114,7 @@ function version(value: unknown): value is RightAssetVersion {
       'name',
       'number',
       'ownerText',
+      'registrationDate',
       'recordedAt',
       'recordedByUserId',
       'trademarkClass',
@@ -104,6 +122,7 @@ function version(value: unknown): value is RightAssetVersion {
       'validFrom',
       'validTo',
       'validityMode',
+      'status',
       'version',
       'withdrawReason',
       'evidence',
@@ -115,11 +134,15 @@ function version(value: unknown): value is RightAssetVersion {
     Number.isInteger(value.version) &&
     typeof value.name === 'string' &&
     typeof value.category === 'string' &&
-    typeof value.holderId === 'string' &&
+    nullableString(value.holderId) &&
     typeof value.recordedByUserId === 'string' &&
     typeof value.recordedAt === 'string' &&
     nullableString(value.number) &&
     nullableString(value.ownerText) &&
+    nullableString(value.registrationDate) &&
+    (value.status === null ||
+      value.status === 'VALID' ||
+      value.status === 'INVALID') &&
     nullableString(value.trademarkClass) &&
     nullableString(value.validFrom) &&
     nullableString(value.validTo) &&
@@ -173,9 +196,11 @@ export async function listRightAssets(
   page = 1,
   pageSize = 20,
   options: RequestOptions = {},
+  view: 'active' | 'withdrawn' | 'all' = 'all',
 ): Promise<RightAssetList> {
+  const viewQuery = view === 'all' ? '' : `&view=${view}`;
   const data = await getJson(
-    `/customers/${encodeURIComponent(customerId)}/right-assets?page=${page}&pageSize=${pageSize}`,
+    `/customers/${encodeURIComponent(customerId)}/right-assets?page=${page}&pageSize=${pageSize}${viewQuery}`,
     options,
   );
   if (
