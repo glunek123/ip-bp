@@ -78,6 +78,8 @@
 | 冒烟（真实浏览器） | `node .local/qa/61-external-actions.mjs` 等 | 三端 0 个 ≥400 响应、0 控制台错误    |
 | 完整门禁           | `pnpm verify`                               | 用于 Level 3／Release 候选，退出码 0 |
 
+> 跑 `pnpm verify` 之前：测试库容器是 tmpfs，重建后为空，必须先 `pnpm --filter @dev-cor/backend db:migrate:deploy:test`，否则数据库类用例会以 `type "case_stage" does not exist` 失败（不是业务缺陷）。
+
 ## 五、上线放行条件（全部满足才可上线）
 
 1. 上文第二节每个节点至少有一次**本轮真实浏览器**通过的证据（截图或 JSON 记录）。
