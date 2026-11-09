@@ -34,6 +34,7 @@ const clientMatterInclude = {
   returnArchive: {
     select: {
       returnChoice: true,
+      fromStage: true,
       archiveReason: true,
       archivedAt: true,
       fromVersion: true,
@@ -113,6 +114,7 @@ export class ClientNotaryService {
           returnArchive: {
             select: {
               returnChoice: true,
+              fromStage: true,
               archiveReason: true,
               archivedAt: true,
               fromVersion: true,
@@ -139,10 +141,10 @@ export class ClientNotaryService {
           (!openingReviewMatchesStage(item.stage, item.openingReviewDecision) &&
             !(
               item.stage === 'ARCHIVED' &&
-              item.openingReviewDecision?.result === 'INFRINGEMENT' &&
-              item.openingReviewDecision.reason === null &&
-              item.openingReviewDecision.archivedAt === null
-            )) ||
+              item.openingReviewDecision?.archivedAt === null &&
+              (item.certificate !== null || item.returnArchive !== null)
+            ) &&
+            !(item.stage === 'ARCHIVED' && item.returnArchive?.fromStage)) ||
           !this.issuanceMatchesStage(
             item.stage,
             item.issuanceDecision,
@@ -284,10 +286,10 @@ export class ClientNotaryService {
       !openingReviewMatchesStage(matter.stage, decision) &&
       !(
         matter.stage === 'ARCHIVED' &&
-        decision?.result === 'INFRINGEMENT' &&
-        decision.reason === null &&
-        decision.archivedAt === null
-      )
+        decision?.archivedAt === null &&
+        (matter.certificate !== null || matter.returnArchive !== null)
+      ) &&
+      !(matter.stage === 'ARCHIVED' && matter.returnArchive?.fromStage)
     )
       throw this.notFound();
     if (
@@ -345,6 +347,7 @@ export class ClientNotaryService {
           ? null
           : {
               returnChoice: matter.returnArchive.returnChoice,
+              fromStage: matter.returnArchive.fromStage,
               archiveReason: matter.returnArchive.archiveReason,
               archivedAt: matter.returnArchive.archivedAt.toISOString(),
             },
@@ -355,7 +358,10 @@ export class ClientNotaryService {
   private issuanceMatchesStage(
     stage: string,
     decision: { decision: 'ISSUE' | 'NO_ISSUE'; decidedAt: Date } | null,
-    review: { result: 'INFRINGEMENT' | 'NO_INFRINGEMENT' } | null,
+    review: {
+      result: 'INFRINGEMENT' | 'NO_INFRINGEMENT';
+      archivedAt: Date | null;
+    } | null,
     certificate: { id: string } | null | undefined,
     archive: ClientMatter['returnArchive'] | undefined,
     matterId: string,
@@ -372,14 +378,41 @@ export class ClientNotaryService {
         certificate == null
       );
     if (stage === 'ARCHIVED') {
-      if (review?.result === 'NO_INFRINGEMENT')
-        return decision == null && certificate == null && archive == null;
+      if (archive?.fromStage && archive.fromStage !== 'WAITING_RETURN') {
+        const upstreamMatches =
+          archive.fromStage === 'UNBOX_REVIEW'
+            ? review == null && decision == null
+            : archive.fromStage === 'ISSUANCE_DECISION'
+              ? review != null && review.archivedAt == null && decision == null
+              : archive.fromStage === 'WAITING_CERTIFICATE'
+                ? review != null &&
+                  review.archivedAt == null &&
+                  decision?.decision === 'ISSUE'
+                : false;
+        return (
+          upstreamMatches &&
+          certificate == null &&
+          archive.returnChoice == null &&
+          archive.amounts.length === 0 &&
+          archive.archiveReason.trim() === archive.archiveReason &&
+          Array.from(archive.archiveReason).length > 0 &&
+          Array.from(archive.archiveReason).length <= 5000 &&
+          archive.archivedAt instanceof Date &&
+          archive.fromVersion === version - 1 &&
+          archive.toVersion === version
+        );
+      }
+      if (review?.result === 'NO_INFRINGEMENT' && archive == null)
+        return (
+          review.archivedAt !== null && decision == null && certificate == null
+        );
       if (decision?.decision === 'ISSUE')
         return certificate != null && archive == null;
       return (
         decision?.decision === 'NO_ISSUE' &&
         certificate == null &&
         archive != null &&
+        archive.returnChoice !== null &&
         ['RETURN', 'KEEP', 'REFUND_ONLY'].includes(archive.returnChoice) &&
         archive.archiveReason.trim() === archive.archiveReason &&
         Array.from(archive.archiveReason).length > 0 &&

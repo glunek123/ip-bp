@@ -272,7 +272,13 @@ let pendingProof: {
 } | null = null;
 const unknownProof = ref(false);
 function chooseProof(row: FeeRow): void {
-  if (row.sourceRows || !props.canUpdate || saving.value || unknownProof.value)
+  if (
+    row.sourceRows ||
+    row.caseId === null ||
+    !props.canUpdate ||
+    saving.value ||
+    unknownProof.value
+  )
     return;
   proofTarget = row;
   proofInput.value?.click();
@@ -316,7 +322,14 @@ async function uploadProof(event: { target: unknown }): Promise<void> {
   const row = proofTarget;
   input.value = '';
   proofTarget = null;
-  if (!file || !row || !props.canUpdate || saving.value || unknownProof.value)
+  if (
+    !file ||
+    !row ||
+    row.caseId === null ||
+    !props.canUpdate ||
+    saving.value ||
+    unknownProof.value
+  )
     return;
   const originalIdentity = identity.value;
   saving.value = true;
@@ -347,7 +360,7 @@ async function uploadProof(event: { target: unknown }): Promise<void> {
   }
 }
 async function clearProof(row: FeeRow): Promise<void> {
-  if (row.sourceRows) return;
+  if (row.sourceRows || row.caseId === null) return;
   if (
     !props.canUpdate ||
     saving.value ||
@@ -367,7 +380,8 @@ async function clearProof(row: FeeRow): Promise<void> {
   await saveProof();
 }
 async function cancelOriginalFee(row: FeeRow): Promise<void> {
-  if (row.sourceRows || !props.canDelete || saving.value) return;
+  if (row.sourceRows || row.caseId === null || !props.canDelete || saving.value)
+    return;
   const scope = pendingScope.value;
   if (!pendingCancellation.value) {
     const reason = globalThis.prompt(
@@ -522,7 +536,9 @@ async function load(): Promise<void> {
       selectionSources.set(source.id, source);
     unknownUpdate.value = false;
     total.value = result.total;
-    matchingIds.value = result.matchingIds;
+    matchingIds.value = result.matchingSources
+      .filter((source) => source.caseId !== null)
+      .map((source) => source.id);
     summary.value = result.summary;
     state.value = 'ready';
   } catch (cause) {
@@ -789,6 +805,7 @@ async function batch(
 async function setStatus(row: FeeRow, status: unknown): Promise<void> {
   if (
     row.sourceRows ||
+    row.caseId === null ||
     typeof status !== 'string' ||
     saving.value ||
     status === row.status ||
@@ -815,6 +832,7 @@ async function setStatus(row: FeeRow, status: unknown): Promise<void> {
 async function setNote(row: FeeRow, value: unknown): Promise<void> {
   if (
     row.sourceRows ||
+    row.caseId === null ||
     typeof value !== 'string' ||
     saving.value ||
     !props.canUpdate ||
@@ -1063,7 +1081,7 @@ onBeforeUnmount(() => {
                   v-else
                   :model-value="selected.has(row.id)"
                   :aria-label="`选择 ${row.businessNo} ${row.type}`"
-                  :disabled="unknownBatch"
+                  :disabled="unknownBatch || row.caseId === null"
                   @change="toggle(row.id)"
                 />
               </td>
@@ -1089,7 +1107,11 @@ onBeforeUnmount(() => {
                   v-if="!isNet"
                   :model-value="row.status"
                   :disabled="
-                    saving || unknownBatch || unknownUpdate || !props.canUpdate
+                    saving ||
+                    unknownBatch ||
+                    unknownUpdate ||
+                    !props.canUpdate ||
+                    row.caseId === null
                   "
                   @change="setStatus(row, $event)"
                   ><ElOption
@@ -1117,13 +1139,18 @@ onBeforeUnmount(() => {
                 {{ row.defendantNames.join('、') || '—' }}
               </td>
               <td v-if="columns.case">
-                <RouterLink :to="`/cases/${row.caseId}`">{{
+                <RouterLink v-if="row.caseId" :to="`/cases/${row.caseId}`">{{
                   row.courtCaseNo ?? row.businessNo
                 }}</RouterLink>
+                <RouterLink
+                  v-else-if="row.notaryMatterId"
+                  :to="`/notary-matters/${row.notaryMatterId}`"
+                  >{{ row.businessNo }} · 公证阶段</RouterLink
+                >
               </td>
               <td v-if="columns.note">
                 <ElInput
-                  v-if="props.canUpdate && !isNet"
+                  v-if="props.canUpdate && !isNet && row.caseId !== null"
                   v-model="noteDrafts[row.id]"
                   :aria-label="`${row.businessNo} ${row.type}备注`"
                   :maxlength="500"
@@ -1141,7 +1168,7 @@ onBeforeUnmount(() => {
                     @click="downloadProof(row)"
                     >{{ row.proofOriginalFilename || '下载凭证' }}</ElButton
                   ><span v-else>未上传</span
-                  ><template v-if="props.canUpdate"
+                  ><template v-if="props.canUpdate && row.caseId !== null"
                     ><ElButton
                       link
                       :disabled="saving || unknownProof"

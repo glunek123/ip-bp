@@ -183,10 +183,7 @@ export class NotaryOpeningReviewService {
                 code: 'OPENING_PHOTO_REQUIRED',
                 message: '尚无已冻结的开箱照片',
               });
-            const stage =
-              request.result === 'INFRINGEMENT'
-                ? 'ISSUANCE_DECISION'
-                : 'ARCHIVED';
+            const stage = 'ISSUANCE_DECISION';
             const changed = await tx.notaryMatter.updateMany({
               where: {
                 id: matterId,
@@ -198,7 +195,6 @@ export class NotaryOpeningReviewService {
             });
             if (changed.count !== 1) throw this.versionConflict();
             const decidedAt = new Date();
-            const archivedAt = stage === 'ARCHIVED' ? decidedAt : null;
             const decision = await tx.notaryOpeningReviewDecision.create({
               data: {
                 matterId,
@@ -212,7 +208,7 @@ export class NotaryOpeningReviewService {
                 actorDisplayNameSnapshot: actorDisplayName.trim(),
                 result: request.result,
                 reason: request.reason,
-                archivedAt,
+                archivedAt: null,
                 decidedAt,
                 fromVersion: request.expectedVersion,
                 toVersion: request.expectedVersion + 1,
@@ -228,7 +224,7 @@ export class NotaryOpeningReviewService {
                 actorKind,
                 actorDisplayName: actorDisplayName.trim(),
                 decidedAt: decision.decidedAt.toISOString(),
-                archivedAt: archivedAt?.toISOString() ?? null,
+                archivedAt: null,
               },
             };
             await tx.notaryOpeningReviewAuditEvent.create({
@@ -302,10 +298,15 @@ export class NotaryOpeningReviewService {
         expectedVersion: input.expectedVersion,
       };
     }
-    if (input.result !== 'NO_INFRINGEMENT' || typeof input.reason !== 'string')
+    if (input.result !== 'NO_INFRINGEMENT') throw this.validation();
+    if (
+      input.reason !== undefined &&
+      input.reason !== null &&
+      typeof input.reason !== 'string'
+    )
       throw this.validation();
-    const reason = input.reason.trim();
-    if (reason.length < 1 || reason.length > 2000) throw this.validation();
+    const reason = input.reason?.trim() || null;
+    if (reason !== null && reason.length > 2000) throw this.validation();
     return {
       matterId,
       result: input.result,
@@ -385,13 +386,16 @@ export class NotaryOpeningReviewService {
           snapshot.reason !== null ||
           snapshot.archivedAt !== null)) ||
       (snapshot.result === 'NO_INFRINGEMENT' &&
-        (result.stage !== 'ARCHIVED' ||
-          typeof snapshot.reason !== 'string' ||
-          snapshot.reason.trim() !== snapshot.reason ||
-          snapshot.reason.length < 1 ||
-          snapshot.reason.length > 2000 ||
-          typeof snapshot.archivedAt !== 'string' ||
-          snapshot.archivedAt !== snapshot.decidedAt))
+        ((snapshot.reason !== null &&
+          (typeof snapshot.reason !== 'string' ||
+            snapshot.reason.trim() !== snapshot.reason ||
+            snapshot.reason.length < 1 ||
+            snapshot.reason.length > 2000)) ||
+          (result.stage === 'ARCHIVED'
+            ? snapshot.reason === null ||
+              snapshot.archivedAt !== snapshot.decidedAt
+            : result.stage !== 'ISSUANCE_DECISION' ||
+              snapshot.archivedAt !== null)))
     )
       throw this.corruptReceipt();
     const stored = await tx.notaryOpeningReviewDecision.findUnique({

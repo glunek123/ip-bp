@@ -42,26 +42,55 @@ function validInput(input: ArchiveNotaryReturnBatchInput): boolean {
     !uuidPattern.test(input.matterId) ||
     !Number.isInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
-    !['RETURN', 'KEEP', 'REFUND_ONLY'].includes(input.returnChoice) ||
+    (input.returnChoice !== undefined &&
+      !['RETURN', 'KEEP', 'REFUND_ONLY'].includes(input.returnChoice)) ||
     typeof input.archiveReason !== 'string' ||
     !input.archiveReason.trim() ||
     [...input.archiveReason.trim()].length > 5000
   )
     return false;
-  const keys = ['matterId', 'returnChoice', 'archiveReason', 'expectedVersion'];
+  const keys = ['matterId', 'archiveReason', 'expectedVersion'];
+  if (input.returnChoice !== undefined) keys.push('returnChoice');
+  if (input.archiveType !== undefined)
+    keys.push(
+      'archiveType',
+      'archiveDate',
+      'notaryFeeAmount',
+      'sampleFeeAmount',
+    );
   if (input.refund !== undefined) keys.push('refund');
   if (input.freight !== undefined) keys.push('freight');
   if (!exactKeys(input, keys)) return false;
   const validChoice =
-    (input.returnChoice === 'RETURN' &&
-      input.refund !== undefined &&
-      input.freight !== undefined) ||
-    (input.returnChoice === 'REFUND_ONLY' &&
-      input.refund !== undefined &&
-      input.freight === undefined) ||
-    (input.returnChoice === 'KEEP' &&
-      input.refund === undefined &&
-      input.freight === undefined);
+    input.archiveType !== undefined
+      ? [
+          'LINK_REMOVED',
+          'NO_INFRINGEMENT_INFORMATION',
+          'NO_EVIDENCE',
+          'NOT_SHIPPED_REFUND_ONLY',
+          'RECEIVED_KEEP',
+          'RECEIVED_RETURN_REFUND',
+        ].includes(input.archiveType) &&
+        !!input.archiveDate &&
+        /^\d{4}-\d{2}-\d{2}$/u.test(input.archiveDate) &&
+        !!input.notaryFeeAmount &&
+        /^(0|[1-9]\d{0,15})\.\d{2}$/u.test(input.notaryFeeAmount) &&
+        !!input.sampleFeeAmount &&
+        /^(0|[1-9]\d{0,15})\.\d{2}$/u.test(input.sampleFeeAmount) &&
+        (input.refund === undefined ||
+          isValidNotaryReturnAmountInput(input.refund)) &&
+        (input.freight === undefined ||
+          isValidNotaryReturnAmountInput(input.freight))
+      : input.returnChoice !== undefined &&
+        ((input.returnChoice === 'RETURN' &&
+          input.refund !== undefined &&
+          input.freight !== undefined) ||
+          (input.returnChoice === 'REFUND_ONLY' &&
+            input.refund !== undefined &&
+            input.freight === undefined) ||
+          (input.returnChoice === 'KEEP' &&
+            input.refund === undefined &&
+            input.freight === undefined));
   return (
     validChoice &&
     (input.refund === undefined ||
@@ -103,8 +132,16 @@ function matchesInput(
     result.stage === 'ARCHIVED' &&
     result.version === input.expectedVersion + 1 &&
     isNotaryReturnArchiveSummary(result.returnArchive) &&
-    result.returnArchive.returnChoice === input.returnChoice &&
+    result.returnArchive.returnChoice === (input.returnChoice ?? null) &&
     result.returnArchive.archiveReason === input.archiveReason.trim() &&
+    (input.archiveType === undefined ||
+      result.returnArchive.archiveType === input.archiveType) &&
+    (input.archiveDate === undefined ||
+      result.returnArchive.archiveDate === input.archiveDate) &&
+    (input.notaryFeeAmount === undefined ||
+      result.returnArchive.notaryFeeAmount === input.notaryFeeAmount) &&
+    (input.sampleFeeAmount === undefined ||
+      result.returnArchive.sampleFeeAmount === input.sampleFeeAmount) &&
     sameAmount(result.returnArchive.refund, input.refund) &&
     sameAmount(result.returnArchive.freight, input.freight)
   );
@@ -130,10 +167,18 @@ export async function archiveNotaryReturnBatch(
   const body = {
     items: items.map((item) => ({
       matterId: item.matterId.toLowerCase(),
-      returnChoice: item.returnChoice,
+      ...(item.returnChoice ? { returnChoice: item.returnChoice } : {}),
       ...(item.refund ? { refund: { ...item.refund } } : {}),
       ...(item.freight ? { freight: { ...item.freight } } : {}),
       archiveReason: item.archiveReason.trim(),
+      ...(item.archiveType ? { archiveType: item.archiveType } : {}),
+      ...(item.archiveDate ? { archiveDate: item.archiveDate } : {}),
+      ...(item.notaryFeeAmount
+        ? { notaryFeeAmount: item.notaryFeeAmount }
+        : {}),
+      ...(item.sampleFeeAmount
+        ? { sampleFeeAmount: item.sampleFeeAmount }
+        : {}),
       expectedVersion: item.expectedVersion,
     })),
   };

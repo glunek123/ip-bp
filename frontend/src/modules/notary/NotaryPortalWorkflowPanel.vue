@@ -56,6 +56,15 @@ const success = ref('');
 const downloadError = ref('');
 const certificateNo = ref('');
 const certificateDate = ref('');
+const sampleFeeAmount = ref(
+  props.detail.evidence?.sampleFeeState === 'KNOWN'
+    ? (props.detail.evidence.sampleFeeAmount ?? '')
+    : '',
+);
+const needDisclose = ref(matter.value.disclosureRequired);
+const disclosureInfo = ref('');
+const certificateDraftMessage = ref('');
+const certificateDraftLoaded = ref(false);
 const selectedCertificateIds = ref<Set<string>>(new Set());
 const selectedDisclosureIds = ref<Set<string>>(new Set());
 const feeStates = ref({
@@ -66,7 +75,6 @@ const feeStates = ref({
 const feeAmounts = ref({ notary: '', investigation: '', disclosure: '' });
 const certificateSuccess = ref('');
 const feeCategories = [
-  { key: 'notary', label: '公证费' },
   { key: 'investigation', label: '调查费' },
   { key: 'disclosure', label: '披露费' },
 ] as const;
@@ -81,7 +89,9 @@ const canSubmitCertificate = computed(
     certificateFiles.value.filter((file) =>
       selectedCertificateIds.value.has(file.contentVersionId),
     ).length <= 10 &&
-    (!matter.value?.disclosureRequired ||
+    /^(0|[1-9]\d{0,15})\.\d{2}$/u.test(sampleFeeAmount.value) &&
+    /^\d+(?:\.\d{1,2})?$/u.test(feeAmounts.value.notary) &&
+    (!needDisclose.value ||
       (disclosureFiles.value.some((file) =>
         selectedDisclosureIds.value.has(file.contentVersionId),
       ) &&
@@ -160,14 +170,26 @@ async function refreshMaterials(): Promise<void> {
   const response = await listOwnerMaterials('NOTARY_MATTER', matterId.value);
   if (!active || !props.session.isCurrent()) return;
   materials.value = response.items;
-  selectedCertificateIds.value = new Set([
-    ...certificateFiles.value.map((file) => file.contentVersionId),
-    ...selectedCertificateIds.value,
-  ]);
-  selectedDisclosureIds.value = new Set([
-    ...disclosureFiles.value.map((file) => file.contentVersionId),
-    ...selectedDisclosureIds.value,
-  ]);
+  const availableCertificates = certificateFiles.value.map(
+    (file) => file.contentVersionId,
+  );
+  const availableDisclosure = disclosureFiles.value.map(
+    (file) => file.contentVersionId,
+  );
+  selectedCertificateIds.value = certificateDraftLoaded.value
+    ? new Set(
+        [...selectedCertificateIds.value].filter((id) =>
+          availableCertificates.includes(id),
+        ),
+      )
+    : new Set([...availableCertificates, ...selectedCertificateIds.value]);
+  selectedDisclosureIds.value = certificateDraftLoaded.value
+    ? new Set(
+        [...selectedDisclosureIds.value].filter((id) =>
+          availableDisclosure.includes(id),
+        ),
+      )
+    : new Set([...availableDisclosure, ...selectedDisclosureIds.value]);
 }
 
 async function uploadCertificateFiles(
@@ -244,6 +266,56 @@ function updateCertificateSelection(
   if (kind === 'certificate') selectedCertificateIds.value = next;
   else selectedDisclosureIds.value = next;
 }
+const certificateDraftKey = `notary-certificate-draft:${JSON.stringify([props.session.context.actorKey, props.detail.id, props.detail.version])}`;
+function loadCertificateDraft(): void {
+  const saved = globalThis.localStorage.getItem(certificateDraftKey);
+  if (!saved) return;
+  certificateDraftLoaded.value = true;
+  const draft: unknown = JSON.parse(saved);
+  if (!draft || typeof draft !== 'object') return;
+  const value = draft as Record<string, unknown>;
+  if (typeof value.certificateNo === 'string')
+    certificateNo.value = value.certificateNo;
+  if (typeof value.certificateDate === 'string')
+    certificateDate.value = value.certificateDate;
+  if (typeof value.sampleFeeAmount === 'string')
+    sampleFeeAmount.value = value.sampleFeeAmount;
+  if (typeof value.needDisclose === 'boolean')
+    needDisclose.value = value.needDisclose;
+  if (typeof value.disclosureInfo === 'string')
+    disclosureInfo.value = value.disclosureInfo;
+  if (value.feeStates && typeof value.feeStates === 'object')
+    Object.assign(feeStates.value, value.feeStates);
+  if (value.feeAmounts && typeof value.feeAmounts === 'object')
+    Object.assign(feeAmounts.value, value.feeAmounts);
+  if (Array.isArray(value.certificateIds))
+    selectedCertificateIds.value = new Set(
+      value.certificateIds.filter((id): id is string => typeof id === 'string'),
+    );
+  if (Array.isArray(value.disclosureIds))
+    selectedDisclosureIds.value = new Set(
+      value.disclosureIds.filter((id): id is string => typeof id === 'string'),
+    );
+  certificateDraftMessage.value = '已读取此浏览器保存的出证草稿。';
+}
+function saveCertificateDraft(): void {
+  globalThis.localStorage.setItem(
+    certificateDraftKey,
+    JSON.stringify({
+      certificateNo: certificateNo.value,
+      certificateDate: certificateDate.value,
+      sampleFeeAmount: sampleFeeAmount.value,
+      needDisclose: needDisclose.value,
+      disclosureInfo: disclosureInfo.value,
+      feeStates: feeStates.value,
+      feeAmounts: feeAmounts.value,
+      certificateIds: [...selectedCertificateIds.value],
+      disclosureIds: [...selectedDisclosureIds.value],
+    }),
+  );
+  certificateDraftMessage.value = '出证草稿已保存在此浏览器。';
+}
+loadCertificateDraft();
 async function submitCertificate(): Promise<void> {
   if (
     !matter.value?.capabilities.issueCertificate ||
@@ -260,13 +332,17 @@ async function submitCertificate(): Promise<void> {
       expectedVersion: matter.value.version,
       certificateNo: certificateNo.value.trim(),
       certificateDate: certificateDate.value,
+      sampleFeeAmount: sampleFeeAmount.value,
+      ...(disclosureInfo.value.trim()
+        ? { disclosureInfo: disclosureInfo.value.trim() }
+        : {}),
+      needDisclose: needDisclose.value,
       contentVersionIds: certificateFiles.value
         .filter((file) =>
           selectedCertificateIds.value.has(file.contentVersionId),
         )
         .map((file) => file.contentVersionId),
-      needDisclose: matter.value.disclosureRequired,
-      disclosureContentVersionIds: matter.value.disclosureRequired
+      disclosureContentVersionIds: needDisclose.value
         ? disclosureFiles.value
             .filter((file) =>
               selectedDisclosureIds.value.has(file.contentVersionId),
@@ -275,9 +351,8 @@ async function submitCertificate(): Promise<void> {
         : [],
       fees: {
         notary: {
-          state: feeStates.value.notary,
-          amount:
-            feeStates.value.notary === 'KNOWN' ? feeAmounts.value.notary : null,
+          state: 'KNOWN',
+          amount: feeAmounts.value.notary,
         },
         investigation: {
           state: feeStates.value.investigation,
@@ -786,23 +861,33 @@ onBeforeUnmount(() => {
           >
         </li>
       </ul>
-      <label
-        ><input
-          :checked="matter.disclosureRequired"
-          data-test="disclosure-toggle"
-          type="checkbox"
-          disabled
-        />
-        {{
-          matter.disclosureRequired
-            ? '来源线索要求披露材料'
-            : '来源线索不要求披露材料'
-        }}</label
+      <label class="field-label" for="need-disclose"
+        >是否需要披露<RequiredFieldMark
+      /></label>
+      <select
+        id="need-disclose"
+        v-model="needDisclose"
+        data-test="disclosure-toggle"
+        class="text-input"
+        :disabled="submitting || uploading"
       >
-      <p v-if="matter.disclosureRequired" class="field-help">
-        来源线索要求披露材料，至少选择一份披露文件后才能出证。
+        <option :value="true">是</option>
+        <option :value="false">否</option>
+      </select>
+      <p class="field-help">
+        来源线索披露要求：{{
+          matter.disclosureRequired ? '需要' : '不需要'
+        }}。本次选择单独记录。
       </p>
-      <template v-if="matter.disclosureRequired">
+      <template v-if="needDisclose">
+        <label class="field-label field-label--spaced"
+          >披露信息<input
+            v-model="disclosureInfo"
+            class="text-input"
+            data-test="disclosure-info"
+            maxlength="2000"
+            :disabled="submitting || uploading"
+        /></label>
         <label class="field-label field-label--spaced"
           >披露文件（PDF、JPEG、PNG；单个不超过 50 MB，最多 10
           个）<RequiredFieldMark /><input
@@ -840,13 +925,36 @@ onBeforeUnmount(() => {
         </ul>
       </template>
       <h3 class="form-section-title">费用记录</h3>
-      <p>
-        样品费沿用取证记录，出证时不可修改：{{
-          matter.evidence?.sampleFeeState === 'KNOWN'
-            ? `¥ ${matter.evidence.sampleFeeAmount}`
-            : '待确认'
-        }}
-      </p>
+      <label
+        class="field-label field-label--spaced"
+        for="certificate-sample-fee"
+        >样品费 <RequiredFieldMark
+      /></label>
+      <input
+        id="certificate-sample-fee"
+        v-model="sampleFeeAmount"
+        data-test="certificate-sample-fee"
+        class="text-input"
+        inputmode="decimal"
+        placeholder="金额（元）"
+        required
+        :disabled="submitting || uploading"
+      />
+      <label
+        class="field-label field-label--spaced"
+        for="certificate-notary-fee"
+        >公证费 <RequiredFieldMark
+      /></label>
+      <input
+        id="certificate-notary-fee"
+        v-model="feeAmounts.notary"
+        data-test="fee-notary-amount"
+        class="text-input"
+        inputmode="decimal"
+        placeholder="金额（元）"
+        required
+        :disabled="submitting || uploading"
+      />
       <div v-for="fee in feeCategories" :key="fee.key">
         <label class="field-label field-label--spaced">{{ fee.label }}</label>
         <select
@@ -873,6 +981,15 @@ onBeforeUnmount(() => {
         {{ uploadError }}
       </p>
       <p v-if="error" class="submit-error" role="alert">{{ error }}</p>
+      <p v-if="certificateDraftMessage" role="status">
+        {{ certificateDraftMessage }}
+      </p>
+      <ElButton
+        data-test="certificate-save-draft"
+        :disabled="submitting || uploading"
+        @click="saveCertificateDraft"
+        >保存草稿</ElButton
+      >
       <ElButton
         type="primary"
         data-test="certificate-submit"

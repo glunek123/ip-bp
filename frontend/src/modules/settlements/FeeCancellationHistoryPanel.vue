@@ -307,7 +307,7 @@ async function uploadProof(
   if (!(input instanceof globalThis.HTMLInputElement)) return;
   const file = input.files?.[0];
   input.value = '';
-  if (!file || !history.value) return;
+  if (!file || !history.value || history.value.caseId === null) return;
   const row = history.value;
   const originalIdentity = identity.value;
   const ctx = `${originalIdentity}:${row.id}`;
@@ -315,7 +315,7 @@ async function uploadProof(
   try {
     const r = await uploadMaterialFile({
       ownerType: 'CASE',
-      ownerId: row.caseId,
+      ownerId: row.caseId!,
       category: 'FEE_PROOF',
       purpose: 'FEE_PROOF',
       file,

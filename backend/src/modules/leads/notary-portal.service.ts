@@ -102,6 +102,7 @@ export class NotaryPortalService {
         version: true,
         createdAt: true,
         sourceLead: { select: { needDisclose: true } },
+        costs: { where: { category: 'SAMPLE' } },
         evidence: {
           select: {
             evidenceAt: true,
@@ -162,6 +163,8 @@ export class NotaryPortalService {
             certificateDate: true,
             issuedAt: true,
             needDisclose: true,
+            disclosureInfo: true,
+            sampleFeeAmount: true,
             case: { select: { id: true, businessNo: true } },
           },
         },
@@ -247,6 +250,7 @@ export class NotaryPortalService {
       originalFilename: ref.contentVersion.originalFilename,
       mimeType: ref.contentVersion.mimeType,
     });
+    const effectiveSample = matter.costs?.[0];
     return {
       id: matter.id,
       businessNo: matter.businessNo,
@@ -264,9 +268,13 @@ export class NotaryPortalService {
               )
                 .toISOString()
                 .slice(0, 10),
-              sampleFeeState: matter.evidence.sampleFeeState,
+              sampleFeeState:
+                effectiveSample?.state ?? matter.evidence.sampleFeeState,
               sampleFeeAmount:
-                matter.evidence.sampleFeeAmount?.toFixed(2) ?? null,
+                (effectiveSample
+                  ? effectiveSample.amount
+                  : matter.evidence.sampleFeeAmount
+                )?.toFixed(2) ?? null,
               logistics:
                 matter.evidenceCorrections[0]?.logistics ??
                 matter.evidence.logistics,
@@ -323,6 +331,15 @@ export class NotaryPortalService {
                 .slice(0, 10),
               issuedAt: matter.certificate.issuedAt.toISOString(),
               needDisclose: matter.certificate.needDisclose,
+              ...(matter.certificate.disclosureInfo
+                ? { disclosureInfo: matter.certificate.disclosureInfo }
+                : {}),
+              ...(matter.certificate.sampleFeeAmount != null
+                ? {
+                    sampleFeeAmount:
+                      matter.certificate.sampleFeeAmount.toFixed(2),
+                  }
+                : {}),
               files: frozen
                 .filter((ref) => ref.purpose === 'NOTARY_CERTIFICATE')
                 .map(file),

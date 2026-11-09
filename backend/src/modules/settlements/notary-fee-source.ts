@@ -1,5 +1,9 @@
 import { ConflictException } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
+import {
+  linkNotaryFeesToCase,
+  syncNotaryMatterCost,
+} from './notary-cost-source';
 
 /** Called only by the trusted issuance transaction, after its source audit. */
 export type InitializeNotaryFeesFacts = Readonly<{
@@ -66,30 +70,41 @@ export async function initializeNotaryFees(
     source.departmentId !== facts.departmentId
   )
     throw invalid();
-  const types = {
-    NOTARY: '公证费',
-    INVESTIGATION: '调查费',
-    DISCLOSURE: '披露费',
-  } as const;
-  const candidates = [
-    ...certificate.fees.map((fee) => ({
-      type: types[fee.category],
+  const notaryFee = certificate.fees.find((fee) => fee.category === 'NOTARY');
+  if (notaryFee === undefined) throw invalid();
+  const sampleAmount = certificate.sampleFeeAmount ?? source.sampleFeeAmount;
+  const sampleState =
+    certificate.sampleFeeAmount == null ? source.sampleFeeState : 'KNOWN';
+  const sample = await syncNotaryMatterCost(tx, {
+    departmentId: facts.departmentId,
+    matterId: facts.matterId,
+    category: 'SAMPLE',
+    state: sampleState,
+    amount: sampleAmount?.toFixed(2) ?? null,
+    feeDate: source.evidenceAt,
+    sourceActionEventId: event.id,
+  });
+  const notary = await syncNotaryMatterCost(tx, {
+    departmentId: facts.departmentId,
+    matterId: facts.matterId,
+    category: 'NOTARY',
+    state: notaryFee.state,
+    amount: notaryFee.amount?.toFixed(2) ?? null,
+    feeDate: certificate.certificateDate,
+    sourceActionEventId: event.id,
+  });
+  await linkNotaryFeesToCase(tx, facts);
+  const candidates = certificate.fees
+    .filter((fee) => fee.category !== 'NOTARY')
+    .map((fee) => ({
+      type: fee.category === 'INVESTIGATION' ? '调查费' : '披露费',
       state: fee.state,
       amount: fee.amount,
       feeDate: certificate.certificateDate,
       sourceKind: 'NOTARY_CERTIFICATE_FEE',
       sourceId: `${certificate.id}:${fee.category}`,
-    })),
-    {
-      type: '样品费',
-      state: source.sampleFeeState,
-      amount: source.sampleFeeAmount,
-      feeDate: source.evidenceAt,
-      sourceKind: 'NOTARY_MATTER_EVIDENCE',
-      sourceId: `${source.matterId}:sample`,
-    },
-  ];
-  let createdCount = 0;
+    }));
+  let createdCount = Number(sample.created) + Number(notary.created);
   for (const candidate of candidates) {
     // PENDING is a fact; it must never be converted to an invented zero.
     if (candidate.state !== 'KNOWN') continue;
@@ -125,6 +140,7 @@ export async function initializeNotaryFees(
       data: {
         ...identity,
         caseId: facts.caseId,
+        notaryMatterId: facts.matterId,
         type: candidate.type,
         direction: '支出',
         status: '未发起',

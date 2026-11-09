@@ -10,7 +10,7 @@ const review = {
 
 describe('issuance stage read invariants', () => {
   it.each(['WAITING_CERTIFICATE', 'WAITING_RETURN'] as const)(
-    '%s retains infringement opening review',
+    '%s retains either opening review result',
     (stage) => {
       expect(openingReviewMatchesStage(stage, review)).toBe(true);
       expect(openingReviewMatchesStage(stage, null)).toBe(false);
@@ -20,7 +20,7 @@ describe('issuance stage read invariants', () => {
           result: 'NO_INFRINGEMENT',
           reason: '否',
         }),
-      ).toBe(false);
+      ).toBe(true);
     },
   );
 });

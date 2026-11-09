@@ -145,7 +145,7 @@ describe('NotaryOpeningReviewService', () => {
       expectedVersion: 3,
     });
     expect(result).toMatchObject({
-      stage: 'ARCHIVED',
+      stage: 'ISSUANCE_DECISION',
       reviewDecision: { reason: '无侵权' },
     });
     expect(f.access.authorizeLead).not.toHaveBeenCalled();
@@ -153,7 +153,7 @@ describe('NotaryOpeningReviewService', () => {
       data: expect.objectContaining({
         actorKind: 'CLIENT',
         customerAccountBindingId: expect.any(String),
-        archivedAt: expect.any(Date),
+        archivedAt: null,
       }),
     });
   });
@@ -249,6 +249,42 @@ describe('NotaryOpeningReviewService', () => {
     expect(f.tx.notaryOpeningReviewAuditEvent.create).not.toHaveBeenCalled();
   });
 
+  it('replays a historical no-infringement archive without changing its result', async () => {
+    const f = fixture();
+    const request = {
+      result: 'NO_INFRINGEMENT' as const,
+      reason: '旧归档原因',
+      expectedVersion: 3,
+    };
+    const recorded = await f.service.review(
+      internal,
+      matterId,
+      'old-key',
+      request,
+    );
+    const receipt =
+      f.tx.notaryOpeningReviewReceipt.create.mock.calls[0][0].data;
+    const previous = {
+      ...recorded,
+      stage: 'ARCHIVED',
+      reviewDecision: {
+        ...recorded.reviewDecision,
+        archivedAt: recorded.reviewDecision.decidedAt,
+      },
+    };
+    f.tx.notaryOpeningReviewReceipt.findUnique.mockResolvedValue({
+      ...receipt,
+      resultSnapshot: previous,
+    });
+    f.tx.notaryOpeningReviewDecision.findUnique.mockResolvedValue({
+      ...f.tx.notaryOpeningReviewDecision.create.mock.calls[0][0].data,
+      archivedAt: new Date(recorded.reviewDecision.decidedAt),
+    });
+    await expect(
+      f.service.review(internal, matterId, 'old-key', request),
+    ).resolves.toEqual(previous);
+  });
+
   it('rejects a replay snapshot with missing decision fields', async () => {
     const f = await committedReplayFixture();
     f.tx.notaryOpeningReviewReceipt.findUnique.mockResolvedValue({
@@ -316,7 +352,11 @@ describe('NotaryOpeningReviewService', () => {
 
   it('validates reason and key before starting a transaction', async () => {
     for (const invalid of [
-      { result: 'NO_INFRINGEMENT' as const, expectedVersion: 3, reason: ' ' },
+      {
+        result: 'NO_INFRINGEMENT' as const,
+        expectedVersion: 3,
+        reason: 'x'.repeat(2001),
+      },
       {
         result: 'INFRINGEMENT' as const,
         expectedVersion: 3,

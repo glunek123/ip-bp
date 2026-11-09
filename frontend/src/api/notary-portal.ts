@@ -57,6 +57,8 @@ export type NotaryPortalMatter = Omit<NotaryPortalMatterSummary, 'stage'> & {
     files: NotaryPortalFile[];
     disclosureFiles: NotaryPortalFile[];
     needDisclose: boolean;
+    sampleFeeAmount?: string;
+    disclosureInfo?: string;
     caseId: string | null;
     caseBusinessNo: string | null;
   } | null;
@@ -73,6 +75,8 @@ export type NotaryPortalCertificateInput = {
   expectedVersion: number;
   certificateNo: string;
   certificateDate: string;
+  sampleFeeAmount?: string;
+  disclosureInfo?: string;
   contentVersionIds: string[];
   needDisclose: boolean;
   disclosureContentVersionIds: string[];
@@ -376,6 +380,11 @@ export async function recordNotaryPortalCertificate(
     input.expectedVersion < 1 ||
     !input.certificateNo.trim() ||
     !/^\d{4}-\d{2}-\d{2}$/u.test(input.certificateDate) ||
+    (input.sampleFeeAmount !== undefined &&
+      !/^(0|[1-9]\d{0,15})\.\d{2}$/u.test(input.sampleFeeAmount)) ||
+    (input.disclosureInfo !== undefined &&
+      (input.disclosureInfo.length > 2000 ||
+        (!input.needDisclose && input.disclosureInfo.trim().length > 0))) ||
     input.contentVersionIds.length < 1 ||
     input.contentVersionIds.length > 10 ||
     new Set(input.contentVersionIds).size !== input.contentVersionIds.length ||
@@ -426,6 +435,12 @@ export async function recordNotaryPortalCertificate(
       'files',
       'needDisclose',
       'disclosureFiles',
+      ...(responseCertificate.sampleFeeAmount === undefined
+        ? []
+        : ['sampleFeeAmount']),
+      ...(responseCertificate.disclosureInfo === undefined
+        ? []
+        : ['disclosureInfo']),
     ]) ||
     responseCertificate.certificateNo !== input.certificateNo.trim() ||
     responseCertificate.certificateDate !== input.certificateDate ||
@@ -438,6 +453,10 @@ export async function recordNotaryPortalCertificate(
       ),
     ) ||
     responseCertificate.needDisclose !== input.needDisclose ||
+    (input.sampleFeeAmount !== undefined &&
+      responseCertificate.sampleFeeAmount !== input.sampleFeeAmount) ||
+    (responseCertificate.disclosureInfo !== undefined &&
+      responseCertificate.disclosureInfo !== (input.disclosureInfo ?? '')) ||
     !responseDisclosureFiles.every(validFile) ||
     responseDisclosureFiles.length !==
       input.disclosureContentVersionIds.length ||

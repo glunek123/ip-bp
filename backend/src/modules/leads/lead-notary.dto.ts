@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
@@ -206,7 +206,61 @@ export class NotaryRecordEditsResponseDto {
   openingSender!: NotaryOpeningSenderEditGroupResponseDto | null;
 }
 
+export class SaveNotaryEvidenceDraftDto {
+  @ApiPropertyOptional({ maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  shopName?: string | null;
+
+  @ApiPropertyOptional({ format: 'date' })
+  @IsOptional()
+  @IsString()
+  evidenceAt?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  sampleFeeAmount?: string | null;
+
+  @ApiProperty({ type: [NotaryLogisticsDto], maxItems: 50 })
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => NotaryLogisticsDto)
+  logistics!: NotaryLogisticsDto[];
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+}
+
+export class NotaryEvidenceDraftDto extends OmitType(
+  SaveNotaryEvidenceDraftDto,
+  ['expectedVersion'] as const,
+) {}
+
+export class NotaryEvidenceDraftResponseDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ minimum: 1 }) version!: number;
+  @ApiProperty({ type: NotaryEvidenceDraftDto })
+  evidenceDraft!: NotaryEvidenceDraftDto;
+}
+
 export class RecordNotaryEvidenceDto {
+  @ApiPropertyOptional({ maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  shopName?: string;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  expectedRoutineRevision?: number;
+
   @ApiProperty({ description: '实际取证日期，YYYY-MM-DD' })
   @IsString()
   evidenceAt!: string;
@@ -274,7 +328,7 @@ export class ReviewNotaryOpeningDto {
   result!: 'INFRINGEMENT' | 'NO_INFRINGEMENT';
 
   @ApiPropertyOptional({
-    description: '不侵权时必填，1 至 2000 字符',
+    description: '不侵权时可填写的开箱备注，最多 2000 字符',
     maxLength: 2000,
   })
   @IsOptional()
@@ -327,6 +381,12 @@ export class DecideNotaryIssuanceDto {
   @IsIn(['ISSUE', 'NO_ISSUE'])
   decision!: 'ISSUE' | 'NO_ISSUE';
 
+  @ApiPropertyOptional({ nullable: true, maxLength: 2000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  openingRemark?: string | null;
+
   @ApiProperty({ minimum: 1 })
   @IsInt()
   @Min(1)
@@ -335,6 +395,7 @@ export class DecideNotaryIssuanceDto {
 
 export class NotaryIssuanceDecisionSummaryDto {
   @ApiProperty({ enum: ['ISSUE', 'NO_ISSUE'] }) decision!: 'ISSUE' | 'NO_ISSUE';
+  @ApiProperty({ nullable: true }) openingRemark!: string | null;
   @ApiProperty() actorDisplayName!: string;
   @ApiProperty({ format: 'date-time' }) decidedAt!: string;
 }

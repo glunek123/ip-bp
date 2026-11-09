@@ -32,6 +32,8 @@ export class CaseCreationService {
             certificateDate: true,
             issuedAt: true,
             needDisclose: true,
+            sampleFeeAmount: true,
+            disclosureInfo: true,
           },
         },
       },

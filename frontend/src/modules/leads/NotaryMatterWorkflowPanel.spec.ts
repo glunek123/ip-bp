@@ -12,7 +12,6 @@ const api = vi.hoisted(() => ({
   archiveNotaryReturn: vi.fn(),
 }));
 vi.mock('../../api/notary', () => api);
-const download = vi.hoisted(() => vi.fn());
 const materials = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(
     async (): Promise<{ items: Array<Record<string, unknown>> }> => ({
@@ -21,7 +20,6 @@ const materials = vi.hoisted(() => ({
   ),
 }));
 vi.mock('../../api/materials', () => ({
-  downloadMaterialVersion: download,
   deleteMaterial: vi.fn(),
   listOwnerMaterials: materials.listOwnerMaterials,
   uploadMaterialFile: vi.fn(),
@@ -154,7 +152,6 @@ describe('NotaryMatterWorkflowPanel request ownership', () => {
     ['111.1', '111.10'],
   ])('formats known sample fees on blur (%s)', async (value, expected) => {
     const { wrapper } = await open(detail('PENDING_EVIDENCE'), 'evidence-form');
-    await wrapper.get('[data-test="sample-fee-state"]').setValue('KNOWN');
     const amountInput = wrapper.get<HTMLInputElement>(
       '[data-test="sample-fee-amount"]',
     );
@@ -167,14 +164,7 @@ describe('NotaryMatterWorkflowPanel request ownership', () => {
     api.recordNotaryEvidence.mockReturnValue(new Promise<void>(() => {}));
     const { wrapper } = await open(detail('PENDING_EVIDENCE'), 'evidence-form');
     await wrapper.get('[data-test="evidence-date"]').setValue('2026-11-03');
-    await wrapper.get('[data-test="sample-fee-state"]').setValue('KNOWN');
     await wrapper.get('[data-test="sample-fee-amount"]').setValue('111.1');
-    await wrapper
-      .get('[data-test="logistics-company-state-0"]')
-      .setValue('NONE');
-    await wrapper
-      .get('[data-test="logistics-tracking-state-0"]')
-      .setValue('NONE');
     await wrapper.get('[data-test="record-evidence"]').trigger('submit');
     expect(api.recordNotaryEvidence).toHaveBeenCalledTimes(1);
     expect(api.recordNotaryEvidence.mock.calls[0]?.[1]).toMatchObject({
@@ -198,37 +188,21 @@ describe('NotaryMatterWorkflowPanel request ownership', () => {
   it.each(['-1', '111.123'])('rejects invalid sample fee %s', async (value) => {
     const { wrapper } = await open(detail('PENDING_EVIDENCE'), 'evidence-form');
     await wrapper.get('[data-test="evidence-date"]').setValue('2026-11-03');
-    await wrapper.get('[data-test="sample-fee-state"]').setValue('KNOWN');
     await wrapper.get('[data-test="sample-fee-amount"]').setValue(value);
-    await wrapper
-      .get('[data-test="logistics-company-state-0"]')
-      .setValue('NONE');
-    await wrapper
-      .get('[data-test="logistics-tracking-state-0"]')
-      .setValue('NONE');
     await wrapper.get('[data-test="record-evidence"]').trigger('submit');
     expect(api.recordNotaryEvidence).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain(
-      '已知样品费用请输入非负且保留两位小数的金额',
-    );
+    expect(wrapper.text()).toContain('请输入样品费');
     expect(
       wrapper.get<HTMLInputElement>('[data-test="sample-fee-amount"]').element
         .value,
     ).toBe(value);
     wrapper.unmount();
   });
-  it('keeps an empty known amount invalid and omits the amount for pending fees', async () => {
+  it('requires a sample fee amount', async () => {
     const known = await open(detail('PENDING_EVIDENCE'), 'evidence-form');
     await known.wrapper
       .get('[data-test="evidence-date"]')
       .setValue('2026-11-03');
-    await known.wrapper.get('[data-test="sample-fee-state"]').setValue('KNOWN');
-    await known.wrapper
-      .get('[data-test="logistics-company-state-0"]')
-      .setValue('NONE');
-    await known.wrapper
-      .get('[data-test="logistics-tracking-state-0"]')
-      .setValue('NONE');
     await known.wrapper.get('[data-test="record-evidence"]').trigger('submit');
     expect(api.recordNotaryEvidence).not.toHaveBeenCalled();
     expect(
@@ -237,29 +211,7 @@ describe('NotaryMatterWorkflowPanel request ownership', () => {
     ).toBe('');
     known.wrapper.unmount();
 
-    const pending = await open(detail('PENDING_EVIDENCE'), 'evidence-form');
-    await pending.wrapper
-      .get('[data-test="evidence-date"]')
-      .setValue('2026-11-03');
-    await pending.wrapper
-      .get('[data-test="sample-fee-state"]')
-      .setValue('PENDING');
-    await pending.wrapper
-      .get('[data-test="logistics-company-state-0"]')
-      .setValue('NONE');
-    await pending.wrapper
-      .get('[data-test="logistics-tracking-state-0"]')
-      .setValue('NONE');
-    await pending.wrapper
-      .get('[data-test="record-evidence"]')
-      .trigger('submit');
-    expect(api.recordNotaryEvidence.mock.calls[0]?.[1]).toMatchObject({
-      sampleFeeState: 'PENDING',
-    });
-    expect(api.recordNotaryEvidence.mock.calls[0]?.[1]).not.toHaveProperty(
-      'sampleFeeAmount',
-    );
-    pending.wrapper.unmount();
+    expect(known.wrapper.text()).toContain('请输入样品费');
   });
   it('retries the original unknown evidence body and key unchanged', async () => {
     api.recordNotaryEvidence.mockReturnValue(new Promise<void>(() => {}));
@@ -303,7 +255,7 @@ describe('NotaryMatterWorkflowPanel request ownership', () => {
     expect(globalThis.sessionStorage.getItem(storageKey)).toBe(serialized);
     wrapper.unmount();
   });
-  it('shows the exact frozen opening material inside the list review form', async () => {
+  it('shows the store and opening photo inside the review card', async () => {
     const current = detail('UNBOX_REVIEW');
     current.opening = {
       senderName: '寄件人甲',
@@ -322,16 +274,13 @@ describe('NotaryMatterWorkflowPanel request ownership', () => {
     };
     const { wrapper } = await open(current, 'review-form');
     expect(
-      wrapper.get('[data-test="workflow-saved-opening"]').text(),
+      wrapper.get('[data-test="opening-review-section"]').text(),
+    ).toContain('测试店');
+    expect(
+      wrapper.get('[data-test="opening-review-section"]').text(),
     ).toContain('审核照片.jpg');
-    await wrapper
-      .get('[data-test="workflow-download-photo-photo-v1"]')
-      .trigger('click');
-    await flushPromises();
-    expect(download).toHaveBeenCalledWith(
-      'photo-1',
-      'photo-v1',
-      expect.any(AbortSignal),
+    expect(wrapper.find('[data-test="workflow-saved-opening"]').exists()).toBe(
+      false,
     );
     wrapper.unmount();
   });
@@ -342,7 +291,7 @@ describe('NotaryMatterWorkflowPanel request ownership', () => {
     expect(api.recordNotaryOpening).not.toHaveBeenCalled();
     wrapper.unmount();
   });
-  it('does not default issuance and describes its real chosen destination', async () => {
+  it('does not default issuance and uses the compact audit label', async () => {
     const { wrapper, success } = await open();
     expect(wrapper.findAll('input[type=radio]:checked')).toHaveLength(0);
     await wrapper
@@ -352,7 +301,7 @@ describe('NotaryMatterWorkflowPanel request ownership', () => {
     await wrapper.get('[data-test="issuance-decision-no-issue"]').setValue();
     expect(
       wrapper.get('[data-test="issuance-decision-submit"]').text(),
-    ).toContain('待退货');
+    ).toContain('审核');
     api.decideNotaryIssuance.mockResolvedValue({});
     await wrapper
       .get('[data-test="issuance-decision-section"] form')
@@ -360,7 +309,7 @@ describe('NotaryMatterWorkflowPanel request ownership', () => {
     await flushPromises();
     expect(api.decideNotaryIssuance).toHaveBeenCalledWith(
       'matter-1',
-      { decision: 'NO_ISSUE', expectedVersion: 5 },
+      { decision: 'NO_ISSUE', expectedVersion: 5, openingRemark: null },
       expect.any(String),
     );
     expect(success).toHaveBeenCalledTimes(1);
@@ -698,34 +647,44 @@ describe('NotaryMatterWorkflowPanel request ownership', () => {
     expect(api.decideNotaryIssuance).not.toHaveBeenCalled();
     wrapper.unmount();
   });
-  it('requires a reason for no-infringement and does not default return amounts', async () => {
+  it('allows an optional review note and requires the return/archive choices', async () => {
     const review = await open(detail('UNBOX_REVIEW'), 'review-form');
     await review.wrapper
       .get('[data-test="opening-review-result-no-infringement"]')
       .setValue();
     await review.wrapper.get('form').trigger('submit');
-    expect(api.reviewNotaryOpening).not.toHaveBeenCalled();
-    expect(review.wrapper.text()).toContain('请填写不侵权原因');
+    expect(api.reviewNotaryOpening).toHaveBeenCalledWith(
+      'matter-1',
+      { result: 'NO_INFRINGEMENT', expectedVersion: 5 },
+      expect.any(String),
+    );
     review.wrapper.unmount();
     const returned = await open(
       detail('WAITING_RETURN'),
       'return-archive-form',
     );
-    expect(returned.wrapper.findAll('input[type=radio]:checked')).toHaveLength(
-      0,
-    );
+    expect(
+      (
+        returned.wrapper.get('[data-test="return-required"]')
+          .element as HTMLSelectElement
+      ).value,
+    ).toBe('');
+    await returned.wrapper.get('[data-test="return-required"]').setValue('YES');
     await returned.wrapper
-      .get('[data-test="return-archive-return"]')
-      .setValue();
+      .get('[data-test="return-archive-type"]')
+      .setValue('RECEIVED_RETURN_REFUND');
     await returned.wrapper
       .get('[data-test="return-archive-reason"]')
       .setValue('实际退货');
+    await returned.wrapper
+      .get('[data-test="return-notary-fee"]')
+      .setValue('1200.00');
     await returned.wrapper.get('form').trigger('submit');
     expect(api.archiveNotaryReturn).not.toHaveBeenCalled();
     expect(
       returned.wrapper.find('[data-test="return-freight-fields"]').exists(),
     ).toBe(true);
-    await returned.wrapper.get('[data-test="return-archive-keep"]').setValue();
+    await returned.wrapper.get('[data-test="return-required"]').setValue('NO');
     expect(
       returned.wrapper.find('[data-test="return-freight-fields"]').exists(),
     ).toBe(false);

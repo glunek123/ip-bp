@@ -116,6 +116,25 @@ describe('notary detail read facts', () => {
     expect(result.source.snapshotState).toBe('UNKNOWN_LEGACY');
   });
 
+  it('shows an early archive from its own recorded event', () => {
+    const input = fixture();
+    const result = readNotaryDetailFacts({
+      ...input,
+      matter: {
+        ...input.matter,
+        stage: 'ARCHIVED',
+        returnArchive: {
+          fromStage: 'WAITING_UNBOX',
+          archivedAt: date,
+        },
+      },
+    });
+    expect(result.archive).toEqual({
+      kind: 'EARLY',
+      occurredAt: date.toISOString(),
+    });
+  });
+
   it('rejects a review from a different lead or customer', () => {
     const input = fixture();
     expect(() =>

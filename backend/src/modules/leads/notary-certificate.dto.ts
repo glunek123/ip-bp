@@ -11,6 +11,7 @@ import {
   IsUUID,
   Max,
   MaxLength,
+  Matches,
   Min,
   ValidateIf,
   ValidateNested,
@@ -54,6 +55,15 @@ export class IssueNotaryCertificateDto {
   @IsUUID('4', { each: true })
   contentVersionIds!: string[];
   @ApiProperty() @IsBoolean() needDisclose!: boolean;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Matches(/^(0|[1-9]\d{0,15})\.\d{2}$/u)
+  sampleFeeAmount?: string;
+  @ApiPropertyOptional({ maxLength: 2000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  disclosureInfo?: string;
   @ApiProperty({ type: [String], format: 'uuid', maxItems: 10 })
   @IsArray()
   @ArrayMaxSize(10)
@@ -77,6 +87,8 @@ export class CertificateSummaryDto {
   @ApiProperty({ format: 'date-time' }) issuedAt!: string;
   @ApiProperty({ type: [CertificateFileDto] }) files!: CertificateFileDto[];
   @ApiProperty() needDisclose!: boolean;
+  @ApiPropertyOptional() disclosureInfo?: string;
+  @ApiPropertyOptional() sampleFeeAmount?: string;
   @ApiProperty({ type: [CertificateFileDto] })
   disclosureFiles!: CertificateFileDto[];
 }

@@ -146,7 +146,11 @@ export class CaseHandlingGroupResourceRead {
               ) ||
               (category === 'SAMPLE'
                 ? sourceType !== 'NOTARY_MATTER_EVIDENCE'
-                : sourceType !== 'NOTARY_CERTIFICATE_FEE')
+                : category === 'NOTARY'
+                  ? !['NOTARY_CERTIFICATE_FEE', 'NOTARY_MATTER_COST'].includes(
+                      sourceType,
+                    )
+                  : sourceType !== 'NOTARY_CERTIFICATE_FEE')
             )
               throw invalidSource();
             const key = JSON.stringify([

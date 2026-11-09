@@ -34,6 +34,7 @@ export type NotaryDisplayFee =
   | { state: 'KNOWN'; amount: string };
 export type NotaryDisplayCapabilities = {
   proxyIssueCertificate?: boolean;
+  archiveMatter?: boolean;
   recordEvidence: boolean;
   recordOpening: boolean;
   reviewOpening: boolean;
@@ -62,6 +63,7 @@ export type NotaryMatterDisplay = {
     certificateDate: string;
     issuedAt: string;
     needDisclose: boolean;
+    disclosureInfo?: string;
   };
   fees: {
     notary: NotaryDisplayFee;
@@ -130,6 +132,12 @@ export type NotaryEvidence = {
   recordedAt: string;
   recordedByUserId: string;
   logistics: NotaryEvidenceLogistics[];
+};
+export type NotaryEvidenceDraft = {
+  shopName: string | null;
+  evidenceAt: string | null;
+  sampleFeeAmount: string | null;
+  logistics: Array<Omit<NotaryEvidenceLogistics, 'id'>>;
 };
 
 export type NotaryEvidenceEditValue = {
@@ -235,6 +243,7 @@ export type NotaryOpeningReviewDecision = {
 };
 export type NotaryIssuanceDecision = {
   decision: 'ISSUE' | 'NO_ISSUE';
+  openingRemark?: string | null;
   actorDisplayName: string;
   decidedAt: string;
 };
@@ -255,20 +264,35 @@ export type NotaryReturnAmountSummary = {
   partyName: string | null;
 };
 export type NotaryReturnArchiveSummary = {
-  returnChoice: NotaryReturnChoice;
+  returnChoice: NotaryReturnChoice | null;
   archiveReason: string;
   archivedAt: string;
   actorDisplayName: string;
   refund: NotaryReturnAmountSummary | null;
   freight: NotaryReturnAmountSummary | null;
+  archiveType?: NotaryArchiveType | null;
+  archiveDate?: string | null;
+  notaryFeeAmount?: string | null;
+  sampleFeeAmount?: string | null;
 };
 export type ArchiveNotaryReturnInput = {
-  returnChoice: NotaryReturnChoice;
+  returnChoice?: NotaryReturnChoice;
   refund?: NotaryReturnAmountInput;
   freight?: NotaryReturnAmountInput;
   archiveReason: string;
+  notaryFeeAmount?: string;
+  sampleFeeAmount?: string;
+  archiveDate?: string;
+  archiveType?: NotaryArchiveType;
   expectedVersion: number;
 };
+export type NotaryArchiveType =
+  | 'LINK_REMOVED'
+  | 'NO_INFRINGEMENT_INFORMATION'
+  | 'NO_EVIDENCE'
+  | 'NOT_SHIPPED_REFUND_ONLY'
+  | 'RECEIVED_KEEP'
+  | 'RECEIVED_RETURN_REFUND';
 export type ArchiveNotaryReturnResponse = {
   id: string;
   stage: 'ARCHIVED';
@@ -277,6 +301,7 @@ export type ArchiveNotaryReturnResponse = {
 };
 export type DecideNotaryIssuanceInput = {
   decision: 'ISSUE' | 'NO_ISSUE';
+  openingRemark?: string | null;
   expectedVersion: number;
 };
 export type DecideNotaryIssuanceResponse = {
@@ -299,6 +324,8 @@ export type ReviewNotaryOpeningResponse = {
 export type NotaryReturnArchiveResponse = ArchiveNotaryReturnResponse;
 
 type RecordNotaryEvidenceBaseInput = {
+  shopName?: string;
+  expectedRoutineRevision?: number;
   evidenceAt: string;
   logistics: Array<Omit<NotaryEvidenceLogistics, 'id'>>;
   expectedVersion: number;
@@ -309,6 +336,13 @@ export type RecordNotaryEvidenceInput = RecordNotaryEvidenceBaseInput &
     | { sampleFeeState: 'KNOWN'; sampleFeeAmount: string }
     | { sampleFeeState: 'PENDING'; sampleFeeAmount?: never }
   );
+export type SaveNotaryEvidenceDraftInput = {
+  shopName: string | null;
+  evidenceAt: string | null;
+  sampleFeeAmount: string | null;
+  logistics: Array<Omit<NotaryEvidenceLogistics, 'id'>>;
+  expectedVersion: number;
+};
 
 export type RecordNotaryEvidenceResult = {
   id: string;
@@ -338,9 +372,11 @@ export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> &
       reviewOpening: boolean;
       decideIssuance: boolean;
       archiveReturn: boolean;
+      archiveMatter?: boolean;
       proxyIssueCertificate?: boolean;
     };
     evidence: NotaryEvidence | null;
+    evidenceDraft?: NotaryEvidenceDraft | null;
     opening: NotaryOpening | null;
     reviewDecision: NotaryOpeningReviewDecision | null;
     issuanceDecision: NotaryIssuanceDecision | null;
@@ -695,6 +731,9 @@ function isNotaryDisplay(
           'certificateDate',
           'issuedAt',
           'needDisclose',
+          ...(certificate.disclosureInfo === undefined
+            ? []
+            : ['disclosureInfo']),
         ]) &&
         nonBlank(certificate.id) &&
         nonBlank(certificate.certificateNo) &&
@@ -702,7 +741,9 @@ function isNotaryDisplay(
         isCalendarDate(certificate.certificateDate) &&
         typeof certificate.issuedAt === 'string' &&
         !Number.isNaN(Date.parse(certificate.issuedAt)) &&
-        typeof certificate.needDisclose === 'boolean')) &&
+        typeof certificate.needDisclose === 'boolean' &&
+        (certificate.disclosureInfo === undefined ||
+          typeof certificate.disclosureInfo === 'string'))) &&
     isRecord(fees) &&
     exactKeys(fees, ['notary', 'investigation', 'sample']) &&
     isDisplayFee(fees.notary) &&
@@ -722,6 +763,7 @@ function isNotaryDisplay(
       'reviewOpening',
       'decideIssuance',
       'archiveReturn',
+      ...(capabilities.archiveMatter === undefined ? [] : ['archiveMatter']),
       ...(capabilities.proxyIssueCertificate === undefined
         ? []
         : ['proxyIssueCertificate']),
@@ -764,8 +806,7 @@ function isReviewDecision(
       'archivedAt',
     ]) &&
     (value.result === 'INFRINGEMENT' || value.result === 'NO_INFRINGEMENT') &&
-    (value.reason === null ||
-      (typeof value.reason === 'string' && value.reason.trim().length > 0)) &&
+    (value.reason === null || typeof value.reason === 'string') &&
     (value.actorKind === 'INTERNAL' || value.actorKind === 'CLIENT') &&
     typeof value.actorDisplayName === 'string' &&
     value.actorDisplayName.trim().length > 0 &&
@@ -780,8 +821,16 @@ function isReviewDecision(
 function isIssuanceDecision(value: unknown): value is NotaryIssuanceDecision {
   return (
     isRecord(value) &&
-    exactKeys(value, ['decision', 'actorDisplayName', 'decidedAt']) &&
+    exactKeys(value, [
+      'decision',
+      ...(value.openingRemark === undefined ? [] : ['openingRemark']),
+      'actorDisplayName',
+      'decidedAt',
+    ]) &&
     (value.decision === 'ISSUE' || value.decision === 'NO_ISSUE') &&
+    (value.openingRemark === undefined ||
+      value.openingRemark === null ||
+      typeof value.openingRemark === 'string') &&
     typeof value.actorDisplayName === 'string' &&
     value.actorDisplayName.trim().length > 0 &&
     typeof value.decidedAt === 'string' &&
@@ -826,6 +875,30 @@ export function isNotaryReturnArchiveSummary(
 ): value is NotaryReturnArchiveSummary {
   return (
     isRecord(value) &&
+    [
+      'returnChoice',
+      'archiveReason',
+      'archivedAt',
+      'actorDisplayName',
+      'refund',
+      'freight',
+    ].every((key) => key in value) &&
+    ['archiveType', 'archiveDate', 'notaryFeeAmount', 'sampleFeeAmount'].every(
+      (key) =>
+        !(key in value) ||
+        value[key] === null ||
+        typeof value[key] === 'string',
+    ) &&
+    (value.archiveType === undefined ||
+      value.archiveType === null ||
+      [
+        'LINK_REMOVED',
+        'NO_INFRINGEMENT_INFORMATION',
+        'NO_EVIDENCE',
+        'NOT_SHIPPED_REFUND_ONLY',
+        'RECEIVED_KEEP',
+        'RECEIVED_RETURN_REFUND',
+      ].includes(String(value.archiveType))) &&
     exactKeys(value, [
       'returnChoice',
       'archiveReason',
@@ -833,8 +906,15 @@ export function isNotaryReturnArchiveSummary(
       'actorDisplayName',
       'refund',
       'freight',
+      ...(value.archiveType === undefined ? [] : ['archiveType']),
+      ...(value.archiveDate === undefined ? [] : ['archiveDate']),
+      ...(value.notaryFeeAmount === undefined ? [] : ['notaryFeeAmount']),
+      ...(value.sampleFeeAmount === undefined ? [] : ['sampleFeeAmount']),
     ]) &&
-    ['RETURN', 'KEEP', 'REFUND_ONLY'].includes(value.returnChoice as string) &&
+    (value.returnChoice === null ||
+      ['RETURN', 'KEEP', 'REFUND_ONLY'].includes(
+        value.returnChoice as string,
+      )) &&
     typeof value.archiveReason === 'string' &&
     value.archiveReason.trim().length > 0 &&
     typeof value.archivedAt === 'string' &&
@@ -843,11 +923,24 @@ export function isNotaryReturnArchiveSummary(
     value.actorDisplayName.trim().length > 0 &&
     (value.refund === null || isReturnAmountSummary(value.refund)) &&
     (value.freight === null || isReturnAmountSummary(value.freight)) &&
-    (value.returnChoice === 'RETURN'
-      ? value.refund !== null && value.freight !== null
-      : value.returnChoice === 'REFUND_ONLY'
-        ? value.refund !== null && value.freight === null
-        : value.refund === null && value.freight === null)
+    (value.returnChoice === null
+      ? value.refund === null && value.freight === null
+      : value.returnChoice === 'RETURN'
+        ? value.refund !== null && value.freight !== null
+        : value.returnChoice === 'REFUND_ONLY'
+          ? value.refund !== null && value.freight === null
+          : value.refund === null && value.freight === null) &&
+    (value.returnChoice !== null || value.archiveType !== undefined) &&
+    (value.archiveDate === undefined ||
+      value.archiveDate === null ||
+      (typeof value.archiveDate === 'string' &&
+        isCalendarDate(value.archiveDate))) &&
+    (value.notaryFeeAmount === undefined ||
+      value.notaryFeeAmount === null ||
+      isMoney(value.notaryFeeAmount)) &&
+    (value.sampleFeeAmount === undefined ||
+      value.sampleFeeAmount === null ||
+      isMoney(value.sampleFeeAmount))
   );
 }
 
@@ -903,31 +996,28 @@ function decisionMatchesStage(
   issuanceDecision: NotaryIssuanceDecision | null = null,
 ): boolean {
   if (stage === 'UNBOX_REVIEW') return decision === null;
-  if (stage === 'ISSUANCE_DECISION')
-    return (
-      decision?.result === 'INFRINGEMENT' &&
-      decision.reason === null &&
-      decision.archivedAt === null
-    );
-  if (stage === 'WAITING_CERTIFICATE' || stage === 'WAITING_RETURN')
-    return (
-      decision?.result === 'INFRINGEMENT' &&
-      decision.reason === null &&
-      decision.archivedAt === null
-    );
+  const activeReview =
+    decision !== null &&
+    (decision.result === 'INFRINGEMENT' ||
+      decision.result === 'NO_INFRINGEMENT') &&
+    decision.archivedAt === null;
+  if (
+    stage === 'ISSUANCE_DECISION' ||
+    stage === 'WAITING_CERTIFICATE' ||
+    stage === 'WAITING_RETURN'
+  )
+    return activeReview;
   if (stage === 'ARCHIVED' && returnArchive)
     return (
-      decision?.result === 'INFRINGEMENT' &&
-      decision.reason === null &&
-      decision.archivedAt === null
+      decision === null ||
+      activeReview ||
+      (decision.result === 'NO_INFRINGEMENT' &&
+        decision.archivedAt === decision.decidedAt)
     );
   if (stage === 'ARCHIVED')
     return issuanceDecision?.decision === 'ISSUE'
-      ? decision?.result === 'INFRINGEMENT' &&
-          decision.reason === null &&
-          decision.archivedAt === null
+      ? activeReview
       : decision?.result === 'NO_INFRINGEMENT' &&
-          decision.reason !== null &&
           decision.archivedAt === decision.decidedAt;
   return decision === null;
 }
@@ -1172,7 +1262,7 @@ function isDetailFacts(value: unknown): value is NotaryDetailFacts {
     (archive !== null &&
       (!isRecord(archive) ||
         !exactKeys(archive, ['kind', 'occurredAt']) ||
-        !['OPENING_NO_INFRINGEMENT', 'RETURN', 'CERTIFICATE'].includes(
+        !['OPENING_NO_INFRINGEMENT', 'RETURN', 'CERTIFICATE', 'EARLY'].includes(
           String(archive.kind),
         ) ||
         typeof archive.occurredAt !== 'string' ||
@@ -1281,6 +1371,9 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
       'reviewOpening',
       'decideIssuance',
       'archiveReturn',
+      ...(detail.capabilities.archiveMatter === undefined
+        ? []
+        : ['archiveMatter']),
       ...(detail.capabilities.proxyIssueCertificate === undefined
         ? []
         : ['proxyIssueCertificate']),
@@ -1289,7 +1382,12 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
     typeof detail.capabilities.recordOpening === 'boolean' &&
     typeof detail.capabilities.reviewOpening === 'boolean' &&
     typeof detail.capabilities.decideIssuance === 'boolean' &&
+    (detail.capabilities.archiveMatter === undefined ||
+      typeof detail.capabilities.archiveMatter === 'boolean') &&
     typeof detail.capabilities.archiveReturn === 'boolean' &&
+    (detail.evidenceDraft === undefined ||
+      detail.evidenceDraft === null ||
+      isNotaryEvidenceDraft(detail.evidenceDraft)) &&
     (detail.disclosureRequired === undefined ||
       typeof detail.disclosureRequired === 'boolean') &&
     (detail.capabilities.proxyIssueCertificate === undefined ||
@@ -1437,24 +1535,20 @@ function isReviewResponse(
     !isRecord(value) ||
     !exactKeys(value, ['id', 'stage', 'version', 'reviewDecision']) ||
     value.id !== id ||
-    (value.stage !== 'ISSUANCE_DECISION' && value.stage !== 'ARCHIVED') ||
+    value.stage !== 'ISSUANCE_DECISION' ||
     !Number.isInteger(value.version) ||
     value.version !== input.expectedVersion + 1 ||
     !isReviewDecision(value.reviewDecision)
   )
     return false;
   const decision = value.reviewDecision;
-  const reason =
-    input.result === 'NO_INFRINGEMENT' ? (input.reason?.trim() ?? '') : null;
+  const reason = input.reason?.trim() || null;
   return (
     decision.actorKind === 'INTERNAL' &&
     decision.actorKind === 'INTERNAL' &&
     decision.result === input.result &&
     decision.reason === reason &&
-    (value.stage === 'ISSUANCE_DECISION'
-      ? input.result === 'INFRINGEMENT' && decision.archivedAt === null
-      : input.result === 'NO_INFRINGEMENT' &&
-        decision.archivedAt === decision.decidedAt)
+    decision.archivedAt === null
   );
 }
 
@@ -1595,13 +1689,13 @@ export async function reviewNotaryOpening(
     !Number.isInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
     (input.result !== 'INFRINGEMENT' && input.result !== 'NO_INFRINGEMENT') ||
-    (input.result === 'NO_INFRINGEMENT' && (!reason || reason.length > 2000)) ||
+    (reason !== undefined && reason.length > 2000) ||
     idempotencyKey.trim().length === 0
   )
     throw new ApiError('开箱审核信息无效', 400, 'VALIDATION_ERROR');
   const body = {
     result: input.result,
-    ...(input.result === 'NO_INFRINGEMENT' ? { reason } : {}),
+    ...(reason ? { reason } : {}),
     expectedVersion: input.expectedVersion,
   };
   const data = await requestJson(
@@ -1626,7 +1720,9 @@ function isDecideNotaryIssuanceResponse(
       (input.decision === 'ISSUE' ? 'WAITING_CERTIFICATE' : 'WAITING_RETURN') &&
     value.version === input.expectedVersion + 1 &&
     isIssuanceDecision(value.issuanceDecision) &&
-    value.issuanceDecision.decision === input.decision
+    value.issuanceDecision.decision === input.decision &&
+    (input.openingRemark === undefined ||
+      value.issuanceDecision.openingRemark === input.openingRemark)
   );
 }
 
@@ -1639,6 +1735,9 @@ export async function decideNotaryIssuance(
     !Number.isInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
     (input.decision !== 'ISSUE' && input.decision !== 'NO_ISSUE') ||
+    (input.openingRemark !== undefined &&
+      input.openingRemark !== null &&
+      [...input.openingRemark].length > 2000) ||
     idempotencyKey.trim().length === 0
   )
     throw new ApiError('出证决定信息无效', 400, 'VALIDATION_ERROR');
@@ -1669,7 +1768,12 @@ export async function archiveNotaryReturn(
       input.freight === undefined) ||
     (input.returnChoice === 'KEEP' &&
       input.refund === undefined &&
-      input.freight === undefined);
+      input.freight === undefined) ||
+    (input.returnChoice === undefined &&
+      input.refund === undefined &&
+      input.freight === undefined &&
+      input.notaryFeeAmount !== undefined &&
+      input.archiveType !== undefined);
   if (
     !Number.isInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
@@ -1680,13 +1784,28 @@ export async function archiveNotaryReturn(
       !isValidNotaryReturnAmountInput(input.refund)) ||
     (input.freight !== undefined &&
       !isValidNotaryReturnAmountInput(input.freight)) ||
-    idempotencyKey.trim().length === 0
+    idempotencyKey.trim().length === 0 ||
+    (input.notaryFeeAmount !== undefined && !isMoney(input.notaryFeeAmount)) ||
+    (input.sampleFeeAmount !== undefined && !isMoney(input.sampleFeeAmount)) ||
+    (input.archiveDate !== undefined && !isCalendarDate(input.archiveDate))
   )
     throw new ApiError('退货归档信息无效', 400, 'VALIDATION_ERROR');
   const body = {
-    returnChoice: input.returnChoice,
+    ...(input.returnChoice ? { returnChoice: input.returnChoice } : {}),
     ...(input.refund ? { refund: { ...input.refund } } : {}),
     ...(input.freight ? { freight: { ...input.freight } } : {}),
+    ...(input.notaryFeeAmount !== undefined
+      ? { notaryFeeAmount: input.notaryFeeAmount }
+      : {}),
+    ...(input.sampleFeeAmount !== undefined
+      ? { sampleFeeAmount: input.sampleFeeAmount }
+      : {}),
+    ...(input.archiveDate !== undefined
+      ? { archiveDate: input.archiveDate }
+      : {}),
+    ...(input.archiveType !== undefined
+      ? { archiveType: input.archiveType }
+      : {}),
     archiveReason,
     expectedVersion: input.expectedVersion,
   };
@@ -1701,7 +1820,7 @@ export async function archiveNotaryReturn(
     data.stage !== 'ARCHIVED' ||
     data.version !== input.expectedVersion + 1 ||
     !isNotaryReturnArchiveSummary(data.returnArchive) ||
-    data.returnArchive.returnChoice !== input.returnChoice ||
+    data.returnArchive.returnChoice !== (input.returnChoice ?? null) ||
     data.returnArchive.archiveReason !== archiveReason
   )
     throw invalidResponse();
@@ -1719,6 +1838,10 @@ export async function recordNotaryEvidence(
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
       body: {
+        ...(input.shopName === undefined ? {} : { shopName: input.shopName }),
+        ...(input.expectedRoutineRevision === undefined
+          ? {}
+          : { expectedRoutineRevision: input.expectedRoutineRevision }),
         evidenceAt: input.evidenceAt,
         sampleFeeState: input.sampleFeeState,
         ...(input.sampleFeeState === 'KNOWN'
@@ -1751,6 +1874,60 @@ export async function recordNotaryEvidence(
   )
     throw invalidResponse();
   return data;
+}
+
+export type SaveNotaryEvidenceDraftResult = {
+  id: string;
+  version: number;
+  evidenceDraft: NotaryEvidenceDraft;
+};
+
+export async function saveNotaryEvidenceDraft(
+  id: string,
+  input: SaveNotaryEvidenceDraftInput,
+): Promise<SaveNotaryEvidenceDraftResult> {
+  const data = await requestJson(
+    `/notary-matters/${encodeURIComponent(id)}/evidence-draft`,
+    { method: 'PATCH', body: input },
+  );
+  if (
+    !isRecord(data) ||
+    !exactKeys(data, ['id', 'version', 'evidenceDraft']) ||
+    data.id !== id ||
+    data.version !== input.expectedVersion ||
+    !isNotaryEvidenceDraft(data.evidenceDraft)
+  )
+    throw invalidResponse();
+  return data as SaveNotaryEvidenceDraftResult;
+}
+
+function isNotaryEvidenceDraft(value: unknown): value is NotaryEvidenceDraft {
+  return (
+    isRecord(value) &&
+    exactKeys(value, [
+      'shopName',
+      'evidenceAt',
+      'sampleFeeAmount',
+      'logistics',
+    ]) &&
+    (value.shopName === null || typeof value.shopName === 'string') &&
+    (value.evidenceAt === null ||
+      (typeof value.evidenceAt === 'string' &&
+        isCalendarDate(value.evidenceAt))) &&
+    (value.sampleFeeAmount === null || isMoney(value.sampleFeeAmount)) &&
+    Array.isArray(value.logistics) &&
+    value.logistics.every(
+      (row) =>
+        isRecord(row) &&
+        exactKeys(row, [
+          'companyState',
+          'companyValue',
+          'trackingState',
+          'trackingValue',
+        ]) &&
+        isLogistics({ id: 'draft', ...row }),
+    )
+  );
 }
 
 export async function recordNotaryOpening(

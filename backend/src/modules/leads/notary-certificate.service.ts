@@ -25,6 +25,8 @@ export type CertificateInput = {
   certificateDate: string;
   contentVersionIds: string[];
   needDisclose: boolean;
+  sampleFeeAmount?: string;
+  disclosureInfo?: string;
   disclosureContentVersionIds: string[];
   fees: { notary: FeeInput; investigation: FeeInput; disclosure: FeeInput };
 };
@@ -44,6 +46,8 @@ export type CertificateResult = {
     issuedAt: string;
     files: CertificateFile[];
     needDisclose: boolean;
+    sampleFeeAmount?: string;
+    disclosureInfo?: string;
     disclosureFiles: CertificateFile[];
   };
   case: { id: string; businessNo: string; stage: 'PENDING_MATCH' };
@@ -213,8 +217,6 @@ export class NotaryCertificateService {
               throw this.invalidState();
             if (matter.version !== normalized.expectedVersion)
               throw this.versionConflict();
-            if (matter.sourceLead.needDisclose !== normalized.needDisclose)
-              throw this.validation();
             const certificateFacts =
               await this.materials.assertAvailableVersions(tx, actor, {
                 ownerType: 'NOTARY_MATTER',
@@ -295,6 +297,8 @@ export class NotaryCertificateService {
                   `${normalized.certificateDate}T00:00:00.000Z`,
                 ),
                 needDisclose: normalized.needDisclose,
+                sampleFeeAmount: normalized.sampleFeeAmount,
+                disclosureInfo: normalized.disclosureInfo,
                 issuedAt,
                 fromVersion: normalized.expectedVersion,
                 toVersion: normalized.expectedVersion + 1,
@@ -361,6 +365,12 @@ export class NotaryCertificateService {
                 issuedAt: issuedAt.toISOString(),
                 files,
                 needDisclose: normalized.needDisclose,
+                ...(normalized.sampleFeeAmount !== undefined
+                  ? { sampleFeeAmount: normalized.sampleFeeAmount }
+                  : {}),
+                ...(normalized.disclosureInfo !== undefined
+                  ? { disclosureInfo: normalized.disclosureInfo }
+                  : {}),
                 disclosureFiles,
               },
               case: {
@@ -475,6 +485,10 @@ export class NotaryCertificateService {
       values.length <= 10 &&
       values.every((id) => typeof id === 'string' && UUID_V4.test(id)) &&
       new Set(values).size === values.length;
+    const disclosureInfo =
+      typeof input?.disclosureInfo === 'string'
+        ? input.disclosureInfo.trim()
+        : undefined;
     const validFee = (fee: FeeInput | undefined) =>
       fee !== undefined &&
       ((fee.state === 'KNOWN' &&
@@ -493,6 +507,14 @@ export class NotaryCertificateService {
       !validDate ||
       !validIds(ids, 1) ||
       typeof input.needDisclose !== 'boolean' ||
+      (input.sampleFeeAmount !== undefined &&
+        (typeof input.sampleFeeAmount !== 'string' ||
+          !AMOUNT.test(input.sampleFeeAmount) ||
+          input.fees?.notary?.state !== 'KNOWN')) ||
+      (input.disclosureInfo !== undefined &&
+        (disclosureInfo === undefined ||
+          disclosureInfo.length > 2000 ||
+          (!input.needDisclose && disclosureInfo.length > 0))) ||
       !validIds(disclosureIds, input.needDisclose ? 1 : 0) ||
       (!input.needDisclose && disclosureIds.length !== 0) ||
       !validFee(input.fees?.notary) ||
@@ -506,6 +528,10 @@ export class NotaryCertificateService {
       certificateDate: date,
       contentVersionIds: [...ids],
       needDisclose: input.needDisclose,
+      ...(input.sampleFeeAmount === undefined
+        ? {}
+        : { sampleFeeAmount: input.sampleFeeAmount }),
+      ...(disclosureInfo ? { disclosureInfo } : {}),
       disclosureContentVersionIds: [...disclosureIds],
       fees: {
         notary: { ...input.fees.notary },
@@ -590,7 +616,11 @@ export class NotaryCertificateService {
       stored.certificate.certificateDate.toISOString().slice(0, 10) !==
         certificateValue.certificateDate ||
       stored.certificate.issuedAt.toISOString() !== certificateValue.issuedAt ||
-      stored.certificate.needDisclose !== certificateValue.needDisclose
+      stored.certificate.needDisclose !== certificateValue.needDisclose ||
+      stored.certificate.sampleFeeAmount?.toFixed(2) !==
+        certificateValue.sampleFeeAmount ||
+      (stored.certificate.disclosureInfo ?? undefined) !==
+        certificateValue.disclosureInfo
     )
       throw this.corruptReceipt();
     if (

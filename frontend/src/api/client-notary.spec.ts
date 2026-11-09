@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiError } from './http';
 
 const http = vi.hoisted(() => ({ getJson: vi.fn(), requestJson: vi.fn() }));
 vi.mock('./http', async (importOriginal) => ({
@@ -198,6 +197,7 @@ describe('client notary API', () => {
       },
       returnArchive: {
         returnChoice: 'REFUND_ONLY',
+        fromStage: null,
         archiveReason: '商家确认无需寄回',
         archivedAt: '2026-09-25T05:00:00.000Z',
       },
@@ -223,19 +223,12 @@ describe('client notary API', () => {
     });
   });
 
-  it('requires a reason for no infringement and sends the shared review contract', async () => {
-    await expect(
-      reviewClientNotaryOpening(
-        'matter-1',
-        { result: 'NO_INFRINGEMENT', reason: ' ', expectedVersion: 2 },
-        'key-1',
-      ),
-    ).rejects.toBeInstanceOf(ApiError);
+  it('accepts no-infringement with an optional opening remark and keeps the next review stage', async () => {
     const response = {
       id: 'matter-1',
-      stage: 'ARCHIVED',
+      stage: 'ISSUANCE_DECISION',
       version: 3,
-      reviewDecision: decision,
+      reviewDecision: { ...decision, archivedAt: null },
     };
     http.requestJson.mockResolvedValue(response);
     await expect(
@@ -249,6 +242,17 @@ describe('client notary API', () => {
         'key-1',
       ),
     ).resolves.toEqual(response);
+    http.requestJson.mockResolvedValueOnce({
+      ...response,
+      reviewDecision: { ...response.reviewDecision, reason: null },
+    });
+    await expect(
+      reviewClientNotaryOpening(
+        'matter-1',
+        { result: 'NO_INFRINGEMENT', expectedVersion: 2 },
+        'key-empty',
+      ),
+    ).resolves.toMatchObject({ stage: 'ISSUANCE_DECISION' });
     expect(http.requestJson).toHaveBeenCalledWith(
       '/client/notary-matters/matter-1/opening-review',
       {

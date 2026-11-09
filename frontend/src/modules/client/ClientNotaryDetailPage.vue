@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
-import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import { listReturnPath } from '../../app/list-row-navigation';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 import { ApiError } from '../../api/http';
@@ -119,14 +118,10 @@ async function submitReview(): Promise<void> {
     reviewError.value = '请选择审核结论';
     return;
   }
-  if (result.value === 'NO_INFRINGEMENT' && !normalizedReason) {
-    reviewError.value = '请填写不侵权原因';
-    return;
-  }
   if (
     (result.value === 'NO_INFRINGEMENT' ? normalizedReason : '').length > 2000
   ) {
-    reviewError.value = '不侵权原因不能超过 2000 字';
+    reviewError.value = '开箱备注不能超过 2000 字';
     return;
   }
   const input = {
@@ -295,8 +290,7 @@ onBeforeUnmount(() => request?.abort());
             data-test="client-opening-review-form"
             @submit.prevent="submitReview"
           >
-            <p>确认侵权后进入开箱待确认，由运营决定是否出证。</p>
-            <p>不侵权将立即归档，普通入口不能撤回。</p>
+            <p>提交后进入开箱待确认，由运营再次审核。</p>
             <label
               ><input
                 v-model="result"
@@ -305,7 +299,7 @@ onBeforeUnmount(() => request?.abort());
                 name="client-opening-review-result"
                 value="INFRINGEMENT"
                 :disabled="submitting || retryLocked"
-              />确认侵权</label
+              />侵权</label
             >
             <label
               ><input
@@ -315,14 +309,13 @@ onBeforeUnmount(() => request?.abort());
                 name="client-opening-review-result"
                 value="NO_INFRINGEMENT"
                 :disabled="submitting || retryLocked"
-              />判定不侵权</label
+              />不侵权</label
             >
             <label v-if="result === 'NO_INFRINGEMENT'"
-              >不侵权原因<RequiredFieldMark /><textarea
+              >开箱备注<textarea
                 v-model="reason"
                 data-test="client-opening-review-reason"
                 maxlength="2000"
-                required
                 :disabled="submitting || retryLocked"
               />
             </label>
@@ -335,9 +328,7 @@ onBeforeUnmount(() => request?.abort());
               native-type="submit"
               :loading="submitting"
               :disabled="submitting || (retryLocked && !retryAvailable)"
-              >{{
-                retryAvailable ? '使用相同请求键重试' : '提交审核结论'
-              }}</ElButton
+              >{{ retryAvailable ? '使用相同请求键重试' : '提交' }}</ElButton
             >
           </form>
         </section>
@@ -350,14 +341,14 @@ onBeforeUnmount(() => request?.abort());
           <p>
             审核结论：{{
               matter.reviewDecision.result === 'INFRINGEMENT'
-                ? '确认侵权'
-                : '判定不侵权'
+                ? '侵权'
+                : '不侵权'
             }}
           </p>
           <p>审核人：{{ matter.reviewDecision.actorDisplayName }}</p>
           <p>审核时间：{{ formatTime(matter.reviewDecision.decidedAt) }}</p>
           <p v-if="matter.reviewDecision.reason">
-            原因：{{ matter.reviewDecision.reason }}
+            开箱备注：{{ matter.reviewDecision.reason }}
           </p>
           <p v-if="matter.stage === 'ISSUANCE_DECISION'">
             下一步：由运营决定是否出证。

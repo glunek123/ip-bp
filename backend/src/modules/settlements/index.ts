@@ -1,5 +1,11 @@
 export { initializeNotaryFees } from './notary-fee-source';
 export type { InitializeNotaryFeesFacts } from './notary-fee-source';
+export {
+  syncNotaryMatterCost,
+  syncNotaryReturnFees,
+  linkNotaryFeesToCase,
+} from './notary-cost-source';
+export type { SyncNotaryMatterCost } from './notary-cost-source';
 export { readScopedCaseFeePage } from './fee-read';
 export {
   calculateSettlement,

@@ -462,6 +462,17 @@ enum CaseComplaintAmountState {
   @@map("case_complaint_amount_state")
 }
 
+enum NotaryArchiveType {
+  LINK_REMOVED
+  NO_INFRINGEMENT_INFORMATION
+  NO_EVIDENCE
+  NOT_SHIPPED_REFUND_ONLY
+  RECEIVED_KEEP
+  RECEIVED_RETURN_REFUND
+
+  @@map("notary_archive_type")
+}
+
 enum NotaryReturnChoice {
   RETURN
   KEEP
@@ -2135,7 +2146,20 @@ model NotaryOffice {
   @@map("notary_offices")
 }
 
+model NotaryEvidenceDraft {
+  matterId String @map("matter_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  matterVersion Int @map("matter_version")
+  payload Json
+  matter NotaryMatter @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([matterId, actorUserId])
+  @@map("notary_evidence_drafts")
+}
+
 model NotaryMatter {
+  evidenceDrafts NotaryEvidenceDraft[]
   routineProfile NotaryRoutineProfile?
   evidenceItems EvidenceItem[]
   evidencePaperCertificates EvidencePaperCertificate[]
@@ -2172,6 +2196,8 @@ model NotaryMatter {
   returnArchive         NotaryReturnArchive?
   certificate           NotaryCertificate?
   case                  Case?
+  costs                 NotaryMatterCost[]
+  feeRecords            FeeRecord[]
   openingReviewReceipts NotaryOpeningReviewReceipt[]
   commandReceipts       NotaryMatterCommandReceipt[]
   openingImportSelections NotaryOpeningImportItem[]
@@ -2199,6 +2225,8 @@ model NotaryCertificate {
   certificateNo                String                     @map("certificate_no") @db.VarChar(200)
   certificateDate              DateTime                   @map("certificate_date") @db.Date
   needDisclose                 Boolean                    @map("need_disclose")
+  sampleFeeAmount              Decimal?                   @map("sample_fee_amount") @db.Decimal(18, 2)
+  disclosureInfo               String?                    @map("disclosure_info") @db.Text
   issuedAt                     DateTime                   @default(now()) @map("issued_at") @db.Timestamptz(3)
   fromVersion                  Int                        @map("from_version")
   toVersion                    Int                        @map("to_version")
@@ -2214,6 +2242,20 @@ model NotaryCertificate {
   @@unique([matterId, departmentId])
   @@index([departmentId, issuedAt])
   @@map("notary_certificates")
+}
+
+model NotaryMatterCost {
+  matterId String @map("matter_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  category String @db.VarChar(20)
+  state NotarySampleFeeState
+  amount Decimal? @db.Decimal(18, 2)
+  feeDate DateTime @map("fee_date") @db.Date
+  revision Int @default(1)
+  matter NotaryMatter @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([matterId, category])
+  @@map("notary_matter_costs")
 }
 
 model NotaryCertificateFee {
@@ -4025,6 +4067,7 @@ model NotaryIssuanceDecision {
   actorUserId              String                            @map("actor_user_id") @db.Uuid
   actorDisplayNameSnapshot String                            @map("actor_display_name_snapshot") @db.VarChar(200)
   decision                 NotaryIssuanceChoice
+  openingRemark            String?                           @map("opening_remark") @db.Text
   decidedAt                DateTime                          @default(now()) @map("decided_at") @db.Timestamptz(3)
   fromVersion              Int                               @map("from_version")
   toVersion                Int                               @map("to_version")
@@ -4048,17 +4091,22 @@ model NotaryReturnArchive {
   id                       String                 @id @default(uuid()) @db.Uuid
   matterId                 String                 @unique @map("matter_id") @db.Uuid
   departmentId             String                 @map("department_id") @db.Uuid
-  issuanceDecisionId       String                 @unique @map("issuance_decision_id") @db.Uuid
-  issuanceDecisionChoice   NotaryIssuanceChoice   @default(NO_ISSUE) @map("issuance_decision_choice")
+  issuanceDecisionId       String?                @unique @map("issuance_decision_id") @db.Uuid
+  issuanceDecisionChoice   NotaryIssuanceChoice?  @default(NO_ISSUE) @map("issuance_decision_choice")
   actorUserId              String                 @map("actor_user_id") @db.Uuid
   actorDisplayNameSnapshot String                 @map("actor_display_name_snapshot") @db.VarChar(200)
-  returnChoice             NotaryReturnChoice     @map("return_choice")
+  returnChoice             NotaryReturnChoice?    @map("return_choice")
   archiveReason            String                 @map("archive_reason") @db.Text
+  fromStage                NotaryMatterStage?     @map("from_stage")
+  archiveType              NotaryArchiveType?     @map("archive_type")
+  archiveDate              DateTime?              @map("archive_date") @db.Date
+  notaryFeeAmount          Decimal?               @map("notary_fee_amount") @db.Decimal(18, 2)
+  sampleFeeAmount          Decimal?               @map("sample_fee_amount") @db.Decimal(18, 2)
   archivedAt               DateTime               @default(now()) @map("archived_at") @db.Timestamptz(3)
   fromVersion              Int                    @map("from_version")
   toVersion                Int                    @map("to_version")
   matter                   NotaryMatter           @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_matter_fkey")
-  issuanceDecision         NotaryIssuanceDecision @relation(fields: [issuanceDecisionId, matterId, departmentId, issuanceDecisionChoice], references: [id, matterId, departmentId, decision], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_decision_fkey")
+  issuanceDecision         NotaryIssuanceDecision? @relation(fields: [issuanceDecisionId, matterId, departmentId, issuanceDecisionChoice], references: [id, matterId, departmentId, decision], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_decision_fkey")
   actor                    UserAccount            @relation("NotaryReturnArchiveActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_actor_fkey")
   internalActor            DepartmentMembership   @relation("NotaryReturnArchiveInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_internal_actor_fkey")
   amounts                  NotaryReturnAmount[]
@@ -5122,7 +5170,8 @@ model FeeRecord {
   paymentVerifications FeeCancellationPayment[]
   refundReconciliations FeeRefundReconciliation[]
   id String @id @default(uuid()) @db.Uuid
-  caseId String @map("case_id") @db.Uuid
+  caseId String? @map("case_id") @db.Uuid
+  notaryMatterId String? @map("notary_matter_id") @db.Uuid
   departmentId String @map("department_id") @db.Uuid
   type String @db.VarChar(50)
   direction String @db.VarChar(10)
@@ -5141,7 +5190,8 @@ model FeeRecord {
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
   version Int @default(1)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  case Case? @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  notaryMatter NotaryMatter? @relation(fields: [notaryMatterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
   actor UserAccount? @relation("FeeRecordActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fee_record_actor_user_fk")
   actorMembership DepartmentMembership? @relation("FeeRecordInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "fee_record_actor_membership_fk")
   proofMaterial Material? @relation("FeeProofMaterial", fields: [proofMaterialId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "fee_proof_material_department_fk")
@@ -5151,6 +5201,7 @@ model FeeRecord {
   @@unique([departmentId, sourceKind, sourceId], map: "fee_records_department_source_key")
   @@index([departmentId, feeDate, id])
   @@index([caseId, departmentId])
+  @@index([notaryMatterId, departmentId])
   @@map("fee_records")
 }
 

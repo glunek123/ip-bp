@@ -52,6 +52,15 @@ function checkStatus(type: string, status: string): void {
     });
 }
 
+function linkedCaseId(caseId: string | null): string {
+  if (caseId === null)
+    throw new ConflictException({
+      code: 'NOTARY_FEE_WITHOUT_CASE',
+      message: '公证费用已记录，转为诉讼案件后可办理费用中心收付',
+    });
+  return caseId;
+}
+
 const ExactDecimal = Prisma.Decimal.clone({ precision: 36 });
 
 function refundProjection(
@@ -133,7 +142,10 @@ export class FeeService {
       include: feeReadInclude,
       orderBy: [{ feeDate: 'desc' }, { id: 'desc' }],
     });
-    const sources = raw.map(projectFeeReadRow);
+    const sources = raw.map((row) => ({
+      ...projectFeeReadRow(row),
+      sourceKind: row.sourceKind,
+    }));
     type Source = (typeof sources)[number];
     let display: Array<
       Source & { mergeTypes?: readonly string[]; sourceRows?: Source[] }
@@ -141,10 +153,17 @@ export class FeeService {
     if (query.caseId === undefined) {
       const groups = new Map<string, Source[]>();
       for (const row of sources) {
-        if (row.type !== '样品费' && row.type !== '样品费退款') continue;
-        const group = groups.get(row.caseId) ?? [];
+        if (
+          row.type !== '样品费' &&
+          (row.type !== '样品费退款' ||
+            (row.sourceKind === 'NOTARY_MATTER_RETURN' &&
+              row.status !== '已支付'))
+        )
+          continue;
+        const owner = row.caseId ?? row.notaryMatterId ?? row.id;
+        const group = groups.get(owner) ?? [];
         group.push(row);
-        groups.set(row.caseId, group);
+        groups.set(owner, group);
       }
       const projections = mergeSampleFees(sources).map((row) =>
         row.mergeTypes === undefined
@@ -154,7 +173,9 @@ export class FeeService {
               proofMaterialId: null,
               proofContentVersionId: null,
               proofOriginalFilename: null,
-              sourceRows: groups.get(row.caseId)!,
+              sourceRows: groups.get(
+                row.caseId ?? row.notaryMatterId ?? row.id,
+              )!,
             },
       );
       const bySource = new Map<string, (typeof projections)[number]>();
@@ -199,6 +220,7 @@ export class FeeService {
         type: row.type,
         amount: row.amount,
         status: row.status,
+        caseId: row.caseId,
       })),
     };
   }
@@ -556,7 +578,7 @@ export class FeeService {
             code: 'FEE_NOT_FOUND',
             message: '费用不存在',
           });
-        await lockFinancialCases(tx, actor, [record.caseId]);
+        await lockFinancialCases(tx, actor, [linkedCaseId(record.caseId)]);
         if (input.status !== undefined) checkStatus(record.type, input.status);
         if (
           (record.status === '发起' || record.status === '已支付') &&
@@ -654,7 +676,7 @@ export class FeeService {
               code: 'FEE_NOT_FOUND',
               message: '费用不存在',
             });
-          await lockFinancialCases(tx, actor, [fee.caseId]);
+          await lockFinancialCases(tx, actor, [linkedCaseId(fee.caseId)]);
           const receipts = await tx.auditEvent.findMany({
             where: {
               departmentId: actor.departmentId,
@@ -708,7 +730,7 @@ export class FeeService {
               ? []
               : await this.materials.assertAvailableVersions(tx, actor, {
                   ownerType: 'CASE',
-                  ownerId: fee.caseId,
+                  ownerId: linkedCaseId(fee.caseId),
                   category: 'FEE_PROOF',
                   contentVersionIds: [input.contentVersionId],
                   minCount: 1,
@@ -814,7 +836,7 @@ export class FeeService {
               code: 'FEE_NOT_FOUND',
               message: '费用不存在',
             });
-          await lockFinancialCases(tx, actor, [fee.caseId]);
+          await lockFinancialCases(tx, actor, [linkedCaseId(fee.caseId)]);
           const prior = await tx.feeCancellation.findUnique({
             where: {
               departmentId_actorUserId_idempotencyKey: {
@@ -904,7 +926,7 @@ export class FeeService {
               id: cancellationId,
               feeId,
               departmentId: actor.departmentId,
-              caseId: fee.caseId,
+              caseId: linkedCaseId(fee.caseId),
               originalStatus: fee.status,
               originalAmount: fee.amount,
               originalVersion: fee.version,
@@ -1014,7 +1036,7 @@ export class FeeService {
               code: 'FEE_NOT_FOUND',
               message: '费用不存在',
             });
-          await lockFinancialCases(tx, actor, [fee.caseId]);
+          await lockFinancialCases(tx, actor, [linkedCaseId(fee.caseId)]);
           const cancellation = await tx.feeCancellation.findUnique({
             where: { feeId },
           });
@@ -1060,7 +1082,7 @@ export class FeeService {
           const facts = await this.cancellationProof(
             tx,
             actor,
-            fee.caseId,
+            linkedCaseId(fee.caseId),
             input.proofMaterialId,
             input.proofContentVersionId,
           );
@@ -1098,7 +1120,7 @@ export class FeeService {
               cancellationId: cancellation.id,
               feeId,
               departmentId: actor.departmentId,
-              caseId: fee.caseId,
+              caseId: linkedCaseId(fee.caseId),
               amount,
               paymentDate,
               proofMaterialId: input.proofMaterialId,
@@ -1170,7 +1192,7 @@ export class FeeService {
               code: 'FEE_NOT_FOUND',
               message: '费用不存在',
             });
-          await lockFinancialCases(tx, actor, [fee.caseId]);
+          await lockFinancialCases(tx, actor, [linkedCaseId(fee.caseId)]);
           const cancellation = await tx.feeCancellation.findUnique({
             where: { feeId },
           });
@@ -1227,7 +1249,7 @@ export class FeeService {
           const facts = await this.cancellationProof(
             tx,
             actor,
-            fee.caseId,
+            linkedCaseId(fee.caseId),
             input.proofMaterialId,
             input.proofContentVersionId,
           );
@@ -1267,7 +1289,7 @@ export class FeeService {
               paymentId: payment.id,
               feeId,
               departmentId: actor.departmentId,
-              caseId: fee.caseId,
+              caseId: linkedCaseId(fee.caseId),
               amount,
               refundDate,
               proofMaterialId: input.proofMaterialId,
@@ -1343,7 +1365,7 @@ export class FeeService {
           await lockFinancialCases(
             tx,
             actor,
-            rows.map((row) => row.caseId),
+            rows.map((row) => linkedCaseId(row.caseId)),
           );
           const prior = await tx.feeBatchReceipt.findUnique({
             where: {

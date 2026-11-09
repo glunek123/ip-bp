@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, HttpException, Injectable } from '@nestjs/common';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
@@ -53,13 +53,24 @@ export class NotaryReturnArchiveBatchService {
       try {
         return await this.database.$transaction(
           async (tx) => {
+            const stages = new Set<string>();
+            const matterNames = new Map<string, string>();
+            const expanded = items[0]?.input.archiveFields !== undefined;
             for (const item of items) {
-              const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>(
-                'SELECT "id" FROM "notary_matters" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              const locked = await tx.$queryRawUnsafe<
+                Array<{ id: string; stage: string; business_no: string }>
+              >(
+                expanded
+                  ? 'SELECT "id", "stage", "business_no" FROM "notary_matters" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE'
+                  : 'SELECT "id" FROM "notary_matters" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
                 item.matterId,
                 actor.departmentId,
               );
               if (locked.length !== 1) throw this.returnArchive.notFound();
+              if (expanded) {
+                stages.add(locked[0].stage);
+                matterNames.set(item.matterId, locked[0].business_no);
+              }
             }
             const account = await tx.userAccount.findUnique({
               where: { id: actor.userId },
@@ -84,17 +95,42 @@ export class NotaryReturnArchiveBatchService {
             });
             if (prior !== null)
               return this.replay(tx, prior, items, fingerprint);
+            if (stages.size > 1)
+              throw new ConflictException({
+                code: 'INVALID_STATE',
+                message: '批量归档须选择同一阶段的事项，请刷新后重新选择',
+              });
             const resultItems: ReturnArchiveResult[] = [];
-            for (const item of items)
-              resultItems.push(
-                await this.returnArchive.archiveLocked(
-                  tx,
-                  actor,
-                  item.matterId,
-                  item.input,
-                  account.displayName.trim(),
-                ),
-              );
+            for (const item of items) {
+              try {
+                resultItems.push(
+                  await this.returnArchive.archiveLocked(
+                    tx,
+                    actor,
+                    item.matterId,
+                    item.input,
+                    account.displayName.trim(),
+                  ),
+                );
+              } catch (error) {
+                if (
+                  !expanded ||
+                  !(error instanceof HttpException) ||
+                  error.getStatus() >= 500
+                )
+                  throw error;
+                const response = error.getResponse();
+                if (typeof response !== 'object' || !('message' in response))
+                  throw error;
+                throw new HttpException(
+                  {
+                    ...response,
+                    message: `${matterNames.get(item.matterId)}：${String(response.message)}`,
+                  },
+                  error.getStatus(),
+                );
+              }
+            }
             const batchId = randomUUID();
             const result = { batchId, items: resultItems };
             await tx.auditEvent.create({
@@ -173,6 +209,15 @@ export class NotaryReturnArchiveBatchService {
       void ignored;
       return { matterId, input: this.returnArchive.normalize(single) };
     });
+    if (
+      items.some((item) => item.input.archiveFields !== undefined) &&
+      items.some(
+        (item) =>
+          item.input.archiveFields?.archiveDate === undefined ||
+          item.input.archiveFields.sampleFeeAmount === undefined,
+      )
+    )
+      throw this.returnArchive.validation();
     return items.sort((a, b) =>
       a.matterId < b.matterId ? -1 : a.matterId > b.matterId ? 1 : 0,
     );

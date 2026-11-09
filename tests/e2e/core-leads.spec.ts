@@ -46,6 +46,7 @@ import {
   getNotaryReturnAmounts,
   getNotarySampleFee,
   countNotaryCertificates,
+  readNotaryWorkflowFees,
   countNotaryCertificateAudits,
   countNotaryCertificateReceipts,
   countCasesForMatter,
@@ -6915,4 +6916,413 @@ test('certificate audit, receipt and case failures roll back the full archive tr
   } finally {
     await allowInjectedFailures();
   }
+});
+
+test('notary optimization preserves both reviews and links the same fee through certificate issuance', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 1150 });
+  const client = await createClientAccount(request);
+  const clientCsrf = await loginClient(
+    request,
+    client.username,
+    client.password,
+  );
+  const matterId = await createPendingNotaryMatter(request, clientCsrf);
+  const detailPath = `/notary-matters/${matterId}`;
+  const field = (name: string) => page.locator(`[data-test="${name}"]`);
+  const screenshot = async (card: string, filename: string) => {
+    const section = field(card);
+    await section.evaluate((element) =>
+      element.scrollIntoView({ block: 'center' }),
+    );
+    await section.screenshot({ path: testInfo.outputPath(filename) });
+  };
+  const read = async () => {
+    const response = await request.get(`/api/v1${detailPath}`, {
+      headers: authorizationA,
+    });
+    expect(response.status(), await response.text()).toBe(200);
+    return response.json();
+  };
+  await page.goto(detailPath + '#evidence-form');
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.getByRole('link', { name: '填写取证物流' }).click();
+  await expect(field('evidence-form')).toBeVisible();
+  await field('evidence-shop-name').fill('验收店铺甲');
+  await field('evidence-date').fill('2026-09-24');
+  await field('sample-fee-amount').fill('42.50');
+  await field('logistics-company-value-0').fill('顺丰速运');
+  await field('logistics-tracking-value-0').fill('SF1234567890123');
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/evidence-draft') &&
+      response.request().method() === 'PATCH',
+  );
+  await field('evidence-save-draft').click();
+  const saveResult = await saved;
+  expect(saveResult.status(), await saveResult.text()).toBe(200);
+  expect(await readNotaryWorkflowFees(matterId)).toEqual([]);
+  await page.reload();
+  await expect(field('sample-fee-amount')).toHaveValue('42.50');
+  await expect(field('evidence-shop-name')).toHaveValue('验收店铺甲');
+  await screenshot('evidence-form', '01-evidence.png');
+  const submitted = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/evidence') &&
+      response.request().method() === 'POST',
+  );
+  await field('record-evidence-submit').click();
+  const evidenceResponse = await submitted;
+  expect(evidenceResponse.status(), await evidenceResponse.text()).toBe(201);
+  const before = (await readNotaryWorkflowFees(matterId)).find(
+    (fee) => fee.type === '样品费',
+  );
+  expect(before).toMatchObject({ caseId: null, status: '未发起' });
+  expect(before?.amount.toFixed(2)).toBe('42.50');
+  expect(await read()).toMatchObject({
+    sourceSummary: { shopName: '验收店铺甲' },
+    stage: 'WAITING_UNBOX',
+  });
+  await page.goto('/notary-matters?stage=WAITING_UNBOX');
+  await field('batch-opening-open').click();
+  await expect(field('batch-opening-items')).toBeDisabled();
+  await expect(field('batch-opening-zip')).toBeEnabled();
+  await page.goto(detailPath + '#opening-form');
+  await page.reload();
+  await expect(field('opening-form')).toBeVisible();
+  await screenshot('opening-form', '02-opening.png');
+  await field('opening-photo-files').setInputFiles({
+    name: 'SF1234567890123.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAJAAAABgCAIAAAB9tmz2AAABG0lEQVR4nO3UsQnCABRFUfdJa+0O7mObjeIy9paWIqRyAkFFE64euMUvHxz4m/PlqlCb1RfopYDFAhYLWCxgsYDFAhYLWCxgsYDFAhYLWCxgsYDFAhYLWCxgsYDFAhYLWCxgsYDFAhYLWCxgsYD9H9g07lfsdDw837pTp3EPDBgwYMCAAQMGDBiwD4PN8+0bAQMGDBgwYMCAPQYbtrthu3vvBgYMmJcIDBgwYMCAAQMGDNhPgi0fMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDrgWnJgMUCFgtYLGCxgMUCFgtYLGCxgMUCFgtYLGCxgMUCFgtYLGCxgMUCFgtYLGCxgF1b3QF9f6qy+dz7vwAAAABJRU5ErkJggg==',
+      'base64',
+    ),
+  });
+  await expect(
+    page.locator('[data-test^="select-opening-photo-"]'),
+  ).toBeChecked();
+  const openingSubmit = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/opening') &&
+      response.request().method() === 'POST',
+  );
+  await field('record-opening-submit').click();
+  const opened = await openingSubmit;
+  expect(opened.status(), await opened.text()).toBe(201);
+  await page.goto(detailPath + '#review-form');
+  await page.reload();
+  await expect(field('opening-review-section')).toBeVisible();
+  const thumbnail = field('opening-review-section').locator('img').first();
+  await expect(thumbnail).toBeVisible();
+  await expect
+    .poll(() =>
+      thumbnail.evaluate(
+        (element) => (element as HTMLImageElement).naturalWidth,
+      ),
+    )
+    .toBe(144);
+  await thumbnail.click();
+  const preview = page.getByRole('dialog', {
+    name: /预览 SF1234567890123\.png/u,
+  });
+  await expect(preview).toBeVisible();
+  await expect
+    .poll(() =>
+      preview
+        .locator('img')
+        .evaluate((element) => (element as HTMLImageElement).naturalWidth),
+    )
+    .toBe(144);
+  await preview.getByRole('button', { name: '关闭' }).click();
+  await field('opening-review-result-no-infringement').check();
+  await screenshot('opening-review-section', '03-review.png');
+  await field('opening-review-reason').fill('第一次审核备注');
+  const reviewSubmit = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/opening-review') &&
+      response.request().method() === 'POST',
+  );
+  await field('opening-review-submit').click();
+  const reviewed = await reviewSubmit;
+  expect(reviewed.status(), await reviewed.text()).toBe(201);
+  expect(await reviewed.json()).toMatchObject({ stage: 'ISSUANCE_DECISION' });
+  await page.goto(detailPath + '#issuance-form');
+  await page.reload();
+  await expect(field('issuance-decision-section')).toBeVisible();
+  await screenshot('issuance-decision-section', '04-decision.png');
+  await expect(field('opening-decision-remark')).toHaveValue('第一次审核备注');
+  await field('opening-decision-remark').fill('复核后决定出证');
+  await field('issuance-decision-issue').check();
+  const issueSubmit = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/issuance-decision') &&
+      response.request().method() === 'POST',
+  );
+  await field('issuance-decision-submit').click();
+  const decision = await issueSubmit;
+  expect(decision.status(), await decision.text()).toBe(201);
+  expect(await read()).toMatchObject({
+    stage: 'WAITING_CERTIFICATE',
+    disclosureRequired: false,
+    reviewDecision: { result: 'NO_INFRINGEMENT', reason: '第一次审核备注' },
+    issuanceDecision: { decision: 'ISSUE', openingRemark: '复核后决定出证' },
+  });
+  const notary = await createNotaryAccountForMatter(request, matterId);
+  const notaryCsrf = notary.csrfToken;
+  const certificate = await uploadCertificateForNotary(
+    request,
+    matterId,
+    notaryCsrf,
+  );
+  const disclosure = await upload(
+    request,
+    {
+      ownerType: 'NOTARY_MATTER',
+      ownerId: matterId,
+      purpose: 'NOTARY_DISCLOSURE',
+      name: '披露文件.pdf',
+      mime: 'application/pdf',
+      bytes: pdfBytes,
+    },
+    { 'X-CSRF-Token': notaryCsrf },
+  );
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await page.goto(`/notary-portal/matters/${matterId}`);
+  await page.getByLabel('用户名').fill(notary.username);
+  await page.getByLabel('密码').fill(notary.password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(field('certificate-form')).toBeVisible();
+  await field('certificate-number').fill('（2026）测证字001号');
+  await field('certificate-date').fill('2026-09-28');
+  await field('certificate-sample-fee').fill('45.50');
+  await field('fee-notary-amount').fill('120.00');
+  await field('disclosure-toggle').selectOption({ label: '是' });
+  await field('disclosure-info').fill('本次出证披露主体信息');
+  await field('certificate-save-draft').click();
+  await page.reload();
+  await expect(field('disclosure-info')).toHaveValue('本次出证披露主体信息');
+  await expect(field('certificate-sample-fee')).toHaveValue('45.50');
+  await expect(field('fee-notary-amount')).toHaveValue('120.00');
+  await screenshot('certificate-form', '05-certificate.png');
+  const key = randomUUID();
+  const input = {
+    ...certificateInput(certificate.contentVersionId),
+    needDisclose: true,
+    sampleFeeAmount: '45.50',
+    disclosureContentVersionIds: [disclosure.contentVersionId],
+    disclosureInfo: '本次出证披露主体信息',
+  };
+  const issued = await issueNotaryCertificate(
+    request,
+    matterId,
+    notaryCsrf,
+    input,
+    key,
+  );
+  expect(issued.status(), await issued.text()).toBe(201);
+  const result = await issued.json();
+  expect(result).toMatchObject({
+    case: { stage: 'PENDING_MATCH' },
+    certificate: { needDisclose: true, disclosureInfo: input.disclosureInfo },
+  });
+  const replay = await issueNotaryCertificate(
+    request,
+    matterId,
+    notaryCsrf,
+    input,
+    key,
+  );
+  expect(replay.status(), await replay.text()).toBe(201);
+  expect(await replay.json()).toEqual(result);
+  expect(await read()).toMatchObject({
+    stage: 'ARCHIVED',
+    disclosureRequired: false,
+    certificateSummary: { needDisclose: true },
+  });
+  const after = await readNotaryWorkflowFees(matterId);
+  const sample = after.filter((fee) => fee.type === '样品费');
+  expect(sample).toHaveLength(1);
+  expect(sample[0]).toMatchObject({ id: before?.id, caseId: result.case.id });
+  expect(sample[0]?.amount.toFixed(2)).toBe('45.50');
+  expect(after.filter((fee) => fee.type === '公证费')).toHaveLength(1);
+});
+
+test('notary optimization archives each active phase and keeps per-matter fees and refund facts', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  const client = await createClientAccount(request);
+  const csrf = await loginClient(request, client.username, client.password);
+  const first = await createPendingNotaryMatter(request, csrf);
+  const second = await createPendingNotaryMatter(request, csrf);
+  const archiveFields = {
+    archiveType: 'NO_EVIDENCE',
+    archiveDate: '2026-09-25',
+    archiveReason: '运营确认提前归档',
+  };
+  const early = (matterId: string, amount: string, version: number) => ({
+    matterId,
+    ...archiveFields,
+    notaryFeeAmount: amount,
+    sampleFeeAmount: '12.50',
+    expectedVersion: version,
+  });
+  const batch = (
+    items: object[],
+    key = randomUUID(),
+    headers = authorizationA,
+  ) =>
+    request.post('/api/v1/notary-matters/return-archive-batches', {
+      headers: { ...headers, 'Idempotency-Key': key },
+      data: { items },
+    });
+  const forbidden = await batch(
+    [early(first, '20.00', 1)],
+    randomUUID(),
+    authorizationB,
+  );
+  expect([403, 404]).toContain(forbidden.status());
+  const [firstLocked, secondLocked] = [first, second].sort();
+  const stale = await batch([
+    early(firstLocked, '20.00', 1),
+    early(secondLocked, '45.00', 2),
+  ]);
+  expect(stale.status(), await stale.text()).toBe(409);
+  expect(await readNotaryWorkflowFees(first)).toEqual([]);
+  expect(await readNotaryWorkflowFees(second)).toEqual([]);
+  const key = randomUUID();
+  const items = [early(first, '20.00', 1), early(second, '45.00', 1)];
+  const saved = await batch(items, key);
+  expect(saved.status(), await saved.text()).toBe(201);
+  const replay = await batch([...items].reverse(), key);
+  expect(replay.status(), await replay.text()).toBe(201);
+  expect(await replay.json()).toEqual(await saved.json());
+  expect(
+    (await readNotaryWorkflowFees(first))
+      .find((fee) => fee.type === '公证费')
+      ?.amount.toFixed(2),
+  ).toBe('20.00');
+  expect(
+    (await readNotaryWorkflowFees(second))
+      .find((fee) => fee.type === '公证费')
+      ?.amount.toFixed(2),
+  ).toBe('45.00');
+  const waitingUnbox = await createWaitingUnboxMatter(request, csrf);
+  const waitingReview = await createOpenedNotaryMatter(request, csrf);
+  const waitingDecision = await createIssuanceReadyMatter(request, csrf);
+  const waitingCertificate = await createCertificateReadyMatter(request, csrf);
+  for (const [matterId, version] of [
+    [waitingUnbox, 2],
+    [waitingReview, 3],
+    [waitingDecision, 4],
+    [waitingCertificate, 5],
+  ] as const) {
+    const archived = await batch([early(matterId, '11.00', version)]);
+    expect(archived.status(), await archived.text()).toBe(201);
+    const detail = await request.get(`/api/v1/notary-matters/${matterId}`, {
+      headers: authorizationA,
+    });
+    expect(detail.status(), await detail.text()).toBe(200);
+    expect(await detail.json()).toMatchObject({
+      stage: 'ARCHIVED',
+      returnArchive: { archiveDate: '2026-09-25', returnChoice: null },
+    });
+  }
+  const returning = await createOpenedNotaryMatter(request, csrf, {
+    state: 'KNOWN',
+    amount: '100.00',
+  });
+  const review = await reviewNotaryOpening(request, returning, {
+    result: 'NO_INFRINGEMENT',
+    expectedVersion: 3,
+  });
+  expect(review.status(), await review.text()).toBe(201);
+  const decision = await decideNotaryIssuance(request, returning, 'NO_ISSUE');
+  expect(decision.status(), await decision.text()).toBe(201);
+  await setGrant('fee.read', true, 'DEPARTMENT');
+  await page.goto(`/notary-matters/${returning}#return-archive-form`);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.getByRole('link', { name: '填写退货归档资料' }).click();
+  const form = page.locator('[data-test="return-archive-form"]');
+  await expect(form).toBeVisible();
+  await form.locator('[data-test="return-required"]').selectOption('NO');
+  await form
+    .locator('[data-test="return-archive-type"]')
+    .selectOption('NOT_SHIPPED_REFUND_ONLY');
+  await form.locator('[data-test="return-notary-fee"]').fill('18.00');
+  await form.locator('[data-test="return-refund-amount"]').fill('35.00');
+  await form.locator('[data-test="return-refund-party"]').selectOption('FIRM');
+  await expect(form.locator('[data-test="return-freight-fields"]')).toHaveCount(
+    0,
+  );
+  await form
+    .locator('[data-test="return-archive-reason"]')
+    .fill('未发货，仅登记应退款');
+  await form.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+  await form.screenshot({ path: testInfo.outputPath('06-return.png') });
+  const refundSubmit = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/return-archive') &&
+      response.request().method() === 'POST',
+  );
+  await form.locator('[data-test="return-archive-submit"]').click();
+  const refundResult = await refundSubmit;
+  expect(refundResult.status(), await refundResult.text()).toBe(201);
+
+  const returningBatch = await createIssuanceReadyMatter(request, csrf, {
+    state: 'KNOWN',
+    amount: '90.00',
+  });
+  const noIssue = await decideNotaryIssuance(
+    request,
+    returningBatch,
+    'NO_ISSUE',
+  );
+  expect(noIssue.status(), await noIssue.text()).toBe(201);
+  const physicalReturn = await batch([
+    {
+      ...early(returningBatch, '22.00', 5),
+      archiveType: 'RECEIVED_RETURN_REFUND',
+      sampleFeeAmount: '90.00',
+      returnChoice: 'RETURN',
+      refund: { state: 'KNOWN', amount: '48.00', partyKind: 'FIRM' },
+      freight: { state: 'KNOWN', amount: '8.00', partyKind: 'FIRM' },
+    },
+  ]);
+  expect(physicalReturn.status(), await physicalReturn.text()).toBe(201);
+  const returnFees = await readNotaryWorkflowFees(returningBatch);
+  expect(
+    returnFees.find((fee) => fee.type === '退货运费')?.amount.toFixed(2),
+  ).toBe('8.00');
+  const fees = await readNotaryWorkflowFees(returning);
+  expect(fees.map((fee) => fee.type).sort()).toEqual(
+    ['公证费', '样品费', '样品费退款'].sort(),
+  );
+  expect(fees.find((fee) => fee.type === '样品费退款')).toMatchObject({
+    caseId: null,
+    direction: '收入',
+    status: '未发起',
+  });
+  expect(fees.find((fee) => fee.type === '样品费退款')?.amount.toFixed(2)).toBe(
+    '35.00',
+  );
+  await page.goto('/settlements');
+  const refundRow = page
+    .getByRole('row', { name: /样品费退款/u })
+    .filter({ hasText: '35.00' });
+  await expect(refundRow).toContainText('35.00');
+  await expect(refundRow).toContainText('未发起');
+  await expect(
+    page.getByText('收入合计', { exact: true }).locator('..'),
+  ).toContainText('0.00 元');
+  await page.screenshot({ path: testInfo.outputPath('07-fee-center.png') });
 });

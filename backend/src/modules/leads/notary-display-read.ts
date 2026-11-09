@@ -30,6 +30,7 @@ export const NOTARY_DISPLAY_CERTIFICATE_SELECT = {
   certificateDate: true,
   issuedAt: true,
   needDisclose: true,
+  disclosureInfo: true,
   fees: { select: { category: true, state: true, amount: true } },
 } satisfies Prisma.NotaryCertificateSelect;
 
@@ -46,6 +47,7 @@ type DisplayMatter = {
     shopName: string;
     shopExternalId: string | null;
   };
+  costs?: (FeeFact & { category: string })[];
   evidence: {
     evidenceAt: Date;
     sampleFeeState: 'KNOWN' | 'PENDING';
@@ -64,6 +66,7 @@ type DisplayMatter = {
     certificateDate: Date;
     issuedAt: Date;
     needDisclose: boolean;
+    disclosureInfo?: string | null;
     fees: (FeeFact & { category: string })[];
   } | null;
 };
@@ -248,17 +251,24 @@ export async function readNotaryDisplay(
               .slice(0, 10),
             issuedAt: certificate.issuedAt.toISOString(),
             needDisclose: certificate.needDisclose,
+            ...(certificate.disclosureInfo
+              ? { disclosureInfo: certificate.disclosureInfo }
+              : {}),
           },
     fees: {
-      notary: notaryDisplayFee(fee('NOTARY')),
+      notary: notaryDisplayFee(
+        matter.costs?.find((item) => item.category === 'NOTARY') ??
+          fee('NOTARY'),
+      ),
       investigation: notaryDisplayFee(fee('INVESTIGATION')),
       sample: notaryDisplayFee(
-        matter.evidence === null
-          ? null
-          : {
-              state: matter.evidence.sampleFeeState,
-              amount: matter.evidence.sampleFeeAmount,
-            },
+        matter.costs?.find((item) => item.category === 'SAMPLE') ??
+          (matter.evidence === null
+            ? null
+            : {
+                state: matter.evidence.sampleFeeState,
+                amount: matter.evidence.sampleFeeAmount,
+              }),
       ),
     },
     linkedCase,
@@ -291,13 +301,13 @@ export async function notaryDisplayCapabilities(
     recordOpening: false,
     reviewOpening: false,
     decideIssuance: false,
+    archiveMatter: false,
     archiveReturn: false,
     proxyIssueCertificate: false,
   };
-  const infringement =
+  const reviewed =
     matter.opening !== null &&
-    matter.openingReviewDecision?.result === 'INFRINGEMENT' &&
-    matter.openingReviewDecision.reason === null &&
+    matter.openingReviewDecision !== null &&
     matter.openingReviewDecision.archivedAt === null;
   const actions = [
     [
@@ -321,14 +331,15 @@ export async function notaryDisplayCapabilities(
     [
       'decideIssuance',
       'notary.issuance.decide',
-      matter.stage === 'ISSUANCE_DECISION' && infringement,
+      matter.stage === 'ISSUANCE_DECISION' && reviewed,
     ],
+    ['archiveMatter', 'notary.return.archive', matter.stage !== 'ARCHIVED'],
     [
       'archiveReturn',
       'notary.return.archive',
       matter.stage === 'WAITING_RETURN' &&
         matter.evidence !== null &&
-        infringement &&
+        reviewed &&
         matter.issuanceDecision?.decision === 'NO_ISSUE',
     ],
     [

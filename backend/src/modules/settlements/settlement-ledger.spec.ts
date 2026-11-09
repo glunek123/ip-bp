@@ -1,5 +1,6 @@
 import {
   billSelection,
+  feeSummary,
   mergeSampleFees,
   settlementBalance,
 } from './settlement-ledger';
@@ -73,5 +74,36 @@ describe('fee center display', () => {
       { id: 'sample', amount: '100.00', mergeTypes: ['样品费', '样品费退款'] },
       { id: 'freight', amount: '10.00' },
     ]);
+  });
+  it('keeps expected notary refund separate until receipt is recorded', () => {
+    const rows = [
+      { ...base, id: 'sample', type: '样品费', amount: '120.00' },
+      {
+        ...base,
+        id: 'due-refund',
+        type: '样品费退款',
+        amount: '20.00',
+        direction: '收入' as const,
+        sourceKind: 'NOTARY_MATTER_RETURN',
+      },
+    ];
+    expect(mergeSampleFees(rows).map((row) => row.id)).toEqual([
+      'sample',
+      'due-refund',
+    ]);
+    expect(feeSummary(rows)).toMatchObject({
+      expense: '120.00',
+      income: '0.00',
+    });
+    const received = rows.map((row) =>
+      row.id === 'due-refund' ? { ...row, status: '已支付' } : row,
+    );
+    expect(mergeSampleFees(received)).toMatchObject([
+      { id: 'sample', amount: '100.00' },
+    ]);
+    expect(feeSummary(received)).toMatchObject({
+      expense: '120.00',
+      income: '20.00',
+    });
   });
 });

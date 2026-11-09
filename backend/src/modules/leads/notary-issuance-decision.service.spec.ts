@@ -138,7 +138,7 @@ describe('NotaryIssuanceDecisionService', () => {
     expect(f.tx.notaryMatterCommandReceipt.findUnique).not.toHaveBeenCalled();
   });
 
-  it('rejects external actor, wrong stage or review, and stale version', async () => {
+  it('rejects external actor, wrong stage and stale version', async () => {
     const external = fixture();
     await expect(
       external.service.decide(
@@ -159,20 +159,6 @@ describe('NotaryIssuanceDecisionService', () => {
         expectedVersion: 4,
       }),
     ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
-    const review = fixture();
-    review.tx.notaryMatter.findFirst.mockResolvedValue({
-      ...review.matter,
-      openingReviewDecision: {
-        ...review.matter.openingReviewDecision,
-        result: 'NO_INFRINGEMENT',
-      },
-    });
-    await expect(
-      review.service.decide(actor, matterId, 'key', {
-        decision: 'ISSUE',
-        expectedVersion: 4,
-      }),
-    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
     const stale = fixture();
     await expect(
       stale.service.decide(actor, matterId, 'key', {
@@ -180,6 +166,31 @@ describe('NotaryIssuanceDecisionService', () => {
         expectedVersion: 3,
       }),
     ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+  });
+
+  it('allows issue after a first no-infringement result and stores the revised remark', async () => {
+    const f = fixture();
+    f.tx.notaryMatter.findFirst.mockResolvedValue({
+      ...f.matter,
+      openingReviewDecision: {
+        ...f.matter.openingReviewDecision,
+        result: 'NO_INFRINGEMENT',
+        reason: '初审备注',
+      },
+    });
+    const result = await f.service.decide(actor, matterId, 'key', {
+      decision: 'ISSUE',
+      openingRemark: '复核备注',
+      expectedVersion: 4,
+    });
+    expect(result.stage).toBe('WAITING_CERTIFICATE');
+    expect(result.issuanceDecision.openingRemark).toBe('复核备注');
+    expect(f.tx.notaryIssuanceDecision.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        openingReviewResult: 'NO_INFRINGEMENT',
+        openingRemark: '复核备注',
+      }),
+    });
   });
 
   it('replays same key and rejects changed request', async () => {
@@ -208,6 +219,36 @@ describe('NotaryIssuanceDecisionService', () => {
       }),
     ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
     expect(f.tx.notaryIssuanceDecision.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('replays a historical issuance receipt without a revised remark', async () => {
+    const f = fixture();
+    const result = await f.service.decide(actor, matterId, 'old-key', {
+      decision: 'ISSUE',
+      expectedVersion: 4,
+    });
+    const receipt =
+      f.tx.notaryMatterCommandReceipt.create.mock.calls[0][0].data;
+    const oldSummary = {
+      decision: result.issuanceDecision.decision,
+      actorDisplayName: result.issuanceDecision.actorDisplayName,
+      decidedAt: result.issuanceDecision.decidedAt,
+    };
+    const previous = { ...result, issuanceDecision: oldSummary };
+    f.tx.notaryMatterCommandReceipt.findUnique.mockResolvedValue({
+      ...receipt,
+      resultSnapshot: previous,
+    });
+    f.tx.notaryIssuanceDecision.findUnique.mockResolvedValue({
+      ...f.tx.notaryIssuanceDecision.create.mock.calls[0][0].data,
+      id: 'decision-1',
+    });
+    await expect(
+      f.service.decide(actor, matterId, 'old-key', {
+        decision: 'ISSUE',
+        expectedVersion: 4,
+      }),
+    ).resolves.toEqual(previous);
   });
 
   it('returns idempotency conflict when another matter wins the receipt key race', async () => {

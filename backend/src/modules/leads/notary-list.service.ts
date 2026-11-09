@@ -127,6 +127,7 @@ export class NotaryListService {
           },
           issuanceDecision: { select: { decision: true } },
           certificate: { select: NOTARY_DISPLAY_CERTIFICATE_SELECT },
+          costs: true,
           routineProfile: { select: { shopName: true, shopExternalId: true } },
           sourceLead: { select: NOTARY_DISPLAY_LEAD_SELECT },
           notaryOffice: { select: { id: true, name: true } },

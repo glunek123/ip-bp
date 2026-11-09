@@ -1406,6 +1406,8 @@ describe('NotaryMatterDetailPage', () => {
       capabilities: { ...waitingReturn.capabilities, archiveReturn: false },
       returnArchive: {
         returnChoice: 'KEEP',
+        archiveType: 'RECEIVED_KEEP',
+        notaryFeeAmount: '12.00',
         archiveReason: '客户自行保留商品',
         archivedAt: '2026-09-29T03:00:00.000Z',
         actorDisplayName: '运营甲',
@@ -1431,28 +1433,36 @@ describe('NotaryMatterDetailPage', () => {
       .mockResolvedValueOnce({});
     const wrapper = await mountPage();
     expect(wrapper.get('[data-test="return-archive-form"]').text()).toContain(
-      '提交后事项将不可逆地归档；本操作不会发起付款。',
+      '是否需要退货',
     );
-    expect(
-      wrapper.find('[data-test="return-archive-refund-amount"]').exists(),
-    ).toBe(false);
-    await wrapper.get('[data-test="return-archive-return"]').setValue('RETURN');
+    expect(wrapper.find('[data-test="return-refund-amount"]').exists()).toBe(
+      false,
+    );
+    await wrapper.get('[data-test="return-required"]').setValue('YES');
+    await wrapper
+      .get('[data-test="return-archive-type"]')
+      .setValue('RECEIVED_RETURN_REFUND');
     expect(wrapper.find('[data-test="return-refund-fields"]').exists()).toBe(
       true,
     );
     expect(wrapper.find('[data-test="return-freight-fields"]').exists()).toBe(
       true,
     );
+    await wrapper.get('[data-test="return-required"]').setValue('NO');
     await wrapper
-      .get('[data-test="return-archive-refund-only"]')
-      .setValue('REFUND_ONLY');
+      .get('[data-test="return-archive-type"]')
+      .setValue('NOT_SHIPPED_REFUND_ONLY');
     expect(wrapper.find('[data-test="return-refund-fields"]').exists()).toBe(
       true,
     );
     expect(wrapper.find('[data-test="return-freight-fields"]').exists()).toBe(
       false,
     );
-    await wrapper.get('[data-test="return-archive-keep"]').setValue('KEEP');
+    await wrapper.get('[data-test="return-required"]').setValue('NO');
+    await wrapper
+      .get('[data-test="return-archive-type"]')
+      .setValue('RECEIVED_KEEP');
+    await wrapper.get('[data-test="return-notary-fee"]').setValue('12.00');
     expect(wrapper.find('[data-test="return-refund-fields"]').exists()).toBe(
       false,
     );
@@ -1473,6 +1483,8 @@ describe('NotaryMatterDetailPage', () => {
       'matter-1',
       {
         returnChoice: 'KEEP',
+        archiveType: 'RECEIVED_KEEP',
+        notaryFeeAmount: '12.00',
         archiveReason: '客户自行保留商品',
         expectedVersion: 5,
       },
@@ -1548,7 +1560,11 @@ describe('NotaryMatterDetailPage', () => {
     const reason = '😀'.repeat(2501);
     const textarea = wrapper.get('[data-test="return-archive-reason"]');
     expect(textarea.attributes('maxlength')).toBeUndefined();
-    await wrapper.get('[data-test="return-archive-keep"]').setValue('KEEP');
+    await wrapper.get('[data-test="return-required"]').setValue('NO');
+    await wrapper
+      .get('[data-test="return-archive-type"]')
+      .setValue('RECEIVED_KEEP');
+    await wrapper.get('[data-test="return-notary-fee"]').setValue('12.00');
     await textarea.setValue(reason);
     await wrapper
       .get('[data-test="return-archive-form"] form')
@@ -1557,13 +1573,23 @@ describe('NotaryMatterDetailPage', () => {
 
     expect(api.archiveNotaryReturn).toHaveBeenCalledWith(
       'matter-1',
-      { returnChoice: 'KEEP', archiveReason: reason, expectedVersion: 5 },
+      {
+        returnChoice: 'KEEP',
+        archiveType: 'RECEIVED_KEEP',
+        notaryFeeAmount: '12.00',
+        archiveReason: reason,
+        expectedVersion: 5,
+      },
       expect.any(String),
     );
 
     const tooLongReason = '😀'.repeat(5001);
     const tooLongPage = await mountPage();
-    await tooLongPage.get('[data-test="return-archive-keep"]').setValue('KEEP');
+    await tooLongPage.get('[data-test="return-required"]').setValue('NO');
+    await tooLongPage
+      .get('[data-test="return-archive-type"]')
+      .setValue('RECEIVED_KEEP');
+    await tooLongPage.get('[data-test="return-notary-fee"]').setValue('12.00');
     await tooLongPage
       .get('[data-test="return-archive-reason"]')
       .setValue(tooLongReason);
@@ -1632,10 +1658,10 @@ describe('NotaryMatterDetailPage', () => {
     const wrapper = await mountPage();
     expect(
       wrapper.get('[data-test="issuance-decision-section"]').text(),
-    ).toContain('出证 → 待出证');
+    ).toContain('出证');
     expect(
       wrapper.get('[data-test="issuance-decision-section"]').text(),
-    ).toContain('不出证 → 待退货');
+    ).toContain('不出证');
     await wrapper.get('[data-test="issuance-decision-issue"]').setValue();
     await wrapper
       .get('[data-test="issuance-decision-section"] form')
@@ -1643,7 +1669,7 @@ describe('NotaryMatterDetailPage', () => {
     await flushPromises();
     expect(api.decideNotaryIssuance).toHaveBeenCalledWith(
       'matter-1',
-      { decision: 'ISSUE', expectedVersion: 5 },
+      { decision: 'ISSUE', expectedVersion: 5, openingRemark: null },
       expect.any(String),
     );
     expect(
@@ -1660,7 +1686,7 @@ describe('NotaryMatterDetailPage', () => {
     ).not.toContain('ISSUE');
   });
 
-  it('offers no default opening result and requires a reason for no infringement', async () => {
+  it('offers no default opening result and accepts no infringement without a note', async () => {
     api.getNotaryMatter.mockResolvedValue({
       ...matter,
       stage: 'UNBOX_REVIEW',
@@ -1693,19 +1719,20 @@ describe('NotaryMatterDetailPage', () => {
       wrapper.findAll('[data-test^="opening-review-result"]:checked'),
     ).toHaveLength(0);
     expect(wrapper.get('[data-test="opening-review-form"]').text()).toContain(
-      '侵权后进入开箱待确认，由运营决定是否出证',
+      '审核结果',
     );
-    expect(wrapper.get('[data-test="opening-review-form"]').text()).toContain(
-      '不侵权将立即归档，普通入口不能撤回',
-    );
+    api.reviewNotaryOpening.mockResolvedValue({});
     await wrapper
       .get('[data-test="opening-review-result-no-infringement"]')
       .setValue(true);
     await wrapper.get('[data-test="opening-review-form"]').trigger('submit');
-    expect(
-      wrapper.get('[data-test="opening-review-reason-error"]').text(),
-    ).toContain('请填写不侵权原因');
-    expect(api.reviewNotaryOpening).not.toHaveBeenCalled();
+    await flushPromises();
+    expect(api.reviewNotaryOpening).toHaveBeenCalledWith(
+      'matter-1',
+      expect.objectContaining({ result: 'NO_INFRINGEMENT' }),
+      expect.any(String),
+    );
+    expect(api.reviewNotaryOpening.mock.calls[0]?.[1].reason).toBeUndefined();
   });
 
   it('locks an uncertain submission key and reloads the persisted decision after success', async () => {
@@ -1972,13 +1999,16 @@ describe('NotaryMatterDetailPage', () => {
     },
   );
 
-  it('marks every initially required evidence choice before submission', async () => {
+  it('marks the required evidence date and amount and uses direct logistics inputs', async () => {
     const wrapper = await mountPage();
-    expect(wrapper.findAll('.required-mark')).toHaveLength(4);
-    await wrapper
-      .get('[data-test="logistics-company-state-0"]')
-      .setValue('PRESENT');
-    expect(wrapper.findAll('.required-mark')).toHaveLength(5);
+    expect(wrapper.findAll('.required-mark')).toHaveLength(2);
+    expect(wrapper.find('[data-test="sample-fee-state"]').exists()).toBe(false);
+    expect(
+      wrapper.find('[data-test="logistics-company-value-0"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-test="logistics-tracking-value-0"]').exists(),
+    ).toBe(true);
   });
 
   it('shows persisted handoff snapshot and source lead, and downloads its selected attachment', async () => {
@@ -2004,19 +2034,12 @@ describe('NotaryMatterDetailPage', () => {
 
   it('records explicit online evidence and logistics, then renders the saved record read only', async () => {
     const wrapper = await mountPage();
-    expect(wrapper.text()).toContain('提交后事项将进入待开箱');
+    expect(wrapper.text()).toContain('填写取证信息');
     await wrapper.get('[data-test="evidence-date"]').setValue('2026-09-24');
-    await wrapper.get('[data-test="sample-fee-state"]').setValue('KNOWN');
     await wrapper.get('[data-test="sample-fee-amount"]').setValue('0.00');
-    await wrapper
-      .get('[data-test="logistics-company-state-0"]')
-      .setValue('PRESENT');
     await wrapper
       .get('[data-test="logistics-company-value-0"]')
       .setValue('顺丰');
-    await wrapper
-      .get('[data-test="logistics-tracking-state-0"]')
-      .setValue('NONE');
     const savedEvidence = {
       evidenceAt: '2026-09-24',
       sampleFeeState: 'KNOWN',
@@ -2086,26 +2109,20 @@ describe('NotaryMatterDetailPage', () => {
     expect(wrapper.find('[data-test="evidence-date"]').exists()).toBe(false);
   });
 
-  it('requires explicit company and tracking states and does not submit invalid rows', async () => {
+  it('requires the evidence date and fee before submission', async () => {
     const wrapper = await mountPage();
     await wrapper.get('[data-test="record-evidence"]').trigger('submit');
     await flushPromises();
     expect(api.recordNotaryEvidence).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain('请选择取证日期');
-    expect(wrapper.text()).toContain('请选择快递公司状态');
-    expect(wrapper.text()).toContain('请选择快递单号状态');
+    expect(wrapper.text()).toContain('样品费');
+    expect(wrapper.text()).not.toContain('快递公司状态');
   });
 
   it('locks unknown evidence and retries only its original key and payload', async () => {
     const wrapper = await mountPage();
     await wrapper.get('[data-test="evidence-date"]').setValue('2026-09-24');
-    await wrapper.get('[data-test="sample-fee-state"]').setValue('PENDING');
-    await wrapper
-      .get('[data-test="logistics-company-state-0"]')
-      .setValue('NONE');
-    await wrapper
-      .get('[data-test="logistics-tracking-state-0"]')
-      .setValue('NONE');
+    await wrapper.get('[data-test="sample-fee-amount"]').setValue('0.00');
     api.recordNotaryEvidence
       .mockRejectedValueOnce(new Error('temporary failure'))
       .mockRejectedValueOnce(new Error('temporary failure'))
@@ -2557,13 +2574,7 @@ describe('NotaryMatterDetailPage', () => {
     async (code) => {
       const wrapper = await mountPage();
       await wrapper.get('[data-test="evidence-date"]').setValue('2026-09-24');
-      await wrapper.get('[data-test="sample-fee-state"]').setValue('PENDING');
-      await wrapper
-        .get('[data-test="logistics-company-state-0"]')
-        .setValue('NONE');
-      await wrapper
-        .get('[data-test="logistics-tracking-state-0"]')
-        .setValue('NONE');
+      await wrapper.get('[data-test="sample-fee-amount"]').setValue('0.00');
       api.recordNotaryEvidence.mockRejectedValueOnce(
         new ApiError('conflict', 409, code),
       );

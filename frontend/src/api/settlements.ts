@@ -102,7 +102,8 @@ export type SettlementBillDetail = Omit<SettlementBill, 'payees' | 'count'> & {
 };
 export type FeeSourceRow = {
   id: string;
-  caseId: string;
+  caseId: string | null;
+  notaryMatterId: string | null;
   businessNo: string;
   stage: string;
   type: string;
@@ -127,7 +128,7 @@ export type FeeRow = FeeSourceRow & {
 };
 export type FeeSelectionSource = Pick<
   FeeSourceRow,
-  'id' | 'businessNo' | 'type' | 'amount' | 'status'
+  'id' | 'businessNo' | 'type' | 'amount' | 'status' | 'caseId'
 >;
 export type Page<T> = {
   items: T[];
@@ -233,7 +234,11 @@ export function parseFeeSourceRow(value: unknown): FeeSourceRow {
   if (direction !== '收入' && direction !== '支出') throw invalid();
   const result: FeeSourceRow = {
     id: string(row.id),
-    caseId: string(row.caseId),
+    caseId: nullableString(row.caseId),
+    notaryMatterId:
+      row.notaryMatterId === undefined
+        ? null
+        : nullableString(row.notaryMatterId),
     businessNo: string(row.businessNo),
     stage: string(row.stage),
     courtCaseNo: nullableString(row.courtCaseNo),
@@ -666,6 +671,8 @@ export async function listFees(
       type: string(source.type),
       amount: string(source.amount),
       status: string(source.status),
+      caseId:
+        source.caseId === undefined ? null : nullableString(source.caseId),
     };
   });
   const byId = new Map(matchingSources.map((source) => [source.id, source]));

@@ -1,3 +1,5 @@
+jest.mock('../settlements', () => ({ syncNotaryMatterCost: jest.fn() }));
+
 import { ForbiddenException } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { LeadNotaryService } from './lead-notary.service';
@@ -176,6 +178,7 @@ describe('LeadNotaryService opening review read projection', () => {
       reviewOpening: false,
       decideIssuance: false,
       archiveReturn: false,
+      archiveMatter: false,
       proxyIssueCertificate: false,
     });
     expect(result).toHaveProperty('returnArchive', null);
@@ -532,7 +535,6 @@ describe('LeadNotaryService opening review read projection', () => {
       },
     ]);
     for (const [stage, result, reason, archivedAt] of [
-      ['ISSUANCE_DECISION', 'NO_INFRINGEMENT', '不侵权', null],
       ['ARCHIVED', 'INFRINGEMENT', null, null],
       ['ARCHIVED', 'NO_INFRINGEMENT', '不侵权', null],
       ['ARCHIVED', 'NO_INFRINGEMENT', null, new Date('2026-09-28T01:00:00Z')],
@@ -656,6 +658,9 @@ function fixture(status = 'WAITING_EVIDENCE_DECISION') {
     },
     notaryMatterLogistics: {
       createMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    notaryEvidenceDraft: {
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     notaryMatterEvidence: {
       create: jest.fn().mockResolvedValue({}),
