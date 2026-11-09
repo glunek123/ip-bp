@@ -71,6 +71,110 @@ test.afterEach(async ({ page }, info) => {
 });
 test.afterAll(async () => disconnectCustomerTestDatabase());
 
+test('agreement dropdown preserves legacy terms until explicitly changed', async ({
+  page,
+}, testInfo) => {
+  const credentials = await resetLocalAuthE2eData();
+  await grantDocuments();
+  await passwordLogin(page, '/customers', credentials);
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
+  await page.getByLabel('客户名称').fill('旧合作协议兼容客户');
+  await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '旧合作协议兼容客户' }).click();
+  await expect(
+    page.getByRole('heading', { name: '旧合作协议兼容客户' }),
+  ).toBeVisible();
+
+  const agreement = page.locator('[data-test="agreement-panel"]');
+  const edit = agreement.locator('[data-test="agreement-edit"]');
+  const save = agreement.locator('[data-test="agreement-submit"]');
+  const version = agreement.locator('[data-test="agreement-version"]');
+  const model = agreement.getByLabel('合作模式', { exact: true });
+  const method = agreement.getByLabel('结算方式', { exact: true });
+  const formula = '客户结算金额=结案金额*70%';
+  const legacyModel = '个案议价';
+  const legacyMethod = '月结 · 60 天';
+  await edit.click();
+  await agreement.getByLabel('合作协议名称').fill('旧条款');
+  await agreement.getByLabel('结算条件（公式）').fill(formula);
+  await agreement.locator('input[type="file"]').setInputFiles({
+    name: '旧条款附件.pdf',
+    mimeType: 'application/pdf',
+    buffer: pdf,
+  });
+  await expect(
+    agreement.getByText('协议文件已上传，尚未绑定到新版本。'),
+  ).toBeVisible();
+  // Send a payload issued by a pre-dropdown client to the actual service.
+  await page.route(
+    '**/api/v1/customers/*/agreements',
+    async (route) => {
+      await route.continue({
+        postData: {
+          ...route.request().postDataJSON(),
+          model: legacyModel,
+          settlementMethod: legacyMethod,
+        },
+      });
+    },
+    { times: 1 },
+  );
+  await save.click();
+  await expect(version).toContainText('第 1 版');
+
+  await edit.click();
+  await expect(model).toHaveValue(legacyModel);
+  await expect(method).toHaveValue(legacyMethod);
+  await agreement.screenshot({
+    path: testInfo.outputPath('agreement-legacy.png'),
+  });
+  await agreement.getByLabel('合作协议名称').fill('只改标题');
+  const revision = () =>
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url().endsWith('/revisions'),
+    );
+  const titleOnly = revision();
+  await save.click();
+  const revised = await titleOnly;
+  expect(revised.status()).toBe(200);
+  expect(revised.request().postDataJSON()).not.toHaveProperty('model');
+  expect(revised.request().postDataJSON()).not.toHaveProperty(
+    'settlementMethod',
+  );
+  await expect(version).toContainText('第 2 版');
+
+  await edit.click();
+  await expect(model).toHaveValue(legacyModel);
+  await expect(method).toHaveValue(legacyMethod);
+  await method.selectOption('季度结算');
+  const chosen = revision();
+  await save.click();
+  const updated = await chosen;
+  expect(updated.status()).toBe(200);
+  expect(updated.request().postDataJSON()).toMatchObject({
+    settlementMethod: '季度结算',
+  });
+  expect(updated.request().postDataJSON()).not.toHaveProperty('model');
+  await expect(version).toContainText('第 3 版');
+  await page.reload();
+  await expect(agreement.getByText(legacyModel, { exact: true })).toBeVisible();
+  await expect(agreement.getByText('季度结算', { exact: true })).toBeVisible();
+  await expect(agreement.getByText(formula, { exact: true })).toBeVisible();
+  await expect(
+    agreement.getByText('旧条款附件.pdf', { exact: true }),
+  ).toBeVisible();
+  await agreement.locator('[data-test="agreement-history-toggle"]').click();
+  const oldVersion = agreement
+    .getByRole('listitem')
+    .filter({ hasText: '第 1 版 · 旧条款' });
+  await expect(oldVersion).toContainText(legacyModel);
+  await expect(oldVersion).toContainText(legacyMethod);
+  await expect(oldVersion).toContainText(formula);
+  await expect(oldVersion).toContainText('旧条款附件.pdf');
+});
+
 test('revoked agreement upload clears old current and historical PII but keeps recovery marker', async ({
   page,
 }) => {

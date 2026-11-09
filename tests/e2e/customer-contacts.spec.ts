@@ -176,12 +176,20 @@ test.afterAll(async () => {
 
 test('real password browser creates independent contacts, changes primary, ends and relogs in', async ({
   page,
-}) => {
+}, testInfo) => {
+  let confirmedEndMessage = '';
+  let confirmDeletion = true;
+  page.on('dialog', async (dialog) => {
+    confirmedEndMessage = dialog.message();
+    if (confirmDeletion) await dialog.accept();
+    else await dialog.dismiss();
+  });
   const credentials = await resetLocalAuthE2eData();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
   await page.getByLabel('客户名称').fill('真实联系人浏览器客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '真实联系人浏览器客户' }).click();
   await expect(
     page.getByRole('heading', { name: '真实联系人浏览器客户' }),
   ).toBeVisible();
@@ -206,7 +214,14 @@ test('real password browser creates independent contacts, changes primary, ends 
     }
   });
 
+  await expect(panel.locator('form')).toHaveCount(0);
   await panel.locator('[data-test="contact-new"]').click();
+  await fillContact(page, '未保存联系人', '13800138000');
+  await panel.getByRole('button', { name: '取消并放弃未提交内容' }).click();
+  await expect(panel.locator('form')).toHaveCount(0);
+  expect(writes).toHaveLength(0);
+  await panel.locator('[data-test="contact-new"]').click();
+  await expect(panel.getByLabel('姓名')).toHaveValue('');
   await fillContact(page, '同名联系人', '13800138001');
   await panel.getByRole('button', { name: '保存联系人' }).click();
   await expect(panel.getByText('同名联系人 · 13800138001')).toBeVisible();
@@ -219,36 +234,72 @@ test('real password browser creates independent contacts, changes primary, ends 
   const firstId = (await rows.nth(0).getAttribute('data-test'))!.slice(8);
   const secondId = (await rows.nth(1).getAttribute('data-test'))!.slice(8);
   expect(firstId).not.toBe(secondId);
-  await rows.nth(0).getByRole('button', { name: '编辑' }).click();
+  await rows.nth(0).getByRole('button', { name: '编辑', exact: true }).click();
+  await panel.getByLabel('姓名').fill('编辑目标联系人');
+  await rows
+    .nth(1)
+    .getByRole('button', { name: /同名联系人/u })
+    .click();
+  await panel.getByRole('button', { name: '保存联系人' }).click();
+  await expect(panel.locator(`[data-test="contact-${firstId}"]`)).toContainText(
+    '编辑目标联系人',
+  );
+  await expect(
+    panel.locator(`[data-test="contact-${secondId}"]`),
+  ).toContainText('同名联系人');
+  await panel.locator('[data-test="contact-new"]').click();
+  await fillContact(page, '保留联系人', '13800138002');
+  await panel.getByRole('button', { name: '保存联系人' }).click();
+  await expect(panel.getByText('保留联系人 · 13800138002')).toBeVisible();
+  await panel.screenshot({ path: testInfo.outputPath('contacts.png') });
+
+  await panel.locator('[data-test="contact-edit-' + firstId + '"]').click();
+  await panel.getByLabel('姓名').fill('保留未提交编辑');
+  confirmDeletion = false;
+  await panel.locator('[data-test="contact-delete-' + secondId + '"]').click();
+  expect(confirmedEndMessage).toContain('同名联系人');
+  await expect(panel.getByLabel('姓名')).toHaveValue('保留未提交编辑');
+  confirmDeletion = true;
+  await panel.locator('[data-test="contact-delete-' + secondId + '"]').click();
+  await expect(
+    panel.locator('[data-test="contact-' + secondId + '"]'),
+  ).toHaveCount(0);
+  await expect(
+    panel.locator('[data-test="contact-' + firstId + '"]'),
+  ).toContainText('编辑目标联系人');
+  await panel
+    .locator(`[data-test="contact-${firstId}"]`)
+    .getByRole('button', { name: '编辑', exact: true })
+    .click();
   await panel.getByRole('button', { name: '设为主要' }).click();
   await expect(panel.locator(`[data-test="contact-${firstId}"]`)).toContainText(
     '主要',
   );
   await panel
     .locator(`[data-test="contact-${firstId}"]`)
-    .getByRole('button', { name: '编辑' })
+    .getByRole('button', { name: '删除' })
     .click();
-  await panel.getByRole('button', { name: '取消主要' }).click();
+  expect(confirmedEndMessage).toContain('编辑目标联系人');
   await expect(panel.getByText('当前未指定主要联系人')).toBeVisible();
-  await panel
-    .locator(`[data-test="contact-${secondId}"]`)
-    .getByRole('button', { name: '编辑' })
-    .click();
-  await panel.getByLabel('结束原因（选填）').fill('岗位调整');
-  await panel.getByRole('button', { name: '结束关系' }).click();
+  await expect(panel.getByText('保留联系人 · 13800138002')).toBeVisible();
   await panel.getByRole('button', { name: '已结束' }).click();
+  await expect(panel.locator(`[data-test="contact-${firstId}"]`)).toContainText(
+    '编辑目标联系人',
+  );
+  await panel
+    .locator(`[data-test="contact-${firstId}"]`)
+    .getByRole('button', { name: /编辑目标联系人/u })
+    .click();
   await expect(
-    panel.locator(`[data-test="contact-${secondId}"]`),
-  ).toContainText('同名联系人');
+    panel.getByRole('heading', { name: /联系人历史：编辑目标联系人/u }),
+  ).toBeVisible();
   await page.reload();
-  await expect(panel.getByText('同名联系人 · 13800138001')).toBeVisible();
+  await expect(panel.getByText('保留联系人 · 13800138002')).toBeVisible();
   await page.getByRole('button', { name: '退出登录' }).click();
   await passwordLogin(page, `/customers/${customerId}`, credentials);
   await panel.getByRole('button', { name: '已结束' }).click();
-  await expect(
-    panel.locator(`[data-test="contact-${secondId}"]`),
-  ).toBeVisible();
-  expect(writes).toHaveLength(5);
+  await expect(panel.locator(`[data-test="contact-${firstId}"]`)).toBeVisible();
+  expect(writes).toHaveLength(7);
   for (const sent of writes) {
     expect(sent.key).toBeTruthy();
     expect(sent.csrf).toBeTruthy();
@@ -263,9 +314,10 @@ test('committed response loss preserves the original contact command across refr
   await grantCustomerCooperation(localRoleId, 'DEPARTMENT');
   await grantCustomerLifecycle(localRoleId, 'DEPARTMENT');
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
   await page.getByLabel('客户名称').fill('联系人结果未知客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '联系人结果未知客户' }).click();
   await expect(
     page.getByRole('heading', { name: '联系人结果未知客户' }),
   ).toBeVisible();
@@ -351,9 +403,10 @@ test('real PostgreSQL BUSY preserves the browser contact key and original body',
 }) => {
   const credentials = await resetLocalAuthE2eData();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
   await page.getByLabel('客户名称').fill('联系人忙碌客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '联系人忙碌客户' }).click();
   await expect(
     page.getByRole('heading', { name: '联系人忙碌客户' }),
   ).toBeVisible();
@@ -400,9 +453,10 @@ test('confirmed contact write with failed current GET stays readonly until GET r
 }) => {
   const credentials = await resetLocalAuthE2eData();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
   await page.getByLabel('客户名称').fill('联系人只读恢复客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '联系人只读恢复客户' }).click();
   await expect(
     page.getByRole('heading', { name: '联系人只读恢复客户' }),
   ).toBeVisible();
@@ -441,9 +495,10 @@ test('actual revocation clears visible contacts and preserves an unknown origina
 }) => {
   const credentials = await resetLocalAuthE2eData();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
   await page.getByLabel('客户名称').fill('撤权后原键客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '撤权后原键客户' }).click();
   await expect(
     page.getByRole('heading', { name: '撤权后原键客户' }),
   ).toBeVisible();
@@ -522,9 +577,10 @@ test('unknown cooperation freezes contact writes, while paused and terminated st
   const credentials = await resetLocalAuthE2eData();
   await grantCustomerCooperation(localRoleId, 'DEPARTMENT');
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
   await page.getByLabel('客户名称').fill('合作与联系人交叉维护客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '合作与联系人交叉维护客户' }).click();
   await expect(
     page.getByRole('heading', { name: '合作与联系人交叉维护客户' }),
   ).toBeVisible();
@@ -591,9 +647,10 @@ test('unknown draft deletion keeps its recovery entry and blocks new contact com
   const credentials = await resetLocalAuthE2eData();
   await grantCustomerLifecycle(localRoleId, 'DEPARTMENT');
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
   await page.getByLabel('客户名称').fill('删除未知冻结联系人客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '删除未知冻结联系人客户' }).click();
   await expect(
     page.getByRole('heading', { name: '删除未知冻结联系人客户' }),
   ).toBeVisible();
@@ -628,9 +685,10 @@ test('real password admission selects an exact active ID and freezes the snapsho
   const credentials = await resetLocalAuthE2eData();
   await grantCustomerAdmission(localRoleId, 'DEPARTMENT');
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
   await page.getByLabel('客户名称').fill('显式选人准入客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '显式选人准入客户' }).click();
   await expect(
     page.getByRole('heading', { name: '显式选人准入客户' }),
   ).toBeVisible();
@@ -655,10 +713,11 @@ test('real password admission selects an exact active ID and freezes the snapsho
     ).toBeEnabled();
   }
   const secondId = (await panel
-    .getByText('候选乙 · 13800138007')
-    .locator('..')
+    .locator('li[data-test^="contact-"]')
+    .filter({ hasText: '候选乙 · 13800138007' })
     .getAttribute('data-test'))!.slice(8);
   const accountsBefore = await getCustomerContactAccountCounts(customerId);
+  await page.locator('[data-test="open-customer-admission"]').click();
   await fillAdmission(page, 'CONTACT-ADMIT-001');
   await page.getByLabel('选择一位活动联系人').selectOption(secondId);
   const admitted = page.waitForResponse(
@@ -688,11 +747,14 @@ test('real password admission selects an exact active ID and freezes the snapsho
   await expect(
     panel.locator('[data-test="admission-contact-snapshot"]'),
   ).toContainText('候选乙');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: '客户准入' })).toBeHidden();
   await panel
     .locator(`[data-test="contact-${secondId}"]`)
-    .getByRole('button', { name: '编辑' })
+    .getByRole('button', { name: '编辑', exact: true })
     .click();
   await panel.getByLabel('结束原因（选填）').fill('联络关系结束');
+  page.once('dialog', (dialog) => dialog.accept());
   await panel.getByRole('button', { name: '结束关系' }).click();
   await expect(panel.locator(`[data-test="contact-${secondId}"]`)).toHaveCount(
     0,
@@ -718,7 +780,7 @@ test('real password old new-customer form creates one contact and keeps its ID i
 }) => {
   const credentials = await resetLocalAuthE2eData();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
   await page.getByLabel('客户名称').fill('旧建档表单客户');
   await page.getByLabel('联系人姓名').fill('旧联系人');
   await page.getByLabel('电话').fill('13800138008');
@@ -753,9 +815,10 @@ test('real cookie service history serves page two with the original created vers
 }) => {
   const credentials = await resetLocalAuthE2eData();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
   await page.getByLabel('客户名称').fill('联系人多页历史客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '联系人多页历史客户' }).click();
   await expect(
     page.getByRole('heading', { name: '联系人多页历史客户' }),
   ).toBeVisible();
@@ -822,9 +885,10 @@ test('ended contact page two survives readonly recovery against the actual servi
   test.setTimeout(60000);
   const credentials = await resetLocalAuthE2eData();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
   await page.getByLabel('客户名称').fill('结束联系人第二页客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '结束联系人第二页客户' }).click();
   await expect(
     page.getByRole('heading', { name: '结束联系人第二页客户' }),
   ).toBeVisible();
@@ -917,6 +981,7 @@ test('a late actual contact read from customer A cannot populate customer B', as
     await page.goto('/customers/new');
     await page.getByLabel('客户名称').fill(customerName!);
     await page.getByRole('button', { name: '保存草稿' }).click();
+    await page.getByRole('link', { name: customerName! }).click();
     await expect(
       page.getByRole('heading', { name: customerName! }),
     ).toBeVisible();
@@ -1281,9 +1346,10 @@ test('admitted contact denial hides parent and snapshot PII while retaining its 
   const credentials = await resetLocalAuthE2eData();
   await grantCustomerAdmission(localRoleId, 'DEPARTMENT');
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
   await page.getByLabel('客户名称').fill('撤读准入联系人客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '撤读准入联系人客户' }).click();
   await expect(
     page.getByRole('heading', { name: '撤读准入联系人客户' }),
   ).toBeVisible();
@@ -1299,15 +1365,18 @@ test('admitted contact denial hides parent and snapshot PII while retaining its 
   await panel.getByRole('button', { name: '保存联系人' }).click();
   await expect(panel.getByText('独特准入人甲 · 13800138031')).toBeVisible();
   const contactId = (await panel
-    .getByText('独特准入人甲 · 13800138031')
-    .locator('..')
+    .locator('li[data-test^="contact-"]')
+    .filter({ hasText: '独特准入人甲 · 13800138031' })
     .getAttribute('data-test'))!.slice(8);
+  await page.locator('[data-test="open-customer-admission"]').click();
   await fillAdmission(page, 'CONTACT-I1-001');
   await page.getByLabel('选择一位活动联系人').selectOption(contactId);
   await page.locator('[data-test="admit-submit"]').click();
   await expect(
     panel.locator('[data-test="admission-contact-snapshot"]'),
   ).toContainText('unique-i1@example.com');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: '客户准入' })).toBeHidden();
   let intercepted = false;
   let committedResolve!: () => void;
   const committedDone = new Promise<void>((resolve) => {
@@ -1366,9 +1435,10 @@ test('unknown explicit admission replays the same request after permission denia
   const credentials = await resetLocalAuthE2eData();
   await grantCustomerAdmission(localRoleId, 'DEPARTMENT');
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户', exact: true }).click();
   await page.getByLabel('客户名称').fill('未知准入原键客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '未知准入原键客户' }).click();
   await expect(
     page.getByRole('heading', { name: '未知准入原键客户' }),
   ).toBeVisible();
@@ -1380,9 +1450,10 @@ test('unknown explicit admission replays the same request after permission denia
   await panel.getByRole('button', { name: '保存联系人' }).click();
   await expect(panel.getByText('准入原键人 · 13800138033')).toBeVisible();
   const contactId = (await panel
-    .getByText('准入原键人 · 13800138033')
-    .locator('..')
+    .locator('li[data-test^="contact-"]')
+    .filter({ hasText: '准入原键人 · 13800138033' })
     .getAttribute('data-test'))!.slice(8);
+  await page.locator('[data-test="open-customer-admission"]').click();
   await fillAdmission(page, 'CONTACT-I2-001');
   await page.getByLabel('选择一位活动联系人').selectOption(contactId);
   let original: Awaited<ReturnType<typeof commandHeaders>> | undefined;
@@ -1455,12 +1526,16 @@ test('unknown explicit admission replays the same request after permission denia
     audits: 1,
   });
   await page.reload();
+  await page.locator('[data-test="open-customer-admission"]').click();
   await expect(
     page.locator('[data-test="admission-retry-original"]'),
   ).toBeVisible();
   await grantCustomerAdmission(localRoleId, 'DEPARTMENT');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: '客户准入' })).toBeHidden();
   await page.getByRole('button', { name: '退出登录' }).click();
   await passwordLogin(page, url, credentials);
+  await page.locator('[data-test="open-customer-admission"]').click();
   const replay = page.waitForResponse(
     (response) =>
       response.url().endsWith(`/customers/${customerId}/admission`) &&

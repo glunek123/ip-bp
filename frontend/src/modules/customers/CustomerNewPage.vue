@@ -21,6 +21,10 @@ import {
   type IdentityTypeCode,
 } from './customer-admission-options';
 import type { AgreementValidityMode } from '../../api/customer-agreements-invoice';
+import {
+  customerCooperationModelOptions,
+  customerSettlementMethodOptions,
+} from './customer-agreement-options';
 
 const router = useRouter();
 const props = withDefaults(defineProps<{ embedded?: boolean }>(), {
@@ -60,13 +64,6 @@ const regionOptions = [
   '东北',
   '海外',
 ];
-const settlementMethods = [
-  '月结 · 30 天',
-  '月结 · 60 天',
-  '季结 · 45 天',
-  '单案结清',
-];
-const cooperationModels = ['全风险', '半风险', '固定费用'];
 const displayedIdentityTypes = computed(() => {
   const selectedType = customerType.value;
   return selectedType
@@ -562,7 +559,7 @@ async function submit(): Promise<void> {
                 >
                   <option value="">未填写</option>
                   <option
-                    v-for="option in settlementMethods"
+                    v-for="option in customerSettlementMethodOptions"
                     :key="option"
                     :value="option"
                   >
@@ -582,7 +579,7 @@ async function submit(): Promise<void> {
                 >
                   <option value="">未填写</option>
                   <option
-                    v-for="option in cooperationModels"
+                    v-for="option in customerCooperationModelOptions"
                     :key="option"
                     :value="option"
                   >

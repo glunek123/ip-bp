@@ -40,7 +40,7 @@ function input(name = `首版建档 ${randomUUID()}`) {
     initialAgreement: {
       title: '合作协议',
       model: '全风险',
-      settlementMethod: '月结 · 30 天',
+      settlementMethod: '月结',
       settlementFormula: '客户结算金额=结案金额*70%',
       validityMode: 'UNKNOWN',
     },

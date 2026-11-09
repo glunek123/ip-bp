@@ -973,7 +973,7 @@ test('revoked notary office binding invalidates the next request and login', asy
 test('authorized supervisor admits a customer with real PDF and JPEG bytes', async ({
   page,
   request,
-}) => {
+}, testInfo) => {
   await grantCustomerRoutineEdit(coreLeadFixtures.roleA, 'TEAM');
   await configureBrowser(page);
   await page.goto(`/customers/${coreLeadFixtures.draftCustomer}`);
@@ -987,7 +987,13 @@ test('authorized supervisor admits a customer with real PDF and JPEG bytes', asy
   await expect(contactPanel.getByText(/张主管 · 13800000000/u)).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: '待准入客户' })).toBeVisible();
-  await page.getByLabel('客户组织类型').selectOption('ENTERPRISE');
+  await expect(page.getByRole('heading', { name: '身份证明材料' })).toHaveCount(
+    0,
+  );
+  const entry = page.locator('[data-test="open-customer-admission"]');
+  await entry.click();
+  const admission = page.getByRole('dialog', { name: '客户准入' });
+  await admission.getByLabel('客户组织类型').selectOption('ENTERPRISE');
   await page.getByLabel('身份证明类型').selectOption('BUSINESS_LICENSE');
   await expect(page.getByText('完整身份证明材料')).toBeVisible();
   const picker = page.locator('input[name="identityDocument"]');
@@ -1045,20 +1051,132 @@ test('authorized supervisor admits a customer with real PDF and JPEG bytes', asy
     .getAttribute('value');
   expect(admissionContactId).toBeTruthy();
   await contactSelect.selectOption(admissionContactId!);
+  await page.screenshot({ path: testInfo.outputPath('draft-admission.png') });
   await page.locator('[data-test="admit-submit"]').click();
   await expect(
-    page.getByText('客户已完成准入，可用于创建正式线索。'),
+    admission.getByRole('heading', { name: '身份证明材料' }),
   ).toBeVisible();
   await page.reload();
   await expect(
-    page.getByText('客户已完成准入，可用于创建正式线索。'),
+    page.locator('#customer-profile').getByText('已准入', { exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole('heading', { name: '身份证明材料' })).toHaveCount(
+    0,
+  );
+  await entry.click();
+  await expect(
+    admission.getByText('license.pdf', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    admission.getByText('license.jpg', { exact: true }),
+  ).toBeVisible();
+  await expect(admission.locator('input[name="identityDocument"]')).toHaveCount(
+    0,
+  );
+  const downloadReady = page.waitForEvent('download');
+  await admission
+    .getByRole('button', { name: '下载', exact: true })
+    .first()
+    .click();
+  expect((await downloadReady).suggestedFilename()).toMatch(
+    /^license\.(pdf|jpg)$/u,
+  );
+  await page.screenshot({
+    path: testInfo.outputPath('admitted-history-materials.png'),
+  });
   await expect(
     getCustomer(coreLeadFixtures.draftCustomer),
   ).resolves.toMatchObject({
     profileStatus: 'ADMITTED',
     version: 3,
   });
+});
+
+test('customer profile and both editors retain hidden identity and existing category', async ({
+  page,
+  request,
+}, testInfo) => {
+  const id = coreLeadFixtures.draftCustomer;
+  const url = `/api/v1/customers/${id}`;
+  await grantCustomerRoutineEdit(coreLeadFixtures.roleA, 'TEAM');
+  const seeded = await request.patch(url, {
+    headers: authorizationA,
+    data: {
+      expectedVersion: 1,
+      customerType: 'ENTERPRISE',
+      identityType: 'BUSINESS_LICENSE',
+      identityNumber: 'CORE-EDIT-OLD',
+      issuingCountryOrRegion: '中国',
+      category: '000',
+    },
+  });
+  expect(seeded.status(), await seeded.text()).toBe(200);
+  await configureBrowser(page);
+  await page.goto(`/customers/${id}`);
+  const profile = page.locator('#customer-profile');
+  await expect(profile.locator('dt')).toHaveText([
+    '客户ID',
+    '资料状态',
+    '主营类目',
+    '客户经理',
+    '客户组织类型',
+    '所属地区',
+    '最近更新',
+  ]);
+  await expect(profile.getByText('000', { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('customer-profile.png') });
+
+  await page.getByRole('button', { name: '编辑资料' }).click();
+  const drawer = page.getByRole('dialog', { name: '编辑客户资料' });
+  await expect(drawer.getByLabel('主营类目')).toHaveValue('000');
+  await expect(drawer.getByLabel('证件号码')).toHaveValue('CORE-EDIT-OLD');
+  await expect(drawer.getByLabel('身份证明类型')).toHaveCount(0);
+  await expect(drawer.getByLabel('签发国家／地区')).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath('customer-edit-drawer.png'),
+    animations: 'disabled',
+  });
+  await drawer.getByLabel('所属地区').fill('华东');
+  await drawer.getByRole('button', { name: '保存修改' }).click();
+  await expect(profile.getByText('华东', { exact: true })).toBeVisible();
+
+  await page.goto(`/customers/${id}/edit`);
+  await expect(page.getByLabel('主营类目')).toHaveValue('000');
+  await expect(page.getByLabel('证件号码')).toHaveValue('CORE-EDIT-OLD');
+  await expect(page.getByLabel('身份证明类型')).toHaveCount(0);
+  await expect(page.getByLabel('签发国家／地区')).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath('customer-edit-page.png'),
+  });
+  await page.getByLabel('客户组织类型').selectOption('NATURAL_PERSON');
+  await page.getByLabel('证件号码').fill('CORE-EDIT-NEW');
+  await page.getByRole('button', { name: '保存修改' }).click();
+  await expect(page).toHaveURL(new RegExp(`/customers/${id}$`, 'u'));
+
+  const latest = await request.get(url, { headers: authorizationA });
+  expect(latest.status()).toBe(200);
+  expect(await latest.json()).toMatchObject({
+    customerType: 'NATURAL_PERSON',
+    identityType: 'BUSINESS_LICENSE',
+    identityNumber: 'CORE-EDIT-NEW',
+    issuingCountryOrRegion: '中国',
+    category: '000',
+    region: '华东',
+  });
+});
+
+test('lead creation still auto-selects the existing single rights holder', async ({
+  page,
+}) => {
+  await configureBrowser(page);
+  await page.goto('/leads');
+  await page.locator('[data-test="create-lead"]').click();
+  await page
+    .locator('select[name="customerId"]')
+    .selectOption(coreLeadFixtures.admittedCustomer);
+  await expect(page.locator('select[name="rightsHolderId"]')).toHaveValue(
+    coreLeadFixtures.holder,
+  );
 });
 
 test('operator creates, refreshes, views, and edits a waiting-push lead', async ({

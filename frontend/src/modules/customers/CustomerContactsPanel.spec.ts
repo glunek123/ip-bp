@@ -127,6 +127,85 @@ afterEach(() => {
 });
 
 describe('CustomerContactsPanel', () => {
+  it('keeps new entry collapsed, discards canceled drafts, and edits the chosen contact after viewing another', async () => {
+    const first = { ...contact('contact-a'), name: '联系人甲' };
+    const second = { ...contact('contact-b'), name: '联系人乙' };
+    api.listCustomerContacts.mockResolvedValue(page([first, second]));
+    api.listCustomerContactVersions.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    });
+    api.updateCustomerContact.mockResolvedValue({});
+    api.getCustomer.mockResolvedValue({ ...customer, version: 4 });
+    const wrapper = mountPanel();
+    await flushPromises();
+    expect(wrapper.find('form').exists()).toBe(false);
+    await wrapper.get('[data-test="contact-new"]').trigger('click');
+    await wrapper.get('form input').setValue('未提交草稿');
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('取消并放弃未提交内容'))
+      ?.trigger('click');
+    expect(wrapper.find('form').exists()).toBe(false);
+    await wrapper.get('[data-test="contact-new"]').trigger('click');
+    expect(wrapper.find('form').exists()).toBe(true);
+    expect((wrapper.get('form input').element as HTMLInputElement).value).toBe(
+      '',
+    );
+    await wrapper.get('[data-test="contact-edit-contact-a"]').trigger('click');
+    await wrapper.get('form input').setValue('甲的新姓名');
+    await wrapper
+      .get('[data-test="contact-contact-b"] button')
+      .trigger('click');
+    await flushPromises();
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.updateCustomerContact.mock.calls[0]?.[1]).toBe('contact-a');
+    expect(api.updateCustomerContact.mock.calls[0]?.[2]).toMatchObject({
+      name: '甲的新姓名',
+    });
+    wrapper.unmount();
+  });
+
+  it('restores a rejected edit with the same contact and its refreshed version', async () => {
+    const initial = { ...contact('contact-a'), name: '联系人甲', version: 1 };
+    api.listCustomerContacts
+      .mockResolvedValueOnce(page([initial]))
+      .mockResolvedValue(page([{ ...initial, version: 2 }]));
+    api.getCustomer.mockResolvedValue({ ...customer, version: 4 });
+    api.updateCustomerContact
+      .mockRejectedValueOnce(
+        new ApiError('版本已变化', 409, 'CUSTOMER_CONTACT_VERSION_CONFLICT'),
+      )
+      .mockResolvedValue({});
+    const wrapper = mountPanelWithParentRefresh();
+    await flushPromises();
+    await wrapper.get('[data-test="contact-edit-contact-a"]').trigger('click');
+    await wrapper.get('form input').setValue('待保留姓名');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('已保留表单');
+    expect(wrapper.get<HTMLInputElement>('form input').element.value).toBe(
+      '待保留姓名',
+    );
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.updateCustomerContact).toHaveBeenLastCalledWith(
+      'customer-1',
+      'contact-a',
+      expect.objectContaining({
+        expectedCustomerVersion: 4,
+        expectedContactVersion: 2,
+        name: '待保留姓名',
+      }),
+      expect.any(String),
+    );
+    wrapper.unmount();
+  });
+
   it('reports a completed authorized read after remount before clearing parent stale state', async () => {
     let finishRead!: (value: ReturnType<typeof page>) => void;
     api.listCustomerContacts.mockImplementation(
@@ -235,6 +314,7 @@ describe('CustomerContactsPanel', () => {
     api.getCustomer.mockResolvedValue({ ...customer, version: 4 });
     const wrapper = mountPanelWithParentRefresh();
     await flushPromises();
+    await wrapper.get('[data-test="contact-new"]').trigger('click');
     const fields = wrapper.findAll('form input');
     await fields[0]!.setValue('联系人甲');
     await fields[1]!.setValue('13800138000');
@@ -271,6 +351,7 @@ describe('CustomerContactsPanel', () => {
       api.getCustomer.mockResolvedValue({ ...customer, version: 4 });
       const wrapper = mountPanel();
       await flushPromises();
+      await wrapper.get('[data-test="contact-new"]').trigger('click');
       const fields = wrapper.findAll('form input');
       await fields[0]!.setValue('新增联系人');
       await fields[1]!.setValue('13800138000');
@@ -304,6 +385,7 @@ describe('CustomerContactsPanel', () => {
     vi.stubGlobal('sessionStorage', brokenStorage);
     const wrapper = mountPanel();
     await flushPromises();
+    await wrapper.get('[data-test="contact-new"]').trigger('click');
     const fields = wrapper.findAll('form input');
     await fields[0]!.setValue('新增联系人');
     await fields[1]!.setValue('13800138000');
@@ -532,6 +614,7 @@ describe('CustomerContactsPanel', () => {
       .mockResolvedValueOnce({ ...customer, version: 4 });
     const wrapper = mountPanel();
     await flushPromises();
+    await wrapper.get('[data-test="contact-new"]').trigger('click');
     const fields = wrapper.findAll('form input');
     await fields[0]!.setValue('新增联系人');
     await fields[1]!.setValue('13800138000');
@@ -593,6 +676,7 @@ describe('CustomerContactsPanel', () => {
     expect(wrapper.text()).toContain('已结束联系人第2页');
     expect(wrapper.text()).toContain('2 / 2');
 
+    await wrapper.get('[data-test="contact-new"]').trigger('click');
     const fields = wrapper.findAll('form input');
     await fields[0]!.setValue('新增联系人');
     await fields[1]!.setValue('13800138000');
@@ -634,6 +718,7 @@ describe('CustomerContactsPanel', () => {
     });
     const wrapper = mountPanel();
     await flushPromises();
+    await wrapper.get('[data-test="contact-new"]').trigger('click');
     const fields = wrapper.findAll('form input');
     await fields[0]!.setValue('新增联系人');
     await fields[1]!.setValue('13800138000');

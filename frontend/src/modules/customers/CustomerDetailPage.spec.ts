@@ -142,6 +142,10 @@ async function mountPage(customerId = 'customer-1', hash = '') {
     global: {
       plugins: [router],
       stubs: {
+        ElDrawer: {
+          props: ['modelValue'],
+          template: '<div v-if="modelValue"><slot /></div>',
+        },
         CustomerRightsHolderPanel: rightsHolderPanel,
         CustomerAdmissionPanel: admissionPanel,
         CustomerContactsPanel: contactsPanel,
@@ -589,7 +593,9 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.find('[data-test="rights-holder-panel"]').exists()).toBe(
       false,
     );
-    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="open-customer-admission"]').exists()).toBe(
+      false,
+    );
     expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
       true,
@@ -624,7 +630,9 @@ describe('CustomerDetailPage', () => {
     expect(
       wrapper.find('[data-test="customer-contacts-panel-stub"]').exists(),
     ).toBe(true);
-    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="open-customer-admission"]').exists()).toBe(
+      false,
+    );
     expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
       true,
@@ -637,7 +645,9 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.find('[data-test="edit-customer"]').exists()).toBe(false);
 
     await wrapper.get('[data-test="projection-stale-off"]').trigger('click');
-    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="open-customer-admission"]').exists()).toBe(
+      true,
+    );
     expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(true);
     expect(wrapper.find('[data-test="edit-customer"]').exists()).toBe(true);
   });
@@ -694,9 +704,9 @@ describe('CustomerDetailPage', () => {
           .get('[data-test="customer-contacts-panel-stub"]')
           .attributes('data-blocked'),
       ).toBe('true');
-      expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(
-        false,
-      );
+      expect(
+        wrapper.find('[data-test="open-customer-admission"]').exists(),
+      ).toBe(false);
     },
   );
 
@@ -857,7 +867,9 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.find('[data-test="rights-holder-panel"]').exists()).toBe(
       false,
     );
-    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="open-customer-admission"]').exists()).toBe(
+      false,
+    );
     expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
       true,
@@ -904,7 +916,9 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.find('[data-test="rights-holder-panel"]').exists()).toBe(
       false,
     );
-    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="open-customer-admission"]').exists()).toBe(
+      false,
+    );
     expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
       true,
@@ -921,7 +935,9 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.find('[data-test="rights-holder-panel"]').exists()).toBe(
       true,
     );
-    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="open-customer-admission"]').exists()).toBe(
+      true,
+    );
     expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(true);
     expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
       true,
@@ -1205,6 +1221,7 @@ describe('CustomerDetailPage', () => {
     const { router, wrapper } = await mountPage('customer-a');
     await flushPromises();
 
+    await wrapper.get('[data-test="open-customer-admission"]').trigger('click');
     await wrapper.get('[data-test="admitted"]').trigger('click');
     await router.push('/customers/customer-b');
     await flushPromises();
@@ -1355,9 +1372,18 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.text()).toContain('运营甲');
     expect(wrapper.get('details').attributes('open')).toBeUndefined();
     expect(wrapper.text()).toContain('创建客户草稿');
-    expect(wrapper.text()).toContain('准入联系人');
-    expect(wrapper.text()).toContain('张三');
-    expect(wrapper.text()).toContain('13800138000');
+    const profile = wrapper.get('#customer-profile');
+    expect(profile.findAll('dt').map((label) => label.text())).toEqual([
+      '客户ID',
+      '资料状态',
+      '主营类目',
+      '客户经理',
+      '客户组织类型',
+      '所属地区',
+      '最近更新',
+    ]);
+    expect(profile.text()).not.toContain('张三');
+    expect(profile.text()).not.toContain('13800138000');
     expect(wrapper.get('[data-test="edit-customer"]').text()).toContain(
       '编辑资料',
     );
@@ -1370,6 +1396,8 @@ describe('CustomerDetailPage', () => {
         .get('[data-test="rights-holder-panel"]')
         .attributes('data-version'),
     ).toBe('2');
+    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
+    await wrapper.get('[data-test="open-customer-admission"]').trigger('click');
     expect(
       wrapper.get('[data-test="admission-panel"]').attributes(),
     ).toMatchObject({ 'data-version': '2' });
@@ -1438,16 +1466,19 @@ describe('CustomerDetailPage', () => {
     const { wrapper } = await mountPage();
     await flushPromises();
 
+    await wrapper.get('[data-test="open-customer-admission"]').trigger('click');
     await wrapper.get('[data-test="admitted"]').trigger('click');
 
     expect(wrapper.text()).toContain('已准入');
     expect(wrapper.text()).toContain('客户组织类型');
     expect(wrapper.text()).toContain('企业');
-    expect(wrapper.text()).toContain('身份证明类型');
-    expect(wrapper.text()).toContain('营业执照');
+    expect(wrapper.text()).not.toContain('身份证明类型');
+    expect(wrapper.text()).not.toContain('营业执照');
     expect(wrapper.text()).not.toContain('ENTERPRISE');
     expect(wrapper.text()).not.toContain('BUSINESS_LICENSE');
-    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="open-customer-admission"]').exists()).toBe(
+      true,
+    );
     expect(
       wrapper.get('[data-test="admission-panel"]').attributes('data-version'),
     ).toBe('2');
@@ -1478,6 +1509,7 @@ describe('CustomerDetailPage', () => {
     const { wrapper } = await mountPage();
     await flushPromises();
     expect(wrapper.find('[data-test="delete-draft-open"]').exists()).toBe(true);
+    await wrapper.get('[data-test="open-customer-admission"]').trigger('click');
     await wrapper.get('[data-test="admitted"]').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('当前客户资料需要刷新');
@@ -1577,7 +1609,9 @@ describe('CustomerDetailPage', () => {
         .get('[data-test="rights-holder-panel"]')
         .attributes('data-can-edit'),
     ).toBe('false');
-    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="open-customer-admission"]').exists()).toBe(
+      true,
+    );
   });
 
   it('returns to the customer list when the rights-holder panel loses its customer anchor', async () => {

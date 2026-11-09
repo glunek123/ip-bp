@@ -18,11 +18,7 @@ import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
 import { listPendingCustomerContacts } from './customer-contacts-pending';
 import {
-  compatibleIdentityOptions,
   customerTypeOptionsWithCurrent,
-  identityCompatibility,
-  isCustomerTypeCode,
-  isIdentityTypeCode,
   normalizeCustomerTypeOption,
   normalizeIdentityTypeOption,
 } from './customer-admission-options';
@@ -48,7 +44,7 @@ const managerError = ref('');
 const customerType = ref('');
 const identityType = ref('');
 const identityNumber = ref('');
-const issuingCountryOrRegion = ref('');
+const profileStatus = ref<CustomerDetail['profileStatus']>();
 const category = ref('');
 const region = ref('');
 const duplicateNameReason = ref('');
@@ -88,20 +84,9 @@ defineExpose({ requestClose });
 const displayedCustomerTypeOptions = computed(() =>
   customerTypeOptionsWithCurrent(customerType.value),
 );
-const displayedIdentityTypeOptions = computed(() =>
-  compatibleIdentityOptions(customerType.value, identityType.value),
+const canEditIdentityNumber = computed(
+  () => profileStatus.value === 'draft' && Boolean(identityType.value),
 );
-
-function onCustomerTypeChanged(): void {
-  if (
-    isCustomerTypeCode(customerType.value) &&
-    (!isIdentityTypeCode(identityType.value) ||
-      !identityCompatibility[customerType.value].includes(identityType.value))
-  ) {
-    identityType.value = '';
-  }
-  identityError.value = '';
-}
 
 function editable(value: string): string {
   return value.trim();
@@ -112,9 +97,7 @@ function editableValues() {
     name: editable(name.value),
     customerManagerName: editable(customerManagerName.value),
     customerType: editable(customerType.value),
-    identityType: editable(identityType.value),
     identityNumber: editable(identityNumber.value),
-    issuingCountryOrRegion: editable(issuingCountryOrRegion.value),
     category: editable(category.value),
     region: editable(region.value),
   };
@@ -142,8 +125,12 @@ async function prepareVersionConflict(): Promise<void> {
     latestSnapshot.value = latest;
     const matches = await findCustomerDuplicates({
       name: name.value.trim(),
-      identityType: identityType.value.trim(),
-      identityNumber: identityNumber.value.trim(),
+      ...(latest.identityType && identityNumber.value.trim()
+        ? {
+            identityType: normalizeIdentityTypeOption(latest.identityType),
+            identityNumber: identityNumber.value.trim(),
+          }
+        : {}),
       excludeCustomerId: String(route.params.id),
     });
     duplicateMatches.value = [
@@ -162,6 +149,10 @@ async function prepareVersionConflict(): Promise<void> {
 async function retryLatest(): Promise<void> {
   if (latestSnapshot.value === null) return;
   expectedVersion.value = latestSnapshot.value.version;
+  identityType.value = normalizeIdentityTypeOption(
+    latestSnapshot.value.identityType,
+  );
+  profileStatus.value = latestSnapshot.value.profileStatus;
   latestSnapshot.value = null;
   await submit();
 }
@@ -175,7 +166,7 @@ function useLatestSnapshot(): void {
   customerType.value = normalizeCustomerTypeOption(latest.customerType);
   identityType.value = normalizeIdentityTypeOption(latest.identityType);
   identityNumber.value = latest.identityNumber ?? '';
-  issuingCountryOrRegion.value = latest.issuingCountryOrRegion ?? '';
+  profileStatus.value = latest.profileStatus;
   category.value = latest.category ?? '';
   region.value = latest.region ?? '';
   initialValues.value = editableValues();
@@ -217,7 +208,7 @@ async function load(): Promise<void> {
     customerType.value = normalizeCustomerTypeOption(customer.customerType);
     identityType.value = normalizeIdentityTypeOption(customer.identityType);
     identityNumber.value = customer.identityNumber ?? '';
-    issuingCountryOrRegion.value = customer.issuingCountryOrRegion ?? '';
+    profileStatus.value = customer.profileStatus;
     category.value = customer.category ?? '';
     region.value = customer.region ?? '';
     initialValues.value = editableValues();
@@ -237,12 +228,13 @@ async function submit(): Promise<void> {
   const manager = customerManagerName.value.trim();
   managerError.value =
     Array.from(manager).length > 100 ? '客户经理最多100字' : '';
-  const hasIdentityType = Boolean(identityType.value.trim());
-  const hasIdentityNumber = Boolean(identityNumber.value.trim());
-  identityError.value =
-    hasIdentityType === hasIdentityNumber
-      ? ''
-      : '证件类型和证件号码需要同时填写';
+  identityError.value = '';
+  if (identityNumber.value.trim() !== initialValues.value.identityNumber) {
+    if (!canEditIdentityNumber.value)
+      identityError.value = '当前客户的证件号码不可在此修改';
+    else if (!identityNumber.value.trim())
+      identityError.value = '证件类型和证件号码需要同时填写';
+  }
   duplicateNameReasonError.value =
     needsDuplicateNameReason.value && !duplicateNameReason.value.trim()
       ? '请说明同名情况下继续保存的原因'
@@ -268,9 +260,7 @@ async function submit(): Promise<void> {
     for (const key of [
       'name',
       'customerType',
-      'identityType',
       'identityNumber',
-      'issuingCountryOrRegion',
       'category',
       'region',
     ] as const) {
@@ -416,32 +406,10 @@ onBeforeUnmount(() => activeRequest?.abort());
                 v-model="customerType"
                 name="customerType"
                 class="text-input"
-                @change="onCustomerTypeChanged"
               >
                 <option value="">请选择</option>
                 <option
                   v-for="option in displayedCustomerTypeOptions"
-                  :key="option.value"
-                  :value="option.value"
-                >
-                  {{ option.label }}
-                </option>
-              </select>
-            </div>
-            <div>
-              <label class="field-label field-label--spaced" for="identity-type"
-                >身份证明类型</label
-              >
-              <select
-                id="identity-type"
-                v-model="identityType"
-                name="identityType"
-                class="text-input"
-                @change="identityError = ''"
-              >
-                <option value="">请选择</option>
-                <option
-                  v-for="option in displayedIdentityTypeOptions"
                   :key="option.value"
                   :value="option.value"
                 >
@@ -459,26 +427,19 @@ onBeforeUnmount(() => activeRequest?.abort());
                 id="identity-number"
                 v-model="identityNumber"
                 name="identityNumber"
+                :readonly="!canEditIdentityNumber"
+                @input="identityError = ''"
                 class="text-input"
                 maxlength="100"
               />
               <p v-if="identityError" class="field-error">
                 {{ identityError }}
               </p>
-            </div>
-            <div>
-              <label
-                class="field-label field-label--spaced"
-                for="issuing-region"
-                >签发国家／地区</label
+              <p
+                v-else-if="profileStatus === 'draft' && !canEditIdentityNumber"
               >
-              <input
-                id="issuing-region"
-                v-model="issuingCountryOrRegion"
-                name="issuingCountryOrRegion"
-                class="text-input"
-                maxlength="100"
-              />
+                请在客户准入中补录证件类型和号码。
+              </p>
             </div>
             <div>
               <label
@@ -495,7 +456,7 @@ onBeforeUnmount(() => activeRequest?.abort());
               />
               <p v-if="managerError" role="alert">{{ managerError }}</p>
               <label class="field-label field-label--spaced" for="category"
-                >客户类别</label
+                >主营类目</label
               >
               <input
                 id="category"

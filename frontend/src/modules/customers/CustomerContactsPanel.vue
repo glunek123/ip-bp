@@ -47,7 +47,8 @@ const versions = ref<CustomerContactVersion[]>([]);
 const versionsTotal = ref(0);
 const versionsPage = ref(1);
 const selected = ref<CustomerContact>();
-const editingId = ref<string>();
+const editingContact = ref<CustomerContact>();
+const formOpen = ref(false);
 const name = ref('');
 const phone = ref('');
 const email = ref('');
@@ -101,7 +102,7 @@ function clearVisibleData(): void {
   versions.value = [];
   versionsTotal.value = 0;
   selected.value = undefined;
-  resetForm();
+  resetForm(undefined, false);
 }
 function handleDeniedRead(): void {
   listController?.abort();
@@ -129,8 +130,9 @@ function recoverPending(): void {
   }
   announcePending();
 }
-function resetForm(contact?: CustomerContact): void {
-  editingId.value = contact?.id;
+function resetForm(contact?: CustomerContact, open = true): void {
+  editingContact.value = contact;
+  formOpen.value = open;
   name.value = contact?.name ?? '';
   phone.value = contact?.phone ?? '';
   email.value = contact?.email ?? '';
@@ -150,7 +152,7 @@ async function load(): Promise<boolean> {
   error.value = '';
   selected.value = undefined;
   versions.value = [];
-  resetForm();
+  resetForm(undefined, false);
   try {
     const result = await listCustomerContacts(
       customerId,
@@ -326,7 +328,11 @@ async function refreshReadonly(): Promise<void> {
       error.value = '当前资料仍未刷新成功，联系人保持只读';
   }
 }
-function bodyFor(action: ContactAction): Record<string, unknown> | undefined {
+function bodyFor(
+  action: ContactAction,
+  contact = editingContact.value,
+  reason = '',
+): Record<string, unknown> | undefined {
   const expectedCustomerVersion = props.customer.version;
   if (action === 'create' || action === 'update') {
     const n = name.value.trim(),
@@ -357,34 +363,34 @@ function bodyFor(action: ContactAction): Record<string, unknown> | undefined {
         }
       : {
           expectedCustomerVersion,
-          expectedContactVersion: selected.value!.version,
+          expectedContactVersion: contact!.version,
           name: n,
           phone: p || null,
           email: e || null,
           duty: d || null,
         };
   }
-  if (!selected.value) return;
+  if (!contact) return;
   if (action === 'primary')
     return {
       expectedCustomerVersion,
-      expectedContactVersion: selected.value.version,
-      primary: !selected.value.isPrimary,
+      expectedContactVersion: contact.version,
+      primary: !contact.isPrimary,
     };
-  const reason = endReason.value.trim();
   if (reason.length > 500) {
     error.value = '结束原因不能超过500字';
     return;
   }
   return {
     expectedCustomerVersion,
-    expectedContactVersion: selected.value.version,
+    expectedContactVersion: contact.version,
     ...(reason ? { reason } : {}),
   };
 }
 function pendingCommand(
   action: ContactAction,
   body: Record<string, unknown>,
+  contact = editingContact.value,
 ): PendingCustomerContact {
   if (!props.actor) throw new Error('当前账号不能维护联系人');
   return {
@@ -392,10 +398,9 @@ function pendingCommand(
     userId: props.actor.userId,
     departmentId: props.actor.departmentId,
     customerId: props.customer.id,
-    contactId: action === 'create' ? null : selected.value!.id,
+    contactId: contact?.id ?? null,
     expectedCustomerVersion: props.customer.version,
-    expectedContactVersion:
-      action === 'create' ? null : selected.value!.version,
+    expectedContactVersion: contact?.version ?? null,
     body,
     key: globalThis.crypto.randomUUID(),
   };
@@ -433,6 +438,7 @@ async function send(command: PendingCustomerContact): Promise<void> {
         if (!current(context, customerId, who)) return;
         if (contactsRefreshed) {
           setProjectionStale(false);
+          if (command.action === 'create') resetForm();
         } else {
           setProjectionStale(true);
           error.value =
@@ -459,7 +465,8 @@ async function send(command: PendingCustomerContact): Promise<void> {
       ].includes(cause.code)
     ) {
       const draft = {
-        editingId: editingId.value,
+        open: formOpen.value,
+        contact: editingContact.value,
         name: name.value,
         phone: phone.value,
         email: email.value,
@@ -470,23 +477,30 @@ async function send(command: PendingCustomerContact): Promise<void> {
       clearPendingCustomerContact(command);
       frozen.value = undefined;
       announcePending();
-      error.value = '联系人资料已变化，已保留表单。请刷新并核对后再提交。';
       try {
         const latest = await getCustomer(customerId);
-        if (current(context, customerId, who))
-          emit('refreshed', customerId, who, latest);
+        if (!current(context, customerId, who)) return;
+        emit('refreshed', customerId, who, latest);
         await load();
       } catch {
         /* Keep the draft visible while the refresh remains available. */
       }
-      if (props.customer.id === customerId && actorKey.value === who) {
-        editingId.value = draft.editingId;
+      if (!current(context, customerId, who)) return;
+      editingContact.value = contacts.value.find(
+        (contact) => contact.id === draft.contact?.id && !contact.endedAt,
+      );
+      formOpen.value =
+        draft.open && (!draft.contact || Boolean(editingContact.value));
+      if (formOpen.value) {
         name.value = draft.name;
         phone.value = draft.phone;
         email.value = draft.email;
         duty.value = draft.duty;
         primary.value = draft.primary;
         endReason.value = draft.endReason;
+        error.value = '联系人资料已变化，已保留表单。请核对后再提交。';
+      } else {
+        error.value = '联系人资料已变化，请核对列表后再操作。';
       }
       return;
     }
@@ -500,7 +514,7 @@ async function send(command: PendingCustomerContact): Promise<void> {
 }
 async function submit(): Promise<void> {
   if (!canWrite.value || saving.value || frozen.value) return;
-  const action: ContactAction = editingId.value ? 'update' : 'create';
+  const action: ContactAction = editingContact.value ? 'update' : 'create';
   const body = bodyFor(action);
   if (!body) return;
   try {
@@ -518,7 +532,7 @@ async function retry(): Promise<void> {
   if (frozen.value) await send(frozen.value);
 }
 async function setPrimary(): Promise<void> {
-  if (!canWrite.value || !selected.value || frozen.value) return;
+  if (!canWrite.value || !editingContact.value || frozen.value) return;
   const body = bodyFor('primary');
   if (!body) return;
   try {
@@ -531,12 +545,18 @@ async function setPrimary(): Promise<void> {
     error.value = '无法安全保存联系人请求，未发送请求。';
   }
 }
-async function end(): Promise<void> {
-  if (!canWrite.value || !selected.value || frozen.value) return;
-  const body = bodyFor('end');
+async function end(contact: CustomerContact, reason = ''): Promise<void> {
+  if (!canWrite.value || saving.value || frozen.value) return;
+  if (
+    !globalThis.window.confirm(
+      `确认删除联系人“${contact.name}”吗？此操作会结束该联系人关系并保留历史。`,
+    )
+  )
+    return;
+  const body = bodyFor('end', contact, reason);
   if (!body) return;
   try {
-    const command = pendingCommand('end', body);
+    const command = pendingCommand('end', body, contact);
     savePendingCustomerContact(command);
     frozen.value = command;
     announcePending();
@@ -544,6 +564,10 @@ async function end(): Promise<void> {
   } catch {
     error.value = '无法安全保存联系人请求，未发送请求。';
   }
+}
+function cancelForm(): void {
+  resetForm(undefined, false);
+  error.value = '';
 }
 watch(
   [() => props.customer.id, actorKey],
@@ -675,11 +699,14 @@ onBeforeUnmount(() => {
         ><ElButton
           v-if="canWrite && !contact.endedAt"
           :data-test="`contact-edit-${contact.id}`"
-          @click="
-            selected = contact;
-            resetForm(contact);
-          "
+          @click="resetForm(contact)"
           >编辑</ElButton
+        ><ElButton
+          v-if="canWrite && !contact.endedAt"
+          :data-test="`contact-delete-${contact.id}`"
+          :disabled="saving || Boolean(frozen)"
+          @click="end(contact)"
+          >删除</ElButton
         >
       </li>
     </ul>
@@ -724,17 +751,17 @@ onBeforeUnmount(() => {
     </div>
     <form
       class="customer-contacts-form"
-      v-if="canWrite && (editingId || !frozen)"
+      v-if="canWrite && formOpen && !frozen"
       @submit.prevent="submit"
     >
-      <h3>{{ editingId ? '编辑联系人' : '新增联系人' }}</h3>
+      <h3>{{ editingContact ? '编辑联系人' : '新增联系人' }}</h3>
       <label>姓名<input v-model="name" maxlength="100" required /></label
       ><label>电话<input v-model="phone" maxlength="30" /></label
       ><label>邮箱<input v-model="email" maxlength="254" type="email" /></label
       ><label>负责事项<input v-model="duty" maxlength="500" /></label
-      ><label v-if="!editingId"
+      ><label v-if="!editingContact"
         ><input v-model="primary" type="checkbox" />设为主要联系人</label
-      ><label v-if="editingId && selected?.endedAt === null"
+      ><label v-if="editingContact?.endedAt === null"
         >结束原因（选填）<input v-model="endReason" maxlength="500"
       /></label>
       <div class="customer-form-actions">
@@ -744,17 +771,22 @@ onBeforeUnmount(() => {
           :disabled="saving || Boolean(frozen)"
           >保存联系人</ElButton
         ><ElButton
-          v-if="editingId && selected?.endedAt === null"
+          v-if="editingContact?.endedAt === null"
           native-type="button"
           :disabled="saving || Boolean(frozen)"
-          @click="end"
+          @click="end(editingContact, endReason.trim())"
           >结束关系</ElButton
         ><ElButton
-          v-if="editingId && selected?.endedAt === null"
+          v-if="editingContact?.endedAt === null"
           native-type="button"
           :disabled="saving || Boolean(frozen)"
           @click="setPrimary"
-          >{{ selected?.isPrimary ? '取消主要' : '设为主要' }}</ElButton
+          >{{ editingContact?.isPrimary ? '取消主要' : '设为主要' }}</ElButton
+        ><ElButton
+          native-type="button"
+          :disabled="saving || Boolean(frozen)"
+          @click="cancelForm"
+          >取消并放弃未提交内容</ElButton
         >
       </div>
     </form>

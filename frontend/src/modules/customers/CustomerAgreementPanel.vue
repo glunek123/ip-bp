@@ -33,6 +33,10 @@ import {
   savePendingCustomerDocumentCommand,
   type PendingCustomerDocumentCommand,
 } from './customer-agreements-invoice-pending';
+import {
+  customerCooperationModelOptions,
+  customerSettlementMethodOptions,
+} from './customer-agreement-options';
 
 type Actor = { userId: string; departmentId: string };
 type AgreementForm = {
@@ -292,6 +296,17 @@ async function refreshCurrent(): Promise<void> {
       form.value = formFromVersion(latest.agreement?.currentVersion);
       editing.value = uploadUnknown.value;
     }
+    const currentVersion = latest.agreement?.currentVersion;
+    if (
+      pending?.action === 'revise' &&
+      'title' in pending.body &&
+      currentVersion
+    ) {
+      if (pending.body.model === undefined)
+        form.value.model = currentVersion.model ?? '';
+      if (pending.body.settlementMethod === undefined)
+        form.value.settlementMethod = currentVersion.settlementMethod ?? '';
+    }
     if (status.value === 'refresh-needed') {
       form.value = formFromVersion(latest.agreement?.currentVersion);
       editing.value = false;
@@ -372,6 +387,24 @@ function cancelEditing(): void {
   message.value = '';
 }
 
+const legacyModel = computed(() =>
+  [form.value.model, data.value?.agreement?.currentVersion.model].find(
+    (value) =>
+      value &&
+      !customerCooperationModelOptions.some((option) => option === value),
+  ),
+);
+const legacySettlementMethod = computed(() =>
+  [
+    form.value.settlementMethod,
+    data.value?.agreement?.currentVersion.settlementMethod,
+  ].find(
+    (value) =>
+      value &&
+      !customerSettlementMethodOptions.some((option) => option === value),
+  ),
+);
+
 function setValidityMode(mode: AgreementValidityMode): void {
   form.value.validityMode = mode;
   if (mode !== 'FIXED') form.value.effectiveTo = '';
@@ -380,10 +413,15 @@ function setValidityMode(mode: AgreementValidityMode): void {
 function makeBody(): PendingCustomerDocumentCommand['body'] {
   const latest = data.value;
   if (!latest) throw new Error('合作协议资料尚未读取');
+  const currentVersion = latest.agreement?.currentVersion;
+  const model = form.value.model || null;
+  const settlementMethod = form.value.settlementMethod || null;
   const fields = {
     title: form.value.title.trim(),
-    model: form.value.model.trim() || null,
-    settlementMethod: form.value.settlementMethod.trim() || null,
+    ...(currentVersion && model === currentVersion.model ? {} : { model }),
+    ...(currentVersion && settlementMethod === currentVersion.settlementMethod
+      ? {}
+      : { settlementMethod }),
     ...(form.value.settlementFormula.trim() ||
     latest.agreement?.currentVersion.settlementFormula
       ? { settlementFormula: form.value.settlementFormula.trim() || null }
@@ -931,21 +969,54 @@ onBeforeUnmount(() => {
             "
         /></label>
         <label
-          >合作模式<input
+          ><span id="agreement-model-label">合作模式</span
+          ><select
             v-model="form.model"
-            maxlength="100"
+            aria-labelledby="agreement-model-label"
+            name="model"
             :disabled="
               !canEdit || blockedByOtherMaintenance || status === 'unknown'
             "
-        /></label>
+          >
+            <option value="">未填写</option>
+            <option v-if="legacyModel" :value="legacyModel">
+              {{ legacyModel }}
+            </option>
+            <option
+              v-for="option in customerCooperationModelOptions"
+              :key="option"
+              :value="option"
+            >
+              {{ option }}
+            </option>
+          </select></label
+        >
         <label
-          >结算方式<input
+          ><span id="agreement-settlement-method-label">结算方式</span
+          ><select
             v-model="form.settlementMethod"
-            maxlength="200"
+            aria-labelledby="agreement-settlement-method-label"
+            name="settlementMethod"
             :disabled="
               !canEdit || blockedByOtherMaintenance || status === 'unknown'
             "
-        /></label>
+          >
+            <option value="">未填写</option>
+            <option
+              v-if="legacySettlementMethod"
+              :value="legacySettlementMethod"
+            >
+              {{ legacySettlementMethod }}
+            </option>
+            <option
+              v-for="option in customerSettlementMethodOptions"
+              :key="option"
+              :value="option"
+            >
+              {{ option }}
+            </option>
+          </select></label
+        >
         <label
           >结算条件（公式）
           <input
@@ -1134,6 +1205,8 @@ onBeforeUnmount(() => {
             <li v-for="item in history" :key="item.id">
               <h4>第 {{ item.version }} 版 · {{ item.title }}</h4>
               <time>{{ item.recordedAt }} · {{ item.recordedByUserId }}</time>
+              <p>合作模式：{{ item.model || '未填写' }}</p>
+              <p>结算方式：{{ item.settlementMethod || '未填写' }}</p>
               <p>结算条件（公式）：{{ item.settlementFormula || '未填写' }}</p>
               <p>
                 期限：{{

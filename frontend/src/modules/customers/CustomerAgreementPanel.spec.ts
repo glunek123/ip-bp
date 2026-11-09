@@ -434,6 +434,51 @@ describe('CustomerAgreementPanel', () => {
     );
   });
 
+  it('preserves legacy settlement text when changing the cooperation model', async () => {
+    const legacyVersion = {
+      ...baseVersion,
+      model: '旧版合作方式文本',
+      settlementMethod: '旧版月结约定：验收后 30 天',
+    };
+    api.getCustomerAgreement.mockResolvedValue({
+      ...currentAgreement,
+      agreement: {
+        ...currentAgreement.agreement,
+        currentVersion: legacyVersion,
+      },
+    });
+    api.reviseCustomerAgreement
+      .mockRejectedValueOnce(new Error('network lost'))
+      .mockResolvedValueOnce(currentAgreement);
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="agreement-edit"]').trigger('click');
+    expect(
+      (wrapper.get('[name="model"]').element as HTMLSelectElement).value,
+    ).toBe('旧版合作方式文本');
+    expect(
+      (wrapper.get('[name="settlementMethod"]').element as HTMLSelectElement)
+        .value,
+    ).toBe('旧版月结约定：验收后 30 天');
+    await wrapper.get('[name="model"]').setValue('半风险');
+    await wrapper.get('[data-test="agreement-form"]').trigger('submit');
+    await flushPromises();
+    const body = api.reviseCustomerAgreement.mock.calls[0]?.[2];
+    expect(body).toMatchObject({ model: '半风险' });
+    expect(body).not.toHaveProperty('settlementMethod');
+    expect(wrapper.text()).toContain('请求结果未知');
+    await wrapper.get('[data-test="agreement-form"]').trigger('submit');
+    await flushPromises();
+    expect(api.reviseCustomerAgreement).toHaveBeenNthCalledWith(
+      2,
+      'customer-1',
+      'agreement-1',
+      body,
+      expect.any(String),
+    );
+    wrapper.unmount();
+  });
+
   it('downloads historical agreement files by their exact material and content version ids', async () => {
     const historicalVersion = {
       ...baseVersion,

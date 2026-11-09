@@ -102,6 +102,93 @@ describe('CustomerEditPage', () => {
     wrapper.unmount();
   });
 
+  it.each([false, true])(
+    'preserves hidden draft identity fields on organization change (embedded=%s)',
+    async (embedded) => {
+      api.getCustomer.mockResolvedValue({
+        ...customer,
+        customerType: 'ENTERPRISE',
+        identityType: 'BUSINESS_LICENSE',
+        identityNumber: '旧证件号码',
+        issuingCountryOrRegion: '中国',
+        category: '000',
+      });
+      api.updateCustomerDraft.mockResolvedValue(customer);
+      const { wrapper } = await mountPage(embedded);
+      await flushPromises();
+
+      expect(wrapper.find('#identity-type').exists()).toBe(false);
+      expect(wrapper.find('#issuing-region').exists()).toBe(false);
+      expect(wrapper.get('label[for="category"]').text()).toBe('主营类目');
+      expect(wrapper.get<HTMLInputElement>('#category').element.value).toBe(
+        '000',
+      );
+      expect(
+        wrapper.get<HTMLInputElement>('#identity-number').element.readOnly,
+      ).toBe(false);
+      await wrapper.get('#customer-type').setValue('NATURAL_PERSON');
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+
+      expect(api.updateCustomerDraft).toHaveBeenCalledExactlyOnceWith(
+        'customer-1',
+        {
+          expectedVersion: 1,
+          customerType: 'NATURAL_PERSON',
+        },
+      );
+      wrapper.unmount();
+    },
+  );
+
+  it('keeps the existing certificate pair when editing a draft number', async () => {
+    api.getCustomer.mockResolvedValue({
+      ...customer,
+      identityType: 'BUSINESS_LICENSE',
+      identityNumber: 'OLD-CODE',
+    });
+    api.updateCustomerDraft.mockResolvedValue(customer);
+    const { wrapper } = await mountPage(true);
+    await flushPromises();
+    await wrapper.get('#identity-number').setValue('');
+    await wrapper.get('form').trigger('submit');
+    expect(wrapper.text()).toContain('证件类型和证件号码需要同时填写');
+    expect(api.updateCustomerDraft).not.toHaveBeenCalled();
+    await wrapper.get('#identity-number').setValue('NEW-CODE');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.updateCustomerDraft).toHaveBeenCalledExactlyOnceWith(
+      'customer-1',
+      {
+        expectedVersion: 1,
+        identityNumber: 'NEW-CODE',
+      },
+    );
+    wrapper.unmount();
+  });
+
+  it.each(['draft', 'admitted'])(
+    'locks the number for an untyped draft or admitted customer (%s)',
+    async (profileStatus) => {
+      api.getCustomer.mockResolvedValue({
+        ...customer,
+        profileStatus,
+        ...(profileStatus === 'admitted'
+          ? { identityType: 'BUSINESS_LICENSE', identityNumber: 'ADMITTED' }
+          : {}),
+      });
+      const { wrapper } = await mountPage();
+      await flushPromises();
+      expect(
+        wrapper.get<HTMLInputElement>('#identity-number').element.readOnly,
+      ).toBe(true);
+      expect(
+        wrapper.text().includes('请在客户准入中补录证件类型和号码。'),
+      ).toBe(profileStatus === 'draft');
+      wrapper.unmount();
+    },
+  );
+
   it('emits embedded save and stays on the detail route', async () => {
     api.getCustomer.mockResolvedValue(customer);
     api.updateCustomerDraft.mockResolvedValue(customer);
@@ -437,7 +524,11 @@ describe('CustomerEditPage', () => {
   });
 
   it('loads the current draft and saves only changed editable fields', async () => {
-    api.getCustomer.mockResolvedValue(customer);
+    api.getCustomer.mockResolvedValue({
+      ...customer,
+      identityType: 'BUSINESS_LICENSE',
+      identityNumber: 'OLD-CODE',
+    });
     api.updateCustomerDraft.mockResolvedValue({
       ...customer,
       name: '客户甲（更新）',
@@ -452,9 +543,6 @@ describe('CustomerEditPage', () => {
     await wrapper.get('input[name="name"]').setValue('客户甲（更新）');
     await wrapper.get('select[name="customerType"]').setValue('ENTERPRISE');
     await wrapper
-      .get('select[name="identityType"]')
-      .setValue('BUSINESS_LICENSE');
-    await wrapper
       .get('input[name="identityNumber"]')
       .setValue('91310000abc123');
     await wrapper.get('form').trigger('submit');
@@ -463,45 +551,28 @@ describe('CustomerEditPage', () => {
       expectedVersion: 1,
       name: '客户甲（更新）',
       customerType: 'ENTERPRISE',
-      identityType: 'BUSINESS_LICENSE',
       identityNumber: '91310000abc123',
     });
     expect(router.currentRoute.value.fullPath).toBe('/customers/customer-1');
   });
 
-  it('uses controlled compatible type options and maps supported legacy values', async () => {
+  it('shows a legacy organization type and its number without changing the hidden identity type', async () => {
     api.getCustomer.mockResolvedValue({
       ...customer,
       customerType: 'enterprise',
       identityType: 'credit-code',
+      identityNumber: 'LEGACY-CODE',
     });
     const { wrapper } = await mountPage();
     await flushPromises();
-
+    expect(wrapper.get<HTMLSelectElement>('#customer-type').element.value).toBe(
+      'ENTERPRISE',
+    );
     expect(
-      (wrapper.get('select[name="customerType"]').element as HTMLSelectElement)
-        .value,
-    ).toBe('ENTERPRISE');
-    expect(
-      (wrapper.get('select[name="identityType"]').element as HTMLSelectElement)
-        .value,
-    ).toBe('BUSINESS_LICENSE');
-
-    await wrapper.get('select[name="customerType"]').setValue('NATURAL_PERSON');
-    const identityOptions = wrapper
-      .get('select[name="identityType"]')
-      .findAll('option')
-      .map((option) => option.attributes('value'));
-    expect(identityOptions).toEqual([
-      '',
-      'NATIONAL_ID',
-      'PASSPORT',
-      'OTHER_VALID_ID',
-    ]);
-    expect(
-      (wrapper.get('select[name="identityType"]').element as HTMLSelectElement)
-        .value,
-    ).toBe('');
+      wrapper.get<HTMLInputElement>('#identity-number').element.value,
+    ).toBe('LEGACY-CODE');
+    expect(wrapper.find('select[name="identityType"]').exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it('shows one same-name reason field and retains input for retry', async () => {
@@ -593,8 +664,6 @@ describe('CustomerEditPage', () => {
     expect(api.getCustomer).toHaveBeenCalledTimes(2);
     expect(api.findCustomerDuplicates).toHaveBeenCalledWith({
       name: '我的草稿',
-      identityType: '',
-      identityNumber: '',
       excludeCustomerId: 'customer-1',
     });
     expect(wrapper.text()).toContain('已读取最新版本');

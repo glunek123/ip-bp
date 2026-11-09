@@ -67,7 +67,7 @@ describe('CustomerNewPage', () => {
     await wrapper.get('[name="region"]').setValue('华东');
     await wrapper.get('[name="customerManagerName"]').setValue(' 经理甲 ');
     await wrapper.get('[name="responsibleUserId"]').setValue('operator-2');
-    await wrapper.get('[name="settlementMethod"]').setValue('月结 · 30 天');
+    await wrapper.get('[name="settlementMethod"]').setValue('月结');
     await wrapper.get('[name="model"]').setValue('全风险');
     await wrapper
       .get('[name="settlementFormula"]')
@@ -85,13 +85,30 @@ describe('CustomerNewPage', () => {
       responsibleUserId: 'operator-2',
       initialAgreement: {
         title: '合作协议',
-        settlementMethod: '月结 · 30 天',
+        settlementMethod: '月结',
         model: '全风险',
         settlementFormula: '客户结算金额=结案金额*70%',
         validityMode: 'UNKNOWN',
       },
     });
     expect(wrapper.text()).toContain('合作协议文件可在客户详情中补传');
+    wrapper.unmount();
+  });
+
+  it('offers the approved agreement choices', async () => {
+    const { wrapper } = await mountPage();
+    expect(
+      wrapper
+        .get('[name="model"]')
+        .findAll('option')
+        .map((option) => option.text()),
+    ).toEqual(['未填写', '全风险', '半风险', '固定费用']);
+    expect(
+      wrapper
+        .get('[name="settlementMethod"]')
+        .findAll('option')
+        .map((option) => option.text()),
+    ).toEqual(['未填写', '现结', '月结', '季度结算', '半年度结算']);
     wrapper.unmount();
   });
 
