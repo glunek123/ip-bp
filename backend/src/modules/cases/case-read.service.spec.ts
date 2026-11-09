@@ -295,6 +295,8 @@ describe('CaseReadService', () => {
       );
       expect(f.db.$transaction).toHaveBeenCalledWith(expect.any(Function), {
         isolationLevel: 'RepeatableRead',
+        timeout: 15000,
+        maxWait: 5000,
       });
       expect(result.executionFilingFollowups).toMatchObject({
         filingId: 'local-filing',
@@ -1694,6 +1696,8 @@ describe('CaseReadService', () => {
     });
     expect(f.db.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: 'RepeatableRead',
+      timeout: 15000,
+      maxWait: 5000,
     });
     expect(
       f.access.authorizeDepartmentAction.mock.invocationCallOrder[0],
