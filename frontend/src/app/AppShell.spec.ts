@@ -416,7 +416,10 @@ describe('AppShell', () => {
     api.listDueReminders.mockResolvedValue(initialItems);
     const { wrapper } = await mountShell();
     expect(wrapper.get('.app-reminders__toggle').text()).toContain('2');
-    expect(wrapper.find('.app-reminders__panel').exists()).toBe(true);
+    // 提醒浮层不再自动展开（会遮挡并拦截内容区点击），需手动打开
+    expect(wrapper.find('.app-reminders__panel').exists()).toBe(false);
+    await wrapper.get('.app-reminders__toggle').trigger('click');
+    await flushPromises();
     expect(wrapper.get('.app-reminders__panel').text()).toContain('准备材料');
     await wrapper.get('.app-reminders__panel header button').trigger('click');
     expect(api.markReminderRead).not.toHaveBeenCalled();
@@ -424,7 +427,7 @@ describe('AppShell', () => {
     window.dispatchEvent(new Event(workflowChangedEvent));
     await flushPromises();
     expect(wrapper.find('.app-reminders__panel').exists()).toBe(false);
-    api.listDueReminders.mockResolvedValueOnce([
+    api.listDueReminders.mockResolvedValue([
       ...initialItems,
       {
         sourceType: 'MANUAL',
@@ -439,6 +442,8 @@ describe('AppShell', () => {
         readAt: null,
       },
     ]);
+    await wrapper.get('.app-reminders__toggle').trigger('click');
+    await flushPromises();
     window.dispatchEvent(new Event(workflowChangedEvent));
     await flushPromises();
     expect(wrapper.get('.app-reminders__panel').text()).toContain('新增事项');
@@ -459,6 +464,8 @@ describe('AppShell', () => {
     };
     api.listDueReminders.mockResolvedValue([item]);
     const { wrapper, router } = await mountShell();
+    await wrapper.get('.app-reminders__toggle').trigger('click');
+    await flushPromises();
     await wrapper.get('.app-reminders__panel li button').trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.fullPath).toBe('/calendar?month=2026-10');
@@ -502,6 +509,8 @@ describe('AppShell', () => {
         },
       ]);
       const { wrapper, router } = await mountShell();
+      await wrapper.get('.app-reminders__toggle').trigger('click');
+      await flushPromises();
       await wrapper.get('.app-reminders__panel li button').trigger('click');
       await flushPromises();
       expect(router.currentRoute.value.path).toBe(target);

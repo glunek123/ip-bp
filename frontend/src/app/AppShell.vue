@@ -206,15 +206,12 @@ async function refreshReminders(): Promise<void> {
       currentIdentity === identity.value &&
       currentRevision === reminderRevision
     ) {
-      const newUnread = items.some(
-        (item) =>
-          item.readAt === null && !announcedReminderKeys.has(reminderKey(item)),
-      );
+      // 新的未读提醒只更新角标，不自动展开浮层：浮层浮在内容之上会拦截
+      // 下方列表/表单的点击（运营必须手动关掉才能继续操作）。
       for (const item of items) {
         if (item.readAt === null) announcedReminderKeys.add(reminderKey(item));
       }
       dueReminders.value = items;
-      if (newUnread) remindersOpen.value = true;
       reminderError.value = '';
     }
   } catch {
@@ -306,6 +303,16 @@ watch(
   },
   { immediate: true },
 );
+function closeRemindersOnOutsidePointer(event: globalThis.Event): void {
+  if (!remindersOpen.value) return;
+  const target = event.target;
+  if (
+    target instanceof globalThis.Element &&
+    target.closest('.app-reminders')
+  )
+    return;
+  remindersOpen.value = false;
+}
 onMounted(() => {
   reminderTimer = globalThis.setInterval(onReminderResume, 60_000);
   scheduleBeijingNine();
@@ -315,6 +322,10 @@ onMounted(() => {
   globalThis.document.addEventListener(
     'visibilitychange',
     onReminderVisibility,
+  );
+  globalThis.document.addEventListener(
+    'pointerdown',
+    closeRemindersOnOutsidePointer,
   );
 });
 onBeforeUnmount(() => {
@@ -326,6 +337,10 @@ onBeforeUnmount(() => {
   globalThis.document.removeEventListener(
     'visibilitychange',
     onReminderVisibility,
+  );
+  globalThis.document.removeEventListener(
+    'pointerdown',
+    closeRemindersOnOutsidePointer,
   );
   reminderRevision += 1;
 });

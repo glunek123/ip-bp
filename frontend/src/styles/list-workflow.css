@@ -1,6 +1,9 @@
+/* 不能用 overflow: clip：Chromium 计算原生 <select> 弹层位置时会跳过
+   clip 祖先的裁剪基准，导致下拉菜单被定位到视口左上角。抽屉本身由
+   __header/__body/__footer 的 flex 布局约束，hidden 同样能裁掉溢出。 */
 .el-drawer.list-workflow-drawer {
   max-width: 100%;
-  overflow: clip;
+  overflow: hidden;
   color: var(--color-ink);
   font: 14px/1.6 var(--font-text);
 }
@@ -90,6 +93,25 @@
 .list-workflow-content input[type='file'] {
   max-width: 100%;
   font: inherit;
+}
+
+/* 下拉统一用 Element Plus 的 popper 定位：原生 <select> 弹层在 fixed 遮罩
+   + absolute 抽屉的组合下会被 Chromium 算到视口原点（表现为菜单跑到左上角）。 */
+.list-workflow-content .workflow-select {
+  display: block;
+  width: 100%;
+  margin-top: var(--s-2);
+}
+
+.list-workflow-content .workflow-readonly {
+  display: block;
+  width: 100%;
+  margin-top: var(--s-2);
+  padding: 5px 11px;
+  border: 1px solid var(--color-hairline);
+  border-radius: 6px;
+  background: var(--color-surface-2);
+  color: var(--color-ink-muted);
 }
 
 .list-workflow-content :where(fieldset) {
