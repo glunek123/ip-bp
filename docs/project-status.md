@@ -6,6 +6,17 @@
 
 本次合入候选的原专项证据：线索独立验收与历史备份升级见 [验证记录](spec/v0.1/VALIDATION.md#2026-11-08-线索模块优化)；权利资产、证物及部门案件见同文对应章节；公证阶段及历史备份验收见同文对应章节；客户详情及协议浏览器定向测试见该任务工作区交付记录。
 
+# 2026-11-09 集成批次：公证／客户／线索／权利资产（候选已推送，未部署）
+
+集成分支 `codex/integrate-optimized-modules-20261109`（提交 `2d7cd4e1`）基于 main `42d48b07`，含14个提交，合并11-08三条工作面：公证开卷审核／费用来源／归档草稿，客户详情与协议／权利资产登记状态，线索审核确认／复活／无证据批量归档；客户门户线索截图与公证详情页同步调整。
+
+改动159个文件（后端`backend/src`68、前端`frontend/src`62、E2E11、`backend/prisma`8、`docs/spec`6、测试支持2、脚本1及本文件），新增7项前向迁移，迁移层级288→295：`20261108010000_lead_archive_date_and_revival`、`20261108011000_lead_no_evidence_batch_archive_fields`、`20261108020000_nullable_notary_handoff_details`、`20261108030000_notary_opening_review_flow`、`20261108031000_notary_fee_sources`、`20261108032000_notary_archive_and_drafts`、`20261108090000_right_asset_registration_status`。依赖与锁文件未变。
+
+已推送远端并开 [PR #4](https://github.com/glunek123/ip-bp/pull/4)（draft）。测试环境当前为 `1b066c6f`／288，本批未部署；本地库`dev_cor`为288、`dev_cor_qa`为295。本节只记录候选范围、迁移增量与环境位置，门禁结论、评审和部署回执另行追加，不作预称。
+
+## 环境位置更正（2026-11-09核实）
+
+测试环境`current`软链已于2026-11-09 11:34切换至`1b066c6f9dada6cd81b0904af2cd54d7a8c5faf9`，其tree`900c20cd…`与云端main`42d48b07`完全相同，线上库288项迁移、末项`20261109123000_case_list_mine_preferences`。下文旧条目所述`5e3343b8`／281为2026-11-06历史状态，保留原证据不覆盖。
 
 # 测试环境已更新：5e3343b8／281迁移，可运营人工试测
 
