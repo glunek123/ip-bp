@@ -347,6 +347,32 @@ function toggleAll(): void {
   else for (const id of matchingIds.value) next.add(id);
   selected.value = next;
 }
+const billConfirmArmed = ref(false);
+const billSelectedTotal = computed(() => {
+  const cents = visible.value
+    .filter((row) => selected.value.has(row.id))
+    .reduce((sum, row) => sum + Math.round(Number(row.amount) * 100), 0);
+  return (cents / 100).toFixed(2);
+});
+watch([selected, billDate, billNote], () => {
+  billConfirmArmed.value = false;
+});
+function requestBill(): void {
+  if (
+    saving.value ||
+    unknownCancel.value ||
+    (pendingBill === null && selected.value.size === 0) ||
+    !capabilities.value?.billCreate ||
+    (!billDate.value && pendingBill === null)
+  )
+    return;
+  if (!billConfirmArmed.value) {
+    billConfirmArmed.value = true;
+    return;
+  }
+  billConfirmArmed.value = false;
+  void createBill();
+}
 async function createBill(): Promise<void> {
   if (
     saving.value ||
@@ -635,7 +661,7 @@ async function cancelBill(): Promise<void> {
             v-if="capabilities.billCreate"
             :id="billCreateFormId"
             class="settlement-center__bill-create"
-            @submit.prevent="createBill"
+            @submit.prevent="requestBill"
           >
             <label
               >账单日期
@@ -691,6 +717,32 @@ async function cancelBill(): Promise<void> {
               </ElButton>
             </div>
           </div>
+          <div
+            v-if="billConfirmArmed"
+            class="settlement-center__note"
+            data-test="bill-confirm"
+            role="status"
+          >
+            将把已选 {{ selectedCount }} 条明细合并为一张账单：账单日期
+            {{ billDate }}，合计 {{ billSelectedTotal }} 元，编号按生成结果占用。
+            <ElButton
+              type="primary"
+              native-type="button"
+              data-test="bill-confirm-submit"
+              :disabled="saving"
+              @click="requestBill"
+              >确认生成</ElButton
+            >
+            <ElButton
+              native-type="button"
+              data-test="bill-confirm-cancel"
+              @click="billConfirmArmed = false"
+              >取消</ElButton
+            >
+          </div>
+          <p v-else-if="capabilities.billCreate && selectedCount > 0" class="settlement-center__note">
+            已选 {{ selectedCount }} 条，点击「生成账单」后需再次确认。
+          </p>
           <p v-if="loading">正在加载…</p>
           <p v-else-if="visible.length === 0">当前条件下暂无结算明细</p>
           <div v-else class="settlement-center__table">

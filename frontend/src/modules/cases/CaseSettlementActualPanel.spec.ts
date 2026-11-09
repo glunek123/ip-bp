@@ -45,7 +45,7 @@ function deferred<T>() {
 async function fill(wrapper: ReturnType<typeof panel>, side = 'CUSTOMER') {
   await wrapper.get('[data-test="side"]').setValue(side);
   await wrapper.get('[data-test="occurred-on"]').setValue('2020-01-02');
-  await wrapper.get('[data-test="amount"]').setValue('1.01');
+  await wrapper.get('[data-test="actual-amount"]').setValue('1.01');
 }
 async function submit(wrapper: ReturnType<typeof panel>) {
   await wrapper.get('form').trigger('submit');
@@ -312,7 +312,7 @@ describe('independent actual registration panel', () => {
       await flushPromises();
       expect(wrapper.emitted('registered')).toBeUndefined();
       expect(wrapper.find('[data-test="retry"]').exists()).toBe(false);
-      expect(wrapper.get('[data-test="amount"]').element).toHaveProperty(
+      expect(wrapper.get('[data-test="actual-amount"]').element).toHaveProperty(
         'value',
         '',
       );

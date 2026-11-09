@@ -726,7 +726,7 @@ describe('settlement update panel safety', () => {
     const actual = wrapper.getComponent(ActualPanel);
     await actual.get('[data-test="side"]').setValue('CUSTOMER');
     await actual.get('[data-test="occurred-on"]').setValue('2020-01-02');
-    await actual.get('[data-test="amount"]').setValue('1.01');
+    await actual.get('[data-test="actual-amount"]').setValue('1.01');
     await actual.get('form').trigger('submit');
     await flushPromises();
   }

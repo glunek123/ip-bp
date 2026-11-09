@@ -279,6 +279,11 @@ async function download(file: CaseFile) {
           />
         </label>
         <p v-if="error" role="alert" class="submit-error">{{ error }}</p>
+        <div v-if="review" data-test="mailing-review">
+          <h3>提交内容核对</h3>
+          <p>邮寄日期：{{ mailedAt }}</p>
+          <p>邮寄备注：{{ remark.trim() || '未填写' }}</p>
+        </div>
         <ElButton type="primary" :disabled="!ready" @click="review = true"
           >核对邮寄信息</ElButton
         >

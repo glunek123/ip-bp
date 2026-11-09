@@ -4,19 +4,26 @@ import type { CaseFile } from '../../api/cases';
 
 type UploadCategory = 'COMPLAINT' | 'AUTHORIZATION';
 
-defineProps<{
-  complaintFiles: CaseFile[];
-  authorizationFiles: CaseFile[];
-  amountState: 'KNOWN' | 'PENDING';
-  amount: string;
-  pendingReason: string;
-  uploadLoading: Partial<Record<UploadCategory, boolean>>;
-  uploadErrors: Partial<Record<UploadCategory, string>>;
-  error: string;
-  success: string;
-  submitting: boolean;
-  locked?: boolean;
-}>();
+withDefaults(
+  defineProps<{
+    complaintFiles: CaseFile[];
+    authorizationFiles: CaseFile[];
+    amountState: 'KNOWN' | 'PENDING';
+    amount: string;
+    pendingReason: string;
+    uploadLoading: Partial<Record<UploadCategory, boolean>>;
+    uploadErrors: Partial<Record<UploadCategory, string>>;
+    error: string;
+    success: string;
+    submitting: boolean;
+    locked?: boolean;
+    /** 金额状态已在抽屉顶部选择时，表单不再重复渲染同一控件。 */
+    showAmountState?: boolean;
+  }>(),
+  // Vue 会把未传入的布尔 prop 转成 false；显式默认为 true，保证单独使用
+  // 本组件（律师端详情页）时仍显示金额状态选择器。
+  { showAmountState: true },
+);
 
 const emit = defineEmits<{
   upload: [
@@ -97,7 +104,7 @@ const emit = defineEmits<{
           >
         </li>
       </ul>
-      <label>
+      <label v-if="showAmountState">
         金额状态
         <select
           :value="amountState"

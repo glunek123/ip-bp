@@ -309,8 +309,14 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     submit.click();
     await flushPromises();
     expect(api.createSettlementBill).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-test="bill-confirm"]').exists()).toBe(false);
     await date.setValue('2026-10-17');
     submit.click();
+    await flushPromises();
+    expect(api.createSettlementBill).not.toHaveBeenCalled();
+    const confirm = wrapper.get('[data-test="bill-confirm"]');
+    expect(confirm.text()).toContain('合计');
+    await confirm.get('[data-test="bill-confirm-submit"]').trigger('click');
     await flushPromises();
     expect(api.createSettlementBill).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1036,6 +1042,11 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     expect(wrapper.text()).toContain('2000.00');
     await wrapper.findComponent(ElCheckbox).get('input').setValue(true);
     await wrapper.get('.settlement-center__bill-create').trigger('submit');
+    await flushPromises();
+    expect(api.createSettlementBill).not.toHaveBeenCalled();
+    await wrapper
+      .get('[data-test="bill-confirm-submit"]')
+      .trigger('click');
     await flushPromises();
     expect(api.createSettlementBill).toHaveBeenCalledWith(
       expect.objectContaining({

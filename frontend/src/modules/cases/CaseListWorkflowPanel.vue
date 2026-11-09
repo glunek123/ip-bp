@@ -374,6 +374,10 @@ import {
   shallowRef,
   watch,
 } from 'vue';
+import {
+  ElOption,
+  ElSelect,
+} from 'element-plus/es/components/select/index.mjs';
 import { ApiError } from '../../api/http';
 import type {
   ListWorkflowSession,
@@ -820,12 +824,21 @@ async function submit(request: CaseListRequest, recovery = false) {
       session.endSubmit('failed');
       if (reason instanceof ApiError && [401, 403, 404].includes(reason.status))
         session.deny();
-      else if (current())
-        error.value =
-          '提交未完成，填写内容已保留。请核对错误；状态冲突时重新读取资料。';
+      else if (current()) error.value = failureMessage(reason);
     }
     throw reason;
   }
+}
+function failureMessage(reason: unknown) {
+  if (reason instanceof ApiError) {
+    if (reason.code === 'DEFENDANTS_ALREADY_PREPARED')
+      return '本案已登记被告，请重新读取资料后再匹配律师。';
+    if (reason.code === 'VERSION_CONFLICT')
+      return '案件状态或版本已变化，请重新读取资料后再提交；已填写的内容保留在页面上。';
+    if (reason.status === 400 || reason.status === 409 || reason.status === 422)
+      return `提交未完成：${reason.message}。填写内容已保留。`;
+  }
+  return '提交未完成，填写内容已保留。请核对错误；状态冲突时重新读取资料。';
 }
 function clearCommandSession(stored: StoredRequest) {
   const identity = { actor: stored.actor, caseId: stored.caseId };
@@ -1031,6 +1044,29 @@ const matchedOn = ref(api.todayShanghai());
 const defendants = ref<api.MatchCaseInput['defendants']>([
   { kind: 'PERSON', name: '', idNo: '', phone: '', address: '' },
 ]);
+const consolidation = computed(() => item.value.consolidation ?? null);
+// 合并起诉组内被告身份须全组一致：默认带出组档案的值供修改，提交时由服务端
+// 在组内案件都仍待匹配且无被告的前提下同步改写档案，否则返回锁定错误。
+const inConsolidation = computed(() => consolidation.value !== null);
+watch(
+  consolidation,
+  (membership) => {
+    if (!membership) return;
+    const [only] = defendants.value;
+    if (defendants.value.length !== 1 || !only) return;
+    if (only.name !== '' || only.idNo || only.phone || only.address) return;
+    defendants.value = [
+      {
+        kind: membership.defendantKind,
+        name: membership.defendantName,
+        idNo: membership.defendantIdNo,
+        phone: '',
+        address: '',
+      },
+    ];
+  },
+  { immediate: true },
+);
 function loadCandidates() {
   if (!current() || busy.value || pending.value || props.action !== 'match')
     return;
@@ -1244,14 +1280,21 @@ async function complaint() {
     uploadLoading.value.AUTHORIZATION
   )
     return;
-  if (
-    !complaintFiles.value.length ||
-    !authorizationFiles.value.length ||
-    (amountState.value === 'PENDING'
-      ? !pendingReason.value.trim()
-      : !/^\d{1,14}(\.\d{1,2})?$/.test(amount.value))
-  ) {
-    error.value = '请补齐起诉状、授权材料及金额或待补充原因。';
+  if (!complaintFiles.value.length) {
+    error.value = '请先上传起诉状（1～10 份），再确认提交。';
+    return;
+  }
+  if (!authorizationFiles.value.length) {
+    error.value = '请先上传授权材料（1～10 份），再确认提交。';
+    return;
+  }
+  if (amountState.value === 'PENDING') {
+    if (!pendingReason.value.trim()) {
+      error.value = '金额状态为“待补充”时，请填写待补充原因。';
+      return;
+    }
+  } else if (!/^\d{1,14}(\.\d{1,2})?$/.test(amount.value)) {
+    error.value = '金额需为数字，最多 14 位整数、2 位小数，例如 150000.50。';
     return;
   }
   try {
@@ -1440,6 +1483,26 @@ async function complaint() {
           <option value="PENDING">待补充</option>
         </select></label
       >
+      <p
+        v-else-if="action === 'complaint'"
+        class="field-help"
+        data-test="complaint-amount-chosen"
+      >
+        本次按「{{ amountState === 'KNOWN' ? '已确认' : '待补充' }}」登记金额。
+        <button
+          type="button"
+          data-test="complaint-amount-change"
+          :disabled="busy || !!pending"
+          @click="
+            complaintAmountChoice = '';
+            amount = '';
+            pendingReason = '';
+            error = '';
+          "
+        >
+          更改金额状态
+        </button>
+      </p>
       <button
         v-if="action === 'complaint'"
         type="button"
@@ -1458,6 +1521,13 @@ async function complaint() {
         @submit.prevent="item.defendants.length ? match() : prepareDefendants()"
       >
         <h3>{{ item.defendants.length ? '匹配律师' : '补充被告' }}</h3>
+        <p
+          v-if="!item.defendants.length && inConsolidation"
+          class="field-help"
+          data-test="consolidation-hint"
+        >
+          本案属于合并起诉组，已按合并档案带出被告，可直接改成实际情况；组档案保留合并时的确认记录，不受本次修改影响。
+        </p>
         <label v-if="item.defendants.length"
           >委案日期<input
             v-model="matchedOn"
@@ -1468,13 +1538,25 @@ async function complaint() {
         <template v-if="!item.defendants.length">
           <div v-for="(defendant, index) in defendants" :key="index">
             <label
-              >被告类型<select v-model="defendant.kind">
-                <option value="PERSON">自然人</option>
-                <option value="ORGANIZATION">法人／个体</option>
-              </select></label
-            >
-            <label>被告名称<input v-model="defendant.name" required /></label>
-            <label>证件号码<input v-model="defendant.idNo" /></label>
+              >被告类型<ElSelect
+                v-model="defendant.kind"
+                class="workflow-select"
+                data-test="defendant-kind"
+              >
+                <ElOption label="自然人" value="PERSON" />
+                <ElOption label="法人／个体" value="ORGANIZATION" /> </ElSelect
+            ></label>
+            <label
+              >被告名称<input
+                v-model="defendant.name"
+                data-test="defendant-name"
+                required
+            /></label>
+            <label
+              >证件号码<input
+                v-model="defendant.idNo"
+                data-test="defendant-id-no"
+            /></label>
             <label>电话<input v-model="defendant.phone" /></label>
             <label>地址<input v-model="defendant.address" /></label>
             <label v-if="defendant.kind === 'ORGANIZATION'"
@@ -1497,20 +1579,24 @@ async function complaint() {
           添加被告
         </button>
         <label v-if="item.defendants.length"
-          >输入姓名搜索承办律师<input v-model="lawyerQuery"
+          >输入姓名搜索承办律师<input
+            v-model="lawyerQuery"
+            data-test="lawyer-query"
         /></label>
         <label v-if="item.defendants.length"
-          >承办律师<select v-model="lawyer" required>
-            <option value="" disabled>请选择律师</option>
-            <option
+          >承办律师<ElSelect
+            v-model="lawyer"
+            class="workflow-select"
+            placeholder="请选择律师"
+            data-test="lawyer-select"
+          >
+            <ElOption
               v-for="candidate in candidates"
               :key="candidate.lawyerAccountId"
+              :label="candidate.displayName"
               :value="candidate.lawyerAccountId"
-            >
-              {{ candidate.displayName }}
-            </option>
-          </select></label
-        >
+            /> </ElSelect
+        ></label>
         <p v-if="candidatesError" role="alert">{{ candidatesError }}</p>
         <button type="submit">
           {{ item.defendants.length ? '匹配律师' : '保存被告' }}
@@ -1528,6 +1614,7 @@ async function complaint() {
         :error="error"
         success=""
         :submitting="busy"
+        :show-amount-state="false"
         :locked="
           complaintUploadUnknown ||
           complaintPreloading ||

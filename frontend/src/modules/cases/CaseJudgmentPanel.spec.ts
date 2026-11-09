@@ -824,4 +824,22 @@ describe('case judgment panel', () => {
     expect(stale.emitted('refresh')).toHaveLength(1);
     expect(stale.find('[data-test="judgment-retry"]').exists()).toBe(false);
   });
+
+  it('explains why submit is disabled instead of leaving a dead button', async () => {
+    const wrapper = mountPanel();
+    const blocked = wrapper.get('[data-test="judgment-submit-blocked"]');
+    expect(blocked.text()).toContain('请填写收到判决日期');
+    expect(
+      wrapper.get('[data-test="judgment-submit"]').attributes('aria-describedby'),
+    ).toBe('judgment-submit-blocked');
+
+    await wrapper.get('[data-test="judgment-date"]').setValue('2026-10-07');
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="judgment-submit-blocked"]').exists(),
+    ).toBe(false);
+    expect(
+      wrapper.get('[data-test="judgment-submit"]').attributes('disabled'),
+    ).toBeUndefined();
+  });
 });

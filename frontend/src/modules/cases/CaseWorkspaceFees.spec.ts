@@ -443,7 +443,7 @@ async function submitActual(wrapper: Awaited<ReturnType<typeof renderActual>>) {
   await wrapper.get('[data-test="open-actual"]').trigger('click');
   const panel = wrapper.getComponent(ActualPanel);
   await panel.get('[data-test="side"]').setValue('CUSTOMER');
-  await panel.get('[data-test="amount"]').setValue('1.00');
+  await panel.get('[data-test="actual-amount"]').setValue('1.00');
   await panel.get('[data-test="occurred-on"]').setValue('2026-01-01');
   await panel.get('form').trigger('submit');
   await flushPromises();

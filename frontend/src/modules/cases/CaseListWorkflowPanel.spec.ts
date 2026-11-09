@@ -1091,6 +1091,115 @@ describe('case list workflow session', () => {
       }),
     );
   });
+  it('names the missing complaint input instead of one generic message', async () => {
+    const detail = {
+      ...baseItem,
+      stage: 'WAITING_COMPLAINT' as const,
+      canSubmitComplaint: true,
+    };
+    api.getCase.mockResolvedValue(detail);
+    api.listCases.mockResolvedValue(
+      list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
+    );
+    materials.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
+    const { wrapper } = await render();
+    await wrapper.get('[data-case-action="complaint"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="complaint-amount-choice"]').setValue('KNOWN');
+    await wrapper.get('[data-test="submit-complaint"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('请先上传起诉状');
+    expect(wrapper.text()).not.toContain('请补齐起诉状、授权材料及金额');
+    expect(api.submitComplaint).not.toHaveBeenCalled();
+  });
+  it('keeps a single amount-state control and lets the operator change it', async () => {
+    const detail = {
+      ...baseItem,
+      stage: 'WAITING_COMPLAINT' as const,
+      canSubmitComplaint: true,
+    };
+    api.getCase.mockResolvedValue(detail);
+    api.listCases.mockResolvedValue(
+      list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
+    );
+    materials.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
+    const { wrapper } = await render();
+    await wrapper.get('[data-case-action="complaint"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="complaint-amount-choice"]').setValue('KNOWN');
+    await flushPromises();
+    const form = wrapper.get('[data-test="complaint-submit-form"]');
+    expect(
+      form.findAll('label').filter((label) => label.text().includes('金额状态')),
+    ).toHaveLength(0);
+    expect(wrapper.get('[data-test="complaint-amount-chosen"]').text()).toContain(
+      '已确认',
+    );
+    await wrapper.get('[data-test="complaint-amount-change"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-test="complaint-amount-choice"]').element).toHaveProperty(
+      'value',
+      '',
+    );
+    expect(
+      wrapper.find('[data-test="complaint-submit-form"]').exists(),
+    ).toBe(false);
+  });
+  it('explains the amount format when a confirmed amount has too many decimals', async () => {
+    const detail = {
+      ...baseItem,
+      stage: 'WAITING_COMPLAINT' as const,
+      canSubmitComplaint: true,
+    };
+    api.getCase.mockResolvedValue(detail);
+    api.listCases.mockResolvedValue(
+      list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
+    );
+    materials.listOwnerMaterials.mockResolvedValue({
+      items: [
+        {
+          id: 'material-1',
+          status: 'ACTIVE',
+          category: 'COMPLAINT',
+          currentVersionId: 'file-1',
+          contentVersions: [
+            {
+              id: 'file-1',
+              originalFilename: '原起诉状.pdf',
+              mimeType: 'application/pdf',
+            },
+          ],
+        },
+        {
+          id: 'material-2',
+          status: 'ACTIVE',
+          category: 'AUTHORIZATION',
+          currentVersionId: 'file-2',
+          contentVersions: [
+            {
+              id: 'file-2',
+              originalFilename: '原授权.pdf',
+              mimeType: 'application/pdf',
+            },
+          ],
+        },
+      ],
+      total: 2,
+    });
+    const { wrapper } = await render();
+    await wrapper.get('[data-case-action="complaint"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="complaint-amount-choice"]').setValue('KNOWN');
+    const amountLabel = wrapper
+      .findAll('label')
+      .find((label) => label.text().trim() === '金额')!;
+    await amountLabel.get('input').setValue('12.345');
+    await wrapper.get('[data-test="submit-complaint"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('金额需为数字');
+    expect(wrapper.text()).toContain('2 位小数');
+    expect(api.submitComplaint).not.toHaveBeenCalled();
+  });
   it('requires an explicit branch, posts from the row, and reloads once at the same page/filter', async () => {
     const { wrapper, router } = await render();
     await wrapper.get('[data-case-action="choose-next-step"]').trigger('click');

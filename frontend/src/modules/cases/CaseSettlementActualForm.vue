@@ -129,7 +129,7 @@ function submit() {
         >实际金额（元）<input
           v-model="amount"
           inputmode="decimal"
-          data-test="amount"
+          data-test="actual-amount"
           placeholder="大于零，最多两位小数"
       /></label>
       <label

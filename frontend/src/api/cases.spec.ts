@@ -4668,6 +4668,28 @@ describe('cases API', () => {
         code: 'INVALID_RESPONSE',
       });
     }
+    // 合并组能力位：服务端会随律师摘要下发，漏列会让整页报无效响应。
+    mockJson({
+      items: [{ ...item, canConsolidate: false }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      counts,
+    });
+    await expect(listLawyerCases()).resolves.toMatchObject({
+      items: [{ canConsolidate: false }],
+    });
+    mockJson({
+      items: [{ ...item, canConsolidate: 'yes' }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      counts,
+    });
+    await expect(listLawyerCases()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+
     mockJson({ items: [item], total: 1, page: 1, pageSize: 20, counts });
     await expect(listLawyerCases()).resolves.toMatchObject({
       items: [

@@ -17,7 +17,7 @@ async function fill(
 ) {
   await wrapper.get('[data-test="side"]').setValue(side);
   await wrapper.get('[data-test="occurred-on"]').setValue('2026-10-29');
-  await wrapper.get('[data-test="amount"]').setValue(amount);
+  await wrapper.get('[data-test="actual-amount"]').setValue(amount);
 }
 describe('CaseSettlementActualForm', () => {
   beforeEach(() => {
@@ -101,7 +101,7 @@ describe('CaseSettlementActualForm', () => {
         .value,
     ).toBe('');
     expect(
-      (wrapper.get('[data-test="amount"]').element as HTMLInputElement).value,
+      (wrapper.get('[data-test="actual-amount"]').element as HTMLInputElement).value,
     ).toBe('');
     expect(
       wrapper.get('[data-test="submit"]').attributes('disabled'),
@@ -199,7 +199,7 @@ describe('CaseSettlementActualForm', () => {
     await wrapper.get('form').trigger('submit');
     expect(wrapper.emitted('submit')).toBeUndefined();
     expect(
-      (wrapper.get('[data-test="amount"]').element as HTMLInputElement).value,
+      (wrapper.get('[data-test="actual-amount"]').element as HTMLInputElement).value,
     ).toBe('');
     wrapper.unmount();
   });

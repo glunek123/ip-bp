@@ -299,6 +299,32 @@ const ready = computed(
     !submitting.value &&
     unknownRequest.value === null,
 );
+const blockedReason = computed(() => {
+  if (submitting.value) return '正在提交，请稍候。';
+  if (unknownRequest.value !== null)
+    return '上次提交结果未知，请先核对结果再登记。';
+  if (uploading.value) return '判决书仍在上传，完成后才能提交。';
+  if (!canEdit.value) return '当前账号对此案只读，不能登记判决。';
+  if (!validDate(judgmentReceivedAt.value))
+    return '请填写收到判决日期，且不得晚于今天（北京时间）。';
+  if (!validAmount(judgmentAmount.value))
+    return '判决金额需为不超过 2 位小数的数字；未判决可留空表示待确认。';
+  if (!validAmount(paidLitigationFee.value))
+    return '实缴诉讼费需为不超过 2 位小数的数字；未知可留空表示待确认。';
+  if (
+    refundRows.value.length &&
+    (!canRecordRefund.value ||
+      !refundRows.value.every((row) => amountFormat.test(row.amount.trim())))
+  )
+    return canRecordRefund.value
+      ? '每笔退费金额需为不超过 2 位小数的数字。'
+      : '当前账号不能登记诉讼退费，请移除退费行。';
+  if (selectedIds.value.length < 1)
+    return '请先上传或选择至少 1 份判决书，再提交登记。';
+  if (selectedIds.value.length > 10) return '判决书最多选择 10 份。';
+  if (canCorrect.value && !validReason.value) return '更正需要填写更正说明。';
+  return '';
+});
 function makeKey(): string {
   return typeof globalThis.crypto?.randomUUID === 'function'
     ? globalThis.crypto.randomUUID()
@@ -727,11 +753,22 @@ function historyLabel(fact: CaseJudgmentFact): string {
           本次只记录事实，不会发起支付。
         </p>
       </section>
+      <p
+        v-if="!ready && blockedReason"
+        id="judgment-submit-blocked"
+        class="field-help"
+        data-test="judgment-submit-blocked"
+      >
+        {{ blockedReason }}
+      </p>
       <ElButton
         v-if="canCorrect"
         type="primary"
         data-test="judgment-correct"
         :disabled="!ready"
+        :aria-describedby="
+          ready ? undefined : 'judgment-submit-blocked'
+        "
         :loading="submitting"
         @click="submit"
         >提交</ElButton
@@ -742,6 +779,9 @@ function historyLabel(fact: CaseJudgmentFact): string {
         native-type="submit"
         data-test="judgment-submit"
         :disabled="!ready"
+        :aria-describedby="
+          ready ? undefined : 'judgment-submit-blocked'
+        "
         :loading="submitting"
         @click="submit"
         >提交</ElButton

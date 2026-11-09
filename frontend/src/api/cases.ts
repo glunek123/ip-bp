@@ -187,6 +187,12 @@ export type CaseDefendant = {
   address: string | null;
   legalRepresentative: string | null;
 };
+export type CaseConsolidationMembership = {
+  isMain: boolean;
+  defendantKind: 'PERSON' | 'ORGANIZATION';
+  defendantName: string;
+  defendantIdNo: string;
+};
 export type DefendantContactEdit = {
   defendantId: string;
   contactRevision: number;
@@ -458,6 +464,7 @@ type CaseDetailBase = Omit<CaseSummaryBase, 'displaySummary'> & {
     sourceId: string;
   }>;
   defendants: CaseDefendant[];
+  consolidation?: CaseConsolidationMembership | null;
   lawyers: CaseLawyer[];
   matchedAt: string | null;
   matchedOn: string | null;
@@ -2770,6 +2777,23 @@ function defendant(value: unknown): value is CaseDefendant {
     )
   );
 }
+function validConsolidation(value: unknown): boolean {
+  return (
+    record(value) &&
+    exact(value, [
+      'isMain',
+      'defendantKind',
+      'defendantName',
+      'defendantIdNo',
+    ]) &&
+    typeof value.isMain === 'boolean' &&
+    typeof value.defendantKind === 'string' &&
+    (value.defendantKind === 'PERSON' ||
+      value.defendantKind === 'ORGANIZATION') &&
+    nonempty(value.defendantName) &&
+    typeof value.defendantIdNo === 'string'
+  );
+}
 function lawyer(value: unknown): value is CaseLawyer {
   return (
     record(value) &&
@@ -2968,6 +2992,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         'canSupplementPaymentProof',
         'canReadClosurePaymentHistory',
         'canConsolidate',
+        'consolidation',
         'earlyArchive',
         'earlyClosure',
         'recordEdits',
@@ -3080,6 +3105,9 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     ) &&
     Array.isArray(value.defendants) &&
     value.defendants.every(defendant) &&
+    (value.consolidation === undefined ||
+      value.consolidation === null ||
+      validConsolidation(value.consolidation)) &&
     Array.isArray(value.lawyers) &&
     value.lawyers.every(lawyer) &&
     (value.matchedAt === null ||
@@ -4607,6 +4635,9 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
         'canUpdateClosureSettlement',
         'canSupplementPaymentProof',
         'canReadClosurePaymentHistory',
+        // 合并组能力位由服务端随摘要下发；漏列会让整页校验失败，
+        // 表现为律师端"案件列表暂时无法加载"。
+        'canConsolidate',
       ],
     ) &&
     nonempty(value.id) &&
@@ -4614,6 +4645,8 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
     caseStages.includes(value.stage as CaseStage) &&
     Number.isInteger(value.version) &&
     Number(value.version) > 0 &&
+    (value.canConsolidate === undefined ||
+      typeof value.canConsolidate === 'boolean') &&
     value.canMatch === false &&
     typeof value.canSubmitExecution === 'boolean' &&
     (value.canUploadDirectExecutionMaterials === undefined ||
