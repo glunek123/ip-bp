@@ -101,7 +101,8 @@ describe('CaseSettlementActualForm', () => {
         .value,
     ).toBe('');
     expect(
-      (wrapper.get('[data-test="actual-amount"]').element as HTMLInputElement).value,
+      (wrapper.get('[data-test="actual-amount"]').element as HTMLInputElement)
+        .value,
     ).toBe('');
     expect(
       wrapper.get('[data-test="submit"]').attributes('disabled'),
@@ -199,7 +200,8 @@ describe('CaseSettlementActualForm', () => {
     await wrapper.get('form').trigger('submit');
     expect(wrapper.emitted('submit')).toBeUndefined();
     expect(
-      (wrapper.get('[data-test="actual-amount"]').element as HTMLInputElement).value,
+      (wrapper.get('[data-test="actual-amount"]').element as HTMLInputElement)
+        .value,
     ).toBe('');
     wrapper.unmount();
   });

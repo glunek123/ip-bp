@@ -766,9 +766,7 @@ function historyLabel(fact: CaseJudgmentFact): string {
         type="primary"
         data-test="judgment-correct"
         :disabled="!ready"
-        :aria-describedby="
-          ready ? undefined : 'judgment-submit-blocked'
-        "
+        :aria-describedby="ready ? undefined : 'judgment-submit-blocked'"
         :loading="submitting"
         @click="submit"
         >提交</ElButton
@@ -779,9 +777,7 @@ function historyLabel(fact: CaseJudgmentFact): string {
         native-type="submit"
         data-test="judgment-submit"
         :disabled="!ready"
-        :aria-describedby="
-          ready ? undefined : 'judgment-submit-blocked'
-        "
+        :aria-describedby="ready ? undefined : 'judgment-submit-blocked'"
         :loading="submitting"
         @click="submit"
         >提交</ElButton

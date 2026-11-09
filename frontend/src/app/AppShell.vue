@@ -306,10 +306,7 @@ watch(
 function closeRemindersOnOutsidePointer(event: globalThis.Event): void {
   if (!remindersOpen.value) return;
   const target = event.target;
-  if (
-    target instanceof globalThis.Element &&
-    target.closest('.app-reminders')
-  )
+  if (target instanceof globalThis.Element && target.closest('.app-reminders'))
     return;
   remindersOpen.value = false;
 }

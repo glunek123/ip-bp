@@ -724,7 +724,8 @@ async function cancelBill(): Promise<void> {
             role="status"
           >
             将把已选 {{ selectedCount }} 条明细合并为一张账单：账单日期
-            {{ billDate }}，合计 {{ billSelectedTotal }} 元，编号按生成结果占用。
+            {{ billDate }}，合计
+            {{ billSelectedTotal }} 元，编号按生成结果占用。
             <ElButton
               type="primary"
               native-type="button"
@@ -740,7 +741,10 @@ async function cancelBill(): Promise<void> {
               >取消</ElButton
             >
           </div>
-          <p v-else-if="capabilities.billCreate && selectedCount > 0" class="settlement-center__note">
+          <p
+            v-else-if="capabilities.billCreate && selectedCount > 0"
+            class="settlement-center__note"
+          >
             已选 {{ selectedCount }} 条，点击「生成账单」后需再次确认。
           </p>
           <p v-if="loading">正在加载…</p>

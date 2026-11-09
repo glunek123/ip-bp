@@ -1105,7 +1105,9 @@ describe('case list workflow session', () => {
     const { wrapper } = await render();
     await wrapper.get('[data-case-action="complaint"]').trigger('click');
     await flushPromises();
-    await wrapper.get('[data-test="complaint-amount-choice"]').setValue('KNOWN');
+    await wrapper
+      .get('[data-test="complaint-amount-choice"]')
+      .setValue('KNOWN');
     await wrapper.get('[data-test="submit-complaint"]').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('请先上传起诉状');
@@ -1126,24 +1128,27 @@ describe('case list workflow session', () => {
     const { wrapper } = await render();
     await wrapper.get('[data-case-action="complaint"]').trigger('click');
     await flushPromises();
-    await wrapper.get('[data-test="complaint-amount-choice"]').setValue('KNOWN');
+    await wrapper
+      .get('[data-test="complaint-amount-choice"]')
+      .setValue('KNOWN');
     await flushPromises();
     const form = wrapper.get('[data-test="complaint-submit-form"]');
     expect(
-      form.findAll('label').filter((label) => label.text().includes('金额状态')),
+      form
+        .findAll('label')
+        .filter((label) => label.text().includes('金额状态')),
     ).toHaveLength(0);
-    expect(wrapper.get('[data-test="complaint-amount-chosen"]').text()).toContain(
-      '已确认',
-    );
+    expect(
+      wrapper.get('[data-test="complaint-amount-chosen"]').text(),
+    ).toContain('已确认');
     await wrapper.get('[data-test="complaint-amount-change"]').trigger('click');
     await flushPromises();
-    expect(wrapper.get('[data-test="complaint-amount-choice"]').element).toHaveProperty(
-      'value',
-      '',
-    );
     expect(
-      wrapper.find('[data-test="complaint-submit-form"]').exists(),
-    ).toBe(false);
+      wrapper.get('[data-test="complaint-amount-choice"]').element,
+    ).toHaveProperty('value', '');
+    expect(wrapper.find('[data-test="complaint-submit-form"]').exists()).toBe(
+      false,
+    );
   });
   it('explains the amount format when a confirmed amount has too many decimals', async () => {
     const detail = {
@@ -1189,7 +1194,9 @@ describe('case list workflow session', () => {
     const { wrapper } = await render();
     await wrapper.get('[data-case-action="complaint"]').trigger('click');
     await flushPromises();
-    await wrapper.get('[data-test="complaint-amount-choice"]').setValue('KNOWN');
+    await wrapper
+      .get('[data-test="complaint-amount-choice"]')
+      .setValue('KNOWN');
     const amountLabel = wrapper
       .findAll('label')
       .find((label) => label.text().trim() === '金额')!;

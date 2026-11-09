@@ -1044,9 +1044,7 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     await wrapper.get('.settlement-center__bill-create').trigger('submit');
     await flushPromises();
     expect(api.createSettlementBill).not.toHaveBeenCalled();
-    await wrapper
-      .get('[data-test="bill-confirm-submit"]')
-      .trigger('click');
+    await wrapper.get('[data-test="bill-confirm-submit"]').trigger('click');
     await flushPromises();
     expect(api.createSettlementBill).toHaveBeenCalledWith(
       expect.objectContaining({

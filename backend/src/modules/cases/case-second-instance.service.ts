@@ -571,8 +571,10 @@ export class CaseSecondInstanceService {
         resultId: null,
         // 未发生变更时沿用既有进展的登记时间：回执守卫要求回执时间与进展记录
         // 完全一致，重复提交同一份进展不能写入新的时间。
-        recordedAt: (changed ? recordedAt : (current?.recordedAt ?? recordedAt))
-          .toISOString(),
+        recordedAt: (changed
+          ? recordedAt
+          : (current?.recordedAt ?? recordedAt)
+        ).toISOString(),
       };
       await this.saveReceipt(
         tx,
