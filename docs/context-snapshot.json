@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-09T15:11:26.421Z",
+  "recordedAt": "2026-11-09T15:24:41.236Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -655,7 +655,7 @@
     "backend/src/modules/cases/case-read.controller.spec.ts": "0cbeb223db1cd5dbbcd216e199f32d1779451c867d57bca305f05fb823f520eb",
     "backend/src/modules/cases/case-read.controller.ts": "7b3e23140c0de4b3cd78b7a53bdfc84bb1f0e40c6d26b2614f09a68664f12780",
     "backend/src/modules/cases/case-read.dto.ts": "96cbd6d90dc99aec6a06fad162b8eaf5daa9f06f7dc57aef106242816781f74e",
-    "backend/src/modules/cases/case-read.service.spec.ts": "b39b83b826e7f2a3cc5389b1b2f56236e0f136a2ee70efca4371c4c8cced330f",
+    "backend/src/modules/cases/case-read.service.spec.ts": "cf284ef86116e926533ee51ee8e82e7967f57f6b2f20a6a6cdb08d9312576842",
     "backend/src/modules/cases/case-read.service.ts": "39ebfd0a598fe9f2a148ee273c728fde2a9ae6ef2ba61a359c1e550a9d8b69a7",
     "backend/src/modules/cases/case-record-edit.dto.ts": "935d7ab8659cb9b8b1a4e75f6d6db3a2091cdf018a57113853c86ca3c374812e",
     "backend/src/modules/cases/case-record-edit.service.spec.ts": "eb8b30c39d7a173f855dd3694bf2dd9f0eba2211da26c395f31fc82b3cfd50fb",
