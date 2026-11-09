@@ -959,6 +959,13 @@ class CaseEarlyClosureSourceDto {
   @ApiProperty({ minimum: 1 }) fromVersion!: number;
   @ApiProperty({ minimum: 2 }) toVersion!: number;
 }
+class CaseConsolidationMembershipDto {
+  @ApiProperty({ description: '是否合并案件组的主案件' }) isMain!: boolean;
+  @ApiProperty({ enum: ['PERSON', 'ORGANIZATION'] })
+  defendantKind!: 'PERSON' | 'ORGANIZATION';
+  @ApiProperty() defendantName!: string;
+  @ApiProperty() defendantIdNo!: string;
+}
 export class CaseDetailResponseDto extends OmitType(CaseListItemDto, [
   'displaySummary',
 ] as const) {
@@ -1016,5 +1023,12 @@ export class CaseDetailResponseDto extends OmitType(CaseListItemDto, [
   certificate!: CaseCertificateSummaryDto | null;
   @ApiProperty({ type: [CaseFeeDto] }) fees!: CaseFeeDto[];
   @ApiProperty({ type: [CaseDefendantDto] }) defendants!: CaseDefendantDto[];
+  @ApiProperty({
+    type: CaseConsolidationMembershipDto,
+    nullable: true,
+    description:
+      '合并案件成员档案；有值时补充被告必须与其冻结的被告身份完全一致',
+  })
+  consolidation!: CaseConsolidationMembershipDto | null;
   @ApiProperty({ type: [CaseLawyerDto] }) lawyers!: CaseLawyerDto[];
 }

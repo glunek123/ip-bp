@@ -1497,7 +1497,14 @@ export class CaseReadService {
         createdAt: true,
         responsibleUserId: true,
         responsibleMembership: { select: { teamId: true } },
-        consolidationMembership: { select: { isMain: true } },
+        consolidationMembership: {
+          select: {
+            isMain: true,
+            defendantKind: true,
+            defendantName: true,
+            defendantIdNo: true,
+          },
+        },
         consolidationAsMain: { select: { id: true } },
         defendants: {
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -1743,7 +1750,10 @@ export class CaseReadService {
           executionSupplements,
         };
       },
-      { isolationLevel: 'RepeatableRead' },
+      // 只读快照会串行读取十余张关联表：并发写同一案件时 5s 默认预算
+      // 不足以完成，曾出现 P2028 事务超时被兜底成 500。读取放宽到 15s，
+      // 仍远低于前端请求超时，且不改变任何写路径的事务预算。
+      { isolationLevel: 'RepeatableRead', timeout: 15_000, maxWait: 5_000 },
     );
     const {
       record,
@@ -2945,6 +2955,14 @@ export class CaseReadService {
         address: defendant.address,
         legalRepresentative: defendant.legalRepresentative,
       })),
+      consolidation: record.consolidationMembership
+        ? {
+            isMain: record.consolidationMembership.isMain,
+            defendantKind: record.consolidationMembership.defendantKind,
+            defendantName: record.consolidationMembership.defendantName,
+            defendantIdNo: record.consolidationMembership.defendantIdNo,
+          }
+        : null,
       ...(principal === 'INTERNAL'
         ? {
             recordEdits: {

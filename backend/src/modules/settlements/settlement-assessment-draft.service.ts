@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { ActorContext } from '../../access-control/actor-context';
 import {
@@ -82,7 +83,10 @@ export class SettlementAssessmentDraftService {
     if (
       !['UNKNOWN', 'APPLICABLE', 'NOT_APPLICABLE'].includes(command.declaration)
     )
-      throw new Error('INVALID_SETTLEMENT_DECLARATION');
+      throw new ConflictException({
+        code: 'SETTLEMENT_DECLARATION_INVALID',
+        message: '结算声明无效',
+      });
     return this.store.serializable(async (tx) => {
       await tx.authorizeInternalOperatorAndLockCase(actor, command.caseId);
       const source = await tx.currentLockedSource(command.caseId);
@@ -100,7 +104,10 @@ export class SettlementAssessmentDraftService {
           (!Number.isSafeInteger(source.priorAssessment.revision) ||
             source.priorAssessment.revision < 1))
       )
-        throw new Error('INVALID_SETTLEMENT_ASSESSMENT_SOURCE');
+        throw new ConflictException({
+          code: 'SETTLEMENT_SOURCE_INVALID',
+          message: '结案资料已变化，请重新读取后再保存',
+        });
       const inputs = structuredClone(source.inputs);
       // Only an applicable declaration makes a claim about calculated amounts.
       // Unknown/not-applicable preserves raw source inputs, including legacy terms.
@@ -114,7 +121,10 @@ export class SettlementAssessmentDraftService {
           result?.customerAmount == null ||
           result.lawyerAmount === null)
       )
-        throw new Error('SETTLEMENT_AMOUNT_UNKNOWN');
+        throw new ConflictException({
+          code: 'SETTLEMENT_AMOUNT_UNKNOWN',
+          message: '结案金额尚未确认，不能声明涉及结算',
+        });
       const snapshot: SettlementAssessmentSnapshot = {
         id: randomUUID(),
         caseId: source.caseId,

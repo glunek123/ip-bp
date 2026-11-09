@@ -91,14 +91,7 @@ export class CaseMatchService {
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
                 defendants: { select: { id: true } },
-                consolidationMembership: {
-                  select: {
-                    isMain: true,
-                    defendantKind: true,
-                    defendantName: true,
-                    defendantIdNo: true,
-                  },
-                },
+                consolidationMembership: { select: { isMain: true } },
               },
             });
             if (!record) throw this.notFound();
@@ -154,15 +147,8 @@ export class CaseMatchService {
               });
             if (record.version !== input.expectedVersion)
               throw this.versionConflict();
-            const consolidated = record.consolidationMembership;
-            if (
-              consolidated &&
-              (defendants.length !== 1 ||
-                defendants[0].kind !== consolidated.defendantKind ||
-                defendants[0].name !== consolidated.defendantName ||
-                defendants[0].idNo !== consolidated.defendantIdNo)
-            )
-              throw this.validation();
+            // 合并办理组不附加同被告限制（SD-18／SD-27）：各源案被告保持
+            // 原归属，组档案只是合并时的确认快照且不可变，这里不做一致性校验。
             await tx.caseDefendant.createMany({
               data: defendants.map((party) => ({
                 caseId,
@@ -272,14 +258,7 @@ export class CaseMatchService {
                 version: true,
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
-                consolidationMembership: {
-                  select: {
-                    isMain: true,
-                    defendantKind: true,
-                    defendantName: true,
-                    defendantIdNo: true,
-                  },
-                },
+                consolidationMembership: { select: { isMain: true } },
                 defendants: {
                   orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
                   select: { kind: true, name: true, idNo: true },
@@ -365,26 +344,8 @@ export class CaseMatchService {
               )
             )
               throw this.validation();
-            if (record.consolidationMembership?.isMain === true) {
-              const defendant = record.consolidationMembership;
-              if (
-                normalized.defendants.length !== 1 ||
-                normalized.defendants[0].kind !== defendant.defendantKind ||
-                normalized.defendants[0].name !== defendant.defendantName ||
-                normalized.defendants[0].idNo !== defendant.defendantIdNo
-              )
-                throw this.validation();
-              if (
-                record.defendants.some(
-                  (party) =>
-                    party.kind !== defendant.defendantKind ||
-                    party.name !== defendant.defendantName ||
-                    party.idNo !== defendant.defendantIdNo,
-                ) ||
-                record.defendants.length > 1
-              )
-                throw this.invalidState();
-            }
+            // 合并办理组不附加同被告限制（SD-18／SD-27）：组档案只是合并时的
+            // 确认快照且不可变，主案匹配按本案实际被告进行，不再与快照比对。
             const anchor = await readCaseSourceAnchor(
               tx,
               caseId,

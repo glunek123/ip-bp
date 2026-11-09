@@ -294,7 +294,7 @@ describe('CaseMatchService', () => {
     expect(f.tx.case.updateMany).not.toHaveBeenCalled();
   });
 
-  it('rejects an independently matched merged child and binds a main case to confirmed identity', async () => {
+  it('rejects an independently matched merged child and matches a main case by its own defendants', async () => {
     const f = fixture();
     const base = await f.tx.case.findFirst();
     f.tx.case.findFirst.mockResolvedValueOnce({
@@ -305,17 +305,13 @@ describe('CaseMatchService', () => {
       response: { code: 'INVALID_STATE' },
     });
     expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+    // SD-18／SD-27：合并组档案只是不可变快照，主案按本案实际被告匹配。
     f.tx.case.findFirst.mockResolvedValueOnce({
       ...base,
-      consolidationMembership: {
-        isMain: true,
-        defendantKind: 'ORGANIZATION',
-        defendantName: '被告公司',
-        defendantIdNo: '913000000000000001',
-      },
+      consolidationMembership: { isMain: true },
     });
-    await expect(f.service.match(actor, caseId, input)).rejects.toMatchObject({
-      response: { code: 'VALIDATION_ERROR' },
+    await expect(f.service.match(actor, caseId, input)).resolves.toMatchObject({
+      stage: 'WAITING_COMPLAINT',
     });
   });
 

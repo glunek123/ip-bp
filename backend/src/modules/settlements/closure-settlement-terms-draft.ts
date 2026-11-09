@@ -25,8 +25,23 @@ export async function updateClosureSettlementTermsInTransaction(
     actor.departmentId,
   );
   const prior = await tx.caseSettlementTerms.findUnique({ where: { caseId } });
+  // 历史条款已存在但从未生成结算评估时（历史／种子数据），客户端拿不到条款
+  // 版本令牌；允许首次评估以空令牌引导。评估一旦生成，令牌必须精确匹配，
+  // 锁语义不变；并发首写由外层 SERIALIZABLE 事务裁决。
+  const assessed = prior
+    ? await tx.$queryRawUnsafe<Array<{ id: string }>>(
+        'SELECT id FROM case_settlement_assessment_versions WHERE case_id=$1::uuid AND department_id=$2::uuid LIMIT 1',
+        caseId,
+        actor.departmentId,
+      )
+    : [];
+  const bootstrapWithoutToken =
+    prior !== null &&
+    assessed.length === 0 &&
+    command.expectedTermsVersion === null;
   if (
-    (prior?.version ?? null) !== command.expectedTermsVersion ||
+    (!bootstrapWithoutToken &&
+      (prior?.version ?? null) !== command.expectedTermsVersion) ||
     (prior && prior.departmentId !== actor.departmentId)
   )
     throw new ConflictException({ code: 'SETTLEMENT_TERMS_VERSION_CONFLICT' });
