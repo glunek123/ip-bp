@@ -296,11 +296,15 @@ describe('notary portal pages', () => {
     expect(wrapper.get('[data-test="certificate-form"]').text()).toContain(
       '样品费',
     );
-    expect(wrapper.get('[data-test="certificate-form"]').text()).toContain(
-      '¥ 12.00',
-    );
+    expect(
+      (
+        wrapper.get('[data-test="certificate-sample-fee"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe('12.00');
     await wrapper.get('[data-test="certificate-number"]').setValue('Z-100');
     await wrapper.get('[data-test="certificate-date"]').setValue('2026-09-28');
+    await wrapper.get('#certificate-notary-fee').setValue('100.00');
     await wrapper.get('[data-test="certificate-submit"]').trigger('click');
     await flushPromises();
 
@@ -318,7 +322,7 @@ describe('notary portal pages', () => {
     expect(wrapper.find('[data-test="certificate-form"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('/cases/case-1');
     expect(wrapper.text()).not.toContain('审核员');
-    expect(wrapper.text()).not.toContain('¥ 12.00');
+    expect(wrapper.text()).not.toContain('样品费');
   });
 
   it('explains an archived result without deriving an internal case link from caseId', async () => {
@@ -425,9 +429,9 @@ describe('notary portal pages', () => {
       NotaryPortalDetailPage,
     );
     const toggle = wrapper.get('[data-test="disclosure-toggle"]');
-    expect((toggle.element as HTMLInputElement).checked).toBe(true);
-    expect(toggle.attributes('disabled')).toBeDefined();
-    expect(wrapper.text()).toContain('来源线索要求披露材料');
+    expect((toggle.element as HTMLSelectElement).value).toBe('true');
+    expect(toggle.attributes('disabled')).toBeUndefined();
+    expect(wrapper.text()).toContain('来源线索披露要求：需要');
     expect(
       wrapper.get('[data-test="certificate-submit"]').attributes('disabled'),
     ).toBeDefined();
@@ -473,9 +477,9 @@ describe('notary portal pages', () => {
     );
     const toggle = wrapper.get('[data-test="disclosure-toggle"]');
 
-    expect((toggle.element as HTMLInputElement).checked).toBe(false);
-    expect(toggle.attributes('disabled')).toBeDefined();
-    expect(wrapper.text()).toContain('来源线索不要求披露材料');
+    expect((toggle.element as HTMLSelectElement).value).toBe('false');
+    expect(toggle.attributes('disabled')).toBeUndefined();
+    expect(wrapper.text()).toContain('来源线索披露要求：不需要');
     expect(wrapper.find('[data-test="disclosure-file-input"]').exists()).toBe(
       false,
     );

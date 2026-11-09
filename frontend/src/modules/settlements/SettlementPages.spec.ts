@@ -1113,6 +1113,7 @@ describe('case fee entry and same-source note editing', () => {
       page: 1,
       pageSize: 100,
       matchingIds: ['fee-a'],
+      matchingSources: [{ ...fee }],
       summary: {
         expense: '20.00',
         income: '0.00',
