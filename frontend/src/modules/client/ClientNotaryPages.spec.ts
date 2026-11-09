@@ -126,10 +126,7 @@ describe('client notary pages', () => {
     expect(
       wrapper.findAll('[data-test="client-review-result"]:checked'),
     ).toHaveLength(0);
-    expect(wrapper.text()).toContain(
-      '侵权后进入开箱待确认，由运营决定是否出证',
-    );
-    expect(wrapper.text()).toContain('不侵权将立即归档，普通入口不能撤回');
+    expect(wrapper.text()).toContain('提交后进入开箱待确认，由运营再次审核。');
     expect(wrapper.text()).not.toContain('物流');
     await wrapper
       .get('[data-test="download-client-opening-photo-photo-v1"]')
@@ -140,19 +137,19 @@ describe('client notary pages', () => {
     );
   });
 
-  it('requires the no-infringement reason and persists the selected decision', async () => {
+  it('allows a no-infringement review without a required note', async () => {
     const saved = {
       ...pending,
-      stage: 'ARCHIVED',
+      stage: 'ISSUANCE_DECISION',
       version: 3,
       capabilities: { reviewOpening: false },
       reviewDecision: {
         result: 'NO_INFRINGEMENT',
-        reason: '未发现侵权',
+        reason: null,
         actorKind: 'CLIENT',
         actorDisplayName: '客户审核员',
         decidedAt: '2026-09-24T03:00:00.000Z',
-        archivedAt: '2026-09-24T03:00:00.000Z',
+        archivedAt: null,
       },
     };
     api.getClientNotaryMatter
@@ -168,23 +165,15 @@ describe('client notary pages', () => {
     await wrapper
       .get('[data-test="client-opening-review-form"]')
       .trigger('submit');
-    expect(wrapper.text()).toContain('请填写不侵权原因');
-    expect(api.reviewClientNotaryOpening).not.toHaveBeenCalled();
-    await wrapper
-      .get('[data-test="client-opening-review-reason"]')
-      .setValue('未发现侵权');
-    await wrapper
-      .get('[data-test="client-opening-review-form"]')
-      .trigger('submit');
     await flushPromises();
     expect(api.reviewClientNotaryOpening).toHaveBeenCalledWith(
       'matter-1',
-      { result: 'NO_INFRINGEMENT', reason: '未发现侵权', expectedVersion: 2 },
+      { result: 'NO_INFRINGEMENT', expectedVersion: 2 },
       expect.any(String),
     );
     expect(api.getClientNotaryMatter).toHaveBeenCalledTimes(2);
     expect(wrapper.get('[data-test="client-review-record"]').text()).toContain(
-      '未发现侵权',
+      '审核结果：不侵权',
     );
   });
 
@@ -264,7 +253,7 @@ describe('client notary pages', () => {
       api.reviewClientNotaryOpening.mock.calls[0]?.[2],
     );
     expect(wrapper.get('[data-test="client-review-record"]').text()).toContain(
-      '确认侵权',
+      '审核结果：侵权',
     );
 
     api.getClientNotaryMatter.mockResolvedValue(pending);

@@ -29,6 +29,7 @@ function setup() {
         activeReviewDecisionId: reviewId,
         reviewDecision: { id: reviewId, result: 'INFRINGEMENT' },
       }),
+      update: jest.fn().mockResolvedValue({}),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     userAccount: {

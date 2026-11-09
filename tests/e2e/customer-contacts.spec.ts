@@ -797,6 +797,10 @@ test('real password old new-customer form creates one contact and keeps its ID i
     admissionContactName: '旧联系人',
     admissionContactPhone: '13800138008',
   });
+  await expect(
+    page.getByRole('link', { name: '旧建档表单客户' }),
+  ).toBeVisible();
+  await page.getByRole('link', { name: '旧建档表单客户' }).click();
   await expect(page).toHaveURL(`/customers/${customerId}`);
   await expect(
     contactPanel(page).locator('li[data-test^="contact-"]'),
@@ -978,9 +982,13 @@ test('a late actual contact read from customer A cannot populate customer B', as
     ['迟到客户甲', '甲联系人', '13800138016'],
     ['迟到客户乙', '乙联系人', '13800138017'],
   ]) {
-    await page.goto('/customers/new');
+    await page.goto('/customers');
+    await page.getByRole('button', { name: '新建客户', exact: true }).click();
     await page.getByLabel('客户名称').fill(customerName!);
     await page.getByRole('button', { name: '保存草稿' }).click();
+    await expect(
+      page.getByRole('link', { name: customerName! }),
+    ).toBeVisible();
     await page.getByRole('link', { name: customerName! }).click();
     await expect(
       page.getByRole('heading', { name: customerName! }),

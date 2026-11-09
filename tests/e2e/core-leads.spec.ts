@@ -832,8 +832,9 @@ test('bound notary account opens only its assigned matter through real browser a
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page).toHaveURL(/\/notary-offices$/u);
   await page
-    .locator(`[data-test="office-accounts-${ownMatter.notaryOffice.id}"]`)
-    .click();
+    .locator(`[data-test="select-office-${ownMatter.notaryOffice.id}"]`)
+    .check();
+  await page.locator('[data-test="manage-selected-office-accounts"]').click();
   await expect(
     page.locator('[data-test="notary-office-account-create"]'),
   ).toBeVisible();
@@ -1204,7 +1205,7 @@ test('operator creates, refreshes, views, and edits a waiting-push lead', async 
   await expect(page.getByText('已按客户自动带出')).toBeVisible();
   await page.getByLabel('案件类型').selectOption('CIVIL');
   await page.locator('input[name="needDisclose"][value="false"]').check();
-  await page.getByLabel('发现时间').fill('2026-09-21T10:30');
+  await page.getByLabel('线索发现日期').fill('2026-09-21T10:30');
   await page.getByLabel('线索来源').selectOption('ONLINE');
   await page.locator('select[name="platform"]').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('浏览器店铺');
@@ -1288,7 +1289,7 @@ test('real operator and client logins persist infringement review, screenshot an
   );
   await page.getByLabel('案件类型').selectOption('CIVIL');
   await page.locator('input[name="needDisclose"][value="false"]').check();
-  await page.getByLabel('发现时间').fill('2026-09-22T10:30');
+  await page.getByLabel('线索发现日期').fill('2026-09-22T10:30');
   await page.getByLabel('线索来源').selectOption('ONLINE');
   await page.locator('select[name="platform"]').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('客户端闭环店铺');
@@ -1297,30 +1298,19 @@ test('real operator and client logins persist infringement review, screenshot an
   await page.locator('input[name="quantity-0"]').fill('2');
   await page.locator('input[name="unitPrice-0"]').fill('8.00');
   await page.locator('input[name="commentCount-0"]').fill('0');
-  await page.locator('input[name="screenshots"]').setInputFiles({
+  await page.locator('[data-test="product-screenshots-0"]').setInputFiles({
     name: 'client-review.jpg',
     mimeType: 'image/jpeg',
     buffer: jpegBytes,
   });
+  await expect(page.getByText(/本次新增\s*1\s*份/u)).toBeVisible();
   await page.getByRole('button', { name: '创建线索' }).click();
-  await expect(page.getByRole('heading', { name: /^LD-/u })).toBeVisible();
+  await expect(page).toHaveURL(/\/leads\/[0-9a-f-]{36}$/u);
   const leadId = page.url().split('/').at(-1)!;
 
-  page.once('dialog', async (dialog) => {
-    expect(dialog.message()).toContain('状态将变为“线索待审核”');
-    await dialog.dismiss();
-  });
   await page.locator('[data-test="push-lead"]').click();
-  await expect(page.locator('.page-head .pill')).toHaveText('待推送');
-
-  page.once('dialog', async (dialog) => {
-    expect(dialog.message()).toContain('已准入客户');
-    await dialog.accept();
-  });
-  await page.locator('[data-test="push-lead"]').click();
-  await expect(page.locator('[data-test="push-success"]')).toContainText(
-    '已推送给客户审核',
-  );
+  await expect(page.getByRole('heading', { name: '线索下一步' })).toBeVisible();
+  await page.locator('[data-test="submit-lead-workflow"]').click();
   await expect(page.locator('.page-head .pill')).toHaveText('线索待审核');
   await expect(page.locator('[data-test="push-record"]')).toContainText(
     '核心主管',
@@ -1353,18 +1343,6 @@ test('real operator and client logins persist infringement review, screenshot an
     page.locator('[data-test="confirm-infringement"]'),
   ).toBeVisible();
 
-  page.once('dialog', async (dialog) => {
-    expect(dialog.message()).toContain('不能撤回');
-    await dialog.dismiss();
-  });
-  await page.locator('[data-test="confirm-infringement"]').click();
-  await expect(page.locator('.page-head .pill')).toHaveText('线索待审核');
-  expect(await countLeadReviewDecisions(leadId)).toBe(0);
-
-  page.once('dialog', async (dialog) => {
-    expect(dialog.message()).toContain('线索待确认');
-    await dialog.accept();
-  });
   await page.locator('[data-test="confirm-infringement"]').click();
   const clientRecord = page.locator('[data-test="client-review-record"]');
   await expect(clientRecord).toContainText('确认侵权');
@@ -1393,9 +1371,6 @@ test('real operator and client logins persist infringement review, screenshot an
 
   await page.getByRole('link', { name: /返回待审核线索/u }).click();
   await page.locator('[data-test="client-view-processed"]').click();
-  await expect(
-    page.getByRole('heading', { name: '已处理线索', exact: true }),
-  ).toBeVisible();
   const processedRow = page.locator('[data-test="client-lead-row"]');
   await expect(processedRow).toContainText('客户端闭环店铺');
   await processedRow.getByRole('link').click();
@@ -1422,15 +1397,13 @@ test('real operator and client logins persist infringement review, screenshot an
     page.locator('[data-test="client-review-record"]'),
   ).toContainText(reviewerTime!);
   const noEvidenceReason = '现场取证成本与现有材料不匹配，本次不再取证';
-  await expect(
-    page.locator('[data-test="no-evidence-reason"]'),
-  ).toHaveAttribute('aria-required', 'true');
-  await page.locator('[data-test="no-evidence-reason"]').fill(noEvidenceReason);
-  page.once('dialog', (dialog) => {
-    expect(dialog.message()).toContain('当前页面不能撤回');
-    dialog.accept();
-  });
-  await page.locator('[data-test="archive-no-evidence"]').click();
+  await page.locator('[data-test="confirm-lead"]').click();
+  const decision = page.getByRole('dialog', { name: /线索确认/u });
+  await decision.getByLabel('确认结果').selectOption('NO_EVIDENCE');
+  await decision.getByLabel('归档类型').selectOption('NO_EVIDENCE');
+  await decision.getByLabel('归档日期').fill('2026-09-24');
+  await decision.getByLabel('归档原因').fill(noEvidenceReason);
+  await decision.getByRole('button', { name: '提交确认结果' }).click();
   await expect(page.locator('.page-head .pill')).toHaveText('线索已归档');
   await expect(
     page.locator('[data-test="evidence-decision-record"]'),
@@ -1513,7 +1486,7 @@ test('real operator and client logins transfer a lead and record notary evidence
     .selectOption(coreLeadFixtures.admittedCustomer);
   await page.getByLabel('案件类型').selectOption('CIVIL');
   await page.locator('input[name="needDisclose"][value="false"]').check();
-  await page.getByLabel('发现时间').fill('2026-09-24T10:30');
+  await page.getByLabel('线索发现日期').fill('2026-09-24T10:30');
   await page.getByLabel('线索来源').selectOption('ONLINE');
   await page.locator('select[name="platform"]').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('公证移交闭环店铺');
@@ -1522,7 +1495,7 @@ test('real operator and client logins transfer a lead and record notary evidence
   await page.locator('input[name="quantity-0"]').fill('2');
   await page.locator('input[name="unitPrice-0"]').fill('8.00');
   await page.locator('input[name="commentCount-0"]').fill('0');
-  await page.locator('input[name="screenshots"]').setInputFiles({
+  await page.locator('[data-test="product-screenshots-0"]').setInputFiles({
     name: 'notary-source.jpg',
     mimeType: 'image/jpeg',
     buffer: jpegBytes,
@@ -2793,9 +2766,13 @@ test('opening review uses real operator and client identities, independent grant
   );
   expect(clientFirst.status(), await clientFirst.text()).toBe(201);
   expect(await clientFirst.json()).toMatchObject({
-    stage: 'ARCHIVED',
+    stage: 'ISSUANCE_DECISION',
     version: 4,
-    reviewDecision: { actorKind: 'CLIENT', reason: '未见侵权' },
+    reviewDecision: {
+      actorKind: 'CLIENT',
+      reason: '未见侵权',
+      archivedAt: null,
+    },
   });
   expect(await countNotaryOpeningReviewAudits(clientMatter)).toBe(1);
   await setClientBindingActive(coreLeadFixtures.admittedCustomer, false);
@@ -4092,7 +4069,7 @@ test('real operator and client logins archive a no-infringement review and prese
     .selectOption(coreLeadFixtures.admittedCustomer);
   await page.getByLabel('案件类型').selectOption('CIVIL');
   await page.locator('input[name="needDisclose"][value="false"]').check();
-  await page.getByLabel('发现时间').fill('2026-09-22T10:30');
+  await page.getByLabel('线索发现日期').fill('2026-09-22T10:30');
   await page.getByLabel('线索来源').selectOption('ONLINE');
   await page.locator('select[name="platform"]').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('不侵权浏览器链路店铺');
@@ -4101,7 +4078,7 @@ test('real operator and client logins archive a no-infringement review and prese
   await page.locator('input[name="quantity-0"]').fill('1');
   await page.locator('input[name="unitPrice-0"]').fill('12.00');
   await page.locator('input[name="commentCount-0"]').fill('0');
-  await page.locator('input[name="screenshots"]').setInputFiles({
+  await page.locator('[data-test="product-screenshots-0"]').setInputFiles({
     name: 'archive-review.jpg',
     mimeType: 'image/jpeg',
     buffer: jpegBytes,

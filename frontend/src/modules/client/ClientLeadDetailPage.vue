@@ -255,7 +255,12 @@ async function load(): Promise<void> {
       signal: controller.signal,
     });
     if (controller.signal.aborted) return;
-    const allowed = new Set(current.leadScreenshotContentVersionIds);
+    const allowed = new Set([
+      ...current.leadScreenshotContentVersionIds,
+      ...current.products.flatMap((product) =>
+        product.screenshotContentVersionIds ?? [],
+      ),
+    ]);
     screenshots.value = materials.items.flatMap((material) =>
       material.status === 'ACTIVE'
         ? material.contentVersions

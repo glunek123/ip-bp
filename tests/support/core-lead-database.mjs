@@ -1179,6 +1179,11 @@ export async function seedCoreLeadE2eData({ reuseExisting = false } = {}) {
       })),
       {
         roleTemplateId: coreLeadFixtures.roleB,
+        action: 'CUSTOMER_ACCOUNT_CREATE',
+        scope: 'DEPARTMENT',
+      },
+      {
+        roleTemplateId: coreLeadFixtures.roleB,
         action: 'USER_MANAGE',
         scope: 'DEPARTMENT',
       },

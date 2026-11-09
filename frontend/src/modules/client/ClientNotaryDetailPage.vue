@@ -126,7 +126,9 @@ async function submitReview(): Promise<void> {
   }
   const input = {
     result: result.value,
-    ...(result.value === 'NO_INFRINGEMENT' ? { reason: normalizedReason } : {}),
+    ...(result.value === 'NO_INFRINGEMENT' && normalizedReason
+      ? { reason: normalizedReason }
+      : {}),
     expectedVersion: current.version,
   } as const;
   const fingerprint = JSON.stringify(input);
@@ -339,7 +341,7 @@ onBeforeUnmount(() => request?.abort());
         >
           <h2 class="form-section-title">开箱审核记录</h2>
           <p>
-            审核结论：{{
+            审核结果：{{
               matter.reviewDecision.result === 'INFRINGEMENT'
                 ? '侵权'
                 : '不侵权'

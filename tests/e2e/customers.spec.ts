@@ -692,11 +692,12 @@ test('operations user creates a persisted draft and sees its audit history', asy
   await expect(
     page.getByRole('heading', { name: '客户管理', exact: true }),
   ).toBeVisible();
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户' }).click();
   await page.getByLabel('客户名称').fill('真实数据库客户');
   await page.getByLabel('联系人姓名').fill('张三');
   await page.getByLabel('电话').fill('13800138000');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '真实数据库客户' }).click();
 
   await expect(
     page.getByRole('heading', { name: '真实数据库客户', exact: true }),

@@ -160,6 +160,7 @@ describe('LeadController', () => {
           reason: 'x',
           expectedVersion: 3,
           archiveType: 'NO_EVIDENCE',
+          archiveDate: 'not-a-date',
         },
         { type: 'body', metatype: DecideLeadEvidenceDto },
       ),

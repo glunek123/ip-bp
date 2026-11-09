@@ -28,6 +28,7 @@ function setup(overrides: Record<string, unknown> = {}) {
     $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: leadId }]),
     lead: {
       findFirst: jest.fn().mockResolvedValue(current),
+      update: jest.fn().mockResolvedValue(current),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     userAccount: {
@@ -136,6 +137,12 @@ describe('LeadService evidence decision', () => {
         toVersion: 4,
         actorDisplayNameSnapshot: '运营原名',
       }),
+    });
+    expect(tx.lead.update).toHaveBeenCalledWith({
+      where: { id: leadId },
+      data: {
+        activeEvidenceDecisionId: expect.any(String),
+      },
     });
     expect(tx.leadCommandReceipt.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ resultSnapshot: result }),

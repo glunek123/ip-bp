@@ -181,9 +181,10 @@ test('revoked agreement upload clears old current and historical PII but keeps r
   const credentials = await resetLocalAuthE2eData();
   await grantDocuments();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户' }).click();
   await page.getByLabel('客户名称').fill('撤权上传协议客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '撤权上传协议客户' }).click();
   await expect(
     page.getByRole('heading', { name: '撤权上传协议客户' }),
   ).toBeVisible();
@@ -262,9 +263,10 @@ test('browser storage denial prevents agreement upload before any server request
   const credentials = await resetLocalAuthE2eData();
   await grantDocuments();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户' }).click();
   await page.getByLabel('客户名称').fill('存储拒绝协议客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '存储拒绝协议客户' }).click();
   await expect(
     page.getByRole('heading', { name: '存储拒绝协议客户' }),
   ).toBeVisible();
@@ -303,30 +305,21 @@ test('unknown asset command keeps original cookie request across same-page acces
 }) => {
   const credentials = await resetLocalAuthE2eData();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户' }).click();
   await page.getByLabel('客户名称').fill('CU003 资产原键恢复客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: 'CU003 资产原键恢复客户' }).click();
   await expect(
     page.getByRole('heading', { name: 'CU003 资产原键恢复客户' }),
   ).toBeVisible();
   const customerId = page.url().split('/').at(-1)!;
   assetFixtureCustomerId = customerId;
-  await page.locator('[data-test="open-create-holder"]').click();
-  await page.getByLabel('权利人名称').fill('CU003 资产原键权利人');
-  await page.locator('[data-test="submit-create-holder"]').click();
-  await expect(page.getByText('CU003 资产原键权利人')).toBeVisible();
   await page.getByRole('tab', { name: '权利资产' }).click();
   await page.getByRole('button', { name: '登记权利资产' }).click();
-  await page.getByLabel('资产名称').fill('原请求待确认商标');
-  await page.getByLabel('资产类别').fill('商标权');
-  await expect(
-    page
-      .getByLabel('权利主体')
-      .locator('option', { hasText: 'CU003 资产原键权利人' }),
-  ).toHaveCount(1);
-  await page
-    .getByLabel('权利主体')
-    .selectOption({ label: 'CU003 资产原键权利人' });
+  await page.getByLabel('名称').fill('原请求待确认商标');
+  await page.getByLabel('类别').fill('商标权');
+  await page.getByLabel('手填权利人').fill('原请求登记权利人');
+  await page.getByLabel('状态').selectOption('VALID');
   let original: Awaited<ReturnType<typeof commandShape>> | undefined;
   let intercepted = false;
   await page.route(
@@ -388,9 +381,10 @@ test('unknown asset proof upload survives same-page unmount until exact manual a
 }) => {
   const credentials = await resetLocalAuthE2eData();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户' }).click();
   await page.getByLabel('客户名称').fill('CU003 资产证明恢复客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: 'CU003 资产证明恢复客户' }).click();
   await expect(
     page.getByRole('heading', { name: 'CU003 资产证明恢复客户' }),
   ).toBeVisible();
@@ -398,7 +392,7 @@ test('unknown asset proof upload survives same-page unmount until exact manual a
   assetFixtureCustomerId = customerId;
   await page.getByRole('tab', { name: '权利资产' }).click();
   await page.getByRole('button', { name: '登记权利资产' }).click();
-  await page.getByLabel('资产名称').fill('未提交的权属草稿');
+  await page.getByLabel('名称').fill('未提交的权属草稿');
   let uploaded: { materialId: string; contentVersionId: string } | undefined;
   let intercepted = false;
   await page.route(
@@ -464,7 +458,7 @@ test('unknown asset proof upload survives same-page unmount until exact manual a
   await expect(pool.getByRole('button', { name: '选用此证明' })).toBeEnabled();
   await pool.getByRole('button', { name: '选用此证明' }).click();
   await expect(pool).toHaveCount(0);
-  await expect(page.getByLabel('资产名称')).toHaveValue('未提交的权属草稿');
+  await expect(page.getByLabel('名称')).toHaveValue('未提交的权属草稿');
   expect(uploaded?.contentVersionId).toBeTruthy();
 });
 
@@ -474,9 +468,10 @@ test('real password session uploads an exact agreement file, revises it and clea
   const credentials = await resetLocalAuthE2eData();
   await grantDocuments();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户' }).click();
   await page.getByLabel('客户名称').fill('协议真实会话客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '协议真实会话客户' }).click();
   await expect(
     page.getByRole('heading', { name: '协议真实会话客户' }),
   ).toBeVisible();
@@ -656,9 +651,10 @@ test('unknown finalized upload recovers only after exact download and explicit a
   const credentials = await resetLocalAuthE2eData();
   await grantDocuments();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户' }).click();
   await page.getByLabel('客户名称').fill('协议上传核对客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '协议上传核对客户' }).click();
   await expect(
     page.getByRole('heading', { name: '协议上传核对客户' }),
   ).toBeVisible();
@@ -731,9 +727,10 @@ test('committed invoice response loss preserves cookie command and refreshes tru
   const credentials = await resetLocalAuthE2eData();
   await grantDocuments();
   await passwordLogin(page, '/customers', credentials);
-  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByRole('button', { name: '新建客户' }).click();
   await page.getByLabel('客户名称').fill('开票原键恢复客户');
   await page.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('link', { name: '开票原键恢复客户' }).click();
   await expect(
     page.getByRole('heading', { name: '开票原键恢复客户' }),
   ).toBeVisible();

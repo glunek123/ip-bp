@@ -480,6 +480,8 @@ async function resetCustomerE2eData() {
 
   const immutableTables = [
     'client_lead_review_receipts',
+    'lead_batch_push_receipts',
+    'lead_no_evidence_batch_receipts',
     'lead_review_decisions',
     'lead_withdrawal_applications',
     'lead_withdrawal_confirmations',
@@ -557,12 +559,18 @@ async function resetCustomerE2eData() {
     });
     await transaction.lead.updateMany({
       where: { departmentId: { in: departmentIds } },
-      data: { activeReviewDecisionId: null },
+      data: { activeReviewDecisionId: null, activeEvidenceDecisionId: null },
     });
     await transaction.leadWithdrawalConfirmation.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.leadWithdrawalApplication.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.leadBatchPushReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.leadNoEvidenceBatchReceipt.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.leadEvidenceDecision.deleteMany({
@@ -658,6 +666,9 @@ async function resetCustomerE2eData() {
       where: { departmentId: { in: departmentIds } },
     });
     await clearCustomerContactData(transaction, departmentIds);
+    await transaction.customerDailyNumberCounter.deleteMany({
+      where: { customer: { departmentId: { in: departmentIds } } },
+    });
     await transaction.customer.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
