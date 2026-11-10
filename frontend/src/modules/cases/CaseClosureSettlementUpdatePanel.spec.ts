@@ -190,6 +190,52 @@ describe('settlement update panel safety', () => {
     expect(saveAmounts).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+  it('blocks declaring settlement when a side amount is still unknown', async () => {
+    // 客户有现值 30.01、律师为未知；声明"涉及"却保留未知金额时，
+    // 数据库约束会拒绝写入，前端必须当场拦住而不是发出请求换 500。
+    const wrapper = await setup('settlement-amount-guard');
+    await wrapper
+      .get('select[aria-label="是否涉及结算"]')
+      .setValue('APPLICABLE');
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="settlement-amount-required"]').exists(),
+    ).toBe(true);
+    const submit = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '保存结算更新')!;
+    expect(submit.attributes('disabled')).toBeDefined();
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(save).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('submits the declaration once the missing side is filled by hand', async () => {
+    const wrapper = await setup('settlement-amount-filled');
+    await wrapper
+      .get('select[aria-label="是否涉及结算"]')
+      .setValue('APPLICABLE');
+    await wrapper.get('select[aria-label="lawyer-mode"]').setValue('MANUAL');
+    await wrapper.get('input[aria-label="lawyer-amount"]').setValue('5000.00');
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="settlement-amount-required"]').exists(),
+    ).toBe(false);
+    const form = wrapper.getComponent(Form);
+    await form.get('form').trigger('submit');
+    await flushPromises();
+    const draft = form.emitted('draft')?.at(-1)?.[0] as {
+      settlementAmounts: { lawyer: { mode: string; amount?: string } };
+      settlement?: { declaration: string };
+    };
+    expect(draft.settlementAmounts.lawyer).toMatchObject({
+      mode: 'MANUAL',
+      amount: '5000.00',
+    });
+    wrapper.unmount();
+  });
+
   it('does not show an unavailable message when the settlement form is ready', async () => {
     const wrapper = await setup('available-settlement-message');
     expect(wrapper.findComponent(Form).exists()).toBe(true);

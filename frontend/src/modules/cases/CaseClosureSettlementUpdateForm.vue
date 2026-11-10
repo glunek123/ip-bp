@@ -203,7 +203,31 @@ function addDocuments(event: globalThis.Event) {
   if (!canEditClosureFacts.value) return;
   documents.value.push(...files(event));
 }
+// 声明"涉及结算"时，数据库要求客户与律师应结金额都有值；
+// 若保留现有值但现值未知（或手工金额为空），前端应当场拦住，
+// 而不是把请求发出去换一个 500。
+const settlementAmountMissing = computed(() => {
+  if (declaration.value !== 'APPLICABLE') return false;
+  // 只在"本次改变了声明"时拦截：改付款、改单侧金额走的是别的命令，
+  // 由服务端的 SETTLEMENT_AMOUNT_UNKNOWN 兜底，不该在这里被牵连。
+  if (!settlementChanged.value) return false;
+  return (['customer', 'lawyer'] as const).some((side) => {
+    const edit = side === 'customer' ? customerEdit.value : lawyerEdit.value;
+    if (edit.mode === 'MANUAL') return !edit.amount;
+    if (edit.mode !== 'KEEP') return false;
+    const current =
+      side === 'customer'
+        ? props.source.customerAmount
+        : props.source.lawyerAmount;
+    return current == null;
+  });
+});
 function submit() {
+  if (settlementAmountMissing.value) {
+    error.value =
+      '声明涉及结算时，客户与律师应结金额都必须有值；请改为手工金额，或先确认金额。';
+    return;
+  }
   if (
     canEditClosureFacts.value &&
     props.source.documents.length + documents.value.length > 10
@@ -560,10 +584,19 @@ function submit() {
       </p>
     </fieldset>
     <p v-if="error" role="alert">{{ error }}</p>
+    <p
+      v-if="settlementAmountMissing"
+      class="field-help"
+      data-test="settlement-amount-required"
+    >
+      声明涉及结算时，客户与律师应结金额都必须有值；请选择手工金额，或先确认金额。
+    </p>
     <button type="button" data-test="cancel" @click="emit('cancel')">
       取消
     </button>
-    <button type="submit">保存结算更新</button>
+    <button type="submit" :disabled="settlementAmountMissing">
+      保存结算更新
+    </button>
   </form>
 </template>
 <style scoped>
