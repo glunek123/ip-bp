@@ -153,6 +153,14 @@ function normalizeKnownSampleFee(): void {
   sampleFeeAmount.value = `${match[1]}.${(match[2] ?? '').padEnd(2, '0')}`;
 }
 
+function normalizeNotaryFee(): void {
+  const match = /^(0|[1-9]\d{0,15})(?:\.(\d{0,2}))?$/u.exec(
+    notaryFeeAmount.value,
+  );
+  if (!match) return;
+  notaryFeeAmount.value = `${match[1]}.${(match[2] ?? '').padEnd(2, '0')}`;
+}
+
 function openingPhotoDraftsFromMaterials(
   items: OwnerMaterial[],
   selectedContentVersionIds: ReadonlySet<string>,
@@ -842,7 +850,7 @@ function validPending(value: unknown): value is Pending {
       return false;
   }
 }
-const requestedAction = computed(
+const requestedAction = computed<Command['kind'] | undefined>(
   () =>
     Object.entries({
       'opening-form': 'opening',
@@ -850,7 +858,8 @@ const requestedAction = computed(
       'issuance-form': 'issuance',
       'return-archive-form': 'return',
       'evidence-form': 'evidence',
-    }).find(([action]) => action === props.session.context.actionKey)?.[1],
+    }).find(([action]) => action === props.session.context.actionKey)?.[1] as
+      Command['kind'] | undefined,
 );
 const currentAction = computed<Command['kind'] | null>(() => {
   const current = props.detail;
@@ -880,18 +889,45 @@ const currentAction = computed<Command['kind'] | null>(() => {
     return 'return';
   return null;
 });
-const formAvailable = computed(
-  () =>
-    currentAction.value !== null &&
-    requestedAction.value === currentAction.value,
-);
+// 一个阶段可能同时允许多个动作（例如待取证时既登记取证，也可提前归档）。
+// 用"当前阶段允许的动作集合"判断，而不是只认单一 currentAction，
+// 否则从列表点「提前归档」时表单会整体不渲染，表现为按钮点了没反应。
+const availableActions = computed(() => {
+  const allowedKinds = new Set<Command['kind']>();
+  const current = props.detail;
+  if (current.stage === 'WAITING_UNBOX' && current.capabilities.recordOpening)
+    allowedKinds.add('opening');
+  if (current.stage === 'UNBOX_REVIEW' && current.capabilities.reviewOpening)
+    allowedKinds.add('review');
+  if (
+    current.stage === 'ISSUANCE_DECISION' &&
+    current.capabilities.decideIssuance
+  )
+    allowedKinds.add('issuance');
+  if (
+    current.stage === 'PENDING_EVIDENCE' &&
+    current.capabilities.recordEvidence
+  )
+    allowedKinds.add('evidence');
+  if (current.stage === 'WAITING_RETURN' && current.capabilities.archiveReturn)
+    allowedKinds.add('return');
+  if (
+    current.stage !== 'ARCHIVED' &&
+    current.stage !== 'WAITING_RETURN' &&
+    current.capabilities.archiveMatter
+  )
+    allowedKinds.add('return');
+  return allowedKinds;
+});
+const formAvailable = computed(() => {
+  const requested = requestedAction.value;
+  return requested !== undefined && availableActions.value.has(requested);
+});
 function allowed(command: Command, recovery = false): boolean {
-  return (
-    requestedAction.value === command.kind &&
-    (recovery
-      ? props.session.isCurrent()
-      : currentAction.value === command.kind)
-  );
+  if (requestedAction.value !== command.kind) return false;
+  // 恢复路径只核对会话归属：原请求可能属于旧阶段，不能再按当前阶段能力判断。
+  if (recovery) return props.session.isCurrent();
+  return availableActions.value.has(command.kind);
 }
 
 function post(
@@ -1413,7 +1449,9 @@ onBeforeUnmount(() => {
       v-if="
         (matter.capabilities.archiveReturn &&
           matter.stage === 'WAITING_RETURN') ||
-        (matter.capabilities.archiveMatter && matter.stage !== 'ARCHIVED')
+        (matter.capabilities.archiveMatter &&
+          matter.stage !== 'ARCHIVED' &&
+          requestedAction === 'return')
       "
       class="demo-card demo-card--pad workflow-card"
       data-test="return-archive-form"
@@ -1459,6 +1497,7 @@ onBeforeUnmount(() => {
             inputmode="decimal"
             required
             :disabled="submittingReturnArchive || locked"
+            @blur="!locked && !submittingReturnArchive && normalizeNotaryFee()"
           />
         </label>
         <label

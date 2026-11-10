@@ -34,6 +34,17 @@ function safeCode(value: unknown): string | undefined {
 }
 
 function safeDetails(value: unknown, code: string): unknown {
+  if (code === 'VALIDATION_ERROR') {
+    const record = asRecord(value);
+    const fields = record.fields;
+    if (!Array.isArray(fields) || fields.length < 1 || fields.length > 10)
+      return undefined;
+    const safe = fields.filter(
+      (name): name is string =>
+        typeof name === 'string' && /^[A-Za-z0-9_.]{1,64}$/u.test(name),
+    );
+    return safe.length === fields.length ? { fields: safe } : undefined;
+  }
   if (code === 'CASE_EXPORT_EMPTY') {
     const record = asRecord(value);
     const uuid =

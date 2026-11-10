@@ -1187,6 +1187,15 @@ function matterActions(
       label: '办理退货归档',
       anchor: 'return-archive-form',
     },
+    {
+      // 提前归档是独立动作：不应混在"登记取证/登记开箱"的抽屉里。
+      enabled:
+        matter.capabilities.archiveMatter &&
+        matter.stage !== 'ARCHIVED' &&
+        matter.stage !== 'WAITING_RETURN',
+      label: '提前归档',
+      anchor: 'return-archive-form',
+    },
   ];
   const saved = actions.find((action) => {
     try {

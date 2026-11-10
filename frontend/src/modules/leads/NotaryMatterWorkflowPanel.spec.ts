@@ -146,6 +146,22 @@ beforeEach(() => {
   vi.resetAllMocks();
   globalThis.sessionStorage.clear();
 });
+it('keeps the early-archive card out of the evidence and opening drawers', async () => {
+  const archive = detail('PENDING_EVIDENCE');
+  archive.capabilities.archiveMatter = true;
+  const evidence = await open(archive, 'evidence-form');
+  expect(
+    evidence.wrapper.find('[data-test="return-archive-form"]').exists(),
+  ).toBe(false);
+  evidence.wrapper.unmount();
+
+  const requested = await open(archive, 'return-archive-form');
+  expect(
+    requested.wrapper.find('[data-test="return-archive-form"]').exists(),
+  ).toBe(true);
+  requested.wrapper.unmount();
+});
+
 describe('NotaryMatterWorkflowPanel request ownership', () => {
   it.each([
     ['111', '111.00'],
