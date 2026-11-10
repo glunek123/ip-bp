@@ -592,7 +592,6 @@ async function submit(draft: Draft, recovery = false) {
       draft.settlement.customerAmount.mode !== 'KEEP') ||
       (draft.settlement.lawyerAmount &&
         draft.settlement.lawyerAmount.mode !== 'KEEP')) &&
-    draft.settlement.declaration === s.settlement?.declaration &&
     !draft.refund &&
     draft.closeAt === s.closeAt &&
     draft.closeAmt === s.closeAmt &&
@@ -613,6 +612,7 @@ async function submit(draft: Draft, recovery = false) {
       expectedClosureVersionId: draft.expectedClosureVersionId,
       expectedTermsVersion: draft.settlement.expectedTermsVersion,
       expectedAssessmentVersionId: draft.settlement.expectedAssessmentVersionId,
+      declaration: draft.settlement.declaration,
       customerAmount: amount(draft.settlement.customerAmount) ?? {
         mode: 'KEEP',
       },

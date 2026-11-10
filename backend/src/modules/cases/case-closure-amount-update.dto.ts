@@ -12,6 +12,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+import { IsIn, IsOptional } from 'class-validator';
 import { SettlementAmountOverrideInput } from './case-closure-settlement-update.dto';
 
 export class ClosureAmountUpdateInput {
@@ -30,6 +31,10 @@ export class ClosureAmountUpdateInput {
   @ValidateIf((_o, v) => v !== null)
   @IsUUID('4')
   expectedAssessmentVersionId!: string | null;
+  /** 只改声明时可随金额一起提交，避免为了改声明而新建结案版本。 */
+  @IsOptional()
+  @IsIn(['UNKNOWN', 'APPLICABLE', 'NOT_APPLICABLE'])
+  declaration?: 'UNKNOWN' | 'APPLICABLE' | 'NOT_APPLICABLE';
   @IsDefined()
   @ValidateNested()
   @Type(() => SettlementAmountOverrideInput)

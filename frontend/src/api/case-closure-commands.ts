@@ -282,6 +282,8 @@ export type ClosureAmountUpdateInput = {
   expectedClosureVersionId: string;
   expectedTermsVersion: number | null;
   expectedAssessmentVersionId: string | null;
+  /** 只改声明时随金额一起提交，避免为改声明新建结案版本。 */
+  declaration?: 'UNKNOWN' | 'APPLICABLE' | 'NOT_APPLICABLE';
   customerAmount: SettlementAmountOverride;
   lawyerAmount: SettlementAmountOverride;
 };

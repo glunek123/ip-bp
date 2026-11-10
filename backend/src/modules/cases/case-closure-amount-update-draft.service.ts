@@ -236,7 +236,9 @@ export class CaseClosureAmountUpdateDraftService {
               throw new ConflictException({
                 code: 'ASSESSMENT_VERSION_CONFLICT',
               });
-            const declaration = prior[0]?.declaration ?? 'UNKNOWN';
+            // 允许随金额一起改声明：结算声明的调整不应强制新建结案版本。
+            const declaration =
+              input.declaration ?? prior[0]?.declaration ?? 'UNKNOWN';
             if (
               !['UNKNOWN', 'APPLICABLE', 'NOT_APPLICABLE'].includes(declaration)
             )

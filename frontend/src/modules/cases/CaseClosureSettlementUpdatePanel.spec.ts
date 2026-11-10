@@ -190,6 +190,46 @@ describe('settlement update panel safety', () => {
     expect(saveAmounts).not.toHaveBeenCalled();
     wrapper.unmount();
   });
+  it('routes a declaration change with new amounts through the amount command', async () => {
+    // 改声明 + 改金额不应新建结案版本（否则已有结案文书会撞引用唯一/不可变约束）。
+    const wrapper = await setup('settlement-declaration-route');
+    await wrapper
+      .get('select[aria-label="是否涉及结算"]')
+      .setValue('APPLICABLE');
+    await wrapper.get('select[aria-label="customer-mode"]').setValue('MANUAL');
+    await wrapper
+      .get('input[aria-label="customer-amount"]')
+      .setValue('7000.00');
+    await wrapper.get('select[aria-label="lawyer-mode"]').setValue('MANUAL');
+    await wrapper.get('input[aria-label="lawyer-amount"]').setValue('5000.00');
+    await flushPromises();
+    saveAmounts.mockResolvedValue({
+      caseId,
+      closureVersionId: closureId,
+      assessmentVersionId: 'assessment-version',
+      termsVersion: 3,
+      change: {
+        before: {
+          version: 2,
+          customerManualAmount: null,
+          lawyerManualAmount: null,
+        },
+        after: {
+          version: 3,
+          customerManualAmount: '7000.00',
+          lawyerManualAmount: '5000.00',
+        },
+      },
+    });
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(saveAmounts).toHaveBeenCalledTimes(1);
+    expect(save).not.toHaveBeenCalled();
+    const payload = saveAmounts.mock.calls[0]?.[1] as { declaration?: string };
+    expect(payload.declaration).toBe('APPLICABLE');
+    wrapper.unmount();
+  });
+
   it('blocks declaring settlement when a side amount is still unknown', async () => {
     // 客户有现值 30.01、律师为未知；声明"涉及"却保留未知金额时，
     // 数据库约束会拒绝写入，前端必须当场拦住而不是发出请求换 500。
