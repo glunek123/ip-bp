@@ -128,3 +128,20 @@
 - 影响：数据没写坏（数据库拦住），但运营看到的是"服务内部错误"，应返回 400/409
   与可读文案（例如"声明涉及结算时须填写双方应结金额"）。
 - 建议：DTO 层加跨字段校验 + 业务码，前端在"涉及"被选中时把应结金额设为必填。
+
+### 23514 的进一步定位（未闭环）
+
+- 复现路径唯一：`settlement.declaration='APPLICABLE'`（界面选"涉及结算"）+ 结案金额已确认。
+  不带 `settlement` 字段的保存（明确不涉及/待定）可正常 201，说明问题只在评估写入这一支。
+- 该案件目前**没有任何 `case_settlement_assessment_versions` 行**（首次评估）。
+- 数据库里**没有 deferrable 的 CHECK 约束**，因此 `SET CONSTRAINTS ALL IMMEDIATE` 报 23514
+  不像是常规延迟检查；更像是评估写入所用的原始 SQL/触发器在建行时抛错，
+  被 Prisma 归到该批次语句上。
+- 现有守卫 `SETTLEMENT_AMOUNT_UNKNOWN`（`settlement-assessment-draft.service.ts:112-128`）
+  检查 `closureAmountState !== 'KNOWN'` 与 `result.customerAmount/lawyerAmount` 为 null；
+  复现时结案金额已确认，说明 `calculateSettlement` 返回了数值，但落库的
+  `customer_amount`/`lawyer_amount` 仍为空——需要对比"计算结果的字段名"与
+  "insert 时取的字段名"是否错位。
+- 下一步（精确）：在 `settlement-assessment-draft.service.ts` 落库前打印
+  `{declaration, customerAmount, lawyerAmount, calculationResult}`，跑一次复现，
+  即可确认是取错字段还是计算结果本身为空，再决定补哪一侧。
