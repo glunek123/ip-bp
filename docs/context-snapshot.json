@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-10T06:48:11.107Z",
+  "recordedAt": "2026-11-10T07:02:53.221Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -463,8 +463,8 @@
     "backend/src/modules/cases/case-closure-payment-type-persistence.spec.ts": "3cee5b072446418673856459a3b4da3195b3a79b522a06a5c6f6add3ad6654e5",
     "backend/src/modules/cases/case-closure-settlement-amount-override-draft.spec.ts": "b83a443c51f97e0ec6d6c43cc0753e421a1041a97de6e44ae6c101128cb6b888",
     "backend/src/modules/cases/case-closure-settlement-update-receipt.spec.ts": "4028e1a64a2505be0b270f3354a7a429fda741d920bcc5a0a3abae6d175caa1b",
-    "backend/src/modules/cases/case-closure-settlement-update-transaction-draft.service.spec.ts": "84de22afcd7912da2e6e498000d4c2a2cf55f55396b4f7917e183f99d9b2699f",
-    "backend/src/modules/cases/case-closure-settlement-update-transaction-draft.service.ts": "ff7449b36c8bd13a7995de4c1fcf997e2d9564e7f5c5162a4d877dc1c102d54d",
+    "backend/src/modules/cases/case-closure-settlement-update-transaction-draft.service.spec.ts": "42fc7ffec797c8d3853c0909db39612b6c960abe4c2d03fe1de3d8bb45352aac",
+    "backend/src/modules/cases/case-closure-settlement-update-transaction-draft.service.ts": "1511c9ea8fd6618f7ab95e06df2912e016c927cdf34efc39161efb38b9b9a215",
     "backend/src/modules/cases/case-closure-settlement-update.dto.spec.ts": "de2507e3a26f515481cb8419ff314357404d904c0ef52fb302ca58c10ab8c1ba",
     "backend/src/modules/cases/case-closure-settlement-update.dto.ts": "8df7154ee3484dca782a8d507d31a28f7ffc685878aaae72d79faad47b70445f",
     "backend/src/modules/cases/case-closure-workspace-read-draft.spec.ts": "f6840b8d856d3bb2af4e266402334564cbf308acc93ce852ca19a383932a79f1",
@@ -1118,7 +1118,7 @@
     "docs/operations/uat-2026-11-10-20b7be5a.md": "7d8acd72020e953a67598d2c418bbc499b4c45ff24d0e2d542f77e4d08583be1",
     "docs/operations/uat-2026-11-10-6fb5af9f.md": "1939b13c6d040aa528e814f69848828a27fa94f36a8f70d0ab27088ccb4206db",
     "docs/operations/uat-abc-2026-11-03.md": "09db57b285c1411c2ea9e9549adcd90374a35527ed55625e2842df797272ef8b",
-    "docs/operations/uat-acceptance-20261110.md": "20f28883fb63d329dd44a7884697d004b06a94acec3e4f206d3182a58bdf91d5",
+    "docs/operations/uat-acceptance-20261110.md": "d4210e1db32e8429c7e6fb341747ecda3a101d4c2fbd07ebad5616434641b3c2",
     "docs/operations/uat-acceptance-plan-20261110.md": "9a658c96a7e2506220816f56a9212056b88a34f3f2a0e452da73dd5c9c74bc8b",
     "docs/operations/uat-candidate-2026-10-26.md": "ccd03e48b3e654be3dbe72aeebbff2e87f8244f3f5dc63c593ad8091ebfb1b8f",
     "docs/operations/uat-candidate-batch2-2026-10-28.md": "ea96a530fc25da762d219202ec739528f3a048f342da2108d4e3e754efa31fa0",

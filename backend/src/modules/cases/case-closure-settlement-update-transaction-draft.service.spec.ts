@@ -528,6 +528,20 @@ describe('atomic settlement update transaction draft (mock database only)', () =
       result,
     );
   });
+  it('turns a refund inventory business rejection into a readable conflict', async () => {
+    // 退费草稿服务用裸 Error('REFUND_INVENTORY_CHANGED') 表达业务拒绝，
+    // 直接冒泡会变成 500；这里要求降级为 409 并保留业务码。
+    const f = fixture(),
+      input = value();
+    f.refunds.executeInTransaction.mockRejectedValueOnce(
+      new Error('REFUND_INVENTORY_CHANGED'),
+    );
+    await expect(f.service.update(actor, caseId, input)).rejects.toMatchObject({
+      response: { code: 'REFUND_INVENTORY_CHANGED' },
+      status: 409,
+    });
+  });
+
   it('rejects a stale terms version before assessment or successful receipt', async () => {
     const f = fixture(),
       input = value();

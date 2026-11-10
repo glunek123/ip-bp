@@ -1155,15 +1155,32 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
                 r.kind === 'CONFIRM_COMPLETE'
                   ? { ...base, kind: r.kind }
                   : { ...base, kind: r.kind, items: r.items! };
-              refundInventoryVersionId = (
-                await this.refunds.executeInTransaction(
-                  tx,
-                  actor,
-                  command,
-                  composition.idempotencyKey,
-                  composition.context,
+              try {
+                refundInventoryVersionId = (
+                  await this.refunds.executeInTransaction(
+                    tx,
+                    actor,
+                    command,
+                    composition.idempotencyKey,
+                    composition.context,
+                  )
+                ).snapshot.id;
+              } catch (error) {
+                // 退费草稿服务用裸 Error 表达业务拒绝（如版本已变化、重复声明不涉及），
+                // 不转换的话会一路冒泡成 500；这里统一降级为可读的 409。
+                if (
+                  error instanceof Error &&
+                  /^(?:REFUND_|INVALID_REFUND_|COURT_REFUND_)/u.test(
+                    error.message,
+                  )
                 )
-              ).snapshot.id;
+                  throw new ConflictException({
+                    code: error.message,
+                    message:
+                      '诉讼退费资料已变化或当前不允许该操作，请重新读取后再保存',
+                  });
+                throw error;
+              }
             }
             if (input.settlement) {
               const terms = await updateClosureSettlementTermsInTransaction(
