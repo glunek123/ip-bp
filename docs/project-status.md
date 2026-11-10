@@ -1,3 +1,13 @@
+# 2026-11-10 夜间：待开庭阶段动作收口（已部署 87abb5f8）
+
+运营口径要求「待开庭阶段不提供任何操作」。`90ed098c` 已收口详情页上传入口与 `CaseWorkspaceFiles` 开关，但列表页 `resolveCaseListActions` 仍把开庭日期补录／更正装配成快捷操作，`primaryCaseAction` 也仍把 `WAITING_HEARING` 映射到 `hearing`。本轮移除两处装配，并把两条旧语义断言改为「待开庭不产出列表动作」（`CasePages.spec.ts` 能力矩阵、`CaseListDisplay.spec.ts` 快捷操作用例）。
+
+会话因沙箱故障中断，恢复记录见 [2026-11-10 夜间交接单](operations/handoff-20261110-night.md)。门禁分步执行而非单次 `pnpm verify`（整串会因工具 120 秒上限被中断）：上下文严格检查、Spec、架构、`prisma generate`、双端类型检查、Lint、Prettier 全部通过；后端 333 套件／4383 项、前端 219 文件／4112 项、工具链 23 文件／421 项全部通过；双端构建通过。后端两条迁移探针用例需要独立测试库，已用 `pnpm db:test:up` + `pnpm db:test:migrate:deploy` 恢复环境后转绿。
+
+同日 22:53 部署 `87abb5f8`：迁移仍为 297 项（无待应用），服务 active，健康 200，`current → releases/87abb5f8`，线上产物 `index-BMXqdWXo.js`。
+
+已知残留（待产品确认，未改）：详情页 `resolveCaseDetailActions` 在 `WAITING_HEARING` 且 `canScheduleHearing` 时仍产出 `hearing`，即「开庭日期在系统内没有入口」并不成立；若要求待开庭彻底无入口，需再收口该分支。
+
 # 2026-11-09 第四轮：上线验收与缺陷收口
 
 本轮以真实浏览器遍历内部端与三个外部端，覆盖案件主链路（诉状→立案→受理→开庭→判决→二审→执行→结算→归档）、结算中心、证物管理、客户/律师/公证三端及外部转入案件，并验证开庭次日自动推进。验收标准与上线放行条件见 [上线验收标准](operations/release-readiness.md)，逐项实测证据见 `.local/qa/FINDINGS.md`。
