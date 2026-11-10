@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-10T14:28:02.794Z",
+  "recordedAt": "2026-11-10T14:38:24.601Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1109,7 +1109,7 @@
     "docs/environment.md": "abe142e0745364126b73885b3cf5da78b38bdaf2435acded656b964b99604c51",
     "docs/feature-roadmap.md": "f5bd901f84fcf03990c70ef0e58d229a5220b67e27775a1a11634a27816096d9",
     "docs/operations/2026-10-28-list-action-labels.md": "ea6270e5a63994d30bbd2de758ed1008b5fbd9a0cb588a9d258c4e3e17131070",
-    "docs/operations/handoff-20261110-night.md": "b285831c00e3a75448409392307954f59bc7f62bb06f084bfe508ef315d8e517",
+    "docs/operations/handoff-20261110-night.md": "6f92b681109f7e5c29b558813283556ffecc9dcea44445a910e42e27e90d03cc",
     "docs/operations/operations-trial-handoff.md": "286d1a86d9f047109e33c2fff4c90e2083421f5c95fb48966ebca94de0660a87",
     "docs/operations/operator-simulation-20261110.md": "d5dcad0db1fb7104477ed64fa0dc71f5491833003a7b98bd7aafe139787e900f",
     "docs/operations/operator-trial.md": "41c159ccd527e8f5dbcddb7b42913cab30f0723d6c1eea3b45474d4a6f50cddf",
