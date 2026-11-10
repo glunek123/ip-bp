@@ -860,7 +860,7 @@ describe('authorized internal case list display', () => {
     expect(document.body.textContent).toContain('二审抉择');
   });
 
-  it('keeps a permitted hearing-date correction in the quick action list', async () => {
+  it('leaves 待开庭 without a quick action even when a hearing correction is permitted', async () => {
     api.listCases.mockResolvedValue(
       result([
         {
@@ -874,9 +874,10 @@ describe('authorized internal case list display', () => {
     const { wrapper } = await mountList(
       '/cases?view=department&stage=WAITING_HEARING',
     );
-    expect(wrapper.get('[data-case-action="hearing"]').text()).toBe(
-      '补录／更正开庭日期',
-    );
+    const row = wrapper.get('tbody tr');
+    expect(wrapper.find('[data-case-action="hearing"]').exists()).toBe(false);
+    expect(row.findAll('[data-case-action]')).toHaveLength(0);
+    wrapper.unmount();
   });
 
   it('ignores repeated clicks while the selected action detail is loading', async () => {

@@ -452,7 +452,6 @@ export function resolveCaseListActions(
     current.canRegisterAcceptance || current.canUploadAcceptanceMaterials,
     'acceptance',
   );
-  add(current.canScheduleHearing || current.canCorrectHearing, 'hearing');
   add(current.canRegisterJudgment, 'register-judgment');
   add(current.canCorrectJudgment, 'correct-judgment');
   add(current.canChooseJudgmentNextStep, 'choose-next-step');
@@ -514,7 +513,6 @@ export function primaryCaseAction<T extends { id: string }>(
     WAITING_COMPLAINT_STAMP: 'mail-complaint',
     WAITING_FILING: 'filing',
     WAITING_FORMAL_ACCEPTANCE: 'acceptance',
-    WAITING_HEARING: 'hearing',
     WAITING_JUDGMENT: 'judgment',
     SECOND_INSTANCE: 'second-instance',
     WAITING_EXECUTION_DOCUMENTS: 'execution-submission',

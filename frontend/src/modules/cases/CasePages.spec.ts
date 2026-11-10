@@ -726,7 +726,10 @@ describe('case pages', () => {
       });
       const wrapper = await mountRoute('/cases', CaseListPage);
       const rows = wrapper.findAll('tbody tr');
+      // 待开庭阶段不提供推进操作：开庭日期的补录／更正不再进入列表快捷操作。
       const correctionOnly = [
+        'canScheduleHearing',
+        'canCorrectHearing',
         'canCorrectClosure',
         'canCorrectJudgment',
         'canRevokeJudgmentNextStep',
@@ -735,10 +738,6 @@ describe('case pages', () => {
       expect(rows[0]!.findAll('[data-case-action]')).toHaveLength(
         correctionOnly ? 0 : 1,
       );
-      if (capability === 'canCorrectHearing')
-        expect(rows[0]!.get('[data-case-action]').text()).toBe(
-          '补录／更正开庭日期',
-        );
       if (!correctionOnly)
         expect(rows[0]!.get('[data-case-action]').text()).not.toBe('办理');
       expect(rows[0]!.find('a[href^="/cases/"]').exists()).toBe(true);
