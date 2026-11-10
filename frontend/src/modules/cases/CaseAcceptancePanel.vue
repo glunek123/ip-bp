@@ -51,6 +51,13 @@ const acceptedAt = ref(todayShanghai());
 const courtCaseNo = ref('');
 const paymentDueAt = ref('');
 const courtId = ref('');
+const hearingAt = ref('');
+const hearingPlace = ref('');
+const courtDisclosureText = ref('');
+type DisclosureFile = { contentVersionId: string; filename: string };
+const disclosureFiles = ref<DisclosureFile[]>([]);
+const disclosureUploading = ref(false);
+const disclosureError = ref('');
 const courts = ref<FilingCourt[]>([]);
 const courtsLoading = ref(false);
 const selected = ref(new Set<string>());
@@ -101,6 +108,12 @@ function clearContext(): void {
   courtCaseNo.value = '';
   paymentDueAt.value = '';
   courtId.value = '';
+  hearingAt.value = '';
+  hearingPlace.value = '';
+  courtDisclosureText.value = '';
+  disclosureFiles.value = [];
+  disclosureUploading.value = false;
+  disclosureError.value = '';
   courts.value = [];
   selected.value = new Set();
   uploaded.value = {
@@ -219,6 +232,15 @@ watch(
       paymentDueAt.value = draft.paymentDueAt ?? '';
       courtCaseNo.value = draft.courtCaseNo ?? '';
       courtId.value = draft.courtId ?? '';
+      hearingAt.value = draft.hearingAt ?? '';
+      hearingPlace.value = draft.hearingPlace ?? '';
+      courtDisclosureText.value = draft.courtDisclosureText ?? '';
+      disclosureFiles.value = (
+        draft.courtDisclosureContentVersionIds ?? []
+      ).map((contentVersionId) => ({
+        contentVersionId,
+        filename: '已保存的披露附件',
+      }));
       selected.value = new Set([
         ...draft.acceptanceNoticeContentVersionIds,
         ...draft.paymentListContentVersionIds,
@@ -286,7 +308,13 @@ const ready = computed(
       : props.item.filingSubmission !== null) &&
     courtCaseNo.value.trim().length >= 1 &&
     courtCaseNo.value.trim().length <= 100 &&
+    (!hearingAt.value ||
+      (validBusinessDate(hearingAt.value) &&
+        hearingAt.value >= acceptedAt.value)) &&
+    hearingPlace.value.trim().length <= 500 &&
+    courtDisclosureText.value.trim().length <= 2000 &&
     uploading.value === null &&
+    !disclosureUploading.value &&
     unknownRequest.value === null &&
     !submitting.value,
 );
@@ -311,6 +339,12 @@ function makeInput(): RegisterCaseAcceptanceInput {
     acceptanceNoticeContentVersionIds: selectedIds('ACCEPTANCE_NOTICE'),
     paymentListContentVersionIds: selectedIds('PAYMENT_LIST'),
     serviceDocumentContentVersionIds: selectedIds('SERVICE_DOCUMENT'),
+    hearingAt: hearingAt.value || null,
+    hearingPlace: hearingPlace.value.trim() || null,
+    courtDisclosureText: courtDisclosureText.value.trim() || null,
+    courtDisclosureContentVersionIds: disclosureFiles.value.map(
+      (file) => file.contentVersionId,
+    ),
   };
   const fingerprint = JSON.stringify({ ...input, idempotencyKey: undefined });
   if (fingerprint !== requestFingerprint) {
@@ -361,7 +395,8 @@ async function register(input: RegisterCaseAcceptanceInput): Promise<void> {
       );
     if (!isCurrent(context)) return;
     unknownRequest.value = null;
-    success.value = '正式立案登记已完成，登记完成时进入待开庭。';
+    success.value =
+      '正式立案登记已完成；填写的开庭与披露信息已一并登记，案件进入待开庭。';
     requestFingerprint = '';
     requestKey = '';
     notifyWorkflowChanged();
@@ -411,6 +446,12 @@ async function saveDraft(): Promise<void> {
       acceptanceNoticeContentVersionIds: selectedIds('ACCEPTANCE_NOTICE'),
       paymentListContentVersionIds: selectedIds('PAYMENT_LIST'),
       serviceDocumentContentVersionIds: selectedIds('SERVICE_DOCUMENT'),
+      hearingAt: hearingAt.value || null,
+      hearingPlace: hearingPlace.value.trim() || null,
+      courtDisclosureText: courtDisclosureText.value.trim() || null,
+      courtDisclosureContentVersionIds: disclosureFiles.value.map(
+        (file) => file.contentVersionId,
+      ),
     });
     if (!isCurrent(context)) return;
     savedVersion.value = result.version;
@@ -497,6 +538,64 @@ async function uploadFiles(
     if (isCurrent(context)) uploading.value = null;
   }
 }
+async function uploadDisclosureFiles(
+  event: InstanceType<typeof globalThis.Event>,
+): Promise<void> {
+  const input = event.target;
+  if (!(input instanceof globalThis.HTMLInputElement)) return;
+  const chosen = Array.from(input.files ?? []);
+  input.value = '';
+  disclosureError.value = '';
+  if (!chosen.length || !canRegister.value || unknownRequest.value) return;
+  if (disclosureFiles.value.length + chosen.length > 10) {
+    disclosureError.value = '披露附件每案最多10份；系统不能删除、替换或扩容。';
+    return;
+  }
+  if (chosen.some((file) => file.size > 50 * 1024 * 1024 || !supported(file))) {
+    disclosureError.value = '仅支持单份不超过50MiB的PDF、JPEG或PNG文件。';
+    return;
+  }
+  const context = captureContext();
+  disclosureUploading.value = true;
+  try {
+    for (const file of chosen) {
+      if (!isCurrent(context)) return;
+      const result = await uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: context.caseId,
+        category: 'CASE_COURT_DISCLOSURE_ATTACHMENT',
+        purpose: 'CASE_COURT_DISCLOSURE_ATTACHMENT',
+        file,
+        caseSupplementReason: '正式立案登记时录入法院披露',
+      });
+      if (!isCurrent(context)) return;
+      disclosureFiles.value = [
+        ...disclosureFiles.value,
+        {
+          contentVersionId: result.contentVersionId,
+          filename: result.originalFilename,
+        },
+      ];
+    }
+    success.value = '';
+  } catch (reason) {
+    if (isCurrent(context))
+      disclosureError.value =
+        reason instanceof ApiError && reason.code === 'VALIDATION_ERROR'
+          ? '仅支持单份不超过50MiB的PDF、JPEG或PNG文件。'
+          : '披露附件上传失败，请检查连接后重试。';
+  } finally {
+    if (isCurrent(context)) disclosureUploading.value = false;
+  }
+}
+function removeDisclosureFile(contentVersionId: string): void {
+  disclosureFiles.value = disclosureFiles.value.filter(
+    (file) => file.contentVersionId !== contentVersionId,
+  );
+  disclosureError.value = '';
+  error.value = '';
+  success.value = '';
+}
 async function download(file: CaseFile): Promise<void> {
   const context = captureContext();
   const controller = new AbortController();
@@ -523,7 +622,7 @@ async function download(file: CaseFile): Promise<void> {
     <p>
       登记实际受理日期和法院案号后，案件进入“待开庭”。三类材料均可后补；每类最多10份有效材料，每份不超过50MiB，仅支持PDF、JPEG或PNG。
     </p>
-    <p>本登记不会发起缴费，也不会安排开庭。</p>
+    <p>本登记不会发起缴费；填写开庭日期与地点时，会一并建立本案的开庭安排。</p>
 
     <form v-if="canRegister" class="form-stack" @submit.prevent="submit">
       <label>
@@ -583,6 +682,90 @@ async function download(file: CaseFile): Promise<void> {
         </select>
         <span v-if="courtsLoading" class="field-help">正在读取可选法院…</span>
       </label>
+      <label>
+        <span>开庭日期</span>
+        <input
+          v-model="hearingAt"
+          data-test="acceptance-hearing-at"
+          type="date"
+          :min="acceptedAt"
+          :disabled="unknownRequest !== null || submitting || draftBusy"
+          @input="
+            error = '';
+            success = '';
+          "
+        />
+        <span class="field-help"
+          >法院通知的开庭日期；填写后随本次登记一并建立开庭安排。</span
+        >
+      </label>
+      <label>
+        <span>开庭地点</span>
+        <input
+          v-model="hearingPlace"
+          data-test="acceptance-hearing-place"
+          maxlength="500"
+          :disabled="unknownRequest !== null || submitting || draftBusy"
+          @input="
+            error = '';
+            success = '';
+          "
+        />
+      </label>
+      <label>
+        <span>披露数据</span>
+        <textarea
+          v-model="courtDisclosureText"
+          data-test="acceptance-disclosure-text"
+          maxlength="2000"
+          rows="3"
+          :disabled="unknownRequest !== null || submitting || draftBusy"
+          @input="
+            error = '';
+            success = '';
+          "
+        ></textarea>
+        <span class="field-help"
+          >法院披露的文本；与附件一起记入本案法院披露补录。</span
+        >
+      </label>
+      <label>
+        <span>披露附件</span>
+        <input
+          data-test="acceptance-disclosure-files"
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png"
+          multiple
+          :disabled="
+            unknownRequest !== null ||
+            submitting ||
+            draftBusy ||
+            disclosureUploading ||
+            disclosureFiles.length >= 10
+          "
+          @change="uploadDisclosureFiles"
+        />
+      </label>
+      <p v-if="disclosureUploading" class="field-help">正在上传披露附件…</p>
+      <p v-if="disclosureError" class="submit-error" role="alert">
+        {{ disclosureError }}
+      </p>
+      <ul
+        v-if="disclosureFiles.length"
+        data-test="acceptance-disclosure-list"
+        class="field-help"
+      >
+        <li v-for="file in disclosureFiles" :key="file.contentVersionId">
+          {{ file.filename }}
+          <button
+            type="button"
+            :disabled="unknownRequest !== null || submitting || draftBusy"
+            @click="removeDisclosureFile(file.contentVersionId)"
+          >
+            移除
+          </button>
+        </li>
+      </ul>
     </form>
 
     <p v-else-if="item.acceptance" data-test="case-acceptance-record">

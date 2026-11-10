@@ -1,3 +1,11 @@
+# 2026-11-10 夜间：待正式立案卡片补开庭与法院披露（未提交）
+
+运营要求在「待正式立案」卡片上直接登记**开庭日期、开庭地点、法院披露数据、法院披露附件**。「承办人」经确认系统中无对应字段，本次不实现。
+
+落库复用既有结构，未新增表：开庭沿用 `CaseHearingArrangement`（`hearingAt`／`hearingPlace`，`source=SCHEDULE`）并回写 `currentHearingArrangementId`；披露沿用 `COURT_DISCLOSURE` 补充材料（附件逐条成链、文本作链头，`reason` 固定为“正式立案登记时录入法院披露”）。受理事实、开庭安排、披露条目、审计与回执同一 Serializable 事务同成同败。规格原文「本动作不提前实现开庭安排」已收窄为“未填写开庭日期／地点时不提前实现”，记录见 [案件模块规格](spec/v0.1/modules/cases.md)。
+
+两处必要的连带修正：① 请求指纹只在新字段非空时纳入，历史回执仍按原请求重放；② 详情页「披露数据附件」改为读该轮次该类别的整条链（去重），否则一次登记多份附件只会显示链头一份。
+
 # 2026-11-10 夜间：待开庭阶段动作收口（已部署 87abb5f8）
 
 运营口径要求「待开庭阶段不提供任何操作」。`90ed098c` 已收口详情页上传入口与 `CaseWorkspaceFiles` 开关，但列表页 `resolveCaseListActions` 仍把开庭日期补录／更正装配成快捷操作，`primaryCaseAction` 也仍把 `WAITING_HEARING` 映射到 `hearing`。本轮移除两处装配，并把两条旧语义断言改为「待开庭不产出列表动作」（`CasePages.spec.ts` 能力矩阵、`CaseListDisplay.spec.ts` 快捷操作用例）。

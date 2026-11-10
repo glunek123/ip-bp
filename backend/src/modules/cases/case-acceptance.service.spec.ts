@@ -66,6 +66,10 @@ describe('CaseAcceptanceService', () => {
           .fn()
           .mockResolvedValue({ id: '55555555-5555-4555-8555-555555555555' }),
       },
+      caseHearingArrangement: {
+        create: jest.fn().mockResolvedValue({ id: 'arrangement' }),
+      },
+      caseSupplementEntry: { create: jest.fn().mockResolvedValue({}) },
     };
     const database = {
       $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) =>
@@ -117,6 +121,64 @@ describe('CaseAcceptanceService', () => {
     expect(f.tx.caseAcceptance.create).toHaveBeenCalledTimes(1);
     expect(f.materials.freezeCaseAcceptanceReferences).toHaveBeenCalledTimes(1);
     expect(f.tx.caseAcceptanceReceipt.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers the court hearing and disclosure in the same acceptance transaction', async () => {
+    const f = fixture();
+    await f.service.register(actor, caseId, {
+      ...input,
+      idempotencyKey: 'acceptance-hearing',
+      hearingAt: '2026-11-20',
+      hearingPlace: '第三法庭',
+      courtDisclosureText: '法院披露的被告经营信息',
+      courtDisclosureContentVersionIds: [versionId],
+    });
+    expect(f.tx.caseHearingArrangement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        caseId,
+        trialRoundId: 'round',
+        hearingAt: new Date('2026-11-20T00:00:00.000Z'),
+        hearingPlace: '第三法庭',
+        source: 'SCHEDULE',
+        fromVersion: 6,
+        toVersion: 7,
+      }),
+      select: { id: true },
+    });
+    expect(f.tx.case.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { currentHearingArrangementId: 'arrangement' },
+      }),
+    );
+    const supplements = f.tx.caseSupplementEntry.create.mock.calls.map(
+      (call) => (call[0] as { data: Record<string, unknown> }).data,
+    );
+    expect(supplements).toHaveLength(2);
+    expect(supplements[0]).toMatchObject({
+      kind: 'COURT_DISCLOSURE',
+      trialRoundId: 'round',
+      priorEntryId: null,
+      contentVersionId: versionId,
+    });
+    expect(supplements[1]).toMatchObject({
+      kind: 'COURT_DISCLOSURE',
+      text: '法院披露的被告经营信息',
+      priorEntryId: supplements[0]!.id,
+    });
+    expect(f.tx.caseAcceptanceReceipt.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a hearing date earlier than the acceptance date', async () => {
+    const f = fixture();
+    await expect(
+      f.service.register(actor, caseId, {
+        ...input,
+        idempotencyKey: 'acceptance-hearing-invalid',
+        hearingAt: '2026-10-03',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.caseHearingArrangement.create).not.toHaveBeenCalled();
+    expect(f.tx.caseAcceptance.create).not.toHaveBeenCalled();
   });
 
   it('creates the initial round when an unaccepted case is first accepted', async () => {

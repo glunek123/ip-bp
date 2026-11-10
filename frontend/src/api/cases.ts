@@ -5266,6 +5266,10 @@ export type RegisterCaseAcceptanceInput = {
   acceptanceNoticeContentVersionIds?: string[];
   paymentListContentVersionIds?: string[];
   serviceDocumentContentVersionIds?: string[];
+  hearingAt?: string | null;
+  hearingPlace?: string | null;
+  courtDisclosureText?: string | null;
+  courtDisclosureContentVersionIds?: string[];
 };
 export type RegisterCaseAcceptanceResult = {
   id: string;
@@ -6093,6 +6097,10 @@ type CaseAcceptanceDraft = {
   acceptanceNoticeContentVersionIds: string[];
   paymentListContentVersionIds: string[];
   serviceDocumentContentVersionIds: string[];
+  hearingAt?: string | null;
+  hearingPlace?: string | null;
+  courtDisclosureText?: string | null;
+  courtDisclosureContentVersionIds?: string[];
 };
 
 export async function caseAcceptanceDraft(
@@ -6124,7 +6132,14 @@ export async function caseAcceptanceDraft(
       !Array.isArray(draft.paymentListContentVersionIds) ||
       !uniqueVersions(draft.paymentListContentVersionIds, 0, 10) ||
       !Array.isArray(draft.serviceDocumentContentVersionIds) ||
-      !uniqueVersions(draft.serviceDocumentContentVersionIds, 0, 10))
+      !uniqueVersions(draft.serviceDocumentContentVersionIds, 0, 10) ||
+      (draft.hearingAt != null && !businessDate(draft.hearingAt)) ||
+      (draft.hearingPlace != null && typeof draft.hearingPlace !== 'string') ||
+      (draft.courtDisclosureText != null &&
+        typeof draft.courtDisclosureText !== 'string') ||
+      (draft.courtDisclosureContentVersionIds != null &&
+        (!Array.isArray(draft.courtDisclosureContentVersionIds) ||
+          !uniqueVersions(draft.courtDisclosureContentVersionIds, 0, 10))))
   )
     throw invalidResponse();
   return {
@@ -6158,10 +6173,17 @@ export async function registerCaseAcceptance(
     courtCaseNo.length < 1 ||
     courtCaseNo.length > 100 ||
     categoryIds.some((ids) => !uniqueVersions(ids, 0, 10)) ||
-    new Set(selectedIds).size !== selectedIds.length
+    new Set(selectedIds).size !== selectedIds.length ||
+    (input.hearingAt != null &&
+      (!businessDate(input.hearingAt) || input.hearingAt < input.acceptedAt)) ||
+    (input.hearingPlace != null && input.hearingPlace.trim().length > 500) ||
+    (input.courtDisclosureText != null &&
+      input.courtDisclosureText.trim().length > 2000) ||
+    (input.courtDisclosureContentVersionIds != null &&
+      !uniqueVersions(input.courtDisclosureContentVersionIds, 0, 10))
   ) {
     throw new ApiError(
-      '正式立案信息无效，请检查日期、法院案号和所选材料。',
+      '正式立案信息无效，请检查日期、开庭信息、法院案号和所选材料。',
       400,
       'VALIDATION_ERROR',
     );

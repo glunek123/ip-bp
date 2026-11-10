@@ -7,7 +7,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
@@ -28,6 +28,9 @@ const categories = [
   ['PAYMENT_LIST', 'paymentListContentVersionIds'],
   ['SERVICE_DOCUMENT', 'serviceDocumentContentVersionIds'],
 ] as const;
+// 法院披露复用补充材料，登记时与受理事实同事务落库。
+const disclosureCategory = 'CASE_COURT_DISCLOSURE_ATTACHMENT' as const;
+const disclosureReason = '正式立案登记时录入法院披露';
 
 @Injectable()
 export class CaseAcceptanceService {
@@ -149,6 +152,24 @@ export class CaseAcceptanceService {
         }))
       )
         throw this.validation();
+      if (input.hearingAt) {
+        const hearing = new Date(`${input.hearingAt}T00:00:00.000Z`);
+        if (
+          Number.isNaN(hearing.getTime()) ||
+          hearing.toISOString().slice(0, 10) !== input.hearingAt ||
+          (!!input.acceptedAt && input.hearingAt < input.acceptedAt)
+        )
+          throw this.validation();
+      }
+      if ((input.courtDisclosureContentVersionIds ?? []).length)
+        await this.materials.assertAvailableVersions(tx, actor, {
+          ownerType: 'CASE',
+          ownerId: caseId,
+          category: disclosureCategory,
+          contentVersionIds: input.courtDisclosureContentVersionIds ?? [],
+          minCount: 0,
+          maxCount: 10,
+        });
       for (const [category, property] of categories) {
         const ids = input[property] ?? [];
         if (ids.length)
@@ -171,6 +192,11 @@ export class CaseAcceptanceService {
         paymentListContentVersionIds: input.paymentListContentVersionIds ?? [],
         serviceDocumentContentVersionIds:
           input.serviceDocumentContentVersionIds ?? [],
+        hearingAt: input.hearingAt || null,
+        hearingPlace: input.hearingPlace?.trim() || null,
+        courtDisclosureText: input.courtDisclosureText?.trim() || null,
+        courtDisclosureContentVersionIds:
+          input.courtDisclosureContentVersionIds ?? [],
       };
       const result = await tx.case.update({
         where: { id: caseId },
@@ -192,8 +218,16 @@ export class CaseAcceptanceService {
       actor.notaryOfficeId !== undefined
     )
       throw this.forbidden();
+    // 新增的开庭／披露字段为空时不进入指纹，保证历史回执仍按原请求重放。
+    const fingerprintSource: Record<string, unknown> = { caseId, ...value };
+    if (value.hearingAt === null) fingerprintSource.hearingAt = undefined;
+    if (value.hearingPlace === null) fingerprintSource.hearingPlace = undefined;
+    if (value.courtDisclosureText === null)
+      fingerprintSource.courtDisclosureText = undefined;
+    if (value.courtDisclosureContentVersionIds.length === 0)
+      fingerprintSource.courtDisclosureContentVersionIds = undefined;
     const fingerprint = createHash('sha256')
-      .update(JSON.stringify({ caseId, ...value }))
+      .update(JSON.stringify(fingerprintSource))
       .digest('hex');
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -346,6 +380,17 @@ export class CaseAcceptanceService {
                 })),
               );
             }
+            const disclosureVersions = value.courtDisclosureContentVersionIds
+              .length
+              ? await this.materials.assertAvailableVersions(tx, actor, {
+                  ownerType: 'CASE',
+                  ownerId: caseId,
+                  category: disclosureCategory,
+                  contentVersionIds: value.courtDisclosureContentVersionIds,
+                  minCount: 0,
+                  maxCount: 10,
+                })
+              : [];
             const trialRoundId =
               record.currentTrialRoundId ??
               (
@@ -451,6 +496,116 @@ export class CaseAcceptanceService {
               versions,
               audit.id,
             );
+            if (value.hearingAt !== null || value.hearingPlace !== null) {
+              const hearingAudit = await tx.auditEvent.create({
+                data: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  ...(lawyerBindingId === undefined
+                    ? { internalActorUserId: actor.userId }
+                    : { lawyerAccountBindingId: lawyerBindingId }),
+                  resourceType: 'CASE',
+                  resourceId: caseId,
+                  action: 'case.hearing.scheduled',
+                  details: {
+                    hearingAt: value.hearingAt,
+                    hearingPlace: value.hearingPlace,
+                    fromVersion: value.expectedVersion,
+                    toVersion: value.expectedVersion + 1,
+                    withAcceptanceRegistration: true,
+                  },
+                },
+                select: { id: true },
+              });
+              const arrangement = await tx.caseHearingArrangement.create({
+                data: {
+                  departmentId: actor.departmentId,
+                  caseId,
+                  trialRoundId,
+                  externalEntryId:
+                    source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
+                  hearingAt:
+                    value.hearingAt === null
+                      ? null
+                      : new Date(`${value.hearingAt}T00:00:00.000Z`),
+                  hearingPlace: value.hearingPlace,
+                  source: 'SCHEDULE',
+                  recordedAt,
+                  recordedByUserId: actor.userId,
+                  fromVersion: value.expectedVersion,
+                  toVersion: value.expectedVersion + 1,
+                  auditEventId: hearingAudit.id,
+                },
+                select: { id: true },
+              });
+              await tx.case.updateMany({
+                where: {
+                  id: caseId,
+                  departmentId: actor.departmentId,
+                  currentTrialRoundId: trialRoundId,
+                },
+                data: { currentHearingArrangementId: arrangement.id },
+              });
+            }
+            // 披露附件逐条成链，文本作为链头，详情页据此读「披露数据」。
+            const disclosureEntries = [
+              ...disclosureVersions.map((version) => ({
+                materialId: version.materialId as string | null,
+                contentVersionId: version.contentVersionId as string | null,
+                text: null as string | null,
+              })),
+              ...(value.courtDisclosureText === null
+                ? []
+                : [
+                    {
+                      materialId: null,
+                      contentVersionId: null,
+                      text: value.courtDisclosureText,
+                    },
+                  ]),
+            ];
+            let priorSupplementId: string | null = null;
+            for (const [index, entry] of disclosureEntries.entries()) {
+              const supplementId = randomUUID();
+              const supplementAudit = await tx.auditEvent.create({
+                data: {
+                  departmentId: actor.departmentId,
+                  actorKind: 'HUMAN',
+                  actorUserId: actor.userId,
+                  internalActorUserId: actor.userId,
+                  resourceType: 'CASE_SUPPLEMENT_ENTRY',
+                  resourceId: supplementId,
+                  action: 'CASE_SUPPLEMENT_APPEND',
+                  details: {
+                    kind: 'COURT_DISCLOSURE',
+                    reason: disclosureReason,
+                  },
+                },
+                select: { id: true },
+              });
+              await tx.caseSupplementEntry.create({
+                data: {
+                  id: supplementId,
+                  priorEntryId: priorSupplementId,
+                  caseId,
+                  departmentId: actor.departmentId,
+                  kind: 'COURT_DISCLOSURE',
+                  trialRoundId,
+                  text: entry.text,
+                  materialId: entry.materialId,
+                  contentVersionId: entry.contentVersionId,
+                  reason: disclosureReason,
+                  recordedByUserId: actor.userId,
+                  recordedAt,
+                  idempotencyKey: createHash('sha256')
+                    .update(`${value.idempotencyKey}:disclosure:${index}`)
+                    .digest('hex'),
+                  requestFingerprint: fingerprint,
+                  auditEventId: supplementAudit.id,
+                },
+              });
+              priorSupplementId = supplementId;
+            }
             const result: RegisterCaseAcceptanceResponseDto = {
               id: caseId,
               stage: 'WAITING_HEARING',
@@ -502,6 +657,10 @@ export class CaseAcceptanceService {
     const courtCaseNo =
       typeof input.courtCaseNo === 'string' ? input.courtCaseNo.trim() : null;
     const courtId = input.courtId === undefined ? null : input.courtId;
+    const hearingAt = input.hearingAt ?? null;
+    const hearingPlace = input.hearingPlace?.trim() || null;
+    const courtDisclosureText = input.courtDisclosureText?.trim() || null;
+    const disclosureIds = input.courtDisclosureContentVersionIds ?? [];
     if (
       !Number.isInteger(input.expectedVersion) ||
       input.expectedVersion < 1 ||
@@ -520,7 +679,19 @@ export class CaseAcceptanceService {
       courtCaseNo.length > 100 ||
       arrays.some((ids) => !Array.isArray(ids) || ids.length > 10) ||
       allIds.some((id) => typeof id !== 'string' || !uuid.test(id)) ||
-      new Set(allIds).size !== allIds.length
+      new Set(allIds).size !== allIds.length ||
+      (hearingAt !== null &&
+        (typeof hearingAt !== 'string' ||
+          !/^\d{4}-\d{2}-\d{2}$/u.test(hearingAt) ||
+          new Date(`${hearingAt}T00:00:00.000Z`).toISOString().slice(0, 10) !==
+            hearingAt ||
+          hearingAt < input.acceptedAt)) ||
+      (hearingPlace !== null && hearingPlace.length > 500) ||
+      (courtDisclosureText !== null && courtDisclosureText.length > 2000) ||
+      !Array.isArray(disclosureIds) ||
+      disclosureIds.length > 10 ||
+      disclosureIds.some((id) => typeof id !== 'string' || !uuid.test(id)) ||
+      new Set(disclosureIds).size !== disclosureIds.length
     )
       throw this.validation();
     return {
@@ -530,6 +701,10 @@ export class CaseAcceptanceService {
       acceptedAt: input.acceptedAt,
       courtCaseNo,
       courtId,
+      hearingAt,
+      hearingPlace,
+      courtDisclosureText,
+      courtDisclosureContentVersionIds: disclosureIds,
       acceptanceNoticeContentVersionIds: arrays[0],
       paymentListContentVersionIds: arrays[1],
       serviceDocumentContentVersionIds: arrays[2],

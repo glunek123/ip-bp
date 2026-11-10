@@ -246,6 +246,10 @@ const schema = {
     acceptanceNoticeContentVersionIds: optional(strings),
     paymentListContentVersionIds: optional(strings),
     serviceDocumentContentVersionIds: optional(strings),
+    hearingAt: optional(nullable(string)),
+    hearingPlace: optional(nullable(string)),
+    courtDisclosureText: optional(nullable(string)),
+    courtDisclosureContentVersionIds: optional(strings),
   },
   hearing: {
     hearingAt: nullable(string),

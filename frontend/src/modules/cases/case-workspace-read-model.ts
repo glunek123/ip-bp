@@ -1337,6 +1337,27 @@ export function buildCaseWorkspaceSections(
     );
     return names.join('、') || null;
   };
+  const supplementChainFiles = (
+    kind: NonNullable<CaseSupplementWorkspace>['entries'][number]['kind'],
+    trialRoundId?: string | null,
+  ) => {
+    const names = (supplementWorkspace?.entries ?? [])
+      .filter(
+        (entry) =>
+          entry.kind === kind &&
+          (trialRoundId === undefined || entry.trialRoundId === trialRoundId),
+      )
+      .flatMap((entry) => {
+        if (!entry.materialId || !entry.contentVersionId) return [];
+        const source = supplementWorkspace?.sources.materials.find(
+          (file) =>
+            file.materialId === entry.materialId &&
+            file.contentVersionId === entry.contentVersionId,
+        );
+        return [source?.filename ?? `文件版本 ${entry.contentVersionId}`];
+      });
+    return [...new Set(names)].join('、') || null;
+  };
   const supplementValue = (value: string | null | undefined, candidates = 0) =>
     value ??
     (candidates > 1
@@ -1597,7 +1618,7 @@ export function buildCaseWorkspaceSections(
     ),
     field(
       '披露数据附件',
-      supplementValue(supplementFiles('COURT_DISCLOSURE', currentRoundId)),
+      supplementValue(supplementChainFiles('COURT_DISCLOSURE', currentRoundId)),
     ),
     field(
       '调档文件',

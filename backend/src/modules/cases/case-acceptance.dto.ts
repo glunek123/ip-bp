@@ -64,6 +64,47 @@ export class RegisterCaseAcceptanceDto {
   @ArrayMaxSize(10)
   @IsUUID('4', { each: true })
   serviceDocumentContentVersionIds?: string[];
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date',
+    nullable: true,
+    description:
+      '法院通知的开庭日期；登记时一并建立真实开庭安排，不早于本次受理日期',
+  })
+  @IsOptional()
+  @IsString()
+  hearingAt?: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 500,
+    description: '法院通知的开庭地点，随开庭安排一并登记',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  hearingPlace?: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 2000,
+    description: '法院披露文本，复用 COURT_DISCLOSURE 补充材料',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  courtDisclosureText?: string | null;
+  @ApiPropertyOptional({
+    type: [String],
+    format: 'uuid',
+    maxItems: 10,
+    description: '法院披露附件内容版本，复用 COURT_DISCLOSURE 补充材料',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsUUID('4', { each: true })
+  courtDisclosureContentVersionIds?: string[];
 }
 
 export class SaveCaseAcceptanceDraftDto extends PartialType(
@@ -86,6 +127,13 @@ class CaseAcceptanceDraftFieldsDto {
   @ApiProperty({ type: [String] }) acceptanceNoticeContentVersionIds!: string[];
   @ApiProperty({ type: [String] }) paymentListContentVersionIds!: string[];
   @ApiProperty({ type: [String] }) serviceDocumentContentVersionIds!: string[];
+  @ApiProperty({ type: String, format: 'date', nullable: true })
+  hearingAt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) hearingPlace!: string | null;
+  @ApiProperty({ type: String, nullable: true })
+  courtDisclosureText!: string | null;
+  @ApiProperty({ type: [String] })
+  courtDisclosureContentVersionIds!: string[];
 }
 
 export class CaseAcceptanceDraftResponseDto {

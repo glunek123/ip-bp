@@ -139,7 +139,7 @@ describe('case acceptance panel', () => {
     expect(wrapper.text()).toContain('受理日期');
     expect(wrapper.text()).toContain('法院案号');
     expect(wrapper.text()).toContain('可后补');
-    expect(wrapper.text()).toContain('不会发起缴费，也不会安排开庭');
+    expect(wrapper.text()).toContain('本登记不会发起缴费');
     expect(
       (
         wrapper.get('[data-test="acceptance-register"]')
@@ -176,6 +176,71 @@ describe('case acceptance panel', () => {
     expect(wrapper.emitted('changed')).toHaveLength(1);
     expect(wrapper.emitted('refresh')).toBeUndefined();
     expect(workflowRefreshCount).toBe(1);
+  });
+
+  it('registers the court hearing and disclosure together with the acceptance', async () => {
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper
+      .get('[data-test="acceptance-accepted-at"]')
+      .setValue('2026-10-05');
+    await wrapper
+      .get('[data-test="acceptance-court-case-no"]')
+      .setValue('甲0101民初1号');
+    await wrapper
+      .get('[data-test="acceptance-hearing-place"]')
+      .setValue(' 第三法庭 ');
+    await wrapper
+      .get('[data-test="acceptance-disclosure-text"]')
+      .setValue(' 法院披露的被告经营信息 ');
+    await chooseFile(
+      wrapper,
+      '[data-test="acceptance-disclosure-files"]',
+      new File(['pdf'], '披露附件.pdf', { type: 'application/pdf' }),
+    );
+    expect(api.uploadMaterialFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerType: 'CASE',
+        ownerId: 'case-1',
+        category: 'CASE_COURT_DISCLOSURE_ATTACHMENT',
+        purpose: 'CASE_COURT_DISCLOSURE_ATTACHMENT',
+      }),
+    );
+    expect(
+      wrapper.get('[data-test="acceptance-disclosure-list"]').text(),
+    ).toContain('披露附件.pdf');
+    // 开庭日期不得早于受理日期。
+    await wrapper
+      .get('[data-test="acceptance-hearing-at"]')
+      .setValue('2026-10-04');
+    expect(
+      (
+        wrapper.get('[data-test="acceptance-register"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    await wrapper
+      .get('[data-test="acceptance-hearing-at"]')
+      .setValue('2026-11-20');
+    expect(
+      (
+        wrapper.get('[data-test="acceptance-register"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    await wrapper.get('[data-test="acceptance-register"]').trigger('click');
+    await flushPromises();
+    expect(api.registerCaseAcceptance).toHaveBeenCalledWith(
+      'case-1',
+      expect.objectContaining({
+        acceptedAt: '2026-10-05',
+        hearingAt: '2026-11-20',
+        hearingPlace: '第三法庭',
+        courtDisclosureText: '法院披露的被告经营信息',
+        courtDisclosureContentVersionIds: ['version-披露附件.pdf'],
+      }),
+      'internal',
+    );
   });
 
   it('keeps the same idempotent request after an unknown result and retries it unchanged', async () => {
