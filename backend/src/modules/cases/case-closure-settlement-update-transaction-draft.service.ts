@@ -34,9 +34,19 @@ import {
 import { readCaseSourceAnchor } from './case-entry-source';
 import { assertExecutionSourceChain } from './case-execution-source';
 
+// 409 只有业务码时，前端只能显示"请求未能完成"；为常见拒绝补一句可执行文案。
+const failureMessages: Record<string, string> = {
+  ONE_TIME_PAYMENT_LIMIT:
+    '一次性付款案件只允许一条付款记录；如需登记多笔，请先把付款类型改为分期付款',
+  INVALID_RECEIPT: '原请求已变更或已失效，请刷新后按当前内容重新提交',
+  SETTLEMENT_TERMS_VERSION_CONFLICT: '结算条款已变化，请刷新后重新保存',
+};
 const fail = (code: string): never => {
   if (code === 'CASE_NOT_FOUND') throw new NotFoundException({ code });
-  throw new ConflictException({ code });
+  throw new ConflictException({
+    code,
+    message: failureMessages[code] ?? '当前案件状态不允许该操作，请刷新后重试',
+  });
 };
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;

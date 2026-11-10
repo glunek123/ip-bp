@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-10T07:11:36.426Z",
+  "recordedAt": "2026-11-10T07:20:32.684Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -464,7 +464,7 @@
     "backend/src/modules/cases/case-closure-settlement-amount-override-draft.spec.ts": "b83a443c51f97e0ec6d6c43cc0753e421a1041a97de6e44ae6c101128cb6b888",
     "backend/src/modules/cases/case-closure-settlement-update-receipt.spec.ts": "4028e1a64a2505be0b270f3354a7a429fda741d920bcc5a0a3abae6d175caa1b",
     "backend/src/modules/cases/case-closure-settlement-update-transaction-draft.service.spec.ts": "42fc7ffec797c8d3853c0909db39612b6c960abe4c2d03fe1de3d8bb45352aac",
-    "backend/src/modules/cases/case-closure-settlement-update-transaction-draft.service.ts": "1511c9ea8fd6618f7ab95e06df2912e016c927cdf34efc39161efb38b9b9a215",
+    "backend/src/modules/cases/case-closure-settlement-update-transaction-draft.service.ts": "2937683daea5983c1aedc51ce4c790b600226aa52edb748bb1f0c79f7022caa4",
     "backend/src/modules/cases/case-closure-settlement-update.dto.spec.ts": "de2507e3a26f515481cb8419ff314357404d904c0ef52fb302ca58c10ab8c1ba",
     "backend/src/modules/cases/case-closure-settlement-update.dto.ts": "8df7154ee3484dca782a8d507d31a28f7ffc685878aaae72d79faad47b70445f",
     "backend/src/modules/cases/case-closure-workspace-read-draft.spec.ts": "f6840b8d856d3bb2af4e266402334564cbf308acc93ce852ca19a383932a79f1",
