@@ -1157,48 +1157,6 @@ onBeforeUnmount(() => {
     <NotaryPortalWorkflowPanel :detail="detail" :session="session" proxy />
   </section>
   <section
-    v-if="matter.evidence"
-    class="workflow-card"
-    aria-label="已登记取证资料"
-  >
-    <h2>取证与物流</h2>
-    <dl class="workflow-facts">
-      <div>
-        <dt>取证日期</dt>
-        <dd>{{ matter.evidence.evidenceAt }}</dd>
-      </div>
-      <div>
-        <dt>样品费用</dt>
-        <dd>
-          {{
-            matter.evidence.sampleFeeState === 'KNOWN'
-              ? `${matter.evidence.sampleFeeAmount} 元`
-              : '待定'
-          }}
-        </dd>
-      </div>
-    </dl>
-    <ul class="workflow-logistics">
-      <li v-for="row in matter.evidence.logistics" :key="row.id">
-        <dl class="workflow-facts">
-          <div>
-            <dt>快递公司</dt>
-            <dd>
-              {{ row.companyState === 'NONE' ? '无' : row.companyValue }}
-            </dd>
-          </div>
-          <div>
-            <dt>快递单号</dt>
-            <dd>
-              {{ row.trackingState === 'NONE' ? '无' : row.trackingValue }}
-            </dd>
-          </div>
-        </dl>
-      </li>
-    </ul>
-    <p>店铺名：{{ matter.sourceSummary.shopName }}</p>
-  </section>
-  <section
     v-if="
       matter.opening &&
       matter.stage !== 'UNBOX_REVIEW' &&
