@@ -105,3 +105,26 @@
   或冻结函数在同一事务内被调用两次）。按 materialId/内容版本去重两次尝试均未解除，已回退，
   需要在调用侧或改用 `createMany({skipDuplicates:true})` 处理，并补一条"重复冻结"用例。
 - 影响：运营改一次结算金额就会失败；B13 已通过（回款 5000 已登记），B14 归档因此无法进入。
+
+## 结算重复保存 500：已定位并修复（`63759594`）
+
+根因不是脚本，是产品：结案资料冻结 `freezeCaseClosureReferences` 在同一事务里被调用两次
+（结案一次、结算一次），逐条 `create` 撞了两处唯一键
+——`case_closure_documents(closure_version_id, material_id)` 和
+`material_references` 上"每案每用途每内容版本唯一"的**部分**唯一索引（不带事件维度）。
+
+修法：冻结语义是"保证该版本包含这些材料"，改为 `createMany + skipDuplicates`，
+让唯一键在数据库侧裁决，并发下也安全；同一次调用内再按内容版本去重。
+材料套件 339 项全过；复测时错误从材料层（5855 行）前移到结算事务层，说明该缺陷已消除。
+
+## 新发现：声明"涉及结算"但未填应结金额 → 500（未修）
+
+- 现象：`POST /cases/:id/closure-settlement-updates` 返回 500，定位
+  `case-closure-settlement-update-transaction-draft.service.ts:1270` 的
+  `SET CONSTRAINTS ALL IMMEDIATE`，PG `23514`（check violation）。
+- 约束：`case_settlement_assessment_versions_check1`
+  ——`declaration='APPLICABLE'` 时 `customer_amount` 与 `lawyer_amount` 必须非空。
+- 触发：界面允许"是否涉及结算=涉及"配合"客户/律师应结金额=保留现有值（待确认）"一起提交。
+- 影响：数据没写坏（数据库拦住），但运营看到的是"服务内部错误"，应返回 400/409
+  与可读文案（例如"声明涉及结算时须填写双方应结金额"）。
+- 建议：DTO 层加跨字段校验 + 业务码，前端在"涉及"被选中时把应结金额设为必填。
