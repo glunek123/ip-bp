@@ -307,7 +307,7 @@ describe('NotaryMatterWorkflowPanel request ownership', () => {
     expect(api.recordNotaryOpening).not.toHaveBeenCalled();
     wrapper.unmount();
   });
-  it('does not default issuance and uses the compact audit label', async () => {
+  it('does not default issuance and labels the submit as a confirmation', async () => {
     const { wrapper, success } = await open();
     expect(wrapper.findAll('input[type=radio]:checked')).toHaveLength(0);
     await wrapper
@@ -317,7 +317,7 @@ describe('NotaryMatterWorkflowPanel request ownership', () => {
     await wrapper.get('[data-test="issuance-decision-no-issue"]').setValue();
     expect(
       wrapper.get('[data-test="issuance-decision-submit"]').text(),
-    ).toContain('审核');
+    ).toContain('提交确认');
     api.decideNotaryIssuance.mockResolvedValue({});
     await wrapper
       .get('[data-test="issuance-decision-section"] form')

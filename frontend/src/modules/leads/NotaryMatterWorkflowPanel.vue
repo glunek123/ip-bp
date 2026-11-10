@@ -1823,12 +1823,8 @@ onBeforeUnmount(() => {
       id="issuance-form"
       tabindex="-1"
     >
-      <h2 class="form-section-title">审核</h2>
+      <h2 class="form-section-title">确认</h2>
       <dl class="workflow-facts">
-        <div>
-          <dt>店铺名</dt>
-          <dd>{{ matter.sourceSummary.shopName }}</dd>
-        </div>
         <div>
           <dt>审核结果</dt>
           <dd>
@@ -1840,14 +1836,8 @@ onBeforeUnmount(() => {
           </dd>
         </div>
         <div>
-          <dt>样品费</dt>
-          <dd>
-            {{
-              matter.evidence?.sampleFeeState === 'KNOWN'
-                ? `${matter.evidence.sampleFeeAmount} 元`
-                : '待定'
-            }}
-          </dd>
+          <dt>审核日期</dt>
+          <dd>{{ matter.reviewDecision?.decidedAt?.slice(0, 10) ?? '—' }}</dd>
         </div>
       </dl>
       <NotaryOpeningPhotoGallery
@@ -1872,7 +1862,7 @@ onBeforeUnmount(() => {
       </label>
       <form @submit.prevent="submitIssuanceDecision">
         <fieldset class="workflow-choices">
-          <legend class="sr-only">是否出证</legend>
+          <legend class="form-section-title">确认结果</legend>
           <label class="workflow-choice"
             ><input
               v-model="issuanceChoice"
@@ -1881,7 +1871,7 @@ onBeforeUnmount(() => {
               name="issuance-decision"
               value="ISSUE"
               :disabled="submittingIssuance || locked"
-            />出证</label
+            />出证（流转至待出证）</label
           >
           <label class="workflow-choice"
             ><input
@@ -1891,7 +1881,7 @@ onBeforeUnmount(() => {
               name="issuance-decision"
               value="NO_ISSUE"
               :disabled="submittingIssuance || locked"
-            />不出证</label
+            />不出证（流转至待退货）</label
           >
         </fieldset>
         <p v-if="issuanceError" class="field-error" role="alert">
@@ -1905,7 +1895,7 @@ onBeforeUnmount(() => {
             native-type="submit"
             :loading="submittingIssuance"
             :disabled="submittingIssuance || (locked && !unknown)"
-            >审核</ElButton
+            >提交确认</ElButton
           >
         </div>
       </form>
