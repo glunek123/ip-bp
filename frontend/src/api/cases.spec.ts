@@ -5568,6 +5568,9 @@ describe('cases API', () => {
           username: 'lawyer.a',
           displayName: '律师甲',
           lawyerProfileId: 'profile-1',
+          phone: null,
+          lawFirm: null,
+          address: null,
         },
       ],
     });
@@ -5579,6 +5582,9 @@ describe('cases API', () => {
         username: 'lawyer.a',
         displayName: '律师甲',
         lawyerProfileId: 'profile-1',
+        phone: null,
+        lawFirm: null,
+        address: null,
       },
     ]);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(

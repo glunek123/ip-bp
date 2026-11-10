@@ -437,6 +437,19 @@ export class CaseMatchService {
             });
             if (changed.count !== 1) throw this.versionConflict();
             const lawyer = { id: candidates[0].profileId };
+            // 结算约定随匹配一起落库；全风险的基础费固定为 0（数据库约束同款）。
+            const settlementMode = normalized.settlementMode ?? null;
+            if (
+              settlementMode !== null &&
+              normalized.splitPercent === undefined
+            )
+              throw this.validation();
+            if (
+              settlementMode === 'FULL_RISK' &&
+              normalized.baseFee !== undefined &&
+              Number(normalized.baseFee) !== 0
+            )
+              throw this.validation();
             if (!assigned)
               await tx.caseLawyerAssignment.create({
                 data: {
@@ -444,6 +457,17 @@ export class CaseMatchService {
                   departmentId: actor.departmentId,
                   lawyerId: lawyer.id,
                   role: 'PRIMARY',
+                  settlementMode,
+                  baseFee:
+                    settlementMode === null
+                      ? null
+                      : settlementMode === 'FULL_RISK'
+                        ? '0'
+                        : (normalized.baseFee ?? '0'),
+                  splitPercent:
+                    settlementMode === null
+                      ? null
+                      : (normalized.splitPercent ?? null),
                   startedAt: matchedAt,
                 },
               });

@@ -942,6 +942,9 @@ export type MatchCaseInput = {
   }>;
   lawyerAccountId: string;
   lawyerProfileId?: string;
+  settlementMode?: 'FULL_RISK' | 'HALF_RISK' | 'FIXED_FEE';
+  baseFee?: string;
+  splitPercent?: number;
 };
 export type PrepareCaseDefendantsInput = Pick<
   MatchCaseInput,
@@ -1038,6 +1041,9 @@ export type LawyerMatchCandidate = {
   username: string;
   displayName: string;
   lawyerProfileId: string;
+  phone: string | null;
+  lawFirm: string | null;
+  address: string | null;
 };
 export type LawyerCaseDetail = CaseWorkflowItem &
   LawyerCaseSummary & {
@@ -5086,7 +5092,13 @@ export async function listLawyerMatchCandidates(
           'username',
           'displayName',
           'lawyerProfileId',
+          'phone',
+          'lawFirm',
+          'address',
         ]) &&
+        (item.phone === null || typeof item.phone === 'string') &&
+        (item.lawFirm === null || typeof item.lawFirm === 'string') &&
+        (item.address === null || typeof item.address === 'string') &&
         nonempty(item.lawyerAccountId) &&
         nonempty(item.username) &&
         nonempty(item.displayName) &&
@@ -7218,6 +7230,13 @@ export async function matchCase(
       }),
     ),
     lawyerAccountId: input.lawyerAccountId.trim(),
+    ...(input.settlementMode ? { settlementMode: input.settlementMode } : {}),
+    ...(input.settlementMode && input.baseFee !== undefined
+      ? { baseFee: input.baseFee }
+      : {}),
+    ...(input.settlementMode && input.splitPercent !== undefined
+      ? { splitPercent: input.splitPercent }
+      : {}),
     ...(input.lawyerProfileId
       ? { lawyerProfileId: input.lawyerProfileId }
       : {}),

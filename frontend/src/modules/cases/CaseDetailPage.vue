@@ -1012,6 +1012,9 @@ const defendants = ref<DefendantDraft[]>([
 const lawyerQuery = ref('');
 const lawyerCandidates = ref<LawyerMatchCandidate[]>([]);
 const selectedLawyer = ref<LawyerMatchCandidate>();
+const settlementMode = ref<'' | 'FULL_RISK' | 'HALF_RISK' | 'FIXED_FEE'>('');
+const baseFee = ref('');
+const splitPercent = ref<number | ''>('');
 const lawyerCandidatesLoading = ref(false);
 const lawyerCandidatesError = ref('');
 const matchedOn = ref(todayShanghai());
@@ -2212,6 +2215,15 @@ async function submitMatch() {
     matchError.value = '请选择真实的委案日期，不能晚于今天。';
     return;
   }
+  if (
+    !matchUnknown.value &&
+    settlementMode.value &&
+    settlementMode.value !== 'FULL_RISK' &&
+    !/^(?:0|[1-9]\d{0,13})(?:\.\d{1,2})?$/u.test(baseFee.value.trim())
+  ) {
+    matchError.value = '请填写基础费（元），最多两位小数。';
+    return;
+  }
   const input: MatchCaseInput = matchUnknown.value ?? {
     expectedVersion: current.version,
     idempotencyKey: '',
@@ -2228,6 +2240,17 @@ async function submitMatch() {
     ),
     lawyerAccountId: selectedLawyer.value?.lawyerAccountId ?? '',
     lawyerProfileId: selectedLawyer.value?.lawyerProfileId ?? '',
+    ...(settlementMode.value
+      ? {
+          settlementMode: settlementMode.value,
+          baseFee:
+            settlementMode.value === 'FULL_RISK' ? '0' : baseFee.value.trim(),
+          splitPercent:
+            typeof splitPercent.value === 'number'
+              ? splitPercent.value
+              : undefined,
+        }
+      : {}),
   };
   const fingerprint = JSON.stringify({ ...input, idempotencyKey: undefined });
   if (fingerprint !== submissionFingerprint) {
@@ -3117,6 +3140,7 @@ onBeforeUnmount(() => {
                 ><select
                   v-model="selectedLawyer"
                   class="text-input"
+                  data-test="lawyer-select"
                   :disabled="
                     lawyerCandidatesLoading || lawyerCandidates.length === 0
                   "
@@ -3134,6 +3158,55 @@ onBeforeUnmount(() => {
                     :value="candidate"
                   >
                     {{ candidate.displayName }}（{{ candidate.username }}）
+                  </option>
+                </select></label
+              >
+              <p class="field-help" data-test="lawyer-contact">
+                律师电话：{{ selectedLawyer?.phone ?? '—' }} · 律所名称：{{
+                  selectedLawyer?.lawFirm ?? '—'
+                }}
+                · 律师地址：{{ selectedLawyer?.address ?? '—' }}
+              </p>
+              <label
+                >律师结算模式 <span aria-hidden="true">*</span
+                ><select
+                  v-model="settlementMode"
+                  class="text-input"
+                  data-test="settlement-mode"
+                  required
+                >
+                  <option value="">请选择</option>
+                  <option value="FULL_RISK">全风险</option>
+                  <option value="HALF_RISK">半风险</option>
+                  <option value="FIXED_FEE">固定费用</option>
+                </select></label
+              >
+              <label
+                >基础费（元）
+                <input
+                  v-model="baseFee"
+                  class="text-input"
+                  data-test="base-fee"
+                  inputmode="decimal"
+                  :disabled="settlementMode === 'FULL_RISK'"
+                  :placeholder="
+                    settlementMode === 'FULL_RISK'
+                      ? '全风险固定为 0'
+                      : '如 5000'
+                  "
+                />
+              </label>
+              <label
+                >分成比例 <span aria-hidden="true">*</span
+                ><select
+                  v-model.number="splitPercent"
+                  class="text-input"
+                  data-test="split-percent"
+                  required
+                >
+                  <option value="">请选择</option>
+                  <option v-for="p in 101" :key="p" :value="p - 1">
+                    {{ p - 1 }}%
                   </option>
                 </select></label
               >

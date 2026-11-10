@@ -9,6 +9,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
   Min,
   MinLength,
@@ -123,6 +124,27 @@ export class MatchCaseDto {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
   )
   lawyerAccountId?: string;
+  @ApiPropertyOptional({
+    enum: ['FULL_RISK', 'HALF_RISK', 'FIXED_FEE'],
+    description: '律师结算模式：全风险／半风险／固定费用',
+  })
+  @IsOptional()
+  @IsIn(['FULL_RISK', 'HALF_RISK', 'FIXED_FEE'])
+  settlementMode?: 'FULL_RISK' | 'HALF_RISK' | 'FIXED_FEE';
+  @ApiPropertyOptional({
+    pattern: '^(0|[1-9]\\d{0,13})(?:\\.\\d{1,2})?$',
+    description: '基础费（元）；全风险模式必须为 0',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^(?:0|[1-9]\d{0,13})(?:\.\d{1,2})?$/u)
+  baseFee?: string;
+  @ApiPropertyOptional({ minimum: 0, maximum: 100 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  splitPercent?: number;
   @ApiPropertyOptional({
     format: 'uuid',
     description: '同账号有多条档案时明确选择',

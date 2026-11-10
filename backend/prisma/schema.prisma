@@ -2671,6 +2671,7 @@ model LawyerProfile {
   fullName       String                 @map("full_name") @db.VarChar(200)
   lawFirm        String?                @map("law_firm") @db.VarChar(200)
   phone          String?                @db.VarChar(100)
+  address        String?                @db.VarChar(500)
   assignments    CaseLawyerAssignment[]
   accountBinding LawyerAccountBinding?
   boundUser      UserAccount?           @relation("LawyerProfileBoundUser", fields: [boundUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -2687,6 +2688,9 @@ model CaseLawyerAssignment {
   departmentId String        @map("department_id") @db.Uuid
   lawyerId     String        @map("lawyer_id") @db.Uuid
   role         String        @db.VarChar(30)
+  settlementMode String?     @map("settlement_mode") @db.VarChar(20)
+  baseFee        Decimal?    @map("base_fee") @db.Decimal(14, 2)
+  splitPercent   Int?        @map("split_percent")
   startedAt    DateTime      @map("started_at") @db.Timestamptz(3)
   endedAt      DateTime?     @map("ended_at") @db.Timestamptz(3)
   case         Case          @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)

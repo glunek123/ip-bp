@@ -2056,22 +2056,14 @@ describe('UI002 real case workspace host', () => {
       .get('[data-test="workspace-primary-action"]')
       .trigger('click');
     await flushPromises();
-    const select = wrapper
-      .get('[data-test="case-match-form"]')
-      .findAll('select')
-      .at(-1)!.element as HTMLSelectElement;
+    const select = wrapper.get('[data-test="lawyer-select"]')
+      .element as HTMLSelectElement;
     expect(select.options.length).toBe(3);
     select.selectedIndex = 2;
-    await wrapper
-      .get('[data-test="case-match-form"]')
-      .findAll('select')
-      .at(-1)!
-      .trigger('change');
+    await wrapper.get('[data-test="lawyer-select"]').trigger('change');
     expect(
-      (
-        wrapper.get('[data-test="case-match-form"]').findAll('select').at(-1)!
-          .element as HTMLSelectElement
-      ).selectedIndex,
+      (wrapper.get('[data-test="lawyer-select"]').element as HTMLSelectElement)
+        .selectedIndex,
     ).toBe(2);
     await router.push('/calendar');
     await router.push('/cases/case-1');
@@ -2080,10 +2072,8 @@ describe('UI002 real case workspace host', () => {
       .get('[data-test="workspace-primary-action"]')
       .trigger('click');
     expect(
-      (
-        wrapper.get('[data-test="case-match-form"]').findAll('select').at(-1)!
-          .element as HTMLSelectElement
-      ).selectedIndex,
+      (wrapper.get('[data-test="lawyer-select"]').element as HTMLSelectElement)
+        .selectedIndex,
     ).toBe(2);
   });
   it('recovers the original complaint body and key after visiting the case list', async () => {

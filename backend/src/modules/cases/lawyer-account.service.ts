@@ -139,13 +139,29 @@ export class LawyerAccountService {
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       take: 50,
     });
+    // 匹配卡片要直接带出律师电话／律所／地址，这里一并返回档案信息。
+    const profileIds = accounts.map(
+      (account) => account.lawyerBindings[0].profileId,
+    );
+    const profiles = await this.database.lawyerProfile.findMany({
+      where: { id: { in: profileIds }, departmentId: actor.departmentId },
+      select: { id: true, phone: true, lawFirm: true, address: true },
+    });
+    const byId = new Map(profiles.map((profile) => [profile.id, profile]));
     return {
-      items: accounts.map((account) => ({
-        lawyerAccountId: account.id,
-        username: account.localCredential?.username ?? '',
-        displayName: account.displayName,
-        lawyerProfileId: account.lawyerBindings[0].profileId,
-      })),
+      items: accounts.map((account) => {
+        const profileId = account.lawyerBindings[0].profileId;
+        const profile = byId.get(profileId);
+        return {
+          lawyerAccountId: account.id,
+          username: account.localCredential?.username ?? '',
+          displayName: account.displayName,
+          lawyerProfileId: profileId,
+          phone: profile?.phone ?? null,
+          lawFirm: profile?.lawFirm ?? null,
+          address: profile?.address ?? null,
+        };
+      }),
     };
   }
 
