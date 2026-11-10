@@ -6,6 +6,7 @@ import {
   IsArray,
   IsIn,
   IsInt,
+  IsOptional,
   IsString,
   IsUUID,
   MaxLength,
@@ -39,6 +40,15 @@ export class SubmitCaseComplaintDto {
   @ArrayMaxSize(10)
   @IsUUID('4', { each: true })
   authorizationContentVersionIds!: string[];
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date',
+    nullable: true,
+    description: '上传诉状的业务日期；缺省按北京时间今天',
+  })
+  @IsOptional()
+  @IsString()
+  submittedOn?: string | null;
 }
 
 export class SubmitCaseComplaintResponseDto {

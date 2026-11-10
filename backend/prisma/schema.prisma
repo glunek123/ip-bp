@@ -2389,6 +2389,7 @@ model Case {
   complaintAmount               Decimal?                           @map("complaint_amount") @db.Decimal(16, 2)
   complaintPendingReason        String?                            @map("complaint_pending_reason") @db.VarChar(500)
   complaintSubmittedAt          DateTime?                          @map("complaint_submitted_at") @db.Timestamptz(3)
+  complaintSubmittedOn          DateTime?                          @map("complaint_submitted_on") @db.Date
   complaintSubmittedByUserId    String?                            @map("complaint_submitted_by_user_id") @db.Uuid
   complaintSubmittedBy          UserAccount?                       @relation("CaseComplaintSubmitter", fields: [complaintSubmittedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   courtCaseNo                   String?                            @map("court_case_no") @db.VarChar(100)
@@ -2769,6 +2770,7 @@ model CaseComplaintConfirmation {
   amountState                        CaseComplaintAmountState @map("amount_state")
   amount                             Decimal?                 @db.Decimal(16, 2)
   pendingReason                      String?                  @map("pending_reason") @db.VarChar(500)
+  bodyText                           String?                  @map("body_text") @db.Text
   changeNote                         String?                  @map("change_note") @db.VarChar(500)
   confirmDisclose                    Boolean?                 @map("confirm_disclose")
   confirmedByUserId                  String                   @map("confirmed_by_user_id") @db.Uuid

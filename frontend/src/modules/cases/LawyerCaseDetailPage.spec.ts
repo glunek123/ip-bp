@@ -863,7 +863,9 @@ describe('LawyerCaseDetailPage', () => {
       .mockRejectedValueOnce(new Error('refresh unavailable'));
     const { wrapper } = await mountPage();
     await wrapper.get('select').setValue('PENDING');
-    await wrapper.findAll('input').at(2)!.setValue('等待金额凭证');
+    await wrapper
+      .get('[data-test="complaint-pending-reason"]')
+      .setValue('等待金额凭证');
     await wrapper
       .get('[data-test="complaint-submit-form"] [data-test="submit-complaint"]')
       .trigger('click');

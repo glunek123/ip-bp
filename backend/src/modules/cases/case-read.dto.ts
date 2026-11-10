@@ -50,6 +50,7 @@ class CaseComplaintSummaryDto {
   @ApiProperty({ type: String, nullable: true }) amount!: string | null;
   @ApiProperty({ type: String, nullable: true }) pendingReason!: string | null;
   @ApiProperty({ format: 'date-time' }) submittedAt!: string;
+  @ApiProperty({ format: 'date', nullable: true }) submittedOn!: string | null;
   @ApiProperty({ format: 'uuid' }) submittedByUserId!: string;
   @ApiProperty({ type: [CaseCertificateFileDto] })
   complaintFiles!: CaseCertificateFileDto[];
@@ -65,6 +66,7 @@ class CaseComplaintConfirmationSummaryDto {
   @ApiProperty({ type: String, nullable: true }) changeNote!: string | null;
   @ApiProperty({ type: Boolean, nullable: true }) confirmDisclose!:
     boolean | null;
+  @ApiProperty({ type: String, nullable: true }) bodyText!: string | null;
   @ApiProperty({ format: 'date-time' }) confirmedAt!: string;
   @ApiProperty({ format: 'uuid' }) confirmedByUserId!: string;
   @ApiProperty({ type: CaseCertificateFileDto, nullable: true })

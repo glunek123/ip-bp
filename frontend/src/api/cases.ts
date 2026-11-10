@@ -897,6 +897,7 @@ export type ComplaintConfirmation = {
   pendingReason: string | null;
   changeNote: string | null;
   confirmDisclose: boolean | null;
+  bodyText?: string | null;
   confirmedAt: string;
   confirmedByUserId: string;
   complaintFile: CaseFile | null;
@@ -980,6 +981,7 @@ export type CaseWorkflowItem = {
     pendingReason: string | null;
     changeNote: string | null;
     confirmDisclose: boolean | null;
+    bodyText?: string | null;
     confirmedAt: string;
     complaintFile: CaseFile | null;
   } | null;
@@ -1304,6 +1306,7 @@ export type SubmitComplaintInput = {
   pendingReason: string | null;
   complaintContentVersionIds: string[];
   authorizationContentVersionIds: string[];
+  submittedOn?: string;
 };
 export type ConfirmCaseComplaintInput = {
   expectedVersion: number;
@@ -1314,6 +1317,7 @@ export type ConfirmCaseComplaintInput = {
   pendingReason: string | null;
   changeNote?: string;
   confirmDisclose?: boolean | null;
+  bodyText?: string | null;
 };
 export type MailCaseComplaintInput = {
   expectedVersion: number;
@@ -4514,15 +4518,19 @@ function validCaseComplaintMailing(
 function validComplaint(value: unknown): value is ComplaintSubmission {
   return (
     record(value) &&
-    exact(value, [
-      'amountState',
-      'amount',
-      'pendingReason',
-      'submittedAt',
-      'submittedByUserId',
-      'complaintFiles',
-      'authorizationFiles',
-    ]) &&
+    exactWithOptional(
+      value,
+      [
+        'amountState',
+        'amount',
+        'pendingReason',
+        'submittedAt',
+        'submittedByUserId',
+        'complaintFiles',
+        'authorizationFiles',
+      ],
+      ['submittedOn'],
+    ) &&
     (value.amountState === 'KNOWN' || value.amountState === 'PENDING') &&
     (value.amount === null ||
       (typeof value.amount === 'string' &&
@@ -4544,17 +4552,21 @@ function validComplaintConfirmation(
 ): value is ComplaintConfirmation {
   return (
     record(value) &&
-    exact(value, [
-      'confirmedComplaintContentVersionId',
-      'amountState',
-      'amount',
-      'pendingReason',
-      'changeNote',
-      'confirmDisclose',
-      'confirmedAt',
-      'confirmedByUserId',
-      'complaintFile',
-    ]) &&
+    exactWithOptional(
+      value,
+      [
+        'confirmedComplaintContentVersionId',
+        'amountState',
+        'amount',
+        'pendingReason',
+        'changeNote',
+        'confirmDisclose',
+        'confirmedAt',
+        'confirmedByUserId',
+        'complaintFile',
+      ],
+      ['bodyText'],
+    ) &&
     nonempty(value.confirmedComplaintContentVersionId) &&
     (value.amountState === 'KNOWN' || value.amountState === 'PENDING') &&
     (value.amount === null ||
@@ -7315,6 +7327,9 @@ export async function submitComplaint(
     !input.idempotencyKey.trim() ||
     !idsValid(input.complaintContentVersionIds) ||
     !idsValid(input.authorizationContentVersionIds) ||
+    (input.submittedOn !== undefined &&
+      (!businessDate(input.submittedOn) ||
+        input.submittedOn > todayShanghai())) ||
     (input.amountState === 'KNOWN'
       ? input.amount === null ||
         !/^\d+(\.\d+)?$/u.test(input.amount) ||

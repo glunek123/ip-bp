@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
-import type { CaseFile } from '../../api/cases';
+import { todayShanghai, type CaseFile } from '../../api/cases';
 
 type UploadCategory = 'COMPLAINT' | 'AUTHORIZATION';
 
@@ -19,6 +19,7 @@ withDefaults(
     locked?: boolean;
     /** 金额状态已在抽屉顶部选择时，表单不再重复渲染同一控件。 */
     showAmountState?: boolean;
+    submittedOn?: string;
   }>(),
   // Vue 会把未传入的布尔 prop 转成 false；显式默认为 true，保证单独使用
   // 本组件（律师端详情页）时仍显示金额状态选择器。
@@ -36,6 +37,7 @@ const emit = defineEmits<{
   'update:amountState': [value: 'KNOWN' | 'PENDING'];
   'update:amount': [value: string];
   'update:pendingReason': [value: string];
+  'update:submittedOn': [value: string];
 }>();
 </script>
 
@@ -46,6 +48,23 @@ const emit = defineEmits<{
       上传材料与确认提交是两个独立动作。上传不会推进案件；确认后将固定本次选择的文件版本并进入“诉状待确认”。
     </p>
     <div class="demo-form-grid">
+      <label>
+        上传诉状日期 <span aria-hidden="true">*</span>
+        <input
+          :value="submittedOn || todayShanghai()"
+          type="date"
+          class="text-input"
+          data-test="complaint-submitted-on"
+          :max="todayShanghai()"
+          required
+          @input="
+            emit(
+              'update:submittedOn',
+              ($event.target as HTMLInputElement).value,
+            )
+          "
+        />
+      </label>
       <label>
         起诉状 <span aria-hidden="true">*</span>
         <input
@@ -75,7 +94,7 @@ const emit = defineEmits<{
         </li>
       </ul>
       <label>
-        授权材料 <span aria-hidden="true">*</span>
+        授权委托书 <span aria-hidden="true">*</span>
         <input
           type="file"
           class="text-input"
@@ -136,6 +155,7 @@ const emit = defineEmits<{
         <input
           :value="pendingReason"
           class="text-input"
+          data-test="complaint-pending-reason"
           @input="
             emit(
               'update:pendingReason',

@@ -35,6 +35,16 @@ export class ConfirmCaseComplaintDto {
   @IsOptional()
   @IsBoolean()
   confirmDisclose?: boolean | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 20000,
+    description: '确认时在线预览并修改后的诉状正文快照',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  bodyText?: string | null;
 }
 
 export class ConfirmCaseComplaintResponseDto {

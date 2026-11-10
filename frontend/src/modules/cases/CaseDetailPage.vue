@@ -979,6 +979,7 @@ const submitting = ref(false);
 const complaintUploads = ref<CaseFile[]>([]);
 const authorizationUploads = ref<CaseFile[]>([]);
 const amountState = ref<'KNOWN' | 'PENDING'>('KNOWN');
+const complaintSubmittedOn = ref(todayShanghai());
 const amount = ref('');
 const pendingReason = ref('');
 const uploadErrors = ref<Record<string, string>>({});
@@ -2068,6 +2069,7 @@ async function submitComplaintMaterials() {
     authorizationContentVersionIds: authorizationUploads.value.map(
       (file) => file.contentVersionId,
     ),
+    submittedOn: complaintSubmittedOn.value,
   };
   const fingerprint = JSON.stringify({ ...input, idempotencyKey: undefined });
   if (fingerprint !== complaintFingerprint) {
@@ -3311,6 +3313,8 @@ onBeforeUnmount(() => {
             v-model:amount-state="amountState"
             v-model:amount="amount"
             v-model:pending-reason="pendingReason"
+            :submitted-on="complaintSubmittedOn"
+            @update:submitted-on="complaintSubmittedOn = $event"
             :upload-loading="uploadLoading"
             :upload-errors="uploadErrors"
             :error="complaintError"

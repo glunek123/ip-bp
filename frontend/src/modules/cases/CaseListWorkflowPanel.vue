@@ -216,6 +216,7 @@ const schema = {
     pendingReason: nullable(string),
     complaintContentVersionIds: strings,
     authorizationContentVersionIds: strings,
+    submittedOn: optional(string),
   },
   confirmation: {
     confirmedComplaintContentVersionId: string,
@@ -224,6 +225,7 @@ const schema = {
     pendingReason: nullable(string),
     changeNote: optional(string),
     confirmDisclose: optional(nullable(boolean)),
+    bodyText: optional(nullable(string)),
   },
   mailing: {
     mailedAt: string,

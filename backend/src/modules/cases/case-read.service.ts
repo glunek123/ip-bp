@@ -1081,6 +1081,7 @@ export class CaseReadService {
         complaintAmount: true,
         complaintPendingReason: true,
         complaintSubmittedAt: true,
+        complaintSubmittedOn: true,
         complaintSubmittedByUserId: true,
         complaintConfirmation: {
           select: {
@@ -1090,6 +1091,7 @@ export class CaseReadService {
             pendingReason: true,
             changeNote: true,
             confirmDisclose: true,
+            bodyText: true,
             confirmedAt: true,
             confirmedByUserId: true,
           },
@@ -3498,6 +3500,10 @@ export class CaseReadService {
                     ).toFixed(2),
               pendingReason: record.complaintPendingReason,
               submittedAt: record.complaintSubmittedAt.toISOString(),
+              submittedOn:
+                record.complaintSubmittedOn == null
+                  ? null
+                  : record.complaintSubmittedOn.toISOString().slice(0, 10),
               submittedByUserId: record.complaintSubmittedByUserId!,
               complaintFiles: complaintFiles
                 .filter((ref) => ref.purpose === 'COMPLAINT')
@@ -3522,6 +3528,7 @@ export class CaseReadService {
               pendingReason: record.complaintConfirmation.pendingReason,
               changeNote: record.complaintConfirmation.changeNote,
               confirmDisclose: record.complaintConfirmation.confirmDisclose,
+              bodyText: record.complaintConfirmation.bodyText,
               confirmedAt:
                 record.complaintConfirmation.confirmedAt.toISOString(),
               confirmedByUserId: record.complaintConfirmation.confirmedByUserId,

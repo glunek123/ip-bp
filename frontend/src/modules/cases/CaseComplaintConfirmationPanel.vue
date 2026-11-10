@@ -46,6 +46,14 @@ const amountState = ref<'KNOWN' | 'PENDING'>('KNOWN');
 const amount = ref('');
 const pendingReason = ref('');
 const changeNote = ref('');
+const bodyText = ref('');
+watch(
+  () => [props.item.id, props.readRevision] as const,
+  () => {
+    bodyText.value = props.item.complaintConfirmation?.bodyText ?? '';
+  },
+  { immediate: true },
+);
 const confirmDisclose = ref<boolean | null>(null);
 const uploadLoading = ref(false);
 const uploadError = ref('');
@@ -318,6 +326,7 @@ function createRequest(): ConfirmCaseComplaintInput | null {
       amountState.value === 'PENDING' ? pendingReason.value.trim() : null,
     ...(changeNote.value.trim() ? { changeNote: changeNote.value.trim() } : {}),
     confirmDisclose: confirmDisclose.value,
+    bodyText: bodyText.value.trim() || null,
   };
 }
 
@@ -491,6 +500,22 @@ onBeforeUnmount(() => {
                 : (item.complaint?.amountState ?? 'PENDING')
             "
           />
+        </label>
+        <label>
+          在线预览并修改
+          <textarea
+            v-model="bodyText"
+            data-test="confirmation-body-text"
+            class="text-input"
+            rows="8"
+            maxlength="20000"
+            :disabled="
+              unknownRequest !== null ||
+              confirmationSubmitting ||
+              !!item.complaintConfirmation
+            "
+            placeholder="可在此核对并修改诉状正文；确认后按本次内容留存快照。"
+          ></textarea>
         </label>
         <details :open="!selectedVersionId && versions.length > 1">
           <summary>诉状材料与版本</summary>

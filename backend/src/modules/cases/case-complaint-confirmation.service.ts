@@ -242,6 +242,7 @@ export class CaseComplaintConfirmationService {
                 amount: normalized.amount,
                 pendingReason: normalized.pendingReason,
                 changeNote: normalized.changeNote,
+                bodyText: normalized.bodyText,
                 confirmDisclose: normalized.confirmDisclose ?? null,
                 confirmedByUserId: actor.userId,
                 confirmedAt,
@@ -304,7 +305,10 @@ export class CaseComplaintConfirmationService {
         (typeof input.changeNote !== 'string' ||
           input.changeNote.trim() !== input.changeNote ||
           input.changeNote.length < 1 ||
-          input.changeNote.length > 500))
+          input.changeNote.length > 500)) ||
+      (input.bodyText !== undefined &&
+        input.bodyText !== null &&
+        (typeof input.bodyText !== 'string' || input.bodyText.length > 20000))
     )
       throw this.validation();
     const changeNote = input.changeNote ?? null;
@@ -320,6 +324,7 @@ export class CaseComplaintConfirmationService {
         amount: new Prisma.Decimal(input.amount).toFixed(2),
         pendingReason: null,
         changeNote,
+        bodyText: input.bodyText?.trim() || null,
       };
     }
     if (
@@ -336,6 +341,7 @@ export class CaseComplaintConfirmationService {
       amount: null,
       pendingReason: input.pendingReason,
       changeNote,
+      bodyText: input.bodyText?.trim() || null,
     };
   }
   private validation() {

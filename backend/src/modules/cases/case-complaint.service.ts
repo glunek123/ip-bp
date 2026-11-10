@@ -60,11 +60,29 @@ export class CaseComplaintService {
                 departmentId: true,
                 stage: true,
                 version: true,
+                matchedOn: true,
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
               },
             });
             if (record === null) throw this.notFound();
+            const today = new Intl.DateTimeFormat('en-CA', {
+              timeZone: 'Asia/Shanghai',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+            }).format(new Date());
+            const submittedOn = normalized.submittedOn ?? today;
+            if (
+              !/^\d{4}-\d{2}-\d{2}$/u.test(submittedOn) ||
+              new Date(`${submittedOn}T00:00:00.000Z`)
+                .toISOString()
+                .slice(0, 10) !== submittedOn ||
+              submittedOn > today ||
+              (record.matchedOn != null &&
+                submittedOn < record.matchedOn.toISOString().slice(0, 10))
+            )
+              throw this.validation();
             const account = await tx.userAccount.findUnique({
               where: { id: actor.userId },
               select: { accountType: true, active: true },
@@ -179,6 +197,7 @@ export class CaseComplaintService {
                 complaintAmount: normalized.amount,
                 complaintPendingReason: normalized.pendingReason,
                 complaintSubmittedAt: submittedAt,
+                complaintSubmittedOn: new Date(`${submittedOn}T00:00:00.000Z`),
                 complaintSubmittedByUserId: actor.userId,
               },
             });
@@ -199,6 +218,7 @@ export class CaseComplaintService {
                   amountState: normalized.amountState,
                   amount: normalized.amount,
                   pendingReason: normalized.pendingReason,
+                  submittedOn,
                   complaintContentVersionIds:
                     normalized.complaintContentVersionIds,
                   authorizationContentVersionIds:

@@ -4947,6 +4947,7 @@ describe('cases API', () => {
         pendingReason: null,
         changeNote: '按客户补充版本确认',
         confirmDisclose: true,
+        bodyText: '诉状正文快照',
         confirmedAt: '2026-10-02T02:00:00Z',
         confirmedByUserId: 'user-1',
         complaintFile: null,
