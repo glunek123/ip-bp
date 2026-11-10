@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-10T07:51:40.353Z",
+  "recordedAt": "2026-11-10T07:55:24.321Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1658,7 +1658,7 @@
     "frontend/src/modules/leads/NotaryMatterListPage.spec.ts": "49fd6f322145b699d80f21d65cbbed9200a8522da82781b4ca75a469485d8155",
     "frontend/src/modules/leads/NotaryMatterListPage.vue": "ee4f9f6e6e1de85b6ca21c005066e479511185ea9539f29aa9f762ad2bfe3142",
     "frontend/src/modules/leads/NotaryMatterWorkflowPanel.spec.ts": "526112d8778ccef3770f9ae408aa61b1106f1814fdf178095256c34e81f6354c",
-    "frontend/src/modules/leads/NotaryMatterWorkflowPanel.vue": "2b81753e417a2a431caf65a74d3ca5be053c8a4b469640ea00163e60d92df4fe",
+    "frontend/src/modules/leads/NotaryMatterWorkflowPanel.vue": "eba999ca0802f6e78a54373a82f921e320717830b9f535d6a438ca37547034c9",
     "frontend/src/modules/leads/NotaryOfficesPage.spec.ts": "29c91a1d11986108df5347a5ca17b5361318fbfa01d70e4dadabe74578ef4d50",
     "frontend/src/modules/leads/NotaryOfficesPage.vue": "a03b116ea138c3ed196b8cce5b1fd935e18e7fb4dffcf90530e3cec2f6ebf63a",
     "frontend/src/modules/leads/NotaryOpeningImportPanel.spec.ts": "6928411bce86cbce326290ee4240ae457cbb551132af37f7ac460c2be56e3665",

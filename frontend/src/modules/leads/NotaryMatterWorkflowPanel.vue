@@ -861,34 +861,6 @@ const requestedAction = computed<Command['kind'] | undefined>(
     }).find(([action]) => action === props.session.context.actionKey)?.[1] as
       Command['kind'] | undefined,
 );
-const currentAction = computed<Command['kind'] | null>(() => {
-  const current = props.detail;
-  if (current.stage === 'WAITING_UNBOX' && current.capabilities.recordOpening)
-    return 'opening';
-  if (current.stage === 'UNBOX_REVIEW' && current.capabilities.reviewOpening)
-    return 'review';
-  if (
-    current.stage === 'ISSUANCE_DECISION' &&
-    current.capabilities.decideIssuance
-  )
-    return 'issuance';
-  if (
-    current.stage === 'PENDING_EVIDENCE' &&
-    current.capabilities.recordEvidence
-  )
-    return 'evidence';
-  if (
-    (requestedAction.value === 'return' &&
-      current.stage === 'WAITING_RETURN' &&
-      current.capabilities.archiveReturn) ||
-    (requestedAction.value === 'return' &&
-      current.stage !== 'WAITING_RETURN' &&
-      current.stage !== 'ARCHIVED' &&
-      current.capabilities.archiveMatter)
-  )
-    return 'return';
-  return null;
-});
 // 一个阶段可能同时允许多个动作（例如待取证时既登记取证，也可提前归档）。
 // 用"当前阶段允许的动作集合"判断，而不是只认单一 currentAction，
 // 否则从列表点「提前归档」时表单会整体不渲染，表现为按钮点了没反应。
