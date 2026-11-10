@@ -342,7 +342,13 @@ export class CaseReadService {
     const displayRecords =
       principal === 'INTERNAL' && items.length > 0
         ? await this.database.case.findMany({
-            where: { ...where, id: { in: items.map((item) => item.id) } },
+            // 只按「已授权的 id + 部门」补读显示字段。沿用主查询的 where 会把
+            // 阶段/筛选条件带进来：两次查询之间案件推进阶段，这一行就取不到，
+            // 下游会把整页判成 404，而不是只影响那一行。
+            where: {
+              id: { in: items.map((item) => item.id) },
+              departmentId: actor.departmentId,
+            },
             select: caseListDisplaySelect,
           })
         : [];

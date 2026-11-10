@@ -965,6 +965,21 @@ describe('CaseReadService', () => {
     });
   });
 
+  it('re-reads list display fields by id and department only', async () => {
+    // 两次查询之间案件可能推进阶段；显示字段补读若沿用带阶段过滤的 where，
+    // 该行就取不到，下游会把整页判成 404。
+    const f = fixture();
+    const record = externalRecord('WAITING_ARCHIVE');
+    f.db.case.findMany.mockResolvedValue([record]);
+    await f.service.list(actor, 1, 20);
+    const calls = f.db.case.findMany.mock.calls;
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    expect(calls[1]![0].where).toEqual({
+      id: { in: [record.id] },
+      departmentId: actor.departmentId,
+    });
+  });
+
   it.each([
     ['SECOND_INSTANCE', 'canSaveSecondInstance'],
     ['WAITING_EXECUTION_DOCUMENTS', 'canSubmitExecution'],

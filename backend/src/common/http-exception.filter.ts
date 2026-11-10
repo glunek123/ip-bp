@@ -261,6 +261,14 @@ function safeErrorReason(value: unknown): string | undefined {
   return undefined;
 }
 
+// Prisma 事务超时（P2028）属于容量/负载问题，不是请求本身有错：映射为 503 并
+// 给出可重试的业务码，避免被兜底成"服务内部错误"而无法区分。
+function transactionTimeoutCode(exception: unknown): string | null {
+  const cause =
+    exception instanceof Error && exception.cause ? exception.cause : exception;
+  return safeCode(asRecord(cause).code) === 'P2028' ? 'SERVICE_BUSY' : null;
+}
+
 function diagnosticFields(exception: unknown) {
   const cause =
     exception instanceof Error && exception.cause ? exception.cause : exception;
@@ -298,27 +306,31 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const response = context.getResponse<Response>();
     const status =
       exception instanceof HttpException ? exception.getStatus() : 500;
+    const busy = status === 500 ? transactionTimeoutCode(exception) : null;
+    const finalStatus = busy === null ? status : 503;
     const raw =
       exception instanceof HttpException ? exception.getResponse() : undefined;
     const payload: Record<string, unknown> =
       raw && typeof raw === 'object' ? { ...raw } : {};
     const requestId = request.requestId ?? randomUUID();
     const code =
-      status !== 500 && typeof payload.code === 'string'
+      busy ??
+      (status !== 500 && typeof payload.code === 'string'
         ? payload.code
-        : (errorCodes[status] ?? 'HTTP_ERROR');
-    const message =
-      status === 500
+        : (errorCodes[status] ?? 'HTTP_ERROR'));
+    const message = busy
+      ? '服务繁忙，请稍后重试'
+      : status === 500
         ? '服务内部错误'
         : typeof payload.message === 'string'
           ? payload.message
           : '请求未能完成';
     const details = safeDetails(payload.details, code);
-    if (status >= 500) {
+    if (finalStatus >= 500) {
       this.logger.error({
         event: 'request_failed',
         requestId,
-        status,
+        status: finalStatus,
         code,
         ...requestDiagnostics(request),
         location: errorLocation(exception),
@@ -326,11 +338,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       });
     }
     response.setHeader('X-Request-Id', requestId);
-    response.status(status).json({
+    response.status(finalStatus).json({
       code,
       message,
       requestId,
-      ...(status < 500 && details ? { details } : {}),
+      ...(finalStatus < 500 && details ? { details } : {}),
     });
   }
 }

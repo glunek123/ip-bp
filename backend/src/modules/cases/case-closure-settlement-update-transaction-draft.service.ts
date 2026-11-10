@@ -412,6 +412,14 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
                 ),
               };
               const termsChange = expected.settlementTermsChange;
+              // 首次评估可能以空令牌引导（条款已存在但尚无评估）：此时回执里的
+              // before.version 是真实版本、而请求令牌为 null。回放不能按等值比较，
+              // 否则"保存成功但响应丢失→用原请求重试"必然被判为无效回执。
+              // 请求体一致性由 fingerprint 以及 before/after 逐字段比对保证。
+              const bootstrapTermsReplay =
+                (input.settlement?.expectedTermsVersion ?? null) === null &&
+                termsChange !== null &&
+                termsChange.before.version !== null;
               const changesRequested =
                 input.settlement !== undefined &&
                 [
@@ -472,8 +480,9 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
                     termsAudit.details.authorizationRevision,
                   ) ||
                   termsAudit.details.authorizationRevision < 1 ||
-                  termsChange.before.version !==
-                    input.settlement?.expectedTermsVersion
+                  (!bootstrapTermsReplay &&
+                    termsChange.before.version !==
+                      (input.settlement?.expectedTermsVersion ?? null))
                 )
                   return fail('INVALID_RECEIPT');
               }
