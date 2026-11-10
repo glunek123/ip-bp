@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-10T05:36:14.082Z",
+  "recordedAt": "2026-11-10T05:53:07.404Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -315,6 +315,7 @@
     "backend/prisma/migrations/20261109091000_case_complaint_and_filing/migration.sql": "1be132c029f4b6f8cc996763ac2cfbe43418c6024e3958f772646622226ec016",
     "backend/prisma/migrations/20261109092000_case_acceptance_drafts_and_payment_reminders/migration.sql": "eb45bedeb3863afa4bce547b28f36459ace292936455897974f1ca0016c99aa5",
     "backend/prisma/migrations/20261109123000_case_list_mine_preferences/migration.sql": "e51a5e649170d5c3c58fb37d9527b58710414981717925b514be2bb721aa28ec",
+    "backend/prisma/migrations/20261110140000_allow_closure_document_version_reuse/migration.sql": "2ea96e5b69de7532effa1590874ff4681b16b862c38ed019c606abdbffac57d3",
     "backend/prisma/schema.prisma": "3d85c3493e0e0625bca1a518a9acd98efd87ec3de9b069574e3543c4ff08f772",
     "backend/src/access-control/access-control.module.ts": "3f4bf7e4b1d47df6a6a6e3a92311abad3769bb036ba5cd04c2bd62a48b401c4b",
     "backend/src/access-control/access-control.service.spec.ts": "fd5f17d5dc99f6f079b2622bb7f223ad2bf26b818fb4d37744639668af96ef09",
@@ -962,7 +963,7 @@
     "backend/src/modules/materials/material.dto.ts": "812e1be21fc9fcca1ef02ad8f81f9b7eb8190a3aadf9bec868a8831c23c2111c",
     "backend/src/modules/materials/material.module.ts": "3824e6f5efd19b7124736b43a552179f2a851f05c8b46d600d9165be4ffb6e31",
     "backend/src/modules/materials/material.service.spec.ts": "b448bcac9b55b590be21949079d07e5ae4a898969fe84cc86b8061e1da724c4a",
-    "backend/src/modules/materials/material.service.ts": "f5be26a677005aefc570a00ebe7aeb3cd05ca3366385a77103614afb4d960354",
+    "backend/src/modules/materials/material.service.ts": "e1afa1282cad566bcb30960cdbd4a38856e3881d6800646b35cfeab704972557",
     "backend/src/modules/materials/payment-proof-claimed-storage-draft.spec.ts": "fe581e5c1603d3496e8466aa968c0114417df7a96d7764ada0c81b7a0b967b3f",
     "backend/src/modules/materials/payment-proof-housekeeping-gate-draft.spec.ts": "41df99d1984b62cbb96fca38e737f9dfeb84108cbc5b3ffe3f2bcc1bfa802592",
     "backend/src/modules/materials/private-blob-storage.provider.spec.ts": "f059fcce94fd386f0656f2351643ee65b4bf48e3599baea5db2c449ec042d8e9",
