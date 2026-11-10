@@ -5812,6 +5812,14 @@ export class MaterialService {
     facts: readonly ValidatedMaterialVersionFact[],
     actionEventId: string,
   ): Promise<void> {
+    // 结案资料冻结是"保证该版本包含这些材料"，不是"每次调用都新插一遍"：
+    // 结算更新在不改结案资料时会复用同一结案版本，文书与引用已经存在；
+    // 逐条 create 会撞 case_closure_documents(closure_version_id, material_id)
+    // 与 material_references(每案每用途每内容版本唯一) 的唯一键，对外表现为 500。
+    // 用 createMany + skipDuplicates，让唯一键在数据库侧裁决，并发下也安全。
+    const documents: Prisma.CaseClosureDocumentCreateManyInput[] = [];
+    const references: Prisma.MaterialReferenceCreateManyInput[] = [];
+    const frozenVersions = new Set<string>();
     for (const fact of facts) {
       const validation = this.validatedVersionFacts.get(fact);
       const canonical = validation?.canonicalFact;
@@ -5827,27 +5835,35 @@ export class MaterialService {
         canonical.sizeBytes > BigInt(materialFileLimit('CASE_CLOSURE_DOCUMENT'))
       )
         throw this.invalidVersion();
-      await transaction.caseClosureDocument.create({
-        data: {
-          closureVersionId,
-          caseId,
-          departmentId: actor.departmentId,
-          materialId: canonical.materialId,
-          contentVersionId: canonical.contentVersionId,
-        },
+      const versionKey = canonical.contentVersionId.toLowerCase();
+      if (frozenVersions.has(versionKey)) continue;
+      frozenVersions.add(versionKey);
+      documents.push({
+        closureVersionId,
+        caseId,
+        departmentId: actor.departmentId,
+        materialId: canonical.materialId,
+        contentVersionId: canonical.contentVersionId,
       });
-      await transaction.materialReference.create({
-        data: {
-          departmentId: actor.departmentId,
-          resourceType: 'case',
-          resourceId: caseId,
-          purpose: 'CASE_CLOSURE_DOCUMENT',
-          materialId: canonical.materialId,
-          contentVersionId: canonical.contentVersionId,
-          actionEventId,
-        },
+      references.push({
+        departmentId: actor.departmentId,
+        resourceType: 'case',
+        resourceId: caseId,
+        purpose: 'CASE_CLOSURE_DOCUMENT',
+        materialId: canonical.materialId,
+        contentVersionId: canonical.contentVersionId,
+        actionEventId,
       });
     }
+    if (documents.length > 0)
+      await transaction.caseClosureDocument.createMany({
+        data: documents,
+        skipDuplicates: true,
+      });
+    // 每个结案版本都需要绑定自己审计事件的引用（触发器按版本逐条校验），
+    // 同一文书跨版本复用由 material_references 的部分唯一索引放行 CASE_CLOSURE_DOCUMENT。
+    if (references.length > 0)
+      await transaction.materialReference.createMany({ data: references });
   }
 
   async listFrozenCaseClosureFiles(

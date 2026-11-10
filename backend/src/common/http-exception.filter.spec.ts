@@ -240,6 +240,40 @@ describe('HttpExceptionFilter operational timeout diagnostics', () => {
       logger.mockRestore();
     }
   }
+  it('maps a prisma transaction timeout to a retryable 503 instead of an opaque 500', () => {
+    const error = Object.assign(new Error('Transaction API error: timeout'), {
+      code: 'P2028',
+    });
+    const json = jest.fn();
+    const response = {
+      setHeader: jest.fn(),
+      status: jest.fn().mockReturnValue({ json }),
+    };
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          requestId: 'busy-request',
+          method: 'GET',
+          route: { path: '/api/v1/cases/:id' },
+          url: '/api/v1/cases/case-1',
+          headers: {},
+        }),
+        getResponse: () => response,
+      }),
+    } as unknown as ArgumentsHost;
+    const logger = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    try {
+      new HttpExceptionFilter().catch(error, host);
+      expect(response.status).toHaveBeenCalledWith(503);
+      expect(json).toHaveBeenCalledWith({
+        code: 'SERVICE_BUSY',
+        message: '服务繁忙，请稍后重试',
+        requestId: 'busy-request',
+      });
+    } finally {
+      logger.mockRestore();
+    }
+  });
   it('classifies exact client timeout and hides sensitive request body and cookies', () => {
     const log = failure(new Error('Query read timeout'));
     expect(log.errorReason).toBe('PG_CLIENT_QUERY_READ_TIMEOUT');

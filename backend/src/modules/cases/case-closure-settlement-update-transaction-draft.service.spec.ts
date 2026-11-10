@@ -503,6 +503,31 @@ describe('atomic settlement update transaction draft (mock database only)', () =
       expectedTermsVersion: 1,
     });
   });
+  it('replays a bootstrap save whose request carried no terms token', async () => {
+    // 历史条款存在（v2）但从未生成评估：客户端拿不到令牌，只能送 null。
+    // 首存成功后响应丢失，用同一请求键重放必须返回原回执，而不是 INVALID_RECEIPT。
+    const f = fixture(),
+      input = value();
+    const base = f.tx.$queryRawUnsafe.getMockImplementation()!;
+    f.tx.$queryRawUnsafe.mockImplementation(
+      async (sql: string, ...args: unknown[]) =>
+        // 只拦截"是否已存在评估"的探测；回执守卫的 child_link 校验同样包含
+        // case_settlement_assessment_versions 文本，必须走原实现返回 valid。
+        sql
+          .trimStart()
+          .startsWith('SELECT id FROM case_settlement_assessment_versions')
+          ? []
+          : base(sql, ...args),
+    );
+    input.settlement!.expectedTermsVersion = null;
+    input.settlement!.customerAmount = { mode: 'MANUAL', amount: '7.77' };
+    const result = await f.service.update(actor, caseId, input);
+    expect(result.settlementTermsChange?.before).toMatchObject({ version: 2 });
+    f.replay();
+    await expect(f.service.update(actor, caseId, input)).resolves.toEqual(
+      result,
+    );
+  });
   it('rejects a stale terms version before assessment or successful receipt', async () => {
     const f = fixture(),
       input = value();

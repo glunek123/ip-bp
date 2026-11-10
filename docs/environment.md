@@ -164,3 +164,30 @@ pnpm setup:local
 `pnpm setup:local`（`scripts/setup-local.mjs`）是本地环境的**唯一初始化入口**：幂等，已有配置不会被覆盖；缺失的 `AUTH_THROTTLE_SECRET` 会自动生成（32 随机字节、hex 编码）；不打印任何秘密值。新 clone 的项目执行一次即可获得可启动的本地环境，**不需要手工复制真实 Secret**。根 `.env`、`backend/.env`、`backend/.env.test` 均被 Git 忽略，示例文件只保存占位说明。
 
 启动前诊断复用 `backend/src/common/environment.ts` 的同一套校验，对 `NODE_ENV`、`PORT`、`DATABASE_URL`、`TRUST_PROXY_HOPS`、`AUTH_THROTTLE_SECRET` 做 fail-fast 检查，错误信息只描述字段和格式、不回显取值；本地场景的错误会直接提示执行 `pnpm setup:local`。生产环境的 Secret 仍由部署侧密钥管理提供，不在该脚本范围内。
+
+## 开发机启动须知（2026-11-10 补充）
+
+在 WorkBuddy/CodeBuddy 这类带删除护栏的会话里启动开发环境，会踩两个坑，按下面做可以一次起成：
+
+1. **启动前关掉批量删除护栏**。`pnpm dev` 第一步是 `prisma generate`，它会先清掉
+   `backend/src/generated/prisma/models` 下 200+ 个文件，触发
+   `[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":224,"threshold":50,...}`，
+   后端直接起不来，前端因为 `--parallel` 一起失败：
+
+   ```bash
+   export CODEBUDDY_SAFE_DELETE_ENABLED=0
+   pnpm dev
+   ```
+
+   该环境变量只对"同回合累计删除 ≥50 文件"的批量护栏生效；目录被占用导致的
+   `FAIL_CLOSED / trash-failed` 不在此列。
+
+2. **用任务托管方式常驻**。直接 `nohup pnpm dev &` 在工具会话结束后会被回收，
+   再跑浏览器脚本就 `ERR_CONNECTION_REFUSED`/502。用工具的后台任务方式启动，
+   或在本机终端里独立开一个窗口跑。
+
+3. **起完先验三件**：`curl 127.0.0.1:5173` 返回 200、`curl 127.0.0.1:3000/api/v1/health`
+   返回 200、`docker ps` 里 `dev-cor-postgres-1` 与 `dev-cor-postgres-test-1` 都 healthy。
+   测试库是 tmpfs，容器重建后为空，跑数据库类用例前必须先
+   `pnpm --filter @dev-cor/backend db:migrate:deploy:test`，否则迁移探针会以
+   `type "case_stage" does not exist` 失败（不是业务缺陷）。

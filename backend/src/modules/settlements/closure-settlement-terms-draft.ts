@@ -19,6 +19,12 @@ export async function updateClosureSettlementTermsInTransaction(
   termsVersion: number | null;
   change: SettlementTermsChange | null;
 }> {
+  // 条款行在历史数据上可能尚不存在，行锁对"不存在的行"不生效；用事务级
+  // advisory lock 按案件串行化，使空令牌引导与常规写入走同一把锁。
+  await tx.$executeRawUnsafe(
+    'SELECT pg_advisory_xact_lock(hashtext($1)::bigint)',
+    `case_settlement_terms:${caseId}`,
+  );
   await tx.$queryRawUnsafe(
     'SELECT case_id FROM case_settlement_terms WHERE case_id=$1::uuid AND department_id=$2::uuid FOR UPDATE',
     caseId,

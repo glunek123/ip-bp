@@ -2687,7 +2687,9 @@ describe('MaterialService', () => {
             skipDuplicates: true,
           },
         );
-        expect(f.transaction.caseClosureDocument.create).not.toHaveBeenCalled();
+        expect(
+          f.transaction.caseClosureDocument.createMany,
+        ).not.toHaveBeenCalled();
         expect(
           f.transaction.caseExecutionFinishVersion.create,
         ).not.toHaveBeenCalled();
@@ -3566,12 +3568,15 @@ describe('MaterialService', () => {
       facts,
       'audit',
     );
-    expect(f.transaction.caseClosureDocument.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        materialId: 'document',
-        contentVersionId: 'version',
-        closureVersionId: 'new-closure',
-      }),
+    expect(f.transaction.caseClosureDocument.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          materialId: 'document',
+          contentVersionId: 'version',
+          closureVersionId: 'new-closure',
+        }),
+      ],
+      skipDuplicates: true,
     });
     f.transaction.$queryRawUnsafe.mockResolvedValue([]);
     await expect(
@@ -3631,7 +3636,16 @@ describe('MaterialService', () => {
         'audit',
       );
     }
-    expect(f.transaction.caseClosureDocument.create).toHaveBeenCalledTimes(2);
+    const closedMany = f.transaction.caseClosureDocument
+      .createMany as unknown as jest.Mock;
+    // 冻结可能被调用多次（结案与结算各一次），每次都批量写并交给唯一键去重，
+    // 因此断言"累计写入的文书条数"而不是调用次数。
+    expect(
+      closedMany.mock.calls.reduce(
+        (sum, call) => sum + (call[0].data as unknown[]).length,
+        0,
+      ),
+    ).toBe(2);
     expect(f.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
       expect.stringContaining(
         "cr.result_snapshot->>'closureVersionId'=v.id::text",
@@ -3670,7 +3684,9 @@ describe('MaterialService', () => {
         ),
       ).rejects.toThrow();
       expect(f.transaction.material.findMany).not.toHaveBeenCalled();
-      expect(f.transaction.caseClosureDocument.create).not.toHaveBeenCalled();
+      expect(
+        f.transaction.caseClosureDocument.createMany,
+      ).not.toHaveBeenCalled();
     },
   );
   it('creates a dedicated bound settlement target and draft without granting ordinary correction', async () => {
@@ -4530,14 +4546,17 @@ describe('MaterialService', () => {
       facts,
       'audit',
     );
-    expect(f.transaction.caseClosureDocument.create).toHaveBeenCalledWith({
-      data: {
-        closureVersionId: 'closure-v1',
-        caseId: customerId,
-        departmentId: actor.departmentId,
-        materialId: 'material',
-        contentVersionId: 'v1',
-      },
+    expect(f.transaction.caseClosureDocument.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          closureVersionId: 'closure-v1',
+          caseId: customerId,
+          departmentId: actor.departmentId,
+          materialId: 'material',
+          contentVersionId: 'v1',
+        },
+      ],
+      skipDuplicates: true,
     });
     await expect(
       f.service.freezeCaseClosureReferences(
@@ -8408,7 +8427,11 @@ function createFixture() {
     caseClosureRecordCorrectionDocument: {
       create: jest.fn().mockResolvedValue({}),
     },
-    caseClosureDocument: { create: jest.fn().mockResolvedValue({}) },
+    caseClosureDocument: {
+      create: jest.fn().mockResolvedValue({}),
+      createMany: jest.fn(async () => ({ count: 1 })),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     caseExecutionFinishVersion: { create: jest.fn().mockResolvedValue({}) },
     $executeRawUnsafe: jest.fn(async () => 1),
     $queryRawUnsafe: jest
@@ -8461,7 +8484,7 @@ function createFixture() {
       create: jest.fn().mockResolvedValue({}),
       findFirst: jest.fn().mockResolvedValue(null),
       count: materialReferenceCount,
-      findMany: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
       deleteMany: jest.fn(),
       createMany: jest.fn(async () => ({ count: 1 })),
     },

@@ -119,7 +119,7 @@ export class SettlementAssessmentDraftService {
         command.declaration === 'APPLICABLE' &&
         (inputs.closureAmountState !== 'KNOWN' ||
           result?.customerAmount == null ||
-          result.lawyerAmount === null)
+          result?.lawyerAmount == null)
       )
         throw new ConflictException({
           code: 'SETTLEMENT_AMOUNT_UNKNOWN',
