@@ -5860,11 +5860,10 @@ export class MaterialService {
         data: documents,
         skipDuplicates: true,
       });
+    // 每个结案版本都需要绑定自己审计事件的引用（触发器按版本逐条校验），
+    // 同一文书跨版本复用由 material_references 的部分唯一索引放行 CASE_CLOSURE_DOCUMENT。
     if (references.length > 0)
-      await transaction.materialReference.createMany({
-        data: references,
-        skipDuplicates: true,
-      });
+      await transaction.materialReference.createMany({ data: references });
   }
 
   async listFrozenCaseClosureFiles(
