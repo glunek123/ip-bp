@@ -1174,12 +1174,12 @@ function matterActions(
     },
     {
       enabled: matter.capabilities.decideIssuance,
-      label: '决定是否出证',
+      label: '确认',
       anchor: 'issuance-form',
     },
     {
       enabled: Boolean(matter.capabilities.proxyIssueCertificate),
-      label: '代办公证处出证',
+      label: '填写出证',
       anchor: 'certificate',
     },
     {

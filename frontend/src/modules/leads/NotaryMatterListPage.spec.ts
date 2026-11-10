@@ -1124,7 +1124,7 @@ describe('NotaryMatterListPage', () => {
     ['recordEvidence', 'evidence-form', '登记取证'],
     ['recordOpening', 'opening-form', '登记开箱'],
     ['reviewOpening', 'review-form', '审核'],
-    ['decideIssuance', 'issuance-form', '出证决定'],
+    ['decideIssuance', 'issuance-form', '确认'],
     ['archiveReturn', 'return-archive-form', '退货归档'],
   ])(
     'names the server-authorized %s next step as an in-place button',

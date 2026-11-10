@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-10T08:29:06.000Z",
+  "recordedAt": "2026-11-10T08:46:29.820Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1655,9 +1655,9 @@
     "frontend/src/modules/leads/NotaryBatchOpeningPanel.spec.ts": "c8736eac6115a0ea9eeb30e731ae19203aded4a6a1cd084e78bd43dc178dc1c9",
     "frontend/src/modules/leads/NotaryBatchOpeningPanel.vue": "fa4767a09090b0c2acda82acf464cc1f1b63c4d727ee12d6c18ed168169e2266",
     "frontend/src/modules/leads/NotaryMatterDetailPage.spec.ts": "b60d05d2338917a1c7f21cc0a0e84fd0603221ae53e2f2ac4d4e06b934e0199b",
-    "frontend/src/modules/leads/NotaryMatterDetailPage.vue": "bbd99fda53bb02f06ab34cabcdb0d77994e6e74b6a7888c781d902c1c475d595",
-    "frontend/src/modules/leads/NotaryMatterListPage.spec.ts": "49fd6f322145b699d80f21d65cbbed9200a8522da82781b4ca75a469485d8155",
-    "frontend/src/modules/leads/NotaryMatterListPage.vue": "ee4f9f6e6e1de85b6ca21c005066e479511185ea9539f29aa9f762ad2bfe3142",
+    "frontend/src/modules/leads/NotaryMatterDetailPage.vue": "ae2afdc84fd147c191231d781b6d5e493adbc728db2d1d1e12903d8a841aa730",
+    "frontend/src/modules/leads/NotaryMatterListPage.spec.ts": "2355fb7d6ddc3a862d3ab1fa7c6444f84ccd1613b9a351c2a59b7b430da6126a",
+    "frontend/src/modules/leads/NotaryMatterListPage.vue": "62245d03326fc1e9fde7e064e5b95a535d0615e7fa397e4ba8cbeb4182f67324",
     "frontend/src/modules/leads/NotaryMatterWorkflowPanel.spec.ts": "526112d8778ccef3770f9ae408aa61b1106f1814fdf178095256c34e81f6354c",
     "frontend/src/modules/leads/NotaryMatterWorkflowPanel.vue": "e5e8a816dc7a9998eb692acf2997dea87b70ff32ed8497cf430d556b212b0d76",
     "frontend/src/modules/leads/NotaryOfficesPage.spec.ts": "29c91a1d11986108df5347a5ca17b5361318fbfa01d70e4dadabe74578ef4d50",

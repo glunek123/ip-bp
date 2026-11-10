@@ -136,7 +136,7 @@ const workflowGuidance = computed(() => {
       return {
         text: '下一步登记真实公证书、材料和费用；获授权的运营可在本页代办公证处出证。',
         ...(current.capabilities.proxyIssueCertificate
-          ? { anchor: 'certificate', action: '代办公证处出证' }
+          ? { anchor: 'certificate', action: '填写出证' }
           : {}),
       };
     case 'WAITING_RETURN':
