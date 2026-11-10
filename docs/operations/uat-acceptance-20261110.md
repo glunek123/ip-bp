@@ -89,3 +89,19 @@
 ## 结论
 
 **有条件通过**：主链路 B1–B12 与二审两条分支在开发环境实测通过；A 组全绿；结算实际登记与归档两节未闭环，需补齐后再判定"全链路通过"。
+
+## 本轮验收发现的新缺陷（未修）
+
+**结算再次保存 → 500（P2002 唯一键冲突）**
+
+- 触发：案件 `00520261110002`（待归档、已有一份「历史结案文书」）第二次保存结算更新，
+  同时勾选「结案金额已确认」与「无诉讼退费」。
+- 现象：`POST /api/v1/cases/:id/closure-settlement-updates` 返回 500 `INTERNAL_ERROR`，
+  请求 ID `49cc5b67…`／`29372678…`。
+- 定位：`backend/src/modules/materials/material.service.ts` → `freezeCaseClosureReferences`
+  内 `caseClosureDocument.create`，Prisma `P2002` / PG `23505`，
+  冲突键为 `case_closure_documents(closure_version_id, material_id)`。
+- 推断：同一 `closureVersionId` 下同一 `materialId` 被冻结两次（历史文书与本次选择各冻结一次，
+  或冻结函数在同一事务内被调用两次）。按 materialId/内容版本去重两次尝试均未解除，已回退，
+  需要在调用侧或改用 `createMany({skipDuplicates:true})` 处理，并补一条"重复冻结"用例。
+- 影响：运营改一次结算金额就会失败；B13 已通过（回款 5000 已登记），B14 归档因此无法进入。
