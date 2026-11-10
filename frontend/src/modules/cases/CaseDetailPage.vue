@@ -572,7 +572,6 @@ function openUpload(): void {
     WAITING_COMPLAINT_STAMP: 'mail-complaint',
     WAITING_FILING: 'filing',
     WAITING_FORMAL_ACCEPTANCE: 'acceptance',
-    WAITING_HEARING: 'acceptance',
     WAITING_JUDGMENT: 'judgment',
     SECOND_INSTANCE: 'second-instance',
     WAITING_EXECUTION_DOCUMENTS: 'execution-submission',

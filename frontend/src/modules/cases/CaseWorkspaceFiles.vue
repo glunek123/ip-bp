@@ -439,8 +439,10 @@ const canOpenUpload = computed(() => {
     case 'WAITING_FILING':
       return item.canSubmitFiling;
     case 'WAITING_FORMAL_ACCEPTANCE':
-    case 'WAITING_HEARING':
       return item.canUploadAcceptanceMaterials;
+    case 'WAITING_HEARING':
+      // 待开庭阶段没有可推进的操作：立案信息已在正式立案时登记完毕。
+      return false;
     case 'WAITING_JUDGMENT':
       return (
         (item.canRegisterJudgment && !item.judgment.current) ||

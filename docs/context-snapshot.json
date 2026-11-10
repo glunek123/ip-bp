@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-10T09:01:44.799Z",
+  "recordedAt": "2026-11-10T09:30:33.653Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1450,7 +1450,7 @@
     "frontend/src/modules/cases/CaseCsvImportPanel.vue": "e882288e7cc7a6d03673a02d048c38b7bcf4c840ba42ae0c4c694be396a01eff",
     "frontend/src/modules/cases/CaseDefendantContactPanel.vue": "9a6c52b5342cfa22e6ec3c50c524248bc9fb7b906512879e234d7b9bad83e9f5",
     "frontend/src/modules/cases/CaseDetailPage.spec.ts": "26ab14db9bda2f929426f8d9e54cfd3f41d32a4af6d1aa7081403fdbb39dcdbd",
-    "frontend/src/modules/cases/CaseDetailPage.vue": "648b92000fd4f39f306c7dc0578c5d1bfd1dea6665ee36a8550c6ee93f9219eb",
+    "frontend/src/modules/cases/CaseDetailPage.vue": "dcf6fdf66b6657402add0eae50932b8c6cd8252db5594816ecfc64ce2605e7a7",
     "frontend/src/modules/cases/CaseDetailsSections.spec.ts": "3bd28f9773d7f04863a0f5505c47740c8fa4e8e8f4f4fafe39bc4f2e7dac9a7c",
     "frontend/src/modules/cases/CaseDetailsSections.vue": "4cde442ca38cbfb99672fe5fab94666b4eb2a0c047e8f517f7c95fdb19f4fe22",
     "frontend/src/modules/cases/CaseEarlyClosureForm.spec.ts": "1e48e8b33a388ff61005a58bed83b5333d8742601035f13b750819074e3c13da",
@@ -1523,7 +1523,7 @@
     "frontend/src/modules/cases/CaseWorkspaceFees.spec.ts": "729ae6265a7f931a1ec6c3558d4e0fe5fcb3e9f7b39cf58c9da539ec85ec867b",
     "frontend/src/modules/cases/CaseWorkspaceFees.vue": "ebdfe37f1089ee1a500358126802b7bf71fe46938686eba66b2dacf96938766e",
     "frontend/src/modules/cases/CaseWorkspaceFiles.spec.ts": "d33f7194fbf54bd9aee739d4512298d084a0719337cc75a51f65f90a4e9b3255",
-    "frontend/src/modules/cases/CaseWorkspaceFiles.vue": "bef19189514f0c6556f91d495b9eea027b73657cc146b648e81bfd615c9ba72a",
+    "frontend/src/modules/cases/CaseWorkspaceFiles.vue": "5a7b542fb550aacaf4cbd0fdcb665d30088e74d8f0a03d0ee5a701ff36e43dec",
     "frontend/src/modules/cases/CaseWorkspaceIntegration.spec.ts": "36a1ee4a2a3265ac9a079e13ecb045a89b13480de1a9a0018fb6f45e39c78b60",
     "frontend/src/modules/cases/CaseWorkspaceSection.spec.ts": "53a9bc7dd781ddd9f43eacaad5eac8c8cbb8266e3f72f31777191d7b8e4b8a57",
     "frontend/src/modules/cases/CaseWorkspaceSection.vue": "062de8ab2950e626a9546f1a0a4036b0cdc80068350d1fe563539e902c9b81d0",
