@@ -145,3 +145,28 @@
 - 下一步（精确）：在 `settlement-assessment-draft.service.ts` 落库前打印
   `{declaration, customerAmount, lawyerAmount, calculationResult}`，跑一次复现，
   即可确认是取错字段还是计算结果本身为空，再决定补哪一侧。
+
+### 结算更新的根因：结案文书跨版本复用与两条数据库约束冲突（设计级，待决策）
+
+用 API 直接驱动后拿到确定结论（与前端无关）：
+
+1. `closeAmountState=PENDING` + 声明"涉及" → **409 `SETTLEMENT_AMOUNT_UNKNOWN`**（可读、正确），
+   证明本轮修的守卫生效（此前同组合是 500）。
+2. 改为 `closeAmountState=KNOWN` + 双方手工金额 → 仍在 `SET CONSTRAINTS ALL IMMEDIATE` 处 500，
+   数据库日志给出真正的报错：
+   - `closure audit/reference/receipt mismatch`（引用必须绑定本次结案版本的审计事件）
+   - 尝试把已有引用改绑事件 → `immutable closure reference`（引用创建后不可变）
+
+两条约束叠加的结果是：**同一份结案文书不能跨结案版本复用**。而界面每次保存结算都会
+携带 `closeContentVersionIds`，后端据此创建新的结案版本并要求新引用，于是必然冲突。
+
+因此这不是"一行代码的 bug"，需要产品决策，三选一：
+
+- **A（推荐）**：结算更新不新建结案版本——结算字段与结案资料分离，只在结案资料确实变化时
+  才产生新版本（前端在未改资料时不提交 `closeContentVersionIds`，后端复用当前版本）。
+- B：放宽 `material_references` 的部分唯一索引，允许同一文书对应多个事件，改由触发器按
+  "版本→事件"校验。
+- C：要求运营每次改结算都重新上传结案文书（运营成本高，不接受）。
+
+阻塞影响：**任何已有结案文书的案件，第二次保存结算都会失败**，B14 归档与"改金额"日常动作
+全部走不通，是当前唯一的上线阻断项。
