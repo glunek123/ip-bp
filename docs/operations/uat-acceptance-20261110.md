@@ -185,3 +185,34 @@
 结论：方案 A 只覆盖"改声明/金额"这一支；"改付款/退费 + 已有结案文书"仍需放宽
 `material_references` 的部分唯一索引（方案 B），或在后端做"文书沿用但不重复冻结"的
 专门实现，并补迁移与回填验证。
+
+## B14 归档：四检全绿并成功归档（2026-11-10 开发环境）
+
+用 `00120261026019`（有承办律师、有待归档结案版本）跑通完整资金链：
+
+| 步骤                                                  | 结果                                                                                                                                                                      |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 结算保存（结案金额 2000、保留原付款、不重复声明退费） | 201，v19 → v20                                                                                                                                                            |
+| 归档四检                                              | payment `CLOSURE_PAYMENT_REACHED`、refund `REFUND_EXPLICITLY_NOT_APPLICABLE`、customer `CUSTOMER_RECEIPTS_REACHED`、lawyer `LAWYER_INVOICES_REACHED` —— **四项全 PASSED** |
+| 客户回款 7000 / 律师开票 5000                         | 201×2，`allocatedAmount` 与金额一致（全额计入本案）                                                                                                                       |
+| 归档                                                  | **201**，`stage=ARCHIVED`，`version=21`                                                                                                                                   |
+
+### 顺序依赖（重要，需写进运营 SOP）
+
+**结算保存会生成新的结案版本，使已有评估变成 `ASSESSMENT_SOURCE_STALE`**，此时客户/律师两项
+检查从 PASSED 退回 UNKNOWN。必须**最后一次**再调金额命令（改声明/金额）把评估重算到当前版本，
+四项才会同时 PASSED，然后才能归档。
+
+如果运营先改付款、后改金额，顺序恰好正确；如果先改金额、再改付款，就会看到
+"客户回款/律师开票 UNKNOWN"却不明所以——建议界面在 `ASSESSMENT_SOURCE_STALE` 时直接提示
+"结算资料已变更，请重新确认应结金额"。
+
+### 过程中发现的接口问题（待修）
+
+1. **重复声明退费 → 500**：案件已声明"无诉讼退费"后，再次以 `expectedVersionId=null` 提交
+   `DECLARE_NOT_APPLICABLE`，`case-refund-inventory-draft.service.ts:37` 抛裸 `Error`，
+   对外是 500。应改为 409 + 业务码。
+2. `POST /settlements/actual-registrations` 的 `idempotencyKey` 是**请求体必填字段**（不仅是头），
+   缺了只返回笼统的 `VALIDATION_ERROR`。
+3. 一次性付款案件再添加付款记录返回 `ONE_TIME_PAYMENT_LIMIT`，规则合理但文案是
+   "请求未能完成"，运营看不出原因。
