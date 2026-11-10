@@ -3057,7 +3057,7 @@ onBeforeUnmount(() => {
             </h2>
             <div v-if="item.defendants.length" class="demo-form-grid">
               <label
-                >委案日期 <span aria-hidden="true">*</span
+                >匹配日期 <span aria-hidden="true">*</span
                 ><input
                   v-model="matchedOn"
                   type="date"

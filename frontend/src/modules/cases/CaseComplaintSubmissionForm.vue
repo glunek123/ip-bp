@@ -41,7 +41,7 @@ const emit = defineEmits<{
 
 <template>
   <section class="demo-card demo-card--pad" data-test="complaint-submit-form">
-    <h2 class="form-section-title">提交起诉材料</h2>
+    <h2 class="form-section-title">上传诉状</h2>
     <p class="field-help">
       上传材料与确认提交是两个独立动作。上传不会推进案件；确认后将固定本次选择的文件版本并进入“诉状待确认”。
     </p>
@@ -121,7 +121,7 @@ const emit = defineEmits<{
         </select>
       </label>
       <label v-if="amountState === 'KNOWN'">
-        金额
+        标的额（元）
         <input
           :value="amount"
           class="text-input"

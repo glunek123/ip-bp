@@ -248,6 +248,7 @@ const schema = {
     serviceDocumentContentVersionIds: optional(strings),
     hearingAt: optional(nullable(string)),
     hearingPlace: optional(nullable(string)),
+    judgeName: optional(nullable(string)),
     courtDisclosureText: optional(nullable(string)),
     courtDisclosureContentVersionIds: optional(strings),
   },

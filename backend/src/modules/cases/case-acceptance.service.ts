@@ -194,6 +194,7 @@ export class CaseAcceptanceService {
           input.serviceDocumentContentVersionIds ?? [],
         hearingAt: input.hearingAt || null,
         hearingPlace: input.hearingPlace?.trim() || null,
+        judgeName: input.judgeName?.trim() || null,
         courtDisclosureText: input.courtDisclosureText?.trim() || null,
         courtDisclosureContentVersionIds:
           input.courtDisclosureContentVersionIds ?? [],
@@ -222,6 +223,7 @@ export class CaseAcceptanceService {
     const fingerprintSource: Record<string, unknown> = { caseId, ...value };
     if (value.hearingAt === null) fingerprintSource.hearingAt = undefined;
     if (value.hearingPlace === null) fingerprintSource.hearingPlace = undefined;
+    if (value.judgeName === null) fingerprintSource.judgeName = undefined;
     if (value.courtDisclosureText === null)
       fingerprintSource.courtDisclosureText = undefined;
     if (value.courtDisclosureContentVersionIds.length === 0)
@@ -496,7 +498,11 @@ export class CaseAcceptanceService {
               versions,
               audit.id,
             );
-            if (value.hearingAt !== null || value.hearingPlace !== null) {
+            if (
+              value.hearingAt !== null ||
+              value.hearingPlace !== null ||
+              value.judgeName !== null
+            ) {
               const hearingAudit = await tx.auditEvent.create({
                 data: {
                   departmentId: actor.departmentId,
@@ -510,6 +516,7 @@ export class CaseAcceptanceService {
                   details: {
                     hearingAt: value.hearingAt,
                     hearingPlace: value.hearingPlace,
+                    judgeName: value.judgeName,
                     fromVersion: value.expectedVersion,
                     toVersion: value.expectedVersion + 1,
                     withAcceptanceRegistration: true,
@@ -529,6 +536,7 @@ export class CaseAcceptanceService {
                       ? null
                       : new Date(`${value.hearingAt}T00:00:00.000Z`),
                   hearingPlace: value.hearingPlace,
+                  judgeName: value.judgeName,
                   source: 'SCHEDULE',
                   recordedAt,
                   recordedByUserId: actor.userId,
@@ -659,6 +667,7 @@ export class CaseAcceptanceService {
     const courtId = input.courtId === undefined ? null : input.courtId;
     const hearingAt = input.hearingAt ?? null;
     const hearingPlace = input.hearingPlace?.trim() || null;
+    const judgeName = input.judgeName?.trim() || null;
     const courtDisclosureText = input.courtDisclosureText?.trim() || null;
     const disclosureIds = input.courtDisclosureContentVersionIds ?? [];
     if (
@@ -687,6 +696,7 @@ export class CaseAcceptanceService {
             hearingAt ||
           hearingAt < input.acceptedAt)) ||
       (hearingPlace !== null && hearingPlace.length > 500) ||
+      (judgeName !== null && judgeName.length > 200) ||
       (courtDisclosureText !== null && courtDisclosureText.length > 2000) ||
       !Array.isArray(disclosureIds) ||
       disclosureIds.length > 10 ||
@@ -703,6 +713,7 @@ export class CaseAcceptanceService {
       courtId,
       hearingAt,
       hearingPlace,
+      judgeName,
       courtDisclosureText,
       courtDisclosureContentVersionIds: disclosureIds,
       acceptanceNoticeContentVersionIds: arrays[0],

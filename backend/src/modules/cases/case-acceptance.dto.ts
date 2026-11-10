@@ -87,6 +87,16 @@ export class RegisterCaseAcceptanceDto {
   @ApiPropertyOptional({
     type: String,
     nullable: true,
+    maxLength: 200,
+    description: '承办法官，随开庭安排一并登记',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  judgeName?: string | null;
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
     maxLength: 2000,
     description: '法院披露文本，复用 COURT_DISCLOSURE 补充材料',
   })
@@ -130,6 +140,7 @@ class CaseAcceptanceDraftFieldsDto {
   @ApiProperty({ type: String, format: 'date', nullable: true })
   hearingAt!: string | null;
   @ApiProperty({ type: String, nullable: true }) hearingPlace!: string | null;
+  @ApiProperty({ type: String, nullable: true }) judgeName!: string | null;
   @ApiProperty({ type: String, nullable: true })
   courtDisclosureText!: string | null;
   @ApiProperty({ type: [String] })

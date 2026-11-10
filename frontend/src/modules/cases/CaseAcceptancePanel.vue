@@ -53,6 +53,7 @@ const paymentDueAt = ref('');
 const courtId = ref('');
 const hearingAt = ref('');
 const hearingPlace = ref('');
+const judgeName = ref('');
 const courtDisclosureText = ref('');
 type DisclosureFile = { contentVersionId: string; filename: string };
 const disclosureFiles = ref<DisclosureFile[]>([]);
@@ -110,6 +111,7 @@ function clearContext(): void {
   courtId.value = '';
   hearingAt.value = '';
   hearingPlace.value = '';
+  judgeName.value = '';
   courtDisclosureText.value = '';
   disclosureFiles.value = [];
   disclosureUploading.value = false;
@@ -234,6 +236,7 @@ watch(
       courtId.value = draft.courtId ?? '';
       hearingAt.value = draft.hearingAt ?? '';
       hearingPlace.value = draft.hearingPlace ?? '';
+      judgeName.value = draft.judgeName ?? '';
       courtDisclosureText.value = draft.courtDisclosureText ?? '';
       disclosureFiles.value = (
         draft.courtDisclosureContentVersionIds ?? []
@@ -312,6 +315,7 @@ const ready = computed(
       (validBusinessDate(hearingAt.value) &&
         hearingAt.value >= acceptedAt.value)) &&
     hearingPlace.value.trim().length <= 500 &&
+    judgeName.value.trim().length <= 200 &&
     courtDisclosureText.value.trim().length <= 2000 &&
     uploading.value === null &&
     !disclosureUploading.value &&
@@ -341,6 +345,7 @@ function makeInput(): RegisterCaseAcceptanceInput {
     serviceDocumentContentVersionIds: selectedIds('SERVICE_DOCUMENT'),
     hearingAt: hearingAt.value || null,
     hearingPlace: hearingPlace.value.trim() || null,
+    judgeName: judgeName.value.trim() || null,
     courtDisclosureText: courtDisclosureText.value.trim() || null,
     courtDisclosureContentVersionIds: disclosureFiles.value.map(
       (file) => file.contentVersionId,
@@ -448,6 +453,7 @@ async function saveDraft(): Promise<void> {
       serviceDocumentContentVersionIds: selectedIds('SERVICE_DOCUMENT'),
       hearingAt: hearingAt.value || null,
       hearingPlace: hearingPlace.value.trim() || null,
+      judgeName: judgeName.value.trim() || null,
       courtDisclosureText: courtDisclosureText.value.trim() || null,
       courtDisclosureContentVersionIds: disclosureFiles.value.map(
         (file) => file.contentVersionId,
@@ -705,6 +711,19 @@ async function download(file: CaseFile): Promise<void> {
           v-model="hearingPlace"
           data-test="acceptance-hearing-place"
           maxlength="500"
+          :disabled="unknownRequest !== null || submitting || draftBusy"
+          @input="
+            error = '';
+            success = '';
+          "
+        />
+      </label>
+      <label>
+        <span>承办法官</span>
+        <input
+          v-model="judgeName"
+          data-test="acceptance-judge-name"
+          maxlength="200"
           :disabled="unknownRequest !== null || submitting || draftBusy"
           @input="
             error = '';

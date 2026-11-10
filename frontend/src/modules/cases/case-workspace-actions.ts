@@ -64,7 +64,7 @@ const actionDefinitions = {
   complaint: {
     id: 'complaint',
     section: 'first-instance',
-    label: '提交起诉材料',
+    label: '上传诉状',
   },
   'confirm-complaint': {
     id: 'confirm-complaint',
@@ -74,7 +74,7 @@ const actionDefinitions = {
   'mail-complaint': {
     id: 'mail-complaint',
     section: 'first-instance',
-    label: '登记诉状邮寄',
+    label: '邮寄',
   },
   filing: {
     id: 'filing',

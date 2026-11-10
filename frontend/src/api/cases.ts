@@ -5268,6 +5268,7 @@ export type RegisterCaseAcceptanceInput = {
   serviceDocumentContentVersionIds?: string[];
   hearingAt?: string | null;
   hearingPlace?: string | null;
+  judgeName?: string | null;
   courtDisclosureText?: string | null;
   courtDisclosureContentVersionIds?: string[];
 };
@@ -6099,6 +6100,7 @@ type CaseAcceptanceDraft = {
   serviceDocumentContentVersionIds: string[];
   hearingAt?: string | null;
   hearingPlace?: string | null;
+  judgeName?: string | null;
   courtDisclosureText?: string | null;
   courtDisclosureContentVersionIds?: string[];
 };
@@ -6135,6 +6137,7 @@ export async function caseAcceptanceDraft(
       !uniqueVersions(draft.serviceDocumentContentVersionIds, 0, 10) ||
       (draft.hearingAt != null && !businessDate(draft.hearingAt)) ||
       (draft.hearingPlace != null && typeof draft.hearingPlace !== 'string') ||
+      (draft.judgeName != null && typeof draft.judgeName !== 'string') ||
       (draft.courtDisclosureText != null &&
         typeof draft.courtDisclosureText !== 'string') ||
       (draft.courtDisclosureContentVersionIds != null &&
@@ -6177,6 +6180,7 @@ export async function registerCaseAcceptance(
     (input.hearingAt != null &&
       (!businessDate(input.hearingAt) || input.hearingAt < input.acceptedAt)) ||
     (input.hearingPlace != null && input.hearingPlace.trim().length > 500) ||
+    (input.judgeName != null && input.judgeName.trim().length > 200) ||
     (input.courtDisclosureText != null &&
       input.courtDisclosureText.trim().length > 2000) ||
     (input.courtDisclosureContentVersionIds != null &&

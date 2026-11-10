@@ -1199,7 +1199,7 @@ describe('case list workflow session', () => {
       .setValue('KNOWN');
     const amountLabel = wrapper
       .findAll('label')
-      .find((label) => label.text().trim() === '金额')!;
+      .find((label) => label.text().trim() === '标的额（元）')!;
     await amountLabel.get('input').setValue('12.345');
     await wrapper.get('[data-test="submit-complaint"]').trigger('click');
     await flushPromises();

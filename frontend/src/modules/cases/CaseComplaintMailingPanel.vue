@@ -255,7 +255,7 @@ async function download(file: CaseFile) {
     <template
       v-else-if="unknownRequest || item.stage === 'WAITING_COMPLAINT_STAMP'"
     >
-      <h2 class="form-section-title">登记诉状邮寄</h2>
+      <h2 class="form-section-title">邮寄</h2>
       <template v-if="unknownRequest || item.canMailComplaint">
         <label
           >邮寄日期 <span aria-hidden="true">*</span

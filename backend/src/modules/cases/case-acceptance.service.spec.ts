@@ -130,6 +130,7 @@ describe('CaseAcceptanceService', () => {
       idempotencyKey: 'acceptance-hearing',
       hearingAt: '2026-11-20',
       hearingPlace: '第三法庭',
+      judgeName: '承办法官甲',
       courtDisclosureText: '法院披露的被告经营信息',
       courtDisclosureContentVersionIds: [versionId],
     });
@@ -139,6 +140,7 @@ describe('CaseAcceptanceService', () => {
         trialRoundId: 'round',
         hearingAt: new Date('2026-11-20T00:00:00.000Z'),
         hearingPlace: '第三法庭',
+        judgeName: '承办法官甲',
         source: 'SCHEDULE',
         fromVersion: 6,
         toVersion: 7,

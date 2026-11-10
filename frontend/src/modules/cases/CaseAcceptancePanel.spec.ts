@@ -191,6 +191,9 @@ describe('case acceptance panel', () => {
       .get('[data-test="acceptance-hearing-place"]')
       .setValue(' 第三法庭 ');
     await wrapper
+      .get('[data-test="acceptance-judge-name"]')
+      .setValue(' 承办法官甲 ');
+    await wrapper
       .get('[data-test="acceptance-disclosure-text"]')
       .setValue(' 法院披露的被告经营信息 ');
     await chooseFile(
@@ -236,6 +239,7 @@ describe('case acceptance panel', () => {
         acceptedAt: '2026-10-05',
         hearingAt: '2026-11-20',
         hearingPlace: '第三法庭',
+        judgeName: '承办法官甲',
         courtDisclosureText: '法院披露的被告经营信息',
         courtDisclosureContentVersionIds: ['version-披露附件.pdf'],
       }),
