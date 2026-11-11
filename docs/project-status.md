@@ -1,3 +1,7 @@
+# 2026-11-11 上午：出证允许无证书文件（未提交）
+
+「填写出证」提交后报「材料内容、格式或元数据无效」（MATERIAL_VERSION_INVALID）。两处后端硬校验未同步：assertAvailableVersions 的 NOTARY_CERTIFICATE 仍要求 minCount=1，且 freezeReferences 对空 facts 直接抛错。已改为 minCount=0、无冻结材料时跳过冻结引用。
+
 # 2026-11-11 上午：修复出证提交被「无法保留原请求」拦截（未提交）
 
 「填写出证」提交时报「无法保留原请求」。原因是面板写入前自检 validPending 仍要求公证书文件 ≥1、金额必须两位小数，与放宽后的卡片不符，自检失败后直接返回。已允许证书文件为空、金额 1～2 位小数，且 money() 统一补足两位（11 → 11.00）。

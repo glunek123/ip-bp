@@ -223,7 +223,8 @@ export class NotaryCertificateService {
                 ownerId: matterId,
                 category: 'NOTARY_CERTIFICATE',
                 contentVersionIds: normalized.contentVersionIds,
-                minCount: 1,
+                // 填写出证卡片不再强制公证书文件，允许为空。
+                minCount: 0,
                 maxCount: 10,
               });
             const disclosureFacts = normalized.needDisclose
@@ -403,13 +404,15 @@ export class NotaryCertificateService {
                 },
               },
             });
-            await this.materials.freezeReferences(tx, {
-              departmentId: actor.departmentId,
-              resourceType: 'notary_matter',
-              resourceId: matterId,
-              facts: [...certificateFacts, ...disclosureFacts],
-              actionEventId: audit.id,
-            });
+            // 卡片不再强制公证书文件，无冻结材料时跳过冻结引用。
+            if (certificateFacts.length + disclosureFacts.length > 0)
+              await this.materials.freezeReferences(tx, {
+                departmentId: actor.departmentId,
+                resourceType: 'notary_matter',
+                resourceId: matterId,
+                facts: [...certificateFacts, ...disclosureFacts],
+                actionEventId: audit.id,
+              });
             await initializeNotaryEvidence(tx, {
               departmentId: actor.departmentId,
               sourceNotaryMatterId: matterId,

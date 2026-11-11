@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-11T02:25:57.760Z",
+  "recordedAt": "2026-11-11T02:37:32.137Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -873,8 +873,8 @@
     "backend/src/modules/leads/lead.service.ts": "fc546a7f5c5ac038d00b7609c038da96bf18c8cc57f118f107d39a334e969296",
     "backend/src/modules/leads/notary-account-migration.spec.ts": "fa097fb82d7ee31bc7b3634de0c0f8137ac5566e81c8addcfca7537b3aa8309e",
     "backend/src/modules/leads/notary-certificate.dto.ts": "180f342c4fd3e2554d6e41fabacc158ce07e426d149a9caa070c2dd3906f77a6",
-    "backend/src/modules/leads/notary-certificate.service.spec.ts": "4b408dd9c6a1873c3b5ca1ebe08dac46cc7798f45f4ddeba67ef3df54f11a380",
-    "backend/src/modules/leads/notary-certificate.service.ts": "288c9180fe571d8b07efe649c3e796bf01899b6cd051661da6663057e2c6e028",
+    "backend/src/modules/leads/notary-certificate.service.spec.ts": "e35722f6d8bb9cb849c42109b044dee0e14acec13b1bcf3ad86f55ae3681c374",
+    "backend/src/modules/leads/notary-certificate.service.ts": "6d469a9df7ae2e59e1c1ab0d988da6b96fb4dbec6662662da23a0e93ff18b47c",
     "backend/src/modules/leads/notary-detail-read.spec.ts": "29c01cd6afaf1912c836a0afa62df4cb1f8c24ff230fab7d9b57e932b5160ee1",
     "backend/src/modules/leads/notary-detail-read.ts": "cc8bd391ddaff9e8bec592f63ea86fc848d868771844cd1a3afc8e828e4887d9",
     "backend/src/modules/leads/notary-display-read.spec.ts": "a937311a8f2d7d30e67aca310947bd3345e6581b4725cd07fa24036c885df15d",
@@ -1130,7 +1130,7 @@
     "docs/operations/uat-candidate-v6-2026-10-27.md": "b7b4c6c5857062b85d474d4b9ee8cd5b2a159541f8b84aa9f8c1703ecfc5de55",
     "docs/operations/uat-environment.md": "796175bf98b19878e4308be8e8bd20fbf38a66e1329c93ae1b753668aa975ad4",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "06301da1ae0db7c29d193eb31c8420061127cdc503f5d96b80a5130e94fb42c9",
+    "docs/project-status.md": "a3886e6b376aceffad8bda25934bc5746f86dd76c5088f6580aba14ac0897023",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",

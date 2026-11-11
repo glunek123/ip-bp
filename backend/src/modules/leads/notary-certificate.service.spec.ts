@@ -534,6 +534,23 @@ describe('NotaryCertificateService', () => {
     expect(f.database.$transaction).not.toHaveBeenCalled();
   });
 
+  it('accepts an issuance without certificate files and does not require them', async () => {
+    const f = fixture();
+    await f.service.issue(actor, matterId, 'issue-empty', {
+      ...input,
+      contentVersionIds: [],
+    } as never);
+    expect(f.materials.assertAvailableVersions).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        category: 'NOTARY_CERTIFICATE',
+        contentVersionIds: [],
+        minCount: 0,
+      }),
+    );
+  });
+
   it('retries a PostgreSQL serialization conflict surfaced through Prisma P2010', async () => {
     const f = fixture();
     const serialization = {
