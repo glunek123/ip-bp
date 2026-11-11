@@ -1763,7 +1763,7 @@ onBeforeUnmount(() => {
       <ElButton @click="decision = pendingDecision">核对未确认的办理</ElButton>
     </p>
     <ActionDrawer
-      :model-value="decision !== null"
+      :model-value="!!decision"
       title="线索办理"
       @update:model-value="
         (open) => {

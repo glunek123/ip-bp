@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-11T03:14:07.655Z",
+  "recordedAt": "2026-11-11T03:23:01.499Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1130,7 +1130,7 @@
     "docs/operations/uat-candidate-v6-2026-10-27.md": "b7b4c6c5857062b85d474d4b9ee8cd5b2a159541f8b84aa9f8c1703ecfc5de55",
     "docs/operations/uat-environment.md": "796175bf98b19878e4308be8e8bd20fbf38a66e1329c93ae1b753668aa975ad4",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "368d86f869a91862c88788648c012a5f449fc65b56aaa21f34494b897d382669",
+    "docs/project-status.md": "9dd3ede70b551f5f4b70e86395e29e41167ae5f695145890dcdcd7b317cebe64",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
@@ -1646,8 +1646,8 @@
     "frontend/src/modules/leads/LeadEditPage.vue": "13a5138e56a4a138645fd21de497f2796bc14357806f15def5d4fbc5c8932d8e",
     "frontend/src/modules/leads/LeadForm.spec.ts": "9bdf1ead750a865f9bb181433a2305f3694797f6031168a0715f7860ec48825b",
     "frontend/src/modules/leads/LeadForm.vue": "762a42e137e4d36ef906cfd3883617358166d0fd55956341947977a01725ea13",
-    "frontend/src/modules/leads/LeadListPage.spec.ts": "24241649951afda919ec84b16f6bf8686149f6705bb5267d0d90403a2119ae59",
-    "frontend/src/modules/leads/LeadListPage.vue": "e0745a5dd7e03b3133f2da5e4080e39049d78f01949d7cf9fbc6ca46449a735e",
+    "frontend/src/modules/leads/LeadListPage.spec.ts": "03993020ff61969899b2ad6ee58df7736f24400b7b2c4a6eeaae96eedb9092df",
+    "frontend/src/modules/leads/LeadListPage.vue": "f745dea5b92719693d39b0c82018d9d3bfa324af972230af4c5ade924d25a920",
     "frontend/src/modules/leads/LeadListWorkflowPanel.spec.ts": "edbb752d92f42cd05c2f42731bbfa3034bc2ef3609d6dc7785472aa06ab13db9",
     "frontend/src/modules/leads/LeadListWorkflowPanel.vue": "2451edeaaef5d0c3cb89f6cbe476f701fd25d745fdc1bf1795d73d351e163377",
     "frontend/src/modules/leads/LeadNewPage.spec.ts": "9fb0b18ae0a50daaa2286a33f077e5450a084c8ca7b48dd996f06c044e1a94a6",

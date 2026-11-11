@@ -2096,4 +2096,10 @@ describe('LeadListPage', () => {
     );
     expect(wrapper.text()).toContain('第 2 / 2 页');
   });
+
+  it('keeps the action drawer closed until an operation is chosen', async () => {
+    const { wrapper } = await mountWithRoute('/leads');
+    await flushPromises();
+    expect(wrapper.find('.action-drawer').exists()).toBe(false);
+  });
 });
