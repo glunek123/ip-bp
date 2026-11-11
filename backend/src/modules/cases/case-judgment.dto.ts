@@ -1,6 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  litigationRefundStatuses,
+  type LitigationRefundStatus,
+} from './litigation-refunds.dto';
+import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
@@ -21,6 +25,12 @@ export class CaseJudgmentRefundDto {
   @ApiProperty({ enum: ['COURT', 'DEFENDANT'] })
   @IsIn(['COURT', 'DEFENDANT'])
   party!: 'COURT' | 'DEFENDANT';
+
+  /** 退费状态；不传时按「待退」登记，与结算中心同一张表。 */
+  @ApiPropertyOptional({ enum: litigationRefundStatuses })
+  @IsOptional()
+  @IsIn(litigationRefundStatuses)
+  status?: LitigationRefundStatus;
 
   @ApiProperty({ type: String })
   @IsString()

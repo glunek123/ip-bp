@@ -37,6 +37,10 @@ export class LitigationRefundListQuery {
 }
 
 export class RegisterLitigationRefundInput {
+  @IsOptional()
+  @IsIn(litigationRefundStatuses)
+  status?: LitigationRefundStatus;
+
   @IsUUID('4') itemId!: string;
   @ValidateBy({
     name: 'nullableInventoryVersion',

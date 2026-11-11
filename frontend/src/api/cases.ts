@@ -5318,7 +5318,12 @@ export type RegisterCaseJudgmentInput = {
   paidLitigationFeeState: 'KNOWN' | 'PENDING';
   paidLitigationFee: string | null;
   judgmentContentVersionIds: string[];
-  refunds?: { party: 'COURT' | 'DEFENDANT'; amount: string }[];
+  refunds?: {
+    party: 'COURT' | 'DEFENDANT';
+    amount: string;
+    status?:
+      'PENDING' | 'SUBMITTED' | 'RETURNED_UNSETTLED' | 'SETTLED' | 'RECEIVED';
+  }[];
 };
 export type CorrectCaseJudgmentInput = RegisterCaseJudgmentInput & {
   reason: string;

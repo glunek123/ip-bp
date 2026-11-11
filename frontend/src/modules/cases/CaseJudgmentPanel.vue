@@ -56,7 +56,21 @@ const props = defineProps<{
 const emit = defineEmits<{ changed: []; refresh: []; cancel: [] }>();
 
 const judgmentReceivedAt = ref('');
-type RefundRow = { key: number; party: 'COURT' | 'DEFENDANT'; amount: string };
+type RefundStatus =
+  'PENDING' | 'SUBMITTED' | 'RETURNED_UNSETTLED' | 'SETTLED' | 'RECEIVED';
+const refundStatuses: ReadonlyArray<{ value: RefundStatus; label: string }> = [
+  { value: 'PENDING', label: '待退' },
+  { value: 'SUBMITTED', label: '已提交' },
+  { value: 'RETURNED_UNSETTLED', label: '已退未结算' },
+  { value: 'SETTLED', label: '已结算' },
+  { value: 'RECEIVED', label: '已回款' },
+];
+type RefundRow = {
+  key: number;
+  party: 'COURT' | 'DEFENDANT';
+  amount: string;
+  status: RefundStatus;
+};
 const refundRows = ref<RefundRow[]>([]);
 const canRecordRefund = ref(false);
 let nextRefundKey = 0;
@@ -343,7 +357,8 @@ function makeInput(): RegisterCaseJudgmentInput {
     paidLitigationFee: paidLitigationFee.value.trim() || null,
     ...(refundRows.value.length
       ? {
-          refunds: refundRows.value.map(({ party, amount }) => ({
+          refunds: refundRows.value.map(({ party, amount, status }) => ({
+            status,
             party,
             amount: amount.trim(),
           })),
@@ -622,7 +637,20 @@ function historyLabel(fact: CaseJudgmentFact): string {
             maxlength="17"
             :disabled="unknownRequest !== null || submitting"
           />
-          <span>待退</span>
+          <select
+            v-model="row.status"
+            :aria-label="'第' + (index + 1) + '笔退费状态'"
+            :data-test="`judgment-refund-status-${index}`"
+            :disabled="unknownRequest !== null || submitting"
+          >
+            <option
+              v-for="option in refundStatuses"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
           <ElButton
             text
             :disabled="unknownRequest !== null || submitting"
@@ -639,6 +667,7 @@ function historyLabel(fact: CaseJudgmentFact): string {
               key: nextRefundKey++,
               party: 'COURT',
               amount: '',
+              status: 'PENDING',
             })
           "
         >

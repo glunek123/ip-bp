@@ -639,7 +639,11 @@ export class LitigationRefundsService {
     actor: ActorContext,
     caseId: string,
     sourceId: string,
-    rows: { party: 'COURT' | 'DEFENDANT'; amount: string }[],
+    rows: {
+      party: 'COURT' | 'DEFENDANT';
+      amount: string;
+      status?: LitigationRefundStatus;
+    }[],
   ) {
     for (const row of rows) {
       const head = await this.latest(tx, actor, caseId);
@@ -657,6 +661,7 @@ export class LitigationRefundsService {
           sourceType: 'JUDGMENT',
           party: row.party,
           amount: row.amount,
+          ...(row.status ? { status: row.status } : {}),
           description: '判决更新登记应退金额',
           reason: '随判决资料提交',
         },
@@ -698,6 +703,10 @@ export class LitigationRefundsService {
               input as RegisterLitigationRefundInput
             ).description.trim(),
             reason: (input as RegisterLitigationRefundInput).reason.trim(),
+            // 只有显式传了状态才纳入指纹，避免历史请求重放口径变化。
+            ...((input as RegisterLitigationRefundInput).status
+              ? { status: (input as RegisterLitigationRefundInput).status }
+              : {}),
           };
     const requestFingerprint = fingerprint([
       'LITIGATION_REFUND_V1',
@@ -779,7 +788,7 @@ export class LitigationRefundsService {
         changed = {
           itemId,
           party: registration.party,
-          status: current?.status ?? 'PENDING',
+          status: registration.status ?? current?.status ?? 'PENDING',
           description: registration.description.trim(),
           amount: normalizeRefundAmount(registration.amount),
           sourceType: source.type,
