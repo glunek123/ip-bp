@@ -1311,7 +1311,7 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
           type="submit"
           :disabled="!progressReady"
         >
-          保存当前轮进展
+          保存
         </button>
       </form>
       <form
@@ -1472,7 +1472,7 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
           type="submit"
           :disabled="!resultReady"
         >
-          核对并登记结果
+          提交
         </button>
       </form>
     </template>
