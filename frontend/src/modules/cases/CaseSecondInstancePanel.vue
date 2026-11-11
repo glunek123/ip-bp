@@ -514,6 +514,21 @@ function isUnknown(reason: unknown): boolean {
       ].includes(reason.code))
   );
 }
+function removeFile(
+  kind: 'document' | 'service',
+  contentVersionId: string,
+): void {
+  if (uploading.value !== null || pendingUnknown.value !== null) return;
+  if (kind === 'document')
+    documentFiles.value = documentFiles.value.filter(
+      (file) => file.contentVersionId !== contentVersionId,
+    );
+  else
+    serviceFiles.value = serviceFiles.value.filter(
+      (file) => file.contentVersionId !== contentVersionId,
+    );
+}
+
 function progressPayload(): SecondInstanceProgressInput {
   return {
     hearingAt: hearingAt.value || null,
@@ -1253,6 +1268,23 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             "
             @change="upload('document', $event)"
         /></label>
+        <p
+          v-if="documentFiles.length"
+          class="field-help"
+          data-test="second-instance-document-selected"
+        >
+          已上传：
+          <span v-for="file in documentFiles" :key="file.contentVersionId">
+            {{ file.originalFilename }}
+            <button
+              type="button"
+              class="link-button"
+              @click="removeFile('document', file.contentVersionId)"
+            >
+              移除
+            </button>
+          </span>
+        </p>
         <label
           >二审送达文书<input
             type="file"
@@ -1263,6 +1295,23 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             "
             @change="upload('service', $event)"
         /></label>
+        <p
+          v-if="serviceFiles.length"
+          class="field-help"
+          data-test="second-instance-service-selected"
+        >
+          已上传：
+          <span v-for="file in serviceFiles" :key="file.contentVersionId">
+            {{ file.originalFilename }}
+            <button
+              type="button"
+              class="link-button"
+              @click="removeFile('service', file.contentVersionId)"
+            >
+              移除
+            </button>
+          </span>
+        </p>
         <details class="field-help">
           <summary>已上传的二审文书（可多选或取消）</summary>
           <fieldset>
