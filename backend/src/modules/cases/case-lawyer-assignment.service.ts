@@ -9,6 +9,7 @@ import {
 import { createHash } from 'node:crypto';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
+import { isLawyerAssignableStage } from './case-lawyer-assignable';
 import { DatabaseService } from '../../database/database.service';
 import {
   AssignCaseLawyerDto,
@@ -75,9 +76,7 @@ export class CaseLawyerAssignmentService {
       throw error;
     }
     if (
-      record.stage !== 'PENDING_MATCH' ||
-      record.matchedAt !== null ||
-      record.matchedOn !== null ||
+      !isLawyerAssignableStage(record.stage) ||
       record.consolidationMembership?.isMain === false
     )
       return {
@@ -247,9 +246,7 @@ export class CaseLawyerAssignmentService {
               return this.readReceipt(prior.resultSnapshot, caseId, request);
             }
             if (
-              record.stage !== 'PENDING_MATCH' ||
-              record.matchedAt !== null ||
-              record.matchedOn !== null ||
+              !isLawyerAssignableStage(record.stage) ||
               record.consolidationMembership?.isMain === false
             )
               throw this.invalidState();
@@ -329,11 +326,65 @@ export class CaseLawyerAssignmentService {
             let currentAssignment = previousAssignment;
             let version = record.version;
             if (current) {
-              outcome =
+              if (
                 current.lawyer.accountBinding!.userId ===
                 request.lawyerAccountId
-                  ? 'NO_CHANGE'
-                  : 'SKIPPED';
+              )
+                outcome = 'NO_CHANGE';
+              else {
+                // 变更承办律师：结束旧指派、建立新指派，阶段不变。
+                const now = new Date();
+                const changed = await tx.case.updateMany({
+                  where: {
+                    id: caseId,
+                    departmentId: actor.departmentId,
+                    version: request.expectedVersion,
+                  },
+                  data: { version: { increment: 1 } },
+                });
+                if (changed.count !== 1) throw this.versionConflict();
+                await tx.caseLawyerAssignment.update({
+                  where: { id: current.id },
+                  data: { endedAt: now },
+                });
+                const created = await tx.caseLawyerAssignment.create({
+                  data: {
+                    caseId,
+                    departmentId: actor.departmentId,
+                    lawyerId: profileId,
+                    role: 'PRIMARY',
+                    startedAt: now,
+                  },
+                  select: { id: true },
+                });
+                currentAssignment = {
+                  id: created.id,
+                  lawyerProfileId: profileId,
+                  lawyerAccountId: request.lawyerAccountId,
+                  assignedAt: now.toISOString(),
+                };
+                version += 1;
+                outcome = 'REASSIGNED';
+                await tx.auditEvent.create({
+                  data: {
+                    departmentId: actor.departmentId,
+                    actorUserId: actor.userId,
+                    internalActorUserId: actor.userId,
+                    resourceType: 'CASE',
+                    resourceId: caseId,
+                    action: 'case.lawyer.reassign.succeeded',
+                    details: {
+                      fromVersion: record.version,
+                      toVersion: version,
+                      previousAssignment: previousAssignment
+                        ? { ...previousAssignment }
+                        : null,
+                      currentAssignment: { ...currentAssignment },
+                      outcome,
+                    },
+                  },
+                });
+              }
             } else {
               const now = new Date();
               const changed = await tx.case.updateMany({
@@ -384,7 +435,7 @@ export class CaseLawyerAssignmentService {
             }
             const result: AssignCaseLawyerResponseDto = {
               id: caseId,
-              stage: 'PENDING_MATCH',
+              stage: record.stage,
               version,
               outcome,
               requestedLawyerAccountId: request.lawyerAccountId,
@@ -477,7 +528,8 @@ export class CaseLawyerAssignmentService {
     const current = row.currentAssignment;
     const shared =
       row.id === caseId &&
-      row.stage === 'PENDING_MATCH' &&
+      typeof row.stage === 'string' &&
+      isLawyerAssignableStage(row.stage) &&
       row.requestedLawyerAccountId === request.lawyerAccountId &&
       Number.isInteger(row.version) &&
       (previous === null || assignment(previous)) &&
@@ -490,6 +542,18 @@ export class CaseLawyerAssignmentService {
         currentAssignment.lawyerAccountId !== request.lawyerAccountId ||
         (request.lawyerProfileId !== undefined &&
           currentAssignment.lawyerProfileId !== request.lawyerProfileId) ||
+        row.version !== request.expectedVersion + 1
+      )
+        throw this.corruptReceipt();
+    } else if (row.outcome === 'REASSIGNED') {
+      const previousAssignment = previous as AssignmentViewDto;
+      if (
+        !assignment(previous) ||
+        currentAssignment.lawyerAccountId !== request.lawyerAccountId ||
+        (request.lawyerProfileId !== undefined &&
+          currentAssignment.lawyerProfileId !== request.lawyerProfileId) ||
+        previousAssignment.lawyerAccountId ===
+          currentAssignment.lawyerAccountId ||
         row.version !== request.expectedVersion + 1
       )
         throw this.corruptReceipt();

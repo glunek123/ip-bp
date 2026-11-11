@@ -47,6 +47,7 @@ function fixture() {
     },
     caseLawyerAssignment: {
       findMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockResolvedValue({}),
       create: jest
         .fn()
         .mockResolvedValue({ id: '66666666-6666-4666-8666-666666666666' }),
@@ -178,7 +179,7 @@ describe('CaseLawyerAssignmentService', () => {
     expect(f.tx.caseLawyerAssignmentReceipt.create).toHaveBeenCalledTimes(1);
   });
 
-  it('returns SKIPPED for a different current lawyer without replacing it', async () => {
+  it('reassigns to a different lawyer and ends the previous assignment', async () => {
     const f = fixture();
     f.tx.caseLawyerAssignment.findMany.mockResolvedValue([
       {
@@ -199,14 +200,18 @@ describe('CaseLawyerAssignmentService', () => {
     ]);
     const result = await f.service.assign(actor, caseId, input);
     expect(result).toMatchObject({
-      outcome: 'SKIPPED',
-      version: 1,
+      outcome: 'REASSIGNED',
+      version: 2,
       requestedLawyerAccountId: lawyerAccountId,
-      currentAssignment: {
+      currentAssignment: { lawyerAccountId },
+      previousAssignment: {
         lawyerAccountId: '77777777-7777-4777-8777-777777777777',
       },
     });
-    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+    expect(f.tx.caseLawyerAssignment.update).toHaveBeenCalledWith({
+      where: { id: assignment.id },
+      data: { endedAt: expect.any(Date) as unknown as Date },
+    });
   });
 
   it('rechecks permission before replay, and rejects changed request for the same key', async () => {

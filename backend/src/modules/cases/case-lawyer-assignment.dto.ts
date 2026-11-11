@@ -39,10 +39,18 @@ export class AssignmentViewDto {
 
 export class AssignCaseLawyerResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
-  @ApiProperty({ enum: ['PENDING_MATCH'] }) stage!: 'PENDING_MATCH';
+  @ApiProperty({
+    enum: [
+      'PENDING_MATCH',
+      'WAITING_COMPLAINT',
+      'WAITING_COMPLAINT_CONFIRMATION',
+    ],
+  })
+  stage!:
+    'PENDING_MATCH' | 'WAITING_COMPLAINT' | 'WAITING_COMPLAINT_CONFIRMATION';
   @ApiProperty() version!: number;
-  @ApiProperty({ enum: ['ASSIGNED', 'NO_CHANGE', 'SKIPPED'] }) outcome!:
-    'ASSIGNED' | 'NO_CHANGE' | 'SKIPPED';
+  @ApiProperty({ enum: ['ASSIGNED', 'NO_CHANGE', 'SKIPPED', 'REASSIGNED'] })
+  outcome!: 'ASSIGNED' | 'NO_CHANGE' | 'SKIPPED' | 'REASSIGNED';
   @ApiProperty({ format: 'uuid' }) requestedLawyerAccountId!: string;
   @ApiProperty({ type: AssignmentViewDto, nullable: true })
   currentAssignment!: AssignmentViewDto | null;
