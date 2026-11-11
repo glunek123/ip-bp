@@ -4,6 +4,7 @@ import type { SectionKey } from './case-workspace-contract';
 // URL values are identifiers for existing forms, never stage targets or command bodies.
 const actionIntents = [
   'match',
+  'reassign-lawyer',
   'complaint',
   'confirm-complaint',
   'mail-complaint',
@@ -60,6 +61,11 @@ const actionDefinitions = {
     id: 'match',
     section: 'case-info',
     label: '补充被告／匹配律师',
+  },
+  'reassign-lawyer': {
+    id: 'reassign-lawyer',
+    section: 'case-info',
+    label: '变更承办律师',
   },
   complaint: {
     id: 'complaint',
@@ -196,7 +202,7 @@ function actionForIntent(intent: CaseActionIntent): CaseWorkspaceAction {
 type CaseActionCapabilities = Pick<
   CaseSummary,
   Extract<keyof CaseSummary, `can${string}`> | 'origin' | 'stage'
->;
+> & { lawyerName?: string };
 
 export function parseCaseActionIntent(
   value: unknown,
@@ -444,6 +450,18 @@ export function resolveCaseListActions(
     'payment-proof',
   );
   add(current.canMatch, 'match');
+  // 已指派律师且仍在可分配阶段时开放变更入口。
+  add(
+    Boolean(current.lawyerName) &&
+      (
+        [
+          'PENDING_MATCH',
+          'WAITING_COMPLAINT',
+          'WAITING_COMPLAINT_CONFIRMATION',
+        ] as string[]
+      ).includes(current.stage),
+    'reassign-lawyer',
+  );
   add(current.canSubmitComplaint, 'complaint');
   add(current.canConfirmComplaint, 'confirm-complaint');
   add(current.canMailComplaint, 'mail-complaint');

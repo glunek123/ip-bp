@@ -24,6 +24,7 @@ import type {
   ListWorkflowContext,
   ListWorkflowLoad,
 } from '../../app/list-workflow-context';
+import CaseLawyerReassignPanel from './CaseLawyerReassignPanel.vue';
 import CaseListWorkflowPanel, {
   decodeCaseListRequest,
   readCaseListRecordRecoveries,
@@ -2456,8 +2457,19 @@ onBeforeUnmount(() => {
       @closed="readPendingActions"
     >
       <template #default="{ detail, session, requestState }">
+        <CaseLawyerReassignPanel
+          v-if="selectedAction === 'reassign-lawyer'"
+          :case-id="detail.id"
+          :case-version="detail.version"
+          :current-lawyer-names="detail.lawyers.map((item) => item.fullName)"
+          @close="drawer?.requestClose()"
+          @completed="
+            drawer?.requestClose();
+            load();
+          "
+        />
         <CaseListWorkflowPanel
-          v-if="selectedAction"
+          v-else-if="selectedAction"
           :item="detail"
           :action="selectedAction"
           :session="session"

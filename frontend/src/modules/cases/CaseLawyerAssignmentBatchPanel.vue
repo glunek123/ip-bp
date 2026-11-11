@@ -67,6 +67,8 @@ function stateLabel(state: LawyerAssignmentBatchItem['state']): string {
       return '无需变更';
     case 'SKIPPED':
       return '已跳过';
+    case 'REASSIGNED':
+      return '已变更';
     case 'FAILED':
       return '失败';
     case 'BLOCKED':
@@ -356,9 +358,11 @@ async function sendOne(
         note:
           result.outcome === 'ASSIGNED'
             ? '已分配；案件仍待匹配。'
-            : result.outcome === 'NO_CHANGE'
-              ? '原律师不变。'
-              : '已有其他律师，已跳过。',
+            : result.outcome === 'REASSIGNED'
+              ? '已变更承办律师。'
+              : result.outcome === 'NO_CHANGE'
+                ? '原律师不变。'
+                : '已有其他律师，已跳过。',
       })
     )
       return;

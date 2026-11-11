@@ -12,6 +12,7 @@ export type LawyerAssignmentBatchState =
   | 'ASSIGNED'
   | 'NO_CHANGE'
   | 'SKIPPED'
+  | 'REASSIGNED'
   | 'FAILED'
   | 'BLOCKED';
 export type LawyerAssignmentBatchItem = {
