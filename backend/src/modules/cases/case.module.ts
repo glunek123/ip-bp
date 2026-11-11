@@ -79,6 +79,7 @@ import { CaseFilingService } from './case-filing.service';
 import { CaseAcceptanceService } from './case-acceptance.service';
 import { CaseRecordEditService } from './case-record-edit.service';
 import { CaseHearingService } from './case-hearing.service';
+import { CaseHearingAdvanceScheduler } from './case-hearing-advance.scheduler';
 import { CaseJudgmentService } from './case-judgment.service';
 import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
 import { CaseSecondInstanceService } from './case-second-instance.service';
@@ -300,6 +301,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseExecutionRecordEditService,
     CaseHistoricalRecordEditService,
     CaseHearingService,
+    CaseHearingAdvanceScheduler,
     CaseJudgmentService,
     CaseJudgmentNextStepService,
     CaseSecondInstanceService,
