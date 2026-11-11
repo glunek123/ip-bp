@@ -37,8 +37,8 @@ function invalidSource(): never {
   });
 }
 function files(value: Prisma.JsonValue | undefined): EvidenceElectronicFile[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 10)
-    return invalidSource();
+  // 出证卡片不再强制公证书文件，快照里允许空集合。
+  if (!Array.isArray(value) || value.length > 10) return invalidSource();
   const result = value.map((file) => {
     if (
       typeof file !== 'object' ||

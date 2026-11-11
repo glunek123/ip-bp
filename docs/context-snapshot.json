@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-11T02:48:58.005Z",
+  "recordedAt": "2026-11-11T03:00:46.676Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -784,7 +784,7 @@
     "backend/src/modules/evidence/evidence-export.spec.ts": "3ba00874034fdca32c6bc6261df9a4ebc6a8bba7f6f5bc5f381fae154a137f2f",
     "backend/src/modules/evidence/evidence-export.ts": "ffe90fa6eb6dc39e8ef9bb3ed6d0b07dc1b1dc6e15de6992b0349654a50f85f2",
     "backend/src/modules/evidence/evidence-read-model.spec.ts": "5021fafacb44e3ffeebc778581cf90a8b9a70586a5ed088854a80d63eeed0db2",
-    "backend/src/modules/evidence/evidence-read-model.ts": "418be318b6b7e1887626b90b7708cd95a884f8c42a121f24c3d04d1bd2c30ca9",
+    "backend/src/modules/evidence/evidence-read-model.ts": "4db48b95c458e2d7f194067c27a11d51a68461498b28ef2df163e4831ff139b1",
     "backend/src/modules/evidence/evidence-rules.spec.ts": "13f8c4d2822f0db5493b03f5e0c9bf9d62d72d77d526f58a0c7de6c1b70fb182",
     "backend/src/modules/evidence/evidence-rules.ts": "365e55ea1dd46155782672b7eceac3ad2e9ecda4510c9a60300de2d10ff04556",
     "backend/src/modules/evidence/evidence-source-contract.ts": "cd69c792eda4cd91983882f1855b2ee0f782a5222114b10d268f83fd48ea26d2",
@@ -1312,7 +1312,7 @@
     "frontend/src/api/case-supplements.spec.ts": "2bbbd94376f9f1f865dd853169064be2cb981dbead03f1313cd68330f20f3018",
     "frontend/src/api/case-supplements.ts": "3f60e471866323ad0da4f77a0d3e97fc7d6a58a650fb144db694c920564b93f0",
     "frontend/src/api/cases.spec.ts": "947588858a1226732bf163521c7ff67cdd8ac9db7ba238ea94bc5574cff92d41",
-    "frontend/src/api/cases.ts": "7839a21c3288707764f65393da029d4aa5354f041ec8430d9a5224061f7910e5",
+    "frontend/src/api/cases.ts": "8c6abf2c14d78a5c0d7b28bdac63ce1deeb16c7f23daa3dd9a562dee85285295",
     "frontend/src/api/client-accounts.spec.ts": "8ac708aa813ad1145ffa9699ece38b5d31aa269a8b68ee4652740654408533e3",
     "frontend/src/api/client-accounts.ts": "ed48ccc1f037c0a3b93aebd6e95cbb08a739f3ba4ddb178f74e733340cb6429e",
     "frontend/src/api/client-cases.spec.ts": "9142f35fa8693a85d9e38812e999fa46333e2592eaa4a74bc6b4b57a56031365",

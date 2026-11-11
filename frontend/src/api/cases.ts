@@ -3089,7 +3089,6 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         !Number.isNaN(Date.parse(value.certificate.issuedAt)) &&
         typeof value.certificate.needDisclose === 'boolean' &&
         Array.isArray(value.certificate.files) &&
-        value.certificate.files.length > 0 &&
         value.certificate.files.every(caseFile) &&
         Array.isArray(value.certificate.disclosureFiles) &&
         value.certificate.disclosureFiles.every(caseFile) &&
