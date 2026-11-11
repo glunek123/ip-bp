@@ -245,8 +245,8 @@ describe('CaseComplaintConfirmationPanel', () => {
     expect(
       wrapper.get('[data-test="confirmation-amount"]').element,
     ).toHaveProperty('value', '123.45');
-    expect(wrapper.text()).toContain('权利主体');
-    expect(wrapper.text()).toContain('被告');
+    expect(wrapper.text()).not.toContain('权利主体');
+    expect(wrapper.text()).not.toContain('被告');
   });
 
   it('shows a pending-stage download failure and clears it after a successful retry', async () => {

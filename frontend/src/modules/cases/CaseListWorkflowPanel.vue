@@ -1159,14 +1159,7 @@ async function match() {
 }
 const complaintFiles = ref<api.CaseFile[]>([]);
 const authorizationFiles = ref<api.CaseFile[]>([]);
-const amountState = ref<'KNOWN' | 'PENDING'>('PENDING');
-const complaintAmountChoice = ref<'' | 'KNOWN' | 'PENDING'>('');
-function chooseComplaintAmount() {
-  if (complaintAmountChoice.value)
-    amountState.value = complaintAmountChoice.value;
-}
 const amount = ref('');
-const pendingReason = ref('');
 const uploadLoading = ref<
   Partial<Record<'COMPLAINT' | 'AUTHORIZATION', boolean>>
 >({});
@@ -1279,7 +1272,6 @@ async function complaintUpload(
   }
 }
 async function complaint() {
-  if (!complaintAmountChoice.value) return;
   if (
     complaintUploadUnknown.value ||
     complaintPreloading.value ||
@@ -1291,16 +1283,7 @@ async function complaint() {
     error.value = '请先上传起诉状（1～10 份），再确认提交。';
     return;
   }
-  if (!authorizationFiles.value.length) {
-    error.value = '请先上传授权材料（1～10 份），再确认提交。';
-    return;
-  }
-  if (amountState.value === 'PENDING') {
-    if (!pendingReason.value.trim()) {
-      error.value = '金额状态为“待补充”时，请填写待补充原因。';
-      return;
-    }
-  } else if (!/^\d{1,14}(\.\d{1,2})?$/.test(amount.value)) {
+  if (!/^\d{1,14}(\.\d{1,2})?$/.test(amount.value)) {
     error.value = '金额需为数字，最多 14 位整数、2 位小数，例如 150000.50。';
     return;
   }
@@ -1310,10 +1293,9 @@ async function complaint() {
       input: {
         expectedVersion: item.value.version,
         idempotencyKey: globalThis.crypto.randomUUID(),
-        amountState: amountState.value,
-        amount: amountState.value === 'KNOWN' ? amount.value : null,
-        pendingReason:
-          amountState.value === 'PENDING' ? pendingReason.value.trim() : null,
+        amountState: 'KNOWN',
+        amount: amount.value,
+        pendingReason: null,
         complaintContentVersionIds: complaintFiles.value.map(
           (file) => file.contentVersionId,
         ),
@@ -1479,37 +1461,6 @@ async function complaint() {
       :inert="busy || !!pending"
     >
       <legend class="sr-only">{{ session.context.title }}</legend>
-      <label v-if="action === 'complaint' && !complaintAmountChoice"
-        >金额状态<select
-          data-test="complaint-amount-choice"
-          v-model="complaintAmountChoice"
-          @change="chooseComplaintAmount"
-        >
-          <option value="" disabled>请选择金额状态</option>
-          <option value="KNOWN">已确认</option>
-          <option value="PENDING">待补充</option>
-        </select></label
-      >
-      <p
-        v-else-if="action === 'complaint'"
-        class="field-help"
-        data-test="complaint-amount-chosen"
-      >
-        本次按「{{ amountState === 'KNOWN' ? '已确认' : '待补充' }}」登记金额。
-        <button
-          type="button"
-          data-test="complaint-amount-change"
-          :disabled="busy || !!pending"
-          @click="
-            complaintAmountChoice = '';
-            amount = '';
-            pendingReason = '';
-            error = '';
-          "
-        >
-          更改金额状态
-        </button>
-      </p>
       <button
         v-if="action === 'complaint'"
         type="button"
@@ -1610,10 +1561,9 @@ async function complaint() {
         </button>
       </form>
       <CaseComplaintSubmissionForm
-        v-else-if="action === 'complaint' && complaintAmountChoice"
-        v-model:amount-state="amountState"
+        v-else-if="action === 'complaint'"
+        amount-state="KNOWN"
         v-model:amount="amount"
-        v-model:pending-reason="pendingReason"
         :complaint-files="complaintFiles"
         :authorization-files="authorizationFiles"
         :upload-loading="uploadLoading"

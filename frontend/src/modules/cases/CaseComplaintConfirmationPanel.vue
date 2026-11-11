@@ -470,24 +470,6 @@ onBeforeUnmount(() => {
         data-test="confirmation-form"
       >
         <label
-          >权利主体
-          <input
-            class="text-input"
-            :value="item.rightsHolder?.name ?? '—'"
-            readonly
-          />
-        </label>
-        <label
-          >被告
-          <input
-            class="text-input"
-            :value="
-              item.defendants?.map((entry) => entry.name).join('、') || '—'
-            "
-            readonly
-          />
-        </label>
-        <label
           >标的额（元）
           <input
             v-model="amount"

@@ -1064,10 +1064,6 @@ describe('case list workflow session', () => {
     const { wrapper } = await render();
     await wrapper.get('[data-case-action="complaint"]').trigger('click');
     await flushPromises();
-    await wrapper
-      .get('[data-test="complaint-amount-choice"]')
-      .setValue('KNOWN');
-    await flushPromises();
     expect(wrapper.text()).toContain('原起诉状.pdf');
     expect(materials.uploadMaterialFile).not.toHaveBeenCalled();
     expect(api.submitComplaint).not.toHaveBeenCalled();
@@ -1099,51 +1095,11 @@ describe('case list workflow session', () => {
     const { wrapper } = await render();
     await wrapper.get('[data-case-action="complaint"]').trigger('click');
     await flushPromises();
-    await wrapper
-      .get('[data-test="complaint-amount-choice"]')
-      .setValue('KNOWN');
-    await flushPromises();
     await wrapper.get('[data-test="submit-complaint"]').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('请先上传起诉状');
     expect(wrapper.text()).not.toContain('请补齐起诉状、授权材料及金额');
     expect(api.submitComplaint).not.toHaveBeenCalled();
-  });
-  it('keeps a single amount-state control and lets the operator change it', async () => {
-    const detail = {
-      ...baseItem,
-      stage: 'WAITING_COMPLAINT' as const,
-      canSubmitComplaint: true,
-    };
-    api.getCase.mockResolvedValue(detail);
-    api.listCases.mockResolvedValue(
-      list([{ ...summary(detail), canChooseJudgmentNextStep: false }]),
-    );
-    materials.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
-    const { wrapper } = await render();
-    await wrapper.get('[data-case-action="complaint"]').trigger('click');
-    await flushPromises();
-    await wrapper
-      .get('[data-test="complaint-amount-choice"]')
-      .setValue('KNOWN');
-    await flushPromises();
-    const form = wrapper.get('[data-test="complaint-submit-form"]');
-    expect(
-      form
-        .findAll('label')
-        .filter((label) => label.text().includes('金额状态')),
-    ).toHaveLength(0);
-    expect(
-      wrapper.get('[data-test="complaint-amount-chosen"]').text(),
-    ).toContain('已确认');
-    await wrapper.get('[data-test="complaint-amount-change"]').trigger('click');
-    await flushPromises();
-    expect(
-      wrapper.get('[data-test="complaint-amount-choice"]').element,
-    ).toHaveProperty('value', '');
-    expect(wrapper.find('[data-test="complaint-submit-form"]').exists()).toBe(
-      false,
-    );
   });
   it('explains the amount format when a confirmed amount has too many decimals', async () => {
     const detail = {
@@ -1188,10 +1144,6 @@ describe('case list workflow session', () => {
     });
     const { wrapper } = await render();
     await wrapper.get('[data-case-action="complaint"]').trigger('click');
-    await flushPromises();
-    await wrapper
-      .get('[data-test="complaint-amount-choice"]')
-      .setValue('KNOWN');
     await flushPromises();
     await wrapper.get('[data-test="complaint-amount"]').setValue('12.345');
     await wrapper.get('[data-test="submit-complaint"]').trigger('click');

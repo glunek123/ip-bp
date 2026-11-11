@@ -2057,9 +2057,9 @@ async function submitComplaintMaterials() {
   const input: SubmitComplaintInput = complaintUnknown.value ?? {
     expectedVersion: current.version,
     idempotencyKey: '',
-    amountState: amountState.value,
-    amount: amountState.value === 'KNOWN' ? trimmedAmount : null,
-    pendingReason: amountState.value === 'PENDING' ? trimmedReason : null,
+    amountState: 'KNOWN',
+    amount: trimmedAmount,
+    pendingReason: null,
     complaintContentVersionIds: complaintUploads.value.map(
       (file) => file.contentVersionId,
     ),
@@ -3307,9 +3307,7 @@ onBeforeUnmount(() => {
             "
             :complaint-files="complaintUploads"
             :authorization-files="authorizationUploads"
-            v-model:amount-state="amountState"
             v-model:amount="amount"
-            v-model:pending-reason="pendingReason"
             :submitted-on="complaintSubmittedOn"
             @update:submitted-on="complaintSubmittedOn = $event"
             :upload-loading="uploadLoading"

@@ -4,27 +4,18 @@ import { todayShanghai, type CaseFile } from '../../api/cases';
 
 type UploadCategory = 'COMPLAINT' | 'AUTHORIZATION';
 
-withDefaults(
-  defineProps<{
-    complaintFiles: CaseFile[];
-    authorizationFiles: CaseFile[];
-    amountState: 'KNOWN' | 'PENDING';
-    amount: string;
-    pendingReason: string;
-    uploadLoading: Partial<Record<UploadCategory, boolean>>;
-    uploadErrors: Partial<Record<UploadCategory, string>>;
-    error: string;
-    success: string;
-    submitting: boolean;
-    locked?: boolean;
-    /** 金额状态已在抽屉顶部选择时，表单不再重复渲染同一控件。 */
-    showAmountState?: boolean;
-    submittedOn?: string;
-  }>(),
-  // Vue 会把未传入的布尔 prop 转成 false；显式默认为 true，保证单独使用
-  // 本组件（律师端详情页）时仍显示金额状态选择器。
-  { showAmountState: true },
-);
+defineProps<{
+  complaintFiles: CaseFile[];
+  authorizationFiles: CaseFile[];
+  amount: string;
+  uploadLoading: Partial<Record<UploadCategory, boolean>>;
+  uploadErrors: Partial<Record<UploadCategory, string>>;
+  error: string;
+  success: string;
+  submitting: boolean;
+  locked?: boolean;
+  submittedOn?: string;
+}>();
 
 const emit = defineEmits<{
   upload: [
@@ -34,9 +25,7 @@ const emit = defineEmits<{
   download: [file: CaseFile];
   remove: [category: UploadCategory, index: number];
   submit: [];
-  'update:amountState': [value: 'KNOWN' | 'PENDING'];
   'update:amount': [value: string];
-  'update:pendingReason': [value: string];
   'update:submittedOn': [value: string];
 }>();
 </script>
