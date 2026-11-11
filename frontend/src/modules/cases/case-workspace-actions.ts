@@ -95,7 +95,7 @@ const actionDefinitions = {
   hearing: {
     id: 'hearing',
     section: 'first-instance',
-    label: '补录／更正开庭日期',
+    label: '改变开庭时间',
   },
   'register-judgment': {
     id: 'judgment',
@@ -531,6 +531,7 @@ export function primaryCaseAction<T extends { id: string }>(
     WAITING_COMPLAINT_STAMP: 'mail-complaint',
     WAITING_FILING: 'filing',
     WAITING_FORMAL_ACCEPTANCE: 'acceptance',
+    WAITING_HEARING: 'hearing',
     WAITING_JUDGMENT: 'judgment',
     SECOND_INSTANCE: 'second-instance',
     WAITING_EXECUTION_DOCUMENTS: 'execution-submission',

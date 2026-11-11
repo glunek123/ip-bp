@@ -144,7 +144,7 @@ describe('case acceptance panel', () => {
     expect(wrapper.text()).toContain('受理日期');
     expect(wrapper.text()).toContain('法院案号');
     expect(wrapper.text()).toContain('可后补');
-    expect(wrapper.text()).toContain('本登记只保存受理事实');
+    expect(wrapper.text()).toContain('填写受理日期与法院案号即可进入待开庭');
     expect(
       (
         wrapper.get('[data-test="acceptance-register"]')

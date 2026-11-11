@@ -679,13 +679,18 @@ async function download(file: CaseFile): Promise<void> {
 
 <template>
   <section class="demo-card demo-card--pad" data-test="case-acceptance-panel">
-    <h2 class="form-section-title">正式立案登记</h2>
-    <p>
-      登记实际受理日期和法院案号后，案件进入“待开庭”。三类材料均可后补；每类最多10份有效材料，每份不超过50MiB，仅支持PDF、JPEG或PNG。
-    </p>
-    <p>
-      本登记只保存受理事实；「发起缴费」会在费用中心创建一条状态为发起的诉讼费记录。填写开庭日期与地点时，会一并建立本案的开庭安排。
-    </p>
+    <template v-if="canRegister">
+      <h2 class="form-section-title">正式立案登记</h2>
+      <p class="field-help">
+        填写受理日期与法院案号即可进入待开庭；三类材料可后补。
+      </p>
+    </template>
+    <template v-else>
+      <h2 class="form-section-title">补交受理材料</h2>
+      <p class="field-help">
+        受理通知书、缴费清单、送达文书可分批补交，已上传的不会重复登记。
+      </p>
+    </template>
 
     <form v-if="canRegister" class="form-stack" @submit.prevent="submit">
       <label>
@@ -844,13 +849,6 @@ async function download(file: CaseFile): Promise<void> {
       </ul>
     </form>
 
-    <p v-else-if="item.acceptance" data-test="case-acceptance-record">
-      缴费截止日：{{ item.acceptance.paymentDueAt ?? '未填写' }} ·
-      实际受理日期：{{ item.acceptance.acceptedAt }} · 法院案号：{{
-        item.acceptance.courtCaseNo
-      }}
-      · 系统登记时间：{{ item.acceptance.recordedAt }}
-    </p>
     <p
       v-else-if="item.stage === 'WAITING_FORMAL_ACCEPTANCE'"
       class="field-help"
