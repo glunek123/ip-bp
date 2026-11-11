@@ -34,9 +34,13 @@ export class SubmitCaseComplaintDto {
   @ArrayMaxSize(10)
   @IsUUID('4', { each: true })
   complaintContentVersionIds!: string[];
-  @ApiProperty({ type: [String], minItems: 1, maxItems: 10, format: 'uuid' })
+  // 授权委托书与起诉状按同一份材料上传，故该数组可为空。
+  @ApiPropertyOptional({
+    type: [String],
+    maxItems: 10,
+    format: 'uuid',
+  })
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(10)
   @IsUUID('4', { each: true })
   authorizationContentVersionIds!: string[];

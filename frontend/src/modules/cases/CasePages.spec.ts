@@ -1516,18 +1516,16 @@ describe('case pages', () => {
     expect(form.text()).toContain('上传不会推进案件');
     expect(form.text()).not.toContain('确认诉状');
     await wrapper.get('[data-test="submit-complaint"]').trigger('click');
-    expect(wrapper.text()).toContain('请至少上传 1 份起诉状和 1 份授权材料。');
+    expect(wrapper.text()).toContain('请至少上传 1 份授权委托书 / 起诉状。');
     expect(api.submitComplaint).not.toHaveBeenCalled();
 
-    for (const [index, filename] of ['诉状.pdf', '授权书.pdf'].entries()) {
-      const input = wrapper.findAll('input[type="file"]')[index]!;
-      Object.defineProperty(input.element, 'files', {
-        configurable: true,
-        value: [new File(['content'], filename, { type: 'application/pdf' })],
-      });
-      await input.trigger('change');
-      await flushPromises();
-    }
+    const fileInput = wrapper.findAll('input[type="file"]')[0]!;
+    Object.defineProperty(fileInput.element, 'files', {
+      configurable: true,
+      value: [new File(['content'], '诉状.pdf', { type: 'application/pdf' })],
+    });
+    await fileInput.trigger('change');
+    await flushPromises();
     expect(api.getCase).toHaveBeenCalledTimes(1);
     await wrapper
       .get('[data-test="complaint-submit-form"] input[inputmode="decimal"]')
@@ -1541,7 +1539,7 @@ describe('case pages', () => {
         amountState: 'KNOWN',
         amount: '0',
         complaintContentVersionIds: ['complaint-v1'],
-        authorizationContentVersionIds: ['authorization-v1'],
+        authorizationContentVersionIds: [],
       }),
     );
     expect(wrapper.get('.page-head, .case-workspace-header').text()).toContain(
@@ -1550,7 +1548,6 @@ describe('case pages', () => {
     const submitted = wrapper.get('[data-section="first-instance"]');
     expect(submitted.text()).toContain('0 元');
     expect(submitted.text()).toContain('诉状.pdf');
-    expect(submitted.text()).toContain('授权书.pdf');
     expect(wrapper.find('[data-test="complaint-submit-form"]').exists()).toBe(
       false,
     );

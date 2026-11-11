@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   todayShanghai: vi.fn(() => '2026-10-06'),
   uploadMaterialFile: vi.fn(),
   downloadMaterialVersion: vi.fn(),
+  createFee: vi.fn(),
 }));
 vi.mock('../../api/cases', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/cases')>()),
@@ -19,6 +20,10 @@ vi.mock('../../api/cases', async (importOriginal) => ({
   caseAcceptanceDraft: api.caseAcceptanceDraft,
   listFilingCourts: api.listFilingCourts,
   todayShanghai: api.todayShanghai,
+}));
+vi.mock('../../api/settlements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/settlements')>()),
+  createFee: api.createFee,
 }));
 vi.mock('../../api/materials', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/materials')>()),
@@ -139,7 +144,7 @@ describe('case acceptance panel', () => {
     expect(wrapper.text()).toContain('受理日期');
     expect(wrapper.text()).toContain('法院案号');
     expect(wrapper.text()).toContain('可后补');
-    expect(wrapper.text()).toContain('本登记不会发起缴费');
+    expect(wrapper.text()).toContain('本登记只保存受理事实');
     expect(
       (
         wrapper.get('[data-test="acceptance-register"]')
@@ -578,5 +583,37 @@ describe('case acceptance panel', () => {
       (wrapper.get('input[type="checkbox"]').element as HTMLInputElement)
         .checked,
     ).toBe(true);
+  });
+  it('issues the litigation fee from the acceptance card', async () => {
+    api.createFee.mockResolvedValue({ id: 'fee-1', version: 1 });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="acceptance-fee-issue"]').trigger('click');
+    const dialog = wrapper.get('[data-test="acceptance-fee-dialog"]');
+    expect(
+      (dialog.get('input[readonly]').element as HTMLInputElement).value,
+    ).toBe('诉讼费');
+    expect(
+      (
+        wrapper.get('[data-test="acceptance-fee-confirm"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    await wrapper.get('[data-test="acceptance-fee-amount"]').setValue('6500');
+    await wrapper.get('[data-test="acceptance-fee-confirm"]').trigger('click');
+    await flushPromises();
+    expect(api.createFee).toHaveBeenCalledWith(
+      expect.objectContaining({
+        caseId: 'case-1',
+        type: '诉讼费',
+        direction: '支出',
+        amount: '6500',
+        status: '发起',
+        feeDate: '2026-10-06',
+      }),
+    );
+    expect(wrapper.find('[data-test="acceptance-fee-dialog"]').exists()).toBe(
+      false,
+    );
   });
 });

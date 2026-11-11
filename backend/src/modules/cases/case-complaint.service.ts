@@ -178,7 +178,7 @@ export class CaseComplaintService {
                 ownerId: caseId,
                 category: 'AUTHORIZATION',
                 contentVersionIds: normalized.authorizationContentVersionIds,
-                minCount: 1,
+                minCount: 0,
                 maxCount: 10,
               },
             );
@@ -279,6 +279,11 @@ export class CaseComplaintService {
             id,
           ),
       );
+    // 授权委托书与起诉状合并为同一份材料，故允许为空数组。
+    const idsOptional = (ids: unknown): ids is string[] =>
+      ids === undefined ||
+      (Array.isArray(ids) && ids.length === 0) ||
+      idsValid(ids);
     if (
       !Number.isInteger(input.expectedVersion) ||
       input.expectedVersion < 1 ||
@@ -287,7 +292,7 @@ export class CaseComplaintService {
       input.idempotencyKey.length < 1 ||
       input.idempotencyKey.length > 128 ||
       !idsValid(input.complaintContentVersionIds) ||
-      !idsValid(input.authorizationContentVersionIds)
+      !idsOptional(input.authorizationContentVersionIds)
     )
       throw this.validation();
     if (input.amountState === 'KNOWN') {
@@ -301,6 +306,8 @@ export class CaseComplaintService {
         ...input,
         amount: new Prisma.Decimal(input.amount).toFixed(2),
         pendingReason: null,
+        authorizationContentVersionIds:
+          input.authorizationContentVersionIds ?? [],
       };
     }
     if (
@@ -312,7 +319,13 @@ export class CaseComplaintService {
       input.pendingReason.length > 500
     )
       throw this.validation();
-    return { ...input, amount: null, pendingReason: input.pendingReason };
+    return {
+      ...input,
+      amount: null,
+      pendingReason: input.pendingReason,
+      authorizationContentVersionIds:
+        input.authorizationContentVersionIds ?? [],
+    };
   }
   private validation() {
     return new BadRequestException({

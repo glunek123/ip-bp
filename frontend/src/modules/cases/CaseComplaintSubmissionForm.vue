@@ -66,7 +66,7 @@ const emit = defineEmits<{
         />
       </label>
       <label>
-        起诉状 <span aria-hidden="true">*</span>
+        授权委托书 / 起诉状 <span aria-hidden="true">*</span>
         <input
           type="file"
           class="text-input"
@@ -94,73 +94,15 @@ const emit = defineEmits<{
         </li>
       </ul>
       <label>
-        授权委托书 <span aria-hidden="true">*</span>
-        <input
-          type="file"
-          class="text-input"
-          accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          multiple
-          :disabled="
-            uploadLoading.AUTHORIZATION || authorizationFiles.length >= 10
-          "
-          @change="emit('upload', 'AUTHORIZATION', $event)"
-        />
-      </label>
-      <p class="field-help">PDF、DOC 或 DOCX，单份不超过 50MB；1～10 份。</p>
-      <p v-if="uploadLoading.AUTHORIZATION" role="status">正在上传授权材料…</p>
-      <p v-if="uploadErrors.AUTHORIZATION" class="submit-error" role="alert">
-        {{ uploadErrors.AUTHORIZATION }}
-      </p>
-      <ul>
-        <li
-          v-for="(file, index) in authorizationFiles"
-          :key="file.contentVersionId"
-        >
-          {{ file.originalFilename }}（{{ file.mimeType }}）
-          <ElButton text @click="emit('download', file)">下载</ElButton>
-          <ElButton text @click="emit('remove', 'AUTHORIZATION', index)"
-            >移除</ElButton
-          >
-        </li>
-      </ul>
-      <label v-if="showAmountState">
-        金额状态
-        <select
-          :value="amountState"
-          class="text-input"
-          @change="
-            emit(
-              'update:amountState',
-              ($event.target as HTMLSelectElement).value as 'KNOWN' | 'PENDING',
-            )
-          "
-        >
-          <option value="KNOWN">已确认</option>
-          <option value="PENDING">待补充</option>
-        </select>
-      </label>
-      <label v-if="amountState === 'KNOWN'">
-        标的额（元）
+        标的额（元） <span aria-hidden="true">*</span>
         <input
           :value="amount"
           class="text-input"
           inputmode="decimal"
+          data-test="complaint-amount"
+          placeholder="如 6500"
           @input="
             emit('update:amount', ($event.target as HTMLInputElement).value)
-          "
-        />
-      </label>
-      <label v-else>
-        待补充原因
-        <input
-          :value="pendingReason"
-          class="text-input"
-          data-test="complaint-pending-reason"
-          @input="
-            emit(
-              'update:pendingReason',
-              ($event.target as HTMLInputElement).value,
-            )
           "
         />
       </label>

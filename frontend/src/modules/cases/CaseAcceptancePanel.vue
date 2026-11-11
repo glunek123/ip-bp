@@ -26,6 +26,7 @@ import {
   downloadMaterialVersion,
   uploadMaterialFile,
 } from '../../api/materials';
+import { createFee } from '../../api/settlements';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 type Category = keyof AcceptanceMaterials;
@@ -59,6 +60,10 @@ type DisclosureFile = { contentVersionId: string; filename: string };
 const disclosureFiles = ref<DisclosureFile[]>([]);
 const disclosureUploading = ref(false);
 const disclosureError = ref('');
+const feeOpen = ref(false);
+const feeAmount = ref('');
+const feeSubmitting = ref(false);
+const feeError = ref('');
 const courts = ref<FilingCourt[]>([]);
 const courtsLoading = ref(false);
 const selected = ref(new Set<string>());
@@ -116,6 +121,10 @@ function clearContext(): void {
   disclosureFiles.value = [];
   disclosureUploading.value = false;
   disclosureError.value = '';
+  feeOpen.value = false;
+  feeAmount.value = '';
+  feeSubmitting.value = false;
+  feeError.value = '';
   courts.value = [];
   selected.value = new Set();
   uploaded.value = {
@@ -473,6 +482,52 @@ async function saveDraft(): Promise<void> {
   }
 }
 
+const feeValid = computed(() => {
+  const value = feeAmount.value.trim();
+  return (
+    /^(?:0|[1-9]\d{0,13})(?:\.\d{1,2})?$/u.test(value) && Number(value) > 0
+  );
+});
+function openFee(): void {
+  feeOpen.value = true;
+  feeError.value = '';
+}
+function closeFee(): void {
+  if (feeSubmitting.value) return;
+  feeOpen.value = false;
+  feeError.value = '';
+}
+async function confirmFee(): Promise<void> {
+  if (!feeValid.value || feeSubmitting.value || !canRegister.value) return;
+  const context = captureContext();
+  feeSubmitting.value = true;
+  feeError.value = '';
+  try {
+    await createFee({
+      caseId: context.caseId,
+      type: '诉讼费',
+      direction: '支出',
+      amount: feeAmount.value.trim(),
+      status: '发起',
+      feeDate: todayShanghai(),
+      idempotencyKey: makeKey(),
+    });
+    if (!isCurrent(context)) return;
+    feeOpen.value = false;
+    feeAmount.value = '';
+    success.value = '已在费用中心创建一条状态为“发起”的诉讼费记录。';
+    notifyWorkflowChanged();
+    emit('refresh');
+  } catch (reason) {
+    if (isCurrent(context))
+      feeError.value =
+        reason instanceof ApiError
+          ? reason.message
+          : '发起缴费失败，请稍后重试。';
+  } finally {
+    if (isCurrent(context)) feeSubmitting.value = false;
+  }
+}
 async function submit(): Promise<void> {
   if (!ready.value) return;
   await register(makeInput());
@@ -628,7 +683,9 @@ async function download(file: CaseFile): Promise<void> {
     <p>
       登记实际受理日期和法院案号后，案件进入“待开庭”。三类材料均可后补；每类最多10份有效材料，每份不超过50MiB，仅支持PDF、JPEG或PNG。
     </p>
-    <p>本登记不会发起缴费；填写开庭日期与地点时，会一并建立本案的开庭安排。</p>
+    <p>
+      本登记只保存受理事实；「发起缴费」会在费用中心创建一条状态为发起的诉讼费记录。填写开庭日期与地点时，会一并建立本案的开庭安排。
+    </p>
 
     <form v-if="canRegister" class="form-stack" @submit.prevent="submit">
       <label>
@@ -892,14 +949,6 @@ async function download(file: CaseFile): Promise<void> {
     </div>
     <div v-if="canRegister" class="operation-bar acceptance-actions">
       <ElButton
-        type="primary"
-        data-test="acceptance-register"
-        :disabled="!ready"
-        :loading="submitting"
-        @click="submit"
-        >提交</ElButton
-      >
-      <ElButton
         data-test="acceptance-save"
         :disabled="
           draftBusy ||
@@ -911,6 +960,79 @@ async function download(file: CaseFile): Promise<void> {
         @click="saveDraft"
         >保存</ElButton
       >
+      <ElButton
+        data-test="acceptance-fee-issue"
+        :disabled="submitting || unknownRequest !== null"
+        @click="openFee"
+        >发起缴费</ElButton
+      >
+      <ElButton
+        type="primary"
+        data-test="acceptance-register"
+        :disabled="!ready"
+        :loading="submitting"
+        @click="submit"
+        >提交</ElButton
+      >
+    </div>
+
+    <div
+      v-if="feeOpen"
+      class="fee-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="发起缴费"
+      data-test="acceptance-fee-dialog"
+      @click.self="closeFee"
+    >
+      <div class="fee-dialog">
+        <header class="fee-dialog__head">
+          <h3>发起缴费</h3>
+          <button
+            type="button"
+            class="fee-dialog__close"
+            aria-label="关闭"
+            :disabled="feeSubmitting"
+            @click="closeFee"
+          >
+            ×
+          </button>
+        </header>
+        <div class="fee-dialog__body">
+          <label class="fee-field">
+            <span>费用类型</span>
+            <input class="text-input" value="诉讼费" readonly />
+          </label>
+          <label class="fee-field">
+            <span>金额（元） <span class="required-mark">*</span></span>
+            <input
+              v-model="feeAmount"
+              class="text-input"
+              inputmode="decimal"
+              data-test="acceptance-fee-amount"
+              placeholder="如：6500"
+              :disabled="feeSubmitting"
+            />
+          </label>
+          <p class="field-help">
+            确认后将在「费用中心」创建一条状态为发起的缴费记录。
+          </p>
+          <p v-if="feeError" class="submit-error" role="alert">
+            {{ feeError }}
+          </p>
+        </div>
+        <footer class="fee-dialog__foot">
+          <ElButton :disabled="feeSubmitting" @click="closeFee">取消</ElButton>
+          <ElButton
+            type="primary"
+            data-test="acceptance-fee-confirm"
+            :disabled="!feeValid || feeSubmitting"
+            :loading="feeSubmitting"
+            @click="confirmFee"
+            >确认发起</ElButton
+          >
+        </footer>
+      </div>
     </div>
   </section>
 </template>
@@ -918,5 +1040,58 @@ async function download(file: CaseFile): Promise<void> {
 <style scoped>
 .acceptance-actions {
   justify-content: flex-end;
+}
+.fee-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 45%);
+}
+.fee-dialog {
+  width: min(420px, calc(100vw - 32px));
+  border-radius: 10px;
+  background: #fff;
+  color: #1f2329;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 25%);
+}
+.fee-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #ebeef5;
+}
+.fee-dialog__head h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.fee-dialog__close {
+  border: 0;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: #8a919f;
+}
+.fee-dialog__body {
+  display: grid;
+  gap: 12px;
+  padding: 16px 20px;
+}
+.fee-field {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: #4e5969;
+}
+.fee-dialog__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px 16px;
 }
 </style>

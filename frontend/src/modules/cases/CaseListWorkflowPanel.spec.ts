@@ -1064,20 +1064,14 @@ describe('case list workflow session', () => {
     const { wrapper } = await render();
     await wrapper.get('[data-case-action="complaint"]').trigger('click');
     await flushPromises();
-    expect(
-      wrapper.get('[data-test="complaint-amount-choice"]').element,
-    ).toHaveProperty('value', '');
     await wrapper
       .get('[data-test="complaint-amount-choice"]')
-      .setValue('PENDING');
+      .setValue('KNOWN');
+    await flushPromises();
     expect(wrapper.text()).toContain('原起诉状.pdf');
-    expect(wrapper.text()).toContain('原授权.pdf');
     expect(materials.uploadMaterialFile).not.toHaveBeenCalled();
     expect(api.submitComplaint).not.toHaveBeenCalled();
-    const pendingReason = wrapper
-      .findAll('label')
-      .find((label) => label.text().includes('待补充原因'))!;
-    await pendingReason.get('input').setValue('尚待核定标的额');
+    await wrapper.get('[data-test="complaint-amount"]').setValue('12345');
     await wrapper.get('[data-test="submit-complaint"]').trigger('click');
     await flushPromises();
     expect(api.submitComplaint).toHaveBeenCalledWith(
@@ -1085,9 +1079,9 @@ describe('case list workflow session', () => {
       expect.objectContaining({
         complaintContentVersionIds: ['file-1'],
         authorizationContentVersionIds: ['file-2'],
-        amountState: 'PENDING',
-        amount: null,
-        pendingReason: '尚待核定标的额',
+        amountState: 'KNOWN',
+        amount: '12345',
+        pendingReason: null,
       }),
     );
   });
@@ -1108,6 +1102,7 @@ describe('case list workflow session', () => {
     await wrapper
       .get('[data-test="complaint-amount-choice"]')
       .setValue('KNOWN');
+    await flushPromises();
     await wrapper.get('[data-test="submit-complaint"]').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('请先上传起诉状');
@@ -1197,10 +1192,8 @@ describe('case list workflow session', () => {
     await wrapper
       .get('[data-test="complaint-amount-choice"]')
       .setValue('KNOWN');
-    const amountLabel = wrapper
-      .findAll('label')
-      .find((label) => label.text().trim() === '标的额（元）')!;
-    await amountLabel.get('input').setValue('12.345');
+    await flushPromises();
+    await wrapper.get('[data-test="complaint-amount"]').setValue('12.345');
     await wrapper.get('[data-test="submit-complaint"]').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('金额需为数字');

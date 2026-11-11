@@ -177,7 +177,8 @@ async function loadVersions(revision: number): Promise<void> {
     versions.value = uniqueVersions(result.items);
     if (originalFiles.value.length === 1)
       selectedVersionId.value = originalFiles.value[0]!.contentVersionId;
-    else if (versions.value.length === 1)
+    else if (versions.value.length >= 1 && !selectedVersionId.value)
+      // 默认取最新版本，减少运营必填项；需要改版本时再展开。
       selectedVersionId.value = versions.value[0]!.contentVersionId;
   } catch {
     if (

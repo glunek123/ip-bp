@@ -2036,11 +2036,8 @@ async function submitComplaintMaterials() {
     return;
   complaintError.value = '';
   complaintSuccess.value = '';
-  if (
-    !complaintUnknown.value &&
-    (complaintUploads.value.length < 1 || authorizationUploads.value.length < 1)
-  ) {
-    complaintError.value = '请至少上传 1 份起诉状和 1 份授权材料。';
+  if (!complaintUnknown.value && complaintUploads.value.length < 1) {
+    complaintError.value = '请至少上传 1 份授权委托书 / 起诉状。';
     return;
   }
   const trimmedAmount = amount.value.trim();
