@@ -1,3 +1,7 @@
+# 2026-11-11 中午：出证归档允许无证书文件（未提交）
+
+上一版放开材料校验后，归档仍 500：证据初始化 initializeNotaryEvidence 对 facts.files 要求至少 1 份，空数组直接 invalidSource。现已允许 0 份，证据组与纸质证书记录照常建立，只是不写证书文件引用。
+
 # 2026-11-11 上午：出证允许无证书文件（未提交）
 
 「填写出证」提交后报「材料内容、格式或元数据无效」（MATERIAL_VERSION_INVALID）。两处后端硬校验未同步：assertAvailableVersions 的 NOTARY_CERTIFICATE 仍要求 minCount=1，且 freezeReferences 对空 facts 直接抛错。已改为 minCount=0、无冻结材料时跳过冻结引用。

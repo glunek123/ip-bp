@@ -114,7 +114,7 @@ export async function initializeNotaryEvidence(
       ? details.contentVersionIds
       : [];
   if (
-    facts.files.length < 1 ||
+    // 填写出证卡片不再强制公证书文件，允许 0 份；证据组仍会建立。
     facts.files.length > 10 ||
     expected.size !== facts.files.length ||
     references.length !== expected.size ||
