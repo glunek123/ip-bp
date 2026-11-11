@@ -1088,9 +1088,14 @@ function loadCandidates() {
         candidatesError.value = '';
       }
     })
-    .catch(() => {
-      if (current() && revision === candidateRevision)
-        candidatesError.value = '律师候选暂时无法读取，请重新读取资料。';
+    .catch((reason: unknown) => {
+      if (!current() || revision !== candidateRevision) return;
+      // 不再把服务端拒绝吞成空列表：否则界面表现为「搜不到人」。
+      candidatesError.value =
+        reason instanceof ApiError
+          ? reason.message
+          : '律师候选暂时无法读取，请重新读取资料。';
+      candidates.value = [];
     });
 }
 watch(lawyerQuery, () => loadCandidates());
