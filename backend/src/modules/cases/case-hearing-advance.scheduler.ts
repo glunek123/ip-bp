@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 
 /** 待开庭 → 待判决：开庭日期已过（严格早于今天）的案子自动推进。 */
@@ -10,12 +15,18 @@ function shanghaiToday(now: Date): Date {
   const offset = 8 * 60 * 60 * 1000;
   const shifted = new Date(now.getTime() + offset);
   return new Date(
-    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()),
+    Date.UTC(
+      shifted.getUTCFullYear(),
+      shifted.getUTCMonth(),
+      shifted.getUTCDate(),
+    ),
   );
 }
 
 @Injectable()
-export class CaseHearingAdvanceScheduler implements OnModuleInit, OnModuleDestroy {
+export class CaseHearingAdvanceScheduler
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(CaseHearingAdvanceScheduler.name);
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
@@ -45,8 +56,9 @@ export class CaseHearingAdvanceScheduler implements OnModuleInit, OnModuleDestro
       const due = await this.database.case.findMany({
         where: {
           stage: 'WAITING_HEARING',
-          currentHearingAdvance: {
-            is: { arrangement: { hearingAt: { lt: today } } },
+          // 待开庭阶段 currentHearingAdvance 为空，开庭日期在当前安排上。
+          currentHearingArrangement: {
+            is: { hearingAt: { lt: today } },
           },
         },
         select: { id: true, departmentId: true, version: true },
@@ -62,7 +74,8 @@ export class CaseHearingAdvanceScheduler implements OnModuleInit, OnModuleDestro
           );
         }
       }
-      if (advanced > 0) this.logger.log(`开庭日期已过，自动推进 ${advanced} 件`);
+      if (advanced > 0)
+        this.logger.log(`开庭日期已过，自动推进 ${advanced} 件`);
       return advanced;
     } finally {
       this.running = false;

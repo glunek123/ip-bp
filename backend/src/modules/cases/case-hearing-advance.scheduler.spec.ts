@@ -80,10 +80,8 @@ describe('CaseHearingAdvanceScheduler', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           stage: 'WAITING_HEARING',
-          currentHearingAdvance: {
-            is: {
-              arrangement: { hearingAt: { lt: new Date('2026-11-12T00:00:00Z') } },
-            },
+          currentHearingArrangement: {
+            is: { hearingAt: { lt: new Date('2026-11-12T00:00:00Z') } },
           },
         }),
       }),

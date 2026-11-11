@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-11T08:09:21.188Z",
+  "recordedAt": "2026-11-11T08:19:57.267Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -599,8 +599,8 @@
     "backend/src/modules/cases/case-handling-group.read.ts": "c0136e09320edcb389bd00d5fe36201146a5b71dd3f6a4c847949266553b29ca",
     "backend/src/modules/cases/case-handling-group.service.spec.ts": "1281edd4bb557bd9cf792bc8566f96f8e4c467bfa1454f540c998f5899ecde64",
     "backend/src/modules/cases/case-handling-group.service.ts": "3108667161ce8998d90e77ff22f126bcdaf43c8f25cdd7510ea633f84f9c83b4",
-    "backend/src/modules/cases/case-hearing-advance.scheduler.spec.ts": "7628409d3c2dcbb59064613ffeee49595db437333f5fe71a08c6ca56cd1baceb",
-    "backend/src/modules/cases/case-hearing-advance.scheduler.ts": "ebc80c4fa6bb2b528a3cff3c61a67fa131c48bbec7b6db4e5472f2e0bb9c26f8",
+    "backend/src/modules/cases/case-hearing-advance.scheduler.spec.ts": "4210a479a8280b7101e880bf93886e77d5df3ab27d73634c06a7c2335a41c4f0",
+    "backend/src/modules/cases/case-hearing-advance.scheduler.ts": "7bd3b57f12fcbb1f00d63ec7c5c0249087b7234e99ecad9b89e80158d0be8229",
     "backend/src/modules/cases/case-hearing-date.spec.ts": "9efda06bebe70cb9ac3fc7e7de7073205130ebce7a90c5addf70bcc940a446f1",
     "backend/src/modules/cases/case-hearing-date.ts": "1febfaa1626aa53394428c2411bcec869988a8f9f6df91ff761cacfe273cd9da",
     "backend/src/modules/cases/case-hearing-scheduler.service.spec.ts": "dcfd7f0b46624c404099115c177f823fc781f32a97362461af1604e2ef795dff",
