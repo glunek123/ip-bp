@@ -381,11 +381,10 @@ export async function recordNotaryPortalCertificate(
     !input.certificateNo.trim() ||
     !/^\d{4}-\d{2}-\d{2}$/u.test(input.certificateDate) ||
     (input.sampleFeeAmount !== undefined &&
-      !/^(0|[1-9]\d{0,15})\.\d{2}$/u.test(input.sampleFeeAmount)) ||
+      !/^(0|[1-9]\d{0,15})(\.\d{1,2})?$/u.test(input.sampleFeeAmount)) ||
     (input.disclosureInfo !== undefined &&
       (input.disclosureInfo.length > 2000 ||
         (!input.needDisclose && input.disclosureInfo.trim().length > 0))) ||
-    input.contentVersionIds.length < 1 ||
     input.contentVersionIds.length > 10 ||
     new Set(input.contentVersionIds).size !== input.contentVersionIds.length ||
     input.contentVersionIds.some((item) => !item) ||

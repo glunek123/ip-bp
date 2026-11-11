@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
-  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -48,16 +47,16 @@ export class IssueNotaryCertificateDto {
   @MaxLength(200)
   certificateNo!: string;
   @ApiProperty({ format: 'date' }) @IsString() certificateDate!: string;
-  @ApiProperty({ type: [String], format: 'uuid', minItems: 1, maxItems: 10 })
+  // 填写出证卡片只收截图中的字段，公证书文件可不传。
+  @ApiPropertyOptional({ type: [String], format: 'uuid', maxItems: 10 })
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(10)
   @IsUUID('4', { each: true })
   contentVersionIds!: string[];
   @ApiProperty() @IsBoolean() needDisclose!: boolean;
   @ApiPropertyOptional()
   @IsOptional()
-  @Matches(/^(0|[1-9]\d{0,15})\.\d{2}$/u)
+  @Matches(/^(0|[1-9]\d{0,15})(\.\d{1,2})?$/u)
   sampleFeeAmount?: string;
   @ApiPropertyOptional({ maxLength: 2000 })
   @IsOptional()

@@ -509,7 +509,7 @@ describe('NotaryCertificateService', () => {
   it('rejects absent certificate, bad money, and disclosure without evidence', async () => {
     const f = fixture();
     for (const invalid of [
-      { ...input, contentVersionIds: [] },
+      // 填写出证卡片不再要求公证书文件，空数组按合法处理。
       {
         ...input,
         contentVersionIds: Array.from({ length: 11 }, () => randomUUID()),

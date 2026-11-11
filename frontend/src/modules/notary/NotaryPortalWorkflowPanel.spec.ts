@@ -136,6 +136,78 @@ describe('NotaryPortalWorkflowPanel', () => {
     workflow.dispose();
     wrapper.unmount();
   });
+
+  it('enables the certificate submit with only the seven card fields and no certificate file', async () => {
+    const detail = {
+      ...current,
+      stage: 'WAITING_CERTIFICATE',
+      version: 5,
+      capabilities: { recordOpening: false, proxyIssueCertificate: true },
+      disclosureRequired: false,
+    };
+    sessionStorage.clear();
+    materials.listOwnerMaterials.mockResolvedValue({
+      items: [
+        {
+          ...photo,
+          id: 'certificate-material',
+          category: 'NOTARY_CERTIFICATE',
+          purpose: 'NOTARY_CERTIFICATE',
+          currentVersionId: 'certificate-v1',
+          contentVersions: [
+            {
+              id: 'certificate-v1',
+              originalFilename: 'certificate.pdf',
+              mimeType: 'application/pdf',
+            },
+          ],
+        },
+      ],
+      total: 1,
+    });
+    api.recordProxyNotaryCertificate.mockResolvedValue({});
+    const workflow = createListWorkflowContext(async () => detail, {
+      success: vi.fn(),
+    });
+    await workflow.sync({
+      recordId: detail.id,
+      actorKey: 'user-1:INTERNAL:department-1:2',
+      actionKey: 'certificate',
+      title: '代办公证处出证',
+    });
+    const session = workflow.state.value.session;
+    if (!session) throw new Error('Missing session');
+    const wrapper = mount(NotaryPortalWorkflowPanel, {
+      props: { detail: detail as never, session, proxy: true },
+    });
+    await flushPromises();
+    const submit = () => wrapper.get('[data-test="certificate-submit"]');
+    expect(submit().attributes('disabled')).toBeDefined();
+    await wrapper
+      .get('[data-test="certificate-number"]')
+      .setValue('(2026) 粤公证字第12345号');
+    await wrapper.get('[data-test="certificate-date"]').setValue('2026-03-22');
+    await wrapper.get('[data-test="fee-notary-amount"]').setValue('1200');
+    await wrapper.get('[data-test="certificate-sample-fee"]').setValue('356');
+    await flushPromises();
+    expect(submit().attributes('disabled')).toBeUndefined();
+    await submit().trigger('click');
+    await flushPromises();
+    expect(api.recordProxyNotaryCertificate).toHaveBeenCalledWith(
+      detail.id,
+      expect.objectContaining({
+        certificateNo: '(2026) 粤公证字第12345号',
+        sampleFeeAmount: '356.00',
+        contentVersionIds: ['certificate-v1'],
+        fees: expect.objectContaining({
+          notary: { state: 'KNOWN', amount: '1200.00' },
+        }),
+      }),
+      expect.any(String),
+    );
+    workflow.dispose();
+    wrapper.unmount();
+  });
   it('keeps Back/Forward safe for an idle draft and blocks leaving during an unresolved POST', async () => {
     const router = createRouter({
       history: createMemoryHistory(),

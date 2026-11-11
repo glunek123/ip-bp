@@ -74,35 +74,25 @@ const feeStates = ref({
 });
 const feeAmounts = ref({ notary: '', investigation: '', disclosure: '' });
 const certificateSuccess = ref('');
-const feeCategories = [
-  { key: 'investigation', label: '调查费' },
-  { key: 'disclosure', label: '披露费' },
-] as const;
+/** 统一按两位小数提交，后端留两位精度。 */
+function money(value: string): string {
+  const trimmed = value.trim();
+  return /^\d+$/u.test(trimmed) ? `${trimmed}.00` : trimmed;
+}
 const canSubmitCertificate = computed(
   () =>
     Boolean(matter.value?.capabilities.issueCertificate) &&
     certificateNo.value.trim().length > 0 &&
     /^\d{4}-\d{2}-\d{2}$/u.test(certificateDate.value) &&
-    certificateFiles.value.some((file) =>
-      selectedCertificateIds.value.has(file.contentVersionId),
-    ) &&
-    certificateFiles.value.filter((file) =>
-      selectedCertificateIds.value.has(file.contentVersionId),
-    ).length <= 10 &&
-    /^(0|[1-9]\d{0,15})\.\d{2}$/u.test(sampleFeeAmount.value) &&
-    /^\d+(?:\.\d{1,2})?$/u.test(feeAmounts.value.notary) &&
+    /^(0|[1-9]\d{0,15})(\.\d{1,2})?$/u.test(sampleFeeAmount.value.trim()) &&
+    /^(0|[1-9]\d{0,15})(\.\d{1,2})?$/u.test(feeAmounts.value.notary.trim()) &&
     (!needDisclose.value ||
       (disclosureFiles.value.some((file) =>
         selectedDisclosureIds.value.has(file.contentVersionId),
       ) &&
         disclosureFiles.value.filter((file) =>
           selectedDisclosureIds.value.has(file.contentVersionId),
-        ).length <= 10)) &&
-    feeCategories.every(
-      ({ key }) =>
-        feeStates.value[key] === 'PENDING' ||
-        /^\d+\.\d{2}$/u.test(feeAmounts.value[key]),
-    ),
+        ).length <= 10)),
 );
 let active = true;
 const matterId = computed(() => props.detail.id);
@@ -332,7 +322,7 @@ async function submitCertificate(): Promise<void> {
       expectedVersion: matter.value.version,
       certificateNo: certificateNo.value.trim(),
       certificateDate: certificateDate.value,
-      sampleFeeAmount: sampleFeeAmount.value,
+      sampleFeeAmount: money(sampleFeeAmount.value),
       ...(disclosureInfo.value.trim()
         ? { disclosureInfo: disclosureInfo.value.trim() }
         : {}),
@@ -352,22 +342,11 @@ async function submitCertificate(): Promise<void> {
       fees: {
         notary: {
           state: 'KNOWN',
-          amount: feeAmounts.value.notary,
+          amount: money(feeAmounts.value.notary),
         },
-        investigation: {
-          state: feeStates.value.investigation,
-          amount:
-            feeStates.value.investigation === 'KNOWN'
-              ? feeAmounts.value.investigation
-              : null,
-        },
-        disclosure: {
-          state: feeStates.value.disclosure,
-          amount:
-            feeStates.value.disclosure === 'KNOWN'
-              ? feeAmounts.value.disclosure
-              : null,
-        },
+        // 卡片不再收录调查费与披露费，按待确认上报，保持既有结构。
+        investigation: { state: 'PENDING', amount: null },
+        disclosure: { state: 'PENDING', amount: null },
       },
     };
     await execute({ kind: 'certificate', input });
@@ -660,10 +639,7 @@ try {
       certificateDate.value = input.certificateDate;
       selectedCertificateIds.value = new Set(input.contentVersionIds);
       selectedDisclosureIds.value = new Set(input.disclosureContentVersionIds);
-      for (const { key } of feeCategories) {
-        feeStates.value[key] = input.fees[key].state;
-        feeAmounts.value[key] = input.fees[key].amount ?? '';
-      }
+      feeAmounts.value.notary = input.fees.notary.amount ?? '';
     }
     unknown.value = true;
     if (!props.session.restoreUnknown()) blocked.value = true;
@@ -824,43 +800,35 @@ onBeforeUnmount(() => {
         :disabled="submitting || uploading"
       />
       <label
-        >公证书文件（PDF、JPEG、PNG；单个不超过 50 MB，最多 10
-        个）<RequiredFieldMark /><input
-          data-test="certificate-file-input"
-          type="file"
-          accept="application/pdf,image/jpeg,image/png"
-          multiple
-          :disabled="submitting || uploading"
-          @change="uploadCertificateFiles($event, 'NOTARY_CERTIFICATE')"
+        class="field-label field-label--spaced"
+        for="certificate-notary-fee"
+        >公证费（元）<RequiredFieldMark
       /></label>
-      <p class="field-help">
-        默认勾选新上传及已有有效版本。提交时只冻结勾选的内容版本。
-      </p>
-      <ul v-if="certificateFiles.length">
-        <li v-for="file in certificateFiles" :key="file.contentVersionId">
-          <label
-            ><input
-              :data-test="`certificate-select-${file.contentVersionId}`"
-              type="checkbox"
-              :checked="selectedCertificateIds.has(file.contentVersionId)"
-              :disabled="submitting || uploading"
-              @change="
-                updateCertificateSelection(
-                  file.contentVersionId,
-                  'certificate',
-                  $event,
-                )
-              "
-            />
-            {{ file.originalFilename }}（{{ file.mimeType }}）</label
-          ><ElButton
-            text
-            :data-test="`download-certificate-${file.contentVersionId}`"
-            @click="download(file.materialId, file.contentVersionId)"
-            >下载</ElButton
-          >
-        </li>
-      </ul>
+      <input
+        id="certificate-notary-fee"
+        v-model="feeAmounts.notary"
+        data-test="fee-notary-amount"
+        class="text-input"
+        inputmode="decimal"
+        placeholder="金额（元）"
+        required
+        :disabled="submitting || uploading"
+      />
+      <label
+        class="field-label field-label--spaced"
+        for="certificate-sample-fee"
+        >样品费（元）<RequiredFieldMark
+      /></label>
+      <input
+        id="certificate-sample-fee"
+        v-model="sampleFeeAmount"
+        data-test="certificate-sample-fee"
+        class="text-input"
+        inputmode="decimal"
+        placeholder="金额（元）"
+        required
+        :disabled="submitting || uploading"
+      />
       <label class="field-label" for="need-disclose"
         >是否需要披露<RequiredFieldMark
       /></label>
@@ -924,59 +892,6 @@ onBeforeUnmount(() => {
           </li>
         </ul>
       </template>
-      <h3 class="form-section-title">费用记录</h3>
-      <label
-        class="field-label field-label--spaced"
-        for="certificate-sample-fee"
-        >样品费 <RequiredFieldMark
-      /></label>
-      <input
-        id="certificate-sample-fee"
-        v-model="sampleFeeAmount"
-        data-test="certificate-sample-fee"
-        class="text-input"
-        inputmode="decimal"
-        placeholder="金额（元）"
-        required
-        :disabled="submitting || uploading"
-      />
-      <label
-        class="field-label field-label--spaced"
-        for="certificate-notary-fee"
-        >公证费 <RequiredFieldMark
-      /></label>
-      <input
-        id="certificate-notary-fee"
-        v-model="feeAmounts.notary"
-        data-test="fee-notary-amount"
-        class="text-input"
-        inputmode="decimal"
-        placeholder="金额（元）"
-        required
-        :disabled="submitting || uploading"
-      />
-      <div v-for="fee in feeCategories" :key="fee.key">
-        <label class="field-label field-label--spaced">{{ fee.label }}</label>
-        <select
-          v-model="feeStates[fee.key]"
-          :data-test="`fee-${fee.key}-state`"
-          class="text-input"
-          :disabled="submitting || uploading"
-        >
-          <option value="KNOWN">已知</option>
-          <option value="PENDING">待确认</option>
-        </select>
-        <input
-          v-if="feeStates[fee.key] === 'KNOWN'"
-          v-model="feeAmounts[fee.key]"
-          :data-test="`fee-${fee.key}-amount`"
-          class="text-input"
-          inputmode="decimal"
-          aria-label="金额（元）"
-          placeholder="金额（元，如 12.00）"
-          :disabled="submitting || uploading"
-        />
-      </div>
       <p v-if="uploadError" class="submit-error" role="alert">
         {{ uploadError }}
       </p>

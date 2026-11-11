@@ -55,7 +55,7 @@ export type CertificateResult = {
 const ACTION = 'notary.certificate.issue';
 const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const AMOUNT = /^(0|[1-9]\d{0,15})\.\d{2}$/u;
+const AMOUNT = /^(0|[1-9]\d{0,15})(\.\d{1,2})?$/u;
 
 @Injectable()
 export class NotaryCertificateService {
@@ -505,7 +505,7 @@ export class NotaryCertificateService {
         return code < 32 || code === 127;
       }) ||
       !validDate ||
-      !validIds(ids, 1) ||
+      !validIds(ids, 0) ||
       typeof input.needDisclose !== 'boolean' ||
       (input.sampleFeeAmount !== undefined &&
         (typeof input.sampleFeeAmount !== 'string' ||
