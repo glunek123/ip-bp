@@ -263,6 +263,26 @@ const resultReady = computed(
       !(resultChoice.value === 'AFFIRM' && directExternalRound.value)) ||
       (changedAmountState.value !== '' && validChangedAmount.value)),
 );
+// 提交按钮被禁用时必须说明缺什么，否则就是一个点不动的死按钮。
+const registerBlockedReason = computed(() => {
+  if (!canRegister.value) return '当前不能登记二审结果';
+  if (conflictNeedsReview.value) return '存在冲突，请先核对后再登记';
+  if (pendingUnknown.value !== null)
+    return '上次提交结果未知，请用相同请求重试';
+  if (uploadUnknown.value) return '有文件上传结果未知，请先核对';
+  if (pending.value) return '正在提交，请稍候';
+  if (uploading.value !== null) return '文件上传中，请稍候';
+  if (resultChoice.value === '') return '请选择二审裁判结果';
+  if (!validReceivedDate.value) return '请填写收到裁判文书日期';
+  if (feeState.value === '' || !validFee.value) return '请填写已缴诉讼费';
+  if (!selectedJudgmentIds.value.length) return '请上传二审判决书';
+  if (
+    resultChoice.value === 'CHANGE' &&
+    (changedAmountState.value === '' || !validChangedAmount.value)
+  )
+    return '请填写改判金额';
+  return '';
+});
 const confirmationText = computed(() => {
   if (confirmation.value === 'revoke')
     return '撤销后案件返回二审；原结果保留在历史中，已取消的发回子轮次不会重新启用。';
@@ -1444,6 +1464,9 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             file.originalFilename
           }}（已上传或历史冻结，尚未用于本次登记）</label
         >
+        <p v-if="!resultReady && registerBlockedReason" class="field-help">
+          {{ registerBlockedReason }}
+        </p>
         <button
           data-test="second-instance-result-submit"
           type="submit"
