@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-11T03:00:46.676Z",
+  "recordedAt": "2026-11-11T03:14:07.655Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1130,7 +1130,7 @@
     "docs/operations/uat-candidate-v6-2026-10-27.md": "b7b4c6c5857062b85d474d4b9ee8cd5b2a159541f8b84aa9f8c1703ecfc5de55",
     "docs/operations/uat-environment.md": "796175bf98b19878e4308be8e8bd20fbf38a66e1329c93ae1b753668aa975ad4",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "19a8717b997a0fd7b1a73ab368fe88a960f781759de88564e2996eb09dcbfa56",
+    "docs/project-status.md": "368d86f869a91862c88788648c012a5f449fc65b56aaa21f34494b897d382669",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
@@ -1380,6 +1380,7 @@
     "frontend/src/api/settlement-document-upload.ts": "cdea54816977c3f5ca5ef9d3a4ca049b4d715d4c2df3b369546bc0134203701d",
     "frontend/src/api/settlements.spec.ts": "e601a2438cf610aee080db1b045847fdf9010e53adf68c1f6b005adf66203754",
     "frontend/src/api/settlements.ts": "fb75917edfd8fe3820eb3349d7d64b82cd173fd9678a93749c711062551a9871",
+    "frontend/src/app/ActionDrawer.vue": "4095c4fda073627d248736214e7a303076f816f7b933bacc14926279a84f37c0",
     "frontend/src/app/App.spec.ts": "1435fae6ec51a18bacc4c35d34109641256bacb58fbd5c7d5e6f66858f556a37",
     "frontend/src/app/App.vue": "914dd81a63f5eafe32085f9c24c6c874e3b35893048d45ebec166ef2aefe9019",
     "frontend/src/app/AppShell.spec.ts": "aec55c014594ac6a50a8d00026559d52ca21ba2895f36abff2264fa0bb710b66",
@@ -1646,7 +1647,7 @@
     "frontend/src/modules/leads/LeadForm.spec.ts": "9bdf1ead750a865f9bb181433a2305f3694797f6031168a0715f7860ec48825b",
     "frontend/src/modules/leads/LeadForm.vue": "762a42e137e4d36ef906cfd3883617358166d0fd55956341947977a01725ea13",
     "frontend/src/modules/leads/LeadListPage.spec.ts": "24241649951afda919ec84b16f6bf8686149f6705bb5267d0d90403a2119ae59",
-    "frontend/src/modules/leads/LeadListPage.vue": "bddd1aef34709e370402731de17c99dce1076103de49b7224bbab5ba93872ca6",
+    "frontend/src/modules/leads/LeadListPage.vue": "e0745a5dd7e03b3133f2da5e4080e39049d78f01949d7cf9fbc6ca46449a735e",
     "frontend/src/modules/leads/LeadListWorkflowPanel.spec.ts": "edbb752d92f42cd05c2f42731bbfa3034bc2ef3609d6dc7785472aa06ab13db9",
     "frontend/src/modules/leads/LeadListWorkflowPanel.vue": "2451edeaaef5d0c3cb89f6cbe476f701fd25d745fdc1bf1795d73d351e163377",
     "frontend/src/modules/leads/LeadNewPage.spec.ts": "9fb0b18ae0a50daaa2286a33f077e5450a084c8ca7b48dd996f06c044e1a94a6",

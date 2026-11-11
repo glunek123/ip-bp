@@ -16,6 +16,7 @@ import {
 } from '../../api/leads';
 import { ApiError } from '../../api/http';
 import { leadBusinessDate, reviveLead } from '../../api/lead-decisions';
+import ActionDrawer from '../../app/ActionDrawer.vue';
 import LeadDecisionPanel from './LeadDecisionPanel.vue';
 import { readPendingLeadDecision } from './lead-decision-recovery';
 import {
@@ -1739,33 +1740,49 @@ onBeforeUnmount(() => {
         >核对原不取证归档批次</ElButton
       >
     </div>
-    <LeadNoEvidenceBatchPanel
-      v-if="noEvidenceOpen"
-      :key="noEvidenceContext"
-      :leads="noEvidenceLeads"
-      :identity="batchIdentity"
-      :context-generation="noEvidenceContext"
-      :pending="pendingNoEvidence"
-      :before-submit="canSubmitNoEvidenceBatch"
-      @pending="recordNoEvidencePending"
-      @succeeded="finishNoEvidenceBatch"
-      @close="noEvidenceOpen = false"
-    />
+    <ActionDrawer
+      :model-value="noEvidenceOpen"
+      title="不取证归档批次"
+      @update:model-value="noEvidenceOpen = $event"
+    >
+      <LeadNoEvidenceBatchPanel
+        v-if="noEvidenceOpen"
+        :key="noEvidenceContext"
+        :leads="noEvidenceLeads"
+        :identity="batchIdentity"
+        :context-generation="noEvidenceContext"
+        :pending="pendingNoEvidence"
+        :before-submit="canSubmitNoEvidenceBatch"
+        @pending="recordNoEvidencePending"
+        @succeeded="finishNoEvidenceBatch"
+        @close="noEvidenceOpen = false"
+      />
+    </ActionDrawer>
     <p v-if="pendingDecision && !decision" role="status">
       有一笔线索办理待核对。
       <ElButton @click="decision = pendingDecision">核对未确认的办理</ElButton>
     </p>
-    <LeadDecisionPanel
-      v-if="decision"
-      :key="identity"
-      :identity="identity"
-      :leads="decision.leads"
-      :kind="decision.kind"
-      :bulk="decision.bulk"
-      :before-submit="canSubmitDecision"
-      @close="closeDecision"
-      @completed="completeDecision"
-    />
+    <ActionDrawer
+      :model-value="decision !== null"
+      title="线索办理"
+      @update:model-value="
+        (open) => {
+          if (!open) closeDecision();
+        }
+      "
+    >
+      <LeadDecisionPanel
+        v-if="decision"
+        :key="identity"
+        :identity="identity"
+        :leads="decision.leads"
+        :kind="decision.kind"
+        :bulk="decision.bulk"
+        :before-submit="canSubmitDecision"
+        @close="closeDecision"
+        @completed="completeDecision"
+      />
+    </ActionDrawer>
     <LeadQuickActionsPanel
       v-if="activeLeadId"
       :lead-id="activeLeadId"
@@ -1776,18 +1793,24 @@ onBeforeUnmount(() => {
       @pending="savePendingPush"
       @succeeded="handlePushSucceeded"
     />
-    <LeadBatchPushPanel
-      v-if="batchActive"
-      auto-submit
-      :key="`${batchIdentity}:${authorizationGeneration}`"
-      :leads="batchFreshLeads"
-      :identity="batchIdentity"
-      :context-generation="authorizationGeneration"
-      :pending="pendingBatch"
-      @pending="persistBatch"
-      @succeeded="finishBatch"
-      @close="batchActive = false"
-    />
+    <ActionDrawer
+      :model-value="batchActive"
+      title="批量推送线索"
+      @update:model-value="batchActive = $event"
+    >
+      <LeadBatchPushPanel
+        v-if="batchActive"
+        auto-submit
+        :key="`${batchIdentity}:${authorizationGeneration}`"
+        :leads="batchFreshLeads"
+        :identity="batchIdentity"
+        :context-generation="authorizationGeneration"
+        :pending="pendingBatch"
+        @pending="persistBatch"
+        @succeeded="finishBatch"
+        @close="batchActive = false"
+      />
+    </ActionDrawer>
     <LeadCsvImportPanel
       v-if="csvImportOpen && csvFormContext"
       :key="csvContextKey"
