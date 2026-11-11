@@ -1244,6 +1244,7 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
     <template v-if="canSaveCurrent || canRegister">
       <form
         v-if="canSaveCurrent"
+        id="si-progress-form"
         data-test="second-instance-progress-form"
         @submit.prevent="saveProgress"
       >
@@ -1355,16 +1356,10 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             >
           </fieldset>
         </details>
-        <button
-          data-test="second-instance-progress-save"
-          type="submit"
-          :disabled="!progressReady"
-        >
-          保存
-        </button>
       </form>
       <form
         v-if="canRegister"
+        id="si-result-form"
         data-test="second-instance-result-form"
         @submit.prevent="openResultConfirmation"
       >
@@ -1513,17 +1508,32 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             file.originalFilename
           }}（已上传或历史冻结，尚未用于本次登记）</label
         >
+      </form>
+      <div class="si-actions">
         <p v-if="!resultReady && registerBlockedReason" class="field-help">
           {{ registerBlockedReason }}
         </p>
-        <button
-          data-test="second-instance-result-submit"
-          type="submit"
-          :disabled="!resultReady"
-        >
-          提交
-        </button>
-      </form>
+        <div class="si-actions__buttons">
+          <button
+            v-if="canSaveCurrent"
+            data-test="second-instance-progress-save"
+            type="submit"
+            form="si-progress-form"
+            :disabled="!progressReady"
+          >
+            保存
+          </button>
+          <button
+            v-if="canRegister"
+            data-test="second-instance-result-submit"
+            type="submit"
+            form="si-result-form"
+            :disabled="!resultReady"
+          >
+            提交
+          </button>
+        </div>
+      </div>
     </template>
     <section
       v-if="
@@ -1645,3 +1655,17 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
     </div>
   </section>
 </template>
+
+<style scoped>
+.si-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #ebeef5;
+}
+.si-actions__buttons {
+  display: flex;
+  gap: 8px;
+}
+</style>
