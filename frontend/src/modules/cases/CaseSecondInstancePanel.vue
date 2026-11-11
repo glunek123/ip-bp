@@ -1080,7 +1080,7 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
 <template>
   <section class="demo-card demo-card--pad" data-test="second-instance-panel">
     <h2 class="form-section-title">二审办理</h2>
-    <p>进展、裁判结果和材料按办理轮次保存。文件上传完成不代表结果已登记。</p>
+    <p class="field-help">二审信息按办理轮次保存；上传文件不等于已登记结果。</p>
     <template v-for="round in roundHistory" :key="round.id">
       <section
         v-if="!accessDenied"
@@ -1213,17 +1213,19 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
         data-test="second-instance-progress-form"
         @submit.prevent="saveProgress"
       >
-        <h3>当前轮进展</h3>
+        <h3>二审更新</h3>
         <label
-          >开庭日期<input
+          >二审开庭日期<input
             v-model="hearingAt"
             data-test="second-instance-hearing-at"
             type="date"
         /></label>
-        <label>开庭地点<input v-model="hearingPlace" maxlength="500" /></label>
-        <label>法官<input v-model="judgeName" maxlength="200" /></label>
         <label
-          >普通文书<input
+          >二审开庭地点<input v-model="hearingPlace" maxlength="500"
+        /></label>
+        <label>二审法官<input v-model="judgeName" maxlength="200" /></label>
+        <label
+          >二审文书<input
             type="file"
             accept="application/pdf,image/jpeg,image/png"
             data-test="second-instance-document-upload"
@@ -1233,7 +1235,7 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             @change="upload('document', $event)"
         /></label>
         <label
-          >送达文书<input
+          >二审送达文书<input
             type="file"
             accept="application/pdf,image/jpeg,image/png"
             data-test="second-instance-service-upload"
@@ -1242,46 +1244,53 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             "
             @change="upload('service', $event)"
         /></label>
-        <fieldset>
-          <legend>普通文书版本</legend>
-          <label v-for="file in documentOptions" :key="file.contentVersionId"
-            ><input
-              type="checkbox"
-              :checked="selectedDocumentIds.includes(file.contentVersionId)"
-              :disabled="
-                selectedDocumentIds.length >= 10 &&
-                !selectedDocumentIds.includes(file.contentVersionId)
-              "
-              @change="
-                toggleFile(
-                  'document',
-                  file.contentVersionId,
-                  ($event.target as HTMLInputElement).checked,
-                )
-              "
-            />{{ file.originalFilename }}</label
-          >
-        </fieldset>
-        <fieldset>
-          <legend>送达文书版本</legend>
-          <label v-for="file in serviceOptions" :key="file.contentVersionId"
-            ><input
-              type="checkbox"
-              :checked="selectedServiceIds.includes(file.contentVersionId)"
-              :disabled="
-                selectedServiceIds.length >= 10 &&
-                !selectedServiceIds.includes(file.contentVersionId)
-              "
-              @change="
-                toggleFile(
-                  'service',
-                  file.contentVersionId,
-                  ($event.target as HTMLInputElement).checked,
-                )
-              "
-            />{{ file.originalFilename }}</label
-          >
-        </fieldset>
+        <details class="field-help">
+          <summary>已上传的二审文书（可多选或取消）</summary>
+          <fieldset>
+            <legend>普通文书版本</legend>
+            <label v-for="file in documentOptions" :key="file.contentVersionId"
+              ><input
+                type="checkbox"
+                :checked="selectedDocumentIds.includes(file.contentVersionId)"
+                :disabled="
+                  selectedDocumentIds.length >= 10 &&
+                  !selectedDocumentIds.includes(file.contentVersionId)
+                "
+                @change="
+                  toggleFile(
+                    'document',
+                    file.contentVersionId,
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                "
+              />{{ file.originalFilename }}</label
+            >
+          </fieldset>
+          <fieldset>
+            <legend>送达文书版本</legend>
+            <label v-for="file in serviceOptions" :key="file.contentVersionId"
+              ><input
+                type="checkbox"
+                :checked="selectedServiceIds.includes(file.contentVersionId)"
+                :disabled="
+                  selectedServiceIds.length >= 10 &&
+                  !selectedServiceIds.includes(file.contentVersionId)
+                "
+                @change="
+                  toggleFile(
+                    'service',
+                    file.contentVersionId,
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                "
+              />{{ file.originalFilename }}</label
+            >
+          </fieldset>
+        </details>
+        <p class="field-help">
+          保存只记录本次二审信息，案件仍停留二审；提交后再选择二审裁判结果：发回重审
+          / 改判 / 维持原判。
+        </p>
         <button
           data-test="second-instance-progress-save"
           type="submit"
@@ -1295,7 +1304,7 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
         data-test="second-instance-result-form"
         @submit.prevent="openResultConfirmation"
       >
-        <h3>登记当前轮二审结果</h3>
+        <h3>二审裁判结果</h3>
         <p>结果将结束当前轮办理，并按结果进入对应案件阶段。</p>
         <label
           v-for="option in [
