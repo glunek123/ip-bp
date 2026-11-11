@@ -146,25 +146,7 @@ describe('NotaryPortalWorkflowPanel', () => {
       disclosureRequired: false,
     };
     sessionStorage.clear();
-    materials.listOwnerMaterials.mockResolvedValue({
-      items: [
-        {
-          ...photo,
-          id: 'certificate-material',
-          category: 'NOTARY_CERTIFICATE',
-          purpose: 'NOTARY_CERTIFICATE',
-          currentVersionId: 'certificate-v1',
-          contentVersions: [
-            {
-              id: 'certificate-v1',
-              originalFilename: 'certificate.pdf',
-              mimeType: 'application/pdf',
-            },
-          ],
-        },
-      ],
-      total: 1,
-    });
+    materials.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
     api.recordProxyNotaryCertificate.mockResolvedValue({});
     const workflow = createListWorkflowContext(async () => detail, {
       success: vi.fn(),
@@ -198,7 +180,7 @@ describe('NotaryPortalWorkflowPanel', () => {
       expect.objectContaining({
         certificateNo: '(2026) 粤公证字第12345号',
         sampleFeeAmount: '356.00',
-        contentVersionIds: ['certificate-v1'],
+        contentVersionIds: [],
         fees: expect.objectContaining({
           notary: { state: 'KNOWN', amount: '1200.00' },
         }),

@@ -77,7 +77,9 @@ const certificateSuccess = ref('');
 /** 统一按两位小数提交，后端留两位精度。 */
 function money(value: string): string {
   const trimmed = value.trim();
-  return /^\d+$/u.test(trimmed) ? `${trimmed}.00` : trimmed;
+  if (!/^\d+(\.\d{1,2})?$/u.test(trimmed)) return trimmed;
+  const [integer, fraction = ''] = trimmed.split('.');
+  return `${integer}.${`${fraction}00`.slice(0, 2)}`;
 }
 const canSubmitCertificate = computed(
   () =>
@@ -472,6 +474,14 @@ function stringIds(value: unknown): value is string[] {
     value.every((id) => typeof id === 'string' && id.length > 0)
   );
 }
+/** 公证书文件在填写出证卡片中已不是必填，允许空数组。 */
+function optionalIds(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= 10 &&
+    value.every((id) => typeof id === 'string' && id.length > 0)
+  );
+}
 function validPending(value: unknown): value is Pending {
   if (
     !record(value) ||
@@ -498,7 +508,7 @@ function validPending(value: unknown): value is Pending {
     kind === 'certificate' &&
     typeof input.certificateNo === 'string' &&
     typeof input.certificateDate === 'string' &&
-    stringIds(input.contentVersionIds) &&
+    optionalIds(input.contentVersionIds) &&
     typeof input.needDisclose === 'boolean' &&
     Array.isArray(input.disclosureContentVersionIds) &&
     input.disclosureContentVersionIds.every((id) => typeof id === 'string') &&
@@ -512,7 +522,7 @@ function validPending(value: unknown): value is Pending {
         ((fee.state === 'PENDING' && fee.amount === null) ||
           (fee.state === 'KNOWN' &&
             typeof fee.amount === 'string' &&
-            /^\d+\.\d{2}$/u.test(fee.amount)))
+            /^\d+(\.\d{1,2})?$/u.test(fee.amount)))
       );
     })
   );
