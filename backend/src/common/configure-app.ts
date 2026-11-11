@@ -33,6 +33,16 @@ export function configureApp(app: INestApplication): void {
     app.getHttpAdapter().getInstance().set('trust proxy', trustProxyHops);
   }
   app.setGlobalPrefix('api/v1');
+  // 接口返回的是随查询/权限变化的数据，禁止协商缓存。
+  // 否则浏览器带 If-None-Match 得到 304（无响应体），前端按失败处理，
+  // 表现为「搜索律师没有结果」。
+  app.getHttpAdapter().getInstance().set('etag', false);
+  app.use(
+    (_request: RequestContext, response: Response, next: NextFunction) => {
+      response.setHeader('Cache-Control', 'no-store');
+      next();
+    },
+  );
   const logger = new Logger('HTTP');
   app.use((request: RequestContext, response: Response, next: NextFunction) => {
     const started = Date.now();

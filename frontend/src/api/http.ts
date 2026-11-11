@@ -312,6 +312,8 @@ async function executeRequest<T>(
     const response = await fetch(`/api/v1${path}`, {
       method: options.method,
       credentials: 'same-origin',
+      // 业务接口随时变化，禁止浏览器缓存复用，避免 304 拿不到新结果。
+      cache: 'no-store',
       signal,
       headers: {
         ...(options.method !== 'GET' && csrfToken

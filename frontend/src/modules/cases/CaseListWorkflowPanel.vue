@@ -1561,6 +1561,13 @@ async function complaint() {
             /> </ElSelect
         ></label>
         <p v-if="candidatesError" role="alert">{{ candidatesError }}</p>
+        <p
+          v-else-if="!candidates.length && lawyerQuery.trim()"
+          class="field-help"
+          data-test="lawyer-candidates-empty"
+        >
+          没有匹配的律师，可换姓氏或名字里的一个字再试。
+        </p>
         <button type="submit">
           {{ item.defendants.length ? '匹配律师' : '保存被告' }}
         </button>
