@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-11T07:44:36.406Z",
+  "recordedAt": "2026-11-11T07:51:18.234Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1502,7 +1502,7 @@
     "frontend/src/modules/cases/CaseLawyerReassignPanel.spec.ts": "0977e58228bdd0fc7b1ba4f5829fa63d90794bf3c993e6a6229b0ae4de9b8a22",
     "frontend/src/modules/cases/CaseLawyerReassignPanel.vue": "ca699d480d126cb908134eda771c9273f76031e41ebeeab6ed4757143bdb279d",
     "frontend/src/modules/cases/CaseListDisplay.spec.ts": "5b889dbfd64d8fb2a12941dfe9791d41bff4c55db0e1d0fab0977fb9f6dc3af3",
-    "frontend/src/modules/cases/CaseListPage.vue": "ee351a701c2d1390badcf498dae4ef5d54bbf626da1300ab5e99d5a06d109954",
+    "frontend/src/modules/cases/CaseListPage.vue": "85249b2439fdb576a2640b7c3a79011efb96a77eed06d848edf8417516859bc4",
     "frontend/src/modules/cases/CaseListPreferencesPanel.spec.ts": "2de3925c2294c83ef03d0ec74a3a884cbc3c5168af416e6a7d5e330d84363803",
     "frontend/src/modules/cases/CaseListPreferencesPanel.vue": "929335da40edce84780fc0c66ff44ba459b28843f61de82d36e523b9129fcacf",
     "frontend/src/modules/cases/CaseListWorkflowPanel.spec.ts": "6f086e8d926c27749797382ca43aa1d5c5f2606a7bfb95c8ca1b228a8e4578cd",

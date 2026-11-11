@@ -935,6 +935,9 @@ function shortCaseAction(
     return item?.displaySummary.defendants.length ? '匹配律师' : '补充被告';
   if (item?.stage === 'WAITING_ARCHIVE' && action.intent === 'record-closure')
     return '结算更新';
+  // 待开庭只保留一个入口：立案已完成，这里的动作是「更新」开庭与材料。
+  if (item?.stage === 'WAITING_HEARING' && action.intent === 'acceptance')
+    return '更新';
   const labels: Partial<Record<CaseActionIntent, string>> = {
     match: '匹配律师',
     complaint: '提交诉状',
