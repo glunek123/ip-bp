@@ -44,6 +44,7 @@ import LeadQuickActionsPanel from './LeadQuickActionsPanel.vue';
 import ProxyLeadEvidencePanel from './ProxyLeadEvidencePanel.vue';
 import { hasPendingProxyLeadEvidence } from './lead-proxy-evidence-recovery';
 import RoutineBusinessEditor from './RoutineBusinessEditor.vue';
+import ActionDrawer from '../../app/ActionDrawer.vue';
 import LeadDecisionPanel from './LeadDecisionPanel.vue';
 import { reviveLead } from '../../api/lead-decisions';
 import {
@@ -767,18 +768,27 @@ onBeforeUnmount(clearContext);
         <p v-if="reviveError" role="alert" class="submit-error">
           {{ reviveError }}
         </p>
-        <LeadDecisionPanel
-          v-if="decisionOpen"
-          :leads="[lead]"
-          :identity="actorKey"
-          :kind="decisionOpen"
-          @close="decisionOpen = null"
-          @completed="
-            decisionOpen = null;
-            notifyWorkflowChanged();
-            load();
+        <ActionDrawer
+          :model-value="!!decisionOpen"
+          @update:model-value="
+            (open) => {
+              if (!open) decisionOpen = null;
+            }
           "
-        />
+        >
+          <LeadDecisionPanel
+            v-if="decisionOpen"
+            :leads="[lead]"
+            :identity="actorKey"
+            :kind="decisionOpen"
+            @close="decisionOpen = null"
+            @completed="
+              decisionOpen = null;
+              notifyWorkflowChanged();
+              load();
+            "
+          />
+        </ActionDrawer>
         <ProxyLeadEvidencePanel
           v-if="
             lead.capabilities.proxyConfirmEvidence ||

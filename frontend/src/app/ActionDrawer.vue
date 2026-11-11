@@ -20,7 +20,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
       @click="emit('update:modelValue', false)"
     />
     <aside class="action-drawer__panel">
-      <header class="action-drawer__head">
+      <header v-if="title" class="action-drawer__head">
         <h2 class="action-drawer__title">{{ title }}</h2>
         <button
           type="button"

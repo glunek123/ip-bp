@@ -1,3 +1,7 @@
+# 2026-11-11 下午：线索决定卡改为真正侧栏内容（未提交）
+
+上一版只在外层套了侧栏，但 LeadDecisionPanel 内部是 ElDialog，实际仍以居中弹窗盖在空侧栏上。现改为内联 section + 自定义标题栏（关闭按钮），放进 ActionDrawer 后在右侧铺开；线索详情页的同一处也一并套上侧栏。ActionDrawer 的标题改为可选，避免与面板自带标题重复。
+
 # 2026-11-11 下午：修复线索侧栏默认弹出（未提交）
 
 极严重回归：线索列表一进页面就铺满一个空的「线索办理」侧栏，整页点不了。原因 decision 声明为 ref<{...}>()（初始 undefined），抽屉用 decision !== null 判断，undefined !== null 恒为 true。已改为 !!decision，并补用例断言进页面时没有 .action-drawer。

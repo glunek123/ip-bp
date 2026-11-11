@@ -1764,7 +1764,6 @@ onBeforeUnmount(() => {
     </p>
     <ActionDrawer
       :model-value="!!decision"
-      title="线索办理"
       @update:model-value="
         (open) => {
           if (!open) closeDecision();

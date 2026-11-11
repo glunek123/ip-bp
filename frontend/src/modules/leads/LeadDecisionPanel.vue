@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
-import { ElDialog } from 'element-plus/es/components/dialog/index.mjs';
 import { ApiError } from '../../api/http';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import {
@@ -254,161 +253,184 @@ onBeforeRouteUpdate(() => !busy.value);
 </script>
 
 <template>
-  <ElDialog
-    :model-value="true"
-    :title="title"
-    width="min(820px, calc(100vw - 32px))"
-    :show-close="!busy"
-    :close-on-click-modal="false"
-    :close-on-press-escape="false"
-    @close="emit('close')"
-  >
-    <p v-if="loading">正在读取线索…</p>
-    <div v-if="pending && !details.length">
-      <p>有一笔结果尚未确认的办理。</p>
-      <ol class="lead-decision__list">
-        <li v-for="lead in shownLeads" :key="lead.id">{{ lead.businessNo }}</li>
-      </ol>
-      <ElButton :disabled="busy" @click="emit('close')">暂时关闭</ElButton>
-      <ElButton type="primary" :loading="busy" @click="submit"
-        >按原请求核对</ElButton
+  <section class="lead-decision-dialog" role="dialog" aria-modal="true">
+    <header class="lead-decision-dialog__head">
+      <h2 class="lead-decision-dialog__title">{{ title }}</h2>
+      <button
+        v-if="!busy"
+        type="button"
+        class="lead-decision-dialog__close"
+        aria-label="关闭"
+        @click="emit('close')"
       >
-    </div>
-    <form v-if="details.length" class="lead-decision" @submit.prevent="submit">
-      <template v-if="batch">
-        <p>已选 {{ details.length }} 条线索</p>
+        ×
+      </button>
+    </header>
+    <div class="lead-decision-dialog__body">
+      <p v-if="loading">正在读取线索…</p>
+      <div v-if="pending && !details.length">
+        <p>有一笔结果尚未确认的办理。</p>
         <ol class="lead-decision__list">
-          <li v-for="lead in details" :key="lead.id">
-            {{ lead.businessNo }} · {{ lead.shopName }}
+          <li v-for="lead in shownLeads" :key="lead.id">
+            {{ lead.businessNo }}
           </li>
         </ol>
-      </template>
-      <dl v-else class="lead-decision__facts">
-        <template v-for="lead in details" :key="lead.id">
-          <div>
-            <dt>店铺名</dt>
-            <dd>{{ lead.shopName }}</dd>
-          </div>
-          <template v-if="review">
-            <div>
-              <dt>平台</dt>
-              <dd>{{ labelLeadPlatform(lead.platform) }}</dd>
-            </div>
-            <div>
-              <dt>线索来源</dt>
-              <dd>{{ leadSourceLabels[lead.source] }}</dd>
-            </div>
-            <div>
-              <dt>侵权类型</dt>
-              <dd>
-                {{
-                  lead.infringementTypes
-                    .map((item) => leadInfringementTypeLabels[item])
-                    .join('、') || '—'
-                }}
-              </dd>
-            </div>
-            <div>
-              <dt>推送日期</dt>
-              <dd>{{ leadBusinessDate(lead.pushedAt) }}</dd>
-            </div>
-          </template>
-          <template v-else>
-            <div>
-              <dt>审核结果</dt>
-              <dd>
-                {{
-                  lead.reviewDecision?.result === 'INFRINGEMENT' ? '侵权' : '—'
-                }}
-              </dd>
-            </div>
-            <div>
-              <dt>审核日期</dt>
-              <dd>
-                {{ leadBusinessDate(lead.reviewDecision?.decidedAt ?? null) }}
-              </dd>
-            </div>
-          </template>
+        <ElButton :disabled="busy" @click="emit('close')">暂时关闭</ElButton>
+        <ElButton type="primary" :loading="busy" @click="submit"
+          >按原请求核对</ElButton
+        >
+      </div>
+      <form
+        v-if="details.length"
+        class="lead-decision"
+        @submit.prevent="submit"
+      >
+        <template v-if="batch">
+          <p>已选 {{ details.length }} 条线索</p>
+          <ol class="lead-decision__list">
+            <li v-for="lead in details" :key="lead.id">
+              {{ lead.businessNo }} · {{ lead.shopName }}
+            </li>
+          </ol>
         </template>
-      </dl>
-      <fieldset :disabled="locked">
-        <label
-          ><span
-            >{{ review ? '审核结果' : '确认结果' }}<RequiredFieldMark
-          /></span>
-          <select v-model="result" required>
-            <option value="" disabled>请选择</option>
+        <dl v-else class="lead-decision__facts">
+          <template v-for="lead in details" :key="lead.id">
+            <div>
+              <dt>店铺名</dt>
+              <dd>{{ lead.shopName }}</dd>
+            </div>
             <template v-if="review">
-              <option value="INFRINGEMENT">侵权</option>
-              <option value="NO_INFRINGEMENT">不侵权</option>
+              <div>
+                <dt>平台</dt>
+                <dd>{{ labelLeadPlatform(lead.platform) }}</dd>
+              </div>
+              <div>
+                <dt>线索来源</dt>
+                <dd>{{ leadSourceLabels[lead.source] }}</dd>
+              </div>
+              <div>
+                <dt>侵权类型</dt>
+                <dd>
+                  {{
+                    lead.infringementTypes
+                      .map((item) => leadInfringementTypeLabels[item])
+                      .join('、') || '—'
+                  }}
+                </dd>
+              </div>
+              <div>
+                <dt>推送日期</dt>
+                <dd>{{ leadBusinessDate(lead.pushedAt) }}</dd>
+              </div>
             </template>
             <template v-else>
-              <option value="EVIDENCE" :disabled="!allowTransfer">取证</option>
-              <option value="NO_EVIDENCE" :disabled="!allowArchive">
-                不取证
-              </option>
+              <div>
+                <dt>审核结果</dt>
+                <dd>
+                  {{
+                    lead.reviewDecision?.result === 'INFRINGEMENT'
+                      ? '侵权'
+                      : '—'
+                  }}
+                </dd>
+              </div>
+              <div>
+                <dt>审核日期</dt>
+                <dd>
+                  {{ leadBusinessDate(lead.reviewDecision?.decidedAt ?? null) }}
+                </dd>
+              </div>
             </template>
-          </select>
-        </label>
-        <label v-if="result === 'EVIDENCE'"
-          ><span>公证处<RequiredFieldMark /></span>
-          <select v-model="office" aria-label="公证处" required>
-            <option value="" disabled>请选择公证处</option>
-            <option v-for="item in offices" :key="item.id" :value="item.id">
-              {{ item.name }}
-            </option>
-          </select>
-        </label>
-        <p v-if="result === 'EVIDENCE' && !offices.length">
-          当前没有可用公证处。
-        </p>
-        <template v-if="archive">
-          <label v-if="!review"
-            ><span>归档类型<RequiredFieldMark /></span>
-            <select v-model="archiveType" required>
+          </template>
+        </dl>
+        <fieldset :disabled="locked">
+          <label
+            ><span
+              >{{ review ? '审核结果' : '确认结果' }}<RequiredFieldMark
+            /></span>
+            <select v-model="result" required>
               <option value="" disabled>请选择</option>
-              <option
-                v-for="(label, value) in leadArchiveTypeLabels"
-                :key="value"
-                :value="value"
-              >
-                {{ label }}
+              <template v-if="review">
+                <option value="INFRINGEMENT">侵权</option>
+                <option value="NO_INFRINGEMENT">不侵权</option>
+              </template>
+              <template v-else>
+                <option value="EVIDENCE" :disabled="!allowTransfer">
+                  取证
+                </option>
+                <option value="NO_EVIDENCE" :disabled="!allowArchive">
+                  不取证
+                </option>
+              </template>
+            </select>
+          </label>
+          <label v-if="result === 'EVIDENCE'"
+            ><span>公证处<RequiredFieldMark /></span>
+            <select v-model="office" aria-label="公证处" required>
+              <option value="" disabled>请选择公证处</option>
+              <option v-for="item in offices" :key="item.id" :value="item.id">
+                {{ item.name }}
               </option>
             </select>
           </label>
-          <label
-            ><span>归档日期<RequiredFieldMark /></span
-            ><input v-model="date" type="date" required
-          /></label>
-          <label
-            ><span>归档原因<RequiredFieldMark /></span
-            ><textarea v-model="reason" rows="3" maxlength="5000" required />
-          </label>
-        </template>
-      </fieldset>
-      <div class="lead-decision__actions">
-        <ElButton native-type="button" :disabled="locked" @click="emit('close')"
-          >取消</ElButton
-        >
-        <ElButton
-          type="primary"
-          native-type="submit"
-          :disabled="busy || (!pending && !valid)"
-          :loading="busy"
-        >
-          {{
-            pending ? '按原请求核对' : review ? '提交审核结果' : '提交确认结果'
-          }}
-        </ElButton>
-      </div>
-    </form>
-    <p v-if="error" role="alert">{{ error }}</p>
-    <ElButton
-      v-if="error && !locked && (stale || !details.length)"
-      @click="load"
-      >重新读取</ElButton
-    >
-  </ElDialog>
+          <p v-if="result === 'EVIDENCE' && !offices.length">
+            当前没有可用公证处。
+          </p>
+          <template v-if="archive">
+            <label v-if="!review"
+              ><span>归档类型<RequiredFieldMark /></span>
+              <select v-model="archiveType" required>
+                <option value="" disabled>请选择</option>
+                <option
+                  v-for="(label, value) in leadArchiveTypeLabels"
+                  :key="value"
+                  :value="value"
+                >
+                  {{ label }}
+                </option>
+              </select>
+            </label>
+            <label
+              ><span>归档日期<RequiredFieldMark /></span
+              ><input v-model="date" type="date" required
+            /></label>
+            <label
+              ><span>归档原因<RequiredFieldMark /></span
+              ><textarea v-model="reason" rows="3" maxlength="5000" required />
+            </label>
+          </template>
+        </fieldset>
+        <div class="lead-decision__actions">
+          <ElButton
+            native-type="button"
+            :disabled="locked"
+            @click="emit('close')"
+            >取消</ElButton
+          >
+          <ElButton
+            type="primary"
+            native-type="submit"
+            :disabled="busy || (!pending && !valid)"
+            :loading="busy"
+          >
+            {{
+              pending
+                ? '按原请求核对'
+                : review
+                  ? '提交审核结果'
+                  : '提交确认结果'
+            }}
+          </ElButton>
+        </div>
+      </form>
+      <p v-if="error" role="alert">{{ error }}</p>
+      <ElButton
+        v-if="error && !locked && (stale || !details.length)"
+        @click="load"
+        >重新读取</ElButton
+      >
+    </div>
+  </section>
 </template>
 
 <style scoped>
@@ -449,5 +471,33 @@ onBeforeRouteUpdate(() => !busy.value);
   display: flex;
   justify-content: flex-end;
   margin-top: 20px;
+}
+.lead-decision-dialog {
+  display: block;
+}
+.lead-decision-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 12px;
+}
+.lead-decision-dialog__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.lead-decision-dialog__close {
+  border: 0;
+  background: none;
+  font-size: 20px;
+  line-height: 1;
+  color: #8a919f;
+  cursor: pointer;
+}
+.lead-decision-dialog__body {
+  display: block;
 }
 </style>
