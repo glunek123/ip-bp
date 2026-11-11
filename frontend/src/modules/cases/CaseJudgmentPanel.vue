@@ -680,9 +680,7 @@ function historyLabel(fact: CaseJudgmentFact): string {
 
       <fieldset class="form-stack">
         <legend>判决书 <span class="required-mark">*</span></legend>
-        <p class="field-help">
-          至少选择1份本案有效判决书，最多10份；仅支持单份不超过50MiB的PDF、JPEG或PNG。
-        </p>
+        <p class="field-help">最多10份，单份≤50MiB，PDF/JPEG/PNG。</p>
         <ul v-if="availableFiles.length" class="notary-offices-list">
           <li v-for="file in availableFiles" :key="file.contentVersionId">
             <label class="checkbox-row">

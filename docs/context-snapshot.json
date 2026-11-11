@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-11T08:33:16.128Z",
+  "recordedAt": "2026-11-11T08:44:50.425Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1496,7 +1496,7 @@
     "frontend/src/modules/cases/CaseJudgmentNextStepPanel.spec.ts": "947e018520b1d40f45ce7197792796caf0a8c38a8c2bdfa87c6f981989dc5f52",
     "frontend/src/modules/cases/CaseJudgmentNextStepPanel.vue": "85031fe3b20a02dfdedf2aac1dca74ae90b06714857ba0b59e0bfb34d3093072",
     "frontend/src/modules/cases/CaseJudgmentPanel.spec.ts": "2e4d6f718fc02c04e39753fec7fffe0140a608bb23b0a8754b1bc33b0536cc47",
-    "frontend/src/modules/cases/CaseJudgmentPanel.vue": "58382e8c54c50daaee74ecf39c4cd709697a23661a07e5bafb71fbeac1988dbd",
+    "frontend/src/modules/cases/CaseJudgmentPanel.vue": "3a808f0be2cbc3036c909b088129d2cb1a8a5b841be86fd650ea01c3daa72187",
     "frontend/src/modules/cases/CaseLawyerAssignmentBatchPanel.spec.ts": "97dc5255557ce64c84a924e843ed2e3e2a8a838e577b6569c0ee65c8a7d8f5f3",
     "frontend/src/modules/cases/CaseLawyerAssignmentBatchPanel.vue": "5e0322e37084c754531d224bedf165f0b820735c06c6bed5ec31bf510e3b4b0b",
     "frontend/src/modules/cases/CaseLawyerReassignPanel.spec.ts": "0977e58228bdd0fc7b1ba4f5829fa63d90794bf3c993e6a6229b0ae4de9b8a22",
@@ -1520,7 +1520,7 @@
     "frontend/src/modules/cases/CaseSecondInstanceAcceptancePanel.spec.ts": "9aae3373697082093eda504afe962c133a96af223fd68497795e5212f4e02451",
     "frontend/src/modules/cases/CaseSecondInstanceAcceptancePanel.vue": "e3e40ea1a1628be2e4dfa8e4690410a398006859dca41757d64f1f69bb4d89e3",
     "frontend/src/modules/cases/CaseSecondInstancePanel.spec.ts": "2a82cbe3009ec7f6b8c840cf987ff5418b7a3e4389c573579b76fde0d58f5768",
-    "frontend/src/modules/cases/CaseSecondInstancePanel.vue": "1c18e24925a8ad8d9ed4b1eacd47697c4737d1ac0af684e11568edc4a5d34f2c",
+    "frontend/src/modules/cases/CaseSecondInstancePanel.vue": "46f482de8827da439b2b48364eedb199a04e8d6155d78bd7cedd6810d1bdb33e",
     "frontend/src/modules/cases/CaseSectionRecordCorrectionPanel.spec.ts": "4e54684a61a66db9aa69fd8e25676d1457139631ab57734ee5a4580119b37e2e",
     "frontend/src/modules/cases/CaseSectionRecordCorrectionPanel.vue": "d0fc34ead4a8520913829b33dc75bc8b8d625f87eba3ce587f0547011c7f8dea",
     "frontend/src/modules/cases/CaseSettlementActualForm.spec.ts": "d2049011cf7db3cb4d927e74e1a059bcf0d068e999723754fb7f01fa29db0e39",

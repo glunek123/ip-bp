@@ -1080,7 +1080,6 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
 <template>
   <section class="demo-card demo-card--pad" data-test="second-instance-panel">
     <h2 class="form-section-title">二审办理</h2>
-    <p class="field-help">二审信息按办理轮次保存；上传文件不等于已登记结果。</p>
     <template v-for="round in roundHistory" :key="round.id">
       <section
         v-if="!accessDenied"
@@ -1287,10 +1286,6 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             >
           </fieldset>
         </details>
-        <p class="field-help">
-          保存只记录本次二审信息，案件仍停留二审；提交后再选择二审裁判结果：发回重审
-          / 改判 / 维持原判。
-        </p>
         <button
           data-test="second-instance-progress-save"
           type="submit"
@@ -1305,7 +1300,6 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
         @submit.prevent="openResultConfirmation"
       >
         <h3>二审裁判结果</h3>
-        <p>结果将结束当前轮办理，并按结果进入对应案件阶段。</p>
         <label
           v-for="option in [
             { value: 'REMAND', label: '发回重审' },
