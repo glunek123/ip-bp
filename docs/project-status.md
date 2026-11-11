@@ -1,3 +1,18 @@
+# 2026-11-11 下午：变更承办律师（已确认方案，待实现）
+
+需求：一个律师可接多个案件；已匹配案件允许变更承办律师。允许阶段：待匹配、诉状待提交、诉状待确认（进入正式立案后锁定）。
+
+已定位需同步修改的 6 处：
+
+1. `lawyer-account.service.ts` `authorizeMatch()`：`stage !== 'PENDING_MATCH'` 改为阶段集合校验。
+2. `case-lawyer-assignment.service.ts` `canAssign` 计算：`stage === 'PENDING_MATCH' && matchedAt === null` 放宽为阶段集合 + 允许已匹配。
+3. 同文件事务内校验：同上；`current` 存在且目标不同 → 结束旧指派（endedAt）、新建 PRIMARY、outcome `REASSIGNED`、审计 `case.lawyer.reassign.succeeded`；不推进阶段。
+4. 同文件 `readReceipt()`：receipt 快照里 `row.stage === 'PENDING_MATCH'` 硬校验需按阶段集合放宽，并识别 `REASSIGNED`。
+5. `case-lawyer-assignment.dto.ts` outcome 枚举增加 `REASSIGNED`；前端对应解码放宽。
+6. 列表投影 `row.stage === 'PENDING_MATCH'`（canMatch）改为阶段集合，使列表/抽屉出现「匹配律师」入口。
+
+风险点：`caseLawyerAssignmentReceipt` 快照含 stage/outcome，历史 receipt 的兼容读取要一并回归；写入侧要禁止新旧律师相同（现为 NO_CHANGE）。
+
 # 2026-11-11 下午：线索决定卡改为真正侧栏内容（未提交）
 
 上一版只在外层套了侧栏，但 LeadDecisionPanel 内部是 ElDialog，实际仍以居中弹窗盖在空侧栏上。现改为内联 section + 自定义标题栏（关闭按钮），放进 ActionDrawer 后在右侧铺开；线索详情页的同一处也一并套上侧栏。ActionDrawer 的标题改为可选，避免与面板自带标题重复。
