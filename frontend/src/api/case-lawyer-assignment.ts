@@ -23,11 +23,13 @@ export type AssignCaseLawyerInput = {
   lawyerAccountId: string;
   lawyerProfileId?: string;
 };
+export type AssignCaseLawyerStage =
+  'PENDING_MATCH' | 'WAITING_COMPLAINT' | 'WAITING_COMPLAINT_CONFIRMATION';
 export type AssignCaseLawyerResult = {
   id: string;
-  stage: 'PENDING_MATCH';
+  stage: AssignCaseLawyerStage;
   version: number;
-  outcome: 'ASSIGNED' | 'NO_CHANGE' | 'SKIPPED';
+  outcome: 'ASSIGNED' | 'NO_CHANGE' | 'SKIPPED' | 'REASSIGNED';
   requestedLawyerAccountId: string;
   previousAssignment: AssignmentView | null;
   currentAssignment: AssignmentView | null;
@@ -53,8 +55,14 @@ export function validAssignCaseLawyerResult(
   if (
     !record(value) ||
     value.id !== caseId ||
-    value.stage !== 'PENDING_MATCH' ||
-    !['ASSIGNED', 'NO_CHANGE', 'SKIPPED'].includes(String(value.outcome)) ||
+    ![
+      'PENDING_MATCH',
+      'WAITING_COMPLAINT',
+      'WAITING_COMPLAINT_CONFIRMATION',
+    ].includes(String(value.stage)) ||
+    !['ASSIGNED', 'NO_CHANGE', 'SKIPPED', 'REASSIGNED'].includes(
+      String(value.outcome),
+    ) ||
     value.requestedLawyerAccountId !== input.lawyerAccountId ||
     !Number.isSafeInteger(value.version) ||
     !(
@@ -71,6 +79,17 @@ export function validAssignCaseLawyerResult(
       value.currentAssignment.lawyerAccountId === input.lawyerAccountId &&
       (input.lawyerProfileId === undefined ||
         value.currentAssignment.lawyerProfileId === input.lawyerProfileId)
+    );
+  if (value.outcome === 'REASSIGNED')
+    return (
+      value.version === input.expectedVersion + 1 &&
+      assignment(value.previousAssignment) &&
+      assignment(value.currentAssignment) &&
+      value.currentAssignment.lawyerAccountId === input.lawyerAccountId &&
+      (input.lawyerProfileId === undefined ||
+        value.currentAssignment.lawyerProfileId === input.lawyerProfileId) &&
+      value.previousAssignment.lawyerAccountId !==
+        value.currentAssignment.lawyerAccountId
     );
   return (
     value.version === input.expectedVersion &&
