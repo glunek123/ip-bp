@@ -1546,20 +1546,29 @@ async function complaint() {
             v-model="lawyerQuery"
             data-test="lawyer-query"
         /></label>
-        <label v-if="item.defendants.length"
-          >承办律师<ElSelect
-            v-model="lawyer"
-            class="workflow-select"
-            placeholder="请选择律师"
-            data-test="lawyer-select"
+        <fieldset
+          v-if="item.defendants.length"
+          class="lawyer-candidates"
+          data-test="lawyer-select"
+        >
+          <legend>承办律师</legend>
+          <label
+            v-for="candidate in candidates"
+            :key="candidate.lawyerAccountId"
+            class="lawyer-candidates__option"
           >
-            <ElOption
-              v-for="candidate in candidates"
-              :key="candidate.lawyerAccountId"
-              :label="candidate.displayName"
+            <input
+              v-model="lawyer"
+              type="radio"
               :value="candidate.lawyerAccountId"
-            /> </ElSelect
-        ></label>
+              :data-test="`lawyer-option-${candidate.lawyerAccountId}`"
+            />
+            {{ candidate.displayName }}
+            <span v-if="candidate.lawFirm" class="field-help">
+              · {{ candidate.lawFirm }}
+            </span>
+          </label>
+        </fieldset>
         <p v-if="candidatesError" role="alert">{{ candidatesError }}</p>
         <p
           v-else-if="!candidates.length && lawyerQuery.trim()"
@@ -1750,3 +1759,20 @@ async function complaint() {
     </fieldset>
   </section>
 </template>
+
+<style scoped>
+.lawyer-candidates {
+  display: grid;
+  gap: 6px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.lawyer-candidates__option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+</style>

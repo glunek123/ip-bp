@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-11T05:35:40.764Z",
+  "recordedAt": "2026-11-11T05:43:53.579Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1504,7 +1504,7 @@
     "frontend/src/modules/cases/CaseListPreferencesPanel.spec.ts": "2de3925c2294c83ef03d0ec74a3a884cbc3c5168af416e6a7d5e330d84363803",
     "frontend/src/modules/cases/CaseListPreferencesPanel.vue": "929335da40edce84780fc0c66ff44ba459b28843f61de82d36e523b9129fcacf",
     "frontend/src/modules/cases/CaseListWorkflowPanel.spec.ts": "6f086e8d926c27749797382ca43aa1d5c5f2606a7bfb95c8ca1b228a8e4578cd",
-    "frontend/src/modules/cases/CaseListWorkflowPanel.vue": "b458b4eaea227d0a154652f41f2aa1decb9767fd9ea86b9fcd2f3698ac8b8e6d",
+    "frontend/src/modules/cases/CaseListWorkflowPanel.vue": "680d1652705b019975681560fc78beb188cdece7e61dbc0d2b8d67a89afc059f",
     "frontend/src/modules/cases/CaseLitigationRefundPanel.spec.ts": "ad2bd785ea0ae513c826c0886c1d276fcd4cc2a6a59bdeb22730c59d9d69125c",
     "frontend/src/modules/cases/CaseLitigationRefundPanel.vue": "dbce67f7e1e3aa5b730597bb6bc490982ac5a1af5e1039f7db89e43aa62b6f5e",
     "frontend/src/modules/cases/CasePages.spec.ts": "4199da77fc584163e40341841e7209b31a3a33a44534eeaa6092b102779a7141",
