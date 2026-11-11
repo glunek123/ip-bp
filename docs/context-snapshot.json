@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-11T05:43:53.579Z",
+  "recordedAt": "2026-11-11T05:53:41.742Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1313,7 +1313,7 @@
     "frontend/src/api/case-supplements.spec.ts": "2bbbd94376f9f1f865dd853169064be2cb981dbead03f1313cd68330f20f3018",
     "frontend/src/api/case-supplements.ts": "3f60e471866323ad0da4f77a0d3e97fc7d6a58a650fb144db694c920564b93f0",
     "frontend/src/api/cases.spec.ts": "947588858a1226732bf163521c7ff67cdd8ac9db7ba238ea94bc5574cff92d41",
-    "frontend/src/api/cases.ts": "8c6abf2c14d78a5c0d7b28bdac63ce1deeb16c7f23daa3dd9a562dee85285295",
+    "frontend/src/api/cases.ts": "4ed251d2bb556d42f264b348152891baf33803d2fa192adbb3e86139427c205e",
     "frontend/src/api/client-accounts.spec.ts": "8ac708aa813ad1145ffa9699ece38b5d31aa269a8b68ee4652740654408533e3",
     "frontend/src/api/client-accounts.ts": "ed48ccc1f037c0a3b93aebd6e95cbb08a739f3ba4ddb178f74e733340cb6429e",
     "frontend/src/api/client-cases.spec.ts": "9142f35fa8693a85d9e38812e999fa46333e2592eaa4a74bc6b4b57a56031365",

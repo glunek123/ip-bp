@@ -7318,14 +7318,15 @@ export async function submitComplaint(
   version: number;
   submittedAt: string;
 }> {
-  const idsValid = (ids: string[]) =>
-    ids.length >= 1 && ids.length <= 10 && ids.every(nonempty);
+  const idsValid = (ids: string[], min = 1) =>
+    ids.length >= min && ids.length <= 10 && ids.every(nonempty);
   if (
     !Number.isInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
     !input.idempotencyKey.trim() ||
     !idsValid(input.complaintContentVersionIds) ||
-    !idsValid(input.authorizationContentVersionIds) ||
+    // 授权委托书／起诉状已合并为一个上传控件，授权材料允许为空。
+    !idsValid(input.authorizationContentVersionIds, 0) ||
     (input.submittedOn !== undefined &&
       (!businessDate(input.submittedOn) ||
         input.submittedOn > todayShanghai())) ||
