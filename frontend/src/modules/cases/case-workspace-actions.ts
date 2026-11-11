@@ -517,6 +517,12 @@ export function resolveCaseListActions(
   );
   add(current.stage === 'WAITING_ARCHIVE' && current.canArchive, 'archive');
   add(current.canCorrectArchive, 'correct-archive');
+  if (current.stage === 'WAITING_HEARING')
+    return result
+      .filter((action) => action.intent !== 'hearing')
+      .map((action) =>
+        action.intent === 'acceptance' ? { ...action, label: '更新' } : action,
+      );
   return result;
 }
 
@@ -531,7 +537,7 @@ export function primaryCaseAction<T extends { id: string }>(
     WAITING_COMPLAINT_STAMP: 'mail-complaint',
     WAITING_FILING: 'filing',
     WAITING_FORMAL_ACCEPTANCE: 'acceptance',
-    WAITING_HEARING: 'hearing',
+    WAITING_HEARING: 'acceptance',
     WAITING_JUDGMENT: 'judgment',
     SECOND_INSTANCE: 'second-instance',
     WAITING_EXECUTION_DOCUMENTS: 'execution-submission',

@@ -10,6 +10,7 @@ import {
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   registerCaseAcceptance,
+  scheduleCaseHearing,
   caseAcceptanceDraft,
   listFilingCourts,
   todayShanghai,
@@ -33,6 +34,13 @@ type Category = keyof AcceptanceMaterials;
 type PanelItem = CaseWorkflowItem & {
   filingSubmission: { submittedAt: string } | null;
   origin?: CaseOrigin | LawyerCaseOrigin;
+  hearing?: {
+    currentArrangement: {
+      hearingAt?: string | null;
+      hearingPlace?: string | null;
+      judgeName?: string | null;
+    } | null;
+  };
 };
 const categories: ReadonlyArray<{ value: Category; label: string }> = [
   { value: 'ACCEPTANCE_NOTICE', label: '受理通知书' },
@@ -229,6 +237,45 @@ const canRegister = computed(
     props.item.canRegisterAcceptance &&
     props.item.acceptance === null,
 );
+
+// 待开庭阶段的「更新」卡：直接改开庭时间与地点，不必再走单独的更正流程。
+const arranged = computed(() => props.item.hearing?.currentArrangement ?? null);
+const updateHearingAt = ref(arranged.value?.hearingAt?.slice(0, 10) ?? '');
+const updateHearingPlace = ref(arranged.value?.hearingPlace ?? '');
+const updateJudgeName = ref(arranged.value?.judgeName ?? '');
+const hearingBusy = ref(false);
+const hearingError = ref('');
+const hearingSuccess = ref('');
+watch(arranged, (value) => {
+  updateHearingAt.value = value?.hearingAt?.slice(0, 10) ?? '';
+  updateHearingPlace.value = value?.hearingPlace ?? '';
+  updateJudgeName.value = value?.judgeName ?? '';
+});
+async function saveHearing(): Promise<void> {
+  if (hearingBusy.value) return;
+  hearingBusy.value = true;
+  hearingError.value = '';
+  hearingSuccess.value = '';
+  try {
+    await scheduleCaseHearing(props.item.id, {
+      expectedVersion: props.item.version,
+      idempotencyKey: globalThis.crypto.randomUUID(),
+      hearingAt: updateHearingAt.value || null,
+      hearingPlace: updateHearingPlace.value.trim() || null,
+      judgeName: updateJudgeName.value.trim() || null,
+    });
+    hearingSuccess.value = '开庭时间已更新。';
+    emit('refresh');
+  } catch (error) {
+    hearingError.value =
+      error instanceof Error && error.message
+        ? error.message
+        : '开庭时间更新失败，请重试。';
+  } finally {
+    hearingBusy.value = false;
+  }
+}
+
 watch(
   [() => props.item.id, () => props.contextKey, canRegister],
   async ([id, , allowed]) => {
@@ -460,9 +507,9 @@ async function saveDraft(): Promise<void> {
       acceptanceNoticeContentVersionIds: selectedIds('ACCEPTANCE_NOTICE'),
       paymentListContentVersionIds: selectedIds('PAYMENT_LIST'),
       serviceDocumentContentVersionIds: selectedIds('SERVICE_DOCUMENT'),
-      hearingAt: hearingAt.value || null,
-      hearingPlace: hearingPlace.value.trim() || null,
-      judgeName: judgeName.value.trim() || null,
+      hearingAt: updateHearingAt.value || null,
+      hearingPlace: updateHearingPlace.value.trim() || null,
+      judgeName: updateJudgeName.value.trim() || null,
       courtDisclosureText: courtDisclosureText.value.trim() || null,
       courtDisclosureContentVersionIds: disclosureFiles.value.map(
         (file) => file.contentVersionId,
@@ -686,10 +733,45 @@ async function download(file: CaseFile): Promise<void> {
       </p>
     </template>
     <template v-else>
-      <h2 class="form-section-title">补交受理材料</h2>
-      <p class="field-help">
-        受理通知书、缴费清单、送达文书可分批补交，已上传的不会重复登记。
-      </p>
+      <h2 class="form-section-title">更新</h2>
+      <div class="form-stack" data-test="acceptance-hearing-form">
+        <label>
+          <span>开庭日期</span>
+          <input
+            v-model="updateHearingAt"
+            type="date"
+            data-test="acceptance-hearing-at"
+          />
+        </label>
+        <label>
+          <span>法庭</span>
+          <input
+            v-model="updateHearingPlace"
+            data-test="acceptance-hearing-place"
+          />
+        </label>
+        <label>
+          <span>法官</span>
+          <input
+            v-model="updateJudgeName"
+            data-test="acceptance-hearing-judge"
+          />
+        </label>
+        <p v-if="hearingError" role="alert" class="submit-error">
+          {{ hearingError }}
+        </p>
+        <p v-if="hearingSuccess" role="status">{{ hearingSuccess }}</p>
+        <ElButton
+          type="primary"
+          data-test="acceptance-hearing-save"
+          :loading="hearingBusy"
+          :disabled="hearingBusy"
+          @click="saveHearing"
+        >
+          保存开庭时间
+        </ElButton>
+      </div>
+      <h3 class="form-section-title">补交受理材料</h3>
     </template>
 
     <form v-if="canRegister" class="form-stack" @submit.prevent="submit">
