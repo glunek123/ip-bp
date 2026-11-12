@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-12T02:22:53.643Z",
+  "recordedAt": "2026-11-12T02:37:08.376Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1437,9 +1437,9 @@
     "frontend/src/modules/cases/CaseClosurePaymentFields.spec.ts": "8e6d79321b763a37542ab1b32603aeed05cb2a75469da20a073f24d41a3cb5ca",
     "frontend/src/modules/cases/CaseClosurePaymentFields.vue": "28030920c2916916d5f144722638f19d0d41ec7a81f815786b43bd4f9051838c",
     "frontend/src/modules/cases/CaseClosureSettlementUpdateForm.spec.ts": "b2679d71fd994d5ebf9eda91b55bf90d8548ca5b594b2dbb9358eaeb75ff3fd1",
-    "frontend/src/modules/cases/CaseClosureSettlementUpdateForm.vue": "9516ecc99f0290f03b63684e6be4005687d1f9f889158e6c643594ede30f59a1",
+    "frontend/src/modules/cases/CaseClosureSettlementUpdateForm.vue": "82025f7c88cf380f8acf243b263a6fe448956e67b971a3f7b2057b291558d5f4",
     "frontend/src/modules/cases/CaseClosureSettlementUpdatePanel.spec.ts": "a4184125e138044f4f91f24b355fc08b72173a2a91df4d0aa66a2f32a3cee50c",
-    "frontend/src/modules/cases/CaseClosureSettlementUpdatePanel.vue": "4dc0d8bd7f1a82021e909fbfe3906f856518efffbbca8b2e85807596e64a40dc",
+    "frontend/src/modules/cases/CaseClosureSettlementUpdatePanel.vue": "b556cfb524704b04ab496c018cdd1f72a2fc0347bcd0278e3f4c1959f36aa53b",
     "frontend/src/modules/cases/CaseComplaintConfirmationPanel.spec.ts": "4aefe0ea3570011e3539b2a9465204042b6bba813adad50d1536eef07dbb73f6",
     "frontend/src/modules/cases/CaseComplaintConfirmationPanel.vue": "527bfd99015b76485bcfd85aae9bfa11891cb155c501d17c355359a4515a9152",
     "frontend/src/modules/cases/CaseComplaintExportPanel.spec.ts": "abe07eae00de8288584ee909218859537cd87825bb07a6091c7227bec2db4a21",
@@ -1525,6 +1525,7 @@
     "frontend/src/modules/cases/CaseSettlementActualForm.vue": "1e9c96a95382c96bd179e949271890c66539590868f2db9db68e5d93f03d15d1",
     "frontend/src/modules/cases/CaseSettlementActualPanel.spec.ts": "46950e3ad682b1d349a52f6d4230ee07c6e439904fdffeb86d704ac555aa3018",
     "frontend/src/modules/cases/CaseSettlementActualPanel.vue": "cb57cef69416fd3d802fcd3eebf15588058fa83ec938e1d9dbd28b9601d46fd1",
+    "frontend/src/modules/cases/CaseSettlementAmountEditor.vue": "60206bf4551ed1047a0698db5051c20447e7eeb6ca63346dde9c245ae8ba87f0",
     "frontend/src/modules/cases/CaseSupplementalWorkspacePanel.spec.ts": "82813fcd75967549f8aa4f273d7c28e51392ce22113add80eeef82c3241cb235",
     "frontend/src/modules/cases/CaseSupplementalWorkspacePanel.vue": "81d9aa07e0c3db32c6b9ecf36d18aadd7606e1a9b3ac9ea7e3302809f9d28444",
     "frontend/src/modules/cases/CaseWorkspaceFees.spec.ts": "729ae6265a7f931a1ec6c3558d4e0fe5fcb3e9f7b39cf58c9da539ec85ec867b",

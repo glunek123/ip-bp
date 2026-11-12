@@ -892,6 +892,7 @@ async function abandonPreparation() {
       "
     >
       <Form
+        :case-id="caseId"
         :source="source"
         :can-correct-closure="props.canCorrectClosure"
         @draft="submit"

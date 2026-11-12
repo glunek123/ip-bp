@@ -362,7 +362,7 @@ function submit() {
 }
 </script>
 <template>
-  <form class="settlement-update" @submit.prevent="submit">
+  <form class="settlement-update settle-clean" @submit.prevent="submit">
     <h2>结算更新</h2>
     <p v-if="!canEditClosureFacts" data-test="closure-correction-readonly">
       结案日期和结案文书只读；更正这两项需要原结案更正权限。其他结算和付款办理仍可继续。
@@ -577,9 +577,7 @@ function submit() {
         inputmode="decimal"
         :aria-label="`${side}-amount`"
       />
-      <p>
-        手工金额最多保留到分。自动计算结果由后端原规则确定；不涉及声明独立保留。
-      </p>
+      <p></p>
     </fieldset>
     <p v-if="error" role="alert">{{ error }}</p>
     <p
@@ -612,5 +610,31 @@ function submit() {
   display: flex;
   gap: 12px;
   align-items: center;
+}
+
+/* 两列对齐的结算卡：不改结构，只收紧排版。 */
+.settle-clean {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+  align-items: start;
+}
+.settle-clean > h2,
+.settle-clean > h3,
+.settle-clean > fieldset,
+.settle-clean > section,
+.settle-clean > ul,
+.settle-clean > article,
+.settle-clean > .settle-wide,
+.settle-clean > p {
+  grid-column: 1 / -1;
+}
+.settle-clean label {
+  display: grid;
+  gap: 4px;
+}
+.settle-clean label > input,
+.settle-clean label > select {
+  width: 100%;
 }
 </style>
