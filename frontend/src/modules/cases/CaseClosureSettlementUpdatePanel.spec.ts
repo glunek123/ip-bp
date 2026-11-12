@@ -831,7 +831,7 @@ describe('settlement update panel safety', () => {
       '0 元',
     );
     expect(wrapper.get('[data-test="actual-summary"]').text()).toContain(
-      '不作为归档通过依据',
+      '展示值，不作归档依据',
     );
     wrapper.unmount();
   });

@@ -49,7 +49,6 @@ describe('current effective payment totals', () => {
     expect(wrapper.get('[data-test="payment-total"]').text()).toContain(
       '0.00 元',
     );
-    expect(wrapper.text()).toContain('不代表公司已回款');
     expect(wrapper.get('[data-test="unknown"]').element).toHaveProperty(
       'checked',
       true,

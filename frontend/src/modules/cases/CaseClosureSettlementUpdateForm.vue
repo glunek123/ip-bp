@@ -626,9 +626,6 @@ function submit() {
           >
         </template>
       </CaseClosurePaymentFields>
-      <p class="settle-hint">
-        原付款记录只读；其收款截图通过「补截图」独立后补，不随本次保存提交。
-      </p>
       <div class="settle-totals">
         <p class="settle-total" data-test="payment-total">
           已付款合计{{ records.length ? '（含新增待保存）' : '' }}：<template
@@ -649,9 +646,6 @@ function submit() {
               >{{ formatPaymentCents(draftPaymentTotal) }} 元</template
             ><template v-else>待完善，请补全有效付款资料</template></span
           >
-        </p>
-        <p class="settle-hint">
-          以上合计不代表公司已回款，也不表示归档校验已通过。
         </p>
       </div>
     </section>

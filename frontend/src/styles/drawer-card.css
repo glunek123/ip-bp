@@ -167,19 +167,41 @@
 
 /* ---------- 字段组 ---------- */
 
+/* 与结算卡片一致：分区用细线分隔，不用卡片盒子 */
 .drawer-card fieldset {
   min-inline-size: 0;
   margin: 0;
-  padding: var(--s-3);
-  border: 1px solid var(--dc-border);
-  border-radius: var(--dc-radius);
+  padding: 0;
+  border: 0;
+}
+
+.drawer-card fieldset + fieldset {
+  margin-top: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--dc-border);
+}
+
+/* 旧的 .form-section 盒子在同一抽屉里也压平，保留分区标题 */
+.drawer-card .form-section {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.drawer-card .form-section + .form-section {
+  margin-top: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--dc-border);
 }
 
 .drawer-card legend {
-  padding-inline: 4px;
-  color: var(--color-ink-muted);
-  font-size: var(--dc-label-size);
-  font-weight: 500;
+  display: block;
+  width: 100%;
+  padding: 0 0 6px;
+  color: var(--color-ink);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 /* ---------- 记录表格 ---------- */
