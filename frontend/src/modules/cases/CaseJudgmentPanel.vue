@@ -578,7 +578,6 @@ function historyLabel(fact: CaseJudgmentFact): string {
             type="date"
             required
             :min="judgmentDateMinimum"
-            :max="todayShanghai()"
             :disabled="unknownRequest !== null || submitting"
             @input="
               error = '';

@@ -438,7 +438,7 @@ watch(
       error.value =
         '原请求结果未知。请使用原请求核对；旧回执只确认原轮次请求。';
   },
-  { flush: 'sync' },
+  { flush: 'sync', immediate: true },
 );
 watch(
   [
@@ -1386,7 +1386,6 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             data-test="second-instance-received-at"
             type="date"
             :min="minReceivedDate"
-            :max="todayShanghai()"
         /></label>
         <p v-if="resultChoice === 'REMAND'">
           同一案件将转入待正式立案，等待登记新一轮立案信息。
