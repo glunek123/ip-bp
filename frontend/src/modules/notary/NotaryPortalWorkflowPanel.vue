@@ -712,9 +712,7 @@ onBeforeUnmount(() => {
           :disabled="uploading || submitting"
           @change="uploadFiles"
       /></label>
-      <p class="field-help">
-        默认勾选全部已上传照片。提交后仅勾选照片会被冻结在开箱记录中；未勾选照片不属于该记录。
-      </p>
+      <p class="field-help">默认全选；仅勾选照片进入开箱记录。</p>
       <p v-if="openingPhotos.length === 0" class="field-help">
         暂无已上传开箱照片。
       </p>

@@ -337,7 +337,7 @@ onBeforeUnmount(() => {
     data-test="second-instance-acceptance-panel"
   >
     <h2 class="form-section-title">二审受理信息</h2>
-    <p>记录真实上诉选择对应的二审受理日期和法院案号，不改变案件阶段。</p>
+    <p>记录二审受理信息，不改变阶段。</p>
     <p
       v-if="props.item.recordEdits?.secondInstanceAcceptances === undefined"
       class="field-help"

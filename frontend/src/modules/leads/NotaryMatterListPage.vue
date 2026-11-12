@@ -1989,9 +1989,7 @@ onBeforeUnmount(() => {
               selectedStage ? stageLabels[selectedStage] : '全部可见事项'
             }}）
           </label>
-          <p>
-            导出固定20列取证清单，含获准读取的已记录费用；未知值留空，真实零保留0.00。物流按顺序换行对应，不含附件。
-          </p>
+          <p>导出 20 列清单；未知留空，零值记 0.00。</p>
           <p v-if="exportPreview" data-test="export-preview-count">
             预览范围：{{
               exportMode === 'SELECTED' ? '已勾选事项' : '当前阶段筛选结果'

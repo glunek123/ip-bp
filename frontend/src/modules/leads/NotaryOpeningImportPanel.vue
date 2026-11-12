@@ -244,9 +244,7 @@ watch(
     <header class="opening-import-header">
       <div>
         <h2>ZIP 批量开箱</h2>
-        <p>
-          每个文件夹是一组。系统只提供识别结果或候选；你必须逐组选择待开箱事项并明确确认。
-        </p>
+        <p>一个文件夹一组；逐组选择并确认。</p>
       </div>
       <ElButton
         text

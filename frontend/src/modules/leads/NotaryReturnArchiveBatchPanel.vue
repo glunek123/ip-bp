@@ -382,9 +382,7 @@ onBeforeUnmount(() => {
     <header>
       <div>
         <h2>批量退货归档</h2>
-        <p>
-          费用逐案记录，原有历史保留；退款金额表示应退金额，不代表已实际退款。
-        </p>
+        <p>退款金额为应退额，不代表已退。</p>
       </div>
       <button type="button" @click="emit('close')">返回列表</button>
     </header>

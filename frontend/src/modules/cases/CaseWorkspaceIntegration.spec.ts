@@ -2744,7 +2744,7 @@ describe('UI002 real case workspace host', () => {
       wrapper.get('.case-workspace-fees[role="tabpanel"]').isVisible(),
     ).toBe(true);
     expect(wrapper.get('[data-test="case-payments"]').text()).toBe(
-      '本区展示来源费用与案件金额事实；未展示实际结算不代表未登记或已结清。',
+      '只展示来源费用事实，不推断结算状态。',
     );
     expect(wrapper.text()).not.toContain('NETWORK_ERROR');
     expect(wrapper.text()).not.toContain('无法连接服务');

@@ -1446,7 +1446,7 @@ onBeforeUnmount(() => {
     <header class="right-assets-panel__header">
       <div>
         <h2>权利资产</h2>
-        <p>人工登记事实与历史版本；期限提示不代表法律效力核验。</p>
+        <p>仅登记事实与版本，不核验法律效力。</p>
       </div>
       <ElButton
         v-if="state === 'ready' && canEdit && canCreate && !writeDenied"

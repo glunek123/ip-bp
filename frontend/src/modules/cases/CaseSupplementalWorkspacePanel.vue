@@ -328,7 +328,7 @@ async function save() {
   <section class="case-supplements">
     <header>
       <h3>案件资料补录</h3>
-      <p>记录来源、记录人和原因。原业务节点与归档结果保持原样。</p>
+      <p>记录来源与原因，原节点不变。</p>
     </header>
     <p v-if="loading">正在读取补录资料…</p>
     <p v-if="error" role="alert">{{ error }}</p>

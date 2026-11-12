@@ -237,9 +237,7 @@ onBeforeUnmount(() => {
     aria-labelledby="no-evidence-batch-title"
   >
     <h2 id="no-evidence-batch-title">批量不取证归档</h2>
-    <p>
-      只处理本次明确选中的1～20条线索。确认后整批归档，不再进入取证安排；任一项不符合要求，整批不提交。
-    </p>
+    <p>仅处理选中线索；一项不合规则整批不提交。</p>
     <p>每项原因必填，去除首尾空白后最多5000字。</p>
     <p v-if="loading" role="status">正在逐项核对当前线索、版本和办理权限…</p>
     <p v-if="frozen" role="status" data-test="no-evidence-original">

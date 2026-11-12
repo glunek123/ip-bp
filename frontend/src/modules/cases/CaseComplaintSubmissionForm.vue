@@ -33,9 +33,7 @@ const emit = defineEmits<{
 <template>
   <section class="demo-card demo-card--pad" data-test="complaint-submit-form">
     <h2 class="form-section-title">上传诉状</h2>
-    <p class="field-help">
-      上传材料与确认提交是两个独立动作。上传不会推进案件；确认后将固定本次选择的文件版本并进入“诉状待确认”。
-    </p>
+    <p class="field-help">上传不推进案件；确认后进入诉状待确认。</p>
     <div class="demo-form-grid">
       <label>
         上传诉状日期 <span aria-hidden="true">*</span>

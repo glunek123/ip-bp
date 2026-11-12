@@ -302,7 +302,7 @@ describe('payment proof workspace', () => {
     async (stage) => {
       read.mockResolvedValue(fixture(stage));
       const { wrapper } = await setup(`closed-${stage}`);
-      expect(wrapper.text()).toContain('当前负责人可独立后补');
+      expect(wrapper.text()).toContain('后补截图不改原付款');
       expect(wrapper.text()).toContain('10.01');
       expect(wrapper.text()).toContain('付款人：甲');
       expect(wrapper.text()).toContain('收款人：乙');

@@ -189,7 +189,7 @@ describe('CustomerAdmissionPanel', () => {
         .attributes('aria-describedby'),
     ).toBe('identity-document-guidance');
     expect(wrapper.get('#identity-document-guidance').text()).toContain(
-      '单份不超过 20MB',
+      '单份 ≤20MB',
     );
   });
 

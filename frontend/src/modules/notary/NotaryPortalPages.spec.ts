@@ -531,7 +531,7 @@ describe('notary portal pages', () => {
     );
     expect((firstPhoto.element as HTMLInputElement).checked).toBe(true);
     expect((secondPhoto.element as HTMLInputElement).checked).toBe(true);
-    expect(wrapper.text()).toContain('未勾选照片不属于该记录');
+    expect(wrapper.text()).toContain('仅勾选照片进入开箱记录');
 
     await firstPhoto.setValue(false);
     expect(

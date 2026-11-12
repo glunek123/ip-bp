@@ -240,7 +240,7 @@ onBeforeUnmount(() => {
     role="dialog"
     aria-label="代客户确认取证选择"
   >
-    <p>将记录当前内部操作人代客户选择，不代表客户账号亲自点击。</p>
+    <p>记录为运营代办，非客户本人操作。</p>
     <p v-if="workflowState.status === 'loading'">正在读取最新线索…</p>
     <p v-if="workflowState.status === 'denied'">当前账号无权操作此线索。</p>
     <p v-if="workflowState.status === 'error'">读取线索失败，请重试。</p>

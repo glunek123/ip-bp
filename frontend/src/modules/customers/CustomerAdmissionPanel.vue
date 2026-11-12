@@ -992,7 +992,7 @@ loadCustomerSnapshot();
           id="identity-document-guidance"
           class="field-help"
         >
-          支持 PDF、JPG/JPEG、PNG；单份不超过 20MB，最多 10 份。
+          PDF/JPG/PNG，单份 ≤20MB，最多 10 份。
         </p>
         <p v-if="materialError" class="field-error" role="alert">
           {{ materialError }}

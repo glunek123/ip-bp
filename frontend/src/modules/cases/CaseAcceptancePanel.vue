@@ -728,9 +728,7 @@ async function download(file: CaseFile): Promise<void> {
   <section class="demo-card demo-card--pad" data-test="case-acceptance-panel">
     <template v-if="canRegister">
       <h2 class="form-section-title">正式立案登记</h2>
-      <p class="field-help">
-        填写受理日期与法院案号即可进入待开庭；三类材料可后补。
-      </p>
+      <p class="field-help">填写日期与案号即进入待开庭；材料可后补。</p>
     </template>
     <template v-else>
       <h2 class="form-section-title">更新</h2>

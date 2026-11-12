@@ -209,7 +209,7 @@ const display = computed(() => {
 
     <template v-if="display.phase === 'ready' && display.rows.length > 0">
       <p data-test="csv-selection-help">
-        逐行检查字段和校验结果，再选择要处理的有效线索。疑似重复提示仅供核对。
+        逐行核对后再选择处理；重复提示仅供参考。
       </p>
       <div class="demo-table-wrap">
         <table class="demo-table">

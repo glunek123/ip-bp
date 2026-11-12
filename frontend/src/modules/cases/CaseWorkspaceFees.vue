@@ -252,9 +252,7 @@ function displayAmount(row: AmountRow): string {
         </div>
       </dl>
       <h2>案件金额事实</h2>
-      <p class="case-workspace-field__help">
-        诉状请求、裁判及结案金额按各自来源展示，不代表本案实际收款或付款。
-      </p>
+      <p class="case-workspace-field__help">按来源展示，不作为实际收付。</p>
       <dl class="case-workspace-fields">
         <div
           v-for="row in amounts"
@@ -276,9 +274,7 @@ function displayAmount(row: AmountRow): string {
       </dl>
     </details>
     <h2>案件收付明细</h2>
-    <p data-test="case-payments">
-      本区展示来源费用与案件金额事实；未展示实际结算不代表未登记或已结清。
-    </p>
+    <p data-test="case-payments">只展示来源费用事实，不推断结算状态。</p>
     <section
       v-if="eligible"
       aria-label="实际回款与律师开票"

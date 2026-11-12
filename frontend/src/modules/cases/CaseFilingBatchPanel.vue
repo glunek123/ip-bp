@@ -523,9 +523,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="demo-card demo-card--pad" data-test="case-filing-batch-panel">
     <h2 class="form-section-title">批量提交立案</h2>
-    <p class="field-help">
-      逐案填写并保存准备资料。预览后统一确认，系统按顺序逐案提交。
-    </p>
+    <p class="field-help">逐案保存，预览确认后按顺序提交。</p>
     <p v-if="writeLocked" role="alert">
       当前窗口只读；请在办理窗口完成或关闭后再试。
     </p>

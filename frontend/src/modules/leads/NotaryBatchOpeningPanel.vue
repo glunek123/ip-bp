@@ -348,7 +348,7 @@ onBeforeUnmount(() => {
     <div class="page-head">
       <div>
         <h2>逐项登记开箱</h2>
-        <p>每个事项单独核对照片和寄件信息并分别保存；照片不会跨事项归属。</p>
+        <p>逐事项核对并保存，照片不跨事项。</p>
       </div>
       <button
         type="button"

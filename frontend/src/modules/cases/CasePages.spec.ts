@@ -1513,7 +1513,7 @@ describe('case pages', () => {
 
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
     const form = wrapper.get('[data-test="complaint-submit-form"]');
-    expect(form.text()).toContain('上传不会推进案件');
+    expect(form.text()).toContain('上传不推进案件');
     expect(form.text()).not.toContain('确认诉状');
     await wrapper.get('[data-test="submit-complaint"]').trigger('click');
     expect(wrapper.text()).toContain('请至少上传 1 份授权委托书 / 起诉状。');

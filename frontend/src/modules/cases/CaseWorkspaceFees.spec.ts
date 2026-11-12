@@ -375,7 +375,7 @@ describe('CaseWorkspaceFees', () => {
     };
     const wrapper = render(item);
     expect(wrapper.get('[data-test="case-payments"]').text()).toContain(
-      '未展示实际结算不代表未登记或已结清',
+      '只展示来源费用事实',
     );
     expect(wrapper.text()).not.toContain('全部结清');
     expect(wrapper.text()).not.toContain('EXECUTION_COLLECTED');

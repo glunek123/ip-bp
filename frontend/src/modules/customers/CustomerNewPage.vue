@@ -343,7 +343,7 @@ async function submit(): Promise<void> {
         <div>
           <p class="section-kicker">客户管理</p>
           <h1>新建客户</h1>
-          <p>填写客户主体和合作信息，合作协议文件可在创建后补传。</p>
+          <p>合作文件可在创建后补传。</p>
         </div>
       </div>
       <form
@@ -444,9 +444,7 @@ async function submit(): Promise<void> {
                   maxlength="100"
                   placeholder="填写实际信用代码或证件号码"
                 />
-                <p class="field-help">
-                  证件信息可后补；保存资料后仍需完成准入才能进入正式业务。
-                </p>
+                <p class="field-help">证件可后补；保存后仍需准入。</p>
               </div>
               <div>
                 <label class="field-label" for="customer-category"

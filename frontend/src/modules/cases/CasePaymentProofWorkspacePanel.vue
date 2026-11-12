@@ -403,7 +403,7 @@ function close() {
     <p v-if="reviewRequired" role="alert">
       付款更正后结清条件不足，需要核查。案件仍保持归档，原归档快照保留。
     </p>
-    <p>当前负责人可独立后补有效付款的截图，原付款及回执保持不变。</p>
+    <p>后补截图不改原付款与回执。</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="paymentChanged" role="alert">
       付款已更新，请重新读取。已确认的截图后补不会重复提交。
