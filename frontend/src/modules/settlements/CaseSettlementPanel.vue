@@ -698,6 +698,7 @@ async function launch(): Promise<void> {
           <template v-if="change.kind === 'PAYMENT'">
             {{ change.note }} {{ change.closeAmt }}
           </template>
+          <template v-else-if="change.note">{{ change.note }}</template>
           <template v-for="diff in change.changes" :key="diff.field">
             ｜{{ diff.field }} {{ diff.from ?? '空' }} → {{ diff.to ?? '空' }}
           </template>

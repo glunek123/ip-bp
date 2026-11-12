@@ -168,6 +168,15 @@ export class CaseClosureWorkspaceReadDraft {
         toVersion: string | null;
         changes: { field: string; from: string | null; to: string | null }[];
       };
+      const text = (source: unknown, key: string) => {
+        const value =
+          source !== null && typeof source === 'object'
+            ? (source as Record<string, unknown>)[key]
+            : undefined;
+        return typeof value === 'string' || typeof value === 'number'
+          ? String(value)
+          : null;
+      };
       const closureRows: Row[] = audits.map((row) => ({
         id: row.id,
         kind: 'CLOSURE',
@@ -182,7 +191,36 @@ export class CaseClosureWorkspaceReadDraft {
           pick(row.details, 'reason') ?? pick(row.details, 'correctionReason'),
         fromVersion: pick(row.details, 'fromVersion'),
         toVersion: pick(row.details, 'toVersion'),
-        changes: [],
+        // 结算金额调整的审计里带了 before/after，可直接给出前后值。
+        changes:
+          row.action === 'case.closure.settlement_amounts.updated'
+            ? (
+                [
+                  {
+                    field: '客户结算金额',
+                    from: text(
+                      (row.details as Record<string, unknown>).before,
+                      'customerManualAmount',
+                    ),
+                    to: text(
+                      (row.details as Record<string, unknown>).after,
+                      'customerManualAmount',
+                    ),
+                  },
+                  {
+                    field: '律师结算金额',
+                    from: text(
+                      (row.details as Record<string, unknown>).before,
+                      'lawyerManualAmount',
+                    ),
+                    to: text(
+                      (row.details as Record<string, unknown>).after,
+                      'lawyerManualAmount',
+                    ),
+                  },
+                ] as { field: string; from: string | null; to: string | null }[]
+              ).filter((entry) => entry.from !== entry.to)
+            : [],
       }));
       // 结案类按时间正序推算前后差异，再倒序返回。
       const ordered = [...closureRows].sort((a, b) => a.at.localeCompare(b.at));
@@ -193,6 +231,8 @@ export class CaseClosureWorkspaceReadDraft {
       for (let index = 1; index < ordered.length; index += 1) {
         const current = ordered[index]!;
         const previous = ordered[index - 1]!;
+        // 结算金额调整已有自己的 before/after，不要被结案日期链覆盖。
+        if (current.changes.length > 0) continue;
         current.changes = fields.flatMap((field) => {
           const from = previous[field.key];
           const to = current[field.key];
@@ -218,7 +258,94 @@ export class CaseClosureWorkspaceReadDraft {
         toVersion: String(row.revision),
         changes: [],
       }));
-      return [...closureRows, ...paymentRows]
+      // 退费动作单独成表（case_litigation_refund_commands），按案件取最近记录。
+      const refunds = await tx.$queryRawUnsafe<
+        {
+          id: string;
+          kind: string;
+          reason: string | null;
+          item_id: string;
+          recorded_at: Date;
+          actor_user_id: string;
+          status: string | null;
+        }[]
+      >(
+        `SELECT c.id, c.kind, c.reason, c.item_id, c.recorded_at,
+                c.actor_user_id,
+                c.result_snapshot->'item'->>'status' AS status
+           FROM case_litigation_refund_commands c
+          WHERE c.case_id = $1::uuid AND c.department_id = $2::uuid
+          ORDER BY c.recorded_at DESC
+          LIMIT $3`,
+        caseId,
+        actor.departmentId,
+        take,
+      );
+      const refundUserIds = [
+        ...new Set(refunds.map((row) => row.actor_user_id)),
+      ].filter((id) => !names.has(id));
+      const refundUsers = refundUserIds.length
+        ? await tx.userAccount.findMany({
+            where: { id: { in: refundUserIds } },
+            select: { id: true, displayName: true },
+          })
+        : [];
+      for (const user of refundUsers) names.set(user.id, user.displayName);
+      const statusLabels: Record<string, string> = {
+        UNKNOWN: '未知',
+        PENDING: '待退',
+        SUBMITTED: '已提交',
+        RETURNED_UNSETTLED: '已退未结算',
+        SETTLED: '已结算',
+        RECEIVED: '已回款',
+        CONVERTED_TO_COST: '转诉讼费',
+      };
+      const refundKindLabels: Record<string, string> = {
+        REGISTER: '登记退费',
+        CORRECT: '更正退费',
+        FOLLOW: '退费跟进',
+      };
+      // 按 item 正序回溯，给跟进记录补上状态变化。
+      const byItem = new Map<string, typeof refunds>();
+      for (const row of [...refunds].reverse()) {
+        const list = byItem.get(row.item_id) ?? [];
+        list.push(row);
+        byItem.set(row.item_id, list);
+      }
+      const refundChanges = new Map<string, Row['changes']>();
+      for (const rows of byItem.values()) {
+        let previous: string | null = null;
+        for (const row of rows) {
+          const next = row.status;
+          if (next !== null && next !== previous) {
+            const list = refundChanges.get(row.id) ?? [];
+            list.push({
+              field: '退费状态',
+              from:
+                previous === null ? null : (statusLabels[previous] ?? previous),
+              to: statusLabels[next] ?? next,
+            });
+            refundChanges.set(row.id, list);
+          }
+          previous = next ?? previous;
+        }
+      }
+      const refundRows: Row[] = refunds.map((row) => ({
+        id: row.id,
+        kind: 'CLOSURE',
+        action: `case.closure.refund.${row.kind.toLowerCase()}`,
+        at: row.recorded_at.toISOString(),
+        actorName: names.get(row.actor_user_id) ?? '—',
+        actorKind: 'HUMAN',
+        closeAt: null,
+        closeAmt: null,
+        note: refundKindLabels[row.kind] ?? row.kind,
+        reason: row.reason,
+        fromVersion: null,
+        toVersion: null,
+        changes: refundChanges.get(row.id) ?? [],
+      }));
+      return [...closureRows, ...paymentRows, ...refundRows]
         .sort((a, b) => b.at.localeCompare(a.at))
         .slice(0, take);
     });
