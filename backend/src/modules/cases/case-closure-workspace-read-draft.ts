@@ -99,8 +99,9 @@ export class CaseClosureWorkspaceReadDraft {
    */
   async changes(actor: ActorContext, caseId: string, limit = 50) {
     await this.read(actor, caseId);
+    const take = Math.min(Math.max(limit, 1), 200);
     return this.database.$transaction(async (tx) => {
-      const rows = await tx.auditEvent.findMany({
+      const audits = await tx.auditEvent.findMany({
         where: {
           departmentId: actor.departmentId,
           resourceType: 'CASE',
@@ -108,7 +109,7 @@ export class CaseClosureWorkspaceReadDraft {
           action: { startsWith: 'case.closure.' },
         },
         orderBy: { createdAt: 'desc' },
-        take: Math.min(Math.max(limit, 1), 200),
+        take,
         select: {
           id: true,
           action: true,
@@ -118,31 +119,108 @@ export class CaseClosureWorkspaceReadDraft {
           actorUser: { select: { displayName: true } },
         },
       });
-      return rows.map((row) => {
-        const details =
-          row.details !== null && typeof row.details === 'object'
-            ? (row.details as Record<string, unknown>)
-            : {};
-        const pick = (key: string) => {
-          const value = details[key];
-          return typeof value === 'string' || typeof value === 'number'
-            ? String(value)
-            : null;
-        };
-        return {
-          id: row.id,
-          action: row.action,
-          at: row.createdAt.toISOString(),
-          actorName: row.actorUser?.displayName ?? '系统',
-          actorKind: row.actorKind,
-          closeAt: pick('closeAt'),
-          closeAmt: pick('closeAmt'),
-          note: pick('note'),
-          reason: pick('reason') ?? pick('correctionReason'),
-          fromVersion: pick('fromVersion'),
-          toVersion: pick('toVersion'),
-        };
+      const payments = await tx.caseClosurePaymentVersion.findMany({
+        where: { caseId, departmentId: actor.departmentId },
+        orderBy: { recordedAt: 'desc' },
+        take,
+        select: {
+          id: true,
+          revision: true,
+          state: true,
+          paidOn: true,
+          amount: true,
+          payer: true,
+          payee: true,
+          reason: true,
+          recordedAt: true,
+          recordedByUserId: true,
+        },
       });
+      const userIds = [...new Set(payments.map((row) => row.recordedByUserId))];
+      const users = userIds.length
+        ? await tx.userAccount.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, displayName: true },
+          })
+        : [];
+      const names = new Map(users.map((user) => [user.id, user.displayName]));
+      const pick = (details: unknown, key: string) => {
+        const value =
+          details !== null && typeof details === 'object'
+            ? (details as Record<string, unknown>)[key]
+            : undefined;
+        return typeof value === 'string' || typeof value === 'number'
+          ? String(value)
+          : null;
+      };
+      type Row = {
+        id: string;
+        kind: 'CLOSURE' | 'PAYMENT';
+        action: string;
+        at: string;
+        actorName: string;
+        actorKind: string;
+        closeAt: string | null;
+        closeAmt: string | null;
+        note: string | null;
+        reason: string | null;
+        fromVersion: string | null;
+        toVersion: string | null;
+        changes: { field: string; from: string | null; to: string | null }[];
+      };
+      const closureRows: Row[] = audits.map((row) => ({
+        id: row.id,
+        kind: 'CLOSURE',
+        action: row.action,
+        at: row.createdAt.toISOString(),
+        actorName: row.actorUser?.displayName ?? '系统',
+        actorKind: row.actorKind,
+        closeAt: pick(row.details, 'closeAt'),
+        closeAmt: pick(row.details, 'closeAmt'),
+        note: pick(row.details, 'note'),
+        reason:
+          pick(row.details, 'reason') ?? pick(row.details, 'correctionReason'),
+        fromVersion: pick(row.details, 'fromVersion'),
+        toVersion: pick(row.details, 'toVersion'),
+        changes: [],
+      }));
+      // 结案类按时间正序推算前后差异，再倒序返回。
+      const ordered = [...closureRows].sort((a, b) => a.at.localeCompare(b.at));
+      const fields: { key: 'closeAt' | 'closeAmt'; label: string }[] = [
+        { key: 'closeAt', label: '结案日期' },
+        { key: 'closeAmt', label: '结案金额' },
+      ];
+      for (let index = 1; index < ordered.length; index += 1) {
+        const current = ordered[index]!;
+        const previous = ordered[index - 1]!;
+        current.changes = fields.flatMap((field) => {
+          const from = previous[field.key];
+          const to = current[field.key];
+          if (to === null || from === to) return [];
+          return [{ field: field.label, from, to }];
+        });
+      }
+      const paymentRows: Row[] = payments.map((row) => ({
+        id: row.id,
+        kind: 'PAYMENT',
+        action:
+          row.revision <= 1
+            ? 'case.closure.payment.recorded'
+            : 'case.closure.payment.corrected',
+        at: row.recordedAt.toISOString(),
+        actorName: names.get(row.recordedByUserId) ?? '—',
+        actorKind: 'HUMAN',
+        closeAt: null,
+        closeAmt: row.amount.toFixed(2),
+        note: `${row.payer} → ${row.payee}`,
+        reason: row.reason,
+        fromVersion: null,
+        toVersion: String(row.revision),
+        changes: [],
+      }));
+      return [...closureRows, ...paymentRows]
+        .sort((a, b) => b.at.localeCompare(a.at))
+        .slice(0, take);
     });
   }
 

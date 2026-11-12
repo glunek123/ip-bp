@@ -829,7 +829,9 @@ export async function createCaseFeeEntries(body: {
 
 export type SettlementChange = {
   id: string;
+  kind: 'CLOSURE' | 'PAYMENT';
   action: string;
+  changes: { field: string; from: string | null; to: string | null }[];
   at: string;
   actorName: string;
   actorKind: string;
@@ -854,6 +856,15 @@ export async function getCaseSettlementChanges(
     const value = record(raw);
     return {
       id: string(value.id),
+      kind: value.kind === 'PAYMENT' ? 'PAYMENT' : 'CLOSURE',
+      changes: list(value.changes ?? [], (item) => {
+        const entry = record(item);
+        return {
+          field: string(entry.field),
+          from: nullableString(entry.from),
+          to: nullableString(entry.to),
+        };
+      }),
       action: string(value.action),
       at: string(value.at),
       actorName: string(value.actorName),

@@ -204,6 +204,8 @@ function changeLabel(action: string): string {
     'case.closure.refund.recorded': '登记退费',
     'case.closure.refund.corrected': '更正退费',
     'case.closure.refund.followed': '退费跟进',
+    'case.closure.payment.recorded': '登记付款',
+    'case.closure.payment.corrected': '更正付款',
   };
   return labels[action] ?? action;
 }
@@ -693,9 +695,11 @@ async function launch(): Promise<void> {
         <li v-for="change in changes" :key="change.id">
           {{ formatChangeAt(change.at) }} · {{ change.actorName }} ·
           {{ changeLabel(change.action) }}
-          <template v-if="change.closeAt || change.closeAmt">
-            （结案日期 {{ change.closeAt ?? '空' }}，金额
-            {{ change.closeAmt ?? '空' }}）
+          <template v-if="change.kind === 'PAYMENT'">
+            {{ change.note }} {{ change.closeAmt }}
+          </template>
+          <template v-for="diff in change.changes" :key="diff.field">
+            ｜{{ diff.field }} {{ diff.from ?? '空' }} → {{ diff.to ?? '空' }}
           </template>
           <template v-if="change.reason">：{{ change.reason }}</template>
         </li>
