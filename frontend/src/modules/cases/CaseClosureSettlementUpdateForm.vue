@@ -380,7 +380,7 @@ function submit() {
       class="settle-note"
       data-test="closure-correction-readonly"
     >
-      结案日期和结案文书只读，其余结算与付款办理可继续。
+      结案日期和结案文书只读；更正这两项需要原结案更正权限。其他结算和付款办理仍可继续。
     </p>
 
     <div class="settle-row">
@@ -404,7 +404,11 @@ function submit() {
       </label>
     </div>
     <label class="settle-check">
-      <input v-model="unknown" type="checkbox" data-test="unknown" />结案金额待确认
+      <input
+        v-model="unknown"
+        type="checkbox"
+        data-test="unknown"
+      />结案金额待确认
     </label>
 
     <div class="settle-row">
@@ -500,7 +504,7 @@ function submit() {
           :key="document.id"
           class="settle-file"
         >
-          {{ document.name }}
+          {{ document.name }}（历史材料，保留）
         </span>
         <span
           v-for="(document, index) in documents"
@@ -564,20 +568,25 @@ function submit() {
           /></slot>
         </article>
       </template>
-      <p class="settle-total" data-test="payment-total">
-        已付款合计：<template v-if="paymentTotal !== null"
-          >¥ {{ formatPaymentCents(paymentTotal) }}</template
-        ><template v-else>待完善</template>
-      </p>
       <p class="settle-hint" data-test="saved-payment-total">
-        已保存：<template v-if="savedPaymentTotal !== null">{{
-          formatPaymentCents(savedPaymentTotal)
-        }}
-          元</template
-        ><template v-else>未知</template> ｜ 本次新增：<template
-          v-if="draftPaymentTotal !== null"
+        已保存有效付款合计：<template v-if="savedPaymentTotal !== null"
+          >{{ formatPaymentCents(savedPaymentTotal) }} 元</template
+        ><template v-else>未知，请重新读取付款记录</template>
+      </p>
+      <p class="settle-hint" data-test="draft-payment-total">
+        本次新增付款合计（待保存）：<template v-if="draftPaymentTotal !== null"
           >{{ formatPaymentCents(draftPaymentTotal) }} 元</template
-        ><template v-else>待完善</template>
+        ><template v-else>待完善，请补全有效付款资料</template>
+      </p>
+      <p class="settle-hint">
+        以上合计不代表公司已回款，也不表示归档校验已通过。
+      </p>
+      <p class="settle-total" data-test="payment-total">
+        当前表单已付款合计{{
+          records.length ? '（含新增待保存）' : ''
+        }}：<template v-if="paymentTotal !== null"
+          >{{ formatPaymentCents(paymentTotal) }} 元</template
+        ><template v-else>待完善，请核对付款资料</template>
       </p>
     </div>
 
