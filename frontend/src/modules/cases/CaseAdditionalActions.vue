@@ -30,7 +30,7 @@ const emit = defineEmits<{
 
 const actionLabels: Partial<Record<CaseListAction, string>> = {
   'early-closure': '提前结案',
-  'settlement-update': '结算更新',
+  'settlement-update': '结案更新',
   'payment-proof': '付款记录',
   'record-closure': '登记结案资料',
 };
@@ -168,7 +168,7 @@ defineExpose({
       class="field-help"
       data-test="closure-recording-required"
     >
-      当前缺少结案资料。请先使用案件主操作登记结案资料；保存后会重新读取权限，再由你明确选择是否继续结算更新。
+      当前缺少结案资料。请先使用案件主操作登记结案资料；保存后会重新读取权限，再由你明确选择是否继续结案更新。
     </p>
     <p
       v-else-if="item.stage === 'WAITING_ARCHIVE' && !item.closure"
@@ -203,7 +203,7 @@ defineExpose({
     <div v-if="bridgeStatus !== 'hidden'" data-test="closure-settlement-bridge">
       <template v-if="bridgeStatus === 'ready'">
         <p role="status">
-          结案资料已登记并重新读取。结算更新不会自动提交财务变更。
+          结案资料已登记并重新读取。结案更新不会自动提交财务变更。
         </p>
         <ElButton
           type="primary"

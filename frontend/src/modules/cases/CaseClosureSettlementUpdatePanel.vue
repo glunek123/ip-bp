@@ -902,7 +902,7 @@ async function abandonPreparation() {
       </label>
     </fieldset>
     <p v-if="pending?.status === 'confirmed'" role="status">
-      结算更新保存成功。
+      结案更新保存成功。
     </p>
     <fieldset
       v-else-if="source && !pending"

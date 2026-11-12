@@ -728,7 +728,7 @@ function continueClosureSettlement() {
     recordId: bridge.caseId,
     actorKey: identity.value,
     actionKey: 'settlement-update',
-    title: `${bridge.detail.businessNo} · 结算更新`,
+    title: `${bridge.detail.businessNo} · 结案更新`,
   };
   drawerOpen.value = true;
   closureBridge.value = undefined;
@@ -979,6 +979,7 @@ function shortCaseAction(
     'execution-mailing': '执行邮寄',
     'execution-filing': '执行立案',
     finish: '执行结束',
+    'settlement-update': '结案更新',
     'record-closure': '登记结案资料',
     archive: '归档',
   };
@@ -1702,19 +1703,19 @@ onBeforeUnmount(() => {
       <section
         v-if="closureBridge && closureBridge.actor === identity"
         class="state-panel"
-        aria-label="继续结算更新"
+        aria-label="继续结案更新"
         data-test="closure-settlement-bridge"
       >
         <p v-if="closureBridge.status === 'checking'" role="status">
           结案资料已登记，正在重新读取最新资料和权限。
         </p>
         <template v-else-if="closureBridge.status === 'ready'">
-          <p>最新资料已确认。结算更新不会自动提交；请明确选择下一步。</p>
+          <p>最新资料已确认。结案更新不会自动提交；请明确选择下一步。</p>
           <ElButton
             type="primary"
             data-test="continue-closure-settlement"
             @click="continueClosureSettlement"
-            >继续结算更新</ElButton
+            >继续结案更新</ElButton
           >
         </template>
         <p v-else-if="closureBridge.status === 'denied'" role="alert">

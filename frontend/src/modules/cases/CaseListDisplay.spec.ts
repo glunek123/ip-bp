@@ -2078,7 +2078,7 @@ describe('authorized internal case list display', () => {
     const row = wrapper.get('tbody tr');
     expect(row.findAll('[data-case-action]')).toHaveLength(1);
     expect(row.get('[data-case-action="settlement-update"]').text()).toBe(
-      '结算更新',
+      '结案更新',
     );
     expect(row.find('[data-case-action="archive"]').exists()).toBe(false);
     await wrapper.get('[data-test="select-case-case-1"]').setValue(true);

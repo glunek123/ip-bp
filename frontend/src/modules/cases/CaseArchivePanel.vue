@@ -581,7 +581,7 @@ function recordedTime(value: string) {
           class="field-help"
           data-test="archive-blocked-hint"
         >
-          缺少结案记录：请先完成「结算更新」，归档才能提交。
+          缺少结案记录：请先完成「结案更新」，归档才能提交。
         </p>
         <p class="field-help">款项状态以实际记录为准。</p>
         <section
