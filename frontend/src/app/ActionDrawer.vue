@@ -31,7 +31,7 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
           ×
         </button>
       </header>
-      <div class="action-drawer__body">
+      <div class="action-drawer__body drawer-card">
         <slot />
       </div>
     </aside>

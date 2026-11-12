@@ -349,12 +349,12 @@ watch(
 }
 .type-label {
   font-size: 12px;
-  color: #606266;
+  color: var(--color-ink-muted);
 }
 .payment-table-wrap {
   overflow-x: auto;
   overflow-y: hidden;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--color-hairline);
   border-radius: 6px;
 }
 .payment-table {
@@ -366,10 +366,10 @@ watch(
   padding: 7px 8px;
   font-size: 12px;
   font-weight: 400;
-  color: #909399;
+  color: var(--color-ink-subtle);
   text-align: left;
   white-space: nowrap;
-  background: #fafafa;
+  background: var(--color-surface-2);
 }
 .payment-table td {
   padding: 4px 6px;
@@ -392,7 +392,7 @@ watch(
 }
 .cell-index {
   font-size: 12px;
-  color: #909399;
+  color: var(--color-ink-subtle);
   text-align: center;
 }
 .cell-input,
@@ -402,8 +402,8 @@ watch(
   padding: 0 6px;
   font: inherit;
   font-size: 13px;
-  color: #1f2329;
-  border: 1px solid #dcdfe6;
+  color: var(--color-ink);
+  border: 1px solid var(--color-hairline-strong);
   border-radius: 4px;
 }
 .cell-input--date {
@@ -416,11 +416,11 @@ watch(
   padding: 0 8px;
   overflow: hidden;
   font-size: 13px;
-  color: #606266;
+  color: var(--color-ink-muted);
   white-space: nowrap;
   text-overflow: ellipsis;
-  background: #f5f7fa;
-  border: 1px solid #ebeef5;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-hairline);
   border-radius: 4px;
 }
 .cell-static--amount {
@@ -428,7 +428,7 @@ watch(
 }
 .cell-static--muted {
   font-size: 12px;
-  color: #a8abb2;
+  color: var(--color-ink-tertiary);
 }
 .cell-receipt {
   position: relative;
@@ -441,16 +441,16 @@ watch(
   padding: 0 8px;
   overflow: hidden;
   font-size: 12px;
-  color: #a8abb2;
+  color: var(--color-ink-tertiary);
   white-space: nowrap;
   text-overflow: ellipsis;
   cursor: pointer;
-  border: 1px dashed #dcdfe6;
+  border: 1px dashed var(--color-hairline-strong);
   border-radius: 4px;
 }
 .receipt-box.is-filled {
   padding-right: 26px;
-  color: #606266;
+  color: var(--color-ink-muted);
   border-style: solid;
 }
 .receipt-box input {
@@ -473,7 +473,7 @@ watch(
   padding: 0;
   font-size: 14px;
   line-height: 1;
-  color: #909399;
+  color: var(--color-ink-subtle);
   background: #fff;
   border: 0;
   border-radius: 50%;
@@ -482,8 +482,8 @@ watch(
 }
 .receipt-clear:hover,
 .row-remove:hover {
-  color: #f56c6c;
-  background: #fef0f0;
+  color: var(--color-danger);
+  background: var(--el-color-danger-light-9);
 }
 .row-remove {
   position: static;
@@ -497,7 +497,7 @@ watch(
 .empty-state {
   padding: 22px 8px;
   font-size: 13px;
-  color: #a8abb2;
+  color: var(--color-ink-tertiary);
   text-align: center;
 }
 .add-record {
@@ -505,18 +505,18 @@ watch(
   width: 100%;
   height: 34px;
   font-size: 13px;
-  color: #606266;
+  color: var(--color-ink-muted);
   cursor: pointer;
   background: #fff;
   border: 0;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid var(--color-hairline);
 }
 .add-record:hover:not(:disabled) {
-  color: #409eff;
-  background: #f5f7fa;
+  color: var(--color-primary);
+  background: var(--color-surface-2);
 }
 .add-record:disabled {
-  color: #c0c4cc;
+  color: var(--color-hairline-strong);
   cursor: not-allowed;
 }
 .field-error {

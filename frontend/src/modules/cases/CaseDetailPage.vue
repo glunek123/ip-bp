@@ -2681,7 +2681,7 @@ onBeforeUnmount(() => {
           :modal-class="
             editorVisible ? undefined : 'case-workspace-editors--inactive'
           "
-          class="case-workspace-editors"
+          class="case-workspace-editors drawer-card"
           :title="
             timelineView
               ? '流程时间轴记录'

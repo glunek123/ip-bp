@@ -121,7 +121,10 @@ defineExpose({
       >
         请求结果尚未确认，请使用原请求的核对或恢复操作，勿重新提交。
       </p>
-      <div :key="state.session.contextKey" class="list-workflow-content">
+      <div
+        :key="state.session.contextKey"
+        class="list-workflow-content drawer-card"
+      >
         <slot
           :detail="state.detail"
           :session="state.session"

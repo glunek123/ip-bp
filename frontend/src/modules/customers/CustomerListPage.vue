@@ -406,6 +406,7 @@ onBeforeUnmount(() => activeRequest?.abort());
     </main>
     <ElDrawer
       v-model="createOpen"
+      class="drawer-card"
       title="新建客户"
       size="min(760px, 100vw)"
       append-to-body

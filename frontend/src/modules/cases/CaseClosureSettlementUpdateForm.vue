@@ -817,7 +817,7 @@ function submit() {
 .settle-card > .settle-row,
 .settle-card > .settle-block {
   padding: 12px 0;
-  border-top: 1px solid #f0f2f5;
+  border-top: 1px solid var(--color-hairline);
 }
 .settle-card > .settle-row:first-of-type {
   padding-top: 0;
@@ -849,7 +849,7 @@ function submit() {
 }
 .settle-field > span {
   font-size: 12px;
-  color: #606266;
+  color: var(--color-ink-muted);
 }
 .settle-card input,
 .settle-card select {
@@ -858,20 +858,20 @@ function submit() {
   padding: 0 10px;
   font: inherit;
   font-size: 13px;
-  color: #1f2329;
+  color: var(--color-ink);
   background: #fff;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--color-hairline-strong);
   border-radius: 4px;
   outline: none;
   transition: border-color 0.15s;
 }
 .settle-card input:focus,
 .settle-card select:focus {
-  border-color: #409eff;
+  border-color: var(--color-primary);
 }
 .settle-card input:disabled {
-  color: #a8abb2;
-  background: #f5f7fa;
+  color: var(--color-ink-tertiary);
+  background: var(--color-surface-2);
 }
 .settle-inline {
   display: grid;
@@ -883,39 +883,39 @@ function submit() {
   max-width: 320px;
 }
 .settle-inline input[readonly] {
-  background: #f5f7fa;
+  background: var(--color-surface-2);
 }
 .settle-inline button {
   height: 32px;
   padding: 0 12px;
   font-size: 12px;
-  color: #606266;
+  color: var(--color-ink-muted);
   cursor: pointer;
   background: #fff;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--color-hairline-strong);
   border-radius: 4px;
 }
 .settle-inline button:hover {
-  color: #409eff;
-  border-color: #a0cfff;
-  background: #ecf5ff;
+  color: var(--color-primary);
+  border-color: var(--el-color-primary-light-5);
+  background: var(--color-primary-subtle);
 }
 .settle-legacy {
   display: grid;
   gap: 8px;
   margin-top: 6px;
   padding: 10px;
-  background: #fafafa;
-  border: 1px solid #ebeef5;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-hairline);
   border-radius: 4px;
 }
 .settle-hint {
   margin: 0;
   font-size: 12px;
-  color: #909399;
+  color: var(--color-ink-subtle);
 }
 .settle-hint--error {
-  color: #f56c6c;
+  color: var(--color-danger);
 }
 .settle-hint--split {
   display: flex;
@@ -924,7 +924,7 @@ function submit() {
   align-items: center;
 }
 .settle-dot {
-  color: #dcdfe6;
+  color: var(--color-hairline-strong);
 }
 .proof-fallback {
   display: inline-flex;
@@ -936,15 +936,15 @@ function submit() {
   padding: 0 8px;
   font-size: 12px;
   line-height: 24px;
-  color: #606266;
+  color: var(--color-ink-muted);
   cursor: pointer;
   background: #fff;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--color-hairline-strong);
   border-radius: 4px;
 }
 .proof-fallback span:hover {
-  color: #409eff;
-  border-color: #a0cfff;
+  color: var(--color-primary);
+  border-color: var(--el-color-primary-light-5);
 }
 .settle-check {
   display: flex;
@@ -952,7 +952,7 @@ function submit() {
   align-items: center;
   font-size: 12px;
   font-weight: 400;
-  color: #909399;
+  color: var(--color-ink-subtle);
   cursor: pointer;
 }
 .settle-label .settle-check input {
@@ -978,14 +978,14 @@ function submit() {
   padding: 8px 10px;
   overflow: hidden;
   font-size: 12px;
-  background: #fafafa;
-  border: 1px solid #ebeef5;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-hairline);
   border-radius: 6px;
 }
 .settle-file__name {
   display: -webkit-box;
   overflow: hidden;
-  color: #606266;
+  color: var(--color-ink-muted);
   word-break: break-all;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -995,8 +995,8 @@ function submit() {
   padding: 0 6px;
   font-size: 11px;
   line-height: 18px;
-  color: #909399;
-  background: #f0f2f5;
+  color: var(--color-ink-subtle);
+  background: var(--color-hairline);
   border-radius: 3px;
 }
 .settle-file__remove {
@@ -1008,15 +1008,15 @@ function submit() {
   padding: 0;
   font-size: 13px;
   line-height: 1;
-  color: #909399;
+  color: var(--color-ink-subtle);
   cursor: pointer;
   background: #fff;
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--color-hairline);
   border-radius: 50%;
 }
 .settle-file__remove:hover {
-  color: #f56c6c;
-  border-color: #fbc4c4;
+  color: var(--color-danger);
+  border-color: var(--el-color-danger-light-5);
 }
 .settle-upload {
   display: flex;
@@ -1029,15 +1029,15 @@ function submit() {
   max-width: 168px;
   height: 72px;
   font-size: 12px;
-  color: #909399;
+  color: var(--color-ink-subtle);
   cursor: pointer;
-  background: #fcfcfd;
-  border: 1px dashed #dcdfe6;
+  background: var(--color-canvas);
+  border: 1px dashed var(--color-hairline-strong);
   border-radius: 6px;
 }
 .settle-upload:hover {
-  color: #409eff;
-  border-color: #a0cfff;
+  color: var(--color-primary);
+  border-color: var(--el-color-primary-light-5);
 }
 .settle-upload__plus {
   font-size: 16px;
@@ -1058,14 +1058,14 @@ function submit() {
 .settle-block__title {
   font-size: 12px;
   font-weight: 400;
-  color: #606266;
+  color: var(--color-ink-muted);
 }
 .settle-tag {
   padding: 0 8px;
   font-size: 11px;
   line-height: 20px;
-  color: #409eff;
-  background: #ecf5ff;
+  color: var(--color-primary);
+  background: var(--color-primary-subtle);
   border-radius: 3px;
 }
 .settle-totals {
@@ -1077,18 +1077,18 @@ function submit() {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #1f2329;
+  color: var(--color-ink);
 }
 .settle-note {
   margin: 0;
   font-size: 12px;
   line-height: 1.6;
-  color: #909399;
+  color: var(--color-ink-subtle);
 }
 .settle-error {
   margin: 0;
   font-size: 12px;
-  color: #f56c6c;
+  color: var(--color-danger);
 }
 .refund-list {
   display: grid;
@@ -1110,11 +1110,11 @@ function submit() {
   padding: 0 10px;
   overflow: hidden;
   font-size: 13px;
-  color: #1f2329;
+  color: var(--color-ink);
   white-space: nowrap;
   text-overflow: ellipsis;
-  background: #f5f7fa;
-  border: 1px solid #ebeef5;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-hairline);
   border-radius: 4px;
 }
 .refund-cell--amount {
@@ -1122,12 +1122,12 @@ function submit() {
 }
 .refund-cell--status {
   font-size: 12px;
-  color: #606266;
+  color: var(--color-ink-muted);
 }
 .refund-desc {
   overflow: hidden;
   font-size: 12px;
-  color: #909399;
+  color: var(--color-ink-subtle);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1135,8 +1135,8 @@ function submit() {
   display: grid;
   gap: 6px;
   padding: 10px;
-  background: #fafafa;
-  border: 1px solid #ebeef5;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-hairline);
   border-radius: 4px;
 }
 .refund-editor__row {
@@ -1156,21 +1156,21 @@ function submit() {
   padding: 0;
   font-size: 14px;
   line-height: 1;
-  color: #909399;
+  color: var(--color-ink-subtle);
   cursor: pointer;
   background: #fff;
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--color-hairline);
   border-radius: 50%;
 }
 .refund-editor__remove:hover {
-  color: #f56c6c;
-  border-color: #fbc4c4;
+  color: var(--color-danger);
+  border-color: var(--el-color-danger-light-5);
 }
 .settle-link {
   justify-self: start;
   padding: 0;
   font-size: 12px;
-  color: #409eff;
+  color: var(--color-primary);
   cursor: pointer;
   background: none;
   border: 0;
@@ -1180,36 +1180,36 @@ function submit() {
   gap: 8px;
   justify-content: flex-end;
   padding-top: 12px;
-  border-top: 1px solid #ebeef5;
+  border-top: 1px solid var(--color-hairline);
 }
 .settle-footer button {
   height: 32px;
   padding: 0 18px;
   font-size: 13px;
   cursor: pointer;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--color-hairline-strong);
   border-radius: 4px;
   background: #fff;
-  color: #606266;
+  color: var(--color-ink-muted);
 }
 .settle-footer button:hover {
-  color: #409eff;
-  border-color: #a0cfff;
-  background: #ecf5ff;
+  color: var(--color-primary);
+  border-color: var(--el-color-primary-light-5);
+  background: var(--color-primary-subtle);
 }
 .settle-footer button[type='submit'] {
   color: #fff;
-  background: #409eff;
-  border-color: #409eff;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
 }
 .settle-footer button[type='submit']:hover {
-  background: #66b1ff;
-  border-color: #66b1ff;
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 .settle-footer button[type='submit']:disabled {
   cursor: not-allowed;
-  background: #a0cfff;
-  border-color: #a0cfff;
+  background: var(--el-color-primary-light-5);
+  border-color: var(--el-color-primary-light-5);
 }
 @media (max-width: 560px) {
   .settle-row {

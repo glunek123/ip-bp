@@ -34,7 +34,7 @@ function beforeClose(done: () => void): void {
     :close-on-press-escape="!locked"
     :before-close="beforeClose"
   >
-    <div class="operation-drawer-content"><slot /></div>
+    <div class="operation-drawer-content drawer-card"><slot /></div>
     <template #footer>
       <div class="operation-drawer-actions operation-bar">
         <slot name="footer" />

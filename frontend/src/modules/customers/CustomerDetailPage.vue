@@ -1418,6 +1418,7 @@ onBeforeUnmount(() => {
         </section>
         <ElDrawer
           v-model="admissionOpen"
+          class="drawer-card"
           title="客户准入"
           size="min(900px, 100vw)"
           append-to-body
@@ -1432,6 +1433,7 @@ onBeforeUnmount(() => {
         </ElDrawer>
         <ElDrawer
           v-model="editOpen"
+          class="drawer-card"
           title="编辑客户资料"
           size="min(900px, 100vw)"
           append-to-body

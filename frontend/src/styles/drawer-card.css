@@ -1,0 +1,270 @@
+/*
+ * 侧栏卡片统一视觉层。
+ * 基准：结算更新卡片（小标签 + 32px 控件 + 细分隔线 + 表格式记录 + 右对齐操作）。
+ * 只作用于抽屉内容区（.drawer-card），不改页面与弹窗。
+ */
+
+.drawer-card {
+  --dc-border: var(--color-hairline);
+  --dc-border-strong: var(--color-hairline-strong);
+  --dc-radius: 6px;
+  --dc-control: var(--app-control-height);
+  --dc-label-size: 12px;
+  --dc-control-font: 13px;
+  color: var(--color-ink);
+  font: 14px/1.6 var(--font-text);
+}
+
+/* ---------- 分区与标题 ---------- */
+
+.drawer-card h2,
+.drawer-card h3,
+.drawer-card h4 {
+  margin: 0;
+  color: var(--color-ink);
+  font-family: var(--font-text);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.drawer-card h2 {
+  font-size: 15px;
+}
+
+.drawer-card h3 {
+  font-size: 13px;
+}
+
+.drawer-card h3 + p,
+.drawer-card h3 + .field-guidance {
+  margin-top: 4px;
+}
+
+.drawer-card hr {
+  height: 1px;
+  margin: var(--s-3) 0;
+  background: var(--dc-border);
+  border: 0;
+}
+
+/* ---------- 字段标签 ---------- */
+
+/* 排除 Element 自带的行内勾选/单选/表单项标签 */
+.drawer-card label:not(.el-checkbox, .el-radio, .el-form-item__label) {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  min-width: 0;
+  color: var(--color-ink-muted);
+  font-size: var(--dc-label-size);
+  font-weight: 400;
+}
+
+/* 勾选/单选保持单行，不把文字挤到第二行 */
+.drawer-card label:has(> input[type='checkbox'], > input[type='radio']) {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.drawer-card label > span:first-child {
+  color: var(--color-ink-muted);
+  font-size: var(--dc-label-size);
+}
+
+/* 只有单个勾选框时压缩到内容宽度 */
+.drawer-card label:has(> input[type='checkbox']:only-child) {
+  justify-self: start;
+}
+
+/* ---------- 控件 ---------- */
+
+.drawer-card
+  :is(
+    input:not(
+      [type='checkbox'],
+      [type='radio'],
+      [type='file'],
+      [type='range'],
+      [type='color']
+    ),
+    select,
+    textarea
+  ) {
+  width: 100%;
+  height: var(--dc-control);
+  margin: 0;
+  padding: 0 10px;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--dc-control-font);
+  background: var(--color-surface-1);
+  border: 1px solid var(--dc-border-strong);
+  border-radius: var(--dc-radius);
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.drawer-card textarea {
+  height: auto;
+  min-height: 72px;
+  padding: 7px 10px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.drawer-card
+  :is(input, select, textarea):focus:not([type='checkbox'], [type='radio']) {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-subtle);
+}
+
+.drawer-card :is(input, textarea):disabled,
+.drawer-card select:disabled {
+  color: var(--color-ink-tertiary);
+  background: var(--color-surface-2);
+  cursor: not-allowed;
+}
+
+.drawer-card input[type='file'] {
+  max-width: 100%;
+  font: inherit;
+  font-size: 12px;
+}
+
+.drawer-card input[type='checkbox'],
+.drawer-card input[type='radio'] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--color-primary);
+}
+
+/* Element Plus 控件与原生控件对齐 */
+.drawer-card .el-input__wrapper,
+.drawer-card .el-select__wrapper {
+  min-height: var(--dc-control);
+  padding: 0 10px;
+  background: var(--color-surface-1);
+  border-radius: var(--dc-radius);
+  box-shadow: 0 0 0 1px var(--dc-border-strong) inset;
+}
+
+.drawer-card .el-input__inner,
+.drawer-card .el-select__placeholder,
+.drawer-card .el-select__selected-item {
+  font-size: var(--dc-control-font);
+}
+
+.drawer-card .el-textarea__inner {
+  padding: 7px 10px;
+  font-size: var(--dc-control-font);
+  border-radius: var(--dc-radius);
+  box-shadow: 0 0 0 1px var(--dc-border-strong) inset;
+}
+
+/* ---------- 字段组 ---------- */
+
+.drawer-card fieldset {
+  min-inline-size: 0;
+  margin: 0;
+  padding: var(--s-3);
+  border: 1px solid var(--dc-border);
+  border-radius: var(--dc-radius);
+}
+
+.drawer-card legend {
+  padding-inline: 4px;
+  color: var(--color-ink-muted);
+  font-size: var(--dc-label-size);
+  font-weight: 500;
+}
+
+/* ---------- 记录表格 ---------- */
+
+.drawer-card table {
+  width: 100%;
+  font-size: var(--dc-control-font);
+  border-collapse: collapse;
+}
+
+.drawer-card table th {
+  padding: 7px 8px;
+  color: var(--color-ink-subtle);
+  font-size: var(--dc-label-size);
+  font-weight: 400;
+  text-align: left;
+  white-space: nowrap;
+  background: var(--color-surface-2);
+  border-bottom: 1px solid var(--dc-border);
+}
+
+.drawer-card table td {
+  padding: 6px 8px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--dc-border);
+}
+
+.drawer-card table tr:last-child td {
+  border-bottom: 0;
+}
+
+/* ---------- 操作 ---------- */
+
+.drawer-card .el-button {
+  height: var(--dc-control);
+  padding: 0 14px;
+  font-size: var(--dc-control-font);
+  border-radius: var(--dc-radius);
+}
+
+.drawer-card .el-button--small {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.drawer-card .el-button + .el-button {
+  margin-left: 0;
+}
+
+/* 仅收敛无自定义样式的原生按钮；带 class 的按钮保留各自外观 */
+.drawer-card button:not(.el-button):not([class]) {
+  height: var(--dc-control);
+  padding: 0 14px;
+  color: var(--color-ink-muted);
+  font: inherit;
+  font-size: var(--dc-control-font);
+  cursor: pointer;
+  background: var(--color-surface-1);
+  border: 1px solid var(--dc-border-strong);
+  border-radius: var(--dc-radius);
+}
+
+.drawer-card button:not(.el-button):not([class]):hover:not(:disabled) {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.drawer-card button:not(.el-button):not([class]):disabled {
+  color: var(--color-ink-tertiary);
+  cursor: not-allowed;
+  background: var(--color-surface-2);
+}
+
+/* ---------- 提示文本 ---------- */
+
+.drawer-card small {
+  color: var(--color-ink-subtle);
+}
+
+/* ---------- 窄屏 ---------- */
+
+@media (max-width: 640px) {
+  .drawer-card .demo-form-grid,
+  .drawer-card .demo-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

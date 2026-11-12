@@ -1052,7 +1052,7 @@ fieldset {
   max-width: 92px;
   overflow: hidden;
   font-size: 11px;
-  color: #a8abb2;
+  color: var(--color-ink-tertiary);
   white-space: nowrap;
   text-overflow: ellipsis;
 }

@@ -1,6 +1,7 @@
 @import './tokens.css';
 @import './app-shell.css';
 @import './demo-components.css';
+@import './drawer-card.css';
 
 * {
   box-sizing: border-box;
