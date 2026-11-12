@@ -88,8 +88,7 @@
       [type='range'],
       [type='color']
     ),
-    select,
-    textarea
+    select
   ) {
   width: 100%;
   height: var(--dc-control);
@@ -108,11 +107,22 @@
 }
 
 .drawer-card textarea {
-  height: auto;
-  min-height: 72px;
+  width: 100%;
+  min-height: 96px;
+  margin: 0;
   padding: 7px 10px;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: var(--dc-control-font);
   line-height: 1.5;
+  background: var(--color-surface-1);
+  border: 1px solid var(--dc-border-strong);
+  border-radius: var(--dc-radius);
+  outline: none;
   resize: vertical;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .drawer-card
@@ -167,32 +177,44 @@
 
 /* ---------- 字段组 ---------- */
 
-/* 与结算卡片一致：分区用细线分隔，不用卡片盒子 */
+/* 与结算卡片一致：分区用细线分隔，不用卡片盒子。
+   历史模块样式（如客户工作区）选择器更重，这里用 !important 兜底。 */
 .drawer-card fieldset {
   min-inline-size: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
 }
 
 .drawer-card fieldset + fieldset {
-  margin-top: var(--s-3);
-  padding-top: var(--s-3);
-  border-top: 1px solid var(--dc-border);
+  margin-top: var(--s-3) !important;
+  padding-top: var(--s-3) !important;
+  border-top: 1px solid var(--dc-border) !important;
 }
 
 /* 旧的 .form-section 盒子在同一抽屉里也压平，保留分区标题 */
 .drawer-card .form-section {
-  margin: 0;
-  padding: 0;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+}
+
+.drawer-card .form-section + .form-section {
+  margin-top: var(--s-3) !important;
+  padding-top: var(--s-3) !important;
+  border-top: 1px solid var(--dc-border) !important;
+}
+
+/* 抽屉里不再套第二层卡片 */
+.drawer-card .demo-card {
+  background: transparent;
   border: 0;
   border-radius: 0;
 }
 
-.drawer-card .form-section + .form-section {
-  margin-top: var(--s-3);
-  padding-top: var(--s-3);
-  border-top: 1px solid var(--dc-border);
+.drawer-card .demo-card--pad {
+  padding: 0;
 }
 
 .drawer-card legend {
@@ -250,30 +272,6 @@
 
 .drawer-card .el-button + .el-button {
   margin-left: 0;
-}
-
-/* 仅收敛无自定义样式的原生按钮；带 class 的按钮保留各自外观 */
-.drawer-card button:not(.el-button):not([class]) {
-  height: var(--dc-control);
-  padding: 0 14px;
-  color: var(--color-ink-muted);
-  font: inherit;
-  font-size: var(--dc-control-font);
-  cursor: pointer;
-  background: var(--color-surface-1);
-  border: 1px solid var(--dc-border-strong);
-  border-radius: var(--dc-radius);
-}
-
-.drawer-card button:not(.el-button):not([class]):hover:not(:disabled) {
-  color: var(--color-primary);
-  border-color: var(--color-primary);
-}
-
-.drawer-card button:not(.el-button):not([class]):disabled {
-  color: var(--color-ink-tertiary);
-  cursor: not-allowed;
-  background: var(--color-surface-2);
 }
 
 /* ---------- 提示文本 ---------- */

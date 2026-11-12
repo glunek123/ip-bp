@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-12T05:28:14.067Z",
+  "recordedAt": "2026-11-12T05:37:33.580Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1752,7 +1752,7 @@
     "frontend/src/styles/app-shell.css": "a346f63d75bce14599a6b0fc8ade61b5e7bc466e5a7caa97f7fd2d7fcee78b62",
     "frontend/src/styles/case-workspace.css": "1d6e58f1626caa3dfbaa39ef3e6285717f13b66d2eac17dc49d41cd459336da4",
     "frontend/src/styles/demo-components.css": "a6f552b68b3be36688307003fecb8cc405e193ccb73da00d0f72e9889bb0c0f0",
-    "frontend/src/styles/drawer-card.css": "9b26241b2c33105b1739acd705d92d9b733ee420543d7a9433b148577e4e561a",
+    "frontend/src/styles/drawer-card.css": "daa71659cff4bbb81b579ee40da852ab948612d463e7ed48fbee153b930960c3",
     "frontend/src/styles/global.css": "ce9b007c045d3557a03bac55e4be593e4c72afa4d90f19e62dca48d651a902a8",
     "frontend/src/styles/list-workflow.css": "875240e30d2556483ba1f12ab0e757b2cfa2effc37cefafa22d6ffdf189ee160",
     "frontend/src/styles/operations.css": "2cff8382f07215fee214e8b66cd1fef06e8edbf784d89803fbfe2fe5f4081b15",
