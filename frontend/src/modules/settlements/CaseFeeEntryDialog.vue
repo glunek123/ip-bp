@@ -180,8 +180,9 @@ async function save(): Promise<void> {
 <template>
   <ElDialog
     v-model="open"
+    class="drawer-card"
     title="添加案件费用"
-    width="min(1180px,94vw)"
+    width="min(960px, 94vw)"
     :before-close="beforeClose"
     :close-on-click-modal="!disabled"
     :close-on-press-escape="!disabled"

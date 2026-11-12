@@ -675,7 +675,7 @@ function historyLabel(fact: CaseJudgmentFact): string {
         </p>
       </fieldset>
 
-      <fieldset class="form-stack">
+      <fieldset class="form-stack judgment-files">
         <legend>判决书 <span class="required-mark">*</span></legend>
         <p class="field-help">最多10份，单份≤50MiB，PDF/JPEG/PNG。</p>
         <ul v-if="availableFiles.length" class="notary-offices-list">
@@ -899,6 +899,14 @@ function historyLabel(fact: CaseJudgmentFact): string {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
   gap: var(--s-3);
+}
+.judgment-files {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.judgment-files > :where(p, ul, label, h3) {
+  margin-block: 0;
 }
 .judgment-refund-row {
   display: grid;

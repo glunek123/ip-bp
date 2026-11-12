@@ -1239,8 +1239,9 @@ onBeforeUnmount(() => {
       />
       <ElDialog
         v-model="showCreate"
+        class="drawer-card"
         title="新增费用"
-        width="min(920px, 94vw)"
+        width="min(760px, 94vw)"
         :close-on-click-modal="!unknownCreate"
         ><form class="fee-center__create" @submit.prevent="saveCreate">
           <label v-if="!props.caseId"

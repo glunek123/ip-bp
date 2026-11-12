@@ -1305,4 +1305,40 @@ loadCustomerSnapshot();
     flex-direction: column;
   }
 }
+
+/* 抽屉内与统一卡片对齐：平铺、紧凑、同节距 */
+.drawer-card .admission-panel {
+  margin-top: 0;
+  padding: 0;
+  border-top: 0;
+}
+.drawer-card .admission-heading h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.drawer-card .admission-grid {
+  margin-top: 12px;
+  gap: 10px 16px;
+}
+.drawer-card .admission-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-hairline);
+}
+.drawer-card .admission-section legend {
+  padding: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.drawer-card .material-card {
+  padding: 8px 10px;
+  border-color: var(--color-hairline);
+  border-radius: 4px;
+  background: var(--color-surface-2);
+}
+.drawer-card .admission-submit {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-hairline);
+}
 </style>

@@ -756,7 +756,7 @@ function submit() {
     <p v-else class="settle-hint">
       尚未取得诉讼退费清单及版本，不能推定不涉及。
     </p>
-    <label v-if="source.settlement" class="settle-field settle-field--compact">
+    <label v-if="source.settlement" class="settle-field settle-field--narrow">
       <span>是否涉及结算</span>
       <select
         v-model="declaration"
@@ -830,10 +830,8 @@ function submit() {
   gap: 4px;
   min-width: 0;
 }
-.settle-field--compact {
-  grid-template-columns: 96px minmax(0, 320px);
-  align-items: center;
-  gap: 4px 12px;
+.settle-field--narrow {
+  max-width: 320px;
 }
 .settle-label {
   display: flex;
