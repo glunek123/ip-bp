@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import CaseSettlementAmountEditor from './CaseSettlementAmountEditor.vue';
 import CaseClosurePaymentFields, {
   type ClosurePaymentRecord,
   type ClosurePaymentType,
@@ -56,11 +57,14 @@ export type SettlementUpdateSource = {
 const props = withDefaults(
   defineProps<{
     source: SettlementUpdateSource;
+    caseId?: string;
     canCorrectClosure?: boolean;
   }>(),
   { canCorrectClosure: true },
 );
 const canEditClosureFacts = computed(() => props.canCorrectClosure !== false);
+const caseId = computed(() => props.caseId ?? '');
+const editorSide = ref<'CUSTOMER' | 'LAWYER' | null>(null);
 const emit = defineEmits<{
   cancel: [];
   draft: [
@@ -555,12 +559,36 @@ function submit() {
     >
     <fieldset v-for="side in ['customer', 'lawyer'] as const" :key="side">
       <legend>{{ side === 'customer' ? '客户' : '律师' }}应结金额</legend>
-      <p>
+      <p class="settle-amount-line">
         当前值：{{
           (side === 'customer' ? source.customerAmount : source.lawyerAmount) ??
           '待确认'
         }}
+        <button
+          v-if="caseId"
+          type="button"
+          class="link-button"
+          :data-test="`edit-${side}-terms`"
+          @click="
+            editorSide =
+              editorSide === (side === 'customer' ? 'CUSTOMER' : 'LAWYER')
+                ? null
+                : side === 'customer'
+                  ? 'CUSTOMER'
+                  : 'LAWYER'
+          "
+        >
+          修改
+        </button>
       </p>
+      <CaseSettlementAmountEditor
+        v-if="caseId"
+        :case-id="caseId"
+        :side="side === 'customer' ? 'CUSTOMER' : 'LAWYER'"
+        :open="editorSide === (side === 'customer' ? 'CUSTOMER' : 'LAWYER')"
+        @updated="editorSide = null"
+        @collapsed="editorSide = null"
+      />
       <select
         v-model="(side === 'customer' ? customerEdit : lawyerEdit).mode"
         :aria-label="`${side}-mode`"
