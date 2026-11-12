@@ -6,21 +6,38 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 
-/** 待开庭 → 待判决：开庭日期已过（严格早于今天）的案子自动推进。 */
+/** 待开庭 → 待判决：开庭日到达（或已过）后自动推进。 */
 export const HEARING_PASSED_AUDIT = 'case.hearing.date_passed';
 
 const CHECK_INTERVAL_MS = 10 * 60 * 1000;
 
-function shanghaiToday(now: Date): Date {
+/**
+ * 开庭当天的推进时点（上海时间，0-23）。
+ * 默认 0：开庭日 00:00 之后的第一次扫描即推进。
+ * 若希望当天先留出改期／补材料的时间，把它设为 18 之类即可，无需改代码。
+ */
+const DEFAULT_CUTOFF_HOUR = 0;
+
+function shanghaiParts(now: Date): { date: Date; hour: number } {
   const offset = 8 * 60 * 60 * 1000;
   const shifted = new Date(now.getTime() + offset);
-  return new Date(
-    Date.UTC(
-      shifted.getUTCFullYear(),
-      shifted.getUTCMonth(),
-      shifted.getUTCDate(),
+  return {
+    date: new Date(
+      Date.UTC(
+        shifted.getUTCFullYear(),
+        shifted.getUTCMonth(),
+        shifted.getUTCDate(),
+      ),
     ),
-  );
+    hour: shifted.getUTCHours(),
+  };
+}
+
+function cutoffHour(): number {
+  const raw = Number(process.env.HEARING_ADVANCE_CUTOFF_HOUR ?? '');
+  return Number.isInteger(raw) && raw >= 0 && raw <= 23
+    ? raw
+    : DEFAULT_CUTOFF_HOUR;
 }
 
 @Injectable()
@@ -52,17 +69,31 @@ export class CaseHearingAdvanceScheduler
     if (this.running) return 0;
     this.running = true;
     try {
-      const today = shanghaiToday(now);
-      const due = await this.database.case.findMany({
+      const { date: today, hour } = shanghaiParts(now);
+      const cutoff = cutoffHour();
+      const rows = await this.database.case.findMany({
         where: {
           stage: 'WAITING_HEARING',
           // 待开庭阶段 currentHearingAdvance 为空，开庭日期在当前安排上。
-          currentHearingArrangement: {
-            is: { hearingAt: { lt: today } },
-          },
+          currentHearingArrangement: { is: { hearingAt: { lte: today } } },
         },
-        select: { id: true, departmentId: true, version: true },
+        select: {
+          id: true,
+          departmentId: true,
+          version: true,
+          currentHearingArrangement: { select: { hearingAt: true } },
+        },
         take: 200,
+      });
+      // 当天的案件要等过了推进时点；之前的案件随时可推；未来的不动。
+      const todayMs = today.getTime();
+      const due = rows.filter((row) => {
+        const hearingAt = row.currentHearingArrangement?.hearingAt ?? null;
+        if (hearingAt === null) return false;
+        const at = hearingAt.getTime();
+        if (at > todayMs) return false;
+        if (at < todayMs) return true;
+        return hour >= cutoff;
       });
       let advanced = 0;
       for (const item of due) {
@@ -74,8 +105,7 @@ export class CaseHearingAdvanceScheduler
           );
         }
       }
-      if (advanced > 0)
-        this.logger.log(`开庭日期已过，自动推进 ${advanced} 件`);
+      if (advanced > 0) this.logger.log(`开庭日已到，自动推进 ${advanced} 件`);
       return advanced;
     } finally {
       this.running = false;
