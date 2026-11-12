@@ -544,7 +544,6 @@ function submit() {
         @update:records="records = $event"
       />
       <template v-if="source.payments.length">
-        <p class="settle-hint">原付款记录（截图可后补）</p>
         <article
           v-for="payment in source.payments"
           :key="payment.versionId"
@@ -691,9 +690,6 @@ function submit() {
       声明涉及结算时，客户与律师金额都必须有值。
     </p>
 
-    <p class="settle-note">
-      客户金额按「结算条件」公式自动计算；律师金额按「律师协议」（模式/基础费/分成）自动计算。点击「保存」记录结算、付款与退费状态，案件停留在待归档。
-    </p>
     <div class="settle-footer">
       <button type="button" data-test="cancel" @click="emit('cancel')">
         取消
@@ -722,17 +718,22 @@ function submit() {
 /* 两列对齐的结算卡：不改结构，只收紧排版。 */
 .settle-card {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 .settle-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px 16px;
+  gap: 2px 12px;
 }
 .settle-field {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
+}
+.settle-card input,
+.settle-card select {
+  height: 30px;
+  padding: 0 8px;
 }
 .settle-field > span {
   font-size: 12px;
@@ -825,7 +826,7 @@ function submit() {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-  padding-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid #ebeef5;
 }
 </style>

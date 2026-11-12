@@ -272,6 +272,7 @@ watch(
       const value = await getCaseClosureWorkspace(props.caseId);
       if (current(token)) {
         workspace.value = value;
+        // 历史未记录类型时按笔数带出：多笔只能是分期，其余按一次性，均不违反约束。
         if (
           value.stage === 'ARCHIVED' &&
           !proofSelections.get(key())?.unresolved
@@ -871,7 +872,7 @@ async function abandonPreparation() {
       "
     >
       <label v-if="workspace.closure.paymentType === 'UNKNOWN'">
-        历史付款类型未确认，请明确选择
+        付款类型
         <select v-model="confirmedPaymentType" aria-label="确认历史付款类型">
           <option value="">请选择付款类型</option>
           <option value="ONE_TIME">一次性付款</option>
