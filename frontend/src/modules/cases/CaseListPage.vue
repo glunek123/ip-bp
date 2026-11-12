@@ -979,7 +979,7 @@ function shortCaseAction(
     'execution-mailing': '执行邮寄',
     'execution-filing': '执行立案',
     finish: '执行结束',
-    'record-closure': '登记结案',
+    'record-closure': '登记结案资料',
     archive: '归档',
   };
   return labels[action.intent] ?? action.label;
