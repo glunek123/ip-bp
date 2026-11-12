@@ -108,7 +108,7 @@
 
 .drawer-card textarea {
   width: 100%;
-  min-height: 96px;
+  min-height: 96px !important;
   margin: 0;
   padding: 7px 10px;
   color: var(--color-ink);
@@ -209,7 +209,7 @@
 /* 抽屉里不再套第二层卡片 */
 .drawer-card .demo-card {
   background: transparent;
-  border: 0;
+  border: 0 !important;
   border-radius: 0;
 }
 
