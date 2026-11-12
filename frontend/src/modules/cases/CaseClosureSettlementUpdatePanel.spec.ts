@@ -243,7 +243,7 @@ describe('settlement update panel safety', () => {
     ).toBe(true);
     const submit = wrapper
       .findAll('button')
-      .find((button) => button.text() === '保存结算更新')!;
+      .find((button) => button.text() === '保存')!;
     expect(submit.attributes('disabled')).toBeDefined();
     await wrapper.get('form').trigger('submit');
     await flushPromises();

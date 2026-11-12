@@ -65,6 +65,13 @@ const props = withDefaults(
 const canEditClosureFacts = computed(() => props.canCorrectClosure !== false);
 const caseId = computed(() => props.caseId ?? '');
 const editorSide = ref<'CUSTOMER' | 'LAWYER' | null>(null);
+function toggleEditor(side: 'CUSTOMER' | 'LAWYER'): void {
+  editorSide.value = editorSide.value === side ? null : side;
+}
+function onTermsUpdated(): void {
+  editorSide.value = null;
+  emit('refresh');
+}
 const emit = defineEmits<{
   cancel: [];
   refresh: [];
@@ -367,105 +374,213 @@ function submit() {
 }
 </script>
 <template>
-  <form class="settlement-update settle-clean" @submit.prevent="submit">
-    <h2>结算更新</h2>
-    <p v-if="!canEditClosureFacts" data-test="closure-correction-readonly">
-      结案日期和结案文书只读；更正这两项需要原结案更正权限。其他结算和付款办理仍可继续。
-    </p>
-    <p>
-      当前结案日期：{{ source.closeAt || '待确认' }}；当前结案金额：{{
-        source.closeAmt === null ? '待确认' : source.closeAmt
-      }}
-    </p>
-    <label
-      >结案日期（可留空待确认）<input
-        v-model="closeAt"
-        type="date"
-        :disabled="!canEditClosureFacts"
-        data-test="date"
-    /></label>
-    <label
-      ><input
-        v-model="unknown"
-        type="checkbox"
-        data-test="unknown"
-      />结案金额待确认</label
+  <form class="settlement-update settle-card" @submit.prevent="submit">
+    <p
+      v-if="!canEditClosureFacts"
+      class="settle-note"
+      data-test="closure-correction-readonly"
     >
-    <label
-      >结案金额<input v-model="amount" :disabled="unknown" data-test="amount"
-    /></label>
-    <h3>结案文书</h3>
-    <ul>
-      <li v-for="document in source.documents" :key="document.id">
-        {{ document.name }}（历史材料，保留）
-      </li>
-    </ul>
-    <input
-      type="file"
-      multiple
-      aria-label="补充结案文书"
-      :disabled="!canEditClosureFacts"
-      @change="addDocuments($event)"
-    />
-    <p v-for="(document, index) in documents" :key="index">
-      {{ document.name }}
-      <button
-        v-if="canEditClosureFacts"
-        type="button"
-        :data-test="`remove-document-${index}`"
-        @click="documents.splice(index, 1)"
-      >
-        移除
-      </button>
+      结案日期和结案文书只读，其余结算与付款办理可继续。
     </p>
-    <h3>原付款记录</h3>
-    <article v-for="payment in source.payments" :key="payment.versionId">
-      <p>
-        {{ payment.paymentDate }} / {{ payment.amount }} / {{ payment.payer }} →
-        {{ payment.payee }}
+
+    <div class="settle-row">
+      <label class="settle-field">
+        <span>结案日期</span>
+        <input
+          v-model="closeAt"
+          type="date"
+          :disabled="!canEditClosureFacts"
+          data-test="date"
+        />
+      </label>
+      <label class="settle-field">
+        <span>结案金额（元）</span>
+        <input
+          v-model="amount"
+          :disabled="unknown"
+          inputmode="decimal"
+          data-test="amount"
+        />
+      </label>
+    </div>
+    <label class="settle-check">
+      <input v-model="unknown" type="checkbox" data-test="unknown" />结案金额待确认
+    </label>
+
+    <div class="settle-row">
+      <div class="settle-field">
+        <span>客户结算金额（按结算条件自动计算）</span>
+        <div class="settle-inline">
+          <input :value="source.customerAmount ?? '待确认'" readonly />
+          <button
+            v-if="caseId"
+            type="button"
+            data-test="edit-customer-terms"
+            @click="toggleEditor('CUSTOMER')"
+          >
+            修改
+          </button>
+        </div>
+        <p class="settle-hint">= 结案金额 × 客户公式</p>
+        <CaseSettlementAmountEditor
+          v-if="caseId"
+          :case-id="caseId"
+          side="CUSTOMER"
+          :open="editorSide === 'CUSTOMER'"
+          @updated="onTermsUpdated"
+          @collapsed="editorSide = null"
+        />
+        <div v-show="editorSide === 'CUSTOMER'" class="settle-legacy">
+          <select
+            v-model="customerEdit.mode"
+            :aria-label="`customer-mode`"
+            data-test="customer-mode"
+          >
+            <option value="KEEP">保留现有值</option>
+            <option value="AUTOMATIC">按原规则自动计算</option>
+            <option value="MANUAL">手工修改</option>
+          </select>
+          <input
+            v-if="customerEdit.mode === 'MANUAL'"
+            v-model="customerEdit.amount"
+            inputmode="decimal"
+            :aria-label="`customer-amount`"
+            data-test="customer-amount"
+          />
+        </div>
+      </div>
+      <div class="settle-field">
+        <span>律师结算金额（按律师协议自动计算）</span>
+        <div class="settle-inline">
+          <input :value="source.lawyerAmount ?? '待确认'" readonly />
+          <button
+            v-if="caseId"
+            type="button"
+            data-test="edit-lawyer-terms"
+            @click="toggleEditor('LAWYER')"
+          >
+            修改
+          </button>
+        </div>
+        <p class="settle-hint">= 结算模式 × 基础费 × 分成比例</p>
+        <CaseSettlementAmountEditor
+          v-if="caseId"
+          :case-id="caseId"
+          side="LAWYER"
+          :open="editorSide === 'LAWYER'"
+          @updated="onTermsUpdated"
+          @collapsed="editorSide = null"
+        />
+        <div v-show="editorSide === 'LAWYER'" class="settle-legacy">
+          <select
+            v-model="lawyerEdit.mode"
+            :aria-label="`lawyer-mode`"
+            data-test="lawyer-mode"
+          >
+            <option value="KEEP">保留现有值</option>
+            <option value="AUTOMATIC">按原规则自动计算</option>
+            <option value="MANUAL">手工修改</option>
+          </select>
+          <input
+            v-if="lawyerEdit.mode === 'MANUAL'"
+            v-model="lawyerEdit.amount"
+            inputmode="decimal"
+            :aria-label="`lawyer-amount`"
+            data-test="lawyer-amount"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div class="settle-field">
+      <span>结案文书</span>
+      <div class="settle-files">
+        <span
+          v-for="document in source.documents"
+          :key="document.id"
+          class="settle-file"
+        >
+          {{ document.name }}
+        </span>
+        <span
+          v-for="(document, index) in documents"
+          :key="index"
+          class="settle-file"
+        >
+          {{ document.name }}
+          <button
+            v-if="canEditClosureFacts"
+            type="button"
+            class="link-button"
+            :data-test="`remove-document-${index}`"
+            @click="documents.splice(index, 1)"
+          >
+            ×
+          </button>
+        </span>
+        <label class="settle-upload">
+          <span>＋ 上传</span>
+          <input
+            type="file"
+            multiple
+            aria-label="补充结案文书"
+            :disabled="!canEditClosureFacts"
+            @change="addDocuments($event)"
+          />
+        </label>
+      </div>
+    </div>
+
+    <div class="settle-field">
+      <span>付款记录（可多笔，自动汇总已付款）</span>
+      <CaseClosurePaymentFields
+        :payment-type="paymentType"
+        :records="records"
+        @update:payment-type="paymentType = $event"
+        @update:records="records = $event"
+      />
+      <template v-if="source.payments.length">
+        <p class="settle-hint">原付款记录（截图可后补）</p>
+        <article
+          v-for="payment in source.payments"
+          :key="payment.versionId"
+          class="settle-original"
+        >
+          <span
+            >{{ payment.paymentDate }} / {{ payment.amount }} /
+            {{ payment.payer }} → {{ payment.payee }}</span
+          >
+          <slot name="payment-proof" :payment="payment"
+            ><input
+              type="file"
+              multiple
+              aria-label="补充原付款截图"
+              @change="
+                receipts.push({
+                  paymentVersionId: payment.versionId,
+                  files: files($event),
+                })
+              "
+          /></slot>
+        </article>
+      </template>
+      <p class="settle-total" data-test="payment-total">
+        已付款合计：<template v-if="paymentTotal !== null"
+          >¥ {{ formatPaymentCents(paymentTotal) }}</template
+        ><template v-else>待完善</template>
       </p>
-      <p>原截图引用：{{ payment.receiptIds.join('、') || '暂无，可后补' }}</p>
-      <slot name="payment-proof" :payment="payment"
-        ><input
-          type="file"
-          multiple
-          aria-label="补充原付款截图"
-          @change="
-            receipts.push({
-              paymentVersionId: payment.versionId,
-              files: files($event),
-            })
-          "
-      /></slot>
-    </article>
-    <CaseClosurePaymentFields
-      :payment-type="paymentType"
-      :records="records"
-      @update:payment-type="paymentType = $event"
-      @update:records="records = $event"
-    />
-    <section aria-label="付款合计">
-      <p data-test="saved-payment-total">
-        已保存有效付款合计：<template v-if="savedPaymentTotal !== null"
-          >{{ formatPaymentCents(savedPaymentTotal) }} 元</template
-        ><template v-else>未知，请重新读取付款记录</template>
-      </p>
-      <p data-test="draft-payment-total">
-        本次新增付款合计（待保存）：<template v-if="draftPaymentTotal !== null"
+      <p class="settle-hint" data-test="saved-payment-total">
+        已保存：<template v-if="savedPaymentTotal !== null">{{
+          formatPaymentCents(savedPaymentTotal)
+        }}
+          元</template
+        ><template v-else>未知</template> ｜ 本次新增：<template
+          v-if="draftPaymentTotal !== null"
           >{{ formatPaymentCents(draftPaymentTotal) }} 元</template
-        ><template v-else>待完善，请补全有效付款资料</template>
+        ><template v-else>待完善</template>
       </p>
-      <p data-test="payment-total">
-        当前表单已付款合计{{
-          records.length ? '（含新增待保存）' : ''
-        }}：<template v-if="paymentTotal !== null"
-          >{{ formatPaymentCents(paymentTotal) }} 元</template
-        ><template v-else>待完善，请核对付款资料</template>
-      </p>
-      <p>
-        新增、修改或移除草稿会重新计算预览；保存成功前不改变已有付款。以上合计不代表公司已回款，也不表示归档校验已通过。
-      </p>
-    </section>
+    </div>
+
     <section v-if="source.refund">
       <h3>诉讼退费</h3>
       <p>
@@ -542,89 +657,40 @@ function submit() {
         </fieldset>
         <button type="button" @click="addRefund">新增退费</button>
       </template>
-      <p v-if="refundKind === 'CONFIRM_COMPLETE'">
-        仅确认已读取版本的清单；新增或修改清单后应先登记，再重新读取并确认。
-      </p>
     </section>
     <p v-else>尚未取得诉讼退费清单及版本，不能推定不涉及。</p>
-    <label v-if="source.settlement"
-      >是否涉及结算<select
+    <label v-if="source.settlement" class="settle-field">
+      <span>是否涉及结算</span>
+      <select
         v-model="declaration"
         aria-label="是否涉及结算"
+        data-test="declaration"
         @change="settlementChanged = true"
       >
         <option value="UNKNOWN">待确认</option>
-        <option value="APPLICABLE">涉及</option>
-        <option value="NOT_APPLICABLE">明确不涉及</option>
-      </select></label
-    >
-    <fieldset v-for="side in ['customer', 'lawyer'] as const" :key="side">
-      <legend>{{ side === 'customer' ? '客户' : '律师' }}应结金额</legend>
-      <p class="settle-amount-line">
-        当前值：{{
-          (side === 'customer' ? source.customerAmount : source.lawyerAmount) ??
-          '待确认'
-        }}
-        <button
-          v-if="caseId"
-          type="button"
-          class="link-button"
-          :data-test="`edit-${side}-terms`"
-          @click="
-            editorSide =
-              editorSide === (side === 'customer' ? 'CUSTOMER' : 'LAWYER')
-                ? null
-                : side === 'customer'
-                  ? 'CUSTOMER'
-                  : 'LAWYER'
-          "
-        >
-          修改
-        </button>
-      </p>
-      <CaseSettlementAmountEditor
-        v-if="caseId"
-        :case-id="caseId"
-        :side="side === 'customer' ? 'CUSTOMER' : 'LAWYER'"
-        :open="editorSide === (side === 'customer' ? 'CUSTOMER' : 'LAWYER')"
-        @updated="
-          editorSide = null;
-          emit('refresh');
-        "
-        @collapsed="editorSide = null"
-      />
-      <select
-        v-model="(side === 'customer' ? customerEdit : lawyerEdit).mode"
-        :aria-label="`${side}-mode`"
-      >
-        <option value="KEEP">保留现有值</option>
-        <option value="AUTOMATIC">按原规则自动计算</option>
-        <option value="MANUAL">手工修改</option>
+        <option value="APPLICABLE">是</option>
+        <option value="NOT_APPLICABLE">否</option>
       </select>
-      <input
-        v-if="
-          (side === 'customer' ? customerEdit : lawyerEdit).mode === 'MANUAL'
-        "
-        v-model="(side === 'customer' ? customerEdit : lawyerEdit).amount"
-        inputmode="decimal"
-        :aria-label="`${side}-amount`"
-      />
-      <p></p>
-    </fieldset>
-    <p v-if="error" role="alert">{{ error }}</p>
+    </label>
+
+    <p v-if="error" role="alert" class="settle-error">{{ error }}</p>
     <p
       v-if="settlementAmountMissing"
-      class="field-help"
+      class="settle-hint"
       data-test="settlement-amount-required"
     >
-      声明涉及结算时，客户与律师应结金额都必须有值；请选择手工金额，或先确认金额。
+      声明涉及结算时，客户与律师金额都必须有值。
     </p>
-    <button type="button" data-test="cancel" @click="emit('cancel')">
-      取消
-    </button>
-    <button type="submit" :disabled="settlementAmountMissing">
-      保存结算更新
-    </button>
+
+    <p class="settle-note">
+      客户金额按「结算条件」公式自动计算；律师金额按「律师协议」（模式/基础费/分成）自动计算。点击「保存」记录结算、付款与退费状态，案件停留在待归档。
+    </p>
+    <div class="settle-footer">
+      <button type="button" data-test="cancel" @click="emit('cancel')">
+        取消
+      </button>
+      <button type="submit" :disabled="settlementAmountMissing">保存</button>
+    </div>
   </form>
 </template>
 <style scoped>
@@ -645,28 +711,112 @@ function submit() {
 }
 
 /* 两列对齐的结算卡：不改结构，只收紧排版。 */
-.settle-clean {
+.settle-card {
+  display: grid;
+  gap: 16px;
+}
+.settle-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 20px;
-  align-items: start;
+  gap: 4px 20px;
 }
-.settle-clean > h2,
-.settle-clean > h3,
-.settle-clean > fieldset,
-.settle-clean > section,
-.settle-clean > ul,
-.settle-clean > article,
-.settle-clean > .settle-wide,
-.settle-clean > p {
-  grid-column: 1 / -1;
-}
-.settle-clean label {
+.settle-field {
   display: grid;
-  gap: 4px;
+  gap: 6px;
+  min-width: 0;
 }
-.settle-clean label > input,
-.settle-clean label > select {
-  width: 100%;
+.settle-field > span {
+  font-size: 12px;
+  color: #606266;
+}
+.settle-inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+.settle-inline input[readonly] {
+  background: #f5f7fa;
+}
+.settle-legacy {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #ebeef5;
+}
+.settle-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #909399;
+}
+.settle-check {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  color: #606266;
+}
+.settle-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.settle-file {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  max-width: 240px;
+  padding: 6px 10px;
+  overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+}
+.settle-upload {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  height: 32px;
+  font-size: 12px;
+  color: #606266;
+  cursor: pointer;
+  border: 1px dashed #c0c4cc;
+  border-radius: 4px;
+}
+.settle-upload input {
+  display: none;
+}
+.settle-original {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: #606266;
+}
+.settle-total {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.settle-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #909399;
+}
+.settle-error {
+  margin: 0;
+  color: #f56c6c;
+}
+.settle-footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding-top: 12px;
+  border-top: 1px solid #ebeef5;
 }
 </style>
