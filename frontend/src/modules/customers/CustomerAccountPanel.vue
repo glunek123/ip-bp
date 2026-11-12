@@ -247,9 +247,7 @@ watch(
           id="client-account-guidance"
           class="field-guidance inline-form-grid__guidance"
         >
-          用户名至少 3 个字符、最多 64
-          个字符，可用邮箱或自定义形式；初始密码至少 12
-          个字符。创建后，该账号将绑定当前客户企业，只能查看本企业已推送线索。
+          用户名 3–64 字符，初始密码至少 12 位。
         </p>
         <p
           v-if="missingRequirements.length"

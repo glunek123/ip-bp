@@ -313,16 +313,14 @@ function stageName(stage: string): string {
     data-test="case-judgment-next-step-panel"
   >
     <h2 class="form-section-title">判决后续选择</h2>
-    <p>
-      本操作只登记本案的后续路径。已登记的一审判决不会被更改；系统不会推断判决生效时间。
-    </p>
+    <p>只登记后续路径，不修改一审判决。</p>
 
     <div v-if="current" class="form-stack" data-test="current-next-step">
       <p role="status">
         当前路径：<strong>{{ stageName(current.next) }}</strong>
       </p>
       <p v-if="current.next === 'EXECUTION'">
-        办理人已确认核实本案可进入执行准备；这不代表已经申请强制执行。
+        确认可进入执行准备，不代表已申请执行。
       </p>
       <p v-if="current.next === 'APPEAL'">
         上诉方：{{
@@ -366,9 +364,7 @@ function stageName(stage: string): string {
         >
       </fieldset>
       <div v-if="path === 'APPEAL'" class="form-stack">
-        <p>
-          请选择真实上诉方。可选择原告方、一个或多个本案被告，也可同时选择双方；不预先勾选。
-        </p>
+        <p>可选择原告方、被告方或双方。</p>
         <label
           ><input
             v-model="plaintiffAppeals"
@@ -401,9 +397,7 @@ function stageName(stage: string): string {
     </form>
 
     <div v-if="canRevoke" class="form-stack">
-      <p>
-        撤销后案件将退回“待判决”，并保留选择与撤销历史。获权运营可在之后更正判决并重新选择。
-      </p>
+      <p>撤销后退回待判决，并保留历史。</p>
       <label
         >撤销原因 <span class="required-mark">*</span>
         <textarea

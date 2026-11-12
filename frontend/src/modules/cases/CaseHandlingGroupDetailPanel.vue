@@ -129,9 +129,7 @@ onBeforeUnmount(() => {
         {{ detail.status === 'ACTIVE' ? '办理中' : '已解除' }} · 建立于
         {{ formatTime(detail.createdAt) }}
       </p>
-      <p>
-        成员各自保留原案编号、阶段、材料和费用归属。请从原案入口查看已获准的资料与历史。
-      </p>
+      <p>成员保留原案资料；请从原案入口查看。</p>
       <ul aria-label="当前可读源案">
         <li v-for="member in detail.members" :key="member.caseId">
           <RouterLink :to="`/cases/${encodeURIComponent(member.caseId)}`">{{

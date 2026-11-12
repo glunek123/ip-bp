@@ -365,11 +365,9 @@ function setDateMode(): void {
       法官姓名：{{ item.hearing.currentArrangement.judgeName ?? '未填写' }}
     </p>
     <p v-if="item.stage === 'WAITING_JUDGMENT'" role="status">
-      当前阶段：待判决。此阶段仅表示系统已按开庭日期推进，不代表法院已经判决。
+      当前阶段：待判决（按开庭日期自动推进，非法院判决）。
     </p>
-    <p>
-      开庭日期次日 00:00（北京时间）案件进入待判决；待判决不代表法院已经判决。
-    </p>
+    <p>开庭次日 00:00（北京时间）自动进入待判决。</p>
 
     <form
       v-if="canSchedule"
@@ -443,9 +441,7 @@ function setDateMode(): void {
 
     <section v-if="canCorrect" data-test="hearing-correction-form">
       <h3>更正自动推进</h3>
-      <p>
-        更正会保留旧安排和推进记录。未来日期或清除日期后返回待开庭；已到期的更正仍保持待判决。
-      </p>
+      <p>更正保留旧安排与推进记录；已到期的不回退。</p>
       <div class="demo-form-grid">
         <label>
           开庭地点（选填）

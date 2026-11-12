@@ -56,7 +56,7 @@ describe('handling group detail panel', () => {
   it('shows only supplied readable source cases and requires explicit dissolution confirmation', async () => {
     const wrapper = panel();
     expect(wrapper.text()).toContain('CA-合成001');
-    expect(wrapper.text()).toContain('材料和费用归属');
+    expect(wrapper.text()).toContain('成员保留原案资料');
     await wrapper.get('[data-test="close-group-detail"]').trigger('click');
     expect(submitAttempt).not.toHaveBeenCalled();
     await wrapper.get('[data-test="confirm-dissolve-group"]').setValue(true);

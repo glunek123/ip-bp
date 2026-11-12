@@ -234,9 +234,7 @@ function cancel() {
 </script>
 <template>
   <section aria-label="更正或撤销付款">
-    <p>
-      原付款、截图及历史记录保留。归档后的更正不改变归档状态；结清不足时需要核查。
-    </p>
+    <p>保留原记录；结清不足需核查。</p>
     <p>
       当前付款：{{ payment.paidOn }} · {{ payment.amount }} 元 ·
       {{ payment.payer }} → {{ payment.payee }}

@@ -498,9 +498,7 @@ onBeforeUnmount(() => {
     data-test="case-lawyer-assignment-batch-panel"
   >
     <h2 class="form-section-title">批量仅分配律师</h2>
-    <p class="field-help">
-      本动作只建立承办关系，不补被告、不生成匹配完成回执，也不推进阶段。后续仍须逐案正式匹配。
-    </p>
+    <p class="field-help">仅建立承办关系，不推进阶段。</p>
     <p v-if="writeLocked" role="alert">当前窗口只读，无法新建或提交请求。</p>
     <p v-if="error" role="status">{{ error }}</p>
     <ElButton

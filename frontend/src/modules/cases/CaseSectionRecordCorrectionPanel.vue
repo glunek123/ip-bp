@@ -1562,9 +1562,7 @@ onBeforeUnmount(() => {
     data-test="section-record-panel"
   >
     <h2 class="form-section-title">{{ labels[kind].title }}</h2>
-    <p class="field-help">
-      只更正本项已登记资料，保存不改变案件阶段或办理版本；原登记、回执和文件版本保留。
-    </p>
+    <p class="field-help">只更正本项资料，不改变阶段。</p>
     <label v-if="options.length > 1" class="field-label"
       >资料记录
       <select

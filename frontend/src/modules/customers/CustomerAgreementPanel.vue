@@ -947,9 +947,7 @@ onBeforeUnmount(() => {
               </li>
             </ul>
           </div>
-          <p class="draft-note">
-            期限和文件信息仅记录已提交资料，不判断合作协议效力或签署状态。
-          </p>
+          <p class="draft-note">仅记录资料，不判断协议效力。</p>
         </template>
       </template>
 

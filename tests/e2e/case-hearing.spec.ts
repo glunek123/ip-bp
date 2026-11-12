@@ -550,7 +550,7 @@ test('formal role grants control overdue hearing registration and correction in 
   const hearingPanel = page.locator('[data-test="case-hearing-panel"]');
   await expect(hearingPanel).toBeVisible();
   await expect(hearingPanel).toContainText('允许补录真实过去日期');
-  await expect(hearingPanel).toContainText('不代表法院已经判决');
+  await expect(hearingPanel).toContainText('非法院判决');
   await scheduleOverdue(page, primary.caseId, acceptedAt, 1);
 
   const futureDate = shiftBusinessDate(todayShanghai(), 2);

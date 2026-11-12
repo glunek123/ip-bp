@@ -678,7 +678,7 @@ onBeforeUnmount(() => {
       }}
     </h2>
     <p v-if="maySubmit" class="field-help">
-      上传材料不会推进案件。确认提交后，案件进入“执行材料待确认”，并限制撤销上游执行决定。
+      上传不推进案件；确认后进入执行材料待确认。
     </p>
     <p
       v-else-if="
@@ -686,7 +686,7 @@ onBeforeUnmount(() => {
       "
       class="field-help"
     >
-      当前阶段仅展示已提交材料历史。请在确认面板核对整套材料，确认后不可重提。
+      仅展示已提交材料；确认后不可重提。
     </p>
     <p v-if="error" class="submit-error" role="alert">{{ error }}</p>
     <p v-if="message" role="status">{{ message }}</p>

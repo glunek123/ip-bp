@@ -565,9 +565,7 @@ function historyLabel(fact: CaseJudgmentFact): string {
 <template>
   <section class="demo-card demo-card--pad" data-test="case-judgment-panel">
     <h2 class="form-section-title">一审判决</h2>
-    <p>
-      登记后案件仍为待判决；更正不改变阶段。本页只记录事实，不会发起支付。登记不代表判决生效、结算完成或已执行。
-    </p>
+    <p>登记与更正都不改变阶段，也不发起支付。</p>
     <form v-if="canEdit" class="form-stack" @submit.prevent="submit">
       <div class="judgment-fields">
         <label>

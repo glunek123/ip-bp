@@ -297,8 +297,7 @@ describe('case judgment panel', () => {
     expect(wrapper.text()).toContain('收到判决日期');
     expect(wrapper.text()).toContain('判决金额');
     expect(wrapper.text()).toContain('实缴诉讼费');
-    expect(wrapper.text()).toContain('登记后案件仍为待判决');
-    expect(wrapper.text()).toContain('只记录事实，不会发起支付');
+    expect(wrapper.text()).toContain('不改变阶段，也不发起支付');
     expect(
       (
         wrapper.get(

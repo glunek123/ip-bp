@@ -383,7 +383,7 @@ describe('CaseJudgmentNextStepPanel', () => {
           judgmentNextStep: { current, history: [current], revocations: [] },
         },
       });
-      expect(wrapper.text()).toContain('案件将退回“待判决”');
+      expect(wrapper.text()).toContain('退回待判决');
       await wrapper.get('[data-revoke-reason]').setValue('复核后确认误选');
       await wrapper.get('[data-revoke-choice]').trigger('click');
       expect(api.revokeCaseJudgmentNextStep).not.toHaveBeenCalled();

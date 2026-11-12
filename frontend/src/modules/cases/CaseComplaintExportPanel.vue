@@ -136,10 +136,7 @@ watch(
     data-test="case-complaint-export-panel"
   >
     <h2 class="form-section-title">诉状材料预览与下载</h2>
-    <p class="field-help">
-      预览只读取已上传的诉状版本。明确选择所需版本后下载
-      ZIP；此操作不生成诉状，也不推进案件。
-    </p>
+    <p class="field-help">选择版本后下载 ZIP；不生成诉状，不推进案件。</p>
     <p>
       已选
       {{ caseIds.length }} 件；每次最多20案、100个文件，未压缩文件合计不超过100

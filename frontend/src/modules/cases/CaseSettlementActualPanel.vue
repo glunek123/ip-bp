@@ -246,9 +246,7 @@ function cancel() {
 </script>
 <template>
   <section>
-    <p>
-      逐笔登记真实回款或律师实际开票。同一笔款项可按案件分配，不能重复登记。
-    </p>
+    <p>逐笔登记，可按案件分配，不可重复。</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <template v-if="!pending">
       <label

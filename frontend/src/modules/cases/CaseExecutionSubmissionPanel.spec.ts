@@ -268,7 +268,7 @@ describe('CaseExecutionSubmissionPanel', () => {
     await flushPromises();
     expect(wrapper.text()).toContain('执行材料提交历史');
     expect(wrapper.text()).toContain(file.originalFilename);
-    expect(wrapper.text()).toContain('请在确认面板核对整套材料');
+    expect(wrapper.text()).toContain('仅展示已提交材料');
     expect(wrapper.find('input[type="file"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="submit-execution"]').exists()).toBe(false);
   });

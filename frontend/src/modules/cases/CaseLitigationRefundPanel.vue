@@ -632,9 +632,7 @@ function cancel(): void {
     <header class="case-litigation-refund__header">
       <div>
         <h2 class="form-section-title">诉讼退费登记</h2>
-        <p class="field-help">
-          按本案有效裁判来源登记应退事项。每笔事项单独保存；登记不会生成收付款记录。
-        </p>
+        <p class="field-help">按有效裁判来源登记；不生成收付款记录。</p>
       </div>
       <ElButton
         v-if="workspace?.canRecord && workspace.sources.length > 0"

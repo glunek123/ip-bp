@@ -264,7 +264,6 @@ describe('case hearing panel', () => {
     const wrapper = mountPanel();
     expect(wrapper.text()).toContain('次日 00:00（北京时间）');
     expect(wrapper.text()).not.toContain('服务器会补跑');
-    expect(wrapper.text()).toContain('不代表法院已经判决');
     await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-05');
     expect(
       (wrapper.get('[data-test="hearing-save"]').element as HTMLButtonElement)
@@ -519,7 +518,7 @@ describe('case hearing panel', () => {
     });
     const wrapper = mountPanel(item);
     expect(wrapper.find('[data-test="hearing-save"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('已到期的更正仍保持待判决');
+    expect(wrapper.text()).toContain('已到期的不回退');
     await wrapper
       .get('[data-test="hearing-correction-reason"]')
       .setValue('   ');
