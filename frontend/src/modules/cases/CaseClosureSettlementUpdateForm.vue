@@ -364,7 +364,6 @@ function submit() {
 <template>
   <form class="settlement-update" @submit.prevent="submit">
     <h2>结算更新</h2>
-    <p>案件保持待归档。结案文书和付款截图可后补；请以保存结果为准。</p>
     <p v-if="!canEditClosureFacts" data-test="closure-correction-readonly">
       结案日期和结案文书只读；更正这两项需要原结案更正权限。其他结算和付款办理仍可继续。
     </p>
@@ -440,7 +439,6 @@ function submit() {
       @update:payment-type="paymentType = $event"
       @update:records="records = $event"
     />
-    <p>原付款记录保留，新付款记录随本次更新提交。</p>
     <section aria-label="付款合计">
       <p data-test="saved-payment-total">
         已保存有效付款合计：<template v-if="savedPaymentTotal !== null"
