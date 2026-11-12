@@ -16,7 +16,8 @@ const props = defineProps<{
 const emit = defineEmits<{ updated: []; collapsed: [] }>();
 
 const settlement = ref<CaseSettlement | null>(null);
-const formula = ref('');
+const formulaBase = '结案金额';
+const formulaPercent = ref('75');
 const lawyerMode = ref<LawyerSettlementMode>('FULL_RISK');
 const baseFee = ref('0');
 const splitPercent = ref('30');
@@ -44,7 +45,10 @@ async function load(): Promise<void> {
   try {
     const value = await getCaseSettlement(props.caseId);
     settlement.value = value;
-    formula.value = value.terms?.customerFormula ?? '';
+    const parsed = (value.terms?.customerFormula ?? '').match(
+      /(\d+(?:\.\d+)?)\s*%/u,
+    );
+    formulaPercent.value = parsed?.[1] ?? '75';
     lawyerMode.value = value.terms?.lawyerMode ?? 'FULL_RISK';
     baseFee.value = value.terms?.lawyerBaseFee ?? '0';
     splitPercent.value = value.terms?.lawyerSplitPercent ?? '30';
@@ -78,7 +82,7 @@ async function apply(): Promise<void> {
       side: props.side,
       ...(props.side === 'CUSTOMER'
         ? {
-            customerFormula: formula.value.trim(),
+            customerFormula: `${formulaBase} × ${formulaPercent.value.trim() || '0'}%`,
             manualAmount: manualAmount.value.trim() || null,
           }
         : {
@@ -104,13 +108,23 @@ async function apply(): Promise<void> {
     <p v-if="error" role="alert" class="submit-error">{{ error }}</p>
     <template v-if="side === 'CUSTOMER'">
       <label>
-        <span>客户结算条件（公式）</span>
-        <input
-          v-model="formula"
-          maxlength="500"
-          placeholder="客户结算金额=结案金额*75%"
-          data-test="settlement-formula"
-        />
+        <span>客户结算条件</span>
+        <div class="formula">
+          <input
+            :value="formulaBase"
+            readonly
+            data-test="settlement-formula-base"
+          />
+          <span>×</span>
+          <input
+            v-model="formulaPercent"
+            inputmode="decimal"
+            maxlength="6"
+            data-test="settlement-formula"
+          />
+          <span>%</span>
+        </div>
+        <p class="formula-hint">= 结案金额 × {{ formulaPercent || '0' }}%</p>
       </label>
       <label>
         <span>手工指定金额（留空按公式）</span>
@@ -173,6 +187,20 @@ async function apply(): Promise<void> {
   display: grid;
   gap: 4px;
   font-size: 12px;
+}
+.formula {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 72px auto;
+  gap: 6px;
+  align-items: center;
+}
+.formula input[readonly] {
+  background: #f5f7fa;
+}
+.formula-hint {
+  margin: 0;
+  font-size: 11px;
+  color: #909399;
 }
 .settle-editor__actions {
   display: flex;

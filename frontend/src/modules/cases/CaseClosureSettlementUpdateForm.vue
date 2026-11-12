@@ -722,16 +722,16 @@ function submit() {
 /* 两列对齐的结算卡：不改结构，只收紧排版。 */
 .settle-card {
   display: grid;
-  gap: 16px;
+  gap: 10px;
 }
 .settle-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 20px;
+  gap: 2px 16px;
 }
 .settle-field {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 .settle-field > span {
@@ -823,9 +823,9 @@ function submit() {
 }
 .settle-footer {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   justify-content: flex-end;
-  padding-top: 12px;
+  padding-top: 8px;
   border-top: 1px solid #ebeef5;
 }
 </style>
