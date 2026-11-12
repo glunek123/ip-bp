@@ -282,9 +282,13 @@ watch(
 }
 .record-grid {
   display: grid;
-  grid-template-columns: minmax(90px, 120px) minmax(160px, 1fr);
-  align-items: center;
-  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: end;
+  gap: 8px 12px;
+}
+.record-grid label {
+  font-size: 11px;
+  color: #909399;
 }
 .record-grid input[type='date'] {
   min-height: 32px;

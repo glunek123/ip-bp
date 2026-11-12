@@ -67,6 +67,7 @@ const caseId = computed(() => props.caseId ?? '');
 const editorSide = ref<'CUSTOMER' | 'LAWYER' | null>(null);
 const emit = defineEmits<{
   cancel: [];
+  refresh: [];
   draft: [
     value: {
       settlementAmounts: { customer: AmountEdit; lawyer: AmountEdit };
@@ -586,7 +587,10 @@ function submit() {
         :case-id="caseId"
         :side="side === 'customer' ? 'CUSTOMER' : 'LAWYER'"
         :open="editorSide === (side === 'customer' ? 'CUSTOMER' : 'LAWYER')"
-        @updated="editorSide = null"
+        @updated="
+          editorSide = null;
+          emit('refresh');
+        "
         @collapsed="editorSide = null"
       />
       <select

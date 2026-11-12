@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-12T02:43:58.121Z",
+  "recordedAt": "2026-11-12T02:49:32.323Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1435,11 +1435,11 @@
     "frontend/src/modules/cases/CaseClosurePanel.spec.ts": "3980dd0c2c0decb409a23e6084d863dbe9862c2bed1453541c36ea657c7160ec",
     "frontend/src/modules/cases/CaseClosurePanel.vue": "56656e75ff6f3249843a0ec319d46244a87588606bd10716e244ef5424f4d040",
     "frontend/src/modules/cases/CaseClosurePaymentFields.spec.ts": "8e6d79321b763a37542ab1b32603aeed05cb2a75469da20a073f24d41a3cb5ca",
-    "frontend/src/modules/cases/CaseClosurePaymentFields.vue": "28030920c2916916d5f144722638f19d0d41ec7a81f815786b43bd4f9051838c",
+    "frontend/src/modules/cases/CaseClosurePaymentFields.vue": "28f525606762d9d6ee8592b3530e374eab963a7a69afc9e7ae8926da94beb1ef",
     "frontend/src/modules/cases/CaseClosureSettlementUpdateForm.spec.ts": "b2679d71fd994d5ebf9eda91b55bf90d8548ca5b594b2dbb9358eaeb75ff3fd1",
-    "frontend/src/modules/cases/CaseClosureSettlementUpdateForm.vue": "eb155fb8bc9d85166a29e1fb04391000e7e07ccd9e4870e4075d86d2f6058823",
+    "frontend/src/modules/cases/CaseClosureSettlementUpdateForm.vue": "59304cb1dbf2db9b615c8f0006d1061c3fdc5dd61759b7143f13b98b0a585788",
     "frontend/src/modules/cases/CaseClosureSettlementUpdatePanel.spec.ts": "a4184125e138044f4f91f24b355fc08b72173a2a91df4d0aa66a2f32a3cee50c",
-    "frontend/src/modules/cases/CaseClosureSettlementUpdatePanel.vue": "b556cfb524704b04ab496c018cdd1f72a2fc0347bcd0278e3f4c1959f36aa53b",
+    "frontend/src/modules/cases/CaseClosureSettlementUpdatePanel.vue": "ad73561b5dfeebcaffa561644d0b275cea45d022c56df3887ce98d1843c4ab17",
     "frontend/src/modules/cases/CaseComplaintConfirmationPanel.spec.ts": "4aefe0ea3570011e3539b2a9465204042b6bba813adad50d1536eef07dbb73f6",
     "frontend/src/modules/cases/CaseComplaintConfirmationPanel.vue": "527bfd99015b76485bcfd85aae9bfa11891cb155c501d17c355359a4515a9152",
     "frontend/src/modules/cases/CaseComplaintExportPanel.spec.ts": "abe07eae00de8288584ee909218859537cd87825bb07a6091c7227bec2db4a21",

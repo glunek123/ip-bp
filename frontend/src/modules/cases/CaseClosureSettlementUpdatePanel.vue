@@ -368,6 +368,15 @@ async function refreshProof(saved = true) {
     if (current(token)) proofRefreshing.value = false;
   }
 }
+async function reloadWorkspace(): Promise<void> {
+  try {
+    const value = await getCaseClosureWorkspace(props.caseId);
+    workspace.value = value;
+  } catch {
+    error.value = '结算条件已保存，但卡片刷新失败；请关闭后重开查看。';
+  }
+}
+
 async function refreshActual() {
   const token = generation;
   const readToken = ++actualReadGeneration;
@@ -897,6 +906,7 @@ async function abandonPreparation() {
         :can-correct-closure="props.canCorrectClosure"
         @draft="submit"
         @cancel="close"
+        @refresh="reloadWorkspace"
       >
         <template #payment-proof="{ payment }">
           <ElButton
