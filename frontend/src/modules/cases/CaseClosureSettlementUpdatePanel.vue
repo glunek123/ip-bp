@@ -308,6 +308,17 @@ const newProofBlocked = computed(
     proofSourceChanged.value ||
     !!proofPaymentId.value,
 );
+function proofRefIds(paymentId: string): string {
+  return (
+    proofDisplay.value
+      .find((p) => p.paymentId === paymentId)
+      ?.documents.map((d) => d.contentVersionId)
+      .join('、') || '暂无'
+  );
+}
+function proofRef(paymentId: string): string {
+  return `当前截图引用：${proofRefIds(paymentId)}；截图独立后补，不随结算表单提交。`;
+}
 function openProof(paymentId: string) {
   const payment = workspace.value?.effectivePayments.find(
     (p) => p.paymentId === paymentId,
@@ -910,22 +921,20 @@ async function abandonPreparation() {
         @refresh="reloadWorkspace"
       >
         <template #payment-proof="{ payment }">
-          <ElButton
-            type="default"
-            :data-test="`proof-${payment.id}`"
-            :disabled="newProofBlocked"
-            @click="openProof(payment.id)"
-            >补截图</ElButton
-          >
-          <p>截图独立后补，不随结算表单提交。</p>
-          <p>
-            当前截图引用：{{
-              proofDisplay
-                .find((p) => p.paymentId === payment.id)
-                ?.documents.map((d) => d.contentVersionId)
-                .join('、') || '暂无'
-            }}
-          </p>
+          <span class="proof-action">
+            <ElButton
+              size="small"
+              type="default"
+              :title="proofRef(payment.id)"
+              :data-test="`proof-${payment.id}`"
+              :disabled="newProofBlocked"
+              @click="openProof(payment.id)"
+              >补截图</ElButton
+            >
+            <span class="proof-ref" :title="proofRefIds(payment.id)">{{
+              proofRefIds(payment.id)
+            }}</span>
+          </span>
         </template>
       </Form>
     </fieldset>
@@ -1023,3 +1032,18 @@ async function abandonPreparation() {
     <ElButton @click="close">关闭</ElButton>
   </section>
 </template>
+<style scoped>
+.proof-action {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+}
+.proof-ref {
+  max-width: 92px;
+  overflow: hidden;
+  font-size: 11px;
+  color: #a8abb2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+</style>

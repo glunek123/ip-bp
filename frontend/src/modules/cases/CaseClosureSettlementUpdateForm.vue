@@ -100,6 +100,46 @@ const closeAt = ref(props.source.closeAt ?? '');
 const amount = ref(props.source.closeAmt ?? '');
 const unknown = ref(props.source.closeAmt === null);
 const paymentType = ref(props.source.paymentType);
+const paymentTypeError = ref('');
+const savedPayments = computed(() =>
+  props.source.payments.map((payment) => ({
+    id: payment.id,
+    paymentDate: payment.paymentDate,
+    amount: payment.amount,
+    payer: payment.payer,
+    payee: payment.payee,
+    receiptCount: payment.receiptIds.length,
+  })),
+);
+function sourcePayment(id: string): SettlementUpdateSource['payments'][number] {
+  return (
+    props.source.payments.find((payment) => payment.id === id) ?? {
+      id,
+      versionId: '',
+      paymentDate: '',
+      amount: '',
+      payer: '',
+      payee: '',
+      receiptIds: [],
+    }
+  );
+}
+function changePaymentType(event: globalThis.Event) {
+  const target = event.target as globalThis.HTMLSelectElement;
+  const next = target.value as ClosurePaymentType;
+  paymentTypeError.value = '';
+  // 一次性付款只能有一笔：已保存与新填的都算。
+  if (
+    next === 'ONE_TIME' &&
+    props.source.payments.length + records.value.length > 1
+  ) {
+    paymentTypeError.value = '已有多笔付款记录，不能改为一次性付款。';
+    target.value = paymentType.value;
+    return;
+  }
+  paymentType.value = next;
+}
+
 const records = ref<ClosurePaymentRecord[]>([]);
 const money = /^\d{1,14}(?:\.\d{1,2})?$/u;
 const date = (value: string) =>
@@ -175,6 +215,7 @@ watch(
     amount.value = source.closeAmt ?? '';
     unknown.value = source.closeAmt === null;
     paymentType.value = source.paymentType;
+    paymentTypeError.value = '';
     records.value = [];
     documents.value = [];
     receipts.value = [];
@@ -394,7 +435,16 @@ function submit() {
         />
       </label>
       <label class="settle-field">
-        <span>结案金额（元）</span>
+        <span class="settle-label">
+          结案金额（元）
+          <span class="settle-check">
+            <input
+              v-model="unknown"
+              type="checkbox"
+              data-test="unknown"
+            />金额待确认
+          </span>
+        </span>
         <input
           v-model="amount"
           :disabled="unknown"
@@ -403,13 +453,6 @@ function submit() {
         />
       </label>
     </div>
-    <label class="settle-check">
-      <input
-        v-model="unknown"
-        type="checkbox"
-        data-test="unknown"
-      />结案金额待确认
-    </label>
 
     <div class="settle-row">
       <div class="settle-field">
@@ -496,137 +539,179 @@ function submit() {
       </div>
     </div>
 
-    <div class="settle-field">
-      <span>结案文书</span>
-      <div class="settle-files">
-        <span
-          v-for="document in source.documents"
-          :key="document.id"
-          class="settle-file"
+    <div class="settle-row">
+      <label class="settle-field">
+        <span>付款类型</span>
+        <select
+          :value="paymentType"
+          aria-label="付款类型"
+          data-test="payment-type"
+          @change="changePaymentType($event)"
         >
-          {{ document.name }}（历史材料，保留）
-        </span>
-        <span
-          v-for="(document, index) in documents"
-          :key="index"
-          class="settle-file"
-        >
-          {{ document.name }}
-          <button
-            v-if="canEditClosureFacts"
-            type="button"
-            class="link-button"
-            :data-test="`remove-document-${index}`"
-            @click="documents.splice(index, 1)"
+          <option value="ONE_TIME">一次性付款</option>
+          <option value="INSTALLMENTS">分期付款</option>
+        </select>
+        <p v-if="paymentTypeError" class="settle-hint settle-hint--error">
+          {{ paymentTypeError }}
+        </p>
+      </label>
+      <div class="settle-field">
+        <span>结案文书</span>
+        <div class="settle-files">
+          <span
+            v-for="document in source.documents"
+            :key="document.id"
+            class="settle-file"
           >
-            ×
-          </button>
-        </span>
-        <label class="settle-upload">
-          <span>＋ 上传</span>
-          <input
-            type="file"
-            multiple
-            aria-label="补充结案文书"
-            :disabled="!canEditClosureFacts"
-            @change="addDocuments($event)"
-          />
-        </label>
+            <span class="settle-file__name">{{ document.name }}</span>
+            <span class="settle-file__tag">历史材料，保留</span>
+          </span>
+          <span
+            v-for="(document, index) in documents"
+            :key="index"
+            class="settle-file"
+          >
+            <span class="settle-file__name">{{ document.name }}</span>
+            <button
+              v-if="canEditClosureFacts"
+              type="button"
+              class="settle-file__remove"
+              aria-label="移除文书"
+              :data-test="`remove-document-${index}`"
+              @click="documents.splice(index, 1)"
+            >
+              ×
+            </button>
+          </span>
+          <label class="settle-upload">
+            <span class="settle-upload__plus">＋</span>
+            <span>上传</span>
+            <input
+              type="file"
+              multiple
+              aria-label="补充结案文书"
+              :disabled="!canEditClosureFacts"
+              @change="addDocuments($event)"
+            />
+          </label>
+        </div>
       </div>
     </div>
 
-    <div class="settle-field">
-      <span>付款记录（可多笔，自动汇总已付款）</span>
+    <section class="settle-block">
+      <p class="settle-block__title">付款记录（可多笔，自动汇总已付款）</p>
       <CaseClosurePaymentFields
         :payment-type="paymentType"
         :records="records"
-        @update:payment-type="paymentType = $event"
+        :saved="savedPayments"
+        :show-type="false"
         @update:records="records = $event"
-      />
-      <template v-if="source.payments.length">
-        <article
-          v-for="payment in source.payments"
-          :key="payment.versionId"
-          class="settle-original"
-        >
-          <span
-            >{{ payment.paymentDate }} / {{ payment.amount }} /
-            {{ payment.payer }} → {{ payment.payee }}</span
+      >
+        <template #saved-action="{ record }">
+          <slot name="payment-proof" :payment="sourcePayment(record.id)"
+            ><label class="proof-fallback">
+              <input
+                type="file"
+                multiple
+                aria-label="补充原付款截图"
+                @change="
+                  receipts.push({
+                    paymentVersionId: sourcePayment(record.id).versionId,
+                    files: files($event),
+                  })
+                "
+              />
+              <span>补截图</span>
+            </label></slot
           >
-          <slot name="payment-proof" :payment="payment"
-            ><input
-              type="file"
-              multiple
-              aria-label="补充原付款截图"
-              @change="
-                receipts.push({
-                  paymentVersionId: payment.versionId,
-                  files: files($event),
-                })
-              "
-          /></slot>
-        </article>
-      </template>
-      <p class="settle-hint" data-test="saved-payment-total">
-        已保存有效付款合计：<template v-if="savedPaymentTotal !== null"
-          >{{ formatPaymentCents(savedPaymentTotal) }} 元</template
-        ><template v-else>未知，请重新读取付款记录</template>
-      </p>
-      <p class="settle-hint" data-test="draft-payment-total">
-        本次新增付款合计（待保存）：<template v-if="draftPaymentTotal !== null"
-          >{{ formatPaymentCents(draftPaymentTotal) }} 元</template
-        ><template v-else>待完善，请补全有效付款资料</template>
-      </p>
+        </template>
+      </CaseClosurePaymentFields>
       <p class="settle-hint">
-        以上合计不代表公司已回款，也不表示归档校验已通过。
+        原付款记录只读；其收款截图通过「补截图」独立后补，不随本次保存提交。
       </p>
-      <p class="settle-total" data-test="payment-total">
-        当前表单已付款合计{{
-          records.length ? '（含新增待保存）' : ''
-        }}：<template v-if="paymentTotal !== null"
-          >{{ formatPaymentCents(paymentTotal) }} 元</template
-        ><template v-else>待完善，请核对付款资料</template>
-      </p>
-    </div>
+      <div class="settle-totals">
+        <p class="settle-total" data-test="payment-total">
+          已付款合计{{ records.length ? '（含新增待保存）' : '' }}：<template
+            v-if="paymentTotal !== null"
+            >{{ formatPaymentCents(paymentTotal) }} 元</template
+          ><template v-else>待完善，请核对付款资料</template>
+        </p>
+        <p class="settle-hint settle-hint--split">
+          <span data-test="saved-payment-total"
+            >已保存有效付款合计：<template v-if="savedPaymentTotal !== null"
+              >{{ formatPaymentCents(savedPaymentTotal) }} 元</template
+            ><template v-else>未知，请重新读取付款记录</template></span
+          >
+          <span class="settle-dot">·</span>
+          <span data-test="draft-payment-total"
+            >本次新增付款合计（待保存）：<template
+              v-if="draftPaymentTotal !== null"
+              >{{ formatPaymentCents(draftPaymentTotal) }} 元</template
+            ><template v-else>待完善，请补全有效付款资料</template></span
+          >
+        </p>
+        <p class="settle-hint">
+          以上合计不代表公司已回款，也不表示归档校验已通过。
+        </p>
+      </div>
+    </section>
 
-    <section v-if="source.refund">
-      <h3>诉讼退费</h3>
-      <p>
-        当前完整性：{{
-          source.refund.completeness === 'COMPLETE'
-            ? '已确认完整'
-            : source.refund.completeness === 'NOT_APPLICABLE'
-              ? '无诉讼退费（0元）'
-              : '待确认'
-        }}
-      </p>
-      <ul>
-        <li v-for="item in source.refund.items" :key="item.itemId">
-          {{ item.party === 'COURT' ? '法院' : '被告' }}：{{ item.description }}
-          /
+    <section v-if="source.refund" class="settle-block">
+      <div class="settle-block__head">
+        <h3 class="settle-block__title">诉讼退费</h3>
+        <span class="settle-tag">
           {{
-            item.amount === undefined ||
-            item.amount === null ||
-            item.amount === ''
-              ? '待确认'
-              : `${item.amount}元`
+            source.refund.completeness === 'COMPLETE'
+              ? '已确认完整'
+              : source.refund.completeness === 'NOT_APPLICABLE'
+                ? '无诉讼退费（0元）'
+                : '待确认'
           }}
-          /
-          {{
-            refundStatuses.find((status) => status.value === item.status)?.label
-          }}
+        </span>
+      </div>
+      <ul class="refund-list">
+        <li
+          v-for="item in source.refund.items"
+          :key="item.itemId"
+          class="refund-item"
+        >
+          <span class="refund-cell">{{
+            item.party === 'COURT' ? '法院' : '被告'
+          }}</span>
+          <span class="refund-cell refund-cell--amount">
+            {{
+              item.amount === undefined ||
+              item.amount === null ||
+              item.amount === ''
+                ? '待确认'
+                : `${item.amount}元`
+            }}
+          </span>
+          <span class="refund-cell refund-cell--status">
+            {{
+              refundStatuses.find((status) => status.value === item.status)
+                ?.label
+            }}
+          </span>
+          <span class="refund-desc">{{ item.description }}</span>
         </li>
       </ul>
-      <select v-model="refundKind" aria-label="退费操作">
-        <option value="KEEP">保留原清单</option>
-        <option value="RECORD">登记清单</option>
-        <option value="CONFIRM_COMPLETE" :disabled="!source.refund.versionId">
-          确认已登记完整
-        </option>
-        <option value="DECLARE_NOT_APPLICABLE">无诉讼退费（0元）</option>
-      </select>
-      <template v-if="refundKind === 'RECORD'">
-        <fieldset v-for="item in refundItems" :key="item.itemId">
+      <div class="settle-inline settle-inline--narrow">
+        <select v-model="refundKind" aria-label="退费操作">
+          <option value="KEEP">保留原清单</option>
+          <option value="RECORD">登记清单</option>
+          <option value="CONFIRM_COMPLETE" :disabled="!source.refund.versionId">
+            确认已登记完整
+          </option>
+          <option value="DECLARE_NOT_APPLICABLE">无诉讼退费（0元）</option>
+        </select>
+      </div>
+      <div v-if="refundKind === 'RECORD'" class="refund-editor">
+        <div
+          v-for="item in refundItems"
+          :key="item.itemId"
+          class="refund-editor__row"
+        >
           <select v-model="item.party" aria-label="退费对象">
             <option value="COURT">法院</option>
             <option value="DEFENDANT">被告</option>
@@ -650,9 +735,15 @@ function submit() {
               {{ status.label }}
             </option>
           </select>
-          <input v-model="item.description" aria-label="退费说明" />
+          <input
+            v-model="item.description"
+            aria-label="退费说明"
+            placeholder="退费说明"
+          />
           <button
             type="button"
+            class="refund-editor__remove"
+            aria-label="移除此项"
             data-test="remove-refund"
             @click="
               refundItems = refundItems.filter(
@@ -660,14 +751,18 @@ function submit() {
               )
             "
           >
-            移除此项（生成新清单，保留历史）
+            ×
           </button>
-        </fieldset>
-        <button type="button" @click="addRefund">新增退费</button>
-      </template>
+        </div>
+        <button type="button" class="settle-link" @click="addRefund">
+          ＋ 新增退费
+        </button>
+      </div>
     </section>
-    <p v-else>尚未取得诉讼退费清单及版本，不能推定不涉及。</p>
-    <label v-if="source.settlement" class="settle-field">
+    <p v-else class="settle-hint">
+      尚未取得诉讼退费清单及版本，不能推定不涉及。
+    </p>
+    <label v-if="source.settlement" class="settle-field settle-field--compact">
       <span>是否涉及结算</span>
       <select
         v-model="declaration"
@@ -699,9 +794,10 @@ function submit() {
   </form>
 </template>
 <style scoped>
+/* 结算卡：两列栅格 + 分段细线，紧凑排版。 */
 .settlement-update {
   display: grid;
-  gap: 12px;
+  gap: 0;
   color: var(--el-text-color-primary);
 }
 .settlement-update h2,
@@ -709,62 +805,161 @@ function submit() {
 .settlement-update p {
   margin: 0;
 }
-.settlement-update label {
-  display: flex;
-  gap: 12px;
+.settlement-update label.settle-field {
+  display: grid;
+  gap: 4px;
   align-items: center;
 }
-
-/* 两列对齐的结算卡：不改结构，只收紧排版。 */
 .settle-card {
   display: grid;
-  gap: 8px;
+  gap: 0;
+}
+.settle-card > .settle-row,
+.settle-card > .settle-block {
+  padding: 12px 0;
+  border-top: 1px solid #f0f2f5;
+}
+.settle-card > .settle-row:first-of-type {
+  padding-top: 0;
+  border-top: 0;
 }
 .settle-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px 12px;
+  gap: 10px 20px;
+}
+.settle-row > .settle-field {
+  align-content: start;
 }
 .settle-field {
   display: grid;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
-.settle-card input,
-.settle-card select {
-  height: 30px;
-  padding: 0 8px;
+.settle-field--compact {
+  grid-template-columns: 96px minmax(0, 320px);
+  align-items: center;
+  gap: 4px 12px;
+}
+.settle-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 .settle-field > span {
   font-size: 12px;
   color: #606266;
 }
+.settle-card input,
+.settle-card select {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  color: #1f2329;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.settle-card input:focus,
+.settle-card select:focus {
+  border-color: #409eff;
+}
+.settle-card input:disabled {
+  color: #a8abb2;
+  background: #f5f7fa;
+}
 .settle-inline {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+  align-items: center;
+}
+.settle-inline--narrow {
+  max-width: 320px;
 }
 .settle-inline input[readonly] {
   background: #f5f7fa;
 }
+.settle-inline button {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: #606266;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+}
+.settle-inline button:hover {
+  color: #409eff;
+  border-color: #a0cfff;
+  background: #ecf5ff;
+}
 .settle-legacy {
   display: grid;
   gap: 8px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed #ebeef5;
+  margin-top: 6px;
+  padding: 10px;
+  background: #fafafa;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
 }
 .settle-hint {
   margin: 0;
   font-size: 12px;
   color: #909399;
 }
+.settle-hint--error {
+  color: #f56c6c;
+}
+.settle-hint--split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+}
+.settle-dot {
+  color: #dcdfe6;
+}
+.proof-fallback {
+  display: inline-flex;
+}
+.proof-fallback input {
+  display: none;
+}
+.proof-fallback span {
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 24px;
+  color: #606266;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+}
+.proof-fallback span:hover {
+  color: #409eff;
+  border-color: #a0cfff;
+}
 .settle-check {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   align-items: center;
   font-size: 12px;
-  color: #606266;
+  font-weight: 400;
+  color: #909399;
+  cursor: pointer;
+}
+.settle-label .settle-check input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  padding: 0;
 }
 .settle-files {
   display: flex;
@@ -772,45 +967,117 @@ function submit() {
   gap: 8px;
 }
 .settle-file {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  max-width: 240px;
-  padding: 6px 10px;
+  position: relative;
+  display: flex;
+  flex: 1 1 calc(50% - 4px);
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 118px;
+  max-width: 168px;
+  height: 72px;
+  padding: 8px 10px;
   overflow: hidden;
   font-size: 12px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
+  background: #fafafa;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+}
+.settle-file__name {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #606266;
+  word-break: break-all;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.settle-file__tag {
+  align-self: flex-start;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 18px;
+  color: #909399;
+  background: #f0f2f5;
+  border-radius: 3px;
+}
+.settle-file__remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  color: #909399;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 50%;
+}
+.settle-file__remove:hover {
+  color: #f56c6c;
+  border-color: #fbc4c4;
 }
 .settle-upload {
-  display: inline-flex;
+  display: flex;
+  flex: 1 1 calc(50% - 4px);
+  flex-direction: column;
+  gap: 2px;
   align-items: center;
   justify-content: center;
-  min-width: 96px;
-  height: 32px;
+  min-width: 118px;
+  max-width: 168px;
+  height: 72px;
   font-size: 12px;
-  color: #606266;
+  color: #909399;
   cursor: pointer;
-  border: 1px dashed #c0c4cc;
-  border-radius: 4px;
+  background: #fcfcfd;
+  border: 1px dashed #dcdfe6;
+  border-radius: 6px;
+}
+.settle-upload:hover {
+  color: #409eff;
+  border-color: #a0cfff;
+}
+.settle-upload__plus {
+  font-size: 16px;
+  line-height: 1;
 }
 .settle-upload input {
   display: none;
 }
-.settle-original {
+.settle-block {
+  display: grid;
+  gap: 8px;
+}
+.settle-block__head {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+.settle-block__title {
   font-size: 12px;
+  font-weight: 400;
   color: #606266;
+}
+.settle-tag {
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 20px;
+  color: #409eff;
+  background: #ecf5ff;
+  border-radius: 3px;
+}
+.settle-totals {
+  display: grid;
+  gap: 2px;
+  margin-top: 2px;
 }
 .settle-total {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
+  color: #1f2329;
 }
 .settle-note {
   margin: 0;
@@ -820,13 +1087,137 @@ function submit() {
 }
 .settle-error {
   margin: 0;
+  font-size: 12px;
   color: #f56c6c;
+}
+.refund-list {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.refund-item {
+  display: grid;
+  grid-template-columns: 84px 96px 128px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.refund-cell {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 10px;
+  overflow: hidden;
+  font-size: 13px;
+  color: #1f2329;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: #f5f7fa;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+}
+.refund-cell--amount {
+  justify-content: flex-end;
+}
+.refund-cell--status {
+  font-size: 12px;
+  color: #606266;
+}
+.refund-desc {
+  overflow: hidden;
+  font-size: 12px;
+  color: #909399;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.refund-editor {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  background: #fafafa;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+}
+.refund-editor__row {
+  display: grid;
+  grid-template-columns: 84px 96px 150px minmax(0, 1fr) 28px;
+  gap: 6px;
+  align-items: center;
+}
+.refund-editor__row input,
+.refund-editor__row select {
+  height: 30px;
+  font-size: 12px;
+}
+.refund-editor__remove {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  color: #909399;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 50%;
+}
+.refund-editor__remove:hover {
+  color: #f56c6c;
+  border-color: #fbc4c4;
+}
+.settle-link {
+  justify-self: start;
+  padding: 0;
+  font-size: 12px;
+  color: #409eff;
+  cursor: pointer;
+  background: none;
+  border: 0;
 }
 .settle-footer {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
-  padding-top: 6px;
+  padding-top: 12px;
   border-top: 1px solid #ebeef5;
+}
+.settle-footer button {
+  height: 32px;
+  padding: 0 18px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+  color: #606266;
+}
+.settle-footer button:hover {
+  color: #409eff;
+  border-color: #a0cfff;
+  background: #ecf5ff;
+}
+.settle-footer button[type='submit'] {
+  color: #fff;
+  background: #409eff;
+  border-color: #409eff;
+}
+.settle-footer button[type='submit']:hover {
+  background: #66b1ff;
+  border-color: #66b1ff;
+}
+.settle-footer button[type='submit']:disabled {
+  cursor: not-allowed;
+  background: #a0cfff;
+  border-color: #a0cfff;
+}
+@media (max-width: 560px) {
+  .settle-row {
+    grid-template-columns: 1fr;
+  }
+  .refund-item,
+  .refund-editor__row {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 </style>

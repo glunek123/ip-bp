@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElInput } from 'element-plus/es/components/input/index.mjs';
 import {
   ElOption,
@@ -17,14 +16,24 @@ export type ClosurePaymentRecord = {
   receiptName?: string;
   receiptFile?: globalThis.File;
 };
+export type ClosureSavedPayment = {
+  id: string;
+  paymentDate: string;
+  amount: string;
+  payer: string;
+  payee: string;
+  receiptCount?: number;
+};
 
 const props = withDefaults(
   defineProps<{
     paymentType: ClosurePaymentType;
     records: ClosurePaymentRecord[];
+    saved?: ClosureSavedPayment[];
+    showType?: boolean;
     disabled?: boolean;
   }>(),
-  { disabled: false },
+  { saved: () => [], showType: true, disabled: false },
 );
 
 const emit = defineEmits<{
@@ -35,6 +44,8 @@ const emit = defineEmits<{
 
 const switchError = ref('');
 const rows = computed(() => props.records);
+const savedRows = computed(() => props.saved ?? []);
+const totalRows = computed(() => rows.value.length + savedRows.value.length);
 const options = computed(() => [
   { label: '一次性付款', value: 'ONE_TIME' as const },
   { label: '分期付款', value: 'INSTALLMENTS' as const },
@@ -55,7 +66,7 @@ function updateRecord(
 
 function changeType(value: ClosurePaymentType) {
   switchError.value = '';
-  if (value === 'ONE_TIME' && props.records.length > 1) {
+  if (value === 'ONE_TIME' && totalRows.value > 1) {
     switchError.value =
       '当前有多条付款记录。请先自行处理记录，再切换为一次性付款。';
     return;
@@ -66,7 +77,7 @@ function changeType(value: ClosurePaymentType) {
 function addRecord() {
   if (
     props.disabled ||
-    (props.paymentType === 'ONE_TIME' && props.records.length > 0)
+    (props.paymentType === 'ONE_TIME' && totalRows.value > 0)
   )
     return;
   emit('update:records', [
@@ -129,23 +140,24 @@ watch(
 
 <template>
   <section class="payment-fields" aria-labelledby="payment-fields-title">
-    <h3 id="payment-fields-title">付款记录</h3>
-    <label class="type-label" for="closure-payment-type">付款类型</label>
-    <ElSelect
-      id="closure-payment-type"
-      :model-value="paymentType"
-      :disabled="disabled"
-      aria-label="付款类型"
-      data-test="payment-type"
-      @update:model-value="changeType"
-    >
-      <ElOption
-        v-for="option in options"
-        :key="option.value"
-        :label="option.label"
-        :value="option.value"
-      />
-    </ElSelect>
+    <div v-if="showType" class="payment-type">
+      <label class="type-label" for="closure-payment-type">付款类型</label>
+      <ElSelect
+        id="closure-payment-type"
+        :model-value="paymentType"
+        :disabled="disabled"
+        aria-label="付款类型"
+        data-test="payment-type"
+        @update:model-value="changeType"
+      >
+        <ElOption
+          v-for="option in options"
+          :key="option.value"
+          :label="option.label"
+          :value="option.value"
+        />
+      </ElSelect>
+    </div>
     <p
       v-if="switchError"
       class="field-error"
@@ -155,170 +167,374 @@ watch(
       {{ switchError }}
     </p>
 
-    <div v-if="!rows.length" class="empty-state">尚无付款记录</div>
-    <fieldset
-      v-for="(record, index) in rows"
-      :key="record.id"
-      class="payment-record"
-      :disabled="disabled"
-    >
-      <legend>第 {{ index + 1 }} 笔付款</legend>
-      <div class="record-grid">
-        <label :for="`payment-date-${record.id}`">付款日期</label>
-        <input
-          :id="`payment-date-${record.id}`"
-          type="date"
-          :value="record.paymentDate"
-          :disabled="disabled"
-          :data-test="`payment-date-${record.id}`"
-          @input="
-            updateRecord(
-              record.id,
-              'paymentDate',
-              ($event.target as HTMLInputElement).value,
-            )
-          "
-        />
-        <label :for="`payment-amount-${record.id}`">金额</label>
-        <ElInput
-          :id="`payment-amount-${record.id}`"
-          :model-value="record.amount"
-          :disabled="disabled"
-          inputmode="decimal"
-          aria-label="金额"
-          :data-test="`payment-amount-${record.id}`"
-          @update:model-value="updateRecord(record.id, 'amount', $event)"
-        />
-        <label :for="`payment-payer-${record.id}`">付款人</label>
-        <ElInput
-          :id="`payment-payer-${record.id}`"
-          :model-value="record.payer"
-          :disabled="disabled"
-          aria-label="付款人"
-          :data-test="`payment-payer-${record.id}`"
-          @update:model-value="updateRecord(record.id, 'payer', $event)"
-        />
-        <label :for="`payment-payee-${record.id}`">收款人</label>
-        <ElInput
-          :id="`payment-payee-${record.id}`"
-          :model-value="record.payee"
-          :disabled="disabled"
-          aria-label="收款人"
-          :data-test="`payment-payee-${record.id}`"
-          @update:model-value="updateRecord(record.id, 'payee', $event)"
-        />
-      </div>
-      <div class="receipt-row">
-        <label :for="`payment-receipt-${record.id}`">收款截图</label>
-        <span
-          v-if="record.receiptName"
-          class="receipt-name"
-          :data-test="`receipt-name-${record.id}`"
-          >{{ record.receiptName }}</span
-        >
-        <input
-          :id="`payment-receipt-${record.id}`"
-          type="file"
-          accept="image/*"
-          :disabled="disabled"
-          :data-test="`payment-receipt-${record.id}`"
-          @change="selectReceipt(record.id, $event)"
-        />
-        <ElButton
-          v-if="record.receiptFile || record.receiptName"
-          :disabled="disabled"
-          :data-test="`clear-receipt-${record.id}`"
-          @click="clearReceipt(record.id)"
-          >移除截图</ElButton
-        >
-      </div>
-      <ElButton
-        v-if="paymentType === 'INSTALLMENTS'"
-        type="danger"
-        plain
+    <div class="payment-table-wrap">
+      <table class="payment-table">
+        <colgroup>
+          <col class="col-index" />
+          <col class="col-date" />
+          <col class="col-amount" />
+          <col class="col-party" />
+          <col class="col-party" />
+          <col class="col-receipt" />
+          <col class="col-action" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th scope="col">序号</th>
+            <th scope="col">付款日期</th>
+            <th scope="col">付款金额</th>
+            <th scope="col">付款人</th>
+            <th scope="col">收款人</th>
+            <th scope="col">收款截图</th>
+            <th scope="col"><span class="sr-only">操作</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="(record, index) in savedRows"
+            :key="`saved-${record.id}`"
+            class="payment-record payment-record--saved"
+          >
+            <td class="cell-index">{{ index + 1 }}</td>
+            <td>
+              <span class="cell-static">{{ record.paymentDate || '—' }}</span>
+            </td>
+            <td>
+              <span class="cell-static cell-static--amount">{{
+                record.amount || '—'
+              }}</span>
+            </td>
+            <td>
+              <span class="cell-static">{{ record.payer || '—' }}</span>
+            </td>
+            <td>
+              <span class="cell-static">{{ record.payee || '—' }}</span>
+            </td>
+            <td>
+              <span class="cell-static cell-static--muted">
+                {{
+                  record.receiptCount
+                    ? `已存 ${record.receiptCount} 张`
+                    : '暂无截图'
+                }}
+              </span>
+            </td>
+            <td class="cell-action">
+              <slot name="saved-action" :record="record" />
+            </td>
+          </tr>
+          <tr
+            v-for="(record, index) in rows"
+            :key="record.id"
+            class="payment-record"
+          >
+            <td class="cell-index">{{ savedRows.length + index + 1 }}</td>
+            <td>
+              <input
+                class="cell-input cell-input--date"
+                type="date"
+                :value="record.paymentDate"
+                :disabled="disabled"
+                :aria-label="`第 ${savedRows.length + index + 1} 笔付款日期`"
+                :data-test="`payment-date-${record.id}`"
+                @input="
+                  updateRecord(
+                    record.id,
+                    'paymentDate',
+                    ($event.target as HTMLInputElement).value,
+                  )
+                "
+              />
+            </td>
+            <td>
+              <ElInput
+                :model-value="record.amount"
+                :disabled="disabled"
+                inputmode="decimal"
+                aria-label="金额"
+                :data-test="`payment-amount-${record.id}`"
+                @update:model-value="updateRecord(record.id, 'amount', $event)"
+              />
+            </td>
+            <td>
+              <ElInput
+                :model-value="record.payer"
+                :disabled="disabled"
+                aria-label="付款人"
+                :data-test="`payment-payer-${record.id}`"
+                @update:model-value="updateRecord(record.id, 'payer', $event)"
+              />
+            </td>
+            <td>
+              <ElInput
+                :model-value="record.payee"
+                :disabled="disabled"
+                aria-label="收款人"
+                :data-test="`payment-payee-${record.id}`"
+                @update:model-value="updateRecord(record.id, 'payee', $event)"
+              />
+            </td>
+            <td class="cell-receipt">
+              <label
+                class="receipt-box"
+                :class="{ 'is-filled': !!record.receiptName }"
+                :title="record.receiptName || '上传收款截图'"
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  :disabled="disabled"
+                  :data-test="`payment-receipt-${record.id}`"
+                  @change="selectReceipt(record.id, $event)"
+                />
+                <span class="receipt-text">{{
+                  record.receiptName || '上传截图'
+                }}</span>
+              </label>
+              <button
+                v-if="record.receiptName"
+                type="button"
+                class="receipt-clear"
+                :disabled="disabled"
+                aria-label="移除截图"
+                :data-test="`clear-receipt-${record.id}`"
+                @click="clearReceipt(record.id)"
+              >
+                ×
+              </button>
+            </td>
+            <td class="cell-action">
+              <button
+                v-if="paymentType === 'INSTALLMENTS'"
+                type="button"
+                class="row-remove"
+                :disabled="disabled"
+                aria-label="删除此笔"
+                :data-test="`remove-${record.id}`"
+                @click="removeRecord(record.id)"
+              >
+                ×
+              </button>
+            </td>
+          </tr>
+          <tr v-if="!totalRows">
+            <td colspan="7" class="empty-state">尚无付款记录</td>
+          </tr>
+        </tbody>
+      </table>
+      <button
+        v-if="paymentType === 'INSTALLMENTS' || !totalRows"
+        type="button"
+        class="add-record"
         :disabled="disabled"
-        :data-test="`remove-${record.id}`"
-        @click="removeRecord(record.id)"
-        >删除此笔</ElButton
+        data-test="add-record"
+        @click="addRecord"
       >
-    </fieldset>
-    <ElButton
-      v-if="paymentType === 'INSTALLMENTS' || !rows.length"
-      plain
-      :disabled="disabled"
-      data-test="add-record"
-      @click="addRecord"
-      >添加付款记录</ElButton
-    >
+        ＋ 增加一笔
+      </button>
+    </div>
   </section>
 </template>
 
 <style scoped>
 .payment-fields {
   display: grid;
-  gap: 12px;
+  gap: 8px;
   color: var(--el-text-color-primary);
 }
-.payment-fields h3 {
-  margin: 0;
-  font-size: 16px;
+.payment-type {
+  display: grid;
+  gap: 4px;
+  max-width: 320px;
 }
-.type-label,
-.record-grid label,
-.receipt-row label {
-  font-size: 14px;
-  font-weight: 500;
+.type-label {
+  font-size: 12px;
+  color: #606266;
 }
-.payment-record {
-  min-width: 0;
-  margin: 0;
-  padding: 16px;
-  border: 1px solid var(--el-border-color);
+.payment-table-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid #ebeef5;
   border-radius: 6px;
 }
-.payment-record legend {
-  padding: 0 6px;
-  font-weight: 600;
+.payment-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
 }
-.record-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  align-items: end;
-  gap: 8px 12px;
-}
-.record-grid label {
-  font-size: 11px;
+.payment-table th {
+  padding: 7px 8px;
+  font-size: 12px;
+  font-weight: 400;
   color: #909399;
+  text-align: left;
+  white-space: nowrap;
+  background: #fafafa;
 }
-.record-grid input[type='date'] {
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--el-border-color);
-  border-radius: 4px;
+.payment-table td {
+  padding: 4px 6px;
+  vertical-align: middle;
+}
+.col-index {
+  width: 40px;
+}
+.col-date {
+  width: 118px;
+}
+.col-amount {
+  width: 88px;
+}
+.col-receipt {
+  width: 124px;
+}
+.col-action {
+  width: 88px;
+}
+.cell-index {
+  font-size: 12px;
+  color: #909399;
+  text-align: center;
+}
+.cell-input,
+.cell-input--date {
+  width: 100%;
+  height: 30px;
+  padding: 0 6px;
   font: inherit;
+  font-size: 13px;
+  color: #1f2329;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
 }
-.receipt-row {
+.cell-input--date {
+  padding: 0 4px;
+}
+.cell-static {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  margin: 14px 0;
+  height: 30px;
+  padding: 0 8px;
+  overflow: hidden;
+  font-size: 13px;
+  color: #606266;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: #f5f7fa;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
 }
-.receipt-name {
-  color: var(--el-text-color-secondary);
+.cell-static--amount {
+  justify-content: flex-end;
+}
+.cell-static--muted {
+  font-size: 12px;
+  color: #a8abb2;
+}
+.cell-receipt {
+  position: relative;
+}
+.receipt-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 8px;
+  overflow: hidden;
+  font-size: 12px;
+  color: #a8abb2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  border: 1px dashed #dcdfe6;
+  border-radius: 4px;
+}
+.receipt-box.is-filled {
+  padding-right: 26px;
+  color: #606266;
+  border-style: solid;
+}
+.receipt-box input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.receipt-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.receipt-clear,
+.row-remove {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  color: #909399;
+  background: #fff;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.receipt-clear:hover,
+.row-remove:hover {
+  color: #f56c6c;
+  background: #fef0f0;
+}
+.row-remove {
+  position: static;
+  display: block;
+  margin: 0 auto;
+  transform: none;
+}
+.cell-action {
+  text-align: center;
+}
+.empty-state {
+  padding: 22px 8px;
+  font-size: 13px;
+  color: #a8abb2;
+  text-align: center;
+}
+.add-record {
+  display: block;
+  width: 100%;
+  height: 34px;
+  font-size: 13px;
+  color: #606266;
+  cursor: pointer;
+  background: #fff;
+  border: 0;
+  border-top: 1px solid #ebeef5;
+}
+.add-record:hover:not(:disabled) {
+  color: #409eff;
+  background: #f5f7fa;
+}
+.add-record:disabled {
+  color: #c0c4cc;
+  cursor: not-allowed;
 }
 .field-error {
   margin: 0;
+  font-size: 12px;
   color: var(--el-color-danger);
 }
-.empty-state {
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
-@media (max-width: 560px) {
-  .record-grid {
-    grid-template-columns: 1fr;
-    gap: 6px;
+@media (max-width: 640px) {
+  .payment-table {
+    min-width: 560px;
   }
 }
 </style>
