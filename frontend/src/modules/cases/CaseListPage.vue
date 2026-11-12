@@ -654,6 +654,31 @@ function workflowSucceeded() {
     void verifyClosureBridge(completedId, identity.value);
   void load();
 }
+let closedHandledId: string | null = null;
+function workflowClosed() {
+  // 取消退出时，队首案件尚未办结：从队列移除，避免「继续逐案…」指向同一件。
+  // 抽屉可能连续触发两次 closed，同一案件只处理一次。
+  const closedId = workflowContext.value?.recordId;
+  if (closedId && closedId === closedHandledId) {
+    readPendingActions();
+    return;
+  }
+  closedHandledId = closedId ?? null;
+  if (closedId) {
+    // 取消退出视为放弃整批，避免按钮停在「继续逐案…（剩余 1 件）」指向同一件。
+    if (
+      selectedAction.value === 'early-closure' &&
+      closureQueue.value[0]?.id === closedId
+    )
+      closureQueue.value = [];
+    if (
+      selectedAction.value === 'archive' &&
+      archiveQueue.value[0]?.id === closedId
+    )
+      archiveQueue.value = [];
+  }
+  readPendingActions();
+}
 const closureBridge = ref<{
   caseId: string;
   actor: string;
@@ -1096,6 +1121,7 @@ function enterAction(item: CaseSummary, action: CaseActionIntent) {
     return;
   const entry = listActions(item).find((entry) => entry.intent === action);
   if (!entry) return;
+  closedHandledId = null;
   selectedAction.value = action;
   selectedRecordRecovery.value = null;
   workflowContext.value = {
@@ -2457,7 +2483,7 @@ onBeforeUnmount(() => {
       :context="workflowContext"
       :load-detail="loadWorkflow"
       @success="workflowSucceeded"
-      @closed="readPendingActions"
+      @closed="workflowClosed"
     >
       <template #default="{ detail, session, requestState }">
         <CaseLawyerReassignPanel

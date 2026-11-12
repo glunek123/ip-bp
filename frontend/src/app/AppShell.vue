@@ -60,6 +60,7 @@ const reminderError = ref('');
 const refundSource = ref<DueReminder | null>(null);
 const refundDate = ref('');
 const refundNote = ref('');
+const refundError = ref('');
 const reminderBusy = ref(false);
 let reminderRevision = 0;
 let reminderTimer: ReturnType<typeof globalThis.setInterval> | undefined;
@@ -258,6 +259,7 @@ function openRefund(item: DueReminder): void {
     parts.find((entry) => entry.type === type)!.value;
   refundDate.value = `${part('year')}-${part('month')}-${part('day')}`;
   refundNote.value = '';
+  refundError.value = '';
 }
 async function saveRefund(): Promise<void> {
   const item = refundSource.value;
@@ -270,11 +272,16 @@ async function saveRefund(): Promise<void> {
       refundNote.value || null,
     );
     refundSource.value = null;
+    refundError.value = '';
     notifyWorkflowChanged();
     await refreshReminders();
   } catch (error) {
-    reminderError.value =
-      error instanceof ApiError ? error.message : '登记失败';
+    refundError.value =
+      error instanceof ApiError && error.status === 403
+        ? '当前账号无「退费申请登记」权限，请联系管理员开通后重试。'
+        : error instanceof ApiError
+          ? error.message
+          : '登记失败';
   } finally {
     reminderBusy.value = false;
   }
@@ -1630,6 +1637,7 @@ async function logout(): Promise<void> {
               <label
                 >备注 <input v-model="refundNote" maxlength="1000"
               /></label>
+              <p v-if="refundError" role="alert">{{ refundError }}</p>
               <button
                 type="button"
                 :disabled="reminderBusy"

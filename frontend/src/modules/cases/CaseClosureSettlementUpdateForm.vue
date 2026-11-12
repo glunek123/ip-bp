@@ -1093,14 +1093,14 @@ function submit() {
 }
 .refund-item {
   display: grid;
-  grid-template-columns: 84px 96px 128px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1.2fr);
   gap: 8px;
   align-items: center;
 }
 .refund-cell {
   display: flex;
   align-items: center;
-  height: 30px;
+  height: 32px;
   padding: 0 10px;
   overflow: hidden;
   font-size: 13px;
@@ -1119,6 +1119,7 @@ function submit() {
   color: var(--color-ink-muted);
 }
 .refund-desc {
+  grid-column: 1 / -1;
   overflow: hidden;
   font-size: 12px;
   color: var(--color-ink-subtle);

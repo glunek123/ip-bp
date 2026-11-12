@@ -1570,10 +1570,12 @@ describe('authorized internal case list display', () => {
       ) as HTMLButtonElement
     ).click();
     await flushPromises();
-    expect(wrapper.get('[data-test="next-archive-case"]').text()).toContain(
-      '剩余 2 件',
+    expect(wrapper.find('[data-test="next-archive-case"]').exists()).toBe(
+      false,
     );
-    await wrapper.get('[data-test="next-archive-case"]').trigger('click');
+    await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
+    await wrapper.get('[data-test="select-case-case-2"]').setValue(true);
+    await wrapper.get('[data-test="archive-selected-cases"]').trigger('click');
     await flushPromises();
     expect(api.getCase).toHaveBeenLastCalledWith('case-1', {
       signal: expect.any(AbortSignal),
