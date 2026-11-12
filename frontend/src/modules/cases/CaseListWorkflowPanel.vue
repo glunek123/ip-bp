@@ -1725,21 +1725,37 @@ async function complaint() {
         :download-basis-file="download"
         @refresh="refresh"
       />
-      <CaseClosurePanel
+      <template
         v-else-if="action === 'record-closure' || action === 'correct-closure'"
-        :item="item"
-        :context-key="actorKey"
-        :edit-only="action === 'correct-closure'"
-        :pending-request="null"
-        :record-closure="closureSubmit"
-        :correct-closure="closureCorrect"
-        :list-closure-files="(id) => files(id, 'CASE_CLOSURE_DOCUMENT')"
-        :upload-closure-file="
-          (id, file) => upload(id, file, 'CASE_CLOSURE_DOCUMENT')
-        "
-        :download-closure-file="download"
-        @refresh="refresh"
-      />
+      >
+        <CaseClosurePanel
+          :item="item"
+          :context-key="actorKey"
+          :edit-only="action === 'correct-closure'"
+          :pending-request="null"
+          :record-closure="closureSubmit"
+          :correct-closure="closureCorrect"
+          :list-closure-files="(id) => files(id, 'CASE_CLOSURE_DOCUMENT')"
+          :upload-closure-file="
+            (id, file) => upload(id, file, 'CASE_CLOSURE_DOCUMENT')
+          "
+          :download-closure-file="download"
+          @refresh="refresh"
+        />
+        <!-- 第二段：已登记结案资料的案件，同一张卡内继续编辑结算与回款 -->
+        <template
+          v-if="action === 'correct-closure' && item.canUpdateClosureSettlement"
+        >
+          <h3 class="form-section-title">结算与回款</h3>
+          <CaseClosureSettlementUpdatePanel
+            :actor-key="actorKey"
+            :case-id="item.id"
+            :can-correct-closure="item.canCorrectClosure"
+            :session="session"
+            @cancel="emit('cancel')"
+          />
+        </template>
+      </template>
       <CaseArchivePanel
         v-else-if="action === 'archive' || action === 'correct-archive'"
         :item="item"
