@@ -911,7 +911,17 @@ function stageLabel(value: CaseSummary['stage']): string {
 }
 function listActions(item: CaseSummary) {
   const actions = resolveCaseListActions(item);
+  // 待归档统一用「结案更新」一张卡：优先结案资料动作，结算更新退到更多操作。
+  const closureAction =
+    item.stage === 'WAITING_ARCHIVE'
+      ? actions.find(
+          (action) =>
+            action.intent === 'correct-closure' ||
+            action.intent === 'record-closure',
+        )
+      : undefined;
   const primary =
+    closureAction ??
     (item.stage === 'WAITING_JUDGMENT'
       ? actions.find(
           (action) =>
@@ -921,9 +931,12 @@ function listActions(item: CaseSummary) {
       : undefined) ??
     actions.find((action) => action.intent === 'choose-next-step') ??
     primaryCaseAction(item.stage, actions);
-  return primary
-    ? [primary, ...actions.filter((action) => action !== primary)]
-    : actions;
+  const rest = actions.filter(
+    (action) =>
+      action !== primary &&
+      !(closureAction && action.intent === 'settlement-update'),
+  );
+  return primary ? [primary, ...rest] : rest;
 }
 const secondaryCaseIntents = new Set<CaseActionIntent>([
   'payment-proof',
@@ -980,7 +993,8 @@ function shortCaseAction(
     'execution-filing': '执行立案',
     finish: '执行结束',
     'settlement-update': '结案更新',
-    'record-closure': '登记结案资料',
+    'record-closure': '结案更新',
+    'correct-closure': '结案更新',
     archive: '归档',
   };
   return labels[action.intent] ?? action.label;
@@ -1127,7 +1141,7 @@ function enterAction(item: CaseSummary, action: CaseActionIntent) {
     recordId: item.id,
     actorKey: identity.value,
     actionKey: action,
-    title: `${item.businessNo} · ${entry.label}`,
+    title: `${item.businessNo} · ${shortCaseAction(entry, item)}`,
   };
   drawerOpen.value = true;
 }
