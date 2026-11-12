@@ -882,7 +882,11 @@ async function abandonPreparation() {
         proofSourceChanged
       "
     >
-      <label v-if="workspace.closure.paymentType === 'UNKNOWN'">
+      <label
+        v-if="
+          workspace.closure.paymentType === 'UNKNOWN' && !confirmedPaymentType
+        "
+      >
         付款类型
         <select v-model="confirmedPaymentType" aria-label="确认历史付款类型">
           <option value="">请选择付款类型</option>
@@ -1033,6 +1037,12 @@ async function abandonPreparation() {
   </section>
 </template>
 <style scoped>
+fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
 .proof-action {
   display: grid;
   gap: 2px;
