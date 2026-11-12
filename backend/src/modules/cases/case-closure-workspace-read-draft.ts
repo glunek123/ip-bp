@@ -93,6 +93,59 @@ export class CaseClosureWorkspaceReadDraft {
     private readonly actualAggregate?: ClosureActualAggregateReadPort,
   ) {}
 
+  /**
+   * 结算变更记录：读取本案件的结案／结算／退费审计，按时间倒序返回。
+   * 只做展示用途，值来自写入时的审计快照，不做二次推算。
+   */
+  async changes(actor: ActorContext, caseId: string, limit = 50) {
+    await this.read(actor, caseId);
+    return this.database.$transaction(async (tx) => {
+      const rows = await tx.auditEvent.findMany({
+        where: {
+          departmentId: actor.departmentId,
+          resourceType: 'CASE',
+          resourceId: caseId,
+          action: { startsWith: 'case.closure.' },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: Math.min(Math.max(limit, 1), 200),
+        select: {
+          id: true,
+          action: true,
+          createdAt: true,
+          details: true,
+          actorKind: true,
+          actorUser: { select: { displayName: true } },
+        },
+      });
+      return rows.map((row) => {
+        const details =
+          row.details !== null && typeof row.details === 'object'
+            ? (row.details as Record<string, unknown>)
+            : {};
+        const pick = (key: string) => {
+          const value = details[key];
+          return typeof value === 'string' || typeof value === 'number'
+            ? String(value)
+            : null;
+        };
+        return {
+          id: row.id,
+          action: row.action,
+          at: row.createdAt.toISOString(),
+          actorName: row.actorUser?.displayName ?? '系统',
+          actorKind: row.actorKind,
+          closeAt: pick('closeAt'),
+          closeAmt: pick('closeAmt'),
+          note: pick('note'),
+          reason: pick('reason') ?? pick('correctionReason'),
+          fromVersion: pick('fromVersion'),
+          toVersion: pick('toVersion'),
+        };
+      });
+    });
+  }
+
   async read(
     actor: ActorContext,
     requestedCaseId: string,

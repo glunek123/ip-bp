@@ -826,3 +826,44 @@ export async function createCaseFeeEntries(body: {
     throw invalid();
   return { createdIds, createdCount };
 }
+
+export type SettlementChange = {
+  id: string;
+  action: string;
+  at: string;
+  actorName: string;
+  actorKind: string;
+  closeAt: string | null;
+  closeAmt: string | null;
+  note: string | null;
+  reason: string | null;
+  fromVersion: string | null;
+  toVersion: string | null;
+};
+
+/** 结算变更记录：结案／结算／退费的写入留痕，按时间倒序。 */
+export async function getCaseSettlementChanges(
+  caseId: string,
+): Promise<SettlementChange[]> {
+  const body = record(
+    await requestJson(
+      `/cases/${encodeURIComponent(caseId)}/settlement-changes`,
+    ),
+  );
+  return list(body.items, (raw) => {
+    const value = record(raw);
+    return {
+      id: string(value.id),
+      action: string(value.action),
+      at: string(value.at),
+      actorName: string(value.actorName),
+      actorKind: string(value.actorKind),
+      closeAt: nullableString(value.closeAt),
+      closeAmt: nullableString(value.closeAmt),
+      note: nullableString(value.note),
+      reason: nullableString(value.reason),
+      fromVersion: nullableString(value.fromVersion),
+      toVersion: nullableString(value.toVersion),
+    };
+  });
+}

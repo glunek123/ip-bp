@@ -10,11 +10,13 @@ import {
 import { ApiError } from '../../api/http';
 import {
   getCaseSettlement,
+  getCaseSettlementChanges,
   launchSettlement,
   updateCaseSettlementTerms,
   type CaseSettlement,
   type LawyerSettlementMode,
   type SettlementSide,
+  type SettlementChange,
 } from '../../api/settlements';
 import { todayShanghai } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
@@ -190,6 +192,44 @@ watch(
     draftAmount.value = preview.value.amount ?? '';
   },
   { flush: 'sync' },
+);
+const changes = ref<SettlementChange[]>([]);
+const changesError = ref('');
+function changeLabel(action: string): string {
+  const labels: Record<string, string> = {
+    'case.closure.recorded': '登记结案',
+    'case.closure.corrected': '更正结案',
+    'case.closure.settlement.update': '结算更新',
+    'case.closure.settlement_amounts.updated': '结算金额调整',
+    'case.closure.refund.recorded': '登记退费',
+    'case.closure.refund.corrected': '更正退费',
+    'case.closure.refund.followed': '退费跟进',
+  };
+  return labels[action] ?? action;
+}
+function formatChangeAt(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString('zh-CN', { hour12: false });
+}
+async function loadChanges(): Promise<void> {
+  changesError.value = '';
+  try {
+    changes.value = await getCaseSettlementChanges(props.caseId);
+  } catch (error) {
+    changesError.value =
+      error instanceof Error && error.message
+        ? error.message
+        : '变更记录读取失败。';
+  }
+}
+watch(
+  () => props.caseId,
+  () => {
+    void loadChanges();
+  },
+  { immediate: true },
 );
 watch(side, syncSide);
 async function load(options: { preserveDraft?: boolean } = {}): Promise<void> {
@@ -641,6 +681,26 @@ async function launch(): Promise<void> {
         </div>
       </details>
     </template>
+    <section
+      v-if="changes.length || changesError"
+      class="case-settlement__summary"
+      data-test="settlement-changes"
+      aria-label="变更记录"
+    >
+      <h3>变更记录</h3>
+      <p v-if="changesError" role="alert">{{ changesError }}</p>
+      <ol v-else>
+        <li v-for="change in changes" :key="change.id">
+          {{ formatChangeAt(change.at) }} · {{ change.actorName }} ·
+          {{ changeLabel(change.action) }}
+          <template v-if="change.closeAt || change.closeAmt">
+            （结案日期 {{ change.closeAt ?? '空' }}，金额
+            {{ change.closeAmt ?? '空' }}）
+          </template>
+          <template v-if="change.reason">：{{ change.reason }}</template>
+        </li>
+      </ol>
+    </section>
   </section>
 </template>
 <style scoped>

@@ -35,6 +35,14 @@ export class CaseClosureWorkspaceController {
     };
   }
 
+  @Get(':id/settlement-changes')
+  async settlementChanges(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return { items: await this.workspace.changes(actor, id) };
+  }
+
   @Get(':id/closure-workspace')
   read(
     @CurrentActor() actor: ActorContext,
