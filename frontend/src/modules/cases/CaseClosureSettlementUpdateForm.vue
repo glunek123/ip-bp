@@ -872,6 +872,8 @@ function submit() {
   align-items: center;
 }
 .settle-inline--narrow {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
   max-width: 320px;
 }
 .settle-inline input[readonly] {

@@ -905,7 +905,10 @@ function historyLabel(fact: CaseJudgmentFact): string {
   gap: 8px;
   align-content: start;
 }
-.judgment-files > :where(p, ul, label, h3) {
+.judgment-files > p,
+.judgment-files > ul,
+.judgment-files > label,
+.judgment-files > h3 {
   margin-block: 0;
 }
 .judgment-refund-row {
