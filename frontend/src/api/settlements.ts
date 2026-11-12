@@ -846,13 +846,15 @@ export type SettlementChange = {
 /** 结算变更记录：结案／结算／退费的写入留痕，按时间倒序。 */
 export async function getCaseSettlementChanges(
   caseId: string,
-): Promise<SettlementChange[]> {
+  before?: string | null,
+): Promise<{ items: SettlementChange[]; nextBefore: string | null }> {
+  const query = before ? `?before=${encodeURIComponent(before)}` : '';
   const body = record(
     await requestJson(
-      `/cases/${encodeURIComponent(caseId)}/settlement-changes`,
+      `/cases/${encodeURIComponent(caseId)}/settlement-changes${query}`,
     ),
   );
-  return list(body.items, (raw) => {
+  const items: SettlementChange[] = list(body.items, (raw) => {
     const value = record(raw);
     return {
       id: string(value.id),
@@ -877,4 +879,5 @@ export async function getCaseSettlementChanges(
       toVersion: nullableString(value.toVersion),
     };
   });
+  return { items, nextBefore: nullableString(body.nextBefore) };
 }

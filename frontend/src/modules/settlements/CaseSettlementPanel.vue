@@ -195,6 +195,8 @@ watch(
 );
 const changes = ref<SettlementChange[]>([]);
 const changesError = ref('');
+const changesCursor = ref<string | null>(null);
+const changesLoading = ref(false);
 function changeLabel(action: string): string {
   const labels: Record<string, string> = {
     'case.closure.recorded': '登记结案',
@@ -215,21 +217,27 @@ function formatChangeAt(value: string): string {
     ? value
     : date.toLocaleString('zh-CN', { hour12: false });
 }
-async function loadChanges(): Promise<void> {
+async function loadChanges(before?: string | null): Promise<void> {
+  if (changesLoading.value) return;
+  changesLoading.value = true;
   changesError.value = '';
   try {
-    changes.value = await getCaseSettlementChanges(props.caseId);
+    const page = await getCaseSettlementChanges(props.caseId, before ?? null);
+    changes.value = before ? [...changes.value, ...page.items] : page.items;
+    changesCursor.value = page.nextBefore;
   } catch (error) {
     changesError.value =
       error instanceof Error && error.message
         ? error.message
         : '变更记录读取失败。';
+  } finally {
+    changesLoading.value = false;
   }
 }
 watch(
   () => props.caseId,
   () => {
-    void loadChanges();
+    void loadChanges(null);
   },
   { immediate: true },
 );
@@ -705,6 +713,15 @@ async function launch(): Promise<void> {
           <template v-if="change.reason">：{{ change.reason }}</template>
         </li>
       </ol>
+      <button
+        v-if="changesCursor"
+        type="button"
+        :disabled="changesLoading"
+        data-test="settlement-changes-more"
+        @click="loadChanges(changesCursor)"
+      >
+        {{ changesLoading ? '加载中…' : '加载更多' }}
+      </button>
     </section>
   </section>
 </template>

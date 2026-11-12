@@ -97,9 +97,15 @@ export class CaseClosureWorkspaceReadDraft {
    * 结算变更记录：读取本案件的结案／结算／退费审计，按时间倒序返回。
    * 只做展示用途，值来自写入时的审计快照，不做二次推算。
    */
-  async changes(actor: ActorContext, caseId: string, limit = 50) {
+  async changes(
+    actor: ActorContext,
+    caseId: string,
+    limit = 50,
+    before: string | null = null,
+  ) {
     await this.read(actor, caseId);
     const take = Math.min(Math.max(limit, 1), 200);
+    const cursor = before === null ? null : new Date(before);
     return this.database.$transaction(async (tx) => {
       const audits = await tx.auditEvent.findMany({
         where: {
@@ -107,6 +113,7 @@ export class CaseClosureWorkspaceReadDraft {
           resourceType: 'CASE',
           resourceId: caseId,
           action: { startsWith: 'case.closure.' },
+          ...(cursor === null ? {} : { createdAt: { lt: cursor } }),
         },
         orderBy: { createdAt: 'desc' },
         take,
@@ -120,7 +127,11 @@ export class CaseClosureWorkspaceReadDraft {
         },
       });
       const payments = await tx.caseClosurePaymentVersion.findMany({
-        where: { caseId, departmentId: actor.departmentId },
+        where: {
+          caseId,
+          departmentId: actor.departmentId,
+          ...(cursor === null ? {} : { recordedAt: { lt: cursor } }),
+        },
         orderBy: { recordedAt: 'desc' },
         take,
         select: {
@@ -275,11 +286,13 @@ export class CaseClosureWorkspaceReadDraft {
                 c.result_snapshot->'item'->>'status' AS status
            FROM case_litigation_refund_commands c
           WHERE c.case_id = $1::uuid AND c.department_id = $2::uuid
+            AND ($4::timestamptz IS NULL OR c.recorded_at < $4::timestamptz)
           ORDER BY c.recorded_at DESC
           LIMIT $3`,
         caseId,
         actor.departmentId,
         take,
+        cursor,
       );
       const refundUserIds = [
         ...new Set(refunds.map((row) => row.actor_user_id)),

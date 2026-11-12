@@ -3,6 +3,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -39,8 +40,18 @@ export class CaseClosureWorkspaceController {
   async settlementChanges(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('before') before?: string,
   ) {
-    return { items: await this.workspace.changes(actor, id) };
+    const items = await this.workspace.changes(
+      actor,
+      id,
+      50,
+      before && !Number.isNaN(Date.parse(before)) ? before : null,
+    );
+    return {
+      items,
+      nextBefore: items.length === 50 ? items[items.length - 1]!.at : null,
+    };
   }
 
   @Get(':id/closure-workspace')
