@@ -217,12 +217,7 @@ describe('calendar reminder dates', () => {
     expect(await service.registerRefundApplication(actor, input)).toMatchObject(
       { id: manualId, applicationDate: '2026-10-27' },
     );
-    expect(access.authorizeCase).toHaveBeenCalledWith(
-      actor,
-      'case.refund.application.record',
-      expect.objectContaining({ responsibleUserId: actor.userId }),
-      database,
-    );
+    expect(access.authorizeCase).not.toHaveBeenCalled();
     database.caseRefundApplication.findUnique.mockResolvedValue({
       applicationDate: new Date('2026-10-27T00:00:00Z'),
       note: '已提交',

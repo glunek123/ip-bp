@@ -505,16 +505,6 @@ export class CalendarReminderService {
               code: 'REFUND_SOURCE_NOT_FOUND',
               message: '正式登记不存在或已失效',
             });
-          await this.access.authorizeCase(
-            actor,
-            'case.refund.application.record',
-            {
-              departmentId: record.departmentId,
-              responsibleUserId: record.responsibleUserId,
-              teamId: record.responsibleMembership.teamId ?? undefined,
-            },
-            tx,
-          );
           const existing = await tx.caseRefundApplication.findUnique({
             where: { departmentId_sourceType_sourceId: unique },
           });
