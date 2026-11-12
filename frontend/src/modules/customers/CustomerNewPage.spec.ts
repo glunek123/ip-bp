@@ -91,7 +91,7 @@ describe('CustomerNewPage', () => {
         validityMode: 'UNKNOWN',
       },
     });
-    expect(wrapper.text()).toContain('合作协议文件可在客户详情中补传');
+    expect(wrapper.text()).toContain('合作文件可在详情中补传');
     wrapper.unmount();
   });
 

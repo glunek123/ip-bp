@@ -549,8 +549,10 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <p class="refund-panel__export-note">
-        金额格式：千分位，两位小数。{{ unknownMessage }}
-        导出范围为当前筛选条件下全部有权记录，不受勾选和当前页影响。
+        金额格式：千分位，两位小数。{{
+          unknownMessage
+        }}
+        导出当前筛选下全部记录。
       </p>
       <p v-if="loading" role="status">正在读取退费记录…</p>
       <div class="refund-panel__table-wrap">

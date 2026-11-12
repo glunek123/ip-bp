@@ -68,7 +68,7 @@ describe('NotaryOfficesPage', () => {
     expect(wrapper.text()).toContain('公证处');
     expect(wrapper.text()).toContain('广州市南方公证处');
     expect(wrapper.text()).toContain('深圳市深圳公证处');
-    expect(wrapper.text()).toContain('后续移交线索时可从本部门公证处中选择');
+    expect(wrapper.text()).toContain('维护本部门可选公证处');
     expect(
       wrapper.get('[data-test="create-notary-office"]').attributes('disabled'),
     ).toBeDefined();

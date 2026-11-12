@@ -822,9 +822,7 @@ async function download(materialId: string, versionId: string) {
     data-test="execution-filing-followup-panel"
   >
     <h2 class="form-section-title">执行申请后续资料</h2>
-    <p v-if="item.executionFiling === null">
-      本案没有本地执行申请记录。外部转入资料按原来源展示。
-    </p>
+    <p v-if="item.executionFiling === null">无本地记录；外部资料按来源展示。</p>
     <p v-else-if="item.executionFilingFollowups === undefined">
       后续资料尚未提供，请刷新后核对。
     </p>
@@ -1047,7 +1045,7 @@ async function download(materialId: string, versionId: string) {
             @click="cancelSupplement"
             >取消</ElButton
           >
-          <p>上传成功只准备文件。点击确认登记后才保存补交事实。</p>
+          <p>上传只备文件；确认登记后保存。</p>
         </div>
         <p v-if="filing.supplements.length === 0">
           尚未登记补交材料；无需先登记法院反馈。

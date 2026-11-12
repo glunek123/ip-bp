@@ -136,7 +136,7 @@ async function submit() {
       <h3>合并起诉</h3>
       <ElButton @click="emit('close')">关闭</ElButton>
     </header>
-    <p>仅案件待匹配阶段可合并，请逐案核对实际被告身份。</p>
+    <p>仅待匹配阶段可合并；请核对被告身份。</p>
     <div class="consolidation-defendant">
       <label
         >被告类型<select v-model="commonDefendant.kind" @change="changed">

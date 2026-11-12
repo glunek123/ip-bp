@@ -615,8 +615,7 @@ async function submit(): Promise<void> {
             :id="`product-estimate-guidance-${index}`"
             class="field-guidance product-estimate-guidance"
           >
-            销售额＝单价 × 销量；销量为 0
-            时改用评论数。此金额仅供线索评估参考，不代表实际成交额。
+            销售额＝单价 × 销量；销量为 0 时改用评论数。
           </p>
         </div>
       </article>

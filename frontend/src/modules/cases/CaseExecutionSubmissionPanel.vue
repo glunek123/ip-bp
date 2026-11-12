@@ -727,9 +727,7 @@ onBeforeUnmount(() => {
         PDF、DOC 或 DOCX，单份不超过 50MB；共 1～10
         份。上传完成后仍须明确选择并提交。
       </p>
-      <p v-if="mayUploadOnly" class="field-help">
-        上传执行材料后，确认人会直接核验已上传的材料包。
-      </p>
+      <p v-if="mayUploadOnly" class="field-help">确认人直接核验材料包。</p>
       <template v-if="maySubmit">
         <ul>
           <li v-for="file in files" :key="file.contentVersionId">

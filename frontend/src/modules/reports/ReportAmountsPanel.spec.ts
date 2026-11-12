@@ -39,7 +39,7 @@ describe('approved money and closure presentation seam', () => {
       '已归档 3 / 全部 10 件',
     );
     expect(wrapper.text()).not.toContain('归档率');
-    expect(wrapper.text()).toContain('未知金额不按 0 元计算');
+    expect(wrapper.text()).toContain('只计已知标的额');
     expect(wrapper.text()).toContain('条长比较件数，非占比。');
   });
   it.each(['0.00', '900719925474099312345678901234567890.01'])(

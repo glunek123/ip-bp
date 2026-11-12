@@ -522,7 +522,7 @@ async function submit(): Promise<void> {
             >
               <legend>合作协议</legend>
               <p class="field-help customer-new-fields__wide">
-                可先保存合作信息，合作协议文件可在客户详情中补传。
+                合作文件可在详情中补传。
               </p>
               <p
                 v-if="
@@ -597,9 +597,7 @@ async function submit(): Promise<void> {
                   maxlength="500"
                   placeholder="例：客户结算金额=结案金额*70%"
                 />
-                <p class="field-help">
-                  记录客户结算约定，不会自动修改案件结算条件或金额。
-                </p>
+                <p class="field-help">仅记录约定，不改案件结算。</p>
               </div>
               <div>
                 <label class="field-label" for="customer-agreement-validity"

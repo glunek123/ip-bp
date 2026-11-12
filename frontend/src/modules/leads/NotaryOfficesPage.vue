@@ -259,7 +259,7 @@ onBeforeUnmount(() => {
         <div class="page-head">
           <div>
             <p class="eyebrow">部门业务设置</p>
-            <p>维护本部门可选公证处，后续移交线索时可从本部门公证处中选择。</p>
+            <p>维护本部门可选公证处。</p>
           </div>
           <ElButton
             data-test="refresh-notary-offices"
@@ -281,7 +281,7 @@ onBeforeUnmount(() => {
           data-test="notary-office-create-form"
         >
           <h2 class="form-section-title">新增公证处</h2>
-          <p>名称将加入本部门可选列表，之后可以用于线索移交。</p>
+          <p>加入本部门可选列表。</p>
           <label
             class="field-label field-label--spaced"
             for="new-notary-office-name"
@@ -308,9 +308,7 @@ onBeforeUnmount(() => {
               >新增</ElButton
             >
           </div>
-          <p class="field-help">
-            仅新增当前部门的公证处名称；不影响已创建的取证批次。
-          </p>
+          <p class="field-help">仅新增名称，不影响已建批次。</p>
         </section>
         <p v-else class="field-help">如需新增公证处，请联系部门管理员。</p>
         <section
@@ -359,7 +357,7 @@ onBeforeUnmount(() => {
           <h2 class="form-section-title">
             {{ selectedOffice?.name }} · 公证处账号
           </h2>
-          <p>账号固定绑定此公证处；停用后该账号的后续请求将失效。</p>
+          <p>账号绑定此公证处；停用即失效。</p>
           <p v-if="accountLoading">正在读取账号</p>
           <p v-if="accountError" class="submit-error" role="alert">
             {{ accountError }}
@@ -454,9 +452,7 @@ onBeforeUnmount(() => {
               minlength="12"
               maxlength="128"
             />
-            <p class="field-help">
-              密码仅在创建请求中提交，不会在列表中显示。创建后请由管理员通过安全渠道告知账号使用者。
-            </p>
+            <p class="field-help">密码仅提交时使用，请线下告知使用者。</p>
             <ElButton
               type="primary"
               native-type="submit"

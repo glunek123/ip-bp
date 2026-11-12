@@ -187,7 +187,7 @@ async function save(): Promise<void> {
     :close-on-press-escape="!disabled"
   >
     <form class="case-fee-entry" @submit.prevent="save">
-      <p>可一次添加多笔。空行和零金额不保存；所有有效行统一提交。</p>
+      <p>空行与零金额不保存，有效行统一提交。</p>
       <label
         >费用日期<ElInput v-model="date" type="date" :disabled="disabled"
       /></label>

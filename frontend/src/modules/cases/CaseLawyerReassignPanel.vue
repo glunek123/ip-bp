@@ -122,9 +122,7 @@ onMounted(() => void load());
 <template>
   <section class="reassign-panel" data-test="case-reassign-panel">
     <h3>变更承办律师</h3>
-    <p class="field-help">
-      当前承办：{{ currentNames }}。变更只替换承办人，案件阶段与已归档材料不变。
-    </p>
+    <p class="field-help">当前承办：{{ currentNames }}。仅替换承办人。</p>
     <label class="field-label">
       输入姓名搜索承办律师
       <input

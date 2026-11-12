@@ -113,7 +113,7 @@ describe('CaseExecutionConfirmationPanel', () => {
   it('confirms the current whole submission once and shows immutable files after refresh', async () => {
     const wrapper = mountPanel();
     expect(wrapper.text()).toContain(file.originalFilename);
-    expect(wrapper.text()).toContain('整套执行材料');
+    expect(wrapper.text()).toContain('确认后材料版本固定');
     await wrapper.get('[data-test="confirm-execution"]').trigger('click');
     await flushPromises();
 

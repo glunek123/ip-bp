@@ -432,9 +432,7 @@ onBeforeUnmount(() => {
             aria-describedby="shared-reason-help shared-reason-error"
           />
         </label>
-        <p id="shared-reason-help">
-          填入只会补到当前原因空白的事项；填入后仍是逐项可编辑草稿。请逐项核对归档资格、处理方式、金额和收付方，共用原因不会代替逐项确认。
-        </p>
+        <p id="shared-reason-help">只补空原因；仍需逐项核对后再提交。</p>
         <p
           v-if="sharedReasonError"
           id="shared-reason-error"

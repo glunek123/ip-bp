@@ -80,7 +80,7 @@ describe('execution filing followup panel', () => {
     const view = mount(CaseExecutionFilingFollowupPanel, {
       props: { item: external, actorKey: 'INTERNAL:user:dept:1' },
     });
-    expect(view.text()).toContain('没有本地执行申请记录');
+    expect(view.text()).toContain('无本地记录');
     expect(view.find('[data-test="followup-submit"]').exists()).toBe(false);
   });
 

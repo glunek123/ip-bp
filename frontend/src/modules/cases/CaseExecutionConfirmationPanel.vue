@@ -262,7 +262,7 @@ onBeforeUnmount(() => {
       >
     </p>
     <p v-else-if="!accessDenied && submission">
-      请核对当前提交的整套执行材料。确认后材料版本将固定，案件进入待盖章阶段。
+      确认后材料版本固定，进入待盖章。
     </p>
     <p v-if="!accessDenied && files.length === 0" class="field-help">
       当前没有可展示的执行材料。

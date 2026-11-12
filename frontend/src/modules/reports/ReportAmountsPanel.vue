@@ -132,9 +132,7 @@ const rows = computed(() => {
           已知金额 {{ view.knownAmountCases }} 件；未知金额
           {{ view.unknownAmountCases }} 件。
         </p>
-        <p class="amount-note">
-          仅累计已知标的额，0 元计入；未知金额不按 0 元计算。
-        </p>
+        <p class="amount-note">只计已知标的额，0 元计入。</p>
       </template>
     </section>
     <section

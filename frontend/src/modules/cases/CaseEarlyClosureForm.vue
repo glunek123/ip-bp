@@ -98,7 +98,7 @@ function submit() {
 <template>
   <form class="early-closure-form" @submit.prevent="submit">
     <h2>提前结案</h2>
-    <p class="form-help">提交后案件进入待归档。结案文书和付款截图可后补。</p>
+    <p class="form-help">提交后进入待归档；文书与截图可后补。</p>
 
     <div class="field-grid">
       <label for="early-closure-date">结案日期</label>

@@ -98,9 +98,7 @@ async function submit(): Promise<void> {
       <div class="login-brand"><span class="workspace-mark">案</span></div>
       <p class="section-kicker">Secure access</p>
       <h1>知产案管系统</h1>
-      <p class="login-intro">
-        使用管理员为你创建的内部、公证处或企业客户账号登录。
-      </p>
+      <p class="login-intro">使用管理员分配的账号登录。</p>
       <form @submit.prevent="submit">
         <label class="field-label" for="username">用户名</label>
         <input

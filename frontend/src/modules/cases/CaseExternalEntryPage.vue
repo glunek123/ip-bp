@@ -256,7 +256,7 @@ onMounted(() => void loadOptions());
         <div>
           <p class="eyebrow">案件</p>
           <h1>转入／补录案件</h1>
-          <p>记录真实当前状态和资料来源；没有的信息保留未知。</p>
+          <p>只录入已知事实，未知留空。</p>
         </div>
         <ElButton text @click="router.push('/cases')">返回案件</ElButton>
       </div>
@@ -279,9 +279,7 @@ onMounted(() => void loadOptions());
         </p>
         <template v-else>
           <p class="field-help">
-            当前负责人：{{
-              options.currentUser.displayName
-            }}。录入只记录当前状态，不补造未在本系统发生的流程事实。
+            当前负责人：{{ options.currentUser.displayName }}。
           </p>
           <form class="case-entry-form" @submit.prevent="submitForm">
             <div class="demo-form-grid">
@@ -399,9 +397,7 @@ onMounted(() => void loadOptions());
               <div class="case-entry-subsection__head">
                 <div>
                   <h2 id="entry-parties-title">真实当事人与承办</h2>
-                  <p class="field-help">
-                    不确定的被告和律师可以留空；只录入已核实的当前信息。
-                  </p>
+                  <p class="field-help">被告与律师可留空。</p>
                 </div>
                 <ElButton
                   v-if="!needsMatch"
@@ -411,7 +407,7 @@ onMounted(() => void loadOptions());
                 >
               </div>
               <p v-if="needsMatch" class="field-help" role="note">
-                案件待匹配阶段不在转入时添加被告或律师。请在后续正常匹配时录入真实被告和有效承办律师。
+                待匹配阶段不录入被告与律师。
               </p>
               <template v-else>
                 <div

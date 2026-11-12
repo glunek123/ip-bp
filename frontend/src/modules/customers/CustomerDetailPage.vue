@@ -1113,7 +1113,7 @@ onBeforeUnmount(() => {
           data-test="delete-draft-confirm"
         >
           <h2>删除这份草稿？</h2>
-          <p>删除后将从普通客户列表隐藏。可在已删除草稿中恢复原客户。</p>
+          <p>删除后可从已删除草稿恢复。</p>
           <label
             >原因（选填）<input
               v-model="deletionReason"

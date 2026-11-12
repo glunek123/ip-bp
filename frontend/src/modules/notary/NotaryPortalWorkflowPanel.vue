@@ -668,10 +668,8 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <p v-if="proxy" role="status">
-    运营代办公证处出证；提交后记录真实运营账号、时间和结果。
-  </p>
-  <p>提交会推进阶段；当前服务暂不支持仅保存这些资料。已上传材料会保留。</p>
+  <p v-if="proxy" role="status">运营代办，记录真实操作人与时间。</p>
+  <p>提交即推进阶段；材料会保留。</p>
   <p v-if="message" role="alert">{{ message }}</p>
   <ElButton
     v-if="unknown"
