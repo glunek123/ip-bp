@@ -14,7 +14,7 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
-import { hearingIsDue } from './case-hearing-date';
+import { hearingAdvanceCutoffHour, hearingIsDue } from './case-hearing-date';
 import { isEntryStartingAt, readCaseSourceAnchor } from './case-entry-source';
 import {
   CaseHearingCommandResultDto,
@@ -619,9 +619,11 @@ export class CaseHearingService {
               select: { id: true },
             });
             if (prior !== null) return false;
+            // 开庭日当天到达推进时点即到期（默认 00:00，可用环境变量推迟）。
             const due = await tx.$queryRawUnsafe<Array<{ due_at: Date }>>(
-              "SELECT (($1::date + 1)::timestamp AT TIME ZONE 'Asia/Shanghai') AS due_at",
+              "SELECT (($1::date::timestamp AT TIME ZONE 'Asia/Shanghai') + make_interval(hours => $2)) AS due_at",
               isoDate(hearingAt),
+              hearingAdvanceCutoffHour(),
             );
             const executedAt = this.clock.now();
             if (

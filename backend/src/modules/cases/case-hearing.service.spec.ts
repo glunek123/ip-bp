@@ -454,7 +454,11 @@ describe('CaseHearingService', () => {
         hearingAt,
       });
       expect(result).toMatchObject({
-        stage: 'WAITING_HEARING',
+        // 当天即到期：10-08 当场推进，未来的 10-10 仍留在待开庭。
+        stage:
+          hearingAt !== null && hearingAt <= '2026-10-08'
+            ? 'WAITING_JUDGMENT'
+            : 'WAITING_HEARING',
         version: 12,
         hearingAt,
       });
@@ -472,13 +476,16 @@ describe('CaseHearingService', () => {
           }),
         }),
       );
+      const dueNow = hearingAt !== null && hearingAt <= '2026-10-08';
       expect(f.tx.case.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ currentHearingAdvanceId: null }),
+          data: expect.objectContaining({
+            currentHearingAdvanceId: dueNow ? advanceId : null,
+          }),
         }),
       );
       expect(f.tx.caseHearingAdvance.create).not.toHaveBeenCalled();
-      expect(f.signal.wake).toHaveBeenCalledTimes(1);
+      if (!dueNow) expect(f.signal.wake).toHaveBeenCalledTimes(1);
     },
   );
 
@@ -697,6 +704,7 @@ describe('CaseHearingService', () => {
       expect(f.tx.$queryRawUnsafe).toHaveBeenCalledWith(
         expect.stringContaining('$1::date'),
         '2026-10-07',
+        0,
       );
       expect(f.tx.caseHearingAdvance.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -711,7 +719,7 @@ describe('CaseHearingService', () => {
     },
   );
 
-  it.each(['2026-10-12', '2026-10-08', null])(
+  it.each(['2026-10-12', null])(
     'does not advance a past original date when the latest record head is %s',
     async (headDate) => {
       const f = effectiveScanFixture('2026-10-06', headDate);
@@ -723,6 +731,14 @@ describe('CaseHearingService', () => {
     },
   );
 
+  it('advances on the day the latest record head falls due', async () => {
+    const f = effectiveScanFixture('2026-10-06', '2026-10-08');
+    expect(
+      await f.service.advanceDue(new Date('2026-10-08T10:00:00.000Z')),
+    ).toEqual({ advanced: 1, failed: 0 });
+    expect(f.tx.caseHearingAdvance.create).toHaveBeenCalled();
+  });
+
   it('uses the original date only when the arrangement has no record correction', async () => {
     const f = effectiveScanFixture('2026-10-07');
     expect(
@@ -731,6 +747,7 @@ describe('CaseHearingService', () => {
     expect(f.tx.$queryRawUnsafe).toHaveBeenCalledWith(
       expect.stringContaining('$1::date'),
       '2026-10-07',
+      0,
     );
   });
 
