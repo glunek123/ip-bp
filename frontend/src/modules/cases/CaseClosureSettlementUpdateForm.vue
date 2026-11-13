@@ -350,7 +350,7 @@ function submit() {
     error.value = '手工应结金额须为非负数，最多两位小数。';
     return;
   }
-  emit('draft', {
+  const payload = {
     settlementAmounts: {
       customer: {
         mode: customerEdit.value.mode,
@@ -428,7 +428,9 @@ function submit() {
       paymentVersionId: r.paymentVersionId,
       files: [...r.files],
     })),
-  });
+  };
+  (globalThis as unknown as Record<string, unknown>).__closureDraft = payload;
+  emit('draft', payload as never);
 }
 </script>
 <template>
