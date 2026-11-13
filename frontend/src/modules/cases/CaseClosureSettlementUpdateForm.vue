@@ -208,22 +208,32 @@ const refundItems = ref<RefundItem[]>(
 );
 const declaration = ref(props.source.settlement?.declaration ?? 'UNKNOWN');
 const settlementChanged = ref(false);
+const customerModeTouched = ref(false);
+const lawyerModeTouched = ref(false);
 const customerEdit = ref<AmountEdit>({
-  mode: 'KEEP',
+  mode: 'AUTOMATIC',
   amount: props.source.customerAmount ?? null,
 });
 const lawyerEdit = ref<AmountEdit>({
-  mode: 'KEEP',
+  mode: 'AUTOMATIC',
   amount: props.source.lawyerAmount ?? null,
 });
+let lastClosureVersion = props.source.expectedClosureVersionId;
 watch(
   () => props.source,
   (source) => {
+    // 结算条件保存后会换一个结案版本，说明条款变了，本次需要按新条件重算。
+    const termsRefreshed =
+      source.expectedClosureVersionId !== lastClosureVersion;
+    lastClosureVersion = source.expectedClosureVersionId;
     customerEdit.value = {
-      mode: 'KEEP',
+      mode: 'AUTOMATIC',
       amount: source.customerAmount ?? null,
     };
-    lawyerEdit.value = { mode: 'KEEP', amount: source.lawyerAmount ?? null };
+    lawyerEdit.value = {
+      mode: 'AUTOMATIC',
+      amount: source.lawyerAmount ?? null,
+    };
     closeAt.value = source.closeAt ?? '';
     amount.value = source.closeAmt ?? '';
     unknown.value = source.closeAmt === null;
@@ -235,7 +245,7 @@ watch(
     refundKind.value = 'KEEP';
     refundItems.value = source.refund?.items.map((item) => ({ ...item })) ?? [];
     declaration.value = source.settlement?.declaration ?? 'UNKNOWN';
-    settlementChanged.value = false;
+    settlementChanged.value = termsRefreshed;
     error.value = '';
   },
   { deep: true, flush: 'sync' },
@@ -272,17 +282,22 @@ function addDocuments(event: globalThis.Event) {
 // 声明"涉及结算"时，数据库要求客户与律师应结金额都有值；
 // 若保留现有值但现值未知（或手工金额为空），前端应当场拦住，
 // 而不是把请求发出去换一个 500。
+// 只有本次真的改过条件或结案金额才重算，避免补个截图就把历史金额刷掉。
+const settlementDirty = computed(
+  () =>
+    settlementChanged.value ||
+    amount.value !== (props.source.closeAmt ?? '') ||
+    declaration.value !== (props.source.settlement?.declaration ?? 'UNKNOWN'),
+);
 function effectiveMode(side: 'customer' | 'lawyer'): AmountEdit['mode'] {
   const edit = side === 'customer' ? customerEdit.value : lawyerEdit.value;
-  if (edit.mode !== 'KEEP') return edit.mode;
-  const current =
-    side === 'customer'
-      ? props.source.customerAmount
-      : props.source.lawyerAmount;
-  return current == null && declaration.value === 'APPLICABLE'
-    ? 'AUTOMATIC'
-    : edit.mode;
+  if (edit.mode === 'MANUAL' || edit.mode === 'KEEP') return edit.mode;
+  const touched =
+    side === 'customer' ? customerModeTouched.value : lawyerModeTouched.value;
+  // 默认自动，但本次既没改条件也没手动选过时按保留提交，避免重写历史金额。
+  return touched || settlementDirty.value ? 'AUTOMATIC' : 'KEEP';
 }
+
 const settlementAmountMissing = computed(() => {
   if (declaration.value !== 'APPLICABLE') return false;
   // 只在"本次改变了声明"时拦截：改付款、改单侧金额走的是别的命令，
@@ -402,14 +417,14 @@ function submit() {
               props.source.settlement.expectedAssessmentVersionId,
             declaration: declaration.value,
             customerAmount: {
-              mode: customerEdit.value.mode,
+              mode: effectiveMode('customer'),
               ...(customerEdit.value.mode === 'MANUAL' &&
               customerEdit.value.amount !== null
                 ? { amount: customerEdit.value.amount }
                 : {}),
             },
             lawyerAmount: {
-              mode: lawyerEdit.value.mode,
+              mode: effectiveMode('lawyer'),
               ...(lawyerEdit.value.mode === 'MANUAL' &&
               lawyerEdit.value.amount !== null
                 ? { amount: lawyerEdit.value.amount }
@@ -521,6 +536,7 @@ function submit() {
           <select
             v-model="customerEdit.mode"
             :aria-label="`customer-mode`"
+            @change="customerModeTouched = true"
             data-test="customer-mode"
           >
             <option value="KEEP">保留现有值</option>
@@ -577,6 +593,7 @@ function submit() {
           <select
             v-model="lawyerEdit.mode"
             :aria-label="`lawyer-mode`"
+            @change="lawyerModeTouched = true"
             data-test="lawyer-mode"
           >
             <option value="KEEP">保留现有值</option>
