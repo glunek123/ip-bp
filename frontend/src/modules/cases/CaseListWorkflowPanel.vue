@@ -1730,6 +1730,7 @@ async function complaint() {
           :case-id="item.id"
           :can-correct-closure="item.canCorrectClosure"
           :session="session"
+          @done="refresh"
           @cancel="emit('cancel')"
         />
         <CaseClosurePanel

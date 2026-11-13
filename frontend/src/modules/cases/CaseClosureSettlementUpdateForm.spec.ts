@@ -272,9 +272,8 @@ describe('settlement update isolated draft', () => {
   });
   it('distinguishes explicit zero and does not submit on cancel', async () => {
     const wrapper = mount(Form, { props: { source } });
-    await wrapper.get('[data-test="cancel"]').trigger('click');
+    expect(wrapper.find('[data-test="cancel"]').exists()).toBe(false);
     expect(wrapper.emitted('draft')).toBeUndefined();
-    expect(wrapper.emitted('cancel')).toHaveLength(1);
     await wrapper.get('[data-test="unknown"]').setValue(false);
     await wrapper.get('[data-test="amount"]').setValue('0');
     await wrapper.get('form').trigger('submit');
@@ -350,7 +349,7 @@ describe('settlement update source and refund versions', () => {
   it('confirms the source inventory version without sending modified rows and cancel never submits', async () => {
     const wrapper = mount(Form, { props: { source: withRefund } });
     await wrapper.get('[aria-label="退费操作"]').setValue('CONFIRM_COMPLETE');
-    await wrapper.get('[data-test="cancel"]').trigger('click');
+    expect(wrapper.find('[data-test="cancel"]').exists()).toBe(false);
     expect(wrapper.emitted('draft')).toBeUndefined();
     await wrapper.get('form').trigger('submit');
     const draft = wrapper.emitted('draft')?.[0]?.[0];
@@ -428,7 +427,7 @@ describe('manual settlement amount drafts', () => {
           .element as HTMLInputElement
       ).value,
     ).toBe('56.78');
-    await wrapper.get('[data-test="cancel"]').trigger('click');
+    expect(wrapper.find('[data-test="cancel"]').exists()).toBe(false);
     expect(wrapper.emitted('draft')).toHaveLength(1);
   });
 });

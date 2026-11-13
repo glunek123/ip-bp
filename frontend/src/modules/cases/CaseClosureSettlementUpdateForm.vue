@@ -785,9 +785,6 @@ function submit() {
     </p>
 
     <div class="settle-footer">
-      <button type="button" data-test="cancel" @click="emit('cancel')">
-        取消
-      </button>
       <button type="submit" :disabled="settlementAmountMissing">保存</button>
     </div>
   </form>
