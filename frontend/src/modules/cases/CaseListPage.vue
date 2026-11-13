@@ -2069,6 +2069,18 @@ onBeforeUnmount(() => {
         />
       </section>
       <section
+        v-if="complaintBatchDismissed && complaintQueueHasPending"
+        class="state-panel complaint-batch-queue complaint-batch-queue--collapsed"
+        data-test="complaint-batch-collapsed"
+      >
+        <span>批量队列还有未完成案件，处理完才能再次发起批量操作。</span>
+        <ElButton
+          data-test="reopen-complaint-batch"
+          @click="complaintBatchDismissed = false"
+          >继续处理</ElButton
+        >
+      </section>
+      <section
         v-if="complaintBatchQueueVisible"
         class="state-panel complaint-batch-queue"
         aria-label="批量诉状逐案队列"
@@ -2701,6 +2713,14 @@ onBeforeUnmount(() => {
 }
 .complaint-batch-queue__head h2 {
   margin: 0;
+}
+.complaint-batch-queue--collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  color: var(--color-ink-muted);
+  font-size: 12px;
 }
 .complaint-batch-queue h2 {
   margin: 0 0 var(--s-2);
