@@ -15,6 +15,7 @@ import type { Prisma } from '../../generated/prisma/client';
 import {
   CreateAndLinkRightsHolderDto,
   LinkExistingRightsHolderDto,
+  UnlinkRightsHolderDto,
   UpdateRightsHolderDto,
 } from './rights-holder.dto';
 
@@ -221,7 +222,7 @@ export class RightsHolderService {
       });
       if (target === null) throw this.customerNotFound();
       const link = await transaction.customerRightsHolderLink.findFirst({
-        where: { customerId, rightsHolderId },
+        where: { customerId, rightsHolderId, unlinkedAt: null },
         select: { id: true },
       });
       if (link === null) throw this.holderNotFound();
@@ -251,6 +252,63 @@ export class RightsHolderService {
       });
       return {
         holder: this.toSummary(updated),
+        customerVersion: input.expectedCustomerVersion + 1,
+      };
+    });
+  }
+
+  async unlink(
+    actor: ActorContext,
+    customerId: string,
+    rightsHolderId: string,
+    input: UnlinkRightsHolderDto,
+  ): Promise<{ rightsHolderId: string; customerVersion: number }> {
+    const scope = await this.accessControl.buildCustomerScope(
+      actor,
+      'customer.edit-routine',
+    );
+    return await this.database.$transaction(async (transaction) => {
+      const target = await transaction.customer.findFirst({
+        where: { id: customerId, ...scope, deletedAt: null },
+        select: { id: true },
+      });
+      if (target === null) throw this.customerNotFound();
+      const link = await transaction.customerRightsHolderLink.findFirst({
+        where: { customerId, rightsHolderId, unlinkedAt: null },
+        select: { id: true },
+      });
+      if (link === null) throw this.holderNotFound();
+      const assets = await transaction.customerRightAsset.count({
+        where: { holderId: link.id },
+      });
+      if (assets > 0) {
+        throw new ConflictException({
+          code: 'RIGHTS_HOLDER_IN_USE',
+          message: `该主体下仍有 ${assets} 项权利资产，请先处理后再解除关联`,
+        });
+      }
+      await this.incrementCustomerVersion(
+        transaction,
+        actor,
+        customerId,
+        input.expectedCustomerVersion,
+      );
+      await transaction.customerRightsHolderLink.update({
+        where: { id: link.id },
+        data: { unlinkedAt: new Date() },
+      });
+      await transaction.auditEvent.create({
+        data: {
+          departmentId: actor.departmentId,
+          actorUserId: actor.userId,
+          resourceType: 'customer',
+          resourceId: customerId,
+          action: 'customer.rights-holder-unlinked',
+          details: { customerId, rightsHolderId, linkId: link.id },
+        },
+      });
+      return {
+        rightsHolderId,
         customerVersion: input.expectedCustomerVersion + 1,
       };
     });
@@ -310,12 +368,11 @@ export class RightsHolderService {
               });
         if (visibleHolder === null) throw this.holderNotFound();
 
-        const existing = await transaction.customerRightsHolderLink.findUnique({
+        const existing = await transaction.customerRightsHolderLink.findFirst({
           where: {
-            customerId_rightsHolderId: {
-              customerId,
-              rightsHolderId: input.rightsHolderId,
-            },
+            customerId,
+            rightsHolderId: input.rightsHolderId,
+            unlinkedAt: null,
           },
           select: { id: true },
         });
@@ -332,12 +389,11 @@ export class RightsHolderService {
         });
         if (updated.count !== 1) {
           const concurrentlyLinked =
-            await transaction.customerRightsHolderLink.findUnique({
+            await transaction.customerRightsHolderLink.findFirst({
               where: {
-                customerId_rightsHolderId: {
-                  customerId,
-                  rightsHolderId: input.rightsHolderId,
-                },
+                customerId,
+                rightsHolderId: input.rightsHolderId,
+                unlinkedAt: null,
               },
               select: { id: true },
             });
@@ -429,7 +485,7 @@ export class RightsHolderService {
       })) !== null;
     const where = {
       departmentId: actor.departmentId,
-      links: { some: { customerId } },
+      links: { some: { customerId, unlinkedAt: null } },
     };
     const [holders, total] = await this.database.$transaction([
       this.database.rightsHolder.findMany({
@@ -468,7 +524,7 @@ export class RightsHolderService {
       where: {
         id: rightsHolderId,
         departmentId: actor.departmentId,
-        links: { some: { customerId } },
+        links: { some: { customerId, unlinkedAt: null } },
       },
       select: holderSelect,
     });
@@ -501,7 +557,7 @@ export class RightsHolderService {
     const where = {
       departmentId: actor.departmentId,
       links: { some: { customer: { ...readScope, deletedAt: null } } },
-      NOT: { links: { some: { customerId } } },
+      NOT: { links: { some: { customerId, unlinkedAt: null } } },
       ...(normalizedQuery === null
         ? {}
         : {

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Patch,
   Headers,
@@ -21,6 +22,7 @@ import {
   LinkableRightsHolderQueryDto,
   LinkExistingRightsHolderDto,
   RightsHolderListQueryDto,
+  UnlinkRightsHolderDto,
   UpdateRightsHolderDto,
 } from './rights-holder.dto';
 import { RightsHolderService } from './rights-holder.service';
@@ -70,6 +72,16 @@ export class RightsHolderController {
     @Body() input: UpdateRightsHolderDto,
   ) {
     return this.rightsHolders.update(actor, customerId, rightsHolderId, input);
+  }
+
+  @Delete('rights-holders/:rightsHolderId')
+  unlink(
+    @CurrentActor() actor: ActorContext,
+    @Param('customerId', new ParseUUIDPipe()) customerId: string,
+    @Param('rightsHolderId', new ParseUUIDPipe()) rightsHolderId: string,
+    @Body() input: UnlinkRightsHolderDto,
+  ) {
+    return this.rightsHolders.unlink(actor, customerId, rightsHolderId, input);
   }
 
   @Get('rights-holders/:rightsHolderId')

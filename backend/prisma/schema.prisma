@@ -1294,10 +1294,9 @@ model CustomerRightsHolderLink {
   rightAssets     CustomerRightAsset[]
   rightAssetVersions CustomerRightAssetVersion[]
   createdAt       DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  unlinkedAt      DateTime?                    @map("unlinked_at") @db.Timestamptz(3)
 
   @@unique([id, departmentId])
-  @@unique([customerId, rightsHolderId, departmentId])
-  @@unique([customerId, rightsHolderId], map: "customer_rights_holder_links_customer_holder_key")
   @@index([departmentId, rightsHolderId])
   @@map("customer_rights_holder_links")
 }

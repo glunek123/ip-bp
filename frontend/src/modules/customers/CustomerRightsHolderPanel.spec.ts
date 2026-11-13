@@ -131,6 +131,7 @@ describe('CustomerRightsHolderPanel', () => {
     const actions = wrapper.findAll('tbody tr')[1]?.findAll('td')[5]?.text();
     expect(actions).toContain('查看详情');
     expect(actions).toContain('编辑');
+    expect(actions).toContain('解除关联');
     expect(wrapper.findAll('a').map((link) => link.text())).toEqual([
       '查看详情',
       '查看详情',
@@ -392,6 +393,30 @@ describe('CustomerRightsHolderPanel 编辑与解除关联', () => {
         name: '主体甲改',
         credit: '91310000',
       }),
+    );
+    expect(wrapper.emitted('version-updated')?.[0]).toEqual(['customer-1', 2]);
+  });
+
+  it('unlinks only after explicit confirmation', async () => {
+    api.listCustomerRightsHolders.mockResolvedValue(listResult());
+    api.unlinkCustomerRightsHolder.mockResolvedValue({
+      rightsHolderId: 'holder-1',
+      customerVersion: 2,
+    });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="holder-unlink-holder-1"]').trigger('click');
+    expect(wrapper.text()).toContain('主体记录保留');
+    expect(api.unlinkCustomerRightsHolder).not.toHaveBeenCalled();
+    const confirm = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '确认解除');
+    await confirm?.trigger('click');
+    await flushPromises();
+    expect(api.unlinkCustomerRightsHolder).toHaveBeenCalledWith(
+      'customer-1',
+      'holder-1',
+      1,
     );
     expect(wrapper.emitted('version-updated')?.[0]).toEqual(['customer-1', 2]);
   });

@@ -98,6 +98,13 @@ export class UpdateRightsHolderDto {
   duty?: string;
 }
 
+export class UnlinkRightsHolderDto {
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedCustomerVersion!: number;
+}
+
 export class LinkExistingRightsHolderDto {
   @ApiProperty({ minimum: 1 })
   @IsInt()

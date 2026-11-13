@@ -274,3 +274,32 @@ export async function updateCustomerRightsHolder(
     customerVersion: data.customerVersion as number,
   };
 }
+
+export type UnlinkRightsHolderResult = {
+  rightsHolderId: string;
+  customerVersion: number;
+};
+
+export async function unlinkCustomerRightsHolder(
+  customerId: string,
+  rightsHolderId: string,
+  expectedCustomerVersion: number,
+): Promise<UnlinkRightsHolderResult> {
+  const data = await requestJson(
+    `/customers/${encodeURIComponent(customerId)}/rights-holders/${encodeURIComponent(rightsHolderId)}`,
+    { method: 'DELETE', body: { expectedCustomerVersion } },
+  );
+  if (
+    !isRecord(data) ||
+    !hasExactKeys(data, ['rightsHolderId', 'customerVersion']) ||
+    data.rightsHolderId !== rightsHolderId ||
+    !Number.isInteger(data.customerVersion) ||
+    (data.customerVersion as number) < 1
+  ) {
+    throw invalidResponse();
+  }
+  return {
+    rightsHolderId: data.rightsHolderId,
+    customerVersion: data.customerVersion as number,
+  };
+}
