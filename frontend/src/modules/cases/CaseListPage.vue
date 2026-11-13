@@ -2646,17 +2646,17 @@ onBeforeUnmount(() => {
   box-shadow: var(--el-box-shadow-light);
 }
 .case-list-filters {
-  max-width: 980px;
+  max-width: 880px;
 }
 .case-list-filters__grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--s-2) var(--s-3);
-  margin: var(--s-3) 0;
+  gap: 8px 12px;
+  margin: var(--s-2) 0;
 }
 .case-list-filters__grid label {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: 64px minmax(0, 1fr);
   align-items: center;
   gap: var(--s-2);
   color: var(--color-ink-muted);
@@ -2664,7 +2664,7 @@ onBeforeUnmount(() => {
 }
 .case-list-filters__grid input {
   min-width: 0;
-  height: 32px;
+  height: 30px;
   padding: 0 var(--s-2);
 }
 .case-list-filters .operation-bar {
