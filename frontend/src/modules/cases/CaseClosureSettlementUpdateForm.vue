@@ -803,6 +803,12 @@ function submit() {
         <option value="APPLICABLE">是</option>
         <option value="NOT_APPLICABLE">否</option>
       </select>
+      <span
+        v-if="declaration === 'UNKNOWN'"
+        class="settle-hint"
+        data-test="declaration-hint"
+        >选择「是」并保存后，才会按结算条件计算客户与律师结算金额。</span
+      >
     </label>
 
     <p v-if="error" role="alert" class="settle-error">{{ error }}</p>
