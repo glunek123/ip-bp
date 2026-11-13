@@ -1437,14 +1437,6 @@ async function complaint() {
       :session="session"
       @cancel="emit('cancel')"
     />
-    <CaseClosureSettlementUpdatePanel
-      v-else-if="action === 'settlement-update' && allowed && !storageBlocked"
-      :actor-key="actorKey"
-      :case-id="item.id"
-      :can-correct-closure="item.canCorrectClosure"
-      :session="session"
-      @cancel="emit('cancel')"
-    />
     <CasePaymentProofWorkspacePanel
       v-else-if="action === 'payment-proof' && allowed && !storageBlocked"
       :actor-key="actorKey"
@@ -1458,7 +1450,6 @@ async function complaint() {
         !storageBlocked &&
         allowed &&
         action !== 'early-closure' &&
-        action !== 'settlement-update' &&
         action !== 'payment-proof'
       "
       class="workflow-form-scope"
@@ -1726,7 +1717,11 @@ async function complaint() {
         @refresh="refresh"
       />
       <template
-        v-else-if="action === 'record-closure' || action === 'correct-closure'"
+        v-else-if="
+          action === 'record-closure' ||
+          action === 'correct-closure' ||
+          action === 'settlement-update'
+        "
       >
         <CaseClosurePanel
           :item="item"
@@ -1743,9 +1738,7 @@ async function complaint() {
           @refresh="refresh"
         />
         <!-- 第二段：已登记结案资料的案件，同一张卡内继续编辑结算与回款 -->
-        <template
-          v-if="action === 'correct-closure' && item.canUpdateClosureSettlement"
-        >
+        <template v-if="item.canUpdateClosureSettlement">
           <h3 class="form-section-title">结算与回款</h3>
           <CaseClosureSettlementUpdatePanel
             :actor-key="actorKey"
