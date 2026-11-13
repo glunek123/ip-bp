@@ -889,13 +889,15 @@ function applyQuery() {
     state.value = 'failed';
     return;
   }
-  void router.push({
-    query: {
-      ...listRouteBase(),
-      ...serializeCaseListQuery(parsed.value),
-      page: '1',
-    },
-  });
+  void router
+    .push({
+      query: {
+        ...listRouteBase(),
+        ...serializeCaseListQuery(parsed.value),
+        page: '1',
+      },
+    })
+    .catch(() => {});
   filtersOpen.value = false;
 }
 function clearQuery() {
@@ -1666,6 +1668,9 @@ watch(
   },
   { immediate: true },
 );
+onBeforeUnmount(() => {
+  if (queryTimer) clearTimeout(queryTimer);
+});
 onBeforeUnmount(() => {
   request?.abort();
   closureBridgeController?.abort();
