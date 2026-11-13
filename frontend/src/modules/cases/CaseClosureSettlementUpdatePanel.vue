@@ -601,6 +601,19 @@ async function submit(draft: Draft, recovery = false) {
   const w = workspace.value;
   const session = props.session;
   const s = source.value;
+  // 结案金额或结算条件可能在面板打开期间变化，提交前用最新版本号覆盖草稿，避免版本冲突。
+  if (draft.settlement) {
+    try {
+      const fresh = await getCaseClosureWorkspace(props.caseId);
+      draft.settlement.expectedTermsVersion =
+        fresh.assessment?.termsVersion ?? draft.settlement.expectedTermsVersion;
+      draft.settlement.expectedAssessmentVersionId =
+        fresh.assessment?.versionId ??
+        draft.settlement.expectedAssessmentVersionId;
+    } catch {
+      // 读取失败时沿用草稿版本，由服务端冲突校验兜底。
+    }
+  }
   const onlyAmounts =
     !!draft.settlement &&
     ((draft.settlement.customerAmount &&

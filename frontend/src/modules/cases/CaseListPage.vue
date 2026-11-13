@@ -2703,6 +2703,10 @@ onBeforeUnmount(() => {
 .complaint-batch-queue {
   padding: var(--s-3);
   text-align: left;
+  background: var(--color-canvas, #fff);
+  border: 1px solid var(--color-hairline, #e5e7eb);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 6%);
 }
 .complaint-batch-queue__head {
   display: flex;
