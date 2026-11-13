@@ -7,7 +7,6 @@ import 'element-plus/theme-chalk/el-pagination.css';
 import {
   createCustomerRightsHolder,
   listCustomerRightsHolders,
-  unlinkCustomerRightsHolder,
   updateCustomerRightsHolder,
   type CreateRightsHolderInput,
   type RightsHolderSummary,
@@ -45,8 +44,6 @@ const versionConflict = ref(false);
 const saving = ref(false);
 const editTarget = ref<RightsHolderSummary | null>(null);
 const editError = ref('');
-const unlinkTarget = ref<RightsHolderSummary | null>(null);
-const unlinkError = ref('');
 const rowBusy = ref(false);
 let activeRequest: AbortController | undefined;
 let createRetry: { signature: string; key: string } | undefined;
@@ -196,7 +193,6 @@ async function submitCreate(): Promise<void> {
 function openEdit(holder: RightsHolderSummary): void {
   editTarget.value = holder;
   editError.value = '';
-  unlinkTarget.value = null;
   name.value = holder.name;
   credit.value = holder.credit ?? '';
   address.value = holder.address ?? '';
@@ -249,42 +245,6 @@ async function submitEdit(): Promise<void> {
     }
   } finally {
     saving.value = false;
-  }
-}
-
-function askUnlink(holder: RightsHolderSummary): void {
-  unlinkTarget.value = holder;
-  unlinkError.value = '';
-  editTarget.value = null;
-}
-
-function closeUnlink(): void {
-  unlinkTarget.value = null;
-  unlinkError.value = '';
-}
-
-async function confirmUnlink(): Promise<void> {
-  const target = unlinkTarget.value;
-  if (!target || rowBusy.value) return;
-  rowBusy.value = true;
-  unlinkError.value = '';
-  try {
-    const result = await unlinkCustomerRightsHolder(
-      props.customerId,
-      target.id,
-      props.customerVersion,
-    );
-    emit('version-updated', props.customerId, result.customerVersion);
-    closeUnlink();
-    await load();
-  } catch (error) {
-    if (isApiError(error, 'CUSTOMER_VERSION_CONFLICT')) {
-      unlinkError.value = '客户资料已被他人更新，请先刷新后重试';
-    } else {
-      unlinkError.value = '解除关联失败，请稍后重试';
-    }
-  } finally {
-    rowBusy.value = false;
   }
 }
 
@@ -365,14 +325,6 @@ onBeforeUnmount(() => {
                 @click="openEdit(holder)"
                 >编辑</ElButton
               >
-              <ElButton
-                v-if="canCreate"
-                link
-                type="danger"
-                :data-test="`holder-unlink-${holder.id}`"
-                @click="askUnlink(holder)"
-                >解除关联</ElButton
-              >
             </td>
           </tr>
         </tbody>
@@ -390,24 +342,6 @@ onBeforeUnmount(() => {
     <p v-if="writeDenied" class="submit-error" role="alert">
       当前账号没有编辑此客户的权限
     </p>
-
-    <section
-      v-if="unlinkTarget"
-      class="form-section"
-      role="alertdialog"
-      aria-label="确认解除关联"
-    >
-      <p>
-        将从当前客户移除「{{
-          unlinkTarget.name
-        }}」，主体记录保留，其他客户不受影响。
-      </p>
-      <p v-if="unlinkError" class="submit-error">{{ unlinkError }}</p>
-      <div class="detail-actions">
-        <ElButton :disabled="rowBusy" @click="confirmUnlink">确认解除</ElButton>
-        <ElButton :disabled="rowBusy" @click="closeUnlink">取消</ElButton>
-      </div>
-    </section>
 
     <section
       v-if="editTarget"
