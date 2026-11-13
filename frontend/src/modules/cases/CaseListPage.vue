@@ -2668,7 +2668,9 @@ onBeforeUnmount(() => {
   padding: 0 var(--s-2);
 }
 .case-list-filters .operation-bar {
+  display: flex;
   flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
 }
 @media (max-width: 900px) {
