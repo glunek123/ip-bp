@@ -382,10 +382,7 @@ function submit() {
           },
         }
       : {}),
-    ...(props.source.settlement &&
-    (settlementChanged.value ||
-      customerEdit.value.mode !== 'KEEP' ||
-      lawyerEdit.value.mode !== 'KEEP')
+    ...(props.source.settlement
       ? {
           settlement: {
             ...props.source.settlement,

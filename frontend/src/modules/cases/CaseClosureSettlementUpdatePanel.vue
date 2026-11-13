@@ -255,6 +255,10 @@ watch(
     };
     error.value = '';
     pending.value = commands.get(key()) ?? null;
+    if (pending.value?.status === 'confirmed' && pending.value.delivered) {
+      commands.delete(key());
+      pending.value = null;
+    }
     preparation.value = preparations.get(key()) ?? null;
     if (preparation.value) {
       preparation.value.unknown = true;
