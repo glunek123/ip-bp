@@ -375,13 +375,22 @@ onBeforeUnmount(() => {
 
 .holder-table th,
 .holder-table td {
-  padding: 0.75rem 1rem;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border-color, #e5e7eb);
   text-align: left;
-  vertical-align: top;
+  vertical-align: middle;
+  font-size: 13px;
 }
 
 .holder-table th {
   white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+  background: var(--color-surface-2);
+}
+
+.holder-table tbody tr:hover {
+  background: var(--color-surface-2);
 }
 </style>
