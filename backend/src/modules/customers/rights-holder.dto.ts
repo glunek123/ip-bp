@@ -56,6 +56,55 @@ export class CreateAndLinkRightsHolderDto {
   duty?: string;
 }
 
+export class UpdateRightsHolderDto {
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedCustomerVersion!: number;
+
+  @ApiProperty({ maxLength: 200 })
+  @Transform(trim)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  name!: string;
+
+  @ApiPropertyOptional({ maxLength: 100 })
+  @Transform(trim)
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MaxLength(100)
+  credit?: string;
+
+  @ApiPropertyOptional({ maxLength: 500 })
+  @Transform(trim)
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MaxLength(500)
+  address?: string;
+
+  @ApiPropertyOptional({ maxLength: 100 })
+  @Transform(trim)
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MaxLength(100)
+  legalRepresentative?: string;
+
+  @ApiPropertyOptional({ maxLength: 100 })
+  @Transform(trim)
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MaxLength(100)
+  duty?: string;
+}
+
+export class UnlinkRightsHolderDto {
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedCustomerVersion!: number;
+}
+
 export class LinkExistingRightsHolderDto {
   @ApiProperty({ minimum: 1 })
   @IsInt()

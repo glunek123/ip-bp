@@ -6,6 +6,8 @@ import CustomerRightsHolderPanel from './CustomerRightsHolderPanel.vue';
 const api = vi.hoisted(() => ({
   listCustomerRightsHolders: vi.fn(),
   createCustomerRightsHolder: vi.fn(),
+  updateCustomerRightsHolder: vi.fn(),
+  unlinkCustomerRightsHolder: vi.fn(),
 }));
 vi.mock('../../api/rights-holders', () => api);
 
@@ -123,8 +125,8 @@ describe('CustomerRightsHolderPanel', () => {
       wrapper
         .findAll('tbody tr')[1]
         ?.findAll('td')
-        .map((cell) => cell.text()),
-    ).toEqual(['主体乙', '—', '—', '—', '—', '查看详情']);
+        .map((cell) => cell.text().replace(/\s+/g, '')),
+    ).toEqual(['主体乙', '—', '—', '—', '—', '查看详情编辑解除关联']);
     expect(wrapper.findAll('a').map((link) => link.text())).toEqual([
       '查看详情',
       '查看详情',
@@ -356,5 +358,61 @@ describe('CustomerRightsHolderPanel', () => {
       .get('[data-test="refresh-customer-version"]')
       .trigger('click');
     expect(wrapper.emitted('refresh-requested')).toHaveLength(1);
+  });
+});
+
+describe('CustomerRightsHolderPanel 编辑与解除关联', () => {
+  it('edits a shared holder and reports the new customer version', async () => {
+    api.listCustomerRightsHolders.mockResolvedValue(listResult());
+    api.updateCustomerRightsHolder.mockResolvedValue({
+      holder: { ...holder, name: '主体甲改' },
+      customerVersion: 2,
+    });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="holder-edit-holder-1"]').trigger('click');
+    expect(
+      (wrapper.get('#holder-edit-name').element as HTMLInputElement).value,
+    ).toBe('主体甲');
+    await wrapper.get('#holder-edit-name').setValue('主体甲改');
+    const save = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '保存');
+    await save?.trigger('click');
+    await flushPromises();
+    expect(api.updateCustomerRightsHolder).toHaveBeenCalledWith(
+      'customer-1',
+      'holder-1',
+      expect.objectContaining({
+        expectedCustomerVersion: 1,
+        name: '主体甲改',
+        credit: '91310000',
+      }),
+    );
+    expect(wrapper.emitted('version-updated')?.[0]).toEqual(['customer-1', 2]);
+  });
+
+  it('unlinks only after explicit confirmation', async () => {
+    api.listCustomerRightsHolders.mockResolvedValue(listResult());
+    api.unlinkCustomerRightsHolder.mockResolvedValue({
+      rightsHolderId: 'holder-1',
+      customerVersion: 2,
+    });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="holder-unlink-holder-1"]').trigger('click');
+    expect(wrapper.text()).toContain('主体记录保留');
+    expect(api.unlinkCustomerRightsHolder).not.toHaveBeenCalled();
+    const confirm = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '确认解除');
+    await confirm?.trigger('click');
+    await flushPromises();
+    expect(api.unlinkCustomerRightsHolder).toHaveBeenCalledWith(
+      'customer-1',
+      'holder-1',
+      1,
+    );
+    expect(wrapper.emitted('version-updated')?.[0]).toEqual(['customer-1', 2]);
   });
 });

@@ -15,6 +15,8 @@ import type { Prisma } from '../../generated/prisma/client';
 import {
   CreateAndLinkRightsHolderDto,
   LinkExistingRightsHolderDto,
+  UnlinkRightsHolderDto,
+  UpdateRightsHolderDto,
 } from './rights-holder.dto';
 
 type RightsHolderRecord = {
@@ -194,6 +196,112 @@ export class RightsHolderService {
         false,
       );
     }
+  }
+
+  async update(
+    actor: ActorContext,
+    customerId: string,
+    rightsHolderId: string,
+    input: UpdateRightsHolderDto,
+  ): Promise<{ holder: RightsHolderSummary; customerVersion: number }> {
+    const normalized = {
+      name: this.requiredName(input.name),
+      credit: this.optional(input.credit),
+      address: this.optional(input.address),
+      legalRepresentative: this.optional(input.legalRepresentative),
+      duty: this.optional(input.duty),
+    };
+    const scope = await this.accessControl.buildCustomerScope(
+      actor,
+      'customer.edit-routine',
+    );
+    return await this.database.$transaction(async (transaction) => {
+      const target = await transaction.customer.findFirst({
+        where: { id: customerId, ...scope, deletedAt: null },
+        select: { id: true },
+      });
+      if (target === null) throw this.customerNotFound();
+      const link = await transaction.customerRightsHolderLink.findFirst({
+        where: { customerId, rightsHolderId },
+        select: { id: true },
+      });
+      if (link === null) throw this.holderNotFound();
+      await this.incrementCustomerVersion(
+        transaction,
+        actor,
+        customerId,
+        input.expectedCustomerVersion,
+      );
+      const updated = await transaction.rightsHolder.update({
+        where: { id: rightsHolderId },
+        data: normalized,
+      });
+      await transaction.auditEvent.create({
+        data: {
+          departmentId: actor.departmentId,
+          actorUserId: actor.userId,
+          resourceType: 'rights-holder',
+          resourceId: rightsHolderId,
+          action: 'rights-holder.updated',
+          details: {
+            customerId,
+            rightsHolderId,
+            name: normalized.name,
+          },
+        },
+      });
+      return {
+        holder: this.toSummary(updated),
+        customerVersion: input.expectedCustomerVersion + 1,
+      };
+    });
+  }
+
+  async unlink(
+    actor: ActorContext,
+    customerId: string,
+    rightsHolderId: string,
+    input: UnlinkRightsHolderDto,
+  ): Promise<{ rightsHolderId: string; customerVersion: number }> {
+    const scope = await this.accessControl.buildCustomerScope(
+      actor,
+      'customer.edit-routine',
+    );
+    return await this.database.$transaction(async (transaction) => {
+      const target = await transaction.customer.findFirst({
+        where: { id: customerId, ...scope, deletedAt: null },
+        select: { id: true },
+      });
+      if (target === null) throw this.customerNotFound();
+      const link = await transaction.customerRightsHolderLink.findFirst({
+        where: { customerId, rightsHolderId },
+        select: { id: true },
+      });
+      if (link === null) throw this.holderNotFound();
+      await this.incrementCustomerVersion(
+        transaction,
+        actor,
+        customerId,
+        input.expectedCustomerVersion,
+      );
+      await transaction.customerRightsHolderLink.delete({
+        where: { id: link.id },
+      });
+      await transaction.auditEvent.create({
+        data: {
+          departmentId: actor.departmentId,
+          actorUserId: actor.userId,
+          resourceType: 'customer',
+          resourceId: customerId,
+          action: 'customer.rights-holder-unlinked',
+          details: { customerId, rightsHolderId, linkId: link.id },
+        },
+      });
+      return {
+        rightsHolderId,
+        customerVersion: input.expectedCustomerVersion + 1,
+      };
+    });
   }
 
   async linkExisting(

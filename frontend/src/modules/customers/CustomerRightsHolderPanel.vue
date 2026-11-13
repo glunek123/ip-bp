@@ -7,6 +7,8 @@ import 'element-plus/theme-chalk/el-pagination.css';
 import {
   createCustomerRightsHolder,
   listCustomerRightsHolders,
+  unlinkCustomerRightsHolder,
+  updateCustomerRightsHolder,
   type CreateRightsHolderInput,
   type RightsHolderSummary,
 } from '../../api/rights-holders';
@@ -41,6 +43,11 @@ const nameError = ref('');
 const createError = ref('');
 const versionConflict = ref(false);
 const saving = ref(false);
+const editTarget = ref<RightsHolderSummary | null>(null);
+const editError = ref('');
+const unlinkTarget = ref<RightsHolderSummary | null>(null);
+const unlinkError = ref('');
+const rowBusy = ref(false);
 let activeRequest: AbortController | undefined;
 let createRetry: { signature: string; key: string } | undefined;
 let formIntentGeneration = 0;
@@ -186,6 +193,101 @@ async function submitCreate(): Promise<void> {
   }
 }
 
+function openEdit(holder: RightsHolderSummary): void {
+  editTarget.value = holder;
+  editError.value = '';
+  unlinkTarget.value = null;
+  name.value = holder.name;
+  credit.value = holder.credit ?? '';
+  address.value = holder.address ?? '';
+  legalRepresentative.value = holder.legalRepresentative ?? '';
+  duty.value = holder.duty ?? '';
+}
+
+function closeEdit(): void {
+  editTarget.value = null;
+  editError.value = '';
+  name.value = '';
+  credit.value = '';
+  address.value = '';
+  legalRepresentative.value = '';
+  duty.value = '';
+}
+
+async function submitEdit(): Promise<void> {
+  const target = editTarget.value;
+  if (!target || saving.value) return;
+  editError.value = '';
+  if (!name.value.trim()) {
+    editError.value = '请填写权利主体名称';
+    return;
+  }
+  saving.value = true;
+  try {
+    const result = await updateCustomerRightsHolder(
+      props.customerId,
+      target.id,
+      {
+        expectedCustomerVersion: props.customerVersion,
+        name: name.value.trim(),
+        credit: optional(credit.value),
+        address: optional(address.value),
+        legalRepresentative: optional(legalRepresentative.value),
+        duty: optional(duty.value),
+      },
+    );
+    emit('version-updated', props.customerId, result.customerVersion);
+    closeEdit();
+    await load();
+  } catch (error) {
+    if (isApiError(error, 'CUSTOMER_VERSION_CONFLICT')) {
+      editError.value = '客户资料已被他人更新，请先刷新后重试';
+    } else if (isApiError(error, 'RIGHTS_HOLDER_NOT_FOUND')) {
+      editError.value = '该权利主体已不在当前客户名下，请刷新列表';
+    } else {
+      editError.value = '保存失败，请稍后重试';
+    }
+  } finally {
+    saving.value = false;
+  }
+}
+
+function askUnlink(holder: RightsHolderSummary): void {
+  unlinkTarget.value = holder;
+  unlinkError.value = '';
+  editTarget.value = null;
+}
+
+function closeUnlink(): void {
+  unlinkTarget.value = null;
+  unlinkError.value = '';
+}
+
+async function confirmUnlink(): Promise<void> {
+  const target = unlinkTarget.value;
+  if (!target || rowBusy.value) return;
+  rowBusy.value = true;
+  unlinkError.value = '';
+  try {
+    const result = await unlinkCustomerRightsHolder(
+      props.customerId,
+      target.id,
+      props.customerVersion,
+    );
+    emit('version-updated', props.customerId, result.customerVersion);
+    closeUnlink();
+    await load();
+  } catch (error) {
+    if (isApiError(error, 'CUSTOMER_VERSION_CONFLICT')) {
+      unlinkError.value = '客户资料已被他人更新，请先刷新后重试';
+    } else {
+      unlinkError.value = '解除关联失败，请稍后重试';
+    }
+  } finally {
+    rowBusy.value = false;
+  }
+}
+
 function requestRefresh(): void {
   emit('refresh-requested', props.customerId);
 }
@@ -249,12 +351,28 @@ onBeforeUnmount(() => {
             <td>{{ holder.address || '—' }}</td>
             <td>{{ holder.legalRepresentative || '—' }}</td>
             <td>{{ holder.duty || '—' }}</td>
-            <td>
+            <td class="holder-actions">
               <RouterLink
                 :to="`/customers/${customerId}/rights-holders/${holder.id}`"
               >
                 查看详情
               </RouterLink>
+              <ElButton
+                v-if="canCreate"
+                link
+                type="primary"
+                :data-test="`holder-edit-${holder.id}`"
+                @click="openEdit(holder)"
+                >编辑</ElButton
+              >
+              <ElButton
+                v-if="canCreate"
+                link
+                type="danger"
+                :data-test="`holder-unlink-${holder.id}`"
+                @click="askUnlink(holder)"
+                >解除关联</ElButton
+              >
             </td>
           </tr>
         </tbody>
@@ -273,6 +391,92 @@ onBeforeUnmount(() => {
       当前账号没有编辑此客户的权限
     </p>
 
+    <section
+      v-if="unlinkTarget"
+      class="form-section"
+      role="alertdialog"
+      aria-label="确认解除关联"
+    >
+      <p>
+        将从当前客户移除「{{
+          unlinkTarget.name
+        }}」，主体记录保留，其他客户不受影响。
+      </p>
+      <p v-if="unlinkError" class="submit-error">{{ unlinkError }}</p>
+      <div class="detail-actions">
+        <ElButton :disabled="rowBusy" @click="confirmUnlink">确认解除</ElButton>
+        <ElButton :disabled="rowBusy" @click="closeUnlink">取消</ElButton>
+      </div>
+    </section>
+
+    <section
+      v-if="editTarget"
+      class="form-section"
+      role="dialog"
+      aria-label="编辑权利主体"
+    >
+      <h3>编辑权利主体</h3>
+      <p class="field-guidance">
+        该主体为共用资料，保存后所有关联客户看到最新内容。
+      </p>
+      <label class="field-label" for="holder-edit-name"
+        >权利主体<RequiredFieldMark
+      /></label>
+      <input
+        id="holder-edit-name"
+        v-model="name"
+        name="edit-name"
+        class="text-input"
+        maxlength="200"
+      />
+      <label class="field-label field-label--spaced" for="holder-edit-credit"
+        >统一社会信用代码</label
+      >
+      <input
+        id="holder-edit-credit"
+        v-model="credit"
+        name="edit-credit"
+        class="text-input"
+        maxlength="100"
+      />
+      <label class="field-label field-label--spaced" for="holder-edit-address"
+        >住所地</label
+      >
+      <input
+        id="holder-edit-address"
+        v-model="address"
+        name="edit-address"
+        class="text-input"
+        maxlength="500"
+      />
+      <label
+        class="field-label field-label--spaced"
+        for="holder-edit-representative"
+        >法定代表人</label
+      >
+      <input
+        id="holder-edit-representative"
+        v-model="legalRepresentative"
+        name="edit-representative"
+        class="text-input"
+        maxlength="100"
+      />
+      <label class="field-label field-label--spaced" for="holder-edit-duty"
+        >职务</label
+      >
+      <input
+        id="holder-edit-duty"
+        v-model="duty"
+        name="edit-duty"
+        class="text-input"
+        maxlength="100"
+      />
+      <p v-if="editError" class="submit-error" role="alert">{{ editError }}</p>
+      <div class="detail-actions">
+        <ElButton :disabled="saving" @click="submitEdit">保存</ElButton>
+        <ElButton :disabled="saving" @click="closeEdit">取消</ElButton>
+      </div>
+    </section>
     <section
       v-if="createOpen"
       class="form-section"
