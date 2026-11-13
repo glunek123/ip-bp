@@ -368,23 +368,19 @@ export class RightsHolderService {
               });
         if (visibleHolder === null) throw this.holderNotFound();
 
-        const existing = await transaction.customerRightsHolderLink.findFirst({
+        const existing = await transaction.customerRightsHolderLink.findUnique({
           where: {
-            customerId,
-            rightsHolderId: input.rightsHolderId,
-            unlinkedAt: null,
+            customerId_rightsHolderId: {
+              customerId,
+              rightsHolderId: input.rightsHolderId,
+            },
           },
-          select: { id: true },
+          select: { id: true, unlinkedAt: true },
         });
-        if (existing !== null) throw this.alreadyLinked();
-        const previous = await transaction.customerRightsHolderLink.findFirst({
-          where: {
-            customerId,
-            rightsHolderId: input.rightsHolderId,
-            unlinkedAt: { not: null },
-          },
-          select: { id: true },
-        });
+        if (existing !== null && existing.unlinkedAt === null)
+          throw this.alreadyLinked();
+        const previous =
+          existing !== null && existing.unlinkedAt !== null ? existing : null;
 
         const updated = await transaction.customer.updateMany({
           where: {
@@ -397,15 +393,17 @@ export class RightsHolderService {
         });
         if (updated.count !== 1) {
           const concurrentlyLinked =
-            await transaction.customerRightsHolderLink.findFirst({
+            await transaction.customerRightsHolderLink.findUnique({
               where: {
-                customerId,
-                rightsHolderId: input.rightsHolderId,
-                unlinkedAt: null,
+                customerId_rightsHolderId: {
+                  customerId,
+                  rightsHolderId: input.rightsHolderId,
+                },
               },
-              select: { id: true },
+              select: { id: true, unlinkedAt: true },
             });
-          if (concurrentlyLinked !== null) throw this.alreadyLinked();
+          if (concurrentlyLinked !== null && concurrentlyLinked.unlinkedAt === null)
+            throw this.alreadyLinked();
           throw this.versionConflict();
         }
         const link =

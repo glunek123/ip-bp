@@ -617,7 +617,7 @@ describe('RightsHolderService', () => {
       expect.objectContaining({
         where: {
           departmentId: actor.departmentId,
-          links: { some: { customerId } },
+          links: { some: { customerId, unlinkedAt: null } },
         },
         select: expect.not.objectContaining({ links: true }),
       }),
@@ -644,7 +644,7 @@ describe('RightsHolderService', () => {
       where: {
         id: holderId,
         departmentId: actor.departmentId,
-        links: { some: { customerId } },
+        links: { some: { customerId, unlinkedAt: null } },
       },
       select: expect.not.objectContaining({ links: true }),
     });
@@ -664,7 +664,7 @@ describe('RightsHolderService', () => {
         where: {
           departmentId: actor.departmentId,
           links: { some: { customer: { ...readScope, deletedAt: null } } },
-          NOT: { links: { some: { customerId } } },
+          NOT: { links: { some: { customerId, unlinkedAt: null } } },
           name: { contains: '主体', mode: 'insensitive' },
         },
         skip: 10,
