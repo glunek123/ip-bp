@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-11-13T03:13:16.018Z",
+  "recordedAt": "2026-11-13T03:26:04.920Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1142,6 +1142,7 @@
     "docs/operations/uat-2026-11-13-202a8ab4.md": "ad3acaf74aede70f87688ff8d9fe1c52a10c30e55a5340b7a20865347683bc1b",
     "docs/operations/uat-2026-11-13-9aee315b.md": "cfcfcc8723a87ecf405730d83d95553211fc84fb5f7bc381857080c6ddaf83af",
     "docs/operations/uat-2026-11-13-e9a273c6.md": "986b62415b25ecd9b91b096c25e43af87ca5fee02a336eeb14bfa619ea821a66",
+    "docs/operations/uat-2026-11-13-f69ee875.md": "f5e9857773d232026d6f3947274d1b794004d9bfb74b73d94ea11f02ff027a3c",
     "docs/operations/uat-abc-2026-11-03.md": "09db57b285c1411c2ea9e9549adcd90374a35527ed55625e2842df797272ef8b",
     "docs/operations/uat-acceptance-20261110.md": "80a1c3b38efecaae6ecaa9dc27205324a1be2da1858b81b296d5ccee8cb7db33",
     "docs/operations/uat-acceptance-plan-20261110.md": "9a658c96a7e2506220816f56a9212056b88a34f3f2a0e452da73dd5c9c74bc8b",
@@ -1150,7 +1151,7 @@
     "docs/operations/uat-candidate-v6-2026-10-27.md": "b7b4c6c5857062b85d474d4b9ee8cd5b2a159541f8b84aa9f8c1703ecfc5de55",
     "docs/operations/uat-environment.md": "796175bf98b19878e4308be8e8bd20fbf38a66e1329c93ae1b753668aa975ad4",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "e86be866e9bfcd8d6de128edcc461ea6305ac9c211541bbd79bc58aa792eb8cd",
+    "docs/project-status.md": "08abe96c7320de3b0f82950c3604b188f98adbc7fb24c9a9d7d1b9ccb31f27a6",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
@@ -1456,7 +1457,7 @@
     "frontend/src/modules/cases/CaseClosurePaymentFields.spec.ts": "8e6d79321b763a37542ab1b32603aeed05cb2a75469da20a073f24d41a3cb5ca",
     "frontend/src/modules/cases/CaseClosurePaymentFields.vue": "d7da17746ab47bfc8b8b5ff4f2c0c7c02f2bd6d23a71d3fa680c7e74fa34320b",
     "frontend/src/modules/cases/CaseClosureSettlementUpdateForm.spec.ts": "4be9c3606e4b9890569a0260c00f1c647e3971d7bab48bbb09e7c17d4a9c875f",
-    "frontend/src/modules/cases/CaseClosureSettlementUpdateForm.vue": "5d481b1d08e6bb4851cb6c2cb55a61afa380b67d12c382d91bfec1bd9a698806",
+    "frontend/src/modules/cases/CaseClosureSettlementUpdateForm.vue": "fe62b6a6b6d747a7f40a9ef0df43772be07646d6c8affefd34766770e7814e6b",
     "frontend/src/modules/cases/CaseClosureSettlementUpdatePanel.spec.ts": "ad100158205f99f489e3413d0edada59b9ef71f792cc28e0ba718fa952489231",
     "frontend/src/modules/cases/CaseClosureSettlementUpdatePanel.vue": "d2f7ec7272b211ac7057fce537e96b13550c2d0d675c37a5cc741509df634ab8",
     "frontend/src/modules/cases/CaseComplaintConfirmationPanel.spec.ts": "4aefe0ea3570011e3539b2a9465204042b6bba813adad50d1536eef07dbb73f6",
