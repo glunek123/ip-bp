@@ -491,6 +491,12 @@ function submit() {
         </div>
         <p class="settle-hint">= 结案金额 × 客户公式</p>
         <p
+          v-if="customerEdit.mode === 'KEEP'"
+          class="settle-hint settle-hint--tiny"
+        >
+          当前为保留现有值，改公式不会改变金额；需要重算请选「按原规则自动计算」。
+        </p>
+        <p
           v-if="previewCustomer && previewCustomer !== source.customerAmount"
           class="settle-hint settle-hint--tiny"
         >
@@ -541,6 +547,12 @@ function submit() {
           </button>
         </div>
         <p class="settle-hint">= 结算模式 × 基础费 × 分成比例</p>
+        <p
+          v-if="lawyerEdit.mode === 'KEEP'"
+          class="settle-hint settle-hint--tiny"
+        >
+          当前为保留现有值，改条件不会改变金额；需要重算请选「按原规则自动计算」。
+        </p>
         <p
           v-if="previewLawyer && previewLawyer !== source.lawyerAmount"
           class="settle-hint settle-hint--tiny"

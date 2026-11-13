@@ -873,6 +873,14 @@ function listRouteBase() {
     ),
   );
 }
+let queryTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleQuery(): void {
+  if (queryTimer) clearTimeout(queryTimer);
+  queryTimer = setTimeout(() => {
+    queryTimer = undefined;
+    if (state.value === 'ready') applyQuery();
+  }, 350);
+}
 function applyQuery() {
   const next = { ...queryDraft.value } satisfies CaseListQuery;
   const parsed = parseCaseListQuery(next);
@@ -1754,6 +1762,7 @@ onBeforeUnmount(() => {
       <ListHeaderSearch
         v-model="queryDraft.q"
         placeholder="编号、案号、客户、权利主体、店铺、被告、法院、律师"
+        @update:model-value="scheduleQuery"
         @search="applyQuery"
       />
       <div
