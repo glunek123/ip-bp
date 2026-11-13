@@ -99,6 +99,13 @@ h2 {
   align-items: center;
   gap: 8px;
 }
+:deep(.column-row .el-button) {
+  height: auto;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+}
 :deep(.column-row .column-fixed) {
   color: var(--color-ink-muted, #6b7280);
   font-size: 12px;
