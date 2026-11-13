@@ -377,10 +377,10 @@ export class RightsHolderService {
           },
           select: { id: true, unlinkedAt: true },
         });
-        if (existing !== null && existing.unlinkedAt === null)
+        if (existing !== null && existing.unlinkedAt == null)
           throw this.alreadyLinked();
         const previous =
-          existing !== null && existing.unlinkedAt !== null ? existing : null;
+          existing !== null && existing.unlinkedAt != null ? existing : null;
 
         const updated = await transaction.customer.updateMany({
           where: {
@@ -402,7 +402,7 @@ export class RightsHolderService {
               },
               select: { id: true, unlinkedAt: true },
             });
-          if (concurrentlyLinked !== null && concurrentlyLinked.unlinkedAt === null)
+          if (concurrentlyLinked !== null && concurrentlyLinked.unlinkedAt == null)
             throw this.alreadyLinked();
           throw this.versionConflict();
         }
