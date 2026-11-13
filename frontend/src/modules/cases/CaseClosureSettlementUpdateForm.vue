@@ -705,6 +705,13 @@ function submit() {
           <option value="DECLARE_NOT_APPLICABLE">无诉讼退费（0元）</option>
         </select>
       </div>
+      <p
+        v-if="!source.refund.versionId"
+        class="settle-hint settle-hint--tiny"
+        data-test="refund-confirm-hint"
+      >
+        「确认已登记完整」需先登记并保存退费清单。
+      </p>
       <div v-if="refundKind === 'RECORD'" class="refund-editor">
         <div
           v-for="item in refundItems"
@@ -909,6 +916,11 @@ function submit() {
   margin: 0;
   font-size: 12px;
   color: var(--color-ink-subtle);
+}
+.settle-hint--tiny {
+  font-size: 11px;
+  color: var(--color-ink-subtle);
+  opacity: 0.75;
 }
 .settle-hint--error {
   color: var(--color-danger);
