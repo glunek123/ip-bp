@@ -105,6 +105,12 @@ const emit = defineEmits<{
 }>();
 const closeAt = ref(props.source.closeAt ?? '');
 const amount = ref(props.source.closeAmt ?? '');
+// 结案金额一改，结算金额必须跟着按公式重算；否则用户看到的还是旧数。
+watch(amount, (value) => {
+  if (value === (props.source.closeAmt ?? '')) return;
+  if (customerEdit.value.mode === 'KEEP') customerEdit.value.mode = 'AUTOMATIC';
+  if (lawyerEdit.value.mode === 'KEEP') lawyerEdit.value.mode = 'AUTOMATIC';
+});
 const unknown = ref(props.source.closeAmt === null);
 const paymentType = ref(props.source.paymentType);
 const paymentTypeError = ref('');
