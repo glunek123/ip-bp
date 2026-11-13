@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ColumnSettingsShell from '../cases/ColumnSettingsShell.vue';
 import {
   computed,
   nextTick,
@@ -69,6 +70,7 @@ const defaultColumns: Record<RefundColumn, boolean> = {
   status: true,
   remark: true,
 };
+const columnsOpen = ref(false);
 const columnVisibility = ref<Record<RefundColumn, boolean>>({
   ...defaultColumns,
 });
@@ -534,24 +536,47 @@ onBeforeUnmount(() => {
           >
             导出全部筛选结果
           </button>
-          <details class="refund-panel__columns">
-            <summary>列设置</summary>
-            <label v-for="column in columnDefinitions" :key="column.key"
-              ><input
-                v-model="columnVisibility[column.key]"
-                type="checkbox"
-                :disabled="column.locked"
-              />{{ column.label }}{{ column.locked ? '（固定）' : '' }}</label
-            ><button type="button" @click="restoreDefaultColumns">
-              恢复默认
-            </button>
-          </details>
+          <button
+            type="button"
+            data-test="refund-columns-open"
+            @click="columnsOpen = true"
+          >
+            列设置
+          </button>
+          <ColumnSettingsShell
+            :open="columnsOpen"
+            title="退款列表列设置"
+            hint="固定列不可关闭。"
+            @close="columnsOpen = false"
+          >
+            <div
+              v-for="column in columnDefinitions"
+              :key="column.key"
+              class="column-row"
+            >
+              <label>
+                <input
+                  v-model="columnVisibility[column.key]"
+                  type="checkbox"
+                  :disabled="column.locked"
+                />
+                {{ column.label }}
+              </label>
+              <span v-if="column.locked" class="column-fixed">固定</span>
+              <span v-else></span>
+              <span></span>
+            </div>
+            <template #actions>
+              <button type="button" @click="restoreDefaultColumns">
+                恢复默认
+              </button>
+              <button type="button" @click="columnsOpen = false">关闭</button>
+            </template>
+          </ColumnSettingsShell>
         </div>
       </div>
       <p class="refund-panel__export-note">
-        金额格式：千分位，两位小数。{{
-          unknownMessage
-        }}
+        金额格式：千分位，两位小数。{{ unknownMessage }}
         导出当前筛选下全部记录。
       </p>
       <p v-if="loading" role="status">正在读取退费记录…</p>

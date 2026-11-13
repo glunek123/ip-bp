@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import ColumnSettingsShell from './ColumnSettingsShell.vue';
 import {
   defaultCaseListPreference,
   getCaseListPreference,
@@ -194,35 +195,29 @@ onBeforeUnmount(() => {
       </ElButton>
       <span role="status" aria-live="polite">{{ status }}</span>
     </div>
-    <div
-      v-if="isOpen"
-      class="case-list-preferences__backdrop"
-      data-test="column-settings-backdrop"
-      @click.self="cancel"
+    <ColumnSettingsShell
+      :open="isOpen"
+      title="案件列设置"
+      hint="案件编号和案件进展固定显示，其他列可设置。"
+      @close="cancel"
     >
-      <section
-        class="case-list-preferences__dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label="案件列设置"
-      >
-        <h2>案件列设置</h2>
-        <p class="field-help">案件编号和案件进展固定显示，其他列可设置。</p>
-        <ol>
-          <li v-for="column in draft.order" :key="column">
-            <span>{{ columnLabels[column] }}</span>
-            <template v-if="column === 'businessNo' || column === 'stage'">
-              <span class="field-help">固定</span>
-            </template>
-            <template v-else>
-              <label>
-                <input
-                  type="checkbox"
-                  :checked="!draft.hidden.includes(column)"
-                  @change="toggleColumn(column)"
-                />
-                显示
-              </label>
+      <ol class="case-list-preferences__list">
+        <li v-for="column in draft.order" :key="column" class="column-row">
+          <span>{{ columnLabels[column] }}</span>
+          <template v-if="column === 'businessNo' || column === 'stage'">
+            <span class="column-fixed">固定</span>
+            <span></span>
+          </template>
+          <template v-else>
+            <label>
+              <input
+                type="checkbox"
+                :checked="!draft.hidden.includes(column)"
+                @change="toggleColumn(column)"
+              />
+              显示
+            </label>
+            <span class="case-list-preferences__moves">
               <ElButton
                 text
                 :disabled="draft.order.indexOf(column) === 2"
@@ -239,34 +234,34 @@ onBeforeUnmount(() => {
                 @click="move(column, 1)"
                 >下移</ElButton
               >
-            </template>
-          </li>
-          <li>
-            <span>{{ columnLabels.owner }}</span>
-            <label>
-              <input
-                type="checkbox"
-                :checked="!draft.hidden.includes('owner')"
-                @change="toggleColumn('owner')"
-              />
-              显示
-            </label>
-            <span></span><span></span>
-          </li>
-        </ol>
-        <div class="case-list-preferences__actions">
-          <ElButton text @click="resetDraft">恢复默认</ElButton>
-          <ElButton text @click="cancel">取消</ElButton>
-          <ElButton
-            type="primary"
-            :loading="saving"
-            :disabled="loading || saving"
-            @click="saveDraft"
-            >保存</ElButton
-          >
-        </div>
-      </section>
-    </div>
+            </span>
+          </template>
+        </li>
+        <li class="column-row">
+          <span>{{ columnLabels.owner }}</span>
+          <label>
+            <input
+              type="checkbox"
+              :checked="!draft.hidden.includes('owner')"
+              @change="toggleColumn('owner')"
+            />
+            显示
+          </label>
+          <span></span>
+        </li>
+      </ol>
+      <template #actions>
+        <ElButton text @click="resetDraft">恢复默认</ElButton>
+        <ElButton text @click="cancel">取消</ElButton>
+        <ElButton
+          type="primary"
+          :loading="saving"
+          :disabled="loading || saving"
+          @click="saveDraft"
+          >保存</ElButton
+        >
+      </template>
+    </ColumnSettingsShell>
   </section>
 </template>
 

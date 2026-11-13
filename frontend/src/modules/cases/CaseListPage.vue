@@ -2441,21 +2441,15 @@ onBeforeUnmount(() => {
                   </span>
                   <template v-else-if="isAmountColumn(column)">
                     <span>{{ amountLabel(item.displaySummary[column]) }}</span>
-                    <details
+                    <small
                       v-if="item.displaySummary[column].sourceId !== null"
                       class="case-list-amount-source"
+                      >{{
+                        amountSourceLabel(
+                          item.displaySummary[column].sourceType,
+                        )
+                      }}</small
                     >
-                      <summary>
-                        {{
-                          amountSourceLabel(
-                            item.displaySummary[column].sourceType,
-                          )
-                        }}
-                      </summary>
-                      <p>
-                        来源记录：{{ item.displaySummary[column].sourceId }}
-                      </p>
-                    </details>
                   </template>
                 </td>
               </tr>

@@ -132,9 +132,9 @@ describe('LitigationRefundPanel', () => {
       '退费备注',
     ]);
     expect(headers).not.toContain('来源');
-    await wrapper.get('details summary').trigger('click');
+    await wrapper.get('[data-test="refund-columns-open"]').trigger('click');
     const defendantColumn = wrapper
-      .findAll('.refund-panel__columns label')
+      .findAll('.column-row label')
       .find((label) => label.text().includes('被告'));
     if (!defendantColumn) throw new Error('defendant column setting missing');
     await defendantColumn.get('input').setValue(false);

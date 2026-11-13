@@ -14,6 +14,7 @@ import type {
 } from '../../app/list-workflow-context';
 import NotaryMatterWorkflowPanel from './NotaryMatterWorkflowPanel.vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import ColumnSettingsShell from '../cases/ColumnSettingsShell.vue';
 import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
 import {
   exportNotaryList,
@@ -2058,81 +2059,74 @@ onBeforeUnmount(() => {
         @confirm-item="confirmOpeningImportItem"
         @retry-unknown-item="retryOpeningImportConfirmation"
       />
-      <section
-        v-if="settingsOpen"
-        class="column-settings demo-card"
-        aria-label="公证事项列设置"
+      <ColumnSettingsShell
+        :open="settingsOpen"
+        title="公证事项列设置"
+        hint="始终显示：选择、操作（有可办理项时显示）、案件进展。"
+        @close="cancelDraft"
       >
-        <div class="column-settings-fixed">
-          <strong>始终显示</strong>
-          <span>选择、操作（有可办理项时显示）、案件进展</span>
-        </div>
-        <div class="column-settings-options">
-          <div
-            v-for="(column, index) in optionalColumns"
-            :key="column"
-            class="column-setting-row"
-            data-test="column-option"
-          >
-            <label>
-              <input
-                type="checkbox"
-                :checked="
-                  !draftHidden.includes(
-                    column as Exclude<
-                      NotaryListPreferenceColumn,
-                      'businessNo' | 'stage'
-                    >,
-                  )
-                "
-                :data-column-key="column"
-                @change="
-                  toggleDraftColumn(
-                    column,
-                    !($event.target as HTMLInputElement).checked,
-                  )
-                "
-              />
-              {{ columnLabels[column] }}
-            </label>
-            <ElButton
-              :disabled="saving || index === 0"
-              :aria-label="`上移${columnLabels[column]}`"
-              @click="moveDraftColumn(column, -1)"
-              >上移</ElButton
-            >
-            <ElButton
-              :disabled="saving || index === optionalColumns.length - 1"
-              :aria-label="`下移${columnLabels[column]}`"
-              @click="moveDraftColumn(column, 1)"
-              >下移</ElButton
-            >
-          </div>
-        </div>
-        <div class="column-settings-actions">
+        <div
+          v-for="(column, index) in optionalColumns"
+          :key="column"
+          class="column-row"
+          data-test="column-option"
+        >
+          <label>
+            <input
+              type="checkbox"
+              :checked="
+                !draftHidden.includes(
+                  column as Exclude<
+                    NotaryListPreferenceColumn,
+                    'businessNo' | 'stage'
+                  >,
+                )
+              "
+              :data-column-key="column"
+              @change="
+                toggleDraftColumn(
+                  column,
+                  !($event.target as HTMLInputElement).checked,
+                )
+              "
+            />
+            {{ columnLabels[column] }}
+          </label>
           <ElButton
-            data-test="save-columns"
-            :disabled="saving"
-            @click="saveDraft"
+            :disabled="saving || index === 0"
+            :aria-label="`上移${columnLabels[column]}`"
+            @click="moveDraftColumn(column, -1)"
+            >上移</ElButton
           >
-            {{ saving ? '保存中' : '保存' }}
-          </ElButton>
           <ElButton
-            data-test="cancel-columns"
-            :disabled="saving"
-            @click="cancelDraft"
+            :disabled="saving || index === optionalColumns.length - 1"
+            :aria-label="`下移${columnLabels[column]}`"
+            @click="moveDraftColumn(column, 1)"
+            >下移</ElButton
           >
-            取消
-          </ElButton>
+        </div>
+        <template #actions>
           <ElButton
             data-test="reset-columns"
             :disabled="saving"
             @click="resetDraft"
+            >恢复默认</ElButton
           >
-            恢复默认
-          </ElButton>
-        </div>
-      </section>
+          <ElButton
+            data-test="cancel-columns"
+            :disabled="saving"
+            @click="cancelDraft"
+            >取消</ElButton
+          >
+          <ElButton
+            data-test="save-columns"
+            type="primary"
+            :disabled="saving"
+            @click="saveDraft"
+            >{{ saving ? '保存中' : '保存' }}</ElButton
+          >
+        </template>
+      </ColumnSettingsShell>
       <p
         v-if="preferenceMessage || preferenceState === 'failed'"
         class="column-preference-message"

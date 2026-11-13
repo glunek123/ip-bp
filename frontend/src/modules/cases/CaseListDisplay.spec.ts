@@ -652,7 +652,6 @@ describe('authorized internal case list display', () => {
     const { wrapper, router } = await mountList();
     const row = wrapper.get('tbody tr');
     await row.get('[data-test="select-case-case-1"]').setValue(true);
-    await row.get('td[data-column="claimAmount"] summary').trigger('click');
     await wrapper.get('[data-test="select-case-case-1"]').setValue(true);
     await wrapper.get('[data-case-action="archive"]').trigger('click');
     await flushPromises();
@@ -925,7 +924,7 @@ describe('authorized internal case list display', () => {
     expect(url.searchParams.get('view')).toBe('department');
     expect(wrapper.findAll('thead th')).toHaveLength(17);
     expect(wrapper.get('tbody').text()).toContain('已归档');
-    expect(wrapper.get('tbody').text()).toContain(sourceIds.closure);
+    expect(wrapper.get('tbody').text()).not.toContain(sourceIds.closure);
     expect(wrapper.get('tbody').text()).toContain('0.00');
     expect(wrapper.get('tbody a').attributes('href')).toBe(
       '/cases/case-1?view=department&stage=ARCHIVED',
@@ -1006,7 +1005,7 @@ describe('authorized internal case list display', () => {
     ).toBe(true);
     expect(wrapper.get('tbody').text()).toContain('合成客户甲有限公司');
     expect(wrapper.get('tbody').text()).toContain('99999999999999.99');
-    expect(wrapper.get('tbody').text()).toContain(sourceIds.closure);
+    expect(wrapper.get('tbody').text()).not.toContain(sourceIds.closure);
   });
 
   it('rejects a known amount with missing money through the real API instead of displaying unrecorded', async () => {
@@ -1289,14 +1288,14 @@ describe('authorized internal case list display', () => {
     const { wrapper } = await mountList();
     const cells = wrapper.findAll('tbody td');
     expect(cells[14]!.get('span').text()).toBe('99999999999999.99');
-    expect(cells[14]!.get('summary').text()).toBe('诉状确认');
-    expect(cells[14]!.get('p').text()).toContain(sourceIds.confirmation);
+    expect(cells[14]!.get('.case-list-amount-source').text()).toBe('诉状确认');
+    expect(cells[14]!.text()).not.toContain(sourceIds.confirmation);
     expect(cells[15]!.get('span').text()).toBe('待定');
-    expect(cells[15]!.get('summary').text()).toBe('一审判决');
-    expect(cells[15]!.get('p').text()).toContain(sourceIds.judgment);
+    expect(cells[15]!.get('.case-list-amount-source').text()).toBe('一审判决');
+    expect(cells[15]!.text()).not.toContain(sourceIds.judgment);
     expect(cells[16]!.get('span').text()).toBe('0.00');
-    expect(cells[16]!.get('summary').text()).toBe('结案登记');
-    expect(cells[16]!.get('p').text()).toContain(sourceIds.closure);
+    expect(cells[16]!.get('.case-list-amount-source').text()).toBe('结案登记');
+    expect(cells[16]!.text()).not.toContain(sourceIds.closure);
   });
 
   it('shows unrecorded optional fields and amounts without inventing identifiers or money', async () => {
@@ -1384,10 +1383,10 @@ describe('authorized internal case list display', () => {
     const cells = wrapper.findAll('tbody td');
     expect(cells[14]!.text()).toContain('已提交诉状');
     expect(cells[15]!.get('span').text()).toBe('80.00');
-    expect(cells[15]!.get('summary').text()).toBe('二审结果');
-    expect(cells[15]!.text()).toContain(sourceIds.changed);
+    expect(cells[15]!.get('.case-list-amount-source').text()).toBe('二审结果');
+    expect(cells[15]!.text()).not.toContain(sourceIds.changed);
     expect(cells[16]!.get('span').text()).toBe('待定');
-    expect(cells[16]!.text()).toContain(sourceIds.correction);
+    expect(cells[16]!.text()).not.toContain(sourceIds.correction);
   });
 
   it('renders equal customer and rights-holder names in two distinct columns', async () => {
