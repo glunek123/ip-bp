@@ -22,6 +22,10 @@ const register = vi.hoisted(() => vi.fn());
 vi.mock('../../api/settlement-actual-registration', () => ({
   registerCaseSettlementActual: register,
 }));
+const settlementRead = vi.hoisted(() => vi.fn());
+vi.mock('../../api/settlements', () => ({
+  getCaseSettlement: settlementRead,
+}));
 vi.mock('../../api/case-closure-commands', () => ({
   updateCaseClosureSettlement: save,
   updateClosureAmounts: saveAmounts,
@@ -86,6 +90,7 @@ beforeEach(() => {
   register.mockReset();
   save.mockReset();
   saveAmounts.mockReset();
+  settlementRead.mockResolvedValue({ termsVersion: 16 });
   upload.mockReset();
   read.mockReset();
   read.mockResolvedValue(fixture());
@@ -319,7 +324,7 @@ describe('settlement update panel safety', () => {
       if (!mixed)
         expect(saveAmounts.mock.calls[0]?.[1]).toMatchObject({
           expectedClosureVersionId: closureId,
-          expectedTermsVersion: 2,
+          expectedTermsVersion: 16,
           expectedAssessmentVersionId: 'assessment-version',
           customerAmount: { mode: 'MANUAL', amount: '34.56' },
           lawyerAmount: { mode: 'KEEP' },
@@ -1568,7 +1573,7 @@ describe('settlement update panel safety', () => {
       },
       settlement: {
         expectedAssessmentVersionId: 'assessment-version',
-        expectedTermsVersion: 2,
+        expectedTermsVersion: 16,
         declaration: 'APPLICABLE',
         customerAmount: { mode: 'MANUAL', amount: '1234567890123456.45' },
         lawyerAmount: { mode: 'KEEP' },
