@@ -392,7 +392,9 @@ function submit() {
     ...(props.source.settlement
       ? {
           settlement: {
-            ...props.source.settlement,
+            expectedTermsVersion: props.source.settlement.expectedTermsVersion,
+            expectedAssessmentVersionId:
+              props.source.settlement.expectedAssessmentVersionId,
             declaration: declaration.value,
             customerAmount: {
               mode: effectiveMode('customer'),
