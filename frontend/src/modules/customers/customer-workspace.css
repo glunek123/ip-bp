@@ -862,3 +862,69 @@
     white-space: nowrap;
   }
 }
+
+/* 联系人表格化 */
+.page-view.customer-workspace .contact-table {
+  margin-top: 12px;
+}
+.page-view.customer-workspace .contact-table__head {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1.2fr) minmax(0, 1.4fr) 120px 110px;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--color-hairline);
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.page-view.customer-workspace .contact-table__head span:first-child {
+  grid-column: 1 / span 2;
+}
+.page-view.customer-workspace .customer-contact-list > li {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1.2fr) minmax(0, 1.4fr) 120px 110px;
+  align-items: center;
+  gap: 10px;
+}
+.page-view.customer-workspace .contact-avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-brand, #635bff) 12%, transparent);
+  color: var(--color-brand, #635bff);
+  font-size: 13px;
+  font-weight: 600;
+}
+.page-view.customer-workspace .customer-contact-list .contact-name {
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+}
+.page-view.customer-workspace .contact-primary {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-brand, #635bff) 10%, transparent);
+  color: var(--color-brand, #635bff);
+  font-size: 11px;
+  font-weight: 500;
+}
+.page-view.customer-workspace .contact-meta,
+.page-view.customer-workspace .contact-time {
+  overflow: hidden;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.page-view.customer-workspace .contact-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}

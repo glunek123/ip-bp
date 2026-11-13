@@ -684,32 +684,62 @@ onBeforeUnmount(() => {
     <p v-else-if="!contacts.length && !error">
       暂无{{ status === 'ACTIVE' ? '活动' : '已结束' }}联系人
     </p>
-    <ul class="customer-contact-list">
-      <li
-        v-for="contact in contacts"
-        :key="contact.id"
-        :data-test="`contact-${contact.id}`"
-      >
-        <ElButton native-type="button" @click="loadVersions(contact)">
-          {{ contact.name }} · {{ contact.phone || contact.email
-          }}<span v-if="contact.isPrimary">（主要）</span></ElButton
-        ><small
-          >{{ contact.origin === 'LEGACY_BACKFILL' ? '系统记录时间：' : ''
-          }}{{ new Date(contact.createdAt).toLocaleDateString('zh-CN') }}</small
-        ><ElButton
-          v-if="canWrite && !contact.endedAt"
-          :data-test="`contact-edit-${contact.id}`"
-          @click="resetForm(contact)"
-          >编辑</ElButton
-        ><ElButton
-          v-if="canWrite && !contact.endedAt"
-          :data-test="`contact-delete-${contact.id}`"
-          :disabled="saving || Boolean(frozen)"
-          @click="end(contact)"
-          >删除</ElButton
+    <div v-if="contacts.length" class="contact-table">
+      <div class="contact-table__head" aria-hidden="true">
+        <span>联系人</span>
+        <span>联系方式</span>
+        <span>登记时间</span>
+        <span>操作</span>
+      </div>
+      <ul class="customer-contact-list">
+        <li
+          v-for="contact in contacts"
+          :key="contact.id"
+          :data-test="`contact-${contact.id}`"
         >
-      </li>
-    </ul>
+          <span class="contact-avatar" aria-hidden="true">{{
+            contact.name.slice(0, 1)
+          }}</span>
+          <ElButton
+            class="contact-name"
+            native-type="button"
+            @click="loadVersions(contact)"
+            >{{ contact.name
+            }}<span v-if="contact.isPrimary" class="contact-primary"
+              >主要</span
+            ></ElButton
+          >
+          <small class="contact-meta">{{
+            contact.phone || contact.email || '未填写联系方式'
+          }}</small>
+          <small class="contact-time"
+            >{{ contact.origin === 'LEGACY_BACKFILL' ? '系统记录：' : ''
+            }}{{
+              new Date(contact.createdAt).toLocaleDateString('zh-CN')
+            }}</small
+          >
+          <div class="contact-actions">
+            <ElButton
+              v-if="canWrite && !contact.endedAt"
+              link
+              type="primary"
+              :data-test="`contact-edit-${contact.id}`"
+              @click="resetForm(contact)"
+              >编辑</ElButton
+            >
+            <ElButton
+              v-if="canWrite && !contact.endedAt"
+              link
+              type="danger"
+              :data-test="`contact-delete-${contact.id}`"
+              :disabled="saving || Boolean(frozen)"
+              @click="end(contact)"
+              >删除</ElButton
+            >
+          </div>
+        </li>
+      </ul>
+    </div>
     <div v-if="total > pageSize">
       <ElButton :disabled="page <= 1" @click="page--">上一页</ElButton
       ><span>{{ page }} / {{ Math.ceil(total / pageSize) }}</span
