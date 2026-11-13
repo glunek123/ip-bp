@@ -668,6 +668,37 @@ function termLabel(fields: RightAssetFields): string {
 function statusLabel(status: RightAssetStatus | null): string {
   return status ? statusLabels[status] : '未登记';
 }
+const activeAssets = computed(() =>
+  items.value.filter((asset) => !asset.withdrawn),
+);
+const allValid = computed(
+  () =>
+    activeAssets.value.length > 0 &&
+    activeAssets.value.every((asset) => asset.fields.status === 'VALID'),
+);
+const nearestExpiry = computed(() => {
+  const dated = activeAssets.value
+    .filter((asset) => asset.fields.status === 'VALID' && asset.fields.validTo)
+    .map((asset) => ({
+      asset,
+      time: Date.parse(String(asset.fields.validTo)),
+    }))
+    .filter((entry) => Number.isFinite(entry.time))
+    .sort((left, right) => left.time - right.time);
+  return dated[0] ?? null;
+});
+const nearestExpiryText = computed(() => {
+  const entry = nearestExpiry.value;
+  if (!entry) return '暂无到期日期登记。';
+  const years = Math.floor(
+    (entry.time - Date.now()) / (365.25 * 24 * 60 * 60 * 1000),
+  );
+  const head = `最近到期：${typeLabels[entry.asset.fields.type]} ${
+    entry.asset.fields.number || entry.asset.fields.name
+  }（${entry.asset.fields.validTo}）`;
+  if (years >= 1) return `${head}，距到期约 ${years} 年，暂无需续展。`;
+  return `${head}，已进入续展关注期，请尽快核对。`;
+});
 function ownerLabel(fields: RightAssetFields): string {
   return (
     fields.ownerText?.trim() ||
@@ -1472,6 +1503,21 @@ onBeforeUnmount(() => {
       <ElButton native-type="button" @click="load()">重试读取</ElButton>
     </div>
     <template v-else>
+      <div
+        v-if="activeAssets.length"
+        class="asset-summary"
+        data-test="right-assets-summary"
+      >
+        <span class="asset-summary__icon" aria-hidden="true">§</span>
+        <div>
+          <p class="asset-summary__title">
+            {{ activeAssets.length }} 项权利资产：{{
+              allValid ? '全部有效' : '部分待核对'
+            }}
+          </p>
+          <p class="asset-summary__meta">{{ nearestExpiryText }}</p>
+        </div>
+      </div>
       <nav aria-label="权利资产视图">
         <ElButton
           native-type="button"
@@ -1506,9 +1552,11 @@ onBeforeUnmount(() => {
           <tbody>
             <tr v-for="asset in items" :key="asset.assetId">
               <td>
-                <span class="status-chip">{{
-                  typeLabels[asset.fields.type]
-                }}</span>
+                <span
+                  class="status-chip asset-type"
+                  :class="`asset-type--${asset.fields.type.toLowerCase()}`"
+                  >{{ typeLabels[asset.fields.type] }}</span
+                >
               </td>
               <td>
                 <ElButton
@@ -2170,5 +2218,65 @@ dt {
 }
 dd {
   margin: 0 0 var(--s-2);
+}
+
+.asset-summary {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 12px 0;
+  padding: 14px 16px;
+  border: 1px solid
+    color-mix(in srgb, var(--color-brand, #635bff) 18%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-brand, #635bff) 6%, transparent);
+}
+.asset-summary__icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-brand, #635bff) 14%, transparent);
+  color: var(--color-brand, #635bff);
+  font-weight: 700;
+}
+.asset-summary__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.asset-summary__meta {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+.asset-type--trademark {
+  color: #6b4eff;
+  background: rgba(107, 78, 255, 0.1);
+}
+.asset-type--patent {
+  color: #1f6feb;
+  background: rgba(31, 111, 235, 0.1);
+}
+.asset-type--copyright {
+  color: #6b7280;
+  background: rgba(107, 114, 128, 0.12);
+}
+.customer-asset-table th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+  background: var(--color-surface-2);
+  padding: 9px 12px;
+  white-space: nowrap;
+}
+.customer-asset-table td {
+  padding: 10px 12px;
+  font-size: 13px;
+  vertical-align: middle;
+}
+.customer-asset-table tbody tr:hover {
+  background: var(--color-surface-2);
 }
 </style>
