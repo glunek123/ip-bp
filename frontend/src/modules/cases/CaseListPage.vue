@@ -229,6 +229,7 @@ type ComplaintBatchQueue = {
   entries: ComplaintBatchEntry[];
 };
 const complaintBatchQueue = ref<ComplaintBatchQueue>();
+const complaintBatchDismissed = ref(false);
 const batchMailAt = ref(todayShanghai());
 const batchMailRemark = ref('');
 const complaintBatchStorageError = ref('');
@@ -297,6 +298,7 @@ function restoreComplaintBatchQueue() {
       });
     }
     if (!entries.length) throw new Error('Empty complaint batch queue');
+    complaintBatchDismissed.value = false;
     complaintBatchQueue.value = {
       version: 1,
       actor: identity.value,
@@ -344,12 +346,13 @@ const complaintBatchAvailable = computed(
 );
 const complaintBatchQueueVisible = computed(
   () =>
-    !!complaintBatchStorageError.value ||
-    (!!complaintBatchQueue.value &&
-      (complaintBatchAvailable.value ||
-        complaintBatchQueue.value.entries.some(
-          (entry) => entry.status !== 'succeeded',
-        ))),
+    !complaintBatchDismissed.value &&
+    (!!complaintBatchStorageError.value ||
+      (!!complaintBatchQueue.value &&
+        (complaintBatchAvailable.value ||
+          complaintBatchQueue.value.entries.some(
+            (entry) => entry.status !== 'succeeded',
+          )))),
 );
 type CaseListBatchPanel = 'assignment' | 'filing' | 'complaint-export';
 const activeBatchPanel = ref<CaseListBatchPanel | null>(null);
@@ -2071,7 +2074,14 @@ onBeforeUnmount(() => {
         aria-label="批量诉状逐案队列"
         data-test="complaint-batch-queue"
       >
-        <h2>批量诉状逐案办理</h2>
+        <div class="complaint-batch-queue__head">
+          <h2>批量诉状逐案办理</h2>
+          <ElButton
+            data-test="close-complaint-batch"
+            @click="complaintBatchDismissed = true"
+            >关闭</ElButton
+          >
+        </div>
         <p v-if="complaintBatchStorageError" role="alert">
           {{ complaintBatchStorageError }}
         </p>
@@ -2681,6 +2691,16 @@ onBeforeUnmount(() => {
 .complaint-batch-queue {
   padding: var(--s-3);
   text-align: left;
+}
+.complaint-batch-queue__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+}
+.complaint-batch-queue__head h2 {
+  margin: 0;
 }
 .complaint-batch-queue h2 {
   margin: 0 0 var(--s-2);
