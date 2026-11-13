@@ -92,7 +92,6 @@ const proofTarget = computed(
 );
 const preparation = shallowRef<Preparation | null>(null);
 const restoredPending = ref(false);
-const confirmedUnknownAmount = ref(false);
 const actualOpen = ref(false);
 const actualRequestState = ref<'idle' | 'submitting' | 'unknown'>('idle');
 const actualSession = shallowRef<ListWorkflowSession>();
@@ -254,7 +253,6 @@ watch(
         outer?.deny();
       },
     };
-    confirmedUnknownAmount.value = false;
     error.value = '';
     pending.value = commands.get(key()) ?? null;
     preparation.value = preparations.get(key()) ?? null;
@@ -445,13 +443,7 @@ const source = computed<SettlementUpdateSource | null>(() => {
   // 未确认的历史付款类型交给表单选择，不再单独挡一层
   const paymentType =
     w?.closure.paymentType === 'UNKNOWN' ? '' : w?.closure.paymentType;
-  if (
-    !w ||
-    w.stage !== 'WAITING_ARCHIVE' ||
-    !w.closure.versionId ||
-    (w.closure.amountState === 'UNKNOWN' && !confirmedUnknownAmount.value)
-  )
-    return null;
+  if (!w || w.stage !== 'WAITING_ARCHIVE' || !w.closure.versionId) return null;
   return {
     expectedClosureVersionId: w.closure.versionId,
     closeAt: w.closure.closeOn,
@@ -817,7 +809,6 @@ async function abandonPreparation() {
   preparations.delete(identity);
   preparation.value = null;
   workspace.value = null;
-  confirmedUnknownAmount.value = false;
   busy.value = true;
   error.value =
     '已放弃尚未提交的原草稿。已上传候选不会自动关联案件，未删除服务端文件或历史。';
@@ -860,29 +851,6 @@ async function abandonPreparation() {
       </p>
     </section>
 
-    <fieldset
-      v-if="
-        workspace?.stage === 'WAITING_ARCHIVE' &&
-        workspace.closure.versionId &&
-        !pending
-      "
-      :disabled="
-        busy ||
-        actualBlocked ||
-        !!preparation ||
-        proofRefreshFailed ||
-        proofSourceChanged
-      "
-    >
-      <label v-if="workspace.closure.amountState === 'UNKNOWN'">
-        <input
-          v-model="confirmedUnknownAmount"
-          type="checkbox"
-          aria-label="确认历史金额待确认"
-        />
-        历史结案金额未确认，明确保留为待确认；下方可取消金额待确认并输入金额（含明确零金额）。
-      </label>
-    </fieldset>
     <p v-if="pending?.status === 'confirmed'" role="status">
       结案更新保存成功。
     </p>

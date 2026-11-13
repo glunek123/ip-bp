@@ -1394,7 +1394,6 @@ describe('settlement update panel safety', () => {
       });
       save.mockResolvedValue({ id: caseId });
       const wrapper = await setup(`unknown-${amount}`);
-      await wrapper.get('[aria-label="确认历史金额待确认"]').setValue(true);
       expect(wrapper.findComponent(Form).exists()).toBe(true);
       expect(wrapper.get('[data-test="payment-type"]').element).toHaveProperty(
         'value',
