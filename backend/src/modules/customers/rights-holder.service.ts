@@ -377,6 +377,14 @@ export class RightsHolderService {
           select: { id: true },
         });
         if (existing !== null) throw this.alreadyLinked();
+        const previous = await transaction.customerRightsHolderLink.findFirst({
+          where: {
+            customerId,
+            rightsHolderId: input.rightsHolderId,
+            unlinkedAt: { not: null },
+          },
+          select: { id: true },
+        });
 
         const updated = await transaction.customer.updateMany({
           where: {
@@ -400,13 +408,19 @@ export class RightsHolderService {
           if (concurrentlyLinked !== null) throw this.alreadyLinked();
           throw this.versionConflict();
         }
-        const link = await transaction.customerRightsHolderLink.create({
-          data: {
-            customerId,
-            rightsHolderId: input.rightsHolderId,
-            departmentId: actor.departmentId,
-          },
-        });
+        const link =
+          previous === null
+            ? await transaction.customerRightsHolderLink.create({
+                data: {
+                  customerId,
+                  rightsHolderId: input.rightsHolderId,
+                  departmentId: actor.departmentId,
+                },
+              })
+            : await transaction.customerRightsHolderLink.update({
+                where: { id: previous.id },
+                data: { unlinkedAt: null },
+              });
         const customerVersion = input.expectedCustomerVersion + 1;
         await transaction.auditEvent.create({
           data: {
