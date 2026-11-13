@@ -477,7 +477,7 @@ function submit() {
         <span>客户结算金额（按结算条件自动计算）</span>
         <div class="settle-inline">
           <input
-            :value="source.customerAmount ?? previewCustomer ?? '待确认'"
+            :value="previewCustomer ?? source.customerAmount ?? '待确认'"
             readonly
           />
           <button
@@ -491,7 +491,7 @@ function submit() {
         </div>
         <p class="settle-hint">= 结案金额 × 客户公式</p>
         <p
-          v-if="!source.customerAmount && previewCustomer"
+          v-if="previewCustomer && previewCustomer !== source.customerAmount"
           class="settle-hint settle-hint--tiny"
         >
           条件已保存，按新条件算出
@@ -528,7 +528,7 @@ function submit() {
         <span>律师结算金额（按律师协议自动计算）</span>
         <div class="settle-inline">
           <input
-            :value="source.lawyerAmount ?? previewLawyer ?? '待确认'"
+            :value="previewLawyer ?? source.lawyerAmount ?? '待确认'"
             readonly
           />
           <button
@@ -542,7 +542,7 @@ function submit() {
         </div>
         <p class="settle-hint">= 结算模式 × 基础费 × 分成比例</p>
         <p
-          v-if="!source.lawyerAmount && previewLawyer"
+          v-if="previewLawyer && previewLawyer !== source.lawyerAmount"
           class="settle-hint settle-hint--tiny"
         >
           条件已保存，按新条件算出 {{ previewLawyer }} 元；保存结案更新后生效。
