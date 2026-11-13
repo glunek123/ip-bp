@@ -498,7 +498,9 @@ function rejectionMessage(cause: unknown): string {
     return '结案金额仍待确认，暂不能声明涉及结算；请先确认结案金额，或选择“明确不涉及”。';
   if (code === 'SETTLEMENT_SOURCE_INVALID')
     return '结案资料已变化，请关闭后重新读取工作区再保存。';
-  return '保存被拒绝，请修正资料后重提；权限或版本冲突时请关闭后重新读取工作区。';
+  const detail =
+    cause instanceof Error && cause.message ? `原因：${cause.message}` : '';
+  return `保存被拒绝，请修正资料后重提${detail ? `；${detail}` : '；权限或版本冲突时请关闭后重新读取工作区。'}`;
 }
 async function send(admitted = false) {
   const command = pending.value;
