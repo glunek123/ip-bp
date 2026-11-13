@@ -1394,16 +1394,17 @@ describe('settlement update panel safety', () => {
       });
       save.mockResolvedValue({ id: caseId });
       const wrapper = await setup(`unknown-${amount}`);
-      expect(wrapper.findComponent(Form).exists()).toBe(false);
-      expect(
-        wrapper.get('[aria-label="确认历史付款类型"]').element,
-      ).toHaveProperty('value', '');
       await wrapper.get('[aria-label="确认历史金额待确认"]').setValue(true);
-      expect(wrapper.findComponent(Form).exists()).toBe(false);
+      expect(wrapper.findComponent(Form).exists()).toBe(true);
+      expect(wrapper.get('[data-test="payment-type"]').element).toHaveProperty(
+        'value',
+        '',
+      );
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
       expect(save).not.toHaveBeenCalled();
-      await wrapper
-        .get('[aria-label="确认历史付款类型"]')
-        .setValue('INSTALLMENTS');
+      expect(wrapper.text()).toContain('请选择付款类型');
+      await wrapper.get('[data-test="payment-type"]').setValue('INSTALLMENTS');
       expect(wrapper.get('[data-test="unknown"]').element).toHaveProperty(
         'checked',
         true,

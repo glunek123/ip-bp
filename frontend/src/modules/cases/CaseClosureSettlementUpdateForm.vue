@@ -47,7 +47,7 @@ export type SettlementUpdateSource = {
   expectedClosureVersionId: string;
   closeAt: string | null;
   closeAmt: string | null;
-  paymentType: ClosurePaymentType;
+  paymentType: ClosurePaymentType | '';
   documents: { id: string; name: string }[];
   payments: (ClosurePaymentRecord & {
     versionId: string;
@@ -286,6 +286,10 @@ function submit() {
     props.source.documents.length + documents.value.length > 10
   ) {
     error.value = '结案文书最多保留 10 份，请移除多选的新文书。';
+    return;
+  }
+  if (!paymentType.value) {
+    error.value = '请选择付款类型，再保存结案更新。';
     return;
   }
   if (
@@ -548,6 +552,7 @@ function submit() {
           data-test="payment-type"
           @change="changePaymentType($event)"
         >
+          <option value="">请选择付款类型</option>
           <option value="ONE_TIME">一次性付款</option>
           <option value="INSTALLMENTS">分期付款</option>
         </select>
@@ -601,7 +606,7 @@ function submit() {
     <section class="settle-block">
       <p class="settle-block__title">付款记录（可多笔，自动汇总已付款）</p>
       <CaseClosurePaymentFields
-        :payment-type="paymentType"
+        :payment-type="paymentType || 'INSTALLMENTS'"
         :records="records"
         :saved="savedPayments"
         :show-type="false"

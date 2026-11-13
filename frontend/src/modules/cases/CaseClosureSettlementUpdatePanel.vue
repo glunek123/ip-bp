@@ -92,7 +92,6 @@ const proofTarget = computed(
 );
 const preparation = shallowRef<Preparation | null>(null);
 const restoredPending = ref(false);
-const confirmedPaymentType = ref<'ONE_TIME' | 'INSTALLMENTS' | ''>('');
 const confirmedUnknownAmount = ref(false);
 const actualOpen = ref(false);
 const actualRequestState = ref<'idle' | 'submitting' | 'unknown'>('idle');
@@ -255,7 +254,6 @@ watch(
         outer?.deny();
       },
     };
-    confirmedPaymentType.value = '';
     confirmedUnknownAmount.value = false;
     error.value = '';
     pending.value = commands.get(key()) ?? null;
@@ -444,15 +442,13 @@ watch(
 );
 const source = computed<SettlementUpdateSource | null>(() => {
   const w = workspace.value;
+  // 未确认的历史付款类型交给表单选择，不再单独挡一层
   const paymentType =
-    w?.closure.paymentType === 'UNKNOWN'
-      ? confirmedPaymentType.value
-      : w?.closure.paymentType;
+    w?.closure.paymentType === 'UNKNOWN' ? '' : w?.closure.paymentType;
   if (
     !w ||
     w.stage !== 'WAITING_ARCHIVE' ||
     !w.closure.versionId ||
-    !paymentType ||
     (w.closure.amountState === 'UNKNOWN' && !confirmedUnknownAmount.value)
   )
     return null;
@@ -460,7 +456,7 @@ const source = computed<SettlementUpdateSource | null>(() => {
     expectedClosureVersionId: w.closure.versionId,
     closeAt: w.closure.closeOn,
     closeAmt: w.closure.amountState === 'UNKNOWN' ? null : w.closure.amount,
-    paymentType,
+    paymentType: paymentType ?? '',
     documents: w.documents.map((d) => ({
       id: d.contentVersionId,
       name: `历史文书 ${d.contentVersionId}`,
@@ -821,7 +817,6 @@ async function abandonPreparation() {
   preparations.delete(identity);
   preparation.value = null;
   workspace.value = null;
-  confirmedPaymentType.value = '';
   confirmedUnknownAmount.value = false;
   busy.value = true;
   error.value =
@@ -879,18 +874,6 @@ async function abandonPreparation() {
         proofSourceChanged
       "
     >
-      <label
-        v-if="
-          workspace.closure.paymentType === 'UNKNOWN' && !confirmedPaymentType
-        "
-      >
-        付款类型
-        <select v-model="confirmedPaymentType" aria-label="确认历史付款类型">
-          <option value="">请选择付款类型</option>
-          <option value="ONE_TIME">一次性付款</option>
-          <option value="INSTALLMENTS">分期付款</option>
-        </select>
-      </label>
       <label v-if="workspace.closure.amountState === 'UNKNOWN'">
         <input
           v-model="confirmedUnknownAmount"
