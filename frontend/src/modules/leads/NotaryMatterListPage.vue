@@ -68,7 +68,6 @@ import {
   type PendingOpeningImportUpload,
 } from './notary-opening-import-recovery';
 import { labelLeadPlatform } from './lead-options';
-import type { CaseStage } from '../../api/cases';
 import { isListRowClick, listReturnPath } from '../../app/list-row-navigation';
 
 const stageLabels: Record<NotaryListStage, string> = {
@@ -1054,24 +1053,6 @@ const hasMatterActions = computed(() =>
   items.value.some((matter) => matterActions(matter).length > 0),
 );
 const actionColumnWidth = computed(() => (hasMatterActions.value ? 88 : 0));
-const caseStageLabels: Record<CaseStage, string> = {
-  PENDING_MATCH: '待匹配',
-  WAITING_COMPLAINT: '待写诉状',
-  WAITING_COMPLAINT_CONFIRMATION: '诉状待确认',
-  WAITING_COMPLAINT_STAMP: '诉状待盖章',
-  WAITING_FILING: '待提交立案',
-  WAITING_FORMAL_ACCEPTANCE: '待正式立案',
-  WAITING_HEARING: '待开庭',
-  WAITING_JUDGMENT: '待判决',
-  SECOND_INSTANCE: '二审',
-  WAITING_EXECUTION_DOCUMENTS: '待写执行材料',
-  WAITING_EXECUTION_CONFIRMATION: '执行材料待确认',
-  WAITING_EXECUTION_STAMP: '执行材料待盖章',
-  WAITING_EXECUTION_FILING: '待申请执行',
-  EXECUTING: '强制执行中',
-  WAITING_ARCHIVE: '待归档',
-  ARCHIVED: '已归档',
-};
 
 function columnWidth(column: NotaryListPreferenceColumn): number {
   if (column === 'stage' || column === 'senderPhone') return 140;
@@ -2314,17 +2295,6 @@ onBeforeUnmount(() => {
                   <template v-if="column === 'stage'">
                     <div class="notary-stage">
                       <span class="pill">{{ stageLabels[matter.stage] }}</span>
-                      <RouterLink
-                        v-if="matter.linkedCase"
-                        class="notary-case-link"
-                        data-test="linked-case"
-                        :title="`已流转诉讼 · ${caseStageLabels[matter.linkedCase.stage]}`"
-                        :to="`/cases/${matter.linkedCase.id}`"
-                        >已流转诉讼 ·
-                        {{
-                          caseStageLabels[matter.linkedCase.stage]
-                        }}</RouterLink
-                      >
                     </div>
                   </template>
                   <template v-else-if="column === 'sourceLead'">

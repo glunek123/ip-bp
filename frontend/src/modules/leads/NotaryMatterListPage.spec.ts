@@ -1081,12 +1081,7 @@ describe('NotaryMatterListPage', () => {
         '3 张 · 查看',
       );
       expect(wrapper.text()).not.toContain('OCR');
-      expect(wrapper.get('[data-test="linked-case"]').attributes('href')).toBe(
-        '/cases/case-1',
-      );
-      expect(wrapper.get('[data-test="linked-case"]').text()).toContain(
-        '已流转诉讼 · ' + label,
-      );
+      expect(wrapper.find('[data-test="linked-case"]').exists()).toBe(false);
       expect(wrapper.get('tbody [data-column="certificateNo"]').text()).toBe(
         '（2026）真实公证字第001号',
       );

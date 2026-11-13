@@ -2645,15 +2645,22 @@ onBeforeUnmount(() => {
   background: var(--el-bg-color);
   box-shadow: var(--el-box-shadow-light);
 }
+.case-list-filters {
+  max-width: 980px;
+}
 .case-list-filters__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--s-2) var(--s-3);
   margin: var(--s-3) 0;
 }
 .case-list-filters__grid label {
   display: grid;
-  gap: var(--s-1);
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--color-ink-muted);
+  font-size: 13px;
 }
 .case-list-filters__grid input {
   min-width: 0;
@@ -2662,6 +2669,12 @@ onBeforeUnmount(() => {
 }
 .case-list-filters .operation-bar {
   flex-wrap: wrap;
+  justify-content: flex-end;
+}
+@media (max-width: 900px) {
+  .case-list-filters__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .complaint-batch-queue ul {
   display: grid;
