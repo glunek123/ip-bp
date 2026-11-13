@@ -840,7 +840,6 @@ async function abandonPreparation() {
 </script>
 <template>
   <section>
-    <p>保存只更新结算资料，案件保持待归档。</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="proofSourceChanged" role="alert">
       案件或付款记录已变化。当前填写内容仍保留，请先记录所需内容，再关闭并重新打开，核对最新资料后提交。

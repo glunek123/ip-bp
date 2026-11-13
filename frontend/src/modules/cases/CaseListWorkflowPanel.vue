@@ -1723,7 +1723,17 @@ async function complaint() {
           action === 'settlement-update'
         "
       >
+        <!-- 一张平铺表单：结案日期/金额、结算金额、付款记录、退费一次展示 -->
+        <CaseClosureSettlementUpdatePanel
+          v-if="item.canUpdateClosureSettlement"
+          :actor-key="actorKey"
+          :case-id="item.id"
+          :can-correct-closure="item.canCorrectClosure"
+          :session="session"
+          @cancel="emit('cancel')"
+        />
         <CaseClosurePanel
+          v-else
           :item="item"
           :context-key="actorKey"
           :edit-only="action === 'correct-closure'"
@@ -1737,17 +1747,6 @@ async function complaint() {
           :download-closure-file="download"
           @refresh="refresh"
         />
-        <!-- 第二段：已登记结案资料的案件，同一张卡内继续编辑结算与回款 -->
-        <template v-if="item.canUpdateClosureSettlement">
-          <h3 class="form-section-title">结算与回款</h3>
-          <CaseClosureSettlementUpdatePanel
-            :actor-key="actorKey"
-            :case-id="item.id"
-            :can-correct-closure="item.canCorrectClosure"
-            :session="session"
-            @cancel="emit('cancel')"
-          />
-        </template>
       </template>
       <CaseArchivePanel
         v-else-if="action === 'archive' || action === 'correct-archive'"
