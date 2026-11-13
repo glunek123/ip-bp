@@ -266,17 +266,6 @@ function addDocuments(event: globalThis.Event) {
 // 声明"涉及结算"时，数据库要求客户与律师应结金额都有值；
 // 若保留现有值但现值未知（或手工金额为空），前端应当场拦住，
 // 而不是把请求发出去换一个 500。
-function effectiveMode(side: 'customer' | 'lawyer'): AmountEdit['mode'] {
-  const edit = side === 'customer' ? customerEdit.value : lawyerEdit.value;
-  if (edit.mode !== 'KEEP') return edit.mode;
-  const current =
-    side === 'customer'
-      ? props.source.customerAmount
-      : props.source.lawyerAmount;
-  return current == null && declaration.value === 'APPLICABLE'
-    ? 'AUTOMATIC'
-    : edit.mode;
-}
 const settlementAmountMissing = computed(() => {
   if (declaration.value !== 'APPLICABLE') return false;
   // 只在"本次改变了声明"时拦截：改付款、改单侧金额走的是别的命令，
@@ -284,9 +273,13 @@ const settlementAmountMissing = computed(() => {
   if (!settlementChanged.value) return false;
   return (['customer', 'lawyer'] as const).some((side) => {
     const edit = side === 'customer' ? customerEdit.value : lawyerEdit.value;
-    // 保留现有值但现值未知时，改为按条件自动计算，不再拦住保存。
-    if (edit.mode === 'KEEP') return false;
-    return edit.mode === 'MANUAL' && !edit.amount;
+    if (edit.mode === 'MANUAL') return !edit.amount;
+    if (edit.mode !== 'KEEP') return false;
+    const current =
+      side === 'customer'
+        ? props.source.customerAmount
+        : props.source.lawyerAmount;
+    return current == null;
   });
 });
 function submit() {
@@ -397,14 +390,14 @@ function submit() {
               props.source.settlement.expectedAssessmentVersionId,
             declaration: declaration.value,
             customerAmount: {
-              mode: effectiveMode('customer'),
+              mode: customerEdit.value.mode,
               ...(customerEdit.value.mode === 'MANUAL' &&
               customerEdit.value.amount !== null
                 ? { amount: customerEdit.value.amount }
                 : {}),
             },
             lawyerAmount: {
-              mode: effectiveMode('lawyer'),
+              mode: lawyerEdit.value.mode,
               ...(lawyerEdit.value.mode === 'MANUAL' &&
               lawyerEdit.value.amount !== null
                 ? { amount: lawyerEdit.value.amount }
