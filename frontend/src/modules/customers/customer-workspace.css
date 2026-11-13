@@ -231,15 +231,28 @@
 .page-view.customer-detail-page .customer-basic-overview .detail-card > h2 {
   margin-bottom: 6px;
 }
-.page-view.customer-detail-page #customer-profile .detail-grid,
+.page-view.customer-detail-page #customer-profile .detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 40px;
+}
 .page-view.customer-detail-page #customer-agreements .detail-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0 14px;
 }
 .page-view.customer-detail-page #customer-profile .detail-grid > div {
-  grid-template-columns: 96px minmax(0, 1fr);
-  gap: 6px;
-  padding: 7px 0;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 11px 0;
+}
+.page-view.customer-detail-page #customer-profile .detail-grid > div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+@media (max-width: 1080px) {
+  .page-view.customer-detail-page #customer-profile .detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
 }
 .page-view.customer-detail-page .customer-basic-overview .history-panel {
   margin-top: 0;
