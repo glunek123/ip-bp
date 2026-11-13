@@ -65,10 +65,17 @@ const props = withDefaults(
 const canEditClosureFacts = computed(() => props.canCorrectClosure !== false);
 const caseId = computed(() => props.caseId ?? '');
 const editorSide = ref<'CUSTOMER' | 'LAWYER' | null>(null);
+const previewCustomer = ref<string | null>(null);
+const previewLawyer = ref<string | null>(null);
 function toggleEditor(side: 'CUSTOMER' | 'LAWYER'): void {
   editorSide.value = editorSide.value === side ? null : side;
 }
-function onTermsUpdated(): void {
+function onTermsUpdated(payload: {
+  side: 'CUSTOMER' | 'LAWYER';
+  amount: string;
+}): void {
+  if (payload.side === 'CUSTOMER') previewCustomer.value = payload.amount;
+  else previewLawyer.value = payload.amount;
   editorSide.value = null;
   emit('refresh');
 }
@@ -462,7 +469,10 @@ function submit() {
       <div class="settle-field">
         <span>客户结算金额（按结算条件自动计算）</span>
         <div class="settle-inline">
-          <input :value="source.customerAmount ?? '待确认'" readonly />
+          <input
+            :value="source.customerAmount ?? previewCustomer ?? '待确认'"
+            readonly
+          />
           <button
             v-if="caseId"
             type="button"
@@ -473,6 +483,13 @@ function submit() {
           </button>
         </div>
         <p class="settle-hint">= 结案金额 × 客户公式</p>
+        <p
+          v-if="!source.customerAmount && previewCustomer"
+          class="settle-hint settle-hint--tiny"
+        >
+          条件已保存，按新条件算出
+          {{ previewCustomer }} 元；保存结案更新后生效。
+        </p>
         <CaseSettlementAmountEditor
           v-if="caseId"
           :case-id="caseId"
@@ -503,7 +520,10 @@ function submit() {
       <div class="settle-field">
         <span>律师结算金额（按律师协议自动计算）</span>
         <div class="settle-inline">
-          <input :value="source.lawyerAmount ?? '待确认'" readonly />
+          <input
+            :value="source.lawyerAmount ?? previewLawyer ?? '待确认'"
+            readonly
+          />
           <button
             v-if="caseId"
             type="button"
@@ -514,6 +534,12 @@ function submit() {
           </button>
         </div>
         <p class="settle-hint">= 结算模式 × 基础费 × 分成比例</p>
+        <p
+          v-if="!source.lawyerAmount && previewLawyer"
+          class="settle-hint settle-hint--tiny"
+        >
+          条件已保存，按新条件算出 {{ previewLawyer }} 元；保存结案更新后生效。
+        </p>
         <CaseSettlementAmountEditor
           v-if="caseId"
           :case-id="caseId"

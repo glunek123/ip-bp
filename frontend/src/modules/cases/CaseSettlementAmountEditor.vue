@@ -13,7 +13,10 @@ const props = defineProps<{
   side: SettlementSide;
   open: boolean;
 }>();
-const emit = defineEmits<{ updated: []; collapsed: [] }>();
+const emit = defineEmits<{
+  updated: [payload: { side: SettlementSide; amount: string }];
+  collapsed: [];
+}>();
 
 const settlement = ref<CaseSettlement | null>(null);
 const formulaBase = '结案金额';
@@ -93,7 +96,7 @@ async function apply(): Promise<void> {
           }),
     });
     await load();
-    emit('updated');
+    emit('updated', { side: props.side, amount: currentAmount.value });
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '结算条件保存失败';
   } finally {
