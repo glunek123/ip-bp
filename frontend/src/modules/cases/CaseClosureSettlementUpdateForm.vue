@@ -266,6 +266,17 @@ function addDocuments(event: globalThis.Event) {
 // 声明"涉及结算"时，数据库要求客户与律师应结金额都有值；
 // 若保留现有值但现值未知（或手工金额为空），前端应当场拦住，
 // 而不是把请求发出去换一个 500。
+function effectiveMode(side: 'customer' | 'lawyer'): AmountEdit['mode'] {
+  const edit = side === 'customer' ? customerEdit.value : lawyerEdit.value;
+  if (edit.mode !== 'KEEP') return edit.mode;
+  const current =
+    side === 'customer'
+      ? props.source.customerAmount
+      : props.source.lawyerAmount;
+  return current == null && declaration.value === 'APPLICABLE'
+    ? 'AUTOMATIC'
+    : edit.mode;
+}
 const settlementAmountMissing = computed(() => {
   if (declaration.value !== 'APPLICABLE') return false;
   // 只在"本次改变了声明"时拦截：改付款、改单侧金额走的是别的命令，
@@ -274,12 +285,7 @@ const settlementAmountMissing = computed(() => {
   return (['customer', 'lawyer'] as const).some((side) => {
     const edit = side === 'customer' ? customerEdit.value : lawyerEdit.value;
     if (edit.mode === 'MANUAL') return !edit.amount;
-    if (edit.mode !== 'KEEP') return false;
-    const current =
-      side === 'customer'
-        ? props.source.customerAmount
-        : props.source.lawyerAmount;
-    return current == null;
+    if (edit.mode === 'KEEP') return false;
   });
 });
 function submit() {
@@ -346,14 +352,14 @@ function submit() {
   const payload = {
     settlementAmounts: {
       customer: {
-        mode: customerEdit.value.mode,
+        mode: effectiveMode('customer'),
         amount:
           customerEdit.value.mode === 'MANUAL'
             ? customerEdit.value.amount
             : null,
       },
       lawyer: {
-        mode: lawyerEdit.value.mode,
+        mode: effectiveMode('lawyer'),
         amount:
           lawyerEdit.value.mode === 'MANUAL' ? lawyerEdit.value.amount : null,
       },

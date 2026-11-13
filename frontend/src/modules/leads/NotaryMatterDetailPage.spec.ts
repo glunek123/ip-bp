@@ -230,7 +230,7 @@ describe('notary workflow handoff guidance', () => {
     );
   });
 
-  it('prominently links only the projected exact case and removes it after lost visibility', async () => {
+  it('hides the linked case entry and keeps the workflow guidance', async () => {
     api.getNotaryMatter.mockResolvedValue({
       ...matter,
       stage: 'ARCHIVED',
@@ -242,9 +242,7 @@ describe('notary workflow handoff guidance', () => {
       capabilities: {},
     });
     const wrapper = await mountPage();
-    expect(wrapper.get('[data-test="linked-case"]').attributes('href')).toBe(
-      '/cases/exact-case',
-    );
+    expect(wrapper.find('[data-test="linked-case"]').exists()).toBe(false);
     expect(wrapper.get('[data-test="notary-workflow"]').text()).toContain(
       '下一步由运营',
     );
@@ -1277,12 +1275,10 @@ describe('NotaryMatterDetailPage', () => {
       expect(
         wrapper.get('[data-test="notary-certificate-summary"]').text(),
       ).toContain('披露材料：披露.pdf');
-      expect(wrapper.get('[data-test="notary-case-summary"]').text()).toContain(
-        '已流转诉讼 · ' + label,
-      );
-      expect(wrapper.get('[data-test="linked-case"]').attributes('href')).toBe(
-        '/cases/case-1',
-      );
+      expect(
+        wrapper.get('[data-test="notary-case-summary"]').text(),
+      ).not.toContain('已流转诉讼');
+      expect(wrapper.find('[data-test="linked-case"]').exists()).toBe(false);
       await wrapper
         .get('[data-test="download-certificate-certificate-frozen"]')
         .trigger('click');

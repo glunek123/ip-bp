@@ -230,24 +230,37 @@ describe('settlement update panel safety', () => {
     wrapper.unmount();
   });
 
-  it('blocks declaring settlement when a side amount is still unknown', async () => {
-    // 客户有现值 30.01、律师为未知；声明"涉及"却保留未知金额时，
-    // 数据库约束会拒绝写入，前端必须当场拦住而不是发出请求换 500。
+  it('computes an unknown side from the terms instead of blocking the save', async () => {
+    // 客户有现值、律师未知：改为按条件自动计算，不再拦在保存之前。
     const wrapper = await setup('settlement-amount-guard');
+    saveAmounts.mockResolvedValue({
+      caseId,
+      closureVersionId: closureId,
+      assessmentVersionId: 'assessment-version',
+      termsVersion: 3,
+      change: {
+        before: {
+          version: 2,
+          customerManualAmount: null,
+          lawyerManualAmount: null,
+        },
+        after: {
+          version: 3,
+          customerManualAmount: null,
+          lawyerManualAmount: null,
+        },
+      },
+    });
     await wrapper
       .get('select[aria-label="是否涉及结算"]')
       .setValue('APPLICABLE');
     await flushPromises();
     expect(
       wrapper.find('[data-test="settlement-amount-required"]').exists(),
-    ).toBe(true);
-    const submit = wrapper
-      .findAll('button')
-      .find((button) => button.text() === '保存')!;
-    expect(submit.attributes('disabled')).toBeDefined();
+    ).toBe(false);
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(save).not.toHaveBeenCalled();
+    expect(save.mock.calls.length + saveAmounts.mock.calls.length).toBe(1);
     wrapper.unmount();
   });
 

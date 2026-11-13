@@ -363,16 +363,22 @@ export async function updateClosureAmounts(
   options: RequestOptions = {},
 ): Promise<ClosureAmountUpdateResult> {
   if (
-    !shape(input, {
-      idempotencyKey: key,
-      expectedClosureVersionId: uuid,
-      expectedTermsVersion: nullable(
-        (v) => positive(v) && typeof v === 'number' && v <= 2147483646,
-      ),
-      expectedAssessmentVersionId: nullable(uuid),
-      customerAmount: override,
-      lawyerAmount: override,
-    }) ||
+    !shape(
+      input,
+      {
+        idempotencyKey: key,
+        expectedClosureVersionId: uuid,
+        expectedTermsVersion: nullable(
+          (v) => positive(v) && typeof v === 'number' && v <= 2147483646,
+        ),
+        expectedAssessmentVersionId: nullable(uuid),
+        customerAmount: override,
+        lawyerAmount: override,
+      },
+      {
+        declaration: oneOf('UNKNOWN', 'APPLICABLE', 'NOT_APPLICABLE'),
+      },
+    ) ||
     (input.customerAmount.mode === 'KEEP' && input.lawyerAmount.mode === 'KEEP')
   )
     return fail(true);
