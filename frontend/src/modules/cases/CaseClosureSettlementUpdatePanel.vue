@@ -494,7 +494,7 @@ function amount(
 function rejectionMessage(cause: unknown): string {
   const code = cause instanceof ApiError ? cause.code : '';
   if (code === 'SETTLEMENT_TERMS_VERSION_CONFLICT')
-    return '结算条款版本已变化，请关闭本面板后重新打开再保存。';
+    return '结算条件已在别处更新，已自动同步最新版本，请再点一次保存。';
   if (code === 'SETTLEMENT_AMOUNT_UNKNOWN')
     return '结案金额仍待确认，暂不能声明涉及结算；请先确认结案金额，或选择“明确不涉及”。';
   if (code === 'SETTLEMENT_SOURCE_INVALID')

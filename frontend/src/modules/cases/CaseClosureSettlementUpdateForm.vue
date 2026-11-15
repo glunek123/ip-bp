@@ -298,6 +298,26 @@ function effectiveMode(side: 'customer' | 'lawyer'): AmountEdit['mode'] {
   return touched || settlementDirty.value ? 'AUTOMATIC' : 'KEEP';
 }
 
+type SideStatus = {
+  text: string;
+  tone: 'auto' | 'keep' | 'manual' | 'recacl' | 'pending';
+};
+function sideStatus(side: 'customer' | 'lawyer'): SideStatus {
+  const saved =
+    side === 'customer'
+      ? props.source.customerAmount
+      : props.source.lawyerAmount;
+  const preview =
+    side === 'customer' ? previewCustomer.value : previewLawyer.value;
+  if (!saved && !preview) return { text: '金额待确认', tone: 'pending' };
+  if (preview && preview !== saved)
+    return { text: '已按新条件重算，保存后生效', tone: 'recacl' };
+  const edit = side === 'customer' ? customerEdit.value : lawyerEdit.value;
+  if (edit.mode === 'MANUAL') return { text: '手工指定金额', tone: 'manual' };
+  if (effectiveMode(side) === 'KEEP')
+    return { text: '保留现有值', tone: 'keep' };
+  return { text: '按规则自动计算', tone: 'auto' };
+}
 const settlementAmountMissing = computed(() => {
   if (declaration.value !== 'APPLICABLE') return false;
   // 只在"本次改变了声明"时拦截：改付款、改单侧金额走的是别的命令，
@@ -494,21 +514,37 @@ function submit() {
     </div>
 
     <div class="settle-row">
-      <div class="settle-field">
-        <span>客户结算金额（按结算条件自动计算）</span>
-        <div class="settle-inline">
-          <input
-            :value="previewCustomer ?? source.customerAmount ?? '待确认'"
-            readonly
-          />
-          <button
-            v-if="caseId"
-            type="button"
-            data-test="edit-customer-terms"
-            @click="toggleEditor('CUSTOMER')"
+      <div class="settle-field settle-flow">
+        <div class="settle-flow__row">
+          <span class="settle-flow__tag">条件</span>
+          <span class="settle-flow__text"
+            >客户结算金额（按结算条件自动计算）</span
           >
-            修改
-          </button>
+        </div>
+        <div class="settle-flow__row">
+          <span class="settle-flow__tag">结果</span>
+          <div class="settle-inline">
+            <input
+              :value="previewCustomer ?? source.customerAmount ?? '待确认'"
+              readonly
+            />
+            <button
+              v-if="caseId"
+              type="button"
+              data-test="edit-customer-terms"
+              @click="toggleEditor('CUSTOMER')"
+            >
+              修改
+            </button>
+          </div>
+        </div>
+        <div class="settle-flow__row">
+          <span class="settle-flow__tag">状态</span>
+          <span
+            class="settle-status"
+            :class="`settle-status--${sideStatus('customer').tone}`"
+            >{{ sideStatus('customer').text }}</span
+          >
         </div>
         <p class="settle-hint">= 结案金额 × 客户公式</p>
         <p
@@ -552,21 +588,37 @@ function submit() {
           />
         </div>
       </div>
-      <div class="settle-field">
-        <span>律师结算金额（按律师协议自动计算）</span>
-        <div class="settle-inline">
-          <input
-            :value="previewLawyer ?? source.lawyerAmount ?? '待确认'"
-            readonly
-          />
-          <button
-            v-if="caseId"
-            type="button"
-            data-test="edit-lawyer-terms"
-            @click="toggleEditor('LAWYER')"
+      <div class="settle-field settle-flow">
+        <div class="settle-flow__row">
+          <span class="settle-flow__tag">条件</span>
+          <span class="settle-flow__text"
+            >律师结算金额（按律师协议自动计算）</span
           >
-            修改
-          </button>
+        </div>
+        <div class="settle-flow__row">
+          <span class="settle-flow__tag">结果</span>
+          <div class="settle-inline">
+            <input
+              :value="previewLawyer ?? source.lawyerAmount ?? '待确认'"
+              readonly
+            />
+            <button
+              v-if="caseId"
+              type="button"
+              data-test="edit-lawyer-terms"
+              @click="toggleEditor('LAWYER')"
+            >
+              修改
+            </button>
+          </div>
+        </div>
+        <div class="settle-flow__row">
+          <span class="settle-flow__tag">状态</span>
+          <span
+            class="settle-status"
+            :class="`settle-status--${sideStatus('lawyer').tone}`"
+            >{{ sideStatus('lawyer').text }}</span
+          >
         </div>
         <p class="settle-hint">= 结算模式 × 基础费 × 分成比例</p>
         <p
@@ -947,6 +999,59 @@ function submit() {
 .settle-card input:disabled {
   color: var(--color-ink-tertiary);
   background: var(--color-surface-2);
+}
+.settle-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.settle-flow__row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.settle-flow__tag {
+  padding: 1px 0;
+  font-size: 11px;
+  color: var(--color-ink-muted);
+  letter-spacing: 0.04em;
+}
+.settle-flow__text {
+  font-size: 13px;
+  color: var(--color-ink);
+}
+.settle-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 18px;
+  border-radius: 999px;
+  border: 1px solid var(--color-hairline);
+  color: var(--color-ink-muted);
+  background: var(--color-surface-2);
+}
+.settle-status--auto {
+  color: var(--el-color-primary);
+  border-color: var(--el-color-primary-light-7);
+  background: var(--color-primary-subtle);
+}
+.settle-status--manual {
+  color: #b45309;
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+.settle-status--recacl {
+  color: #b45309;
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+.settle-status--pending {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
 }
 .settle-inline {
   display: grid;
