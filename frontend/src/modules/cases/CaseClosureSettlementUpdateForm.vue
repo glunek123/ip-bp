@@ -315,7 +315,11 @@ function sideStatus(side: 'customer' | 'lawyer'): SideStatus {
   const edit = side === 'customer' ? customerEdit.value : lawyerEdit.value;
   if (edit.mode === 'MANUAL') return { text: '手工指定金额', tone: 'manual' };
   if (effectiveMode(side) === 'KEEP')
-    return { text: '保留现有值', tone: 'keep' };
+    return {
+      text:
+        edit.mode === 'KEEP' ? '保留现有值' : '自动计算（未改动，沿用现有值）',
+      tone: 'keep',
+    };
   return { text: '按规则自动计算', tone: 'auto' };
 }
 const settlementAmountMissing = computed(() => {
