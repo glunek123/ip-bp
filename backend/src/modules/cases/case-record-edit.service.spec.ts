@@ -84,6 +84,9 @@ describe('CaseRecordEditService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({}),
       },
+      departmentMembership: {
+        findFirst: jest.fn().mockResolvedValue({ teamId: null }),
+      },
       caseDefendant: {
         findFirst: jest.fn().mockResolvedValue({
           phone: null,
@@ -139,6 +142,7 @@ describe('CaseRecordEditService', () => {
       authorizeCase: jest.fn().mockResolvedValue(undefined),
       authorizeDepartmentProxyAction: jest.fn().mockResolvedValue(undefined),
       canAuthorizeDepartmentProxyAction: jest.fn().mockResolvedValue(true),
+      canAuthorizeCase: jest.fn().mockResolvedValue(true),
     };
     return {
       record,
@@ -799,10 +803,13 @@ describe('CaseRecordEditService', () => {
       responsibleUserId: nextUserId,
       responsibilityEpoch: 1,
     });
-    expect(f.access.authorizeDepartmentProxyAction).toHaveBeenCalledWith(
+    expect(f.access.canAuthorizeCase).toHaveBeenCalledWith(
       actor,
       'case.routine.edit',
-      expect.objectContaining({ departmentId: actor.departmentId }),
+      expect.objectContaining({
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      }),
     );
     expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({

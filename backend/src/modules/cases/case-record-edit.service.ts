@@ -534,18 +534,27 @@ export class CaseRecordEditService {
         },
       });
       if (record === null) throw this.notFound();
-      // 管理改派：不要求操作人是当前负责人，但要求同部门且具备部门代理授权。
-      await this.access.authorizeDepartmentProxyAction(
+      // 改派：不要求操作人是当前负责人，只要在本部门具备案件资料编辑能力即可。
+      const actorMembership = await tx.departmentMembership.findFirst({
+        where: {
+          userId: actor.userId,
+          departmentId: actor.departmentId,
+          active: true,
+        },
+        select: { teamId: true },
+      });
+      const canEdit = await this.access.canAuthorizeCase(
         actor,
         'case.routine.edit',
         {
           departmentId: actor.departmentId,
-          responsibleUserId: record.responsibleUserId,
-          ...(record.responsibleMembership.teamId
-            ? { teamId: record.responsibleMembership.teamId }
+          responsibleUserId: actor.userId,
+          ...(actorMembership?.teamId
+            ? { teamId: actorMembership.teamId }
             : {}),
         },
       );
+      if (!canEdit) throw this.forbidden();
       if (record.responsibleUserId === value.userId)
         throw this.validation('案件负责人没有变化');
       const target = await tx.userAccount.findFirst({
