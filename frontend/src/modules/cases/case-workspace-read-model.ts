@@ -1413,6 +1413,20 @@ export function buildCaseWorkspaceSections(
       item.defendants.map((value) => value.name).join('、') || null,
     ),
     field(
+      '联系电话',
+      item.defendants
+        .map((value) => value.phone)
+        .filter((value): value is string => !!value)
+        .join('、') || null,
+    ),
+    field(
+      '联系地址',
+      item.defendants
+        .map((value) => value.address)
+        .filter((value): value is string => !!value)
+        .join('、') || null,
+    ),
+    field(
       '侵权类型',
       source
         ? source.infringementTypes

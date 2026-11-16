@@ -2669,6 +2669,7 @@ onBeforeUnmount(() => {
               <CaseDefendantContactPanel
                 :item="item"
                 :context-key="workspaceContext"
+                embedded
                 @changed="changedInlineEdit"
                 @refresh="load"
                 @access-lost="recordEditAccessLost"

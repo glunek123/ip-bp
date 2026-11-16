@@ -15,7 +15,11 @@ import {
 import { ApiError } from '../../api/http';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
-const props = defineProps<{ item: CaseDetail; contextKey: string }>();
+const props = defineProps<{
+  item: CaseDetail;
+  contextKey: string;
+  embedded?: boolean;
+}>();
 const emit = defineEmits<{
   changed: [];
   refresh: [];
@@ -274,7 +278,9 @@ onBeforeUnmount(() => {
     class="demo-card demo-card--pad"
     data-test="case-defendant-contact-panel"
   >
-    <h3>&#x66f4;&#x65b0;&#x88ab;&#x544a;&#x8054;&#x7cfb;&#x65b9;&#x5f0f;</h3>
+    <h3 v-if="!embedded">
+      &#x66f4;&#x65b0;&#x88ab;&#x544a;&#x8054;&#x7cfb;&#x65b9;&#x5f0f;
+    </h3>
     <p v-if="!allowed" class="field-help" data-test="record-edit-unavailable">
       {{ unavailableReason() }}
     </p>
