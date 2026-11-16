@@ -238,20 +238,15 @@ function edit(key: SectionKey): void {
           <dl class="case-workspace-fields">
             <div
               v-for="(field, index) in group.fields"
+              v-show="!hiddenWhileEditing(section.key, field.label)"
               :key="`${field.label}:${index}`"
               class="case-workspace-field"
               :class="{ 'case-workspace-field--wide': field.wide }"
             >
-              <dt
-                v-if="!hiddenWhileEditing(section.key, field.label)"
-                class="case-workspace-field__label"
-              >
+              <dt class="case-workspace-field__label">
                 {{ field.label }}
               </dt>
-              <dd
-                v-if="!hiddenWhileEditing(section.key, field.label)"
-                class="case-workspace-field__value"
-              >
+              <dd class="case-workspace-field__value">
                 {{ field.value }}
                 <p v-if="field.help" class="case-workspace-field__help">
                   {{ field.help }}
