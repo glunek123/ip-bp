@@ -133,7 +133,10 @@ describe('case list query builders', () => {
       },
       {
         defendants: {
-          some: { name: { contains: 'B\\_', mode: 'insensitive' } },
+          some: {
+            name: { contains: 'B\\_', mode: 'insensitive' },
+            disabledAt: null,
+          },
         },
       },
       {

@@ -36,6 +36,13 @@ async function submit(): Promise<void> {
     error.value = '请选择新的负责人';
     return;
   }
+  const target = candidates.value.find((entry) => entry.id === targetId.value);
+  if (
+    !globalThis.confirm(
+      `确认将案件移交给「${target?.displayName ?? '所选运营'}」？移交后你将失去该案件的办理权限，只有新负责人能把案件再移交回来。`,
+    )
+  )
+    return;
   const key = globalThis.crypto?.randomUUID?.();
   if (!key) {
     error.value = '当前浏览器不能生成安全请求键，尚未发送请求。';
