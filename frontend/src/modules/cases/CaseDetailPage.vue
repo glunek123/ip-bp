@@ -533,7 +533,8 @@ function editSection(section: SectionKey): void {
     section === 'judgment' ||
     section === 'first-instance' ||
     section === 'execution' ||
-    section === 'second-instance'
+    section === 'second-instance' ||
+    section === 'closure-info'
   ) {
     if (inlineEditSection.value === section) {
       inlineEditSection.value = null;
@@ -591,7 +592,8 @@ function selectInlineCommand(command: WorkspaceCommand): void {
   // 只内联已登记资料的更正；流程办理命令继续走原抽屉。
   if (
     command.id.startsWith('record-') ||
-    command.id === 'acceptance-correction'
+    command.id === 'acceptance-correction' ||
+    command.id === 'archive'
   ) {
     inlineCommand.value = command.id;
     return;
@@ -2820,6 +2822,59 @@ onBeforeUnmount(() => {
                 @changed="changedInlineEdit"
                 @refresh="load"
                 @access-lost="recordEditAccessLost"
+                @cancel="closeInlineEdit"
+              />
+            </section>
+          </template>
+          <template #edit-closure-info>
+            <section
+              v-if="inlineEditSection === 'closure-info'"
+              class="case-inline-editor"
+              data-test="closure-info-inline-editor"
+            >
+              <div
+                v-if="inlineOptions.length > 1"
+                class="case-inline-tabs"
+                role="tablist"
+              >
+                <button
+                  v-for="entry in inlineOptions"
+                  :key="entry.id"
+                  type="button"
+                  role="tab"
+                  :aria-selected="inlineCommand === entry.id"
+                  :class="{ 'is-active': inlineCommand === entry.id }"
+                  :data-test="`inline-tab-${entry.id}`"
+                  @click="selectInlineCommand(entry)"
+                >
+                  {{ entry.label }}
+                </button>
+              </div>
+              <CaseSectionRecordCorrectionPanel
+                v-if="inlineCommand === 'record-closure'"
+                :item="item"
+                kind="closure"
+                :actor-key="secondInstanceActorKey"
+                :context-key="workspaceContext"
+                :open-revision="editRequest"
+                @changed="changedInlineEdit"
+                @refresh="load"
+                @access-lost="recordEditAccessLost"
+                @cancel="closeInlineEdit"
+                @state-change="recordRequestRevision += 1"
+              />
+              <CaseArchivePanel
+                v-else-if="inlineCommand === 'archive'"
+                :item="item"
+                :context-key="identity"
+                edit-only
+                :edit-request="editRequest"
+                :pending-request="archivePending"
+                :archive-case="archiveCallbacks.archive"
+                :correct-archive="archiveCallbacks.correct"
+                @pending-change="archiveCallbacks.pending"
+                @changed="archiveCallbacks.changed"
+                @refresh="archiveCallbacks.refresh"
                 @cancel="closeInlineEdit"
               />
             </section>
