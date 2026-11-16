@@ -254,24 +254,6 @@ export class CaseRecordEditService {
               caseId,
               'case.defendant-contact.update',
             );
-            const prior = await tx.caseRecordEditReceipt.findUnique({
-              where: {
-                departmentId_actorUserId_command_idempotencyKey: {
-                  departmentId: actor.departmentId,
-                  actorUserId: actor.userId,
-                  command: 'DEFENDANT_ADD',
-                  idempotencyKey: value.idempotencyKey,
-                },
-              },
-            });
-            if (prior !== null) {
-              if (
-                prior.caseId !== caseId ||
-                prior.requestFingerprint !== fingerprint
-              )
-                throw this.conflict('IDEMPOTENCY_CONFLICT');
-              return this.defendantReceipt(prior.resultSnapshot, caseId);
-            }
             const count = await tx.caseDefendant.count({
               where: { caseId, departmentId: actor.departmentId },
             });
@@ -323,17 +305,6 @@ export class CaseRecordEditService {
               contactRevision: 0,
               recordedAt: recordedAt.toISOString(),
             };
-            await tx.caseRecordEditReceipt.create({
-              data: {
-                departmentId: actor.departmentId,
-                actorUserId: actor.userId,
-                caseId,
-                command: 'DEFENDANT_ADD',
-                idempotencyKey: value.idempotencyKey,
-                requestFingerprint: fingerprint,
-                resultSnapshot: { ...result },
-              },
-            });
             return result;
           },
           { isolationLevel: 'Serializable' },
@@ -450,24 +421,6 @@ export class CaseRecordEditService {
               caseId,
               'case.routine.edit',
             );
-            const prior = await tx.caseRecordEditReceipt.findUnique({
-              where: {
-                departmentId_actorUserId_command_idempotencyKey: {
-                  departmentId: actor.departmentId,
-                  actorUserId: actor.userId,
-                  command: 'RESPONSIBLE_USER_CHANGE',
-                  idempotencyKey: value.idempotencyKey,
-                },
-              },
-            });
-            if (prior !== null) {
-              if (
-                prior.caseId !== caseId ||
-                prior.requestFingerprint !== fingerprint
-              )
-                throw this.conflict('IDEMPOTENCY_CONFLICT');
-              return this.responsibleReceipt(prior.resultSnapshot, caseId);
-            }
             if (record.responsibleUserId === value.userId)
               throw this.validation('案件负责人没有变化');
             const target = await tx.userAccount.findFirst({
@@ -518,17 +471,6 @@ export class CaseRecordEditService {
               responsibilityEpoch: record.responsibilityEpoch + 1,
               recordedAt: recordedAt.toISOString(),
             };
-            await tx.caseRecordEditReceipt.create({
-              data: {
-                departmentId: actor.departmentId,
-                actorUserId: actor.userId,
-                caseId,
-                command: 'RESPONSIBLE_USER_CHANGE',
-                idempotencyKey: value.idempotencyKey,
-                requestFingerprint: fingerprint,
-                resultSnapshot: { ...result },
-              },
-            });
             return result;
           },
           { isolationLevel: 'Serializable' },
@@ -586,24 +528,6 @@ export class CaseRecordEditService {
               caseId,
               'case.routine.edit',
             );
-            const prior = await tx.caseRecordEditReceipt.findUnique({
-              where: {
-                departmentId_actorUserId_command_idempotencyKey: {
-                  departmentId: actor.departmentId,
-                  actorUserId: actor.userId,
-                  command: 'CASE_TYPE_CHANGE',
-                  idempotencyKey: value.idempotencyKey,
-                },
-              },
-            });
-            if (prior !== null) {
-              if (
-                prior.caseId !== caseId ||
-                prior.requestFingerprint !== fingerprint
-              )
-                throw this.conflict('IDEMPOTENCY_CONFLICT');
-              return this.caseTypesReceipt(prior.resultSnapshot, caseId);
-            }
             const leadId = await this.caseSourceLead(tx, caseId);
             if (leadId === null)
               throw this.validation('该案件没有来源线索，类型不可在此更正');
@@ -668,17 +592,6 @@ export class CaseRecordEditService {
               affectedCaseCount,
               recordedAt: recordedAt.toISOString(),
             };
-            await tx.caseRecordEditReceipt.create({
-              data: {
-                departmentId: actor.departmentId,
-                actorUserId: actor.userId,
-                caseId,
-                command: 'CASE_TYPE_CHANGE',
-                idempotencyKey: value.idempotencyKey,
-                requestFingerprint: fingerprint,
-                resultSnapshot: { ...result },
-              },
-            });
             void record;
             return result;
           },
@@ -693,8 +606,6 @@ export class CaseRecordEditService {
           if (attempt < 2) continue;
           throw this.conflict('VERSION_CONFLICT');
         }
-        // 临时诊断：输出底层数据库错误以定位约束冲突
-        console.error('case-types failure', (error as Error)?.message);
         throw error;
       }
     }
