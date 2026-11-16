@@ -693,6 +693,8 @@ export class CaseRecordEditService {
           if (attempt < 2) continue;
           throw this.conflict('VERSION_CONFLICT');
         }
+        // 临时诊断：输出底层数据库错误以定位约束冲突
+        console.error('case-types failure', (error as Error)?.message);
         throw error;
       }
     }
