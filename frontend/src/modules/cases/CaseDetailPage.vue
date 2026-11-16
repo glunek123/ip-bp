@@ -124,6 +124,7 @@ import CaseComplaintSubmissionForm from './CaseComplaintSubmissionForm.vue';
 import CaseFilingPanel from './CaseFilingPanel.vue';
 import CaseAcceptancePanel from './CaseAcceptancePanel.vue';
 import CaseDefendantContactPanel from './CaseDefendantContactPanel.vue';
+import CaseResponsibleUserPanel from './CaseResponsibleUserPanel.vue';
 import CaseAcceptanceCorrectionPanel from './CaseAcceptanceCorrectionPanel.vue';
 import CaseSecondInstanceAcceptancePanel from './CaseSecondInstanceAcceptancePanel.vue';
 import CaseHearingPanel from './CaseHearingPanel.vue';
