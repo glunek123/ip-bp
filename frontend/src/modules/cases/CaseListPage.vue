@@ -2662,7 +2662,7 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   padding: 0 12px;
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 500;
   line-height: 1;
   cursor: pointer;
   list-style: none;
