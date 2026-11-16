@@ -131,8 +131,11 @@ async function removeSelected(): Promise<void> {
   try {
     await removeCaseDefendant(props.item.id, target.id);
     emit('changed');
-  } catch {
-    removeError.value = '该被告已关联判决或上诉记录，暂不能删除。';
+  } catch (failure) {
+    removeError.value =
+      failure instanceof ApiError && failure.status === 400
+        ? '案件至少保留一名被告，不能删除。'
+        : '该被告已关联判决或上诉记录，暂不能删除。';
   } finally {
     removing.value = false;
   }
