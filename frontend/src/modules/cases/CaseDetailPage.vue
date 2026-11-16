@@ -2630,7 +2630,7 @@ onBeforeUnmount(() => {
           :actions="sectionActions"
           :context-key="workspaceContext"
           :supplement-actor-key="secondInstanceActorKey"
-          :editing-section="routineEditing ? 'lead-info' : null"
+          :editing-section="routineEditing ? 'lead-info' : inlineEditSection"
           @edit="editSection"
           @view-timeline="viewTimeline"
           @supplement-changed="detailSourcesRevision += 1"
