@@ -251,6 +251,15 @@ const selectedCommand = ref('');
 const sectionEditing = ref(false);
 const inlineEditSection = ref<SectionKey | null>(null);
 const inlineCommand = ref('');
+const activeDefendantId = ref('');
+function loadDefendantDraft(defendantId: string | undefined): void {
+  const defendant = item.value?.defendants.find(
+    (entry) => entry.id === defendantId,
+  );
+  activeDefendantId.value = defendant?.id ?? '';
+  caseDraft.phone = defendant?.phone ?? '';
+  caseDraft.address = defendant?.address ?? '';
+}
 const caseDraft = reactive({
   phone: '',
   address: '',
@@ -295,7 +304,10 @@ async function saveCaseInfo(): Promise<void> {
   caseInfoSaving.value = true;
   caseInfoError.value = '';
   try {
-    const defendant = current.defendants[0];
+    const defendant =
+      current.defendants.find(
+        (entry) => entry.id === activeDefendantId.value,
+      ) ?? current.defendants[0];
     const contact = current.recordEdits?.defendantContacts.find(
       (entry) => entry.defendantId === defendant?.id,
     );
@@ -663,9 +675,7 @@ function editSection(section: SectionKey): void {
     inlineEditSection.value = section;
     editRequest.value += 1;
     if (section === 'case-info') {
-      const defendant = item.value?.defendants[0];
-      caseDraft.phone = defendant?.phone ?? '';
-      caseDraft.address = defendant?.address ?? '';
+      loadDefendantDraft(item.value?.defendants[0]?.id);
       caseDraft.caseType = lead.value?.caseType ?? '';
       caseDraft.infringementTypes = [...(lead.value?.infringementTypes ?? [])];
       caseDraft.reason = '';
@@ -2829,6 +2839,7 @@ onBeforeUnmount(() => {
                 :context-key="workspaceContext"
                 embedded
                 fields-external
+                @select-defendant="loadDefendantDraft"
                 @changed="changedInlineEdit"
                 @refresh="load"
                 @access-lost="recordEditAccessLost"

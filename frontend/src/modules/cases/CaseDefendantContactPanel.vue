@@ -29,6 +29,7 @@ const emit = defineEmits<{
   refresh: [];
   'access-lost': [];
   cancel: [];
+  'select-defendant': [defendantId: string];
 }>();
 const defendantId = ref(props.item.defendants[0]?.id ?? '');
 const phone = ref('');
@@ -373,7 +374,25 @@ onBeforeUnmount(() => {
       {{ unavailableReason() }}
     </p>
     <template v-if="fieldsExternal">
-      <p class="field-help">
+      <label v-if="item.defendants.length > 1" class="form-field">
+        当前被告
+        <select
+          v-model="defendantId"
+          class="text-input"
+          data-test="defendant-select"
+          :disabled="!!unknownRequest"
+          @change="emit('select-defendant', defendantId)"
+        >
+          <option
+            v-for="entry in item.defendants"
+            :key="entry.id"
+            :value="entry.id"
+          >
+            {{ entry.name }}
+          </option>
+        </select>
+      </label>
+      <p v-else class="field-help">
         被告：{{ selected?.name }}（电话、地址在卡片字段上直接修改）
       </p>
     </template>
