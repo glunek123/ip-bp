@@ -1024,6 +1024,17 @@ it.each([
     await wrapper
       .get(`[data-section="${section}"] .case-workspace-section__edit`)
       .trigger('click');
+    await flushPromises();
+    const inline = wrapper.find(`[data-test="${section}-inline-editor"]`);
+    if (inline.exists()) {
+      expect(inline.find(`[data-test="${panel}"]`).exists()).toBe(true);
+      await inline.get(`[data-test="${cancel}"]`).trigger('click');
+      await flushPromises();
+      expect(
+        wrapper.find(`[data-test="${section}-inline-editor"]`).exists(),
+      ).toBe(false);
+      return;
+    }
     await wrapper.get('[data-test="workspace-command"]').setValue(command);
     await flushPromises();
     expect(wrapper.find(`[data-test="${panel}"]`).exists()).toBe(true);
@@ -1508,12 +1519,10 @@ describe('UI002 real case workspace host', () => {
     expect(
       wrapper.get('[data-test="defendant-contact-phone"]').element,
     ).toHaveProperty('value', '100');
-    expect(
-      wrapper
-        .get('[data-test="workspace-command"]')
-        .findAll('option')
-        .map((option) => option.attributes('value')),
-    ).toEqual(['defendant-contact-update']);
+    expect(wrapper.find('[data-test="case-info-inline-editor"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.getComponent(ElDrawer).props('modelValue')).toBe(false);
     expect(wrapper.find('[data-test="case-match-form"]').exists()).toBe(false);
     await wrapper
       .get('[data-test="defendant-contact-address"]')

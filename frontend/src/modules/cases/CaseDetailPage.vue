@@ -242,6 +242,7 @@ const editorVisible = ref(true);
 const editorSection = ref<SectionKey>('case-info');
 const selectedCommand = ref('');
 const sectionEditing = ref(false);
+const inlineEditSection = ref<SectionKey | null>(null);
 const editRequest = ref(0);
 const timelineView = ref(false);
 // Each command has one instance. Hiding the drawer or switching its view never resets it.
@@ -519,6 +520,12 @@ function editSection(section: SectionKey): void {
       routineEditing.value = true;
     return;
   }
+  if (section === 'case-info') {
+    inlineEditSection.value =
+      inlineEditSection.value === section ? null : section;
+    drawerOpen.value = false;
+    return;
+  }
   const choices = sectionEditCommands.value.filter(
     (entry) => entry.section === section,
   );
@@ -558,6 +565,13 @@ function closeRecordEdit(): void {
   if (!closureRegistrationSucceeded.value)
     closureBridgeRegistrationActive.value = false;
   drawerOpen.value = false;
+}
+function closeInlineEdit(): void {
+  inlineEditSection.value = null;
+}
+function changedInlineEdit(): void {
+  inlineEditSection.value = null;
+  void load();
 }
 
 function handleAdditionalActionSuccess(action: string) {
@@ -2609,6 +2623,22 @@ onBeforeUnmount(() => {
                 @click="refreshRoutine"
                 >刷新核对</ElButton
               >
+            </section>
+          </template>
+          <template #edit-case-info>
+            <section
+              v-if="inlineEditSection === 'case-info'"
+              class="case-inline-editor"
+              data-test="case-info-inline-editor"
+            >
+              <CaseDefendantContactPanel
+                :item="item"
+                :context-key="workspaceContext"
+                @changed="changedInlineEdit"
+                @refresh="load"
+                @access-lost="recordEditAccessLost"
+                @cancel="closeInlineEdit"
+              />
             </section>
           </template>
         </CaseDetailsSections>
