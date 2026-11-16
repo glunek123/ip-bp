@@ -329,53 +329,21 @@ export class CaseRecordEditService {
     caseId: string,
     defendantId: string,
   ): Promise<{ caseId: string; defendantId: string }> {
-    return this.database.$transaction(
-      async (tx) => {
-        await this.lockAndAuthorize(
-          tx,
-          actor,
-          caseId,
-          'case.defendant-contact.update',
-        );
-        const remaining = await tx.caseDefendant.count({
-          where: { caseId, departmentId: actor.departmentId },
-        });
-        if (remaining <= 1)
-          throw this.validation('案件至少保留一名被告，不能删除');
-        const target = await tx.caseDefendant.findFirst({
-          where: { id: defendantId, caseId, departmentId: actor.departmentId },
-          select: { id: true, name: true },
-        });
-        if (target === null) throw this.notFound();
-        try {
-          await tx.caseDefendant.delete({
-            where: {
-              id: defendantId,
-              caseId,
-              departmentId: actor.departmentId,
-            },
-          });
-        } catch (error) {
-          if (this.hasCode(error, 'P2003'))
-            throw this.conflict('DEFENDANT_IN_USE');
-          throw error;
-        }
-        await tx.auditEvent.create({
-          data: {
-            departmentId: actor.departmentId,
-            actorUserId: actor.userId,
-            internalActorUserId: actor.userId,
-            resourceType: 'CASE',
-            resourceId: caseId,
-            action: 'case.defendant.removed',
-            details: { defendantId, name: target.name },
-          },
-          select: { id: true },
-        });
-        return { caseId, defendantId };
-      },
-      { isolationLevel: 'Serializable' },
-    );
+    return this.database.$transaction(async (tx) => {
+      await this.lockAndAuthorize(
+        tx,
+        actor,
+        caseId,
+        'case.defendant-contact.update',
+      );
+      const target = await tx.caseDefendant.findFirst({
+        where: { id: defendantId, caseId, departmentId: actor.departmentId },
+        select: { id: true },
+      });
+      if (target === null) throw this.notFound();
+      // 数据库以不可变约束保护被告身份（含删除），这里显式返回业务错误。
+      throw this.defendantImmutable();
+    });
   }
 
   async responsibleCandidates(
@@ -1616,6 +1584,13 @@ export class CaseRecordEditService {
       affectedCaseCount: snapshot.affectedCaseCount,
       recordedAt: snapshot.recordedAt,
     };
+  }
+
+  private defendantImmutable() {
+    return new ConflictException({
+      code: 'DEFENDANT_IMMUTABLE',
+      message: '被告是案件审计主体，只能新增或更正联系方式，不能删除',
+    });
   }
 
   private validation(message: string) {

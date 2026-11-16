@@ -715,30 +715,15 @@ describe('CaseRecordEditService', () => {
       }),
     ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
   });
-  it('removes a defendant when more than one remains', async () => {
+  it('refuses to delete a defendant because identity is immutable', async () => {
     const f = fixture();
-    f.tx.caseDefendant.count.mockResolvedValueOnce(2);
     f.tx.caseDefendant.findFirst.mockResolvedValueOnce({
       id: defendantId,
       name: '张三',
     });
-    const result = await f.service.removeDefendant(actor, caseId, defendantId);
-    expect(result).toEqual({ caseId, defendantId });
-    expect(f.tx.caseDefendant.delete).toHaveBeenCalledWith({
-      where: { id: defendantId, caseId, departmentId: actor.departmentId },
-    });
-    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ action: 'case.defendant.removed' }),
-      select: { id: true },
-    });
-  });
-
-  it('keeps at least one defendant per case', async () => {
-    const f = fixture();
-    f.tx.caseDefendant.count.mockResolvedValueOnce(1);
     await expect(
       f.service.removeDefendant(actor, caseId, defendantId),
-    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    ).rejects.toMatchObject({ response: { code: 'DEFENDANT_IMMUTABLE' } });
     expect(f.tx.caseDefendant.delete).not.toHaveBeenCalled();
   });
 

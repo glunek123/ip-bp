@@ -10,7 +10,6 @@ import {
 } from 'vue';
 import {
   addCaseDefendant,
-  removeCaseDefendant,
   updateCaseDefendantContact,
   type CaseDetail,
   type UpdateCaseDefendantContactInput,
@@ -120,27 +119,6 @@ function isCurrent(context: Context): boolean {
 const selected = computed(() =>
   props.item.defendants.find((value) => value.id === defendantId.value),
 );
-const removing = ref(false);
-const removeError = ref('');
-async function removeSelected(): Promise<void> {
-  const target = selected.value;
-  if (!target || removing.value) return;
-  if (!globalThis.confirm(`确认删除被告「${target.name}」？删除后不可恢复。`))
-    return;
-  removing.value = true;
-  removeError.value = '';
-  try {
-    await removeCaseDefendant(props.item.id, target.id);
-    emit('changed');
-  } catch (failure) {
-    removeError.value =
-      failure instanceof ApiError && failure.status === 400
-        ? '案件至少保留一名被告，不能删除。'
-        : '该被告已关联判决或上诉记录，暂不能删除。';
-  } finally {
-    removing.value = false;
-  }
-}
 const recordEdit = computed(() =>
   props.item.recordEdits?.defendantContacts.find(
     (value) => value.defendantId === defendantId.value,
@@ -417,7 +395,6 @@ onBeforeUnmount(() => {
       </p>
     </template>
     <p v-if="error" role="alert" data-test="record-edit-unknown">{{ error }}</p>
-    <p v-if="removeError" role="alert">{{ removeError }}</p>
     <p v-if="success" role="status">{{ success }}</p>
     <div class="form-actions">
       <button
@@ -446,15 +423,6 @@ onBeforeUnmount(() => {
         @click="retryOriginal"
       >
         &#x6309;&#x539f;&#x8bf7;&#x6c42;&#x91cd;&#x8bd5;
-      </button>
-      <button
-        v-if="selected"
-        type="button"
-        data-test="defendant-remove"
-        :disabled="removing || !!unknownRequest"
-        @click="removeSelected"
-      >
-        删除该被告
       </button>
       <button
         type="button"
