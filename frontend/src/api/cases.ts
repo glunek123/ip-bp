@@ -496,6 +496,12 @@ type CaseDetailBase = Omit<CaseSummaryBase, 'displaySummary'> & {
   archive: CaseArchive | null;
   earlyArchive?: CaseEarlyArchive | null;
   recordEdits?: CaseRecordEdits;
+  disabledDefendants?: DisabledCaseDefendant[];
+};
+export type DisabledCaseDefendant = {
+  id: string;
+  name: string;
+  disabledAt: string;
 };
 export type CaseDetail = Omit<CaseDetailBase, 'certificate' | 'fees'> &
   (

@@ -849,6 +849,11 @@ class CaseDefendantDto {
   @ApiProperty({ type: String, nullable: true }) legalRepresentative!:
     string | null;
 }
+class DisabledCaseDefendantDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ format: 'date-time' }) disabledAt!: string;
+}
 class CaseDefendantContactChangeDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() fromRevision!: number;
@@ -1025,6 +1030,11 @@ export class CaseDetailResponseDto extends OmitType(CaseListItemDto, [
   certificate!: CaseCertificateSummaryDto | null;
   @ApiProperty({ type: [CaseFeeDto] }) fees!: CaseFeeDto[];
   @ApiProperty({ type: [CaseDefendantDto] }) defendants!: CaseDefendantDto[];
+  @ApiProperty({
+    type: [DisabledCaseDefendantDto],
+    description: '已停用被告，仅供恢复使用，不参与业务流转',
+  })
+  disabledDefendants!: DisabledCaseDefendantDto[];
   @ApiProperty({
     type: CaseConsolidationMembershipDto,
     nullable: true,

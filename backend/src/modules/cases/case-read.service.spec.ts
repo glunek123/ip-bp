@@ -86,6 +86,7 @@ describe('CaseReadService', () => {
         groupBy: jest.fn().mockResolvedValue([]),
       },
       material: { findMany: jest.fn().mockResolvedValue([]) },
+      caseDefendant: { findMany: jest.fn().mockResolvedValue([]) },
       $queryRawUnsafe: jest.fn().mockResolvedValue([]),
       filingCourt: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn(),

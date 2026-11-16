@@ -271,25 +271,36 @@ const caseInfoSaving = ref(false);
 const caseInfoError = ref('');
 const caseEditFields = computed(() => {
   if (inlineEditSection.value !== 'case-info') return null;
-  return {
-    联系电话: { kind: 'text' as const, value: caseDraft.phone },
-    联系地址: { kind: 'textarea' as const, value: caseDraft.address },
-    案件类型: {
-      kind: 'select' as const,
+  const fields: Record<
+    string,
+    {
+      kind: 'text' | 'textarea' | 'select' | 'multi';
+      value: string | string[];
+      options?: Array<{ value: string; label: string }>;
+    }
+  > = {
+    联系电话: { kind: 'text', value: caseDraft.phone },
+    联系地址: { kind: 'textarea', value: caseDraft.address },
+  };
+  // 类型存放在来源线索上，没有来源线索的案件不允许在此更正。
+  if (lead.value) {
+    fields['案件类型'] = {
+      kind: 'select',
       value: caseDraft.caseType,
       options: Object.entries(leadCaseTypeLabels).map(([value, label]) => ({
         value,
         label,
       })),
-    },
-    侵权类型: {
-      kind: 'multi' as const,
+    };
+    fields['侵权类型'] = {
+      kind: 'multi',
       value: caseDraft.infringementTypes,
       options: Object.entries(leadInfringementTypeLabels).map(
         ([value, label]) => ({ value, label }),
       ),
-    },
-  };
+    };
+  }
+  return fields;
 });
 function updateCaseField(label: string, value: string | string[]): void {
   if (label === '联系电话') caseDraft.phone = String(value);
@@ -303,6 +314,7 @@ async function saveCaseInfo(): Promise<void> {
   if (!current || caseInfoSaving.value) return;
   caseInfoSaving.value = true;
   caseInfoError.value = '';
+  let contactSaved = false;
   try {
     const defendant =
       current.defendants.find(
@@ -330,6 +342,7 @@ async function saveCaseInfo(): Promise<void> {
         },
         {},
       );
+      contactSaved = true;
     }
     const source = lead.value;
     const typesChanged =
@@ -370,7 +383,10 @@ async function saveCaseInfo(): Promise<void> {
       failure instanceof Error && !('status' in failure)
         ? failure.message
         : '保存未完成，请核对字段后重试。';
-    caseInfoError.value = message;
+    caseInfoError.value = contactSaved
+      ? `联系方式已保存，类型未保存：${message}`
+      : message;
+    if (contactSaved) await load();
   } finally {
     caseInfoSaving.value = false;
   }
@@ -3802,5 +3818,17 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: var(--color-ink-muted);
   cursor: pointer;
+}
+.disabled-defendant-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+.disabled-defendant-list li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 4px;
 }
 </style>

@@ -112,4 +112,36 @@ describe('CaseDefendantContactPanel add defendant', () => {
     );
     expect(wrapper.emitted('changed')).toHaveLength(1);
   });
+
+  it('lists disabled defendants and restores one', async () => {
+    setDisabled.mockResolvedValue({
+      caseId: item.id,
+      defendantId: '66666666-6666-4666-8666-666666666666',
+      disabledAt: null,
+    });
+    const withDisabled = {
+      ...item,
+      disabledDefendants: [
+        {
+          id: '66666666-6666-4666-8666-666666666666',
+          name: '王五',
+          disabledAt: '2026-11-15T00:00:00Z',
+        },
+      ],
+    } as unknown as CaseDetail;
+    const wrapper = mount(CaseDefendantContactPanel, {
+      props: { item: withDisabled, contextKey: 'ctx' },
+    });
+    expect(wrapper.get('[data-test="disabled-defendants"]').text()).toContain(
+      '王五',
+    );
+    await wrapper.get('[data-test="defendant-enable"]').trigger('click');
+    await flushPromises();
+    expect(setDisabled).toHaveBeenCalledWith(
+      item.id,
+      '66666666-6666-4666-8666-666666666666',
+      false,
+    );
+    expect(wrapper.emitted('changed')).toHaveLength(1);
+  });
 });

@@ -2964,6 +2964,24 @@ export class CaseReadService {
         address: defendant.address,
         legalRepresentative: defendant.legalRepresentative,
       })),
+      disabledDefendants: await this.database.caseDefendant
+        .findMany({
+          where: {
+            caseId: id,
+            departmentId: actor.departmentId,
+            disabledAt: { not: null },
+          },
+          select: { id: true, name: true, disabledAt: true },
+          orderBy: { disabledAt: 'desc' },
+          take: 20,
+        })
+        .then((rows) =>
+          rows.map((row) => ({
+            id: row.id,
+            name: row.name,
+            disabledAt: (row.disabledAt ?? new Date()).toISOString(),
+          })),
+        ),
       consolidation: record.consolidationMembership
         ? {
             isMain: record.consolidationMembership.isMain,

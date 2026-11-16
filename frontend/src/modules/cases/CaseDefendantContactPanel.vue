@@ -146,6 +146,19 @@ async function disableSelected(): Promise<void> {
     disabling.value = false;
   }
 }
+const enablingId = ref('');
+async function enableDefendant(id: string): Promise<void> {
+  if (enablingId.value) return;
+  enablingId.value = id;
+  try {
+    await setCaseDefendantDisabled(props.item.id, id, false);
+    emit('changed');
+  } catch {
+    disableError.value = '恢复未完成，请稍后重试。';
+  } finally {
+    enablingId.value = '';
+  }
+}
 const recordEdit = computed(() =>
   props.item.recordEdits?.defendantContacts.find(
     (value) => value.defendantId === defendantId.value,
@@ -562,5 +575,27 @@ onBeforeUnmount(() => {
         </button>
       </div>
     </div>
+    <details
+      v-if="(item.disabledDefendants?.length ?? 0) > 0"
+      class="case-inline-subblock"
+      data-test="disabled-defendants"
+    >
+      <summary>已停用被告（{{ item.disabledDefendants!.length }}）</summary>
+      <ul class="disabled-defendant-list">
+        <li v-for="entry in item.disabledDefendants" :key="entry.id">
+          <span
+            >{{ entry.name }}（{{ entry.disabledAt.slice(0, 10) }} 停用）</span
+          >
+          <button
+            type="button"
+            data-test="defendant-enable"
+            :disabled="enablingId === entry.id"
+            @click="enableDefendant(entry.id)"
+          >
+            恢复
+          </button>
+        </li>
+      </ul>
+    </details>
   </section>
 </template>
