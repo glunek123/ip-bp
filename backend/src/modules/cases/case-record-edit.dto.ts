@@ -169,3 +169,30 @@ export class AddCaseDefendantResultDto {
   @ApiProperty() contactRevision!: number;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
 }
+
+export class ChangeResponsibleUserDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID('4')
+  userId!: string;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 500 })
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @IsString()
+  @MaxLength(500)
+  reason?: string | null;
+  @ApiProperty({ minLength: 1, maxLength: 128 })
+  @IsString()
+  idempotencyKey!: string;
+}
+
+export class ResponsibleUserCandidateDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() displayName!: string;
+}
+
+export class ChangeResponsibleUserResultDto {
+  @ApiProperty({ format: 'uuid' }) caseId!: string;
+  @ApiProperty({ format: 'uuid' }) responsibleUserId!: string;
+  @ApiProperty() responsibilityEpoch!: number;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+}

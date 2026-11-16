@@ -44,6 +44,7 @@ describe('CaseRecordEditService', () => {
       id: caseId,
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
+      responsibilityEpoch: 0,
       responsibleMembership: { teamId: null },
       currentAcceptanceId: acceptanceId,
       currentTrialRoundId: roundId,
@@ -74,6 +75,10 @@ describe('CaseRecordEditService', () => {
         findUnique: jest
           .fn()
           .mockResolvedValue({ active: true, accountType: 'INTERNAL' }),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: '88888888-8888-4888-8888-888888888888' }),
+        findMany: jest.fn().mockResolvedValue([]),
       },
       caseRecordEditReceipt: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -87,6 +92,7 @@ describe('CaseRecordEditService', () => {
         }),
         count: jest.fn().mockResolvedValue(1),
         create: jest.fn().mockResolvedValue({}),
+        delete: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       caseDefendantContactChange: { create: jest.fn().mockResolvedValue({}) },
@@ -708,6 +714,58 @@ describe('CaseRecordEditService', () => {
         idempotencyKey: 'defendant-add-3',
       }),
     ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+  });
+  it('removes a defendant when more than one remains', async () => {
+    const f = fixture();
+    f.tx.caseDefendant.count.mockResolvedValueOnce(2);
+    f.tx.caseDefendant.findFirst.mockResolvedValueOnce({
+      id: defendantId,
+      name: '张三',
+    });
+    const result = await f.service.removeDefendant(actor, caseId, defendantId);
+    expect(result).toEqual({ caseId, defendantId });
+    expect(f.tx.caseDefendant.delete).toHaveBeenCalledWith({
+      where: { id: defendantId, caseId, departmentId: actor.departmentId },
+    });
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: 'case.defendant.removed' }),
+      select: { id: true },
+    });
+  });
+
+  it('keeps at least one defendant per case', async () => {
+    const f = fixture();
+    f.tx.caseDefendant.count.mockResolvedValueOnce(1);
+    await expect(
+      f.service.removeDefendant(actor, caseId, defendantId),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.caseDefendant.delete).not.toHaveBeenCalled();
+  });
+
+  it('moves the responsible user and bumps the responsibility epoch', async () => {
+    const f = fixture();
+    const nextUserId = '88888888-8888-4888-8888-888888888888';
+    const result = await f.service.changeResponsibleUser(actor, caseId, {
+      userId: nextUserId,
+      reason: ' 运营调整 ',
+      idempotencyKey: 'responsible-1',
+    });
+    expect(result).toMatchObject({
+      caseId,
+      responsibleUserId: nextUserId,
+      responsibilityEpoch: 1,
+    });
+    expect(f.tx.case.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: caseId,
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      },
+      data: {
+        responsibleUserId: nextUserId,
+        responsibilityEpoch: { increment: 1 },
+      },
+    });
   });
 });
 

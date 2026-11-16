@@ -49,6 +49,7 @@ import {
 import {
   Controller,
   Body,
+  Delete,
   ForbiddenException,
   Get,
   Post,
@@ -96,6 +97,9 @@ import {
   AcceptanceCorrectionResultDto,
   AddCaseDefendantDto,
   AddCaseDefendantResultDto,
+  ChangeResponsibleUserDto,
+  ChangeResponsibleUserResultDto,
+  ResponsibleUserCandidateDto,
   CorrectCaseAcceptanceDto,
   DefendantContactUpdateResultDto,
   SaveSecondInstanceAcceptanceDto,
@@ -359,6 +363,43 @@ export class CaseReadController {
     @Body() body: AddCaseDefendantDto,
   ) {
     return this.recordEdit.addDefendant(actor, id, body);
+  }
+
+  @Delete(':id/defendants/:defendantId')
+  @ApiOkResponse({
+    schema: {
+      properties: {
+        caseId: { type: 'string' },
+        defendantId: { type: 'string' },
+      },
+    },
+  })
+  removeDefendant(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('defendantId', new ParseUUIDPipe({ version: '4' }))
+    defendantId: string,
+  ) {
+    return this.recordEdit.removeDefendant(actor, id, defendantId);
+  }
+
+  @Get(':id/responsible-candidates')
+  @ApiOkResponse({ type: ResponsibleUserCandidateDto, isArray: true })
+  responsibleCandidates(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.recordEdit.responsibleCandidates(actor, id);
+  }
+
+  @Post(':id/responsible-user')
+  @ApiCreatedResponse({ type: ChangeResponsibleUserResultDto })
+  changeResponsibleUser(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: ChangeResponsibleUserDto,
+  ) {
+    return this.recordEdit.changeResponsibleUser(actor, id, body);
   }
 
   @Post(':id/acceptance-correction')

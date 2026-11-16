@@ -16,6 +16,9 @@ import {
   AcceptanceCorrectionResultDto,
   AddCaseDefendantDto,
   AddCaseDefendantResultDto,
+  ChangeResponsibleUserDto,
+  ChangeResponsibleUserResultDto,
+  ResponsibleUserCandidateDto,
   CorrectCaseAcceptanceDto,
   DefendantContactUpdateResultDto,
   SaveSecondInstanceAcceptanceDto,
@@ -48,6 +51,11 @@ type AddDefendantValue = {
   phone: string | null;
   address: string | null;
   legalRepresentative: string | null;
+  idempotencyKey: string;
+};
+type ResponsibleValue = {
+  userId: string;
+  reason: string | null;
   idempotencyKey: string;
 };
 type AcceptanceValue = {
@@ -312,6 +320,201 @@ export class CaseRecordEditService {
                 actorUserId: actor.userId,
                 caseId,
                 command: 'DEFENDANT_ADD',
+                idempotencyKey: value.idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultSnapshot: { ...result },
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.hasCode(error, 'P2034') || this.hasCode(error, '40001')) {
+          if (attempt < 2) continue;
+          throw this.conflict('VERSION_CONFLICT');
+        }
+        if (this.hasCode(error, 'P2002')) {
+          if (attempt < 2) continue;
+          throw this.conflict('VERSION_CONFLICT');
+        }
+        throw error;
+      }
+    }
+    throw this.conflict('VERSION_CONFLICT');
+  }
+
+  async removeDefendant(
+    actor: ActorContext,
+    caseId: string,
+    defendantId: string,
+  ): Promise<{ caseId: string; defendantId: string }> {
+    return this.database.$transaction(
+      async (tx) => {
+        await this.lockAndAuthorize(
+          tx,
+          actor,
+          caseId,
+          'case.defendant-contact.update',
+        );
+        const remaining = await tx.caseDefendant.count({
+          where: { caseId, departmentId: actor.departmentId },
+        });
+        if (remaining <= 1)
+          throw this.validation('案件至少保留一名被告，不能删除');
+        const target = await tx.caseDefendant.findFirst({
+          where: { id: defendantId, caseId, departmentId: actor.departmentId },
+          select: { id: true, name: true },
+        });
+        if (target === null) throw this.notFound();
+        try {
+          await tx.caseDefendant.delete({
+            where: {
+              id: defendantId,
+              caseId,
+              departmentId: actor.departmentId,
+            },
+          });
+        } catch (error) {
+          if (this.hasCode(error, 'P2003'))
+            throw this.conflict('DEFENDANT_IN_USE');
+          throw error;
+        }
+        await tx.auditEvent.create({
+          data: {
+            departmentId: actor.departmentId,
+            actorUserId: actor.userId,
+            internalActorUserId: actor.userId,
+            resourceType: 'CASE',
+            resourceId: caseId,
+            action: 'case.defendant.removed',
+            details: { defendantId, name: target.name },
+          },
+          select: { id: true },
+        });
+        return { caseId, defendantId };
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  }
+
+  async responsibleCandidates(
+    actor: ActorContext,
+    caseId: string,
+  ): Promise<ResponsibleUserCandidateDto[]> {
+    await this.database.$transaction(async (tx) => {
+      await this.lockAndAuthorize(tx, actor, caseId, 'case.routine.edit');
+    });
+    const rows = await this.database.userAccount.findMany({
+      where: {
+        active: true,
+        accountType: 'INTERNAL',
+        memberships: {
+          some: { departmentId: actor.departmentId, active: true },
+        },
+      },
+      select: { id: true, displayName: true },
+      orderBy: { displayName: 'asc' },
+      take: 200,
+    });
+    return rows.map((row) => ({ id: row.id, displayName: row.displayName }));
+  }
+
+  async changeResponsibleUser(
+    actor: ActorContext,
+    caseId: string,
+    input: ChangeResponsibleUserDto,
+  ): Promise<ChangeResponsibleUserResultDto> {
+    const value: ResponsibleValue = {
+      userId: input.userId,
+      reason: input.reason?.trim() || null,
+      idempotencyKey: input.idempotencyKey,
+    };
+    const fingerprint = this.fingerprint(caseId, value);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await this.database.$transaction(
+          async (tx) => {
+            const record = await this.lockAndAuthorize(
+              tx,
+              actor,
+              caseId,
+              'case.routine.edit',
+            );
+            const prior = await tx.caseRecordEditReceipt.findUnique({
+              where: {
+                departmentId_actorUserId_command_idempotencyKey: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  command: 'RESPONSIBLE_USER_CHANGE',
+                  idempotencyKey: value.idempotencyKey,
+                },
+              },
+            });
+            if (prior !== null) {
+              if (
+                prior.caseId !== caseId ||
+                prior.requestFingerprint !== fingerprint
+              )
+                throw this.conflict('IDEMPOTENCY_CONFLICT');
+              return this.responsibleReceipt(prior.resultSnapshot, caseId);
+            }
+            if (record.responsibleUserId === value.userId)
+              throw this.validation('案件负责人没有变化');
+            const target = await tx.userAccount.findFirst({
+              where: {
+                id: value.userId,
+                active: true,
+                accountType: 'INTERNAL',
+                memberships: {
+                  some: { departmentId: actor.departmentId, active: true },
+                },
+              },
+              select: { id: true },
+            });
+            if (target === null) throw this.validation('目标运营不可用');
+            const previousUserId = record.responsibleUserId;
+            const recordedAt = new Date();
+            const updated = await tx.case.updateMany({
+              where: {
+                id: caseId,
+                departmentId: actor.departmentId,
+                responsibleUserId: previousUserId,
+              },
+              data: {
+                responsibleUserId: value.userId,
+                responsibilityEpoch: { increment: 1 },
+              },
+            });
+            if (updated.count !== 1) throw this.conflict('VERSION_CONFLICT');
+            await tx.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                internalActorUserId: actor.userId,
+                resourceType: 'CASE',
+                resourceId: caseId,
+                action: 'case.responsible-user.changed',
+                details: {
+                  fromUserId: previousUserId,
+                  toUserId: value.userId,
+                  reason: value.reason,
+                },
+              },
+              select: { id: true },
+            });
+            const result: ChangeResponsibleUserResultDto = {
+              caseId,
+              responsibleUserId: value.userId,
+              responsibilityEpoch: record.responsibilityEpoch + 1,
+              recordedAt: recordedAt.toISOString(),
+            };
+            await tx.caseRecordEditReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                caseId,
+                command: 'RESPONSIBLE_USER_CHANGE',
                 idempotencyKey: value.idempotencyKey,
                 requestFingerprint: fingerprint,
                 resultSnapshot: { ...result },
@@ -801,6 +1004,7 @@ export class CaseRecordEditService {
     caseId: string,
     action:
       | 'case.defendant-contact.update'
+      | 'case.routine.edit'
       | 'case.acceptance.correct'
       | 'case.second-instance-acceptance.update',
   ) {
@@ -822,6 +1026,7 @@ export class CaseRecordEditService {
         id: true,
         departmentId: true,
         responsibleUserId: true,
+        responsibilityEpoch: true,
         responsibleMembership: { select: { teamId: true } },
         currentAcceptanceId: true,
         currentTrialRoundId: true,
@@ -1130,6 +1335,7 @@ export class CaseRecordEditService {
     value:
       | ContactValue
       | AddDefendantValue
+      | ResponsibleValue
       | AcceptanceValue
       | SecondAcceptanceValue,
   ) {
@@ -1273,6 +1479,28 @@ export class CaseRecordEditService {
       caseId,
       defendantId: snapshot.defendantId,
       contactRevision: snapshot.contactRevision,
+      recordedAt: snapshot.recordedAt,
+    };
+  }
+
+  private responsibleReceipt(
+    snapshot: Prisma.JsonValue,
+    caseId: string,
+  ): ChangeResponsibleUserResultDto {
+    if (
+      snapshot === null ||
+      typeof snapshot !== 'object' ||
+      Array.isArray(snapshot) ||
+      snapshot.caseId !== caseId ||
+      typeof snapshot.responsibleUserId !== 'string' ||
+      typeof snapshot.responsibilityEpoch !== 'number' ||
+      typeof snapshot.recordedAt !== 'string'
+    )
+      throw this.conflict('INVALID_STATE');
+    return {
+      caseId,
+      responsibleUserId: snapshot.responsibleUserId,
+      responsibilityEpoch: snapshot.responsibilityEpoch,
       recordedAt: snapshot.recordedAt,
     };
   }

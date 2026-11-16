@@ -8391,3 +8391,102 @@ export async function addCaseDefendant(
     recordedAt: row.recordedAt,
   };
 }
+
+export type ResponsibleUserCandidate = { id: string; displayName: string };
+
+export async function listResponsibleCandidates(
+  caseId: string,
+  options: RequestOptions = {},
+): Promise<ResponsibleUserCandidate[]> {
+  if (!uuidV4(caseId))
+    throw new ApiError('案件编号无效', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(caseId)}/responsible-candidates`,
+    options,
+  );
+  if (!Array.isArray(response))
+    throw new ApiError('候选运营结果无效', 502, 'INVALID_RESPONSE');
+  return response.map((entry) => {
+    if (
+      !record(entry) ||
+      typeof entry.id !== 'string' ||
+      typeof entry.displayName !== 'string'
+    )
+      throw new ApiError('候选运营结果无效', 502, 'INVALID_RESPONSE');
+    return { id: entry.id, displayName: entry.displayName };
+  });
+}
+
+export type ChangeResponsibleUserInput = {
+  userId: string;
+  reason: string | null;
+  idempotencyKey: string;
+};
+export type ChangeResponsibleUserResult = {
+  caseId: string;
+  responsibleUserId: string;
+  responsibilityEpoch: number;
+  recordedAt: string;
+};
+
+export async function changeCaseResponsibleUser(
+  caseId: string,
+  input: ChangeResponsibleUserInput,
+  options: RequestOptions = {},
+): Promise<ChangeResponsibleUserResult> {
+  if (
+    !uuidV4(caseId) ||
+    !uuidV4(input.userId) ||
+    !validIdempotencyKey(input.idempotencyKey)
+  )
+    throw new ApiError('移交信息无效', 400, 'VALIDATION_ERROR');
+  const reason = input.reason?.trim() || null;
+  if (reason !== null && reason.length > 500)
+    throw new ApiError('移交原因不超过500字符', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(caseId)}/responsible-user`,
+    {
+      ...writeRequestOptions(input.idempotencyKey, options),
+      method: 'POST',
+      body: {
+        userId: input.userId,
+        reason,
+        idempotencyKey: input.idempotencyKey,
+      },
+    },
+  );
+  if (
+    !record(response) ||
+    response.caseId !== caseId ||
+    typeof response.responsibleUserId !== 'string' ||
+    typeof response.responsibilityEpoch !== 'number' ||
+    typeof response.recordedAt !== 'string'
+  )
+    throw new ApiError('移交结果无效', 502, 'INVALID_RESPONSE');
+  return {
+    caseId,
+    responsibleUserId: response.responsibleUserId,
+    responsibilityEpoch: response.responsibilityEpoch,
+    recordedAt: response.recordedAt,
+  };
+}
+
+export async function removeCaseDefendant(
+  caseId: string,
+  defendantId: string,
+  options: RequestOptions = {},
+): Promise<{ caseId: string; defendantId: string }> {
+  if (!uuidV4(caseId) || !uuidV4(defendantId))
+    throw new ApiError('被告编号无效', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(caseId)}/defendants/${encodeURIComponent(defendantId)}`,
+    { ...options, method: 'DELETE' },
+  );
+  if (
+    !record(response) ||
+    response.caseId !== caseId ||
+    response.defendantId !== defendantId
+  )
+    throw new ApiError('删除结果无效', 502, 'INVALID_RESPONSE');
+  return { caseId, defendantId };
+}

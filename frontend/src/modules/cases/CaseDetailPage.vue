@@ -2675,6 +2675,11 @@ onBeforeUnmount(() => {
                 @access-lost="recordEditAccessLost"
                 @cancel="closeInlineEdit"
               />
+              <CaseResponsibleUserPanel
+                :item="item"
+                :context-key="workspaceContext"
+                @changed="changedInlineEdit"
+              />
             </section>
           </template>
           <template #edit-judgment>
@@ -3617,5 +3622,15 @@ onBeforeUnmount(() => {
 .case-inline-editor :deep(.form-section-title) {
   margin-bottom: 8px;
   font-size: 13px;
+}
+.case-inline-subblock {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--color-hairline-strong);
+}
+.case-inline-subblock > summary {
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  cursor: pointer;
 }
 </style>
