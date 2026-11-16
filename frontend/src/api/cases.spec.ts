@@ -109,6 +109,24 @@ describe('early archive API', () => {
     recordedAt: '2026-10-14T01:00:00.000Z',
     recordedByUserId: '90000000-0000-4000-8000-000000000004',
   };
+  it('accepts disabled defendants without breaking the detail parse', async () => {
+    const payload = {
+      ...closureDetailPayload(),
+      id: archiveCaseId,
+      disabledDefendants: [
+        {
+          id: '70000000-0000-4000-8000-000000000009',
+          name: '停用被告',
+          disabledAt: '2026-11-15T00:00:00.000Z',
+        },
+      ],
+    };
+    mockJson(payload);
+    await expect(getCase(archiveCaseId)).resolves.toMatchObject({
+      disabledDefendants: [expect.objectContaining({ name: '停用被告' })],
+    });
+  });
+
   it('reads the distinct early fact while keeping the old closure chain', async () => {
     const old = closureDetailPayload();
     const payload = {
