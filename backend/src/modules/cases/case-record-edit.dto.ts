@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsIn,
   IsOptional,
   IsInt,
@@ -194,5 +196,55 @@ export class ChangeResponsibleUserResultDto {
   @ApiProperty({ format: 'uuid' }) caseId!: string;
   @ApiProperty({ format: 'uuid' }) responsibleUserId!: string;
   @ApiProperty() responsibilityEpoch!: number;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+}
+
+const LEAD_CASE_TYPES = [
+  'CIVIL',
+  'CRIMINAL',
+  'ADMINISTRATIVE',
+  'INVESTIGATION',
+  'NOTARIZATION',
+  'HEARING_REPRESENTATION',
+] as const;
+const INFRINGEMENT_TYPES = [
+  'TRADEMARK',
+  'SOFTWARE_COPYRIGHT',
+  'ART_COPYRIGHT',
+  'AUDIOVISUAL_COPYRIGHT',
+  'TEXT_COPYRIGHT',
+  'INVENTION_PATENT',
+  'DESIGN_PATENT',
+  'UTILITY_MODEL_PATENT',
+  'UNFAIR_COMPETITION',
+  'NETWORK_DISSEMINATION',
+  'PORTRAIT_RIGHT',
+  'OTHER',
+] as const;
+
+export class ChangeCaseTypesDto {
+  @ApiProperty({ enum: LEAD_CASE_TYPES })
+  @IsIn(LEAD_CASE_TYPES)
+  caseType!: (typeof LEAD_CASE_TYPES)[number];
+  @ApiProperty({ enum: INFRINGEMENT_TYPES, isArray: true })
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsIn(INFRINGEMENT_TYPES, { each: true })
+  infringementTypes!: Array<(typeof INFRINGEMENT_TYPES)[number]>;
+  @ApiProperty({ minLength: 1, maxLength: 500 })
+  @IsString()
+  @MaxLength(500)
+  reason!: string;
+  @ApiProperty({ minLength: 1, maxLength: 128 })
+  @IsString()
+  idempotencyKey!: string;
+}
+
+export class ChangeCaseTypesResultDto {
+  @ApiProperty({ format: 'uuid' }) caseId!: string;
+  @ApiProperty({ format: 'uuid' }) leadId!: string;
+  @ApiProperty() caseType!: string;
+  @ApiProperty({ type: String, isArray: true }) infringementTypes!: string[];
+  @ApiProperty() affectedCaseCount!: number;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
 }

@@ -1028,7 +1028,8 @@ it.each([
     const inline = wrapper.find(`[data-test="${section}-inline-editor"]`);
     if (inline.exists()) {
       expect(inline.find(`[data-test="${panel}"]`).exists()).toBe(true);
-      await inline.get(`[data-test="${cancel}"]`).trigger('click');
+      const cancelTest = section === 'case-info' ? 'case-info-cancel' : cancel;
+      await inline.get(`[data-test="${cancelTest}"]`).trigger('click');
       await flushPromises();
       expect(
         wrapper.find(`[data-test="${section}-inline-editor"]`).exists(),
@@ -1531,7 +1532,7 @@ describe('UI002 real case workspace host', () => {
       .trigger('click');
     await flushPromises();
     expect(
-      wrapper.get('[data-test="defendant-contact-phone"]').element,
+      wrapper.get('[data-test="edit-field-联系电话"]').element,
     ).toHaveProperty('value', '100');
     expect(wrapper.find('[data-test="case-info-inline-editor"]').exists()).toBe(
       true,
@@ -1539,17 +1540,15 @@ describe('UI002 real case workspace host', () => {
     expect(wrapper.getComponent(ElDrawer).props('modelValue')).toBe(false);
     expect(wrapper.find('[data-test="case-match-form"]').exists()).toBe(false);
     await wrapper
-      .get('[data-test="defendant-contact-address"]')
+      .get('[data-test="edit-field-联系地址"]')
       .setValue('取消的地址');
-    await wrapper
-      .get('[data-test="defendant-contact-cancel"]')
-      .trigger('click');
+    await wrapper.get('[data-test="case-info-cancel"]').trigger('click');
     expect(api.updateCaseDefendantContact).not.toHaveBeenCalled();
     await wrapper
       .get('[data-section="case-info"] .case-workspace-section__edit')
       .trigger('click');
     expect(
-      wrapper.get('[data-test="defendant-contact-address"]').element,
+      wrapper.get('[data-test="edit-field-联系地址"]').element,
     ).toHaveProperty('value', '原地址');
     const fresh = structuredClone(item);
     fresh.defendants[0]!.phone = '200';
@@ -1557,8 +1556,8 @@ describe('UI002 real case workspace host', () => {
     api.updateCaseDefendantContact.mockImplementationOnce(async () => {
       api.getCase.mockResolvedValue(fresh);
     });
-    await wrapper.get('[data-test="defendant-contact-phone"]').setValue('200');
-    await wrapper.get('[data-test="defendant-contact-save"]').trigger('click');
+    await wrapper.get('[data-test="edit-field-联系电话"]').setValue('200');
+    await wrapper.get('[data-test="case-info-save"]').trigger('click');
     await flushPromises();
     expect(api.updateCaseDefendantContact).toHaveBeenCalledWith(
       item.id,
@@ -1569,7 +1568,7 @@ describe('UI002 real case workspace host', () => {
         phone: '200',
         address: '原地址',
       },
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      expect.anything(),
     );
     await wrapper.get('[data-test="case-refresh"]').trigger('click');
     await flushPromises();

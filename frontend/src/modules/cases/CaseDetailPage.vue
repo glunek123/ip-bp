@@ -25,6 +25,7 @@ import {
   onBeforeUnmount,
   onDeactivated,
   onMounted,
+  reactive,
   ref,
   watch,
 } from 'vue';
@@ -108,6 +109,8 @@ import {
   type PrepareCaseDefendantsInput,
   type SubmitComplaintInput,
   type LawyerMatchCandidate,
+  changeCaseTypes,
+  updateCaseDefendantContact,
 } from '../../api/cases';
 import {
   downloadMaterialVersion,
@@ -125,6 +128,8 @@ import CaseFilingPanel from './CaseFilingPanel.vue';
 import CaseAcceptancePanel from './CaseAcceptancePanel.vue';
 import CaseDefendantContactPanel from './CaseDefendantContactPanel.vue';
 import CaseResponsibleUserPanel from './CaseResponsibleUserPanel.vue';
+import { leadCaseTypeLabels, leadInfringementTypeLabels } from '../leads';
+import type { InfringementType, LeadCaseType } from '../../api/leads';
 import CaseAcceptanceCorrectionPanel from './CaseAcceptanceCorrectionPanel.vue';
 import CaseSecondInstanceAcceptancePanel from './CaseSecondInstanceAcceptancePanel.vue';
 import CaseHearingPanel from './CaseHearingPanel.vue';
@@ -245,6 +250,109 @@ const selectedCommand = ref('');
 const sectionEditing = ref(false);
 const inlineEditSection = ref<SectionKey | null>(null);
 const inlineCommand = ref('');
+const caseDraft = reactive({
+  phone: '',
+  address: '',
+  caseType: '' as LeadCaseType | '',
+  infringementTypes: [] as InfringementType[],
+  reason: '',
+});
+const caseInfoSaving = ref(false);
+const caseInfoError = ref('');
+const caseEditFields = computed(() => {
+  if (inlineEditSection.value !== 'case-info') return null;
+  return {
+    联系电话: { kind: 'text' as const, value: caseDraft.phone },
+    联系地址: { kind: 'textarea' as const, value: caseDraft.address },
+    案件类型: {
+      kind: 'select' as const,
+      value: caseDraft.caseType,
+      options: Object.entries(leadCaseTypeLabels).map(([value, label]) => ({
+        value,
+        label,
+      })),
+    },
+    侵权类型: {
+      kind: 'multi' as const,
+      value: caseDraft.infringementTypes,
+      options: Object.entries(leadInfringementTypeLabels).map(
+        ([value, label]) => ({ value, label }),
+      ),
+    },
+  };
+});
+function updateCaseField(label: string, value: string | string[]): void {
+  if (label === '联系电话') caseDraft.phone = String(value);
+  else if (label === '联系地址') caseDraft.address = String(value);
+  else if (label === '案件类型') caseDraft.caseType = value as LeadCaseType;
+  else if (label === '侵权类型')
+    caseDraft.infringementTypes = [...(value as InfringementType[])];
+}
+async function saveCaseInfo(): Promise<void> {
+  const current = item.value;
+  if (!current || caseInfoSaving.value) return;
+  caseInfoSaving.value = true;
+  caseInfoError.value = '';
+  try {
+    const defendant = current.defendants[0];
+    const contact = current.recordEdits?.defendantContacts.find(
+      (entry) => entry.defendantId === defendant?.id,
+    );
+    const phone = caseDraft.phone.trim();
+    const address = caseDraft.address.trim();
+    const contactChanged =
+      !!defendant &&
+      !!contact &&
+      ((defendant.phone ?? '') !== phone ||
+        (defendant.address ?? '') !== address);
+    if (contactChanged && defendant && contact) {
+      await updateCaseDefendantContact(
+        current.id,
+        {
+          defendantId: defendant.id,
+          expectedContactRevision: contact.contactRevision,
+          idempotencyKey: globalThis.crypto.randomUUID(),
+          phone: phone || null,
+          address: address || null,
+        },
+        {},
+      );
+    }
+    const source = lead.value;
+    const typesChanged =
+      !!source &&
+      (source.caseType !== caseDraft.caseType ||
+        [...source.infringementTypes].sort().join(',') !==
+          [...caseDraft.infringementTypes].sort().join(','));
+    if (typesChanged) {
+      if (!caseDraft.caseType) throw new Error('请选择案件类型');
+      if (!caseDraft.infringementTypes.length)
+        throw new Error('请至少选择一种侵权类型');
+      if (!caseDraft.reason.trim()) throw new Error('修改类型需填写更正原因');
+      await changeCaseTypes(current.id, {
+        caseType: caseDraft.caseType,
+        infringementTypes: caseDraft.infringementTypes,
+        reason: caseDraft.reason.trim(),
+        idempotencyKey: globalThis.crypto.randomUUID(),
+      });
+    }
+    if (!contactChanged && !typesChanged) {
+      caseInfoError.value = '没有需要保存的改动。';
+      return;
+    }
+    inlineEditSection.value = null;
+    await load();
+  } catch (failure) {
+    const message =
+      failure instanceof Error && !('status' in failure)
+        ? failure.message
+        : '保存未完成，请核对字段后重试。';
+    caseInfoError.value = message;
+  } finally {
+    caseInfoSaving.value = false;
+  }
+}
+
 const editRequest = ref(0);
 const timelineView = ref(false);
 // Each command has one instance. Hiding the drawer or switching its view never resets it.
@@ -543,6 +651,15 @@ function editSection(section: SectionKey): void {
     }
     inlineEditSection.value = section;
     editRequest.value += 1;
+    if (section === 'case-info') {
+      const defendant = item.value?.defendants[0];
+      caseDraft.phone = defendant?.phone ?? '';
+      caseDraft.address = defendant?.address ?? '';
+      caseDraft.caseType = lead.value?.caseType ?? '';
+      caseDraft.infringementTypes = [...(lead.value?.infringementTypes ?? [])];
+      caseDraft.reason = '';
+      caseInfoError.value = '';
+    }
     inlineCommand.value =
       sectionEditCommands.value.find((entry) => entry.section === section)
         ?.id ?? '';
@@ -2632,6 +2749,8 @@ onBeforeUnmount(() => {
           :context-key="workspaceContext"
           :supplement-actor-key="secondInstanceActorKey"
           :editing-section="routineEditing ? 'lead-info' : inlineEditSection"
+          :edit-fields="caseEditFields"
+          @update-field="updateCaseField"
           @edit="editSection"
           @view-timeline="viewTimeline"
           @supplement-changed="detailSourcesRevision += 1"
@@ -2667,10 +2786,38 @@ onBeforeUnmount(() => {
               class="case-inline-editor"
               data-test="case-info-inline-editor"
             >
+              <label class="form-field">
+                更正原因（改类型时必填）
+                <input
+                  v-model="caseDraft.reason"
+                  class="text-input"
+                  data-test="case-info-reason"
+                />
+              </label>
+              <p v-if="caseInfoError" role="alert">{{ caseInfoError }}</p>
+              <div class="form-actions">
+                <button
+                  type="button"
+                  data-test="case-info-save"
+                  :disabled="caseInfoSaving"
+                  @click="saveCaseInfo"
+                >
+                  保存
+                </button>
+                <button
+                  type="button"
+                  data-test="case-info-cancel"
+                  :disabled="caseInfoSaving"
+                  @click="closeInlineEdit"
+                >
+                  取消
+                </button>
+              </div>
               <CaseDefendantContactPanel
                 :item="item"
                 :context-key="workspaceContext"
                 embedded
+                fields-external
                 @changed="changedInlineEdit"
                 @refresh="load"
                 @access-lost="recordEditAccessLost"

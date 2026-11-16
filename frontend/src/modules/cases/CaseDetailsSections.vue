@@ -47,6 +47,14 @@ const props = defineProps<{
   actions: Record<SectionKey, SectionAction>;
   contextKey: string;
   editingSection?: SectionKey | null;
+  editFields?: Record<
+    string,
+    {
+      kind: 'text' | 'textarea' | 'select' | 'multi';
+      value: string | string[];
+      options?: Array<{ value: string; label: string }>;
+    }
+  > | null;
   supplementActorKey: string;
 }>();
 const emit = defineEmits<{
@@ -54,6 +62,7 @@ const emit = defineEmits<{
   'view-timeline': [];
   'supplement-changed': [];
   'open-files': [];
+  'update-field': [label: string, value: string | string[]];
 }>();
 const sections = computed(() =>
   buildCaseWorkspaceSections(
@@ -146,10 +155,24 @@ async function downloadSummaryFile(
     fileDownloads.delete(controller);
   }
 }
+function editField(label: string) {
+  return props.editFields?.[label] ?? null;
+}
+function toggleMulti(label: string, option: string, checked: boolean): void {
+  const current = editField(label);
+  const values = Array.isArray(current?.value) ? [...current.value] : [];
+  const next = checked
+    ? [...new Set([...values, option])]
+    : values.filter((entry) => entry !== option);
+  emit('update-field', label, next);
+}
+function inputValue(event: Event): string {
+  return (event.target as HTMLInputElement | HTMLTextAreaElement).value;
+}
+
 function hiddenWhileEditing(key: SectionKey, label: string): boolean {
   if (props.editingSection !== key) return false;
   if (key === 'lead-info') return label === '店铺名';
-  if (key === 'case-info') return label === '联系电话' || label === '联系地址';
   return false;
 }
 const supplementsBySection: Partial<Record<SectionKey, CaseSupplementKind[]>> =
@@ -247,7 +270,73 @@ function edit(key: SectionKey): void {
                 {{ field.label }}
               </dt>
               <dd class="case-workspace-field__value">
-                {{ field.value }}
+                <template v-if="editField(field.label)">
+                  <textarea
+                    v-if="editField(field.label)!.kind === 'textarea'"
+                    class="text-input"
+                    rows="2"
+                    :data-test="`edit-field-${field.label}`"
+                    :value="String(editField(field.label)!.value ?? '')"
+                    @input="
+                      emit('update-field', field.label, inputValue($event))
+                    "
+                  />
+                  <select
+                    v-else-if="editField(field.label)!.kind === 'select'"
+                    class="text-input"
+                    :data-test="`edit-field-${field.label}`"
+                    :value="String(editField(field.label)!.value ?? '')"
+                    @change="
+                      emit('update-field', field.label, inputValue($event))
+                    "
+                  >
+                    <option
+                      v-for="option in editField(field.label)!.options ?? []"
+                      :key="option.value"
+                      :value="option.value"
+                    >
+                      {{ option.label }}
+                    </option>
+                  </select>
+                  <span
+                    v-else-if="editField(field.label)!.kind === 'multi'"
+                    class="case-workspace-multi"
+                    :data-test="`edit-field-${field.label}`"
+                  >
+                    <label
+                      v-for="option in editField(field.label)!.options ?? []"
+                      :key="option.value"
+                    >
+                      <input
+                        type="checkbox"
+                        :value="option.value"
+                        :checked="
+                          (editField(field.label)!.value as string[]).includes(
+                            option.value,
+                          )
+                        "
+                        @change="
+                          toggleMulti(
+                            field.label,
+                            option.value,
+                            ($event.target as HTMLInputElement).checked,
+                          )
+                        "
+                      />
+                      {{ option.label }}
+                    </label>
+                  </span>
+                  <input
+                    v-else
+                    class="text-input"
+                    :data-test="`edit-field-${field.label}`"
+                    :value="String(editField(field.label)!.value ?? '')"
+                    @input="
+                      emit('update-field', field.label, inputValue($event))
+                    "
+                  />
+                </template>
+                <template v-else>{{ field.value }}</template>
                 <p v-if="field.help" class="case-workspace-field__help">
                   {{ field.help }}
                 </p>

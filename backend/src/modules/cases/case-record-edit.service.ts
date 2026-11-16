@@ -16,6 +16,8 @@ import {
   AcceptanceCorrectionResultDto,
   AddCaseDefendantDto,
   AddCaseDefendantResultDto,
+  ChangeCaseTypesDto,
+  ChangeCaseTypesResultDto,
   ChangeResponsibleUserDto,
   ChangeResponsibleUserResultDto,
   ResponsibleUserCandidateDto,
@@ -51,6 +53,12 @@ type AddDefendantValue = {
   phone: string | null;
   address: string | null;
   legalRepresentative: string | null;
+  idempotencyKey: string;
+};
+type CaseTypesValue = {
+  caseType: string;
+  infringementTypes: string[];
+  reason: string;
   idempotencyKey: string;
 };
 type ResponsibleValue = {
@@ -520,6 +528,142 @@ export class CaseRecordEditService {
                 resultSnapshot: { ...result },
               },
             });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.hasCode(error, 'P2034') || this.hasCode(error, '40001')) {
+          if (attempt < 2) continue;
+          throw this.conflict('VERSION_CONFLICT');
+        }
+        if (this.hasCode(error, 'P2002')) {
+          if (attempt < 2) continue;
+          throw this.conflict('VERSION_CONFLICT');
+        }
+        throw error;
+      }
+    }
+    throw this.conflict('VERSION_CONFLICT');
+  }
+
+  async changeCaseTypes(
+    actor: ActorContext,
+    caseId: string,
+    input: ChangeCaseTypesDto,
+  ): Promise<ChangeCaseTypesResultDto> {
+    const value: CaseTypesValue = {
+      caseType: input.caseType,
+      infringementTypes: [...new Set(input.infringementTypes)].sort(),
+      reason: input.reason.trim(),
+      idempotencyKey: input.idempotencyKey,
+    };
+    if (!value.reason) throw this.validation('请填写更正原因');
+    const fingerprint = this.fingerprint(caseId, value);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await this.database.$transaction(
+          async (tx) => {
+            const record = await this.lockAndAuthorize(
+              tx,
+              actor,
+              caseId,
+              'case.routine.edit',
+            );
+            const prior = await tx.caseRecordEditReceipt.findUnique({
+              where: {
+                departmentId_actorUserId_command_idempotencyKey: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  command: 'CASE_TYPE_CHANGE',
+                  idempotencyKey: value.idempotencyKey,
+                },
+              },
+            });
+            if (prior !== null) {
+              if (
+                prior.caseId !== caseId ||
+                prior.requestFingerprint !== fingerprint
+              )
+                throw this.conflict('IDEMPOTENCY_CONFLICT');
+              return this.caseTypesReceipt(prior.resultSnapshot, caseId);
+            }
+            const leadId = await this.caseSourceLead(tx, caseId);
+            if (leadId === null)
+              throw this.validation('该案件没有来源线索，类型不可在此更正');
+            const lead = await tx.lead.findFirst({
+              where: { id: leadId, departmentId: actor.departmentId },
+              select: {
+                id: true,
+                caseType: true,
+                infringements: { select: { type: true } },
+              },
+            });
+            if (lead === null) throw this.notFound();
+            const beforeTypes = lead.infringements
+              .map((entry) => entry.type as string)
+              .sort();
+            if (
+              lead.caseType === value.caseType &&
+              beforeTypes.join(',') === value.infringementTypes.join(',')
+            )
+              throw this.validation('案件类型没有变化');
+            const affectedCaseCount = await tx.case.count({
+              where: { sourceLeadId: leadId, departmentId: actor.departmentId },
+            });
+            const recordedAt = new Date();
+            await tx.lead.updateMany({
+              where: { id: leadId, departmentId: actor.departmentId },
+              data: { caseType: value.caseType as never },
+            });
+            await tx.leadInfringement.deleteMany({ where: { leadId } });
+            await tx.leadInfringement.createMany({
+              data: value.infringementTypes.map((type) => ({
+                id: randomUUID(),
+                leadId,
+                type: type as never,
+              })),
+            });
+            await tx.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                internalActorUserId: actor.userId,
+                resourceType: 'CASE',
+                resourceId: caseId,
+                action: 'case.case-types.changed',
+                details: {
+                  leadId,
+                  fromCaseType: lead.caseType,
+                  toCaseType: value.caseType,
+                  fromInfringementTypes: beforeTypes,
+                  toInfringementTypes: value.infringementTypes,
+                  affectedCaseCount,
+                  reason: value.reason,
+                },
+              },
+              select: { id: true },
+            });
+            const result: ChangeCaseTypesResultDto = {
+              caseId,
+              leadId,
+              caseType: value.caseType,
+              infringementTypes: value.infringementTypes,
+              affectedCaseCount,
+              recordedAt: recordedAt.toISOString(),
+            };
+            await tx.caseRecordEditReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                caseId,
+                command: 'CASE_TYPE_CHANGE',
+                idempotencyKey: value.idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultSnapshot: { ...result },
+              },
+            });
+            void record;
             return result;
           },
           { isolationLevel: 'Serializable' },
@@ -1335,6 +1479,7 @@ export class CaseRecordEditService {
     value:
       | ContactValue
       | AddDefendantValue
+      | CaseTypesValue
       | ResponsibleValue
       | AcceptanceValue
       | SecondAcceptanceValue,
@@ -1501,6 +1646,45 @@ export class CaseRecordEditService {
       caseId,
       responsibleUserId: snapshot.responsibleUserId,
       responsibilityEpoch: snapshot.responsibilityEpoch,
+      recordedAt: snapshot.recordedAt,
+    };
+  }
+
+  private async caseSourceLead(
+    tx: Prisma.TransactionClient,
+    caseId: string,
+  ): Promise<string | null> {
+    const target = await tx.case.findFirst({
+      where: { id: caseId },
+      select: { sourceLeadId: true },
+    });
+    return target?.sourceLeadId ?? null;
+  }
+
+  private caseTypesReceipt(
+    snapshot: Prisma.JsonValue,
+    caseId: string,
+  ): ChangeCaseTypesResultDto {
+    if (
+      snapshot === null ||
+      typeof snapshot !== 'object' ||
+      Array.isArray(snapshot) ||
+      snapshot.caseId !== caseId ||
+      typeof snapshot.leadId !== 'string' ||
+      typeof snapshot.caseType !== 'string' ||
+      !Array.isArray(snapshot.infringementTypes) ||
+      typeof snapshot.affectedCaseCount !== 'number' ||
+      typeof snapshot.recordedAt !== 'string'
+    )
+      throw this.conflict('INVALID_STATE');
+    return {
+      caseId,
+      leadId: snapshot.leadId,
+      caseType: snapshot.caseType,
+      infringementTypes: snapshot.infringementTypes.filter(
+        (entry): entry is string => typeof entry === 'string',
+      ),
+      affectedCaseCount: snapshot.affectedCaseCount,
       recordedAt: snapshot.recordedAt,
     };
   }

@@ -22,6 +22,7 @@ const props = defineProps<{
   item: CaseDetail;
   contextKey: string;
   embedded?: boolean;
+  fieldsExternal?: boolean;
 }>();
 const emit = defineEmits<{
   changed: [];
@@ -367,7 +368,12 @@ onBeforeUnmount(() => {
     <p v-if="!allowed" class="field-help" data-test="record-edit-unavailable">
       {{ unavailableReason() }}
     </p>
-    <template v-else>
+    <template v-if="fieldsExternal">
+      <p class="field-help">
+        被告：{{ selected?.name }}（电话、地址在卡片字段上直接修改）
+      </p>
+    </template>
+    <template v-else-if="allowed">
       <label v-if="item.defendants.length > 1" class="form-field">
         选择被告
         <select
@@ -415,6 +421,7 @@ onBeforeUnmount(() => {
     <p v-if="success" role="status">{{ success }}</p>
     <div class="form-actions">
       <button
+        v-if="!fieldsExternal"
         type="button"
         data-test="defendant-contact-save"
         :disabled="!canSave"
@@ -423,6 +430,7 @@ onBeforeUnmount(() => {
         &#x4fdd;&#x5b58;&#x8054;&#x7cfb;&#x65b9;&#x5f0f;
       </button>
       <button
+        v-if="!fieldsExternal"
         type="button"
         data-test="defendant-contact-cancel"
         :disabled="!!unknownRequest"

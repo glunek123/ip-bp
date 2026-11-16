@@ -8490,3 +8490,98 @@ export async function removeCaseDefendant(
     throw new ApiError('删除结果无效', 502, 'INVALID_RESPONSE');
   return { caseId, defendantId };
 }
+
+const LEAD_CASE_TYPES = [
+  'CIVIL',
+  'CRIMINAL',
+  'ADMINISTRATIVE',
+  'INVESTIGATION',
+  'NOTARIZATION',
+  'HEARING_REPRESENTATION',
+] as const;
+const INFRINGEMENT_TYPES = [
+  'TRADEMARK',
+  'SOFTWARE_COPYRIGHT',
+  'ART_COPYRIGHT',
+  'AUDIOVISUAL_COPYRIGHT',
+  'TEXT_COPYRIGHT',
+  'INVENTION_PATENT',
+  'DESIGN_PATENT',
+  'UTILITY_MODEL_PATENT',
+  'UNFAIR_COMPETITION',
+  'NETWORK_DISSEMINATION',
+  'PORTRAIT_RIGHT',
+  'OTHER',
+] as const;
+
+export type ChangeCaseTypesInput = {
+  caseType: (typeof LEAD_CASE_TYPES)[number];
+  infringementTypes: Array<(typeof INFRINGEMENT_TYPES)[number]>;
+  reason: string;
+  idempotencyKey: string;
+};
+export type ChangeCaseTypesResult = {
+  caseId: string;
+  leadId: string;
+  caseType: string;
+  infringementTypes: string[];
+  affectedCaseCount: number;
+  recordedAt: string;
+};
+
+export async function changeCaseTypes(
+  caseId: string,
+  input: ChangeCaseTypesInput,
+  options: RequestOptions = {},
+): Promise<ChangeCaseTypesResult> {
+  if (!uuidV4(caseId) || !validIdempotencyKey(input.idempotencyKey))
+    throw new ApiError('案件类型更正无效', 400, 'VALIDATION_ERROR');
+  if (!LEAD_CASE_TYPES.includes(input.caseType))
+    throw new ApiError('案件类型无效', 400, 'VALIDATION_ERROR');
+  const types = [...new Set(input.infringementTypes)];
+  if (
+    types.length === 0 ||
+    types.some((type) => !INFRINGEMENT_TYPES.includes(type))
+  )
+    throw new ApiError('侵权类型无效', 400, 'VALIDATION_ERROR');
+  const reason = input.reason.trim();
+  if (!reason || reason.length > 500)
+    throw new ApiError(
+      '更正原因不能为空且不超过500字符',
+      400,
+      'VALIDATION_ERROR',
+    );
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(caseId)}/case-types`,
+    {
+      ...writeRequestOptions(input.idempotencyKey, options),
+      method: 'POST',
+      body: {
+        caseType: input.caseType,
+        infringementTypes: types,
+        reason,
+        idempotencyKey: input.idempotencyKey,
+      },
+    },
+  );
+  if (
+    !record(response) ||
+    response.caseId !== caseId ||
+    typeof response.leadId !== 'string' ||
+    typeof response.caseType !== 'string' ||
+    !Array.isArray(response.infringementTypes) ||
+    typeof response.affectedCaseCount !== 'number' ||
+    typeof response.recordedAt !== 'string'
+  )
+    throw new ApiError('类型更正结果无效', 502, 'INVALID_RESPONSE');
+  return {
+    caseId,
+    leadId: response.leadId,
+    caseType: response.caseType,
+    infringementTypes: response.infringementTypes.filter(
+      (entry): entry is string => typeof entry === 'string',
+    ),
+    affectedCaseCount: response.affectedCaseCount,
+    recordedAt: response.recordedAt,
+  };
+}
