@@ -89,7 +89,11 @@ export class ClientCaseService {
           executionConfirmation: { select: { id: true } },
           executionMailing: { select: { id: true } },
           rightsHolder: { select: { name: true } },
-          defendants: { orderBy: { createdAt: 'asc' }, select: { name: true } },
+          defendants: {
+            where: { disabledAt: null },
+            orderBy: { createdAt: 'asc' },
+            select: { name: true },
+          },
         },
       }),
       this.database.case.count({ where }),

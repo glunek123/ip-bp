@@ -49,7 +49,6 @@ import {
 import {
   Controller,
   Body,
-  Delete,
   ForbiddenException,
   Get,
   Post,
@@ -368,22 +367,42 @@ export class CaseReadController {
     return this.recordEdit.addDefendant(actor, id, body);
   }
 
-  @Delete(':id/defendants/:defendantId')
-  @ApiOkResponse({
+  @Post(':id/defendants/:defendantId/disable')
+  @ApiCreatedResponse({
     schema: {
       properties: {
         caseId: { type: 'string' },
         defendantId: { type: 'string' },
+        disabledAt: { type: 'string', nullable: true },
       },
     },
   })
-  removeDefendant(
+  disableDefendant(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Param('defendantId', new ParseUUIDPipe({ version: '4' }))
     defendantId: string,
   ) {
-    return this.recordEdit.removeDefendant(actor, id, defendantId);
+    return this.recordEdit.setDefendantDisabled(actor, id, defendantId, true);
+  }
+
+  @Post(':id/defendants/:defendantId/enable')
+  @ApiCreatedResponse({
+    schema: {
+      properties: {
+        caseId: { type: 'string' },
+        defendantId: { type: 'string' },
+        disabledAt: { type: 'string', nullable: true },
+      },
+    },
+  })
+  enableDefendant(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('defendantId', new ParseUUIDPipe({ version: '4' }))
+    defendantId: string,
+  ) {
+    return this.recordEdit.setDefendantDisabled(actor, id, defendantId, false);
   }
 
   @Get(':id/responsible-candidates')

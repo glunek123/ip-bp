@@ -8612,3 +8612,29 @@ export async function getCaseTypesContext(
     affectedCaseCount: response.affectedCaseCount,
   };
 }
+
+export async function setCaseDefendantDisabled(
+  caseId: string,
+  defendantId: string,
+  disabled: boolean,
+  options: RequestOptions = {},
+): Promise<{ caseId: string; defendantId: string; disabledAt: string | null }> {
+  if (!uuidV4(caseId) || !uuidV4(defendantId))
+    throw new ApiError('被告编号无效', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(caseId)}/defendants/${encodeURIComponent(defendantId)}/${disabled ? 'disable' : 'enable'}`,
+    { ...options, method: 'POST' },
+  );
+  if (
+    !record(response) ||
+    response.caseId !== caseId ||
+    response.defendantId !== defendantId ||
+    (response.disabledAt !== null && typeof response.disabledAt !== 'string')
+  )
+    throw new ApiError('停用结果无效', 502, 'INVALID_RESPONSE');
+  return {
+    caseId,
+    defendantId,
+    disabledAt: response.disabledAt,
+  };
+}

@@ -41,7 +41,11 @@ export const caseListDisplaySelect = {
       sourceLeadId: true,
     },
   },
-  defendants: { select: { id: true, name: true }, orderBy: { id: 'asc' } },
+  defendants: {
+    where: { disabledAt: null },
+    select: { id: true, name: true },
+    orderBy: { id: 'asc' },
+  },
   lawyers: {
     where: { role: 'PRIMARY', endedAt: null },
     select: { lawyer: { select: { id: true, fullName: true } } },

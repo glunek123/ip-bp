@@ -715,16 +715,46 @@ describe('CaseRecordEditService', () => {
       }),
     ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
   });
-  it('refuses to delete a defendant because identity is immutable', async () => {
+  it('disables a defendant while keeping at least one active', async () => {
+    const f = fixture();
+    f.tx.caseDefendant.count.mockResolvedValueOnce(2);
+    f.tx.caseDefendant.findFirst.mockResolvedValueOnce({
+      id: defendantId,
+      name: '张三',
+      disabledAt: null,
+    });
+    const result = await f.service.setDefendantDisabled(
+      actor,
+      caseId,
+      defendantId,
+      true,
+    );
+    expect(result).toMatchObject({ caseId, defendantId });
+    expect(result.disabledAt).toEqual(expect.any(String));
+    expect(f.tx.caseDefendant.updateMany).toHaveBeenCalledWith({
+      where: { id: defendantId, caseId, departmentId: actor.departmentId },
+      data: expect.objectContaining({
+        disabledAt: expect.any(Date),
+        disabledByUserId: actor.userId,
+      }),
+    });
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: 'case.defendant.disabled' }),
+      select: { id: true },
+    });
+  });
+
+  it('refuses to disable the last active defendant', async () => {
     const f = fixture();
     f.tx.caseDefendant.findFirst.mockResolvedValueOnce({
       id: defendantId,
       name: '张三',
+      disabledAt: null,
     });
+    f.tx.caseDefendant.count.mockResolvedValueOnce(1);
     await expect(
-      f.service.removeDefendant(actor, caseId, defendantId),
-    ).rejects.toMatchObject({ response: { code: 'DEFENDANT_IMMUTABLE' } });
-    expect(f.tx.caseDefendant.delete).not.toHaveBeenCalled();
+      f.service.setDefendantDisabled(actor, caseId, defendantId, true),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
   });
 
   it('moves the responsible user and bumps the responsibility epoch', async () => {

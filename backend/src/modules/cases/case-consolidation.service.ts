@@ -143,7 +143,10 @@ export class CaseConsolidationService {
         responsibleMembership: { select: { teamId: true } },
         consolidationMembership: { select: { consolidationId: true } },
         consolidationAsMain: { select: { id: true } },
-        defendants: { select: { kind: true, name: true, idNo: true } },
+        defendants: {
+          where: { disabledAt: null },
+          select: { kind: true, name: true, idNo: true },
+        },
         routineProfile: { select: { shopName: true } },
         sourceLead: {
           select: {

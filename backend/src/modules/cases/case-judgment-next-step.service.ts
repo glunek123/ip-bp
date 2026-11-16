@@ -106,7 +106,10 @@ export class CaseJudgmentNextStepService {
                 },
                 rightsHolderId: true,
                 rightsHolder: { select: { name: true } },
-                defendants: { select: { id: true, name: true } },
+                defendants: {
+                  where: { disabledAt: null },
+                  select: { id: true, name: true },
+                },
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
               },

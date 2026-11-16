@@ -2654,6 +2654,8 @@ model CaseDefendant {
   address      String?       @db.VarChar(500)
   legalRepresentative String? @map("legal_representative") @db.VarChar(200)
   contactRevision Int        @default(0) @map("contact_revision")
+  disabledAt   DateTime?     @map("disabled_at") @db.Timestamptz(3)
+  disabledByUserId String?   @map("disabled_by_user_id") @db.Uuid
   contactChanges CaseDefendantContactChange[]
   createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   case         Case          @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)

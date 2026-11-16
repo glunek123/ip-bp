@@ -133,6 +133,7 @@ export class CaseRecordEditService {
                 id: value.defendantId,
                 caseId,
                 departmentId: actor.departmentId,
+                disabledAt: null,
               },
               select: { phone: true, address: true, contactRevision: true },
             });
@@ -263,6 +264,7 @@ export class CaseRecordEditService {
                 caseId,
                 departmentId: actor.departmentId,
                 name: value.name,
+                disabledAt: null,
               },
               select: { id: true },
             });
@@ -324,11 +326,16 @@ export class CaseRecordEditService {
     throw this.conflict('VERSION_CONFLICT');
   }
 
-  async removeDefendant(
+  async setDefendantDisabled(
     actor: ActorContext,
     caseId: string,
     defendantId: string,
-  ): Promise<{ caseId: string; defendantId: string }> {
+    disabled: boolean,
+  ): Promise<{
+    caseId: string;
+    defendantId: string;
+    disabledAt: string | null;
+  }> {
     return this.database.$transaction(async (tx) => {
       await this.lockAndAuthorize(
         tx,
@@ -338,11 +345,54 @@ export class CaseRecordEditService {
       );
       const target = await tx.caseDefendant.findFirst({
         where: { id: defendantId, caseId, departmentId: actor.departmentId },
-        select: { id: true },
+        select: { id: true, name: true, disabledAt: true },
       });
       if (target === null) throw this.notFound();
-      // 数据库以不可变约束保护被告身份（含删除），这里显式返回业务错误。
-      throw this.defendantImmutable();
+      if (disabled && target.disabledAt !== null)
+        throw this.validation('该被告已停用');
+      if (!disabled && target.disabledAt === null)
+        throw this.validation('该被告未停用');
+      if (disabled) {
+        const active = await tx.caseDefendant.count({
+          where: {
+            caseId,
+            departmentId: actor.departmentId,
+            disabledAt: null,
+          },
+        });
+        if (active <= 1)
+          throw this.validation('案件至少保留一名启用中的被告，不能停用');
+      }
+      const recordedAt = new Date();
+      await tx.caseDefendant.updateMany({
+        where: {
+          id: defendantId,
+          caseId,
+          departmentId: actor.departmentId,
+        },
+        data: disabled
+          ? { disabledAt: recordedAt, disabledByUserId: actor.userId }
+          : { disabledAt: null, disabledByUserId: null },
+      });
+      await tx.auditEvent.create({
+        data: {
+          departmentId: actor.departmentId,
+          actorUserId: actor.userId,
+          internalActorUserId: actor.userId,
+          resourceType: 'CASE',
+          resourceId: caseId,
+          action: disabled
+            ? 'case.defendant.disabled'
+            : 'case.defendant.enabled',
+          details: { defendantId, name: target.name },
+        },
+        select: { id: true },
+      });
+      return {
+        caseId,
+        defendantId,
+        disabledAt: disabled ? recordedAt.toISOString() : null,
+      };
     });
   }
 

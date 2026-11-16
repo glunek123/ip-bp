@@ -90,7 +90,10 @@ export class CaseMatchService {
                 departmentId: true,
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
-                defendants: { select: { id: true } },
+                defendants: {
+                  where: { disabledAt: null },
+                  select: { id: true },
+                },
                 consolidationMembership: { select: { isMain: true } },
               },
             });
@@ -260,6 +263,7 @@ export class CaseMatchService {
                 responsibleMembership: { select: { teamId: true } },
                 consolidationMembership: { select: { isMain: true } },
                 defendants: {
+                  where: { disabledAt: null },
                   orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
                   select: { kind: true, name: true, idNo: true },
                 },

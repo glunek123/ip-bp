@@ -218,7 +218,7 @@ export async function searchCaseSettlementSources(
               routineProfile: { is: null },
               sourceLead: { shopName: contains },
             },
-            { defendants: { some: { name: contains } } },
+            { defendants: { some: { name: contains, disabledAt: null } } },
           ],
         }),
   };
@@ -233,7 +233,11 @@ export async function searchCaseSettlementSources(
       rightsHolder: { select: { name: true } },
       sourceLead: { select: { shopName: true } },
       routineProfile: { select: { shopName: true } },
-      defendants: { select: { name: true }, orderBy: { id: 'asc' } },
+      defendants: {
+        where: { disabledAt: null },
+        select: { name: true },
+        orderBy: { id: 'asc' },
+      },
     },
     orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
     skip: (input.page - 1) * input.pageSize,

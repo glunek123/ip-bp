@@ -74,7 +74,11 @@ type SourceMeta = Pick<
 
 const caseInclude = {
   rightsHolder: { select: { name: true } },
-  defendants: { select: { name: true }, orderBy: { id: 'asc' } },
+  defendants: {
+    where: { disabledAt: null },
+    select: { name: true },
+    orderBy: { id: 'asc' },
+  },
   lawyers: {
     where: { role: 'PRIMARY', endedAt: null },
     select: { lawyer: { select: { fullName: true } } },

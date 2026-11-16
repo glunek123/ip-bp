@@ -199,7 +199,11 @@ export class CaseCalendarSourceService {
           },
         },
         rightsHolder: { select: { name: true } },
-        defendants: { orderBy: { id: 'asc' }, select: { name: true } },
+        defendants: {
+          where: { disabledAt: null },
+          orderBy: { id: 'asc' },
+          select: { name: true },
+        },
         currentHearingArrangement: {
           select: {
             id: true,

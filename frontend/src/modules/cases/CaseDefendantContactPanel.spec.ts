@@ -5,6 +5,7 @@ import CaseDefendantContactPanel from './CaseDefendantContactPanel.vue';
 
 const addDefendant = vi.hoisted(() => vi.fn());
 const updateContact = vi.hoisted(() => vi.fn());
+const setDisabled = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api/cases', async () => {
   const actual =
@@ -12,6 +13,7 @@ vi.mock('../../api/cases', async () => {
   return {
     ...actual,
     addCaseDefendant: addDefendant,
+    setCaseDefendantDisabled: setDisabled,
     updateCaseDefendantContact: updateContact,
   };
 });
@@ -47,6 +49,7 @@ describe('CaseDefendantContactPanel add defendant', () => {
   beforeEach(() => {
     addDefendant.mockReset();
     updateContact.mockReset();
+    setDisabled.mockReset();
     vi.stubGlobal('crypto', { randomUUID: () => 'key-1' });
   });
 
@@ -86,6 +89,26 @@ describe('CaseDefendantContactPanel add defendant', () => {
         legalRepresentative: null,
         idempotencyKey: 'key-1',
       }),
+    );
+    expect(wrapper.emitted('changed')).toHaveLength(1);
+  });
+
+  it('disables the selected defendant after confirmation', async () => {
+    setDisabled.mockResolvedValue({
+      caseId: item.id,
+      defendantId: '44444444-4444-4444-8444-444444444444',
+      disabledAt: '2026-11-16T00:00:00Z',
+    });
+    vi.stubGlobal('confirm', () => true);
+    const wrapper = mount(CaseDefendantContactPanel, {
+      props: { item, contextKey: 'ctx' },
+    });
+    await wrapper.get('[data-test="defendant-disable"]').trigger('click');
+    await flushPromises();
+    expect(setDisabled).toHaveBeenCalledWith(
+      item.id,
+      '44444444-4444-4444-8444-444444444444',
+      true,
     );
     expect(wrapper.emitted('changed')).toHaveLength(1);
   });

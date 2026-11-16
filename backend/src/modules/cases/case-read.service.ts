@@ -1515,6 +1515,7 @@ export class CaseReadService {
         },
         consolidationAsMain: { select: { id: true } },
         defendants: {
+          where: { disabledAt: null },
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           select: {
             id: true,

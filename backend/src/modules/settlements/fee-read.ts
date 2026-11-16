@@ -12,7 +12,11 @@ export const feeReadInclude = {
       courtCaseNo: true,
       routineProfile: { select: { shopName: true } },
       sourceLead: { select: { platform: true, shopName: true } },
-      defendants: { select: { name: true }, orderBy: { id: 'asc' } },
+      defendants: {
+        where: { disabledAt: null },
+        select: { name: true },
+        orderBy: { id: 'asc' },
+      },
     },
   },
   notaryMatter: {

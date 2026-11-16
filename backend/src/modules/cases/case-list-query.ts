@@ -66,7 +66,7 @@ export function caseListTextWhere(
         { courtCaseNo: match },
         { customer: { is: { name: match } } },
         { rightsHolder: { is: { name: match } } },
-        { defendants: { some: { name: match } } },
+        { defendants: { some: { name: match, disabledAt: null } } },
         { routineProfile: { is: { shopName: match } } },
         {
           routineProfile: { is: null },
@@ -185,7 +185,9 @@ export function caseListTextWhere(
   const defendantName = query.defendantName?.trim();
   if (defendantName)
     and.push({
-      defendants: { some: { name: literalContains(defendantName) } },
+      defendants: {
+        some: { name: literalContains(defendantName), disabledAt: null },
+      },
     });
   const lawyerName = query.lawyerName?.trim();
   if (lawyerName)
