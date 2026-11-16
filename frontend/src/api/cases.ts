@@ -8585,3 +8585,30 @@ export async function changeCaseTypes(
     recordedAt: response.recordedAt,
   };
 }
+
+export type CaseTypesContext = {
+  leadId: string | null;
+  affectedCaseCount: number;
+};
+
+export async function getCaseTypesContext(
+  caseId: string,
+  options: RequestOptions = {},
+): Promise<CaseTypesContext> {
+  if (!uuidV4(caseId))
+    throw new ApiError('案件编号无效', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(caseId)}/case-types-context`,
+    options,
+  );
+  if (
+    !record(response) ||
+    (response.leadId !== null && typeof response.leadId !== 'string') ||
+    typeof response.affectedCaseCount !== 'number'
+  )
+    throw new ApiError('类型影响范围无效', 502, 'INVALID_RESPONSE');
+  return {
+    leadId: response.leadId,
+    affectedCaseCount: response.affectedCaseCount,
+  };
+}

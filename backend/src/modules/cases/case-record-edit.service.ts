@@ -16,6 +16,7 @@ import {
   AcceptanceCorrectionResultDto,
   AddCaseDefendantDto,
   AddCaseDefendantResultDto,
+  CaseTypesContextDto,
   ChangeCaseTypesDto,
   ChangeCaseTypesResultDto,
   ChangeResponsibleUserDto,
@@ -545,6 +546,21 @@ export class CaseRecordEditService {
       }
     }
     throw this.conflict('VERSION_CONFLICT');
+  }
+
+  async caseTypesContext(
+    actor: ActorContext,
+    caseId: string,
+  ): Promise<CaseTypesContextDto> {
+    return this.database.$transaction(async (tx) => {
+      await this.lockAndAuthorize(tx, actor, caseId, 'case.routine.edit');
+      const leadId = await this.caseSourceLead(tx, caseId);
+      if (leadId === null) return { leadId: null, affectedCaseCount: 0 };
+      const affectedCaseCount = await tx.case.count({
+        where: { sourceLeadId: leadId, departmentId: actor.departmentId },
+      });
+      return { leadId, affectedCaseCount };
+    });
   }
 
   async changeCaseTypes(

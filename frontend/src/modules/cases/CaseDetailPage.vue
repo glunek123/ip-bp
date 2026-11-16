@@ -110,6 +110,7 @@ import {
   type SubmitComplaintInput,
   type LawyerMatchCandidate,
   changeCaseTypes,
+  getCaseTypesContext,
   updateCaseDefendantContact,
 } from '../../api/cases';
 import {
@@ -329,6 +330,16 @@ async function saveCaseInfo(): Promise<void> {
       if (!caseDraft.infringementTypes.length)
         throw new Error('请至少选择一种侵权类型');
       if (!caseDraft.reason.trim()) throw new Error('修改类型需填写更正原因');
+      const context = await getCaseTypesContext(current.id);
+      if (context.affectedCaseCount > 1) {
+        const confirmed = globalThis.confirm(
+          `该修改将同步影响 ${context.affectedCaseCount} 个案件（含本案），是否继续？`,
+        );
+        if (!confirmed) {
+          caseInfoSaving.value = false;
+          return;
+        }
+      }
       await changeCaseTypes(current.id, {
         caseType: caseDraft.caseType,
         infringementTypes: caseDraft.infringementTypes,

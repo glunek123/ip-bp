@@ -97,6 +97,7 @@ import {
   AcceptanceCorrectionResultDto,
   AddCaseDefendantDto,
   AddCaseDefendantResultDto,
+  CaseTypesContextDto,
   ChangeCaseTypesDto,
   ChangeCaseTypesResultDto,
   ChangeResponsibleUserDto,
@@ -392,6 +393,15 @@ export class CaseReadController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ) {
     return this.recordEdit.responsibleCandidates(actor, id);
+  }
+
+  @Get(':id/case-types-context')
+  @ApiOkResponse({ type: CaseTypesContextDto })
+  caseTypesContext(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.recordEdit.caseTypesContext(actor, id);
   }
 
   @Post(':id/case-types')

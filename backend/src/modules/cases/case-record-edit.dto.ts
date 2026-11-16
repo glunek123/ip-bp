@@ -248,3 +248,9 @@ export class ChangeCaseTypesResultDto {
   @ApiProperty() affectedCaseCount!: number;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
 }
+
+export class CaseTypesContextDto {
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  leadId!: string | null;
+  @ApiProperty() affectedCaseCount!: number;
+}
