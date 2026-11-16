@@ -3015,8 +3015,19 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         'origin',
         'canUploadDirectExecutionMaterials',
         'executionFilingFollowups',
+        'disabledDefendants',
       ],
     ) &&
+    (value.disabledDefendants === undefined ||
+      (Array.isArray(value.disabledDefendants) &&
+        value.disabledDefendants.every(
+          (entry) =>
+            record(entry) &&
+            exact(entry, ['id', 'name', 'disabledAt']) &&
+            typeof entry.id === 'string' &&
+            typeof entry.name === 'string' &&
+            typeof entry.disabledAt === 'string',
+        ))) &&
     value.id === id &&
     summaryFields({
       id: value.id,
