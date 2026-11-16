@@ -146,6 +146,12 @@ async function downloadSummaryFile(
     fileDownloads.delete(controller);
   }
 }
+function hiddenWhileEditing(key: SectionKey, label: string): boolean {
+  if (props.editingSection !== key) return false;
+  if (key === 'lead-info') return label === '店铺名';
+  if (key === 'case-info') return label === '联系电话' || label === '联系地址';
+  return false;
+}
 const supplementsBySection: Partial<Record<SectionKey, CaseSupplementKind[]>> =
   {
     'first-instance': [
@@ -237,25 +243,13 @@ function edit(key: SectionKey): void {
               :class="{ 'case-workspace-field--wide': field.wide }"
             >
               <dt
-                v-if="
-                  !(
-                    section.key === 'lead-info' &&
-                    editingSection === 'lead-info' &&
-                    field.label === '店铺名'
-                  )
-                "
+                v-if="!hiddenWhileEditing(section.key, field.label)"
                 class="case-workspace-field__label"
               >
                 {{ field.label }}
               </dt>
               <dd
-                v-if="
-                  !(
-                    section.key === 'lead-info' &&
-                    editingSection === 'lead-info' &&
-                    field.label === '店铺名'
-                  )
-                "
+                v-if="!hiddenWhileEditing(section.key, field.label)"
                 class="case-workspace-field__value"
               >
                 {{ field.value }}
