@@ -2657,10 +2657,11 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: var(--el-component-size);
+  height: 32px;
+  min-width: 72px;
   box-sizing: border-box;
-  padding: 0 15px;
-  font-size: var(--el-font-size-base);
+  padding: 0 12px;
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
   list-style: none;
