@@ -190,7 +190,7 @@ onBeforeUnmount(() => {
 <template>
   <section class="case-list-preferences" aria-label="案件列设置">
     <div class="case-list-preferences__summary">
-      <ElButton text data-test="open-column-settings" @click="open">
+      <ElButton data-test="open-column-settings" @click="open">
         列设置
       </ElButton>
       <span role="status" aria-live="polite">{{ status }}</span>

@@ -2654,12 +2654,22 @@ onBeforeUnmount(() => {
   color: var(--color-ink);
 }
 .case-list-toolbar-menu > summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--el-component-size);
+  box-sizing: border-box;
+  padding: 0 15px;
+  font-size: var(--el-font-size-base);
+  line-height: 1;
   cursor: pointer;
   list-style: none;
   border: 1px solid var(--el-border-color);
   border-radius: var(--el-border-radius-base);
-  padding: 6px 12px;
   background: var(--el-bg-color);
+}
+.case-list-toolbar-menu > summary::-webkit-details-marker {
+  display: none;
 }
 .case-list-toolbar-menu__items {
   position: absolute;
