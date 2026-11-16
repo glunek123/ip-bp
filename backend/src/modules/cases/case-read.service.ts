@@ -3031,6 +3031,18 @@ export class CaseReadService {
                       : {}),
                   },
                 )),
+              canAssignResponsible:
+                await this.access.canAuthorizeDepartmentProxyAction(
+                  actor,
+                  'case.routine.edit',
+                  {
+                    departmentId: actor.departmentId,
+                    responsibleUserId: record.responsibleUserId,
+                    ...(record.responsibleMembership.teamId
+                      ? { teamId: record.responsibleMembership.teamId }
+                      : {}),
+                  },
+                ),
               canCorrectAcceptance:
                 record.acceptances.length > 0 &&
                 (await this.access.canAuthorizeCase(

@@ -135,7 +135,11 @@ describe('CaseRecordEditService', () => {
         work(tx),
       ),
     };
-    const access = { authorizeCase: jest.fn().mockResolvedValue(undefined) };
+    const access = {
+      authorizeCase: jest.fn().mockResolvedValue(undefined),
+      authorizeDepartmentProxyAction: jest.fn().mockResolvedValue(undefined),
+      canAuthorizeDepartmentProxyAction: jest.fn().mockResolvedValue(true),
+    };
     return {
       record,
       tx,
@@ -780,6 +784,31 @@ describe('CaseRecordEditService', () => {
         responsibleUserId: nextUserId,
         responsibilityEpoch: { increment: 1 },
       },
+    });
+  });
+  it('lets a department proxy assign another operator as responsible', async () => {
+    const f = fixture();
+    const nextUserId = '88888888-8888-4888-8888-888888888888';
+    const result = await f.service.assignResponsibleUser(actor, caseId, {
+      userId: nextUserId,
+      reason: '管理员改派',
+      idempotencyKey: 'assign-1',
+    });
+    expect(result).toMatchObject({
+      caseId,
+      responsibleUserId: nextUserId,
+      responsibilityEpoch: 1,
+    });
+    expect(f.access.authorizeDepartmentProxyAction).toHaveBeenCalledWith(
+      actor,
+      'case.routine.edit',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+    );
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'case.responsible-user.assigned',
+      }),
+      select: { id: true },
     });
   });
 });
