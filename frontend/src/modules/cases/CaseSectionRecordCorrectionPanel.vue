@@ -1554,6 +1554,7 @@ onBeforeUnmount(() => {
   stopUpload();
   abortDownloads();
 });
+defineExpose({ ready, error, baseFingerprint, fingerprint, selectedId });
 </script>
 
 <template>

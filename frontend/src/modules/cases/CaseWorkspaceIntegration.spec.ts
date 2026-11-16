@@ -1230,12 +1230,29 @@ describe('UI002 real case workspace host', () => {
       }
       const { wrapper } = await render(item, `/cases/${item.id}`);
       const reads = api.getCase.mock.calls.length;
-      await wrapper
-        .get(`[data-section="${section}"] .case-workspace-section__edit`)
-        .trigger('click');
-      await wrapper.get('[data-test="workspace-command"]').setValue(command);
-      await flushPromises();
-      const panel = wrapper.getComponent(CaseSectionRecordCorrectionPanel);
+      const inlineHost = () =>
+        wrapper.find(`[data-test="${section}-inline-editor"]`);
+      const openEditor = async () => {
+        await wrapper
+          .get(`[data-section="${section}"] .case-workspace-section__edit`)
+          .trigger('click');
+        await flushPromises();
+        const host = inlineHost();
+        if (host.exists()) {
+          const tab = host.find(`[data-test="inline-tab-${command}"]`);
+          if (tab.exists()) await tab.trigger('click');
+          await flushPromises();
+          return;
+        }
+        await wrapper.get('[data-test="workspace-command"]').setValue(command);
+        await flushPromises();
+      };
+      const panelOf = () =>
+        inlineHost().exists()
+          ? inlineHost().getComponent(CaseSectionRecordCorrectionPanel)
+          : wrapper.getComponent(CaseSectionRecordCorrectionPanel);
+      await openEditor();
+      let panel = panelOf();
       expect(panel.props('kind')).toBe(kind);
       expect(panel.isVisible()).toBe(true);
       await panel.get('[data-test="section-record-date"]').setValue(value);
@@ -1246,11 +1263,8 @@ describe('UI002 real case workspace host', () => {
       await flushPromises();
       expect(mock).not.toHaveBeenCalled();
       expect(api.getCase).toHaveBeenCalledTimes(reads);
-      await wrapper
-        .get(`[data-section="${section}"] .case-workspace-section__edit`)
-        .trigger('click');
-      await wrapper.get('[data-test="workspace-command"]').setValue(command);
-      await flushPromises();
+      await openEditor();
+      panel = panelOf();
       await panel.get('[data-test="section-record-date"]').setValue(value);
       await panel
         .get('[data-test="section-record-reason"]')
@@ -1694,11 +1708,8 @@ describe('UI002 real case workspace host', () => {
     );
     await edit.trigger('click');
     expect(
-      wrapper
-        .get('[data-test="workspace-command"]')
-        .findAll('option')
-        .map((option) => option.attributes('value')),
-    ).toEqual(['acceptance-correction']);
+      wrapper.find('[data-test="first-instance-inline-editor"]').exists(),
+    ).toBe(true);
     expect(
       wrapper.get('[data-test="acceptance-correction-date"]').element,
     ).toHaveProperty('value', item.acceptance.acceptedAt);

@@ -243,6 +243,7 @@ const editorSection = ref<SectionKey>('case-info');
 const selectedCommand = ref('');
 const sectionEditing = ref(false);
 const inlineEditSection = ref<SectionKey | null>(null);
+const inlineCommand = ref('');
 const editRequest = ref(0);
 const timelineView = ref(false);
 // Each command has one instance. Hiding the drawer or switching its view never resets it.
@@ -449,6 +450,13 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
     },
   };
 });
+const inlineOptions = computed(() =>
+  inlineEditSection.value
+    ? sectionEditCommands.value.filter(
+        (entry) => entry.section === inlineEditSection.value,
+      )
+    : [],
+);
 const editorCommands = computed(() => {
   if (sectionEditing.value)
     return [
@@ -520,9 +528,22 @@ function editSection(section: SectionKey): void {
       routineEditing.value = true;
     return;
   }
-  if (section === 'case-info') {
-    inlineEditSection.value =
-      inlineEditSection.value === section ? null : section;
+  if (
+    section === 'case-info' ||
+    section === 'judgment' ||
+    section === 'first-instance' ||
+    section === 'execution' ||
+    section === 'second-instance'
+  ) {
+    if (inlineEditSection.value === section) {
+      inlineEditSection.value = null;
+      return;
+    }
+    inlineEditSection.value = section;
+    editRequest.value += 1;
+    inlineCommand.value =
+      sectionEditCommands.value.find((entry) => entry.section === section)
+        ?.id ?? '';
     drawerOpen.value = false;
     return;
   }
@@ -565,6 +586,18 @@ function closeRecordEdit(): void {
   if (!closureRegistrationSucceeded.value)
     closureBridgeRegistrationActive.value = false;
   drawerOpen.value = false;
+}
+function selectInlineCommand(command: WorkspaceCommand): void {
+  // 只内联已登记资料的更正；流程办理命令继续走原抽屉。
+  if (
+    command.id.startsWith('record-') ||
+    command.id === 'acceptance-correction'
+  ) {
+    inlineCommand.value = command.id;
+    return;
+  }
+  closeInlineEdit();
+  openCommand(command, true);
 }
 function closeInlineEdit(): void {
   inlineEditSection.value = null;
@@ -2641,6 +2674,156 @@ onBeforeUnmount(() => {
               />
             </section>
           </template>
+          <template #edit-judgment>
+            <section
+              v-if="inlineEditSection === 'judgment'"
+              class="case-inline-editor"
+              data-test="judgment-inline-editor"
+            >
+              <CaseSectionRecordCorrectionPanel
+                :item="item"
+                kind="judgment"
+                :actor-key="secondInstanceActorKey"
+                :context-key="workspaceContext"
+                :open-revision="editRequest"
+                @changed="changedInlineEdit"
+                @refresh="load"
+                @access-lost="recordEditAccessLost"
+                @cancel="closeInlineEdit"
+                @state-change="recordRequestRevision += 1"
+              />
+            </section>
+          </template>
+          <template #edit-first-instance>
+            <section
+              v-if="inlineEditSection === 'first-instance'"
+              class="case-inline-editor"
+              data-test="first-instance-inline-editor"
+            >
+              <div
+                v-if="inlineOptions.length > 1"
+                class="case-inline-tabs"
+                role="tablist"
+              >
+                <button
+                  v-for="entry in inlineOptions"
+                  :key="entry.id"
+                  type="button"
+                  role="tab"
+                  :aria-selected="inlineCommand === entry.id"
+                  :class="{ 'is-active': inlineCommand === entry.id }"
+                  :data-test="`inline-tab-${entry.id}`"
+                  @click="inlineCommand = entry.id"
+                >
+                  {{ entry.label }}
+                </button>
+              </div>
+              <CaseAcceptanceCorrectionPanel
+                v-if="inlineCommand === 'acceptance-correction'"
+                :item="item"
+                :context-key="workspaceContext"
+                @changed="changedInlineEdit"
+                @refresh="load"
+                @access-lost="recordEditAccessLost"
+                @cancel="closeInlineEdit"
+              />
+              <CaseSectionRecordCorrectionPanel
+                v-else-if="inlineCommand === 'record-hearing-first'"
+                :item="item"
+                kind="hearing"
+                :actor-key="secondInstanceActorKey"
+                :context-key="workspaceContext"
+                :open-revision="editRequest"
+                @changed="changedInlineEdit"
+                @refresh="load"
+                @access-lost="recordEditAccessLost"
+                @cancel="closeInlineEdit"
+                @state-change="recordRequestRevision += 1"
+              />
+            </section>
+          </template>
+          <template #edit-execution>
+            <section
+              v-if="inlineEditSection === 'execution'"
+              class="case-inline-editor"
+              data-test="execution-inline-editor"
+            >
+              <div
+                v-if="inlineOptions.length > 1"
+                class="case-inline-tabs"
+                role="tablist"
+              >
+                <button
+                  v-for="entry in inlineOptions"
+                  :key="entry.id"
+                  type="button"
+                  role="tab"
+                  :aria-selected="inlineCommand === entry.id"
+                  :class="{ 'is-active': inlineCommand === entry.id }"
+                  :data-test="`inline-tab-${entry.id}`"
+                  @click="inlineCommand = entry.id"
+                >
+                  {{ entry.label }}
+                </button>
+              </div>
+              <CaseSectionRecordCorrectionPanel
+                v-if="inlineCommand === 'record-execution-mailing'"
+                :item="item"
+                kind="execution-mailing"
+                :actor-key="secondInstanceActorKey"
+                :context-key="workspaceContext"
+                :open-revision="editRequest"
+                @changed="changedInlineEdit"
+                @refresh="load"
+                @access-lost="recordEditAccessLost"
+                @cancel="closeInlineEdit"
+                @state-change="recordRequestRevision += 1"
+              />
+              <CaseSectionRecordCorrectionPanel
+                v-else-if="inlineCommand === 'record-execution-filing'"
+                :item="item"
+                kind="execution-filing"
+                :actor-key="secondInstanceActorKey"
+                :context-key="workspaceContext"
+                :open-revision="editRequest"
+                @changed="changedInlineEdit"
+                @refresh="load"
+                @access-lost="recordEditAccessLost"
+                @cancel="closeInlineEdit"
+                @state-change="recordRequestRevision += 1"
+              />
+              <CaseSectionRecordCorrectionPanel
+                v-else-if="inlineCommand === 'record-execution-finish'"
+                :item="item"
+                kind="execution-finish"
+                :actor-key="secondInstanceActorKey"
+                :context-key="workspaceContext"
+                :open-revision="editRequest"
+                @changed="changedInlineEdit"
+                @refresh="load"
+                @access-lost="recordEditAccessLost"
+                @cancel="closeInlineEdit"
+                @state-change="recordRequestRevision += 1"
+              />
+            </section>
+          </template>
+          <template #edit-second-instance>
+            <section
+              v-if="inlineEditSection === 'second-instance'"
+              class="case-inline-editor"
+              data-test="second-instance-inline-editor"
+            >
+              <CaseSecondInstanceAcceptancePanel
+                :item="item"
+                :context-key="workspaceContext"
+                registered-only
+                @changed="changedInlineEdit"
+                @refresh="load"
+                @access-lost="recordEditAccessLost"
+                @cancel="closeInlineEdit"
+              />
+            </section>
+          </template>
         </CaseDetailsSections>
         <CaseLitigationRefundPanel
           v-if="accessVerified && state === 'ready'"
@@ -2785,7 +2968,10 @@ onBeforeUnmount(() => {
 
           <template v-for="command in sectionRecordCommands" :key="command.id">
             <CaseSectionRecordCorrectionPanel
-              v-if="openedCommands.has(command.id)"
+              v-if="
+                openedCommands.has(command.id) &&
+                inlineEditSection !== command.section
+              "
               v-show="!timelineView && selectedCommand === command.id"
               :item="item"
               :kind="command.kind"
