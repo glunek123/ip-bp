@@ -4,10 +4,12 @@ import {
   onActivated,
   onBeforeUnmount,
   onDeactivated,
+  reactive,
   ref,
   watch,
 } from 'vue';
 import {
+  addCaseDefendant,
   updateCaseDefendantContact,
   type CaseDetail,
   type UpdateCaseDefendantContactInput,
@@ -33,6 +35,65 @@ const submitting = ref(false);
 const error = ref('');
 const success = ref('');
 const unknownRequest = ref<UpdateCaseDefendantContactInput | null>(null);
+const adding = ref(false);
+const addSubmitting = ref(false);
+const addError = ref('');
+const addDraft = reactive({
+  kind: 'PERSON' as 'PERSON' | 'ORGANIZATION',
+  name: '',
+  idNo: '',
+  phone: '',
+  address: '',
+  legalRepresentative: '',
+});
+function toggleAdd(): void {
+  adding.value = !adding.value;
+  addError.value = '';
+  if (!adding.value)
+    Object.assign(addDraft, {
+      kind: 'PERSON',
+      name: '',
+      idNo: '',
+      phone: '',
+      address: '',
+      legalRepresentative: '',
+    });
+}
+async function submitAdd(): Promise<void> {
+  if (addSubmitting.value) return;
+  const name = addDraft.name.trim();
+  if (!name) {
+    addError.value = '被告名称不能为空';
+    return;
+  }
+  const key = globalThis.crypto?.randomUUID?.();
+  if (!key) {
+    addError.value = '当前浏览器不能生成安全请求键，尚未发送请求。';
+    return;
+  }
+  addSubmitting.value = true;
+  addError.value = '';
+  try {
+    await addCaseDefendant(props.item.id, {
+      kind: addDraft.kind,
+      name,
+      idNo: addDraft.idNo.trim() || null,
+      phone: addDraft.phone.trim() || null,
+      address: addDraft.address.trim() || null,
+      legalRepresentative: addDraft.legalRepresentative.trim() || null,
+      idempotencyKey: key,
+    });
+    toggleAdd();
+    emit('changed');
+  } catch (failure) {
+    addError.value =
+      failure instanceof ApiError && failure.status === 409
+        ? '该被告已存在，或案件资料已变化，请刷新后重试。'
+        : '被告未添加，请核对名称与类型。';
+  } finally {
+    addSubmitting.value = false;
+  }
+}
 const draftBase = ref<{
   contactRevision: number;
   phone: string;
@@ -355,6 +416,88 @@ onBeforeUnmount(() => {
       >
         &#x6309;&#x539f;&#x8bf7;&#x6c42;&#x91cd;&#x8bd5;
       </button>
+      <button
+        type="button"
+        data-test="defendant-add-toggle"
+        :disabled="!!unknownRequest || addSubmitting"
+        @click="toggleAdd"
+      >
+        {{ adding ? '收起' : '+ 添加被告' }}
+      </button>
+    </div>
+    <div v-if="adding" class="settle-subblock" data-test="defendant-add-form">
+      <div class="form-row">
+        <label class="form-field">
+          被告类型
+          <select
+            v-model="addDraft.kind"
+            class="text-input"
+            data-test="defendant-add-kind"
+          >
+            <option value="PERSON">个人</option>
+            <option value="ORGANIZATION">组织</option>
+          </select>
+        </label>
+        <label class="form-field">
+          被告名称
+          <input
+            v-model="addDraft.name"
+            class="text-input"
+            data-test="defendant-add-name"
+          />
+        </label>
+      </div>
+      <div class="form-row">
+        <label class="form-field">
+          证件号码
+          <input
+            v-model="addDraft.idNo"
+            class="text-input"
+            data-test="defendant-add-id-no"
+          />
+        </label>
+        <label class="form-field">
+          联系电话
+          <input
+            v-model="addDraft.phone"
+            class="text-input"
+            data-test="defendant-add-phone"
+          />
+        </label>
+      </div>
+      <label class="form-field">
+        联系地址
+        <input
+          v-model="addDraft.address"
+          class="text-input"
+          data-test="defendant-add-address"
+        />
+      </label>
+      <label v-if="addDraft.kind === 'ORGANIZATION'" class="form-field">
+        法定代表人
+        <input
+          v-model="addDraft.legalRepresentative"
+          class="text-input"
+          data-test="defendant-add-legal-representative"
+        />
+      </label>
+      <p class="field-help">
+        新增被告会写入案件资料并记录操作人，不影响已有被告。
+      </p>
+      <p v-if="addError" role="alert">{{ addError }}</p>
+      <div class="form-actions">
+        <button
+          type="button"
+          data-test="defendant-add-save"
+          :disabled="addSubmitting"
+          @click="submitAdd"
+        >
+          保存被告
+        </button>
+        <button type="button" :disabled="addSubmitting" @click="toggleAdd">
+          取消
+        </button>
+      </div>
     </div>
   </section>
 </template>

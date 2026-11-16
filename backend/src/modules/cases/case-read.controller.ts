@@ -94,6 +94,8 @@ import { CaseAcceptanceService } from './case-acceptance.service';
 import { CaseRecordEditService } from './case-record-edit.service';
 import {
   AcceptanceCorrectionResultDto,
+  AddCaseDefendantDto,
+  AddCaseDefendantResultDto,
   CorrectCaseAcceptanceDto,
   DefendantContactUpdateResultDto,
   SaveSecondInstanceAcceptanceDto,
@@ -347,6 +349,16 @@ export class CaseReadController {
     @Body() body: UpdateDefendantContactDto,
   ) {
     return this.recordEdit.updateContact(actor, id, body);
+  }
+
+  @Post(':id/defendants')
+  @ApiCreatedResponse({ type: AddCaseDefendantResultDto })
+  addDefendant(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: AddCaseDefendantDto,
+  ) {
+    return this.recordEdit.addDefendant(actor, id, body);
   }
 
   @Post(':id/acceptance-correction')

@@ -85,6 +85,8 @@ describe('CaseRecordEditService', () => {
           address: null,
           contactRevision: 0,
         }),
+        count: jest.fn().mockResolvedValue(1),
+        create: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       caseDefendantContactChange: { create: jest.fn().mockResolvedValue({}) },
@@ -642,6 +644,70 @@ describe('CaseRecordEditService', () => {
         data: expect.objectContaining({ paymentDueAt: null }),
       }),
     );
+  });
+  it('adds a defendant without touching existing revisions', async () => {
+    const f = fixture();
+    f.tx.caseDefendant.findFirst.mockResolvedValueOnce(null);
+    const result = await f.service.addDefendant(actor, caseId, {
+      kind: 'PERSON',
+      name: ' 张三 ',
+      idNo: ' 310101199001011234 ',
+      phone: ' 13800000000 ',
+      address: ' 上海市 ',
+      legalRepresentative: null,
+      idempotencyKey: 'defendant-add-1',
+    });
+    expect(result).toMatchObject({ caseId, contactRevision: 0 });
+    expect(f.tx.caseDefendant.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        caseId,
+        departmentId: actor.departmentId,
+        kind: 'PERSON',
+        name: '张三',
+        idNo: '310101199001011234',
+        phone: '13800000000',
+        address: '上海市',
+        legalRepresentative: null,
+        contactRevision: 0,
+      }),
+    });
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: 'case.defendant.added' }),
+      select: { id: true },
+    });
+  });
+
+  it('rejects a duplicated defendant name before creating', async () => {
+    const f = fixture();
+    f.tx.caseDefendant.findFirst.mockResolvedValueOnce({ id: defendantId });
+    await expect(
+      f.service.addDefendant(actor, caseId, {
+        kind: 'PERSON',
+        name: '张三',
+        idNo: null,
+        phone: null,
+        address: null,
+        legalRepresentative: null,
+        idempotencyKey: 'defendant-add-2',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'DUPLICATE_DEFENDANT' } });
+    expect(f.tx.caseDefendant.create).not.toHaveBeenCalled();
+  });
+
+  it('caps the number of defendants per case', async () => {
+    const f = fixture();
+    f.tx.caseDefendant.count.mockResolvedValueOnce(20);
+    await expect(
+      f.service.addDefendant(actor, caseId, {
+        kind: 'PERSON',
+        name: '李四',
+        idNo: null,
+        phone: null,
+        address: null,
+        legalRepresentative: null,
+        idempotencyKey: 'defendant-add-3',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
   });
 });
 

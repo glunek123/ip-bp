@@ -1,9 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsIn,
   IsOptional,
   IsInt,
   IsString,
   IsUUID,
+  MaxLength,
   Min,
   ValidateIf,
 } from 'class-validator';
@@ -121,5 +123,49 @@ export class SaveSecondInstanceAcceptanceResultDto {
   @ApiProperty({ type: String, nullable: true, format: 'date' }) acceptedAt!:
     string | null;
   @ApiProperty({ type: String, nullable: true }) courtCaseNo!: string | null;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+}
+
+export class AddCaseDefendantDto {
+  @ApiProperty({ enum: ['PERSON', 'ORGANIZATION'] })
+  @IsIn(['PERSON', 'ORGANIZATION'])
+  kind!: 'PERSON' | 'ORGANIZATION';
+  @ApiProperty({ minLength: 1, maxLength: 200 })
+  @IsString()
+  @MaxLength(200)
+  name!: string;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 100 })
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @IsString()
+  @MaxLength(100)
+  idNo?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 100 })
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @IsString()
+  @MaxLength(100)
+  phone?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 500 })
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @IsString()
+  @MaxLength(500)
+  address?: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 200 })
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @IsString()
+  @MaxLength(200)
+  legalRepresentative?: string | null;
+  @ApiProperty({ minLength: 1, maxLength: 128 })
+  @IsString()
+  idempotencyKey!: string;
+}
+
+export class AddCaseDefendantResultDto {
+  @ApiProperty({ format: 'uuid' }) caseId!: string;
+  @ApiProperty({ format: 'uuid' }) defendantId!: string;
+  @ApiProperty() contactRevision!: number;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
 }

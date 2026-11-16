@@ -14,6 +14,8 @@ import type { Prisma } from '../../generated/prisma/client';
 import { readCaseSourceAnchor } from './case-entry-source';
 import {
   AcceptanceCorrectionResultDto,
+  AddCaseDefendantDto,
+  AddCaseDefendantResultDto,
   CorrectCaseAcceptanceDto,
   DefendantContactUpdateResultDto,
   SaveSecondInstanceAcceptanceDto,
@@ -38,6 +40,15 @@ type ContactValue = {
   idempotencyKey: string;
   phone: string | null;
   address: string | null;
+};
+type AddDefendantValue = {
+  kind: 'PERSON' | 'ORGANIZATION';
+  name: string;
+  idNo: string | null;
+  phone: string | null;
+  address: string | null;
+  legalRepresentative: string | null;
+  idempotencyKey: string;
 };
 type AcceptanceValue = {
   paymentDueAt?: string | null;
@@ -185,6 +196,122 @@ export class CaseRecordEditService {
                 actorUserId: actor.userId,
                 caseId,
                 command: 'DEFENDANT_CONTACT_UPDATE',
+                idempotencyKey: value.idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultSnapshot: { ...result },
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.hasCode(error, 'P2034') || this.hasCode(error, '40001')) {
+          if (attempt < 2) continue;
+          throw this.conflict('VERSION_CONFLICT');
+        }
+        if (this.hasCode(error, 'P2002')) {
+          if (attempt < 2) continue;
+          throw this.conflict('VERSION_CONFLICT');
+        }
+        throw error;
+      }
+    }
+    throw this.conflict('VERSION_CONFLICT');
+  }
+
+  async addDefendant(
+    actor: ActorContext,
+    caseId: string,
+    input: AddCaseDefendantDto,
+  ): Promise<AddCaseDefendantResultDto> {
+    const value = this.defendantInput(input);
+    const fingerprint = this.fingerprint(caseId, value);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await this.database.$transaction(
+          async (tx) => {
+            await this.lockAndAuthorize(
+              tx,
+              actor,
+              caseId,
+              'case.defendant-contact.update',
+            );
+            const prior = await tx.caseRecordEditReceipt.findUnique({
+              where: {
+                departmentId_actorUserId_command_idempotencyKey: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  command: 'DEFENDANT_ADD',
+                  idempotencyKey: value.idempotencyKey,
+                },
+              },
+            });
+            if (prior !== null) {
+              if (
+                prior.caseId !== caseId ||
+                prior.requestFingerprint !== fingerprint
+              )
+                throw this.conflict('IDEMPOTENCY_CONFLICT');
+              return this.defendantReceipt(prior.resultSnapshot, caseId);
+            }
+            const count = await tx.caseDefendant.count({
+              where: { caseId, departmentId: actor.departmentId },
+            });
+            if (count >= 20) throw this.validation('被告数量已达上限（20）');
+            const duplicated = await tx.caseDefendant.findFirst({
+              where: {
+                caseId,
+                departmentId: actor.departmentId,
+                name: value.name,
+              },
+              select: { id: true },
+            });
+            if (duplicated !== null) throw this.conflict('DUPLICATE_DEFENDANT');
+            const defendantId = randomUUID();
+            const recordedAt = new Date();
+            await tx.caseDefendant.create({
+              data: {
+                id: defendantId,
+                caseId,
+                departmentId: actor.departmentId,
+                kind: value.kind,
+                name: value.name,
+                idNo: value.idNo,
+                phone: value.phone,
+                address: value.address,
+                legalRepresentative: value.legalRepresentative,
+                contactRevision: 0,
+              },
+            });
+            await tx.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                internalActorUserId: actor.userId,
+                resourceType: 'CASE',
+                resourceId: caseId,
+                action: 'case.defendant.added',
+                details: {
+                  defendantId,
+                  kind: value.kind,
+                  name: value.name,
+                },
+              },
+              select: { id: true },
+            });
+            const result: AddCaseDefendantResultDto = {
+              caseId,
+              defendantId,
+              contactRevision: 0,
+              recordedAt: recordedAt.toISOString(),
+            };
+            await tx.caseRecordEditReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                caseId,
+                command: 'DEFENDANT_ADD',
                 idempotencyKey: value.idempotencyKey,
                 requestFingerprint: fingerprint,
                 resultSnapshot: { ...result },
@@ -1000,7 +1127,11 @@ export class CaseRecordEditService {
 
   private fingerprint(
     caseId: string,
-    value: ContactValue | AcceptanceValue | SecondAcceptanceValue,
+    value:
+      | ContactValue
+      | AddDefendantValue
+      | AcceptanceValue
+      | SecondAcceptanceValue,
   ) {
     return createHash('sha256')
       .update(JSON.stringify({ caseId, ...value }))
@@ -1097,6 +1228,51 @@ export class CaseRecordEditService {
       acceptanceRevision: snapshot.acceptanceRevision,
       acceptedAt: snapshot.acceptedAt,
       courtCaseNo: snapshot.courtCaseNo,
+      recordedAt: snapshot.recordedAt,
+    };
+  }
+
+  private defendantInput(input: AddCaseDefendantDto): AddDefendantValue {
+    const name = input.name.trim();
+    if (!name || name.length > 200)
+      throw this.validation('被告名称不能为空且不超过200字符');
+    const kind = input.kind;
+    if (kind !== 'PERSON' && kind !== 'ORGANIZATION')
+      throw this.validation('被告类型无效');
+    const optional = (value: string | null | undefined, max: number) => {
+      const trimmed = value?.trim() ?? '';
+      if (trimmed.length > max) throw this.validation('被告信息超出长度上限');
+      return trimmed || null;
+    };
+    return {
+      kind,
+      name,
+      idNo: optional(input.idNo, 100),
+      phone: optional(input.phone, 100),
+      address: optional(input.address, 500),
+      legalRepresentative: optional(input.legalRepresentative, 200),
+      idempotencyKey: input.idempotencyKey,
+    };
+  }
+
+  private defendantReceipt(
+    snapshot: Prisma.JsonValue,
+    caseId: string,
+  ): AddCaseDefendantResultDto {
+    if (
+      snapshot === null ||
+      typeof snapshot !== 'object' ||
+      Array.isArray(snapshot) ||
+      snapshot.caseId !== caseId ||
+      typeof snapshot.defendantId !== 'string' ||
+      typeof snapshot.contactRevision !== 'number' ||
+      typeof snapshot.recordedAt !== 'string'
+    )
+      throw this.conflict('INVALID_STATE');
+    return {
+      caseId,
+      defendantId: snapshot.defendantId,
+      contactRevision: snapshot.contactRevision,
       recordedAt: snapshot.recordedAt,
     };
   }

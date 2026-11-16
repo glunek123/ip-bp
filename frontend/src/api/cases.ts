@@ -8316,3 +8316,78 @@ function optionalHearingDetails(value: Record<string, unknown>): boolean {
         value[key].length <= (key === 'hearingPlace' ? 500 : 200)),
   );
 }
+
+export type AddCaseDefendantInput = {
+  kind: 'PERSON' | 'ORGANIZATION';
+  name: string;
+  idNo: string | null;
+  phone: string | null;
+  address: string | null;
+  legalRepresentative: string | null;
+  idempotencyKey: string;
+};
+export type AddCaseDefendantResult = {
+  caseId: string;
+  defendantId: string;
+  contactRevision: number;
+  recordedAt: string;
+};
+
+export async function addCaseDefendant(
+  id: string,
+  input: AddCaseDefendantInput,
+  options: RequestOptions = {},
+): Promise<AddCaseDefendantResult> {
+  const name = input.name.trim();
+  if (!uuidV4(id) || !validIdempotencyKey(input.idempotencyKey))
+    throw new ApiError('被告资料无效', 400, 'VALIDATION_ERROR');
+  if (input.kind !== 'PERSON' && input.kind !== 'ORGANIZATION')
+    throw new ApiError('被告类型无效', 400, 'VALIDATION_ERROR');
+  if (!name || name.length > 200)
+    throw new ApiError(
+      '被告名称不能为空且不超过200字符',
+      400,
+      'VALIDATION_ERROR',
+    );
+  const optional = (value: string | null, max: number, label: string) => {
+    if (value !== null && typeof value !== 'string')
+      throw new ApiError(`${label}无效`, 400, 'VALIDATION_ERROR');
+    const trimmed = value?.trim() ?? '';
+    if (trimmed.length > max)
+      throw new ApiError(`${label}超出长度上限`, 400, 'VALIDATION_ERROR');
+    return trimmed || null;
+  };
+  const body = {
+    kind: input.kind,
+    name,
+    idNo: optional(input.idNo, 100, '证件号码'),
+    phone: optional(input.phone, 100, '联系电话'),
+    address: optional(input.address, 500, '联系地址'),
+    legalRepresentative: optional(input.legalRepresentative, 200, '法定代表人'),
+    idempotencyKey: input.idempotencyKey,
+  };
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/defendants`,
+    {
+      ...writeRequestOptions(input.idempotencyKey, options),
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+  );
+  if (!record(response))
+    throw new ApiError('被告登记结果无效', 502, 'INVALID_RESPONSE');
+  const row = response;
+  if (
+    row.caseId !== id ||
+    typeof row.defendantId !== 'string' ||
+    typeof row.contactRevision !== 'number' ||
+    typeof row.recordedAt !== 'string'
+  )
+    throw new ApiError('被告登记结果无效', 502, 'INVALID_RESPONSE');
+  return {
+    caseId: id,
+    defendantId: row.defendantId,
+    contactRevision: row.contactRevision,
+    recordedAt: row.recordedAt,
+  };
+}
