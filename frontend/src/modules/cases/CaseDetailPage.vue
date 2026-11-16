@@ -2525,29 +2525,6 @@ onBeforeUnmount(() => {
           {{ routineError }}
           <ElButton text @click="refreshRoutine">刷新核对</ElButton>
         </p>
-        <section
-          v-if="routineEditing && routine"
-          class="demo-card demo-card--pad"
-          data-test="case-routine-editor"
-        >
-          <h2 class="form-section-title">编辑案件资料</h2>
-          <RoutineBusinessEditor
-            :shop-name="routine.shopName ?? ''"
-            :remark="routine.remark"
-            :products="routine.products"
-            :pending="routineSaving || routineUnknown"
-            @save="saveRoutine"
-            @cancel="routineEditing = false"
-          />
-          <p v-if="routineError" role="alert" class="submit-error">
-            {{ routineError }}
-          </p>
-          <ElButton
-            v-if="routineUnknown || routineError.includes('刷新')"
-            @click="refreshRoutine"
-            >刷新核对</ElButton
-          >
-        </section>
         <div
           v-if="priorEditors.length > 0"
           class="case-workspace-field__help"
@@ -2604,11 +2581,37 @@ onBeforeUnmount(() => {
           :actions="sectionActions"
           :context-key="workspaceContext"
           :supplement-actor-key="secondInstanceActorKey"
+          :editing-section="routineEditing ? 'lead-info' : null"
           @edit="editSection"
           @view-timeline="viewTimeline"
           @supplement-changed="detailSourcesRevision += 1"
           @open-files="selectTab('files')"
-        />
+        >
+          <template #edit-lead-info>
+            <section
+              v-if="routineEditing && routine"
+              class="case-inline-editor"
+              data-test="case-routine-editor"
+            >
+              <RoutineBusinessEditor
+                :shop-name="routine.shopName ?? ''"
+                :remark="routine.remark"
+                :products="routine.products"
+                :pending="routineSaving || routineUnknown"
+                @save="saveRoutine"
+                @cancel="routineEditing = false"
+              />
+              <p v-if="routineError" role="alert" class="submit-error">
+                {{ routineError }}
+              </p>
+              <ElButton
+                v-if="routineUnknown || routineError.includes('刷新')"
+                @click="refreshRoutine"
+                >刷新核对</ElButton
+              >
+            </section>
+          </template>
+        </CaseDetailsSections>
         <CaseLitigationRefundPanel
           v-if="accessVerified && state === 'ready'"
           :actor-key="secondInstanceActorKey"
@@ -3330,5 +3333,17 @@ onBeforeUnmount(() => {
 <style>
 .case-workspace-editors--inactive {
   display: none !important;
+}
+
+.case-inline-editor {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--color-surface-2);
+  border: 1px dashed var(--color-hairline-strong);
+  border-radius: 8px;
+}
+.case-inline-editor :deep(.form-section-title) {
+  margin-bottom: 8px;
+  font-size: 13px;
 }
 </style>

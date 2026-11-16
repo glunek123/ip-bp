@@ -46,6 +46,7 @@ const props = defineProps<{
   notaryMaterialState?: LeadState;
   actions: Record<SectionKey, SectionAction>;
   contextKey: string;
+  editingSection?: SectionKey | null;
   supplementActorKey: string;
 }>();
 const emit = defineEmits<{
@@ -235,8 +236,28 @@ function edit(key: SectionKey): void {
               class="case-workspace-field"
               :class="{ 'case-workspace-field--wide': field.wide }"
             >
-              <dt class="case-workspace-field__label">{{ field.label }}</dt>
-              <dd class="case-workspace-field__value">
+              <dt
+                v-if="
+                  !(
+                    section.key === 'lead-info' &&
+                    editingSection === 'lead-info' &&
+                    field.label === '店铺名'
+                  )
+                "
+                class="case-workspace-field__label"
+              >
+                {{ field.label }}
+              </dt>
+              <dd
+                v-if="
+                  !(
+                    section.key === 'lead-info' &&
+                    editingSection === 'lead-info' &&
+                    field.label === '店铺名'
+                  )
+                "
+                class="case-workspace-field__value"
+              >
                 {{ field.value }}
                 <p v-if="field.help" class="case-workspace-field__help">
                   {{ field.help }}
@@ -275,6 +296,7 @@ function edit(key: SectionKey): void {
           </dl>
         </div>
       </div>
+      <slot :name="`edit-${section.key}`" />
       <p v-if="fileDownloadError?.section === section.key" role="alert">
         {{ fileDownloadError.message }}
       </p>
