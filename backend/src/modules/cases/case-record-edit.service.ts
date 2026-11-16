@@ -438,6 +438,7 @@ export class CaseRecordEditService {
               actor,
               caseId,
               'case.routine.edit',
+              { allowResponsible: true },
             );
             if (record.responsibleUserId === value.userId)
               throw this.validation('案件负责人没有变化');
@@ -506,105 +507,6 @@ export class CaseRecordEditService {
       }
     }
     throw this.conflict('VERSION_CONFLICT');
-  }
-
-  async assignResponsibleUser(
-    actor: ActorContext,
-    caseId: string,
-    input: ChangeResponsibleUserDto,
-  ): Promise<ChangeResponsibleUserResultDto> {
-    const value: ResponsibleValue = {
-      userId: input.userId,
-      reason: input.reason?.trim() || null,
-      idempotencyKey: input.idempotencyKey,
-    };
-    return this.database.$transaction(async (tx) => {
-      const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>(
-        'SELECT "id" FROM "cases" WHERE "id"=$1::uuid AND "department_id"=$2::uuid FOR UPDATE',
-        caseId,
-        actor.departmentId,
-      );
-      if (locked.length !== 1) throw this.notFound();
-      const record = await tx.case.findFirst({
-        where: { id: caseId, departmentId: actor.departmentId },
-        select: {
-          responsibleUserId: true,
-          responsibilityEpoch: true,
-          responsibleMembership: { select: { teamId: true } },
-        },
-      });
-      if (record === null) throw this.notFound();
-      // 改派：不要求操作人是当前负责人，只要在本部门具备案件资料编辑能力即可。
-      const actorMembership = await tx.departmentMembership.findFirst({
-        where: {
-          userId: actor.userId,
-          departmentId: actor.departmentId,
-          active: true,
-        },
-        select: { teamId: true },
-      });
-      const canEdit = await this.access.canAuthorizeCase(
-        actor,
-        'case.routine.edit',
-        {
-          departmentId: actor.departmentId,
-          responsibleUserId: actor.userId,
-          ...(actorMembership?.teamId
-            ? { teamId: actorMembership.teamId }
-            : {}),
-        },
-      );
-      if (!canEdit) throw this.forbidden();
-      if (record.responsibleUserId === value.userId)
-        throw this.validation('案件负责人没有变化');
-      const target = await tx.userAccount.findFirst({
-        where: {
-          id: value.userId,
-          active: true,
-          accountType: 'INTERNAL',
-          memberships: {
-            some: { departmentId: actor.departmentId, active: true },
-          },
-        },
-        select: { id: true },
-      });
-      if (target === null) throw this.validation('目标运营不可用');
-      const recordedAt = new Date();
-      const updated = await tx.case.updateMany({
-        where: {
-          id: caseId,
-          departmentId: actor.departmentId,
-          responsibleUserId: record.responsibleUserId,
-        },
-        data: {
-          responsibleUserId: value.userId,
-          responsibilityEpoch: { increment: 1 },
-        },
-      });
-      if (updated.count !== 1) throw this.conflict('VERSION_CONFLICT');
-      await tx.auditEvent.create({
-        data: {
-          departmentId: actor.departmentId,
-          actorUserId: actor.userId,
-          internalActorUserId: actor.userId,
-          resourceType: 'CASE',
-          resourceId: caseId,
-          action: 'case.responsible-user.assigned',
-          details: {
-            fromUserId: record.responsibleUserId,
-            toUserId: value.userId,
-            reason: value.reason,
-          },
-        },
-        select: { id: true },
-      });
-      return {
-        caseId,
-        responsibleUserId: value.userId,
-        responsibilityEpoch: record.responsibilityEpoch + 1,
-        recordedAt: recordedAt.toISOString(),
-      };
-    });
   }
 
   async caseTypesContext(
@@ -1197,6 +1099,7 @@ export class CaseRecordEditService {
       | 'case.routine.edit'
       | 'case.acceptance.correct'
       | 'case.second-instance-acceptance.update',
+    options?: { allowResponsible?: boolean },
   ) {
     if (
       actor.clientCustomerId !== undefined ||
@@ -1230,6 +1133,9 @@ export class CaseRecordEditService {
     });
     if (!account?.active || account.accountType !== 'INTERNAL')
       throw this.forbidden();
+    // 负责人本人始终可以处理自己负责的案件（含移交），不依赖额外权限。
+    if (options?.allowResponsible && record.responsibleUserId === actor.userId)
+      return record;
     try {
       await this.access.authorizeCase(
         actor,

@@ -256,7 +256,6 @@ export type SecondInstanceAcceptance = {
 };
 export type CaseRecordEdits = {
   canUpdateDefendantContact: boolean;
-  canAssignResponsible?: boolean;
   canCorrectAcceptance: boolean;
   defendantContacts: DefendantContactEdit[];
   acceptanceCorrections: AcceptanceCorrectionEdit[];
@@ -4074,7 +4073,6 @@ function validRecordEdits(
       ],
       [
         'canSaveSecondInstanceAcceptance',
-        'canAssignResponsible',
         'secondInstanceAcceptances',
         ...sectionRecordKinds,
       ],
@@ -8638,47 +8636,5 @@ export async function setCaseDefendantDisabled(
     caseId,
     defendantId,
     disabledAt: response.disabledAt,
-  };
-}
-
-export async function assignCaseResponsibleUser(
-  caseId: string,
-  input: ChangeResponsibleUserInput,
-  options: RequestOptions = {},
-): Promise<ChangeResponsibleUserResult> {
-  if (
-    !uuidV4(caseId) ||
-    !uuidV4(input.userId) ||
-    !validIdempotencyKey(input.idempotencyKey)
-  )
-    throw new ApiError('改派信息无效', 400, 'VALIDATION_ERROR');
-  const reason = input.reason?.trim() || null;
-  if (reason !== null && reason.length > 500)
-    throw new ApiError('改派原因不超过500字符', 400, 'VALIDATION_ERROR');
-  const response = await requestJson(
-    `/cases/${encodeURIComponent(caseId)}/responsible-user/assign`,
-    {
-      ...writeRequestOptions(input.idempotencyKey, options),
-      method: 'POST',
-      body: {
-        userId: input.userId,
-        reason,
-        idempotencyKey: input.idempotencyKey,
-      },
-    },
-  );
-  if (
-    !record(response) ||
-    response.caseId !== caseId ||
-    typeof response.responsibleUserId !== 'string' ||
-    typeof response.responsibilityEpoch !== 'number' ||
-    typeof response.recordedAt !== 'string'
-  )
-    throw new ApiError('改派结果无效', 502, 'INVALID_RESPONSE');
-  return {
-    caseId,
-    responsibleUserId: response.responsibleUserId,
-    responsibilityEpoch: response.responsibilityEpoch,
-    recordedAt: response.recordedAt,
   };
 }

@@ -1,4 +1,4 @@
-import { ValidationPipe } from '@nestjs/common';
+import { ForbiddenException, ValidationPipe } from '@nestjs/common';
 import { configureApp } from '../../common/configure-app';
 import { CorrectCaseAcceptanceDto } from './case-record-edit.dto';
 import { CaseRecordEditService } from './case-record-edit.service';
@@ -790,32 +790,21 @@ describe('CaseRecordEditService', () => {
       },
     });
   });
-  it('lets a department proxy assign another operator as responsible', async () => {
+  it('lets the responsible user hand over without extra permissions', async () => {
     const f = fixture();
+    f.access.authorizeCase.mockRejectedValueOnce(
+      new ForbiddenException('no grant'),
+    );
     const nextUserId = '88888888-8888-4888-8888-888888888888';
-    const result = await f.service.assignResponsibleUser(actor, caseId, {
+    const result = await f.service.changeResponsibleUser(actor, caseId, {
       userId: nextUserId,
-      reason: '管理员改派',
-      idempotencyKey: 'assign-1',
+      reason: '负责人移交',
+      idempotencyKey: 'responsible-own',
     });
     expect(result).toMatchObject({
       caseId,
       responsibleUserId: nextUserId,
       responsibilityEpoch: 1,
-    });
-    expect(f.access.canAuthorizeCase).toHaveBeenCalledWith(
-      actor,
-      'case.routine.edit',
-      expect.objectContaining({
-        departmentId: actor.departmentId,
-        responsibleUserId: actor.userId,
-      }),
-    );
-    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        action: 'case.responsible-user.assigned',
-      }),
-      select: { id: true },
     });
   });
 });

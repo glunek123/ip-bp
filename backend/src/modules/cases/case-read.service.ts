@@ -3031,14 +3031,6 @@ export class CaseReadService {
                       : {}),
                   },
                 )),
-              canAssignResponsible: await this.access.canAuthorizeCase(
-                actor,
-                'case.routine.edit',
-                {
-                  departmentId: actor.departmentId,
-                  responsibleUserId: actor.userId,
-                },
-              ),
               canCorrectAcceptance:
                 record.acceptances.length > 0 &&
                 (await this.access.canAuthorizeCase(

@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import {
-  assignCaseResponsibleUser,
   changeCaseResponsibleUser,
   listResponsibleCandidates,
   type CaseDetail,
@@ -31,46 +30,6 @@ onMounted(async () => {
   }
 });
 
-const canAssign = computed(
-  () => props.item.recordEdits?.canAssignResponsible === true,
-);
-async function runAssign(): Promise<void> {
-  if (submitting.value) return;
-  if (!targetId.value) {
-    error.value = '请选择新的负责人';
-    return;
-  }
-  const target = candidates.value.find((entry) => entry.id === targetId.value);
-  if (
-    !globalThis.confirm(
-      `确认将案件改派给「${target?.displayName ?? '所选运营'}」？改派后可由你或其他管理员随时改回。`,
-    )
-  )
-    return;
-  const key = globalThis.crypto?.randomUUID?.();
-  if (!key) {
-    error.value = '当前浏览器不能生成安全请求键，尚未发送请求。';
-    return;
-  }
-  submitting.value = true;
-  error.value = '';
-  try {
-    await assignCaseResponsibleUser(props.item.id, {
-      userId: targetId.value,
-      reason: reason.value.trim() || null,
-      idempotencyKey: key,
-    });
-    notifyWorkflowChanged();
-    emit('changed');
-  } catch (failure) {
-    error.value =
-      failure instanceof ApiError && failure.status === 403
-        ? '没有部门代理授权，无法改派他人案件。'
-        : '改派未完成，请核对所选运营。';
-  } finally {
-    submitting.value = false;
-  }
-}
 async function submit(): Promise<void> {
   if (submitting.value) return;
   if (!targetId.value) {
@@ -151,19 +110,7 @@ async function submit(): Promise<void> {
         >
           确认移交
         </button>
-        <button
-          v-if="canAssign"
-          type="button"
-          data-test="responsible-assign"
-          :disabled="submitting"
-          @click="runAssign"
-        >
-          管理改派
-        </button>
       </div>
-      <p v-if="canAssign" class="field-help">
-        管理改派可调整他人负责的案件，改派后仍可再次改回。
-      </p>
     </template>
   </details>
 </template>

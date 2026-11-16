@@ -423,16 +423,6 @@ export class CaseReadController {
     return this.recordEdit.caseTypesContext(actor, id);
   }
 
-  @Post(':id/responsible-user/assign')
-  @ApiCreatedResponse({ type: ChangeResponsibleUserResultDto })
-  assignResponsibleUser(
-    @CurrentActor() actor: ActorContext,
-    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Body() body: ChangeResponsibleUserDto,
-  ) {
-    return this.recordEdit.assignResponsibleUser(actor, id, body);
-  }
-
   @Post(':id/case-types')
   @ApiCreatedResponse({ type: ChangeCaseTypesResultDto })
   changeCaseTypes(
