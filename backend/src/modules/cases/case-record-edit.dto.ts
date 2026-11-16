@@ -190,6 +190,11 @@ export class ChangeResponsibleUserDto {
 export class ResponsibleUserCandidateDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() displayName!: string;
+  @ApiProperty({
+    description:
+      '是否具备部门范围的案件查看权限；为 false 时接收案件后无法打开',
+  })
+  canReadCases!: boolean;
 }
 
 export class ChangeResponsibleUserResultDto {

@@ -415,7 +415,23 @@ export class CaseRecordEditService {
       orderBy: { displayName: 'asc' },
       take: 200,
     });
-    return rows.map((row) => ({ id: row.id, displayName: row.displayName }));
+    // 接收方必须能打开案件，否则移交后会被卡住；这里把结论带给前端提示。
+    const readers = await this.database.roleAssignment.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        active: true,
+        roleTemplate: {
+          grants: { some: { action: 'CASE_READ', scope: 'DEPARTMENT' } },
+        },
+      },
+      select: { userId: true },
+    });
+    const readable = new Set(readers.map((row) => row.userId));
+    return rows.map((row) => ({
+      id: row.id,
+      displayName: row.displayName,
+      canReadCases: readable.has(row.id),
+    }));
   }
 
   async changeResponsibleUser(

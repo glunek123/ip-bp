@@ -8409,7 +8409,11 @@ export async function addCaseDefendant(
   };
 }
 
-export type ResponsibleUserCandidate = { id: string; displayName: string };
+export type ResponsibleUserCandidate = {
+  id: string;
+  displayName: string;
+  canReadCases: boolean;
+};
 
 export async function listResponsibleCandidates(
   caseId: string,
@@ -8427,10 +8431,15 @@ export async function listResponsibleCandidates(
     if (
       !record(entry) ||
       typeof entry.id !== 'string' ||
-      typeof entry.displayName !== 'string'
+      typeof entry.displayName !== 'string' ||
+      typeof entry.canReadCases !== 'boolean'
     )
       throw new ApiError('候选运营结果无效', 502, 'INVALID_RESPONSE');
-    return { id: entry.id, displayName: entry.displayName };
+    return {
+      id: entry.id,
+      displayName: entry.displayName,
+      canReadCases: entry.canReadCases,
+    };
   });
 }
 

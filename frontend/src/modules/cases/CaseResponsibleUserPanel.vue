@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import {
   changeCaseResponsibleUser,
   listResponsibleCandidates,
@@ -30,6 +30,9 @@ onMounted(async () => {
   }
 });
 
+const selectedCandidate = computed(
+  () => candidates.value.find((entry) => entry.id === targetId.value) ?? null,
+);
 async function submit(): Promise<void> {
   if (submitting.value) return;
   if (!targetId.value) {
@@ -43,6 +46,12 @@ async function submit(): Promise<void> {
     )
   )
     return;
+  if (target && !target.canReadCases) {
+    const proceed = globalThis.confirm(
+      `「${target.displayName}」目前没有案件查看权限，移交后无法打开该案件。仍要移交吗？`,
+    );
+    if (!proceed) return;
+  }
   const key = globalThis.crypto?.randomUUID?.();
   if (!key) {
     error.value = '当前浏览器不能生成安全请求键，尚未发送请求。';
@@ -88,10 +97,18 @@ async function submit(): Promise<void> {
             :value="candidate.id"
             :disabled="candidate.id === item.owner.id"
           >
-            {{ candidate.displayName }}
+            {{ candidate.displayName
+            }}{{ candidate.canReadCases ? '' : '（无案件查看权限）' }}
           </option>
         </select>
       </label>
+      <p
+        v-if="selectedCandidate && !selectedCandidate.canReadCases"
+        class="field-help"
+        data-test="responsible-permission-warning"
+      >
+        该运营缺少「查看案件」权限（case.read，部门范围），移交后将无法打开此案件。请先在角色管理里为其勾选该权限，或改选其他运营。
+      </p>
       <label class="form-field">
         移交原因（选填）
         <input

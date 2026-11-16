@@ -87,6 +87,13 @@ describe('CaseRecordEditService', () => {
       departmentMembership: {
         findFirst: jest.fn().mockResolvedValue({ teamId: null }),
       },
+      roleAssignment: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { userId: '88888888-8888-4888-8888-888888888888' },
+          ]),
+      },
       caseDefendant: {
         findFirst: jest.fn().mockResolvedValue({
           phone: null,
@@ -137,6 +144,25 @@ describe('CaseRecordEditService', () => {
       $transaction: jest.fn(async (work: (transaction: typeof tx) => unknown) =>
         work(tx),
       ),
+      userAccount: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            displayName: '可读运营',
+          },
+          {
+            id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            displayName: '缺少权限运营',
+          },
+        ]),
+      },
+      roleAssignment: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+          ]),
+      },
     };
     const access = {
       authorizeCase: jest.fn().mockResolvedValue(undefined),
@@ -806,6 +832,22 @@ describe('CaseRecordEditService', () => {
       responsibleUserId: nextUserId,
       responsibilityEpoch: 1,
     });
+  });
+  it('marks candidates that cannot open cases', async () => {
+    const f = fixture();
+    const result = await f.service.responsibleCandidates(actor, caseId);
+    expect(result).toEqual([
+      {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        displayName: '可读运营',
+        canReadCases: true,
+      },
+      {
+        id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        displayName: '缺少权限运营',
+        canReadCases: false,
+      },
+    ]);
   });
 });
 
