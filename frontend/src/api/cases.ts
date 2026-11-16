@@ -8371,7 +8371,7 @@ export async function addCaseDefendant(
     {
       ...writeRequestOptions(input.idempotencyKey, options),
       method: 'POST',
-      body: JSON.stringify(body),
+      body,
     },
   );
   if (!record(response))
