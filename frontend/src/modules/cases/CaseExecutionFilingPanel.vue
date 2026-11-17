@@ -406,7 +406,7 @@ async function download(file: VersionFile) {
     >
       <h2 class="form-section-title">登记执行备案</h2>
       <p class="field-help">
-        执行申请邮寄登记完成后，记录实际向法院提交执行材料的日期并上传备案凭证。
+        执行申请邮寄登记完成后，记录向法院提交执行材料的日期并上传执行立案截图。
       </p>
       <template
         v-if="
