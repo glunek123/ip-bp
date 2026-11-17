@@ -64,7 +64,6 @@ const submitting = ref(false);
 const success = ref(false);
 const error = ref('');
 const uploadError = ref('');
-const review = ref(false);
 const unknownRequest = ref<SubmitCaseExecutionFilingInput | null>(null);
 let revision = 0;
 let attachmentRevision = 0;
@@ -131,7 +130,6 @@ function reset() {
   success.value = false;
   error.value = '';
   uploadError.value = '';
-  review.value = false;
   unknownRequest.value = null;
 }
 function setAvailable(next: VersionFile[]) {
@@ -149,7 +147,6 @@ async function loadAvailable() {
       attachment !== attachmentRevision ||
       files.value.length ||
       uploading.value ||
-      review.value ||
       unknownRequest.value
     )
       return;
@@ -250,10 +247,9 @@ async function upload(event: { target: unknown }) {
   target.value = '';
   attachmentRevision += 1;
   if (!selected.length || files.value.length + selected.length > 10) {
-    uploadError.value = '一次最多选择 10 个执行备案凭证。';
+    uploadError.value = '一次最多选择 10 张执行立案截图。';
     return;
   }
-  review.value = false;
   uploading.value = true;
   uploadError.value = '';
   try {
@@ -284,7 +280,6 @@ async function upload(event: { target: unknown }) {
   }
 }
 function toggle(file: VersionFile, checked: boolean) {
-  review.value = false;
   attachmentRevision += 1;
   files.value = checked
     ? [...files.value, file]
@@ -293,7 +288,6 @@ function toggle(file: VersionFile, checked: boolean) {
       );
 }
 function removeFile(id: string) {
-  review.value = false;
   attachmentRevision += 1;
   files.value = files.value.filter((file) => file.contentVersionId !== id);
 }
@@ -383,7 +377,7 @@ async function download(file: VersionFile) {
     <template v-if="item.executionFiling && !unknownRequest">
       <h2 class="form-section-title">执行备案登记</h2>
       <p>
-        实际提交日期：{{ item.executionFiling.submittedAt }}；登记时间：{{
+        提交执行立案日期：{{ item.executionFiling.submittedAt }}；登记时间：{{
           new Date(item.executionFiling.recordedAt).toLocaleString('zh-CN', {
             timeZone: 'Asia/Shanghai',
             hour12: false,
@@ -418,20 +412,19 @@ async function download(file: VersionFile) {
         "
       >
         <label
-          >实际提交日期 <span aria-hidden="true">*</span
+          >提交执行立案日期 <span aria-hidden="true">*</span
           ><input
             v-model="submittedAt"
             type="date"
             class="text-input"
             :max="todayShanghai()"
             :disabled="unknownRequest !== null"
-            @input="review = false"
             required
             aria-required="true"
             data-test="execution-filing-submitted-at"
         /></label>
         <label
-          >执行备案凭证 <span aria-hidden="true">*</span
+          >执行立案截图 <span aria-hidden="true">*</span
           ><input
             type="file"
             class="text-input"
@@ -447,13 +440,13 @@ async function download(file: VersionFile) {
           PDF、JPG 或 PNG，单个文件不超过 50 MB，最多 10
           份。可上传新文件，也可选择已有材料的具体版本。
         </p>
-        <p v-if="uploading" role="status">正在上传备案凭证</p>
+        <p v-if="uploading" role="status">正在上传执行立案截图</p>
         <p v-if="uploadError" role="alert" class="submit-error">
           {{ uploadError }}
         </p>
         <fieldset v-if="availableFiles.length > 1" class="demo-form-grid">
           <legend>
-            选择本次登记使用的凭证版本 <span aria-hidden="true">*</span>
+            选择本次登记使用的截图版本 <span aria-hidden="true">*</span>
           </legend>
           <label v-for="file in availableFiles" :key="file.contentVersionId"
             ><input
@@ -488,13 +481,6 @@ async function download(file: VersionFile) {
           </li>
         </ul>
         <p v-if="error" role="alert" class="submit-error">{{ error }}</p>
-        <p
-          v-if="review && !unknownRequest"
-          data-test="execution-filing-review-summary"
-        >
-          将登记 {{ submittedAt }} 向法院提交，并关联
-          {{ files.length }} 份已选凭证。
-        </p>
         <ElButton
           v-if="unknownRequest"
           type="primary"
@@ -507,19 +493,11 @@ async function download(file: VersionFile) {
         <ElButton
           v-else
           type="primary"
-          :disabled="!ready"
-          data-test="execution-filing-review"
-          @click="review = true"
-          >核对备案信息</ElButton
-        >
-        <ElButton
-          v-if="review && !unknownRequest"
-          type="primary"
           :loading="submitting"
           :disabled="!ready"
           data-test="execution-filing-submit"
           @click="submit"
-          >确认提交并登记</ElButton
+          >提交</ElButton
         >
         <p v-if="success" role="status">执行备案登记已完成，请刷新查看记录。</p>
       </template>

@@ -94,7 +94,7 @@ describe('case execution filing panel', () => {
     expect((date.element as HTMLInputElement).max).toBe('2026-10-03');
     expect(
       (
-        wrapper.get('[data-test="execution-filing-review"]')
+        wrapper.get('[data-test="execution-filing-submit"]')
           .element as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -108,14 +108,14 @@ describe('case execution filing panel', () => {
     );
     expect(
       (
-        wrapper.get('[data-test="execution-filing-review"]')
+        wrapper.get('[data-test="execution-filing-submit"]')
           .element as HTMLButtonElement
       ).disabled,
     ).toBe(false);
     await date.setValue('2026-10-04');
     expect(
       (
-        wrapper.get('[data-test="execution-filing-review"]')
+        wrapper.get('[data-test="execution-filing-submit"]')
           .element as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -127,7 +127,6 @@ describe('case execution filing panel', () => {
     await wrapper
       .get('[data-test="execution-filing-submitted-at"]')
       .setValue('2026-10-01');
-    await wrapper.get('[data-test="execution-filing-review"]').trigger('click');
     await wrapper.get('[data-test="execution-filing-submit"]').trigger('click');
     await flushPromises();
     expect(api.submitCaseExecutionFiling).toHaveBeenCalledWith(
@@ -166,7 +165,6 @@ describe('case execution filing panel', () => {
     await wrapper
       .get('[data-test="execution-filing-submitted-at"]')
       .setValue('2026-10-01');
-    await wrapper.get('[data-test="execution-filing-review"]').trigger('click');
     await wrapper.get('[data-test="execution-filing-submit"]').trigger('click');
     await flushPromises();
     expect(api.submitCaseExecutionFiling).toHaveBeenCalledWith(
@@ -185,7 +183,6 @@ describe('case execution filing panel', () => {
     const wrapper = mountPanel();
     await flushPromises();
     await addProof(wrapper);
-    await wrapper.get('[data-test="execution-filing-review"]').trigger('click');
     await wrapper.get('[data-test="execution-filing-submit"]').trigger('click');
     await flushPromises();
     const original = api.submitCaseExecutionFiling.mock.calls[0];
@@ -215,7 +212,6 @@ describe('case execution filing panel', () => {
     const wrapper = mountPanel();
     await flushPromises();
     await addProof(wrapper);
-    await wrapper.get('[data-test="execution-filing-review"]').trigger('click');
     await wrapper.get('[data-test="execution-filing-submit"]').trigger('click');
     await wrapper.setProps({
       item: { ...item, id: 'case-2', version: 1 },
