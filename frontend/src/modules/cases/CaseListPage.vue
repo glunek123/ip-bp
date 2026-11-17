@@ -64,6 +64,7 @@ import CaseConsolidationPanel from './CaseConsolidationPanel.vue';
 import CaseCsvImportPanel from './CaseCsvImportPanel.vue';
 import CaseComplaintExportPanel from './CaseComplaintExportPanel.vue';
 import CaseFilingBatchPanel from './CaseFilingBatchPanel.vue';
+import CaseExecutionBatchPanel from './CaseExecutionBatchPanel.vue';
 import CaseLawyerAssignmentBatchPanel from './CaseLawyerAssignmentBatchPanel.vue';
 import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
 import {
@@ -211,6 +212,11 @@ const exporting = ref(false);
 const exportError = ref('');
 const selectionExportError = ref('');
 const executionArchivePending = ref(false);
+const executionBatchMode = ref<'submission' | 'mailing'>('submission');
+const executionBatchOpen = ref(false);
+const executionBatchCases = ref<
+  { id: string; businessNo: string; stage: string }[]
+>([]);
 const executionArchiveMessage = ref('');
 const selectedCaseIds = ref<string[]>([]);
 const consolidationOpen = ref(false);
@@ -1596,6 +1602,16 @@ async function exportSelectedList(): Promise<void> {
     }
   }
 }
+function openExecutionBatch(mode: 'submission' | 'mailing'): void {
+  if (!canStartBatchFromSelection.value) return;
+  executionBatchMode.value = mode;
+  executionBatchCases.value = selectedCases.value.map((entry) => ({
+    id: entry.id,
+    businessNo: entry.businessNo,
+    stage: entry.stage,
+  }));
+  executionBatchOpen.value = true;
+}
 async function downloadExecutionDocuments(): Promise<void> {
   if (executionArchivePending.value || !canStartBatchFromSelection.value)
     return;
@@ -1937,6 +1953,28 @@ onBeforeUnmount(() => {
             "
             @click="downloadExecutionDocuments"
             >批量下载执行文书</ElButton
+          >
+          <ElButton
+            data-test="execution-batch-upload-open"
+            :disabled="!canStartBatchFromSelection"
+            :title="
+              canStartBatchFromSelection
+                ? '逐案选择执行申请文书后统一提交'
+                : '请先勾选1至20件当前列表中的案件'
+            "
+            @click="openExecutionBatch('submission')"
+            >批量上传执行文书</ElButton
+          >
+          <ElButton
+            data-test="execution-batch-mail-open"
+            :disabled="!canStartBatchFromSelection"
+            :title="
+              canStartBatchFromSelection
+                ? '逐案上传邮寄凭证，统一邮寄日期'
+                : '请先勾选1至20件当前列表中的案件'
+            "
+            @click="openExecutionBatch('mailing')"
+            >批量邮寄</ElButton
           >
         </template>
         <ElButton
@@ -2636,6 +2674,29 @@ onBeforeUnmount(() => {
         csvImportPendingOwner = $event ? identity : null;
       "
     />
+    <ElDialog
+      v-model="executionBatchOpen"
+      :title="
+        executionBatchMode === 'mailing'
+          ? '批量邮寄执行文书'
+          : '批量上传执行文书'
+      "
+      width="920px"
+      append-to-body
+      destroy-on-close
+      data-test="execution-batch-dialog"
+    >
+      <CaseExecutionBatchPanel
+        v-if="executionBatchOpen"
+        :mode="executionBatchMode"
+        :cases="executionBatchCases"
+        @close="executionBatchOpen = false"
+        @done="
+          executionBatchOpen = false;
+          load();
+        "
+      />
+    </ElDialog>
   </div>
 </template>
 
