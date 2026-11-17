@@ -744,7 +744,7 @@ async function download(file: CaseFile): Promise<void> {
           />
         </label>
         <label>
-          <span>法庭</span>
+          <span>开庭地点</span>
           <input
             v-model="updateHearingPlace"
             data-test="acceptance-hearing-place"
