@@ -3594,7 +3594,8 @@ const sectionRecordContracts = {
     route: 'execution-mailing-correction',
     fields: ['mailedAt', 'mailReceiptContentVersionIds'],
     files: 'mailReceiptContentVersionIds',
-    minimum: 1,
+    // 凭证已改为选填备注，0 个凭证的登记也要能通过详情校验。
+    minimum: 0,
     reason: 'reason',
     round: false,
   },

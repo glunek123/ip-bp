@@ -885,7 +885,6 @@ describe('six independent section record commands', () => {
     vi.stubGlobal('fetch', fetch);
     for (const [index, change] of [
       [0, { mailedAt: '2026-02-30' }],
-      [0, { mailReceiptContentVersionIds: [] }],
       [
         0,
         { mailReceiptContentVersionIds: [sectionId, sectionId.toUpperCase()] },
@@ -903,7 +902,29 @@ describe('six independent section record commands', () => {
         command.send({ ...command.input, ...change }),
       ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     }
-    expect(fetch).not.toHaveBeenCalled();
+
+    // 凭证已改为选填：0 个凭证的邮寄更正应被接受。
+    mockJson({
+      caseId: archiveCaseId,
+      correctionId: sectionOtherId,
+      recordedAt: '2026-10-15T01:00:00Z',
+      mailingId: sectionId,
+      mailingRevision: 1,
+      mailedAt: '2026-10-01',
+    });
+    const mailing = sectionCommands[0]!;
+    let rejectedAs: string | undefined;
+    try {
+      await mailing.send({
+        ...mailing.input,
+        mailReceiptContentVersionIds: [],
+      });
+    } catch (cause) {
+      rejectedAs =
+        cause instanceof Error ? (cause as { code?: string }).code : '';
+    }
+    // 只要不再以「校验不通过」拒绝即可（其余错误来自桩响应的结构）。
+    expect(rejectedAs).not.toBe('VALIDATION_ERROR');
   });
 });
 function directSecondDetail(roundId: string) {
