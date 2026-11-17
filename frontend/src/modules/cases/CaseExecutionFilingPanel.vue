@@ -22,6 +22,10 @@ import {
 } from '../../api/materials';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
+const fileInput = ref<globalThis.HTMLInputElement | null>(null);
+function pickFiles(): void {
+  fileInput.value?.click();
+}
 type VersionFile = Pick<
   CaseFile,
   'materialId' | 'contentVersionId' | 'originalFilename' | 'mimeType'
@@ -411,9 +415,9 @@ async function download(file: VersionFile) {
             (item.executionMailing || directEntry))
         "
       >
-        <label
-          >提交执行立案日期 <span aria-hidden="true">*</span
-          ><input
+        <label class="filing-field">
+          <span>提交执行立案日期 <span aria-hidden="true">*</span></span>
+          <input
             v-model="submittedAt"
             type="date"
             class="text-input"
@@ -422,20 +426,36 @@ async function download(file: VersionFile) {
             required
             aria-required="true"
             data-test="execution-filing-submitted-at"
-        /></label>
-        <label
-          >执行立案截图 <span aria-hidden="true">*</span
-          ><input
-            type="file"
-            class="text-input"
-            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-            multiple
-            :disabled="
-              uploading || files.length >= 10 || unknownRequest !== null
-            "
-            @change="upload"
-            data-test="execution-filing-file-input"
-        /></label>
+          />
+        </label>
+        <div class="filing-field">
+          <span>执行立案截图 <span aria-hidden="true">*</span></span>
+          <div class="filing-pick">
+            <ElButton
+              size="small"
+              :disabled="
+                uploading || files.length >= 10 || unknownRequest !== null
+              "
+              @click="pickFiles"
+              >选择文件</ElButton
+            >
+            <span class="filing-pick__hint"
+              >已选 {{ files.length }} 份，最多 10 份</span
+            >
+            <input
+              ref="fileInput"
+              class="filing-pick__input"
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+              multiple
+              :disabled="
+                uploading || files.length >= 10 || unknownRequest !== null
+              "
+              @change="upload"
+              data-test="execution-filing-file-input"
+            />
+          </div>
+        </div>
         <p class="field-help">
           PDF、JPG 或 PNG，单个文件不超过 50 MB，最多 10
           份。可上传新文件，也可选择已有材料的具体版本。
@@ -507,3 +527,26 @@ async function download(file: VersionFile) {
     </template>
   </section>
 </template>
+
+<style scoped>
+.filing-field {
+  display: grid;
+  gap: 6px;
+}
+.filing-pick {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.filing-pick__hint {
+  color: #909399;
+  font-size: 12px;
+}
+.filing-pick__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+</style>
