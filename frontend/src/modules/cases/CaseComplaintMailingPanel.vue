@@ -255,9 +255,9 @@ async function download(file: CaseFile) {
     >
       <h2 class="form-section-title">邮寄</h2>
       <template v-if="unknownRequest || item.canMailComplaint">
-        <label
-          >邮寄日期 <span aria-hidden="true">*</span
-          ><input
+        <label class="mailing-field">
+          <span>邮寄日期 <span aria-hidden="true">*</span></span>
+          <input
             v-model="mailedAt"
             type="date"
             class="text-input"
@@ -266,8 +266,8 @@ async function download(file: CaseFile) {
             required
             aria-required="true"
         /></label>
-        <label
-          >备注
+        <label class="mailing-field">
+          <span>备注</span>
           <textarea
             v-model="remark"
             class="text-input"
@@ -303,3 +303,10 @@ async function download(file: CaseFile) {
     </template>
   </section>
 </template>
+
+<style scoped>
+.mailing-field {
+  display: grid;
+  gap: 6px;
+}
+</style>
