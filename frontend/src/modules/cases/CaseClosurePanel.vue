@@ -170,7 +170,8 @@ const canRecord = computed(
   () =>
     !props.editOnly &&
     !projectionBlocked.value &&
-    props.item.stage === 'WAITING_ARCHIVE' &&
+    (props.item.stage === 'WAITING_ARCHIVE' ||
+      props.item.stage === 'EXECUTING') &&
     props.item.canRecordClosure &&
     (!!props.item.executionFinish ||
       (props.item.origin?.kind === 'EXTERNAL_ENTRY' &&

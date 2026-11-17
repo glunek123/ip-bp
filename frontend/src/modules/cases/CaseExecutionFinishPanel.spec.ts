@@ -29,7 +29,7 @@ const result: Result = {
   id: 'case-1',
   finishId: 'finish-1',
   filingId: 'filing-1',
-  stage: 'WAITING_ARCHIVE',
+  stage: 'EXECUTING',
   version: 11,
   finishedAt: '2026-10-12',
   recordedAt: '2026-10-13T01:00:00Z',
