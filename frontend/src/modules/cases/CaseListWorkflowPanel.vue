@@ -453,6 +453,15 @@ const allowed = computed(
       : resolveCaseDetailActions(item.value)
     ).some((action) => action.intent === props.action),
 );
+const submitBlockedReason = computed(() => {
+  if (storageBlocked.value)
+    return '无法读取原请求恢复记录，请保留当前会话并联系管理员';
+  if (pending.value)
+    return '上次提交尚未确认，请先用原请求重试，或放弃原请求后重新填写';
+  if (props.requestState !== 'idle') return '正在处理上一次请求，请稍候';
+  if (!allowed.value) return '当前案件状态不允许提交，请刷新核对';
+  return '';
+});
 const storageKey = `case-list-workflow:v1:${encodeURIComponent(props.session.context.actorKey)}:${encodeURIComponent(item.value.id)}`;
 const pending = shallowRef<StoredRequest | null>(null);
 const error = ref('');
@@ -763,8 +772,32 @@ async function submit(request: CaseListRequest, recovery = false) {
     !current() ||
     storageBlocked.value ||
     (!recovery && (!allowed.value || pending.value))
-  )
-    throw new ApiError('请先核对原请求及当前操作权限', 409, 'INVALID_STATE');
+  ) {
+    // 本地门禁与真实版本冲突必须区分，否则用户会被引向「刷新重填」的死循环。
+    if (!current())
+      throw new ApiError(
+        '当前办理面板已失效，请关闭后重新打开',
+        409,
+        'WORKFLOW_SESSION_STALE',
+      );
+    if (storageBlocked.value)
+      throw new ApiError(
+        '无法读取原请求恢复记录，请保留当前会话并联系管理员',
+        409,
+        'RECOVERY_STORAGE_UNAVAILABLE',
+      );
+    if (pending.value)
+      throw new ApiError(
+        '上次提交尚未确认，请先用原请求重试，或放弃原请求后重新填写',
+        409,
+        'ORIGINAL_REQUEST_PENDING',
+      );
+    throw new ApiError(
+      '当前案件状态不允许此操作，请刷新核对后重试',
+      409,
+      'ACTION_NOT_ALLOWED',
+    );
+  }
   const stored = recovery
     ? pending.value
     : decodeCaseListRequest(
@@ -866,6 +899,23 @@ function clearCommandSession(stored: StoredRequest) {
 }
 async function send(request: CaseListRequest) {
   await submit(request);
+}
+function discardOriginal() {
+  const stored = pending.value;
+  if (!stored) return;
+  clearCommandSession(stored);
+  try {
+    if (
+      globalThis.sessionStorage.getItem(storageKey) === JSON.stringify(stored)
+    )
+      globalThis.sessionStorage.removeItem(storageKey);
+  } catch {
+    error.value = '恢复记录无法清除，请保留原请求并联系管理员核查。';
+    return;
+  }
+  pending.value = null;
+  error.value = '';
+  ownedSession.endSubmit('failed');
 }
 async function retryOriginal() {
   if (!pending.value) return;
@@ -1326,18 +1376,28 @@ async function complaint() {
     >
       重新读取资料
     </button>
-    <div
-      v-if="pending && requestState === 'unknown'"
-      role="status"
-      data-test="case-list-original-request"
-    >
+    <div v-if="pending" role="status" data-test="case-list-original-request">
       <p>
-        原办理请求尚待确认（{{
-          pending.action
-        }}）。刷新或重新登录不会生成新请求。
+        原办理请求尚待确认（{{ pending.action }}）{{
+          requestState === 'unknown'
+            ? '。刷新或重新登录不会生成新请求。'
+            : '，当前不能提交新请求。'
+        }}
       </p>
-      <button type="button" data-test="retry-original" @click="retryOriginal">
+      <button
+        v-if="requestState === 'unknown'"
+        type="button"
+        data-test="retry-original"
+        @click="retryOriginal"
+      >
         使用原请求和请求键重试
+      </button>
+      <button
+        type="button"
+        data-test="discard-original"
+        @click="discardOriginal"
+      >
+        放弃原请求并重新填写
       </button>
     </div>
     <template v-if="recordMode && !storageBlocked">
@@ -1667,6 +1727,7 @@ async function complaint() {
         :context-key="actorKey"
         :actor-key="actorKey"
         dock-actions
+        :submit-blocked-reason="submitBlockedReason"
         :submit-command="secondSubmit"
         @refresh="refresh"
       />

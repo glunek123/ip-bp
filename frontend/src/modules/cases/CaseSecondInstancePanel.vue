@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import {
   computed,
+  nextTick,
   onActivated,
   onBeforeUnmount,
   onDeactivated,
+  onMounted,
   ref,
+  shallowRef,
   watch,
 } from 'vue';
 import {
@@ -77,6 +80,8 @@ const props = defineProps<{
   lawyer?: boolean;
   /** 在抽屉中把保存/提交停靠到底部固定栏；内联编辑时保持原位。 */
   dockActions?: boolean;
+  /** 抽屉层的本地门禁原因（会话失效、待确认请求、状态不允许等）。 */
+  submitBlockedReason?: string;
 }>();
 const emit = defineEmits<{ changed: []; refresh: [] }>();
 const hearingAt = ref('');
@@ -108,6 +113,19 @@ type RefundRow = {
 };
 const refundRows = ref<RefundRow[]>([]);
 let nextRefundKey = 1;
+// 抽屉底栏容器：仅在真实抽屉中存在；测试或不支持时按钮留在原位。
+const footerTarget = shallowRef<globalThis.Element | null>(null);
+async function resolveFooterTarget(): Promise<void> {
+  await nextTick();
+  footerTarget.value = props.dockActions
+    ? globalThis.document.querySelector('[data-workflow-footer-actions]')
+    : null;
+}
+onMounted(resolveFooterTarget);
+watch(
+  () => props.dockActions,
+  () => void resolveFooterTarget(),
+);
 const changedAmountState = ref<AmountState>('');
 const changedAmount = ref('');
 const revokeReason = ref('');
@@ -719,6 +737,18 @@ async function send(command: PendingCommand): Promise<void> {
         '操作结果未知。请使用相同请求安全重试；刷新详情不能确认提交结果。';
     } else if (
       reason instanceof ApiError &&
+      [
+        'WORKFLOW_SESSION_STALE',
+        'RECOVERY_STORAGE_UNAVAILABLE',
+        'ORIGINAL_REQUEST_PENDING',
+        'ACTION_NOT_ALLOWED',
+      ].includes(reason.code)
+    ) {
+      // 请求根本没有发出：按真实原因提示，不进入「版本冲突」死循环。
+      clearSecondInstanceCommand(identity, command);
+      error.value = reason.message;
+    } else if (
+      reason instanceof ApiError &&
       (reason.status === 409 ||
         ['VERSION_CONFLICT', 'INVALID_STATE', 'IDEMPOTENCY_CONFLICT'].includes(
           reason.code,
@@ -728,7 +758,7 @@ async function send(command: PendingCommand): Promise<void> {
       pendingUnknown.value = null;
       conflictNeedsReview.value = true;
       error.value =
-        '案件版本或轮次已变化。旧请求不会改用新版本，请刷新并核对后重新填写。';
+        '案件状态已变化，本次请求未被接受。请重新读取资料后重试，已填写内容仍保留在页面上。';
       emit('refresh');
     } else {
       clearSecondInstanceCommand(identity, command);
@@ -1438,20 +1468,20 @@ function money(state: 'KNOWN' | 'PENDING', amount: string | null): string {
         >
       </form>
       <div class="si-actions">
-        <p v-if="!resultReady && registerBlockedReason" class="field-help">
+        <p v-if="props.submitBlockedReason" class="field-help" role="alert">
+          {{ props.submitBlockedReason }}
+        </p>
+        <p v-else-if="!resultReady && registerBlockedReason" class="field-help">
           {{ registerBlockedReason }}
         </p>
         <div class="si-actions__buttons">
-          <Teleport
-            to="[data-workflow-footer-actions]"
-            :disabled="!props.dockActions"
-          >
+          <Teleport v-if="footerTarget" :to="footerTarget">
             <button
               v-if="canSaveCurrent"
               data-test="second-instance-progress-save"
               type="submit"
               form="si-progress-form"
-              :disabled="!progressReady"
+              :disabled="!progressReady || !!props.submitBlockedReason"
             >
               保存
             </button>
@@ -1460,11 +1490,31 @@ function money(state: 'KNOWN' | 'PENDING', amount: string | null): string {
               data-test="second-instance-result-submit"
               type="submit"
               form="si-result-form"
-              :disabled="!resultReady"
+              :disabled="!resultReady || !!props.submitBlockedReason"
             >
               提交
             </button>
           </Teleport>
+          <template v-else>
+            <button
+              v-if="!props.dockActions && canSaveCurrent"
+              data-test="second-instance-progress-save"
+              type="submit"
+              form="si-progress-form"
+              :disabled="!progressReady || !!props.submitBlockedReason"
+            >
+              保存
+            </button>
+            <button
+              v-if="!props.dockActions && canRegister"
+              data-test="second-instance-result-submit"
+              type="submit"
+              form="si-result-form"
+              :disabled="!resultReady || !!props.submitBlockedReason"
+            >
+              提交
+            </button>
+          </template>
         </div>
       </div>
     </template>
@@ -1603,10 +1653,9 @@ function money(state: 'KNOWN' | 'PENDING', amount: string | null): string {
 }
 .si-refund-row {
   display: grid;
-  grid-template-columns: minmax(5rem, 1fr) minmax(6rem, 1fr) minmax(
-      6rem,
-      1fr
-    ) auto;
+  grid-template-columns:
+    minmax(5rem, 1fr) minmax(6rem, 1fr) minmax(6rem, 1fr)
+    auto;
   align-items: center;
   gap: 8px;
 }

@@ -1443,7 +1443,7 @@ describe('CaseSecondInstancePanel', () => {
       .trigger('submit');
     await flushPromises();
     expect(wrapper.emitted('refresh')).toHaveLength(1);
-    expect(wrapper.text()).toContain('案件版本或轮次已变化');
+    expect(wrapper.text()).toContain('案件状态已变化');
     await wrapper.setProps({ item: { ...item(), version: 10 } as CaseDetail });
     expect(
       (
@@ -1451,7 +1451,7 @@ describe('CaseSecondInstancePanel', () => {
           .element as HTMLButtonElement
       ).disabled,
     ).toBe(true);
-    expect(wrapper.text()).toContain('案件版本或轮次已变化');
+    expect(wrapper.text()).toContain('案件状态已变化');
     await wrapper
       .get('[data-test="second-instance-conflict-acknowledge"]')
       .trigger('click');
