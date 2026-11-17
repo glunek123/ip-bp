@@ -299,6 +299,43 @@ describe('CaseSecondInstanceService', () => {
     );
   });
 
+  it('records second-instance litigation refunds with the result', async () => {
+    const f = directEntryFixture();
+    await f.service.registerResult(actor, caseId, {
+      ...resultInput('AFFIRM', 'external-affirm-refunds'),
+      choiceId: null,
+      judgmentAmount: { state: 'PENDING' as const, amount: null },
+      refunds: [
+        { party: 'COURT', amount: '111.00', status: 'PENDING' },
+        { party: 'DEFENDANT', amount: '20.5' },
+      ],
+    });
+    expect(f.refunds.lockJudgmentActor).toHaveBeenCalled();
+    expect(f.refunds.registerSecondInstanceRefunds).toHaveBeenCalledWith(
+      f.tx,
+      actor,
+      caseId,
+      expect.any(String),
+      [
+        { party: 'COURT', amount: '111.00', status: 'PENDING' },
+        { party: 'DEFENDANT', amount: '20.5' },
+      ],
+    );
+  });
+
+  it('rejects a malformed refund amount before writing', async () => {
+    const f = directEntryFixture();
+    expect(() =>
+      f.service.registerResult(actor, caseId, {
+        ...resultInput('AFFIRM', 'external-affirm-bad-refund'),
+        choiceId: null,
+        judgmentAmount: { state: 'PENDING' as const, amount: null },
+        refunds: [{ party: 'COURT', amount: 'abc' }],
+      }),
+    ).toThrow('二审参数无效');
+    expect(f.refunds.registerSecondInstanceRefunds).not.toHaveBeenCalled();
+  });
+
   it('registers a direct second-instance CHANGE without a synthetic choice', async () => {
     const f = directEntryFixture();
     const result = await f.service.registerResult(actor, caseId, {
