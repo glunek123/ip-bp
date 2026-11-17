@@ -1,5 +1,11 @@
 import { effectScope, shallowRef, watch } from 'vue';
-import { ApiError, getJson, requestJson, type RequestOptions } from './http';
+import {
+  ApiError,
+  getJson,
+  postBlob,
+  requestJson,
+  type RequestOptions,
+} from './http';
 import type {
   InfringementType,
   LeadCaseType,
@@ -5726,6 +5732,37 @@ export async function registerSecondInstanceResult(
     throw invalidResponse();
   return response;
 }
+/** 批量下载所选案件的执行申请文书（服务端打包成 zip）。 */
+export function archiveExecutionDocuments(
+  caseIds: string[],
+  options: RequestOptions = {},
+): Promise<{
+  blob: Blob;
+  filename: string;
+  skipped: string[];
+}> {
+  if (!Array.isArray(caseIds) || caseIds.length < 1 || caseIds.length > 20)
+    throw new ApiError('每批最多选择 20 件案件', 400, 'VALIDATION_ERROR');
+  return postBlob(
+    '/cases/execution-documents/archive',
+    { caseIds },
+    options,
+  ).then((result) => ({
+    blob: result.blob,
+    filename: result.filename,
+    skipped: (result.responseHeaders.get('X-Archive-Skipped') ?? '')
+      .split(',')
+      .filter((value) => value !== '')
+      .map((value) => {
+        try {
+          return decodeURIComponent(value);
+        } catch {
+          return value;
+        }
+      }),
+  }));
+}
+
 export async function revokeSecondInstanceResult(
   id: string,
   input: RevokeSecondInstanceResultInput,

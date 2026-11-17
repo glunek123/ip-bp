@@ -36,6 +36,8 @@ import { CaseBatchArchiveService } from './case-batch-archive.service';
 import { CaseExecutionRecordEditService } from './case-execution-record-edit.service';
 import { CaseHistoricalRecordEditService } from './case-historical-record-edit.service';
 import { CaseClosureService } from './case-closure.service';
+import { CaseExecutionArchiveController } from './case-execution-archive.controller';
+import { CaseExecutionArchiveService } from './case-execution-archive.service';
 import { CaseExecutionFinishService } from './case-execution-finish.service';
 import { CaseExecutionMailingService } from './case-execution-mailing.service';
 import { CaseExecutionFilingService } from './case-execution-filing.service';
@@ -119,6 +121,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseRoutineEditController,
     CaseCsvImportController,
     CaseBatchArchiveController,
+    CaseExecutionArchiveController,
     CaseExecutionFilingFollowupController,
     LawyerCaseExecutionFilingFollowupController,
     CaseReadController,
@@ -136,6 +139,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
   ],
   providers: [
     LitigationRefundsService,
+    CaseExecutionArchiveService,
     CaseSupplementService,
     CaseFileCatalogService,
     {

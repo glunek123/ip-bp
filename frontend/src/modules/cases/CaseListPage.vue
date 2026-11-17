@@ -38,6 +38,7 @@ import {
 } from './case-workspace-actions';
 import { sectionRecordCommands } from './case-workspace-section-edits';
 import {
+  archiveExecutionDocuments,
   getExternalEntryOptions,
   getCase,
   listCases,
@@ -209,6 +210,8 @@ const canExportCsv = computed(
 const exporting = ref(false);
 const exportError = ref('');
 const selectionExportError = ref('');
+const executionArchivePending = ref(false);
+const executionArchiveMessage = ref('');
 const selectedCaseIds = ref<string[]>([]);
 const consolidationOpen = ref(false);
 const csvImportOpen = ref(false);
@@ -1593,6 +1596,35 @@ async function exportSelectedList(): Promise<void> {
     }
   }
 }
+async function downloadExecutionDocuments(): Promise<void> {
+  if (executionArchivePending.value || !canStartBatchFromSelection.value)
+    return;
+  executionArchivePending.value = true;
+  executionArchiveMessage.value = '';
+  try {
+    const result = await archiveExecutionDocuments([...selectedCaseIds.value]);
+    const objectUrl = URL.createObjectURL(result.blob);
+    try {
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = result.filename;
+      anchor.click();
+      anchor.remove();
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+    executionArchiveMessage.value = result.skipped.length
+      ? `已下载所选案件的执行文书；${result.skipped.length} 件暂无执行文书：${result.skipped.join('、')}`
+      : '已下载所选案件的执行文书。';
+  } catch (cause) {
+    executionArchiveMessage.value =
+      cause instanceof ApiError && [401, 403].includes(cause.status)
+        ? '当前账号不能下载所选案件的执行文书。'
+        : '批量下载执行文书失败，请稍后重试。';
+  } finally {
+    executionArchivePending.value = false;
+  }
+}
 function goToPage(next: number) {
   if (
     state.value !== 'ready' ||
@@ -1885,6 +1917,22 @@ onBeforeUnmount(() => {
             >批量导出诉状</ElButton
           >
         </template>
+        <template v-if="stageGroup === 'EXECUTION_PREPARATION'">
+          <ElButton
+            data-test="execution-batch-download"
+            :loading="executionArchivePending"
+            :disabled="executionArchivePending || !canStartBatchFromSelection"
+            :title="
+              canStartBatchFromSelection
+                ? '把所选案件的执行文书打包成 zip 下载'
+                : selectedCaseIds.length > 20
+                  ? '每批最多选择20件案件'
+                  : '请先勾选1至20件当前列表中的案件'
+            "
+            @click="downloadExecutionDocuments"
+            >批量下载执行文书</ElButton
+          >
+        </template>
         <ElButton
           v-if="stage === 'WAITING_ARCHIVE'"
           data-test="archive-selected-cases"
@@ -2004,11 +2052,11 @@ onBeforeUnmount(() => {
           />
         </div>
         <p
-          v-if="exportError || selectionExportError"
+          v-if="exportError || selectionExportError || executionArchiveMessage"
           class="submit-error"
           role="alert"
         >
-          {{ exportError || selectionExportError }}
+          {{ executionArchiveMessage || exportError || selectionExportError }}
         </p>
       </div>
       <section
