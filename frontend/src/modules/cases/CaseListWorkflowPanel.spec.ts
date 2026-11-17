@@ -1473,6 +1473,40 @@ describe('case list workflow session', () => {
       },
     };
     expect(decodeCaseListRequest(envelope)).toEqual(envelope);
+    // 二审结果带退费行时也必须能解码，否则提交会在本地被拒。
+    expect(
+      decodeCaseListRequest({
+        version: 1,
+        actor: 'actor-1',
+        caseId: 'case-1',
+        action: 'second-instance',
+        command: {
+          kind: 'result',
+          input: {
+            expectedVersion: 7,
+            idempotencyKey: 'key-refunds',
+            trialRoundId: '0b9c8f1e-1111-4a2b-8c3d-000000000011',
+            choiceId: '0b9c8f1e-1111-4a2b-8c3d-000000000012',
+            expectedProgressId: null,
+            progress: {
+              hearingAt: null,
+              hearingPlace: null,
+              judgeName: null,
+              documentContentVersionIds: [],
+              serviceContentVersionIds: [],
+            },
+            result: 'AFFIRM',
+            resultReceivedAt: '2026-11-17',
+            judgmentContentVersionIds: ['0b9c8f1e-1111-4a2b-8c3d-000000000021'],
+            paidLitigationFee: { state: 'KNOWN', amount: '11.00' },
+            refunds: [
+              { party: 'COURT', amount: '111.00', status: 'PENDING' },
+              { party: 'DEFENDANT', amount: '20.50' },
+            ],
+          },
+        },
+      }),
+    ).not.toBeNull();
     expect(
       decodeCaseListRequest({
         ...envelope,

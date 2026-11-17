@@ -114,6 +114,13 @@ const money = shape({
   state: oneOf('KNOWN', 'PENDING'),
   amount: nullable(string),
 });
+const refundRow = shape({
+  party: oneOf('COURT', 'DEFENDANT'),
+  amount: string,
+  status: optional(string),
+});
+const refundRows = (value: unknown) =>
+  Array.isArray(value) && value.length <= 20 && value.every(refundRow);
 const progressFields = {
   trialRoundId: string,
   choiceId: nullable(string),
@@ -283,6 +290,7 @@ const schema = {
     judgmentContentVersionIds: strings,
     paidLitigationFee: money,
     judgmentAmount: optional(money),
+    refunds: optional(refundRows),
   },
   'result-revoke': { trialRoundId: string, resultId: string, reason: string },
   execution: {
