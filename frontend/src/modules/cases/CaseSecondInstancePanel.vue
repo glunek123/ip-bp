@@ -757,8 +757,9 @@ async function send(command: PendingCommand): Promise<void> {
       clearSecondInstanceCommand(identity, command);
       pendingUnknown.value = null;
       conflictNeedsReview.value = true;
-      error.value =
-        '案件状态已变化，本次请求未被接受。请重新读取资料后重试，已填写内容仍保留在页面上。';
+      error.value = reason.message.includes('诊断')
+        ? reason.message
+        : '案件状态已变化，本次请求未被接受。请重新读取资料后重试，已填写内容仍保留在页面上。';
       emit('refresh');
     } else {
       clearSecondInstanceCommand(identity, command);
