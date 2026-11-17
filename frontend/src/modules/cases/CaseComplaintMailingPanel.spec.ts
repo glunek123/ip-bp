@@ -104,10 +104,6 @@ describe('complaint mailing panel', () => {
     await wrapper
       .get('[data-test="complaint-mail-remark"]')
       .setValue('寄出说明');
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('核对邮寄信息'))!
-      .trigger('click');
     await wrapper.get('[data-test="mailing-submit"]').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('提交结果暂时未知');
@@ -197,10 +193,6 @@ describe('complaint mailing panel', () => {
       client: true,
       item,
     });
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('核对邮寄信息'))!
-      .trigger('click');
     await wrapper.get('[data-test="mailing-submit"]').trigger('click');
     wrapper.unmount();
     finishMailing();
@@ -229,10 +221,6 @@ describe('complaint mailing panel', () => {
       item,
     });
     await flushPromises();
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('核对邮寄信息'))!
-      .trigger('click');
     await wrapper.get('[data-test="mailing-submit"]').trigger('click');
     await flushPromises();
     auth.session = {
@@ -246,19 +234,17 @@ describe('complaint mailing panel', () => {
     expect(wrapper.emitted('changed')).toBeUndefined();
     expect(wrapper.text()).not.toContain('邮寄登记已完成');
   });
-  it('shows the exact mailing facts for review before submitting', async () => {
+  it('submits in one click with the remark attached', async () => {
     const wrapper = mountPanel({ item });
     await flushPromises();
-    expect(wrapper.find('[data-test="mailing-review"]').exists()).toBe(false);
     const remark = wrapper.get('[data-test="complaint-mail-remark"]');
     await remark.setValue('EMS 单号 1122334455');
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('核对邮寄信息'))!
-      .trigger('click');
-    const review = wrapper.get('[data-test="mailing-review"]');
-    expect(review.text()).toContain('邮寄日期：2026-10-03');
-    expect(review.text()).toContain('邮寄备注：EMS 单号 1122334455');
-    expect(api.mailCaseComplaint).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-test="mailing-review"]').exists()).toBe(false);
+    await wrapper.get('[data-test="mailing-submit"]').trigger('click');
+    await flushPromises();
+    expect(api.mailCaseComplaint).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(api.mailCaseComplaint.mock.calls[0])).toContain(
+      'EMS 单号 1122334455',
+    );
   });
 });

@@ -50,7 +50,6 @@ const remark = ref('');
 const submitting = ref(false);
 const success = ref(false);
 const error = ref('');
-const review = ref(false);
 const unknownRequest = ref<MailCaseComplaintInput | null>(null);
 const idempotencyKey = ref('');
 let contextRevision = 0;
@@ -129,7 +128,6 @@ watch(
     remark.value = props.batchDefaults?.remark ?? '';
     submitting.value = false;
     success.value = false;
-    review.value = false;
     unknownRequest.value = null;
     unknownRequest.value = pending;
     idempotencyKey.value = '';
@@ -238,7 +236,7 @@ async function download(file: CaseFile) {
           })
         }}
       </p>
-      <p>邮寄备注：{{ item.complaintMailing.remark || '未填写' }}</p>
+      <p>备注：{{ item.complaintMailing.remark || '未填写' }}</p>
       <ul>
         <li
           v-for="file in item.complaintMailing.receiptFiles"
@@ -269,7 +267,7 @@ async function download(file: CaseFile) {
             aria-required="true"
         /></label>
         <label
-          >邮寄备注
+          >备注
           <textarea
             v-model="remark"
             class="text-input"
@@ -279,14 +277,6 @@ async function download(file: CaseFile) {
           />
         </label>
         <p v-if="error" role="alert" class="submit-error">{{ error }}</p>
-        <div v-if="review" data-test="mailing-review">
-          <h3>提交内容核对</h3>
-          <p>邮寄日期：{{ mailedAt }}</p>
-          <p>邮寄备注：{{ remark.trim() || '未填写' }}</p>
-        </div>
-        <ElButton type="primary" :disabled="!ready" @click="review = true"
-          >核对邮寄信息</ElButton
-        >
         <ElButton
           v-if="unknownRequest"
           type="primary"
@@ -297,10 +287,10 @@ async function download(file: CaseFile) {
           >使用原请求重试</ElButton
         >
         <ElButton
-          v-else-if="review"
+          v-else
           type="primary"
           :loading="submitting"
-          :disabled="submitting"
+          :disabled="!ready"
           data-test="mailing-submit"
           @click="submit"
           >提交</ElButton
