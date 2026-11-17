@@ -1036,10 +1036,6 @@ it('connects the actual E2 panel to lawyer file-only finish and reads the retain
     .get('[data-test="execution-finish-reason"]')
     .setValue('  律师实际结束  ');
   await wrapper.get('[data-test="execution-finish-choice"]').setValue(true);
-  await wrapper.get('[data-test="execution-finish-review"]').trigger('click');
-  expect(
-    wrapper.get('[data-test="execution-finish-review-summary"]').text(),
-  ).toContain(file.contentVersionId);
   const changed = vi.fn();
   window.addEventListener('dev-cor:workflow-changed', changed);
   api.getLawyerCase.mockResolvedValue({
@@ -1071,7 +1067,8 @@ it('connects the actual E2 panel to lawyer file-only finish and reads the retain
       expectedFilingId: finishRequest.expectedFilingId,
       finishedAt: '2026-10-01',
       reason: '  律师实际结束  ',
-      basisNote: null,
+      // 依据说明由执行案号兜底
+      basisNote: '  律师实际结束  ',
       basisContentVersionIds: [file.contentVersionId],
     },
     'lawyer',
@@ -1080,7 +1077,7 @@ it('connects the actual E2 panel to lawyer file-only finish and reads the retain
   expect(wrapper.text()).toContain('待归档');
   expect(wrapper.text()).toContain('律师实际结束');
   expect(wrapper.text()).toContain(file.originalFilename);
-  expect(wrapper.find('[data-test="execution-finish-review"]').exists()).toBe(
+  expect(wrapper.find('[data-test="execution-finish-submit"]').exists()).toBe(
     false,
   );
   window.removeEventListener('dev-cor:workflow-changed', changed);

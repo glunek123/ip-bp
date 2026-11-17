@@ -518,8 +518,6 @@ async function openFinishPanel(wrapper: ReturnType<typeof mount>) {
   const panel = wrapper.get('[data-test="execution-finish-panel"]');
   await panel.get('[data-test="execution-finish-date"]').setValue('2026-10-23');
   await panel.get('[data-test="execution-finish-reason"]').setValue('执行完毕');
-  await panel.get('[data-test="execution-finish-note"]').setValue('依据已核实');
-  await panel.get('[data-test="execution-finish-review"]').trigger('click');
   return panel;
 }
 async function choose(

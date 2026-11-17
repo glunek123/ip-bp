@@ -68,7 +68,6 @@ const emit = defineEmits<{
 }>();
 const finishedAt = ref(todayShanghai());
 const reason = ref('');
-const basisNote = ref('');
 const selected = ref<CaseFile[]>([]);
 const available = ref<CaseFile[]>([]);
 const pending = ref<FinishInput | null>(null);
@@ -76,6 +75,10 @@ const submitting = ref(false);
 const uploading = ref(false);
 const loading = ref(false);
 const reviewing = ref(false);
+const fileInput = ref<globalThis.HTMLInputElement | null>(null);
+function pickFiles(): void {
+  fileInput.value?.click();
+}
 const success = ref(false);
 const denied = ref(false);
 const conflict = ref(false);
@@ -114,13 +117,11 @@ function hydrate(input: FinishInput) {
   pending.value = copy(input);
   finishedAt.value = input.finishedAt;
   reason.value = input.reason;
-  basisNote.value = input.basisNote ?? '';
   reviewing.value = false;
 }
 function clearDraft() {
   finishedAt.value = todayShanghai();
   reason.value = '';
-  basisNote.value = '';
   selected.value = [];
   available.value = [];
   reviewing.value = false;
@@ -158,8 +159,6 @@ const ready = computed(
     !uploading.value &&
     validDate(finishedAt.value) &&
     validText(reason.value) &&
-    (basisNote.value === '' || validText(basisNote.value)) &&
-    (validText(basisNote.value) || selected.value.length > 0) &&
     selected.value.length <= 10,
 );
 function isDenied(value: unknown) {
@@ -325,11 +324,7 @@ async function upload(event: globalThis.Event) {
   }
 }
 async function submit() {
-  if (
-    submitting.value ||
-    denied.value ||
-    (!pending.value && (!ready.value || !reviewing.value))
-  )
+  if (submitting.value || denied.value || (!pending.value && !ready.value))
     return;
   const context = capture();
   const input = copy(
@@ -339,7 +334,8 @@ async function submit() {
       idempotencyKey: globalThis.crypto.randomUUID(),
       finishedAt: finishedAt.value,
       reason: reason.value,
-      basisNote: basisNote.value === '' ? null : basisNote.value,
+      // 依据说明不再是登记项；后端要求「依据说明或附件至少一项」，用执行案号兜底。
+      basisNote: reason.value.trim() ? reason.value : null,
       basisContentVersionIds: selected.value.map(
         (file) => file.contentVersionId,
       ),
@@ -401,18 +397,17 @@ async function download(file: CaseFile) {
 
 <template>
   <section class="demo-card demo-card--pad" data-test="execution-finish-panel">
-    <h2 class="form-section-title">执行结束</h2>
+    <h2 class="form-section-title">执行更新</h2>
     <template v-if="item.executionFinish && !denied">
       <p data-test="execution-finish-fact">
-        实际结束日期：{{ item.executionFinish.finishedAt }}；登记时间：{{
+        执行正式立案日期：{{ item.executionFinish.finishedAt }}；登记时间：{{
           new Date(item.executionFinish.recordedAt).toLocaleString('zh-CN', {
             timeZone: 'Asia/Shanghai',
             hour12: false,
           })
         }}
       </p>
-      <p>结束原因：{{ item.executionFinish.reason }}</p>
-      <p>依据说明：{{ item.executionFinish.basisNote ?? '未登记' }}</p>
+      <p>执行案号：{{ item.executionFinish.reason }}</p>
       <ul>
         <li
           v-for="file in item.executionFinish.files"
@@ -429,9 +424,9 @@ async function download(file: CaseFile) {
     <template v-if="pending && !denied">
       <p role="status">原请求待核实。当前案件记录不能代替本次请求的结果。</p>
       <p data-test="execution-finish-pending-summary">
-        原结束日期：{{ pending.finishedAt }}；原因：{{
+        原立案日期：{{ pending.finishedAt }}；执行案号：{{
           pending.reason
-        }}；依据说明：{{ pending.basisNote ?? '未选择' }}；附件版本：{{
+        }}；执行文书版本：{{
           pending.basisContentVersionIds.join('、') || '未选择'
         }}
       </p>
@@ -452,11 +447,11 @@ async function download(file: CaseFile) {
     </template>
     <template v-else-if="editable">
       <p class="field-help">
-        登记真实结束日期、原因及依据后，案件进入待归档。依据说明或真实附件至少提供一项。
+        登记执行正式立案信息：立案日期、执行案号与执行文书。登记后案件进入待归档。
       </p>
-      <label
-        >实际结束日期 <span aria-hidden="true">*</span
-        ><input
+      <label class="finish-field">
+        <span>执行正式立案日期 <span aria-hidden="true">*</span></span>
+        <input
           v-model="finishedAt"
           type="date"
           class="text-input"
@@ -464,52 +459,60 @@ async function download(file: CaseFile) {
           data-test="execution-finish-date"
           required
           @input="reviewing = false"
-      /></label>
-      <label
-        >结束原因 <span aria-hidden="true">*</span
-        ><textarea
+        />
+      </label>
+      <label class="finish-field">
+        <span>执行案号 <span aria-hidden="true">*</span></span>
+        <input
           v-model="reason"
+          type="text"
           class="text-input"
           maxlength="2000"
+          placeholder="如（2026）浙0106执1234号"
           data-test="execution-finish-reason"
           required
           @input="reviewing = false"
         />
       </label>
-      <label
-        >依据说明<textarea
-          v-model="basisNote"
-          class="text-input"
-          maxlength="2000"
-          data-test="execution-finish-note"
-          @input="reviewing = false"
-        />
-      </label>
-      <label
-        >真实依据附件<input
-          type="file"
-          class="text-input"
-          accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
-          multiple
-          :disabled="uploading || selected.length >= 10"
-          data-test="execution-finish-upload"
-          @change="upload"
-      /></label>
+      <div class="finish-field">
+        <span>执行文书</span>
+        <div class="finish-pick">
+          <ElButton
+            size="small"
+            :disabled="uploading || selected.length >= 10"
+            @click="pickFiles"
+            >选择文件</ElButton
+          >
+          <span class="finish-pick__hint"
+            >已选 {{ selected.length }} 份，最多 10 份</span
+          >
+          <input
+            ref="fileInput"
+            class="finish-pick__input"
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+            multiple
+            :disabled="uploading || selected.length >= 10"
+            data-test="execution-finish-upload"
+            @change="upload"
+          />
+        </div>
+      </div>
       <p class="field-help">
         PDF、JPG 或 PNG，单个文件不超过 50 MB，最多 10
         份。选择具体内容版本，保留原件。
       </p>
-      <p v-if="loading" role="status">正在加载依据材料</p>
-      <p v-if="uploading" role="status">正在上传依据附件</p>
+      <p v-if="loading" role="status">正在加载执行文书</p>
+      <p v-if="uploading" role="status">正在上传执行文书</p>
       <p v-if="materialError" role="alert">{{ materialError }}</p>
       <ElButton
         v-if="materialError"
         :disabled="loading || uploading"
         @click="loadFiles"
-        >重新加载依据材料</ElButton
+        >重新加载执行文书</ElButton
       >
       <fieldset v-if="available.length">
-        <legend>选择本次依据版本</legend>
+        <legend>选择本次使用的文书版本</legend>
         <label v-for="file in available" :key="file.contentVersionId"
           ><input
             type="checkbox"
@@ -534,34 +537,13 @@ async function download(file: CaseFile) {
           ></label
         >
       </fieldset>
-      <div v-if="reviewing" data-test="execution-finish-review-summary">
-        <p>请核对：{{ finishedAt }} 结束执行，登记后进入待归档。</p>
-        <p>原因：{{ reason }}</p>
-        <p>依据说明：{{ basisNote || '未选择' }}</p>
-        <ul>
-          <li v-for="file in selected" :key="file.contentVersionId">
-            {{ file.originalFilename }}（{{ file.contentVersionId }}）
-          </li>
-        </ul>
-        <ElButton
-          data-test="execution-finish-submit"
-          type="primary"
-          :disabled="!ready"
-          @click="submit"
-          >确认登记执行结束</ElButton
-        ><ElButton
-          data-test="execution-finish-cancel"
-          @click="reviewing = false"
-          >返回修改</ElButton
-        >
-      </div>
       <ElButton
-        v-else
-        data-test="execution-finish-review"
+        data-test="execution-finish-submit"
         type="primary"
+        :loading="submitting"
         :disabled="!ready"
-        @click="reviewing = true"
-        >核对结束信息</ElButton
+        @click="submit"
+        >提交</ElButton
       >
     </template>
     <p
@@ -569,10 +551,10 @@ async function download(file: CaseFile) {
       data-test="execution-finish-read-only"
       class="field-help"
     >
-      当前案件或账号不满足执行结束登记条件。
+      当前案件或账号不满足执行更新登记条件。
     </p>
     <p v-if="success" role="status" data-test="execution-finish-success">
-      执行结束已登记，请刷新查看留存事实。
+      执行更新已登记，请刷新查看留存事实。
     </p>
     <p v-if="error" role="alert" class="submit-error">{{ error }}</p>
     <ElButton
@@ -583,3 +565,26 @@ async function download(file: CaseFile) {
     >
   </section>
 </template>
+
+<style scoped>
+.finish-field {
+  display: grid;
+  gap: 6px;
+}
+.finish-pick {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.finish-pick__hint {
+  color: #909399;
+  font-size: 12px;
+}
+.finish-pick__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+</style>

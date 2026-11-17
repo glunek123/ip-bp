@@ -2587,10 +2587,6 @@ it('connects the actual E2 panel to internal unknown recovery across remount and
   await wrapper
     .get('[data-test="execution-finish-reason"]')
     .setValue('  实际结束原因  ');
-  await wrapper
-    .get('[data-test="execution-finish-note"]')
-    .setValue('  法院真实说明  ');
-  await wrapper.get('[data-test="execution-finish-review"]').trigger('click');
   await wrapper.get('[data-test="execution-finish-submit"]').trigger('click');
   await flushPromises();
   const original = structuredClone(api.finishCaseExecution.mock.calls[0]![1]);
@@ -2600,7 +2596,8 @@ it('connects the actual E2 panel to internal unknown recovery across remount and
     idempotencyKey: expect.any(String),
     finishedAt: '2026-09-28',
     reason: '  实际结束原因  ',
-    basisNote: '  法院真实说明  ',
+    // 依据说明不再采集，由执行案号兜底
+    basisNote: '  实际结束原因  ',
     basisContentVersionIds: [],
   });
   expect(wrapper.text()).toContain('提交结果暂时未知');
