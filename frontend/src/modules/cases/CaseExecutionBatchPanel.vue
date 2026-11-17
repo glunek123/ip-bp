@@ -8,6 +8,8 @@ import {
   type CaseDetail,
 } from '../../api/cases';
 import { uploadMaterialFile } from '../../api/materials';
+import { caseStageLabels } from './case-workspace-read-model';
+import type { CaseStage } from '../../api/cases';
 
 type Mode = 'submission' | 'mailing';
 type RowStatus =
@@ -216,7 +218,9 @@ async function submit(): Promise<void> {
       <li v-for="row in rows" :key="row.caseId" class="exec-batch__row">
         <div class="exec-batch__meta">
           <strong>{{ row.businessNo }}</strong>
-          <span>{{ row.stage }}</span>
+          <span>{{
+            caseStageLabels[row.stage as CaseStage] ?? row.stage
+          }}</span>
         </div>
         <input
           type="file"
