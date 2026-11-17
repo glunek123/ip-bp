@@ -494,6 +494,11 @@ onBeforeUnmount(() => {
 function current() {
   return mounted && props.session === ownedSession && ownedSession.isCurrent();
 }
+// 门禁只看「当前会话是否仍活跃」，不比较对象引用：抽屉复用同一组件时
+// props.session 会被替换，旧实现会让提交永远被拒。
+function sessionActive() {
+  return mounted && props.session.isCurrent();
+}
 try {
   const raw = globalThis.sessionStorage.getItem(storageKey);
   if (raw !== null) {
@@ -769,12 +774,12 @@ async function transport(id: string, request: CaseListRequest) {
 async function submit(request: CaseListRequest, recovery = false) {
   const session = props.session;
   if (
-    !current() ||
+    !sessionActive() ||
     storageBlocked.value ||
     (!recovery && (!allowed.value || pending.value))
   ) {
     // 本地门禁与真实版本冲突必须区分，否则用户会被引向「刷新重填」的死循环。
-    if (!current())
+    if (!sessionActive())
       throw new ApiError(
         '当前办理面板已失效，请关闭后重新打开',
         409,
@@ -811,7 +816,7 @@ async function submit(request: CaseListRequest, recovery = false) {
           }),
         ),
       );
-  if (!stored || !session.beginSubmit({ recovery }))
+  if (!stored || !props.session.beginSubmit({ recovery }))
     throw new ApiError(
       pending.value
         ? '上次提交尚未确认，请先用原请求重试，或放弃原请求后重新填写'
