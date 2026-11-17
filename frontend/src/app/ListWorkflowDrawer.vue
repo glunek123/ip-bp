@@ -133,9 +133,15 @@ defineExpose({
       </div>
     </template>
     <template #footer>
-      <ElButton :disabled="locked" @click="workflow.requestClose"
-        >取消／返回列表</ElButton
-      >
+      <div class="list-workflow-footer">
+        <div
+          class="list-workflow-footer__actions"
+          data-workflow-footer-actions
+        ></div>
+        <ElButton :disabled="locked" @click="workflow.requestClose"
+          >取消／返回列表</ElButton
+        >
+      </div>
     </template>
   </ElDrawer>
 </template>

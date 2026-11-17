@@ -1628,6 +1628,7 @@ async function complaint() {
         v-else-if="action === 'acceptance'"
         :item="item"
         :context-key="actorKey"
+        dock-actions
         :submit-command="(input) => send({ kind: 'acceptance', input })"
         @refresh="refresh"
       />

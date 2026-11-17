@@ -53,6 +53,8 @@ const props = defineProps<{
   item: PanelItem;
   contextKey: string;
   lawyer?: boolean;
+  /** 在抽屉中把主操作停靠到底部固定栏；内联编辑时保持原位。 */
+  dockActions?: boolean;
 }>();
 const emit = defineEmits<{ changed: []; refresh: [] }>();
 
@@ -759,15 +761,20 @@ async function download(file: CaseFile): Promise<void> {
           {{ hearingError }}
         </p>
         <p v-if="hearingSuccess" role="status">{{ hearingSuccess }}</p>
-        <ElButton
-          type="primary"
-          data-test="acceptance-hearing-save"
-          :loading="hearingBusy"
-          :disabled="hearingBusy"
-          @click="saveHearing"
+        <Teleport
+          to="[data-workflow-footer-actions]"
+          :disabled="!props.dockActions"
         >
-          保存开庭时间
-        </ElButton>
+          <ElButton
+            type="primary"
+            data-test="acceptance-hearing-save"
+            :loading="hearingBusy"
+            :disabled="hearingBusy"
+            @click="saveHearing"
+          >
+            保存开庭时间
+          </ElButton>
+        </Teleport>
       </div>
       <h3 class="form-section-title">补交受理材料</h3>
     </template>

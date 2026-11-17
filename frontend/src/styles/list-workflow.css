@@ -43,6 +43,25 @@
   overflow-wrap: anywhere;
 }
 
+.list-workflow-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+
+.list-workflow-footer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.list-workflow-footer__actions:empty {
+  display: none;
+}
+
 .list-workflow-drawer .el-drawer__footer {
   flex-shrink: 0;
   padding: var(--s-3) var(--app-content-padding);
