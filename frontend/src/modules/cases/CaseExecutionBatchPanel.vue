@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
+import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   getCase,
   mailCaseExecution,
@@ -92,11 +93,30 @@ onMounted(async () => {
   }
 });
 
-function pickFile(row: Row, event: globalThis.Event): void {
+// 用隐藏 input + 按钮触发，避免浏览器原生「Choose File / No file chosen」英文文案。
+const sharedInput = ref<globalThis.HTMLInputElement | null>(null);
+let pickingCaseId = '';
+function triggerPick(caseId: string): void {
+  pickingCaseId = caseId;
+  sharedInput.value?.click();
+}
+function onSharedPicked(event: globalThis.Event): void {
   const input = event.target as globalThis.HTMLInputElement;
-  row.file = input.files?.[0] ?? null;
-  row.message = row.file ? row.file.name : '';
-  if (row.status === 'done' || row.status === 'failed') row.status = 'ready';
+  const row = rows.value.find((entry) => entry.caseId === pickingCaseId);
+  const file = input.files?.[0] ?? null;
+  if (row) {
+    row.file = file;
+    row.message = file ? file.name : '';
+    if (row.status === 'done' || row.status === 'failed') row.status = 'ready';
+  }
+  input.value = '';
+}
+function statusLabel(status: RowStatus): string {
+  if (status === 'loading') return '读取中';
+  if (status === 'submitting') return '提交中';
+  if (status === 'done') return '已提交';
+  if (status === 'failed') return '未完成';
+  return '';
 }
 
 function removeFile(row: Row): void {
@@ -196,60 +216,81 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <section class="exec-batch" data-test="execution-batch-panel">
-    <h3>{{ title }}</h3>
-    <p class="exec-batch__hint">
+  <section class="demo-card demo-card--pad" data-test="execution-batch-panel">
+    <h2 class="form-section-title">{{ title }}</h2>
+    <p class="field-help">
       {{
         isMailing
-          ? '上传每案的邮寄凭证（快递单照片或 PDF），统一按同一邮寄日期登记。'
-          : '为每个案件选择执行申请文书，逐案提交后进入待确认阶段。'
+          ? '逐案上传邮寄凭证（快递单照片或 PDF），按同一邮寄日期登记。'
+          : '为每个案件选择执行申请文书，逐案提交后进入执行材料待确认。'
       }}
     </p>
-    <label v-if="isMailing" class="exec-batch__date">
-      邮寄日期
+
+    <div v-if="isMailing" class="exec-batch__field">
+      <span class="exec-batch__label">邮寄日期</span>
       <input
         v-model="mailedAt"
         type="date"
         data-test="execution-batch-mailed-at"
       />
-    </label>
+    </div>
 
     <ul class="exec-batch__list">
-      <li v-for="row in rows" :key="row.caseId" class="exec-batch__row">
-        <div class="exec-batch__meta">
+      <li v-for="row in rows" :key="row.caseId" class="exec-batch__item">
+        <div class="exec-batch__head">
           <strong>{{ row.businessNo }}</strong>
-          <span>{{
+          <span class="exec-batch__stage">{{
             caseStageLabels[row.stage as CaseStage] ?? row.stage
           }}</span>
+          <span
+            v-if="statusLabel(row.status)"
+            class="exec-batch__status"
+            :class="'exec-batch__status--' + row.status"
+            >{{ statusLabel(row.status) }}</span
+          >
         </div>
-        <input
-          type="file"
-          :accept="accept"
-          :disabled="
-            row.status === 'loading' ||
-            row.status === 'submitting' ||
-            row.status === 'done'
-          "
-          :data-test="`execution-batch-file-${row.caseId}`"
-          @change="pickFile(row, $event)"
-        />
-        <div class="exec-batch__state">
-          <span>{{ row.message }}</span>
-          <button
+        <div class="exec-batch__body">
+          <ElButton
+            size="small"
+            :disabled="
+              row.status === 'loading' ||
+              row.status === 'submitting' ||
+              row.status === 'done'
+            "
+            :data-test="'execution-batch-pick-' + row.caseId"
+            @click="triggerPick(row.caseId)"
+            >选择文件</ElButton
+          >
+          <span class="exec-batch__file">{{
+            row.message || '未选择文件'
+          }}</span>
+          <ElButton
             v-if="
               row.file && row.status !== 'done' && row.status !== 'submitting'
             "
-            type="button"
-            class="link-button"
+            text
+            size="small"
             @click="removeFile(row)"
+            >移除</ElButton
           >
-            移除
-          </button>
         </div>
       </li>
     </ul>
 
-    <p v-if="finished" role="status" data-test="execution-batch-result">
+    <input
+      ref="sharedInput"
+      class="exec-batch__input"
+      type="file"
+      :accept="accept"
+      @change="onSharedPicked"
+    />
+
+    <p
+      v-if="finished"
+      class="field-help"
+      role="status"
+      data-test="execution-batch-result"
+    >
       成功 {{ doneCount }} 件，失败 {{ failedRows.length }} 件<template
         v-if="failedRows.length"
         >（{{ failedRows.map((row) => row.businessNo).join('、') }}）</template
@@ -257,80 +298,95 @@ async function submit(): Promise<void> {
     </p>
 
     <div class="exec-batch__actions">
-      <button type="button" :disabled="submitting" @click="emit('close')">
-        关闭
-      </button>
-      <button
+      <ElButton :disabled="submitting" @click="emit('close')">关闭</ElButton>
+      <ElButton
         v-if="finished && failedRows.length === 0"
-        type="button"
+        type="primary"
         data-test="execution-batch-finish"
         @click="emit('done')"
+        >完成</ElButton
       >
-        完成
-      </button>
-      <button
+      <ElButton
         v-else
-        type="button"
+        type="primary"
         data-test="execution-batch-submit"
         :disabled="!canSubmit"
         @click="submit"
+        >{{
+          submitting ? '提交中…' : '提交（' + readyCount + ' 件）'
+        }}</ElButton
       >
-        {{ submitting ? '提交中…' : `提交（${readyCount} 件）` }}
-      </button>
     </div>
   </section>
 </template>
 
 <style scoped>
-.exec-batch {
-  display: grid;
-  gap: 12px;
-}
-.exec-batch__hint {
-  margin: 0;
-  color: #606266;
-  font-size: 13px;
-}
-.exec-batch__date {
+.exec-batch__field {
   display: flex;
   gap: 8px;
   align-items: center;
+  margin-bottom: 12px;
+}
+.exec-batch__label {
+  color: #606266;
+  font-size: 13px;
 }
 .exec-batch__list {
   display: grid;
-  gap: 10px;
-  margin: 0;
+  gap: 8px;
+  margin: 0 0 12px;
   padding: 0;
   list-style: none;
   max-height: 46vh;
   overflow: auto;
 }
-.exec-batch__row {
-  display: grid;
-  grid-template-columns: minmax(10rem, 1fr) minmax(10rem, 1.2fr) minmax(
-      8rem,
-      1fr
-    );
-  gap: 8px;
-  align-items: center;
-  padding: 8px 10px;
+.exec-batch__item {
+  padding: 10px 12px;
   border: 1px solid #ebeef5;
-  border-radius: 6px;
+  border-radius: 4px;
 }
-.exec-batch__meta {
-  display: grid;
-  gap: 2px;
-  font-size: 13px;
+.exec-batch__head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 8px;
 }
-.exec-batch__meta span {
+.exec-batch__stage {
+  color: #909399;
+  font-size: 12px;
+}
+.exec-batch__status {
+  font-size: 12px;
+}
+.exec-batch__status--done {
+  color: #67c23a;
+}
+.exec-batch__status--failed {
+  color: #f56c6c;
+}
+.exec-batch__status--submitting,
+.exec-batch__status--loading {
   color: #909399;
 }
-.exec-batch__state {
+.exec-batch__body {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
-  font-size: 12px;
+}
+.exec-batch__file {
+  flex: 1;
   color: #606266;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exec-batch__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 .exec-batch__actions {
   display: flex;
