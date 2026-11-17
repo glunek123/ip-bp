@@ -77,6 +77,20 @@ async function addProof(wrapper: ReturnType<typeof mount>) {
   await flushPromises();
 }
 describe('case execution filing panel', () => {
+  it('labels the date and screenshot fields and exposes a single submit action', async () => {
+    const wrapper = mountPanel();
+    await flushPromises();
+    const text = wrapper.text();
+    expect(text).toContain('提交执行立案日期');
+    expect(text).toContain('执行立案截图');
+    expect(text).not.toContain('实际提交日期');
+    expect(text).not.toContain('执行备案凭证');
+    expect(text).not.toContain('核对备案信息');
+    expect(
+      wrapper.findAll('[data-test="execution-filing-submit"]').length,
+    ).toBe(1);
+  });
+
   it('keeps the operation read-only for unauthorized actors', () => {
     const wrapper = mountPanel({ ...item, canSubmitExecutionFiling: false });
     expect(
