@@ -700,6 +700,13 @@ async function send(command: PendingCommand): Promise<void> {
     notifyWorkflowChanged();
     emit('changed');
   } catch (reason) {
+    console.error(
+      '[si-submit]',
+      (reason as { constructor?: { name?: string } })?.constructor?.name,
+      (reason as { status?: number })?.status,
+      (reason as { code?: string })?.code,
+      (reason as { message?: string })?.message,
+    );
     settlingCurrent = currentContext(context);
     const state = settleSecondInstanceCommandAttempt(
       identity,
