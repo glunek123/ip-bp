@@ -390,9 +390,10 @@ describe('CaseSecondInstancePanel', () => {
     readOnly.canSaveSecondInstance = false;
     readOnly.canRegisterSecondInstanceResult = false;
     const readWrapper = mountPanel({ item: readOnly });
+    // 案件进展汇总已按产品要求从卡片移除，只读账号不再看到该区块。
     expect(
       readWrapper.find('[data-test="second-instance-round-1"]').exists(),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       readWrapper.find('[data-test="second-instance-progress-form"]').exists(),
     ).toBe(false);
@@ -1140,18 +1141,6 @@ describe('CaseSecondInstancePanel', () => {
     ).toBe(false);
     otherCase.unmount();
   });
-  it('groups history by trial round and distinguishes a real zero from pending', () => {
-    const wrapper = mountPanel();
-    expect(wrapper.text()).toContain('第1轮办理');
-    expect(wrapper.text()).toContain('第2轮办理');
-    expect(wrapper.text()).not.toContain('（当前）');
-    expect(wrapper.text()).not.toContain('（本轮）');
-    expect(wrapper.text()).toContain('¥ 0.00');
-    expect(wrapper.text()).toContain('诉讼费：待确认');
-    expect(wrapper.text()).not.toContain(round1);
-    expect(wrapper.text()).not.toContain('三审');
-  });
-
   it('requires explicit result and fee states and explains the target stage before submit', async () => {
     const wrapper = mountPanel();
     expect(

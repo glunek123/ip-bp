@@ -363,7 +363,7 @@ function stageName(stage: string): string {
         >
       </fieldset>
       <div v-if="path === 'APPEAL'" class="form-stack">
-        <p class="form-section-title">上诉人</p>
+        <p class="form-group-label">上诉人</p>
         <label
           ><input
             v-model="plaintiffAppeals"
@@ -492,3 +492,12 @@ function stageName(stage: string): string {
     </div>
   </section>
 </template>
+
+<style scoped>
+.form-group-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-ink);
+}
+</style>

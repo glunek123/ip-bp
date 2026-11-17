@@ -290,9 +290,6 @@ const confirmationText = computed(() => {
     return '登记后仍是同一案件，并转入“待正式立案”。';
   return '登记后案件转入“准备执行文书”。';
 });
-const roundHistory = computed(() =>
-  [...second.value.rounds].sort((a, b) => a.sequence - b.sequence),
-);
 const documentOptions = computed(() =>
   uniqueFiles([
     ...second.value.progresses.flatMap((entry) => entry.documentFiles),
@@ -1086,158 +1083,14 @@ function adoptRecoveryFile(file: (typeof recoveryFiles.value)[number]): void {
   verifiedRecoveryFiles.value.clear();
   uploadMessage.value = '已人工核对并选用此精确文件版本；业务登记尚未提交。';
 }
-async function download(file: {
-  materialId: string;
-  contentVersionId: string;
-}): Promise<void> {
-  try {
-    await downloadMaterialVersion(file.materialId, file.contentVersionId);
-  } catch {
-    error.value = '附件下载失败，请稍后重试。';
-  }
-}
-function resultName(result: string): string {
-  return result === 'REMAND'
-    ? '发回重审'
-    : result === 'CHANGE'
-      ? '改判'
-      : '维持原判';
-}
 function money(state: 'KNOWN' | 'PENDING', amount: string | null): string {
   return state === 'KNOWN' && amount !== null ? '¥ ' + amount : '待确认';
-}
-function roundLabel(round: (typeof roundHistory.value)[number]): string {
-  if (round.revokedAt) return '第' + round.sequence + '轮办理（已撤销）';
-  return '第' + round.sequence + '轮办理';
 }
 </script>
 
 <template>
   <section class="demo-card demo-card--pad" data-test="second-instance-panel">
     <h2 class="form-section-title">二审办理</h2>
-    <template v-for="round in roundHistory" :key="round.id">
-      <section
-        v-if="!accessDenied"
-        class="demo-card demo-card--pad"
-        :data-test="'second-instance-round-' + round.sequence"
-      >
-        <h3>{{ roundLabel(round) }}</h3>
-        <p
-          v-for="acceptance in item.acceptances.filter(
-            (entry) => entry.trialRoundId === round.id,
-          )"
-          :key="acceptance.id"
-        >
-          一审正式立案：{{ acceptance.acceptedAt }} ·
-          {{ acceptance.courtCaseNo }}
-          <button
-            v-for="file in acceptance.files"
-            :key="file.contentVersionId"
-            type="button"
-            @click="download(file)"
-          >
-            {{ file.originalFilename }}（下载）
-          </button>
-        </p>
-        <p
-          v-for="arrangement in item.hearing.arrangements.filter(
-            (entry) => entry.trialRoundId === round.id,
-          )"
-          :key="arrangement.id"
-        >
-          开庭安排：{{ arrangement.hearingAt ?? '未安排' }}
-        </p>
-        <p
-          v-for="fact in item.judgment.history.filter(
-            (entry) => entry.trialRoundId === round.id,
-          )"
-          :key="fact.id"
-        >
-          一审裁判：{{ fact.judgmentReceivedAt }} ·
-          {{ money(fact.judgmentAmountState, fact.judgmentAmount) }}
-          <button
-            v-for="file in fact.files"
-            :key="file.contentVersionId"
-            type="button"
-            @click="download(file)"
-          >
-            {{ file.originalFilename }}（下载）
-          </button>
-        </p>
-        <p
-          v-for="choice in item.judgmentNextStep.history.filter(
-            (entry) => entry.trialRoundId === round.id,
-          )"
-          :key="choice.id"
-        >
-          后续选择：{{ choice.next === 'APPEAL' ? '上诉' : '执行' }}
-        </p>
-        <div
-          v-for="progress in second.progresses.filter(
-            (entry) => entry.trialRoundId === round.id,
-          )"
-          :key="progress.id"
-        >
-          <p>
-            二审进展：{{ progress.hearingAt ?? '未填写开庭日期' }} ·
-            {{ progress.hearingPlace ?? '未填写地点' }} ·
-            {{ progress.judgeName ?? '未填写法官' }}
-          </p>
-          <button
-            v-for="file in [
-              ...progress.documentFiles,
-              ...progress.serviceFiles,
-            ]"
-            :key="file.contentVersionId"
-            type="button"
-            @click="download(file)"
-          >
-            {{ file.originalFilename }}（下载）
-          </button>
-        </div>
-        <div
-          v-for="result in second.results.filter(
-            (entry) => entry.trialRoundId === round.id,
-          )"
-          :key="result.id"
-        >
-          <p>
-            二审结果：{{ resultName(result.result) }} · 收到日期
-            {{ result.resultReceivedAt }}
-          </p>
-          <p v-if="result.result !== 'REMAND'">
-            裁判金额：{{
-              money(result.judgmentAmountState, result.judgmentAmount)
-            }}
-          </p>
-          <p>
-            诉讼费：{{
-              money(result.paidLitigationFeeState, result.paidLitigationFee)
-            }}
-          </p>
-          <button
-            v-for="file in result.files"
-            :key="file.contentVersionId"
-            type="button"
-            @click="download(file)"
-          >
-            {{ file.originalFilename }}（下载）
-          </button>
-        </div>
-        <p
-          v-for="revocation in second.revocations.filter(
-            (entry) =>
-              second.results.find((result) => result.id === entry.resultId)
-                ?.trialRoundId === round.id,
-          )"
-          :key="revocation.id"
-        >
-          结果已撤销<span v-if="'reason' in revocation && revocation.reason"
-            >：{{ revocation.reason }}</span
-          >
-        </p>
-      </section>
-    </template>
     <p v-if="accessDenied" role="status">
       当前账号不能查看或办理此案件，请刷新案件详情。
     </p>
