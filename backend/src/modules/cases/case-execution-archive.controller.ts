@@ -49,7 +49,7 @@ export class CaseExecutionArchiveController {
     response.setHeader('X-Archive-File-Count', String(zip.fileCount));
     response.setHeader(
       'X-Archive-Skipped',
-      encodeURIComponent(zip.skipped.join(',')),
+      zip.skipped.map((value) => encodeURIComponent(value)).join(','),
     );
     response.end(Buffer.from(zip.buffer));
   }

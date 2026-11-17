@@ -1603,6 +1603,12 @@ async function downloadExecutionDocuments(): Promise<void> {
   executionArchiveMessage.value = '';
   try {
     const result = await archiveExecutionDocuments([...selectedCaseIds.value]);
+    if (result.fileCount === 0) {
+      executionArchiveMessage.value = result.skipped.length
+        ? `所选案件暂无执行文书：${result.skipped.join('、')}`
+        : '所选案件暂无执行文书。';
+      return;
+    }
     const objectUrl = globalThis.URL.createObjectURL(result.blob);
     try {
       const anchor = globalThis.document.createElement('a');

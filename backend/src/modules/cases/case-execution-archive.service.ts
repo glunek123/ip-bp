@@ -41,8 +41,14 @@ export class CaseExecutionArchiveService {
       const detail = await this.reads.get(actor, caseId);
       const businessNo = detail.businessNo;
       const files = this.executionFiles(
-        (detail as { execution?: { submissions?: ExecutionSubmission[] } })
-          .execution,
+        (
+          detail as {
+            executionSubmission?: {
+              current?: ExecutionSubmission | null;
+              submissions?: ExecutionSubmission[];
+            };
+          }
+        ).executionSubmission,
       );
       if (!files.length) {
         skipped.push(businessNo);
@@ -77,11 +83,13 @@ export class CaseExecutionArchiveService {
   }
 
   private executionFiles(execution?: {
+    current?: ExecutionSubmission | null;
     submissions?: ExecutionSubmission[];
   }): CaseFile[] {
+    // 优先当前有效提交；退化到最近一次提交。
+    if (execution?.current?.files?.length) return execution.current.files;
     const submissions = execution?.submissions ?? [];
     if (!submissions.length) return [];
-    // 取最近一次提交的文书，代表该案当前有效的执行申请材料。
     const latest = submissions.reduce((left, right) =>
       right.toVersion > left.toVersion ? right : left,
     );

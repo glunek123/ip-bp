@@ -5739,6 +5739,7 @@ export function archiveExecutionDocuments(
 ): Promise<{
   blob: Blob;
   filename: string;
+  fileCount: number;
   skipped: string[];
 }> {
   if (!Array.isArray(caseIds) || caseIds.length < 1 || caseIds.length > 20)
@@ -5750,6 +5751,9 @@ export function archiveExecutionDocuments(
   ).then((result) => ({
     blob: result.blob,
     filename: result.filename,
+    fileCount: Number(
+      result.responseHeaders.get('X-Archive-File-Count') ?? '0',
+    ),
     skipped: (result.responseHeaders.get('X-Archive-Skipped') ?? '')
       .split(',')
       .filter((value) => value !== '')
