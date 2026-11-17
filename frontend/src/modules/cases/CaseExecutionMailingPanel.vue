@@ -56,7 +56,6 @@ const remark = ref('');
 const submitting = ref(false);
 const success = ref(false);
 const error = ref('');
-const review = ref(false);
 const unknownRequest = ref<MailCaseExecutionInput | null>(null);
 const idempotencyKey = ref('');
 let revision = 0;
@@ -128,7 +127,6 @@ function reset() {
   submitting.value = false;
   success.value = false;
   error.value = '';
-  review.value = false;
   unknownRequest.value = null;
   idempotencyKey.value = '';
 }
@@ -260,7 +258,6 @@ async function submit() {
             class="text-input"
             :max="todayShanghai()"
             :disabled="unknownRequest !== null"
-            @input="review = false"
             required
             aria-required="true"
             data-test="execution-mailed-at"
@@ -274,20 +271,11 @@ async function submit() {
             maxlength="1000"
             placeholder="选填，例如快递公司或投递说明"
             :disabled="unknownRequest !== null"
-            @input="review = false"
             data-test="execution-mailing-remark"
           ></textarea>
         </label>
         <p class="field-help">最多 1000 字，可不填。</p>
         <p v-if="error" role="alert" class="submit-error">{{ error }}</p>
-        <p
-          v-if="review && !unknownRequest"
-          data-test="execution-mailing-review-summary"
-        >
-          将登记 {{ mailedAt }} 邮寄<template v-if="remark.trim()"
-            >，备注：{{ remark.trim() }}</template
-          >。
-        </p>
         <ElButton
           v-if="unknownRequest"
           type="primary"
@@ -300,19 +288,11 @@ async function submit() {
         <ElButton
           v-else
           type="primary"
-          :disabled="!ready"
-          data-test="execution-mailing-review"
-          @click="review = true"
-          >核对邮寄信息</ElButton
-        >
-        <ElButton
-          v-if="review && !unknownRequest"
-          type="primary"
           :loading="submitting"
           :disabled="!ready"
           data-test="execution-mailing-submit"
           @click="submit"
-          >确认邮寄并登记</ElButton
+          >提交</ElButton
         >
         <p v-if="success" role="status">邮寄登记已完成，请刷新查看记录。</p>
       </template>

@@ -66,8 +66,6 @@ async function submitWith(
     await wrapper
       .get('[data-test="execution-mailing-remark"]')
       .setValue(remark);
-  await wrapper.get('[data-test="execution-mailing-review"]').trigger('click');
-  await flushPromises();
   await wrapper.get('[data-test="execution-mailing-submit"]').trigger('click');
   await flushPromises();
 }
@@ -129,7 +127,7 @@ describe('case execution mailing panel', () => {
     await flushPromises();
     expect(
       wrapper
-        .get('[data-test="execution-mailing-review"]')
+        .get('[data-test="execution-mailing-submit"]')
         .attributes('disabled'),
     ).toBeDefined();
   });
