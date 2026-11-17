@@ -1054,6 +1054,14 @@ export class CaseSecondInstanceService {
       },
     });
     if (updated.count !== 1) throw this.versionConflict();
+    // 结果撤销后退费不再成立：库存追加一个不含该来源行的新版本。
+    await this.refunds.revokeSourceRefunds(
+      tx,
+      actor,
+      caseId,
+      'SECOND_INSTANCE_RESULT',
+      value.resultId,
+    );
     const response: SecondInstanceCommandResultDto = {
       id: caseId,
       stage: 'SECOND_INSTANCE',

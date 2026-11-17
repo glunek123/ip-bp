@@ -134,6 +134,7 @@ describe('CaseSecondInstanceService', () => {
     const refunds = {
       lockJudgmentActor: jest.fn(),
       registerSecondInstanceRefunds: jest.fn(),
+      revokeSourceRefunds: jest.fn().mockResolvedValue(0),
     };
     const materials = {
       assertAvailableVersions: jest.fn().mockResolvedValue([]),

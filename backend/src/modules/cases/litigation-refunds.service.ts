@@ -674,6 +674,114 @@ export class LitigationRefundsService {
     }
   }
 
+  /**
+   * 撤销来源（判决 / 二审结果）时回滚其退费行：追加一个不包含这些行的新版本。
+   * 库存是只追加的快照链，因此「回滚」= 新版本不再包含该来源的行，历史仍可追溯。
+   */
+  async revokeSourceRefunds(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    sourceType: 'JUDGMENT' | 'SECOND_INSTANCE_RESULT',
+    sourceId: string,
+  ): Promise<number> {
+    const locks = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM cases WHERE id=${caseId}::uuid
+      AND department_id=${actor.departmentId}::uuid FOR UPDATE`;
+    if (locks.length !== 1) throw missing();
+    const head = await this.latest(tx, actor, caseId);
+    const oldItems = await this.items(tx, actor, caseId, head);
+    const removed = oldItems.filter(
+      (item) => item.sourceType === sourceType && item.sourceId === sourceId,
+    );
+    if (!removed.length) return 0;
+    const nextItems = oldItems.filter(
+      (item) => !(item.sourceType === sourceType && item.sourceId === sourceId),
+    );
+    const previous: RefundInventorySnapshot | null = head
+      ? {
+          id: head.versionId,
+          caseId,
+          departmentId: actor.departmentId,
+          revision: head.revision,
+          declaration: head.declaration,
+          items: oldItems,
+        }
+      : null;
+    const planned = planRefundInventoryDraft(previous, {
+      caseId,
+      expectedVersionId: head?.versionId ?? null,
+      kind: 'RECORD',
+      items: nextItems,
+    });
+    const versionId = randomUUID();
+    const auditEventId = randomUUID();
+    const timestamp = await tx.$queryRaw<
+      { now: Date }[]
+    >`SELECT clock_timestamp() AS now`;
+    const recordedAt = timestamp[0]!.now;
+    const newHead: Head = {
+      versionId,
+      priorVersionId: head?.versionId ?? null,
+      revision: (head?.revision ?? 0) + 1,
+      declaration: planned.declaration,
+    };
+    await tx.auditEvent.create({
+      data: {
+        id: auditEventId,
+        departmentId: actor.departmentId,
+        actorKind: 'HUMAN',
+        actorUserId: actor.userId,
+        internalActorUserId: actor.userId,
+        resourceType: 'CASE_REFUND_INVENTORY_VERSION',
+        resourceId: versionId,
+        action: 'CASE_REFUND_INVENTORY_RECORD',
+        details: {
+          kind: 'REVOKE_SOURCE',
+          sourceType,
+          sourceId,
+          removedItemIds: removed.map((item) => item.itemId),
+          removedCount: removed.length,
+          fromVersion: head?.versionId ?? null,
+          toVersion: versionId,
+        },
+      },
+    });
+    await tx.$executeRaw`
+    INSERT INTO case_refund_inventory_versions(
+      id,case_id,department_id,revision,prior_version_id,declaration,
+      recorded_by_user_id,recorded_at,audit_event_id)
+    VALUES (${versionId}::uuid,${caseId}::uuid,${actor.departmentId}::uuid,
+      ${newHead.revision},${head?.versionId ?? null}::uuid,${newHead.declaration},
+      ${actor.userId}::uuid,${recordedAt},${auditEventId}::uuid)`;
+    for (const item of nextItems) {
+      const info: SourceMeta = {
+        sourceType: item.sourceType,
+        sourceId: item.sourceId,
+        trialRoundId: item.trialRoundId,
+        remark: item.remark,
+      };
+      if (!info.trialRoundId) {
+        info.sourceType = null;
+        info.sourceId = null;
+      }
+      await tx.$executeRaw`
+      INSERT INTO case_refund_inventory_items(
+        inventory_version_id,item_id,case_id,department_id,party,status,description)
+      VALUES (${versionId}::uuid,${item.itemId}::uuid,${caseId}::uuid,
+        ${actor.departmentId}::uuid,${item.party},${item.status},${item.description})`;
+      await tx.$executeRaw`
+      INSERT INTO case_refund_inventory_item_amounts(inventory_version_id,item_id,amount)
+      VALUES (${versionId}::uuid,${item.itemId}::uuid,${normalizeRefundAmount(item.amount)}::numeric)`;
+      await tx.$executeRaw`
+      INSERT INTO case_litigation_refund_item_meta(
+        inventory_version_id,item_id,source_type,source_id,trial_round_id,remark)
+      VALUES (${versionId}::uuid,${item.itemId}::uuid,${info.sourceType},
+        ${info.sourceId}::uuid,${info.trialRoundId}::uuid,${info.remark})`;
+    }
+    return removed.length;
+  }
+
   /** 读接口用：不要求调用方持有事务。 */
   async listSourceItems(
     actor: ActorContext,
