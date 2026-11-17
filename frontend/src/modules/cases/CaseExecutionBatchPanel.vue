@@ -52,7 +52,9 @@ const accept = computed(() =>
   isMailing.value ? 'image/*,application/pdf' : 'application/pdf,image/*',
 );
 const readyCount = computed(
-  () => rows.value.filter((row) => row.status === 'ready').length,
+  () =>
+    rows.value.filter((row) => row.status === 'ready' && row.file !== null)
+      .length,
 );
 const doneCount = computed(
   () => rows.value.filter((row) => row.status === 'done').length,
