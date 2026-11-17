@@ -876,10 +876,10 @@ function listRouteBase() {
     ),
   );
 }
-let queryTimer: ReturnType<typeof setTimeout> | undefined;
+let queryTimer: ReturnType<typeof globalThis.setTimeout> | undefined;
 function scheduleQuery(): void {
-  if (queryTimer) clearTimeout(queryTimer);
-  queryTimer = setTimeout(() => {
+  if (queryTimer) globalThis.clearTimeout(queryTimer);
+  queryTimer = globalThis.setTimeout(() => {
     queryTimer = undefined;
     if (state.value === 'ready') applyQuery();
   }, 350);
@@ -1603,15 +1603,15 @@ async function downloadExecutionDocuments(): Promise<void> {
   executionArchiveMessage.value = '';
   try {
     const result = await archiveExecutionDocuments([...selectedCaseIds.value]);
-    const objectUrl = URL.createObjectURL(result.blob);
+    const objectUrl = globalThis.URL.createObjectURL(result.blob);
     try {
-      const anchor = document.createElement('a');
+      const anchor = globalThis.document.createElement('a');
       anchor.href = objectUrl;
       anchor.download = result.filename;
       anchor.click();
       anchor.remove();
     } finally {
-      URL.revokeObjectURL(objectUrl);
+      globalThis.URL.revokeObjectURL(objectUrl);
     }
     executionArchiveMessage.value = result.skipped.length
       ? `已下载所选案件的执行文书；${result.skipped.length} 件暂无执行文书：${result.skipped.join('、')}`
@@ -1701,7 +1701,7 @@ watch(
   { immediate: true },
 );
 onBeforeUnmount(() => {
-  if (queryTimer) clearTimeout(queryTimer);
+  if (queryTimer) globalThis.clearTimeout(queryTimer);
 });
 onBeforeUnmount(() => {
   request?.abort();
