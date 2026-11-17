@@ -2128,32 +2128,15 @@ function executionMailing(
   directStart = false,
 ): value is ExecutionMailing {
   if (!record(value)) return false;
-  // 邮寄凭证已改为选填，历史记录才带 files；新登记使用 remark。
+  // 只校验必要字段：备注与凭证都是后加的选填项，不再比对键集，
+  // 避免新增字段时把合法详情判为无效。
   const files = Array.isArray(value.files) ? value.files : [];
-  const remarkValid =
+  const remarkOk =
     value.remark === undefined ||
     value.remark === null ||
     typeof value.remark === 'string';
-  const keyValid =
-    typeof value.remark === 'string' || value.remark === null
-      ? exact(value, [
-          'id',
-          'confirmationId',
-          'mailedAt',
-          'recordedAt',
-          'remark',
-          'files',
-        ])
-      : exact(value, [
-          'id',
-          'confirmationId',
-          'mailedAt',
-          'recordedAt',
-          'files',
-        ]);
   return (
-    keyValid &&
-    remarkValid &&
+    remarkOk &&
     uuidV4(value.id) &&
     (uuidV4(value.confirmationId) ||
       (directStart && value.confirmationId === null)) &&
