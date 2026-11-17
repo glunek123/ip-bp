@@ -685,6 +685,27 @@ export class LitigationRefundsService {
     sourceType: 'JUDGMENT' | 'SECOND_INSTANCE_RESULT',
     sourceId: string,
   ): Promise<number> {
+    try {
+      return await this.revokeSourceRefundsInner(
+        tx,
+        actor,
+        caseId,
+        sourceType,
+        sourceId,
+      );
+    } catch (caught) {
+      console.error('[refund-revoke]', caught);
+      throw caught;
+    }
+  }
+
+  private async revokeSourceRefundsInner(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    sourceType: 'JUDGMENT' | 'SECOND_INSTANCE_RESULT',
+    sourceId: string,
+  ): Promise<number> {
     const locks = await tx.$queryRaw<{ id: string }[]>`
     SELECT id FROM cases WHERE id=${caseId}::uuid
       AND department_id=${actor.departmentId}::uuid FOR UPDATE`;
