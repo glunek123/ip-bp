@@ -237,7 +237,8 @@ const schema = {
   mailing: {
     mailedAt: string,
     remark: optional(string),
-    mailReceiptContentVersionIds: strings,
+    // 邮寄凭证已改为选填，历史请求仍可能带该字段。
+    mailReceiptContentVersionIds: optional(strings),
   },
   filing: {
     courtId: string,
