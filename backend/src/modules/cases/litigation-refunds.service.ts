@@ -759,6 +759,7 @@ export class LitigationRefundsService {
         action: 'CASE_REFUND_INVENTORY_RECORD',
         details: {
           kind: 'REVOKE_SOURCE',
+          authorizationRevision: actor.authorizationRevision,
           sourceType,
           sourceId,
           removedItemIds: removed.map((item) => item.itemId),
