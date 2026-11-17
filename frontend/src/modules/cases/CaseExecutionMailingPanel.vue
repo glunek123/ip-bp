@@ -252,9 +252,9 @@ async function submit() {
           (item.canMailExecution && (confirmationId || directEntry))
         "
       >
-        <label
-          >邮寄日期 <span aria-hidden="true">*</span
-          ><input
+        <label class="mailing-field">
+          <span>邮寄日期 <span aria-hidden="true">*</span></span>
+          <input
             v-model="mailedAt"
             type="date"
             class="text-input"
@@ -265,8 +265,8 @@ async function submit() {
             aria-required="true"
             data-test="execution-mailed-at"
         /></label>
-        <label
-          >备注
+        <label class="mailing-field">
+          <span>备注</span>
           <textarea
             v-model="remark"
             class="text-input"
@@ -322,3 +322,10 @@ async function submit() {
     </template>
   </section>
 </template>
+
+<style scoped>
+.mailing-field {
+  display: grid;
+  gap: 6px;
+}
+</style>
