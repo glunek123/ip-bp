@@ -2773,8 +2773,7 @@ export class CaseReadService {
             : {}),
         })),
       canRecordClosure:
-        (record.stage === 'WAITING_ARCHIVE' ||
-          record.stage === 'EXECUTING') &&
+        record.stage === 'WAITING_ARCHIVE' &&
         closure === null &&
         ((record.executionFinish != null &&
           record.executionFinish.toVersion === record.version) ||

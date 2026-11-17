@@ -589,8 +589,7 @@ export type FinishCaseExecutionResult = {
   id: string;
   finishId: string;
   filingId: string | null;
-  /** 执行更新不推进阶段，保存后仍是强制执行中。 */
-  stage: 'EXECUTING';
+  stage: 'WAITING_ARCHIVE';
   version: number;
   finishedAt: string;
   recordedAt: string;

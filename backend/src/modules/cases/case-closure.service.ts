@@ -257,7 +257,7 @@ export class CaseClosureService {
             const finish = record.executionFinish;
             const closure = record.closure;
             if (
-              !['WAITING_ARCHIVE', 'EXECUTING'].includes(record.stage) ||
+              record.stage !== 'WAITING_ARCHIVE' ||
               (finish === null
                 ? source.kind !== 'EXTERNAL_ENTRY' ||
                   source.initialStage !== 'WAITING_ARCHIVE' ||
@@ -383,7 +383,7 @@ export class CaseClosureService {
               where: {
                 id: caseId,
                 departmentId: actor.departmentId,
-                stage: { in: ['WAITING_ARCHIVE', 'EXECUTING'] },
+                stage: 'WAITING_ARCHIVE',
                 version: input.expectedVersion,
                 currentTrialRoundId: record.currentTrialRoundId,
                 currentJudgmentNextStepId: record.currentJudgmentNextStepId,
