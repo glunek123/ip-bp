@@ -1013,7 +1013,7 @@ function shortCaseAction(
     'execution-confirmation': '确认材料',
     'execution-mailing': '执行邮寄',
     'execution-filing': '执行立案',
-    finish: '执行结束',
+    finish: '执行更新',
     'settlement-update': '结案更新',
     'record-closure': '结案更新',
     'correct-closure': '结案更新',
