@@ -557,6 +557,7 @@ export type ExecutionMailing = {
   confirmationId: string | null;
   mailedAt: string;
   recordedAt: string;
+  remark?: string | null;
   files: CaseFile[];
 };
 export type ExecutionFiling = {
@@ -1151,7 +1152,10 @@ export type MailCaseExecutionInput = {
   idempotencyKey: string;
   expectedConfirmationId: string | null;
   mailedAt: string;
-  mailReceiptContentVersionIds: string[];
+  /** 邮寄凭证已改为选填的历史字段，新登记不再上传。 */
+  mailReceiptContentVersionIds?: string[];
+  /** 备注（选填，替代原邮寄凭证必填）。 */
+  remark?: string | null;
 };
 export type SubmitCaseExecutionFilingInput = {
   expectedVersion: number;
@@ -2123,9 +2127,33 @@ function executionMailing(
   value: unknown,
   directStart = false,
 ): value is ExecutionMailing {
+  if (!record(value)) return false;
+  // 邮寄凭证已改为选填，历史记录才带 files；新登记使用 remark。
+  const files = Array.isArray(value.files) ? value.files : [];
+  const remarkValid =
+    value.remark === undefined ||
+    value.remark === null ||
+    typeof value.remark === 'string';
+  const keyValid =
+    typeof value.remark === 'string' || value.remark === null
+      ? exact(value, [
+          'id',
+          'confirmationId',
+          'mailedAt',
+          'recordedAt',
+          'remark',
+          'files',
+        ])
+      : exact(value, [
+          'id',
+          'confirmationId',
+          'mailedAt',
+          'recordedAt',
+          'files',
+        ]);
   return (
-    record(value) &&
-    exact(value, ['id', 'confirmationId', 'mailedAt', 'recordedAt', 'files']) &&
+    keyValid &&
+    remarkValid &&
     uuidV4(value.id) &&
     (uuidV4(value.confirmationId) ||
       (directStart && value.confirmationId === null)) &&
@@ -2133,11 +2161,10 @@ function executionMailing(
     typeof value.recordedAt === 'string' &&
     !Number.isNaN(Date.parse(value.recordedAt)) &&
     Array.isArray(value.files) &&
-    value.files.length >= 1 &&
-    value.files.length <= 10 &&
-    value.files.every(caseFile) &&
-    new Set(value.files.map((file) => (file as CaseFile).contentVersionId))
-      .size === value.files.length
+    files.length <= 10 &&
+    files.every(caseFile) &&
+    new Set(files.map((file) => (file as CaseFile).contentVersionId)).size ===
+      files.length
   );
 }
 function executionFiling(

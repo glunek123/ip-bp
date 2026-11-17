@@ -1970,7 +1970,7 @@ onBeforeUnmount(() => {
             :disabled="!canStartBatchFromSelection"
             :title="
               canStartBatchFromSelection
-                ? '逐案上传邮寄凭证，统一邮寄日期'
+                ? '统一邮寄日期，备注可逐案填写'
                 : '请先勾选1至20件当前列表中的案件'
             "
             @click="openExecutionBatch('mailing')"

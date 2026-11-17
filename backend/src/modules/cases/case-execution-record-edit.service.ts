@@ -99,7 +99,7 @@ export class CaseExecutionRecordEditService {
       input.mailedAt,
       input.reason,
       input.idempotencyKey,
-      input.mailReceiptContentVersionIds,
+      input.mailReceiptContentVersionIds ?? [],
     );
     return this.mailingResult(await this.correct(actor, caseId, value));
   }

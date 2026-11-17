@@ -260,7 +260,9 @@ describe('CaseExecutionMailingService', () => {
           expectedVersion: input.expectedVersion,
           expectedConfirmationId: input.expectedConfirmationId,
           mailedAt: input.mailedAt,
-          mailReceiptContentVersionIds: input.mailReceiptContentVersionIds,
+          mailReceiptContentVersionIds:
+            input.mailReceiptContentVersionIds ?? [],
+          remark: (input as { remark?: string | null }).remark?.trim() || null,
         }),
       )
       .digest('hex');
@@ -291,7 +293,9 @@ describe('CaseExecutionMailingService', () => {
           expectedVersion: input.expectedVersion,
           expectedConfirmationId: input.expectedConfirmationId,
           mailedAt: input.mailedAt,
-          mailReceiptContentVersionIds: input.mailReceiptContentVersionIds,
+          mailReceiptContentVersionIds:
+            input.mailReceiptContentVersionIds ?? [],
+          remark: (input as { remark?: string | null }).remark?.trim() || null,
         }),
       )
       .digest('hex');

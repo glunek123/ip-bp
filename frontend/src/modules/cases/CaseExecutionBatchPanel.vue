@@ -22,6 +22,7 @@ type Row = {
   stage: string;
   detail: CaseDetail | null;
   file: globalThis.File | null;
+  remark: string;
   status: RowStatus;
   message: string;
 };
@@ -39,6 +40,7 @@ const rows = ref<Row[]>(
     stage: entry.stage,
     detail: null,
     file: null,
+    remark: '',
     status: 'loading',
     message: '读取中…',
   })),
@@ -56,8 +58,11 @@ const accept = computed(() =>
 );
 const readyCount = computed(
   () =>
-    rows.value.filter((row) => row.status === 'ready' && row.file !== null)
-      .length,
+    rows.value.filter((row) =>
+      isMailing.value
+        ? row.status === 'ready'
+        : row.status === 'ready' && row.file !== null,
+    ).length,
 );
 const doneCount = computed(
   () => rows.value.filter((row) => row.status === 'done').length,
@@ -169,19 +174,13 @@ async function submit(): Promise<void> {
   submitting.value = true;
   finished.value = false;
   for (const row of rows.value) {
-    if (row.status !== 'ready' || !row.file || !row.detail) continue;
+    if (row.status !== 'ready' || !row.detail) continue;
+    if (!isMailing.value && !row.file) continue;
     row.status = 'submitting';
     row.message = '上传中…';
     try {
-      const uploaded = await uploadMaterialFile({
-        ownerType: 'CASE',
-        ownerId: row.caseId,
-        category: isMailing.value ? 'MAIL_RECEIPT' : 'EXECUTION_APPLICATION',
-        purpose: isMailing.value ? 'MAIL_RECEIPT' : 'EXECUTION_APPLICATION',
-        file: row.file,
-      });
-      row.message = isMailing.value ? '邮寄中…' : '提交中…';
       if (isMailing.value) {
+        row.message = '邮寄中…';
         const confirmationId = row.detail.executionConfirmation?.id ?? null;
         if (!confirmationId) throw new Error('该案尚未确认执行材料');
         await mailCaseExecution(row.caseId, {
@@ -189,9 +188,18 @@ async function submit(): Promise<void> {
           idempotencyKey: globalThis.crypto.randomUUID(),
           expectedConfirmationId: confirmationId,
           mailedAt: mailedAt.value,
-          mailReceiptContentVersionIds: [uploaded.contentVersionId],
+          remark: row.remark.trim() ? row.remark.trim() : null,
         });
       } else {
+        row.message = '上传中…';
+        const uploaded = await uploadMaterialFile({
+          ownerType: 'CASE',
+          ownerId: row.caseId,
+          category: 'EXECUTION_APPLICATION',
+          purpose: 'EXECUTION_APPLICATION',
+          file: row.file!,
+        });
+        row.message = '提交中…';
         await submitExecution(
           row.caseId,
           submissionInput(row, uploaded.contentVersionId),
@@ -221,7 +229,7 @@ async function submit(): Promise<void> {
     <p class="field-help">
       {{
         isMailing
-          ? '逐案上传邮寄凭证（快递单照片或 PDF），按同一邮寄日期登记。'
+          ? '按同一邮寄日期登记，备注可逐案填写或留空。'
           : '为每个案件选择执行申请文书，逐案提交后进入执行材料待确认。'
       }}
     </p>
@@ -249,7 +257,18 @@ async function submit(): Promise<void> {
             >{{ statusLabel(row.status) }}</span
           >
         </div>
-        <div class="exec-batch__body">
+        <div v-if="isMailing" class="exec-batch__body">
+          <textarea
+            v-model="row.remark"
+            class="text-input"
+            rows="2"
+            maxlength="1000"
+            placeholder="备注（选填）"
+            :disabled="row.status !== 'ready'"
+            :data-test="'execution-batch-remark-' + row.caseId"
+          ></textarea>
+        </div>
+        <div v-else class="exec-batch__body">
           <ElButton
             size="small"
             :disabled="

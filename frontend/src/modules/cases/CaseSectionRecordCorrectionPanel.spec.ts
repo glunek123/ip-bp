@@ -547,7 +547,7 @@ describe('exact section record corrections', () => {
       let ids: string[] = [];
       switch (request.kind) {
         case 'execution-mailing':
-          ids = request.input.mailReceiptContentVersionIds;
+          ids = request.input.mailReceiptContentVersionIds ?? [];
           break;
         case 'execution-filing':
           ids = request.input.executionFilingProofContentVersionIds;

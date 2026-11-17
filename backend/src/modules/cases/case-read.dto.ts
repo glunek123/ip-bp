@@ -791,6 +791,7 @@ class CaseExecutionMailingDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) confirmationId!: string;
   @ApiProperty({ format: 'date' }) mailedAt!: string;
+  @ApiProperty({ type: String, nullable: true }) remark!: string | null;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
   @ApiProperty({ type: [CaseCertificateFileDto] })
   files!: CaseCertificateFileDto[];

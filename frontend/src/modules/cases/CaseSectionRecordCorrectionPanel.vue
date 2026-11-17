@@ -701,7 +701,9 @@ function resetDraft(): void {
   switch (target.kind) {
     case 'execution-mailing':
       draft.date = target.entry.effective.mailedAt;
-      draft.fileIds = [...target.entry.effective.mailReceiptContentVersionIds];
+      draft.fileIds = [
+        ...(target.entry.effective.mailReceiptContentVersionIds ?? []),
+      ];
       break;
     case 'execution-filing':
       draft.date = target.entry.effective.submittedAt;
@@ -745,7 +747,7 @@ function businessValues(request: CaseSectionRecordRequest): string {
     case 'execution-mailing':
       return JSON.stringify([
         request.input.mailedAt,
-        comparedIds(request.input.mailReceiptContentVersionIds),
+        comparedIds(request.input.mailReceiptContentVersionIds ?? []),
       ]);
     case 'execution-filing':
       return JSON.stringify([
@@ -789,7 +791,7 @@ function effectiveValues(target: Target): string {
     case 'execution-mailing':
       return JSON.stringify([
         target.entry.effective.mailedAt,
-        comparedIds(target.entry.effective.mailReceiptContentVersionIds),
+        comparedIds(target.entry.effective.mailReceiptContentVersionIds ?? []),
       ]);
     case 'execution-filing':
       return JSON.stringify([

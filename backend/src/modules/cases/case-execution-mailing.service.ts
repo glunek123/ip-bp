@@ -63,7 +63,9 @@ export class CaseExecutionMailingService {
           expectedVersion: input.expectedVersion,
           expectedConfirmationId: input.expectedConfirmationId,
           mailedAt: input.mailedAt,
-          mailReceiptContentVersionIds: input.mailReceiptContentVersionIds,
+          mailReceiptContentVersionIds:
+            input.mailReceiptContentVersionIds ?? [],
+          remark: input.remark?.trim() || null,
         }),
       )
       .digest('hex');
@@ -227,18 +229,18 @@ export class CaseExecutionMailingService {
                 input.mailedAt < source.stageReachedOn)
             )
               throw error('conflict', 'INVALID_STATE');
-            const facts = await this.materials.assertAvailableVersions(
-              tx,
-              actor,
-              {
-                ownerType: 'CASE',
-                ownerId: caseId,
-                category: 'MAIL_RECEIPT',
-                contentVersionIds: input.mailReceiptContentVersionIds,
-                minCount: 1,
-                maxCount: 10,
-              },
-            );
+            const receiptVersionIds = input.mailReceiptContentVersionIds ?? [];
+            const facts =
+              receiptVersionIds.length > 0
+                ? await this.materials.assertAvailableVersions(tx, actor, {
+                    ownerType: 'CASE',
+                    ownerId: caseId,
+                    category: 'MAIL_RECEIPT',
+                    contentVersionIds: receiptVersionIds,
+                    minCount: 1,
+                    maxCount: 10,
+                  })
+                : [];
             const mailingId = randomUUID();
             const auditEventId = randomUUID();
             const recordedAt = new Date();
@@ -271,8 +273,8 @@ export class CaseExecutionMailingService {
                   fromVersion: input.expectedVersion,
                   toVersion: input.expectedVersion + 1,
                   mailedAt: input.mailedAt,
-                  mailReceiptContentVersionIds:
-                    input.mailReceiptContentVersionIds,
+                  mailReceiptContentVersionIds: receiptVersionIds,
+                  remark: input.remark?.trim() || null,
                   actorType,
                 },
               },
@@ -288,6 +290,7 @@ export class CaseExecutionMailingService {
                 fromVersion: input.expectedVersion,
                 toVersion: input.expectedVersion + 1,
                 mailedAt: new Date(`${input.mailedAt}T00:00:00.000Z`),
+                remark: input.remark?.trim() || null,
                 recordedAt,
                 recordedByUserId: actor.userId,
                 actorType,
@@ -378,6 +381,7 @@ export class CaseExecutionMailingService {
             'expectedConfirmationId',
             'mailedAt',
             'mailReceiptContentVersionIds',
+            'remark',
           ].includes(key),
       ) ||
       !Number.isSafeInteger(input.expectedVersion) ||
@@ -391,14 +395,17 @@ export class CaseExecutionMailingService {
           !uuid.test(input.expectedConfirmationId))) ||
       typeof input.mailedAt !== 'string' ||
       !/^\d{4}-\d{2}-\d{2}$/u.test(input.mailedAt) ||
-      !Array.isArray(input.mailReceiptContentVersionIds) ||
-      input.mailReceiptContentVersionIds.length < 1 ||
-      input.mailReceiptContentVersionIds.length > 10 ||
-      new Set(input.mailReceiptContentVersionIds).size !==
-        input.mailReceiptContentVersionIds.length ||
-      input.mailReceiptContentVersionIds.some(
-        (id) => typeof id !== 'string' || !uuid.test(id),
-      )
+      (input.mailReceiptContentVersionIds !== undefined &&
+        (!Array.isArray(input.mailReceiptContentVersionIds) ||
+          input.mailReceiptContentVersionIds.length > 10 ||
+          new Set(input.mailReceiptContentVersionIds).size !==
+            input.mailReceiptContentVersionIds.length ||
+          input.mailReceiptContentVersionIds.some(
+            (id) => typeof id !== 'string' || !uuid.test(id),
+          ))) ||
+      (input.remark !== undefined &&
+        input.remark !== null &&
+        (typeof input.remark !== 'string' || input.remark.length > 1000))
     )
       throw error('bad', 'VALIDATION_ERROR');
     const date = new Date(`${input.mailedAt}T00:00:00.000Z`);

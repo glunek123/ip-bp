@@ -3718,6 +3718,7 @@ model CaseExecutionMailing {
   fromVersion Int @map("from_version")
   toVersion Int @map("to_version")
   mailedAt DateTime @map("mailed_at") @db.Date
+  remark String? @db.VarChar(1000)
   recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
   recordedByUserId String @map("recorded_by_user_id") @db.Uuid
   actorType UserAccountType @map("actor_type")

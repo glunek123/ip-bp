@@ -6,6 +6,7 @@ import {
   IsDateString,
   IsDefined,
   IsInt,
+  IsOptional,
   IsString,
   IsUUID,
   MaxLength,
@@ -27,12 +28,28 @@ export class MailCaseExecutionDto {
   @IsUUID('4')
   expectedConfirmationId!: string | null;
   @ApiProperty({ format: 'date' }) @IsDateString() mailedAt!: string;
-  @ApiProperty({ type: [String], format: 'uuid', minItems: 1, maxItems: 10 })
+  @ApiProperty({
+    type: [String],
+    format: 'uuid',
+    required: false,
+    maxItems: 10,
+    description: '邮寄凭证（选填，兼容历史登记）',
+  })
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(10)
   @IsUUID('4', { each: true })
-  mailReceiptContentVersionIds!: string[];
+  mailReceiptContentVersionIds?: string[];
+
+  @ApiProperty({
+    required: false,
+    maxLength: 1000,
+    description: '备注（选填，替代原邮寄凭证必填）',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  remark?: string | null;
 }
 
 export class MailCaseExecutionResponseDto {
