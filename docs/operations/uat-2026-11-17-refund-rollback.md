@@ -40,11 +40,28 @@
 1ab7907d…|PENDING|二审结果登记应退金额|（历史遗留）|SECOND_INSTANCE_RESULT
 ```
 
-## 历史遗留
+## 历史遗留（已处理）
 
 `1ab7907d` 是第一轮验收（回滚功能尚未上线时）登记的退费行，其二审结果已撤销但状态仍为 `PENDING`。
 
-处理方式：在诉讼退费模块用「跟进」把它改为待核，或由后续清理脚本统一处理。本次未自动改写（避免测试脚本直接改生产数据）。
+2026-11-17 13:08 通过跟进接口清理：
+
+```
+PATCH /api/v1/cases/litigation-refunds/:caseId/items/:itemId/follow-up
+{ status: "UNKNOWN", remark: "二审结果已撤销，退费口径待核",
+  reason: "历史遗留清理：结果撤销时回滚尚未上线" }
+→ 200，库存版本 revision 4 → 5（versionId 102d560c…）
+```
+
+清理后库存快照：
+
+| itemId      | 状态    | 备注                         | 来源                       |
+| ----------- | ------- | ---------------------------- | -------------------------- |
+| `90b46700…` | UNKNOWN | 二审结果已撤销，退费口径待核 | SECOND_INSTANCE_RESULT     |
+| `1ab7907d…` | UNKNOWN | 二审结果已撤销，退费口径待核 | SECOND_INSTANCE_RESULT     |
+| `29cab8a2…` | PENDING | —                            | JUDGMENT（一审，正常待退） |
+
+至此两笔二审退费均已作废，仅保留一审那笔待退，审计链完整。
 
 ## 测试
 
