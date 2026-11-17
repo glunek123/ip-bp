@@ -813,9 +813,11 @@ async function submit(request: CaseListRequest, recovery = false) {
       );
   if (!stored || !session.beginSubmit({ recovery }))
     throw new ApiError(
-      `原请求仍待核对（诊断：requestState=${props.requestState}, action=${props.action}, allowed=${allowed.value}, pending=${!!pending.value}, stored=${!!stored}）`,
+      pending.value
+        ? '上次提交尚未确认，请先用原请求重试，或放弃原请求后重新填写'
+        : '当前请求状态已变化，请关闭后重新打开办理面板',
       409,
-      'INVALID_STATE',
+      pending.value ? 'ORIGINAL_REQUEST_PENDING' : 'WORKFLOW_SESSION_STALE',
     );
   try {
     globalThis.sessionStorage.setItem(storageKey, JSON.stringify(stored));
