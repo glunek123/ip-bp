@@ -139,7 +139,8 @@ describe('CaseJudgmentNextStepPanel', () => {
       (wrapper.find('input[type="checkbox"]').element as HTMLInputElement)
         .checked,
     ).toBe(false);
-    expect(wrapper.text()).toContain('只进入材料准备，不代表已申请执行');
+    // 产品要求移除该说明文案，保留“已核实可进入执行准备”的显式勾选。
+    expect(wrapper.text()).not.toContain('只进入材料准备');
     expect(
       (wrapper.get('button[type="submit"]').element as HTMLButtonElement)
         .disabled,

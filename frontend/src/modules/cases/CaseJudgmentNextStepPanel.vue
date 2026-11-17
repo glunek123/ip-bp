@@ -313,7 +313,6 @@ function stageName(stage: string): string {
     data-test="case-judgment-next-step-panel"
   >
     <h2 class="form-section-title">判决后续选择</h2>
-    <p>只登记后续路径，不修改一审判决。</p>
 
     <div v-if="current" class="form-stack" data-test="current-next-step">
       <p role="status">
@@ -364,7 +363,7 @@ function stageName(stage: string): string {
         >
       </fieldset>
       <div v-if="path === 'APPEAL'" class="form-stack">
-        <p>可选择原告方、被告方或双方。</p>
+        <p class="form-section-title">上诉人</p>
         <label
           ><input
             v-model="plaintiffAppeals"
@@ -392,7 +391,6 @@ function stageName(stage: string): string {
         <input v-model="readinessConfirmed" type="checkbox" />
         已核实本案可进入执行准备 <span class="required-mark">*</span>
       </label>
-      <p>进入执行准备只进入材料准备，不代表已申请执行。</p>
       <button type="submit" :disabled="!readyToChoose">核对并提交选择</button>
     </form>
 
