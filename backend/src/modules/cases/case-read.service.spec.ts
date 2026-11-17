@@ -110,6 +110,9 @@ describe('CaseReadService', () => {
         .mockResolvedValue({ departmentId: actor.departmentId }),
       canAuthorizeCase: jest.fn().mockResolvedValue(true),
     };
+    const refunds = {
+      listSourceItems: jest.fn().mockResolvedValue([]),
+    };
     const materials = {
       listOwnerMaterials: jest.fn().mockResolvedValue({ items: [] }),
       listFrozenCaseAcceptanceFiles: jest.fn().mockResolvedValue([]),
@@ -137,10 +140,12 @@ describe('CaseReadService', () => {
       db,
       access,
       materials,
+      refunds,
       service: new CaseReadService(
         db as never,
         access as never,
         materials as never,
+        refunds as never,
       ),
     };
   }

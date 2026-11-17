@@ -5,6 +5,7 @@ import {
   IsDefined,
   IsIn,
   IsInt,
+  IsOptional,
   IsString,
   IsUUID,
   Matches,
@@ -14,6 +15,8 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
+
+import { CaseJudgmentRefundDto } from './case-judgment.dto';
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/u;
 const amountPattern = /^(?:0|[1-9]\d{0,13})(?:\.\d{1,2})?$/u;
@@ -100,6 +103,12 @@ export class RegisterSecondInstanceResultDto extends SaveSecondInstanceDto {
   @ValidateNested()
   @Type(() => KnownMoneyDto)
   paidLitigationFee!: KnownMoneyDto;
+  @ApiPropertyOptional({ type: [CaseJudgmentRefundDto], maxItems: 20 })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CaseJudgmentRefundDto)
+  refunds?: CaseJudgmentRefundDto[];
   @ApiPropertyOptional({ type: KnownMoneyDto })
   @ValidateIf(
     (input: RegisterSecondInstanceResultDto, value: unknown) =>

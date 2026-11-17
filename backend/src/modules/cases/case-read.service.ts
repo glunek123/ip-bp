@@ -12,6 +12,7 @@ import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
+import { LitigationRefundsService } from './litigation-refunds.service';
 import {
   executionFeedbackReadSelect,
   executionSupplementReadSelect,
@@ -42,6 +43,7 @@ export class CaseReadService {
     private readonly database: DatabaseService,
     private readonly access: AccessControlService,
     private readonly materials: MaterialService,
+    private readonly refunds: LitigationRefundsService,
   ) {}
 
   private async canDepartmentAction(
@@ -2198,39 +2200,49 @@ export class CaseReadService {
           })),
       }),
     );
-    const secondResults = record.secondInstanceResults.map((result) => ({
-      id: result.id,
-      trialRoundId: result.trialRoundId,
-      choiceId: result.choiceId,
-      judgmentId: result.judgmentId,
-      progressId: result.progressId,
-      result: result.result,
-      resultReceivedAt: result.resultReceivedAt.toISOString().slice(0, 10),
-      judgmentAmountState: result.judgmentAmountState,
-      judgmentAmount:
-        result.judgmentAmount === null
-          ? null
-          : new Prisma.Decimal(result.judgmentAmount.toString()).toFixed(2),
-      paidLitigationFeeState: result.paidLitigationFeeState,
-      paidLitigationFee:
-        result.paidLitigationFee === null
-          ? null
-          : new Prisma.Decimal(result.paidLitigationFee.toString()).toFixed(2),
-      fromVersion: result.fromVersion,
-      toVersion: result.toVersion,
-      recordedAt: result.recordedAt.toISOString(),
-      ...(principal === 'INTERNAL'
-        ? { recordedByUserId: result.recordedByUserId }
-        : {}),
-      files: result.versions.map((version) => ({
-        materialId: version.materialId,
-        contentVersionId: version.contentVersionId,
-        originalFilename: version.contentVersion.originalFilename,
-        mimeType: version.contentVersion.mimeType,
+    const secondResults = await Promise.all(
+      record.secondInstanceResults.map(async (result) => ({
+        id: result.id,
+        trialRoundId: result.trialRoundId,
+        choiceId: result.choiceId,
+        judgmentId: result.judgmentId,
+        progressId: result.progressId,
+        result: result.result,
+        resultReceivedAt: result.resultReceivedAt.toISOString().slice(0, 10),
+        judgmentAmountState: result.judgmentAmountState,
+        judgmentAmount:
+          result.judgmentAmount === null
+            ? null
+            : new Prisma.Decimal(result.judgmentAmount.toString()).toFixed(2),
+        paidLitigationFeeState: result.paidLitigationFeeState,
+        paidLitigationFee:
+          result.paidLitigationFee === null
+            ? null
+            : new Prisma.Decimal(result.paidLitigationFee.toString()).toFixed(
+                2,
+              ),
+        fromVersion: result.fromVersion,
+        toVersion: result.toVersion,
+        recordedAt: result.recordedAt.toISOString(),
+        ...(principal === 'INTERNAL'
+          ? { recordedByUserId: result.recordedByUserId }
+          : {}),
+        files: result.versions.map((version) => ({
+          materialId: version.materialId,
+          contentVersionId: version.contentVersionId,
+          originalFilename: version.contentVersion.originalFilename,
+          mimeType: version.contentVersion.mimeType,
+        })),
+        childTrialRoundId: result.childRound?.id ?? null,
+        revocationId: result.revocation?.id ?? null,
+        refunds: await this.refunds.listSourceItems(
+          actor,
+          id,
+          'SECOND_INSTANCE_RESULT',
+          result.id,
+        ),
       })),
-      childTrialRoundId: result.childRound?.id ?? null,
-      revocationId: result.revocation?.id ?? null,
-    }));
+    );
     const judgmentAvailableFiles = judgmentMaterials.flatMap((material) =>
       material.contentVersions
         .filter(
@@ -2851,6 +2863,12 @@ export class CaseReadService {
             ? null
             : {
                 ...originalCurrentJudgment,
+                refunds: await this.refunds.listSourceItems(
+                  actor,
+                  id,
+                  'JUDGMENT',
+                  originalCurrentJudgment.id,
+                ),
                 ...(effectiveCurrentJudgment === undefined
                   ? {}
                   : {

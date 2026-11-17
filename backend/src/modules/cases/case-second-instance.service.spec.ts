@@ -131,6 +131,10 @@ describe('CaseSecondInstanceService', () => {
       ),
     };
     const access = { authorizeCase: jest.fn().mockResolvedValue(undefined) };
+    const refunds = {
+      lockJudgmentActor: jest.fn(),
+      registerSecondInstanceRefunds: jest.fn(),
+    };
     const materials = {
       assertAvailableVersions: jest.fn().mockResolvedValue([]),
       freezeCaseSecondInstanceReferences: jest
@@ -143,10 +147,12 @@ describe('CaseSecondInstanceService', () => {
       database,
       access,
       materials,
+      refunds,
       service: new CaseSecondInstanceService(
         database as never,
         access as never,
         materials as never,
+        refunds as never,
       ),
     };
   }

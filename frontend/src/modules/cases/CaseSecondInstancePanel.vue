@@ -93,6 +93,21 @@ const existingJudgmentMessage = ref('');
 const resultChoice = ref<ResultChoice>('');
 const receivedAt = ref('');
 const feeAmount = ref('');
+const refundStatuses = [
+  { value: 'PENDING', label: '待退' },
+  { value: 'SUBMITTED', label: '已提交' },
+  { value: 'RETURNED_UNSETTLED', label: '已退未结算' },
+  { value: 'SETTLED', label: '已结算' },
+  { value: 'RECEIVED', label: '已回款' },
+] as const;
+type RefundRow = {
+  key: number;
+  party: 'COURT' | 'DEFENDANT';
+  amount: string;
+  status: (typeof refundStatuses)[number]['value'];
+};
+const refundRows = ref<RefundRow[]>([]);
+let nextRefundKey = 1;
 const changedAmountState = ref<AmountState>('');
 const changedAmount = ref('');
 const revokeReason = ref('');
@@ -223,6 +238,10 @@ const validMoney = (value: string) =>
 const validFee = computed(
   () => !feeAmount.value.trim() || validMoney(feeAmount.value),
 );
+// 退费行金额可暂留空（不提交），填写则必须是合法金额。
+const validRefunds = computed(() =>
+  refundRows.value.every((row) => !row.amount.trim() || validMoney(row.amount)),
+);
 const validChangedAmount = computed(
   () =>
     changedAmountState.value === 'PENDING' ||
@@ -257,6 +276,7 @@ const resultReady = computed(
     resultChoice.value !== '' &&
     validReceivedDate.value &&
     validFee.value &&
+    validRefunds.value &&
     selectedJudgmentIds.value.length > 0 &&
     ((resultChoice.value !== 'CHANGE' &&
       !(resultChoice.value === 'AFFIRM' && directExternalRound.value)) ||
@@ -334,8 +354,16 @@ function resetDraft(): void {
   judgmentFiles.value = [];
   resultChoice.value = '';
   receivedAt.value = '';
-  // 二审沿用一审已登记的实缴诉讼费，可改可清空。
+  // 二审沿用一审已登记的实缴诉讼费与退费行，可改可增可删。
   feeAmount.value = props.item.judgment.current?.paidLitigationFee ?? '';
+  refundRows.value = (props.item.judgment.current?.refunds ?? []).map(
+    (row) => ({
+      key: nextRefundKey++,
+      party: row.party,
+      amount: row.amount,
+      status: row.status as RefundRow['status'],
+    }),
+  );
   changedAmountState.value = '';
   changedAmount.value = '';
   revokeReason.value = '';
@@ -560,6 +588,13 @@ function makeResultInput(): RegisterSecondInstanceResultInput {
   const paidLitigationFee = feeAmount.value.trim()
     ? { state: 'KNOWN' as const, amount: feeAmount.value.trim() }
     : { state: 'PENDING' as const, amount: null };
+  const refunds = refundRows.value
+    .filter((row) => row.amount.trim())
+    .map((row) => ({
+      party: row.party,
+      amount: row.amount.trim(),
+      status: row.status,
+    }));
   return {
     expectedVersion: props.item.version,
     idempotencyKey: globalThis.crypto.randomUUID(),
@@ -570,6 +605,7 @@ function makeResultInput(): RegisterSecondInstanceResultInput {
     resultReceivedAt: receivedAt.value,
     judgmentContentVersionIds: selectedJudgmentIds.value,
     paidLitigationFee,
+    ...(refunds.length ? { refunds } : {}),
     ...(resultChoice.value === 'CHANGE' ||
     (resultChoice.value === 'AFFIRM' && directExternalRound.value)
       ? {
@@ -1295,6 +1331,63 @@ function money(state: 'KNOWN' | 'PENDING', amount: string | null): string {
             maxlength="17"
             placeholder="未知可留空表示待确认"
         /></label>
+        <fieldset data-test="second-instance-refunds">
+          <legend>诉讼退费（可多笔）</legend>
+          <div
+            v-for="(row, index) in refundRows"
+            :key="row.key"
+            class="si-refund-row"
+          >
+            <select
+              v-model="row.party"
+              :aria-label="'第' + (index + 1) + '笔退费方'"
+            >
+              <option value="COURT">法院</option>
+              <option value="DEFENDANT">被告</option>
+            </select>
+            <input
+              v-model="row.amount"
+              :aria-label="'第' + (index + 1) + '笔退费金额'"
+              placeholder="退费金额（元）"
+              inputmode="decimal"
+              maxlength="17"
+            />
+            <select
+              v-model="row.status"
+              :aria-label="'第' + (index + 1) + '笔退费状态'"
+            >
+              <option
+                v-for="option in refundStatuses"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
+            <button
+              type="button"
+              class="link-button"
+              @click="refundRows.splice(index, 1)"
+            >
+              删除
+            </button>
+          </div>
+          <button
+            type="button"
+            data-test="second-instance-add-refund"
+            :disabled="refundRows.length >= 20"
+            @click="
+              refundRows.push({
+                key: nextRefundKey++,
+                party: 'COURT',
+                amount: '',
+                status: 'PENDING',
+              })
+            "
+          >
+            + 增加一笔退费
+          </button>
+        </fieldset>
         <label
           >二审裁判文书<input
             type="file"
@@ -1506,6 +1599,15 @@ function money(state: 'KNOWN' | 'PENDING', amount: string | null): string {
 }
 .si-actions__buttons {
   display: flex;
+  gap: 8px;
+}
+.si-refund-row {
+  display: grid;
+  grid-template-columns: minmax(5rem, 1fr) minmax(6rem, 1fr) minmax(
+      6rem,
+      1fr
+    ) auto;
+  align-items: center;
   gap: 8px;
 }
 </style>

@@ -537,6 +537,7 @@ describe('case read OpenAPI contract', () => {
         authorizeDepartmentAction: jest.fn().mockResolvedValue(undefined),
       } as never,
       {} as never,
+      { listSourceItems: jest.fn().mockResolvedValue([]) } as never,
     );
     const listRead = jest.spyOn(reads, 'list');
     const module = await Test.createTestingModule({

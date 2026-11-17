@@ -25,9 +25,12 @@ import {
   SaveSecondInstanceDto,
   SecondInstanceCommandResultDto,
 } from './case-second-instance.dto';
+import { LitigationRefundsService } from './litigation-refunds.service';
+import { LitigationRefundStatus } from './litigation-refunds.dto';
 
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const amountPattern = /^(?:0|[1-9]\d{0,13})(?:\.\d{1,2})?$/u;
 type Action = 'SAVE' | 'RESULT' | 'REVOKE';
 type Progress = {
   hearingAt: string | null;
@@ -50,6 +53,11 @@ type ResultValue = SaveValue & {
   judgmentContentVersionIds: string[];
   paidLitigationFee: { state: 'KNOWN' | 'PENDING'; amount: string | null };
   judgmentAmount: { state: 'KNOWN' | 'PENDING'; amount: string | null } | null;
+  refunds: {
+    party: 'COURT' | 'DEFENDANT';
+    amount: string;
+    status?: LitigationRefundStatus;
+  }[];
 };
 type RevokeValue = {
   expectedVersion: number;
@@ -110,6 +118,7 @@ export class CaseSecondInstanceService {
     private readonly database: DatabaseService,
     private readonly access: AccessControlService,
     private readonly materials: MaterialService,
+    private readonly refunds: LitigationRefundsService,
   ) {}
 
   save(
@@ -696,6 +705,16 @@ export class CaseSecondInstanceService {
         auditEventId: audit.id,
       },
     });
+    if ('refunds' in value && value.refunds.length) {
+      await this.refunds.lockJudgmentActor(tx, actor);
+      await this.refunds.registerSecondInstanceRefunds(
+        tx,
+        actor,
+        caseId,
+        resultId,
+        value.refunds,
+      );
+    }
     await this.materials.freezeCaseSecondInstanceReferences(
       tx,
       actor,
@@ -1156,6 +1175,18 @@ export class CaseSecondInstanceService {
         input.result === 'CHANGE' || input.judgmentAmount !== undefined
           ? this.money(input.judgmentAmount!)
           : null,
+      refunds: (input.refunds ?? []).map((row) => {
+        if (
+          (row.party !== 'COURT' && row.party !== 'DEFENDANT') ||
+          !amountPattern.test(row.amount.trim())
+        )
+          throw this.validation();
+        return {
+          party: row.party,
+          amount: row.amount.trim(),
+          ...(row.status ? { status: row.status } : {}),
+        };
+      }),
     };
   }
   private normalizeRevoke(input: RevokeSecondInstanceResultDto): RevokeValue {

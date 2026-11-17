@@ -638,6 +638,81 @@ export class LitigationRefundsService {
     return lockCustomerActorFacts(tx, this.organization, actor);
   }
 
+  async registerSecondInstanceRefunds(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    sourceId: string,
+    rows: {
+      party: 'COURT' | 'DEFENDANT';
+      amount: string;
+      status?: LitigationRefundStatus;
+    }[],
+  ) {
+    for (const row of rows) {
+      const head = await this.latest(tx, actor, caseId);
+      const itemId = randomUUID();
+      await this.write(
+        actor,
+        caseId,
+        itemId,
+        'REGISTER',
+        {
+          itemId,
+          idempotencyKey: randomUUID(),
+          expectedInventoryVersionId: head?.versionId ?? null,
+          sourceId,
+          sourceType: 'SECOND_INSTANCE_RESULT',
+          party: row.party,
+          amount: row.amount,
+          ...(row.status ? { status: row.status } : {}),
+          description: '二审结果登记应退金额',
+          reason: '随二审裁判结果提交',
+        },
+        tx,
+      );
+    }
+  }
+
+  /** 读接口用：不要求调用方持有事务。 */
+  async listSourceItems(
+    actor: ActorContext,
+    caseId: string,
+    sourceType: 'JUDGMENT' | 'SECOND_INSTANCE_RESULT',
+    sourceId: string,
+  ) {
+    return this.listBySource(
+      this.db as unknown as Prisma.TransactionClient,
+      actor,
+      caseId,
+      sourceType,
+      sourceId,
+    );
+  }
+
+  /** 读取某个来源（判决/二审结果）下的退费行，供再次编辑时回显。 */
+  async listBySource(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    sourceType: 'JUDGMENT' | 'SECOND_INSTANCE_RESULT',
+    sourceId: string,
+  ) {
+    const head = await this.latest(tx, actor, caseId);
+    const rows = await this.items(tx, actor, caseId, head);
+    return rows
+      .filter(
+        (row) => row.sourceType === sourceType && row.sourceId === sourceId,
+      )
+      .map((row) => ({
+        id: row.itemId,
+        party: row.party,
+        amount: row.amount,
+        status: row.status,
+        description: row.description ?? null,
+      }));
+  }
+
   async registerJudgmentRefunds(
     tx: Prisma.TransactionClient,
     actor: ActorContext,

@@ -265,6 +265,13 @@ class CaseSecondInstanceProgressSummaryDto {
   @ApiProperty({ type: [CaseCertificateFileDto] })
   serviceFiles!: CaseCertificateFileDto[];
 }
+class CaseRefundSummaryDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ enum: ['COURT', 'DEFENDANT'] }) party!: 'COURT' | 'DEFENDANT';
+  @ApiProperty() amount!: string;
+  @ApiProperty() status!: string;
+  @ApiProperty({ type: String, nullable: true }) description!: string | null;
+}
 class CaseSecondInstanceResultSummaryDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
@@ -292,6 +299,8 @@ class CaseSecondInstanceResultSummaryDto {
   childTrialRoundId!: string | null;
   @ApiProperty({ type: String, nullable: true, format: 'uuid' }) revocationId!:
     string | null;
+  @ApiProperty({ type: [CaseRefundSummaryDto] })
+  refunds!: CaseRefundSummaryDto[];
 }
 class CaseSecondInstanceRevocationSummaryDto {
   @ApiProperty({ format: 'uuid' }) id!: string;

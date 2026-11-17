@@ -818,6 +818,7 @@ export type CaseJudgmentFact = {
   reason?: string | null;
   recordedByUserId?: string;
   files: CaseFile[];
+  refunds?: CaseRefundRow[];
 };
 export type LawyerCaseJudgmentFact = Omit<
   CaseJudgmentFact,
@@ -1197,6 +1198,11 @@ export type RegisterSecondInstanceResultInput = Omit<
   judgmentContentVersionIds: string[];
   paidLitigationFee: { state: 'KNOWN' | 'PENDING'; amount: string | null };
   judgmentAmount?: { state: 'KNOWN' | 'PENDING'; amount: string | null };
+  refunds?: {
+    party: 'COURT' | 'DEFENDANT';
+    amount: string;
+    status?: string;
+  }[];
 };
 export type RevokeSecondInstanceResultInput = {
   expectedVersion: number;
@@ -1239,6 +1245,13 @@ export type CaseSecondInstanceProgress = SecondInstanceProgressBase & {
   recordedByUserId?: string;
 };
 export type LawyerSecondInstanceProgress = SecondInstanceProgressBase;
+export type CaseRefundRow = {
+  id: string;
+  party: 'COURT' | 'DEFENDANT';
+  amount: string;
+  status: string;
+  description: string | null;
+};
 type SecondInstanceResultBase = {
   id: string;
   trialRoundId: string;
@@ -1254,6 +1267,7 @@ type SecondInstanceResultBase = {
   files: CaseFile[];
   childTrialRoundId: string | null;
   revocationId: string | null;
+  refunds?: CaseRefundRow[];
 } & (
   | { result: 'REMAND'; judgmentAmountState: null; judgmentAmount: null }
   | {
@@ -2554,9 +2568,12 @@ function validJudgmentFact(value: unknown, internal: boolean): boolean {
     'recordedAt',
     'files',
   ];
-  const optional = internal ? ['reason', 'recordedByUserId'] : [];
+  const optional = internal
+    ? ['reason', 'recordedByUserId', 'refunds']
+    : ['refunds'];
   return (
     exactWithOptional(value, required, optional) &&
+    validRefundRows(value.refunds) &&
     uuidV4(value.id) &&
     uuidV4(value.trialRoundId) &&
     (value.kind === 'REGISTER' || value.kind === 'CORRECT') &&
@@ -3260,6 +3277,7 @@ function validSecondInstanceProgress(
     exactWithOptional(value, required, optional) &&
     uuidV4(value.id) &&
     uuidV4(value.trialRoundId) &&
+    validRefundRows(value.refunds) &&
     (uuidV4(value.choiceId) ||
       (value.choiceId === null &&
         externalRootRoundId !== null &&
@@ -3288,6 +3306,22 @@ function validSecondInstanceProgress(
     value.serviceFiles.every(caseFile)
   );
 }
+function validRefundRows(rows: unknown): boolean {
+  return (
+    rows === undefined ||
+    (Array.isArray(rows) &&
+      rows.every(
+        (row) =>
+          record(row) &&
+          exact(row, ['id', 'party', 'amount', 'status', 'description']) &&
+          typeof row.id === 'string' &&
+          (row.party === 'COURT' || row.party === 'DEFENDANT') &&
+          typeof row.amount === 'string' &&
+          typeof row.status === 'string' &&
+          (row.description === null || typeof row.description === 'string'),
+      ))
+  );
+}
 function validSecondInstanceResult(
   value: unknown,
   internal: boolean,
@@ -3313,7 +3347,7 @@ function validSecondInstanceResult(
     'childTrialRoundId',
     'revocationId',
   ];
-  const optional = internal ? ['recordedByUserId'] : [];
+  const optional = internal ? ['recordedByUserId', 'refunds'] : ['refunds'];
   const amountValid = (state: unknown, amount: unknown) =>
     state === 'PENDING'
       ? amount === null
