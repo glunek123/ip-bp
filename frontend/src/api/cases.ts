@@ -6441,16 +6441,27 @@ export async function mailCaseExecution(
   input: MailCaseExecutionInput,
   audience: 'internal' | 'client' | 'lawyer' = 'internal',
 ): Promise<MailCaseExecutionResult> {
-  const versions = input.mailReceiptContentVersionIds;
+  const versions = input.mailReceiptContentVersionIds ?? [];
+  // 凭证已改为选填、备注可选，键集因此有四种合法组合。
+  const base = [
+    'expectedVersion',
+    'idempotencyKey',
+    'expectedConfirmationId',
+    'mailedAt',
+  ];
+  const keysOk =
+    exact(input, base) ||
+    exact(input, [...base, 'remark']) ||
+    exact(input, [...base, 'mailReceiptContentVersionIds']) ||
+    exact(input, [...base, 'mailReceiptContentVersionIds', 'remark']);
+  const remarkOk =
+    input.remark === undefined ||
+    input.remark === null ||
+    (typeof input.remark === 'string' && input.remark.length <= 1000);
   if (
     !record(input) ||
-    !exact(input, [
-      'expectedVersion',
-      'idempotencyKey',
-      'expectedConfirmationId',
-      'mailedAt',
-      'mailReceiptContentVersionIds',
-    ]) ||
+    !keysOk ||
+    !remarkOk ||
     !Number.isInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
     !validIdempotencyKey(input.idempotencyKey) ||
@@ -6461,7 +6472,6 @@ export async function mailCaseExecution(
     !businessDate(input.mailedAt) ||
     input.mailedAt > todayShanghai() ||
     !Array.isArray(versions) ||
-    versions.length < 1 ||
     versions.length > 10 ||
     !versions.every(uuidV4) ||
     new Set(versions).size !== versions.length
