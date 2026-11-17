@@ -330,6 +330,10 @@ async function submit(): Promise<void> {
 .exec-batch__label {
   color: #606266;
   font-size: 13px;
+  white-space: nowrap;
+}
+.exec-batch__field input[type='date'] {
+  max-width: 220px;
 }
 .exec-batch__list {
   display: grid;
