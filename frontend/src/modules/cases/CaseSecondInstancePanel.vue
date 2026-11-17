@@ -75,6 +75,8 @@ const props = defineProps<{
   contextKey: string;
   actorKey: string;
   lawyer?: boolean;
+  /** 在抽屉中把保存/提交停靠到底部固定栏；内联编辑时保持原位。 */
+  dockActions?: boolean;
 }>();
 const emit = defineEmits<{ changed: []; refresh: [] }>();
 const hearingAt = ref('');
@@ -90,7 +92,6 @@ const existingJudgmentLoading = ref(false);
 const existingJudgmentMessage = ref('');
 const resultChoice = ref<ResultChoice>('');
 const receivedAt = ref('');
-const feeState = ref<AmountState>('');
 const feeAmount = ref('');
 const changedAmountState = ref<AmountState>('');
 const changedAmount = ref('');
@@ -218,10 +219,9 @@ const validReceivedDate = computed(
 );
 const validMoney = (value: string) =>
   /^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u.test(value.trim());
+// 实缴诉讼费留空表示待确认，填写则必须是合法金额。
 const validFee = computed(
-  () =>
-    feeState.value === 'PENDING' ||
-    (feeState.value === 'KNOWN' && validMoney(feeAmount.value)),
+  () => !feeAmount.value.trim() || validMoney(feeAmount.value),
 );
 const validChangedAmount = computed(
   () =>
@@ -256,7 +256,6 @@ const resultReady = computed(
     uploading.value === null &&
     resultChoice.value !== '' &&
     validReceivedDate.value &&
-    feeState.value !== '' &&
     validFee.value &&
     selectedJudgmentIds.value.length > 0 &&
     ((resultChoice.value !== 'CHANGE' &&
@@ -274,7 +273,7 @@ const registerBlockedReason = computed(() => {
   if (uploading.value !== null) return '文件上传中，请稍候';
   if (resultChoice.value === '') return '请选择二审裁判结果';
   if (!validReceivedDate.value) return '请填写收到裁判文书日期';
-  if (feeState.value === '' || !validFee.value) return '请填写已缴诉讼费';
+  if (!validFee.value) return '实缴诉讼费需为不超过 2 位小数的数字';
   if (!selectedJudgmentIds.value.length) return '请上传二审判决书';
   if (
     resultChoice.value === 'CHANGE' &&
@@ -335,8 +334,8 @@ function resetDraft(): void {
   judgmentFiles.value = [];
   resultChoice.value = '';
   receivedAt.value = '';
-  feeState.value = '';
-  feeAmount.value = '';
+  // 二审沿用一审已登记的实缴诉讼费，可改可清空。
+  feeAmount.value = props.item.judgment.current?.paidLitigationFee ?? '';
   changedAmountState.value = '';
   changedAmount.value = '';
   revokeReason.value = '';
@@ -558,10 +557,9 @@ function makeProgressInput(): SaveSecondInstanceInput {
   };
 }
 function makeResultInput(): RegisterSecondInstanceResultInput {
-  const paidLitigationFee =
-    feeState.value === 'PENDING'
-      ? { state: 'PENDING' as const, amount: null }
-      : { state: 'KNOWN' as const, amount: feeAmount.value.trim() };
+  const paidLitigationFee = feeAmount.value.trim()
+    ? { state: 'KNOWN' as const, amount: feeAmount.value.trim() }
+    : { state: 'PENDING' as const, amount: null };
   return {
     expectedVersion: props.item.version,
     idempotencyKey: globalThis.crypto.randomUUID(),
@@ -1103,17 +1101,7 @@ function money(state: 'KNOWN' | 'PENDING', amount: string | null): string {
       >
         <h3>二审更新</h3>
         <label
-          >二审开庭日期<input
-            v-model="hearingAt"
-            data-test="second-instance-hearing-at"
-            type="date"
-        /></label>
-        <label
-          >二审开庭地点<input v-model="hearingPlace" maxlength="500"
-        /></label>
-        <label>二审法官<input v-model="judgeName" maxlength="200" /></label>
-        <label
-          >二审文书<input
+          >上诉状/答辩状<input
             type="file"
             accept="application/pdf,image/jpeg,image/png"
             data-test="second-instance-document-upload"
@@ -1139,6 +1127,16 @@ function money(state: 'KNOWN' | 'PENDING', amount: string | null): string {
             </button>
           </span>
         </p>
+        <label
+          >二审开庭日期<input
+            v-model="hearingAt"
+            data-test="second-instance-hearing-at"
+            type="date"
+        /></label>
+        <label
+          >二审开庭地点<input v-model="hearingPlace" maxlength="500"
+        /></label>
+        <label>二审法官<input v-model="judgeName" maxlength="200" /></label>
         <label
           >二审送达文书<input
             type="file"
@@ -1289,28 +1287,13 @@ function money(state: 'KNOWN' | 'PENDING', amount: string | null): string {
             }}
           </p>
         </div>
-        <fieldset>
-          <legend>已缴诉讼费</legend>
-          <label
-            ><input
-              v-model="feeState"
-              data-test="second-instance-fee-state"
-              type="radio"
-              name="second-instance-fee-state"
-              value="KNOWN"
-            />已确定</label
-          ><label
-            ><input
-              v-model="feeState"
-              data-test="second-instance-fee-state"
-              type="radio"
-              name="second-instance-fee-state"
-              value="PENDING"
-            />待确认</label
-          >
-        </fieldset>
-        <label v-if="feeState === 'KNOWN'"
-          >诉讼费金额<input v-model="feeAmount" inputmode="decimal"
+        <label
+          >实缴诉讼费（元）<input
+            v-model="feeAmount"
+            data-test="second-instance-fee-amount"
+            inputmode="decimal"
+            maxlength="17"
+            placeholder="未知可留空表示待确认"
         /></label>
         <label
           >二审裁判文书<input
@@ -1366,24 +1349,29 @@ function money(state: 'KNOWN' | 'PENDING', amount: string | null): string {
           {{ registerBlockedReason }}
         </p>
         <div class="si-actions__buttons">
-          <button
-            v-if="canSaveCurrent"
-            data-test="second-instance-progress-save"
-            type="submit"
-            form="si-progress-form"
-            :disabled="!progressReady"
+          <Teleport
+            to="[data-workflow-footer-actions]"
+            :disabled="!props.dockActions"
           >
-            保存
-          </button>
-          <button
-            v-if="canRegister"
-            data-test="second-instance-result-submit"
-            type="submit"
-            form="si-result-form"
-            :disabled="!resultReady"
-          >
-            提交
-          </button>
+            <button
+              v-if="canSaveCurrent"
+              data-test="second-instance-progress-save"
+              type="submit"
+              form="si-progress-form"
+              :disabled="!progressReady"
+            >
+              保存
+            </button>
+            <button
+              v-if="canRegister"
+              data-test="second-instance-result-submit"
+              type="submit"
+              form="si-result-form"
+              :disabled="!resultReady"
+            >
+              提交
+            </button>
+          </Teleport>
         </div>
       </div>
     </template>

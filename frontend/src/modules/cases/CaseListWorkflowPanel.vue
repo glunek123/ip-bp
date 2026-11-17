@@ -1666,6 +1666,7 @@ async function complaint() {
         :item="item"
         :context-key="actorKey"
         :actor-key="actorKey"
+        dock-actions
         :submit-command="secondSubmit"
         @refresh="refresh"
       />

@@ -232,9 +232,7 @@ describe('CaseSecondInstancePanel', () => {
     await wrapper
       .get('[data-test="second-instance-received-at"]')
       .setValue('2026-10-10');
-    await wrapper
-      .get('[data-test="second-instance-fee-state"][value="PENDING"]')
-      .setValue();
+    await wrapper.get('[data-test="second-instance-fee-amount"]').setValue('');
     await wrapper
       .get('[data-test="second-instance-result-form"]')
       .trigger('submit');
@@ -321,9 +319,7 @@ describe('CaseSecondInstancePanel', () => {
     await wrapper
       .get('[data-test="second-instance-received-at"]')
       .setValue('2026-10-10');
-    await wrapper
-      .get('[data-test="second-instance-fee-state"][value="PENDING"]')
-      .setValue();
+    await wrapper.get('[data-test="second-instance-fee-amount"]').setValue('');
     await wrapper
       .get('[data-test="second-instance-result-file-choice"]')
       .setValue(true);
@@ -767,9 +763,7 @@ describe('CaseSecondInstancePanel', () => {
     await wrapper
       .get('[data-test="second-instance-received-at"]')
       .setValue('2026-10-10');
-    await wrapper
-      .get('[data-test="second-instance-fee-state"][value="PENDING"]')
-      .setValue();
+    await wrapper.get('[data-test="second-instance-fee-amount"]').setValue('');
     await wrapper
       .get('[data-test="second-instance-result-file-choice"]')
       .setValue(true);
@@ -1152,8 +1146,11 @@ describe('CaseSecondInstancePanel', () => {
         .exists(),
     ).toBe(false);
     expect(
-      wrapper.find('[data-test="second-instance-fee-state"]:checked').exists(),
-    ).toBe(false);
+      (
+        wrapper.get('[data-test="second-instance-fee-amount"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe('');
     expect(
       (
         wrapper.get('[data-test="second-instance-result-submit"]')
@@ -1276,9 +1273,7 @@ describe('CaseSecondInstancePanel', () => {
     await wrapper
       .get('[data-test="second-instance-result-option"][value="REMAND"]')
       .setValue();
-    await wrapper
-      .get('[data-test="second-instance-fee-state"][value="PENDING"]')
-      .setValue();
+    await wrapper.get('[data-test="second-instance-fee-amount"]').setValue('');
     const upload = wrapper.get('[data-test="second-instance-judgment-upload"]');
     Object.defineProperty(upload.element, 'files', {
       configurable: true,
@@ -1314,9 +1309,7 @@ describe('CaseSecondInstancePanel', () => {
     await wrapper
       .get('[data-test="second-instance-received-at"]')
       .setValue('2026-10-10');
-    await wrapper
-      .get('[data-test="second-instance-fee-state"][value="PENDING"]')
-      .setValue();
+    await wrapper.get('[data-test="second-instance-fee-amount"]').setValue('');
     await wrapper
       .get('[data-test="second-instance-result-file-choice"]')
       .setValue(true);
@@ -1411,9 +1404,7 @@ describe('CaseSecondInstancePanel', () => {
     await wrapper
       .get('[data-test="second-instance-received-at"]')
       .setValue('2026-10-10');
-    await wrapper
-      .get('[data-test="second-instance-fee-state"][value="PENDING"]')
-      .setValue();
+    await wrapper.get('[data-test="second-instance-fee-amount"]').setValue('');
     await wrapper
       .get('[data-test="second-instance-result-file-choice"]')
       .setValue(true);
