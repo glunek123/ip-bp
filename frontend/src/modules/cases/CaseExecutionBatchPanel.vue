@@ -187,10 +187,9 @@ async function submit(): Promise<void> {
   }
   submitting.value = false;
   finished.value = true;
-  if (failedRows.value.length === 0) {
+  // 不自动关闭：失败时用户要能看到清单，成功时也要能确认结果。
+  if (failedRows.value.length === 0)
     ElMessage.success(`${title.value}完成，共 ${doneCount.value} 件`);
-    emit('done');
-  }
 }
 </script>
 
@@ -258,6 +257,15 @@ async function submit(): Promise<void> {
         关闭
       </button>
       <button
+        v-if="finished && failedRows.length === 0"
+        type="button"
+        data-test="execution-batch-finish"
+        @click="emit('done')"
+      >
+        完成
+      </button>
+      <button
+        v-else
         type="button"
         data-test="execution-batch-submit"
         :disabled="!canSubmit"
