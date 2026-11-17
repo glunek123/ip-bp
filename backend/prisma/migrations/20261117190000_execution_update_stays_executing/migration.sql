@@ -79,5 +79,5 @@ IF TG_TABLE_NAME='cases' THEN target_case:=NEW."id"; target_department:=NEW."dep
          AND r."material_id"=v."material_id" AND r."content_version_id"=v."content_version_id")) THEN
     RAISE EXCEPTION 'execution filing chain/audit/reference/receipt mismatch' USING ERRCODE='23514'; END IF;
   RETURN NEW;
-END; $function$
+END; $function$;
 COMMIT;
