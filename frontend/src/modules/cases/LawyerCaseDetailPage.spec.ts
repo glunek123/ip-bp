@@ -633,7 +633,8 @@ describe('LawyerCaseDetailPage', () => {
     expect(wrapper.find('[data-test="second-instance-panel"]').exists()).toBe(
       true,
     );
-    expect(wrapper.text()).toContain('第1轮办理');
+    // 产品已改为「二审办理」区块标题，轮次条目不单独展示「第N轮办理」。
+    expect(wrapper.text()).toContain('二审办理');
     expect(wrapper.find('[data-test="second-instance-revoke"]').exists()).toBe(
       false,
     );

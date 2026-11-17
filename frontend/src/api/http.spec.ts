@@ -150,7 +150,8 @@ describe('HTTP boundary', () => {
 
     const result = await getBlob('/materials/m1/versions/v1/content');
 
-    expect(result.blob).toBeInstanceOf(Blob);
+    // 跨 realm：Node 的 Blob 与测试环境的 Blob 构造器可能不是同一个，按品牌标记判断。
+    expect(Object.prototype.toString.call(result.blob)).toBe('[object Blob]');
     expect(result.blob.size).toBe(16);
     expect(result).toMatchObject({
       filename: '营业执照.pdf',
@@ -174,7 +175,8 @@ describe('HTTP boundary', () => {
       selections: [],
     });
     expect(result.mimeType).toBe('application/zip');
-    expect(result.blob).toBeInstanceOf(Blob);
+    // 跨 realm：Node 的 Blob 与测试环境的 Blob 构造器可能不是同一个，按品牌标记判断。
+    expect(Object.prototype.toString.call(result.blob)).toBe('[object Blob]');
     expect(result.responseHeaders.get('X-Case-Export-Result')).toBe(
       '[{"successCount":1}]',
     );
