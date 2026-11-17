@@ -812,7 +812,11 @@ async function submit(request: CaseListRequest, recovery = false) {
         ),
       );
   if (!stored || !session.beginSubmit({ recovery }))
-    throw new ApiError('原请求仍待核对', 409, 'INVALID_STATE');
+    throw new ApiError(
+      `原请求仍待核对（诊断：requestState=${props.requestState}, action=${props.action}, allowed=${allowed.value}, pending=${!!pending.value}, stored=${!!stored}）`,
+      409,
+      'INVALID_STATE',
+    );
   try {
     globalThis.sessionStorage.setItem(storageKey, JSON.stringify(stored));
     pending.value = stored;
