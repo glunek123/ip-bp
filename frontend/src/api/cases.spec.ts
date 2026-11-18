@@ -6019,7 +6019,8 @@ describe('CA-015 execution finish contract', () => {
     { id: 'other-case' },
     { finishId: 'finish-1' },
     { filingId: '80000000-0000-4000-8000-000000000199' },
-    { stage: 'EXECUTING' },
+    // 保存后停留在 EXECUTING 属合法回执；非法值改用其他阶段。
+    { stage: 'WAITING_JUDGMENT' },
     { version: 20 },
     { finishedAt: '2026-10-02' },
     { recordedAt: '2026-02-30T00:00:00Z' },

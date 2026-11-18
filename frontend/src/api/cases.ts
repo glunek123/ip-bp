@@ -6624,7 +6624,8 @@ export async function finishCaseExecution(
     response.id !== id ||
     !uuidV4(response.finishId) ||
     response.filingId !== input.expectedFilingId ||
-    response.stage !== 'WAITING_ARCHIVE' ||
+    // 新记录保存后仍是 EXECUTING；历史重放为 WAITING_ARCHIVE。
+    !['EXECUTING', 'WAITING_ARCHIVE'].includes(response.stage as string) ||
     !Number.isSafeInteger(response.version) ||
     response.version !== input.expectedVersion + 1 ||
     response.finishedAt !== input.finishedAt ||
