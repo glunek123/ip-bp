@@ -4,6 +4,7 @@ import ElButton from 'element-plus/es/components/button/index';
 import ElDialog from 'element-plus/es/components/dialog/index';
 import ElInput from 'element-plus/es/components/input/index';
 import { ApiError } from '../../api/http';
+import { uploadMaterialFile } from '../../api/materials';
 import {
   getCasePreservation,
   saveCasePreservation,
@@ -17,6 +18,9 @@ const preservedOn = ref('');
 const feeAmount = ref('');
 const premiumAmount = ref('');
 const recordedOn = ref('');
+const documentVersionId = ref<string | null>(null);
+const uploadedName = ref('');
+const uploading = ref(false);
 const error = ref('');
 const busy = ref(false);
 
@@ -29,6 +33,8 @@ watch(
   async (open) => {
     if (!open) return;
     documentName.value = '';
+    documentVersionId.value = null;
+    uploadedName.value = '';
     preservedOn.value = '';
     feeAmount.value = '';
     premiumAmount.value = '';
@@ -38,6 +44,8 @@ watch(
       const current = await getCasePreservation(props.caseId);
       if (!current) return;
       documentName.value = current.documentName ?? '';
+      documentVersionId.value = current.documentVersionId;
+      uploadedName.value = current.documentName ?? '';
       preservedOn.value = current.preservedOn;
       feeAmount.value = current.feeAmount ?? '';
       premiumAmount.value = current.premiumAmount ?? '';
@@ -48,8 +56,38 @@ watch(
   },
 );
 
+async function pickFile(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  uploading.value = true;
+  error.value = '';
+  try {
+    const uploaded = await uploadMaterialFile({
+      ownerType: 'CASE',
+      ownerId: props.caseId,
+      category: 'CASE_PRESERVATION_DOCUMENT',
+      purpose: 'CASE_PRESERVATION_DOCUMENT',
+      file,
+    });
+    documentVersionId.value = uploaded.contentVersionId;
+    documentName.value = uploaded.originalFilename;
+    uploadedName.value = uploaded.originalFilename;
+  } catch (caught) {
+    error.value =
+      caught instanceof ApiError ? caught.message : '文书上传失败';
+  } finally {
+    uploading.value = false;
+    input.value = '';
+  }
+}
+
 async function submit(): Promise<void> {
   error.value = '';
+  if (!documentVersionId.value) {
+    error.value = '请先上传保全文书';
+    return;
+  }
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(preservedOn.value)) {
     error.value = '请选择保全日期';
     return;
@@ -57,6 +95,7 @@ async function submit(): Promise<void> {
   busy.value = true;
   try {
     await saveCasePreservation(props.caseId, {
+      documentVersionId: documentVersionId.value,
       documentName: documentName.value.trim() || null,
       preservedOn: preservedOn.value,
     });
@@ -82,11 +121,22 @@ async function submit(): Promise<void> {
     <div class="preservation">
       <label>
         保全文书
-        <ElInput
-          v-model="documentName"
-          placeholder="填写保全文书名称或编号"
-          data-test="preservation-document"
-        />
+        <div class="preservation__upload">
+          <input
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png"
+            :disabled="uploading"
+            data-test="preservation-document"
+            @change="pickFile"
+          />
+          <span v-if="uploading" class="preservation__hint">上传中…</span>
+          <span v-else-if="uploadedName" class="preservation__hint"
+            >已上传：{{ uploadedName }}</span
+          >
+          <span v-else class="preservation__hint"
+            >支持 PDF、JPG、PNG，保存前需先上传</span
+          >
+        </div>
       </label>
       <label>
         保全日期
@@ -137,6 +187,12 @@ async function submit(): Promise<void> {
   display: grid;
   gap: 6px;
   font-size: 13px;
+}
+.preservation__upload {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 .preservation__readonly {
   margin: 0;
