@@ -934,51 +934,6 @@ async function abandonPreparation() {
           : '正在读取结案工作区…'
       }}
     </p>
-    <section v-if="workspace" data-test="actual-summary">
-      <p>
-        本案客户实际回款：{{
-          actualDisplay?.customerReceivedAmount ?? '未登记／未知'
-        }}<template v-if="actualDisplay?.customerReceivedAmount != null">
-          元</template
-        >；律师实际开票：{{
-          actualDisplay?.lawyerInvoicedAmount ?? '未登记／未知'
-        }}<template v-if="actualDisplay?.lawyerInvoicedAmount != null">
-          元</template
-        >。
-      </p>
-      <p class="settle-hint">展示值，不作归档依据。</p>
-      <p v-if="actualReadError" role="alert">{{ actualReadError }}</p>
-      <ElButton
-        v-if="actualReadError"
-        :disabled="actualRefreshBusy || actualRequestState !== 'idle'"
-        data-test="refresh-actual"
-        @click="refreshActual"
-        >重试读取实际汇总</ElButton
-      >
-      <ElButton
-        v-if="actualAvailable && !pending"
-        data-test="open-actual"
-        :disabled="
-          busy ||
-          !!preparation ||
-          actualRequestState !== 'idle' ||
-          actualRefreshBusy ||
-          !!proofPaymentId
-        "
-        @click="actualOpen = !actualOpen"
-        >{{ actualOpen ? '收起实际登记' : '登记实际回款／律师开票' }}</ElButton
-      >
-      <ActualPanel
-        v-if="actualAvailable && !pending && actualSession"
-        v-show="actualOpen"
-        :actor-key="actualActorKey"
-        :case-id="caseId"
-        :actual-registration-lawyers="actualLawyers"
-        :session="actualSession"
-        @registered="refreshActual"
-        @cancel="actualOpen = false"
-      />
-    </section>
     <ElButton
       v-if="preparation?.unknown"
       :disabled="busy || preparation.busy"
