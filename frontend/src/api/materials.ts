@@ -560,8 +560,12 @@ export async function uploadMaterialFile(
           ['.jpeg', 'image/jpeg'],
           ['.png', 'image/png'],
         ]);
+        // 立案截图类凭证后端接受 PDF/JPG/PNG，前端保持一致。
         const allowed =
-          input.category === 'FILING_EVIDENCE' ? evidenceTypes : complaintTypes;
+          input.category === 'FILING_EVIDENCE' ||
+          input.category === 'EXECUTION_FILING_PROOF'
+            ? evidenceTypes
+            : complaintTypes;
         if (
           extension === undefined ||
           allowed.get(extension) !== input.file.type ||
