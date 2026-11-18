@@ -257,7 +257,7 @@ export class CaseClosureService {
             const finish = record.executionFinish;
             const closure = record.closure;
             if (
-              record.stage !== 'WAITING_ARCHIVE' ||
+              !['WAITING_ARCHIVE', 'EXECUTING'].includes(record.stage) ||
               (finish === null
                 ? source.kind !== 'EXTERNAL_ENTRY' ||
                   source.initialStage !== 'WAITING_ARCHIVE' ||
@@ -383,7 +383,7 @@ export class CaseClosureService {
               where: {
                 id: caseId,
                 departmentId: actor.departmentId,
-                stage: 'WAITING_ARCHIVE',
+                stage: { in: ['WAITING_ARCHIVE', 'EXECUTING'] },
                 version: input.expectedVersion,
                 currentTrialRoundId: record.currentTrialRoundId,
                 currentJudgmentNextStepId: record.currentJudgmentNextStepId,
@@ -446,6 +446,18 @@ export class CaseClosureService {
           { isolationLevel: 'Serializable' },
         );
       } catch (cause) {
+        // TEMP-DIAG: 记录底层触发器的具体消息，定位后移除。
+        console.error(
+          '[closure-diag]',
+          JSON.stringify(
+            cause instanceof Error
+              ? {
+                  message: cause.message,
+                  meta: (cause as { meta?: unknown }).meta,
+                }
+              : cause,
+          ),
+        );
         if (this.hasCode(cause, 'P2034') || this.hasCode(cause, '40001')) {
           if (attempt < 2) continue;
           throw failure('VERSION_CONFLICT');

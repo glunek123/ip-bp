@@ -398,10 +398,12 @@ export function resolveCaseDetailActions(
     'finish',
   );
   add(
-    stage === 'WAITING_ARCHIVE' &&
+    // 强制执行中可结案（推进阶段）；更正仍限待归档。
+    ((stage === 'WAITING_ARCHIVE' &&
       (!!current.executionFinish ||
         (current.origin?.kind === 'EXTERNAL_ENTRY' &&
-          current.origin.initialStage === 'WAITING_ARCHIVE')) &&
+          current.origin.initialStage === 'WAITING_ARCHIVE'))) ||
+      (stage === 'EXECUTING' && !current.closure)) &&
       ((!current.closure && current.canRecordClosure) ||
         (!!current.closure && current.canCorrectClosure)),
     'closure',
@@ -504,7 +506,8 @@ export function resolveCaseListActions(
     'settlement-update',
   );
   add(
-    current.stage === 'WAITING_ARCHIVE' &&
+    // 结案是唯一能把案件从强制执行中推进到待归档的动作。
+    (current.stage === 'WAITING_ARCHIVE' || current.stage === 'EXECUTING') &&
       !current.canUpdateClosureSettlement &&
       current.canRecordClosure,
     'record-closure',

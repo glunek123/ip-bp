@@ -940,7 +940,8 @@ export class CaseReadService {
                 : {}),
             })),
           canRecordClosure:
-            item.stage === 'WAITING_ARCHIVE' &&
+            (item.stage === 'WAITING_ARCHIVE' ||
+              item.stage === 'EXECUTING') &&
             ((item.executionFinish != null &&
               item.executionFinish.toVersion === item.version) ||
               (item.externalEntry?.initialStage === 'WAITING_ARCHIVE' &&
@@ -2773,7 +2774,8 @@ export class CaseReadService {
             : {}),
         })),
       canRecordClosure:
-        record.stage === 'WAITING_ARCHIVE' &&
+        (record.stage === 'WAITING_ARCHIVE' ||
+          record.stage === 'EXECUTING') &&
         closure === null &&
         ((record.executionFinish != null &&
           record.executionFinish.toVersion === record.version) ||
