@@ -100,3 +100,41 @@ filing → mailing → judgment），共 6 次迭代仍未收敛。继续逐个�
 2. `check_case_closure_final` / `check_case_closure_actor` / `check_case_closure_receipt` 的阶段与版本条件
 3. 执行更新（不推进）→ 结案（推进）→ 归档（再推进）的完整回放
 4. 历史已归档案件的重放校验（现有 5 条 finish 记录、4 条归档作为基线）
+
+---
+
+## 2026-11-18 第三次：完成（`b79d7286`）
+
+### 根因
+
+不是版本算法，是**结案更新漏写阶段**：`case_closure.service.ts` 更新 `cases` 时只写了
+`version: { increment: 1 }`，`stage` 没写入，于是案件变成 `EXECUTING/17`——
+版本加了、阶段没动，`check_case_closure_final` 用 `WAITING_ARCHIVE/17` 校验自然不通过。
+
+诊断证据（临时探针，已移除）：
+`closure terminal mismatch table=case_closures stage=EXECUTING version=17 base=16 terminal=17`
+
+### 最终改动
+
+| 层 | 内容 |
+| --- | --- |
+| 后端 | 执行更新只 increment version，不写 stage（停留在 `EXECUTING`） |
+| 后端 | 结案更新补回 `stage: 'WAITING_ARCHIVE'`（这是唯一的阶段推进点） |
+| 后端 | 结案前置与 `canRecordClosure` 允许 `EXECUTING` |
+| 前端 | 执行更新按钮「保存」，说明标注「不推进阶段」 |
+| 前端 | 列表/详情在 `EXECUTING` 下暴露「结案更新」 |
+| 前端 | 响应校验与投影接受 `EXECUTING` 回执 |
+| 数据库 | 7 个执行链守卫、结案操作人、结案收据允许 `EXECUTING`（`20261118090000` 起） |
+
+### UAT 实测（`00120261026016`）
+
+| 步骤 | 结果 |
+| --- | --- |
+| 执行更新保存 | `EXECUTING` 15 → 16，阶段不变 |
+| 结案提交 | `EXECUTING/16` → `WAITING_ARCHIVE/17` |
+| 结案后入口 | 显示「结案更新」，归档入口需结案额确定后才出现（原有条件） |
+
+### 迁移清单（本需求）
+
+`20261118090000`（7 个执行链守卫）、`20261118110000`（结案操作人）、
+`20261118120000`（结案收据）、`20261118150000`（恢复报错文案）。
