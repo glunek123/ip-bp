@@ -61,3 +61,42 @@ filing → mailing → judgment），共 6 次迭代仍未收敛。继续逐个�
 - 执行更新卡片：字段为「执行正式立案日期 / 执行案号 / 执行文书」，按钮「提交」
 - 提交后案件进入「待归档」，结案入口按下标正常出现
 - 未提交的案件仍停在「强制执行中」
+
+---
+
+## 2026-11-18 第二次尝试（同样回退）
+
+按「统一版本语义、一次性重写 7 个守卫」的方案重做，进展比第一次深，但仍卡在结案链。
+
+### 已完成并保留
+
+| 项 | 状态 |
+| --- | --- |
+| 字段「执行正式立案日期 / 执行案号 / 执行文书」 | 保留 |
+| 名称「执行更新」 | 保留 |
+| 执行更新保存后版本递增、阶段不变 | 已在 UAT 验证（`EXECUTING` 15→16） |
+| `check_case_execution_mailing_final` 缺待归档分支 | 修复（`20261117232000`） |
+| 7 个执行链守卫的放宽 | 迁移已入库（`20261118090000`），宽松超集 |
+
+### 未完成
+
+结案从「强制执行中」提交时被 `check_case_closure_final` 拦下（`closure terminal mismatch`）：
+`case_closure_terminal_version` 在「立案记录存在、结案刚插入」的事务里算出的期望版本比实际少 1。
+该值由 `case_closure_source_terminal_version` / `case_archive_terminal_version` 逐级累加得出，
+属于结案与归档共用的审计核心，不能在短时间内安全改动。
+
+### 当前线上状态（已回退到可用）
+
+- 执行更新：提交后推进到待归档（原行为）
+- 结案入口：仅待归档阶段可见
+- 案件 `00120261026016` 已修正为 `WAITING_ARCHIVE/16`，与立案记录一致
+
+### 结论
+
+「执行更新只改字段、结案推进阶段」必须与 **closure/archive 的版本累加**一起设计，
+不能只改执行链。建议单独排期，一次覆盖：
+
+1. `case_closure_source_terminal_version` 与 `case_archive_terminal_version` 的版本起点定义
+2. `check_case_closure_final` / `check_case_closure_actor` / `check_case_closure_receipt` 的阶段与版本条件
+3. 执行更新（不推进）→ 结案（推进）→ 归档（再推进）的完整回放
+4. 历史已归档案件的重放校验（现有 5 条 finish 记录、4 条归档作为基线）
