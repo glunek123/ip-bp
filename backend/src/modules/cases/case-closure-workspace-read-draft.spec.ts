@@ -61,7 +61,7 @@ function fixture(actualAggregate?: ClosureActualAggregateReadPort) {
       if (text.includes('FROM case_payment_proof_supplement_documents'))
         return supplements;
       if (text.includes('FROM case_refund_inventory_versions')) return refunds;
-      if (text.includes('FROM case_judgment_facts')) return [];
+      if (text.includes('case_second_instance_results')) return [];
       if (text.includes('FROM case_refund_inventory_items')) return items;
       if (text.includes('FROM case_settlement_assessment_versions'))
         return assessments;

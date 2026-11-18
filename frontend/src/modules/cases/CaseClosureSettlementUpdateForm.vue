@@ -36,8 +36,12 @@ type SettlementCommand = {
   lawyerAmount?: { mode: AmountEdit['mode']; amount?: string };
 };
 export type SettlementUpdateSource = {
-  /** 判决登记的已付诉讼费，结案时自动带入退费区。 */
-  litigationFee?: { state: 'KNOWN' | 'PENDING'; amount: string | null } | null;
+  /** 案件登记过的诉讼费（二审优先于判决），结案时自动带入退费区。 */
+  litigationFee?: {
+    state: 'KNOWN' | 'PENDING';
+    amount: string | null;
+    source: 'JUDGMENT' | 'SECOND_INSTANCE';
+  } | null;
   refund?: {
     versionId: string | null;
     items: RefundItem[];
@@ -799,7 +803,9 @@ function submit() {
         class="settle-hint settle-hint--tiny"
         data-test="judgment-litigation-fee"
       >
-        判决已付诉讼费：{{
+        案件已付诉讼费（{{
+          source.litigationFee.source === 'SECOND_INSTANCE' ? '二审' : '判决'
+        }}）：{{
           source.litigationFee.state === 'KNOWN' &&
           source.litigationFee.amount !== null
             ? `${source.litigationFee.amount}元`

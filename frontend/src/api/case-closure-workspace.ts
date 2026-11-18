@@ -102,10 +102,11 @@ export function decodeCaseClosureWorkspace(
     'items',
   ]);
   const litigationFee = nullable(row.litigationFee, (value) => {
-    const fee = object(value, ['state', 'amount']);
+    const fee = object(value, ['state', 'amount', 'source']);
     return {
       state: choice(fee.state, ['KNOWN', 'PENDING']),
       amount: nullable(fee.amount, money),
+      source: choice(fee.source, ['JUDGMENT', 'SECOND_INSTANCE']),
     };
   });
   const assessment = object(row.assessment, [

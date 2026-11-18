@@ -22,6 +22,7 @@ import {
   type SecondInstanceProgressInput,
 } from '../../api/cases';
 import { ApiError } from '../../api/http';
+import { getLitigationRefundWorkspace } from '../../api/litigation-refunds';
 import {
   downloadMaterialVersion,
   listOwnerMaterials,
@@ -403,6 +404,18 @@ watch(
     revision += 1;
     resetDraft();
     clearCandidates();
+    // 一审登记的诉讼退费（案件退费清单）带入二审，可改可增可删。
+    void getLitigationRefundWorkspace(props.item.id)
+      .then((workspace) => {
+        if (!workspace.items.length) return;
+        refundRows.value = workspace.items.map((row) => ({
+          key: nextRefundKey++,
+          party: row.party,
+          amount: row.amount ?? '',
+          status: row.status as RefundRow['status'],
+        }));
+      })
+      .catch(() => undefined);
     pending.value = false;
     pendingUnknown.value = pendingSecondInstanceCommand(recoveryIdentity());
     error.value = '';

@@ -608,15 +608,28 @@ export class CaseClosureWorkspaceReadDraft {
         WHERE case_id=${caseId}::uuid AND department_id=${actor.departmentId}::uuid
         ORDER BY revision DESC`;
         const refund = latestChain(refunds);
-        const judgments = await tx.$queryRaw<
-          { state: string; amount: string | null }[]
+        // 案件登记过的诉讼费：二审结果优先于判决，取最近一次。
+        const feeRows = await tx.$queryRaw<
+          { state: string; amount: string | null; source: string }[]
         >`
-          SELECT paid_litigation_fee_state AS state,
-            paid_litigation_fee::numeric(16,2)::text AS amount
-          FROM case_judgment_facts
-          WHERE case_id=${caseId}::uuid AND department_id=${actor.departmentId}::uuid
-          ORDER BY judgment_received_at DESC, id DESC LIMIT 1`;
-        const judgment = judgments[0] ?? null;
+          SELECT t.state, t.amount, t.source FROM (
+            SELECT paid_litigation_fee_state AS state,
+              paid_litigation_fee::numeric(16,2)::text AS amount,
+              'SECOND_INSTANCE' AS source,
+              result_received_at AS at
+            FROM case_second_instance_results
+            WHERE case_id=${caseId}::uuid AND department_id=${actor.departmentId}::uuid
+              AND paid_litigation_fee IS NOT NULL
+            UNION ALL
+            SELECT paid_litigation_fee_state,
+              paid_litigation_fee::numeric(16,2)::text,
+              'JUDGMENT',
+              judgment_received_at
+            FROM case_judgment_facts
+            WHERE case_id=${caseId}::uuid AND department_id=${actor.departmentId}::uuid
+              AND paid_litigation_fee IS NOT NULL
+          ) t ORDER BY t.at DESC LIMIT 1`;
+        const judgment = feeRows[0] ?? null;
         const refundItems = refund
           ? await tx.$queryRaw<RefundInventoryItem[]>`
         SELECT i.item_id AS "itemId",i.party,i.status,i.description,a.amount::numeric(16,2)::text AS amount FROM case_refund_inventory_items i
@@ -706,6 +719,7 @@ export class CaseClosureWorkspaceReadDraft {
             ? {
                 state: judgment.state as 'KNOWN' | 'PENDING',
                 amount: judgment.amount ?? null,
+                source: judgment.source as 'JUDGMENT' | 'SECOND_INSTANCE',
               }
             : null,
           refund: {
