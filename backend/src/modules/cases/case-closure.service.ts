@@ -447,18 +447,6 @@ export class CaseClosureService {
           { isolationLevel: 'Serializable' },
         );
       } catch (cause) {
-        // TEMP-DIAG: 记录底层触发器的具体消息，定位后移除。
-        console.error(
-          '[closure-diag]',
-          JSON.stringify(
-            cause instanceof Error
-              ? {
-                  message: cause.message,
-                  meta: (cause as { meta?: unknown }).meta,
-                }
-              : cause,
-          ),
-        );
         if (this.hasCode(cause, 'P2034') || this.hasCode(cause, '40001')) {
           if (attempt < 2) continue;
           throw failure('VERSION_CONFLICT');

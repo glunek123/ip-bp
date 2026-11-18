@@ -1,4 +1,4 @@
--- TEMP: 结案终态诊断（带值），定位后回退。
+-- 恢复结案终态报错文案（诊断结束）。
 BEGIN;
 CREATE OR REPLACE FUNCTION public.check_case_closure_final()
  RETURNS trigger
@@ -39,7 +39,7 @@ IF TG_TABLE_NAME='cases' THEN target_case:=NEW."id"; target_department:=NEW."dep
   base_version:=f."to_version";
  END IF;
  END IF;
- IF c."stage" NOT IN ('WAITING_ARCHIVE','ARCHIVED') OR c."version"<>case_closure_terminal_version(target_case,target_department,h."finish_id",base_version) THEN RAISE EXCEPTION 'closure terminal mismatch table=% stage=% version=% base=% terminal=%', TG_TABLE_NAME, c."stage", c."version", base_version, case_closure_terminal_version(target_case,target_department,h."finish_id",base_version) USING ERRCODE='23514'; END IF;
+ IF c."stage" NOT IN ('WAITING_ARCHIVE','ARCHIVED') OR c."version"<>case_closure_terminal_version(target_case,target_department,h."finish_id",base_version) THEN RAISE EXCEPTION 'closure terminal mismatch' USING ERRCODE='23514'; END IF;
  FOR v IN SELECT * FROM "case_closure_versions" WHERE "closure_id"=h."id" LOOP
   SELECT * INTO a FROM "audit_events" WHERE "id"=v."audit_event_id";
   selected:=a."details"->'closeContentVersionIds';
