@@ -398,7 +398,8 @@ export class CaseClosureService {
                   is: { id: closureId, currentVersionId: priorVersionId },
                 },
               },
-              data: { version: { increment: 1 } },
+              // 结案是唯一推进阶段的动作：登记后进入待归档。
+              data: { stage: 'WAITING_ARCHIVE', version: { increment: 1 } },
             });
             if (updated.count !== 1) throw failure('VERSION_CONFLICT');
             const head = await tx.caseClosure.updateMany({
