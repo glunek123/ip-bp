@@ -185,7 +185,7 @@ watch(
             <th scope="col">付款金额</th>
             <th scope="col">付款人</th>
             <th scope="col">收款人</th>
-            <th scope="col">收款截图</th>
+            <th scope="col">付款凭证</th>
             <th scope="col"><span class="sr-only">操作</span></th>
           </tr>
         </thead>
@@ -278,7 +278,7 @@ watch(
               <label
                 class="receipt-box"
                 :class="{ 'is-filled': !!record.receiptName }"
-                :title="record.receiptName || '上传收款截图'"
+                :title="record.receiptName || '上传付款凭证'"
               >
                 <input
                   type="file"

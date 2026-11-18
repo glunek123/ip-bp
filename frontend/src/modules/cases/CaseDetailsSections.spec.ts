@@ -666,7 +666,7 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
       '付款金额',
       '付款人',
       '收款人',
-      '收款截图',
+      '付款凭证',
     ]);
     expect(table.text()).toContain('付款方甲');
     expect(table.text()).toContain('收款方乙');

@@ -392,7 +392,7 @@ function edit(key: SectionKey): void {
               <th>付款金额</th>
               <th>付款人</th>
               <th>收款人</th>
-              <th>收款截图</th>
+              <th>付款凭证</th>
             </tr>
           </thead>
           <tbody>
