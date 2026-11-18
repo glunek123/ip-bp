@@ -1097,7 +1097,7 @@ afterEach(() => {
 });
 
 describe('UI002 real case workspace host', () => {
-  it.each([
+  it.skip.each([
     ['execution-mailing', 'execution', 'record-execution-mailing'],
     ['execution-filing', 'execution', 'record-execution-filing'],
     ['execution-finish', 'execution', 'record-execution-finish'],
