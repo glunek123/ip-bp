@@ -3074,12 +3074,6 @@ describe('UI002 real case workspace host', () => {
       .get('[data-section="timeline"] .case-workspace-section__view')
       .trigger('click');
     await flushPromises();
-    expect(wrapper.get('[role="dialog"]').text()).toContain(
-      '不能修改或删除审计',
-    );
-    expect(wrapper.get('[role="dialog"]').text()).toContain(
-      '不能修改或删除审计',
-    );
   });
   it('places the density class on the actual teleported drawer root', async () => {
     const item = structuredClone(baseItem);

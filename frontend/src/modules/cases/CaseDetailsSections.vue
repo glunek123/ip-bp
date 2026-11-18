@@ -337,9 +337,6 @@ function edit(key: SectionKey): void {
                   />
                 </template>
                 <template v-else>{{ field.value }}</template>
-                <p v-if="field.help" class="case-workspace-field__help">
-                  {{ field.help }}
-                </p>
                 <button
                   v-for="file in field.fileVersions ?? []"
                   :key="`${file.materialId}:${file.contentVersionId}`"
@@ -497,13 +494,6 @@ function edit(key: SectionKey): void {
       />
       <details v-if="section.groups.length" class="case-workspace-extra-groups">
         <summary>补充资料与历史记录</summary>
-        <p
-          v-if="section.message"
-          class="case-workspace-field__help"
-          role="status"
-        >
-          {{ section.message }}
-        </p>
         <nav
           v-if="section.groups.length > 1"
           class="case-workspace-group-nav"
@@ -642,13 +632,6 @@ function edit(key: SectionKey): void {
           </details>
         </li>
       </ol>
-      <details
-        class="case-workspace-field__help"
-        data-test="workspace-section-note"
-      >
-        <summary>资料说明</summary>
-        <p>{{ section.help }}</p>
-      </details>
     </CaseWorkspaceSection>
   </div>
 </template>

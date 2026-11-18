@@ -530,7 +530,7 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
     hint: sectionEditCommands.value.some(
       (command) => command.section === section,
     )
-      ? '更正本栏已登记信息，保存不推进阶段。'
+      ? ''
       : '没有已登记且当前允许更正的信息；流程办理请使用独立入口。',
   });
   const hasCommand = (section: SectionKey) =>
@@ -561,14 +561,14 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
       enabled: hasCommand('case-info'),
       label: '编辑',
       hint: hasCommand('case-info')
-        ? '更新已登记被告的电话／地址，保存不推进阶段。'
+        ? ''
         : caseEditHint,
     },
     'lead-info': {
       enabled: routine.value?.canEdit === true,
       label: '编辑',
       hint: routine.value?.canEdit
-        ? '修改本案资料，不影响来源线索或历史证据。'
+        ? ''
         : leadState.value === 'denied'
           ? '无权读取来源线索；案件仍可查看。'
           : '当前账号不能编辑本案资料。',
@@ -577,7 +577,7 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
       enabled: hasCommand('first-instance'),
       label: '编辑',
       hint: hasCommand('first-instance')
-        ? '更正已登记的一审受理／开庭资料，保存不推进阶段。'
+        ? ''
         : acceptanceEditHint,
     },
     'second-instance': action('second-instance'),
@@ -3156,15 +3156,7 @@ onBeforeUnmount(() => {
           append-to-body
           :destroy-on-close="false"
         >
-          <p class="field-help">
-            {{
-              sectionEditing
-                ? '本次只更正该栏已登记信息，保存不推进阶段。未提供独立更正接口的字段保持只读。'
-                : '流程办理使用下方业务命令；关闭抽屉不提交、不清除待核对请求。'
-            }}
-          </p>
           <div v-show="timelineView" class="case-workspace-timeline">
-            <p>仅展示本案已返回的真实记录，不能修改或删除审计。</p>
             <ol>
               <li
                 v-for="event in timelineEvents"
