@@ -138,3 +138,23 @@ filing → mailing → judgment），共 6 次迭代仍未收敛。继续逐个�
 
 `20261118090000`（7 个执行链守卫）、`20261118110000`（结案操作人）、
 `20261118120000`（结案收据）、`20261118150000`（恢复报错文案）。
+
+### 附带修复：执行立案截图无法上传（`8884c974`）
+
+**现象**：执行立案面板选图片后提示「凭证上传失败，已选 0 份」，请求未发出。
+
+**根因**：`frontend/src/api/materials.ts` 的上传前置校验把 `EXECUTION_FILING_PROOF`
+归到「起诉材料」分支，该分支只允许 `pdf/doc/docx`，PNG 直接被前端拦下；
+后端 `material.service.ts` 的 `EXECUTION_FILING_PROOF` 实际允许 `pdf/jpeg/png`，
+面板文案也写「PDF、JPG 或 PNG」——三处不一致，前端最严。
+
+**修复**：让 `EXECUTION_FILING_PROOF` 与 `FILING_EVIDENCE` 共用支持图片的类型集合。
+
+**验证**（`00120261026015` 全链路，7/7）：
+
+| 步骤 | 结果 |
+| --- | --- |
+| 上传立案截图 | 已选 1 份 |
+| 提交执行立案 | `WAITING_EXECUTION_FILING/14` → `EXECUTING/15` |
+| 执行更新保存 | `EXECUTING/15` → `EXECUTING/16`（阶段不变） |
+| 结案 | `EXECUTING/16` → `WAITING_ARCHIVE/17` |
