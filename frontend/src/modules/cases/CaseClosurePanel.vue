@@ -166,18 +166,19 @@ function clearDraft() {
   selected.value = available.value = [];
   materialError.value = '';
 }
-const canRecord = computed(
-  () =>
-    !props.editOnly &&
-    !projectionBlocked.value &&
-    (props.item.stage === 'WAITING_ARCHIVE' ||
-      props.item.stage === 'EXECUTING') &&
-    props.item.canRecordClosure &&
+const canRecord = computed(() => {
+  if (props.editOnly || projectionBlocked.value || props.item.closure)
+    return false;
+  if (!props.item.canRecordClosure) return false;
+  // 强制执行中：服务端已按立案记录核算过可结案。
+  if (props.item.stage === 'EXECUTING') return true;
+  return (
+    props.item.stage === 'WAITING_ARCHIVE' &&
     (!!props.item.executionFinish ||
       (props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
-        props.item.origin.initialStage === 'WAITING_ARCHIVE')) &&
-    !props.item.closure,
-);
+        props.item.origin.initialStage === 'WAITING_ARCHIVE'))
+  );
+});
 const canCorrect = computed(
   () =>
     !projectionBlocked.value &&
