@@ -2052,7 +2052,7 @@ function closureMatches(
       !earlyClosure &&
       canCorrect === false &&
       (canRecord !== true ||
-        (stage === 'WAITING_ARCHIVE' &&
+        ((stage === 'WAITING_ARCHIVE' || stage === 'EXECUTING') &&
           (executionFinish(finish, directFinish) ||
             (directStart && finish === null))))
     );
