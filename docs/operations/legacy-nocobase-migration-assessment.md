@@ -129,3 +129,36 @@
 2. 准入完成后，用 `POST /cases/csv-import/preview` → `commit` 导入案件骨架
    - 阶段按旧字段推断（`clue_*` → 早期阶段；`forensics_*`/`notarization_*` → 待立案；`case_court_number` → 立案后；`judgement_*` → 待判决/二审；`execution_*` → 执行；`completed_*` → 待归档）
    - 每案附带 1 条被告（取自 `clue_entity` / `disclosure_name`）与法院、案号、受理日期
+
+---
+
+## 案件导入结果（2026-11-18）
+
+| 项 | 数值 |
+| --- | --- |
+| 旧案件总数 | 2,759 |
+| 生成 CSV 行数 | 2,489（270 行客户未匹配，跳过） |
+| 已导入案件 | 2,911（**含约 422 条重复**） |
+| 未导入 | 45 行（被告列错位 40、必填缺 4、主体不唯一 1） |
+
+### 阶段分布（推断）
+
+待匹配 1,014 → 待写诉状 63、已归档 586、待提交立案 424、待归档 185、待开庭 131、待判决 74、强制执行中 12。
+
+### 重复的来源
+
+`POST /cases/csv-import/commit` 的幂等基于「CSV 指纹 + 行号」。我在导入过程中两次重新生成 CSV
+（修正待匹配阶段、清洗换行），指纹变化后服务端不再识别为同一行，导致同一旧案件被再次创建。
+
+**当前影响**：同一案件可能存在 2 条记录，业务层面可搜索到重复。
+
+**清理方案**（待确认后执行）：
+按 `case_external_entries` 的 `recorded_at` 分批，第二批中与第一批「客户 + 阶段 + 到达日期 +
+法院案号 + 被告姓名」完全一致者，保留最早一条，其余连同 external entry / receipts 一并删除。
+
+### 已知限制
+
+- 旧 `case_progress` 编码未解码，阶段按字段推断（`clue_*`/`forensics_*`/`notarization_*`/`case_court_number`/`judgement_*`/`execution_*`/`completed_*`/`case_archive_*`）
+- 旧 `clue_platform` 编码未知，平台统一填「其他」
+- 权证材料（附件 35,134 条）只有元数据，未迁移
+- 客户证件为占位 PDF（`migration-placeholder.pdf`），业务后续替换
