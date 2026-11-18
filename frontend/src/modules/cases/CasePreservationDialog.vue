@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import ElButton from 'element-plus/es/components/button/index';
 import ElDialog from 'element-plus/es/components/dialog/index';
+import ElDatePicker from 'element-plus/es/components/date-picker/index';
 import ElInput from 'element-plus/es/components/input/index';
 import { ApiError } from '../../api/http';
 import { uploadMaterialFile } from '../../api/materials';
@@ -68,6 +69,7 @@ async function pickFile(event: Event): Promise<void> {
       ownerId: props.caseId,
       category: 'CASE_PRESERVATION_DOCUMENT',
       purpose: 'CASE_PRESERVATION_DOCUMENT',
+      caseSupplementReason: '保全登记',
       file,
     });
     documentVersionId.value = uploaded.contentVersionId;
@@ -140,9 +142,13 @@ async function submit(): Promise<void> {
       </label>
       <label>
         保全日期
-        <ElInput
+        <ElDatePicker
           v-model="preservedOn"
-          placeholder="YYYY-MM-DD"
+          type="date"
+          value-format="YYYY-MM-DD"
+          format="YYYY-MM-DD"
+          placeholder="选择日期"
+          class="w-full"
           data-test="preservation-date"
         />
       </label>

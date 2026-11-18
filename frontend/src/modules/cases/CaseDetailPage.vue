@@ -17,6 +17,7 @@ import {
 import CaseSectionRecordCorrectionPanel, {
   readCaseSectionRecordRequests,
 } from './CaseSectionRecordCorrectionPanel.vue';
+import ElDialog from 'element-plus/es/components/dialog/index';
 import CaseAdditionalActions from './CaseAdditionalActions.vue';
 import CasePreservationDialog from './CasePreservationDialog.vue';
 
