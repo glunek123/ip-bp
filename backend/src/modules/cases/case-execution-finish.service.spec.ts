@@ -111,7 +111,7 @@ describe('CaseExecutionFinishService', () => {
         caseId,
         input,
       ),
-    ).resolves.toMatchObject({ stage: 'WAITING_ARCHIVE' });
+    ).resolves.toMatchObject({ stage: 'EXECUTING' });
     expect(f.access.authorizeCase).not.toHaveBeenCalled();
     expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -255,7 +255,7 @@ describe('CaseExecutionFinishService', () => {
   it('anchors the current mailing, freezes exact proof versions and advances once', async () => {
     const f = fixture();
     await expect(f.service.finish(actor, caseId, input)).resolves.toMatchObject(
-      { filingId, stage: 'WAITING_ARCHIVE', version: 25 },
+      { filingId, stage: 'EXECUTING', version: 25 },
     );
     expect(f.access.authorizeCase).toHaveBeenCalledWith(
       actor,

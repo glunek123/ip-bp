@@ -304,7 +304,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         'finishedAt',
         'recordedAt',
       ],
-      properties: { stage: { enum: ['WAITING_ARCHIVE'] } },
+      properties: { stage: { enum: ['EXECUTING'] } },
     });
   });
 

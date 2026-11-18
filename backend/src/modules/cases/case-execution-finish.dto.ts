@@ -59,7 +59,7 @@ export class FinishCaseExecutionResponseDto {
   @ApiProperty({ format: 'uuid' }) finishId!: string;
   @ApiProperty({ type: String, nullable: true, format: 'uuid' })
   filingId!: string | null;
-  @ApiProperty({ enum: ['WAITING_ARCHIVE'] }) stage!: 'WAITING_ARCHIVE';
+  @ApiProperty({ enum: ['EXECUTING'] }) stage!: 'EXECUTING';
   @ApiProperty() version!: number;
   @ApiProperty({ format: 'date' }) finishedAt!: string;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
