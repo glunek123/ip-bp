@@ -54,19 +54,11 @@ async function submit(): Promise<void> {
     error.value = '请选择保全日期';
     return;
   }
-  for (const value of [feeAmount.value, premiumAmount.value]) {
-    if (value.trim() && !/^(?:0|[1-9]\d{0,15})\.\d{2}$/u.test(value.trim())) {
-      error.value = '金额需为不超过 2 位小数的数字';
-      return;
-    }
-  }
   busy.value = true;
   try {
     await saveCasePreservation(props.caseId, {
       documentName: documentName.value.trim() || null,
       preservedOn: preservedOn.value,
-      feeAmount: feeAmount.value.trim() || null,
-      premiumAmount: premiumAmount.value.trim() || null,
     });
     emit('saved');
     emit('close');
@@ -106,11 +98,17 @@ async function submit(): Promise<void> {
       </label>
       <label>
         保全费（元）
-        <ElInput v-model="feeAmount" placeholder="如 900.00" />
+        <p class="preservation__readonly" data-test="preservation-fee">
+          {{ feeAmount || '0.00' }}
+          <span class="preservation__hint">来自费用明细「保全费」</span>
+        </p>
       </label>
       <label>
         保全保费（元）
-        <ElInput v-model="premiumAmount" placeholder="如 100.00" />
+        <p class="preservation__readonly" data-test="preservation-premium">
+          {{ premiumAmount || '0.00' }}
+          <span class="preservation__hint">来自费用明细「保全保费」</span>
+        </p>
       </label>
       <p v-if="recordedOn" class="preservation__hint">
         登记时间：{{ recordedOn }}
@@ -139,6 +137,14 @@ async function submit(): Promise<void> {
   display: grid;
   gap: 6px;
   font-size: 13px;
+}
+.preservation__readonly {
+  margin: 0;
+  padding: 6px 0;
+  font-size: 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 .preservation__hint {
   margin: 0;

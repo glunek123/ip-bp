@@ -11,11 +11,8 @@ export type PreservationInput = {
   documentVersionId?: string | null;
   documentName?: string | null;
   preservedOn: string;
-  feeAmount?: string | null;
-  premiumAmount?: string | null;
 };
 
-const money = /^(?:0|[1-9]\d{0,15})\.\d{2}$/u;
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -23,23 +20,51 @@ const uuid =
 export class CasePreservationService {
   constructor(private readonly db: DatabaseService) {}
 
+  /** 保全费／保全保费以费用明细（fee_records）为准，实时汇总。 */
+  private async feeTotals(actor: ActorContext, caseId: string) {
+    const rows = await this.db.feeRecord.groupBy({
+      by: ['type'],
+      where: {
+        caseId,
+        departmentId: actor.departmentId,
+        type: { in: ['保全费', '保全保费'] },
+      },
+      _sum: { amount: true },
+    });
+    const total = (type: string) =>
+      rows
+        .filter((row) => row.type === type)
+        .reduce((sum, row) => sum + Number(row._sum.amount ?? 0), 0)
+        .toFixed(2);
+    return { fee: total('保全费'), premium: total('保全保费') };
+  }
+
   async get(actor: ActorContext, caseId: string) {
     await this.assertCase(actor, caseId);
+    const totals = await this.feeTotals(actor, caseId);
     const row = await this.db.casePreservation.findFirst({
       where: { caseId, departmentId: actor.departmentId },
       orderBy: { recordedAt: 'desc' },
     });
-    return row
-      ? {
-          id: row.id,
-          documentVersionId: row.documentVersionId,
+    if (!row)
+      return {
+        id: null,
+        documentVersionId: null,
+        documentName: null,
+        preservedOn: null,
+        feeAmount: totals.fee,
+        premiumAmount: totals.premium,
+        recordedAt: null,
+      };
+    return {
+      id: row.id,
+      documentVersionId: row.documentVersionId,
       documentName: row.documentName,
-          preservedOn: row.preservedOn.toISOString().slice(0, 10),
-          feeAmount: row.feeAmount?.toFixed(2) ?? null,
-          premiumAmount: row.premiumAmount?.toFixed(2) ?? null,
-          recordedAt: row.recordedAt.toISOString(),
-        }
-      : null;
+      preservedOn: row.preservedOn.toISOString().slice(0, 10),
+      feeAmount: totals.fee,
+      premiumAmount: totals.premium,
+      recordedAt: row.recordedAt.toISOString(),
+    };
   }
 
   async save(actor: ActorContext, caseId: string, input: PreservationInput) {
@@ -50,11 +75,7 @@ export class CasePreservationService {
       throw new BadRequestException({ code: 'INVALID_DOCUMENT' });
     if (!/^\d{4}-\d{2}-\d{2}$/u.test(input.preservedOn))
       throw new BadRequestException({ code: 'INVALID_PRESERVED_ON' });
-    for (const value of [input.feeAmount, input.premiumAmount]) {
-      if (value === undefined || value === null || value === '') continue;
-      if (!money.test(value))
-        throw new BadRequestException({ code: 'INVALID_AMOUNT' });
-    }
+    const totals = await this.feeTotals(actor, caseId);
     const row = await this.db.casePreservation.create({
       data: {
         departmentId: actor.departmentId,
@@ -62,8 +83,8 @@ export class CasePreservationService {
         documentVersionId: input.documentVersionId ?? null,
         documentName: input.documentName?.trim() || null,
         preservedOn: new Date(`${input.preservedOn}T00:00:00.000Z`),
-        feeAmount: input.feeAmount ? input.feeAmount : null,
-        premiumAmount: input.premiumAmount ? input.premiumAmount : null,
+        feeAmount: totals.fee,
+        premiumAmount: totals.premium,
         recordedByUserId: actor.userId,
       },
     });
@@ -72,8 +93,8 @@ export class CasePreservationService {
       documentVersionId: row.documentVersionId,
       documentName: row.documentName,
       preservedOn: row.preservedOn.toISOString().slice(0, 10),
-      feeAmount: row.feeAmount?.toFixed(2) ?? null,
-      premiumAmount: row.premiumAmount?.toFixed(2) ?? null,
+      feeAmount: totals.fee,
+      premiumAmount: totals.premium,
       recordedAt: row.recordedAt.toISOString(),
     };
   }
