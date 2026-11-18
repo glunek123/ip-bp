@@ -589,8 +589,7 @@ export type FinishCaseExecutionResult = {
   id: string;
   finishId: string;
   filingId: string | null;
-  /** 执行更新不推进阶段，保存后仍是强制执行中。 */
-  stage: 'EXECUTING';
+  stage: 'WAITING_ARCHIVE';
   version: number;
   finishedAt: string;
   recordedAt: string;
@@ -2052,7 +2051,7 @@ function closureMatches(
       !earlyClosure &&
       canCorrect === false &&
       (canRecord !== true ||
-        ((stage === 'WAITING_ARCHIVE' || stage === 'EXECUTING') &&
+        (stage === 'WAITING_ARCHIVE' &&
           (executionFinish(finish, directFinish) ||
             (directStart && finish === null))))
     );
@@ -2237,10 +2236,7 @@ function executionFinishMatches(
     executionFinish(finish, directExecuting && filing === null) &&
     (executionFiling(filing) || (directExecuting && filing === null)) &&
     finish.filingId === (record(filing) ? filing.id : null) &&
-    // 执行更新只登记字段，立案记录存在时案件仍可停在强制执行中。
-    (stage === 'EXECUTING' ||
-      stage === 'WAITING_ARCHIVE' ||
-      stage === 'ARCHIVED') &&
+    (stage === 'WAITING_ARCHIVE' || stage === 'ARCHIVED') &&
     canFinish === false
   );
 }

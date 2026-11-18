@@ -166,19 +166,17 @@ function clearDraft() {
   selected.value = available.value = [];
   materialError.value = '';
 }
-const canRecord = computed(() => {
-  if (props.editOnly || projectionBlocked.value || props.item.closure)
-    return false;
-  if (!props.item.canRecordClosure) return false;
-  // 强制执行中：服务端已按立案记录核算过可结案。
-  if (props.item.stage === 'EXECUTING') return true;
-  return (
+const canRecord = computed(
+  () =>
+    !props.editOnly &&
+    !projectionBlocked.value &&
     props.item.stage === 'WAITING_ARCHIVE' &&
+    props.item.canRecordClosure &&
     (!!props.item.executionFinish ||
       (props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
-        props.item.origin.initialStage === 'WAITING_ARCHIVE'))
-  );
-});
+        props.item.origin.initialStage === 'WAITING_ARCHIVE')) &&
+    !props.item.closure,
+);
 const canCorrect = computed(
   () =>
     !projectionBlocked.value &&
@@ -195,9 +193,7 @@ const editable = computed(
     !denied.value &&
     !conflict.value &&
     !success.value &&
-    // 强制执行中可结案（推进到待归档）；更正仍只在待归档。
-    (props.item.stage === 'WAITING_ARCHIVE' ||
-      (props.item.stage === 'EXECUTING' && canRecord.value)) &&
+    props.item.stage === 'WAITING_ARCHIVE' &&
     (canRecord.value || (canCorrect.value && correcting.value)),
 );
 function validDate(value: string) {

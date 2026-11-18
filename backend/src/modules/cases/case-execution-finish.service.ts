@@ -306,8 +306,7 @@ export class CaseExecutionFinishService {
                       },
                     }),
               },
-              // 执行更新只登记字段，不推进阶段；阶段流转由「结案」负责。
-              data: { version: { increment: 1 } },
+              data: { stage: 'WAITING_ARCHIVE', version: { increment: 1 } },
             });
             if (updated.count !== 1)
               throw error('conflict', 'VERSION_CONFLICT');
@@ -324,7 +323,7 @@ export class CaseExecutionFinishService {
               id: caseId,
               finishId,
               filingId: filing?.id ?? null,
-              stage: 'EXECUTING',
+              stage: 'WAITING_ARCHIVE',
               version: input.expectedVersion + 1,
               finishedAt: input.finishedAt,
               recordedAt: recordedAt.toISOString(),

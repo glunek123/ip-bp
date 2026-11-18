@@ -24,8 +24,7 @@ type FinishResult = {
   id: string;
   finishId: string;
   filingId: string | null;
-  /** 保存执行更新不推进阶段。 */
-  stage: 'EXECUTING';
+  stage: 'WAITING_ARCHIVE';
   version: number;
   finishedAt: string;
   recordedAt: string;
@@ -448,7 +447,7 @@ async function download(file: CaseFile) {
     </template>
     <template v-else-if="editable">
       <p class="field-help">
-        登记执行正式立案信息：立案日期、执行案号与执行文书。保存只更新字段，不推进阶段；阶段流转由「结案」办理。
+        登记执行正式立案信息：立案日期、执行案号与执行文书。登记后案件进入待归档。
       </p>
       <label class="finish-field">
         <span>执行正式立案日期 <span aria-hidden="true">*</span></span>
@@ -544,7 +543,7 @@ async function download(file: CaseFile) {
         :loading="submitting"
         :disabled="!ready"
         @click="submit"
-        >保存</ElButton
+        >提交</ElButton
       >
     </template>
     <p
@@ -555,7 +554,7 @@ async function download(file: CaseFile) {
       当前案件或账号不满足执行更新登记条件。
     </p>
     <p v-if="success" role="status" data-test="execution-finish-success">
-      执行更新已保存，请刷新查看留存事实。
+      执行更新已登记，请刷新查看留存事实。
     </p>
     <p v-if="error" role="alert" class="submit-error">{{ error }}</p>
     <ElButton
