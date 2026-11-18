@@ -4,8 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { ActorContext } from '../../access-control/actor-context';
-import type { DatabaseService } from '../../database/database.service';
+import { ActorContext } from '../../access-control/actor-context';
+import { DatabaseService } from '../../database/database.service';
 
 /**
  * 删除仅用于纠正误创建的案子：
