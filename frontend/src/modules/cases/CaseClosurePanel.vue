@@ -194,7 +194,9 @@ const editable = computed(
     !denied.value &&
     !conflict.value &&
     !success.value &&
-    props.item.stage === 'WAITING_ARCHIVE' &&
+    // 强制执行中可结案（推进到待归档）；更正仍只在待归档。
+    (props.item.stage === 'WAITING_ARCHIVE' ||
+      (props.item.stage === 'EXECUTING' && canRecord.value)) &&
     (canRecord.value || (canCorrect.value && correcting.value)),
 );
 function validDate(value: string) {
