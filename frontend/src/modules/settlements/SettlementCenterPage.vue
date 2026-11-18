@@ -29,6 +29,7 @@ import {
   ElOption,
 } from 'element-plus/es/components/select/index.mjs';
 import { ElCheckbox } from 'element-plus/es/components/checkbox/index.mjs';
+import SettlementActualRegisterDialog from './SettlementActualRegisterDialog.vue';
 import { previewSettlementBillNumber } from '../../api/settlements';
 import {
   loadFinancialPending,
@@ -96,6 +97,8 @@ if (route.query.tab === 'refunds') {
 }
 let detailRevision = 0;
 const capabilities = ref<SettlementCapabilities | null>(null);
+const actualOpen = ref(false);
+const actualSide = ref<'CUSTOMER' | 'LAWYER'>('CUSTOMER');
 let revision = 0;
 let request: AbortController | null = null;
 const loading = ref(false);
@@ -544,6 +547,27 @@ async function cancelBill(): Promise<void> {
         诉讼退费
       </ElButton>
     </div>
+    <div
+      v-if="(tab === 'CUSTOMER' || tab === 'LAWYER') && capabilities?.read"
+      class="settlement-center__actual"
+    >
+      <ElButton
+        class="action-size--wide"
+        data-test="open-actual-register"
+        @click="
+          actualSide = tab === 'LAWYER' ? 'LAWYER' : 'CUSTOMER';
+          actualOpen = true;
+        "
+      >
+        {{ tab === 'LAWYER' ? '登记律师开票' : '登记实际回款' }}
+      </ElButton>
+    </div>
+    <SettlementActualRegisterDialog
+      :side="actualSide"
+      :open="actualOpen"
+      @close="actualOpen = false"
+      @registered="load"
+    />
     <template v-if="tab === 'REFUNDS'">
       <LitigationRefundPanel />
     </template>
@@ -988,6 +1012,11 @@ async function cancelBill(): Promise<void> {
 </template>
 
 <style scoped>
+.settlement-center__actual {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
 .settlement-center {
   display: grid;
   gap: 12px;
