@@ -6054,7 +6054,8 @@ describe('CA-015 execution finish contract', () => {
     for (const override of [
       { executionFinish: null },
       { canFinishExecution: true },
-      { stage: 'EXECUTING' },
+      // 保存后停留在 EXECUTING 属合法组合，用其他阶段验证拒绝。
+      { stage: 'WAITING_JUDGMENT' },
       {
         executionFinish: {
           ...payload.executionFinish,

@@ -2237,7 +2237,10 @@ function executionFinishMatches(
     executionFinish(finish, directExecuting && filing === null) &&
     (executionFiling(filing) || (directExecuting && filing === null)) &&
     finish.filingId === (record(filing) ? filing.id : null) &&
-    (stage === 'WAITING_ARCHIVE' || stage === 'ARCHIVED') &&
+    // 执行更新只登记字段，立案记录存在时案件仍可停在强制执行中。
+    (stage === 'EXECUTING' ||
+      stage === 'WAITING_ARCHIVE' ||
+      stage === 'ARCHIVED') &&
     canFinish === false
   );
 }
