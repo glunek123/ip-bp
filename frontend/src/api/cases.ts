@@ -6851,6 +6851,17 @@ export function caseClosureSession(
   return state;
 }
 
+/** 仅用于纠正误创建的案子：已产生费用或关联数据时服务端会拒绝。 */
+export async function deleteCase(
+  id: string,
+  options: RequestOptions = {},
+): Promise<void> {
+  await requestJson(`/cases/${encodeURIComponent(id)}`, {
+    ...options,
+    method: 'DELETE',
+  });
+}
+
 export async function getCase(
   id: string,
   options: RequestOptions = {},

@@ -112,6 +112,7 @@ import {
   changeCaseTypes,
   getCaseTypesContext,
   updateCaseDefendantContact,
+  deleteCase,
 } from '../../api/cases';
 import {
   downloadMaterialVersion,
@@ -628,6 +629,25 @@ const editorCommands = computed(() => {
 const primaryCommand = computed(() =>
   primaryCaseAction(item.value?.stage, businessCommands.value),
 );
+const removeOpen = ref(false);
+const removeBusy = ref(false);
+const removeError = ref('');
+async function confirmRemove(): Promise<void> {
+  const target = item.value;
+  if (!target || removeBusy.value) return;
+  removeBusy.value = true;
+  removeError.value = '';
+  try {
+    await deleteCase(target.id);
+    removeOpen.value = false;
+    await router.push(backTo.value);
+  } catch (error) {
+    removeError.value =
+      error instanceof ApiError ? error.message : '删除失败，请稍后重试';
+  } finally {
+    removeBusy.value = false;
+  }
+}
 const moreCommands = computed(() =>
   businessCommands.value.filter(
     (entry) => entry.id !== primaryCommand.value?.id,
@@ -2648,6 +2668,14 @@ onBeforeUnmount(() => {
             @click="openCommand(primaryCommand)"
             >{{ primaryCommand.label }}</ElButton
           >
+          <ElButton
+            type="danger"
+            plain
+            data-test="case-delete"
+            :disabled="routineEditing || routineSaving || additionalActionBusy"
+            @click="removeOpen = true"
+            >删除</ElButton
+          >
           <details
             v-if="moreCommands.length > 0"
             data-test="workspace-more-actions"
@@ -2702,7 +2730,34 @@ onBeforeUnmount(() => {
           <p v-if="recordRecovery.error" role="alert">
             {{ recordRecovery.error }}
           </p>
-          <CaseAdditionalActions
+          <ElDialog
+          v-model="removeOpen"
+          title="删除案件"
+          width="480px"
+          data-test="case-delete-dialog"
+        >
+          <p>
+            确定删除案件
+            <strong>{{ item?.businessNo }}</strong>
+            ？
+          </p>
+          <p>该案件的全部被告、费用、线索记录将一并删除，不可恢复。</p>
+          <p class="field-help">仅未产生任何费用的误建案件可以删除。</p>
+          <p v-if="removeError" role="alert">{{ removeError }}</p>
+          <template #footer>
+            <ElButton :disabled="removeBusy" @click="removeOpen = false"
+              >取消</ElButton
+            >
+            <ElButton
+              type="danger"
+              :loading="removeBusy"
+              data-test="case-delete-confirm"
+              @click="confirmRemove"
+              >删除</ElButton
+            >
+          </template>
+        </ElDialog>
+        <CaseAdditionalActions
             v-if="item"
             :key="`${item.id}:${identity}`"
             ref="additionalActions"
