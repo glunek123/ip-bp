@@ -18,6 +18,7 @@ import CaseSectionRecordCorrectionPanel, {
   readCaseSectionRecordRequests,
 } from './CaseSectionRecordCorrectionPanel.vue';
 import CaseAdditionalActions from './CaseAdditionalActions.vue';
+import CasePreservationDialog from './CasePreservationDialog.vue';
 
 import {
   computed,
@@ -630,6 +631,7 @@ const primaryCommand = computed(() =>
   primaryCaseAction(item.value?.stage, businessCommands.value),
 );
 const removeOpen = ref(false);
+const preservationOpen = ref(false);
 const removeBusy = ref(false);
 const removeError = ref('');
 async function confirmRemove(): Promise<void> {
@@ -2669,6 +2671,13 @@ onBeforeUnmount(() => {
             >{{ primaryCommand.label }}</ElButton
           >
           <ElButton
+            plain
+            data-test="case-preservation"
+            :disabled="routineEditing || routineSaving || additionalActionBusy"
+            @click="preservationOpen = true"
+            >保全</ElButton
+          >
+          <ElButton
             type="danger"
             plain
             data-test="case-delete"
@@ -2730,7 +2739,14 @@ onBeforeUnmount(() => {
           <p v-if="recordRecovery.error" role="alert">
             {{ recordRecovery.error }}
           </p>
-          <ElDialog
+          <CasePreservationDialog
+          v-if="item"
+          :case-id="item.id"
+          :open="preservationOpen"
+          @close="preservationOpen = false"
+          @saved="load"
+        />
+        <ElDialog
           v-model="removeOpen"
           title="删除案件"
           width="480px"

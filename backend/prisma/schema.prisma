@@ -2272,6 +2272,7 @@ model NotaryCertificateFee {
 
 model Case {
   supplementEntries CaseSupplementEntry[]
+  preservations CasePreservation[]
   settlementActualAllocations CaseSettlementActualAllocation[]
   originatedSettlementActualFacts SettlementActualFact[]
   routineProfile CaseRoutineProfile?
@@ -5718,4 +5719,21 @@ model CaseSettlementUploadTarget {
  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
  @@unique([id,uploadDraftId,departmentId,actorUserId,caseId])
  @@map("case_settlement_upload_targets")
+}
+
+model CasePreservation {
+  id                String   @id @default(uuid()) @db.Uuid
+  documentName      String?  @map("document_name") @db.VarChar(200)
+  departmentId      String   @map("department_id") @db.Uuid
+  caseId            String   @map("case_id") @db.Uuid
+  documentVersionId String?  @map("document_version_id") @db.Uuid
+  preservedOn       DateTime @map("preserved_on") @db.Date
+  feeAmount         Decimal? @map("fee_amount") @db.Decimal(16, 2)
+  premiumAmount     Decimal? @map("premium_amount") @db.Decimal(16, 2)
+  recordedByUserId  String   @map("recorded_by_user_id") @db.Uuid
+  recordedAt        DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  case              Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@map("case_preservations")
 }
