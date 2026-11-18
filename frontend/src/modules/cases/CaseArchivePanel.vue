@@ -575,7 +575,6 @@ function recordedTime(value: string) {
             >更正归档资料</ElButton
           >
         </div>
-        <p v-else data-test="archive-unrecorded">归档资料：未登记</p>
         <p
           v-if="item.stage === 'WAITING_ARCHIVE' && !item.closure && !editOnly"
           class="field-help"
@@ -583,46 +582,6 @@ function recordedTime(value: string) {
         >
           缺少结案记录：请先完成「结案更新」，归档才能提交。
         </p>
-        <p class="field-help">款项状态以实际记录为准。</p>
-        <section
-          v-if="canArchive"
-          aria-label="归档条件核查"
-          data-test="archive-readiness"
-        >
-          <p>归档前逐项核查。正式归档时服务端仍会重新核查。</p>
-          <p v-if="readiness">
-            核查时间：{{ recordedTime(readiness.checkedAt) }}
-          </p>
-          <p v-if="checkExpired" role="status">
-            核查已过期或案件版本已变化，请重新核查。
-          </p>
-          <p v-if="checkError" role="alert">{{ checkError }}</p>
-          <ul>
-            <li
-              v-for="row in checkRows"
-              :key="row.key"
-              :data-test="`archive-check-${row.key}`"
-            >
-              {{ row.label }}：{{
-                displayedChecks
-                  ? stateLabels[displayedChecks[row.key].state]
-                  : '未知'
-              }}。
-              {{
-                displayedChecks
-                  ? archiveCheckReason(displayedChecks[row.key].reason)
-                  : '尚未核查'
-              }}
-            </li>
-          </ul>
-          <ElButton
-            data-test="archive-check"
-            :loading="checking"
-            :disabled="checking || submitting || !!pending || denied"
-            @click="checkReadiness"
-            >重新核查</ElButton
-          >
-        </section>
         <template v-if="pending">
           <p role="status">
             原请求待核实。当前案件记录不能代替本次请求的结果。

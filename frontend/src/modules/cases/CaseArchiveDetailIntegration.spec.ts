@@ -302,6 +302,18 @@ async function open(
   });
   await router.push(`${audience === 'lawyer' ? '/lawyer' : ''}/cases/case-a`);
   await router.isReady();
+  api.getCaseArchiveReadiness.mockResolvedValue({
+    caseVersion: 20,
+    closureVersionId: versionId,
+    checkedAt: new Date().toISOString(),
+    state: 'PASSED',
+    checks: {
+      payment: { state: 'PASSED', reason: 'CLOSURE_PAYMENT_REACHED' },
+      refund: { state: 'PASSED', reason: 'REFUND_EXPLICITLY_NOT_APPLICABLE' },
+      customer: { state: 'PASSED', reason: 'CUSTOMER_RECEIPTS_REACHED' },
+      lawyer: { state: 'PASSED', reason: 'LAWYER_INVOICES_REACHED' },
+    },
+  });
   const wrapper = mount(page, {
     global: {
       plugins: [pinia, router],
@@ -448,24 +460,20 @@ function deferred<T>() {
   return { promise, resolve };
 }
 async function fill(wrapper: VueWrapper) {
-  const check = wrapper.find('[data-test="archive-check"]');
-  if (check.exists()) {
-    const item = wrapper.getComponent(CaseArchivePanel).props('item');
-    api.getCaseArchiveReadiness.mockResolvedValue({
-      caseVersion: item.version,
-      closureVersionId: item.closure!.current.id,
-      checkedAt: new Date().toISOString(),
-      state: 'PASSED',
-      checks: {
-        payment: { state: 'PASSED', reason: 'CLOSURE_PAYMENT_REACHED' },
-        refund: { state: 'PASSED', reason: 'REFUND_EXPLICITLY_NOT_APPLICABLE' },
-        customer: { state: 'PASSED', reason: 'CUSTOMER_RECEIPTS_REACHED' },
-        lawyer: { state: 'PASSED', reason: 'LAWYER_INVOICES_REACHED' },
-      },
-    });
-    await check.trigger('click');
-    await flushPromises();
-  }
+  const item = wrapper.getComponent(CaseArchivePanel).props('item');
+  api.getCaseArchiveReadiness.mockResolvedValue({
+    caseVersion: item.version,
+    closureVersionId: item.closure!.current.id,
+    checkedAt: new Date().toISOString(),
+    state: 'PASSED',
+    checks: {
+      payment: { state: 'PASSED', reason: 'CLOSURE_PAYMENT_REACHED' },
+      refund: { state: 'PASSED', reason: 'REFUND_EXPLICITLY_NOT_APPLICABLE' },
+      customer: { state: 'PASSED', reason: 'CUSTOMER_RECEIPTS_REACHED' },
+      lawyer: { state: 'PASSED', reason: 'LAWYER_INVOICES_REACHED' },
+    },
+  });
+  await flushPromises();
 
   await wrapper.get('[data-test="archive-date"]').setValue('2026-10-13');
   await wrapper
