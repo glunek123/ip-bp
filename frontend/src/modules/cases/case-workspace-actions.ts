@@ -504,7 +504,8 @@ export function resolveCaseListActions(
     'settlement-update',
   );
   add(
-    current.stage === 'WAITING_ARCHIVE' &&
+    // 结案是唯一能把案件从强制执行中推进到待归档的动作。
+    (current.stage === 'WAITING_ARCHIVE' || current.stage === 'EXECUTING') &&
       !current.canUpdateClosureSettlement &&
       current.canRecordClosure,
     'record-closure',
