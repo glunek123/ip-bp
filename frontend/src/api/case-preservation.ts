@@ -57,7 +57,7 @@ export async function saveCasePreservation(
     {
       ...options,
       method: 'PUT',
-      body: JSON.stringify(input),
+      body: input,
     },
   );
   const row = value as Record<string, unknown>;

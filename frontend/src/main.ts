@@ -6,6 +6,7 @@ import { onUnauthorized } from './api/http';
 import { useAuthStore } from './stores/auth';
 import 'element-plus/es/components/button/style/css';
 import 'element-plus/es/components/checkbox/style/css';
+import 'element-plus/es/components/date-picker/style/css';
 import 'element-plus/es/components/dialog/style/css';
 import 'element-plus/es/components/drawer/style/css';
 import 'element-plus/es/components/input/style/css';
