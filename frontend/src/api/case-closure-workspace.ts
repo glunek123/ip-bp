@@ -65,7 +65,14 @@ export function decodeCaseClosureWorkspace(
   value: unknown,
   expectedCaseId: string,
 ) {
-  const row = object(value, [
+  // 兼容尚未返回 litigationFee 的服务端：缺省视为未登记。
+  const normalized =
+    typeof value === 'object' &&
+    value !== null &&
+    !Object.hasOwn(value, 'litigationFee')
+      ? { ...(value as Record<string, unknown>), litigationFee: null }
+      : value;
+  const row = object(normalized, [
     'readPurpose',
     'caseId',
     'caseVersion',
@@ -75,6 +82,7 @@ export function decodeCaseClosureWorkspace(
     'effectivePayments',
     'documents',
     'refund',
+    'litigationFee',
     'assessment',
     'actual',
   ]);
@@ -93,6 +101,13 @@ export function decodeCaseClosureWorkspace(
     'declaration',
     'items',
   ]);
+  const litigationFee = nullable(row.litigationFee, (value) => {
+    const fee = object(value, ['state', 'amount']);
+    return {
+      state: choice(fee.state, ['KNOWN', 'PENDING']),
+      amount: nullable(fee.amount, money),
+    };
+  });
   const assessment = object(row.assessment, [
     'versionId',
     'revision',
@@ -211,6 +226,7 @@ export function decodeCaseClosureWorkspace(
         contentVersionId: id(d.contentVersionId),
       };
     }),
+    litigationFee,
     refund: {
       versionId: nullable(refund.versionId, id),
       revision: nullable(refund.revision, positive),

@@ -467,6 +467,7 @@ const source = computed<SettlementUpdateSource | null>(() => {
       payee: p.payee,
       receiptIds: p.documents.map((d) => d.contentVersionId),
     })),
+    litigationFee: w.litigationFee ?? null,
     refund: {
       versionId: w.refund.versionId,
       items: w.refund.items,

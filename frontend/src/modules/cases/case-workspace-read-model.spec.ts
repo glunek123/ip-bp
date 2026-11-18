@@ -244,6 +244,7 @@ describe('case workspace read model', () => {
         },
       ],
       documents: [],
+      litigationFee: null,
       refund: {
         versionId: null,
         revision: null,
@@ -364,6 +365,7 @@ describe('case workspace read model', () => {
       },
       effectivePayments: [],
       documents: [],
+      litigationFee: null,
       refund: {
         versionId: 'refund-v1',
         revision: 1,
@@ -535,6 +537,7 @@ describe('case workspace read model', () => {
       },
       effectivePayments: [],
       documents: [],
+      litigationFee: null,
       refund: {
         versionId: 'inventory-current',
         revision: 2,

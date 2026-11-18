@@ -24,6 +24,7 @@ function fixture() {
     },
     effectivePayments: [],
     documents: [],
+    litigationFee: null,
     refund: {
       versionId: null,
       revision: null,

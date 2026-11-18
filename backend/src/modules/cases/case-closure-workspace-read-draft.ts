@@ -608,6 +608,15 @@ export class CaseClosureWorkspaceReadDraft {
         WHERE case_id=${caseId}::uuid AND department_id=${actor.departmentId}::uuid
         ORDER BY revision DESC`;
         const refund = latestChain(refunds);
+        const judgments = await tx.$queryRaw<
+          { state: string; amount: string | null }[]
+        >`
+          SELECT paid_litigation_fee_state AS state,
+            paid_litigation_fee::numeric(16,2)::text AS amount
+          FROM case_judgment_facts
+          WHERE case_id=${caseId}::uuid AND department_id=${actor.departmentId}::uuid
+          ORDER BY judgment_received_at DESC, id DESC LIMIT 1`;
+        const judgment = judgments[0] ?? null;
         const refundItems = refund
           ? await tx.$queryRaw<RefundInventoryItem[]>`
         SELECT i.item_id AS "itemId",i.party,i.status,i.description,a.amount::numeric(16,2)::text AS amount FROM case_refund_inventory_items i
@@ -692,6 +701,13 @@ export class CaseClosureWorkspaceReadDraft {
             materialId: d.materialId,
             contentVersionId: d.contentVersionId,
           })),
+          // 判决登记的已付诉讼费，供结案退费区自动带入。
+          litigationFee: judgment
+            ? {
+                state: judgment.state as 'KNOWN' | 'PENDING',
+                amount: judgment.amount ?? null,
+              }
+            : null,
           refund: {
             versionId: refund?.versionId ?? null,
             revision: refund?.revision ?? null,

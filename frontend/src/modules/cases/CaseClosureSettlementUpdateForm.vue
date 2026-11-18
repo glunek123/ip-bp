@@ -36,6 +36,8 @@ type SettlementCommand = {
   lawyerAmount?: { mode: AmountEdit['mode']; amount?: string };
 };
 export type SettlementUpdateSource = {
+  /** 判决登记的已付诉讼费，结案时自动带入退费区。 */
+  litigationFee?: { state: 'KNOWN' | 'PENDING'; amount: string | null } | null;
   refund?: {
     versionId: string | null;
     items: RefundItem[];
@@ -792,6 +794,18 @@ function submit() {
           }}
         </span>
       </div>
+      <p
+        v-if="source.litigationFee"
+        class="settle-hint settle-hint--tiny"
+        data-test="judgment-litigation-fee"
+      >
+        判决已付诉讼费：{{
+          source.litigationFee.state === 'KNOWN' &&
+          source.litigationFee.amount !== null
+            ? `${source.litigationFee.amount}元`
+            : '待确认'
+        }}
+      </p>
       <ul class="refund-list">
         <li
           v-for="item in source.refund.items"

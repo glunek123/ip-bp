@@ -631,6 +631,7 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
         },
       ],
       documents: [],
+      litigationFee: null,
       refund: {
         versionId: null,
         revision: null,
