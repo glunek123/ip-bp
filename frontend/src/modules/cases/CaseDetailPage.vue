@@ -2667,6 +2667,7 @@ onBeforeUnmount(() => {
             >
           </details>
           <ElButton
+            v-if="item.stage !== 'WAITING_ARCHIVE'"
             v-for="command in recordRegistrationCommands"
             :key="command.id"
             plain
@@ -2676,6 +2677,7 @@ onBeforeUnmount(() => {
             >登记二审受理信息</ElButton
           >
           <ElButton
+            v-if="item.stage !== 'WAITING_ARCHIVE'"
             plain
             data-test="case-refresh"
             :loading="refreshing"
@@ -2684,6 +2686,7 @@ onBeforeUnmount(() => {
             >刷新</ElButton
           >
           <RouterLink
+            v-if="item.stage !== 'WAITING_ARCHIVE'"
             :to="handlingGroupsTo"
             data-test="case-handling-groups-entry"
             >案件系列</RouterLink

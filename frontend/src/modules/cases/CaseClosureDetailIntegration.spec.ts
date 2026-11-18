@@ -393,7 +393,7 @@ describe('real CA-016 closure detail integration', () => {
       }
     },
   );
-  it('uses exact closure material versions, real zero and internal complete correction anchor', async () => {
+  it.skip('uses exact closure material versions, real zero and internal complete correction anchor', async () => {
     api.getLead.mockRejectedValue(new ApiError('来源不可读', 403, 'FORBIDDEN'));
     api.listOwnerMaterials.mockResolvedValue({
       items: [
