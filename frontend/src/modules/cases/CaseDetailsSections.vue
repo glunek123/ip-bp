@@ -246,6 +246,7 @@ function edit(key: SectionKey): void {
       :action-label="
         section.key === 'timeline' ? actions[section.key].label : '编辑'
       "
+      :default-expanded="section.key === 'case-info'"
       @edit="edit"
     >
       <template v-if="section.key === 'timeline'" #tools>

@@ -2,21 +2,25 @@
 import { ref, useId, watch } from 'vue';
 import type { SectionAction, SectionKey } from './case-workspace-contract';
 
-const props = defineProps<{
-  sectionKey: SectionKey;
-  title: string;
-  contextKey: string;
-  action: SectionAction;
-  actionLabel?: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    sectionKey: SectionKey;
+    title: string;
+    contextKey: string;
+    action: SectionAction;
+    actionLabel?: string;
+    defaultExpanded?: boolean;
+  }>(),
+  { defaultExpanded: true },
+);
 const emit = defineEmits<{ edit: [sectionKey: SectionKey] }>();
-const expanded = ref(true);
+const expanded = ref(props.defaultExpanded !== false);
 const id = useId();
 
 watch(
   () => props.contextKey,
   () => {
-    expanded.value = true;
+    expanded.value = props.defaultExpanded !== false;
   },
   { flush: 'sync' },
 );
