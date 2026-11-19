@@ -1055,6 +1055,11 @@ onBeforeUnmount(() => {
           @click="batch('delete')"
           >删除</ElButton
         >
+        <ElButton
+          data-test="case-fee-cancellations"
+          @click="showCancellations = true"
+          >取消费用</ElButton
+        >
       </div>
       <p v-if="zeroOnlySelection" role="status">
         零元费用仅保留记录，不可发起；混选时零元费用将跳过。
