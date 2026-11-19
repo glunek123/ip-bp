@@ -257,10 +257,9 @@ async function submit(): Promise<void> {
     const created = await createCustomerDraft({
       name: normalizedName,
       ...(manager ? { customerManagerName: manager } : {}),
-      ...(customerType.value ? { customerType: customerType.value } : {}),
       ...(identityNumber.value.trim()
         ? {
-            identityType: identityType.value,
+            identityType: identityType.value || 'BUSINESS_LICENSE',
             identityNumber: identityNumber.value.trim(),
           }
         : {}),
@@ -390,45 +389,6 @@ async function submit(): Promise<void> {
                 >
                   {{ nameError }}
                 </p>
-              </div>
-              <div>
-                <label class="field-label" for="customer-type">主体类型</label>
-                <select
-                  id="customer-type"
-                  v-model="customerType"
-                  name="customerType"
-                  class="text-input"
-                >
-                  <option value="">请选择</option>
-                  <option
-                    v-for="option in customerTypeOptions"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </option>
-                </select>
-              </div>
-              <div>
-                <label class="field-label" for="customer-identity-type"
-                  >证件类型</label
-                >
-                <select
-                  id="customer-identity-type"
-                  v-model="identityType"
-                  name="identityType"
-                  class="text-input"
-                  :disabled="!customerType"
-                >
-                  <option value="">请选择</option>
-                  <option
-                    v-for="option in displayedIdentityTypes"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </option>
-                </select>
               </div>
               <div class="customer-new-fields__wide">
                 <label class="field-label" for="customer-identity-number">{{
