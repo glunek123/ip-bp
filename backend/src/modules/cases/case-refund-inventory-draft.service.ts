@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { ActorContext } from '../../access-control/actor-context';
 
+export type RefundPayee = 'PLAINTIFF' | 'LAW_FIRM';
 export type RefundInventoryItem = {
   itemId: string;
   party: 'COURT' | 'DEFENDANT';
+  payee?: RefundPayee | null;
   status:
     | 'UNKNOWN'
     | 'PENDING'

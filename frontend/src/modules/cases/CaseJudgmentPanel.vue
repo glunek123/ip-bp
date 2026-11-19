@@ -65,9 +65,11 @@ const refundStatuses: ReadonlyArray<{ value: RefundStatus; label: string }> = [
   { value: 'SETTLED', label: '已结算' },
   { value: 'RECEIVED', label: '已回款' },
 ];
+type RefundPayee = 'PLAINTIFF' | 'LAW_FIRM';
 type RefundRow = {
   key: number;
   party: 'COURT' | 'DEFENDANT';
+  payee: RefundPayee;
   amount: string;
   status: RefundStatus;
 };
@@ -357,9 +359,10 @@ function makeInput(): RegisterCaseJudgmentInput {
     paidLitigationFee: paidLitigationFee.value.trim() || null,
     ...(refundRows.value.length
       ? {
-          refunds: refundRows.value.map(({ party, amount, status }) => ({
+          refunds: refundRows.value.map(({ party, payee, amount, status }) => ({
             status,
             party,
+            payee,
             amount: amount.trim(),
           })),
         }
@@ -626,6 +629,15 @@ function historyLabel(fact: CaseJudgmentFact): string {
             <option value="COURT">法院</option>
             <option value="DEFENDANT">被告</option>
           </select>
+          <select
+            v-model="row.payee"
+            :aria-label="'第' + (index + 1) + '笔退给谁'"
+            :data-test="`judgment-refund-payee-${index}`"
+            :disabled="unknownRequest !== null || submitting"
+          >
+            <option value="PLAINTIFF">退给原告</option>
+            <option value="LAW_FIRM">退给律所</option>
+          </select>
           <input
             v-model="row.amount"
             :aria-label="'第' + (index + 1) + '笔退费金额'"
@@ -663,6 +675,7 @@ function historyLabel(fact: CaseJudgmentFact): string {
             refundRows.push({
               key: nextRefundKey++,
               party: 'COURT',
+              payee: 'PLAINTIFF',
               amount: '',
               status: 'PENDING',
             })

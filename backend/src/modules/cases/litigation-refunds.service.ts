@@ -46,6 +46,7 @@ export type LitigationRefundRow = {
   executionCaseNo?: string | null;
   lawyer: string | null;
   party: 'COURT' | 'DEFENDANT';
+  payee?: 'PLAINTIFF' | 'LAW_FIRM' | null;
   amount: string | null;
   status: LitigationRefundStatus;
   description: string;
@@ -196,6 +197,7 @@ function project(
     courtNo: source?.courtNo ?? null,
     lawyer: record.lawyers[0]?.lawyer.fullName ?? null,
     party: item.party,
+    payee: item.payee ?? null,
     amount: normalizeRefundAmount(item.amount),
     status: item.status,
     description: item.description,
@@ -328,7 +330,7 @@ export class LitigationRefundsService {
   ): Promise<Item[]> {
     if (!head) return [];
     const items = await tx.$queryRaw<Item[]>`
-      SELECT i.item_id AS "itemId",i.party,i.status,i.description,
+      SELECT i.item_id AS "itemId",i.party,i.payee,i.status,i.description,
         a.amount::numeric(16,2)::text AS amount,
         m.source_type AS "sourceType",m.source_id AS "sourceId",
         m.trial_round_id AS "trialRoundId",m.remark
@@ -665,6 +667,7 @@ export class LitigationRefundsService {
       party: 'COURT' | 'DEFENDANT';
       amount: string;
       status?: LitigationRefundStatus;
+      payee?: 'PLAINTIFF' | 'LAW_FIRM';
     }[],
   ) {
     for (const row of rows) {
@@ -801,6 +804,7 @@ export class LitigationRefundsService {
       party: 'COURT' | 'DEFENDANT';
       amount: string;
       status?: LitigationRefundStatus;
+      payee?: 'PLAINTIFF' | 'LAW_FIRM';
     }[],
   ) {
     for (const row of rows) {
@@ -820,6 +824,7 @@ export class LitigationRefundsService {
           party: row.party,
           amount: row.amount,
           ...(row.status ? { status: row.status } : {}),
+          ...(row.payee ? { payee: row.payee } : {}),
           description: '判决更新登记应退金额',
           reason: '随判决资料提交',
         },
@@ -1063,9 +1068,10 @@ export class LitigationRefundsService {
         }
         await tx.$executeRaw`
       INSERT INTO case_refund_inventory_items(
-        inventory_version_id,item_id,case_id,department_id,party,status,description)
+        inventory_version_id,item_id,case_id,department_id,party,status,description,payee)
       VALUES (${versionId}::uuid,${item.itemId}::uuid,${caseId}::uuid,
-        ${actor.departmentId}::uuid,${item.party},${item.status},${item.description})`;
+        ${actor.departmentId}::uuid,${item.party},${item.status},${item.description},
+        ${item.payee ?? null})`;
         await tx.$executeRaw`
       INSERT INTO case_refund_inventory_item_amounts(inventory_version_id,item_id,amount)
       VALUES (${versionId}::uuid,${item.itemId}::uuid,${normalizeRefundAmount(item.amount)}::numeric)`;

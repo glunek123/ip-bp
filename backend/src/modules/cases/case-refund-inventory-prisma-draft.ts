@@ -432,7 +432,7 @@ export class CaseRefundInventoryPrismaDraft {
       append: async (s) => {
         await db.$executeRaw`INSERT INTO case_refund_inventory_versions(id,case_id,department_id,revision,prior_version_id,declaration,recorded_by_user_id,recorded_at,audit_event_id) VALUES (${s.id}::uuid,${s.caseId}::uuid,${s.departmentId}::uuid,${s.revision},${s.priorVersionId}::uuid,${s.declaration},${s.recordedByUserId}::uuid,${recordedAt},${s.auditEventId}::uuid)`;
         for (const i of s.items) {
-          await db.$executeRaw`INSERT INTO case_refund_inventory_items(inventory_version_id,item_id,case_id,department_id,party,status,description) VALUES (${s.id}::uuid,${i.itemId}::uuid,${s.caseId}::uuid,${s.departmentId}::uuid,${i.party},${i.status},${i.description})`;
+          await db.$executeRaw`INSERT INTO case_refund_inventory_items(inventory_version_id,item_id,case_id,department_id,party,status,description,payee) VALUES (${s.id}::uuid,${i.itemId}::uuid,${s.caseId}::uuid,${s.departmentId}::uuid,${i.party},${i.status},${i.description},${i.payee ?? null})`;
           await db.$executeRaw`INSERT INTO case_refund_inventory_item_amounts(inventory_version_id,item_id,amount) VALUES (${s.id}::uuid,${i.itemId}::uuid,${normalizeRefundAmount(i.amount)}::numeric)`;
         }
         await validateRefundSnapshotInTransaction(db, s.id);

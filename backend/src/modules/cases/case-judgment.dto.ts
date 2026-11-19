@@ -26,6 +26,12 @@ export class CaseJudgmentRefundDto {
   @IsIn(['COURT', 'DEFENDANT'])
   party!: 'COURT' | 'DEFENDANT';
 
+  /** 退给谁：原告或律所；仅作标识，不参与结算计算。 */
+  @ApiPropertyOptional({ enum: ['PLAINTIFF', 'LAW_FIRM'] })
+  @IsOptional()
+  @IsIn(['PLAINTIFF', 'LAW_FIRM'])
+  payee?: 'PLAINTIFF' | 'LAW_FIRM';
+
   /** 退费状态；不传时按「待退」登记，与结算中心同一张表。 */
   @ApiPropertyOptional({ enum: litigationRefundStatuses })
   @IsOptional()

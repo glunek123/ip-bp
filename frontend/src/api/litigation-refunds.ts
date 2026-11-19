@@ -32,6 +32,8 @@ export type RefundRow = {
   plaintiff: string;
   defendant: string;
   courtNo: string | null;
+  executionCaseNo?: string | null;
+  payee?: 'PLAINTIFF' | 'LAW_FIRM' | null;
   lawyer: string | null;
   party: RefundParty;
   amount: string | null;

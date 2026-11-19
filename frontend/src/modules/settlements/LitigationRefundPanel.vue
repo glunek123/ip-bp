@@ -25,6 +25,11 @@ import {
 } from '../../api/litigation-refunds';
 import { useAuthStore } from '../../stores/auth';
 
+function payeeLabel(value?: 'PLAINTIFF' | 'LAW_FIRM' | null): string {
+  if (value === 'PLAINTIFF') return '退给原告';
+  if (value === 'LAW_FIRM') return '退给律所';
+  return '—';
+}
 const refundFilterOptions = [
   { value: 'PENDING', label: '待退' },
   { value: 'SUBMITTED', label: '已提交' },
@@ -48,6 +53,7 @@ type RefundColumn =
   | 'courtNo'
   | 'lawyer'
   | 'party'
+  | 'payee'
   | 'amount'
   | 'status'
   | 'remark';
@@ -62,11 +68,13 @@ const columnDefinitions: readonly {
   { key: 'courtNo', label: '案号' },
   { key: 'lawyer', label: '律师' },
   { key: 'party', label: '退费方式' },
+  { key: 'payee', label: '退给谁' },
   { key: 'amount', label: '退费金额' },
   { key: 'status', label: '退费状态' },
   { key: 'remark', label: '退费备注' },
 ];
 const defaultColumns: Record<RefundColumn, boolean> = {
+  payee: true,
   caseNo: true,
   plaintiff: true,
   defendant: true,
@@ -683,6 +691,11 @@ onBeforeUnmount(() => {
                     :title="row.party === 'COURT' ? '法院退费' : '被告径付'"
                     >{{ row.party === 'COURT' ? '法院退费' : '被告径付' }}</span
                   ></template
+                >
+                <template v-else-if="column.key === 'payee'"
+                  ><span :title="payeeLabel(row.payee)">{{
+                    payeeLabel(row.payee)
+                  }}</span></template
                 >
                 <template v-else-if="column.key === 'amount'"
                   ><span
