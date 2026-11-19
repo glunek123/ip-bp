@@ -114,6 +114,7 @@ import {
   changeCaseTypes,
   getCaseTypesContext,
   updateCaseDefendantContact,
+  updateCaseDefendantProfile,
   deleteCase,
 } from '../../api/cases';
 import {
@@ -272,6 +273,18 @@ const caseDraft = reactive({
 });
 const caseInfoSaving = ref(false);
 const caseInfoError = ref('');
+const defendantProfileDrafts = reactive<
+  Record<
+    string,
+    {
+      name?: string;
+      idNo?: string;
+      phone?: string;
+      address?: string;
+      legalRepresentative?: string;
+    }
+  >
+>({});
 const caseEditFields = computed(() => {
   if (inlineEditSection.value !== 'case-info') return null;
   const fields: Record<
@@ -285,6 +298,26 @@ const caseEditFields = computed(() => {
     联系电话: { kind: 'text', value: caseDraft.phone },
     联系地址: { kind: 'textarea', value: caseDraft.address },
   };
+  // 被告身份信息：key 用 字段名@被告ID，避免多被告同名字段冲突。
+  for (const defendant of item.value?.defendants ?? []) {
+    const id = defendant.id;
+    fields[`姓名／名称@${id}`] = { kind: 'text', value: defendant.name };
+    fields[`证件号@${id}`] = { kind: 'text', value: defendant.idNo ?? '' };
+    fields[`联系电话@${id}`] = {
+      kind: 'text',
+      value: defendant.phone ?? '',
+    };
+    fields[`${defendant.kind === 'PERSON' ? '户籍地址' : '住所地'}@${id}`] = {
+      kind: 'textarea',
+      value: defendant.address ?? '',
+    };
+    if (defendant.kind === 'ORGANIZATION') {
+      fields[`法定代表人@${id}`] = {
+        kind: 'text',
+        value: defendant.legalRepresentative ?? '',
+      };
+    }
+  }
   // 类型存放在来源线索上，没有来源线索的案件不允许在此更正。
   if (lead.value) {
     fields['案件类型'] = {
@@ -306,6 +339,21 @@ const caseEditFields = computed(() => {
   return fields;
 });
 function updateCaseField(label: string, value: string | string[]): void {
+  const at = label.lastIndexOf('@');
+  if (at > 0) {
+    const field = label.slice(0, at);
+    const defendantId = label.slice(at + 1);
+    const draft =
+      defendantProfileDrafts[defendantId] ??
+      (defendantProfileDrafts[defendantId] = {});
+    const text = String(value);
+    if (field === '姓名／名称') draft.name = text;
+    else if (field === '证件号') draft.idNo = text;
+    else if (field === '联系电话') draft.phone = text;
+    else if (field === '法定代表人') draft.legalRepresentative = text;
+    else if (field === '户籍地址' || field === '住所地') draft.address = text;
+    return;
+  }
   if (label === '联系电话') caseDraft.phone = String(value);
   else if (label === '联系地址') caseDraft.address = String(value);
   else if (label === '案件类型') caseDraft.caseType = value as LeadCaseType;
@@ -347,6 +395,62 @@ async function saveCaseInfo(): Promise<void> {
       );
       contactSaved = true;
     }
+    let profileSaved = false;
+    for (const [defendantId, draft] of Object.entries(defendantProfileDrafts)) {
+      const target = current.defendants.find(
+        (entry) => entry.id === defendantId,
+      );
+      if (!target) continue;
+      const nextName = (draft.name ?? target.name).trim();
+      const nextIdNo = (draft.idNo ?? target.idNo ?? '').trim() || null;
+      const nextPhone = (draft.phone ?? target.phone ?? '').trim() || null;
+      const nextAddress =
+        (draft.address ?? target.address ?? '').trim() || null;
+      const nextLegal =
+        (draft.legalRepresentative ?? target.legalRepresentative ?? '').trim() ||
+        null;
+      const changed =
+        nextName !== target.name ||
+        nextIdNo !== (target.idNo ?? null) ||
+        nextPhone !== (target.phone ?? null) ||
+        nextAddress !== (target.address ?? null) ||
+        nextLegal !== (target.legalRepresentative ?? null);
+      if (!changed) continue;
+      const contact = current.recordEdits?.defendantContacts.find(
+        (entry) => entry.defendantId === defendantId,
+      );
+      if (!contact) continue;
+      await updateCaseDefendantProfile(
+        current.id,
+        {
+          defendantId,
+          expectedContactRevision: contact.contactRevision,
+          idempotencyKey: globalThis.crypto.randomUUID(),
+          name: nextName,
+          kind: target.kind,
+          idNo: nextIdNo,
+          legalRepresentative: nextLegal,
+          reason: '案件详情页面更正被告身份信息',
+        },
+        {},
+      );
+      if (nextPhone !== (target.phone ?? null) ||
+          nextAddress !== (target.address ?? null)) {
+        await updateCaseDefendantContact(
+          current.id,
+          {
+            defendantId,
+            expectedContactRevision: contact.contactRevision + 1,
+            idempotencyKey: globalThis.crypto.randomUUID(),
+            phone: nextPhone,
+            address: nextAddress,
+          },
+          {},
+        );
+        contactSaved = true;
+      }
+      profileSaved = true;
+    }
     const source = lead.value;
     const typesChanged =
       !!source &&
@@ -375,11 +479,13 @@ async function saveCaseInfo(): Promise<void> {
         idempotencyKey: globalThis.crypto.randomUUID(),
       });
     }
-    if (!contactChanged && !typesChanged) {
+    if (!contactChanged && !typesChanged && !profileSaved) {
       caseInfoError.value = '没有需要保存的改动。';
       return;
     }
     inlineEditSection.value = null;
+    for (const key of Object.keys(defendantProfileDrafts))
+      delete defendantProfileDrafts[key];
     await load();
   } catch (failure) {
     const message =

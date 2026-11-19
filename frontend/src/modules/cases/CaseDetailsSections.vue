@@ -24,6 +24,7 @@ import {
   workspaceDate,
   type LeadState,
   type WorkspaceSection,
+  type WorkspaceField,
 } from './case-workspace-read-model';
 
 const props = defineProps<{
@@ -105,11 +106,14 @@ function isFileField(label: string): boolean {
   );
 }
 const defendantNames = ['被告一', '被告二', '被告三', '被告四', '被告五', '被告六'];
-function summaryGroups(section: WorkspaceSection) {
+function summaryGroups(
+  section: WorkspaceSection,
+): Array<{ id?: string; title: string | null; fields: WorkspaceField[] }> {
   if (section.key === 'case-info') {
     const defendants = section.groups
       .filter((group) => group.id.startsWith('defendant:'))
       .map((group, index) => ({
+        id: group.id,
         title: defendantNames[index] ?? `被告${index + 1}`,
         fields: group.fields.filter((field) => field.value !== null),
       }));
@@ -165,7 +169,11 @@ async function downloadSummaryFile(
     fileDownloads.delete(controller);
   }
 }
-function editField(label: string) {
+function editField(label: string, groupId?: string) {
+  if (groupId?.startsWith('defendant:')) {
+    const defendantId = groupId.slice('defendant:'.length);
+    return props.editFields?.[`${label}@${defendantId}`] ?? null;
+  }
   return props.editFields?.[label] ?? null;
 }
 function toggleMulti(label: string, option: string, checked: boolean): void {
@@ -281,28 +289,28 @@ function edit(key: SectionKey): void {
                 {{ field.label }}
               </dt>
               <dd class="case-workspace-field__value">
-                <template v-if="editField(field.label)">
+                <template v-if="editField(field.label, group.id)">
                   <textarea
-                    v-if="editField(field.label)!.kind === 'textarea'"
+                    v-if="editField(field.label, group.id)!.kind === 'textarea'"
                     class="text-input"
                     rows="2"
                     :data-test="`edit-field-${field.label}`"
-                    :value="String(editField(field.label)!.value ?? '')"
+                    :value="String(editField(field.label, group.id)!.value ?? '')"
                     @input="
                       emit('update-field', field.label, inputValue($event))
                     "
                   />
                   <select
-                    v-else-if="editField(field.label)!.kind === 'select'"
+                    v-else-if="editField(field.label, group.id)!.kind === 'select'"
                     class="text-input"
                     :data-test="`edit-field-${field.label}`"
-                    :value="String(editField(field.label)!.value ?? '')"
+                    :value="String(editField(field.label, group.id)!.value ?? '')"
                     @change="
                       emit('update-field', field.label, inputValue($event))
                     "
                   >
                     <option
-                      v-for="option in editField(field.label)!.options ?? []"
+                      v-for="option in editField(field.label, group.id)!.options ?? []"
                       :key="option.value"
                       :value="option.value"
                     >
@@ -310,19 +318,19 @@ function edit(key: SectionKey): void {
                     </option>
                   </select>
                   <span
-                    v-else-if="editField(field.label)!.kind === 'multi'"
+                    v-else-if="editField(field.label, group.id)!.kind === 'multi'"
                     class="case-workspace-multi"
                     :data-test="`edit-field-${field.label}`"
                   >
                     <label
-                      v-for="option in editField(field.label)!.options ?? []"
+                      v-for="option in editField(field.label, group.id)!.options ?? []"
                       :key="option.value"
                     >
                       <input
                         type="checkbox"
                         :value="option.value"
                         :checked="
-                          (editField(field.label)!.value as string[]).includes(
+                          (editField(field.label, group.id)!.value as string[]).includes(
                             option.value,
                           )
                         "
@@ -341,7 +349,7 @@ function edit(key: SectionKey): void {
                     v-else
                     class="text-input"
                     :data-test="`edit-field-${field.label}`"
-                    :value="String(editField(field.label)!.value ?? '')"
+                    :value="String(editField(field.label, group.id)!.value ?? '')"
                     @input="
                       emit('update-field', field.label, inputValue($event))
                     "
