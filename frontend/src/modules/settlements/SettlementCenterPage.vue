@@ -647,40 +647,7 @@ async function cancelBill(): Promise<void> {
               </dd>
             </div>
           </dl>
-          <form
-            :id="filterFormId"
-            class="settlement-center__filters"
-            aria-label="筛选结算明细"
-            @submit.prevent="applyFilter"
-          >
-            <label
-              >查询案件／主体
-              <ElInput v-model="keyword" placeholder="案号或名称"
-            /></label>
-            <label
-              >案件阶段
-              <ElSelect v-model="stage">
-                <ElOption value="" label="全部阶段" />
-                <ElOption value="WAITING_ARCHIVE" label="待归档" />
-                <ElOption value="ARCHIVED" label="已归档" /> </ElSelect
-            ></label>
-            <label
-              >入单状态
-              <ElSelect v-model="billState">
-                <ElOption value="" label="全部" />
-                <ElOption value="UNBILLED" label="未入账单" />
-                <ElOption value="BILLED" label="已入账单" /> </ElSelect
-            ></label>
-            <DateRangeFilter
-              label="发起日期"
-              :start="from"
-              :end="to"
-              start-label="发起起日"
-              end-label="发起止日"
-              @update:start="from = $event ?? ''"
-              @update:end="to = $event ?? ''"
-            />
-          </form>
+          
           <form
             v-if="capabilities.billCreate"
             :id="billCreateFormId"
@@ -696,39 +663,13 @@ async function cancelBill(): Promise<void> {
                 :disabled="unknownBill"
               />
             </label>
-            <label
-              >备注
-              <ElInput
-                v-model="billNote"
-                maxlength="500"
-                :disabled="unknownBill"
-              />
-            </label>
           </form>
-          <p
-            v-if="capabilities.billCreate && billPreview"
-            class="settlement-center__note"
-          >
-            编号预览：{{ billPreview }}（未占号，以创建结果为准）
-          </p>
           <div class="operation-bar settlement-center__list-toolbar">
             <span class="settlement-center__selection">
               明细 {{ launches.total }} 条 · 已选
               {{ selectedCount }} 条。勾选会在切换筛选时保留。
             </span>
             <div class="operation-actions settlement-center__filter-actions">
-              <ElButton
-                :form="filterFormId"
-                native-type="submit"
-                class="action-size--compact"
-                >查询</ElButton
-              >
-              <ElButton
-                native-type="button"
-                class="action-size--compact"
-                @click="clearFilter"
-                >清除筛选</ElButton
-              >
               <ElButton
                 v-if="capabilities.billCreate"
                 :form="billCreateFormId"

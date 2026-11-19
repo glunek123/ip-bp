@@ -519,6 +519,7 @@ function submit() {
           :disabled="unknown"
           inputmode="decimal"
           data-test="amount"
+          @keydown.enter.prevent
         />
       </label>
     </div>
