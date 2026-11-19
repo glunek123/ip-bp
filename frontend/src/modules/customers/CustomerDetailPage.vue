@@ -22,6 +22,7 @@ import CustomerAgreementPanel from './CustomerAgreementPanel.vue';
 import CustomerSettlementsPanel from './CustomerSettlementsPanel.vue';
 import CustomerEditPage from './CustomerEditPage.vue';
 import { labelCustomerType } from './customer-labels';
+import { updateCustomerDraft, type CustomerDraftInput } from '../../api/customers';
 import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
 import {
@@ -732,6 +733,61 @@ function updateAssetRecovery(
   assetPending.value = !!snapshot;
 }
 
+const profileEditing = ref(false);
+const profileSaving = ref(false);
+const profileError = ref('');
+const profileDraft = ref({
+  category: '',
+  customerManagerName: '',
+  customerType: '',
+  region: '',
+});
+
+function startProfileEdit(): void {
+  const current = customer.value;
+  if (!current) return;
+  profileError.value = '';
+  profileDraft.value = {
+    category: current.category ?? '',
+    customerManagerName: current.customerManagerName ?? '',
+    customerType: current.customerType ?? '',
+    region: current.region ?? '',
+  };
+  profileEditing.value = true;
+}
+
+function cancelProfileEdit(): void {
+  profileEditing.value = false;
+  profileError.value = '';
+}
+
+async function saveProfileEdit(): Promise<void> {
+  const current = customer.value;
+  if (!current || profileSaving.value) return;
+  const patch: CustomerDraftInput = { expectedVersion: current.version };
+  const draft = profileDraft.value;
+  if (draft.category !== (current.category ?? '')) patch.category = draft.category;
+  if (draft.customerManagerName !== (current.customerManagerName ?? ''))
+    patch.customerManagerName = draft.customerManagerName || null;
+  if (draft.customerType !== (current.customerType ?? ''))
+    patch.customerType = draft.customerType;
+  if (draft.region !== (current.region ?? '')) patch.region = draft.region;
+  if (Object.keys(patch).length === 1) {
+    profileError.value = '没有需要保存的改动。';
+    return;
+  }
+  profileSaving.value = true;
+  profileError.value = '';
+  try {
+    await updateCustomerDraft(current.id, patch);
+    profileEditing.value = false;
+    await load();
+  } catch {
+    profileError.value = '保存未完成，请核对字段后重试。';
+  } finally {
+    profileSaving.value = false;
+  }
+}
 function acceptRefreshedCustomer(latest: CustomerDetail): void {
   if (
     latest.id !== String(route.params.id) ||
@@ -1215,6 +1271,13 @@ onBeforeUnmount(() => {
               <div class="section-heading">
                 <h2>客户资料</h2>
                 <ElButton
+                  v-if="!sharedWriteBlocked && !profileEditing"
+                  data-test="edit-customer-profile"
+                  @click="startProfileEdit"
+                >
+                  编辑
+                </ElButton>
+                <ElButton
                   v-if="!sharedWriteBlocked"
                   id="customer-admission"
                   data-test="open-customer-admission"
@@ -1250,23 +1313,80 @@ onBeforeUnmount(() => {
                 </div>
                 <div>
                   <dt>主营类目</dt>
-                  <dd>{{ customer.category || '未填写' }}</dd>
+                  <dd>
+                    <input
+                      v-if="profileEditing"
+                      v-model="profileDraft.category"
+                      class="text-input"
+                      data-test="profile-category"
+                    />
+                    <template v-else>{{ customer.category || '未填写' }}</template>
+                  </dd>
                 </div>
                 <div>
                   <dt>客户经理</dt>
                   <dd data-test="customer-manager-name">
-                    {{ customer.customerManagerName || '未填写' }}
+                    <input
+                      v-if="profileEditing"
+                      v-model="profileDraft.customerManagerName"
+                      class="text-input"
+                      data-test="profile-manager"
+                    />
+                    <template v-else>{{
+                      customer.customerManagerName || '未填写'
+                    }}</template>
                   </dd>
                 </div>
                 <div>
                   <dt>客户组织类型</dt>
-                  <dd>{{ labelCustomerType(customer.customerType) }}</dd>
+                  <dd>
+                    <select
+                      v-if="profileEditing"
+                      v-model="profileDraft.customerType"
+                      class="text-input"
+                      data-test="profile-type"
+                    >
+                      <option value="ENTERPRISE">企业</option>
+                      <option value="INDIVIDUAL">个体工商户</option>
+                      <option value="PERSON">个人</option>
+                    </select>
+                    <template v-else>{{
+                      labelCustomerType(customer.customerType)
+                    }}</template>
+                  </dd>
                 </div>
                 <div>
                   <dt>所属地区</dt>
-                  <dd>{{ customer.region || '未填写' }}</dd>
+                  <dd>
+                    <input
+                      v-if="profileEditing"
+                      v-model="profileDraft.region"
+                      class="text-input"
+                      data-test="profile-region"
+                    />
+                    <template v-else>{{ customer.region || '未填写' }}</template>
+                  </dd>
                 </div>
               </dl>
+              <div v-if="profileEditing" class="profile-edit-actions">
+                <p v-if="profileError" class="field-error" role="alert">
+                  {{ profileError }}
+                </p>
+                <ElButton
+                  data-test="save-customer-profile"
+                  :disabled="profileSaving"
+                  @click="saveProfileEdit"
+                >
+                  保存
+                </ElButton>
+                <ElButton
+                  data-test="cancel-customer-profile"
+                  :disabled="profileSaving"
+                  @click="cancelProfileEdit"
+                >
+                  取消
+                </ElButton>
+              </div>
             </section>
             <section class="customer-basic-group" aria-label="联系人与权利主体">
               <CustomerContactsPanel
