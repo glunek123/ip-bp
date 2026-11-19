@@ -229,6 +229,10 @@ describe('CustomerRightsHolderPanel', () => {
     await flushPromises();
     await wrapper.get('[data-test="open-create-holder"]').trigger('click');
     await wrapper.get('[name="name"]').setValue('主体甲');
+    await wrapper.get('[name="credit"]').setValue('91310000');
+    await wrapper.get('[name="address"]').setValue('上海');
+    await wrapper.get('[name="legalRepresentative"]').setValue('张三');
+    await wrapper.get('[name="duty"]').setValue('董事');
     const submit = wrapper.get('[data-test="submit-create-holder"]');
     await Promise.all([submit.trigger('click'), submit.trigger('click')]);
     expect(api.createCustomerRightsHolder).toHaveBeenCalledTimes(1);
@@ -253,6 +257,10 @@ describe('CustomerRightsHolderPanel', () => {
     await flushPromises();
     await wrapper.get('[data-test="open-create-holder"]').trigger('click');
     await wrapper.get('[name="name"]').setValue('主体甲');
+    await wrapper.get('[name="credit"]').setValue('91310000');
+    await wrapper.get('[name="address"]').setValue('上海');
+    await wrapper.get('[name="legalRepresentative"]').setValue('张三');
+    await wrapper.get('[name="duty"]').setValue('董事');
     await wrapper.get('[data-test="submit-create-holder"]').trigger('click');
     await flushPromises();
     await wrapper.get('[data-test="submit-create-holder"]').trigger('click');
@@ -279,6 +287,10 @@ describe('CustomerRightsHolderPanel', () => {
     await flushPromises();
     await wrapper.get('[data-test="open-create-holder"]').trigger('click');
     await wrapper.get('[name="name"]').setValue('主体甲');
+    await wrapper.get('[name="credit"]').setValue('91310000');
+    await wrapper.get('[name="address"]').setValue('上海');
+    await wrapper.get('[name="legalRepresentative"]').setValue('张三');
+    await wrapper.get('[name="duty"]').setValue('董事');
     await wrapper.get('[data-test="submit-create-holder"]').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('当前账号没有编辑此客户的权限');
@@ -305,6 +317,10 @@ describe('CustomerRightsHolderPanel', () => {
     await flushPromises();
     await wrapper.get('[data-test="open-create-holder"]').trigger('click');
     await wrapper.get('[name="name"]').setValue('主体甲');
+    await wrapper.get('[name="credit"]').setValue('91310000');
+    await wrapper.get('[name="address"]').setValue('上海');
+    await wrapper.get('[name="legalRepresentative"]').setValue('张三');
+    await wrapper.get('[name="duty"]').setValue('董事');
     await wrapper.get('[data-test="submit-create-holder"]').trigger('click');
 
     await wrapper.get('[data-test="cancel-create-holder"]').trigger('click');
@@ -338,6 +354,10 @@ describe('CustomerRightsHolderPanel', () => {
     await flushPromises();
     await wrapper.get('[data-test="open-create-holder"]').trigger('click');
     await wrapper.get('[name="name"]').setValue('主体甲');
+    await wrapper.get('[name="credit"]').setValue('91310000');
+    await wrapper.get('[name="address"]').setValue('上海');
+    await wrapper.get('[name="legalRepresentative"]').setValue('张三');
+    await wrapper.get('[name="duty"]').setValue('董事');
     await wrapper.get('[data-test="submit-create-holder"]').trigger('click');
     await flushPromises();
     expect(wrapper.emitted('customer-not-found')).toHaveLength(1);
@@ -353,6 +373,10 @@ describe('CustomerRightsHolderPanel', () => {
     await flushPromises();
     await wrapper.get('[data-test="open-create-holder"]').trigger('click');
     await wrapper.get('[name="name"]').setValue('主体甲');
+    await wrapper.get('[name="credit"]').setValue('91310000');
+    await wrapper.get('[name="address"]').setValue('上海');
+    await wrapper.get('[name="legalRepresentative"]').setValue('张三');
+    await wrapper.get('[name="duty"]').setValue('董事');
     await wrapper.get('[data-test="submit-create-holder"]').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('客户资料已被他人更新');

@@ -147,6 +147,16 @@ async function submitCreate(): Promise<void> {
   createError.value = '';
   versionConflict.value = false;
   if (nameError.value) return;
+  const missing = [
+    !credit.value.trim() ? '统一社会信用代码' : '',
+    !address.value.trim() ? '地址' : '',
+    !legalRepresentative.value.trim() ? '法定代表人' : '',
+    !duty.value.trim() ? '职务' : '',
+  ].filter(Boolean);
+  if (missing.length) {
+    createError.value = `请填写${missing.join('、')}`;
+    return;
+  }
   const input = createPayload();
   const signature = JSON.stringify(input);
   const key = commandKey(createRetry, signature);
@@ -496,8 +506,8 @@ onBeforeUnmount(() => {
       />
       <p v-if="nameError" class="field-error">{{ nameError }}</p>
       <label class="field-label field-label--spaced" for="holder-credit"
-        >统一社会信用代码</label
-      >
+        >统一社会信用代码<RequiredFieldMark
+      /></label>
       <input
         id="holder-credit"
         v-model="credit"
@@ -506,8 +516,8 @@ onBeforeUnmount(() => {
         maxlength="100"
       />
       <label class="field-label field-label--spaced" for="holder-address"
-        >地址</label
-      >
+        >地址<RequiredFieldMark
+      /></label>
       <input
         id="holder-address"
         v-model="address"
@@ -518,8 +528,8 @@ onBeforeUnmount(() => {
       <label
         class="field-label field-label--spaced"
         for="holder-legal-representative"
-        >法定代表人</label
-      >
+        >法定代表人<RequiredFieldMark
+      /></label>
       <input
         id="holder-legal-representative"
         v-model="legalRepresentative"
@@ -528,8 +538,8 @@ onBeforeUnmount(() => {
         maxlength="100"
       />
       <label class="field-label field-label--spaced" for="holder-duty"
-        >职务</label
-      >
+        >职务<RequiredFieldMark
+      /></label>
       <input
         id="holder-duty"
         v-model="duty"
