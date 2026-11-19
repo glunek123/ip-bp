@@ -219,11 +219,15 @@
 }
 
 .case-workspace-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-auto-flow: row dense;
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--s-2) var(--s-3);
   margin: 0;
+}
+
+.case-workspace-fields > .case-workspace-field {
+  flex: 1 1 calc(33.333% - var(--s-3));
+  min-width: 0;
 }
 
 .case-workspace-fields > * {
@@ -244,8 +248,8 @@
 }
 
 .case-workspace-main-summary dl.case-workspace-fields {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-auto-flow: row dense;
+  display: flex;
+  flex-wrap: wrap;
 }
 .case-workspace-main-summary .case-workspace-field,
 .case-workspace-details .case-workspace-field {
@@ -298,12 +302,16 @@
 }
 
 .case-workspace-details dl.case-workspace-fields > .case-workspace-field {
+  flex: 1 1 100%;
   min-height: 32px;
   border-bottom: 1px solid var(--color-hairline);
 }
 
 .case-workspace-details .case-workspace-field--wide {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
+}
+.case-workspace-main-summary .case-workspace-field--wide {
+  flex-basis: 100%;
 }
 
 .case-workspace-details .case-workspace-field__label {
@@ -413,9 +421,9 @@
   overflow-y: auto;
 }
 
-@media (min-width: 1024px) {
-  .case-workspace-fields {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+@media (max-width: 1023px) {
+  .case-workspace-fields > .case-workspace-field {
+    flex-basis: calc(50% - var(--s-3));
   }
 }
 
