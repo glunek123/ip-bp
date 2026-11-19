@@ -181,19 +181,14 @@ const display = computed(() => {
 
 <template>
   <section
-    class="demo-card demo-card--pad lead-csv-preview"
-    aria-labelledby="lead-csv-preview-title"
+    v-if="display.phase !== 'empty' && display.phase !== 'closed'"
+    class="lead-csv-preview"
     data-test="lead-csv-preview"
   >
-    <h2 id="lead-csv-preview-title">线索导入预览</h2>
     <p v-if="display.fileName" data-test="csv-file-name">
       当前文件：{{ display.fileName }}
     </p>
 
-    <p v-if="display.phase === 'closed'" data-test="csv-closed">预览已关闭。</p>
-    <p v-else-if="display.phase === 'empty'" data-test="csv-empty">
-      尚未选择导入文件。
-    </p>
     <p v-else-if="display.phase === 'reading'" aria-live="polite">
       正在读取当前文件…
     </p>
@@ -406,15 +401,6 @@ const display = computed(() => {
       </ElButton>
     </template>
 
-    <ElButton
-      key="cancel"
-      native-type="button"
-      data-test="csv-cancel-request"
-      :disabled="display.phase === 'closed'"
-      v-on="display.cancelListeners"
-    >
-      取消预览
-    </ElButton>
   </section>
 </template>
 
