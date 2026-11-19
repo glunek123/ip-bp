@@ -54,6 +54,7 @@ function edit(): void {
           type="button"
           class="case-workspace-section__edit"
           :disabled="!action.enabled"
+          :title="action.enabled ? '' : action.hint || '当前不可编辑'"
           :aria-label="`${title}：${actionLabel ?? action.label}`"
           :aria-describedby="action.hint ? `${id}-hint` : undefined"
           @click="edit"
