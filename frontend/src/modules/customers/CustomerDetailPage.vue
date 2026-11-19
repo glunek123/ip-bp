@@ -1231,8 +1231,22 @@ onBeforeUnmount(() => {
                   </dd>
                 </div>
                 <div>
-                  <dt>资料状态</dt>
-                  <dd>{{ profileLabel(customer.profileStatus) }}</dd>
+                  <dt>合作状态</dt>
+                  <dd data-test="customer-cooperation-status">
+                    {{
+                      customer.cooperationStatus === 'COOPERATING'
+                        ? '合作中'
+                        : customer.cooperationStatus === 'PAUSED'
+                          ? '暂停合作'
+                          : '已终止'
+                    }}
+                  </dd>
+                </div>
+                <div>
+                  <dt>运营</dt>
+                  <dd data-test="customer-operator">
+                    {{ customer.responsibleOperator.displayName }}
+                  </dd>
                 </div>
                 <div>
                   <dt>主营类目</dt>
@@ -1251,10 +1265,6 @@ onBeforeUnmount(() => {
                 <div>
                   <dt>所属地区</dt>
                   <dd>{{ customer.region || '未填写' }}</dd>
-                </div>
-                <div>
-                  <dt>最近更新</dt>
-                  <dd>{{ formatTime(customer.updatedAt) }}</dd>
                 </div>
               </dl>
             </section>

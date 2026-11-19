@@ -358,17 +358,6 @@ function cancel(): void {
 
 <template>
   <section class="ledger-panel detail-card" data-test="cooperation-panel">
-    <h2>合作与负责运营</h2>
-    <dl class="detail-grid">
-      <div>
-        <dt>合作状态</dt>
-        <dd>{{ cooperationLabel }}</dd>
-      </div>
-      <div>
-        <dt>负责运营</dt>
-        <dd>{{ customer.responsibleOperator.displayName }}</dd>
-      </div>
-    </dl>
     <p v-if="blockedByOtherMaintenance" role="status">
       其他客户维护结果尚未确认，暂不能提交新的客户维护。
     </p>
