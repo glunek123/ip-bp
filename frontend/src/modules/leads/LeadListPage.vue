@@ -1810,19 +1810,25 @@ onBeforeUnmount(() => {
         @close="batchActive = false"
       />
     </ActionDrawer>
-    <LeadCsvImportPanel
-      v-if="csvImportOpen && csvFormContext"
-      :key="csvContextKey"
-      :open="csvImportOpen"
-      :context-key="csvContextKey"
-      :form-context="csvFormContext"
-      :operator-display-name="auth.session?.user.displayName ?? ''"
-      :actor-identity="batchIdentity"
-      :authorization-generation="authorizationGeneration"
-      :submit-attempt="submitCsvAttempt"
-      @close-request="closeCsvImport"
-      @imported="handleCsvImported"
-    />
+    <ActionDrawer
+      :model-value="csvImportOpen"
+      title="导入线索"
+      @update:model-value="!$event && closeCsvImport()"
+    >
+      <LeadCsvImportPanel
+        v-if="csvImportOpen && csvFormContext"
+        :key="csvContextKey"
+        :open="csvImportOpen"
+        :context-key="csvContextKey"
+        :form-context="csvFormContext"
+        :operator-display-name="auth.session?.user.displayName ?? ''"
+        :actor-identity="batchIdentity"
+        :authorization-generation="authorizationGeneration"
+        :submit-attempt="submitCsvAttempt"
+        @close-request="closeCsvImport"
+        @imported="handleCsvImported"
+      />
+    </ActionDrawer>
   </div>
 </template>
 
