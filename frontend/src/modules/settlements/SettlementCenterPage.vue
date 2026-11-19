@@ -655,6 +655,18 @@ async function cancelBill(): Promise<void> {
             @submit.prevent="requestBill"
           >
             <label
+              >案件阶段
+              <ElSelect
+                v-model="stage"
+                data-test="settlement-stage"
+                @change="applyFilter"
+              >
+                <ElOption value="" label="全部阶段" />
+                <ElOption value="WAITING_ARCHIVE" label="待归档" />
+                <ElOption value="ARCHIVED" label="已归档" />
+              </ElSelect>
+            </label>
+            <label
               >账单日期
               <ElInput
                 v-model="billDate"
