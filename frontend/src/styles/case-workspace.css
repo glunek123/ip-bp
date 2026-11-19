@@ -245,6 +245,17 @@
 .case-workspace-main-summary dl.case-workspace-fields {
   grid-template-columns: minmax(0, 1fr);
 }
+.case-workspace-main-summary .case-workspace-field {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--s-2);
+  padding: 4px 0;
+}
+.case-workspace-main-summary .case-workspace-field__label {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+}
 
 .case-workspace-extra-groups {
   margin-top: var(--s-3);
