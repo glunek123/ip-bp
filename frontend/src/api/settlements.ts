@@ -627,6 +627,7 @@ export async function listFees(
   query: {
     page?: number;
     caseId?: string;
+    executionCaseNo?: string;
     type?: string;
     status?: string;
     direction?: string;

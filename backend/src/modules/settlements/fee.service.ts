@@ -132,12 +132,27 @@ export class FeeService {
         code: 'INVALID_DATE_RANGE',
         message: '日期范围无效',
       });
+    let scope: { caseId?: string | { in: string[] } } =
+      query.caseId === undefined ? {} : { caseId: query.caseId };
+    if (query.executionCaseNo?.trim()) {
+      const term = `%${query.executionCaseNo.trim()}%`;
+      const hits = await this.database.$queryRaw<
+        Array<{ caseId: string }>
+      >`SELECT DISTINCT s.case_id AS "caseId"
+        FROM case_supplement_entries s
+        WHERE s.department_id=${actor.departmentId}::uuid
+          AND s.kind='EXECUTION_FORMAL_ACCEPTANCE'
+          AND s.court_case_no ILIKE ${term}
+          AND NOT EXISTS (SELECT 1 FROM case_supplement_entries c
+            WHERE c.prior_entry_id=s.id)`;
+      scope = { caseId: { in: hits.map((row) => row.caseId) } };
+    }
     const raw = await this.database.feeRecord.findMany({
       where: {
         departmentId: actor.departmentId,
         deletedAt: null,
         cancellation: { is: null },
-        ...(query.caseId === undefined ? {} : { caseId: query.caseId }),
+        ...scope,
       },
       include: feeReadInclude,
       orderBy: [{ feeDate: 'desc' }, { id: 'desc' }],

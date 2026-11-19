@@ -51,6 +51,11 @@ export class FeePageDto {
   @IsOptional()
   @IsUUID('4')
   caseId?: string;
+  @ApiPropertyOptional({ maxLength: 100 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  executionCaseNo?: string;
   @ApiPropertyOptional({ default: 1 })
   @Type(() => Number)
   @IsInt()

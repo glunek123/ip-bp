@@ -99,6 +99,7 @@ function isZeroFeeAmount(amount: string): boolean {
 const filters = reactive({
   type: '',
   status: '',
+  executionCaseNo: '',
   direction: '',
   from: '',
   to: '',
@@ -936,6 +937,13 @@ onBeforeUnmount(() => {
         @submit.prevent="applyFilter"
       >
         <div class="fee-center__filter-fields">
+          <label
+            >执行案号<input
+              v-model="filters.executionCaseNo"
+              type="search"
+              placeholder="输入执行案号"
+              data-test="fee-execution-case-no"
+          /></label>
           <label
             >费用类型<ElSelect
               v-model="filters.type"
