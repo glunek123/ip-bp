@@ -25,13 +25,20 @@ import {
 } from '../../api/litigation-refunds';
 import { useAuthStore } from '../../stores/auth';
 
+const refundFilterOptions = [
+  { value: 'PENDING', label: '待退' },
+  { value: 'SUBMITTED', label: '已提交' },
+  { value: 'RETURNED_UNSETTLED', label: '已退未结算' },
+  { value: 'RECEIVED', label: '已回款' },
+  { value: 'CONVERTED_TO_COST', label: '转成本' },
+] as const;
 const labels: Record<RefundStatus, string> = {
-  UNKNOWN: '待确认',
+  UNKNOWN: '待退',
   PENDING: '待退',
   SUBMITTED: '已提交',
   RETURNED_UNSETTLED: '已退未结算',
-  SETTLED: '客户已收，公司未收',
-  RECEIVED: '公司已收',
+  SETTLED: '已回款',
+  RECEIVED: '已回款',
   CONVERTED_TO_COST: '转成本',
 };
 type RefundColumn =
@@ -512,17 +519,17 @@ onBeforeUnmount(() => {
       <div class="refund-panel__filters">
         <label>原告<input v-model="filters.plaintiff" type="search" /></label>
         <label>被告<input v-model="filters.defendant" type="search" /></label>
-        <label>法院案号<input v-model="filters.courtNo" type="search" /></label>
+        <label>案号<input v-model="filters.courtNo" type="search" /></label>
         <label>律师<input v-model="filters.lawyer" type="search" /></label>
         <label
           >状态<select v-model="filters.status">
             <option value="">全部状态</option>
             <option
-              v-for="status in refundStatuses"
-              :key="status"
-              :value="status"
+              v-for="status in refundFilterOptions"
+              :key="status.value"
+              :value="status.value"
             >
-              {{ labels[status] }}
+              {{ status.label }}
             </option>
           </select></label
         >
@@ -575,10 +582,6 @@ onBeforeUnmount(() => {
           </ColumnSettingsShell>
         </div>
       </div>
-      <p class="refund-panel__export-note">
-        金额格式：千分位，两位小数。{{ unknownMessage }}
-        导出当前筛选下全部记录。
-      </p>
       <p v-if="loading" role="status">正在读取退费记录…</p>
       <div class="refund-panel__table-wrap">
         <table>
@@ -762,7 +765,7 @@ onBeforeUnmount(() => {
             <dd :title="modalRow.caseNo">{{ modalRow.caseNo }}</dd>
           </div>
           <div>
-            <dt>法院案号</dt>
+            <dt>案号</dt>
             <dd :title="modalRow.courtNo ?? ''">
               {{ modalRow.courtNo ?? '待核对' }}
             </dd>
