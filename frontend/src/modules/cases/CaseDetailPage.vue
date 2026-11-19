@@ -433,7 +433,7 @@ async function saveCaseInfo(): Promise<void> {
           kind: target.kind,
           idNo: nextIdNo,
           legalRepresentative: nextLegal,
-          reason: '案件详情页面更正被告身份信息',
+          reason: caseDraft.reason.trim() || '案件详情页面更正被告身份信息',
         },
         {},
       );
