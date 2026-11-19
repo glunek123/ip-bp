@@ -8,6 +8,7 @@ import {
   watch,
 } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import { ElDialog } from 'element-plus/es/components/dialog/index.mjs';
 import type { CaseDetail, CaseFile } from '../../api/cases';
 import { ApiError, getBlob, type RequestOptions } from '../../api/http';
 import type { OwnerMaterial } from '../../api/materials';
@@ -65,7 +66,10 @@ let revision = 0;
 let active = true;
 let loadController: AbortController | undefined;
 const downloadControllers = new Map<string, AbortController>();
-const previewRequests = new Map<AbortController, globalThis.Window | null>();
+const previewOpen = ref(false);
+const previewUrl = ref('');
+const previewName = ref('');
+const previewMime = ref('');
 
 function fileKey(file: CaseFile): string {
   return JSON.stringify([file.materialId, file.contentVersionId]);
@@ -205,46 +209,32 @@ async function preview(file: CatalogFile): Promise<void> {
   const currentRevision = revision;
   const caseId = props.item.id;
   const contextKey = props.contextKey;
-  const controller = new AbortController();
-  const tab = globalThis.window.open('', '_blank');
-  previewRequests.set(controller, tab);
   try {
     const response = await getBlob(
       `/materials/${encodeURIComponent(file.materialId)}/versions/${encodeURIComponent(file.contentVersionId)}/content`,
-      { signal: controller.signal },
     );
     if (
       !active ||
-      controller.signal.aborted ||
       currentRevision !== revision ||
       caseId !== props.item.id ||
       contextKey !== props.contextKey
-    ) {
-      tab?.close();
-      return;
-    }
-    const url = globalThis.URL.createObjectURL(response.blob);
-    if (tab) {
-      tab.opener = null;
-      tab.location.href = url;
-    }
-    globalThis.window.setTimeout(
-      () => globalThis.URL.revokeObjectURL(url),
-      60_000,
-    );
-  } catch {
-    tab?.close();
-    if (
-      active &&
-      !controller.signal.aborted &&
-      currentRevision === revision &&
-      caseId === props.item.id &&
-      contextKey === props.contextKey
     )
+      return;
+    closePreview();
+    previewUrl.value = globalThis.URL.createObjectURL(response.blob);
+    previewMime.value = file.mimeType;
+    previewName.value = catalogFileLabel(file);
+    previewOpen.value = true;
+  } catch {
+    if (active && currentRevision === revision) {
       downloadMessage.value = '预览失败，请重试。';
-  } finally {
-    previewRequests.delete(controller);
+    }
   }
+}
+function closePreview(): void {
+  if (previewUrl.value) globalThis.URL.revokeObjectURL(previewUrl.value);
+  previewUrl.value = '';
+  previewOpen.value = false;
 }
 const rows = computed(() => {
   const files = new Map<string, FileRow>();
@@ -543,11 +533,7 @@ function cancel(): void {
   loadController?.abort();
   for (const controller of downloadControllers.values()) controller.abort();
   downloadControllers.clear();
-  for (const [controller, tab] of previewRequests) {
-    controller.abort();
-    tab?.close();
-  }
-  previewRequests.clear();
+  closePreview();
   downloading.value = new Set();
 }
 watch(
@@ -780,9 +766,50 @@ async function download(row: FileRow | CatalogFile): Promise<void> {
       </li>
     </ul>
   </section>
+  <ElDialog
+    v-model="previewOpen"
+    :title="previewName || '文件预览'"
+    width="80%"
+    top="4vh"
+    class="file-preview"
+    data-test="file-preview-dialog"
+    @closed="closePreview"
+  >
+    <div class="file-preview__body">
+      <iframe
+        v-if="previewMime === 'application/pdf'"
+        :src="previewUrl"
+        title="文件预览"
+        class="file-preview__frame"
+      ></iframe>
+      <img
+        v-else
+        :src="previewUrl"
+        :alt="previewName"
+        class="file-preview__image"
+      />
+    </div>
+  </ElDialog>
 </template>
 
 <style scoped>
+.file-preview__body {
+  height: 76vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+.file-preview__frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.file-preview__image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
 .case-file-actions {
   display: flex;
   align-items: center;
@@ -792,18 +819,19 @@ async function download(row: FileRow | CatalogFile): Promise<void> {
 }
 .case-file-groups {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
 }
 .case-file-group {
   border: 1px solid var(--el-border-color);
-  border-radius: 6px;
-  padding: 10px;
+  border-radius: 4px;
+  padding: 7px 8px;
   min-width: 0;
 }
 .case-file-group h3 {
-  margin: 0 0 8px;
-  font-size: 14px;
+  margin: 0 0 5px;
+  font-size: 12.5px;
+  line-height: 1.3;
 }
 .case-file-group ul,
 .case-file-other ul {
@@ -813,7 +841,7 @@ async function download(row: FileRow | CatalogFile): Promise<void> {
 }
 .case-file-group li,
 .case-file-other li {
-  margin-top: 8px;
+  margin-top: 5px;
   overflow-wrap: anywhere;
 }
 .case-file-buttons {
