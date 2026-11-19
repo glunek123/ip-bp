@@ -104,7 +104,17 @@ function isFileField(label: string): boolean {
     /文件|文书|截图|照片|起诉状|通知书|判决书/u.test(label)
   );
 }
+const defendantNames = ['被告一', '被告二', '被告三', '被告四', '被告五', '被告六'];
 function summaryGroups(section: WorkspaceSection) {
+  if (section.key === 'case-info') {
+    const defendants = section.groups
+      .filter((group) => group.id.startsWith('defendant:'))
+      .map((group, index) => ({
+        title: defendantNames[index] ?? `被告${index + 1}`,
+        fields: group.fields.filter((field) => field.value !== null),
+      }));
+    return [{ title: null, fields: section.summary }, ...defendants];
+  }
   if (section.key !== 'judgment')
     return [{ title: null, fields: section.summary }];
   return [

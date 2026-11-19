@@ -814,10 +814,6 @@ export function buildCaseWorkspaceSections(
           field('客户', item.customer.name),
           field('权利主体', item.rightsHolder.name),
           field('负责运营', item.owner.displayName),
-          field(
-            '被告',
-            item.defendants.map((value) => value.name).join('、') || null,
-          ),
           field('当前阶段', caseStageLabels[item.stage]),
           date('创建时间', item.createdAt),
           date('委案日期', item.matchedOn),
@@ -845,9 +841,15 @@ export function buildCaseWorkspaceSections(
           ...(value.kind === 'ORGANIZATION'
             ? [field('法定代表人', value.legalRepresentative)]
             : []),
-          field('证件号', value.idNo),
-          field('电话', value.phone),
-          field('地址', value.address),
+          field(
+            value.kind === 'PERSON' ? '身份证号码' : '统一社会信用代码',
+            value.idNo,
+          ),
+          field('联系电话', value.phone),
+          field(
+            value.kind === 'PERSON' ? '户籍地址' : '住所地',
+            value.address,
+          ),
         ],
       })),
       ...item.lawyers.map((value) => ({
