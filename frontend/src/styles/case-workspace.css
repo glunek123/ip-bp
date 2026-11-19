@@ -515,3 +515,15 @@
     max-width: 100%;
   }
 }
+
+/* 主摘要必须三列：覆盖 details 区域的单列规则 */
+.case-workspace-main-summary dl.case-workspace-fields > .case-workspace-field {
+  flex: 1 1 calc(33.333% - var(--s-3));
+  min-width: 0;
+  border-bottom: 0;
+}
+.case-workspace-main-summary dl.case-workspace-fields::after {
+  content: '';
+  flex: 1 1 0;
+  max-width: calc(33.333% - var(--s-3));
+}
