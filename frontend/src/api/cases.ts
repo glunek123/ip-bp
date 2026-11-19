@@ -7110,6 +7110,45 @@ function writeRequestOptions(
   };
 }
 
+export type UpdateCaseDefendantProfileInput = {
+  defendantId: string;
+  expectedContactRevision: number;
+  idempotencyKey: string;
+  name: string;
+  kind: 'PERSON' | 'ORGANIZATION';
+  idNo: string | null;
+  legalRepresentative: string | null;
+  reason: string;
+};
+export async function updateCaseDefendantProfile(
+  id: string,
+  input: UpdateCaseDefendantProfileInput,
+  options: RequestOptions = {},
+): Promise<{ caseId: string; defendantId: string; contactRevision: number }> {
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/defendant-profile-update`,
+    {
+      ...writeRequestOptions(input.idempotencyKey, options),
+      method: 'POST',
+      body: {
+        defendantId: input.defendantId,
+        expectedContactRevision: input.expectedContactRevision,
+        idempotencyKey: input.idempotencyKey,
+        name: input.name,
+        kind: input.kind,
+        idNo: input.idNo,
+        legalRepresentative: input.legalRepresentative,
+        reason: input.reason,
+      },
+    },
+  );
+  return response as {
+    caseId: string;
+    defendantId: string;
+    contactRevision: number;
+  };
+}
+
 export async function updateCaseDefendantContact(
   id: string,
   input: UpdateCaseDefendantContactInput,

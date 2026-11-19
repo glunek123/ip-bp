@@ -9,6 +9,7 @@ import {
   IsUUID,
   MaxLength,
   Min,
+  MinLength,
   ValidateIf,
 } from 'class-validator';
 
@@ -258,4 +259,55 @@ export class CaseTypesContextDto {
   @ApiProperty({ type: String, nullable: true, format: 'uuid' })
   leadId!: string | null;
   @ApiProperty() affectedCaseCount!: number;
+}
+
+export class UpdateDefendantProfileDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID('4')
+  defendantId!: string;
+
+  @ApiProperty({ minimum: 0 })
+  @IsInt()
+  @Min(0)
+  expectedContactRevision!: number;
+
+  @ApiProperty({ minLength: 1, maxLength: 128 })
+  @IsString()
+  idempotencyKey!: string;
+
+  @ApiProperty({ maxLength: 200, description: '姓名或单位名称' })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  name!: string;
+
+  @ApiProperty({ enum: ['PERSON', 'ORGANIZATION'] })
+  @IsIn(['PERSON', 'ORGANIZATION'])
+  kind!: 'PERSON' | 'ORGANIZATION';
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: '身份证号或统一社会信用代码，最多100字符',
+  })
+  @ValidateIf((_object, value) => value !== null)
+  @IsString()
+  @MaxLength(100)
+  idNo!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: '法定代表人，仅单位被告使用，最多200字符',
+  })
+  @ValidateIf((_object, value) => value !== null)
+  @IsString()
+  @MaxLength(200)
+  legalRepresentative!: string | null;
+
+  @ApiProperty({ maxLength: 1000, description: '更正原因' })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1000)
+  reason!: string;
 }

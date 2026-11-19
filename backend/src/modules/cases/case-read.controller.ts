@@ -107,6 +107,7 @@ import {
   SaveSecondInstanceAcceptanceDto,
   SaveSecondInstanceAcceptanceResultDto,
   UpdateDefendantContactDto,
+  UpdateDefendantProfileDto,
 } from './case-record-edit.dto';
 import { CaseHearingService } from './case-hearing.service';
 import { CaseJudgmentService } from './case-judgment.service';
@@ -355,6 +356,15 @@ export class CaseReadController {
     @Body() body: UpdateDefendantContactDto,
   ) {
     return this.recordEdit.updateContact(actor, id, body);
+  }
+
+  @Post(':id/defendant-profile-update')
+  updateDefendantProfile(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: UpdateDefendantProfileDto,
+  ) {
+    return this.recordEdit.updateProfile(actor, id, body);
   }
 
   @Post(':id/defendants')

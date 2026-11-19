@@ -27,8 +27,19 @@ import {
   SaveSecondInstanceAcceptanceDto,
   SaveSecondInstanceAcceptanceResultDto,
   UpdateDefendantContactDto,
+  UpdateDefendantProfileDto,
 } from './case-record-edit.dto';
 
+type ProfileValue = {
+  defendantId: string;
+  expectedContactRevision: number;
+  idempotencyKey: string;
+  name: string;
+  kind: 'PERSON' | 'ORGANIZATION';
+  idNo: string | null;
+  legalRepresentative: string | null;
+  reason: string;
+};
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const isoDate = (value: Date) => value.toISOString().slice(0, 10);
@@ -92,6 +103,161 @@ export class CaseRecordEditService {
     private readonly database: DatabaseService,
     private readonly access: AccessControlService,
   ) {}
+
+  async updateProfile(
+    actor: ActorContext,
+    caseId: string,
+    input: UpdateDefendantProfileDto,
+  ) {
+    const value = {
+      defendantId: input.defendantId,
+      expectedContactRevision: input.expectedContactRevision,
+      idempotencyKey: input.idempotencyKey,
+      name: input.name.trim(),
+      kind: input.kind,
+      idNo: input.idNo?.trim() || null,
+      legalRepresentative: input.legalRepresentative?.trim() || null,
+      reason: input.reason.trim(),
+    };
+    if (!value.name) throw this.validation('被告名称不能为空');
+    if (!value.reason) throw this.validation('请填写更正原因');
+    const fingerprint = this.fingerprint(caseId, value);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await this.database.$transaction(
+          async (tx) => {
+            await this.lockAndAuthorize(
+              tx,
+              actor,
+              caseId,
+              'case.defendant-contact.update',
+            );
+            const prior = await tx.caseRecordEditReceipt.findUnique({
+              where: {
+                departmentId_actorUserId_command_idempotencyKey: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  command: 'DEFENDANT_PROFILE_UPDATE',
+                  idempotencyKey: value.idempotencyKey,
+                },
+              },
+            });
+            if (prior !== null) {
+              if (
+                prior.caseId !== caseId ||
+                prior.requestFingerprint !== fingerprint
+              )
+                throw this.conflict('IDEMPOTENCY_CONFLICT');
+              return prior.resultSnapshot as Record<string, unknown>;
+            }
+            const defendant = await tx.caseDefendant.findFirst({
+              where: {
+                id: value.defendantId,
+                caseId,
+                departmentId: actor.departmentId,
+                disabledAt: null,
+              },
+              select: {
+                name: true,
+                kind: true,
+                idNo: true,
+                legalRepresentative: true,
+                contactRevision: true,
+              },
+            });
+            if (defendant === null) throw this.conflict('INVALID_STATE');
+            if (defendant.contactRevision !== value.expectedContactRevision)
+              throw this.conflict('VERSION_CONFLICT');
+            if (
+              defendant.name === value.name &&
+              defendant.kind === value.kind &&
+              (defendant.idNo ?? null) === value.idNo &&
+              (defendant.legalRepresentative ?? null) ===
+                value.legalRepresentative
+            )
+              throw this.validation('被告信息没有变化');
+            const recordedAt = new Date();
+            const updated = await tx.caseDefendant.updateMany({
+              where: {
+                id: value.defendantId,
+                caseId,
+                departmentId: actor.departmentId,
+                contactRevision: value.expectedContactRevision,
+              },
+              data: {
+                name: value.name,
+                kind: value.kind,
+                idNo: value.idNo,
+                legalRepresentative: value.legalRepresentative,
+                contactRevision: { increment: 1 },
+              },
+            });
+            if (updated.count !== 1) throw this.conflict('VERSION_CONFLICT');
+            const audit = await tx.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                internalActorUserId: actor.userId,
+                resourceType: 'CASE',
+                resourceId: caseId,
+                action: 'case.defendant-profile.updated',
+                details: {
+                  defendantId: value.defendantId,
+                  reason: value.reason,
+                  fromRevision: value.expectedContactRevision,
+                  toRevision: value.expectedContactRevision + 1,
+                  before: {
+                    name: defendant.name,
+                    kind: defendant.kind,
+                    idNo: defendant.idNo,
+                    legalRepresentative: defendant.legalRepresentative,
+                  },
+                  after: {
+                    name: value.name,
+                    kind: value.kind,
+                    idNo: value.idNo,
+                    legalRepresentative: value.legalRepresentative,
+                  },
+                },
+              },
+              select: { id: true },
+            });
+            const result = {
+              caseId,
+              defendantId: value.defendantId,
+              changeId: audit.id,
+              contactRevision: value.expectedContactRevision + 1,
+              recordedAt: recordedAt.toISOString(),
+            };
+            await tx.caseRecordEditReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                caseId,
+                command: 'DEFENDANT_PROFILE_UPDATE',
+                idempotencyKey: value.idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultSnapshot: { ...result },
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.hasCode(error, 'P2034') || this.hasCode(error, '40001')) {
+          if (attempt < 2) continue;
+          throw this.conflict('VERSION_CONFLICT');
+        }
+        if (this.hasCode(error, 'P2002')) {
+          if (attempt < 2) continue;
+          throw this.conflict('VERSION_CONFLICT');
+        }
+        throw error;
+      }
+    }
+    throw this.conflict('VERSION_CONFLICT');
+  }
 
   async updateContact(
     actor: ActorContext,
@@ -1450,7 +1616,8 @@ export class CaseRecordEditService {
       | CaseTypesValue
       | ResponsibleValue
       | AcceptanceValue
-      | SecondAcceptanceValue,
+      | SecondAcceptanceValue
+      | ProfileValue,
   ) {
     return createHash('sha256')
       .update(JSON.stringify({ caseId, ...value }))
