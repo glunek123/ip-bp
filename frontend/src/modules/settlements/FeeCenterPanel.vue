@@ -975,7 +975,7 @@ onBeforeUnmount(() => {
           />
         </div>
       </form>
-      <div class="operation-bar fee-center__toolbar">
+      <div v-if="!props.caseId" class="operation-bar fee-center__toolbar">
         <span>已选 {{ selected.size }} 条 · 当前筛选 {{ total }} 条</span>
         <div class="operation-actions fee-center__toolbar-actions">
           <ElButton
