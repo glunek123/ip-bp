@@ -302,7 +302,9 @@ const caseEditFields = computed(() => {
   for (const defendant of item.value?.defendants ?? []) {
     const id = defendant.id;
     fields[`姓名／名称@${id}`] = { kind: 'text', value: defendant.name };
-    fields[`证件号@${id}`] = { kind: 'text', value: defendant.idNo ?? '' };
+    fields[
+      `${defendant.kind === 'PERSON' ? '身份证号码' : '统一社会信用代码'}@${id}`
+    ] = { kind: 'text', value: defendant.idNo ?? '' };
     fields[`联系电话@${id}`] = {
       kind: 'text',
       value: defendant.phone ?? '',
@@ -348,7 +350,8 @@ function updateCaseField(label: string, value: string | string[]): void {
       (defendantProfileDrafts[defendantId] = {});
     const text = String(value);
     if (field === '姓名／名称') draft.name = text;
-    else if (field === '证件号') draft.idNo = text;
+    else if (field === '身份证号码' || field === '统一社会信用代码')
+      draft.idNo = text;
     else if (field === '联系电话') draft.phone = text;
     else if (field === '法定代表人') draft.legalRepresentative = text;
     else if (field === '户籍地址' || field === '住所地') draft.address = text;
