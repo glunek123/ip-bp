@@ -93,6 +93,7 @@ const filters = reactive({
   plaintiff: '',
   defendant: '',
   courtNo: '',
+  executionCaseNo: '',
   lawyer: '',
   status: '' as RefundStatus | '',
 });
@@ -296,7 +297,13 @@ function applyStatusFilter(): void {
   void load();
 }
 watch(
-  () => [filters.plaintiff, filters.defendant, filters.courtNo, filters.lawyer],
+  () => [
+    filters.plaintiff,
+    filters.defendant,
+    filters.courtNo,
+    filters.executionCaseNo,
+    filters.lawyer,
+  ],
   scheduleTextFilter,
   { flush: 'sync' },
 );
@@ -520,6 +527,9 @@ onBeforeUnmount(() => {
         <label>原告<input v-model="filters.plaintiff" type="search" /></label>
         <label>被告<input v-model="filters.defendant" type="search" /></label>
         <label>案号<input v-model="filters.courtNo" type="search" /></label>
+        <label
+          >执行案号<input v-model="filters.executionCaseNo" type="search"
+        /></label>
         <label>律师<input v-model="filters.lawyer" type="search" /></label>
         <label
           >状态<select v-model="filters.status">

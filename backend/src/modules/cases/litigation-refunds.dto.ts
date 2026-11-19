@@ -30,6 +30,7 @@ export class LitigationRefundListQuery {
   @IsOptional() @IsString() @MaxLength(200) plaintiff?: string;
   @IsOptional() @IsString() @MaxLength(200) defendant?: string;
   @IsOptional() @IsString() @MaxLength(100) courtNo?: string;
+  @IsOptional() @IsString() @MaxLength(100) executionCaseNo?: string;
   @IsOptional() @IsString() @MaxLength(200) lawyer?: string;
   @IsOptional() @IsIn(litigationRefundStatuses) status?: LitigationRefundStatus;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;

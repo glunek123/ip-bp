@@ -43,6 +43,7 @@ export type LitigationRefundRow = {
   plaintiff: string;
   defendant: string;
   courtNo: string | null;
+  executionCaseNo?: string | null;
   lawyer: string | null;
   party: 'COURT' | 'DEFENDANT';
   amount: string | null;
@@ -506,6 +507,19 @@ export class LitigationRefundsService {
             WHERE newer.case_id=v.case_id AND newer.department_id=v.department_id
               AND newer.revision>v.revision)
         ORDER BY case_id`;
+        const executionCaseNos = new Map<string, string | null>();
+        const executionRows = await tx.$queryRaw<
+          { caseId: string; executionCaseNo: string | null }[]
+        >`
+          SELECT s.case_id AS "caseId", s.court_case_no AS "executionCaseNo"
+          FROM case_supplement_entries s
+          WHERE s.department_id=${actor.departmentId}::uuid
+            AND s.kind='EXECUTION_FORMAL_ACCEPTANCE'
+            AND s.court_case_no IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM case_supplement_entries c
+              WHERE c.prior_entry_id=s.id)`;
+        for (const row of executionRows)
+          executionCaseNos.set(row.caseId, row.executionCaseNo);
         const rows: LitigationRefundRow[] = [];
         for (const headRef of heads) {
           const record = await this.details(tx, actor, headRef.caseId);
@@ -515,7 +529,10 @@ export class LitigationRefundsService {
             actor,
             headRef.caseId,
           );
-          rows.push(...workspace.items);
+          const executionCaseNo = executionCaseNos.get(headRef.caseId) ?? null;
+          rows.push(
+            ...workspace.items.map((item) => ({ ...item, executionCaseNo })),
+          );
         }
         const includes = (value: string | null, term: string | undefined) =>
           !term?.trim() ||
@@ -528,6 +545,7 @@ export class LitigationRefundsService {
               includes(row.plaintiff, query.plaintiff) &&
               includes(row.defendant, query.defendant) &&
               includes(row.courtNo, query.courtNo) &&
+              includes(row.executionCaseNo ?? null, query.executionCaseNo) &&
               includes(row.lawyer, query.lawyer) &&
               (!query.status || row.status === query.status),
           )
