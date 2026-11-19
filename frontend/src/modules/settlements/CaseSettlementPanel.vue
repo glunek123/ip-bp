@@ -457,21 +457,22 @@ async function launch(): Promise<void> {
       <p class="case-settlement__identity">
         {{ detail.businessNo }} · {{ detail.customer.name }}
       </p>
-      <div v-if="props.showBothSummaries" class="case-settlement__summary-pair">
+      <div v-if="props.showBothSummaries" class="case-settlement__pair case-settlement__summary-pair">
         <section
           v-for="summarySide in ['CUSTOMER', 'LAWYER'] as const"
           :key="summarySide"
+          class="case-settlement__pair-side"
           :aria-label="
             summarySide === 'CUSTOMER' ? '客户结算摘要' : '律师结算摘要'
           "
         >
           <h3>{{ summarySide === 'CUSTOMER' ? '客户结算' : '律师结算' }}</h3>
-          <p>
+          <p class="pair-side__meta">
             已发起
             {{
               detail.launches.filter((row) => row.side === summarySide).length
             }}
-            次；已关联账单
+            次 · 已关联账单
             {{
               new Set(
                 detail.launches
@@ -481,31 +482,44 @@ async function launch(): Promise<void> {
                   .map((row) => row.billId),
               ).size
             }}
-            张。
+            张 · {{ summarySide === 'CUSTOMER' ? '客户回款' : '律师开票' }}
+            {{ actualText(summarySide === 'CUSTOMER' ? 'customer' : 'lawyer') }}
           </p>
-          <p>
-            结算金额：{{
-              summarySide === 'CUSTOMER'
-                ? (detail.figures.customerAmount ?? '待定')
-                : (detail.figures.lawyerAmount ?? '待定')
-            }}
-            元
+          <div class="pair-side__row pair-side__row--amount">
+            <span class="pair-side__label"
+              >{{ summarySide === 'CUSTOMER' ? '客户' : '律师' }}结算金额</span
+            >
+            <strong
+              >{{
+                summarySide === 'CUSTOMER'
+                  ? (detail.figures.customerAmount ?? '待定')
+                  : (detail.figures.lawyerAmount ?? '待定')
+              }}
+              元</strong
+            >
+            <ElButton
+              v-if="props.canLaunch"
+              size="small"
+              type="primary"
+              plain
+              :disabled="saving"
+              :data-test="`launch-${summarySide.toLowerCase()}`"
+              @click="launch"
+              >发起结算</ElButton
+            >
+          </div>
+          <p class="pair-side__row">
+            <span class="pair-side__label">结算条件</span>
+            <span>{{ settlementCondition(summarySide) }}</span>
           </p>
-          <p>结算条件：{{ settlementCondition(summarySide) }}</p>
-          <p>
-            最近真实发起：{{
+          <p class="pair-side__row">
+            <span class="pair-side__label">结算日期</span>
+            <span>{{
               detail.launches
                 .filter((row) => row.side === summarySide)
                 .sort((a, b) => b.launchDate.localeCompare(a.launchDate))[0]
-                ?.launchDate ?? '未记录'
-            }}
-          </p>
-          <p>
-            {{
-              summarySide === 'CUSTOMER'
-                ? `客户实际收款：${actualText('customer')}；客户开票：未记录`
-                : `律师开票：${actualText('lawyer')}；律师实付：未记录`
-            }}
+                ?.launchDate ?? '—'
+            }}</span>
           </p>
         </section>
       </div>
@@ -726,6 +740,51 @@ async function launch(): Promise<void> {
   </section>
 </template>
 <style scoped>
+.case-settlement__pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 8px 0 12px;
+}
+.case-settlement__pair-side {
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+.case-settlement__pair-side h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.pair-side__meta {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  padding-bottom: 6px;
+}
+.pair-side__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 5px 0;
+  font-size: 12.5px;
+  border-bottom: 1px dashed var(--el-border-color-lighter);
+}
+.pair-side__row:last-child {
+  border-bottom: 0;
+}
+.pair-side__row--amount strong {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.pair-side__label {
+  flex: 0 0 auto;
+  min-width: 72px;
+  color: var(--el-text-color-secondary);
+}
 .case-settlement {
   display: grid;
   gap: 10px;

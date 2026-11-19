@@ -911,7 +911,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <p
-        v-if="props.caseId && caseStatistics"
+        v-if="props.caseId && caseStatistics && !props.caseId"
         data-test="case-fee-record-statistics"
       >
         本案有效费用 {{ caseStatistics.recordCount }} 笔；已关联凭证
@@ -922,10 +922,14 @@ onBeforeUnmount(() => {
         {{ caseStatistics.noteRecordCount }}
         笔。关联凭证表示材料关联，不代表银行实付。
       </p>
-      <p v-else-if="props.caseId && caseStatisticsError" role="status">
+      <p
+        v-else-if="props.caseId && caseStatisticsError && !props.caseId"
+        role="status"
+      >
         未能取得本案全案费用记录统计；下方费用列表仍按原权限和筛选规则展示。
       </p>
       <form
+        v-if="!props.caseId"
         :id="filterFormId"
         class="fee-center__filters"
         aria-label="筛选费用"
@@ -1034,6 +1038,16 @@ onBeforeUnmount(() => {
             >新增费用</ElButton
           >
         </div>
+      </div>
+      <div v-if="props.caseId" class="fee-center__case-actions">
+        <ElButton
+          v-if="props.canCreate"
+          type="primary"
+          :disabled="saving"
+          data-test="case-fee-create"
+          @click="openCreate"
+          >新增费用</ElButton
+        >
       </div>
       <p v-if="zeroOnlySelection" role="status">
         零元费用仅保留记录，不可发起；混选时零元费用将跳过。
@@ -1327,6 +1341,11 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.fee-center__case-actions {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0 10px;
+}
 .fee-center {
   display: grid;
   gap: var(--app-section-gap, 16px);
