@@ -1048,6 +1048,13 @@ onBeforeUnmount(() => {
           @click="openCreate"
           >新增费用</ElButton
         >
+        <ElButton
+          v-if="props.canDelete"
+          :disabled="saving || selected.size === 0 || unknownBatch"
+          data-test="case-fee-delete"
+          @click="batch('delete')"
+          >删除</ElButton
+        >
       </div>
       <p v-if="zeroOnlySelection" role="status">
         零元费用仅保留记录，不可发起；混选时零元费用将跳过。
