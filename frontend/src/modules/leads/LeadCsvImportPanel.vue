@@ -392,14 +392,21 @@ function chooseSheet(index: number): void {
   headerIndex.value = null;
   fieldColumns.value = {};
   ignoredConfirmed.value = false;
-  const candidates = sourceRows.value.slice(0, 20).flatMap((row, rowIndex) => {
+  // 取匹配字段最多的一行作为表头；匹配过少时退回第一行，
+  // 表头行选择入口已收起，不能在探测失败时让整份文件不可用。
+  let bestIndex = 0;
+  let bestScore = 0;
+  sourceRows.value.slice(0, 20).forEach((row, rowIndex) => {
     const guess = suggestLeadColumnMapping(row.cells);
-    return guess.missingFields.length === 0 &&
-      Object.values(guess.fields).filter((value) => value !== null).length >= 15
-      ? [rowIndex]
-      : [];
+    const score = Object.values(guess.fields).filter(
+      (value) => value !== null,
+    ).length;
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = rowIndex;
+    }
   });
-  if (candidates.length === 1) chooseHeader(candidates[0]!);
+  chooseHeader(bestScore >= 5 ? bestIndex : 0);
 }
 
 function chooseHeader(index: number): void {
