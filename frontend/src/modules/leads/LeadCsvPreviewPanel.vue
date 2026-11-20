@@ -448,17 +448,50 @@ const display = computed(() => {
   white-space: nowrap;
 }
 
+/* 表格：固定列宽，避免长内容把列挤变形 */
+.lead-csv-preview :deep(.demo-table) {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lead-csv-preview :deep(.demo-table th:nth-child(1)) {
+  width: 56px;
+}
+
+.lead-csv-preview :deep(.demo-table th:nth-child(2)) {
+  width: 84px;
+}
+
+.lead-csv-preview :deep(.demo-table th:nth-child(3)) {
+  width: 150px;
+}
+
+.lead-csv-preview :deep(.demo-table th),
+.lead-csv-preview :deep(.demo-table td) {
+  vertical-align: top;
+  padding: 12px 10px;
+  line-height: 1.5;
+}
+
+.lead-csv-preview :deep(.demo-table tbody tr + tr) {
+  border-top: 1px solid var(--color-border-subtle, #eee);
+}
+
+/* 字段网格：标签固定窄列，值自适应 */
 .lead-csv-preview__fields,
 .lead-csv-preview__product-fields {
   display: grid;
-  grid-template-columns: minmax(100px, max-content) minmax(180px, 1fr);
-  gap: 4px 10px;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 6px 12px;
   margin: 0;
+  font-size: 13px;
 }
 
 .lead-csv-preview__fields dt,
 .lead-csv-preview__product-fields dt {
   color: var(--color-ink-subtle);
+  white-space: nowrap;
 }
 
 .lead-csv-preview__fields dd,
@@ -469,18 +502,40 @@ const display = computed(() => {
   white-space: pre-wrap;
 }
 
+/* 长 URL 最多显示 3 行，超出省略，避免单行拉满整屏 */
+.lead-csv-preview__fields dd {
+  max-height: 4.5em;
+  overflow: hidden;
+}
+
+/* 商品块用浅底卡片区分 */
 .lead-csv-preview__product-fields {
-  margin: 6px 0 12px;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: var(--color-surface-muted, #fafafa);
+  border-radius: 6px;
+}
+
+.lead-csv-preview__fields ol {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.lead-csv-preview__fields li + li {
+  margin-top: 8px;
 }
 
 .lead-csv-preview__errors,
 .lead-csv-preview__duplicates {
   margin: 0;
   padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .lead-csv-preview__duplicates {
   margin-top: 6px;
+  color: var(--color-warning-ink, #b26a00);
 }
 
 .lead-csv-preview__select {
@@ -488,5 +543,23 @@ const display = computed(() => {
   align-items: center;
   gap: 6px;
   white-space: nowrap;
+}
+
+.lead-csv-preview__duplicate-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-warning-ink, #b26a00);
+}
+
+.lead-csv-preview__duplicate-block button {
+  align-self: flex-start;
+  padding: 2px 8px;
+  font-size: 12px;
+  border: 1px solid currentcolor;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
 }
 </style>
