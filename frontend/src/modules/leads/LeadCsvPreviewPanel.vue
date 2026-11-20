@@ -39,26 +39,15 @@ function resolveNames(
   if (customers.length !== 1) return null;
   const customer = customers[0]!;
   const customerName = customer.name.trim();
-  if (
-    !customerName ||
-    context.customers.filter(
-      (candidate) => candidate.name.trim() === customerName,
-    ).length !== 1
-  )
-    return null;
+  // 同名客户可能被重复建档，按 id 命中即可，不再要求名称全表唯一
+  if (!customerName) return null;
 
   const rightsHolders = customer.rightsHolders.filter(
     (rightsHolder) => rightsHolder.id === rightsHolderId,
   );
   if (rightsHolders.length !== 1) return null;
   const rightsHolderName = rightsHolders[0]!.name.trim();
-  if (
-    !rightsHolderName ||
-    customer.rightsHolders.filter(
-      (candidate) => candidate.name.trim() === rightsHolderName,
-    ).length !== 1
-  )
-    return null;
+  if (!rightsHolderName) return null;
 
   return { customerName, rightsHolderName };
 }
