@@ -75,7 +75,12 @@ function dateCell(value: string): string {
 }
 
 function fieldOf(raw: string): string | null {
-  const label = normalize(raw);
+  const normalised = normalize(raw);
+  // 表头可能带括号说明，例如「案件单号（系统生成，请留空）」「单价（元）」
+  const stripped = normalised
+    .replace(/[（(][^）)]*[）)]\s*$/u, '')
+    .trim();
+  const label = stripped || normalised;
   const numbered =
     /^(商品名称|商品链接|商品网址|销量|单价|评论数|截图|截图链接)([1-9]\d{0,2})$/u.exec(
       label,
