@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayNotEmpty,
   ArrayMinSize,
   ArrayUnique,
   IsArray,
@@ -353,3 +354,30 @@ export class LeadListQueryDto {
 }
 
 export type CreateLeadCommand = CreateLeadDto;
+
+export class ShopDuplicateItemDto {
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  rowNumber!: number;
+
+  @ApiProperty({ maxLength: 200 })
+  @IsString()
+  @MaxLength(200)
+  shopName!: string;
+
+  @ApiPropertyOptional({ maxLength: 100, nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  shopExternalId?: string | null;
+}
+
+export class ShopDuplicateCheckDto {
+  @ApiProperty({ type: [ShopDuplicateItemDto] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => ShopDuplicateItemDto)
+  shops!: ShopDuplicateItemDto[];
+}

@@ -6,6 +6,12 @@ export type LeadCsvParsedRow =
       status: 'valid';
       input: CreateLeadInput;
       suspectedDuplicates: readonly string[];
+      shopDuplicates?: readonly {
+        caseBusinessNo: string | null;
+        leadBusinessNo: string;
+        shopName: string;
+      }[];
+      shopDuplicateAcknowledged?: boolean;
       remoteScreenshots?: readonly {
         productNumber: number;
         sourceGroupNumber: number;

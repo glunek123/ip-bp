@@ -50,6 +50,7 @@ import {
   ReviveLeadDto,
   UpdateLeadDto,
   UpdateLeadProductScreenshotsDto,
+  ShopDuplicateCheckDto,
 } from './lead.dto';
 import { LeadBatchPushDto } from './lead-batch-push.dto';
 import { LeadNoEvidenceBatchDto } from './lead-no-evidence-batch.dto';
@@ -2014,6 +2015,86 @@ export class LeadService {
       items.push({ ...entry, lead: { ...lead, products } });
     }
     return { items } as unknown as LeadCsvImportResponse;
+  }
+
+  async checkShopDuplicates(actor: ActorContext, input: ShopDuplicateCheckDto) {
+    const scope = await this.access.buildCustomerScope(actor, 'customer.read');
+    const names: string[] = [
+      ...new Set(input.shops.map((shop) => shop.shopName.trim())),
+    ].filter(Boolean);
+    const externals: string[] = [
+      ...new Set(
+        input.shops
+          .map((shop) => shop.shopExternalId?.trim() ?? '')
+          .filter(Boolean),
+      ),
+    ];
+    if (!names.length && !externals.length) return { rows: [] };
+    const existing = await this.database.lead.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        deletedAt: null,
+        OR: [
+          ...(names.length ? [{ shopName: { in: names } }] : []),
+          ...(externals.length
+            ? [{ shopExternalId: { in: externals } }]
+            : []),
+        ],
+      },
+      select: {
+        id: true,
+        businessNo: true,
+        shopName: true,
+        shopExternalId: true,
+        createdAt: true,
+      },
+      take: 500,
+    });
+    const linkedCases =
+      existing.length === 0
+        ? []
+        : await this.database.case.findMany({
+            where: {
+              departmentId: actor.departmentId,
+              sourceLeadId: { in: existing.map((lead) => lead.id) },
+            },
+            select: {
+              id: true,
+              businessNo: true,
+              stage: true,
+              sourceLeadId: true,
+            },
+          });
+    const rows = input.shops.map((shop) => {
+      const name = shop.shopName.trim();
+      const external = shop.shopExternalId?.trim() ?? '';
+      const hits = existing.filter(
+        (lead) =>
+          (name && lead.shopName === name) ||
+          (external && lead.shopExternalId === external),
+      );
+      return {
+        rowNumber: shop.rowNumber,
+        shopName: name,
+        shopExternalId: external || null,
+        matches: hits.map((lead) => {
+          const linked = linkedCases.find(
+            (entry) => entry.sourceLeadId === lead.id,
+          );
+          return {
+            leadId: lead.id,
+            leadBusinessNo: lead.businessNo,
+            caseId: linked?.id ?? null,
+            caseBusinessNo: linked?.businessNo ?? null,
+            caseStage: linked?.stage ?? null,
+          shopName: lead.shopName,
+          shopExternalId: lead.shopExternalId,
+            createdAt: lead.createdAt.toISOString(),
+          };
+        }),
+      };
+    });
+    return { rows: rows.filter((row) => row.matches.length > 0) };
   }
 
   private csvBusinessSnapshotMatches(

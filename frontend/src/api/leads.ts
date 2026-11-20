@@ -1371,6 +1371,40 @@ export async function pushLeadsBatch(
 
 const maxLeadCsvImportBodyBytes = 92_160;
 
+export type ShopDuplicateMatch = {
+  leadId: string;
+  leadBusinessNo: string;
+  caseId: string | null;
+  caseBusinessNo: string | null;
+  caseStage: string | null;
+  shopName: string;
+  shopExternalId: string | null;
+  createdAt: string;
+};
+export type ShopDuplicateRow = {
+  rowNumber: number;
+  shopName: string;
+  shopExternalId: string | null;
+  matches: readonly ShopDuplicateMatch[];
+};
+export async function checkLeadShopDuplicates(
+  shops: ReadonlyArray<{
+    rowNumber: number;
+    shopName: string;
+    shopExternalId?: string | null;
+  }>,
+  options: RequestOptions = {},
+): Promise<readonly ShopDuplicateRow[]> {
+  if (!shops.length) return [];
+  const data = await requestJson('/leads/shop-duplicate-check', {
+    ...options,
+    method: 'POST',
+    body: { shops: shops.map((shop) => ({ ...shop })) },
+  });
+  const rows = (data as { rows?: unknown }).rows;
+  return Array.isArray(rows) ? (rows as ShopDuplicateRow[]) : [];
+}
+
 export async function importLeadCsvBatch(
   items: readonly LeadCsvImportItem[],
   idempotencyKey: string,
