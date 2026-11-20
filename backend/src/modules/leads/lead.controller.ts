@@ -33,6 +33,7 @@ import {
   ReviveLeadDto,
   UpdateLeadDto,
   UpdateLeadProductScreenshotsDto,
+  ShopDuplicateCheckDto,
 } from './lead.dto';
 import { LeadService } from './lead.service';
 import { ClientLeadService } from './client-lead.service';
@@ -117,6 +118,14 @@ export class LeadController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.leads.get(actor, id);
+  }
+
+  @Post('shop-duplicate-check')
+  checkShopDuplicates(
+    @CurrentActor() actor: ActorContext,
+    @Body() body: ShopDuplicateCheckDto,
+  ) {
+    return this.leads.checkShopDuplicates(actor, body);
   }
 
   @Post()
