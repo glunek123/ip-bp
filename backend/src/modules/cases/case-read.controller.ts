@@ -6,6 +6,7 @@ import {
 } from './case-early-archive.dto';
 import { CaseExecutionRecordEditService } from './case-execution-record-edit.service';
 import { CaseHistoricalRecordEditService } from './case-historical-record-edit.service';
+import { CaseMaterialService } from './case-material.service';
 import {
   CorrectExecutionMailingRecordDto,
   CorrectExecutionFilingRecordDto,
@@ -46,7 +47,7 @@ import {
   SubmitCaseExecutionFilingDto,
   SubmitCaseExecutionFilingResponseDto,
 } from './case-execution-filing.dto';
-import {
+import { Delete,
   Controller,
   Body,
   ForbiddenException,
@@ -174,6 +175,7 @@ import {
 
 @ApiTags('cases')
 @ApiBearerAuth()
+
 @Controller('cases')
 @UseGuards(ActorContextGuard, CsrfGuard)
 export class CaseReadController {
@@ -202,6 +204,7 @@ export class CaseReadController {
     private readonly courts: FilingCourtService,
     private readonly executionRecordEdit: CaseExecutionRecordEditService,
     private readonly historicalRecordEdit: CaseHistoricalRecordEditService,
+    private readonly caseMaterials: CaseMaterialService,
   ) {}
 
   private assertInternalRecordEditor(actor: ActorContext) {
@@ -632,6 +635,16 @@ export class CaseReadController {
         message: '无权登记邮寄',
       });
     return this.mailing.mail(actor, id, body);
+  }
+
+  @Delete(':id/materials/:materialId')
+  @ApiOkResponse({ description: '材料已删除' })
+  removeMaterial(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('materialId', new ParseUUIDPipe()) materialId: string,
+  ) {
+    return this.caseMaterials.remove(actor, id, materialId);
   }
 
   @Get(':id/filing-courts')

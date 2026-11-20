@@ -24,6 +24,7 @@ import {
 } from '../../api/cases';
 import { ApiError } from '../../api/http';
 import {
+  deleteCaseMaterial,
   downloadMaterialVersion,
   uploadMaterialFile,
 } from '../../api/materials';
@@ -725,6 +726,27 @@ function removeDisclosureFile(contentVersionId: string): void {
   error.value = '';
   success.value = '';
 }
+async function removeMaterial(file: CaseFile): Promise<void> {
+  if (submitting.value || draftBusy.value || unknownRequest.value !== null)
+    return;
+  const confirmed = window.confirm(
+    `确认删除材料「${file.originalFilename}」？删除后不可恢复。`,
+  );
+  if (!confirmed) return;
+  error.value = '';
+  success.value = '';
+  try {
+    const context = captureContext();
+    await deleteCaseMaterial(props.item.id, file.materialId);
+    if (!isCurrent(context)) return;
+    selected.value.delete(file.contentVersionId);
+    success.value = '材料已删除';
+    emit('refresh');
+  } catch {
+    error.value = '删除失败，请稍后重试。';
+  }
+}
+
 async function download(file: CaseFile): Promise<void> {
   const context = captureContext();
   const controller = new AbortController();
@@ -1008,6 +1030,16 @@ async function download(file: CaseFile): Promise<void> {
             </label>
             <template v-else>{{ file.originalFilename }}</template>
             <ElButton text @click="download(file)">下载</ElButton>
+            <ElButton
+              v-if="canRegister"
+              text
+              data-test="acceptance-remove-material"
+              :disabled="
+                unknownRequest !== null || submitting || draftBusy
+              "
+              @click="removeMaterial(file)"
+              >删除</ElButton
+            >
           </li>
         </ul>
         <p v-else class="field-help">当前没有可选材料。</p>

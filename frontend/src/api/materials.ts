@@ -1189,3 +1189,14 @@ export async function restoreMaterial(
   );
   return decodeMutation(response, 'ACTIVE');
 }
+
+export async function deleteCaseMaterial(
+  caseId: string,
+  materialId: string,
+  options: RequestOptions = {},
+): Promise<void> {
+  await requestJson(`/cases/${caseId}/materials/${materialId}`, {
+    ...options,
+    method: 'DELETE',
+  });
+}

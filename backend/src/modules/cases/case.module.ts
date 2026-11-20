@@ -97,6 +97,7 @@ import {
   SystemCaseHearingClock,
 } from './case-hearing-signal';
 import { FilingCourtService } from './filing-court.service';
+import { CaseMaterialService } from './case-material.service';
 import { ClientCaseController } from './client-case.controller';
 import { ClientCaseService } from './client-case.service';
 import { LawyerAccountService } from './lawyer-account.service';
@@ -328,6 +329,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseHearingSignal,
     { provide: CASE_HEARING_CLOCK, useClass: SystemCaseHearingClock },
     FilingCourtService,
+    CaseMaterialService,
     ClientCaseService,
     LawyerAccountService,
   ],
