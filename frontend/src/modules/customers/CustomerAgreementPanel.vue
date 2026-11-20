@@ -426,12 +426,9 @@ function makeBody(): PendingCustomerDocumentCommand['body'] {
     latest.agreement?.currentVersion.settlementFormula
       ? { settlementFormula: form.value.settlementFormula.trim() || null }
       : {}),
-    validityMode: form.value.validityMode,
+    validityMode: form.value.effectiveTo ? 'FIXED' : 'LONG_TERM',
     effectiveFrom: form.value.effectiveFrom || null,
-    effectiveTo:
-      form.value.validityMode === 'FIXED'
-        ? form.value.effectiveTo || null
-        : null,
+    effectiveTo: form.value.effectiveTo || null,
     contentVersionIds: form.value.files.map((file) => file.contentVersionId),
   };
   return latest.agreement
@@ -908,15 +905,11 @@ onBeforeUnmount(() => {
               </dd>
             </div>
             <div>
-              <dt>期限</dt>
+              <dt>合作期限</dt>
               <dd>
-                {{
-                  data.agreement.currentVersion.validityMode === 'FIXED'
-                    ? `${data.agreement.currentVersion.effectiveFrom || '起始日未知'} 至 ${data.agreement.currentVersion.effectiveTo}`
-                    : data.agreement.currentVersion.validityMode === 'LONG_TERM'
-                      ? '长期'
-                      : '期限未知'
-                }}
+                {{ data.agreement.currentVersion.effectiveFrom || '起始日未知' }}
+                至
+                {{ data.agreement.currentVersion.effectiveTo || '未填截止日' }}
               </dd>
             </div>
           </dl>
@@ -1031,25 +1024,6 @@ onBeforeUnmount(() => {
           >
         </label>
         <label
-          >期限类型
-          <select
-            :value="form.validityMode"
-            :disabled="
-              !canEdit || blockedByOtherMaintenance || status === 'unknown'
-            "
-            @change="
-              setValidityMode(
-                ($event.target as HTMLSelectElement)
-                  .value as AgreementValidityMode,
-              )
-            "
-          >
-            <option value="FIXED">固定期限</option>
-            <option value="LONG_TERM">长期</option>
-            <option value="UNKNOWN">未知</option>
-          </select>
-        </label>
-        <label
           >生效日<input
             v-model="form.effectiveFrom"
             type="date"
@@ -1057,7 +1031,7 @@ onBeforeUnmount(() => {
               !canEdit || blockedByOtherMaintenance || status === 'unknown'
             "
         /></label>
-        <label v-if="form.validityMode === 'FIXED'"
+        <label
           >截止日<input
             v-model="form.effectiveTo"
             type="date"
