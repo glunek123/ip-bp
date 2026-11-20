@@ -20,6 +20,7 @@ import {
   listOwnerMaterials,
   uploadMaterialFile,
 } from '../../api/materials';
+import { useMaterialRemoval } from './use-material-removal';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 const fileInput = ref<globalThis.HTMLInputElement | null>(null);
@@ -60,6 +61,13 @@ const props = defineProps<{
   contextKey: string;
 }>();
 const emit = defineEmits<{ changed: []; refresh: [] }>();
+const { remove: removeMaterial, removing: removingMaterial } = useMaterialRemoval({
+  caseId: () => props.item.id,
+  onRemoved: () => emit('refresh'),
+  onError: (message) => { window.alert(message); },
+  onSuccess: (message) => { window.alert(message); },
+});
+
 const submittedAt = ref(todayShanghai());
 const files = ref<VersionFile[]>([]);
 const availableFiles = ref<VersionFile[]>([]);
@@ -398,6 +406,14 @@ async function download(file: VersionFile) {
             @click="download(file)"
             >下载</ElButton
           >
+            <ElButton
+              text
+              data-test="case-remove-material"
+              :disabled="removingMaterial"
+              @click="removeMaterial(file)"
+              >删除</ElButton
+            >
+
         </li>
       </ul>
     </template>
@@ -492,7 +508,15 @@ async function download(file: VersionFile) {
               text
               @click="download(file)"
               >下载</ElButton
-            ><ElButton
+            >
+            <ElButton
+              text
+              data-test="case-remove-material"
+              :disabled="removingMaterial"
+              @click="removeMaterial(file)"
+              >删除</ElButton
+            >
+<ElButton
               v-if="unknownRequest === null"
               text
               @click="removeFile(file.contentVersionId)"

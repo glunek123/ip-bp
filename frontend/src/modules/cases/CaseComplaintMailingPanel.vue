@@ -17,6 +17,7 @@ import {
 import { mailClientCaseComplaint } from '../../api/client-cases';
 import { ApiError } from '../../api/http';
 import { downloadMaterialVersion } from '../../api/materials';
+import { useMaterialRemoval } from './use-material-removal';
 import { useAuthStore } from '../../stores/auth';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
@@ -39,6 +40,13 @@ const props = defineProps<{
   lawyer?: boolean;
 }>();
 const emit = defineEmits<{ changed: []; refresh: [] }>();
+const { remove: removeMaterial, removing: removingMaterial } = useMaterialRemoval({
+  caseId: () => props.item.id,
+  onRemoved: () => emit('refresh'),
+  onError: (message) => { window.alert(message); },
+  onSuccess: (message) => { window.alert(message); },
+});
+
 const auth = useAuthStore();
 const identity = computed(() =>
   auth.session === null
@@ -247,6 +255,14 @@ async function download(file: CaseFile) {
             @click="download(file)"
             >下载</ElButton
           >
+            <ElButton
+              text
+              data-test="case-remove-material"
+              :disabled="removingMaterial"
+              @click="removeMaterial(file)"
+              >删除</ElButton
+            >
+
         </li>
       </ul>
     </template>

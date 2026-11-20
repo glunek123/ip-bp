@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMaterialRemoval } from './use-material-removal';
 import {
   computed,
   onActivated,
@@ -67,6 +68,13 @@ const emit = defineEmits<{
   refresh: [];
   'pending-change': [input: FinishInput | null];
 }>();
+const { remove: removeMaterial, removing: removingMaterial } = useMaterialRemoval({
+  caseId: () => props.item.id,
+  onRemoved: () => emit('refresh'),
+  onError: (message) => { window.alert(message); },
+  onSuccess: (message) => { window.alert(message); },
+});
+
 const finishedAt = ref(todayShanghai());
 const reason = ref('');
 const selected = ref<CaseFile[]>([]);
@@ -419,6 +427,14 @@ async function download(file: CaseFile) {
             @click="download(file)"
             >下载</ElButton
           >
+            <ElButton
+              text
+              data-test="case-remove-material"
+              :disabled="removingMaterial"
+              @click="removeMaterial(file)"
+              >删除</ElButton
+            >
+
         </li>
       </ul>
     </template>
@@ -535,7 +551,15 @@ async function download(file: CaseFile) {
             text
             @click="download(file)"
             >下载</ElButton
-          ></label
+          >
+            <ElButton
+              text
+              data-test="case-remove-material"
+              :disabled="removingMaterial"
+              @click="removeMaterial(file)"
+              >删除</ElButton
+            >
+</label
         >
       </fieldset>
       <ElButton

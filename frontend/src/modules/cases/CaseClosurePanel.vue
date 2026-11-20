@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMaterialRemoval } from './use-material-removal';
 import {
   computed,
   onActivated,
@@ -98,6 +99,13 @@ const emit = defineEmits<{
   cancel: [];
   'pending-change': [request: PendingRequest | null];
 }>();
+const { remove: removeMaterial, removing: removingMaterial } = useMaterialRemoval({
+  caseId: () => props.item.id,
+  onRemoved: () => emit('refresh'),
+  onError: (message) => { window.alert(message); },
+  onSuccess: (message) => { window.alert(message); },
+});
+
 const closeAt = ref('');
 const amountState = ref<'KNOWN' | 'PENDING'>('PENDING');
 const amount = ref('');
@@ -587,6 +595,14 @@ function recordedTime(value: string) {
               @click="download(file)"
               >下载</ElButton
             >
+            <ElButton
+              text
+              data-test="case-remove-material"
+              :disabled="removingMaterial"
+              @click="removeMaterial(file)"
+              >删除</ElButton
+            >
+
           </li>
         </ul>
         <details data-test="closure-history">
@@ -621,6 +637,14 @@ function recordedTime(value: string) {
                   @click="download(file)"
                   >下载</ElButton
                 >
+            <ElButton
+              text
+              data-test="case-remove-material"
+              :disabled="removingMaterial"
+              @click="removeMaterial(file)"
+              >删除</ElButton
+            >
+
               </li>
             </ul>
           </article>
@@ -771,7 +795,15 @@ function recordedTime(value: string) {
             text
             @click="download(file)"
             >下载</ElButton
-          ></label
+          >
+            <ElButton
+              text
+              data-test="case-remove-material"
+              :disabled="removingMaterial"
+              @click="removeMaterial(file)"
+              >删除</ElButton
+            >
+</label
         >
       </fieldset>
       <ElButton

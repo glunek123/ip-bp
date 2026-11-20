@@ -25,6 +25,7 @@ import {
   downloadMaterialVersion,
   uploadMaterialFile,
 } from '../../api/materials';
+import { useMaterialRemoval } from './use-material-removal';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 type PanelItem = Omit<
@@ -54,6 +55,13 @@ const props = defineProps<{
   submitCommand?: (command: Command) => Promise<void>;
 }>();
 const emit = defineEmits<{ changed: []; refresh: []; cancel: [] }>();
+const { remove: removeMaterial, removing: removingMaterial } = useMaterialRemoval({
+  caseId: () => props.item.id,
+  onRemoved: () => emit('refresh'),
+  onError: (message) => { window.alert(message); },
+  onSuccess: (message) => { window.alert(message); },
+});
+
 
 const judgmentReceivedAt = ref('');
 type RefundStatus =
@@ -709,6 +717,14 @@ function historyLabel(fact: CaseJudgmentFact): string {
               {{ file.originalFilename }}
             </label>
             <ElButton text @click="download(file)">下载</ElButton>
+            <ElButton
+              text
+              data-test="case-remove-material"
+              :disabled="removingMaterial"
+              @click="removeMaterial(file)"
+              >删除</ElButton
+            >
+
           </li>
         </ul>
         <p v-else class="field-help">尚无可选判决书，请先上传。</p>
