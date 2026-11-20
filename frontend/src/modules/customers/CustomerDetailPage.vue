@@ -1278,7 +1278,7 @@ onBeforeUnmount(() => {
                   编辑
                 </ElButton>
                 <ElButton
-                  v-if="!sharedWriteBlocked"
+                  v-if="!sharedWriteBlocked && customer.profileStatus === 'draft'"
                   id="customer-admission"
                   data-test="open-customer-admission"
                   @click="admissionOpen = true"
