@@ -131,6 +131,12 @@ export class LeadCsvPreviewSession {
     }
     this.rows = rows.map(copyRow);
     this.phase = 'ready';
+    // 通过校验的行默认全选：导入以「能导就导」为准，只让用户处理有问题的行
+    this.selectedRowNumbers = new Set(
+      this.rows
+        .filter((row) => row.status === 'valid')
+        .map((row) => row.rowNumber),
+    );
     return true;
   }
 
@@ -159,7 +165,15 @@ export class LeadCsvPreviewSession {
         shopDuplicateAcknowledged: false,
       };
     });
-    this.selectedRowNumbers.clear();
+    this.selectedRowNumbers = new Set(
+      this.rows
+        .filter(
+          (row) =>
+            row.status === 'valid' &&
+            (row.shopDuplicates?.length ?? 0) === 0,
+        )
+        .map((row) => row.rowNumber),
+    );
     return true;
   }
 
@@ -169,6 +183,7 @@ export class LeadCsvPreviewSession {
     this.rows = this.rows.map((row) => {
       if (row.status !== 'valid' || row.rowNumber !== rowNumber) return row;
       changed = true;
+      this.selectedRowNumbers.add(row.rowNumber);
       return { ...row, shopDuplicateAcknowledged: true };
     });
     return changed;

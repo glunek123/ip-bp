@@ -150,7 +150,22 @@ const display = computed(() => {
     phase: snapshot.phase,
     fileName: snapshot.fileName,
     canConfirm: canConfirm(snapshot, props.formContext),
-    rows: snapshot.rows.map((row) => ({
+    totalCount: snapshot.rows.length,
+    validCount: snapshot.rows.filter((row) => row.status === 'valid').length,
+    problemCount: snapshot.rows.filter(
+      (row) =>
+        row.status === 'invalid' ||
+        ((row.shopDuplicates?.length ?? 0) > 0 &&
+          row.shopDuplicateAcknowledged !== true),
+    ).length,
+    rows: snapshot.rows
+      .filter(
+        (row) =>
+          row.status === 'invalid' ||
+          ((row.shopDuplicates?.length ?? 0) > 0 &&
+            row.shopDuplicateAcknowledged !== true),
+      )
+      .map((row) => ({
       row,
       names:
         row.status === 'valid'
@@ -199,12 +214,20 @@ const display = computed(() => {
       v-else-if="display.phase === 'ready' && display.rows.length === 0"
       data-test="csv-no-rows"
     >
-      当前文件没有可预览的行。
+      <template v-if="display.validCount > 0">
+        全部 {{ display.validCount }} 行校验通过，已自动选中，点「导入」即可。
+      </template>
+      <template v-else> 当前文件没有可预览的行。 </template>
     </p>
 
     <template v-if="display.phase === 'ready' && display.rows.length > 0">
-      <p data-test="csv-selection-help">
-        逐行核对后再选择处理；重复提示仅供参考。
+      <p data-test="csv-selection-help" class="lead-csv-preview__summary">
+        共 {{ display.totalCount }} 行，其中
+        <strong>{{ display.validCount }}</strong> 行可直接导入，
+        <strong v-if="display.problemCount > 0" class="is-problem">{{
+          display.problemCount
+        }}</strong>
+        <strong v-else>0</strong> 行需要处理。
       </p>
       <div class="demo-table-wrap">
         <table class="demo-table">
