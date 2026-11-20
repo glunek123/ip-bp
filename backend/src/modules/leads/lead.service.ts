@@ -430,7 +430,11 @@ export class LeadService {
           cooperationStatus: 'COOPERATING',
           deletedAt: null,
         },
-        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        orderBy: [
+          { name: 'asc' },
+          { cases: { _count: 'desc' } },
+          { id: 'asc' },
+        ],
         select: {
           id: true,
           name: true,

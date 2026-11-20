@@ -378,9 +378,11 @@ export function mapLegacyLeadRecord(
   const customers = context.formContext.customers.filter(
     (item) => normalizeName(item.name) === customerKey,
   );
-  if (!customerName || customers.length !== 1)
+  if (!customerName) errors.push('客户名称不能为空');
+  else if (customers.length === 0)
     errors.push('客户名称必须在当前可选范围内唯一匹配');
-  const customer = customers.length === 1 ? customers[0] : undefined;
+  // 同一客户可能被重复建档：按案件数降序取第一个，避免重名阻断导入
+  const customer = customers[0];
   const holderName = cells[1]!.trim();
   const holderKey = normalizeName(holderName);
   const holders =
