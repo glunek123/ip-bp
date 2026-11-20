@@ -152,6 +152,7 @@ export function mapLeadTableRows(
   const highest = Math.max(1, ...presentNumbers);
   const results: LeadCsvParsedRow[] = [];
   const seen = new Map<string, number>();
+  let lastShopName = '';
   for (const record of records) {
     if (record.cells.every((cell) => !cell?.trim())) continue;
     const get = (field: string) => {
@@ -188,7 +189,9 @@ export function mapLeadTableRows(
     const row = mapLegacyLeadRecord(
       { startLine: record.rowNumber, cells: legacy } as LeadCsvRecord,
       context,
+      lastShopName,
     );
+    if (row.status === 'valid') lastShopName = row.input.shopName;
     const errors = row.status === 'invalid' ? [...row.errors] : [];
     if (get('案件单号').trim())
       errors.push('案件单号由系统生成，请清空文件中的号码');

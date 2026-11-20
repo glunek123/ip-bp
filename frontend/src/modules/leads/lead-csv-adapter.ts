@@ -370,6 +370,7 @@ function parseProduct(
 export function mapLegacyLeadRecord(
   record: LeadCsvRecord,
   context: LeadCsvMappingContext,
+  previousShopName = '',
 ): LeadCsvParsedRow {
   const cells = record.cells;
   const errors: string[] = [];
@@ -461,7 +462,8 @@ export function mapLegacyLeadRecord(
     }
   const foundAt = parseShanghaiTime(cells[7]!);
   if (foundAt.error) errors.push(foundAt.error);
-  const shopName = canonicalText(cells[8]!);
+  // 同一店铺的多行商品常只写第一行店铺名，空值沿用上一行
+  const shopName = canonicalText(cells[8]!) || previousShopName;
   if (!shopName || shopName.length > 200)
     errors.push('店铺名必填且最多200字符');
   const shopExternalId = canonicalText(cells[9]!);
@@ -535,11 +537,13 @@ export function parseLeadCsvPreview(
   const width = checkHeader(records[0]);
   const seen = new Map<string, number>();
   const rows: LeadCsvParsedRow[] = [];
+  let lastShopName = '';
   for (const record of records.slice(1)) {
     if (record.cells.every((cell) => cell.trim() === '')) continue;
     if (record.cells.length !== width)
       throw new LeadCsvHeaderError(record.startLine, 'CSV数据行列数与表头不同');
-    const row = mapLegacyLeadRecord(record, context);
+    const row = mapLegacyLeadRecord(record, context, lastShopName);
+    if (row.status === 'valid') lastShopName = row.input.shopName;
     if (row.status === 'valid') {
       const key = fingerprint(row.input);
       const first = seen.get(key);
