@@ -64,6 +64,11 @@ export type LeadFormContext = {
     name: string;
     rightsHolders: ReadonlyArray<{ id: string; name: string }>;
   }>;
+  pendingCustomers?: ReadonlyArray<{
+    id: string;
+    name: string;
+    profileStatus: string;
+  }>;
   dictionaries: {
     caseTypes: ReadonlyArray<LeadOption<LeadCaseType>>;
     infringementTypes: ReadonlyArray<LeadOption<InfringementType>>;

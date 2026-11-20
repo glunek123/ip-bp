@@ -360,6 +360,20 @@ async function submit(): Promise<void> {
           <small v-if="errors.customerId" class="field-error">{{
             errors.customerId
           }}</small>
+          <small
+            v-else-if="(context.pendingCustomers?.length ?? 0) > 0"
+            class="field-help"
+            data-test="pending-customers-hint"
+          >
+            另有 {{ context.pendingCustomers!.length }} 个客户未完成准入（{{
+              context.pendingCustomers!
+                .slice(0, 3)
+                .map((c) => c.name)
+                .join('、')
+            }}{{
+              context.pendingCustomers!.length > 3 ? ' 等' : ''
+            }}），暂不能关联线索。
+          </small>
         </label>
         <label>
           <span>权利主体<RequiredFieldMark /></span>

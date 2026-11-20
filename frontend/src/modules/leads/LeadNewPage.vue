@@ -168,7 +168,18 @@ onBeforeUnmount(() => request?.abort());
             data-test="no-admitted-customers"
           >
             <h2>尚无已准入客户</h2>
-            <p>线索只能关联已完成准入的客户，请先完成客户准入。</p>
+            <p>
+              线索只能关联已完成准入的客户，请先完成客户准入。
+              <template v-if="(context.pendingCustomers?.length ?? 0) > 0"
+                >当前有 {{ context.pendingCustomers!.length }}
+                个客户等待准入：{{
+                  context.pendingCustomers!
+                    .slice(0, 5)
+                    .map((c) => c.name)
+                    .join('、')
+                }}。</template
+              >
+            </p>
             <RouterLink data-test="go-to-customers" to="/customers">
               <ElButton type="primary">去客户列表</ElButton>
             </RouterLink>

@@ -409,6 +409,19 @@ export class LeadService {
         actor,
         'customer.read',
       );
+      const pendingCustomers = await this.database.customer.findMany({
+        where: {
+          ...customerScope,
+          deletedAt: null,
+          OR: [
+            { profileStatus: { not: 'ADMITTED' } },
+            { cooperationStatus: { not: 'COOPERATING' } },
+          ],
+        },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        select: { id: true, name: true, profileStatus: true },
+        take: 20,
+      });
       const customers = await this.database.customer.findMany({
         where: {
           ...customerScope,
@@ -471,6 +484,11 @@ export class LeadService {
         });
       }
       return {
+        pendingCustomers: pendingCustomers.map((customer) => ({
+          id: customer.id,
+          name: customer.name,
+          profileStatus: customer.profileStatus,
+        })),
         customers: customers.map((customer) => ({
           id: customer.id,
           name: customer.name,
