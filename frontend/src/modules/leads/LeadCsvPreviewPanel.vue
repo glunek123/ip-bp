@@ -350,7 +350,9 @@ const display = computed(() => {
                   <dt>披露标记</dt>
                   <dd>{{ displayRow.row.input.needDisclose ? '是' : '否' }}</dd>
                   <dt>备注</dt>
-                  <dd>{{ displayRow.row.input.remark }}</dd>
+                  <dd :title="displayRow.row.input.remark ?? ''">
+                    {{ displayRow.row.input.remark }}
+                  </dd>
                   <dt>商品明细</dt>
                   <dd>
                     <ol>
@@ -362,9 +364,9 @@ const display = computed(() => {
                         <span>商品 {{ index + 1 }}</span>
                         <dl class="lead-csv-preview__product-fields">
                           <dt>商品链接</dt>
-                          <dd>{{ product.url }}</dd>
+                          <dd :title="product.url ?? ''">{{ product.url }}</dd>
                           <dt>名称</dt>
-                          <dd>{{ product.title }}</dd>
+                          <dd :title="product.title ?? ''">{{ product.title }}</dd>
                           <dt>销量</dt>
                           <dd>{{ product.quantity }}</dd>
                           <dt>单价</dt>
