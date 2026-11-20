@@ -371,14 +371,20 @@ export function mapLegacyLeadRecord(
   const holders =
     customer?.rightsHolders.filter((item) => item.name.trim() === holderName) ??
     [];
+  // 权利主体允许一个客户挂多个：填了就必须精确命中，留空则取该客户的第一个
   const holder = holderName
     ? holders.length === 1
       ? holders[0]
       : undefined
-    : customer?.rightsHolders.length === 1
-      ? customer.rightsHolders[0]
-      : undefined;
-  if (!holder) errors.push('权利主体必须在该客户下唯一匹配');
+    : customer?.rightsHolders[0];
+  if (!holder)
+    errors.push(
+      holderName
+        ? holders.length > 1
+          ? '权利主体在该客户下有重名，请在客户详情中区分后再导入'
+          : '权利主体不在该客户名下'
+        : '该客户尚未登记权利主体',
+    );
 
   const caseType = matchOption(
     cells[2]!,
