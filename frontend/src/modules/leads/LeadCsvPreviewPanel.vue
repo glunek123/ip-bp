@@ -331,10 +331,9 @@ const display = computed(() => {
                 </ul>
               </td>
               <td>
-                <dl
-                  v-if="displayRow.row.status === 'valid'"
-                  class="lead-csv-preview__fields"
-                >
+                <details v-if="displayRow.row.status === 'valid'" class="lead-csv-preview__detail">
+                  <summary>展开明细</summary>
+                  <dl class="lead-csv-preview__fields">
                   <dt>客户</dt>
                   <dd>{{ displayRow.names?.customerName ?? '不可用' }}</dd>
                   <dt>权利主体</dt>
@@ -434,6 +433,7 @@ const display = computed(() => {
                     </ul>
                   </dd>
                 </dl>
+                </details>
               </td>
             </tr>
           </tbody>
