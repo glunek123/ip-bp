@@ -2033,7 +2033,6 @@ export class LeadService {
     const existing = await this.database.lead.findMany({
       where: {
         departmentId: actor.departmentId,
-        deletedAt: null,
         OR: [
           ...(names.length ? [{ shopName: { in: names } }] : []),
           ...(externals.length
