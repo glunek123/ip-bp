@@ -2046,6 +2046,7 @@ export class LeadService {
         shopName: true,
         shopExternalId: true,
         createdAt: true,
+        products: { select: { url: true }, orderBy: { position: 'asc' } },
       },
       take: 500,
     });
@@ -2067,11 +2068,18 @@ export class LeadService {
     const rows = input.shops.map((shop) => {
       const name = shop.shopName.trim();
       const external = shop.shopExternalId?.trim() ?? '';
-      const hits = existing.filter(
-        (lead) =>
-          (name && lead.shopName === name) ||
-          (external && lead.shopExternalId === external),
+      const urls = new Set(
+        (shop.productUrls ?? []).map((url) => url.trim()).filter(Boolean),
       );
+      // 线索级判重：店铺ID 相同，或「店铺名 + 任一商品链接」同时相同
+      const hits = existing.filter((lead) => {
+        if (external && lead.shopExternalId === external) return true;
+        if (!name || lead.shopName !== name) return false;
+        if (!urls.size) return false;
+        return lead.products.some(
+          (product) => product.url !== null && urls.has(product.url),
+        );
+      });
       return {
         rowNumber: shop.rowNumber,
         shopName: name,

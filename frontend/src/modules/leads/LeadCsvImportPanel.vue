@@ -149,6 +149,9 @@ async function runShopDuplicateCheck(
             rowNumber: row.rowNumber,
             shopName: row.input.shopName,
             shopExternalId: row.input.shopExternalId,
+            productUrls: row.input.products
+              .map((product) => product.url ?? '')
+              .filter(Boolean),
           },
         ]
       : [],

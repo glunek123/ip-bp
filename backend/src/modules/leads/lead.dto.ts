@@ -371,6 +371,18 @@ export class ShopDuplicateItemDto {
   @IsString()
   @MaxLength(100)
   shopExternalId?: string | null;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: '本行已填写的商品链接，用于线索级判重',
+    maxItems: 20,
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(2048, { each: true })
+  productUrls?: string[];
 }
 
 export class ShopDuplicateCheckDto {
