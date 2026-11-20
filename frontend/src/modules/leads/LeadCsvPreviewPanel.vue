@@ -18,6 +18,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   selectRows: [request: { generation: number; rowNumbers: number[] }];
+  acknowledgeDuplicate: [
+    request: { generation: number; rowNumber: number },
+  ];
   cancelRequest: [request: { generation: number }];
   confirmRequest: [request: { generation: number }];
 }>();
@@ -168,6 +171,14 @@ const display = computed(() => {
               props.formContext,
             )
           : null,
+      shopDuplicates:
+        row.status === 'valid' ? (row.shopDuplicates ?? []) : [],
+      duplicateBlocked:
+        row.status === 'valid' &&
+        (row.shopDuplicates?.length ?? 0) > 0 &&
+        row.shopDuplicateAcknowledged !== true,
+      acknowledge: () =>
+        emit('acknowledgeDuplicate', { generation, rowNumber: row.rowNumber }),
       selected: snapshot.selectedRowNumbers.includes(row.rowNumber),
       key: `${generation}:${row.rowNumber}`,
       change: (checkedValue: boolean | number | string) =>
@@ -225,7 +236,9 @@ const display = computed(() => {
               :key="displayRow.key"
               :data-test="`csv-row-${displayRow.row.rowNumber}`"
               :aria-disabled="
-                displayRow.row.status === 'invalid' || !displayRow.names
+                displayRow.row.status === 'invalid' ||
+                !displayRow.names ||
+                displayRow.duplicateBlocked
                   ? 'true'
                   : undefined
               "
@@ -243,6 +256,19 @@ const display = computed(() => {
                     @change="displayRow.change"
                   />
                 </div>
+                <span
+                  v-else-if="displayRow.row.status === 'valid' && displayRow.duplicateBlocked"
+                  class="lead-csv-preview__duplicate-block"
+                >
+                  <span data-test="csv-row-duplicate-blocked">店铺重复</span>
+                  <button
+                    type="button"
+                    data-test="csv-acknowledge-duplicate"
+                    @click="displayRow.acknowledge()"
+                  >
+                    确认仍要导入
+                  </button>
+                </span>
                 <span v-else-if="displayRow.row.status === 'valid'">
                   <span data-test="csv-row-unavailable">
                     客户或权利主体不可用
@@ -262,6 +288,25 @@ const display = computed(() => {
                     :key="`${index}:${error}`"
                   >
                     {{ error }}
+                  </li>
+                </ul>
+                <ul
+                  v-if="displayRow.shopDuplicates.length > 0"
+                  class="lead-csv-preview__duplicates"
+                  data-test="csv-shop-duplicate-list"
+                  aria-label="店铺重复提示"
+                >
+                  <li
+                    v-for="(dup, index) in displayRow.shopDuplicates"
+                    :key="`${index}:${dup.leadBusinessNo}`"
+                  >
+                    店铺重复：与{{
+                      dup.caseBusinessNo
+                        ? `案件 ${dup.caseBusinessNo}`
+                        : `线索 ${dup.leadBusinessNo}`
+                    }}的「{{ dup.shopName }}」相同{{
+                      displayRow.duplicateBlocked ? '' : '（已确认）'
+                    }}
                   </li>
                 </ul>
                 <ul

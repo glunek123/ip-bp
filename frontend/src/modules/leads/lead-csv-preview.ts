@@ -141,6 +141,39 @@ export class LeadCsvPreviewSession {
     return true;
   }
 
+  applyShopDuplicates(
+    generation: number,
+    duplicates: ReadonlyMap<
+      number,
+      readonly { caseBusinessNo: string | null; leadBusinessNo: string; shopName: string }[]
+    >,
+  ): boolean {
+    if (generation !== this.generation) return false;
+    this.rows = this.rows.map((row) => {
+      if (row.status !== 'valid') return row;
+      const found = duplicates.get(row.rowNumber);
+      if (!found || found.length === 0) return row;
+      return {
+        ...row,
+        shopDuplicates: found,
+        shopDuplicateAcknowledged: false,
+      };
+    });
+    this.selectedRowNumbers.clear();
+    return true;
+  }
+
+  acknowledgeDuplicate(generation: number, rowNumber: number): boolean {
+    if (generation !== this.generation) return false;
+    let changed = false;
+    this.rows = this.rows.map((row) => {
+      if (row.status !== 'valid' || row.rowNumber !== rowNumber) return row;
+      changed = true;
+      return { ...row, shopDuplicateAcknowledged: true };
+    });
+    return changed;
+  }
+
   selectRows(generation: number, rowNumbers: readonly number[]): boolean {
     if (this.phase !== 'ready' || generation !== this.generation) return false;
     const validNumbers = new Set(

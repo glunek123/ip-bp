@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import type { LeadFormContext, LeadBusinessResult } from '../../api/leads';
+import { checkLeadShopDuplicates } from '../../api/leads';
 import {
   parseLeadCsvPreview,
   createLeadCsvTemplate,
@@ -136,6 +137,60 @@ const display = computed(() => {
       chooseFile(generation, contextKey, authorizationGeneration, event),
   };
 });
+
+async function runShopDuplicateCheck(
+  generation: number,
+  rows: readonly LeadCsvParsedRow[],
+): Promise<void> {
+  const shops = rows.flatMap((row) =>
+    row.status === 'valid' && row.input
+      ? [
+          {
+            rowNumber: row.rowNumber,
+            shopName: row.input.shopName,
+            shopExternalId: row.input.shopExternalId,
+          },
+        ]
+      : [],
+  );
+  if (!shops.length) return;
+  try {
+    const duplicates = await checkLeadShopDuplicates(shops);
+    const map = new Map<
+      number,
+      readonly {
+        caseBusinessNo: string | null;
+        leadBusinessNo: string;
+        shopName: string;
+      }[]
+    >();
+    for (const row of duplicates) {
+      if (!row.matches.length) continue;
+      map.set(
+        row.rowNumber,
+        row.matches.map((match) => ({
+          caseBusinessNo: match.caseBusinessNo,
+          leadBusinessNo: match.leadBusinessNo,
+          shopName: match.shopName,
+        })),
+      );
+    }
+    if (map.size && session.applyShopDuplicates(generation, map)) {
+      syncSnapshot();
+    }
+  } catch {
+    // 查重失败不阻断导入；正式提交时后端仍会按同一口径校验
+  }
+}
+
+function acknowledgeDuplicate(request: {
+  generation: number;
+  rowNumber: number;
+}): void {
+  if (session.acknowledgeDuplicate(request.generation, request.rowNumber)) {
+    syncSnapshot();
+  }
+}
 
 function syncSnapshot(): void {
   snapshot.value = session.snapshot();
@@ -297,7 +352,11 @@ async function chooseFile(
       authorizationGenerationAtRender !== props.authorizationGeneration
     )
       return;
-    if (rows) session.acceptParsed(generation, rows);
+    if (rows) {
+      session.acceptParsed(generation, rows);
+      syncSnapshot();
+      void runShopDuplicateCheck(generation, rows);
+    }
     else {
       pendingGeneration.value = generation;
       if (workbookSheets.value.length === 1) chooseSheet(0);
@@ -772,6 +831,7 @@ onBeforeUnmount(() => {
       :snapshot="snapshot"
       :form-context="formContext"
       @select-rows="selectRows"
+      @acknowledge-duplicate="acknowledgeDuplicate"
       @cancel-request="cancelRequest"
       @confirm-request="confirmRequest"
     />
