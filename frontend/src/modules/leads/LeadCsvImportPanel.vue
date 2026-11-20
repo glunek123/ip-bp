@@ -465,6 +465,15 @@ function confirmMapping(): void {
   pendingGeneration.value = null;
   fileError.value = '';
   syncSnapshot();
+  // 全部通过校验时直接放行，不让用户在无问题的文件上再做一次点击
+  const problems = rows.filter((row) => row.status !== 'valid').length;
+  if (problems === 0 && rows.length > 0) {
+    if (rows.length > 20) {
+      fileError.value = `本次共 ${rows.length} 条，超过单次 20 条上限，请分批导入。`;
+      return;
+    }
+    void confirmRequest({ generation });
+  }
 }
 
 function selectRows(request: {
