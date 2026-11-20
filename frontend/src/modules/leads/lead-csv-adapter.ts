@@ -127,14 +127,27 @@ function checkHeader(record: LeadCsvRecord | undefined): number {
   return actual.length;
 }
 
+/**
+ * 名称比对前的统一规范化：全角转半角、去零宽字符、去全部空白、忽略大小写。
+ * 客户名、权利主体名、运营名在业务上不应靠空格或全半角区分。
+ */
+function normalizeName(raw: string): string {
+  return raw
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF]/gu, '')
+    .replace(/\s+/gu, '')
+    .toLowerCase();
+}
+
 function matchOption<T extends string>(
   raw: string,
   options: readonly LeadOption<T>[],
   label: string,
 ): ValueResult<T> {
   const value = raw.trim();
+  const key = normalizeName(value);
   const matches = options.filter(
-    (option) => option.label === value || option.value === value,
+    (option) => normalizeName(option.label) === key || option.value === value,
   );
   return matches.length === 1
     ? { value: matches[0]!.value }
@@ -361,16 +374,19 @@ export function mapLegacyLeadRecord(
   const cells = record.cells;
   const errors: string[] = [];
   const customerName = cells[0]!.trim();
+  const customerKey = normalizeName(customerName);
   const customers = context.formContext.customers.filter(
-    (item) => item.name.trim() === customerName,
+    (item) => normalizeName(item.name) === customerKey,
   );
   if (!customerName || customers.length !== 1)
     errors.push('客户名称必须在当前可选范围内唯一匹配');
   const customer = customers.length === 1 ? customers[0] : undefined;
   const holderName = cells[1]!.trim();
+  const holderKey = normalizeName(holderName);
   const holders =
-    customer?.rightsHolders.filter((item) => item.name.trim() === holderName) ??
-    [];
+    customer?.rightsHolders.filter(
+      (item) => normalizeName(item.name) === holderKey,
+    ) ?? [];
   // 权利主体允许一个客户挂多个：填了就必须精确命中，留空则取该客户的第一个
   const holder = holderName
     ? holders.length === 1
@@ -404,7 +420,7 @@ export function mapLegacyLeadRecord(
       const username = operator.normalize('NFKC').toLowerCase();
       const matches = (context.formContext.operators ?? []).filter(
         (option) =>
-          option.displayName.trim() === operator ||
+          normalizeName(option.displayName) === normalizeName(operator) ||
           option.username === username,
       );
       if (matches.length !== 1)
