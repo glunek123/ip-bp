@@ -448,10 +448,7 @@ function confirmMapping(): void {
     fileError.value = `缺少必要字段：${mapping.missingFields.join('、')}`;
     return;
   }
-  if (extraColumns.value.length && !ignoredConfirmed.value) {
-    fileError.value = '请先确认忽略未映射的列。';
-    return;
-  }
+  // 映射区已收起，未映射列默认忽略，不再要求二次确认
   const rows = mapLeadTableRows(
     sourceRows.value.slice(headerIndex.value + 1),
     mapping,
