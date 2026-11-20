@@ -697,119 +697,12 @@ onBeforeUnmount(() => {
       />
     </label>
     <div v-if="pendingGeneration !== null" data-test="lead-column-mapping">
-      <label v-if="workbookSheets.length > 1"
-        >工作表
-        <select
-          :value="sheetIndex ?? ''"
-          @change="
-            chooseSheet(Number(($event.target as HTMLSelectElement).value))
-          "
-        >
-          <option value="" disabled>请选择工作表</option>
-          <option
-            v-for="(sheet, index) in workbookSheets"
-            :key="index"
-            :value="index"
-          >
-            {{ sheet.name }}
-          </option>
-        </select>
-      </label>
-      <label v-if="sheetIndex !== null"
-        >表头行
-        <select
-          :value="headerIndex ?? ''"
-          @change="
-            chooseHeader(Number(($event.target as HTMLSelectElement).value))
-          "
-        >
-          <option value="" disabled>请选择表头行</option>
-          <option
-            v-for="(row, index) in sourceRows.slice(0, 20)"
-            :key="row.rowNumber"
-            :value="index"
-          >
-            第 {{ row.rowNumber }} 行：{{ row.cells.slice(0, 4).join(' / ') }}
-          </option>
-        </select>
-      </label>
-      <template v-if="header">
-        <p>请核对字段对应。重复、歧义或未识别列需手动处理。</p>
-        <label v-for="field in baseMappingFields" :key="field"
-          >{{ field }}
-          <select
-            v-model.number="fieldColumns[field]"
-            @change="ignoredConfirmed = false"
-          >
-            <option :value="null">不映射</option>
-            <option
-              v-for="(label, index) in header.cells"
-              :key="index"
-              :value="index"
-            >
-              {{ index + 1 }}：{{ label || '（空列）' }}
-            </option>
-          </select>
-        </label>
-        <details v-for="number in numberedGroups" :key="number">
-          <summary>商品 {{ number }} 的列</summary>
-          <label v-for="field in groupFields(number)" :key="field"
-            >{{ field }}
-            <select
-              v-model.number="fieldColumns[field]"
-              @change="ignoredConfirmed = false"
-            >
-              <option :value="null">不映射</option>
-              <option
-                v-for="(label, index) in header.cells"
-                :key="index"
-                :value="index"
-              >
-                {{ index + 1 }}：{{ label || '（空列）' }}
-              </option>
-            </select>
-          </label>
-        </details>
-        <p v-if="extraColumns.length">
-          未导入列：{{
-            extraColumns
-              .map((item) => `${item.index + 1} ${item.label}`)
-              .join('、')
-          }}
-        </p>
-        <label v-if="extraColumns.length"
-          ><input
-            v-model="ignoredConfirmed"
-            type="checkbox"
-          />我确认忽略上述列的数据</label
-        >
-        <details v-if="rawPreviewRows.length">
-          <summary>查看前 {{ rawPreviewRows.length }} 行原始数据</summary>
-          <div style="overflow-x: auto">
-            <table>
-              <thead>
-                <tr>
-                  <th>行</th>
-                  <th v-for="(label, index) in header.cells" :key="index">
-                    {{ label || `第${index + 1}列` }}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in rawPreviewRows" :key="row.rowNumber">
-                  <td>{{ row.rowNumber }}</td>
-                  <td v-for="(_, index) in header.cells" :key="index">
-                    {{ row.cells[index] ?? '' }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </details>
+      <p v-if="!header" class="field-help">
+        未能自动识别表头，请确认文件第一行是字段名称（客户、权利主体、案件类型…）。
+      </p>
         <ElButton data-test="lead-confirm-mapping" @click="confirmMapping"
           >确认映射并预览数据</ElButton
         >
-      </template>
     </div>
     <p v-if="fileError" role="alert" data-test="csv-file-error">
       {{ fileError }}
