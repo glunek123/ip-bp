@@ -61,7 +61,23 @@ const emit = defineEmits<{ changed: []; refresh: [] }>();
 const acceptedAt = ref(todayShanghai());
 const courtCaseNo = ref('');
 const paymentDueAt = ref('');
+function syncCourtFromQuery(query: string): void {
+  const value = query.trim();
+  if (!value) {
+    courtId.value = '';
+    return;
+  }
+  const exact = courts.value.find((court) => court.name === value);
+  if (exact) {
+    courtId.value = exact.id;
+    return;
+  }
+  const hits = courts.value.filter((court) => court.name.includes(value));
+  courtId.value = hits.length === 1 ? hits[0]!.id : '';
+}
+
 const courtId = ref('');
+const courtQuery = ref('');
 const hearingAt = ref('');
 const hearingPlace = ref('');
 const judgeName = ref('');
@@ -124,6 +140,7 @@ function clearContext(): void {
   courtCaseNo.value = '';
   paymentDueAt.value = '';
   courtId.value = '';
+  courtQuery.value = '';
   hearingAt.value = '';
   hearingPlace.value = '';
   judgeName.value = '';
@@ -292,6 +309,8 @@ watch(
       paymentDueAt.value = draft.paymentDueAt ?? '';
       courtCaseNo.value = draft.courtCaseNo ?? '';
       courtId.value = draft.courtId ?? '';
+      courtQuery.value =
+        courts.value.find((court) => court.id === draft.courtId)?.name ?? '';
       hearingAt.value = draft.hearingAt ?? '';
       hearingPlace.value = draft.hearingPlace ?? '';
       judgeName.value = draft.judgeName ?? '';
@@ -818,23 +837,25 @@ async function download(file: CaseFile): Promise<void> {
       </label>
       <label v-if="needsCourt">
         <span>受理法院 <span class="required-mark">*</span></span>
-        <select
-          v-model="courtId"
+        <input
+          v-model="courtQuery"
+          list="acceptance-court-options"
           data-test="acceptance-court-id"
+          placeholder="输入法院名称搜索，如：上海 浦东"
+          autocomplete="off"
           required
           :disabled="
             courtsLoading || unknownRequest !== null || submitting || draftBusy
           "
-          @change="
+          @input="
             error = '';
             success = '';
+            syncCourtFromQuery(courtQuery);
           "
-        >
-          <option value="" disabled>请选择案件实际受理法院</option>
-          <option v-for="court in courts" :key="court.id" :value="court.id">
-            {{ court.name }}
-          </option>
-        </select>
+        />
+        <datalist id="acceptance-court-options">
+          <option v-for="court in courts" :key="court.id" :value="court.name" />
+        </datalist>
         <span v-if="courtsLoading" class="field-help">正在读取可选法院…</span>
       </label>
       <label>

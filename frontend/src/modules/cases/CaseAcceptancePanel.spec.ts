@@ -334,7 +334,7 @@ describe('case acceptance panel', () => {
       .setValue('真实案号');
     await wrapper
       .get('[data-test="acceptance-court-id"]')
-      .setValue('80000000-0000-4000-8000-000000000041');
+      .setValue('真实受理法院');
     expect(
       (
         wrapper.get('[data-test="acceptance-register"]')
