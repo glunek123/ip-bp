@@ -68,11 +68,13 @@ const emit = defineEmits<{
   refresh: [];
   'pending-change': [input: FinishInput | null];
 }>();
-const { remove: removeMaterial, removing: removingMaterial } = useMaterialRemoval({
+const {
+  remove: removeMaterial,
+  removing: removingMaterial,
+  isRemoved,
+} = useMaterialRemoval({
   caseId: () => props.item.id,
   onRemoved: () => emit('refresh'),
-  onError: (message) => { window.alert(message); },
-  onSuccess: (message) => { window.alert(message); },
 });
 
 const finishedAt = ref(todayShanghai());
@@ -420,6 +422,7 @@ async function download(file: CaseFile) {
       <ul>
         <li
           v-for="file in item.executionFinish.files"
+            v-show="!isRemoved(file)"
           :key="file.contentVersionId"
         >
           {{ file.originalFilename }}（{{ file.mimeType }}）<ElButton
@@ -530,7 +533,8 @@ async function download(file: CaseFile) {
       >
       <fieldset v-if="available.length">
         <legend>选择本次使用的文书版本</legend>
-        <label v-for="file in available" :key="file.contentVersionId"
+        <label v-for="file in available"
+            v-show="!isRemoved(file)" :key="file.contentVersionId"
           ><input
             type="checkbox"
             data-test="execution-finish-choice"

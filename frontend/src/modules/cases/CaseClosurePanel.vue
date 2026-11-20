@@ -99,11 +99,13 @@ const emit = defineEmits<{
   cancel: [];
   'pending-change': [request: PendingRequest | null];
 }>();
-const { remove: removeMaterial, removing: removingMaterial } = useMaterialRemoval({
+const {
+  remove: removeMaterial,
+  removing: removingMaterial,
+  isRemoved,
+} = useMaterialRemoval({
   caseId: () => props.item.id,
   onRemoved: () => emit('refresh'),
-  onError: (message) => { window.alert(message); },
-  onSuccess: (message) => { window.alert(message); },
 });
 
 const closeAt = ref('');
@@ -588,6 +590,7 @@ function recordedTime(value: string) {
         <ul>
           <li
             v-for="file in item.closure.current.files"
+            v-show="!isRemoved(file)"
             :key="file.contentVersionId"
           >
             {{ file.originalFilename }}（{{ file.mimeType }}）<ElButton
@@ -631,7 +634,8 @@ function recordedTime(value: string) {
               更正原因：{{ version.correctionReason }}
             </p>
             <ul>
-              <li v-for="file in version.files" :key="file.contentVersionId">
+              <li v-for="file in version.files"
+            v-show="!isRemoved(file)" :key="file.contentVersionId">
                 {{ file.originalFilename }}（{{ file.mimeType }}）<ElButton
                   text
                   @click="download(file)"
@@ -774,7 +778,8 @@ function recordedTime(value: string) {
       >
       <fieldset v-if="available.length">
         <legend>选择本次附件版本</legend>
-        <label v-for="file in available" :key="file.contentVersionId"
+        <label v-for="file in available"
+            v-show="!isRemoved(file)" :key="file.contentVersionId"
           ><input
             type="checkbox"
             data-test="closure-choice"

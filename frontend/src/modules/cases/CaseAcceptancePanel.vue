@@ -726,6 +726,10 @@ function removeDisclosureFile(contentVersionId: string): void {
   error.value = '';
   success.value = '';
 }
+const removedMaterialIds = ref<Set<string>>(new Set());
+function isRemovedMaterial(file: CaseFile): boolean {
+  return removedMaterialIds.value.has(file.materialId);
+}
 async function removeMaterial(file: CaseFile): Promise<void> {
   if (submitting.value || draftBusy.value || unknownRequest.value !== null)
     return;
@@ -740,7 +744,11 @@ async function removeMaterial(file: CaseFile): Promise<void> {
     await deleteCaseMaterial(props.item.id, file.materialId);
     if (!isCurrent(context)) return;
     selected.value.delete(file.contentVersionId);
-    success.value = '材料已删除';
+    removedMaterialIds.value = new Set([
+      ...removedMaterialIds.value,
+      file.materialId,
+    ]);
+    window.alert('材料已删除');
     emit('refresh');
   } catch {
     error.value = '删除失败，请稍后重试。';
@@ -1013,6 +1021,7 @@ async function download(file: CaseFile): Promise<void> {
         >
           <li
             v-for="file in files(category.value, 'available')"
+            v-show="!isRemovedMaterial(file)"
             :key="file.contentVersionId"
           >
             <label v-if="canRegister" class="checkbox-row">
@@ -1053,6 +1062,7 @@ async function download(file: CaseFile): Promise<void> {
           >
             <li
               v-for="file in files(category.value, bucket)"
+            v-show="!isRemovedMaterial(file)"
               :key="file.contentVersionId"
             >
               {{ file.originalFilename }}

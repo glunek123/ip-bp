@@ -55,11 +55,13 @@ const props = defineProps<{
   submitCommand?: (command: Command) => Promise<void>;
 }>();
 const emit = defineEmits<{ changed: []; refresh: []; cancel: [] }>();
-const { remove: removeMaterial, removing: removingMaterial } = useMaterialRemoval({
+const {
+  remove: removeMaterial,
+  removing: removingMaterial,
+  isRemoved,
+} = useMaterialRemoval({
   caseId: () => props.item.id,
   onRemoved: () => emit('refresh'),
-  onError: (message) => { window.alert(message); },
-  onSuccess: (message) => { window.alert(message); },
 });
 
 
@@ -700,7 +702,8 @@ function historyLabel(fact: CaseJudgmentFact): string {
         <legend>判决书 <span class="required-mark">*</span></legend>
         <p class="field-help">最多10份，单份≤50MiB，PDF/JPEG/PNG。</p>
         <ul v-if="availableFiles.length" class="notary-offices-list">
-          <li v-for="file in availableFiles" :key="file.contentVersionId">
+          <li v-for="file in availableFiles"
+            v-show="!isRemoved(file)" :key="file.contentVersionId">
             <label class="checkbox-row">
               <input
                 :data-test="`judgment-file-${file.contentVersionId}`"
@@ -881,6 +884,7 @@ function historyLabel(fact: CaseJudgmentFact): string {
       <ul class="notary-offices-list">
         <li
           v-for="file in item.judgment.current.files"
+            v-show="!isRemoved(file)"
           :key="file.contentVersionId"
         >
           {{ file.originalFilename }}
@@ -912,7 +916,8 @@ function historyLabel(fact: CaseJudgmentFact): string {
             更正原因：{{ fact.reason }}
           </p>
           <ul class="notary-offices-list">
-            <li v-for="file in fact.files" :key="file.contentVersionId">
+            <li v-for="file in fact.files"
+            v-show="!isRemoved(file)" :key="file.contentVersionId">
               {{ file.originalFilename }}
               <ElButton text @click="download(file)">下载判决书</ElButton>
             </li>

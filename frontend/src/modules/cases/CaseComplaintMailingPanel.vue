@@ -40,11 +40,13 @@ const props = defineProps<{
   lawyer?: boolean;
 }>();
 const emit = defineEmits<{ changed: []; refresh: [] }>();
-const { remove: removeMaterial, removing: removingMaterial } = useMaterialRemoval({
+const {
+  remove: removeMaterial,
+  removing: removingMaterial,
+  isRemoved,
+} = useMaterialRemoval({
   caseId: () => props.item.id,
   onRemoved: () => emit('refresh'),
-  onError: (message) => { window.alert(message); },
-  onSuccess: (message) => { window.alert(message); },
 });
 
 const auth = useAuthStore();
@@ -248,6 +250,7 @@ async function download(file: CaseFile) {
       <ul>
         <li
           v-for="file in item.complaintMailing.receiptFiles"
+            v-show="!isRemoved(file)"
           :key="file.contentVersionId"
         >
           {{ file.originalFilename }}（{{ file.mimeType }}）<ElButton

@@ -61,11 +61,13 @@ const props = defineProps<{
   contextKey: string;
 }>();
 const emit = defineEmits<{ changed: []; refresh: [] }>();
-const { remove: removeMaterial, removing: removingMaterial } = useMaterialRemoval({
+const {
+  remove: removeMaterial,
+  removing: removingMaterial,
+  isRemoved,
+} = useMaterialRemoval({
   caseId: () => props.item.id,
   onRemoved: () => emit('refresh'),
-  onError: (message) => { window.alert(message); },
-  onSuccess: (message) => { window.alert(message); },
 });
 
 const submittedAt = ref(todayShanghai());
@@ -399,6 +401,7 @@ async function download(file: VersionFile) {
       <ul>
         <li
           v-for="file in item.executionFiling.files"
+            v-show="!isRemoved(file)"
           :key="file.contentVersionId"
         >
           {{ file.originalFilename }}（{{ file.mimeType }}）<ElButton
@@ -484,7 +487,8 @@ async function download(file: VersionFile) {
           <legend>
             选择本次登记使用的截图版本 <span aria-hidden="true">*</span>
           </legend>
-          <label v-for="file in availableFiles" :key="file.contentVersionId"
+          <label v-for="file in availableFiles"
+            v-show="!isRemoved(file)" :key="file.contentVersionId"
             ><input
               data-test="execution-filing-choice"
               type="checkbox"
@@ -503,7 +507,8 @@ async function download(file: VersionFile) {
           >
         </fieldset>
         <ul>
-          <li v-for="file in files" :key="file.contentVersionId">
+          <li v-for="file in files"
+            v-show="!isRemoved(file)" :key="file.contentVersionId">
             {{ file.originalFilename }}（{{ file.mimeType }}）<ElButton
               text
               @click="download(file)"
