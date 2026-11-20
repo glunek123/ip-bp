@@ -158,14 +158,7 @@ const display = computed(() => {
         ((row.shopDuplicates?.length ?? 0) > 0 &&
           row.shopDuplicateAcknowledged !== true),
     ).length,
-    rows: snapshot.rows
-      .filter(
-        (row) =>
-          row.status === 'invalid' ||
-          ((row.shopDuplicates?.length ?? 0) > 0 &&
-            row.shopDuplicateAcknowledged !== true),
-      )
-      .map((row) => ({
+    rows: snapshot.rows.map((row) => ({
       row,
       names:
         row.status === 'valid'

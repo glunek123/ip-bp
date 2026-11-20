@@ -425,7 +425,6 @@ function chooseHeader(index: number): void {
 
 function confirmMapping(): void {
   const generation = pendingGeneration.value;
-  console.log('[DBG] confirm', { generation, headerIndex: headerIndex.value, hasHeader: !!header.value, sourceRows: sourceRows.value.length, sheets: workbookSheets.value.length });
   if (generation === null || !header.value || headerIndex.value === null)
     return;
   const chosen = Object.values(fieldColumns.value).filter(
