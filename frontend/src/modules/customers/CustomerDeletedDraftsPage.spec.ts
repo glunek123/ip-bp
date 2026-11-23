@@ -8,7 +8,7 @@ import { pinia } from '../../app/pinia';
 
 const api = vi.hoisted(() => ({
   listDeletedCustomerDrafts: vi.fn(),
-  restoreCustomerDraft: vi.fn(),
+  restoreCustomer: vi.fn(),
 }));
 vi.mock('../../api/customers', () => api);
 
@@ -53,7 +53,7 @@ it('keeps the exact restore request after CONTACT_BUSY and retries the same key'
     page: 1,
     pageSize: 20,
   });
-  api.restoreCustomerDraft
+  api.restoreCustomer
     .mockRejectedValueOnce(new ApiError('busy', 409, 'CUSTOMER_CONTACT_BUSY'))
     .mockResolvedValueOnce({});
   const router = createRouter({
@@ -99,11 +99,11 @@ it('keeps the exact restore request after CONTACT_BUSY and retries the same key'
     expect(globalThis.sessionStorage.length).toBe(1);
     await wrapper.get('[data-test="restore-draft-submit"]').trigger('click');
     await flushPromises();
-    expect(api.restoreCustomerDraft).toHaveBeenCalledTimes(2);
-    expect(api.restoreCustomerDraft.mock.calls[1]).toEqual(
-      api.restoreCustomerDraft.mock.calls[0],
+    expect(api.restoreCustomer).toHaveBeenCalledTimes(2);
+    expect(api.restoreCustomer.mock.calls[1]).toEqual(
+      api.restoreCustomer.mock.calls[0],
     );
-    expect(api.restoreCustomerDraft.mock.calls[0]).toEqual([
+    expect(api.restoreCustomer.mock.calls[0]).toEqual([
       'customer-2',
       { expectedVersion: 7, reason: '原恢复原因' },
       expect.any(String),

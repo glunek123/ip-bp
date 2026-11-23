@@ -8,6 +8,9 @@ import { ApiError } from '../../api/http';
 import {
   getCustomer,
   deleteCustomerDraft,
+  deleteCustomer,
+  getCustomerDeletionImpact,
+  type CustomerDeletionImpact,
   type CustomerDetail,
   type CustomerSummary,
 } from '../../api/customers';
@@ -22,7 +25,10 @@ import CustomerAgreementPanel from './CustomerAgreementPanel.vue';
 import CustomerSettlementsPanel from './CustomerSettlementsPanel.vue';
 import CustomerEditPage from './CustomerEditPage.vue';
 import { labelCustomerType } from './customer-labels';
-import { updateCustomerDraft, type CustomerDraftInput } from '../../api/customers';
+import {
+  updateCustomerDraft,
+  type CustomerDraftInput,
+} from '../../api/customers';
 import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
 import {
@@ -75,6 +81,13 @@ const customerBasicHashes = new Set([
 const requests = new Set<AbortController>();
 const deletionReason = ref('');
 const deletePrompt = ref(false);
+const deleteCustomerOpen = ref(false);
+const deleteCustomerReason = ref('');
+const deleteCustomerImpact = ref<CustomerDeletionImpact>();
+const deleteCustomerStatus = ref<'idle' | 'loading' | 'submitting' | 'error'>(
+  'idle',
+);
+const deleteCustomerError = ref('');
 const deleteStatus = ref<
   'idle' | 'submitting' | 'unknown' | 'conflict' | 'blocked'
 >('idle');
@@ -339,6 +352,47 @@ function handleContactUnavailable(
   customer.value = undefined;
   currentProjectionStale.value = false;
   state.value = 'unavailable';
+}
+
+async function openDeleteCustomer(): Promise<void> {
+  const current = customer.value;
+  if (!current) return;
+  deleteCustomerOpen.value = true;
+  deleteCustomerStatus.value = 'loading';
+  deleteCustomerError.value = '';
+  try {
+    deleteCustomerImpact.value = await getCustomerDeletionImpact(current.id);
+    deleteCustomerStatus.value = 'idle';
+  } catch {
+    deleteCustomerStatus.value = 'error';
+    deleteCustomerError.value = '关联数据读取失败，请稍后重试。';
+  }
+}
+
+async function submitDeleteCustomer(): Promise<void> {
+  const current = customer.value;
+  if (!current || deleteCustomerStatus.value === 'submitting') return;
+  const reason = deleteCustomerReason.value.trim();
+  if (!reason) {
+    deleteCustomerError.value = '请填写删除原因';
+    return;
+  }
+  deleteCustomerStatus.value = 'submitting';
+  deleteCustomerError.value = '';
+  try {
+    await deleteCustomer(
+      current.id,
+      { expectedVersion: current.version, reason },
+      globalThis.crypto.randomUUID(),
+    );
+    await router.push('/customers');
+  } catch (error) {
+    deleteCustomerStatus.value = 'error';
+    deleteCustomerError.value =
+      error instanceof ApiError && error.code === 'CUSTOMER_VERSION_CONFLICT'
+        ? '客户资料已变化，请刷新后重新确认。'
+        : '删除没有成功，请稍后重试。';
+  }
 }
 
 async function submitDelete(): Promise<void> {
@@ -766,7 +820,8 @@ async function saveProfileEdit(): Promise<void> {
   if (!current || profileSaving.value) return;
   const patch: CustomerDraftInput = { expectedVersion: current.version };
   const draft = profileDraft.value;
-  if (draft.category !== (current.category ?? '')) patch.category = draft.category;
+  if (draft.category !== (current.category ?? ''))
+    patch.category = draft.category;
   if (draft.customerManagerName !== (current.customerManagerName ?? ''))
     patch.customerManagerName = draft.customerManagerName || null;
   if (draft.customerType !== (current.customerType ?? ''))
@@ -1084,6 +1139,18 @@ onBeforeUnmount(() => {
               >删除草稿</ElButton
             >
             <ElButton
+              v-if="
+                (customer.capabilities.delete ||
+                  customer.capabilities.editRoutine) &&
+                !sharedWriteBlocked
+              "
+              data-test="delete-customer-open"
+              type="danger"
+              plain
+              @click="openDeleteCustomer"
+              >删除客户</ElButton
+            >
+            <ElButton
               class="customer-action-link"
               v-if="customer.capabilities.editRoutine && !sharedWriteBlocked"
               data-test="edit-customer"
@@ -1216,6 +1283,57 @@ onBeforeUnmount(() => {
             >关闭</ElButton
           >
         </section>
+        <section
+          v-if="deleteCustomerOpen && customer"
+          class="ledger-panel detail-card"
+          data-test="delete-customer-confirm"
+        >
+          <h2>删除客户「{{ customer.name }}」？</h2>
+          <p>
+            删除后该客户从列表、详情和选择器隐藏；线索、案件、协议、结算与权利资产数据全部保留，可在「已删除」名单恢复。
+          </p>
+          <p v-if="deleteCustomerStatus === 'loading'">正在读取关联数据…</p>
+          <template v-else-if="deleteCustomerImpact">
+            <p data-test="delete-customer-impact">
+              关联：线索 {{ deleteCustomerImpact.leads }} 条、案件
+              {{ deleteCustomerImpact.cases }} 个、协议
+              {{ deleteCustomerImpact.agreements }} 份、结算
+              {{ deleteCustomerImpact.settlements }} 条、权利资产
+              {{ deleteCustomerImpact.assets }} 项、客户账号
+              {{ deleteCustomerImpact.accounts }} 个。
+            </p>
+            <p
+              v-if="deleteCustomerImpact.leads + deleteCustomerImpact.cases > 0"
+              class="field-error"
+            >
+              该客户已有在办业务：删除后其线索与案件仍可继续办理，但不能再新增。
+            </p>
+          </template>
+          <label
+            >删除原因（必填）<textarea
+              v-model="deleteCustomerReason"
+              maxlength="500"
+              data-test="delete-customer-reason"
+              :disabled="deleteCustomerStatus === 'submitting'"
+            />
+          </label>
+          <p v-if="deleteCustomerError" role="alert" class="field-error">
+            {{ deleteCustomerError }}
+          </p>
+          <ElButton
+            type="danger"
+            data-test="delete-customer-submit"
+            :loading="deleteCustomerStatus === 'submitting'"
+            :disabled="deleteCustomerStatus === 'loading'"
+            @click="submitDeleteCustomer"
+            >确认删除</ElButton
+          >
+          <ElButton
+            :disabled="deleteCustomerStatus === 'submitting'"
+            @click="deleteCustomerOpen = false"
+            >取消</ElButton
+          >
+        </section>
         <div class="customer-tabs" role="tablist" aria-label="客户详情">
           <button
             id="customer-tab-button-basic"
@@ -1278,7 +1396,9 @@ onBeforeUnmount(() => {
                   编辑
                 </ElButton>
                 <ElButton
-                  v-if="!sharedWriteBlocked && customer.profileStatus === 'draft'"
+                  v-if="
+                    !sharedWriteBlocked && customer.profileStatus === 'draft'
+                  "
                   id="customer-admission"
                   data-test="open-customer-admission"
                   @click="admissionOpen = true"
@@ -1320,7 +1440,9 @@ onBeforeUnmount(() => {
                       class="text-input"
                       data-test="profile-category"
                     />
-                    <template v-else>{{ customer.category || '未填写' }}</template>
+                    <template v-else>{{
+                      customer.category || '未填写'
+                    }}</template>
                   </dd>
                 </div>
                 <div>
@@ -1364,7 +1486,9 @@ onBeforeUnmount(() => {
                       class="text-input"
                       data-test="profile-region"
                     />
-                    <template v-else>{{ customer.region || '未填写' }}</template>
+                    <template v-else>{{
+                      customer.region || '未填写'
+                    }}</template>
                   </dd>
                 </div>
               </dl>

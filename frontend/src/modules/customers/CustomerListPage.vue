@@ -292,7 +292,7 @@ onBeforeUnmount(() => activeRequest?.abort());
             class="customer-action-link"
             to="/customers/deleted-drafts"
             data-test="deleted-drafts-link"
-            >已删除草稿</RouterLink
+            >已删除客户</RouterLink
           >
           <ElButton
             v-if="state === 'ready' && canCreateDraft"

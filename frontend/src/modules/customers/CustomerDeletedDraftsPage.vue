@@ -6,7 +6,7 @@ import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
   listDeletedCustomerDrafts,
-  restoreCustomerDraft,
+  restoreCustomer,
   type DeletedCustomerDraft,
 } from '../../api/customers';
 import { useAuthStore } from '../../stores/auth';
@@ -149,7 +149,7 @@ async function restore(): Promise<void> {
   const request = frozen.value;
   commandState.value = 'submitting';
   try {
-    await restoreCustomerDraft(
+    await restoreCustomer(
       request.customerId,
       {
         expectedVersion: request.expectedVersion,
@@ -205,7 +205,7 @@ onMounted(() => {
           恢复请求已确认成功，列表刷新失败。请重新加载列表。
         </p>
         <div v-if="state === 'loading'" class="state-panel">
-          <h2>正在读取已删除草稿</h2>
+          <h2>正在读取已删除客户</h2>
         </div>
         <div v-else-if="state === 'failed'" class="state-panel">
           <h2>暂时无法加载</h2>
@@ -331,7 +331,7 @@ onMounted(() => {
         <nav
           v-if="state === 'ready' && total > pageSize"
           class="pagination"
-          aria-label="已删除草稿分页"
+          aria-label="已删除客户分页"
         >
           <ElButton
             data-test="deleted-drafts-prev"

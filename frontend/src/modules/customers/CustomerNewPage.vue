@@ -14,17 +14,12 @@ import {
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import { useUnsavedForm } from '../../app/use-unsaved-form';
 import {
-  customerTypeOptions,
   identityTypeOptions,
   identityCompatibility,
   type CustomerTypeCode,
   type IdentityTypeCode,
 } from './customer-admission-options';
 import type { AgreementValidityMode } from '../../api/customer-agreements-invoice';
-import {
-  customerCooperationModelOptions,
-  customerSettlementMethodOptions,
-} from './customer-agreement-options';
 
 const router = useRouter();
 const props = withDefaults(defineProps<{ embedded?: boolean }>(), {
@@ -125,20 +120,10 @@ const admissionContactPhone = ref('');
 const admissionContactEmail = ref('');
 const admissionContactError = ref('');
 const submitError = ref('');
-const duplicateNameReason = ref('');
-const duplicateNameReasonError = ref('');
-const needsDuplicateNameReason = ref(false);
+const duplicateConflict = ref('');
 const duplicateMatches = ref<CustomerDuplicateSummary[]>([]);
 const saving = ref(false);
 const isDirty = ref(false);
-const hasAdmissionContact = computed(() =>
-  Boolean(
-    admissionContactName.value.trim() ||
-    admissionContactPhone.value.trim() ||
-    admissionContactEmail.value.trim(),
-  ),
-);
-
 useUnsavedForm(isDirty);
 
 function requestClose(done?: () => void): void {
@@ -197,10 +182,6 @@ async function submit(): Promise<void> {
   ) {
     admissionContactError.value = '联系人邮箱格式不正确';
   }
-  duplicateNameReasonError.value =
-    needsDuplicateNameReason.value && !duplicateNameReason.value.trim()
-      ? '请说明同名情况下继续创建的原因'
-      : '';
   submitError.value = '';
   additionalFieldsError.value = '';
   if (
@@ -247,7 +228,6 @@ async function submit(): Promise<void> {
     nameError.value ||
     managerError.value ||
     admissionContactError.value ||
-    duplicateNameReasonError.value ||
     additionalFieldsError.value
   )
     return;
@@ -268,20 +248,13 @@ async function submit(): Promise<void> {
       ...(responsibleUserId.value !== creationContext.value.responsibleUserId
         ? { responsibleUserId: responsibleUserId.value }
         : {}),
-      ...(needsDuplicateNameReason.value
-        ? { duplicateNameReason: duplicateNameReason.value.trim() }
-        : {}),
     });
     isDirty.value = false;
     if (props.embedded) emit('saved', created.id);
     else await router.push(`/customers/${created.id}`);
   } catch (error) {
-    if (
-      error instanceof ApiError &&
-      error.code === 'CUSTOMER_NAME_REASON_REQUIRED'
-    ) {
-      needsDuplicateNameReason.value = true;
-      submitError.value = '本部门已有同名客户，请核对后说明继续原因';
+    if (error instanceof ApiError && error.code === 'CUSTOMER_DUPLICATE') {
+      duplicateConflict.value = error.message || '该客户已存在，不能重复新建';
       await loadVisibleSameName(normalizedName);
     } else if (
       error instanceof ApiError &&
@@ -446,32 +419,28 @@ async function submit(): Promise<void> {
                 </select>
               </div>
             </fieldset>
-
           </div>
         </fieldset>
         <p v-if="additionalFieldsError" class="field-error" role="alert">
           {{ additionalFieldsError }}
         </p>
-        <template v-if="needsDuplicateNameReason">
-          <label
-            class="field-label field-label--spaced"
-            for="duplicate-name-reason"
-          >
-            同名继续原因
-          </label>
-          <textarea
-            id="duplicate-name-reason"
-            v-model="duplicateNameReason"
-            name="duplicateNameReason"
-            class="text-area"
-            maxlength="500"
-            :aria-invalid="Boolean(duplicateNameReasonError)"
-            @input="duplicateNameReasonError = ''"
-          />
-          <p v-if="duplicateNameReasonError" class="field-error">
-            {{ duplicateNameReasonError }}
+        <section
+          v-if="duplicateConflict"
+          class="ledger-panel detail-card duplicate-conflict"
+          role="alertdialog"
+          data-test="duplicate-customer-dialog"
+        >
+          <h2>客户已存在，不能重复新建</h2>
+          <p data-test="duplicate-customer-message">{{ duplicateConflict }}</p>
+          <p>
+            请返回客户列表核对该客户资料；同名但信用代码不同的主体请先核对证件号码。
           </p>
-        </template>
+          <ElButton
+            data-test="duplicate-customer-close"
+            @click="duplicateConflict = ''"
+            >关闭</ElButton
+          >
+        </section>
         <p v-if="submitError" class="submit-error" role="alert">
           {{ submitError }}
         </p>

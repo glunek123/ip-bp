@@ -323,38 +323,39 @@ describe('CustomerNewPage', () => {
     expect(api.createCustomerDraft).not.toHaveBeenCalled();
   });
 
-  it('asks for one reason after a same-name conflict and reuses the form', async () => {
+  it('refuses a duplicate customer and keeps the form', async () => {
     api.findCustomerDuplicates.mockResolvedValue({
       exactIdentity: [],
       sameName: [
         { id: 'customer-1', name: '客户甲', category: null, region: null },
       ],
     });
-    api.createCustomerDraft
-      .mockRejectedValueOnce(
-        new ApiError(
-          '本部门已有同名客户，请说明继续原因',
-          409,
-          'CUSTOMER_NAME_REASON_REQUIRED',
-        ),
-      )
-      .mockResolvedValueOnce({ id: 'customer-2' });
-    const { wrapper, router } = await mountPage();
+    api.createCustomerDraft.mockRejectedValue(
+      new ApiError(
+        '客户「客户甲」（KH-001）已存在，不能重复新建',
+        409,
+        'CUSTOMER_DUPLICATE',
+      ),
+    );
+    const { wrapper } = await mountPage();
     await wrapper.get('input[name="name"]').setValue('客户甲');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(wrapper.text()).toContain('本部门已有同名客户');
+    const dialog = wrapper.get('[data-test="duplicate-customer-dialog"]');
+    expect(dialog.text()).toContain('客户已存在，不能重复新建');
+    expect(dialog.text()).toContain('KH-001');
     expect(api.findCustomerDuplicates).toHaveBeenCalledWith({ name: '客户甲' });
-    expect(wrapper.text()).toContain('打开已有客户');
     await wrapper
-      .get('textarea[name="duplicateNameReason"]')
-      .setValue('不同业务主体，经核对后继续');
+      .get('[data-test="duplicate-customer-close"]')
+      .trigger('click');
+    expect(
+      wrapper.find('[data-test="duplicate-customer-dialog"]').exists(),
+    ).toBe(false);
     await wrapper.get('form').trigger('submit');
     await flushPromises();
+    expect(api.createCustomerDraft).toHaveBeenCalledTimes(2);
     expect(api.createCustomerDraft).toHaveBeenLastCalledWith({
       name: '客户甲',
-      duplicateNameReason: '不同业务主体，经核对后继续',
     });
-    expect(router.currentRoute.value.fullPath).toBe('/customers/customer-2');
   });
 });

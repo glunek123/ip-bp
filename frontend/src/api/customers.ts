@@ -82,6 +82,7 @@ export type CustomerDetail = CustomerSummary & {
     editRoutine: boolean;
     admit: boolean;
     deleteDraft?: boolean;
+    delete?: boolean;
     agreement: { read: boolean; edit: boolean };
     invoice: { read: boolean; edit: boolean };
     settlement: { read: boolean; register: boolean; correct: boolean };
@@ -576,6 +577,8 @@ export async function getCustomer(
     typeof capabilities.admit !== 'boolean' ||
     (capabilities.deleteDraft !== undefined &&
       typeof capabilities.deleteDraft !== 'boolean') ||
+    (capabilities.delete !== undefined &&
+      typeof capabilities.delete !== 'boolean') ||
     !history.every(
       (event: unknown) =>
         isRecord(event) &&
@@ -595,6 +598,7 @@ export async function getCustomer(
       editRoutine: capabilities.editRoutine,
       admit: capabilities.admit,
       deleteDraft: capabilities.deleteDraft === true,
+      delete: capabilities.delete === true,
       agreement: {
         read: capabilities.agreement.read,
         edit: capabilities.agreement.edit,
@@ -704,6 +708,83 @@ export function restoreCustomerDraft(
   idempotencyKey: string,
 ) {
   return lifecycleCommand(id, 'restore-draft', input, idempotencyKey);
+}
+
+async function customerLifecycleCommand(
+  id: string,
+  action: 'delete' | 'restore',
+  input: CustomerDraftLifecycleInput,
+  idempotencyKey: string,
+): Promise<CustomerSummary> {
+  const data = await requestJson(
+    `/customers/${encodeURIComponent(id)}/${action}`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: input,
+    },
+  );
+  if (
+    !isCustomerSummary(data) ||
+    data.id !== id ||
+    data.version !== input.expectedVersion + 1
+  )
+    throw invalidResponse();
+  return data;
+}
+
+export function deleteCustomer(
+  id: string,
+  input: CustomerDraftLifecycleInput,
+  idempotencyKey: string,
+) {
+  return customerLifecycleCommand(id, 'delete', input, idempotencyKey);
+}
+
+export function restoreCustomer(
+  id: string,
+  input: CustomerDraftLifecycleInput,
+  idempotencyKey: string,
+) {
+  return customerLifecycleCommand(id, 'restore', input, idempotencyKey);
+}
+
+export type CustomerDeletionImpact = {
+  id: string;
+  name: string;
+  version: number;
+  leads: number;
+  cases: number;
+  agreements: number;
+  settlements: number;
+  assets: number;
+  accounts: number;
+};
+
+export async function getCustomerDeletionImpact(
+  id: string,
+): Promise<CustomerDeletionImpact> {
+  const data = await getJson(
+    `/customers/${encodeURIComponent(id)}/deletion-impact`,
+  );
+  if (
+    !isRecord(data) ||
+    typeof data.id !== 'string' ||
+    data.id !== id ||
+    typeof data.name !== 'string' ||
+    typeof data.version !== 'number'
+  )
+    throw invalidResponse();
+  const counts = [
+    data.leads,
+    data.cases,
+    data.agreements,
+    data.settlements,
+    data.assets,
+    data.accounts,
+  ];
+  if (counts.some((value) => !Number.isInteger(value))) throw invalidResponse();
+  return data as unknown as CustomerDeletionImpact;
 }
 
 export async function getCustomerCreationContext(
