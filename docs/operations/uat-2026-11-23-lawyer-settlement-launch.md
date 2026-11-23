@@ -53,3 +53,15 @@
 摘要卡按钮在不可发起时不再静默：新增 `launchBlocker()`，按「无权限 / 阶段不符 / 未指派律师 / 无待发起金额」给出具体原因，按钮置灰并显示提示；新增用例覆盖「未指派律师 → 按钮禁用 + 提示 + 不发请求」。
 
 线上 `current` → `/srv/ip-bp-uat/releases/766dd431`，健康 200。
+
+## 源头校验：律师结算条件必须有承办律师（463376a0，已部署）
+
+产品口径（用户确认）：采用「录入律师结算条件时强校验 + 界面提示」，不改「正式立案后锁定指派」的既有规则。
+
+- 后端 `settlement.service.updateTerms`：`side === 'LAWYER'` 时若 `record.lawyers.length === 0`，抛出 `400 LAWYER_REQUIRED_FOR_SETTLEMENT`「请先指派承办律师，再录入律师结算条件」，在写库前拦截。
+- 前端 `CaseSettlementPanel`：律师侧条件表单显示提示「该案件未指派律师，请先指派承办律师后再录入律师结算条件。」，并禁用「保存本案结算条件」。
+- 测试：后端 settlements 350/350（3 处律师条款夹具补上承办律师）；前端结算页 39 通过 / 4 跳过（新增无律师禁用用例）。
+- UAT 实测：对无律师的 `00320261118799` 调 `PUT /settlements/cases/:id/terms` 返回
+  `400 {"code":"LAWYER_REQUIRED_FOR_SETTLEMENT"}`，未落库。
+
+另：`00320261118799` 已处于 `WAITING_ARCHIVE`，而 `LAWYER_ASSIGNABLE_STAGES` 仅含 `PENDING_MATCH` / `WAITING_COMPLAINT` / `WAITING_COMPLAINT_CONFIRMATION`，该案已无法补指派律师；本轮按既定规则不做放宽，仅通过上述校验避免再产生同类脏数据。
