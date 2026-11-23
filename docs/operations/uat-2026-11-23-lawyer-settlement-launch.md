@@ -28,3 +28,28 @@
 ## 测试债
 
 同文件「双摘要卡」用例原本是 `it.skip`，所以这条路径长期没有回归覆盖；本轮新增的律师发起用例已覆盖关键分支，但它仍应在后续把整套双摘要卡用例恢复为启用状态。
+
+## 验收执行记录（C：律师结算发起）
+
+### 原案 00320261118799 无法发起
+
+以 `zhichan`（徐梦梦）登录调用 `POST /settlements/cases/{id}/launches`：
+
+```
+400 {"code":"INVALID_PAYEE","message":"收付方与案件不匹配"}
+```
+
+原因：该案 `case_lawyer_assignments` 记录数为 **0**，律师侧没有收付方；结算上下文里 `lawyers` 为空数组。前端守卫 `canLaunch` 要求 `lawyers.length > 0`，于是点击后直接 `return`，既不请求也不提示——这才是「按了没反应」的完整原因（侧别传丢 + 无律师静默拦截）。
+
+### 改在 00320261111001 执行成功
+
+- 案件：`00320261111001`（`6139037c-268b-469b-9c0c-e4ebd82b9b85`），阶段 `WAITING_ARCHIVE`，律师「顾言」，`termsVersion=36`，律师侧待发起 66.00
+- 请求：`{"side":"LAWYER","amount":"66.00","launchDate":"2026-11-23","lawyerId":"68a6e12f-…","expectedTermsVersion":36,"idempotencyKey":"…"}`
+- 响应：`201 {"id":"805594e9-8e20-406b-abd5-16b208177a9f","nth":1,"amount":"66.00"}`
+- 复核：`lawyerBalance.launched=66.00`、`remaining=0.00`，`launches` 出现 `LAWYER / nth=1 / 66.00 / 2026-11-23`
+
+### 补充修复（766dd431，已部署）
+
+摘要卡按钮在不可发起时不再静默：新增 `launchBlocker()`，按「无权限 / 阶段不符 / 未指派律师 / 无待发起金额」给出具体原因，按钮置灰并显示提示；新增用例覆盖「未指派律师 → 按钮禁用 + 提示 + 不发请求」。
+
+线上 `current` → `/srv/ip-bp-uat/releases/766dd431`，健康 200。
