@@ -57,3 +57,22 @@ ssh ubuntu@111.231.164.248 'sudo ln -sfn /srv/ip-bp-uat/releases/40a37065 /srv/i
 修复：白名单补 `delete`；新增解析器用例（含 `delete: true` 正常解码、未知能力键 `deleteAll` 被拒）。
 
 线上产物 `index-BPQpzUNA.js`，可直接检出 `editRoutine","admit","deleteDraft","delete"` 片段，确认修复已生效。
+
+## API 层验收执行（2026-11-23 13:20）
+
+以 `zhichan`（徐梦梦，UAT知产运营）与 `manager`（UAT准入主管）实调接口，客户 `372f3cc0-…`（验收测试客户甲 / 901）：
+
+| 步骤 | 请求 | 结果 |
+|---|---|---|
+| 能力投影（有删除权限） | `GET /customers/:id` | `capabilities.delete = true` |
+| 关联数量 | `GET /customers/:id/deletion-impact` | 线索/案件/协议/结算/资产/账号 全 0 |
+| 删除 | `POST /customers/:id/delete` `{expectedVersion:1, reason:"UAT 验收-删除测试"}` | `201`，版本 → 2 |
+| 列表联动 | `GET /customers` | 总数 62 → 61，目标不可见 |
+| 已删除名单 | `GET /customers/deleted-drafts` | 含「验收测试客户甲」，原因与版本正确 |
+| 恢复 | `POST /customers/:id/restore` `{expectedVersion:2}` | `201`，列表回到 62 |
+| 能力投影（无删除权限） | `manager` `GET /customers/:id` | `capabilities.delete = false`（按钮不渲染） |
+| 越权删除 | `manager` `POST …/delete` | `403 CUSTOMER_ACTION_FORBIDDEN` |
+| 重复拒绝 | 同名 + 同证件号新建 | `409 CUSTOMER_DUPLICATE`，提示含既有编号 901 |
+| 同名不同证件 | 同名 + `…0002Y` 新建 | `201`，分配编号 063；已即时物理清理 |
+
+结论：能力投影、删除、已删除名单、恢复、重复拒绝与放行分支均在真实接口上按预期工作。
