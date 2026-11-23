@@ -1139,11 +1139,7 @@ onBeforeUnmount(() => {
               >删除草稿</ElButton
             >
             <ElButton
-              v-if="
-                (customer.capabilities.delete ||
-                  customer.capabilities.editRoutine) &&
-                !sharedWriteBlocked
-              "
+              v-if="customer.capabilities.delete && !sharedWriteBlocked"
               data-test="delete-customer-open"
               type="danger"
               plain

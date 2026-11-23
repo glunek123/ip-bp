@@ -101,6 +101,7 @@ export type CustomerDetail = CustomerSummary & {
     editRoutine: boolean;
     admit: boolean;
     deleteDraft: boolean;
+    delete: boolean;
     agreement: { read: boolean; edit: boolean };
     invoice: { read: boolean; edit: boolean };
     settlement: { read: boolean; register: boolean; correct: boolean };
@@ -493,6 +494,7 @@ export class CustomerService {
       editRoutine,
       admit,
       deleteDraft,
+      deleteCustomer,
       transfer,
       pause,
       terminate,
@@ -526,6 +528,7 @@ export class CustomerService {
         'customer.delete-draft',
         facts,
       ),
+      this.accessControl.canAuthorizeCustomer(actor, 'customer.delete', facts),
       this.accessControl.canAuthorizeCustomer(
         actor,
         'customer.responsible.transfer',
@@ -634,6 +637,7 @@ export class CustomerService {
           deleteDraft &&
           customer.profileStatus === 'DRAFT' &&
           !customer.everAdmitted,
+        delete: deleteCustomer,
       },
       history: history.map((event) => {
         if (event.actorUserId === null)

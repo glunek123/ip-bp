@@ -14,6 +14,8 @@ import type { RightAssetRecoverySnapshot } from './customer-right-assets-recover
 const api = vi.hoisted(() => ({
   getCustomer: vi.fn(),
   deleteCustomerDraft: vi.fn(),
+  deleteCustomer: vi.fn(),
+  getCustomerDeletionImpact: vi.fn(),
 }));
 const settlementApi = vi.hoisted(() => ({ listCustomerSettlements: vi.fn() }));
 const maintenanceApi = vi.hoisted(() => ({
@@ -709,6 +711,73 @@ describe('CustomerDetailPage', () => {
       ).toBe(false);
     },
   );
+
+  it('shows the delete action only when the server grants it', async () => {
+    setInternalActor();
+    const allowed = customerRecord('customer-1', '客户甲');
+    api.getCustomer.mockResolvedValue({
+      ...allowed,
+      capabilities: { ...allowed.capabilities, delete: true },
+    });
+    const granted = await mountPage();
+    await flushPromises();
+    expect(
+      granted.wrapper.find('[data-test="delete-customer-open"]').exists(),
+    ).toBe(true);
+
+    const denied = customerRecord('customer-2', '客户乙');
+    api.getCustomer.mockResolvedValue({
+      ...denied,
+      capabilities: { ...denied.capabilities, delete: false },
+    });
+    const refused = await mountPage('/customers/customer-2');
+    await flushPromises();
+    expect(
+      refused.wrapper.find('[data-test="delete-customer-open"]').exists(),
+    ).toBe(false);
+  });
+
+  it('deletes a customer after showing its associations and a reason', async () => {
+    setInternalActor();
+    const customer = customerRecord('customer-1', '客户甲');
+    api.getCustomer.mockResolvedValue({
+      ...customer,
+      capabilities: { ...customer.capabilities, delete: true },
+    });
+    api.getCustomerDeletionImpact.mockResolvedValue({
+      id: customer.id,
+      name: customer.name,
+      version: customer.version,
+      leads: 2,
+      cases: 1,
+      agreements: 0,
+      settlements: 0,
+      assets: 0,
+      accounts: 0,
+    });
+    api.deleteCustomer.mockResolvedValue({
+      ...customer,
+      version: customer.version + 1,
+    });
+    const { wrapper, router } = await mountPage();
+    await flushPromises();
+    await wrapper.get('[data-test="delete-customer-open"]').trigger('click');
+    await flushPromises();
+    const impact = wrapper.get('[data-test="delete-customer-impact"]');
+    expect(impact.text()).toContain('线索 2');
+    expect(impact.text()).toContain('案件 1');
+    await wrapper
+      .get('[data-test="delete-customer-reason"]')
+      .setValue('误建客户待删除');
+    await wrapper.get('[data-test="delete-customer-submit"]').trigger('click');
+    await flushPromises();
+    expect(api.deleteCustomer).toHaveBeenCalledWith(
+      customer.id,
+      { expectedVersion: customer.version, reason: '误建客户待删除' },
+      expect.any(String),
+    );
+    expect(router.currentRoute.value.path).toBe('/customers');
+  });
 
   it('explains an associated draft deletion denial and releases unrelated maintenance', async () => {
     setInternalActor();
