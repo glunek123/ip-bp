@@ -79,6 +79,13 @@ const api = vi.hoisted(() => ({
   login: vi.fn(),
   getSession: vi.fn(),
 }));
+const assignmentApi = vi.hoisted(() => ({
+  getLawyerAssignmentCapability: vi.fn(),
+}));
+vi.mock('../../api/case-lawyer-assignment', async (original) => ({
+  ...(await original<typeof import('../../api/case-lawyer-assignment')>()),
+  getLawyerAssignmentCapability: assignmentApi.getLawyerAssignmentCapability,
+}));
 vi.mock('../../api/case-routine', () => ({
   getCaseRoutineProfile: api.getCaseRoutineProfile,
   updateCaseRoutineProfile: vi.fn(),
@@ -88,6 +95,7 @@ vi.mock('../../api/cases', async (original) => ({
   getCase: api.getCase,
   listCases: vi.fn(async () => ({ items: [], counts: {}, total: 0 })),
   listLawyerCases: vi.fn(async () => ({ items: [], counts: {}, total: 0 })),
+  listLawyerMatchCandidates: vi.fn(async () => []),
 }));
 vi.mock('../../api/auth', async (original) => ({
   ...(await original<typeof import('../../api/auth')>()),
@@ -212,6 +220,12 @@ beforeEach(async () => {
     remark: null,
     products: [],
   });
+  assignmentApi.getLawyerAssignmentCapability.mockResolvedValue({
+    canAssign: false,
+    reason: 'INVALID_STATE',
+    caseVersion: 1,
+    currentAssignment: null,
+  });
   api.getSession.mockRejectedValue(
     new ApiError('会话已失效', 401, 'UNAUTHORIZED'),
   );
@@ -324,6 +338,90 @@ it('does not expose the retired early-archive action even with a legacy capabili
   expect(
     wrapper!.find('[data-test="case-handling-groups-entry"]').exists(),
   ).toBe(true);
+});
+
+it('offers lawyer assignment once a matched case has no assigned lawyer', async () => {
+  assignmentApi.getLawyerAssignmentCapability.mockResolvedValue({
+    canAssign: true,
+    caseVersion: 4,
+    currentAssignment: null,
+  });
+  api.getCase.mockResolvedValue({
+    ...structuredClone(detail),
+    stage: 'WAITING_COMPLAINT',
+    version: 4,
+  });
+  await wrapper!.get('[data-test="case-refresh"]').trigger('click');
+  await flushPromises();
+
+  const entry = wrapper!.get('[data-test="case-assign-lawyer-open"]');
+  expect(entry.text()).toBe('指派律师');
+  expect(
+    wrapper!
+      .findAll('[data-test="workspace-more-actions"] button')
+      .some((button) => button.text() === '指派律师'),
+  ).toBe(false);
+  expect(wrapper!.find('[data-test="workspace-primary-action"]').exists()).toBe(
+    false,
+  );
+
+  await entry.trigger('click');
+  await flushPromises();
+  const form = document.body.querySelector<HTMLElement>(
+    '[data-test="case-assign-lawyer-form"]',
+  );
+  expect(form).not.toBeNull();
+  expect(form!.textContent).toContain('本案尚未指派承办律师');
+  expect(form!.textContent).toContain('确认指派');
+});
+
+it('hides the lawyer entry when the server refuses the assignment capability', async () => {
+  api.getCase.mockResolvedValue({
+    ...structuredClone(detail),
+    stage: 'WAITING_COMPLAINT_CONFIRMATION',
+    version: 3,
+  });
+  await wrapper!.get('[data-test="case-refresh"]').trigger('click');
+  await flushPromises();
+  expect(assignmentApi.getLawyerAssignmentCapability).toHaveBeenCalledWith(
+    'case-1',
+  );
+  expect(wrapper!.find('[data-test="case-assign-lawyer-open"]').exists()).toBe(
+    false,
+  );
+});
+
+it('labels the entry as reassignment when the case already has a lawyer', async () => {
+  assignmentApi.getLawyerAssignmentCapability.mockResolvedValue({
+    canAssign: true,
+    caseVersion: 2,
+    currentAssignment: {
+      id: '55555555-5555-4555-8555-555555555555',
+      lawyerProfileId: '66666666-6666-4666-8666-666666666666',
+      lawyerAccountId: '77777777-7777-4777-8777-777777777777',
+      assignedAt: '2026-11-20T02:00:00.000Z',
+    },
+  });
+  api.getCase.mockResolvedValue({
+    ...structuredClone(detail),
+    stage: 'WAITING_COMPLAINT',
+    version: 2,
+    lawyers: [
+      {
+        id: '66666666-6666-4666-8666-666666666666',
+        fullName: '顾言',
+        lawFirm: null,
+        phone: null,
+        role: 'PRIMARY',
+        assignedAt: '2026-11-20T02:00:00.000Z',
+      },
+    ],
+  });
+  await wrapper!.get('[data-test="case-refresh"]').trigger('click');
+  await flushPromises();
+  expect(wrapper!.get('[data-test="case-assign-lawyer-open"]').text()).toBe(
+    '变更承办律师',
+  );
 });
 
 it('opens routine editing from the selected-case toolbar only after the server grants it', async () => {

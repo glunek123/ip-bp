@@ -9,7 +9,10 @@ import {
 import { createHash } from 'node:crypto';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
-import { isLawyerAssignableStage } from './case-lawyer-assignable';
+import {
+  isLawyerAssignableStage,
+  LAWYER_ASSIGNABLE_STAGES,
+} from './case-lawyer-assignable';
 import { DatabaseService } from '../../database/database.service';
 import {
   AssignCaseLawyerDto,
@@ -391,7 +394,9 @@ export class CaseLawyerAssignmentService {
                 where: {
                   id: caseId,
                   departmentId: actor.departmentId,
-                  stage: 'PENDING_MATCH',
+                  // 与上方 isLawyerAssignableStage 同一集合：补指派允许在
+                  // 已过匹配阶段的案件上发生，阶段本身不变。
+                  stage: { in: [...LAWYER_ASSIGNABLE_STAGES] },
                   version: request.expectedVersion,
                 },
                 data: { version: { increment: 1 } },

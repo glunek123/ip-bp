@@ -12,13 +12,15 @@ import {
 import { ApiError } from '../../api/http';
 
 /**
- * 变更承办律师：只做「选人 + 重新指派」，不推进案件阶段。
+ * 指派／变更承办律师：只做「选人 + 指派」，不推进案件阶段。
+ * mode='assign' 用于尚无承办律师的案件（补指派），文案与 reassign 区分。
  * 幂等键与所选律师绑定：同一个人重试沿用原键，换人则换键。
  */
 const props = defineProps<{
   caseId: string;
   caseVersion: number;
   currentLawyerNames: string[];
+  mode?: 'assign' | 'reassign';
 }>();
 const emit = defineEmits<{
   close: [];
@@ -36,6 +38,10 @@ const retryable = ref(false);
 const pendingKey = ref<string | null>(null);
 const pendingFor = ref<string | null>(null);
 
+const isAssign = computed(() => props.mode === 'assign');
+const title = computed(() =>
+  isAssign.value ? '指派承办律师' : '变更承办律师',
+);
 const currentNames = computed(
   () => props.currentLawyerNames.join('、') || '未指派',
 );
@@ -121,8 +127,13 @@ onMounted(() => void load());
 
 <template>
   <section class="reassign-panel" data-test="case-reassign-panel">
-    <h3>变更承办律师</h3>
-    <p class="field-help">当前承办：{{ currentNames }}。仅替换承办人。</p>
+    <h3>{{ title }}</h3>
+    <p v-if="isAssign" class="field-help">
+      本案尚未指派承办律师。选定后立即生效，不改变案件阶段。
+    </p>
+    <p v-else class="field-help">
+      当前承办：{{ currentNames }}。仅替换承办人。
+    </p>
     <label class="field-label">
       输入姓名搜索承办律师
       <input
@@ -167,7 +178,9 @@ onMounted(() => void load());
         :disabled="busy || !selected"
         @click="submit"
       >
-        {{ retryable ? '用相同请求键重试' : '确认变更' }}
+        {{
+          retryable ? '用相同请求键重试' : isAssign ? '确认指派' : '确认变更'
+        }}
       </ElButton>
     </div>
   </section>

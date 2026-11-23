@@ -52,12 +52,13 @@ function receipt(lawyerAccountId: string) {
   };
 }
 
-function mountPanel() {
+function mountPanel(overrides: Record<string, unknown> = {}) {
   return mount(CaseLawyerReassignPanel, {
     props: {
       caseId,
       caseVersion: 5,
       currentLawyerNames: ['顾言'],
+      ...overrides,
     },
   });
 }
@@ -118,6 +119,49 @@ describe('CaseLawyerReassignPanel', () => {
       .mock.calls.map((call) => call[1].idempotencyKey);
     expect(keys).toHaveLength(2);
     expect(keys[0]).toBe(keys[1]);
+  });
+
+  it('assigns a lawyer to a case that has none, with assignment copy', async () => {
+    vi.mocked(cases.listLawyerMatchCandidates).mockResolvedValue([first]);
+    vi.mocked(assignment.assignCaseLawyer).mockResolvedValue({
+      id: caseId,
+      stage: 'WAITING_COMPLAINT',
+      version: 6,
+      outcome: 'ASSIGNED',
+      requestedLawyerAccountId: first.lawyerAccountId,
+      previousAssignment: null,
+      currentAssignment: {
+        id: '99999999-9999-4999-8999-999999999999',
+        lawyerProfileId: first.lawyerProfileId,
+        lawyerAccountId: first.lawyerAccountId,
+        assignedAt: '2026-11-23T05:00:00.000Z',
+      },
+    });
+    const wrapper = mountPanel({ mode: 'assign', currentLawyerNames: [] });
+    await flushPromises();
+    expect(wrapper.text()).toContain('指派承办律师');
+    expect(wrapper.text()).toContain('本案尚未指派承办律师');
+    expect(wrapper.text()).not.toContain('仅替换承办人');
+    expect(wrapper.get('[data-test="reassign-submit"]').text()).toBe(
+      '确认指派',
+    );
+
+    await wrapper
+      .get(`[data-test="reassign-lawyer-${first.lawyerAccountId}"]`)
+      .setValue(true);
+    await wrapper.get('[data-test="reassign-submit"]').trigger('click');
+    await flushPromises();
+
+    expect(assignment.assignCaseLawyer).toHaveBeenCalledWith(
+      caseId,
+      expect.objectContaining({
+        expectedVersion: 5,
+        lawyerAccountId: first.lawyerAccountId,
+      }),
+    );
+    expect(wrapper.emitted('completed')?.[0]?.[0]).toMatchObject({
+      outcome: 'ASSIGNED',
+    });
   });
 
   it('shows the server reason when the candidate list is refused', async () => {

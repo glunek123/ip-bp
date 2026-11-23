@@ -550,14 +550,16 @@ export function primaryCaseAction<T extends { id: string }>(
     EXECUTING: 'finish',
     ARCHIVED: 'archive',
   };
+  // 指派律师是独立入口（详情页顶栏），不参与主办理按钮的竞争。
+  const flow = commands.filter((entry) => entry.id !== 'assign-lawyer');
   if (stage === 'WAITING_ARCHIVE')
     return (
-      commands.find((entry) => entry.id === 'archive') ??
-      commands.find((entry) => entry.id === 'closure')
+      flow.find((entry) => entry.id === 'archive') ??
+      flow.find((entry) => entry.id === 'closure')
     );
   return (
-    commands.find((entry) => stage && entry.id === stageCommands[stage]) ??
-    commands.find((entry) => entry.id !== 'next-step') ??
-    commands[0]
+    flow.find((entry) => stage && entry.id === stageCommands[stage]) ??
+    flow.find((entry) => entry.id !== 'next-step') ??
+    flow[0]
   );
 }

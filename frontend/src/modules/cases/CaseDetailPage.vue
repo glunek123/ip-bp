@@ -133,6 +133,11 @@ import CaseFilingPanel from './CaseFilingPanel.vue';
 import CaseAcceptancePanel from './CaseAcceptancePanel.vue';
 import CaseDefendantContactPanel from './CaseDefendantContactPanel.vue';
 import CaseResponsibleUserPanel from './CaseResponsibleUserPanel.vue';
+import CaseLawyerReassignPanel from './CaseLawyerReassignPanel.vue';
+import {
+  getLawyerAssignmentCapability,
+  type AssignCaseLawyerResult,
+} from '../../api/case-lawyer-assignment';
 import { leadCaseTypeLabels, leadInfringementTypeLabels } from '../leads';
 import type { InfringementType, LeadCaseType } from '../../api/leads';
 import CaseAcceptanceCorrectionPanel from './CaseAcceptanceCorrectionPanel.vue';
@@ -232,6 +237,13 @@ const routineUnknown = ref(false);
 const routineError = ref('');
 let routineRequest: AbortController | undefined;
 let routineReadGeneration = 0;
+// 承办律师指派能力：只在可分配阶段向服务端确认，未授权时不渲染入口。
+const lawyerAssignable = ref<{ caseVersion: number } | null>(null);
+let lawyerAssignGeneration = 0;
+const lawyerAssignStages: ReadonlyArray<CaseDetail['stage']> = [
+  'WAITING_COMPLAINT',
+  'WAITING_COMPLAINT_CONFIRMATION',
+];
 const additionalActions = ref<{
   canLeave: () => boolean;
   isBusy: () => boolean;
@@ -597,6 +609,16 @@ const commands = computed<WorkspaceCommand[]>(() => {
       section: 'execution',
       label: '核对执行材料原请求／上传结果',
     });
+  // 服务端确认可指派后，才在详情页提供补指派／变更入口。
+  if (
+    lawyerAssignable.value &&
+    !result.some((entry) => entry.id === 'assign-lawyer')
+  )
+    result.push({
+      id: 'assign-lawyer',
+      section: 'case-info',
+      label: current.lawyers.length ? '变更承办律师' : '指派律师',
+    });
   return result;
 });
 const priorEditors = computed(() =>
@@ -762,7 +784,8 @@ async function confirmRemove(): Promise<void> {
 }
 const moreCommands = computed(() =>
   businessCommands.value.filter(
-    (entry) => entry.id !== primaryCommand.value?.id,
+    (entry) =>
+      entry.id !== primaryCommand.value?.id && entry.id !== 'assign-lawyer',
   ),
 );
 const timelineEvents = computed(() =>
@@ -900,6 +923,21 @@ function handleAdditionalActionSuccess(action: string) {
   if (action === 'record-closure' && item.value?.stage === 'WAITING_ARCHIVE')
     closureRegistrationSucceeded.value = true;
   void load();
+}
+function lawyerAssigned(result: AssignCaseLawyerResult): void {
+  drawerOpen.value = false;
+  actionNotice.value =
+    result.outcome === 'NO_CHANGE'
+      ? '承办律师未变化，案件未写入。'
+      : result.outcome === 'REASSIGNED'
+        ? '已变更承办律师，正在刷新案件。'
+        : '已指派承办律师，正在刷新案件。';
+  void load();
+}
+function openLawyerAssign(): void {
+  const command = commands.value.find((entry) => entry.id === 'assign-lawyer');
+  if (!command) return;
+  openCommand(command);
 }
 function openUpload(): void {
   const stage = item.value?.stage;
@@ -1178,6 +1216,43 @@ async function refreshRoutine() {
   }
 }
 const activationRevision = ref(0);
+watch(
+  [
+    workspaceContext,
+    () => item.value?.id,
+    () => item.value?.stage,
+    () => item.value?.version,
+    accessVerified,
+  ],
+  async ([contextKey, caseId, stage, version, verified]) => {
+    const generation = ++lawyerAssignGeneration;
+    lawyerAssignable.value = null;
+    if (
+      !caseId ||
+      !stage ||
+      !lawyerAssignStages.includes(stage) ||
+      !verified ||
+      authorizedContext.value !== contextKey ||
+      auth.session?.principalType !== 'INTERNAL'
+    )
+      return;
+    try {
+      const capability = await getLawyerAssignmentCapability(caseId);
+      if (
+        generation !== lawyerAssignGeneration ||
+        workspaceContext.value !== contextKey ||
+        item.value?.version !== version
+      )
+        return;
+      lawyerAssignable.value = capability.canAssign
+        ? { caseVersion: capability.caseVersion }
+        : null;
+    } catch {
+      // 无指派权限或阶段已变化时不提示，仅隐藏入口。
+    }
+  },
+  { flush: 'sync' },
+);
 watch(
   [
     activeTab,
@@ -2781,6 +2856,14 @@ onBeforeUnmount(() => {
             >{{ primaryCommand.label }}</ElButton
           >
           <ElButton
+            v-if="lawyerAssignable"
+            plain
+            data-test="case-assign-lawyer-open"
+            :disabled="routineEditing || routineSaving || additionalActionBusy"
+            @click="openLawyerAssign"
+            >{{ item.lawyers.length ? '变更承办律师' : '指派律师' }}</ElButton
+          >
+          <ElButton
             plain
             data-test="case-preservation"
             :disabled="routineEditing || routineSaving || additionalActionBusy"
@@ -3679,6 +3762,23 @@ onBeforeUnmount(() => {
               :actor-key="secondInstanceActorKey"
               @changed="load"
               @refresh="load"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('assign-lawyer')"
+            v-show="!timelineView && selectedCommand === 'assign-lawyer'"
+            class="demo-card demo-card--pad"
+            data-test="case-assign-lawyer-form"
+          >
+            <CaseLawyerReassignPanel
+              :case-id="item.id"
+              :case-version="lawyerAssignable?.caseVersion ?? item.version"
+              :current-lawyer-names="
+                item.lawyers.map((entry) => entry.fullName)
+              "
+              :mode="item.lawyers.length ? 'reassign' : 'assign'"
+              @close="drawerOpen = false"
+              @completed="lawyerAssigned"
             />
           </div>
           <section

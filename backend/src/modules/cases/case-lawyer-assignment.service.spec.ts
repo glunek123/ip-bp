@@ -164,6 +164,54 @@ describe('CaseLawyerAssignmentService', () => {
     expect(f.tx.caseLawyerAssignmentReceipt.create).toHaveBeenCalledTimes(1);
   });
 
+  it('backfills a missing lawyer after matching without moving the stage', async () => {
+    const f = fixture();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...(await f.tx.case.findFirst()),
+      stage: 'WAITING_COMPLAINT',
+      matchedAt: new Date('2026-11-04T00:00:00Z'),
+      matchedOn: new Date('2026-11-03T00:00:00.000Z'),
+    });
+    const result = await f.service.assign(actor, caseId, input);
+    expect(result).toMatchObject({
+      stage: 'WAITING_COMPLAINT',
+      version: 2,
+      outcome: 'ASSIGNED',
+      previousAssignment: null,
+      currentAssignment: { lawyerAccountId, lawyerProfileId },
+    });
+    expect(f.tx.case.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: caseId,
+        departmentId: actor.departmentId,
+        stage: {
+          in: [
+            'PENDING_MATCH',
+            'WAITING_COMPLAINT',
+            'WAITING_COMPLAINT_CONFIRMATION',
+          ],
+        },
+        version: 1,
+      },
+      data: { version: { increment: 1 } },
+    });
+    expect(f.tx.caseLawyerAssignment.create).toHaveBeenCalledTimes(1);
+    expect(f.tx.auditEvent.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a backfill once the case left the assignable stages', async () => {
+    const f = fixture();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...(await f.tx.case.findFirst()),
+      stage: 'WAITING_FILING',
+    });
+    await expect(f.service.assign(actor, caseId, input)).rejects.toMatchObject({
+      response: { code: 'INVALID_STATE' },
+    });
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+    expect(f.tx.caseLawyerAssignment.create).not.toHaveBeenCalled();
+  });
+
   it('returns NO_CHANGE without another association, case update or business audit', async () => {
     const f = fixture();
     f.tx.caseLawyerAssignment.findMany.mockResolvedValue([assignment]);
