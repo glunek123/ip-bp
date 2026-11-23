@@ -35,11 +35,24 @@ export class CustomerLifecycleService {
   ) {}
 
   async listDeleted(actor: ActorContext, page: number, pageSize: number) {
-    const [read, restore] = await Promise.all([
+    const [read, draftRestore, restore] = await Promise.all([
       this.access.buildCustomerScope(actor, 'customer.read'),
-      this.access.buildCustomerScope(actor, 'customer.restore-draft'),
+      this.access.tryBuildCustomerScope(actor, 'customer.restore-draft'),
+      this.access.tryBuildCustomerScope(actor, 'customer.restore'),
     ]);
-    const where = { deletedAt: { not: null }, AND: [read, restore] };
+    const restoreScopes = [draftRestore, restore].filter(
+      (scope): scope is NonNullable<typeof scope> => scope !== null,
+    );
+    if (restoreScopes.length === 0) throw this.notFound();
+    const where = {
+      deletedAt: { not: null },
+      AND: [
+        read,
+        ...(restoreScopes.length === 1
+          ? restoreScopes
+          : [{ OR: restoreScopes }]),
+      ],
+    };
     const [rows, total] = await this.database.$transaction([
       this.database.customer.findMany({
         where,
@@ -69,14 +82,7 @@ export class CustomerLifecycleService {
     key: string,
     input: CustomerDraftLifecycleDto,
   ) {
-    return this.command(
-      actor,
-      id,
-      key,
-      input,
-      'DELETE',
-      'customer.delete-draft',
-    );
+    return this.command(actor, id, key, input, 'DELETE', 'draft');
   }
 
   restoreDraft(
@@ -85,14 +91,61 @@ export class CustomerLifecycleService {
     key: string,
     input: CustomerDraftLifecycleDto,
   ) {
-    return this.command(
+    return this.command(actor, id, key, input, 'RESTORE', 'draft');
+  }
+
+  deleteCustomer(
+    actor: ActorContext,
+    id: string,
+    key: string,
+    input: CustomerDraftLifecycleDto,
+  ) {
+    return this.command(actor, id, key, input, 'DELETE', 'customer');
+  }
+
+  restoreCustomer(
+    actor: ActorContext,
+    id: string,
+    key: string,
+    input: CustomerDraftLifecycleDto,
+  ) {
+    return this.command(actor, id, key, input, 'RESTORE', 'customer');
+  }
+
+  async deletionImpact(actor: ActorContext, id: string) {
+    const scope = await this.access.buildCustomerScope(
       actor,
-      id,
-      key,
-      input,
-      'RESTORE',
-      'customer.restore-draft',
+      'customer.delete',
     );
+    const customer = await this.database.customer.findFirst({
+      where: { id, AND: [scope], deletedAt: null },
+      select: { id: true, version: true, name: true },
+    });
+    if (customer === null) throw this.notFound();
+    const [leads, cases, agreements, settlements, assets, accounts] =
+      await Promise.all([
+        this.database.lead.count({ where: { customerId: id } }),
+        this.database.case.count({ where: { customerId: id } }),
+        this.database.customerAgreement.count({ where: { customerId: id } }),
+        this.database.customerSettlementRecord.count({
+          where: { customerId: id },
+        }),
+        this.database.customerRightAsset.count({ where: { customerId: id } }),
+        this.database.customerAccountBinding.count({
+          where: { customerId: id },
+        }),
+      ]);
+    return {
+      id: customer.id,
+      name: customer.name,
+      version: customer.version,
+      leads,
+      cases,
+      agreements,
+      settlements,
+      assets,
+      accounts,
+    };
   }
 
   private async command(
@@ -101,8 +154,16 @@ export class CustomerLifecycleService {
     key: string,
     input: CustomerDraftLifecycleDto,
     action: 'DELETE' | 'RESTORE',
-    permission: CustomerAction,
+    kind: 'draft' | 'customer',
   ): Promise<CustomerSummary> {
+    const permission: CustomerAction =
+      kind === 'draft'
+        ? action === 'DELETE'
+          ? 'customer.delete-draft'
+          : 'customer.restore-draft'
+        : action === 'DELETE'
+          ? 'customer.delete'
+          : 'customer.restore';
     const reason = input.reason?.trim() ?? null;
     const fingerprint = createHash('sha256')
       .update(
@@ -179,18 +240,32 @@ export class CustomerLifecycleService {
               '客户资料已被他人更新，请刷新后再提交',
             );
           if (
-            current.profileStatus !== 'DRAFT' ||
-            current.admittedAt !== null ||
-            current.everAdmitted ||
-            (action === 'DELETE'
+            action === 'DELETE'
               ? current.deletedAt !== null
-              : current.deletedAt === null)
+              : current.deletedAt === null
+          )
+            throw this.conflict(
+              kind === 'draft'
+                ? 'CUSTOMER_DRAFT_STATE_CONFLICT'
+                : 'CUSTOMER_LIFECYCLE_STATE_CONFLICT',
+              '客户当前状态不允许此操作',
+            );
+          if (
+            kind === 'draft' &&
+            (current.profileStatus !== 'DRAFT' ||
+              current.admittedAt !== null ||
+              current.everAdmitted)
           )
             throw this.conflict(
               'CUSTOMER_DRAFT_STATE_CONFLICT',
-              '客户草稿状态不允许此操作',
+              '客户当前状态不允许此操作',
             );
-          if (action === 'DELETE') {
+          if (kind === 'customer' && action === 'DELETE' && reason === null)
+            throw this.conflict(
+              'CUSTOMER_DELETE_REASON_REQUIRED',
+              '请填写删除客户的原因',
+            );
+          if (kind === 'draft' && action === 'DELETE') {
             const associations = await tx.$queryRaw<
               Array<{ blocked: boolean }>
             >`
@@ -222,7 +297,7 @@ export class CustomerLifecycleService {
                 '客户草稿已有业务关联，不能删除',
               );
           }
-          if (action === 'RESTORE') {
+          if (kind === 'draft' && action === 'RESTORE') {
             const receiptHistory = await tx.$queryRaw<
               Array<{ blocked: boolean }>
             >`
@@ -306,8 +381,12 @@ export class CustomerLifecycleService {
               resourceId: id,
               action:
                 action === 'DELETE'
-                  ? 'customer.draft-deleted'
-                  : 'customer.draft-restored',
+                  ? kind === 'draft'
+                    ? 'customer.draft-deleted'
+                    : 'customer.deleted'
+                  : kind === 'draft'
+                    ? 'customer.draft-restored'
+                    : 'customer.restored',
               details: {
                 fromVersion: input.expectedVersion,
                 toVersion: input.expectedVersion + 1,

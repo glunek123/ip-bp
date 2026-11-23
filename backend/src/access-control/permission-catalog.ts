@@ -28,6 +28,8 @@ export const internalAssignablePermissionActions = [
   'CUSTOMER_EDIT_ROUTINE',
   'CUSTOMER_DELETE_DRAFT',
   'CUSTOMER_RESTORE_DRAFT',
+  'CUSTOMER_DELETE',
+  'CUSTOMER_RESTORE',
   'CUSTOMER_RESPONSIBLE_TRANSFER',
   'CUSTOMER_COOPERATION_PAUSE',
   'CUSTOMER_COOPERATION_TERMINATE',
@@ -212,6 +214,8 @@ const catalog: PermissionCatalogItem[] = [
     scopes: allScopes,
   },
   { action: 'CUSTOMER_DELETE_DRAFT', label: '删除客户草稿', scopes: allScopes },
+  { action: 'CUSTOMER_DELETE', label: '删除客户', scopes: allScopes },
+  { action: 'CUSTOMER_RESTORE', label: '恢复已删除客户', scopes: allScopes },
   {
     action: 'CUSTOMER_RESTORE_DRAFT',
     label: '恢复客户草稿',

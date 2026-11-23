@@ -133,6 +133,46 @@ export class CustomerController {
     );
   }
 
+  @Get(':id/deletion-impact')
+  deletionImpact(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.lifecycle.deletionImpact(actor, id);
+  }
+
+  @Post(':id/delete')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  deleteCustomer(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') key: string | undefined,
+    @Body() input: CustomerDraftLifecycleDto,
+  ) {
+    return this.lifecycle.deleteCustomer(
+      actor,
+      id,
+      this.requireIdempotencyKey(key),
+      input,
+    );
+  }
+
+  @Post(':id/restore')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  restoreCustomer(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') key: string | undefined,
+    @Body() input: CustomerDraftLifecycleDto,
+  ) {
+    return this.lifecycle.restoreCustomer(
+      actor,
+      id,
+      this.requireIdempotencyKey(key),
+      input,
+    );
+  }
+
   @Patch(':id')
   updateDraft(
     @CurrentActor() actor: ActorContext,

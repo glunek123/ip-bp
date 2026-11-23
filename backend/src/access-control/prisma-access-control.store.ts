@@ -32,6 +32,8 @@ const actionMap = {
   CUSTOMER_EDIT_ROUTINE: 'customer.edit-routine',
   CUSTOMER_DELETE_DRAFT: 'customer.delete-draft',
   CUSTOMER_RESTORE_DRAFT: 'customer.restore-draft',
+  CUSTOMER_DELETE: 'customer.delete',
+  CUSTOMER_RESTORE: 'customer.restore',
   CUSTOMER_RESPONSIBLE_TRANSFER: 'customer.responsible.transfer',
   CUSTOMER_COOPERATION_PAUSE: 'customer.cooperation.pause',
   CUSTOMER_COOPERATION_TERMINATE: 'customer.cooperation.terminate',

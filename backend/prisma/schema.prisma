@@ -152,6 +152,8 @@ enum PermissionAction {
   CUSTOMER_EDIT_ROUTINE        @map("customer.edit-routine")
   CUSTOMER_DELETE_DRAFT        @map("customer.delete-draft")
   CUSTOMER_RESTORE_DRAFT       @map("customer.restore-draft")
+  CUSTOMER_DELETE              @map("customer.delete")
+  CUSTOMER_RESTORE             @map("customer.restore")
   CUSTOMER_RESPONSIBLE_TRANSFER @map("customer.responsible.transfer")
   CUSTOMER_COOPERATION_PAUSE    @map("customer.cooperation.pause")
   CUSTOMER_COOPERATION_TERMINATE @map("customer.cooperation.terminate")

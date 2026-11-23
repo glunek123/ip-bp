@@ -127,10 +127,10 @@ describe('CustomerService', () => {
         normalizedIdentityNumber: '91330100MA2ABC1234X',
         category: '家居日用',
         region: '华东',
-        profileStatus: 'DRAFT',
+        profileStatus: 'ADMITTED',
       }),
     });
-    expect(result.profileStatus).toBe('draft');
+    expect(result.profileStatus).toBe('admitted');
   });
 
   it('creates a trimmed draft with server-derived ownership and one audit event', async () => {
@@ -139,7 +139,8 @@ describe('CustomerService', () => {
       name: '测试客户甲',
       category: null,
       region: null,
-      profileStatus: 'DRAFT',
+      profileStatus: 'ADMITTED',
+      admittedAt: new Date('2026-09-16T12:00:00.000Z'),
       cooperationStatus: 'COOPERATING',
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
@@ -177,8 +178,8 @@ describe('CustomerService', () => {
       identityValidFrom: null,
       identityValidTo: null,
       identityValidityMode: null,
-      admittedAt: null,
-      profileStatus: 'draft',
+      admittedAt: '2026-09-16T12:00:00.000Z',
+      profileStatus: 'admitted',
       cooperationStatus: 'COOPERATING',
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
@@ -191,7 +192,7 @@ describe('CustomerService', () => {
         name: '测试客户甲',
         departmentId: actor.departmentId,
         responsibleUserId: actor.userId,
-        profileStatus: 'DRAFT',
+        profileStatus: 'ADMITTED',
       }),
     });
     expect(auditCreate).toHaveBeenCalledWith({

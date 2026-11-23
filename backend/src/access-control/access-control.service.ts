@@ -24,6 +24,8 @@ export type PermissionAction =
   | 'customer.edit-routine'
   | 'customer.delete-draft'
   | 'customer.restore-draft'
+  | 'customer.delete'
+  | 'customer.restore'
   | 'customer.responsible.transfer'
   | 'customer.cooperation.pause'
   | 'customer.cooperation.terminate'

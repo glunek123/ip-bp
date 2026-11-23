@@ -218,9 +218,6 @@ export class CustomerService {
 
     const name = input.name.trim();
     const normalizedName = this.normalizeComparable(name);
-    const duplicateNameReason = this.normalizeOptional(
-      input.duplicateNameReason,
-    );
     const admissionContact = this.normalizeAdmissionContact(input);
     const identity = normalizeCustomerIdentityNumber(input.identityNumber);
     const identityType = this.normalizeIdentity(input.identityType);
@@ -252,16 +249,22 @@ export class CustomerService {
             });
           }
         }
-        const sameName =
+        const duplicate =
           readScope === null
             ? null
             : await transaction.customer.findFirst({
-                where: { normalizedName, ...readScope, deletedAt: null },
-                select: { id: true },
+                where: {
+                  AND: [
+                    readScope,
+                    { deletedAt: null },
+                    identity.normalized === null
+                      ? { normalizedName, normalizedIdentityNumber: null }
+                      : { normalizedIdentityNumber: identity.normalized },
+                  ],
+                },
+                select: { id: true, name: true, businessId: true },
               });
-        if (sameName !== null) {
-          if (duplicateNameReason === null) throw this.nameReasonRequired();
-        }
+        if (duplicate !== null) throw this.duplicateCustomer(duplicate);
 
         const businessId = await allocateCustomerBusinessId(transaction);
         let created = await transaction.customer.create({
@@ -321,18 +324,6 @@ export class CustomerService {
             details: { customerId: created.id },
           },
         });
-        if (sameName !== null && duplicateNameReason !== null) {
-          await transaction.auditEvent.create({
-            data: {
-              departmentId: actor.departmentId,
-              actorUserId: actor.userId,
-              resourceType: 'customer',
-              resourceId: created.id,
-              action: 'customer.duplicate-name-overridden',
-              details: { reason: duplicateNameReason },
-            },
-          });
-        }
         const agreement = input.initialAgreement;
         const hasInitialAgreement =
           agreement !== undefined &&
@@ -1273,6 +1264,21 @@ export class CustomerService {
       code: 'CUSTOMER_NAME_REASON_REQUIRED',
       message: '本部门已有同名客户，请说明继续原因',
       details: ['name', 'duplicateNameReason'],
+    });
+  }
+
+  private duplicateCustomer(customer: {
+    id: string;
+    name: string;
+    businessId: string | null;
+  }): ConflictException {
+    const label = customer.businessId
+      ? `客户「${customer.name}」（${customer.businessId}）`
+      : `客户「${customer.name}」`;
+    return new ConflictException({
+      code: 'CUSTOMER_DUPLICATE',
+      message: `${label}已存在，不能重复新建`,
+      details: ['name', 'identityNumber'],
     });
   }
 
