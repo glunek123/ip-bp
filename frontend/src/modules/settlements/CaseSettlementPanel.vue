@@ -529,16 +529,21 @@ async function launch(targetSide?: SettlementSide): Promise<void> {
               }}
               元</strong
             >
-            <ElButton
+            <span
               v-if="props.canLaunch"
-              size="small"
-              type="primary"
-              plain
-              :disabled="saving || Boolean(launchBlocker(summarySide))"
-              :data-test="`launch-${summarySide.toLowerCase()}`"
-              @click="launch(summarySide)"
-              >发起结算</ElButton
+              class="pair-side__launch"
+              :title="launchBlocker(summarySide) || undefined"
             >
+              <ElButton
+                size="small"
+                type="primary"
+                plain
+                :disabled="saving || Boolean(launchBlocker(summarySide))"
+                :data-test="`launch-${summarySide.toLowerCase()}`"
+                @click="launch(summarySide)"
+                >发起结算</ElButton
+              >
+            </span>
           </div>
           <p
             v-if="launchBlocker(summarySide)"
