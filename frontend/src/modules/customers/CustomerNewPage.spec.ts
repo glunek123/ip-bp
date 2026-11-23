@@ -323,6 +323,26 @@ describe('CustomerNewPage', () => {
     expect(api.createCustomerDraft).not.toHaveBeenCalled();
   });
 
+  it('creates a customer from a credit code without asking for subject types', async () => {
+    api.createCustomerDraft.mockResolvedValue({ id: 'customer-1' });
+    const { wrapper } = await mountPage();
+    await wrapper.get('[name="name"]').setValue('客户甲');
+    await wrapper
+      .get('[name="identityNumber"]')
+      .setValue('91330100MA2ABC1234X');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('请选择主体类型和证件类型');
+    expect(
+      wrapper.find('[data-test="duplicate-customer-dialog"]').exists(),
+    ).toBe(false);
+    expect(api.createCustomerDraft).toHaveBeenCalledWith({
+      name: '客户甲',
+      identityType: 'BUSINESS_LICENSE',
+      identityNumber: '91330100MA2ABC1234X',
+    });
+  });
+
   it('refuses a duplicate customer and keeps the form', async () => {
     api.findCustomerDuplicates.mockResolvedValue({
       exactIdentity: [],

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import './customer-workspace.css';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
@@ -13,12 +13,6 @@ import {
 } from '../../api/customers';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import { useUnsavedForm } from '../../app/use-unsaved-form';
-import {
-  identityTypeOptions,
-  identityCompatibility,
-  type CustomerTypeCode,
-  type IdentityTypeCode,
-} from './customer-admission-options';
 import type { AgreementValidityMode } from '../../api/customer-agreements-invoice';
 
 const router = useRouter();
@@ -31,8 +25,6 @@ const emit = defineEmits<{
   closeRequested: [];
 }>();
 const name = ref('');
-const customerType = ref<CustomerTypeCode | ''>('');
-const identityType = ref<IdentityTypeCode | ''>('');
 const identityNumber = ref('');
 const category = ref('');
 const region = ref('');
@@ -59,22 +51,6 @@ const regionOptions = [
   '东北',
   '海外',
 ];
-const displayedIdentityTypes = computed(() => {
-  const selectedType = customerType.value;
-  return selectedType
-    ? identityTypeOptions.filter((option) =>
-        identityCompatibility[selectedType].includes(option.value),
-      )
-    : [];
-});
-watch(customerType, () => {
-  if (
-    !displayedIdentityTypes.value.some(
-      (option) => option.value === identityType.value,
-    )
-  )
-    identityType.value = displayedIdentityTypes.value[0]?.value ?? '';
-});
 const hasAgreementFields = computed(() =>
   Boolean(
     agreementTitle.value.trim() ||
@@ -184,16 +160,7 @@ async function submit(): Promise<void> {
   }
   submitError.value = '';
   additionalFieldsError.value = '';
-  if (
-    identityNumber.value.trim() &&
-    (!customerType.value || !identityType.value)
-  )
-    additionalFieldsError.value =
-      '填写信用代码或证件号码时，请选择主体类型和证件类型。';
-  else if (
-    category.value.trim().length > 100 ||
-    region.value.trim().length > 100
-  )
+  if (category.value.trim().length > 100 || region.value.trim().length > 100)
     additionalFieldsError.value = '主营类目和区域分别最多100字。';
   else if (
     !creationContext.value.operators.some(
@@ -239,7 +206,7 @@ async function submit(): Promise<void> {
       ...(manager ? { customerManagerName: manager } : {}),
       ...(identityNumber.value.trim()
         ? {
-            identityType: identityType.value || 'BUSINESS_LICENSE',
+            identityType: 'BUSINESS_LICENSE',
             identityNumber: identityNumber.value.trim(),
           }
         : {}),
@@ -335,11 +302,9 @@ async function submit(): Promise<void> {
                 </p>
               </div>
               <div class="customer-new-fields__wide">
-                <label class="field-label" for="customer-identity-number">{{
-                  customerType === 'NATURAL_PERSON'
-                    ? '证件号码'
-                    : '统一社会信用代码'
-                }}</label>
+                <label class="field-label" for="customer-identity-number"
+                  >统一社会信用代码</label
+                >
                 <input
                   id="customer-identity-number"
                   v-model="identityNumber"
