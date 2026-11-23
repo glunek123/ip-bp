@@ -312,6 +312,34 @@ describe('CaseMatchService', () => {
     });
   });
 
+  it('persists the settlement terms chosen during matching', async () => {
+    const f = fixture();
+    f.tx.lawyerProfile.findFirst.mockResolvedValue({
+      id: lawyerProfileId,
+      accountBinding: null,
+    });
+    await expect(
+      f.service.match(actor, caseId, {
+        ...input,
+        lawyerAccountId: undefined,
+        lawyerProfileId,
+        settlementMode: 'FIXED_FEE',
+        baseFee: '100',
+        splitPercent: 30,
+      } as MatchCaseDto),
+    ).resolves.toMatchObject({ stage: 'WAITING_COMPLAINT' });
+    expect(f.tx.caseLawyerAssignment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          lawyerId: lawyerProfileId,
+          settlementMode: 'FIXED_FEE',
+          baseFee: '100',
+          splitPercent: 30,
+        }),
+      }),
+    );
+  });
+
   it('chooses the first stable active binding for an account with multiple profiles', async () => {
     const f = fixture();
     f.tx.lawyerAccountBinding.findFirst.mockResolvedValue({

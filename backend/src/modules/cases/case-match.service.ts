@@ -650,6 +650,10 @@ export class CaseMatchService {
       lawyer,
       lawyerAccountId: input.lawyerAccountId,
       lawyerProfileId: input.lawyerProfileId,
+      // 匹配可同时登记律师结算约定，不能在这一步丢掉。
+      settlementMode: input.settlementMode,
+      baseFee: input.baseFee,
+      splitPercent: input.splitPercent,
     };
   }
   private todayShanghai(): string {
