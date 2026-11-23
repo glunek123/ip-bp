@@ -5586,6 +5586,40 @@ describe('cases API', () => {
     });
   });
 
+  it('matches a lawyer profile that has no login account', async () => {
+    const fetchMock = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_COMPLAINT',
+      version: 4,
+      matchedAt: '2026-09-29T01:00:00Z',
+      matchedOn: '2026-09-28',
+    });
+    await matchCase('case-1', {
+      expectedVersion: 3,
+      idempotencyKey: 'key-profile-only',
+      matchedOn: '2026-09-28',
+      defendants: [{ kind: 'PERSON', name: '被告甲' }],
+      lawyerProfileId: 'lawyer-profile-9',
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(body).toMatchObject({ lawyerProfileId: 'lawyer-profile-9' });
+    expect(body).not.toHaveProperty('lawyerAccountId');
+  });
+
+  it('rejects a match without any lawyer identity before sending a command', async () => {
+    const fetchMock = mockJson({});
+    await expect(
+      matchCase('case-1', {
+        expectedVersion: 3,
+        idempotencyKey: 'no-lawyer',
+        matchedOn: '2026-09-28',
+        defendants: [{ kind: 'PERSON', name: '被告甲' }],
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('rejects an invalid actual match date before sending a command', async () => {
     const fetchMock = mockJson({});
     await expect(

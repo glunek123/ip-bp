@@ -7476,7 +7476,7 @@ export async function matchCase(
     body.defendants.length === 0 ||
     body.defendants.length > 20 ||
     body.defendants.some((entry) => !entry.name) ||
-    !body.lawyerAccountId
+    (!body.lawyerAccountId && !input.lawyerProfileId)
   )
     throw new ApiError('匹配信息无效', 400, 'VALIDATION_ERROR');
   const result = await requestJson(`/cases/${encodeURIComponent(id)}/match`, {
