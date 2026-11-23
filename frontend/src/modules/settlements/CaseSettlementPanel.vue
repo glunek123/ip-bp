@@ -124,6 +124,10 @@ function launchBlocker(target: SettlementSide): string {
   return '';
 }
 
+const lawyerMissing = computed(
+  () => side.value === 'LAWYER' && (detail.value?.lawyers.length ?? 0) === 0,
+);
+
 const manual = computed(() => {
   if (draftAmount.value === '' || draftAmount.value === preview.value.amount)
     return false;
@@ -639,6 +643,13 @@ async function launch(targetSide?: SettlementSide): Promise<void> {
               :disabled="uncertain || saving"
               placeholder="待定，可手工填写"
           /></label>
+          <p
+            v-if="lawyerMissing"
+            class="pair-side__row pair-side__hint"
+            data-test="terms-lawyer-required"
+          >
+            该案件未指派律师，请先指派承办律师后再录入律师结算条件。
+          </p>
           <p v-if="preview.error" role="alert">{{ preview.error }}</p>
           <p v-else>
             试算金额：{{ preview.amount ?? '待定' }} 元；{{
@@ -648,7 +659,9 @@ async function launch(targetSide?: SettlementSide): Promise<void> {
           <ElButton
             native-type="submit"
             class="action-size--wide"
-            :disabled="saving || unknownLaunch || !!preview.error"
+            :disabled="
+              saving || unknownLaunch || !!preview.error || lawyerMissing
+            "
             >{{
               unknownTerms ? '用原请求重试保存' : '保存本案结算条件'
             }}</ElButton

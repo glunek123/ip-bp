@@ -349,7 +349,20 @@ describe('settlement launch after archive', () => {
               departmentId: 'department',
               name: '客户甲',
             },
-            lawyers: [],
+            lawyers: [
+              {
+                id: 'assignment-1',
+                caseId: 'case',
+                departmentId: 'department',
+                lawyerId: 'lawyer-1',
+                lawyer: {
+                  id: 'lawyer-1',
+                  departmentId: 'department',
+                  fullName: '顾言',
+                  lawFirm: '远泽律师事务所',
+                },
+              },
+            ],
             closure: null,
           }),
         },
@@ -436,7 +449,20 @@ describe('effective closure amount through the settlement read service', () => {
               departmentId: 'department',
               name: '客户甲',
             },
-            lawyers: [],
+            lawyers: [
+              {
+                id: 'assignment-1',
+                caseId: 'case',
+                departmentId: 'department',
+                lawyerId: 'lawyer-1',
+                lawyer: {
+                  id: 'lawyer-1',
+                  departmentId: 'department',
+                  fullName: '顾言',
+                  lawFirm: '远泽律师事务所',
+                },
+              },
+            ],
             closure: {
               id: 'closure',
               caseId: 'case',
@@ -536,7 +562,20 @@ describe('settlement center source selection and receipts', () => {
               departmentId: 'department',
               name: '客户甲',
             },
-            lawyers: [],
+            lawyers: [
+              {
+                id: 'assignment-1',
+                caseId: 'case',
+                departmentId: 'department',
+                lawyerId: 'lawyer-1',
+                lawyer: {
+                  id: 'lawyer-1',
+                  departmentId: 'department',
+                  fullName: '顾言',
+                  lawFirm: '远泽律师事务所',
+                },
+              },
+            ],
             closure: null,
           }),
         },

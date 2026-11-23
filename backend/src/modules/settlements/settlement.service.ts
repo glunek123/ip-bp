@@ -334,6 +334,12 @@ export class SettlementService {
           )
             throw bad('INVALID_SETTLEMENT_TERMS', '不能同时修改律师条款');
         } else {
+          // 律师结算必须有承办律师作为收付方，否则金额即便录入也无法发起。
+          if (record.lawyers.length === 0)
+            throw bad(
+              'LAWYER_REQUIRED_FOR_SETTLEMENT',
+              '请先指派承办律师，再录入律师结算条件',
+            );
           if (
             input.lawyerMode === undefined ||
             input.lawyerBaseFee === undefined ||

@@ -569,6 +569,28 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     expect(api.launchSettlement).not.toHaveBeenCalled();
   });
 
+  it('blocks lawyer settlement terms until a lawyer is assigned', async () => {
+    const detail = structuredClone(current);
+    detail.lawyers = [];
+    api.getCaseSettlement.mockResolvedValue(detail);
+    const wrapper = render(CaseSettlementPanel, {
+      caseId: 'case',
+      canUpdate: true,
+      canLaunch: true,
+    });
+    await flushPromises();
+    await button(wrapper, '律师结算').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-test="terms-lawyer-required"]').text()).toContain(
+      '未指派律师',
+    );
+    const save = button(wrapper, '保存本案结算条件');
+    expect(save.attributes('disabled')).toBeDefined();
+    await save.trigger('click');
+    await flushPromises();
+    expect(api.updateCaseSettlementTerms).not.toHaveBeenCalled();
+  });
+
   it.skip('shows both settlement summaries while keeping full edit and launch controls collapsed in case detail', async () => {
     const detail = structuredClone(current);
     detail.launches = [
