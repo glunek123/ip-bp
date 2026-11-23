@@ -518,6 +518,36 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     ).toBe('1.00');
   });
 
+  it('launches the lawyer settlement from its own summary card', async () => {
+    const detail = structuredClone(current);
+    detail.launches = [];
+    api.getCaseSettlement.mockResolvedValue(detail);
+    api.launchSettlement.mockResolvedValue({
+      id: 'launch-l',
+      side: 'LAWYER',
+      nth: 1,
+      amount: '30.00',
+      launchDate: '2026-11-23',
+    });
+    const wrapper = render(CaseSettlementPanel, {
+      caseId: 'case',
+      canUpdate: true,
+      canLaunch: true,
+      showBothSummaries: true,
+    });
+    await flushPromises();
+    await wrapper.get('[data-test="launch-lawyer"]').trigger('click');
+    await flushPromises();
+    expect(api.launchSettlement).toHaveBeenCalledWith(
+      'case',
+      expect.objectContaining({
+        side: 'LAWYER',
+        lawyerId: 'real-lawyer',
+        amount: '30.00',
+      }),
+    );
+  });
+
   it.skip('shows both settlement summaries while keeping full edit and launch controls collapsed in case detail', async () => {
     const detail = structuredClone(current);
     detail.launches = [

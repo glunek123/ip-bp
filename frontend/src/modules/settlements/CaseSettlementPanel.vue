@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElInput } from 'element-plus/es/components/input/index.mjs';
@@ -395,7 +395,14 @@ async function saveTerms(): Promise<void> {
     if (originalIdentity === identity.value) saving.value = false;
   }
 }
-async function launch(): Promise<void> {
+async function launch(targetSide?: SettlementSide): Promise<void> {
+  // 摘要卡上的按钮需要指定侧别；操作区的表单提交会传入事件对象，忽略非字符串参数。
+  const target = typeof targetSide === 'string' ? targetSide : side.value;
+  // 侧别切换后 syncSide 才会填好金额与律师，必须等一轮渲染再走原有守卫。
+  if (target !== side.value) {
+    side.value = target;
+    await nextTick();
+  }
   if (
     !detail.value ||
     saving.value ||
@@ -457,7 +464,10 @@ async function launch(): Promise<void> {
       <p class="case-settlement__identity">
         {{ detail.businessNo }} · {{ detail.customer.name }}
       </p>
-      <div v-if="props.showBothSummaries" class="case-settlement__pair case-settlement__summary-pair">
+      <div
+        v-if="props.showBothSummaries"
+        class="case-settlement__pair case-settlement__summary-pair"
+      >
         <section
           v-for="summarySide in ['CUSTOMER', 'LAWYER'] as const"
           :key="summarySide"
@@ -504,7 +514,7 @@ async function launch(): Promise<void> {
               plain
               :disabled="saving"
               :data-test="`launch-${summarySide.toLowerCase()}`"
-              @click="launch"
+              @click="launch(summarySide)"
               >发起结算</ElButton
             >
           </div>
@@ -622,7 +632,7 @@ async function launch(): Promise<void> {
         <form
           v-if="canLaunch || unknownLaunch"
           class="case-settlement__form case-settlement__launch"
-          @submit.prevent="launch"
+          @submit.prevent="launch()"
         >
           <h3>
             发起第 {{ nextNth }} 次{{
