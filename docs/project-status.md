@@ -1,3 +1,7 @@
+# 2026-11-23 下午：案件详情指派律师入口（已部署 f518dba4）
+
+详情页在 `WAITING_COMPLAINT` / `WAITING_COMPLAINT_CONFIRMATION` 且服务端 `capability.canAssign=true` 时给出「指派律师」（无承办律师）或「变更承办律师」入口，抽屉内按姓名搜索候选、提交后刷新详情；指派不推进阶段。后端首次指派推进版本时不再写死 `stage='PENDING_MATCH'`，改按 `LAWYER_ASSIGNABLE_STAGES` 校验，已过匹配阶段的案件可补指派。`PENDING_MATCH` 仍走匹配表单（那里同时落结算约定）。验证：指派服务 15/15、案件模块前端 72 文件 1255 通过、详情页 20/20、vue-tsc 与测试环境后端构建通过；线上 `current` → `f518dba4`，产物 `index-CbwlrebE.js`，能力接口实测负责人 200／非负责人 403。已知边界：无律师案件中 378 件待正式立案、192 件待提交立案、666 件已归档、33 件待归档仍锁定不可指派，待归档案件依旧无法发起律师结算。回执见 [案件详情指派律师入口](operations/uat-2026-11-23-f518dba4.md)。
+
 # 2026-11-23 上午：客户删除与重复校验（已部署 adb463e1）
 
 客户模块新增软删除：详情页「删除客户」先读关联数量（线索/案件/协议/结算/资产/账号），准入客户必须填原因，删除后从列表/详情/隐藏，「已删除客户」名单可恢复；数据全保留，已删除客户的既有线索与案件仍可继续办理，但不能新增。配套三条迁移：新增 `customer.delete`/`customer.restore` 权限并按草稿权限补授权、删除 `customers_deleted_never_admitted_check`、重写两个删除守卫与 `customers_deleted_state_check`。新建客户改为名称与证件号同时相同即 409 `CUSTOMER_DUPLICATE` 拒绝，不再提供「同名继续原因」。验证：客户模块后端 251/251、前端 278 通过、vue-tsc 与 ESLint 通过；UAT 三条迁移已应用，事务内实测准入客户删除→恢复、已删除客户案件仍可更新、新增线索被拒。已知边界：详情页按钮尚未接服务端 `capabilities.delete` 投影。回执见 [客户删除与重复校验](operations/uat-2026-11-23-customer-delete.md)。
