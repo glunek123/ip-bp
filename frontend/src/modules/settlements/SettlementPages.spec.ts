@@ -548,6 +548,27 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     );
   });
 
+  it('explains why a lawyer settlement cannot start without an assigned lawyer', async () => {
+    const detail = structuredClone(current);
+    detail.lawyers = [];
+    api.getCaseSettlement.mockResolvedValue(detail);
+    const wrapper = render(CaseSettlementPanel, {
+      caseId: 'case',
+      canUpdate: true,
+      canLaunch: true,
+      showBothSummaries: true,
+    });
+    await flushPromises();
+    const button = wrapper.get('[data-test="launch-lawyer"]');
+    expect(button.attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[data-test="launch-blocked-lawyer"]').text()).toContain(
+      '未指派律师',
+    );
+    await button.trigger('click');
+    await flushPromises();
+    expect(api.launchSettlement).not.toHaveBeenCalled();
+  });
+
   it.skip('shows both settlement summaries while keeping full edit and launch controls collapsed in case detail', async () => {
     const detail = structuredClone(current);
     detail.launches = [

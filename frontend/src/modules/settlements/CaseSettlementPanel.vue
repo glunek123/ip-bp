@@ -106,6 +106,24 @@ const canLaunch = computed(
     !/^0(?:\.0+)?$/u.test(balance.value.remaining) &&
     (side.value === 'CUSTOMER' || detail.value.lawyers.length > 0),
 );
+function launchBlocker(target: SettlementSide): string {
+  const current = detail.value;
+  if (!current) return '';
+  if (!props.canLaunch) return '当前账号没有发起结算权限。';
+  if (current.stage !== 'WAITING_ARCHIVE') return '当前案件阶段不可发起结算。';
+  if (target === 'LAWYER' && current.lawyers.length === 0)
+    return '该案件未指派律师，无法发起律师结算。';
+  const remaining =
+    target === 'CUSTOMER'
+      ? current.customerBalance.remaining
+      : current.lawyerBalance.remaining;
+  if (remaining === null || /^0(?:\.0+)?$/u.test(remaining))
+    return target === 'CUSTOMER'
+      ? '客户侧已没有待发起金额。'
+      : '律师侧已没有待发起金额。';
+  return '';
+}
+
 const manual = computed(() => {
   if (draftAmount.value === '' || draftAmount.value === preview.value.amount)
     return false;
@@ -512,12 +530,19 @@ async function launch(targetSide?: SettlementSide): Promise<void> {
               size="small"
               type="primary"
               plain
-              :disabled="saving"
+              :disabled="saving || Boolean(launchBlocker(summarySide))"
               :data-test="`launch-${summarySide.toLowerCase()}`"
               @click="launch(summarySide)"
               >发起结算</ElButton
             >
           </div>
+          <p
+            v-if="launchBlocker(summarySide)"
+            class="pair-side__row pair-side__hint"
+            :data-test="`launch-blocked-${summarySide.toLowerCase()}`"
+          >
+            {{ launchBlocker(summarySide) }}
+          </p>
           <p class="pair-side__row">
             <span class="pair-side__label">结算条件</span>
             <span>{{ settlementCondition(summarySide) }}</span>
