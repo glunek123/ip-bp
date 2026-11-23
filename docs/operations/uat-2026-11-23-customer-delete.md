@@ -47,3 +47,13 @@ ssh ubuntu@111.231.164.248 'sudo ln -sfn /srv/ip-bp-uat/releases/40a37065 /srv/i
 - `customer.service.ts` 的 `detail()` 增加 `customer.delete` 授权判定，`capabilities` 返回 `delete: boolean`。
 - 前端按钮改为只认 `customer.capabilities.delete`，无授权者不再看到按钮。
 - 回归：后端客户模块 251/251、前端客户模块 280 通过；新增两条前端用例（能力开关控制按钮、带关联数量与原因的删除流程跳回列表）。
+
+## 线上故障修复（495b354a，已部署）
+
+现象：客户详情页整页显示「客户资料暂时无法加载」，服务器日志显示 `GET /api/v1/customers/:id` 返回 200。
+
+根因：`frontend/src/api/customers.ts` 的详情校验器用**白名单精确键**校验 `capabilities`（`Object.keys(capabilities).every(key => [...].includes(key))`），新增的 `delete` 字段不在白名单内，`getCustomer` 因此抛 `invalidResponse`，页面进入失败态。后端返回本身正确。
+
+修复：白名单补 `delete`；新增解析器用例（含 `delete: true` 正常解码、未知能力键 `deleteAll` 被拒）。
+
+线上产物 `index-BPQpzUNA.js`，可直接检出 `editRoutine","admit","deleteDraft","delete"` 片段，确认修复已生效。
