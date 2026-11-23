@@ -11,7 +11,7 @@ import type { ActorContext } from '../../access-control/actor-context';
 import { hashPassword, prepareLocalCredential } from '../../auth/password';
 import { DatabaseService } from '../../database/database.service';
 import type { Prisma } from '../../generated/prisma/client';
-import { isLawyerAssignableStage } from './case-lawyer-assignable';
+import { isLawyerBackfillStage } from './case-lawyer-assignable';
 import type { CreateLawyerAccountDto } from './lawyer-account.dto';
 
 type Reader = Prisma.TransactionClient | DatabaseService;
@@ -463,8 +463,8 @@ export class LawyerAccountService {
       },
     });
     if (record === null) throw this.notFound();
-    // 已匹配案件允许变更承办律师，阶段窗口见 case-lawyer-assignable。
-    if (!isLawyerAssignableStage(record.stage)) throw this.notFound();
+    // 候选窗口跟随指派规则：空缺可随时补指派；三阶段窗口只用于限制「变更」。
+    if (!isLawyerBackfillStage(record.stage)) throw this.notFound();
     const facts = {
       departmentId: record.departmentId,
       responsibleUserId: record.responsibleUserId,

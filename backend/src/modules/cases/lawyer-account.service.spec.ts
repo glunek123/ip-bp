@@ -49,6 +49,34 @@ describe('LawyerAccountService serializable conflicts', () => {
   }
 });
 
+describe('LawyerAccountService candidate window', () => {
+  it('lists lawyer candidates at a stage where only a backfill is allowed', async () => {
+    const db = {
+      userAccount: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ active: true, accountType: 'INTERNAL' }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      case: {
+        findFirst: jest.fn().mockResolvedValue({
+          stage: 'WAITING_ARCHIVE',
+          departmentId: actor.departmentId,
+          responsibleUserId: actor.userId,
+          responsibleMembership: { teamId: null },
+        }),
+      },
+      lawyerProfile: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const access = { canAuthorizeCase: jest.fn().mockResolvedValue(true) };
+    const service = new LawyerAccountService(db as never, access as never);
+    await expect(service.candidates(actor, 'case-1')).resolves.toEqual({
+      items: [],
+    });
+    expect(db.userAccount.findMany).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('LawyerAccountService profile account anchor', () => {
   it('rejects a profile anchored to another account before attempting a new binding', async () => {
     const tx = {
