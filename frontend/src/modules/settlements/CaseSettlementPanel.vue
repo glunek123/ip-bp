@@ -117,7 +117,11 @@ function launchBlocker(target: SettlementSide): string {
     target === 'CUSTOMER'
       ? current.customerBalance.remaining
       : current.lawyerBalance.remaining;
-  if (remaining === null || /^0(?:\.0+)?$/u.test(remaining))
+  if (remaining === null)
+    return target === 'CUSTOMER'
+      ? '客户结算金额待定，请先录入本案结算条件。'
+      : '律师结算金额待定，请先录入本案结算条件。';
+  if (/^0(?:\.0+)?$/u.test(remaining))
     return target === 'CUSTOMER'
       ? '客户侧已没有待发起金额。'
       : '律师侧已没有待发起金额。';
