@@ -10,6 +10,8 @@ import LeadDetailPage from './LeadDetailPage.vue';
 
 const leadApi = vi.hoisted(() => ({
   getLead: vi.fn(),
+  getLeadEditContext: vi.fn(),
+  updateLead: vi.fn(),
   updateLeadRoutine: vi.fn(),
   pushLead: vi.fn(),
   applyLeadWithdrawal: vi.fn(),
@@ -120,6 +122,32 @@ const lead = {
   externalSourceRef: null,
 } satisfies LeadDetail;
 
+const formContext = {
+  customers: [],
+  operators: [],
+  dictionaries: {
+    caseTypes: [
+      { value: 'CIVIL', label: '民事' },
+      { value: 'CRIMINAL', label: '刑事' },
+    ],
+    infringementTypes: [
+      { value: 'TRADEMARK', label: '商标权' },
+      { value: 'SOFTWARE_COPYRIGHT', label: '软件著作权' },
+    ],
+    sources: [
+      { value: 'ONLINE', label: '线上' },
+      { value: 'OFFLINE', label: '线下' },
+    ],
+    platforms: {
+      ONLINE: [
+        { value: 'TAOBAO', label: '淘宝' },
+        { value: 'TMALL', label: '天猫' },
+      ],
+      OFFLINE: [{ value: 'MEITUAN', label: '美团' }],
+    },
+  },
+};
+
 const DrawerStub = defineComponent({
   props: {
     modelValue: Boolean,
@@ -191,6 +219,8 @@ beforeEach(() => {
   vi.resetAllMocks();
   sessionStorage.clear();
   leadApi.getLead.mockResolvedValue(lead);
+  leadApi.getLeadEditContext.mockResolvedValue(formContext);
+  leadApi.updateLead.mockResolvedValue(lead);
   notaryApi.listNotaryOffices.mockResolvedValue({
     items: [{ id: 'office-1', name: '广州市南方公证处', status: 'ACTIVE' }],
     capabilities: { create: false },
@@ -344,19 +374,75 @@ describe('LeadDetailPage', () => {
     expect(leadApi.pushLead).not.toHaveBeenCalled();
     expect(leadApi.decideLeadNoEvidence).not.toHaveBeenCalled();
   });
-  it('edits product details without overwriting base information', async () => {
+  it('edits business fields inside the base card without leaving the page', async () => {
+    const wrapper = await mountPage();
+    expect(wrapper.find('[data-test="edit-lead"]').exists()).toBe(false);
+    await wrapper.get('[data-test="edit-lead-base-card"]').trigger('click');
+    await flushPromises();
+    expect(leadApi.getLeadEditContext).toHaveBeenCalledWith('lead-1');
+    expect(wrapper.find('[data-test="lead-facts"]').exists()).toBe(false);
+    const locked = wrapper.get('[data-test="lead-facts-locked"]');
+    expect(locked.text()).toContain('客户甲');
+    expect(locked.text()).toContain('主体甲');
+    expect(locked.text()).toContain('运营甲');
+    await wrapper.get('select[name="caseType"]').setValue('CRIMINAL');
+    await wrapper.get('select[name="platform"]').setValue('TMALL');
+    await wrapper.get('[data-test="lead-facts-form"]').trigger('submit');
+    await flushPromises();
+    expect(leadApi.updateLead).toHaveBeenCalledWith(
+      'lead-1',
+      expect.objectContaining({
+        caseType: 'CRIMINAL',
+        platform: 'TMALL',
+        shopName: '测试店铺',
+        expectedVersion: 1,
+        products: [
+          expect.objectContaining({ id: 'p', title: '商品甲', quantity: 2 }),
+        ],
+      }),
+    );
+    expect(leadApi.updateLeadRoutine).not.toHaveBeenCalled();
+  });
+  it('adds a product and saves the product card in place', async () => {
+    leadApi.updateLead.mockResolvedValue({ ...lead, version: 2 });
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="add-lead-product"]').trigger('click');
+    await flushPromises();
+    const rows = wrapper.findAll('[data-test="lead-product-row"]');
+    expect(rows).toHaveLength(2);
+    await rows[1]!.get('[data-test="lead-product-title"]').setValue('新增商品');
+    await rows[1]!.get('[data-test="lead-product-price"]').setValue('5.00');
+    await wrapper.get('[data-test="lead-products-save"]').trigger('click');
+    await flushPromises();
+    const [id, payload] = leadApi.updateLead.mock.calls.at(-1)!;
+    expect(id).toBe('lead-1');
+    expect(payload.expectedVersion).toBe(1);
+    expect(payload.products).toHaveLength(2);
+    expect(payload.products[0]).toMatchObject({ id: 'p', title: '商品甲' });
+    expect(payload.products[1]).toMatchObject({
+      title: '新增商品',
+      unitPrice: '5.00',
+      quantity: 0,
+      commentCount: 0,
+    });
+    expect(payload.products[1].id).toMatch(/^[0-9a-f-]{36}$/u);
+  });
+  it('keeps the routine editor for leads the server no longer allows to edit', async () => {
     leadApi.getLead.mockResolvedValue({
       ...lead,
-      capabilities: { ...lead.capabilities, routineEdit: true },
+      status: 'TRANSFERRED_TO_NOTARY',
+      capabilities: { ...lead.capabilities, edit: false, routineEdit: true },
     });
     leadApi.updateLeadRoutine.mockResolvedValue(undefined);
     const wrapper = await mountPage();
+    expect(wrapper.find('[data-test="add-lead-product"]').exists()).toBe(false);
     await wrapper.get('[data-test="edit-lead-products-card"]').trigger('click');
     await wrapper.get('[data-test="routine-product-title"]').setValue('新商品');
     await wrapper
       .get('[data-test="lead-products-table"] form')
       .trigger('submit');
     await flushPromises();
+    expect(leadApi.updateLead).not.toHaveBeenCalled();
     expect(leadApi.updateLeadRoutine).toHaveBeenCalledWith(
       'lead-1',
       expect.objectContaining({
@@ -574,14 +660,18 @@ describe('LeadDetailPage', () => {
 
   it('shows edit only from the server capability and supports refresh', async () => {
     const wrapper = await mountPage();
-    expect(wrapper.find('[data-test="edit-lead"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="edit-lead-base-card"]').exists()).toBe(
+      true,
+    );
     leadApi.getLead.mockResolvedValueOnce({
       ...lead,
       capabilities: { edit: false, push: false },
     });
     await wrapper.get('[data-test="refresh"]').trigger('click');
     await flushPromises();
-    expect(wrapper.find('[data-test="edit-lead"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="edit-lead-base-card"]').exists()).toBe(
+      false,
+    );
     expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
   });
 
@@ -780,7 +870,10 @@ describe('LeadDetailPage', () => {
       ],
     });
     const wrapper = await mountPage();
-    expect(wrapper.find('[data-test="edit-lead"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="edit-lead-base-card"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="add-lead-product"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="open-lead-workflow"]').exists()).toBe(
       true,

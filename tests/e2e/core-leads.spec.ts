@@ -1238,9 +1238,14 @@ test('operator creates, refreshes, views, and edits a waiting-push lead', async 
   await expect(
     productScreenshots.getByText('lead.jpg', { exact: true }),
   ).toBeVisible();
-  await page.locator('[data-test="edit-lead"]').click();
-  await page.getByLabel('店铺名称').fill('浏览器店铺已修改');
-  await page.getByRole('button', { name: '保存修改' }).click();
+  await page.locator('[data-test="edit-lead-base-card"]').click();
+  await page
+    .locator('[data-test="lead-facts-form"] input[name="shopName"]')
+    .fill('浏览器店铺已修改');
+  await page
+    .locator('[data-test="lead-facts-form"]')
+    .getByRole('button', { name: '保存', exact: true })
+    .click();
   await expect(
     page.getByText('浏览器店铺已修改', { exact: true }),
   ).toBeVisible();

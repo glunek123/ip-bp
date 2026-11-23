@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import {
   RouterLink,
   useRoute,
@@ -12,8 +12,12 @@ import { ApiError } from '../../api/http';
 import MaterialPreviewDialog from '../../app/MaterialPreviewDialog.vue';
 import {
   getLead,
+  getLeadEditContext,
+  updateLead,
   updateLeadRoutine,
   type LeadDetail,
+  type LeadFormContext,
+  type LeadProductInput,
   type LeadRoutineEditInput,
 } from '../../api/leads';
 import { updateLeadProductScreenshots } from '../../api/leads';
@@ -44,6 +48,8 @@ import LeadQuickActionsPanel from './LeadQuickActionsPanel.vue';
 import ProxyLeadEvidencePanel from './ProxyLeadEvidencePanel.vue';
 import { hasPendingProxyLeadEvidence } from './lead-proxy-evidence-recovery';
 import RoutineBusinessEditor from './RoutineBusinessEditor.vue';
+import LeadFactsEditor, { type LeadFactsValue } from './LeadFactsEditor.vue';
+import LeadProductsEditor from './LeadProductsEditor.vue';
 import ActionDrawer from '../../app/ActionDrawer.vue';
 import LeadDecisionPanel from './LeadDecisionPanel.vue';
 import { reviveLead } from '../../api/lead-decisions';
@@ -70,6 +76,24 @@ let refreshGeneration = 0;
 let request: AbortController | undefined;
 let routineRequest: AbortController | undefined;
 const routineEditing = ref<'base' | 'products' | null>(null);
+const factsEditing = ref(false);
+const productsEditing = ref(false);
+const editContext = ref<LeadFormContext>();
+const editContextLoading = ref(false);
+const editContextError = ref('');
+const productsEditor = ref<{ addProduct: () => void }>();
+const anyEditing = computed(
+  () =>
+    Boolean(routineEditing.value) ||
+    factsEditing.value ||
+    productsEditing.value,
+);
+const baseEditing = computed(
+  () => factsEditing.value || routineEditing.value === 'base',
+);
+const productEditing = computed(
+  () => productsEditing.value || routineEditing.value === 'products',
+);
 const decisionOpen = ref<'review' | 'confirm' | null>(null);
 const reviveBusy = ref(false);
 const reviveError = ref('');
@@ -392,6 +416,160 @@ async function load(): Promise<void> {
         : 'failed';
   }
 }
+function productInput(
+  product: LeadDetail['products'][number],
+): LeadProductInput {
+  return {
+    id: product.id,
+    ...(product.title === null ? {} : { title: product.title }),
+    ...(product.url === null ? {} : { url: product.url }),
+    quantity: product.quantity,
+    unitPrice: product.unitPrice,
+    commentCount: product.commentCount,
+    screenshotContentVersionIds: [
+      ...(product.screenshotContentVersionIds ?? []),
+    ],
+  };
+}
+function factsFromLead(current: LeadDetail): LeadFactsValue {
+  return {
+    caseType: current.caseType,
+    infringementTypes: [...current.infringementTypes],
+    source: current.source,
+    platform: current.platform,
+    foundAt: current.foundAt,
+    shopName: current.shopName,
+    ...(current.shopExternalId === null
+      ? {}
+      : { shopExternalId: current.shopExternalId }),
+    needDisclose: current.needDisclose,
+    ...(current.remark === null ? {} : { remark: current.remark }),
+  };
+}
+async function loadEditContext(): Promise<boolean> {
+  const current = lead.value;
+  if (!current) return false;
+  if (editContext.value) return true;
+  if (editContextLoading.value) return false;
+  editContextLoading.value = true;
+  editContextError.value = '';
+  const generation = contextGeneration;
+  try {
+    const context = await getLeadEditContext(current.id);
+    if (generation !== contextGeneration) return false;
+    editContext.value = context;
+    return true;
+  } catch {
+    if (generation === contextGeneration)
+      editContextError.value = '编辑选项加载失败，请刷新后重试。';
+    return false;
+  } finally {
+    if (generation === contextGeneration) editContextLoading.value = false;
+  }
+}
+async function openFactsEditor(): Promise<void> {
+  const current = lead.value;
+  if (
+    !current ||
+    routineSaving.value ||
+    workflowOpen.value ||
+    Boolean(decisionOpen.value)
+  )
+    return;
+  if (current.capabilities.edit) {
+    if (!(await loadEditContext())) return;
+    routineEditing.value = null;
+    productsEditing.value = false;
+    routineUnknown.value = false;
+    routineError.value = '';
+    factsEditing.value = true;
+    return;
+  }
+  if (current.capabilities.routineEdit) {
+    factsEditing.value = false;
+    productsEditing.value = false;
+    routineEditing.value = 'base';
+  }
+}
+async function openProductsEditor(addNew: boolean): Promise<void> {
+  const current = lead.value;
+  if (
+    !current ||
+    routineSaving.value ||
+    workflowOpen.value ||
+    Boolean(decisionOpen.value)
+  )
+    return;
+  if (current.capabilities.edit) {
+    if (!(await loadEditContext())) return;
+    routineEditing.value = null;
+    factsEditing.value = false;
+    routineUnknown.value = false;
+    routineError.value = '';
+    productsEditing.value = true;
+    if (addNew) {
+      await nextTick();
+      productsEditor.value?.addProduct();
+    }
+    return;
+  }
+  if (current.capabilities.routineEdit) {
+    factsEditing.value = false;
+    productsEditing.value = false;
+    routineEditing.value = 'products';
+  }
+}
+async function saveBusiness(payload: {
+  facts?: LeadFactsValue;
+  products?: LeadProductInput[];
+}): Promise<void> {
+  const current = lead.value;
+  if (
+    !current ||
+    !current.capabilities.edit ||
+    routineSaving.value ||
+    routineUnknown.value ||
+    workflowOpen.value ||
+    Boolean(decisionOpen.value)
+  )
+    return;
+  const generation = contextGeneration;
+  const controller = new AbortController();
+  routineRequest = controller;
+  routineSaving.value = true;
+  routineError.value = '';
+  try {
+    await updateLead(current.id, {
+      ...(payload.facts ?? factsFromLead(current)),
+      products: payload.products ?? current.products.map(productInput),
+      leadScreenshotContentVersionIds: [
+        ...current.leadScreenshotContentVersionIds,
+      ],
+      expectedVersion: current.version,
+    });
+    if (controller.signal.aborted || generation !== contextGeneration) return;
+    factsEditing.value = false;
+    productsEditing.value = false;
+    await load();
+  } catch (error) {
+    if (controller.signal.aborted || generation !== contextGeneration) return;
+    routineUnknown.value =
+      !(error instanceof ApiError) ||
+      error.status === 0 ||
+      error.status >= 500 ||
+      error.code === 'INVALID_RESPONSE';
+    routineError.value = routineUnknown.value
+      ? '保存结果未确认，请刷新核对后再操作。'
+      : error instanceof ApiError && error.code === 'VERSION_CONFLICT'
+        ? '资料已被修改，请刷新后重新编辑。'
+        : '保存失败，请检查资料或刷新后重试。';
+  } finally {
+    if (routineRequest === controller) {
+      routineRequest = undefined;
+      routineSaving.value = false;
+    }
+  }
+}
 async function saveRoutine(
   section: 'base' | 'products',
   value: {
@@ -460,6 +638,8 @@ async function saveRoutine(
 }
 function refreshRoutine() {
   routineEditing.value = null;
+  factsEditing.value = false;
+  productsEditing.value = false;
   routineUnknown.value = false;
   routineError.value = '';
   reviveAttempt = undefined;
@@ -612,6 +792,11 @@ function clearContext() {
   routineRequest?.abort();
   routineRequest = undefined;
   routineEditing.value = null;
+  factsEditing.value = false;
+  productsEditing.value = false;
+  editContext.value = undefined;
+  editContextLoading.value = false;
+  editContextError.value = '';
   routineSaving.value = false;
   routineUnknown.value = false;
   routineError.value = '';
@@ -688,15 +873,9 @@ onBeforeUnmount(clearContext);
               v-if="lead.capabilities.push"
               type="primary"
               data-test="push-lead"
-              :disabled="Boolean(routineEditing) || routineSaving"
+              :disabled="anyEditing || routineSaving"
               @click="workflowOpen = true"
               >推送客户审核</ElButton
-            >
-            <RouterLink
-              v-if="lead.capabilities.edit"
-              data-test="edit-lead"
-              :to="`/leads/${lead.id}/edit`"
-              >编辑线索</RouterLink
             >
             <ElButton
               v-if="
@@ -705,7 +884,7 @@ onBeforeUnmount(clearContext);
               "
               data-test="review-lead"
               type="primary"
-              :disabled="Boolean(routineEditing) || routineSaving"
+              :disabled="anyEditing || routineSaving"
               @click="decisionOpen = 'review'"
               >审核</ElButton
             >
@@ -717,7 +896,7 @@ onBeforeUnmount(clearContext);
               "
               data-test="confirm-lead"
               type="primary"
-              :disabled="Boolean(routineEditing) || routineSaving"
+              :disabled="anyEditing || routineSaving"
               @click="decisionOpen = 'confirm'"
               >确认</ElButton
             >
@@ -725,14 +904,14 @@ onBeforeUnmount(clearContext);
               v-if="lead.status === 'ARCHIVED' && lead.capabilities.revive"
               data-test="revive-lead"
               :loading="reviveBusy"
-              :disabled="Boolean(routineEditing) || routineSaving"
+              :disabled="anyEditing || routineSaving"
               @click="reviveArchivedLead"
               >复活</ElButton
             >
             <ElButton
               data-test="refresh"
               text
-              :disabled="Boolean(routineEditing) || routineSaving"
+              :disabled="anyEditing || routineSaving"
               @click="load"
               >刷新</ElButton
             >
@@ -745,7 +924,7 @@ onBeforeUnmount(clearContext);
               "
               data-test="open-lead-workflow"
               type="primary"
-              :disabled="Boolean(routineEditing) || routineSaving"
+              :disabled="anyEditing || routineSaving"
               @click="workflowOpen = true"
               >{{
                 lead.capabilities.createEvidenceBatch
@@ -767,6 +946,14 @@ onBeforeUnmount(clearContext);
         </p>
         <p v-if="reviveError" role="alert" class="submit-error">
           {{ reviveError }}
+        </p>
+        <p
+          v-if="editContextError"
+          role="alert"
+          class="submit-error"
+          data-test="lead-edit-context-error"
+        >
+          {{ editContextError }}
         </p>
         <ActionDrawer
           :model-value="!!decisionOpen"
@@ -803,20 +990,29 @@ onBeforeUnmount(clearContext);
           <div class="lead-card-heading">
             <h2 class="form-section-title">基础信息</h2>
             <ElButton
-              v-if="lead.capabilities.routineEdit"
+              v-if="lead.capabilities.edit || lead.capabilities.routineEdit"
               data-test="edit-lead-base-card"
               :disabled="
                 routineSaving ||
                 routineUnknown ||
+                editContextLoading ||
                 workflowOpen ||
                 Boolean(decisionOpen)
               "
-              @click="routineEditing = 'base'"
+              @click="openFactsEditor"
               >编辑</ElButton
             >
           </div>
+          <LeadFactsEditor
+            v-if="factsEditing && editContext"
+            :context="editContext"
+            :lead="lead"
+            :pending="routineSaving || routineUnknown"
+            @save="saveBusiness({ facts: $event })"
+            @cancel="factsEditing = false"
+          />
           <RoutineBusinessEditor
-            v-if="routineEditing === 'base'"
+            v-else-if="routineEditing === 'base'"
             section="base"
             :shop-name="lead.shopName"
             :remark="lead.remark"
@@ -826,7 +1022,7 @@ onBeforeUnmount(clearContext);
             @cancel="routineEditing = null"
           />
           <p
-            v-if="routineEditing === 'base' && routineError"
+            v-if="baseEditing && routineError"
             role="alert"
             class="submit-error"
           >
@@ -834,14 +1030,13 @@ onBeforeUnmount(clearContext);
           </p>
           <ElButton
             v-if="
-              routineEditing === 'base' &&
-              (routineUnknown || routineError.includes('刷新'))
+              baseEditing && (routineUnknown || routineError.includes('刷新'))
             "
             @click="refreshRoutine"
             >刷新核对</ElButton
           >
           <dl
-            v-if="routineEditing !== 'base'"
+            v-if="!baseEditing"
             class="demo-detail-grid lead-facts-grid"
             data-test="lead-facts"
           >
@@ -904,21 +1099,45 @@ onBeforeUnmount(clearContext);
         <section class="demo-card" data-test="lead-products-table">
           <div class="lead-card-heading">
             <h2 class="card-section-title">商品信息</h2>
-            <ElButton
-              v-if="lead.capabilities.routineEdit"
-              data-test="edit-lead-products-card"
-              :disabled="
-                routineSaving ||
-                routineUnknown ||
-                workflowOpen ||
-                Boolean(decisionOpen)
-              "
-              @click="routineEditing = 'products'"
-              >编辑</ElButton
-            >
+            <div class="lead-card-heading__actions">
+              <ElButton
+                v-if="lead.capabilities.edit"
+                data-test="add-lead-product"
+                :disabled="
+                  anyEditing ||
+                  routineSaving ||
+                  routineUnknown ||
+                  workflowOpen ||
+                  Boolean(decisionOpen)
+                "
+                @click="openProductsEditor(true)"
+                >新增商品</ElButton
+              >
+              <ElButton
+                v-if="lead.capabilities.edit || lead.capabilities.routineEdit"
+                data-test="edit-lead-products-card"
+                :disabled="
+                  anyEditing ||
+                  routineSaving ||
+                  routineUnknown ||
+                  workflowOpen ||
+                  Boolean(decisionOpen)
+                "
+                @click="openProductsEditor(false)"
+                >编辑</ElButton
+              >
+            </div>
           </div>
+          <LeadProductsEditor
+            v-if="productsEditing"
+            ref="productsEditor"
+            :products="lead.products"
+            :pending="routineSaving || routineUnknown"
+            @save="saveBusiness({ products: $event })"
+            @cancel="productsEditing = false"
+          />
           <RoutineBusinessEditor
-            v-if="routineEditing === 'products'"
+            v-else-if="routineEditing === 'products'"
             section="products"
             :shop-name="lead.shopName"
             :products="lead.products"
@@ -927,7 +1146,7 @@ onBeforeUnmount(clearContext);
             @cancel="routineEditing = null"
           />
           <p
-            v-if="routineEditing === 'products' && routineError"
+            v-if="productEditing && routineError"
             role="alert"
             class="submit-error"
           >
@@ -935,14 +1154,14 @@ onBeforeUnmount(clearContext);
           </p>
           <ElButton
             v-if="
-              routineEditing === 'products' &&
+              productEditing &&
               (routineUnknown || routineError.includes('刷新'))
             "
             @click="refreshRoutine"
             >刷新核对</ElButton
           >
           <div
-            v-if="routineEditing !== 'products'"
+            v-if="!productEditing"
             class="demo-table-wrap business-list-scroll"
             tabindex="0"
             role="region"
@@ -1425,6 +1644,10 @@ onBeforeUnmount(clearContext);
 }
 .lead-card-heading h2 {
   margin: 0;
+}
+.lead-card-heading__actions {
+  display: flex;
+  gap: 8px;
 }
 .lead-facts-card {
   container-type: inline-size;
