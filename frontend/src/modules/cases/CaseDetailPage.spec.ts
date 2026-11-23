@@ -424,6 +424,27 @@ it('labels the entry as reassignment when the case already has a lawyer', async 
   );
 });
 
+it('offers a backfill entry on a case waiting for archive', async () => {
+  assignmentApi.getLawyerAssignmentCapability.mockResolvedValue({
+    canAssign: true,
+    caseVersion: 9,
+    currentAssignment: null,
+  });
+  api.getCase.mockResolvedValue({
+    ...structuredClone(detail),
+    stage: 'WAITING_ARCHIVE',
+    version: 9,
+  });
+  await wrapper!.get('[data-test="case-refresh"]').trigger('click');
+  await flushPromises();
+  expect(wrapper!.get('[data-test="case-assign-lawyer-open"]').text()).toBe(
+    '指派律师',
+  );
+  expect(assignmentApi.getLawyerAssignmentCapability).toHaveBeenCalledWith(
+    'case-1',
+  );
+});
+
 it('opens routine editing from the selected-case toolbar only after the server grants it', async () => {
   api.getCaseRoutineProfile.mockResolvedValue({
     revision: 0,

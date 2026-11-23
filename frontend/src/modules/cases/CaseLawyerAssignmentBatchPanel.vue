@@ -116,7 +116,8 @@ function blockedReason(caseId: string): string {
         return '无法读取该案的分配权限，请重试。';
     }
   }
-  if (cap.reason === 'INVALID_STATE') return '当前案件阶段不支持律师分配。';
+  if (cap.reason === 'INVALID_STATE')
+    return '该案当前不能指派律师（已有承办律师且已过可变更阶段，或非主案件）。';
   if (cap.reason === 'LAWYER_ASSIGNMENT_CONFLICT')
     return '案件承办关系存在冲突，请先核对案件信息。';
   return '当前案件不可办理律师分配。';

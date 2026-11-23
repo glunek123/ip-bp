@@ -175,7 +175,7 @@ describe('CaseLawyerAssignmentBatchPanel', () => {
           caseVersion: 1,
           currentAssignment: null,
         },
-        expected: '当前案件阶段不支持律师分配',
+        expected: '该案当前不能指派律师',
       },
       {
         capability: {

@@ -23,8 +23,26 @@ export type AssignCaseLawyerInput = {
   lawyerAccountId: string;
   lawyerProfileId?: string;
 };
-export type AssignCaseLawyerStage =
-  'PENDING_MATCH' | 'WAITING_COMPLAINT' | 'WAITING_COMPLAINT_CONFIRMATION';
+// 指派不推进阶段，补指派可发生在任一阶段；这里覆盖服务端全部阶段值。
+export const ASSIGN_CASE_LAWYER_STAGES = [
+  'PENDING_MATCH',
+  'WAITING_COMPLAINT',
+  'WAITING_COMPLAINT_CONFIRMATION',
+  'WAITING_COMPLAINT_STAMP',
+  'WAITING_FILING',
+  'WAITING_FORMAL_ACCEPTANCE',
+  'WAITING_HEARING',
+  'WAITING_JUDGMENT',
+  'SECOND_INSTANCE',
+  'WAITING_EXECUTION_DOCUMENTS',
+  'WAITING_EXECUTION_CONFIRMATION',
+  'WAITING_EXECUTION_STAMP',
+  'WAITING_EXECUTION_FILING',
+  'EXECUTING',
+  'WAITING_ARCHIVE',
+  'ARCHIVED',
+] as const;
+export type AssignCaseLawyerStage = (typeof ASSIGN_CASE_LAWYER_STAGES)[number];
 export type AssignCaseLawyerResult = {
   id: string;
   stage: AssignCaseLawyerStage;
@@ -55,11 +73,9 @@ export function validAssignCaseLawyerResult(
   if (
     !record(value) ||
     value.id !== caseId ||
-    ![
-      'PENDING_MATCH',
-      'WAITING_COMPLAINT',
-      'WAITING_COMPLAINT_CONFIRMATION',
-    ].includes(String(value.stage)) ||
+    !(ASSIGN_CASE_LAWYER_STAGES as readonly string[]).includes(
+      String(value.stage),
+    ) ||
     !['ASSIGNED', 'NO_CHANGE', 'SKIPPED', 'REASSIGNED'].includes(
       String(value.outcome),
     ) ||

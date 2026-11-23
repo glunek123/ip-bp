@@ -237,13 +237,10 @@ const routineUnknown = ref(false);
 const routineError = ref('');
 let routineRequest: AbortController | undefined;
 let routineReadGeneration = 0;
-// 承办律师指派能力：只在可分配阶段向服务端确认，未授权时不渲染入口。
+// 承办律师指派能力：只在可补指派的案件上向服务端确认，未授权时不渲染入口。
+// 待匹配阶段由「匹配律师」表单承担（那里同时落结算约定），不另开指派入口。
 const lawyerAssignable = ref<{ caseVersion: number } | null>(null);
 let lawyerAssignGeneration = 0;
-const lawyerAssignStages: ReadonlyArray<CaseDetail['stage']> = [
-  'WAITING_COMPLAINT',
-  'WAITING_COMPLAINT_CONFIRMATION',
-];
 const additionalActions = ref<{
   canLeave: () => boolean;
   isBusy: () => boolean;
@@ -1230,7 +1227,7 @@ watch(
     if (
       !caseId ||
       !stage ||
-      !lawyerAssignStages.includes(stage) ||
+      stage === 'PENDING_MATCH' ||
       !verified ||
       authorizedContext.value !== contextKey ||
       auth.session?.principalType !== 'INTERNAL'

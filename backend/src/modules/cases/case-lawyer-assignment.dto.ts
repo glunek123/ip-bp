@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { LAWYER_BACKFILL_STAGES } from './case-lawyer-assignable';
 import {
   IsInt,
   IsOptional,
@@ -40,14 +41,10 @@ export class AssignmentViewDto {
 export class AssignCaseLawyerResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({
-    enum: [
-      'PENDING_MATCH',
-      'WAITING_COMPLAINT',
-      'WAITING_COMPLAINT_CONFIRMATION',
-    ],
+    enum: [...LAWYER_BACKFILL_STAGES],
+    description: '指派不推进阶段；补指派可发生在任一阶段',
   })
-  stage!:
-    'PENDING_MATCH' | 'WAITING_COMPLAINT' | 'WAITING_COMPLAINT_CONFIRMATION';
+  stage!: (typeof LAWYER_BACKFILL_STAGES)[number];
   @ApiProperty() version!: number;
   @ApiProperty({ enum: ['ASSIGNED', 'NO_CHANGE', 'SKIPPED', 'REASSIGNED'] })
   outcome!: 'ASSIGNED' | 'NO_CHANGE' | 'SKIPPED' | 'REASSIGNED';

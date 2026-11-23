@@ -11,7 +11,7 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import {
   isLawyerAssignableStage,
-  LAWYER_ASSIGNABLE_STAGES,
+  isLawyerBackfillStage,
 } from './case-lawyer-assignable';
 import { DatabaseService } from '../../database/database.service';
 import {
@@ -78,10 +78,7 @@ export class CaseLawyerAssignmentService {
       if (error instanceof ForbiddenException) throw this.forbidden();
       throw error;
     }
-    if (
-      !isLawyerAssignableStage(record.stage) ||
-      record.consolidationMembership?.isMain === false
-    )
+    if (record.consolidationMembership?.isMain === false)
       return {
         canAssign: false,
         reason: 'INVALID_STATE',
@@ -129,6 +126,18 @@ export class CaseLawyerAssignmentService {
         currentAssignment: null,
       };
     const current = assignments[0];
+    // 已有承办律师时只在原变更窗口内可改派；空缺则可随时补指派。
+    if (
+      current
+        ? !isLawyerAssignableStage(record.stage)
+        : !isLawyerBackfillStage(record.stage)
+    )
+      return {
+        canAssign: false,
+        reason: 'INVALID_STATE',
+        caseVersion: record.version,
+        currentAssignment: null,
+      };
     return {
       canAssign: true,
       caseVersion: record.version,
@@ -249,7 +258,7 @@ export class CaseLawyerAssignmentService {
               return this.readReceipt(prior.resultSnapshot, caseId, request);
             }
             if (
-              !isLawyerAssignableStage(record.stage) ||
+              !isLawyerBackfillStage(record.stage) ||
               record.consolidationMembership?.isMain === false
             )
               throw this.invalidState();
@@ -317,6 +326,9 @@ export class CaseLawyerAssignmentService {
                 !current.lawyer.accountBinding.user.localCredential)
             )
               throw this.relationshipConflict();
+            // 已建立的承办关系在正式立案后锁定：只能补空缺，不能换人。
+            if (current && !isLawyerAssignableStage(record.stage))
+              throw this.invalidState();
             const previousAssignment: AssignmentViewDto | null = current
               ? {
                   id: current.id,
@@ -394,9 +406,8 @@ export class CaseLawyerAssignmentService {
                 where: {
                   id: caseId,
                   departmentId: actor.departmentId,
-                  // 与上方 isLawyerAssignableStage 同一集合：补指派允许在
-                  // 已过匹配阶段的案件上发生，阶段本身不变。
-                  stage: { in: [...LAWYER_ASSIGNABLE_STAGES] },
+                  // 补指派允许在任意阶段发生，阶段本身不变；版本仍必须精确。
+                  stage: record.stage,
                   version: request.expectedVersion,
                 },
                 data: { version: { increment: 1 } },
@@ -534,7 +545,7 @@ export class CaseLawyerAssignmentService {
     const shared =
       row.id === caseId &&
       typeof row.stage === 'string' &&
-      isLawyerAssignableStage(row.stage) &&
+      isLawyerBackfillStage(row.stage) &&
       row.requestedLawyerAccountId === request.lawyerAccountId &&
       Number.isInteger(row.version) &&
       (previous === null || assignment(previous)) &&
