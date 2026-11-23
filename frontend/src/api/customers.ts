@@ -531,6 +531,7 @@ export async function getCustomer(
         'editRoutine',
         'admit',
         'deleteDraft',
+        'delete',
         'agreement',
         'invoice',
         'settlement',

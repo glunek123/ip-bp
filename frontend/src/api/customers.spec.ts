@@ -520,6 +520,51 @@ describe('customer API', () => {
     });
   });
 
+  it('decodes the customer deletion capability and rejects unknown ones', async () => {
+    const detail = {
+      ...summary,
+      primaryContactId: null,
+      admissionContactSnapshot: null,
+      responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+      cooperationCapabilities: {
+        transfer: false,
+        pause: true,
+        terminate: true,
+        resume: false,
+      },
+      history: [],
+      capabilities: {
+        editRoutine: true,
+        admit: true,
+        deleteDraft: false,
+        delete: true,
+        agreement: { read: true, edit: false },
+        invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(detail))),
+    );
+    await expect(getCustomer('customer-1')).resolves.toMatchObject({
+      capabilities: { delete: true, deleteDraft: false },
+    });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ...detail,
+            capabilities: { ...detail.capabilities, deleteAll: true },
+          }),
+        ),
+      ),
+    );
+    await expect(getCustomer('customer-1')).rejects.toBeTruthy();
+  });
+
   it('requires the complete current cooperation projection on detail', async () => {
     vi.stubGlobal(
       'fetch',
