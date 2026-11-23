@@ -76,3 +76,17 @@ ssh ubuntu@111.231.164.248 'sudo ln -sfn /srv/ip-bp-uat/releases/40a37065 /srv/i
 | 同名不同证件 | 同名 + `…0002Y` 新建 | `201`，分配编号 063；已即时物理清理 |
 
 结论：能力投影、删除、已删除名单、恢复、重复拒绝与放行分支均在真实接口上按预期工作。
+
+## 新建客户死锁修复（e8cc0efe，已部署）
+
+现象：新建客户面板填入统一社会信用代码后，提交始终提示「填写信用代码或证件号码时，请选择主体类型和证件类型。」，但界面上已没有「主体类型 / 证件类型」两个下拉，无法继续。
+
+根因：`1cc4f841`（11-19「drop the subject and identity type selectors」）删掉了两个下拉、并从请求体去掉了 `customerType`，却**没有删除对应的校验分支**，`customerType`/`identityType` 恒为空 → 只要填了证件号就永远校验失败。
+
+修复（`CustomerNewPage.vue`）：
+
+- 删除残留校验分支与 `customerType`/`identityType`/`displayedIdentityTypes`/`watch` 等死代码；
+- 证件类型固定 `BUSINESS_LICENSE`（字段本身已收敛为「统一社会信用代码」）；
+- 标签固定显示「统一社会信用代码」。
+
+验证：前端客户模块 281 通过 / 9 跳过（新增「凭信用代码直接创建」用例）；`vue-tsc`、ESLint、Prettier 通过；UAT 用新载荷 `{name, identityType:'BUSINESS_LICENSE', identityNumber}` 实测 `201`（自动分配编号 064，随后已物理清理）；线上 `current` → `e8cc0efe`，产物 `index-BiRD2IKb.js`。
