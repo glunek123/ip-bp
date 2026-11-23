@@ -39,3 +39,11 @@ ssh ubuntu@111.231.164.248 'sudo ln -sfn /srv/ip-bp-uat/releases/40a37065 /srv/i
 ```
 
 回滚代码不会撤销三条迁移（约束与触发器已替换）；如需恢复旧约束，需另写迁移。删除前备份在 `/var/backups/ip-bp-uat/case-adb463e1/`。
+
+## 后续修正（cbedf0d5，已部署）
+
+上一版详情页「删除客户」按钮按编辑权限渲染，属妥协版。本版补齐服务端能力投影：
+
+- `customer.service.ts` 的 `detail()` 增加 `customer.delete` 授权判定，`capabilities` 返回 `delete: boolean`。
+- 前端按钮改为只认 `customer.capabilities.delete`，无授权者不再看到按钮。
+- 回归：后端客户模块 251/251、前端客户模块 280 通过；新增两条前端用例（能力开关控制按钮、带关联数量与原因的删除流程跳回列表）。
