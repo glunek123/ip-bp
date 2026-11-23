@@ -107,63 +107,163 @@ export class LawyerAccountService {
   async candidates(actor: ActorContext, caseId: string, query = '') {
     await this.authorizeMatch(actor, caseId);
     const q = query.trim();
-    const accounts = await this.database.userAccount.findMany({
+    // 候选是律师档案而不是登录账号：无账号律师同样可承办，账号只决定线上身份。
+    const profiles = await this.database.lawyerProfile.findMany({
       where: {
-        active: true,
-        accountType: 'LAWYER',
-        localCredential: { isNot: null },
-        lawyerBindings: {
-          some: { departmentId: actor.departmentId, active: true },
-        },
+        departmentId: actor.departmentId,
+        status: 'ACTIVE',
         ...(q
           ? {
               OR: [
-                { displayName: { contains: q, mode: 'insensitive' } },
-                {
-                  localCredential: {
-                    is: { username: { contains: q, mode: 'insensitive' } },
-                  },
-                },
+                { fullName: { contains: q, mode: 'insensitive' } },
+                { lawFirm: { contains: q, mode: 'insensitive' } },
+                { phone: { contains: q, mode: 'insensitive' } },
+                { barNumber: { contains: q, mode: 'insensitive' } },
               ],
             }
           : {}),
       },
-      include: {
-        localCredential: { select: { username: true } },
-        lawyerBindings: {
-          where: { departmentId: actor.departmentId, active: true },
-          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-          take: 1,
-          select: { profileId: true },
+      select: {
+        id: true,
+        fullName: true,
+        lawFirm: true,
+        phone: true,
+        address: true,
+        region: true,
+        barNumber: true,
+        accountBinding: {
+          select: {
+            userId: true,
+            active: true,
+            user: {
+              select: {
+                active: true,
+                accountType: true,
+                localCredential: { select: { username: true } },
+              },
+            },
+          },
         },
       },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
       take: 50,
     });
-    // 匹配卡片要直接带出律师电话／律所／地址，这里一并返回档案信息。
-    const profileIds = accounts.map(
-      (account) => account.lawyerBindings[0].profileId,
-    );
-    const profiles = await this.database.lawyerProfile.findMany({
-      where: { id: { in: profileIds }, departmentId: actor.departmentId },
-      select: { id: true, phone: true, lawFirm: true, address: true },
+    const items = profiles.map((profile) => {
+      const binding = profile.accountBinding;
+      const usable =
+        binding !== null &&
+        binding.active &&
+        binding.user.active &&
+        binding.user.accountType === 'LAWYER' &&
+        binding.user.localCredential !== null;
+      return {
+        lawyerProfileId: profile.id,
+        lawyerAccountId: usable && binding ? binding.userId : null,
+        hasAccount: usable,
+        accountStatus: binding === null ? null : usable ? 'ACTIVE' : 'INACTIVE',
+        displayName: profile.fullName,
+        username:
+          usable && binding?.user.localCredential
+            ? binding.user.localCredential.username
+            : null,
+        phone: profile.phone,
+        lawFirm: profile.lawFirm,
+        address: profile.address,
+        region: profile.region,
+        barNumber: profile.barNumber,
+      };
     });
-    const byId = new Map(profiles.map((profile) => [profile.id, profile]));
-    return {
-      items: accounts.map((account) => {
-        const profileId = account.lawyerBindings[0].profileId;
-        const profile = byId.get(profileId);
-        return {
-          lawyerAccountId: account.id,
-          username: account.localCredential?.username ?? '',
-          displayName: account.displayName,
-          lawyerProfileId: profileId,
-          phone: profile?.phone ?? null,
-          lawFirm: profile?.lawFirm ?? null,
-          address: profile?.address ?? null,
-        };
-      }),
-    };
+    // 已开通账号的排在前面，方便运营优先选能线上办理的律师。
+    items.sort(
+      (left, right) =>
+        Number(right.hasAccount) - Number(left.hasAccount) ||
+        left.displayName.localeCompare(right.displayName, 'zh-Hans-CN'),
+    );
+    return { items };
+  }
+
+  /** 在既有律师档案上开通登录账号；无账号律师由此获得线上身份。 */
+  async createForProfile(
+    actor: ActorContext,
+    profileId: string,
+    input: { username: string; password: string },
+  ) {
+    let credential: ReturnType<typeof prepareLocalCredential>;
+    try {
+      credential = prepareLocalCredential(input.username, input.password);
+    } catch (error) {
+      throw this.credentialError(error);
+    }
+    let passwordHash: string;
+    try {
+      passwordHash = await credential.passwordHash;
+    } catch (error) {
+      throw this.credentialError(error);
+    }
+    try {
+      return await this.database.$transaction(
+        async (tx) => {
+          await this.authorize(tx, actor);
+          const profile = await tx.lawyerProfile.findFirst({
+            where: {
+              id: profileId,
+              departmentId: actor.departmentId,
+              status: 'ACTIVE',
+            },
+            select: {
+              id: true,
+              fullName: true,
+              accountBinding: { select: { id: true } },
+            },
+          });
+          if (profile === null) throw this.notFound();
+          if (profile.accountBinding !== null)
+            throw new ConflictException({
+              code: 'LAWYER_PROFILE_ALREADY_BOUND',
+              message: '该律师档案已开通账号',
+            });
+          const user = await tx.userAccount.create({
+            data: {
+              externalSubject: `local:${randomUUID()}`,
+              displayName: profile.fullName,
+              accountType: 'LAWYER',
+            },
+            select: { id: true },
+          });
+          await tx.localCredential.create({
+            data: {
+              userId: user.id,
+              username: credential.username,
+              passwordHash,
+            },
+          });
+          const binding = await tx.lawyerAccountBinding.create({
+            data: {
+              userId: user.id,
+              departmentId: actor.departmentId,
+              profileId: profile.id,
+            },
+            select: { id: true },
+          });
+          await this.audit(
+            tx,
+            actor,
+            user.id,
+            'lawyer-account.created-for-profile',
+            { profileId: profile.id, bindingId: binding.id },
+          );
+          return this.getItem(tx, actor, user.id);
+        },
+        { isolationLevel: 'Serializable' },
+      );
+    } catch (error) {
+      if (this.isUnique(error))
+        throw new ConflictException({
+          code: 'USERNAME_ALREADY_EXISTS',
+          message: '用户名已存在',
+        });
+      throw error;
+    }
   }
 
   async create(actor: ActorContext, input: CreateLawyerAccountDto) {
@@ -531,6 +631,7 @@ export class LawyerAccountService {
         fullName: string;
         lawFirm: string | null;
         phone: string | null;
+        email: string | null;
       };
     }>;
   }) {
@@ -548,6 +649,7 @@ export class LawyerAccountService {
         fullName: binding.profile.fullName,
         lawFirm: binding.profile.lawFirm,
         phone: binding.profile.phone,
+        email: binding.profile.email,
       })),
     };
   }

@@ -560,6 +560,13 @@ onBeforeUnmount(() => {
             >
             <strong>{{ account.displayName }}（{{ account.username }}）</strong
             ><span class="pill">{{ account.active ? '启用' : '停用' }}</span>
+            <p class="field-help">
+              角色：律师 · 用户类型：LAWYER{{
+                account.profiles[0]?.lawFirm
+                  ? ` · 律所：${account.profiles[0].lawFirm}`
+                  : ''
+              }}
+            </p>
             <p v-if="account.profiles.length === 0" class="field-help">
               暂无有效承办档案绑定。
             </p>
@@ -581,7 +588,8 @@ onBeforeUnmount(() => {
               <span
                 >{{ profile.fullName }} ·
                 {{ profile.lawFirm ?? '律所未填写' }} ·
-                {{ profile.phone ?? '电话未填写' }}</span
+                {{ profile.phone ?? '电话未填写' }} ·
+                {{ profile.email ?? '邮箱未填写' }}</span
               >
               <span class="pill">{{
                 profile.bindingActive ? '绑定启用' : '绑定停用'

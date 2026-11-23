@@ -14,13 +14,17 @@ vi.mock('../../api/case-lawyer-assignment', () => ({
 
 const caseId = '11111111-1111-4111-8111-111111111111';
 const first = {
+  lawyerProfileId: '33333333-3333-4333-8333-333333333333',
   lawyerAccountId: '22222222-2222-4222-8222-222222222222',
+  hasAccount: true,
+  accountStatus: 'ACTIVE' as const,
   username: 'lvshi',
   displayName: '顾言',
-  lawyerProfileId: '33333333-3333-4333-8333-333333333333',
   phone: null,
   lawFirm: '远泽律师事务所',
   address: null,
+  region: null,
+  barNumber: null,
 };
 const second = {
   ...first,
@@ -29,13 +33,23 @@ const second = {
   lawyerProfileId: '55555555-5555-4555-8555-555555555555',
   lawFirm: '海城律师事务所',
 };
+const withoutAccount = {
+  ...first,
+  lawyerProfileId: '88888888-8888-4888-8888-888888888888',
+  lawyerAccountId: null,
+  hasAccount: false,
+  accountStatus: null,
+  username: null,
+  displayName: '周砚',
+};
 
-function receipt(lawyerAccountId: string) {
+function receipt(lawyerProfileId: string, lawyerAccountId: string | null) {
   return {
     id: caseId,
     stage: 'WAITING_COMPLAINT_CONFIRMATION' as const,
     version: 6,
     outcome: 'REASSIGNED' as const,
+    requestedLawyerProfileId: lawyerProfileId,
     requestedLawyerAccountId: lawyerAccountId,
     previousAssignment: {
       id: '66666666-6666-4666-8666-666666666666',
@@ -45,8 +59,8 @@ function receipt(lawyerAccountId: string) {
     },
     currentAssignment: {
       id: '77777777-7777-4777-8777-777777777777',
-      lawyerProfileId: second.lawyerProfileId,
-      lawyerAccountId: second.lawyerAccountId,
+      lawyerProfileId,
+      lawyerAccountId,
       assignedAt: '2026-11-11T05:00:00.000Z',
     },
   };
@@ -69,13 +83,13 @@ describe('CaseLawyerReassignPanel', () => {
     vi.mocked(assignment.assignCaseLawyer).mockReset();
   });
 
-  it('lists assignable lawyers and submits the chosen one', async () => {
+  it('lists assignable lawyers and submits the chosen profile', async () => {
     vi.mocked(cases.listLawyerMatchCandidates).mockResolvedValue([
       first,
       second,
     ]);
     vi.mocked(assignment.assignCaseLawyer).mockResolvedValue(
-      receipt(second.lawyerAccountId),
+      receipt(second.lawyerProfileId, second.lawyerAccountId),
     );
     const wrapper = mountPanel();
     await flushPromises();
@@ -83,7 +97,7 @@ describe('CaseLawyerReassignPanel', () => {
     expect(wrapper.text()).toContain('林岸');
 
     await wrapper
-      .get(`[data-test="reassign-lawyer-${second.lawyerAccountId}"]`)
+      .get(`[data-test="reassign-lawyer-${second.lawyerProfileId}"]`)
       .setValue(true);
     await wrapper.get('[data-test="reassign-submit"]').trigger('click');
     await flushPromises();
@@ -92,22 +106,66 @@ describe('CaseLawyerReassignPanel', () => {
       caseId,
       expect.objectContaining({
         expectedVersion: 5,
-        lawyerAccountId: second.lawyerAccountId,
+        lawyerProfileId: second.lawyerProfileId,
         idempotencyKey: expect.any(String) as unknown as string,
       }),
     );
     expect(wrapper.emitted('completed')).toHaveLength(1);
   });
 
+  it('keeps a lawyer without an account selectable and explains offline delivery', async () => {
+    vi.mocked(cases.listLawyerMatchCandidates).mockResolvedValue([
+      withoutAccount,
+    ]);
+    vi.mocked(assignment.assignCaseLawyer).mockResolvedValue({
+      id: caseId,
+      stage: 'WAITING_COMPLAINT',
+      version: 6,
+      outcome: 'ASSIGNED',
+      requestedLawyerProfileId: withoutAccount.lawyerProfileId,
+      requestedLawyerAccountId: null,
+      previousAssignment: null,
+      currentAssignment: {
+        id: '99999999-9999-4999-8999-999999999999',
+        lawyerProfileId: withoutAccount.lawyerProfileId,
+        lawyerAccountId: null,
+        assignedAt: '2026-11-23T05:00:00.000Z',
+      },
+    });
+    const wrapper = mountPanel({ mode: 'assign', currentLawyerNames: [] });
+    await flushPromises();
+    expect(wrapper.text()).toContain('未开通账号');
+
+    await wrapper
+      .get(`[data-test="reassign-lawyer-${withoutAccount.lawyerProfileId}"]`)
+      .setValue(true);
+    await flushPromises();
+    expect(wrapper.text()).toContain('交付与律师结算由运营线下跟进');
+
+    await wrapper.get('[data-test="reassign-submit"]').trigger('click');
+    await flushPromises();
+    expect(assignment.assignCaseLawyer).toHaveBeenCalledWith(
+      caseId,
+      expect.objectContaining({
+        lawyerProfileId: withoutAccount.lawyerProfileId,
+      }),
+    );
+    expect(
+      vi.mocked(assignment.assignCaseLawyer).mock.calls[0]?.[1],
+    ).not.toHaveProperty('lawyerAccountId');
+  });
+
   it('reuses the same request key after an unknown result', async () => {
     vi.mocked(cases.listLawyerMatchCandidates).mockResolvedValue([second]);
     vi.mocked(assignment.assignCaseLawyer)
       .mockRejectedValueOnce(new ApiError('网络中断', 0, 'NETWORK_ERROR'))
-      .mockResolvedValueOnce(receipt(second.lawyerAccountId));
+      .mockResolvedValueOnce(
+        receipt(second.lawyerProfileId, second.lawyerAccountId),
+      );
     const wrapper = mountPanel();
     await flushPromises();
     await wrapper
-      .get(`[data-test="reassign-lawyer-${second.lawyerAccountId}"]`)
+      .get(`[data-test="reassign-lawyer-${second.lawyerProfileId}"]`)
       .setValue(true);
     await wrapper.get('[data-test="reassign-submit"]').trigger('click');
     await flushPromises();
@@ -128,6 +186,7 @@ describe('CaseLawyerReassignPanel', () => {
       stage: 'WAITING_COMPLAINT',
       version: 6,
       outcome: 'ASSIGNED',
+      requestedLawyerProfileId: first.lawyerProfileId,
       requestedLawyerAccountId: first.lawyerAccountId,
       previousAssignment: null,
       currentAssignment: {
@@ -147,7 +206,7 @@ describe('CaseLawyerReassignPanel', () => {
     );
 
     await wrapper
-      .get(`[data-test="reassign-lawyer-${first.lawyerAccountId}"]`)
+      .get(`[data-test="reassign-lawyer-${first.lawyerProfileId}"]`)
       .setValue(true);
     await wrapper.get('[data-test="reassign-submit"]').trigger('click');
     await flushPromises();
@@ -156,7 +215,7 @@ describe('CaseLawyerReassignPanel', () => {
       caseId,
       expect.objectContaining({
         expectedVersion: 5,
-        lawyerAccountId: first.lawyerAccountId,
+        lawyerProfileId: first.lawyerProfileId,
       }),
     );
     expect(wrapper.emitted('completed')?.[0]?.[0]).toMatchObject({

@@ -128,6 +128,8 @@ const actionMap = {
   USER_READ: 'user.read',
   USER_MANAGE: 'user.manage',
   LAWYER_ACCOUNT_MANAGE: 'lawyer.account.manage',
+  LAWYER_PROFILE_READ: 'lawyer.profile.read',
+  LAWYER_PROFILE_MANAGE: 'lawyer.profile.manage',
   TEAM_READ: 'team.read',
   TEAM_MANAGE: 'team.manage',
   ROLE_READ: 'role.read',

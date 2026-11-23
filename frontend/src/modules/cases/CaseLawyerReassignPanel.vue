@@ -46,6 +46,9 @@ const currentNames = computed(
   () => props.currentLawyerNames.join('、') || '未指派',
 );
 const visibleCandidates = computed(() => candidates.value);
+const selectedCandidate = computed(() =>
+  candidates.value.find((item) => item.lawyerProfileId === selected.value),
+);
 
 async function load(): Promise<void> {
   loading.value = true;
@@ -79,10 +82,10 @@ function isUnknownResult(reason: unknown): boolean {
 
 async function submit(): Promise<void> {
   if (!selected.value || busy.value) return;
-  const lawyerAccountId = selected.value;
-  if (pendingFor.value !== lawyerAccountId) {
+  const lawyerProfileId = selected.value;
+  if (pendingFor.value !== lawyerProfileId) {
     pendingKey.value = globalThis.crypto.randomUUID();
-    pendingFor.value = lawyerAccountId;
+    pendingFor.value = lawyerProfileId;
   }
   const idempotencyKey = pendingKey.value;
   if (!idempotencyKey) return;
@@ -93,7 +96,7 @@ async function submit(): Promise<void> {
     const result = await assignCaseLawyer(props.caseId, {
       expectedVersion: props.caseVersion,
       idempotencyKey,
-      lawyerAccountId,
+      lawyerProfileId,
     });
     pendingKey.value = null;
     pendingFor.value = null;
@@ -152,22 +155,40 @@ onMounted(() => void load());
       <legend class="sr-only">可选律师</legend>
       <label
         v-for="candidate in visibleCandidates"
-        :key="candidate.lawyerAccountId"
+        :key="candidate.lawyerProfileId"
         class="reassign-panel__option"
       >
         <input
           v-model="selected"
           type="radio"
-          :value="candidate.lawyerAccountId"
-          :data-test="`reassign-lawyer-${candidate.lawyerAccountId}`"
+          :value="candidate.lawyerProfileId"
+          :data-test="`reassign-lawyer-${candidate.lawyerProfileId}`"
         />
         {{ candidate.displayName }}
         <span v-if="candidate.lawFirm" class="field-help">
           · {{ candidate.lawFirm }}
         </span>
+        <span
+          v-if="!candidate.hasAccount"
+          class="reassign-panel__tag"
+          :title="
+            candidate.accountStatus === 'INACTIVE'
+              ? '该律师账号已停用，仍可承办，交付由运营线下完成'
+              : '该律师未开通账号，仍可承办，交付由运营线下完成'
+          "
+          >{{
+            candidate.accountStatus === 'INACTIVE' ? '账号已停用' : '未开通账号'
+          }}</span
+        >
       </label>
       <p v-if="!visibleCandidates.length">没有匹配的律师。</p>
     </fieldset>
+    <p
+      v-if="selectedCandidate && !selectedCandidate.hasAccount"
+      class="field-help"
+    >
+      该律师未开通系统账号：指派不受影响，案件交付与律师结算由运营线下跟进。
+    </p>
     <p v-if="error" role="alert" class="submit-error">{{ error }}</p>
     <div class="reassign-panel__actions">
       <ElButton :disabled="busy" @click="emit('close')">取消</ElButton>

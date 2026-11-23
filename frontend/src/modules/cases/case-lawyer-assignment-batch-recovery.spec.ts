@@ -78,6 +78,7 @@ describe('lawyer assignment batch recovery', () => {
       stage: 'PENDING_MATCH' as const,
       version: 2,
       outcome: 'ASSIGNED' as const,
+      requestedLawyerProfileId: lawyerProfileId,
       requestedLawyerAccountId: lawyerAccountId,
       previousAssignment: null,
       currentAssignment: {

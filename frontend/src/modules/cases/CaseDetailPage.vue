@@ -2256,9 +2256,9 @@ watch(
       controller.abort();
     });
     lawyerCandidates.value = [];
-    const selectedAccountId =
+    const selectedProfileId =
       caseId === previousCaseId && lawyerQuery.value === previousQuery
-        ? selectedLawyer.value?.lawyerAccountId
+        ? selectedLawyer.value?.lawyerProfileId
         : undefined;
     if (accessVerified.value) selectedLawyer.value = undefined;
     lawyerCandidatesError.value = '';
@@ -2279,14 +2279,14 @@ watch(
       if (!current || controller.signal.aborted) return;
       lawyerCandidates.value = candidates;
       selectedLawyer.value = candidates.find(
-        (candidate) => candidate.lawyerAccountId === selectedAccountId,
+        (candidate) => candidate.lawyerProfileId === selectedProfileId,
       );
     } catch (reason) {
       if (current && !controller.signal.aborted)
         lawyerCandidatesError.value =
           reason instanceof ApiError && reason.status === 403
-            ? '当前账号无权读取该案的律师账号。'
-            : '律师账号候选暂时无法加载。';
+            ? '当前账号无权读取该案的律师候选。'
+            : '律师候选暂时无法加载。';
     } finally {
       if (current) lawyerCandidatesLoading.value = false;
     }
@@ -2645,7 +2645,7 @@ async function submitMatch() {
         legalRepresentative: legalRepresentative ?? undefined,
       }),
     ),
-    lawyerAccountId: selectedLawyer.value?.lawyerAccountId ?? '',
+    lawyerAccountId: selectedLawyer.value?.lawyerAccountId ?? undefined,
     lawyerProfileId: selectedLawyer.value?.lawyerProfileId ?? '',
     ...(settlementMode.value
       ? {
@@ -2893,16 +2893,19 @@ onBeforeUnmount(() => {
               >{{ command.label }}</ElButton
             >
           </details>
-          <ElButton
-            v-if="item.stage !== 'WAITING_ARCHIVE'"
-            v-for="command in recordRegistrationCommands"
-            :key="command.id"
-            plain
-            :disabled="routineEditing || routineSaving || additionalActionBusy"
-            data-test="workspace-record-registration"
-            @click="openCommand(command)"
-            >登记二审受理信息</ElButton
-          >
+          <template v-if="item.stage !== 'WAITING_ARCHIVE'">
+            <ElButton
+              v-for="command in recordRegistrationCommands"
+              :key="command.id"
+              plain
+              :disabled="
+                routineEditing || routineSaving || additionalActionBusy
+              "
+              data-test="workspace-record-registration"
+              @click="openCommand(command)"
+              >登记二审受理信息</ElButton
+            >
+          </template>
           <ElButton
             v-if="item.stage !== 'WAITING_ARCHIVE'"
             plain
@@ -3874,7 +3877,7 @@ onBeforeUnmount(() => {
                   autocomplete="off"
               /></label>
               <label
-                >账号 <span aria-hidden="true">*</span
+                >承办律师 <span aria-hidden="true">*</span
                 ><select
                   v-model="selectedLawyer"
                   class="text-input"
@@ -3886,16 +3889,19 @@ onBeforeUnmount(() => {
                   <option :value="undefined">
                     {{
                       lawyerCandidatesLoading
-                        ? '正在读取律师账号'
-                        : '请选择姓名（用户名）'
+                        ? '正在读取律师库'
+                        : '请选择承办律师'
                     }}
                   </option>
                   <option
                     v-for="candidate in lawyerCandidates"
-                    :key="candidate.lawyerAccountId"
+                    :key="candidate.lawyerProfileId"
                     :value="candidate"
                   >
-                    {{ candidate.displayName }}（{{ candidate.username }}）
+                    {{ candidate.displayName
+                    }}{{
+                      candidate.username ? `（${candidate.username}）` : '（未开通账号）'
+                    }}
                   </option>
                 </select></label
               >
@@ -3904,6 +3910,12 @@ onBeforeUnmount(() => {
                   selectedLawyer?.lawFirm ?? '—'
                 }}
                 · 律师地址：{{ selectedLawyer?.address ?? '—' }}
+              </p>
+              <p
+                v-if="selectedLawyer && !selectedLawyer.hasAccount"
+                class="field-help"
+              >
+                该律师未开通系统账号：指派不受影响，交付与律师结算由运营线下跟进。
               </p>
               <label
                 >律师结算模式 <span aria-hidden="true">*</span
@@ -3957,7 +3969,7 @@ onBeforeUnmount(() => {
                 "
                 class="field-help"
               >
-                没有有效律师账号候选。请联系有权限的管理员先创建律师账号。
+                律师库里还没有可选律师。请先在律师库录入律师，或联系有权限的管理员。
               </p>
             </div>
             <p v-if="matchError" class="submit-error" role="alert">

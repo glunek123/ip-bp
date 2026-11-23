@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { CaseLawyerAssignmentService } from './case-lawyer-assignment.service';
 import { ForbiddenException } from '@nestjs/common';
 
@@ -9,18 +10,34 @@ const actor = {
 const caseId = '33333333-3333-4333-8333-333333333333';
 const lawyerAccountId = '44444444-4444-4444-8444-444444444444';
 const lawyerProfileId = '55555555-5555-4555-8555-555555555555';
+const otherProfileId = '99999999-9999-4999-8999-999999999999';
+const otherAccountId = '77777777-7777-4777-8777-777777777777';
 const input = {
   expectedVersion: 1,
   idempotencyKey: 'assign-1',
-  lawyerAccountId,
+  lawyerProfileId,
 };
 
 function fixture() {
   const tx = {
-    $queryRawUnsafe: jest.fn(async (sql: string) =>
-      sql.includes('FROM "cases"')
-        ? [{ id: caseId }]
-        : [{ profile_id: lawyerProfileId }],
+    $queryRawUnsafe: jest.fn(
+      async (
+        sql: string,
+      ): Promise<
+        Array<{
+          id?: string;
+          profile_id?: string;
+          account_user_id?: string | null;
+        }>
+      > =>
+        sql.includes('FROM "cases"')
+          ? [{ id: caseId }]
+          : [
+              {
+                profile_id: lawyerProfileId,
+                account_user_id: lawyerAccountId,
+              },
+            ],
     ),
     case: {
       findFirst: jest.fn().mockResolvedValue({
@@ -40,6 +57,19 @@ function fixture() {
       findUnique: jest
         .fn()
         .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
+    },
+    lawyerProfile: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: lawyerProfileId,
+        accountBinding: {
+          userId: lawyerAccountId,
+          active: true,
+          user: { active: true, accountType: 'LAWYER' },
+        },
+      }),
+    },
+    lawyerAccountBinding: {
+      findFirst: jest.fn().mockResolvedValue({ profileId: lawyerProfileId }),
     },
     caseLawyerAssignmentReceipt: {
       findUnique: jest.fn().mockResolvedValue(null),
@@ -78,16 +108,9 @@ const assignment = {
   startedAt: new Date('2026-11-04T00:00:00Z'),
   endedAt: null,
   lawyer: {
-    accountBinding: {
-      userId: lawyerAccountId,
-      departmentId: actor.departmentId,
-      active: true,
-      user: {
-        active: true,
-        accountType: 'LAWYER',
-        localCredential: { id: '88888888-8888-4888-8888-888888888888' },
-      },
-    },
+    departmentId: actor.departmentId,
+    status: 'ACTIVE',
+    accountBinding: { userId: lawyerAccountId },
   },
 };
 
@@ -277,17 +300,11 @@ describe('CaseLawyerAssignmentService', () => {
     f.tx.caseLawyerAssignment.findMany.mockResolvedValue([
       {
         ...assignment,
+        lawyerId: otherProfileId,
         lawyer: {
-          accountBinding: {
-            userId: '77777777-7777-4777-8777-777777777777',
-            departmentId: actor.departmentId,
-            active: true,
-            user: {
-              active: true,
-              accountType: 'LAWYER',
-              localCredential: { id: '88888888-8888-4888-8888-888888888888' },
-            },
-          },
+          departmentId: actor.departmentId,
+          status: 'ACTIVE',
+          accountBinding: { userId: otherAccountId },
         },
       },
     ]);
@@ -295,10 +312,12 @@ describe('CaseLawyerAssignmentService', () => {
     expect(result).toMatchObject({
       outcome: 'REASSIGNED',
       version: 2,
+      requestedLawyerProfileId: lawyerProfileId,
       requestedLawyerAccountId: lawyerAccountId,
-      currentAssignment: { lawyerAccountId },
+      currentAssignment: { lawyerAccountId, lawyerProfileId },
       previousAssignment: {
-        lawyerAccountId: '77777777-7777-4777-8777-777777777777',
+        lawyerProfileId: otherProfileId,
+        lawyerAccountId: otherAccountId,
       },
     });
     expect(f.tx.caseLawyerAssignment.update).toHaveBeenCalledWith({
@@ -384,20 +403,17 @@ describe('CaseLawyerAssignmentService', () => {
       response: { code: 'RECEIPT_CORRUPT' },
     });
   });
-  it('keeps a historical profile on NO_CHANGE for the same lawyer account', async () => {
+  it('keeps the same profile on NO_CHANGE regardless of the account id spelling', async () => {
     const f = fixture();
-    f.tx.caseLawyerAssignment.findMany.mockResolvedValue([
-      {
-        ...assignment,
-        lawyerId: '99999999-9999-4999-8999-999999999999',
-      },
-    ]);
+    f.tx.caseLawyerAssignment.findMany.mockResolvedValue([assignment]);
     const request = { ...input, lawyerProfileId };
     const first = await f.service.assign(actor, caseId, request);
-    expect(first).toMatchObject({ outcome: 'NO_CHANGE', version: 1 });
-    expect(first.currentAssignment?.lawyerProfileId).toBe(
-      '99999999-9999-4999-8999-999999999999',
-    );
+    expect(first).toMatchObject({
+      outcome: 'NO_CHANGE',
+      version: 1,
+      requestedLawyerProfileId: lawyerProfileId,
+    });
+    expect(first.currentAssignment?.lawyerProfileId).toBe(lawyerProfileId);
     const receipt =
       f.tx.caseLawyerAssignmentReceipt.create.mock.calls[0][0].data;
     f.tx.caseLawyerAssignmentReceipt.findUnique.mockResolvedValue({
@@ -440,5 +456,114 @@ describe('CaseLawyerAssignmentService', () => {
       response: { code: 'LAWYER_ASSIGNMENT_CONFLICT' },
     });
     expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('assigns a lawyer profile that has no login account', async () => {
+    const f = fixture();
+    f.tx.lawyerProfile.findFirst.mockResolvedValue({
+      id: lawyerProfileId,
+      accountBinding: null,
+    });
+    const result = await f.service.assign(actor, caseId, input);
+    expect(result).toMatchObject({
+      outcome: 'ASSIGNED',
+      requestedLawyerProfileId: lawyerProfileId,
+      requestedLawyerAccountId: null,
+      currentAssignment: { lawyerProfileId, lawyerAccountId: null },
+    });
+    expect(f.tx.caseLawyerAssignment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ lawyerId: lawyerProfileId }),
+      }),
+    );
+  });
+
+  it('does not treat a missing or disabled account as a relationship conflict', async () => {
+    const f = fixture();
+    f.tx.caseLawyerAssignment.findMany.mockResolvedValue([
+      {
+        ...assignment,
+        lawyer: {
+          departmentId: actor.departmentId,
+          status: 'ACTIVE',
+          accountBinding: null,
+        },
+      },
+    ]);
+    await expect(f.service.capability(actor, caseId)).resolves.toMatchObject({
+      canAssign: true,
+      currentAssignment: { lawyerProfileId, lawyerAccountId: null },
+    });
+  });
+
+  it('refuses a profile that is inactive or from another department', async () => {
+    const f = fixture();
+    f.tx.lawyerProfile.findFirst.mockResolvedValue(null);
+    await expect(f.service.assign(actor, caseId, input)).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+    expect(f.tx.caseLawyerAssignment.create).not.toHaveBeenCalled();
+  });
+
+  it('replays a v1 receipt that was fingerprinted by lawyer account', async () => {
+    const f = fixture();
+    const legacyRequest = {
+      expectedVersion: 1,
+      idempotencyKey: 'assign-1',
+      lawyerAccountId,
+    };
+    const legacyResult = {
+      id: caseId,
+      stage: 'PENDING_MATCH' as const,
+      version: 2,
+      outcome: 'ASSIGNED' as const,
+      requestedLawyerProfileId: lawyerProfileId,
+      requestedLawyerAccountId: lawyerAccountId,
+      previousAssignment: null,
+      currentAssignment: {
+        id: '66666666-6666-4666-8666-666666666666',
+        lawyerProfileId,
+        lawyerAccountId,
+        assignedAt: '2026-11-04T00:00:00.000Z',
+      },
+    };
+    const legacyFingerprint = createHash('sha256')
+      .update(
+        JSON.stringify({
+          caseId,
+          expectedVersion: 1,
+          lawyerAccountId,
+          lawyerProfileId: null,
+        }),
+      )
+      .digest('hex');
+    f.tx.caseLawyerAssignmentReceipt.findUnique.mockResolvedValue({
+      id: '88888888-8888-4888-8888-888888888888',
+      departmentId: actor.departmentId,
+      actorUserId: actor.userId,
+      caseId,
+      idempotencyKey: 'assign-1',
+      requestFingerprint: legacyFingerprint,
+      resultSnapshot: legacyResult,
+      createdAt: new Date('2026-11-04T00:00:00Z'),
+    });
+    expect(await f.service.assign(actor, caseId, legacyRequest)).toEqual(
+      legacyResult,
+    );
+    expect(f.tx.caseLawyerAssignment.create).not.toHaveBeenCalled();
+  });
+
+  it('still resolves the profile when an older caller sends only the account id', async () => {
+    const f = fixture();
+    const result = await f.service.assign(actor, caseId, {
+      expectedVersion: 1,
+      idempotencyKey: 'assign-2',
+      lawyerAccountId,
+    });
+    expect(result).toMatchObject({
+      outcome: 'ASSIGNED',
+      requestedLawyerProfileId: lawyerProfileId,
+      requestedLawyerAccountId: lawyerAccountId,
+    });
   });
 });

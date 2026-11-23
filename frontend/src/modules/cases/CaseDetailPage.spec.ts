@@ -147,6 +147,14 @@ vi.mock('../../api/organization', () => ({
 vi.mock('../../api/lawyer-accounts', () => ({
   listLawyerAccounts: vi.fn(async () => ({ items: [], total: 0 })),
 }));
+vi.mock('../../api/lawyer-profiles', () => ({
+  listLawyerProfiles: vi.fn(async () => ({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 1,
+  })),
+}));
 vi.mock('../../api/notary', async (original) => ({
   ...(await original<typeof import('../../api/notary')>()),
   listNotaryOffices: vi.fn(async () => []),

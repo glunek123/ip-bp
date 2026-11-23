@@ -1,3 +1,11 @@
+# 2026-11-23 晚：律师库与无账号律师指派（本地实现，未部署）
+
+用户确认「指派不应要求律师有账号、无账号交付走线下」，本轮按方案 S-0～S-2 实施，未部署。核心是把承办主体从登录账号切到律师档案：`LawyerProfile` 加 `email`／`barNumber`／`law_firm_credit_code`／`region`／`status`／`source`／`version`／`updated_at` 与两个枚举，新增两支迁移（枚举与列，权限按 `lawyer.account.manage` 的 DEPARTMENT 授权复制）；`GET /cases/:id/lawyer-accounts` 保留路径但改查档案，返回 `hasAccount`／`accountStatus`；指派与匹配命令改为档案校验，`lawyerProfileId` 与 `lawyerAccountId` 至少其一，账号存在与否不参与；`capability` 不再把无绑定/停用账号判为冲突；幂等指纹改按档案，历史回执按旧公式双兼容重放（回执自带档案快照，重放不查库）。新增 `lawyer.profile.read/manage` 与 `lawyer-profiles` 控制器（列表/详情/新建/编辑/停用/开通账号），前端新增「律师库」页面与菜单，账号页补邮箱／手机／角色／用户类型／律所，指派抽屉、批量面板、匹配表单均改按档案选人并标注「未开通账号」。验证：后端指派 22／账号 16／匹配 26／档案 9 例通过，案件模块其余套件除 `case-read.controller`（HEAD 既存 DI 缺 `CaseMaterialService`）与 `case-early-archive-origin-migration`（需真实 PG）外通过；前端 `vue-tsc` 通过，指派、批量、匹配、律师库、详情页、结算页与外壳测试全通过；改动文件 ESLint 通过。既存债务：`pnpm architecture:check` 3 项失败（`CasePreservation` 无 owner、leads/settlements 越界导入 cases 组件），与本轮无关。方案见 [律师库与无账号律师指派方案](superpowers/specs/2026-11-23-lawyer-library-unbound-assignment.md)。
+
+# 2026-11-23 傍晚：律师结算与客户结算操作验收（线上 bc443bf4）
+
+用户要求验收两侧结算发起操作。自动化测试：前端结算页 39 通过 / 4 跳过、后端结算模块 350/350。UAT 以 zhichan 实测案件 00920261118140（待归档、律师曹月已指派）：客户侧与律师侧摘要卡「发起结算」均真实发起成功，客户 5600.00／律师 1400.00 各自 nth=1 并带真实 lawyerId，两侧余额隔离、发起后按钮置灰并给出原因；无律师案件 04320261118824 的律师侧置灰并提示「该案件未指派律师，无法发起律师结算。」。原「律师卡点击无反应」缺陷确认已修复，两侧放行。本轮在 UAT 真实写入 2 条 launch（客户 ba7c411d、律师 64fc06c7），保留为验收证据，撤销方式见回执。遗留测试债：双摘要卡整组用例仍为 it.skip。回执见 [两侧结算操作验收](operations/uat-2026-11-23-settlement-acceptance.md)。
+
 # 2026-11-23 下午：放宽承办律师补指派窗口（已部署 13672a99 / bc443bf4）
 
 用户确认方案 A。口径改为「锁定已建立的承办关系，不是空缺本身」：当前无承办律师时，任意阶段（含已归档，归档后仍可录律师结算）都可补指派，只递增案件版本、不推进阶段；已有承办律师的变更仍限待匹配／待写诉状／确认诉状，正式立案后不得改派。待匹配仍走匹配表单，避免先指派再匹配时静默丢结算约定。改动覆盖 `case-lawyer-assignable.ts`、`case-lawyer-assignment.service.ts`／DTO、候选律师接口、详情入口判定、前端解码白名单与批量面板受阻文案；同步登记 DECISIONS 与 cases.md。验证：指派服务 17/17、账号服务 15/15、后端案件模块 156 套件通过（2 套件 21 例为 HEAD 既存，基线复跑确认）、前端案件模块 72 文件通过、详情页 21/21、vue-tsc 与测试环境构建通过。线上 `current` → `bc443bf4`，健康 200。实测 `00320261118513`（待正式立案）capability 200、候选列表 200 显示「顾言」、抽屉可打开到「确认指派」；未做真实写入。相对首轮新放开 1412 件无律师案件，待匹配 319 件仍走匹配表单。回执见 [放宽承办律师补指派窗口](operations/uat-2026-11-23-13672a99.md)。

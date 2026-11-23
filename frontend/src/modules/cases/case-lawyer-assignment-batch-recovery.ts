@@ -27,10 +27,10 @@ export type LawyerAssignmentBatch = {
   identity: string;
   batchId: string;
   target: {
-    lawyerAccountId: string;
+    lawyerAccountId: string | null;
     lawyerProfileId: string;
     displayName: string;
-    username: string;
+    username: string | null;
   };
   items: LawyerAssignmentBatchItem[];
 };
@@ -54,14 +54,15 @@ function validBatch(
     typeof value.batchId !== 'string' ||
     !uuid.test(value.batchId) ||
     !obj(value.target) ||
-    typeof value.target.lawyerAccountId !== 'string' ||
-    !uuid.test(value.target.lawyerAccountId) ||
+    (value.target.lawyerAccountId !== null &&
+      (typeof value.target.lawyerAccountId !== 'string' ||
+        !uuid.test(value.target.lawyerAccountId))) ||
     typeof value.target.lawyerProfileId !== 'string' ||
     !uuid.test(value.target.lawyerProfileId) ||
     typeof value.target.displayName !== 'string' ||
     !value.target.displayName ||
-    typeof value.target.username !== 'string' ||
-    !value.target.username ||
+    (value.target.username !== null &&
+      typeof value.target.username !== 'string') ||
     !Array.isArray(value.items) ||
     value.items.length < 1 ||
     value.items.length > 20
@@ -93,8 +94,10 @@ function validBatch(
       typeof entry.input.idempotencyKey !== 'string' ||
       !entry.input.idempotencyKey ||
       entry.input.idempotencyKey.length > 128 ||
-      entry.input.lawyerAccountId !== target.lawyerAccountId ||
       entry.input.lawyerProfileId !== target.lawyerProfileId ||
+      (target.lawyerAccountId === null
+        ? entry.input.lawyerAccountId !== undefined
+        : entry.input.lawyerAccountId !== target.lawyerAccountId) ||
       (entry.note !== undefined && typeof entry.note !== 'string')
     )
       return false;

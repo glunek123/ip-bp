@@ -119,6 +119,8 @@ export type PermissionAction =
   | 'user.read'
   | 'user.manage'
   | 'lawyer.account.manage'
+  | 'lawyer.profile.read'
+  | 'lawyer.profile.manage'
   | 'team.read'
   | 'team.manage'
   | 'role.read'

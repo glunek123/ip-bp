@@ -956,7 +956,7 @@ export type MatchCaseInput = {
     address?: string;
     legalRepresentative?: string;
   }>;
-  lawyerAccountId: string;
+  lawyerAccountId?: string;
   lawyerProfileId?: string;
   settlementMode?: 'FULL_RISK' | 'HALF_RISK' | 'FIXED_FEE';
   baseFee?: string;
@@ -1054,13 +1054,17 @@ export type LawyerCaseList = {
   counts: Record<CaseStage, number>;
 };
 export type LawyerMatchCandidate = {
-  lawyerAccountId: string;
-  username: string;
-  displayName: string;
   lawyerProfileId: string;
+  lawyerAccountId: string | null;
+  hasAccount: boolean;
+  accountStatus: 'ACTIVE' | 'INACTIVE' | null;
+  username: string | null;
+  displayName: string;
   phone: string | null;
   lawFirm: string | null;
   address: string | null;
+  region: string | null;
+  barNumber: string | null;
 };
 export type LawyerCaseDetail = CaseWorkflowItem &
   LawyerCaseSummary & {
@@ -5171,26 +5175,36 @@ export async function listLawyerMatchCandidates(
       (item) =>
         record(item) &&
         exact(item, [
+          'lawyerProfileId',
           'lawyerAccountId',
+          'hasAccount',
+          'accountStatus',
           'username',
           'displayName',
-          'lawyerProfileId',
           'phone',
           'lawFirm',
           'address',
+          'region',
+          'barNumber',
         ]) &&
+        (item.lawyerAccountId === null || nonempty(item.lawyerAccountId)) &&
+        typeof item.hasAccount === 'boolean' &&
+        (item.accountStatus === null ||
+          item.accountStatus === 'ACTIVE' ||
+          item.accountStatus === 'INACTIVE') &&
+        (item.username === null || typeof item.username === 'string') &&
         (item.phone === null || typeof item.phone === 'string') &&
         (item.lawFirm === null || typeof item.lawFirm === 'string') &&
         (item.address === null || typeof item.address === 'string') &&
-        nonempty(item.lawyerAccountId) &&
-        nonempty(item.username) &&
+        (item.region === null || typeof item.region === 'string') &&
+        (item.barNumber === null || typeof item.barNumber === 'string') &&
         nonempty(item.displayName) &&
         nonempty(item.lawyerProfileId),
     )
   )
     throw invalidResponse();
   const ids = result.items.map(
-    (item) => (item as LawyerMatchCandidate).lawyerAccountId,
+    (item) => (item as LawyerMatchCandidate).lawyerProfileId,
   );
   if (new Set(ids).size !== ids.length) throw invalidResponse();
   return result.items as LawyerMatchCandidate[];
@@ -7439,7 +7453,9 @@ export async function matchCase(
           : {}),
       }),
     ),
-    lawyerAccountId: input.lawyerAccountId.trim(),
+    ...(input.lawyerAccountId
+      ? { lawyerAccountId: input.lawyerAccountId.trim() }
+      : {}),
     ...(input.settlementMode ? { settlementMode: input.settlementMode } : {}),
     ...(input.settlementMode && input.baseFee !== undefined
       ? { baseFee: input.baseFee }

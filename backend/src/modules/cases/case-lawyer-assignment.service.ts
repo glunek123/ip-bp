@@ -14,6 +14,7 @@ import {
   isLawyerBackfillStage,
 } from './case-lawyer-assignable';
 import { DatabaseService } from '../../database/database.service';
+import type { Prisma } from '../../generated/prisma/client';
 import {
   AssignCaseLawyerDto,
   AssignCaseLawyerResponseDto,
@@ -95,28 +96,22 @@ export class CaseLawyerAssignmentService {
         endedAt: true,
         lawyer: {
           select: {
-            accountBinding: {
-              select: {
-                userId: true,
-                departmentId: true,
-                active: true,
-                user: { select: { active: true, accountType: true } },
-              },
-            },
+            departmentId: true,
+            status: true,
+            accountBinding: { select: { userId: true } },
           },
         },
       },
     });
+    // 承办门禁只看档案：账号有无、账号启停不再构成冲突（P-01）。
     if (
       assignments.length > 1 ||
       assignments.some(
         (item) =>
           item.role !== 'PRIMARY' ||
           item.endedAt !== null ||
-          item.lawyer.accountBinding?.departmentId !== actor.departmentId ||
-          item.lawyer.accountBinding.active !== true ||
-          item.lawyer.accountBinding.user.active !== true ||
-          item.lawyer.accountBinding.user.accountType !== 'LAWYER',
+          item.lawyer.departmentId !== actor.departmentId ||
+          item.lawyer.status !== 'ACTIVE',
       )
     )
       return {
@@ -145,7 +140,7 @@ export class CaseLawyerAssignmentService {
         ? {
             id: current.id,
             lawyerProfileId: current.lawyerId,
-            lawyerAccountId: current.lawyer.accountBinding!.userId,
+            lawyerAccountId: current.lawyer.accountBinding?.userId ?? null,
             assignedAt: current.startedAt.toISOString(),
           }
         : null,
@@ -160,16 +155,6 @@ export class CaseLawyerAssignmentService {
     const request = this.normalize(input);
     if (actor.clientCustomerId || actor.notaryOfficeId || actor.lawyerAccountId)
       throw this.forbidden();
-    const fingerprint = createHash('sha256')
-      .update(
-        JSON.stringify({
-          caseId,
-          expectedVersion: request.expectedVersion,
-          lawyerAccountId: request.lawyerAccountId,
-          lawyerProfileId: request.lawyerProfileId ?? null,
-        }),
-      )
-      .digest('hex');
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         return await this.database.$transaction(
@@ -250,12 +235,31 @@ export class CaseLawyerAssignmentService {
               },
             });
             if (prior) {
+              if (prior.caseId !== caseId) throw this.idempotencyConflict();
+              // v1 回执按旧公式（含账号）重放，不需要解析档案。
               if (
-                prior.caseId !== caseId ||
-                prior.requestFingerprint !== fingerprint
+                prior.requestFingerprint ===
+                this.legacyFingerprint(caseId, request)
               )
-                throw this.idempotencyConflict();
-              return this.readReceipt(prior.resultSnapshot, caseId, request);
+                return this.readReceipt(prior.resultSnapshot, caseId, request);
+              // v2 回执自带档案快照，重放不查库：档案后来停用也能原样返回。
+              const snapshotTarget = this.snapshotTarget(prior.resultSnapshot);
+              if (
+                snapshotTarget &&
+                prior.requestFingerprint ===
+                  this.fingerprint(
+                    caseId,
+                    request.expectedVersion,
+                    snapshotTarget.profileId,
+                  )
+              )
+                return this.readReceipt(
+                  prior.resultSnapshot,
+                  caseId,
+                  request,
+                  snapshotTarget,
+                );
+              throw this.idempotencyConflict();
             }
             if (
               !isLawyerBackfillStage(record.stage) ||
@@ -264,21 +268,16 @@ export class CaseLawyerAssignmentService {
               throw this.invalidState();
             if (record.version !== request.expectedVersion)
               throw this.versionConflict();
-            const candidates = await tx.$queryRawUnsafe<
-              Array<{ profile_id: string }>
-            >(
-              `SELECT b."profile_id" FROM "lawyer_account_bindings" b JOIN "user_accounts" u ON u."id" = b."user_id"
-             JOIN "local_credentials" lc ON lc."user_id" = u."id"
-             WHERE b."user_id" = $1::uuid AND b."department_id" = $2::uuid AND b."active"
-               AND u."active" AND u."account_type" = 'LAWYER'
-               AND ($3::uuid IS NULL OR b."profile_id" = $3::uuid)
-             ORDER BY b."created_at", b."id" LIMIT 1 FOR SHARE OF b, u`,
-              request.lawyerAccountId,
+            const target = await this.resolveTargetProfile(
+              tx,
               actor.departmentId,
-              request.lawyerProfileId ?? null,
+              request,
             );
-            if (candidates.length !== 1) throw this.forbidden();
-            const profileId = candidates[0].profile_id;
+            const fingerprint = this.fingerprint(
+              caseId,
+              request.expectedVersion,
+              target.profileId,
+            );
             const assignments = await tx.caseLawyerAssignment.findMany({
               where: { caseId, departmentId: actor.departmentId },
               select: {
@@ -289,20 +288,9 @@ export class CaseLawyerAssignmentService {
                 endedAt: true,
                 lawyer: {
                   select: {
-                    accountBinding: {
-                      select: {
-                        userId: true,
-                        departmentId: true,
-                        active: true,
-                        user: {
-                          select: {
-                            active: true,
-                            accountType: true,
-                            localCredential: { select: { id: true } },
-                          },
-                        },
-                      },
-                    },
+                    departmentId: true,
+                    status: true,
+                    accountBinding: { select: { userId: true } },
                   },
                 },
               },
@@ -315,15 +303,11 @@ export class CaseLawyerAssignmentService {
             )
               throw this.relationshipConflict();
             const current = assignments[0];
+            // 账号有无、账号启停不再判冲突；只校验档案本身同部门且启用（P-01）。
             if (
               current &&
-              (current.lawyer.accountBinding?.departmentId !==
-                actor.departmentId ||
-                !current.lawyer.accountBinding.userId ||
-                !current.lawyer.accountBinding.active ||
-                !current.lawyer.accountBinding.user.active ||
-                current.lawyer.accountBinding.user.accountType !== 'LAWYER' ||
-                !current.lawyer.accountBinding.user.localCredential)
+              (current.lawyer.departmentId !== actor.departmentId ||
+                current.lawyer.status !== 'ACTIVE')
             )
               throw this.relationshipConflict();
             // 已建立的承办关系在正式立案后锁定：只能补空缺，不能换人。
@@ -333,7 +317,8 @@ export class CaseLawyerAssignmentService {
               ? {
                   id: current.id,
                   lawyerProfileId: current.lawyerId,
-                  lawyerAccountId: current.lawyer.accountBinding!.userId,
+                  lawyerAccountId:
+                    current.lawyer.accountBinding?.userId ?? null,
                   assignedAt: current.startedAt.toISOString(),
                 }
               : null;
@@ -341,11 +326,7 @@ export class CaseLawyerAssignmentService {
             let currentAssignment = previousAssignment;
             let version = record.version;
             if (current) {
-              if (
-                current.lawyer.accountBinding!.userId ===
-                request.lawyerAccountId
-              )
-                outcome = 'NO_CHANGE';
+              if (current.lawyerId === target.profileId) outcome = 'NO_CHANGE';
               else {
                 // 变更承办律师：结束旧指派、建立新指派，阶段不变。
                 const now = new Date();
@@ -366,7 +347,7 @@ export class CaseLawyerAssignmentService {
                   data: {
                     caseId,
                     departmentId: actor.departmentId,
-                    lawyerId: profileId,
+                    lawyerId: target.profileId,
                     role: 'PRIMARY',
                     startedAt: now,
                   },
@@ -374,8 +355,8 @@ export class CaseLawyerAssignmentService {
                 });
                 currentAssignment = {
                   id: created.id,
-                  lawyerProfileId: profileId,
-                  lawyerAccountId: request.lawyerAccountId,
+                  lawyerProfileId: target.profileId,
+                  lawyerAccountId: target.accountUserId,
                   assignedAt: now.toISOString(),
                 };
                 version += 1;
@@ -417,7 +398,7 @@ export class CaseLawyerAssignmentService {
                 data: {
                   caseId,
                   departmentId: actor.departmentId,
-                  lawyerId: profileId,
+                  lawyerId: target.profileId,
                   role: 'PRIMARY',
                   startedAt: now,
                 },
@@ -425,8 +406,8 @@ export class CaseLawyerAssignmentService {
               });
               currentAssignment = {
                 id: created.id,
-                lawyerProfileId: profileId,
-                lawyerAccountId: request.lawyerAccountId,
+                lawyerProfileId: target.profileId,
+                lawyerAccountId: target.accountUserId,
                 assignedAt: now.toISOString(),
               };
               version += 1;
@@ -454,7 +435,8 @@ export class CaseLawyerAssignmentService {
               stage: record.stage,
               version,
               outcome,
-              requestedLawyerAccountId: request.lawyerAccountId,
+              requestedLawyerProfileId: target.profileId,
+              requestedLawyerAccountId: target.accountUserId,
               previousAssignment,
               currentAssignment,
             };
@@ -470,6 +452,7 @@ export class CaseLawyerAssignmentService {
                   stage: result.stage,
                   version: result.version,
                   outcome: result.outcome,
+                  requestedLawyerProfileId: result.requestedLawyerProfileId,
                   requestedLawyerAccountId: result.requestedLawyerAccountId,
                   previousAssignment: result.previousAssignment
                     ? { ...result.previousAssignment }
@@ -499,6 +482,12 @@ export class CaseLawyerAssignmentService {
   private normalize(input: AssignCaseLawyerDto): AssignCaseLawyerDto {
     const uuid =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+    const profileValid =
+      typeof input.lawyerProfileId === 'string' &&
+      uuid.test(input.lawyerProfileId);
+    const accountValid =
+      typeof input.lawyerAccountId === 'string' &&
+      uuid.test(input.lawyerAccountId);
     if (
       !Number.isInteger(input.expectedVersion) ||
       input.expectedVersion < 1 ||
@@ -506,19 +495,122 @@ export class CaseLawyerAssignmentService {
       !input.idempotencyKey ||
       input.idempotencyKey.length > 128 ||
       input.idempotencyKey.trim() !== input.idempotencyKey ||
-      typeof input.lawyerAccountId !== 'string' ||
-      !uuid.test(input.lawyerAccountId) ||
-      (input.lawyerProfileId !== undefined &&
-        (typeof input.lawyerProfileId !== 'string' ||
-          !uuid.test(input.lawyerProfileId)))
+      // 档案是承办主体；账号仅作旧调用方兼容，二者至少提供一个。
+      (!profileValid && !accountValid)
     )
       throw this.validation();
     return input;
+  }
+  private fingerprint(
+    caseId: string,
+    expectedVersion: number,
+    lawyerProfileId: string,
+  ): string {
+    return createHash('sha256')
+      .update(JSON.stringify({ caseId, expectedVersion, lawyerProfileId }))
+      .digest('hex');
+  }
+  /** 2026-11-23 之前的回执按账号计算指纹，重放时需按原公式复算。 */
+  private legacyFingerprint(
+    caseId: string,
+    request: AssignCaseLawyerDto,
+  ): string {
+    return createHash('sha256')
+      .update(
+        JSON.stringify({
+          caseId,
+          expectedVersion: request.expectedVersion,
+          lawyerAccountId: request.lawyerAccountId ?? null,
+          lawyerProfileId: request.lawyerProfileId ?? null,
+        }),
+      )
+      .digest('hex');
+  }
+  /** 解析承办主体：档案必须同部门且启用；账号只用来带出线上身份。 */
+  private async resolveTargetProfile(
+    tx: Prisma.TransactionClient,
+    departmentId: string,
+    request: AssignCaseLawyerDto,
+  ): Promise<{ profileId: string; accountUserId: string | null }> {
+    if (request.lawyerProfileId) {
+      await tx.$queryRawUnsafe(
+        'SELECT "id" FROM "lawyer_profiles" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR SHARE',
+        request.lawyerProfileId,
+        departmentId,
+      );
+      const profile = await tx.lawyerProfile.findFirst({
+        where: {
+          id: request.lawyerProfileId,
+          departmentId,
+          status: 'ACTIVE',
+        },
+        select: {
+          id: true,
+          accountBinding: {
+            select: {
+              userId: true,
+              active: true,
+              user: { select: { active: true, accountType: true } },
+            },
+          },
+        },
+      });
+      if (profile === null) throw this.forbidden();
+      const binding = profile.accountBinding;
+      const accountUserId =
+        binding &&
+        binding.active &&
+        binding.user.active &&
+        binding.user.accountType === 'LAWYER'
+          ? binding.userId
+          : null;
+      if (request.lawyerAccountId && accountUserId !== request.lawyerAccountId)
+        throw this.forbidden();
+      return { profileId: profile.id, accountUserId };
+    }
+    // 旧调用方只给账号：沿用原规则，取最早的有效绑定档案。
+    const binding = await tx.lawyerAccountBinding.findFirst({
+      where: {
+        userId: request.lawyerAccountId,
+        departmentId,
+        active: true,
+        user: {
+          accountType: 'LAWYER',
+          active: true,
+          localCredential: { isNot: null },
+        },
+        profile: { status: 'ACTIVE' },
+      },
+      select: { profileId: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    if (binding === null) throw this.forbidden();
+    return {
+      profileId: binding.profileId,
+      accountUserId: request.lawyerAccountId ?? null,
+    };
+  }
+  /** 回执里已固化的承办主体，用于不查库重放。 */
+  private snapshotTarget(
+    value: unknown,
+  ): { profileId: string; accountUserId: string | null } | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return null;
+    const row = value as Record<string, unknown>;
+    if (typeof row.requestedLawyerProfileId !== 'string') return null;
+    return {
+      profileId: row.requestedLawyerProfileId,
+      accountUserId:
+        typeof row.requestedLawyerAccountId === 'string'
+          ? row.requestedLawyerAccountId
+          : null,
+    };
   }
   private readReceipt(
     value: unknown,
     caseId: string,
     request: AssignCaseLawyerDto,
+    target?: { profileId: string; accountUserId: string | null },
   ): AssignCaseLawyerResponseDto {
     const uuid =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -531,8 +623,9 @@ export class CaseLawyerAssignmentService {
         uuid.test(row.id) &&
         typeof row.lawyerProfileId === 'string' &&
         uuid.test(row.lawyerProfileId) &&
-        typeof row.lawyerAccountId === 'string' &&
-        uuid.test(row.lawyerAccountId) &&
+        (row.lawyerAccountId === null ||
+          (typeof row.lawyerAccountId === 'string' &&
+            uuid.test(row.lawyerAccountId))) &&
         typeof row.assignedAt === 'string' &&
         !Number.isNaN(Date.parse(row.assignedAt))
       );
@@ -542,11 +635,32 @@ export class CaseLawyerAssignmentService {
     const row = value as Record<string, unknown>;
     const previous = row.previousAssignment;
     const current = row.currentAssignment;
+    // 旧回执没有 requestedLawyerProfileId，只按账号比对；新回执按档案比对。
+    const expectedProfileId =
+      target?.profileId ?? request.lawyerProfileId ?? null;
+    const expectedAccountId = target
+      ? target.accountUserId
+      : (request.lawyerAccountId ?? null);
+    const snapshotProfileId =
+      typeof row.requestedLawyerProfileId === 'string'
+        ? row.requestedLawyerProfileId
+        : null;
+    const snapshotAccountId =
+      typeof row.requestedLawyerAccountId === 'string'
+        ? row.requestedLawyerAccountId
+        : null;
+    const matchesTarget = (item: AssignmentViewDto) =>
+      expectedProfileId !== null
+        ? item.lawyerProfileId === expectedProfileId
+        : item.lawyerAccountId === expectedAccountId;
     const shared =
       row.id === caseId &&
       typeof row.stage === 'string' &&
       isLawyerBackfillStage(row.stage) &&
-      row.requestedLawyerAccountId === request.lawyerAccountId &&
+      (expectedProfileId === null ||
+        snapshotProfileId === null ||
+        snapshotProfileId === expectedProfileId) &&
+      (expectedAccountId === null || snapshotAccountId === expectedAccountId) &&
       Number.isInteger(row.version) &&
       (previous === null || assignment(previous)) &&
       assignment(current);
@@ -555,9 +669,7 @@ export class CaseLawyerAssignmentService {
     if (row.outcome === 'ASSIGNED') {
       if (
         previous !== null ||
-        currentAssignment.lawyerAccountId !== request.lawyerAccountId ||
-        (request.lawyerProfileId !== undefined &&
-          currentAssignment.lawyerProfileId !== request.lawyerProfileId) ||
+        !matchesTarget(currentAssignment) ||
         row.version !== request.expectedVersion + 1
       )
         throw this.corruptReceipt();
@@ -565,11 +677,9 @@ export class CaseLawyerAssignmentService {
       const previousAssignment = previous as AssignmentViewDto;
       if (
         !assignment(previous) ||
-        currentAssignment.lawyerAccountId !== request.lawyerAccountId ||
-        (request.lawyerProfileId !== undefined &&
-          currentAssignment.lawyerProfileId !== request.lawyerProfileId) ||
-        previousAssignment.lawyerAccountId ===
-          currentAssignment.lawyerAccountId ||
+        !matchesTarget(currentAssignment) ||
+        previousAssignment.lawyerProfileId ===
+          currentAssignment.lawyerProfileId ||
         row.version !== request.expectedVersion + 1
       )
         throw this.corruptReceipt();
@@ -578,8 +688,7 @@ export class CaseLawyerAssignmentService {
         !assignment(previous) ||
         JSON.stringify(previous) !== JSON.stringify(current) ||
         row.version !== request.expectedVersion ||
-        (row.outcome === 'NO_CHANGE') !==
-          (currentAssignment.lawyerAccountId === request.lawyerAccountId)
+        (row.outcome === 'NO_CHANGE') !== matchesTarget(currentAssignment)
       )
         throw this.corruptReceipt();
     } else throw this.corruptReceipt();

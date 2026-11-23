@@ -64,8 +64,10 @@ describe('CaseMatchService', () => {
       },
       caseDefendant: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       lawyerAccountBinding: {
+        findFirst: jest.fn().mockResolvedValue({ profileId: lawyerProfileId }),
         findMany: jest.fn().mockResolvedValue([{ profileId: lawyerProfileId }]),
       },
+      lawyerProfile: { findFirst: jest.fn().mockResolvedValue(null) },
       caseLawyerAssignment: {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({}),
@@ -218,7 +220,7 @@ describe('CaseMatchService', () => {
       }),
     );
     expect(f.tx.caseDefendant.createMany).not.toHaveBeenCalled();
-    expect(f.tx.lawyerAccountBinding.findMany).toHaveBeenCalledWith({
+    expect(f.tx.lawyerAccountBinding.findFirst).toHaveBeenCalledWith({
       where: expect.objectContaining({
         userId: lawyerAccountId,
         departmentId: actor.departmentId,
@@ -226,7 +228,6 @@ describe('CaseMatchService', () => {
       }),
       select: { profileId: true },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      take: 1,
     });
     expect(f.tx.caseLawyerAssignment.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -259,10 +260,8 @@ describe('CaseMatchService', () => {
         endedAt: null,
         lawyerId: lawyerProfileId,
         lawyer: {
-          accountBinding: {
-            userId: lawyerAccountId,
-            departmentId: actor.departmentId,
-          },
+          departmentId: actor.departmentId,
+          status: 'ACTIVE',
         },
       },
     ]);
@@ -279,12 +278,10 @@ describe('CaseMatchService', () => {
         id: '66666666-6666-4666-8666-666666666666',
         role: 'PRIMARY',
         endedAt: null,
-        lawyerId: lawyerProfileId,
+        lawyerId: '66666666-6666-4666-8666-666666666666',
         lawyer: {
-          accountBinding: {
-            userId: '77777777-7777-4777-8777-777777777777',
-            departmentId: actor.departmentId,
-          },
+          departmentId: actor.departmentId,
+          status: 'ACTIVE',
         },
       },
     ]);
@@ -317,17 +314,15 @@ describe('CaseMatchService', () => {
 
   it('chooses the first stable active binding for an account with multiple profiles', async () => {
     const f = fixture();
-    f.tx.lawyerAccountBinding.findMany.mockResolvedValue([
-      { profileId: lawyerProfileId },
-      { profileId: '66666666-6666-4666-8666-666666666666' },
-    ]);
+    f.tx.lawyerAccountBinding.findFirst.mockResolvedValue({
+      profileId: lawyerProfileId,
+    });
     await expect(f.service.match(actor, caseId, input)).resolves.toMatchObject({
       stage: 'WAITING_COMPLAINT',
     });
-    expect(f.tx.lawyerAccountBinding.findMany).toHaveBeenCalledWith(
+    expect(f.tx.lawyerAccountBinding.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-        take: 1,
       }),
     );
     expect(f.tx.caseLawyerAssignment.create).toHaveBeenCalledWith(
@@ -335,6 +330,27 @@ describe('CaseMatchService', () => {
         data: expect.objectContaining({ lawyerId: lawyerProfileId }),
       }),
     );
+  });
+
+  it('matches a lawyer profile that has no login account', async () => {
+    const f = fixture();
+    f.tx.lawyerProfile.findFirst.mockResolvedValue({
+      id: lawyerProfileId,
+      accountBinding: null,
+    });
+    await expect(
+      f.service.match(actor, caseId, {
+        ...input,
+        lawyerAccountId: undefined,
+        lawyerProfileId,
+      } as MatchCaseDto),
+    ).resolves.toMatchObject({ stage: 'WAITING_COMPLAINT' });
+    expect(f.tx.caseLawyerAssignment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ lawyerId: lawyerProfileId }),
+      }),
+    );
+    expect(f.tx.lawyerAccountBinding.findFirst).not.toHaveBeenCalled();
   });
 
   it.each(['', '2026-02-30', '2026-09-28T00:00:00Z', '2999-01-01'])(

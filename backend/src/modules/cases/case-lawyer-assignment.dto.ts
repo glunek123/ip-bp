@@ -20,21 +20,35 @@ export class AssignCaseLawyerDto {
   @MinLength(1)
   @MaxLength(128)
   idempotencyKey!: string;
-  @ApiProperty({ format: 'uuid' })
-  @IsString()
-  @Matches(uuid)
-  lawyerAccountId!: string;
-  @ApiPropertyOptional({ format: 'uuid' })
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      '承办律师档案；与 lawyerAccountId 至少提供一个，同时提供时必须指向同一律师',
+  })
   @IsOptional()
   @IsString()
   @Matches(uuid)
   lawyerProfileId?: string;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      '律师登录账号；仅用于兼容旧调用方，无账号律师不传。账号停用不参与承办校验',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(uuid)
+  lawyerAccountId?: string;
 }
 
 export class AssignmentViewDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) lawyerProfileId!: string;
-  @ApiProperty({ format: 'uuid' }) lawyerAccountId!: string;
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    description: '未开通账号的律师为 null',
+  })
+  lawyerAccountId!: string | null;
   @ApiProperty({ format: 'date-time' }) assignedAt!: string;
 }
 
@@ -48,7 +62,9 @@ export class AssignCaseLawyerResponseDto {
   @ApiProperty() version!: number;
   @ApiProperty({ enum: ['ASSIGNED', 'NO_CHANGE', 'SKIPPED', 'REASSIGNED'] })
   outcome!: 'ASSIGNED' | 'NO_CHANGE' | 'SKIPPED' | 'REASSIGNED';
-  @ApiProperty({ format: 'uuid' }) requestedLawyerAccountId!: string;
+  @ApiProperty({ format: 'uuid' }) requestedLawyerProfileId!: string;
+  @ApiProperty({ format: 'uuid', nullable: true })
+  requestedLawyerAccountId!: string | null;
   @ApiProperty({ type: AssignmentViewDto, nullable: true })
   currentAssignment!: AssignmentViewDto | null;
   @ApiProperty({ type: AssignmentViewDto, nullable: true })

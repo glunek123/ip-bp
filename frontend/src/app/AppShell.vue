@@ -20,6 +20,7 @@ import { listLawyerCases } from '../api/cases';
 import { listLeads, type LeadStatus } from '../api/leads';
 import { getOrganizationManagementContext } from '../api/organization';
 import { listLawyerAccounts } from '../api/lawyer-accounts';
+import { listLawyerProfiles } from '../api/lawyer-profiles';
 import {
   listNotaryMatters,
   listNotaryOffices,
@@ -40,6 +41,7 @@ const drawerOpen = ref(false);
 const canViewPeople = ref(false);
 const canViewNotaryOffices = ref(false);
 const canManageLawyerAccounts = ref(false);
+const canViewLawyerLibrary = ref(false);
 const canViewNotaryMatters = ref(false);
 const canViewCases = ref(false);
 const caseReadError = ref('');
@@ -711,6 +713,37 @@ watch(
         canManageLawyerAccounts.value = true;
     } catch {
       if (current) canManageLawyerAccounts.value = false;
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  identity,
+  async (currentIdentity, _previous, onCleanup) => {
+    canViewLawyerLibrary.value = false;
+    if (
+      currentIdentity === null ||
+      isClient.value ||
+      isNotary.value ||
+      isLawyer.value
+    )
+      return;
+    const controller = new AbortController();
+    let current = true;
+    onCleanup(() => {
+      current = false;
+      controller.abort();
+    });
+    try {
+      await listLawyerProfiles(
+        { page: 1, pageSize: 1 },
+        { signal: controller.signal },
+      );
+      if (current && identity.value === currentIdentity)
+        canViewLawyerLibrary.value = true;
+    } catch {
+      if (current) canViewLawyerLibrary.value = false;
     }
   },
   { immediate: true },
@@ -1490,6 +1523,15 @@ async function logout(): Promise<void> {
             >
               <span>人员与权限</span>
             </RouterLink>
+            <RouterLink
+              v-if="canViewLawyerLibrary"
+              class="app-subnav__item"
+              :class="{ active: route.path === '/settings/lawyer-profiles' }"
+              data-test="lawyer-library-nav"
+              to="/settings/lawyer-profiles"
+              @click="closeDrawer"
+              ><span>律师库</span></RouterLink
+            >
             <RouterLink
               v-if="canManageLawyerAccounts"
               class="app-subnav__item"

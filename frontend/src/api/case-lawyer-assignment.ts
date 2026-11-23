@@ -8,7 +8,7 @@ const invalid = () =>
 export type AssignmentView = {
   id: string;
   lawyerProfileId: string;
-  lawyerAccountId: string;
+  lawyerAccountId: string | null;
   assignedAt: string;
 };
 export type LawyerAssignmentCapability = {
@@ -20,8 +20,8 @@ export type LawyerAssignmentCapability = {
 export type AssignCaseLawyerInput = {
   expectedVersion: number;
   idempotencyKey: string;
-  lawyerAccountId: string;
-  lawyerProfileId?: string;
+  lawyerProfileId: string;
+  lawyerAccountId?: string;
 };
 // 指派不推进阶段，补指派可发生在任一阶段；这里覆盖服务端全部阶段值。
 export const ASSIGN_CASE_LAWYER_STAGES = [
@@ -48,7 +48,8 @@ export type AssignCaseLawyerResult = {
   stage: AssignCaseLawyerStage;
   version: number;
   outcome: 'ASSIGNED' | 'NO_CHANGE' | 'SKIPPED' | 'REASSIGNED';
-  requestedLawyerAccountId: string;
+  requestedLawyerProfileId: string;
+  requestedLawyerAccountId: string | null;
   previousAssignment: AssignmentView | null;
   currentAssignment: AssignmentView | null;
 };
@@ -59,8 +60,9 @@ function assignment(value: unknown): value is AssignmentView {
     uuid.test(value.id) &&
     typeof value.lawyerProfileId === 'string' &&
     uuid.test(value.lawyerProfileId) &&
-    typeof value.lawyerAccountId === 'string' &&
-    uuid.test(value.lawyerAccountId) &&
+    (value.lawyerAccountId === null ||
+      (typeof value.lawyerAccountId === 'string' &&
+        uuid.test(value.lawyerAccountId))) &&
     typeof value.assignedAt === 'string' &&
     !Number.isNaN(Date.parse(value.assignedAt))
   );
@@ -79,7 +81,12 @@ export function validAssignCaseLawyerResult(
     !['ASSIGNED', 'NO_CHANGE', 'SKIPPED', 'REASSIGNED'].includes(
       String(value.outcome),
     ) ||
-    value.requestedLawyerAccountId !== input.lawyerAccountId ||
+    value.requestedLawyerProfileId !== input.lawyerProfileId ||
+    !(
+      value.requestedLawyerAccountId === null ||
+      (typeof value.requestedLawyerAccountId === 'string' &&
+        uuid.test(value.requestedLawyerAccountId))
+    ) ||
     !Number.isSafeInteger(value.version) ||
     !(
       value.previousAssignment === null || assignment(value.previousAssignment)
@@ -92,20 +99,20 @@ export function validAssignCaseLawyerResult(
       value.version === input.expectedVersion + 1 &&
       value.previousAssignment === null &&
       assignment(value.currentAssignment) &&
-      value.currentAssignment.lawyerAccountId === input.lawyerAccountId &&
-      (input.lawyerProfileId === undefined ||
-        value.currentAssignment.lawyerProfileId === input.lawyerProfileId)
+      value.currentAssignment.lawyerProfileId === input.lawyerProfileId &&
+      (input.lawyerAccountId === undefined ||
+        value.currentAssignment.lawyerAccountId === input.lawyerAccountId)
     );
   if (value.outcome === 'REASSIGNED')
     return (
       value.version === input.expectedVersion + 1 &&
       assignment(value.previousAssignment) &&
       assignment(value.currentAssignment) &&
-      value.currentAssignment.lawyerAccountId === input.lawyerAccountId &&
-      (input.lawyerProfileId === undefined ||
-        value.currentAssignment.lawyerProfileId === input.lawyerProfileId) &&
-      value.previousAssignment.lawyerAccountId !==
-        value.currentAssignment.lawyerAccountId
+      value.currentAssignment.lawyerProfileId === input.lawyerProfileId &&
+      (input.lawyerAccountId === undefined ||
+        value.currentAssignment.lawyerAccountId === input.lawyerAccountId) &&
+      value.previousAssignment.lawyerProfileId !==
+        value.currentAssignment.lawyerProfileId
     );
   return (
     value.version === input.expectedVersion &&
@@ -114,7 +121,7 @@ export function validAssignCaseLawyerResult(
     JSON.stringify(value.previousAssignment) ===
       JSON.stringify(value.currentAssignment) &&
     (value.outcome === 'NO_CHANGE') ===
-      (value.currentAssignment.lawyerAccountId === input.lawyerAccountId)
+      (value.currentAssignment.lawyerProfileId === input.lawyerProfileId)
   );
 }
 export async function getLawyerAssignmentCapability(
@@ -154,8 +161,8 @@ export async function assignCaseLawyer(
     !input.idempotencyKey ||
     input.idempotencyKey.length > 128 ||
     input.idempotencyKey !== input.idempotencyKey.trim() ||
-    !uuid.test(input.lawyerAccountId) ||
-    (input.lawyerProfileId !== undefined && !uuid.test(input.lawyerProfileId))
+    !uuid.test(input.lawyerProfileId) ||
+    (input.lawyerAccountId !== undefined && !uuid.test(input.lawyerAccountId))
   )
     throw new ApiError('律师分配请求无效', 400, 'VALIDATION_ERROR');
   const value = await requestJson(

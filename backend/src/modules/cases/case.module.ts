@@ -106,6 +106,8 @@ import {
   CaseLawyerCandidatesController,
 } from './lawyer-account.controller';
 import { LawyerCaseController } from './lawyer-case.controller';
+import { LawyerProfileController } from './lawyer-profile.controller';
+import { LawyerProfileService } from './lawyer-profile.service';
 
 @Module({
   imports: [
@@ -142,6 +144,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     ClientCaseController,
     LawyerAccountController,
     CaseLawyerCandidatesController,
+    LawyerProfileController,
     LawyerCaseController,
   ],
   providers: [
@@ -332,6 +335,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseMaterialService,
     ClientCaseService,
     LawyerAccountService,
+    LawyerProfileService,
   ],
   exports: [
     CaseCreationService,

@@ -78,22 +78,22 @@ function stateLabel(state: LawyerAssignmentBatchItem['state']): string {
 const target = computed(
   () =>
     candidates.value.find(
-      (candidate) => candidate.lawyerAccountId === targetId.value,
+      (candidate) => candidate.lawyerProfileId === targetId.value,
     ) ?? null,
 );
 const currentName = (id: string | undefined) => {
   if (!id) return '未分配';
   const candidate = candidates.value.find(
-    (item) => item.lawyerAccountId === id,
+    (item) => item.lawyerProfileId === id,
   );
   return candidate
-    ? `${candidate.displayName}（${candidate.username}）`
+    ? `${candidate.displayName}${candidate.username ? `（${candidate.username}）` : '（未开通账号）'}`
     : '姓名暂不可读取';
 };
 function currentFor(caseId: string): string | undefined {
   const cap = capabilities.value[caseId];
   return cap && !('error' in cap)
-    ? cap.currentAssignment?.lawyerAccountId
+    ? (cap.currentAssignment?.lawyerProfileId ?? undefined)
     : undefined;
 }
 function blockedReason(caseId: string): string {
@@ -127,7 +127,7 @@ function planned(caseId: string): string {
   if (!cap || 'error' in cap || !cap.canAssign) return blockedReason(caseId);
   if (!target.value) return '待选择目标律师';
   if (!cap.currentAssignment) return '可分配';
-  return cap.currentAssignment.lawyerAccountId === target.value.lawyerAccountId
+  return cap.currentAssignment.lawyerProfileId === target.value.lawyerProfileId
     ? '无需变更'
     : '将跳过（已有其他律师）';
 }
@@ -269,8 +269,10 @@ function prepare(): void {
           input: {
             expectedVersion: cap.caseVersion,
             idempotencyKey: globalThis.crypto.randomUUID(),
-            lawyerAccountId: chosen.lawyerAccountId,
             lawyerProfileId: chosen.lawyerProfileId,
+            ...(chosen.lawyerAccountId
+              ? { lawyerAccountId: chosen.lawyerAccountId }
+              : {}),
           },
         },
       ];
@@ -518,19 +520,24 @@ onBeforeUnmount(() => {
     <p v-if="loading" role="status">正在逐案核对权限…</p>
     <template v-if="!batch && candidates.length">
       <label
-        >目标律师账号
+        >目标律师
         <select
           v-model="targetId"
           class="text-input"
           data-test="assignment-target"
         >
-          <option value="">请选择有效真实律师账号</option>
+          <option value="">请选择承办律师</option>
           <option
             v-for="candidate in candidates"
-            :key="candidate.lawyerAccountId"
-            :value="candidate.lawyerAccountId"
+            :key="candidate.lawyerProfileId"
+            :value="candidate.lawyerProfileId"
           >
-            {{ candidate.displayName }}（{{ candidate.username }}）
+            {{ candidate.displayName
+            }}{{
+              candidate.username
+                ? `（${candidate.username}）`
+                : '（未开通账号）'
+            }}
           </option>
         </select>
       </label>
@@ -570,7 +577,7 @@ onBeforeUnmount(() => {
           }}<span v-if="item.result?.currentAssignment">
             当前承办律师
             {{
-              currentName(item.result.currentAssignment.lawyerAccountId)
+              currentName(item.result.currentAssignment.lawyerProfileId)
             }}</span
           >
         </li>

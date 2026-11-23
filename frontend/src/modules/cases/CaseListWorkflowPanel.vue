@@ -1196,7 +1196,7 @@ async function prepareDefendants() {
 }
 async function match() {
   const selected = candidates.value.find(
-    (entry) => entry.lawyerAccountId === lawyer.value,
+    (entry) => entry.lawyerProfileId === lawyer.value,
   );
   if (
     !selected ||
@@ -1224,7 +1224,9 @@ async function match() {
             ? { legalRepresentative: entry.legalRepresentative }
             : {}),
         })),
-        lawyerAccountId: selected.lawyerAccountId,
+        ...(selected.lawyerAccountId
+          ? { lawyerAccountId: selected.lawyerAccountId }
+          : {}),
         lawyerProfileId: selected.lawyerProfileId,
       },
     });
@@ -1625,18 +1627,21 @@ async function complaint() {
           <legend>承办律师</legend>
           <label
             v-for="candidate in candidates"
-            :key="candidate.lawyerAccountId"
+            :key="candidate.lawyerProfileId"
             class="lawyer-candidates__option"
           >
             <input
               v-model="lawyer"
               type="radio"
-              :value="candidate.lawyerAccountId"
-              :data-test="`lawyer-option-${candidate.lawyerAccountId}`"
+              :value="candidate.lawyerProfileId"
+              :data-test="`lawyer-option-${candidate.lawyerProfileId}`"
             />
             {{ candidate.displayName }}
             <span v-if="candidate.lawFirm" class="field-help">
               · {{ candidate.lawFirm }}
+            </span>
+            <span v-if="!candidate.hasAccount" class="field-help">
+              · 未开通账号
             </span>
           </label>
         </fieldset>

@@ -73,7 +73,118 @@ describe('LawyerAccountService candidate window', () => {
     await expect(service.candidates(actor, 'case-1')).resolves.toEqual({
       items: [],
     });
-    expect(db.userAccount.findMany).toHaveBeenCalledTimes(1);
+    // 候选人来自律师档案，不再只列有登录账号的律师。
+    expect(db.lawyerProfile.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          departmentId: actor.departmentId,
+          status: 'ACTIVE',
+        }),
+      }),
+    );
+    expect(db.userAccount.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('LawyerAccountService candidate payload', () => {
+  it('keeps a lawyer without an account selectable and reports the account state', async () => {
+    const db = {
+      userAccount: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ active: true, accountType: 'INTERNAL' }),
+      },
+      case: {
+        findFirst: jest.fn().mockResolvedValue({
+          stage: 'WAITING_ARCHIVE',
+          departmentId: actor.departmentId,
+          responsibleUserId: actor.userId,
+          responsibleMembership: { teamId: null },
+        }),
+      },
+      lawyerProfile: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: '66666666-6666-4666-8666-666666666666',
+            fullName: '无账号律师',
+            lawFirm: '示例律所',
+            phone: '13800000000',
+            address: null,
+            region: '浙江省杭州市',
+            barNumber: '13301202010000000',
+            accountBinding: null,
+          },
+          {
+            id: '77777777-7777-4777-8777-777777777777',
+            fullName: '停用账号律师',
+            lawFirm: '示例律所',
+            phone: null,
+            address: null,
+            region: null,
+            barNumber: null,
+            accountBinding: {
+              userId: '88888888-8888-4888-8888-888888888888',
+              active: false,
+              user: {
+                active: true,
+                accountType: 'LAWYER',
+                localCredential: { username: 'stopped' },
+              },
+            },
+          },
+          {
+            id: '99999999-9999-4999-8999-999999999999',
+            fullName: '在线律师',
+            lawFirm: '示例律所',
+            phone: null,
+            address: null,
+            region: null,
+            barNumber: null,
+            accountBinding: {
+              userId: '12121212-1212-4212-8212-121212121212',
+              active: true,
+              user: {
+                active: true,
+                accountType: 'LAWYER',
+                localCredential: { username: 'online' },
+              },
+            },
+          },
+        ]),
+      },
+    };
+    const access = { canAuthorizeCase: jest.fn().mockResolvedValue(true) };
+    const service = new LawyerAccountService(db as never, access as never);
+    const result = await service.candidates(actor, 'case-1');
+    // 有有效账号的排在最前，无账号与停用账号仍保留在候选里。
+    expect(result.items).toHaveLength(3);
+    expect(result.items[0].lawyerProfileId).toBe(
+      '99999999-9999-4999-8999-999999999999',
+    );
+    const online = result.items[0];
+    expect(online).toMatchObject({
+      lawyerAccountId: '12121212-1212-4212-8212-121212121212',
+      hasAccount: true,
+      accountStatus: 'ACTIVE',
+      username: 'online',
+    });
+    const missing = result.items.find(
+      (item) => item.lawyerProfileId === '66666666-6666-4666-8666-666666666666',
+    );
+    expect(missing).toMatchObject({
+      lawyerAccountId: null,
+      hasAccount: false,
+      accountStatus: null,
+      barNumber: '13301202010000000',
+    });
+    const stopped = result.items.find(
+      (item) => item.lawyerProfileId === '77777777-7777-4777-8777-777777777777',
+    );
+    expect(stopped).toMatchObject({
+      lawyerAccountId: null,
+      hasAccount: false,
+      accountStatus: 'INACTIVE',
+    });
   });
 });
 

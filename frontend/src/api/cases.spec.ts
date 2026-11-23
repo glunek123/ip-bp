@@ -5600,35 +5600,47 @@ describe('cases API', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('loads account-deduplicated match candidates by username query', async () => {
+  it('loads match candidates from the lawyer library, including lawyers without accounts', async () => {
     const fetchMock = mockJson({
       items: [
         {
+          lawyerProfileId: 'profile-1',
           lawyerAccountId: 'account-1',
+          hasAccount: true,
+          accountStatus: 'ACTIVE',
           username: 'lawyer.a',
           displayName: '律师甲',
-          lawyerProfileId: 'profile-1',
           phone: null,
           lawFirm: null,
           address: null,
+          region: null,
+          barNumber: null,
+        },
+        {
+          lawyerProfileId: 'profile-2',
+          lawyerAccountId: null,
+          hasAccount: false,
+          accountStatus: null,
+          username: null,
+          displayName: '律师乙',
+          phone: '13800000000',
+          lawFirm: '示例律所',
+          address: null,
+          region: '浙江省杭州市',
+          barNumber: '13301202010000000',
         },
       ],
     });
-    await expect(
-      listLawyerMatchCandidates('case-1', 'lawyer.a'),
-    ).resolves.toEqual([
-      {
-        lawyerAccountId: 'account-1',
-        username: 'lawyer.a',
-        displayName: '律师甲',
-        lawyerProfileId: 'profile-1',
-        phone: null,
-        lawFirm: null,
-        address: null,
-      },
-    ]);
+    const result = await listLawyerMatchCandidates('case-1', 'lawyer');
+    expect(result).toHaveLength(2);
+    expect(result[1]).toMatchObject({
+      lawyerProfileId: 'profile-2',
+      lawyerAccountId: null,
+      hasAccount: false,
+      accountStatus: null,
+    });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      '/api/v1/cases/case-1/lawyer-accounts?q=lawyer.a',
+      '/api/v1/cases/case-1/lawyer-accounts?q=lawyer',
     );
   });
 

@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
+import type { Prisma } from '../../generated/prisma/client';
 import {
   MatchCaseDto,
   MatchCaseResponseDto,
@@ -328,7 +329,10 @@ export class CaseMatchService {
               } as MatchCaseResponseDto;
             }
             if (normalized.matchedOn === undefined) throw this.validation();
-            if (normalized.lawyerAccountId === undefined)
+            if (
+              normalized.lawyerAccountId === undefined &&
+              normalized.lawyerProfileId === undefined
+            )
               throw this.validation();
             if (record.stage !== 'PENDING_MATCH') throw this.invalidState();
             if (record.consolidationMembership?.isMain === false)
@@ -371,11 +375,7 @@ export class CaseMatchService {
                 endedAt: true,
                 lawyerId: true,
                 lawyer: {
-                  select: {
-                    accountBinding: {
-                      select: { userId: true, departmentId: true },
-                    },
-                  },
+                  select: { departmentId: true, status: true },
                 },
               },
             });
@@ -385,45 +385,24 @@ export class CaseMatchService {
                 (assignment) =>
                   assignment.role !== 'PRIMARY' ||
                   assignment.endedAt !== null ||
-                  assignment.lawyer.accountBinding?.departmentId !==
-                    actor.departmentId,
+                  assignment.lawyer.departmentId !== actor.departmentId ||
+                  assignment.lawyer.status !== 'ACTIVE',
               )
             )
               throw this.invalidState();
             const assigned = assignments[0];
-            if (
-              assigned &&
-              (assigned.lawyer.accountBinding?.userId !==
-                normalized.lawyerAccountId ||
-                (normalized.lawyerProfileId !== undefined &&
-                  assigned.lawyerId !== normalized.lawyerProfileId))
-            )
+            // 承办主体是律师档案；账号只决定线上办理，无账号律师同样可匹配。
+            const target = await this.resolveMatchLawyer(
+              tx,
+              actor.departmentId,
+              normalized.lawyerProfileId,
+              normalized.lawyerAccountId,
+            );
+            if (assigned && assigned.lawyerId !== target.profileId)
               throw new ConflictException({
                 code: 'LAWYER_ALREADY_ASSIGNED',
                 message: '本案已分配其他律师，不能在匹配时改派',
               });
-            const candidates = await tx.lawyerAccountBinding.findMany({
-              where: {
-                userId: normalized.lawyerAccountId,
-                departmentId: actor.departmentId,
-                active: true,
-                ...(assigned?.lawyerId || normalized.lawyerProfileId
-                  ? {
-                      profileId:
-                        assigned?.lawyerId ?? normalized.lawyerProfileId,
-                    }
-                  : {}),
-                user: {
-                  accountType: 'LAWYER',
-                  active: true,
-                  localCredential: { isNot: null },
-                },
-              },
-              select: { profileId: true },
-              orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-              take: 1,
-            });
-            if (candidates.length === 0) throw this.forbidden();
             const matchedAt = new Date();
             const changed = await tx.case.updateMany({
               where: {
@@ -440,7 +419,7 @@ export class CaseMatchService {
               },
             });
             if (changed.count !== 1) throw this.versionConflict();
-            const lawyer = { id: candidates[0].profileId };
+            const lawyer = { id: target.profileId };
             // 结算约定随匹配一起落库；全风险的基础费固定为 0（数据库约束同款）。
             const settlementMode = normalized.settlementMode ?? null;
             if (
@@ -531,6 +510,63 @@ export class CaseMatchService {
     throw this.versionConflict();
   }
 
+  /** 匹配同样以档案为主体：无账号律师可以匹配，账号只用于线上办理。 */
+  private async resolveMatchLawyer(
+    tx: Prisma.TransactionClient,
+    departmentId: string,
+    profileId: string | undefined,
+    accountId: string | undefined,
+  ) {
+    if (profileId) {
+      await tx.$queryRawUnsafe(
+        'SELECT "id" FROM "lawyer_profiles" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR SHARE',
+        profileId,
+        departmentId,
+      );
+      const profile = await tx.lawyerProfile.findFirst({
+        where: { id: profileId, departmentId, status: 'ACTIVE' },
+        select: {
+          id: true,
+          accountBinding: {
+            select: {
+              userId: true,
+              active: true,
+              user: { select: { active: true, accountType: true } },
+            },
+          },
+        },
+      });
+      if (profile === null) throw this.forbidden();
+      const binding = profile.accountBinding;
+      const accountUserId =
+        binding &&
+        binding.active &&
+        binding.user.active &&
+        binding.user.accountType === 'LAWYER'
+          ? binding.userId
+          : null;
+      if (accountId && accountUserId !== accountId) throw this.forbidden();
+      return { profileId: profile.id, accountUserId };
+    }
+    // 旧调用方只给账号：沿用原规则，取最早的有效绑定档案。
+    const binding = await tx.lawyerAccountBinding.findFirst({
+      where: {
+        userId: accountId,
+        departmentId,
+        active: true,
+        user: {
+          accountType: 'LAWYER',
+          active: true,
+          localCredential: { isNot: null },
+        },
+        profile: { status: 'ACTIVE' },
+      },
+      select: { profileId: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    if (binding === null) throw this.forbidden();
+    return { profileId: binding.profileId, accountUserId: accountId ?? null };
+  }
   private normalize(input: MatchCaseDto): MatchCaseDto {
     const clean = (
       value: unknown,
@@ -593,8 +629,9 @@ export class CaseMatchService {
     )
       throw this.validation();
     if (
-      input.lawyerProfileId !== undefined &&
-      input.lawyerAccountId === undefined
+      input.lawyerAccountId === undefined &&
+      input.lawyerProfileId === undefined &&
+      input.lawyer === undefined
     )
       throw this.validation();
     const lawyer =

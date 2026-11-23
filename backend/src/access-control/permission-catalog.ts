@@ -117,6 +117,8 @@ export const internalAssignablePermissionActions = [
   'USER_READ',
   'USER_MANAGE',
   'LAWYER_ACCOUNT_MANAGE',
+  'LAWYER_PROFILE_READ',
+  'LAWYER_PROFILE_MANAGE',
   'TEAM_READ',
   'TEAM_MANAGE',
   'ROLE_READ',
@@ -500,6 +502,16 @@ const catalog: PermissionCatalogItem[] = [
   {
     action: 'LAWYER_ACCOUNT_MANAGE',
     label: '管理律师账号',
+    scopes: ['DEPARTMENT'],
+  },
+  {
+    action: 'LAWYER_PROFILE_READ',
+    label: '查看律师库',
+    scopes: ['DEPARTMENT'],
+  },
+  {
+    action: 'LAWYER_PROFILE_MANAGE',
+    label: '管理律师库',
     scopes: ['DEPARTMENT'],
   },
   { action: 'TEAM_READ', label: '查看团队', scopes: allScopes },

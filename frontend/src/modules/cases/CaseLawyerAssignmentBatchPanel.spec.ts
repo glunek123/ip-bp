@@ -55,10 +55,17 @@ beforeEach(() => {
   });
   api.listLawyerMatchCandidates.mockResolvedValue([
     {
-      lawyerAccountId,
       lawyerProfileId,
+      lawyerAccountId,
+      hasAccount: true,
+      accountStatus: 'ACTIVE',
       displayName: '张律师',
       username: 'zhang',
+      phone: null,
+      lawFirm: '示例律所',
+      address: null,
+      region: null,
+      barNumber: null,
     },
   ]);
   api.assignCaseLawyer.mockImplementation(async (_id, input) => ({
@@ -66,6 +73,7 @@ beforeEach(() => {
     stage: 'PENDING_MATCH',
     version: 2,
     outcome: 'ASSIGNED',
+    requestedLawyerProfileId: lawyerProfileId,
     requestedLawyerAccountId: lawyerAccountId,
     previousAssignment: null,
     currentAssignment: assignment,
@@ -110,7 +118,7 @@ describe('CaseLawyerAssignmentBatchPanel', () => {
     expect(api.getLawyerAssignmentCapability).toHaveBeenCalledWith(caseId);
     await wrapper
       .get('[data-test="assignment-target"]')
-      .setValue(lawyerAccountId);
+      .setValue(lawyerProfileId);
     expect(wrapper.get('[data-test="assignment-preview"]').text()).toContain(
       '可分配',
     );
@@ -221,7 +229,7 @@ describe('CaseLawyerAssignmentBatchPanel', () => {
     await flushPromises();
     await wrapper
       .get('[data-test="assignment-target"]')
-      .setValue(lawyerAccountId);
+      .setValue(lawyerProfileId);
     await wrapper.get('[data-test="assignment-prepare"]').trigger('click');
     const before = readLawyerAssignmentBatch('user-1:INTERNAL:department-1');
     await wrapper.get('[data-test="assignment-confirm"]').trigger('click');

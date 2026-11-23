@@ -31,7 +31,7 @@ const lawyers = ref<{ id: string; name: string }[]>([]);
 const lawyerId = ref('');
 const error = ref('');
 const busy = ref(false);
-let searchTimer: ReturnType<typeof setTimeout> | null = null;
+let searchTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 
 watch(
   () => props.open,
@@ -51,8 +51,8 @@ watch(
 );
 
 async function search(): Promise<void> {
-  if (searchTimer) clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => {
+  if (searchTimer) globalThis.clearTimeout(searchTimer);
+  searchTimer = globalThis.setTimeout(() => {
     void runSearch();
   }, 250);
 }
@@ -82,9 +82,10 @@ async function pick(option: { id: string; businessNo: string }): Promise<void> {
   if (props.side !== 'LAWYER') return;
   try {
     const rows = await listLawyerMatchCandidates(option.id);
+    // 结算按律师档案归属，与登录账号无关。
     lawyers.value = rows.map((row) => ({
-      id: row.lawyerAccountId,
-      name: row.displayName ?? row.username,
+      id: row.lawyerProfileId,
+      name: row.displayName || row.username || '未命名律师',
     }));
   } catch {
     lawyers.value = [];
@@ -115,7 +116,7 @@ async function submit(): Promise<void> {
       caseId: picked.value.id,
       amount: amount.value.trim(),
       occurredOn: occurredOn.value,
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: globalThis.crypto.randomUUID(),
       ...(sourceReference.value.trim()
         ? { sourceReference: sourceReference.value.trim() }
         : {}),
@@ -191,11 +192,15 @@ async function submit(): Promise<void> {
         备注
         <ElInput v-model="note" type="textarea" :rows="2" />
       </label>
-      <p v-if="error" role="alert" class="actual-register__error">{{ error }}</p>
+      <p v-if="error" role="alert" class="actual-register__error">
+        {{ error }}
+      </p>
     </div>
     <template #footer>
       <ElButton :disabled="busy" @click="emit('close')">取消</ElButton>
-      <ElButton type="primary" :loading="busy" @click="submit">提交登记</ElButton>
+      <ElButton type="primary" :loading="busy" @click="submit"
+        >提交登记</ElButton
+      >
     </template>
   </ElDialog>
 </template>

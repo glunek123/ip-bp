@@ -8,6 +8,7 @@ export type LawyerAccountProfile = {
   fullName: string;
   lawFirm: string | null;
   phone: string | null;
+  email: string | null;
 };
 export type LawyerAccount = {
   id: string;
@@ -60,6 +61,7 @@ function validProfile(value: unknown): value is LawyerAccountProfile {
       'fullName',
       'lawFirm',
       'phone',
+      'email',
     ]) &&
     typeof value.bindingId === 'string' &&
     typeof value.bindingActive === 'boolean' &&
@@ -67,7 +69,8 @@ function validProfile(value: unknown): value is LawyerAccountProfile {
     typeof value.profileId === 'string' &&
     typeof value.fullName === 'string' &&
     nullableText(value.lawFirm) &&
-    nullableText(value.phone)
+    nullableText(value.phone) &&
+    nullableText(value.email)
   );
 }
 function validAccount(value: unknown): value is LawyerAccount {
