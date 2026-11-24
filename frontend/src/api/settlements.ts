@@ -70,6 +70,9 @@ export type CenterLaunch = SettlementLaunch & {
   payeeId: string | null;
   payeeName: string | null;
   lawFirm: string | null;
+  /** 结算自身未挂律师、但案件已指派：展示承办律师并标待归集。 */
+  unassignedLawyer: boolean;
+  assignedLawyerId: string | null;
   invoiceAmount: string | null;
   receivedAmount: string | null;
   paidAmount: string | null;
@@ -476,6 +479,8 @@ export async function listSettlementLaunches(
       payeeId: nullableString(row.payeeId),
       payeeName: nullableString(row.payeeName),
       lawFirm: nullableString(row.lawFirm),
+      unassignedLawyer: row.unassignedLawyer === true,
+      assignedLawyerId: nullableString(row.assignedLawyerId),
       invoiceAmount: nullableString(row.invoiceAmount),
       receivedAmount: nullableString(row.receivedAmount),
       paidAmount: nullableString(row.paidAmount),

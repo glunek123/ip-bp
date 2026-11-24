@@ -241,6 +241,49 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 describe('settlement page behavior (mounted components, not real browser)', () => {
+  it('marks a lawyer launch without a payee as pending collection', async () => {
+    api.listSettlementLaunches.mockResolvedValue({
+      items: [
+        {
+          id: 'launch-unassigned',
+          caseId: 'case',
+          businessNo: '案件001',
+          side: 'LAWYER',
+          nth: 1,
+          amount: '100.00',
+          billId: null,
+          launchDate: '2026-11-24',
+          payeeName: '曹月',
+          unassignedLawyer: true,
+          assignedLawyerId: 'lawyer-1',
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100,
+      matchingIds: [],
+      summary: {
+        launchedAmount: '100.00',
+        billedAmount: '0.00',
+        unbilledAmount: '100.00',
+        unbilledCount: 1,
+        launchCount: 1,
+        billedCount: 0,
+        invoiceAmount: null,
+        receivedAmount: null,
+        paidAmount: null,
+        cooperatingPayeeCount: 1,
+        knownLawFirmCount: 1,
+      },
+    });
+    const wrapper = render(SettlementCenterPage);
+    await flushPromises();
+    expect(wrapper.text()).toContain('曹月');
+    expect(
+      wrapper.get('[data-test="launch-pending-collection"]').text(),
+    ).toContain('待归集');
+  });
+
   it.skip('uses one date-range filter and a compact right-side filter toolbar', async () => {
     const wrapper = render(SettlementCenterPage);
     await flushPromises();

@@ -69,6 +69,8 @@ const centerLaunch = object({
   payeeId: nullable(uuid),
   payeeName: nullable(string),
   lawFirm: nullable(string),
+  unassignedLawyer: bool,
+  assignedLawyerId: nullable(uuid),
   invoiceAmount: nullable(money),
   receivedAmount: nullable(money),
   paidAmount: nullable(money),

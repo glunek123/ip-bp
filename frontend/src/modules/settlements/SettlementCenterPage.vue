@@ -762,7 +762,13 @@ async function cancelBill(): Promise<void> {
                   <td>{{ row.launchDate }}</td>
                   <td>
                     {{ row.payeeName ?? '—'
-                    }}{{ row.lawFirm ? ` / ${row.lawFirm}` : '' }}
+                    }}{{ row.lawFirm ? ` / ${row.lawFirm}` : ''
+                    }}<span
+                      v-if="row.unassignedLawyer"
+                      class="field-help"
+                      data-test="launch-pending-collection"
+                      >（待归集）</span
+                    >
                   </td>
                   <td>
                     <RouterLink :to="`/cases/${row.caseId}`">{{

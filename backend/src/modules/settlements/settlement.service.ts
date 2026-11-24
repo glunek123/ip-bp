@@ -629,7 +629,21 @@ export class SettlementService {
         const rows = await tx.caseSettlementLaunch.findMany({
           where,
           include: {
-            case: { select: { businessNo: true, stage: true } },
+            // 无律师发起的结算（lawyer_id 为空）显示案件当前承办律师，标为待归集。
+            case: {
+              select: {
+                businessNo: true,
+                stage: true,
+                lawyers: {
+                  where: { endedAt: null },
+                  select: {
+                    lawyerId: true,
+                    lawyer: { select: { fullName: true, lawFirm: true } },
+                  },
+                  take: 1,
+                },
+              },
+            },
             customer: { select: { name: true } },
             lawyer: { select: { fullName: true, lawFirm: true } },
           },
@@ -666,27 +680,36 @@ export class SettlementService {
         const sum = total._sum.amount ?? new Prisma.Decimal(0);
         const pending = unbilled._sum.amount ?? new Prisma.Decimal(0);
         return {
-          items: rows.map((row) => ({
-            id: row.id,
-            caseId: row.caseId,
-            businessNo: row.case.businessNo,
-            stage: row.case.stage,
-            side: row.side,
-            nth: row.nth,
-            amount: row.amount.toFixed(2),
-            launchDate: row.launchDate.toISOString().slice(0, 10),
-            note: row.note,
-            billId: row.billId,
-            payeeId: row.customerId ?? row.lawyerId,
-            customerId: row.customerId,
-            lawyerId: row.lawyerId,
-            payeeName: row.customer?.name ?? row.lawyer?.fullName ?? null,
-            lawFirm: row.lawyer?.lawFirm ?? null,
-            invoiceAmount: null,
-            receivedAmount: null,
-            paidAmount: null,
-            actualPaymentDate: null,
-          })),
+          items: rows.map((row) => {
+            const assignedLawyer = row.case.lawyers[0] ?? null;
+            const resolvedLawyer = row.lawyer ?? assignedLawyer?.lawyer ?? null;
+            return {
+              id: row.id,
+              caseId: row.caseId,
+              businessNo: row.case.businessNo,
+              stage: row.case.stage,
+              side: row.side,
+              nth: row.nth,
+              amount: row.amount.toFixed(2),
+              launchDate: row.launchDate.toISOString().slice(0, 10),
+              note: row.note,
+              billId: row.billId,
+              payeeId: row.customerId ?? row.lawyerId,
+              customerId: row.customerId,
+              lawyerId: row.lawyerId,
+              // 结算自身未挂律师、但案件已指派的，展示承办律师并标记待归集。
+              unassignedLawyer:
+                row.lawyerId === null && assignedLawyer !== null,
+              assignedLawyerId: assignedLawyer?.lawyerId ?? null,
+              payeeName:
+                row.customer?.name ?? resolvedLawyer?.fullName ?? null,
+              lawFirm: resolvedLawyer?.lawFirm ?? null,
+              invoiceAmount: null,
+              receivedAmount: null,
+              paidAmount: null,
+              actualPaymentDate: null,
+            };
+          }),
           total: filteredCount,
           page: query.page,
           pageSize: query.pageSize,
