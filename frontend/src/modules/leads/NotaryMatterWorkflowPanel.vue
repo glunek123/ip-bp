@@ -1167,7 +1167,6 @@ onBeforeUnmount(() => {
     data-test="workflow-saved-opening"
   >
     <h2>开箱照片</h2>
-    <p>店铺名：{{ matter.sourceSummary.shopName }}</p>
     <NotaryOpeningPhotoGallery
       :photos="matter.opening.photos"
       :scope-key="`${session.context.actorKey}:${matter.id}`"
