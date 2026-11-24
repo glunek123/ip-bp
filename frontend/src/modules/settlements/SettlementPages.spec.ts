@@ -241,6 +241,26 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 describe('settlement page behavior (mounted components, not real browser)', () => {
+  it('offers the terms form while the lawyer amount is still unknown', async () => {
+    const detail = structuredClone(current);
+    detail.figures = { ...detail.figures, lawyerAmount: null };
+    detail.lawyerBalance = { launched: '0.00', remaining: null, overLaunched: false };
+    api.getCaseSettlement.mockResolvedValue(detail);
+    const wrapper = render(CaseSettlementPanel, {
+      caseId: 'case',
+      canUpdate: true,
+      canLaunch: true,
+      showBothSummaries: true,
+    });
+    await flushPromises();
+    const button = wrapper.get('[data-test="settlement-open-terms"]');
+    expect(button.text()).toContain('录入结算条件');
+    await button.trigger('click');
+    expect(
+      wrapper.get('.case-settlement__operations').element,
+    ).toHaveProperty('open', true);
+  });
+
   it('marks a lawyer launch without a payee as pending collection', async () => {
     api.listSettlementLaunches.mockResolvedValue({
       items: [

@@ -133,6 +133,14 @@ const openLawyerAssign = inject<(() => void) | null>(
   'case:open-lawyer-assign',
   null,
 );
+// 金额待定时按钮是灰的，直接给一个能展开并定位到条件表单的入口。
+const operationsRef = ref<HTMLDetailsElement | null>(null);
+function openTerms(): void {
+  const element = operationsRef.value;
+  if (!element) return;
+  element.open = true;
+  void nextTick(() => element.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
+}
 
 const manual = computed(() => {
   if (draftAmount.value === '' || draftAmount.value === preview.value.amount)
@@ -559,6 +567,18 @@ async function launch(targetSide?: SettlementSide): Promise<void> {
             :data-test="`launch-blocked-${summarySide.toLowerCase()}`"
           >
             {{ launchBlocker(summarySide) }}
+            <ElButton
+              v-if="
+                (summarySide === 'CUSTOMER'
+                  ? detail.figures.customerAmount
+                  : detail.figures.lawyerAmount) === null
+              "
+              text
+              size="small"
+              data-test="settlement-open-terms"
+              @click="openTerms()"
+              >录入结算条件</ElButton
+            >
           </p>
           <p
             v-if="summarySide === 'LAWYER' && !detail.lawyers.length"
@@ -591,6 +611,7 @@ async function launch(targetSide?: SettlementSide): Promise<void> {
         </section>
       </div>
       <details
+        ref="operationsRef"
         class="case-settlement__operations"
         :open="!props.showBothSummaries"
       >
