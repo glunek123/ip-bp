@@ -25,6 +25,7 @@ const sourceProjection = {
     notary: { state: 'UNRECORDED', amount: null },
     investigation: { state: 'UNRECORDED', amount: null },
     sample: { state: 'UNRECORDED', amount: null },
+    sampleRefund: { state: 'UNRECORDED', amount: null },
   },
   detailFacts: {
     source: {
@@ -94,6 +95,19 @@ const api = vi.hoisted(() => ({
   archiveNotaryReturn: vi.fn(),
   correctNotaryEvidence: vi.fn(),
   correctNotaryOpeningSender: vi.fn(),
+  getNotarySampleFeeRefunds: vi
+    .fn()
+    .mockResolvedValue({
+      matterId: 'matter-1',
+      stage: 'PENDING_EVIDENCE',
+      sampleFeeState: 'PENDING',
+      sampleFeeAmount: null,
+      totalRefunded: '0.00',
+      netSampleFee: null,
+      canRefund: false,
+      items: [],
+    }),
+  appendNotarySampleFeeRefund: vi.fn(),
 }));
 const materials = vi.hoisted(() => ({
   downloadMaterialVersion: vi.fn(),
@@ -1198,6 +1212,7 @@ describe('NotaryMatterDetailPage', () => {
       '未登记',
       '未登记',
       '未登记',
+      '未登记',
       '0.00 元',
       '尚未完整确认',
     ]);
@@ -1265,6 +1280,7 @@ describe('NotaryMatterDetailPage', () => {
         '0.00 元',
         '待定',
         '12345678901234.56 元',
+        '未登记',
         '未登记',
         '0.00 元',
         '尚未完整确认',

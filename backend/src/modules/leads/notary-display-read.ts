@@ -203,6 +203,40 @@ export async function readNotaryDisplay(
   );
   const fee = (category: string) =>
     certificate?.fees.find((row) => row.category === category);
+  // 样品费退款只增不改，净值在这里现算，不落冗余列。
+  // 旧调用方（或裁剪过的读上下文）没有该 delegate 时按「无退款」处理。
+  const refundDelegate = database.notarySampleFeeRefund;
+  const refundAggregate = refundDelegate
+    ? await refundDelegate.aggregate({
+        where: { matterId: matter.id, departmentId: actor.departmentId },
+        _sum: { amount: true },
+      })
+    : { _sum: { amount: null } };
+  const refundedTotal =
+    refundAggregate._sum.amount ?? new Prisma.Decimal(0);
+  const rawSample = notaryDisplayFee(
+    matter.costs?.find((item) => item.category === 'SAMPLE') ??
+      (matter.evidence === null
+        ? null
+        : {
+            state: matter.evidence.sampleFeeState,
+            amount: matter.evidence.sampleFeeAmount,
+          }),
+  );
+  const sampleFee =
+    rawSample.state === 'KNOWN' &&
+    rawSample.amount !== null &&
+    refundedTotal.greaterThan(0)
+      ? {
+          state: rawSample.state,
+          amount: new Prisma.Decimal(rawSample.amount)
+            .minus(refundedTotal)
+            .toFixed(2),
+        }
+      : rawSample;
+  const sampleRefund = refundedTotal.greaterThan(0)
+    ? { state: 'KNOWN' as const, amount: refundedTotal.toFixed(2) }
+    : { state: 'UNRECORDED' as const, amount: null };
   return {
     sourceSummary: {
       customer,
@@ -261,15 +295,9 @@ export async function readNotaryDisplay(
           fee('NOTARY'),
       ),
       investigation: notaryDisplayFee(fee('INVESTIGATION')),
-      sample: notaryDisplayFee(
-        matter.costs?.find((item) => item.category === 'SAMPLE') ??
-          (matter.evidence === null
-            ? null
-            : {
-                state: matter.evidence.sampleFeeState,
-                amount: matter.evidence.sampleFeeAmount,
-              }),
-      ),
+      // 样品费展示净值：取证登记金额 − 待退货阶段登记的退款合计。
+      sample: sampleFee,
+      sampleRefund: sampleRefund,
     },
     linkedCase,
   };

@@ -2208,6 +2208,7 @@ model NotaryMatter {
   selectedProducts      NotaryMatterProduct[]
   selectedMaterials     NotaryMatterMaterial[]
   evidence              NotaryMatterEvidence?
+  sampleFeeRefunds      NotarySampleFeeRefund[]
   evidenceCorrections   NotaryEvidenceCorrection[]
   openingSenderCorrections NotaryOpeningSenderCorrection[]
   opening               NotaryMatterOpening?
@@ -3883,6 +3884,25 @@ model NotaryMatterEvidence {
 
   @@unique([matterId, departmentId], map: "notary_matter_evidence_matter_department_key")
   @@map("notary_matter_evidence")
+}
+
+/// 样品费退款：待退货阶段逐笔登记，样品费净值 = 取证登记金额 − 累计退款。
+model NotarySampleFeeRefund {
+  id               String       @id @default(uuid()) @db.Uuid
+  matterId         String       @map("matter_id") @db.Uuid
+  departmentId     String       @map("department_id") @db.Uuid
+  amount           Decimal      @db.Decimal(18, 2)
+  refundedOn       DateTime     @map("refunded_on") @db.Date
+  note             String?      @db.VarChar(500)
+  recordedByUserId String       @map("recorded_by_user_id") @db.Uuid
+  recordedAt       DateTime     @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  auditEventId     String       @unique @map("audit_event_id") @db.Uuid
+  idempotencyKey   String       @map("idempotency_key") @db.VarChar(128)
+  matter           NotaryMatter @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_sample_fee_refunds_matter_fkey")
+
+  @@unique([departmentId, recordedByUserId, idempotencyKey], map: "notary_sample_fee_refunds_idempotency_key")
+  @@index([matterId, departmentId], map: "notary_sample_fee_refunds_matter_idx")
+  @@map("notary_sample_fee_refunds")
 }
 
 model NotaryEvidenceCorrection {

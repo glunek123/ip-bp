@@ -936,6 +936,258 @@ export class LeadNotaryService {
     });
   }
 
+  /**
+   * 登记样品费退款：仅待退货阶段、只增不改、不推进流程。
+   * 样品费净值由读取侧现算「取证登记金额 − 累计退款」，不改写历史取证数据。
+   */
+  async appendSampleFeeRefund(
+    actor: ActorContext,
+    matterId: string,
+    idempotencyKey: string,
+    input: { amount: string; refundedOn: string; note?: string | null },
+  ): Promise<{
+    id: string;
+    amount: string;
+    refundedOn: string;
+    totalRefunded: string;
+  }> {
+    const refundedOn = input.refundedOn.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/u.test(refundedOn))
+      throw new BadRequestException({
+        code: 'INVALID_REFUND_DATE',
+        message: '请填写有效的退款日期',
+      });
+    let amount: Prisma.Decimal;
+    try {
+      amount = new Prisma.Decimal(input.amount.trim());
+    } catch {
+      throw new BadRequestException({
+        code: 'INVALID_REFUND_AMOUNT',
+        message: '请输入有效的退款金额',
+      });
+    }
+    if (!amount.greaterThan(0) || amount.decimalPlaces() > 2)
+      throw new BadRequestException({
+        code: 'INVALID_REFUND_AMOUNT',
+        message: '退款金额必须大于 0，最多两位小数',
+      });
+    const note = input.note?.trim() ? input.note.trim() : null;
+    if (note !== null && note.length > 500)
+      throw new BadRequestException({
+        code: 'INVALID_REFUND_NOTE',
+        message: '备注不能超过 500 字',
+      });
+
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (tx) => {
+            const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+              'SELECT "id" FROM "notary_matters" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              matterId,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            const matter = await tx.notaryMatter.findFirst({
+              where: { id: matterId, departmentId: actor.departmentId },
+              include: {
+                evidence: {
+                  select: { sampleFeeState: true, sampleFeeAmount: true },
+                },
+                sourceLead: {
+                  select: { responsibleUserId: true, teamId: true },
+                },
+              },
+            });
+            if (matter === null) throw this.notFound();
+            await this.assertInternal(actor, tx);
+            try {
+              await this.access.authorizeLead(
+                actor,
+                'notary.evidence.record',
+                {
+                  departmentId: matter.departmentId,
+                  responsibleUserId: matter.sourceLead.responsibleUserId,
+                  ...(matter.sourceLead.teamId === null
+                    ? {}
+                    : { teamId: matter.sourceLead.teamId }),
+                },
+                tx,
+              );
+            } catch (error) {
+              throw this.mapAuthorization(error);
+            }
+            const existing = await tx.notarySampleFeeRefund.findUnique({
+              where: {
+                departmentId_recordedByUserId_idempotencyKey: {
+                  departmentId: actor.departmentId,
+                  recordedByUserId: actor.userId,
+                  idempotencyKey,
+                },
+              },
+            });
+            if (existing !== null) {
+              const totals = await this.sampleFeeRefundTotal(
+                tx,
+                matterId,
+                actor.departmentId,
+              );
+              return {
+                id: existing.id,
+                amount: existing.amount.toFixed(2),
+                refundedOn: existing.refundedOn.toISOString().slice(0, 10),
+                totalRefunded: totals.toFixed(2),
+              };
+            }
+            if (matter.stage !== 'WAITING_RETURN')
+              throw new ConflictException({
+                code: 'INVALID_STATE',
+                message: '只有待退货阶段才能登记样品费退款',
+              });
+            const registered =
+              matter.evidence?.sampleFeeState === 'KNOWN'
+                ? matter.evidence?.sampleFeeAmount
+                : null;
+            if (registered === null || registered === undefined)
+              throw new ConflictException({
+                code: 'SAMPLE_FEE_UNKNOWN',
+                message: '该事项尚未登记样品费，无法登记退款',
+              });
+            const refunded = await this.sampleFeeRefundTotal(
+              tx,
+              matterId,
+              actor.departmentId,
+            );
+            if (refunded.plus(amount).greaterThan(registered))
+              throw new ConflictException({
+                code: 'REFUND_EXCEEDS_SAMPLE_FEE',
+                message: `退款合计不能超过样品费 ${registered.toFixed(2)} 元`,
+              });
+            const audit = await tx.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                internalActorUserId: actor.userId,
+                resourceType: 'notary_matter',
+                resourceId: matterId,
+                action: 'notary.sample_fee.refund.appended',
+                details: {
+                  amount: amount.toFixed(2),
+                  refundedOn,
+                  note,
+                  sampleFeeAmount: registered.toFixed(2),
+                  refundedBefore: refunded.toFixed(2),
+                  refundedAfter: refunded.plus(amount).toFixed(2),
+                },
+              },
+            });
+            const created = await tx.notarySampleFeeRefund.create({
+              data: {
+                matterId,
+                departmentId: actor.departmentId,
+                amount,
+                refundedOn: new Date(`${refundedOn}T00:00:00.000Z`),
+                note,
+                recordedByUserId: actor.userId,
+                auditEventId: audit.id,
+                idempotencyKey,
+              },
+            });
+            return {
+              id: created.id,
+              amount: created.amount.toFixed(2),
+              refundedOn: created.refundedOn.toISOString().slice(0, 10),
+              totalRefunded: refunded.plus(amount).toFixed(2),
+            };
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2034' &&
+          attempt < MAX_SERIALIZABLE_ATTEMPTS
+        )
+          continue;
+        throw error;
+      }
+    }
+    throw new ConflictException({
+      code: 'CONFLICT_RETRY',
+      message: '并发冲突，请重试',
+    });
+  }
+
+  /** 样品费退款明细与汇总，供事项详情和费用中心读取。 */
+  async sampleFeeRefunds(actor: ActorContext, matterId: string) {
+    return this.database.$transaction(async (tx) => {
+      const matter = await tx.notaryMatter.findFirst({
+        where: { id: matterId, departmentId: actor.departmentId },
+        select: {
+          id: true,
+          stage: true,
+          evidence: {
+            select: { sampleFeeState: true, sampleFeeAmount: true },
+          },
+        },
+      });
+      if (matter === null) throw this.notFound();
+      const rows = await tx.notarySampleFeeRefund.findMany({
+        where: { matterId, departmentId: actor.departmentId },
+        orderBy: [{ refundedOn: 'desc' }, { recordedAt: 'desc' }],
+        select: {
+          id: true,
+          amount: true,
+          refundedOn: true,
+          note: true,
+          recordedAt: true,
+          recordedByUserId: true,
+        },
+      });
+      const total = rows.reduce(
+        (sum, row) => sum.plus(row.amount),
+        new Prisma.Decimal(0),
+      );
+      const registered =
+        matter.evidence?.sampleFeeState === 'KNOWN'
+          ? (matter.evidence?.sampleFeeAmount ?? null)
+          : null;
+      return {
+        matterId,
+        stage: matter.stage,
+        sampleFeeState: matter.evidence?.sampleFeeState ?? 'PENDING',
+        sampleFeeAmount: registered === null ? null : registered.toFixed(2),
+        totalRefunded: total.toFixed(2),
+        netSampleFee:
+          registered === null ? null : registered.minus(total).toFixed(2),
+        canRefund:
+          matter.stage === 'WAITING_RETURN' &&
+          registered !== null &&
+          registered.minus(total).greaterThan(0),
+        items: rows.map((row) => ({
+          id: row.id,
+          amount: row.amount.toFixed(2),
+          refundedOn: row.refundedOn.toISOString().slice(0, 10),
+          note: row.note,
+          recordedAt: row.recordedAt.toISOString(),
+          recordedByUserId: row.recordedByUserId,
+        })),
+      };
+    });
+  }
+
+  private async sampleFeeRefundTotal(
+    tx: Prisma.TransactionClient,
+    matterId: string,
+    departmentId: string,
+  ): Promise<Prisma.Decimal> {
+    const aggregate = await tx.notarySampleFeeRefund.aggregate({
+      where: { matterId, departmentId },
+      _sum: { amount: true },
+    });
+    return aggregate._sum.amount ?? new Prisma.Decimal(0);
+  }
+
   async recordEvidence(
     actor: ActorContext,
     matterId: string,

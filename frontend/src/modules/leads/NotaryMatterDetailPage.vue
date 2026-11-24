@@ -20,12 +20,15 @@ import { downloadMaterialVersion } from '../../api/materials';
 import MaterialPreviewDialog from '../../app/MaterialPreviewDialog.vue';
 import NotaryOpeningPhotoGallery from './NotaryOpeningPhotoGallery.vue';
 import {
+  appendNotarySampleFeeRefund,
   getNotaryMatter,
+  getNotarySampleFeeRefunds,
   updateNotaryRoutineProfile,
   type RoutineBusinessEditInput,
   type NotaryMatterDetail,
   type NotaryReturnChoice,
   type NotaryReturnAmountSummary,
+  type NotarySampleFeeRefundSummary,
 } from '../../api/notary';
 import { createListWorkflowContext } from '../../app/list-workflow-context';
 import NotaryMatterWorkflowPanel from './NotaryMatterWorkflowPanel.vue';
@@ -141,7 +144,10 @@ const workflowGuidance = computed(() => {
   return { text: '当前阶段未提供办理说明，请刷新核对当前事项记录。' };
 });
 
-function feeLabel(fee: NotaryMatterDetail['fees']['notary']): string {
+function feeLabel(
+  fee: NotaryMatterDetail['fees']['notary'] | undefined,
+): string {
+  if (!fee) return '未登记';
   return fee.state === 'KNOWN'
     ? `${fee.amount} 元`
     : fee.state === 'PENDING'
@@ -224,6 +230,49 @@ async function downloadMaterial(
     downloadRequests.delete(controller);
   }
 }
+// 样品费退款：只有待退货阶段可登记，登记后不回退流程、只影响样品费净值。
+const sampleRefund = ref<NotarySampleFeeRefundSummary | null>(null);
+const refundOpen = ref(false);
+const refundAmount = ref('');
+const refundDate = ref(new Date().toLocaleDateString('en-CA'));
+const refundNote = ref('');
+const refundBusy = ref(false);
+const refundError = ref('');
+
+async function loadSampleRefunds(id: string): Promise<void> {
+  try {
+    sampleRefund.value = await getNotarySampleFeeRefunds(id);
+  } catch {
+    sampleRefund.value = null;
+  }
+}
+
+async function submitSampleRefund(): Promise<void> {
+  if (refundBusy.value) return;
+  refundError.value = '';
+  refundBusy.value = true;
+  try {
+    await appendNotarySampleFeeRefund(
+      String(route.params.id),
+      {
+        amount: refundAmount.value.trim(),
+        refundedOn: refundDate.value,
+        ...(refundNote.value.trim() ? { note: refundNote.value.trim() } : {}),
+      },
+      globalThis.crypto.randomUUID(),
+    );
+    refundOpen.value = false;
+    refundAmount.value = '';
+    refundNote.value = '';
+    await load();
+  } catch (error) {
+    refundError.value =
+      error instanceof ApiError ? error.message : '登记失败，请重试';
+  } finally {
+    refundBusy.value = false;
+  }
+}
+
 async function load(): Promise<boolean> {
   const generation = contextGeneration;
   request?.abort();
@@ -243,6 +292,7 @@ async function load(): Promise<boolean> {
       return false;
     matter.value = current;
     state.value = 'ready';
+    await loadSampleRefunds(current.id);
     return generation === contextGeneration && !controller.signal.aborted;
   } catch (error) {
     if (controller.signal.aborted || generation !== contextGeneration)
@@ -926,6 +976,21 @@ watch(
               <dt>样品费</dt>
               <dd class="mono">{{ feeLabel(matter.fees.sample) }}</dd>
             </div>
+            <div>
+              <dt>样品费退款</dt>
+              <dd class="mono">
+                {{ feeLabel(matter.fees.sampleRefund) }}
+                <button
+                  v-if="sampleRefund?.canRefund"
+                  type="button"
+                  class="link-button"
+                  data-test="sample-refund-open"
+                  @click="refundOpen = !refundOpen"
+                >
+                  {{ refundOpen ? '收起' : '登记退款' }}
+                </button>
+              </dd>
+            </div>
             <div v-if="matter.detailFacts">
               <dt>披露费</dt>
               <dd class="mono">
@@ -949,6 +1014,59 @@ watch(
               </dd>
             </div>
           </dl>
+          <form
+            v-if="refundOpen"
+            class="sample-refund-form"
+            data-test="sample-refund-form"
+            @submit.prevent="submitSampleRefund"
+          >
+            <label
+              >退款金额（元）<input
+                v-model="refundAmount"
+                data-test="sample-refund-amount"
+                inputmode="decimal"
+                required
+            /></label>
+            <label
+              >退款日期<input
+                v-model="refundDate"
+                data-test="sample-refund-date"
+                type="date"
+                required
+            /></label>
+            <label
+              >备注<input
+                v-model="refundNote"
+                data-test="sample-refund-note"
+                maxlength="500"
+            /></label>
+            <button
+              type="submit"
+              data-test="sample-refund-submit"
+              :disabled="refundBusy"
+            >
+              登记
+            </button>
+            <p v-if="refundError" role="alert" data-test="sample-refund-error">
+              {{ refundError }}
+            </p>
+          </form>
+          <details
+            v-if="sampleRefund && sampleRefund.items.length"
+            data-test="sample-refund-history"
+          >
+            <summary>
+              样品费退款记录（{{ sampleRefund.items.length }} 笔，合计
+              {{ sampleRefund.totalRefunded }} 元）
+            </summary>
+            <ul>
+              <li v-for="row in sampleRefund.items" :key="row.id">
+                {{ row.refundedOn }} · {{ row.amount }} 元{{
+                  row.note ? ` · ${row.note}` : ''
+                }}
+              </li>
+            </ul>
+          </details>
         </section>
 
         <section

@@ -68,7 +68,9 @@ export type NotaryMatterDisplay = {
   fees: {
     notary: NotaryDisplayFee;
     investigation: NotaryDisplayFee;
+    /** 样品费净值：取证登记金额 − 待退货阶段登记的退款合计。 */
     sample: NotaryDisplayFee;
+    sampleRefund: NotaryDisplayFee;
   };
   linkedCase: null | { id: string; businessNo: string; stage: CaseStage };
   capabilities: NotaryDisplayCapabilities;
@@ -2223,4 +2225,70 @@ export async function confirmNotaryHandoffBatch(
   )
     throw invalidResponse();
   return data as { items: NotaryMatterResult[] };
+}
+
+export type NotarySampleFeeRefundItem = {
+  id: string;
+  amount: string;
+  refundedOn: string;
+  note: string | null;
+  recordedAt: string;
+  recordedByUserId: string;
+};
+
+export type NotarySampleFeeRefundSummary = {
+  matterId: string;
+  stage: string;
+  sampleFeeState: 'KNOWN' | 'PENDING';
+  sampleFeeAmount: string | null;
+  totalRefunded: string;
+  netSampleFee: string | null;
+  canRefund: boolean;
+  items: NotarySampleFeeRefundItem[];
+};
+
+const refundAmountPattern = /^\d{1,16}\.\d{2}$/u;
+
+/** 登记一笔样品费退款：仅待退货阶段可用，只增不改、不推进流程。 */
+export async function appendNotarySampleFeeRefund(
+  id: string,
+  input: { amount: string; refundedOn: string; note?: string },
+  idempotencyKey: string,
+): Promise<{
+  id: string;
+  amount: string;
+  refundedOn: string;
+  totalRefunded: string;
+}> {
+  const amount = input.amount.trim();
+  if (!refundAmountPattern.test(amount) || amount === '0.00')
+    throw new ApiError('请输入有效的退款金额', 400, 'VALIDATION_ERROR');
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(input.refundedOn))
+    throw new ApiError('请填写有效的退款日期', 400, 'VALIDATION_ERROR');
+  const note = input.note?.trim();
+  return (await requestJson(
+    `/notary-matters/${encodeURIComponent(id)}/sample-fee-refunds`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: {
+        amount,
+        refundedOn: input.refundedOn,
+        ...(note ? { note } : {}),
+      },
+    },
+  )) as {
+    id: string;
+    amount: string;
+    refundedOn: string;
+    totalRefunded: string;
+  };
+}
+
+export function getNotarySampleFeeRefunds(
+  id: string,
+): Promise<NotarySampleFeeRefundSummary> {
+  return requestJson(
+    `/notary-matters/${encodeURIComponent(id)}/sample-fee-refunds`,
+  ) as Promise<NotarySampleFeeRefundSummary>;
 }
