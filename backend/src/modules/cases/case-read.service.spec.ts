@@ -992,6 +992,7 @@ describe('CaseReadService', () => {
     ['WAITING_EXECUTION_CONFIRMATION', 'canConfirmExecution'],
     ['WAITING_EXECUTION_STAMP', 'canMailExecution'],
     ['WAITING_EXECUTION_FILING', 'canSubmitExecutionFiling'],
+    ['EXECUTING', 'canFinishExecution'],
     ['WAITING_ARCHIVE', 'canRecordClosure'],
   ])(
     'exposes only authorized direct-source %s capabilities in list and detail',
@@ -1027,20 +1028,6 @@ describe('CaseReadService', () => {
       });
     },
   );
-  it('withholds execution update from an external-entry case without a filing', async () => {
-    const f = fixture();
-    const record = externalRecord('EXECUTING');
-    f.db.case.findMany.mockResolvedValue([record]);
-    f.db.case.findFirst.mockResolvedValue(record);
-    // 这类案件的阶段由录入链条推导，执行结束行会强制进入「待归档」，
-    // 而执行更新只登记字段，必然冲突，因此不再开放入口。
-    expect(await f.service.get(actor, record.id)).toMatchObject({
-      canFinishExecution: false,
-    });
-    expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
-      canFinishExecution: false,
-    });
-  });
   it.each([
     ['PENDING_MATCH', true],
     ['WAITING_HEARING', true],
