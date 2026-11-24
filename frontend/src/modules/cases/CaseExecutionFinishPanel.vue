@@ -367,9 +367,10 @@ async function submit() {
     if (isDenied(failure)) {
       loseAccess();
     } else if (
+      // 只有拿不到响应才算「结果未知」；5xx 是服务端明确拒绝，按失败处理，
+      // 否则会被误判为未知并锁住整张卡片。
       !(failure instanceof ApiError) ||
-      ['NETWORK_ERROR', 'TIMEOUT', 'INVALID_RESPONSE'].includes(failure.code) ||
-      failure.status >= 500
+      ['NETWORK_ERROR', 'TIMEOUT', 'INVALID_RESPONSE'].includes(failure.code)
     ) {
       error.value = '提交结果暂时未知。请使用原请求重试，或刷新核实记录。';
     } else {

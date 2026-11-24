@@ -950,7 +950,10 @@ function discardOriginal() {
   }
   pending.value = null;
   error.value = '';
+  // 未知结果不是「提交中」，endSubmit 不会复位它；必须显式清掉，
+  // 否则抽屉会一直锁在 unknown，用户整页点不动。
   ownedSession.endSubmit('failed');
+  ownedSession.clearUnknown?.();
 }
 async function retryOriginal() {
   if (!pending.value) return;

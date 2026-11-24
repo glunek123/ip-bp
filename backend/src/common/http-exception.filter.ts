@@ -304,7 +304,17 @@ function diagnosticFields(exception: unknown) {
     errorCode: safeCode(record.code),
     databaseErrorCode:
       safeCode(meta.code) ?? safeCode(adapterCause.originalCode),
+    // CHECK/NOT NULL 冲突时，约束名是定位问题的唯一线索，必须留痕。
+    databaseConstraint:
+      safeConstraint(asRecord(adapterCause).constraint) ??
+      safeConstraint(meta.constraint),
   };
+}
+
+function safeConstraint(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= 120 ? trimmed : undefined;
 }
 
 @Catch()

@@ -25,6 +25,8 @@ export type ListWorkflowSession = ListWorkflowReceipt & {
   ) => boolean;
   /** Register a module-owned pending request restored before mounting this panel. */
   restoreUnknown: () => boolean;
+  /** Drop an unconfirmed outcome after the operator explicitly discards it. */
+  clearUnknown?: () => boolean;
   deny: () => void;
 };
 export type ListWorkflowState<T> = {
@@ -135,6 +137,12 @@ export function createListWorkflowContext<T extends { id: string }>(
             requestState: outcome === 'unknown' ? 'unknown' : 'idle',
           };
         }
+        return true;
+      },
+      clearUnknown() {
+        if (!current() || state.value.status !== 'ready') return false;
+        if (state.value.requestState !== 'unknown') return false;
+        state.value = { ...state.value, requestState: 'idle' };
         return true;
       },
       restoreUnknown() {
