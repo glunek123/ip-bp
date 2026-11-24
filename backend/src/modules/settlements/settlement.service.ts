@@ -334,12 +334,7 @@ export class SettlementService {
           )
             throw bad('INVALID_SETTLEMENT_TERMS', '不能同时修改律师条款');
         } else {
-          // 律师结算必须有承办律师作为收付方，否则金额即便录入也无法发起。
-          if (record.lawyers.length === 0)
-            throw bad(
-              'LAWYER_REQUIRED_FOR_SETTLEMENT',
-              '请先指派承办律师，再录入律师结算条件',
-            );
+          // 允许先录律师结算条件：待归档且无律师的案件走线下交付，指派后归集。
           if (
             input.lawyerMode === undefined ||
             input.lawyerBaseFee === undefined ||
@@ -486,11 +481,18 @@ export class SettlementService {
               input.expectedTermsVersion
           )
             throw changed();
+          // 律师侧收付方：显式指定则校验；只有一个承办律师时自动取；没有律师时记为待归集。
           const lawyer =
             input.side === 'LAWYER'
-              ? record.lawyers.find(
-                  (assignment) => assignment.id === input.lawyerId,
-                )
+              ? input.lawyerId !== undefined
+                ? record.lawyers.find(
+                    (assignment) => assignment.id === input.lawyerId,
+                  )
+                : record.lawyers.length === 0
+                  ? null
+                  : record.lawyers.length === 1
+                    ? record.lawyers[0]
+                    : undefined
               : null;
           if (
             (input.side === 'LAWYER' && lawyer === undefined) ||

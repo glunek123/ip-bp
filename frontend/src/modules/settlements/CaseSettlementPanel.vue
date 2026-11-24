@@ -103,16 +103,13 @@ const canLaunch = computed(
     amount.value !== null &&
     amount.value !== undefined &&
     balance.value?.remaining != null &&
-    !/^0(?:\.0+)?$/u.test(balance.value.remaining) &&
-    (side.value === 'CUSTOMER' || detail.value.lawyers.length > 0),
+    !/^0(?:\.0+)?$/u.test(balance.value.remaining),
 );
 function launchBlocker(target: SettlementSide): string {
   const current = detail.value;
   if (!current) return '';
   if (!props.canLaunch) return '当前账号没有发起结算权限。';
   if (current.stage !== 'WAITING_ARCHIVE') return '当前案件阶段不可发起结算。';
-  if (target === 'LAWYER' && current.lawyers.length === 0)
-    return '该案件未指派律师，无法发起律师结算。';
   const remaining =
     target === 'CUSTOMER'
       ? current.customerBalance.remaining
@@ -448,7 +445,9 @@ async function launch(targetSide?: SettlementSide): Promise<void> {
     launchDate: launchDate.value,
     note: launchNote.value,
     expectedTermsVersion: detail.value.termsVersion,
-    ...(side.value === 'LAWYER' ? { lawyerId: lawyerId.value } : {}),
+    ...(side.value === 'LAWYER' && lawyerId.value
+      ? { lawyerId: lawyerId.value }
+      : {}),
     idempotencyKey: globalThis.crypto.randomUUID(),
   };
   try {
@@ -657,7 +656,7 @@ async function launch(targetSide?: SettlementSide): Promise<void> {
             class="pair-side__row pair-side__hint"
             data-test="terms-lawyer-required"
           >
-            该案件未指派律师，请先指派承办律师后再录入律师结算条件。
+            该案件未指派律师：条件可先录入，结算金额记为待归集，指派后再挂接。
           </p>
           <p v-if="preview.error" role="alert">{{ preview.error }}</p>
           <p v-else>
@@ -668,9 +667,7 @@ async function launch(targetSide?: SettlementSide): Promise<void> {
           <ElButton
             native-type="submit"
             class="action-size--wide"
-            :disabled="
-              saving || unknownLaunch || !!preview.error || lawyerMissing
-            "
+            :disabled="saving || unknownLaunch || !!preview.error"
             >{{
               unknownTerms ? '用原请求重试保存' : '保存本案结算条件'
             }}</ElButton
@@ -687,17 +684,24 @@ async function launch(targetSide?: SettlementSide): Promise<void> {
             }}结算
           </h3>
           <label v-if="side === 'LAWYER'"
-            >结算律师<ElSelect
-              v-model="lawyerId"
-              :disabled="uncertain || saving"
-              ><ElOption
-                v-for="lawyer in detail.lawyers"
-                :key="lawyer.id"
-                :value="lawyer.id"
-                :label="
-                  lawyer.name + (lawyer.firm ? ' / ' + lawyer.firm : '')
-                " /></ElSelect
-          ></label>
+            >结算律师<template v-if="detail.lawyers.length"
+              ><ElSelect
+                v-model="lawyerId"
+                :disabled="uncertain || saving"
+                ><ElOption
+                  v-for="lawyer in detail.lawyers"
+                  :key="lawyer.id"
+                  :value="lawyer.id"
+                  :label="
+                    lawyer.name + (lawyer.firm ? ' / ' + lawyer.firm : '')
+                  " /></ElSelect></template
+            ><span
+              v-else
+              class="field-help"
+              data-test="launch-lawyer-unassigned"
+              >未指派承办律师：本次结算记为待归集，指派后再挂接。</span
+            ></label
+          >
           <label
             >本次金额（元）<ElInput
               v-model="launchAmount"
@@ -718,7 +722,9 @@ async function launch(targetSide?: SettlementSide): Promise<void> {
             native-type="submit"
             class="action-size--wide"
             :disabled="
-              saving || unknownTerms || (side === 'LAWYER' && !lawyerId)
+              saving ||
+              unknownTerms ||
+              (side === 'LAWYER' && detail.lawyers.length > 1 && !lawyerId)
             "
             >{{ unknownLaunch ? '用原请求重试发起' : '发起结算' }}</ElButton
           >

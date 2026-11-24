@@ -548,10 +548,17 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     );
   });
 
-  it('explains why a lawyer settlement cannot start without an assigned lawyer', async () => {
+  it('launches a lawyer settlement without an assigned lawyer and leaves it unassigned', async () => {
     const detail = structuredClone(current);
     detail.lawyers = [];
     api.getCaseSettlement.mockResolvedValue(detail);
+    api.launchSettlement.mockResolvedValue({
+      id: 'launch-l',
+      side: 'LAWYER',
+      nth: 1,
+      amount: '30.00',
+      launchDate: '2026-11-23',
+    });
     const wrapper = render(CaseSettlementPanel, {
       caseId: 'case',
       canUpdate: true,
@@ -559,17 +566,19 @@ describe('settlement page behavior (mounted components, not real browser)', () =
       showBothSummaries: true,
     });
     await flushPromises();
-    const button = wrapper.get('[data-test="launch-lawyer"]');
-    expect(button.attributes('disabled')).toBeDefined();
-    expect(wrapper.get('[data-test="launch-blocked-lawyer"]').text()).toContain(
-      '未指派律师',
-    );
-    await button.trigger('click');
+    const launch = wrapper.get('[data-test="launch-lawyer"]');
+    expect(launch.attributes('disabled')).toBeUndefined();
+    await launch.trigger('click');
     await flushPromises();
-    expect(api.launchSettlement).not.toHaveBeenCalled();
+    expect(api.launchSettlement).toHaveBeenCalledWith(
+      'case',
+      expect.objectContaining({ side: 'LAWYER', amount: '30.00' }),
+    );
+    const payload = api.launchSettlement.mock.calls.at(-1)?.[1];
+    expect(payload).not.toHaveProperty('lawyerId');
   });
 
-  it('blocks lawyer settlement terms until a lawyer is assigned', async () => {
+  it('allows lawyer settlement terms before a lawyer is assigned', async () => {
     const detail = structuredClone(current);
     detail.lawyers = [];
     api.getCaseSettlement.mockResolvedValue(detail);
@@ -582,13 +591,13 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     await button(wrapper, '律师结算').trigger('click');
     await flushPromises();
     expect(wrapper.get('[data-test="terms-lawyer-required"]').text()).toContain(
-      '未指派律师',
+      '待归集',
     );
     const save = button(wrapper, '保存本案结算条件');
-    expect(save.attributes('disabled')).toBeDefined();
+    expect(save.attributes('disabled')).toBeUndefined();
     await save.trigger('click');
     await flushPromises();
-    expect(api.updateCaseSettlementTerms).not.toHaveBeenCalled();
+    expect(api.updateCaseSettlementTerms).toHaveBeenCalled();
   });
 
   it.skip('shows both settlement summaries while keeping full edit and launch controls collapsed in case detail', async () => {
