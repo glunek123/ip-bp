@@ -970,12 +970,13 @@ export class CaseReadService {
                 ? { teamId: item.responsibleMembership.teamId }
                 : {}),
             })),
+          // 外部录入案件的阶段由录入链条强制推导：一旦登记执行结束行，
+          // 触发器就要求案件进入「待归档」，而本卡片只登记字段不推进阶段，
+          // 两者必然冲突。这类案件改走「结案」，不再开放执行更新。
           canFinishExecution:
             item.stage === 'EXECUTING' &&
-            ((item.executionFiling != null &&
-              item.executionFiling.toVersion === item.version) ||
-              (item.externalEntry?.initialStage === 'EXECUTING' &&
-                item.executionFiling == null)) &&
+            item.executionFiling != null &&
+            item.executionFiling.toVersion === item.version &&
             item.executionFinish == null &&
             (principal === 'LAWYER' ||
               (await this.access.canAuthorizeCase(
@@ -3498,10 +3499,8 @@ export class CaseReadService {
           }))),
       canFinishExecution:
         record.stage === 'EXECUTING' &&
-        ((record.executionFiling != null &&
-          record.executionFiling.toVersion === record.version) ||
-          (record.externalEntry?.initialStage === 'EXECUTING' &&
-            record.executionFiling == null)) &&
+        record.executionFiling != null &&
+        record.executionFiling.toVersion === record.version &&
         record.executionFinish == null &&
         (principal === 'LAWYER' ||
           (await this.access.canAuthorizeCase(actor, 'case.execution.finish', {
