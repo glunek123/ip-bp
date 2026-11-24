@@ -71,4 +71,25 @@ describe('lawyer assignment API', () => {
       code: 'INVALID_RESPONSE',
     });
   });
+  it('accepts a backfill that keeps the version when the stage is frozen', async () => {
+    const input = {
+      expectedVersion: 7,
+      idempotencyKey: 'key-frozen',
+      lawyerProfileId,
+    };
+    http.requestJson.mockResolvedValue({
+      id: caseId,
+      stage: 'WAITING_ARCHIVE',
+      version: 7,
+      outcome: 'ASSIGNED',
+      requestedLawyerProfileId: lawyerProfileId,
+      requestedLawyerAccountId: null,
+      previousAssignment: null,
+      currentAssignment: { ...assignment, lawyerAccountId: null },
+    });
+    await expect(assignCaseLawyer(caseId, input)).resolves.toMatchObject({
+      outcome: 'ASSIGNED',
+      version: 7,
+    });
+  });
 });

@@ -96,7 +96,9 @@ export function validAssignCaseLawyerResult(
     return false;
   if (value.outcome === 'ASSIGNED')
     return (
-      value.version === input.expectedVersion + 1 &&
+      // 待归档/已归档阶段版本被终态守卫冻结，补指派不递增版本。
+      (value.version === input.expectedVersion ||
+        value.version === input.expectedVersion + 1) &&
       value.previousAssignment === null &&
       assignment(value.currentAssignment) &&
       value.currentAssignment.lawyerProfileId === input.lawyerProfileId &&
