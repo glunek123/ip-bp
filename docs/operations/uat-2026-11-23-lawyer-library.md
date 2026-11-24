@@ -102,9 +102,9 @@
 
 ## 六、已知问题（均非本轮引入）
 
-1. **UAT 历史案件终态守卫不匹配**：抽查 5 个待归档、1 个已归档案件，`UPDATE cases SET version=version+1` 在提交时报 `closure terminal mismatch`／`execution external terminal mismatch`／`archived case without archive`（SQLSTATE 23514）。这类案件补指派会 500。本轮验收案件均先用 `SET CONSTRAINTS ALL IMMEDIATE` 筛过健康性。运营遇到 500 应先核案件归档／结案快照，不是改代码。
+1. **UAT 历史案件终态守卫不匹配**：已用新脚本全量体检 1977 个未指派案件，可通过 1208、受阻 769。诉讼阶段全部健康；待归档 33、执行中 53、待执行文书 16、已归档 666 全部不可改版本，补指派会 500。明细口径与重跑命令见[未指派案件的守卫健康体检](2026-11-24-case-guard-health.md)。
 2. **`case-read.controller.spec` 在 HEAD 即失败**（缺 `CaseMaterialService` provider），与本轮无关。
-3. **律师库权限只复制给了「UAT知产运营」**：`admin` 打开 `/settings/lawyer-profiles` 得到 403，菜单也不显示。按「不直接给真实账号增权」的口径未动，需要产品决定是否给管理员补 `lawyer.profile.read/manage`。
+3. **律师库权限已放开（2026-11-24 追加）**：按用户决定「只要是运营角色都给可读可写」，迁移 `20261124091500_lawyer_profile_grants_for_all_roles` 给 5 个启用模板补 `lawyer.profile.read/manage`（部门范围），`admin`／`manager`／`pinwei`／`zhichan` 均已实测可打开律师库并看到菜单。新建角色模板仍需手动勾选这两项。
 4. 方案中的「同名档案疑似重复提示」与「业绩投影」未实现（S-1 剩余项、S-3）。
 
 ## 七、结论
