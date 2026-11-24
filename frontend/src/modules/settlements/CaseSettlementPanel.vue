@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElInput } from 'element-plus/es/components/input/index.mjs';
@@ -127,6 +127,11 @@ function launchBlocker(target: SettlementSide): string {
 
 const lawyerMissing = computed(
   () => side.value === 'LAWYER' && (detail.value?.lawyers.length ?? 0) === 0,
+);
+// 案件详情页会提供这个回调；其他挂载位置没有则隐藏入口。
+const openLawyerAssign = inject<(() => void) | null>(
+  'case:open-lawyer-assign',
+  null,
 );
 
 const manual = computed(() => {
@@ -554,6 +559,21 @@ async function launch(targetSide?: SettlementSide): Promise<void> {
             :data-test="`launch-blocked-${summarySide.toLowerCase()}`"
           >
             {{ launchBlocker(summarySide) }}
+          </p>
+          <p
+            v-if="summarySide === 'LAWYER' && !detail.lawyers.length"
+            class="pair-side__row pair-side__hint"
+            data-test="summary-lawyer-unassigned"
+          >
+            未指派承办律师：可先录条件并记为待归集。
+            <ElButton
+              v-if="openLawyerAssign"
+              text
+              size="small"
+              data-test="settlement-open-assign"
+              @click="openLawyerAssign()"
+              >去指派律师</ElButton
+            >
           </p>
           <p class="pair-side__row">
             <span class="pair-side__label">结算条件</span>

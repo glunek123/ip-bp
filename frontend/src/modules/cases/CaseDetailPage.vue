@@ -27,6 +27,7 @@ import {
   onBeforeUnmount,
   onDeactivated,
   onMounted,
+  provide,
   reactive,
   ref,
   watch,
@@ -936,6 +937,8 @@ function openLawyerAssign(): void {
   if (!command) return;
   openCommand(command);
 }
+// 让费用管理里的结算卡片能直接发起指派，不必让运营自己找按钮。
+provide<(() => void) | null>('case:open-lawyer-assign', openLawyerAssign);
 function openUpload(): void {
   const stage = item.value?.stage;
   const uploadCommands: Partial<Record<CaseDetail['stage'], string>> = {
