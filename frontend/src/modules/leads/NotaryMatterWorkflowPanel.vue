@@ -571,15 +571,14 @@ async function submitReturnArchive(): Promise<void> {
     return;
   }
   if (type === 'RECEIVED_RETURN_REFUND' || type === 'NOT_SHIPPED_REFUND_ONLY') {
-    const parsed = readReturnAmount(
-      '退款',
-      'KNOWN',
-      refundAmount.value,
-      refundPartyKind.value,
-      refundPartyName.value,
-    );
-    if (!parsed) return;
-    refund = parsed;
+    // 样品费退款已在卡片上单独登记，归档不再重复填写，直接带入已退合计。
+    const refunded = current.fees.sampleRefund;
+    const amount =
+      refunded.state === 'KNOWN' && refunded.amount ? refunded.amount : '0.00';
+    refund =
+      Number(amount) > 0
+        ? { state: 'KNOWN', amount, partyKind: 'MERCHANT' }
+        : { state: 'KNOWN', amount: '0.00' };
   }
   if (type === 'RECEIVED_RETURN_REFUND') {
     const parsed = readReturnAmount(
@@ -1517,54 +1516,6 @@ onBeforeUnmount(() => {
               required
               :disabled="submittingReturnArchive || locked"
           /></label>
-        </template>
-        <template
-          v-if="
-            archiveType === 'RECEIVED_RETURN_REFUND' ||
-            archiveType === 'NOT_SHIPPED_REFUND_ONLY'
-          "
-        >
-          <fieldset data-test="return-refund-fields">
-            <legend>样品费退款（元）<RequiredFieldMark /></legend>
-            <label
-              >退款金额（元）
-              <input
-                v-model="refundAmount"
-                data-test="return-refund-amount"
-                inputmode="decimal"
-                placeholder="0.00"
-                required
-                :disabled="submittingReturnArchive || locked"
-              />
-            </label>
-            <p>金额为 0.00 时无需选择收款方。</p>
-            <template v-if="Number(refundAmount) > 0">
-              <label
-                >退款收款方<RequiredFieldMark />
-                <select
-                  v-model="refundPartyKind"
-                  data-test="return-refund-party"
-                  required
-                  :disabled="submittingReturnArchive || locked"
-                >
-                  <option value="">请选择</option>
-                  <option value="CUSTOMER">客户企业</option>
-                  <option value="FIRM">我方</option>
-                  <option value="MERCHANT">商家／平台</option>
-                  <option value="OTHER">其他</option>
-                </select>
-              </label>
-              <label v-if="refundPartyKind === 'OTHER'"
-                >收款方名称<RequiredFieldMark />
-                <input
-                  v-model="refundPartyName"
-                  data-test="return-refund-party-name"
-                  required
-                  :disabled="submittingReturnArchive || locked"
-                />
-              </label>
-            </template>
-          </fieldset>
         </template>
         <fieldset
           v-if="archiveType === 'RECEIVED_RETURN_REFUND'"

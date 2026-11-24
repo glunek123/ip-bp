@@ -1455,7 +1455,7 @@ describe('NotaryMatterDetailPage', () => {
       .get('[data-test="return-archive-type"]')
       .setValue('RECEIVED_RETURN_REFUND');
     expect(wrapper.find('[data-test="return-refund-fields"]').exists()).toBe(
-      true,
+      false,
     );
     expect(wrapper.find('[data-test="return-freight-fields"]').exists()).toBe(
       true,
@@ -1465,7 +1465,7 @@ describe('NotaryMatterDetailPage', () => {
       .get('[data-test="return-archive-type"]')
       .setValue('NOT_SHIPPED_REFUND_ONLY');
     expect(wrapper.find('[data-test="return-refund-fields"]').exists()).toBe(
-      true,
+      false,
     );
     expect(wrapper.find('[data-test="return-freight-fields"]').exists()).toBe(
       false,
