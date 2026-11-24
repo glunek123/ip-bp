@@ -49,6 +49,8 @@ watch(
     error.value = '';
     void load();
   },
+  // 组件可能以 open=true 首次挂载（列表页按需渲染），需要立即加载。
+  { immediate: true },
 );
 
 async function submit(): Promise<void> {
