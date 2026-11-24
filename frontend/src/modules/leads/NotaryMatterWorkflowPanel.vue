@@ -1401,8 +1401,13 @@ onBeforeUnmount(() => {
         {{ matter.stage === 'WAITING_RETURN' ? '退货处理' : '提前归档' }}
       </h2>
       <p>店铺名：{{ matter.sourceSummary.shopName }}</p>
-      <p>
+      <p data-test="workflow-sample-fee">
         样品费：{{ sampleFeeLabel }}
+        <span
+          v-if="matter.fees.sampleRefund.state === 'KNOWN'"
+          data-test="workflow-sample-refund-total"
+          >（已退 {{ matter.fees.sampleRefund.amount }} 元）</span
+        >
         <button
           v-if="matter.stage === 'WAITING_RETURN'"
           type="button"
