@@ -11,6 +11,7 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import {
   isLawyerAssignableStage,
+  isLawyerAssignmentVersionFrozen,
   isLawyerBackfillStage,
 } from './case-lawyer-assignable';
 import { DatabaseService } from '../../database/database.service';
@@ -383,17 +384,25 @@ export class CaseLawyerAssignmentService {
               }
             } else {
               const now = new Date();
-              const changed = await tx.case.updateMany({
-                where: {
-                  id: caseId,
-                  departmentId: actor.departmentId,
-                  // 补指派允许在任意阶段发生，阶段本身不变；版本仍必须精确。
-                  stage: record.stage,
-                  version: request.expectedVersion,
-                },
-                data: { version: { increment: 1 } },
-              });
-              if (changed.count !== 1) throw this.versionConflict();
+              if (isLawyerAssignmentVersionFrozen(record.stage)) {
+                // 待归档/已归档：版本被终态守卫冻结，递增必然 23514。
+                // 行已在事务内 FOR UPDATE 锁定，这里只做版本精确校验。
+                if (record.version !== request.expectedVersion)
+                  throw this.versionConflict();
+              } else {
+                const changed = await tx.case.updateMany({
+                  where: {
+                    id: caseId,
+                    departmentId: actor.departmentId,
+                    // 补指派允许在任意阶段发生，阶段本身不变；版本仍必须精确。
+                    stage: record.stage,
+                    version: request.expectedVersion,
+                  },
+                  data: { version: { increment: 1 } },
+                });
+                if (changed.count !== 1) throw this.versionConflict();
+                version += 1;
+              }
               const created = await tx.caseLawyerAssignment.create({
                 data: {
                   caseId,
@@ -410,7 +419,6 @@ export class CaseLawyerAssignmentService {
                 lawyerAccountId: target.accountUserId,
                 assignedAt: now.toISOString(),
               };
-              version += 1;
               outcome = 'ASSIGNED';
               await tx.auditEvent.create({
                 data: {

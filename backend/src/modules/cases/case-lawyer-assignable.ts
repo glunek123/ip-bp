@@ -47,3 +47,18 @@ export function isLawyerBackfillStage(
 ): stage is LawyerBackfillStage {
   return (LAWYER_BACKFILL_STAGES as readonly string[]).includes(stage);
 }
+
+/**
+ * 这些阶段的案件版本已被结案/归档的终态守卫冻结：任何递增都会触发 23514。
+ * 补指派只新增承办关系，不改案件业务字段，因此这些阶段跳过版本递增。
+ */
+export const LAWYER_ASSIGNMENT_VERSION_FROZEN_STAGES = [
+  'WAITING_ARCHIVE',
+  'ARCHIVED',
+] as const;
+
+export function isLawyerAssignmentVersionFrozen(stage: string): boolean {
+  return (LAWYER_ASSIGNMENT_VERSION_FROZEN_STAGES as readonly string[]).includes(
+    stage,
+  );
+}

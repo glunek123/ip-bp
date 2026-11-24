@@ -229,20 +229,20 @@ describe('CaseLawyerAssignmentService', () => {
     });
     expect(result).toMatchObject({
       stage: 'WAITING_ARCHIVE',
-      version: 8,
+      version: 7,
       outcome: 'ASSIGNED',
       previousAssignment: null,
       currentAssignment: { lawyerAccountId, lawyerProfileId },
     });
-    expect(f.tx.case.updateMany).toHaveBeenCalledWith({
-      where: {
-        id: caseId,
-        departmentId: actor.departmentId,
-        stage: 'WAITING_ARCHIVE',
-        version: 7,
-      },
-      data: { version: { increment: 1 } },
-    });
+    // 终态阶段版本被结案/归档守卫冻结，补指派不得递增版本，否则 23514。
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          details: expect.objectContaining({ fromVersion: 7, toVersion: 7 }),
+        }),
+      }),
+    );
     expect(f.tx.caseLawyerAssignment.create).toHaveBeenCalledTimes(1);
   });
 
