@@ -1193,8 +1193,9 @@ watch(
           <p>取证日期：{{ matter.evidence.evidenceAt }}</p>
           <p>
             样品费用：{{
-              matter.evidence.sampleFeeState === 'PENDING'
-                ? '待定'
+              matter.evidence.sampleFeeState === 'PENDING' ||
+              !matter.evidence.sampleFeeAmount
+                ? '无'
                 : `${matter.evidence.sampleFeeAmount} 元`
             }}
           </p>

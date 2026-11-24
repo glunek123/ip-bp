@@ -35,6 +35,13 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ failed: [message: string] }>();
 const matter = computed(() => props.detail);
+// 样品费三态：未登记为「无」，登记为 0 就显示 0.00 元，其余按金额显示。
+const sampleFeeLabel = computed(() => {
+  const evidence = matter.value.evidence;
+  if (evidence?.sampleFeeState !== 'KNOWN' || !evidence.sampleFeeAmount)
+    return '无';
+  return `${evidence.sampleFeeAmount} 元`;
+});
 let contextGeneration = 0;
 let openingPostController: AbortController | undefined;
 const downloadError = ref('');
@@ -1391,13 +1398,7 @@ onBeforeUnmount(() => {
         {{ matter.stage === 'WAITING_RETURN' ? '退货处理' : '提前归档' }}
       </h2>
       <p>店铺名：{{ matter.sourceSummary.shopName }}</p>
-      <p>
-        样品费：{{
-          matter.evidence?.sampleFeeState === 'KNOWN'
-            ? `${matter.evidence.sampleFeeAmount} 元`
-            : '待定'
-        }}
-      </p>
+      <p>样品费：{{ sampleFeeLabel }}</p>
       <form @submit.prevent="submitReturnArchive">
         <label
           v-if="matter.stage === 'WAITING_RETURN'"

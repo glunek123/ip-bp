@@ -102,7 +102,7 @@ describe('NotaryReturnArchiveBatchPanel', () => {
     expect(api.get).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain('NT-matter-1');
     expect(wrapper.text()).toContain('样品费事实：10.00 元');
-    expect(wrapper.text()).toContain('样品费事实：待定');
+    expect(wrapper.text()).toContain('样品费事实：无');
     expect(wrapper.findAll('input[type="number"]')).toHaveLength(0);
     expect(
       wrapper.get('[data-test="batch-submit"]').attributes('disabled'),

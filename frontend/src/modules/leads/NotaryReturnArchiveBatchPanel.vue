@@ -465,10 +465,11 @@ onBeforeUnmount(() => {
       >
         <legend>{{ draft.businessNo }}</legend>
         <p>
-          样品费事实：<span v-if="draft.sampleFeeState === 'KNOWN'"
+          样品费事实：<span
+            v-if="draft.sampleFeeState === 'KNOWN' && draft.sampleFeeAmount"
             >{{ draft.sampleFeeAmount }} 元</span
           >
-          <span v-else>待定</span>（仅供核对）
+          <span v-else>无</span>（仅供核对）
         </p>
         <label
           >公证费 <span aria-hidden="true">*</span
