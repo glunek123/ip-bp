@@ -305,8 +305,16 @@ function diagnosticFields(exception: unknown) {
     databaseErrorCode:
       safeCode(meta.code) ?? safeCode(adapterCause.originalCode),
     // 数据库拒绝写入时，只有原始 message 带得出约束名与表名。
-    databaseMessage:
-      cause instanceof Error ? cause.message.slice(0, 400) : undefined,
+    databaseMessage: (() => {
+      const fromCause =
+        cause instanceof Error
+          ? cause.message
+          : typeof asRecord(cause).message === 'string'
+            ? (asRecord(cause).message as string)
+            : '';
+      const text = fromCause || String(exception);
+      return text.slice(0, 400);
+    })(),
     // CHECK/NOT NULL 冲突时，约束名是定位问题的唯一线索，必须留痕。
     databaseConstraint:
       safeConstraint(asRecord(adapterCause).constraint) ??
