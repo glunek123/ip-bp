@@ -1453,54 +1453,60 @@ onBeforeUnmount(() => {
           >
             <option value="">请选择</option>
             <option
-              v-if="
-                matter.stage !== 'WAITING_RETURN' || returnRequired === 'NO'
+              :disabled="
+                matter.stage === 'WAITING_RETURN' && returnRequired !== 'NO'
               "
               value="LINK_REMOVED"
             >
               链接下架
             </option>
             <option
-              v-if="
-                matter.stage !== 'WAITING_RETURN' || returnRequired === 'NO'
+              :disabled="
+                matter.stage === 'WAITING_RETURN' && returnRequired !== 'NO'
               "
               value="NO_INFRINGEMENT_INFORMATION"
             >
               无侵权信息
             </option>
             <option
-              v-if="
-                matter.stage !== 'WAITING_RETURN' || returnRequired === 'NO'
+              :disabled="
+                matter.stage === 'WAITING_RETURN' && returnRequired !== 'NO'
               "
               value="NO_EVIDENCE"
             >
               不取证
             </option>
             <option
-              v-if="
-                matter.stage === 'WAITING_RETURN' && returnRequired === 'NO'
+              :disabled="
+                matter.stage !== 'WAITING_RETURN' || returnRequired !== 'NO'
               "
               value="NOT_SHIPPED_REFUND_ONLY"
             >
               不发货-仅退款
             </option>
             <option
-              v-if="
-                matter.stage === 'WAITING_RETURN' && returnRequired === 'NO'
+              :disabled="
+                matter.stage !== 'WAITING_RETURN' || returnRequired !== 'NO'
               "
               value="RECEIVED_KEEP"
             >
               收到货-不退货
             </option>
             <option
-              v-if="
-                matter.stage === 'WAITING_RETURN' && returnRequired === 'YES'
+              :disabled="
+                matter.stage !== 'WAITING_RETURN' || returnRequired !== 'YES'
               "
               value="RECEIVED_RETURN_REFUND"
             >
               收到货-退货退款
             </option>
           </select>
+          <small
+            v-if="matter.stage === 'WAITING_RETURN' && !returnRequired"
+            class="field-hint"
+            data-test="archive-type-hint"
+            >请先选择「是否需要退货」，可选的归档类型会随之变化。</small
+          >
         </label>
         <template v-if="matter.stage !== 'WAITING_RETURN'">
           <label
