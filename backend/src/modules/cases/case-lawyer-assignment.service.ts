@@ -473,6 +473,14 @@ export class CaseLawyerAssignmentService {
           throw this.versionConflict();
         }
         if (this.isUnique(error)) throw this.idempotencyConflict();
+        // 历史案件的终态事实不完整时，数据库守卫会拒绝递增版本（23514）。
+        // 这是确定失败，必须给明确提示，不能让前端当成「结果未知」去重试。
+        if (this.isTerminalGuard(error))
+          throw new ConflictException({
+            code: 'CASE_TERMINAL_STATE_BLOCKED',
+            message:
+              '该案件的结案或归档记录不完整，暂不能补指派。请联系管理员核实该案归档信息后再试。',
+          });
         throw error;
       }
     }
@@ -748,6 +756,24 @@ export class CaseLawyerAssignmentService {
       typeof error === 'object' &&
       ((error as { code?: unknown }).code === 'P2002' ||
         this.isUnique((error as { cause?: unknown }).cause))
+    );
+  }
+  private isTerminalGuard(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const value = error as {
+      code?: unknown;
+      cause?: unknown;
+      meta?: {
+        driverAdapterError?: {
+          cause?: { originalCode?: unknown; sqlState?: unknown };
+        };
+      };
+    };
+    return (
+      value.code === '23514' ||
+      value.meta?.driverAdapterError?.cause?.originalCode === '23514' ||
+      value.meta?.driverAdapterError?.cause?.sqlState === '23514' ||
+      this.isTerminalGuard(value.cause)
     );
   }
   private isSerialization(error: unknown): boolean {
