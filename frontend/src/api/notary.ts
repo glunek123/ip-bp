@@ -747,10 +747,11 @@ function isNotaryDisplay(
         (certificate.disclosureInfo === undefined ||
           typeof certificate.disclosureInfo === 'string'))) &&
     isRecord(fees) &&
-    exactKeys(fees, ['notary', 'investigation', 'sample']) &&
+    exactKeys(fees, ['notary', 'investigation', 'sample', 'sampleRefund']) &&
     isDisplayFee(fees.notary) &&
     isDisplayFee(fees.investigation) &&
     isDisplayFee(fees.sample) &&
+    isDisplayFee(fees.sampleRefund) &&
     (linked === null ||
       (isRecord(linked) &&
         exactKeys(linked, ['id', 'businessNo', 'stage']) &&
