@@ -1483,7 +1483,10 @@ async function logout(): Promise<void> {
         <template
           v-if="
             !isClient &&
-            (canViewPeople || canViewNotaryOffices || canManageLawyerAccounts)
+            (canViewPeople ||
+              canViewNotaryOffices ||
+              canManageLawyerAccounts ||
+              canViewLawyerLibrary)
           "
         >
           <p class="app-nav__label app-nav__label--spaced">系统</p>
