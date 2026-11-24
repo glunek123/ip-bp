@@ -385,7 +385,9 @@ async function submit() {
       } else error.value = '执行结束登记未完成，请检查信息后重试。';
     }
   } finally {
-    if (current(context)) submitting.value = false;
+    // 上下文一旦变化，current(context) 为 false；若因此跳过重置，按钮会永远
+    // 停在 loading，整张卡片点不动。这里无条件复位，旧上下文的重置无害。
+    submitting.value = false;
   }
 }
 async function download(file: CaseFile) {

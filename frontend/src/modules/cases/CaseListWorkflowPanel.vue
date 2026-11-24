@@ -509,9 +509,9 @@ function sessionActive() {
   return mounted && props.session.isCurrent();
 }
 try {
-  const raw = globalThis.sessionStorage.getItem(storageKey);
-  if (raw !== null) {
-    const parsed: unknown = JSON.parse(raw);
+  const storedRaw = globalThis.sessionStorage.getItem(storageKey);
+  if (storedRaw !== null) {
+    const parsed: unknown = JSON.parse(storedRaw);
     const stored = decodeCaseListRequest(parsed);
     if (
       !stored ||
@@ -920,6 +920,21 @@ function clearCommandSession(stored: StoredRequest) {
 async function send(request: CaseListRequest) {
   await submit(request);
 }
+/** 恢复记录损坏时给一条明确出路：备份原记录后清除，允许重新填写。 */
+function discardBrokenRecovery(): void {
+  try {
+    const raw = globalThis.sessionStorage.getItem(storageKey);
+    if (raw !== null)
+      globalThis.sessionStorage.setItem(`${storageKey}:broken`, raw);
+    globalThis.sessionStorage.removeItem(storageKey);
+  } catch {
+    error.value = '无法清除恢复记录，请保留当前会话并联系管理员核查。';
+    return;
+  }
+  storageBlocked.value = false;
+  error.value = '已清除损坏的恢复记录，可重新填写。';
+}
+
 function discardOriginal() {
   const stored = pending.value;
   if (!stored) return;
@@ -1390,6 +1405,14 @@ async function complaint() {
 <template>
   <section class="workflow-panel" data-test="case-list-workflow">
     <p v-if="error" role="alert">{{ error }}</p>
+    <button
+      v-if="storageBlocked"
+      type="button"
+      data-test="discard-broken-recovery"
+      @click="discardBrokenRecovery"
+    >
+      清除损坏的恢复记录并重新填写
+    </button>
     <button
       v-if="error && !storageBlocked"
       type="button"
