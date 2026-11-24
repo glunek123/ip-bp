@@ -149,6 +149,23 @@ export class RoleTemplateService {
               });
             }
           }
+          // 律师库读写是运营角色的基础能力：复制模板时补齐，避免新模板漏配。
+          const effectiveGrants = [
+            ...grants,
+            ...[
+              PermissionAction.LAWYER_PROFILE_READ,
+              PermissionAction.LAWYER_PROFILE_MANAGE,
+            ].flatMap((action) =>
+              grants.some((grant) => grant.action === action) ||
+              !actorGrants.some(
+                (actorGrant) =>
+                  actorGrant.action === action &&
+                  actorGrant.scope === PermissionScope.DEPARTMENT,
+              )
+                ? []
+                : [{ action, scope: PermissionScope.DEPARTMENT }],
+            ),
+          ];
 
           await this.organization.lockRoleTemplate(
             transaction,
@@ -176,7 +193,7 @@ export class RoleTemplateService {
             select: { id: true, name: true, version: true },
           });
           await transaction.roleGrant.createMany({
-            data: grants.map((grant) => ({
+            data: effectiveGrants.map((grant) => ({
               roleTemplateId: role.id,
               ...grant,
             })),

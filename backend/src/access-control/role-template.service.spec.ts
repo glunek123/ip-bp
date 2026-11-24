@@ -195,6 +195,31 @@ describe('RoleTemplateService copy', () => {
     });
   });
 
+  it('adds the lawyer library grants when copying a template', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        { action: 'ROLE_MANAGE', scope: 'DEPARTMENT', teamId: null },
+        { action: 'CUSTOMER_READ', scope: 'DEPARTMENT', teamId: null },
+        { action: 'LAWYER_PROFILE_READ', scope: 'DEPARTMENT', teamId: null },
+        { action: 'LAWYER_PROFILE_MANAGE', scope: 'DEPARTMENT', teamId: null },
+      ],
+    });
+
+    await expect(fixture.service.copy(actor, input)).resolves.toBeDefined();
+
+    const calls = fixture.transaction.roleGrant.createMany.mock.calls as Array<
+      [{ data: Array<{ action: string }> }]
+    >;
+    const actions = calls[0]![0].data.map((row) => row.action);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'CUSTOMER_READ',
+        'LAWYER_PROFILE_READ',
+        'LAWYER_PROFILE_MANAGE',
+      ]),
+    );
+  });
+
   it('creates the complete copied template and audit atomically', async () => {
     const fixture = createFixture();
 

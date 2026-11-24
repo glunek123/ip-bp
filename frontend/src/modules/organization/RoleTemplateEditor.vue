@@ -109,6 +109,18 @@ for (const item of props.permissionCatalog) {
   scopes[item.action] = existing?.scope ?? item.scopes[0] ?? 'SELF';
 }
 
+// 律师库读写是运营角色的基础能力，新建（复制）模板时默认勾选。
+if (props.mode === 'copy') {
+  for (const action of ['LAWYER_PROFILE_READ', 'LAWYER_PROFILE_MANAGE']) {
+    const item = props.permissionCatalog.find(
+      (entry) => entry.action === action,
+    );
+    if (!item?.scopes.includes('DEPARTMENT')) continue;
+    selected[action] = true;
+    scopes[action] = 'DEPARTMENT';
+  }
+}
+
 async function loadImpact(): Promise<void> {
   if (props.mode !== 'edit') return;
   impactState.value = 'loading';
