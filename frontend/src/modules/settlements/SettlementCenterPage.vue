@@ -760,14 +760,17 @@ async function cancelBill(): Promise<void> {
                     />
                   </td>
                   <td>{{ row.launchDate }}</td>
-                  <td>
-                    {{ row.payeeName ?? '—'
-                    }}{{ row.lawFirm ? ` / ${row.lawFirm}` : ''
-                    }}<span
-                      v-if="row.unassignedLawyer"
-                      class="field-help"
-                      data-test="launch-pending-collection"
-                      >（待归集）</span
+                  <td data-test="launch-payee">
+                    <template v-if="row.side === 'CUSTOMER'">客户</template>
+                    <template v-else
+                      >{{ row.payeeName ?? '—'
+                      }}{{ row.lawFirm ? ` / ${row.lawFirm}` : ''
+                      }}<span
+                        v-if="row.unassignedLawyer"
+                        class="field-help"
+                        data-test="launch-pending-collection"
+                        >（待归集）</span
+                      ></template
                     >
                   </td>
                   <td>
