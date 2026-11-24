@@ -147,6 +147,15 @@ export function saveLawyerAssignmentBatch(
     return false;
   }
 }
+/** 本地记录已无法核对时按身份直接清除，避免列表长期停在只读提示。 */
+export function discardLawyerAssignmentBatch(identity: string): boolean {
+  try {
+    globalThis.localStorage.removeItem(key(identity));
+    return true;
+  } catch {
+    return false;
+  }
+}
 export function clearLawyerAssignmentBatch(
   batch: LawyerAssignmentBatch,
 ): boolean {

@@ -203,6 +203,15 @@ export function saveFilingBatch(batch: FilingBatch): boolean {
     return false;
   }
 }
+/** 本地记录已无法核对时按身份直接清除，避免列表长期停在只读提示。 */
+export function discardFilingBatch(identity: string): boolean {
+  try {
+    globalThis.localStorage.removeItem(storageKey(identity));
+    return true;
+  } catch {
+    return false;
+  }
+}
 export function clearFilingBatch(batch: FilingBatch): boolean {
   try {
     const previous = readFilingBatchState(batch.identity);

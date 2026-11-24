@@ -68,11 +68,15 @@ import CaseExecutionBatchPanel from './CaseExecutionBatchPanel.vue';
 import CaseLawyerAssignmentBatchPanel from './CaseLawyerAssignmentBatchPanel.vue';
 import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
 import {
+  discardFilingBatch,
   filingActorIdentity,
   readFilingBatchState,
 } from './case-filing-batch-recovery';
 import type { FilingBatchRead } from './case-filing-batch-recovery';
-import { readLawyerAssignmentBatch } from './case-lawyer-assignment-batch-recovery';
+import {
+  discardLawyerAssignmentBatch,
+  readLawyerAssignmentBatch,
+} from './case-lawyer-assignment-batch-recovery';
 import type { LawyerAssignmentBatchRead } from './case-lawyer-assignment-batch-recovery';
 import {
   caseListQueryKey,
@@ -407,6 +411,16 @@ const assignmentBatchNeedsRecovery = computed(() =>
         (item) => !['ASSIGNED', 'NO_CHANGE', 'SKIPPED'].includes(item.state),
       ),
 );
+function discardBlockedBatchRecovery(panel: 'filing' | 'assignment'): void {
+  const actor =
+    auth.session?.principalType === 'INTERNAL'
+      ? filingActorIdentity(identity.value)
+      : null;
+  if (!actor) return;
+  if (panel === 'filing') discardFilingBatch(actor);
+  else discardLawyerAssignmentBatch(actor);
+  refreshCaseBatchRecovery();
+}
 function openBatchPanel(panel: CaseListBatchPanel, restoring = false): void {
   if (activeBatchPanel.value || !identity.value) return;
   if (restoring) batchPanelCases.value = [];
@@ -2126,6 +2140,13 @@ onBeforeUnmount(() => {
           @click="openFilingBatchRecovery"
           >恢复原立案批次</ElButton
         >
+        <ElButton
+          v-if="filingRecovery.state === 'blocked'"
+          text
+          data-test="discard-filing-batch"
+          @click="discardBlockedBatchRecovery('filing')"
+          >清除无法核对的残留记录</ElButton
+        >
         <p
           v-if="assignmentBatchNeedsRecovery"
           data-test="assignment-batch-recovery-status"
@@ -2142,6 +2163,13 @@ onBeforeUnmount(() => {
           data-test="resume-assignment-batch"
           @click="openAssignmentBatchRecovery"
           >恢复原律师分配批次</ElButton
+        >
+        <ElButton
+          v-if="assignmentRecovery.state === 'blocked'"
+          text
+          data-test="discard-assignment-batch"
+          @click="discardBlockedBatchRecovery('assignment')"
+          >清除无法核对的残留记录</ElButton
         >
       </section>
       <section
