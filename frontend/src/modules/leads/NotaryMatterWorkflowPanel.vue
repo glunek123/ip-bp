@@ -33,7 +33,10 @@ const props = defineProps<{
   session: ListWorkflowSession;
   disabled?: boolean;
 }>();
-const emit = defineEmits<{ failed: [message: string] }>();
+const emit = defineEmits<{
+  failed: [message: string];
+  'open-sample-refund': [];
+}>();
 const matter = computed(() => props.detail);
 // 样品费三态：未登记为「无」，登记为 0 就显示 0.00 元，其余按金额显示。
 const sampleFeeLabel = computed(() => {
@@ -1398,7 +1401,17 @@ onBeforeUnmount(() => {
         {{ matter.stage === 'WAITING_RETURN' ? '退货处理' : '提前归档' }}
       </h2>
       <p>店铺名：{{ matter.sourceSummary.shopName }}</p>
-      <p>样品费：{{ sampleFeeLabel }}</p>
+      <p>
+        样品费：{{ sampleFeeLabel }}
+        <button
+          v-if="matter.stage === 'WAITING_RETURN'"
+          type="button"
+          class="link-button"
+          data-test="workflow-open-sample-refund"
+          @click="emit('open-sample-refund')"
+          >登记样品费退款</button
+        >
+      </p>
       <form @submit.prevent="submitReturnArchive">
         <label
           v-if="matter.stage === 'WAITING_RETURN'"

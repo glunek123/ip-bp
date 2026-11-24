@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import {
   RouterLink,
   useRoute,
@@ -245,6 +245,15 @@ async function loadSampleRefunds(id: string): Promise<void> {
   } catch {
     sampleRefund.value = null;
   }
+}
+
+function openSampleRefundFromWorkflow(): void {
+  if (sampleRefund.value?.canRefund) refundOpen.value = true;
+  void nextTick(() =>
+    document
+      .querySelector('[data-test="notary-fee-summary"]')
+      ?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }),
+  );
 }
 
 async function submitSampleRefund(): Promise<void> {
@@ -1151,6 +1160,7 @@ watch(
             correctionRefreshing ||
             correctionRefreshError
           "
+          @open-sample-refund="openSampleRefundFromWorkflow"
         />
         <div id="notary-record-edit" tabindex="-1">
           <NotaryRecordCorrectionPanel
