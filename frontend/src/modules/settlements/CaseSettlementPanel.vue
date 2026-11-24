@@ -135,7 +135,8 @@ const openLawyerAssign = inject<(() => void) | null>(
 );
 // 金额待定时按钮是灰的，直接给一个能展开并定位到条件表单的入口。
 const operationsRef = ref<HTMLDetailsElement | null>(null);
-function openTerms(): void {
+function openTerms(target: SettlementSide): void {
+  side.value = target;
   const element = operationsRef.value;
   if (!element) return;
   element.open = true;
@@ -576,7 +577,7 @@ async function launch(targetSide?: SettlementSide): Promise<void> {
               text
               size="small"
               data-test="settlement-open-terms"
-              @click="openTerms()"
+              @click="openTerms(summarySide)"
               >录入结算条件</ElButton
             >
           </p>
