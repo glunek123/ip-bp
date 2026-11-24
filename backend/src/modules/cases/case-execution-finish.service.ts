@@ -355,10 +355,29 @@ export class CaseExecutionFinishService {
           }
           throw error('conflict', 'VERSION_CONFLICT');
         }
+        if (this.isExternalTerminalMismatch(cause)) {
+          // 外部录入案件由阶段链触发器推导阶段：一旦存在执行结束行，就要求
+          // 案件进入「待归档」。而执行更新只登记字段、不推进阶段，两者冲突。
+          throw new ConflictException({
+            code: 'EXTERNAL_ENTRY_STAGE_CONFLICT',
+            message:
+              '该案件由外部录入，其阶段由录入链条自动推导；执行更新只登记字段不推进阶段，与链条校验冲突。请改用「结案」办理。',
+          });
+        }
         throw cause;
       }
     }
     throw error('conflict', 'VERSION_CONFLICT');
+  }
+
+  private isExternalTerminalMismatch(cause: unknown): boolean {
+    const message =
+      cause instanceof Error
+        ? cause.message
+        : typeof cause === 'object' && cause !== null
+          ? String((cause as { message?: unknown }).message ?? '')
+          : '';
+    return message.includes('execution external terminal mismatch');
   }
 
   private validate(input: FinishCaseExecutionDto): void {
