@@ -82,6 +82,11 @@ const stageLabels: Record<NotaryListStage, string> = {
 };
 const route = useRoute();
 const router = useRouter();
+// 抽屉里没有费用摘要，登记退款统一去详情页做。
+function openSampleRefundFromDrawer(matterId: string): void {
+  workflowOpen.value = false;
+  void router.push(`/notary-matters/${matterId}`);
+}
 const auth = useAuthStore();
 const identity = computed(
   () =>
@@ -2372,7 +2377,10 @@ onBeforeUnmount(() => {
         @success="load"
       >
         <template #default="{ detail, session }"
-          ><NotaryMatterWorkflowPanel :detail="detail" :session="session"
+          ><NotaryMatterWorkflowPanel
+            :detail="detail"
+            :session="session"
+            @open-sample-refund="openSampleRefundFromDrawer(detail.id)"
         /></template>
       </ListWorkflowDrawer>
     </main>

@@ -1458,59 +1458,46 @@ onBeforeUnmount(() => {
           >
             <option value="">请选择</option>
             <option
-              :disabled="
-                matter.stage === 'WAITING_RETURN' && returnRequired !== 'NO'
-              "
               value="LINK_REMOVED"
             >
               链接下架
             </option>
             <option
-              :disabled="
-                matter.stage === 'WAITING_RETURN' && returnRequired !== 'NO'
-              "
               value="NO_INFRINGEMENT_INFORMATION"
             >
               无侵权信息
             </option>
             <option
-              :disabled="
-                matter.stage === 'WAITING_RETURN' && returnRequired !== 'NO'
-              "
               value="NO_EVIDENCE"
             >
               不取证
             </option>
             <option
-              :disabled="
-                matter.stage !== 'WAITING_RETURN' || returnRequired !== 'NO'
-              "
               value="NOT_SHIPPED_REFUND_ONLY"
             >
               不发货-仅退款
             </option>
             <option
-              :disabled="
-                matter.stage !== 'WAITING_RETURN' || returnRequired !== 'NO'
-              "
               value="RECEIVED_KEEP"
             >
               收到货-不退货
             </option>
             <option
-              :disabled="
-                matter.stage !== 'WAITING_RETURN' || returnRequired !== 'YES'
-              "
               value="RECEIVED_RETURN_REFUND"
             >
               收到货-退货退款
             </option>
           </select>
           <small
-            v-if="matter.stage === 'WAITING_RETURN' && !returnRequired"
+            v-if="
+              matter.stage === 'WAITING_RETURN' &&
+              returnRequired &&
+              (returnRequired === 'YES') !==
+                (archiveType === 'RECEIVED_RETURN_REFUND')
+            "
             class="field-hint"
             data-test="archive-type-hint"
-            >请先选择「是否需要退货」，可选的归档类型会随之变化。</small
+            >归档类型与「是否需要退货」不一致时无法提交，请按实际情况选择。</small
           >
         </label>
         <template v-if="matter.stage !== 'WAITING_RETURN'">
