@@ -209,6 +209,53 @@ describe('RoleTemplateEditor', () => {
     ).toHaveProperty('checked', false);
     expect(api.copyRoleTemplate).not.toHaveBeenCalled();
   });
+  it('ticks the lawyer library grants by default when copying a template', async () => {
+    const catalog = [
+      ...permissionCatalog,
+      {
+        action: 'LAWYER_PROFILE_READ',
+        label: '查看律师库',
+        scopes: ['DEPARTMENT'],
+      },
+      {
+        action: 'LAWYER_PROFILE_MANAGE',
+        label: '管理律师库',
+        scopes: ['DEPARTMENT'],
+      },
+    ] as OrganizationPermissionCatalogItem[];
+    const wrapper = mount(RoleTemplateEditor, {
+      props: { mode: 'copy', role, permissionCatalog: catalog },
+    });
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="grant-LAWYER_PROFILE_READ"]').element,
+    ).toHaveProperty('checked', true);
+    expect(
+      wrapper.get('[data-test="scope-LAWYER_PROFILE_READ"]').element,
+    ).toHaveProperty('value', 'DEPARTMENT');
+    expect(
+      wrapper.get('[data-test="grant-LAWYER_PROFILE_MANAGE"]').element,
+    ).toHaveProperty('checked', true);
+  });
+
+  it('leaves the lawyer library grants untouched when editing', async () => {
+    const catalog = [
+      ...permissionCatalog,
+      {
+        action: 'LAWYER_PROFILE_READ',
+        label: '查看律师库',
+        scopes: ['DEPARTMENT'],
+      },
+    ] as OrganizationPermissionCatalogItem[];
+    const wrapper = mount(RoleTemplateEditor, {
+      props: { mode: 'edit', role, permissionCatalog: catalog },
+    });
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="grant-LAWYER_PROFILE_READ"]').element,
+    ).toHaveProperty('checked', false);
+  });
+
   it('selects the full catalog at each action’s widest legal scope without auto-saving', async () => {
     api.updateRoleTemplate.mockResolvedValue(role);
     const wrapper = mount(RoleTemplateEditor, {
