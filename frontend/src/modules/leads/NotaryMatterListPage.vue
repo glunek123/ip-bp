@@ -13,6 +13,7 @@ import type {
   ListWorkflowLoad,
 } from '../../app/list-workflow-context';
 import NotaryMatterWorkflowPanel from './NotaryMatterWorkflowPanel.vue';
+import SampleFeeRefundDialog from './SampleFeeRefundDialog.vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import ColumnSettingsShell from '../cases/ColumnSettingsShell.vue';
 import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
@@ -82,10 +83,15 @@ const stageLabels: Record<NotaryListStage, string> = {
 };
 const route = useRoute();
 const router = useRouter();
-// 抽屉里没有费用摘要，登记退款统一去详情页做。
+// 抽屉里没有费用摘要，用弹窗就地登记样品费退款。
+const refundDialogOpen = ref(false);
+const refundMatterId = ref('');
 function openSampleRefundFromDrawer(matterId: string): void {
-  workflowOpen.value = false;
-  void router.push(`/notary-matters/${matterId}`);
+  refundMatterId.value = matterId;
+  refundDialogOpen.value = true;
+}
+function onSampleRefundSaved(): void {
+  void load();
 }
 const auth = useAuthStore();
 const identity = computed(
@@ -2383,6 +2389,13 @@ onBeforeUnmount(() => {
             @open-sample-refund="openSampleRefundFromDrawer(detail.id)"
         /></template>
       </ListWorkflowDrawer>
+      <SampleFeeRefundDialog
+        v-if="refundMatterId"
+        :matter-id="refundMatterId"
+        :open="refundDialogOpen"
+        @close="refundDialogOpen = false"
+        @saved="onSampleRefundSaved"
+      />
     </main>
   </div>
 </template>
