@@ -23,6 +23,7 @@ import {
   appendNotarySampleFeeRefund,
   getNotaryMatter,
   getNotarySampleFeeRefunds,
+  normalizeRefundAmount,
   updateNotaryRoutineProfile,
   type RoutineBusinessEditInput,
   type NotaryMatterDetail,
@@ -254,6 +255,11 @@ function openSampleRefundFromWorkflow(): void {
       .querySelector('[data-test="notary-fee-summary"]')
       ?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }),
   );
+}
+
+function formatRefundAmount(): void {
+  const normalized = normalizeRefundAmount(refundAmount.value);
+  if (normalized !== null) refundAmount.value = normalized;
 }
 
 async function submitSampleRefund(): Promise<void> {
@@ -1035,6 +1041,7 @@ watch(
                 data-test="sample-refund-amount"
                 inputmode="decimal"
                 required
+                @blur="formatRefundAmount"
             /></label>
             <label
               >退款日期<input

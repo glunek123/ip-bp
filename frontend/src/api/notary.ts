@@ -2248,7 +2248,16 @@ export type NotarySampleFeeRefundSummary = {
   items: NotarySampleFeeRefundItem[];
 };
 
-const refundAmountPattern = /^\d{1,16}\.\d{2}$/u;
+/**
+ * 退款金额自动补足两位小数：10 → 10.00，10.5 → 10.50，10.00 原样。
+ * 只接受非负、最多两位小数的数字，避免把键盘输入误当金额。
+ */
+export function normalizeRefundAmount(raw: string): string | null {
+  const value = raw.trim().replaceAll(',', '');
+  if (!/^\d{1,16}(?:\.\d{1,2})?$/u.test(value)) return null;
+  const [integer, fraction = ''] = value.split('.');
+  return `${integer}.${fraction.padEnd(2, '0')}`;
+}
 
 /** 登记一笔样品费退款：仅待退货阶段可用，只增不改、不推进流程。 */
 export async function appendNotarySampleFeeRefund(
@@ -2261,8 +2270,8 @@ export async function appendNotarySampleFeeRefund(
   refundedOn: string;
   totalRefunded: string;
 }> {
-  const amount = input.amount.trim();
-  if (!refundAmountPattern.test(amount) || amount === '0.00')
+  const amount = normalizeRefundAmount(input.amount);
+  if (amount === null || amount === '0.00')
     throw new ApiError('请输入有效的退款金额', 400, 'VALIDATION_ERROR');
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(input.refundedOn))
     throw new ApiError('请填写有效的退款日期', 400, 'VALIDATION_ERROR');

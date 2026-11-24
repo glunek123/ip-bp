@@ -6,6 +6,7 @@ import { ApiError } from '../../api/http';
 import {
   appendNotarySampleFeeRefund,
   getNotarySampleFeeRefunds,
+  normalizeRefundAmount,
   type NotarySampleFeeRefundSummary,
 } from '../../api/notary';
 
@@ -52,6 +53,12 @@ watch(
   // 组件可能以 open=true 首次挂载（列表页按需渲染），需要立即加载。
   { immediate: true },
 );
+
+// 输入 10 / 10.5 时补齐成 10.00 / 10.50，避免格式导致的提交失败。
+function formatAmount(): void {
+  const normalized = normalizeRefundAmount(amount.value);
+  if (normalized !== null) amount.value = normalized;
+}
 
 async function submit(): Promise<void> {
   if (busy.value) return;
@@ -121,6 +128,7 @@ async function submit(): Promise<void> {
             inputmode="decimal"
             :disabled="formDisabled"
             required
+            @blur="formatAmount"
         /></label>
         <label
           >退款日期<input

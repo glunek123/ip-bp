@@ -25,6 +25,7 @@ import {
   correctNotaryOpeningSender,
   updateNotaryRoutineProfile,
 } from './notary';
+import { normalizeRefundAmount } from './notary';
 
 describe('notary ordinary edits', () => {
   it('sends a bounded profile update and checks the returned revision', async () => {
@@ -1515,5 +1516,17 @@ describe('notary API', () => {
         },
       },
     );
+  });
+});
+
+describe('sample fee refund amount', () => {
+  it('pads the amount to two decimals and rejects malformed input', () => {
+    expect(normalizeRefundAmount('10')).toBe('10.00');
+    expect(normalizeRefundAmount('10.5')).toBe('10.50');
+    expect(normalizeRefundAmount('10.00')).toBe('10.00');
+    expect(normalizeRefundAmount(' 1,000 ')).toBe('1000.00');
+    expect(normalizeRefundAmount('abc')).toBeNull();
+    expect(normalizeRefundAmount('1.234')).toBeNull();
+    expect(normalizeRefundAmount('-1')).toBeNull();
   });
 });
