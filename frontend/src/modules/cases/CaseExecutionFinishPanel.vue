@@ -378,10 +378,13 @@ async function submit() {
       reviewing.value = false;
       if (failure.status === 409) {
         conflict.value = true;
+        // 服务端已经给出可读原因（如外部录入链条冲突）时直接用，别用通用文案盖掉。
         error.value =
           failure.code === 'IDEMPOTENCY_CONFLICT'
             ? '原请求键存在冲突，请刷新核对，不要重复登记。'
-            : '案件状态或来源已变化，请刷新核对记录。';
+            : failure.message.trim().length > 0
+              ? failure.message
+              : '案件状态或来源已变化，请刷新核对记录。';
         emit('refresh');
       } else error.value = '执行结束登记未完成，请检查信息后重试。';
     }
