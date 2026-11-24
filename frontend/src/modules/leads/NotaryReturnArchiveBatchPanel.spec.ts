@@ -39,7 +39,13 @@ const detail = (
     sampleFeeState: fee ? 'KNOWN' : 'PENDING',
     sampleFeeAmount: fee,
   },
-  fees: { notary: { state: 'KNOWN', amount: '10.00' } },
+  fees: {
+    notary: { state: 'KNOWN', amount: '10.00' },
+    sample: fee
+      ? { state: 'KNOWN', amount: fee }
+      : { state: 'UNRECORDED', amount: null },
+    sampleRefund: { state: 'UNRECORDED', amount: null },
+  },
   issuanceDecision: { decision: 'NO_ISSUE' },
   businessNo: `NT-${id}`,
 });

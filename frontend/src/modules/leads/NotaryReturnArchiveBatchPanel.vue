@@ -266,12 +266,15 @@ async function loadDetails(): Promise<void> {
       businessNo: matter.businessNo,
       stage: matter.stage,
       version: matter.version,
-      sampleFeeState: matter.evidence?.sampleFeeState ?? 'PENDING',
-      sampleFeeAmount: matter.evidence?.sampleFeeAmount ?? null,
+      // 事实行按净值展示（已扣退款）。
+      sampleFeeState:
+        matter.fees?.sample?.state === 'KNOWN' ? 'KNOWN' : 'PENDING',
+      sampleFeeAmount: matter.fees?.sample?.amount ?? null,
       archiveType: '',
       archiveDate: new Date().toLocaleDateString('en-CA'),
       notaryFeeAmount:
         matter.fees.notary.state === 'KNOWN' ? matter.fees.notary.amount : '',
+      // 归档输入的样品费沿用前序（取证）登记值，事实行才显示净值。
       sampleFeeAmountDraft:
         matter.evidence?.sampleFeeState === 'KNOWN'
           ? (matter.evidence.sampleFeeAmount ?? '')

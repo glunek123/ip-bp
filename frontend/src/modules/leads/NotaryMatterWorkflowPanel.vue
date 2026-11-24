@@ -38,12 +38,12 @@ const emit = defineEmits<{
   'open-sample-refund': [];
 }>();
 const matter = computed(() => props.detail);
-// 样品费三态：未登记为「无」，登记为 0 就显示 0.00 元，其余按金额显示。
+// 样品费按净值显示（取证金额 − 已退）：未登记为「无」，0 显示 0.00 元。
 const sampleFeeLabel = computed(() => {
-  const evidence = matter.value.evidence;
-  if (evidence?.sampleFeeState !== 'KNOWN' || !evidence.sampleFeeAmount)
+  const fee = matter.value.fees?.sample;
+  if (!fee || fee.state !== 'KNOWN' || fee.amount === null || fee.amount === '')
     return '无';
-  return `${evidence.sampleFeeAmount} 元`;
+  return `${fee.amount} 元`;
 });
 let contextGeneration = 0;
 let openingPostController: AbortController | undefined;
