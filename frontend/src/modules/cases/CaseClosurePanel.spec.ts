@@ -253,7 +253,8 @@ describe('injected closure panel', () => {
       expect((control(wrapper, 'date').element as HTMLInputElement).value).toBe(
         '',
       );
-      expect(exists(wrapper, 'amount')).toBe(false);
+      // 结案额输入始终可见，留空即待定。
+      expect(exists(wrapper, 'amount')).toBe(true);
       await submit(wrapper);
       expect(api.recordClosure).toHaveBeenCalledTimes(1);
       expect(api.recordClosure.mock.calls[0]).toEqual([
@@ -298,8 +299,8 @@ describe('injected closure panel', () => {
   it('preserves a real zero, business date and raw note without silently trimming', async () => {
     const wrapper = panel();
     await flushPromises();
-    await control(wrapper, 'amount-state').setValue('KNOWN');
-    expect(disabled(wrapper)).toBe(true);
+    // 留空金额即待定，默认即可提交。
+    expect(disabled(wrapper)).toBe(false);
     await control(wrapper, 'amount').setValue('0.00');
     await control(wrapper, 'date').setValue('2026-10-12');
     await control(wrapper, 'note').setValue(' 已核实 ');
@@ -312,11 +313,10 @@ describe('injected closure panel', () => {
     });
     wrapper.unmount();
   });
-  it.each(['-1', '1.234', '100000000000000', '1e3', ' ', 'NaN'])(
+  it.each(['-1', '1.234', '100000000000000', '1e3', 'NaN'])(
     'rejects invalid known amount %s',
     async (amount) => {
       const wrapper = panel();
-      await control(wrapper, 'amount-state').setValue('KNOWN');
       await control(wrapper, 'amount').setValue(amount);
       expect(disabled(wrapper)).toBe(true);
       await submit(wrapper);
@@ -324,13 +324,13 @@ describe('injected closure panel', () => {
       wrapper.unmount();
     },
   );
-  it('clears a previously known draft amount to null when state becomes pending', async () => {
+  it('clears a draft amount back to pending when the field is emptied', async () => {
     const wrapper = panel();
-    await control(wrapper, 'amount-state').setValue('KNOWN');
     await control(wrapper, 'amount').setValue('23.40');
-    await control(wrapper, 'amount-state').setValue('PENDING');
+    await control(wrapper, 'amount').setValue('');
     await submit(wrapper);
     expect(api.recordClosure.mock.calls[0]?.[1].closeAmt).toBeNull();
+    expect(api.recordClosure.mock.calls[0]?.[1].closeAmountState).toBe('PENDING');
     wrapper.unmount();
   });
   it('rejects future dates and whitespace-only notes, but adds no earlier-date gate', async () => {

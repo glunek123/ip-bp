@@ -346,7 +346,8 @@ describe('real CA-016 closure detail integration', () => {
         'value',
         '',
       );
-      expect(wrapper.find('[data-test="closure-amount"]').exists()).toBe(false);
+      // 结案额输入始终可见，留空即待定。
+      expect(wrapper.find('[data-test="closure-amount"]').exists()).toBe(true);
       const changed = vi.fn();
       window.addEventListener(workflowChangedEvent, changed);
       try {
@@ -433,7 +434,6 @@ describe('real CA-016 closure detail integration', () => {
     const { wrapper } = await open('internal');
     expect(wrapper.findAll('[data-test="closure-choice"]')).toHaveLength(1);
     await wrapper.get('[data-test="closure-choice"]').setValue(true);
-    await wrapper.get('[data-test="closure-amount-state"]').setValue('KNOWN');
     await wrapper.get('[data-test="closure-amount"]').setValue('0');
     const input: RecordCaseClosureInput = {
       expectedVersion: 19,

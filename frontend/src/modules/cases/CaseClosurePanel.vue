@@ -109,7 +109,6 @@ const {
 });
 
 const closeAt = ref('');
-const amountState = ref<'KNOWN' | 'PENDING'>('PENDING');
 const amount = ref('');
 const note = ref('');
 const correctionReason = ref('');
@@ -170,7 +169,6 @@ function publish(request: PendingRequest | null) {
 function clearDraft() {
   selectionRevision += 1;
   closeAt.value = '';
-  amountState.value = 'PENDING';
   amount.value = note.value = correctionReason.value = '';
   correcting.value = false;
   selected.value = available.value = [];
@@ -230,7 +228,7 @@ const ready = computed(
     !submitting.value &&
     !uploading.value &&
     validDate(closeAt.value) &&
-    (amountState.value === 'PENDING' ||
+    (amount.value.trim() === '' ||
       /^\d{1,14}(?:\.\d{1,2})?$/u.test(amount.value)) &&
     (note.value === '' || validText(note.value, 2000)) &&
     (!correcting.value || correctionReason.value.length <= 500) &&
@@ -289,7 +287,6 @@ function startCorrection() {
     return;
   const version = props.item.closure!.current;
   closeAt.value = version.closeAt ?? '';
-  amountState.value = version.closeAmountState;
   amount.value = version.closeAmt ?? '';
   note.value = version.note ?? '';
   correctionReason.value = '';
@@ -490,8 +487,9 @@ async function submit() {
       idempotencyKey: globalThis.crypto.randomUUID(),
       expectedFinishId: props.item.executionFinish?.id ?? null,
       closeAt: closeAt.value === '' ? null : closeAt.value,
-      closeAmountState: amountState.value,
-      closeAmt: amountState.value === 'PENDING' ? null : amount.value,
+      // 填了金额即已知，留空即待定，不再让用户选状态。
+      closeAmountState: amount.value.trim() ? 'KNOWN' : 'PENDING',
+      closeAmt: amount.value.trim() ? amount.value : null,
       note: note.value === '' ? null : note.value,
       closeContentVersionIds: selected.value.map(
         (file) => file.contentVersionId,
@@ -718,23 +716,12 @@ function recordedTime(value: string) {
       /></label>
       <p class="field-help">日期未知时留空。</p>
       <label
-        >结案额状态<select
-          v-model="amountState"
-          class="text-input"
-          data-test="closure-amount-state"
-        >
-          <option value="PENDING">待定</option>
-          <option value="KNOWN">已知</option>
-        </select></label
-      >
-      <label v-if="amountState === 'KNOWN'"
         >结案额<input
           v-model="amount"
           class="text-input"
           inputmode="decimal"
           data-test="closure-amount"
-          placeholder="填写真实金额，可为 0"
-          required
+          placeholder="留空表示待定，可填 0"
       /></label>
       <label
         >结案说明<textarea
