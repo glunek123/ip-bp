@@ -2258,6 +2258,8 @@ function executionFactsMatch(
   directStamp = false,
   directFiling = false,
   directExecuting = false,
+  // 历史回填案件没有邮寄/确认过程记录，允许执行立案直接挂无邮寄来源。
+  historicalBackfill = false,
 ): boolean {
   if (
     mailing !== null &&
@@ -2272,10 +2274,10 @@ function executionFactsMatch(
     filing !== null &&
     (!executionFiling(
       filing,
-      (directFiling || directExecuting) && mailing === null,
+      (directFiling || directExecuting || historicalBackfill) && mailing === null,
     ) ||
       filing.mailingId !== (record(mailing) ? mailing.id : null) ||
-      (mailing === null && !directFiling && !directExecuting))
+      (mailing === null && !directFiling && !directExecuting && !historicalBackfill))
   ) {
     return false;
   }
@@ -2526,6 +2528,7 @@ function executionSourceMatches(
       directStamp,
       directFiling,
       directExecuting,
+      record(value.origin) && value.origin.entryKind === 'HISTORICAL_BACKFILL',
     ) ||
     !executionFinishMatches(
       value.executionFinish,
