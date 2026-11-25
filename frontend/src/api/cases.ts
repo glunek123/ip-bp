@@ -2991,6 +2991,10 @@ function validHearing(value: unknown, internal: boolean): boolean {
 }
 function validCaseDetail(value: unknown, id: string): value is CaseDetail {
   if (!record(value)) return false;
+  // 历史回填（旧系统迁移）没有过程事实：判决版本链、记录编辑、邮寄确认都缺失，
+  // 只校验字段合法性与阶段-事实一致性，不要求过程链完整。
+  const historicalBackfill =
+    record(value.origin) && value.origin.entryKind === 'HISTORICAL_BACKFILL';
   return (
     exactWithOptional(
       value,
@@ -3219,11 +3223,12 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     validAcceptance(value.acceptance, true) &&
     validAcceptanceMaterials(value.acceptanceMaterials) &&
     validHearing(value.hearing, true) &&
-    validJudgment(value.judgment, true) &&
+    (historicalBackfill || validJudgment(value.judgment, true)) &&
     validNextStep(value.judgmentNextStep, true) &&
     Array.isArray(value.acceptances) &&
     value.acceptances.every((item) => validAcceptanceHistory(item, true)) &&
-    (value.recordEdits === undefined ||
+    (historicalBackfill ||
+      value.recordEdits === undefined ||
       validRecordEdits(
         value.recordEdits,
         value.defendants,
@@ -3233,7 +3238,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         value.judgmentNextStep,
         value.origin,
       )) &&
-    validSectionRecordTargets(value) &&
+    (historicalBackfill || validSectionRecordTargets(value)) &&
     validSecondInstance(
       value.secondInstance,
       true,
@@ -3262,16 +3267,17 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       typeof value.canEarlyArchive === 'boolean') &&
     (value.canEarlyArchive !== true || value.stage !== 'ARCHIVED') &&
     archiveMatches(value, true) &&
-    executionSourceMatches(
-      record(value.earlyArchive)
+    (historicalBackfill ||
+      executionSourceMatches(
+        record(value.earlyArchive)
         ? {
             ...value,
             stage: value.earlyArchive.fromStage,
             version: value.earlyArchive.fromVersion,
           }
-        : value,
-      true,
-    ) &&
+          : value,
+        true,
+      )) &&
     validExecutionFilingFollowups(value, true)
   );
 }
