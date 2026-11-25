@@ -315,7 +315,9 @@ export async function assertExecutionSourceChain(
     if (
       (filing.externalEntryId ?? null) !== entryId ||
       (mailing === null
-        ? start !== 'WAITING_EXECUTION_FILING' ||
+        ? // 外部录入直接以「强制执行中」建档的案件没有邮寄环节，补登的立案
+          // 记录同样没有 mailing，来源仍是该外部录入条目。
+          !['WAITING_EXECUTION_FILING', 'EXECUTING'].includes(start ?? '') ||
           filing.mailingId !== null ||
           confirmation !== null ||
           submission !== null
