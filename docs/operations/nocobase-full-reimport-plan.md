@@ -221,6 +221,42 @@ RESET session_replication_role;
 - 建（推荐）：全量语义完整，工作量 +1 天（Lead 审核链、公证事项链路）
 - 不建：只导 2,220 条案件，这 511 条永久丢失（上次是错误地建成了案件）
 
+## 五·补三、版本链压缩（grill 发现的关键约束）
+
+导出一条原生完整案件（`00120261026020`，已归档）作模板，它有 **19 条审计 / version 18**：
+
+```
+match → complaint → confirm → mail → filing → acceptance → hearing
+→ judgment → next_step → execution(submit/confirm/mail/filing) → finish
+→ closure → settlement×2 → archive
+```
+
+旧库只有里程碑日期（线索、受理、判决、执行、结案、归档），**中间 14 步没有数据**。
+
+### 约束核对（前端 `validCaseDetail`）
+
+| 规则 | 位置 | 结论 |
+| --- | --- | --- |
+| 单条事实 `toVersion = fromVersion + 1` | `cases.ts:1819/1978` | 必须满足 |
+| `closure.current.toVersion === case.version` | `cases.ts:1899` | 必须满足 |
+| history 版本连续 | `cases.ts:1934` | 只有 1 条版本时不涉及 |
+
+### 采用「事实压缩」
+
+把 19 步压成 5 步，版本号仍连续：
+
+| 序 | 事实 | from → to |
+| --- | --- | --- |
+| 1 | 受理 | 1 → 2 |
+| 2 | 判决 | 2 → 3 |
+| 3 | 执行立案 | 3 → 4 |
+| 4 | 结案 | 4 → 5 |
+| 5 | 归档 | 5 → 6 |
+
+`case.version` 最终 = 6（不是 18）。这样既满足前端连续性，也不用造假中间节点。
+
+> 副作用：历史案件的「版本号」比原生案件小，属预期（历史节点本就缺失）。
+
 ## 六、迁移器实现要点
 
 ### 6.1 目录结构
