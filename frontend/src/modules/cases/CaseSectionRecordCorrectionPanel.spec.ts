@@ -1814,17 +1814,10 @@ describe('exact section record corrections', () => {
     };
     entry.original = entry.effective;
     const { wrapper, submitRequest } = render('closure', item);
-    await wrapper
-      .get('[data-test="section-record-amount-state"]')
-      .setValue('KNOWN');
+    // 结案金额不再有状态选择：填了就是已知，清空就是待定。
     await wrapper.get('[data-test="section-record-amount"]').setValue('5');
-    await wrapper
-      .get('[data-test="section-record-amount-state"]')
-      .setValue('PENDING');
+    await wrapper.get('[data-test="section-record-amount"]').setValue('');
     await wrapper.get('[data-test="section-record-reason"]').setValue('原因');
-    expect(
-      wrapper.get('[data-test="section-record-save"]').attributes('disabled'),
-    ).toBeDefined();
     await change(wrapper);
     await wrapper.get('form').trigger('submit');
     await flushPromises();

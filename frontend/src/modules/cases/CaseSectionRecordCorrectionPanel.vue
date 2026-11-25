@@ -1268,8 +1268,9 @@ function businessRequest(key: string): CaseSectionRecordRequest | null {
           expectedClosureVersionId: versionId,
           expectedClosureRevision: target.entry.closureRevision,
           closeAt: draft.date || null,
-          closeAmountState: draft.amountState,
-          closeAmt: draft.amountState === 'KNOWN' ? draft.amount : null,
+          // 结案金额按是否填写推导状态，不再由用户选择。
+          closeAmountState: draft.amount.trim() ? 'KNOWN' : 'PENDING',
+          closeAmt: draft.amount.trim() ? draft.amount : null,
           note: draft.note === '' ? null : draft.note,
           closeContentVersionIds: [...draft.fileIds],
           correctionReason: reason,
@@ -1699,10 +1700,9 @@ defineExpose({ ready, error, baseFingerprint, fingerprint, selectedId });
         <p v-if="kind === 'hearing' || kind === 'closure'" class="field-help">
           日期未知可留空；清空仅更正资料，不回退或推进阶段。
         </p>
-        <template v-if="kind === 'judgment' || kind === 'closure'">
+        <template v-if="kind === 'judgment'">
           <label class="field-label"
-            >{{ kind === 'judgment' ? '判决金额状态' : '结案金额状态'
-            }}<select
+            >判决金额状态<select
               v-model="draft.amountState"
               class="text-input"
               data-test="section-record-amount-state"
@@ -1723,6 +1723,19 @@ defineExpose({ ready, error, baseFingerprint, fingerprint, selectedId });
           /></label>
           <p v-else class="field-help">金额待定保存为空，不按0元登记。</p>
         </template>
+        <!-- 结案金额不再判断状态：填了就是已知，留空就是待定。 -->
+        <label v-if="kind === 'closure'" class="field-label"
+          >结案金额（元）<input
+            v-model="draft.amount"
+            class="text-input"
+            data-test="section-record-amount"
+            inputmode="decimal"
+            maxlength="17"
+            :disabled="!editable"
+        /></label>
+        <p v-if="kind === 'closure'" class="field-help">
+          金额未知可留空，保存为待定，不按 0 元登记。
+        </p>
         <template v-if="kind === 'judgment'">
           <label class="field-label"
             >实缴诉讼费状态<select
