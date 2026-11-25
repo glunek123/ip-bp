@@ -55,6 +55,8 @@
 | `cost_refund` | `fee_records`（其他/收入） | 32 条 |
 | `case_court_name` | `known.courtId`（按名称匹配） | 已匹配 1,250+，970 条旧法院名不在 `filing_courts` |
 
+**律师指派（本轮完成）**：`case_lawyer_name` + `case_lawyer_office` 匹配 `lawyer_profiles`，建 `case_lawyer_assignments`（role=PRIMARY，started_at 取 `match_lawyer_date`）—— 1,193 条成功，18 条因「技术测试/律所」或律所为空未匹配。列表「律师」列已显示（如 `692025110612` → 曾植韫）。
+
 **未落地的 A 组字段**（新系统无字段）：`case_court_province`、`case_judge`、`pleadings_lawyer_date/approve_date/confirm_date`、`record_date`、`record_cost`、`case_court_id`、`court_id`（旧值是「立案号」不是 id）。律师指派（`case_lawyer_name` 等 6 列）需建 `case_lawyer_assignments`，留待下一轮。
 
 ### B. 随「线索 + 公证」段一起补（17 列）
