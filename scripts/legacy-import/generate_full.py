@@ -34,6 +34,31 @@ ARCHIVE_TYPE = {
     '10': 'JUDGMENT_PERFORMED', '11': 'EXECUTION_CLOSED', '12': 'EXECUTION_COLLECTED',
     '20': 'VOIDED',
 }
+INFRINGEMENT = {
+    '1': 'TRADEMARK', '2': 'AUDIOVISUAL_COPYRIGHT', '3': 'SOFTWARE_COPYRIGHT',
+    '4': 'ART_COPYRIGHT', '5': 'TEXT_COPYRIGHT', '6': 'INVENTION_PATENT',
+    '7': 'DESIGN_PATENT', '8': 'UTILITY_MODEL_PATENT', '9': 'UNFAIR_COMPETITION',
+    '10': 'NETWORK_DISSEMINATION', '11': 'PORTRAIT_RIGHT', '99': 'OTHER',
+}
+CASE_TYPE = {'1': 'CIVIL', '2': 'CRIMINAL', '3': 'ADMINISTRATIVE', '4': 'NOTARY'}
+PAYMENT_TYPE = {'1': 'ONE_TIME', '2': 'INSTALLMENTS'}
+
+
+def code_array(raw):
+    """旧库 clue_type 形如 ["7"]，取第一个合法编码。"""
+    if not raw or raw == 'NULL':
+        return None
+    text = str(raw)
+    for ch in '[]\"':
+        text = text.replace(ch, ' ')
+    codes = [t for t in text.split(',') if t.strip()]
+    for code in codes:
+        code = code.strip()
+        if code in INFRINGEMENT:
+            return code
+    return None
+
+
 PLATFORM = {
     '1': 'TAOBAO', '2': 'TMALL', '3': 'ALIBABA_1688', '4': 'PINDUODUO', '5': 'JD',
     '6': 'DOUYIN', '7': 'KUAISHOU', '8': 'XIAOHONGSHU', '9': 'OTHER', '10': 'XIANYU',
@@ -149,12 +174,18 @@ def main():
                 'judg', 'judgAudit', 'filing', 'filingAudit', 'finish', 'finishAudit',
                 'closure', 'closureVersion', 'closureAudit', 'archive', 'archiveVersion', 'archiveAudit')}
 
+            claim_amt = money(c.get('case_amount'))
+            claim_state = 'KNOWN' if claim_amt else 'PENDING'
             out.append(
                 "INSERT INTO cases (id, business_no, department_id, customer_id, rights_holder_id, "
-                "responsible_user_id, stage, version, court_case_no, source_lead_ordinal, responsibility_epoch, created_at) "
+                "responsible_user_id, stage, version, court_case_no, source_lead_ordinal, responsibility_epoch, "
+                "complaint_amount_state, complaint_amount, created_at) "
                 f"VALUES ('{ids['case']}', {q(business_no)}, '{DEPTS}', '{cust}', '{holder}', '{ACTOR}', "
-                f"'{stage}', {case_version}, {q(court_no)}, NULL, 0, {q(c.get('created_at'))});")
+                f"'{stage}', {case_version}, {q(court_no)}, NULL, 0, {q(claim_state)}, {claim_amt or 'NULL'}, "
+                f"{q(c.get('created_at'))});")
 
+            case_type_code = str(c.get('case_type') or '').replace('[', ' ').replace(']', ' ').replace('"', ' ').strip().split(',')[0].strip()
+            clue_code = code_array(c.get('clue_type'))
             out.append(
                 "INSERT INTO case_external_entries (id, case_id, department_id, entry_kind, initial_stage, "
                 "stage_reached_on, source, reason, recorded_by_user_id, audit_event_id, known) VALUES "
@@ -162,9 +193,10 @@ def main():
                 f"{q(day(c.get('created_at')) or accepted or archived)}, '旧系统 (NocoBase) 数据迁移', '历史数据回填', "
                 f"'{ACTOR}', '{ids['entryAudit']}', "
                 f"""'{json.dumps({"courtId": court, "courtCaseNo": court_no, "acceptedOn": accepted,
-                                  "caseType": "CIVIL", "platform": PLATFORM.get(str(c.get('clue_platform')), 'OTHER'),
+                                  "caseType": CASE_TYPE.get(case_type_code, 'CIVIL'),
+                                  "platform": PLATFORM.get(str(c.get('clue_platform')), 'OTHER'),
                                   "shopName": c.get('clue_account'), "shopExternalId": None,
-                                  "infringementTypes": ["TRADEMARK"],
+                                  "infringementTypes": [INFRINGEMENT.get(clue_code, 'OTHER')],
                                   "secondInstanceAcceptedOn": None}, ensure_ascii=False)}');""")
 
             out.append(
@@ -243,10 +275,11 @@ def main():
                     f"('{ids['closure']}', '{ids['case']}', '{DEPTS}', '{ids['finish']}', '{ids['closureVersion']}');")
                 out.append(
                     "INSERT INTO case_closure_versions (id, closure_id, case_id, department_id, finish_id, kind, "
-                    "from_version, to_version, close_at, close_amount_state, close_amt, close_outcome, "
+                    "from_version, to_version, close_at, close_amount_state, close_amt, close_outcome, payment_type, "
                     f"recorded_by_user_id, audit_event_id) VALUES ('{ids['closureVersion']}', '{ids['closure']}', "
                     f"'{ids['case']}', '{DEPTS}', '{ids['finish']}', 'REGISTER', 5, 6, {q(finished)}, "
                     f"{q('KNOWN' if close_amt else 'PENDING')}, {close_amt or 'NULL'}, {q(OUTCOME.get(raw_type))}, "
+                    f"{q(PAYMENT_TYPE.get(str(c.get('payment_type') or '').strip()))}, "
                     f"'{ACTOR}', '{ids['closureAudit']}');")
 
                 if archived and stage == 'ARCHIVED':
@@ -274,6 +307,8 @@ def main():
                 ('诉讼费', '支出', money(c.get('cost_legal_prepay')), accepted or executed, '旧系统预缴诉讼费'),
                 ('诉讼费', '支出', money(c.get('cost_legal_paid')), accepted or executed, '旧系统实缴诉讼费'),
                 ('诉讼退费', '收入', money(c.get('cost_legal_refund')), archived, '旧系统诉讼费退费'),
+                ('退货运费', '支出', money(c.get('cost_shipping')), accepted or executed, '旧系统退货运费'),
+                ('其他', '收入', money(c.get('cost_refund')), archived, '旧系统退款'),
             ]
             fallback_date = day(c.get('created_at')) or accepted or archived or '2020-01-01'
             for idx, (ftype, direction, amount, fdate, note) in enumerate(fees):

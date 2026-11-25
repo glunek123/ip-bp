@@ -34,7 +34,7 @@
 
 ## 三、未映射（69 列，按可补程度分组）
 
-### A. 可立即补（28 列，纯数据映射）
+### A. 已补（2026-11-25 晚，实测分布如下）
 
 | 组 | 列 | 非空合计 |
 | --- | --- | --- |
@@ -43,7 +43,19 @@
 | 律师 | `case_lawyer_name/office/phone/address/number/office_number`、`lawyer_id`、`match_lawyer_date` | 9,511 |
 | 金额与日期 | `case_amount`、`case_prepay_date`、`cost_court_date`、`submit_register_date`、`payment_type`、`cost_refund`、`cost_shipping`、`record_date`、`record_cost`、`case_judge`、`pleadings_*` 3 列 | 4,556 |
 
-> 说明：`case_type`/`clue_type` 映射到 `caseType` 与侵权类型；法院按名称匹配 `filing_courts`；律师按姓名+律所匹配 `lawyer_profiles` 并建指派；其余进对应事实的备注或金额。
+**实际落点与结果**：
+
+| 旧字段 | 落点 | 实测 |
+| --- | --- | --- |
+| `case_type` | `known.caseType` | 民事 2,113 / 公证 95 / 刑事 10 / 行政 2 |
+| `clue_type` | `known.infringementTypes` | 商标 1,217 / 美术 632 / 文字 105 / 肖像 95 / 其他 72 … |
+| `case_amount` | `cases.complaint_amount` | 1,127 条有值 |
+| `payment_type` | `case_closure_versions.payment_type` | 一次性 330 / 分期 37 |
+| `cost_shipping` | `fee_records`（退货运费） | 30 条 |
+| `cost_refund` | `fee_records`（其他/收入） | 32 条 |
+| `case_court_name` | `known.courtId`（按名称匹配） | 已匹配 1,250+，970 条旧法院名不在 `filing_courts` |
+
+**未落地的 A 组字段**（新系统无字段）：`case_court_province`、`case_judge`、`pleadings_lawyer_date/approve_date/confirm_date`、`record_date`、`record_cost`、`case_court_id`、`court_id`（旧值是「立案号」不是 id）。律师指派（`case_lawyer_name` 等 6 列）需建 `case_lawyer_assignments`，留待下一轮。
 
 ### B. 随「线索 + 公证」段一起补（17 列）
 
