@@ -4707,6 +4707,8 @@ model CaseClosureVersion {
  closeAt DateTime? @map("close_at") @db.Date
  closeAmountState CaseComplaintAmountState @map("close_amount_state")
  closeAmt Decimal? @map("close_amt") @db.Decimal(16,2)
+ /// 归档结果（旧系统 case_archive_type 字典，迁移保留；新登记可不填）。
+ closeOutcome String? @map("close_outcome") @db.VarChar(32)
  note String? @db.VarChar(2000)
  correctionReason String? @map("correction_reason") @db.VarChar(500)
  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
@@ -5054,7 +5056,6 @@ model CaseClosureRecordCorrection {
   closeAmountState CaseComplaintAmountState @map("close_amount_state")
   closeAmt Decimal? @map("close_amt") @db.Decimal(16,2)
   /// 归档结果（旧系统 case_archive_type 字典，迁移保留；新登记可不填）。
-  closeOutcome String? @map("close_outcome") @db.VarChar(32)
   note String? @db.VarChar(2000)
   correctionReason String @map("correction_reason") @db.VarChar(500)
   caseAnchorSnapshot Json @default("{}") @map("case_anchor_snapshot")
