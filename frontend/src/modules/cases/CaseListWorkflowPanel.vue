@@ -309,7 +309,9 @@ const schema = {
   'execution-mailing': {
     expectedConfirmationId: nullable(string),
     mailedAt: string,
-    mailReceiptContentVersionIds: strings,
+    // 执行邮寄的凭证与备注都是选填（面板允许不传凭证、备注为空）。
+    mailReceiptContentVersionIds: optional(strings),
+    remark: optional(nullable(string)),
   },
   'execution-filing': {
     expectedMailingId: nullable(string),

@@ -1471,6 +1471,33 @@ describe('case list workflow session', () => {
       },
     };
     expect(decodeCaseListRequest(envelope)).toEqual(envelope);
+
+    // 执行邮寄的凭证与备注都是选填，空备注（null）与不传凭证都必须可恢复。
+    const mailingEnvelope = (
+      extra: Record<string, unknown>,
+    ): Record<string, unknown> => ({
+      version: 1,
+      actor: 'actor',
+      caseId: 'case',
+      action: 'execution-mailing',
+      command: {
+        kind: 'execution-mailing',
+        input: {
+          expectedVersion: 3,
+          idempotencyKey: 'key',
+          expectedConfirmationId: null,
+          mailedAt: '2026-11-25',
+          ...extra,
+        },
+      },
+    });
+    expect(decodeCaseListRequest(mailingEnvelope({ remark: null }))).not.toBeNull();
+    expect(decodeCaseListRequest(mailingEnvelope({}))).not.toBeNull();
+    expect(
+      decodeCaseListRequest(
+        mailingEnvelope({ mailReceiptContentVersionIds: [], remark: '顺丰' }),
+      ),
+    ).not.toBeNull();
     // 二审结果带退费行时也必须能解码，否则提交会在本地被拒。
     expect(
       decodeCaseListRequest({
