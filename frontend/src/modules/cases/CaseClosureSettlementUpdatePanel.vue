@@ -447,12 +447,22 @@ const source = computed<SettlementUpdateSource | null>(() => {
   const w = workspace.value;
   // 未确认的历史付款类型交给表单选择，不再单独挡一层
   const paymentType =
-    w?.closure.paymentType === 'UNKNOWN' ? '' : w?.closure.paymentType;
-  if (!w || w.stage !== 'WAITING_ARCHIVE' || !w.closure.versionId) return null;
+    w?.closure?.paymentType === 'UNKNOWN' ? '' : w?.closure?.paymentType;
+  const closure = w?.closure ?? null;
+  // 执行中也要能结案（结案后才进入待归档），首次时还没有结案版本。
+  if (
+    !w ||
+    (w.stage !== 'WAITING_ARCHIVE' && w.stage !== 'EXECUTING') ||
+    (closure !== null && !closure.versionId)
+  )
+    return null;
   return {
-    expectedClosureVersionId: w.closure.versionId,
-    closeAt: w.closure.closeOn,
-    closeAmt: w.closure.amountState === 'UNKNOWN' ? null : w.closure.amount,
+    expectedClosureVersionId: closure?.versionId ?? null,
+    closeAt: closure?.closeOn ?? null,
+    closeAmt:
+      closure === null || closure.amountState === 'UNKNOWN'
+        ? null
+        : closure.amount,
     paymentType: paymentType ?? '',
     documents: w.documents.map((d) => ({
       id: d.contentVersionId,
@@ -631,7 +641,13 @@ async function submit(draft: Draft, recovery = false) {
     draft.existingPaymentVersions.every(
       (id, i) => id === s.payments[i]?.versionId,
     );
-  if (onlyAmounts && draft.settlement && !recovery && !preparation.value) {
+  if (
+    onlyAmounts &&
+    draft.settlement &&
+    draft.expectedClosureVersionId !== null &&
+    !recovery &&
+    !preparation.value
+  ) {
     if (session && !session.beginSubmit()) return;
     const input: ClosureAmountUpdateInput = {
       idempotencyKey: globalThis.crypto.randomUUID(),
@@ -668,7 +684,7 @@ async function submit(draft: Draft, recovery = false) {
   if (
     retained &&
     (retained.version !== w.caseVersion ||
-      retained.draft.expectedClosureVersionId !== w.closure.versionId)
+      retained.draft.expectedClosureVersionId !== (w.closure?.versionId ?? null))
   ) {
     preparation.value = retained;
     retained.unknown = true;
@@ -699,6 +715,11 @@ async function submit(draft: Draft, recovery = false) {
       if (existing) {
         ids.push(existing);
         continue;
+      }
+      // 首次结案还没有结案版本，文书要等结案登记后再上传。
+      if (draft.expectedClosureVersionId === null) {
+        error.value = '首次结案请先保存结案信息，再上传结算文书。';
+        return;
       }
       const uploaded = await uploadSettlementUpdateDocumentFile(
         caseId,

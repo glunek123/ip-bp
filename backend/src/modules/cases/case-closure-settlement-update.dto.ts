@@ -163,7 +163,11 @@ export class UpdateClosureSettlementInput extends OmitType(
   @Matches(/^\d{4}-\d{2}-\d{2}$/u)
   closeAt!: string | null;
 
-  @IsUUID('4') expectedClosureVersionId!: string;
+  // 首次结案（执行中 → 待归档）时还没有结案版本，允许传 null。
+  @ValidateIf((_o, value) => value !== null)
+  @IsDefined()
+  @IsUUID('4')
+  expectedClosureVersionId!: string | null;
   @IsOptional() @IsString() @MaxLength(500) @Matches(/\S/u) correctionReason?:
     string | null;
   @ValidateIf((_o, value) => value !== undefined)

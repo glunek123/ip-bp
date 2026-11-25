@@ -221,6 +221,7 @@ function commandIntent(command: string, current: CaseDetail): CaseActionIntent {
       current.secondInstance.currentResult
       ? 'revoke-second-instance-result'
       : 'second-instance';
+  // 页内结案区块仍复用结案资料面板；列表的「结案更新」走 settlement-update。
   if (command === 'closure')
     return current.closure ? 'correct-closure' : 'record-closure';
   if (command === 'archive')
@@ -502,21 +503,13 @@ export function resolveCaseListActions(
     'early-closure',
   );
   add(
-    current.stage === 'WAITING_ARCHIVE' && current.canUpdateClosureSettlement,
-    'settlement-update',
-  );
-  add(
-    // 结案是唯一能把案件从强制执行中推进到待归档的动作。
+    // 结案只有一张卡：执行中（结案推进到待归档）与待归档（登记/更正）都走它。
     (current.stage === 'WAITING_ARCHIVE' || current.stage === 'EXECUTING') &&
-      !current.canUpdateClosureSettlement &&
-      current.canRecordClosure,
-    'record-closure',
-  );
-  add(
-    current.stage === 'WAITING_ARCHIVE' &&
-      !current.canUpdateClosureSettlement &&
-      current.canCorrectClosure,
-    'correct-closure',
+      (current.canUpdateClosureSettlement ||
+        (current.stage === 'EXECUTING'
+          ? current.canRecordClosure
+          : current.canCorrectClosure || current.canRecordClosure)),
+    'settlement-update',
   );
   add(current.stage === 'WAITING_ARCHIVE' && current.canArchive, 'archive');
   add(current.canCorrectArchive, 'correct-archive');

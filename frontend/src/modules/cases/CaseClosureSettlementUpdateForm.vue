@@ -50,7 +50,8 @@ export type SettlementUpdateSource = {
   settlement?: SettlementCommand;
   customerAmount?: string | null;
   lawyerAmount?: string | null;
-  expectedClosureVersionId: string;
+  /** 首次结案（执行中 → 待归档）时为 null。 */
+  expectedClosureVersionId: string | null;
   closeAt: string | null;
   closeAmt: string | null;
   paymentType: ClosurePaymentType | '';
@@ -93,7 +94,7 @@ const emit = defineEmits<{
       settlementAmounts: { customer: AmountEdit; lawyer: AmountEdit };
       refund?: RefundCommand;
       settlement?: SettlementCommand;
-      expectedClosureVersionId: string;
+      expectedClosureVersionId: string | null;
       closeAt: string | null;
       closeAmt: string | null;
       closeAmountState: 'KNOWN' | 'PENDING';

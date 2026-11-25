@@ -1,4 +1,5 @@
 import { normalizeRefundAmount } from './case-refund-inventory-draft.service';
+import { CaseClosureService } from './case-closure.service';
 import {
   BadRequestException,
   ConflictException,
@@ -147,6 +148,8 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
       SettlementAssessmentPostgresDraft,
       'executeInTransaction'
     >,
+    // 首次结案（执行中 → 待归档）复用结案登记命令，避免另写一套版本链。
+    private readonly closures: CaseClosureService,
   ) {}
 
   async update(
@@ -179,8 +182,9 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
       userId: actor.userId.toLowerCase(),
       departmentId: actor.departmentId.toLowerCase(),
     };
-    input.expectedClosureVersionId =
-      input.expectedClosureVersionId.toLowerCase();
+    if (input.expectedClosureVersionId !== null)
+      input.expectedClosureVersionId =
+        input.expectedClosureVersionId.toLowerCase();
     input.closeContentVersionIds = input.closeContentVersionIds.map((id) =>
       id.toLowerCase(),
     );
@@ -189,6 +193,34 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
       screenshotContentVersionId:
         p.screenshotContentVersionId?.toLowerCase() ?? null,
     }));
+    // 执行中（或待归档但尚未登记结案）时，先用同一审批上下文登记结案资料，
+    // 再按更正路径写结算；用户仍是一次保存、一张卡片。
+    if (input.expectedClosureVersionId === null) {
+      const source = await this.database.case.findFirst({
+        where: { id: caseId, departmentId: actor.departmentId },
+        select: {
+          version: true,
+          closure: { select: { id: true } },
+          executionFinish: { select: { id: true } },
+        },
+      });
+      if (source === null)
+        throw new NotFoundException({ code: 'CASE_NOT_FOUND' });
+      if (source.closure !== null)
+        throw new ConflictException({ code: 'VERSION_CONFLICT' });
+      const registered = await this.closures.record(actor, caseId, {
+        expectedVersion: source.version,
+        expectedFinishId: source.executionFinish?.id ?? null,
+        idempotencyKey: `${input.idempotencyKey}:closure`,
+        closeAt: input.closeAt,
+        closeAmountState: input.closeAmountState,
+        closeAmt: input.closeAmt,
+        note: null,
+        closeContentVersionIds: input.closeContentVersionIds,
+      });
+      input.expectedClosureVersionId = registered.closureVersionId;
+      input.expectedVersion = registered.version;
+    }
     if (input.refund)
       input.refund = {
         ...input.refund,
@@ -909,7 +941,7 @@ export class CaseClosureSettlementUpdateTransactionDraftService {
                 tx,
                 actor,
                 caseId,
-                input.expectedClosureVersionId,
+                input.expectedClosureVersionId!,
                 input.closeContentVersionIds,
               );
             if (

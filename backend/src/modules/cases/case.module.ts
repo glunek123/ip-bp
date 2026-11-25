@@ -249,6 +249,7 @@ import { LawyerProfileService } from './lawyer-profile.service';
         MaterialService,
         CaseRefundInventoryPrismaDraft,
         SettlementAssessmentPostgresDraft,
+        CaseClosureService,
       ],
       useFactory: (
         db: DatabaseService,
@@ -257,6 +258,7 @@ import { LawyerProfileService } from './lawyer-profile.service';
         materials: MaterialService,
         refunds: CaseRefundInventoryPrismaDraft,
         assessments: SettlementAssessmentPostgresDraft,
+        closures: CaseClosureService,
       ) =>
         new CaseClosureSettlementUpdateTransactionDraftService(
           db,
@@ -265,6 +267,7 @@ import { LawyerProfileService } from './lawyer-profile.service';
           materials,
           refunds,
           assessments,
+          closures,
         ),
     },
     ClosureActualAggregateReadDraft,

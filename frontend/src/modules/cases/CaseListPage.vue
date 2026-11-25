@@ -947,14 +947,10 @@ function stageLabel(value: CaseSummary['stage']): string {
 }
 function listActions(item: CaseSummary) {
   const actions = resolveCaseListActions(item);
-  // 待归档统一用「结案更新」一张卡：优先结案资料动作，结算更新退到更多操作。
+  // 结案只有一张卡：执行中与待归档都由 settlement-update 承担。
   const closureAction =
-    item.stage === 'WAITING_ARCHIVE'
-      ? actions.find(
-          (action) =>
-            action.intent === 'correct-closure' ||
-            action.intent === 'record-closure',
-        )
+    item.stage === 'WAITING_ARCHIVE' || item.stage === 'EXECUTING'
+      ? actions.find((action) => action.intent === 'settlement-update')
       : undefined;
   const primary =
     closureAction ??

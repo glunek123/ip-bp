@@ -730,7 +730,6 @@ describe('case pages', () => {
       const correctionOnly = [
         'canScheduleHearing',
         'canCorrectHearing',
-        'canCorrectClosure',
         'canCorrectJudgment',
         'canRevokeJudgmentNextStep',
         'canRevokeSecondInstanceResult',

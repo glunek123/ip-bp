@@ -186,6 +186,7 @@ function fixture() {
     materials,
     refunds,
     assessments,
+    { record: jest.fn() } as unknown as never,
   );
   const replay = () => {
     const receipt =
@@ -822,8 +823,9 @@ describe('atomic settlement update transaction draft (mock database only)', () =
       input = value(),
       first = await f.service.update(actor, caseId, input);
     f.replay();
-    input.expectedClosureVersionId =
-      input.expectedClosureVersionId.toUpperCase();
+    input.expectedClosureVersionId = (
+      input.expectedClosureVersionId as string
+    ).toUpperCase();
     input.closeContentVersionIds = input.closeContentVersionIds.map((id) =>
       id.toUpperCase(),
     );

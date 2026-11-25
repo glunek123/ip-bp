@@ -58,7 +58,8 @@ export type UpdateClosureSettlementInput = Omit<
   'expectedStage' | 'closeAt'
 > & {
   closeAt: string | null;
-  expectedClosureVersionId: string;
+  /** 首次结案（执行中 → 待归档）时为 null，服务端会先登记结案资料。 */
+  expectedClosureVersionId: string | null;
   correctionReason?: string | null;
   refund?: SettlementRefundInput;
   settlement?: SettlementAssessmentInput;
