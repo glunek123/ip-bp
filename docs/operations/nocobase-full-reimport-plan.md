@@ -109,7 +109,27 @@ RESET session_replication_role;
 
 ### 5.3 明确不导（旧库无对应或新系统无字段）
 
-`case_judge`（法官姓名）、`disclosure_sales`、`customer_sales/operations/expense`、`case_archive_type`（12 种归档结果，暂存 `closure.note` 前缀）、`disclosure_*` 联系信息、`sender_tracking`（物流单号，暂不建）、`record_date/record_cost`。
+`case_judge`（法官姓名）、`disclosure_sales`、`customer_sales/operations/expense`、`disclosure_*` 联系信息、`sender_tracking`（物流单号，暂不建）、`record_date/record_cost`。
+
+**`case_archive_type` 改为保留**（业务确认）：新增 `case_closure_versions.close_outcome varchar(32)`，取值字典：
+
+| 旧码 | 值 | 含义 |
+| --- | --- | --- |
+| 1 | `LINK_REMOVED` | 链接已下架 |
+| 2 | `NO_INFRINGEMENT` | 无侵权信息 |
+| 3 | `NO_EVIDENCE` | 不取证 |
+| 4 | `NOT_SHIPPED_REFUND_ONLY` | 不发货-仅退款 |
+| 5 | `RECEIVED_NO_RETURN` | 收到货-不退货 |
+| 6 | `RECEIVED_RETURN_REFUND` | 收到货-退货退款 |
+| 7 | `NOT_RECEIVED_REFUND_ONLY` | 未收到货-仅退款 |
+| 8 | `CASE_VOID` | 案件作废 |
+| 9 | `MEDIATION` | 调解结案 |
+| 10 | `JUDGMENT_PERFORMED` | 判决履行 |
+| 11 | `EXECUTION_TERMINATED` | 执行终本 |
+| 12 | `EXECUTION_RECOVERED` | 执行已回款 |
+| 20 | `NOTARY_ONLY` | 只公证 |
+
+实测分布：`20`(150)、`3`(178)、`9`(153)、`5`(68)、`8`(48)、`10`(45)、`6`(23)、`1`(17)、`4`(14)、`12`(12)、`11`(7)、`7`(6)、`2`(3)。
 
 ## 五·补、实测数据与分层装载规则（`extract.py` 已跑通）
 
@@ -143,7 +163,7 @@ RESET session_replication_role;
 | 291 执行中 | 135 | Case |
 | 301 待归档 | 201 | Case |
 | 999 已归档 | 876 | Case |
-| NULL | 28 | 待人工确认 |
+| NULL | 28 | **不导入**（客户/主体/案号/店铺全空，仅 7 个审计字段有值，判定为空壳/测试数据） |
 
 **结论**：2,759 条里只有约 **2,220 条**应成为案件；297 条是纯线索、242 条在公证阶段。上次导入把全部 2,442 条都建成了案件，这也是「字段丢失感」的一部分——阶段被压平。
 
@@ -187,7 +207,15 @@ await db.$transaction(async (tx) => {
 
 ### 7.1 灰度 20 条
 
-选样：6 条覆盖完整链路（线索→公证→立案→判决→执行→结案）+ 14 条各阶段随机。
+选样（业务确认：挑「最新 + 信息最全」）：
+
+| 旧 id | 阶段 | 关键数据 | 字段填充 |
+| --- | --- | --- | --- |
+| `634` | 已归档 | 公证号（2024）皖池九公证字第1152号、案号（2024）沪0105民初33064号、判决 145,000、执行 (2025)沪0105执6291号、结案 118,503、归档类型 12 执行已回款 | 80/99 |
+| `631` | 已归档 | 公证号 …1137号、案号 （2024）沪0105民初32739号、判决 32,000、结案 32,000、归档类型 10 判决履行 | 80/99 |
+| `421` | 已归档 | 公证号 (2024)鄂尚信证字第4751号、案号（2025）沪0105民初2356号、判决 19,000、执行（2026）沪0105执3176号、结案 1,172.32、归档类型 11 执行终本 | 78/99 |
+
+三条均为已归档（链路最完整），客户 25 / 主体 12 / 拼多多平台，含诉讼费预缴-实缴-退费三段，能覆盖全部主要事实。
 
 每条验收：
 
