@@ -355,6 +355,15 @@ export class CaseExecutionFinishService {
           }
           throw error('conflict', 'VERSION_CONFLICT');
         }
+        if (this.hasMessage(cause, 'execution filing missing')) {
+          // 外部录入时直接选「强制执行中」的案件没有执行立案记录，而阶段链条
+          // 要求 EXECUTING 必须带立案记录，因此这类案件目前没有任何推进路径。
+          throw new ConflictException({
+            code: 'EXECUTION_FILING_MISSING',
+            message:
+              '该案件是外部录入、直接以「强制执行中」建档，缺少执行立案记录，阶段链条不允许直接登记执行更新。请联系管理员补齐立案记录。',
+          });
+        }
         if (this.isExternalTerminalMismatch(cause)) {
           // 外部录入案件由阶段链触发器推导阶段：一旦存在执行结束行，就要求
           // 案件进入「待归档」。而执行更新只登记字段、不推进阶段，两者冲突。
@@ -368,6 +377,16 @@ export class CaseExecutionFinishService {
       }
     }
     throw error('conflict', 'VERSION_CONFLICT');
+  }
+
+  private hasMessage(cause: unknown, needle: string): boolean {
+    const message =
+      cause instanceof Error
+        ? cause.message
+        : typeof cause === 'object' && cause !== null
+          ? String((cause as { message?: unknown }).message ?? '')
+          : '';
+    return message.includes(needle);
   }
 
   private isExternalTerminalMismatch(cause: unknown): boolean {
