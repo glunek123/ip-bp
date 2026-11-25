@@ -2418,7 +2418,9 @@ function executionConfirmationMatchesSubmission(
   if (confirmation === null) return true;
   if (
     !executionConfirmation(confirmation, directStart, internal) ||
-    !executionSubmissionState(state)
+    // 直接进入执行的案件 judgmentNextStepId 为 null，只有带 directStart 才能通过；
+    // 这里漏传会让「执行确认」生成后的详情被判无效（待邮寄抽屉打不开）。
+    !executionSubmissionState(state, directStart)
   )
     return false;
   const current = state.current;
