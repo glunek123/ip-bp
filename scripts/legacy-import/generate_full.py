@@ -164,8 +164,8 @@ def main():
                 f"""'{json.dumps({"courtId": court, "courtCaseNo": court_no, "acceptedOn": accepted,
                                   "caseType": "CIVIL", "platform": PLATFORM.get(str(c.get('clue_platform')), 'OTHER'),
                                   "shopName": c.get('clue_account'), "shopExternalId": None,
-                                  "infringementTypes": ["TRADEMARK"], "legacyId": c['id'],
-                                  "legacyCaseNumber": c.get('case_number')}, ensure_ascii=False)}');""")
+                                  "infringementTypes": ["TRADEMARK"],
+                                  "secondInstanceAcceptedOn": None}, ensure_ascii=False)}');""")
 
             out.append(
                 "INSERT INTO audit_events (id, department_id, actor_user_id, internal_actor_user_id, resource_type, "

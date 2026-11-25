@@ -79,7 +79,7 @@ def main():
         seq += 1
 
         ids = {k: str(uuid.uuid4()) for k in (
-            'case', 'round', 'acc', 'accAudit', 'judg', 'judgAudit',
+            'case', 'entry', 'entryAudit', 'round', 'acc', 'accAudit', 'judg', 'judgAudit',
             'filing', 'filingAudit', 'finish', 'finishAudit',
             'closure', 'closureVersion', 'closureAudit',
             'archive', 'archiveVersion', 'archiveAudit')}
@@ -105,6 +105,31 @@ def main():
             f"responsibility_epoch, created_at) VALUES ('{ids['case']}', {q(business_no)}, "
             f"'{DEPT}', '{customer['id']}', '{holder['id']}', '{ACTOR}', 'ARCHIVED', 7, "
             f"{q(court_no)}, NULL, 0, {q(c.get('created_at'))});")
+
+        # 来源：历史回填入口（normalSource 要求完整公证链，旧库无开箱/出证过程）
+        known = {
+            'courtId': court['id'] if court_no else None,
+            'courtCaseNo': court_no,
+            'acceptedOn': accepted,
+            'secondInstanceAcceptedOn': None,
+            'caseType': 'CIVIL',
+            'platform': 'PINDUODUO' if str(c.get('clue_platform')) == '4' else 'OTHER',
+            'shopName': c.get('clue_account') or None,
+            'shopExternalId': None,
+            'infringementTypes': ['TRADEMARK'],
+        }
+        stage_reached = day(c.get('created_at')) or accepted or archived
+        out.append(
+            "INSERT INTO audit_events (id, department_id, actor_user_id, internal_actor_user_id, "
+            f"resource_type, resource_id, action, details) VALUES ('{ids['entryAudit']}', '{DEPT}', "
+            f"'{ACTOR}', '{ACTOR}', 'case', '{ids['case']}', 'case.external-entry.created', "
+            f"'{{\"entryKind\": \"HISTORICAL_BACKFILL\", \"initialStage\": \"ARCHIVED\"}}');")
+        out.append(
+            "INSERT INTO case_external_entries (id, case_id, department_id, entry_kind, initial_stage, "
+            "stage_reached_on, source, reason, recorded_by_user_id, audit_event_id, known) VALUES "
+            f"('{ids['entry']}', '{ids['case']}', '{DEPT}', 'HISTORICAL_BACKFILL', 'ARCHIVED', "
+            f"{q(stage_reached)}, '旧系统 (NocoBase) 数据迁移', '历史数据回填', '{ACTOR}', "
+            f"'{ids['entryAudit']}', '{json.dumps(known, ensure_ascii=False)}');")
 
         out.append(
             f"INSERT INTO case_trial_rounds (id, case_id, department_id, sequence) "
