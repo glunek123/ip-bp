@@ -1,0 +1,78 @@
+# 旧库字段对齐矩阵（2026-11-25 实测）
+
+旧库 `ip_case` 共 99 列（业务 95 列 + 4 个审计列）。
+
+## 一、结论
+
+**没有全部对齐。** 已映射 **26 列**，未映射 **69 列**。
+
+主流程（阶段、案号、受理、判决、执行、结案、归档结果、六类费用、被告、平台、店铺）已对齐；未对齐的是过程细节与实体化信息。
+
+## 二、已映射（26 列）
+
+| 旧字段 | 非空 | 落点 |
+| --- | --- | --- |
+| `id` | 2,759 | `business_number_aliases.old_number` |
+| `customer_id` | 2,731 | `customers.business_id`（旧号保留） |
+| `main_id` | 2,731 | `cases.rights_holder_id` |
+| `case_progress` | 2,731 | `cases.stage` |
+| `case_number` | 2,731 | `cases.business_no`（原值） |
+| `case_court_number` | 539 | `cases.court_case_no` + 受理记录 |
+| `official_register_date` | 394 | 受理事实 |
+| `judgement_date` / `judgement_amount` | 216 / 251 | 判决事实 |
+| `execution_date` / `execution_number` | 26 / 31 | 执行立案 / 执行结束 |
+| `completed_date` / `completed_amount` | 397 / 416 | 结案事实 |
+| `case_archive_date` | 638 | 归档事实 |
+| `case_archive_type` | 724 | `close_outcome`（13 值）+ 归档类型 |
+| `case_archive_notes` | 225 | 归档原因 |
+| `cost_notarization` / `cost_disclosure` / `cost_shopping` | 239 / 264 / 113 | 费用（公证/披露/样品） |
+| `cost_legal_prepay` / `cost_legal_paid` / `cost_legal_refund` | 481 / 340 / 325 | 费用（诉讼/退费） |
+| `clue_entity` | 2,709 | 被告 |
+| `clue_platform` | 2,688 | 入口 `known.platform` |
+| `clue_account` | 1,407 | 入口 `known.shopName` |
+| `created_at` | 2,759 | `cases.created_at` |
+
+## 三、未映射（69 列，按可补程度分组）
+
+### A. 可立即补（28 列，纯数据映射）
+
+| 组 | 列 | 非空合计 |
+| --- | --- | --- |
+| 案件类型 / 案由 | `case_type`、`clue_type` | 5,518 |
+| 法院 | `case_court_name`、`case_court_province`、`court_id`、`case_court_id` | 3,623 |
+| 律师 | `case_lawyer_name/office/phone/address/number/office_number`、`lawyer_id`、`match_lawyer_date` | 9,511 |
+| 金额与日期 | `case_amount`、`case_prepay_date`、`cost_court_date`、`submit_register_date`、`payment_type`、`cost_refund`、`cost_shipping`、`record_date`、`record_cost`、`case_judge`、`pleadings_*` 3 列 | 4,556 |
+
+> 说明：`case_type`/`clue_type` 映射到 `caseType` 与侵权类型；法院按名称匹配 `filing_courts`；律师按姓名+律所匹配 `lawyer_profiles` 并建指派；其余进对应事实的备注或金额。
+
+### B. 随「线索 + 公证」段一起补（17 列）
+
+| 组 | 列 | 非空合计 |
+| --- | --- | --- |
+| 公证过程 | `notarization_number/type/platform/office/upload_date`、`forensics_open/confirm/approve_date`、`orensics_issue_date`、`forensics_check_*` 4 列 | 6,801 |
+| 寄件物流 | `sender_name/phone/address`、`sender_tracking` | 3,017 |
+| 线索细节 | `clue_source`、`clue_discovery/confirm/push/approve/purchase_date`、`clue_check_opinion/note`、`clue_notes`、`users_id` | 14,381 |
+
+### C. 新系统无对应实体（15 列）
+
+| 组 | 列 | 非空合计 | 建议 |
+| --- | --- | --- | --- |
+| 披露信息 | `disclosure_license/name/address/type/id/legal/phone/emergency/info/sales/date` | 9,564 | 加披露实体或存被告备注 |
+| 结算进度 | `customer_settlement_progress/remarks`、`lawyer_settlement_progress/remarks` | 745 | 文本存备注，或加字段 |
+| 其他 | `case_judge`、`disclosure_sales` | 164 | 存备注 |
+
+## 四、查看与修改（已验证）
+
+| 项 | 结果 |
+| --- | --- |
+| 全量详情接口 | 2,220 / 2,220 = 200 |
+| 页面渲染 | 5/5 正常（无「无法读取」，有「编辑资料」） |
+| 模拟修改并保存 | `PATCH /cases/:id/routine-profile` 200，revision 0→1，回读确认 |
+| 阶段分布 | 12 类与旧库一致 |
+| 版本链 | 不一致 0 条 |
+
+## 五、建议顺序
+
+1. 补 A 组 28 列（约 1 小时，纯映射，不动流程）
+2. 导线索/公证段（297 + 214 条），同时补 B 组 17 列（约 1.5 小时）
+3. 决定 C 组 15 列的处理方式（加实体 / 存备注 / 不导）
