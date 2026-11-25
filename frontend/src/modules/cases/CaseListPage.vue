@@ -404,7 +404,8 @@ const filingBatchNeedsRecovery = computed(() =>
       ),
 );
 const assignmentBatchNeedsRecovery = computed(() =>
-  assignmentRecovery.value.state === 'blocked'
+  assignmentRecovery.value.state === 'blocked' ||
+  assignmentRecovery.value.state === 'expired'
     ? true
     : assignmentRecovery.value.state === 'valid' &&
       assignmentRecovery.value.batch.items.some(
@@ -2148,9 +2149,11 @@ onBeforeUnmount(() => {
           data-test="assignment-batch-recovery-status"
         >
           {{
-            assignmentRecovery.state === 'blocked'
-              ? '原律师分配批次记录无法核对；恢复面板会保持只读并保留原记录。'
-              : '存在尚未完成的原律师分配批次；恢复入口不受当前筛选和勾选影响。'
+            assignmentRecovery.state === 'expired'
+              ? '原律师分配批次是旧版记录（缺律师档案），已无法恢复；请清除后重新分配。'
+              : assignmentRecovery.state === 'blocked'
+                ? '原律师分配批次记录无法核对；恢复面板会保持只读并保留原记录。'
+                : '存在尚未完成的原律师分配批次；恢复入口不受当前筛选和勾选影响。'
           }}
         </p>
         <ElButton
@@ -2161,7 +2164,10 @@ onBeforeUnmount(() => {
           >恢复原律师分配批次</ElButton
         >
         <ElButton
-          v-if="assignmentRecovery.state === 'blocked'"
+          v-if="
+            assignmentRecovery.state === 'blocked' ||
+            assignmentRecovery.state === 'expired'
+          "
           text
           data-test="discard-assignment-batch"
           @click="discardBlockedBatchRecovery('assignment')"

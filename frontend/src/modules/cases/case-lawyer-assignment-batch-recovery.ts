@@ -37,6 +37,8 @@ export type LawyerAssignmentBatch = {
 export type LawyerAssignmentBatchRead =
   | { state: 'missing' }
   | { state: 'blocked' }
+  /** 律师档案改造前的旧记录：缺 lawyerProfileId，无法恢复，只能清除。 */
+  | { state: 'expired' }
   | { state: 'valid'; batch: LawyerAssignmentBatch };
 const key = (identity: string) =>
   `case-lawyer-assignment-batch-v1:${encodeURIComponent(identity)}`;
@@ -123,9 +125,18 @@ export function readLawyerAssignmentBatch(
     const raw = globalThis.localStorage.getItem(key(identity));
     if (raw === null) return { state: 'missing' };
     const value: unknown = JSON.parse(raw);
-    return validBatch(value, identity)
-      ? { state: 'valid', batch: value }
-      : { state: 'blocked' };
+    if (validBatch(value, identity)) return { state: 'valid', batch: value };
+    // 旧版记录没有律师档案 id，属于结构过期而不是损坏。
+    if (
+      obj(value) &&
+      value.identity === identity &&
+      typeof value.batchId === 'string' &&
+      obj(value.target) &&
+      typeof value.target.lawyerProfileId !== 'string' &&
+      Array.isArray(value.items)
+    )
+      return { state: 'expired' };
+    return { state: 'blocked' };
   } catch {
     return { state: 'blocked' };
   }

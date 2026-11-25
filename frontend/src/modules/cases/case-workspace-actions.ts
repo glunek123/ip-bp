@@ -399,12 +399,11 @@ export function resolveCaseDetailActions(
     'finish',
   );
   add(
-    // 强制执行中可结案（推进阶段）；更正仍限待归档。
-    ((stage === 'WAITING_ARCHIVE' &&
+    // 结案资料只在待归档阶段；执行中走「执行更新/执行结束」推进到待归档。
+    stage === 'WAITING_ARCHIVE' &&
       (!!current.executionFinish ||
         (current.origin?.kind === 'EXTERNAL_ENTRY' &&
-          current.origin.initialStage === 'WAITING_ARCHIVE'))) ||
-      (stage === 'EXECUTING' && !current.closure)) &&
+          current.origin.initialStage === 'WAITING_ARCHIVE')) &&
       ((!current.closure && current.canRecordClosure) ||
         (!!current.closure && current.canCorrectClosure)),
     'closure',
@@ -503,12 +502,11 @@ export function resolveCaseListActions(
     'early-closure',
   );
   add(
-    // 结案只有一张卡：执行中（结案推进到待归档）与待归档（登记/更正）都走它。
-    (current.stage === 'WAITING_ARCHIVE' || current.stage === 'EXECUTING') &&
+    // 结案只在待归档：执行中由「执行更新/执行结束」推进阶段后再结案。
+    current.stage === 'WAITING_ARCHIVE' &&
       (current.canUpdateClosureSettlement ||
-        (current.stage === 'EXECUTING'
-          ? current.canRecordClosure
-          : current.canCorrectClosure || current.canRecordClosure)),
+        current.canCorrectClosure ||
+        current.canRecordClosure),
     'settlement-update',
   );
   add(current.stage === 'WAITING_ARCHIVE' && current.canArchive, 'archive');
