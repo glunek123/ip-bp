@@ -190,6 +190,10 @@ async function submit() {
     notifyWorkflowChanged();
     emit('changed');
   } catch (reason) {
+    console.warn(
+      'PROBE_MAILING',
+      reason instanceof ApiError ? `${reason.code}/${reason.status}: ${reason.message}` : String(reason),
+    );
     if (!isCurrent(context)) return;
     if (
       reason instanceof ApiError &&
