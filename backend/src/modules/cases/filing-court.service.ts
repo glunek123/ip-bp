@@ -23,12 +23,16 @@ export class FilingCourtService {
     const items = await this.database.filingCourt.findMany({
       where: { departmentId: actor.departmentId },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
-      select: { id: true, name: true },
+      select: { id: true, name: true, province: true },
     });
     return { items };
   }
 
-  async create(actor: ActorContext, caseId: string, input: { name: string }) {
+  async create(
+    actor: ActorContext,
+    caseId: string,
+    input: { name: string; province?: string | null },
+  ) {
     const name = input.name;
     if (
       typeof name !== 'string' ||
@@ -44,13 +48,23 @@ export class FilingCourtService {
         code: 'VALIDATION_ERROR',
         message: '法院名称无效',
       });
+    // 省份可选：允许为空，最长 100 字符，去掉首尾空白
+    const province =
+      typeof input.province === 'string' && input.province.trim() !== ''
+        ? input.province.trim()
+        : null;
+    if (province !== null && province.length > 100)
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '法院所在地过长',
+      });
     try {
       return await this.database.$transaction(
         async (tx) => {
           await this.caseFor(actor, caseId, true, tx);
           return tx.filingCourt.create({
-            data: { departmentId: actor.departmentId, name },
-            select: { id: true, name: true },
+            data: { departmentId: actor.departmentId, name, province },
+            select: { id: true, name: true, province: true },
           });
         },
         { isolationLevel: 'Serializable' },

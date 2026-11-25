@@ -72,11 +72,17 @@ export class CreateFilingCourtDto {
   @MinLength(1)
   @MaxLength(200)
   name!: string;
+  @ApiProperty({ type: String, nullable: true, maxLength: 100, required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  province?: string | null;
 }
 
 export class FilingCourtDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() name!: string;
+  @ApiProperty({ type: String, nullable: true }) province!: string | null;
 }
 
 export class FilingCourtListDto {

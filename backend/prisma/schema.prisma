@@ -2892,6 +2892,8 @@ model FilingCourt {
   id           String                 @id @default(uuid()) @db.Uuid
   departmentId String                 @map("department_id") @db.Uuid
   name         String                 @db.VarChar(200)
+  /// 法院所在地（省/市/区），旧系统 case_court_province 迁移保留，新录入可空。
+  province     String?                @db.VarChar(100)
   department   Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   submissions  CaseFilingSubmission[]
   acceptances  CaseAcceptance[]

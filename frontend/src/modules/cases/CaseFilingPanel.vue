@@ -57,6 +57,11 @@ const courts = ref<FilingCourt[]>([]);
 const courtsLoading = ref(false);
 const courtsError = ref('');
 const courtName = ref('');
+/** 下拉里把法院所在地跟在名称后面，便于同名法院区分。 */
+function courtLabel(court: { name: string; province?: string | null }): string {
+  return court.province ? `${court.name} · ${court.province}` : court.name;
+}
+const courtProvince = ref('');
 const courtId = ref('');
 const submittedAt = ref(todayShanghai());
 const claimAmount = ref('');
@@ -154,6 +159,7 @@ watch(() => [props.item.id, props.contextKey], abortDownloads, {
 function clearContext() {
   courts.value = [];
   courtName.value = '';
+  courtProvince.value = '';
   courtId.value = '';
   submittedAt.value = todayShanghai();
   claimAmount.value = originalClaimAmount.value;
@@ -388,10 +394,13 @@ async function addCourt() {
     const created = props.lawyer
       ? await createFilingCourt(
           context.caseId,
-          { name: courtName.value },
+          { name: courtName.value, province: courtProvince.value || null },
           'lawyer',
         )
-      : await createFilingCourt(context.caseId, { name: courtName.value });
+      : await createFilingCourt(context.caseId, {
+            name: courtName.value,
+            province: courtProvince.value || null,
+          });
     if (!isCurrent(context)) return;
     courts.value = [...courts.value, created];
     courtId.value = created.id;
@@ -560,7 +569,7 @@ async function download(file: CaseFile) {
           >
             <option v-if="courts.length > 1" value="">请选择法院</option>
             <option v-for="court in courts" :key="court.id" :value="court.id">
-              {{ court.name }}
+              {{ courtLabel(court) }}
             </option>
           </select>
         </label>
@@ -578,6 +587,18 @@ async function download(file: CaseFile) {
                 maxlength="200"
                 autocomplete="organization"
                 data-test="filing-court-name"
+                @input="editing"
+              />
+            </label>
+            <label>
+              法院所在地
+              <input
+                v-model="courtProvince"
+                class="text-input"
+                maxlength="100"
+                placeholder="如 浙江省/杭州市/西湖区，可留空"
+                autocomplete="address-level1"
+                data-test="filing-court-province"
                 @input="editing"
               />
             </label>

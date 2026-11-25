@@ -877,7 +877,12 @@ export type LawyerCaseJudgmentNextStep = {
     Omit<CaseJudgmentNextStepRevocation, 'reason' | 'recordedByUserId'>
   >;
 };
-export type FilingCourt = { id: string; name: string };
+/** province：法院所在地，旧系统迁移保留，新录入可空。 */
+export type FilingCourt = {
+  id: string;
+  name: string;
+  province?: string | null;
+};
 export type CaseFilingSubmission = {
   court: FilingCourt;
   submittedAt: string;
@@ -2989,7 +2994,7 @@ function validHearing(value: unknown, internal: boolean): boolean {
     value.corrections.every((item) => validHearingCorrection(item, internal))
   );
 }
-function validCaseDetail(value: unknown, id: string): value is CaseDetail {
+export function validCaseDetail(value: unknown, id: string): value is CaseDetail {
   if (!record(value)) return false;
   // 历史回填（旧系统迁移）没有过程事实：判决版本链、记录编辑、邮寄确认都缺失，
   // 只校验字段合法性与阶段-事实一致性，不要求过程链完整。
@@ -4539,9 +4544,17 @@ function validSecondInstanceAcceptanceEdits(
   );
 }
 function validFilingCourt(value: unknown): value is FilingCourt {
+  const provinceOk =
+    value !== null && typeof value === 'object' && !('province' in value)
+      ? true
+      : record(value) &&
+        (value.province === null ||
+          (typeof value.province === 'string' &&
+            value.province.length <= 100));
   return (
     record(value) &&
-    exact(value, ['id', 'name']) &&
+    exactWithOptional(value, ['id', 'name'], ['province']) &&
+    provinceOk &&
     typeof value.id === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
       value.id,
@@ -6150,7 +6163,7 @@ export async function listFilingCourts(
 }
 export async function createFilingCourt(
   id: string,
-  input: { name: string },
+  input: { name: string; province?: string | null },
   audience: 'internal' | 'lawyer' = 'internal',
 ): Promise<FilingCourt> {
   const name = input.name.trim();
@@ -6160,9 +6173,12 @@ export async function createFilingCourt(
       400,
       'VALIDATION_ERROR',
     );
+  const province = input.province?.trim() || null;
+  if (province !== null && province.length > 100)
+    throw new ApiError('法院所在地最多 100 个字符。', 400, 'VALIDATION_ERROR');
   const response = await requestJson(
     `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/filing-courts`,
-    { method: 'POST', body: { name } },
+    { method: 'POST', body: province === null ? { name } : { name, province } },
   );
   if (!validFilingCourt(response) || response.name !== name)
     throw invalidResponse();
