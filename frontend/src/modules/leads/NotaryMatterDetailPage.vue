@@ -20,9 +20,9 @@ import { downloadMaterialVersion } from '../../api/materials';
 import MaterialPreviewDialog from '../../app/MaterialPreviewDialog.vue';
 import NotaryOpeningPhotoGallery from './NotaryOpeningPhotoGallery.vue';
 import {
-  appendNotarySampleFeeRefund,
+  setNotarySampleFeeRefund,
   getNotaryMatter,
-  getNotarySampleFeeRefunds,
+  getNotarySampleFeeRefund,
   normalizeRefundAmount,
   updateNotaryRoutineProfile,
   type RoutineBusinessEditInput,
@@ -235,14 +235,13 @@ async function downloadMaterial(
 const sampleRefund = ref<NotarySampleFeeRefundSummary | null>(null);
 const refundOpen = ref(false);
 const refundAmount = ref('');
-const refundDate = ref(new Date().toLocaleDateString('en-CA'));
 const refundNote = ref('');
 const refundBusy = ref(false);
 const refundError = ref('');
 
 async function loadSampleRefunds(id: string): Promise<void> {
   try {
-    sampleRefund.value = await getNotarySampleFeeRefunds(id);
+    sampleRefund.value = await getNotarySampleFeeRefund(id);
   } catch {
     sampleRefund.value = null;
   }
@@ -267,25 +266,25 @@ async function submitSampleRefund(): Promise<void> {
   refundError.value = '';
   refundBusy.value = true;
   try {
-    await appendNotarySampleFeeRefund(
-      String(route.params.id),
-      {
-        amount: refundAmount.value.trim(),
-        refundedOn: refundDate.value,
-        ...(refundNote.value.trim() ? { note: refundNote.value.trim() } : {}),
-      },
-      globalThis.crypto.randomUUID(),
-    );
+    await setNotarySampleFeeRefund(String(route.params.id), {
+      amount: refundAmount.value.trim(),
+      ...(refundNote.value.trim() ? { note: refundNote.value.trim() } : {}),
+    });
     refundOpen.value = false;
-    refundAmount.value = '';
     refundNote.value = '';
     await load();
   } catch (error) {
     refundError.value =
-      error instanceof ApiError ? error.message : '登记失败，请重试';
+      error instanceof ApiError ? error.message : '保存失败，请重试';
   } finally {
     refundBusy.value = false;
   }
+}
+
+/** 打开编辑时预填当前退款金额，便于直接改值。 */
+function toggleSampleRefund(): void {
+  if (!refundOpen.value) refundAmount.value = sampleRefund.value?.refundAmount ?? '';
+  refundOpen.value = !refundOpen.value;
 }
 
 async function load(): Promise<boolean> {
@@ -988,8 +987,16 @@ watch(
               <dd class="mono">{{ feeLabel(matter.fees.investigation) }}</dd>
             </div>
             <div>
-              <dt>样品费</dt>
-              <dd class="mono">{{ feeLabel(matter.fees.sample) }}</dd>
+              <dt>原样品费</dt>
+              <dd class="mono" data-test="sample-fee-original">
+                {{ feeLabel(matter.fees.originalSampleFee) }}
+              </dd>
+            </div>
+            <div>
+              <dt>现样品费</dt>
+              <dd class="mono" data-test="sample-fee-current">
+                {{ feeLabel(matter.fees.sample) }}
+              </dd>
             </div>
             <div>
               <dt>样品费退款</dt>
@@ -1000,9 +1007,9 @@ watch(
                   type="button"
                   class="link-button"
                   data-test="sample-refund-open"
-                  @click="refundOpen = !refundOpen"
+                  @click="toggleSampleRefund"
                 >
-                  {{ refundOpen ? '收起' : '登记退款' }}
+                  {{ refundOpen ? '收起' : '修改退款' }}
                 </button>
               </dd>
             </div>
@@ -1044,13 +1051,6 @@ watch(
                 @blur="formatRefundAmount"
             /></label>
             <label
-              >退款日期<input
-                v-model="refundDate"
-                data-test="sample-refund-date"
-                type="date"
-                required
-            /></label>
-            <label
               >备注<input
                 v-model="refundNote"
                 data-test="sample-refund-note"
@@ -1061,28 +1061,12 @@ watch(
               data-test="sample-refund-submit"
               :disabled="refundBusy"
             >
-              登记
+              保存
             </button>
             <p v-if="refundError" role="alert" data-test="sample-refund-error">
               {{ refundError }}
             </p>
           </form>
-          <details
-            v-if="sampleRefund && sampleRefund.items.length"
-            data-test="sample-refund-history"
-          >
-            <summary>
-              样品费退款记录（{{ sampleRefund.items.length }} 笔，合计
-              {{ sampleRefund.totalRefunded }} 元）
-            </summary>
-            <ul>
-              <li v-for="row in sampleRefund.items" :key="row.id">
-                {{ row.refundedOn }} · {{ row.amount }} 元{{
-                  row.note ? ` · ${row.note}` : ''
-                }}
-              </li>
-            </ul>
-          </details>
         </section>
 
         <section

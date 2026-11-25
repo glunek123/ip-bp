@@ -47,6 +47,8 @@ function detail(
       notary: { state: 'UNRECORDED', amount: null },
       investigation: { state: 'UNRECORDED', amount: null },
       sample: { state: 'PENDING', amount: null },
+
+      originalSampleFee: { state: 'PENDING', amount: null },
     },
     linkedCase: null,
     capabilities: {

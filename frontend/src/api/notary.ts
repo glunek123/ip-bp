@@ -70,6 +70,8 @@ export type NotaryMatterDisplay = {
     investigation: NotaryDisplayFee;
     /** 样品费净值：取证登记金额 − 待退货阶段登记的退款合计。 */
     sample: NotaryDisplayFee;
+    /** 原样品费（登记值），不被退款覆盖。 */
+    originalSampleFee: NotaryDisplayFee;
     sampleRefund: NotaryDisplayFee;
   };
   linkedCase: null | { id: string; businessNo: string; stage: CaseStage };
@@ -747,10 +749,17 @@ function isNotaryDisplay(
         (certificate.disclosureInfo === undefined ||
           typeof certificate.disclosureInfo === 'string'))) &&
     isRecord(fees) &&
-    exactKeys(fees, ['notary', 'investigation', 'sample', 'sampleRefund']) &&
+    exactKeys(fees, [
+      'notary',
+      'investigation',
+      'sample',
+      'originalSampleFee',
+      'sampleRefund',
+    ]) &&
     isDisplayFee(fees.notary) &&
     isDisplayFee(fees.investigation) &&
     isDisplayFee(fees.sample) &&
+    isDisplayFee(fees.originalSampleFee) &&
     isDisplayFee(fees.sampleRefund) &&
     (linked === null ||
       (isRecord(linked) &&
@@ -2241,11 +2250,13 @@ export type NotarySampleFeeRefundSummary = {
   matterId: string;
   stage: string;
   sampleFeeState: 'KNOWN' | 'PENDING';
+  /** 原样品费：取证登记的金额，不随退款变化。 */
   sampleFeeAmount: string | null;
-  totalRefunded: string;
+  /** 退款金额：可随时修改的单值。 */
+  refundAmount: string;
+  /** 现样品费 = 原样品费 − 退款金额。 */
   netSampleFee: string | null;
   canRefund: boolean;
-  items: NotarySampleFeeRefundItem[];
 };
 
 /**
@@ -2259,46 +2270,44 @@ export function normalizeRefundAmount(raw: string): string | null {
   return `${integer}.${fraction.padEnd(2, '0')}`;
 }
 
-/** 登记一笔样品费退款：仅待退货阶段可用，只增不改、不推进流程。 */
-export async function appendNotarySampleFeeRefund(
+/**
+ * 设置样品费退款：一个可随时修改的值，不推进流程。
+ * 现样品费 = 原样品费 − 退款金额，原值保持不变。
+ */
+export async function setNotarySampleFeeRefund(
   id: string,
-  input: { amount: string; refundedOn: string; note?: string },
-  idempotencyKey: string,
+  input: { amount: string; note?: string },
 ): Promise<{
-  id: string;
-  amount: string;
-  refundedOn: string;
-  totalRefunded: string;
+  matterId: string;
+  sampleFeeAmount: string | null;
+  refundAmount: string;
+  netSampleFee: string | null;
+  recordedAt: string;
 }> {
   const amount = normalizeRefundAmount(input.amount);
-  if (amount === null || amount === '0.00')
+  if (amount === null)
     throw new ApiError('请输入有效的退款金额', 400, 'VALIDATION_ERROR');
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(input.refundedOn))
-    throw new ApiError('请填写有效的退款日期', 400, 'VALIDATION_ERROR');
   const note = input.note?.trim();
   return (await requestJson(
-    `/notary-matters/${encodeURIComponent(id)}/sample-fee-refunds`,
+    `/notary-matters/${encodeURIComponent(id)}/sample-fee-refund`,
     {
       method: 'POST',
-      headers: { 'Idempotency-Key': idempotencyKey },
-      body: {
-        amount,
-        refundedOn: input.refundedOn,
-        ...(note ? { note } : {}),
-      },
+      body: { amount, ...(note ? { note } : {}) },
     },
   )) as {
-    id: string;
-    amount: string;
-    refundedOn: string;
-    totalRefunded: string;
+    matterId: string;
+    sampleFeeAmount: string | null;
+    refundAmount: string;
+    netSampleFee: string | null;
+    recordedAt: string;
   };
 }
 
-export function getNotarySampleFeeRefunds(
+export function getNotarySampleFeeRefund(
   id: string,
 ): Promise<NotarySampleFeeRefundSummary> {
   return requestJson(
-    `/notary-matters/${encodeURIComponent(id)}/sample-fee-refunds`,
+    `/notary-matters/${encodeURIComponent(id)}/sample-fee-refund`,
   ) as Promise<NotarySampleFeeRefundSummary>;
 }
+

@@ -143,6 +143,8 @@ describe('notary display read', () => {
         notary: { state: 'UNRECORDED', amount: null },
         investigation: { state: 'UNRECORDED', amount: null },
         sample: { state: 'UNRECORDED', amount: null },
+
+        originalSampleFee: { state: 'UNRECORDED', amount: null },
         sampleRefund: { state: 'UNRECORDED', amount: null },
       },
     });
@@ -178,6 +180,8 @@ describe('notary display read', () => {
         notary: { state: 'KNOWN', amount: '1234567890123456.78' },
         investigation: { state: 'PENDING', amount: null },
         sample: { state: 'KNOWN', amount: '0.00' },
+
+        originalSampleFee: { state: 'KNOWN', amount: '0.00' },
         sampleRefund: { state: 'UNRECORDED', amount: null },
       },
       linkedCase: { id: 'case', businessNo: 'CA-真实', stage: 'PENDING_MATCH' },

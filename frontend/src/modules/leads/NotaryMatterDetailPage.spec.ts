@@ -25,6 +25,7 @@ const sourceProjection = {
     notary: { state: 'UNRECORDED', amount: null },
     investigation: { state: 'UNRECORDED', amount: null },
     sample: { state: 'UNRECORDED', amount: null },
+    originalSampleFee: { state: 'UNRECORDED', amount: null },
     sampleRefund: { state: 'UNRECORDED', amount: null },
   },
   detailFacts: {
@@ -1213,6 +1214,7 @@ describe('NotaryMatterDetailPage', () => {
       '未登记',
       '未登记',
       '未登记',
+      '未登记',
       '0.00 元',
       '尚未完整确认',
     ]);
@@ -1240,6 +1242,7 @@ describe('NotaryMatterDetailPage', () => {
           notary: { state: 'KNOWN', amount: '0.00' },
           investigation: { state: 'PENDING', amount: null },
           sample: { state: 'KNOWN', amount: '12345678901234.56' },
+          originalSampleFee: { state: 'KNOWN', amount: '12345678901234.56' },
         },
         certificateSummary: {
           id: 'certificate-1',
@@ -1279,6 +1282,7 @@ describe('NotaryMatterDetailPage', () => {
       ).toEqual([
         '0.00 元',
         '待定',
+        '12345678901234.56 元',
         '12345678901234.56 元',
         '未登记',
         '未登记',

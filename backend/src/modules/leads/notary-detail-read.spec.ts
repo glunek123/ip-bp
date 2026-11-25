@@ -69,6 +69,8 @@ function fixture() {
       notary: { state: 'KNOWN' as const, amount: '0.00' },
       investigation: { state: 'PENDING' as const, amount: null },
       sample: { state: 'UNRECORDED' as const, amount: null },
+
+      originalSampleFee: { state: 'UNRECORDED' as const, amount: null },
     },
   };
 }

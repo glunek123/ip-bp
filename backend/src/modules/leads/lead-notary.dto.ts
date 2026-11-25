@@ -410,17 +410,15 @@ export class NotaryIssuanceDecisionResponseDto {
   issuanceDecision!: NotaryIssuanceDecisionSummaryDto;
 }
 
-/** 样品费退款：待退货阶段逐笔登记，不带任何流程推进字段。 */
-export class AppendNotarySampleFeeRefundDto {
+/**
+ * 样品费退款：一个可随时修改的数值，不带流程推进字段。
+ * 现样品费 = 取证登记样品费 − 本值，原登记值保持不变。
+ */
+export class SetNotarySampleFeeRefundDto {
   @ApiProperty({ example: '100.00', pattern: '^(0|[1-9]\d{0,15})\.\d{2}$' })
   @IsString()
   @Matches(/^(0|[1-9]\d{0,15})\.\d{2}$/u)
   amount!: string;
-
-  @ApiProperty({ format: 'date', example: '2026-11-24' })
-  @IsString()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/u)
-  refundedOn!: string;
 
   @ApiPropertyOptional({ maxLength: 500 })
   @IsOptional()

@@ -25,7 +25,7 @@ import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import {
-  AppendNotarySampleFeeRefundDto,
+  SetNotarySampleFeeRefundDto,
   CreateNotaryOfficeDto,
   RecordNotaryEvidenceDto,
   SaveNotaryEvidenceDraftDto,
@@ -256,29 +256,21 @@ export class LeadNotaryController {
     return this.notary.recordEvidence(actor, id, key, input);
   }
 
-  @Post('notary-matters/:id/sample-fee-refunds')
-  @ApiHeader({ name: 'Idempotency-Key', required: true })
-  appendSampleFeeRefund(
+  @Post('notary-matters/:id/sample-fee-refund')
+  setSampleFeeRefund(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,
-    @Headers('idempotency-key') idempotencyKey: string | undefined,
-    @Body() input: AppendNotarySampleFeeRefundDto,
+    @Body() input: SetNotarySampleFeeRefundDto,
   ) {
-    const key = idempotencyKey?.trim();
-    if (key === undefined || key.length < 1 || key.length > 128)
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: 'Idempotency-Key 必须为 1 至 128 个字符',
-      });
-    return this.notary.appendSampleFeeRefund(actor, id, key, input);
+    return this.notary.setSampleFeeRefund(actor, id, input);
   }
 
-  @Get('notary-matters/:id/sample-fee-refunds')
-  sampleFeeRefunds(
+  @Get('notary-matters/:id/sample-fee-refund')
+  sampleFeeRefundSummary(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
-    return this.notary.sampleFeeRefunds(actor, id);
+    return this.notary.sampleFeeRefundSummary(actor, id);
   }
 
   @Post('notary-matters/:id/opening')

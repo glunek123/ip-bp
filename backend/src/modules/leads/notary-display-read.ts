@@ -48,6 +48,8 @@ type DisplayMatter = {
     shopExternalId: string | null;
   };
   costs?: (FeeFact & { category: string })[];
+  /** 主表上的退款单值；旧调用方未选择时按 0 处理。 */
+  sampleFeeRefund?: Prisma.Decimal | null;
   evidence: {
     evidenceAt: Date;
     sampleFeeState: 'KNOWN' | 'PENDING';
@@ -203,17 +205,8 @@ export async function readNotaryDisplay(
   );
   const fee = (category: string) =>
     certificate?.fees.find((row) => row.category === category);
-  // 样品费退款只增不改，净值在这里现算，不落冗余列。
-  // 旧调用方（或裁剪过的读上下文）没有该 delegate 时按「无退款」处理。
-  const refundDelegate = database.notarySampleFeeRefund;
-  const refundAggregate = refundDelegate
-    ? await refundDelegate.aggregate({
-        where: { matterId: matter.id, departmentId: actor.departmentId },
-        _sum: { amount: true },
-      })
-    : { _sum: { amount: null } };
-  const refundedTotal =
-    refundAggregate._sum.amount ?? new Prisma.Decimal(0);
+  // 样品费退款是主表上的单值，可随时修改；净值 = 登记样品费 − 该值。
+  const refundedTotal = matter.sampleFeeRefund ?? new Prisma.Decimal(0);
   const rawSample = notaryDisplayFee(
     matter.costs?.find((item) => item.category === 'SAMPLE') ??
       (matter.evidence === null
@@ -234,6 +227,8 @@ export async function readNotaryDisplay(
             .toFixed(2),
         }
       : rawSample;
+  // 原样品费始终保留登记值，现样品费另给一份，二者同时展示。
+  const originalSampleFee = rawSample;
   const sampleRefund = refundedTotal.greaterThan(0)
     ? { state: 'KNOWN' as const, amount: refundedTotal.toFixed(2) }
     : { state: 'UNRECORDED' as const, amount: null };
@@ -297,6 +292,7 @@ export async function readNotaryDisplay(
       investigation: notaryDisplayFee(fee('INVESTIGATION')),
       // 样品费展示净值：取证登记金额 − 待退货阶段登记的退款合计。
       sample: sampleFee,
+      originalSampleFee,
       sampleRefund: sampleRefund,
     },
     linkedCase,

@@ -4,9 +4,9 @@ import ElButton from 'element-plus/es/components/button/index';
 import ElDialog from 'element-plus/es/components/dialog/index';
 import { ApiError } from '../../api/http';
 import {
-  appendNotarySampleFeeRefund,
-  getNotarySampleFeeRefunds,
+  getNotarySampleFeeRefund,
   normalizeRefundAmount,
+  setNotarySampleFeeRefund,
   type NotarySampleFeeRefundSummary,
 } from '../../api/notary';
 
@@ -15,22 +15,32 @@ const emit = defineEmits<{ close: []; saved: [] }>();
 
 const summary = ref<NotarySampleFeeRefundSummary | null>(null);
 const amount = ref('');
-const refundedOn = ref(new Date().toLocaleDateString('en-CA'));
 const note = ref('');
 const busy = ref(false);
 const loading = ref(false);
 const error = ref('');
 
-const title = '样品费退款更新/登记';
+const title = '样品费退款';
 const formDisabled = computed(
   () => busy.value || loading.value || summary.value?.canRefund === false,
 );
+
+/** 现样品费预览：原样品费 − 输入中的退款金额。 */
+const netPreview = computed(() => {
+  const original = summary.value?.sampleFeeAmount;
+  if (original === null || original === undefined) return null;
+  const refund = normalizeRefundAmount(amount.value);
+  if (refund === null) return null;
+  const net = Number(original) - Number(refund);
+  return net < 0 ? null : net.toFixed(2);
+});
 
 async function load(): Promise<void> {
   loading.value = true;
   error.value = '';
   try {
-    summary.value = await getNotarySampleFeeRefunds(props.matterId);
+    summary.value = await getNotarySampleFeeRefund(props.matterId);
+    amount.value = summary.value.refundAmount;
   } catch (cause) {
     summary.value = null;
     error.value =
@@ -46,7 +56,6 @@ watch(
     if (!open) return;
     amount.value = '';
     note.value = '';
-    refundedOn.value = new Date().toLocaleDateString('en-CA');
     error.value = '';
     void load();
   },
@@ -65,22 +74,15 @@ async function submit(): Promise<void> {
   error.value = '';
   busy.value = true;
   try {
-    await appendNotarySampleFeeRefund(
-      props.matterId,
-      {
-        amount: amount.value.trim(),
-        refundedOn: refundedOn.value,
-        ...(note.value.trim() ? { note: note.value.trim() } : {}),
-      },
-      globalThis.crypto.randomUUID(),
-    );
-    amount.value = '';
+    await setNotarySampleFeeRefund(props.matterId, {
+      amount: amount.value.trim(),
+      ...(note.value.trim() ? { note: note.value.trim() } : {}),
+    });
     note.value = '';
     await load();
     emit('saved');
   } catch (cause) {
-    error.value =
-      cause instanceof ApiError ? cause.message : '登记失败，请重试';
+    error.value = cause instanceof ApiError ? cause.message : '保存失败，请重试';
   } finally {
     busy.value = false;
   }
@@ -101,24 +103,32 @@ async function submit(): Promise<void> {
     <template v-else>
       <dl v-if="summary" class="demo-detail-grid sample-refund-dialog__facts">
         <div>
-          <dt>样品费</dt>
-          <dd class="mono">
-            {{ summary.sampleFeeAmount === null ? '无' : `${summary.sampleFeeAmount} 元` }}
+          <dt>原样品费</dt>
+          <dd class="mono" data-test="dialog-sample-fee">
+            {{
+              summary.sampleFeeAmount === null
+                ? '无'
+                : `${summary.sampleFeeAmount} 元`
+            }}
           </dd>
         </div>
         <div>
-          <dt>已退合计</dt>
-          <dd class="mono">{{ summary.totalRefunded }} 元</dd>
+          <dt>退款金额</dt>
+          <dd class="mono" data-test="dialog-refund-current">
+            {{ summary.refundAmount }} 元
+          </dd>
         </div>
         <div>
-          <dt>可退余额</dt>
-          <dd class="mono">
-            {{ summary.netSampleFee === null ? '—' : `${summary.netSampleFee} 元` }}
+          <dt>现样品费</dt>
+          <dd class="mono" data-test="dialog-net-fee">
+            {{
+              summary.netSampleFee === null ? '—' : `${summary.netSampleFee} 元`
+            }}
           </dd>
         </div>
       </dl>
       <p v-if="summary && !summary.canRefund" class="sample-refund-dialog__hint">
-        该事项当前不能登记退款：仅待退货阶段、且样品费已登记并仍有余额时才可登记。
+        该事项尚未登记样品费，无法设置退款。
       </p>
       <form class="sample-refund-dialog__form" @submit.prevent="submit">
         <label
@@ -130,14 +140,11 @@ async function submit(): Promise<void> {
             required
             @blur="formatAmount"
         /></label>
-        <label
-          >退款日期<input
-            v-model="refundedOn"
-            data-test="dialog-refund-date"
-            type="date"
-            :disabled="formDisabled"
-            required
-        /></label>
+        <p class="sample-refund-dialog__hint" data-test="dialog-net-preview">
+          保存后现样品费：{{
+            netPreview === null ? '—' : `${netPreview} 元`
+          }}（原样品费 {{ summary?.sampleFeeAmount ?? '无' }} 元）
+        </p>
         <label
           >备注<input
             v-model="note"
@@ -157,7 +164,7 @@ async function submit(): Promise<void> {
             native-type="submit"
             :disabled="formDisabled"
             data-test="dialog-refund-submit"
-            >登记</ElButton
+            >保存</ElButton
           >
         </div>
       </form>
