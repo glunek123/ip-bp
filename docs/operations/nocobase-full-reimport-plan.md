@@ -169,6 +169,58 @@ RESET session_replication_role;
 
 > 灰度必须覆盖三类：纯线索、公证中、案件各阶段。
 
+## 五·补二、grill 结论（2026-11-25，实施前对齐）
+
+### 1. 灰度目标已被上次导入占用（已处理）
+
+3 条灰度案件在系统中已存在（`00320261118644`/`00320261118641`/`00320261118589`，按案号反查）。已备份并删除：
+
+- 备份：`/var/backups/ip-bp-uat/20261125-gray3/{cases,defendants,entries,audit}.jsonl`（各 3 条）
+- 删除：3 案件 + 3 被告 + 3 外部入口 + 3 审计，事务内 `session_replication_role=replica`，已复核归零
+
+### 2. 上次导入的真实结构（问题全貌）
+
+抽查一条已导入的已归档案件（`01120261118032`）：
+
+| 表 | 条数 |
+| --- | --- |
+| `case_external_entries` | 1 |
+| `case_defendants` | 1 |
+| `case_acceptances` | **0** |
+| `case_judgment_facts` | **0** |
+| `case_execution_finishes` | **0** |
+| `case_closures` | **0** |
+| `case_archives` | **0** |
+| `audit_events` | 1（仅 created） |
+
+即：只有骨架，全部流程事实为空。这正是「丢了 89 列」的完整解释——不是字段被截断，而是**事实表一条都没建**。
+
+### 3. 旧号映射范围（定）
+
+- `business_number_aliases.entityType` 只支持 `LEAD` / `CASE` → 案件与线索各写一条，公证事项不写（表不支持）
+- 唯一约束 `(entity_type, old_number)` 保证旧 id 全局唯一，可做幂等键
+
+### 4. 费用口径（按现有数据定）
+
+现有 `fee_records.type` 为中文类型 + `direction` 支出/收入，已出现的类型：公证费、调查费、样品费、诉讼费、诉讼退费、保全费、调档费、公告费。
+
+| 旧字段 | 新记录 |
+| --- | --- |
+| `cost_notarization` | 公证费 / 支出 |
+| `cost_disclosure` | 调查费 / 支出 |
+| `cost_shopping` | 样品费 / 支出 |
+| `cost_legal_prepay` | 诉讼费 / 支出（备注「预缴」） |
+| `cost_legal_paid` | 诉讼费 / 支出（备注「实缴」） |
+| `cost_legal_refund` | 诉讼退费 / 收入 |
+| `cost_shipping` | 样品费 / 支出（备注「运费」） |
+
+### 5. 待业务确认（阻塞全量，不阻塞 3 条灰度）
+
+297 条纯线索 + 214 条公证中，是否也建为 `Lead` / 公证事项？
+
+- 建（推荐）：全量语义完整，工作量 +1 天（Lead 审核链、公证事项链路）
+- 不建：只导 2,220 条案件，这 511 条永久丢失（上次是错误地建成了案件）
+
 ## 六、迁移器实现要点
 
 ### 6.1 目录结构
