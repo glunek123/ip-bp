@@ -2168,7 +2168,8 @@ function executionFiling(
     typeof value.recordedAt === 'string' &&
     !Number.isNaN(Date.parse(value.recordedAt)) &&
     Array.isArray(value.files) &&
-    value.files.length >= 1 &&
+    // 直接进入执行时补登的立案记录没有邮寄与文书，允许为空。
+    (directStart ? value.files.length >= 0 : value.files.length >= 1) &&
     value.files.length <= 10 &&
     value.files.every(caseFile) &&
     new Set(value.files.map((file) => (file as CaseFile).contentVersionId))
@@ -2235,11 +2236,13 @@ function executionFinishMatches(
       (stage !== 'ARCHIVED' || directArchived || directWaitingArchive) &&
       (canFinish !== true ||
         (stage === 'EXECUTING' &&
-          (executionFiling(filing) || (directExecuting && filing === null))))
+          (executionFiling(filing, directExecuting) ||
+            (directExecuting && filing === null))))
     );
   return (
     executionFinish(finish, directExecuting && filing === null) &&
-    (executionFiling(filing) || (directExecuting && filing === null)) &&
+    (executionFiling(filing, directExecuting) ||
+      (directExecuting && filing === null)) &&
     finish.filingId === (record(filing) ? filing.id : null) &&
     // 执行更新只登记字段，立案记录存在时案件仍可停在强制执行中。
     (stage === 'EXECUTING' ||
@@ -2254,6 +2257,7 @@ function executionFactsMatch(
   confirmation: unknown,
   directStamp = false,
   directFiling = false,
+  directExecuting = false,
 ): boolean {
   if (
     mailing !== null &&
@@ -2266,9 +2270,12 @@ function executionFactsMatch(
   }
   if (
     filing !== null &&
-    (!executionFiling(filing, directFiling && mailing === null) ||
+    (!executionFiling(
+      filing,
+      (directFiling || directExecuting) && mailing === null,
+    ) ||
       filing.mailingId !== (record(mailing) ? mailing.id : null) ||
-      (mailing === null && !directFiling))
+      (mailing === null && !directFiling && !directExecuting))
   ) {
     return false;
   }
@@ -2518,6 +2525,7 @@ function executionSourceMatches(
       value.executionConfirmation,
       directStamp,
       directFiling,
+      directExecuting,
     ) ||
     !executionFinishMatches(
       value.executionFinish,
@@ -3618,7 +3626,9 @@ const sectionRecordContracts = {
     route: 'execution-filing-correction',
     fields: ['submittedAt', 'executionFilingProofContentVersionIds'],
     files: 'executionFilingProofContentVersionIds',
-    minimum: 1,
+    // 外部录入直进执行时补登的立案记录没有凭证；提交侧仍强制 1-10 份，
+    // 因此这里放宽不会放过新登记。
+    minimum: 0,
     reason: 'reason',
     round: false,
   },
