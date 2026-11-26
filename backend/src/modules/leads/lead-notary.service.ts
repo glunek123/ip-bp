@@ -1773,6 +1773,29 @@ export class LeadNotaryService {
               logistics: recordEdits.evidence?.effective.logistics ?? [],
             },
       notaryOffice: matter.notaryOffice,
+      // 旧库迁移补充信息（只读展示，与原生字段同区呈现）
+      legacyNotarization: {
+        type: matter.legacyNotarizationType ?? null,
+        platform: matter.legacyNotarizationPlatform ?? null,
+        number: matter.legacyNotarizationNumber ?? null,
+        uploadOn: matter.legacyUploadOn?.toISOString().slice(0, 10) ?? null,
+        openOn: matter.legacyForensicsOpenOn?.toISOString().slice(0, 10) ?? null,
+        confirmOn:
+          matter.legacyForensicsConfirmOn?.toISOString().slice(0, 10) ?? null,
+        approveOn:
+          matter.legacyForensicsApproveOn?.toISOString().slice(0, 10) ?? null,
+        issueOn:
+          matter.legacyForensicsIssueOn?.toISOString().slice(0, 10) ?? null,
+        office: matter.legacyNotaryOffice ?? null,
+        senderName: matter.legacySenderName ?? null,
+        senderPhone: matter.legacySenderPhone ?? null,
+        senderAddress: matter.legacySenderAddress ?? null,
+        senderTracking: matter.legacySenderTracking ?? null,
+        checkOpinion: matter.legacyForensicsCheckOpinion ?? null,
+        checkNote: matter.legacyForensicsCheckNote ?? null,
+        checkResult: matter.legacyForensicsCheckResult ?? null,
+        checkInfo: matter.legacyForensicsCheckInfo ?? null,
+      },
       selectedProductIds: productSnapshot.map((item) => item.id),
       selectedContentVersionIds: versionSnapshot,
       evidenceMode: matter.evidenceMode,

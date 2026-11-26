@@ -358,6 +358,26 @@ export type RecordNotaryEvidenceResult = {
 export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> &
   NotaryMatterDisplay & {
     detailFacts?: NotaryDetailFacts;
+    /** 旧库迁移补充信息（只读展示）。 */
+    legacyNotarization?: {
+      type: string | null;
+      platform: string | null;
+      number: string | null;
+      uploadOn: string | null;
+      openOn: string | null;
+      confirmOn: string | null;
+      approveOn: string | null;
+      issueOn: string | null;
+      office: string | null;
+      senderName: string | null;
+      senderPhone: string | null;
+      senderAddress: string | null;
+      senderTracking: string | null;
+      checkOpinion: string | null;
+      checkNote: string | null;
+      checkResult: string | null;
+      checkInfo: string | null;
+    } | null;
     disclosureRequired?: boolean;
     certificateFiles: NotaryCertificateFile[];
     stage:

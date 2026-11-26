@@ -705,6 +705,28 @@ watch(
           class="demo-card demo-card--pad notary-fact-card"
           data-test="notary-source-facts"
         >
+        <section
+          v-if="matter.legacyNotarization"
+          class="demo-card demo-card--pad"
+        >
+          <h2 class="form-section-title">公证与寄件信息</h2>
+          <dl class="demo-detail-grid notary-facts-grid">
+            <div><dt>公证类型</dt><dd>{{ matter.legacyNotarization.type || '未登记' }}</dd></div>
+            <div><dt>公证平台</dt><dd>{{ matter.legacyNotarization.platform || '未登记' }}</dd></div>
+            <div><dt>公证书号</dt><dd class="mono">{{ matter.legacyNotarization.number || '未登记' }}</dd></div>
+            <div><dt>公证处</dt><dd>{{ matter.legacyNotarization.office || '未登记' }}</dd></div>
+            <div><dt>材料上传日</dt><dd class="mono">{{ matter.legacyNotarization.uploadOn || '未登记' }}</dd></div>
+            <div><dt>取证开箱日</dt><dd class="mono">{{ matter.legacyNotarization.openOn || '未登记' }}</dd></div>
+            <div><dt>取证确认日</dt><dd class="mono">{{ matter.legacyNotarization.confirmOn || '未登记' }}</dd></div>
+            <div><dt>取证审核日</dt><dd class="mono">{{ matter.legacyNotarization.approveOn || '未登记' }}</dd></div>
+            <div><dt>出证日期</dt><dd class="mono">{{ matter.legacyNotarization.issueOn || '未登记' }}</dd></div>
+            <div><dt>寄件人</dt><dd>{{ matter.legacyNotarization.senderName || '未登记' }}</dd></div>
+            <div><dt>寄件电话</dt><dd class="mono">{{ matter.legacyNotarization.senderPhone || '未登记' }}</dd></div>
+            <div><dt>寄件快递单号</dt><dd class="mono">{{ matter.legacyNotarization.senderTracking || '未登记' }}</dd></div>
+            <div class="detail-grid__wide"><dt>寄件地址</dt><dd>{{ matter.legacyNotarization.senderAddress || '未登记' }}</dd></div>
+            <div class="detail-grid__wide"><dt>取证审核意见</dt><dd>{{ matter.legacyNotarization.checkOpinion || '未填写' }}</dd></div>
+          </dl>
+        </section>
           <h2 class="form-section-title">来源线索事实</h2>
           <p
             v-if="matter.detailFacts.source.snapshotState === 'UNKNOWN_LEGACY'"
