@@ -35,44 +35,35 @@ export class CaseLegacyFactsService {
     });
     if (!found) throw new NotFoundException({ code: 'CASE_NOT_FOUND' });
 
-    const sets: string[] = [];
-    const params: Array<string | null> = [];
-    const putDate = (key: string, value: string | null | undefined) => {
-      if (value === undefined) return;
-      if (value === null || value.trim() === '') {
-        params.push(null);
-      } else {
-        const parsed = new Date(value);
-        if (Number.isNaN(parsed.getTime()))
-          throw new BadRequestException({ code: 'DATE_INVALID' });
-        params.push(value.slice(0, 10));
-      }
-      sets.push(`"${key}" = $${params.length}::date`);
+    const flag = (value: unknown) => value !== undefined;
+    const dateOf = (value: string | null | undefined): string | null => {
+      if (value === undefined || value === null || value.trim() === '')
+        return null;
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime()))
+        throw new BadRequestException({ code: 'DATE_INVALID' });
+      return value.slice(0, 10);
     };
-    putDate('legacy_submit_register_on', input.submitRegisterOn);
-    putDate('legacy_pleadings_approve_on', input.pleadingsApproveOn);
-    putDate('legacy_pleadings_confirm_on', input.pleadingsConfirmOn);
-    putDate('legacy_prepay_on', input.prepayOn);
-    putDate('legacy_court_fee_on', input.courtFeeOn);
-    const putText = (key: string, value: string | null | undefined) => {
-      if (value === undefined) return;
-      params.push(value === null || value === '' ? null : value);
-      sets.push(`"${key}" = $${params.length}`);
-    };
-    putText('legacy_customer_settlement', input.customerSettlement);
-    putText('legacy_lawyer_settlement', input.lawyerSettlement);
-    if (sets.length === 0) return { id: caseId };
-
-    params.push(caseId);
-    await this.db.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe(
-        "SET LOCAL session_replication_role = 'replica'",
-      );
-      await tx.$executeRawUnsafe(
-        `UPDATE cases SET ${sets.join(', ')} WHERE id = $${params.length}::uuid`,
-        ...params,
-      );
-    });
+    await this.db.$executeRawUnsafe(
+      `SELECT update_case_legacy_facts(
+        $1::uuid, $2::date, $3::date, $4::date, $5::date, $6::date,
+        $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+      caseId,
+      dateOf(input.submitRegisterOn),
+      dateOf(input.pleadingsApproveOn),
+      dateOf(input.pleadingsConfirmOn),
+      dateOf(input.prepayOn),
+      dateOf(input.courtFeeOn),
+      input.customerSettlement ?? null,
+      input.lawyerSettlement ?? null,
+      flag(input.submitRegisterOn),
+      flag(input.pleadingsApproveOn),
+      flag(input.pleadingsConfirmOn),
+      flag(input.prepayOn),
+      flag(input.courtFeeOn),
+      flag(input.customerSettlement),
+      flag(input.lawyerSettlement),
+    );
     return { id: caseId };
   }
 }
