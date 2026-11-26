@@ -2204,6 +2204,20 @@ model NotaryMatter {
   evidenceMode          NotaryEvidenceMode?          @map("evidence_mode")
   batchPurpose          String?                      @map("batch_purpose") @db.VarChar(500)
   sourceSnapshot        Json                         @map("source_snapshot")
+  /// 旧库公证过程与寄件信息（迁移快照，仅展示）。
+  legacyNotarizationType     String?                  @map("legacy_notarization_type") @db.VarChar(200)
+  legacyNotarizationPlatform String?                  @map("legacy_notarization_platform") @db.VarChar(100)
+  legacyNotarizationNumber   String?                  @map("legacy_notarization_number") @db.VarChar(200)
+  legacyUploadOn             DateTime?                @map("legacy_upload_on") @db.Date
+  legacyForensicsOpenOn      DateTime?                @map("legacy_forensics_open_on") @db.Date
+  legacyForensicsConfirmOn   DateTime?                @map("legacy_forensics_confirm_on") @db.Date
+  legacyForensicsApproveOn   DateTime?                @map("legacy_forensics_approve_on") @db.Date
+  legacyForensicsIssueOn     DateTime?                @map("legacy_forensics_issue_on") @db.Date
+  legacyNotaryOffice         String?                  @map("legacy_notary_office") @db.VarChar(200)
+  legacySenderName           String?                  @map("legacy_sender_name") @db.VarChar(100)
+  legacySenderPhone          String?                  @map("legacy_sender_phone") @db.VarChar(100)
+  legacySenderAddress        String?                  @map("legacy_sender_address") @db.VarChar(500)
+  legacySenderTracking       String?                  @map("legacy_sender_tracking") @db.VarChar(200)
   /// 样品费退款：可随时修改的单值，现样品费 = 取证登记样品费 − 本值。
   sampleFeeRefund       Decimal                      @default(0) @map("sample_fee_refund") @db.Decimal(18, 2)
   createdByUserId       String                       @map("created_by_user_id") @db.Uuid
