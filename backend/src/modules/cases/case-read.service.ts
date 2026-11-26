@@ -1785,6 +1785,18 @@ export class CaseReadService {
         message: '案件不存在或不可访问',
       });
     const externalEntry = record.externalEntry;
+
+    // 历史迁移案件只存了法院 id，这里补出名称与所在地
+    const legacyCourtId = (
+      externalEntry?.known as { courtId?: string | null } | null
+    )?.courtId;
+    const legacyCourt =
+      typeof legacyCourtId === 'string' && legacyCourtId !== ''
+        ? await this.database.filingCourt.findUnique({
+            where: { id: legacyCourtId },
+            select: { name: true, province: true },
+          })
+        : null;
     const normalSource =
       record.sourceLead !== null &&
       record.sourceNotaryMatter !== null &&
@@ -3743,6 +3755,8 @@ export class CaseReadService {
       createdAt: record.createdAt.toISOString(),
       courtCaseNo: record.courtCaseNo,
       judgeName: record.judgeName ?? null,
+      courtName: legacyCourt?.name ?? null,
+      courtProvince: legacyCourt?.province ?? null,
       department: record.department,
       customer: record.customer,
       rightsHolder: record.rightsHolder,

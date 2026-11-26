@@ -2822,7 +2822,7 @@ onBeforeUnmount(() => {
       v-if="item"
       v-show="accessVerified && state === 'ready'"
       :business-no="item.businessNo"
-      :subtitle="`${item.courtCaseNo ?? '法院案号未登记'}${item.judgeName ? ' · 法官 ' + item.judgeName : ''} · ${item.customer.name} · ${stageLabel(item.stage)}`"
+      :subtitle="`${[item.courtName, item.courtCaseNo].filter(Boolean).join(' ') || '法院未登记'}${item.judgeName ? ' · 法官 ' + item.judgeName : ''} · ${item.customer.name} · ${stageLabel(item.stage)}`"
       :active-tab="activeTab"
       :context-key="workspaceContext"
       @update:active-tab="selectTab"

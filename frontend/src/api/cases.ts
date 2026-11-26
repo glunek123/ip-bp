@@ -453,6 +453,9 @@ type CaseDetailBase = Omit<CaseSummaryBase, 'displaySummary'> & {
   courtCaseNo: string | null;
   /** 承办法官（历史迁移快照，可为空）。 */
   judgeName?: string | null;
+  /** 法院名称与所在地（历史迁移带过来，可为空）。 */
+  courtName?: string | null;
+  courtProvince?: string | null;
   department: { id: string; name: string };
   customer: { id: string; name: string };
   rightsHolder: { id: string; name: string };
@@ -3070,6 +3073,8 @@ export function validCaseDetail(value: unknown, id: string): value is CaseDetail
       ],
       [
         'judgeName',
+        'courtName',
+        'courtProvince',
         'canEarlyArchive',
         'canEarlyClose',
         'canUpdateClosureSettlement',
