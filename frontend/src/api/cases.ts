@@ -8945,3 +8945,26 @@ export async function deleteCaseDisclosure(
     method: 'DELETE',
   })) as { id: string };
 }
+
+export type CaseLegacyFactsInput = {
+  submitRegisterOn?: string | null;
+  pleadingsApproveOn?: string | null;
+  pleadingsConfirmOn?: string | null;
+  prepayOn?: string | null;
+  courtFeeOn?: string | null;
+  customerSettlement?: string | null;
+  lawyerSettlement?: string | null;
+};
+
+/** 维护旧库迁移带入的补充信息。 */
+export async function updateCaseLegacyFacts(
+  id: string,
+  input: CaseLegacyFactsInput,
+  options: RequestOptions = {},
+): Promise<{ id: string }> {
+  return (await requestJson(`/cases/${encodeURIComponent(id)}/legacy-facts`, {
+    ...options,
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })) as { id: string };
+}

@@ -84,6 +84,7 @@ import {
 import {
   updateCaseDisclosure,
   deleteCaseDisclosure,
+  updateCaseLegacyFacts,
 
   archiveCase,
   caseArchiveSession,
@@ -972,6 +973,18 @@ function listCaseMaterials(caseId: string, options?: RequestOptions) {
   return listOwnerMaterials('CASE', caseId, options);
 }
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
+const legacyDialog = ref(false);
+const legacySaving = ref(false);
+const legacyError = ref('');
+const legacyForm = ref({
+  submitRegisterOn: '',
+  pleadingsApproveOn: '',
+  pleadingsConfirmOn: '',
+  prepayOn: '',
+  courtFeeOn: '',
+  customerSettlement: '',
+  lawyerSettlement: '',
+});
 const disclosureDialog = ref(false);
 const disclosureSaving = ref(false);
 const disclosureError = ref('');
@@ -986,6 +999,50 @@ const disclosureForm = ref({
 const refreshing = ref(false);
 const refreshError = ref('');
 const item = ref<CaseDetail>();
+
+function openLegacyEdit() {
+  const f = item.value?.legacyFacts;
+  legacyForm.value = {
+    submitRegisterOn: f?.submitRegisterOn ?? '',
+    pleadingsApproveOn: f?.pleadingsApproveOn ?? '',
+    pleadingsConfirmOn: f?.pleadingsConfirmOn ?? '',
+    prepayOn: f?.prepayOn ?? '',
+    courtFeeOn: f?.courtFeeOn ?? '',
+    customerSettlement: f?.customerSettlement ?? '',
+    lawyerSettlement: f?.lawyerSettlement ?? '',
+  };
+  legacyError.value = '';
+  legacyDialog.value = true;
+}
+
+async function saveLegacyFacts() {
+  if (!item.value) return;
+  legacySaving.value = true;
+  legacyError.value = '';
+  try {
+    const f = legacyForm.value;
+    await updateCaseLegacyFacts(
+      item.value.id,
+      {
+        submitRegisterOn: f.submitRegisterOn || null,
+        pleadingsApproveOn: f.pleadingsApproveOn || null,
+        pleadingsConfirmOn: f.pleadingsConfirmOn || null,
+        prepayOn: f.prepayOn || null,
+        courtFeeOn: f.courtFeeOn || null,
+        customerSettlement: f.customerSettlement.trim() || null,
+        lawyerSettlement: f.lawyerSettlement.trim() || null,
+      },
+      {},
+    );
+    legacyDialog.value = false;
+    await load();
+  } catch (error) {
+    legacyError.value =
+      error instanceof Error ? error.message : '保存失败，请稍后重试';
+  } finally {
+    legacySaving.value = false;
+  }
+}
 
 function openDisclosureEdit() {
   const d = item.value?.disclosure;
@@ -3102,10 +3159,13 @@ onBeforeUnmount(() => {
             }}</template
           >
         </p>
-        <section v-if="item.disclosure" class="legacy-panel">
+        <section class="legacy-panel">
           <div class="legacy-panel__head">
             <h2 class="form-section-title">披露信息</h2>
             <div class="legacy-panel__actions">
+              <button type="button" class="legacy-btn" @click="openLegacyEdit">
+                编辑补充信息
+              </button>
               <button type="button" class="legacy-btn" @click="openDisclosureEdit">
                 编辑披露信息
               </button>
@@ -3142,6 +3202,24 @@ onBeforeUnmount(() => {
             {{ disclosureError }}
           </p>
         </section>
+        <ElDialog v-model="legacyDialog" title="编辑补充信息" width="520px">
+          <div class="legacy-form">
+            <label>立案提交日<input v-model="legacyForm.submitRegisterOn" type="date" /></label>
+            <label>诉状确认日<input v-model="legacyForm.pleadingsApproveOn" type="date" /></label>
+            <label>诉状提交日<input v-model="legacyForm.pleadingsConfirmOn" type="date" /></label>
+            <label>预交费日期<input v-model="legacyForm.prepayOn" type="date" /></label>
+            <label>诉讼费日期<input v-model="legacyForm.courtFeeOn" type="date" /></label>
+            <label>客户结算进度<input v-model="legacyForm.customerSettlement" maxlength="500" /></label>
+            <label>律师结算进度<input v-model="legacyForm.lawyerSettlement" maxlength="500" /></label>
+          </div>
+          <p v-if="legacyError" class="submit-error" role="alert">{{ legacyError }}</p>
+          <template #footer>
+            <button type="button" class="legacy-btn" :disabled="legacySaving" @click="legacyDialog = false">取消</button>
+            <button type="button" class="legacy-btn legacy-btn--primary" :disabled="legacySaving" @click="saveLegacyFacts">
+              {{ legacySaving ? '保存中…' : '保存' }}
+            </button>
+          </template>
+        </ElDialog>
         <ElDialog
           v-model="disclosureDialog"
           title="编辑披露信息"
