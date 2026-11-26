@@ -1870,6 +1870,8 @@ model Lead {
   legacyPurchasedOn     DateTime?                   @map("legacy_purchased_on") @db.Date
   legacyReviewOpinion   String?                     @map("legacy_review_opinion") @db.VarChar(500)
   legacyReviewNote      String?                     @map("legacy_review_note") @db.VarChar(500)
+  /// 旧库线索来源（原样保留）。
+  legacyClueSource     String?                     @map("legacy_clue_source") @db.VarChar(200)
   pushedByUserId         String?                     @map("pushed_by_user_id") @db.Uuid
   activeReviewDecisionId String?                     @unique(map: "leads_active_review_decision_id_key") @map("active_review_decision_id") @db.Uuid
   department             Department                  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
@@ -2219,6 +2221,10 @@ model NotaryMatter {
   legacySenderPhone          String?                  @map("legacy_sender_phone") @db.VarChar(100)
   legacySenderAddress        String?                  @map("legacy_sender_address") @db.VarChar(500)
   legacySenderTracking       String?                  @map("legacy_sender_tracking") @db.VarChar(200)
+  legacyForensicsCheckOpinion String?                 @map("legacy_forensics_check_opinion") @db.VarChar(1000)
+  legacyForensicsCheckNote    String?                 @map("legacy_forensics_check_note") @db.VarChar(1000)
+  legacyForensicsCheckResult  String?                 @map("legacy_forensics_check_result") @db.VarChar(500)
+  legacyForensicsCheckInfo    String?                 @map("legacy_forensics_check_info") @db.VarChar(1000)
   /// 样品费退款：可随时修改的单值，现样品费 = 取证登记样品费 − 本值。
   sampleFeeRefund       Decimal                      @default(0) @map("sample_fee_refund") @db.Decimal(18, 2)
   createdByUserId       String                       @map("created_by_user_id") @db.Uuid
@@ -2447,6 +2453,9 @@ model Case {
   legacyCustomerSettleNote   String?   @map("legacy_customer_settle_note") @db.Text
   legacyLawyerSettlement     String?   @map("legacy_lawyer_settlement") @db.VarChar(2000)
   legacyLawyerSettleNote     String?   @map("legacy_lawyer_settle_note") @db.Text
+  legacySubmitRegisterOn     DateTime? @map("legacy_submit_register_on") @db.Date
+  legacyPleadingsApproveOn   DateTime? @map("legacy_pleadings_approve_on") @db.Date
+  legacyPleadingsConfirmOn   DateTime? @map("legacy_pleadings_confirm_on") @db.Date
   department                    Department                         @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   sourceLead                    Lead?                              @relation(fields: [sourceLeadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   customer                      Customer                           @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
