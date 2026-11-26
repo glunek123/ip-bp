@@ -1567,6 +1567,16 @@ export class CaseReadService {
         },
         courtCaseNo: true,
         judgeName: true,
+        legacyPrepayOn: true,
+        legacyCourtFeeOn: true,
+        legacyCustomerSettlement: true,
+        legacyCustomerSettleNote: true,
+        legacyLawyerSettlement: true,
+        legacyLawyerSettleNote: true,
+        legacySubmitRegisterOn: true,
+        legacyPleadingsApproveOn: true,
+        legacyPleadingsConfirmOn: true,
+        disclosure: true,
         owner: { select: { id: true, displayName: true } },
         department: { select: { id: true, name: true } },
         customer: { select: { id: true, name: true } },
@@ -3757,6 +3767,40 @@ export class CaseReadService {
       judgeName: record.judgeName ?? null,
       courtName: legacyCourt?.name ?? null,
       courtProvince: legacyCourt?.province ?? null,
+      // 旧库迁移快照（只读展示）
+      legacyFacts: {
+        prepayOn: record.legacyPrepayOn?.toISOString().slice(0, 10) ?? null,
+        courtFeeOn: record.legacyCourtFeeOn?.toISOString().slice(0, 10) ?? null,
+        customerSettlement: record.legacyCustomerSettlement ?? null,
+        customerSettleNote: record.legacyCustomerSettleNote ?? null,
+        lawyerSettlement: record.legacyLawyerSettlement ?? null,
+        lawyerSettleNote: record.legacyLawyerSettleNote ?? null,
+        submitRegisterOn:
+          record.legacySubmitRegisterOn?.toISOString().slice(0, 10) ?? null,
+        pleadingsApproveOn:
+          record.legacyPleadingsApproveOn?.toISOString().slice(0, 10) ?? null,
+        pleadingsConfirmOn:
+          record.legacyPleadingsConfirmOn?.toISOString().slice(0, 10) ?? null,
+      },
+      disclosure:
+        record.disclosure === null
+          ? null
+          : {
+              id: record.disclosure.id,
+              license: record.disclosure.license,
+              entityName: record.disclosure.entityName,
+              address: record.disclosure.address,
+              entityType: record.disclosure.entityType,
+              idNumber: record.disclosure.idNumber,
+              legalPerson: record.disclosure.legalPerson,
+              phone: record.disclosure.phone,
+              emergencyPhone: record.disclosure.emergencyPhone,
+              extraInfo: record.disclosure.extraInfo,
+              salesAmount: record.disclosure.salesAmount,
+              disclosedOn:
+                record.disclosure.disclosedOn?.toISOString().slice(0, 10) ??
+                null,
+            },
       department: record.department,
       customer: record.customer,
       rightsHolder: record.rightsHolder,

@@ -3029,6 +3029,42 @@ onBeforeUnmount(() => {
             }}</template
           >
         </p>
+        <section
+          v-if="item.disclosure || item.legacyFacts"
+          class="legacy-panel"
+        >
+          <h2 class="form-section-title">历史迁移数据（只读快照）</h2>
+          <dl class="legacy-grid">
+            <template v-if="item.disclosure">
+              <dt>营业执照</dt>
+              <dd>{{ item.disclosure.license ?? '未登记' }}</dd>
+              <dt>经营主体</dt>
+              <dd>{{ item.disclosure.entityName ?? '未登记' }}</dd>
+              <dt>主体类型</dt>
+              <dd>{{ item.disclosure.entityType ?? '未登记' }}</dd>
+              <dt>法定代表人</dt>
+              <dd>{{ item.disclosure.legalPerson ?? '未登记' }}</dd>
+              <dt>联系电话</dt>
+              <dd>{{ item.disclosure.phone ?? '未登记' }}</dd>
+              <dt>经营地址</dt>
+              <dd>{{ item.disclosure.address ?? '未登记' }}</dd>
+              <dt>销售额</dt>
+              <dd>{{ item.disclosure.salesAmount ?? '未登记' }}</dd>
+            </template>
+            <template v-if="item.legacyFacts">
+              <dt>预交费日期</dt>
+              <dd>{{ item.legacyFacts.prepayOn ?? '未登记' }}</dd>
+              <dt>诉讼费日期</dt>
+              <dd>{{ item.legacyFacts.courtFeeOn ?? '未登记' }}</dd>
+              <dt>客户结算</dt>
+              <dd>{{ item.legacyFacts.customerSettlement ?? '未登记' }}</dd>
+              <dt>律师结算</dt>
+              <dd>{{ item.legacyFacts.lawyerSettlement ?? '未登记' }}</dd>
+              <dt>立案提交日</dt>
+              <dd>{{ item.legacyFacts.submitRegisterOn ?? '未登记' }}</dd>
+            </template>
+          </dl>
+        </section>
         <p v-if="refreshing" role="status">正在刷新案件详情…</p>
         <p v-if="refreshError" class="submit-error" role="alert">
           {{ refreshError }}
@@ -4082,6 +4118,25 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
+.legacy-panel {
+  margin: 12px 0 18px;
+  padding: 12px 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+}
+.legacy-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr 120px 1fr;
+  gap: 6px 12px;
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+.legacy-grid dt {
+  color: var(--el-text-color-secondary);
+}
+.legacy-grid dd {
+  margin: 0;
+}
 .case-workspace-editors--inactive {
   display: none !important;
 }

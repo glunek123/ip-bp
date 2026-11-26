@@ -456,6 +456,33 @@ type CaseDetailBase = Omit<CaseSummaryBase, 'displaySummary'> & {
   /** 法院名称与所在地（历史迁移带过来，可为空）。 */
   courtName?: string | null;
   courtProvince?: string | null;
+  /** 旧库迁移快照（只读展示）：费用日期、结算进度、立案与诉状日期。 */
+  legacyFacts?: {
+    prepayOn: string | null;
+    courtFeeOn: string | null;
+    customerSettlement: string | null;
+    customerSettleNote: string | null;
+    lawyerSettlement: string | null;
+    lawyerSettleNote: string | null;
+    submitRegisterOn: string | null;
+    pleadingsApproveOn: string | null;
+    pleadingsConfirmOn: string | null;
+  } | null;
+  /** 旧库披露信息（可编辑）。 */
+  disclosure?: {
+    id: string;
+    license: string | null;
+    entityName: string | null;
+    address: string | null;
+    entityType: string | null;
+    idNumber: string | null;
+    legalPerson: string | null;
+    phone: string | null;
+    emergencyPhone: string | null;
+    extraInfo: string | null;
+    salesAmount: string | null;
+    disclosedOn: string | null;
+  } | null;
   department: { id: string; name: string };
   customer: { id: string; name: string };
   rightsHolder: { id: string; name: string };
@@ -3075,6 +3102,8 @@ export function validCaseDetail(value: unknown, id: string): value is CaseDetail
         'judgeName',
         'courtName',
         'courtProvince',
+        'legacyFacts',
+        'disclosure',
         'canEarlyArchive',
         'canEarlyClose',
         'canUpdateClosureSettlement',
