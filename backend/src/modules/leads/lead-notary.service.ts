@@ -1571,16 +1571,19 @@ export class LeadNotaryService {
     const productSnapshot = this.selectedProductSnapshot(
       matter.sourceSnapshot,
       matter.selectedProducts.map((item) => item.leadProductId),
+      isLegacyBackfill,
     );
     const currentProducts = matter.routineProfile
       ? this.selectedProductSnapshot(
           { selectedProducts: matter.routineProfile.products },
           matter.selectedProducts.map((item) => item.leadProductId),
+          isLegacyBackfill,
         )
       : productSnapshot;
     const versionSnapshot = this.selectedVersionSnapshot(
       matter.sourceSnapshot,
       matter.selectedMaterials.map((item) => item.contentVersionId),
+      isLegacyBackfill,
     );
     const frozenPhotoCount = new Set(
       openingReferences.map((reference) => reference.contentVersionId),
@@ -1948,16 +1951,21 @@ export class LeadNotaryService {
   private selectedProductSnapshot(
     snapshot: Prisma.JsonValue,
     productIds: string[],
+    lenient = false,
   ) {
     if (
       snapshot === null ||
       typeof snapshot !== 'object' ||
       Array.isArray(snapshot) ||
       !Array.isArray(snapshot.selectedProducts)
-    )
+    ) {
+      // 历史迁移没有商品快照，返回空列表
+      if (lenient) return [];
       throw this.corruptReceipt();
+    }
     const products = snapshot.selectedProducts;
-    if (products.length !== productIds.length) throw this.corruptReceipt();
+    if (!lenient && products.length !== productIds.length)
+      throw this.corruptReceipt();
     const ids = new Set(productIds);
     return products.map((value) => {
       if (
@@ -1992,20 +2000,29 @@ export class LeadNotaryService {
   private selectedVersionSnapshot(
     snapshot: Prisma.JsonValue,
     versionIds: string[],
+    lenient = false,
   ) {
     if (
       snapshot === null ||
       typeof snapshot !== 'object' ||
       Array.isArray(snapshot) ||
-      !Array.isArray(snapshot.selectedContentVersionIds) ||
-      snapshot.selectedContentVersionIds.length !== versionIds.length ||
-      !snapshot.selectedContentVersionIds.every(
-        (id) => typeof id === 'string' && versionIds.includes(id),
-      ) ||
-      new Set(snapshot.selectedContentVersionIds).size !== versionIds.length
+      !Array.isArray(snapshot.selectedContentVersionIds)
+    ) {
+      if (lenient) return [];
+      throw this.corruptReceipt();
+    }
+    if (
+      !lenient &&
+      (snapshot.selectedContentVersionIds.length !== versionIds.length ||
+        !snapshot.selectedContentVersionIds.every(
+          (id) => typeof id === 'string' && versionIds.includes(id),
+        ) ||
+        new Set(snapshot.selectedContentVersionIds).size !== versionIds.length)
     )
       throw this.corruptReceipt();
-    return snapshot.selectedContentVersionIds as string[];
+    return snapshot.selectedContentVersionIds.filter(
+      (id): id is string => typeof id === 'string',
+    );
   }
 
   private async assertInternal(
