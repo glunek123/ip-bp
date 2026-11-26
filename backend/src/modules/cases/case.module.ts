@@ -27,6 +27,8 @@ import {
   LawyerCaseArchiveReadinessController,
 } from './case-archive-readiness.controller';
 import { CaseDeleteController } from './case-delete.controller';
+import { CaseDisclosureController } from './case-disclosure.controller';
+import { CaseDisclosureService } from './case-disclosure.service';
 import { CasePreservationController } from './case-preservation.controller';
 import { CasePreservationService } from './case-preservation.service';
 import { CaseDeleteService } from './case-delete.service';
@@ -127,6 +129,7 @@ import { LawyerProfileService } from './lawyer-profile.service';
     CaseClosureWorkspaceController,
     CaseRoutineEditController,
     CaseDeleteController,
+    CaseDisclosureController,
     CasePreservationController,
     CaseCsvImportController,
     CaseBatchArchiveController,
@@ -149,6 +152,7 @@ import { LawyerProfileService } from './lawyer-profile.service';
   ],
   providers: [
     CaseDeleteService,
+    CaseDisclosureService,
     CasePreservationService,
     LitigationRefundsService,
     CaseExecutionArchiveService,

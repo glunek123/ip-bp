@@ -82,6 +82,9 @@ import {
   type LeadState,
 } from './case-workspace-read-model';
 import {
+  updateCaseDisclosure,
+  deleteCaseDisclosure,
+
   archiveCase,
   caseArchiveSession,
   type ArchiveCaseInput,
@@ -969,9 +972,79 @@ function listCaseMaterials(caseId: string, options?: RequestOptions) {
   return listOwnerMaterials('CASE', caseId, options);
 }
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
+const disclosureDialog = ref(false);
+const disclosureSaving = ref(false);
+const disclosureError = ref('');
+const disclosureForm = ref({
+  entityName: '',
+  legalPerson: '',
+  phone: '',
+  address: '',
+  license: '',
+  entityType: '',
+});
 const refreshing = ref(false);
 const refreshError = ref('');
 const item = ref<CaseDetail>();
+
+function openDisclosureEdit() {
+  const d = item.value?.disclosure;
+  disclosureForm.value = {
+    entityName: d?.entityName ?? '',
+    legalPerson: d?.legalPerson ?? '',
+    phone: d?.phone ?? '',
+    address: d?.address ?? '',
+    license: d?.license ?? '',
+    entityType: d?.entityType ?? '',
+  };
+  disclosureError.value = '';
+  disclosureDialog.value = true;
+}
+
+async function saveDisclosure() {
+  if (!item.value) return;
+  disclosureSaving.value = true;
+  disclosureError.value = '';
+  try {
+    const form = disclosureForm.value;
+    await updateCaseDisclosure(
+      item.value.id,
+      {
+        entityName: form.entityName.trim() || null,
+        legalPerson: form.legalPerson.trim() || null,
+        phone: form.phone.trim() || null,
+        address: form.address.trim() || null,
+        license: form.license.trim() || null,
+        entityType: form.entityType.trim() || null,
+      },
+      {},
+    );
+    disclosureDialog.value = false;
+    await load();
+  } catch (error) {
+    disclosureError.value =
+      error instanceof Error ? error.message : '保存失败，请稍后重试';
+  } finally {
+    disclosureSaving.value = false;
+  }
+}
+
+async function clearDisclosure() {
+  if (!item.value) return;
+  if (!window.confirm('确定清空该案件的披露信息？该操作不可恢复。')) return;
+  disclosureSaving.value = true;
+  disclosureError.value = '';
+  try {
+    await deleteCaseDisclosure(item.value.id, {});
+    disclosureDialog.value = false;
+    await load();
+  } catch (error) {
+    disclosureError.value =
+      error instanceof Error ? error.message : '清空失败，请稍后重试';
+  } finally {
+    disclosureSaving.value = false;
+  }
+}
 const accessVerified = ref(false);
 const authorizedContext = ref<string | null>(null);
 const additionalActionBusy = computed(
@@ -3029,11 +3102,24 @@ onBeforeUnmount(() => {
             }}</template
           >
         </p>
-        <section
-          v-if="item.disclosure || item.legacyFacts"
-          class="legacy-panel"
-        >
-          <h2 class="form-section-title">历史迁移数据（只读快照）</h2>
+        <section class="legacy-panel">
+          <div class="legacy-panel__head">
+            <h2 class="form-section-title">历史迁移数据（只读快照）</h2>
+            <div class="legacy-panel__actions">
+              <button type="button" class="legacy-btn" @click="openDisclosureEdit">
+                编辑披露信息
+              </button>
+              <button
+                v-if="item.disclosure"
+                type="button"
+                class="legacy-btn legacy-btn--danger"
+                :disabled="disclosureSaving"
+                @click="clearDisclosure"
+              >
+                清空披露信息
+              </button>
+            </div>
+          </div>
           <dl class="legacy-grid">
             <template v-if="item.disclosure">
               <dt>营业执照</dt>
@@ -3064,7 +3150,42 @@ onBeforeUnmount(() => {
               <dd>{{ item.legacyFacts.submitRegisterOn ?? '未登记' }}</dd>
             </template>
           </dl>
+          <p v-if="disclosureError" class="submit-error" role="alert">
+            {{ disclosureError }}
+          </p>
         </section>
+        <ElDialog
+          v-model="disclosureDialog"
+          title="编辑披露信息"
+          width="520px"
+        >
+          <div class="legacy-form">
+            <label>经营主体<input v-model="disclosureForm.entityName" maxlength="500" /></label>
+            <label>营业执照<input v-model="disclosureForm.license" maxlength="500" /></label>
+            <label>主体类型<input v-model="disclosureForm.entityType" maxlength="500" /></label>
+            <label>法定代表人<input v-model="disclosureForm.legalPerson" maxlength="500" /></label>
+            <label>联系电话<input v-model="disclosureForm.phone" maxlength="500" /></label>
+            <label>经营地址<input v-model="disclosureForm.address" maxlength="500" /></label>
+          </div>
+          <template #footer>
+            <button
+              type="button"
+              class="legacy-btn"
+              :disabled="disclosureSaving"
+              @click="disclosureDialog = false"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="legacy-btn legacy-btn--primary"
+              :disabled="disclosureSaving"
+              @click="saveDisclosure"
+            >
+              {{ disclosureSaving ? '保存中…' : '保存' }}
+            </button>
+          </template>
+        </ElDialog>
         <p v-if="refreshing" role="status">正在刷新案件详情…</p>
         <p v-if="refreshError" class="submit-error" role="alert">
           {{ refreshError }}
@@ -4118,6 +4239,52 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
+.legacy-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.legacy-panel__actions {
+  display: flex;
+  gap: 8px;
+}
+.legacy-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.legacy-btn--primary {
+  background: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+  color: #fff;
+}
+.legacy-btn--danger {
+  color: var(--el-color-danger);
+  border-color: var(--el-color-danger);
+}
+.legacy-form {
+  display: grid;
+  gap: 10px;
+}
+.legacy-form label {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+.legacy-form input {
+  padding: 4px 8px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+}
 .legacy-panel {
   margin: 12px 0 18px;
   padding: 12px 16px;

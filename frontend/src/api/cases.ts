@@ -8907,3 +8907,41 @@ export async function setCaseDefendantDisabled(
     disabledAt: response.disabledAt,
   };
 }
+
+export type CaseDisclosureInput = {
+  license?: string | null;
+  entityName?: string | null;
+  address?: string | null;
+  entityType?: string | null;
+  idNumber?: string | null;
+  legalPerson?: string | null;
+  phone?: string | null;
+  emergencyPhone?: string | null;
+  extraInfo?: string | null;
+  salesAmount?: string | null;
+  disclosedOn?: string | null;
+};
+
+/** 维护案件的披露信息（历史迁移快照的更正入口）。 */
+export async function updateCaseDisclosure(
+  id: string,
+  input: CaseDisclosureInput,
+  options: RequestOptions = {},
+): Promise<{ id: string }> {
+  return (await requestJson(`/cases/${encodeURIComponent(id)}/disclosure`, {
+    ...options,
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })) as { id: string };
+}
+
+/** 清空案件的披露信息。 */
+export async function deleteCaseDisclosure(
+  id: string,
+  options: RequestOptions = {},
+): Promise<{ id: string }> {
+  return (await requestJson(`/cases/${encodeURIComponent(id)}/disclosure`, {
+    ...options,
+    method: 'DELETE',
+  })) as { id: string };
+}
