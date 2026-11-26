@@ -2383,3 +2383,31 @@ export function getNotarySampleFeeRefund(
   ) as Promise<NotarySampleFeeRefundSummary>;
 }
 
+
+export type NotaryLegacyInput = {
+  notarizationType?: string | null;
+  notarizationPlatform?: string | null;
+  notarizationNumber?: string | null;
+  notaryOffice?: string | null;
+  senderName?: string | null;
+  senderPhone?: string | null;
+  senderAddress?: string | null;
+  senderTracking?: string | null;
+  uploadOn?: string | null;
+  forensicsOpenOn?: string | null;
+  forensicsConfirmOn?: string | null;
+  forensicsApproveOn?: string | null;
+  forensicsIssueOn?: string | null;
+};
+
+/** 维护旧库公证与寄件字段。 */
+export async function updateNotaryLegacyFields(
+  id: string,
+  input: NotaryLegacyInput,
+  options: RequestOptions = {},
+): Promise<{ id: string }> {
+  return (await requestJson(
+    `/notary-matters/${encodeURIComponent(id)}/legacy-fields`,
+    { ...options, method: 'PATCH', body: JSON.stringify(input) },
+  )) as { id: string };
+}

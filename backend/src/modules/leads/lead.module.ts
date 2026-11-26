@@ -5,6 +5,8 @@ import { DatabaseModule } from '../../database/database.module';
 import { MaterialModule } from '../materials';
 import { CaseModule } from '../cases';
 import { LeadLegacyFieldsController } from './lead-legacy-fields.controller';
+import { NotaryLegacyController } from './notary-legacy.controller';
+import { NotaryLegacyService } from './notary-legacy.service';
 import { LeadLegacyFieldsService } from './lead-legacy-fields.service';
 import { LeadController } from './lead.controller';
 import { LeadBatchPushController } from './lead-batch-push.controller';
@@ -71,6 +73,7 @@ import { LeadRoutineEditService } from './lead-routine-edit.service';
     LeadCsvImportController,
     LeadController,
     LeadLegacyFieldsController,
+    NotaryLegacyController,
     LeadRoutineEditController,
     LeadBatchPushController,
     LeadNoEvidenceBatchController,
@@ -93,6 +96,7 @@ import { LeadRoutineEditService } from './lead-routine-edit.service';
     LeadService,
     LeadRoutineEditService,
     LeadLegacyFieldsService,
+    NotaryLegacyService,
     LeadImageImportService,
     { provide: LEAD_IMAGE_DOWNLOADER, useValue: downloadLeadImage },
     ClientLeadService,

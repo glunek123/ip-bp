@@ -551,12 +551,73 @@ watch(
   },
   { flush: 'post' },
 );
+import { updateNotaryLegacyFields } from '../../api/notary';
 import {
   legacyNotarizationTypeLabels,
   legacyNotarizationPlatformLabels,
   legacyForensicsCheckOpinionLabels,
   translateLegacy,
 } from './legacy-enums';
+import ElDialog from 'element-plus/es/components/dialog/index';
+
+const legacyDialog = ref(false);
+const legacySaving = ref(false);
+const legacyError = ref('');
+const legacyForm = ref({
+  notarizationType: '',
+  notarizationPlatform: '',
+  notarizationNumber: '',
+  notaryOffice: '',
+  senderName: '',
+  senderPhone: '',
+  senderAddress: '',
+  senderTracking: '',
+});
+
+function openLegacyEditor() {
+  const d = matter.value?.legacyNotarization;
+  legacyForm.value = {
+    notarizationType: d?.type ?? '',
+    notarizationPlatform: d?.platform ?? '',
+    notarizationNumber: d?.number ?? '',
+    notaryOffice: d?.office ?? '',
+    senderName: d?.senderName ?? '',
+    senderPhone: d?.senderPhone ?? '',
+    senderAddress: d?.senderAddress ?? '',
+    senderTracking: d?.senderTracking ?? '',
+  };
+  legacyError.value = '';
+  legacyDialog.value = true;
+}
+
+async function saveLegacyFields() {
+  legacySaving.value = true;
+  legacyError.value = '';
+  try {
+    const f = legacyForm.value;
+    await updateNotaryLegacyFields(
+      matter.value!.id,
+      {
+        notarizationType: f.notarizationType.trim() || null,
+        notarizationPlatform: f.notarizationPlatform.trim() || null,
+        notarizationNumber: f.notarizationNumber.trim() || null,
+        notaryOffice: f.notaryOffice.trim() || null,
+        senderName: f.senderName.trim() || null,
+        senderPhone: f.senderPhone.trim() || null,
+        senderAddress: f.senderAddress.trim() || null,
+        senderTracking: f.senderTracking.trim() || null,
+      },
+      {},
+    );
+    legacyDialog.value = false;
+    await load();
+  } catch (error) {
+    legacyError.value =
+      error instanceof Error ? error.message : '保存失败，请稍后重试';
+  } finally {
+    legacySaving.value = false;
+  }
+}
 </script>
 <template>
   <div ref="detailRoot" class="page-view notary-matter-detail-page">
@@ -716,7 +777,12 @@ import {
           v-if="matter.legacyNotarization"
           class="demo-card demo-card--pad"
         >
-          <h2 class="form-section-title">公证与寄件信息</h2>
+          <div class="lead-card-heading">
+            <h2 class="form-section-title">公证与寄件信息</h2>
+            <ElButton data-test="edit-notary-legacy" @click="openLegacyEditor"
+              >编辑</ElButton
+            >
+          </div>
           <dl class="demo-detail-grid notary-facts-grid">
             <div><dt>公证类型</dt><dd>
                 {{
@@ -1469,6 +1535,25 @@ import {
       </template>
     </main>
   </div>
+  <ElDialog v-model="legacyDialog" title="编辑公证与寄件信息" width="520px">
+    <div class="legacy-edit-grid">
+      <label>公证类型<input v-model="legacyForm.notarizationType" maxlength="200" /></label>
+      <label>公证平台<input v-model="legacyForm.notarizationPlatform" maxlength="100" /></label>
+      <label>公证书号<input v-model="legacyForm.notarizationNumber" maxlength="200" /></label>
+      <label>公证处<input v-model="legacyForm.notaryOffice" maxlength="200" /></label>
+      <label>寄件人<input v-model="legacyForm.senderName" maxlength="100" /></label>
+      <label>寄件电话<input v-model="legacyForm.senderPhone" maxlength="100" /></label>
+      <label>寄件单号<input v-model="legacyForm.senderTracking" maxlength="200" /></label>
+      <label>寄件地址<input v-model="legacyForm.senderAddress" maxlength="500" /></label>
+    </div>
+    <p v-if="legacyError" class="submit-error" role="alert">{{ legacyError }}</p>
+    <template #footer>
+      <ElButton :disabled="legacySaving" @click="legacyDialog = false">取消</ElButton>
+      <ElButton type="primary" :disabled="legacySaving" @click="saveLegacyFields">
+        {{ legacySaving ? '保存中…' : '保存' }}
+      </ElButton>
+    </template>
+  </ElDialog>
 </template>
 
 <style scoped>
