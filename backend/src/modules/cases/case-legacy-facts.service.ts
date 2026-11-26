@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 
@@ -30,36 +35,30 @@ export class CaseLegacyFactsService {
     });
     if (!found) throw new NotFoundException({ code: 'CASE_NOT_FOUND' });
 
-    const toDate = (value: string | null | undefined) =>
-      value === undefined ? undefined : value === null ? null : new Date(value);
+    const data: Record<string, Date | string | null> = {};
+    const putDate = (key: string, value: string | null | undefined) => {
+      if (value === undefined) return;
+      if (value === null || value.trim() === '') {
+        data[key] = null;
+        return;
+      }
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime()))
+        throw new BadRequestException({ code: 'DATE_INVALID' });
+      data[key] = parsed;
+    };
+    putDate('legacySubmitRegisterOn', input.submitRegisterOn);
+    putDate('legacyPleadingsApproveOn', input.pleadingsApproveOn);
+    putDate('legacyPleadingsConfirmOn', input.pleadingsConfirmOn);
+    putDate('legacyPrepayOn', input.prepayOn);
+    putDate('legacyCourtFeeOn', input.courtFeeOn);
+    if (input.customerSettlement !== undefined)
+      data['legacyCustomerSettlement'] = input.customerSettlement;
+    if (input.lawyerSettlement !== undefined)
+      data['legacyLawyerSettlement'] = input.lawyerSettlement;
 
-    await this.db.case.update({
-      where: { id: caseId },
-      data: {
-        ...(toDate(input.submitRegisterOn) !== undefined
-          ? { legacySubmitRegisterOn: toDate(input.submitRegisterOn) }
-          : {}),
-        ...(toDate(input.pleadingsApproveOn) !== undefined
-          ? { legacyPleadingsApproveOn: toDate(input.pleadingsApproveOn) }
-          : {}),
-        ...(toDate(input.pleadingsConfirmOn) !== undefined
-          ? { legacyPleadingsConfirmOn: toDate(input.pleadingsConfirmOn) }
-          : {}),
-        ...(toDate(input.prepayOn) !== undefined
-          ? { legacyPrepayOn: toDate(input.prepayOn) }
-          : {}),
-        ...(toDate(input.courtFeeOn) !== undefined
-          ? { legacyCourtFeeOn: toDate(input.courtFeeOn) }
-          : {}),
-        ...(input.customerSettlement !== undefined
-          ? { legacyCustomerSettlement: input.customerSettlement }
-          : {}),
-        ...(input.lawyerSettlement !== undefined
-          ? { legacyLawyerSettlement: input.lawyerSettlement }
-          : {}),
-      },
-      select: { id: true },
-    });
+    if (Object.keys(data).length > 0)
+      await this.db.case.update({ where: { id: caseId }, data });
     return { id: caseId };
   }
 }
