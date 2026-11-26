@@ -1488,7 +1488,10 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
         detail.capabilities.recordEvidence === false) &&
     (detail.stage === 'PENDING_EVIDENCE' || detail.stage === 'WAITING_UNBOX'
       ? detail.opening === null
-      : detail.opening !== null) &&
+      : detail.opening !== null ||
+        (isRecord(detail.detailFacts) &&
+          isRecord(detail.detailFacts.source) &&
+          detail.detailFacts.source.snapshotState === 'UNKNOWN_LEGACY')) &&
     (detail.stage === 'UNBOX_REVIEW'
       ? detail.capabilities.recordOpening === false
       : true) &&
