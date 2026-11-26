@@ -1,4 +1,17 @@
 <script setup lang="ts">
+
+/** 旧库公证类型码值（1 网页公证 / 2 实物公证）。 */
+const legacyNotarizationTypeLabels: Record<string, string> = {
+  '1': '网页公证',
+  '2': '实物公证',
+};
+/** 旧库公证平台码值（1 法信云 / 2 数秦 / 3 坐标轴 / 99 其他）。 */
+const legacyNotarizationPlatformLabels: Record<string, string> = {
+  '1': '法信云',
+  '2': '数秦',
+  '3': '坐标轴',
+  '99': '其他',
+};
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import {
   RouterLink,
@@ -711,8 +724,24 @@ watch(
         >
           <h2 class="form-section-title">公证与寄件信息</h2>
           <dl class="demo-detail-grid notary-facts-grid">
-            <div><dt>公证类型</dt><dd>{{ matter.legacyNotarization.type || '未登记' }}</dd></div>
-            <div><dt>公证平台</dt><dd>{{ matter.legacyNotarization.platform || '未登记' }}</dd></div>
+            <div><dt>公证类型</dt><dd>
+                {{
+                  matter.legacyNotarization.type
+                    ? (legacyNotarizationTypeLabels[
+                        matter.legacyNotarization.type
+                      ] ?? matter.legacyNotarization.type)
+                    : '未登记'
+                }}
+              </dd></div>
+            <div><dt>公证平台</dt><dd>
+                {{
+                  matter.legacyNotarization.platform
+                    ? (legacyNotarizationPlatformLabels[
+                        matter.legacyNotarization.platform
+                      ] ?? matter.legacyNotarization.platform)
+                    : '未登记'
+                }}
+              </dd></div>
             <div><dt>公证书号</dt><dd class="mono">{{ matter.legacyNotarization.number || '未登记' }}</dd></div>
             <div><dt>公证处</dt><dd>{{ matter.legacyNotarization.office || '未登记' }}</dd></div>
             <div><dt>材料上传日</dt><dd class="mono">{{ matter.legacyNotarization.uploadOn || '未登记' }}</dd></div>

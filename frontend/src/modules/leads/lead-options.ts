@@ -35,6 +35,12 @@ export const leadSourceLabels: Record<LeadSource, string> = {
   OFFLINE: '线下',
 };
 
+/** 旧库线索来源码值（1 线上 / 2 线下）。 */
+export const legacyClueSourceLabels: Record<string, string> = {
+  '1': '线上',
+  '2': '线下',
+};
+
 export const leadStatusCards: ReadonlyArray<{
   status: LeadStatus;
   label: string;

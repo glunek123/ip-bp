@@ -39,6 +39,7 @@ import {
   leadCaseTypeLabels,
   leadInfringementTypeLabels,
   leadSourceLabels,
+  legacyClueSourceLabels,
   leadStatusLabels,
 } from './lead-options';
 import { summarizeLeadProducts } from './lead-display';
@@ -1092,7 +1093,14 @@ onBeforeUnmount(clearContext);
             </div>
             <div>
               <dt>原始来源</dt>
-              <dd>{{ lead.legacyClueSource || '未登记' }}</dd>
+              <dd>
+                {{
+                  lead.legacyClueSource
+                    ? (legacyClueSourceLabels[lead.legacyClueSource] ??
+                      lead.legacyClueSource)
+                    : '未登记'
+                }}
+              </dd>
             </div>
             <div>
               <dt>审核通过日</dt>
