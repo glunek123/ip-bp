@@ -3102,9 +3102,9 @@ onBeforeUnmount(() => {
             }}</template
           >
         </p>
-        <section class="legacy-panel">
+        <section v-if="item.disclosure" class="legacy-panel">
           <div class="legacy-panel__head">
-            <h2 class="form-section-title">历史迁移数据（只读快照）</h2>
+            <h2 class="form-section-title">披露信息</h2>
             <div class="legacy-panel__actions">
               <button type="button" class="legacy-btn" @click="openDisclosureEdit">
                 编辑披露信息
@@ -3136,18 +3136,6 @@ onBeforeUnmount(() => {
               <dd>{{ item.disclosure.address ?? '未登记' }}</dd>
               <dt>销售额</dt>
               <dd>{{ item.disclosure.salesAmount ?? '未登记' }}</dd>
-            </template>
-            <template v-if="item.legacyFacts">
-              <dt>预交费日期</dt>
-              <dd>{{ item.legacyFacts.prepayOn ?? '未登记' }}</dd>
-              <dt>诉讼费日期</dt>
-              <dd>{{ item.legacyFacts.courtFeeOn ?? '未登记' }}</dd>
-              <dt>客户结算</dt>
-              <dd>{{ item.legacyFacts.customerSettlement ?? '未登记' }}</dd>
-              <dt>律师结算</dt>
-              <dd>{{ item.legacyFacts.lawyerSettlement ?? '未登记' }}</dd>
-              <dt>立案提交日</dt>
-              <dd>{{ item.legacyFacts.submitRegisterOn ?? '未登记' }}</dd>
             </template>
           </dl>
           <p v-if="disclosureError" class="submit-error" role="alert">

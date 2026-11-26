@@ -819,6 +819,14 @@ export function buildCaseWorkspaceSections(
           date('委案日期', item.matchedOn),
           date('匹配记录时间', item.matchedAt),
           field('来源公证业务号', item.sourceNotaryMatter?.businessNo ?? null),
+          // 旧库迁移带入的补充信息，与原生字段同样展示
+          date('立案提交日', item.legacyFacts?.submitRegisterOn ?? null),
+          date('诉状确认日', item.legacyFacts?.pleadingsApproveOn ?? null),
+          date('诉状提交日', item.legacyFacts?.pleadingsConfirmOn ?? null),
+          date('预交费日期', item.legacyFacts?.prepayOn ?? null),
+          date('诉讼费日期', item.legacyFacts?.courtFeeOn ?? null),
+          field('客户结算进度', item.legacyFacts?.customerSettlement ?? null),
+          field('律师结算进度', item.legacyFacts?.lawyerSettlement ?? null),
           ...(item.origin?.kind === 'EXTERNAL_ENTRY'
             ? [
                 field(
