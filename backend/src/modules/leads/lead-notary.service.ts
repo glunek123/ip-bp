@@ -1403,19 +1403,23 @@ export class LeadNotaryService {
       },
     });
     if (matter === null) throw this.notFound();
+    // 历史迁移（旧库）缺少开箱/出证过程记录，放宽回执完整性校验，仅保证可读。
+    const legacySnapshot = matter.sourceSnapshot as Record<string, unknown> | null;
+    const isLegacyBackfill =
+      legacySnapshot !== null && legacySnapshot['source'] === 'NOCOBASE';
     const earlyArchive =
       matter.stage === 'ARCHIVED' &&
       matter.returnArchive?.fromStage != null &&
       matter.returnArchive.fromStage !== 'WAITING_RETURN';
     if (matter.stage === 'WAITING_UNBOX' && matter.evidence === null)
-      throw this.corruptReceipt();
+      if (!isLegacyBackfill) throw this.corruptReceipt();
     if (
       !earlyArchive &&
       matter.stage !== 'PENDING_EVIDENCE' &&
       matter.stage !== 'WAITING_UNBOX' &&
       matter.opening === null
     )
-      throw this.corruptReceipt();
+      if (!isLegacyBackfill) throw this.corruptReceipt();
     if (
       !earlyArchive &&
       !openingReviewMatchesStage(matter.stage, matter.openingReviewDecision) &&
@@ -1425,7 +1429,7 @@ export class LeadNotaryService {
         matter.openingReviewDecision.archivedAt === null
       )
     )
-      throw this.corruptReceipt();
+      if (!isLegacyBackfill) throw this.corruptReceipt();
     const isOpeningArchive =
       matter.stage === 'ARCHIVED' &&
       matter.openingReviewDecision?.archivedAt != null;
@@ -1462,7 +1466,7 @@ export class LeadNotaryService {
       (matter.stage !== 'ARCHIVED' && matter.returnArchive != null) ||
       (matter.stage !== 'ARCHIVED' && matter.certificate != null)
     )
-      throw this.corruptReceipt();
+      if (!isLegacyBackfill) throw this.corruptReceipt();
     const archive = matter.returnArchive;
     let refund = null;
     let freight = null;
@@ -1476,7 +1480,7 @@ export class LeadNotaryService {
         archive.toVersion !== matter.version ||
         archive.fromVersion !== matter.version - 1
       )
-        throw this.corruptReceipt();
+        if (!isLegacyBackfill) throw this.corruptReceipt();
       for (const row of archive.amounts) {
         if (
           !['REFUND', 'FREIGHT'].includes(row.kind) ||
@@ -1501,7 +1505,7 @@ export class LeadNotaryService {
               ? !row.partyName?.trim()
               : row.partyName !== null)
         )
-          throw this.corruptReceipt();
+          if (!isLegacyBackfill) throw this.corruptReceipt();
         const summary = {
           state: row.state,
           amount: row.amount?.toFixed(2) ?? null,
@@ -1519,7 +1523,7 @@ export class LeadNotaryService {
         (archive.returnChoice === 'RETURN' &&
           (refund === null || freight === null))
       )
-        throw this.corruptReceipt();
+        if (!isLegacyBackfill) throw this.corruptReceipt();
     }
     const openingReferenceRows =
       matter.opening === null
@@ -1563,7 +1567,7 @@ export class LeadNotaryService {
       ),
     );
     if (matter.opening !== null && openingReferences.length < 1)
-      throw this.corruptReceipt();
+      if (!isLegacyBackfill) throw this.corruptReceipt();
     const productSnapshot = this.selectedProductSnapshot(
       matter.sourceSnapshot,
       matter.selectedProducts.map((item) => item.leadProductId),
@@ -1589,17 +1593,23 @@ export class LeadNotaryService {
       matter,
       frozenPhotoCount,
     );
-    const selectedMaterials = versionSnapshot.map((id) => {
+    const selectedMaterials = versionSnapshot.flatMap((id) => {
       const item = matter.selectedMaterials.find(
         (selection) => selection.contentVersionId === id,
       );
-      if (item === undefined) throw this.corruptReceipt();
-      return {
-        materialId: item.materialId,
-        contentVersionId: item.contentVersionId,
-        originalFilename: item.contentVersion.originalFilename,
-        mimeType: item.contentVersion.mimeType,
-      };
+      if (item === undefined) {
+        // 历史迁移缺失的材料直接跳过，不阻断详情
+        if (!isLegacyBackfill) throw this.corruptReceipt();
+        return [];
+      }
+      return [
+        {
+          materialId: item.materialId,
+          contentVersionId: item.contentVersionId,
+          originalFilename: item.contentVersion.originalFilename,
+          mimeType: item.contentVersion.mimeType,
+        },
+      ];
     });
     const sourceSnapshot = matter.sourceSnapshot;
     const originalReviewId =

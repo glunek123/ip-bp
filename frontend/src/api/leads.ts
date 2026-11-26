@@ -556,7 +556,8 @@ function isLeadBusinessResult(value: unknown): value is LeadBusinessResult {
     typeof value.creationChannel === 'string' &&
     isNullableString(value.externalSourceRef) &&
     Array.isArray(products) &&
-    products.length >= 1 &&
+    // 历史迁移线索没有商品明细，允许为空；新线索仍要求至少 1 个商品。
+    (products.length >= 1 || value.creationChannel === 'HISTORICAL') &&
     products.length <= 100 &&
     products.every(
       (product, index) => isProduct(product) && product.position === index + 1,
@@ -695,7 +696,8 @@ function isLeadCsvImportInput(value: unknown): value is LeadCsvImportInput {
     typeof value.needDisclose === 'boolean' &&
     (value.remark === undefined || typeof value.remark === 'string') &&
     Array.isArray(products) &&
-    products.length >= 1 &&
+    // 历史迁移线索没有商品明细，允许为空；新线索仍要求至少 1 个商品。
+    (products.length >= 1 || value.creationChannel === 'HISTORICAL') &&
     products.length <= 100 &&
     products.every(isLeadCsvImportProduct) &&
     Array.isArray(screenshots) &&
