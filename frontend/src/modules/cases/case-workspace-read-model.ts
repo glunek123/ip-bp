@@ -1416,8 +1416,6 @@ export function buildCaseWorkspaceSections(
     'NOTARY_OPENING_PHOTO',
   );
   setSummary('case-info', [
-    field('案件单号', item.businessNo),
-    field('法院案号', item.courtCaseNo),
     field('客户', item.customer.name),
     field('权利主体', item.rightsHolder.name),
     field(
