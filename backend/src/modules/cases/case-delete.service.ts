@@ -46,40 +46,33 @@ export class CaseDeleteService {
     return { id: caseId };
   }
 
-  /** 删除历史迁移案件：按依赖顺序清理子表、审计与别名，再删主记录。 */
+  /** 删除历史迁移案件：按外键依赖顺序清理子表、审计与别名，再删主记录。 */
   private async removeLegacyCase(caseId: string): Promise<void> {
     await this.db.$transaction(async (tx) => {
-      // 子表先删；顺序按外键依赖从叶子到主干
-      const childDeletes: Array<() => Promise<unknown>> = [
-        () => tx.caseExternalEntry.deleteMany({ where: { caseId } }),
-        () => tx.caseDefendant.deleteMany({ where: { caseId } }),
-        () => tx.caseTrialRound.deleteMany({ where: { caseId } }),
-        () => tx.caseAcceptance.deleteMany({ where: { caseId } }),
-        () => tx.caseJudgmentFact.deleteMany({ where: { caseId } }),
-        () => tx.caseExecutionFiling.deleteMany({ where: { caseId } }),
-        () => tx.caseExecutionFinish.deleteMany({ where: { caseId } }),
-        () => tx.caseClosureVersion.deleteMany({ where: { caseId } }),
-        () => tx.caseClosure.deleteMany({ where: { caseId } }),
-        () => tx.caseArchiveVersion.deleteMany({ where: { caseId } }),
-        () => tx.caseArchive.deleteMany({ where: { caseId } }),
-        () => tx.feeRecord.deleteMany({ where: { caseId } }),
-        () => tx.caseComplaintConfirmation.deleteMany({ where: { caseId } }),
-        () => tx.caseComplaintMailing.deleteMany({ where: { caseId } }),
-        () => tx.caseFilingSubmission.deleteMany({ where: { caseId } }),
-        () => tx.caseHearingArrangement.deleteMany({ where: { caseId } }),
-        () => tx.caseLawyerAssignment.deleteMany({ where: { caseId } }),
-        () => tx.businessNumberAlias.deleteMany({
-          where: { entityId: caseId, entityType: 'CASE' },
-        }),
-        () => tx.auditEvent.deleteMany({ where: { resourceId: caseId } }),
-      ];
-      for (const remove of childDeletes) {
-        try {
-          await remove();
-        } catch {
-          // 表不存在或没有该记录时忽略，继续清理其余
-        }
-      }
+      // 叶子表先删，主表最后；顺序错误会让事务中断
+      await tx.caseAcceptance.deleteMany({ where: { caseId } });
+      await tx.caseJudgmentFact.deleteMany({ where: { caseId } });
+      await tx.caseHearingArrangement.deleteMany({ where: { caseId } });
+      await tx.caseSecondInstanceProgress.deleteMany({ where: { caseId } });
+      await tx.caseSecondInstanceResult.deleteMany({ where: { caseId } });
+      await tx.caseTrialRound.deleteMany({ where: { caseId } });
+      await tx.caseExecutionFinish.deleteMany({ where: { caseId } });
+      await tx.caseExecutionFiling.deleteMany({ where: { caseId } });
+      await tx.caseClosureVersion.deleteMany({ where: { caseId } });
+      await tx.caseClosure.deleteMany({ where: { caseId } });
+      await tx.caseArchiveVersion.deleteMany({ where: { caseId } });
+      await tx.caseArchive.deleteMany({ where: { caseId } });
+      await tx.caseComplaintConfirmation.deleteMany({ where: { caseId } });
+      await tx.caseComplaintMailing.deleteMany({ where: { caseId } });
+      await tx.caseFilingSubmission.deleteMany({ where: { caseId } });
+      await tx.caseLawyerAssignment.deleteMany({ where: { caseId } });
+      await tx.feeRecord.deleteMany({ where: { caseId } });
+      await tx.caseDefendant.deleteMany({ where: { caseId } });
+      await tx.caseExternalEntry.deleteMany({ where: { caseId } });
+      await tx.businessNumberAlias.deleteMany({
+        where: { entityId: caseId, entityType: 'CASE' },
+      });
+      await tx.auditEvent.deleteMany({ where: { resourceId: caseId } });
       await tx.case.delete({ where: { id: caseId } });
     });
   }
