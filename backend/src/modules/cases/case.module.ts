@@ -28,6 +28,8 @@ import {
 } from './case-archive-readiness.controller';
 import { CaseDeleteController } from './case-delete.controller';
 import { CaseDisclosureController } from './case-disclosure.controller';
+import { CaseArchiveRevocationController } from './case-archive-revocation.controller';
+import { CaseArchiveRevocationService } from './case-archive-revocation.service';
 import { CaseLegacyFactsController } from './case-legacy-facts.controller';
 import { CaseLegacyFactsService } from './case-legacy-facts.service';
 import { CaseDisclosureService } from './case-disclosure.service';
@@ -133,6 +135,7 @@ import { LawyerProfileService } from './lawyer-profile.service';
     CaseDeleteController,
     CaseDisclosureController,
     CaseLegacyFactsController,
+    CaseArchiveRevocationController,
     CasePreservationController,
     CaseCsvImportController,
     CaseBatchArchiveController,
@@ -157,6 +160,7 @@ import { LawyerProfileService } from './lawyer-profile.service';
     CaseDeleteService,
     CaseDisclosureService,
     CaseLegacyFactsService,
+    CaseArchiveRevocationService,
     CasePreservationService,
     LitigationRefundsService,
     CaseExecutionArchiveService,

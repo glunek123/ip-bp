@@ -8968,3 +8968,16 @@ export async function updateCaseLegacyFacts(
     body: JSON.stringify(input),
   })) as { id: string };
 }
+
+/** 撤销归档：退回待归档，回退后可继续修改资料。 */
+export async function revokeCaseArchive(
+  id: string,
+  reason: string,
+  options: RequestOptions = {},
+): Promise<{ id: string; stage: string }> {
+  return (await requestJson(`/cases/${encodeURIComponent(id)}/archive-revocation`, {
+    ...options,
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  })) as { id: string; stage: string };
+}

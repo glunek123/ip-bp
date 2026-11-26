@@ -89,6 +89,7 @@ import {
   updateCaseDisclosure,
   deleteCaseDisclosure,
   updateCaseLegacyFacts,
+  revokeCaseArchive,
 
   archiveCase,
   caseArchiveSession,
@@ -977,6 +978,10 @@ function listCaseMaterials(caseId: string, options?: RequestOptions) {
   return listOwnerMaterials('CASE', caseId, options);
 }
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
+const revokeDialog = ref(false);
+const revokeReason = ref('');
+const revokeSaving = ref(false);
+const revokeError = ref('');
 const legacyDialog = ref(false);
 const legacySaving = ref(false);
 const legacyError = ref('');
@@ -1003,6 +1008,33 @@ const disclosureForm = ref({
 const refreshing = ref(false);
 const refreshError = ref('');
 const item = ref<CaseDetail>();
+
+function openRevokeDialog() {
+  revokeReason.value = '';
+  revokeError.value = '';
+  revokeDialog.value = true;
+}
+
+async function confirmRevoke() {
+  if (!item.value) return;
+  const reason = revokeReason.value.trim();
+  if (!reason) {
+    revokeError.value = '请填写撤销原因';
+    return;
+  }
+  revokeSaving.value = true;
+  revokeError.value = '';
+  try {
+    await revokeCaseArchive(item.value.id, reason, {});
+    revokeDialog.value = false;
+    await load();
+  } catch (error) {
+    revokeError.value =
+      error instanceof Error ? error.message : '撤销失败，请稍后重试';
+  } finally {
+    revokeSaving.value = false;
+  }
+}
 
 function openLegacyEdit() {
   const f = item.value?.legacyFacts;
@@ -3170,6 +3202,14 @@ onBeforeUnmount(() => {
               <button type="button" class="legacy-btn" @click="openLegacyEdit">
                 编辑补充信息
               </button>
+              <button
+                v-if="item.stage === 'ARCHIVED'"
+                type="button"
+                class="legacy-btn legacy-btn--danger"
+                @click="openRevokeDialog"
+              >
+                撤销归档
+              </button>
               <button type="button" class="legacy-btn" @click="openDisclosureEdit">
                 编辑披露信息
               </button>
@@ -3213,6 +3253,46 @@ onBeforeUnmount(() => {
             {{ disclosureError }}
           </p>
         </section>
+        <ElDialog v-model="revokeDialog" title="撤销归档" width="460px">
+          <p style="margin: 0 0 10px; font-size: 13px">
+            撤销后案件退回「待归档」，可继续修改资料。归档记录会保留在撤销留痕中。
+          </p>
+          <label style="display: grid; gap: 6px; font-size: 13px">
+            撤销原因
+            <input
+              v-model="revokeReason"
+              maxlength="500"
+              style="
+                padding: 6px 8px;
+                border: 1px solid var(--el-border-color);
+                border-radius: 4px;
+                background: transparent;
+                color: inherit;
+              "
+            />
+          </label>
+          <p v-if="revokeError" class="submit-error" role="alert">
+            {{ revokeError }}
+          </p>
+          <template #footer>
+            <button
+              type="button"
+              class="legacy-btn"
+              :disabled="revokeSaving"
+              @click="revokeDialog = false"
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              class="legacy-btn legacy-btn--danger"
+              :disabled="revokeSaving"
+              @click="confirmRevoke"
+            >
+              {{ revokeSaving ? '处理中…' : '确认撤销' }}
+            </button>
+          </template>
+        </ElDialog>
         <ElDialog v-model="legacyDialog" title="编辑补充信息" width="520px">
           <div class="legacy-form">
             <label>立案提交日<input v-model="legacyForm.submitRegisterOn" type="date" /></label>
