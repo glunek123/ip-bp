@@ -1090,6 +1090,26 @@ onBeforeUnmount(clearContext);
               <dt>披露标记</dt>
               <dd>{{ lead.needDisclose ? '需要披露' : '无需披露' }}</dd>
             </div>
+            <div>
+              <dt>原始来源</dt>
+              <dd>{{ lead.legacyClueSource || '未登记' }}</dd>
+            </div>
+            <div>
+              <dt>审核通过日</dt>
+              <dd class="mono">{{ lead.legacyApprovedOn || '未登记' }}</dd>
+            </div>
+            <div>
+              <dt>客户确认日</dt>
+              <dd class="mono">{{ lead.legacyConfirmedOn || '未登记' }}</dd>
+            </div>
+            <div>
+              <dt>买样日期</dt>
+              <dd class="mono">{{ lead.legacyPurchasedOn || '未登记' }}</dd>
+            </div>
+            <div class="detail-grid__wide">
+              <dt>审核意见</dt>
+              <dd>{{ lead.legacyReviewOpinion || '未填写' }}</dd>
+            </div>
             <div class="detail-grid__wide">
               <dt>备注</dt>
               <dd>{{ lead.remark || '未填写' }}</dd>

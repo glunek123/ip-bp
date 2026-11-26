@@ -195,6 +195,7 @@ export type LeadBusinessResult = {
   remark: string | null;
   creationChannel: string;
   /** 旧库流程日期与审核意见（迁移快照，可为空）。 */
+  legacyClueSource?: string | null;
   legacyApprovedOn?: string | null;
   legacyConfirmedOn?: string | null;
   legacyPurchasedOn?: string | null;
