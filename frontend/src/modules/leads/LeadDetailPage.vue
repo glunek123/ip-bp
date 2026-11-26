@@ -39,9 +39,13 @@ import {
   leadCaseTypeLabels,
   leadInfringementTypeLabels,
   leadSourceLabels,
-  legacyClueSourceLabels,
   leadStatusLabels,
 } from './lead-options';
+import {
+  legacyClueSourceLabels,
+  legacyClueCheckOpinionLabels,
+  translateLegacy,
+} from './legacy-enums';
 import { summarizeLeadProducts } from './lead-display';
 import { useAuthStore } from '../../stores/auth';
 import { listReturnPath } from '../../app/list-row-navigation';
@@ -1116,7 +1120,14 @@ onBeforeUnmount(clearContext);
             </div>
             <div class="detail-grid__wide">
               <dt>审核意见</dt>
-              <dd>{{ lead.legacyReviewOpinion || '未填写' }}</dd>
+              <dd>
+                {{
+                  translateLegacy(
+                    legacyClueCheckOpinionLabels,
+                    lead.legacyReviewOpinion,
+                  ) || '未填写'
+                }}
+              </dd>
             </div>
             <div class="detail-grid__wide">
               <dt>备注</dt>

@@ -1,17 +1,5 @@
 <script setup lang="ts">
 
-/** 旧库公证类型码值（1 网页公证 / 2 实物公证）。 */
-const legacyNotarizationTypeLabels: Record<string, string> = {
-  '1': '网页公证',
-  '2': '实物公证',
-};
-/** 旧库公证平台码值（1 法信云 / 2 数秦 / 3 坐标轴 / 99 其他）。 */
-const legacyNotarizationPlatformLabels: Record<string, string> = {
-  '1': '法信云',
-  '2': '数秦',
-  '3': '坐标轴',
-  '99': '其他',
-};
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import {
   RouterLink,
@@ -563,6 +551,12 @@ watch(
   },
   { flush: 'post' },
 );
+import {
+  legacyNotarizationTypeLabels,
+  legacyNotarizationPlatformLabels,
+  legacyForensicsCheckOpinionLabels,
+  translateLegacy,
+} from './legacy-enums';
 </script>
 <template>
   <div ref="detailRoot" class="page-view notary-matter-detail-page">
@@ -753,7 +747,14 @@ watch(
             <div><dt>寄件电话</dt><dd class="mono">{{ matter.legacyNotarization.senderPhone || '未登记' }}</dd></div>
             <div><dt>寄件快递单号</dt><dd class="mono">{{ matter.legacyNotarization.senderTracking || '未登记' }}</dd></div>
             <div class="detail-grid__wide"><dt>寄件地址</dt><dd>{{ matter.legacyNotarization.senderAddress || '未登记' }}</dd></div>
-            <div class="detail-grid__wide"><dt>取证审核意见</dt><dd>{{ matter.legacyNotarization.checkOpinion || '未填写' }}</dd></div>
+            <div class="detail-grid__wide"><dt>取证审核意见</dt><dd>
+                {{
+                  translateLegacy(
+                    legacyForensicsCheckOpinionLabels,
+                    matter.legacyNotarization.checkOpinion,
+                  ) || '未填写'
+                }}
+              </dd></div>
           </dl>
         </section>
           <h2 class="form-section-title">来源线索事实</h2>

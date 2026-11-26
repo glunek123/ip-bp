@@ -169,6 +169,8 @@ const displayFields = {
     notary: { state: 'UNRECORDED', amount: null },
     investigation: { state: 'UNRECORDED', amount: null },
     sample: { state: 'UNRECORDED', amount: null },
+
+    originalSampleFee: { state: 'UNRECORDED', amount: null },
     sampleRefund: { state: 'UNRECORDED', amount: null },
   },
   linkedCase: null,
@@ -374,6 +376,8 @@ describe('notary operational display contract', () => {
       fees: {
         ...displayFields.fees,
         sample: { state: 'PENDING', amount: '0.00' },
+
+        originalSampleFee: { state: 'PENDING', amount: '0.00' },
       },
     },
     { transferredAt: '2026-02-30' },

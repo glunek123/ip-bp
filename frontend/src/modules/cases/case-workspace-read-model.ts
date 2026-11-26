@@ -1,4 +1,9 @@
 import type { CaseDetail, CaseFile, CaseStage } from '../../api/cases';
+import {
+  translateLegacy,
+  legacyCustomerSettlementLabels,
+  legacyLawyerSettlementLabels,
+} from '../leads/legacy-enums';
 import type { LeadDetail } from '../../api/leads';
 import type { CaseRoutineProfile } from '../../api/case-routine';
 import type { CaseClosureWorkspace } from '../../api/case-closure-workspace';
@@ -1472,8 +1477,20 @@ export function buildCaseWorkspaceSections(
     date('诉状提交日', item.legacyFacts?.pleadingsConfirmOn ?? null),
     date('预交费日期', item.legacyFacts?.prepayOn ?? null),
     date('诉讼费日期', item.legacyFacts?.courtFeeOn ?? null),
-    field('客户结算进度', item.legacyFacts?.customerSettlement ?? null),
-    field('律师结算进度', item.legacyFacts?.lawyerSettlement ?? null),
+    field(
+      '客户结算进度',
+      translateLegacy(
+        legacyCustomerSettlementLabels,
+        item.legacyFacts?.customerSettlement,
+      ),
+    ),
+    field(
+      '律师结算进度',
+      translateLegacy(
+        legacyLawyerSettlementLabels,
+        item.legacyFacts?.lawyerSettlement,
+      ),
+    ),
   ]);
   setSummary('lead-info', [
     field(

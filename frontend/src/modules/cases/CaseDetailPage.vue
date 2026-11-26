@@ -18,6 +18,10 @@ import CaseSectionRecordCorrectionPanel, {
   readCaseSectionRecordRequests,
 } from './CaseSectionRecordCorrectionPanel.vue';
 import ElDialog from 'element-plus/es/components/dialog/index';
+import {
+  legacyDisclosureTypeLabels,
+  translateLegacy,
+} from '../leads/legacy-enums';
 import CaseAdditionalActions from './CaseAdditionalActions.vue';
 import CasePreservationDialog from './CasePreservationDialog.vue';
 
@@ -3187,7 +3191,14 @@ onBeforeUnmount(() => {
               <dt>经营主体</dt>
               <dd>{{ item.disclosure.entityName ?? '未登记' }}</dd>
               <dt>主体类型</dt>
-              <dd>{{ item.disclosure.entityType ?? '未登记' }}</dd>
+              <dd>
+                {{
+                  translateLegacy(
+                    legacyDisclosureTypeLabels,
+                    item.disclosure.entityType,
+                  ) ?? '未登记'
+                }}
+              </dd>
               <dt>法定代表人</dt>
               <dd>{{ item.disclosure.legalPerson ?? '未登记' }}</dd>
               <dt>联系电话</dt>
