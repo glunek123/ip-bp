@@ -1872,6 +1872,9 @@ model Lead {
   legacyReviewNote      String?                     @map("legacy_review_note") @db.VarChar(500)
   /// 旧库线索来源（原样保留）。
   legacyClueSource     String?                     @map("legacy_clue_source") @db.VarChar(200)
+  /// 旧库运营人员数字 id（迁移保留）。
+  legacyOperatorId     String?                     @map("legacy_operator_id") @db.VarChar(20)
+  /// 旧库运营人员数字 id（迁移保留）。
   pushedByUserId         String?                     @map("pushed_by_user_id") @db.Uuid
   activeReviewDecisionId String?                     @unique(map: "leads_active_review_decision_id_key") @map("active_review_decision_id") @db.Uuid
   department             Department                  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
@@ -2456,6 +2459,9 @@ model Case {
   legacySubmitRegisterOn     DateTime? @map("legacy_submit_register_on") @db.Date
   legacyPleadingsApproveOn   DateTime? @map("legacy_pleadings_approve_on") @db.Date
   legacyPleadingsConfirmOn   DateTime? @map("legacy_pleadings_confirm_on") @db.Date
+  /// 旧库运营人员数字 id（迁移保留，便于按人回溯）。
+  legacyOperatorId           String?   @map("legacy_operator_id") @db.VarChar(20)
+  /// 旧库运营人员数字 id（迁移保留，便于按人回溯）。
   department                    Department                         @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   sourceLead                    Lead?                              @relation(fields: [sourceLeadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   customer                      Customer                           @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
