@@ -52,3 +52,32 @@
 4. 法院名/省份（2 列）—— 已加列，补写即可
 5. 费用日期（2 列）
 6. 结算进度（4 列）—— 需要新字段
+
+
+---
+
+## 六、更新（2026-11-26 16:05，a80a1765 之后）
+
+已补齐：法院名/省份（970）、律师 4 列（82 人）、线索流程 5 列（199 条）、公证过程 13 列（191 条）、结算 4 列（532 条）、费用日期 2 列（320 条）、披露 11 列（2,100 条）。
+
+**覆盖率：76 / 92 = 83%**。
+
+剩余 17 列（有值）：
+
+| 列 | 非空数 | 处置 |
+| --- | --- | --- |
+| `clue_source` | 2,200 | 待补（leads 加字段） |
+| `clue_push_date` | 910 | 待补（回填 `leads.pushed_at`） |
+| `submit_register_date` | 708 | 待补（cases 加字段） |
+| `pleadings_approve_date` | 556 | 待补（诉状确认，之前只做了提交时间） |
+| `pleadings_confirm_date` | 365 | 同上 |
+| `forensics_check_opinion` | 604 | 待补（公证审核意见） |
+| `forensics_check_note` | 331 | 待补 |
+| `forensics_check_result` | 176 | 待补 |
+| `forensics_check_info` | 59 | 待补 |
+| `clue_notes` | 237 | 可并入 `leads.remark` |
+| `users_id` | 2,220 | 忽略（旧运营 id，已有 responsible_user_id） |
+| `lawyer_id` | 1,201 | 忽略（已按姓名匹配律师档案） |
+| `court_id` / `case_court_id` | 965 / 385 | 忽略（已按法院名匹配） |
+| `clue_discovery_date` | 2,164 | 已用 `found_at` |
+| `record_date` / `record_cost` | 16 / 52 | 用户明确不管 |
