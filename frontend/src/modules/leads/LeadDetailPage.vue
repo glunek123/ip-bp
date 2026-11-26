@@ -20,7 +20,10 @@ import {
   type LeadProductInput,
   type LeadRoutineEditInput,
 } from '../../api/leads';
-import { updateLeadProductScreenshots } from '../../api/leads';
+import {
+  updateLeadLegacyFields,
+  updateLeadProductScreenshots,
+} from '../../api/leads';
 import {
   getLeadImageImports,
   retryLeadImageImport,
@@ -828,6 +831,59 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 onBeforeUnmount(clearContext);
+import ElDialog from 'element-plus/es/components/dialog/index';
+
+const legacyDialog = ref(false);
+const legacySaving = ref(false);
+const legacyError = ref('');
+const legacyForm = ref({
+  clueSource: '',
+  approvedOn: '',
+  confirmedOn: '',
+  purchasedOn: '',
+  reviewOpinion: '',
+  reviewNote: '',
+});
+
+function openLegacyEditor() {
+  legacyForm.value = {
+    clueSource: lead.value?.legacyClueSource ?? '',
+    approvedOn: lead.value?.legacyApprovedOn ?? '',
+    confirmedOn: lead.value?.legacyConfirmedOn ?? '',
+    purchasedOn: lead.value?.legacyPurchasedOn ?? '',
+    reviewOpinion: lead.value?.legacyReviewOpinion ?? '',
+    reviewNote: lead.value?.legacyReviewNote ?? '',
+  };
+  legacyError.value = '';
+  legacyDialog.value = true;
+}
+
+async function saveLegacyFields() {
+  legacySaving.value = true;
+  legacyError.value = '';
+  try {
+    const f = legacyForm.value;
+    await updateLeadLegacyFields(
+      lead.value!.id,
+      {
+        clueSource: f.clueSource.trim() || null,
+        approvedOn: f.approvedOn || null,
+        confirmedOn: f.confirmedOn || null,
+        purchasedOn: f.purchasedOn || null,
+        reviewOpinion: f.reviewOpinion.trim() || null,
+        reviewNote: f.reviewNote.trim() || null,
+      },
+      {},
+    );
+    legacyDialog.value = false;
+    await load();
+  } catch (error) {
+    legacyError.value =
+      error instanceof Error ? error.message : '保存失败，请稍后重试';
+  } finally {
+    legacySaving.value = false;
+  }
+}
 </script>
 <template>
   <div class="page-view page-view--narrow lead-detail-page">
@@ -994,6 +1050,11 @@ onBeforeUnmount(clearContext);
         <section class="demo-card demo-card--pad lead-facts-card">
           <div class="lead-card-heading">
             <h2 class="form-section-title">基础信息</h2>
+            <ElButton
+              data-test="edit-lead-legacy"
+              @click="openLegacyEditor"
+              >编辑补充信息</ElButton
+            >
             <ElButton
               v-if="lead.capabilities.edit || lead.capabilities.routineEdit"
               data-test="edit-lead-base-card"
@@ -1634,6 +1695,23 @@ onBeforeUnmount(clearContext);
       @unavailable="handleScreenshotUnavailable"
     />
   </div>
+  <ElDialog v-model="legacyDialog" title="编辑补充信息" width="520px">
+    <div class="demo-detail-grid" style="grid-template-columns: 110px 1fr">
+      <label>原始来源<input v-model="legacyForm.clueSource" maxlength="50" /></label>
+      <label>审核通过日<input v-model="legacyForm.approvedOn" type="date" /></label>
+      <label>客户确认日<input v-model="legacyForm.confirmedOn" type="date" /></label>
+      <label>买样日期<input v-model="legacyForm.purchasedOn" type="date" /></label>
+      <label>审核意见<input v-model="legacyForm.reviewOpinion" maxlength="500" /></label>
+      <label>审核备注<input v-model="legacyForm.reviewNote" maxlength="500" /></label>
+    </div>
+    <p v-if="legacyError" class="submit-error" role="alert">{{ legacyError }}</p>
+    <template #footer>
+      <ElButton :disabled="legacySaving" @click="legacyDialog = false">取消</ElButton>
+      <ElButton type="primary" :disabled="legacySaving" @click="saveLegacyFields">
+        {{ legacySaving ? '保存中…' : '保存' }}
+      </ElButton>
+    </template>
+  </ElDialog>
 </template>
 
 <style scoped>

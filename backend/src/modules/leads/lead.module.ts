@@ -4,6 +4,8 @@ import { AuthModule } from '../../auth/auth.module';
 import { DatabaseModule } from '../../database/database.module';
 import { MaterialModule } from '../materials';
 import { CaseModule } from '../cases';
+import { LeadLegacyFieldsController } from './lead-legacy-fields.controller';
+import { LeadLegacyFieldsService } from './lead-legacy-fields.service';
 import { LeadController } from './lead.controller';
 import { LeadBatchPushController } from './lead-batch-push.controller';
 import { LeadNoEvidenceBatchController } from './lead-no-evidence-batch.controller';
@@ -68,6 +70,7 @@ import { LeadRoutineEditService } from './lead-routine-edit.service';
     // Static import routes must precede LeadController's GET /:id.
     LeadCsvImportController,
     LeadController,
+    LeadLegacyFieldsController,
     LeadRoutineEditController,
     LeadBatchPushController,
     LeadNoEvidenceBatchController,
@@ -89,6 +92,7 @@ import { LeadRoutineEditService } from './lead-routine-edit.service';
     NotaryReportsSourceService,
     LeadService,
     LeadRoutineEditService,
+    LeadLegacyFieldsService,
     LeadImageImportService,
     { provide: LEAD_IMAGE_DOWNLOADER, useValue: downloadLeadImage },
     ClientLeadService,

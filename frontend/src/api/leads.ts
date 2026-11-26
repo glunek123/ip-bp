@@ -1641,3 +1641,25 @@ export async function updateLeadProductScreenshots(
   if (!isLeadBusinessResult(data)) throw invalidResponse();
   return data;
 }
+
+export type LeadLegacyFieldsInput = {
+  clueSource?: string | null;
+  approvedOn?: string | null;
+  confirmedOn?: string | null;
+  purchasedOn?: string | null;
+  reviewOpinion?: string | null;
+  reviewNote?: string | null;
+};
+
+/** 维护旧库线索流程字段。 */
+export async function updateLeadLegacyFields(
+  id: string,
+  input: LeadLegacyFieldsInput,
+  options: RequestOptions = {},
+): Promise<{ id: string }> {
+  return (await requestJson(`/leads/${encodeURIComponent(id)}/legacy-fields`, {
+    ...options,
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })) as { id: string };
+}
