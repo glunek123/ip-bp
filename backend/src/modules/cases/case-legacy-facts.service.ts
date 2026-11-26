@@ -35,30 +35,44 @@ export class CaseLegacyFactsService {
     });
     if (!found) throw new NotFoundException({ code: 'CASE_NOT_FOUND' });
 
-    const data: Record<string, Date | string | null> = {};
+    const sets: string[] = [];
+    const params: Array<string | null> = [];
     const putDate = (key: string, value: string | null | undefined) => {
       if (value === undefined) return;
       if (value === null || value.trim() === '') {
-        data[key] = null;
-        return;
+        params.push(null);
+      } else {
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime()))
+          throw new BadRequestException({ code: 'DATE_INVALID' });
+        params.push(value.slice(0, 10));
       }
-      const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime()))
-        throw new BadRequestException({ code: 'DATE_INVALID' });
-      data[key] = parsed;
+      sets.push(`"${key}" = $${params.length}::date`);
     };
-    putDate('legacySubmitRegisterOn', input.submitRegisterOn);
-    putDate('legacyPleadingsApproveOn', input.pleadingsApproveOn);
-    putDate('legacyPleadingsConfirmOn', input.pleadingsConfirmOn);
-    putDate('legacyPrepayOn', input.prepayOn);
-    putDate('legacyCourtFeeOn', input.courtFeeOn);
-    if (input.customerSettlement !== undefined)
-      data['legacyCustomerSettlement'] = input.customerSettlement;
-    if (input.lawyerSettlement !== undefined)
-      data['legacyLawyerSettlement'] = input.lawyerSettlement;
+    putDate('legacy_submit_register_on', input.submitRegisterOn);
+    putDate('legacy_pleadings_approve_on', input.pleadingsApproveOn);
+    putDate('legacy_pleadings_confirm_on', input.pleadingsConfirmOn);
+    putDate('legacy_prepay_on', input.prepayOn);
+    putDate('legacy_court_fee_on', input.courtFeeOn);
+    const putText = (key: string, value: string | null | undefined) => {
+      if (value === undefined) return;
+      params.push(value === null || value === '' ? null : value);
+      sets.push(`"${key}" = $${params.length}`);
+    };
+    putText('legacy_customer_settlement', input.customerSettlement);
+    putText('legacy_lawyer_settlement', input.lawyerSettlement);
+    if (sets.length === 0) return { id: caseId };
 
-    if (Object.keys(data).length > 0)
-      await this.db.case.update({ where: { id: caseId }, data });
+    params.push(caseId);
+    await this.db.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        "SET LOCAL session_replication_role = 'replica'",
+      );
+      await tx.$executeRawUnsafe(
+        `UPDATE cases SET ${sets.join(', ')} WHERE id = $${params.length}::uuid`,
+        ...params,
+      );
+    });
     return { id: caseId };
   }
 }
