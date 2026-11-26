@@ -1416,6 +1416,8 @@ export function buildCaseWorkspaceSections(
     'NOTARY_OPENING_PHOTO',
   );
   setSummary('case-info', [
+    field('案件单号', item.businessNo),
+    field('法院案号', item.courtCaseNo),
     field('客户', item.customer.name),
     field('权利主体', item.rightsHolder.name),
     field(
@@ -1467,6 +1469,13 @@ export function buildCaseWorkspaceSections(
       item.archive ? archiveLabels[item.archive.current.archiveType] : null,
     ),
     field('归档原因', item.archive?.current.archiveReason ?? null),
+    date('立案提交日', item.legacyFacts?.submitRegisterOn ?? null),
+    date('诉状确认日', item.legacyFacts?.pleadingsApproveOn ?? null),
+    date('诉状提交日', item.legacyFacts?.pleadingsConfirmOn ?? null),
+    date('预交费日期', item.legacyFacts?.prepayOn ?? null),
+    date('诉讼费日期', item.legacyFacts?.courtFeeOn ?? null),
+    field('客户结算进度', item.legacyFacts?.customerSettlement ?? null),
+    field('律师结算进度', item.legacyFacts?.lawyerSettlement ?? null),
   ]);
   setSummary('lead-info', [
     field(
