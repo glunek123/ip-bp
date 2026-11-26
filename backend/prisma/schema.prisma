@@ -1863,6 +1863,12 @@ model Lead {
   externalSourceRef      String?                     @map("external_source_ref") @db.VarChar(100)
   version                Int                         @default(1)
   pushedAt               DateTime?                   @map("pushed_at") @db.Timestamptz(3)
+  /// 旧库线索流程日期与审核意见（迁移快照，仅展示）。
+  legacyApprovedOn      DateTime?                   @map("legacy_approved_on") @db.Date
+  legacyConfirmedOn     DateTime?                   @map("legacy_confirmed_on") @db.Date
+  legacyPurchasedOn     DateTime?                   @map("legacy_purchased_on") @db.Date
+  legacyReviewOpinion   String?                     @map("legacy_review_opinion") @db.VarChar(500)
+  legacyReviewNote      String?                     @map("legacy_review_note") @db.VarChar(500)
   pushedByUserId         String?                     @map("pushed_by_user_id") @db.Uuid
   activeReviewDecisionId String?                     @unique(map: "leads_active_review_decision_id_key") @map("active_review_decision_id") @db.Uuid
   department             Department                  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
@@ -2699,6 +2705,8 @@ model LawyerProfile {
   fullName          String                 @map("full_name") @db.VarChar(200)
   lawFirm           String?                @map("law_firm") @db.VarChar(200)
   phone             String?                @db.VarChar(100)
+  /// 律所（办公室）电话，旧系统 case_lawyer_office_number 迁移保留。
+  officePhone       String?                @map("office_phone") @db.VarChar(100)
   address           String?                @db.VarChar(500)
   email             String?                @db.VarChar(200)
   barNumber         String?                @map("bar_number") @db.VarChar(100)
