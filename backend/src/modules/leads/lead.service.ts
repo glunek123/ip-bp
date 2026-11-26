@@ -233,6 +233,13 @@ type LeadResponse = {
   needDisclose: boolean;
   remark: string | null;
   creationChannel: LeadRecord['creationChannel'];
+  /** 旧库迁移补充字段。 */
+  legacyClueSource?: string | null;
+  legacyApprovedOn?: string | null;
+  legacyConfirmedOn?: string | null;
+  legacyPurchasedOn?: string | null;
+  legacyReviewOpinion?: string | null;
+  legacyReviewNote?: string | null;
   externalSourceRef: string | null;
   products: LeadProductResponse[];
   leadScreenshotContentVersionIds: string[];
@@ -4676,6 +4683,15 @@ export class LeadService {
       needDisclose: record.needDisclose,
       remark: record.remark ?? null,
       creationChannel: record.creationChannel,
+      legacyClueSource: record.legacyClueSource ?? null,
+      legacyApprovedOn:
+        record.legacyApprovedOn?.toISOString().slice(0, 10) ?? null,
+      legacyConfirmedOn:
+        record.legacyConfirmedOn?.toISOString().slice(0, 10) ?? null,
+      legacyPurchasedOn:
+        record.legacyPurchasedOn?.toISOString().slice(0, 10) ?? null,
+      legacyReviewOpinion: record.legacyReviewOpinion ?? null,
+      legacyReviewNote: record.legacyReviewNote ?? null,
       externalSourceRef: record.externalSourceRef ?? null,
       products: record.products.map((product) => ({
         id: product.id,
