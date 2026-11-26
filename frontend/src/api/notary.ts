@@ -1049,6 +1049,15 @@ function isOffice(value: unknown): value is NotaryOffice {
 }
 
 function isMatterResult(value: unknown): value is NotaryMatterResult {
+  // 历史迁移事项没有商品/材料快照，放宽非空要求
+  if (isRecord(value) && isRecord(value.detailFacts)) {
+    const facts = value.detailFacts;
+    if (
+      isRecord(facts.source) &&
+      facts.source.snapshotState === 'UNKNOWN_LEGACY'
+    )
+      return legacyMatterResult(value);
+  }
   return (
     isRecord(value) &&
     typeof value.id === 'string' &&
@@ -1075,6 +1084,31 @@ function isMatterResult(value: unknown): value is NotaryMatterResult {
       (typeof value.batchPurpose === 'string' &&
         value.batchPurpose.trim().length > 0 &&
         [...value.batchPurpose].length <= 500)) &&
+    typeof value.createdAt === 'string' &&
+    !Number.isNaN(Date.parse(value.createdAt))
+  );
+}
+
+function legacyMatterResult(value: Record<string, unknown>): boolean {
+  return (
+    typeof value.id === 'string' &&
+    typeof value.businessNo === 'string' &&
+    typeof value.leadId === 'string' &&
+    value.leadStatus === 'TRANSFERRED_TO_NOTARY' &&
+    Number.isInteger(value.leadVersion) &&
+    (value.leadVersion as number) >= 1 &&
+    value.stage === 'PENDING_EVIDENCE' &&
+    isRecord(value.notaryOffice) &&
+    typeof value.notaryOffice.id === 'string' &&
+    typeof value.notaryOffice.name === 'string' &&
+    Array.isArray(value.selectedProductIds) &&
+    value.selectedProductIds.every((id) => typeof id === 'string') &&
+    Array.isArray(value.selectedContentVersionIds) &&
+    value.selectedContentVersionIds.every((id) => typeof id === 'string') &&
+    (value.evidenceMode === 'ONLINE_PURCHASE' || value.evidenceMode === null) &&
+    (value.batchPurpose === null ||
+      (typeof value.batchPurpose === 'string' &&
+        value.batchPurpose.trim().length > 0)) &&
     typeof value.createdAt === 'string' &&
     !Number.isNaN(Date.parse(value.createdAt))
   );
@@ -1297,6 +1331,18 @@ function isDetailFacts(value: unknown): value is NotaryDetailFacts {
 
 function detailFactsMatch(value: Record<string, unknown>): boolean {
   if (value.detailFacts === undefined) return true;
+  // 历史迁移事项没有取证过程，费用与材料对不上是正常的
+  const rawFacts = value.detailFacts;
+  if (
+    isRecord(rawFacts) &&
+    isRecord(rawFacts.source) &&
+    rawFacts.source.snapshotState === 'UNKNOWN_LEGACY'
+  )
+    return (
+      isRecord(rawFacts.feeTotals) &&
+      isRecord(value.fees) &&
+      Array.isArray(value.selectedMaterials)
+    );
   if (
     !isDetailFacts(value.detailFacts) ||
     !isRecord(value.fees) ||
@@ -1435,7 +1481,10 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
       : detail.returnArchive === null) &&
     (detail.stage === 'PENDING_EVIDENCE'
       ? detail.evidence === null && detail.opening === null
-      : detail.evidence !== null &&
+      : (detail.evidence !== null ||
+          (isRecord(detail.detailFacts) &&
+            isRecord(detail.detailFacts.source) &&
+            detail.detailFacts.source.snapshotState === 'UNKNOWN_LEGACY')) &&
         detail.capabilities.recordEvidence === false) &&
     (detail.stage === 'PENDING_EVIDENCE' || detail.stage === 'WAITING_UNBOX'
       ? detail.opening === null
