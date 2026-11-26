@@ -81,3 +81,31 @@
 | `court_id` / `case_court_id` | 965 / 385 | 忽略（已按法院名匹配） |
 | `clue_discovery_date` | 2,164 | 已用 `found_at` |
 | `record_date` / `record_cost` | 16 / 52 | 用户明确不管 |
+
+
+---
+
+## 七、最终状态（2026-11-26 16:12，d3242a03）
+
+旧库有值列 93 个，扣除 6 个内部 id/废弃列（`users_id`、`lawyer_id`、`court_id`、`case_court_id`、`record_date`、`record_cost`），业务列 **87 个**。
+
+| 项 | 数量 |
+| --- | --- |
+| 已导入 | **86** |
+| 剩余 | 1（`clue_discovery_date`，已用 `leads.found_at` 承接） |
+| **覆盖率** | **98.9%** |
+
+本批补齐（d3242a03）：
+
+| 旧库列 | 落点 | 回填 |
+| --- | --- | --- |
+| `clue_source` | `leads.legacy_clue_source` | 510 |
+| `clue_push_date` | `leads.pushed_at`（与 `pushed_by_user_id` 成对） | 212 |
+| `clue_notes` | `leads.remark` | 206 |
+| `submit_register_date` | `cases.legacy_submit_register_on` | 708 |
+| `pleadings_approve_date` | `cases.legacy_pleadings_approve_on` | 556 |
+| `pleadings_confirm_date` | `cases.legacy_pleadings_confirm_on` | 365 |
+| `forensics_check_opinion` | `notary_matters.legacy_forensics_check_opinion` | 7 |
+| `forensics_check_note/result/info` | 同名 `legacy_*` | 同上 |
+
+> 取证审核四项只有 7 条有值，是旧库本身覆盖率低。
