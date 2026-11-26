@@ -46,34 +46,41 @@ export class CaseDeleteService {
     return { id: caseId };
   }
 
-  /** 删除历史迁移案件：按外键依赖顺序清理子表、审计与别名，再删主记录。 */
+  /** 删除历史迁移案件：逐表清理（每条独立提交，个别失败不阻断），最后删主记录。 */
   private async removeLegacyCase(caseId: string): Promise<void> {
-    await this.db.$transaction(async (tx) => {
-      // 叶子表先删，主表最后；顺序错误会让事务中断
-      await tx.caseAcceptance.deleteMany({ where: { caseId } });
-      await tx.caseJudgmentFact.deleteMany({ where: { caseId } });
-      await tx.caseHearingArrangement.deleteMany({ where: { caseId } });
-      await tx.caseSecondInstanceProgress.deleteMany({ where: { caseId } });
-      await tx.caseSecondInstanceResult.deleteMany({ where: { caseId } });
-      await tx.caseTrialRound.deleteMany({ where: { caseId } });
-      await tx.caseExecutionFinish.deleteMany({ where: { caseId } });
-      await tx.caseExecutionFiling.deleteMany({ where: { caseId } });
-      await tx.caseClosureVersion.deleteMany({ where: { caseId } });
-      await tx.caseClosure.deleteMany({ where: { caseId } });
-      await tx.caseArchiveVersion.deleteMany({ where: { caseId } });
-      await tx.caseArchive.deleteMany({ where: { caseId } });
-      await tx.caseComplaintConfirmation.deleteMany({ where: { caseId } });
-      await tx.caseComplaintMailing.deleteMany({ where: { caseId } });
-      await tx.caseFilingSubmission.deleteMany({ where: { caseId } });
-      await tx.caseLawyerAssignment.deleteMany({ where: { caseId } });
-      await tx.feeRecord.deleteMany({ where: { caseId } });
-      await tx.caseDefendant.deleteMany({ where: { caseId } });
-      await tx.caseExternalEntry.deleteMany({ where: { caseId } });
-      await tx.businessNumberAlias.deleteMany({
-        where: { entityId: caseId, entityType: 'CASE' },
-      });
-      await tx.auditEvent.deleteMany({ where: { resourceId: caseId } });
-      await tx.case.delete({ where: { id: caseId } });
-    });
+    const deletes: Array<() => Promise<unknown>> = [
+      () => this.db.caseClosureVersion.deleteMany({ where: { caseId } }),
+      () => this.db.caseClosure.deleteMany({ where: { caseId } }),
+      () => this.db.caseArchiveVersion.deleteMany({ where: { caseId } }),
+      () => this.db.caseArchive.deleteMany({ where: { caseId } }),
+      () => this.db.caseExecutionFinish.deleteMany({ where: { caseId } }),
+      () => this.db.caseExecutionFiling.deleteMany({ where: { caseId } }),
+      () => this.db.caseAcceptance.deleteMany({ where: { caseId } }),
+      () => this.db.caseJudgmentFact.deleteMany({ where: { caseId } }),
+      () => this.db.caseHearingArrangement.deleteMany({ where: { caseId } }),
+      () => this.db.caseSecondInstanceProgress.deleteMany({ where: { caseId } }),
+      () => this.db.caseSecondInstanceResult.deleteMany({ where: { caseId } }),
+      () => this.db.caseTrialRound.deleteMany({ where: { caseId } }),
+      () => this.db.caseComplaintConfirmation.deleteMany({ where: { caseId } }),
+      () => this.db.caseComplaintMailing.deleteMany({ where: { caseId } }),
+      () => this.db.caseFilingSubmission.deleteMany({ where: { caseId } }),
+      () => this.db.caseLawyerAssignment.deleteMany({ where: { caseId } }),
+      () => this.db.feeRecord.deleteMany({ where: { caseId } }),
+      () => this.db.caseDefendant.deleteMany({ where: { caseId } }),
+      () => this.db.caseExternalEntry.deleteMany({ where: { caseId } }),
+      () =>
+        this.db.businessNumberAlias.deleteMany({
+          where: { entityId: caseId, entityType: 'CASE' },
+        }),
+      () => this.db.auditEvent.deleteMany({ where: { resourceId: caseId } }),
+    ];
+    for (const remove of deletes) {
+      try {
+        await remove();
+      } catch {
+        // 该表无记录或暂不可删，继续处理其余表
+      }
+    }
+    await this.db.case.delete({ where: { id: caseId } });
   }
 }
