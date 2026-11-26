@@ -2416,6 +2416,8 @@ model Case {
   complaintSubmittedByUserId    String?                            @map("complaint_submitted_by_user_id") @db.Uuid
   complaintSubmittedBy          UserAccount?                       @relation("CaseComplaintSubmitter", fields: [complaintSubmittedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   courtCaseNo                   String?                            @map("court_case_no") @db.VarChar(100)
+  /// 承办法官（历史迁移快照；新案件仍走开庭排期填写）。
+  judgeName    String?  @map("judge_name") @db.VarChar(100)
   department                    Department                         @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   sourceLead                    Lead?                              @relation(fields: [sourceLeadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   customer                      Customer                           @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
