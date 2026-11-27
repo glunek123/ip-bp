@@ -727,7 +727,6 @@ describe('CaseReportsSourceService', () => {
     { ...known(), complaintAmount: new Prisma.Decimal('-1') },
     { ...known(), complaintAmount: new Prisma.Decimal('0.001') },
     { ...known(), complaintAmount: new Prisma.Decimal('NaN') },
-    { ...known(), complaintSubmittedAt: null },
   ])(
     'fails damaged sources rather than silently excluding them',
     async (row) => {
@@ -738,6 +737,29 @@ describe('CaseReportsSourceService', () => {
       });
     },
   );
+
+  it.each([
+    {
+      name: '历史回填 KNOWN',
+      row: { ...known(), complaintSubmittedAt: null },
+      expected: { state: 'KNOWN', amount: '999.00' },
+    },
+    {
+      name: '历史回填 PENDING',
+      row: {
+        ...known(),
+        complaintSubmittedAt: null,
+        complaintAmountState: 'PENDING',
+        complaintAmount: null,
+      },
+      expected: { state: 'PENDING', amount: null },
+    },
+  ])('treats legacy backfill amount as its own source: $name', async ({ row, expected }) => {
+    const { service, tx } = fixture();
+    tx.case.findMany.mockResolvedValue([{ ...row, stage: 'ARCHIVED' }]);
+    const snapshot = await service.snapshot(actor);
+    expect(snapshot.archivedClaims).toContainEqual(expected);
+  });
 
   it('rejects impossible cohort counts rather than publishing mixed totals', async () => {
     const { service, tx } = fixture();

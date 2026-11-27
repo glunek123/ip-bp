@@ -259,9 +259,25 @@ function claim(row: Row): CaseReportAmount {
   }
   const confirmation = row.complaintConfirmation;
   if (confirmation === null && row.complaintSubmittedAt === null) {
-    if (row.complaintAmountState !== null || row.complaintAmount !== null)
-      throw invalidSource();
-    return { state: 'UNRECORDED', amount: null };
+    // 历史回填案件只有标的额状态与金额，没有提交流程记录：
+    // 按状态本身作为来源，KNOWN 校验金额、PENDING 保持待定，不做静默兜底。
+    if (row.complaintAmountState === null && row.complaintAmount === null)
+      return { state: 'UNRECORDED', amount: null };
+    if (
+      row.complaintAmountState === 'PENDING' &&
+      row.complaintAmount === null
+    )
+      return { state: 'PENDING', amount: null };
+    if (
+      row.complaintAmountState === 'KNOWN' &&
+      row.complaintAmount !== null &&
+      row.complaintAmount.isFinite() &&
+      row.complaintAmount.gte(0) &&
+      row.complaintAmount.decimalPlaces() <= 2 &&
+      row.complaintAmount.lte('99999999999999.99')
+    )
+      return { state: 'KNOWN', amount: row.complaintAmount.toFixed(2) };
+    throw invalidSource();
   }
   const state = confirmation
     ? confirmation.amountState
