@@ -7014,14 +7014,26 @@ export function caseClosureSession(
   return state;
 }
 
-/** 仅用于纠正误创建的案子：已产生费用或关联数据时服务端会拒绝。 */
+/**
+ * 仅用于纠正误创建的案子：
+ * 已产生费用、付款、退费、结算，或已进入诉讼流程（确认诉状、提交立案、正式立案）时服务端会拒绝。
+ * 删除原因必填，会写入删除留痕。
+ */
 export async function deleteCase(
   id: string,
+  reason: string,
+  expectedVersion?: number | null,
   options: RequestOptions = {},
 ): Promise<void> {
   await requestJson(`/cases/${encodeURIComponent(id)}`, {
     ...options,
     method: 'DELETE',
+    body: JSON.stringify({
+      reason,
+      ...(expectedVersion === undefined || expectedVersion === null
+        ? {}
+        : { expectedVersion }),
+    }),
   });
 }
 

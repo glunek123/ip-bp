@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
@@ -34,6 +34,8 @@ export type DeletionAuditListQuery = {
   entityType?: DeletionAuditEntityType;
   page?: number;
   pageSize?: number;
+  from?: string;
+  to?: string;
 };
 
 /**
@@ -73,13 +75,26 @@ export class DeletionAuditService {
   async list(
     actor: ActorContext,
     query: DeletionAuditListQuery,
-  ): Promise<{ items: DeletionAuditListItem[]; total: number }> {
+  ): Promise<{
+    items: DeletionAuditListItem[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }> {
     await this.access.authorizeDepartmentAction(actor, 'deletion.audit.read');
     const page = Math.max(1, Math.trunc(query.page ?? 1));
     const pageSize = Math.min(100, Math.max(1, Math.trunc(query.pageSize ?? 20)));
     const where: Prisma.DeletionAuditLogWhereInput = {
       departmentId: actor.departmentId,
       ...(query.entityType ? { entityType: query.entityType } : {}),
+      ...(query.from || query.to
+        ? {
+            deletedAt: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
     };
     const [total, rows] = await this.db.$transaction([
       this.db.deletionAuditLog.count({ where }),
@@ -92,6 +107,8 @@ export class DeletionAuditService {
     ]);
     return {
       total,
+      page,
+      pageSize,
       items: rows.map((row) => ({
         id: row.id,
         entityType: row.entityType,
@@ -118,15 +135,21 @@ export class DeletionAuditService {
       where: { id: actor.userId },
       select: {
         displayName: true,
+        externalSubject: true,
         localCredential: { select: { username: true } },
       },
     });
-    if (!account) throw new Error('删除留痕缺少操作人账号');
+    if (!account)
+      throw new BadRequestException({
+        code: 'DELETION_AUDIT_ACTOR_MISSING',
+        message: '删除留痕缺少操作人账号。',
+      });
     const assignments = await tx.roleAssignment.findMany({
       where: {
         userId: actor.userId,
         departmentId: actor.departmentId,
         active: true,
+        roleTemplate: { active: true },
       },
       select: { roleTemplate: { select: { name: true } } },
     });
@@ -134,7 +157,8 @@ export class DeletionAuditService {
       ...new Set(assignments.map((item) => item.roleTemplate.name)),
     ].sort();
     return {
-      username: account.localCredential?.username ?? account.displayName,
+      username:
+        account.localCredential?.username ?? account.externalSubject,
       displayName: account.displayName,
       roles,
     };

@@ -14,6 +14,7 @@ describe('DeletionAuditService', () => {
       userAccount: {
         findUnique: jest.fn().mockResolvedValue({
           displayName: '运营甲',
+          externalSubject: 'zhichan',
           localCredential: { username: 'zhichan' },
         }),
       },
@@ -82,9 +83,30 @@ describe('DeletionAuditService', () => {
     });
   });
 
+  it('falls back to the external subject when the account has no local credential', async () => {
+    const f = fixture();
+    f.tx.userAccount.findUnique.mockResolvedValueOnce({
+      displayName: '运营甲',
+      externalSubject: 'ops-42',
+      localCredential: null,
+    });
+    await f.service.record(f.tx as never, actor, {
+      entityType: 'CASE',
+      entityId: 'case-1',
+      snapshot: {},
+    });
+    expect(f.tx.deletionAuditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ actorUsername: 'ops-42' }),
+    });
+  });
+
   it('lists only the current department logs and requires the read permission', async () => {
     const f = fixture();
-    const result = await f.service.list(actor, { entityType: 'CASE' });
+    const result = await f.service.list(actor, {
+      entityType: 'CASE',
+      from: '2026-11-01T00:00:00.000Z',
+      to: '2026-11-30T00:00:00.000Z',
+    });
     expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
       actor,
       'deletion.audit.read',
@@ -94,11 +116,17 @@ describe('DeletionAuditService', () => {
         where: {
           departmentId: actor.departmentId,
           entityType: 'CASE',
+          deletedAt: {
+            gte: new Date('2026-11-01T00:00:00.000Z'),
+            lte: new Date('2026-11-30T00:00:00.000Z'),
+          },
         },
         orderBy: { deletedAt: 'desc' },
       }),
     );
     expect(result.total).toBe(1);
+    expect(result.page).toBe(1);
+    expect(result.pageSize).toBe(20);
     expect(result.items[0]).toMatchObject({
       entityType: 'CASE',
       actorUsername: 'zhichan',

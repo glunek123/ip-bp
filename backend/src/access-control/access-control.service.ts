@@ -61,6 +61,8 @@ export type PermissionAction =
   | 'case.export'
   | 'report.amount.read'
   | 'report.export'
+  | 'case.delete'
+  | 'deletion.audit.read'
   | 'case.group.create'
   | 'case.group.dissolve'
   | 'case.external-entry.create'

@@ -45,6 +45,7 @@ import {
 } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
+import { ElInput } from 'element-plus/es/components/input/index.mjs';
 import { ApiError, type RequestOptions } from '../../api/http';
 import { getLead, type LeadDetail } from '../../api/leads';
 import {
@@ -770,16 +771,22 @@ const primaryCommand = computed(() =>
   primaryCaseAction(item.value?.stage, businessCommands.value),
 );
 const removeOpen = ref(false);
+const removeReason = ref('');
 const preservationOpen = ref(false);
 const removeBusy = ref(false);
 const removeError = ref('');
 async function confirmRemove(): Promise<void> {
   const target = item.value;
   if (!target || removeBusy.value) return;
+  const reason = removeReason.value.trim();
+  if (reason.length < 1) {
+    removeError.value = '请填写删除原因（1 至 500 字）';
+    return;
+  }
   removeBusy.value = true;
   removeError.value = '';
   try {
-    await deleteCase(target.id);
+    await deleteCase(target.id, reason, target.version);
     removeOpen.value = false;
     await router.push(backTo.value);
   } catch (error) {
@@ -3119,8 +3126,22 @@ onBeforeUnmount(() => {
             <strong>{{ item?.businessNo }}</strong>
             ？
           </p>
-          <p>该案件的全部被告、费用、线索记录将一并删除，不可恢复。</p>
-          <p class="field-help">仅未产生任何费用的误建案件可以删除。</p>
+          <p>删除后不可恢复，删除记录会写入删除留痕。</p>
+          <p class="field-help">
+            已产生费用、付款、退费、结算，或已进入诉讼流程（确认诉状、提交立案、正式立案）的案件不可删除。
+          </p>
+          <label class="field-help">
+            删除原因
+            <ElInput
+              v-model="removeReason"
+              type="textarea"
+              :rows="2"
+              maxlength="500"
+              show-word-limit
+              data-test="case-delete-reason"
+              placeholder="说明误建原因，会写入删除留痕"
+            />
+          </label>
           <p v-if="removeError" role="alert">{{ removeError }}</p>
           <template #footer>
             <ElButton :disabled="removeBusy" @click="removeOpen = false"

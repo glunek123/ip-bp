@@ -130,6 +130,8 @@ const actionMap = {
   LAWYER_ACCOUNT_MANAGE: 'lawyer.account.manage',
   LAWYER_PROFILE_READ: 'lawyer.profile.read',
   LAWYER_PROFILE_MANAGE: 'lawyer.profile.manage',
+  CASE_DELETE: 'case.delete',
+  DELETION_AUDIT_READ: 'deletion.audit.read',
   TEAM_READ: 'team.read',
   TEAM_MANAGE: 'team.manage',
   ROLE_READ: 'role.read',

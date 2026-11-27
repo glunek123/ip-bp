@@ -7,7 +7,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { ActorContext } from '../../access-control/actor-context';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
@@ -15,10 +22,15 @@ import { CsrfGuard } from '../../auth/csrf.guard';
 import { CaseDeleteService } from './case-delete.service';
 
 export class DeleteCaseDto {
-  @IsOptional()
   @IsString()
+  @MinLength(1)
   @MaxLength(500)
-  reason?: string;
+  reason!: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  expectedVersion?: number;
 }
 
 @ApiTags('cases')
@@ -34,6 +46,9 @@ export class CaseDeleteController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() body: DeleteCaseDto,
   ) {
-    return this.removal.remove(actor, id, body?.reason ?? null);
+    return this.removal.remove(actor, id, {
+      reason: body?.reason ?? null,
+      expectedVersion: body?.expectedVersion ?? null,
+    });
   }
 }
