@@ -2451,6 +2451,7 @@ model Case {
   judgeName    String?  @map("judge_name") @db.VarChar(100)
   disclosure   CaseDisclosure?
   archiveRevocations CaseArchiveRevocation[]
+  legacyProducts CaseLegacyProduct[]
   /// 旧库费用日期与结算进度（迁移快照，仅展示）。
   legacyPrepayOn             DateTime? @map("legacy_prepay_on") @db.Date
   legacyCourtFeeOn           DateTime? @map("legacy_court_fee_on") @db.Date
@@ -4852,6 +4853,24 @@ enum CaseArchiveCommand {
  @@map("case_archive_command")
 }
 /// 归档撤销留痕：归档可回退到待归档阶段，回退后允许继续修改。
+/// 历史外录案件的商品投影（旧库 ip_case_tort 迁移，无来源线索时的独立落点）。
+model CaseLegacyProduct {
+  id              String   @id @default(uuid()) @db.Uuid
+  caseId          String   @map("case_id") @db.Uuid
+  /// 旧库商品行 ID，作为幂等键
+  legacyTortId    String   @unique @map("legacy_tort_id")
+  title           String?
+  url             String?
+  quantity        Decimal  @default(0) @db.Decimal
+  unitPrice       Decimal  @default(0) @map("unit_price") @db.Decimal
+  commentCount    Decimal  @default(0) @map("comment_count") @db.Decimal
+  estimatedAmount Decimal  @default(0) @map("estimated_amount") @db.Decimal
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case            Case     @relation(fields: [caseId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  @@index([caseId])
+  @@map("case_legacy_products")
+}
+
 model CaseArchiveRevocation {
   id               String   @id @default(uuid()) @db.Uuid
   caseId           String   @map("case_id") @db.Uuid
