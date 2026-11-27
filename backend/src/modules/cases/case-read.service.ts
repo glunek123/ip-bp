@@ -3995,7 +3995,8 @@ export class CaseReadService {
         canEarlyArchive: false,
         canCorrectArchive: false,
         archive:
-          detail.archive === null
+          detail.archive === null ||
+          (detail.archive as { revokedAt?: Date | null }).revokedAt != null
             ? null
             : {
                 id: detail.archive.id,
