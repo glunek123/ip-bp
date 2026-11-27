@@ -105,7 +105,11 @@ export type CaseReportsExportSnapshot = CaseReportsCenterSnapshot & {
 };
 const invalidSource = (reason?: string, caseId?: string) => {
   // 对外统一 500；内部日志记录具体分支与案件，便于定位脏数据。
-  if (reason) console.error(`REPORT_SOURCE_INVALID ${reason} ${caseId ?? ''}`);
+  console.error(
+    `REPORT_SOURCE_INVALID ${reason ?? 'unspecified'} ${caseId ?? ''}
+` +
+      new Error('trace').stack,
+  );
   return new InternalServerErrorException({
     code: 'REPORT_SOURCE_INVALID',
     message: '报表来源数据不完整',
