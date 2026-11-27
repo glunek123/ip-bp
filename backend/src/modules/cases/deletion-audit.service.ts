@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
@@ -81,7 +85,17 @@ export class DeletionAuditService {
     page: number;
     pageSize: number;
   }> {
-    await this.access.authorizeDepartmentAction(actor, 'deletion.audit.read');
+    try {
+      await this.access.authorizeDepartmentAction(actor, 'deletion.audit.read');
+    } catch (error) {
+      // 共享权限服务的拒绝文案是客户口径，删除留痕查询统一改用留痕动作码
+      if (error instanceof ForbiddenException)
+        throw new ForbiddenException({
+          code: 'DELETION_AUDIT_FORBIDDEN',
+          message: '无权查看删除留痕',
+        });
+      throw error;
+    }
     const page = Math.max(1, Math.trunc(query.page ?? 1));
     const pageSize = Math.min(100, Math.max(1, Math.trunc(query.pageSize ?? 20)));
     const where: Prisma.DeletionAuditLogWhereInput = {
