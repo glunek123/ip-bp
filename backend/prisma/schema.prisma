@@ -1073,6 +1073,15 @@ model Customer {
   deletedAt                DateTime?                    @map("deleted_at") @db.Timestamptz(3)
   deletedByUserId          String?                      @map("deleted_by_user_id") @db.Uuid
   deletionReason           String?                      @map("deletion_reason") @db.VarChar(500)
+  legacySalesOwner         String?                      @map("legacy_sales_owner") @db.VarChar(100)
+  legacyOperationsOwner    String?                      @map("legacy_operations_owner") @db.VarChar(100)
+  legacyMailingAddress     String?                      @map("legacy_mailing_address") @db.Text
+  legacyCooperationContent String?                      @map("legacy_cooperation_content") @db.Text
+  legacyCooperationModel   String?                      @map("legacy_cooperation_model") @db.VarChar(200)
+  legacyCooperationStart   DateTime?                    @map("legacy_cooperation_start") @db.Date
+  legacyCooperationEnd     DateTime?                    @map("legacy_cooperation_end") @db.Date
+  legacyExpenseNote        String?                      @map("legacy_expense_note") @db.Text
+  legacyDeliveryStandard   String?                      @map("legacy_delivery_standard") @db.Text
   departmentId             String                       @map("department_id") @db.Uuid
   responsibleUserId        String                       @map("responsible_user_id") @db.Uuid
   teamId                   String?                      @map("team_id") @db.Uuid
@@ -2099,6 +2108,18 @@ model LeadProduct {
   unitPrice        Decimal               @map("unit_price") @db.Decimal(18, 2)
   commentCount     Int                   @default(0) @map("comment_count")
   estimatedAmount  Decimal               @map("estimated_amount") @db.Decimal(18, 2)
+  legacyTortId     String?               @map("legacy_tort_id") @db.VarChar(50)
+  tortNotes        String?               @map("tort_notes") @db.Text
+  orderSpecs       String?               @map("order_specs") @db.VarChar(500)
+  orderAmount      Decimal?              @map("order_amount") @db.Decimal(16, 2)
+  orderExpress     String?               @map("order_express") @db.VarChar(100)
+  orderTracking    String?               @map("order_tracking") @db.VarChar(200)
+  orderStatus      String?               @map("order_status") @db.VarChar(100)
+  exhibitNumber    String?               @map("exhibit_number") @db.VarChar(200)
+  exhibitShelf     String?               @map("exhibit_shelf") @db.VarChar(200)
+  exhibitOutbound  String?               @map("exhibit_outbound") @db.VarChar(200)
+  returnAmount     Decimal?              @map("return_amount") @db.Decimal(16, 2)
+  returnShipping   Decimal?              @map("return_shipping") @db.Decimal(16, 2)
   lead             Lead                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
   notarySelections NotaryMatterProduct[]
   screenshots      LeadProductScreenshot[]
@@ -2463,6 +2484,37 @@ model Case {
   legacySubmitRegisterOn     DateTime? @map("legacy_submit_register_on") @db.Date
   legacyPleadingsApproveOn   DateTime? @map("legacy_pleadings_approve_on") @db.Date
   legacyPleadingsConfirmOn   DateTime? @map("legacy_pleadings_confirm_on") @db.Date
+  legacyMediationNo             String?   @map("legacy_mediation_no") @db.VarChar(200)
+  legacyHearingOn               DateTime? @map("legacy_hearing_on") @db.Date
+  legacyPleadingsLawyerOn       DateTime? @map("legacy_pleadings_lawyer_on") @db.Date
+  legacyExecutionOn             DateTime? @map("legacy_execution_on") @db.Date
+  legacyExecutionNo             String?   @map("legacy_execution_no") @db.VarChar(200)
+  legacyNotarizationNumber      String?   @map("legacy_notarization_number") @db.VarChar(200)
+  legacyNotarizationType        String?   @map("legacy_notarization_type") @db.VarChar(200)
+  legacyNotarizationPlatform    String?   @map("legacy_notarization_platform") @db.VarChar(100)
+  legacyNotaryOffice            String?   @map("legacy_notary_office") @db.VarChar(200)
+  legacyNotarizationUploadOn    DateTime? @map("legacy_notarization_upload_on") @db.Date
+  legacyForensicsIssueOn        DateTime? @map("legacy_forensics_issue_on") @db.Date
+  legacyClueSource              String?   @map("legacy_clue_source") @db.VarChar(200)
+  legacyClueFoundOn             DateTime? @map("legacy_clue_found_on") @db.Date
+  legacyCluePushOn              DateTime? @map("legacy_clue_push_on") @db.Date
+  legacyClueConfirmOn           DateTime? @map("legacy_clue_confirm_on") @db.Date
+  legacyClueApproveOn           DateTime? @map("legacy_clue_approve_on") @db.Date
+  legacyCluePurchaseOn          DateTime? @map("legacy_clue_purchase_on") @db.Date
+  legacyClueCheckOpinion        String?   @map("legacy_clue_check_opinion") @db.VarChar(500)
+  legacyClueCheckNote           String?   @map("legacy_clue_check_note") @db.Text
+  legacyClueNotes               String?   @map("legacy_clue_notes") @db.Text
+  legacyForensicsOpenOn         DateTime? @map("legacy_forensics_open_on") @db.Date
+  legacyForensicsConfirmOn      DateTime? @map("legacy_forensics_confirm_on") @db.Date
+  legacyForensicsApproveOn      DateTime? @map("legacy_forensics_approve_on") @db.Date
+  legacyForensicsCheckOpinion   String?   @map("legacy_forensics_check_opinion") @db.VarChar(1000)
+  legacyForensicsCheckNote      String?   @map("legacy_forensics_check_note") @db.Text
+  legacyForensicsCheckResult    String?   @map("legacy_forensics_check_result") @db.VarChar(500)
+  legacyForensicsCheckInfo      String?   @map("legacy_forensics_check_info") @db.Text
+  legacySenderName              String?   @map("legacy_sender_name") @db.VarChar(200)
+  legacySenderPhone             String?   @map("legacy_sender_phone") @db.VarChar(200)
+  legacySenderAddress           String?   @map("legacy_sender_address") @db.VarChar(500)
+  legacySenderTracking          String?   @map("legacy_sender_tracking") @db.VarChar(500)
   /// 旧库运营人员数字 id（迁移保留，便于按人回溯）。
   legacyOperatorId           String?   @map("legacy_operator_id") @db.VarChar(20)
   /// 旧库运营人员数字 id（迁移保留，便于按人回溯）。
@@ -4884,6 +4936,17 @@ model CaseLegacyProduct {
   unitPrice       Decimal  @default(0) @map("unit_price") @db.Decimal
   commentCount    Decimal  @default(0) @map("comment_count") @db.Decimal
   estimatedAmount Decimal  @default(0) @map("estimated_amount") @db.Decimal
+  tortNotes       String?  @map("tort_notes") @db.Text
+  orderSpecs      String?  @map("order_specs") @db.VarChar(500)
+  orderAmount     Decimal? @map("order_amount") @db.Decimal(16, 2)
+  orderExpress    String?  @map("order_express") @db.VarChar(100)
+  orderTracking   String?  @map("order_tracking") @db.VarChar(200)
+  orderStatus     String?  @map("order_status") @db.VarChar(100)
+  exhibitNumber   String?  @map("exhibit_number") @db.VarChar(200)
+  exhibitShelf    String?  @map("exhibit_shelf") @db.VarChar(200)
+  exhibitOutbound String?  @map("exhibit_outbound") @db.VarChar(200)
+  returnAmount    Decimal? @map("return_amount") @db.Decimal(16, 2)
+  returnShipping  Decimal? @map("return_shipping") @db.Decimal(16, 2)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   case            Case     @relation(fields: [caseId], references: [id], onDelete: Cascade, onUpdate: Restrict)
   @@index([caseId])
@@ -5902,4 +5965,46 @@ model CasePreservation {
 
   @@index([caseId])
   @@map("case_preservations")
+}
+
+model DeletionAuditLog {
+  id               String   @id @default(uuid()) @db.Uuid
+  departmentId     String   @map("department_id") @db.Uuid
+  entityType       String   @map("entity_type") @db.VarChar(40)
+  entityId         String   @map("entity_id") @db.Uuid
+  businessNo       String?  @map("business_no") @db.VarChar(100)
+  entityTitle      String?  @map("entity_title") @db.VarChar(300)
+  actorUserId      String   @map("actor_user_id") @db.Uuid
+  actorUsername    String   @map("actor_username") @db.VarChar(100)
+  actorDisplayName String   @map("actor_display_name") @db.VarChar(200)
+  actorRoles       String[] @default([]) @map("actor_roles")
+  deleteReason     String?  @map("delete_reason") @db.Text
+  snapshot         Json
+  deletedAt        DateTime @default(now()) @map("deleted_at") @db.Timestamptz(3)
+
+  @@index([departmentId, entityType, deletedAt(sort: Desc)])
+  @@index([businessNo])
+  @@map("deletion_audit_logs")
+}
+
+model LegacyAttachment {
+  id                 String   @id @default(uuid()) @db.Uuid
+  legacyAttachmentId BigInt   @map("legacy_attachment_id")
+  ownerType          String   @map("owner_type") @db.VarChar(30)
+  ownerId            String   @map("owner_id") @db.Uuid
+  legacyOwnerId      String?  @map("legacy_owner_id") @db.VarChar(50)
+  categoryCode       String   @map("category_code") @db.VarChar(60)
+  categoryLabel      String   @map("category_label") @db.VarChar(100)
+  title              String   @db.VarChar(500)
+  filename           String   @db.VarChar(500)
+  extname            String?  @db.VarChar(50)
+  sizeBytes          BigInt?  @map("size_bytes")
+  mimeType           String?  @map("mime_type") @db.VarChar(150)
+  ossPath            String?  @map("oss_path") @db.VarChar(500)
+  ossUrl             String   @map("oss_url") @db.VarChar(1000)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([ownerType, ownerId, categoryCode, legacyAttachmentId], map: "legacy_attachments_owner_category_att_key")
+  @@index([ownerType, ownerId])
+  @@map("legacy_attachments")
 }
