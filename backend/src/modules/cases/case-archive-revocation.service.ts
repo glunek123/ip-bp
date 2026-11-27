@@ -41,23 +41,13 @@ export class CaseArchiveRevocationService {
     if (!archive)
       throw new BadRequestException({ code: 'ARCHIVE_NOT_FOUND' });
 
-    await this.db.$transaction(async (tx) => {
-      await tx.caseArchiveRevocation.create({
-        data: {
-          caseId,
-          departmentId: actor.departmentId,
-          archiveId: archive.id,
-          priorStage: 'WAITING_ARCHIVE',
-          reason: trimmed,
-          revokedByUserId: actor.userId,
-        },
-      });
-      await tx.caseArchive.delete({ where: { id: archive.id } });
-      await tx.case.update({
-        where: { id: caseId },
-        data: { stage: 'WAITING_ARCHIVE' },
-      });
-    });
+    await this.db.$executeRawUnsafe(
+      'SELECT revoke_case_archive($1::uuid, $2::uuid, $3::uuid, $4)',
+      caseId,
+      actor.departmentId,
+      actor.userId,
+      trimmed,
+    );
     return { id: caseId, stage: 'WAITING_ARCHIVE' };
   }
 }
