@@ -573,7 +573,7 @@ it.each([
     await router.push('/client/cases/case-1');
     await flushPromises();
     expect(wrapper.text()).toContain(label);
-    expect(wrapper.text()).toContain('确认标的额：待确认');
+    expect(wrapper.text()).toContain('确认标的额（万元）：待确认');
     expect(wrapper.find('[data-test="execution-finish-panel"]').exists()).toBe(
       false,
     );

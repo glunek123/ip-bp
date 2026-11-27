@@ -2,7 +2,7 @@
 // Presentation seam only. The host supplies server amounts and rate text;
 // this component does not aggregate money or choose rounding precision.
 export type ReportAmountBucket =
-  'LT_100000' | '100000_TO_300000' | '300000_TO_500000' | 'GTE_500000';
+  'LT_10' | '10_TO_30' | '30_TO_50' | 'GTE_50';
 export type ReportAmountsView = {
   totalCases: number;
   archivedCases: number;
@@ -26,21 +26,21 @@ const bucketDefinitions: ReadonlyArray<{
   boundary: string;
 }> = [
   {
-    key: 'LT_100000',
+    key: 'LT_10',
     label: '10 万以下',
-    boundary: '0 元（含）至 10 万元（不含）',
+    boundary: '0 万元（含）至 10 万元（不含）',
   },
   {
-    key: '100000_TO_300000',
+    key: '10_TO_30',
     label: '10-30 万',
     boundary: '10 万元（含）至 30 万元（不含）',
   },
   {
-    key: '300000_TO_500000',
+    key: '30_TO_50',
     label: '30-50 万',
     boundary: '30 万元（含）至 50 万元（不含）',
   },
-  { key: 'GTE_500000', label: '50 万以上', boundary: '50 万元（含）以上' },
+  { key: 'GTE_50', label: '50 万以上', boundary: '50 万元（含）以上' },
 ];
 const count = (n: number) => Number.isSafeInteger(n) && n >= 0;
 const valid = computed(() => {
@@ -111,11 +111,11 @@ const rows = computed(() => {
   >
     <section
       class="amount-card"
-      aria-label="累计标的额"
+      aria-label="累计标的额（万元）"
       data-test="report-cumulative-amount"
       v-if="!part || part === 'all' || part === 'total'"
     >
-      <h2>累计标的额</h2>
+      <h2>累计标的额（万元）</h2>
       <p v-if="!view" role="status">统计未读取</p>
       <p v-else-if="!valid" role="alert">统计数据无效，请重新读取。</p>
       <template v-else>
@@ -123,7 +123,7 @@ const rows = computed(() => {
           <span data-test="report-cumulative-decimal">{{
             view.cumulativeAmountText
           }}</span>
-          <span class="amount-unit">元</span>
+          <span class="amount-unit">万元</span>
         </p>
         <p v-else role="status">
           {{ view.totalCases === 0 ? '暂无数据' : '暂无已知标的额' }}
@@ -132,7 +132,7 @@ const rows = computed(() => {
           已知金额 {{ view.knownAmountCases }} 件；未知金额
           {{ view.unknownAmountCases }} 件。
         </p>
-        <p class="amount-note">只计已知标的额，0 元计入。</p>
+        <p class="amount-note">只计已知标的额，0 万元计入。</p>
       </template>
     </section>
     <section

@@ -409,8 +409,8 @@ describe('real RP001 reports page', () => {
     });
     expect(wrapper.findAll('h2').map((item) => item.text())).toEqual([
       '案件总数',
-      '累计标的额',
-      '已归档案件平均标的额',
+      '累计标的额（万元）',
+      '已归档案件平均标的额（万元）',
       '结案率',
       '平台分布',
       '案件类型分布',

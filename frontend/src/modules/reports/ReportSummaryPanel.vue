@@ -125,11 +125,11 @@ onBeforeUnmount(() => {
 <template>
   <section
     class="report-summary"
-    aria-label="已归档案件平均标的额"
+    aria-label="已归档案件平均标的额（万元）"
     :aria-busy="busy"
   >
     <header>
-      <h2>已归档案件平均标的额</h2>
+      <h2>已归档案件平均标的额（万元）</h2>
       <ElButton
         v-if="access === 'allowed' && !permissionLost"
         data-test="refresh-report"
@@ -148,7 +148,7 @@ onBeforeUnmount(() => {
     <template v-else-if="projection">
       <p v-if="projection.kind === 'value'" class="report-value">
         <span data-test="report-decimal">{{ projection.decimalText }}</span>
-        <span class="report-currency">元</span>
+        <span class="report-currency">万元</span>
       </p>
       <p v-else role="status" :data-test="`report-${projection.kind}`">
         {{ projection.messageText }}

@@ -626,7 +626,7 @@ async function download(file: CaseFile) {
           />
         </label>
         <label class="filing-fields__amount"
-          >标的额（元）
+          >标的额（万元）
           <input
             v-model="claimAmount"
             class="text-input"
@@ -762,7 +762,7 @@ async function download(file: CaseFile) {
         <h3>提交内容核对</h3>
         <p>法院：{{ courts.find((court) => court.id === courtId)?.name }}</p>
         <p>提交立案日期：{{ submittedAt }}</p>
-        <p>标的额：{{ claimAmount || originalClaimAmount || '未确认' }}</p>
+        <p>标的额（万元）：{{ claimAmount || originalClaimAmount || '未确认' }}</p>
         <p>诉调号：{{ mediationNo.trim() || '未填写' }}</p>
         <p>
           起诉及证据材料：{{ evidenceFiles.length }} 份；合案来源引用：{{

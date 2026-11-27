@@ -171,7 +171,7 @@ describe('CalendarMonthGrid', () => {
       [...document.querySelectorAll('[role="tooltip"] dt')].map(
         (node) => node.textContent,
       ),
-    ).toEqual(['客户', '权利主体', '被告', '案号', '标的额']);
+    ).toEqual(['客户', '权利主体', '被告', '案号', '标的额（万元）']);
     expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
       '12345678901234567890.01',
     );

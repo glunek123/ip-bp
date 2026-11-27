@@ -99,7 +99,7 @@ const tooltipRows = computed<Array<[string, string | null | undefined]>>(() => {
     ['权利主体', detail?.rightsHolder],
     ['被告', detail?.defendant],
     ['案号', detail?.caseNumber],
-    ['标的额', detail?.amount],
+    ['标的额（万元）', detail?.amount],
   ];
 });
 
@@ -329,7 +329,7 @@ function openEvent(event: CalendarEvent): void {
                 'calendar-mono':
                   field === '开庭日期' ||
                   field === '案号' ||
-                  field === '标的额',
+                  field === '标的额（万元）',
               }"
             >
               {{ value?.trim() || '未知' }}

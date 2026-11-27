@@ -576,7 +576,7 @@ onBeforeUnmount(() => {
           }}。
           <template v-if="row.saved">
             法院 {{ row.saved.courtName }}；提交日期
-            {{ row.saved.input.submittedAt }}；标的额
+            {{ row.saved.input.submittedAt }}；标的额（万元）
             {{ row.saved.input.claimAmount ?? '沿用原值' }}；诉调号
             {{ row.saved.input.mediationNo ?? '未填写' }}； 起诉材料
             {{

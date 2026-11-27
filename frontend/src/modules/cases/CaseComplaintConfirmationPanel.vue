@@ -470,7 +470,7 @@ onBeforeUnmount(() => {
         data-test="confirmation-form"
       >
         <label
-          >标的额（元）
+          >标的额（万元）
           <input
             v-model="amount"
             data-test="confirmation-amount"

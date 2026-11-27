@@ -326,7 +326,7 @@ export function buildCaseWorkspaceEvents(
     add('filing', item.id, '法院提交', value.submittedAt, value.recordedAt, [
       field('法院', value.court.name),
       field('诉调号', value.mediationNo),
-      field('标的额', value.claimAmount),
+      field('标的额（万元）', value.claimAmount),
       ...files('提交证据', value.evidenceFiles),
       ...files('提交截图', value.screenshotFiles),
       ...actor(value.recordedByUserId),
@@ -1649,20 +1649,20 @@ export function buildCaseWorkspaceSections(
     ),
     field('承办法官', currentHearing?.judgeName ?? item.judgeName ?? null),
     item.filingSubmission?.claimAmount != null
-      ? money('标的额', 'KNOWN', item.filingSubmission.claimAmount)
+      ? money('标的额（万元）', 'KNOWN', item.filingSubmission.claimAmount)
       : item.complaintConfirmation
         ? money(
-            '标的额（已确认诉请）',
+            '标的额（万元，已确认诉请）',
             item.complaintConfirmation.amountState,
             item.complaintConfirmation.amount,
           )
         : item.complaint
           ? money(
-              '标的额（原诉请，未确认）',
+              '标的额（万元，原诉请，未确认）',
               item.complaint.amountState,
               item.complaint.amount,
             )
-          : field('标的额', null),
+          : field('标的额（万元）', null),
     field(
       '披露数据',
       supplementValue(

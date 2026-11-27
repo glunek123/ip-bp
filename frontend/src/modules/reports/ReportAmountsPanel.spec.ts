@@ -12,10 +12,10 @@ const sample = (): ReportAmountsView => ({
   cumulativeAmountText: '1700000.00',
   closureRatePercentText: '30',
   buckets: [
-    { key: 'LT_100000', count: 2 },
-    { key: '100000_TO_300000', count: 3 },
-    { key: '300000_TO_500000', count: 1 },
-    { key: 'GTE_500000', count: 1 },
+    { key: 'LT_10', count: 2 },
+    { key: '10_TO_30', count: 3 },
+    { key: '30_TO_50', count: 1 },
+    { key: 'GTE_50', count: 1 },
   ],
 });
 const render = (view: ReportAmountsView | null = sample()) =>
@@ -25,7 +25,7 @@ describe('approved money and closure presentation seam', () => {
   it('uses Demo names and exact host amount/rate strings without recomputing them', () => {
     const wrapper = render();
     expect(wrapper.findAll('h2').map((row) => row.text())).toEqual([
-      '累计标的额',
+      '累计标的额（万元）',
       '结案率',
       '标的额区间分布',
     ]);
@@ -67,7 +67,7 @@ describe('approved money and closure presentation seam', () => {
     ]);
     expect(wrapper.findAll('li').map((row) => row.attributes('title'))).toEqual(
       [
-        '0 元（含）至 10 万元（不含）',
+        '0 万元（含）至 10 万元（不含）',
         '10 万元（含）至 30 万元（不含）',
         '30 万元（含）至 50 万元（不含）',
         '50 万元（含）以上',
@@ -168,7 +168,7 @@ describe('approved money and closure presentation seam', () => {
     { unknownAmountCases: 0 },
     { archivedCases: 11 },
     { totalCases: Number.MAX_SAFE_INTEGER + 1 },
-    { buckets: [{ key: 'LT_100000', count: 7 }] },
+    { buckets: [{ key: 'LT_10', count: 7 }] },
   ])(
     'rejects malformed or inconsistent injected projection %# without fake numbers',
     (patch) => {

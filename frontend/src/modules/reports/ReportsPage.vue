@@ -97,10 +97,10 @@ const amountsView = computed<ReportAmountsView | null>(() =>
         buckets: overview.value.money.buckets.map((row, i) => ({
           key: (
             [
-              'LT_100000',
-              '100000_TO_300000',
-              '300000_TO_500000',
-              'GTE_500000',
+              'LT_10',
+              '10_TO_30',
+              '30_TO_50',
+              'GTE_50',
             ] as const
           )[i]!,
           count: row.count,
@@ -361,9 +361,9 @@ onBeforeUnmount(() => {
       <section
         v-if="capabilityFailed"
         class="reports-card"
-        aria-label="已归档案件平均标的额"
+        aria-label="已归档案件平均标的额（万元）"
       >
-        <h2>已归档案件平均标的额</h2>
+        <h2>已归档案件平均标的额（万元）</h2>
         <p role="alert">报表读取权限暂时无法核对，请重试。</p>
         <ElButton data-test="retry-report-capability" @click="checkAccess"
           >重试</ElButton
@@ -382,7 +382,7 @@ onBeforeUnmount(() => {
     <details class="reports-definition">
       <summary>查看统计口径</summary>
       <p>
-        平均标的额统计当前范围内已归档案件，只计算已知标的金额的案件，0元计入；没有已知金额时显示“暂无数据”，人民币保留两位小数。
+        平均标的额统计当前范围内已归档案件，只计算已知标的金额的案件，0万元计入；没有已知金额时显示“暂无数据”，金额单位为万元，保留两位小数。
       </p>
       <p v-if="overview" data-test="report-metadata">
         已归档 {{ overview.archivedCases }} 件；数据生成时间：

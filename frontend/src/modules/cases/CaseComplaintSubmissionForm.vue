@@ -81,13 +81,13 @@ const emit = defineEmits<{
         </li>
       </ul>
       <label>
-        标的额（元） <span aria-hidden="true">*</span>
+        标的额（万元） <span aria-hidden="true">*</span>
         <input
           :value="amount"
           class="text-input"
           inputmode="decimal"
           data-test="complaint-amount"
-          placeholder="如 6500"
+          placeholder="如 6.5"
           @input="
             emit('update:amount', ($event.target as HTMLInputElement).value)
           "

@@ -1055,7 +1055,7 @@ describe('authorized internal case list display', () => {
       '律师',
       '法院',
       '案号',
-      '标的额',
+      '标的额（万元）',
       '判决金额',
       '结案金额',
     ]);

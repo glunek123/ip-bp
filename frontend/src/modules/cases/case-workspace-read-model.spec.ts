@@ -830,7 +830,7 @@ describe('case workspace read model', () => {
     ).toBe('MED-1');
     expect(summary.find((entry) => entry.label === '案号')?.value).toBe('CN-1');
     expect(
-      summary.find((entry) => entry.label === '标的额（原诉请，未确认）')
+      summary.find((entry) => entry.label === '标的额（万元，原诉请，未确认）')
         ?.value,
     ).toBe('100.00 元');
   });

@@ -26,7 +26,7 @@ const columnLabels: Record<CaseListColumn | 'owner', string> = {
   lawyers: '律师',
   court: '法院',
   courtCaseNo: '案号',
-  claimAmount: '标的额',
+  claimAmount: '标的额（万元）',
   judgmentAmount: '判决金额',
   closureAmount: '结案金额',
   owner: '负责人',

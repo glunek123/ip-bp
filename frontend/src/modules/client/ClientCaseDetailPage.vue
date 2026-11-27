@@ -113,7 +113,7 @@ onBeforeUnmount(() => request?.abort());
         </div>
         <p>被告：{{ item.defendantNames.join('、') }}</p>
         <p>
-          确认标的额：{{
+          确认标的额（万元）：{{
             item.confirmedAmountState === 'KNOWN'
               ? `¥ ${item.confirmedAmount}`
               : '待确认'
