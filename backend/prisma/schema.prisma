@@ -2452,6 +2452,7 @@ model Case {
   disclosure   CaseDisclosure?
   archiveRevocations CaseArchiveRevocation[]
   legacyProducts CaseLegacyProduct[]
+  legacyPayments CaseLegacyPayment[]
   /// 旧库费用日期与结算进度（迁移快照，仅展示）。
   legacyPrepayOn             DateTime? @map("legacy_prepay_on") @db.Date
   legacyCourtFeeOn           DateTime? @map("legacy_court_fee_on") @db.Date
@@ -4854,6 +4855,24 @@ enum CaseArchiveCommand {
 }
 /// 归档撤销留痕：归档可回退到待归档阶段，回退后允许继续修改。
 /// 历史外录案件的商品投影（旧库 ip_case_tort 迁移，无来源线索时的独立落点）。
+/// 历史实收流水（旧库 ip_payment_case 迁移）。收款方无来源，verified 默认 false，不计入当前有效付款。
+model CaseLegacyPayment {
+  id              String    @id @default(uuid()) @db.Uuid
+  caseId          String    @map("case_id") @db.Uuid
+  /// 旧库付款行 ID，幂等键
+  legacyPaymentId String    @unique @map("legacy_payment_id")
+  amount          Decimal   @default(0) @db.Decimal(16, 2)
+  paidOn          DateTime? @map("paid_on") @db.Date
+  payer           String?
+  note            String?
+  source          String    @default("NOCOBASE")
+  verified        Boolean   @default(false)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  case            Case      @relation(fields: [caseId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  @@index([caseId])
+  @@map("case_legacy_payments")
+}
+
 model CaseLegacyProduct {
   id              String   @id @default(uuid()) @db.Uuid
   caseId          String   @map("case_id") @db.Uuid

@@ -3196,6 +3196,41 @@ onBeforeUnmount(() => {
           >
         </p>
         <section
+          v-if="item.legacyPayments && item.legacyPayments.length > 0"
+          class="legacy-panel"
+          data-test="case-legacy-payments"
+        >
+          <div class="legacy-panel__head">
+            <h2 class="form-section-title">历史实收流水</h2>
+            <span class="legacy-panel__hint">
+              旧库迁移的付款记录，付款方向与收款方待核，不计入当前有效付款与财务总额。
+            </span>
+          </div>
+          <div class="demo-table-scroll">
+            <table class="demo-table">
+              <thead>
+                <tr>
+                  <th>付款日期</th>
+                  <th>付款人</th>
+                  <th>金额（元）</th>
+                  <th>核实状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="payment in item.legacyPayments"
+                  :key="payment.legacyPaymentId"
+                >
+                  <td class="mono">{{ payment.paidOn || '未登记' }}</td>
+                  <td>{{ payment.payer || '未登记' }}</td>
+                  <td class="mono">{{ payment.amount }}</td>
+                  <td>{{ payment.verified ? '已核实' : '待核实' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section
           v-if="item.legacyProducts && item.legacyProducts.length > 0"
           class="legacy-panel"
           data-test="case-legacy-products"

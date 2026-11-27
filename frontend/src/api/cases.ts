@@ -456,6 +456,15 @@ type CaseDetailBase = Omit<CaseSummaryBase, 'displaySummary'> & {
   /** 法院名称与所在地（历史迁移带过来，可为空）。 */
   courtName?: string | null;
   courtProvince?: string | null;
+  /** 历史实收流水（旧库 ip_payment_case 迁移，收款方待核）。 */
+  legacyPayments?: Array<{
+    legacyPaymentId: string;
+    amount: string;
+    paidOn: string | null;
+    payer: string | null;
+    note: string | null;
+    verified: boolean;
+  }> | null;
   /** 历史外录案件商品（旧库 ip_case_tort 迁移，只读展示）。 */
   legacyProducts?: Array<{
     legacyTortId: string;
@@ -3115,6 +3124,7 @@ export function validCaseDetail(value: unknown, id: string): value is CaseDetail
         'courtProvince',
         'legacyFacts',
         'legacyProducts',
+        'legacyPayments',
         'disclosure',
         'canEarlyArchive',
         'canEarlyClose',
@@ -3132,6 +3142,18 @@ export function validCaseDetail(value: unknown, id: string): value is CaseDetail
         'disabledDefendants',
       ],
     ) &&
+    (value.legacyPayments === undefined ||
+      (Array.isArray(value.legacyPayments) &&
+        value.legacyPayments.every(
+          (payment) =>
+            record(payment) &&
+            typeof payment.legacyPaymentId === 'string' &&
+            typeof payment.amount === 'string' &&
+            (payment.paidOn === null || typeof payment.paidOn === 'string') &&
+            (payment.payer === null || typeof payment.payer === 'string') &&
+            (payment.note === null || typeof payment.note === 'string') &&
+            typeof payment.verified === 'boolean',
+        ))) &&
     (value.legacyProducts === undefined ||
       (Array.isArray(value.legacyProducts) &&
         value.legacyProducts.every(
