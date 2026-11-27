@@ -103,11 +103,14 @@ export type CaseReportsCenterSnapshot = CaseReportsSnapshot & {
 export type CaseReportsExportSnapshot = CaseReportsCenterSnapshot & {
   stageCounts: Array<{ value: CaseStage; count: number }>;
 };
-const invalidSource = () =>
-  new InternalServerErrorException({
+const invalidSource = (reason?: string, caseId?: string) => {
+  // 对外统一 500；内部日志记录具体分支与案件，便于定位脏数据。
+  if (reason) console.error(`REPORT_SOURCE_INVALID ${reason} ${caseId ?? ''}`);
+  return new InternalServerErrorException({
     code: 'REPORT_SOURCE_INVALID',
     message: '报表来源数据不完整',
   });
+};
 
 function optionalEnum<T extends string>(
   value: unknown,
@@ -255,7 +258,7 @@ function claim(row: Row): CaseReportAmount {
       filingAmount.lte('99999999999999.99')
     )
       return { state: 'KNOWN', amount: filingAmount.toFixed(2) };
-    throw invalidSource();
+    throw invalidSource('filing-amount-invalid');
   }
   const confirmation = row.complaintConfirmation;
   if (confirmation === null && row.complaintSubmittedAt === null) {
@@ -277,7 +280,7 @@ function claim(row: Row): CaseReportAmount {
       row.complaintAmount.lte('99999999999999.99')
     )
       return { state: 'KNOWN', amount: row.complaintAmount.toFixed(2) };
-    throw invalidSource();
+    throw invalidSource('legacy-claim-invalid');
   }
   const state = confirmation
     ? confirmation.amountState
