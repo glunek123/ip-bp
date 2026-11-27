@@ -3114,6 +3114,7 @@ export function validCaseDetail(value: unknown, id: string): value is CaseDetail
         'courtName',
         'courtProvince',
         'legacyFacts',
+        'legacyProducts',
         'disclosure',
         'canEarlyArchive',
         'canEarlyClose',
@@ -3131,6 +3132,19 @@ export function validCaseDetail(value: unknown, id: string): value is CaseDetail
         'disabledDefendants',
       ],
     ) &&
+    (value.legacyProducts === undefined ||
+      (Array.isArray(value.legacyProducts) &&
+        value.legacyProducts.every(
+          (product) =>
+            record(product) &&
+            typeof product.legacyTortId === 'string' &&
+            (product.title === null || typeof product.title === 'string') &&
+            (product.url === null || typeof product.url === 'string') &&
+            typeof product.quantity === 'string' &&
+            typeof product.unitPrice === 'string' &&
+            typeof product.commentCount === 'string' &&
+            typeof product.estimatedAmount === 'string',
+        ))) &&
     (value.disabledDefendants === undefined ||
       (Array.isArray(value.disabledDefendants) &&
         value.disabledDefendants.every(
