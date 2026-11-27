@@ -1,0 +1,26 @@
+<svg viewBox="0 0 680 560" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>线索域 · 实体关系</title><desc>线索为父表，右侧为审核与决定；线索转公证事项，公证再转案件</desc>
+<rect x="0" y="0" width="680" height="560" fill="#FFFFFF"/>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="7.5" refY="5" markerWidth="5.5" markerHeight="5.5"
+  orient="auto-start-reverse"><path d="M2 1L7.5 5L2 9" fill="none" stroke="#A3ADBA"
+  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
+<style>.tx{font-family:system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif}</style>
+<text class="tx" x="40" y="36" font-size="15" font-weight="500" fill="#1F2328">线索域 · 实体关系</text>
+<text class="tx" x="40" y="58" font-size="11.5" fill="#6B7684">线索为父表，右侧为审核与决定；线索转公证事项，公证再转案件</text>
+<g class="node" data-table="lead_products" role="button" tabindex="0"><rect x="40" y="96" width="256" height="50" rx="9" fill="#F8FAFC" stroke="#CBD5E0" stroke-width="1"/><text class="tx" x="54" y="117" font-size="11" fill="#1F2328" font-weight="500">lead_products</text><text class="tx" x="54" y="134" font-size="11" fill="#6B7684">线索商品</text><text class="tx" x="284" y="117" font-size="11" fill="#9AA4AE" text-anchor="end">9</text></g>
+<g class="node" data-table="leads" role="button" tabindex="0"><rect x="40" y="164" width="256" height="50" rx="9" fill="#E8F1FB" stroke="#85B7EB" stroke-width="1"/><text class="tx" x="54" y="185" font-size="11" fill="#0C447C" font-weight="500">leads</text><text class="tx" x="54" y="202" font-size="11" fill="#4A6C8C">线索</text><text class="tx" x="284" y="185" font-size="11" fill="#9AA4AE" text-anchor="end">31</text></g>
+<g class="node" data-table="lead_infringements" role="button" tabindex="0"><rect x="384" y="96" width="256" height="50" rx="9" fill="#F8FAFC" stroke="#CBD5E0" stroke-width="1"/><text class="tx" x="398" y="117" font-size="11" fill="#1F2328" font-weight="500">lead_infringements</text><text class="tx" x="398" y="134" font-size="11" fill="#6B7684">线索侵权</text><text class="tx" x="628" y="117" font-size="11" fill="#9AA4AE" text-anchor="end">3</text></g>
+<g class="node" data-table="lead_review_decisions" role="button" tabindex="0"><rect x="384" y="164" width="256" height="50" rx="9" fill="#F8FAFC" stroke="#CBD5E0" stroke-width="1"/><text class="tx" x="398" y="185" font-size="11" fill="#1F2328" font-weight="500">lead_review_decisions</text><text class="tx" x="398" y="202" font-size="11" fill="#6B7684">线索审核决定</text><text class="tx" x="628" y="185" font-size="11" fill="#9AA4AE" text-anchor="end">17</text></g>
+<g class="node" data-table="lead_evidence_decisions" role="button" tabindex="0"><rect x="384" y="232" width="256" height="50" rx="9" fill="#F8FAFC" stroke="#CBD5E0" stroke-width="1"/><text class="tx" x="398" y="253" font-size="11" fill="#1F2328" font-weight="500">lead_evidence_decisions</text><text class="tx" x="398" y="270" font-size="11" fill="#6B7684">线索证据决定</text><text class="tx" x="628" y="253" font-size="11" fill="#9AA4AE" text-anchor="end">16</text></g>
+<g class="node" data-table="lead_withdrawal_applications" role="button" tabindex="0"><rect x="384" y="300" width="256" height="50" rx="9" fill="#F8FAFC" stroke="#CBD5E0" stroke-width="1"/><text class="tx" x="398" y="321" font-size="11" fill="#1F2328" font-weight="500">lead_withdrawal_applications</text><text class="tx" x="398" y="338" font-size="11" fill="#6B7684">线索撤回申请</text><text class="tx" x="628" y="321" font-size="11" fill="#9AA4AE" text-anchor="end">13</text></g>
+<g class="node" data-table="notary_matters" role="button" tabindex="0"><rect x="384" y="368" width="256" height="50" rx="9" fill="#F8FAFC" stroke="#CBD5E0" stroke-width="1"/><text class="tx" x="398" y="389" font-size="11" fill="#1F2328" font-weight="500">notary_matters</text><text class="tx" x="398" y="406" font-size="11" fill="#6B7684">公证事项</text><text class="tx" x="628" y="389" font-size="11" fill="#9AA4AE" text-anchor="end">36</text></g>
+<g class="node" data-table="cases" role="button" tabindex="0"><rect x="384" y="436" width="256" height="50" rx="9" fill="#F8FAFC" stroke="#CBD5E0" stroke-width="1"/><text class="tx" x="398" y="457" font-size="11" fill="#1F2328" font-weight="500">cases</text><text class="tx" x="398" y="474" font-size="11" fill="#6B7684">案件</text><text class="tx" x="628" y="457" font-size="11" fill="#9AA4AE" text-anchor="end">43</text></g>
+<path d="M168.0 146C168.0 146 168.0 164 168.0 164" fill="none" stroke="#A3ADBA" stroke-width="1" marker-end="url(#ar)"/>
+<path d="M296 189.0C340.0 189.0 340.0 121.0 384 121.0" fill="none" stroke="#A3ADBA" stroke-width="1" marker-end="url(#ar)"/>
+<path d="M296 189.0C340.0 189.0 340.0 189.0 384 189.0" fill="none" stroke="#A3ADBA" stroke-width="1" marker-end="url(#ar)"/>
+<path d="M296 189.0C340.0 189.0 340.0 257.0 384 257.0" fill="none" stroke="#A3ADBA" stroke-width="1" marker-end="url(#ar)"/>
+<path d="M296 189.0C340.0 189.0 340.0 325.0 384 325.0" fill="none" stroke="#A3ADBA" stroke-width="1" marker-end="url(#ar)"/>
+<path d="M296 189.0C340.0 189.0 340.0 393.0 384 393.0" fill="none" stroke="#A3ADBA" stroke-width="1" marker-end="url(#ar)"/>
+<path d="M512.0 418C512.0 418 512.0 436 512.0 436" fill="none" stroke="#A3ADBA" stroke-width="1" marker-end="url(#ar)"/>
+<text class="tx" x="40" y="538" font-size="11" fill="#9AA4AE">箭头自父表指向子表；卡片右上角数字为该表字段数</text>
+</svg>
