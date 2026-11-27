@@ -249,6 +249,8 @@ enum PermissionAction {
   LAWYER_ACCOUNT_MANAGE        @map("lawyer.account.manage")
   LAWYER_PROFILE_READ          @map("lawyer.profile.read")
   LAWYER_PROFILE_MANAGE        @map("lawyer.profile.manage")
+  CASE_DELETE                  @map("case.delete")
+  DELETION_AUDIT_READ          @map("deletion.audit.read")
   TEAM_READ                    @map("team.read")
   TEAM_MANAGE                  @map("team.manage")
   ROLE_READ                    @map("role.read")

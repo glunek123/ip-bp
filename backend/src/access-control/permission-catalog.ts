@@ -119,6 +119,8 @@ export const internalAssignablePermissionActions = [
   'LAWYER_ACCOUNT_MANAGE',
   'LAWYER_PROFILE_READ',
   'LAWYER_PROFILE_MANAGE',
+  'CASE_DELETE',
+  'DELETION_AUDIT_READ',
   'TEAM_READ',
   'TEAM_MANAGE',
   'ROLE_READ',
@@ -512,6 +514,16 @@ const catalog: PermissionCatalogItem[] = [
   {
     action: 'LAWYER_PROFILE_MANAGE',
     label: '管理律师库',
+    scopes: ['DEPARTMENT'],
+  },
+  {
+    action: 'CASE_DELETE',
+    label: '删除案件',
+    scopes: ['DEPARTMENT'],
+  },
+  {
+    action: 'DELETION_AUDIT_READ',
+    label: '查看删除留痕',
     scopes: ['DEPARTMENT'],
   },
   { action: 'TEAM_READ', label: '查看团队', scopes: allScopes },
