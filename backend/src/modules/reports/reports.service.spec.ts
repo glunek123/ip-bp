@@ -179,7 +179,7 @@ describe('ReportsService', () => {
       expect(result.csv).toContain('"案件总数","2"');
       expect(result.csv).toContain('"客户总数","12"');
       expect(result.csv).toContain('"公证在办","5"');
-      expect(result.csv).toContain('"累计标的额","100.10"');
+      expect(result.csv).toContain('"累计标的额（万元）","100.10"');
       expect(database.$transaction).toHaveBeenCalledTimes(1);
       expect(database.$transaction.mock.calls[0][1]).toEqual({
         isolationLevel: 'RepeatableRead',
@@ -343,7 +343,7 @@ describe('ReportsService', () => {
           '"阶段分布","待写诉状","1"\r\n"阶段分布","已归档","2"\r\n' +
           '"类型分布","民事","2"\r\n"类型分布","未登记","1"\r\n' +
           '"汇总","案件总数","3"\r\n"汇总","客户总数","12"\r\n' +
-          '"汇总","累计标的额","4000.00"\r\n"汇总","公证在办","5"\r\n',
+          '"汇总","累计标的额（万元）","4000.00"\r\n"汇总","公证在办","5"\r\n',
       });
       expect(database.$transaction).toHaveBeenCalledTimes(1);
       expect(database.$transaction.mock.calls[0][1]).toEqual({
@@ -366,7 +366,7 @@ describe('ReportsService', () => {
         archivedClaims: [unknown, unknown],
       });
       expect((await service.export(actor, 'mine')).csv).toContain(
-        '"累计标的额","暂无数据"',
+        '"累计标的额（万元）","暂无数据"',
       );
       source.exportSnapshot.mockResolvedValue({
         ...exportBase,
@@ -374,7 +374,7 @@ describe('ReportsService', () => {
         archivedClaims: [unknown, unknown],
       });
       expect((await service.export(actor, 'mine')).csv).toContain(
-        '"累计标的额","0.00"',
+        '"累计标的额（万元）","0.00"',
       );
     });
     it('retains authorized empty summaries and uses the Shanghai calendar date of the snapshot', async () => {
@@ -394,7 +394,7 @@ describe('ReportsService', () => {
       const result = await service.export(actor, 'mine');
       expect(result.filename).toBe('案件报表_2026-10-22.csv');
       expect(result.csv).toBe(
-        '\uFEFF"维度","项目","数值"\r\n"汇总","案件总数","0"\r\n"汇总","客户总数","0"\r\n"汇总","累计标的额","暂无数据"\r\n"汇总","公证在办","0"\r\n',
+        '\uFEFF"维度","项目","数值"\r\n"汇总","案件总数","0"\r\n"汇总","客户总数","0"\r\n"汇总","累计标的额（万元）","暂无数据"\r\n"汇总","公证在办","0"\r\n',
       );
     });
     it.each(['customers', 'notaries'] as const)(
@@ -516,18 +516,18 @@ describe('ReportsService', () => {
           knownCases: 2,
           unknownCases: 1,
           buckets: [
-            { lowerInclusive: '0.00', upperExclusive: '100000.00', count: 2 },
+            { lowerInclusive: '0.00', upperExclusive: '10.00', count: 2 },
             {
-              lowerInclusive: '100000.00',
-              upperExclusive: '300000.00',
+              lowerInclusive: '10.00',
+              upperExclusive: '30.00',
               count: 0,
             },
             {
-              lowerInclusive: '300000.00',
-              upperExclusive: '500000.00',
+              lowerInclusive: '30.00',
+              upperExclusive: '50.00',
               count: 0,
             },
-            { lowerInclusive: '500000.00', upperExclusive: null, count: 0 },
+            { lowerInclusive: '50.00', upperExclusive: null, count: 0 },
           ],
         },
         closureRate: { status: 'VALUE', percent: '67' },

@@ -19,7 +19,7 @@ describe('known-only report money facts', () => {
       total: { status: 'VALUE', amount: '100.00' },
       knownCases: 2,
       unknownCases: 2,
-      buckets: [{ count: 2 }, { count: 0 }, { count: 0 }, { count: 0 }],
+      buckets: [{ count: 1 }, { count: 0 }, { count: 0 }, { count: 1 }],
     });
     expect(reportKnownMoney([known('0')]).total).toEqual({
       status: 'VALUE',
