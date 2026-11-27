@@ -63,7 +63,7 @@ export class CaseArchiveRevocationService {
       throw new ForbiddenException({ code: 'CASE_ACTION_FORBIDDEN' });
 
     const archive = await this.db.caseArchive.findFirst({
-      where: { caseId, revokedAt: null },
+      where: { caseId },
       select: { id: true },
     });
     if (!archive)
