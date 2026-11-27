@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ActorContext } from '../../access-control/actor-context';
+import { AccessControlService } from '../../access-control/access-control.service';
 import { DatabaseService } from '../../database/database.service';
 
 /**
@@ -13,14 +14,21 @@ import { DatabaseService } from '../../database/database.service';
  */
 @Injectable()
 export class CaseArchiveRevocationService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly access: AccessControlService,
+  ) {}
 
   async revoke(
     actor: ActorContext,
     caseId: string,
     reason: string,
   ): Promise<{ id: string; stage: string }> {
-    if (actor.lawyerAccountId || actor.clientCustomerId)
+    if (
+      actor.lawyerAccountId ||
+      actor.clientCustomerId ||
+      actor.notaryOfficeId
+    )
       throw new ForbiddenException({ code: 'CASE_ACTION_FORBIDDEN' });
     const trimmed = reason.trim();
     if (trimmed.length === 0 || trimmed.length > 500)
@@ -28,11 +36,31 @@ export class CaseArchiveRevocationService {
 
     const found = await this.db.case.findFirst({
       where: { id: caseId, departmentId: actor.departmentId },
-      select: { id: true, stage: true },
+      select: {
+        id: true,
+        stage: true,
+        responsibleUserId: true,
+        responsibleMembership: { select: { teamId: true } },
+      },
     });
     if (!found) throw new NotFoundException({ code: 'CASE_NOT_FOUND' });
     if (found.stage !== 'ARCHIVED')
       throw new BadRequestException({ code: 'CASE_NOT_ARCHIVED' });
+
+    // 与归档更正同权限：获权内部运营，按案件范围判定
+    const allowed = await this.access.canAuthorizeCase(
+      actor,
+      'case.archive.correct',
+      {
+        departmentId: actor.departmentId,
+        responsibleUserId: found.responsibleUserId,
+        ...(found.responsibleMembership?.teamId
+          ? { teamId: found.responsibleMembership.teamId }
+          : {}),
+      },
+    );
+    if (!allowed)
+      throw new ForbiddenException({ code: 'CASE_ACTION_FORBIDDEN' });
 
     const archive = await this.db.caseArchive.findFirst({
       where: { caseId },
