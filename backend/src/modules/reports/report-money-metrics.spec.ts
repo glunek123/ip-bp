@@ -30,19 +30,19 @@ describe('known-only report money facts', () => {
     const result = reportKnownMoney(
       [
         '0',
-        '99999.99',
-        '100000',
-        '299999.99',
-        '300000',
-        '499999.99',
-        '500000',
+        '9.99',
+        '10',
+        '29.99',
+        '30',
+        '49.99',
+        '50',
       ].map(known),
     );
     expect(result.buckets).toEqual([
-      { lowerInclusive: '0.00', upperExclusive: '100000.00', count: 2 },
-      { lowerInclusive: '100000.00', upperExclusive: '300000.00', count: 2 },
-      { lowerInclusive: '300000.00', upperExclusive: '500000.00', count: 2 },
-      { lowerInclusive: '500000.00', upperExclusive: null, count: 1 },
+      { lowerInclusive: '0.00', upperExclusive: '10.00', count: 2 },
+      { lowerInclusive: '10.00', upperExclusive: '30.00', count: 2 },
+      { lowerInclusive: '30.00', upperExclusive: '50.00', count: 2 },
+      { lowerInclusive: '50.00', upperExclusive: null, count: 1 },
     ]);
     expect(result.buckets.reduce((sum, bucket) => sum + bucket.count, 0)).toBe(
       result.knownCases,

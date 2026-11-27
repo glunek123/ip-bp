@@ -26,11 +26,12 @@ export type ReportKnownMoney = {
 export function reportKnownMoney(
   claims: readonly CaseReportAmount[],
 ): ReportKnownMoney {
+  // 标的额口径为「万元」：分档边界按 10／30／50 万元，与报表 Spec 的既有定义一致。
   const buckets: ReportAmountBucket[] = [
-    { lowerInclusive: '0.00', upperExclusive: '100000.00', count: 0 },
-    { lowerInclusive: '100000.00', upperExclusive: '300000.00', count: 0 },
-    { lowerInclusive: '300000.00', upperExclusive: '500000.00', count: 0 },
-    { lowerInclusive: '500000.00', upperExclusive: null, count: 0 },
+    { lowerInclusive: '0.00', upperExclusive: '10.00', count: 0 },
+    { lowerInclusive: '10.00', upperExclusive: '30.00', count: 0 },
+    { lowerInclusive: '30.00', upperExclusive: '50.00', count: 0 },
+    { lowerInclusive: '50.00', upperExclusive: null, count: 0 },
   ];
   let total = new Decimal(0),
     knownCases = 0,

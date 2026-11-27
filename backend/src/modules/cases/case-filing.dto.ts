@@ -22,7 +22,7 @@ export class SubmitCaseFilingDto {
   @ApiProperty({ format: 'date' }) @IsString() submittedAt!: string;
   @ApiPropertyOptional({
     type: String,
-    description: '本次更新的标的额；不传则沿用当前金额',
+    description: '本次更新的标的额（万元）；不传则沿用当前金额',
   })
   @IsOptional()
   @IsString()

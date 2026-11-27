@@ -264,7 +264,7 @@ export class ReportsService {
             ['汇总', '客户总数', String(customerCount)],
             [
               '汇总',
-              '累计标的额',
+              '累计标的额（万元）',
               money.total.status === 'VALUE' ? money.total.amount : '暂无数据',
             ],
             ['汇总', '公证在办', String(notaryCount)],
