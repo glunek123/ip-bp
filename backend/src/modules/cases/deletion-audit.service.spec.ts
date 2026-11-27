@@ -27,6 +27,7 @@ describe('DeletionAuditService', () => {
       deletionAuditLog: { create: jest.fn().mockResolvedValue({}) },
     };
     const db = {
+      $transaction: jest.fn(async (queries: readonly unknown[]) => Promise.all(queries)),
       deletionAuditLog: {
         count: jest.fn().mockResolvedValue(1),
         findMany: jest.fn().mockResolvedValue([

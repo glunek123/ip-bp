@@ -40,7 +40,17 @@ export class CaseDeleteService {
       });
     return this.db.$transaction(
       async (tx) => {
-        await this.access.authorizeDepartmentAction(actor, 'case.delete', tx);
+        try {
+          await this.access.authorizeDepartmentAction(actor, 'case.delete', tx);
+        } catch (error) {
+          // 共享权限服务的拒绝文案是客户口径，案件删除统一改用案件动作码
+          if (error instanceof ForbiddenException)
+            throw new ForbiddenException({
+              code: 'CASE_ACTION_FORBIDDEN',
+              message: '无权执行此案件操作',
+            });
+          throw error;
+        }
         const locked = await tx.$queryRawUnsafe<{ id: string }[]>(
           'SELECT id FROM cases WHERE id = $1::uuid AND department_id = $2::uuid FOR UPDATE',
           caseId,
