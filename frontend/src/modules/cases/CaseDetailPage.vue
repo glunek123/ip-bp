@@ -3195,6 +3195,51 @@ onBeforeUnmount(() => {
             }}</template
           >
         </p>
+        <section
+          v-if="item.legacyProducts && item.legacyProducts.length > 0"
+          class="legacy-panel"
+          data-test="case-legacy-products"
+        >
+          <div class="legacy-panel__head">
+            <h2 class="form-section-title">历史商品</h2>
+            <span class="legacy-panel__hint">
+              旧库迁移的历史商品资料，仅供查阅，不参与当前结算与评估。
+            </span>
+          </div>
+          <div class="demo-table-scroll">
+            <table class="demo-table">
+              <thead>
+                <tr>
+                  <th>商品名称</th>
+                  <th>商品链接</th>
+                  <th>销量</th>
+                  <th>单价（元）</th>
+                  <th>评论数</th>
+                  <th>销售额（元）</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="product in item.legacyProducts" :key="product.legacyTortId">
+                  <td>{{ product.title || '未登记' }}</td>
+                  <td>
+                    <a
+                      v-if="product.url"
+                      :href="product.url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      >{{ product.url }}</a
+                    >
+                    <span v-else>未登记</span>
+                  </td>
+                  <td class="mono">{{ product.quantity }}</td>
+                  <td class="mono">{{ product.unitPrice }}</td>
+                  <td class="mono">{{ product.commentCount }}</td>
+                  <td class="mono">{{ product.estimatedAmount }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
         <section class="legacy-panel">
           <div class="legacy-panel__head">
             <h2 class="form-section-title">披露信息</h2>

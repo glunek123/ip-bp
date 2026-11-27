@@ -456,6 +456,16 @@ type CaseDetailBase = Omit<CaseSummaryBase, 'displaySummary'> & {
   /** 法院名称与所在地（历史迁移带过来，可为空）。 */
   courtName?: string | null;
   courtProvince?: string | null;
+  /** 历史外录案件商品（旧库 ip_case_tort 迁移，只读展示）。 */
+  legacyProducts?: Array<{
+    legacyTortId: string;
+    title: string | null;
+    url: string | null;
+    quantity: string;
+    unitPrice: string;
+    commentCount: string;
+    estimatedAmount: string;
+  }> | null;
   /** 旧库迁移快照（只读展示）：费用日期、结算进度、立案与诉状日期。 */
   legacyFacts?: {
     prepayOn: string | null;

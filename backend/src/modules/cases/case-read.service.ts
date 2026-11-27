@@ -1269,6 +1269,17 @@ export class CaseReadService {
         archive: { include: { versions: { orderBy: { fromVersion: 'asc' } } } },
         earlyArchive: true,
         earlyClosure: { select: { id: true } },
+        legacyProducts: {
+          select: {
+            legacyTortId: true,
+            title: true,
+            url: true,
+            quantity: true,
+            unitPrice: true,
+            commentCount: true,
+            estimatedAmount: true,
+          },
+        },
         executionFiling: {
           select: {
             toVersion: true,
@@ -3789,6 +3800,16 @@ export class CaseReadService {
       courtName: legacyCourt?.name ?? null,
       courtProvince: legacyCourt?.province ?? null,
       // 旧库迁移快照（只读展示）
+      // 历史外录案件商品（旧库 ip_case_tort 迁移，无来源线索时独立展示）
+      legacyProducts: record.legacyProducts.map((product) => ({
+        legacyTortId: product.legacyTortId,
+        title: product.title,
+        url: product.url,
+        quantity: product.quantity.toFixed(2),
+        unitPrice: product.unitPrice.toFixed(2),
+        commentCount: product.commentCount.toFixed(2),
+        estimatedAmount: product.estimatedAmount.toFixed(2),
+      })),
       legacyFacts: {
         prepayOn: record.legacyPrepayOn?.toISOString().slice(0, 10) ?? null,
         courtFeeOn: record.legacyCourtFeeOn?.toISOString().slice(0, 10) ?? null,
