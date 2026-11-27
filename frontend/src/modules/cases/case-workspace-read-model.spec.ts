@@ -1446,6 +1446,47 @@ describe('case workspace read model', () => {
     expect(judgment).toContain('2026-07-10');
   });
 
+  it('shows migrated filing, hearing, notary and execution facts in the corresponding cards', () => {
+    const item = caseFixture();
+    const certificate = item.certificate;
+    item.certificate = null;
+    item.legacyFacts = {
+      prepayOn: null,
+      courtFeeOn: null,
+      customerSettlement: null,
+      customerSettleNote: null,
+      lawyerSettlement: null,
+      lawyerSettleNote: null,
+      submitRegisterOn: null,
+      pleadingsApproveOn: null,
+      pleadingsConfirmOn: null,
+      mediationNo: '旧诉调号',
+      hearingOn: '2025-02-08',
+      notarizationNumber: '旧公证号',
+      executionNo: '旧执行案号',
+      executionOn: '2025-03-08',
+    };
+
+    const sections = JSON.stringify(
+      buildCaseWorkspaceSections(item, null, 'idle'),
+    );
+    expect(sections).toContain('历史公证书编号');
+    expect(sections).toContain('旧公证号');
+    expect(sections).toContain('历史诉调号');
+    expect(sections).toContain('旧诉调号');
+    expect(sections).toContain('历史开庭日期');
+    expect(sections).toContain('2025-02-08');
+    expect(sections).toContain('历史执行案号');
+    expect(sections).toContain('旧执行案号');
+    expect(sections).toContain('历史执行日期');
+    expect(sections).toContain('2025-03-08');
+
+    item.certificate = certificate;
+    expect(
+      JSON.stringify(buildCaseWorkspaceSections(item, null, 'idle')),
+    ).not.toContain('历史公证书编号');
+  });
+
   it('projects execution, null closure business day, immutable version history and archive without settlement inference', () => {
     const item = caseFixture();
     item.stage = 'ARCHIVED';

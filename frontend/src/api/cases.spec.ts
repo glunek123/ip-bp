@@ -1963,6 +1963,45 @@ describe('CA-018 strict source-aware execution read boundary', () => {
 });
 
 describe('cases API', () => {
+  it('decodes optional historical case dates and numbers', async () => {
+    const legacyFacts = {
+      prepayOn: null,
+      courtFeeOn: null,
+      customerSettlement: null,
+      customerSettleNote: null,
+      lawyerSettlement: null,
+      lawyerSettleNote: null,
+      submitRegisterOn: null,
+      pleadingsApproveOn: null,
+      pleadingsConfirmOn: null,
+    };
+    mockJson({ ...detail, legacyFacts });
+    await expect(getCase(detail.id)).resolves.toMatchObject({ legacyFacts });
+
+    const supplemented = {
+      ...legacyFacts,
+      mediationNo: '历史诉调号',
+      hearingOn: '2026-11-13',
+      notarizationNumber: null,
+      executionNo: '历史执行案号',
+      executionOn: '2026-11-27',
+    };
+    mockJson({ ...detail, legacyFacts: supplemented });
+    await expect(getCase(detail.id)).resolves.toMatchObject({
+      legacyFacts: supplemented,
+    });
+
+    for (const invalid of [
+      { ...supplemented, hearingOn: '2026-02-30' },
+      { ...supplemented, executionNo: 123 },
+    ]) {
+      mockJson({ ...detail, legacyFacts: invalid });
+      await expect(getCase(detail.id)).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+
   const closureCapabilityCounts = Object.fromEntries(
     [
       'PENDING_MATCH',
@@ -5866,6 +5905,14 @@ describe('CA018 external case entry API', () => {
     });
     await expect(getCase('case-1')).resolves.toMatchObject({
       courtCaseNo: knownCaseNo,
+    });
+    // 历史迁移案件：案号落在案件级字段，外录快照与受理记录都没有
+    mockJson({
+      ...externalDetail,
+      courtCaseNo: '（2026）沪0104民初22137号',
+    });
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      courtCaseNo: '（2026）沪0104民初22137号',
     });
     mockJson({
       ...externalDetail,

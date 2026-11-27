@@ -485,7 +485,7 @@ export class CaseReadService {
                         reason: item.externalEntry.reason,
                         recordedAt: item.externalEntry.recordedAt.toISOString(),
                         recordedByUserId: item.externalEntry.recordedByUserId,
-                        known: item.externalEntry.known,
+                        known: normalizeExternalKnown(item.externalEntry.known),
                       },
               }),
           canMatch:
@@ -1618,6 +1618,11 @@ export class CaseReadService {
         legacySubmitRegisterOn: true,
         legacyPleadingsApproveOn: true,
         legacyPleadingsConfirmOn: true,
+        legacyMediationNo: true,
+        legacyHearingOn: true,
+        legacyNotarizationNumber: true,
+        legacyExecutionNo: true,
+        legacyExecutionOn: true,
         disclosure: true,
         owner: { select: { id: true, displayName: true } },
         department: { select: { id: true, name: true } },
@@ -1978,6 +1983,9 @@ export class CaseReadService {
       record.complaintConfirmation == null &&
       record.complaintMailing == null &&
       record.filingSubmission == null;
+    // 外录时点即已归档的历史案件：后续补迁的结案→归档版本链没有执行收尾锚
+    const archivedEntryBackfill =
+      externalSource && externalEntry?.initialStage === 'ARCHIVED';
     if (
       closureRecord !== null &&
       (currentClosure === undefined ||
@@ -1994,6 +2002,7 @@ export class CaseReadService {
         currentClosure === undefined ||
         (record.executionFinish == null &&
           earlyClosure === null &&
+          !archivedEntryBackfill &&
           (!directClosureWithoutFinish ||
             closureHistory[0]?.fromVersion !== 1)) ||
         archiveRecord.closureId !== closureRecord.id ||
@@ -3842,6 +3851,12 @@ export class CaseReadService {
           record.legacyPleadingsApproveOn?.toISOString().slice(0, 10) ?? null,
         pleadingsConfirmOn:
           record.legacyPleadingsConfirmOn?.toISOString().slice(0, 10) ?? null,
+        mediationNo: record.legacyMediationNo ?? null,
+        hearingOn: record.legacyHearingOn?.toISOString().slice(0, 10) ?? null,
+        notarizationNumber: record.legacyNotarizationNumber ?? null,
+        executionNo: record.legacyExecutionNo ?? null,
+        executionOn:
+          record.legacyExecutionOn?.toISOString().slice(0, 10) ?? null,
       },
       disclosure:
         record.disclosure === null

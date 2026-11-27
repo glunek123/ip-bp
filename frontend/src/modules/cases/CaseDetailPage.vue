@@ -21,7 +21,7 @@ import ElDialog from 'element-plus/es/components/dialog/index';
 import {
   legacyDisclosureTypeLabels,
   translateLegacy,
-} from '../leads/legacy-enums';
+} from '../leads';
 import CaseAdditionalActions from './CaseAdditionalActions.vue';
 import CasePreservationDialog from './CasePreservationDialog.vue';
 

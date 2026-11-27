@@ -2,6 +2,7 @@ import { CaseArchiveService } from './case-archive.service';
 import { CaseEarlyArchiveService } from './case-early-archive.service';
 import { CaseExecutionRecordEditService } from './case-execution-record-edit.service';
 import { CaseHistoricalRecordEditService } from './case-historical-record-edit.service';
+import { CaseMaterialService } from './case-material.service';
 import { CaseClosureService } from './case-closure.service';
 import { CaseExecutionFinishService } from './case-execution-finish.service';
 import { CaseExecutionMailingService } from './case-execution-mailing.service';
@@ -248,6 +249,7 @@ describe('exact internal section record correction routes', () => {
           CaseArchiveService,
           CaseEarlyArchiveService,
           FilingCourtService,
+          CaseMaterialService,
         ].map((provide) => ({ provide, useValue: {} })),
         { provide: CaseExecutionRecordEditService, useValue: execution },
         { provide: CaseHistoricalRecordEditService, useValue: historical },
@@ -576,6 +578,7 @@ describe('case read OpenAPI contract', () => {
         { provide: CaseRecordEditService, useValue: recordEdit },
         { provide: CaseExecutionRecordEditService, useValue: {} },
         { provide: CaseHistoricalRecordEditService, useValue: {} },
+        { provide: CaseMaterialService, useValue: {} },
         { provide: CaseHearingService, useValue: {} },
         { provide: CaseJudgmentService, useValue: {} },
         { provide: CaseJudgmentNextStepService, useValue: {} },

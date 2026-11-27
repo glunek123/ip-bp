@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import ColumnSettingsShell from '../cases/ColumnSettingsShell.vue';
+import { ColumnSettingsShell } from '../cases';
 import {
   computed,
   nextTick,

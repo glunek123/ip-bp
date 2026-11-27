@@ -1327,6 +1327,7 @@ export class LeadNotaryService {
             customerId: true,
             departmentId: true,
             pushedAt: true,
+            externalSourceRef: true,
             remark: true,
             infringements: { select: { type: true }, orderBy: { type: 'asc' } },
             responsibleMembership: {
@@ -1406,7 +1407,10 @@ export class LeadNotaryService {
     // 历史迁移（旧库）缺少开箱/出证过程记录，放宽回执完整性校验，仅保证可读。
     const legacySnapshot = matter.sourceSnapshot as Record<string, unknown> | null;
     const isLegacyBackfill =
-      legacySnapshot !== null && legacySnapshot['source'] === 'NOCOBASE';
+      legacySnapshot?.source === 'NOCOBASE' ||
+      (typeof legacySnapshot?.legacyId === 'string' &&
+        matter.sourceLead.externalSourceRef ===
+          `nocobase:${legacySnapshot.legacyId}`);
     const earlyArchive =
       matter.stage === 'ARCHIVED' &&
       matter.returnArchive?.fromStage != null &&
@@ -1991,12 +1995,12 @@ export class LeadNotaryService {
       throw this.corruptReceipt();
     const ids = new Set(productIds);
     return products.map((value) => {
+      if (value === null || typeof value !== 'object' || Array.isArray(value))
+        throw this.corruptReceipt();
+      const id = value.id ?? (lenient ? value.leadProductId : undefined);
       if (
-        value === null ||
-        typeof value !== 'object' ||
-        Array.isArray(value) ||
-        typeof value.id !== 'string' ||
-        !ids.has(value.id) ||
+        typeof id !== 'string' ||
+        !ids.delete(id) ||
         !Number.isInteger(value.position) ||
         (value.url !== null && typeof value.url !== 'string') ||
         (value.title !== null && typeof value.title !== 'string') ||
@@ -2006,9 +2010,8 @@ export class LeadNotaryService {
         typeof value.estimatedAmount !== 'string'
       )
         throw this.corruptReceipt();
-      ids.delete(value.id);
       return {
-        id: value.id,
+        id,
         position: value.position as number,
         url: value.url as string | null,
         title: value.title as string | null,

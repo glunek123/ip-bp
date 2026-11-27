@@ -58,6 +58,9 @@ function displaySource(leadId: string, matterId: string) {
     complaintConfirmation: null,
     currentJudgment: null,
     closure: null,
+    legacyPayments: [],
+    legacyProducts: [],
+    disclosure: null,
   };
 }
 
@@ -1028,6 +1031,28 @@ describe('CaseReadService', () => {
       });
     },
   );
+  it('uses the detail contract for sparse historical origin metadata in the list', async () => {
+    const f = fixture();
+    const base = externalRecord('WAITING_HEARING');
+    const record = {
+      ...base,
+      externalEntry: {
+        ...base.externalEntry,
+        known: { shopName: '历史店铺', infringementTypes: [] },
+      },
+    };
+    f.db.case.findMany.mockResolvedValue([record]);
+    f.db.case.findFirst.mockResolvedValue(record);
+
+    const detail = await f.service.get(actor, record.id);
+    const page = await f.service.list(actor, 1, 20);
+    expect(page.items[0].origin).toEqual(detail.origin);
+    expect(page.items[0].origin).toMatchObject({
+      kind: 'EXTERNAL_ENTRY',
+      known: { shopName: '历史店铺', shopExternalId: null, infringementTypes: null },
+    });
+  });
+
   it.each([
     ['PENDING_MATCH', true],
     ['WAITING_HEARING', true],
@@ -1521,6 +1546,80 @@ describe('CaseReadService', () => {
       response: { code: 'CASE_NOT_FOUND' },
     });
   });
+  it('reads archived-entry backfill closure and archive chains without an execution finish', async () => {
+    const f = fixture();
+    const closureVersion = {
+      id: 'closure-version',
+      kind: 'REGISTER',
+      priorVersionId: null,
+      finishId: null,
+      fromVersion: 5,
+      toVersion: 6,
+      closeAt: null,
+      closeAmountState: 'PENDING',
+      closeAmt: null,
+      note: '历史结案',
+      correctionReason: null,
+      recordedAt: new Date('2026-10-03T00:00:00Z'),
+      recordedByUserId: actor.userId,
+    };
+    const record = {
+      ...externalRecord('ARCHIVED'),
+      version: 7,
+      currentTrialRoundId: 'round-1',
+      trialRounds: [
+        {
+          id: 'round-1',
+          sequence: 1,
+          origin: 'EXTERNAL_CURRENT',
+          externalEntryId: 'entry-1',
+          sourceResultId: null,
+          revokedAt: null,
+        },
+      ],
+      closure: {
+        id: 'closure',
+        finishId: null,
+        currentVersionId: closureVersion.id,
+        versions: [closureVersion],
+      },
+      archive: {
+        id: 'archive',
+        closureId: 'closure',
+        closureVersionId: closureVersion.id,
+        currentVersionId: 'archive-version',
+        versions: [
+          {
+            id: 'archive-version',
+            kind: 'ARCHIVE',
+            priorVersionId: null,
+            closureVersionId: closureVersion.id,
+            fromVersion: 6,
+            toVersion: 7,
+            archiveAt: new Date('2026-10-04T00:00:00Z'),
+            archiveType: 'OTHER',
+            archiveReason: '历史归档',
+            correctionReason: null,
+            recordedAt: new Date('2026-10-04T01:00:00Z'),
+            recordedByUserId: actor.userId,
+          },
+        ],
+      },
+    };
+    f.db.case.findFirst.mockResolvedValue(record);
+    await expect(f.service.get(actor, record.id)).resolves.toMatchObject({
+      executionFinish: null,
+      closure: { finishId: null },
+      archive: {
+        closureId: 'closure',
+        closureVersionId: 'closure-version',
+      },
+    });
+    record.externalEntry.initialStage = 'EXECUTING';
+    await expect(f.service.get(actor, record.id)).rejects.toMatchObject({
+      response: { code: 'CASE_NOT_FOUND' },
+    });
+  });
   it('projects only a verified early closure root and rejects mismatched closure versions', async () => {
     const f = fixture();
     const record = {
@@ -1864,6 +1963,9 @@ describe('CaseReadService', () => {
       ],
     };
     const record = {
+      legacyPayments: [],
+      legacyProducts: [],
+      disclosure: null,
       id: 'case-1',
       businessNo: 'CA-1',
       stage: 'PENDING_MATCH',

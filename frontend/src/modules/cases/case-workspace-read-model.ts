@@ -3,7 +3,7 @@ import {
   translateLegacy,
   legacyCustomerSettlementLabels,
   legacyLawyerSettlementLabels,
-} from '../leads/legacy-enums';
+} from '../leads';
 import type { LeadDetail } from '../../api/leads';
 import type { CaseRoutineProfile } from '../../api/case-routine';
 import type { CaseClosureWorkspace } from '../../api/case-closure-workspace';
@@ -859,10 +859,7 @@ export function buildCaseWorkspaceSections(
             value.idNo,
           ),
           field('联系电话', value.phone),
-          field(
-            value.kind === 'PERSON' ? '户籍地址' : '住所地',
-            value.address,
-          ),
+          field(value.kind === 'PERSON' ? '户籍地址' : '住所地', value.address),
         ],
       })),
       ...item.lawyers.map((value) => ({
@@ -1546,6 +1543,9 @@ export function buildCaseWorkspaceSections(
       fileVersions: openingVersions,
     },
     field('公证书编号', item.certificate?.certificateNo ?? null),
+    ...(item.legacyFacts?.notarizationNumber && !item.certificate?.certificateNo
+      ? [field('历史公证书编号', item.legacyFacts.notarizationNumber)]
+      : []),
     field('公证书', filenames(item.certificate?.files ?? [])),
     field('披露文件', filenames(item.certificate?.disclosureFiles ?? [])),
     field(
@@ -1610,9 +1610,15 @@ export function buildCaseWorkspaceSections(
       item.filingSubmission?.mediationNo ?? null,
       '仅取提交立案的诉调号；正式法院案号另列',
     ),
+    ...(item.legacyFacts?.mediationNo && !item.filingSubmission?.mediationNo
+      ? [field('历史诉调号', item.legacyFacts.mediationNo)]
+      : []),
     date('提交立案日期', item.filingSubmission?.submittedAt ?? null),
     date('正式立案日期', currentAcceptance?.acceptedAt ?? null),
     date('开庭日期', currentHearing?.hearingAt ?? null),
+    ...(item.legacyFacts?.hearingOn && !currentHearing?.hearingAt
+      ? [date('历史开庭日期', item.legacyFacts.hearingOn)]
+      : []),
     field('开庭地点', currentHearing?.hearingPlace ?? null),
     field(
       '送达文书',
@@ -1641,7 +1647,7 @@ export function buildCaseWorkspaceSections(
         supplementHeads('COURT_PREPAYMENT_NOTICE', currentRoundId).length,
       ),
     ),
-    field('承办法官', currentHearing?.judgeName ?? null),
+    field('承办法官', currentHearing?.judgeName ?? item.judgeName ?? null),
     item.filingSubmission?.claimAmount != null
       ? money('标的额', 'KNOWN', item.filingSubmission.claimAmount)
       : item.complaintConfirmation
@@ -2048,6 +2054,12 @@ export function buildCaseWorkspaceSections(
         ).length,
       ),
     ),
+    ...(item.legacyFacts?.executionNo && !formalExecution?.courtCaseNo
+      ? [field('历史执行案号', item.legacyFacts.executionNo)]
+      : []),
+    ...(item.legacyFacts?.executionOn
+      ? [date('历史执行日期', item.legacyFacts.executionOn)]
+      : []),
     field(
       '执行文书',
       supplementValue(

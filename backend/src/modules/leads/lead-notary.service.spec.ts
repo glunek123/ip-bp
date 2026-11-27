@@ -194,6 +194,32 @@ describe('LeadNotaryService opening review read projection', () => {
       archivedAt: '2026-09-28T01:00:00.000Z',
     });
     expect(JSON.stringify(result)).not.toContain('secret-user');
+    const historicalProduct = {
+      leadProductId: 'legacy-product',
+      position: 1,
+      title: '历史商品',
+      url: null,
+      quantity: 2,
+      unitPrice: '10.00',
+      commentCount: 0,
+      estimatedAmount: '20.00',
+    };
+    database.notaryMatter.findFirst.mockResolvedValueOnce({
+      ...record,
+      stage: 'WAITING_UNBOX',
+      opening: null,
+      openingReviewDecision: null,
+      sourceLead: { ...record.sourceLead, externalSourceRef: 'nocobase:123' },
+      sourceSnapshot: {
+        source: 'ONLINE',
+        legacyId: '123',
+        selectedProducts: [historicalProduct],
+      },
+      selectedProducts: [{ leadProductId: 'legacy-product' }],
+    });
+    expect(await service.getMatter(actor, matterId)).toMatchObject({
+      selectedProducts: [{ id: 'legacy-product', title: '历史商品' }],
+    });
     const correctedRecord = {
       ...record,
       opening: { ...record.opening, senderName: 'old-sender' },

@@ -15,7 +15,7 @@ import type {
 import NotaryMatterWorkflowPanel from './NotaryMatterWorkflowPanel.vue';
 import SampleFeeRefundDialog from './SampleFeeRefundDialog.vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
-import ColumnSettingsShell from '../cases/ColumnSettingsShell.vue';
+import { ColumnSettingsShell } from '../cases';
 import ListHeaderSearch from '../../shared/ListHeaderSearch.vue';
 import {
   exportNotaryList,

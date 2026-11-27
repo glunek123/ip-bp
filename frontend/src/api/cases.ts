@@ -486,6 +486,11 @@ type CaseDetailBase = Omit<CaseSummaryBase, 'displaySummary'> & {
     submitRegisterOn: string | null;
     pleadingsApproveOn: string | null;
     pleadingsConfirmOn: string | null;
+    mediationNo?: string | null;
+    hearingOn?: string | null;
+    notarizationNumber?: string | null;
+    executionNo?: string | null;
+    executionOn?: string | null;
   } | null;
   /** 旧库披露信息（可编辑）。 */
   disclosure?: {
@@ -2331,10 +2336,14 @@ function executionFactsMatch(
     filing !== null &&
     (!executionFiling(
       filing,
-      (directFiling || directExecuting || historicalBackfill) && mailing === null,
+      (directFiling || directExecuting || historicalBackfill) &&
+        mailing === null,
     ) ||
       filing.mailingId !== (record(mailing) ? mailing.id : null) ||
-      (mailing === null && !directFiling && !directExecuting && !historicalBackfill))
+      (mailing === null &&
+        !directFiling &&
+        !directExecuting &&
+        !historicalBackfill))
   ) {
     return false;
   }
@@ -2841,7 +2850,9 @@ function courtCaseNoMatchesAcceptance(
 ): boolean {
   if (acceptance === null) {
     if (record(origin) && origin.kind === 'EXTERNAL_ENTRY') {
-      if (record(origin.known)) return courtCaseNo === origin.known.courtCaseNo;
+      // 历史迁移案件的案号可落在案件级字段，而不在外录快照或受理记录
+      if (record(origin.known) && origin.known.courtCaseNo != null)
+        return courtCaseNo === origin.known.courtCaseNo;
       return (
         courtCaseNo === null ||
         (nonempty(courtCaseNo) &&
@@ -3046,7 +3057,22 @@ function validHearing(value: unknown, internal: boolean): boolean {
     value.corrections.every((item) => validHearingCorrection(item, internal))
   );
 }
-export function validCaseDetail(value: unknown, id: string): value is CaseDetail {
+function validLegacyCaseFacts(value: unknown): boolean {
+  return (
+    value == null ||
+    (record(value) &&
+      [value.mediationNo, value.notarizationNumber, value.executionNo].every(
+        (number) => number == null || typeof number === 'string',
+      ) &&
+      [value.hearingOn, value.executionOn].every(
+        (date) => date == null || businessDate(date),
+      ))
+  );
+}
+export function validCaseDetail(
+  value: unknown,
+  id: string,
+): value is CaseDetail {
   if (!record(value)) return false;
   // 历史回填（旧系统迁移）没有过程事实：判决版本链、记录编辑、邮寄确认都缺失，
   // 只校验字段合法性与阶段-事实一致性，不要求过程链完整。
@@ -3142,6 +3168,7 @@ export function validCaseDetail(value: unknown, id: string): value is CaseDetail
         'disabledDefendants',
       ],
     ) &&
+    validLegacyCaseFacts(value.legacyFacts) &&
     (value.legacyPayments === undefined ||
       (Array.isArray(value.legacyPayments) &&
         value.legacyPayments.every(
@@ -3359,11 +3386,11 @@ export function validCaseDetail(value: unknown, id: string): value is CaseDetail
     (historicalBackfill ||
       executionSourceMatches(
         record(value.earlyArchive)
-        ? {
-            ...value,
-            stage: value.earlyArchive.fromStage,
-            version: value.earlyArchive.fromVersion,
-          }
+          ? {
+              ...value,
+              stage: value.earlyArchive.fromStage,
+              version: value.earlyArchive.fromVersion,
+            }
           : value,
         true,
       )) &&
@@ -4633,8 +4660,7 @@ function validFilingCourt(value: unknown): value is FilingCourt {
       ? true
       : record(value) &&
         (value.province === null ||
-          (typeof value.province === 'string' &&
-            value.province.length <= 100));
+          (typeof value.province === 'string' && value.province.length <= 100));
   return (
     record(value) &&
     exactWithOptional(value, ['id', 'name'], ['province']) &&
@@ -9022,9 +9048,12 @@ export async function revokeCaseArchive(
   reason: string,
   options: RequestOptions = {},
 ): Promise<{ id: string; stage: string }> {
-  return (await requestJson(`/cases/${encodeURIComponent(id)}/archive-revocation`, {
-    ...options,
-    method: 'POST',
-    body: JSON.stringify({ reason }),
-  })) as { id: string; stage: string };
+  return (await requestJson(
+    `/cases/${encodeURIComponent(id)}/archive-revocation`,
+    {
+      ...options,
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    },
+  )) as { id: string; stage: string };
 }
