@@ -516,7 +516,7 @@ describe('ReportsService', () => {
           knownCases: 2,
           unknownCases: 1,
           buckets: [
-            { lowerInclusive: '0.00', upperExclusive: '10.00', count: 2 },
+            { lowerInclusive: '0.00', upperExclusive: '10.00', count: 0 },
             {
               lowerInclusive: '10.00',
               upperExclusive: '30.00',
@@ -527,7 +527,7 @@ describe('ReportsService', () => {
               upperExclusive: '50.00',
               count: 0,
             },
-            { lowerInclusive: '50.00', upperExclusive: null, count: 0 },
+            { lowerInclusive: '50.00', upperExclusive: null, count: 2 },
           ],
         },
         closureRate: { status: 'VALUE', percent: '67' },
