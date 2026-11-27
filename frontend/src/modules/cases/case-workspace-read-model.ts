@@ -2040,7 +2040,7 @@ export function buildCaseWorkspaceSections(
     field(
       '执行案号',
       supplementValue(
-        formalExecution?.courtCaseNo,
+        formalExecution?.courtCaseNo ?? item.executionFinish?.reason ?? null,
         supplementHeads(
           'EXECUTION_FORMAL_ACCEPTANCE',
           undefined,

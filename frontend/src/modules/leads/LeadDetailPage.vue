@@ -1191,6 +1191,12 @@ async function saveLegacyFields() {
               </dd>
             </div>
             <div class="detail-grid__wide">
+              <dt>审核备注</dt>
+              <dd>
+                {{ lead.legacyReviewNote || '未填写' }}
+              </dd>
+            </div>
+            <div class="detail-grid__wide">
               <dt>备注</dt>
               <dd>{{ lead.remark || '未填写' }}</dd>
             </div>
@@ -1439,6 +1445,40 @@ async function saveLegacyFields() {
             </p>
           </div>
         </section>
+        <section
+          v-if="!lead.reviewDecision && lead.legacyApprovedOn"
+          class="demo-card demo-card--pad"
+          data-test="client-review-record-legacy"
+        >
+          <h2 class="form-section-title">客户审核记录（旧库）</h2>
+          <p class="legacy-hint">
+            以下为旧库审核记录，非新系统审核事件，仅供查阅。
+          </p>
+          <dl class="demo-detail-grid">
+            <div>
+              <dt>审核意见</dt>
+              <dd>
+                {{
+                  translateLegacy(
+                    legacyClueCheckOpinionLabels,
+                    lead.legacyReviewOpinion,
+                  ) || '未填写'
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>审核通过日</dt>
+              <dd class="mono">{{ lead.legacyApprovedOn }}</dd>
+            </div>
+            <div>
+              <dt>客户确认日</dt>
+              <dd class="mono">{{ lead.legacyConfirmedOn || '未登记' }}</dd>
+            </div>
+            <div class="detail-grid__wide">
+              <dt>审核备注</dt>
+              <dd>{{ lead.legacyReviewNote || '未填写' }}</dd>
+            </div>
+          </dl>        </section>
         <section
           v-if="lead.reviewDecision"
           class="demo-card demo-card--pad"

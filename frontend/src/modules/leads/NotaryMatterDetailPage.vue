@@ -821,6 +821,9 @@ async function saveLegacyFields() {
                   ) || '未填写'
                 }}
               </dd></div>
+            <div class="detail-grid__wide"><dt>审核备注</dt><dd>
+                {{ matter.legacyNotarization.checkNote || '未填写' }}
+              </dd></div>
           </dl>
         </section>
           <h2 class="form-section-title">来源线索事实</h2>
@@ -845,7 +848,10 @@ async function saveLegacyFields() {
               <dd>
                 {{
                   matter.detailFacts.source.source
-                    ? leadSourceLabels[matter.detailFacts.source.source]
+                    ? ((
+                        leadSourceLabels as Record<string, string>
+                      )[matter.detailFacts.source.source] ??
+                      matter.detailFacts.source.source)
                     : '未记录'
                 }}
               </dd>
@@ -1050,17 +1056,33 @@ async function saveLegacyFields() {
             </div>
             <div>
               <dt>发货人</dt>
-              <dd>{{ matter.openingSummary?.senderName ?? '未登记' }}</dd>
+              <dd>
+                {{
+                  matter.openingSummary?.senderName ??
+                  matter.legacyNotarization?.senderName ??
+                  '未登记'
+                }}
+              </dd>
             </div>
             <div>
               <dt>发货电话</dt>
               <dd class="mono">
-                {{ matter.openingSummary?.senderPhone ?? '未登记' }}
+                {{
+                  matter.openingSummary?.senderPhone ??
+                  matter.legacyNotarization?.senderPhone ??
+                  '未登记'
+                }}
               </dd>
             </div>
             <div class="detail-grid__wide">
               <dt>发货地址</dt>
-              <dd>{{ matter.openingSummary?.senderAddress ?? '未登记' }}</dd>
+              <dd>
+                {{
+                  matter.openingSummary?.senderAddress ??
+                  matter.legacyNotarization?.senderAddress ??
+                  '未登记'
+                }}
+              </dd>
             </div>
             <div>
               <dt>来源线索</dt>

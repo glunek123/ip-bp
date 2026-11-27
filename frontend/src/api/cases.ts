@@ -924,6 +924,7 @@ export type CaseFilingSubmission = {
   claimAmount: string | null;
   evidenceFiles: CaseFile[];
   screenshotFiles: CaseFile[];
+  judgeName?: string | null;
 };
 export type CaseComplaintMailing = {
   mailedAt: string;
