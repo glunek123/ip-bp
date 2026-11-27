@@ -35,6 +35,27 @@ import {
   sectionRecordFiles,
 } from './case-section-record-edit-read';
 
+/** 外部转入来源快照：缺键按 null 补齐，保持前端契约的 9 字段形状。 */
+function normalizeExternalKnown(raw: unknown): Record<string, unknown> {
+  const src =
+    typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  const list = src.infringementTypes;
+  return {
+    courtId: src.courtId ?? null,
+    courtCaseNo: src.courtCaseNo ?? null,
+    acceptedOn: src.acceptedOn ?? null,
+    secondInstanceAcceptedOn: src.secondInstanceAcceptedOn ?? null,
+    platform: src.platform ?? null,
+    shopName: src.shopName ?? null,
+    shopExternalId: src.shopExternalId ?? null,
+    caseType: src.caseType ?? null,
+    infringementTypes: Array.isArray(list) && list.length > 0 ? list : null,
+  };
+}
+
+
 const isoDate = (value: Date) => value.toISOString().slice(0, 10);
 
 @Injectable()
@@ -3820,7 +3841,7 @@ export class CaseReadService {
               reason: externalEntry.reason,
               recordedAt: externalEntry.recordedAt.toISOString(),
               recordedByUserId: externalEntry.recordedByUserId,
-              known: externalEntry.known,
+              known: normalizeExternalKnown(externalEntry.known),
             },
       sourceLead:
         record.sourceLead === null
