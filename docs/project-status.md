@@ -1,3 +1,15 @@
+# 2026-11-28 深夜：库内孤儿外键与 CHECK 收口、历史 OSS 附件鉴权代理与数据归属核查（已部署 `ae8605a5`，UAT 验证通过）
+
+- **历史附件、费用与证物归属实库核查**：
+  - `legacy_attachments` 57,297 条绑定 0 孤儿；针对此前盘点出的 1,858 个未绑定旧附件 ID 逐表核查旧库（63 张 `ip_t_*` 中间表）：1,450 个在旧库任何中间表都未引用（历史孤立上传/未保存草稿），408 个落在未迁移或已排除的次要/测试中间表；
+  - `fee_records` 1,844 条全部具备案件（1,843）或公证（11）归属，`0` 条悬空；`evidence_group_versions` 715 组 `0` 孤儿，`evidence_items` 729 条中仅 29 条因尚未移交立案而 `case_id` 为空，属业务阶段正常态。
+- **数据库孤儿清理与 5 项 CHECK 约束恢复（`20261128213000_clean_orphan_fk_rows_and_restore_checks`）**：按先子表后父表顺序清理造成 20 项外键冲突的全部历史孤儿行（含 `case_csv_imported_rows` 2,911、`case_trial_rounds` 407、`rights_holder_command_receipts` 49、`material_references` 17 等），并幂等恢复全部 5 项曾被移除的 CHECK 约束。
+- **历史 OSS 附件后端鉴权代理**：`LegacyAttachmentsService.resolveContent` 与 `GET /legacy-attachments/:id/content` 校验内部身份、同部门与主体读取权限及 `https://*.aliyuncs.com` 白名单后代理拉取流；前端 `LegacyAttachmentsSection.vue` 缩略图、预览与下载全部切换为 `/api/v1/legacy-attachments/:id/content`。
+- **部署脚本修复**：将 `scripts/deploy-uat.sh` 第 8 步 `prune` 改用单引号 heredoc（消除原嵌套双引号导致的结尾语法错）。
+- **验证结果**：
+  - 本地：`pnpm architecture:check`（23 模块 / 224 模型）、`backend tsc --noEmit`、`jest legacy-attachments.service.spec.ts`（5/5）、`frontend vue-tsc --noEmit`、`vitest LegacyAttachmentsSection.spec.ts`（2/2）与 `CaseDetailPage.spec.ts`（21/21）全部通过。
+  - UAT（`ae8605a5`）：`prisma migrate status` 358 项全部最新；5 项 CHECK 约束均为 `convalidated = t`，20 项孤儿外键检查全部归零；未登录请求 `/api/v1/legacy-attachments/:id/content` 返回 `401`；已登录浏览器访问案件 `692026062636`（318 份历史附件）确认 317/317 缩略图与 318/318 下载链接全部走 `/api/v1/legacy-attachments/:id/content` 且图片 `200` 正常预览。
+
 # 2026-11-28 晚间：全系统只读按钮巡检与 4 项前端契约/路由竞态修复（已部署 `b2941c2c`，UAT 复验通过）
 
 - **全系统巡检发现并清零的 4 项问题**：
