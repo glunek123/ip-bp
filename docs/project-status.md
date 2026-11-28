@@ -1,3 +1,12 @@
+# 2026-11-28 午后：旧库迁移收口、留痕全实体接入与历史字段／附件完善（已部署 `49aee54d`）
+
+- **全实体删除留痕与日志页**：抽取独立共享模块 `DeletionAuditModule`；新增 `/settings/deletion-audit-logs` 页面与导航入口；接入线索、公证取证批次（`lead-notary-delete.service.ts` / `.controller.ts`）、客户软删除（`customer-lifecycle.service.ts`）与历史附件（`LEGACY_ATTACHMENT`）同事务删除留痕；公证批次清理补全 `notary_return_amounts.source_evidence_matter_id`。
+- **历史 OSS 附件展示与删除**：新增 `LegacyAttachmentsService` / `Controller`（`GET/DELETE /legacy-attachments`）及前端 `LegacyAttachmentsSection.vue`，已在案件、公证批次、线索与客户详情页挂载并支持分类折叠、直接打开 OSS 与留痕删除。
+- **案件／线索／公证历史字段补全与直接编辑**：`CaseLegacyFactsService` 改用 Prisma `case.update` 直接维护 14 个补充字段（含调解号、历史开庭日、历史公证号、历史执行案号/日期与客户/律师结算备注）；`case-read.service.ts`、`CaseDetailPage.vue` 与 `case-workspace-read-model.ts` 补齐 `legacyProducts` 采购/物流/证物/退货全列及历史公证/取证/寄件/线索展示；线索审核意见无 `legacyApprovedOn` 亦可回退显示。
+- **缺陷修复**：修复 `cases.ts`、`leads.ts`、`notary.ts` 中 6 处 `requestJson` 重复 `JSON.stringify` 参数问题；`case-list-display-read.ts` 在保留跨部门/源头校验拦截的前提下对缺失 `sourceLead`/`externalEntry` 的历史案件记录告警并安全降级，避免列表整页 500；同步修复 `CaseFilingPanel.spec.ts` `province: null` 断言。
+- **验证**：`pnpm architecture:check`（23 模块、224 模型）、前后端 TypeScript 类型检查（`tsc --noEmit` / `vue-tsc --noEmit`）、7 组后端 Jest 单测（37 项）与受影响前端 Vitest 套件（含 `CaseDetailPage.spec.ts` 21/21、`CaseWorkspaceIntegration.spec.ts` 57 通过 / 10 既有跳过、`api/cases.spec.ts` 351/351、`api/leads.spec.ts` 32/32、`api/notary.spec.ts` 34/34 等）均已通过。
+- **发布状态**：线上 `/srv/ip-bp-uat/current` → `/srv/ip-bp-uat/releases/49aee54d`；UAT 部署备份（13M）、无待执行迁移（355 项）、Prisma 生成与双端构建均成功，`ip-bp-uat` 服务 `active`，`/api/v1/health` 返回 200，`legacy-attachments`／`deletion-audit-logs`／`cases`／`leads`／`notary-matters` 与 SPA `/settings/deletion-audit-logs` 实测响应正常。
+
 # 2026-11-28 凌晨：案件删除留痕端到端（已上线，UAT 验收通过）
 
 V2 目标四「可删且留痕、日志可查、禁止删除被拦截、留痕与业务同事务」完成首类实体（案件）的闭环。
