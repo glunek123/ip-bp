@@ -1499,85 +1499,85 @@ async function saveLegacyFields() {
         />
         <section
           v-if="
-            !lead.reviewDecision &&
-            (lead.legacyApprovedOn ||
-              lead.legacyReviewOpinion ||
-              lead.legacyReviewNote)
+            lead.reviewDecision ||
+            lead.legacyApprovedOn ||
+            lead.legacyReviewOpinion ||
+            lead.legacyReviewNote
           "
-          class="demo-card demo-card--pad"
-          data-test="client-review-record-legacy"
-        >
-          <h2 class="form-section-title">客户审核记录（旧库）</h2>
-          <p class="legacy-hint">
-            以下为旧库审核记录，非新系统审核事件，仅供查阅。
-          </p>
-          <dl class="demo-detail-grid">
-            <div>
-              <dt>审核意见</dt>
-              <dd>
-                {{
-                  translateLegacy(
-                    legacyClueCheckOpinionLabels,
-                    lead.legacyReviewOpinion,
-                  ) || '未填写'
-                }}
-              </dd>
-            </div>
-            <div>
-              <dt>审核通过日</dt>
-              <dd class="mono">{{ lead.legacyApprovedOn || '未登记' }}</dd>
-            </div>
-            <div>
-              <dt>客户确认日</dt>
-              <dd class="mono">{{ lead.legacyConfirmedOn || '未登记' }}</dd>
-            </div>
-            <div class="detail-grid__wide">
-              <dt>审核备注</dt>
-              <dd>{{ lead.legacyReviewNote || '未填写' }}</dd>
-            </div>
-          </dl>        </section>
-        <section
-          v-if="lead.reviewDecision"
           class="demo-card demo-card--pad"
           data-test="client-review-record"
         >
           <h2 class="form-section-title">客户审核记录</h2>
           <dl class="demo-detail-grid">
-            <div>
-              <dt>审核结果</dt>
-              <dd>
-                {{
-                  lead.reviewDecision.result === 'INFRINGEMENT'
-                    ? '侵权'
-                    : '不侵权'
-                }}
-              </dd>
-            </div>
-            <div v-if="lead.reviewDecision.result === 'NO_INFRINGEMENT'">
-              <dt>归档原因</dt>
-              <dd>{{ lead.reviewDecision.reason }}</dd>
-            </div>
-            <div>
-              <dt>审核人</dt>
-              <dd>{{ lead.reviewDecision.reviewerDisplayName }}</dd>
-            </div>
-            <div v-if="lead.reviewDecision.result === 'NO_INFRINGEMENT'">
-              <dt>归档日期</dt>
-              <dd class="mono">
-                {{
-                  leadBusinessDate(
-                    lead.reviewDecision.archiveDate ??
-                      lead.reviewDecision.archivedAt,
-                  )
-                }}
-              </dd>
-            </div>
-            <div>
-              <dt>审核时间</dt>
-              <dd class="mono">
-                {{ formatTime(lead.reviewDecision.decidedAt) }}
-              </dd>
-            </div>
+            <template v-if="lead.reviewDecision">
+              <div>
+                <dt>审核结果</dt>
+                <dd>
+                  {{
+                    lead.reviewDecision.result === 'INFRINGEMENT'
+                      ? '侵权'
+                      : '不侵权'
+                  }}
+                </dd>
+              </div>
+              <div v-if="lead.reviewDecision.result === 'NO_INFRINGEMENT'">
+                <dt>归档原因</dt>
+                <dd>{{ lead.reviewDecision.reason }}</dd>
+              </div>
+              <div>
+                <dt>审核人</dt>
+                <dd>{{ lead.reviewDecision.reviewerDisplayName }}</dd>
+              </div>
+              <div v-if="lead.reviewDecision.result === 'NO_INFRINGEMENT'">
+                <dt>归档日期</dt>
+                <dd class="mono">
+                  {{
+                    leadBusinessDate(
+                      lead.reviewDecision.archiveDate ??
+                        lead.reviewDecision.archivedAt,
+                    )
+                  }}
+                </dd>
+              </div>
+              <div>
+                <dt>审核时间</dt>
+                <dd class="mono">
+                  {{ formatTime(lead.reviewDecision.decidedAt) }}
+                </dd>
+              </div>
+            </template>
+            <template
+              v-if="
+                lead.legacyReviewOpinion ||
+                lead.legacyApprovedOn ||
+                lead.legacyConfirmedOn ||
+                lead.legacyReviewNote
+              "
+            >
+              <div>
+                <dt>审核意见</dt>
+                <dd>
+                  {{
+                    translateLegacy(
+                      legacyClueCheckOpinionLabels,
+                      lead.legacyReviewOpinion,
+                    ) || '未填写'
+                  }}
+                </dd>
+              </div>
+              <div>
+                <dt>审核通过日</dt>
+                <dd class="mono">{{ lead.legacyApprovedOn || '未登记' }}</dd>
+              </div>
+              <div>
+                <dt>客户确认日</dt>
+                <dd class="mono">{{ lead.legacyConfirmedOn || '未登记' }}</dd>
+              </div>
+              <div class="detail-grid__wide">
+                <dt>审核备注</dt>
+                <dd>{{ lead.legacyReviewNote || '未填写' }}</dd>
+              </div>
+            </template>
           </dl>
         </section>
         <section

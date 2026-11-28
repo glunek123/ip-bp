@@ -395,6 +395,7 @@ type EvidenceDecisionLead = {
   customerId: string;
   responsibleUserId: string;
   teamId: string | null;
+  creationChannel?: string;
   status: string;
   version: number;
   activeReviewDecisionId: string | null;
@@ -807,7 +808,9 @@ export class LeadService {
         ? this.canProxyAction(actor, lead, 'lead.review.proxy')
         : Promise.resolve(false),
       lead.status === 'WAITING_EVIDENCE_DECISION' &&
-      lead.reviewDecision?.result === 'INFRINGEMENT'
+      (lead.reviewDecision?.result === 'INFRINGEMENT' ||
+        (lead.creationChannel === 'HISTORICAL' &&
+          lead.activeReviewDecisionId === null))
         ? this.canProxyAction(actor, lead, 'lead.evidence.confirm.proxy')
         : Promise.resolve(false),
       this.canRevive(actor, lead),
@@ -1110,17 +1113,35 @@ export class LeadService {
     }
   }
 
+  private isEvidenceDecisionEligible(lead: {
+    status: string;
+    creationChannel?: string | null;
+    activeReviewDecisionId: string | null;
+    reviewDecision?: { id?: string; result: string } | null;
+    evidenceDecision?: unknown;
+  }): boolean {
+    if (lead.status !== 'WAITING_EVIDENCE_DECISION') return false;
+    if (lead.evidenceDecision != null) return false;
+    if (
+      lead.activeReviewDecisionId !== null &&
+      lead.reviewDecision?.result === 'INFRINGEMENT'
+    ) {
+      return (
+        lead.reviewDecision.id === undefined ||
+        lead.reviewDecision.id === lead.activeReviewDecisionId
+      );
+    }
+    return (
+      lead.creationChannel === 'HISTORICAL' &&
+      lead.activeReviewDecisionId === null
+    );
+  }
+
   private async canDecideEvidence(
     actor: ActorContext,
     lead: LeadDetailRecord,
   ): Promise<boolean> {
-    if (
-      lead.status !== 'WAITING_EVIDENCE_DECISION' ||
-      lead.activeReviewDecisionId === null ||
-      lead.reviewDecision?.result !== 'INFRINGEMENT' ||
-      lead.evidenceDecision !== null
-    )
-      return false;
+    if (!this.isEvidenceDecisionEligible(lead)) return false;
     const account = await this.database.userAccount.findUnique({
       where: { id: actor.userId },
       select: { accountType: true },
@@ -3843,14 +3864,56 @@ export class LeadService {
     current: EvidenceDecisionLead,
     expectedVersion: number,
   ): void {
+    const validReviewed =
+      current.activeReviewDecisionId !== null &&
+      current.reviewDecision?.id === current.activeReviewDecisionId &&
+      current.reviewDecision.result === 'INFRINGEMENT';
+    const validHistorical =
+      current.creationChannel === 'HISTORICAL' &&
+      current.activeReviewDecisionId === null;
     if (
       current.status !== 'WAITING_EVIDENCE_DECISION' ||
-      current.activeReviewDecisionId === null ||
-      current.reviewDecision?.id !== current.activeReviewDecisionId ||
-      current.reviewDecision.result !== 'INFRINGEMENT'
+      (!validReviewed && !validHistorical)
     )
       throw this.evidenceInvalidState();
     if (current.version !== expectedVersion) throw this.versionConflict();
+  }
+
+  private async ensureHistoricalReviewDecisionId(
+    transaction: Prisma.TransactionClient,
+    actor: ActorContext,
+    current: Pick<
+      EvidenceDecisionLead,
+      'id' | 'customerId' | 'departmentId' | 'activeReviewDecisionId'
+    >,
+    expectedVersion: number,
+    decidedAt: Date,
+  ): Promise<string> {
+    if (current.activeReviewDecisionId !== null) {
+      return current.activeReviewDecisionId;
+    }
+    const anchor = await transaction.leadReviewDecision.create({
+      data: {
+        departmentId: current.departmentId,
+        leadId: current.id,
+        customerId: current.customerId,
+        reviewerUserId: actor.userId,
+        customerAccountBindingId: null,
+        actorKind: 'INTERNAL_PROXY',
+        internalActorUserId: actor.userId,
+        reviewerDisplayNameSnapshot: '历史迁移补建审核锚点',
+        result: 'INFRINGEMENT',
+        fromVersion: expectedVersion,
+        toVersion: expectedVersion + 1,
+        decidedAt,
+      },
+      select: { id: true },
+    });
+    await transaction.lead.update({
+      where: { id: current.id },
+      data: { activeReviewDecisionId: anchor.id },
+    });
+    return anchor.id;
   }
 
   private async writeEvidenceDecision(
@@ -3879,6 +3942,19 @@ export class LeadService {
     if (changed.count !== 1) throw this.versionConflict();
     const evidenceDecisionId = randomUUID();
     const decidedAt = new Date();
+    const effectiveReviewDecisionId =
+      current.activeReviewDecisionId ??
+      (await this.ensureHistoricalReviewDecisionId(
+        transaction,
+        actor,
+        current,
+        expectedVersion,
+        decidedAt,
+      ));
+    const currentWithReview: EvidenceDecisionLead = {
+      ...current,
+      activeReviewDecisionId: effectiveReviewDecisionId,
+    };
     const parsedArchiveDate = archiveDate
       ? parseArchiveDate(archiveDate)
       : null;
@@ -3901,7 +3977,7 @@ export class LeadService {
     await this.writeNoEvidenceArchiveFact(
       transaction,
       actor,
-      current,
+      currentWithReview,
       id,
       evidenceDecisionId,
       expectedVersion,
@@ -3920,7 +3996,7 @@ export class LeadService {
         action: 'lead.evidence_decided',
         details: {
           evidenceDecisionId,
-          originalReviewDecisionId: current.activeReviewDecisionId,
+          originalReviewDecisionId: effectiveReviewDecisionId,
           result: 'NO_EVIDENCE',
           fromVersion: expectedVersion,
           toVersion: result.version,
@@ -4131,6 +4207,15 @@ export class LeadService {
             if (changed.count !== 1) throw this.versionConflict();
             const confirmationId = randomUUID();
             const decidedAt = new Date();
+            const effectiveReviewDecisionId =
+              current.activeReviewDecisionId ??
+              (await this.ensureHistoricalReviewDecisionId(
+                transaction,
+                actor,
+                current,
+                input.expectedVersion,
+                decidedAt,
+              ));
             const result: ProxyEvidenceConfirmationResponse = {
               id: confirmationId,
               leadId: id,
@@ -4154,7 +4239,7 @@ export class LeadService {
             await transaction.leadProxyEvidenceConfirmation.create({
               data: {
                 id: confirmationId,
-                originalReviewDecisionId: current.activeReviewDecisionId!,
+                originalReviewDecisionId: effectiveReviewDecisionId,
                 originalReviewResult: 'INFRINGEMENT',
                 leadId: id,
                 customerId: current.customerId,
@@ -4920,6 +5005,12 @@ export class LeadService {
       needDisclose: response.needDisclose,
       remark: response.remark,
       creationChannel: response.creationChannel,
+      legacyClueSource: response.legacyClueSource ?? null,
+      legacyApprovedOn: response.legacyApprovedOn ?? null,
+      legacyConfirmedOn: response.legacyConfirmedOn ?? null,
+      legacyPurchasedOn: response.legacyPurchasedOn ?? null,
+      legacyReviewOpinion: response.legacyReviewOpinion ?? null,
+      legacyReviewNote: response.legacyReviewNote ?? null,
       externalSourceRef: response.externalSourceRef,
       products: response.products.map((product) => ({
         id: product.id,
@@ -5092,6 +5183,12 @@ export class LeadService {
     return {
       ...snapshot,
       businessNo: current.businessNo,
+      legacyClueSource: snapshot.legacyClueSource ?? null,
+      legacyApprovedOn: snapshot.legacyApprovedOn ?? null,
+      legacyConfirmedOn: snapshot.legacyConfirmedOn ?? null,
+      legacyPurchasedOn: snapshot.legacyPurchasedOn ?? null,
+      legacyReviewOpinion: snapshot.legacyReviewOpinion ?? null,
+      legacyReviewNote: snapshot.legacyReviewNote ?? null,
       pushedByDisplayName: snapshot.pushedByDisplayName ?? null,
       reviewDecision: snapshot.reviewDecision ?? null,
       evidenceDecision: snapshot.evidenceDecision ?? null,

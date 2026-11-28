@@ -13,6 +13,7 @@ import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { isFrozenOpeningPhotoVersion } from '../materials';
 import { ReviewNotaryOpeningDto } from './lead-notary.dto';
+import { isLegacyBackfillMatter } from './notary-display-read';
 
 type ReviewResult = {
   id: string;
@@ -62,6 +63,7 @@ export class NotaryOpeningReviewService {
                 departmentId: true,
                 stage: true,
                 version: true,
+                sourceSnapshot: true,
                 opening: { select: { matterId: true } },
                 sourceLead: {
                   select: {
@@ -69,6 +71,8 @@ export class NotaryOpeningReviewService {
                     teamId: true,
                     pushedAt: true,
                     pushedByUserId: true,
+                    externalSourceRef: true,
+                    creationChannel: true,
                   },
                 },
               },
@@ -137,7 +141,11 @@ export class NotaryOpeningReviewService {
             });
             if (prior !== null)
               return this.replay(tx, prior, matterId, fingerprint);
-            if (matter.stage !== 'UNBOX_REVIEW' || matter.opening === null)
+            const isLegacyBackfill = isLegacyBackfillMatter(matter);
+            if (
+              matter.stage !== 'UNBOX_REVIEW' ||
+              (!isLegacyBackfill && matter.opening === null)
+            )
               throw new ConflictException({
                 code: 'INVALID_STATE',
                 message: '该公证事项当前不能审核开箱',
@@ -172,6 +180,7 @@ export class NotaryOpeningReviewService {
               },
             });
             if (
+              !(isLegacyBackfill && matter.opening === null) &&
               !frozenPhotos.some((photo) =>
                 isFrozenOpeningPhotoVersion(
                   photo.actionEvent?.details,

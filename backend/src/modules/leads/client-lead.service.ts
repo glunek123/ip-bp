@@ -391,15 +391,17 @@ export class ClientLeadService {
                 businessNo: true,
                 status: true,
                 version: true,
+                creationChannel: true,
                 activeReviewDecisionId: true,
                 pushedAt: true,
                 pushedByUserId: true,
               },
             });
+            const isHistorical = current?.creationChannel === 'HISTORICAL';
             if (
               current === null ||
-              current.pushedAt === null ||
-              current.pushedByUserId === null
+              (!isHistorical &&
+                (current.pushedAt === null || current.pushedByUserId === null))
             )
               throw this.notFound();
             if (
@@ -423,12 +425,22 @@ export class ClientLeadService {
                 status: 'WAITING_REVIEW',
                 activeReviewDecisionId: null,
                 version: input.expectedVersion,
-                pushedAt: { not: null },
-                pushedByUserId: { not: null },
+                ...(isHistorical
+                  ? {}
+                  : {
+                      pushedAt: { not: null },
+                      pushedByUserId: { not: null },
+                    }),
               },
               data: {
                 status: nextStatus,
                 version: { increment: 1 },
+                ...(isHistorical && current.pushedAt === null
+                  ? { pushedAt: decidedAt }
+                  : {}),
+                ...(isHistorical && current.pushedByUserId === null
+                  ? { pushedByUserId: actor.userId }
+                  : {}),
               },
             });
             if (changed.count !== 1) throw this.versionConflict();
@@ -651,17 +663,19 @@ export class ClientLeadService {
                   businessNo: true,
                   status: true,
                   version: true,
+                  creationChannel: true,
                   activeReviewDecisionId: true,
                   pushedAt: true,
                   pushedByUserId: true,
                 },
               });
+              const isHistorical = current?.creationChannel === 'HISTORICAL';
               if (
                 current === null ||
                 current.status !== 'WAITING_REVIEW' ||
                 current.activeReviewDecisionId !== null ||
-                current.pushedAt === null ||
-                current.pushedByUserId === null
+                (!isHistorical &&
+                  (current.pushedAt === null || current.pushedByUserId === null))
               )
                 throw new ConflictException({
                   code: 'BATCH_REVIEW_REJECTED',
@@ -708,6 +722,12 @@ export class ClientLeadService {
                       : 'ARCHIVED',
                   version: { increment: 1 },
                   activeReviewDecisionId: decision.id,
+                  ...(isHistorical && current.pushedAt === null
+                    ? { pushedAt: decidedAt }
+                    : {}),
+                  ...(isHistorical && current.pushedByUserId === null
+                    ? { pushedByUserId: actor.userId }
+                    : {}),
                 },
               });
               const reviewDecision =

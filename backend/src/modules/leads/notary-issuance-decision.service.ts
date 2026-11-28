@@ -11,6 +11,7 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
+import { isLegacyBackfillMatter } from './notary-display-read';
 
 type DecisionInput = {
   decision: 'ISSUE' | 'NO_ISSUE';
@@ -89,10 +90,17 @@ export class NotaryIssuanceDecisionService {
               where: { id: matterId, departmentId: actor.departmentId },
               select: {
                 departmentId: true,
+                customerId: true,
                 stage: true,
                 version: true,
+                sourceSnapshot: true,
                 sourceLead: {
-                  select: { responsibleUserId: true, teamId: true },
+                  select: {
+                    responsibleUserId: true,
+                    teamId: true,
+                    externalSourceRef: true,
+                    creationChannel: true,
+                  },
                 },
                 openingReviewDecision: {
                   select: {
@@ -141,11 +149,12 @@ export class NotaryIssuanceDecisionService {
             });
             if (prior !== null)
               return this.replay(tx, prior, matterId, fingerprint);
+            const isLegacyBackfill = isLegacyBackfillMatter(matter);
             const review = matter.openingReviewDecision;
             if (
               matter.stage !== 'ISSUANCE_DECISION' ||
-              review === null ||
-              review.archivedAt !== null
+              review?.archivedAt != null ||
+              (review === null && !isLegacyBackfill)
             )
               throw this.invalidState();
             if (matter.version !== input.expectedVersion)
@@ -166,15 +175,36 @@ export class NotaryIssuanceDecisionService {
             if (changed.count !== 1) throw this.versionConflict();
             const decidedAt = new Date();
             const actorDisplayName = account.displayName.trim();
+            const effectiveReview =
+              review ??
+              (await tx.notaryOpeningReviewDecision.create({
+                data: {
+                  matterId,
+                  departmentId: matter.departmentId,
+                  customerId: matter.customerId,
+                  actorUserId: actor.userId,
+                  actorKind: 'INTERNAL',
+                  internalActorUserId: actor.userId,
+                  customerAccountBindingId: null,
+                  actorDisplayNameSnapshot: actorDisplayName,
+                  result: 'INFRINGEMENT',
+                  reason: null,
+                  archivedAt: null,
+                  decidedAt,
+                  fromVersion: input.expectedVersion,
+                  toVersion: input.expectedVersion + 1,
+                },
+                select: { id: true, result: true, reason: true },
+              }));
             const decision = await tx.notaryIssuanceDecision.create({
               data: {
                 matterId,
                 departmentId: matter.departmentId,
-                openingReviewDecisionId: review.id,
-                openingReviewResult: review.result,
+                openingReviewDecisionId: effectiveReview.id,
+                openingReviewResult: effectiveReview.result,
                 openingRemark:
                   input.openingRemark === undefined
-                    ? review.reason
+                    ? effectiveReview.reason
                     : input.openingRemark?.trim() || null,
                 actorUserId: actor.userId,
                 actorDisplayNameSnapshot: actorDisplayName,

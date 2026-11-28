@@ -17,6 +17,7 @@ import { resolveHistoricalNumber } from '../business-numbering';
 import { initializeNotaryEvidence } from '../evidence';
 import { parseRoutineProducts } from '../../common/routine-business-product';
 import { initializeNotaryFees } from '../settlements';
+import { isLegacyBackfillMatter } from './notary-display-read';
 
 type FeeInput = { state: 'KNOWN' | 'PENDING'; amount: string | null };
 export type CertificateInput = {
@@ -114,11 +115,15 @@ export class NotaryCertificateService {
                 customerId: true,
                 rightsHolderId: true,
                 responsibleUserId: true,
+                sourceSnapshot: true,
+                legacyForensicsOpenOn: true,
                 sourceLead: {
                   select: {
                     needDisclose: true,
                     shopName: true,
                     remark: true,
+                    externalSourceRef: true,
+                    creationChannel: true,
                     products: {
                       orderBy: { position: 'asc' },
                       select: {
@@ -147,13 +152,14 @@ export class NotaryCertificateService {
                     evidenceAt: true,
                   },
                 },
+                openingReviewDecision: { select: { id: true } },
                 issuanceDecision: { select: { id: true, decision: true } },
               },
             });
             if (matter === null) throw this.notFound();
             const account = await tx.userAccount.findUnique({
               where: { id: actor.userId },
-              select: { accountType: true, active: true },
+              select: { accountType: true, active: true, displayName: true },
             });
             let bindingId: string | null;
             if (proxy) {
@@ -209,10 +215,14 @@ export class NotaryCertificateService {
             });
             if (prior !== null)
               return this.replay(tx, prior, matterId, fingerprint);
+            const isLegacyBackfill = isLegacyBackfillMatter(matter);
             if (
               matter.stage !== 'WAITING_CERTIFICATE' ||
-              matter.issuanceDecision?.decision !== 'ISSUE' ||
-              matter.evidence === null
+              (!isLegacyBackfill &&
+                (matter.issuanceDecision?.decision !== 'ISSUE' ||
+                  matter.evidence === null)) ||
+              (isLegacyBackfill &&
+                matter.issuanceDecision?.decision === 'NO_ISSUE')
             )
               throw this.invalidState();
             if (matter.version !== normalized.expectedVersion)
@@ -284,11 +294,74 @@ export class NotaryCertificateService {
             });
             if (changed.count !== 1) throw this.versionConflict();
             const issuedAt = new Date();
+            const certificateDateValue = new Date(
+              `${normalized.certificateDate}T00:00:00.000Z`,
+            );
+            const effectiveEvidenceAt =
+              matter.evidence?.evidenceAt ??
+              matter.legacyForensicsOpenOn ??
+              certificateDateValue;
+            if (matter.evidence === null) {
+              await tx.notaryMatterEvidence.create({
+                data: {
+                  matterId,
+                  departmentId: actor.departmentId,
+                  evidenceAt: effectiveEvidenceAt,
+                  sampleFeeState: 'PENDING',
+                  sampleFeeAmount: null,
+                  recordedByUserId: actor.userId,
+                },
+              });
+            }
+            let effectiveIssuanceDecisionId = matter.issuanceDecision?.id;
+            if (!effectiveIssuanceDecisionId) {
+              const actorDisplayName = account.displayName.trim() || '系统用户';
+              const reviewId =
+                matter.openingReviewDecision?.id ??
+                (
+                  await tx.notaryOpeningReviewDecision.create({
+                    data: {
+                      matterId,
+                      departmentId: actor.departmentId,
+                      customerId: matter.customerId,
+                      actorUserId: actor.userId,
+                      actorKind: 'INTERNAL',
+                      internalActorUserId: actor.userId,
+                      customerAccountBindingId: null,
+                      actorDisplayNameSnapshot: actorDisplayName,
+                      result: 'INFRINGEMENT',
+                      reason: null,
+                      archivedAt: null,
+                      decidedAt: issuedAt,
+                      fromVersion: normalized.expectedVersion,
+                      toVersion: normalized.expectedVersion + 1,
+                    },
+                    select: { id: true },
+                  })
+                ).id;
+              const anchorDecision = await tx.notaryIssuanceDecision.create({
+                data: {
+                  matterId,
+                  departmentId: actor.departmentId,
+                  openingReviewDecisionId: reviewId,
+                  openingReviewResult: 'INFRINGEMENT',
+                  openingRemark: '历史迁移补建前置出证决定锚点',
+                  actorUserId: actor.userId,
+                  actorDisplayNameSnapshot: actorDisplayName,
+                  decision: 'ISSUE',
+                  decidedAt: issuedAt,
+                  fromVersion: normalized.expectedVersion,
+                  toVersion: normalized.expectedVersion + 1,
+                },
+                select: { id: true },
+              });
+              effectiveIssuanceDecisionId = anchorDecision.id;
+            }
             const certificate = await tx.notaryCertificate.create({
               data: {
                 matterId,
                 departmentId: actor.departmentId,
-                issuanceDecisionId: matter.issuanceDecision.id,
+                issuanceDecisionId: effectiveIssuanceDecisionId,
                 notaryOfficeAccountBindingId: bindingId,
                 actorKind: proxy ? 'INTERNAL_PROXY' : 'NOTARY',
                 internalActorUserId: proxy ? actor.userId : null,
@@ -426,7 +499,7 @@ export class NotaryCertificateService {
               certificateDate: new Date(
                 `${normalized.certificateDate}T00:00:00.000Z`,
               ),
-              evidenceAt: matter.evidence.evidenceAt,
+              evidenceAt: effectiveEvidenceAt,
               officeName: matter.notaryOffice.name,
               shopName:
                 matter.routineProfile?.shopName ?? matter.sourceLead.shopName,

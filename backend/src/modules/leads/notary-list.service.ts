@@ -93,6 +93,7 @@ export class NotaryListService {
           customerId: true,
           rightsHolderId: true,
           evidenceMode: true,
+          sourceSnapshot: true,
           evidence: {
             select: {
               evidenceAt: true,

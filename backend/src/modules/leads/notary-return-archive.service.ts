@@ -14,6 +14,7 @@ import { Prisma } from '../../generated/prisma/client';
 import { ArchiveNotaryReturnDto } from './notary-return-archive.dto';
 
 import { syncNotaryMatterCost, syncNotaryReturnFees } from '../settlements';
+import { isLegacyBackfillMatter } from './notary-display-read';
 import {
   NOTARY_ARCHIVE_TYPES,
   type NotaryArchiveType,
@@ -243,6 +244,10 @@ export class NotaryReturnArchiveService {
         departmentId: true,
         stage: true,
         version: true,
+        sourceSnapshot: true,
+        sourceLead: {
+          select: { externalSourceRef: true, creationChannel: true },
+        },
         openingReviewDecision: {
           select: { result: true, reason: true, archivedAt: true },
         },
@@ -262,16 +267,19 @@ export class NotaryReturnArchiveService {
       },
     });
     if (matter === null) throw this.notFound();
+    const isLegacyBackfill = isLegacyBackfillMatter(matter);
     const isReturn = matter.stage === 'WAITING_RETURN';
     const fields = normalized.archiveFields;
     if (
       matter.stage === 'ARCHIVED' ||
       (isReturn
         ? normalized.returnChoice === null ||
-          matter.openingReviewDecision === null ||
-          matter.openingReviewDecision.archivedAt !== null ||
-          matter.issuanceDecision?.decision !== 'NO_ISSUE' ||
-          matter.evidence === null
+          matter.openingReviewDecision?.archivedAt != null ||
+          matter.issuanceDecision?.decision === 'ISSUE' ||
+          (!isLegacyBackfill &&
+            (matter.openingReviewDecision === null ||
+              matter.issuanceDecision?.decision !== 'NO_ISSUE' ||
+              matter.evidence === null))
         : normalized.returnChoice !== null ||
           fields?.archiveDate === undefined ||
           fields.sampleFeeAmount === undefined)
@@ -288,17 +296,20 @@ export class NotaryReturnArchiveService {
         fields?.sampleFeeAmount ??
         matter.costs?.[0]?.amount ??
         matter.evidence?.sampleFeeAmount;
-      if (sampleAmount == null || matter.evidence === null)
+      if (sampleAmount == null || (!isLegacyBackfill && matter.evidence === null))
         throw this.originalAmountUnknown();
-      const previous = await tx.notaryReturnAmount.findMany({
-        where: {
-          sourceEvidenceMatterId: matter.evidence.matterId,
-          departmentId: matter.departmentId,
-          kind: 'REFUND',
-          state: 'KNOWN',
-        },
-        select: { amount: true },
-      });
+      const previous =
+        matter.evidence === null
+          ? []
+          : await tx.notaryReturnAmount.findMany({
+              where: {
+                sourceEvidenceMatterId: matter.evidence.matterId,
+                departmentId: matter.departmentId,
+                kind: 'REFUND',
+                state: 'KNOWN',
+              },
+              select: { amount: true },
+            });
       const total = previous.reduce(
         (sum, row) => sum.plus(row.amount ?? 0),
         new Prisma.Decimal(normalized.refund.amount),

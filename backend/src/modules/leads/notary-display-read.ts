@@ -22,6 +22,8 @@ export const NOTARY_DISPLAY_LEAD_SELECT = {
   shopName: true,
   shopExternalId: true,
   needDisclose: true,
+  externalSourceRef: true,
+  creationChannel: true,
 } satisfies Prisma.LeadSelect;
 
 export const NOTARY_DISPLAY_CERTIFICATE_SELECT = {
@@ -303,7 +305,13 @@ type CapabilityMatter = {
   departmentId: string;
   stage: NotaryMatterStage;
   evidenceMode: string | null;
-  sourceLead: { responsibleUserId: string; teamId: string | null };
+  sourceSnapshot?: unknown;
+  sourceLead: {
+    responsibleUserId: string;
+    teamId: string | null;
+    externalSourceRef?: string | null;
+    creationChannel?: string | null;
+  };
   evidence: object | null;
   opening: object | null;
   openingReviewDecision: {
@@ -313,6 +321,29 @@ type CapabilityMatter = {
   } | null;
   issuanceDecision: { decision: string } | null;
 };
+
+export function isLegacyBackfillMatter(matter: {
+  sourceSnapshot?: unknown;
+  sourceLead?: {
+    externalSourceRef?: string | null;
+    creationChannel?: string | null;
+  } | null;
+}): boolean {
+  const snapshot =
+    matter.sourceSnapshot !== null &&
+    typeof matter.sourceSnapshot === 'object' &&
+    !Array.isArray(matter.sourceSnapshot)
+      ? (matter.sourceSnapshot as Record<string, unknown>)
+      : null;
+  if (snapshot?.source === 'NOCOBASE') return true;
+  if (
+    typeof snapshot?.legacyId === 'string' &&
+    matter.sourceLead?.externalSourceRef === `nocobase:${snapshot.legacyId}`
+  ) {
+    return true;
+  }
+  return matter.sourceLead?.creationChannel === 'HISTORICAL';
+}
 
 export async function notaryDisplayCapabilities(
   access: AccessControlService,
@@ -329,6 +360,7 @@ export async function notaryDisplayCapabilities(
     archiveReturn: false,
     proxyIssueCertificate: false,
   };
+  const legacyBackfill = isLegacyBackfillMatter(matter);
   const reviewed =
     matter.opening !== null &&
     matter.openingReviewDecision !== null &&
@@ -342,36 +374,42 @@ export async function notaryDisplayCapabilities(
     [
       'recordOpening',
       'notary.unbox.record',
-      matter.stage === 'WAITING_UNBOX' && matter.evidence !== null,
+      matter.stage === 'WAITING_UNBOX' &&
+        (matter.evidence !== null || legacyBackfill),
     ],
     [
       'reviewOpening',
       'notary.opening.review',
       matter.stage === 'UNBOX_REVIEW' &&
-        matter.opening !== null &&
-        Number.isSafeInteger(frozenPhotoCount) &&
-        frozenPhotoCount > 0,
+        (legacyBackfill ||
+          (matter.opening !== null &&
+            Number.isSafeInteger(frozenPhotoCount) &&
+            frozenPhotoCount > 0)),
     ],
     [
       'decideIssuance',
       'notary.issuance.decide',
-      matter.stage === 'ISSUANCE_DECISION' && reviewed,
+      matter.stage === 'ISSUANCE_DECISION' &&
+        (reviewed ||
+          (legacyBackfill && matter.openingReviewDecision?.archivedAt == null)),
     ],
     ['archiveMatter', 'notary.return.archive', matter.stage !== 'ARCHIVED'],
     [
       'archiveReturn',
       'notary.return.archive',
       matter.stage === 'WAITING_RETURN' &&
-        matter.evidence !== null &&
-        reviewed &&
-        matter.issuanceDecision?.decision === 'NO_ISSUE',
+        ((matter.evidence !== null &&
+          reviewed &&
+          matter.issuanceDecision?.decision === 'NO_ISSUE') ||
+          (legacyBackfill && matter.issuanceDecision?.decision !== 'ISSUE')),
     ],
     [
       'proxyIssueCertificate',
       'notary.certificate.issue.proxy',
       matter.stage === 'WAITING_CERTIFICATE' &&
-        matter.evidence !== null &&
-        matter.issuanceDecision?.decision === 'ISSUE',
+        ((matter.evidence !== null &&
+          matter.issuanceDecision?.decision === 'ISSUE') ||
+          (legacyBackfill && matter.issuanceDecision?.decision !== 'NO_ISSUE')),
     ],
   ] as const;
   for (const [key, action, eligible] of actions) {

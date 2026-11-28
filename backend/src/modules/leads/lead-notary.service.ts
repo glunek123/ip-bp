@@ -270,10 +270,14 @@ export class LeadNotaryService {
             });
             if (prior !== null)
               return this.receiptResult(prior, fingerprint, leadId);
+            const reviewReady =
+              (lead.activeReviewDecisionId !== null &&
+                lead.reviewDecision?.id === lead.activeReviewDecisionId &&
+                lead.reviewDecision.result === 'INFRINGEMENT') ||
+              (lead.creationChannel === 'HISTORICAL' &&
+                lead.activeReviewDecisionId === null);
             if (
-              lead.activeReviewDecisionId === null ||
-              lead.reviewDecision?.id !== lead.activeReviewDecisionId ||
-              lead.reviewDecision.result !== 'INFRINGEMENT' ||
+              !reviewReady ||
               lead.evidenceDecision !== null ||
               (newBatch
                 ? lead.status !== 'TRANSFERRED_TO_NOTARY'
@@ -618,11 +622,15 @@ export class LeadNotaryService {
             const results: TransferResult[] = [];
             for (const item of items) {
               const lead = byId.get(item.leadId)!;
+              const reviewReady =
+                (lead.activeReviewDecisionId !== null &&
+                  lead.reviewDecision?.id === lead.activeReviewDecisionId &&
+                  lead.reviewDecision.result === 'INFRINGEMENT') ||
+                (lead.creationChannel === 'HISTORICAL' &&
+                  lead.activeReviewDecisionId === null);
               if (
                 lead.status !== 'WAITING_EVIDENCE_DECISION' ||
-                lead.activeReviewDecisionId === null ||
-                lead.reviewDecision?.id !== lead.activeReviewDecisionId ||
-                lead.reviewDecision.result !== 'INFRINGEMENT' ||
+                !reviewReady ||
                 lead.evidenceDecision !== null
               )
                 throw this.invalidState(lead.businessNo);
@@ -1410,7 +1418,8 @@ export class LeadNotaryService {
       legacySnapshot?.source === 'NOCOBASE' ||
       (typeof legacySnapshot?.legacyId === 'string' &&
         matter.sourceLead.externalSourceRef ===
-          `nocobase:${legacySnapshot.legacyId}`);
+          `nocobase:${legacySnapshot.legacyId}`) ||
+      matter.sourceLead.creationChannel === 'HISTORICAL';
     const earlyArchive =
       matter.stage === 'ARCHIVED' &&
       matter.returnArchive?.fromStage != null &&

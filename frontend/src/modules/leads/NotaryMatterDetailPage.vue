@@ -1310,7 +1310,6 @@ async function saveLegacyFields() {
                 matter.legacyNotarization.uploadOn)
             "
           >
-            <p class="legacy-hint">以下为历史迁移公证书信息，仅供查阅。</p>
             <dl class="demo-detail-grid" data-test="notary-certificate-legacy">
               <div>
                 <dt>历史公证书编号</dt>

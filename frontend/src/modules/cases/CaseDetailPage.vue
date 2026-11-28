@@ -3238,180 +3238,6 @@ onBeforeUnmount(() => {
             }}</template
           >
         </p>
-        <section
-          v-if="item.legacyPayments && item.legacyPayments.length > 0"
-          class="legacy-panel"
-          data-test="case-legacy-payments"
-        >
-          <div class="legacy-panel__head">
-            <h2 class="form-section-title">历史实收流水</h2>
-            <span class="legacy-panel__hint">
-              旧库迁移的付款记录，付款方向与收款方待核，不计入当前有效付款与财务总额。
-            </span>
-          </div>
-          <div class="demo-table-scroll">
-            <table class="demo-table">
-              <thead>
-                <tr>
-                  <th>付款日期</th>
-                  <th>付款人</th>
-                  <th>金额（元）</th>
-                  <th>核实状态</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="payment in item.legacyPayments"
-                  :key="payment.legacyPaymentId"
-                >
-                  <td class="mono">{{ payment.paidOn || '未登记' }}</td>
-                  <td>{{ payment.payer || '未登记' }}</td>
-                  <td class="mono">{{ payment.amount }}</td>
-                  <td>{{ payment.verified ? '已核实' : '待核实' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-        <section
-          v-if="item.legacyProducts && item.legacyProducts.length > 0"
-          class="legacy-panel"
-          data-test="case-legacy-products"
-        >
-          <div class="legacy-panel__head">
-            <h2 class="form-section-title">历史商品</h2>
-            <span class="legacy-panel__hint">
-              旧库迁移的历史商品资料，仅供查阅，不参与当前结算与评估。
-            </span>
-          </div>
-          <div class="demo-table-scroll">
-            <table class="demo-table">
-              <thead>
-                <tr>
-                  <th>商品名称</th>
-                  <th>商品链接</th>
-                  <th>销量</th>
-                  <th>单价（元）</th>
-                  <th>评论数</th>
-                  <th>销售额（元）</th>
-                  <th>采购规格</th>
-                  <th>采购金额（元）</th>
-                  <th>采购物流</th>
-                  <th>订单状态</th>
-                  <th>证物信息</th>
-                  <th>退货／运费</th>
-                  <th>备注</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="product in item.legacyProducts" :key="product.legacyTortId">
-                  <td>{{ product.title || '未登记' }}</td>
-                  <td>
-                    <a
-                      v-if="product.url"
-                      :href="product.url"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      >{{ product.url }}</a
-                    >
-                    <span v-else>未登记</span>
-                  </td>
-                  <td class="mono">{{ product.quantity }}</td>
-                  <td class="mono">{{ product.unitPrice }}</td>
-                  <td class="mono">{{ product.commentCount }}</td>
-                  <td class="mono">{{ product.estimatedAmount }}</td>
-                  <td>{{ product.orderSpecs || '—' }}</td>
-                  <td class="mono">{{ product.orderAmount ?? '—' }}</td>
-                  <td>
-                    {{
-                      [product.orderExpress, product.orderTracking]
-                        .filter(Boolean)
-                        .join(' / ') || '—'
-                    }}
-                  </td>
-                  <td>{{ product.orderStatus || '—' }}</td>
-                  <td>
-                    {{
-                      [
-                        product.exhibitNumber,
-                        product.exhibitShelf ? `架:${product.exhibitShelf}` : null,
-                        product.exhibitOutbound ? `出库:${product.exhibitOutbound}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(' / ') || '—'
-                    }}
-                  </td>
-                  <td class="mono">
-                    {{
-                      product.returnAmount || product.returnShipping
-                        ? `${product.returnAmount ?? '0'} / ${product.returnShipping ?? '0'}`
-                        : '—'
-                    }}
-                  </td>
-                  <td>{{ product.tortNotes || '—' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-        <section class="legacy-panel">
-          <div class="legacy-panel__head">
-            <h2 class="form-section-title">披露信息</h2>
-            <div class="legacy-panel__actions">
-              <button type="button" class="legacy-btn" @click="openLegacyEdit">
-                编辑补充信息
-              </button>
-              <button
-                v-if="item.stage === 'ARCHIVED'"
-                type="button"
-                class="legacy-btn legacy-btn--danger"
-                @click="openRevokeDialog"
-              >
-                撤销归档
-              </button>
-              <button type="button" class="legacy-btn" @click="openDisclosureEdit">
-                编辑披露信息
-              </button>
-              <button
-                v-if="item.disclosure"
-                type="button"
-                class="legacy-btn legacy-btn--danger"
-                :disabled="disclosureSaving"
-                @click="clearDisclosure"
-              >
-                清空披露信息
-              </button>
-            </div>
-          </div>
-          <dl class="legacy-grid">
-            <template v-if="item.disclosure">
-              <dt>营业执照</dt>
-              <dd>{{ item.disclosure.license ?? '未登记' }}</dd>
-              <dt>经营主体</dt>
-              <dd>{{ item.disclosure.entityName ?? '未登记' }}</dd>
-              <dt>主体类型</dt>
-              <dd>
-                {{
-                  translateLegacy(
-                    legacyDisclosureTypeLabels,
-                    item.disclosure.entityType,
-                  ) ?? '未登记'
-                }}
-              </dd>
-              <dt>法定代表人</dt>
-              <dd>{{ item.disclosure.legalPerson ?? '未登记' }}</dd>
-              <dt>联系电话</dt>
-              <dd>{{ item.disclosure.phone ?? '未登记' }}</dd>
-              <dt>经营地址</dt>
-              <dd>{{ item.disclosure.address ?? '未登记' }}</dd>
-              <dt>销售额</dt>
-              <dd>{{ item.disclosure.salesAmount ?? '未登记' }}</dd>
-            </template>
-          </dl>
-          <p v-if="disclosureError" class="submit-error" role="alert">
-            {{ disclosureError }}
-          </p>
-        </section>
         <ElDialog v-model="revokeDialog" title="撤销归档" width="460px">
           <p style="margin: 0 0 10px; font-size: 13px">
             撤销后案件退回「待归档」，可继续修改资料。归档记录会保留在撤销留痕中。
@@ -3543,6 +3369,207 @@ onBeforeUnmount(() => {
           @supplement-changed="detailSourcesRevision += 1"
           @open-files="selectTab('files')"
         >
+          <template #tools-case-info>
+            <button
+              type="button"
+              class="case-workspace-section__view"
+              @click="openLegacyEdit"
+            >
+              编辑补充信息
+            </button>
+            <button
+              v-if="item.stage === 'ARCHIVED'"
+              type="button"
+              class="case-workspace-section__view"
+              @click="openRevokeDialog"
+            >
+              撤销归档
+            </button>
+          </template>
+          <template #section-lead-info>
+            <div
+              v-if="item.legacyProducts && item.legacyProducts.length > 0"
+              class="case-workspace-payment-table"
+              data-test="case-legacy-products"
+            >
+              <h3>涉案商品明细</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>商品名称</th>
+                    <th>商品链接</th>
+                    <th>销量</th>
+                    <th>单价（元）</th>
+                    <th>评论数</th>
+                    <th>销售额（元）</th>
+                    <th>采购规格</th>
+                    <th>采购金额（元）</th>
+                    <th>采购物流</th>
+                    <th>订单状态</th>
+                    <th>证物信息</th>
+                    <th>退货／运费</th>
+                    <th>备注</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="product in item.legacyProducts"
+                    :key="product.legacyTortId"
+                  >
+                    <td>{{ product.title || '未登记' }}</td>
+                    <td>
+                      <a
+                        v-if="product.url"
+                        :href="product.url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >{{ product.url }}</a
+                      >
+                      <span v-else>未登记</span>
+                    </td>
+                    <td class="mono">{{ product.quantity }}</td>
+                    <td class="mono">{{ product.unitPrice }}</td>
+                    <td class="mono">{{ product.commentCount }}</td>
+                    <td class="mono">{{ product.estimatedAmount }}</td>
+                    <td>{{ product.orderSpecs || '—' }}</td>
+                    <td class="mono">{{ product.orderAmount ?? '—' }}</td>
+                    <td>
+                      {{
+                        [product.orderExpress, product.orderTracking]
+                          .filter(Boolean)
+                          .join(' / ') || '—'
+                      }}
+                    </td>
+                    <td>{{ product.orderStatus || '—' }}</td>
+                    <td>
+                      {{
+                        [
+                          product.exhibitNumber,
+                          product.exhibitShelf ? `架:${product.exhibitShelf}` : null,
+                          product.exhibitOutbound ? `出库:${product.exhibitOutbound}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' / ') || '—'
+                      }}
+                    </td>
+                    <td class="mono">
+                      {{
+                        product.returnAmount || product.returnShipping
+                          ? `${product.returnAmount ?? '0'} / ${product.returnShipping ?? '0'}`
+                          : '—'
+                      }}
+                    </td>
+                    <td>{{ product.tortNotes || '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="case-workspace-summary-group">
+              <div class="legacy-panel__head">
+                <h3>披露信息</h3>
+                <div class="legacy-panel__actions">
+                  <button
+                    type="button"
+                    class="case-workspace-section__view"
+                    @click="openDisclosureEdit"
+                  >
+                    编辑披露信息
+                  </button>
+                  <button
+                    v-if="item.disclosure"
+                    type="button"
+                    class="case-workspace-section__view"
+                    :disabled="disclosureSaving"
+                    @click="clearDisclosure"
+                  >
+                    清空披露信息
+                  </button>
+                </div>
+              </div>
+              <dl v-if="item.disclosure" class="case-workspace-fields">
+                <div class="case-workspace-field">
+                  <dt class="case-workspace-field__label">营业执照</dt>
+                  <dd class="case-workspace-field__value">
+                    {{ item.disclosure.license ?? '未登记' }}
+                  </dd>
+                </div>
+                <div class="case-workspace-field">
+                  <dt class="case-workspace-field__label">经营主体</dt>
+                  <dd class="case-workspace-field__value">
+                    {{ item.disclosure.entityName ?? '未登记' }}
+                  </dd>
+                </div>
+                <div class="case-workspace-field">
+                  <dt class="case-workspace-field__label">主体类型</dt>
+                  <dd class="case-workspace-field__value">
+                    {{
+                      translateLegacy(
+                        legacyDisclosureTypeLabels,
+                        item.disclosure.entityType,
+                      ) ?? '未登记'
+                    }}
+                  </dd>
+                </div>
+                <div class="case-workspace-field">
+                  <dt class="case-workspace-field__label">法定代表人</dt>
+                  <dd class="case-workspace-field__value">
+                    {{ item.disclosure.legalPerson ?? '未登记' }}
+                  </dd>
+                </div>
+                <div class="case-workspace-field">
+                  <dt class="case-workspace-field__label">联系电话</dt>
+                  <dd class="case-workspace-field__value">
+                    {{ item.disclosure.phone ?? '未登记' }}
+                  </dd>
+                </div>
+                <div class="case-workspace-field">
+                  <dt class="case-workspace-field__label">经营地址</dt>
+                  <dd class="case-workspace-field__value">
+                    {{ item.disclosure.address ?? '未登记' }}
+                  </dd>
+                </div>
+                <div class="case-workspace-field">
+                  <dt class="case-workspace-field__label">销售额</dt>
+                  <dd class="case-workspace-field__value">
+                    {{ item.disclosure.salesAmount ?? '未登记' }}
+                  </dd>
+                </div>
+              </dl>
+              <p v-if="disclosureError" class="submit-error" role="alert">
+                {{ disclosureError }}
+              </p>
+            </div>
+          </template>
+          <template #section-closure-info>
+            <div
+              v-if="item.legacyPayments && item.legacyPayments.length > 0"
+              class="case-workspace-payment-table"
+              data-test="case-legacy-payments"
+            >
+              <h3>补充实收流水</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>付款日期</th>
+                    <th>付款人</th>
+                    <th>金额（元）</th>
+                    <th>核实状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="payment in item.legacyPayments"
+                    :key="payment.legacyPaymentId"
+                  >
+                    <td class="mono">{{ payment.paidOn || '未登记' }}</td>
+                    <td>{{ payment.payer || '未登记' }}</td>
+                    <td class="mono">{{ payment.amount }}</td>
+                    <td>{{ payment.verified ? '已核实' : '待核实' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </template>
           <template #edit-lead-info>
             <section
               v-if="routineEditing && routine"

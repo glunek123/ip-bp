@@ -257,8 +257,13 @@ function edit(key: SectionKey): void {
       :default-expanded="section.key === 'case-info'"
       @edit="edit"
     >
-      <template v-if="section.key === 'timeline'" #tools>
+      <template
+        v-if="section.key === 'timeline' || Boolean($slots[`tools-${section.key}`])"
+        #tools
+      >
+        <slot :name="`tools-${section.key}`" />
         <button
+          v-if="section.key === 'timeline'"
           type="button"
           class="case-workspace-section__view"
           @click="emit('view-timeline')"
@@ -575,6 +580,7 @@ function edit(key: SectionKey): void {
           </details>
         </li>
       </ol>
+      <slot :name="`section-${section.key}`" />
     </CaseWorkspaceSection>
   </div>
 </template>
