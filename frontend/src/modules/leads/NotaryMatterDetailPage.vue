@@ -54,8 +54,11 @@ const actorKey = computed(() =>
     auth.session?.authorizationRevision ?? '',
   ].join(':'),
 );
+function currentMatterId(): string {
+  return typeof route.params.id === 'string' ? route.params.id.trim() : '';
+}
 const requestScopeKey = computed(
-  () => String(route.params.id) + ':' + actorKey.value,
+  () => currentMatterId() + ':' + actorKey.value,
 );
 let contextGeneration = 0;
 let request: AbortController | undefined;
@@ -268,11 +271,12 @@ function formatRefundAmount(): void {
 }
 
 async function submitSampleRefund(): Promise<void> {
-  if (refundBusy.value) return;
+  const matterId = currentMatterId();
+  if (refundBusy.value || !matterId) return;
   refundError.value = '';
   refundBusy.value = true;
   try {
-    await setNotarySampleFeeRefund(String(route.params.id), {
+    await setNotarySampleFeeRefund(matterId, {
       amount: refundAmount.value.trim(),
       ...(refundNote.value.trim() ? { note: refundNote.value.trim() } : {}),
     });
@@ -295,7 +299,13 @@ function toggleSampleRefund(): void {
 
 async function load(): Promise<boolean> {
   const generation = contextGeneration;
+  const matterId = currentMatterId();
   request?.abort();
+  if (!matterId) {
+    state.value = 'loading';
+    matter.value = undefined;
+    return false;
+  }
   const controller = new AbortController();
   request = controller;
   state.value = 'loading';
@@ -305,7 +315,7 @@ async function load(): Promise<boolean> {
     return false;
   }
   try {
-    const current = await getNotaryMatter(String(route.params.id), {
+    const current = await getNotaryMatter(matterId, {
       signal: controller.signal,
     });
     if (controller.signal.aborted || generation !== contextGeneration)
@@ -325,9 +335,9 @@ async function load(): Promise<boolean> {
   }
 }
 async function refreshCorrectionFacts(): Promise<void> {
-  if (correctionRefreshing.value) return;
+  const matterId = currentMatterId();
+  if (correctionRefreshing.value || !matterId) return;
   const generation = contextGeneration;
-  const matterId = String(route.params.id);
   const controller = new AbortController();
   correctionRefreshRequest = controller;
   correctionRefreshing.value = true;
@@ -339,7 +349,7 @@ async function refreshCorrectionFacts(): Promise<void> {
     if (
       controller.signal.aborted ||
       generation !== contextGeneration ||
-      String(route.params.id) !== matterId ||
+      currentMatterId() !== matterId ||
       !auth.session ||
       auth.session.principalType !== 'INTERNAL'
     )
@@ -526,6 +536,7 @@ watch(
   requestScopeKey,
   () => {
     clearContext();
+    if (!currentMatterId()) return;
     void load();
   },
   { immediate: true, flush: 'sync' },

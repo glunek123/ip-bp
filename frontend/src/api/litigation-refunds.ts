@@ -148,29 +148,46 @@ function isSource(value: unknown): value is RefundSource {
     typeof value.valid === 'boolean'
   );
 }
+const refundRowRequiredKeys = [
+  'caseId',
+  'itemId',
+  'inventoryVersionId',
+  'caseNo',
+  'plaintiff',
+  'defendant',
+  'courtNo',
+  'lawyer',
+  'party',
+  'amount',
+  'status',
+  'description',
+  'remark',
+  'archived',
+  'archiveStatus',
+  'canFollow',
+  'canRecord',
+  'source',
+] as const;
+const refundRowAllowedKeys = new Set<string>([
+  ...refundRowRequiredKeys,
+  'executionCaseNo',
+  'payee',
+]);
+function hasAllowedKeys(
+  value: RecordValue,
+  requiredKeys: readonly string[],
+  allowedKeys: ReadonlySet<string>,
+): boolean {
+  const keys = Object.keys(value);
+  return (
+    requiredKeys.every((key) => Object.hasOwn(value, key)) &&
+    keys.every((key) => allowedKeys.has(key))
+  );
+}
 function isRow(value: unknown): value is RefundRow {
   return (
     isRecord(value) &&
-    exact(value, [
-      'caseId',
-      'itemId',
-      'inventoryVersionId',
-      'caseNo',
-      'plaintiff',
-      'defendant',
-      'courtNo',
-      'lawyer',
-      'party',
-      'amount',
-      'status',
-      'description',
-      'remark',
-      'archived',
-      'archiveStatus',
-      'canFollow',
-      'canRecord',
-      'source',
-    ]) &&
+    hasAllowedKeys(value, refundRowRequiredKeys, refundRowAllowedKeys) &&
     typeof value.caseId === 'string' &&
     typeof value.itemId === 'string' &&
     typeof value.inventoryVersionId === 'string' &&
@@ -178,6 +195,12 @@ function isRow(value: unknown): value is RefundRow {
     typeof value.plaintiff === 'string' &&
     typeof value.defendant === 'string' &&
     nullableString(value.courtNo) &&
+    (!Object.hasOwn(value, 'executionCaseNo') ||
+      nullableString(value.executionCaseNo)) &&
+    (!Object.hasOwn(value, 'payee') ||
+      value.payee === null ||
+      value.payee === 'PLAINTIFF' ||
+      value.payee === 'LAW_FIRM') &&
     nullableString(value.lawyer) &&
     (value.party === 'COURT' || value.party === 'DEFENDANT') &&
     nullableString(value.amount) &&

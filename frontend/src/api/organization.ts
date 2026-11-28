@@ -60,6 +60,8 @@ export const permissionActionValues = [
   'CUSTOMER_EDIT_ROUTINE',
   'CUSTOMER_DELETE_DRAFT',
   'CUSTOMER_RESTORE_DRAFT',
+  'CUSTOMER_DELETE',
+  'CUSTOMER_RESTORE',
   'CUSTOMER_RESPONSIBLE_TRANSFER',
   'CUSTOMER_COOPERATION_PAUSE',
   'CUSTOMER_COOPERATION_TERMINATE',
@@ -144,6 +146,10 @@ export const permissionActionValues = [
   'USER_READ',
   'USER_MANAGE',
   'LAWYER_ACCOUNT_MANAGE',
+  'LAWYER_PROFILE_READ',
+  'LAWYER_PROFILE_MANAGE',
+  'CASE_DELETE',
+  'DELETION_AUDIT_READ',
   'TEAM_READ',
   'TEAM_MANAGE',
   'ROLE_READ',
@@ -166,6 +172,12 @@ const refundNoTeamActions = new Set<PermissionAction>([
   'CASE_REFUND_RECORD',
   'CASE_REFUND_FOLLOW',
   'CASE_REFUND_EXPORT',
+]);
+const catalogDepartmentOnlyActions = new Set<PermissionAction>([
+  'LAWYER_PROFILE_READ',
+  'LAWYER_PROFILE_MANAGE',
+  'CASE_DELETE',
+  'DELETION_AUDIT_READ',
 ]);
 const demoDepartmentActions = new Set<PermissionAction>([
   'EVIDENCE_READ',
@@ -360,6 +372,7 @@ function isGrant(value: unknown): value is OrganizationGrant {
       value.scope === 'TEAM' ||
       value.scope === 'DEPARTMENT') &&
     ((!demoDepartmentActions.has(value.action as PermissionAction) &&
+      !catalogDepartmentOnlyActions.has(value.action as PermissionAction) &&
       value.action !== 'CASE_EXTERNAL_ENTRY_ARCHIVE' &&
       value.action !== 'CASE_EXPORT') ||
       value.scope === 'DEPARTMENT') &&
@@ -413,7 +426,8 @@ function isPermissionCatalog(
       (demoDepartmentActions.has(item.action as PermissionAction) &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
       ((item.action === 'CASE_EXTERNAL_ENTRY_ARCHIVE' ||
-        item.action === 'CASE_DEPARTMENT_PROXY') &&
+        item.action === 'CASE_DEPARTMENT_PROXY' ||
+        catalogDepartmentOnlyActions.has(item.action as PermissionAction)) &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
       ((item.action === 'CASE_ROUTINE_EDIT' ||
         item.action === 'CASE_CLOSURE_SETTLEMENT_UPDATE') &&

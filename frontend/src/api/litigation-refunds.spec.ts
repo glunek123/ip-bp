@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   exportLitigationRefunds,
+  getLitigationRefundWorkspace,
   listLitigationRefunds,
   refundStatuses,
 } from './litigation-refunds';
@@ -60,9 +61,11 @@ describe('litigation refunds API', () => {
     );
   });
 
-  it('rejects unknown fields and unknown status values in response rows', async () => {
+  it('rejects unknown fields, invalid payee values, and unknown status values in response rows', async () => {
     for (const badRow of [
       { ...row, unexpected: true },
+      { ...row, payee: 'OTHER_PARTY' },
+      { ...row, executionCaseNo: 123 },
       { ...row, status: 'FUTURE_STATUS' },
     ]) {
       vi.stubGlobal(
@@ -77,6 +80,47 @@ describe('litigation refunds API', () => {
         code: 'INVALID_RESPONSE',
       });
     }
+  });
+
+  it('accepts optional executionCaseNo and payee fields on list and workspace rows', async () => {
+    const rowWithExtras = {
+      ...row,
+      executionCaseNo: '（2026）沪0115执100号',
+      payee: 'LAW_FIRM' as const,
+      amount: '225.00',
+      status: 'PENDING' as const,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ ...list, items: [rowWithExtras] })),
+      ),
+    );
+    const listed = await listLitigationRefunds();
+    expect(listed.items[0]?.executionCaseNo).toBe('（2026）沪0115执100号');
+    expect(listed.items[0]?.payee).toBe('LAW_FIRM');
+
+    const workspaceRow = {
+      ...row,
+      payee: 'PLAINTIFF' as const,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            caseId: 'case-1',
+            inventoryVersionId: 'inv-1',
+            canRecord: true,
+            canFollow: true,
+            sources: [],
+            items: [workspaceRow],
+          }),
+        ),
+      ),
+    );
+    const workspace = await getLitigationRefundWorkspace('case-1');
+    expect(workspace.items[0]?.payee).toBe('PLAINTIFF');
   });
 
   it('exports the server filtered set without pagination or selection parameters', async () => {

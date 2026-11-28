@@ -262,6 +262,16 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CUSTOMER_DELETE',
+      label: '删除客户',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CUSTOMER_RESTORE',
+      label: '恢复已删除客户',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'CUSTOMER_RESPONSIBLE_TRANSFER',
       label: '转派负责运营',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -652,6 +662,26 @@ const context = {
       scopes: ['DEPARTMENT'],
     },
     {
+      action: 'LAWYER_PROFILE_READ',
+      label: '查看律师库',
+      scopes: ['DEPARTMENT'],
+    },
+    {
+      action: 'LAWYER_PROFILE_MANAGE',
+      label: '管理律师库',
+      scopes: ['DEPARTMENT'],
+    },
+    {
+      action: 'CASE_DELETE',
+      label: '删除案件',
+      scopes: ['DEPARTMENT'],
+    },
+    {
+      action: 'DELETION_AUDIT_READ',
+      label: '查看删除留痕',
+      scopes: ['DEPARTMENT'],
+    },
+    {
       action: 'TEAM_READ',
       label: '查看团队',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -805,6 +835,8 @@ describe('organization API', () => {
       'CUSTOMER_EDIT_ROUTINE',
       'CUSTOMER_DELETE_DRAFT',
       'CUSTOMER_RESTORE_DRAFT',
+      'CUSTOMER_DELETE',
+      'CUSTOMER_RESTORE',
       'CUSTOMER_RESPONSIBLE_TRANSFER',
       'CUSTOMER_COOPERATION_PAUSE',
       'CUSTOMER_COOPERATION_TERMINATE',
@@ -885,6 +917,10 @@ describe('organization API', () => {
       'USER_READ',
       'USER_MANAGE',
       'LAWYER_ACCOUNT_MANAGE',
+      'LAWYER_PROFILE_READ',
+      'LAWYER_PROFILE_MANAGE',
+      'CASE_DELETE',
+      'DELETION_AUDIT_READ',
       'TEAM_READ',
       'TEAM_MANAGE',
       'ROLE_READ',

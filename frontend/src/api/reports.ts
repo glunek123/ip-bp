@@ -352,10 +352,10 @@ export async function getReportsCenter(
   )
     throw invalidResponse();
   const bounds = [
-    ['0.00', '100000.00'],
-    ['100000.00', '300000.00'],
-    ['300000.00', '500000.00'],
-    ['500000.00', null],
+    ['0.00', '10.00'],
+    ['10.00', '30.00'],
+    ['30.00', '50.00'],
+    ['50.00', null],
   ];
   const bucketCounts: number[] = [];
   for (const [index, bucket] of m.buckets.entries()) {

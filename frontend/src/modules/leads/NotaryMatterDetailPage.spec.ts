@@ -368,6 +368,7 @@ async function mountPage(path = '/notary-matters/matter-1') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: '/notary-matters', component: { template: '<div />' } },
       { path: '/notary-matters/:id', component: NotaryMatterDetailPage },
       { path: '/leads/:id', component: { template: '<div />' } },
       { path: '/cases/:id', component: { template: '<div />' } },
@@ -2599,4 +2600,12 @@ describe('NotaryMatterDetailPage', () => {
       expect(wrapper.text()).toContain('请刷新后再试');
     },
   );
+
+  it('does not request /notary-matters/undefined when navigating away to list route', async () => {
+    const wrapper = await mountPage('/notary-matters/matter-1');
+    api.getNotaryMatter.mockClear();
+    await wrapper.vm.$router.push('/notary-matters?stage=UNBOX_REVIEW');
+    await flushPromises();
+    expect(api.getNotaryMatter).not.toHaveBeenCalled();
+  });
 });
