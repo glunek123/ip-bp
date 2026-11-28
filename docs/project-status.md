@@ -10,7 +10,14 @@
 - **安全与权限收口**：`CaseLegacyFactsService` 补齐 `AccessControlService.authorizeCase(actor, 'case.routine.edit', ...)`；数据库迁移 `20261128160000` 删除 `public.update_case_legacy_facts(...)` 并收回 `PUBLIC` 对 `public.revoke_case_archive(...)` 的执行权限。
 - **验证与上线结果**：
   - 本地：`pnpm architecture:check` 通过（23 模块 / 224 模型）；`backend` `tsc --noEmit` 与 7 个 Jest 测试套件（54 个用例）全部通过；`frontend` `vue-tsc --noEmit` 与 8 个 Vitest 文件（537 passed | 4 skipped）全部通过。
-  - UAT（`ubuntu@111.231.164.248`）：已部署 `6c129785` 至 `/srv/ip-bp-uat/releases/6c129785`，`ip-bp-uat` 为 `active`，`https://127.0.0.1/api/v1/health` 返回 `200`，`prisma migrate status` 显示 357 个迁移全部最新；`customer_business_number_counters.last_value = 879`、`update_case_legacy_facts` 已删除、`revoke_case_archive` 已收回 `PUBLIC` 权限；基于只读模块直连验证 4 个目标公证批次、`listEvidenceSources`（2273 条）/ 29 组无证公证证物组读取、`00120261128001` 案件记录及前端构建产物均符合预期（待运营登录浏览器端复验全流程写入）。
+  - UAT（`ubuntu@111.231.164.248`）：已部署 `6c129785` 至 `/srv/ip-bp-uat/releases/6c129785`，`ip-bp-uat` 为 `active`，`https://127.0.0.1/api/v1/health` 返回 `200`，`prisma migrate status` 显示 357 个迁移全部最新；`update_case_legacy_facts` 已删除、`revoke_case_archive` 已收回 `PUBLIC` 权限。
+  - 真实浏览器 UAT 复验（`https://111.231.164.248`，已登录运营会话 + 实库交叉核对）6/6 全部通过：
+    1. P0 新建客户：创建 `UAT复验测试客户-20261128` 返回 `201`，分配编号 `880`（`c32f917e-17c6-4250-be9a-1c07b06de44f`），实库 `customer_business_number_counters.last_value = 880`；
+    2. P1 出证后公证详情：打开 `NT-20261128-001`（`9040db32-...`）正常加载来源线索、公证书与开箱记录；
+    3. P1 历史在途公证办理抽屉：只读打开 `NT-20261126-080`（`审核开箱`）与 `NT-20261126-195`（`填写出证`）均正常加载表单，未提交；
+    4. P1 提前结案表单：打开 `00120261128001`（`7b0b36d9-...`）`提前结案` 表单正常加载（未提交，状态保持 `WAITING_COMPLAINT`）；
+    5. P1 案内手工结算精确到分：`00120261128001` 保存律师手工结算金额 `1.23` 元返回 `200`，页面摘要与刷新均显示 `1.23 元`，实库 `case_settlement_terms`（`version = 2`）落库为 `1.23`；
+    6. P2 证物导航：`/evidence` 导航统计（全部 729 / 686 案）与表格全部 `200` 正常加载。
 
 # 2026-11-28 下午：修复 `audit_events`/`upload_drafts` 触发器故障、打通在途迁移流转与原生卡片融合（已部署 `d87fef51`）
 
