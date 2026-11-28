@@ -60,6 +60,7 @@ import { caseListQueryKeys } from './case-list-query';
 import CaseDetailsSections from './CaseDetailsSections.vue';
 import CaseConsolidationTrace from './CaseConsolidationTrace.vue';
 import CaseWorkspaceFiles from './CaseWorkspaceFiles.vue';
+import LegacyAttachmentsSection from '../../components/LegacyAttachmentsSection.vue';
 import CaseLitigationRefundPanel from './CaseLitigationRefundPanel.vue';
 import { listCaseFileCatalog, exportCaseFiles } from '../../api/case-files';
 import {
@@ -998,8 +999,15 @@ const legacyForm = ref({
   pleadingsConfirmOn: '',
   prepayOn: '',
   courtFeeOn: '',
+  mediationNo: '',
+  hearingOn: '',
+  notarizationNumber: '',
+  executionNo: '',
+  executionOn: '',
   customerSettlement: '',
+  customerSettleNote: '',
   lawyerSettlement: '',
+  lawyerSettleNote: '',
 });
 const disclosureDialog = ref(false);
 const disclosureSaving = ref(false);
@@ -1051,8 +1059,15 @@ function openLegacyEdit() {
     pleadingsConfirmOn: f?.pleadingsConfirmOn ?? '',
     prepayOn: f?.prepayOn ?? '',
     courtFeeOn: f?.courtFeeOn ?? '',
+    mediationNo: f?.mediationNo ?? '',
+    hearingOn: f?.hearingOn ?? '',
+    notarizationNumber: f?.notarizationNumber ?? '',
+    executionNo: f?.executionNo ?? '',
+    executionOn: f?.executionOn ?? '',
     customerSettlement: f?.customerSettlement ?? '',
+    customerSettleNote: f?.customerSettleNote ?? '',
     lawyerSettlement: f?.lawyerSettlement ?? '',
+    lawyerSettleNote: f?.lawyerSettleNote ?? '',
   };
   legacyError.value = '';
   legacyDialog.value = true;
@@ -1072,8 +1087,15 @@ async function saveLegacyFacts() {
         pleadingsConfirmOn: f.pleadingsConfirmOn || null,
         prepayOn: f.prepayOn || null,
         courtFeeOn: f.courtFeeOn || null,
+        mediationNo: f.mediationNo.trim() || null,
+        hearingOn: f.hearingOn || null,
+        notarizationNumber: f.notarizationNumber.trim() || null,
+        executionNo: f.executionNo.trim() || null,
+        executionOn: f.executionOn || null,
         customerSettlement: f.customerSettlement.trim() || null,
+        customerSettleNote: f.customerSettleNote.trim() || null,
         lawyerSettlement: f.lawyerSettlement.trim() || null,
+        lawyerSettleNote: f.lawyerSettleNote.trim() || null,
       },
       {},
     );
@@ -3272,6 +3294,13 @@ onBeforeUnmount(() => {
                   <th>单价（元）</th>
                   <th>评论数</th>
                   <th>销售额（元）</th>
+                  <th>采购规格</th>
+                  <th>采购金额（元）</th>
+                  <th>采购物流</th>
+                  <th>订单状态</th>
+                  <th>证物信息</th>
+                  <th>退货／运费</th>
+                  <th>备注</th>
                 </tr>
               </thead>
               <tbody>
@@ -3291,6 +3320,35 @@ onBeforeUnmount(() => {
                   <td class="mono">{{ product.unitPrice }}</td>
                   <td class="mono">{{ product.commentCount }}</td>
                   <td class="mono">{{ product.estimatedAmount }}</td>
+                  <td>{{ product.orderSpecs || '—' }}</td>
+                  <td class="mono">{{ product.orderAmount ?? '—' }}</td>
+                  <td>
+                    {{
+                      [product.orderExpress, product.orderTracking]
+                        .filter(Boolean)
+                        .join(' / ') || '—'
+                    }}
+                  </td>
+                  <td>{{ product.orderStatus || '—' }}</td>
+                  <td>
+                    {{
+                      [
+                        product.exhibitNumber,
+                        product.exhibitShelf ? `架:${product.exhibitShelf}` : null,
+                        product.exhibitOutbound ? `出库:${product.exhibitOutbound}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' / ') || '—'
+                    }}
+                  </td>
+                  <td class="mono">
+                    {{
+                      product.returnAmount || product.returnShipping
+                        ? `${product.returnAmount ?? '0'} / ${product.returnShipping ?? '0'}`
+                        : '—'
+                    }}
+                  </td>
+                  <td>{{ product.tortNotes || '—' }}</td>
                 </tr>
               </tbody>
             </table>
@@ -3394,15 +3452,22 @@ onBeforeUnmount(() => {
             </button>
           </template>
         </ElDialog>
-        <ElDialog v-model="legacyDialog" title="编辑补充信息" width="520px">
+        <ElDialog v-model="legacyDialog" title="编辑补充信息" width="560px">
           <div class="legacy-form">
             <label>立案提交日<input v-model="legacyForm.submitRegisterOn" type="date" /></label>
             <label>诉状确认日<input v-model="legacyForm.pleadingsApproveOn" type="date" /></label>
             <label>诉状提交日<input v-model="legacyForm.pleadingsConfirmOn" type="date" /></label>
             <label>预交费日期<input v-model="legacyForm.prepayOn" type="date" /></label>
             <label>诉讼费日期<input v-model="legacyForm.courtFeeOn" type="date" /></label>
+            <label>历史诉调号<input v-model="legacyForm.mediationNo" maxlength="200" /></label>
+            <label>历史开庭日期<input v-model="legacyForm.hearingOn" type="date" /></label>
+            <label>历史公证书编号<input v-model="legacyForm.notarizationNumber" maxlength="200" /></label>
+            <label>历史执行案号<input v-model="legacyForm.executionNo" maxlength="200" /></label>
+            <label>历史执行日期<input v-model="legacyForm.executionOn" type="date" /></label>
             <label>客户结算进度<input v-model="legacyForm.customerSettlement" maxlength="500" /></label>
+            <label>客户结算备注<input v-model="legacyForm.customerSettleNote" maxlength="2000" /></label>
             <label>律师结算进度<input v-model="legacyForm.lawyerSettlement" maxlength="500" /></label>
+            <label>律师结算备注<input v-model="legacyForm.lawyerSettleNote" maxlength="2000" /></label>
           </div>
           <p v-if="legacyError" class="submit-error" role="alert">{{ legacyError }}</p>
           <template #footer>
@@ -3804,6 +3869,11 @@ onBeforeUnmount(() => {
           :list-case-materials="listCaseMaterials"
           :download-version="downloadMaterialVersion"
           @open-upload="openUpload"
+        />
+        <LegacyAttachmentsSection
+          owner-type="CASE"
+          :owner-id="item.id"
+          :can-delete="auth.session?.principalType === 'INTERNAL'"
         />
       </template>
       <template #fees

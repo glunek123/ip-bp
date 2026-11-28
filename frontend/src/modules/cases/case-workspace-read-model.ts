@@ -1481,6 +1481,9 @@ export function buildCaseWorkspaceSections(
         item.legacyFacts?.customerSettlement,
       ),
     ),
+    ...(item.legacyFacts?.customerSettleNote
+      ? [field('客户结算备注', item.legacyFacts.customerSettleNote)]
+      : []),
     field(
       '律师结算进度',
       translateLegacy(
@@ -1488,6 +1491,9 @@ export function buildCaseWorkspaceSections(
         item.legacyFacts?.lawyerSettlement,
       ),
     ),
+    ...(item.legacyFacts?.lawyerSettleNote
+      ? [field('律师结算备注', item.legacyFacts.lawyerSettleNote)]
+      : []),
   ]);
   setSummary('lead-info', [
     field(
@@ -1545,6 +1551,39 @@ export function buildCaseWorkspaceSections(
     field('公证书编号', item.certificate?.certificateNo ?? null),
     ...(item.legacyFacts?.notarizationNumber && !item.certificate?.certificateNo
       ? [field('历史公证书编号', item.legacyFacts.notarizationNumber)]
+      : []),
+    ...(item.legacyFacts?.notarizationType
+      ? [field('历史公证方式', item.legacyFacts.notarizationType)]
+      : []),
+    ...(item.legacyFacts?.notarizationPlatform
+      ? [field('历史公证平台', item.legacyFacts.notarizationPlatform)]
+      : []),
+    ...(item.legacyFacts?.notaryOffice
+      ? [field('历史公证处', item.legacyFacts.notaryOffice)]
+      : []),
+    ...(item.legacyFacts?.forensicsOpenOn
+      ? [date('历史取证立案日', item.legacyFacts.forensicsOpenOn)]
+      : []),
+    ...(item.legacyFacts?.clueSource
+      ? [field('历史线索来源', item.legacyFacts.clueSource)]
+      : []),
+    ...(item.legacyFacts?.clueFoundOn
+      ? [date('历史线索发现日', item.legacyFacts.clueFoundOn)]
+      : []),
+    ...(item.legacyFacts?.senderName || item.legacyFacts?.senderTracking
+      ? [
+          field(
+            '历史收寄信息',
+            [
+              item.legacyFacts.senderName,
+              item.legacyFacts.senderPhone,
+              item.legacyFacts.senderAddress,
+              item.legacyFacts.senderTracking,
+            ]
+              .filter(Boolean)
+              .join(' / '),
+          ),
+        ]
       : []),
     field('公证书', filenames(item.certificate?.files ?? [])),
     field('披露文件', filenames(item.certificate?.disclosureFiles ?? [])),

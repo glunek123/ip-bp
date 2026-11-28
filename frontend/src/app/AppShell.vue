@@ -21,6 +21,7 @@ import { listLeads, type LeadStatus } from '../api/leads';
 import { getOrganizationManagementContext } from '../api/organization';
 import { listLawyerAccounts } from '../api/lawyer-accounts';
 import { listLawyerProfiles } from '../api/lawyer-profiles';
+import { listDeletionAuditLogs } from '../api/deletion-audit';
 import {
   listNotaryMatters,
   listNotaryOffices,
@@ -42,6 +43,7 @@ const canViewPeople = ref(false);
 const canViewNotaryOffices = ref(false);
 const canManageLawyerAccounts = ref(false);
 const canViewLawyerLibrary = ref(false);
+const canViewDeletionLogs = ref(false);
 const canViewNotaryMatters = ref(false);
 const canViewCases = ref(false);
 const caseReadError = ref('');
@@ -744,6 +746,37 @@ watch(
         canViewLawyerLibrary.value = true;
     } catch {
       if (current) canViewLawyerLibrary.value = false;
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  identity,
+  async (currentIdentity, _previous, onCleanup) => {
+    canViewDeletionLogs.value = false;
+    if (
+      currentIdentity === null ||
+      isClient.value ||
+      isNotary.value ||
+      isLawyer.value
+    )
+      return;
+    const controller = new AbortController();
+    let current = true;
+    onCleanup(() => {
+      current = false;
+      controller.abort();
+    });
+    try {
+      await listDeletionAuditLogs(
+        { page: 1, pageSize: 1 },
+        { signal: controller.signal },
+      );
+      if (current && identity.value === currentIdentity)
+        canViewDeletionLogs.value = true;
+    } catch {
+      if (current) canViewDeletionLogs.value = false;
     }
   },
   { immediate: true },
@@ -1486,7 +1519,8 @@ async function logout(): Promise<void> {
             (canViewPeople ||
               canViewNotaryOffices ||
               canManageLawyerAccounts ||
-              canViewLawyerLibrary)
+              canViewLawyerLibrary ||
+              canViewDeletionLogs)
           "
         >
           <p class="app-nav__label app-nav__label--spaced">系统</p>
@@ -1543,6 +1577,15 @@ async function logout(): Promise<void> {
               to="/settings/lawyer-accounts"
               @click="closeDrawer"
               ><span>律师账号</span></RouterLink
+            >
+            <RouterLink
+              v-if="canViewDeletionLogs"
+              class="app-subnav__item"
+              :class="{ active: route.path === '/settings/deletion-audit-logs' }"
+              data-test="deletion-audit-logs-nav"
+              to="/settings/deletion-audit-logs"
+              @click="closeDrawer"
+              ><span>删除日志</span></RouterLink
             >
           </div>
         </template>

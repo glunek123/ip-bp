@@ -1660,6 +1660,24 @@ export async function updateLeadLegacyFields(
   return (await requestJson(`/leads/${encodeURIComponent(id)}/legacy-fields`, {
     ...options,
     method: 'PATCH',
-    body: JSON.stringify(input),
+    body: input,
   })) as { id: string };
+}
+
+export async function deleteLead(
+  id: string,
+  reason: string,
+  expectedVersion?: number | null,
+  options: RequestOptions = {},
+): Promise<void> {
+  await requestJson(`/leads/${encodeURIComponent(id)}`, {
+    ...options,
+    method: 'DELETE',
+    body: {
+      reason,
+      ...(expectedVersion === undefined || expectedVersion === null
+        ? {}
+        : { expectedVersion }),
+    },
+  });
 }

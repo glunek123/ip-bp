@@ -12,6 +12,7 @@ import { CalendarModule } from './modules/calendar';
 import { SettlementModule } from './modules/settlements/settlement.module';
 import { EvidenceModule } from './modules/evidence/evidence.module';
 import { ReportsModule } from './modules/reports';
+import { DeletionAuditModule } from './modules/deletion-audit';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ReportsModule } from './modules/reports';
     }),
     AuthModule,
     AccessControlModule,
+    DeletionAuditModule,
     CustomerModule,
     MaterialModule,
     LeadModule,

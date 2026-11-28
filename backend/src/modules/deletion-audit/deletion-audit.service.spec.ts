@@ -136,14 +136,14 @@ describe('DeletionAuditService', () => {
     });
   });
 
-  it('refuses the log query without the read permission', async () => {
+  it('refuses the log query with DELETION_AUDIT_FORBIDDEN without the read permission', async () => {
     const f = fixture();
     f.access.authorizeDepartmentAction.mockRejectedValueOnce(
       new ForbiddenException({ code: 'FORBIDDEN' }),
     );
-    await expect(f.service.list(actor, {})).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(f.service.list(actor, {})).rejects.toMatchObject({
+      response: { code: 'DELETION_AUDIT_FORBIDDEN' },
+    });
     expect(f.db.deletionAuditLog.findMany).not.toHaveBeenCalled();
   });
 });

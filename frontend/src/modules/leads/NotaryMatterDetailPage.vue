@@ -4,10 +4,12 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import {
   RouterLink,
   useRoute,
+  useRouter,
   onBeforeRouteLeave,
   onBeforeRouteUpdate,
 } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import { ElInput } from 'element-plus/es/components/input/index.mjs';
 import { ApiError } from '../../api/http';
 import {
   labelLeadPlatform,
@@ -20,7 +22,9 @@ import { listReturnPath } from '../../app/list-row-navigation';
 import { downloadMaterialVersion } from '../../api/materials';
 import MaterialPreviewDialog from '../../app/MaterialPreviewDialog.vue';
 import NotaryOpeningPhotoGallery from './NotaryOpeningPhotoGallery.vue';
+import LegacyAttachmentsSection from '../../components/LegacyAttachmentsSection.vue';
 import {
+  deleteNotaryMatter,
   setNotarySampleFeeRefund,
   getNotaryMatter,
   getNotarySampleFeeRefund,
@@ -37,6 +41,7 @@ import NotaryMatterWorkflowPanel from './NotaryMatterWorkflowPanel.vue';
 import NotaryRecordCorrectionPanel from './NotaryRecordCorrectionPanel.vue';
 import RoutineBusinessEditor from './RoutineBusinessEditor.vue';
 const route = useRoute();
+const router = useRouter();
 const returnTo = computed(() =>
   listReturnPath(route.query.returnTo, '/notary-matters'),
 );
@@ -560,6 +565,33 @@ import {
 } from './legacy-enums';
 import ElDialog from 'element-plus/es/components/dialog/index';
 
+const removeOpen = ref(false);
+const removeReason = ref('');
+const removeBusy = ref(false);
+const removeError = ref('');
+
+async function confirmRemove(): Promise<void> {
+  const target = matter.value;
+  if (!target || removeBusy.value) return;
+  const reason = removeReason.value.trim();
+  if (reason.length < 1 || reason.length > 500) {
+    removeError.value = '请填写删除原因（1 至 500 字）';
+    return;
+  }
+  removeBusy.value = true;
+  removeError.value = '';
+  try {
+    await deleteNotaryMatter(target.id, reason, target.version);
+    removeOpen.value = false;
+    await router.push(returnTo.value);
+  } catch (error) {
+    removeError.value =
+      error instanceof ApiError ? error.message : '删除失败，请稍后重试';
+  } finally {
+    removeBusy.value = false;
+  }
+}
+
 const legacyDialog = ref(false);
 const legacySaving = ref(false);
 const legacyError = ref('');
@@ -730,6 +762,23 @@ async function saveLegacyFields() {
             "
             @click="load"
             >刷新</ElButton
+          >
+          <ElButton
+            v-if="auth.session?.principalType === 'INTERNAL'"
+            type="danger"
+            plain
+            data-test="notary-delete"
+            :disabled="
+              routineEditing ||
+              routineSaving ||
+              workflowState.requestState !== 'idle'
+            "
+            @click="
+              removeReason = '';
+              removeError = '';
+              removeOpen = true;
+            "
+            >删除</ElButton
           >
         </div>
         <section
@@ -1253,6 +1302,44 @@ async function saveLegacyFields() {
             </dl>
             <p v-if="matter.stage === 'ARCHIVED'">本事项已出证归档。</p>
           </template>
+          <template
+            v-else-if="
+              matter.legacyNotarization &&
+              (matter.legacyNotarization.number ||
+                matter.legacyNotarization.issueOn ||
+                matter.legacyNotarization.uploadOn)
+            "
+          >
+            <p class="legacy-hint">以下为历史迁移公证书信息，仅供查阅。</p>
+            <dl class="demo-detail-grid" data-test="notary-certificate-legacy">
+              <div>
+                <dt>历史公证书编号</dt>
+                <dd class="mono">
+                  {{ matter.legacyNotarization.number || '未登记' }}
+                </dd>
+              </div>
+              <div>
+                <dt>历史出证日期</dt>
+                <dd class="mono">
+                  {{ matter.legacyNotarization.issueOn || '未登记' }}
+                </dd>
+              </div>
+              <div>
+                <dt>历史上传日期</dt>
+                <dd class="mono">
+                  {{ matter.legacyNotarization.uploadOn || '未登记' }}
+                </dd>
+              </div>
+              <div>
+                <dt>公证处</dt>
+                <dd>
+                  {{
+                    matter.legacyNotarization.office || matter.notaryOffice.name
+                  }}
+                </dd>
+              </div>
+            </dl>
+          </template>
           <p v-else>未登记公证书</p>
           <ul v-if="matter.certificateFiles.length">
             <li
@@ -1554,6 +1641,12 @@ async function saveLegacyFields() {
             {{ downloadError }}
           </p>
         </section>
+        <LegacyAttachmentsSection
+          v-if="auth.session?.principalType === 'INTERNAL'"
+          owner-type="NOTARY_MATTER"
+          :owner-id="matter.id"
+          :can-delete="true"
+        />
       </template>
     </main>
   </div>
@@ -1574,6 +1667,39 @@ async function saveLegacyFields() {
       <ElButton type="primary" :disabled="legacySaving" @click="saveLegacyFields">
         {{ legacySaving ? '保存中…' : '保存' }}
       </ElButton>
+    </template>
+  </ElDialog>
+  <ElDialog
+    v-model="removeOpen"
+    title="删除公证取证批次"
+    width="480px"
+    data-test="notary-delete-dialog"
+  >
+    <p>
+      确定删除公证批次 <strong>{{ matter?.businessNo }}</strong>？
+    </p>
+    <p class="field-help">
+      已产生案件、费用或实物证物的公证批次不可直接删除；删除操作与原因会永久写入删除留痕。
+    </p>
+    <ElInput
+      v-model="removeReason"
+      type="textarea"
+      :rows="2"
+      maxlength="500"
+      show-word-limit
+      data-test="notary-delete-reason"
+      placeholder="请填写删除原因（1 至 500 字）"
+    />
+    <p v-if="removeError" role="alert" class="submit-error">{{ removeError }}</p>
+    <template #footer>
+      <ElButton :disabled="removeBusy" @click="removeOpen = false">取消</ElButton>
+      <ElButton
+        type="danger"
+        :loading="removeBusy"
+        data-test="notary-delete-confirm"
+        @click="confirmRemove"
+        >删除</ElButton
+      >
     </template>
   </ElDialog>
 </template>

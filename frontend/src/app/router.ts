@@ -29,6 +29,7 @@ import CaseDetailPage from '../modules/cases/CaseDetailPage.vue';
 import CaseExternalEntryPage from '../modules/cases/CaseExternalEntryPage.vue';
 import LawyerAccountsPage from '../modules/organization/LawyerAccountsPage.vue';
 import LawyerLibraryPage from '../modules/organization/LawyerLibraryPage.vue';
+import DeletionAuditLogsPage from '../modules/settings/DeletionAuditLogsPage.vue';
 import LawyerCaseListPage from '../modules/cases/LawyerCaseListPage.vue';
 import LawyerCaseDetailPage from '../modules/cases/LawyerCaseDetailPage.vue';
 import CalendarPage from '../modules/calendar/CalendarPage.vue';
@@ -296,6 +297,15 @@ export const router = createRouter({
         audience: 'INTERNAL',
         section: '设置',
         breadcrumbs: ['设置', '律师账号'],
+      },
+    },
+    {
+      path: '/settings/deletion-audit-logs',
+      component: DeletionAuditLogsPage,
+      meta: {
+        audience: 'INTERNAL',
+        section: '设置',
+        breadcrumbs: ['设置', '删除日志'],
       },
     },
     {

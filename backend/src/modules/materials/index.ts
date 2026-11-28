@@ -1,5 +1,10 @@
 export { MaterialModule } from './material.module';
 export { MaterialService } from './material.service';
+export { LegacyAttachmentsService } from './legacy-attachments.service';
+export type {
+  LegacyAttachmentItem,
+  LegacyAttachmentOwnerType,
+} from './legacy-attachments.service';
 export { PRIVATE_BLOB_STORAGE } from './private-blob-storage';
 export { BlobValidationError } from './private-blob-storage';
 export type { PrivateBlobStorage } from './private-blob-storage';

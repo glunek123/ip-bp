@@ -4,6 +4,9 @@ import { AuthModule } from '../../auth/auth.module';
 import { DatabaseModule } from '../../database/database.module';
 import { MaterialModule } from '../materials';
 import { CaseModule } from '../cases';
+import { DeletionAuditModule } from '../deletion-audit';
+import { LeadNotaryDeleteController } from './lead-notary-delete.controller';
+import { LeadNotaryDeleteService } from './lead-notary-delete.service';
 import { LeadLegacyFieldsController } from './lead-legacy-fields.controller';
 import { NotaryLegacyController } from './notary-legacy.controller';
 import { NotaryLegacyService } from './notary-legacy.service';
@@ -67,6 +70,7 @@ import { LeadRoutineEditService } from './lead-routine-edit.service';
     DatabaseModule,
     MaterialModule,
     CaseModule,
+    DeletionAuditModule,
   ],
   controllers: [
     // Static import routes must precede LeadController's GET /:id.
@@ -90,9 +94,11 @@ import { LeadRoutineEditService } from './lead-routine-edit.service';
     NotaryPortalController,
     NotaryRecordEditController,
     NotaryRoutineEditController,
+    LeadNotaryDeleteController,
   ],
   providers: [
     NotaryReportsSourceService,
+    LeadNotaryDeleteService,
     LeadService,
     LeadRoutineEditService,
     LeadLegacyFieldsService,

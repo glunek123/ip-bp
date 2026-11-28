@@ -233,6 +233,7 @@ describe('case filing panel', () => {
     await flushPromises();
     expect(api.createFilingCourt).toHaveBeenCalledWith('case-1', {
       name: '  丙市中级人民法院  ',
+      province: null,
     });
     expect(
       wrapper.get('[data-test="filing-court-fixed"]').element,

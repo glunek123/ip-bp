@@ -474,8 +474,19 @@ type CaseDetailBase = Omit<CaseSummaryBase, 'displaySummary'> & {
     unitPrice: string;
     commentCount: string;
     estimatedAmount: string;
+    tortNotes?: string | null;
+    orderSpecs?: string | null;
+    orderAmount?: string | null;
+    orderExpress?: string | null;
+    orderTracking?: string | null;
+    orderStatus?: string | null;
+    exhibitNumber?: string | null;
+    exhibitShelf?: string | null;
+    exhibitOutbound?: string | null;
+    returnAmount?: string | null;
+    returnShipping?: string | null;
   }> | null;
-  /** 旧库迁移快照（只读展示）：费用日期、结算进度、立案与诉状日期。 */
+  /** 旧库迁移快照（可维护）：费用日期、结算进度、立案与诉状日期、历史公证/取证/寄件等。 */
   legacyFacts?: {
     prepayOn: string | null;
     courtFeeOn: string | null;
@@ -491,6 +502,16 @@ type CaseDetailBase = Omit<CaseSummaryBase, 'displaySummary'> & {
     notarizationNumber?: string | null;
     executionNo?: string | null;
     executionOn?: string | null;
+    notarizationType?: string | null;
+    notarizationPlatform?: string | null;
+    notaryOffice?: string | null;
+    senderName?: string | null;
+    senderPhone?: string | null;
+    senderAddress?: string | null;
+    senderTracking?: string | null;
+    forensicsOpenOn?: string | null;
+    clueFoundOn?: string | null;
+    clueSource?: string | null;
   } | null;
   /** 旧库披露信息（可编辑）。 */
   disclosure?: {
@@ -3061,12 +3082,25 @@ function validLegacyCaseFacts(value: unknown): boolean {
   return (
     value == null ||
     (record(value) &&
-      [value.mediationNo, value.notarizationNumber, value.executionNo].every(
-        (number) => number == null || typeof number === 'string',
-      ) &&
-      [value.hearingOn, value.executionOn].every(
-        (date) => date == null || businessDate(date),
-      ))
+      [
+        value.mediationNo,
+        value.notarizationNumber,
+        value.executionNo,
+        value.notarizationType,
+        value.notarizationPlatform,
+        value.notaryOffice,
+        value.senderName,
+        value.senderPhone,
+        value.senderAddress,
+        value.senderTracking,
+        value.clueSource,
+      ].every((text) => text == null || typeof text === 'string') &&
+      [
+        value.hearingOn,
+        value.executionOn,
+        value.forensicsOpenOn,
+        value.clueFoundOn,
+      ].every((date) => date == null || businessDate(date)))
   );
 }
 export function validCaseDetail(
@@ -3192,7 +3226,20 @@ export function validCaseDetail(
             typeof product.quantity === 'string' &&
             typeof product.unitPrice === 'string' &&
             typeof product.commentCount === 'string' &&
-            typeof product.estimatedAmount === 'string',
+            typeof product.estimatedAmount === 'string' &&
+            [
+              product.tortNotes,
+              product.orderSpecs,
+              product.orderAmount,
+              product.orderExpress,
+              product.orderTracking,
+              product.orderStatus,
+              product.exhibitNumber,
+              product.exhibitShelf,
+              product.exhibitOutbound,
+              product.returnAmount,
+              product.returnShipping,
+            ].every((opt) => opt === undefined || opt === null || typeof opt === 'string'),
         ))) &&
     (value.disabledDefendants === undefined ||
       (Array.isArray(value.disabledDefendants) &&
@@ -7028,12 +7075,12 @@ export async function deleteCase(
   await requestJson(`/cases/${encodeURIComponent(id)}`, {
     ...options,
     method: 'DELETE',
-    body: JSON.stringify({
+    body: {
       reason,
       ...(expectedVersion === undefined || expectedVersion === null
         ? {}
         : { expectedVersion }),
-    }),
+    },
   });
 }
 
@@ -9016,7 +9063,7 @@ export async function updateCaseDisclosure(
   return (await requestJson(`/cases/${encodeURIComponent(id)}/disclosure`, {
     ...options,
     method: 'PATCH',
-    body: JSON.stringify(input),
+    body: input,
   })) as { id: string };
 }
 
@@ -9039,6 +9086,13 @@ export type CaseLegacyFactsInput = {
   courtFeeOn?: string | null;
   customerSettlement?: string | null;
   lawyerSettlement?: string | null;
+  customerSettleNote?: string | null;
+  lawyerSettleNote?: string | null;
+  mediationNo?: string | null;
+  hearingOn?: string | null;
+  notarizationNumber?: string | null;
+  executionNo?: string | null;
+  executionOn?: string | null;
 };
 
 /** 维护旧库迁移带入的补充信息。 */
@@ -9050,7 +9104,7 @@ export async function updateCaseLegacyFacts(
   return (await requestJson(`/cases/${encodeURIComponent(id)}/legacy-facts`, {
     ...options,
     method: 'PATCH',
-    body: JSON.stringify(input),
+    body: input,
   })) as { id: string };
 }
 
@@ -9065,7 +9119,7 @@ export async function revokeCaseArchive(
     {
       ...options,
       method: 'POST',
-      body: JSON.stringify({ reason }),
+      body: { reason },
     },
   )) as { id: string; stage: string };
 }

@@ -24,6 +24,7 @@ import CustomerContactsPanel from './CustomerContactsPanel.vue';
 import CustomerAgreementPanel from './CustomerAgreementPanel.vue';
 import CustomerSettlementsPanel from './CustomerSettlementsPanel.vue';
 import CustomerEditPage from './CustomerEditPage.vue';
+import LegacyAttachmentsSection from '../../components/LegacyAttachmentsSection.vue';
 import { labelCustomerType } from './customer-labels';
 import {
   updateCustomerDraft,
@@ -1598,6 +1599,12 @@ onBeforeUnmount(() => {
                 </ol>
               </details>
             </section>
+            <LegacyAttachmentsSection
+              v-if="actor"
+              owner-type="CUSTOMER"
+              :owner-id="customer.id"
+              :can-delete="true"
+            />
           </div>
         </section>
         <section

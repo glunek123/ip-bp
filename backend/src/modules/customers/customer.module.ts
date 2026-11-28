@@ -10,6 +10,7 @@ import { RightsHolderController } from './rights-holder.controller';
 import { RightsHolderService } from './rights-holder.service';
 import { AuthModule } from '../../auth/auth.module';
 import { MaterialModule } from '../materials';
+import { DeletionAuditModule } from '../deletion-audit';
 import { CustomerAdmissionService } from './customer-admission.service';
 import { CustomerAccountService } from './customer-account.service';
 import { RightAssetController } from './right-asset.controller';
@@ -25,7 +26,13 @@ import { CustomerSettlementController } from './customer-settlement.controller';
 import { CustomerSettlementService } from './customer-settlement.service';
 
 @Module({
-  imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
+  imports: [
+    AccessControlModule,
+    AuthModule,
+    DatabaseModule,
+    MaterialModule,
+    DeletionAuditModule,
+  ],
   controllers: [
     CustomerController,
     CustomerCooperationController,

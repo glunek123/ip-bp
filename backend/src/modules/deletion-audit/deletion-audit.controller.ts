@@ -23,6 +23,7 @@ export const deletionAuditEntityTypes: DeletionAuditEntityType[] = [
   'LEAD',
   'NOTARY_MATTER',
   'CUSTOMER',
+  'LEGACY_ATTACHMENT',
 ];
 
 export class DeletionAuditQueryDto {

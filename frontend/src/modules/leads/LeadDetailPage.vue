@@ -3,13 +3,16 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import {
   RouterLink,
   useRoute,
+  useRouter,
   onBeforeRouteLeave,
   onBeforeRouteUpdate,
 } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import { ElInput } from 'element-plus/es/components/input/index.mjs';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 import { ApiError } from '../../api/http';
 import MaterialPreviewDialog from '../../app/MaterialPreviewDialog.vue';
+import LegacyAttachmentsSection from '../../components/LegacyAttachmentsSection.vue';
 import {
   getLead,
   getLeadEditContext,
@@ -21,6 +24,7 @@ import {
   type LeadRoutineEditInput,
 } from '../../api/leads';
 import {
+  deleteLead,
   updateLeadLegacyFields,
   updateLeadProductScreenshots,
 } from '../../api/leads';
@@ -70,6 +74,7 @@ import {
   type LeadWorkflowResult,
 } from './LeadListWorkflowPanel.vue';
 const route = useRoute();
+const router = useRouter();
 const returnTo = computed(() => listReturnPath(route.query.returnTo, '/leads'));
 const auth = useAuthStore();
 const actorKey = computed(
@@ -833,6 +838,34 @@ watch(
 onBeforeUnmount(clearContext);
 import ElDialog from 'element-plus/es/components/dialog/index';
 
+const removeOpen = ref(false);
+const removeReason = ref('');
+const removeBusy = ref(false);
+const removeError = ref('');
+
+async function confirmRemove(): Promise<void> {
+  const target = lead.value;
+  if (!target || removeBusy.value) return;
+  const reason = removeReason.value.trim();
+  if (reason.length < 1 || reason.length > 500) {
+    removeError.value = '请填写删除原因（1 至 500 字）';
+    return;
+  }
+  removeBusy.value = true;
+  removeError.value = '';
+  try {
+    await deleteLead(target.id, reason, target.version);
+    removeOpen.value = false;
+    notifyWorkflowChanged();
+    await router.push(returnTo.value);
+  } catch (error) {
+    removeError.value =
+      error instanceof ApiError ? error.message : '删除失败，请稍后重试';
+  } finally {
+    removeBusy.value = false;
+  }
+}
+
 const legacyDialog = ref(false);
 const legacySaving = ref(false);
 const legacyError = ref('');
@@ -975,6 +1008,19 @@ async function saveLegacyFields() {
               :disabled="anyEditing || routineSaving"
               @click="load"
               >刷新</ElButton
+            >
+            <ElButton
+              v-if="auth.session?.principalType === 'INTERNAL'"
+              type="danger"
+              plain
+              data-test="lead-delete"
+              :disabled="anyEditing || routineSaving"
+              @click="
+                removeReason = '';
+                removeError = '';
+                removeOpen = true;
+              "
+              >删除</ElButton
             >
             <ElButton
               v-if="
@@ -1445,8 +1491,19 @@ async function saveLegacyFields() {
             </p>
           </div>
         </section>
+        <LegacyAttachmentsSection
+          v-if="auth.session?.principalType === 'INTERNAL'"
+          owner-type="LEAD"
+          :owner-id="lead.id"
+          :can-delete="true"
+        />
         <section
-          v-if="!lead.reviewDecision && lead.legacyApprovedOn"
+          v-if="
+            !lead.reviewDecision &&
+            (lead.legacyApprovedOn ||
+              lead.legacyReviewOpinion ||
+              lead.legacyReviewNote)
+          "
           class="demo-card demo-card--pad"
           data-test="client-review-record-legacy"
         >
@@ -1468,7 +1525,7 @@ async function saveLegacyFields() {
             </div>
             <div>
               <dt>审核通过日</dt>
-              <dd class="mono">{{ lead.legacyApprovedOn }}</dd>
+              <dd class="mono">{{ lead.legacyApprovedOn || '未登记' }}</dd>
             </div>
             <div>
               <dt>客户确认日</dt>
@@ -1750,6 +1807,39 @@ async function saveLegacyFields() {
       <ElButton type="primary" :disabled="legacySaving" @click="saveLegacyFields">
         {{ legacySaving ? '保存中…' : '保存' }}
       </ElButton>
+    </template>
+  </ElDialog>
+  <ElDialog
+    v-model="removeOpen"
+    title="删除线索"
+    width="480px"
+    data-test="lead-delete-dialog"
+  >
+    <p>
+      确定删除线索 <strong>{{ lead?.businessNo }}</strong>？
+    </p>
+    <p class="field-help">
+      已产生公证批次或诉讼案件的线索不可直接删除；删除操作与原因会永久写入删除留痕。
+    </p>
+    <ElInput
+      v-model="removeReason"
+      type="textarea"
+      :rows="2"
+      maxlength="500"
+      show-word-limit
+      data-test="lead-delete-reason"
+      placeholder="请填写删除原因（1 至 500 字）"
+    />
+    <p v-if="removeError" role="alert" class="submit-error">{{ removeError }}</p>
+    <template #footer>
+      <ElButton :disabled="removeBusy" @click="removeOpen = false">取消</ElButton>
+      <ElButton
+        type="danger"
+        :loading="removeBusy"
+        data-test="lead-delete-confirm"
+        @click="confirmRemove"
+        >删除</ElButton
+      >
     </template>
   </ElDialog>
 </template>

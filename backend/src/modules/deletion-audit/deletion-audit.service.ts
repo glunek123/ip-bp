@@ -8,7 +8,12 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 
-export type DeletionAuditEntityType = 'CASE' | 'LEAD' | 'NOTARY_MATTER' | 'CUSTOMER';
+export type DeletionAuditEntityType =
+  | 'CASE'
+  | 'LEAD'
+  | 'NOTARY_MATTER'
+  | 'CUSTOMER'
+  | 'LEGACY_ATTACHMENT';
 
 export type DeletionAuditRecord = {
   entityType: DeletionAuditEntityType;

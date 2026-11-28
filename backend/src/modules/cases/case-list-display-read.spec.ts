@@ -317,4 +317,24 @@ describe('authorized case list display', () => {
     record.externalEntry.initialStage = 'WAITING_EXECUTION_DOCUMENTS';
     expect(caseListDisplay(record).judgmentAmount.state).toBe('UNRECORDED');
   });
+
+  it('degrades safely when migrated/historical cases lack sourceLead or externalEntry', () => {
+    const record = fixture();
+    record.sourceLeadId = null;
+    record.sourceNotaryMatterId = null;
+    record.certificateId = null;
+    record.sourceLead = null;
+    record.sourceNotaryMatter = null;
+    record.externalEntry = null;
+    record.routineProfile = { shopName: '历史迁移店铺', shopExternalId: null };
+
+    const result = caseListDisplay(record);
+    expect(result.customerName).toBe('客户');
+    expect(result.rightsHolderName).toBe('权利主体');
+    expect(result.source).toEqual({
+      platform: null,
+      shopName: '历史迁移店铺',
+      shopExternalId: null,
+    });
+  });
 });

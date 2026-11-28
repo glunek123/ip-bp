@@ -14,14 +14,18 @@ import { MaterialService } from './material.service';
 import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
 import { PRIVATE_BLOB_STORAGE } from './private-blob-storage';
 import { createPrivateBlobStorage } from './private-blob-storage.provider';
+import { DeletionAuditModule } from '../deletion-audit';
+import { LegacyAttachmentsController } from './legacy-attachments.controller';
+import { LegacyAttachmentsService } from './legacy-attachments.service';
 
 @Module({
-  imports: [AccessControlModule, AuthModule, DatabaseModule],
+  imports: [AccessControlModule, AuthModule, DatabaseModule, DeletionAuditModule],
   controllers: [
     MaterialController,
     CaseSectionRecordUploadController,
     ExecutionSupplementUploadController,
     LawyerExecutionSupplementUploadController,
+    LegacyAttachmentsController,
   ],
   providers: [
     {
@@ -32,7 +36,8 @@ import { createPrivateBlobStorage } from './private-blob-storage.provider';
     MaterialStorageKeyCoordinator,
     MaterialService,
     MaterialCleanupService,
+    LegacyAttachmentsService,
   ],
-  exports: [PRIVATE_BLOB_STORAGE, MaterialService],
+  exports: [PRIVATE_BLOB_STORAGE, MaterialService, LegacyAttachmentsService],
 })
 export class MaterialModule {}

@@ -9,7 +9,7 @@ import { Prisma } from '../../generated/prisma/client';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
-import { DeletionAuditService } from './deletion-audit.service';
+import { DeletionAuditService } from '../deletion-audit';
 
 /**
  * 删除只用于纠正误创建的案子：

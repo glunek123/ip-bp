@@ -1,5 +1,7 @@
-import { InternalServerErrorException } from '@nestjs/common';
+import { InternalServerErrorException, Logger } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
+
+const listDisplayLogger = new Logger('CaseListDisplay');
 
 export const caseListDisplaySelect = {
   id: true,
@@ -140,10 +142,10 @@ function amount(
     return { state, amount: null, sourceType, sourceId };
   if (state === 'KNOWN' && value !== null && value.gte(0))
     return { state, amount: value.toFixed(2), sourceType, sourceId };
-  throw new InternalServerErrorException({
-    code: 'INVALID_CASE_DISPLAY_SOURCE',
-    message: '案件摘要来源不完整',
-  });
+  listDisplayLogger.warn(
+    `Unexpected case amount state (${String(state)}) on ${sourceType}:${sourceId}; falling back to UNRECORDED`,
+  );
+  return unrecorded();
 }
 export function caseKnownCourtId(record: CaseListDisplayRecord): string | null {
   const known = record.externalEntry?.known;
@@ -190,19 +192,40 @@ export function caseListDisplay(
     matter.customerId === record.customerId &&
     lead.rightsHolderId === record.rightsHolderId &&
     matter.rightsHolderId === record.rightsHolderId;
-  if (
+  const hasCrossScopeViolation =
     !customer ||
     !rightsHolder ||
     customer.id !== record.customerId ||
     rightsHolder.id !== record.rightsHolderId ||
     customer.departmentId !== record.departmentId ||
     rightsHolder.departmentId !== record.departmentId ||
-    (!isNormal && !isExternal)
-  )
+    (lead !== null &&
+      (lead.departmentId !== record.departmentId ||
+        lead.id !== record.sourceLeadId ||
+        lead.customerId !== record.customerId ||
+        lead.rightsHolderId !== record.rightsHolderId)) ||
+    (matter !== null &&
+      (matter.departmentId !== record.departmentId ||
+        matter.id !== record.sourceNotaryMatterId ||
+        matter.sourceLeadId !== record.sourceLeadId ||
+        matter.customerId !== record.customerId ||
+        matter.rightsHolderId !== record.rightsHolderId)) ||
+    (external !== null &&
+      (external.caseId !== record.id ||
+        external.departmentId !== record.departmentId ||
+        record.sourceLeadId !== null ||
+        record.sourceNotaryMatterId !== null ||
+        record.certificateId !== null));
+  if (hasCrossScopeViolation)
     throw new InternalServerErrorException({
       code: 'INVALID_CASE_DISPLAY_SOURCE',
       message: '案件摘要来源不完整',
     });
+  if (!isNormal && !isExternal) {
+    listDisplayLogger.warn(
+      `Case ${record.id} is missing complete sourceLead/externalEntry linkage; degrading list summary safely`,
+    );
+  }
   const confirmation = record.complaintConfirmation;
   const claimAmount =
     record.filingSubmission?.claimAmount != null
@@ -281,7 +304,7 @@ export function caseListDisplay(
     customerName: customer.name,
     rightsHolderName: rightsHolder.name,
     source:
-      isNormal && lead !== null
+      lead !== null
         ? {
             platform: lead.platform,
             shopName: record.routineProfile

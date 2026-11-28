@@ -113,6 +113,10 @@ vi.mock('../../api/materials', async (original) => ({
   ...(await original<typeof import('../../api/materials')>()),
   listOwnerMaterials: vi.fn(async () => ({ items: [], total: 0 })),
 }));
+vi.mock('../../api/legacy-attachments', () => ({
+  listLegacyAttachments: vi.fn(async () => ({ items: [] })),
+  deleteLegacyAttachment: vi.fn(async () => ({ id: 'att-1' })),
+}));
 vi.mock('../../api/case-files', () => ({
   listCaseFileCatalog: vi.fn(async (caseId: string) => ({
     caseId,
@@ -176,6 +180,14 @@ vi.mock('../../api/evidence', () => ({
 }));
 vi.mock('../../api/reports', () => ({
   getReportsCapability: vi.fn(async () => ({ canRead: false })),
+}));
+vi.mock('../../api/deletion-audit', () => ({
+  listDeletionAuditLogs: vi.fn(async () => ({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 1,
+  })),
 }));
 const session: AuthSession = {
   principalType: 'INTERNAL',

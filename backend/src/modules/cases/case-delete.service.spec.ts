@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { CaseDeleteService } from './case-delete.service';
 import type { AccessControlService } from '../../access-control/access-control.service';
-import type { DeletionAuditService } from './deletion-audit.service';
+import type { DeletionAuditService } from '../deletion-audit';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',

@@ -27,7 +27,7 @@ import {
   LawyerCaseArchiveReadinessController,
 } from './case-archive-readiness.controller';
 import { CaseDeleteController } from './case-delete.controller';
-import { DeletionAuditController } from './deletion-audit.controller';
+import { DeletionAuditModule } from '../deletion-audit';
 import { CaseDisclosureController } from './case-disclosure.controller';
 import { CaseArchiveRevocationController } from './case-archive-revocation.controller';
 import { CaseArchiveRevocationService } from './case-archive-revocation.service';
@@ -37,7 +37,6 @@ import { CaseDisclosureService } from './case-disclosure.service';
 import { CasePreservationController } from './case-preservation.controller';
 import { CasePreservationService } from './case-preservation.service';
 import { CaseDeleteService } from './case-delete.service';
-import { DeletionAuditService } from './deletion-audit.service';
 import { CaseRoutineEditController } from './case-routine-edit.controller';
 import { CaseRoutineEditService } from './case-routine-edit.service';
 import { CaseEarlyArchiveService } from './case-early-archive.service';
@@ -124,6 +123,7 @@ import { LawyerProfileService } from './lawyer-profile.service';
     DatabaseModule,
     CustomerModule,
     MaterialModule,
+    DeletionAuditModule,
   ],
   controllers: [
     LitigationRefundsController,
@@ -135,7 +135,6 @@ import { LawyerProfileService } from './lawyer-profile.service';
     CaseClosureWorkspaceController,
     CaseRoutineEditController,
     CaseDeleteController,
-    DeletionAuditController,
     CaseDisclosureController,
     CaseLegacyFactsController,
     CaseArchiveRevocationController,
@@ -161,7 +160,6 @@ import { LawyerProfileService } from './lawyer-profile.service';
   ],
   providers: [
     CaseDeleteService,
-    DeletionAuditService,
     CaseDisclosureService,
     CaseLegacyFactsService,
     CaseArchiveRevocationService,

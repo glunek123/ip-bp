@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import {
   AccessControlService,
@@ -11,6 +12,7 @@ import {
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { OrganizationService } from '../../access-control/organization.service';
+import { DeletionAuditService } from '../deletion-audit';
 import {
   isCustomerContactRetryable,
   lockCustomerContactActor,
@@ -32,6 +34,7 @@ export class CustomerLifecycleService {
     private readonly database: DatabaseService,
     private readonly access: AccessControlService,
     private readonly organization: OrganizationService,
+    @Optional() private readonly deletionAudit?: DeletionAuditService,
   ) {}
 
   async listDeleted(actor: ActorContext, page: number, pageSize: number) {
@@ -410,6 +413,24 @@ export class CustomerLifecycleService {
             where: { id },
           });
           const result = toCustomerSummary(updated);
+          if (action === 'DELETE' && this.deletionAudit) {
+            await this.deletionAudit.record(tx, actor, {
+              entityType: 'CUSTOMER',
+              entityId: id,
+              businessNo:
+                current.businessId !== null ? String(current.businessId) : null,
+              entityTitle: `客户 ${current.name}`,
+              deleteReason: reason,
+              snapshot: {
+                name: current.name,
+                businessId: current.businessId,
+                profileStatus: current.profileStatus,
+                cooperationStatus: current.cooperationStatus,
+                version: current.version,
+                kind,
+              },
+            });
+          }
           await tx.customerDraftLifecycleReceipt.create({
             data: {
               departmentId: actor.departmentId,

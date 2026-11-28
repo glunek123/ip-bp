@@ -21,6 +21,7 @@ const api = vi.hoisted(() => ({
   listCases: vi.fn(),
   listLawyerAccounts: vi.fn(),
   listLawyerProfiles: vi.fn(),
+  listDeletionAuditLogs: vi.fn(),
   listLawyerCases: vi.fn(),
   getCalendarSummary: vi.fn(),
   listDueReminders: vi.fn(),
@@ -66,6 +67,9 @@ vi.mock('../api/lawyer-accounts', () => ({
 vi.mock('../api/lawyer-profiles', () => ({
   listLawyerProfiles: api.listLawyerProfiles,
 }));
+vi.mock('../api/deletion-audit', () => ({
+  listDeletionAuditLogs: api.listDeletionAuditLogs,
+}));
 vi.mock('../api/leads', () => ({ listLeads: api.listLeads }));
 vi.mock('../api/notary', () => ({
   listNotaryOffices: api.listNotaryOffices,
@@ -108,6 +112,7 @@ beforeEach(() => {
   api.getOrganizationManagementContext.mockResolvedValue({});
   api.listLawyerAccounts.mockRejectedValue({ status: 403 });
   api.listLawyerProfiles.mockRejectedValue({ status: 403 });
+  api.listDeletionAuditLogs.mockRejectedValue({ status: 403 });
   api.listLawyerCases.mockResolvedValue({
     items: [],
     total: 0,

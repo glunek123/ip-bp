@@ -2408,6 +2408,24 @@ export async function updateNotaryLegacyFields(
 ): Promise<{ id: string }> {
   return (await requestJson(
     `/notary-matters/${encodeURIComponent(id)}/legacy-fields`,
-    { ...options, method: 'PATCH', body: JSON.stringify(input) },
+    { ...options, method: 'PATCH', body: input },
   )) as { id: string };
+}
+
+export async function deleteNotaryMatter(
+  id: string,
+  reason: string,
+  expectedVersion?: number | null,
+  options: RequestOptions = {},
+): Promise<void> {
+  await requestJson(`/notary-matters/${encodeURIComponent(id)}`, {
+    ...options,
+    method: 'DELETE',
+    body: {
+      reason,
+      ...(expectedVersion === undefined || expectedVersion === null
+        ? {}
+        : { expectedVersion }),
+    },
+  });
 }

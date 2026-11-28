@@ -15,6 +15,13 @@ export type CaseLegacyFactsInput = {
   courtFeeOn?: string | null;
   customerSettlement?: string | null;
   lawyerSettlement?: string | null;
+  customerSettleNote?: string | null;
+  lawyerSettleNote?: string | null;
+  mediationNo?: string | null;
+  hearingOn?: string | null;
+  notarizationNumber?: string | null;
+  executionNo?: string | null;
+  executionOn?: string | null;
 };
 
 /** 旧库迁移带入的补充字段维护：允许运营在案件详情里更正。 */
@@ -35,35 +42,63 @@ export class CaseLegacyFactsService {
     });
     if (!found) throw new NotFoundException({ code: 'CASE_NOT_FOUND' });
 
-    const flag = (value: unknown) => value !== undefined;
-    const dateOf = (value: string | null | undefined): string | null => {
+    const dateOf = (value: string | null | undefined): Date | null => {
       if (value === undefined || value === null || value.trim() === '')
         return null;
-      const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime()))
+      const normalized = value.trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized))
         throw new BadRequestException({ code: 'DATE_INVALID' });
-      return value.slice(0, 10);
+      const parsed = new Date(`${normalized}T00:00:00.000Z`);
+      if (
+        Number.isNaN(parsed.getTime()) ||
+        parsed.toISOString().slice(0, 10) !== normalized
+      ) {
+        throw new BadRequestException({ code: 'DATE_INVALID' });
+      }
+      return parsed;
     };
-    await this.db.$executeRawUnsafe(
-      `SELECT update_case_legacy_facts(
-        $1::uuid, $2::date, $3::date, $4::date, $5::date, $6::date,
-        $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-      caseId,
-      dateOf(input.submitRegisterOn),
-      dateOf(input.pleadingsApproveOn),
-      dateOf(input.pleadingsConfirmOn),
-      dateOf(input.prepayOn),
-      dateOf(input.courtFeeOn),
-      input.customerSettlement ?? null,
-      input.lawyerSettlement ?? null,
-      flag(input.submitRegisterOn),
-      flag(input.pleadingsApproveOn),
-      flag(input.pleadingsConfirmOn),
-      flag(input.prepayOn),
-      flag(input.courtFeeOn),
-      flag(input.customerSettlement),
-      flag(input.lawyerSettlement),
-    );
+    const textOf = (value: string | null | undefined): string | null => {
+      if (value === undefined || value === null) return null;
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    };
+
+    const data: Record<string, Date | string | null> = {};
+    if (input.submitRegisterOn !== undefined)
+      data.legacySubmitRegisterOn = dateOf(input.submitRegisterOn);
+    if (input.pleadingsApproveOn !== undefined)
+      data.legacyPleadingsApproveOn = dateOf(input.pleadingsApproveOn);
+    if (input.pleadingsConfirmOn !== undefined)
+      data.legacyPleadingsConfirmOn = dateOf(input.pleadingsConfirmOn);
+    if (input.prepayOn !== undefined)
+      data.legacyPrepayOn = dateOf(input.prepayOn);
+    if (input.courtFeeOn !== undefined)
+      data.legacyCourtFeeOn = dateOf(input.courtFeeOn);
+    if (input.customerSettlement !== undefined)
+      data.legacyCustomerSettlement = textOf(input.customerSettlement);
+    if (input.lawyerSettlement !== undefined)
+      data.legacyLawyerSettlement = textOf(input.lawyerSettlement);
+    if (input.customerSettleNote !== undefined)
+      data.legacyCustomerSettleNote = textOf(input.customerSettleNote);
+    if (input.lawyerSettleNote !== undefined)
+      data.legacyLawyerSettleNote = textOf(input.lawyerSettleNote);
+    if (input.mediationNo !== undefined)
+      data.legacyMediationNo = textOf(input.mediationNo);
+    if (input.hearingOn !== undefined)
+      data.legacyHearingOn = dateOf(input.hearingOn);
+    if (input.notarizationNumber !== undefined)
+      data.legacyNotarizationNumber = textOf(input.notarizationNumber);
+    if (input.executionNo !== undefined)
+      data.legacyExecutionNo = textOf(input.executionNo);
+    if (input.executionOn !== undefined)
+      data.legacyExecutionOn = dateOf(input.executionOn);
+
+    if (Object.keys(data).length > 0) {
+      await this.db.case.update({
+        where: { id: caseId },
+        data,
+      });
+    }
     return { id: caseId };
   }
 }
