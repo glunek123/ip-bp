@@ -1,3 +1,12 @@
+# 2026-11-28 深夜收口：外部门户修复（律师端/公证处端）、全仓库工程门禁清零与主干合入（`eb2196ac`）
+
+- **外部门户验证与修复（UAT `https://111.231.164.248`，`eb2196ac`）**：
+  - **测试账号创建**：使用运营账号创建并绑定律师端测试账号 `uat_lawyer_20261128`（绑定至 `UAT测试律师-20261128-A` / `00120261128001`）与公证处端测试账号 `uat_notary_20261128`（`明川公证处`）；客户端账号因当前运营账号无 `CUSTOMER_ACCOUNT_CREATE`（`canCreate: false`）未创建，待有权限账号创建后复测。
+  - **律师端修复（`frontend/src/api/cases.ts`、`LawyerCaseDetailPage.vue`）**：放宽 `lawyerCertificate` 对 0 附件及 `needDisclose` 附件数强制校验，并增加 `id` 路由参数空值守卫；上线后登录 `uat_lawyer_20261128` 实测 `/lawyer/cases/7b0b36d9-5aac-4e62-b28c-aba3de61c684`（`00120261128001`）正常渲染（0 条 `/undefined` 请求、登出 `204`）。
+  - **公证处端修复（`frontend/src/api/notary-portal.ts`）**：放宽 `validOpening`/`validCertificate` 附件与可选字段校验及历史 `WAITING_CERTIFICATE` 阶段快照前置检查；上线后登录 `uat_notary_20261128` 实测 `NT-20261128-001` 详情与 `NT-20261126-213`「登记公证书」抽屉均正常加载（登出 `204`）。
+- **阿里云 OSS 桶权限评估**：后端代理 `/api/v1/legacy-attachments/:id/content` 已接管鉴权且前端已移除裸直链；现阶段保持桶策略不变不影响日常使用，已于 `docs/operations/production-cutover-runbook.md` 标为可选后续安全加固项。
+- **全仓库工程门禁与主干合入**：修复全部 42 处既有 ESLint 告警/报错后，`pnpm check:fast:prepared`（`architecture:check` 23 模块 / 224 模型 + 双端/根 `typecheck` + `eslint --max-warnings 0`）、`pnpm build:prepared`、Backend `case-delete.service.spec.ts`（10/10）与 Frontend `notary-portal`/`cases`/`NotaryMatter*`（497/497）全部通过；分支 `codex/case-cards-20261110` 以严格 fast-forward 合入并推送至 `origin/main`。
+
 # 2026-11-28 夜间：生产切换准备（P0 全链写入验通 / P1 每日自动备份 / P2 切换 Runbook）
 
 - **P0 真实写入闭环与删除留痕实测（UAT `https://111.231.164.248`，`ae8605a5`）**：
