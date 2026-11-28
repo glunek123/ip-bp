@@ -1,3 +1,17 @@
+# 2026-11-28 傍晚：UAT 验收闭环 6 项流程缺陷修复、权限与库内函数收口并部署验证（`6c129785`）
+
+- **P0 新建客户编号冲突（`20261128160000_sync_customer_counter_and_revoke_definer_public` + `business-numbering.service.ts`）**：迁移将 UAT 共享库 `customer_business_number_counters.last_value` 同步至客户表最大数字编号 `879`；同时调整 `allocateCustomerBusinessId(tx)` 为读取 `GREATEST("last_value", MAX("business_id"::bigint)) + 1`，避免导入或跳号后再次触发 409 冲突。
+- **P1 出证后详情及历史在途公证抽屉加载失败（`notary-detail-read.ts`、`frontend/src/api/notary.ts`、`frontend/src/api/cases.ts`）**：
+  - 允许出证阶段无强制公证书/披露附件（解除 `NT-20261128-001` 等无附件归档批次详情拒载）。
+  - 历史快照（`legacyId` 或 `source === 'NOCOBASE'`）在 `readNotaryDetailFacts` 中统一标记为 `snapshotState: 'UNKNOWN_LEGACY'`；前端校验放宽历史快照在各在途阶段的物流、开箱照与阶段决定匹配校验，覆盖 `NT-20261126-080`、`NT-20261126-195`、`（2024）赣洪江证内字第 3299 号` 等批次。
+- **P1 提前结案表单加载失败（`frontend/src/modules/cases/CaseListWorkflowPanel.vue`）**：移除列表工作流抽屉内对 `early-closure` 的前端 `owner.id` 硬编码拦截，改以服务端下发的 `canEarlyClose` 能力为准，使代办/非主办内部角色（如 `00120261128001` 协作场景）可正常加载提前结案表单。
+- **P1 案内手工结算金额精确到分（`frontend/src/modules/settlements/settlement-preview.ts`）**：将 `roundManualSettlement` 从整元舍入改为规范化保留两位小数（如 `1.23 -> 1.23`、`1 -> 1.00`），与后端 `SETTLEMENT_V2` 分角精度一致。
+- **P2 证物导航列表读取失败（`backend/src/modules/evidence/evidence-source-read.ts`、`evidence.service.ts`）**：兼容 UAT 存量 29 组尚无公证书记录的 `NOTARY_MATTER` 证物组及缺少 `externalEntry` 的历史导入案件，并在列表分页聚合中跳过缺失来源，避免 404/500 阻断整个页面。
+- **安全与权限收口**：`CaseLegacyFactsService` 补齐 `AccessControlService.authorizeCase(actor, 'case.routine.edit', ...)`；数据库迁移 `20261128160000` 删除 `public.update_case_legacy_facts(...)` 并收回 `PUBLIC` 对 `public.revoke_case_archive(...)` 的执行权限。
+- **验证与上线结果**：
+  - 本地：`pnpm architecture:check` 通过（23 模块 / 224 模型）；`backend` `tsc --noEmit` 与 7 个 Jest 测试套件（54 个用例）全部通过；`frontend` `vue-tsc --noEmit` 与 8 个 Vitest 文件（537 passed | 4 skipped）全部通过。
+  - UAT（`ubuntu@111.231.164.248`）：已部署 `6c129785` 至 `/srv/ip-bp-uat/releases/6c129785`，`ip-bp-uat` 为 `active`，`https://127.0.0.1/api/v1/health` 返回 `200`，`prisma migrate status` 显示 357 个迁移全部最新；`customer_business_number_counters.last_value = 879`、`update_case_legacy_facts` 已删除、`revoke_case_archive` 已收回 `PUBLIC` 权限；基于只读模块直连验证 4 个目标公证批次、`listEvidenceSources`（2273 条）/ 29 组无证公证证物组读取、`00120261128001` 案件记录及前端构建产物均符合预期（待运营登录浏览器端复验全流程写入）。
+
 # 2026-11-28 下午：修复 `audit_events`/`upload_drafts` 触发器故障、打通在途迁移流转与原生卡片融合（已部署 `d87fef51`）
 
 - **P0 触发器故障修复（`20261128140000_restore_actor_path_trigger`）**：排查发现 `20261127150000` 批量放宽触发器时将 `public.enforce_case_client_mailing_actor_path()` 替换为空实现，导致 `audit_events` 与 `upload_drafts` 在内部用户写入时不自动回填 `internal_actor_user_id`，进而使客户、线索、上传草稿等全部新增／流转触发 `23514`（`audit_events_actor_path_check`）失败。已前向重建该函数：保留内部操作人自动回填与三端互斥校验，同时不恢复严格阶段异常校验，并在 UAT 数据库 `BEGIN ... ROLLBACK` 实测确认写入通过。
