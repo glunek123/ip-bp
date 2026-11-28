@@ -77,20 +77,24 @@ echo "== 8. prune =="
 # 仅在服务健康时清理；保留最近 KEEP_RELEASES 个发布与 KEEP_BACKUPS 份备份，
 # 永不删除 current 指向的目录。
 if [ "$HEALTH" = "200" ]; then
-  sudo -n bash -c "
-    keep=$KEEP_RELEASES
-    keep_backups=$KEEP_BACKUPS
-    cur=\$(readlink -f $APP_ROOT/current)
-    cd $APP_ROOT/releases || exit 0
-    ls -1t | tail -n +\$((keep+1)) | while read -r d; do
-      [ \"$APP_ROOT/releases/\$d\" = \"\$cur\" ] && continue
-      rm -rf \"\$d\" && echo \"pruned release \$d\"
-    done
-    cd /var/backups/ip-bp-uat 2>/dev/null || exit 0
-    ls -1dt case-* 2>/dev/null | tail -n +\$((keep_backups+1)) | while read -r b; do
-      rm -rf \"\$b\" && echo \"pruned backup \$b\"
-    done
-  "
+  sudo -n bash -s -- "$APP_ROOT" "$KEEP_RELEASES" "$KEEP_BACKUPS" <<'PRUNE_EOF'
+set -euo pipefail
+app_root="$1"
+keep="$2"
+keep_backups="$3"
+cur=$(readlink -f "$app_root/current")
+if cd "$app_root/releases" 2>/dev/null; then
+  ls -1t | tail -n +"$((keep+1))" | while read -r d; do
+    [ "$app_root/releases/$d" = "$cur" ] && continue
+    rm -rf "$d" && echo "pruned release $d"
+  done
+fi
+if cd /var/backups/ip-bp-uat 2>/dev/null; then
+  ls -1dt case-* 2>/dev/null | tail -n +"$((keep_backups+1))" | while read -r b; do
+    rm -rf "$b" && echo "pruned backup $b"
+  done
+fi
+PRUNE_EOF
 else
   echo "skip prune (health=$HEALTH)"
 fi

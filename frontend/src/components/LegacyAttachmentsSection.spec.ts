@@ -5,6 +5,8 @@ import LegacyAttachmentsSection from './LegacyAttachmentsSection.vue';
 const api = vi.hoisted(() => ({
   listLegacyAttachments: vi.fn(),
   deleteLegacyAttachment: vi.fn(),
+  legacyAttachmentContentUrl: (id: string, download = false) =>
+    `/api/v1/legacy-attachments/${encodeURIComponent(id)}/content${download ? '?download=1' : ''}`,
 }));
 
 vi.mock('../api/legacy-attachments', () => api);
@@ -64,7 +66,10 @@ describe('LegacyAttachmentsSection', () => {
     expect(wrapper.text()).toContain('民事判决书.pdf');
     expect(
       wrapper.get('[data-test="legacy-attachment-open-att-1"]').attributes('href'),
-    ).toBe('https://bstfw-ip.oss-cn-hangzhou.aliyuncs.com/ipjiaofu/pro/judgment.pdf');
+    ).toBe('/api/v1/legacy-attachments/att-1/content?download=1');
+    expect(wrapper.get('.legacy-attachment-thumb').attributes('src')).toBe(
+      '/api/v1/legacy-attachments/att-2/content',
+    );
   });
 
   it('requires reason before deleting a legacy attachment and reloads after delete', async () => {

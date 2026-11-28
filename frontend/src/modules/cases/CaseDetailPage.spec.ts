@@ -116,6 +116,8 @@ vi.mock('../../api/materials', async (original) => ({
 vi.mock('../../api/legacy-attachments', () => ({
   listLegacyAttachments: vi.fn(async () => ({ items: [] })),
   deleteLegacyAttachment: vi.fn(async () => ({ id: 'att-1' })),
+  legacyAttachmentContentUrl: (id: string, download = false) =>
+    `/api/v1/legacy-attachments/${encodeURIComponent(id)}/content${download ? '?download=1' : ''}`,
 }));
 vi.mock('../../api/case-files', () => ({
   listCaseFileCatalog: vi.fn(async (caseId: string) => ({

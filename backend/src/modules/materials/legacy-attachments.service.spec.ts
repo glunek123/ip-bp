@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ForbiddenException,
   NotFoundException,
@@ -60,6 +61,7 @@ describe('LegacyAttachmentsService', () => {
       customer: { findFirst: jest.fn() },
       legacyAttachment: {
         findMany: jest.fn().mockResolvedValue([sampleRow]),
+        findUnique: jest.fn().mockResolvedValue(sampleRow),
       },
       $transaction: jest.fn(async (run: (client: unknown) => unknown) => run(tx)),
     };
@@ -141,5 +143,37 @@ describe('LegacyAttachmentsService', () => {
     expect(f.tx.legacyAttachment.delete).toHaveBeenCalledWith({
       where: { id: 'att-uuid-1' },
     });
+  });
+
+  it('resolves authorized OSS attachment content and blocks external, missing, or non-OSS URLs', async () => {
+    const f = fixture();
+    await expect(
+      f.service.resolveContent(actor, 'att-uuid-1'),
+    ).resolves.toEqual({
+      ossUrl:
+        'https://bstfw-ip.oss-cn-hangzhou.aliyuncs.com/ipjiaofu/pro/2025/judgement.pdf',
+      filename: 'judgement.pdf',
+      mimeType: 'application/pdf',
+    });
+
+    await expect(
+      f.service.resolveContent(
+        { ...actor, clientCustomerId: 'client-1' },
+        'att-uuid-1',
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    f.db.case.findFirst.mockResolvedValueOnce(null);
+    await expect(
+      f.service.resolveContent(actor, 'att-uuid-1'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    f.db.legacyAttachment.findUnique.mockResolvedValueOnce({
+      ...f.sampleRow,
+      ossUrl: 'http://127.0.0.1/internal',
+    });
+    await expect(
+      f.service.resolveContent(actor, 'att-uuid-1'),
+    ).rejects.toBeInstanceOf(BadGatewayException);
   });
 });

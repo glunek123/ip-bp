@@ -6,6 +6,7 @@ import { ElInput } from 'element-plus/es/components/input/index.mjs';
 import { ApiError } from '../api/http';
 import {
   deleteLegacyAttachment,
+  legacyAttachmentContentUrl,
   listLegacyAttachments,
   type LegacyAttachmentItem,
   type LegacyAttachmentOwnerType,
@@ -185,7 +186,7 @@ onBeforeUnmount(() => {
                 @click="previewItem = entry"
               >
                 <img
-                  :src="entry.ossUrl"
+                  :src="legacyAttachmentContentUrl(entry.id)"
                   :alt="entry.title"
                   loading="lazy"
                   class="legacy-attachment-thumb"
@@ -209,7 +210,7 @@ onBeforeUnmount(() => {
                 >预览</ElButton
               >
               <a
-                :href="entry.ossUrl"
+                :href="legacyAttachmentContentUrl(entry.id, true)"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="legacy-attachment-link"
@@ -239,10 +240,13 @@ onBeforeUnmount(() => {
       @close="previewItem = null"
     >
       <div v-if="previewItem" class="legacy-attachment-preview">
-        <img :src="previewItem.ossUrl" :alt="previewItem.title" />
+        <img
+          :src="legacyAttachmentContentUrl(previewItem.id)"
+          :alt="previewItem.title"
+        />
         <p>
           <a
-            :href="previewItem.ossUrl"
+            :href="legacyAttachmentContentUrl(previewItem.id)"
             target="_blank"
             rel="noopener noreferrer"
             >在新窗口打开原图</a

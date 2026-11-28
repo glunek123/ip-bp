@@ -47,6 +47,13 @@ function validLegacyAttachmentItem(
   );
 }
 
+export function legacyAttachmentContentUrl(
+  id: string,
+  download = false,
+): string {
+  return `/api/v1/legacy-attachments/${encodeURIComponent(id)}/content${download ? '?download=1' : ''}`;
+}
+
 export async function listLegacyAttachments(
   ownerType: LegacyAttachmentOwnerType,
   ownerId: string,

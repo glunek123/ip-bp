@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ForbiddenException,
   Injectable,
@@ -72,6 +73,48 @@ export class LegacyAttachmentsService {
         ossUrl: row.ossUrl,
         createdAt: row.createdAt.toISOString(),
       })),
+    };
+  }
+
+  async resolveContent(
+    actor: ActorContext,
+    id: string,
+  ): Promise<{ ossUrl: string; filename: string; mimeType: string }> {
+    this.ensureInternalActor(actor);
+    const row = await this.db.legacyAttachment.findUnique({ where: { id } });
+    if (!row) {
+      throw new NotFoundException({
+        code: 'LEGACY_ATTACHMENT_NOT_FOUND',
+        message: '未找到历史附件记录',
+      });
+    }
+    await this.authorizeOwnerRead(
+      actor,
+      row.ownerType as LegacyAttachmentOwnerType,
+      row.ownerId,
+    );
+    let parsed: URL;
+    try {
+      parsed = new URL(row.ossUrl);
+    } catch {
+      throw new BadGatewayException({
+        code: 'LEGACY_ATTACHMENT_INVALID_URL',
+        message: '历史附件地址无效',
+      });
+    }
+    if (
+      parsed.protocol !== 'https:' ||
+      !parsed.hostname.toLowerCase().endsWith('.aliyuncs.com')
+    ) {
+      throw new BadGatewayException({
+        code: 'LEGACY_ATTACHMENT_INVALID_URL',
+        message: '历史附件地址不受支持',
+      });
+    }
+    return {
+      ossUrl: row.ossUrl,
+      filename: row.filename || row.title || 'attachment',
+      mimeType: row.mimeType || 'application/octet-stream',
     };
   }
 
