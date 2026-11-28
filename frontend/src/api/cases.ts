@@ -3331,9 +3331,7 @@ export function validCaseDetail(
         Array.isArray(value.certificate.files) &&
         value.certificate.files.every(caseFile) &&
         Array.isArray(value.certificate.disclosureFiles) &&
-        value.certificate.disclosureFiles.every(caseFile) &&
-        (!value.certificate.needDisclose ||
-          value.certificate.disclosureFiles.length > 0)) &&
+        value.certificate.disclosureFiles.every(caseFile)) &&
     Array.isArray(value.fees) &&
     value.fees.every(
       (fee) =>

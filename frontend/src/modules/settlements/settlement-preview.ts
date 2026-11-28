@@ -19,7 +19,8 @@ function roundedYuan(numerator: bigint, denominator: bigint): string {
   return `${(numerator * 2n + denominator) / (2n * denominator)}.00`;
 }
 export function roundManualSettlement(value: string): string {
-  return roundedYuan(cents(value), 100n);
+  const totalCents = cents(value);
+  return `${totalCents / 100n}.${(totalCents % 100n).toString().padStart(2, '0')}`;
 }
 /** Presentation preview only. The backend recomputes every saved/launch amount. */
 export function previewSettlement(

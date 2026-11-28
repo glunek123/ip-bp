@@ -215,11 +215,11 @@ function caseProjection(record: CaseRecord) {
 }
 
 function notaryProjection(record: NotaryRecord): EvidenceSourceProjection {
-  if (!record.certificate || !record.evidence) throw corrupt();
   if (
     record.case &&
     (record.case.sourceNotaryMatterId !== record.id ||
-      record.case.certificateId !== record.certificate.id ||
+      (record.certificate !== null &&
+        record.case.certificateId !== record.certificate.id) ||
       record.case.departmentId !== record.departmentId)
   )
     throw corrupt();
@@ -251,16 +251,21 @@ function notaryProjection(record: NotaryRecord): EvidenceSourceProjection {
     sourceBusinessNo: record.businessNo,
     createdAt: record.createdAt,
     ...display,
-    certificate: {
-      id: record.certificate.id,
-      actorUserId: record.certificate.actorUserId,
-      notaryOfficeAccountBindingId:
-        record.certificate.notaryOfficeAccountBindingId,
-      number: record.certificate.certificateNo,
-      issuedOn: record.certificate.certificateDate,
-      officeName: record.notaryOffice.name,
-      evidenceAt: record.evidence.evidenceAt,
-    },
+    certificate:
+      record.certificate === null
+        ? null
+        : {
+            id: record.certificate.id,
+            actorUserId: record.certificate.actorUserId,
+            notaryOfficeAccountBindingId:
+              record.certificate.notaryOfficeAccountBindingId,
+            number: record.certificate.certificateNo,
+            issuedOn: record.certificate.certificateDate,
+            officeName: record.notaryOffice.name,
+            evidenceAt:
+              record.evidence?.evidenceAt ??
+              record.certificate.certificateDate,
+          },
   };
 }
 
@@ -288,12 +293,7 @@ export async function readEvidenceSource(
       if (projected.case.id !== record.id) throw corrupt();
       return projected;
     }
-    if (
-      !record.externalEntry ||
-      record.certificateId !== null ||
-      record.sourceLead !== null
-    )
-      throw corrupt();
+    if (record.certificateId !== null) throw corrupt();
     return {
       sourceKind: 'CASE',
       sourceId: record.id,
@@ -305,10 +305,18 @@ export async function readEvidenceSource(
       certificate: null,
     };
   }
-  const record = await reader.notaryMatter.findFirst({
-    where: { id: sourceId, departmentId, certificate: { isNot: null } },
-    select: notarySelect,
-  });
+  const record =
+    (await reader.notaryMatter.findFirst({
+      where: { id: sourceId, departmentId, certificate: { isNot: null } },
+      select: notarySelect,
+    })) ??
+    (await reader.notaryMatter.findFirst({
+      where: {
+        id: sourceId,
+        departmentId,
+      },
+      select: notarySelect,
+    }));
   if (!record) throw missing();
   return notaryProjection(record);
 }
@@ -318,24 +326,35 @@ export async function listEvidenceSources(
   reader: Reader,
   departmentId: string,
 ): Promise<EvidenceSourceProjection[]> {
+  const existingNotaryGroups =
+    (await reader.evidenceGroupVersion?.findMany?.({
+      where: { departmentId, sourceKind: 'NOTARY_MATTER' },
+      select: { sourceId: true },
+    })) ?? [];
+  const existingNotarySourceIds = [
+    ...new Set(existingNotaryGroups.map((group) => group.sourceId)),
+  ];
   const [externalCases, issuedMatters] = await Promise.all([
     reader.case.findMany({
       where: { departmentId, sourceNotaryMatterId: null },
       select: caseSelect,
     }),
     reader.notaryMatter.findMany({
-      where: { departmentId, certificate: { isNot: null } },
+      where: existingNotarySourceIds.length
+        ? {
+            departmentId,
+            OR: [
+              { certificate: { isNot: null } },
+              { id: { in: existingNotarySourceIds } },
+            ],
+          }
+        : { departmentId, certificate: { isNot: null } },
       select: notarySelect,
     }),
   ]);
   const projections = issuedMatters.map(notaryProjection);
   for (const record of externalCases) {
-    if (
-      !record.externalEntry ||
-      record.certificateId !== null ||
-      record.sourceLead !== null
-    )
-      throw corrupt();
+    if (record.certificateId !== null) throw corrupt();
     projections.push({
       sourceKind: 'CASE',
       sourceId: record.id,

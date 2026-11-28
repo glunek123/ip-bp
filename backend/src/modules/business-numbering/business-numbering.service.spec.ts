@@ -21,6 +21,9 @@ describe('business numbering', () => {
     expect(tx.$queryRawUnsafe).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE "customer_business_number_counters"'),
     );
+    expect(tx.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('MAX("business_id"::bigint)'),
+    );
   });
 
   it('rejects customer creation before the historical counter is seeded', async () => {

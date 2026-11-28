@@ -35,9 +35,15 @@ export async function allocateCustomerBusinessId(
 ): Promise<string> {
   const rows = await tx.$queryRawUnsafe<Array<{ last_value: bigint }>>(
     `UPDATE "customer_business_number_counters"
-       SET "last_value" = "last_value" + 1
-     WHERE "singleton_id" = 1 AND "last_value" >= 0
-     RETURNING "last_value"`,
+        SET "last_value" = GREATEST(
+              "last_value",
+              COALESCE(
+                (SELECT MAX("business_id"::bigint) FROM "customers" WHERE "business_id" ~ '^\\d+$'),
+                0
+              )
+            ) + 1
+      WHERE "singleton_id" = 1 AND "last_value" >= 0
+      RETURNING "last_value"`,
   );
   if (rows.length !== 1) throw numberNotInitialized();
   return formatCustomerBusinessId(BigInt(rows[0]!.last_value));

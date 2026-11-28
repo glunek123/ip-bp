@@ -673,4 +673,25 @@ describe('EvidenceService real Prisma command orchestration', () => {
       ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
     expect(f.tx.evidenceItem.update).not.toHaveBeenCalled();
   });
+
+  it('skips orphaned evidence groups during list and matchingIds instead of failing with 404', async () => {
+    const f = fixture();
+    const orphanGroup = {
+      ...group,
+      id: 'group-orphan',
+      sourceKind: 'NOTARY_MATTER' as const,
+      sourceId: 'missing-matter',
+      items: [{ ...item, id: 'item-orphan', sourceKind: 'NOTARY_MATTER' as const, sourceId: 'missing-matter' }],
+    };
+    f.tx.evidenceGroupVersion.findMany.mockResolvedValue([group, orphanGroup]);
+    f.tx.evidenceItem.findMany.mockResolvedValue([
+      item,
+      { ...item, id: 'item-orphan', sourceKind: 'NOTARY_MATTER' as const, sourceId: 'missing-matter' },
+    ]);
+    const listed = await f.service.list(actor, { page: 1, pageSize: 20 });
+    expect(listed.total).toBe(1);
+    expect(listed.items.map((row) => row.id)).toEqual(['item-1']);
+    const matched = await f.service.matchingIds(actor, { page: 1, pageSize: 20 });
+    expect(matched.ids).toEqual(['item-1']);
+  });
 });

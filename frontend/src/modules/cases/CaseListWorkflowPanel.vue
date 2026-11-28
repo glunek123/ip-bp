@@ -455,7 +455,7 @@ const ownedSession = props.session;
 const detailRequest = new AbortController();
 const allowed = computed(
   () =>
-    ((props.action !== 'early-closure' && props.action !== 'payment-proof') ||
+    (props.action !== 'payment-proof' ||
       item.value.owner.id === props.actorUserId) &&
     (props.action === 'early-closure' ||
     props.action === 'settlement-update' ||

@@ -28,7 +28,9 @@ describe('exact settlement draft preview', () => {
         baseFee: '10.49',
       }).amount,
     ).toBe('42.00');
-    expect(roundManualSettlement('73.50')).toBe('74.00');
+    expect(roundManualSettlement('73.50')).toBe('73.50');
+    expect(roundManualSettlement('1.23')).toBe('1.23');
+    expect(roundManualSettlement('1')).toBe('1.00');
   });
   it('preserves the maximum decimal amounts and 16-digit percentage without floating point loss', () => {
     expect(

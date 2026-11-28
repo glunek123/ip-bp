@@ -1077,7 +1077,7 @@ describe('settlement page behavior (mounted components, not real browser)', () =
     expect(api.getSettlementBill).not.toHaveBeenCalled();
     expect(wrapper.find('[aria-label="账单详情"]').exists()).toBe(false);
   });
-  it('recalculates the draft immediately and saves a rounded manual value for this case only', async () => {
+  it('recalculates the draft immediately and preserves cents for a manual override value', async () => {
     const wrapper = render(CaseSettlementPanel, {
       caseId: 'case',
       canUpdate: true,
@@ -1096,7 +1096,7 @@ describe('settlement page behavior (mounted components, not real browser)', () =
       expect.objectContaining({
         side: 'CUSTOMER',
         customerFormula: '结案金额×80%',
-        manualAmount: '46.00',
+        manualAmount: '45.50',
         expectedTermsVersion: 1,
         idempotencyKey: expect.any(String),
       }),

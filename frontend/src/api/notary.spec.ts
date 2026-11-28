@@ -603,8 +603,122 @@ describe('notary operational display contract', () => {
       ...issued,
       certificateFiles: [certificateFiles[0]],
     });
-    await expect(getNotaryMatter('matter-1')).rejects.toMatchObject({
-      code: 'INVALID_RESPONSE',
+    await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
+      certificateFiles: [certificateFiles[0]],
+    });
+    http.getJson.mockResolvedValue({
+      ...issued,
+      certificateFiles: [],
+    });
+    await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
+      certificateFiles: [],
+    });
+  });
+
+  it('accepts historical UNKNOWN_LEGACY matters in UNBOX_REVIEW and WAITING_CERTIFICATE without prior records', async () => {
+    const legacyBase = {
+      id: 'matter-legacy-1',
+      businessNo: 'NT-20261126-080',
+      leadId: 'lead-legacy-1',
+      leadStatus: 'TRANSFERRED_TO_NOTARY' as const,
+      leadVersion: 1,
+      stage: 'UNBOX_REVIEW' as const,
+      version: 1,
+      notaryOffice: { id: 'office-1', name: '公证处' },
+      selectedProductIds: [],
+      selectedProducts: [],
+      selectedContentVersionIds: [],
+      selectedMaterials: [],
+      evidenceMode: null,
+      batchPurpose: '历史迁移',
+      createdAt: '2024-07-09T00:00:00.000Z',
+      sourceLead: { id: 'lead-legacy-1', businessNo: '59202407041' },
+      sourceSummary: {
+        customer: { id: 'cust-1', name: '客户' },
+        rightsHolder: { id: 'rh-1', name: '权利人' },
+        platform: 'PINDUODUO' as const,
+        shopName: '测试店铺',
+        shopExternalId: null,
+      },
+      transferredAt: '2024-07-09',
+      evidenceAt: null,
+      openingSummary: null,
+      certificateSummary: null,
+      certificateFiles: [],
+      fees: {
+        notary: { state: 'UNRECORDED' as const, amount: null },
+        investigation: { state: 'UNRECORDED' as const, amount: null },
+        sample: { state: 'UNRECORDED' as const, amount: null },
+        originalSampleFee: { state: 'UNRECORDED' as const, amount: null },
+        sampleRefund: { state: 'UNRECORDED' as const, amount: null },
+      },
+      linkedCase: null,
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: true,
+        decideIssuance: false,
+        archiveReturn: false,
+        archiveMatter: true,
+        proxyIssueCertificate: false,
+      },
+      evidence: null,
+      opening: null,
+      reviewDecision: null,
+      issuanceDecision: null,
+      returnArchive: null,
+      detailFacts: {
+        source: {
+          snapshotState: 'UNKNOWN_LEGACY' as const,
+          snapshotFields: 'TRANSFER_SNAPSHOT' as const,
+          caseType: 'CIVIL' as const,
+          source: 'ONLINE' as const,
+          foundAt: '2024-07-09T00:00:00.000Z',
+          platform: 'PINDUODUO' as const,
+          shopName: '测试店铺',
+          shopExternalId: { value: null, provenance: 'CURRENT_LEAD' as const },
+          needDisclose: { value: false, provenance: 'CURRENT_LEAD' as const },
+          responsibleOperator: {
+            id: 'user-1',
+            name: '运营',
+            provenance: 'CURRENT_NAME' as const,
+          },
+          infringements: { values: [], provenance: 'CURRENT_LEAD' as const },
+          remark: { value: null, provenance: 'CURRENT_LEAD' as const },
+          leadPushedAt: null,
+          screenshots: [],
+          screenshotProvenance: 'TRANSFER_SNAPSHOT' as const,
+        },
+        leadReview: { state: 'UNKNOWN_LEGACY' as const },
+        archive: null,
+        productEstimate: {
+          amount: '0.00',
+          label: 'ESTIMATE' as const,
+          provenance: 'TRANSFER_SNAPSHOT' as const,
+        },
+        feeTotals: {
+          disclosure: { state: 'UNRECORDED' as const, amount: null },
+          knownSubtotal: '0.00',
+          confirmedTotal: null,
+        },
+      },
+    };
+    http.getJson.mockResolvedValue(legacyBase);
+    await expect(getNotaryMatter('matter-legacy-1')).resolves.toMatchObject({
+      stage: 'UNBOX_REVIEW',
+    });
+
+    http.getJson.mockResolvedValue({
+      ...legacyBase,
+      stage: 'WAITING_CERTIFICATE',
+      capabilities: {
+        ...legacyBase.capabilities,
+        reviewOpening: false,
+        proxyIssueCertificate: true,
+      },
+    });
+    await expect(getNotaryMatter('matter-legacy-1')).resolves.toMatchObject({
+      stage: 'WAITING_CERTIFICATE',
     });
   });
 });

@@ -292,3 +292,45 @@ it('restores a retained original request inside the existing workflow panel', as
   expect(wrapper.find('[data-test="retry-original"]').exists()).toBe(true);
   expect(sessionStorage.getItem(requestKey)).toBe(JSON.stringify(original));
 });
+
+it('opens early-closure form even when the fresh detail grants canEarlyClose to a delegated operator', async () => {
+  const realPanelModule = await vi.importActual<
+    typeof import('./CaseListWorkflowPanel.vue')
+  >('./CaseListWorkflowPanel.vue');
+  const delegatedCase = caseFixture({
+    stage: 'WAITING_COMPLAINT',
+    owner: { id: 'user-2', displayName: '其他负责人' },
+    canEarlyClose: true,
+    closure: null,
+  });
+  vi.mocked(getCase).mockResolvedValue(delegatedCase);
+  const wrapper = mount(CaseAdditionalActions, {
+    props: {
+      item: delegatedCase,
+      identity: actor,
+      actorUserId: 'user-1',
+    },
+    global: {
+      stubs: {
+        ElDrawer: {
+          props: ['modelValue', 'title'],
+          template:
+            '<section v-if="modelValue" role="dialog" :aria-label="title"><slot/><slot name="footer"/></section>',
+        },
+        CaseListWorkflowPanel: realPanelModule.default,
+        CaseEarlyClosurePanel: {
+          props: ['caseId', 'stage', 'version'],
+          template:
+            '<div data-test="early-closure-panel-mounted">{{ caseId }}:{{ stage }}:{{ version }}</div>',
+        },
+      },
+    },
+  });
+  wrappers.push(wrapper);
+  await flushPromises();
+  await wrapper.get('[data-case-action="early-closure"]').trigger('click');
+  await flushPromises();
+  expect(
+    wrapper.find('[data-test="early-closure-panel-mounted"]').text(),
+  ).toContain(`${caseId}:WAITING_COMPLAINT:3`);
+});

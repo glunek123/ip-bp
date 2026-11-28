@@ -95,7 +95,10 @@ export function readNotaryDetailFacts(input: {
   )
     corrupt();
   const source = snapshot as Record<string, unknown>;
+  const isHistoricalSnapshot =
+    typeof source.legacyId === 'string' || source.source === 'NOCOBASE';
   const snapshotState =
+    !isHistoricalSnapshot &&
     typeof source.caseType === 'string' &&
     typeof source.source === 'string' &&
     typeof source.foundAt === 'string' &&

@@ -482,7 +482,10 @@ function isLogistics(value: unknown): value is NotaryEvidenceLogistics {
   );
 }
 
-function isEvidence(value: unknown): value is NotaryEvidence {
+function isEvidence(
+  value: unknown,
+  allowEmptyLogistics = false,
+): value is NotaryEvidence {
   return (
     isRecord(value) &&
     typeof value.evidenceAt === 'string' &&
@@ -496,7 +499,7 @@ function isEvidence(value: unknown): value is NotaryEvidence {
     typeof value.recordedByUserId === 'string' &&
     value.recordedByUserId.length > 0 &&
     Array.isArray(value.logistics) &&
-    value.logistics.length > 0 &&
+    (allowEmptyLogistics || value.logistics.length > 0) &&
     value.logistics.every(isLogistics)
   );
 }
@@ -610,7 +613,10 @@ function isOpeningPhoto(value: unknown): value is NotaryOpeningPhoto {
   );
 }
 
-function isOpening(value: unknown): value is NotaryOpening {
+function isOpening(
+  value: unknown,
+  allowEmptyPhotos = false,
+): value is NotaryOpening {
   return (
     isRecord(value) &&
     (value.senderName === null || typeof value.senderName === 'string') &&
@@ -621,7 +627,7 @@ function isOpening(value: unknown): value is NotaryOpening {
     typeof value.recordedByUserId === 'string' &&
     value.recordedByUserId.length > 0 &&
     Array.isArray(value.photos) &&
-    value.photos.length > 0 &&
+    (allowEmptyPhotos || value.photos.length > 0) &&
     value.photos.every(isOpeningPhoto)
   );
 }
@@ -1010,7 +1016,9 @@ function issuanceDecisionMatchesStage(
   stage: unknown,
   decision: NotaryIssuanceDecision | null,
   returnArchive: NotaryReturnArchiveSummary | null = null,
+  isLegacy = false,
 ): boolean {
+  if (isLegacy && decision === null) return true;
   if (stage === 'ISSUANCE_DECISION') return decision === null;
   if (stage === 'WAITING_CERTIFICATE') return decision?.decision === 'ISSUE';
   if (stage === 'WAITING_RETURN') return decision?.decision === 'NO_ISSUE';
@@ -1026,7 +1034,9 @@ function decisionMatchesStage(
   decision: NotaryOpeningReviewDecision | null,
   returnArchive: NotaryReturnArchiveSummary | null = null,
   issuanceDecision: NotaryIssuanceDecision | null = null,
+  isLegacy = false,
 ): boolean {
+  if (isLegacy && decision === null) return true;
   if (stage === 'UNBOX_REVIEW') return decision === null;
   const activeReview =
     decision !== null &&
@@ -1415,6 +1425,10 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
   const selectedMaterials = detail.selectedMaterials;
   const selectedProductIds = detail.selectedProductIds;
   const selectedContentVersionIds = detail.selectedContentVersionIds;
+  const isLegacy =
+    isRecord(detail.detailFacts) &&
+    isRecord(detail.detailFacts.source) &&
+    detail.detailFacts.source.snapshotState === 'UNKNOWN_LEGACY';
   return (
     isNotaryDisplay(detail) &&
     detailFactsMatch(detail) &&
@@ -1422,14 +1436,7 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
     detail.certificateFiles.every(isCertificateFile) &&
     (detail.certificateSummary === null
       ? detail.certificateFiles.length === 0
-      : detail.stage === 'ARCHIVED' &&
-        detail.certificateFiles.some(
-          (file) => file.purpose === 'NOTARY_CERTIFICATE',
-        ) &&
-        (!detail.certificateSummary.needDisclose ||
-          detail.certificateFiles.some(
-            (file) => file.purpose === 'NOTARY_DISCLOSURE',
-          ))) &&
+      : detail.stage === 'ARCHIVED') &&
     Number.isInteger(detail.version) &&
     (detail.version as number) >= 1 &&
     (detail.routineRevision === undefined ||
@@ -1470,9 +1477,9 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
       typeof detail.disclosureRequired === 'boolean') &&
     (detail.capabilities.proxyIssueCertificate === undefined ||
       typeof detail.capabilities.proxyIssueCertificate === 'boolean') &&
-    (detail.evidence === null || isEvidence(detail.evidence)) &&
+    (detail.evidence === null || isEvidence(detail.evidence, isLegacy)) &&
     (detail.recordEdits === undefined || isRecordEdits(detail.recordEdits)) &&
-    (detail.opening === null || isOpening(detail.opening)) &&
+    (detail.opening === null || isOpening(detail.opening, isLegacy)) &&
     (detail.reviewDecision === null ||
       isReviewDecision(detail.reviewDecision)) &&
     (detail.issuanceDecision === null ||
@@ -1484,17 +1491,20 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
       detail.reviewDecision as NotaryOpeningReviewDecision | null,
       detail.returnArchive as NotaryReturnArchiveSummary | null,
       detail.issuanceDecision as NotaryIssuanceDecision | null,
+      isLegacy,
     ) &&
     issuanceDecisionMatchesStage(
       detail.stage,
       detail.issuanceDecision as NotaryIssuanceDecision | null,
       detail.returnArchive as NotaryReturnArchiveSummary | null,
+      isLegacy,
     ) &&
     (detail.stage === 'WAITING_RETURN'
       ? detail.returnArchive === null
       : detail.capabilities.archiveReturn === false) &&
     (detail.stage === 'ARCHIVED'
       ? detail.returnArchive === null ||
+        isLegacy ||
         (detail.returnArchive !== null &&
           detail.issuanceDecision !== null &&
           detail.reviewDecision !== null)
@@ -1519,7 +1529,7 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
     detail.stage === 'ARCHIVED' ||
     detail.stage === 'WAITING_CERTIFICATE' ||
     detail.stage === 'WAITING_RETURN'
-      ? detail.opening !== null &&
+      ? (detail.opening !== null || isLegacy) &&
         detail.capabilities.reviewOpening === false &&
         detail.capabilities.recordOpening === false &&
         detail.capabilities.recordEvidence === false

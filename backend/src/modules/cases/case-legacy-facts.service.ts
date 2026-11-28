@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 
@@ -27,7 +28,10 @@ export type CaseLegacyFactsInput = {
 /** 旧库迁移带入的补充字段维护：允许运营在案件详情里更正。 */
 @Injectable()
 export class CaseLegacyFactsService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly access: AccessControlService,
+  ) {}
 
   async update(
     actor: ActorContext,
@@ -38,9 +42,21 @@ export class CaseLegacyFactsService {
       throw new ForbiddenException({ code: 'CASE_ACTION_FORBIDDEN' });
     const found = await this.db.case.findFirst({
       where: { id: caseId, departmentId: actor.departmentId },
-      select: { id: true },
+      select: {
+        id: true,
+        departmentId: true,
+        responsibleUserId: true,
+        responsibleMembership: { select: { teamId: true } },
+      },
     });
     if (!found) throw new NotFoundException({ code: 'CASE_NOT_FOUND' });
+    await this.access.authorizeCase(actor, 'case.routine.edit', {
+      departmentId: found.departmentId,
+      responsibleUserId: found.responsibleUserId,
+      ...(found.responsibleMembership?.teamId
+        ? { teamId: found.responsibleMembership.teamId }
+        : {}),
+    });
 
     const dateOf = (value: string | null | undefined): Date | null => {
       if (value === undefined || value === null || value.trim() === '')

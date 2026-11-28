@@ -360,7 +360,7 @@ export class EvidenceService {
       const rows = [];
       for (const group of groups) {
         const source = sourceMap.get(evidenceSourceKey(group));
-        if (!source) throw missing();
+        if (!source) continue;
         const view = await this.view(tx, group, source);
         const timestamps = new Map(
           group.items.map((item) => [item.id, item.createdAt.getTime()]),
@@ -419,7 +419,7 @@ export class EvidenceService {
         ids: items
           .filter((item) => {
             const source = bySource.get(evidenceSourceKey(item));
-            if (!source) throw missing();
+            if (!source) return false;
             return matchesEvidenceFilter(
               {
                 id: item.id,

@@ -174,4 +174,42 @@ describe('evidence source reads', () => {
       }),
     );
   });
+
+  it('lists legacy NOTARY_MATTER evidence groups without certificates and legacy cases without externalEntry', async () => {
+    const store = {
+      evidenceGroupVersion: {
+        findMany: jest.fn().mockResolvedValue([{ sourceId: 'matter-no-cert' }]),
+      },
+      case: {
+        findFirst: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            ...externalCase,
+            id: 'case-legacy-no-ext',
+            externalEntry: null,
+            sourceLead: { platform: 'JD', shopName: '历史店铺' },
+          },
+        ]),
+      },
+      notaryMatter: {
+        findFirst: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([
+          {
+            ...notary,
+            id: 'matter-no-cert',
+            evidence: null,
+            certificate: null,
+            case: null,
+          },
+        ]),
+      },
+    };
+    const sources = await listEvidenceSources(
+      store as unknown as Prisma.TransactionClient,
+      'dept-1',
+    );
+    expect(sources).toHaveLength(2);
+    expect(sources.find((s) => s.sourceId === 'matter-no-cert')?.certificate).toBeNull();
+    expect(sources.find((s) => s.sourceId === 'case-legacy-no-ext')?.case.shopName).toBe('历史店铺');
+  });
 });

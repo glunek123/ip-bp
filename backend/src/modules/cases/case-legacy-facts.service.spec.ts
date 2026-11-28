@@ -16,9 +16,13 @@ describe('CaseLegacyFactsService', () => {
       },
       $executeRawUnsafe: jest.fn(),
     };
+    const access = {
+      authorizeCase: jest.fn().mockResolvedValue(undefined),
+    };
     return {
       db,
-      service: new CaseLegacyFactsService(db as never),
+      access,
+      service: new CaseLegacyFactsService(db as never, access as never),
     };
   }
 
@@ -27,6 +31,25 @@ describe('CaseLegacyFactsService', () => {
     await expect(
       service.update({ ...actor, clientCustomerId: 'cust-1' }, 'case-1', {}),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('rejects unauthorized internal actors via AccessControlService', async () => {
+    const { db, access, service } = createService();
+    db.case.findFirst.mockResolvedValueOnce({
+      id: 'case-1',
+      departmentId: 'dept-1',
+      responsibleUserId: 'other-user',
+      responsibleMembership: { teamId: null },
+    });
+    access.authorizeCase.mockRejectedValueOnce(new ForbiddenException());
+    await expect(service.update(actor, 'case-1', {})).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(access.authorizeCase).toHaveBeenCalledWith(actor, 'case.routine.edit', {
+      departmentId: 'dept-1',
+      responsibleUserId: 'other-user',
+    });
+    expect(db.case.update).not.toHaveBeenCalled();
   });
 
   it('throws when case is missing in actor department', async () => {
@@ -39,7 +62,12 @@ describe('CaseLegacyFactsService', () => {
 
   it('rejects invalid calendar dates', async () => {
     const { db, service } = createService();
-    db.case.findFirst.mockResolvedValueOnce({ id: 'case-1' });
+    db.case.findFirst.mockResolvedValueOnce({
+      id: 'case-1',
+      departmentId: 'dept-1',
+      responsibleUserId: 'user-1',
+      responsibleMembership: { teamId: null },
+    });
     await expect(
       service.update(actor, 'case-1', { hearingOn: '2026-02-30' }),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -48,7 +76,12 @@ describe('CaseLegacyFactsService', () => {
 
   it('updates expanded legacy fields via Prisma without raw SQL functions', async () => {
     const { db, service } = createService();
-    db.case.findFirst.mockResolvedValueOnce({ id: 'case-1' });
+    db.case.findFirst.mockResolvedValueOnce({
+      id: 'case-1',
+      departmentId: 'dept-1',
+      responsibleUserId: 'user-1',
+      responsibleMembership: { teamId: 'team-1' },
+    });
     db.case.update.mockResolvedValueOnce({ id: 'case-1' });
 
     const result = await service.update(actor, 'case-1', {
