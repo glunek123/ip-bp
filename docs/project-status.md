@@ -1,3 +1,14 @@
+# 2026-11-28 下午：修复 `audit_events`/`upload_drafts` 触发器故障、打通在途迁移流转与原生卡片融合（已部署 `d87fef51`）
+
+- **P0 触发器故障修复（`20261128140000_restore_actor_path_trigger`）**：排查发现 `20261127150000` 批量放宽触发器时将 `public.enforce_case_client_mailing_actor_path()` 替换为空实现，导致 `audit_events` 与 `upload_drafts` 在内部用户写入时不自动回填 `internal_actor_user_id`，进而使客户、线索、上传草稿等全部新增／流转触发 `23514`（`audit_events_actor_path_check`）失败。已前向重建该函数：保留内部操作人自动回填与三端互斥校验，同时不恢复严格阶段异常校验，并在 UAT 数据库 `BEGIN ... ROLLBACK` 实测确认写入通过。
+- **在途迁移线索／公证流转打通与回放修复**：
+  - 修复 `LeadService.responseSnapshot` / `receiptResult` 漏同步 6 个 `legacy*` 字段导致 `lead.service.spec.ts` 创建幂等回放失败的缺陷；
+  - `ClientLeadService`（`review` / `batchProxyReview`）放行 `creationChannel === 'HISTORICAL'` 且缺失 `pushedAt`/`pushedByUserId` 的待审核线索（代审时自动补填推送信息）；
+  - `LeadService`（`canDecideEvidence`、`writeEvidenceDecision`、`confirmProxyEvidence`）与 `LeadNotaryService`（`transfer` / `createBatch`）放行缺失 `activeReviewDecisionId` 的 `HISTORICAL` 待取证决策线索，并在外键要求时同事务补建 `LeadReviewDecision` 锚点；
+  - `notary-display-read.ts`、`notary-list.service.ts`、`notary-opening-review.service.ts`、`notary-issuance-decision.service.ts`、`notary-certificate.service.ts`、`notary-return-archive.service.ts` 对历史回填公证事项全面开放待开箱／开箱审核／出证决定／待出证／待退货能力与流转（缺前置表且遇外键约束时同事务补建 `notary_matter_evidence` / `notary_opening_review_decisions` / `notary_issuance_decisions` 锚点，使原生 `initializeNotaryEvidence` 与 `initializeNotaryFees` 正常运行）。
+- **原生卡片深度融合**：`CaseDetailsSections.vue` 增加 `#tools-<sectionKey>` 与 `#section-<sectionKey>` 插槽；移除 `CaseDetailPage.vue` 中 3 个独立 `.legacy-panel` 卡片及“仅供查阅”隔离提示，将「编辑补充信息／撤销归档」并入原生 `case-info` 卡片头部，将「涉案商品明细／披露信息」并入原生 `lead-info` 卡片，将「补充实收流水」并入原生 `closure-info` 卡片；同步合并 `LeadDetailPage.vue` 客户审核记录并去除 `NotaryMatterDetailPage.vue` 隔离提示。
+- **验证与上线**：`pnpm architecture:check`（23 模块、224 模型）、`backend tsc --noEmit`、`frontend vue-tsc --noEmit`、11 组后端 Jest 套件（含新增 `legacy-workflow-unblock.spec.ts` 4/4，共 334 项全通过）及 7 组前端 Vitest 套件（214 通过 / 15 既有跳过）全绿。`scripts/deploy-uat.sh d87fef51` 部署成功（356 项迁移含 `20261128140000_restore_actor_path_trigger` 全部就位，双端构建成功，`ip-bp-uat` 为 `active`，`/api/v1/health` 200）。
+
 # 2026-11-28 午后：旧库迁移收口、留痕全实体接入与历史字段／附件完善（已部署 `49aee54d`）
 
 - **全实体删除留痕与日志页**：抽取独立共享模块 `DeletionAuditModule`；新增 `/settings/deletion-audit-logs` 页面与导航入口；接入线索、公证取证批次（`lead-notary-delete.service.ts` / `.controller.ts`）、客户软删除（`customer-lifecycle.service.ts`）与历史附件（`LEGACY_ATTACHMENT`）同事务删除留痕；公证批次清理补全 `notary_return_amounts.source_evidence_matter_id`。
