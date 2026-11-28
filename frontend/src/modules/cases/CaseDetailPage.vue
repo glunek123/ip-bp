@@ -1153,7 +1153,8 @@ async function saveDisclosure() {
 
 async function clearDisclosure() {
   if (!item.value) return;
-  if (!window.confirm('确定清空该案件的披露信息？该操作不可恢复。')) return;
+  if (!globalThis.window.confirm('确定清空该案件的披露信息？该操作不可恢复。'))
+    return;
   disclosureSaving.value = true;
   disclosureError.value = '';
   try {

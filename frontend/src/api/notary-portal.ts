@@ -178,7 +178,6 @@ function validOpening(value: unknown): value is NotaryPortalOpening {
     (value.senderAddress === null || typeof value.senderAddress === 'string') &&
     dateTime(value.recordedAt) &&
     Array.isArray(value.photos) &&
-    value.photos.length > 0 &&
     value.photos.every(
       (photo) =>
         record(photo) &&
@@ -237,6 +236,8 @@ function validCertificate(value: unknown): boolean {
       'needDisclose',
       'caseId',
       'caseBusinessNo',
+      ...(value.sampleFeeAmount === undefined ? [] : ['sampleFeeAmount']),
+      ...(value.disclosureInfo === undefined ? [] : ['disclosureInfo']),
     ]) &&
     typeof value.certificateNo === 'string' &&
     value.certificateNo.length > 0 &&
@@ -244,19 +245,19 @@ function validCertificate(value: unknown): boolean {
     /^\d{4}-\d{2}-\d{2}$/u.test(value.certificateDate) &&
     dateTime(value.issuedAt) &&
     Array.isArray(value.files) &&
-    value.files.length > 0 &&
     value.files.length <= 10 &&
     value.files.every(validFile) &&
     Array.isArray(value.disclosureFiles) &&
     value.disclosureFiles.length <= 10 &&
     value.disclosureFiles.every(validFile) &&
     typeof value.needDisclose === 'boolean' &&
+    (value.sampleFeeAmount === undefined ||
+      typeof value.sampleFeeAmount === 'string') &&
+    (value.disclosureInfo === undefined ||
+      typeof value.disclosureInfo === 'string') &&
     (value.caseId === null || typeof value.caseId === 'string') &&
     (value.caseBusinessNo === null ||
-      typeof value.caseBusinessNo === 'string') &&
-    (value.needDisclose
-      ? value.disclosureFiles.length > 0
-      : value.disclosureFiles.length === 0)
+      typeof value.caseBusinessNo === 'string')
   );
 }
 function invalidResponse(): ApiError {
@@ -348,17 +349,13 @@ export async function getNotaryPortalMatter(
     response.capabilities.issueCertificate !==
       (response.stage === 'WAITING_CERTIFICATE') ||
     (response.stage === 'WAITING_UNBOX' &&
-      (response.evidence === null ||
-        response.opening !== null ||
+      (response.opening !== null ||
         response.issuanceDecision !== null ||
         response.certificate !== null)) ||
     (response.stage === 'UNBOX_REVIEW' &&
-      (response.evidence === null ||
-        response.opening === null ||
-        response.issuanceDecision !== null ||
-        response.certificate !== null)) ||
+      (response.issuanceDecision !== null || response.certificate !== null)) ||
     (response.stage === 'WAITING_CERTIFICATE' &&
-      (response.issuanceDecision === null || response.certificate !== null)) ||
+      response.certificate !== null) ||
     (response.stage === 'ARCHIVED' &&
       (response.evidence !== null ||
         response.opening !== null ||

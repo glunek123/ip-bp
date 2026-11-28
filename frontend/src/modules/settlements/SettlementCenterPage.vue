@@ -20,7 +20,6 @@ import {
 import { useAuthStore } from '../../stores/auth';
 import FeeCenterPanel from './FeeCenterPanel.vue';
 import LitigationRefundPanel from './LitigationRefundPanel.vue';
-import DateRangeFilter from '../../app/DateRangeFilter.vue';
 import { isListRowClick } from '../../app/list-row-navigation';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElInput } from 'element-plus/es/components/input/index.mjs';
@@ -66,7 +65,6 @@ watch(
     } else if (tab.value === 'REFUNDS') tab.value = 'CUSTOMER';
   },
 );
-const filterFormId = useId();
 const billCreateFormId = useId();
 const billFilterFormId = useId();
 const auth = useAuthStore();
@@ -188,14 +186,6 @@ const showBillPagination = computed(
 function applyFilter(): void {
   if (page.value !== 1) page.value = 1;
   else void load();
-}
-function clearFilter(): void {
-  keyword.value = '';
-  stage.value = '';
-  billState.value = '';
-  from.value = '';
-  to.value = '';
-  applyFilter();
 }
 async function updatePreview(): Promise<void> {
   const current = ++previewRevision;

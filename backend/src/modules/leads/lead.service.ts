@@ -2050,7 +2050,7 @@ export class LeadService {
   }
 
   async checkShopDuplicates(actor: ActorContext, input: ShopDuplicateCheckDto) {
-    const scope = await this.access.buildCustomerScope(actor, 'customer.read');
+    await this.access.buildCustomerScope(actor, 'customer.read');
     const names: string[] = [
       ...new Set(input.shops.map((shop) => shop.shopName.trim())),
     ].filter(Boolean);

@@ -35,7 +35,6 @@ const commands = new Map<string, Pending>();
 </script>
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import ActualPanel from './CaseSettlementActualPanel.vue';
 import ProofPanel, {
   findPendingProofTarget,
 } from './CasePaymentProofSupplementPanel.vue';
@@ -103,9 +102,6 @@ const actualLawyers = ref<CaseClosureWorkspace['actualRegistrationLawyers']>(
 const actualRefreshBusy = ref(false);
 const actualReadError = ref('');
 const actualAvailable = ref(false);
-const actualActorKey = computed(
-  () => props.session?.context.actorKey ?? props.actorKey,
-);
 const actualBlocked = computed(
   () =>
     actualOpen.value ||
@@ -114,7 +110,6 @@ const actualBlocked = computed(
     !!proofPaymentId.value ||
     proofRefreshing.value,
 );
-let actualReadGeneration = 0;
 let generation = 0;
 onBeforeUnmount(() => {
   generation++;
@@ -146,7 +141,6 @@ watch(
     actualReadError.value = '';
     actualAvailable.value = false;
     actualRefreshBusy.value = false;
-    actualReadGeneration++;
     const outer = props.session;
     const context = outer?.context ?? {
       recordId: props.caseId,
@@ -390,34 +384,6 @@ async function reloadWorkspace(): Promise<void> {
   }
 }
 
-async function refreshActual() {
-  const token = generation;
-  const readToken = ++actualReadGeneration;
-  const caseId = props.caseId;
-  actualRefreshBusy.value = true;
-  actualReadError.value = '';
-  try {
-    const value = await getCaseClosureWorkspace(caseId);
-    if (!current(token) || readToken !== actualReadGeneration) return;
-    // Keep the original source object and all unsaved settlement inputs intact.
-    actualDisplay.value = value.actual;
-    actualLawyers.value = value.actualRegistrationLawyers;
-    actualAvailable.value =
-      value.stage === 'WAITING_ARCHIVE' && !!value.closure.versionId;
-    if (!actualAvailable.value) actualOpen.value = false;
-  } catch {
-    if (current(token) && readToken === actualReadGeneration) {
-      actualLawyers.value = [];
-      actualAvailable.value = false;
-      actualOpen.value = false;
-      actualReadError.value =
-        '实际登记已确认，但最新汇总读取失败。保留原结算草稿；请重试读取。';
-    }
-  } finally {
-    if (current(token) && readToken === actualReadGeneration)
-      actualRefreshBusy.value = false;
-  }
-}
 watch(
   () => [pending.value?.status, props.session] as const,
   ([status]) => {

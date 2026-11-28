@@ -56,7 +56,9 @@ const returnTo = computed(() =>
   listReturnPath(route.query.returnTo, '/lawyer/cases'),
 );
 const auth = useAuthStore();
-const id = computed(() => String(route.params.id));
+const id = computed(() =>
+  typeof route.params.id === 'string' ? route.params.id.trim() : '',
+);
 const identity = computed(() =>
   auth.session === null
     ? ''
@@ -538,9 +540,13 @@ const closureCallbacks = computed(() => {
 });
 async function load(): Promise<void> {
   request?.abort();
+  const targetId = id.value;
+  if (!targetId) {
+    request = undefined;
+    return;
+  }
   const controller = new AbortController();
   request = controller;
-  const targetId = id.value;
   const targetIdentity = identity.value;
   const currentContext = contextRevision;
   const currentRead = ++readRevision;
@@ -644,7 +650,7 @@ watch(
     request = undefined;
     abortDownloads();
     clearContext();
-    void load();
+    if (id.value) void load();
   },
   { flush: 'sync' },
 );

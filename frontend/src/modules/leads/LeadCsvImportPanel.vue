@@ -5,7 +5,6 @@ import type { LeadFormContext, LeadBusinessResult } from '../../api/leads';
 import { checkLeadShopDuplicates } from '../../api/leads';
 import {
   parseLeadCsvPreview,
-  createLeadCsvTemplate,
   type LeadCsvMappingContext,
 } from './lead-csv-adapter';
 import type { LeadCsvParsedRow, LeadCsvSelection } from './lead-csv-preview';
@@ -24,7 +23,6 @@ import {
 } from '../../api/lead-workbook';
 import { parseLeadCsvRecords } from './lead-csv-parser';
 import {
-  leadImportFields,
   mapLeadTableRows,
   officialLeadColumns,
   suggestLeadColumnMapping,
@@ -82,42 +80,6 @@ const header = computed(() =>
   headerIndex.value === null
     ? null
     : (sourceRows.value[headerIndex.value] ?? null),
-);
-const mappingFields = computed(() => {
-  const numbered = Object.keys(fieldColumns.value).flatMap((field) => {
-    const match = /(?:商品名称|商品链接|销量|单价|评论数|截图)(\d+)$/u.exec(
-      field,
-    );
-    return match ? [Number(match[1])] : [];
-  });
-  return leadImportFields(Math.max(10, ...numbered));
-});
-const baseMappingFields = leadImportFields(1);
-const numberedGroups = computed(() =>
-  Array.from(
-    { length: (mappingFields.value.length - baseMappingFields.length) / 6 },
-    (_, index) => index + 2,
-  ),
-);
-const groupFields = (number: number) =>
-  ['商品名称', '商品链接', '销量', '单价', '评论数', '截图'].map(
-    (field) => `${field}${number}`,
-  );
-const extraColumns = computed(
-  () =>
-    header.value?.cells.flatMap((label, index) =>
-      label.trim() && !Object.values(fieldColumns.value).includes(index)
-        ? [{ index, label }]
-        : [],
-    ) ?? [],
-);
-const rawPreviewRows = computed(() =>
-  headerIndex.value === null
-    ? []
-    : sourceRows.value
-        .slice(headerIndex.value + 1)
-        .filter((row) => row.cells.some((cell) => cell.trim()))
-        .slice(0, 3),
 );
 let mounted = true;
 let activeRead: { generation: number; controller: AbortController } | null =
@@ -662,16 +624,6 @@ async function downloadTemplate(): Promise<void> {
   } catch {
     fileError.value = '无法下载 Excel 模板。';
   }
-}
-
-function downloadCsvTemplate(): void {
-  const content = createLeadCsvTemplate(mappingContext.value);
-  saveTemplate(
-    new globalThis.Blob([`\uFEFF${content}`], {
-      type: 'text/csv;charset=utf-8',
-    }),
-    '旧版线索导入模板.csv',
-  );
 }
 
 onBeforeUnmount(() => {

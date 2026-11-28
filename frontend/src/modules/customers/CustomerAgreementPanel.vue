@@ -405,11 +405,6 @@ const legacySettlementMethod = computed(() =>
   ),
 );
 
-function setValidityMode(mode: AgreementValidityMode): void {
-  form.value.validityMode = mode;
-  if (mode !== 'FIXED') form.value.effectiveTo = '';
-}
-
 function makeBody(): PendingCustomerDocumentCommand['body'] {
   const latest = data.value;
   if (!latest) throw new Error('合作协议资料尚未读取');

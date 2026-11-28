@@ -9,7 +9,6 @@ import {
 } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
-  archiveCheckReason,
   decodeArchiveChecks,
   getCaseArchiveReadiness,
   type ArchiveChecks,
@@ -126,21 +125,6 @@ const checking = ref(false);
 const checkError = ref('');
 const checkExpired = ref(false);
 let checkSequence = 0;
-const checkRows = [
-  { key: 'payment', label: '付款结清' },
-  { key: 'refund', label: '诉讼退费' },
-  { key: 'customer', label: '客户回款' },
-  { key: 'lawyer', label: '律师开票' },
-] as const;
-const stateLabels = {
-  PASSED: '通过',
-  BLOCKED: '不足',
-  UNKNOWN: '未知',
-  EXEMPT: '免校验',
-};
-const displayedChecks = computed(
-  () => latestChecks.value ?? readiness.value?.checks,
-);
 const financialReady = computed(
   () =>
     !!readiness.value &&

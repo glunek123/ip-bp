@@ -5106,11 +5106,9 @@ function lawyerCertificate(value: unknown): boolean {
     !Number.isNaN(Date.parse(value.issuedAt)) &&
     typeof value.needDisclose === 'boolean' &&
     Array.isArray(value.files) &&
-    value.files.length > 0 &&
     value.files.every(caseFile) &&
     Array.isArray(value.disclosureFiles) &&
-    value.disclosureFiles.every(caseFile) &&
-    (!value.needDisclose || value.disclosureFiles.length > 0)
+    value.disclosureFiles.every(caseFile)
   );
 }
 function validLawyerOrigin(value: unknown): value is LawyerCaseOrigin {

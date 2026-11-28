@@ -3,7 +3,6 @@ import { computed, ref, watch } from 'vue';
 import ElButton from 'element-plus/es/components/button/index';
 import ElDialog from 'element-plus/es/components/dialog/index';
 import ElDatePicker from 'element-plus/es/components/date-picker/index';
-import ElInput from 'element-plus/es/components/input/index';
 import { ApiError } from '../../api/http';
 import { uploadMaterialFile } from '../../api/materials';
 import {
@@ -57,8 +56,8 @@ watch(
   },
 );
 
-async function pickFile(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement;
+async function pickFile(event: globalThis.Event): Promise<void> {
+  const input = event.target as globalThis.HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
   uploading.value = true;

@@ -415,7 +415,7 @@ export class NotaryIssuanceDecisionResponseDto {
  * 现样品费 = 取证登记样品费 − 本值，原登记值保持不变。
  */
 export class SetNotarySampleFeeRefundDto {
-  @ApiProperty({ example: '100.00', pattern: '^(0|[1-9]\d{0,15})\.\d{2}$' })
+  @ApiProperty({ example: '100.00', pattern: '^(0|[1-9]\\d{0,15})\\.\\d{2}$' })
   @IsString()
   @Matches(/^(0|[1-9]\d{0,15})\.\d{2}$/u)
   amount!: string;

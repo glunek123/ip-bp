@@ -1044,12 +1044,9 @@ describe('NotaryMatterListPage', () => {
     ).toBe(expected);
   });
 
-  it.each([
-    ['PENDING_MATCH', '待匹配'],
-    ['ARCHIVED', '已归档'],
-  ] as const)(
+  it.each(['PENDING_MATCH', 'ARCHIVED'] as const)(
     'links only a real frozen opening count and authorized %s case',
-    async (stage, label) => {
+    async (stage) => {
       api.listNotaryMatters.mockResolvedValue({
         ...result,
         items: [

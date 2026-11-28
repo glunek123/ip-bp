@@ -54,13 +54,6 @@ const refreshFailed = ref(false);
 const confirmedWrite = ref(false);
 let generation = 0;
 
-const cooperationLabel = computed(() =>
-  props.customer.cooperationStatus === 'COOPERATING'
-    ? '合作中'
-    : props.customer.cooperationStatus === 'PAUSED'
-      ? '已暂停合作'
-      : '已终止合作',
-);
 const canStartAction = computed(
   () =>
     !props.blockedByOtherMaintenance &&

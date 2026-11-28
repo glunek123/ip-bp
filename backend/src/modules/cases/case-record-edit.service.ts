@@ -410,7 +410,6 @@ export class CaseRecordEditService {
     input: AddCaseDefendantDto,
   ): Promise<AddCaseDefendantResultDto> {
     const value = this.defendantInput(input);
-    const fingerprint = this.fingerprint(caseId, value);
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await this.database.$transaction(
@@ -610,7 +609,6 @@ export class CaseRecordEditService {
       reason: input.reason?.trim() || null,
       idempotencyKey: input.idempotencyKey,
     };
-    const fingerprint = this.fingerprint(caseId, value);
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await this.database.$transaction(
@@ -718,7 +716,6 @@ export class CaseRecordEditService {
       idempotencyKey: input.idempotencyKey,
     };
     if (!value.reason) throw this.validation('请填写更正原因');
-    const fingerprint = this.fingerprint(caseId, value);
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await this.database.$transaction(

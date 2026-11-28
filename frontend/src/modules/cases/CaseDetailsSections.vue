@@ -184,8 +184,10 @@ function toggleMulti(label: string, option: string, checked: boolean): void {
     : values.filter((entry) => entry !== option);
   emit('update-field', label, next);
 }
-function inputValue(event: Event): string {
-  return (event.target as HTMLInputElement | HTMLTextAreaElement).value;
+function inputValue(event: globalThis.Event): string {
+  return (
+    event.target as globalThis.HTMLInputElement | globalThis.HTMLTextAreaElement
+  ).value;
 }
 
 function hiddenWhileEditing(key: SectionKey, label: string): boolean {
@@ -226,17 +228,6 @@ watch(
 );
 onDeactivated(cancelFileDownloads);
 onBeforeUnmount(cancelFileDownloads);
-function activeGroup(
-  section: (typeof sections.value)[number],
-): string | undefined {
-  const selected = selectedGroups.value[section.key];
-  if (section.groups.some((group) => group.id === selected)) return selected;
-  return (
-    section.groups.find(
-      (group) => !group.historical && group.id !== 'judgment-state',
-    ) ?? section.groups[0]
-  )?.id;
-}
 function edit(key: SectionKey): void {
   if (props.actions[key].enabled) emit('edit', key);
 }

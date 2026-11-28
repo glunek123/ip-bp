@@ -18,25 +18,6 @@ export type NotaryLegacyInput = {
   uploadOn?: string | null;
 };
 
-const TEXT_FIELDS: ReadonlyArray<[keyof NotaryLegacyInput, string]> = [
-  ['notarizationType', 'legacyNotarizationType'],
-  ['notarizationPlatform', 'legacyNotarizationPlatform'],
-  ['notarizationNumber', 'legacyNotarizationNumber'],
-  ['notaryOffice', 'legacyNotaryOffice'],
-  ['senderName', 'legacySenderName'],
-  ['senderPhone', 'legacySenderPhone'],
-  ['senderAddress', 'legacySenderAddress'],
-  ['senderTracking', 'legacySenderTracking'],
-];
-
-const DATE_FIELDS: ReadonlyArray<[keyof NotaryLegacyInput, string]> = [
-  ['uploadOn', 'legacyUploadOn'],
-  ['forensicsOpenOn', 'legacyForensicsOpenOn'],
-  ['forensicsConfirmOn', 'legacyForensicsConfirmOn'],
-  ['forensicsApproveOn', 'legacyForensicsApproveOn'],
-  ['forensicsIssueOn', 'legacyForensicsIssueOn'],
-];
-
 /** 旧库公证与寄件字段维护。 */
 @Injectable()
 export class NotaryLegacyService {

@@ -58,9 +58,10 @@ describe('CaseDeleteService', () => {
       $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: 'case-1' }]),
     };
     const db = {
-      $transaction: jest.fn(
-        async (run: (client: unknown) => unknown, _options?: unknown) => run(tx),
-      ),
+      $transaction: jest.fn<
+        Promise<unknown>,
+        [run: (client: unknown) => unknown, options?: unknown]
+      >(async (run) => run(tx)),
     };
     const access = {
       authorizeDepartmentAction: jest.fn().mockResolvedValue(undefined),

@@ -1228,12 +1228,9 @@ describe('NotaryMatterDetailPage', () => {
     ).toContain('未登记公证书');
   });
 
-  it.each([
-    ['WAITING_COMPLAINT', '待写诉状'],
-    ['ARCHIVED', '已归档'],
-  ] as const)(
+  it.each(['WAITING_COMPLAINT', 'ARCHIVED'] as const)(
     'keeps fees and frozen files distinct for a linked %s case',
-    async (stage, label) => {
+    async (stage) => {
       api.getNotaryMatter.mockResolvedValueOnce({
         ...matter,
         stage: 'ARCHIVED',

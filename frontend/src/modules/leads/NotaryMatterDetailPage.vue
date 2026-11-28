@@ -259,7 +259,7 @@ async function loadSampleRefunds(id: string): Promise<void> {
 function openSampleRefundFromWorkflow(): void {
   if (sampleRefund.value?.canRefund) refundOpen.value = true;
   void nextTick(() =>
-    document
+    globalThis.document
       .querySelector('[data-test="notary-fee-summary"]')
       ?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }),
   );

@@ -175,6 +175,32 @@ describe('notary portal API', () => {
       disclosureRequired: true,
       capabilities: { issueCertificate: true },
     });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: 'matter-1',
+            businessNo: 'NZ-LEGACY',
+            stage: 'WAITING_CERTIFICATE',
+            version: 1,
+            createdAt: '2026-09-28T00:00:00.000Z',
+            evidence: null,
+            opening: null,
+            issuanceDecision: null,
+            certificate: null,
+            disclosureRequired: false,
+            capabilities: { recordOpening: false, issueCertificate: true },
+          }),
+        ),
+      ),
+    );
+    await expect(getNotaryPortalMatter('matter-1')).resolves.toMatchObject({
+      businessNo: 'NZ-LEGACY',
+      stage: 'WAITING_CERTIFICATE',
+      issuanceDecision: null,
+    });
   });
   it('decodes the archived portal projection with operational fields removed', async () => {
     vi.stubGlobal(
@@ -220,6 +246,41 @@ describe('notary portal API', () => {
       opening: null,
       issuanceDecision: null,
       certificate: { caseBusinessNo: 'CA-1' },
+    });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: 'matter-1',
+            businessNo: 'NT-20261128-001',
+            stage: 'ARCHIVED',
+            version: 5,
+            createdAt: '2026-09-28T00:00:00.000Z',
+            evidence: null,
+            opening: null,
+            issuanceDecision: null,
+            certificate: {
+              certificateNo: 'UAT-TEST-20261128-001',
+              certificateDate: '2026-11-28',
+              issuedAt: '2026-11-28T00:00:00.000Z',
+              files: [],
+              disclosureFiles: [],
+              needDisclose: false,
+              sampleFeeAmount: '0.00',
+              caseId: 'case-1',
+              caseBusinessNo: 'CA-1',
+            },
+            disclosureRequired: false,
+            capabilities: { recordOpening: false, issueCertificate: false },
+          }),
+        ),
+      ),
+    );
+    await expect(getNotaryPortalMatter('matter-1')).resolves.toMatchObject({
+      businessNo: 'NT-20261128-001',
+      certificate: { files: [], sampleFeeAmount: '0.00' },
     });
   });
   it('rejects an archived projection that still contains evidence operations', async () => {

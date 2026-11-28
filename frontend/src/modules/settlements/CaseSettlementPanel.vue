@@ -134,7 +134,7 @@ const openLawyerAssign = inject<(() => void) | null>(
   null,
 );
 // 金额待定时按钮是灰的，直接给一个能展开并定位到条件表单的入口。
-const operationsRef = ref<HTMLDetailsElement | null>(null);
+const operationsRef = ref<globalThis.HTMLDetailsElement | null>(null);
 function openTerms(target: SettlementSide): void {
   side.value = target;
   const element = operationsRef.value;

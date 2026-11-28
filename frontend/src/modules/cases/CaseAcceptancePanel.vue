@@ -733,7 +733,7 @@ function isRemovedMaterial(file: CaseFile): boolean {
 async function removeMaterial(file: CaseFile): Promise<void> {
   if (submitting.value || draftBusy.value || unknownRequest.value !== null)
     return;
-  const confirmed = window.confirm(
+  const confirmed = globalThis.window.confirm(
     `确认删除材料「${file.originalFilename}」？删除后不可恢复。`,
   );
   if (!confirmed) return;
@@ -748,7 +748,7 @@ async function removeMaterial(file: CaseFile): Promise<void> {
       ...removedMaterialIds.value,
       file.materialId,
     ]);
-    window.alert('材料已删除');
+    globalThis.window.alert('材料已删除');
     emit('refresh');
   } catch {
     error.value = '删除失败，请稍后重试。';
