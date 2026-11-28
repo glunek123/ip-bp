@@ -1,3 +1,15 @@
+# 2026-11-28 晚间：全系统只读按钮巡检与 4 项前端契约/路由竞态修复（已部署 `b2941c2c`，UAT 复验通过）
+
+- **全系统巡检发现并清零的 4 项问题**：
+  1. **结算中心 → `诉讼退费`（`frontend/src/api/litigation-refunds.ts`）**：`isRow` 使用严格精确键集拒绝了后端正常返回的 `executionCaseNo` 与 `payee`，导致 HTTP 200 下误报“服务返回了无效的诉讼退费数据”。已改为允许这两个可选字段并校验其类型与枚举。
+  2. **数据报表中心（`frontend/src/api/reports.ts`）**：`getReportsCenter` 仍校验元口径区间边界（`100000.00`/`300000.00`/`500000.00`），与后端已切换的万元口径（`10.00`/`30.00`/`50.00`）不一致，导致 `/reports` HTTP 200 下误报“报表读取失败，请重试。”。已同步更新为万元边界。
+  3. **人员与权限页（`frontend/src/api/organization.ts`）**：`permissionActionValues` 及目录校验缺少后端已上线的 6 个权限动作（`CUSTOMER_DELETE`、`CUSTOMER_RESTORE`、`LAWYER_PROFILE_READ`、`LAWYER_PROFILE_MANAGE`、`CASE_DELETE`、`DELETION_AUDIT_READ`），导致 `/settings/people-access` HTTP 200 下误报“人员管理暂时无法加载”。已补全动作定义及部门级作用域校验。
+  4. **公证详情切出路由竞态（`frontend/src/modules/leads/NotaryMatterDetailPage.vue`）**：从 `/notary-matters/:id` 切回 `/notary-matters` 列表瞬态时 `route.params.id` 为 `undefined`，触发一次 `GET /api/v1/notary-matters/undefined`（`net::ERR_ABORTED`）。已增加 `currentMatterId()` 守卫并在空值时中止旧请求、跳过加载。
+- **验证与上线结果**：
+  - 本地：`pnpm architecture:check`（23 模块 / 224 模型）、`pnpm --dir frontend exec vue-tsc --noEmit` 与 9 组前端 Vitest 套件（335 passed | 1 existing skipped）全部通过。
+  - UAT（`ubuntu@111.231.164.248`）：部署 `b2941c2c` 至 `/srv/ip-bp-uat/releases/b2941c2c`，`ip-bp-uat` 为 `active`，`/api/v1/health` 返回 `200`，前端构建产物 `index-DIyycnuw.js` 已生效。
+  - 真实浏览器复验（`https://111.231.164.248`）：`诉讼退费` 正常加载 4 笔退费与合计（未退 `¥336.00` / 应退 `¥558.00`）；`/reports` 个人与部门视图正常渲染全部指标、万元分档（`656/378/62/47`）并启用 `导出报表`；`/settings/people-access` 正常加载 11 位成员、5 个角色模板与团队；公证详情↔列表多路径切换 50 次请求中 `GET /api/v1/notary-matters/undefined` 为 0 次。
+
 # 2026-11-28 傍晚：UAT 验收闭环 6 项流程缺陷修复、权限与库内函数收口并部署验证（`6c129785`）
 
 - **P0 新建客户编号冲突（`20261128160000_sync_customer_counter_and_revoke_definer_public` + `business-numbering.service.ts`）**：迁移将 UAT 共享库 `customer_business_number_counters.last_value` 同步至客户表最大数字编号 `879`；同时调整 `allocateCustomerBusinessId(tx)` 为读取 `GREATEST("last_value", MAX("business_id"::bigint)) + 1`，避免导入或跳号后再次触发 409 冲突。
